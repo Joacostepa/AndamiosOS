@@ -81,16 +81,42 @@ export default function AsistenteRelevamientoPage() {
 
   function handleCreateRelevamiento() {
     if (!pendingRelevamiento) return;
-    createRelevamiento.mutate(
-      { ...pendingRelevamiento, estado: "realizado", fecha_realizada: new Date().toISOString() },
-      {
-        onSuccess: () => {
-          toast.success("Relevamiento guardado!");
-          router.push("/comercial/relevamientos");
-        },
-        onError: () => toast.error("Error al guardar"),
-      }
-    );
+    const r = pendingRelevamiento;
+    const cleanData = {
+      direccion: r.direccion || "Sin direccion",
+      localidad: r.localidad || null,
+      provincia: r.provincia || "Buenos Aires",
+      contacto_nombre: r.contacto_nombre || null,
+      contacto_telefono: r.contacto_telefono || null,
+      tipo_edificio: r.tipo_edificio || null,
+      cantidad_pisos: r.cantidad_pisos ? Number(r.cantidad_pisos) : null,
+      altura_estimada: r.altura_estimada ? Number(r.altura_estimada) : null,
+      metros_lineales: r.metros_lineales ? Number(r.metros_lineales) : null,
+      superficie_fachada: r.superficie_fachada ? Number(r.superficie_fachada) : null,
+      tipo_acceso: r.tipo_acceso || null,
+      tipo_suelo: r.tipo_suelo || null,
+      interferencias: r.interferencias || null,
+      requiere_permiso_municipal: !!r.requiere_permiso_municipal,
+      requiere_proteccion_peatonal: !!r.requiere_proteccion_peatonal,
+      requiere_red_seguridad: !!r.requiere_red_seguridad,
+      horario_restriccion: r.horario_restriccion || null,
+      sistema_recomendado: ["multidireccional", "tubular", "colgante", "otro"].includes(r.sistema_recomendado) ? r.sistema_recomendado : "multidireccional",
+      anclajes_especiales: !!r.anclajes_especiales,
+      observaciones_tecnicas: r.observaciones_tecnicas || null,
+      observaciones: r.observaciones || null,
+      estado: "realizado" as const,
+      fecha_realizada: new Date().toISOString(),
+    };
+    createRelevamiento.mutate(cleanData as any, {
+      onSuccess: () => {
+        toast.success("Relevamiento guardado!");
+        router.push("/comercial/relevamientos");
+      },
+      onError: (err) => {
+        console.error("Error guardando relevamiento:", err);
+        toast.error("Error al guardar. Revisa la consola.");
+      },
+    });
   }
 
   return (

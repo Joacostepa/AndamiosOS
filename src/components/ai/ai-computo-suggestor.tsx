@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Sparkles, Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
+import { useCatalogo } from "@/hooks/use-catalogo";
 
 interface SuggestedItem {
   codigo: string;
@@ -23,6 +24,7 @@ interface AIComputoSuggestorProps {
 }
 
 export function AIComputoSuggestor({ onAddItems, catalogoCodigos }: AIComputoSuggestorProps) {
+  const { data: catalogo } = useCatalogo();
   const [sistema, setSistema] = useState("multidireccional");
   const [altura, setAltura] = useState(10);
   const [metros, setMetros] = useState(20);
@@ -144,18 +146,23 @@ export function AIComputoSuggestor({ onAddItems, catalogoCodigos }: AIComputoSug
                 <TableHeader>
                   <TableRow>
                     <TableHead>Codigo</TableHead>
+                    <TableHead>Descripcion</TableHead>
                     <TableHead>Cantidad</TableHead>
                     <TableHead>Motivo</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {suggestions.map((s, i) => (
-                    <TableRow key={i}>
-                      <TableCell className="font-mono text-xs">{s.codigo}</TableCell>
-                      <TableCell className="font-semibold">{s.cantidad}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground">{s.motivo}</TableCell>
-                    </TableRow>
-                  ))}
+                  {suggestions.map((s, i) => {
+                    const pieza = catalogo?.find((p) => p.codigo === s.codigo);
+                    return (
+                      <TableRow key={i}>
+                        <TableCell className="font-mono text-xs">{s.codigo}</TableCell>
+                        <TableCell className="text-sm">{pieza?.descripcion || "—"}</TableCell>
+                        <TableCell className="font-semibold">{s.cantidad}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{s.motivo}</TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>

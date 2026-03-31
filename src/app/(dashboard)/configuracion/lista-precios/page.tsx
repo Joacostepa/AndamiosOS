@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import {
   useListaPrecios,
   useCreatePrecio,
@@ -8,10 +8,18 @@ import {
   useDeletePrecio,
   type PrecioItem,
 } from "@/hooks/use-lista-precios";
+import { useCatalogo } from "@/hooks/use-catalogo";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -28,7 +36,7 @@ import {
 } from "@/components/ui/sheet";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Trash2, Loader2, Save } from "lucide-react";
+import { Plus, Trash2, Loader2, Save, Check } from "lucide-react";
 import { toast } from "sonner";
 
 const UNIDAD_OPTIONS = [
@@ -42,7 +50,9 @@ const FRACCIONES = [10, 20, 30] as const;
 type GroupedProduct = {
   producto: string;
   descripcion: string;
-  precios: { [fraccion: number]: { id: string; precio: number } | undefined };
+  precios: {
+    [fraccion: number]: { id: string; precio: number } | undefined;
+  };
 };
 
 function groupByProduct(items: PrecioItem[]): GroupedProduct[] {
@@ -56,57 +66,117 @@ function groupByProduct(items: PrecioItem[]): GroupedProduct[] {
       });
     }
     const group = map.get(item.producto)!;
-    if (!group.descripcion && item.descripcion) group.descripcion = item.descripcion;
+    if (!group.descripcion && item.descripcion)
+      group.descripcion = item.descripcion;
     if (item.fraccion_dias) {
-      group.precios[item.fraccion_dias] = { id: item.id, precio: item.precio };
+      group.precios[item.fraccion_dias] = {
+        id: item.id,
+        precio: item.precio,
+      };
     }
   });
-  return Array.from(map.values()).sort((a, b) => a.descripcion.localeCompare(b.descripcion));
+  return Array.from(map.values()).sort((a, b) =>
+    a.descripcion.localeCompare(b.descripcion)
+  );
 }
 
 export default function ListaPreciosPage() {
   const [filterUnidad, setFilterUnidad] = useState("hogareno");
   const { data: precios, isLoading } = useListaPrecios(filterUnidad);
+  const { data: catalogo } = useCatalogo();
   const createPrecio = useCreatePrecio();
   const updatePrecio = useUpdatePrecio();
   const deletePrecio = useDeletePrecio();
 
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [newProducto, setNewProducto] = useState("");
-  const [newDescripcion, setNewDescripcion] = useState("");
-  const [newPrecios, setNewPrecios] = useState<Record<number, number>>({ 10: 0, 20: 0, 30: 0 });
+  const [selectedPieza, setSelectedPieza] = useState("");
+  const [newPrecios, setNewPrecios] = useState<Record<number, number>>({
+    10: 0,
+    20: 0,
+    30: 0,
+  });
   const [saving, setSaving] = useState(false);
 
-  // Editable prices state
+  // Editable prices: includes existing IDs and new entries keyed as "producto:fraccion"
   const [editPrices, setEditPrices] = useState<Record<string, number>>({});
-  const [dirtyIds, setDirtyIds] = useState<Set<string>>(new Set());
+  const [dirtyKeys, setDirtyKeys] = useState<Set<string>>(new Set());
 
   const grouped = precios ? groupByProduct(precios) : [];
+
+  // Products already in the list
+  const existingProducts = new Set(grouped.map((g) => g.producto));
+
+  // Available catalog items not yet in the price list
+  const availablePiezas =
+    catalogo?.filter((p) => !existingProducts.has(p.codigo)) || [];
 
   // Initialize edit prices when data loads
   useEffect(() => {
     if (precios) {
       const prices: Record<string, number> = {};
-      precios.forEach((p) => { prices[p.id] = p.precio; });
+      precios.forEach((p) => {
+        prices[p.id] = p.precio;
+      });
       setEditPrices(prices);
-      setDirtyIds(new Set());
+      setDirtyKeys(new Set());
     }
   }, [precios]);
 
-  function handlePriceChange(id: string, value: number) {
-    setEditPrices((prev) => ({ ...prev, [id]: value }));
-    setDirtyIds((prev) => new Set(prev).add(id));
+  function handlePriceChange(key: string, value: number) {
+    setEditPrices((prev) => ({ ...prev, [key]: value }));
+    setDirtyKeys((prev) => new Set(prev).add(key));
+  }
+
+  // Key for new (non-existing) fraction entries
+  function newKey(producto: string, fraccion: number) {
+    return `new:${producto}:${fraccion}`;
+  }
+
+  function handleNewFractionChange(
+    producto: string,
+    descripcion: string,
+    fraccion: number,
+    value: number
+  ) {
+    const key = newKey(producto, fraccion);
+    setEditPrices((prev) => ({ ...prev, [key]: value }));
+    setDirtyKeys((prev) => new Set(prev).add(key));
   }
 
   async function saveAllChanges() {
-    if (dirtyIds.size === 0) return;
+    if (dirtyKeys.size === 0) return;
     setSaving(true);
     try {
-      for (const id of dirtyIds) {
-        await updatePrecio.mutateAsync({ id, data: { precio: editPrices[id] } });
+      for (const key of dirtyKeys) {
+        if (key.startsWith("new:")) {
+          // Create new price entry
+          const parts = key.split(":");
+          const producto = parts[1];
+          const fraccion = parseInt(parts[2]);
+          const precio = editPrices[key];
+          if (precio > 0) {
+            const group = grouped.find((g) => g.producto === producto);
+            await createPrecio.mutateAsync({
+              unidad_cotizacion: filterUnidad,
+              producto,
+              descripcion: group?.descripcion || null,
+              fraccion_dias: fraccion,
+              precio,
+              zona: null,
+              precio_flete: null,
+              activo: true,
+            });
+          }
+        } else {
+          // Update existing
+          await updatePrecio.mutateAsync({
+            id: key,
+            data: { precio: editPrices[key] },
+          });
+        }
       }
-      setDirtyIds(new Set());
-      toast.success(`${dirtyIds.size} precio${dirtyIds.size > 1 ? "s" : ""} actualizado${dirtyIds.size > 1 ? "s" : ""}`);
+      setDirtyKeys(new Set());
+      toast.success("Precios guardados");
     } catch {
       toast.error("Error al guardar");
     } finally {
@@ -126,19 +196,22 @@ export default function ListaPreciosPage() {
     }
   }
 
-  async function handleCreateProduct() {
-    if (!newProducto) {
-      toast.error("Completá el código de producto");
+  async function handleAddFromCatalog() {
+    if (!selectedPieza) {
+      toast.error("Seleccioná un producto del catálogo");
       return;
     }
+    const pieza = catalogo?.find((p) => p.codigo === selectedPieza);
+    if (!pieza) return;
+
     setSaving(true);
     try {
       for (const fraccion of FRACCIONES) {
         if (newPrecios[fraccion] > 0) {
           await createPrecio.mutateAsync({
             unidad_cotizacion: filterUnidad,
-            producto: newProducto,
-            descripcion: newDescripcion || null,
+            producto: pieza.codigo,
+            descripcion: pieza.descripcion,
             fraccion_dias: fraccion,
             precio: newPrecios[fraccion],
             zona: null,
@@ -149,8 +222,7 @@ export default function ListaPreciosPage() {
       }
       toast.success("Producto agregado a la lista");
       setDrawerOpen(false);
-      setNewProducto("");
-      setNewDescripcion("");
+      setSelectedPieza("");
       setNewPrecios({ 10: 0, 20: 0, 30: 0 });
     } catch {
       toast.error("Error al crear");
@@ -174,12 +246,6 @@ export default function ListaPreciosPage() {
         title="Lista de precios"
         description="Precios por unidad de negocio y fracción de alquiler"
       >
-        {dirtyIds.size > 0 && (
-          <Button variant="outline" onClick={saveAllChanges} disabled={saving}>
-            {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-            Guardar cambios ({dirtyIds.size})
-          </Button>
-        )}
         <Button onClick={() => setDrawerOpen(true)}>
           <Plus className="mr-2 h-4 w-4" />
           Agregar producto
@@ -214,9 +280,15 @@ export default function ListaPreciosPage() {
               <TableRow>
                 <TableHead className="w-[200px]">Producto</TableHead>
                 <TableHead>Descripción</TableHead>
-                <TableHead className="text-center w-[120px]">10 días</TableHead>
-                <TableHead className="text-center w-[120px]">20 días</TableHead>
-                <TableHead className="text-center w-[120px]">30 días</TableHead>
+                <TableHead className="text-center w-[120px]">
+                  10 días
+                </TableHead>
+                <TableHead className="text-center w-[120px]">
+                  20 días
+                </TableHead>
+                <TableHead className="text-center w-[120px]">
+                  30 días
+                </TableHead>
                 <TableHead className="w-10" />
               </TableRow>
             </TableHeader>
@@ -232,8 +304,12 @@ export default function ListaPreciosPage() {
                     </TableCell>
                     {FRACCIONES.map((fraccion) => {
                       const entry = group.precios[fraccion];
+                      const nk = newKey(group.producto, fraccion);
                       return (
-                        <TableCell key={fraccion} className="text-center p-1">
+                        <TableCell
+                          key={fraccion}
+                          className="text-center p-1"
+                        >
                           {entry ? (
                             <Input
                               type="number"
@@ -241,16 +317,38 @@ export default function ListaPreciosPage() {
                               step="100"
                               value={editPrices[entry.id] ?? entry.precio}
                               onChange={(e) =>
-                                handlePriceChange(entry.id, Number(e.target.value))
+                                handlePriceChange(
+                                  entry.id,
+                                  Number(e.target.value)
+                                )
                               }
                               className={`h-8 text-xs text-center w-24 mx-auto ${
-                                dirtyIds.has(entry.id)
+                                dirtyKeys.has(entry.id)
                                   ? "border-primary ring-1 ring-primary/30"
                                   : ""
                               }`}
                             />
                           ) : (
-                            <span className="text-muted-foreground text-xs">—</span>
+                            <Input
+                              type="number"
+                              min={0}
+                              step="100"
+                              value={editPrices[nk] || ""}
+                              onChange={(e) =>
+                                handleNewFractionChange(
+                                  group.producto,
+                                  group.descripcion,
+                                  fraccion,
+                                  Number(e.target.value)
+                                )
+                              }
+                              placeholder="—"
+                              className={`h-8 text-xs text-center w-24 mx-auto ${
+                                dirtyKeys.has(nk)
+                                  ? "border-primary ring-1 ring-primary/30"
+                                  : ""
+                              }`}
+                            />
                           )}
                         </TableCell>
                       );
@@ -282,7 +380,26 @@ export default function ListaPreciosPage() {
         </CardContent>
       </Card>
 
-      {/* Drawer agregar producto */}
+      {/* Botón confirmar edición */}
+      {dirtyKeys.size > 0 && (
+        <div className="sticky bottom-4 flex justify-center">
+          <Button
+            size="lg"
+            onClick={saveAllChanges}
+            disabled={saving}
+            className="shadow-lg px-8"
+          >
+            {saving ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Check className="mr-2 h-4 w-4" />
+            )}
+            Confirmar cambios ({dirtyKeys.size})
+          </Button>
+        </div>
+      )}
+
+      {/* Drawer agregar producto desde catálogo */}
       <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
         <SheetContent className="overflow-y-auto sm:max-w-md">
           <SheetHeader>
@@ -290,35 +407,58 @@ export default function ListaPreciosPage() {
           </SheetHeader>
           <div className="mt-6 space-y-4">
             <div className="space-y-2">
-              <Label>Código producto *</Label>
-              <Input
-                value={newProducto}
-                onChange={(e) => setNewProducto(e.target.value)}
-                placeholder="Ej: MOD-AND-STD-130x250x180"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Descripción</Label>
-              <Input
-                value={newDescripcion}
-                onChange={(e) => setNewDescripcion(e.target.value)}
-                placeholder="Ej: Módulo de Andamio STD 1,30 X 2,50 X 1,80"
-              />
+              <Label>Producto del catálogo *</Label>
+              <Select
+                value={selectedPieza}
+                onValueChange={(v) => v && setSelectedPieza(v)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Buscar producto..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {availablePiezas.length > 0 ? (
+                    availablePiezas.map((p) => (
+                      <SelectItem key={p.codigo} value={p.codigo}>
+                        <span className="font-mono text-xs mr-2">
+                          {p.codigo}
+                        </span>
+                        {p.descripcion}
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="_empty" disabled>
+                      Todos los productos ya están en la lista
+                    </SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+              {selectedPieza && catalogo && (
+                <p className="text-xs text-muted-foreground">
+                  {
+                    catalogo.find((p) => p.codigo === selectedPieza)
+                      ?.descripcion
+                  }
+                </p>
+              )}
             </div>
 
             <div className="space-y-3">
               <Label>Precios por fracción</Label>
               {FRACCIONES.map((f) => (
                 <div key={f} className="flex items-center gap-3">
-                  <span className="text-sm text-muted-foreground w-16">{f} días</span>
+                  <span className="text-sm text-muted-foreground w-16">
+                    {f} días
+                  </span>
                   <Input
                     type="number"
                     min={0}
                     step="100"
                     value={newPrecios[f] || ""}
                     onChange={(e) =>
-                      setNewPrecios((prev) => ({ ...prev, [f]: Number(e.target.value) }))
+                      setNewPrecios((prev) => ({
+                        ...prev,
+                        [f]: Number(e.target.value),
+                      }))
                     }
                     placeholder="$0"
                     className="text-sm"
@@ -331,8 +471,10 @@ export default function ListaPreciosPage() {
             </div>
 
             <div className="flex justify-end pt-4">
-              <Button onClick={handleCreateProduct} disabled={saving}>
-                {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              <Button onClick={handleAddFromCatalog} disabled={saving}>
+                {saving && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
                 Agregar producto
               </Button>
             </div>

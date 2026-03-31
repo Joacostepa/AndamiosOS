@@ -18,6 +18,7 @@ export const navigation: NavGroup[] = [
     label: "Comercial",
     items: [
       { title: "Oportunidades", href: "/comercial/oportunidades", icon: Target },
+      { title: "Clientes", href: "/clientes", icon: Users },
       { title: "Relevamientos", href: "/comercial/relevamientos", icon: MapPin },
       { title: "Cotizaciones", href: "/comercial/cotizaciones", icon: DollarSign },
     ],
@@ -26,7 +27,6 @@ export const navigation: NavGroup[] = [
     label: "Operaciones",
     items: [
       { title: "Obras", href: "/obras", icon: Building2 },
-      { title: "Clientes", href: "/clientes", icon: Users },
       { title: "Planificacion", href: "/planificacion", icon: Calendar },
     ],
   },

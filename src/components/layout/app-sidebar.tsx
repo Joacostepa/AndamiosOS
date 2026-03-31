@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef, useCallback } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -14,13 +15,32 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from "@/components/ui/sidebar";
 
 export function AppSidebar() {
   const pathname = usePathname();
+  const { setOpen, isMobile } = useSidebar();
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleMouseEnter = useCallback(() => {
+    if (isMobile) return;
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => setOpen(true), 150);
+  }, [setOpen, isMobile]);
+
+  const handleMouseLeave = useCallback(() => {
+    if (isMobile) return;
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => setOpen(false), 300);
+  }, [setOpen, isMobile]);
 
   return (
-    <Sidebar>
+    <Sidebar
+      collapsible="icon"
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
       <SidebarHeader className="border-b border-sidebar-border px-4 py-4">
         <Link href="/" className="flex items-center gap-2">
           <span className="text-xl font-bold tracking-tight">
@@ -45,6 +65,7 @@ export function AppSidebar() {
                       <SidebarMenuButton
                         render={<Link href={item.href} />}
                         isActive={isActive}
+                        tooltip={item.title}
                         className={cn(
                           isActive && "bg-sidebar-accent text-primary"
                         )}

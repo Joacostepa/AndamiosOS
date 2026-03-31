@@ -11,7 +11,7 @@ export default function DashboardLayout({
 }) {
   return (
     <QueryProvider>
-      <SidebarProvider>
+      <SidebarProvider defaultOpen={false}>
         <AppSidebar />
         <SidebarInset>
           <Header />

@@ -102,6 +102,7 @@ export default function OportunidadesPage() {
                           <span className="text-[10px] text-muted-foreground">{formatRelativeDate(op.created_at)}</span>
                         </div>
                         <div className="flex gap-1 flex-wrap">
+                          {(op as any).unidad_negocio && <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/30 capitalize">{(op as any).unidad_negocio?.replace(/_/g, " ")}</Badge>}
                           <Badge variant="outline" className="text-[10px]">{TIPO_LABELS[op.tipo_cliente] || op.tipo_cliente}</Badge>
                           <Badge variant="outline" className="text-[10px]">{SITUACION_LABELS[op.situacion] || op.situacion}</Badge>
                         </div>
@@ -133,6 +134,22 @@ export default function OportunidadesPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2"><Label>Nombre contacto</Label><Input {...register("cliente_nombre")} placeholder="Si es nuevo..." /></div>
               <div className="space-y-2"><Label>Telefono</Label><Input {...register("cliente_telefono")} /></div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Unidad de negocio</Label>
+              <Select value={(watch as any)("unidad_negocio") || ""} onValueChange={(val) => val && (setValue as any)("unidad_negocio", val)}>
+                <SelectTrigger><SelectValue placeholder="Seleccionar unidad..." /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="fachadas">Fachadas</SelectItem>
+                  <SelectItem value="particulares">Particulares</SelectItem>
+                  <SelectItem value="multidireccional">Multidireccional</SelectItem>
+                  <SelectItem value="industria">Industria</SelectItem>
+                  <SelectItem value="construccion">Construccion</SelectItem>
+                  <SelectItem value="obra_publica">Obra publica</SelectItem>
+                  <SelectItem value="eventos">Eventos</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <p className="text-sm font-medium text-muted-foreground pt-2">Categorizacion</p>

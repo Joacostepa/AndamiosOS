@@ -98,6 +98,22 @@ export function ObraForm({ onSubmit, loading }: ObraFormProps) {
         </div>
       </div>
 
+      <div className="space-y-2">
+        <Label>Unidad de negocio</Label>
+        <Select value={(watch as any)("unidad_negocio") || ""} onValueChange={(val) => val && (setValue as any)("unidad_negocio", val)}>
+          <SelectTrigger><SelectValue placeholder="Seleccionar unidad..." /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="fachadas">Fachadas</SelectItem>
+            <SelectItem value="particulares">Particulares</SelectItem>
+            <SelectItem value="multidireccional">Multidireccional</SelectItem>
+            <SelectItem value="industria">Industria</SelectItem>
+            <SelectItem value="construccion">Construccion</SelectItem>
+            <SelectItem value="obra_publica">Obra publica</SelectItem>
+            <SelectItem value="eventos">Eventos</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label>Tipo de obra</Label>

@@ -33,9 +33,9 @@ export default function GenerarQRPage() {
       // Generate QR image - solo el token, sin JSON wrapper
       const url = await QRCode.toDataURL(result.token, {
         width: 500,
-        margin: 3,
-        errorCorrectionLevel: "M",
-        color: { dark: "#f59e0b", light: "#1a1a1a" },
+        margin: 4,
+        errorCorrectionLevel: "H",
+        color: { dark: "#000000", light: "#ffffff" },
       });
       setQrDataUrl(url);
       setCountdown(60);

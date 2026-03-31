@@ -156,70 +156,71 @@ function NuevaCotizacionContent() {
 
   return (
     <FormProvider {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)}>
-        <div className="flex h-[calc(100vh-8rem)]">
-          {/* Left: Form */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-6 lg:w-3/5">
-            {/* Top bar */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setUnidad(null)}
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                </Button>
-                <div>
-                  <h1 className="text-2xl font-bold tracking-tight">
-                    Nueva cotización
-                  </h1>
-                  <p className="text-sm text-muted-foreground">
-                    {UNIDAD_LABELS[unidad]}
-                  </p>
-                </div>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                {isMobile && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    onClick={() => setChatOpen(true)}
-                  >
-                    <MessageSquare className="h-4 w-4" />
-                  </Button>
-                )}
-                <Button type="submit" disabled={createCotizacion.isPending}>
-                  {createCotizacion.isPending ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Save className="mr-2 h-4 w-4" />
-                  )}
-                  Crear cotización
-                </Button>
+      <div className="flex h-[calc(100vh-8rem)]">
+        {/* Left: Form */}
+        <form
+          onSubmit={form.handleSubmit(onSubmit)}
+          className="flex-1 overflow-y-auto p-6 space-y-6 lg:w-3/5"
+        >
+          {/* Top bar */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => setUnidad(null)}
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight">
+                  Nueva cotización
+                </h1>
+                <p className="text-sm text-muted-foreground">
+                  {UNIDAD_LABELS[unidad]}
+                </p>
               </div>
             </div>
-
-            {/* Common fields */}
-            <CommonFields />
-
-            {/* Unit-specific fields */}
-            {unidad === "hogareno" && <FormHogareno />}
-            {unidad === "multidireccional" && <FormMultidireccional />}
-            {unidad === "armado_desarme" && <FormArmadoDesarme />}
-
-            {/* Items table */}
-            <ItemsTable unidad={unidad} />
+            <div className="flex shrink-0 items-center gap-2">
+              {isMobile && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setChatOpen(true)}
+                >
+                  <MessageSquare className="h-4 w-4" />
+                </Button>
+              )}
+              <Button type="submit" disabled={createCotizacion.isPending}>
+                {createCotizacion.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="mr-2 h-4 w-4" />
+                )}
+                Crear cotización
+              </Button>
+            </div>
           </div>
 
-          {/* Right: AI Chat (desktop) */}
-          {!isMobile && (
-            <div className="hidden lg:flex w-2/5 border-l">{chatPanel}</div>
-          )}
-        </div>
-      </form>
+          {/* Common fields */}
+          <CommonFields />
+
+          {/* Unit-specific fields */}
+          {unidad === "hogareno" && <FormHogareno />}
+          {unidad === "multidireccional" && <FormMultidireccional />}
+          {unidad === "armado_desarme" && <FormArmadoDesarme />}
+
+          {/* Items table */}
+          <ItemsTable unidad={unidad} />
+        </form>
+
+        {/* Right: AI Chat (desktop) - OUTSIDE form to prevent submit bubbling */}
+        {!isMobile && (
+          <div className="hidden lg:flex w-2/5 border-l">{chatPanel}</div>
+        )}
+      </div>
 
       {/* Mobile: Chat in sheet */}
       {isMobile && (

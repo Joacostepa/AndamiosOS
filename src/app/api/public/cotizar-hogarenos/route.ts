@@ -150,59 +150,90 @@ export async function POST(request: NextRequest) {
     const text =
       response.content[0].type === "text" ? response.content[0].text : "";
 
-    // Check if cotización is ready - try multiple patterns
-    const separator = "---COTIZACION_READY---";
-    let idx = text.indexOf(separator);
-    // Also try without dashes in case AI varies format
-    if (idx === -1) idx = text.indexOf("COTIZACION_READY");
-    // Try to find JSON with cotizacion key
-    const jsonMatch = text.match(/\{"cotizacion"\s*:\s*\{[\s\S]*\}\s*\}/);
+    // Extract clean text and JSON from AI response
+    let cleanMessage = text;
+    let cotData: any = null;
 
-    if (idx !== -1 || jsonMatch) {
-      const message = idx !== -1
-        ? text.slice(0, idx).trim()
-        : text.slice(0, jsonMatch!.index).trim();
-      const jsonStr = idx !== -1
-        ? text.slice(idx).replace(/^-*COTIZACION_READY-*\s*/, "").trim()
-        : jsonMatch![0];
+    // Try to find and extract the cotizacion JSON
+    // Pattern 1: separator
+    const sepIdx = text.indexOf("---COTIZACION_READY---");
+    if (sepIdx !== -1) {
+      cleanMessage = text.slice(0, sepIdx).trim();
+      const jsonPart = text.slice(sepIdx + "---COTIZACION_READY---".length).trim();
+      try { cotData = JSON.parse(jsonPart).cotizacion; } catch { /* try next */ }
+    }
 
+    // Pattern 2: regex for JSON object with cotizacion key
+    if (!cotData) {
+      const jsonMatch = text.match(/\{[\s\S]*"cotizacion"\s*:\s*\{[\s\S]*\}\s*\}/);
+      if (jsonMatch) {
+        cleanMessage = text.slice(0, jsonMatch.index).trim();
+        try { cotData = JSON.parse(jsonMatch[0]).cotizacion; } catch { /* try next */ }
+      }
+    }
+
+    // Pattern 3: look for just the inner cotizacion object
+    if (!cotData) {
+      const innerMatch = text.match(/"titulo"\s*:.*"items"\s*:\s*\[[\s\S]*?\]/);
+      if (innerMatch) {
+        cleanMessage = text.slice(0, innerMatch.index).replace(/[{,]\s*$/, "").trim();
+        try { cotData = JSON.parse("{" + innerMatch[0] + "}"); } catch { /* give up */ }
+      }
+    }
+
+    // Remove any remaining JSON artifacts from the visible message
+    cleanMessage = cleanMessage
+      .replace(/---COTIZACION_READY---[\s\S]*/g, "")
+      .replace(/\{"cotizacion"[\s\S]*/g, "")
+      .trim();
+
+    if (!cleanMessage) {
+      cleanMessage = "¡Tu cotización está lista para descargar!";
+    }
+
+    // If we extracted cotización data, create it in the DB
+    if (cotData && cotData.titulo && cotData.items) {
       try {
-        const parsed = JSON.parse(jsonStr);
-        const cotData = parsed.cotizacion;
-
         // Create client
         let clienteId: string | null = null;
-        try {
-          const { data: cliente } = await supabase
+        if (cotData.cliente_nombre) {
+          const { data: newCliente, error: clienteError } = await supabase
             .from("clientes")
             .insert({
               razon_social: cotData.cliente_nombre,
-              telefono: cotData.cliente_telefono,
+              telefono: cotData.cliente_telefono || null,
               estado: "activo",
             })
             .select("id")
             .single();
-          clienteId = cliente?.id || null;
-        } catch {
-          // Client may already exist, try to find by name
-          const { data: existing } = await supabase
-            .from("clientes")
-            .select("id")
-            .eq("razon_social", cotData.cliente_nombre)
-            .limit(1)
-            .single();
-          clienteId = existing?.id || null;
+
+          if (clienteError) {
+            // Try to find existing
+            const { data: existing } = await supabase
+              .from("clientes")
+              .select("id")
+              .ilike("razon_social", cotData.cliente_nombre)
+              .limit(1)
+              .maybeSingle();
+            clienteId = existing?.id || null;
+          } else {
+            clienteId = newCliente?.id || null;
+          }
         }
 
-        // Build conversation log (include the final assistant message)
+        // Build conversation log
         const conversacion = [
           ...messages.map((m: any) => ({ role: m.role, content: m.content })),
-          { role: "assistant", content: message },
+          { role: "assistant", content: cleanMessage },
         ];
 
+        // Ensure fraccion_dias is a valid number
+        const fraccionDias = [10, 20, 30].includes(Number(cotData.fraccion_dias))
+          ? Number(cotData.fraccion_dias)
+          : null;
+
         // Create cotización
-        const items = cotData.items || [];
-        const { data: cot, error } = await supabase
+        const { data: cot, error: cotError } = await supabase
           .from("cotizaciones")
           .insert({
             codigo: "",
@@ -213,45 +244,55 @@ export async function POST(request: NextRequest) {
               "- Precios expresados en pesos argentinos + IVA\n- Plazo de validez: 30 días\n- No incluye permisos municipales salvo indicación expresa",
             condicion_pago: cotData.condicion_pago || "Contado",
             unidad_cotizacion: "hogareno",
-            fraccion_dias: cotData.fraccion_dias,
-            zona_entrega: cotData.zona_entrega,
+            fraccion_dias: fraccionDias,
+            zona_entrega: cotData.zona_entrega || null,
             generado_por_ia: true,
             metadata: { conversacion },
           })
           .select()
           .single();
 
-        if (error) throw error;
+        if (cotError) {
+          console.error("Error creating cotizacion:", cotError);
+          return NextResponse.json({ message: cleanMessage });
+        }
 
+        // Insert items
+        const items = Array.isArray(cotData.items) ? cotData.items : [];
         if (items.length > 0) {
           const dbItems = items.map((item: any, i: number) => ({
             cotizacion_id: cot.id,
-            tipo: item.tipo,
-            concepto: item.concepto,
+            tipo: item.tipo || "extra",
+            concepto: item.concepto || "Item",
             detalle: item.detalle || null,
-            cantidad: item.cantidad,
+            cantidad: Number(item.cantidad) || 1,
             unidad: item.unidad || "un",
-            precio_unitario: item.precio_unitario,
-            subtotal: item.cantidad * item.precio_unitario,
+            precio_unitario: Number(item.precio_unitario) || 0,
+            subtotal: (Number(item.cantidad) || 1) * (Number(item.precio_unitario) || 0),
             orden: i,
           }));
-          await supabase.from("cotizacion_items").insert(dbItems);
+
+          const { error: itemsError } = await supabase
+            .from("cotizacion_items")
+            .insert(dbItems);
+
+          if (itemsError) {
+            console.error("Error creating items:", itemsError);
+          }
         }
 
         return NextResponse.json({
-          message,
+          message: cleanMessage,
           cotizacion_id: cot.id,
           cotizacion_codigo: cot.codigo,
         });
-      } catch (parseError) {
-        console.error("Cotizacion parse/create error:", parseError);
-        // Strip JSON from visible message so client never sees raw data
-        const cleanMsg = message || "¡Tu cotización está casi lista! Hubo un inconveniente técnico. Por favor contactanos por WhatsApp para finalizarla.";
-        return NextResponse.json({ message: cleanMsg });
+      } catch (err) {
+        console.error("Error creating cotizacion (catch):", err);
+        return NextResponse.json({ message: cleanMessage });
       }
     }
 
-    return NextResponse.json({ message: text });
+    return NextResponse.json({ message: cleanMessage });
   } catch (error: any) {
     console.error("Public AI Error:", error);
     return NextResponse.json(

@@ -1,0 +1,96 @@
+"use client";
+
+import { Bell, LogOut, User } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
+import { useUser } from "@/hooks/use-user";
+import { useAlertasCount } from "@/hooks/use-alertas";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { SidebarTrigger } from "@/components/ui/sidebar";
+import { Separator } from "@/components/ui/separator";
+import Link from "next/link";
+
+export function Header() {
+  const { data: user } = useUser();
+  const { data: alertasCount } = useAlertasCount();
+  const router = useRouter();
+  const supabase = createClient();
+
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    router.push("/login");
+    router.refresh();
+  }
+
+  const initials = user
+    ? `${user.nombre[0]}${user.apellido[0]}`.toUpperCase()
+    : "??";
+
+  return (
+    <header className="flex h-14 items-center gap-2 border-b px-4">
+      <SidebarTrigger />
+      <Separator orientation="vertical" className="h-6" />
+
+      <div className="flex-1" />
+
+      <div className="relative">
+        <Button variant="ghost" size="icon" render={<Link href="/alertas" />}>
+          <Bell className="h-4 w-4" />
+        </Button>
+        {!!alertasCount && alertasCount > 0 && (
+          <span className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-red-500 text-[10px] font-bold text-white flex items-center justify-center">
+            {alertasCount > 9 ? "9+" : alertasCount}
+          </span>
+        )}
+      </div>
+
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button variant="ghost" className="relative h-8 w-8 rounded-full" />
+          }
+        >
+          <Avatar className="h-8 w-8">
+            <AvatarFallback className="bg-primary text-primary-foreground text-xs">
+              {initials}
+            </AvatarFallback>
+          </Avatar>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuLabel>
+            <div className="flex flex-col space-y-1">
+              <p className="text-sm font-medium">
+                {user ? `${user.nombre} ${user.apellido}` : "Cargando..."}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {user?.email}
+              </p>
+              <p className="text-xs text-muted-foreground capitalize">
+                {user?.rol}
+              </p>
+            </div>
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem>
+            <User className="mr-2 h-4 w-4" />
+            Perfil
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={handleLogout}>
+            <LogOut className="mr-2 h-4 w-4" />
+            Cerrar sesión
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </header>
+  );
+}

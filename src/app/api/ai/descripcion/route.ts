@@ -1,0 +1,64 @@
+import Anthropic from "@anthropic-ai/sdk";
+import { createClient } from "@supabase/supabase-js";
+import { NextRequest, NextResponse } from "next/server";
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+
+async function getCustomPrompt(): Promise<string> {
+  try {
+    const { data } = await supabase.from("configuracion").select("valor").eq("clave", "ai_prompt_cotizacion").single();
+    return data?.valor || "";
+  } catch { return ""; }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const { tipo, contexto } = await request.json();
+    const instrucciones = await getCustomPrompt();
+
+    let prompt = "";
+    if (tipo === "descripcion") {
+      prompt = `Genera una descripcion tecnica profesional para una cotizacion de andamios con estos datos:
+${JSON.stringify(contexto, null, 2)}
+
+La descripcion debe incluir:
+- Que servicio se presta (alquiler, montaje, desarme)
+- Especificaciones tecnicas
+- Que incluye el servicio
+- Referencia a normativas de seguridad
+
+Responde SOLO con el texto de la descripcion, sin titulos ni formato markdown. Maximo 200 palabras.`;
+    } else if (tipo === "condiciones") {
+      prompt = `Genera las condiciones generales profesionales para una cotizacion de alquiler de andamios.
+
+Debe incluir clausulas sobre:
+1. Alcance del servicio
+2. Validez de la cotizacion
+3. Forma de pago
+4. Plazo de montaje
+5. Responsabilidades del cliente (custodia, no modificar, acceso)
+6. Seguridad e inspecciones
+7. Seguros (RC y ART)
+8. Precios (sin IVA)
+
+Responde SOLO con el texto de las condiciones, numeradas. Sin titulo. Maximo 300 palabras.`;
+    }
+
+    if (instrucciones) {
+      prompt += `\n\nINSTRUCCIONES ADICIONALES DE LA EMPRESA:\n${instrucciones}`;
+    }
+
+    const response = await anthropic.messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 1024,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const text = response.content[0].type === "text" ? response.content[0].text : "";
+    return NextResponse.json({ text });
+  } catch (error: any) {
+    console.error("AI Description Error:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}

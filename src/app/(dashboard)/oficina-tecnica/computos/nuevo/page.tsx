@@ -17,6 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Loader2, Plus, Trash2, AlertTriangle, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
+import { AIComputoSuggestor } from "@/components/ai/ai-computo-suggestor";
 
 type ItemRow = {
   pieza_id: string;
@@ -166,6 +167,28 @@ export default function NuevoComputoPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* AI Suggestor */}
+      <AIComputoSuggestor
+        catalogoCodigos={catalogo?.map((p) => p.codigo) || []}
+        onAddItems={(suggested) => {
+          suggested.forEach((s) => {
+            const pieza = catalogo?.find((p) => p.codigo === s.codigo);
+            if (!pieza) return;
+            const existing = items.find((i) => i.pieza_id === pieza.id);
+            if (existing) {
+              setItems(items.map((i) => i.pieza_id === pieza.id ? { ...i, cantidad_requerida: s.cantidad } : i));
+            } else {
+              setItems((prev) => [...prev, {
+                pieza_id: pieza.id, codigo: pieza.codigo, descripcion: pieza.descripcion,
+                categoria: pieza.categoria, cantidad_requerida: s.cantidad,
+                stock_disponible: getStockDisponible(pieza.id), stock_minimo: getStockMinimo(pieza.id),
+              }]);
+            }
+          });
+          toast.success(`${suggested.length} piezas agregadas`);
+        }}
+      />
 
       {/* Summary */}
       {items.length > 0 && (

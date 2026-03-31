@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { AIDescriptionGenerator } from "@/components/ai/ai-description-generator";
 
 const TIPO_ITEM_LABELS: Record<string, string> = {
   alquiler_mensual: "Alquiler mensual", montaje: "Montaje", desarme: "Desarme",
@@ -108,8 +109,16 @@ function NuevaCotizacionContent() {
         <Card>
           <CardHeader><CardTitle className="text-base">Descripcion y condiciones</CardTitle></CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2"><Label>Descripcion del servicio</Label><Textarea value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={4} placeholder="Descripcion tecnica del servicio a cotizar..." /></div>
-            <div className="space-y-2"><Label>Condiciones</Label><Textarea value={condiciones} onChange={(e) => setCondiciones(e.target.value)} rows={4} /></div>
+            <div className="space-y-2">
+              <Label>Descripcion del servicio</Label>
+              <AIDescriptionGenerator context={{}} onGenerated={(text) => setDescripcion(text)} />
+              <Textarea value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={4} placeholder="Descripcion tecnica del servicio a cotizar..." />
+            </div>
+            <div className="space-y-2">
+              <Label>Condiciones</Label>
+              <AIDescriptionGenerator context={{}} onGenerated={(text) => setCondiciones(text)} />
+              <Textarea value={condiciones} onChange={(e) => setCondiciones(e.target.value)} rows={4} />
+            </div>
           </CardContent>
         </Card>
       </div>

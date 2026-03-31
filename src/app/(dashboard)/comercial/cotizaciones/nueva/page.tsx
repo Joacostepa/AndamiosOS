@@ -4,6 +4,7 @@ import { useState, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm, FormProvider } from "react-hook-form";
 import { useCreateCotizacion } from "@/hooks/use-cotizaciones";
+import { useConfiguracion } from "@/hooks/use-configuracion";
 import { useOportunidades } from "@/hooks/use-oportunidades";
 import { UnitSelector } from "@/components/cotizaciones/unit-selector";
 import { CommonFields } from "@/components/cotizaciones/common-fields";
@@ -36,6 +37,7 @@ function NuevaCotizacionContent() {
   const searchParams = useSearchParams();
   const isMobile = useIsMobile();
   const createCotizacion = useCreateCotizacion();
+  const { data: configs } = useConfiguracion();
   const { data: oportunidades } = useOportunidades();
 
   const [unidad, setUnidad] = useState<UnidadCotizacion | null>(null);
@@ -102,6 +104,39 @@ function NuevaCotizacionContent() {
         toast.error("Agregá al menos un item");
         return;
       }
+
+      // Build items list
+      const items = data.items.map((item) => ({
+        tipo: item.tipo,
+        concepto: item.concepto,
+        detalle: item.detalle,
+        cantidad: item.cantidad,
+        unidad: item.unidad,
+        precio_unitario: item.precio_unitario,
+      }));
+
+      // Add mínimo operativo adjustment for hogareño
+      if (data.unidad_cotizacion === "hogareno") {
+        const minimoVal = configs?.find((c) => c.clave === "minimo_hogareno")?.valor;
+        const minimo = minimoVal ? Number(minimoVal) : 0;
+        if (minimo > 0) {
+          const subtotal = items.reduce(
+            (sum, i) => sum + (i.cantidad || 0) * (i.precio_unitario || 0),
+            0
+          );
+          if (subtotal > 0 && subtotal < minimo) {
+            items.push({
+              tipo: "extra",
+              concepto: "Ajuste mínimo operativo",
+              detalle: `Mínimo operativo: $${minimo.toLocaleString("es-AR")}`,
+              cantidad: 1,
+              unidad: "un",
+              precio_unitario: minimo - subtotal,
+            });
+          }
+        }
+      }
+
       try {
         const cot = await createCotizacion.mutateAsync({
           titulo: data.titulo,
@@ -121,14 +156,7 @@ function NuevaCotizacionContent() {
           incluye_desarme: data.incluye_desarme,
           incluye_transporte: data.incluye_transporte,
           metadata: data.metadata,
-          items: data.items.map((item) => ({
-            tipo: item.tipo,
-            concepto: item.concepto,
-            detalle: item.detalle,
-            cantidad: item.cantidad,
-            unidad: item.unidad,
-            precio_unitario: item.precio_unitario,
-          })),
+          items,
         });
         toast.success("Cotización creada");
         router.push(`/comercial/cotizaciones/${cot.id}`);
@@ -136,7 +164,7 @@ function NuevaCotizacionContent() {
         toast.error("Error al crear la cotización");
       }
     },
-    [createCotizacion, router]
+    [createCotizacion, router, configs]
   );
 
   // Step 1: Unit selector

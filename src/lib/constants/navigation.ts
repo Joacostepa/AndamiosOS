@@ -2,11 +2,12 @@ import {
   Building2, Users, Wrench, Package, Truck, UserCheck, BarChart3, Bell,
   Settings, FileText, ClipboardList, Ruler, Calculator, Calendar, HardHat,
   PackagePlus, AlertTriangle, Shield, Search, Car, Hammer, MessageSquare,
-  Target, MapPin, DollarSign, Fingerprint,
+  Target, MapPin, DollarSign, Fingerprint, Bot, Building, ListOrdered,
   type LucideIcon,
 } from "lucide-react";
 
-export type NavItem = { title: string; href: string; icon: LucideIcon };
+export type NavSubItem = { title: string; href: string };
+export type NavItem = { title: string; href: string; icon: LucideIcon; subItems?: NavSubItem[] };
 export type NavGroup = { label?: string; items: NavItem[] };
 
 export const navigation: NavGroup[] = [
@@ -68,7 +69,14 @@ export const navigation: NavGroup[] = [
     label: "Sistema",
     items: [
       { title: "Alertas", href: "/alertas", icon: Bell },
-      { title: "Configuracion", href: "/configuracion", icon: Settings },
+      {
+        title: "Configuracion", href: "/configuracion", icon: Settings,
+        subItems: [
+          { title: "Agentes IA", href: "/configuracion/agentes-ia" },
+          { title: "Datos empresa", href: "/configuracion/empresa" },
+          { title: "Lista de precios", href: "/configuracion/lista-precios" },
+        ],
+      },
     ],
   },
 ];

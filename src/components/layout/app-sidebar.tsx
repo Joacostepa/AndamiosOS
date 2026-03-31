@@ -15,6 +15,9 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubItem,
+  SidebarMenuSubButton,
   useSidebar,
 } from "@/components/ui/sidebar";
 
@@ -66,7 +69,7 @@ export function AppSidebar() {
                   return (
                     <SidebarMenuItem key={item.href}>
                       <SidebarMenuButton
-                        render={<Link href={item.href} />}
+                        render={<Link href={item.subItems ? item.subItems[0].href : item.href} />}
                         isActive={isActive}
                         tooltip={item.title}
                         className={cn(
@@ -76,6 +79,23 @@ export function AppSidebar() {
                         <item.icon className="h-4 w-4" />
                         <span>{item.title}</span>
                       </SidebarMenuButton>
+                      {item.subItems && isActive && (
+                        <SidebarMenuSub>
+                          {item.subItems.map((sub) => {
+                            const isSubActive = pathname === sub.href;
+                            return (
+                              <SidebarMenuSubItem key={sub.href}>
+                                <SidebarMenuSubButton
+                                  render={<Link href={sub.href} />}
+                                  isActive={isSubActive}
+                                >
+                                  <span>{sub.title}</span>
+                                </SidebarMenuSubButton>
+                              </SidebarMenuSubItem>
+                            );
+                          })}
+                        </SidebarMenuSub>
+                      )}
                     </SidebarMenuItem>
                   );
                 })}

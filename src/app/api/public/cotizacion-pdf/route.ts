@@ -22,5 +22,20 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Cotización no encontrada" }, { status: 404 });
   }
 
-  return NextResponse.json(data);
+  // Fetch empresa data
+  const { data: configs } = await supabase
+    .from("configuracion")
+    .select("clave, valor")
+    .in("clave", [
+      "empresa_nombre", "empresa_cuit", "empresa_direccion",
+      "empresa_telefono", "empresa_email", "empresa_web", "empresa_logo_url",
+    ]);
+
+  const empresa: Record<string, string> = {};
+  configs?.forEach((c) => {
+    const key = c.clave.replace("empresa_", "");
+    empresa[key] = c.valor;
+  });
+
+  return NextResponse.json({ ...data, empresa });
 }

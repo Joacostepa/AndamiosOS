@@ -15,7 +15,7 @@ import { FormArmadoDesarme } from "@/components/cotizaciones/form-armado-desarme
 import { ItemsTable } from "@/components/cotizaciones/items-table";
 import { AIChatPanel } from "@/components/cotizaciones/ai-chat-panel";
 import { PDFDownloadButton } from "@/components/pdf/pdf-download-button";
-import { CotizacionPDF } from "@/components/pdf/cotizacion-pdf";
+import { CotizacionPDF, type EmpresaData } from "@/components/pdf/cotizacion-pdf";
 import { useCotizacion } from "@/hooks/use-cotizaciones";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
@@ -204,6 +204,17 @@ function NuevaCotizacionContent() {
     return <UnitSelector onSelect={handleUnitSelect} />;
   }
 
+  // Build empresa data for PDF
+  const empresa: EmpresaData = {
+    nombre: configs?.find((c) => c.clave === "empresa_nombre")?.valor,
+    cuit: configs?.find((c) => c.clave === "empresa_cuit")?.valor,
+    direccion: configs?.find((c) => c.clave === "empresa_direccion")?.valor,
+    telefono: configs?.find((c) => c.clave === "empresa_telefono")?.valor,
+    email: configs?.find((c) => c.clave === "empresa_email")?.valor,
+    web: configs?.find((c) => c.clave === "empresa_web")?.valor,
+    logo_url: configs?.find((c) => c.clave === "empresa_logo_url")?.valor,
+  };
+
   // Step 2: Split view workspace
   const chatPanel = (
     <AIChatPanel
@@ -313,6 +324,7 @@ function NuevaCotizacionContent() {
                     cotizacion={createdCot}
                     items={createdCot.cotizacion_items || []}
                     clienteNombre={createdCot.clientes?.razon_social}
+                    empresa={empresa}
                   />
                 }
                 fileName={`${createdCot.codigo}.pdf`}

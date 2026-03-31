@@ -108,6 +108,7 @@ export default function CotizarHogarenosPage() {
         cotizacion,
         items: cotizacion.cotizacion_items || [],
         clienteNombre: cotizacion.clientes?.razon_social,
+        empresa: cotizacion.empresa,
       } as any);
 
       const blob = await pdf(doc as any).toBlob();

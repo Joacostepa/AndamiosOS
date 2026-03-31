@@ -2,6 +2,8 @@
 
 import { use } from "react";
 import { useCotizacion, useUpdateCotizacion } from "@/hooks/use-cotizaciones";
+import { useConfiguracion } from "@/hooks/use-configuracion";
+import type { EmpresaData } from "@/components/pdf/cotizacion-pdf";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { PDFDownloadButton } from "@/components/pdf/pdf-download-button";
@@ -34,6 +36,7 @@ const ESTADO_LABELS: Record<string, string> = {
 export default function CotizacionDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { data: cotizacion, isLoading } = useCotizacion(id);
+  const { data: configs } = useConfiguracion();
   const updateCotizacion = useUpdateCotizacion();
 
   if (isLoading || !cotizacion) return <div className="space-y-6"><Skeleton className="h-10 w-64" /><Skeleton className="h-64 w-full" /></div>;
@@ -41,13 +44,23 @@ export default function CotizacionDetailPage({ params }: { params: Promise<{ id:
   const transitions = ESTADO_TRANSITIONS[cotizacion.estado] || [];
   const items = cotizacion.cotizacion_items || [];
 
+  const empresa: EmpresaData = {
+    nombre: configs?.find((c) => c.clave === "empresa_nombre")?.valor,
+    cuit: configs?.find((c) => c.clave === "empresa_cuit")?.valor,
+    direccion: configs?.find((c) => c.clave === "empresa_direccion")?.valor,
+    telefono: configs?.find((c) => c.clave === "empresa_telefono")?.valor,
+    email: configs?.find((c) => c.clave === "empresa_email")?.valor,
+    web: configs?.find((c) => c.clave === "empresa_web")?.valor,
+    logo_url: configs?.find((c) => c.clave === "empresa_logo_url")?.valor,
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader title={`Cotizacion ${cotizacion.codigo}`}>
         <Badge variant="outline" className="capitalize">v{cotizacion.version}</Badge>
         <StatusBadge status={cotizacion.estado} />
         <PDFDownloadButton
-          document={<CotizacionPDF cotizacion={cotizacion} items={items} clienteNombre={cotizacion.clientes?.razon_social || cotizacion.oportunidades?.titulo} />}
+          document={<CotizacionPDF cotizacion={cotizacion} items={items} clienteNombre={cotizacion.clientes?.razon_social || cotizacion.oportunidades?.titulo} empresa={empresa} />}
           fileName={`${cotizacion.codigo}.pdf`}
         />
         {transitions.length > 0 && (

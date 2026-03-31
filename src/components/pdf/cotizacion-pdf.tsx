@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  Document, Page, Text, View, StyleSheet, Font,
+  Document, Page, Text, View, StyleSheet, Image,
 } from "@react-pdf/renderer";
 import type { Cotizacion, CotizacionItem } from "@/hooks/use-cotizaciones";
 
@@ -10,13 +10,14 @@ const styles = StyleSheet.create({
   header: { flexDirection: "row", justifyContent: "space-between", marginBottom: 30 },
   logo: { fontSize: 20, fontWeight: "bold", fontFamily: "Helvetica-Bold" },
   logoAccent: { color: "#f59e0b" },
+  logoImage: { height: 40, maxWidth: 160, objectFit: "contain" },
+  empresaInfo: { marginTop: 4, color: "#666", fontSize: 8, lineHeight: 1.4 },
   headerRight: { textAlign: "right" },
   codigo: { fontSize: 14, fontWeight: "bold", fontFamily: "Helvetica-Bold" },
   label: { color: "#666", fontSize: 8, marginBottom: 2 },
   section: { marginBottom: 20 },
   sectionTitle: { fontSize: 12, fontWeight: "bold", fontFamily: "Helvetica-Bold", marginBottom: 8, color: "#333", borderBottom: "1 solid #e5e5e5", paddingBottom: 4 },
   row: { flexDirection: "row", justifyContent: "space-between", marginBottom: 3 },
-  // Table
   table: { marginTop: 8 },
   tableHeader: { flexDirection: "row", backgroundColor: "#f5f5f5", padding: 6, borderBottom: "1 solid #ddd" },
   tableRow: { flexDirection: "row", padding: 6, borderBottom: "1 solid #eee" },
@@ -27,15 +28,12 @@ const styles = StyleSheet.create({
   colPrecio: { width: "15%", textAlign: "right" },
   colSubtotal: { width: "15%", textAlign: "right" },
   bold: { fontFamily: "Helvetica-Bold" },
-  // Totals
   totals: { marginTop: 12, alignItems: "flex-end" },
   totalRow: { flexDirection: "row", justifyContent: "space-between", width: 200, marginBottom: 3 },
   totalLabel: { color: "#666" },
   totalValue: { fontFamily: "Helvetica-Bold" },
   grandTotal: { fontSize: 14, color: "#f59e0b", fontFamily: "Helvetica-Bold" },
-  // Conditions
   conditions: { fontSize: 8, color: "#666", lineHeight: 1.5 },
-  // Footer
   footer: { position: "absolute", bottom: 30, left: 40, right: 40, textAlign: "center", fontSize: 8, color: "#999", borderTop: "1 solid #eee", paddingTop: 8 },
 });
 
@@ -46,23 +44,47 @@ const TIPO_LABELS: Record<string, string> = {
   extra: "Extra", descuento: "Descuento",
 };
 
+export type EmpresaData = {
+  nombre?: string;
+  cuit?: string;
+  direccion?: string;
+  telefono?: string;
+  email?: string;
+  web?: string;
+  logo_url?: string;
+};
+
 interface Props {
   cotizacion: Cotizacion;
   items: CotizacionItem[];
   clienteNombre?: string;
+  empresa?: EmpresaData;
 }
 
-export function CotizacionPDF({ cotizacion, items, clienteNombre }: Props) {
+export function CotizacionPDF({ cotizacion, items, clienteNombre, empresa }: Props) {
+  const empresaNombre = empresa?.nombre || "Andamios Buenos Aires";
+
   return (
     <Document>
       <Page size="A4" style={styles.page}>
         {/* Header */}
         <View style={styles.header}>
           <View>
-            <Text style={styles.logo}>
-              Andamios<Text style={styles.logoAccent}>OS</Text>
-            </Text>
-            <Text style={{ marginTop: 4, color: "#666" }}>Andamios Buenos Aires</Text>
+            {empresa?.logo_url ? (
+              <Image src={empresa.logo_url} style={styles.logoImage} />
+            ) : (
+              <Text style={styles.logo}>
+                Andamios<Text style={styles.logoAccent}>OS</Text>
+              </Text>
+            )}
+            <View style={styles.empresaInfo}>
+              <Text>{empresaNombre}</Text>
+              {empresa?.cuit && <Text>CUIT: {empresa.cuit}</Text>}
+              {empresa?.direccion && <Text>{empresa.direccion}</Text>}
+              {empresa?.telefono && <Text>Tel: {empresa.telefono}</Text>}
+              {empresa?.email && <Text>{empresa.email}</Text>}
+              {empresa?.web && <Text>{empresa.web}</Text>}
+            </View>
           </View>
           <View style={styles.headerRight}>
             <Text style={styles.codigo}>{cotizacion.codigo}</Text>
@@ -153,7 +175,7 @@ export function CotizacionPDF({ cotizacion, items, clienteNombre }: Props) {
 
         {/* Footer */}
         <View style={styles.footer}>
-          <Text>Andamios Buenos Aires — {cotizacion.codigo} — Generado por AndamiosOS</Text>
+          <Text>{empresaNombre} — {cotizacion.codigo} — Generado por AndamiosOS</Text>
         </View>
       </Page>
     </Document>

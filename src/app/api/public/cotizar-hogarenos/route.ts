@@ -257,8 +257,27 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ message: cleanMessage });
         }
 
+        // Apply mínimo operativo
+        const items = Array.isArray(cotData.items) ? [...cotData.items] : [];
+        if (minimo > 0 && items.length > 0) {
+          const subtotal = items.reduce(
+            (sum: number, i: any) =>
+              sum + (Number(i.cantidad) || 1) * (Number(i.precio_unitario) || 0),
+            0
+          );
+          if (subtotal > 0 && subtotal < minimo) {
+            items.push({
+              tipo: "extra",
+              concepto: "Ajuste mínimo operativo",
+              detalle: `Mínimo operativo: $${minimo.toLocaleString("es-AR")}`,
+              cantidad: 1,
+              unidad: "un",
+              precio_unitario: minimo - subtotal,
+            });
+          }
+        }
+
         // Insert items
-        const items = Array.isArray(cotData.items) ? cotData.items : [];
         if (items.length > 0) {
           const dbItems = items.map((item: any, i: number) => ({
             cotizacion_id: cot.id,

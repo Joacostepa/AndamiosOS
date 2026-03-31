@@ -41,9 +41,12 @@ export function AppSidebar() {
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      <SidebarHeader className="border-b border-sidebar-border px-4 py-4">
-        <Link href="/" className="flex items-center gap-2">
-          <span className="text-xl font-bold tracking-tight">
+      <SidebarHeader className="border-b border-sidebar-border px-2 py-4">
+        <Link href="/" className="flex items-center gap-2 overflow-hidden">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground font-bold text-sm">
+            A
+          </span>
+          <span className="text-xl font-bold tracking-tight truncate group-data-[collapsible=icon]:hidden">
             Andamios<span className="text-primary">OS</span>
           </span>
         </Link>

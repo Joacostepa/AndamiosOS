@@ -18,6 +18,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
+import { CommandSearch } from "@/components/layout/command-search";
 import Link from "next/link";
 
 export function Header() {
@@ -41,6 +42,8 @@ export function Header() {
     <header className="flex h-14 items-center gap-2 border-b px-4">
       <SidebarTrigger />
       <Separator orientation="vertical" className="h-6" />
+
+      <CommandSearch />
 
       <div className="flex-1" />
 

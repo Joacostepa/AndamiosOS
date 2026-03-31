@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
+  Command,
   CommandDialog,
   CommandInput,
   CommandList,
@@ -72,6 +73,7 @@ export function CommandSearch() {
       </button>
 
       <CommandDialog open={open} onOpenChange={setOpen}>
+        <Command>
         <CommandInput placeholder="Buscar páginas, clientes, cotizaciones..." />
         <CommandList>
           <CommandEmpty>No se encontraron resultados.</CommandEmpty>
@@ -153,6 +155,7 @@ export function CommandSearch() {
             </CommandGroup>
           )}
         </CommandList>
+        </Command>
       </CommandDialog>
     </>
   );

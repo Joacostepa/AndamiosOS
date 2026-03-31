@@ -175,9 +175,10 @@ export default function CotizarHogarenosPage() {
               </div>
               <div className="flex flex-wrap justify-center gap-2 pt-2">
                 {[
-                  "Necesito andamio para pintar un frente",
-                  "Quiero alquilar para reparar un balcón",
+                  "Necesito andamio para pintar una pared",
                   "Preciso andamio con ruedas",
+                  "Necesito pintar un techo alto",
+                  "Tengo que cambiar una lámpara en altura",
                 ].map((suggestion) => (
                   <button
                     key={suggestion}

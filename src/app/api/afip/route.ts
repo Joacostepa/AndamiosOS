@@ -9,21 +9,33 @@ const SERVICE_NAME = "ws_sr_padron_a13";
 let cachedToken: { token: string; sign: string; expiration: number } | null = null;
 
 function getCert(): string {
-  const b64 = process.env.AFIP_CERT_B64;
-  if (!b64) throw new Error("AFIP_CERT_B64 no configurado");
-  const pem = Buffer.from(b64, "base64").toString("utf-8");
-  // Ensure proper PEM format with newlines
-  if (pem.includes("-----BEGIN")) return pem;
-  // If it's raw base64 cert content, wrap it
-  return `-----BEGIN CERTIFICATE-----\n${pem}\n-----END CERTIFICATE-----`;
+  // Try AFIP_CERT first (PEM with \n escaped), then AFIP_CERT_B64
+  const certEnv = process.env.AFIP_CERT || process.env.AFIP_CERT_B64;
+  if (!certEnv) throw new Error("AFIP_CERT o AFIP_CERT_B64 no configurado");
+
+  // If it contains literal \n, replace with real newlines
+  if (certEnv.includes("\\n")) {
+    return certEnv.replace(/\\n/g, "\n");
+  }
+  // If it starts with -----BEGIN, it's already PEM
+  if (certEnv.includes("-----BEGIN")) {
+    return certEnv;
+  }
+  // Otherwise it's base64 encoded
+  return Buffer.from(certEnv, "base64").toString("utf-8");
 }
 
 function getKey(): string {
-  const b64 = process.env.AFIP_KEY_B64;
-  if (!b64) throw new Error("AFIP_KEY_B64 no configurado");
-  const pem = Buffer.from(b64, "base64").toString("utf-8");
-  if (pem.includes("-----BEGIN")) return pem;
-  return `-----BEGIN PRIVATE KEY-----\n${pem}\n-----END PRIVATE KEY-----`;
+  const keyEnv = process.env.AFIP_KEY || process.env.AFIP_KEY_B64;
+  if (!keyEnv) throw new Error("AFIP_KEY o AFIP_KEY_B64 no configurado");
+
+  if (keyEnv.includes("\\n")) {
+    return keyEnv.replace(/\\n/g, "\n");
+  }
+  if (keyEnv.includes("-----BEGIN")) {
+    return keyEnv;
+  }
+  return Buffer.from(keyEnv, "base64").toString("utf-8");
 }
 
 function signTRA(tra: string): string {

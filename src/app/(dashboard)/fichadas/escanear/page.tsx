@@ -101,8 +101,10 @@ export default function EscanearPage() {
     setScanning(true);
     setResultado(null);
 
-    // Dynamic import to avoid SSR issues
     const { Html5Qrcode } = await import("html5-qrcode");
+
+    // Small delay to ensure DOM element exists
+    await new Promise((r) => setTimeout(r, 100));
 
     try {
       const scanner = new Html5Qrcode(scannerContainerId);
@@ -110,13 +112,23 @@ export default function EscanearPage() {
 
       await scanner.start(
         { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 250, height: 250 } },
-        (decodedText) => {
+        {
+          fps: 15,
+          qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+            const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+            const size = Math.floor(minEdge * 0.7);
+            return { width: size, height: size };
+          },
+          aspectRatio: 1,
+        },
+        (decodedText: string) => {
+          // Vibrate on success
+          if (navigator.vibrate) navigator.vibrate(200);
           handleScanResult(decodedText);
         },
-        () => {} // ignore errors during scanning
+        () => {}
       );
-    } catch (err) {
+    } catch (err: any) {
       console.error("Scanner error:", err);
       toast.error("No se pudo acceder a la camara. Usa el input manual.");
       setScanning(false);
@@ -125,11 +137,14 @@ export default function EscanearPage() {
 
   function stopScanner() {
     setScanning(false);
-    if (scannerRef.current) {
-      scannerRef.current.stop().catch(() => {});
-      scannerRef.current.clear().catch(() => {});
-      scannerRef.current = null;
-    }
+    try {
+      if (scannerRef.current) {
+        scannerRef.current.stop().then(() => {
+          scannerRef.current?.clear();
+          scannerRef.current = null;
+        }).catch(() => { scannerRef.current = null; });
+      }
+    } catch { scannerRef.current = null; }
   }
 
   return (

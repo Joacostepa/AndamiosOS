@@ -30,15 +30,11 @@ export default function GenerarQRPage() {
       setToken(result.token);
       setExpira(result.expira_at);
 
-      // Generate QR image
-      const qrData = JSON.stringify({
-        token: result.token,
-        type: "fichada",
-        app: "andamios-os",
-      });
-      const url = await QRCode.toDataURL(qrData, {
-        width: 400,
-        margin: 2,
+      // Generate QR image - solo el token, sin JSON wrapper
+      const url = await QRCode.toDataURL(result.token, {
+        width: 500,
+        margin: 3,
+        errorCorrectionLevel: "M",
         color: { dark: "#f59e0b", light: "#1a1a1a" },
       });
       setQrDataUrl(url);

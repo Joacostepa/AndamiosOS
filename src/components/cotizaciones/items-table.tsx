@@ -1,8 +1,10 @@
 "use client";
 
 import { useFormContext, useFieldArray } from "react-hook-form";
+import { useConfiguracion } from "@/hooks/use-configuracion";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { AlertTriangle } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -27,6 +29,7 @@ export function ItemsTable({ unidad }: { unidad: UnidadCotizacion }) {
     control,
     name: "items",
   });
+  const { data: configs } = useConfiguracion();
 
   const items = watch("items") || [];
   const availableTypes = ITEM_TYPES_BY_UNIDAD[unidad];
@@ -37,6 +40,15 @@ export function ItemsTable({ unidad }: { unidad: UnidadCotizacion }) {
   );
   const iva = subtotal * 0.21;
   const total = subtotal + iva;
+
+  // Mínimo operativo para hogareño
+  const minimoConfig = configs?.find((c) => c.clave === "minimo_hogareno");
+  const minimo = unidad === "hogareno" && minimoConfig ? Number(minimoConfig.valor) : 0;
+  const subtotalBajoMinimo = minimo > 0 && subtotal > 0 && subtotal < minimo;
+  const ajusteMinimo = subtotalBajoMinimo ? minimo - subtotal : 0;
+  const subtotalFinal = subtotalBajoMinimo ? minimo : subtotal;
+  const ivaFinal = subtotalFinal * 0.21;
+  const totalFinal = subtotalFinal + ivaFinal;
 
   return (
     <div className="space-y-4">
@@ -144,21 +156,41 @@ export function ItemsTable({ unidad }: { unidad: UnidadCotizacion }) {
 
       {/* Totals */}
       <div className="flex justify-end">
-        <div className="w-64 space-y-1 text-sm">
+        <div className="w-72 space-y-1 text-sm">
           <div className="flex justify-between">
-            <span className="text-muted-foreground">Subtotal</span>
+            <span className="text-muted-foreground">Subtotal items</span>
             <span>${subtotal.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</span>
           </div>
+          {subtotalBajoMinimo && (
+            <>
+              <div className="flex justify-between text-amber-500 items-center gap-1">
+                <span className="flex items-center gap-1">
+                  <AlertTriangle className="h-3 w-3" />
+                  Ajuste mínimo operativo
+                </span>
+                <span>+${ajusteMinimo.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</span>
+              </div>
+              <div className="flex justify-between font-medium">
+                <span className="text-muted-foreground">Subtotal ajustado</span>
+                <span>${subtotalFinal.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</span>
+              </div>
+            </>
+          )}
           <div className="flex justify-between">
             <span className="text-muted-foreground">IVA (21%)</span>
-            <span>${iva.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</span>
+            <span>${ivaFinal.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</span>
           </div>
           <div className="flex justify-between font-bold text-base border-t pt-1">
             <span>Total</span>
             <span className="text-primary">
-              ${total.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+              ${totalFinal.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
             </span>
           </div>
+          {subtotalBajoMinimo && (
+            <p className="text-xs text-amber-500 text-right">
+              Mínimo operativo: ${minimo.toLocaleString("es-AR")}
+            </p>
+          )}
         </div>
       </div>
     </div>

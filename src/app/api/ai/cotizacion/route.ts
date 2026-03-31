@@ -196,6 +196,35 @@ export async function POST(request: NextRequest) {
       systemPrompt += `\n\nESTILO DE COMUNICACION:\n${estilo}`;
     }
 
+    // Para hogareño: inyectar fletes y mínimo operativo
+    if (unidad === "hogareno") {
+      try {
+        const { data: fletes } = await supabase
+          .from("fletes_zona")
+          .select("zona, precio")
+          .eq("activo", true)
+          .order("zona");
+        if (fletes && fletes.length > 0) {
+          systemPrompt += "\n\nTABLA DE FLETES POR ZONA (envío + retiro incluido):";
+          fletes.forEach((f: any) => {
+            systemPrompt += `\n- ${f.zona}: $${Number(f.precio).toLocaleString("es-AR")}`;
+          });
+          systemPrompt += "\n\nIMPORTANTE: Cuando el cliente indique una zona, buscá el precio de flete en esta tabla y agregalo como item tipo 'flete' con el concepto 'Flete envío y retiro - [ZONA]'. Si la zona no está en la lista, indicalo y preguntá si quiere cotizar con un valor aproximado.";
+        }
+
+        const { data: minConfig } = await supabase
+          .from("configuracion")
+          .select("valor")
+          .eq("clave", "minimo_hogareno")
+          .single();
+        if (minConfig?.valor) {
+          systemPrompt += `\n\nMÍNIMO OPERATIVO: $${Number(minConfig.valor).toLocaleString("es-AR")}. Si el subtotal de la cotización queda por debajo de este mínimo, el total debe ser $${Number(minConfig.valor).toLocaleString("es-AR")}. En ese caso, agregá un item tipo 'extra' con concepto 'Ajuste mínimo operativo' con la diferencia para llegar al mínimo.`;
+        }
+      } catch {
+        // silently continue if fletes/config not available
+      }
+    }
+
     if (formValues) {
       systemPrompt += `\n\nESTADO ACTUAL DEL FORMULARIO:\n${JSON.stringify(formValues, null, 2)}`;
     }

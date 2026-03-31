@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useConfiguracion, useUpdateConfiguracion } from "@/hooks/use-configuracion";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -103,6 +104,22 @@ export default function AgentesIAPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Mínimo operativo ($)</Label>
+              <Input
+                type="number"
+                min={0}
+                step="1000"
+                value={values.minimo_hogareno || ""}
+                onChange={(e) => update("minimo_hogareno", e.target.value)}
+                placeholder="400000"
+              />
+              <p className="text-xs text-muted-foreground">
+                Cotizaciones por debajo de este monto se ajustan automáticamente.
+              </p>
+            </div>
+          </div>
           <div className="space-y-2">
             <Label>Instrucciones, precios y reglas</Label>
             <Textarea
@@ -114,7 +131,7 @@ export default function AgentesIAPage() {
             <p className="text-xs text-muted-foreground">{(values.ai_agente_hogareno || "").length} caracteres</p>
           </div>
           <div className="flex justify-end">
-            <Button size="sm" onClick={() => handleSave(["ai_agente_hogareno"])} disabled={updateConfig.isPending}>
+            <Button size="sm" onClick={() => handleSave(["ai_agente_hogareno", "minimo_hogareno"])} disabled={updateConfig.isPending}>
               {updateConfig.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
               Guardar agente hogareño
             </Button>

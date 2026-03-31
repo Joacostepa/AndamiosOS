@@ -4,6 +4,7 @@ import { useState, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm, FormProvider } from "react-hook-form";
 import { useCreateCotizacion } from "@/hooks/use-cotizaciones";
+import { useCreateCliente } from "@/hooks/use-clientes";
 import { useConfiguracion } from "@/hooks/use-configuracion";
 import { useOportunidades } from "@/hooks/use-oportunidades";
 import { UnitSelector } from "@/components/cotizaciones/unit-selector";
@@ -13,10 +14,20 @@ import { FormMultidireccional } from "@/components/cotizaciones/form-multidirecc
 import { FormArmadoDesarme } from "@/components/cotizaciones/form-armado-desarme";
 import { ItemsTable } from "@/components/cotizaciones/items-table";
 import { AIChatPanel } from "@/components/cotizaciones/ai-chat-panel";
+import { PDFDownloadButton } from "@/components/pdf/pdf-download-button";
+import { CotizacionPDF } from "@/components/pdf/cotizacion-pdf";
+import { useCotizacion } from "@/hooks/use-cotizaciones";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { ArrowLeft, Loader2, Save, MessageSquare } from "lucide-react";
+import { ArrowLeft, Loader2, Save, MessageSquare, CheckCircle2, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import type {
   UnidadCotizacion,
@@ -37,11 +48,15 @@ function NuevaCotizacionContent() {
   const searchParams = useSearchParams();
   const isMobile = useIsMobile();
   const createCotizacion = useCreateCotizacion();
+  const createCliente = useCreateCliente();
   const { data: configs } = useConfiguracion();
   const { data: oportunidades } = useOportunidades();
 
   const [unidad, setUnidad] = useState<UnidadCotizacion | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
+  const [createdId, setCreatedId] = useState<string | null>(null);
+
+  const { data: createdCot } = useCotizacion(createdId || "");
 
   const form = useForm<CotizacionFormData>({
     defaultValues: {
@@ -96,6 +111,23 @@ function NuevaCotizacionContent() {
       });
     },
     [form]
+  );
+
+  const handleCreateCliente = useCallback(
+    async (nombre: string, telefono: string) => {
+      if (!nombre.trim()) return;
+      try {
+        const cliente = await createCliente.mutateAsync({
+          razon_social: nombre.trim(),
+          telefono: telefono.trim() || undefined,
+          estado: "activo",
+        });
+        form.setValue("cliente_id", cliente.id);
+      } catch {
+        // silently fail — client can be created manually
+      }
+    },
+    [createCliente, form]
   );
 
   const onSubmit = useCallback(
@@ -159,7 +191,7 @@ function NuevaCotizacionContent() {
           items,
         });
         toast.success("Cotización creada");
-        router.push(`/comercial/cotizaciones/${cot.id}`);
+        setCreatedId(cot.id);
       } catch {
         toast.error("Error al crear la cotización");
       }
@@ -179,6 +211,7 @@ function NuevaCotizacionContent() {
       subVertical={form.watch("sub_vertical")}
       formValues={form.getValues()}
       onFieldUpdates={handleFieldUpdates}
+      onCreateCliente={handleCreateCliente}
     />
   );
 
@@ -259,6 +292,43 @@ function NuevaCotizacionContent() {
           </SheetContent>
         </Sheet>
       )}
+
+      {/* Dialog post-creación con PDF */}
+      <Dialog open={!!createdId} onOpenChange={(open) => { if (!open) router.push(`/comercial/cotizaciones/${createdId}`); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-green-500" />
+              Cotización creada
+            </DialogTitle>
+            <DialogDescription>
+              {createdCot ? `${createdCot.codigo} — ${createdCot.titulo}` : "Procesando..."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-3 pt-2">
+            {createdCot && (
+              <PDFDownloadButton
+                document={
+                  <CotizacionPDF
+                    cotizacion={createdCot}
+                    items={createdCot.cotizacion_items || []}
+                    clienteNombre={createdCot.clientes?.razon_social}
+                  />
+                }
+                fileName={`${createdCot.codigo}.pdf`}
+                label="Descargar PDF"
+              />
+            )}
+            <Button
+              variant="outline"
+              onClick={() => router.push(`/comercial/cotizaciones/${createdId}`)}
+            >
+              <ExternalLink className="mr-2 h-4 w-4" />
+              Ver cotización
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </FormProvider>
   );
 }

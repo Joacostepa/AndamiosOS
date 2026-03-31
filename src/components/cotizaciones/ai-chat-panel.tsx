@@ -43,11 +43,13 @@ export function AIChatPanel({
   subVertical,
   formValues,
   onFieldUpdates,
+  onCreateCliente,
 }: {
   unidad: UnidadCotizacion;
   subVertical?: SubVertical;
   formValues: Partial<CotizacionFormData>;
   onFieldUpdates: (updates: FieldUpdates) => void;
+  onCreateCliente?: (nombre: string, telefono: string) => Promise<void>;
 }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -83,6 +85,7 @@ export function AIChatPanel({
           sub_vertical: subVertical,
           formValues: {
             titulo: formValues.titulo,
+            cliente_id: formValues.cliente_id,
             descripcion_servicio: formValues.descripcion_servicio,
             items: formValues.items,
             fraccion_dias: formValues.fraccion_dias,
@@ -105,8 +108,16 @@ export function AIChatPanel({
       ]);
 
       if (updates) {
-        onFieldUpdates(updates);
-        const count = Object.keys(updates).length;
+        // Handle nuevo_cliente separately
+        const { nuevo_cliente, ...fieldUpdates } = updates as any;
+        if (nuevo_cliente && onCreateCliente) {
+          await onCreateCliente(
+            nuevo_cliente.nombre || "",
+            nuevo_cliente.telefono || ""
+          );
+        }
+        onFieldUpdates(fieldUpdates);
+        const count = Object.keys(fieldUpdates).length + (nuevo_cliente ? 1 : 0);
         setLastUpdateCount(count);
       }
     } catch (err: any) {

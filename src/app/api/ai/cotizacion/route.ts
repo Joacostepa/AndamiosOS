@@ -99,7 +99,14 @@ Formato:
 ---FIELD_UPDATES---
 {"field_updates":{"titulo":"...","items":[{"tipo":"...","concepto":"...","cantidad":1,"unidad":"un","precio_unitario":0}]}}
 
-Campos que podés actualizar: titulo, descripcion_servicio, condiciones, condicion_pago, items, fraccion_dias, zona_entrega, tipo_trabajo_cliente, tonelaje_estimado, plazo_alquiler_meses, urgencia, ubicacion, sub_vertical, incluye_montaje, incluye_desarme, incluye_transporte, metadata.
+Campos que podés actualizar: titulo, descripcion_servicio, condiciones, condicion_pago, items, fraccion_dias, zona_entrega, tipo_trabajo_cliente, tonelaje_estimado, plazo_alquiler_meses, urgencia, ubicacion, sub_vertical, incluye_montaje, incluye_desarme, incluye_transporte, metadata, nuevo_cliente.
+
+Para crear un nuevo cliente, usá el campo "nuevo_cliente" con: {"nombre": "...", "telefono": "..."}.
+
+CLIENTE:
+- Si no hay cliente seleccionado en el formulario, preguntá nombre completo y teléfono del cliente
+- Pedilo naturalmente durante la conversación, no todo junto al principio
+- Con nombre y teléfono es suficiente para arrancar
 
 Reglas:
 - Actualizá campos progresivamente a medida que el usuario da info

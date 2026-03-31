@@ -5,9 +5,9 @@ import { NextRequest, NextResponse } from "next/server";
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
 
-async function getCustomPrompt(): Promise<string> {
+async function getAgentPrompt(): Promise<string> {
   try {
-    const { data } = await supabase.from("configuracion").select("valor").eq("clave", "ai_prompt_cotizacion").single();
+    const { data } = await supabase.from("configuracion").select("valor").eq("clave", "ai_agente_descripcion").single();
     return data?.valor || "";
   } catch { return ""; }
 }
@@ -15,7 +15,7 @@ async function getCustomPrompt(): Promise<string> {
 export async function POST(request: NextRequest) {
   try {
     const { tipo, contexto } = await request.json();
-    const instrucciones = await getCustomPrompt();
+    const instrucciones = await getAgentPrompt();
 
     let prompt = "";
     if (tipo === "descripcion") {

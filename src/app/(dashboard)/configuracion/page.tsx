@@ -4,166 +4,216 @@ import { useState, useEffect } from "react";
 import { useConfiguracion, useUpdateConfiguracion } from "@/hooks/use-configuracion";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Save, Loader2, Sparkles, RotateCcw } from "lucide-react";
+import { Save, Loader2, Sparkles, RotateCcw, Building2, Bot } from "lucide-react";
 import { toast } from "sonner";
+import type { Configuracion } from "@/hooks/use-configuracion";
+
+function getVal(configs: Configuracion[] | undefined, clave: string): string {
+  return configs?.find((c) => c.clave === clave)?.valor || "";
+}
 
 export default function ConfiguracionPage() {
   const { data: configs, isLoading } = useConfiguracion();
   const updateConfig = useUpdateConfiguracion();
-
-  const [promptCotizacion, setPromptCotizacion] = useState("");
-  const [promptEstilo, setPromptEstilo] = useState("");
+  const [values, setValues] = useState<Record<string, string>>({});
   const [hasChanges, setHasChanges] = useState(false);
 
   useEffect(() => {
-    if (Array.isArray(configs)) {
-      const cotConfig = configs.find((c: any) => c.clave === "ai_prompt_cotizacion");
-      const estiloConfig = configs.find((c: any) => c.clave === "ai_prompt_estilo");
-      if (cotConfig) setPromptCotizacion(cotConfig.valor);
-      if (estiloConfig) setPromptEstilo(estiloConfig.valor);
+    if (configs) {
+      const v: Record<string, string> = {};
+      configs.forEach((c) => { v[c.clave] = c.valor; });
+      setValues(v);
     }
   }, [configs]);
 
-  function handleSavePrompt() {
-    updateConfig.mutate(
-      { clave: "ai_prompt_cotizacion", valor: promptCotizacion },
-      {
-        onSuccess: () => {
-          updateConfig.mutate(
-            { clave: "ai_prompt_estilo", valor: promptEstilo },
-            {
-              onSuccess: () => {
-                toast.success("Configuracion guardada");
-                setHasChanges(false);
-              },
-              onError: () => toast.error("Error al guardar estilo"),
-            }
-          );
-        },
-        onError: () => toast.error("Error al guardar"),
+  function update(clave: string, valor: string) {
+    setValues((v) => ({ ...v, [clave]: valor }));
+    setHasChanges(true);
+  }
+
+  async function handleSave(claves: string[]) {
+    for (const clave of claves) {
+      if (values[clave] !== getVal(configs, clave)) {
+        await updateConfig.mutateAsync({ clave, valor: values[clave] || "" });
       }
-    );
+    }
+    toast.success("Configuracion guardada");
+    setHasChanges(false);
   }
 
   if (isLoading) {
-    return (
-      <div className="space-y-6">
-        <Skeleton className="h-10 w-48" />
-        <Skeleton className="h-96 w-full" />
-      </div>
-    );
+    return <div className="space-y-6"><Skeleton className="h-10 w-48" /><Skeleton className="h-96 w-full" /></div>;
   }
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Configuracion" description="Ajustes del sistema" />
+      <PageHeader title="Configuracion" description="Ajustes del sistema y agentes IA" />
 
-      <Tabs defaultValue="ia">
+      <Tabs defaultValue="agentes">
         <TabsList>
-          <TabsTrigger value="ia">Asistente IA</TabsTrigger>
-          <TabsTrigger value="general">General</TabsTrigger>
+          <TabsTrigger value="agentes" className="gap-2"><Bot className="h-4 w-4" />Agentes IA</TabsTrigger>
+          <TabsTrigger value="empresa" className="gap-2"><Building2 className="h-4 w-4" />Datos de empresa</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="ia" className="mt-4 space-y-6">
+        {/* ======================== AGENTES IA ======================== */}
+        <TabsContent value="agentes" className="mt-4 space-y-6">
+
+          {/* Agente Cotizaciones */}
           <Card>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <Sparkles className="h-4 w-4 text-primary" />
-                Instrucciones del asistente de cotizaciones
+                Agente de Cotizaciones
               </CardTitle>
               <CardDescription>
-                Este texto se le da como contexto a la IA cuando genera cotizaciones.
-                Podes incluir precios de referencia, politicas comerciales,
-                condiciones especiales, y cualquier instruccion que quieras que siga.
+                El asistente conversacional que ayuda a los vendedores a armar cotizaciones.
+                Incluye precios de referencia, politicas comerciales y condiciones de pago.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label>Instrucciones y precios de referencia</Label>
+                <Label>Instrucciones, precios y politicas</Label>
                 <Textarea
-                  value={promptCotizacion}
-                  onChange={(e) => {
-                    setPromptCotizacion(e.target.value);
-                    setHasChanges(true);
-                  }}
-                  rows={20}
+                  value={values.ai_prompt_cotizacion || ""}
+                  onChange={(e) => update("ai_prompt_cotizacion", e.target.value)}
+                  rows={15}
                   className="font-mono text-sm"
-                  placeholder="Escribi aca las instrucciones para la IA..."
                 />
-                <p className="text-xs text-muted-foreground">
-                  {promptCotizacion.length} caracteres — Podes incluir precios,
-                  condiciones de pago, politicas comerciales, etc.
-                </p>
+                <p className="text-xs text-muted-foreground">{(values.ai_prompt_cotizacion || "").length} caracteres</p>
+              </div>
+              <div className="space-y-2">
+                <Label>Estilo de comunicacion</Label>
+                <Textarea
+                  value={values.ai_prompt_estilo || ""}
+                  onChange={(e) => update("ai_prompt_estilo", e.target.value)}
+                  rows={3}
+                  className="font-mono text-sm"
+                />
+              </div>
+              <div className="flex justify-end">
+                <Button size="sm" onClick={() => handleSave(["ai_prompt_cotizacion", "ai_prompt_estilo"])} disabled={updateConfig.isPending}>
+                  {updateConfig.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                  Guardar agente cotizaciones
+                </Button>
               </div>
             </CardContent>
           </Card>
 
+          {/* Agente Computos */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Estilo de comunicacion</CardTitle>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-blue-400" />
+                Agente de Computos
+              </CardTitle>
               <CardDescription>
-                Como queres que hable el asistente con los vendedores.
+                Calcula las piezas necesarias para un proyecto. Incluye reglas de ingenieria,
+                margenes de seguridad y consideraciones especiales por tipo de obra.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label>Estilo</Label>
+                <Label>Reglas de calculo e ingenieria</Label>
                 <Textarea
-                  value={promptEstilo}
-                  onChange={(e) => {
-                    setPromptEstilo(e.target.value);
-                    setHasChanges(true);
-                  }}
-                  rows={4}
+                  value={values.ai_agente_computo || ""}
+                  onChange={(e) => update("ai_agente_computo", e.target.value)}
+                  rows={15}
                   className="font-mono text-sm"
                 />
+                <p className="text-xs text-muted-foreground">{(values.ai_agente_computo || "").length} caracteres</p>
+              </div>
+              <div className="flex justify-end">
+                <Button size="sm" onClick={() => handleSave(["ai_agente_computo"])} disabled={updateConfig.isPending}>
+                  {updateConfig.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                  Guardar agente computos
+                </Button>
               </div>
             </CardContent>
           </Card>
 
-          <div className="flex justify-end gap-2">
-            <Button
-              variant="outline"
-              onClick={() => {
-                if (Array.isArray(configs)) {
-                  const cotConfig = configs.find((c: any) => c.clave === "ai_prompt_cotizacion");
-                  const estiloConfig = configs.find((c: any) => c.clave === "ai_prompt_estilo");
-                  if (cotConfig) setPromptCotizacion(cotConfig.valor);
-                  if (estiloConfig) setPromptEstilo(estiloConfig.valor);
-                  setHasChanges(false);
-                }
-              }}
-              disabled={!hasChanges}
-            >
-              <RotateCcw className="mr-2 h-4 w-4" />
-              Descartar cambios
-            </Button>
-            <Button
-              onClick={handleSavePrompt}
-              disabled={!hasChanges || updateConfig.isPending}
-            >
-              {updateConfig.isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Save className="mr-2 h-4 w-4" />
-              )}
-              Guardar configuracion
-            </Button>
-          </div>
+          {/* Agente Descripciones */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-green-400" />
+                Agente de Descripciones
+              </CardTitle>
+              <CardDescription>
+                Genera textos profesionales para las cotizaciones: descripcion del servicio
+                y condiciones generales. Define el estilo de redaccion y estructura.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Instrucciones de redaccion</Label>
+                <Textarea
+                  value={values.ai_agente_descripcion || ""}
+                  onChange={(e) => update("ai_agente_descripcion", e.target.value)}
+                  rows={15}
+                  className="font-mono text-sm"
+                />
+                <p className="text-xs text-muted-foreground">{(values.ai_agente_descripcion || "").length} caracteres</p>
+              </div>
+              <div className="flex justify-end">
+                <Button size="sm" onClick={() => handleSave(["ai_agente_descripcion"])} disabled={updateConfig.isPending}>
+                  {updateConfig.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                  Guardar agente descripciones
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
-        <TabsContent value="general" className="mt-4">
+        {/* ======================== DATOS EMPRESA ======================== */}
+        <TabsContent value="empresa" className="mt-4 space-y-6">
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Datos de la empresa</CardTitle>
+              <CardDescription>
+                Estos datos se usan en los PDFs de cotizaciones, remitos y documentos generados.
+              </CardDescription>
             </CardHeader>
-            <CardContent className="text-sm text-muted-foreground">
-              Proximamente: configuracion de datos de empresa, logo, y preferencias generales.
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Nombre de la empresa</Label>
+                  <Input value={values.empresa_nombre || ""} onChange={(e) => update("empresa_nombre", e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>CUIT</Label>
+                  <Input value={values.empresa_cuit || ""} onChange={(e) => update("empresa_cuit", e.target.value)} placeholder="XX-XXXXXXXX-X" />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Direccion</Label>
+                <Input value={values.empresa_direccion || ""} onChange={(e) => update("empresa_direccion", e.target.value)} />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Telefono</Label>
+                  <Input value={values.empresa_telefono || ""} onChange={(e) => update("empresa_telefono", e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Email</Label>
+                  <Input value={values.empresa_email || ""} onChange={(e) => update("empresa_email", e.target.value)} />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Sitio web</Label>
+                <Input value={values.empresa_web || ""} onChange={(e) => update("empresa_web", e.target.value)} placeholder="https://..." />
+              </div>
+              <div className="flex justify-end">
+                <Button size="sm" onClick={() => handleSave(["empresa_nombre", "empresa_cuit", "empresa_direccion", "empresa_telefono", "empresa_email", "empresa_web"])} disabled={updateConfig.isPending}>
+                  {updateConfig.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                  Guardar datos empresa
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

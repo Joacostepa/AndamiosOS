@@ -10,6 +10,11 @@ import {
   Settings,
   FileText,
   ClipboardList,
+  Ruler,
+  Calculator,
+  Calendar,
+  HardHat,
+  PackagePlus,
   type LucideIcon,
 } from "lucide-react";
 
@@ -17,7 +22,6 @@ export type NavItem = {
   title: string;
   href: string;
   icon: LucideIcon;
-  children?: { title: string; href: string }[];
 };
 
 export type NavGroup = {
@@ -48,6 +52,26 @@ export const navigation: NavGroup[] = [
         href: "/clientes",
         icon: Users,
       },
+      {
+        title: "Planificacion",
+        href: "/planificacion",
+        icon: Calendar,
+      },
+    ],
+  },
+  {
+    label: "Oficina Tecnica",
+    items: [
+      {
+        title: "Proyectos",
+        href: "/oficina-tecnica/proyectos",
+        icon: Ruler,
+      },
+      {
+        title: "Computos",
+        href: "/oficina-tecnica/computos",
+        icon: Calculator,
+      },
     ],
   },
   {
@@ -77,6 +101,21 @@ export const navigation: NavGroup[] = [
         title: "Entregas / Retiros",
         href: "/logistica/entregas",
         icon: Truck,
+      },
+    ],
+  },
+  {
+    label: "Campo",
+    items: [
+      {
+        title: "Partes de Obra",
+        href: "/partes",
+        icon: HardHat,
+      },
+      {
+        title: "Solicitudes Extra",
+        href: "/solicitudes-extra",
+        icon: PackagePlus,
       },
     ],
   },

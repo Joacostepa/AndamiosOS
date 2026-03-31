@@ -34,7 +34,8 @@ export default function LoginPage() {
     });
 
     if (error) {
-      setError("Credenciales incorrectas. Verificá tu email y contraseña.");
+      console.error("Login error:", error.message, error.status, error);
+      setError(`Error: ${error.message}`);
       setLoading(false);
       return;
     }

@@ -9,7 +9,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDate } from "@/lib/utils/formatters";
-import { Plus, FileText } from "lucide-react";
+import { Plus, FileText, Sparkles } from "lucide-react";
 import Link from "next/link";
 
 const columns: ColumnDef<Cotizacion>[] = [
@@ -29,6 +29,7 @@ export default function CotizacionesPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Cotizaciones" description="Presupuestos y propuestas comerciales">
+        <Button variant="outline" render={<Link href="/comercial/cotizaciones/asistente" />}><Sparkles className="mr-2 h-4 w-4" />Asistente IA</Button>
         <Button render={<Link href="/comercial/cotizaciones/nueva" />}><Plus className="mr-2 h-4 w-4" />Nueva cotizacion</Button>
       </PageHeader>
       {cotizaciones && cotizaciones.length > 0 ? (

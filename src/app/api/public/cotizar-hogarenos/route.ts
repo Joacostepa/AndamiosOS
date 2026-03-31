@@ -150,31 +150,49 @@ export async function POST(request: NextRequest) {
     const text =
       response.content[0].type === "text" ? response.content[0].text : "";
 
-    // Check if cotización is ready
+    // Check if cotización is ready - try multiple patterns
     const separator = "---COTIZACION_READY---";
-    const idx = text.indexOf(separator);
+    let idx = text.indexOf(separator);
+    // Also try without dashes in case AI varies format
+    if (idx === -1) idx = text.indexOf("COTIZACION_READY");
+    // Try to find JSON with cotizacion key
+    const jsonMatch = text.match(/\{"cotizacion"\s*:\s*\{[\s\S]*\}\s*\}/);
 
-    if (idx !== -1) {
-      const message = text.slice(0, idx).trim();
-      const jsonStr = text.slice(idx + separator.length).trim();
+    if (idx !== -1 || jsonMatch) {
+      const message = idx !== -1
+        ? text.slice(0, idx).trim()
+        : text.slice(0, jsonMatch!.index).trim();
+      const jsonStr = idx !== -1
+        ? text.slice(idx).replace(/^-*COTIZACION_READY-*\s*/, "").trim()
+        : jsonMatch![0];
 
       try {
         const parsed = JSON.parse(jsonStr);
         const cotData = parsed.cotizacion;
 
         // Create client
-        const { data: cliente } = await supabase
-          .from("clientes")
-          .upsert(
-            {
+        let clienteId: string | null = null;
+        try {
+          const { data: cliente } = await supabase
+            .from("clientes")
+            .insert({
               razon_social: cotData.cliente_nombre,
               telefono: cotData.cliente_telefono,
               estado: "activo",
-            },
-            { onConflict: "razon_social", ignoreDuplicates: true }
-          )
-          .select()
-          .single();
+            })
+            .select("id")
+            .single();
+          clienteId = cliente?.id || null;
+        } catch {
+          // Client may already exist, try to find by name
+          const { data: existing } = await supabase
+            .from("clientes")
+            .select("id")
+            .eq("razon_social", cotData.cliente_nombre)
+            .limit(1)
+            .single();
+          clienteId = existing?.id || null;
+        }
 
         // Build conversation log (include the final assistant message)
         const conversacion = [
@@ -189,7 +207,7 @@ export async function POST(request: NextRequest) {
           .insert({
             codigo: "",
             titulo: cotData.titulo,
-            cliente_id: cliente?.id || null,
+            cliente_id: clienteId,
             descripcion_servicio: cotData.descripcion_servicio || "",
             condiciones:
               "- Precios expresados en pesos argentinos + IVA\n- Plazo de validez: 30 días\n- No incluye permisos municipales salvo indicación expresa",
@@ -226,8 +244,10 @@ export async function POST(request: NextRequest) {
           cotizacion_codigo: cot.codigo,
         });
       } catch (parseError) {
-        // If JSON parsing fails, just return the text
-        return NextResponse.json({ message: text });
+        console.error("Cotizacion parse/create error:", parseError);
+        // Strip JSON from visible message so client never sees raw data
+        const cleanMsg = message || "¡Tu cotización está casi lista! Hubo un inconveniente técnico. Por favor contactanos por WhatsApp para finalizarla.";
+        return NextResponse.json({ message: cleanMsg });
       }
     }
 

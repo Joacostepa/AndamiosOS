@@ -75,6 +75,7 @@ export const navigation: NavGroup[] = [
           { title: "Agentes IA", href: "/configuracion/agentes-ia" },
           { title: "Datos empresa", href: "/configuracion/empresa" },
           { title: "Lista de precios", href: "/configuracion/lista-precios" },
+          { title: "Fletes por zona", href: "/configuracion/fletes" },
         ],
       },
     ],

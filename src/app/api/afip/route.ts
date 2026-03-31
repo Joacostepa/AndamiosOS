@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import * as forge from "node-forge";
 import * as soap from "soap";
 
 const WSAA_URL = "https://wsaa.afip.gob.ar/ws/services/LoginCms?WSDL";
@@ -19,28 +20,40 @@ function getKey(): string {
   return Buffer.from(b64, "base64").toString("utf-8");
 }
 
+function signTRA(tra: string): string {
+  const certPem = getCert();
+  const keyPem = getKey();
+
+  const cert = forge.pki.certificateFromPem(certPem);
+  const privateKey = forge.pki.privateKeyFromPem(keyPem);
+
+  // Create PKCS#7 signed data
+  const p7 = forge.pkcs7.createSignedData();
+  p7.content = forge.util.createBuffer(tra, "utf8");
+  p7.addCertificate(cert);
+  p7.addSigner({
+    key: privateKey,
+    certificate: cert,
+    digestAlgorithm: forge.pki.oids.sha256,
+    authenticatedAttributes: [
+      { type: forge.pki.oids.contentType, value: forge.pki.oids.data },
+      { type: forge.pki.oids.messageDigest },
+      { type: forge.pki.oids.signingTime, value: new Date() as any },
+    ],
+  });
+  p7.sign();
+
+  // Convert to DER then base64
+  const asn1 = p7.toAsn1();
+  const der = forge.asn1.toDer(asn1);
+  return forge.util.encode64(der.getBytes());
+}
+
 async function getLoginTicket(): Promise<{ token: string; sign: string }> {
-  // Check cache
   if (cachedToken && cachedToken.expiration > Date.now()) {
     return { token: cachedToken.token, sign: cachedToken.sign };
   }
 
-  const { execSync } = await import("child_process");
-  const fs = await import("fs");
-  const os = await import("os");
-  const path = await import("path");
-
-  const tmpDir = os.tmpdir();
-  const certPath = path.join(tmpDir, "afip_cert.crt");
-  const keyPath = path.join(tmpDir, "afip_key.key");
-  const traPath = path.join(tmpDir, "afip_tra.xml");
-  const cmsPath = path.join(tmpDir, "afip_cms.xml");
-
-  // Write cert and key to temp files
-  fs.writeFileSync(certPath, getCert());
-  fs.writeFileSync(keyPath, getKey());
-
-  // Create TRA (Ticket de Requerimiento de Acceso)
   const now = new Date();
   const generationTime = new Date(now.getTime() - 600000).toISOString();
   const expirationTime = new Date(now.getTime() + 600000).toISOString();
@@ -55,29 +68,12 @@ async function getLoginTicket(): Promise<{ token: string; sign: string }> {
   <service>${SERVICE_NAME}</service>
 </loginTicketRequest>`;
 
-  fs.writeFileSync(traPath, tra);
+  const cms = signTRA(tra);
 
-  // Sign TRA with CMS
-  try {
-    execSync(
-      `openssl cms -sign -in "${traPath}" -out "${cmsPath}" -signer "${certPath}" -inkey "${keyPath}" -nodetach -outform PEM`,
-      { timeout: 10000 }
-    );
-  } catch (e: any) {
-    throw new Error("Error firmando TRA: " + e.message);
-  }
-
-  // Read CMS and clean it
-  let cms = fs.readFileSync(cmsPath, "utf-8");
-  cms = cms.replace("-----BEGIN CMS-----", "").replace("-----END CMS-----", "").replace(/\s/g, "");
-
-  // Call WSAA
   const wsaaClient = await soap.createClientAsync(WSAA_URL);
   const [result] = await wsaaClient.loginCmsAsync({ in0: cms });
-
   const loginResult = result.loginCmsReturn;
 
-  // Parse XML response
   const tokenMatch = loginResult.match(/<token>([^<]*)<\/token>/);
   const signMatch = loginResult.match(/<sign>([^<]*)<\/sign>/);
 
@@ -88,16 +84,8 @@ async function getLoginTicket(): Promise<{ token: string; sign: string }> {
   cachedToken = {
     token: tokenMatch[1],
     sign: signMatch[1],
-    expiration: Date.now() + 540000, // 9 minutos
+    expiration: Date.now() + 540000,
   };
-
-  // Cleanup
-  try {
-    fs.unlinkSync(certPath);
-    fs.unlinkSync(keyPath);
-    fs.unlinkSync(traPath);
-    fs.unlinkSync(cmsPath);
-  } catch {}
 
   return { token: cachedToken.token, sign: cachedToken.sign };
 }
@@ -107,11 +95,10 @@ async function consultarPadron(cuit: string): Promise<any> {
   const cuitRepresentada = process.env.AFIP_CUIT || "30711116504";
 
   const client = await soap.createClientAsync(PADRON_URL);
-
   const [result] = await client.getPersonaAsync({
     token,
     sign,
-    cuitRepresentada: cuitRepresentada,
+    cuitRepresentada,
     idPersona: cuit,
   });
 
@@ -121,21 +108,15 @@ async function consultarPadron(cuit: string): Promise<any> {
 export async function GET(request: NextRequest) {
   const cuit = request.nextUrl.searchParams.get("cuit");
 
-  if (!cuit) {
-    return NextResponse.json({ error: "CUIT requerido" }, { status: 400 });
-  }
+  if (!cuit) return NextResponse.json({ error: "CUIT requerido" }, { status: 400 });
 
   const cuitClean = cuit.replace(/\D/g, "");
-  if (cuitClean.length !== 11) {
-    return NextResponse.json({ error: "CUIT debe tener 11 digitos" }, { status: 400 });
-  }
+  if (cuitClean.length !== 11) return NextResponse.json({ error: "CUIT debe tener 11 digitos" }, { status: 400 });
 
   try {
     const datos = await consultarPadron(cuitClean);
 
-    if (!datos) {
-      return NextResponse.json({ error: "No se encontro el CUIT en AFIP" }, { status: 404 });
-    }
+    if (!datos) return NextResponse.json({ error: "No se encontro el CUIT en AFIP" }, { status: 404 });
 
     const esJuridica = datos.tipoPersona === "JURIDICA";
     const nombre = esJuridica
@@ -143,17 +124,15 @@ export async function GET(request: NextRequest) {
       : `${datos.apellido || ""} ${datos.nombre || ""}`.trim();
 
     const domicilio = datos.domicilioFiscal
-      ? [datos.domicilioFiscal.direccion, datos.domicilioFiscal.localidad, datos.domicilioFiscal.descripcionProvincia]
-          .filter(Boolean).join(", ")
+      ? [datos.domicilioFiscal.direccion, datos.domicilioFiscal.localidad, datos.domicilioFiscal.descripcionProvincia].filter(Boolean).join(", ")
       : null;
 
-    // Determinar condicion IVA
     let condicionIVA = "Sin datos";
     if (datos.impuestos?.impuesto) {
       const impuestos = Array.isArray(datos.impuestos.impuesto) ? datos.impuestos.impuesto : [datos.impuestos.impuesto];
-      if (impuestos.some((i: any) => i.idImpuesto == 30 || i.idImpuesto == "30")) condicionIVA = "Responsable Inscripto";
-      else if (impuestos.some((i: any) => i.idImpuesto == 20 || i.idImpuesto == "20")) condicionIVA = "Monotributista";
-      else if (impuestos.some((i: any) => i.idImpuesto == 32 || i.idImpuesto == "32")) condicionIVA = "IVA Exento";
+      if (impuestos.some((i: any) => String(i.idImpuesto) === "30")) condicionIVA = "Responsable Inscripto";
+      else if (impuestos.some((i: any) => String(i.idImpuesto) === "20")) condicionIVA = "Monotributista";
+      else if (impuestos.some((i: any) => String(i.idImpuesto) === "32")) condicionIVA = "IVA Exento";
     }
 
     return NextResponse.json({
@@ -165,12 +144,7 @@ export async function GET(request: NextRequest) {
     });
   } catch (error: any) {
     console.error("AFIP WS Error:", error.message);
-
-    // Fallback: al menos formatear el CUIT
-    return NextResponse.json(
-      { error: `Error consultando AFIP: ${error.message?.slice(0, 100)}` },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: `Error consultando AFIP: ${error.message?.slice(0, 150)}` }, { status: 500 });
   }
 }
 

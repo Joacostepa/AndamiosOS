@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import * as forge from "node-forge";
 import * as soap from "soap";
 
@@ -6,44 +7,52 @@ const WSAA_URL = "https://wsaa.afip.gob.ar/ws/services/LoginCms?WSDL";
 const PADRON_URL = "https://aws.afip.gob.ar/sr-padron/webservices/personaServiceA13?WSDL";
 const SERVICE_NAME = "ws_sr_padron_a13";
 
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
 let cachedToken: { token: string; sign: string; expiration: number } | null = null;
+let cachedCert: string | null = null;
+let cachedKey: string | null = null;
 
-function getCert(): string {
-  // Try AFIP_CERT first (PEM with \n escaped), then AFIP_CERT_B64
+async function getCert(): Promise<string> {
+  if (cachedCert) return cachedCert;
+
+  // Try DB first
+  const { data } = await supabase.from("configuracion").select("valor").eq("clave", "afip_cert").single();
+  if (data?.valor) {
+    cachedCert = data.valor;
+    return cachedCert!;
+  }
+
+  // Fallback to env vars
   const certEnv = process.env.AFIP_CERT || process.env.AFIP_CERT_B64;
-  if (!certEnv) throw new Error("AFIP_CERT o AFIP_CERT_B64 no configurado");
-
-  // If it contains literal \n, replace with real newlines
-  if (certEnv.includes("\\n")) {
-    return certEnv.replace(/\\n/g, "\n");
-  }
-  // If it starts with -----BEGIN, it's already PEM
-  if (certEnv.includes("-----BEGIN")) {
-    return certEnv;
-  }
-  // Otherwise it's base64 encoded
+  if (!certEnv) throw new Error("Certificado AFIP no configurado");
+  if (certEnv.includes("\\n")) return certEnv.replace(/\\n/g, "\n");
+  if (certEnv.includes("-----BEGIN")) return certEnv;
   return Buffer.from(certEnv, "base64").toString("utf-8");
 }
 
-function getKey(): string {
-  const keyEnv = process.env.AFIP_KEY || process.env.AFIP_KEY_B64;
-  if (!keyEnv) throw new Error("AFIP_KEY o AFIP_KEY_B64 no configurado");
+async function getKey(): Promise<string> {
+  if (cachedKey) return cachedKey;
 
-  if (keyEnv.includes("\\n")) {
-    return keyEnv.replace(/\\n/g, "\n");
+  const { data } = await supabase.from("configuracion").select("valor").eq("clave", "afip_key").single();
+  if (data?.valor) {
+    cachedKey = data.valor;
+    return cachedKey!;
   }
-  if (keyEnv.includes("-----BEGIN")) {
-    return keyEnv;
-  }
+
+  const keyEnv = process.env.AFIP_KEY || process.env.AFIP_KEY_B64;
+  if (!keyEnv) throw new Error("Clave privada AFIP no configurada");
+  if (keyEnv.includes("\\n")) return keyEnv.replace(/\\n/g, "\n");
+  if (keyEnv.includes("-----BEGIN")) return keyEnv;
   return Buffer.from(keyEnv, "base64").toString("utf-8");
 }
 
-function signTRA(tra: string): string {
-  const certPem = getCert();
-  const keyPem = getKey();
-
-  console.log("CERT starts with:", certPem.substring(0, 40));
-  console.log("KEY starts with:", keyPem.substring(0, 40));
+async function signTRA(tra: string): Promise<string> {
+  const certPem = await getCert();
+  const keyPem = await getKey();
 
   const cert = forge.pki.certificateFromPem(certPem);
   const privateKey = forge.pki.privateKeyFromPem(keyPem);
@@ -89,7 +98,7 @@ async function getLoginTicket(): Promise<{ token: string; sign: string }> {
   <service>${SERVICE_NAME}</service>
 </loginTicketRequest>`;
 
-  const cms = signTRA(tra);
+  const cms = await signTRA(tra);
 
   const wsaaClient = await soap.createClientAsync(WSAA_URL);
   const [result] = await wsaaClient.loginCmsAsync({ in0: cms });

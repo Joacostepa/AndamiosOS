@@ -9,7 +9,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDate } from "@/lib/utils/formatters";
-import { Plus, MapPin } from "lucide-react";
+import { Plus, MapPin, Sparkles } from "lucide-react";
 import Link from "next/link";
 
 const columns: ColumnDef<Relevamiento>[] = [
@@ -28,6 +28,7 @@ export default function RelevamientosPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Relevamientos" description="Visitas de relevamiento para cotizar">
+        <Button variant="outline" render={<Link href="/comercial/relevamientos/asistente" />}><Sparkles className="mr-2 h-4 w-4" />Asistente IA</Button>
         <Button render={<Link href="/comercial/relevamientos/nuevo" />}><Plus className="mr-2 h-4 w-4" />Nuevo relevamiento</Button>
       </PageHeader>
       {relevamientos && relevamientos.length > 0 ? (

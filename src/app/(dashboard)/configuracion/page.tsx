@@ -168,6 +168,38 @@ export default function ConfiguracionPage() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Agente Relevamiento */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-orange-400" />
+                Agente de Relevamiento
+              </CardTitle>
+              <CardDescription>
+                Guia al relevador paso a paso en la visita de campo. Hace preguntas,
+                detecta riesgos y genera el relevamiento completo. Optimizado para celular.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Instrucciones de campo y reglas de negocio</Label>
+                <Textarea
+                  value={values.ai_agente_relevamiento || ""}
+                  onChange={(e) => update("ai_agente_relevamiento", e.target.value)}
+                  rows={15}
+                  className="font-mono text-sm"
+                />
+                <p className="text-xs text-muted-foreground">{(values.ai_agente_relevamiento || "").length} caracteres</p>
+              </div>
+              <div className="flex justify-end">
+                <Button size="sm" onClick={() => handleSave(["ai_agente_relevamiento"])} disabled={updateConfig.isPending}>
+                  {updateConfig.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                  Guardar agente relevamiento
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* ======================== DATOS EMPRESA ======================== */}

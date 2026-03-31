@@ -8,8 +8,9 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDate } from "@/lib/utils/formatters";
-import { Calculator } from "lucide-react";
+import { Calculator, Plus } from "lucide-react";
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
 
 const columns: ColumnDef<Computo>[] = [
   {
@@ -55,7 +56,11 @@ export default function ComputosPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Computos de Materiales" description="Lista de piezas necesarias por proyecto" />
+      <PageHeader title="Computos de Materiales" description="Lista de piezas necesarias por proyecto">
+        <Button render={<Link href="/oficina-tecnica/computos/nuevo" />}>
+          <Plus className="mr-2 h-4 w-4" />Nuevo computo
+        </Button>
+      </PageHeader>
 
       {computos && computos.length > 0 ? (
         <DataTable columns={columns} data={computos} searchKey="proyecto" searchPlaceholder="Buscar..." />

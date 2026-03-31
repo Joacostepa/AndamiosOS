@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { DM_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -12,9 +12,23 @@ const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
 });
 
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  themeColor: "#f59e0b",
+};
+
 export const metadata: Metadata = {
   title: "AndamiosOS",
   description: "Sistema Operativo de Gestión de Operaciones en Campo",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "AndamiosOS",
+  },
 };
 
 export default function RootLayout({

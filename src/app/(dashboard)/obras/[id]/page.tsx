@@ -2,9 +2,13 @@
 
 import { use, useState } from "react";
 import { useObra, useUpdateObra } from "@/hooks/use-obras";
+import { useComunicaciones, useCreateComunicacion } from "@/hooks/use-comunicaciones";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -19,7 +23,8 @@ import {
   ESTADO_OBRA_TRANSITIONS,
   ESTADO_OBRA_LABELS,
 } from "@/lib/validators/obra";
-import { ArrowRight, ChevronDown } from "lucide-react";
+import { ArrowRight, ChevronDown, Send, Loader2, MessageSquare } from "lucide-react";
+import { formatRelativeDate } from "@/lib/utils/formatters";
 import { toast } from "sonner";
 
 export default function ObraDetailPage({
@@ -30,6 +35,10 @@ export default function ObraDetailPage({
   const { id } = use(params);
   const { data: obra, isLoading } = useObra(id);
   const updateObra = useUpdateObra();
+  const { data: comunicaciones } = useComunicaciones(id);
+  const createComunicacion = useCreateComunicacion();
+  const [nuevoAsunto, setNuevoAsunto] = useState("");
+  const [nuevoContenido, setNuevoContenido] = useState("");
 
   if (isLoading || !obra) {
     return (
@@ -96,6 +105,7 @@ export default function ObraDetailPage({
           <TabsTrigger value="materiales">Materiales</TabsTrigger>
           <TabsTrigger value="remitos">Remitos</TabsTrigger>
           <TabsTrigger value="personal">Personal</TabsTrigger>
+          <TabsTrigger value="comunicaciones">Comunicaciones</TabsTrigger>
         </TabsList>
 
         <TabsContent value="general" className="mt-4">
@@ -211,6 +221,62 @@ export default function ObraDetailPage({
               El personal asignado se mostrara aqui.
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="comunicaciones" className="mt-4 space-y-4">
+          <Card>
+            <CardHeader><CardTitle className="text-base">Nueva nota</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              <Input placeholder="Asunto..." value={nuevoAsunto} onChange={(e) => setNuevoAsunto(e.target.value)} />
+              <Textarea placeholder="Contenido de la nota..." value={nuevoContenido} onChange={(e) => setNuevoContenido(e.target.value)} rows={3} />
+              <div className="flex justify-end">
+                <Button
+                  size="sm"
+                  disabled={!nuevoAsunto || !nuevoContenido || createComunicacion.isPending}
+                  onClick={() => {
+                    createComunicacion.mutate(
+                      { obra_id: id, asunto: nuevoAsunto, contenido: nuevoContenido },
+                      {
+                        onSuccess: () => { setNuevoAsunto(""); setNuevoContenido(""); toast.success("Nota agregada"); },
+                        onError: () => toast.error("Error al agregar nota"),
+                      }
+                    );
+                  }}
+                >
+                  {createComunicacion.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                  Agregar
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {comunicaciones && comunicaciones.length > 0 ? (
+            <div className="space-y-3">
+              {comunicaciones.map((c) => (
+                <Card key={c.id}>
+                  <CardContent className="py-4">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="font-medium text-sm">{c.asunto}</p>
+                        <p className="text-sm text-muted-foreground mt-1 whitespace-pre-wrap">{c.contenido}</p>
+                      </div>
+                      <span className="text-xs text-muted-foreground shrink-0 ml-4">{formatRelativeDate(c.created_at)}</span>
+                    </div>
+                    {c.user_profiles && (
+                      <p className="text-xs text-muted-foreground mt-2">— {c.user_profiles.nombre} {c.user_profiles.apellido}</p>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <Card>
+              <CardContent className="py-8 text-center text-muted-foreground">
+                <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                Sin comunicaciones registradas
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
       </Tabs>
     </div>

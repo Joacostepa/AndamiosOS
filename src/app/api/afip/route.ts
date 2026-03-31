@@ -11,18 +11,27 @@ let cachedToken: { token: string; sign: string; expiration: number } | null = nu
 function getCert(): string {
   const b64 = process.env.AFIP_CERT_B64;
   if (!b64) throw new Error("AFIP_CERT_B64 no configurado");
-  return Buffer.from(b64, "base64").toString("utf-8");
+  const pem = Buffer.from(b64, "base64").toString("utf-8");
+  // Ensure proper PEM format with newlines
+  if (pem.includes("-----BEGIN")) return pem;
+  // If it's raw base64 cert content, wrap it
+  return `-----BEGIN CERTIFICATE-----\n${pem}\n-----END CERTIFICATE-----`;
 }
 
 function getKey(): string {
   const b64 = process.env.AFIP_KEY_B64;
   if (!b64) throw new Error("AFIP_KEY_B64 no configurado");
-  return Buffer.from(b64, "base64").toString("utf-8");
+  const pem = Buffer.from(b64, "base64").toString("utf-8");
+  if (pem.includes("-----BEGIN")) return pem;
+  return `-----BEGIN PRIVATE KEY-----\n${pem}\n-----END PRIVATE KEY-----`;
 }
 
 function signTRA(tra: string): string {
   const certPem = getCert();
   const keyPem = getKey();
+
+  console.log("CERT starts with:", certPem.substring(0, 40));
+  console.log("KEY starts with:", keyPem.substring(0, 40));
 
   const cert = forge.pki.certificateFromPem(certPem);
   const privateKey = forge.pki.privateKeyFromPem(keyPem);

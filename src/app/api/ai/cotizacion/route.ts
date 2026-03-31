@@ -1,74 +1,81 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 
-const client = new Anthropic({
+const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-const SYSTEM_PROMPT = `Sos el asistente de cotizaciones de Andamios Buenos Aires, una empresa de alquiler, montaje y desarme de andamios en Buenos Aires, Argentina.
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
-Tu rol es ayudar al vendedor a armar cotizaciones profesionales. Debes:
+const BASE_SYSTEM = `Sos el asistente de cotizaciones de una empresa de andamios.
 
-1. Hacer preguntas para entender que necesita el cliente
-2. Cuando tengas suficiente info, generar la cotizacion completa
-3. Hablar en español rioplatense informal pero profesional
-4. Ser conciso y directo
+Tu rol es ayudar al vendedor a armar cotizaciones. Debes:
+1. Hacer preguntas cortas para entender que necesita el cliente
+2. Cuando tengas suficiente info, generar la cotizacion completa en JSON
+3. Ser conciso (2-3 oraciones max por respuesta)
 
-DATOS QUE NECESITAS RECOPILAR:
-- Tipo de cliente (constructora, particular, industria, consorcio, evento)
+DATOS QUE NECESITAS:
 - Tipo de obra (fachada, construccion, industrial, evento)
-- Ubicacion (direccion, zona)
-- Medidas (metros lineales, altura, pisos)
+- Ubicacion
+- Medidas (metros lineales, altura o pisos)
 - Sistema de andamio (multidireccional o tubular)
-- Plazo estimado de alquiler (meses)
-- Si incluye montaje, desarme y transporte
-- Condiciones especiales (acceso dificil, permisos, horarios)
+- Plazo de alquiler (meses)
+- Condiciones especiales
 
-PRECIOS DE REFERENCIA (ARS, sin IVA):
-- Alquiler andamio multidireccional: $3.500-5.000 por m2/mes
-- Alquiler andamio tubular: $2.500-3.500 por m2/mes
-- Montaje: $2.000-3.500 por m2
-- Desarme: $1.500-2.500 por m2
-- Transporte (CABA): $150.000-250.000
-- Transporte (GBA): $200.000-350.000
-- Permiso municipal GCBA: $80.000-150.000
-- Ingenieria/proyecto: $100.000-200.000
+Cuando generes la cotizacion, responde con el JSON en este formato EXACTO (dentro del texto):
+{"ready":true,"cotizacion":{"titulo":"...","descripcion_servicio":"...","condiciones":"...","condicion_pago":"...","plazo_alquiler_meses":N,"items":[{"tipo":"alquiler_mensual","concepto":"...","cantidad":N,"unidad":"mes","precio_unitario":N}]}}
 
-Cuando generes la cotizacion, usa el formato JSON asi:
-{
-  "ready": true,
-  "cotizacion": {
-    "titulo": "...",
-    "descripcion_servicio": "... (texto profesional detallado)",
-    "condiciones": "... (condiciones generales)",
-    "condicion_pago": "...",
-    "plazo_alquiler_meses": N,
-    "items": [
-      {"tipo": "alquiler_mensual|montaje|desarme|transporte|permiso|ingenieria|extra", "concepto": "...", "cantidad": N, "unidad": "mes|m2|viaje|global", "precio_unitario": N}
-    ]
+Tipos de item validos: alquiler_mensual, montaje, desarme, transporte, permiso, ingenieria, extra, descuento.
+
+NO generes el JSON hasta tener todos los datos necesarios. Si falta info, pregunta.`;
+
+async function getCustomPrompt(): Promise<{ instrucciones: string; estilo: string }> {
+  try {
+    const { data } = await supabase
+      .from("configuracion")
+      .select("clave, valor")
+      .in("clave", ["ai_prompt_cotizacion", "ai_prompt_estilo"]);
+
+    const instrucciones = data?.find((c) => c.clave === "ai_prompt_cotizacion")?.valor || "";
+    const estilo = data?.find((c) => c.clave === "ai_prompt_estilo")?.valor || "";
+
+    return { instrucciones, estilo };
+  } catch {
+    return { instrucciones: "", estilo: "" };
   }
 }
-
-Si todavia no tenes suficiente info, responde normalmente (sin JSON) haciendo las preguntas que faltan. No generes el JSON hasta que tengas todos los datos necesarios.
-
-Cuando respondas con texto (no JSON), se breve. 2-3 oraciones max por respuesta.`;
 
 export async function POST(request: NextRequest) {
   try {
     const { messages, cotizacionesAnteriores } = await request.json();
 
-    let contextMsg = "";
+    const { instrucciones, estilo } = await getCustomPrompt();
+
+    let systemPrompt = BASE_SYSTEM;
+
+    if (instrucciones) {
+      systemPrompt += `\n\nINSTRUCCIONES DE LA EMPRESA:\n${instrucciones}`;
+    }
+
+    if (estilo) {
+      systemPrompt += `\n\nESTILO DE COMUNICACION:\n${estilo}`;
+    }
+
     if (cotizacionesAnteriores && cotizacionesAnteriores.length > 0) {
-      contextMsg = "\n\nCOTIZACIONES ANTERIORES SIMILARES (para referencia de precios):\n";
+      systemPrompt += "\n\nCOTIZACIONES ANTERIORES (referencia):\n";
       cotizacionesAnteriores.forEach((c: any) => {
-        contextMsg += `- ${c.codigo}: ${c.titulo} — Total: $${c.total} (${c.estado})\n`;
+        systemPrompt += `- ${c.codigo}: ${c.titulo} — $${c.total} (${c.estado})\n`;
       });
     }
 
-    const response = await client.messages.create({
+    const response = await anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
       max_tokens: 2048,
-      system: SYSTEM_PROMPT + contextMsg,
+      system: systemPrompt,
       messages: messages.map((m: any) => ({
         role: m.role,
         content: m.content,

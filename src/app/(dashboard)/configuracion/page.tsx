@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Save, Loader2, Sparkles, RotateCcw, Building2, Bot } from "lucide-react";
+import { Save, Loader2, Sparkles, RotateCcw, Building2, Bot, Home, Layers, Wrench } from "lucide-react";
 import { toast } from "sonner";
 import type { Configuracion } from "@/hooks/use-configuracion";
 
@@ -64,25 +64,24 @@ export default function ConfiguracionPage() {
         {/* ======================== AGENTES IA ======================== */}
         <TabsContent value="agentes" className="mt-4 space-y-6">
 
-          {/* Agente Cotizaciones */}
+          {/* Agente Cotizaciones - General */}
           <Card>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <Sparkles className="h-4 w-4 text-primary" />
-                Agente de Cotizaciones
+                Cotizaciones — General
               </CardTitle>
               <CardDescription>
-                El asistente conversacional que ayuda a los vendedores a armar cotizaciones.
-                Incluye precios de referencia, politicas comerciales y condiciones de pago.
+                Instrucciones generales y estilo de comunicacion que aplican a todos los agentes de cotizacion.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label>Instrucciones, precios y politicas</Label>
+                <Label>Instrucciones generales y politicas</Label>
                 <Textarea
                   value={values.ai_prompt_cotizacion || ""}
                   onChange={(e) => update("ai_prompt_cotizacion", e.target.value)}
-                  rows={15}
+                  rows={8}
                   className="font-mono text-sm"
                 />
                 <p className="text-xs text-muted-foreground">{(values.ai_prompt_cotizacion || "").length} caracteres</p>
@@ -99,7 +98,101 @@ export default function ConfiguracionPage() {
               <div className="flex justify-end">
                 <Button size="sm" onClick={() => handleSave(["ai_prompt_cotizacion", "ai_prompt_estilo"])} disabled={updateConfig.isPending}>
                   {updateConfig.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                  Guardar agente cotizaciones
+                  Guardar general
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Agente Hogareño */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Home className="h-4 w-4 text-amber-400" />
+                Cotizaciones — Alquiler hogareño
+              </CardTitle>
+              <CardDescription>
+                Asesora sobre módulos, tablones y ruedas para trabajos domésticos.
+                Incluye lista de precios por fracción (10/20/30 días) y reglas de recomendación.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Instrucciones, precios y reglas</Label>
+                <Textarea
+                  value={values.ai_agente_hogareno || ""}
+                  onChange={(e) => update("ai_agente_hogareno", e.target.value)}
+                  rows={15}
+                  className="font-mono text-sm"
+                />
+                <p className="text-xs text-muted-foreground">{(values.ai_agente_hogareno || "").length} caracteres</p>
+              </div>
+              <div className="flex justify-end">
+                <Button size="sm" onClick={() => handleSave(["ai_agente_hogareno"])} disabled={updateConfig.isPending}>
+                  {updateConfig.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                  Guardar agente hogareño
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Agente Multidireccional */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Layers className="h-4 w-4 text-cyan-400" />
+                Cotizaciones — Multidireccional
+              </CardTitle>
+              <CardDescription>
+                Alquiler de multidireccional por tonelada. Ajustes por urgencia, tipo de cliente y stock.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Instrucciones y reglas de negocio</Label>
+                <Textarea
+                  value={values.ai_agente_multidireccional || ""}
+                  onChange={(e) => update("ai_agente_multidireccional", e.target.value)}
+                  rows={15}
+                  className="font-mono text-sm"
+                />
+                <p className="text-xs text-muted-foreground">{(values.ai_agente_multidireccional || "").length} caracteres</p>
+              </div>
+              <div className="flex justify-end">
+                <Button size="sm" onClick={() => handleSave(["ai_agente_multidireccional"])} disabled={updateConfig.isPending}>
+                  {updateConfig.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                  Guardar agente multidireccional
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Agente Armado/Desarme */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Wrench className="h-4 w-4 text-purple-400" />
+                Cotizaciones — Armado y desarme
+              </CardTitle>
+              <CardDescription>
+                Servicio completo por sub-rubro: fachadas, industria, eventos, obra pública, construcción.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Instrucciones por rubro y reglas</Label>
+                <Textarea
+                  value={values.ai_agente_armado_desarme || ""}
+                  onChange={(e) => update("ai_agente_armado_desarme", e.target.value)}
+                  rows={15}
+                  className="font-mono text-sm"
+                />
+                <p className="text-xs text-muted-foreground">{(values.ai_agente_armado_desarme || "").length} caracteres</p>
+              </div>
+              <div className="flex justify-end">
+                <Button size="sm" onClick={() => handleSave(["ai_agente_armado_desarme"])} disabled={updateConfig.isPending}>
+                  {updateConfig.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                  Guardar agente armado/desarme
                 </Button>
               </div>
             </CardContent>

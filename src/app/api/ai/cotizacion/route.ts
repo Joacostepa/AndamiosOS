@@ -134,24 +134,37 @@ function getSystemPrompt(
   return base + FIELD_UPDATE_INSTRUCTIONS;
 }
 
-async function getCustomPrompt(): Promise<{
+const UNIDAD_CONFIG_KEYS: Record<string, string> = {
+  hogareno: "ai_agente_hogareno",
+  multidireccional: "ai_agente_multidireccional",
+  armado_desarme: "ai_agente_armado_desarme",
+};
+
+async function getCustomPrompt(unidad: string): Promise<{
   instrucciones: string;
   estilo: string;
+  instruccionesUnidad: string;
 }> {
   try {
+    const configKey = UNIDAD_CONFIG_KEYS[unidad] || "";
+    const claves = ["ai_prompt_cotizacion", "ai_prompt_estilo"];
+    if (configKey) claves.push(configKey);
+
     const { data } = await supabase
       .from("configuracion")
       .select("clave, valor")
-      .in("clave", ["ai_prompt_cotizacion", "ai_prompt_estilo"]);
+      .in("clave", claves);
 
     const instrucciones =
       data?.find((c) => c.clave === "ai_prompt_cotizacion")?.valor || "";
     const estilo =
       data?.find((c) => c.clave === "ai_prompt_estilo")?.valor || "";
+    const instruccionesUnidad =
+      configKey ? data?.find((c) => c.clave === configKey)?.valor || "" : "";
 
-    return { instrucciones, estilo };
+    return { instrucciones, estilo, instruccionesUnidad };
   } catch {
-    return { instrucciones: "", estilo: "" };
+    return { instrucciones: "", estilo: "", instruccionesUnidad: "" };
   }
 }
 
@@ -165,15 +178,18 @@ export async function POST(request: NextRequest) {
       cotizacionesAnteriores,
     } = await request.json();
 
-    const { instrucciones, estilo } = await getCustomPrompt();
+    const unidad = unidad_cotizacion || "armado_desarme";
+    const { instrucciones, estilo, instruccionesUnidad } =
+      await getCustomPrompt(unidad);
 
-    let systemPrompt = getSystemPrompt(
-      unidad_cotizacion || "armado_desarme",
-      sub_vertical
-    );
+    let systemPrompt = getSystemPrompt(unidad, sub_vertical);
+
+    if (instruccionesUnidad) {
+      systemPrompt += `\n\nINSTRUCCIONES ESPECÍFICAS DE ESTA UNIDAD (configuradas por la empresa):\n${instruccionesUnidad}`;
+    }
 
     if (instrucciones) {
-      systemPrompt += `\n\nINSTRUCCIONES DE LA EMPRESA:\n${instrucciones}`;
+      systemPrompt += `\n\nINSTRUCCIONES GENERALES DE LA EMPRESA:\n${instrucciones}`;
     }
 
     if (estilo) {

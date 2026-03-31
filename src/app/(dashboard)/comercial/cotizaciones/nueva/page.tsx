@@ -8,6 +8,7 @@ import { useCreateCliente } from "@/hooks/use-clientes";
 import { useConfiguracion } from "@/hooks/use-configuracion";
 import { useOportunidades } from "@/hooks/use-oportunidades";
 import { UnitSelector } from "@/components/cotizaciones/unit-selector";
+import { SubrubroSelector } from "@/components/cotizaciones/subrubro-selector";
 import { CommonFields } from "@/components/cotizaciones/common-fields";
 import { FormHogareno } from "@/components/cotizaciones/form-hogareno";
 import { FormMultidireccional } from "@/components/cotizaciones/form-multidireccional";
@@ -33,7 +34,7 @@ import type {
   UnidadCotizacion,
   CotizacionFormData,
 } from "@/types/cotizacion-form";
-import { UNIDAD_LABELS } from "@/types/cotizacion-form";
+import { UNIDAD_LABELS, SUB_VERTICAL_LABELS } from "@/types/cotizacion-form";
 
 export default function NuevaCotizacionPage() {
   return (
@@ -187,6 +188,7 @@ function NuevaCotizacionContent() {
           incluye_montaje: data.incluye_montaje,
           incluye_desarme: data.incluye_desarme,
           incluye_transporte: data.incluye_transporte,
+          responsable_id: data.responsable_id,
           metadata: data.metadata,
           items,
         });
@@ -202,6 +204,20 @@ function NuevaCotizacionContent() {
   // Step 1: Unit selector
   if (!unidad) {
     return <UnitSelector onSelect={handleUnitSelect} />;
+  }
+
+  // Step 1.5: Sub-rubro selector for armado/desarme
+  if (unidad === "armado_desarme" && !form.getValues("sub_vertical")) {
+    return (
+      <SubrubroSelector
+        onSelect={(subrubro) => {
+          form.setValue("sub_vertical", subrubro);
+          // Force re-render
+          setUnidad("armado_desarme");
+        }}
+        onBack={() => setUnidad(null)}
+      />
+    );
   }
 
   // Build empresa data for PDF
@@ -241,7 +257,13 @@ function NuevaCotizacionContent() {
                 type="button"
                 variant="ghost"
                 size="icon"
-                onClick={() => setUnidad(null)}
+                onClick={() => {
+                  if (unidad === "armado_desarme" && form.getValues("sub_vertical")) {
+                    form.setValue("sub_vertical", undefined);
+                  } else {
+                    setUnidad(null);
+                  }
+                }}
               >
                 <ArrowLeft className="h-4 w-4" />
               </Button>
@@ -251,6 +273,7 @@ function NuevaCotizacionContent() {
                 </h1>
                 <p className="text-sm text-muted-foreground">
                   {UNIDAD_LABELS[unidad]}
+                  {form.watch("sub_vertical") && ` — ${SUB_VERTICAL_LABELS[form.watch("sub_vertical")!]}`}
                 </p>
               </div>
             </div>

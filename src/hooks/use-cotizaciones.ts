@@ -22,6 +22,7 @@ export type Cotizacion = {
   unidad_cotizacion: string | null; sub_vertical: string | null;
   fraccion_dias: number | null; zona_entrega: string | null;
   tonelaje_estimado: number | null; urgencia: string | null;
+  responsable_id: string | null;
   metadata: Record<string, unknown> | null;
   clientes?: { razon_social: string } | null;
   oportunidades?: { codigo: string; titulo: string } | null;
@@ -69,7 +70,7 @@ export function useCreateCotizacion() {
       fraccion_dias?: number; zona_entrega?: string;
       tonelaje_estimado?: number; urgencia?: string;
       incluye_montaje?: boolean; incluye_desarme?: boolean; incluye_transporte?: boolean;
-      ubicacion?: string; metadata?: Record<string, unknown>;
+      ubicacion?: string; responsable_id?: string; metadata?: Record<string, unknown>;
       items: { tipo: string; concepto: string; detalle?: string; cantidad: number; unidad: string; precio_unitario: number }[];
     }) => {
       const { items, ...cotData } = data;

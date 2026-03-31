@@ -39,6 +39,7 @@ export type CotizacionFormData = {
 
   // Armado/desarme
   sub_vertical?: SubVertical;
+  responsable_id?: string;
   incluye_montaje?: boolean;
   incluye_desarme?: boolean;
   incluye_transporte?: boolean;

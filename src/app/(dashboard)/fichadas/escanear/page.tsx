@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { usePersonal } from "@/hooks/use-personal";
 import { useRegistrarFichada } from "@/hooks/use-fichadas";
 import { PageHeader } from "@/components/shared/page-header";
@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { ScanLine, MapPin, CheckCircle, XCircle, Loader2, Camera } from "lucide-react";
+import { MapPin, CheckCircle, XCircle, Loader2, Camera, ScanLine } from "lucide-react";
 import { toast } from "sonner";
 
 export default function EscanearPage() {
@@ -23,8 +23,8 @@ export default function EscanearPage() {
   const [coords, setCoords] = useState<{ lat: number; lng: number; accuracy: number } | null>(null);
   const [resultado, setResultado] = useState<{ ok: boolean; mensaje: string } | null>(null);
   const [qrInput, setQrInput] = useState("");
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const scannerRef = useRef<any>(null);
+  const scannerContainerId = "qr-reader";
 
   // Get geolocation
   useEffect(() => {
@@ -43,7 +43,6 @@ export default function EscanearPage() {
     }
   }, []);
 
-  // Get device ID
   function getDeviceId(): string {
     let id = localStorage.getItem("andamios_device_id");
     if (!id) {
@@ -53,28 +52,7 @@ export default function EscanearPage() {
     return id;
   }
 
-  async function handleScanResult(qrData: string) {
-    setScanning(false);
-    stopCamera();
-
-    try {
-      const parsed = JSON.parse(qrData);
-      if (parsed.type !== "fichada" || !parsed.token) {
-        toast.error("QR invalido. No es un QR de fichada.");
-        return;
-      }
-      await procesarFichada(parsed.token);
-    } catch {
-      // Maybe it's just the token directly
-      if (qrData.length > 20) {
-        await procesarFichada(qrData);
-      } else {
-        toast.error("QR no reconocido");
-      }
-    }
-  }
-
-  async function procesarFichada(token: string) {
+  const procesarFichada = useCallback(async (token: string) => {
     if (!personalId) {
       toast.error("Selecciona tu nombre primero");
       return;
@@ -97,48 +75,72 @@ export default function EscanearPage() {
       setResultado({ ok: false, mensaje: error.message });
       toast.error(error.message);
     }
+  }, [personalId, tipo, coords, registrarFichada]);
+
+  async function handleScanResult(qrData: string) {
+    // Stop scanner
+    stopScanner();
+
+    try {
+      const parsed = JSON.parse(qrData);
+      if (parsed.type === "fichada" && parsed.token) {
+        await procesarFichada(parsed.token);
+        return;
+      }
+    } catch {}
+
+    // If not JSON, try as raw token
+    if (qrData.length > 20) {
+      await procesarFichada(qrData);
+    } else {
+      toast.error("QR no reconocido");
+    }
   }
 
-  // Camera scanner
-  async function startCamera() {
+  async function startScanner() {
     setScanning(true);
     setResultado(null);
+
+    // Dynamic import to avoid SSR issues
+    const { Html5Qrcode } = await import("html5-qrcode");
+
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" },
-      });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play();
-        scanQRFromVideo();
-      }
-    } catch {
-      toast.error("No se pudo acceder a la camara");
+      const scanner = new Html5Qrcode(scannerContainerId);
+      scannerRef.current = scanner;
+
+      await scanner.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 250, height: 250 } },
+        (decodedText) => {
+          handleScanResult(decodedText);
+        },
+        () => {} // ignore errors during scanning
+      );
+    } catch (err) {
+      console.error("Scanner error:", err);
+      toast.error("No se pudo acceder a la camara. Usa el input manual.");
       setScanning(false);
     }
   }
 
-  function stopCamera() {
-    if (videoRef.current?.srcObject) {
-      (videoRef.current.srcObject as MediaStream).getTracks().forEach((t) => t.stop());
-      videoRef.current.srcObject = null;
+  function stopScanner() {
+    setScanning(false);
+    if (scannerRef.current) {
+      scannerRef.current.stop().catch(() => {});
+      scannerRef.current.clear().catch(() => {});
+      scannerRef.current = null;
     }
   }
 
-  function scanQRFromVideo() {
-    // Simple QR scanning using canvas - in production use html5-qrcode
-    // For now, use manual input as fallback
-  }
-
   return (
-    <div className="space-y-6 max-w-lg mx-auto">
+    <div className="space-y-4 max-w-lg mx-auto">
       <PageHeader title="Fichar Asistencia" />
 
       {/* Resultado */}
       {resultado && (
         <Card className={resultado.ok ? "border-green-500/30 bg-green-500/5" : "border-red-500/30 bg-red-500/5"}>
           <CardContent className="py-4 flex items-center gap-3">
-            {resultado.ok ? <CheckCircle className="h-6 w-6 text-green-400" /> : <XCircle className="h-6 w-6 text-red-400" />}
+            {resultado.ok ? <CheckCircle className="h-6 w-6 text-green-400 shrink-0" /> : <XCircle className="h-6 w-6 text-red-400 shrink-0" />}
             <div>
               <p className="font-medium text-sm">{resultado.ok ? "Fichada registrada" : "Error"}</p>
               <p className="text-sm text-muted-foreground">{resultado.mensaje}</p>
@@ -147,32 +149,28 @@ export default function EscanearPage() {
         </Card>
       )}
 
-      {/* GPS Status */}
+      {/* GPS */}
       <Card>
         <CardContent className="py-3 flex items-center gap-3">
-          <MapPin className={`h-5 w-5 ${geoStatus === "success" ? "text-green-400" : geoStatus === "error" ? "text-red-400" : "text-yellow-400"}`} />
-          <div className="flex-1">
+          <MapPin className={`h-5 w-5 shrink-0 ${geoStatus === "success" ? "text-green-400" : geoStatus === "error" ? "text-red-400" : "text-yellow-400 animate-pulse"}`} />
+          <div className="flex-1 min-w-0">
             <p className="text-sm font-medium">
-              {geoStatus === "loading" ? "Obteniendo ubicacion..." :
-               geoStatus === "success" ? `GPS OK (precision: ${Math.round(coords?.accuracy || 0)}m)` :
-               "GPS no disponible"}
+              {geoStatus === "loading" ? "Obteniendo ubicacion..." : geoStatus === "success" ? `GPS OK (${Math.round(coords?.accuracy || 0)}m)` : "GPS no disponible"}
             </p>
-            {coords && <p className="text-xs text-muted-foreground">{coords.lat.toFixed(6)}, {coords.lng.toFixed(6)}</p>}
           </div>
-          <Badge variant="outline" className={geoStatus === "success" ? "bg-green-500/15 text-green-400 border-green-500/25" : "bg-yellow-500/15 text-yellow-400 border-yellow-500/25"}>
+          <Badge variant="outline" className={geoStatus === "success" ? "bg-green-500/15 text-green-400 border-green-500/25" : ""}>
             {geoStatus === "success" ? "OK" : "..."}
           </Badge>
         </CardContent>
       </Card>
 
-      {/* Seleccion */}
+      {/* Datos */}
       <Card>
-        <CardHeader><CardTitle className="text-base">Datos de fichada</CardTitle></CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="pt-4 space-y-4">
           <div className="space-y-2">
             <Label>Tu nombre *</Label>
             <Select value={personalId} onValueChange={(v) => v && setPersonalId(v)}>
-              <SelectTrigger><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
+              <SelectTrigger className="h-12"><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
               <SelectContent>
                 {personal?.map((p) => (
                   <SelectItem key={p.id} value={p.id}>{p.apellido}, {p.nombre} ({p.dni})</SelectItem>
@@ -181,47 +179,41 @@ export default function EscanearPage() {
             </Select>
           </div>
 
-          <div className="space-y-2">
-            <Label>Tipo</Label>
-            <div className="grid grid-cols-2 gap-2">
-              <Button variant={tipo === "entrada" ? "default" : "outline"} onClick={() => setTipo("entrada")} className="h-14 text-lg">
-                Entrada
-              </Button>
-              <Button variant={tipo === "salida" ? "default" : "outline"} onClick={() => setTipo("salida")} className="h-14 text-lg">
-                Salida
-              </Button>
-            </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Button variant={tipo === "entrada" ? "default" : "outline"} onClick={() => setTipo("entrada")} className="h-14 text-lg">
+              Entrada
+            </Button>
+            <Button variant={tipo === "salida" ? "default" : "outline"} onClick={() => setTipo("salida")} className="h-14 text-lg">
+              Salida
+            </Button>
           </div>
         </CardContent>
       </Card>
 
       {/* Scanner */}
       <Card>
-        <CardHeader><CardTitle className="text-base">Escanear QR del supervisor</CardTitle></CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="pt-4 space-y-4">
           {scanning ? (
-            <div className="space-y-4">
-              <video ref={videoRef} className="w-full rounded-lg bg-black aspect-square object-cover" />
-              <canvas ref={canvasRef} className="hidden" />
-              <Button variant="outline" className="w-full" onClick={() => { setScanning(false); stopCamera(); }}>
+            <div className="space-y-3">
+              <div id={scannerContainerId} className="w-full rounded-lg overflow-hidden" />
+              <Button variant="outline" className="w-full" onClick={stopScanner}>
                 Cancelar
               </Button>
             </div>
           ) : (
-            <Button onClick={startCamera} className="w-full h-16 text-lg" disabled={!personalId}>
+            <Button onClick={startScanner} className="w-full h-16 text-lg" disabled={!personalId}>
               <Camera className="mr-2 h-6 w-6" />
-              Abrir camara y escanear QR
+              Escanear QR
             </Button>
           )}
 
-          {/* Manual input fallback */}
           <div className="pt-2 border-t">
             <p className="text-xs text-muted-foreground mb-2">O ingresa el codigo manualmente:</p>
             <div className="flex gap-2">
               <input
                 type="text"
                 className="flex-1 rounded-md border bg-background px-3 py-2 text-sm"
-                placeholder="Codigo QR..."
+                placeholder="Pegar token QR..."
                 value={qrInput}
                 onChange={(e) => setQrInput(e.target.value)}
               />

@@ -54,6 +54,7 @@ function NuevaCotizacionContent() {
   const { data: oportunidades } = useOportunidades();
 
   const [unidad, setUnidad] = useState<UnidadCotizacion | null>(null);
+  const [subRubroSelected, setSubRubroSelected] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [createdId, setCreatedId] = useState<string | null>(null);
 
@@ -207,13 +208,12 @@ function NuevaCotizacionContent() {
   }
 
   // Step 1.5: Sub-rubro selector for armado/desarme
-  if (unidad === "armado_desarme" && !form.getValues("sub_vertical")) {
+  if (unidad === "armado_desarme" && !subRubroSelected) {
     return (
       <SubrubroSelector
         onSelect={(subrubro) => {
           form.setValue("sub_vertical", subrubro);
-          // Force re-render
-          setUnidad("armado_desarme");
+          setSubRubroSelected(true);
         }}
         onBack={() => setUnidad(null)}
       />
@@ -258,8 +258,9 @@ function NuevaCotizacionContent() {
                 variant="ghost"
                 size="icon"
                 onClick={() => {
-                  if (unidad === "armado_desarme" && form.getValues("sub_vertical")) {
+                  if (unidad === "armado_desarme" && subRubroSelected) {
                     form.setValue("sub_vertical", undefined);
+                    setSubRubroSelected(false);
                   } else {
                     setUnidad(null);
                   }

@@ -40,8 +40,9 @@ const styles = StyleSheet.create({
 });
 
 const TIPO_LABELS: Record<string, string> = {
-  alquiler_mensual: "Alquiler", montaje: "Montaje", desarme: "Desarme",
-  transporte: "Transporte", permiso: "Permiso", ingenieria: "Ingenieria",
+  alquiler_mensual: "Alquiler", alquiler_fraccion: "Alquiler fracción",
+  montaje: "Montaje", desarme: "Desarme",
+  transporte: "Transporte", flete: "Flete", permiso: "Permiso", ingenieria: "Ingenieria",
   extra: "Extra", descuento: "Descuento",
 };
 

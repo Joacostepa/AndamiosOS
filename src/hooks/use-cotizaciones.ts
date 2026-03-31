@@ -19,6 +19,10 @@ export type Cotizacion = {
   condicion_pago: string | null; plazo_alquiler_meses: number | null;
   incluye_montaje: boolean; incluye_desarme: boolean; incluye_transporte: boolean;
   generado_por_ia: boolean; created_at: string;
+  unidad_cotizacion: string | null; sub_vertical: string | null;
+  fraccion_dias: number | null; zona_entrega: string | null;
+  tonelaje_estimado: number | null; urgencia: string | null;
+  metadata: Record<string, unknown> | null;
   clientes?: { razon_social: string } | null;
   oportunidades?: { codigo: string; titulo: string } | null;
   cotizacion_items?: CotizacionItem[];
@@ -61,6 +65,11 @@ export function useCreateCotizacion() {
       oportunidad_id?: string; cliente_id?: string; relevamiento_id?: string;
       titulo: string; descripcion_servicio?: string; condiciones?: string;
       condicion_pago?: string; plazo_alquiler_meses?: number;
+      unidad_cotizacion?: string; sub_vertical?: string;
+      fraccion_dias?: number; zona_entrega?: string;
+      tonelaje_estimado?: number; urgencia?: string;
+      incluye_montaje?: boolean; incluye_desarme?: boolean; incluye_transporte?: boolean;
+      ubicacion?: string; metadata?: Record<string, unknown>;
       items: { tipo: string; concepto: string; detalle?: string; cantidad: number; unidad: string; precio_unitario: number }[];
     }) => {
       const { items, ...cotData } = data;

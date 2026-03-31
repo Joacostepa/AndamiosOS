@@ -1,196 +1,235 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { useState, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useClientes } from "@/hooks/use-clientes";
-import { useOportunidades } from "@/hooks/use-oportunidades";
+import { useForm, FormProvider } from "react-hook-form";
 import { useCreateCotizacion } from "@/hooks/use-cotizaciones";
-import { PageHeader } from "@/components/shared/page-header";
+import { useOportunidades } from "@/hooks/use-oportunidades";
+import { UnitSelector } from "@/components/cotizaciones/unit-selector";
+import { CommonFields } from "@/components/cotizaciones/common-fields";
+import { FormHogareno } from "@/components/cotizaciones/form-hogareno";
+import { FormMultidireccional } from "@/components/cotizaciones/form-multidireccional";
+import { FormArmadoDesarme } from "@/components/cotizaciones/form-armado-desarme";
+import { ItemsTable } from "@/components/cotizaciones/items-table";
+import { AIChatPanel } from "@/components/cotizaciones/ai-chat-panel";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, Plus, Trash2 } from "lucide-react";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { ArrowLeft, Loader2, Save, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
-import { AIDescriptionGenerator } from "@/components/ai/ai-description-generator";
-
-const TIPO_ITEM_LABELS: Record<string, string> = {
-  alquiler_mensual: "Alquiler mensual", montaje: "Montaje", desarme: "Desarme",
-  transporte: "Transporte", permiso: "Permiso", ingenieria: "Ingenieria",
-  extra: "Extra", descuento: "Descuento",
-};
-
-type ItemRow = { tipo: string; concepto: string; detalle: string; cantidad: number; unidad: string; precio_unitario: number };
+import type {
+  UnidadCotizacion,
+  CotizacionFormData,
+} from "@/types/cotizacion-form";
+import { UNIDAD_LABELS } from "@/types/cotizacion-form";
 
 export default function NuevaCotizacionPage() {
-  return <Suspense><NuevaCotizacionContent /></Suspense>;
+  return (
+    <Suspense>
+      <NuevaCotizacionContent />
+    </Suspense>
+  );
 }
 
 function NuevaCotizacionContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { data: clientes } = useClientes();
-  const { data: oportunidades } = useOportunidades();
+  const isMobile = useIsMobile();
   const createCotizacion = useCreateCotizacion();
+  const { data: oportunidades } = useOportunidades();
 
-  const [clienteId, setClienteId] = useState("");
-  const [oportunidadId, setOportunidadId] = useState(searchParams.get("oportunidad") || "");
-  const [titulo, setTitulo] = useState("");
-  const [descripcion, setDescripcion] = useState("");
-  const [condiciones, setCondiciones] = useState("- Precios expresados en pesos argentinos + IVA\n- Plazo de validez: 30 dias\n- No incluye permisos municipales salvo indicacion expresa");
-  const [condicionPago, setCondicionPago] = useState("");
-  const [plazoMeses, setPlazoMeses] = useState(1);
+  const [unidad, setUnidad] = useState<UnidadCotizacion | null>(null);
+  const [chatOpen, setChatOpen] = useState(false);
 
-  const [items, setItems] = useState<ItemRow[]>([]);
-  const [newItem, setNewItem] = useState<ItemRow>({ tipo: "alquiler_mensual", concepto: "", detalle: "", cantidad: 1, unidad: "mes", precio_unitario: 0 });
+  const form = useForm<CotizacionFormData>({
+    defaultValues: {
+      titulo: "",
+      descripcion_servicio: "",
+      condiciones:
+        "- Precios expresados en pesos argentinos + IVA\n- Plazo de validez: 30 días\n- No incluye permisos municipales salvo indicación expresa",
+      condicion_pago: "",
+      items: [],
+      incluye_montaje: true,
+      incluye_desarme: true,
+      incluye_transporte: true,
+      metadata: {},
+    },
+  });
 
-  function addItem() {
-    if (!newItem.concepto || newItem.precio_unitario <= 0) { toast.error("Completa concepto y precio"); return; }
-    setItems([...items, { ...newItem }]);
-    setNewItem({ tipo: "alquiler_mensual", concepto: "", detalle: "", cantidad: 1, unidad: "mes", precio_unitario: 0 });
+  const handleUnitSelect = useCallback(
+    (u: UnidadCotizacion) => {
+      setUnidad(u);
+      form.setValue("unidad_cotizacion", u);
+
+      // Pre-fill from oportunidad if present
+      const opId = searchParams.get("oportunidad");
+      if (opId && oportunidades) {
+        const op = oportunidades.find((o) => o.id === opId);
+        if (op) {
+          form.setValue("oportunidad_id", opId);
+          if (op.cliente_id) form.setValue("cliente_id", op.cliente_id);
+          if (op.titulo)
+            form.setValue("titulo", `Cotización - ${op.titulo}`);
+        }
+      }
+    },
+    [form, searchParams, oportunidades]
+  );
+
+  const handleFieldUpdates = useCallback(
+    (updates: Partial<CotizacionFormData>) => {
+      Object.entries(updates).forEach(([key, value]) => {
+        if (key === "items" && Array.isArray(value)) {
+          form.setValue("items", value, { shouldDirty: true });
+        } else if (key === "metadata" && typeof value === "object") {
+          const current = form.getValues("metadata") || {};
+          form.setValue(
+            "metadata",
+            { ...current, ...(value as Record<string, unknown>) },
+            { shouldDirty: true }
+          );
+        } else {
+          form.setValue(key as any, value, { shouldDirty: true });
+        }
+      });
+    },
+    [form]
+  );
+
+  const onSubmit = useCallback(
+    async (data: CotizacionFormData) => {
+      if (data.items.length === 0) {
+        toast.error("Agregá al menos un item");
+        return;
+      }
+      try {
+        const cot = await createCotizacion.mutateAsync({
+          titulo: data.titulo,
+          cliente_id: data.cliente_id || undefined,
+          oportunidad_id: data.oportunidad_id || undefined,
+          descripcion_servicio: data.descripcion_servicio,
+          condiciones: data.condiciones,
+          condicion_pago: data.condicion_pago,
+          plazo_alquiler_meses: data.plazo_alquiler_meses,
+          unidad_cotizacion: data.unidad_cotizacion,
+          sub_vertical: data.sub_vertical,
+          fraccion_dias: data.fraccion_dias,
+          zona_entrega: data.zona_entrega,
+          tonelaje_estimado: data.tonelaje_estimado,
+          urgencia: data.urgencia,
+          incluye_montaje: data.incluye_montaje,
+          incluye_desarme: data.incluye_desarme,
+          incluye_transporte: data.incluye_transporte,
+          metadata: data.metadata,
+          items: data.items.map((item) => ({
+            tipo: item.tipo,
+            concepto: item.concepto,
+            detalle: item.detalle,
+            cantidad: item.cantidad,
+            unidad: item.unidad,
+            precio_unitario: item.precio_unitario,
+          })),
+        });
+        toast.success("Cotización creada");
+        router.push(`/comercial/cotizaciones/${cot.id}`);
+      } catch {
+        toast.error("Error al crear la cotización");
+      }
+    },
+    [createCotizacion, router]
+  );
+
+  // Step 1: Unit selector
+  if (!unidad) {
+    return <UnitSelector onSelect={handleUnitSelect} />;
   }
 
-  const subtotal = items.reduce((sum, i) => sum + i.cantidad * i.precio_unitario, 0);
-  const iva = subtotal * 0.21;
-  const total = subtotal + iva;
-
-  function handleSubmit() {
-    if (!titulo) { toast.error("El titulo es obligatorio"); return; }
-    if (items.length === 0) { toast.error("Agrega al menos un item"); return; }
-
-    createCotizacion.mutate({
-      titulo,
-      cliente_id: clienteId || undefined,
-      oportunidad_id: oportunidadId || undefined,
-      descripcion_servicio: descripcion || undefined,
-      condiciones: condiciones || undefined,
-      condicion_pago: condicionPago || undefined,
-      plazo_alquiler_meses: plazoMeses,
-      items: items.map((i) => ({ tipo: i.tipo, concepto: i.concepto, detalle: i.detalle || undefined, cantidad: i.cantidad, unidad: i.unidad, precio_unitario: i.precio_unitario })),
-    }, {
-      onSuccess: (cot) => { toast.success(`Cotizacion ${cot.codigo} creada`); router.push(`/comercial/cotizaciones/${cot.id}`); },
-      onError: () => toast.error("Error al crear cotizacion"),
-    });
-  }
+  // Step 2: Split view workspace
+  const chatPanel = (
+    <AIChatPanel
+      unidad={unidad}
+      subVertical={form.watch("sub_vertical")}
+      formValues={form.getValues()}
+      onFieldUpdates={handleFieldUpdates}
+    />
+  );
 
   return (
-    <div className="space-y-6">
-      <PageHeader title="Nueva Cotizacion" />
+    <FormProvider {...form}>
+      <form onSubmit={form.handleSubmit(onSubmit)}>
+        <div className="flex h-[calc(100vh-8rem)]">
+          {/* Left: Form */}
+          <div className="flex-1 overflow-y-auto p-6 space-y-6 lg:w-3/5">
+            {/* Top bar */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setUnidad(null)}
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </Button>
+                <div>
+                  <h1 className="text-2xl font-bold tracking-tight">
+                    Nueva cotización
+                  </h1>
+                  <p className="text-sm text-muted-foreground">
+                    {UNIDAD_LABELS[unidad]}
+                  </p>
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                {isMobile && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setChatOpen(true)}
+                  >
+                    <MessageSquare className="h-4 w-4" />
+                  </Button>
+                )}
+                <Button type="submit" disabled={createCotizacion.isPending}>
+                  {createCotizacion.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Save className="mr-2 h-4 w-4" />
+                  )}
+                  Crear cotización
+                </Button>
+              </div>
+            </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader><CardTitle className="text-base">Datos generales</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2"><Label>Titulo *</Label><Input value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder="Ej: Cotizacion andamio fachada Av. Corrientes" /></div>
-            <div className="space-y-2">
-              <Label>Cliente</Label>
-              <Select value={clienteId} onValueChange={(v) => v && setClienteId(v)}>
-                <SelectTrigger><SelectValue placeholder="Seleccionar cliente..." /></SelectTrigger>
-                <SelectContent>{clientes?.map((c) => <SelectItem key={c.id} value={c.id}>{c.razon_social}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Oportunidad</Label>
-              <Select value={oportunidadId} onValueChange={(v) => v && setOportunidadId(v)}>
-                <SelectTrigger><SelectValue placeholder="Vincular a oportunidad..." /></SelectTrigger>
-                <SelectContent>{oportunidades?.map((o) => <SelectItem key={o.id} value={o.id}>{o.codigo} — {o.titulo}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2"><Label>Condicion de pago</Label><Input value={condicionPago} onChange={(e) => setCondicionPago(e.target.value)} placeholder="Ej: 50% anticipo, 50% contra entrega" /></div>
-              <div className="space-y-2"><Label>Plazo alquiler (meses)</Label><Input type="number" min={1} value={plazoMeses} onChange={(e) => setPlazoMeses(Number(e.target.value))} /></div>
-            </div>
-          </CardContent>
-        </Card>
+            {/* Common fields */}
+            <CommonFields />
 
-        <Card>
-          <CardHeader><CardTitle className="text-base">Descripcion y condiciones</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label>Descripcion del servicio</Label>
-              <AIDescriptionGenerator context={{}} onGenerated={(text) => setDescripcion(text)} />
-              <Textarea value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={4} placeholder="Descripcion tecnica del servicio a cotizar..." />
-            </div>
-            <div className="space-y-2">
-              <Label>Condiciones</Label>
-              <AIDescriptionGenerator context={{}} onGenerated={(text) => setCondiciones(text)} />
-              <Textarea value={condiciones} onChange={(e) => setCondiciones(e.target.value)} rows={4} />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+            {/* Unit-specific fields */}
+            {unidad === "hogareno" && <FormHogareno />}
+            {unidad === "multidireccional" && <FormMultidireccional />}
+            {unidad === "armado_desarme" && <FormArmadoDesarme />}
 
-      {/* Items */}
-      <Card>
-        <CardHeader><CardTitle className="text-base">Agregar items</CardTitle></CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-6 gap-2 items-end">
-            <div className="space-y-1">
-              <Label className="text-xs">Tipo</Label>
-              <Select value={newItem.tipo} onValueChange={(v) => v && setNewItem({ ...newItem, tipo: v })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>{Object.entries(TIPO_ITEM_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div className="col-span-2 space-y-1">
-              <Label className="text-xs">Concepto</Label>
-              <Input value={newItem.concepto} onChange={(e) => setNewItem({ ...newItem, concepto: e.target.value })} placeholder="Ej: Alquiler andamio multidireccional" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Cantidad</Label>
-              <Input type="number" min={0.01} step="0.01" value={newItem.cantidad} onChange={(e) => setNewItem({ ...newItem, cantidad: Number(e.target.value) })} />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Precio unit. ($)</Label>
-              <Input type="number" min={0} step="0.01" value={newItem.precio_unitario || ""} onChange={(e) => setNewItem({ ...newItem, precio_unitario: Number(e.target.value) })} />
-            </div>
-            <Button onClick={addItem} variant="outline"><Plus className="h-4 w-4" /></Button>
+            {/* Items table */}
+            <ItemsTable unidad={unidad} />
           </div>
-        </CardContent>
-      </Card>
 
-      {items.length > 0 && (
-        <Card>
-          <CardHeader><CardTitle className="text-base">Items ({items.length})</CardTitle></CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Tipo</TableHead><TableHead>Concepto</TableHead>
-                  <TableHead>Cant.</TableHead><TableHead>P. Unit.</TableHead><TableHead>Subtotal</TableHead><TableHead />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {items.map((item, i) => (
-                  <TableRow key={i}>
-                    <TableCell className="text-xs">{TIPO_ITEM_LABELS[item.tipo]}</TableCell>
-                    <TableCell>{item.concepto}</TableCell>
-                    <TableCell>{item.cantidad} {item.unidad}</TableCell>
-                    <TableCell>${item.precio_unitario.toLocaleString()}</TableCell>
-                    <TableCell className="font-semibold">${(item.cantidad * item.precio_unitario).toLocaleString()}</TableCell>
-                    <TableCell><Button variant="ghost" size="icon" onClick={() => setItems(items.filter((_, j) => j !== i))}><Trash2 className="h-4 w-4 text-destructive" /></Button></TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-            <div className="mt-4 space-y-1 text-right">
-              <p className="text-sm text-muted-foreground">Subtotal: <span className="font-semibold text-foreground">${subtotal.toLocaleString()}</span></p>
-              <p className="text-sm text-muted-foreground">IVA (21%): <span className="font-semibold text-foreground">${iva.toLocaleString()}</span></p>
-              <p className="text-lg font-bold text-primary">Total: ${total.toLocaleString()}</p>
-            </div>
-          </CardContent>
-        </Card>
+          {/* Right: AI Chat (desktop) */}
+          {!isMobile && (
+            <div className="hidden lg:flex w-2/5 border-l">{chatPanel}</div>
+          )}
+        </div>
+      </form>
+
+      {/* Mobile: Chat in sheet */}
+      {isMobile && (
+        <Sheet open={chatOpen} onOpenChange={setChatOpen}>
+          <SheetContent side="right" className="w-full sm:max-w-md p-0">
+            <SheetTitle className="sr-only">Asistente IA</SheetTitle>
+            <div className="h-full">{chatPanel}</div>
+          </SheetContent>
+        </Sheet>
       )}
-
-      <div className="flex justify-end gap-2">
-        <Button variant="outline" onClick={() => router.back()}>Cancelar</Button>
-        <Button onClick={handleSubmit} disabled={createCotizacion.isPending} size="lg">
-          {createCotizacion.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Crear cotizacion
-        </Button>
-      </div>
-    </div>
+    </FormProvider>
   );
 }

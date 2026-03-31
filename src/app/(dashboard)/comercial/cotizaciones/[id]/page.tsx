@@ -16,11 +16,10 @@ import { formatDate } from "@/lib/utils/formatters";
 import { ArrowRight, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 
-const TIPO_LABELS: Record<string, string> = {
-  alquiler_mensual: "Alquiler", montaje: "Montaje", desarme: "Desarme",
-  transporte: "Transporte", permiso: "Permiso", ingenieria: "Ingenieria",
-  extra: "Extra", descuento: "Descuento",
-};
+import { ITEM_TYPE_LABELS, UNIDAD_LABELS, SUB_VERTICAL_LABELS } from "@/types/cotizacion-form";
+import type { UnidadCotizacion, SubVertical } from "@/types/cotizacion-form";
+
+const TIPO_LABELS: Record<string, string> = ITEM_TYPE_LABELS;
 
 const ESTADO_TRANSITIONS: Record<string, string[]> = {
   borrador: ["enviada"], enviada: ["en_revision", "aprobada", "rechazada"],
@@ -70,10 +69,16 @@ export default function CotizacionDetailPage({ params }: { params: Promise<{ id:
           <CardHeader><CardTitle className="text-base">Datos</CardTitle></CardHeader>
           <CardContent className="space-y-3">
             <InfoRow label="Titulo" value={cotizacion.titulo} />
+            <InfoRow label="Unidad" value={cotizacion.unidad_cotizacion ? UNIDAD_LABELS[cotizacion.unidad_cotizacion as UnidadCotizacion] : null} />
+            {cotizacion.sub_vertical && <InfoRow label="Rubro" value={SUB_VERTICAL_LABELS[cotizacion.sub_vertical as SubVertical]} />}
             <InfoRow label="Cliente" value={cotizacion.clientes?.razon_social} />
             <InfoRow label="Oportunidad" value={cotizacion.oportunidades?.titulo} />
             <InfoRow label="Condicion pago" value={cotizacion.condicion_pago} />
             <InfoRow label="Plazo alquiler" value={cotizacion.plazo_alquiler_meses ? `${cotizacion.plazo_alquiler_meses} meses` : null} />
+            {cotizacion.fraccion_dias && <InfoRow label="Fraccion" value={`${cotizacion.fraccion_dias} días`} />}
+            {cotizacion.zona_entrega && <InfoRow label="Zona entrega" value={cotizacion.zona_entrega} />}
+            {cotizacion.tonelaje_estimado && <InfoRow label="Tonelaje" value={`${cotizacion.tonelaje_estimado} tn`} />}
+            {cotizacion.urgencia && <InfoRow label="Urgencia" value={cotizacion.urgencia} />}
           </CardContent>
         </Card>
         <Card>

@@ -132,6 +132,20 @@ export default function CotizacionDetailPage({ params }: { params: Promise<{ id:
           <CardContent><p className="text-sm text-muted-foreground whitespace-pre-wrap">{cotizacion.condiciones}</p></CardContent>
         </Card>
       )}
+
+      {cotizacion.metadata && (cotizacion.metadata as any).conversacion && (
+        <Card>
+          <CardHeader><CardTitle className="text-base">Conversación con el cliente</CardTitle></CardHeader>
+          <CardContent className="space-y-2">
+            {((cotizacion.metadata as any).conversacion as Array<{role: string; content: string}>).map((msg, i) => (
+              <div key={i} className={`rounded-lg px-3 py-2 text-sm max-w-[80%] ${msg.role === "user" ? "ml-auto bg-primary/10 text-foreground" : "bg-muted"}`}>
+                <p className="text-[10px] font-medium text-muted-foreground mb-0.5">{msg.role === "user" ? "Cliente" : "Asistente IA"}</p>
+                <p className="whitespace-pre-wrap">{msg.content}</p>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

@@ -176,6 +176,12 @@ export async function POST(request: NextRequest) {
           .select()
           .single();
 
+        // Build conversation log (include the final assistant message)
+        const conversacion = [
+          ...messages.map((m: any) => ({ role: m.role, content: m.content })),
+          { role: "assistant", content: message },
+        ];
+
         // Create cotización
         const items = cotData.items || [];
         const { data: cot, error } = await supabase
@@ -192,6 +198,7 @@ export async function POST(request: NextRequest) {
             fraccion_dias: cotData.fraccion_dias,
             zona_entrega: cotData.zona_entrega,
             generado_por_ia: true,
+            metadata: { conversacion },
           })
           .select()
           .single();

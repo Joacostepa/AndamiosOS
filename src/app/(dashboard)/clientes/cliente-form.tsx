@@ -68,13 +68,9 @@ export function ClienteForm({
       const res = await fetch(`/api/afip?cuit=${encodeURIComponent(cuit)}`);
       const data = await res.json();
       if (data.error) {
-        // Aunque no encuentre en AFIP, formatear el CUIT
-        const clean = cuit.replace(/\D/g, "");
-        if (clean.length === 11) {
-          setValue("cuit", `${clean.slice(0, 2)}-${clean.slice(2, 10)}-${clean.slice(10)}`);
-        }
         toast.error(data.error);
       } else {
+        if (data.cuit) setValue("cuit", data.cuit);
         if (data.razon_social) setValue("razon_social", data.razon_social);
         if (data.domicilio_fiscal) setValue("domicilio_fiscal", data.domicilio_fiscal);
         if (data.condicion_iva) setValue("condicion_iva", data.condicion_iva);

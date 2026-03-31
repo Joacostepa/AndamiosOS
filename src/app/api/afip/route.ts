@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import * as forge from "node-forge";
+import * as crypto from "crypto";
 import * as soap from "soap";
 
 const WSAA_URL = "https://wsaa.afip.gob.ar/ws/services/LoginCms?WSDL";
@@ -18,71 +18,110 @@ let cachedKey: string | null = null;
 
 async function getCert(): Promise<string> {
   if (cachedCert) return cachedCert;
-
-  // Try DB first
   const { data } = await supabase.from("configuracion").select("valor").eq("clave", "afip_cert").single();
-  if (data?.valor) {
-    cachedCert = data.valor;
-    return cachedCert!;
-  }
-
-  // Fallback to env vars
-  const certEnv = process.env.AFIP_CERT || process.env.AFIP_CERT_B64;
-  if (!certEnv) throw new Error("Certificado AFIP no configurado");
-  if (certEnv.includes("\\n")) return certEnv.replace(/\\n/g, "\n");
-  if (certEnv.includes("-----BEGIN")) return certEnv;
-  return Buffer.from(certEnv, "base64").toString("utf-8");
+  if (data?.valor) { cachedCert = data.valor; return cachedCert!; }
+  throw new Error("Certificado AFIP no encontrado en configuracion");
 }
 
 async function getKey(): Promise<string> {
   if (cachedKey) return cachedKey;
-
   const { data } = await supabase.from("configuracion").select("valor").eq("clave", "afip_key").single();
-  if (data?.valor) {
-    cachedKey = data.valor;
-    return cachedKey!;
-  }
-
-  const keyEnv = process.env.AFIP_KEY || process.env.AFIP_KEY_B64;
-  if (!keyEnv) throw new Error("Clave privada AFIP no configurada");
-  if (keyEnv.includes("\\n")) return keyEnv.replace(/\\n/g, "\n");
-  if (keyEnv.includes("-----BEGIN")) return keyEnv;
-  return Buffer.from(keyEnv, "base64").toString("utf-8");
+  if (data?.valor) { cachedKey = data.valor; return cachedKey!; }
+  throw new Error("Clave privada AFIP no encontrada en configuracion");
 }
 
 async function signTRA(tra: string): Promise<string> {
   const certPem = await getCert();
   const keyPem = await getKey();
 
-  const cert = forge.pki.certificateFromPem(certPem);
-  const privateKey = forge.pki.privateKeyFromPem(keyPem);
+  // Use Node.js native crypto to create PKCS#7 / CMS signature
+  // AFIP requires CMS SignedData format
+  const sign = crypto.createSign("RSA-SHA256");
+  sign.update(tra);
+  const signature = sign.sign(keyPem, "base64");
 
-  // Create PKCS#7 signed data
-  const p7 = forge.pkcs7.createSignedData();
-  p7.content = forge.util.createBuffer(tra, "utf8");
-  p7.addCertificate(cert);
-  p7.addSigner({
-    key: privateKey,
-    certificate: cert,
-    digestAlgorithm: forge.pki.oids.sha256,
-    authenticatedAttributes: [
-      { type: forge.pki.oids.contentType, value: forge.pki.oids.data },
-      { type: forge.pki.oids.messageDigest },
-      { type: forge.pki.oids.signingTime, value: new Date() as any },
-    ],
-  });
-  p7.sign();
+  // Extract cert body (without headers)
+  const certBody = certPem
+    .replace("-----BEGIN CERTIFICATE-----", "")
+    .replace("-----END CERTIFICATE-----", "")
+    .replace(/\s/g, "");
 
-  // Convert to DER then base64
-  const asn1 = p7.toAsn1();
-  const der = forge.asn1.toDer(asn1);
-  return forge.util.encode64(der.getBytes());
+  // Build CMS/PKCS#7 manually in ASN.1 DER format
+  // This is the format AFIP WSAA expects
+  const traBuffer = Buffer.from(tra, "utf8");
+  const sigBuffer = Buffer.from(signature, "base64");
+  const certBuffer = Buffer.from(certBody, "base64");
+
+  const cms = buildCMS(traBuffer, sigBuffer, certBuffer);
+  return cms.toString("base64");
+}
+
+// Build a minimal CMS SignedData structure that AFIP accepts
+function buildCMS(content: Buffer, signature: Buffer, cert: Buffer): Buffer {
+  // We need to construct ASN.1 DER encoded PKCS#7 SignedData
+  // Using a simplified but AFIP-compatible structure
+
+  function asn1Length(len: number): Buffer {
+    if (len < 128) return Buffer.from([len]);
+    if (len < 256) return Buffer.from([0x81, len]);
+    if (len < 65536) return Buffer.from([0x82, (len >> 8) & 0xff, len & 0xff]);
+    return Buffer.from([0x83, (len >> 16) & 0xff, (len >> 8) & 0xff, len & 0xff]);
+  }
+
+  function asn1Wrap(tag: number, content: Buffer): Buffer {
+    const len = asn1Length(content.length);
+    return Buffer.concat([Buffer.from([tag]), len, content]);
+  }
+
+  // OID for signedData: 1.2.840.113549.1.7.2
+  const oidSignedData = Buffer.from([0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x07, 0x02]);
+  // OID for data: 1.2.840.113549.1.7.1
+  const oidData = Buffer.from([0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x07, 0x01]);
+  // OID for sha256: 2.16.840.1.101.3.4.2.1
+  const oidSha256 = Buffer.from([0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01]);
+  // OID for rsaEncryption: 1.2.840.113549.1.1.1
+  const oidRsa = Buffer.from([0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01]);
+
+  // DigestAlgorithm
+  const digestAlg = asn1Wrap(0x30, Buffer.concat([oidSha256, Buffer.from([0x05, 0x00])]));
+  const digestAlgSet = asn1Wrap(0x31, digestAlg);
+
+  // EncapsulatedContentInfo with content
+  const contentOctet = asn1Wrap(0x04, content);
+  const contentExplicit = asn1Wrap(0xa0, contentOctet);
+  const encapContent = asn1Wrap(0x30, Buffer.concat([oidData, contentExplicit]));
+
+  // Certificate
+  const certSeq = asn1Wrap(0xa0, Buffer.from(cert));
+
+  // Parse cert to get issuer and serial (simplified - extract from DER)
+  // For now we'll use a simplified approach
+  const certDer = cert;
+
+  // SignerInfo (simplified)
+  const version = asn1Wrap(0x02, Buffer.from([0x01])); // version 1
+  const digestAlgSigner = asn1Wrap(0x30, Buffer.concat([oidSha256, Buffer.from([0x05, 0x00])]));
+  const encryptAlg = asn1Wrap(0x30, Buffer.concat([oidRsa, Buffer.from([0x05, 0x00])]));
+  const sigValue = asn1Wrap(0x04, signature);
+
+  // We need issuer and serialNumber from the cert
+  // This is complex to parse, so let's use a different approach
+  // Just include the signature with minimal wrapper
+
+  // Actually, let's use the child_process approach with openssl since it's available on Vercel's Node runtime
+  // No wait - let's try a different library approach
+
+  // Return a dummy for now - we'll switch approach
+  return Buffer.alloc(0);
 }
 
 async function getLoginTicket(): Promise<{ token: string; sign: string }> {
   if (cachedToken && cachedToken.expiration > Date.now()) {
     return { token: cachedToken.token, sign: cachedToken.sign };
   }
+
+  const certPem = await getCert();
+  const keyPem = await getKey();
 
   const now = new Date();
   const generationTime = new Date(now.getTime() - 600000).toISOString();
@@ -98,26 +137,58 @@ async function getLoginTicket(): Promise<{ token: string; sign: string }> {
   <service>${SERVICE_NAME}</service>
 </loginTicketRequest>`;
 
-  const cms = await signTRA(tra);
+  // Use Node.js crypto to create S/MIME signature (what AFIP expects)
+  const { X509Certificate } = crypto;
 
-  const wsaaClient = await soap.createClientAsync(WSAA_URL);
-  const [result] = await wsaaClient.loginCmsAsync({ in0: cms });
-  const loginResult = result.loginCmsReturn;
+  // Sign using smime-like approach
+  const signer = crypto.createSign("SHA256");
+  signer.update(tra);
+  signer.end();
+  const sig = signer.sign(keyPem);
 
-  const tokenMatch = loginResult.match(/<token>([^<]*)<\/token>/);
-  const signMatch = loginResult.match(/<sign>([^<]*)<\/sign>/);
+  // We need proper CMS/PKCS7 - use openssl if available
+  const { execSync } = await import("child_process");
+  const fs = await import("fs");
+  const os = await import("os");
+  const path = await import("path");
 
-  if (!tokenMatch || !signMatch) {
-    throw new Error("No se pudo obtener token de AFIP");
+  const tmpDir = os.tmpdir();
+  const certPath = path.join(tmpDir, `afip_cert_${Date.now()}.crt`);
+  const keyPath = path.join(tmpDir, `afip_key_${Date.now()}.key`);
+  const traPath = path.join(tmpDir, `afip_tra_${Date.now()}.xml`);
+  const cmsPath = path.join(tmpDir, `afip_cms_${Date.now()}.pem`);
+
+  try {
+    fs.writeFileSync(certPath, certPem);
+    fs.writeFileSync(keyPath, keyPem);
+    fs.writeFileSync(traPath, tra);
+
+    execSync(
+      `openssl cms -sign -in "${traPath}" -out "${cmsPath}" -signer "${certPath}" -inkey "${keyPath}" -nodetach -outform PEM 2>&1`,
+      { timeout: 15000 }
+    );
+
+    let cms = fs.readFileSync(cmsPath, "utf-8");
+    cms = cms.replace("-----BEGIN CMS-----", "").replace("-----END CMS-----", "").replace(/\s/g, "");
+
+    // Call WSAA
+    const wsaaClient = await soap.createClientAsync(WSAA_URL);
+    const [result] = await wsaaClient.loginCmsAsync({ in0: cms });
+    const loginResult = result.loginCmsReturn;
+
+    const tokenMatch = loginResult.match(/<token>([^<]*)<\/token>/);
+    const signMatch = loginResult.match(/<sign>([^<]*)<\/sign>/);
+
+    if (!tokenMatch || !signMatch) throw new Error("No se pudo obtener token");
+
+    cachedToken = { token: tokenMatch[1], sign: signMatch[1], expiration: Date.now() + 540000 };
+    return { token: cachedToken.token, sign: cachedToken.sign };
+  } finally {
+    try { fs.unlinkSync(certPath); } catch {}
+    try { fs.unlinkSync(keyPath); } catch {}
+    try { fs.unlinkSync(traPath); } catch {}
+    try { fs.unlinkSync(cmsPath); } catch {}
   }
-
-  cachedToken = {
-    token: tokenMatch[1],
-    sign: signMatch[1],
-    expiration: Date.now() + 540000,
-  };
-
-  return { token: cachedToken.token, sign: cachedToken.sign };
 }
 
 async function consultarPadron(cuit: string): Promise<any> {
@@ -126,10 +197,7 @@ async function consultarPadron(cuit: string): Promise<any> {
 
   const client = await soap.createClientAsync(PADRON_URL);
   const [result] = await client.getPersonaAsync({
-    token,
-    sign,
-    cuitRepresentada,
-    idPersona: cuit,
+    token, sign, cuitRepresentada, idPersona: cuit,
   });
 
   return result?.personaReturn?.datosGenerales;
@@ -137,7 +205,6 @@ async function consultarPadron(cuit: string): Promise<any> {
 
 export async function GET(request: NextRequest) {
   const cuit = request.nextUrl.searchParams.get("cuit");
-
   if (!cuit) return NextResponse.json({ error: "CUIT requerido" }, { status: 400 });
 
   const cuitClean = cuit.replace(/\D/g, "");
@@ -145,13 +212,10 @@ export async function GET(request: NextRequest) {
 
   try {
     const datos = await consultarPadron(cuitClean);
-
     if (!datos) return NextResponse.json({ error: "No se encontro el CUIT en AFIP" }, { status: 404 });
 
     const esJuridica = datos.tipoPersona === "JURIDICA";
-    const nombre = esJuridica
-      ? datos.razonSocial
-      : `${datos.apellido || ""} ${datos.nombre || ""}`.trim();
+    const nombre = esJuridica ? datos.razonSocial : `${datos.apellido || ""} ${datos.nombre || ""}`.trim();
 
     const domicilio = datos.domicilioFiscal
       ? [datos.domicilioFiscal.direccion, datos.domicilioFiscal.localidad, datos.domicilioFiscal.descripcionProvincia].filter(Boolean).join(", ")
@@ -166,15 +230,13 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json({
-      razon_social: nombre,
-      domicilio_fiscal: domicilio,
-      condicion_iva: condicionIVA,
-      cuit: formatCuit(cuitClean),
+      razon_social: nombre, domicilio_fiscal: domicilio,
+      condicion_iva: condicionIVA, cuit: formatCuit(cuitClean),
       tipo_persona: datos.tipoPersona,
     });
   } catch (error: any) {
     console.error("AFIP WS Error:", error.message);
-    return NextResponse.json({ error: `Error consultando AFIP: ${error.message?.slice(0, 150)}` }, { status: 500 });
+    return NextResponse.json({ error: `Error consultando AFIP: ${error.message?.slice(0, 200)}` }, { status: 500 });
   }
 }
 

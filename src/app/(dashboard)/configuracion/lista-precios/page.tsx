@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   useListaPrecios,
   useCreatePrecio,
@@ -12,13 +12,6 @@ import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -34,9 +27,8 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Pencil, Trash2, Loader2 } from "lucide-react";
+import { Plus, Trash2, Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
 
 const UNIDAD_OPTIONS = [
@@ -45,31 +37,32 @@ const UNIDAD_OPTIONS = [
   { value: "armado_desarme", label: "Armado/Desarme" },
 ];
 
-const FRACCION_LABELS: Record<number, string> = {
-  10: "10 días",
-  20: "20 días",
-  30: "30 días",
-};
+const FRACCIONES = [10, 20, 30] as const;
 
-type FormData = {
-  unidad_cotizacion: string;
+type GroupedProduct = {
   producto: string;
   descripcion: string;
-  fraccion_dias: number | null;
-  precio: number;
-  zona: string;
-  activo: boolean;
+  precios: { [fraccion: number]: { id: string; precio: number } | undefined };
 };
 
-const EMPTY_FORM: FormData = {
-  unidad_cotizacion: "hogareno",
-  producto: "",
-  descripcion: "",
-  fraccion_dias: null,
-  precio: 0,
-  zona: "",
-  activo: true,
-};
+function groupByProduct(items: PrecioItem[]): GroupedProduct[] {
+  const map = new Map<string, GroupedProduct>();
+  items.forEach((item) => {
+    if (!map.has(item.producto)) {
+      map.set(item.producto, {
+        producto: item.producto,
+        descripcion: item.descripcion || "",
+        precios: {},
+      });
+    }
+    const group = map.get(item.producto)!;
+    if (!group.descripcion && item.descripcion) group.descripcion = item.descripcion;
+    if (item.fraccion_dias) {
+      group.precios[item.fraccion_dias] = { id: item.id, precio: item.precio };
+    }
+  });
+  return Array.from(map.values()).sort((a, b) => a.descripcion.localeCompare(b.descripcion));
+}
 
 export default function ListaPreciosPage() {
   const [filterUnidad, setFilterUnidad] = useState("hogareno");
@@ -79,84 +72,92 @@ export default function ListaPreciosPage() {
   const deletePrecio = useDeletePrecio();
 
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [editId, setEditId] = useState<string | null>(null);
-  const [form, setForm] = useState<FormData>(EMPTY_FORM);
+  const [newProducto, setNewProducto] = useState("");
+  const [newDescripcion, setNewDescripcion] = useState("");
+  const [newPrecios, setNewPrecios] = useState<Record<number, number>>({ 10: 0, 20: 0, 30: 0 });
+  const [saving, setSaving] = useState(false);
 
-  function openNew() {
-    setEditId(null);
-    setForm({ ...EMPTY_FORM, unidad_cotizacion: filterUnidad });
-    setDrawerOpen(true);
-  }
+  // Editable prices state
+  const [editPrices, setEditPrices] = useState<Record<string, number>>({});
+  const [dirtyIds, setDirtyIds] = useState<Set<string>>(new Set());
 
-  function openEdit(item: PrecioItem) {
-    setEditId(item.id);
-    setForm({
-      unidad_cotizacion: item.unidad_cotizacion,
-      producto: item.producto,
-      descripcion: item.descripcion || "",
-      fraccion_dias: item.fraccion_dias,
-      precio: item.precio,
-      zona: item.zona || "",
-      activo: item.activo,
-    });
-    setDrawerOpen(true);
-  }
+  const grouped = precios ? groupByProduct(precios) : [];
 
-  async function handleSubmit() {
-    if (!form.producto || form.precio <= 0) {
-      toast.error("Completá producto y precio");
-      return;
+  // Initialize edit prices when data loads
+  useEffect(() => {
+    if (precios) {
+      const prices: Record<string, number> = {};
+      precios.forEach((p) => { prices[p.id] = p.precio; });
+      setEditPrices(prices);
+      setDirtyIds(new Set());
     }
+  }, [precios]);
 
+  function handlePriceChange(id: string, value: number) {
+    setEditPrices((prev) => ({ ...prev, [id]: value }));
+    setDirtyIds((prev) => new Set(prev).add(id));
+  }
+
+  async function saveAllChanges() {
+    if (dirtyIds.size === 0) return;
+    setSaving(true);
     try {
-      if (editId) {
-        await updatePrecio.mutateAsync({
-          id: editId,
-          data: {
-            producto: form.producto,
-            descripcion: form.descripcion || null,
-            fraccion_dias: form.fraccion_dias,
-            precio: form.precio,
-            zona: form.zona || null,
-            activo: form.activo,
-          },
-        });
-        toast.success("Precio actualizado");
-      } else {
-        await createPrecio.mutateAsync({
-          unidad_cotizacion: form.unidad_cotizacion,
-          producto: form.producto,
-          descripcion: form.descripcion || null,
-          fraccion_dias: form.fraccion_dias,
-          precio: form.precio,
-          zona: form.zona || null,
-          precio_flete: null,
-          activo: form.activo,
-        });
-        toast.success("Precio creado");
+      for (const id of dirtyIds) {
+        await updatePrecio.mutateAsync({ id, data: { precio: editPrices[id] } });
       }
-      setDrawerOpen(false);
+      setDirtyIds(new Set());
+      toast.success(`${dirtyIds.size} precio${dirtyIds.size > 1 ? "s" : ""} actualizado${dirtyIds.size > 1 ? "s" : ""}`);
     } catch {
       toast.error("Error al guardar");
+    } finally {
+      setSaving(false);
     }
   }
 
-  async function handleDelete(id: string) {
+  async function handleDeleteProduct(group: GroupedProduct) {
     try {
-      await deletePrecio.mutateAsync(id);
-      toast.success("Precio eliminado");
+      for (const fraccion of FRACCIONES) {
+        const entry = group.precios[fraccion];
+        if (entry) await deletePrecio.mutateAsync(entry.id);
+      }
+      toast.success("Producto eliminado de la lista");
     } catch {
       toast.error("Error al eliminar");
     }
   }
 
-  // Agrupar por producto
-  const grouped = new Map<string, PrecioItem[]>();
-  precios?.forEach((p) => {
-    const key = p.producto;
-    if (!grouped.has(key)) grouped.set(key, []);
-    grouped.get(key)!.push(p);
-  });
+  async function handleCreateProduct() {
+    if (!newProducto) {
+      toast.error("Completá el código de producto");
+      return;
+    }
+    setSaving(true);
+    try {
+      for (const fraccion of FRACCIONES) {
+        if (newPrecios[fraccion] > 0) {
+          await createPrecio.mutateAsync({
+            unidad_cotizacion: filterUnidad,
+            producto: newProducto,
+            descripcion: newDescripcion || null,
+            fraccion_dias: fraccion,
+            precio: newPrecios[fraccion],
+            zona: null,
+            precio_flete: null,
+            activo: true,
+          });
+        }
+      }
+      toast.success("Producto agregado a la lista");
+      setDrawerOpen(false);
+      setNewProducto("");
+      setNewDescripcion("");
+      setNewPrecios({ 10: 0, 20: 0, 30: 0 });
+    } catch {
+      toast.error("Error al crear");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   if (isLoading) {
     return (
@@ -173,9 +174,15 @@ export default function ListaPreciosPage() {
         title="Lista de precios"
         description="Precios por unidad de negocio y fracción de alquiler"
       >
-        <Button onClick={openNew}>
+        {dirtyIds.size > 0 && (
+          <Button variant="outline" onClick={saveAllChanges} disabled={saving}>
+            {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+            Guardar cambios ({dirtyIds.size})
+          </Button>
+        )}
+        <Button onClick={() => setDrawerOpen(true)}>
           <Plus className="mr-2 h-4 w-4" />
-          Agregar precio
+          Agregar producto
         </Button>
       </PageHeader>
 
@@ -195,83 +202,77 @@ export default function ListaPreciosPage() {
           ))}
         </div>
         <span className="text-sm text-muted-foreground ml-auto">
-          {precios?.length || 0} precios
+          {grouped.length} productos
         </span>
       </div>
 
-      {/* Tabla */}
+      {/* Tabla agrupada */}
       <Card>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Código producto</TableHead>
+                <TableHead className="w-[200px]">Producto</TableHead>
                 <TableHead>Descripción</TableHead>
-                <TableHead>Fracción</TableHead>
-                <TableHead className="text-right">Precio</TableHead>
-                <TableHead>Estado</TableHead>
-                <TableHead className="w-20" />
+                <TableHead className="text-center w-[120px]">10 días</TableHead>
+                <TableHead className="text-center w-[120px]">20 días</TableHead>
+                <TableHead className="text-center w-[120px]">30 días</TableHead>
+                <TableHead className="w-10" />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {precios && precios.length > 0 ? (
-                precios.map((item) => (
-                  <TableRow key={item.id}>
+              {grouped.length > 0 ? (
+                grouped.map((group) => (
+                  <TableRow key={group.producto}>
                     <TableCell className="font-mono text-xs">
-                      {item.producto}
+                      {group.producto}
                     </TableCell>
                     <TableCell className="text-sm">
-                      {item.descripcion || "—"}
+                      {group.descripcion || "—"}
                     </TableCell>
-                    <TableCell>
-                      {item.fraccion_dias ? (
-                        <Badge variant="outline" className="text-xs">
-                          {FRACCION_LABELS[item.fraccion_dias] ||
-                            `${item.fraccion_dias}d`}
-                        </Badge>
-                      ) : (
-                        "—"
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right font-semibold">
-                      $
-                      {Number(item.precio).toLocaleString("es-AR", {
-                        minimumFractionDigits: 0,
-                      })}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={item.activo ? "default" : "secondary"}
-                        className="text-xs"
+                    {FRACCIONES.map((fraccion) => {
+                      const entry = group.precios[fraccion];
+                      return (
+                        <TableCell key={fraccion} className="text-center p-1">
+                          {entry ? (
+                            <Input
+                              type="number"
+                              min={0}
+                              step="100"
+                              value={editPrices[entry.id] ?? entry.precio}
+                              onChange={(e) =>
+                                handlePriceChange(entry.id, Number(e.target.value))
+                              }
+                              className={`h-8 text-xs text-center w-24 mx-auto ${
+                                dirtyIds.has(entry.id)
+                                  ? "border-primary ring-1 ring-primary/30"
+                                  : ""
+                              }`}
+                            />
+                          ) : (
+                            <span className="text-muted-foreground text-xs">—</span>
+                          )}
+                        </TableCell>
+                      );
+                    })}
+                    <TableCell className="p-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                        onClick={() => handleDeleteProduct(group)}
                       >
-                        {item.activo ? "Activo" : "Inactivo"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          onClick={() => openEdit(item)}
-                        >
-                          <Pencil className="h-3 w-3" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-destructive"
-                          onClick={() => handleDelete(item.id)}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      </div>
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                  <TableCell
+                    colSpan={6}
+                    className="text-center py-8 text-muted-foreground"
+                  >
                     No hay precios para esta unidad
                   </TableCell>
                 </TableRow>
@@ -281,44 +282,18 @@ export default function ListaPreciosPage() {
         </CardContent>
       </Card>
 
-      {/* Drawer agregar/editar */}
+      {/* Drawer agregar producto */}
       <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
         <SheetContent className="overflow-y-auto sm:max-w-md">
           <SheetHeader>
-            <SheetTitle>
-              {editId ? "Editar precio" : "Nuevo precio"}
-            </SheetTitle>
+            <SheetTitle>Agregar producto a la lista</SheetTitle>
           </SheetHeader>
           <div className="mt-6 space-y-4">
             <div className="space-y-2">
-              <Label>Unidad de cotización</Label>
-              <Select
-                value={form.unidad_cotizacion}
-                onValueChange={(v) =>
-                  v && setForm({ ...form, unidad_cotizacion: v })
-                }
-                disabled={!!editId}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {UNIDAD_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
               <Label>Código producto *</Label>
               <Input
-                value={form.producto}
-                onChange={(e) =>
-                  setForm({ ...form, producto: e.target.value })
-                }
+                value={newProducto}
+                onChange={(e) => setNewProducto(e.target.value)}
                 placeholder="Ej: MOD-AND-STD-130x250x180"
               />
             </div>
@@ -326,71 +301,39 @@ export default function ListaPreciosPage() {
             <div className="space-y-2">
               <Label>Descripción</Label>
               <Input
-                value={form.descripcion}
-                onChange={(e) =>
-                  setForm({ ...form, descripcion: e.target.value })
-                }
+                value={newDescripcion}
+                onChange={(e) => setNewDescripcion(e.target.value)}
                 placeholder="Ej: Módulo de Andamio STD 1,30 X 2,50 X 1,80"
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Fracción (días)</Label>
-                <Select
-                  value={form.fraccion_dias?.toString() || ""}
-                  onValueChange={(v) =>
-                    v &&
-                    setForm({ ...form, fraccion_dias: parseInt(v) })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="10">10 días</SelectItem>
-                    <SelectItem value="20">20 días</SelectItem>
-                    <SelectItem value="30">30 días</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Precio ($) *</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={form.precio || ""}
-                  onChange={(e) =>
-                    setForm({ ...form, precio: Number(e.target.value) })
-                  }
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Zona (opcional)</Label>
-              <Input
-                value={form.zona}
-                onChange={(e) =>
-                  setForm({ ...form, zona: e.target.value })
-                }
-                placeholder="Ej: CABA, GBA Norte..."
-              />
+            <div className="space-y-3">
+              <Label>Precios por fracción</Label>
+              {FRACCIONES.map((f) => (
+                <div key={f} className="flex items-center gap-3">
+                  <span className="text-sm text-muted-foreground w-16">{f} días</span>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="100"
+                    value={newPrecios[f] || ""}
+                    onChange={(e) =>
+                      setNewPrecios((prev) => ({ ...prev, [f]: Number(e.target.value) }))
+                    }
+                    placeholder="$0"
+                    className="text-sm"
+                  />
+                </div>
+              ))}
+              <p className="text-xs text-muted-foreground">
+                Dejá en 0 las fracciones que no aplican.
+              </p>
             </div>
 
             <div className="flex justify-end pt-4">
-              <Button
-                onClick={handleSubmit}
-                disabled={
-                  createPrecio.isPending || updatePrecio.isPending
-                }
-              >
-                {(createPrecio.isPending || updatePrecio.isPending) && (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                )}
-                {editId ? "Guardar cambios" : "Crear precio"}
+              <Button onClick={handleCreateProduct} disabled={saving}>
+                {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Agregar producto
               </Button>
             </div>
           </div>

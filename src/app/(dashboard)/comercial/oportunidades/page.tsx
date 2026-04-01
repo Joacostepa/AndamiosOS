@@ -16,7 +16,21 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatRelativeDate } from "@/lib/utils/formatters";
-import { Plus, Loader2 } from "lucide-react";
+import { Plus, Loader2, ChevronsUpDown, Check } from "lucide-react";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandInput,
+  CommandList,
+  CommandEmpty,
+  CommandGroup,
+  CommandItem,
+} from "@/components/ui/command";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useForm } from "react-hook-form";
 import Link from "next/link";
@@ -51,6 +65,7 @@ export default function OportunidadesPage() {
   const { data: clientes } = useClientes();
   const createOportunidad = useCreateOportunidad();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [clienteComboOpen, setClienteComboOpen] = useState(false);
 
   const { register, handleSubmit, reset, setValue, watch } = useForm<Partial<Oportunidad>>({
     defaultValues: { tipo_cliente: "otro", perfil_decision: "busca_precio", situacion: "consulta_inicial", relacion: "nuevo", tamano: "mediano", poder_decision: "decide_solo", rango_presupuesto: "mediano", probabilidad: 50, origen: "directo" },
@@ -125,10 +140,49 @@ export default function OportunidadesPage() {
 
             <div className="space-y-2">
               <Label>Cliente existente</Label>
-              <Select value={watch("cliente_id") || ""} onValueChange={(val) => val && setValue("cliente_id", val)}>
-                <SelectTrigger><SelectValue placeholder="Seleccionar o dejar vacio para nuevo..." /></SelectTrigger>
-                <SelectContent>{clientes?.map((c) => <SelectItem key={c.id} value={c.id}>{c.razon_social}</SelectItem>)}</SelectContent>
-              </Select>
+              <Popover open={clienteComboOpen} onOpenChange={setClienteComboOpen}>
+                <PopoverTrigger
+                  render={
+                    <button
+                      type="button"
+                      className="flex w-full items-center justify-between rounded-md border border-input bg-background px-3 h-9 text-sm hover:bg-accent hover:text-accent-foreground"
+                    />
+                  }
+                >
+                  {watch("cliente_id") && clientes
+                    ? <span className="truncate">{clientes.find((c) => c.id === watch("cliente_id"))?.razon_social}</span>
+                    : <span className="text-muted-foreground">Buscar cliente...</span>
+                  }
+                  <ChevronsUpDown className="ml-2 h-3.5 w-3.5 shrink-0 opacity-50" />
+                </PopoverTrigger>
+                <PopoverContent className="w-[300px] p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Buscar por nombre..." />
+                    <CommandList>
+                      <CommandEmpty>No se encontraron clientes.</CommandEmpty>
+                      <CommandGroup>
+                        {clientes?.map((c) => (
+                          <CommandItem
+                            key={c.id}
+                            value={c.razon_social}
+                            onSelect={() => {
+                              setValue("cliente_id", c.id);
+                              setClienteComboOpen(false);
+                            }}
+                            className="gap-2"
+                          >
+                            <Check className={cn("h-3.5 w-3.5", watch("cliente_id") === c.id ? "opacity-100" : "opacity-0")} />
+                            <div className="flex flex-col">
+                              <span className="text-sm">{c.razon_social}</span>
+                              {c.telefono && <span className="text-xs text-muted-foreground">{c.telefono}</span>}
+                            </div>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             </div>
 
             <div className="grid grid-cols-2 gap-4">

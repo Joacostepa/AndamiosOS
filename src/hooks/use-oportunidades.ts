@@ -12,14 +12,14 @@ export type Oportunidad = {
   monto_estimado: number | null; probabilidad: number;
   fecha_cierre_estimada: string | null; competidores: string | null;
   motivo_perdida: string | null; origen: string; referido_por: string | null;
-  responsable_id: string | null; obra_id: string | null;
+  responsable_id: string | null; obra_id: string | null; unidad_negocio: string | null;
   created_at: string; updated_at: string;
   clientes?: { razon_social: string } | null;
 };
 
 export type Actividad = {
   id: string; oportunidad_id: string; tipo: string; titulo: string;
-  descripcion: string | null; fecha: string; created_at: string;
+  descripcion: string | null; fecha: string; fecha_seguimiento: string | null; created_at: string;
   user_profiles?: { nombre: string; apellido: string } | null;
 };
 

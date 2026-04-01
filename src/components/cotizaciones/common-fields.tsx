@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useFormContext } from "react-hook-form";
 import { useClientes, useCreateCliente } from "@/hooks/use-clientes";
 import { useOportunidades } from "@/hooks/use-oportunidades";
@@ -9,13 +9,27 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandInput,
+  CommandList,
+  CommandEmpty,
+  CommandGroup,
+  CommandItem,
+} from "@/components/ui/command";
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Loader2, X } from "lucide-react";
+import { Plus, Loader2, X, ChevronsUpDown, Check, Users } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import type { CotizacionFormData } from "@/types/cotizacion-form";
 
@@ -29,6 +43,10 @@ export function CommonFields() {
   const [showNewCliente, setShowNewCliente] = useState(false);
   const [newNombre, setNewNombre] = useState("");
   const [newTelefono, setNewTelefono] = useState("");
+  const [clienteOpen, setClienteOpen] = useState(false);
+
+  const selectedClienteId = watch("cliente_id");
+  const selectedCliente = clientes?.find((c) => c.id === selectedClienteId);
 
   async function handleCreateCliente() {
     if (!newNombre.trim()) {
@@ -124,21 +142,58 @@ export function CommonFields() {
               </Button>
             </div>
           ) : (
-            <Select
-              value={watch("cliente_id") || ""}
-              onValueChange={(val) => val && setValue("cliente_id", val)}
-            >
-              <SelectTrigger data-field="cliente_id">
-                <SelectValue placeholder="Seleccionar cliente..." />
-              </SelectTrigger>
-              <SelectContent>
-                {clientes?.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.razon_social}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Popover open={clienteOpen} onOpenChange={setClienteOpen}>
+              <PopoverTrigger
+                render={
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-between rounded-md border border-input bg-background px-3 h-9 text-sm hover:bg-accent hover:text-accent-foreground"
+                    data-field="cliente_id"
+                  />
+                }
+              >
+                {selectedCliente ? (
+                  <span className="truncate">{selectedCliente.razon_social}</span>
+                ) : (
+                  <span className="text-muted-foreground">Buscar cliente...</span>
+                )}
+                <ChevronsUpDown className="ml-2 h-3.5 w-3.5 shrink-0 opacity-50" />
+              </PopoverTrigger>
+              <PopoverContent className="w-[300px] p-0" align="start">
+                <Command>
+                  <CommandInput placeholder="Buscar por nombre..." />
+                  <CommandList>
+                    <CommandEmpty>No se encontraron clientes.</CommandEmpty>
+                    <CommandGroup>
+                      {clientes?.map((c) => (
+                        <CommandItem
+                          key={c.id}
+                          value={c.razon_social}
+                          onSelect={() => {
+                            setValue("cliente_id", c.id);
+                            setClienteOpen(false);
+                          }}
+                          className="gap-2"
+                        >
+                          <Check
+                            className={cn(
+                              "h-3.5 w-3.5",
+                              selectedClienteId === c.id ? "opacity-100" : "opacity-0"
+                            )}
+                          />
+                          <div className="flex flex-col">
+                            <span className="text-sm">{c.razon_social}</span>
+                            {c.telefono && (
+                              <span className="text-xs text-muted-foreground">{c.telefono}</span>
+                            )}
+                          </div>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
           )}
         </div>
 

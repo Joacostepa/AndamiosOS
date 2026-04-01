@@ -194,29 +194,30 @@ export async function POST(request: NextRequest) {
     // If we extracted cotización data, create it in the DB
     if (cotData && cotData.titulo && cotData.items) {
       try {
-        // Create client
+        // Find or create client (search first to avoid duplicates)
         let clienteId: string | null = null;
         if (cotData.cliente_nombre) {
-          const { data: newCliente, error: clienteError } = await supabase
+          // First try to find existing
+          const { data: existing } = await supabase
             .from("clientes")
-            .insert({
-              razon_social: cotData.cliente_nombre,
-              telefono: cotData.cliente_telefono || null,
-              estado: "activo",
-            })
             .select("id")
-            .single();
+            .ilike("razon_social", cotData.cliente_nombre.trim())
+            .limit(1)
+            .maybeSingle();
 
-          if (clienteError) {
-            // Try to find existing
-            const { data: existing } = await supabase
-              .from("clientes")
-              .select("id")
-              .ilike("razon_social", cotData.cliente_nombre)
-              .limit(1)
-              .maybeSingle();
-            clienteId = existing?.id || null;
+          if (existing) {
+            clienteId = existing.id;
           } else {
+            // Create new only if not found
+            const { data: newCliente } = await supabase
+              .from("clientes")
+              .insert({
+                razon_social: cotData.cliente_nombre.trim(),
+                telefono: cotData.cliente_telefono || null,
+                estado: "activo",
+              })
+              .select("id")
+              .single();
             clienteId = newCliente?.id || null;
           }
         }

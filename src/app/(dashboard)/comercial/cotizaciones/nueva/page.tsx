@@ -4,7 +4,7 @@ import { useState, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm, FormProvider } from "react-hook-form";
 import { useCreateCotizacion } from "@/hooks/use-cotizaciones";
-import { useCreateCliente } from "@/hooks/use-clientes";
+import { useClientes, useCreateCliente } from "@/hooks/use-clientes";
 import { useConfiguracion } from "@/hooks/use-configuracion";
 import { useOportunidades } from "@/hooks/use-oportunidades";
 import { UnitSelector } from "@/components/cotizaciones/unit-selector";
@@ -49,6 +49,7 @@ function NuevaCotizacionContent() {
   const searchParams = useSearchParams();
   const isMobile = useIsMobile();
   const createCotizacion = useCreateCotizacion();
+  const { data: clientesList } = useClientes();
   const createCliente = useCreateCliente();
   const { data: configs } = useConfiguracion();
   const { data: oportunidades } = useOportunidades();
@@ -118,6 +119,14 @@ function NuevaCotizacionContent() {
   const handleCreateCliente = useCallback(
     async (nombre: string, telefono: string) => {
       if (!nombre.trim()) return;
+      // Search existing first to avoid duplicates
+      const existing = clientesList?.find(
+        (c) => c.razon_social.toLowerCase() === nombre.trim().toLowerCase()
+      );
+      if (existing) {
+        form.setValue("cliente_id", existing.id);
+        return;
+      }
       try {
         const cliente = await createCliente.mutateAsync({
           razon_social: nombre.trim(),
@@ -129,7 +138,7 @@ function NuevaCotizacionContent() {
         // silently fail — client can be created manually
       }
     },
-    [createCliente, form]
+    [createCliente, form, clientesList]
   );
 
   const onSubmit = useCallback(

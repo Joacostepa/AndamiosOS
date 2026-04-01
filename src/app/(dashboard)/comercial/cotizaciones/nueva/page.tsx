@@ -84,12 +84,41 @@ function NuevaCotizacionContent() {
       // Pre-fill from oportunidad if present
       const opId = searchParams.get("oportunidad");
       if (opId && oportunidades) {
-        const op = oportunidades.find((o) => o.id === opId);
+        const op = oportunidades.find((o) => o.id === opId) as any;
         if (op) {
           form.setValue("oportunidad_id", opId);
           if (op.cliente_id) form.setValue("cliente_id", op.cliente_id);
-          if (op.titulo)
-            form.setValue("titulo", `Cotización - ${op.titulo}`);
+          if (op.titulo) form.setValue("titulo", `Cotización - ${op.titulo}`);
+          if (op.zona) form.setValue("ubicacion", op.zona);
+
+          // Map datos comerciales from oportunidad to cotización metadata
+          const metadata: Record<string, unknown> = {};
+          if (op.perfil_decision) metadata.tipo_cliente_perfil = op.perfil_decision;
+          if (op.situacion) {
+            const situacionMap: Record<string, string> = {
+              consulta_inicial: "cotizando",
+              en_licitacion: "licitacion",
+              obra_ganada: "listo_contratar",
+              proyecto_en_desarrollo: "contratado",
+              urgencia: "listo_contratar",
+              mantenimiento: "contratado",
+            };
+            metadata.etapa_cliente = situacionMap[op.situacion] || "cotizando";
+          }
+          if (op.poder_decision) {
+            const poderMap: Record<string, string> = {
+              decide_solo: "decide",
+              influye: "influye",
+              traslada: "traslada",
+            };
+            metadata.rol_contacto = poderMap[op.poder_decision] || op.poder_decision;
+          }
+          if (op.fecha_cierre_estimada) metadata.fecha_proyectada = op.fecha_cierre_estimada;
+          if (op.competidores) metadata.hay_competencia = true;
+
+          if (Object.keys(metadata).length > 0) {
+            form.setValue("metadata", { ...form.getValues("metadata"), ...metadata });
+          }
         }
       }
     },

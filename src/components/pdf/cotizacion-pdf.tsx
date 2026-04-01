@@ -54,6 +54,10 @@ export type EmpresaData = {
   logo_url?: string;
 };
 
+function fmtNum(n: number | string): string {
+  return Number(n).toLocaleString("de-DE");
+}
+
 interface Props {
   cotizacion: Cotizacion;
   items: CotizacionItem[];
@@ -109,8 +113,14 @@ export function CotizacionPDF({ cotizacion, items, clienteNombre, empresa }: Pro
           {cotizacion.descripcion_servicio && (
             <Text style={{ lineHeight: 1.5 }}>{cotizacion.descripcion_servicio}</Text>
           )}
-          {cotizacion.plazo_alquiler_meses && (
+          {cotizacion.fraccion_dias && (
             <View style={[styles.row, { marginTop: 8 }]}>
+              <Text style={styles.label}>Fracción de alquiler:</Text>
+              <Text>{cotizacion.fraccion_dias} días</Text>
+            </View>
+          )}
+          {cotizacion.plazo_alquiler_meses && (
+            <View style={[styles.row, { marginTop: 4 }]}>
               <Text style={styles.label}>Plazo de alquiler:</Text>
               <Text>{cotizacion.plazo_alquiler_meses} meses</Text>
             </View>
@@ -135,8 +145,8 @@ export function CotizacionPDF({ cotizacion, items, clienteNombre, empresa }: Pro
                 <Text style={styles.colConcepto}>{item.concepto}</Text>
                 <Text style={styles.colCant}>{item.cantidad}</Text>
                 <Text style={styles.colUnit}>{item.unidad}</Text>
-                <Text style={styles.colPrecio}>${Number(item.precio_unitario).toLocaleString()}</Text>
-                <Text style={styles.colSubtotal}>${Number(item.subtotal).toLocaleString()}</Text>
+                <Text style={styles.colPrecio}>${fmtNum(item.precio_unitario)}</Text>
+                <Text style={styles.colSubtotal}>${fmtNum(item.subtotal)}</Text>
               </View>
             ))}
           </View>
@@ -145,15 +155,15 @@ export function CotizacionPDF({ cotizacion, items, clienteNombre, empresa }: Pro
           <View style={styles.totals}>
             <View style={styles.totalRow}>
               <Text style={styles.totalLabel}>Subtotal:</Text>
-              <Text style={styles.totalValue}>${Number(cotizacion.subtotal).toLocaleString()}</Text>
+              <Text style={styles.totalValue}>${fmtNum(cotizacion.subtotal)}</Text>
             </View>
             <View style={styles.totalRow}>
               <Text style={styles.totalLabel}>IVA ({cotizacion.iva_porcentaje}%):</Text>
-              <Text style={styles.totalValue}>${Number(cotizacion.iva_monto).toLocaleString()}</Text>
+              <Text style={styles.totalValue}>${fmtNum(cotizacion.iva_monto)}</Text>
             </View>
             <View style={[styles.totalRow, { marginTop: 4, borderTop: "1 solid #ddd", paddingTop: 4 }]}>
               <Text style={styles.grandTotal}>TOTAL:</Text>
-              <Text style={styles.grandTotal}>${Number(cotizacion.total).toLocaleString()}</Text>
+              <Text style={styles.grandTotal}>${fmtNum(cotizacion.total)}</Text>
             </View>
           </View>
         </View>

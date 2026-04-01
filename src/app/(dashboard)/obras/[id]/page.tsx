@@ -3,7 +3,9 @@
 import { use, useState } from "react";
 import { useObra, useUpdateObra } from "@/hooks/use-obras";
 import { useComunicaciones, useCreateComunicacion } from "@/hooks/use-comunicaciones";
-import { useOrdenesTrabajoByObra, useCreateOrdenTrabajo, useUpdateOrdenTrabajo, useGatesObra, useUpdateGate, usePeriodosAlquiler } from "@/hooks/use-ordenes-trabajo";
+import { useOrdenesTrabajoByObra, useCreateOrdenTrabajo, useUpdateOrdenTrabajo, useGatesObra, useUpdateGate, usePeriodosAlquiler, useCreatePeriodo } from "@/hooks/use-ordenes-trabajo";
+import { useRemitosByObra } from "@/hooks/use-remitos";
+import { useMovimientosByObra } from "@/hooks/use-stock";
 import { usePersonal } from "@/hooks/use-personal";
 import { useVehiculos } from "@/hooks/use-vehiculos";
 import { PageHeader } from "@/components/shared/page-header";
@@ -22,7 +24,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDate, formatRelativeDate } from "@/lib/utils/formatters";
 import { ESTADO_OBRA_TRANSITIONS, ESTADO_OBRA_LABELS } from "@/lib/validators/obra";
-import { ArrowRight, ChevronDown, Send, Loader2, MessageSquare, Plus, CheckCircle, XCircle, Clock, Shield } from "lucide-react";
+import { ArrowRight, ChevronDown, Send, Loader2, MessageSquare, Plus, CheckCircle, XCircle, Clock, Shield, FileText, Package } from "lucide-react";
+import Link from "next/link";
 import { toast } from "sonner";
 import { useForm } from "react-hook-form";
 
@@ -56,12 +59,17 @@ export default function ObraDetailPage({ params }: { params: Promise<{ id: strin
   const { data: gates } = useGatesObra(id);
   const updateGate = useUpdateGate();
   const { data: periodos } = usePeriodosAlquiler(id);
+  const createPeriodo = useCreatePeriodo();
+  const { data: remitos } = useRemitosByObra(id);
+  const { data: movimientos } = useMovimientosByObra(id);
   const { data: personal } = usePersonal();
   const { data: vehiculos } = useVehiculos();
 
   const [nuevoAsunto, setNuevoAsunto] = useState("");
   const [nuevoContenido, setNuevoContenido] = useState("");
   const [otDrawer, setOtDrawer] = useState(false);
+  const [periodoDrawer, setPeriodoDrawer] = useState(false);
+  const [periodoForm, setPeriodoForm] = useState({ fecha_inicio: "", fecha_fin: "", monto: 0 });
 
   const otForm = useForm<{ tipo: string; descripcion?: string; fecha_programada?: string; vehiculo_id?: string; horas_estimadas?: number; observaciones?: string }>({ defaultValues: { tipo: "montaje" } });
 
@@ -75,7 +83,7 @@ export default function ObraDetailPage({ params }: { params: Promise<{ id: strin
     <div className="space-y-6">
       <PageHeader title={obra.nombre}>
         <span className="font-mono text-sm text-muted-foreground">{obra.codigo}</span>
-        {(obra as any).unidad_negocio && <Badge variant="outline" className="capitalize">{(obra as any).unidad_negocio?.replace(/_/g, " ")}</Badge>}
+        {obra.unidad_negocio && <Badge variant="outline" className="capitalize">{obra.unidad_negocio?.replace(/_/g, " ")}</Badge>}
         <StatusBadge status={obra.estado} />
         {transitions.length > 0 && (
           <DropdownMenu>
@@ -136,7 +144,7 @@ export default function ObraDetailPage({ params }: { params: Promise<{ id: strin
                 <InfoRow label="Localidad" value={obra.localidad ? `${obra.localidad}, ${obra.provincia}` : obra.provincia} />
                 <InfoRow label="Tipo de obra" value={obra.tipo_obra} capitalize />
                 <InfoRow label="Tipo de andamio" value={obra.tipo_andamio} capitalize />
-                {(obra as any).unidad_negocio && <InfoRow label="Unidad de negocio" value={(obra as any).unidad_negocio?.replace(/_/g, " ")} capitalize />}
+                {obra.unidad_negocio && <InfoRow label="Unidad de negocio" value={obra.unidad_negocio?.replace(/_/g, " ")} capitalize />}
               </CardContent>
             </Card>
             <Card>
@@ -146,9 +154,9 @@ export default function ObraDetailPage({ params }: { params: Promise<{ id: strin
                 <InfoRow label="Inicio estimado" value={formatDate(obra.fecha_inicio_estimada)} />
                 <InfoRow label="Inicio real" value={formatDate(obra.fecha_inicio_real)} />
                 <InfoRow label="Fin estimado" value={formatDate(obra.fecha_fin_estimada)} />
-                {(obra as any).fecha_vigencia_inicio && <InfoRow label="Vigencia desde" value={formatDate((obra as any).fecha_vigencia_inicio)} />}
-                {(obra as any).fecha_vigencia_fin && <InfoRow label="Vigencia hasta" value={formatDate((obra as any).fecha_vigencia_fin)} />}
-                {(obra as any).estado_pago && <InfoRow label="Estado pago" value={(obra as any).estado_pago?.replace(/_/g, " ")} capitalize />}
+                {obra.fecha_vigencia_inicio && <InfoRow label="Vigencia desde" value={formatDate(obra.fecha_vigencia_inicio)} />}
+                {obra.fecha_vigencia_fin && <InfoRow label="Vigencia hasta" value={formatDate(obra.fecha_vigencia_fin)} />}
+                {obra.estado_pago && <InfoRow label="Estado pago" value={obra.estado_pago?.replace(/_/g, " ")} capitalize />}
               </CardContent>
             </Card>
             {obra.condiciones_acceso && (
@@ -206,19 +214,79 @@ export default function ObraDetailPage({ params }: { params: Promise<{ id: strin
         </TabsContent>
 
         {/* TAB: Materiales */}
-        <TabsContent value="materiales" className="mt-4"><Card><CardContent className="py-8 text-center text-muted-foreground">El stock en obra se muestra aca.</CardContent></Card></TabsContent>
+        <TabsContent value="materiales" className="mt-4 space-y-4">
+          {movimientos && movimientos.length > 0 ? (() => {
+            // Calculate stock summary by piece
+            const stockMap = new Map<string, { codigo: string; descripcion: string; enviado: number; devuelto: number }>();
+            movimientos.forEach((m: any) => {
+              const pieza = m.catalogo_piezas;
+              if (!pieza) return;
+              if (!stockMap.has(pieza.codigo)) stockMap.set(pieza.codigo, { codigo: pieza.codigo, descripcion: pieza.descripcion, enviado: 0, devuelto: 0 });
+              const entry = stockMap.get(pieza.codigo)!;
+              if (m.tipo === "salida" && m.obra_destino_id === id) entry.enviado += Number(m.cantidad);
+              if (m.tipo === "entrada" && m.obra_origen_id === id) entry.devuelto += Number(m.cantidad);
+            });
+            const stockList = Array.from(stockMap.values()).filter((s) => s.enviado > 0 || s.devuelto > 0);
+            return (
+              <Table>
+                <TableHeader><TableRow><TableHead>Código</TableHead><TableHead>Pieza</TableHead><TableHead className="text-right">Enviado</TableHead><TableHead className="text-right">Devuelto</TableHead><TableHead className="text-right">En obra</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {stockList.map((s) => (
+                    <TableRow key={s.codigo}>
+                      <TableCell className="font-mono text-xs">{s.codigo}</TableCell>
+                      <TableCell>{s.descripcion}</TableCell>
+                      <TableCell className="text-right">{s.enviado}</TableCell>
+                      <TableCell className="text-right">{s.devuelto}</TableCell>
+                      <TableCell className="text-right font-semibold">{s.enviado - s.devuelto}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            );
+          })() : (
+            <Card><CardContent className="py-8 text-center text-muted-foreground"><Package className="h-8 w-8 mx-auto mb-2 opacity-50" />Sin movimientos de material para esta obra</CardContent></Card>
+          )}
+        </TabsContent>
 
         {/* TAB: Remitos */}
-        <TabsContent value="remitos" className="mt-4"><Card><CardContent className="py-8 text-center text-muted-foreground">Los remitos asociados se muestran aca.</CardContent></Card></TabsContent>
+        <TabsContent value="remitos" className="mt-4 space-y-4">
+          <div className="flex justify-end">
+            <Button variant="outline" render={<Link href={`/logistica/remitos/nuevo?obra=${id}`} />}><Plus className="mr-2 h-4 w-4" />Nuevo remito</Button>
+          </div>
+          {remitos && remitos.length > 0 ? (
+            <Table>
+              <TableHeader><TableRow><TableHead>Número</TableHead><TableHead>Tipo</TableHead><TableHead>Fecha</TableHead><TableHead>Estado</TableHead><TableHead /></TableRow></TableHeader>
+              <TableBody>
+                {remitos.map((r) => (
+                  <TableRow key={r.id}>
+                    <TableCell className="font-mono text-sm">{r.numero}</TableCell>
+                    <TableCell className="capitalize">{r.tipo}</TableCell>
+                    <TableCell>{formatDate(r.fecha_emision)}</TableCell>
+                    <TableCell><StatusBadge status={r.estado} /></TableCell>
+                    <TableCell><Button variant="ghost" size="sm" render={<Link href={`/logistica/remitos/${r.id}`} />}><FileText className="h-3 w-3" /></Button></TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          ) : (
+            <Card><CardContent className="py-8 text-center text-muted-foreground"><FileText className="h-8 w-8 mx-auto mb-2 opacity-50" />Sin remitos para esta obra</CardContent></Card>
+          )}
+        </TabsContent>
 
         {/* TAB: Facturacion */}
         <TabsContent value="facturacion" className="mt-4 space-y-4">
-          {(obra as any).monto_alquiler_mensual && (
-            <div className="rounded-lg border bg-card p-4">
-              <p className="text-sm text-muted-foreground">Alquiler mensual</p>
-              <p className="text-2xl font-bold text-primary">${Number((obra as any).monto_alquiler_mensual).toLocaleString()}</p>
-            </div>
-          )}
+          <div className="flex items-center justify-between">
+            {obra.monto_alquiler_mensual ? (
+              <div className="rounded-lg border bg-card px-4 py-2">
+                <p className="text-xs text-muted-foreground">Alquiler mensual</p>
+                <p className="text-lg font-bold text-primary">${Number(obra.monto_alquiler_mensual).toLocaleString()}</p>
+              </div>
+            ) : <div />}
+            <Button variant="outline" onClick={() => {
+              setPeriodoForm({ fecha_inicio: "", fecha_fin: "", monto: Number(obra.monto_alquiler_mensual) || 0 });
+              setPeriodoDrawer(true);
+            }}><Plus className="mr-2 h-4 w-4" />Nuevo período</Button>
+          </div>
           {periodos && periodos.length > 0 ? (
             <Table>
               <TableHeader><TableRow><TableHead>Periodo</TableHead><TableHead>Desde</TableHead><TableHead>Hasta</TableHead><TableHead>Monto</TableHead><TableHead>Estado</TableHead><TableHead>Factura</TableHead></TableRow></TableHeader>
@@ -270,6 +338,30 @@ export default function ObraDetailPage({ params }: { params: Promise<{ id: strin
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Drawer nuevo período */}
+      <Sheet open={periodoDrawer} onOpenChange={setPeriodoDrawer}>
+        <SheetContent>
+          <SheetHeader><SheetTitle>Nuevo período de alquiler</SheetTitle></SheetHeader>
+          <div className="mt-6 space-y-4">
+            <div className="space-y-2"><Label>Fecha desde *</Label><Input type="date" value={periodoForm.fecha_inicio} onChange={(e) => setPeriodoForm({ ...periodoForm, fecha_inicio: e.target.value })} /></div>
+            <div className="space-y-2"><Label>Fecha hasta *</Label><Input type="date" value={periodoForm.fecha_fin} onChange={(e) => setPeriodoForm({ ...periodoForm, fecha_fin: e.target.value })} /></div>
+            <div className="space-y-2"><Label>Monto ($)</Label><Input type="number" value={periodoForm.monto || ""} onChange={(e) => setPeriodoForm({ ...periodoForm, monto: Number(e.target.value) })} /></div>
+            <div className="flex justify-end pt-4">
+              <Button disabled={!periodoForm.fecha_inicio || !periodoForm.fecha_fin || createPeriodo.isPending}
+                onClick={() => createPeriodo.mutate({
+                  obra_id: id,
+                  numero_periodo: (periodos?.length || 0) + 1,
+                  fecha_inicio: periodoForm.fecha_inicio,
+                  fecha_fin: periodoForm.fecha_fin,
+                  monto: periodoForm.monto,
+                }, { onSuccess: () => { toast.success("Período creado"); setPeriodoDrawer(false); }, onError: () => toast.error("Error") })}>
+                {createPeriodo.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Crear período
+              </Button>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {/* Drawer nueva OT */}
       <Sheet open={otDrawer} onOpenChange={setOtDrawer}>

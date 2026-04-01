@@ -8,6 +8,7 @@ export const obraSchema = z.object({
   provincia: z.string().optional(),
   tipo_obra: z.enum(["construccion", "fachada", "industria", "evento", "especial"]),
   tipo_andamio: z.enum(["multidireccional", "tubular", "colgante", "otro"]),
+  unidad_negocio: z.string().optional(),
   fecha_inicio_estimada: z.string().optional(),
   fecha_fin_estimada: z.string().optional(),
   observaciones: z.string().optional(),

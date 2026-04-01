@@ -78,6 +78,23 @@ export function useMovimientos() {
   });
 }
 
+export function useMovimientosByObra(obraId: string) {
+  const supabase = createClient();
+  return useQuery({
+    queryKey: ["movimientos", "obra", obraId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("movimientos")
+        .select("*, catalogo_piezas(codigo, descripcion)")
+        .or(`obra_origen_id.eq.${obraId},obra_destino_id.eq.${obraId}`)
+        .order("fecha", { ascending: false });
+      if (error) throw error;
+      return data as Movimiento[];
+    },
+    enabled: !!obraId,
+  });
+}
+
 export type MovimientoFormData = {
   tipo: string;
   pieza_id: string;

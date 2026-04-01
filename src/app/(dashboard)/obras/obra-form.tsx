@@ -100,7 +100,7 @@ export function ObraForm({ onSubmit, loading }: ObraFormProps) {
 
       <div className="space-y-2">
         <Label>Unidad de negocio</Label>
-        <Select value={(watch as any)("unidad_negocio") || ""} onValueChange={(val) => val && (setValue as any)("unidad_negocio", val)}>
+        <Select value={watch("unidad_negocio") || ""} onValueChange={(val) => val && setValue("unidad_negocio", val)}>
           <SelectTrigger><SelectValue placeholder="Seleccionar unidad..." /></SelectTrigger>
           <SelectContent>
             <SelectItem value="fachadas">Fachadas</SelectItem>

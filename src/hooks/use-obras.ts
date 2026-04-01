@@ -24,6 +24,12 @@ export type Obra = {
   observaciones: string | null;
   condiciones_acceso: string | null;
   horario_permitido: string | null;
+  unidad_negocio: string | null;
+  fecha_vigencia_inicio: string | null;
+  fecha_vigencia_fin: string | null;
+  estado_pago: string | null;
+  monto_alquiler_mensual: number | null;
+  cotizacion_id: string | null;
   created_at: string;
   updated_at: string;
   // Joined

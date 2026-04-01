@@ -48,6 +48,23 @@ export function useRemitos() {
   });
 }
 
+export function useRemitosByObra(obraId: string) {
+  const supabase = createClient();
+  return useQuery({
+    queryKey: ["remitos", "obra", obraId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("remitos")
+        .select("*, personal:personal!remitos_chofer_id_fkey(nombre, apellido)")
+        .eq("obra_id", obraId)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data as Remito[];
+    },
+    enabled: !!obraId,
+  });
+}
+
 export function useRemito(id: string) {
   const supabase = createClient();
 

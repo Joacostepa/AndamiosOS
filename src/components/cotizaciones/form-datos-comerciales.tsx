@@ -1,7 +1,8 @@
 "use client";
 
 import { useFormContext } from "react-hook-form";
-import { usePersonal } from "@/hooks/use-personal";
+import { useQuery } from "@tanstack/react-query";
+import { createClient } from "@/lib/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -14,12 +15,27 @@ import {
 } from "@/components/ui/select";
 import type { CotizacionFormData } from "@/types/cotizacion-form";
 
+function useUserProfiles() {
+  const supabase = createClient();
+  return useQuery({
+    queryKey: ["user_profiles_all"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("user_profiles")
+        .select("id, nombre, apellido, rol")
+        .eq("activo", true)
+        .order("nombre");
+      if (error) throw error;
+      return data as { id: string; nombre: string; apellido: string; rol: string }[];
+    },
+  });
+}
+
 export function FormDatosComerciales() {
   const { watch, setValue } = useFormContext<CotizacionFormData>();
-  const { data: personal } = usePersonal();
+  const { data: usuarios } = useUserProfiles();
 
-  // Vendedores (todo el personal por ahora, se podría filtrar por rol)
-  const vendedores = personal || [];
+  const vendedores = usuarios || [];
 
   return (
     <div className="space-y-4">
@@ -38,9 +54,9 @@ export function FormDatosComerciales() {
             <SelectValue placeholder="Asignar responsable..." />
           </SelectTrigger>
           <SelectContent>
-            {vendedores.map((p: any) => (
-              <SelectItem key={p.id} value={p.id}>
-                {p.nombre} {p.apellido}
+            {vendedores.map((u) => (
+              <SelectItem key={u.id} value={u.id}>
+                {u.nombre} {u.apellido}
               </SelectItem>
             ))}
           </SelectContent>

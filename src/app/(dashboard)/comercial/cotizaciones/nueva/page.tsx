@@ -189,7 +189,7 @@ function NuevaCotizacionContent() {
           incluye_montaje: data.incluye_montaje,
           incluye_desarme: data.incluye_desarme,
           incluye_transporte: data.incluye_transporte,
-          responsable_id: data.responsable_id,
+          responsable_id: data.responsable_id || undefined,
           metadata: data.metadata,
           items,
         });

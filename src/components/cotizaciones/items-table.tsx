@@ -159,7 +159,7 @@ export function ItemsTable({ unidad }: { unidad: UnidadCotizacion }) {
         <div className="w-72 space-y-1 text-sm">
           <div className="flex justify-between">
             <span className="text-muted-foreground">Subtotal items</span>
-            <span>${subtotal.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</span>
+            <span>${subtotal.toLocaleString("de-DE")}</span>
           </div>
           {subtotalBajoMinimo && (
             <>
@@ -168,22 +168,22 @@ export function ItemsTable({ unidad }: { unidad: UnidadCotizacion }) {
                   <AlertTriangle className="h-3 w-3" />
                   Ajuste mínimo operativo
                 </span>
-                <span>+${ajusteMinimo.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</span>
+                <span>+${ajusteMinimo.toLocaleString("de-DE")}</span>
               </div>
               <div className="flex justify-between font-medium">
                 <span className="text-muted-foreground">Subtotal ajustado</span>
-                <span>${subtotalFinal.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</span>
+                <span>${subtotalFinal.toLocaleString("de-DE")}</span>
               </div>
             </>
           )}
           <div className="flex justify-between">
             <span className="text-muted-foreground">IVA (21%)</span>
-            <span>${ivaFinal.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</span>
+            <span>${ivaFinal.toLocaleString("de-DE")}</span>
           </div>
           <div className="flex justify-between font-bold text-base border-t pt-1">
             <span>Total</span>
             <span className="text-primary">
-              ${totalFinal.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+              ${totalFinal.toLocaleString("de-DE")}
             </span>
           </div>
           {subtotalBajoMinimo && (

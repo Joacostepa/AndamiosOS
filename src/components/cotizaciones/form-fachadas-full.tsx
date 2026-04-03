@@ -78,44 +78,45 @@ export function FormFachadasFull() {
 
     const items: CotizacionItemFormData[] = [];
 
-    // Desglose: del valor por m²/ml, 35% es alquiler, 32.5% montaje, 32.5% desarme
+    // Cálculo: total = cantidad × precio_unitario × multiplicador
+    // Desglose: 35% canon locativo (por 30 días), 32.5% montaje, 32.5% desarme
     if (tipo === "andamio_completo" && m2 > 0) {
-      const precioTotal = Math.round(precioM2 * multiplicadorTotal);
-      const valorAlquiler = Math.round(precioTotal * 0.35);
-      const valorMontaje = Math.round(precioTotal * 0.325);
-      const valorDesarme = Math.round(precioTotal * 0.325);
+      const valorTotal = Math.round(m2 * precioM2 * multiplicadorTotal);
+      const canonLocativo = Math.round(valorTotal * 0.35);
+      const montaje = Math.round(valorTotal * 0.325);
+      const desarme = Math.round(valorTotal * 0.325);
 
       items.push({
         tipo: "alquiler_mensual",
-        concepto: `Canon locativo - ${m2} m² x ${plazo} día${plazo > 1 ? "s" : ""}`,
-        cantidad: plazo,
-        unidad: "día",
-        precio_unitario: m2 * valorAlquiler,
+        concepto: `Canon locativo - ${m2} m² (${plazo} días)`,
+        cantidad: 1,
+        unidad: "servicio",
+        precio_unitario: canonLocativo,
       });
       if (watch("incluye_montaje")) {
-        items.push({ tipo: "montaje", concepto: `Mano de obra montaje - ${m2} m²`, cantidad: 1, unidad: "servicio", precio_unitario: m2 * valorMontaje });
+        items.push({ tipo: "montaje", concepto: `Mano de obra montaje - ${m2} m²`, cantidad: 1, unidad: "servicio", precio_unitario: montaje });
       }
       if (watch("incluye_desarme")) {
-        items.push({ tipo: "desarme", concepto: `Mano de obra desarme - ${m2} m²`, cantidad: 1, unidad: "servicio", precio_unitario: m2 * valorDesarme });
+        items.push({ tipo: "desarme", concepto: `Mano de obra desarme - ${m2} m²`, cantidad: 1, unidad: "servicio", precio_unitario: desarme });
       }
     } else if (tipo === "bandeja_peatonal" && ml > 0) {
-      const precioTotal = Math.round(precioMl * multiplicadorTotal);
-      const valorAlquiler = Math.round(precioTotal * 0.35);
-      const valorMontaje = Math.round(precioTotal * 0.325);
-      const valorDesarme = Math.round(precioTotal * 0.325);
+      const valorTotal = Math.round(ml * precioMl * multiplicadorTotal);
+      const canonLocativo = Math.round(valorTotal * 0.35);
+      const montaje = Math.round(valorTotal * 0.325);
+      const desarme = Math.round(valorTotal * 0.325);
 
       items.push({
         tipo: "alquiler_mensual",
-        concepto: `Canon locativo bandeja peatonal - ${ml} ml x ${plazo} día${plazo > 1 ? "s" : ""}`,
-        cantidad: plazo,
-        unidad: "día",
-        precio_unitario: ml * valorAlquiler,
+        concepto: `Canon locativo bandeja peatonal - ${ml} ml (${plazo} días)`,
+        cantidad: 1,
+        unidad: "servicio",
+        precio_unitario: canonLocativo,
       });
       if (watch("incluye_montaje")) {
-        items.push({ tipo: "montaje", concepto: `Mano de obra montaje - ${ml} ml`, cantidad: 1, unidad: "servicio", precio_unitario: ml * valorMontaje });
+        items.push({ tipo: "montaje", concepto: `Mano de obra montaje - ${ml} ml`, cantidad: 1, unidad: "servicio", precio_unitario: montaje });
       }
       if (watch("incluye_desarme")) {
-        items.push({ tipo: "desarme", concepto: `Mano de obra desarme - ${ml} ml`, cantidad: 1, unidad: "servicio", precio_unitario: ml * valorDesarme });
+        items.push({ tipo: "desarme", concepto: `Mano de obra desarme - ${ml} ml`, cantidad: 1, unidad: "servicio", precio_unitario: desarme });
       }
     }
 

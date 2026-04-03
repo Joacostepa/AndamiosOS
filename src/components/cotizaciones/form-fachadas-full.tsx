@@ -79,7 +79,10 @@ export function FormFachadasFull() {
     const items: CotizacionItemFormData[] = [];
 
     // Cálculo: total = cantidad × precio_unitario × multiplicador
-    // Desglose: 35% canon locativo (por 30 días), 32.5% montaje, 32.5% desarme
+    // Desglose: 35% canon locativo (mínimo 30 días), 32.5% montaje, 32.5% desarme
+    // Fracción mínima de alquiler: 30 días. Si plazo > 30, se calcula proporcional.
+    const periodos = plazo <= 30 ? 1 : Math.ceil(plazo / 30);
+
     if (tipo === "andamio_completo" && m2 > 0) {
       const valorTotal = Math.round(m2 * precioM2 * multiplicadorTotal);
       const canonLocativo = Math.round(valorTotal * 0.35);
@@ -88,9 +91,9 @@ export function FormFachadasFull() {
 
       items.push({
         tipo: "alquiler_mensual",
-        concepto: `Canon locativo - ${m2} m² (${plazo} días)`,
-        cantidad: 1,
-        unidad: "servicio",
+        concepto: `Canon locativo - ${m2} m² (${periodos > 1 ? `${periodos} períodos de 30 días` : "30 días"})`,
+        cantidad: periodos,
+        unidad: "período",
         precio_unitario: canonLocativo,
       });
       if (watch("incluye_montaje")) {
@@ -107,9 +110,9 @@ export function FormFachadasFull() {
 
       items.push({
         tipo: "alquiler_mensual",
-        concepto: `Canon locativo bandeja peatonal - ${ml} ml (${plazo} días)`,
-        cantidad: 1,
-        unidad: "servicio",
+        concepto: `Canon locativo bandeja peatonal - ${ml} ml (${periodos > 1 ? `${periodos} períodos de 30 días` : "30 días"})`,
+        cantidad: periodos,
+        unidad: "período",
         precio_unitario: canonLocativo,
       });
       if (watch("incluye_montaje")) {

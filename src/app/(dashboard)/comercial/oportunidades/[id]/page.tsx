@@ -3,6 +3,7 @@
 import { use, useState } from "react";
 import { useOportunidad, useUpdateOportunidad, useActividades, useCreateActividad } from "@/hooks/use-oportunidades";
 import { useCotizaciones } from "@/hooks/use-cotizaciones";
+import { Chatter } from "@/components/shared/chatter";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
@@ -344,6 +345,14 @@ export default function OportunidadDetailPage({ params }: { params: Promise<{ id
               ))}
             </div>
           ) : <p className="text-sm text-muted-foreground text-center py-4">Sin actividades</p>}
+
+          {/* Historial de cambios */}
+          <Card>
+            <CardHeader><CardTitle className="text-base">Historial de cambios</CardTitle></CardHeader>
+            <CardContent>
+              <Chatter entidadTipo="oportunidades" entidadId={id} />
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>

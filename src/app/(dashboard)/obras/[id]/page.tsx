@@ -8,6 +8,7 @@ import { useRemitosByObra } from "@/hooks/use-remitos";
 import { useMovimientosByObra } from "@/hooks/use-stock";
 import { usePersonal } from "@/hooks/use-personal";
 import { useVehiculos } from "@/hooks/use-vehiculos";
+import { Chatter } from "@/components/shared/chatter";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
@@ -336,6 +337,14 @@ export default function ObraDetailPage({ params }: { params: Promise<{ id: strin
           ) : (
             <Card><CardContent className="py-8 text-center text-muted-foreground"><MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-50" />Sin comunicaciones</CardContent></Card>
           )}
+
+          {/* Historial de cambios automáticos */}
+          <Card>
+            <CardHeader><CardTitle className="text-base">Historial de cambios</CardTitle></CardHeader>
+            <CardContent>
+              <Chatter entidadTipo="obras" entidadId={id} />
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
 

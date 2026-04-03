@@ -21,6 +21,7 @@ import { ArrowRight, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 
 import { ITEM_TYPE_LABELS, UNIDAD_LABELS, SUB_VERTICAL_LABELS } from "@/types/cotizacion-form";
+import { Chatter } from "@/components/shared/chatter";
 import type { UnidadCotizacion, SubVertical } from "@/types/cotizacion-form";
 
 const TIPO_LABELS: Record<string, string> = ITEM_TYPE_LABELS;
@@ -161,6 +162,14 @@ export default function CotizacionDetailPage({ params }: { params: Promise<{ id:
           <CardContent><p className="text-sm text-muted-foreground whitespace-pre-wrap">{cotizacion.condiciones}</p></CardContent>
         </Card>
       )}
+
+      {/* Chatter / Historial */}
+      <Card>
+        <CardHeader><CardTitle className="text-base">Historial de actividad</CardTitle></CardHeader>
+        <CardContent>
+          <Chatter entidadTipo="cotizaciones" entidadId={id} />
+        </CardContent>
+      </Card>
 
       {cotizacion.metadata && (cotizacion.metadata as any).conversacion && (
         <Card>

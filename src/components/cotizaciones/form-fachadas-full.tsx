@@ -198,7 +198,8 @@ export function FormFachadasFull() {
         {tipoProducto === "andamio_completo" && (
           <div className="space-y-4 rounded-lg border p-4">
             <p className="text-xs font-medium text-muted-foreground">Andamio completo — Precio por m²</p>
-            <div className="grid grid-cols-3 gap-4">
+            {/* Dimensiones */}
+            <div className="grid grid-cols-4 gap-3">
               <div className="space-y-2">
                 <Label>Base / Frente (m)</Label>
                 <Input type="number" step="0.1" min={0} {...register("metadata.fachada_base" as any, { valueAsNumber: true })} placeholder="Ej: 15" />
@@ -208,17 +209,16 @@ export function FormFachadasFull() {
                 <Input type="number" step="0.1" min={0} {...register("metadata.fachada_altura" as any, { valueAsNumber: true })} placeholder="Ej: 12" />
               </div>
               <div className="space-y-2">
+                <Label>Profundidad (m)</Label>
+                <Input type="number" step="0.1" min={0} {...register("metadata.fachada_profundidad" as any, { valueAsNumber: true })} placeholder="Ej: 1.5" />
+              </div>
+              <div className="space-y-2">
                 <Label>m² totales</Label>
-                <Input
-                  type="number"
-                  step="0.1"
-                  value={((watch("metadata.fachada_base" as any) as number) || 0) * ((watch("metadata.fachada_altura" as any) as number) || 0) || ""}
-                  readOnly
-                  className="bg-muted"
-                />
+                <Input type="number" step="0.1" value={((watch("metadata.fachada_base" as any) as number) || 0) * ((watch("metadata.fachada_altura" as any) as number) || 0) || ""} readOnly className="bg-muted" />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            {/* Tipo edificio + pisos + niveles */}
+            <div className="grid grid-cols-3 gap-3">
               <div className="space-y-2">
                 <Label>Tipo de edificio</Label>
                 <Select value={(watch("metadata.tipo_edificio" as any) as string) || ""} onValueChange={(val) => setValue("metadata.tipo_edificio" as any, val)}>
@@ -238,6 +238,49 @@ export function FormFachadasFull() {
                 <Label>Pisos</Label>
                 <Input type="number" min={1} {...register("metadata.pisos" as any, { valueAsNumber: true })} placeholder="Ej: 8" />
               </div>
+              <div className="space-y-2">
+                <Label>Niveles de trabajo</Label>
+                <Input type="number" min={1} {...register("metadata.niveles_trabajo" as any, { valueAsNumber: true })} placeholder="Ej: 4" />
+              </div>
+            </div>
+            {/* Sistema y escalera */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Tipo de material / Sistema</Label>
+                <Select value={(watch("metadata.tipo_material" as any) as string) || ""} onValueChange={(val) => setValue("metadata.tipo_material" as any, val)}>
+                  <SelectTrigger><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="multidireccional">Multidireccional</SelectItem>
+                    <SelectItem value="bastidor_prearmado">Bastidor pre-armado</SelectItem>
+                    <SelectItem value="mixto">Mixto</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Tipo de escalera</Label>
+                <Select value={(watch("metadata.tipo_escalera" as any) as string) || ""} onValueChange={(val) => setValue("metadata.tipo_escalera" as any, val)}>
+                  <SelectTrigger><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="escotilla">Escalera escotilla</SelectItem>
+                    <SelectItem value="interna">Escalera interna</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {/* Checks de seguridad */}
+            <div className="flex gap-6">
+              <div className="flex items-center gap-2">
+                <Switch checked={!!(watch("metadata.barandas_seguridad" as any) as boolean)} onCheckedChange={(v) => setValue("metadata.barandas_seguridad" as any, v)} />
+                <Label className="text-sm">Barandas de seguridad</Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch checked={!!(watch("metadata.rodapies" as any) as boolean)} onCheckedChange={(v) => setValue("metadata.rodapies" as any, v)} />
+                <Label className="text-sm">Rodapiés</Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch checked={!!(watch("metadata.alambre_concertina" as any) as boolean)} onCheckedChange={(v) => setValue("metadata.alambre_concertina" as any, v)} />
+                <Label className="text-sm">Alambre concertina</Label>
+              </div>
             </div>
           </div>
         )}
@@ -245,14 +288,51 @@ export function FormFachadasFull() {
         {tipoProducto === "bandeja_peatonal" && (
           <div className="space-y-4 rounded-lg border p-4">
             <p className="text-xs font-medium text-muted-foreground">Bandeja peatonal — Precio por metro lineal</p>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-3">
               <div className="space-y-2">
-                <Label>Metros lineales de frente *</Label>
+                <Label>Metros lineales *</Label>
                 <Input type="number" step="0.1" min={0} {...register("metadata.metros_lineales" as any, { valueAsNumber: true })} placeholder="Ej: 20" />
               </div>
               <div className="space-y-2">
                 <Label>Altura bandeja (m)</Label>
                 <Input type="number" step="0.1" min={0} {...register("metadata.altura_bandeja" as any, { valueAsNumber: true })} placeholder="Ej: 3.5" />
+              </div>
+              <div className="space-y-2">
+                <Label>Profundidad (m)</Label>
+                <Input type="number" step="0.1" min={0} {...register("metadata.bandeja_profundidad" as any, { valueAsNumber: true })} placeholder="Ej: 2.5" />
+              </div>
+            </div>
+            {/* Sistema y escalera */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Tipo de material / Sistema</Label>
+                <Select value={(watch("metadata.tipo_material" as any) as string) || ""} onValueChange={(val) => setValue("metadata.tipo_material" as any, val)}>
+                  <SelectTrigger><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="multidireccional">Multidireccional</SelectItem>
+                    <SelectItem value="bastidor_prearmado">Bastidor pre-armado</SelectItem>
+                    <SelectItem value="mixto">Mixto</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Niveles de contención</Label>
+                <Input type="number" min={1} {...register("metadata.niveles_contencion" as any, { valueAsNumber: true })} placeholder="Ej: 2" />
+              </div>
+            </div>
+            {/* Checks */}
+            <div className="flex gap-6">
+              <div className="flex items-center gap-2">
+                <Switch checked={!!(watch("metadata.barandas_seguridad" as any) as boolean)} onCheckedChange={(v) => setValue("metadata.barandas_seguridad" as any, v)} />
+                <Label className="text-sm">Barandas de seguridad</Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch checked={!!(watch("metadata.rodapies" as any) as boolean)} onCheckedChange={(v) => setValue("metadata.rodapies" as any, v)} />
+                <Label className="text-sm">Rodapiés</Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch checked={!!(watch("metadata.alambre_concertina" as any) as boolean)} onCheckedChange={(v) => setValue("metadata.alambre_concertina" as any, v)} />
+                <Label className="text-sm">Alambre concertina</Label>
               </div>
             </div>
           </div>

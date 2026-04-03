@@ -229,6 +229,7 @@ function NuevaCotizacionContent() {
           incluye_transporte: data.incluye_transporte,
           responsable_id: data.responsable_id || undefined,
           metadata: data.metadata,
+          imagenes_ids: (data.metadata?.imagenes_ids as string[]) || undefined,
           items,
         });
         toast.success("Cotización creada");

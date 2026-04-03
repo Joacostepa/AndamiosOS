@@ -71,9 +71,10 @@ export function useCreateCotizacion() {
       tonelaje_estimado?: number; urgencia?: string;
       incluye_montaje?: boolean; incluye_desarme?: boolean; incluye_transporte?: boolean;
       ubicacion?: string; responsable_id?: string; metadata?: Record<string, unknown>;
+      imagenes_ids?: string[];
       items: { tipo: string; concepto: string; detalle?: string; cantidad: number; unidad: string; precio_unitario: number }[];
     }) => {
-      const { items, ...cotData } = data;
+      const { items, imagenes_ids, ...cotData } = data;
       const { data: cot, error } = await supabase.from("cotizaciones")
         .insert({ ...cotData, codigo: "" }).select().single();
       if (error) throw error;
@@ -86,6 +87,17 @@ export function useCreateCotizacion() {
         const { error: ie } = await supabase.from("cotizacion_items").insert(dbItems);
         if (ie) throw ie;
       }
+
+      // Save selected reference images
+      if (imagenes_ids && imagenes_ids.length > 0) {
+        const imgRows = imagenes_ids.map((imgId, i) => ({
+          cotizacion_id: cot.id,
+          imagen_id: imgId,
+          orden: i,
+        }));
+        await supabase.from("cotizacion_imagenes").insert(imgRows);
+      }
+
       return cot;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["cotizaciones"] }),

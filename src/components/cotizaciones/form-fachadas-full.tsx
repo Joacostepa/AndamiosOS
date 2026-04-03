@@ -21,6 +21,7 @@ import { TituloClienteFields } from "@/components/cotizaciones/titulo-cliente-fi
 import { FormDatosComerciales } from "@/components/cotizaciones/form-datos-comerciales";
 import { ServiceToggles } from "@/components/cotizaciones/service-toggles";
 import { AIImproveButton } from "@/components/cotizaciones/ai-improve-button";
+import { ImageSelector } from "@/components/cotizaciones/image-selector";
 import type { CotizacionFormData, CotizacionItemFormData } from "@/types/cotizacion-form";
 
 const TIPO_PRODUCTO = [
@@ -259,6 +260,13 @@ export function FormFachadasFull() {
             data-field="descripcion_tecnica"
           />
         </div>
+
+        {/* Imágenes de referencia */}
+        <ImageSelector
+          categoria="fachadas"
+          selectedIds={((watch("metadata.imagenes_ids" as any) as string[]) || [])}
+          onSelectionChange={(ids) => setValue("metadata.imagenes_ids" as any, ids)}
+        />
       </div>
 
       {/* 5. Descripción breve del servicio */}

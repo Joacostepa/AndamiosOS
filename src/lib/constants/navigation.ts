@@ -76,6 +76,7 @@ export const navigation: NavGroup[] = [
           { title: "Datos empresa", href: "/configuracion/empresa" },
           { title: "Lista de precios", href: "/configuracion/lista-precios" },
           { title: "Fletes por zona", href: "/configuracion/fletes" },
+          { title: "Imágenes referencia", href: "/configuracion/imagenes" },
         ],
       },
     ],

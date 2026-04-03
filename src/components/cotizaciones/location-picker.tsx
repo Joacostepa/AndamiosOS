@@ -15,94 +15,114 @@ interface LocationPickerProps {
 }
 
 export function LocationPicker({ value, onChange }: LocationPickerProps) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
-  const [suggestions, setSuggestions] = useState<any[]>([]);
+  const [suggestions, setSuggestions] = useState<{ description: string; placeId: string }[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [sessionToken, setSessionToken] = useState<any>(null);
-  const [autocompleteService, setAutocompleteService] = useState<any>(null);
-  const [geocoder, setGeocoder] = useState<any>(null);
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [mapsReady, setMapsReady] = useState(false);
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY || "";
 
-  // Load Google Maps
+  // Load Google Maps script
   useEffect(() => {
     if (!apiKey || typeof window === "undefined") return;
+    if (window.google?.maps) { setMapsReady(true); return; }
+
+    const existing = document.querySelector(`script[src*="maps.googleapis.com"]`);
+    if (existing) { existing.addEventListener("load", () => setMapsReady(true)); return; }
 
     const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places,geocoding`;
     script.async = true;
-    script.onload = () => {
-      if (window.google) {
-        setAutocompleteService(new window.google.maps.places.AutocompleteService());
-        setGeocoder(new window.google.maps.Geocoder());
-        setSessionToken(new window.google.maps.places.AutocompleteSessionToken());
-      }
-    };
-
-    // Check if already loaded
-    if (window.google?.maps?.places) {
-      setAutocompleteService(new window.google.maps.places.AutocompleteService());
-      setGeocoder(new window.google.maps.Geocoder());
-      setSessionToken(new window.google.maps.places.AutocompleteSessionToken());
-    } else {
-      document.head.appendChild(script);
-    }
+    script.onload = () => setMapsReady(true);
+    document.head.appendChild(script);
   }, [apiKey]);
 
-  const handleInputChange = useCallback(
+  const handleSearch = useCallback(
     (text: string) => {
       onChange(text);
-      if (!autocompleteService || text.length < 3) {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (!mapsReady || text.length < 3) {
         setSuggestions([]);
         setShowSuggestions(false);
         return;
       }
 
-      autocompleteService.getPlacePredictions(
-        {
-          input: text,
-          componentRestrictions: { country: "ar" },
-          sessionToken,
-        },
-        (predictions: any[], status: string) => {
-          if (status === "OK" && predictions) {
-            setSuggestions(predictions);
-            setShowSuggestions(true);
-          } else {
+      debounceRef.current = setTimeout(async () => {
+        try {
+          // Try new AutocompleteSuggestion API first
+          const { AutocompleteSuggestion } = await window.google.maps.importLibrary("places");
+          const request = {
+            input: text,
+            includedRegionCodes: ["ar"],
+          };
+          const { suggestions: results } = await AutocompleteSuggestion.fetchAutocompleteSuggestions(request);
+          const mapped = results.map((s: any) => ({
+            description: s.placePrediction?.text?.text || s.placePrediction?.mainText?.text || "",
+            placeId: s.placePrediction?.placeId || "",
+          })).filter((s: any) => s.description);
+          setSuggestions(mapped);
+          setShowSuggestions(mapped.length > 0);
+        } catch {
+          // Fallback to legacy AutocompleteService
+          try {
+            const service = new window.google.maps.places.AutocompleteService();
+            service.getPlacePredictions(
+              { input: text, componentRestrictions: { country: "ar" } },
+              (predictions: any[], status: string) => {
+                if (status === "OK" && predictions) {
+                  setSuggestions(predictions.map((p: any) => ({
+                    description: p.description,
+                    placeId: p.place_id,
+                  })));
+                  setShowSuggestions(true);
+                }
+              }
+            );
+          } catch {
             setSuggestions([]);
           }
         }
-      );
+      }, 300);
     },
-    [autocompleteService, sessionToken, onChange]
+    [mapsReady, onChange]
   );
 
   const handleSelect = useCallback(
-    (prediction: any) => {
-      const address = prediction.description;
-      onChange(address);
+    async (suggestion: { description: string; placeId: string }) => {
+      onChange(suggestion.description);
       setShowSuggestions(false);
       setSuggestions([]);
 
-      // Geocode to get coordinates
-      if (geocoder) {
-        geocoder.geocode({ address }, (results: any[], status: string) => {
-          if (status === "OK" && results[0]) {
-            const loc = results[0].geometry.location;
-            const lat = loc.lat();
-            const lng = loc.lng();
-            onChange(address, lat, lng);
-            setCoords({ lat, lng });
-          }
-        });
-      }
+      if (!mapsReady) return;
 
-      // New session token for next search
-      if (window.google) {
-        setSessionToken(new window.google.maps.places.AutocompleteSessionToken());
+      try {
+        // Try new Place API
+        const { Place } = await window.google.maps.importLibrary("places");
+        const place = new Place({ id: suggestion.placeId });
+        await place.fetchFields({ fields: ["location"] });
+        const lat = place.location?.lat();
+        const lng = place.location?.lng();
+        if (lat && lng) {
+          onChange(suggestion.description, lat, lng);
+          setCoords({ lat, lng });
+        }
+      } catch {
+        // Fallback to Geocoder
+        try {
+          const { Geocoder } = await window.google.maps.importLibrary("geocoding");
+          const geocoder = new Geocoder();
+          geocoder.geocode({ address: suggestion.description }, (results: any[], status: string) => {
+            if (status === "OK" && results[0]) {
+              const lat = results[0].geometry.location.lat();
+              const lng = results[0].geometry.location.lng();
+              onChange(suggestion.description, lat, lng);
+              setCoords({ lat, lng });
+            }
+          });
+        } catch { /* no coords */ }
       }
     },
-    [geocoder, onChange]
+    [mapsReady, onChange]
   );
 
   const streetViewUrl = coords
@@ -117,19 +137,18 @@ export function LocationPicker({ value, onChange }: LocationPickerProps) {
       </Label>
       <div className="relative">
         <Input
-          ref={inputRef}
           defaultValue={value}
-          onChange={(e) => handleInputChange(e.target.value)}
+          onChange={(e) => handleSearch(e.target.value)}
           onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
           onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
           placeholder="Escribí la dirección..."
           data-field="ubicacion"
         />
         {showSuggestions && suggestions.length > 0 && (
-          <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-lg">
-            {suggestions.map((s) => (
+          <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-lg max-h-48 overflow-y-auto">
+            {suggestions.map((s, i) => (
               <button
-                key={s.place_id}
+                key={s.placeId || i}
                 type="button"
                 className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-muted text-left"
                 onMouseDown={(e) => e.preventDefault()}
@@ -146,7 +165,7 @@ export function LocationPicker({ value, onChange }: LocationPickerProps) {
         <div className="rounded-lg overflow-hidden border">
           <img
             src={streetViewUrl}
-            alt="Street View"
+            alt="Vista de la fachada"
             className="w-full h-[200px] object-cover"
             onError={(e) => {
               (e.target as HTMLImageElement).style.display = "none";

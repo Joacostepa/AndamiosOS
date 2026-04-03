@@ -13,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { LocationPicker } from "@/components/cotizaciones/location-picker";
 import type { CotizacionFormData } from "@/types/cotizacion-form";
 
 function useUserProfiles() {
@@ -32,7 +33,7 @@ function useUserProfiles() {
 }
 
 export function FormDatosComerciales() {
-  const { register, watch, setValue } = useFormContext<CotizacionFormData>();
+  const { watch, setValue } = useFormContext<CotizacionFormData>();
   const { data: usuarios } = useUserProfiles();
 
   const vendedores = usuarios || [];
@@ -43,15 +44,17 @@ export function FormDatosComerciales() {
         Datos comerciales
       </h3>
 
-      {/* Ubicación de la obra — arriba de todo */}
-      <div className="space-y-2">
-        <Label>Ubicación / Dirección de obra</Label>
-        <Input
-          {...register("ubicacion")}
-          placeholder="Ej: Av. Corrientes 1234, CABA"
-          data-field="ubicacion"
-        />
-      </div>
+      {/* Ubicación de la obra — arriba de todo, con Google Maps */}
+      <LocationPicker
+        value={watch("ubicacion") || ""}
+        onChange={(address, lat, lng) => {
+          setValue("ubicacion", address);
+          if (lat && lng) {
+            setValue("metadata.ubicacion_lat" as any, lat);
+            setValue("metadata.ubicacion_lng" as any, lng);
+          }
+        }}
+      />
 
       {/* Técnico-vendedor */}
       <div className="space-y-2">

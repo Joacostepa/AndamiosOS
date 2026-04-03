@@ -1,6 +1,8 @@
 "use client";
 
+import { useCallback } from "react";
 import { useFormContext } from "react-hook-form";
+import { useConfiguracion } from "@/hooks/use-configuracion";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -13,11 +15,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { Calculator } from "lucide-react";
 import { TituloClienteFields } from "@/components/cotizaciones/titulo-cliente-fields";
 import { FormDatosComerciales } from "@/components/cotizaciones/form-datos-comerciales";
 import { ServiceToggles } from "@/components/cotizaciones/service-toggles";
 import { AIImproveButton } from "@/components/cotizaciones/ai-improve-button";
-import type { CotizacionFormData } from "@/types/cotizacion-form";
+import type { CotizacionFormData, CotizacionItemFormData } from "@/types/cotizacion-form";
 
 const TIPO_PRODUCTO = [
   {
@@ -32,9 +35,93 @@ const TIPO_PRODUCTO = [
   },
 ];
 
+function getConfigVal(configs: any[] | undefined, key: string): string {
+  return configs?.find((c: any) => c.clave === key)?.valor || "";
+}
+
 export function FormFachadasFull() {
   const { register, watch, setValue } = useFormContext<CotizacionFormData>();
+  const { data: configs } = useConfiguracion();
   const tipoProducto = (watch("metadata.tipo_producto_fachada" as any) as string) || "";
+
+  const handleGenerateItems = useCallback(() => {
+    const tipo = (watch("metadata.tipo_producto_fachada" as any) as string) || "";
+    if (!tipo) return;
+
+    // Get prices from config
+    const precioM2 = Number(getConfigVal(configs, "precio_m2_fachada")) || 50000;
+    const precioMl = Number(getConfigVal(configs, "precio_ml_bandeja")) || 110000;
+    const precioGestoria = Number(getConfigVal(configs, "precio_gestoria_permiso")) || 250000;
+    const precioIngenieria = Number(getConfigVal(configs, "precio_ingenieria")) || 1250000;
+    const precioSyh = Number(getConfigVal(configs, "precio_syh_jornada")) || 250000;
+
+    // Get multipliers
+    let multiplicadorTotal = 1;
+    try {
+      const multJson = getConfigVal(configs, "multiplicadores_comerciales");
+      if (multJson) {
+        const mults = JSON.parse(multJson);
+        const perfil = (watch("metadata.tipo_cliente_perfil" as any) as string) || "";
+        if (perfil && mults[perfil]) multiplicadorTotal *= mults[perfil];
+        const competencia = watch("metadata.hay_competencia" as any) as boolean;
+        if (competencia && mults.hay_competencia) multiplicadorTotal *= mults.hay_competencia;
+        const etapa = (watch("metadata.etapa_cliente" as any) as string) || "";
+        if (etapa && mults[etapa]) multiplicadorTotal *= mults[etapa];
+      }
+    } catch { /* use default */ }
+
+    // Calculate dimensions
+    const base = (watch("metadata.fachada_base" as any) as number) || 0;
+    const altura = (watch("metadata.fachada_altura" as any) as number) || 0;
+    const m2 = base * altura;
+    const ml = (watch("metadata.metros_lineales" as any) as number) || 0;
+    const plazo = watch("plazo_alquiler_meses") || 1;
+
+    const items: CotizacionItemFormData[] = [];
+
+    if (tipo === "andamio_completo" && m2 > 0) {
+      const precioAjustado = Math.round(precioM2 * multiplicadorTotal);
+      // Canon locativo (alquiler mensual)
+      items.push({
+        tipo: "alquiler_mensual",
+        concepto: `Canon locativo - ${m2} m² x ${plazo} mes${plazo > 1 ? "es" : ""}`,
+        cantidad: plazo,
+        unidad: "mes",
+        precio_unitario: m2 * precioAjustado,
+      });
+    } else if (tipo === "bandeja_peatonal" && ml > 0) {
+      const precioAjustado = Math.round(precioMl * multiplicadorTotal);
+      items.push({
+        tipo: "alquiler_mensual",
+        concepto: `Canon locativo bandeja peatonal - ${ml} ml x ${plazo} mes${plazo > 1 ? "es" : ""}`,
+        cantidad: plazo,
+        unidad: "mes",
+        precio_unitario: ml * precioAjustado,
+      });
+    }
+
+    // Servicios incluidos
+    if (watch("incluye_montaje")) {
+      items.push({ tipo: "montaje", concepto: "Mano de obra montaje", cantidad: 1, unidad: "servicio", precio_unitario: 0 });
+    }
+    if (watch("incluye_desarme")) {
+      items.push({ tipo: "desarme", concepto: "Mano de obra desarme", cantidad: 1, unidad: "servicio", precio_unitario: 0 });
+    }
+    if (watch("incluye_transporte")) {
+      items.push({ tipo: "transporte", concepto: "Transporte ida y vuelta", cantidad: 1, unidad: "servicio", precio_unitario: 0 });
+    }
+    if (watch("metadata.incluye_ingenieria" as any)) {
+      items.push({ tipo: "ingenieria", concepto: "Ingeniería - Memoria de cálculo, planos, firma profesional", cantidad: 1, unidad: "servicio", precio_unitario: precioIngenieria });
+    }
+    if (watch("metadata.incluye_permiso" as any)) {
+      items.push({ tipo: "permiso", concepto: "Gestoría permiso municipal", cantidad: 1, unidad: "servicio", precio_unitario: precioGestoria });
+    }
+    if (watch("metadata.incluye_syh" as any)) {
+      items.push({ tipo: "extra", concepto: "Seguridad e Higiene - Técnico por jornada", cantidad: 1, unidad: "jornada", precio_unitario: precioSyh });
+    }
+
+    setValue("items", items, { shouldDirty: true });
+  }, [watch, setValue, configs]);
 
   return (
     <div className="space-y-6">
@@ -215,6 +302,18 @@ export function FormFachadasFull() {
 
       {/* 9. Servicios incluidos */}
       <ServiceToggles />
+
+      {/* 9.5 Botón calcular items */}
+      <Button
+        type="button"
+        variant="outline"
+        className="w-full"
+        onClick={handleGenerateItems}
+        disabled={!tipoProducto}
+      >
+        <Calculator className="mr-2 h-4 w-4" />
+        Calcular items recomendados
+      </Button>
 
       {/* 10. Ubicación */}
       <div className="space-y-2">

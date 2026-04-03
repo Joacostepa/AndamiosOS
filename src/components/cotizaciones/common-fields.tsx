@@ -72,9 +72,9 @@ export function CommonFields() {
   return (
     <div className="space-y-4">
       <div className="space-y-2">
-        <Label>Título *</Label>
+        <Label>Título</Label>
         <Input
-          {...register("titulo", { required: true })}
+          {...register("titulo")}
           placeholder="Ej: Andamio fachada edificio Belgrano"
           data-field="titulo"
         />

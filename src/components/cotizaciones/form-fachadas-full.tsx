@@ -345,6 +345,30 @@ export function FormFachadasFull() {
         {/* Servicios incluidos — dentro de info técnica */}
         <ServiceToggles />
 
+        {/* Tiempos de armado y desarme */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-2">
+            <Label>Tiempo de armado (jornadas)</Label>
+            <Input
+              type="number"
+              step="0.5"
+              min={0}
+              {...register("metadata.tiempo_armado" as any, { valueAsNumber: true })}
+              placeholder="Ej: 1.5"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Tiempo de desarme (jornadas)</Label>
+            <Input
+              type="number"
+              step="0.5"
+              min={0}
+              {...register("metadata.tiempo_desarme" as any, { valueAsNumber: true })}
+              placeholder="Ej: 1"
+            />
+          </div>
+        </div>
+
         {/* Descripción técnica del servicio */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">

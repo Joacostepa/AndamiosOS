@@ -59,8 +59,8 @@ export function TituloClienteFields() {
   return (
     <>
       <div className="space-y-2">
-        <Label>Título *</Label>
-        <Input {...register("titulo", { required: true })} placeholder="Ej: Andamio fachada edificio Belgrano" data-field="titulo" />
+        <Label>Título</Label>
+        <Input {...register("titulo")} placeholder="Ej: Andamio fachada edificio Belgrano" data-field="titulo" />
       </div>
 
       <div className="grid grid-cols-2 gap-4">

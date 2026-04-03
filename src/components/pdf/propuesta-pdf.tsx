@@ -169,11 +169,19 @@ export function PropuestaPDF({ cotizacion, items, clienteNombre, empresa, imageU
             </>
           )}
 
-          {/* Plazo ejecución */}
-          {cotizacion.plazo_alquiler_meses && (
+          {/* Plazos de ejecución */}
+          {(cotizacion.plazo_alquiler_meses || meta.tiempo_armado || meta.tiempo_desarme) && (
             <View style={{ marginTop: 10 }}>
-              <Text style={s.subTitle}>2. Plazo</Text>
-              <View style={s.bullet}><Text style={s.bulletDot}>•</Text><Text style={s.bulletText}>Período de alquiler: {cotizacion.plazo_alquiler_meses} días</Text></View>
+              <Text style={s.subTitle}>Plazos de Ejecución</Text>
+              {meta.tiempo_armado && (
+                <View style={s.bullet}><Text style={s.bulletDot}>•</Text><Text style={s.bulletText}>Tiempo de Armado: Se estima {meta.tiempo_armado} jornada{Number(meta.tiempo_armado) !== 1 ? "s" : ""} de trabajo.</Text></View>
+              )}
+              {meta.tiempo_desarme && (
+                <View style={s.bullet}><Text style={s.bulletDot}>•</Text><Text style={s.bulletText}>Tiempo de Desarme: Se estima {meta.tiempo_desarme} jornada{Number(meta.tiempo_desarme) !== 1 ? "s" : ""} de trabajo.</Text></View>
+              )}
+              {cotizacion.plazo_alquiler_meses && (
+                <View style={s.bullet}><Text style={s.bulletDot}>•</Text><Text style={s.bulletText}>Período de alquiler: {cotizacion.plazo_alquiler_meses} días (fracción mínima 30 días)</Text></View>
+              )}
             </View>
           )}
         </View>

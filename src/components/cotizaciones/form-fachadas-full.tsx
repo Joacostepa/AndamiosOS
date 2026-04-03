@@ -55,6 +55,18 @@ export function FormFachadasFull() {
         />
       </div>
 
+      {/* 3.5. Tiempo estimado de trabajo */}
+      <div className="space-y-2">
+        <Label>Tiempo estimado de trabajo del cliente (meses)</Label>
+        <Input
+          type="number"
+          min={1}
+          {...register("plazo_alquiler_meses", { valueAsNumber: true })}
+          placeholder="Ej: 3"
+          data-field="plazo_alquiler_meses"
+        />
+      </div>
+
       {/* 4. Tipo de producto + dimensiones */}
       <div className="space-y-4">
         <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
@@ -204,16 +216,10 @@ export function FormFachadasFull() {
       {/* 9. Servicios incluidos */}
       <ServiceToggles />
 
-      {/* 10. Plazo + Ubicación */}
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label>Plazo de alquiler (meses)</Label>
-          <Input type="number" min={1} {...register("plazo_alquiler_meses", { valueAsNumber: true })} placeholder="Ej: 3" />
-        </div>
-        <div className="space-y-2">
-          <Label>Ubicación / Dirección de obra</Label>
-          <Input {...register("ubicacion")} placeholder="Ej: Av. Corrientes 1234, CABA" />
-        </div>
+      {/* 10. Ubicación */}
+      <div className="space-y-2">
+        <Label>Ubicación / Dirección de obra</Label>
+        <Input {...register("ubicacion")} placeholder="Ej: Av. Corrientes 1234, CABA" />
       </div>
     </div>
   );

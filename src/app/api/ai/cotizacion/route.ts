@@ -267,8 +267,33 @@ export async function POST(request: NextRequest) {
       systemPrompt += `\n\nESTADO ACTUAL DEL FORMULARIO:\n${JSON.stringify(formValues, null, 2)}`;
     }
 
+    // Buscar cotizaciones anteriores similares para referencia de precios
+    if (unidad !== "hogareno") {
+      try {
+        const { data: prevCots } = await supabase
+          .from("cotizaciones")
+          .select("codigo, titulo, total, sub_vertical, metadata")
+          .eq("unidad_cotizacion", unidad)
+          .not("estado", "eq", "borrador")
+          .order("created_at", { ascending: false })
+          .limit(15);
+
+        if (prevCots && prevCots.length > 0) {
+          systemPrompt += "\n\nCOTIZACIONES ANTERIORES SIMILARES (referencia de precios):";
+          prevCots.forEach((c: any) => {
+            const tags = c.metadata?.ai_tags;
+            const tagInfo = tags
+              ? ` [${tags.tipo_producto || ""}, ${tags.metros_cuadrados ? tags.metros_cuadrados + "m²" : tags.metros_lineales ? tags.metros_lineales + "ml" : ""}, ${tags.complejidad || ""}]`
+              : "";
+            systemPrompt += `\n- ${c.codigo}: ${c.titulo} — $${Number(c.total).toLocaleString("es-AR")}${tagInfo}`;
+          });
+          systemPrompt += "\n\nUsá estas cotizaciones como referencia para sugerir precios en trabajos similares.";
+        }
+      } catch { /* silently continue */ }
+    }
+
     if (cotizacionesAnteriores && cotizacionesAnteriores.length > 0) {
-      systemPrompt += "\n\nCOTIZACIONES ANTERIORES (referencia):\n";
+      systemPrompt += "\n\nCOTIZACIONES ANTERIORES (enviadas por el frontend):\n";
       cotizacionesAnteriores.forEach((c: any) => {
         systemPrompt += `- ${c.codigo}: ${c.titulo} — $${c.total} (${c.estado})\n`;
       });

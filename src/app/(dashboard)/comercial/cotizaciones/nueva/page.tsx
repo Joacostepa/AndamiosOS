@@ -28,7 +28,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { ArrowLeft, Loader2, Save, MessageSquare, CheckCircle2, ExternalLink } from "lucide-react";
+import { ArrowLeft, Loader2, Save, MessageSquare, Sparkles, CheckCircle2, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import type {
   UnidadCotizacion,
@@ -233,6 +233,27 @@ function NuevaCotizacionContent() {
         });
         toast.success("Cotización creada");
         setCreatedId(cot.id);
+
+        // Fire-and-forget: categorize with AI for future comparisons
+        fetch("/api/ai/categorizar", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            cotizacion_id: cot.id,
+            cotizacion_data: {
+              titulo: data.titulo,
+              unidad_cotizacion: data.unidad_cotizacion,
+              sub_vertical: data.sub_vertical,
+              ubicacion: data.ubicacion,
+              plazo_alquiler_meses: data.plazo_alquiler_meses,
+              incluye_montaje: data.incluye_montaje,
+              incluye_desarme: data.incluye_desarme,
+              incluye_transporte: data.incluye_transporte,
+              metadata: data.metadata,
+              items,
+            },
+          }),
+        }).catch(() => {});
       } catch {
         toast.error("Error al crear la cotización");
       }
@@ -286,7 +307,7 @@ function NuevaCotizacionContent() {
         {/* Left: Form */}
         <form
           onSubmit={form.handleSubmit(onSubmit)}
-          className="flex-1 overflow-y-auto p-6 space-y-6 lg:w-3/5"
+          className={`flex-1 overflow-y-auto p-6 space-y-6 transition-all duration-200 ${chatOpen && !isMobile ? "lg:w-3/5" : "w-full"}`}
         >
           {/* Top bar */}
           <div className="flex items-center justify-between">
@@ -317,16 +338,15 @@ function NuevaCotizacionContent() {
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              {isMobile && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  onClick={() => setChatOpen(true)}
-                >
-                  <MessageSquare className="h-4 w-4" />
-                </Button>
-              )}
+              <Button
+                type="button"
+                variant={chatOpen ? "default" : "outline"}
+                size="sm"
+                onClick={() => setChatOpen(!chatOpen)}
+              >
+                <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                Asistente IA
+              </Button>
               <Button type="submit" disabled={createCotizacion.isPending}>
                 {createCotizacion.isPending ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -338,8 +358,10 @@ function NuevaCotizacionContent() {
             </div>
           </div>
 
-          {/* Common fields */}
-          <CommonFields />
+          {/* Common fields — skip for fachadas (FormFachadasFull handles everything) */}
+          {!(unidad === "armado_desarme" && form.watch("sub_vertical") === "fachadas") && (
+            <CommonFields />
+          )}
 
           {/* Unit-specific fields */}
           {unidad === "hogareno" && <FormHogareno />}
@@ -351,8 +373,8 @@ function NuevaCotizacionContent() {
         </form>
 
         {/* Right: AI Chat (desktop) - OUTSIDE form to prevent submit bubbling */}
-        {!isMobile && (
-          <div className="hidden lg:flex w-2/5 border-l">{chatPanel}</div>
+        {!isMobile && chatOpen && (
+          <div className="hidden lg:flex w-2/5 border-l transition-all duration-200">{chatPanel}</div>
         )}
       </div>
 

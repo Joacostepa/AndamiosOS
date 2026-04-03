@@ -14,12 +14,19 @@ import {
 } from "@/components/ui/select";
 import { FormDatosComerciales } from "@/components/cotizaciones/form-datos-comerciales";
 import { FormFachadas } from "@/components/cotizaciones/form-fachadas";
+import { FormFachadasFull } from "@/components/cotizaciones/form-fachadas-full";
+import { ServiceToggles } from "@/components/cotizaciones/service-toggles";
 import { SUB_VERTICAL_LABELS } from "@/types/cotizacion-form";
 import type { CotizacionFormData } from "@/types/cotizacion-form";
 
 export function FormArmadoDesarme() {
   const { register, watch, setValue } = useFormContext<CotizacionFormData>();
   const subVertical = watch("sub_vertical");
+
+  // Fachadas uses its own full form with custom field order
+  if (subVertical === "fachadas") {
+    return <FormFachadasFull />;
+  }
 
   return (
     <div className="space-y-6">
@@ -56,9 +63,7 @@ export function FormArmadoDesarme() {
         </div>
       </div>
 
-      {/* Formulario específico por sub-rubro */}
-      {subVertical === "fachadas" && <FormFachadas />}
-
+      {/* Formulario específico por sub-rubro (fachadas ya se maneja arriba con FormFachadasFull) */}
       {subVertical === "industria" && (
         <div className="space-y-4">
           <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">

@@ -14,11 +14,30 @@ async function getAgentPrompt(): Promise<string> {
 
 export async function POST(request: NextRequest) {
   try {
-    const { tipo, contexto } = await request.json();
+    const { tipo, contexto, texto_original, campo } = await request.json();
     const instrucciones = await getAgentPrompt();
 
     let prompt = "";
-    if (tipo === "descripcion") {
+    if (tipo === "mejorar") {
+      prompt = `Mejorá la redacción del siguiente texto para una propuesta técnica-económica profesional de una empresa de andamios.
+
+Texto original:
+${texto_original}
+
+Contexto del trabajo:
+${JSON.stringify(contexto, null, 2)}
+
+Campo: ${campo || "descripcion"}
+
+Reglas:
+- Mantené el sentido y los datos originales
+- Hacelo más profesional y técnico
+- Usá vocabulario del rubro de andamios y construcción
+- Si es "descripcion breve" máximo 150 palabras
+- Si es "descripcion tecnica" puede ser más extenso (hasta 300 palabras), con detalle técnico
+- Sin formato markdown, sin títulos
+- Respondé SOLO con el texto mejorado`;
+    } else if (tipo === "descripcion") {
       prompt = `Genera una descripcion tecnica profesional para una cotizacion de andamios con estos datos:
 ${JSON.stringify(contexto, null, 2)}
 

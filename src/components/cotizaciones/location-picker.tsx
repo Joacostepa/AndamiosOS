@@ -161,15 +161,14 @@ export function LocationPicker({ value, onChange }: LocationPickerProps) {
           </div>
         )}
       </div>
-      {streetViewUrl && (
+      {coords && (
         <div className="rounded-lg overflow-hidden border">
-          <img
-            src={streetViewUrl}
-            alt="Vista de la fachada"
-            className="w-full h-[200px] object-cover"
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = "none";
-            }}
+          <iframe
+            src={`https://www.google.com/maps/embed/v1/streetview?key=${apiKey}&location=${coords.lat},${coords.lng}&heading=0&pitch=0&fov=90`}
+            className="w-full h-[250px] border-0"
+            allowFullScreen
+            loading="lazy"
+            referrerPolicy="no-referrer-when-downgrade"
           />
         </div>
       )}

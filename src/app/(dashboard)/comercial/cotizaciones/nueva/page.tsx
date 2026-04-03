@@ -17,6 +17,7 @@ import { ItemsTable } from "@/components/cotizaciones/items-table";
 import { AIChatPanel } from "@/components/cotizaciones/ai-chat-panel";
 import { PDFDownloadButton } from "@/components/pdf/pdf-download-button";
 import { CotizacionPDF, type EmpresaData } from "@/components/pdf/cotizacion-pdf";
+import { PropuestaPDF } from "@/components/pdf/propuesta-pdf";
 import { useCotizacion } from "@/hooks/use-cotizaciones";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
@@ -405,15 +406,24 @@ function NuevaCotizacionContent() {
             {createdCot && (
               <PDFDownloadButton
                 document={
-                  <CotizacionPDF
-                    cotizacion={createdCot}
-                    items={createdCot.cotizacion_items || []}
-                    clienteNombre={createdCot.clientes?.razon_social}
-                    empresa={empresa}
-                  />
+                  createdCot.unidad_cotizacion === "armado_desarme" ? (
+                    <PropuestaPDF
+                      cotizacion={createdCot}
+                      items={createdCot.cotizacion_items || []}
+                      clienteNombre={createdCot.clientes?.razon_social}
+                      empresa={empresa}
+                    />
+                  ) : (
+                    <CotizacionPDF
+                      cotizacion={createdCot}
+                      items={createdCot.cotizacion_items || []}
+                      clienteNombre={createdCot.clientes?.razon_social}
+                      empresa={empresa}
+                    />
+                  )
                 }
                 fileName={`${createdCot.codigo}.pdf`}
-                label="Descargar PDF"
+                label={createdCot.unidad_cotizacion === "armado_desarme" ? "Descargar propuesta" : "Descargar PDF"}
               />
             )}
             <Button

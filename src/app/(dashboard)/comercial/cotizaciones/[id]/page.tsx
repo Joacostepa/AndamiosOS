@@ -8,6 +8,8 @@ import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { PDFDownloadButton } from "@/components/pdf/pdf-download-button";
 import { CotizacionPDF } from "@/components/pdf/cotizacion-pdf";
+import { PropuestaPDF } from "@/components/pdf/propuesta-pdf";
+import { useCotizacionImagenes } from "@/hooks/use-imagenes-referencia";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -38,6 +40,7 @@ export default function CotizacionDetailPage({ params }: { params: Promise<{ id:
   const { data: cotizacion, isLoading } = useCotizacion(id);
   const { data: configs } = useConfiguracion();
   const updateCotizacion = useUpdateCotizacion();
+  const { data: cotImagenes } = useCotizacionImagenes(id);
 
   if (isLoading || !cotizacion) return <div className="space-y-6"><Skeleton className="h-10 w-64" /><Skeleton className="h-64 w-full" /></div>;
 
@@ -60,8 +63,21 @@ export default function CotizacionDetailPage({ params }: { params: Promise<{ id:
         <Badge variant="outline" className="capitalize">v{cotizacion.version}</Badge>
         <StatusBadge status={cotizacion.estado} />
         <PDFDownloadButton
-          document={<CotizacionPDF cotizacion={cotizacion} items={items} clienteNombre={cotizacion.clientes?.razon_social || cotizacion.oportunidades?.titulo} empresa={empresa} />}
+          document={
+            cotizacion.unidad_cotizacion === "armado_desarme" ? (
+              <PropuestaPDF
+                cotizacion={cotizacion}
+                items={items}
+                clienteNombre={cotizacion.clientes?.razon_social || cotizacion.oportunidades?.titulo}
+                empresa={empresa}
+                imageUrls={cotImagenes?.map((ci: any) => ci.imagenes_referencia?.url).filter(Boolean)}
+              />
+            ) : (
+              <CotizacionPDF cotizacion={cotizacion} items={items} clienteNombre={cotizacion.clientes?.razon_social || cotizacion.oportunidades?.titulo} empresa={empresa} />
+            )
+          }
           fileName={`${cotizacion.codigo}.pdf`}
+          label={cotizacion.unidad_cotizacion === "armado_desarme" ? "Descargar propuesta" : "Descargar PDF"}
         />
         {transitions.length > 0 && (
           <DropdownMenu>

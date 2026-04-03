@@ -22,6 +22,7 @@ import { toast } from "sonner";
 
 import { ITEM_TYPE_LABELS, UNIDAD_LABELS, SUB_VERTICAL_LABELS } from "@/types/cotizacion-form";
 import { Chatter } from "@/components/shared/chatter";
+import Link from "next/link";
 import type { UnidadCotizacion, SubVertical } from "@/types/cotizacion-form";
 
 const TIPO_LABELS: Record<string, string> = ITEM_TYPE_LABELS;
@@ -63,6 +64,11 @@ export default function CotizacionDetailPage({ params }: { params: Promise<{ id:
       <PageHeader title={`Cotizacion ${cotizacion.codigo}`}>
         <Badge variant="outline" className="capitalize">v{cotizacion.version}</Badge>
         <StatusBadge status={cotizacion.estado} />
+        {cotizacion.estado === "borrador" && (
+          <Button variant="outline" render={<Link href={`/comercial/cotizaciones/${id}/editar`} />}>
+            Editar
+          </Button>
+        )}
         <PDFDownloadButton
           document={
             cotizacion.unidad_cotizacion === "armado_desarme" ? (

@@ -108,9 +108,26 @@ export function useUpdateCotizacion() {
   const supabase = createClient();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: Partial<{ estado: string; descripcion_servicio: string; condiciones: string }> }) => {
+    mutationFn: async ({ id, data, items }: {
+      id: string;
+      data: Partial<Record<string, any>>;
+      items?: { tipo: string; concepto: string; detalle?: string; cantidad: number; unidad: string; precio_unitario: number }[];
+    }) => {
       const { data: c, error } = await supabase.from("cotizaciones").update(data).eq("id", id).select().single();
       if (error) throw error;
+
+      // If items provided, replace all items
+      if (items) {
+        await supabase.from("cotizacion_items").delete().eq("cotizacion_id", id);
+        if (items.length > 0) {
+          const dbItems = items.map((item, i) => ({
+            cotizacion_id: id, ...item,
+            subtotal: item.cantidad * item.precio_unitario, orden: i,
+          }));
+          await supabase.from("cotizacion_items").insert(dbItems);
+        }
+      }
+
       return c;
     },
     onSuccess: (_, v) => { qc.invalidateQueries({ queryKey: ["cotizaciones"] }); qc.invalidateQueries({ queryKey: ["cotizaciones", v.id] }); },

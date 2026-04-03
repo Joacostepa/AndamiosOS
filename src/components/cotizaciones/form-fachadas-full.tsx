@@ -78,34 +78,50 @@ export function FormFachadasFull() {
 
     const items: CotizacionItemFormData[] = [];
 
+    // Desglose: del valor por m²/ml, 35% es alquiler, 32.5% montaje, 32.5% desarme
     if (tipo === "andamio_completo" && m2 > 0) {
-      const precioAjustado = Math.round(precioM2 * multiplicadorTotal);
+      const precioTotal = Math.round(precioM2 * multiplicadorTotal);
+      const valorAlquiler = Math.round(precioTotal * 0.35);
+      const valorMontaje = Math.round(precioTotal * 0.325);
+      const valorDesarme = Math.round(precioTotal * 0.325);
+
       items.push({
         tipo: "alquiler_mensual",
         concepto: `Canon locativo - ${m2} m² x ${plazo} día${plazo > 1 ? "s" : ""}`,
         cantidad: plazo,
         unidad: "día",
-        precio_unitario: m2 * precioAjustado,
+        precio_unitario: m2 * valorAlquiler,
       });
+      if (watch("incluye_montaje")) {
+        items.push({ tipo: "montaje", concepto: `Mano de obra montaje - ${m2} m²`, cantidad: 1, unidad: "servicio", precio_unitario: m2 * valorMontaje });
+      }
+      if (watch("incluye_desarme")) {
+        items.push({ tipo: "desarme", concepto: `Mano de obra desarme - ${m2} m²`, cantidad: 1, unidad: "servicio", precio_unitario: m2 * valorDesarme });
+      }
     } else if (tipo === "bandeja_peatonal" && ml > 0) {
-      const precioAjustado = Math.round(precioMl * multiplicadorTotal);
+      const precioTotal = Math.round(precioMl * multiplicadorTotal);
+      const valorAlquiler = Math.round(precioTotal * 0.35);
+      const valorMontaje = Math.round(precioTotal * 0.325);
+      const valorDesarme = Math.round(precioTotal * 0.325);
+
       items.push({
         tipo: "alquiler_mensual",
         concepto: `Canon locativo bandeja peatonal - ${ml} ml x ${plazo} día${plazo > 1 ? "s" : ""}`,
         cantidad: plazo,
         unidad: "día",
-        precio_unitario: ml * precioAjustado,
+        precio_unitario: ml * valorAlquiler,
       });
+      if (watch("incluye_montaje")) {
+        items.push({ tipo: "montaje", concepto: `Mano de obra montaje - ${ml} ml`, cantidad: 1, unidad: "servicio", precio_unitario: ml * valorMontaje });
+      }
+      if (watch("incluye_desarme")) {
+        items.push({ tipo: "desarme", concepto: `Mano de obra desarme - ${ml} ml`, cantidad: 1, unidad: "servicio", precio_unitario: ml * valorDesarme });
+      }
     }
 
-    if (watch("incluye_montaje")) {
-      items.push({ tipo: "montaje", concepto: "Mano de obra montaje", cantidad: 1, unidad: "servicio", precio_unitario: 0 });
-    }
-    if (watch("incluye_desarme")) {
-      items.push({ tipo: "desarme", concepto: "Mano de obra desarme", cantidad: 1, unidad: "servicio", precio_unitario: 0 });
-    }
+    // Transporte: $0 (incluido, se agrega manual si es lejos)
     if (watch("incluye_transporte")) {
-      items.push({ tipo: "transporte", concepto: "Transporte ida y vuelta", cantidad: 1, unidad: "servicio", precio_unitario: 0 });
+      items.push({ tipo: "transporte", concepto: "Transporte (incluido)", cantidad: 1, unidad: "servicio", precio_unitario: 0 });
     }
     if (watch("metadata.incluye_ingenieria" as any)) {
       items.push({ tipo: "ingenieria", concepto: "Ingeniería - Memoria de cálculo, planos, firma profesional", cantidad: 1, unidad: "servicio", precio_unitario: precioIngenieria });

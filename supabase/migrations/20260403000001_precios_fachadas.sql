@@ -17,3 +17,9 @@ INSERT INTO configuracion (clave, valor, descripcion) VALUES
   "urgencia_alta": 1.20
 }', 'Multiplicadores comerciales para ajuste de precio base en fachadas (JSON)')
 ON CONFLICT (clave) DO UPDATE SET valor = EXCLUDED.valor;
+
+-- Condiciones comerciales configurables
+INSERT INTO configuracion (clave, valor, descripcion) VALUES
+('condicion_pago_default', '50% anticipo al momento de la aceptación, 50% a la finalización del montaje', 'Condición de pago por defecto para cotizaciones'),
+('validez_oferta_dias', '15', 'Validez de la oferta en días por defecto')
+ON CONFLICT (clave) DO UPDATE SET valor = EXCLUDED.valor;

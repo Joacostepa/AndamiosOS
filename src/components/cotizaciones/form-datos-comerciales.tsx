@@ -32,7 +32,7 @@ function useUserProfiles() {
 }
 
 export function FormDatosComerciales() {
-  const { watch, setValue } = useFormContext<CotizacionFormData>();
+  const { register, watch, setValue } = useFormContext<CotizacionFormData>();
   const { data: usuarios } = useUserProfiles();
 
   const vendedores = usuarios || [];
@@ -42,6 +42,16 @@ export function FormDatosComerciales() {
       <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
         Datos comerciales
       </h3>
+
+      {/* Ubicación de la obra — arriba de todo */}
+      <div className="space-y-2">
+        <Label>Ubicación / Dirección de obra</Label>
+        <Input
+          {...register("ubicacion")}
+          placeholder="Ej: Av. Corrientes 1234, CABA"
+          data-field="ubicacion"
+        />
+      </div>
 
       {/* Técnico-vendedor */}
       <div className="space-y-2">
@@ -107,7 +117,7 @@ export function FormDatosComerciales() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         {/* Rol del contacto */}
         <div className="space-y-2">
           <Label>Rol del contacto</Label>
@@ -130,7 +140,7 @@ export function FormDatosComerciales() {
 
         {/* Fecha proyectada */}
         <div className="space-y-2">
-          <Label>Fecha proyectada de inicio</Label>
+          <Label>Fecha proyectada</Label>
           <Input
             type="date"
             value={(watch("metadata.fecha_proyectada" as any) as string) || ""}
@@ -140,22 +150,22 @@ export function FormDatosComerciales() {
             data-field="fecha_proyectada"
           />
         </div>
-      </div>
 
-      {/* Competencia */}
-      <div className="flex items-center justify-between">
-        <div className="space-y-0.5">
+        {/* Competencia — en la misma fila */}
+        <div className="space-y-2">
           <Label>¿Hay competencia?</Label>
-          <p className="text-xs text-muted-foreground">
-            Otro proveedor está cotizando
-          </p>
+          <div className="flex items-center gap-2 h-9">
+            <Switch
+              checked={!!(watch("metadata.hay_competencia" as any) as boolean)}
+              onCheckedChange={(v) =>
+                setValue("metadata.hay_competencia" as any, v)
+              }
+            />
+            <span className="text-xs text-muted-foreground">
+              {(watch("metadata.hay_competencia" as any) as boolean) ? "Sí" : "No"}
+            </span>
+          </div>
         </div>
-        <Switch
-          checked={!!(watch("metadata.hay_competencia" as any) as boolean)}
-          onCheckedChange={(v) =>
-            setValue("metadata.hay_competencia" as any, v)
-          }
-        />
       </div>
     </div>
   );

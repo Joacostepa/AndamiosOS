@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -48,14 +49,12 @@ export function FormFachadasFull() {
     const tipo = (watch("metadata.tipo_producto_fachada" as any) as string) || "";
     if (!tipo) return;
 
-    // Get prices from config
     const precioM2 = Number(getConfigVal(configs, "precio_m2_fachada")) || 50000;
     const precioMl = Number(getConfigVal(configs, "precio_ml_bandeja")) || 110000;
     const precioGestoria = Number(getConfigVal(configs, "precio_gestoria_permiso")) || 250000;
     const precioIngenieria = Number(getConfigVal(configs, "precio_ingenieria")) || 1250000;
     const precioSyh = Number(getConfigVal(configs, "precio_syh_jornada")) || 250000;
 
-    // Get multipliers
     let multiplicadorTotal = 1;
     try {
       const multJson = getConfigVal(configs, "multiplicadores_comerciales");
@@ -70,7 +69,6 @@ export function FormFachadasFull() {
       }
     } catch { /* use default */ }
 
-    // Calculate dimensions
     const base = (watch("metadata.fachada_base" as any) as number) || 0;
     const altura = (watch("metadata.fachada_altura" as any) as number) || 0;
     const m2 = base * altura;
@@ -81,26 +79,24 @@ export function FormFachadasFull() {
 
     if (tipo === "andamio_completo" && m2 > 0) {
       const precioAjustado = Math.round(precioM2 * multiplicadorTotal);
-      // Canon locativo (alquiler mensual)
       items.push({
         tipo: "alquiler_mensual",
-        concepto: `Canon locativo - ${m2} m² x ${plazo} mes${plazo > 1 ? "es" : ""}`,
+        concepto: `Canon locativo - ${m2} m² x ${plazo} día${plazo > 1 ? "s" : ""}`,
         cantidad: plazo,
-        unidad: "mes",
+        unidad: "día",
         precio_unitario: m2 * precioAjustado,
       });
     } else if (tipo === "bandeja_peatonal" && ml > 0) {
       const precioAjustado = Math.round(precioMl * multiplicadorTotal);
       items.push({
         tipo: "alquiler_mensual",
-        concepto: `Canon locativo bandeja peatonal - ${ml} ml x ${plazo} mes${plazo > 1 ? "es" : ""}`,
+        concepto: `Canon locativo bandeja peatonal - ${ml} ml x ${plazo} día${plazo > 1 ? "s" : ""}`,
         cantidad: plazo,
-        unidad: "mes",
+        unidad: "día",
         precio_unitario: ml * precioAjustado,
       });
     }
 
-    // Servicios incluidos
     if (watch("incluye_montaje")) {
       items.push({ tipo: "montaje", concepto: "Mano de obra montaje", cantidad: 1, unidad: "servicio", precio_unitario: 0 });
     }
@@ -123,12 +119,16 @@ export function FormFachadasFull() {
     setValue("items", items, { shouldDirty: true });
   }, [watch, setValue, configs]);
 
+  // Default condicion de pago from config
+  const condicionPagoDefault = getConfigVal(configs, "condicion_pago_default") || "50% anticipo, 50% finalización montaje";
+  const validezDefault = getConfigVal(configs, "validez_oferta_dias") || "15";
+
   return (
     <div className="space-y-6">
       {/* 1. Título + Cliente + Oportunidad */}
       <TituloClienteFields />
 
-      {/* 2. Datos comerciales */}
+      {/* 2. Datos comerciales (incluye ubicación con mapa) */}
       <FormDatosComerciales />
 
       {/* 3. Tareas del cliente */}
@@ -144,20 +144,20 @@ export function FormFachadasFull() {
 
       {/* 3.5. Tiempo estimado de trabajo */}
       <div className="space-y-2">
-        <Label>Tiempo estimado de trabajo del cliente (meses)</Label>
+        <Label>Tiempo estimado de trabajo del cliente (días)</Label>
         <Input
           type="number"
           min={1}
           {...register("plazo_alquiler_meses", { valueAsNumber: true })}
-          placeholder="Ej: 3"
+          placeholder="Ej: 30"
           data-field="plazo_alquiler_meses"
         />
       </div>
 
-      {/* 4. Tipo de producto + dimensiones */}
+      {/* 4. Información técnica */}
       <div className="space-y-4">
         <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-          Tipo de producto
+          Información técnica
         </h3>
         <div className="grid grid-cols-2 gap-3">
           {TIPO_PRODUCTO.map((tipo) => (
@@ -207,6 +207,7 @@ export function FormFachadasFull() {
                 <Select value={(watch("metadata.tipo_edificio" as any) as string) || ""} onValueChange={(val) => setValue("metadata.tipo_edificio" as any, val)}>
                   <SelectTrigger><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="edificio_estandar">Edificio estándar</SelectItem>
                     <SelectItem value="edificio_propiedad_horizontal">Edificio PH</SelectItem>
                     <SelectItem value="casa">Casa</SelectItem>
                     <SelectItem value="ph">PH</SelectItem>
@@ -239,6 +240,25 @@ export function FormFachadasFull() {
             </div>
           </div>
         )}
+
+        {/* Descripción técnica del servicio */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label>Descripción técnica del servicio</Label>
+            <AIImproveButton
+              currentText={(watch("metadata.descripcion_tecnica" as any) as string) || ""}
+              fieldName="descripcion tecnica"
+              context={watch() as Record<string, unknown>}
+              onAccept={(text) => setValue("metadata.descripcion_tecnica" as any, text)}
+            />
+          </div>
+          <Textarea
+            {...register("metadata.descripcion_tecnica" as any)}
+            rows={4}
+            placeholder="Detalle técnico: dimensiones, sistema de andamio, niveles de contención, materiales..."
+            data-field="descripcion_tecnica"
+          />
+        </div>
       </div>
 
       {/* 5. Descripción breve del servicio */}
@@ -260,50 +280,10 @@ export function FormFachadasFull() {
         />
       </div>
 
-      {/* 6. Descripción técnica del servicio */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <Label>Descripción técnica del servicio</Label>
-          <AIImproveButton
-            currentText={(watch("metadata.descripcion_tecnica" as any) as string) || ""}
-            fieldName="descripcion tecnica"
-            context={watch() as Record<string, unknown>}
-            onAccept={(text) => setValue("metadata.descripcion_tecnica" as any, text)}
-          />
-        </div>
-        <Textarea
-          {...register("metadata.descripcion_tecnica" as any)}
-          rows={4}
-          placeholder="Detalle técnico: dimensiones, sistema de andamio, niveles de contención, materiales..."
-          data-field="descripcion_tecnica"
-        />
-      </div>
-
-      {/* 7. Condición de pago */}
-      <div className="space-y-2">
-        <Label>Condición de pago</Label>
-        <Input
-          {...register("condicion_pago")}
-          placeholder="Ej: 50% anticipo, 50% finalización montaje"
-          data-field="condicion_pago"
-        />
-      </div>
-
-      {/* 8. Condiciones generales */}
-      <div className="space-y-2">
-        <Label>Condiciones generales</Label>
-        <Textarea
-          {...register("condiciones")}
-          rows={3}
-          placeholder="Condiciones del servicio..."
-          data-field="condiciones"
-        />
-      </div>
-
-      {/* 9. Servicios incluidos */}
+      {/* 6. Servicios incluidos */}
       <ServiceToggles />
 
-      {/* 9.5 Botón calcular items */}
+      {/* 6.5 Botón calcular items */}
       <Button
         type="button"
         variant="outline"
@@ -315,11 +295,56 @@ export function FormFachadasFull() {
         Calcular items recomendados
       </Button>
 
-      {/* 10. Ubicación */}
-      <div className="space-y-2">
-        <Label>Ubicación / Dirección de obra</Label>
-        <Input {...register("ubicacion")} placeholder="Ej: Av. Corrientes 1234, CABA" />
+      {/* 7. Condiciones comerciales */}
+      <div className="space-y-4">
+        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+          Condiciones comerciales
+        </h3>
+
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <Label>Precios incluyen IVA</Label>
+            <p className="text-xs text-muted-foreground">Si está desactivado, los precios son + IVA</p>
+          </div>
+          <Switch
+            checked={!!(watch("metadata.incluye_iva" as any) as boolean)}
+            onCheckedChange={(v) => setValue("metadata.incluye_iva" as any, v)}
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label>Condición de pago</Label>
+            <Input
+              {...register("condicion_pago")}
+              placeholder={condicionPagoDefault}
+              data-field="condicion_pago"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Validez de la oferta (días)</Label>
+            <Input
+              type="number"
+              min={1}
+              {...register("metadata.validez_oferta_dias" as any, { valueAsNumber: true })}
+              placeholder={validezDefault}
+              data-field="validez_oferta_dias"
+            />
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label>Condiciones generales</Label>
+          <Textarea
+            {...register("condiciones")}
+            rows={3}
+            placeholder="Condiciones del servicio..."
+            data-field="condiciones"
+          />
+        </div>
       </div>
+
+      {/* Ubicación ya está en FormDatosComerciales */}
     </div>
   );
 }

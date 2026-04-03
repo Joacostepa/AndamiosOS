@@ -19,6 +19,7 @@ import { PDFDownloadButton } from "@/components/pdf/pdf-download-button";
 import { CotizacionPDF, type EmpresaData } from "@/components/pdf/cotizacion-pdf";
 import { PropuestaPDF } from "@/components/pdf/propuesta-pdf";
 import { useCotizacion } from "@/hooks/use-cotizaciones";
+import { useCotizacionImagenes } from "@/hooks/use-imagenes-referencia";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import {
@@ -61,6 +62,7 @@ function NuevaCotizacionContent() {
   const [createdId, setCreatedId] = useState<string | null>(null);
 
   const { data: createdCot } = useCotizacion(createdId || "");
+  const { data: createdCotImagenes } = useCotizacionImagenes(createdId || "");
 
   const form = useForm<CotizacionFormData>({
     defaultValues: {
@@ -424,6 +426,7 @@ function NuevaCotizacionContent() {
                       items={createdCot.cotizacion_items || []}
                       clienteNombre={createdCot.clientes?.razon_social}
                       empresa={empresa}
+                      imageUrls={createdCotImagenes?.map((ci: any) => ci.imagenes_referencia?.url).filter(Boolean)}
                     />
                   ) : (
                     <CotizacionPDF

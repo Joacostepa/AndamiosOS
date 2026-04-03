@@ -183,7 +183,11 @@ export function PropuestaPDF({ cotizacion, items, clienteNombre, empresa, imageU
           <View style={s.section} break>
             <Text style={s.sectionTitle}>Representación gráfica del proyecto</Text>
             {imageUrls.map((url, i) => (
-              <Image key={i} src={url} style={s.refImage} />
+              <Image
+                key={i}
+                src={{ uri: url, method: "GET", headers: { "Cache-Control": "no-cache" } }}
+                style={s.refImage}
+              />
             ))}
           </View>
         )}

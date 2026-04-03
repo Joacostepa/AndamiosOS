@@ -5,21 +5,46 @@ import { NextRequest, NextResponse } from "next/server";
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
-async function getAgentPrompt(): Promise<string> {
+async function getPrompts(): Promise<Record<string, string>> {
   try {
-    const { data } = await supabase.from("configuracion").select("valor").eq("clave", "ai_agente_descripcion").single();
-    return data?.valor || "";
-  } catch { return ""; }
+    const { data } = await supabase
+      .from("configuracion")
+      .select("clave, valor")
+      .in("clave", [
+        "ai_agente_descripcion",
+        "ai_plantilla_descripcion_breve",
+        "ai_plantilla_descripcion_tecnica",
+      ]);
+    const result: Record<string, string> = {};
+    data?.forEach((c) => { result[c.clave] = c.valor; });
+    return result;
+  } catch { return {}; }
 }
 
 export async function POST(request: NextRequest) {
   try {
     const { tipo, contexto, texto_original, campo } = await request.json();
-    const instrucciones = await getAgentPrompt();
+    const prompts = await getPrompts();
 
     let prompt = "";
     if (tipo === "mejorar") {
-      prompt = `Mejorá la redacción del siguiente texto para una propuesta técnica-económica profesional de una empresa de andamios.
+      // Use configurable template based on field type
+      const plantillaKey = campo === "descripcion tecnica"
+        ? "ai_plantilla_descripcion_tecnica"
+        : "ai_plantilla_descripcion_breve";
+      const plantilla = prompts[plantillaKey] || "";
+
+      if (plantilla) {
+        prompt = `${plantilla}
+
+Texto original:
+${texto_original}
+
+Contexto del trabajo:
+${JSON.stringify(contexto, null, 2)}`;
+      } else {
+        // Fallback if no template configured
+        prompt = `Mejorá la redacción del siguiente texto para una propuesta técnica-económica profesional de una empresa de andamios.
 
 Texto original:
 ${texto_original}
@@ -27,16 +52,14 @@ ${texto_original}
 Contexto del trabajo:
 ${JSON.stringify(contexto, null, 2)}
 
-Campo: ${campo || "descripcion"}
-
 Reglas:
 - Mantené el sentido y los datos originales
 - Hacelo más profesional y técnico
 - Usá vocabulario del rubro de andamios y construcción
-- Si es "descripcion breve" máximo 150 palabras
-- Si es "descripcion tecnica" puede ser más extenso (hasta 300 palabras), con detalle técnico
+- Máximo 300 palabras
 - Sin formato markdown, sin títulos
 - Respondé SOLO con el texto mejorado`;
+      }
     } else if (tipo === "descripcion") {
       prompt = `Genera una descripcion tecnica profesional para una cotizacion de andamios con estos datos:
 ${JSON.stringify(contexto, null, 2)}
@@ -64,6 +87,7 @@ Debe incluir clausulas sobre:
 Responde SOLO con el texto de las condiciones, numeradas. Sin titulo. Maximo 300 palabras.`;
     }
 
+    const instrucciones = prompts.ai_agente_descripcion || "";
     if (instrucciones) {
       prompt += `\n\nINSTRUCCIONES ADICIONALES DE LA EMPRESA:\n${instrucciones}`;
     }

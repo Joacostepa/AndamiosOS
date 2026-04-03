@@ -201,6 +201,47 @@ export default function AgentesIAPage() {
         </CardContent>
       </Card>
 
+      {/* Plantillas de descripción */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-emerald-400" />
+            Plantillas — Mejorar redacción
+          </CardTitle>
+          <CardDescription>
+            Plantillas que usa el botón "Mejorar redacción" en las cotizaciones de armado y desarme.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label>Plantilla descripción breve</Label>
+            <Textarea
+              value={values.ai_plantilla_descripcion_breve || ""}
+              onChange={(e) => update("ai_plantilla_descripcion_breve", e.target.value)}
+              rows={8}
+              className="font-mono text-sm"
+            />
+            <p className="text-xs text-muted-foreground">{(values.ai_plantilla_descripcion_breve || "").length} caracteres</p>
+          </div>
+          <div className="space-y-2">
+            <Label>Plantilla descripción técnica</Label>
+            <Textarea
+              value={values.ai_plantilla_descripcion_tecnica || ""}
+              onChange={(e) => update("ai_plantilla_descripcion_tecnica", e.target.value)}
+              rows={8}
+              className="font-mono text-sm"
+            />
+            <p className="text-xs text-muted-foreground">{(values.ai_plantilla_descripcion_tecnica || "").length} caracteres</p>
+          </div>
+          <div className="flex justify-end">
+            <Button size="sm" onClick={() => handleSave(["ai_plantilla_descripcion_breve", "ai_plantilla_descripcion_tecnica"])} disabled={updateConfig.isPending}>
+              {updateConfig.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+              Guardar plantillas
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Computos */}
       <Card>
         <CardHeader>

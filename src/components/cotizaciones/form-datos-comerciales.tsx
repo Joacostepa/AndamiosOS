@@ -44,130 +44,117 @@ export function FormDatosComerciales() {
         Datos comerciales
       </h3>
 
-      {/* Ubicación de la obra — arriba de todo, con Google Maps */}
-      <LocationPicker
-        value={watch("ubicacion") || ""}
-        onChange={(address, lat, lng) => {
-          setValue("ubicacion", address);
-          if (lat && lng) {
-            setValue("metadata.ubicacion_lat" as any, lat);
-            setValue("metadata.ubicacion_lng" as any, lng);
-          }
-        }}
-      />
-
-      {/* Técnico-vendedor */}
-      <div className="space-y-2">
-        <Label>Técnico-vendedor responsable</Label>
-        <Select
-          value={watch("responsable_id") || ""}
-          onValueChange={(val) => val && setValue("responsable_id", val)}
-        >
-          <SelectTrigger data-field="responsable_id">
-            <SelectValue placeholder="Asignar responsable..." />
-          </SelectTrigger>
-          <SelectContent>
-            {vendedores.map((u) => (
-              <SelectItem key={u.id} value={u.id}>
-                {u.nombre} {u.apellido}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        {/* Perfil del cliente */}
-        <div className="space-y-2">
-          <Label>¿Qué busca el cliente?</Label>
-          <Select
-            value={(watch("metadata.tipo_cliente_perfil" as any) as string) || ""}
-            onValueChange={(val) =>
-              val && setValue("metadata.tipo_cliente_perfil" as any, val)
-            }
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Seleccionar..." />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="busca_profesionalismo">Profesionalismo</SelectItem>
-              <SelectItem value="busca_precio">Precio</SelectItem>
-              <SelectItem value="busca_velocidad">Velocidad de respuesta</SelectItem>
-              <SelectItem value="busca_seguridad">Seguridad</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Etapa del cliente */}
-        <div className="space-y-2">
-          <Label>Etapa del cliente</Label>
-          <Select
-            value={(watch("metadata.etapa_cliente" as any) as string) || ""}
-            onValueChange={(val) =>
-              val && setValue("metadata.etapa_cliente" as any, val)
-            }
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Seleccionar..." />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="cotizando">Recién cotizando</SelectItem>
-              <SelectItem value="contratado">Tiene trabajo contratado</SelectItem>
-              <SelectItem value="licitacion">Participando de licitación</SelectItem>
-              <SelectItem value="listo_contratar">Listo para contratar</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-3 gap-4">
-        {/* Rol del contacto */}
-        <div className="space-y-2">
-          <Label>Rol del contacto</Label>
-          <Select
-            value={(watch("metadata.rol_contacto" as any) as string) || ""}
-            onValueChange={(val) =>
-              val && setValue("metadata.rol_contacto" as any, val)
-            }
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Seleccionar..." />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="decide">Decide solo</SelectItem>
-              <SelectItem value="traslada">Traslada el precio</SelectItem>
-              <SelectItem value="influye">Influye en la decisión</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Fecha proyectada */}
-        <div className="space-y-2">
-          <Label>Fecha proyectada</Label>
-          <Input
-            type="date"
-            value={(watch("metadata.fecha_proyectada" as any) as string) || ""}
-            onChange={(e) =>
-              setValue("metadata.fecha_proyectada" as any, e.target.value)
-            }
-            data-field="fecha_proyectada"
-          />
-        </div>
-
-        {/* Competencia — en la misma fila */}
-        <div className="space-y-2">
-          <Label>¿Hay competencia?</Label>
-          <div className="flex items-center gap-2 h-9">
-            <Switch
-              checked={!!(watch("metadata.hay_competencia" as any) as boolean)}
-              onCheckedChange={(v) =>
-                setValue("metadata.hay_competencia" as any, v)
-              }
-            />
-            <span className="text-xs text-muted-foreground">
-              {(watch("metadata.hay_competencia" as any) as boolean) ? "Sí" : "No"}
-            </span>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Columna izquierda: campos */}
+        <div className="space-y-4">
+          {/* Técnico-vendedor */}
+          <div className="space-y-2">
+            <Label>Técnico-vendedor</Label>
+            <Select
+              value={watch("responsable_id") || ""}
+              onValueChange={(val) => val && setValue("responsable_id", val)}
+            >
+              <SelectTrigger data-field="responsable_id">
+                <SelectValue placeholder="Asignar responsable..." />
+              </SelectTrigger>
+              <SelectContent>
+                {vendedores.map((u) => (
+                  <SelectItem key={u.id} value={u.id}>
+                    {u.nombre} {u.apellido}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
+
+          {/* Qué busca + Etapa */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label>¿Qué busca el cliente?</Label>
+              <Select
+                value={(watch("metadata.tipo_cliente_perfil" as any) as string) || ""}
+                onValueChange={(val) => val && setValue("metadata.tipo_cliente_perfil" as any, val)}
+              >
+                <SelectTrigger><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="busca_profesionalismo">Profesionalismo</SelectItem>
+                  <SelectItem value="busca_precio">Precio</SelectItem>
+                  <SelectItem value="busca_velocidad">Velocidad</SelectItem>
+                  <SelectItem value="busca_seguridad">Seguridad</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Etapa del cliente</Label>
+              <Select
+                value={(watch("metadata.etapa_cliente" as any) as string) || ""}
+                onValueChange={(val) => val && setValue("metadata.etapa_cliente" as any, val)}
+              >
+                <SelectTrigger><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cotizando">Recién cotizando</SelectItem>
+                  <SelectItem value="contratado">Trabajo contratado</SelectItem>
+                  <SelectItem value="licitacion">En licitación</SelectItem>
+                  <SelectItem value="listo_contratar">Listo para contratar</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Rol + Competencia */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label>Rol del contacto</Label>
+              <Select
+                value={(watch("metadata.rol_contacto" as any) as string) || ""}
+                onValueChange={(val) => val && setValue("metadata.rol_contacto" as any, val)}
+              >
+                <SelectTrigger><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="decide">Decide solo</SelectItem>
+                  <SelectItem value="traslada">Traslada precio</SelectItem>
+                  <SelectItem value="influye">Influye</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>¿Hay competencia?</Label>
+              <div className="flex items-center gap-2 h-9">
+                <Switch
+                  checked={!!(watch("metadata.hay_competencia" as any) as boolean)}
+                  onCheckedChange={(v) => setValue("metadata.hay_competencia" as any, v)}
+                />
+                <span className="text-xs text-muted-foreground">
+                  {(watch("metadata.hay_competencia" as any) as boolean) ? "Sí" : "No"}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Fecha proyectada */}
+          <div className="space-y-2">
+            <Label>Fecha proyectada de inicio</Label>
+            <Input
+              type="date"
+              value={(watch("metadata.fecha_proyectada" as any) as string) || ""}
+              onChange={(e) => setValue("metadata.fecha_proyectada" as any, e.target.value)}
+              data-field="fecha_proyectada"
+            />
+          </div>
+        </div>
+
+        {/* Columna derecha: Google Maps */}
+        <div>
+          <LocationPicker
+            value={watch("ubicacion") || ""}
+            onChange={(address, lat, lng) => {
+              setValue("ubicacion", address);
+              if (lat && lng) {
+                setValue("metadata.ubicacion_lat" as any, lat);
+                setValue("metadata.ubicacion_lng" as any, lng);
+              }
+            }}
+          />
         </div>
       </div>
     </div>

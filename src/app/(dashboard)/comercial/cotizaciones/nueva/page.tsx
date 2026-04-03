@@ -372,6 +372,18 @@ function NuevaCotizacionContent() {
 
           {/* Items table */}
           <ItemsTable unidad={unidad} />
+
+          {/* Botón crear cotización al final del formulario */}
+          <div className="flex justify-end pt-4 border-t">
+            <Button type="submit" size="lg" disabled={createCotizacion.isPending}>
+              {createCotizacion.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="mr-2 h-4 w-4" />
+              )}
+              Crear cotización
+            </Button>
+          </div>
         </form>
 
         {/* Right: AI Chat (desktop) - OUTSIDE form to prevent submit bubbling */}

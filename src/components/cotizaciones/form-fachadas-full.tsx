@@ -339,6 +339,9 @@ export function FormFachadasFull() {
           </div>
         )}
 
+        {/* Servicios incluidos — dentro de info técnica */}
+        <ServiceToggles />
+
         {/* Descripción técnica del servicio */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
@@ -348,6 +351,8 @@ export function FormFachadasFull() {
               fieldName="descripcion tecnica"
               context={watch() as Record<string, unknown>}
               onAccept={(text) => setValue("metadata.descripcion_tecnica" as any, text)}
+              label="Generar redacción"
+              allowEmpty
             />
           </div>
           <Textarea
@@ -365,9 +370,6 @@ export function FormFachadasFull() {
           onSelectionChange={(ids) => setValue("metadata.imagenes_ids" as any, ids)}
         />
       </div>
-
-      {/* 5. Servicios incluidos */}
-      <ServiceToggles />
 
       {/* 6.5 Botón calcular items */}
       <Button

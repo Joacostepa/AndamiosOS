@@ -9,6 +9,8 @@ interface AIImproveButtonProps {
   fieldName: string;
   context: Record<string, unknown>;
   onAccept: (improvedText: string) => void;
+  label?: string;
+  allowEmpty?: boolean;
 }
 
 export function AIImproveButton({
@@ -16,6 +18,8 @@ export function AIImproveButton({
   fieldName,
   context,
   onAccept,
+  label = "Mejorar redacción",
+  allowEmpty = false,
 }: AIImproveButtonProps) {
   const [loading, setLoading] = useState(false);
   const [improved, setImproved] = useState("");
@@ -89,7 +93,7 @@ export function AIImproveButton({
       variant="ghost"
       size="sm"
       className="h-6 text-xs text-primary"
-      disabled={!currentText.trim() || loading}
+      disabled={(!allowEmpty && !currentText.trim()) || loading}
       onClick={handleImprove}
     >
       {loading ? (
@@ -97,7 +101,7 @@ export function AIImproveButton({
       ) : (
         <Sparkles className="mr-1 h-3 w-3" />
       )}
-      Mejorar redacción
+      {label}
     </Button>
   );
 }

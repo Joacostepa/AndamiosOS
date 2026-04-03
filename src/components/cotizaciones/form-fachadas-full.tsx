@@ -365,26 +365,7 @@ export function FormFachadasFull() {
         />
       </div>
 
-      {/* 5. Descripción breve del servicio */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <Label>Descripción breve del servicio</Label>
-          <AIImproveButton
-            currentText={watch("descripcion_servicio") || ""}
-            fieldName="descripcion breve"
-            context={watch() as Record<string, unknown>}
-            onAccept={(text) => setValue("descripcion_servicio", text)}
-          />
-        </div>
-        <Textarea
-          {...register("descripcion_servicio")}
-          rows={3}
-          placeholder="Breve descripción de los alcances del trabajo..."
-          data-field="descripcion_servicio"
-        />
-      </div>
-
-      {/* 6. Servicios incluidos */}
+      {/* 5. Servicios incluidos */}
       <ServiceToggles />
 
       {/* 6.5 Botón calcular items */}

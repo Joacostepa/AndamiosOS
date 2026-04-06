@@ -33,19 +33,30 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Rutas publicas que no requieren auth
-  const publicPaths = ["/login", "/auth", "/cotizar-hogarenos", "/api/public"];
+  // REGLA DE NEGOCIO: Rutas públicas sin autenticación:
+  // /login (acceso), /auth (callback OAuth), /cotizar-hogarenos (cotizador público para clientes),
+  // /api/public (endpoints públicos como PDF y cotizador). Todo lo demás requiere sesión activa.
+  const publicPaths = ["/login", "/auth", "/cotizar-hogarenos", "/cotizador", "/api/public"];
   const isPublicPath = publicPaths.some((path) =>
     request.nextUrl.pathname.startsWith(path)
   );
 
+  // Rutas que solo tienen sentido sin sesión (login/auth).
+  // Los cotizadores públicos deben funcionar tanto logueado como no.
+  const authOnlyPaths = ["/login", "/auth"];
+  const isAuthOnlyPath = authOnlyPaths.some((p) =>
+    request.nextUrl.pathname.startsWith(p)
+  );
+
+  // DECISIÓN: Sin usuario + ruta privada → /login.
+  // Con usuario + ruta auth-only → /. Evita que un usuario logueado vea la página de login.
   if (!user && !isPublicPath) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
   }
 
-  if (user && isPublicPath) {
+  if (user && isAuthOnlyPath) {
     const url = request.nextUrl.clone();
     url.pathname = "/";
     return NextResponse.redirect(url);

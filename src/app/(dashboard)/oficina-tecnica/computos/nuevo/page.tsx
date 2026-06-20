@@ -15,18 +15,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, Plus, Trash2, AlertTriangle, CheckCircle } from "lucide-react";
+import { Loader2, Plus, Trash2, AlertTriangle, CheckCircle, Building2 } from "lucide-react";
 import { toast } from "sonner";
 import { AIComputoSuggestor } from "@/components/ai/ai-computo-suggestor";
 
 type ItemRow = {
-  pieza_id: string;
-  codigo: string;
-  descripcion: string;
-  categoria: string;
-  cantidad_requerida: number;
-  stock_disponible: number;
-  stock_minimo: number;
+  pieza_id: string; codigo: string; descripcion: string; categoria: string;
+  cantidad_requerida: number; stock_disponible: number;
 };
 
 function NuevoComputoForm() {
@@ -37,105 +32,101 @@ function NuevoComputoForm() {
   const { data: stock } = useStock();
   const createComputo = useCreateComputo();
 
-  const [obraId, setObraId] = useState(searchParams.get("obra") ?? "");
-  const [sistema, setSistema] = useState("");
+  const preObra = searchParams.get("obra") ?? "";
+  const [obraId, setObraId] = useState(preObra);
+  // Parámetros de obra — un solo lugar; alimentan la carga manual Y la IA.
+  const [sistema, setSistema] = useState("multidireccional");
+  const [tipoObra, setTipoObra] = useState("fachada");
   const [altura, setAltura] = useState("");
-  const [metrosLineales, setMetrosLineales] = useState("");
+  const [metros, setMetros] = useState("");
   const [superficie, setSuperficie] = useState("");
-  const [notas, setNotas] = useState("");
+  const [pisos, setPisos] = useState("");
+  const [obsTecnicas, setObsTecnicas] = useState("");
   const [items, setItems] = useState<ItemRow[]>([]);
   const [selectedPieza, setSelectedPieza] = useState("");
   const [cantidad, setCantidad] = useState(1);
 
-  function getStockDisponible(piezaId: string) {
-    const s = stock?.find((s) => s.pieza_id === piezaId);
-    return s ? s.en_deposito : 0;
+  const obraSel = obras?.find((o) => o.id === obraId);
+  const obraFijada = !!preObra;
+
+  const stockDe = (id: string) => stock?.find((s) => s.pieza_id === id)?.en_deposito ?? 0;
+
+  function upsertItem(pieza: { id: string; codigo: string; descripcion: string; categoria: string }, qty: number, sumar: boolean) {
+    setItems((prev) => {
+      const ex = prev.find((i) => i.pieza_id === pieza.id);
+      if (ex) return prev.map((i) => i.pieza_id === pieza.id ? { ...i, cantidad_requerida: sumar ? i.cantidad_requerida + qty : qty } : i);
+      return [...prev, { pieza_id: pieza.id, codigo: pieza.codigo, descripcion: pieza.descripcion, categoria: pieza.categoria, cantidad_requerida: qty, stock_disponible: stockDe(pieza.id) }];
+    });
   }
 
-  function getStockMinimo(piezaId: string) {
-    const s = stock?.find((s) => s.pieza_id === piezaId);
-    return s ? s.catalogo_piezas.stock_minimo : 0;
-  }
-
-  function addItem() {
-    if (!selectedPieza || cantidad < 1) return;
+  function addManual() {
     const pieza = catalogo?.find((p) => p.id === selectedPieza);
-    if (!pieza) return;
-
-    const existing = items.find((i) => i.pieza_id === selectedPieza);
-    if (existing) {
-      setItems(items.map((i) =>
-        i.pieza_id === selectedPieza ? { ...i, cantidad_requerida: i.cantidad_requerida + cantidad } : i
-      ));
-    } else {
-      setItems([...items, {
-        pieza_id: pieza.id,
-        codigo: pieza.codigo,
-        descripcion: pieza.descripcion,
-        categoria: pieza.categoria,
-        cantidad_requerida: cantidad,
-        stock_disponible: getStockDisponible(pieza.id),
-        stock_minimo: getStockMinimo(pieza.id),
-      }]);
-    }
-    setSelectedPieza("");
-    setCantidad(1);
+    if (!pieza || cantidad < 1) return;
+    upsertItem(pieza, cantidad, true);
+    setSelectedPieza(""); setCantidad(1);
   }
 
-  function removeItem(piezaId: string) {
-    setItems(items.filter((i) => i.pieza_id !== piezaId));
+  function addFromAI(suggested: { codigo: string; cantidad: number }[]) {
+    suggested.forEach((s) => {
+      const pieza = catalogo?.find((p) => p.codigo === s.codigo);
+      if (pieza) upsertItem(pieza, s.cantidad, false);
+    });
+    toast.success(`${suggested.length} piezas agregadas`);
   }
 
   function handleSubmit() {
-    if (!obraId) { toast.error("Selecciona una obra"); return; }
-    if (items.length === 0) { toast.error("Agrega al menos una pieza"); return; }
-
-    createComputo.mutate(
-      {
-        obra_id: obraId,
-        tipo_sistema_andamio: sistema || undefined,
-        altura_maxima: altura ? Number(altura) : undefined,
-        metros_lineales: metrosLineales ? Number(metrosLineales) : undefined,
-        superficie: superficie ? Number(superficie) : undefined,
-        notas: notas || undefined,
-        items: items.map((i) => ({ pieza_id: i.pieza_id, cantidad_requerida: i.cantidad_requerida })),
-      },
-      {
-        onSuccess: () => {
-          toast.success("Computo creado correctamente");
-          router.push("/oficina-tecnica/computos");
-        },
-        onError: () => toast.error("Error al crear el computo"),
-      }
-    );
+    if (!obraId) { toast.error("Seleccioná una obra"); return; }
+    if (items.length === 0) { toast.error("Agregá al menos una pieza"); return; }
+    createComputo.mutate({
+      obra_id: obraId,
+      tipo_sistema_andamio: sistema || undefined,
+      altura_maxima: altura ? Number(altura) : undefined,
+      metros_lineales: metros ? Number(metros) : undefined,
+      superficie: superficie ? Number(superficie) : undefined,
+      observaciones_tecnicas: obsTecnicas || undefined,
+      items: items.map((i) => ({ pieza_id: i.pieza_id, cantidad_requerida: i.cantidad_requerida })),
+    }, {
+      onSuccess: () => { toast.success("Cómputo creado"); router.push("/oficina-tecnica/computos"); },
+      onError: () => toast.error("Error al crear el cómputo"),
+    });
   }
 
-  const totalPiezas = items.reduce((sum, i) => sum + i.cantidad_requerida, 0);
-  const itemsConFaltante = items.filter((i) => i.cantidad_requerida > i.stock_disponible);
+  const totalUnidades = items.reduce((s, i) => s + i.cantidad_requerida, 0);
+  const conFaltante = items.filter((i) => i.cantidad_requerida > i.stock_disponible).length;
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Nuevo Computo de Materiales" />
+      <PageHeader title="Nuevo cómputo de materiales" description={obraSel ? `${obraSel.codigo} · ${obraSel.nombre}` : "Cómputo madre de la obra"} />
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader><CardTitle className="text-base">Datos del computo</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
+      {/* Paso 1 — Obra y parámetros */}
+      <Card>
+        <CardHeader><CardTitle className="text-base">1 · Obra y parámetros</CardTitle></CardHeader>
+        <CardContent className="space-y-4">
+          {obraFijada && obraSel ? (
+            <div className="flex items-center gap-3 rounded-md border bg-muted/40 p-3">
+              <Building2 className="h-5 w-5 text-muted-foreground" />
+              <div>
+                <p className="text-xs text-muted-foreground">Obra</p>
+                <p className="font-medium">{obraSel.codigo} — {obraSel.nombre}</p>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2 max-w-md">
               <Label>Obra *</Label>
-              <Select value={obraId} onValueChange={(val) => val && setObraId(val)}>
+              <Select value={obraId} onValueChange={(v) => v && setObraId(v)}>
                 <SelectTrigger><SelectValue placeholder="Seleccionar obra..." /></SelectTrigger>
                 <SelectContent>
-                  {obras?.filter((o) => o.estado !== "cancelada").map((o) => (
-                    <SelectItem key={o.id} value={o.id}>{o.codigo} — {o.nombre}</SelectItem>
-                  ))}
+                  {obras?.filter((o) => o.estado !== "cancelada").map((o) => <SelectItem key={o.id} value={o.id}>{o.codigo} — {o.nombre}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label>Sistema de andamio</Label>
-              <Select value={sistema} onValueChange={(val) => val && setSistema(val)}>
-                <SelectTrigger><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
+          )}
+
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Sistema</Label>
+              <Select value={sistema} onValueChange={(v) => v && setSistema(v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="multidireccional">Multidireccional</SelectItem>
                   <SelectItem value="tubular">Tubular</SelectItem>
@@ -144,144 +135,96 @@ function NuevoComputoForm() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="space-y-2"><Label>Altura máx (m)</Label><Input type="number" step="0.01" value={altura} onChange={(e) => setAltura(e.target.value)} /></div>
-              <div className="space-y-2"><Label>Metros lineales</Label><Input type="number" step="0.01" value={metrosLineales} onChange={(e) => setMetrosLineales(e.target.value)} /></div>
-              <div className="space-y-2"><Label>Superficie (m²)</Label><Input type="number" step="0.01" value={superficie} onChange={(e) => setSuperficie(e.target.value)} /></div>
-            </div>
-            <div className="space-y-2">
-              <Label>Notas</Label>
-              <Textarea value={notas} onChange={(e) => setNotas(e.target.value)} rows={2} placeholder="Observaciones sobre el cómputo..." />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader><CardTitle className="text-base">Agregar piezas</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label>Pieza</Label>
-              <Select value={selectedPieza} onValueChange={(val) => val && setSelectedPieza(val)}>
-                <SelectTrigger><SelectValue placeholder="Buscar pieza..." /></SelectTrigger>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Tipo de obra</Label>
+              <Select value={tipoObra} onValueChange={(v) => v && setTipoObra(v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {catalogo?.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      <span className="font-mono text-xs">{p.codigo}</span> — {p.descripcion}
-                      <span className="text-muted-foreground ml-2">(disp: {getStockDisponible(p.id)})</span>
-                    </SelectItem>
-                  ))}
+                  <SelectItem value="fachada">Fachada</SelectItem>
+                  <SelectItem value="construccion">Construcción</SelectItem>
+                  <SelectItem value="industria">Industrial</SelectItem>
+                  <SelectItem value="evento">Evento</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex gap-2">
-              <div className="flex-1 space-y-2">
-                <Label>Cantidad</Label>
-                <Input type="number" min={1} value={cantidad} onChange={(e) => setCantidad(Number(e.target.value))} />
-              </div>
-              <div className="flex items-end">
-                <Button type="button" onClick={addItem} variant="outline">
-                  <Plus className="mr-2 h-4 w-4" />Agregar
-                </Button>
-              </div>
+            <div className="space-y-1.5"><Label className="text-xs">Altura máx (m)</Label><Input type="number" step="0.01" value={altura} onChange={(e) => setAltura(e.target.value)} /></div>
+            <div className="space-y-1.5"><Label className="text-xs">Metros lineales</Label><Input type="number" step="0.01" value={metros} onChange={(e) => setMetros(e.target.value)} /></div>
+            <div className="space-y-1.5"><Label className="text-xs">Superficie (m²)</Label><Input type="number" step="0.01" value={superficie} onChange={(e) => setSuperficie(e.target.value)} /></div>
+            <div className="space-y-1.5"><Label className="text-xs">Pisos</Label><Input type="number" value={pisos} onChange={(e) => setPisos(e.target.value)} /></div>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Observaciones técnicas</Label>
+            <Textarea value={obsTecnicas} onChange={(e) => setObsTecnicas(e.target.value)} rows={2} placeholder="Acceso difícil, terreno irregular, andamio perimetral completo…" />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Paso 2 — Generar la lista de materiales */}
+      <Card>
+        <CardHeader><CardTitle className="text-base">2 · Generar la lista de materiales</CardTitle></CardHeader>
+        <CardContent className="space-y-4">
+          <AIComputoSuggestor
+            params={{ sistema, tipoObra, altura: Number(altura) || 0, metros: Number(metros) || 0, pisos: Number(pisos) || 0, observaciones: obsTecnicas }}
+            catalogoCodigos={catalogo?.map((p) => p.codigo) || []}
+            onAddItems={addFromAI}
+          />
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="flex-1 min-w-[220px] space-y-1.5">
+              <Label className="text-xs">Agregar pieza manual</Label>
+              <Select value={selectedPieza} onValueChange={(v) => v && setSelectedPieza(v)}>
+                <SelectTrigger><SelectValue placeholder="Buscar pieza..." /></SelectTrigger>
+                <SelectContent>
+                  {catalogo?.map((p) => <SelectItem key={p.id} value={p.id}><span className="font-mono text-xs">{p.codigo}</span> — {p.descripcion} <span className="text-muted-foreground">(disp: {stockDe(p.id)})</span></SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* AI Suggestor */}
-      <AIComputoSuggestor
-        catalogoCodigos={catalogo?.map((p) => p.codigo) || []}
-        onAddItems={(suggested) => {
-          suggested.forEach((s) => {
-            const pieza = catalogo?.find((p) => p.codigo === s.codigo);
-            if (!pieza) return;
-            const existing = items.find((i) => i.pieza_id === pieza.id);
-            if (existing) {
-              setItems(items.map((i) => i.pieza_id === pieza.id ? { ...i, cantidad_requerida: s.cantidad } : i));
-            } else {
-              setItems((prev) => [...prev, {
-                pieza_id: pieza.id, codigo: pieza.codigo, descripcion: pieza.descripcion,
-                categoria: pieza.categoria, cantidad_requerida: s.cantidad,
-                stock_disponible: getStockDisponible(pieza.id), stock_minimo: getStockMinimo(pieza.id),
-              }]);
-            }
-          });
-          toast.success(`${suggested.length} piezas agregadas`);
-        }}
-      />
-
-      {/* Summary */}
-      {items.length > 0 && (
-        <div className="grid gap-4 md:grid-cols-3">
-          <div className="rounded-lg border bg-card p-4">
-            <p className="text-sm text-muted-foreground">Piezas unicas</p>
-            <p className="text-2xl font-bold">{items.length}</p>
+            <div className="w-24 space-y-1.5"><Label className="text-xs">Cantidad</Label><Input type="number" min={1} value={cantidad} onChange={(e) => setCantidad(Number(e.target.value))} /></div>
+            <Button type="button" variant="outline" onClick={addManual}><Plus className="mr-2 h-4 w-4" />Agregar</Button>
           </div>
-          <div className="rounded-lg border bg-card p-4">
-            <p className="text-sm text-muted-foreground">Total unidades</p>
-            <p className="text-2xl font-bold">{totalPiezas}</p>
-          </div>
-          <div className="rounded-lg border bg-card p-4">
-            <p className="text-sm text-muted-foreground">Con faltante</p>
-            <p className={`text-2xl font-bold ${itemsConFaltante.length > 0 ? "text-red-400" : "text-green-400"}`}>
-              {itemsConFaltante.length}
-            </p>
-          </div>
-        </div>
-      )}
+        </CardContent>
+      </Card>
 
-      {/* Items table */}
+      {/* Paso 3 — Ítems */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Items del computo ({items.length})</CardTitle>
+          <CardTitle className="text-base flex flex-wrap items-center gap-2">
+            3 · Ítems del cómputo
+            {items.length > 0 && <>
+              <Badge variant="outline">{items.length} piezas</Badge>
+              <Badge variant="outline">{totalUnidades} unidades</Badge>
+              {conFaltante > 0 && <Badge variant="outline" className="bg-red-500/15 text-red-400 border-red-500/25">{conFaltante} con faltante</Badge>}
+            </>}
+          </CardTitle>
         </CardHeader>
         <CardContent>
           {items.length > 0 ? (
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead>Codigo</TableHead>
-                  <TableHead>Descripcion</TableHead>
-                  <TableHead>Categoria</TableHead>
-                  <TableHead>Requerido</TableHead>
-                  <TableHead>Disponible</TableHead>
-                  <TableHead>Estado</TableHead>
-                  <TableHead />
-                </TableRow>
+                <TableRow><TableHead>Código</TableHead><TableHead>Descripción</TableHead><TableHead>Categoría</TableHead><TableHead className="text-right">Requerido</TableHead><TableHead className="text-right">Disponible</TableHead><TableHead>Estado</TableHead><TableHead /></TableRow>
               </TableHeader>
               <TableBody>
                 {items.map((item) => {
-                  const faltante = item.cantidad_requerida > item.stock_disponible;
+                  const falta = item.cantidad_requerida > item.stock_disponible;
                   return (
                     <TableRow key={item.pieza_id}>
                       <TableCell className="font-mono text-sm">{item.codigo}</TableCell>
                       <TableCell>{item.descripcion}</TableCell>
                       <TableCell className="capitalize">{item.categoria}</TableCell>
-                      <TableCell className="font-semibold">{item.cantidad_requerida}</TableCell>
-                      <TableCell className={faltante ? "text-red-400" : ""}>{item.stock_disponible}</TableCell>
+                      <TableCell className="text-right font-semibold">{item.cantidad_requerida}</TableCell>
+                      <TableCell className={`text-right ${falta ? "text-red-400" : ""}`}>{item.stock_disponible}</TableCell>
                       <TableCell>
-                        {faltante ? (
-                          <Badge variant="outline" className="bg-red-500/15 text-red-400 border-red-500/25">
-                            <AlertTriangle className="mr-1 h-3 w-3" />Faltante: {item.cantidad_requerida - item.stock_disponible}
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="bg-emerald-500/15 text-emerald-400 border-emerald-500/25">
-                            <CheckCircle className="mr-1 h-3 w-3" />OK
-                          </Badge>
-                        )}
+                        {falta
+                          ? <Badge variant="outline" className="bg-red-500/15 text-red-400 border-red-500/25 gap-1"><AlertTriangle className="h-3 w-3" />Falta {item.cantidad_requerida - item.stock_disponible}</Badge>
+                          : <Badge variant="outline" className="bg-emerald-500/15 text-emerald-400 border-emerald-500/25 gap-1"><CheckCircle className="h-3 w-3" />OK</Badge>}
                       </TableCell>
-                      <TableCell>
-                        <Button variant="ghost" size="icon" onClick={() => removeItem(item.pieza_id)}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </TableCell>
+                      <TableCell><Button variant="ghost" size="icon" onClick={() => setItems((p) => p.filter((i) => i.pieza_id !== item.pieza_id))}><Trash2 className="h-4 w-4 text-destructive" /></Button></TableCell>
                     </TableRow>
                   );
                 })}
               </TableBody>
             </Table>
           ) : (
-            <p className="text-center py-8 text-muted-foreground">Agrega piezas al computo</p>
+            <p className="py-8 text-center text-sm text-muted-foreground">Generá la lista con IA o agregá piezas a mano.</p>
           )}
         </CardContent>
       </Card>
@@ -289,8 +232,7 @@ function NuevoComputoForm() {
       <div className="flex justify-end gap-2">
         <Button variant="outline" onClick={() => router.back()}>Cancelar</Button>
         <Button onClick={handleSubmit} disabled={createComputo.isPending} size="lg">
-          {createComputo.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          Crear computo
+          {createComputo.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Crear cómputo
         </Button>
       </div>
     </div>

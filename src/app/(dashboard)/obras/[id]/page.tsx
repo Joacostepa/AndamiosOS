@@ -186,19 +186,26 @@ export default function ObraDetailPage({ params }: { params: Promise<{ id: strin
                     <TableCell>{TIPO_OT_LABELS[ot.tipo] || ot.tipo}</TableCell>
                     <TableCell>{formatDate(ot.fecha_programada)}</TableCell>
                     <TableCell>
-                      {ot.requiere_habilitacion && !ot.habilitacion_aprobada && ot.estado === "pendiente"
+                      {ot.es_adicional && !ot.aprobada_comercial
+                        ? <Badge variant="outline" className="gap-1 bg-orange-500/15 text-orange-400 border-orange-500/25"><Clock className="h-3 w-3" />Pend. aprob. comercial</Badge>
+                        : ot.requiere_habilitacion && !ot.habilitacion_aprobada && ot.estado === "pendiente"
                         ? <Badge variant="outline" className="gap-1 bg-red-500/15 text-red-400 border-red-500/25"><Shield className="h-3 w-3" />Pend. habilitación</Badge>
                         : <StatusBadge status={ot.estado} />}
+                      {ot.es_adicional && <Badge variant="outline" className="ml-1 bg-purple-500/15 text-purple-400 border-purple-500/25">Adicional</Badge>}
                     </TableCell>
                     <TableCell>{ot.habilitacion_aprobada ? <CheckCircle className="h-4 w-4 text-green-400" /> : <Clock className="h-4 w-4 text-yellow-400" />}</TableCell>
                     <TableCell>
+                      {/* Adicional sin aprobar: bloqueada hasta que Comercial la apruebe en Odoo. */}
+                      {ot.es_adicional && !ot.aprobada_comercial && (
+                        <span className="text-xs text-muted-foreground">Esperando aprobación de Comercial (Odoo)</span>
+                      )}
                       {/* Habilitación = gate por-OT (boolean), lo decide el área Habilitaciones. */}
-                      {ot.estado === "pendiente" && ot.requiere_habilitacion && !ot.habilitacion_aprobada && (
+                      {!(ot.es_adicional && !ot.aprobada_comercial) && ot.estado === "pendiente" && ot.requiere_habilitacion && !ot.habilitacion_aprobada && (
                         <Button size="sm" variant="outline" onClick={() => updateOT.mutate({ id: ot.id, data: { habilitacion_aprobada: true } as any }, { onSuccess: () => toast.success("OT habilitada") })}>
                           Habilitar
                         </Button>
                       )}
-                      {ot.estado === "pendiente" && (!ot.requiere_habilitacion || ot.habilitacion_aprobada) && (
+                      {!(ot.es_adicional && !ot.aprobada_comercial) && ot.estado === "pendiente" && (!ot.requiere_habilitacion || ot.habilitacion_aprobada) && (
                         <Button size="sm" variant="outline" onClick={() => updateOT.mutate({ id: ot.id, data: { estado: "programada" } as any }, { onSuccess: () => toast.success("OT programada") })}>Programar</Button>
                       )}
                       {ot.estado === "programada" && (

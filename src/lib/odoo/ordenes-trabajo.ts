@@ -18,10 +18,14 @@ export type OdooOrdenTrabajo = {
   x_estado: string | false;
   x_fecha_programada: string | false;
   x_observaciones: string | false;
+  x_es_adicional: boolean;
+  x_aprobada_comercial: boolean;
+  x_andamios_id: string | false;
 };
 
 const OT_FIELDS = [
   "id", "x_name", "x_obra_id", "x_tipo", "x_estado", "x_fecha_programada", "x_observaciones",
+  "x_es_adicional", "x_aprobada_comercial", "x_andamios_id",
 ];
 
 const TIPOS_OT = new Set([
@@ -60,6 +64,10 @@ export function mapOTToApp(ot: OdooOrdenTrabajo, obraId: string | null) {
   const tipo = typeof ot.x_tipo === "string" && TIPOS_OT.has(ot.x_tipo) ? ot.x_tipo : "otro";
   const estado =
     typeof ot.x_estado === "string" && ESTADOS_OT.has(ot.x_estado) ? ot.x_estado : "pendiente";
+  // La aprobación comercial es Odoo-owned (Comercial la marca allá). Las OTs normales
+  // (no adicionales) se consideran siempre aprobadas.
+  const esAdicional = ot.x_es_adicional === true;
+  const aprobadaComercial = esAdicional ? ot.x_aprobada_comercial === true : true;
   return {
     obra_id: obraId,
     tipo,
@@ -67,6 +75,8 @@ export function mapOTToApp(ot: OdooOrdenTrabajo, obraId: string | null) {
     descripcion: (typeof ot.x_name === "string" ? ot.x_name.trim() : "") || `OT Odoo #${ot.id}`,
     fecha_programada: str(ot.x_fecha_programada),
     observaciones: str(ot.x_observaciones),
+    es_adicional: esAdicional,
+    aprobada_comercial: aprobadaComercial,
     odoo_ot_id: ot.id,
   };
 }

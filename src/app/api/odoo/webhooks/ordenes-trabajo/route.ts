@@ -63,8 +63,14 @@ export async function POST(req: NextRequest) {
         results.push({ id, action: "omitida_sin_obra" });
         continue;
       }
-      const { data: existing } = await supabase
-        .from("ordenes_trabajo").select("id").eq("odoo_ot_id", id).maybeSingle();
+      // Buscar la OT en la app por odoo_ot_id; si no, por x_andamios_id (echo de una
+      // adicional creada en la app que aún no tenía odoo_ot_id) → evita duplicar.
+      let existing = (await supabase
+        .from("ordenes_trabajo").select("id").eq("odoo_ot_id", id).maybeSingle()).data;
+      if (!existing && ot.x_andamios_id) {
+        existing = (await supabase
+          .from("ordenes_trabajo").select("id").eq("id", ot.x_andamios_id).maybeSingle()).data;
+      }
       if (existing) {
         const refresh = { ...values, odoo_synced_at: now }; // estado/habilitación app-owned → no se pisan
         delete (refresh as { estado?: unknown }).estado;

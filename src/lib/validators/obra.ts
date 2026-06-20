@@ -18,36 +18,20 @@ export const obraSchema = z.object({
 
 export type ObraFormData = z.infer<typeof obraSchema>;
 
+// Estados alineados con el modelo Obra de Odoo (x_aba_obra.x_estado).
+// La granularidad operativa "en proceso" vive en las OTs (en_curso), no acá.
 export const ESTADO_OBRA_TRANSITIONS: Record<string, string[]> = {
-  presupuestada: ["aprobada", "cancelada"],
-  aprobada: ["en_proyecto", "cancelada", "suspendida"],
-  en_proyecto: ["proyecto_aprobado", "cancelada", "suspendida"],
-  proyecto_aprobado: ["lista_para_ejecutar", "en_proyecto", "suspendida"],
-  lista_para_ejecutar: ["en_montaje", "suspendida"],
-  en_montaje: ["montada", "suspendida"],
-  montada: ["en_uso"],
-  en_uso: ["en_desarme", "en_espera"],
-  en_desarme: ["desarmada"],
-  desarmada: ["en_devolucion"],
-  en_devolucion: ["cerrada_operativamente"],
-  suspendida: ["aprobada", "cancelada"],
-  en_espera: ["en_uso", "en_desarme"],
+  pendiente_armado: ["armado", "cancelada"],
+  armado: ["pendiente_desarme", "cancelada"],
+  pendiente_desarme: ["desarmado", "cancelada"],
+  desarmado: [],
+  cancelada: [],
 };
 
 export const ESTADO_OBRA_LABELS: Record<string, string> = {
-  presupuestada: "Presupuestada",
-  aprobada: "Aprobada",
-  en_proyecto: "En proyecto",
-  proyecto_aprobado: "Proyecto aprobado",
-  lista_para_ejecutar: "Lista para ejecutar",
-  en_montaje: "En montaje",
-  montada: "Montada",
-  en_uso: "En uso",
-  en_desarme: "En desarme",
-  desarmada: "Desarmada",
-  en_devolucion: "En devolucion",
-  cerrada_operativamente: "Cerrada",
+  pendiente_armado: "Pendiente de Armado",
+  armado: "Armado",
+  pendiente_desarme: "Pendiente de Desarme",
+  desarmado: "Desarmado",
   cancelada: "Cancelada",
-  suspendida: "Suspendida",
-  en_espera: "En espera",
 };

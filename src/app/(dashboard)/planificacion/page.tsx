@@ -22,22 +22,20 @@ import { toast } from "sonner";
 import { useForm } from "react-hook-form";
 
 const TIPO_COLORS: Record<string, string> = {
-  montaje: "bg-blue-500/15 text-blue-400 border-blue-500/25",
+  armado: "bg-blue-500/15 text-blue-400 border-blue-500/25",
   desarme: "bg-orange-500/15 text-orange-400 border-orange-500/25",
-  entrega: "bg-green-500/15 text-green-400 border-green-500/25",
-  retiro: "bg-yellow-500/15 text-yellow-400 border-yellow-500/25",
-  visita_tecnica: "bg-purple-500/15 text-purple-400 border-purple-500/25",
-  inspeccion: "bg-cyan-500/15 text-cyan-400 border-cyan-500/25",
+  ampliacion: "bg-green-500/15 text-green-400 border-green-500/25",
+  desmonte_parcial: "bg-yellow-500/15 text-yellow-400 border-yellow-500/25",
+  mantenimiento: "bg-purple-500/15 text-purple-400 border-purple-500/25",
   otro: "bg-zinc-500/15 text-zinc-400 border-zinc-500/25",
 };
 
 const TIPO_LABELS: Record<string, string> = {
-  montaje: "Montaje",
+  armado: "Armado",
   desarme: "Desarme",
-  entrega: "Entrega",
-  retiro: "Retiro",
-  visita_tecnica: "Visita tecnica",
-  inspeccion: "Inspeccion",
+  ampliacion: "Ampliación",
+  desmonte_parcial: "Desmonte parcial",
+  mantenimiento: "Mantenimiento",
   otro: "Otro",
 };
 

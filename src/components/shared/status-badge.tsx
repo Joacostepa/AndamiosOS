@@ -14,22 +14,16 @@ const colorMap: Record<StatusColor, string> = {
 
 // Mapeo de estados a colores
 const estadoColorMap: Record<string, StatusColor> = {
-  // Obras
-  presupuestada: "gray",
-  aprobada: "blue",
-  en_proyecto: "blue",
-  proyecto_aprobado: "blue",
-  lista_para_ejecutar: "yellow",
-  en_montaje: "orange",
-  montada: "green",
-  en_uso: "green",
-  en_desarme: "orange",
-  desarmada: "yellow",
-  en_devolucion: "yellow",
-  cerrada_operativamente: "green",
-  cancelada: "gray",
-  suspendida: "gray",
-  en_espera: "yellow",
+  // Obras (alineado a Odoo x_aba_obra.x_estado)
+  pendiente_armado: "yellow",
+  armado: "green",
+  pendiente_desarme: "orange",
+  desarmado: "gray",
+  cancelada: "red",
+  // Ordenes de trabajo (estado_orden_trabajo)
+  programada: "blue",
+  en_curso: "orange",
+  completada: "green",
   // Remitos
   emitido: "blue",
   en_transito: "orange",

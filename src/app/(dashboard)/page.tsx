@@ -26,7 +26,7 @@ export default function DashboardPage() {
   const { data: personal } = usePersonal();
   const { data: incidentes } = useIncidentes();
 
-  const obrasActivas = obras?.filter((o) => !["cancelada", "cerrada_operativamente", "suspendida"].includes(o.estado)).length || 0;
+  const obrasActivas = obras?.filter((o) => !["cancelada", "desarmado"].includes(o.estado)).length || 0;
   const remitosAbiertos = remitos?.filter((r) => !["cerrado", "anulado"].includes(r.estado)).length || 0;
   const stockBajoMinimo = stock?.filter((s) => s.en_deposito < s.catalogo_piezas.stock_minimo).length || 0;
   const personalVencido = personal?.filter((p) => p.estado_habilitacion === "vencido").length || 0;

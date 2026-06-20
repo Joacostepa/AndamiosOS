@@ -31,9 +31,8 @@ import { toast } from "sonner";
 import { useForm } from "react-hook-form";
 
 const TIPO_OT_LABELS: Record<string, string> = {
-  montaje: "Montaje", desarme: "Desarme", adicional: "Adicional",
-  modificacion: "Modificacion", visita_tecnica: "Visita tecnica",
-  inspeccion: "Inspeccion", retiro: "Retiro",
+  armado: "Armado", desarme: "Desarme", ampliacion: "Ampliación",
+  desmonte_parcial: "Desmonte parcial", mantenimiento: "Mantenimiento", otro: "Otro",
 };
 
 const GATE_LABELS: Record<string, string> = {
@@ -72,7 +71,7 @@ export default function ObraDetailPage({ params }: { params: Promise<{ id: strin
   const [periodoDrawer, setPeriodoDrawer] = useState(false);
   const [periodoForm, setPeriodoForm] = useState({ fecha_inicio: "", fecha_fin: "", monto: 0 });
 
-  const otForm = useForm<{ tipo: string; descripcion?: string; fecha_programada?: string; vehiculo_id?: string; horas_estimadas?: number; observaciones?: string }>({ defaultValues: { tipo: "montaje" } });
+  const otForm = useForm<{ tipo: string; descripcion?: string; fecha_programada?: string; vehiculo_id?: string; horas_estimadas?: number; observaciones?: string }>({ defaultValues: { tipo: "armado" } });
 
   if (isLoading || !obra) return <div className="space-y-6"><Skeleton className="h-10 w-64" /><Skeleton className="h-96 w-full" /></div>;
 
@@ -190,18 +189,19 @@ export default function ObraDetailPage({ params }: { params: Promise<{ id: strin
                     <TableCell><StatusBadge status={ot.estado} /></TableCell>
                     <TableCell>{ot.habilitacion_aprobada ? <CheckCircle className="h-4 w-4 text-green-400" /> : <Clock className="h-4 w-4 text-yellow-400" />}</TableCell>
                     <TableCell>
-                      {ot.estado === "pendiente" && (
-                        <Button size="sm" variant="outline" onClick={() => updateOT.mutate({ id: ot.id, data: { estado: allGatesApproved ? "habilitada" : "habilitacion_pendiente" } as any }, { onSuccess: () => toast.success("OT actualizada") })}>
-                          {allGatesApproved ? "Habilitar" : "Verificar gates"}
+                      {/* Habilitación = gate (boolean), no estado. Bloquea ejecución. */}
+                      {ot.estado === "pendiente" && ot.requiere_habilitacion && !ot.habilitacion_aprobada && (
+                        <Button size="sm" variant="outline" disabled={!allGatesApproved} onClick={() => updateOT.mutate({ id: ot.id, data: { habilitacion_aprobada: true } as any }, { onSuccess: () => toast.success("OT habilitada") })}>
+                          {allGatesApproved ? "Habilitar" : "Pendiente de habilitación"}
                         </Button>
                       )}
-                      {ot.estado === "habilitada" && (
+                      {ot.estado === "pendiente" && (!ot.requiere_habilitacion || ot.habilitacion_aprobada) && (
                         <Button size="sm" variant="outline" onClick={() => updateOT.mutate({ id: ot.id, data: { estado: "programada" } as any }, { onSuccess: () => toast.success("OT programada") })}>Programar</Button>
                       )}
                       {ot.estado === "programada" && (
-                        <Button size="sm" onClick={() => updateOT.mutate({ id: ot.id, data: { estado: "en_ejecucion" } as any }, { onSuccess: () => toast.success("OT en ejecucion") })}>Ejecutar</Button>
+                        <Button size="sm" onClick={() => updateOT.mutate({ id: ot.id, data: { estado: "en_curso" } as any }, { onSuccess: () => toast.success("OT en curso") })}>Ejecutar</Button>
                       )}
-                      {ot.estado === "en_ejecucion" && (
+                      {ot.estado === "en_curso" && (
                         <Button size="sm" onClick={() => updateOT.mutate({ id: ot.id, data: { estado: "completada" } as any }, { onSuccess: () => toast.success("OT completada") })}>Completar</Button>
                       )}
                     </TableCell>
@@ -409,7 +409,7 @@ function InfoRow({ label, value, capitalize = false }: { label: string; value: s
   return <div className="flex justify-between text-sm"><span className="text-muted-foreground">{label}</span><span className={`font-medium ${capitalize ? "capitalize" : ""}`}>{value || "—"}</span></div>;
 }
 
-const PROGRESS_STATES = ["presupuestada", "aprobada", "en_proyecto", "proyecto_aprobado", "lista_para_ejecutar", "en_montaje", "montada", "en_uso", "en_desarme", "desarmada", "en_devolucion", "cerrada_operativamente"];
+const PROGRESS_STATES = ["pendiente_armado", "armado", "pendiente_desarme", "desarmado"];
 
 function ObraProgressBar({ estado }: { estado: string }) {
   const idx = PROGRESS_STATES.indexOf(estado);
@@ -417,7 +417,7 @@ function ObraProgressBar({ estado }: { estado: string }) {
   const progress = ((idx + 1) / PROGRESS_STATES.length) * 100;
   return (
     <div className="space-y-1">
-      <div className="flex justify-between text-xs text-muted-foreground"><span>Presupuestada</span><span>Cerrada</span></div>
+      <div className="flex justify-between text-xs text-muted-foreground"><span>Pendiente de Armado</span><span>Desarmado</span></div>
       <div className="h-2 rounded-full bg-muted"><div className="h-full rounded-full bg-primary transition-all" style={{ width: `${progress}%` }} /></div>
     </div>
   );

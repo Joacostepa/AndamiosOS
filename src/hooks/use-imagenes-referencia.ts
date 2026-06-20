@@ -67,19 +67,3 @@ export function useDeleteImagenReferencia() {
   });
 }
 
-export function useCotizacionImagenes(cotizacionId: string) {
-  const supabase = createClient();
-  return useQuery({
-    queryKey: ["cotizacion_imagenes", cotizacionId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("cotizacion_imagenes")
-        .select("*, imagenes_referencia(*)")
-        .eq("cotizacion_id", cotizacionId)
-        .order("orden");
-      if (error) throw error;
-      return data as any[];
-    },
-    enabled: !!cotizacionId,
-  });
-}

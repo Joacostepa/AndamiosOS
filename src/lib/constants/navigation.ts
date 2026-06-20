@@ -2,7 +2,7 @@ import {
   Building2, Users, Wrench, Package, Truck, UserCheck, BarChart3, Bell,
   Settings, FileText, ClipboardList, Ruler, Calculator, Calendar, HardHat,
   PackagePlus, AlertTriangle, Shield, Search, Car, Hammer, MessageSquare,
-  Target, MapPin, DollarSign, Fingerprint, Bot, Building, ListOrdered,
+  MapPin, Fingerprint, Bot, Building, ListOrdered,
   type LucideIcon,
 } from "lucide-react";
 
@@ -17,10 +17,8 @@ export const navigation: NavGroup[] = [
   {
     label: "Comercial",
     items: [
-      { title: "Oportunidades", href: "/comercial/oportunidades", icon: Target },
       { title: "Clientes", href: "/clientes", icon: Users },
       { title: "Relevamientos", href: "/comercial/relevamientos", icon: MapPin },
-      { title: "Cotizaciones", href: "/comercial/cotizaciones", icon: DollarSign },
     ],
   },
   {

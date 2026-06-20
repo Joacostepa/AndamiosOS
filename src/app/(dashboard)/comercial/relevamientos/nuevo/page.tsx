@@ -1,9 +1,8 @@
 "use client";
 
 import { useState, Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useCreateRelevamiento } from "@/hooks/use-relevamientos";
-import { useOportunidades } from "@/hooks/use-oportunidades";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,14 +20,10 @@ export default function NuevoRelevamientoPage() {
 
 function NuevoRelevamientoContent() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const oportunidadParam = searchParams.get("oportunidad");
-  const { data: oportunidades } = useOportunidades();
   const createRelevamiento = useCreateRelevamiento();
 
   const [step, setStep] = useState(1);
   const [form, setForm] = useState({
-    oportunidad_id: oportunidadParam || "",
     direccion: "", localidad: "", provincia: "Buenos Aires",
     contacto_nombre: "", contacto_telefono: "",
     fecha_programada: "",
@@ -73,13 +68,6 @@ function NuevoRelevamientoContent() {
         <Card>
           <CardHeader><CardTitle className="text-base">Ubicacion y contacto</CardTitle></CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label>Oportunidad</Label>
-              <Select value={form.oportunidad_id} onValueChange={(v) => v && update("oportunidad_id", v)}>
-                <SelectTrigger><SelectValue placeholder="Vincular a oportunidad (opcional)..." /></SelectTrigger>
-                <SelectContent>{oportunidades?.map((o) => <SelectItem key={o.id} value={o.id}>{o.codigo} — {o.titulo}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
             <div className="space-y-2"><Label>Direccion *</Label><Input value={form.direccion} onChange={(e) => update("direccion", e.target.value)} placeholder="Av. Corrientes 1234" /></div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2"><Label>Localidad</Label><Input value={form.localidad} onChange={(e) => update("localidad", e.target.value)} placeholder="CABA" /></div>

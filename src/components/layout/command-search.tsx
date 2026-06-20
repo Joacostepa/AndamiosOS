@@ -12,24 +12,14 @@ import {
   CommandItem,
 } from "@/components/ui/command";
 import { useClientes } from "@/hooks/use-clientes";
-import { useCotizaciones } from "@/hooks/use-cotizaciones";
-import { useOportunidades } from "@/hooks/use-oportunidades";
 import { navigation } from "@/lib/constants/navigation";
-import {
-  Search,
-  Users,
-  DollarSign,
-  Target,
-  FileText,
-} from "lucide-react";
+import { Search, Users } from "lucide-react";
 
 export function CommandSearch() {
   const [open, setOpen] = useState(false);
   const router = useRouter();
 
   const { data: clientes } = useClientes();
-  const { data: cotizaciones } = useCotizaciones();
-  const { data: oportunidades } = useOportunidades();
 
   // Cmd+K shortcut
   useEffect(() => {
@@ -118,42 +108,6 @@ export function CommandSearch() {
             </CommandGroup>
           )}
 
-          {/* Cotizaciones */}
-          {cotizaciones && cotizaciones.length > 0 && (
-            <CommandGroup heading="Cotizaciones">
-              {cotizaciones.slice(0, 10).map((c) => (
-                <CommandItem
-                  key={c.id}
-                  onSelect={() => go(`/comercial/cotizaciones/${c.id}`)}
-                  className="gap-2"
-                >
-                  <DollarSign className="h-4 w-4 text-muted-foreground" />
-                  <span className="font-mono text-xs">{c.codigo}</span>
-                  <span className="truncate">{c.titulo}</span>
-                  <span className="ml-auto text-xs text-muted-foreground">
-                    ${Number(c.total).toLocaleString()}
-                  </span>
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          )}
-
-          {/* Oportunidades */}
-          {oportunidades && oportunidades.length > 0 && (
-            <CommandGroup heading="Oportunidades">
-              {oportunidades.slice(0, 10).map((o) => (
-                <CommandItem
-                  key={o.id}
-                  onSelect={() => go(`/comercial/oportunidades/${o.id}`)}
-                  className="gap-2"
-                >
-                  <Target className="h-4 w-4 text-muted-foreground" />
-                  <span className="font-mono text-xs">{o.codigo}</span>
-                  <span className="truncate">{o.titulo}</span>
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          )}
         </CommandList>
         </Command>
       </CommandDialog>

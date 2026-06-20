@@ -34,15 +34,14 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   // REGLA DE NEGOCIO: Rutas públicas sin autenticación:
-  // /login (acceso), /auth (callback OAuth), /cotizar-hogarenos (cotizador público para clientes),
-  // /api/public (endpoints públicos como PDF y cotizador). Todo lo demás requiere sesión activa.
-  const publicPaths = ["/login", "/auth", "/cotizar-hogarenos", "/cotizador", "/api/public"];
+  // /login (acceso), /auth (callback OAuth). Todo lo demás requiere sesión activa.
+  // /api/odoo/sync y /api/odoo/webhooks: server-to-server (sin sesión), protegidos por secret.
+  const publicPaths = ["/login", "/auth", "/api/odoo/sync", "/api/odoo/webhooks"];
   const isPublicPath = publicPaths.some((path) =>
     request.nextUrl.pathname.startsWith(path)
   );
 
   // Rutas que solo tienen sentido sin sesión (login/auth).
-  // Los cotizadores públicos deben funcionar tanto logueado como no.
   const authOnlyPaths = ["/login", "/auth"];
   const isAuthOnlyPath = authOnlyPaths.some((p) =>
     request.nextUrl.pathname.startsWith(p)

@@ -1,24 +1,15 @@
 "use client";
 
-import { use, useState } from "react";
-import { useCliente, useUpdateCliente } from "@/hooks/use-clientes";
+import { use } from "react";
+import { useCliente } from "@/hooks/use-clientes";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
-import { ClienteForm } from "../cliente-form";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatCuit, formatDate } from "@/lib/utils/formatters";
-import { Pencil } from "lucide-react";
-import { toast } from "sonner";
 
+// NOTA: read-only — la edición de clientes se hace en Odoo (fuente de verdad).
 export default function ClienteDetailPage({
   params,
 }: {
@@ -26,8 +17,6 @@ export default function ClienteDetailPage({
 }) {
   const { id } = use(params);
   const { data: cliente, isLoading } = useCliente(id);
-  const updateCliente = useUpdateCliente();
-  const [editOpen, setEditOpen] = useState(false);
 
   if (isLoading || !cliente) {
     return (
@@ -42,10 +31,6 @@ export default function ClienteDetailPage({
     <div className="space-y-6">
       <PageHeader title={cliente.razon_social}>
         <StatusBadge status={cliente.estado} />
-        <Button variant="outline" onClick={() => setEditOpen(true)}>
-          <Pencil className="mr-2 h-4 w-4" />
-          Editar
-        </Button>
       </PageHeader>
 
       <Tabs defaultValue="general">
@@ -62,10 +47,7 @@ export default function ClienteDetailPage({
               </CardHeader>
               <CardContent className="space-y-3">
                 <InfoRow label="CUIT" value={formatCuit(cliente.cuit)} />
-                <InfoRow
-                  label="Condicion IVA"
-                  value={cliente.condicion_iva}
-                />
+                <InfoRow label="Condicion IVA" value={cliente.condicion_iva} />
                 <InfoRow
                   label="Domicilio fiscal"
                   value={cliente.domicilio_fiscal}
@@ -80,10 +62,7 @@ export default function ClienteDetailPage({
               <CardContent className="space-y-3">
                 <InfoRow label="Telefono" value={cliente.telefono} />
                 <InfoRow label="Email" value={cliente.email} />
-                <InfoRow
-                  label="Alta"
-                  value={formatDate(cliente.created_at)}
-                />
+                <InfoRow label="Alta" value={formatDate(cliente.created_at)} />
               </CardContent>
             </Card>
 
@@ -110,34 +89,6 @@ export default function ClienteDetailPage({
           </Card>
         </TabsContent>
       </Tabs>
-
-      <Sheet open={editOpen} onOpenChange={setEditOpen}>
-        <SheetContent className="overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle>Editar cliente</SheetTitle>
-          </SheetHeader>
-          <div className="mt-6">
-            <ClienteForm
-              defaultValues={cliente}
-              onSubmit={(data) => {
-                updateCliente.mutate(
-                  { id: cliente.id, data },
-                  {
-                    onSuccess: () => {
-                      toast.success("Cliente actualizado");
-                      setEditOpen(false);
-                    },
-                    onError: () => {
-                      toast.error("Error al actualizar");
-                    },
-                  }
-                );
-              }}
-              loading={updateCliente.isPending}
-            />
-          </div>
-        </SheetContent>
-      </Sheet>
     </div>
   );
 }

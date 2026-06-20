@@ -1,33 +1,15 @@
 "use client";
 
-import { useState } from "react";
 import { type ColumnDef } from "@tanstack/react-table";
-import { useCatalogo, useCreatePieza, type Pieza } from "@/hooks/use-catalogo";
+import { useCatalogo, type Pieza } from "@/hooks/use-catalogo";
 import { DataTable } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Wrench, Loader2 } from "lucide-react";
-import { toast } from "sonner";
-import { useForm } from "react-hook-form";
-import type { PiezaFormData } from "@/hooks/use-catalogo";
+import { Wrench } from "lucide-react";
 
+// NOTA: El catálogo de piezas es read-only — la fuente de verdad es Odoo (product.product),
+// se sincroniza vía /api/odoo/sync/materiales. No hay ABM en la app.
 const columns: ColumnDef<Pieza>[] = [
   {
     accessorKey: "codigo",
@@ -68,31 +50,6 @@ const columns: ColumnDef<Pieza>[] = [
 
 export default function CatalogoPage() {
   const { data: piezas, isLoading } = useCatalogo();
-  const createPieza = useCreatePieza();
-  const [drawerOpen, setDrawerOpen] = useState(false);
-
-  const { register, handleSubmit, reset, setValue, watch } =
-    useForm<PiezaFormData>({
-      defaultValues: {
-        categoria: "otro",
-        sistema_andamio: "multidireccional",
-        unidad_medida: "unidad",
-        stock_minimo: 0,
-      },
-    });
-
-  function onSubmit(data: PiezaFormData) {
-    createPieza.mutate(data, {
-      onSuccess: () => {
-        toast.success("Pieza creada correctamente");
-        setDrawerOpen(false);
-        reset();
-      },
-      onError: () => {
-        toast.error("Error al crear la pieza");
-      },
-    });
-  }
 
   if (isLoading) {
     return (
@@ -107,13 +64,8 @@ export default function CatalogoPage() {
     <div className="space-y-6">
       <PageHeader
         title="Catalogo de Piezas"
-        description="Catalogo maestro de piezas de andamio"
-      >
-        <Button onClick={() => setDrawerOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Nueva pieza
-        </Button>
-      </PageHeader>
+        description="Sincronizado desde Odoo · solo lectura"
+      />
 
       {piezas && piezas.length > 0 ? (
         <DataTable
@@ -126,121 +78,9 @@ export default function CatalogoPage() {
         <EmptyState
           icon={Wrench}
           title="Catalogo vacio"
-          description="Agrega piezas al catalogo para comenzar."
-        >
-          <Button onClick={() => setDrawerOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Nueva pieza
-          </Button>
-        </EmptyState>
+          description="Los materiales se sincronizan desde Odoo."
+        />
       )}
-
-      <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
-        <SheetContent className="overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle>Nueva pieza</SheetTitle>
-          </SheetHeader>
-          <form onSubmit={handleSubmit(onSubmit)} className="mt-6 space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="codigo">Codigo *</Label>
-              <Input
-                id="codigo"
-                {...register("codigo", { required: true })}
-                placeholder="Ej: MF-150-MD"
-                className="font-mono"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="descripcion">Descripcion *</Label>
-              <Input
-                id="descripcion"
-                {...register("descripcion", { required: true })}
-                placeholder="Marco 1.50m multidireccional"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Categoria</Label>
-                <Select
-                  value={watch("categoria")}
-                  onValueChange={(val) => val && setValue("categoria", val)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {[
-                      "marco",
-                      "diagonal",
-                      "plataforma",
-                      "base",
-                      "rodapie",
-                      "escalera",
-                      "barandilla",
-                      "conector",
-                      "anclaje",
-                      "accesorio",
-                      "otro",
-                    ].map((cat) => (
-                      <SelectItem key={cat} value={cat}>
-                        <span className="capitalize">{cat}</span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Sistema</Label>
-                <Select
-                  value={watch("sistema_andamio")}
-                  onValueChange={(val) =>
-                    val && setValue("sistema_andamio", val)
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="multidireccional">
-                      Multidireccional
-                    </SelectItem>
-                    <SelectItem value="tubular">Tubular</SelectItem>
-                    <SelectItem value="colgante">Colgante</SelectItem>
-                    <SelectItem value="otro">Otro</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="peso_kg">Peso (kg)</Label>
-                <Input
-                  id="peso_kg"
-                  type="number"
-                  step="0.01"
-                  {...register("peso_kg", { valueAsNumber: true })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="stock_minimo">Stock minimo</Label>
-                <Input
-                  id="stock_minimo"
-                  type="number"
-                  {...register("stock_minimo", { valueAsNumber: true })}
-                />
-              </div>
-            </div>
-            <div className="flex justify-end pt-4">
-              <Button type="submit" disabled={createPieza.isPending}>
-                {createPieza.isPending && (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                )}
-                Crear pieza
-              </Button>
-            </div>
-          </form>
-        </SheetContent>
-      </Sheet>
     </div>
   );
 }

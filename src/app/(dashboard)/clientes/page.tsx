@@ -1,26 +1,18 @@
 "use client";
 
-import { useState } from "react";
 import { type ColumnDef } from "@tanstack/react-table";
-import { useClientes, useCreateCliente, type Cliente } from "@/hooks/use-clientes";
+import { useClientes, type Cliente } from "@/hooks/use-clientes";
 import { DataTable } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { EmptyState } from "@/components/shared/empty-state";
-import { Button } from "@/components/ui/button";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ClienteForm } from "./cliente-form";
 import { formatCuit } from "@/lib/utils/formatters";
-import { Plus, Users } from "lucide-react";
-import { toast } from "sonner";
+import { Users } from "lucide-react";
 import Link from "next/link";
 
+// NOTA: Clientes es read-only — la fuente de verdad es Odoo (res.partner), se sincroniza
+// vía /api/odoo/sync/clientes. No hay ABM en la app (alta/edición se hacen en Odoo).
 const columns: ColumnDef<Cliente>[] = [
   {
     accessorKey: "razon_social",
@@ -60,8 +52,6 @@ const columns: ColumnDef<Cliente>[] = [
 
 export default function ClientesPage() {
   const { data: clientes, isLoading } = useClientes();
-  const createCliente = useCreateCliente();
-  const [drawerOpen, setDrawerOpen] = useState(false);
 
   if (isLoading) {
     return (
@@ -74,12 +64,10 @@ export default function ClientesPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Clientes" description="Base de datos de clientes">
-        <Button onClick={() => setDrawerOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Nuevo cliente
-        </Button>
-      </PageHeader>
+      <PageHeader
+        title="Clientes"
+        description="Sincronizado desde Odoo · solo lectura"
+      />
 
       {clientes && clientes.length > 0 ? (
         <DataTable
@@ -92,38 +80,9 @@ export default function ClientesPage() {
         <EmptyState
           icon={Users}
           title="Sin clientes"
-          description="Crea tu primer cliente para empezar."
-        >
-          <Button onClick={() => setDrawerOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Nuevo cliente
-          </Button>
-        </EmptyState>
+          description="Los clientes se sincronizan desde Odoo."
+        />
       )}
-
-      <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
-        <SheetContent className="overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle>Nuevo cliente</SheetTitle>
-          </SheetHeader>
-          <div className="mt-6">
-            <ClienteForm
-              onSubmit={(data) => {
-                createCliente.mutate(data, {
-                  onSuccess: () => {
-                    toast.success("Cliente creado correctamente");
-                    setDrawerOpen(false);
-                  },
-                  onError: () => {
-                    toast.error("Error al crear el cliente");
-                  },
-                });
-              }}
-              loading={createCliente.isPending}
-            />
-          </div>
-        </SheetContent>
-      </Sheet>
     </div>
   );
 }

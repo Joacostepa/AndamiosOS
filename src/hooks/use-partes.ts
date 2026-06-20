@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 export type ParteObra = {
   id: string;
   obra_id: string;
+  ot_id: string | null;
   fecha: string;
   tipo_tarea: string;
   cuadrilla: string[];
@@ -20,10 +21,12 @@ export type ParteObra = {
   estado: string;
   created_at: string;
   obras?: { codigo: string; nombre: string };
+  ordenes_trabajo?: { codigo: string; tipo: string } | null;
 };
 
 export type ParteFormData = {
   obra_id: string;
+  ot_id?: string;
   fecha?: string;
   tipo_tarea: string;
   cuadrilla?: string[];
@@ -42,7 +45,7 @@ export function usePartes() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("partes_obra")
-        .select("*, obras(codigo, nombre)")
+        .select("*, obras(codigo, nombre), ordenes_trabajo(codigo, tipo)")
         .order("fecha", { ascending: false })
         .limit(50);
 
@@ -60,7 +63,7 @@ export function useCreateParte() {
     mutationFn: async (data: ParteFormData) => {
       const { data: parte, error } = await supabase
         .from("partes_obra")
-        .insert(data)
+        .insert({ ...data, ot_id: data.ot_id || null })
         .select()
         .single();
 

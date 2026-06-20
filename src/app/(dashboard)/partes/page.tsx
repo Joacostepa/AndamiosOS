@@ -4,6 +4,7 @@ import { useState } from "react";
 import { type ColumnDef } from "@tanstack/react-table";
 import { usePartes, useCreateParte, type ParteObra, type ParteFormData } from "@/hooks/use-partes";
 import { useObras } from "@/hooks/use-obras";
+import { useOrdenesTrabajoByObra } from "@/hooks/use-ordenes-trabajo";
 import { DataTable } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -18,7 +19,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { formatDate } from "@/lib/utils/formatters";
 import { Plus, HardHat, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 
 const TIPO_LABELS: Record<string, string> = {
   montaje: "Montaje", desarme: "Desarme", modificacion: "Modificacion",
@@ -35,6 +36,11 @@ const columns: ColumnDef<ParteObra>[] = [
     id: "obra",
     header: "Obra",
     cell: ({ row }) => row.original.obras ? `${row.original.obras.codigo} — ${row.original.obras.nombre}` : "—",
+  },
+  {
+    id: "ot",
+    header: "OT",
+    cell: ({ row }) => row.original.ordenes_trabajo ? <span className="font-mono text-sm">{row.original.ordenes_trabajo.codigo}</span> : <span className="text-muted-foreground">—</span>,
   },
   {
     accessorKey: "tipo_tarea",
@@ -59,9 +65,13 @@ export default function PartesPage() {
   const createParte = useCreateParte();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  const { register, handleSubmit, reset, setValue, watch } = useForm<ParteFormData>({
+  const { register, handleSubmit, reset, setValue, watch, control } = useForm<ParteFormData>({
     defaultValues: { tipo_tarea: "montaje" },
   });
+
+  // useWatch (memo-safe) porque el valor alimenta un hook; watch() no es seguro para eso.
+  const selectedObra = useWatch({ control, name: "obra_id" });
+  const { data: otsObra } = useOrdenesTrabajoByObra(selectedObra || "");
 
   function onSubmit(data: ParteFormData) {
     createParte.mutate(data, {
@@ -100,11 +110,22 @@ export default function PartesPage() {
           <form onSubmit={handleSubmit(onSubmit)} className="mt-6 space-y-4">
             <div className="space-y-2">
               <Label>Obra *</Label>
-              <Select value={watch("obra_id") || ""} onValueChange={(val) => val && setValue("obra_id", val)}>
+              <Select value={watch("obra_id") || ""} onValueChange={(val) => { if (val) { setValue("obra_id", val); setValue("ot_id", undefined); } }}>
                 <SelectTrigger><SelectValue placeholder="Seleccionar obra..." /></SelectTrigger>
                 <SelectContent>
                   {obras?.map((o) => (
                     <SelectItem key={o.id} value={o.id}>{o.codigo} — {o.nombre}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Orden de trabajo</Label>
+              <Select value={watch("ot_id") || ""} onValueChange={(val) => val && setValue("ot_id", val)} disabled={!selectedObra || !otsObra?.length}>
+                <SelectTrigger><SelectValue placeholder={!selectedObra ? "Elegí una obra primero..." : otsObra?.length ? "Vincular a una OT (opcional)..." : "Esta obra no tiene OTs"} /></SelectTrigger>
+                <SelectContent>
+                  {otsObra?.map((ot) => (
+                    <SelectItem key={ot.id} value={ot.id}>{ot.codigo} — {ot.tipo}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

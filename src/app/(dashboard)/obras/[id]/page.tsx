@@ -186,13 +186,17 @@ export default function ObraDetailPage({ params }: { params: Promise<{ id: strin
                     <TableCell className="font-mono text-sm">{ot.codigo}</TableCell>
                     <TableCell>{TIPO_OT_LABELS[ot.tipo] || ot.tipo}</TableCell>
                     <TableCell>{formatDate(ot.fecha_programada)}</TableCell>
-                    <TableCell><StatusBadge status={ot.estado} /></TableCell>
+                    <TableCell>
+                      {ot.requiere_habilitacion && !ot.habilitacion_aprobada && ot.estado === "pendiente"
+                        ? <Badge variant="outline" className="gap-1 bg-red-500/15 text-red-400 border-red-500/25"><Shield className="h-3 w-3" />Pend. habilitación</Badge>
+                        : <StatusBadge status={ot.estado} />}
+                    </TableCell>
                     <TableCell>{ot.habilitacion_aprobada ? <CheckCircle className="h-4 w-4 text-green-400" /> : <Clock className="h-4 w-4 text-yellow-400" />}</TableCell>
                     <TableCell>
-                      {/* Habilitación = gate (boolean), no estado. Bloquea ejecución. */}
+                      {/* Habilitación = gate por-OT (boolean), lo decide el área Habilitaciones. */}
                       {ot.estado === "pendiente" && ot.requiere_habilitacion && !ot.habilitacion_aprobada && (
-                        <Button size="sm" variant="outline" disabled={!allGatesApproved} onClick={() => updateOT.mutate({ id: ot.id, data: { habilitacion_aprobada: true } as any }, { onSuccess: () => toast.success("OT habilitada") })}>
-                          {allGatesApproved ? "Habilitar" : "Pendiente de habilitación"}
+                        <Button size="sm" variant="outline" onClick={() => updateOT.mutate({ id: ot.id, data: { habilitacion_aprobada: true } as any }, { onSuccess: () => toast.success("OT habilitada") })}>
+                          Habilitar
                         </Button>
                       )}
                       {ot.estado === "pendiente" && (!ot.requiere_habilitacion || ot.habilitacion_aprobada) && (

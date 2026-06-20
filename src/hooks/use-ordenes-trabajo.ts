@@ -59,6 +59,25 @@ export function useOrdenesTrabajo() {
   });
 }
 
+// OTs que esperan habilitación (gate por-OT): requiere_habilitacion && !habilitacion_aprobada
+// y todavía no ejecutadas. Es la cola del módulo Habilitaciones.
+export function useOrdenesPendientesHabilitacion() {
+  const supabase = createClient();
+  return useQuery({
+    queryKey: ["ordenes-trabajo", "pendientes-habilitacion"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("ordenes_trabajo")
+        .select("*, obras(codigo, nombre)")
+        .eq("requiere_habilitacion", true)
+        .eq("habilitacion_aprobada", false)
+        .in("estado", ["pendiente", "programada"])
+        .order("fecha_programada", { ascending: true });
+      if (error) throw error;
+      return data as OrdenTrabajo[];
+    },
+  });
+}
+
 export function useGatesObra(obraId: string) {
   const supabase = createClient();
   return useQuery({

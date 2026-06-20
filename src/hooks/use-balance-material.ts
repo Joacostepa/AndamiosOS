@@ -27,11 +27,11 @@ export function useBalanceMaterialObra(obraId: string) {
     queryKey: ["balance-material", obraId],
     enabled: !!obraId,
     queryFn: async (): Promise<BalancePieza[]> => {
-      // 1) Cómputo madre: el último cómputo de la obra (vía proyecto técnico).
+      // 1) Cómputo madre: el último cómputo de la obra.
       const { data: computos, error: ce } = await supabase
         .from("computos")
-        .select("created_at, computo_items(pieza_id, cantidad_requerida, catalogo_piezas(codigo, descripcion)), proyectos_tecnicos!inner(obra_id)")
-        .eq("proyectos_tecnicos.obra_id", obraId)
+        .select("created_at, computo_items(pieza_id, cantidad_requerida, catalogo_piezas(codigo, descripcion))")
+        .eq("obra_id", obraId)
         .order("created_at", { ascending: false });
       if (ce) throw ce;
       const computoItems = (computos?.[0]?.computo_items ?? []) as unknown as Array<{

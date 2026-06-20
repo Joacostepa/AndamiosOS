@@ -14,7 +14,7 @@ export type ComputoItem = {
 
 export type Computo = {
   id: string;
-  proyecto_tecnico_id: string;
+  obra_id: string;
   version: number;
   estado: string;
   verificado_por_id: string | null;
@@ -22,8 +22,14 @@ export type Computo = {
   fecha_verificacion: string | null;
   fecha_aprobacion: string | null;
   notas: string | null;
+  // Datos de ingeniería (antes vivían en proyectos_tecnicos)
+  tipo_sistema_andamio: string | null;
+  altura_maxima: number | null;
+  metros_lineales: number | null;
+  superficie: number | null;
+  observaciones_tecnicas: string | null;
   created_at: string;
-  proyectos_tecnicos?: { codigo: string; obras: { codigo: string; nombre: string } };
+  obras?: { codigo: string; nombre: string };
   computo_items?: ComputoItem[];
 };
 
@@ -35,7 +41,7 @@ export function useComputos() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("computos")
-        .select("*, proyectos_tecnicos(codigo, obras(codigo, nombre))")
+        .select("*, obras(codigo, nombre)")
         .order("created_at", { ascending: false });
 
       if (error) throw error;
@@ -52,7 +58,7 @@ export function useComputo(id: string) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("computos")
-        .select("*, proyectos_tecnicos(codigo, obras(codigo, nombre)), computo_items(*, catalogo_piezas(codigo, descripcion, categoria))")
+        .select("*, obras(codigo, nombre), computo_items(*, catalogo_piezas(codigo, descripcion, categoria))")
         .eq("id", id)
         .single();
 
@@ -69,15 +75,26 @@ export function useCreateComputo() {
 
   return useMutation({
     mutationFn: async (data: {
-      proyecto_tecnico_id: string;
+      obra_id: string;
+      tipo_sistema_andamio?: string;
+      altura_maxima?: number;
+      metros_lineales?: number;
+      superficie?: number;
+      observaciones_tecnicas?: string;
       notas?: string;
       items: { pieza_id: string; cantidad_requerida: number }[];
     }) => {
+      const { items: _items, ...campos } = data;
       const { data: computo, error: computoError } = await supabase
         .from("computos")
         .insert({
-          proyecto_tecnico_id: data.proyecto_tecnico_id,
-          notas: data.notas || null,
+          obra_id: campos.obra_id,
+          tipo_sistema_andamio: campos.tipo_sistema_andamio || null,
+          altura_maxima: campos.altura_maxima ?? null,
+          metros_lineales: campos.metros_lineales ?? null,
+          superficie: campos.superficie ?? null,
+          observaciones_tecnicas: campos.observaciones_tecnicas || null,
+          notas: campos.notas || null,
         })
         .select()
         .single();

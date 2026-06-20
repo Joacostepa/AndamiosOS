@@ -45,7 +45,7 @@ export default function ComputoDetailPage({ params }: { params: Promise<{ id: st
 
   return (
     <div className="space-y-6">
-      <PageHeader title={`Computo — ${computo.proyectos_tecnicos?.codigo || ""}`}>
+      <PageHeader title={`Cómputo — ${computo.obras?.codigo || ""}`}>
         <Badge variant="outline">v{computo.version}</Badge>
         <StatusBadge status={computo.estado} />
         {transitions.length > 0 && (
@@ -63,7 +63,7 @@ export default function ComputoDetailPage({ params }: { params: Promise<{ id: st
       </PageHeader>
 
       <div className="grid gap-4 md:grid-cols-4">
-        <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Obra</p><p className="font-medium">{computo.proyectos_tecnicos?.obras?.nombre || "—"}</p></CardContent></Card>
+        <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Obra</p><p className="font-medium">{computo.obras ? `${computo.obras.codigo} — ${computo.obras.nombre}` : "—"}</p></CardContent></Card>
         <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Piezas unicas</p><p className="text-2xl font-bold">{items.length}</p></CardContent></Card>
         <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Total unidades</p><p className="text-2xl font-bold">{totalPiezas}</p></CardContent></Card>
         <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Con faltante</p><p className={`text-2xl font-bold ${conFaltante.length > 0 ? "text-red-400" : "text-green-400"}`}>{conFaltante.length}</p></CardContent></Card>

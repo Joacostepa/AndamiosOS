@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { useProyectos } from "@/hooks/use-proyectos";
+import { useState, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useObras } from "@/hooks/use-obras";
 import { useCatalogo } from "@/hooks/use-catalogo";
 import { useStock } from "@/hooks/use-stock";
 import { useCreateComputo } from "@/hooks/use-computos";
@@ -29,22 +29,23 @@ type ItemRow = {
   stock_minimo: number;
 };
 
-export default function NuevoComputoPage() {
+function NuevoComputoForm() {
   const router = useRouter();
-  const { data: proyectos } = useProyectos();
+  const searchParams = useSearchParams();
+  const { data: obras } = useObras();
   const { data: catalogo } = useCatalogo();
   const { data: stock } = useStock();
   const createComputo = useCreateComputo();
 
-  const [proyectoId, setProyectoId] = useState("");
+  const [obraId, setObraId] = useState(searchParams.get("obra") ?? "");
+  const [sistema, setSistema] = useState("");
+  const [altura, setAltura] = useState("");
+  const [metrosLineales, setMetrosLineales] = useState("");
+  const [superficie, setSuperficie] = useState("");
   const [notas, setNotas] = useState("");
   const [items, setItems] = useState<ItemRow[]>([]);
   const [selectedPieza, setSelectedPieza] = useState("");
   const [cantidad, setCantidad] = useState(1);
-
-  const proyectosAptos = proyectos?.filter((p) =>
-    ["aprobado", "en_curso", "en_revision"].includes(p.estado)
-  );
 
   function getStockDisponible(piezaId: string) {
     const s = stock?.find((s) => s.pieza_id === piezaId);
@@ -86,12 +87,16 @@ export default function NuevoComputoPage() {
   }
 
   function handleSubmit() {
-    if (!proyectoId) { toast.error("Selecciona un proyecto"); return; }
+    if (!obraId) { toast.error("Selecciona una obra"); return; }
     if (items.length === 0) { toast.error("Agrega al menos una pieza"); return; }
 
     createComputo.mutate(
       {
-        proyecto_tecnico_id: proyectoId,
+        obra_id: obraId,
+        tipo_sistema_andamio: sistema || undefined,
+        altura_maxima: altura ? Number(altura) : undefined,
+        metros_lineales: metrosLineales ? Number(metrosLineales) : undefined,
+        superficie: superficie ? Number(superficie) : undefined,
         notas: notas || undefined,
         items: items.map((i) => ({ pieza_id: i.pieza_id, cantidad_requerida: i.cantidad_requerida })),
       },
@@ -117,21 +122,36 @@ export default function NuevoComputoPage() {
           <CardHeader><CardTitle className="text-base">Datos del computo</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label>Proyecto tecnico *</Label>
-              <Select value={proyectoId} onValueChange={(val) => val && setProyectoId(val)}>
-                <SelectTrigger><SelectValue placeholder="Seleccionar proyecto..." /></SelectTrigger>
+              <Label>Obra *</Label>
+              <Select value={obraId} onValueChange={(val) => val && setObraId(val)}>
+                <SelectTrigger><SelectValue placeholder="Seleccionar obra..." /></SelectTrigger>
                 <SelectContent>
-                  {proyectosAptos?.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.codigo} — {p.obras?.nombre || "Sin obra"}
-                    </SelectItem>
+                  {obras?.filter((o) => o.estado !== "cancelada").map((o) => (
+                    <SelectItem key={o.id} value={o.id}>{o.codigo} — {o.nombre}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
+              <Label>Sistema de andamio</Label>
+              <Select value={sistema} onValueChange={(val) => val && setSistema(val)}>
+                <SelectTrigger><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="multidireccional">Multidireccional</SelectItem>
+                  <SelectItem value="tubular">Tubular</SelectItem>
+                  <SelectItem value="colgante">Colgante</SelectItem>
+                  <SelectItem value="otro">Otro</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-2"><Label>Altura máx (m)</Label><Input type="number" step="0.01" value={altura} onChange={(e) => setAltura(e.target.value)} /></div>
+              <div className="space-y-2"><Label>Metros lineales</Label><Input type="number" step="0.01" value={metrosLineales} onChange={(e) => setMetrosLineales(e.target.value)} /></div>
+              <div className="space-y-2"><Label>Superficie (m²)</Label><Input type="number" step="0.01" value={superficie} onChange={(e) => setSuperficie(e.target.value)} /></div>
+            </div>
+            <div className="space-y-2">
               <Label>Notas</Label>
-              <Textarea value={notas} onChange={(e) => setNotas(e.target.value)} rows={3} placeholder="Observaciones sobre el computo..." />
+              <Textarea value={notas} onChange={(e) => setNotas(e.target.value)} rows={2} placeholder="Observaciones sobre el cómputo..." />
             </div>
           </CardContent>
         </Card>
@@ -274,5 +294,13 @@ export default function NuevoComputoPage() {
         </Button>
       </div>
     </div>
+  );
+}
+
+export default function NuevoComputoPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-muted-foreground">Cargando…</div>}>
+      <NuevoComputoForm />
+    </Suspense>
   );
 }

@@ -1,6 +1,6 @@
 import {
   Building2, Users, Wrench, Package, Truck, UserCheck, BarChart3, Bell,
-  Settings, FileText, ClipboardList, Ruler, Calculator, Calendar, HardHat,
+  Settings, FileText, ClipboardList, Calculator, Calendar, HardHat,
   PackagePlus, AlertTriangle, Shield, Search, Car, Hammer, MessageSquare,
   MapPin, Fingerprint, Bot, Building, ListOrdered, ShieldCheck,
   type LucideIcon,
@@ -33,7 +33,6 @@ export const navigation: NavGroup[] = [
   {
     label: "Oficina Tecnica",
     items: [
-      { title: "Proyectos", href: "/oficina-tecnica/proyectos", icon: Ruler },
       { title: "Computos", href: "/oficina-tecnica/computos", icon: Calculator },
     ],
   },

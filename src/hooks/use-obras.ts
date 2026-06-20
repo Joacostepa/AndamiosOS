@@ -29,7 +29,6 @@ export type Obra = {
   fecha_vigencia_fin: string | null;
   estado_pago: string | null;
   monto_alquiler_mensual: number | null;
-  cotizacion_id: string | null;
   created_at: string;
   updated_at: string;
   // Joined
@@ -72,6 +71,9 @@ export function useObra(id: string) {
   });
 }
 
+// DECISIÓN: El código de obra se envía como "" y se genera automáticamente por el trigger
+// de BD generar_codigo_obra(). Formato: OBR-YYYY-NNNN. Esto evita conflictos de concurrencia.
+// El mismo patrón se usa para cotizaciones, oportunidades, proyectos y órdenes de trabajo.
 export function useCreateObra() {
   const supabase = createClient();
   const queryClient = useQueryClient();

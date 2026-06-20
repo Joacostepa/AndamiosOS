@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 
 export type Relevamiento = {
-  id: string; oportunidad_id: string | null; obra_id: string | null;
+  id: string; obra_id: string | null;
   direccion: string; localidad: string | null; provincia: string | null;
   contacto_nombre: string | null; contacto_telefono: string | null;
   relevador_id: string | null; fecha_programada: string | null; fecha_realizada: string | null;

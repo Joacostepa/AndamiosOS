@@ -12,10 +12,12 @@ export type RemitoItem = {
   catalogo_piezas?: { codigo: string; descripcion: string };
 };
 
+export type TipoRemito = "entrega" | "devolucion" | "transferencia" | "sobrante" | "control_devolucion";
+
 export type Remito = {
   id: string;
   numero: string;
-  tipo: "entrega" | "devolucion" | "transferencia";
+  tipo: TipoRemito;
   obra_id: string;
   estado: string;
   fecha_emision: string;
@@ -24,6 +26,8 @@ export type Remito = {
   vehiculo_id: string | null;
   receptor_nombre: string | null;
   observaciones: string | null;
+  motivo: string | null;
+  remito_origen_id: string | null;
   tiene_diferencia: boolean;
   created_at: string;
   obras?: { codigo: string; nombre: string };
@@ -90,11 +94,13 @@ export function useRemito(id: string) {
 }
 
 export type CreateRemitoData = {
-  tipo: "entrega" | "devolucion" | "transferencia";
+  tipo: TipoRemito;
   obra_id: string;
   chofer_id?: string;
   vehiculo_id?: string;
   observaciones?: string;
+  motivo?: string;               // por qué sobró (remito sobrante)
+  remito_origen_id?: string;     // control_devolucion → remito de devolución que controla
   items: { pieza_id: string; cantidad: number }[];
 };
 
@@ -114,6 +120,8 @@ export function useCreateRemito() {
           chofer_id: data.chofer_id || null,
           vehiculo_id: data.vehiculo_id || null,
           observaciones: data.observaciones || null,
+          motivo: data.motivo || null,
+          remito_origen_id: data.remito_origen_id || null,
         })
         .select()
         .single();
@@ -172,6 +180,48 @@ export function useUpdateRemito() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["remitos"] });
       queryClient.invalidateQueries({ queryKey: ["remitos", variables.id] });
+    },
+  });
+}
+
+// Recepción con conteo: registra cantidad_recibida por ítem y pasa el remito a
+// 'recibido' (o 'con_diferencia' si algún conteo no coincide). El trigger de DB
+// mueve el stock. Es el control de ingreso del depósito.
+export function useRecibirRemito() {
+  const supabase = createClient();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (vars: {
+      id: string;
+      receptor_nombre?: string;
+      items: { id: string; cantidad_recibida: number }[];
+      conteos: { remitida: number; recibida: number }[];
+    }) => {
+      for (const it of vars.items) {
+        const { error } = await supabase
+          .from("remito_items")
+          .update({ cantidad_recibida: it.cantidad_recibida })
+          .eq("id", it.id);
+        if (error) throw error;
+      }
+      const tieneDiferencia = vars.conteos.some((c) => c.remitida !== c.recibida);
+      const { error: re } = await supabase
+        .from("remitos")
+        .update({
+          estado: tieneDiferencia ? "con_diferencia" : "recibido",
+          tiene_diferencia: tieneDiferencia,
+          fecha_recepcion: new Date().toISOString(),
+          receptor_nombre: vars.receptor_nombre || null,
+        })
+        .eq("id", vars.id);
+      if (re) throw re;
+      return { id: vars.id };
+    },
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["remitos"] });
+      queryClient.invalidateQueries({ queryKey: ["remitos", vars.id] });
+      queryClient.invalidateQueries({ queryKey: ["stock"] });
     },
   });
 }

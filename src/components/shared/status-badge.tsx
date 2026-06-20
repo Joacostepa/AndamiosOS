@@ -24,6 +24,13 @@ const estadoColorMap: Record<string, StatusColor> = {
   programada: "blue",
   en_curso: "orange",
   completada: "green",
+  // Cómputos (estado_computo) — handoff a depósito
+  borrador: "gray",
+  verificado: "blue",
+  aprobado: "blue",
+  en_preparacion: "orange",
+  preparado: "green",
+  requiere_ajuste: "yellow",
   // Remitos
   emitido: "blue",
   en_transito: "orange",

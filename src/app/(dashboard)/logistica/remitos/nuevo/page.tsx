@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useObras } from "@/hooks/use-obras";
 import { useCatalogo } from "@/hooks/use-catalogo";
-import { useCreateRemito, type CreateRemitoData } from "@/hooks/use-remitos";
+import { useCreateRemito, useRemitosByObra, type CreateRemitoData } from "@/hooks/use-remitos";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,9 +45,15 @@ export default function NuevoRemitoPage() {
   const [tipo, setTipo] = useState<CreateRemitoData["tipo"]>("entrega");
   const [obraId, setObraId] = useState("");
   const [observaciones, setObservaciones] = useState("");
+  const [motivo, setMotivo] = useState("");
+  const [remitoOrigenId, setRemitoOrigenId] = useState("");
   const [items, setItems] = useState<ItemRow[]>([]);
   const [selectedPieza, setSelectedPieza] = useState("");
   const [cantidad, setCantidad] = useState(1);
+
+  // Para control_devolucion: las devoluciones de esta obra que se pueden controlar.
+  const { data: remitosObra } = useRemitosByObra(obraId);
+  const devoluciones = remitosObra?.filter((r) => r.tipo === "devolucion") ?? [];
 
   function addItem() {
     if (!selectedPieza || cantidad < 1) return;
@@ -91,12 +97,22 @@ export default function NuevoRemitoPage() {
       toast.error("Agrega al menos una pieza");
       return;
     }
+    if (tipo === "sobrante" && !motivo) {
+      toast.error("Indicá el motivo del sobrante");
+      return;
+    }
+    if (tipo === "control_devolucion" && !remitoOrigenId) {
+      toast.error("Elegí la devolución a controlar");
+      return;
+    }
 
     createRemito.mutate(
       {
         tipo,
         obra_id: obraId,
         observaciones: observaciones || undefined,
+        motivo: tipo === "sobrante" ? motivo : undefined,
+        remito_origen_id: tipo === "control_devolucion" ? remitoOrigenId : undefined,
         items: items.map((i) => ({
           pieza_id: i.pieza_id,
           cantidad: i.cantidad,
@@ -136,13 +152,11 @@ export default function NuevoRemitoPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="entrega">Entrega (deposito → obra)</SelectItem>
-                  <SelectItem value="devolucion">
-                    Devolucion (obra → deposito)
-                  </SelectItem>
-                  <SelectItem value="transferencia">
-                    Transferencia (obra → obra)
-                  </SelectItem>
+                  <SelectItem value="entrega">Entrega / salida (deposito → obra)</SelectItem>
+                  <SelectItem value="sobrante">Sobrante (obra → deposito, durante el montaje)</SelectItem>
+                  <SelectItem value="devolucion">Devolucion (obra → deposito, en el desarme)</SelectItem>
+                  <SelectItem value="control_devolucion">Control de devolucion (recuento en deposito)</SelectItem>
+                  <SelectItem value="transferencia">Transferencia (obra → obra)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -162,6 +176,35 @@ export default function NuevoRemitoPage() {
                 </SelectContent>
               </Select>
             </div>
+
+            {tipo === "sobrante" && (
+              <div className="space-y-2">
+                <Label>Motivo del sobrante *</Label>
+                <Select value={motivo} onValueChange={(val) => val && setMotivo(val)}>
+                  <SelectTrigger><SelectValue placeholder="Por qué sobró este material..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="sobreestimacion_computo">Sobreestimación del cómputo</SelectItem>
+                    <SelectItem value="cambio_de_proyecto">Cambio de proyecto / alcance</SelectItem>
+                    <SelectItem value="material_no_usado">Material no utilizado</SelectItem>
+                    <SelectItem value="otro">Otro</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {tipo === "control_devolucion" && (
+              <div className="space-y-2">
+                <Label>Devolución a controlar *</Label>
+                <Select value={remitoOrigenId} onValueChange={(val) => val && setRemitoOrigenId(val)} disabled={!obraId || !devoluciones.length}>
+                  <SelectTrigger><SelectValue placeholder={!obraId ? "Elegí la obra primero..." : devoluciones.length ? "Remito de devolución..." : "Esta obra no tiene devoluciones"} /></SelectTrigger>
+                  <SelectContent>
+                    {devoluciones.map((r) => (
+                      <SelectItem key={r.id} value={r.id}>{r.numero}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label>Observaciones</Label>

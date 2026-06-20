@@ -5,7 +5,7 @@ import { useObra, useUpdateObra } from "@/hooks/use-obras";
 import { useComunicaciones, useCreateComunicacion } from "@/hooks/use-comunicaciones";
 import { useOrdenesTrabajoByObra, useCreateOrdenTrabajo, useUpdateOrdenTrabajo, useGatesObra, useUpdateGate, usePeriodosAlquiler, useCreatePeriodo } from "@/hooks/use-ordenes-trabajo";
 import { useRemitosByObra } from "@/hooks/use-remitos";
-import { useMovimientosByObra } from "@/hooks/use-stock";
+import { BalanceMaterial } from "@/components/obras/balance-material";
 import { usePersonal } from "@/hooks/use-personal";
 import { useVehiculos } from "@/hooks/use-vehiculos";
 import { Chatter } from "@/components/shared/chatter";
@@ -25,7 +25,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDate, formatRelativeDate } from "@/lib/utils/formatters";
 import { ESTADO_OBRA_TRANSITIONS, ESTADO_OBRA_LABELS } from "@/lib/validators/obra";
-import { ArrowRight, ChevronDown, Send, Loader2, MessageSquare, Plus, CheckCircle, XCircle, Clock, Shield, FileText, Package } from "lucide-react";
+import { ArrowRight, ChevronDown, Send, Loader2, MessageSquare, Plus, CheckCircle, XCircle, Clock, Shield, FileText } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { useForm } from "react-hook-form";
@@ -61,7 +61,6 @@ export default function ObraDetailPage({ params }: { params: Promise<{ id: strin
   const { data: periodos } = usePeriodosAlquiler(id);
   const createPeriodo = useCreatePeriodo();
   const { data: remitos } = useRemitosByObra(id);
-  const { data: movimientos } = useMovimientosByObra(id);
   const { data: personal } = usePersonal();
   const { data: vehiculos } = useVehiculos();
 
@@ -218,39 +217,9 @@ export default function ObraDetailPage({ params }: { params: Promise<{ id: strin
           )}
         </TabsContent>
 
-        {/* TAB: Materiales */}
+        {/* TAB: Materiales — balance cómputo madre vs movido */}
         <TabsContent value="materiales" className="mt-4 space-y-4">
-          {movimientos && movimientos.length > 0 ? (() => {
-            // Calculate stock summary by piece
-            const stockMap = new Map<string, { codigo: string; descripcion: string; enviado: number; devuelto: number }>();
-            movimientos.forEach((m: any) => {
-              const pieza = m.catalogo_piezas;
-              if (!pieza) return;
-              if (!stockMap.has(pieza.codigo)) stockMap.set(pieza.codigo, { codigo: pieza.codigo, descripcion: pieza.descripcion, enviado: 0, devuelto: 0 });
-              const entry = stockMap.get(pieza.codigo)!;
-              if (m.tipo === "salida" && m.obra_destino_id === id) entry.enviado += Number(m.cantidad);
-              if (m.tipo === "entrada" && m.obra_origen_id === id) entry.devuelto += Number(m.cantidad);
-            });
-            const stockList = Array.from(stockMap.values()).filter((s) => s.enviado > 0 || s.devuelto > 0);
-            return (
-              <Table>
-                <TableHeader><TableRow><TableHead>Código</TableHead><TableHead>Pieza</TableHead><TableHead className="text-right">Enviado</TableHead><TableHead className="text-right">Devuelto</TableHead><TableHead className="text-right">En obra</TableHead></TableRow></TableHeader>
-                <TableBody>
-                  {stockList.map((s) => (
-                    <TableRow key={s.codigo}>
-                      <TableCell className="font-mono text-xs">{s.codigo}</TableCell>
-                      <TableCell>{s.descripcion}</TableCell>
-                      <TableCell className="text-right">{s.enviado}</TableCell>
-                      <TableCell className="text-right">{s.devuelto}</TableCell>
-                      <TableCell className="text-right font-semibold">{s.enviado - s.devuelto}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            );
-          })() : (
-            <Card><CardContent className="py-8 text-center text-muted-foreground"><Package className="h-8 w-8 mx-auto mb-2 opacity-50" />Sin movimientos de material para esta obra</CardContent></Card>
-          )}
+          <BalanceMaterial obraId={id} />
         </TabsContent>
 
         {/* TAB: Remitos */}

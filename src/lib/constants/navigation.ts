@@ -71,6 +71,7 @@ export const navigation: NavGroup[] = [
       {
         title: "Configuracion", href: "/configuracion", icon: Settings,
         subItems: [
+          { title: "Cuadrillas", href: "/configuracion/cuadrillas" },
           { title: "Agentes IA", href: "/configuracion/agentes-ia" },
           { title: "Datos empresa", href: "/configuracion/empresa" },
           { title: "Lista de precios", href: "/configuracion/lista-precios" },

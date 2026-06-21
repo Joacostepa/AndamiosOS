@@ -11,6 +11,7 @@ import { BlockContextMenu } from "./block-context-menu";
 import { tipoOtKey } from "@/lib/planificacion/estado";
 import { TIPO_OT_TOKENS } from "@/lib/planificacion/colores";
 import { capacidadCuadrilla, capacidadCamion, aMinutos, duracionHoras, otDuracionDias } from "@/lib/planificacion/jornada";
+import { nombreCorto } from "@/lib/cuadrillas";
 import type { Asignacion, Bloqueo, Cuadrilla } from "@/hooks/use-planificacion";
 import type { Vehiculo } from "@/hooks/use-vehiculos";
 
@@ -27,6 +28,7 @@ export function PlanningGrid({
   bloqueos,
   diaFoco,
   selectedAsignacionId,
+  responsablePorCuadrilla,
   onOtClick,
   onMover,
   onVolver,
@@ -40,6 +42,7 @@ export function PlanningGrid({
   bloqueos: Bloqueo[];
   diaFoco: string;
   selectedAsignacionId: string | null;
+  responsablePorCuadrilla: Record<string, string | null>;
   onOtClick: (a: Asignacion) => void;
   onMover: (a: Asignacion) => void;
   onVolver: (a: Asignacion) => void;
@@ -164,6 +167,10 @@ export function PlanningGrid({
             const key = tipoOtKey(a.ordenes_trabajo?.tipo ?? "otro", a.ordenes_trabajo?.es_adicional ?? false);
             const total = otDuracionDias(a.ordenes_trabajo?.horas_estimadas) ?? 1;
             const jLabel = a.jornada ? `J${a.jornada.numero}/${total} · ` : "";
+            const personal = a.planificacion_asignacion_personal ?? [];
+            const respId = responsablePorCuadrilla[a.cuadrilla_id];
+            const resp = respId ? personal.find((p) => p.personal?.id === respId)?.personal : null;
+            const respNombre = personal.length > 0 && resp ? nombreCorto(resp.nombre, resp.apellido) : undefined;
             return (
               <OtBlock
                 key={a.id}
@@ -171,6 +178,7 @@ export function PlanningGrid({
                 tipoKey={key}
                 subtitulo={`${TIPO_OT_TOKENS[key].label} · ${jLabel}${fmtH(a.horas_jornada)}h`}
                 estado={a.estado}
+                responsableNombre={respNombre}
                 selected={a.id === selectedAsignacionId}
                 onClick={() => onOtClick(a)}
                 menu={<BlockContextMenu onEditar={() => onOtClick(a)} onMover={() => onMover(a)} onVolver={() => onVolver(a)} />}

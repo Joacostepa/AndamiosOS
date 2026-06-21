@@ -8,6 +8,11 @@ export type Cuadrilla = {
   nombre: string;
   orden: number;
   activo: boolean;
+  responsable_id: string | null;
+  cuadrilla_personal?: {
+    personal_id: string;
+    personal?: { id: string; nombre: string; apellido: string } | null;
+  }[];
 };
 
 export type ViajePlan = {
@@ -97,11 +102,13 @@ export function useCuadrillas() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("cuadrillas")
-        .select("*")
+        .select(
+          "id, nombre, orden, activo, responsable_id, cuadrilla_personal(personal_id, personal(id, nombre, apellido))",
+        )
         .eq("activo", true)
         .order("orden");
       if (error) throw error;
-      return data as Cuadrilla[];
+      return data as unknown as Cuadrilla[];
     },
   });
 }

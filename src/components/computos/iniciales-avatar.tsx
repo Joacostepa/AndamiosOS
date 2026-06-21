@@ -5,10 +5,14 @@ export function InicialesAvatar({
   nombre,
   size = 18,
   className,
+  bg = "#FAECE7",
+  color = "#993C1D",
 }: {
   nombre: string;
   size?: number;
   className?: string;
+  bg?: string;
+  color?: string;
 }) {
   const iniciales =
     nombre
@@ -28,8 +32,8 @@ export function InicialesAvatar({
         width: size,
         height: size,
         fontSize: Math.round(size / 2),
-        backgroundColor: "#FAECE7",
-        color: "#993C1D",
+        backgroundColor: bg,
+        color,
       }}
     >
       {iniciales}

@@ -7,6 +7,7 @@ export type Vehiculo = {
   id: string; patente: string; marca: string | null; modelo: string | null;
   anio: number | null; tipo: string; capacidad_carga_kg: number | null;
   estado: string; km_actual: number; activo: boolean; observaciones: string | null;
+  chofer_habitual_id: string | null;
   created_at: string;
   personal?: { nombre: string; apellido: string } | null;
 };

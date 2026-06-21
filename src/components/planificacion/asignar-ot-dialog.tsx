@@ -24,6 +24,7 @@ export function AsignarOtDialog({
   cuadrillas,
   dias,
   prefill,
+  lockedOt,
   saving,
   onAsignar,
 }: {
@@ -33,6 +34,8 @@ export function AsignarOtDialog({
   cuadrillas: Cuadrilla[];
   dias: Date[];
   prefill?: { cuadrillaId: string; fecha: string } | null;
+  // Cuando viene de "asignar fuera de orden": OT fija (jornada ya elegida por el board).
+  lockedOt?: { id: string; label: string } | null;
   saving: boolean;
   onAsignar: (otId: string, cuadrillaId: string, fecha: string) => void;
 }) {
@@ -45,7 +48,7 @@ export function AsignarOtDialog({
   if (open !== prevOpen) {
     setPrevOpen(open);
     if (open) {
-      setOtId("");
+      setOtId(lockedOt?.id ?? "");
       setCuadrillaId(prefill?.cuadrillaId ?? "");
       setFecha(prefill?.fecha ?? "");
     }
@@ -64,15 +67,19 @@ export function AsignarOtDialog({
         <div className="space-y-3">
           <div className="space-y-1.5">
             <Label>Orden de trabajo</Label>
-            <Select value={otId} onValueChange={(v) => v && setOtId(v)}>
-              <SelectTrigger><SelectValue placeholder="Seleccionar OT..." /></SelectTrigger>
-              <SelectContent>
-                {otsHabilitadas.length === 0 && <SelectItem value="_" disabled>No hay OTs habilitadas</SelectItem>}
-                {otsHabilitadas.map((o) => (
-                  <SelectItem key={o.id} value={o.id}>{o.obras?.nombre ?? o.codigo} — {o.codigo}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {lockedOt ? (
+              <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">{lockedOt.label}</div>
+            ) : (
+              <Select value={otId} onValueChange={(v) => v && setOtId(v)}>
+                <SelectTrigger><SelectValue placeholder="Seleccionar OT..." /></SelectTrigger>
+                <SelectContent>
+                  {otsHabilitadas.length === 0 && <SelectItem value="_" disabled>No hay OTs habilitadas</SelectItem>}
+                  {otsHabilitadas.map((o) => (
+                    <SelectItem key={o.id} value={o.id}>{o.obras?.nombre ?? o.codigo} — {o.codigo}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
           <div className="space-y-1.5">
             <Label>Cuadrilla</Label>

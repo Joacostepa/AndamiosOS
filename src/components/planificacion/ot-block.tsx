@@ -1,4 +1,3 @@
-import { cn } from "@/lib/utils";
 import { TIPO_OT_TOKENS, dotColor, type TipoOtKey } from "@/lib/planificacion/colores";
 
 // Bloque de OT (o de viaje de camión) dentro de una celda de la grilla.
@@ -9,6 +8,7 @@ export function OtBlock({
   estado,
   selected = false,
   onClick,
+  menu,
 }: {
   titulo: string;
   tipoKey: TipoOtKey;
@@ -16,15 +16,21 @@ export function OtBlock({
   estado?: string; // si se pasa, muestra el dot de estado de jornada
   selected?: boolean;
   onClick?: () => void;
+  menu?: React.ReactNode; // ⋮ menú contextual, renderizado en la esquina
 }) {
   const t = TIPO_OT_TOKENS[tipoKey];
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
-      className={cn(
-        "w-full rounded-[4px] px-1.5 py-1 text-left transition-opacity hover:opacity-85",
-      )}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick?.();
+        }
+      }}
+      className="w-full cursor-pointer rounded-[4px] px-1.5 py-1 text-left transition-opacity hover:opacity-85"
       style={{
         backgroundColor: t.bg,
         borderLeft: `3px solid ${t.borde}`,
@@ -42,10 +48,11 @@ export function OtBlock({
             style={{ backgroundColor: dotColor(estado) }}
           />
         )}
+        {menu && <span style={{ color: t.text }}>{menu}</span>}
       </div>
       <p className="truncate text-[9px]" style={{ color: t.text, opacity: 0.85 }}>
         {subtitulo}
       </p>
-    </button>
+    </div>
   );
 }

@@ -4,6 +4,9 @@ import { ChevronLeft, ChevronRight, Ban, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
+type Vista = "mes" | "semana" | "dia";
+const VISTA_LABEL: Record<Vista, string> = { mes: "Mes", semana: "Semana", dia: "Día" };
+
 export function BoardTopbar({
   rangoLabel,
   vista,
@@ -15,8 +18,8 @@ export function BoardTopbar({
   onAsignar,
 }: {
   rangoLabel: string;
-  vista: "semana" | "dia";
-  onVista: (v: "semana" | "dia") => void;
+  vista: Vista;
+  onVista: (v: Vista) => void;
   onPrev: () => void;
   onNext: () => void;
   onHoy: () => void;
@@ -40,20 +43,20 @@ export function BoardTopbar({
         </Button>
       </div>
 
-      {/* Toggle Semana | Día */}
+      {/* Toggle Mes | Semana | Día */}
       <div className="flex overflow-hidden rounded-md border">
-        {(["semana", "dia"] as const).map((v) => (
+        {(["mes", "semana", "dia"] as const).map((v) => (
           <button
             key={v}
             type="button"
             onClick={() => onVista(v)}
             className={cn(
-              "px-3 py-1 text-xs capitalize transition-colors",
+              "px-3 py-1 text-xs transition-colors",
               vista === v ? "text-white" : "text-muted-foreground hover:bg-muted",
             )}
             style={vista === v ? { backgroundColor: "#D85A30" } : undefined}
           >
-            {v === "semana" ? "Semana" : "Día"}
+            {VISTA_LABEL[v]}
           </button>
         ))}
       </div>

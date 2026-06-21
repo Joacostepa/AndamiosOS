@@ -10,72 +10,91 @@ import {
   type DragStartEvent,
   type DragEndEvent,
 } from "@dnd-kit/core";
-import { startOfWeek, addDays, format } from "date-fns";
+import { startOfWeek, startOfMonth, addDays, addMonths, format } from "date-fns";
 import { es } from "date-fns/locale";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { BoardTopbar } from "./board-topbar";
 import { PlanningGrid } from "./planning-grid";
-import { OtQueue } from "./ot-queue";
+import { MonthView } from "./month-view";
+import { OtQueue, type GrupoCola } from "./ot-queue";
 import { JornadaPanel, type JornadaBlock, type ViajeExterno } from "./jornada-panel";
 import { BloquearHorarioDialog } from "./bloquear-horario-dialog";
 import { AsignarOtDialog } from "./asignar-ot-dialog";
+import { MoverDiaDialog } from "./mover-dia-dialog";
 import {
   useCuadrillas,
   useAsignacionesSemana,
   useBloqueosSemana,
-  useColaOTs,
+  useJornadasCola,
   useSaveAsignacion,
   useDeleteAsignacion,
+  useMoverAsignacion,
+  useVolverOtPendiente,
   useCreateBloqueo,
   useDeleteBloqueo,
+  type Asignacion,
   type Bloqueo,
   type ColaOT,
+  type JornadaColaRow,
 } from "@/hooks/use-planificacion";
 import { useVehiculos } from "@/hooks/use-vehiculos";
 import { usePersonal } from "@/hooks/use-personal";
 import { tipoOtKey, otBucket } from "@/lib/planificacion/estado";
 import { esPersonalDeObra, esChofer } from "@/lib/planificacion/constantes";
 import { sugerirHoraInicio, HORAS_NETAS } from "@/lib/planificacion/jornada";
+import { semanasDelMes } from "@/lib/planificacion/mes";
 
+type Vista = "mes" | "semana" | "dia";
 type PanelState = { asignacionId: string; nuevaPorDrop: boolean; camionInicialId?: string | null };
 
 export function PlanningBoard() {
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [diaSel, setDiaSel] = useState<Date>(() => new Date());
-  const [vista, setVista] = useState<"semana" | "dia">("semana");
+  const [monthAnchor, setMonthAnchor] = useState<Date>(() => startOfMonth(new Date()));
+  const [vista, setVista] = useState<Vista>("semana");
   const [panel, setPanel] = useState<PanelState | null>(null);
   const [bloquearOpen, setBloquearOpen] = useState(false);
   const [asignarOpen, setAsignarOpen] = useState(false);
   const [asignarPrefill, setAsignarPrefill] = useState<{ cuadrillaId: string; fecha: string } | null>(null);
+  const [asignarJornada, setAsignarJornada] = useState<{ ot: ColaOT; jornada: JornadaColaRow } | null>(null);
+  const [fueraDeOrden, setFueraDeOrden] = useState<{ ot: ColaOT; jornada: JornadaColaRow } | null>(null);
   const [bloqueoAQuitar, setBloqueoAQuitar] = useState<Bloqueo | null>(null);
+  const [moverAsig, setMoverAsig] = useState<Asignacion | null>(null);
+  const [volverOt, setVolverOt] = useState<Asignacion | null>(null);
 
   const dias = useMemo(
-    () =>
-      vista === "semana"
-        ? Array.from({ length: 5 }, (_, i) => addDays(weekStart, i))
-        : [diaSel],
+    () => (vista === "dia" ? [diaSel] : Array.from({ length: 5 }, (_, i) => addDays(weekStart, i))),
     [vista, weekStart, diaSel],
   );
-  const desde = format(dias[0], "yyyy-MM-dd");
-  const hasta = format(dias[dias.length - 1], "yyyy-MM-dd");
-  const diaFoco = desde;
+  const mesSemanas = useMemo(() => semanasDelMes(monthAnchor), [monthAnchor]);
+
+  const { desde, hasta } = useMemo(() => {
+    if (vista === "mes") {
+      const flat = mesSemanas.flat();
+      return { desde: format(flat[0], "yyyy-MM-dd"), hasta: format(flat[flat.length - 1], "yyyy-MM-dd") };
+    }
+    return { desde: format(dias[0], "yyyy-MM-dd"), hasta: format(dias[dias.length - 1], "yyyy-MM-dd") };
+  }, [vista, mesSemanas, dias]);
+  const diaFoco = format(dias[0], "yyyy-MM-dd");
 
   const { data: cuadrillas, isLoading: lc } = useCuadrillas();
   const { data: vehiculos } = useVehiculos();
   const { data: personal } = usePersonal();
   const { data: asignaciones, isLoading: la } = useAsignacionesSemana(desde, hasta);
   const { data: bloqueos } = useBloqueosSemana(desde, hasta);
-  const { data: cola } = useColaOTs();
+  const { data: jornadasCola } = useJornadasCola();
 
   const saveAsignacion = useSaveAsignacion();
   const deleteAsignacion = useDeleteAsignacion();
+  const moverAsignacion = useMoverAsignacion();
+  const volverPendiente = useVolverOtPendiente();
   const createBloqueo = useCreateBloqueo();
   const deleteBloqueo = useDeleteBloqueo();
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
-  const [activeOt, setActiveOt] = useState<ColaOT | null>(null);
+  const [activeDrag, setActiveDrag] = useState<{ ot: ColaOT; jornada?: JornadaColaRow } | null>(null);
 
   const camiones = useMemo(() => (vehiculos ?? []).filter((v) => v.tipo === "camion"), [vehiculos]);
   const personalObra = useMemo(() => (personal ?? []).filter((p) => esPersonalDeObra(p.puesto)), [personal]);
@@ -84,33 +103,53 @@ export function PlanningBoard() {
   const asigs = useMemo(() => asignaciones ?? [], [asignaciones]);
   const blqs = useMemo(() => bloqueos ?? [], [bloqueos]);
 
-  // Cola: OTs sin asignación en el rango visible.
-  const colaVisible = useMemo(() => {
-    const asignadas = new Set(asigs.map((a) => a.ot_id));
-    return (cola ?? []).filter((o) => !asignadas.has(o.id));
-  }, [cola, asigs]);
-  const otsHabilitadas = colaVisible.filter((o) => otBucket(o) === "habilitada");
+  // Agrupar jornadas por OT para la cola.
+  const grupos = useMemo<GrupoCola[]>(() => {
+    const map = new Map<string, GrupoCola>();
+    for (const row of jornadasCola ?? []) {
+      let g = map.get(row.ot_id);
+      if (!g) {
+        g = { ot: row.ordenes_trabajo, jornadas: [] };
+        map.set(row.ot_id, g);
+      }
+      g.jornadas.push(row);
+    }
+    return [...map.values()];
+  }, [jornadasCola]);
+
+  const otsHabilitadas = grupos.filter((g) => otBucket(g.ot) === "habilitada").map((g) => g.ot);
+
+  function siguienteJornadaPendiente(otId: string): JornadaColaRow | null {
+    const g = grupos.find((x) => x.ot.id === otId);
+    if (!g) return null;
+    return [...g.jornadas].sort((a, b) => a.numero - b.numero).find((j) => j.estado === "pendiente") ?? null;
+  }
 
   const rangoLabel =
-    vista === "semana"
-      ? `${format(dias[0], "d MMM", { locale: es })} – ${format(dias[4], "d MMM yyyy", { locale: es })}`
-      : format(diaSel, "EEE d MMM yyyy", { locale: es });
+    vista === "mes"
+      ? format(monthAnchor, "MMM yyyy", { locale: es })
+      : vista === "semana"
+        ? `${format(dias[0], "d MMM", { locale: es })} – ${format(dias[4], "d MMM yyyy", { locale: es })}`
+        : format(diaSel, "EEE d MMM yyyy", { locale: es });
 
   function navPrev() {
-    if (vista === "semana") setWeekStart((w) => addDays(w, -7));
+    if (vista === "mes") setMonthAnchor((m) => addMonths(m, -1));
+    else if (vista === "semana") setWeekStart((w) => addDays(w, -7));
     else setDiaSel((d) => addDays(d, -1));
   }
   function navNext() {
-    if (vista === "semana") setWeekStart((w) => addDays(w, 7));
+    if (vista === "mes") setMonthAnchor((m) => addMonths(m, 1));
+    else if (vista === "semana") setWeekStart((w) => addDays(w, 7));
     else setDiaSel((d) => addDays(d, 1));
   }
   function navHoy() {
     setWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }));
     setDiaSel(new Date());
+    setMonthAnchor(startOfMonth(new Date()));
   }
 
-  // ---- Crear asignación (drop sobre cuadrilla o modal "Asignar OT") ----
-  function crearAsignacion(otId: string, cuadrillaId: string, fecha: string, camionInicialId?: string | null) {
+  // ---- Crear asignación (drop / modal) ----
+  function crearAsignacion(otId: string, cuadrillaId: string, fecha: string, jornadaId: string | null, camionInicialId?: string | null) {
     const horasYa = asigs
       .filter((a) => a.cuadrilla_id === cuadrillaId && a.fecha === fecha)
       .reduce((s, a) => s + a.horas_jornada, 0);
@@ -122,8 +161,9 @@ export function PlanningBoard() {
         cuadrilla_id: cuadrillaId,
         fecha,
         horas_jornada: Math.min(HORAS_NETAS, restante),
-        hora_inicio: sugerirHoraInicio(horasYa), // MEJORA: encadenar hora de inicio
+        hora_inicio: sugerirHoraInicio(horasYa),
         estado: "sin_completar",
+        jornada_id: jornadaId,
         personalIds: [],
         viajes: [],
       },
@@ -135,13 +175,16 @@ export function PlanningBoard() {
   }
 
   function onDragStart(e: DragStartEvent) {
-    setActiveOt((e.active.data.current?.ot as ColaOT) ?? null);
+    const d = e.active.data.current as { ot?: ColaOT; jornada?: JornadaColaRow } | undefined;
+    setActiveDrag(d?.ot ? { ot: d.ot, jornada: d.jornada } : null);
   }
 
   function onDragEnd(e: DragEndEvent) {
-    setActiveOt(null);
+    setActiveDrag(null);
     const over = e.over;
-    const ot = e.active.data.current?.ot as ColaOT | undefined;
+    const data = e.active.data.current as { ot?: ColaOT; jornada?: JornadaColaRow } | undefined;
+    const ot = data?.ot;
+    const jornada = data?.jornada;
     if (!over || !ot) return;
     const { recursoTipo, recursoId, fecha } = over.data.current as {
       recursoTipo: "cuadrilla" | "camion";
@@ -153,9 +196,8 @@ export function PlanningBoard() {
       return;
     }
     if (recursoTipo === "cuadrilla") {
-      crearAsignacion(ot.id, recursoId, fecha);
+      crearAsignacion(ot.id, recursoId, fecha, jornada?.id ?? null);
     } else {
-      // Camión: agregar viaje a la jornada de esa OT ese día (debe existir una cuadrilla asignada).
       const existente = asigs.find((a) => a.ot_id === ot.id && a.fecha === fecha);
       if (existente) {
         setPanel({ asignacionId: existente.id, nuevaPorDrop: false, camionInicialId: recursoId });
@@ -203,9 +245,7 @@ export function PlanningBoard() {
     setPanel(null);
   }
   function cancelarPanel() {
-    if (panel?.nuevaPorDrop && panelAsig) {
-      deleteAsignacion.mutate(panelAsig.id);
-    }
+    if (panel?.nuevaPorDrop && panelAsig) deleteAsignacion.mutate(panelAsig.id);
     cerrarPanel();
   }
 
@@ -230,87 +270,112 @@ export function PlanningBoard() {
         onBloquear={() => setBloquearOpen(true)}
         onAsignar={() => {
           setAsignarPrefill(null);
+          setAsignarJornada(null);
           setAsignarOpen(true);
         }}
       />
 
-      <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
-        <div className="flex min-h-0 flex-1">
-          <PlanningGrid
-            cuadrillas={cuadrillas}
-            camiones={camiones}
-            dias={dias}
-            asignaciones={asigs}
-            bloqueos={blqs}
-            diaFoco={diaFoco}
-            selectedAsignacionId={panel?.asignacionId ?? null}
-            onOtClick={(a) => setPanel({ asignacionId: a.id, nuevaPorDrop: false })}
-            onBloqueoClick={(b) => setBloqueoAQuitar(b)}
-            onAddCuadrilla={(cuadrillaId, fecha) => {
-              setAsignarPrefill({ cuadrillaId, fecha });
-              setAsignarOpen(true);
-            }}
-          />
+      {vista === "mes" ? (
+        <MonthView
+          mesRef={monthAnchor}
+          cuadrillas={cuadrillas}
+          camiones={camiones}
+          asignaciones={asigs}
+          bloqueos={blqs}
+          onSelectWeek={(ws) => {
+            setWeekStart(ws);
+            setVista("semana");
+          }}
+        />
+      ) : (
+        <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
+          <div className="flex min-h-0 flex-1">
+            <PlanningGrid
+              cuadrillas={cuadrillas}
+              camiones={camiones}
+              dias={dias}
+              asignaciones={asigs}
+              bloqueos={blqs}
+              diaFoco={diaFoco}
+              selectedAsignacionId={panel?.asignacionId ?? null}
+              onOtClick={(a) => setPanel({ asignacionId: a.id, nuevaPorDrop: false })}
+              onMover={(a) => setMoverAsig(a)}
+              onVolver={(a) => setVolverOt(a)}
+              onBloqueoClick={(b) => setBloqueoAQuitar(b)}
+              onAddCuadrilla={(cuadrillaId, fecha) => {
+                setAsignarJornada(null);
+                setAsignarPrefill({ cuadrillaId, fecha });
+                setAsignarOpen(true);
+              }}
+            />
 
-          {panel && panelData ? (
-            panelAsig ? (
-              <JornadaPanel
-                key={panelAsig.id}
-                asignacion={panelAsig}
-                nuevaPorDrop={panel.nuevaPorDrop}
-                camionInicialId={panel.camionInicialId}
-                cuadrillaNombre={panelData.cuadrilla?.nombre ?? "Cuadrilla"}
-                fechaLabel={format(new Date(`${panelAsig.fecha}T00:00:00`), "EEE d MMM", { locale: es })}
-                personalObra={personalObra}
-                choferes={choferes}
-                camiones={camiones}
-                otrasJornadasCuadrilla={panelData.otras}
-                bloqueosFranjas={panelData.bloqueosFranjas}
-                personalOcupado={panelData.personalOcupado}
-                viajesExternos={panelData.viajesExternos}
-                saving={saveAsignacion.isPending}
-                onGuardar={(d) =>
-                  saveAsignacion.mutate(
-                    {
-                      id: panelAsig.id,
-                      ot_id: panelAsig.ot_id,
-                      cuadrilla_id: panelAsig.cuadrilla_id,
-                      fecha: panelAsig.fecha,
-                      horas_jornada: d.horasJornada,
-                      hora_inicio: d.horaInicio,
-                      estado: d.estado,
-                      personalIds: d.personalIds,
-                      viajes: d.viajes,
-                    },
-                    {
-                      onSuccess: () => {
-                        toast.success("Jornada guardada");
-                        cerrarPanel();
+            {panel && panelData ? (
+              panelAsig ? (
+                <JornadaPanel
+                  key={panelAsig.id}
+                  asignacion={panelAsig}
+                  nuevaPorDrop={panel.nuevaPorDrop}
+                  camionInicialId={panel.camionInicialId}
+                  cuadrillaNombre={panelData.cuadrilla?.nombre ?? "Cuadrilla"}
+                  fechaLabel={format(new Date(`${panelAsig.fecha}T00:00:00`), "EEE d MMM", { locale: es })}
+                  personalObra={personalObra}
+                  choferes={choferes}
+                  camiones={camiones}
+                  otrasJornadasCuadrilla={panelData.otras}
+                  bloqueosFranjas={panelData.bloqueosFranjas}
+                  personalOcupado={panelData.personalOcupado}
+                  viajesExternos={panelData.viajesExternos}
+                  saving={saveAsignacion.isPending}
+                  onGuardar={(d) =>
+                    saveAsignacion.mutate(
+                      {
+                        id: panelAsig.id,
+                        ot_id: panelAsig.ot_id,
+                        cuadrilla_id: panelAsig.cuadrilla_id,
+                        fecha: panelAsig.fecha,
+                        horas_jornada: d.horasJornada,
+                        hora_inicio: d.horaInicio,
+                        estado: d.estado,
+                        jornada_id: panelAsig.jornada_id,
+                        personalIds: d.personalIds,
+                        viajes: d.viajes,
                       },
-                      onError: () => toast.error("No se pudo guardar la jornada"),
-                    },
-                  )
-                }
-                onCancel={cancelarPanel}
-              />
+                      {
+                        onSuccess: () => {
+                          toast.success("Jornada guardada");
+                          cerrarPanel();
+                        },
+                        onError: () => toast.error("No se pudo guardar la jornada"),
+                      },
+                    )
+                  }
+                  onCancel={cancelarPanel}
+                />
+              ) : (
+                <div className="flex w-[236px] shrink-0 items-center justify-center border-l text-sm text-muted-foreground">
+                  Cargando…
+                </div>
+              )
             ) : (
-              <div className="flex w-[236px] shrink-0 items-center justify-center border-l text-sm text-muted-foreground">
-                Cargando…
-              </div>
-            )
-          ) : (
-            <OtQueue ots={colaVisible} />
-          )}
-        </div>
+              <OtQueue
+                grupos={grupos}
+                onAsignarFueraDeOrden={(ot, jornada) => setFueraDeOrden({ ot, jornada })}
+              />
+            )}
+          </div>
 
-        <DragOverlay>
-          {activeOt && (
-            <div className="rounded-md border bg-card p-2 shadow-md">
-              <p className="text-[11px] font-medium">{activeOt.obras?.nombre ?? activeOt.codigo}</p>
-            </div>
-          )}
-        </DragOverlay>
-      </DndContext>
+          <DragOverlay>
+            {activeDrag && (
+              <div className="rounded-md border bg-card p-2 shadow-md">
+                <p className="text-[11px] font-medium">{activeDrag.ot.obras?.nombre ?? activeDrag.ot.codigo}</p>
+                {activeDrag.jornada && (
+                  <p className="text-[9px] text-muted-foreground">Jornada {activeDrag.jornada.numero}</p>
+                )}
+              </div>
+            )}
+          </DragOverlay>
+        </DndContext>
+      )}
 
       <BloquearHorarioDialog
         open={bloquearOpen}
@@ -336,10 +401,80 @@ export function PlanningBoard() {
         cuadrillas={cuadrillas}
         dias={dias}
         prefill={asignarPrefill}
+        lockedOt={
+          asignarJornada
+            ? { id: asignarJornada.ot.id, label: `${asignarJornada.ot.obras?.nombre ?? asignarJornada.ot.codigo} — Jornada ${asignarJornada.jornada.numero}` }
+            : null
+        }
         saving={saveAsignacion.isPending}
         onAsignar={(otId, cuadrillaId, fecha) => {
           setAsignarOpen(false);
-          crearAsignacion(otId, cuadrillaId, fecha);
+          const jornadaId = asignarJornada?.jornada.id ?? siguienteJornadaPendiente(otId)?.id ?? null;
+          crearAsignacion(otId, cuadrillaId, fecha, jornadaId);
+          setAsignarJornada(null);
+        }}
+      />
+
+      <MoverDiaDialog
+        open={!!moverAsig}
+        onOpenChange={(o) => !o && setMoverAsig(null)}
+        asignacion={moverAsig}
+        horasUsadasEn={(cuadrillaId, fecha) =>
+          asigs
+            .filter((a) => a.cuadrilla_id === cuadrillaId && a.fecha === fecha && a.id !== moverAsig?.id)
+            .reduce((s, a) => s + a.horas_jornada, 0)
+        }
+        saving={moverAsignacion.isPending}
+        onConfirm={(fecha) => {
+          if (moverAsig)
+            moverAsignacion.mutate(
+              { id: moverAsig.id, fecha },
+              {
+                onSuccess: () => {
+                  toast.success("Jornada movida");
+                  setMoverAsig(null);
+                },
+                onError: () => toast.error("No se pudo mover"),
+              },
+            );
+        }}
+      />
+
+      {/* Confirmar "asignar fuera de orden" → abre el diálogo de asignar */}
+      <ConfirmDialog
+        open={!!fueraDeOrden}
+        onOpenChange={(o) => !o && setFueraDeOrden(null)}
+        title="Asignar fuera de orden"
+        description="Esta jornada aún no tiene las anteriores asignadas. ¿Querés asignarla de todas formas?"
+        confirmLabel="Asignar de todas formas"
+        onConfirm={() => {
+          if (fueraDeOrden) {
+            setAsignarJornada(fueraDeOrden);
+            setAsignarPrefill(null);
+            setAsignarOpen(true);
+          }
+          setFueraDeOrden(null);
+        }}
+      />
+
+      <ConfirmDialog
+        open={!!volverOt}
+        onOpenChange={(o) => !o && setVolverOt(null)}
+        title="Volver OT a pendiente"
+        description={`¿Volver "${volverOt?.ordenes_trabajo?.obras?.nombre ?? volverOt?.ordenes_trabajo?.codigo ?? "esta OT"}" a pendiente? Se quitarán del tablero todas sus jornadas asignadas y volverán a la cola.`}
+        confirmLabel="Sí, volver a pendiente"
+        variant="destructive"
+        loading={volverPendiente.isPending}
+        onConfirm={() => {
+          if (volverOt)
+            volverPendiente.mutate(volverOt.ot_id, {
+              onSuccess: () => {
+                toast.success("OT devuelta a pendiente");
+                setVolverOt(null);
+                if (panel) cerrarPanel();
+              },
+              onError: () => toast.error("No se pudo volver a pendiente"),
+            });
         }}
       />
 

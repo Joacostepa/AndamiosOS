@@ -7,8 +7,10 @@ import { ResourceCell } from "./resource-cell";
 import { GridCell } from "./grid-cell";
 import { OtBlock } from "./ot-block";
 import { BloqueoBlock } from "./bloqueo-block";
+import { BlockContextMenu } from "./block-context-menu";
 import { tipoOtKey } from "@/lib/planificacion/estado";
-import { capacidadCuadrilla, capacidadCamion, aMinutos, duracionHoras } from "@/lib/planificacion/jornada";
+import { TIPO_OT_TOKENS } from "@/lib/planificacion/colores";
+import { capacidadCuadrilla, capacidadCamion, aMinutos, duracionHoras, otDuracionDias } from "@/lib/planificacion/jornada";
 import type { Asignacion, Bloqueo, Cuadrilla } from "@/hooks/use-planificacion";
 import type { Vehiculo } from "@/hooks/use-vehiculos";
 
@@ -26,6 +28,8 @@ export function PlanningGrid({
   diaFoco,
   selectedAsignacionId,
   onOtClick,
+  onMover,
+  onVolver,
   onBloqueoClick,
   onAddCuadrilla,
 }: {
@@ -37,6 +41,8 @@ export function PlanningGrid({
   diaFoco: string;
   selectedAsignacionId: string | null;
   onOtClick: (a: Asignacion) => void;
+  onMover: (a: Asignacion) => void;
+  onVolver: (a: Asignacion) => void;
   onBloqueoClick: (b: Bloqueo) => void;
   onAddCuadrilla: (cuadrillaId: string, fecha: string) => void;
 }) {
@@ -154,17 +160,23 @@ export function PlanningGrid({
           canAdd
           onAdd={() => onAddCuadrilla(c.id, fecha)}
         >
-          {asigs.map((a) => (
-            <OtBlock
-              key={a.id}
-              titulo={a.ordenes_trabajo?.obras?.nombre ?? a.ordenes_trabajo?.codigo ?? "OT"}
-              tipoKey={tipoOtKey(a.ordenes_trabajo?.tipo ?? "otro", a.ordenes_trabajo?.es_adicional ?? false)}
-              subtitulo={`${fmtH(a.horas_jornada)}h`}
-              estado={a.estado}
-              selected={a.id === selectedAsignacionId}
-              onClick={() => onOtClick(a)}
-            />
-          ))}
+          {asigs.map((a) => {
+            const key = tipoOtKey(a.ordenes_trabajo?.tipo ?? "otro", a.ordenes_trabajo?.es_adicional ?? false);
+            const total = otDuracionDias(a.ordenes_trabajo?.horas_estimadas) ?? 1;
+            const jLabel = a.jornada ? `J${a.jornada.numero}/${total} · ` : "";
+            return (
+              <OtBlock
+                key={a.id}
+                titulo={a.ordenes_trabajo?.obras?.nombre ?? a.ordenes_trabajo?.codigo ?? "OT"}
+                tipoKey={key}
+                subtitulo={`${TIPO_OT_TOKENS[key].label} · ${jLabel}${fmtH(a.horas_jornada)}h`}
+                estado={a.estado}
+                selected={a.id === selectedAsignacionId}
+                onClick={() => onOtClick(a)}
+                menu={<BlockContextMenu onEditar={() => onOtClick(a)} onMover={() => onMover(a)} onVolver={() => onVolver(a)} />}
+              />
+            );
+          })}
           {blos.map((b) => (
             <BloqueoBlock
               key={b.id}
@@ -220,6 +232,7 @@ export function PlanningGrid({
               subtitulo={`${viaje.franja_desde.slice(0, 5)}–${viaje.franja_hasta.slice(0, 5)} · ${fmtH(duracionHoras(viaje.franja_desde, viaje.franja_hasta))}h`}
               selected={a.id === selectedAsignacionId}
               onClick={() => onOtClick(a)}
+              menu={<BlockContextMenu onEditar={() => onOtClick(a)} onMover={() => onMover(a)} onVolver={() => onVolver(a)} />}
             />
           ))}
         </GridCell>,

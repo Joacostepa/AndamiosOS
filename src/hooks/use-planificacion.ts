@@ -46,9 +46,21 @@ export type Asignacion = {
   hora_inicio: string;
   estado: string;
   observaciones: string | null;
+  jornada_id: string | null;
   ordenes_trabajo?: AsignacionOTLite | null;
+  jornada?: { numero: number } | null;
   planificacion_asignacion_personal?: PersonalAsignado[];
   planificacion_viajes?: ViajePlan[];
+};
+
+export type JornadaColaRow = {
+  id: string;
+  ot_id: string;
+  numero: number;
+  estado: string; // pendiente | asignada | ejecutada
+  asignacion_id: string | null;
+  ordenes_trabajo: ColaOT;
+  asignacion?: { fecha: string; cuadrilla_id: string } | null;
 };
 
 export type Bloqueo = {
@@ -75,7 +87,8 @@ export type ColaOT = {
 const ASIGNACION_SELECT =
   "*, ordenes_trabajo(codigo, tipo, es_adicional, horas_estimadas, estado, requiere_habilitacion, habilitacion_aprobada, obras(nombre)), " +
   "planificacion_asignacion_personal(personal_id, personal(id, nombre, apellido, puesto)), " +
-  "planificacion_viajes(id, asignacion_id, camion_id, chofer_id, franja_desde, franja_hasta, camion:vehiculos!camion_id(patente, marca, modelo), chofer:personal!chofer_id(nombre, apellido))";
+  "planificacion_viajes(id, asignacion_id, camion_id, chofer_id, franja_desde, franja_hasta, camion:vehiculos!camion_id(patente, marca, modelo), chofer:personal!chofer_id(nombre, apellido)), " +
+  "jornada:ot_jornadas!jornada_id(numero)";
 
 export function useCuadrillas() {
   const supabase = createClient();
@@ -157,6 +170,7 @@ export type SaveAsignacionInput = {
   horas_jornada: number;
   hora_inicio: string;
   estado: string;
+  jornada_id?: string | null;
   personalIds: string[];
   viajes: {
     camion_id: string;
@@ -187,6 +201,7 @@ export function useSaveAsignacion() {
             horas_jornada: input.horas_jornada,
             hora_inicio: input.hora_inicio,
             estado: input.estado,
+            jornada_id: input.jornada_id ?? null,
             created_by: user?.id ?? null,
           })
           .select("id")
@@ -202,6 +217,7 @@ export function useSaveAsignacion() {
             horas_jornada: input.horas_jornada,
             hora_inicio: input.hora_inicio,
             estado: input.estado,
+            jornada_id: input.jornada_id ?? null,
           })
           .eq("id", id);
         if (error) throw error;
@@ -286,6 +302,59 @@ export function useDeleteBloqueo() {
   return useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase.from("planificacion_bloqueos").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["planificacion"] }),
+  });
+}
+
+// Jornadas de las OTs candidatas (pendiente/programada), para la cola agrupada.
+export function useJornadasCola() {
+  const supabase = createClient();
+  return useQuery({
+    queryKey: ["planificacion", "jornadas-cola"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("ot_jornadas")
+        .select(
+          "id, ot_id, numero, estado, asignacion_id, " +
+            "ordenes_trabajo!inner(id, codigo, tipo, es_adicional, horas_estimadas, estado, requiere_habilitacion, habilitacion_aprobada, obras(nombre)), " +
+            "asignacion:planificacion_asignaciones!asignacion_id(fecha, cuadrilla_id)",
+        )
+        .in("ordenes_trabajo.estado", ["pendiente", "programada"])
+        .order("numero");
+      if (error) throw error;
+      return data as unknown as JornadaColaRow[];
+    },
+  });
+}
+
+export function useMoverAsignacion() {
+  const supabase = createClient();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, fecha }: { id: string; fecha: string }) => {
+      const { error } = await supabase
+        .from("planificacion_asignaciones")
+        .update({ fecha })
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["planificacion"] }),
+  });
+}
+
+// Volver una OT completa a pendiente: borra todas sus asignaciones (los triggers
+// liberan las jornadas a 'pendiente').
+export function useVolverOtPendiente() {
+  const supabase = createClient();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (otId: string) => {
+      const { error } = await supabase
+        .from("planificacion_asignaciones")
+        .delete()
+        .eq("ot_id", otId);
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["planificacion"] }),

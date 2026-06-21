@@ -5,6 +5,7 @@ import { X, UserPlus, Truck, RefreshCw, AlertTriangle, Loader2, Check } from "lu
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { InicialesAvatar } from "@/components/computos/iniciales-avatar";
 import { RecursoAvatar } from "./recurso-avatar";
 import { TIPO_OT_TOKENS, capacidadColor, type TipoOtKey } from "@/lib/planificacion/colores";
@@ -37,6 +38,7 @@ export type ViajeExterno = { camion_id: string; desde: string; hasta: string; ob
 export function JornadaPanel({
   asignacion,
   cuadrillaNombre,
+  responsableId,
   fechaLabel,
   personalObra,
   choferes,
@@ -53,6 +55,7 @@ export function JornadaPanel({
   asignacion: Asignacion;
   nuevaPorDrop: boolean;
   cuadrillaNombre: string;
+  responsableId?: string | null;
   fechaLabel: string;
   personalObra: Personal[];
   choferes: Personal[];
@@ -107,6 +110,17 @@ export function JornadaPanel({
     return base;
   });
   const [forzar, setForzar] = useState(false);
+  const [confirmarQuitarResp, setConfirmarQuitarResp] = useState(false);
+
+  // Responsable primero en la lista.
+  const personalOrdenado =
+    responsableId && personalIds.includes(responsableId)
+      ? [responsableId, ...personalIds.filter((i) => i !== responsableId)]
+      : personalIds;
+  function quitarPersonal(id: string) {
+    if (id === responsableId) setConfirmarQuitarResp(true);
+    else setPersonalIds((prev) => prev.filter((x) => x !== id));
+  }
 
   const nombrePersonal = (id: string) => {
     const p = personalObra.find((x) => x.id === id) ?? choferes.find((x) => x.id === id);
@@ -277,20 +291,37 @@ export function JornadaPanel({
           {/* Personal */}
           <div className="space-y-1.5">
             <p className="text-[10px] font-medium text-muted-foreground">Personal asignado</p>
-            {personalIds.map((id) => (
-              <div key={id} className="flex items-center gap-2 rounded-md border px-2 py-1">
-                <InicialesAvatar nombre={nombrePersonal(id)} size={20} />
-                <span className="min-w-0 flex-1 truncate text-xs">{nombrePersonal(id)}</span>
-                <button
-                  type="button"
-                  onClick={() => setPersonalIds((prev) => prev.filter((x) => x !== id))}
-                  className="text-muted-foreground hover:text-destructive"
-                  aria-label="Quitar"
+            {personalOrdenado.map((id) => {
+              const esResp = id === responsableId;
+              return (
+                <div
+                  key={id}
+                  className="flex items-center gap-2 rounded-md border px-2 py-1"
+                  style={esResp ? { borderColor: "#F0997B", backgroundColor: "rgba(216,90,48,0.03)" } : undefined}
                 >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            ))}
+                  <InicialesAvatar
+                    nombre={nombrePersonal(id)}
+                    size={20}
+                    bg={esResp ? "#D85A30" : "#FAECE7"}
+                    color={esResp ? "#fff" : "#993C1D"}
+                  />
+                  <span className="min-w-0 flex-1 truncate text-xs">{nombrePersonal(id)}</span>
+                  {esResp && (
+                    <span className="text-[9px] font-medium uppercase tracking-[0.04em]" style={{ color: "#D85A30" }}>
+                      Responsable
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => quitarPersonal(id)}
+                    className="text-muted-foreground hover:text-destructive"
+                    aria-label="Quitar"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              );
+            })}
             <Popover>
               <PopoverTrigger
                 render={
@@ -323,6 +354,9 @@ export function JornadaPanel({
                 })}
               </PopoverContent>
             </Popover>
+            <p className="text-[10px] italic text-muted-foreground">
+              Personal precargado desde {cuadrillaNombre} · modificaciones solo afectan esta jornada
+            </p>
           </div>
         </section>
 
@@ -407,6 +441,19 @@ export function JornadaPanel({
           )}
         </Button>
       </div>
+
+      <ConfirmDialog
+        open={confirmarQuitarResp}
+        onOpenChange={setConfirmarQuitarResp}
+        title="Quitar al responsable"
+        description="Vas a quitar al responsable de la cuadrilla de esta jornada (solo afecta esta jornada). ¿Continuar?"
+        confirmLabel="Quitar"
+        variant="destructive"
+        onConfirm={() => {
+          if (responsableId) setPersonalIds((prev) => prev.filter((x) => x !== responsableId));
+          setConfirmarQuitarResp(false);
+        }}
+      />
     </div>
   );
 }

@@ -96,6 +96,12 @@ export function PlanningBoard() {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
   const [activeDrag, setActiveDrag] = useState<{ ot: ColaOT; jornada?: JornadaColaRow } | null>(null);
 
+  const responsablePorCuadrilla = useMemo(() => {
+    const map: Record<string, string | null> = {};
+    for (const c of cuadrillas ?? []) map[c.id] = c.responsable_id;
+    return map;
+  }, [cuadrillas]);
+
   // Camiones de reparto del tablero: camiones e hidrogrúas (ambos hacen viajes).
   const camiones = useMemo(
     () => (vehiculos ?? []).filter((v) => v.tipo === "camion" || v.tipo === "hidrogrua"),
@@ -152,6 +158,15 @@ export function PlanningBoard() {
     setMonthAnchor(startOfMonth(new Date()));
   }
 
+  // Plantel base de una cuadrilla (responsable primero) para precargar la jornada.
+  function plantelDe(cuadrillaId: string): string[] {
+    const c = (cuadrillas ?? []).find((x) => x.id === cuadrillaId);
+    if (!c) return [];
+    const ids = (c.cuadrilla_personal ?? []).map((p) => p.personal_id);
+    const resp = c.responsable_id;
+    return resp && ids.includes(resp) ? [resp, ...ids.filter((i) => i !== resp)] : ids;
+  }
+
   // ---- Crear asignación (drop / modal) ----
   function crearAsignacion(otId: string, cuadrillaId: string, fecha: string, jornadaId: string | null, camionInicialId?: string | null) {
     const horasYa = asigs
@@ -168,7 +183,7 @@ export function PlanningBoard() {
         hora_inicio: sugerirHoraInicio(horasYa),
         estado: "sin_completar",
         jornada_id: jornadaId,
-        personalIds: [],
+        personalIds: plantelDe(cuadrillaId), // precarga del plantel base
         viajes: [],
       },
       {
@@ -302,6 +317,7 @@ export function PlanningBoard() {
               bloqueos={blqs}
               diaFoco={diaFoco}
               selectedAsignacionId={panel?.asignacionId ?? null}
+              responsablePorCuadrilla={responsablePorCuadrilla}
               onOtClick={(a) => setPanel({ asignacionId: a.id, nuevaPorDrop: false })}
               onMover={(a) => setMoverAsig(a)}
               onVolver={(a) => setVolverOt(a)}
@@ -321,6 +337,7 @@ export function PlanningBoard() {
                   nuevaPorDrop={panel.nuevaPorDrop}
                   camionInicialId={panel.camionInicialId}
                   cuadrillaNombre={panelData.cuadrilla?.nombre ?? "Cuadrilla"}
+                  responsableId={panelData.cuadrilla?.responsable_id ?? null}
                   fechaLabel={format(new Date(`${panelAsig.fecha}T00:00:00`), "EEE d MMM", { locale: es })}
                   personalObra={personalObra}
                   choferes={choferes}

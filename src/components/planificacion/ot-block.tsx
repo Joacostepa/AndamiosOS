@@ -6,6 +6,7 @@ export function OtBlock({
   tipoKey,
   subtitulo,
   estado,
+  responsableNombre,
   selected = false,
   onClick,
   menu,
@@ -14,6 +15,7 @@ export function OtBlock({
   tipoKey: TipoOtKey;
   subtitulo: string;
   estado?: string; // si se pasa, muestra el dot de estado de jornada
+  responsableNombre?: string; // línea "{resp.}" al pie
   selected?: boolean;
   onClick?: () => void;
   menu?: React.ReactNode; // ⋮ menú contextual, renderizado en la esquina
@@ -53,6 +55,11 @@ export function OtBlock({
       <p className="truncate text-[9px]" style={{ color: t.text, opacity: 0.85 }}>
         {subtitulo}
       </p>
+      {responsableNombre && (
+        <p className="truncate text-[9px]" style={{ color: t.text, opacity: 0.6 }}>
+          {responsableNombre} (resp.)
+        </p>
+      )}
     </div>
   );
 }

@@ -96,7 +96,11 @@ export function PlanningBoard() {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
   const [activeDrag, setActiveDrag] = useState<{ ot: ColaOT; jornada?: JornadaColaRow } | null>(null);
 
-  const camiones = useMemo(() => (vehiculos ?? []).filter((v) => v.tipo === "camion"), [vehiculos]);
+  // Camiones de reparto del tablero: camiones e hidrogrúas (ambos hacen viajes).
+  const camiones = useMemo(
+    () => (vehiculos ?? []).filter((v) => v.tipo === "camion" || v.tipo === "hidrogrua"),
+    [vehiculos],
+  );
   const personalObra = useMemo(() => (personal ?? []).filter((p) => esPersonalDeObra(p.puesto)), [personal]);
   const choferes = useMemo(() => (personal ?? []).filter((p) => esChofer(p.puesto)), [personal]);
 

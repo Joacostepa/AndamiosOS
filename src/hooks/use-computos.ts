@@ -9,8 +9,15 @@ export type ComputoItem = {
   cantidad_requerida: number;
   cantidad_disponible: number | null;
   notas: string | null;
-  catalogo_piezas?: { codigo: string; descripcion: string; categoria: string };
+  catalogo_piezas?: {
+    codigo: string;
+    descripcion: string;
+    categoria: string;
+    unidad_medida: string;
+  };
 };
+
+export type ComputoResponsable = { nombre: string; apellido: string } | null;
 
 export type Computo = {
   id: string;
@@ -29,9 +36,23 @@ export type Computo = {
   superficie: number | null;
   observaciones_tecnicas: string | null;
   created_at: string;
-  obras?: { codigo: string; nombre: string };
+  created_by: string | null;
+  // Joined
+  obras?: {
+    codigo: string;
+    nombre: string;
+    fecha_inicio_estimada: string | null;
+    clientes?: { razon_social: string } | null;
+  } | null;
+  responsable?: ComputoResponsable;
   computo_items?: ComputoItem[];
 };
+
+const HOME_SELECT =
+  "*, obras(codigo, nombre, fecha_inicio_estimada, clientes(razon_social)), responsable:user_profiles!created_by(nombre, apellido), computo_items(cantidad_requerida, catalogo_piezas(categoria))";
+
+const DETALLE_SELECT =
+  "*, obras(codigo, nombre, fecha_inicio_estimada, clientes(razon_social)), responsable:user_profiles!created_by(nombre, apellido), computo_items(*, catalogo_piezas(codigo, descripcion, categoria, unidad_medida))";
 
 export function useComputos() {
   const supabase = createClient();
@@ -41,11 +62,11 @@ export function useComputos() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("computos")
-        .select("*, obras(codigo, nombre)")
+        .select(HOME_SELECT)
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      return data as Computo[];
+      return data as unknown as Computo[];
     },
   });
 }
@@ -58,14 +79,37 @@ export function useComputo(id: string) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("computos")
-        .select("*, obras(codigo, nombre), computo_items(*, catalogo_piezas(codigo, descripcion, categoria))")
+        .select(DETALLE_SELECT)
         .eq("id", id)
         .single();
 
       if (error) throw error;
-      return data as Computo;
+      return data as unknown as Computo;
     },
     enabled: !!id,
+  });
+}
+
+// Cómputo de una obra (Pantalla 2 está indexada por obraId). null si la obra
+// todavía no tiene cómputo iniciado.
+export function useComputoByObra(obraId: string) {
+  const supabase = createClient();
+
+  return useQuery({
+    queryKey: ["computos", "obra", obraId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("computos")
+        .select(DETALLE_SELECT)
+        .eq("obra_id", obraId)
+        .order("version", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) throw error;
+      return (data as unknown as Computo) ?? null;
+    },
+    enabled: !!obraId,
   });
 }
 
@@ -84,7 +128,7 @@ export function useCreateComputo() {
       notas?: string;
       items: { pieza_id: string; cantidad_requerida: number }[];
     }) => {
-      const { items: _items, ...campos } = data;
+      const campos = data;
       const { data: computo, error: computoError } = await supabase
         .from("computos")
         .insert({
@@ -148,6 +192,71 @@ export function useUpdateComputo() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["computos"] });
       queryClient.invalidateQueries({ queryKey: ["computos", variables.id] });
+    },
+  });
+}
+
+export type SaveComputoInput = {
+  computoId: string | null;
+  obraId: string;
+  items: { pieza_id: string; cantidad_requerida: number }[];
+};
+
+// Persiste el set completo de ítems de una obra (autoguardado de Pantalla 2).
+// Crea el cómputo si todavía no existe (estado default 'borrador') y reemplaza
+// los ítems (delete + insert). Devuelve el id del cómputo para reusarlo.
+export function useSaveComputoItems() {
+  const supabase = createClient();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ computoId, obraId, items }: SaveComputoInput) => {
+      let id = computoId;
+
+      if (!id) {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        const { data: computo, error: createError } = await supabase
+          .from("computos")
+          .insert({ obra_id: obraId, created_by: user?.id ?? null })
+          .select("id")
+          .single();
+
+        if (createError) throw createError;
+        id = computo.id as string;
+      }
+
+      // Reemplazar ítems: borrar los actuales e insertar los activos (>0).
+      const { error: deleteError } = await supabase
+        .from("computo_items")
+        .delete()
+        .eq("computo_id", id);
+
+      if (deleteError) throw deleteError;
+
+      const activos = items.filter((i) => i.cantidad_requerida > 0);
+      if (activos.length > 0) {
+        const rows = activos.map((i) => ({
+          computo_id: id,
+          pieza_id: i.pieza_id,
+          cantidad_requerida: i.cantidad_requerida,
+        }));
+        const { error: insertError } = await supabase
+          .from("computo_items")
+          .insert(rows);
+
+        if (insertError) throw insertError;
+      }
+
+      return { id: id as string };
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["computos"] });
+      queryClient.invalidateQueries({
+        queryKey: ["computos", "obra", variables.obraId],
+      });
     },
   });
 }

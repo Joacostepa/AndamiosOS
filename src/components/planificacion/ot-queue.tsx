@@ -21,7 +21,7 @@ export function OtQueue({
   const total = habilitadas.length + pendientes.length;
 
   return (
-    <div className="flex w-[172px] shrink-0 flex-col gap-2 border-l pl-3">
+    <div className="flex h-full w-full flex-col gap-2 pl-3">
       <div className="flex items-center gap-2">
         <p className="text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">Sin asignar</p>
         <span className="rounded-full px-1.5 text-[11px] font-medium" style={{ backgroundColor: "#FAEEDA", color: "#854F0B" }}>

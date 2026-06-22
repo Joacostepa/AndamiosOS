@@ -351,6 +351,24 @@ export function useMoverAsignacion() {
   });
 }
 
+// Reordenar las jornadas de un día: re-encadena hora_inicio según el nuevo orden.
+export function useReordenarDia() {
+  const supabase = createClient();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (updates: { id: string; hora_inicio: string }[]) => {
+      for (const u of updates) {
+        const { error } = await supabase
+          .from("planificacion_asignaciones")
+          .update({ hora_inicio: u.hora_inicio })
+          .eq("id", u.id);
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["planificacion"] }),
+  });
+}
+
 // Volver una OT completa a pendiente: borra todas sus asignaciones (los triggers
 // liberan las jornadas a 'pendiente').
 export function useVolverOtPendiente() {

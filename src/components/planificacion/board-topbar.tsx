@@ -11,6 +11,8 @@ export function BoardTopbar({
   rangoLabel,
   vista,
   onVista,
+  mostrarDomingo,
+  onToggleDomingo,
   onPrev,
   onNext,
   onHoy,
@@ -20,6 +22,8 @@ export function BoardTopbar({
   rangoLabel: string;
   vista: Vista;
   onVista: (v: Vista) => void;
+  mostrarDomingo: boolean;
+  onToggleDomingo: () => void;
   onPrev: () => void;
   onNext: () => void;
   onHoy: () => void;
@@ -60,6 +64,21 @@ export function BoardTopbar({
           </button>
         ))}
       </div>
+
+      {vista === "semana" && (
+        <button
+          type="button"
+          onClick={onToggleDomingo}
+          className={cn(
+            "rounded-md border px-2.5 py-1 text-xs transition-colors",
+            mostrarDomingo ? "text-white" : "text-muted-foreground hover:bg-muted",
+          )}
+          style={mostrarDomingo ? { backgroundColor: "#D85A30", borderColor: "#D85A30" } : undefined}
+          title={mostrarDomingo ? "Ocultar domingo" : "Mostrar domingo"}
+        >
+          {mostrarDomingo ? "Ocultar dom." : "+ Domingo"}
+        </button>
+      )}
 
       <div className="ml-auto flex items-center gap-2">
         <Button variant="outline" size="sm" onClick={onBloquear}>

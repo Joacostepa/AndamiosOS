@@ -204,7 +204,7 @@ export function JornadaPanel({
   }
 
   return (
-    <div className="flex w-[236px] shrink-0 flex-col border-l">
+    <div className="flex h-full w-full flex-col">
       {/* Header */}
       <div className="space-y-1 bg-secondary px-3 py-2.5">
         <p className="text-[13px] font-medium leading-tight">

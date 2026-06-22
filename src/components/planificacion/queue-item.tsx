@@ -30,7 +30,7 @@ export function QueueGroup({
   jornadas: JornadaColaRow[];
   onAsignarFueraDeOrden: (ot: ColaOT, jornada: JornadaColaRow) => void;
 }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const orden = [...jornadas].sort((a, b) => a.numero - b.numero);
   const total = orden.length;
   const asignadas = contarAsignadas(orden);

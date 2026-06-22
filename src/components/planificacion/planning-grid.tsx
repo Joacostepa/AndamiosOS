@@ -2,6 +2,7 @@
 
 import { format, isSameDay } from "date-fns";
 import { es } from "date-fns/locale";
+import { SortableContext, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { Users, Truck } from "lucide-react";
 import { ResourceCell } from "./resource-cell";
 import { GridCell } from "./grid-cell";
@@ -163,28 +164,31 @@ export function PlanningGrid({
           canAdd
           onAdd={() => onAddCuadrilla(c.id, fecha)}
         >
-          {asigs.map((a) => {
-            const key = tipoOtKey(a.ordenes_trabajo?.tipo ?? "otro", a.ordenes_trabajo?.es_adicional ?? false);
-            const total = otDuracionDias(a.ordenes_trabajo?.horas_estimadas) ?? 1;
-            const jLabel = a.jornada ? `J${a.jornada.numero}/${total} · ` : "";
-            const personal = a.planificacion_asignacion_personal ?? [];
-            const respId = responsablePorCuadrilla[a.cuadrilla_id];
-            const resp = respId ? personal.find((p) => p.personal?.id === respId)?.personal : null;
-            const respNombre = personal.length > 0 && resp ? nombreCorto(resp.nombre, resp.apellido) : undefined;
-            return (
-              <OtBlock
-                key={a.id}
-                titulo={a.ordenes_trabajo?.obras?.nombre ?? a.ordenes_trabajo?.codigo ?? "OT"}
-                tipoKey={key}
-                subtitulo={`${TIPO_OT_TOKENS[key].label} · ${jLabel}${fmtH(a.horas_jornada)}h`}
-                estado={a.estado}
-                responsableNombre={respNombre}
-                selected={a.id === selectedAsignacionId}
-                onClick={() => onOtClick(a)}
-                menu={<BlockContextMenu onEditar={() => onOtClick(a)} onMover={() => onMover(a)} onVolver={() => onVolver(a)} />}
-              />
-            );
-          })}
+          <SortableContext items={asigs.map((a) => `asig:${a.id}`)} strategy={verticalListSortingStrategy}>
+            {asigs.map((a) => {
+              const key = tipoOtKey(a.ordenes_trabajo?.tipo ?? "otro", a.ordenes_trabajo?.es_adicional ?? false);
+              const total = otDuracionDias(a.ordenes_trabajo?.horas_estimadas) ?? 1;
+              const jLabel = a.jornada ? `J${a.jornada.numero}/${total} · ` : "";
+              const personal = a.planificacion_asignacion_personal ?? [];
+              const respId = responsablePorCuadrilla[a.cuadrilla_id];
+              const resp = respId ? personal.find((p) => p.personal?.id === respId)?.personal : null;
+              const respNombre = personal.length > 0 && resp ? nombreCorto(resp.nombre, resp.apellido) : undefined;
+              return (
+                <SortableOtBlock key={a.id} a={a}>
+                  <OtBlock
+                    titulo={a.ordenes_trabajo?.obras?.nombre ?? a.ordenes_trabajo?.codigo ?? "OT"}
+                    tipoKey={key}
+                    subtitulo={`${TIPO_OT_TOKENS[key].label} · ${jLabel}${fmtH(a.horas_jornada)}h`}
+                    estado={a.estado}
+                    responsableNombre={respNombre}
+                    selected={a.id === selectedAsignacionId}
+                    onClick={() => onOtClick(a)}
+                    menu={<BlockContextMenu onEditar={() => onOtClick(a)} onMover={() => onMover(a)} onVolver={() => onVolver(a)} />}
+                  />
+                </SortableOtBlock>
+              );
+            })}
+          </SortableContext>
           {blos.map((b) => (
             <BloqueoBlock
               key={b.id}
@@ -253,6 +257,28 @@ export function PlanningGrid({
       <div className="grid" style={{ gridTemplateColumns: cols }}>
         {cells}
       </div>
+    </div>
+  );
+}
+
+// Bloque de OT arrastrable para reordenar dentro del mismo día (drag & drop).
+function SortableOtBlock({ a, children }: { a: Asignacion; children: React.ReactNode }) {
+  const { setNodeRef, attributes, listeners, transform, transition, isDragging } = useSortable({
+    id: `asig:${a.id}`,
+    data: { asignacion: a },
+  });
+  return (
+    <div
+      ref={setNodeRef}
+      {...attributes}
+      {...listeners}
+      style={{
+        transform: transform ? `translate(${transform.x}px, ${transform.y}px)` : undefined,
+        transition,
+        opacity: isDragging ? 0.4 : undefined,
+      }}
+    >
+      {children}
     </div>
   );
 }

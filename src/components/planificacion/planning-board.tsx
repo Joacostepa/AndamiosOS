@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -31,6 +31,7 @@ import {
   useSaveAsignacion,
   useDeleteAsignacion,
   useMoverAsignacion,
+  useReordenarDia,
   useVolverOtPendiente,
   useCreateBloqueo,
   useDeleteBloqueo,
@@ -43,7 +44,7 @@ import { useVehiculos } from "@/hooks/use-vehiculos";
 import { usePersonal } from "@/hooks/use-personal";
 import { tipoOtKey, otBucket } from "@/lib/planificacion/estado";
 import { esPersonalDeObra, esChofer } from "@/lib/planificacion/constantes";
-import { sugerirHoraInicio, HORAS_NETAS } from "@/lib/planificacion/jornada";
+import { sugerirHoraInicio, HORAS_NETAS, aMinutos } from "@/lib/planificacion/jornada";
 import { semanasDelMes } from "@/lib/planificacion/mes";
 
 type Vista = "mes" | "semana" | "dia";
@@ -54,6 +55,15 @@ export function PlanningBoard() {
   const [diaSel, setDiaSel] = useState<Date>(() => new Date());
   const [monthAnchor, setMonthAnchor] = useState<Date>(() => startOfMonth(new Date()));
   const [vista, setVista] = useState<Vista>("semana");
+  const [mostrarDomingo, setMostrarDomingo] = useState<boolean>(
+    () => typeof window !== "undefined" && window.localStorage.getItem("plan:domingo") === "true",
+  );
+  const [anchoLateral, setAnchoLateral] = useState<number>(() =>
+    typeof window === "undefined" ? 280 : Number(window.localStorage.getItem("plan:anchoLateral")) || 280,
+  );
+  useEffect(() => {
+    if (typeof window !== "undefined") window.localStorage.setItem("plan:anchoLateral", String(anchoLateral));
+  }, [anchoLateral]);
   const [panel, setPanel] = useState<PanelState | null>(null);
   const [bloquearOpen, setBloquearOpen] = useState(false);
   const [asignarOpen, setAsignarOpen] = useState(false);
@@ -64,10 +74,11 @@ export function PlanningBoard() {
   const [moverAsig, setMoverAsig] = useState<Asignacion | null>(null);
   const [volverOt, setVolverOt] = useState<Asignacion | null>(null);
 
-  const dias = useMemo(
-    () => (vista === "dia" ? [diaSel] : Array.from({ length: 5 }, (_, i) => addDays(weekStart, i))),
-    [vista, weekStart, diaSel],
-  );
+  const dias = useMemo(() => {
+    if (vista === "dia") return [diaSel];
+    const n = mostrarDomingo ? 7 : 6; // Lun–Sáb (+Dom opcional)
+    return Array.from({ length: n }, (_, i) => addDays(weekStart, i));
+  }, [vista, weekStart, diaSel, mostrarDomingo]);
   const mesSemanas = useMemo(() => semanasDelMes(monthAnchor), [monthAnchor]);
 
   const { desde, hasta } = useMemo(() => {
@@ -89,6 +100,7 @@ export function PlanningBoard() {
   const saveAsignacion = useSaveAsignacion();
   const deleteAsignacion = useDeleteAsignacion();
   const moverAsignacion = useMoverAsignacion();
+  const reordenarDia = useReordenarDia();
   const volverPendiente = useVolverOtPendiente();
   const createBloqueo = useCreateBloqueo();
   const deleteBloqueo = useDeleteBloqueo();
@@ -139,7 +151,7 @@ export function PlanningBoard() {
     vista === "mes"
       ? format(monthAnchor, "MMM yyyy", { locale: es })
       : vista === "semana"
-        ? `${format(dias[0], "d MMM", { locale: es })} – ${format(dias[4], "d MMM yyyy", { locale: es })}`
+        ? `${format(dias[0], "d MMM", { locale: es })} – ${format(dias[dias.length - 1], "d MMM yyyy", { locale: es })}`
         : format(diaSel, "EEE d MMM yyyy", { locale: es });
 
   function navPrev() {
@@ -156,6 +168,48 @@ export function PlanningBoard() {
     setWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }));
     setDiaSel(new Date());
     setMonthAnchor(startOfMonth(new Date()));
+  }
+  function toggleDomingo() {
+    setMostrarDomingo((v) => {
+      const next = !v;
+      if (typeof window !== "undefined") window.localStorage.setItem("plan:domingo", String(next));
+      return next;
+    });
+  }
+  // Redimensionar el panel/cola lateral arrastrando su borde izquierdo.
+  function startResize(e: React.MouseEvent) {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = anchoLateral;
+    function onMove(ev: MouseEvent) {
+      setAnchoLateral(Math.min(640, Math.max(220, startW + (startX - ev.clientX))));
+    }
+    function onUp() {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
+  // Reordenar las jornadas de una cuadrilla en un día: re-encadena hora_inicio.
+  function reordenarCelda(A: Asignacion, B: Asignacion) {
+    const cell = asigs
+      .filter((a) => a.cuadrilla_id === A.cuadrilla_id && a.fecha === A.fecha)
+      .sort((x, y) => aMinutos(x.hora_inicio) - aMinutos(y.hora_inicio));
+    const from = cell.findIndex((x) => x.id === A.id);
+    const to = cell.findIndex((x) => x.id === B.id);
+    if (from < 0 || to < 0 || from === to) return;
+    const reordered = cell.slice();
+    const [m] = reordered.splice(from, 1);
+    reordered.splice(to, 0, m);
+    let acc = 0;
+    const updates = reordered.map((x) => {
+      const hi = sugerirHoraInicio(acc);
+      acc += x.horas_jornada;
+      return { id: x.id, hora_inicio: hi };
+    });
+    reordenarDia.mutate(updates, { onError: () => toast.error("No se pudo reordenar") });
   }
 
   // Plantel base de una cuadrilla (responsable primero) para precargar la jornada.
@@ -201,21 +255,42 @@ export function PlanningBoard() {
   function onDragEnd(e: DragEndEvent) {
     setActiveDrag(null);
     const over = e.over;
-    const data = e.active.data.current as { ot?: ColaOT; jornada?: JornadaColaRow } | undefined;
-    const ot = data?.ot;
-    const jornada = data?.jornada;
-    if (!over || !ot) return;
-    const { recursoTipo, recursoId, fecha } = over.data.current as {
-      recursoTipo: "cuadrilla" | "camion";
-      recursoId: string;
-      fecha: string;
-    };
+    if (!over) return;
+    const activeData = e.active.data.current as
+      | { ot?: ColaOT; jornada?: JornadaColaRow; asignacion?: Asignacion }
+      | undefined;
+    const overData = over.data.current as
+      | { recursoTipo?: "cuadrilla" | "camion"; recursoId?: string; fecha?: string; asignacion?: Asignacion }
+      | undefined;
+
+    // (a) Reordenar un bloque dentro del mismo día.
+    if (activeData?.asignacion) {
+      const A = activeData.asignacion;
+      const B = overData?.asignacion;
+      if (B && B.id !== A.id && B.cuadrilla_id === A.cuadrilla_id && B.fecha === A.fecha) {
+        reordenarCelda(A, B);
+      }
+      return;
+    }
+
+    // (b) Crear asignación desde la cola (puede caer sobre un bloque → derivar la celda).
+    const ot = activeData?.ot;
+    if (!ot) return;
+    let recursoTipo = overData?.recursoTipo;
+    let recursoId = overData?.recursoId;
+    let fecha = overData?.fecha;
+    if (!recursoTipo && overData?.asignacion) {
+      recursoTipo = "cuadrilla";
+      recursoId = overData.asignacion.cuadrilla_id;
+      fecha = overData.asignacion.fecha;
+    }
+    if (!recursoTipo || !recursoId || !fecha) return;
     if (otBucket(ot) !== "habilitada") {
       toast.error("Esta OT aún no está habilitada");
       return;
     }
     if (recursoTipo === "cuadrilla") {
-      crearAsignacion(ot.id, recursoId, fecha, jornada?.id ?? null);
+      crearAsignacion(ot.id, recursoId, fecha, activeData?.jornada?.id ?? null);
     } else {
       const existente = asigs.find((a) => a.ot_id === ot.id && a.fecha === fecha);
       if (existente) {
@@ -283,6 +358,8 @@ export function PlanningBoard() {
         rangoLabel={rangoLabel}
         vista={vista}
         onVista={setVista}
+        mostrarDomingo={mostrarDomingo}
+        onToggleDomingo={toggleDomingo}
         onPrev={navPrev}
         onNext={navNext}
         onHoy={navHoy}
@@ -329,6 +406,13 @@ export function PlanningBoard() {
               }}
             />
 
+            {/* Handle de redimensionado del panel/cola lateral */}
+            <div
+              onMouseDown={startResize}
+              className="w-1.5 shrink-0 cursor-col-resize bg-border transition-colors hover:bg-[#D85A30]/40"
+              title="Arrastrá para ajustar el ancho"
+            />
+            <div className="shrink-0 overflow-hidden border-l" style={{ width: anchoLateral }}>
             {panel && panelData ? (
               panelAsig ? (
                 <JornadaPanel
@@ -373,7 +457,7 @@ export function PlanningBoard() {
                   onCancel={cancelarPanel}
                 />
               ) : (
-                <div className="flex w-[236px] shrink-0 items-center justify-center border-l text-sm text-muted-foreground">
+                <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">
                   Cargando…
                 </div>
               )
@@ -383,6 +467,7 @@ export function PlanningBoard() {
                 onAsignarFueraDeOrden={(ot, jornada) => setFueraDeOrden({ ot, jornada })}
               />
             )}
+            </div>
           </div>
 
           <DragOverlay>

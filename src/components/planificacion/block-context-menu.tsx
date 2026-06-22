@@ -26,6 +26,7 @@ export function BlockContextMenu({
           <button
             type="button"
             onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
             className="rounded p-0.5 text-current/70 hover:bg-black/5 hover:text-current"
             aria-label="Opciones"
           />

@@ -69,7 +69,7 @@ export function MonthView({
     return { label: `${used}h ocup.`, ...AMBAR };
   }
 
-  const colTemplate = "80px repeat(5, minmax(0, 1fr))";
+  const colTemplate = `80px repeat(${semanas[0]?.length ?? 6}, minmax(0, 1fr))`;
 
   return (
     <div className="flex-1 overflow-auto">

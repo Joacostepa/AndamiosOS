@@ -36,7 +36,15 @@ export async function updateSession(request: NextRequest) {
   // REGLA DE NEGOCIO: Rutas públicas sin autenticación:
   // /login (acceso), /auth (callback OAuth). Todo lo demás requiere sesión activa.
   // /api/odoo/sync y /api/odoo/webhooks: server-to-server (sin sesión), protegidos por secret.
-  const publicPaths = ["/login", "/auth", "/api/odoo/sync", "/api/odoo/webhooks"];
+  // /cotizador y /api/public: cotizador hogareño para clientes finales (sin cuenta).
+  const publicPaths = [
+    "/login",
+    "/auth",
+    "/api/odoo/sync",
+    "/api/odoo/webhooks",
+    "/cotizador",
+    "/api/public",
+  ];
   const isPublicPath = publicPaths.some((path) =>
     request.nextUrl.pathname.startsWith(path)
   );

@@ -57,23 +57,20 @@ function leerVisiblesGuardadas(): number[] | null {
 }
 
 /**
- * Filas por defecto: las cuadrillas con carga en la semana. Si no hay ninguna, las que
- * figuran como cuadrilla prevista en las OTs candidatas. Recién en última instancia,
- * todas — arrancar con quince filas vacías sería ilegible.
+ * Filas por defecto: la UNIÓN de las cuadrillas con carga y las que figuran como
+ * cuadrilla prevista en las OTs candidatas. Si no hay ni unas ni otras, todas.
+ *
+ * Es unión y no "las que tienen carga, si no las previstas": con esa regla, asignar la
+ * primera obra de la semana hacía desaparecer todas las filas menos una.
  */
 function visiblesPorDefecto(data: TableroPayload): number[] {
   const activas = new Set(data.cuadrillas.map((c) => c.id));
-  const conCarga = [...new Set(data.asignaciones.map((a) => a.cuadrillaId))].filter(
+  const conCarga = data.asignaciones.map((a) => a.cuadrillaId);
+  const previstas = data.ots.map((o) => o.cuadrillaPrevistaId);
+  const propuestas = [...new Set([...conCarga, ...previstas])].filter(
     (id): id is number => id !== null && activas.has(id),
   );
-  if (conCarga.length > 0) return conCarga;
-
-  const previstas = [...new Set(data.ots.map((o) => o.cuadrillaPrevistaId))].filter(
-    (id): id is number => id !== null && activas.has(id),
-  );
-  if (previstas.length > 0) return previstas;
-
-  return data.cuadrillas.map((c) => c.id);
+  return propuestas.length > 0 ? propuestas : data.cuadrillas.map((c) => c.id);
 }
 
 // Al soltar sobre una tarjeta hay colisión con la tarjeta y con la celda que tiene
@@ -110,9 +107,14 @@ export function TableroBoard() {
 
   // Sin preferencia guardada se deriva un default con criterio, sin escribirlo: recién
   // cuando el usuario elige, la selección pasa a ser suya y se persiste.
+  //
+  // Se calcula UNA sola vez y se congela. Si se recalculara con cada respuesta del
+  // servidor, asignar una obra cambiaría las filas visibles debajo del mouse.
+  const [defaultCongelado, setDefaultCongelado] = useState<number[] | null>(null);
+  if (data && defaultCongelado === null) setDefaultCongelado(visiblesPorDefecto(data));
   const visiblesEfectivas = useMemo(
-    () => visibles ?? (data ? visiblesPorDefecto(data) : []),
-    [visibles, data],
+    () => visibles ?? defaultCongelado ?? [],
+    [visibles, defaultCongelado],
   );
 
   function cambiarVisibles(ids: number[]) {

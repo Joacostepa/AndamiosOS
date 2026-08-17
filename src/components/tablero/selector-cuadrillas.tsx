@@ -6,6 +6,7 @@ import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -37,16 +38,18 @@ export function SelectorCuadrillas({
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button variant="outline" size="sm">
-            <Users className="mr-1.5 h-4 w-4" />
-            Cuadrillas ({visibles.length}/{cuadrillas.length})
-          </Button>
-        }
-      />
+      {/* El elemento de `render` va SIEMPRE autocerrado y el contenido como children del
+          trigger: meter hijos dentro del render cuelga el renderer (base-ui). */}
+      <DropdownMenuTrigger render={<Button variant="outline" size="sm" />}>
+        <Users className="mr-1.5 h-4 w-4" />
+        Cuadrillas ({visibles.length}/{cuadrillas.length})
+      </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="max-h-[70vh] w-64 overflow-y-auto">
-        <DropdownMenuLabel>Filas del tablero</DropdownMenuLabel>
+        {/* DropdownMenuLabel es un GroupLabel de base-ui: SIN un Group padre tira una
+            excepción al abrir el menú y se cae toda la pantalla. */}
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>Filas del tablero</DropdownMenuLabel>
+        </DropdownMenuGroup>
         <DropdownMenuSeparator />
         {cuadrillas.map((c, i) => {
           const marcada = visibles.includes(c.id);

@@ -6,6 +6,7 @@ import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -175,14 +176,17 @@ export function TarjetaAsignacion({
             {!bloque.multiDia && (
               <>
                 <DropdownMenuSeparator />
-                <DropdownMenuLabel>Fracción de jornada</DropdownMenuLabel>
-                {FRACCIONES.map((f) => (
-                  <DropdownMenuItem key={f.value} onClick={() => onFraccion(f.value)}>
-                    <span className="mr-2 w-4 text-center">{f.label}</span>
-                    {f.detalle}
-                    {Number(f.value) === bloque.fraccion && <Check className="ml-auto h-3.5 w-3.5" />}
-                  </DropdownMenuItem>
-                ))}
+                {/* El label necesita un Group padre: sin el, base-ui lanza al abrir. */}
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>Fracción de jornada</DropdownMenuLabel>
+                  {FRACCIONES.map((f) => (
+                    <DropdownMenuItem key={f.value} onClick={() => onFraccion(f.value)}>
+                      <span className="mr-2 w-4 text-center">{f.label}</span>
+                      {f.detalle}
+                      {Number(f.value) === bloque.fraccion && <Check className="ml-auto h-3.5 w-3.5" />}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuGroup>
               </>
             )}
 

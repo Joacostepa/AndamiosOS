@@ -11,6 +11,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuGroup,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -93,19 +94,21 @@ export function Header() {
           </Avatar>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56">
-          <DropdownMenuLabel>
-            <div className="flex flex-col space-y-1">
-              <p className="text-sm font-medium">
-                {user ? `${user.nombre} ${user.apellido}` : "Cargando..."}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {user?.email}
-              </p>
-              <p className="text-xs text-muted-foreground capitalize">
-                {user?.rol}
-              </p>
-            </div>
-          </DropdownMenuLabel>
+          <DropdownMenuGroup>
+            <DropdownMenuLabel>
+              <div className="flex flex-col space-y-1">
+                <p className="text-sm font-medium">
+                  {user ? `${user.nombre} ${user.apellido}` : "Cargando..."}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {user?.email}
+                </p>
+                <p className="text-xs text-muted-foreground capitalize">
+                  {user?.rol}
+                </p>
+              </div>
+            </DropdownMenuLabel>
+          </DropdownMenuGroup>
           <DropdownMenuSeparator />
           <DropdownMenuItem>
             <User className="mr-2 h-4 w-4" />

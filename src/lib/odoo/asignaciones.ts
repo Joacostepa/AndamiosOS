@@ -11,7 +11,7 @@
 // ráfagas. `fetchTablero` trae la semana completa en un solo request al route handler
 // (varias llamadas RPC en paralelo) y las escrituras son de a un registro.
 
-import { searchRead, write, executeKw, read } from "./client";
+import { searchRead, write, executeKw, read, authenticate } from "./client";
 import type {
   AsignacionTablero,
   CambioAsignacion,
@@ -178,6 +178,9 @@ function mapAsig(row: OdooAsigRow): AsignacionTablero {
 /** Trae todo lo que el tablero necesita para el rango [desde, hasta] en una sola pasada. */
 export async function fetchTablero(desde: string, hasta: string): Promise<TableroPayload> {
   const base = process.env.ODOO_URL ?? "";
+  // Se resuelve el login ANTES del lote: si no, las lecturas en paralelo arrancan todas
+  // pidiendo autenticación y Odoo las limita (ver la cola en client.ts).
+  await authenticate();
   const actionId = await otActionId();
 
   const [cuadrillasRaw, asigsRaw, otsCandidatas, partesRaw, gruposAsignadas] = await Promise.all([

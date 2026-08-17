@@ -41,6 +41,11 @@ export function useTablero(desde: string, hasta: string) {
     queryFn: () =>
       pedir<TableroPayload>(`/api/planificacion/tablero?desde=${desde}&hasta=${hasta}`),
     enabled: !!desde && !!hasta,
+    // Odoo Online limita las consultas concurrentes: no conviene refetchear cada vez
+    // que la pestaña vuelve al foco, ni reintentar en ráfaga si algo falló.
+    refetchOnWindowFocus: false,
+    retry: 2,
+    retryDelay: (intento) => 800 * 2 ** intento,
   });
 }
 

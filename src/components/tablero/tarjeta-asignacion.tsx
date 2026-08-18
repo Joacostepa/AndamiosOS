@@ -1,7 +1,7 @@
 "use client";
 
 import { useDraggable, useDroppable } from "@dnd-kit/core";
-import { ChevronLeft, ChevronRight, Check, CircleDashed, MoreVertical, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, AlertTriangle, Check, CircleCheck, CircleDashed, ClipboardCheck, MoreVertical, Trash2 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -17,6 +17,18 @@ import { colorCuadrilla, semaforo, URGENCIA_ALTA_BORDE, CORAL } from "@/lib/tabl
 import { partesTitulo } from "@/lib/tablero/titulo";
 import type { Bloque, Colocacion } from "@/lib/tablero/bloques";
 import type { OtTablero } from "@/lib/tablero/tipos";
+
+/** Cierre de la jornada visible en la tarjeta. */
+export type EstadoCierre = {
+  estado: "ejecutado" | "no_ejecutado";
+  motivoLabel?: string | null;
+};
+
+/** Qué día del bloque se puede cerrar, o cuál ya está cerrado. */
+export type AccionCierre =
+  | { tipo: "cerrar"; asignacionId: number; fecha: string }
+  | { tipo: "ver"; parteId: number; asignacionId: number; fecha: string }
+  | null;
 
 // Tarjeta de una asignación en la grilla. Una obra de varias jornadas es UNA tarjeta
 // que abarca las celdas contiguas (grid-column: span N): se arrastra completa.
@@ -41,6 +53,7 @@ export function ContenidoTarjeta({
   compacta = false,
   vieneDeAntes = false,
   sigueDespues = false,
+  cierre = null,
 }: {
   ot: OtTablero | undefined;
   bloque: Pick<Bloque, "estado" | "fraccion" | "fechas" | "multiDia">;
@@ -49,12 +62,15 @@ export function ContenidoTarjeta({
   /** El bloque empieza antes / termina después de la semana visible. */
   vieneDeAntes?: boolean;
   sigueDespues?: boolean;
+  /** Cierre de la jornada, si ya se cargó el parte. */
+  cierre?: EstadoCierre | null;
 }) {
   const color = colorCuadrilla(indiceColor);
   const confirmada = bloque.estado === "confirmada";
   const sem = semaforo(ot?.habSemaforo);
   const urgente = ot?.urgencia === "alta";
   const partes = partesTitulo(ot?.titulo ?? "OT");
+  const noEjecutada = cierre?.estado === "no_ejecutado";
 
   return (
     <div
@@ -63,9 +79,13 @@ export function ContenidoTarjeta({
         compacta && "shadow-md",
       )}
       style={{
-        backgroundColor: confirmada ? color.bg : color.suave,
-        border: confirmada ? `1px solid ${color.borde}` : `1px dashed ${color.borde}`,
-        borderLeft: urgente ? `3px solid ${URGENCIA_ALTA_BORDE}` : `3px solid ${color.borde}`,
+        backgroundColor: noEjecutada ? "#FDECEA" : confirmada ? color.bg : color.suave,
+        border: noEjecutada
+          ? "1px solid #D92D20"
+          : confirmada
+            ? `1px solid ${color.borde}`
+            : `1px dashed ${color.borde}`,
+        borderLeft: urgente ? `3px solid ${URGENCIA_ALTA_BORDE}` : `3px solid ${noEjecutada ? "#D92D20" : color.borde}`,
       }}
     >
       <div className="flex items-baseline gap-1">
@@ -73,6 +93,12 @@ export function ContenidoTarjeta({
             se salían de la grilla y generaban scroll horizontal. */}
         {vieneDeAntes && (
           <ChevronLeft className="h-3 w-3 shrink-0 self-center" style={{ color: color.text }} />
+        )}
+        {cierre?.estado === "ejecutado" && (
+          <CircleCheck className="h-3 w-3 shrink-0 self-center" style={{ color: "#639922" }} />
+        )}
+        {noEjecutada && (
+          <AlertTriangle className="h-3 w-3 shrink-0 self-center" style={{ color: "#D92D20" }} />
         )}
         <span
           className="min-w-0 flex-1 truncate text-[11px] font-medium leading-tight"
@@ -99,7 +125,8 @@ export function ContenidoTarjeta({
           partes.tipo,
           bloque.multiDia && partes.cliente ? partes.cliente : null,
           ot?.tecnico,
-          confirmada ? null : "tentativa",
+          noEjecutada ? (cierre?.motivoLabel ?? "no ejecutada") : null,
+          cierre || !confirmada ? (cierre ? null : "tentativa") : null,
         ]
           .filter(Boolean)
           .join(" · ")}
@@ -116,6 +143,9 @@ export function TarjetaAsignacion({
   indiceColor,
   seleccionada,
   ejecutada,
+  cierre,
+  accionCierre,
+  onCerrarJornada,
   onAbrir,
   onFraccion,
   onEstado,
@@ -128,6 +158,9 @@ export function TarjetaAsignacion({
   indiceColor: number;
   seleccionada: boolean;
   ejecutada: boolean;
+  cierre: EstadoCierre | null;
+  accionCierre: AccionCierre;
+  onCerrarJornada: (accion: NonNullable<AccionCierre>) => void;
   onAbrir: () => void;
   onFraccion: (f: FraccionStr) => void;
   onEstado: (e: "tentativa" | "confirmada") => void;
@@ -175,6 +208,7 @@ export function TarjetaAsignacion({
         indiceColor={indiceColor}
         vieneDeAntes={colocacion.vieneDeAntes}
         sigueDespues={colocacion.sigueDespues}
+        cierre={cierre}
       />
 
       <div className="absolute right-0.5 top-0.5 hidden group-hover/tarjeta:block">
@@ -192,7 +226,18 @@ export function TarjetaAsignacion({
           >
             <MoreVertical className="h-3 w-3" />
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-52">
+          <DropdownMenuContent align="end" className="w-56">
+            {/* El cierre se ofrece solo cuando la fecha ya llegó: un parte creado por
+                adelantado queda huérfano si después se reprograma. */}
+            {accionCierre && (
+              <>
+                <DropdownMenuItem onClick={() => onCerrarJornada(accionCierre)}>
+                  <ClipboardCheck className="mr-2 h-4 w-4" />
+                  {accionCierre.tipo === "cerrar" ? "Cerrar jornada" : "Ver parte"}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            )}
             <DropdownMenuItem
               onClick={() => onEstado(bloque.estado === "confirmada" ? "tentativa" : "confirmada")}
             >

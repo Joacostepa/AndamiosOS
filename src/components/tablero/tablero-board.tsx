@@ -22,6 +22,7 @@ import { TableroGrid } from "./tablero-grid";
 import { PanelSinAsignar, ID_BANDEJA } from "./panel-sin-asignar";
 import { ContenidoTarjeta } from "./tarjeta-asignacion";
 import { PanelOt } from "./panel-ot";
+import { FormularioCierre } from "./formulario-cierre";
 import {
   useTablero,
   useCrearAsignaciones,
@@ -30,6 +31,7 @@ import {
   useBorrarAsignaciones,
 } from "@/hooks/use-tablero";
 import { agruparBloques, fechasDeJornadas, type Bloque } from "@/lib/tablero/bloques";
+import type { AccionCierre } from "@/lib/tablero/cierre";
 import { repartirJornadas, type FraccionStr } from "@/lib/tablero/fracciones";
 import type { MovimientoAsignacion, NuevaAsignacion, TableroPayload } from "@/lib/tablero/tipos";
 
@@ -86,6 +88,12 @@ export function TableroBoard() {
   const [lunes, setLunes] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [visibles, setVisibles] = useState<number[] | null>(leerVisiblesGuardadas);
   const [panel, setPanel] = useState<{ otId: number; bloqueKey: string | null } | null>(null);
+  const [cierre, setCierre] = useState<{
+    bloqueKey: string;
+    asignacionId: number;
+    fecha: string;
+    parteId: number | null;
+  } | null>(null);
   const [panelColapsado, setPanelColapsado] = useState<boolean>(
     () => typeof window !== "undefined" && window.localStorage.getItem(CLAVE_PANEL) === "true",
   );
@@ -170,6 +178,8 @@ export function TableroBoard() {
     for (const b of agruparBloques(data?.asignaciones ?? [])) mapa.set(b.key, b);
     return mapa;
   }, [data]);
+
+  const hoyISO = format(new Date(), "yyyy-MM-dd");
 
   const rangoLabel = `${format(lunes, "d MMM", { locale: es })} – ${format(addDays(lunes, 5), "d MMM yyyy", { locale: es })}`;
 
@@ -369,6 +379,15 @@ export function TableroBoard() {
               ots={otsPorId}
               partes={data.partes}
               bloqueSeleccionado={panel?.bloqueKey ?? null}
+              hoy={hoyISO}
+              onCerrarJornada={(b, accion: NonNullable<AccionCierre>) =>
+                setCierre({
+                  bloqueKey: b.key,
+                  asignacionId: accion.asignacionId,
+                  fecha: accion.fecha,
+                  parteId: accion.tipo === "ver" ? accion.parteId : null,
+                })
+              }
               onAbrirBloque={(b) => setPanel({ otId: b.otId, bloqueKey: b.key })}
               onFraccion={(b, f: FraccionStr) => actualizar.mutate({ ids: b.ids, cambio: { fraccion: f } })}
               onEstado={(b, estado) => actualizar.mutate({ ids: b.ids, cambio: { estado } })}
@@ -407,6 +426,17 @@ export function TableroBoard() {
           )}
         </DragOverlay>
       </DndContext>
+
+      <FormularioCierre
+        abierto={!!cierre}
+        bloque={cierre ? (bloquesPorClave.get(cierre.bloqueKey) ?? null) : null}
+        ot={cierre ? otsPorId.get(bloquesPorClave.get(cierre.bloqueKey)?.otId ?? 0) : undefined}
+        cuadrillas={data.cuadrillas}
+        fecha={cierre?.fecha ?? null}
+        asignacionId={cierre?.asignacionId ?? null}
+        parteId={cierre?.parteId ?? null}
+        onOpenChange={(abierto) => !abierto && setCierre(null)}
+      />
 
       <PanelOt
         ot={panelOt}

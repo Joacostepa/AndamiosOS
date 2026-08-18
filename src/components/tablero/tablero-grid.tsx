@@ -6,6 +6,8 @@ import { AlertTriangle, MousePointerClick } from "lucide-react";
 import { CeldaDia } from "./celda-dia";
 import { TarjetaAsignacion } from "./tarjeta-asignacion";
 import { agruparBloques, esDomingo, repartirEnCarriles } from "@/lib/tablero/bloques";
+import { accionDeCierre, bloqueCerrado, type AccionCierre } from "@/lib/tablero/cierre";
+import { MOTIVOS_NO_EJEC } from "@/lib/tablero/tipos-parte";
 import { colorCuadrilla } from "@/lib/tablero/colores";
 import { ocupacionCelda, CAPACIDAD_DIARIA } from "@/lib/tablero/fracciones";
 import type { FraccionStr } from "@/lib/tablero/fracciones";
@@ -37,6 +39,8 @@ export function TableroGrid({
   ots,
   partes,
   bloqueSeleccionado,
+  hoy: hoyISO,
+  onCerrarJornada,
   onAbrirBloque,
   onFraccion,
   onEstado,
@@ -48,6 +52,9 @@ export function TableroGrid({
   ots: Map<number, OtTablero>;
   partes: ParteTablero[];
   bloqueSeleccionado: string | null;
+  /** Fecha de hoy en yyyy-MM-dd: define desde cuándo se puede cerrar una jornada. */
+  hoy: string;
+  onCerrarJornada: (bloque: Bloque, accion: NonNullable<AccionCierre>) => void;
   onAbrirBloque: (bloque: Bloque) => void;
   onFraccion: (bloque: Bloque, f: FraccionStr) => void;
   onEstado: (bloque: Bloque, e: "tentativa" | "confirmada") => void;
@@ -61,6 +68,9 @@ export function TableroGrid({
   const ejecutadas = new Set(
     partes.filter((p) => p.estado === "ejecutado").map((p) => `${p.otId}:${p.fecha}`),
   );
+  const partesPorId = new Map(partes.map((p) => [p.id, p]));
+  const etiquetaMotivo = (valor: string | null) =>
+    MOTIVOS_NO_EJEC.find((m) => m.value === valor)?.label ?? valor;
 
   const enCelda = (cuadrillaId: number, fecha: string) =>
     asignaciones.filter((a) => a.cuadrillaId === cuadrillaId && a.fecha === fecha);
@@ -187,7 +197,12 @@ export function TableroGrid({
                     />
                   ))}
 
-                  {ubicados.map(({ bloque, colocacion, carril }) => (
+                  {ubicados.map(({ bloque, colocacion, carril }) => {
+                    const accion = accionDeCierre(bloque, hoyISO);
+                    const parteDelBloque = bloqueCerrado(bloque)
+                      ? partesPorId.get(bloque.partes.find((x) => x != null) as number)
+                      : undefined;
+                    return (
                     <TarjetaAsignacion
                       key={bloque.key}
                       bloque={bloque}
@@ -197,12 +212,23 @@ export function TableroGrid({
                       indiceColor={indice}
                       seleccionada={bloqueSeleccionado === bloque.key}
                       ejecutada={bloque.fechas.some((f) => ejecutadas.has(`${bloque.otId}:${f}`))}
+                      cierre={
+                        parteDelBloque
+                          ? {
+                              estado: parteDelBloque.estado === "no_ejecutado" ? "no_ejecutado" : "ejecutado",
+                              motivoLabel: etiquetaMotivo(parteDelBloque.motivoNoEjec),
+                            }
+                          : null
+                      }
+                      accionCierre={accion}
+                      onCerrarJornada={(a) => onCerrarJornada(bloque, a)}
                       onAbrir={() => onAbrirBloque(bloque)}
                       onFraccion={(f) => onFraccion(bloque, f)}
                       onEstado={(e) => onEstado(bloque, e)}
                       onQuitar={() => onQuitar(bloque)}
                     />
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </div>

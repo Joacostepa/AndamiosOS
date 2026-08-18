@@ -80,7 +80,7 @@ const OT_FIELDS = [
   "x_doc_ids", "x_fecha_programada",
 ];
 
-const ASIG_FIELDS = ["id", "x_ot_id", "x_fecha", "x_cuadrilla_id", "x_fraccion", "x_estado", "x_orden_dia", "x_notas"];
+const ASIG_FIELDS = ["id", "x_ot_id", "x_fecha", "x_cuadrilla_id", "x_fraccion", "x_estado", "x_orden_dia", "x_notas", "x_parte_id"];
 
 type OdooOtRow = {
   id: number;
@@ -117,6 +117,7 @@ type OdooAsigRow = {
   x_estado: string | false;
   x_orden_dia: number | false;
   x_notas: string | false;
+  x_parte_id: M2O;
 };
 
 /**
@@ -172,6 +173,7 @@ function mapAsig(row: OdooAsigRow): AsignacionTablero {
     estado: row.x_estado === "confirmada" ? "confirmada" : "tentativa",
     ordenDia: num(row.x_orden_dia),
     notas: str(row.x_notas),
+    parteId: m2oId(row.x_parte_id),
   };
 }
 
@@ -198,10 +200,10 @@ export async function fetchTablero(desde: string, hasta: string): Promise<Tabler
     ),
     searchRead<OdooOtRow>("x_aba_orden_trabajo", DOMINIO_OTS_CANDIDATAS, OT_FIELDS, { order: "id" }),
     // Partes de la semana: marcan en el tablero las jornadas ya ejecutadas.
-    searchRead<{ x_orden_trabajo_id: M2O; x_fecha: string | false; x_cuadrilla_id: M2O; x_estado: string | false }>(
+    searchRead<{ id: number; x_orden_trabajo_id: M2O; x_fecha: string | false; x_cuadrilla_id: M2O; x_estado: string | false; x_motivo_no_ejec: string | false }>(
       "x_aba_parte_diario",
       [["x_fecha", ">=", desde], ["x_fecha", "<=", hasta]],
-      ["x_orden_trabajo_id", "x_fecha", "x_cuadrilla_id", "x_estado"],
+      ["x_orden_trabajo_id", "x_fecha", "x_cuadrilla_id", "x_estado", "x_motivo_no_ejec"],
     ),
     // Qué OTs ya tienen alguna asignación (en cualquier fecha) → define la bandeja
     // de "sin asignar" sin traer todas las asignaciones históricas.
@@ -227,10 +229,12 @@ export async function fetchTablero(desde: string, hasta: string): Promise<Tabler
     asignaciones,
     ots: [...otsCandidatas, ...otsExtra].map((o) => mapOt(o, base, actionId)),
     partes: partesRaw.map((p) => ({
+      id: p.id,
       otId: m2oId(p.x_orden_trabajo_id) ?? 0,
       fecha: str(p.x_fecha) ?? "",
       cuadrillaId: m2oId(p.x_cuadrilla_id),
       estado: str(p.x_estado) ?? "previsto",
+      motivoNoEjec: str(p.x_motivo_no_ejec),
     })),
     otsAsignadas: gruposAsignadas.map((g) => m2oId(g.x_ot_id) ?? 0).filter(Boolean),
   };

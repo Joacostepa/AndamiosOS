@@ -25,6 +25,8 @@ export type AsignacionTablero = {
   estado: EstadoAsignacion;
   ordenDia: number;
   notas: string | null;
+  /** Parte diario del cierre. Si tiene valor, la jornada ya se cerró. */
+  parteId: number | null;
 };
 
 export type OtTablero = {
@@ -56,10 +58,12 @@ export type OtTablero = {
 
 /** Jornada ya ejecutada (o no ejecutada) según el parte diario. */
 export type ParteTablero = {
+  id: number;
   otId: number;
   fecha: string;
   cuadrillaId: number | null;
   estado: string; // previsto | ejecutado | no_ejecutado
+  motivoNoEjec: string | null;
 };
 
 export type DocumentoOt = {

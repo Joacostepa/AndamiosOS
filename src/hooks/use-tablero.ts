@@ -93,6 +93,8 @@ export function useCrearAsignaciones() {
         estado: a.estado,
         ordenDia: a.ordenDia,
         notas: a.notas ?? null,
+        // Una asignación recién creada nunca nace cerrada.
+        parteId: null,
       }));
       return aplicarOptimista(qc, (data) => ({
         ...data,

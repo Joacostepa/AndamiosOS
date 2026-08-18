@@ -41,6 +41,8 @@ export type Bloque = {
   cuadrillaId: number | null;
   /** Fechas del bloque, ordenadas y corridas. */
   fechas: string[];
+  /** Parte diario de cada día, en el mismo orden que `ids` y `fechas`. null = abierto. */
+  partes: (number | null)[];
   /** Fracción que ocupa por día (un bloque multi-jornada ocupa 1,00 en cada día). */
   fraccion: number;
   estado: EstadoAsignacion;
@@ -74,6 +76,7 @@ export function agruparBloques(asignaciones: AsignacionTablero[]): Bloque[] {
       bloques.push({
         key: tramo.map((t) => t.id).join("-"),
         ids: tramo.map((t) => t.id),
+        partes: tramo.map((t) => t.parteId),
         otId: primera.otId,
         cuadrillaId: primera.cuadrillaId,
         fechas: tramo.map((t) => t.fecha),

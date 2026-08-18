@@ -32,7 +32,7 @@ import {
   useBorrarAsignaciones,
 } from "@/hooks/use-tablero";
 import { agruparBloques, fechasDeJornadas, type Bloque } from "@/lib/tablero/bloques";
-import { jornadasLiberables, type AccionCierre } from "@/lib/tablero/cierre";
+import { jornadasLiberables, motivoNoVuelveABandeja, type AccionCierre } from "@/lib/tablero/cierre";
 import { toast } from "sonner";
 import { repartirJornadas, type FraccionStr } from "@/lib/tablero/fracciones";
 import type { ObraPendiente } from "./panel-sin-asignar";
@@ -248,6 +248,33 @@ export function TableroBoard() {
     mover.mutate(movimientos);
   }
 
+  /**
+   * Devolver una obra a la bandeja de sin asignar. Único camino: lo usan por igual el
+   * arrastre al panel y la opción del menú de la tarjeta, así que la regla de qué se
+   * puede sacar vale para los dos gestos.
+   */
+  function volverABandeja(bloque: Bloque) {
+    const motivo = motivoNoVuelveABandeja(bloque);
+    if (motivo) {
+      toast.error("No se puede devolver a la bandeja", { description: motivo });
+      return;
+    }
+    // Solo las jornadas sin parte: las cerradas se conservan, o el parte quedaría
+    // huérfano y la obra volvería a la bandeja como si nunca se hubiera empezado.
+    const liberables = jornadasLiberables(bloque);
+    borrar.mutate(liberables, {
+      onSuccess: () => {
+        const conservadas = bloque.ids.length - liberables.length;
+        if (conservadas > 0) {
+          toast.success(
+            `Obra suspendida: ${liberables.length} jornada(s) vuelven a sin asignar`,
+            { description: `Se conservan ${conservadas} ya cerrada(s) con su parte.` },
+          );
+        }
+      },
+    });
+  }
+
   /** Reordenar el apilado de un día: define el orden previsto de las obras. */
   function reordenarCelda(origen: Bloque, destino: Bloque) {
     const cuadrillaId = destino.cuadrillaId;
@@ -306,7 +333,7 @@ export function TableroBoard() {
 
     // Fuera de la grilla: la obra vuelve a la bandeja de sin asignar.
     if (destino === ID_BANDEJA) {
-      borrar.mutate(bloque.ids);
+      volverABandeja(bloque);
       return;
     }
 
@@ -424,21 +451,7 @@ export function TableroBoard() {
               onFraccion={(b, f: FraccionStr) => actualizar.mutate({ ids: b.ids, cambio: { fraccion: f } })}
               onEditarJornadas={(b) => setJornadasDe(b.key)}
               onEstado={(b, estado) => actualizar.mutate({ ids: b.ids, cambio: { estado } })}
-              onQuitar={(b) => {
-                const liberables = jornadasLiberables(b);
-                if (liberables.length === 0) return;
-                borrar.mutate(liberables, {
-                  onSuccess: () => {
-                    const conservadas = b.ids.length - liberables.length;
-                    if (conservadas > 0) {
-                      toast.success(
-                        `Obra suspendida: ${liberables.length} jornada(s) vuelven a sin asignar`,
-                        { description: `Se conservan ${conservadas} ya cerrada(s) con su parte.` },
-                      );
-                    }
-                  },
-                });
-              }}
+              onQuitar={volverABandeja}
             />
           ) : (
             <div className="flex flex-1 items-center justify-center p-6 text-center text-sm text-muted-foreground">

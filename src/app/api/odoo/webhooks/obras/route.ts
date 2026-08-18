@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { fetchObraById, mapObraToApp, odooClientePartnerId } from "@/lib/odoo/obras";
 
@@ -8,6 +8,10 @@ import { fetchObraById, mapObraToApp, odooClientePartnerId } from "@/lib/odoo/ob
 // Odoo manda el/los id(s); re-leemos fresco desde Odoo y hacemos upsert por odoo_obra_id.
 // El cliente se resuelve del espejo de clientes; sin cliente vinculable se omite. En el
 // update NO se pisa `estado` (app-owned). AUTH: secret en el query string.
+//
+// RENDIMIENTO: el webhook corre DENTRO de la transacción que guarda la obra en Odoo, así
+// que todo lo que tarde acá lo espera el usuario. Se contesta al validar el secret y el
+// espejado va en `after()` (waitUntil). Ver el webhook de órdenes de trabajo.
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +41,29 @@ async function resolveClienteId(partnerId: number | null): Promise<string | null
   return (data?.id as string) ?? null;
 }
 
+/** El espejado propiamente dicho. Corre fuera del camino crítico del guardado en Odoo. */
+async function espejar(id: number): Promise<string> {
+  const now = new Date().toISOString();
+  const obra = await fetchObraById(id);
+  // Borrado en Odoo (x_aba_obra no tiene `active`) → no tocamos el espejo por seguridad de FK.
+  if (!obra) return "no_encontrada_en_odoo";
+
+  const clienteId = await resolveClienteId(odooClientePartnerId(obra));
+  const values = mapObraToApp(obra, clienteId);
+  if (!values) return "omitida_sin_cliente";
+
+  const { data: existing } = await supabase
+    .from("obras").select("id").eq("odoo_obra_id", id).maybeSingle();
+  if (existing) {
+    const refresh = { ...values, odoo_synced_at: now }; // estado app-owned → no se pisa
+    delete (refresh as { estado?: unknown }).estado;
+    await supabase.from("obras").update(refresh).eq("id", existing.id);
+    return "actualizada";
+  }
+  await supabase.from("obras").insert({ ...values, odoo_synced_at: now });
+  return "insertada";
+}
+
 export async function POST(req: NextRequest) {
   if (req.nextUrl.searchParams.get("secret") !== process.env.ODOO_SYNC_SECRET) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
@@ -48,38 +75,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Sin id en el payload" }, { status: 400 });
   }
 
-  const now = new Date().toISOString();
-  const results: Array<{ id: number; action: string }> = [];
-
-  try {
+  after(async () => {
     for (const id of ids) {
-      const obra = await fetchObraById(id);
-      // Borrado en Odoo (x_aba_obra no tiene `active`) → no tocamos el espejo por seguridad de FK.
-      if (!obra) {
-        results.push({ id, action: "no_encontrada_en_odoo" });
-        continue;
-      }
-      const clienteId = await resolveClienteId(odooClientePartnerId(obra));
-      const values = mapObraToApp(obra, clienteId);
-      if (!values) {
-        results.push({ id, action: "omitida_sin_cliente" });
-        continue;
-      }
-      const { data: existing } = await supabase
-        .from("obras").select("id").eq("odoo_obra_id", id).maybeSingle();
-      if (existing) {
-        const refresh = { ...values, odoo_synced_at: now }; // estado app-owned → no se pisa
-        delete (refresh as { estado?: unknown }).estado;
-        await supabase.from("obras").update(refresh).eq("id", existing.id);
-        results.push({ id, action: "actualizada" });
-      } else {
-        await supabase.from("obras").insert({ ...values, odoo_synced_at: now });
-        results.push({ id, action: "insertada" });
+      try {
+        console.log(`[webhook obra ${id}] ${await espejar(id)}`);
+      } catch (e) {
+        console.error(`[webhook obra ${id}] falló el espejado`, e);
       }
     }
-    return NextResponse.json({ ok: true, results });
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return NextResponse.json({ error: msg }, { status: 500 });
-  }
+  });
+
+  return NextResponse.json({ ok: true, encolados: ids }, { status: 202 });
 }

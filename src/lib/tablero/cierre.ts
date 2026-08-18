@@ -56,3 +56,23 @@ export function jornadasLiberables(bloque: Bloque): number[] {
 export function bloqueCerrado(bloque: Bloque): boolean {
   return bloque.partes.length > 0 && bloque.partes.every((p) => p != null);
 }
+
+/**
+ * REGLA DE NEGOCIO: una obra confirmada NO vuelve a la bandeja. Confirmar es el momento
+ * en que la fecha se le promete al cliente y la cuadrilla queda tomada; que un arrastre
+ * al panel deshaga eso —y encima sin dejar rastro— es demasiado fácil.
+ *
+ * Para sacarla hay que volverla a tentativa primero. Ese paso extra ES la decisión: se
+ * ve en la tarjeta (pierde el color de la cuadrilla) y obliga a pensarlo dos veces.
+ *
+ * Devuelve null si se puede, o el motivo del rechazo si no.
+ */
+export function motivoNoVuelveABandeja(bloque: Bloque): string | null {
+  if (bloque.estado === "confirmada") {
+    return "La obra está confirmada. Pasala a tentativa y recién ahí podés devolverla a la bandeja.";
+  }
+  if (jornadasLiberables(bloque).length === 0) {
+    return "Todas las jornadas tienen parte cargado. Sacarlas dejaría los partes huérfanos.";
+  }
+  return null;
+}

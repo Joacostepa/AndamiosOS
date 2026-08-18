@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { fetchProductById, mapProductToPieza } from "@/lib/odoo/products";
 
@@ -6,6 +6,10 @@ import { fetchProductById, mapProductToPieza } from "@/lib/odoo/products";
 //
 // Receptor del webhook saliente de Odoo (Automated Action sobre product.product).
 // Re-lee el producto fresco desde Odoo y hace upsert en el espejo `catalogo_piezas`.
+//
+// RENDIMIENTO: el webhook corre DENTRO de la transacción que guarda el producto en Odoo,
+// así que todo lo que tarde acá lo espera el usuario. Se contesta al validar el secret y
+// el espejado va en `after()` (waitUntil). Ver el webhook de órdenes de trabajo.
 
 export const dynamic = "force-dynamic";
 
@@ -38,37 +42,41 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Sin id en el payload" }, { status: 400 });
   }
 
-  const now = new Date().toISOString();
-  const results: Array<{ id: number; action: string }> = [];
-
-  try {
+  after(async () => {
     for (const id of ids) {
-      const product = await fetchProductById(id);
-      if (!product || !product.active) {
-        await supabase
-          .from("catalogo_piezas")
-          .update({ activo: false, odoo_synced_at: now })
-          .eq("odoo_product_id", id);
-        results.push({ id, action: "archivado" });
-        continue;
-      }
-      const values = mapProductToPieza(product);
-      const { data: existing } = await supabase
-        .from("catalogo_piezas")
-        .select("id")
-        .eq("odoo_product_id", id)
-        .maybeSingle();
-      if (existing) {
-        await supabase.from("catalogo_piezas").update({ ...values, odoo_synced_at: now }).eq("id", existing.id);
-        results.push({ id, action: "actualizado" });
-      } else {
-        await supabase.from("catalogo_piezas").insert({ ...values, odoo_synced_at: now });
-        results.push({ id, action: "insertado" });
+      try {
+        console.log(`[webhook material ${id}] ${await espejar(id)}`);
+      } catch (e) {
+        console.error(`[webhook material ${id}] falló el espejado`, e);
       }
     }
-    return NextResponse.json({ ok: true, results });
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return NextResponse.json({ error: msg }, { status: 500 });
+  });
+
+  return NextResponse.json({ ok: true, encolados: ids }, { status: 202 });
+}
+
+/** El espejado propiamente dicho. Corre fuera del camino crítico del guardado en Odoo. */
+async function espejar(id: number): Promise<string> {
+  const now = new Date().toISOString();
+  const product = await fetchProductById(id);
+  if (!product || !product.active) {
+    await supabase
+      .from("catalogo_piezas")
+      .update({ activo: false, odoo_synced_at: now })
+      .eq("odoo_product_id", id);
+    return "archivado";
   }
+
+  const values = mapProductToPieza(product);
+  const { data: existing } = await supabase
+    .from("catalogo_piezas")
+    .select("id")
+    .eq("odoo_product_id", id)
+    .maybeSingle();
+  if (existing) {
+    await supabase.from("catalogo_piezas").update({ ...values, odoo_synced_at: now }).eq("id", existing.id);
+    return "actualizado";
+  }
+  await supabase.from("catalogo_piezas").insert({ ...values, odoo_synced_at: now });
+  return "insertado";
 }

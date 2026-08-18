@@ -60,13 +60,24 @@ type JsonRpcService = "common" | "object" | "db";
 let rpcId = 0;
 
 // DECISIÓN (rate limiting): Odoo Online limita la CONCURRENCIA, no solo el volumen.
-// Medido contra la instancia real: 6 llamadas simultáneas devuelven 429 en la mitad,
-// mientras que las mismas 6 de a dos pasan todas. Por eso toda llamada pasa por esta
-// cola: como máximo MAX_CONCURRENTES en vuelo, y las demás esperan turno.
+// Por eso toda llamada pasa por esta cola: como máximo MAX_CONCURRENTES en vuelo, y las
+// demás esperan turno.
 //
 // Es global al módulo, así que protege a TODOS los consumidores (tablero, sync,
 // webhooks, push) sin que cada uno tenga que acordarse de no abusar del Promise.all.
-const MAX_CONCURRENTES = 2;
+//
+// El límite era 2 porque las ráfagas devolvían 429. Ese 429 no era de las consultas: era
+// del LOGIN, que es lo que Odoo Online limita más fuerte y que N llamadas concurrentes en
+// un lambda frío disparaban N veces. Con ODOO_UID seteado ya no se hace login nunca, y
+// medido de nuevo contra la instancia real el techo real está entre 6 y 8 simultáneas
+// (6 pasan siempre; a partir de 8 empiezan los 429).
+//
+// Se deja en 4: la cola es por instancia de lambda, no global, así que con dos o tres
+// instancias en vuelo el número real contra Odoo se multiplica. Importa porque una
+// llamada a Odoo Online tarda ~800 ms sea cual sea la concurrencia: lo que se paga es el
+// round-trip, y encadenarlas de a una es lo que hacía lentos el cierre de parte y el
+// tablero.
+const MAX_CONCURRENTES = 4;
 let enVuelo = 0;
 const espera: (() => void)[] = [];
 

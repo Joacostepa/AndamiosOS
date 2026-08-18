@@ -91,30 +91,32 @@ async function crearLineasIncidencia(parteId: number, datos: DatosCierre): Promi
 }
 
 /**
- * Las fotos van de a una para poder informar cuáles fallaron: si de ocho se caen dos,
- * el parte igual queda guardado y el usuario reintenta solo esas.
+ * Las fotos van de a UN registro por foto para poder informar cuáles fallaron: si de
+ * ocho se caen dos, el parte igual queda guardado y el usuario reintenta solo esas.
+ *
+ * Se lanzan todas juntas y las serializa la cola de client.ts. En serie, ocho fotos eran
+ * ocho round-trips de ~800 ms encadenados; en paralelo se pagan de a MAX_CONCURRENTES.
  */
 async function crearFotos(
   parteId: number,
   datos: DatosCierre,
 ): Promise<{ subidas: number; fallidas: string[] }> {
   if (datos.estado !== "ejecutado" || datos.fotos.length === 0) return { subidas: 0, fallidas: [] };
-  let subidas = 0;
-  const fallidas: string[] = [];
-  for (const f of datos.fotos) {
-    try {
-      await create("x_aba_foto", {
+  const resultados = await Promise.all(
+    datos.fotos.map((f) =>
+      create("x_aba_foto", {
         x_parte_diario_id: parteId,
         x_imagen: f.base64,
         x_momento: f.momento,
         x_descripcion: f.descripcion ?? false,
-      });
-      subidas++;
-    } catch {
-      fallidas.push(f.nombre);
-    }
-  }
-  return { subidas, fallidas };
+      }).then(
+        () => null,
+        () => f.nombre,
+      ),
+    ),
+  );
+  const fallidas = resultados.filter((n): n is string => n !== null);
+  return { subidas: resultados.length - fallidas.length, fallidas };
 }
 
 /**
@@ -160,6 +162,8 @@ export async function cerrarJornada(
 
   let parteId: number;
   const reutilizado = parteVinculado !== null;
+  // El aviso de duplicado no bloquea nada: se dispara junto con el resto y se lee al final.
+  let avisoDuplicados: Promise<number[]> = Promise.resolve([]);
 
   if (parteVinculado !== null) {
     parteId = parteVinculado;
@@ -171,26 +175,25 @@ export async function cerrarJornada(
 
     // Si ya había otro parte para esa OT y fecha, se avisa: puede ser un duplicado a
     // resolver en Odoo, pero no se toca.
-    const otros = await searchRead<{ id: number }>(
+    const idNuevo = parteId;
+    avisoDuplicados = searchRead<{ id: number }>(
       "x_aba_parte_diario",
-      [["x_orden_trabajo_id", "=", otId], ["x_fecha", "=", fecha], ["id", "!=", parteId]],
+      [["x_orden_trabajo_id", "=", otId], ["x_fecha", "=", fecha], ["id", "!=", idNuevo]],
       ["id"],
       { limit: 3 },
+    ).then(
+      (otros) => otros.map((o) => o.id),
+      () => [],
     );
-    if (otros.length > 0) {
-      registrar(
-        "Ojo: ya existía otro parte para esa obra y fecha",
-        false,
-        `#${otros.map((o) => o.id).join(", #")} — revisalo en Odoo`,
-      );
-    }
   }
 
   // Desde acá los fallos NO tiran todo abajo: el parte ya existe y hay que decir
   // exactamente qué se guardó.
   const resultado: ResultadoCierre = { parteId, reutilizado, pasos, fotosFallidas: [] };
 
-  // Si se reutilizó un parte, sus líneas viejas se reemplazan para no duplicar.
+  // Si se reutilizó un parte, sus líneas viejas se reemplazan para no duplicar. Tiene
+  // que terminar ANTES de crear las nuevas, o el borrado se llevaría puestas a las
+  // recién creadas.
   if (reutilizado) {
     try {
       await borrarLineas(parteId);
@@ -200,30 +203,34 @@ export async function cerrarJornada(
     }
   }
 
-  // ── 2..5) Las líneas ───────────────────────────────────────────────────────
-  try {
-    const n = await crearLineasManoObra(parteId, datos, fecha);
-    if (n > 0) registrar("Personal y horarios", true, `${n} línea${n === 1 ? "" : "s"}`);
-  } catch (e) {
-    registrar("Personal y horarios", false, mensaje(e));
+  // ── 2..6) Líneas, fotos y cierre de la jornada ─────────────────────────────
+  //
+  // Son independientes entre sí: van todas juntas y la cola de client.ts las reparte.
+  // Encadenadas eran ~6 round-trips de ~800 ms uno detrás del otro.
+  const [manoObra, flete, incidencias, fotos, marcada, duplicados] = await Promise.allSettled([
+    crearLineasManoObra(parteId, datos, fecha),
+    crearLineasFlete(parteId, datos, fecha),
+    crearLineasIncidencia(parteId, datos),
+    crearFotos(parteId, datos),
+    write("x_aba_asignacion", [asignacionId], { x_parte_id: parteId }),
+    avisoDuplicados,
+  ]);
+
+  if (manoObra.status === "rejected") registrar("Personal y horarios", false, mensaje(manoObra.reason));
+  else if (manoObra.value > 0) {
+    registrar("Personal y horarios", true, `${manoObra.value} línea${manoObra.value === 1 ? "" : "s"}`);
   }
 
-  try {
-    const n = await crearLineasFlete(parteId, datos, fecha);
-    if (n > 0) registrar("Fletes", true);
-  } catch (e) {
-    registrar("Fletes", false, mensaje(e));
-  }
+  if (flete.status === "rejected") registrar("Fletes", false, mensaje(flete.reason));
+  else if (flete.value > 0) registrar("Fletes", true);
 
-  try {
-    const n = await crearLineasIncidencia(parteId, datos);
-    if (n > 0) registrar("Incidencias", true, `${n}`);
-  } catch (e) {
-    registrar("Incidencias", false, mensaje(e));
-  }
+  if (incidencias.status === "rejected") registrar("Incidencias", false, mensaje(incidencias.reason));
+  else if (incidencias.value > 0) registrar("Incidencias", true, `${incidencias.value}`);
 
-  try {
-    const { subidas, fallidas } = await crearFotos(parteId, datos);
+  if (fotos.status === "rejected") {
+    registrar("Fotos", false, mensaje(fotos.reason));
+  } else {
+    const { subidas, fallidas } = fotos.value;
     resultado.fotosFallidas = fallidas;
     if (subidas > 0 || fallidas.length > 0) {
       registrar(
@@ -232,16 +239,20 @@ export async function cerrarJornada(
         fallidas.length === 0 ? `${subidas} subida${subidas === 1 ? "" : "s"}` : `${subidas} de ${subidas + fallidas.length}`,
       );
     }
-  } catch (e) {
-    registrar("Fotos", false, mensaje(e));
   }
 
-  // ── 6) Marcar la asignación como cerrada ───────────────────────────────────
-  try {
-    await write("x_aba_asignacion", [asignacionId], { x_parte_id: parteId });
-    registrar("Jornada marcada como cerrada", true);
-  } catch (e) {
-    registrar("Jornada marcada como cerrada", false, mensaje(e));
+  registrar(
+    "Jornada marcada como cerrada",
+    marcada.status === "fulfilled",
+    marcada.status === "rejected" ? mensaje(marcada.reason) : undefined,
+  );
+
+  if (duplicados.status === "fulfilled" && duplicados.value.length > 0) {
+    registrar(
+      "Ojo: ya existía otro parte para esa obra y fecha",
+      false,
+      `#${duplicados.value.join(", #")} — revisalo en Odoo`,
+    );
   }
 
   return resultado;
@@ -251,27 +262,38 @@ function mensaje(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-/** Borra las líneas de un parte (al reeditarlo se reemplazan, no se acumulan). */
+/**
+ * Borra las líneas de un parte (al reeditarlo se reemplazan, no se acumulan).
+ * Los tres modelos se barren en paralelo: no se pisan entre sí.
+ */
 async function borrarLineas(parteId: number): Promise<void> {
-  for (const modelo of ["x_aba_mano_obra", "x_aba_flete", "x_aba_incidencia"]) {
-    const ids = await searchRead<{ id: number }>(modelo, [["x_parte_diario_id", "=", parteId]], ["id"]);
-    if (ids.length) await executeKw(modelo, "unlink", [ids.map((r) => r.id)]);
-  }
+  await Promise.all(
+    ["x_aba_mano_obra", "x_aba_flete", "x_aba_incidencia"].map(async (modelo) => {
+      const ids = await searchRead<{ id: number }>(modelo, [["x_parte_diario_id", "=", parteId]], ["id"]);
+      if (ids.length) await executeKw(modelo, "unlink", [ids.map((r) => r.id)]);
+    }),
+  );
 }
 
 /** Actualiza un parte ya cargado (cabecera + líneas, las fotos se suman). */
 export async function editarParte(parteId: number, datos: DatosCierre, otId: number): Promise<ResultadoCierre> {
   const pasos: PasoCierre[] = [];
-  await write("x_aba_parte_diario", [parteId], valoresParte(datos, otId));
+  // La cabecera y el barrido de líneas viejas no dependen entre sí; las líneas nuevas sí
+  // tienen que esperar al barrido, o se borrarían recién creadas.
+  await Promise.all([
+    write("x_aba_parte_diario", [parteId], valoresParte(datos, otId)),
+    borrarLineas(parteId),
+  ]);
   pasos.push({ nombre: "Parte diario actualizado", ok: true, detalle: `#${parteId}` });
 
-  await borrarLineas(parteId);
-  await crearLineasManoObra(parteId, datos, datos.fecha);
-  await crearLineasFlete(parteId, datos, datos.fecha);
-  await crearLineasIncidencia(parteId, datos);
+  const [, , , { subidas, fallidas }] = await Promise.all([
+    crearLineasManoObra(parteId, datos, datos.fecha),
+    crearLineasFlete(parteId, datos, datos.fecha),
+    crearLineasIncidencia(parteId, datos),
+    crearFotos(parteId, datos),
+  ]);
   pasos.push({ nombre: "Líneas reemplazadas", ok: true });
 
-  const { subidas, fallidas } = await crearFotos(parteId, datos);
   if (subidas > 0 || fallidas.length > 0) {
     pasos.push({ nombre: "Fotos nuevas", ok: fallidas.length === 0, detalle: `${subidas} subida(s)` });
   }

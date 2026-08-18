@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { ChevronLeft, ChevronRight, AlertTriangle, Check, CircleCheck, CircleDashed, ClipboardCheck, MoreVertical, Trash2 } from "lucide-react";
 import {
@@ -175,6 +176,11 @@ export function TarjetaAsignacion({
     id: `tarjeta:${bloque.key}`,
     data: { bloque },
   });
+  // El menú se ancla al botón ⋮. Si el botón se ocultara con `hidden` al salir el mouse
+  // de la tarjeta —que es justo lo que pasa al ir hacia el menú— perdería su caja y el
+  // popup se reubicaría en una esquina. Por eso se oculta con opacidad, que conserva el
+  // layout, y se fuerza visible mientras el menú está abierto.
+  const [menuAbierto, setMenuAbierto] = useState(false);
 
   return (
     <div
@@ -211,8 +217,15 @@ export function TarjetaAsignacion({
         cierre={cierre}
       />
 
-      <div className="absolute right-0.5 top-0.5 hidden group-hover/tarjeta:block">
-        <DropdownMenu>
+      <div
+        className={cn(
+          "absolute right-0.5 top-0.5 transition-opacity",
+          menuAbierto
+            ? "opacity-100"
+            : "pointer-events-none opacity-0 group-hover/tarjeta:pointer-events-auto group-hover/tarjeta:opacity-100",
+        )}
+      >
+        <DropdownMenu open={menuAbierto} onOpenChange={setMenuAbierto}>
           <DropdownMenuTrigger
             render={
               <button

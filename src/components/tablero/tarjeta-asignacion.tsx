@@ -94,7 +94,7 @@ export function ContenidoTarjeta({
   return (
     <div
       className={cn(
-        "flex h-full min-w-0 flex-col justify-center gap-px rounded-[4px] px-1.5 py-0.5",
+        "flex h-full min-w-0 flex-col justify-center gap-0.5 rounded-[4px] px-2 py-1",
         compacta && "shadow-md",
       )}
       style={{
@@ -131,13 +131,13 @@ export function ContenidoTarjeta({
           <AlertTriangle className="h-3 w-3 shrink-0 self-center" style={{ color: "#D92D20" }} />
         )}
         <span
-          className="min-w-0 flex-1 truncate text-[11px] font-medium leading-tight"
+          className="min-w-0 flex-1 truncate text-[12px] font-medium leading-tight"
           style={{ color: colorTexto }}
           title={`${labelTipo(ot?.tipo)} — ${ot?.titulo ?? ""} — ${sem.label}`}
         >
           {partes.principal}
         </span>
-        <span className="shrink-0 text-[10px] font-semibold tabular-nums" style={{ color: colorTexto }}>
+        <span className="shrink-0 text-[11px] font-semibold tabular-nums" style={{ color: colorTexto }}>
           {bloque.multiDia ? `${bloque.fechas.length}j` : fraccionLabel(bloque.fraccion)}
         </span>
         {urgente && (
@@ -152,7 +152,7 @@ export function ContenidoTarjeta({
       </div>
 
       <p
-        className="truncate text-[9px] leading-tight"
+        className="truncate text-[10px] leading-tight"
         style={{ color: colorTexto, opacity: 0.75 }}
       >
         {/* El tipo ya no va en texto: lo dice el ícono, y repetirlo gastaba el ancho que

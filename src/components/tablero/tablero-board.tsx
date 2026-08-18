@@ -54,6 +54,11 @@ const CLAVE_PANEL = "tablero:panel-colapsado";
 const ANCHO_RECURSO = 168;
 /** A cuántos px del borde del scroll se carga otra semana. */
 const UMBRAL_BORDE = 240;
+/**
+ * Tope de semanas a cada lado. Cada ampliación reconsulta el rango entero a Odoo, así
+ * que sin techo un scroll largo termina pidiendo medio año por request.
+ */
+const MAX_SEMANAS = 8;
 
 const iso = (d: Date) => format(d, "yyyy-MM-dd");
 
@@ -107,6 +112,10 @@ export function TableroBoard() {
   // Al agregar una semana ANTES, el contenido se corre a la derecha: hay que compensar
   // el scroll o la vista salta sola hacia atrás justo mientras el usuario arrastra.
   const anchoPrevio = useRef<number | null>(null);
+  // Cerrojo: mientras una ampliación está en vuelo no se pide otra. Sin esto, seguir
+  // scrolleando dispara varias seguidas y la compensación se calcula contra un ancho ya
+  // viejo, que es exactamente lo que se ve como saltos.
+  const expansionPendiente = useRef(false);
   const [visibles, setVisibles] = useState<number[] | null>(leerVisiblesGuardadas);
   const [panel, setPanel] = useState<{ otId: number; bloqueKey: string | null } | null>(null);
   const [jornadasDe, setJornadasDe] = useState<string | null>(null);
@@ -186,6 +195,7 @@ export function TableroBoard() {
 
   // Compensación al prepender una semana: se corrige antes de pintar, así no se ve saltar.
   useLayoutEffect(() => {
+    expansionPendiente.current = false;
     const cont = contenedor.current;
     if (!cont || anchoPrevio.current === null) return;
     const delta = cont.scrollWidth - anchoPrevio.current;
@@ -218,11 +228,17 @@ export function TableroBoard() {
     const cont = contenedor.current;
     if (!cont) return;
 
-    if (cont.scrollLeft < UMBRAL_BORDE) {
-      anchoPrevio.current = cont.scrollWidth;
-      setSemanas((s) => ({ ...s, antes: s.antes + 1 }));
-    } else if (cont.scrollLeft + cont.clientWidth > cont.scrollWidth - UMBRAL_BORDE) {
-      setSemanas((s) => ({ ...s, despues: s.despues + 1 }));
+    if (!expansionPendiente.current) {
+      const enBordeIzq = cont.scrollLeft < UMBRAL_BORDE;
+      const enBordeDer = cont.scrollLeft + cont.clientWidth > cont.scrollWidth - UMBRAL_BORDE;
+      if (enBordeIzq && semanas.antes < MAX_SEMANAS) {
+        expansionPendiente.current = true;
+        anchoPrevio.current = cont.scrollWidth;
+        setSemanas((s) => ({ ...s, antes: s.antes + 1 }));
+      } else if (enBordeDer && semanas.despues < MAX_SEMANAS) {
+        expansionPendiente.current = true;
+        setSemanas((s) => ({ ...s, despues: s.despues + 1 }));
+      }
     }
 
     // Semana centrada en el viewport: es la que nombra el label de arriba. Se mide sobre
@@ -240,7 +256,9 @@ export function TableroBoard() {
       }
     }
     if (mejor) setFechaCentrada(mejor);
-  }, []);
+    // `semanas` entra en las dependencias porque el tope de ampliación se evalúa acá; el
+    // efecto que engancha el listener se vuelve a correr y reengancha la versión fresca.
+  }, [semanas]);
 
   /** Flechas: dejan de paginar y hacen snap a la semana anterior / siguiente. */
   function irASemana(delta: number) {
@@ -254,8 +272,15 @@ export function TableroBoard() {
       return;
     }
 
+    // En el tope no se amplía. Se sale sin tocar el cerrojo: si se marcara "ampliación en
+    // vuelo" sin que `fechas` cambie, el efecto de layout no correría nunca y quedaría
+    // trabado, bloqueando todas las ampliaciones siguientes.
+    const haciaAtras = objetivo < inicioVisible;
+    if ((haciaAtras ? semanas.antes : semanas.despues) >= MAX_SEMANAS) return;
+
     pendienteScroll.current = objetivoISO;
-    if (objetivo < inicioVisible) {
+    expansionPendiente.current = true;
+    if (haciaAtras) {
       anchoPrevio.current = contenedor.current?.scrollWidth ?? null;
       setSemanas((s) => ({ ...s, antes: s.antes + 1 }));
     } else {

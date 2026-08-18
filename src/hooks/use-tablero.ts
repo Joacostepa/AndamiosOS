@@ -1,6 +1,12 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query";
 import { toast } from "sonner";
 import type {
   AsignacionTablero,
@@ -41,6 +47,12 @@ export function useTablero(desde: string, hasta: string) {
     queryFn: () =>
       pedir<TableroPayload>(`/api/planificacion/tablero?desde=${desde}&hasta=${hasta}`),
     enabled: !!desde && !!hasta,
+    // CRÍTICO para el scroll horizontal: al llegar al borde el tablero amplía el rango,
+    // y eso cambia la queryKey. Sin esto `data` vuelve a undefined, el board cae al
+    // skeleton, la grilla SE DESMONTA y el scroll se pierde; al remontar arranca en 0,
+    // que es otra vez el borde, y pide otra semana. Un lazo que se retroalimenta.
+    // Conservando los datos previos la grilla nunca se desmonta y el scroll queda quieto.
+    placeholderData: keepPreviousData,
     // Odoo Online limita las consultas concurrentes: no conviene refetchear cada vez
     // que la pestaña vuelve al foco, ni reintentar en ráfaga si algo falló.
     refetchOnWindowFocus: false,

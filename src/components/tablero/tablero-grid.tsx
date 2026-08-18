@@ -31,12 +31,23 @@ import type { AsignacionTablero, CuadrillaTablero, OtTablero, ParteTablero } fro
 // vertical, que es justo la comparación que el planificador viene a hacer.
 
 const ANCHO_RECURSO = 168;
-const ANCHO_MIN_DIA = 132;
+/**
+ * A 132px las direcciones se cortaban casi siempre ("Corrientes 144…", "Ángel Gallard…")
+ * y la tarjeta perdía justo el dato que sirve para identificar la obra. El ancho manda
+ * sobre la cantidad de días a la vista: para eso está el scroll.
+ */
+const ANCHO_MIN_DIA = 168;
 /** Domingo sin trabajo: una canaleta, no una columna. */
 const ANCHO_CANALETA = 28;
 /** Franja al pie de la celda donde vive el riel de ocupación. */
 const ALTO_BARRA = 10;
-const ALTO_CARRIL = 26;
+/**
+ * Alto de una tarjeta. El mínimo da lugar a las dos líneas (dirección + cliente) sin que
+ * se toquen; el máximo evita que una fila con una sola obra estire esa tarjeta a media
+ * pantalla. Entre ambos, la fila reparte lo que sobra.
+ */
+const ALTO_CARRIL = 34;
+const ALTO_CARRIL_MAX = 46;
 /** Piso del alto de fila. La fila crece con sus carriles; esto es sólo el mínimo. */
 const ALTO_MIN_FILA = 64;
 
@@ -141,6 +152,9 @@ export function TableroGrid({
       ubicados,
       carriles,
       alto: Math.max(ALTO_MIN_FILA, carriles * ALTO_CARRIL + ALTO_BARRA + 8),
+      // El techo es lo que impide que con 3 cuadrillas cada fila se estire a 240px y
+      // deje las tarjetas chiquitas arriba con un hueco muerto abajo.
+      altoMax: Math.max(ALTO_MIN_FILA, carriles * ALTO_CARRIL_MAX + ALTO_BARRA + 8),
     };
   });
 
@@ -167,9 +181,10 @@ export function TableroGrid({
         className="grid min-h-full"
         style={{
           gridTemplateColumns: `${ANCHO_RECURSO}px ${plantillaExterna}`,
-          // El mínimo lo pone el contenido; el 1fr reparte lo que sobre cuando hay pocas
-          // cuadrillas. Nunca al revés: un mínimo alto es lo que forzaba el scroll.
-          gridTemplateRows: `40px ${porCuadrilla.map((c) => `minmax(${c.alto}px, 1fr)`).join(" ")}`,
+          // El alto sale del contenido, entre un piso y un techo. La pista `1fr` del final
+          // se come el sobrante: sin ella el reparto lo absorbían las filas y con pocas
+          // cuadrillas quedaban enormes y medio vacías.
+          gridTemplateRows: `40px ${porCuadrilla.map((c) => `minmax(${c.alto}px, ${c.altoMax}px)`).join(" ")} 1fr`,
           minWidth: anchoMinimo,
         }}
       >
@@ -284,7 +299,9 @@ export function TableroGrid({
                   className="grid h-full"
                   style={{
                     gridTemplateColumns: plantillaInterna,
-                    gridTemplateRows: `repeat(${carriles}, minmax(${ALTO_CARRIL}px, auto)) 1fr ${ALTO_BARRA}px`,
+                    // Los carriles crecen hasta su techo y recién ahí el sobrante va al
+                    // 1fr: así la tarjeta usa el alto que la fila tiene disponible.
+                    gridTemplateRows: `repeat(${carriles}, minmax(${ALTO_CARRIL}px, ${ALTO_CARRIL_MAX}px)) 1fr ${ALTO_BARRA}px`,
                   }}
                 >
                   {fechas.map((f, i) => (

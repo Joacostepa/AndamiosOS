@@ -340,3 +340,95 @@ export async function borrarAsignaciones(ids: number[]): Promise<void> {
   if (ids.length === 0) return;
   await executeKw("x_aba_asignacion", "unlink", [ids]);
 }
+
+// ── Reflejo del plan en la orden de trabajo ──────────────────────────────────
+//
+// EL PROBLEMA: Comercial atiende el teléfono, el cliente pregunta "¿cuándo vienen?" y la
+// respuesta está en el tablero, no en Odoo. La OT tiene x_fecha_programada pero nadie la
+// mantenía: quedaba con lo que se hubiera tipeado al crear la OT, aunque el plan dijera
+// otra cosa.
+//
+// Ahora el tablero la escribe con el primer día PENDIENTE, y x_fecha_firmeza dice cuánto
+// se puede confiar en ella. Se escribe siempre, no sólo al confirmar: atar el dato al
+// gesto de confirmar lo dejaba vacío en la práctica (al decidirlo había 25 asignaciones
+// en Odoo y cero confirmadas). Una fecha tentativa etiquetada vale más que ningún dato.
+
+/** OTs a las que pertenecen esas asignaciones. Hay que leerlo ANTES de borrarlas. */
+export async function otsDeAsignaciones(ids: number[]): Promise<number[]> {
+  if (ids.length === 0) return [];
+  const filas = await read<{ id: number; x_ot_id: M2O }>("x_aba_asignacion", ids, ["x_ot_id"]);
+  return [...new Set(filas.map((f) => m2oId(f.x_ot_id)).filter((id): id is number => id !== null))];
+}
+
+/**
+ * Refleja el plan en la OT: primer día sin parte + qué tan firme es.
+ *
+ * "Primer día PENDIENTE" y no el inicio de la obra: si lleva 3 jornadas hechas de 8, lo
+ * que el cliente pregunta es cuándo siguen. Así el campo se corrige solo a medida que la
+ * obra avanza.
+ *
+ * NO ES DESTRUCTIVO. Al medirlo, 22 de las 48 OTs activas tenían fecha cargada a mano en
+ * Odoo. El tablero pisa esa fecha cuando hay un plan —el plan sabe mejor qué día va la
+ * cuadrilla— pero si la obra se desplanifica sólo limpia lo que él mismo escribió, que es
+ * justo lo que delata x_fecha_firmeza: si está vacía, la fecha la puso una persona y no
+ * se toca.
+ */
+export async function sincronizarFechaProgramada(otIds: number[]): Promise<void> {
+  const ids = [...new Set(otIds)].filter((id) => Number.isInteger(id) && id > 0);
+  if (ids.length === 0) return;
+
+  const [pendientes, ots] = await Promise.all([
+    searchRead<{ x_ot_id: M2O; x_fecha: string | false; x_estado: string | false }>(
+      "x_aba_asignacion",
+      [["x_ot_id", "in", ids], ["x_parte_id", "=", false]],
+      ["x_ot_id", "x_fecha", "x_estado"],
+      { order: "x_fecha" },
+    ),
+    read<{ id: number; x_fecha_programada: string | false; x_fecha_firmeza: string | false }>(
+      "x_aba_orden_trabajo",
+      ids,
+      ["x_fecha_programada", "x_fecha_firmeza"],
+    ),
+  ]);
+
+  const primeraPorOt = new Map<number, { fecha: string; confirmada: boolean }>();
+  for (const a of pendientes) {
+    const otId = m2oId(a.x_ot_id);
+    const fecha = str(a.x_fecha);
+    if (!otId || !fecha) continue;
+    const actual = primeraPorOt.get(otId);
+    if (!actual || fecha < actual.fecha) {
+      primeraPorOt.set(otId, { fecha, confirmada: a.x_estado === "confirmada" });
+    } else if (fecha === actual.fecha && a.x_estado !== "confirmada") {
+      // Varias asignaciones el mismo día: alcanza con que una sea tentativa para que la
+      // fecha no se pueda prometer.
+      primeraPorOt.set(otId, { ...actual, confirmada: false });
+    }
+  }
+
+  await Promise.all(
+    ots.map(async (ot) => {
+      const plan = primeraPorOt.get(ot.id);
+      const fechaActual = ot.x_fecha_programada || false;
+      const firmezaActual = ot.x_fecha_firmeza || false;
+
+      // Sin plan: sólo se limpia si la fecha la había escrito el tablero.
+      if (!plan) {
+        if (!firmezaActual) return;
+        await write("x_aba_orden_trabajo", [ot.id], {
+          x_fecha_programada: false,
+          x_fecha_firmeza: false,
+        });
+        return;
+      }
+
+      const firmeza = plan.confirmada ? "confirmada" : "tentativa";
+      // Sin cambio no se escribe: cada write dispara el webhook de espejado de la OT.
+      if (fechaActual === plan.fecha && firmezaActual === firmeza) return;
+      await write("x_aba_orden_trabajo", [ot.id], {
+        x_fecha_programada: plan.fecha,
+        x_fecha_firmeza: firmeza,
+      });
+    }),
+  );
+}

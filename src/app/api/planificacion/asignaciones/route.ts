@@ -1,10 +1,12 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { z } from "zod";
 import {
   crearAsignaciones,
   actualizarAsignaciones,
   moverAsignaciones,
   borrarAsignaciones,
+  otsDeAsignaciones,
+  sincronizarFechaProgramada,
 } from "@/lib/odoo/asignaciones";
 import { OdooError } from "@/lib/odoo/client";
 
@@ -17,6 +19,12 @@ import { OdooError } from "@/lib/odoo/client";
 // REGLA DE NEGOCIO: la app es la única que escribe asignaciones; en Odoo se ven en
 // solo lectura. Ante conflicto de edición simultánea gana la última escritura.
 // Ruta protegida por sesión (no está en publicPaths del middleware).
+//
+// Toda escritura resincroniza además la fecha programada de la OT afectada, para que
+// Comercial pueda contestar "¿cuándo vienen?" desde Odoo sin abrir el tablero (ver
+// sincronizarFechaProgramada). Va en `after()`: son 2 o 3 llamadas más a Odoo y el
+// tablero se edita en ráfagas, así que no pueden colgarse del camino crítico. La UI ya
+// es optimista y no depende de ese dato.
 
 export const dynamic = "force-dynamic";
 
@@ -80,6 +88,21 @@ function invalido(issues: z.ZodIssue[]) {
   return NextResponse.json({ error: issues.map((i) => i.message).join(" · ") }, { status: 400 });
 }
 
+/**
+ * Resincroniza la fecha de las OTs después de responder. Un fallo acá no puede tirar
+ * abajo la escritura de la asignación, que es lo que el usuario pidió: se registra y la
+ * próxima edición de esa obra lo corrige, porque la fecha se recalcula entera cada vez.
+ */
+function sincronizarLuego(otIds: number[] | Promise<number[]>) {
+  after(async () => {
+    try {
+      await sincronizarFechaProgramada(await otIds);
+    } catch (e) {
+      console.error("[asignaciones] no se pudo sincronizar la fecha de la OT", e);
+    }
+  });
+}
+
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const parsed = crearSchema.safeParse(body);
@@ -87,6 +110,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const ids = await crearAsignaciones(parsed.data.asignaciones);
+    sincronizarLuego(parsed.data.asignaciones.map((a) => a.otId));
     return NextResponse.json({ ids });
   } catch (e) {
     return errorResponse(e);
@@ -100,6 +124,9 @@ export async function PATCH(req: NextRequest) {
   if (mover.success) {
     try {
       await moverAsignaciones(mover.data.movimientos);
+      // La OT no cambia al mover, así que se resuelve después de responder junto con la
+      // sincronización, sin sumar una lectura al camino crítico.
+      sincronizarLuego(otsDeAsignaciones(mover.data.movimientos.map((m) => m.id)));
       return NextResponse.json({ ok: true });
     } catch (e) {
       return errorResponse(e);
@@ -111,6 +138,7 @@ export async function PATCH(req: NextRequest) {
 
   try {
     await actualizarAsignaciones(parsed.data.ids, parsed.data.cambio);
+    sincronizarLuego(otsDeAsignaciones(parsed.data.ids));
     return NextResponse.json({ ok: true });
   } catch (e) {
     return errorResponse(e);
@@ -123,7 +151,11 @@ export async function DELETE(req: NextRequest) {
   if (!parsed.success) return invalido(parsed.error.issues);
 
   try {
+    // Acá SÍ hay que leer antes: una vez borradas no hay forma de saber de qué OT eran,
+    // y es justo el caso en que la fecha de la OT tiene que limpiarse.
+    const otIds = await otsDeAsignaciones(parsed.data.ids);
     await borrarAsignaciones(parsed.data.ids);
+    sincronizarLuego(otIds);
     return NextResponse.json({ ok: true });
   } catch (e) {
     return errorResponse(e);

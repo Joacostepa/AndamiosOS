@@ -23,6 +23,7 @@ import { PanelSinAsignar, ID_BANDEJA } from "./panel-sin-asignar";
 import { ContenidoTarjeta } from "./tarjeta-asignacion";
 import { PanelOt } from "./panel-ot";
 import { FormularioCierre } from "./formulario-cierre";
+import { DialogoJornadas } from "./dialogo-jornadas";
 import {
   useTablero,
   useCrearAsignaciones,
@@ -90,6 +91,7 @@ export function TableroBoard() {
   const [lunes, setLunes] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [visibles, setVisibles] = useState<number[] | null>(leerVisiblesGuardadas);
   const [panel, setPanel] = useState<{ otId: number; bloqueKey: string | null } | null>(null);
+  const [jornadasDe, setJornadasDe] = useState<string | null>(null);
   const [cierre, setCierre] = useState<{
     bloqueKey: string;
     asignacionId: number;
@@ -420,6 +422,7 @@ export function TableroBoard() {
                 setPanel({ otId: b.otId, bloqueKey: b.key });
               }}
               onFraccion={(b, f: FraccionStr) => actualizar.mutate({ ids: b.ids, cambio: { fraccion: f } })}
+              onEditarJornadas={(b) => setJornadasDe(b.key)}
               onEstado={(b, estado) => actualizar.mutate({ ids: b.ids, cambio: { estado } })}
               onQuitar={(b) => {
                 const liberables = jornadasLiberables(b);
@@ -474,6 +477,26 @@ export function TableroBoard() {
           )}
         </DragOverlay>
       </DndContext>
+
+      <DialogoJornadas
+        abierto={!!jornadasDe}
+        bloque={jornadasDe ? (bloquesPorClave.get(jornadasDe) ?? null) : null}
+        ot={jornadasDe ? otsPorId.get(bloquesPorClave.get(jornadasDe)?.otId ?? 0) : undefined}
+        guardando={actualizar.isPending}
+        onGuardar={(cambios) => {
+          // Cada día puede quedar con una fracción distinta, así que se agrupan los que
+          // comparten valor para no hacer una escritura por jornada.
+          const porFraccion = new Map<string, number[]>();
+          for (const c of cambios) {
+            porFraccion.set(c.fraccion, [...(porFraccion.get(c.fraccion) ?? []), c.asignacionId]);
+          }
+          for (const [fraccion, ids] of porFraccion) {
+            actualizar.mutate({ ids, cambio: { fraccion: fraccion as FraccionStr } });
+          }
+          setJornadasDe(null);
+        }}
+        onOpenChange={(abierto) => !abierto && setJornadasDe(null)}
+      />
 
       <FormularioCierre
         abierto={!!cierre}

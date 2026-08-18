@@ -41,6 +41,25 @@ export const MOMENTOS_FOTO = [
   { value: "entrega", label: "Entrega / conformidad" },
 ] as const;
 
+/**
+ * Odoo guarda las horas como decimal (8.5 = 08:30) pero nadie piensa así: en obra se
+ * dice "de 8:30 a 9:23". La app muestra y pide HH:MM y convierte en el borde.
+ */
+export function horaADecimal(hhmm: string): number {
+  const [h, m] = hhmm.split(":").map(Number);
+  if (!Number.isFinite(h)) return 0;
+  return h + (Number.isFinite(m) ? m : 0) / 60;
+}
+
+export function decimalAHora(decimal: number): string {
+  if (!Number.isFinite(decimal) || decimal < 0) return "";
+  // Se redondea al minuto: 9.383333 vuelve a ser 09:23 y no 09:22:59.
+  const total = Math.round(decimal * 60);
+  const h = Math.floor(total / 60) % 24;
+  const m = total % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
 export type LineaManoObra = {
   tarea: string;
   personas: number;

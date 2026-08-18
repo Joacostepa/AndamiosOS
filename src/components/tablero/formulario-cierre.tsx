@@ -17,7 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { comprimirFoto, pesoLegible, type FotoComprimida } from "@/lib/tablero/imagenes";
 import {
-  MOTIVOS_NO_EJEC, TAREAS, TIPOS_INCIDENCIA, MOMENTOS_FOTO,
+  MOTIVOS_NO_EJEC, TAREAS, TIPOS_INCIDENCIA, MOMENTOS_FOTO, horaADecimal, decimalAHora,
   type DatosCierre, type EstadoParte, type LineaManoObra, type LineaIncidencia,
 } from "@/lib/tablero/tipos-parte";
 import { useParte, useCerrarJornada, useEditarParte, useEmpleados } from "@/hooks/use-parte";
@@ -418,7 +418,7 @@ export function FormularioCierre({
                   </div>
 
                   {manoObra.length > 0 && (
-                    <div className="grid grid-cols-[minmax(120px,190px)_72px_72px_72px_28px] gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                    <div className="grid grid-cols-[minmax(100px,1fr)_68px_128px_128px_28px] gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
                       <span>Tarea</span>
                       <span>Personas</span>
                       <span>Desde</span>
@@ -427,7 +427,7 @@ export function FormularioCierre({
                     </div>
                   )}
                   {manoObra.map((l, i) => (
-                    <div key={i} className="grid grid-cols-[minmax(120px,190px)_72px_72px_72px_28px] items-end gap-1.5">
+                    <div key={i} className="grid grid-cols-[minmax(100px,1fr)_68px_128px_128px_28px] items-end gap-1.5">
                       <Select
                         items={comoItems(TAREAS)}
                         value={l.tarea}
@@ -445,14 +445,14 @@ export function FormularioCierre({
                         title="Personas"
                       />
                       <Input
-                        type="number" step={0.5} min={0} max={24} value={l.horaDesde} disabled={!enModoEdicion}
-                        onChange={(e) => actualizarLinea(i, { horaDesde: Number(e.target.value) })}
-                        title="Hora desde (8 = 08:00)"
+                        type="time" value={decimalAHora(l.horaDesde)} disabled={!enModoEdicion}
+                        onChange={(e) => actualizarLinea(i, { horaDesde: horaADecimal(e.target.value) })}
+                        title="Hora de inicio"
                       />
                       <Input
-                        type="number" step={0.5} min={0} max={24} value={l.horaHasta} disabled={!enModoEdicion}
-                        onChange={(e) => actualizarLinea(i, { horaHasta: Number(e.target.value) })}
-                        title="Hora hasta (17 = 17:00)"
+                        type="time" value={decimalAHora(l.horaHasta)} disabled={!enModoEdicion}
+                        onChange={(e) => actualizarLinea(i, { horaHasta: horaADecimal(e.target.value) })}
+                        title="Hora de fin"
                       />
                       {enModoEdicion && (
                         <button
@@ -478,8 +478,7 @@ export function FormularioCierre({
                     </div>
                   )}
                   <p className="text-[11px] text-muted-foreground">
-                    Las horas van en decimal (8 = 08:00, 17.5 = 17:30). Odoo descuenta el almuerzo
-                    de 12 a 13 al calcular las horas-hombre.
+                    Odoo descuenta el almuerzo de 12 a 13 al calcular las horas-hombre.
                   </p>
                 </div>
 

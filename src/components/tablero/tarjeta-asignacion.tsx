@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
-import { ChevronLeft, ChevronRight, AlertTriangle, Check, CircleCheck, CircleDashed, ClipboardCheck, MoreVertical, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, AlertTriangle, CalendarRange, Check, CircleCheck, CircleDashed, ClipboardCheck, MoreVertical, Trash2 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -159,6 +159,7 @@ export function TarjetaAsignacion({
   onCerrarJornada,
   onAbrir,
   onFraccion,
+  onEditarJornadas,
   onEstado,
   onQuitar,
 }: {
@@ -174,6 +175,7 @@ export function TarjetaAsignacion({
   onCerrarJornada: (accion: NonNullable<AccionCierre>) => void;
   onAbrir: () => void;
   onFraccion: (f: FraccionStr) => void;
+  onEditarJornadas: () => void;
   onEstado: (e: "tentativa" | "confirmada") => void;
   onQuitar: () => void;
 }) {
@@ -291,21 +293,26 @@ export function TarjetaAsignacion({
               {bloque.estado === "confirmada" ? "Volver a tentativa" : "Confirmar"}
             </DropdownMenuItem>
 
-            {!bloque.multiDia && (
-              <>
-                <DropdownMenuSeparator />
-                {/* El label necesita un Group padre: sin el, base-ui lanza al abrir. */}
-                <DropdownMenuGroup>
-                  <DropdownMenuLabel>Fracción de jornada</DropdownMenuLabel>
-                  {FRACCIONES.map((f) => (
-                    <DropdownMenuItem key={f.value} onClick={() => onFraccion(f.value)}>
-                      <span className="mr-2 w-4 text-center">{f.label}</span>
-                      {f.detalle}
-                      {Number(f.value) === bloque.fraccion && <Check className="ml-auto h-3.5 w-3.5" />}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuGroup>
-              </>
+            <DropdownMenuSeparator />
+            {bloque.multiDia ? (
+              // En una obra de varios días "la fracción" es una por día, así que se
+              // editan todas juntas en un diálogo en vez de en el menú.
+              <DropdownMenuItem onClick={onEditarJornadas}>
+                <CalendarRange className="mr-2 h-4 w-4" />
+                Jornadas de la obra ({bloque.fechas.length} días)
+              </DropdownMenuItem>
+            ) : (
+              /* El label necesita un Group padre: sin el, base-ui lanza al abrir. */
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>Fracción de jornada</DropdownMenuLabel>
+                {FRACCIONES.map((f) => (
+                  <DropdownMenuItem key={f.value} onClick={() => onFraccion(f.value)}>
+                    <span className="mr-2 w-4 text-center">{f.label}</span>
+                    {f.detalle}
+                    {Number(f.value) === bloque.fraccion && <Check className="ml-auto h-3.5 w-3.5" />}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuGroup>
             )}
 
             {liberables > 0 && (

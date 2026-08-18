@@ -45,6 +45,8 @@ export type Bloque = {
   partes: (number | null)[];
   /** Fracción que ocupa por día (un bloque multi-jornada ocupa 1,00 en cada día). */
   fraccion: number;
+  /** La fracción real de cada día, que es la que se edita y la que suma capacidad. */
+  fraccionesPorDia: number[];
   estado: EstadoAsignacion;
   ordenDia: number;
   notas: string | null;
@@ -81,6 +83,7 @@ export function agruparBloques(asignaciones: AsignacionTablero[]): Bloque[] {
         cuadrillaId: primera.cuadrillaId,
         fechas: tramo.map((t) => t.fecha),
         fraccion: tramo.length > 1 ? 1 : primera.fraccion,
+        fraccionesPorDia: tramo.map((t) => t.fraccion),
         // Un bloque es tentativo mientras alguno de sus días lo sea.
         estado: tramo.every((t) => t.estado === "confirmada") ? "confirmada" : "tentativa",
         ordenDia: primera.ordenDia,

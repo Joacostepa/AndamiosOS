@@ -43,6 +43,7 @@ export function TableroGrid({
   onCerrarJornada,
   onAbrirBloque,
   onFraccion,
+  onEditarJornadas,
   onEstado,
   onQuitar,
 }: {
@@ -57,6 +58,7 @@ export function TableroGrid({
   onCerrarJornada: (bloque: Bloque, accion: NonNullable<AccionCierre>) => void;
   onAbrirBloque: (bloque: Bloque) => void;
   onFraccion: (bloque: Bloque, f: FraccionStr) => void;
+  onEditarJornadas: (bloque: Bloque) => void;
   onEstado: (bloque: Bloque, e: "tentativa" | "confirmada") => void;
   onQuitar: (bloque: Bloque) => void;
 }) {
@@ -224,6 +226,7 @@ export function TableroGrid({
                       onCerrarJornada={(a) => onCerrarJornada(bloque, a)}
                       onAbrir={() => onAbrirBloque(bloque)}
                       onFraccion={(f) => onFraccion(bloque, f)}
+                      onEditarJornadas={() => onEditarJornadas(bloque)}
                       onEstado={(e) => onEstado(bloque, e)}
                       onQuitar={() => onQuitar(bloque)}
                     />

@@ -28,6 +28,7 @@ const datosSchema = z
   .object({
     fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     cuadrillaId: z.number().int().positive().nullable(),
+    punteroId: z.number().int().positive().nullable(),
     estado: z.enum(["ejecutado", "no_ejecutado"]),
     motivoNoEjec: z
       .enum(["lluvia", "cliente", "permiso", "material", "personal", "reprogramada", "otro"])

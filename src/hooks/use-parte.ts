@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { DatosCierre, ParteCargado, ResultadoCierre } from "@/lib/tablero/tipos-parte";
+import type { DatosCierre, Empleado, ParteCargado, ResultadoCierre } from "@/lib/tablero/tipos-parte";
 
 // Cierre de jornada. Va contra /api/planificacion/partes, que escribe el parte diario
 // en Odoo. A diferencia del resto del tablero NO es optimista: crear un parte con sus
@@ -28,6 +28,15 @@ export function useParte(parteId: number | null) {
     },
     enabled: !!parteId,
     staleTime: 30 * 1000,
+  });
+}
+
+/** Candidatos a puntero. Cambian muy poco: se cachean por media hora. */
+export function useEmpleados() {
+  return useQuery({
+    queryKey: ["empleados"],
+    queryFn: async () => (await pedir<{ empleados: Empleado[] }>("/api/planificacion/empleados")).empleados,
+    staleTime: 30 * 60 * 1000,
   });
 }
 

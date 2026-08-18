@@ -81,13 +81,17 @@ export function ContenidoTarjeta({
         compacta && "shadow-md",
       )}
       style={{
-        backgroundColor: noEjecutada ? "#FDECEA" : confirmada ? color.bg : color.suave,
+        // Solo la confirmada lleva el color de la cuadrilla. La tentativa es un
+        // borrador: queda neutra para que el color signifique "esto ya está firme".
+        backgroundColor: noEjecutada ? "#FDECEA" : confirmada ? color.bg : "var(--card)",
         border: noEjecutada
           ? "1px solid #D92D20"
           : confirmada
             ? `1px solid ${color.borde}`
-            : `1px dashed ${color.borde}`,
-        borderLeft: urgente ? `3px solid ${URGENCIA_ALTA_BORDE}` : `3px solid ${noEjecutada ? "#D92D20" : color.borde}`,
+            : "1px dashed var(--border)",
+        // La franja izquierda pasa a ser el semáforo de habilitación: aplica siempre y
+        // es lo que más se mira. Un punto de 6px se perdía con la grilla llena.
+        borderLeft: `5px solid ${noEjecutada ? "#D92D20" : sem.color}`,
       }}
     >
       <div className="flex items-baseline gap-1">
@@ -104,31 +108,36 @@ export function ContenidoTarjeta({
         )}
         <span
           className="min-w-0 flex-1 truncate text-[11px] font-medium leading-tight"
-          style={{ color: color.text }}
-          title={ot?.titulo}
+          style={{ color: confirmada ? color.text : "var(--foreground)" }}
+          title={`${ot?.titulo ?? ""} — ${sem.label}`}
         >
           {partes.principal}
         </span>
         <span className="shrink-0 text-[10px] font-semibold tabular-nums" style={{ color: color.text }}>
           {bloque.multiDia ? `${bloque.fechas.length}j` : fraccionLabel(bloque.fraccion)}
         </span>
-        <span
-          className="h-1.5 w-1.5 shrink-0 self-center rounded-full"
-          style={{ backgroundColor: sem.color }}
-          title={sem.label}
-        />
+        {urgente && (
+          <AlertTriangle
+            className="h-3 w-3 shrink-0 self-center"
+            style={{ color: URGENCIA_ALTA_BORDE }}
+          />
+        )}
         {sigueDespues && (
           <ChevronRight className="h-3 w-3 shrink-0 self-center" style={{ color: color.text }} />
         )}
       </div>
 
-      <p className="truncate text-[9px] leading-tight" style={{ color: color.text, opacity: 0.75 }}>
+      <p
+        className="truncate text-[9px] leading-tight"
+        style={{ color: confirmada ? color.text : "var(--muted-foreground)", opacity: confirmada ? 0.75 : 1 }}
+      >
+        {/* Ya no dice "tentativa": lo comunica la tarjeta sin color y el borde
+            punteado. La línea se usa para lo que identifica la obra. */}
         {[
           partes.tipo,
-          bloque.multiDia && partes.cliente ? partes.cliente : null,
+          partes.cliente,
           ot?.tecnico,
           noEjecutada ? (cierre?.motivoLabel ?? "no ejecutada") : null,
-          cierre || !confirmada ? (cierre ? null : "tentativa") : null,
         ]
           .filter(Boolean)
           .join(" · ")}

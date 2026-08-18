@@ -68,9 +68,13 @@ export type FotoParaSubir = {
   descripcion?: string | null;
 };
 
+export type Empleado = { id: number; nombre: string; escala: string | null };
+
 export type DatosCierre = {
   fecha: string;
   cuadrillaId: number | null;
+  /** Responsable de la cuadrilla ese día. Cambia con ausencias y rotaciones. */
+  punteroId: number | null;
   estado: EstadoParte;
   motivoNoEjec: string | null;
   sector: string | null;
@@ -99,6 +103,7 @@ export type ParteCargado = {
   otId: number;
   fecha: string;
   cuadrillaId: number | null;
+  punteroId: number | null;
   estado: EstadoParte;
   motivoNoEjec: string | null;
   sector: string | null;

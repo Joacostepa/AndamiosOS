@@ -447,6 +447,10 @@ export function TableroBoard() {
             ots={sinAsignar}
             colapsado={panelColapsado}
             onColapsar={colapsarPanel}
+            onDetalle={(ot) => {
+              if (cierre) return;
+              setPanel({ otId: ot.id, bloqueKey: null });
+            }}
           />
         </div>
 

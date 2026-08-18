@@ -43,6 +43,7 @@ function valoresParte(datos: DatosCierre, otId: number): Record<string, unknown>
     x_objetivo: ejecutado ? (datos.objetivo ?? false) : false,
     x_tareas: ejecutado ? (datos.tareas ?? false) : false,
     x_bloqueos: datos.observaciones ?? false,
+    x_puntero_id: datos.punteroId ?? false,
   };
 }
 
@@ -295,12 +296,27 @@ export async function editarParte(parteId: number, datos: DatosCierre, otId: num
   return { parteId, reutilizado: true, pasos, fotosFallidas: fallidas };
 }
 
+/**
+ * Empleados que pueden figurar como puntero. Se devuelven todos —una ausencia puede
+ * dejar de puntero a alguien de escala menor— pero ordenados por escala descendente,
+ * así los capataces (escala 5+) quedan arriba de la lista.
+ */
+export async function fetchEmpleados(): Promise<{ id: number; nombre: string; escala: string | null }[]> {
+  const filas = await searchRead<{ id: number; name: string; job_title: string | false }>(
+    "hr.employee", [], ["name", "job_title"], { order: "name" },
+  );
+  const escalaNum = (t: string | null) => Number(/(\d+)/.exec(t ?? "")?.[1] ?? 0);
+  return filas
+    .map((f) => ({ id: f.id, nombre: f.name, escala: str(f.job_title) }))
+    .sort((a, b) => escalaNum(b.escala) - escalaNum(a.escala) || a.nombre.localeCompare(b.nombre));
+}
+
 /** Lee un parte con sus líneas, para ver o editar lo ya cargado. */
 export async function fetchParte(parteId: number): Promise<ParteCargado | null> {
   const [parte] = await read<Record<string, unknown>>("x_aba_parte_diario", [parteId], [
     "x_orden_trabajo_id", "x_fecha", "x_cuadrilla_id", "x_estado", "x_motivo_no_ejec",
     "x_sector", "x_clima", "x_objetivo", "x_tareas", "x_bloqueos", "x_horas_hombre",
-    "x_costo_total", "x_cant_fotos",
+    "x_costo_total", "x_cant_fotos", "x_puntero_id",
   ]);
   if (!parte) return null;
 
@@ -323,6 +339,7 @@ export async function fetchParte(parteId: number): Promise<ParteCargado | null> 
     otId: m2oId(parte.x_orden_trabajo_id as [number, string] | false) ?? 0,
     fecha: texto(parte.x_fecha) ?? "",
     cuadrillaId: m2oId(parte.x_cuadrilla_id as [number, string] | false),
+    punteroId: m2oId(parte.x_puntero_id as [number, string] | false),
     estado: parte.x_estado === "no_ejecutado" ? "no_ejecutado" : "ejecutado",
     motivoNoEjec: texto(parte.x_motivo_no_ejec),
     sector: texto(parte.x_sector),

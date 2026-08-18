@@ -20,7 +20,7 @@ import {
   MOTIVOS_NO_EJEC, TAREAS, TIPOS_INCIDENCIA, MOMENTOS_FOTO,
   type DatosCierre, type EstadoParte, type LineaManoObra, type LineaIncidencia,
 } from "@/lib/tablero/tipos-parte";
-import { useParte, useCerrarJornada, useEditarParte } from "@/hooks/use-parte";
+import { useParte, useCerrarJornada, useEditarParte, useEmpleados } from "@/hooks/use-parte";
 import { CORAL } from "@/lib/tablero/colores";
 import type { Bloque } from "@/lib/tablero/bloques";
 import type { CuadrillaTablero, OtTablero } from "@/lib/tablero/tipos";
@@ -71,6 +71,7 @@ export function FormularioCierre({
 }) {
   const soloLectura = !!parteId;
   const { data: parteCargado, isLoading: cargandoParte } = useParte(parteId);
+  const { data: empleados } = useEmpleados();
   const cerrar = useCerrarJornada();
   const editar = useEditarParte();
   const guardando = cerrar.isPending || editar.isPending;
@@ -80,6 +81,7 @@ export function FormularioCierre({
   const [fechaParte, setFechaParte] = useState("");
   const [motivo, setMotivo] = useState<string>("");
   const [cuadrillaId, setCuadrillaId] = useState<string>("");
+  const [punteroId, setPunteroId] = useState<string>("");
   const [sector, setSector] = useState("");
   const [clima, setClima] = useState("");
   const [objetivo, setObjetivo] = useState("");
@@ -105,6 +107,7 @@ export function FormularioCierre({
       setFechaParte(parteCargado.fecha || (fecha ?? ""));
       setMotivo(parteCargado.motivoNoEjec ?? "");
       setCuadrillaId(parteCargado.cuadrillaId ? String(parteCargado.cuadrillaId) : "");
+      setPunteroId(parteCargado.punteroId ? String(parteCargado.punteroId) : "");
       setSector(parteCargado.sector ?? "");
       setClima(parteCargado.clima ?? "");
       setObjetivo(parteCargado.objetivo ?? "");
@@ -123,6 +126,7 @@ export function FormularioCierre({
       setFechaParte(fecha ?? "");
       setMotivo("");
       setCuadrillaId(bloque?.cuadrillaId ? String(bloque.cuadrillaId) : "");
+      setPunteroId("");
       setSector(""); setClima(""); setObjetivo(""); setTareas(""); setObservaciones("");
       setManoObra([]);
       setViajes(sugerenciaViajes);
@@ -186,6 +190,7 @@ export function FormularioCierre({
     return {
       fecha: fechaParte || (fecha ?? ""),
       cuadrillaId: cuadrillaId ? Number(cuadrillaId) : null,
+      punteroId: punteroId ? Number(punteroId) : null,
       estado,
       motivoNoEjec: ejecutado ? null : motivo || null,
       sector: sector.trim() || null,
@@ -344,9 +349,30 @@ export function FormularioCierre({
                     </Select>
                   </div>
                   <div className="space-y-1.5">
-                    <Label>Frente / sector</Label>
-                    <Input value={sector} onChange={(e) => setSector(e.target.value)} disabled={!enModoEdicion} />
+                    {/* El puntero es un hecho del día: cambia con ausencias y rotaciones,
+                        por eso va en el parte y no en la fila del tablero. */}
+                    <Label>Puntero</Label>
+                    <Select
+                      items={Object.fromEntries((empleados ?? []).map((e) => [String(e.id), e.nombre]))}
+                      value={punteroId}
+                      onValueChange={(v) => setPunteroId(v ?? "")}
+                      disabled={!enModoEdicion}
+                    >
+                      <SelectTrigger><SelectValue placeholder="Responsable de cuadrilla" /></SelectTrigger>
+                      <SelectContent className="max-h-[50vh]">
+                        {(empleados ?? []).map((e) => (
+                          <SelectItem key={e.id} value={String(e.id)}>
+                            {e.nombre}{e.escala ? ` · ${e.escala}` : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label>Frente / sector</Label>
+                  <Input value={sector} onChange={(e) => setSector(e.target.value)} disabled={!enModoEdicion} />
                 </div>
 
                 <div className="space-y-1.5">

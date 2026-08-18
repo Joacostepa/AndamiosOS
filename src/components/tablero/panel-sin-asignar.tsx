@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
-import { PanelRightClose, PanelRightOpen, PlayCircle, Search, Inbox } from "lucide-react";
+import { PanelRightClose, PanelRightOpen, PlayCircle, Search, Inbox, Info } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { semaforo, CORAL, ACENTO_BG, URGENCIA_ALTA_BORDE } from "@/lib/tablero/colores";
 import { fraccionLabel } from "@/lib/tablero/fracciones";
@@ -31,7 +31,7 @@ export type ObraPendiente = {
   cerradas: number;
 };
 
-function TarjetaOt({ obra }: { obra: ObraPendiente }) {
+function TarjetaOt({ obra, onDetalle }: { obra: ObraPendiente; onDetalle: (ot: OtTablero) => void }) {
   const { ot, totales, pendientes, cerradas } = obra;
   const empezada = cerradas > 0;
   const { setNodeRef, attributes, listeners, isDragging } = useDraggable({
@@ -50,11 +50,8 @@ function TarjetaOt({ obra }: { obra: ObraPendiente }) {
       className="cursor-grab rounded-md border bg-card p-2 transition-colors hover:border-foreground/25 active:cursor-grabbing"
       style={{
         opacity: isDragging ? 0.35 : 1,
-        borderLeft: urgente
-          ? `3px solid ${URGENCIA_ALTA_BORDE}`
-          : empezada
-            ? "3px solid #EF9F27"
-            : undefined,
+        // Franja izquierda = semáforo de habilitación, igual que en el tablero.
+        borderLeft: `5px solid ${empezada ? "#EF9F27" : sem.color}`,
       }}
     >
       {empezada && (
@@ -80,11 +77,25 @@ function TarjetaOt({ obra }: { obra: ObraPendiente }) {
           {/* La dirección entra completa: para eso el panel es vertical. */}
           <p className="text-[12px] font-medium leading-snug">{partes.principal}</p>
         </div>
-        <span
-          className="mt-1 h-2 w-2 shrink-0 rounded-full"
-          style={{ backgroundColor: sem.color }}
-          title={sem.label}
-        />
+        <div className="flex shrink-0 items-center gap-0.5">
+          {urgente && (
+            <span className="rounded px-1 text-[9px] font-semibold" style={{ backgroundColor: "#FDECEA", color: URGENCIA_ALTA_BORDE }}>
+              URG
+            </span>
+          )}
+          {/* Botón aparte para el detalle: el cuerpo de la tarjeta es el asa de
+              arrastre, y un clic ahí se confunde con el gesto de asignar. */}
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onDetalle(ot); }}
+            onPointerDown={(e) => e.stopPropagation()}
+            className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+            title="Ver detalle de la obra"
+            aria-label="Ver detalle de la obra"
+          >
+            <Info className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
 
       <p className="mt-1 truncate text-[10px] text-muted-foreground">
@@ -106,10 +117,12 @@ export function PanelSinAsignar({
   ots,
   colapsado,
   onColapsar,
+  onDetalle,
 }: {
   ots: ObraPendiente[];
   colapsado: boolean;
   onColapsar: (valor: boolean) => void;
+  onDetalle: (ot: OtTablero) => void;
 }) {
   const [busqueda, setBusqueda] = useState("");
   const { setNodeRef, isOver, active } = useDroppable({ id: ID_BANDEJA });
@@ -205,7 +218,7 @@ export function PanelSinAsignar({
       {filtradas.length > 0 ? (
         <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-2">
           {filtradas.map((obra) => (
-            <TarjetaOt key={obra.ot.id} obra={obra} />
+            <TarjetaOt key={obra.ot.id} obra={obra} onDetalle={onDetalle} />
           ))}
         </div>
       ) : (

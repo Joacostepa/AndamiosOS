@@ -19,7 +19,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { TopbarTablero } from "./topbar-tablero";
 import { TableroGrid } from "./tablero-grid";
-import { BandejaSinAsignar, ID_BANDEJA } from "./bandeja-sin-asignar";
+import { PanelSinAsignar, ID_BANDEJA } from "./panel-sin-asignar";
 import { ContenidoTarjeta } from "./tarjeta-asignacion";
 import { PanelOt } from "./panel-ot";
 import {
@@ -43,7 +43,7 @@ import type { MovimientoAsignacion, NuevaAsignacion, TableroPayload } from "@/li
 // datos propia y sin duplicación: la app escribe, Odoo lee.
 
 const CLAVE_CUADRILLAS = "tablero:cuadrillas";
-const ALTO_BANDEJA = 176;
+const CLAVE_PANEL = "tablero:panel-colapsado";
 
 function leerVisiblesGuardadas(): number[] | null {
   if (typeof window === "undefined") return null;
@@ -86,6 +86,9 @@ export function TableroBoard() {
   const [lunes, setLunes] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [visibles, setVisibles] = useState<number[] | null>(leerVisiblesGuardadas);
   const [panel, setPanel] = useState<{ otId: number; bloqueKey: string | null } | null>(null);
+  const [panelColapsado, setPanelColapsado] = useState<boolean>(
+    () => typeof window !== "undefined" && window.localStorage.getItem(CLAVE_PANEL) === "true",
+  );
   const [arrastrando, setArrastrando] = useState<
     { tipo: "ot"; otId: number } | { tipo: "bloque"; bloque: Bloque } | null
   >(null);
@@ -116,6 +119,11 @@ export function TableroBoard() {
     () => visibles ?? defaultCongelado ?? [],
     [visibles, defaultCongelado],
   );
+
+  function colapsarPanel(valor: boolean) {
+    setPanelColapsado(valor);
+    if (typeof window !== "undefined") window.localStorage.setItem(CLAVE_PANEL, String(valor));
+  }
 
   function cambiarVisibles(ids: number[]) {
     setVisibles(ids);
@@ -352,7 +360,7 @@ export function TableroBoard() {
         onDragEnd={onDragEnd}
         onDragCancel={() => setArrastrando(null)}
       >
-        <div className="flex min-h-0 flex-1 flex-col rounded-md border">
+        <div className="flex min-h-0 flex-1 overflow-hidden rounded-md border">
           {cuadrillasVisibles.length > 0 ? (
             <TableroGrid
               cuadrillas={cuadrillasVisibles}
@@ -372,7 +380,11 @@ export function TableroBoard() {
             </div>
           )}
 
-          <BandejaSinAsignar ots={sinAsignar} alto={ALTO_BANDEJA} />
+          <PanelSinAsignar
+            ots={sinAsignar}
+            colapsado={panelColapsado}
+            onColapsar={colapsarPanel}
+          />
         </div>
 
         <DragOverlay>

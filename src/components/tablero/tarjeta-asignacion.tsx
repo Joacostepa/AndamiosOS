@@ -14,6 +14,7 @@ import {
 import { cn } from "@/lib/utils";
 import { FRACCIONES, fraccionLabel, type FraccionStr } from "@/lib/tablero/fracciones";
 import { colorCuadrilla, semaforo, URGENCIA_ALTA_BORDE, CORAL } from "@/lib/tablero/colores";
+import { partesTitulo } from "@/lib/tablero/titulo";
 import type { Bloque, Colocacion } from "@/lib/tablero/bloques";
 import type { OtTablero } from "@/lib/tablero/tipos";
 
@@ -26,26 +27,39 @@ import type { OtTablero } from "@/lib/tablero/tipos";
 //   urgencia alta → franja roja a la izquierda
 //   habilitación  → punto de color en la esquina
 
+/**
+ * Cuerpo de la tarjeta. Densidad pensada para que entren 3 o 4 apiladas en una celda:
+ * una línea con dirección y fracción, otra con tipo y técnico. La habilitación y la
+ * urgencia son señales de color, sin texto que compita por el ancho.
+ *
+ * El bloque multi-jornada afloja la densidad: tiene todo el ancho de sus días.
+ */
 export function ContenidoTarjeta({
   ot,
   bloque,
   indiceColor,
   compacta = false,
+  vieneDeAntes = false,
+  sigueDespues = false,
 }: {
   ot: OtTablero | undefined;
   bloque: Pick<Bloque, "estado" | "fraccion" | "fechas" | "multiDia">;
   indiceColor: number;
   compacta?: boolean;
+  /** El bloque empieza antes / termina después de la semana visible. */
+  vieneDeAntes?: boolean;
+  sigueDespues?: boolean;
 }) {
   const color = colorCuadrilla(indiceColor);
   const confirmada = bloque.estado === "confirmada";
   const sem = semaforo(ot?.habSemaforo);
   const urgente = ot?.urgencia === "alta";
+  const partes = partesTitulo(ot?.titulo ?? "OT");
 
   return (
     <div
       className={cn(
-        "flex h-full min-w-0 flex-col justify-center gap-0.5 rounded-[4px] px-1.5 py-1",
+        "flex h-full min-w-0 flex-col justify-center gap-px rounded-[4px] px-1.5 py-0.5",
         compacta && "shadow-md",
       )}
       style={{
@@ -54,22 +68,41 @@ export function ContenidoTarjeta({
         borderLeft: urgente ? `3px solid ${URGENCIA_ALTA_BORDE}` : `3px solid ${color.borde}`,
       }}
     >
-      <div className="flex items-center gap-1">
-        <span className="min-w-0 flex-1 truncate text-[10px] font-medium" style={{ color: color.text }}>
-          {ot?.titulo ?? "OT"}
+      <div className="flex items-baseline gap-1">
+        {/* Las flechas de continuidad van EN LÍNEA y no absolutas: colgadas del borde
+            se salían de la grilla y generaban scroll horizontal. */}
+        {vieneDeAntes && (
+          <ChevronLeft className="h-3 w-3 shrink-0 self-center" style={{ color: color.text }} />
+        )}
+        <span
+          className="min-w-0 flex-1 truncate text-[11px] font-medium leading-tight"
+          style={{ color: color.text }}
+          title={ot?.titulo}
+        >
+          {partes.principal}
+        </span>
+        <span className="shrink-0 text-[10px] font-semibold tabular-nums" style={{ color: color.text }}>
+          {bloque.multiDia ? `${bloque.fechas.length}j` : fraccionLabel(bloque.fraccion)}
         </span>
         <span
-          className="h-1.5 w-1.5 shrink-0 rounded-full"
+          className="h-1.5 w-1.5 shrink-0 self-center rounded-full"
           style={{ backgroundColor: sem.color }}
           title={sem.label}
         />
+        {sigueDespues && (
+          <ChevronRight className="h-3 w-3 shrink-0 self-center" style={{ color: color.text }} />
+        )}
       </div>
-      <p className="truncate text-[9px]" style={{ color: color.text, opacity: 0.85 }}>
-        {bloque.multiDia
-          ? `${bloque.fechas.length} jornadas`
-          : fraccionLabel(bloque.fraccion)}
-        {ot?.tecnico ? ` · ${ot.tecnico}` : ""}
-        {confirmada ? "" : " · tentativa"}
+
+      <p className="truncate text-[9px] leading-tight" style={{ color: color.text, opacity: 0.75 }}>
+        {[
+          partes.tipo,
+          bloque.multiDia && partes.cliente ? partes.cliente : null,
+          ot?.tecnico,
+          confirmada ? null : "tentativa",
+        ]
+          .filter(Boolean)
+          .join(" · ")}
       </p>
     </div>
   );
@@ -136,15 +169,13 @@ export function TarjetaAsignacion({
         }
       }}
     >
-      <ContenidoTarjeta ot={ot} bloque={bloque} indiceColor={indiceColor} />
-
-      {/* Indicadores de bloque que sigue fuera de la semana visible */}
-      {colocacion.vieneDeAntes && (
-        <ChevronLeft className="absolute -left-1 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
-      )}
-      {colocacion.sigueDespues && (
-        <ChevronRight className="absolute -right-1 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
-      )}
+      <ContenidoTarjeta
+        ot={ot}
+        bloque={bloque}
+        indiceColor={indiceColor}
+        vieneDeAntes={colocacion.vieneDeAntes}
+        sigueDespues={colocacion.sigueDespues}
+      />
 
       <div className="absolute right-0.5 top-0.5 hidden group-hover/tarjeta:block">
         <DropdownMenu>

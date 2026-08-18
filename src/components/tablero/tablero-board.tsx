@@ -484,15 +484,33 @@ export function TableroBoard() {
         ot={jornadasDe ? otsPorId.get(bloquesPorClave.get(jornadasDe)?.otId ?? 0) : undefined}
         guardando={actualizar.isPending}
         onGuardar={(cambios) => {
+          const bloque = jornadasDe ? bloquesPorClave.get(jornadasDe) : null;
+          if (!bloque) return;
+
           // Cada día puede quedar con una fracción distinta, así que se agrupan los que
           // comparten valor para no hacer una escritura por jornada.
           const porFraccion = new Map<string, number[]>();
-          for (const c of cambios) {
+          for (const c of cambios.fracciones) {
             porFraccion.set(c.fraccion, [...(porFraccion.get(c.fraccion) ?? []), c.asignacionId]);
           }
           for (const [fraccion, ids] of porFraccion) {
             actualizar.mutate({ ids, cambio: { fraccion: fraccion as FraccionStr } });
           }
+
+          if (cambios.nuevas.length > 0) {
+            crear.mutate(
+              cambios.nuevas.map((n) => ({
+                otId: bloque.otId,
+                fecha: n.fecha,
+                cuadrillaId: bloque.cuadrillaId,
+                fraccion: n.fraccion,
+                estado: bloque.estado,
+                ordenDia: bloque.ordenDia,
+              })),
+            );
+          }
+          if (cambios.borradas.length > 0) borrar.mutate(cambios.borradas);
+
           setJornadasDe(null);
         }}
         onOpenChange={(abierto) => !abierto && setJornadasDe(null)}

@@ -294,15 +294,18 @@ export function TarjetaAsignacion({
             </DropdownMenuItem>
 
             <DropdownMenuSeparator />
-            {bloque.multiDia ? (
-              // En una obra de varios días "la fracción" es una por día, así que se
-              // editan todas juntas en un diálogo en vez de en el menú.
-              <DropdownMenuItem onClick={onEditarJornadas}>
-                <CalendarRange className="mr-2 h-4 w-4" />
-                Jornadas de la obra ({bloque.fechas.length} días)
-              </DropdownMenuItem>
-            ) : (
-              /* El label necesita un Group padre: sin el, base-ui lanza al abrir. */
+            {/* Siempre disponible: es la única forma de estirar una obra de un día a
+                dos, porque una vez asignada ya no está en la bandeja para re-arrastrar. */}
+            <DropdownMenuItem onClick={onEditarJornadas}>
+              <CalendarRange className="mr-2 h-4 w-4" />
+              {bloque.multiDia
+                ? `Jornadas de la obra (${bloque.fechas.length} días)`
+                : "Jornadas de la obra (agregar días)"}
+            </DropdownMenuItem>
+
+            {!bloque.multiDia && (
+              /* Atajo para el caso común: cambiar la fracción del único día.
+                 El label necesita un Group padre; sin él, base-ui lanza al abrir. */
               <DropdownMenuGroup>
                 <DropdownMenuLabel>Fracción de jornada</DropdownMenuLabel>
                 {FRACCIONES.map((f) => (

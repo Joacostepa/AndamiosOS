@@ -230,8 +230,11 @@ export function FormularioCierre({
   const titulo = ot?.titulo ?? "Jornada";
   const fechaLabel = fecha ? format(parseISO(fecha), "EEEE d 'de' MMMM", { locale: es }) : "";
 
+  // disablePointerDismissal: un clic afuera no descarta el formulario. Es largo y
+  // perder media carga por un clic al costado es peor que tener que apretar Cancelar.
+  // La X, Cancelar y Escape siguen cerrando.
   return (
-    <Dialog open={abierto} onOpenChange={onOpenChange}>
+    <Dialog open={abierto} onOpenChange={onOpenChange} disablePointerDismissal>
       {/* Modal centrado y no panel lateral: el formulario es largo y compite con la
           grilla si comparte pantalla. El alto queda acotado y scrollea por dentro. */}
       <DialogContent className="grid max-h-[88vh] grid-rows-[auto_1fr_auto] gap-0 p-0 sm:max-w-2xl">

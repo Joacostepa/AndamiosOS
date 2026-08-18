@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { ChevronLeft, ChevronRight, AlertTriangle, Check, CircleCheck, CircleDashed, ClipboardCheck, MoreVertical, Trash2 } from "lucide-react";
 import {
@@ -182,6 +182,10 @@ export function TarjetaAsignacion({
   // popup se reubicaría en una esquina. Por eso se oculta con opacidad, que conserva el
   // layout, y se fuerza visible mientras el menú está abierto.
   const [menuAbierto, setMenuAbierto] = useState(false);
+  // Al elegir una opcion, el menu se desmonta y el navegador entrega el clic al
+  // elemento que quedo debajo: la tarjeta. Se ignora por un instante para que ese
+  // clic residual no dispare tambien el panel de la OT.
+  const menuCerradoEn = useRef(0);
   // Las jornadas ya cerradas no se tocan: sacarlas del tablero dejaría el parte
   // huérfano y borraría el rastro de lo ejecutado.
   const liberables = jornadasLiberables(bloque).length;
@@ -205,9 +209,12 @@ export function TarjetaAsignacion({
       {...listeners}
       role="button"
       tabIndex={0}
-      // Con el menú abierto la tarjeta no responde: el clic que lo cierra no tiene que
-      // abrir además el panel de la OT.
-      onClick={() => !menuAbierto && onAbrir()}
+      // Con el menú abierto —o recién cerrado— la tarjeta no responde: el clic que lo
+      // cierra no tiene que abrir además el panel de la OT.
+      onClick={() => {
+        if (menuAbierto || Date.now() - menuCerradoEn.current < 400) return;
+        onAbrir();
+      }}
       onKeyDown={(e) => {
         if ((e.key === "Enter" || e.key === " ") && !menuAbierto) {
           e.preventDefault();
@@ -232,7 +239,13 @@ export function TarjetaAsignacion({
             : "pointer-events-none opacity-0 group-hover/tarjeta:pointer-events-auto group-hover/tarjeta:opacity-100",
         )}
       >
-        <DropdownMenu open={menuAbierto} onOpenChange={setMenuAbierto}>
+        <DropdownMenu
+          open={menuAbierto}
+          onOpenChange={(abierto) => {
+            setMenuAbierto(abierto);
+            if (!abierto) menuCerradoEn.current = Date.now();
+          }}
+        >
           <DropdownMenuTrigger
             render={
               <button

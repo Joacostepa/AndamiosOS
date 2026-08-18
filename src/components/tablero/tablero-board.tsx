@@ -412,7 +412,13 @@ export function TableroBoard() {
                   parteId: accion.tipo === "ver" ? accion.parteId : null,
                 });
               }}
-              onAbrirBloque={(b) => setPanel({ otId: b.otId, bloqueKey: b.key })}
+              // Con el modal de cierre abierto no se abre ningun panel. El clic que
+              // cierra el menu ⋮ llega a la tarjeta DESPUES de que el menu se
+              // desmontó, asi que una guarda por "menu abierto" llega tarde.
+              onAbrirBloque={(b) => {
+                if (cierre) return;
+                setPanel({ otId: b.otId, bloqueKey: b.key });
+              }}
               onFraccion={(b, f: FraccionStr) => actualizar.mutate({ ids: b.ids, cambio: { fraccion: f } })}
               onEstado={(b, estado) => actualizar.mutate({ ids: b.ids, cambio: { estado } })}
               onQuitar={(b) => {

@@ -5,7 +5,7 @@ import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { AlertTriangle, Camera, Check, Loader2, Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -77,6 +77,7 @@ export function FormularioCierre({
 
   const [editando, setEditando] = useState(false);
   const [estado, setEstado] = useState<EstadoParte>("ejecutado");
+  const [fechaParte, setFechaParte] = useState("");
   const [motivo, setMotivo] = useState<string>("");
   const [cuadrillaId, setCuadrillaId] = useState<string>("");
   const [sector, setSector] = useState("");
@@ -101,6 +102,7 @@ export function FormularioCierre({
     if (!abierto) return;
     if (parteCargado) {
       setEstado(parteCargado.estado);
+      setFechaParte(parteCargado.fecha || (fecha ?? ""));
       setMotivo(parteCargado.motivoNoEjec ?? "");
       setCuadrillaId(parteCargado.cuadrillaId ? String(parteCargado.cuadrillaId) : "");
       setSector(parteCargado.sector ?? "");
@@ -116,6 +118,9 @@ export function FormularioCierre({
       setFotos([]);
     } else if (!parteId) {
       setEstado("ejecutado");
+      // Por defecto la fecha de la jornada que se cierra: cerrando en el día es hoy, y
+      // cerrando una atrasada es el día en que realmente se trabajó, no el de la carga.
+      setFechaParte(fecha ?? "");
       setMotivo("");
       setCuadrillaId(bloque?.cuadrillaId ? String(bloque.cuadrillaId) : "");
       setSector(""); setClima(""); setObjetivo(""); setTareas(""); setObservaciones("");
@@ -127,7 +132,7 @@ export function FormularioCierre({
     setResultado(null);
     setEditando(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [abierto, parteCargado, parteId]);
+  }, [abierto, parteCargado, parteId, fecha]);
 
   // REGLA VIGENTE: menos de una jornada → 1 viaje redondo; N jornadas → N+1. Se muestra
   // como sugerencia, no se impone.
@@ -179,7 +184,7 @@ export function FormularioCierre({
   function armarDatos(): DatosCierre {
     const ejecutado = estado === "ejecutado";
     return {
-      fecha: fecha ?? "",
+      fecha: fechaParte || (fecha ?? ""),
       cuadrillaId: cuadrillaId ? Number(cuadrillaId) : null,
       estado,
       motivoNoEjec: ejecutado ? null : motivo || null,
@@ -226,16 +231,18 @@ export function FormularioCierre({
   const fechaLabel = fecha ? format(parseISO(fecha), "EEEE d 'de' MMMM", { locale: es }) : "";
 
   return (
-    <Sheet open={abierto} onOpenChange={onOpenChange}>
-      <SheetContent className="flex flex-col gap-0 overflow-hidden p-0 sm:max-w-xl">
-        <SheetHeader className="border-b px-4 py-3">
-          <SheetTitle className="pr-6 text-base leading-snug">
+    <Dialog open={abierto} onOpenChange={onOpenChange}>
+      {/* Modal centrado y no panel lateral: el formulario es largo y compite con la
+          grilla si comparte pantalla. El alto queda acotado y scrollea por dentro. */}
+      <DialogContent className="grid max-h-[88vh] grid-rows-[auto_1fr_auto] gap-0 p-0 sm:max-w-2xl">
+        <DialogHeader className="border-b px-4 py-3 text-left">
+          <DialogTitle className="pr-6 text-base leading-snug">
             {soloLectura && !editando ? "Parte de la jornada" : "Cerrar jornada"}
-          </SheetTitle>
+          </DialogTitle>
           <p className="text-xs text-muted-foreground">
             {titulo} · {fechaLabel}
           </p>
-        </SheetHeader>
+        </DialogHeader>
 
         {cargandoParte ? (
           <div className="space-y-3 p-4">
@@ -265,6 +272,23 @@ export function FormularioCierre({
                   {valor === "ejecutado" ? "Se ejecutó" : "No se ejecutó"}
                 </button>
               ))}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Fecha del parte</Label>
+              <Input
+                type="date"
+                value={fechaParte}
+                onChange={(e) => setFechaParte(e.target.value)}
+                disabled={!enModoEdicion}
+                className="w-44"
+              />
+              {fecha && fechaParte && fechaParte !== fecha && (
+                <p className="text-[11px]" style={{ color: CORAL }}>
+                  Distinta de la jornada planificada ({format(parseISO(fecha), "EEE d MMM", { locale: es })}).
+                  El parte se va a registrar en la fecha elegida.
+                </p>
+              )}
             </div>
 
             {estado === "no_ejecutado" ? (
@@ -349,8 +373,17 @@ export function FormularioCierre({
                     </span>
                   </div>
 
+                  {manoObra.length > 0 && (
+                    <div className="grid grid-cols-[minmax(120px,190px)_72px_72px_72px_28px] gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                      <span>Tarea</span>
+                      <span>Personas</span>
+                      <span>Desde</span>
+                      <span>Hasta</span>
+                      <span />
+                    </div>
+                  )}
                   {manoObra.map((l, i) => (
-                    <div key={i} className="grid grid-cols-[1fr_60px_64px_64px_28px] items-end gap-1.5">
+                    <div key={i} className="grid grid-cols-[minmax(120px,190px)_72px_72px_72px_28px] items-end gap-1.5">
                       <Select
                         items={comoItems(TAREAS)}
                         value={l.tarea}
@@ -450,7 +483,7 @@ export function FormularioCierre({
                 <div className="space-y-2">
                   <Label>Incidencias</Label>
                   {incidencias.map((inc, i) => (
-                    <div key={i} className="grid grid-cols-[150px_1fr_28px] items-end gap-1.5">
+                    <div key={i} className="grid grid-cols-[minmax(120px,190px)_1fr_28px] items-end gap-1.5">
                       <Select
                         items={comoItems(TIPOS_INCIDENCIA)}
                         value={inc.tipo}
@@ -605,7 +638,7 @@ export function FormularioCierre({
             </>
           )}
         </div>
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -46,11 +46,15 @@ function valoresParte(datos: DatosCierre, otId: number): Record<string, unknown>
   };
 }
 
-async function crearLineasManoObra(parteId: number, datos: DatosCierre): Promise<number> {
+// La fecha de la línea NO es decorativa: Odoo busca con ella la tarifa vigente. Sin
+// fecha, el costo del flete sale CERO (medido contra la instancia real). Va en todas
+// las líneas que la tienen, aunque el valor lo siga calculando Odoo.
+async function crearLineasManoObra(parteId: number, datos: DatosCierre, fecha: string): Promise<number> {
   if (datos.estado !== "ejecutado" || datos.manoObra.length === 0) return 0;
   const ids = await executeKw<number | number[]>("x_aba_mano_obra", "create", [
     datos.manoObra.map((l) => ({
       x_parte_diario_id: parteId,
+      x_fecha: fecha,
       x_tarea: l.tarea,
       x_personas: l.personas,
       x_hora_desde: l.horaDesde,
@@ -60,10 +64,11 @@ async function crearLineasManoObra(parteId: number, datos: DatosCierre): Promise
   return Array.isArray(ids) ? ids.length : 1;
 }
 
-async function crearLineasFlete(parteId: number, datos: DatosCierre): Promise<number> {
+async function crearLineasFlete(parteId: number, datos: DatosCierre, fecha: string): Promise<number> {
   if (datos.estado !== "ejecutado" || !datos.flete || datos.flete.cantidad <= 0) return 0;
   await create("x_aba_flete", {
     x_parte_diario_id: parteId,
+    x_fecha: fecha,
     x_cantidad: datos.flete.cantidad,
     x_tercerizado: datos.flete.tercerizado,
     // x_costo_manual solo tiene sentido en el tercerizado; el propio lo tarifa Odoo.
@@ -176,14 +181,14 @@ export async function cerrarJornada(
 
   // ── 2..5) Las líneas ───────────────────────────────────────────────────────
   try {
-    const n = await crearLineasManoObra(parteId, datos);
+    const n = await crearLineasManoObra(parteId, datos, fecha);
     if (n > 0) registrar("Personal y horarios", true, `${n} línea${n === 1 ? "" : "s"}`);
   } catch (e) {
     registrar("Personal y horarios", false, mensaje(e));
   }
 
   try {
-    const n = await crearLineasFlete(parteId, datos);
+    const n = await crearLineasFlete(parteId, datos, fecha);
     if (n > 0) registrar("Fletes", true);
   } catch (e) {
     registrar("Fletes", false, mensaje(e));
@@ -277,8 +282,8 @@ export async function editarParte(parteId: number, datos: DatosCierre, otId: num
   pasos.push({ nombre: "Parte diario actualizado", ok: true, detalle: `#${parteId}` });
 
   await borrarLineas(parteId);
-  await crearLineasManoObra(parteId, datos);
-  await crearLineasFlete(parteId, datos);
+  await crearLineasManoObra(parteId, datos, datos.fecha);
+  await crearLineasFlete(parteId, datos, datos.fecha);
   await crearLineasIncidencia(parteId, datos);
   pasos.push({ nombre: "Líneas reemplazadas", ok: true });
 

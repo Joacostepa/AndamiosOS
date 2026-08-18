@@ -205,9 +205,11 @@ export function TarjetaAsignacion({
       {...listeners}
       role="button"
       tabIndex={0}
-      onClick={onAbrir}
+      // Con el menú abierto la tarjeta no responde: el clic que lo cierra no tiene que
+      // abrir además el panel de la OT.
+      onClick={() => !menuAbierto && onAbrir()}
       onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
+        if ((e.key === "Enter" || e.key === " ") && !menuAbierto) {
           e.preventDefault();
           onAbrir();
         }

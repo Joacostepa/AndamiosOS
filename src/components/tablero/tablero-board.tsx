@@ -401,14 +401,17 @@ export function TableroBoard() {
               partes={data.partes}
               bloqueSeleccionado={panel?.bloqueKey ?? null}
               hoy={hoyISO}
-              onCerrarJornada={(b, accion: NonNullable<AccionCierre>) =>
+              onCerrarJornada={(b, accion: NonNullable<AccionCierre>) => {
+                // El panel de la OT y el modal de cierre no conviven: superpuestos se
+                // tapan entre sí y las dos capas de fondo dejan todo ilegible.
+                setPanel(null);
                 setCierre({
                   bloqueKey: b.key,
                   asignacionId: accion.asignacionId,
                   fecha: accion.fecha,
                   parteId: accion.tipo === "ver" ? accion.parteId : null,
-                })
-              }
+                });
+              }}
               onAbrirBloque={(b) => setPanel({ otId: b.otId, bloqueKey: b.key })}
               onFraccion={(b, f: FraccionStr) => actualizar.mutate({ ids: b.ids, cambio: { fraccion: f } })}
               onEstado={(b, estado) => actualizar.mutate({ ids: b.ids, cambio: { estado } })}

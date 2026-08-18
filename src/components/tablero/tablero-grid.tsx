@@ -8,29 +8,43 @@ import { TarjetaAsignacion } from "./tarjeta-asignacion";
 import { agruparBloques, esDomingo, repartirEnCarriles } from "@/lib/tablero/bloques";
 import { accionDeCierre, bloqueCerrado, type AccionCierre } from "@/lib/tablero/cierre";
 import { MOTIVOS_NO_EJEC } from "@/lib/tablero/tipos-parte";
-import { colorCuadrilla } from "@/lib/tablero/colores";
-import { ocupacionCelda, CAPACIDAD_DIARIA } from "@/lib/tablero/fracciones";
+import { colorCuadrilla, CORAL } from "@/lib/tablero/colores";
+import { ocupacionCelda, capacidadDelRango } from "@/lib/tablero/fracciones";
 import type { FraccionStr } from "@/lib/tablero/fracciones";
 import type { Bloque } from "@/lib/tablero/bloques";
 import type { AsignacionTablero, CuadrillaTablero, OtTablero, ParteTablero } from "@/lib/tablero/tipos";
 
-// Grilla semanal: filas = cuadrillas, columnas = días, celdas = asignaciones.
+// Grilla del tablero: filas = cuadrillas, columnas = días, celdas = asignaciones.
 //
 // El problema que resuelve la forma: una obra de varias jornadas se ve en TODOS los
 // días que ocupa, no solo el que arranca. Por eso cada fila es una sub-grilla de días
 // y las tarjetas se colocan con grid-column: span N sobre carriles (filas internas)
 // que evitan que dos obras del mismo día se pisen.
 //
-// Con 3 o 4 cuadrillas —el uso real— las filas se reparten todo el alto disponible.
-// Con muchas, la grilla scrollea y quedan fijos el encabezado y la columna izquierda.
+// El rango visible son varias semanas y la grilla scrollea en horizontal (v3): un bloque
+// que arranca el viernes y sigue el lunes se ve entero. Quedan fijos el encabezado de
+// días (vertical) y la columna de cuadrillas (horizontal); sin eso, scrollear a la
+// semana siguiente hace perder de vista de quién es cada fila.
+//
+// El alto de fila lo define el contenido —la cuadrilla con más carriles ocupados— con un
+// mínimo bajo. Antes el mínimo era 132px y con 5 cuadrillas había que scrollear en
+// vertical, que es justo la comparación que el planificador viene a hacer.
 
 const ANCHO_RECURSO = 168;
 const ANCHO_MIN_DIA = 132;
-const ALTO_BARRA = 20;
-/** Alto mínimo de fila: entran 3 o 4 tarjetas apiladas sin scroll interno. */
-const ALTO_MIN_FILA = 132;
+/** Domingo sin trabajo: una canaleta, no una columna. */
+const ANCHO_CANALETA = 28;
+/** Franja al pie de la celda donde vive el riel de ocupación. */
+const ALTO_BARRA = 10;
+const ALTO_CARRIL = 26;
+/** Piso del alto de fila. La fila crece con sus carriles; esto es sólo el mínimo. */
+const ALTO_MIN_FILA = 64;
 
 const DECIMAL = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 });
+
+function esLunes(fecha: string): boolean {
+  return parseISO(fecha).getDay() === 1;
+}
 
 export function TableroGrid({
   cuadrillas,
@@ -40,6 +54,7 @@ export function TableroGrid({
   partes,
   bloqueSeleccionado,
   hoy: hoyISO,
+  contenedorRef,
   onCerrarJornada,
   onAbrirBloque,
   onFraccion,
@@ -55,6 +70,8 @@ export function TableroGrid({
   bloqueSeleccionado: string | null;
   /** Fecha de hoy en yyyy-MM-dd: define desde cuándo se puede cerrar una jornada. */
   hoy: string;
+  /** El board maneja el scroll (snap de semana, semana centrada en el label). */
+  contenedorRef?: React.Ref<HTMLDivElement>;
   onCerrarJornada: (bloque: Bloque, accion: NonNullable<AccionCierre>) => void;
   onAbrirBloque: (bloque: Bloque) => void;
   onFraccion: (bloque: Bloque, f: FraccionStr) => void;
@@ -63,8 +80,30 @@ export function TableroGrid({
   onQuitar: (bloque: Bloque) => void;
 }) {
   const hoy = new Date();
-  const columnas = `${ANCHO_RECURSO}px repeat(${fechas.length}, minmax(${ANCHO_MIN_DIA}px, 1fr))`;
-  const anchoMinimo = ANCHO_RECURSO + fechas.length * ANCHO_MIN_DIA;
+
+  const enCelda = (cuadrillaId: number, fecha: string) =>
+    asignaciones.filter((a) => a.cuadrillaId === cuadrillaId && a.fecha === fecha);
+
+  // Un domingo se colapsa si NINGUNA cuadrilla visible tiene algo asignado. Así el ritmo
+  // de la semana no se mueve al scrollear —la columna está siempre— y un domingo
+  // trabajado se vuelve notorio justamente porque se ensancha.
+  const domingosActivos = new Set(
+    fechas.filter((f) => esDomingo(f) && cuadrillas.some((c) => enCelda(c.id, f).length > 0)),
+  );
+  const colapsado = (f: string) => esDomingo(f) && !domingosActivos.has(f);
+
+  // La plantilla externa impone los anchos; la interna los repite para que las celdas de
+  // cada fila caigan exactamente bajo su encabezado. En las columnas elásticas la interna
+  // usa minmax(0,1fr) y no el ancho mínimo: declararlo en las dos hace que difieran por
+  // redondeo y aparezca un scroll horizontal de 2px.
+  const plantillaExterna = fechas
+    .map((f) => (colapsado(f) ? `${ANCHO_CANALETA}px` : `minmax(${ANCHO_MIN_DIA}px, 1fr)`))
+    .join(" ");
+  const plantillaInterna = fechas
+    .map((f) => (colapsado(f) ? `${ANCHO_CANALETA}px` : "minmax(0, 1fr)"))
+    .join(" ");
+  const anchoMinimo =
+    ANCHO_RECURSO + fechas.reduce((s, f) => s + (colapsado(f) ? ANCHO_CANALETA : ANCHO_MIN_DIA), 0);
 
   // Jornadas ya ejecutadas (parte diario cargado): la tarjeta se atenúa.
   const ejecutadas = new Set(
@@ -74,30 +113,63 @@ export function TableroGrid({
   const etiquetaMotivo = (valor: string | null) =>
     MOTIVOS_NO_EJEC.find((m) => m.value === valor)?.label ?? valor;
 
-  const enCelda = (cuadrillaId: number, fecha: string) =>
-    asignaciones.filter((a) => a.cuadrillaId === cuadrillaId && a.fecha === fecha);
-
-  // La sobreasignación es la señal más importante del tablero, y dentro de una celda
-  // llena se pierde. Por eso sube también al encabezado del día y a la cuadrilla.
-  const diasSobreasignados = new Set(
-    fechas.filter((f) =>
-      cuadrillas.some((c) => ocupacionCelda(enCelda(c.id, f).map((a) => a.fraccion)).nivel === "sobre"),
+  // A nivel día sólo se avisa cuando TODAS las cuadrillas visibles están sobre: ahí el
+  // problema es del día y no de una fila. Que una sola esté sobreasignada ya lo dice su
+  // propia celda, y repetirlo arriba era el mismo dato dos veces.
+  const diasTodasSobre = new Set(
+    fechas.filter(
+      (f) =>
+        cuadrillas.length > 0 &&
+        cuadrillas.every(
+          (c) => ocupacionCelda(enCelda(c.id, f).map((a) => a.fraccion)).nivel === "sobre",
+        ),
     ),
   );
 
-  const hayAlgoAsignado = cuadrillas.some((c) =>
-    fechas.some((f) => enCelda(c.id, f).length > 0),
-  );
+  const hayAlgoAsignado = cuadrillas.some((c) => fechas.some((f) => enCelda(c.id, f).length > 0));
+
+  // El alto de cada fila sale de sus carriles. Se calcula antes del render de las filas
+  // porque la plantilla de la grilla los necesita todos juntos.
+  const porCuadrilla = cuadrillas.map((cuadrilla, indice) => {
+    const deLaCuadrilla = asignaciones.filter((a) => a.cuadrillaId === cuadrilla.id);
+    const ubicados = repartirEnCarriles(agruparBloques(deLaCuadrilla), fechas);
+    const carriles = Math.max(1, ...ubicados.map((u) => u.carril + 1));
+    return {
+      cuadrilla,
+      indice,
+      deLaCuadrilla,
+      ubicados,
+      carriles,
+      alto: Math.max(ALTO_MIN_FILA, carriles * ALTO_CARRIL + ALTO_BARRA + 8),
+    };
+  });
 
   return (
-    <div className="relative min-h-0 min-w-0 flex-1 overflow-auto">
+    <div ref={contenedorRef} className="relative min-h-0 min-w-0 flex-1 overflow-auto">
+      {/* Rango sin nada planificado: en vez de una grilla muda, qué hacer.
+          Va sticky y de alto cero como PRIMER hijo del contenedor: con el scroll
+          horizontal de varias semanas, un `absolute inset-0` se centraría sobre los
+          ~2900px de contenido y quedaría fuera de pantalla. No captura el puntero, así
+          que las celdas de abajo siguen aceptando el arrastre. */}
+      {!hayAlgoAsignado && (
+        <div className="pointer-events-none sticky left-0 top-0 z-10 h-0 w-0 overflow-visible">
+          <div
+            className="absolute flex w-max items-center gap-2 rounded-lg border bg-card/95 px-4 py-3 text-sm text-muted-foreground shadow-sm"
+            style={{ left: ANCHO_RECURSO + 24, top: 64 }}
+          >
+            <MousePointerClick className="h-4 w-4" />
+            Nada planificado en este rango: arrastrá una obra del panel derecho a un día.
+          </div>
+        </div>
+      )}
+
       <div
         className="grid min-h-full"
         style={{
-          gridTemplateColumns: columnas,
-          // Las filas crecen para repartirse el alto; con muchas cuadrillas cae al
-          // mínimo y aparece el scroll vertical.
-          gridTemplateRows: `40px repeat(${cuadrillas.length}, minmax(${ALTO_MIN_FILA}px, 1fr))`,
+          gridTemplateColumns: `${ANCHO_RECURSO}px ${plantillaExterna}`,
+          // El mínimo lo pone el contenido; el 1fr reparte lo que sobre cuando hay pocas
+          // cuadrillas. Nunca al revés: un mínimo alto es lo que forzaba el scroll.
+          gridTemplateRows: `40px ${porCuadrilla.map((c) => `minmax(${c.alto}px, 1fr)`).join(" ")}`,
           minWidth: anchoMinimo,
         }}
       >
@@ -108,83 +180,111 @@ export function TableroGrid({
         {fechas.map((f) => {
           const d = parseISO(f);
           const esHoy = isSameDay(d, hoy);
-          const sobre = diasSobreasignados.has(f);
+          const canaleta = colapsado(f);
+          const domingoActivo = domingosActivos.has(f);
           return (
             <div
               key={`h-${f}`}
-              className="sticky top-0 z-20 flex h-10 items-center justify-center gap-1.5 border-b border-r"
-              style={{ backgroundColor: esHoy ? "#FAECE7" : "var(--card)" }}
+              data-fecha={f}
+              className="sticky top-0 z-20 flex h-10 items-center justify-center gap-1.5 border-b border-r bg-card"
+              style={{
+                // Separador de semana: ubicarse sin tener que leer las fechas.
+                borderLeft: esLunes(f) ? "2px solid var(--border)" : undefined,
+                backgroundColor: canaleta ? "#F1EFE8" : "var(--card)",
+              }}
             >
-              <span className="text-[10px] uppercase text-muted-foreground">
-                {format(d, "EEE", { locale: es })}
-              </span>
-              <span className="text-[13px] font-medium" style={esHoy ? { color: "#D85A30" } : undefined}>
-                {format(d, "d")}
-              </span>
-              {sobre && (
-                <span
-                  className="flex items-center gap-0.5 rounded px-1 text-[9px] font-semibold"
-                  style={{ backgroundColor: "#FDECEA", color: "#D92D20" }}
-                  title="Alguna cuadrilla está sobreasignada este día"
-                >
-                  <AlertTriangle className="h-2.5 w-2.5" />
-                  SOBRE
+              {canaleta ? (
+                <span className="text-[11px] text-muted-foreground" title={`Domingo ${format(d, "d MMM", { locale: es })} · sin trabajo`}>
+                  D
                 </span>
+              ) : (
+                <>
+                  {domingoActivo ? (
+                    // El domingo trabajado se nombra entero: es la excepción y tiene que
+                    // cantarse, no confundirse con un día más.
+                    <span className="flex flex-col items-center leading-none">
+                      <span className="text-[11px] text-muted-foreground">domingo</span>
+                      <span className="mt-0.5 text-[13px] font-medium">{format(d, "d")}</span>
+                    </span>
+                  ) : (
+                    <>
+                      <span className="text-[10px] uppercase text-muted-foreground">
+                        {format(d, "EEE", { locale: es })}
+                      </span>
+                      {/* Hoy sale del canal de FONDO: pintar la columna de rosado usaba el
+                          mismo canal que el estado de error y el día de hoy parecía roto. */}
+                      {esHoy ? (
+                        <span
+                          className="flex items-center justify-center px-1 text-[12px] font-semibold tabular-nums text-white"
+                          style={{ backgroundColor: CORAL, borderRadius: 10, height: 19, minWidth: 19 }}
+                        >
+                          {format(d, "d")}
+                        </span>
+                      ) : (
+                        <span className="text-[13px] font-medium">{format(d, "d")}</span>
+                      )}
+                    </>
+                  )}
+                  {diasTodasSobre.has(f) && (
+                    <AlertTriangle
+                      className="h-3 w-3 shrink-0"
+                      style={{ color: "#D92D20" }}
+                      aria-label="Todas las cuadrillas visibles están sobreasignadas este día"
+                    />
+                  )}
+                </>
               )}
             </div>
           );
         })}
 
         {/* ── Una fila por cuadrilla ── */}
-        {cuadrillas.map((cuadrilla, indice) => {
-          const deLaCuadrilla = asignaciones.filter((a) => a.cuadrillaId === cuadrilla.id);
-          const ubicados = repartirEnCarriles(agruparBloques(deLaCuadrilla), fechas);
-          const carriles = Math.max(1, ...ubicados.map((u) => u.carril + 1));
+        {porCuadrilla.map(({ cuadrilla, indice, deLaCuadrilla, ubicados, carriles }) => {
           const color = colorCuadrilla(indice);
 
-          // Carga de la semana visible (las asignaciones llegan con una semana de más a
-          // cada lado, para que los bloques que cruzan el borde lleguen enteros).
+          // Carga del rango visible (las asignaciones llegan con una semana de más a cada
+          // lado, para que los bloques que cruzan el borde lleguen enteros).
           const delRango = deLaCuadrilla.filter((a) => fechas.includes(a.fecha));
           const jornadas = ocupacionCelda(delRango.map((a) => a.fraccion)).total;
-          const sobreEnLaSemana = fechas.some(
-            (f) => ocupacionCelda(enCelda(cuadrilla.id, f).map((a) => a.fraccion)).nivel === "sobre",
-          );
-          const capacidadSemana = fechas.length * CAPACIDAD_DIARIA;
+          // El domingo suma capacidad sólo si ESTA cuadrilla trabaja ese domingo.
+          const conTrabajo = new Set(delRango.map((a) => a.fecha));
+          const capacidad = capacidadDelRango(fechas, conTrabajo);
+          const exceso = Number((jornadas - capacidad).toFixed(2));
 
           return (
             <div key={cuadrilla.id} className="contents">
               <div
-                className="sticky left-0 z-20 flex flex-col justify-center gap-1 border-b border-r bg-card px-2 py-1.5"
+                className="sticky left-0 z-20 flex flex-col justify-center gap-0.5 border-b border-r bg-card px-2 py-1.5"
                 style={{ borderLeft: `3px solid ${color.borde}` }}
               >
                 <p className="truncate text-[12px] font-medium" title={cuadrilla.nombre}>
                   {cuadrilla.nombre}
+                  {cuadrilla.tercerizada && (
+                    <span className="ml-1 text-[10px] font-normal text-muted-foreground">terc.</span>
+                  )}
                 </p>
-                <p className="text-[10px] text-muted-foreground">
-                  {DECIMAL.format(jornadas)} de {capacidadSemana} jornadas
-                  {cuadrilla.tercerizada ? " · terc." : ""}
+                {/* La carga como NÚMERO y no como badge. "9,75 de 6 jornadas" se leía mal:
+                    el numerador está en jornadas-carga y el denominador en días hábiles. */}
+                <p
+                  className={`text-[10px] tabular-nums ${exceso > 0 ? "font-semibold text-destructive" : "text-muted-foreground"}`}
+                  title={
+                    exceso > 0
+                      ? "Sobreasignada: la carga supera los días con capacidad del rango visible"
+                      : undefined
+                  }
+                >
+                  {DECIMAL.format(jornadas)} / {capacidad}
+                  {exceso > 0 && ` · +${DECIMAL.format(exceso)}`}
+                  {jornadas === 0 && " · libre"}
                 </p>
-                {sobreEnLaSemana && (
-                  <span
-                    className="flex w-fit items-center gap-1 rounded px-1 text-[9px] font-semibold"
-                    style={{ backgroundColor: "#FDECEA", color: "#D92D20" }}
-                    title="Sobreasignada en algún día de la semana"
-                  >
-                    <AlertTriangle className="h-2.5 w-2.5" />
-                    SOBREASIGNADA
-                  </span>
-                )}
               </div>
 
               <div style={{ gridColumn: "2 / -1" }}>
                 <div
                   className="grid h-full"
                   style={{
-                    // minmax(0,1fr) y no el ancho mínimo: ese ya lo impone la grilla
-                    // externa. Declararlo en las dos hace que difieran por redondeo y
-                    // aparezca un scroll horizontal de 2px.
-                    gridTemplateColumns: `repeat(${fechas.length}, minmax(0, 1fr))`,
-                    gridTemplateRows: `repeat(${carriles}, minmax(30px, auto)) 1fr ${ALTO_BARRA}px`,
+                    gridTemplateColumns: plantillaInterna,
+                    gridTemplateRows: `repeat(${carriles}, minmax(${ALTO_CARRIL}px, auto)) 1fr ${ALTO_BARRA}px`,
                   }}
                 >
                   {fechas.map((f, i) => (
@@ -193,8 +293,9 @@ export function TableroGrid({
                       cuadrillaId={cuadrilla.id}
                       fecha={f}
                       columna={i}
-                      esHoy={isSameDay(parseISO(f), hoy)}
                       esDomingo={esDomingo(f)}
+                      colapsada={colapsado(f)}
+                      inicioSemana={esLunes(f)}
                       fracciones={enCelda(cuadrilla.id, f).map((a) => a.fraccion)}
                     />
                   ))}
@@ -205,31 +306,30 @@ export function TableroGrid({
                       ? partesPorId.get(bloque.partes.find((x) => x != null) as number)
                       : undefined;
                     return (
-                    <TarjetaAsignacion
-                      key={bloque.key}
-                      bloque={bloque}
-                      ot={ots.get(bloque.otId)}
-                      colocacion={colocacion}
-                      carril={carril}
-                      indiceColor={indice}
-                      seleccionada={bloqueSeleccionado === bloque.key}
-                      ejecutada={bloque.fechas.some((f) => ejecutadas.has(`${bloque.otId}:${f}`))}
-                      cierre={
-                        parteDelBloque
-                          ? {
-                              estado: parteDelBloque.estado === "no_ejecutado" ? "no_ejecutado" : "ejecutado",
-                              motivoLabel: etiquetaMotivo(parteDelBloque.motivoNoEjec),
-                            }
-                          : null
-                      }
-                      accionCierre={accion}
-                      onCerrarJornada={(a) => onCerrarJornada(bloque, a)}
-                      onAbrir={() => onAbrirBloque(bloque)}
-                      onFraccion={(f) => onFraccion(bloque, f)}
-                      onEditarJornadas={() => onEditarJornadas(bloque)}
-                      onEstado={(e) => onEstado(bloque, e)}
-                      onQuitar={() => onQuitar(bloque)}
-                    />
+                      <TarjetaAsignacion
+                        key={bloque.key}
+                        bloque={bloque}
+                        ot={ots.get(bloque.otId)}
+                        colocacion={colocacion}
+                        carril={carril}
+                        seleccionada={bloqueSeleccionado === bloque.key}
+                        ejecutada={bloque.fechas.some((f) => ejecutadas.has(`${bloque.otId}:${f}`))}
+                        cierre={
+                          parteDelBloque
+                            ? {
+                                estado: parteDelBloque.estado === "no_ejecutado" ? "no_ejecutado" : "ejecutado",
+                                motivoLabel: etiquetaMotivo(parteDelBloque.motivoNoEjec),
+                              }
+                            : null
+                        }
+                        accionCierre={accion}
+                        onCerrarJornada={(a) => onCerrarJornada(bloque, a)}
+                        onAbrir={() => onAbrirBloque(bloque)}
+                        onFraccion={(f) => onFraccion(bloque, f)}
+                        onEditarJornadas={() => onEditarJornadas(bloque)}
+                        onEstado={(e) => onEstado(bloque, e)}
+                        onQuitar={() => onQuitar(bloque)}
+                      />
                     );
                   })}
                 </div>
@@ -238,17 +338,6 @@ export function TableroGrid({
           );
         })}
       </div>
-
-      {/* Semana sin nada planificado: en vez de una grilla muda, qué hacer. No captura
-          el puntero, así que las celdas de abajo siguen aceptando el arrastre. */}
-      {!hayAlgoAsignado && (
-        <div className="pointer-events-none absolute inset-0 top-10 flex items-center justify-center">
-          <div className="flex items-center gap-2 rounded-lg border bg-card/95 px-4 py-3 text-sm text-muted-foreground shadow-sm">
-            <MousePointerClick className="h-4 w-4" />
-            Semana sin planificar: arrastrá una obra del panel derecho a un día.
-          </div>
-        </div>
-      )}
     </div>
   );
 }

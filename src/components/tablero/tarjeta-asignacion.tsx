@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
-import { ChevronLeft, ChevronRight, AlertTriangle, CalendarRange, Check, CircleCheck, CircleDashed, ClipboardCheck, MoreVertical, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, AlertTriangle, CalendarRange, Check, CircleCheck, CircleDashed, ClipboardCheck, MoreHorizontal, MoreVertical, Trash2 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { FRACCIONES, fraccionLabel, type FraccionStr } from "@/lib/tablero/fracciones";
-import { colorCuadrilla, semaforo, URGENCIA_ALTA_BORDE, CORAL } from "@/lib/tablero/colores";
+import { colorTipo, semaforo, URGENCIA_ALTA_BORDE, CORAL } from "@/lib/tablero/colores";
 import { partesTitulo } from "@/lib/tablero/titulo";
 import { jornadasLiberables } from "@/lib/tablero/cierre";
 import type { Bloque, Colocacion } from "@/lib/tablero/bloques";
@@ -35,11 +35,25 @@ export type AccionCierre =
 // Tarjeta de una asignación en la grilla. Una obra de varias jornadas es UNA tarjeta
 // que abarca las celdas contiguas (grid-column: span N): se arrastra completa.
 //
-// Lenguaje visual (spec §2):
-//   confirmada → fondo sólido con el color de la cuadrilla
-//   tentativa  → borde punteado y fondo transparente (borrador, pero ocupa capacidad)
-//   urgencia alta → franja roja a la izquierda
-//   habilitación  → punto de color en la esquina
+// Lenguaje visual (v3). Cada canal codifica UNA cosa y sólo una:
+//   fondo + ícono → TIPO de OT (armado sube, desarme baja, resto neutro)
+//   borde punteado + fondo transparente → tentativa (borrador, pero ocupa capacidad)
+//   franja izquierda → semáforo de habilitación
+//   triángulo rojo   → urgencia alta
+//
+// El tipo y el estado son canales INDEPENDIENTES: una tentativa de armado conserva el
+// ícono y el color de texto del armado, y sólo pierde el relleno.
+
+const ICONO_TIPO = { arriba: ArrowUp, abajo: ArrowDown, otro: MoreHorizontal } as const;
+
+const LABEL_TIPO: Record<string, string> = {
+  armado: "Armado",
+  desarme: "Desarme",
+};
+
+function labelTipo(tipo: string | null | undefined): string {
+  return LABEL_TIPO[tipo ?? ""] ?? "Sin tipo definido";
+}
 
 /**
  * Cuerpo de la tarjeta. Densidad pensada para que entren 3 o 4 apiladas en una celda:
@@ -51,7 +65,6 @@ export type AccionCierre =
 export function ContenidoTarjeta({
   ot,
   bloque,
-  indiceColor,
   compacta = false,
   vieneDeAntes = false,
   sigueDespues = false,
@@ -59,7 +72,6 @@ export function ContenidoTarjeta({
 }: {
   ot: OtTablero | undefined;
   bloque: Pick<Bloque, "estado" | "fraccion" | "fechas" | "multiDia">;
-  indiceColor: number;
   compacta?: boolean;
   /** El bloque empieza antes / termina después de la semana visible. */
   vieneDeAntes?: boolean;
@@ -67,12 +79,17 @@ export function ContenidoTarjeta({
   /** Cierre de la jornada, si ya se cargó el parte. */
   cierre?: EstadoCierre | null;
 }) {
-  const color = colorCuadrilla(indiceColor);
+  const tipo = colorTipo(ot?.tipo);
+  const IconoTipo = ICONO_TIPO[tipo.icono];
   const confirmada = bloque.estado === "confirmada";
   const sem = semaforo(ot?.habSemaforo);
   const urgente = ot?.urgencia === "alta";
   const partes = partesTitulo(ot?.titulo ?? "OT");
   const noEjecutada = cierre?.estado === "no_ejecutado";
+  // El texto conserva el color del tipo aunque el relleno no esté: el tipo se lee igual
+  // en una tentativa. Sobre el fondo blanco de la tentativa estos tonos oscuros
+  // contrastan de sobra.
+  const colorTexto = noEjecutada ? "#7A271A" : tipo.text;
 
   return (
     <div
@@ -81,16 +98,16 @@ export function ContenidoTarjeta({
         compacta && "shadow-md",
       )}
       style={{
-        // Solo la confirmada lleva el color de la cuadrilla. La tentativa es un
-        // borrador: queda neutra para que el color signifique "esto ya está firme".
-        backgroundColor: noEjecutada ? "#FDECEA" : confirmada ? color.bg : "var(--card)",
+        // El relleno es el canal del ESTADO: sólido = confirmada, transparente =
+        // tentativa. El tono de ese relleno es el canal del TIPO.
+        backgroundColor: noEjecutada ? "#FDECEA" : confirmada ? tipo.bg : "var(--card)",
         border: noEjecutada
           ? "1px solid #D92D20"
           : confirmada
-            ? `1px solid ${color.borde}`
+            ? "1px solid transparent"
             : "1px dashed var(--border)",
-        // La franja izquierda pasa a ser el semáforo de habilitación: aplica siempre y
-        // es lo que más se mira. Un punto de 6px se perdía con la grilla llena.
+        // La franja izquierda es el semáforo de habilitación: aplica siempre y es lo que
+        // más se mira. Un punto de 6px se perdía con la grilla llena.
         borderLeft: `5px solid ${noEjecutada ? "#D92D20" : sem.color}`,
       }}
     >
@@ -98,8 +115,15 @@ export function ContenidoTarjeta({
         {/* Las flechas de continuidad van EN LÍNEA y no absolutas: colgadas del borde
             se salían de la grilla y generaban scroll horizontal. */}
         {vieneDeAntes && (
-          <ChevronLeft className="h-3 w-3 shrink-0 self-center" style={{ color: color.text }} />
+          <ChevronLeft className="h-3 w-3 shrink-0 self-center" style={{ color: colorTexto }} />
         )}
+        {/* El ícono de tipo va SIEMPRE, incluso en la variante compacta: es lo último que
+            se sacrifica por espacio. Antes se corta el nombre. */}
+        <IconoTipo
+          className="h-3.5 w-3.5 shrink-0 self-center"
+          style={{ color: colorTexto }}
+          aria-hidden
+        />
         {cierre?.estado === "ejecutado" && (
           <CircleCheck className="h-3 w-3 shrink-0 self-center" style={{ color: "#639922" }} />
         )}
@@ -108,12 +132,12 @@ export function ContenidoTarjeta({
         )}
         <span
           className="min-w-0 flex-1 truncate text-[11px] font-medium leading-tight"
-          style={{ color: confirmada ? color.text : "var(--foreground)" }}
-          title={`${ot?.titulo ?? ""} — ${sem.label}`}
+          style={{ color: colorTexto }}
+          title={`${labelTipo(ot?.tipo)} — ${ot?.titulo ?? ""} — ${sem.label}`}
         >
           {partes.principal}
         </span>
-        <span className="shrink-0 text-[10px] font-semibold tabular-nums" style={{ color: color.text }}>
+        <span className="shrink-0 text-[10px] font-semibold tabular-nums" style={{ color: colorTexto }}>
           {bloque.multiDia ? `${bloque.fechas.length}j` : fraccionLabel(bloque.fraccion)}
         </span>
         {urgente && (
@@ -123,18 +147,17 @@ export function ContenidoTarjeta({
           />
         )}
         {sigueDespues && (
-          <ChevronRight className="h-3 w-3 shrink-0 self-center" style={{ color: color.text }} />
+          <ChevronRight className="h-3 w-3 shrink-0 self-center" style={{ color: colorTexto }} />
         )}
       </div>
 
       <p
         className="truncate text-[9px] leading-tight"
-        style={{ color: confirmada ? color.text : "var(--muted-foreground)", opacity: confirmada ? 0.75 : 1 }}
+        style={{ color: colorTexto, opacity: 0.75 }}
       >
-        {/* Ya no dice "tentativa": lo comunica la tarjeta sin color y el borde
-            punteado. La línea se usa para lo que identifica la obra. */}
+        {/* El tipo ya no va en texto: lo dice el ícono, y repetirlo gastaba el ancho que
+            necesita la dirección. Tampoco dice "tentativa": lo comunica el borde. */}
         {[
-          partes.tipo,
           partes.cliente,
           ot?.tecnico,
           noEjecutada ? (cierre?.motivoLabel ?? "no ejecutada") : null,
@@ -151,7 +174,6 @@ export function TarjetaAsignacion({
   ot,
   colocacion,
   carril,
-  indiceColor,
   seleccionada,
   ejecutada,
   cierre,
@@ -167,7 +189,6 @@ export function TarjetaAsignacion({
   ot: OtTablero | undefined;
   colocacion: Colocacion;
   carril: number;
-  indiceColor: number;
   seleccionada: boolean;
   ejecutada: boolean;
   cierre: EstadoCierre | null;
@@ -236,7 +257,6 @@ export function TarjetaAsignacion({
       <ContenidoTarjeta
         ot={ot}
         bloque={bloque}
-        indiceColor={indiceColor}
         vieneDeAntes={colocacion.vieneDeAntes}
         sigueDespues={colocacion.sigueDespues}
         cierre={cierre}

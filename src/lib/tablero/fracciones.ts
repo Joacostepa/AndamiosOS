@@ -4,6 +4,8 @@
 // diaria de una cuadrilla es 1,00. La suma puede superarla —a veces la jornada se
 // estira— pero se marca en rojo: se permite y se advierte, no se bloquea.
 
+import { parseISO } from "date-fns";
+
 export type FraccionStr = "0.10" | "0.25" | "0.50" | "0.75" | "1";
 
 export const FRACCIONES: { value: FraccionStr; label: string; detalle: string }[] = [
@@ -15,6 +17,21 @@ export const FRACCIONES: { value: FraccionStr; label: string; detalle: string }[
 ];
 
 export const CAPACIDAD_DIARIA = 1;
+
+/**
+ * Capacidad de una cuadrilla sobre un rango de días.
+ *
+ * REGLA DE NEGOCIO: el domingo no suma capacidad salvo que esa cuadrilla tenga trabajo
+ * ese día. Si no, un domingo trabajado se leería como sobreasignación cuando en realidad
+ * es capacidad extra que alguien decidió poner.
+ *
+ * `conTrabajo` son las fechas en las que ESA fila tiene algo asignado, no el tablero
+ * entero: que otra cuadrilla trabaje el domingo no le agrega capacidad a esta.
+ */
+export function capacidadDelRango(fechas: string[], conTrabajo: Set<string>): number {
+  const dias = fechas.filter((f) => parseISO(f).getDay() !== 0 || conTrabajo.has(f)).length;
+  return dias * CAPACIDAD_DIARIA;
+}
 
 const GLIFOS: Record<string, string> = {
   "0.1": "mín",

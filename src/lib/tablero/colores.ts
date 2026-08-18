@@ -8,7 +8,12 @@ export { CORAL, ACENTO_BG };
 
 export type ColorCuadrilla = { bg: string; borde: string; text: string; suave: string };
 
-// Una tarjeta se pinta con el color de SU cuadrilla (spec §2), no con el tipo de OT.
+// El color de cuadrilla identifica la FILA, no la tarjeta (v3 invierte el criterio de
+// spec §2). Las filas ya son las cuadrillas: una tarjeta que está en la fila de
+// Cuadrilla 3 no puede ser de otra, así que el fondo —el canal más fuerte que hay—
+// estaba gastado en repetir lo que la posición ya decía. Ahora codifica el tipo de OT,
+// que es lo que el jefe de obra necesita leer rápido. Ver TIPO_OT más abajo.
+//
 // La paleta cicla: alcanza para las ~8 filas del diseño y tolera las 15 cuadrillas
 // activas que hoy tiene Odoo.
 const PALETA: ColorCuadrilla[] = [
@@ -26,6 +31,28 @@ export function colorCuadrilla(indice: number): ColorCuadrilla {
   return PALETA[((indice % PALETA.length) + PALETA.length) % PALETA.length];
 }
 
+// ── Tipo de OT ───────────────────────────────────────────────────────────────
+//
+// El tipo se distingue por DIRECCIÓN antes que por color: armado sube, desarme baja.
+// Una franja de 3px de color no alcanza —se pierde a la escala de la tarjeta y no
+// funciona para daltónicos— así que la señal primaria es la forma y el color acompaña.
+
+export type ColorTipo = { bg: string; text: string; icono: "arriba" | "abajo" | "otro" };
+
+// Medido contra Odoo (1003 OTs): desarme 444 (44,3%), armado 315 (31,4%), otro 244 (24,3%).
+// mantenimiento / ampliacion / desmonte_parcial existen en el modelo pero no se usan:
+// caen en el gris neutro hasta que aparezcan.
+export const TIPO_OT: Record<string, ColorTipo> = {
+  armado: { bg: "#E6F1FB", text: "#0C447C", icono: "arriba" },
+  desarme: { bg: "#FAEEDA", text: "#633806", icono: "abajo" },
+};
+
+export const TIPO_OT_NEUTRO: ColorTipo = { bg: "#F1EFE8", text: "#5F5E5A", icono: "otro" };
+
+export function colorTipo(tipo: string | null | undefined): ColorTipo {
+  return TIPO_OT[tipo ?? ""] ?? TIPO_OT_NEUTRO;
+}
+
 // Semáforo de habilitación (x_hab_semaforo). Se ve como un punto en la esquina de la
 // tarjeta: advierte, no bloquea — las obras sin habilitar entran igual al tablero.
 export const SEMAFORO: Record<string, { color: string; label: string }> = {
@@ -40,12 +67,17 @@ export function semaforo(valor: string | null | undefined) {
   return SEMAFORO[valor ?? "gris"] ?? SEMAFORO.gris;
 }
 
-// Color de la barra de ocupación de la celda.
+// La barra es UNA sola señal: cuánto de la capacidad diaria está ocupado, y si se pasó.
+// Antes el parcial iba en ámbar, que competía con el ámbar de desarme dentro de la misma
+// celda y además marcaba como alerta algo que no lo es: una celda al 50% está bien.
+// Parcial y completa comparten color; lo que cambia es el ancho del relleno.
 export function colorOcupacion(nivel: "libre" | "parcial" | "completa" | "sobre"): string {
   if (nivel === "sobre") return "#D92D20";
-  if (nivel === "completa") return CORAL;
-  if (nivel === "parcial") return "#EF9F27";
-  return "transparent";
+  if (nivel === "libre") return "transparent";
+  return "#B4B2A9";
 }
+
+/** Riel de la barra de ocupación: se dibuja siempre, a ancho completo de la celda. */
+export const RIEL_OCUPACION = "#E8E6DF";
 
 export const URGENCIA_ALTA_BORDE = "#D92D20";

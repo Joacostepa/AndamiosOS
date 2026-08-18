@@ -1,14 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { format, parseISO } from "date-fns";
+import { addDays, format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
-import { CircleCheck, Lock, Plus, Trash2 } from "lucide-react";
+import { CalendarPlus, CircleCheck, Lock, Plus, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FRACCIONES, ocupacionCelda, type FraccionStr, aFraccionStr } from "@/lib/tablero/fracciones";
-import { siguienteDiaLaboral } from "@/lib/tablero/bloques";
+import { esDomingo, siguienteDiaLaboral } from "@/lib/tablero/bloques";
 import { CORAL } from "@/lib/tablero/colores";
 import type { Bloque } from "@/lib/tablero/bloques";
 import type { OtTablero } from "@/lib/tablero/tipos";
@@ -104,6 +104,27 @@ export function DialogoJornadas({
     });
   }
 
+  /**
+   * Agregar el domingo que `agregarJornada` saltea. Es la otra vía —además del drop
+   * explícito sobre la columna— para planificar un domingo: a veces se trabaja, y desde
+   * acá se puede aunque la obra ya esté asignada y fuera de la bandeja.
+   */
+  function agregarDomingo() {
+    setFilas((prev) => {
+      const ultima = prev[prev.length - 1];
+      const base = ultima ? ultima.fecha : bloque!.fechas[0];
+      const siguiente = format(addDays(parseISO(base), 1), "yyyy-MM-dd");
+      return [...prev, { asignacionId: null, fecha: siguiente, fraccion: "1", cerrada: false }];
+    });
+  }
+
+  // Sólo se ofrece cuando el día que sigue al último ES domingo: en cualquier otro caso
+  // "agregar jornada" ya cae en el día correcto y un segundo botón sería ruido.
+  const ultimaFila = filas[filas.length - 1];
+  const sigueDomingo = ultimaFila
+    ? esDomingo(format(addDays(parseISO(ultimaFila.fecha), 1), "yyyy-MM-dd"))
+    : false;
+
   return (
     <Dialog open={abierto} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
@@ -160,10 +181,24 @@ export function DialogoJornadas({
         </div>
 
         <div className="flex items-center justify-between gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={agregarJornada}>
-            <Plus className="mr-1 h-3.5 w-3.5" />
-            Agregar jornada
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={agregarJornada}>
+              <Plus className="mr-1 h-3.5 w-3.5" />
+              Agregar jornada
+            </Button>
+            {sigueDomingo && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={agregarDomingo}
+                title="La obra sigue el domingo en vez de saltear al lunes"
+              >
+                <CalendarPlus className="mr-1 h-3.5 w-3.5" />
+                Trabajar el domingo
+              </Button>
+            )}
+          </div>
           <span className="text-xs text-muted-foreground">
             {total} jornada{total === 1 ? "" : "s"} en {filas.length} día{filas.length === 1 ? "" : "s"}
           </span>

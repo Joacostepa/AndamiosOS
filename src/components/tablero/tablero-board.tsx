@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -13,7 +13,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { addDays, format, startOfWeek } from "date-fns";
+import { addDays, format, parseISO, startOfWeek } from "date-fns";
 import { es } from "date-fns/locale";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -49,6 +49,13 @@ import type { MovimientoAsignacion, NuevaAsignacion, TableroPayload } from "@/li
 
 const CLAVE_CUADRILLAS = "tablero:cuadrillas";
 const CLAVE_PANEL = "tablero:panel-colapsado";
+
+/** Ancho de la columna fija de cuadrillas: hay que descontarlo al hacer snap de semana. */
+const ANCHO_RECURSO = 168;
+/** A cuántos px del borde del scroll se carga otra semana. */
+const UMBRAL_BORDE = 240;
+
+const iso = (d: Date) => format(d, "yyyy-MM-dd");
 
 function leerVisiblesGuardadas(): number[] | null {
   if (typeof window === "undefined") return null;
@@ -88,7 +95,18 @@ const detectarColision: CollisionDetection = (args) => {
 };
 
 export function TableroBoard() {
-  const [lunes, setLunes] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
+  // El ancla es el lunes de esta semana y no se mueve: la navegación es scroll, no
+  // paginado. `semanas` dice cuántas hay cargadas a cada lado; crecen al llegar al borde.
+  const [ancla] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
+  const [semanas, setSemanas] = useState({ antes: 1, despues: 1 });
+  const [fechaCentrada, setFechaCentrada] = useState(() => iso(ancla));
+  // Semana a la que hay que ir apenas termine de cargarse. Va en ref y no en estado: es
+  // una intención pendiente, no algo que se pinte, y como estado forzaba un render de más.
+  const pendienteScroll = useRef<string | null>(null);
+  const contenedor = useRef<HTMLDivElement | null>(null);
+  // Al agregar una semana ANTES, el contenido se corre a la derecha: hay que compensar
+  // el scroll o la vista salta sola hacia atrás justo mientras el usuario arrastra.
+  const anchoPrevio = useRef<number | null>(null);
   const [visibles, setVisibles] = useState<number[] | null>(leerVisiblesGuardadas);
   const [panel, setPanel] = useState<{ otId: number; bloqueKey: string | null } | null>(null);
   const [jornadasDe, setJornadasDe] = useState<string | null>(null);
@@ -105,11 +123,16 @@ export function TableroBoard() {
     { tipo: "ot"; otId: number } | { tipo: "bloque"; bloque: Bloque } | null
   >(null);
 
-  // Se pide una semana de más a cada lado: una obra que arranca el jueves anterior y
-  // termina el martes tiene que llegar entera, o al arrastrarla se moverían solo los
-  // días visibles. Las columnas siguen siendo las de esta semana.
-  const desde = format(addDays(lunes, -7), "yyyy-MM-dd");
-  const hasta = format(addDays(lunes, 13), "yyyy-MM-dd");
+  // Inicio del rango visible y su largo en días. Domingos incluidos: la grilla los
+  // colapsa a una canaleta cuando no hay trabajo, pero la columna existe siempre.
+  const inicioVisible = useMemo(() => addDays(ancla, -7 * semanas.antes), [ancla, semanas.antes]);
+  const diasVisibles = (semanas.antes + 1 + semanas.despues) * 7;
+
+  // Se pide una semana de más a cada lado del rango VISIBLE: una obra que arranca justo
+  // antes del borde tiene que llegar entera, o al arrastrarla se moverían solo los días
+  // visibles.
+  const desde = iso(addDays(inicioVisible, -7));
+  const hasta = iso(addDays(inicioVisible, diasVisibles + 6));
 
   const { data, isLoading, isFetching, error, refetch } = useTablero(desde, hasta);
   const crear = useCrearAsignaciones();
@@ -144,13 +167,101 @@ export function TableroBoard() {
     }
   }
 
-  // Lunes a sábado. El domingo aparece solo si tiene algo asignado: no se trabaja.
-  const fechas = useMemo(() => {
-    const semana = Array.from({ length: 7 }, (_, i) => format(addDays(lunes, i), "yyyy-MM-dd"));
-    const domingo = semana[6];
-    const hayDomingo = (data?.asignaciones ?? []).some((a) => a.fecha === domingo);
-    return hayDomingo ? semana : semana.slice(0, 6);
-  }, [lunes, data]);
+  // Todas las fechas del rango, domingos incluidos. Quién se colapsa y quién no lo
+  // decide la grilla, que es la que sabe si ese domingo tiene trabajo.
+  const fechas = useMemo(
+    () => Array.from({ length: diasVisibles }, (_, i) => iso(addDays(inicioVisible, i))),
+    [inicioVisible, diasVisibles],
+  );
+
+  /** Lleva una fecha al borde izquierdo útil, salteando la columna fija de cuadrillas. */
+  const scrollAFecha = useCallback((fecha: string, suave = true) => {
+    const cont = contenedor.current;
+    const nodo = cont?.querySelector<HTMLElement>(`[data-fecha="${fecha}"]`);
+    if (!cont || !nodo) return;
+    // No se usa scrollIntoView: alinearía la columna contra el borde del contenedor, y
+    // ahí la tapa la columna sticky de cuadrillas.
+    cont.scrollTo({ left: nodo.offsetLeft - ANCHO_RECURSO, behavior: suave ? "smooth" : "auto" });
+  }, []);
+
+  // Compensación al prepender una semana: se corrige antes de pintar, así no se ve saltar.
+  useLayoutEffect(() => {
+    const cont = contenedor.current;
+    if (!cont || anchoPrevio.current === null) return;
+    const delta = cont.scrollWidth - anchoPrevio.current;
+    anchoPrevio.current = null;
+    if (delta > 0) cont.scrollLeft += delta;
+  }, [fechas]);
+
+  // El snap puede pedir una semana que todavía no está en el rango: se espera a que entre
+  // y recién ahí se scrollea. Corre después del efecto de compensación, que es de layout.
+  useEffect(() => {
+    const objetivo = pendienteScroll.current;
+    if (!objetivo || !fechas.includes(objetivo)) return;
+    pendienteScroll.current = null;
+    scrollAFecha(objetivo);
+  }, [fechas, scrollAFecha]);
+
+  // Arranca mostrando la semana actual, no la anterior que se carga de contexto.
+  //
+  // No sirve hacerlo al montar: mientras carga hay un skeleton y la grilla —dueña del
+  // contenedor de scroll— todavía no existe. Se espera a que aparezca, y se hace UNA vez:
+  // después manda el scroll del usuario.
+  const yaCentrado = useRef(false);
+  useEffect(() => {
+    if (yaCentrado.current || !data || !contenedor.current) return;
+    yaCentrado.current = true;
+    scrollAFecha(iso(ancla), false);
+  }, [data, ancla, scrollAFecha]);
+
+  const alScrollear = useCallback(() => {
+    const cont = contenedor.current;
+    if (!cont) return;
+
+    if (cont.scrollLeft < UMBRAL_BORDE) {
+      anchoPrevio.current = cont.scrollWidth;
+      setSemanas((s) => ({ ...s, antes: s.antes + 1 }));
+    } else if (cont.scrollLeft + cont.clientWidth > cont.scrollWidth - UMBRAL_BORDE) {
+      setSemanas((s) => ({ ...s, despues: s.despues + 1 }));
+    }
+
+    // Semana centrada en el viewport: es la que nombra el label de arriba. Se mide sobre
+    // el DOM y no con aritmética de scroll porque las columnas no son todas del mismo
+    // ancho (el domingo colapsado mide 28px).
+    const centro = ANCHO_RECURSO + (cont.clientWidth - ANCHO_RECURSO) / 2 + cont.scrollLeft;
+    let mejor: string | null = null;
+    let mejorDist = Infinity;
+    for (const nodo of cont.querySelectorAll<HTMLElement>("[data-fecha]")) {
+      const medio = nodo.offsetLeft + nodo.offsetWidth / 2;
+      const dist = Math.abs(medio - centro);
+      if (dist < mejorDist) {
+        mejorDist = dist;
+        mejor = nodo.dataset.fecha ?? null;
+      }
+    }
+    if (mejor) setFechaCentrada(mejor);
+  }, []);
+
+  /** Flechas: dejan de paginar y hacen snap a la semana anterior / siguiente. */
+  function irASemana(delta: number) {
+    const objetivo = addDays(startOfWeek(parseISO(fechaCentrada), { weekStartsOn: 1 }), delta * 7);
+    const objetivoISO = iso(objetivo);
+
+    // Si ya está cargada se va directo: sin cambio de estado no habría re-render, y el
+    // efecto que resuelve los pendientes nunca llegaría a correr.
+    if (fechas.includes(objetivoISO)) {
+      scrollAFecha(objetivoISO);
+      return;
+    }
+
+    pendienteScroll.current = objetivoISO;
+    if (objetivo < inicioVisible) {
+      anchoPrevio.current = contenedor.current?.scrollWidth ?? null;
+      setSemanas((s) => ({ ...s, antes: s.antes + 1 }));
+    } else {
+      setSemanas((s) => ({ ...s, despues: s.despues + 1 }));
+    }
+  }
 
   const otsPorId = useMemo(() => new Map((data?.ots ?? []).map((o) => [o.id, o])), [data]);
 
@@ -199,7 +310,27 @@ export function TableroBoard() {
 
   const hoyISO = format(new Date(), "yyyy-MM-dd");
 
-  const rangoLabel = `${format(lunes, "d MMM", { locale: es })} – ${format(addDays(lunes, 5), "d MMM yyyy", { locale: es })}`;
+  // El label ya no nombra un rango fijo: nombra la semana que está centrada en pantalla.
+  const lunesCentrado = startOfWeek(parseISO(fechaCentrada), { weekStartsOn: 1 });
+  const rangoLabel = `${format(lunesCentrado, "d MMM", { locale: es })} – ${format(addDays(lunesCentrado, 5), "d MMM yyyy", { locale: es })}`;
+
+  // El scroll vive dentro de TableroGrid, así que el listener se engancha a mano. `data`
+  // está en las dependencias porque el contenedor no existe hasta que la grilla monta.
+  useEffect(() => {
+    const cont = contenedor.current;
+    if (!cont) return;
+    let pendiente = false;
+    const handler = () => {
+      if (pendiente) return;
+      pendiente = true;
+      requestAnimationFrame(() => {
+        pendiente = false;
+        alScrollear();
+      });
+    };
+    cont.addEventListener("scroll", handler, { passive: true });
+    return () => cont.removeEventListener("scroll", handler);
+  }, [alScrollear, data]);
 
   // ── Escrituras ─────────────────────────────────────────────────────────────
 
@@ -211,7 +342,12 @@ export function TableroBoard() {
     return enCelda.length === 0 ? 0 : Math.max(...enCelda.map((a) => a.ordenDia)) + 1;
   }
 
-  function asignarObra(otId: number, cuadrillaId: number, fecha: string) {
+  function asignarObra(
+    otId: number,
+    cuadrillaId: number,
+    fecha: string,
+    opts: { permitirDomingo?: boolean } = {},
+  ) {
     const ot = otsPorId.get(otId);
     if (!ot) return;
 
@@ -221,7 +357,7 @@ export function TableroBoard() {
     const pendiente = sinAsignar.find((x) => x.ot.id === otId);
     const cuantas = Math.min(todas.length, pendiente?.pendientes ?? todas.length);
     const fracciones = todas.slice(todas.length - cuantas);
-    const dias = fechasDeJornadas(fecha, fracciones.length);
+    const dias = fechasDeJornadas(fecha, fracciones.length, opts);
     const orden = proximoOrden(cuadrillaId, dias[0]);
 
     const nuevas: NuevaAsignacion[] = dias.map((f, i) => ({
@@ -236,8 +372,13 @@ export function TableroBoard() {
     crear.mutate(nuevas);
   }
 
-  function moverBloque(bloque: Bloque, cuadrillaId: number, fecha: string) {
-    const dias = fechasDeJornadas(fecha, bloque.ids.length);
+  function moverBloque(
+    bloque: Bloque,
+    cuadrillaId: number,
+    fecha: string,
+    opts: { permitirDomingo?: boolean } = {},
+  ) {
+    const dias = fechasDeJornadas(fecha, bloque.ids.length, opts);
     const orden = proximoOrden(cuadrillaId, dias[0]);
     const movimientos: MovimientoAsignacion[] = bloque.ids.map((id, i) => ({
       id,
@@ -323,7 +464,10 @@ export function TableroBoard() {
       const otId = Number(activo.slice(3));
       const celda = celdaDe(destino, over.data.current);
       if (!celda) return;
-      asignarObra(otId, celda.cuadrillaId, celda.fecha);
+      // Soltar sobre una columna de domingo activa SÍ planifica en domingo: es un gesto
+      // explícito. La canaleta del domingo sin trabajo no acepta drop, así que el único
+      // modo de llegar acá es apuntando a un domingo que ya se trabaja.
+      asignarObra(otId, celda.cuadrillaId, celda.fecha, { permitirDomingo: celda.esDomingo });
       return;
     }
 
@@ -351,17 +495,20 @@ export function TableroBoard() {
     const celda = celdaDe(destino, over.data.current);
     if (!celda) return;
     if (celda.cuadrillaId === bloque.cuadrillaId && celda.fecha === bloque.fechas[0]) return;
-    moverBloque(bloque, celda.cuadrillaId, celda.fecha);
+    moverBloque(bloque, celda.cuadrillaId, celda.fecha, { permitirDomingo: celda.esDomingo });
   }
 
-  function celdaDe(id: string, datos: unknown): { cuadrillaId: number; fecha: string } | null {
+  function celdaDe(
+    id: string,
+    datos: unknown,
+  ): { cuadrillaId: number; fecha: string; esDomingo: boolean } | null {
     if (!id.startsWith("celda:")) return null;
-    const d = datos as { cuadrillaId?: number; fecha?: string } | undefined;
+    const d = datos as { cuadrillaId?: number; fecha?: string; esDomingo?: boolean } | undefined;
     if (typeof d?.cuadrillaId === "number" && typeof d.fecha === "string") {
-      return { cuadrillaId: d.cuadrillaId, fecha: d.fecha };
+      return { cuadrillaId: d.cuadrillaId, fecha: d.fecha, esDomingo: d.esDomingo === true };
     }
     const [, cuadrilla, fecha] = id.split(":");
-    return { cuadrillaId: Number(cuadrilla), fecha };
+    return { cuadrillaId: Number(cuadrilla), fecha, esDomingo: parseISO(fecha).getDay() === 0 };
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -407,9 +554,9 @@ export function TableroBoard() {
         guardando={guardando}
         refrescando={isFetching}
         onCuadrillas={cambiarVisibles}
-        onPrev={() => setLunes((l) => addDays(l, -7))}
-        onNext={() => setLunes((l) => addDays(l, 7))}
-        onHoy={() => setLunes(startOfWeek(new Date(), { weekStartsOn: 1 }))}
+        onPrev={() => irASemana(-1)}
+        onNext={() => irASemana(1)}
+        onHoy={() => scrollAFecha(iso(startOfWeek(new Date(), { weekStartsOn: 1 })))}
         onRefrescar={() => refetch()}
       />
 
@@ -423,6 +570,7 @@ export function TableroBoard() {
         <div className="flex min-h-0 flex-1 overflow-hidden rounded-md border">
           {cuadrillasVisibles.length > 0 ? (
             <TableroGrid
+              contenedorRef={contenedor}
               cuadrillas={cuadrillasVisibles}
               fechas={fechas}
               asignaciones={data.asignaciones}
@@ -476,7 +624,6 @@ export function TableroBoard() {
               <ContenidoTarjeta
                 ot={otsPorId.get(arrastrando.bloque.otId)}
                 bloque={arrastrando.bloque}
-                indiceColor={cuadrillasVisibles.findIndex((c) => c.id === arrastrando.bloque.cuadrillaId)}
                 compacta
               />
             </div>

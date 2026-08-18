@@ -21,11 +21,26 @@ export function siguienteDiaLaboral(fecha: string): string {
   return format(d.getDay() === 0 ? addDays(d, 1) : d, "yyyy-MM-dd");
 }
 
-/** Las N fechas corridas que ocuparía una obra que arranca en `inicio`. */
-export function fechasDeJornadas(inicio: string, n: number): string[] {
+/**
+ * Las N fechas corridas que ocuparía una obra que arranca en `inicio`.
+ *
+ * `permitirDomingo` sólo habilita ARRANCAR en domingo, y se pasa únicamente cuando el
+ * drop cayó sobre una columna de domingo ya activa (la canaleta colapsada no acepta
+ * drop). Los días siguientes siguen salteando el domingo: que a veces se trabaje el
+ * domingo no lo vuelve un día laboral por defecto, y una obra de 4 jornadas soltada un
+ * jueves no debería comerse el fin de semana sola.
+ */
+export function fechasDeJornadas(
+  inicio: string,
+  n: number,
+  opts: { permitirDomingo?: boolean } = {},
+): string[] {
   const fechas: string[] = [];
-  // Si el drop cae en domingo, la obra arranca el lunes.
-  let f = esDomingo(inicio) ? format(addDays(parseISO(inicio), 1), "yyyy-MM-dd") : inicio;
+  // Si el drop cae en domingo, la obra arranca el lunes — salvo que se pida lo contrario.
+  let f =
+    esDomingo(inicio) && !opts.permitirDomingo
+      ? format(addDays(parseISO(inicio), 1), "yyyy-MM-dd")
+      : inicio;
   for (let i = 0; i < n; i++) {
     fechas.push(f);
     f = siguienteDiaLaboral(f);

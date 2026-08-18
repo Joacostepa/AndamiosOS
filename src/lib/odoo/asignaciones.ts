@@ -185,7 +185,7 @@ export async function fetchTablero(desde: string, hasta: string): Promise<Tabler
   await authenticate();
   const actionId = await otActionId();
 
-  const [cuadrillasRaw, asigsRaw, otsCandidatas, partesRaw, gruposAsignadas] = await Promise.all([
+  const [cuadrillasRaw, asigsRaw, otsCandidatas, partesRaw, gruposAsignadas, gruposCerradas] = await Promise.all([
     searchRead<{ id: number; x_name: string | false; x_tercerizada: boolean }>(
       "x_aba_cuadrilla",
       [["x_activa", "=", true]],
@@ -205,11 +205,15 @@ export async function fetchTablero(desde: string, hasta: string): Promise<Tabler
       [["x_fecha", ">=", desde], ["x_fecha", "<=", hasta]],
       ["x_orden_trabajo_id", "x_fecha", "x_cuadrilla_id", "x_estado", "x_motivo_no_ejec"],
     ),
-    // Qué OTs ya tienen alguna asignación (en cualquier fecha) → define la bandeja
-    // de "sin asignar" sin traer todas las asignaciones históricas.
-    executeKw<{ x_ot_id: M2O }[]>("x_aba_asignacion", "read_group", [[], ["x_ot_id"], ["x_ot_id"]], {
-      lazy: false,
-    }),
+    // Avance por OT, sin traer todas las asignaciones históricas: cuántas jornadas
+    // tiene en el tablero y cuántas ya se cerraron. Con eso la bandeja sabe si a una
+    // obra le quedan jornadas por planificar aunque parte de ella ya se haya ejecutado.
+    executeKw<{ x_ot_id: M2O; __count: number }[]>(
+      "x_aba_asignacion", "read_group", [[], ["x_ot_id"], ["x_ot_id"]], { lazy: false },
+    ),
+    executeKw<{ x_ot_id: M2O; __count: number }[]>(
+      "x_aba_asignacion", "read_group", [[["x_parte_id", "!=", false]], ["x_ot_id"], ["x_ot_id"]], { lazy: false },
+    ),
   ]);
 
   const asignaciones = asigsRaw.map(mapAsig);
@@ -236,7 +240,17 @@ export async function fetchTablero(desde: string, hasta: string): Promise<Tabler
       estado: str(p.x_estado) ?? "previsto",
       motivoNoEjec: str(p.x_motivo_no_ejec),
     })),
-    otsAsignadas: gruposAsignadas.map((g) => m2oId(g.x_ot_id) ?? 0).filter(Boolean),
+    progreso: (() => {
+      const cerradasPorOt = new Map(
+        gruposCerradas.map((g) => [m2oId(g.x_ot_id) ?? 0, g.__count]),
+      );
+      return gruposAsignadas
+        .map((g) => {
+          const otId = m2oId(g.x_ot_id) ?? 0;
+          return { otId, asignadas: g.__count, cerradas: cerradasPorOt.get(otId) ?? 0 };
+        })
+        .filter((p) => p.otId);
+    })(),
   };
 }
 

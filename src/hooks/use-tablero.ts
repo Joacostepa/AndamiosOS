@@ -69,6 +69,26 @@ function revertir(qc: QueryClient, ctx: Contexto | undefined, mensaje: string, e
   toast.error(mensaje, { description: error.message });
 }
 
+/** Suma una jornada al avance de cada OT indicada (crea la entrada si no estaba). */
+function sumarProgreso(progreso: TableroPayload["progreso"], otIds: number[]) {
+  const mapa = new Map(progreso.map((p) => [p.otId, { ...p }]));
+  for (const otId of otIds) {
+    const actual = mapa.get(otId) ?? { otId, asignadas: 0, cerradas: 0 };
+    mapa.set(otId, { ...actual, asignadas: actual.asignadas + 1 });
+  }
+  return [...mapa.values()];
+}
+
+/** Resta una jornada del avance por cada asignación borrada. */
+function restarProgreso(progreso: TableroPayload["progreso"], otIds: number[]) {
+  const mapa = new Map(progreso.map((p) => [p.otId, { ...p }]));
+  for (const otId of otIds) {
+    const actual = mapa.get(otId);
+    if (actual) mapa.set(otId, { ...actual, asignadas: Math.max(0, actual.asignadas - 1) });
+  }
+  return [...mapa.values()].filter((p) => p.asignadas > 0 || p.cerradas > 0);
+}
+
 // Ids temporales para las tarjetas que todavía no existen en Odoo. Negativos para no
 // chocar nunca con un id real.
 let proximoIdTemporal = -1;
@@ -99,7 +119,7 @@ export function useCrearAsignaciones() {
       return aplicarOptimista(qc, (data) => ({
         ...data,
         asignaciones: [...data.asignaciones, ...nuevas],
-        otsAsignadas: [...new Set([...data.otsAsignadas, ...nuevas.map((n) => n.otId)])],
+        progreso: sumarProgreso(data.progreso, nuevas.map((n) => n.otId)),
       }));
     },
     onError: (error, _vars, ctx) => revertir(qc, ctx, "No se pudo asignar", error),
@@ -177,15 +197,13 @@ export function useBorrarAsignaciones() {
       }),
     onMutate: (ids) =>
       aplicarOptimista(qc, (data) => {
-        const quedan = data.asignaciones.filter((a) => !ids.includes(a.id));
-        const conAsignacion = new Set(quedan.map((a) => a.otId));
-        const borradas = data.asignaciones.filter((a) => ids.includes(a.id)).map((a) => a.otId);
+        const borradas = data.asignaciones.filter((a) => ids.includes(a.id));
         return {
           ...data,
-          asignaciones: quedan,
-          // Una OT vuelve a la bandeja solo si no le queda ninguna jornada en el rango
-          // visible; si tiene jornadas en otra semana, sigue contando como asignada.
-          otsAsignadas: data.otsAsignadas.filter((id) => !borradas.includes(id) || conAsignacion.has(id)),
+          asignaciones: data.asignaciones.filter((a) => !ids.includes(a.id)),
+          // Liberar jornadas devuelve la obra a la bandeja con su remanente: el avance
+          // baja en la cantidad de jornadas liberadas, no de golpe a cero.
+          progreso: restarProgreso(data.progreso, borradas.map((a) => a.otId)),
         };
       }),
     onError: (error, _vars, ctx) => revertir(qc, ctx, "No se pudo quitar del tablero", error),

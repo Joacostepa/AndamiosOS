@@ -41,6 +41,17 @@ export function jornadasCerradas(bloque: Bloque): number {
   return bloque.partes.filter((p) => p != null).length;
 }
 
+/**
+ * Ids de las jornadas del bloque que se pueden liberar: las que NO tienen parte.
+ *
+ * Una obra que se arranca y se suspende sin fecha de vuelta libera lo que queda por
+ * ejecutar y conserva lo hecho. Borrar también las cerradas dejaría los partes
+ * huérfanos y haría que la obra vuelva a la bandeja como si nunca se hubiera empezado.
+ */
+export function jornadasLiberables(bloque: Bloque): number[] {
+  return bloque.ids.filter((_, i) => bloque.partes[i] == null);
+}
+
 /** El bloque se considera cerrado cuando TODAS sus jornadas tienen parte. */
 export function bloqueCerrado(bloque: Bloque): boolean {
   return bloque.partes.length > 0 && bloque.partes.every((p) => p != null);

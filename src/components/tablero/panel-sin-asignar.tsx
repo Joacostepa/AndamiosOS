@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
-import { PanelRightClose, PanelRightOpen, Search, Inbox } from "lucide-react";
+import { PanelRightClose, PanelRightOpen, PlayCircle, Search, Inbox } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { semaforo, CORAL, ACENTO_BG, URGENCIA_ALTA_BORDE } from "@/lib/tablero/colores";
 import { fraccionLabel } from "@/lib/tablero/fracciones";
@@ -20,7 +20,20 @@ import type { OtTablero } from "@/lib/tablero/tipos";
 
 export const ID_BANDEJA = "bandeja";
 
-function TarjetaOt({ ot }: { ot: OtTablero }) {
+/** Obra con jornadas por planificar, y cuánto de ella ya se ejecutó. */
+export type ObraPendiente = {
+  ot: OtTablero;
+  /** Jornadas totales previstas de la obra. */
+  totales: number;
+  /** Las que faltan planificar. */
+  pendientes: number;
+  /** Las que ya tienen parte cargado: si hay, la obra está empezada. */
+  cerradas: number;
+};
+
+function TarjetaOt({ obra }: { obra: ObraPendiente }) {
+  const { ot, totales, pendientes, cerradas } = obra;
+  const empezada = cerradas > 0;
   const { setNodeRef, attributes, listeners, isDragging } = useDraggable({
     id: `ot:${ot.id}`,
     data: { ot },
@@ -37,9 +50,22 @@ function TarjetaOt({ ot }: { ot: OtTablero }) {
       className="cursor-grab rounded-md border bg-card p-2 transition-colors hover:border-foreground/25 active:cursor-grabbing"
       style={{
         opacity: isDragging ? 0.35 : 1,
-        borderLeft: urgente ? `3px solid ${URGENCIA_ALTA_BORDE}` : undefined,
+        borderLeft: urgente
+          ? `3px solid ${URGENCIA_ALTA_BORDE}`
+          : empezada
+            ? "3px solid #EF9F27"
+            : undefined,
       }}
     >
+      {empezada && (
+        <p
+          className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide"
+          style={{ color: "#854F0B" }}
+        >
+          <PlayCircle className="h-3 w-3" />
+          Empezada · {cerradas} de {totales} jornadas hechas
+        </p>
+      )}
       <div className="flex items-start gap-1.5">
         <div className="min-w-0 flex-1">
           <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
@@ -62,9 +88,11 @@ function TarjetaOt({ ot }: { ot: OtTablero }) {
       </div>
 
       <p className="mt-1 truncate text-[10px] text-muted-foreground">
-        {ot.jornadas >= 1
-          ? `${ot.jornadas} jornada${ot.jornadas === 1 ? "" : "s"}`
-          : `${fraccionLabel(ot.jornadas)} de jornada`}
+        {empezada || pendientes < totales
+          ? `quedan ${pendientes} de ${totales} jornadas`
+          : ot.jornadas >= 1
+            ? `${ot.jornadas} jornada${ot.jornadas === 1 ? "" : "s"}`
+            : `${fraccionLabel(ot.jornadas)} de jornada`}
         {ot.tecnico ? ` · ${ot.tecnico}` : ""}
         {ot.fechaProgramada
           ? ` · prev. ${format(parseISO(ot.fechaProgramada), "d MMM", { locale: es })}`
@@ -79,7 +107,7 @@ export function PanelSinAsignar({
   colapsado,
   onColapsar,
 }: {
-  ots: OtTablero[];
+  ots: ObraPendiente[];
   colapsado: boolean;
   onColapsar: (valor: boolean) => void;
 }) {
@@ -89,13 +117,16 @@ export function PanelSinAsignar({
 
   const filtradas = useMemo(() => {
     const orden = [...ots].sort((a, b) => {
-      if ((a.urgencia === "alta") !== (b.urgencia === "alta")) return a.urgencia === "alta" ? -1 : 1;
-      return (a.fechaProgramada ?? "9999").localeCompare(b.fechaProgramada ?? "9999");
+      // Las empezadas van primero: son las que esperan retomarse y no hay que perderlas
+      // de vista entre las que nunca se tocaron.
+      if ((a.cerradas > 0) !== (b.cerradas > 0)) return a.cerradas > 0 ? -1 : 1;
+      if ((a.ot.urgencia === "alta") !== (b.ot.urgencia === "alta")) return a.ot.urgencia === "alta" ? -1 : 1;
+      return (a.ot.fechaProgramada ?? "9999").localeCompare(b.ot.fechaProgramada ?? "9999");
     });
     const q = normalizar(busqueda.trim());
     if (!q) return orden;
     // Con 46 obras, encontrar una puntual escaneando no funciona.
-    return orden.filter((o) => normalizar(`${o.titulo} ${o.tecnico ?? ""}`).includes(q));
+    return orden.filter((o) => normalizar(`${o.ot.titulo} ${o.ot.tecnico ?? ""}`).includes(q));
   }, [ots, busqueda]);
 
   if (colapsado) {
@@ -173,8 +204,8 @@ export function PanelSinAsignar({
 
       {filtradas.length > 0 ? (
         <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-2">
-          {filtradas.map((ot) => (
-            <TarjetaOt key={ot.id} ot={ot} />
+          {filtradas.map((obra) => (
+            <TarjetaOt key={obra.ot.id} obra={obra} />
           ))}
         </div>
       ) : (

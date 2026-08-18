@@ -73,13 +73,24 @@ export type DocumentoOt = {
   url: string;
 };
 
+/**
+ * Avance de una OT en el tablero. Permite distinguir la obra que nunca se planificó de
+ * la que se empezó y quedó suspendida a mitad, esperando retomarse.
+ */
+export type ProgresoOt = {
+  otId: number;
+  /** Jornadas con asignación en el tablero (en cualquier fecha). */
+  asignadas: number;
+  /** De esas, las que ya tienen parte diario cargado. */
+  cerradas: number;
+};
+
 export type TableroPayload = {
   cuadrillas: CuadrillaTablero[];
   asignaciones: AsignacionTablero[];
   ots: OtTablero[];
   partes: ParteTablero[];
-  /** ids de OT que tienen al menos una asignación (en cualquier fecha). */
-  otsAsignadas: number[];
+  progreso: ProgresoOt[];
 };
 
 export type NuevaAsignacion = {

@@ -31,8 +31,10 @@ import {
   useBorrarAsignaciones,
 } from "@/hooks/use-tablero";
 import { agruparBloques, fechasDeJornadas, type Bloque } from "@/lib/tablero/bloques";
-import type { AccionCierre } from "@/lib/tablero/cierre";
+import { jornadasLiberables, type AccionCierre } from "@/lib/tablero/cierre";
+import { toast } from "sonner";
 import { repartirJornadas, type FraccionStr } from "@/lib/tablero/fracciones";
+import type { ObraPendiente } from "./panel-sin-asignar";
 import type { MovimientoAsignacion, NuevaAsignacion, TableroPayload } from "@/lib/tablero/tipos";
 
 // Tablero de Planificación de Cuadrillas.
@@ -166,11 +168,25 @@ export function TableroBoard() {
     [data],
   );
 
-  // Bandeja: OTs candidatas que no tienen ninguna jornada en el tablero.
-  const sinAsignar = useMemo(() => {
+  // Bandeja: obras a las que les quedan jornadas por planificar. No es "asignada sí o
+  // no": una obra de 4 jornadas que se ejecutó 2 y se suspendió vuelve acá con 2
+  // pendientes, sin perder el rastro de lo ya hecho.
+  const sinAsignar = useMemo<ObraPendiente[]>(() => {
     if (!data) return [];
-    const asignadas = new Set(data.otsAsignadas);
-    return data.ots.filter((o) => !asignadas.has(o.id) && ["pendiente", "en_proceso"].includes(o.estado));
+    const progreso = new Map(data.progreso.map((p) => [p.otId, p]));
+    return data.ots
+      .filter((o) => ["pendiente", "en_proceso"].includes(o.estado))
+      .map((ot) => {
+        const avance = progreso.get(ot.id);
+        const totales = repartirJornadas(ot.jornadas).length;
+        return {
+          ot,
+          totales,
+          pendientes: totales - (avance?.asignadas ?? 0),
+          cerradas: avance?.cerradas ?? 0,
+        };
+      })
+      .filter((x) => x.pendientes > 0);
   }, [data]);
 
   const bloquesPorClave = useMemo(() => {
@@ -197,7 +213,12 @@ export function TableroBoard() {
     const ot = otsPorId.get(otId);
     if (!ot) return;
 
-    const fracciones = repartirJornadas(ot.jornadas);
+    // Si la obra ya tiene jornadas en el tablero (o ejecutadas y liberadas), se
+    // planifican solo las que faltan, no la duración completa otra vez.
+    const todas = repartirJornadas(ot.jornadas);
+    const pendiente = sinAsignar.find((x) => x.ot.id === otId);
+    const cuantas = Math.min(todas.length, pendiente?.pendientes ?? todas.length);
+    const fracciones = todas.slice(todas.length - cuantas);
     const dias = fechasDeJornadas(fecha, fracciones.length);
     const orden = proximoOrden(cuadrillaId, dias[0]);
 
@@ -391,7 +412,21 @@ export function TableroBoard() {
               onAbrirBloque={(b) => setPanel({ otId: b.otId, bloqueKey: b.key })}
               onFraccion={(b, f: FraccionStr) => actualizar.mutate({ ids: b.ids, cambio: { fraccion: f } })}
               onEstado={(b, estado) => actualizar.mutate({ ids: b.ids, cambio: { estado } })}
-              onQuitar={(b) => borrar.mutate(b.ids)}
+              onQuitar={(b) => {
+                const liberables = jornadasLiberables(b);
+                if (liberables.length === 0) return;
+                borrar.mutate(liberables, {
+                  onSuccess: () => {
+                    const conservadas = b.ids.length - liberables.length;
+                    if (conservadas > 0) {
+                      toast.success(
+                        `Obra suspendida: ${liberables.length} jornada(s) vuelven a sin asignar`,
+                        { description: `Se conservan ${conservadas} ya cerrada(s) con su parte.` },
+                      );
+                    }
+                  },
+                });
+              }}
             />
           ) : (
             <div className="flex flex-1 items-center justify-center p-6 text-center text-sm text-muted-foreground">

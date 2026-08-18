@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { FRACCIONES, fraccionLabel, type FraccionStr } from "@/lib/tablero/fracciones";
 import { colorCuadrilla, semaforo, URGENCIA_ALTA_BORDE, CORAL } from "@/lib/tablero/colores";
 import { partesTitulo } from "@/lib/tablero/titulo";
+import { jornadasLiberables } from "@/lib/tablero/cierre";
 import type { Bloque, Colocacion } from "@/lib/tablero/bloques";
 import type { OtTablero } from "@/lib/tablero/tipos";
 
@@ -181,6 +182,10 @@ export function TarjetaAsignacion({
   // popup se reubicaría en una esquina. Por eso se oculta con opacidad, que conserva el
   // layout, y se fuerza visible mientras el menú está abierto.
   const [menuAbierto, setMenuAbierto] = useState(false);
+  // Las jornadas ya cerradas no se tocan: sacarlas del tablero dejaría el parte
+  // huérfano y borraría el rastro de lo ejecutado.
+  const liberables = jornadasLiberables(bloque).length;
+  const cerradas = bloque.partes.filter((p) => p != null).length;
 
   return (
     <div
@@ -279,11 +284,17 @@ export function TarjetaAsignacion({
               </>
             )}
 
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={onQuitar} style={{ color: CORAL }}>
-              <Trash2 className="mr-2 h-4 w-4" />
-              Quitar del tablero
-            </DropdownMenuItem>
+            {liberables > 0 && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={onQuitar} style={{ color: CORAL }}>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  {cerradas > 0
+                    ? `Suspender: liberar ${liberables} jornada${liberables === 1 ? "" : "s"}`
+                    : "Quitar del tablero"}
+                </DropdownMenuItem>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

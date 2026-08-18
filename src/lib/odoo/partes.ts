@@ -134,11 +134,12 @@ export async function cerrarJornada(
   const registrar = (nombre: string, ok: boolean, detalle?: string) =>
     pasos.push({ nombre, ok, detalle });
 
-  const [asignacion] = await read<{ id: number; x_ot_id: [number, string] | false; x_fecha: string | false }>(
-    "x_aba_asignacion",
-    [asignacionId],
-    ["x_ot_id", "x_fecha"],
-  );
+  const [asignacion] = await read<{
+    id: number;
+    x_ot_id: [number, string] | false;
+    x_fecha: string | false;
+    x_parte_id: [number, string] | false;
+  }>("x_aba_asignacion", [asignacionId], ["x_ot_id", "x_fecha", "x_parte_id"]);
   if (!asignacion) throw new Error("La asignación no existe");
   const otId = m2oId(asignacion.x_ot_id);
   if (!otId) throw new Error("La asignación no tiene orden de trabajo");
@@ -147,23 +148,42 @@ export async function cerrarJornada(
 
   // ── 1) El parte ────────────────────────────────────────────────────────────
   //
-  // Se reutiliza un parte existente SOLO si es de la misma OT, fecha Y cuadrilla, y no
-  // está ya vinculado a otra asignación. La clave no puede ser (OT, fecha) sola: una
-  // misma obra puede necesitar dos cuadrillas el mismo día, y cada una lleva su parte
-  // con sus horas. La reutilización existe para el caso de un parte cargado a mano en
-  // Odoo antes de que alguien cerrara la jornada desde la app.
-  const parteReutilizable = await buscarParteReutilizable(otId, fecha, datos.cuadrillaId);
+  // SOLO se reescribe el parte que YA está vinculado a esta asignación (reedición de un
+  // cierre propio). Nunca se adopta un parte preexistente.
+  //
+  // Antes se "reutilizaba" cualquier parte de la misma OT y fecha sin vincular. Eso
+  // hacía que cerrar una jornada con fecha retroactiva se apropiara de un parte
+  // histórico —importado de la planilla— y le borrara las líneas para escribir las
+  // nuevas. Destruía datos en silencio. Un duplicado se ve y se borra; una jornada
+  // histórica pisada no se recupera.
+  const parteVinculado = m2oId(asignacion.x_parte_id);
 
   let parteId: number;
-  const reutilizado = parteReutilizable !== null;
+  const reutilizado = parteVinculado !== null;
 
-  if (parteReutilizable !== null) {
-    parteId = parteReutilizable;
+  if (parteVinculado !== null) {
+    parteId = parteVinculado;
     await write("x_aba_parte_diario", [parteId], valoresParte({ ...datos, fecha }, otId));
-    registrar("Parte diario (ya existía en Odoo, se actualizó)", true, `#${parteId}`);
+    registrar("Parte diario actualizado", true, `#${parteId}`);
   } else {
     parteId = await create("x_aba_parte_diario", valoresParte({ ...datos, fecha }, otId));
     registrar("Parte diario", true, `#${parteId}`);
+
+    // Si ya había otro parte para esa OT y fecha, se avisa: puede ser un duplicado a
+    // resolver en Odoo, pero no se toca.
+    const otros = await searchRead<{ id: number }>(
+      "x_aba_parte_diario",
+      [["x_orden_trabajo_id", "=", otId], ["x_fecha", "=", fecha], ["id", "!=", parteId]],
+      ["id"],
+      { limit: 3 },
+    );
+    if (otros.length > 0) {
+      registrar(
+        "Ojo: ya existía otro parte para esa obra y fecha",
+        false,
+        `#${otros.map((o) => o.id).join(", #")} — revisalo en Odoo`,
+      );
+    }
   }
 
   // Desde acá los fallos NO tiran todo abajo: el parte ya existe y hay que decir
@@ -229,43 +249,6 @@ export async function cerrarJornada(
 
 function mensaje(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
-}
-
-/**
- * Parte ya existente que corresponde a esta jornada, o null si hay que crear uno.
- *
- * Solo cuenta si coincide OT + fecha + cuadrilla y NO está tomado por otra asignación:
- * dos cuadrillas en la misma obra el mismo día son dos partes distintos, y pisar uno
- * con el otro haría desaparecer horas ya cargadas.
- */
-async function buscarParteReutilizable(
-  otId: number,
-  fecha: string,
-  cuadrillaId: number | null,
-): Promise<number | null> {
-  const candidatos = await searchRead<{ id: number; x_cuadrilla_id: [number, string] | false }>(
-    "x_aba_parte_diario",
-    [["x_orden_trabajo_id", "=", otId], ["x_fecha", "=", fecha]],
-    ["x_cuadrilla_id"],
-  );
-  if (candidatos.length === 0) return null;
-
-  const mismaCuadrilla = candidatos.filter((p) => {
-    const suya = m2oId(p.x_cuadrilla_id);
-    // Un parte sin cuadrilla cargada se considera de esta jornada: es el caso típico
-    // del parte creado a mano en Odoo sin completar todo.
-    return suya === null || suya === cuadrillaId;
-  });
-  if (mismaCuadrilla.length === 0) return null;
-
-  const tomados = await searchRead<{ x_parte_id: [number, string] | false }>(
-    "x_aba_asignacion",
-    [["x_parte_id", "in", mismaCuadrilla.map((p) => p.id)]],
-    ["x_parte_id"],
-  );
-  const ocupados = new Set(tomados.map((a) => m2oId(a.x_parte_id)).filter(Boolean));
-
-  return mismaCuadrilla.find((p) => !ocupados.has(p.id))?.id ?? null;
 }
 
 /** Borra las líneas de un parte (al reeditarlo se reemplazan, no se acumulan). */

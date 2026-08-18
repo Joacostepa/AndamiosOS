@@ -212,6 +212,18 @@ export function FormularioCierre({
       toast.error("Elegí el motivo por el que no se ejecutó");
       return;
     }
+    // Sin líneas de personal el parte queda en 0 horas-hombre y sin costo de mano de
+    // obra: se ve completo pero no sirve para medir nada. Se avisa antes de guardar.
+    if (estado === "ejecutado" && manoObra.length === 0) {
+      toast.error("Falta el personal", {
+        description: "Sin líneas de personal el parte queda en 0 horas-hombre. Usá 'Jornada completa' o agregá una línea.",
+      });
+      return;
+    }
+    if (estado === "ejecutado" && !cuadrillaId) {
+      toast.error("Falta la cuadrilla que ejecutó la jornada");
+      return;
+    }
     const datos = armarDatos();
     const alTerminar = {
       onSuccess: (r: { pasos: { nombre: string; ok: boolean; detalle?: string }[]; fotosFallidas: string[]; reutilizado: boolean }) => {
@@ -397,8 +409,11 @@ export function FormularioCierre({
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label>Personal y horarios</Label>
-                    <span className="text-xs text-muted-foreground">
-                      {horasHombre > 0 ? `${horasHombre} horas-hombre` : "sin cargar"}
+                    <span
+                      className="text-xs"
+                      style={{ color: horasHombre > 0 ? "var(--muted-foreground)" : CORAL }}
+                    >
+                      {horasHombre > 0 ? `${horasHombre} horas-hombre` : "falta cargar"}
                     </span>
                   </div>
 

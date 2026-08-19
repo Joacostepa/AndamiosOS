@@ -5,6 +5,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { navigation } from "@/lib/constants/navigation";
+import { usePendientesDeParte } from "@/hooks/use-jornadas";
+import { CORAL } from "@/lib/tablero/colores";
 import {
   Sidebar,
   SidebarContent,
@@ -23,6 +25,7 @@ import {
 
 export function AppSidebar() {
   const pathname = usePathname();
+  const { data: pendientesPartes } = usePendientesDeParte();
   const { setOpen, isMobile } = useSidebar();
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -78,6 +81,18 @@ export function AppSidebar() {
                       >
                         <item.icon className="h-4 w-4" />
                         <span>{item.title}</span>
+                        {/* Cuenta lo que FALTA, no lo que hay, así llega a cero al
+                            terminar la mañana. Hoy nadie carga partes a diario: la app
+                            tiene que ser la que avise, o el hábito no se forma. */}
+                        {item.href === "/partes" && !!pendientesPartes && (
+                          <span
+                            className="ml-auto rounded-full px-1.5 text-[11px] font-semibold text-white"
+                            style={{ backgroundColor: CORAL }}
+                            title={`${pendientesPartes} jornada(s) sin parte cargado`}
+                          >
+                            {pendientesPartes}
+                          </span>
+                        )}
                       </SidebarMenuButton>
                       {item.subItems && isActive && (
                         <SidebarMenuSub>

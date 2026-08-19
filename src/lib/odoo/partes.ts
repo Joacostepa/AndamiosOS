@@ -215,7 +215,10 @@ export async function cerrarJornada(
       crearLineasFlete(parteId, datos, fecha),
       crearLineasIncidencia(parteId, datos),
       crearFotos(parteId, datos),
-      write("x_aba_asignacion", [asignacionId], { x_parte_id: parteId }),
+      // El parte CONFIRMA la jornada: es la prueba de que pasó. Una jornada que se
+      // trabajó no puede quedar como tentativa, y así el listado de partes puede ofrecer
+      // las tentativas vencidas sin dejarlas colgadas en ese estado para siempre.
+      write("x_aba_asignacion", [asignacionId], { x_parte_id: parteId, x_estado: "confirmada" }),
       avisoDuplicados,
       // El estado de la OT no puede tirar abajo el parte: si falla, el parte queda igual
       // y la OT se corrige a mano o en el próximo cierre.

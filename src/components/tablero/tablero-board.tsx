@@ -13,6 +13,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
+import { useRouter } from "next/navigation";
 import { addDays, format, parseISO, startOfWeek } from "date-fns";
 import { es } from "date-fns/locale";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -97,6 +98,7 @@ const detectarColision: CollisionDetection = (args) => {
 export function TableroBoard() {
   // El ancla es el lunes de esta semana y no se mueve: la navegación es scroll, no
   // paginado. `semanas` dice cuántas hay cargadas a cada lado; crecen al llegar al borde.
+  const router = useRouter();
   const [ancla] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [semanas, setSemanas] = useState({ antes: 1, despues: 1 });
   const [fechaCentrada, setFechaCentrada] = useState(() => iso(ancla));
@@ -632,15 +634,27 @@ export function TableroBoard() {
               partes={data.partes}
               bloqueSeleccionado={panel?.bloqueKey ?? resaltado}
               hoy={hoyISO}
+              // El parte NO se carga desde el tablero: se navega al listado.
+              //
+              // Son dos personas y dos momentos —quien carga lo hace a la mañana con los
+              // WhatsApp del día anterior, el planificador mira el tablero para
+              // planificar— y el formulario del parte es el que alimenta el costo de mano
+              // de obra. Con dos lugares para cargarlo, terminan divergiendo.
               onCerrarJornada={(b, accion: NonNullable<AccionCierre>) => {
-                // El panel de la OT y el modal de cierre no conviven: superpuestos se
-                // tapan entre sí y las dos capas de fondo dejan todo ilegible.
                 setPanel(null);
+                // CREAR un parte se hace sólo en el listado. VER o corregir uno ya
+                // cargado sigue abriendo el formulario acá: el listado todavía no edita,
+                // y mandar a una pantalla que no puede hacer el trabajo es peor que
+                // abrir el formulario que sí puede.
+                if (accion.tipo === "cerrar") {
+                  router.push(`/partes?fecha=${accion.fecha}&ot=${b.otId}`);
+                  return;
+                }
                 setCierre({
                   bloqueKey: b.key,
                   asignacionId: accion.asignacionId,
                   fecha: accion.fecha,
-                  parteId: accion.tipo === "ver" ? accion.parteId : null,
+                  parteId: accion.parteId,
                 });
               }}
               // Con el modal de cierre abierto no se abre ningun panel. El clic que

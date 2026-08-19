@@ -108,67 +108,8 @@ export function usePeriodosAlquiler(obraId: string) {
   });
 }
 
-export function useCreateOrdenTrabajo() {
-  const supabase = createClient();
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (data: { obra_id: string; tipo: string; descripcion?: string; fecha_programada?: string; cuadrilla?: string[]; vehiculo_id?: string; horas_estimadas?: number; observaciones?: string }) => {
-      const { data: ot, error } = await supabase.from("ordenes_trabajo")
-        .insert({ ...data, codigo: "" }).select().single();
-      if (error) throw error;
-      return ot;
-    },
-    onSuccess: (_, v) => {
-      qc.invalidateQueries({ queryKey: ["ordenes-trabajo"] });
-      qc.invalidateQueries({ queryKey: ["ordenes-trabajo", "obra", v.obra_id] });
-    },
-  });
-}
 
-// OT adicional (Change Order): la crea Operaciones EN LA APP (se guarda primero,
-// nunca bloquea), queda pendiente de aprobación comercial, y se empuja a Odoo en
-// background. Comercial la aprueba en Odoo → vuelve por webhook.
-export function useCreateAdicional() {
-  const supabase = createClient();
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (data: {
-      obra_id: string; tipo: string; motivo_adicional: string;
-      descripcion?: string; fecha_programada?: string; observaciones?: string;
-    }) => {
-      const { data: ot, error } = await supabase
-        .from("ordenes_trabajo")
-        .insert({ ...data, codigo: "", es_adicional: true, aprobada_comercial: false, odoo_sync_estado: "pendiente" })
-        .select()
-        .single();
-      if (error) throw error;
-      return ot as OrdenTrabajo;
-    },
-    onSuccess: (ot, v) => {
-      qc.invalidateQueries({ queryKey: ["ordenes-trabajo"] });
-      qc.invalidateQueries({ queryKey: ["ordenes-trabajo", "obra", v.obra_id] });
-      // push a Odoo en background; al terminar, refresca para mostrar el estado de sync
-      fetch("/api/odoo/push/ordenes-trabajo", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: ot.id }),
-      }).catch(() => {}).finally(() => qc.invalidateQueries({ queryKey: ["ordenes-trabajo"] }));
-    },
-  });
-}
 
-// Reintentar el push de una OT que quedó con sync error.
-export function useRetryPushOT() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (id: string) => {
-      const res = await fetch("/api/odoo/push/ordenes-trabajo", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }),
-      });
-      if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error || "Error al sincronizar");
-      return res.json();
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["ordenes-trabajo"] }),
-  });
-}
 
 export function useUpdateOrdenTrabajo() {
   const supabase = createClient();

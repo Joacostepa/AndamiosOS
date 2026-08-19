@@ -4,22 +4,13 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
-import { ArrowDown, ArrowUp, MoreHorizontal, Plus, Loader2, Search, RefreshCw } from "lucide-react";
-import { toast } from "sonner";
-import { useForm } from "react-hook-form";
+import { ArrowDown, ArrowUp, MoreHorizontal, Search } from "lucide-react";
 import { useOrdenesOdoo } from "@/hooks/use-ordenes-odoo";
-import { useCreateAdicional, useRetryPushOT, useOrdenesTrabajo } from "@/hooks/use-ordenes-trabajo";
-import { useObras } from "@/hooks/use-obras";
 import { ChipsFiltro } from "@/components/ordenes/chips-filtro";
 import { PageHeader } from "@/components/shared/page-header";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
-import { colorTipo, semaforo, CORAL } from "@/lib/tablero/colores";
+import { colorTipo, semaforo } from "@/lib/tablero/colores";
 import { partesTitulo, normalizar } from "@/lib/tablero/titulo";
 import type { FiltroOrdenes, OrdenListado } from "@/lib/tablero/tipos-orden";
 
@@ -29,15 +20,16 @@ import type { FiltroOrdenes, OrdenListado } from "@/lib/tablero/tipos-orden";
 // x_aba_orden_trabajo: dos listas de OT que no se veían entre sí, con el mismo
 // desdoblamiento que ya habíamos resuelto entre /planificacion y /tablero.
 //
-// El alta de OT adicional sigue escribiendo en Supabase y empujando a Odoo: ese camino ya
-// está armado y probado, y tocarlo ahora sería riesgo sin beneficio.
+// NO se emiten OTs desde acá. Las emite Comercial en Odoo y nada más.
+//
+// Antes había dos altas en la app y las dos eran un agujero: una OT es trabajo que va a
+// generar costo de mano de obra y de fletes, así que emitirla sin que Comercial la haya
+// cotizado es trabajo que se hace y no se cobra. La de /obras/[id] era peor todavía:
+// escribía en Supabase sin empujar a Odoo, o sea que la OT quedaba invisible para
+// Comercial, para la facturación, para el tablero y para este mismo listado.
 
 const ICONO_TIPO = { arriba: ArrowUp, abajo: ArrowDown, otro: MoreHorizontal } as const;
 
-const TIPO_OT_LABELS: Record<string, string> = {
-  armado: "Armado", desarme: "Desarme", ampliacion: "Ampliación",
-  desmonte_parcial: "Desmonte parcial", mantenimiento: "Mantenimiento", otro: "Otro",
-};
 
 function Fila({ ot }: { ot: OrdenListado }) {
   const tipo = colorTipo(ot.tipo);
@@ -112,41 +104,12 @@ export default function OrdenesTrabajoPage() {
   const [busqueda, setBusqueda] = useState("");
   const { data, isLoading, isFetching } = useOrdenesOdoo(filtro);
 
-  // Las adicionales recién creadas viven en Supabase hasta que el push las lleva a Odoo.
-  // Entre esos dos momentos no existirían en un listado que lee de Odoo, así que se
-  // muestran aparte, arriba, hasta que sincronizan.
-  const { data: locales } = useOrdenesTrabajo();
-  const enVuelo = (locales ?? []).filter(
-    (o) => o.es_adicional && o.odoo_sync_estado !== "sincronizado",
-  );
-
-  const { data: obras } = useObras();
-  const createAdicional = useCreateAdicional();
-  const retry = useRetryPushOT();
-  const [open, setOpen] = useState(false);
-  const { register, handleSubmit, reset, setValue, watch } = useForm<{
-    obra_id: string; tipo: string; motivo_adicional: string; descripcion?: string; fecha_programada?: string;
-  }>({ defaultValues: { tipo: "ampliacion" } });
-
   const ordenes = useMemo(() => {
     const lista = data?.ordenes ?? [];
     const q = normalizar(busqueda.trim());
     if (!q) return lista;
     return lista.filter((o) => normalizar(o.titulo).includes(q));
   }, [data, busqueda]);
-
-  function onSubmit(d: { obra_id: string; tipo: string; motivo_adicional: string; descripcion?: string; fecha_programada?: string }) {
-    if (!d.obra_id) return toast.error("Seleccioná la obra");
-    if (!d.motivo_adicional) return toast.error("Indicá el motivo del adicional");
-    createAdicional.mutate(d, {
-      onSuccess: () => {
-        toast.success("OT adicional creada — sincronizando con Odoo");
-        setOpen(false);
-        reset();
-      },
-      onError: () => toast.error("Error al crear la OT adicional"),
-    });
-  }
 
   return (
     <div className="space-y-4">
@@ -157,12 +120,7 @@ export default function OrdenesTrabajoPage() {
             ? `${data.conteos.abiertas} abiertas · ${data.conteos.cerradas} cerradas${isFetching ? " · actualizando…" : ""}`
             : "Cargando…"
         }
-      >
-        <Button onClick={() => setOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Nueva OT adicional
-        </Button>
-      </PageHeader>
+      />
 
       <ChipsFiltro activo={filtro} conteos={data?.conteos} onCambio={setFiltro} />
 
@@ -175,42 +133,6 @@ export default function OrdenesTrabajoPage() {
           className="h-8 pl-8 text-[12px]"
         />
       </div>
-
-      {enVuelo.length > 0 && (
-        <div className="space-y-1 rounded-md border p-2" style={{ borderColor: CORAL }}>
-          {enVuelo.map((o) => (
-            <div key={o.id} className="flex items-center gap-2 text-[12px]">
-              <span className="font-medium">{o.descripcion || "OT adicional"}</span>
-              {o.odoo_sync_estado === "error" ? (
-                <>
-                  <span style={{ color: "#B42318" }}>no sincronizó: {o.odoo_sync_error}</span>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="ml-auto h-7"
-                    disabled={retry.isPending}
-                    onClick={() =>
-                      retry.mutate(o.id, {
-                        onSuccess: () => toast.success("Sincronizada con Odoo"),
-                        onError: (e) => toast.error(e.message),
-                      })
-                    }
-                  >
-                    {retry.isPending ? (
-                      <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                    ) : (
-                      <RefreshCw className="mr-1 h-3 w-3" />
-                    )}
-                    Reintentar
-                  </Button>
-                </>
-              ) : (
-                <span className="text-muted-foreground">creada, sincronizando…</span>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
 
       {isLoading ? (
         <Skeleton className="h-96 w-full" />
@@ -235,56 +157,6 @@ export default function OrdenesTrabajoPage() {
         </div>
       )}
 
-      <Sheet open={open} onOpenChange={setOpen}>
-        <SheetContent className="overflow-y-auto sm:max-w-lg">
-          <SheetHeader><SheetTitle>Nueva OT adicional</SheetTitle></SheetHeader>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Trabajo extra detectado en obra. Queda pendiente hasta que Comercial lo apruebe en Odoo.
-          </p>
-          <form onSubmit={handleSubmit(onSubmit)} className="mt-6 space-y-4">
-            <div className="space-y-2">
-              <Label>Obra *</Label>
-              <Select value={watch("obra_id") || ""} onValueChange={(v) => v && setValue("obra_id", v)}>
-                <SelectTrigger><SelectValue placeholder="Seleccionar obra…" /></SelectTrigger>
-                <SelectContent>
-                  {obras?.filter((o) => o.estado !== "cancelada").map((o) => (
-                    <SelectItem key={o.id} value={o.id}>{o.codigo} — {o.nombre}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Tipo *</Label>
-              <Select value={watch("tipo")} onValueChange={(v) => v && setValue("tipo", v)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {Object.entries(TIPO_OT_LABELS).map(([k, v]) => (
-                    <SelectItem key={k} value={k}>{v}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Motivo del adicional *</Label>
-              <Textarea {...register("motivo_adicional", { required: true })} rows={2} placeholder="Por qué surge este trabajo extra…" />
-            </div>
-            <div className="space-y-2">
-              <Label>Descripción</Label>
-              <Textarea {...register("descripcion")} rows={2} placeholder="Qué hay que hacer…" />
-            </div>
-            <div className="space-y-2">
-              <Label>Fecha programada</Label>
-              <Input type="date" {...register("fecha_programada")} />
-            </div>
-            <div className="flex justify-end pt-2">
-              <Button type="submit" disabled={createAdicional.isPending}>
-                {createAdicional.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Crear adicional
-              </Button>
-            </div>
-          </form>
-        </SheetContent>
-      </Sheet>
     </div>
   );
 }

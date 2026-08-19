@@ -3,11 +3,9 @@
 import { use, useState } from "react";
 import { useObra, useUpdateObra } from "@/hooks/use-obras";
 import { useComunicaciones, useCreateComunicacion } from "@/hooks/use-comunicaciones";
-import { useOrdenesTrabajoByObra, useCreateOrdenTrabajo, useUpdateOrdenTrabajo, useGatesObra, useUpdateGate, usePeriodosAlquiler, useCreatePeriodo } from "@/hooks/use-ordenes-trabajo";
+import { useOrdenesTrabajoByObra, useUpdateOrdenTrabajo, useGatesObra, useUpdateGate, usePeriodosAlquiler, useCreatePeriodo } from "@/hooks/use-ordenes-trabajo";
 import { useRemitosByObra } from "@/hooks/use-remitos";
 import { BalanceMaterial } from "@/components/obras/balance-material";
-import { usePersonal } from "@/hooks/use-personal";
-import { useVehiculos } from "@/hooks/use-vehiculos";
 import { Chatter } from "@/components/shared/chatter";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -18,7 +16,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -28,7 +25,6 @@ import { ESTADO_OBRA_TRANSITIONS, ESTADO_OBRA_LABELS } from "@/lib/validators/ob
 import { ArrowRight, ChevronDown, Send, Loader2, MessageSquare, Plus, CheckCircle, XCircle, Clock, Shield, FileText } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { useForm } from "react-hook-form";
 
 const TIPO_OT_LABELS: Record<string, string> = {
   armado: "Armado", desarme: "Desarme", ampliacion: "Ampliación",
@@ -54,23 +50,17 @@ export default function ObraDetailPage({ params }: { params: Promise<{ id: strin
   const { data: comunicaciones } = useComunicaciones(id);
   const createComunicacion = useCreateComunicacion();
   const { data: ordenesTrabajo } = useOrdenesTrabajoByObra(id);
-  const createOT = useCreateOrdenTrabajo();
   const updateOT = useUpdateOrdenTrabajo();
   const { data: gates } = useGatesObra(id);
   const updateGate = useUpdateGate();
   const { data: periodos } = usePeriodosAlquiler(id);
   const createPeriodo = useCreatePeriodo();
   const { data: remitos } = useRemitosByObra(id);
-  const { data: personal } = usePersonal();
-  const { data: vehiculos } = useVehiculos();
 
   const [nuevoAsunto, setNuevoAsunto] = useState("");
   const [nuevoContenido, setNuevoContenido] = useState("");
-  const [otDrawer, setOtDrawer] = useState(false);
   const [periodoDrawer, setPeriodoDrawer] = useState(false);
   const [periodoForm, setPeriodoForm] = useState({ fecha_inicio: "", fecha_fin: "", monto: 0 });
-
-  const otForm = useForm<{ tipo: string; descripcion?: string; fecha_programada?: string; vehiculo_id?: string; horas_estimadas?: number; observaciones?: string }>({ defaultValues: { tipo: "armado" } });
 
   if (isLoading || !obra) return <div className="space-y-6"><Skeleton className="h-10 w-64" /><Skeleton className="h-96 w-full" /></div>;
 
@@ -171,9 +161,10 @@ export default function ObraDetailPage({ params }: { params: Promise<{ id: strin
 
         {/* TAB: Ordenes de Trabajo */}
         <TabsContent value="ordenes" className="mt-4 space-y-4">
-          <div className="flex justify-end">
-            <Button onClick={() => setOtDrawer(true)}><Plus className="mr-2 h-4 w-4" />Nueva OT</Button>
-          </div>
+          {/* Las OTs se emiten SOLO desde Odoo. Crearlas acá dejaba trabajo que nadie
+              podia ver ni cobrar: useCreateOrdenTrabajo escribia en Supabase y ni
+              siquiera empujaba a Odoo, asi que la OT quedaba invisible para Comercial,
+              para la facturacion, para el tablero y para el listado. */}
           {ordenesTrabajo && ordenesTrabajo.length > 0 ? (
             <Table>
               <TableHeader>
@@ -353,34 +344,6 @@ export default function ObraDetailPage({ params }: { params: Promise<{ id: strin
       </Sheet>
 
       {/* Drawer nueva OT */}
-      <Sheet open={otDrawer} onOpenChange={setOtDrawer}>
-        <SheetContent className="overflow-y-auto">
-          <SheetHeader><SheetTitle>Nueva orden de trabajo</SheetTitle></SheetHeader>
-          <form onSubmit={otForm.handleSubmit((data) => createOT.mutate({ ...data, obra_id: id }, { onSuccess: (ot) => { toast.success(`OT ${ot.codigo} creada`); setOtDrawer(false); otForm.reset(); }, onError: () => toast.error("Error") }))} className="mt-6 space-y-4">
-            <div className="space-y-2">
-              <Label>Tipo *</Label>
-              <Select value={otForm.watch("tipo")} onValueChange={(v) => v && otForm.setValue("tipo", v)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>{Object.entries(TIPO_OT_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2"><Label>Descripcion</Label><Textarea {...otForm.register("descripcion")} rows={2} placeholder="Que hay que hacer..." /></div>
-            <div className="space-y-2"><Label>Fecha programada</Label><Input type="date" {...otForm.register("fecha_programada")} /></div>
-            <div className="space-y-2">
-              <Label>Vehiculo</Label>
-              <Select value={otForm.watch("vehiculo_id") || ""} onValueChange={(v) => v && otForm.setValue("vehiculo_id", v)}>
-                <SelectTrigger><SelectValue placeholder="Asignar vehiculo..." /></SelectTrigger>
-                <SelectContent>{vehiculos?.map((v) => <SelectItem key={v.id} value={v.id}>{v.patente} — {v.marca} {v.modelo}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2"><Label>Horas estimadas</Label><Input type="number" step="0.5" {...otForm.register("horas_estimadas", { valueAsNumber: true })} /></div>
-            <div className="space-y-2"><Label>Observaciones</Label><Textarea {...otForm.register("observaciones")} rows={2} /></div>
-            <div className="flex justify-end pt-4">
-              <Button type="submit" disabled={createOT.isPending}>{createOT.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Crear OT</Button>
-            </div>
-          </form>
-        </SheetContent>
-      </Sheet>
     </div>
   );
 }

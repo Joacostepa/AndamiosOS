@@ -14,12 +14,12 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { useRouter } from "next/navigation";
-import { addDays, format, parseISO, startOfWeek } from "date-fns";
+import { addDays, format, parseISO, startOfDay } from "date-fns";
 import { es } from "date-fns/locale";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { TopbarTablero } from "./topbar-tablero";
-import { TableroGrid } from "./tablero-grid";
+import { TableroGrid, DIAS_VENTANA } from "./tablero-grid";
 import { PanelSinAsignar, ID_BANDEJA } from "./panel-sin-asignar";
 import { ContenidoTarjeta } from "./tarjeta-asignacion";
 import { PanelOt } from "./panel-ot";
@@ -98,12 +98,20 @@ const detectarColision: CollisionDetection = (args) => {
 };
 
 export function TableroBoard() {
-  // El ancla es el lunes de esta semana y no se mueve: la navegación es scroll, no
-  // paginado. `semanas` dice cuántas hay cargadas a cada lado; crecen al llegar al borde.
+  // EL ANCLA ES HOY, no el lunes de esta semana: se planifica desde hoy hacia adelante.
+  // Un miércoles a la mañana, el lunes pasado ya no es una decisión — ocupaba dos
+  // columnas de pantalla para mostrar trabajo que ya pasó. La ventana va de hoy hasta el
+  // mismo día de la semana que viene inclusive (ver DIAS_VENTANA en tablero-grid).
+  //
+  // No se mueve: la navegación es scroll, no paginado. `semanas` dice cuántas hay
+  // cargadas a cada lado; crecen al llegar al borde.
   const router = useRouter();
-  const [ancla] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
+  const [ancla] = useState(() => startOfDay(new Date()));
   const [semanas, setSemanas] = useState({ antes: 1, despues: 1 });
-  const [fechaCentrada, setFechaCentrada] = useState(() => iso(ancla));
+  // Primer día visible del viewport. Antes se guardaba el día CENTRADO y de ahí se
+  // deducía la semana; con la ventana anclada en hoy el borde izquierdo es lo que
+  // define qué se está mirando, y de él salen el rótulo y el período de capacidad.
+  const [fechaVisible, setFechaVisible] = useState(() => iso(ancla));
   // Semana a la que hay que ir apenas termine de cargarse. Va en ref y no en estado: es
   // una intención pendiente, no algo que se pinte, y como estado forzaba un render de más.
   const pendienteScroll = useRef<string | null>(null);
@@ -185,6 +193,12 @@ export function TableroBoard() {
     [inicioVisible, diasVisibles],
   );
 
+  // La grilla también necesita el nodo (mide su ancho para encajar la ventana), así que
+  // se lo pasa por callback y cada uno se lo guarda donde le sirve.
+  const asignarContenedor = useCallback((nodo: HTMLDivElement | null) => {
+    contenedor.current = nodo;
+  }, []);
+
   /** Lleva una fecha al borde izquierdo útil, salteando la columna fija de cuadrillas. */
   const scrollAFecha = useCallback((fecha: string, suave = true) => {
     const cont = contenedor.current;
@@ -243,28 +257,34 @@ export function TableroBoard() {
       }
     }
 
-    // Semana centrada en el viewport: es la que nombra el label de arriba. Se mide sobre
-    // el DOM y no con aritmética de scroll porque las columnas no son todas del mismo
-    // ancho (el domingo colapsado mide 28px).
-    const centro = ANCHO_RECURSO + (cont.clientWidth - ANCHO_RECURSO) / 2 + cont.scrollLeft;
-    let mejor: string | null = null;
-    let mejorDist = Infinity;
+    // Primer día visible: es el que nombra el rótulo de arriba y abre el período contra
+    // el que se mide la carga de cada fila. Se mide sobre el DOM y no con aritmética de
+    // scroll porque las columnas no son todas del mismo ancho (el domingo colapsado mide
+    // 28px). Se toma la primera cuyo borde derecho ya entró en el viewport útil: la que
+    // está apenas tapada por la columna sticky de cuadrillas no cuenta como visible.
+    const izquierda = cont.scrollLeft + ANCHO_RECURSO;
+    let primera: string | null = null;
     for (const nodo of cont.querySelectorAll<HTMLElement>("[data-fecha]")) {
-      const medio = nodo.offsetLeft + nodo.offsetWidth / 2;
-      const dist = Math.abs(medio - centro);
-      if (dist < mejorDist) {
-        mejorDist = dist;
-        mejor = nodo.dataset.fecha ?? null;
+      if (nodo.offsetLeft + nodo.offsetWidth > izquierda + 1) {
+        primera = nodo.dataset.fecha ?? null;
+        break;
       }
     }
-    if (mejor) setFechaCentrada(mejor);
+    if (primera) setFechaVisible(primera);
     // `semanas` entra en las dependencias porque el tope de ampliación se evalúa acá; el
     // efecto que engancha el listener se vuelve a correr y reengancha la versión fresca.
   }, [semanas]);
 
-  /** Flechas: dejan de paginar y hacen snap a la semana anterior / siguiente. */
+  /**
+   * Flechas: corren la ventana siete días para atrás o para adelante.
+   *
+   * Antes hacían snap al lunes de la semana centrada. Con la ventana anclada en hoy eso
+   * daba saltos raros —desde un miércoles, "siguiente" caía en lunes y movía cinco días,
+   * no siete—. Ahora se desplaza desde el primer día visible, así el paso es siempre el
+   * mismo y la ventana conserva su día de arranque.
+   */
   function irASemana(delta: number) {
-    const objetivo = addDays(startOfWeek(parseISO(fechaCentrada), { weekStartsOn: 1 }), delta * 7);
+    const objetivo = addDays(parseISO(fechaVisible), delta * 7);
     const objetivoISO = iso(objetivo);
 
     // Si ya está cargada se va directo: sin cambio de estado no habría re-render, y el
@@ -378,18 +398,24 @@ export function TableroBoard() {
 
   const hoyISO = format(new Date(), "yyyy-MM-dd");
 
-  // El label ya no nombra un rango fijo: nombra la semana que está centrada en pantalla.
-  const lunesCentrado = startOfWeek(parseISO(fechaCentrada), { weekStartsOn: 1 });
-  const rangoLabel = `${format(lunesCentrado, "d MMM", { locale: es })} – ${format(addDays(lunesCentrado, 5), "d MMM yyyy", { locale: es })}`;
+  // El rótulo nombra la ventana que se está viendo, que ya no es una semana de
+  // calendario: arranca en el primer día visible y llega hasta el mismo día de la
+  // semana siguiente.
+  const inicioVentana = parseISO(fechaVisible);
+  const rangoLabel = `${format(inicioVentana, "d MMM", { locale: es })} – ${format(addDays(inicioVentana, DIAS_VENTANA - 1), "d MMM yyyy", { locale: es })}`;
 
-  // Los siete días de esa misma semana. Es el PERÍODO contra el que se mide la carga de
-  // cada fila. Al pasar de 6 días fijos a un rango de varias semanas, el total de la fila
-  // se había quedado sin período: dividía por el rango entero cargado, así que una
-  // cuadrilla sobreasignada cuatro días seguidos figuraba al 26% de ocupación y la señal
+  // Los siete días que abren en el primer día visible. Es el PERÍODO contra el que se
+  // mide la carga de cada fila, y tiene que seguir a lo que se ve: si el período fuera
+  // una semana de calendario mientras la vista arranca un miércoles, el "10,75 / 6" del
+  // encabezado estaría hablando de días que no están en pantalla.
+  //
+  // Al pasar de 6 días fijos a un rango de varias semanas, el total de la fila se había
+  // quedado sin período: dividía por el rango entero cargado, así que una cuadrilla
+  // sobreasignada cuatro días seguidos figuraba al 26% de ocupación y la señal
   // desaparecía del encabezado. Y empeoraba al scrollear, porque el rango crece.
   const semanaCentrada = useMemo(
-    () => Array.from({ length: 7 }, (_, i) => iso(addDays(lunesCentrado, i))),
-    [lunesCentrado],
+    () => Array.from({ length: 7 }, (_, i) => iso(addDays(parseISO(fechaVisible), i))),
+    [fechaVisible],
   );
 
   // El scroll vive dentro de TableroGrid, así que el listener se engancha a mano. `data`
@@ -634,7 +660,7 @@ export function TableroBoard() {
         onCuadrillas={cambiarVisibles}
         onPrev={() => irASemana(-1)}
         onNext={() => irASemana(1)}
-        onHoy={() => scrollAFecha(iso(startOfWeek(new Date(), { weekStartsOn: 1 })))}
+        onHoy={() => scrollAFecha(hoyISO)}
         onRefrescar={() => refetch()}
       />
 
@@ -648,7 +674,7 @@ export function TableroBoard() {
         <div className="flex min-h-0 flex-1 overflow-hidden rounded-md border">
           {cuadrillasVisibles.length > 0 ? (
             <TableroGrid
-              contenedorRef={contenedor}
+              contenedorRef={asignarContenedor}
               cuadrillas={cuadrillasVisibles}
               fechas={fechas}
               semanaCentrada={semanaCentrada}

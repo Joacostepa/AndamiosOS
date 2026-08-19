@@ -1,5 +1,6 @@
 "use client";
 
+import { useCallback, useEffect, useRef, useState } from "react";
 import { format, isSameDay, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { AlertTriangle, MousePointerClick } from "lucide-react";
@@ -37,6 +38,23 @@ const ANCHO_RECURSO = 168;
  * sobre la cantidad de días a la vista: para eso está el scroll.
  */
 const ANCHO_MIN_DIA = 168;
+
+/**
+ * Días que tienen que entrar en pantalla sin scrollear: hoy más los siete siguientes,
+ * o sea hasta el mismo día de la semana que viene INCLUSIVE.
+ *
+ * Es la ventana con la que se planifica: se mira desde hoy hacia adelante, no desde el
+ * lunes. Un miércoles a la mañana el lunes pasado ya no es una decisión.
+ */
+export const DIAS_VENTANA = 8;
+
+/**
+ * Piso del ancho de columna. Por debajo de esto el título de la obra deja de decir nada
+ * —"Consorcio de Prop…" se repite en media grilla— y la tarjeta pasa a ser un color.
+ * Si la pantalla es tan angosta que la ventana no entra a este ancho, vuelve el scroll:
+ * es preferible scrollear a no poder leer.
+ */
+const ANCHO_DIA_MINIMO = 150;
 /** Domingo sin trabajo: una canaleta, no una columna. */
 const ANCHO_CANALETA = 28;
 /** Franja al pie de la celda donde vive el riel de ocupación. */
@@ -45,16 +63,52 @@ const ALTO_BARRA = 10;
  * Alto de una tarjeta. El mínimo da lugar a las dos líneas (dirección + cliente) sin que
  * se toquen; el máximo evita que una fila con una sola obra estire esa tarjeta a media
  * pantalla. Entre ambos, la fila reparte lo que sobra.
+ *
+ * Los valores subieron un escalón junto con el ancho de columna: con pocas cuadrillas
+ * visibles sobra alto, y usarlo para que la tarjeta respire es mejor que dejarlo en
+ * blanco. Lo que NO se hace es estirar las filas hasta llenar la pantalla — eso da tres
+ * franjas enormes con las tarjetas pegadas arriba y un hueco muerto abajo, que se ve más
+ * lleno y se lee peor. Para eso está el techo.
  */
-const ALTO_CARRIL = 34;
-const ALTO_CARRIL_MAX = 46;
+const ALTO_CARRIL = 38;
+const ALTO_CARRIL_MAX = 54;
 /** Piso del alto de fila. La fila crece con sus carriles; esto es sólo el mínimo. */
-const ALTO_MIN_FILA = 64;
+const ALTO_MIN_FILA = 72;
 
 const DECIMAL = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 });
 
 function esLunes(fecha: string): boolean {
   return parseISO(fecha).getDay() === 1;
+}
+
+/**
+ * Cuánto mide una columna de día para que la ventana entre justa en el contenedor.
+ *
+ * Los domingos colapsados miden fijo (28px) y no participan del reparto, así que se
+ * descuentan antes de dividir. Devuelve el ancho fijo de siempre mientras no se haya
+ * medido el contenedor —el primer render, antes de que corra el ResizeObserver— para no
+ * pintar una grilla degenerada de 0px.
+ */
+function anchoDeColumna(
+  anchoContenedor: number | null,
+  fechas: string[],
+  hoy: string,
+  colapsado: (f: string) => boolean,
+): number {
+  if (!anchoContenedor) return ANCHO_MIN_DIA;
+
+  // La ventana arranca en hoy. Si hoy quedó fuera del rango cargado (el usuario se fue
+  // muy atrás y volvió), se toma el principio: lo que importa es el ancho, no cuál día.
+  const desde = Math.max(0, fechas.indexOf(hoy));
+  const ventana = fechas.slice(desde, desde + DIAS_VENTANA);
+  if (ventana.length === 0) return ANCHO_MIN_DIA;
+
+  const canaletas = ventana.filter(colapsado).length;
+  const anchos = ventana.length - canaletas;
+  if (anchos <= 0) return ANCHO_MIN_DIA;
+
+  const disponible = anchoContenedor - ANCHO_RECURSO - canaletas * ANCHO_CANALETA;
+  return Math.max(ANCHO_DIA_MINIMO, Math.floor(disponible / anchos));
 }
 
 export function TableroGrid({
@@ -89,8 +143,13 @@ export function TableroGrid({
   bloqueSeleccionado: string | null;
   /** Fecha de hoy en yyyy-MM-dd: define desde cuándo se puede cerrar una jornada. */
   hoy: string;
-  /** El board maneja el scroll (snap de semana, semana centrada en el label). */
-  contenedorRef?: React.Ref<HTMLDivElement>;
+  /**
+   * El board maneja el scroll (paginado, snap, primer día visible), así que recibe el
+   * nodo del contenedor por acá. Va como callback y no como objeto ref porque la grilla
+   * también necesita el nodo —para medir su ancho— y escribirle `.current` a un ref que
+   * llega por prop es mutar una prop.
+   */
+  contenedorRef?: (nodo: HTMLDivElement | null) => void;
   onCerrarJornada: (bloque: Bloque, accion: NonNullable<AccionCierre>) => void;
   onAbrirBloque: (bloque: Bloque) => void;
   onFraccion: (bloque: Bloque, f: FraccionStr) => void;
@@ -106,6 +165,33 @@ export function TableroGrid({
 }) {
   const hoy = new Date();
 
+  // El contenedor de scroll lo maneja el board (snap, paginado), pero el ancho de
+  // columna se calcula acá, así que hace falta medirlo. Se combinan los dos refs sobre
+  // el mismo nodo en vez de duplicar el div: un wrapper extra rompería el `flex-1` y el
+  // sticky de la columna de cuadrillas.
+  const propio = useRef<HTMLDivElement | null>(null);
+  const [anchoContenedor, setAnchoContenedor] = useState<number | null>(null);
+
+  const asignarRef = useCallback(
+    (nodo: HTMLDivElement | null) => {
+      propio.current = nodo;
+      contenedorRef?.(nodo);
+    },
+    [contenedorRef],
+  );
+
+  // Se remide al cambiar el tamaño de la ventana y al colapsar el panel derecho, que es
+  // el caso que más cambia el ancho útil.
+  useEffect(() => {
+    const nodo = propio.current;
+    if (!nodo) return;
+    const observador = new ResizeObserver(([entrada]) => {
+      setAnchoContenedor(entrada.contentRect.width);
+    });
+    observador.observe(nodo);
+    return () => observador.disconnect();
+  }, []);
+
   const enCelda = (cuadrillaId: number, fecha: string) =>
     asignaciones.filter((a) => a.cuadrillaId === cuadrillaId && a.fecha === fecha);
 
@@ -117,18 +203,30 @@ export function TableroGrid({
   );
   const colapsado = (f: string) => esDomingo(f) && !domingosActivos.has(f);
 
+  // ── Ancho de columna: la ventana de 8 días entra exacta ────────────────────
+  //
+  // Antes el ancho era fijo en 168px y el rango cargado son tres semanas, así que en una
+  // pantalla común entraban 8,7 columnas: se veía la semana y después un muñón de dos
+  // días cortados contra el borde. Ese pedazo no alcanza para planificar nada y es lo
+  // que hacía que la grilla se viera chica — las columnas quedaban clavadas en su mínimo
+  // en vez de repartirse el ancho disponible.
+  //
+  // Ahora se mide el contenedor y se reparte para que entren los 8 días de la ventana
+  // justos: sin sobrante y sin columna cortada.
+  const anchoDia = anchoDeColumna(anchoContenedor, fechas, hoyISO, colapsado);
+
   // La plantilla externa impone los anchos; la interna los repite para que las celdas de
   // cada fila caigan exactamente bajo su encabezado. En las columnas elásticas la interna
   // usa minmax(0,1fr) y no el ancho mínimo: declararlo en las dos hace que difieran por
   // redondeo y aparezca un scroll horizontal de 2px.
   const plantillaExterna = fechas
-    .map((f) => (colapsado(f) ? `${ANCHO_CANALETA}px` : `minmax(${ANCHO_MIN_DIA}px, 1fr)`))
+    .map((f) => (colapsado(f) ? `${ANCHO_CANALETA}px` : `minmax(${anchoDia}px, 1fr)`))
     .join(" ");
   const plantillaInterna = fechas
     .map((f) => (colapsado(f) ? `${ANCHO_CANALETA}px` : "minmax(0, 1fr)"))
     .join(" ");
   const anchoMinimo =
-    ANCHO_RECURSO + fechas.reduce((s, f) => s + (colapsado(f) ? ANCHO_CANALETA : ANCHO_MIN_DIA), 0);
+    ANCHO_RECURSO + fechas.reduce((s, f) => s + (colapsado(f) ? ANCHO_CANALETA : anchoDia), 0);
 
   // Jornadas ya ejecutadas (parte diario cargado): la tarjeta se atenúa.
   const ejecutadas = new Set(
@@ -173,7 +271,7 @@ export function TableroGrid({
   });
 
   return (
-    <div ref={contenedorRef} className="relative min-h-0 min-w-0 flex-1 overflow-auto">
+    <div ref={asignarRef} className="relative min-h-0 min-w-0 flex-1 overflow-auto">
       {/* Rango sin nada planificado: en vez de una grilla muda, qué hacer.
           Va sticky y de alto cero como PRIMER hijo del contenedor: con el scroll
           horizontal de varias semanas, un `absolute inset-0` se centraría sobre los

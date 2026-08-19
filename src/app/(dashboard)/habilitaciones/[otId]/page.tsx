@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import {
-  useHabilitacion, useRegistrarGestion, useVencimiento,
+  useHabilitacion, useRegistrarGestion, useTriage, useVencimiento,
 } from "@/hooks/use-habilitaciones";
 import { ColumnaPermiso } from "@/components/habilitaciones/columna-permiso";
 import { ListadoRequisitos } from "@/components/habilitaciones/listado-requisitos";
@@ -117,6 +117,8 @@ function Ficha({ ficha, otId }: { ficha: FichaHabilitacion; otId: number }) {
         </div>
       </div>
 
+      <BarraTriage ficha={ficha} otId={otId} />
+
       {ficha.syncEstado === "error" && (
         <p className="rounded border px-3 py-2 text-[12px]" style={{ backgroundColor: "#FEF6E7" }}>
           El estado no pudo actualizarse en Odoo: <code>{ficha.syncError}</code>. El tablero
@@ -140,6 +142,87 @@ function Ficha({ ficha, otId }: { ficha: FichaHabilitacion; otId: number }) {
         <NotasObra otId={otId} notas={ficha.notas} />
         <Historial ficha={ficha} />
       </div>
+    </div>
+  );
+}
+
+/**
+ * El estado de triage, y cómo deshacerlo.
+ *
+ * Sin esto, "no aplica" era irreversible desde la UI: la obra salía de la bandeja y no
+ * había forma de traerla de vuelta salvo tocando la base. Una acción por lote sobre
+ * decenas de obras sin vuelta atrás es una trampa, no un atajo.
+ */
+function BarraTriage({ ficha, otId }: { ficha: FichaHabilitacion; otId: number }) {
+  const triage = useTriage();
+
+  function decidir(decision: "aplica" | "no_aplica" | "pendiente", mensaje: string) {
+    triage.mutate(
+      { otIds: [otId], decision },
+      {
+        onSuccess: () => toast.success(mensaje),
+        onError: (e) => toast.error(e instanceof Error ? e.message : "No se pudo cambiar"),
+      },
+    );
+  }
+
+  if (ficha.triage === "no_aplica") {
+    return (
+      <div className="flex items-center gap-3 rounded-md border px-3 py-2 text-[13px]">
+        <CircleX className="h-4 w-4 shrink-0 text-muted-foreground" />
+        <span className="flex-1 text-muted-foreground">
+          Marcada <strong>no aplica</strong> — está fuera de la cola y no cuenta en el total.
+          Sus requisitos, notas e historial se conservan.
+        </span>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={triage.isPending}
+          onClick={() => decidir("pendiente", "De vuelta en la cola")}
+        >
+          {triage.isPending && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
+          Volver a la cola
+        </Button>
+      </div>
+    );
+  }
+
+  if (ficha.triage === null) {
+    return (
+      <div className="flex items-center gap-3 rounded-md border px-3 py-2 text-[13px]" style={{ backgroundColor: "#FEF6E7" }}>
+        <TriangleAlert className="h-4 w-4 shrink-0" style={{ color: "#B54708" }} />
+        <span className="flex-1">Recién llegada — falta definir si la habilitación aplica.</span>
+        <Button
+          size="sm"
+          disabled={triage.isPending}
+          onClick={() => decidir("aplica", "En gestión · se creó la Nómina ART")}
+        >
+          Aplica
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={triage.isPending}
+          onClick={() => decidir("no_aplica", "Fuera de la cola")}
+        >
+          No aplica
+        </Button>
+      </div>
+    );
+  }
+
+  // En gestión: la salida está, pero discreta — sacar de la cola una obra que ya se
+  // está trabajando no debería ser tan fácil como marcar un requisito.
+  return (
+    <div className="flex items-center gap-3 px-1 text-[11px] text-muted-foreground">
+      <span className="flex-1">En gestión desde el triage.</span>
+      <button
+        className="underline hover:text-foreground"
+        disabled={triage.isPending}
+        onClick={() => decidir("no_aplica", 'Fuera de la cola · queda en "No aplican"')}
+      >
+        Marcar que no aplica
+      </button>
     </div>
   );
 }

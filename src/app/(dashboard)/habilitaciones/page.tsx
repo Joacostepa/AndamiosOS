@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2, RefreshCw, TriangleAlert } from "lucide-react";
+import Link from "next/link";
+import { ChevronDown, ChevronRight, Loader2, RefreshCw, TriangleAlert, Undo2 } from "lucide-react";
 import { toast } from "sonner";
+import { partesTitulo } from "@/lib/tablero/titulo";
 import { useBandejaHabilitaciones, useReconciliar, useTriage } from "@/hooks/use-habilitaciones";
 import { Fila } from "@/components/habilitaciones/fila-bandeja";
 import { PageHeader } from "@/components/shared/page-header";
@@ -10,7 +12,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ShieldCheck } from "lucide-react";
-import type { GrupoBandeja } from "@/lib/habilitaciones/tipos";
+import type { FilaBandeja, GrupoBandeja } from "@/lib/habilitaciones/tipos";
 
 // Bandeja de Habilitaciones. Reemplaza a la planilla `Seguimiento de obras (DOCS
 // TRACKER)` y a la vieja pantalla que sólo tenía un botón "Habilitar" contra un booleano.
@@ -42,17 +44,20 @@ export default function HabilitacionesPage() {
     });
   }
 
-  function triar(decision: "aplica" | "no_aplica", otIds: number[]) {
+  function triar(decision: "aplica" | "no_aplica" | "pendiente", otIds: number[]) {
     if (otIds.length === 0) return;
     triage.mutate(
       { otIds, decision },
       {
         onSuccess: ({ resueltas }) => {
           setSeleccion(new Set());
+          const n = `${resueltas} ${resueltas === 1 ? "obra" : "obras"}`;
           toast.success(
             decision === "aplica"
-              ? `${resueltas} ${resueltas === 1 ? "obra" : "obras"} en gestión · se creó la Nómina ART`
-              : `${resueltas} ${resueltas === 1 ? "obra sacada" : "obras sacadas"} de la cola`,
+              ? `${n} en gestión · se creó la Nómina ART`
+              : decision === "no_aplica"
+                ? `${n} fuera de la cola · quedan abajo, en "No aplican"`
+                : `${n} de vuelta en la cola`,
           );
         },
         onError: (e) => toast.error(e instanceof Error ? e.message : "No se pudo resolver el triage"),
@@ -150,7 +155,78 @@ export default function HabilitacionesPage() {
           />
         ))
       )}
+
+      <NoAplican
+        filas={data?.noAplican ?? []}
+        onVolver={(otIds) => triar("pendiente", otIds)}
+        triando={triage.isPending}
+      />
     </div>
+  );
+}
+
+/**
+ * Las descartadas, al pie y colapsadas.
+ *
+ * NO SUMAN AL TOTAL en trámite: no hay nada que hacer con ellas y por eso no compiten
+ * por atención con los seis grupos de arriba. Pero tienen que ser ALCANZABLES — el
+ * triage por lote resuelve decenas de obras de un clic, y sin esta lista un clic de más
+ * dejaba a la obra fuera del sistema sin forma de traerla de vuelta.
+ */
+function NoAplican({
+  filas,
+  onVolver,
+  triando,
+}: {
+  filas: FilaBandeja[];
+  onVolver: (otIds: number[]) => void;
+  triando: boolean;
+}) {
+  const [abierto, setAbierto] = useState(false);
+  if (filas.length === 0) return null;
+
+  return (
+    <section className="rounded-md border">
+      <button
+        onClick={() => setAbierto((v) => !v)}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted/40"
+      >
+        {abierto ? (
+          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+        ) : (
+          <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+        )}
+        <h2 className="text-[13px] font-medium text-muted-foreground">No aplican</h2>
+        <span className="rounded-full bg-muted px-2 py-0.5 text-[11px]">{filas.length}</span>
+        <span className="ml-auto text-[11px] text-muted-foreground">
+          fuera de la cola · no cuentan en el total
+        </span>
+      </button>
+
+      {abierto && (
+        <ul>
+          {filas.map((f) => (
+            <li
+              key={f.otId}
+              className="flex items-center gap-2 border-t px-3 py-2 text-[13px]"
+            >
+              <Link href={`/habilitaciones/${f.otId}`} className="min-w-0 flex-1 truncate">
+                {partesTitulo(f.titulo).principal}
+              </Link>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={triando}
+                onClick={() => onVolver([f.otId])}
+              >
+                <Undo2 className="mr-1 h-3.5 w-3.5" />
+                Volver a la cola
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 

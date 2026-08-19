@@ -177,6 +177,12 @@ export type Bandeja = {
   grupos: GrupoBandeja[];
   total: number;
   desincronizadas: number;
+  /**
+   * Las marcadas "no aplica". Van APARTE de `grupos` y no suman al total: no están en
+   * trámite. Pero tienen que ser alcanzables — el triage por lote resuelve decenas de
+   * obras de un clic y un clic de más no puede ser irreversible.
+   */
+  noAplican: FilaBandeja[];
 };
 
 export type FichaHabilitacion = {

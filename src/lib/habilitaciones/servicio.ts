@@ -128,6 +128,9 @@ export async function fetchBandeja(db: DB): Promise<Bandeja> {
     grupos,
     total: grupos.reduce((n, g) => n + g.filas.length, 0),
     desincronizadas: filas.filter((f) => f.syncEstado === "error").length,
+    noAplican: filas
+      .filter((f) => f.triage === "no_aplica")
+      .sort((a, b) => a.titulo.localeCompare(b.titulo)),
   };
 }
 
@@ -247,10 +250,18 @@ export async function contarConsultas(db: DB, otId: number): Promise<number> {
  * POR QUÉ OPTIMISTA: cada RPC a Odoo tarda ~800 ms sin importar la concurrencia.
  * Resolver 4 obras contra Odoo serían 4 × 800 ms en la acción más frecuente del módulo.
  */
+export type DecisionTriage = "aplica" | "no_aplica" | "pendiente";
+
+const DETALLE_TRIAGE: Record<DecisionTriage, string> = {
+  aplica: "Aplica — se creó el paquete Básico",
+  no_aplica: "No aplica",
+  pendiente: "Vuelta a la cola — se deshizo el triage",
+};
+
 export async function triar(
   db: DB,
   otIds: number[],
-  decision: "aplica" | "no_aplica",
+  decision: DecisionTriage,
   autorId: string | null,
 ): Promise<void> {
   const hoy = hoyISO();
@@ -259,9 +270,12 @@ export async function triar(
   const { error } = await db
     .from("hab_ots")
     .update({
-      triage: decision,
-      triage_fecha: new Date().toISOString(),
-      triage_autor: autorId,
+      // `pendiente` deshace el triage: la obra vuelve a "Recién llegadas". El triage por
+      // lote resuelve decenas de obras de un clic, así que un clic de más no puede ser
+      // irreversible — y la vuelta atrás queda registrada como cualquier otra decisión.
+      triage: decision === "pendiente" ? null : decision,
+      triage_fecha: decision === "pendiente" ? null : new Date().toISOString(),
+      triage_autor: decision === "pendiente" ? null : autorId,
       sync_estado: "pendiente",
       // "Aplica" sella la fecha de consulta en el mismo gesto que crea los requisitos.
       // Si no, Odoo computa etapa `a` ("falta consultar requisitos") sobre una obra que
@@ -273,11 +287,14 @@ export async function triar(
 
   if (decision === "aplica") await sembrarPaqueteDefault(db, otIds);
 
+  // Volver a la cola NO borra los requisitos, las notas ni el historial: si la obra ya
+  // había pasado por "aplica", vuelve al estado en que estaba. Deshacer una decisión no
+  // puede destruir el trabajo hecho antes de tomarla.
   const { error: e2 } = await db.from("hab_gestiones").insert(
     otIds.map((odoo_ot_id) => ({
       odoo_ot_id,
       tipo: "triage" as const,
-      detalle: decision === "aplica" ? "Aplica — se creó el paquete Básico" : "No aplica",
+      detalle: DETALLE_TRIAGE[decision],
       autor_id: autorId,
     })),
   );

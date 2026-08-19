@@ -44,16 +44,22 @@ export function useBandejaHabilitaciones() {
  *
  * No espera a Odoo: la ruta escribe en Supabase, contesta, y sincroniza en after(). Con
  * ~68 entradas por mes el triage tiene que ser de un clic o la bandeja se llena de ruido.
+ *
+ * `pendiente` deshace el triage. Existe porque lo otro es irreversible desde la UI, y
+ * una acción por lote sobre decenas de obras sin vuelta atrás es una trampa.
  */
 export function useTriage() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (v: { otIds: number[]; decision: "aplica" | "no_aplica" }) =>
+    mutationFn: (v: { otIds: number[]; decision: "aplica" | "no_aplica" | "pendiente" }) =>
       pedir<{ resueltas: number }>("/api/habilitaciones/triage", {
         method: "POST",
         body: JSON.stringify(v),
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["habilitaciones"] }),
+    onSuccess: (_d, v) => {
+      qc.invalidateQueries({ queryKey: ["habilitaciones"] });
+      for (const otId of v.otIds) qc.invalidateQueries({ queryKey: ["habilitacion", otId] });
+    },
   });
 }
 

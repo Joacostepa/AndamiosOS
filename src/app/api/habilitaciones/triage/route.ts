@@ -16,7 +16,8 @@ export const dynamic = "force-dynamic";
 
 const schema = z.object({
   otIds: z.array(z.number().int().positive()).min(1).max(100),
-  decision: z.enum(["aplica", "no_aplica"]),
+  // `pendiente` deshace el triage y devuelve la obra a "Recién llegadas".
+  decision: z.enum(["aplica", "no_aplica", "pendiente"]),
 });
 
 export async function POST(req: NextRequest) {

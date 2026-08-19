@@ -36,12 +36,17 @@ export async function updateSession(request: NextRequest) {
   // REGLA DE NEGOCIO: Rutas públicas sin autenticación:
   // /login (acceso), /auth (callback OAuth). Todo lo demás requiere sesión activa.
   // /api/odoo/sync y /api/odoo/webhooks: server-to-server (sin sesión), protegidos por secret.
+  // /api/informes-obra/generar: el cron diario de Vercel, que tampoco trae cookies.
+  //   Va acá y no la rama /api/informes-obra entera: las rutas de LECTURA del módulo sí
+  //   requieren sesión. Este endpoint se protege con CRON_SECRET (ver su _comun.ts), que
+  //   falla cerrado si la variable no está configurada.
   // /cotizador y /api/public: cotizador hogareño para clientes finales (sin cuenta).
   const publicPaths = [
     "/login",
     "/auth",
     "/api/odoo/sync",
     "/api/odoo/webhooks",
+    "/api/informes-obra/generar",
     "/cotizador",
     "/api/public",
   ];

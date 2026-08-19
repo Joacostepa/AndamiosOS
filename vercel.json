@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/informes-obra/generar",
+      "schedule": "0 9 * * *"
+    }
+  ]
+}

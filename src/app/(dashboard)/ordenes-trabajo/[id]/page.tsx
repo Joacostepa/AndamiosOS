@@ -4,7 +4,7 @@ import { use } from "react";
 import Link from "next/link";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
-import { ArrowDown, ArrowLeft, ArrowUp, Check, ExternalLink, MoreHorizontal, Square } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowUp, Check, ExternalLink, FileBarChart, MoreHorizontal, Square } from "lucide-react";
 import { useOrdenOdoo } from "@/hooks/use-ordenes-odoo";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -251,6 +251,19 @@ export default function FichaOrdenPage({ params }: { params: Promise<{ id: strin
               <ExternalLink className="h-3.5 w-3.5" />
               {ot.ordenVenta ?? "Ver la venta en Odoo"}
             </a>
+          )}
+          {/* El informe se indexa por VENTA y no por OT: el armado y el desarme de la
+              misma obra comparten informe, igual que comparten permiso. El enlace se
+              ofrece siempre — si la obra todavía no cerró, la pantalla lo dice. */}
+          {ot.ventaId && (
+            <Link
+              href={`/informes-obra/${ot.ventaId}`}
+              className="inline-flex items-center gap-1 text-[12px] hover:underline"
+              style={{ color: CORAL }}
+            >
+              <FileBarChart className="h-3.5 w-3.5" />
+              Ver el informe de esta obra
+            </Link>
           )}
         </div>
       </Bloque>

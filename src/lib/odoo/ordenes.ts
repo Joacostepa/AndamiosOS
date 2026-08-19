@@ -251,6 +251,7 @@ export async function fetchOrdenDetalle(id: number): Promise<OrdenDetalle | null
     // La venta es de Comercial y no se gestiona desde esta app: acá el enlace externo a
     // Odoo sí corresponde.
     urlVenta: ordenVentaId ? `${root}/odoo/sale.order/${ordenVentaId}` : null,
+    ventaId: ordenVentaId,
     jornadasPlanificadas,
   };
 }

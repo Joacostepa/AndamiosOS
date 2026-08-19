@@ -75,6 +75,8 @@ export type OrdenDetalle = OrdenListado & {
   telObra: string | null;
   observaciones: string | null;
   urlVenta: string | null;
+  /** Id de sale.order. Lo necesita el enlace al informe de obra, que se indexa por venta. */
+  ventaId: number | null;
   jornadasPlanificadas: JornadaDeOrden[];
 };
 

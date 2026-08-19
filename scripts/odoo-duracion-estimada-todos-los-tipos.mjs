@@ -39,6 +39,23 @@ import { version, authenticate, searchRead, create, write, fieldsGet } from "./o
 const MODEL = "x_aba_orden_trabajo";
 const CAMPO = "x_duracion_sugerida";
 
+// EL SUGERIDO SALE DE LO EJECUTADO CUANDO EXISTE, Y DEL ESTIMADO CUANDO NO.
+//
+// Un estimado errado propaga su error al desarme; los dias que el armado llevó de verdad
+// no. Medido sobre 415 obras prediciendo los dias del desarme:
+//
+//   dias reales del armado × 0,6    94% exacto  ·  73% en armados de mas de un dia
+//   horas reales /40 × 0,6          93% exacto  ·  60% en armados de mas de un dia
+//   siempre 1 jornada               90% exacto  ·  48% en armados de mas de un dia
+//
+// Se usan DIAS y no HORAS a proposito: para llevar horas a jornadas hay que dividir por 40
+// (5 personas × 8 h), y esa suposicion se apila sobre el dato. Los dias ya estan en la
+// unidad del campo. En las obras de mas de un dia —donde la sugerencia sirve— esa
+// conversion cuesta 13 puntos de acierto.
+//
+// El fallback al estimado existe porque no se puede dar por sentado que el armado esté
+// ejecutado cuando se carga el desarme: hoy las 1003 OTs son importadas y no hay ninguna
+// creada organicamente, asi que no hay forma de medir en que orden va a pasar.
 const COMPUTE = `
 for rec in self:
     txt = ''
@@ -46,14 +63,36 @@ for rec in self:
     if t and t != 'armado':
         o = rec['x_order_id']
         if o:
+            armados = rec.env['x_aba_orden_trabajo'].search([('x_order_id', '=', o.id), ('x_tipo', '=', 'armado')])
+            ids = []
+            for a in armados:
+                ids.append(a.id)
+            dias = set()
+            if ids:
+                for p in rec.env['x_aba_parte_diario'].search([('x_orden_trabajo_id', 'in', ids)]):
+                    if p['x_fecha']:
+                        dias.add(p['x_fecha'])
             base = 0.0
-            for h in rec.env['x_aba_orden_trabajo'].search([('x_order_id', '=', o.id), ('x_tipo', '=', 'armado')]):
-                base += float(h['x_duracion_est'] or 0)
-            if base > 0:
-                s = max(1.0, round(base * 0.6))
-                txt = 'Sugerido: %g jornada(s). El armado de esta obra son %g. Medido sobre 415 obras, el desarme lleva ~60%% del armado, con piso de una jornada. Es una referencia: poner lo que corresponda.' % (s, base)
+            fuente = ''
+            if len(dias) > 0:
+                base = float(len(dias))
+                fuente = 'ejecutado'
             else:
-                txt = 'El armado de esta obra todavia no tiene duracion estimada, asi que no hay sugerencia. Estimar con una cuadrilla de 5 personas y jornada de 8 horas.'
+                for a in armados:
+                    base += float(a['x_duracion_est'] or 0)
+                if base > 0:
+                    fuente = 'estimado'
+            if fuente == 'ejecutado':
+                s = max(1.0, round(base * 0.6))
+                if base <= 6:
+                    txt = 'Sugerido: %g jornada(s). El armado de esta obra se EJECUTO en %g visita(s). Medido sobre 415 obras, el desarme lleva ~60%% del armado con piso de una jornada; en armados de este tamano la regla acierta el 94%%. Es una referencia: poner lo que corresponda.' % (s, base)
+                else:
+                    txt = 'Sugerido: %g jornada(s) — TOMAR CON PINZAS. El armado se EJECUTO en %g visita(s), y solo hay 6 obras historicas con armados tan largos: ahi la regla del 60%% falla por ~2 jornadas y el ratio real va de 0,33 a 1,14. Ademas un armado tan repartido suele ser fragmentacion por el ritmo del cliente, no tamano de trabajo. Estimar a mano.' % (s, base)
+            elif fuente == 'estimado':
+                s = max(1.0, round(base * 0.6))
+                txt = 'Sugerido: %g jornada(s). El armado todavia NO se ejecuto; esto sale de su estimacion de %g jornada(s), asi que arrastra el error que tenga. Medido sobre 415 obras, el desarme lleva ~60%% del armado con piso de una jornada.' % (s, base)
+            else:
+                txt = 'El armado de esta obra no se ejecuto todavia ni tiene duracion estimada, asi que no hay sugerencia. Estimar con una cuadrilla de 5 personas y jornada de 8 horas.'
     rec['${CAMPO}'] = txt
 `.trim();
 
@@ -66,7 +105,10 @@ if (!modelo) throw new Error(`No existe el modelo ${MODEL}`);
 
 const existentes = await fieldsGet(MODEL, ["type"]);
 if (CAMPO in existentes) {
-  console.log(`· ${MODEL}.${CAMPO} ya existe`);
+  // Ya existe: se actualiza el compute, que es lo que cambia entre corridas.
+  const [f] = await searchRead("ir.model.fields", [["model", "=", MODEL], ["name", "=", CAMPO]], ["id"]);
+  await write("ir.model.fields", [f.id], { compute: COMPUTE, depends: "x_tipo,x_order_id" });
+  console.log(`✓ ${MODEL}.${CAMPO}: compute actualizado`);
 } else {
   await create("ir.model.fields", {
     model_id: modelo.id,

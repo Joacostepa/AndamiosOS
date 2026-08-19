@@ -262,8 +262,22 @@ Al cargar una OT que no es de armado, el formulario muestra una referencia calcu
 
 > Sugerido: 2 jornada(s). El armado de esta obra son 3.
 
-La regla es `max(1, round(armado × 0,6))`, y sale de medir **415 obras** con armado y
-desarme ejecutados:
+**La base es lo EJECUTADO, no lo estimado.** Un estimado errado propagaría su error al
+desarme; los días que el armado llevó de verdad, no. Si el armado todavía no tiene partes
+se cae a su estimación, y el texto avisa que arrastra el error que tenga.
+
+**Y se usan días, no horas.** Medido sobre 415 obras, prediciendo los días del desarme:
+
+| Predictor | Exacto | Exacto en armados de +1 día |
+| --- | --- | --- |
+| **días reales × 0,6** | **94%** | **73%** |
+| horas reales / 40 × 0,6 | 93% | 60% |
+| siempre 1 jornada | 90% | 48% |
+
+Las horas pierden porque llevarlas a jornadas exige dividir por 40 (5 personas × 8 h), y
+esa suposición se apila sobre el dato. Los días ya están en la unidad del campo.
+
+La regla es `max(1, round(armado × 0,6))`, y sale de medir esas 415 obras:
 
 | Armado | Desarme (mediana) | Ratio | Casos |
 | --- | --- | --- | --- |
@@ -278,6 +292,13 @@ tiene el desarme con exactamente las mismas horas que el armado** —mismo perso
 horas copiadas en los dos partes—. Es un artefacto de carga, no una regularidad. Sacando
 esos casos la mediana cae a 0,50–0,75, que ya coincide con la de días. Calibrar contra el
 promedio crudo habría dado una sugerencia al doble.
+
+**Fuera del rango medido, el texto lo dice.** Sólo hay **6 obras** con armados de más de
+6 visitas. Ahí la mediana del ratio sigue dando 0,57 —el 0,6 no está sesgado— pero el
+rango real va de 0,33 a 1,14 y la regla falla por ~2 jornadas. Para esos casos la
+sugerencia sale marcada como "tomar con pinzas": un armado tan repartido suele ser
+fragmentación por el ritmo del cliente, no tamaño de trabajo, y ahí visitas y jornadas de
+trabajo dejan de ser lo mismo.
 
 **Se sugiere, no se precarga.** Si el valor viene puesto en el campo se acepta sin
 pensarlo, y lo que se busca es que Comercial diga cuánto es. El texto informa al lado;

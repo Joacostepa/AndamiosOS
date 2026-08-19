@@ -1,6 +1,7 @@
 "use client";
 
-import { ArrowDown, ArrowUp, Check, ChevronDown, ChevronRight, MoreHorizontal, Square, X } from "lucide-react";
+import { useState } from "react";
+import { ArrowDown, ArrowUp, Camera, Check, ChevronDown, ChevronRight, Loader2, MoreHorizontal, Square, X } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { Input } from "@/components/ui/input";
@@ -13,7 +14,8 @@ import { colorTipo, CORAL } from "@/lib/tablero/colores";
 import { partesTitulo } from "@/lib/tablero/titulo";
 import { fraccionLabel } from "@/lib/tablero/fracciones";
 import { ATAJOS_SALIDA, formatHora, horasEfectivas, parseHora } from "@/lib/tablero/horas";
-import { MOTIVOS_NO_EJEC, TIPOS_INCIDENCIA } from "@/lib/tablero/tipos-parte";
+import { MOMENTOS_FOTO, MOTIVOS_NO_EJEC, TIPOS_INCIDENCIA } from "@/lib/tablero/tipos-parte";
+import { comprimirFoto, pesoLegible, type FotoComprimida } from "@/lib/tablero/imagenes";
 import type { JornadaListado } from "@/lib/tablero/tipos-jornada";
 
 // Una fila del listado de partes. Se edita EN LÍNEA, sin modal: abrir y cerrar un diálogo
@@ -37,9 +39,20 @@ export type Borrador = {
   notas: string;
   incidenciaTipo: string;
   incidenciaDesc: string;
+  /**
+   * Fotos del día, ya comprimidas del lado del cliente.
+   *
+   * Faltaban acá aunque el resto del camino estaba entero —compresión, subida a
+   * x_aba_foto, reporte de las que fallan—: la UI existía sólo en el modal del tablero,
+   * que desde el repunte quedó para VER o corregir un parte ya cargado. O sea que el
+   * lugar donde efectivamente se cargan los partes era el único sin fotos.
+   */
+  fotos: FotoEnBorrador[];
   /** Respuesta a "¿la OT está finalizada?". null = todavía no contestó. */
   finalizarOt: boolean | null;
 };
+
+export type FotoEnBorrador = FotoComprimida & { momento: string };
 
 /**
  * Borrador inicial de una fila. El personal se precarga con la dotación prevista de la OT
@@ -62,6 +75,7 @@ export function borradorDe(j: JornadaListado): Borrador {
     notas: "",
     incidenciaTipo: "",
     incidenciaDesc: "",
+    fotos: [],
     finalizarOt: null,
   };
 }
@@ -405,6 +419,8 @@ export function FilaJornada({
                 />
               </label>
 
+              <Fotos fotos={borrador.fotos} onCambio={(fotos) => set({ fotos })} />
+
               {/* La incidencia es rara (2% de los partes) y por eso no ocupa lugar hasta
                   que se pide. */}
               {borrador.incidenciaTipo ? (
@@ -502,6 +518,101 @@ export function FilaJornada({
           {parte.flete && <p className="text-muted-foreground">{parte.flete.cantidad} viaje(s) de flete</p>}
           {parte.sector && <p className="text-muted-foreground">Sector: {parte.sector}</p>}
           {parte.observaciones && <p className="text-muted-foreground">{parte.observaciones}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Fotos del día.
+ *
+ * Se comprimen EN EL BROWSER antes de guardarse en el borrador: las fotos de celular
+ * pesan varios MB y se suben de a muchas (ver lib/tablero/imagenes.ts). Mandarlas
+ * crudas a Odoo Online es lo que hace que un parte con ocho fotos tarde minutos.
+ *
+ * El momento —antes / durante / terminado / incidencia / entrega— se elige por foto y no
+ * por parte: en una jornada de armado conviven la foto del frente antes de empezar y la
+ * de la conformidad firmada al final, y son dos cosas distintas para quien las busca
+ * después.
+ */
+function Fotos({
+  fotos,
+  onCambio,
+}: {
+  fotos: FotoEnBorrador[];
+  onCambio: (fotos: FotoEnBorrador[]) => void;
+}) {
+  const [comprimiendo, setComprimiendo] = useState(false);
+
+  async function agregar(archivos: FileList | null) {
+    if (!archivos?.length) return;
+    setComprimiendo(true);
+    try {
+      const nuevas: FotoEnBorrador[] = [];
+      for (const archivo of Array.from(archivos)) {
+        try {
+          nuevas.push({ ...(await comprimirFoto(archivo)), momento: "final" });
+        } catch {
+          // Una foto rota no puede tirar abajo las otras siete ni el parte entero.
+        }
+      }
+      if (nuevas.length > 0) onCambio([...fotos, ...nuevas]);
+    } finally {
+      setComprimiendo(false);
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <label className="flex w-fit cursor-pointer items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[13px] hover:bg-muted">
+        {comprimiendo ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+        {comprimiendo ? "Procesando…" : fotos.length > 0 ? "Agregar más fotos" : "Agregar fotos"}
+        <input
+          type="file"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            agregar(e.target.files);
+            e.target.value = "";
+          }}
+        />
+      </label>
+
+      {fotos.length > 0 && (
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-5 lg:grid-cols-6">
+          {fotos.map((f, i) => (
+            <div key={`${f.nombre}-${i}`} className="space-y-1 rounded-md border p-1">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={f.dataUrl} alt={f.nombre} className="h-16 w-full rounded object-cover" />
+              <Select
+                items={Object.fromEntries(MOMENTOS_FOTO.map((m) => [m.value, m.label]))}
+                value={f.momento}
+                onValueChange={(v) =>
+                  v && onCambio(fotos.map((x, idx) => (idx === i ? { ...x, momento: v } : x)))
+                }
+              >
+                <SelectTrigger className="h-6 text-[10px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {MOMENTOS_FOTO.map((m) => (
+                    <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <div className="flex items-center justify-between">
+                <span className="text-[9px] text-muted-foreground">{pesoLegible(f.bytes)}</span>
+                <button
+                  type="button"
+                  onClick={() => onCambio(fotos.filter((_, idx) => idx !== i))}
+                  className="rounded p-0.5 text-muted-foreground hover:bg-muted"
+                  aria-label="Quitar foto"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>

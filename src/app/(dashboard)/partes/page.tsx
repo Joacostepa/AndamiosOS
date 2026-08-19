@@ -65,7 +65,11 @@ function aDatosCierre(b: Borrador, j: JornadaListado): DatosCierre {
     incidencias: ejecutado && b.incidenciaTipo && b.incidenciaDesc.trim()
       ? [{ tipo: b.incidenciaTipo as never, descripcion: b.incidenciaDesc.trim() }]
       : [],
-    fotos: [],
+    // Sólo si la jornada se ejecutó: un "no se ejecutó" no tiene día que documentar, y
+    // el backend las descarta igual (ver subirFotos en lib/odoo/partes.ts).
+    fotos: ejecutado
+      ? b.fotos.map((f) => ({ nombre: f.nombre, base64: f.base64, momento: f.momento }))
+      : [],
   } as DatosCierre;
 }
 
@@ -163,13 +167,18 @@ function Contenido() {
     // cinco a la vez multiplicadas por la cola del servidor terminan en 429.
     setGuardando({ hechas: 0, total: aGuardar.length });
     let ok = 0;
+    // Las fotos se suben de a una y pueden fallar sin voltear el parte. Si eso no se
+    // avisa, la pantalla dice "guardado" y las fotos no están: quien las sacó se entera
+    // meses después, cuando el cliente reclama y no hay con qué contestarle.
+    const fotosFallidas: string[] = [];
     for (const { j, b } of aGuardar) {
       try {
-        await cerrar.mutateAsync({
+        const r = await cerrar.mutateAsync({
           asignacionId: j.asignacionId,
           datos: aDatosCierre(b, j),
           finalizarOt: b.finalizarOt === true,
         });
+        fotosFallidas.push(...(r?.fotosFallidas ?? []));
         if (b.estado === "no_ejecutado" && b.reprogramarA) {
           await reprogramar.mutateAsync({ asignacionId: j.asignacionId, reprogramarA: b.reprogramarA });
         }
@@ -187,13 +196,23 @@ function Contenido() {
       setBorradores({});
       setAbiertas({});
       toast.success(`${ok} parte(s) guardado(s)`);
+      if (fotosFallidas.length > 0) {
+        toast.warning(
+          `${fotosFallidas.length} foto(s) no se subieron`,
+          { description: fotosFallidas.join(", ") },
+        );
+      }
     }
   }
 
   const fechaLabel = format(parseISO(fecha), "EEEE d 'de' MMMM", { locale: es });
 
   return (
-    <div className="mx-auto max-w-4xl space-y-3">
+    // max-w-6xl y no ancho completo: la fila plegada gana lugar para el nombre de la obra
+    // —que es lo que se lee de un vistazo— pero el bloque desplegado sigue teniendo un
+    // límite. Sin tope, en un monitor ancho el textarea de notas queda de 1600px y leer
+    // un renglón obliga a barrer la cabeza de lado a lado.
+    <div className="mx-auto max-w-6xl space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <div>
           <h1 className="text-[15px] font-medium capitalize">Partes del {fechaLabel}</h1>

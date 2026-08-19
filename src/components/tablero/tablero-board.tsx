@@ -35,7 +35,7 @@ import { agruparBloques, fechasDeJornadas, type Bloque } from "@/lib/tablero/blo
 import { jornadasLiberables, motivoNoVuelveABandeja, type AccionCierre } from "@/lib/tablero/cierre";
 import { toast } from "sonner";
 import { repartirJornadas, type FraccionStr } from "@/lib/tablero/fracciones";
-import type { ObraPendiente } from "./panel-sin-asignar";
+import type { ObraPendiente, ObraPlanificada } from "./panel-sin-asignar";
 import type { MovimientoAsignacion, NuevaAsignacion, TableroPayload } from "@/lib/tablero/tipos";
 
 // Tablero de Planificación de Cuadrillas.
@@ -74,20 +74,15 @@ function leerVisiblesGuardadas(): number[] | null {
 }
 
 /**
- * Filas por defecto: la UNIÓN de las cuadrillas con carga y las que figuran como
- * cuadrilla prevista en las OTs candidatas. Si no hay ni unas ni otras, todas.
+ * Filas por defecto: TODAS las cuadrillas activas.
  *
- * Es unión y no "las que tienen carga, si no las previstas": con esa regla, asignar la
- * primera obra de la semana hacía desaparecer todas las filas menos una.
+ * Antes se mostraban sólo las que tenían carga o figuraban como cuadrilla prevista. Eso
+ * dejaba medio viewport vacío y —peor— escondía justo las cuadrillas SIN carga, que son
+ * las que hay que mirar cuando otra está sobreasignada. El filtro sigue estando para
+ * quien quiera achicar la vista; lo que cambia es de dónde parte.
  */
 function visiblesPorDefecto(data: TableroPayload): number[] {
-  const activas = new Set(data.cuadrillas.map((c) => c.id));
-  const conCarga = data.asignaciones.map((a) => a.cuadrillaId);
-  const previstas = data.ots.map((o) => o.cuadrillaPrevistaId);
-  const propuestas = [...new Set([...conCarga, ...previstas])].filter(
-    (id): id is number => id !== null && activas.has(id),
-  );
-  return propuestas.length > 0 ? propuestas : data.cuadrillas.map((c) => c.id);
+  return data.cuadrillas.map((c) => c.id);
 }
 
 // Al soltar sobre una tarjeta hay colisión con la tarjeta y con la celda que tiene
@@ -118,6 +113,9 @@ export function TableroBoard() {
   const expansionPendiente = useRef(false);
   const [visibles, setVisibles] = useState<number[] | null>(leerVisiblesGuardadas);
   const [panel, setPanel] = useState<{ otId: number; bloqueKey: string | null } | null>(null);
+  // Resaltado sin abrir el panel lateral: al saltar desde el buscador lo que se quiere es
+  // VER dónde cayó la obra, y el panel de la OT taparía justamente eso.
+  const [resaltado, setResaltado] = useState<string | null>(null);
   const [jornadasDe, setJornadasDe] = useState<string | null>(null);
   const [cierre, setCierre] = useState<{
     bloqueKey: string;
@@ -333,11 +331,41 @@ export function TableroBoard() {
     return mapa;
   }, [data]);
 
+  // Obras ya en la grilla, para que el buscador conteste "¿esta obra ya la planifiqué?".
+  //
+  // LIMITACIÓN: sólo alcanza el rango cargado. El tablero pide las asignaciones por fecha,
+  // así que una obra planificada para dentro de dos meses no está en memoria y no hay cómo
+  // encontrarla sin preguntarle a Odoo. El panel lo dice en vez de afirmar que no existe.
+  const planificadas = useMemo<ObraPlanificada[]>(() => {
+    const nombres = new Map((data?.cuadrillas ?? []).map((c) => [c.id, c.nombre]));
+    return [...bloquesPorClave.values()].flatMap((b) => {
+      const ot = otsPorId.get(b.otId);
+      if (!ot) return [];
+      return [{
+        bloqueKey: b.key,
+        ot,
+        cuadrillaNombre: b.cuadrillaId != null ? (nombres.get(b.cuadrillaId) ?? null) : null,
+        fechaInicio: b.fechas[0],
+        jornadas: b.fechas.length,
+      }];
+    });
+  }, [bloquesPorClave, otsPorId, data]);
+
   const hoyISO = format(new Date(), "yyyy-MM-dd");
 
   // El label ya no nombra un rango fijo: nombra la semana que está centrada en pantalla.
   const lunesCentrado = startOfWeek(parseISO(fechaCentrada), { weekStartsOn: 1 });
   const rangoLabel = `${format(lunesCentrado, "d MMM", { locale: es })} – ${format(addDays(lunesCentrado, 5), "d MMM yyyy", { locale: es })}`;
+
+  // Los siete días de esa misma semana. Es el PERÍODO contra el que se mide la carga de
+  // cada fila. Al pasar de 6 días fijos a un rango de varias semanas, el total de la fila
+  // se había quedado sin período: dividía por el rango entero cargado, así que una
+  // cuadrilla sobreasignada cuatro días seguidos figuraba al 26% de ocupación y la señal
+  // desaparecía del encabezado. Y empeoraba al scrollear, porque el rango crece.
+  const semanaCentrada = useMemo(
+    () => Array.from({ length: 7 }, (_, i) => iso(addDays(lunesCentrado, i))),
+    [lunesCentrado],
+  );
 
   // El scroll vive dentro de TableroGrid, así que el listener se engancha a mano. `data`
   // está en las dependencias porque el contenedor no existe hasta que la grilla monta.
@@ -598,10 +626,11 @@ export function TableroBoard() {
               contenedorRef={contenedor}
               cuadrillas={cuadrillasVisibles}
               fechas={fechas}
+              semanaCentrada={semanaCentrada}
               asignaciones={data.asignaciones}
               ots={otsPorId}
               partes={data.partes}
-              bloqueSeleccionado={panel?.bloqueKey ?? null}
+              bloqueSeleccionado={panel?.bloqueKey ?? resaltado}
               hoy={hoyISO}
               onCerrarJornada={(b, accion: NonNullable<AccionCierre>) => {
                 // El panel de la OT y el modal de cierre no conviven: superpuestos se
@@ -634,11 +663,16 @@ export function TableroBoard() {
 
           <PanelSinAsignar
             ots={sinAsignar}
+            planificadas={planificadas}
             colapsado={panelColapsado}
             onColapsar={colapsarPanel}
             onDetalle={(ot) => {
               if (cierre) return;
               setPanel({ otId: ot.id, bloqueKey: null });
+            }}
+            onIrABloque={(bloqueKey, fecha) => {
+              setResaltado(bloqueKey);
+              scrollAFecha(fecha);
             }}
           />
         </div>

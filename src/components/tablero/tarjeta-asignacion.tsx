@@ -69,6 +69,7 @@ export function ContenidoTarjeta({
   vieneDeAntes = false,
   sigueDespues = false,
   cierre = null,
+  vencidaSinParte = false,
 }: {
   ot: OtTablero | undefined;
   bloque: Pick<Bloque, "estado" | "fraccion" | "fechas" | "multiDia">;
@@ -78,6 +79,8 @@ export function ContenidoTarjeta({
   sigueDespues?: boolean;
   /** Cierre de la jornada, si ya se cargó el parte. */
   cierre?: EstadoCierre | null;
+  /** Alguna jornada ya pasó y sigue sin parte: reclama acción, no se atenúa. */
+  vencidaSinParte?: boolean;
 }) {
   const tipo = colorTipo(ot?.tipo);
   const IconoTipo = ICONO_TIPO[tipo.icono];
@@ -101,11 +104,15 @@ export function ContenidoTarjeta({
         // El relleno es el canal del ESTADO: sólido = confirmada, transparente =
         // tentativa. El tono de ese relleno es el canal del TIPO.
         backgroundColor: noEjecutada ? "#FDECEA" : confirmada ? tipo.bg : "var(--card)",
+        // El borde punteado rojo es el mismo lenguaje de "pendiente" del listado de
+        // partes: la jornada ya pasó y nadie cargó nada.
         border: noEjecutada
           ? "1px solid #D92D20"
-          : confirmada
-            ? "1px solid transparent"
-            : "1px dashed var(--border)",
+          : vencidaSinParte
+            ? "1px dashed #D92D20"
+            : confirmada
+              ? "1px solid transparent"
+              : "1px dashed var(--border)",
         // La franja izquierda es el semáforo de habilitación: aplica siempre y es lo que
         // más se mira. Un punto de 6px se perdía con la grilla llena.
         borderLeft: `5px solid ${noEjecutada ? "#D92D20" : sem.color}`,
@@ -176,6 +183,7 @@ export function TarjetaAsignacion({
   carril,
   seleccionada,
   ejecutada,
+  vencidaSinParte,
   cierre,
   accionCierre,
   onCerrarJornada,
@@ -191,6 +199,8 @@ export function TarjetaAsignacion({
   carril: number;
   seleccionada: boolean;
   ejecutada: boolean;
+  /** Alguna jornada ya pasó sin parte cargado. */
+  vencidaSinParte: boolean;
   cierre: EstadoCierre | null;
   accionCierre: AccionCierre;
   onCerrarJornada: (accion: NonNullable<AccionCierre>) => void;
@@ -232,7 +242,9 @@ export function TarjetaAsignacion({
       style={{
         gridColumn: `${colocacion.colInicio + 1} / span ${colocacion.span}`,
         gridRow: carril + 1,
-        opacity: isDragging ? 0.35 : ejecutada ? 0.75 : 1,
+        // Se atenúa lo TERMINADO, no lo pasado. Una jornada vencida sin parte queda a
+        // opacidad plena: es la que reclama que alguien la cargue.
+        opacity: isDragging ? 0.35 : vencidaSinParte ? 1 : ejecutada ? 0.55 : 1,
         outline: seleccionada ? `2px solid ${CORAL}` : isOver ? `2px dashed ${CORAL}` : undefined,
         outlineOffset: "-1px",
       }}
@@ -260,6 +272,7 @@ export function TarjetaAsignacion({
         vieneDeAntes={colocacion.vieneDeAntes}
         sigueDespues={colocacion.sigueDespues}
         cierre={cierre}
+        vencidaSinParte={vencidaSinParte}
       />
 
       <div

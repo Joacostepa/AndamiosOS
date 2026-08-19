@@ -27,6 +27,7 @@ export function CeldaDia({
   esDomingo,
   colapsada = false,
   inicioSemana = false,
+  pasada = false,
   fracciones,
 }: {
   cuadrillaId: number;
@@ -37,6 +38,8 @@ export function CeldaDia({
   colapsada?: boolean;
   /** Lunes: lleva el separador de semana, que baja por toda la grilla. */
   inicioSemana?: boolean;
+  /** Anterior a hoy: fondo apenas distinto para ver dónde corta el presente. */
+  pasada?: boolean;
   fracciones: number[];
 }) {
   const { setNodeRef, isOver, active } = useDroppable({
@@ -54,7 +57,16 @@ export function CeldaDia({
       style={{
         gridColumn: columna + 1,
         gridRow: "1 / -1",
-        backgroundColor: dropActivo ? ACENTO_BG : colapsada ? "#F1EFE8" : undefined,
+        // El pasado lleva un gris neutro MUY tenue: sirve para ver de un vistazo dónde
+        // corta el presente y nada más. No compite con el pill coral de hoy ni con los
+        // estados de capacidad, porque no significa nada — sólo "esto ya fue".
+        backgroundColor: dropActivo
+          ? ACENTO_BG
+          : colapsada
+            ? "#F1EFE8"
+            : pasada
+              ? "color-mix(in oklch, var(--foreground) 2.5%, transparent)"
+              : undefined,
         // El separador de semana recorre la altura completa: en el encabezado solo, a
         // 40px, no alcanza para ubicarse cuando se scrollea entre semanas.
         borderLeft: inicioSemana ? "2px solid var(--border)" : undefined,

@@ -60,6 +60,7 @@ function esLunes(fecha: string): boolean {
 export function TableroGrid({
   cuadrillas,
   fechas,
+  semanaCentrada,
   asignaciones,
   ots,
   partes,
@@ -75,6 +76,12 @@ export function TableroGrid({
 }: {
   cuadrillas: CuadrillaTablero[];
   fechas: string[];
+  /**
+   * Los 7 días de la semana centrada en el viewport: el período contra el que se mide la
+   * carga de cada fila. No alcanza con `fechas`, que es todo el rango cargado y crece al
+   * scrollear: dividir por él diluye la sobreasignación hasta hacerla invisible.
+   */
+  semanaCentrada: string[];
   asignaciones: AsignacionTablero[];
   ots: Map<number, OtTablero>;
   partes: ParteTablero[];
@@ -257,13 +264,14 @@ export function TableroGrid({
         {porCuadrilla.map(({ cuadrilla, indice, deLaCuadrilla, ubicados, carriles }) => {
           const color = colorCuadrilla(indice);
 
-          // Carga del rango visible (las asignaciones llegan con una semana de más a cada
-          // lado, para que los bloques que cruzan el borde lleguen enteros).
-          const delRango = deLaCuadrilla.filter((a) => fechas.includes(a.fecha));
-          const jornadas = ocupacionCelda(delRango.map((a) => a.fraccion)).total;
+          // Carga de LA SEMANA CENTRADA, no del rango cargado: la comparación que importa
+          // es contra los días hábiles de una semana. Se mueve junto con el label de
+          // arriba, porque los dos derivan de la misma semana.
+          const deLaSemana = deLaCuadrilla.filter((a) => semanaCentrada.includes(a.fecha));
+          const jornadas = ocupacionCelda(deLaSemana.map((a) => a.fraccion)).total;
           // El domingo suma capacidad sólo si ESTA cuadrilla trabaja ese domingo.
-          const conTrabajo = new Set(delRango.map((a) => a.fecha));
-          const capacidad = capacidadDelRango(fechas, conTrabajo);
+          const conTrabajo = new Set(deLaSemana.map((a) => a.fecha));
+          const capacidad = capacidadDelRango(semanaCentrada, conTrabajo);
           const exceso = Number((jornadas - capacidad).toFixed(2));
 
           return (
@@ -284,8 +292,8 @@ export function TableroGrid({
                   className={`text-[10px] tabular-nums ${exceso > 0 ? "font-semibold text-destructive" : "text-muted-foreground"}`}
                   title={
                     exceso > 0
-                      ? "Sobreasignada: la carga supera los días con capacidad del rango visible"
-                      : undefined
+                      ? "Sobreasignada: la carga de esta semana supera sus días con capacidad"
+                      : "Carga de la semana que está centrada en pantalla"
                   }
                 >
                   {DECIMAL.format(jornadas)} / {capacidad}
@@ -313,6 +321,7 @@ export function TableroGrid({
                       esDomingo={esDomingo(f)}
                       colapsada={colapsado(f)}
                       inicioSemana={esLunes(f)}
+                      pasada={f < hoyISO}
                       fracciones={enCelda(cuadrilla.id, f).map((a) => a.fraccion)}
                     />
                   ))}
@@ -331,6 +340,12 @@ export function TableroGrid({
                         carril={carril}
                         seleccionada={bloqueSeleccionado === bloque.key}
                         ejecutada={bloque.fechas.some((f) => ejecutadas.has(`${bloque.otId}:${f}`))}
+                        // "Ya pasó" no es lo relevante: lo relevante es si tiene parte.
+                        // Atenuar todo lo pasado por igual escondía justo las jornadas que
+                        // requieren acción — las que se trabajaron y nadie cargó.
+                        vencidaSinParte={bloque.fechas.some(
+                          (f, i) => f < hoyISO && bloque.partes[i] == null,
+                        )}
                         cierre={
                           parteDelBloque
                             ? {

@@ -96,11 +96,42 @@ export function usePaquetes() {
   });
 }
 
-/** Invalida la ficha y la bandeja: el estado de una cambia el grupo de la otra. */
-function useInvalidar(otId: number) {
+/** Lo que devuelven las mutaciones: el estado fresco de lo que vive en Supabase. */
+type RespuestaGestion = {
+  gestion?: {
+    requisitos: FichaHabilitacion["requisitos"];
+    notas: FichaHabilitacion["notas"];
+    gestiones: FichaHabilitacion["gestiones"];
+    reclamos: number;
+  };
+};
+
+/**
+ * Aplica el resultado de una mutación SIN volver a pedir la ficha.
+ *
+ * POR QUÉ NO SE INVALIDA: refrescar la ficha obliga a releer la OT y su venta en Odoo
+ * —dos llamadas secuenciales de ~300 ms, porque hay que leer la OT para saber cuál es la
+ * venta—, y marcar un requisito o aplicar un paquete no cambia nada de Odoo. Eran ~2
+ * segundos de espera para traer datos idénticos a los que ya estaban en pantalla.
+ *
+ * La ruta devuelve el bloque de Supabase ya fresco y acá se pisa en la caché. Los campos
+ * que sí dependen de Odoo —etapa, semáforo— se actualizan en el próximo refresco natural,
+ * que es lo que pasaba igual: esa sincronización va en background.
+ *
+ * La bandeja sí se invalida, pero como no está montada mientras se mira la ficha, sólo
+ * queda marcada como vieja y se refresca al volver.
+ */
+function useAplicar(otId: number) {
   const qc = useQueryClient();
-  return () => {
-    qc.invalidateQueries({ queryKey: ["habilitacion", otId] });
+  return (res: unknown) => {
+    const gestion = (res as RespuestaGestion)?.gestion;
+    if (gestion) {
+      qc.setQueryData<FichaHabilitacion>(["habilitacion", otId], (prev) =>
+        prev ? { ...prev, ...gestion } : prev,
+      );
+    } else {
+      qc.invalidateQueries({ queryKey: ["habilitacion", otId] });
+    }
     qc.invalidateQueries({ queryKey: ["habilitaciones"] });
   };
 }
@@ -108,32 +139,32 @@ function useInvalidar(otId: number) {
 // ─── Requisitos ─────────────────────────────────────────────────────────────
 
 export function useCambiarRequisito(otId: number) {
-  const invalidar = useInvalidar(otId);
+  const aplicar = useAplicar(otId);
   return useMutation({
     mutationFn: (v: { requisitoId: string; estado: EstadoRequisito; motivo?: string | null }) =>
       pedir(`/api/habilitaciones/${otId}/requisitos`, { method: "PATCH", body: JSON.stringify(v) }),
-    onSuccess: invalidar,
+    onSuccess: aplicar,
   });
 }
 
 export function useAgregarRequisito(otId: number) {
-  const invalidar = useInvalidar(otId);
+  const aplicar = useAplicar(otId);
   return useMutation({
     mutationFn: (v: { nombre: string } | { paqueteId: string }) =>
       pedir(`/api/habilitaciones/${otId}/requisitos`, { method: "POST", body: JSON.stringify(v) }),
-    onSuccess: invalidar,
+    onSuccess: aplicar,
   });
 }
 
 export function useBorrarRequisito(otId: number) {
-  const invalidar = useInvalidar(otId);
+  const aplicar = useAplicar(otId);
   return useMutation({
     mutationFn: (requisitoId: string) =>
       pedir(`/api/habilitaciones/${otId}/requisitos`, {
         method: "DELETE",
         body: JSON.stringify({ requisitoId }),
       }),
-    onSuccess: invalidar,
+    onSuccess: aplicar,
   });
 }
 
@@ -200,32 +231,32 @@ export async function urlFirmada(path: string): Promise<string | null> {
 // ─── Notas ──────────────────────────────────────────────────────────────────
 
 export function useAgregarNota(otId: number) {
-  const invalidar = useInvalidar(otId);
+  const aplicar = useAplicar(otId);
   return useMutation({
     mutationFn: (v: { texto: string; fijada?: boolean }) =>
       pedir(`/api/habilitaciones/${otId}/notas`, { method: "POST", body: JSON.stringify(v) }),
-    onSuccess: invalidar,
+    onSuccess: aplicar,
   });
 }
 
 export function useFijarNota(otId: number) {
-  const invalidar = useInvalidar(otId);
+  const aplicar = useAplicar(otId);
   return useMutation({
     mutationFn: (v: { notaId: string; fijada: boolean }) =>
       pedir(`/api/habilitaciones/${otId}/notas`, { method: "PATCH", body: JSON.stringify(v) }),
-    onSuccess: invalidar,
+    onSuccess: aplicar,
   });
 }
 
 export function useBorrarNota(otId: number) {
-  const invalidar = useInvalidar(otId);
+  const aplicar = useAplicar(otId);
   return useMutation({
     mutationFn: (notaId: string) =>
       pedir(`/api/habilitaciones/${otId}/notas`, {
         method: "DELETE",
         body: JSON.stringify({ notaId }),
       }),
-    onSuccess: invalidar,
+    onSuccess: aplicar,
   });
 }
 
@@ -233,16 +264,16 @@ export function useBorrarNota(otId: number) {
 
 /** Registra la gestión. NO manda ningún mail: lo que aporta el sistema es la fecha. */
 export function useRegistrarGestion(otId: number) {
-  const invalidar = useInvalidar(otId);
+  const aplicar = useAplicar(otId);
   return useMutation({
     mutationFn: (v: { tipo: TipoGestion; detalle?: string | null }) =>
       pedir(`/api/habilitaciones/${otId}/gestiones`, { method: "POST", body: JSON.stringify(v) }),
-    onSuccess: invalidar,
+    onSuccess: aplicar,
   });
 }
 
 export function useActualizarPermiso(otId: number) {
-  const invalidar = useInvalidar(otId);
+  const aplicar = useAplicar(otId);
   return useMutation({
     mutationFn: (v: {
       modalidad?: ModalidadPermiso | null;
@@ -251,16 +282,16 @@ export function useActualizarPermiso(otId: number) {
       expedienteFecha?: string | null;
       permisoFecha?: string | null;
     }) => pedir(`/api/habilitaciones/${otId}/permiso`, { method: "PATCH", body: JSON.stringify(v) }),
-    onSuccess: invalidar,
+    onSuccess: aplicar,
   });
 }
 
 export function useVencimiento(otId: number) {
-  const invalidar = useInvalidar(otId);
+  const aplicar = useAplicar(otId);
   return useMutation({
     mutationFn: (vencimiento: string | null) =>
       pedir(`/api/habilitaciones/${otId}`, { method: "PATCH", body: JSON.stringify({ vencimiento }) }),
-    onSuccess: invalidar,
+    onSuccess: aplicar,
   });
 }
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { agregarNota, borrarNota, fijarNota } from "@/lib/habilitaciones/servicio";
+import { agregarNota, borrarNota, fetchGestionDe, fijarNota } from "@/lib/habilitaciones/servicio";
 import { errorResponse, invalido, parseOtId, sesion } from "../../_comun";
 
 // Notas de la obra.
@@ -29,7 +29,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ otId: stri
   try {
     const { db, userId } = await sesion();
     await agregarNota(db, otId, parsed.data.texto, parsed.data.fijada ?? false, userId);
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, gestion: await fetchGestionDe(db, otId) });
   } catch (e) {
     return errorResponse(e);
   }
@@ -38,7 +38,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ otId: stri
 const patchSchema = z.object({ notaId: z.string().uuid(), fijada: z.boolean() });
 
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ otId: string }> }) {
-  if (!parseOtId((await ctx.params).otId)) return invalido("Id de OT inválido");
+  const otId = parseOtId((await ctx.params).otId);
+  if (!otId) return invalido("Id de OT inválido");
 
   const parsed = patchSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return invalido("Nota inválida");
@@ -46,7 +47,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ otId: str
   try {
     const { db } = await sesion();
     await fijarNota(db, parsed.data.notaId, parsed.data.fijada);
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, gestion: await fetchGestionDe(db, otId) });
   } catch (e) {
     return errorResponse(e);
   }
@@ -55,7 +56,8 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ otId: str
 const borrarSchema = z.object({ notaId: z.string().uuid() });
 
 export async function DELETE(req: NextRequest, ctx: { params: Promise<{ otId: string }> }) {
-  if (!parseOtId((await ctx.params).otId)) return invalido("Id de OT inválido");
+  const otId = parseOtId((await ctx.params).otId);
+  if (!otId) return invalido("Id de OT inválido");
 
   const parsed = borrarSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return invalido("Nota inválida");
@@ -63,7 +65,7 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ otId: st
   try {
     const { db } = await sesion();
     await borrarNota(db, parsed.data.notaId);
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, gestion: await fetchGestionDe(db, otId) });
   } catch (e) {
     return errorResponse(e);
   }

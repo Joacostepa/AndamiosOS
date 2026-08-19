@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { registrarGestion } from "@/lib/habilitaciones/servicio";
+import { fetchGestionDe, registrarGestion } from "@/lib/habilitaciones/servicio";
 import { errorResponse, invalido, parseOtId, sesion } from "../../_comun";
 
 // POST /api/habilitaciones/:otId/gestiones — registrar un reclamo, una consulta, etc.
@@ -32,7 +32,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ otId: stri
   try {
     const { db, userId } = await sesion();
     await registrarGestion(db, otId, parsed.data.tipo, parsed.data.detalle?.trim() || null, userId);
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, gestion: await fetchGestionDe(db, otId) });
   } catch (e) {
     return errorResponse(e);
   }

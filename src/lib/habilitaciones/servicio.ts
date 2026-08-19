@@ -136,12 +136,25 @@ export async function fetchBandeja(db: DB): Promise<Bandeja> {
 
 // ─── Ficha ──────────────────────────────────────────────────────────────────
 
-export async function fetchFicha(db: DB, otId: number): Promise<FichaHabilitacion | null> {
-  const enOdoo = await fetchOt(otId);
-  if (!enOdoo) return null;
-
-  const [cabeceras, reqs, notas, gestiones] = await Promise.all([
-    cabecerasDe(db, [otId]),
+/**
+ * Sólo lo que vive en Supabase: requisitos, notas, historial. NO TOCA ODOO.
+ *
+ * Existe separado por una razón de latencia concreta: marcar un requisito o aplicar un
+ * paquete cambia únicamente datos de Supabase, pero refrescar la ficha entera obliga a
+ * releer la OT y su venta en Odoo —dos llamadas SECUENCIALES de ~300 ms cada una, porque
+ * hay que leer la OT para saber cuál es la venta—. Eran ~2 segundos de espera para traer
+ * datos que no habían cambiado.
+ *
+ * Las mutaciones devuelven esto y el hook lo mete en la caché con setQueryData, sin
+ * refetch. Ver use-habilitaciones.ts.
+ */
+export async function fetchGestionDe(db: DB, otId: number): Promise<{
+  requisitos: Requisito[];
+  notas: Nota[];
+  gestiones: Gestion[];
+  reclamos: number;
+}> {
+  const [reqs, notas, gestiones] = await Promise.all([
     db.from("hab_requisitos").select("*").eq("odoo_ot_id", otId).order("orden").order("created_at"),
     db.from("hab_notas").select("*, user_profiles(nombre)").eq("odoo_ot_id", otId)
       .order("fijada", { ascending: false }).order("created_at", { ascending: false }),
@@ -152,9 +165,26 @@ export async function fetchFicha(db: DB, otId: number): Promise<FichaHabilitacio
   if (notas.error) throw new Error(notas.error.message);
   if (gestiones.error) throw new Error(gestiones.error.message);
 
+  const listaGestiones = (gestiones.data ?? []).map(mapGestion);
+  return {
+    requisitos: (reqs.data ?? []) as Requisito[],
+    notas: (notas.data ?? []).map(mapNota),
+    gestiones: listaGestiones,
+    reclamos: listaGestiones.filter((g) => g.tipo === "reclamo").length,
+  };
+}
+
+export async function fetchFicha(db: DB, otId: number): Promise<FichaHabilitacion | null> {
+  const enOdoo = await fetchOt(otId);
+  if (!enOdoo) return null;
+
+  const [cabeceras, gestion] = await Promise.all([
+    cabecerasDe(db, [otId]),
+    fetchGestionDe(db, otId),
+  ]);
+
   const base = leerOt(enOdoo.ot);
   const cab = cabeceras.get(otId);
-  const listaGestiones = (gestiones.data ?? []).map(mapGestion);
 
   return {
     otId: base.otId,
@@ -175,10 +205,7 @@ export async function fetchFicha(db: DB, otId: number): Promise<FichaHabilitacio
     syncEstado: cab?.sync_estado ?? "pendiente",
     syncError: cab?.sync_error ?? null,
     permiso: enOdoo.permiso,
-    requisitos: (reqs.data ?? []) as Requisito[],
-    notas: (notas.data ?? []).map(mapNota),
-    gestiones: listaGestiones,
-    reclamos: listaGestiones.filter((g) => g.tipo === "reclamo").length,
+    ...gestion,
     url: urlOdooOt(otId),
     urlVenta: urlOdooVenta(enOdoo.permiso.ventaId),
   };

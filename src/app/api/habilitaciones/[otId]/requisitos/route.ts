@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import {
   agregarRequisito, aplicarPaquete, borrarRequisito, cambiarEstadoRequisito,
-  registrarGestion,
+  fetchGestionDe, registrarGestion,
 } from "@/lib/habilitaciones/servicio";
 import { errorResponse, invalido, parseOtId, sesion, sincronizarLuego } from "../../_comun";
 
@@ -35,7 +35,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ otId: stri
     if ("paqueteId" in parsed.data) await aplicarPaquete(db, otId, parsed.data.paqueteId);
     else await agregarRequisito(db, otId, parsed.data.nombre);
     sincronizarLuego(db, otId);
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, gestion: await fetchGestionDe(db, otId) });
   } catch (e) {
     return errorResponse(e);
   }
@@ -73,7 +73,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ otId: str
     if (tipo) await registrarGestion(db, otId, tipo, motivo?.trim() || null, userId);
 
     sincronizarLuego(db, otId);
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, gestion: await fetchGestionDe(db, otId) });
   } catch (e) {
     return errorResponse(e);
   }
@@ -92,7 +92,7 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ otId: st
     const { db } = await sesion();
     await borrarRequisito(db, parsed.data.requisitoId);
     sincronizarLuego(db, otId);
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, gestion: await fetchGestionDe(db, otId) });
   } catch (e) {
     return errorResponse(e);
   }

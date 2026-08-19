@@ -73,6 +73,7 @@ export function TableroGrid({
   onEditarJornadas,
   onEstado,
   onQuitar,
+  candados,
 }: {
   cuadrillas: CuadrillaTablero[];
   fechas: string[];
@@ -96,6 +97,12 @@ export function TableroGrid({
   onEditarJornadas: (bloque: Bloque) => void;
   onEstado: (bloque: Bloque, e: "tentativa" | "confirmada") => void;
   onQuitar: (bloque: Bloque) => void;
+  /**
+   * OTs cuyo cliente pidió no armar sin el permiso emitido. La tarjeta muestra el
+   * candado, pero se arrastra igual: planificar es un borrador y bloquear ahí sería
+   * frenar a Operaciones por un dato que depende de terceros. El freno está al confirmar.
+   */
+  candados?: Set<number>;
 }) {
   const hoy = new Date();
 
@@ -355,6 +362,7 @@ export function TableroGrid({
                             : null
                         }
                         accionCierre={accion}
+                        candado={candados?.has(bloque.otId) ?? false}
                         onCerrarJornada={(a) => onCerrarJornada(bloque, a)}
                         onAbrir={() => onAbrirBloque(bloque)}
                         onFraccion={(f) => onFraccion(bloque, f)}

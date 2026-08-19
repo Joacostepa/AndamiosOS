@@ -61,24 +61,15 @@ export function useOrdenesTrabajo() {
   });
 }
 
-// OTs que esperan habilitación (gate por-OT): requiere_habilitacion && !habilitacion_aprobada
-// y todavía no ejecutadas. Es la cola del módulo Habilitaciones.
-export function useOrdenesPendientesHabilitacion() {
-  const supabase = createClient();
-  return useQuery({
-    queryKey: ["ordenes-trabajo", "pendientes-habilitacion"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("ordenes_trabajo")
-        .select("*, obras(codigo, nombre)")
-        .eq("requiere_habilitacion", true)
-        .eq("habilitacion_aprobada", false)
-        .in("estado", ["pendiente", "programada"])
-        .order("fecha_programada", { ascending: true });
-      if (error) throw error;
-      return data as OrdenTrabajo[];
-    },
-  });
-}
+// RETIRADO: useOrdenesPendientesHabilitacion().
+//
+// Era la cola vieja del módulo —`requiere_habilitacion && !habilitacion_aprobada` sobre
+// la tabla `ordenes_trabajo` de Supabase— y modelaba la habilitación como un solo
+// booleano. La reemplaza /habilitaciones, que lee las OTs de Odoo y trabaja con
+// requisitos de estado propio: en una obra exigente el cliente aprueba 7 documentos y
+// observa 2, y ese rebote es lo que hace que una habilitación tarde semanas.
+//
+// Las dos columnas booleanas quedan en la base sin uso hasta una migración posterior.
 
 export function useGatesObra(obraId: string) {
   const supabase = createClient();

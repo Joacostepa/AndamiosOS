@@ -168,7 +168,10 @@ export default function ObraDetailPage({ params }: { params: Promise<{ id: strin
           {ordenesTrabajo && ordenesTrabajo.length > 0 ? (
             <Table>
               <TableHeader>
-                <TableRow><TableHead>Codigo</TableHead><TableHead>Tipo</TableHead><TableHead>Fecha</TableHead><TableHead>Estado</TableHead><TableHead>Habilitacion</TableHead><TableHead /></TableRow>
+                {/* Sin columna "Habilitacion": la gestiona /habilitaciones contra Odoo.
+                    Un tilde acá sobre un boolean que ya nadie mantiene sería una segunda
+                    cola de habilitación con datos distintos — peor que ninguna. */}
+                <TableRow><TableHead>Codigo</TableHead><TableHead>Tipo</TableHead><TableHead>Fecha</TableHead><TableHead>Estado</TableHead><TableHead /></TableRow>
               </TableHeader>
               <TableBody>
                 {ordenesTrabajo.map((ot) => (
@@ -179,24 +182,19 @@ export default function ObraDetailPage({ params }: { params: Promise<{ id: strin
                     <TableCell>
                       {ot.es_adicional && !ot.aprobada_comercial
                         ? <Badge variant="outline" className="gap-1 bg-orange-500/15 text-orange-400 border-orange-500/25"><Clock className="h-3 w-3" />Pend. aprob. comercial</Badge>
-                        : ot.requiere_habilitacion && !ot.habilitacion_aprobada && ot.estado === "pendiente"
-                        ? <Badge variant="outline" className="gap-1 bg-red-500/15 text-red-400 border-red-500/25"><Shield className="h-3 w-3" />Pend. habilitación</Badge>
                         : <StatusBadge status={ot.estado} />}
                       {ot.es_adicional && <Badge variant="outline" className="ml-1 bg-purple-500/15 text-purple-400 border-purple-500/25">Adicional</Badge>}
                     </TableCell>
-                    <TableCell>{ot.habilitacion_aprobada ? <CheckCircle className="h-4 w-4 text-green-400" /> : <Clock className="h-4 w-4 text-yellow-400" />}</TableCell>
                     <TableCell>
                       {/* Adicional sin aprobar: bloqueada hasta que Comercial la apruebe en Odoo. */}
                       {ot.es_adicional && !ot.aprobada_comercial && (
                         <span className="text-xs text-muted-foreground">Esperando aprobación de Comercial (Odoo)</span>
                       )}
-                      {/* Habilitación = gate por-OT (boolean), lo decide el área Habilitaciones. */}
-                      {!(ot.es_adicional && !ot.aprobada_comercial) && ot.estado === "pendiente" && ot.requiere_habilitacion && !ot.habilitacion_aprobada && (
-                        <Button size="sm" variant="outline" onClick={() => updateOT.mutate({ id: ot.id, data: { habilitacion_aprobada: true } as any }, { onSuccess: () => toast.success("OT habilitada") })}>
-                          Habilitar
-                        </Button>
-                      )}
-                      {!(ot.es_adicional && !ot.aprobada_comercial) && ot.estado === "pendiente" && (!ot.requiere_habilitacion || ot.habilitacion_aprobada) && (
+                      {/* Ya no hay botón "Habilitar" acá: la habilitación se gestiona en
+                          /habilitaciones, contra Odoo. Y no frena el programar — la
+                          documentación es advertencia, no bloqueo; lo que sí bloquea es
+                          el permiso municipal, y bloquea al confirmar en el tablero. */}
+                      {!(ot.es_adicional && !ot.aprobada_comercial) && ot.estado === "pendiente" && (
                         <Button size="sm" variant="outline" onClick={() => updateOT.mutate({ id: ot.id, data: { estado: "programada" } as any }, { onSuccess: () => toast.success("OT programada") })}>Programar</Button>
                       )}
                       {ot.estado === "programada" && (

@@ -1,7 +1,7 @@
 import {
   Building2, Users, Wrench, Package, Truck, UserCheck, BarChart3, Bell,
   Settings, FileText, ClipboardList, Calculator, Calendar, HardHat,
-  PackagePlus, AlertTriangle, Shield, Search, Car, Hammer, MessageSquare,
+  PackagePlus, AlertTriangle, Search, Car, Hammer, MessageSquare,
   MapPin, Fingerprint, Bot, Building, ListOrdered, ShieldCheck,
   type LucideIcon,
 } from "lucide-react";
@@ -61,7 +61,6 @@ export const navigation: NavGroup[] = [
       { title: "Legajos", href: "/personal", icon: UserCheck },
       { title: "Fichadas", href: "/fichadas", icon: Fingerprint },
       { title: "Vehiculos", href: "/vehiculos", icon: Car },
-      { title: "Permisos", href: "/permisos", icon: Shield },
     ],
   },
   {

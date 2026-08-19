@@ -4,8 +4,9 @@ import { useQuery } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import {
-  AlertTriangle, ExternalLink, FileText, Phone, ShieldCheck, User, Clock, CalendarDays,
+  AlertTriangle, ExternalLink, FileText, Phone, Pin, ShieldCheck, User, Clock, CalendarDays,
 } from "lucide-react";
+import { useNotasFijadas } from "@/hooks/use-habilitaciones";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -27,6 +28,29 @@ const TIPO_LABEL: Record<string, string> = {
   mantenimiento: "Mantenimiento",
   otro: "Otro",
 };
+
+/**
+ * Las notas fijadas de la habilitación, acá y no sólo en su módulo.
+ *
+ * "El administrador sólo atiende martes y jueves" es información que necesita quien
+ * planifica, en el momento en que está por prometer una fecha. Encerrarla en
+ * /habilitaciones es dejarla donde no sirve.
+ */
+function NotasFijadas({ otId }: { otId: number }) {
+  const { data: notas } = useNotasFijadas(otId);
+  if (!notas?.length) return null;
+
+  return (
+    <div className="space-y-1.5 rounded-md border p-2" style={{ backgroundColor: "#FEF6E7" }}>
+      {notas.map((n) => (
+        <div key={n.id} className="flex gap-2 text-sm">
+          <Pin className="mt-0.5 h-3.5 w-3.5 shrink-0" style={{ color: "#B54708" }} />
+          <p className="whitespace-pre-wrap">{n.texto}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function Fila({ icono, etiqueta, children }: { icono: React.ReactNode; etiqueta: string; children: React.ReactNode }) {
   return (
@@ -119,6 +143,8 @@ export function PanelOt({
                   </Badge>
                 )}
               </div>
+
+              <NotasFijadas otId={ot.id} />
 
               {ot.urgencia === "alta" && ot.motivoUrgencia && (
                 <div className="flex gap-2 rounded-md border p-2 text-sm" style={{ borderColor: "#D92D20" }}>

@@ -25,6 +25,8 @@ import { ContenidoTarjeta } from "./tarjeta-asignacion";
 import { PanelOt } from "./panel-ot";
 import { FormularioCierre } from "./formulario-cierre";
 import { DialogoJornadas } from "./dialogo-jornadas";
+import { DialogoCandado, type PedidoConfirmacion } from "./dialogo-candado";
+import { useCandado } from "@/hooks/use-habilitaciones";
 import {
   useTablero,
   useCrearAsignaciones,
@@ -289,6 +291,27 @@ export function TableroBoard() {
   }
 
   const otsPorId = useMemo(() => new Map((data?.ots ?? []).map((o) => [o.id, o])), [data]);
+
+  // ── Candado de habilitación ───────────────────────────────────────────────
+  //
+  // Sólo mira el PERMISO, que vive entero en sale.order (Odoo): el tablero nunca
+  // necesita a Supabase para decidir si una jornada se puede confirmar. La
+  // documentación no bloquea — sigue siendo advertencia, como hoy.
+  const otIdsEnTablero = useMemo(
+    () => [...new Set((data?.asignaciones ?? []).map((a) => a.otId))],
+    [data],
+  );
+  const { data: candados } = useCandado(otIdsEnTablero);
+  const [pedidoCandado, setPedidoCandado] = useState<PedidoConfirmacion | null>(null);
+
+  /** Las OTs que llevan candado visible en la tarjeta. Se arrastran igual. */
+  const otsBloqueadas = useMemo(() => {
+    const set = new Set<number>();
+    for (const [otId, f] of candados ?? []) {
+      if (f.friccion?.tipo === "bloqueo") set.add(otId);
+    }
+    return set;
+  }, [candados]);
 
   const cuadrillasVisibles = useMemo(() => {
     if (!data) return [];
@@ -666,7 +689,24 @@ export function TableroBoard() {
               }}
               onFraccion={(b, f: FraccionStr) => actualizar.mutate({ ids: b.ids, cambio: { fraccion: f } })}
               onEditarJornadas={(b) => setJornadasDe(b.key)}
-              onEstado={(b, estado) => actualizar.mutate({ ids: b.ids, cambio: { estado } })}
+              // CONFIRMAR es el único momento donde el permiso frena. Volver a
+              // tentativa nunca pregunta nada: aflojar el compromiso no necesita
+              // permiso de nadie.
+              onEstado={(b, estado) => {
+                const aplicar = () => actualizar.mutate({ ids: b.ids, cambio: { estado } });
+                if (estado !== "confirmada") return aplicar();
+
+                const f = candados?.get(b.otId);
+                if (!f?.friccion) return aplicar();
+
+                setPedidoCandado({
+                  otId: b.otId,
+                  friccion: f.friccion,
+                  pedidosPrevios: f.pedidosPrevios,
+                  confirmar: aplicar,
+                });
+              }}
+              candados={otsBloqueadas}
               onQuitar={volverABandeja}
             />
           ) : (
@@ -749,6 +789,8 @@ export function TableroBoard() {
         }}
         onOpenChange={(abierto) => !abierto && setJornadasDe(null)}
       />
+
+      <DialogoCandado pedido={pedidoCandado} onCerrar={() => setPedidoCandado(null)} />
 
       <FormularioCierre
         abierto={!!cierre}

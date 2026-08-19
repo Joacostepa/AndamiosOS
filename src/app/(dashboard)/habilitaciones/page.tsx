@@ -1,66 +1,228 @@
 "use client";
 
-import { type ColumnDef } from "@tanstack/react-table";
-import { useOrdenesPendientesHabilitacion, useUpdateOrdenTrabajo, type OrdenTrabajo } from "@/hooks/use-ordenes-trabajo";
-import { DataTable } from "@/components/shared/data-table";
+import { useState } from "react";
+import { Loader2, RefreshCw, TriangleAlert } from "lucide-react";
+import { toast } from "sonner";
+import { useBandejaHabilitaciones, useReconciliar, useTriage } from "@/hooks/use-habilitaciones";
+import { Fila } from "@/components/habilitaciones/fila-bandeja";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatDate } from "@/lib/utils/formatters";
-import { ShieldCheck, Loader2, Shield } from "lucide-react";
-import Link from "next/link";
-import { toast } from "sonner";
+import { ShieldCheck } from "lucide-react";
+import type { GrupoBandeja } from "@/lib/habilitaciones/tipos";
 
-// Módulo crítico (flujo ABA): el área Habilitaciones ve las OTs bloqueadas
-// (requiere_habilitacion && !habilitacion_aprobada) y las libera una vez gestionados
-// nóminas / pólizas RT / no repetición / SPA del personal.
-const TIPO_OT_LABELS: Record<string, string> = {
-  armado: "Armado", desarme: "Desarme", ampliacion: "Ampliación",
-  desmonte_parcial: "Desmonte parcial", mantenimiento: "Mantenimiento", otro: "Otro",
-};
+// Bandeja de Habilitaciones. Reemplaza a la planilla `Seguimiento de obras (DOCS
+// TRACKER)` y a la vieja pantalla que sólo tenía un botón "Habilitar" contra un booleano.
+//
+// AGRUPADA POR ACCIÓN PENDIENTE, no por objeto: una obra no "tiene documentación", está
+// esperando que el cliente diga qué pide, o esperando validación, o vencida. Cada estado
+// tiene una acción y un reclamo distintos, y la planilla tenía dos casillas para un
+// proceso de cinco pasos.
+//
+// SIN BUSCADOR NI PAGINADO, a propósito: con ~19 obras en trámite no hay que encontrar
+// nada, hay que decidir por dónde empezar. El día que haga falta buscar es porque el
+// módulo se llenó de ruido, y eso es lo que hay que arreglar, no el buscador.
+//
+// NO HAY BOTÓN "NUEVA OBRA": las habilitaciones nacen con la OT en Odoo. La primera
+// acción de Agustina es el triage, no el alta.
 
 export default function HabilitacionesPage() {
-  const { data: ots, isLoading } = useOrdenesPendientesHabilitacion();
-  const updateOT = useUpdateOrdenTrabajo();
+  const { data, isLoading, error } = useBandejaHabilitaciones();
+  const triage = useTriage();
+  const reconciliar = useReconciliar();
+  const [seleccion, setSeleccion] = useState<Set<number>>(new Set());
 
-  function habilitar(ot: OrdenTrabajo) {
-    updateOT.mutate(
-      { id: ot.id, data: { habilitacion_aprobada: true } },
+  function alternar(otId: number, valor: boolean) {
+    setSeleccion((prev) => {
+      const siguiente = new Set(prev);
+      if (valor) siguiente.add(otId);
+      else siguiente.delete(otId);
+      return siguiente;
+    });
+  }
+
+  function triar(decision: "aplica" | "no_aplica", otIds: number[]) {
+    if (otIds.length === 0) return;
+    triage.mutate(
+      { otIds, decision },
       {
-        onSuccess: () => toast.success(`OT ${ot.codigo} habilitada`),
-        onError: () => toast.error("Error al habilitar"),
+        onSuccess: ({ resueltas }) => {
+          setSeleccion(new Set());
+          toast.success(
+            decision === "aplica"
+              ? `${resueltas} ${resueltas === 1 ? "obra" : "obras"} en gestión · se creó la Nómina ART`
+              : `${resueltas} ${resueltas === 1 ? "obra sacada" : "obras sacadas"} de la cola`,
+          );
+        },
+        onError: (e) => toast.error(e instanceof Error ? e.message : "No se pudo resolver el triage"),
       },
     );
   }
 
-  const columns: ColumnDef<OrdenTrabajo>[] = [
-    { accessorKey: "codigo", header: "OT", cell: ({ row }) => <span className="font-mono text-sm">{row.original.codigo}</span> },
-    { id: "obra", header: "Obra", cell: ({ row }) => row.original.obras
-      ? <Link href={`/obras/${row.original.obra_id}`} className="text-primary hover:underline">{row.original.obras.codigo} — {row.original.obras.nombre}</Link>
-      : "—" },
-    { accessorKey: "tipo", header: "Tipo", cell: ({ row }) => TIPO_OT_LABELS[row.original.tipo] || row.original.tipo },
-    { accessorKey: "fecha_programada", header: "Programada", cell: ({ row }) => formatDate(row.original.fecha_programada) },
-    { id: "estado", header: "Estado", cell: () => <Badge variant="outline" className="gap-1 bg-red-500/15 text-red-400 border-red-500/25"><Shield className="h-3 w-3" />Bloqueada</Badge> },
-    { id: "accion", header: "", cell: ({ row }) => (
-      <Button size="sm" onClick={() => habilitar(row.original)} disabled={updateOT.isPending}>
-        {updateOT.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-2 h-4 w-4" />}Habilitar
-      </Button>
-    ) },
-  ];
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-10 w-64" />
+        <Skeleton className="h-96 w-full" />
+      </div>
+    );
+  }
 
-  if (isLoading) return <div className="space-y-6"><Skeleton className="h-10 w-48" /><Skeleton className="h-96 w-full" /></div>;
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Habilitaciones" description="No se pudo leer la bandeja" />
+        <EmptyState
+          icon={TriangleAlert}
+          title="Error al leer Odoo"
+          description={error instanceof Error ? error.message : "Error desconocido"}
+        />
+      </div>
+    );
+  }
 
-  const n = ots?.length || 0;
+  const grupos = data?.grupos ?? [];
+  const total = data?.total ?? 0;
+  const desincronizadas = data?.desincronizadas ?? 0;
+
   return (
-    <div className="space-y-6">
-      <PageHeader title="Habilitaciones" description={`${n} ${n === 1 ? "OT esperando" : "OTs esperando"} habilitación`} />
-      {ots && ots.length > 0 ? (
-        <DataTable columns={columns} data={ots} searchKey="codigo" searchPlaceholder="Buscar OT..." />
+    <div className="space-y-5">
+      <PageHeader
+        title="Habilitaciones"
+        description={`Las obras entran solas al crearse la OT en Odoo · ${total} en trámite`}
+      />
+
+      {/* El push a Odoo es el único punto que puede fallar en silencio. Si nadie puede
+          ver que hay 12 en error, el job de reconciliación no alcanza. */}
+      {desincronizadas > 0 && (
+        <div
+          className="flex items-center gap-3 rounded-md border px-3 py-2 text-[13px]"
+          style={{ backgroundColor: "#FEF6E7", borderColor: "#F5C86B" }}
+        >
+          <TriangleAlert className="h-4 w-4 shrink-0" style={{ color: "#B54708" }} />
+          <span className="flex-1">
+            {desincronizadas}{" "}
+            {desincronizadas === 1
+              ? "habilitación no pudo actualizarse en Odoo"
+              : "habilitaciones no pudieron actualizarse en Odoo"}
+            . El tablero puede estar mostrando un semáforo viejo.
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() =>
+              reconciliar.mutate(undefined, {
+                onSuccess: (r) =>
+                  toast.success(
+                    `${r.reparadas} reparadas · ${r.fallidas} siguen fallando${r.huerfanas ? ` · ${r.huerfanas} huérfanas` : ""}`,
+                  ),
+                onError: (e) => toast.error(e instanceof Error ? e.message : "No se pudo reconciliar"),
+              })
+            }
+            disabled={reconciliar.isPending}
+          >
+            {reconciliar.isPending ? (
+              <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="mr-2 h-3.5 w-3.5" />
+            )}
+            Reintentar
+          </Button>
+        </div>
+      )}
+
+      {grupos.length === 0 ? (
+        <EmptyState
+          icon={ShieldCheck}
+          title="No hay nada en trámite"
+          description="Las obras aparecen acá solas al crearse la OT en Odoo."
+        />
       ) : (
-        <EmptyState icon={ShieldCheck} title="Todo habilitado" description="No hay órdenes de trabajo esperando habilitación." />
+        grupos.map((grupo) => (
+          <Grupo
+            key={grupo.clave}
+            grupo={grupo}
+            seleccion={seleccion}
+            onSeleccionar={alternar}
+            onTriar={triar}
+            triando={triage.isPending}
+          />
+        ))
       )}
     </div>
+  );
+}
+
+function Grupo({
+  grupo,
+  seleccion,
+  onSeleccionar,
+  onTriar,
+  triando,
+}: {
+  grupo: GrupoBandeja;
+  seleccion: Set<number>;
+  onSeleccionar: (otId: number, valor: boolean) => void;
+  onTriar: (decision: "aplica" | "no_aplica", otIds: number[]) => void;
+  triando: boolean;
+}) {
+  const esTriage = grupo.clave === "recien_llegadas";
+  const idsDelGrupo = grupo.filas.map((f) => f.otId);
+  const seleccionados = idsDelGrupo.filter((id) => seleccion.has(id));
+  // Sin selección, los botones actúan sobre todo el grupo: con 3 obras por día hábil,
+  // obligar a tildar antes de resolver convierte un clic en tres.
+  const objetivo = seleccionados.length > 0 ? seleccionados : idsDelGrupo;
+
+  return (
+    <section className="rounded-md border">
+      <header
+        className="flex items-center gap-3 border-b px-3 py-2"
+        style={grupo.peligro ? { backgroundColor: "#FDECEA" } : undefined}
+      >
+        <h2 className="text-[13px] font-semibold">{grupo.titulo}</h2>
+        <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium">
+          {grupo.filas.length}
+        </span>
+
+        {/* TRIAGE POR LOTE. Con ~68 entradas por mes, si esto no es de un clic la bandeja
+            se llena de ruido y deja de significar algo — que es exactamente lo que le
+            pasó a la planilla que este módulo reemplaza. */}
+        {esTriage && (
+          <div className="ml-auto flex items-center gap-2">
+            <span className="text-[11px] text-muted-foreground">
+              {seleccionados.length > 0
+                ? `${seleccionados.length} seleccionadas`
+                : "todas"}
+            </span>
+            <Button size="sm" onClick={() => onTriar("aplica", objetivo)} disabled={triando}>
+              {triando && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
+              Aplica
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => onTriar("no_aplica", objetivo)}
+              disabled={triando}
+            >
+              No aplica
+            </Button>
+          </div>
+        )}
+      </header>
+
+      <div>
+        {grupo.filas.map((fila) => (
+          <Fila
+            key={fila.otId}
+            fila={fila}
+            grupo={grupo.clave}
+            seleccionable={esTriage}
+            seleccionada={seleccion.has(fila.otId)}
+            onSeleccionar={onSeleccionar}
+          />
+        ))}
+      </div>
+    </section>
   );
 }

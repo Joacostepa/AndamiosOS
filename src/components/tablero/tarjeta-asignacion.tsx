@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
-import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, AlertTriangle, CalendarRange, Check, CircleCheck, CircleDashed, ClipboardCheck, MoreHorizontal, MoreVertical, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, AlertTriangle, CalendarRange, Check, CircleCheck, CircleDashed, ClipboardCheck, Lock, MoreHorizontal, MoreVertical, Trash2 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -70,6 +70,7 @@ export function ContenidoTarjeta({
   sigueDespues = false,
   cierre = null,
   vencidaSinParte = false,
+  candado = false,
 }: {
   ot: OtTablero | undefined;
   bloque: Pick<Bloque, "estado" | "fraccion" | "fechas" | "multiDia">;
@@ -81,6 +82,11 @@ export function ContenidoTarjeta({
   cierre?: EstadoCierre | null;
   /** Alguna jornada ya pasó y sigue sin parte: reclama acción, no se atenúa. */
   vencidaSinParte?: boolean;
+  /**
+   * El cliente pidió no armar sin el permiso emitido. Es AVISO, no impedimento: la obra
+   * se arrastra y se planifica igual. El freno está al confirmar.
+   */
+  candado?: boolean;
 }) {
   const tipo = colorTipo(ot?.tipo);
   const IconoTipo = ICONO_TIPO[tipo.icono];
@@ -137,6 +143,13 @@ export function ContenidoTarjeta({
         {noEjecutada && (
           <AlertTriangle className="h-3 w-3 shrink-0 self-center" style={{ color: "#D92D20" }} />
         )}
+        {candado && (
+          <Lock
+            className="h-3 w-3 shrink-0 self-center"
+            style={{ color: "#912018" }}
+            aria-label="El cliente pidió esperar el permiso emitido"
+          />
+        )}
         <span
           className="min-w-0 flex-1 truncate text-[12px] font-medium leading-tight"
           style={{ color: colorTexto }}
@@ -186,6 +199,7 @@ export function TarjetaAsignacion({
   vencidaSinParte,
   cierre,
   accionCierre,
+  candado = false,
   onCerrarJornada,
   onAbrir,
   onFraccion,
@@ -203,6 +217,8 @@ export function TarjetaAsignacion({
   vencidaSinParte: boolean;
   cierre: EstadoCierre | null;
   accionCierre: AccionCierre;
+  /** El cliente pidió esperar el permiso emitido. Avisa; no impide arrastrar. */
+  candado?: boolean;
   onCerrarJornada: (accion: NonNullable<AccionCierre>) => void;
   onAbrir: () => void;
   onFraccion: (f: FraccionStr) => void;
@@ -273,6 +289,7 @@ export function TarjetaAsignacion({
         sigueDespues={colocacion.sigueDespues}
         cierre={cierre}
         vencidaSinParte={vencidaSinParte}
+        candado={candado}
       />
 
       <div

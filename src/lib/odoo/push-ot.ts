@@ -30,9 +30,14 @@ export async function pushAdicionalToOdoo(ot: AppOTForPush): Promise<number> {
     x_name: ot.descripcion?.trim() || `Adicional ${ot.id.slice(0, 8)}`,
     x_observaciones: obs || false,
     x_fecha_programada: ot.fecha_programada || false,
-    // Requeridos en Odoo (costeo): defaults; Comercial/Operaciones los ajustan luego.
+    // x_jornadas_estimadas es requerido en Odoo para el costeo y no hay de dónde
+    // sacarlo al crear un adicional desde la obra: queda en 1 y se ajusta después.
     x_jornadas_estimadas: 1,
-    x_personal_por_jornada: 1,
+    // x_personal_por_jornada NO se inventa. Es lo que precarga la cantidad de personas
+    // del parte diario, y de ahí salen las horas-hombre que van al costo de mano de obra.
+    // Un 1 hardcodeado es plausible, no se nota, y mete costo inventado; con el campo en
+    // cero el parte pide el dato en vez de suponerlo.
+    x_personal_por_jornada: 0,
   };
 
   const existing = await searchRead<{ id: number }>(

@@ -1,123 +1,286 @@
 "use client";
 
-import { useState } from "react";
-import { type ColumnDef } from "@tanstack/react-table";
-import { useOrdenesTrabajo, useCreateAdicional, useRetryPushOT, type OrdenTrabajo } from "@/hooks/use-ordenes-trabajo";
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import { format, parseISO } from "date-fns";
+import { es } from "date-fns/locale";
+import { ArrowDown, ArrowUp, MoreHorizontal, Plus, Loader2, Search, RefreshCw } from "lucide-react";
+import { toast } from "sonner";
+import { useForm } from "react-hook-form";
+import { useOrdenesOdoo } from "@/hooks/use-ordenes-odoo";
+import { useCreateAdicional, useRetryPushOT, useOrdenesTrabajo } from "@/hooks/use-ordenes-trabajo";
 import { useObras } from "@/hooks/use-obras";
-import { DataTable } from "@/components/shared/data-table";
+import { ChipsFiltro } from "@/components/ordenes/chips-filtro";
 import { PageHeader } from "@/components/shared/page-header";
-import { StatusBadge } from "@/components/shared/status-badge";
-import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatDate } from "@/lib/utils/formatters";
-import { ListOrdered, Shield, CheckCircle, Clock, Plus, Loader2, RefreshCw, CloudOff } from "lucide-react";
-import Link from "next/link";
-import { toast } from "sonner";
-import { useForm } from "react-hook-form";
+import { colorTipo, semaforo, CORAL } from "@/lib/tablero/colores";
+import { partesTitulo, normalizar } from "@/lib/tablero/titulo";
+import type { FiltroOrdenes, OrdenListado } from "@/lib/tablero/tipos-orden";
+
+// Listado de Órdenes de Trabajo, leído de Odoo.
+//
+// Antes leía la tabla `ordenes_trabajo` de Supabase mientras el tablero leía
+// x_aba_orden_trabajo: dos listas de OT que no se veían entre sí, con el mismo
+// desdoblamiento que ya habíamos resuelto entre /planificacion y /tablero.
+//
+// El alta de OT adicional sigue escribiendo en Supabase y empujando a Odoo: ese camino ya
+// está armado y probado, y tocarlo ahora sería riesgo sin beneficio.
+
+const ICONO_TIPO = { arriba: ArrowUp, abajo: ArrowDown, otro: MoreHorizontal } as const;
 
 const TIPO_OT_LABELS: Record<string, string> = {
   armado: "Armado", desarme: "Desarme", ampliacion: "Ampliación",
   desmonte_parcial: "Desmonte parcial", mantenimiento: "Mantenimiento", otro: "Otro",
 };
 
-function SyncBadge({ ot }: { ot: OrdenTrabajo }) {
-  const retry = useRetryPushOT();
-  if (!ot.es_adicional) return <span className="text-muted-foreground text-xs">—</span>;
-  if (ot.odoo_sync_estado === "sincronizado") return <Badge variant="outline" className="bg-emerald-500/15 text-emerald-400 border-emerald-500/25 gap-1"><CheckCircle className="h-3 w-3" />Odoo</Badge>;
-  if (ot.odoo_sync_estado === "error") return (
-    <Button size="sm" variant="outline" className="h-7 text-red-400 border-red-500/25" disabled={retry.isPending}
-      onClick={() => retry.mutate(ot.id, { onSuccess: () => toast.success("Sincronizada con Odoo"), onError: (e) => toast.error(e.message) })}>
-      {retry.isPending ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <RefreshCw className="mr-1 h-3 w-3" />}Reintentar
-    </Button>
+function Fila({ ot }: { ot: OrdenListado }) {
+  const tipo = colorTipo(ot.tipo);
+  const IconoTipo = ICONO_TIPO[tipo.icono];
+  const sem = semaforo(ot.habSemaforo);
+  const partes = partesTitulo(ot.titulo);
+  const critica = ot.habAlerta === "critica";
+  const sinFecha = ot.grupoProg === "b_sin";
+
+  return (
+    <Link
+      href={`/ordenes-trabajo/${ot.id}`}
+      className="flex items-center gap-2 border-b px-3 py-2 text-[13px] hover:bg-muted/40"
+      style={{
+        backgroundColor: critica
+          ? "#FDECEA"
+          : sinFecha
+            ? "color-mix(in oklch, var(--foreground) 2.5%, transparent)"
+            : undefined,
+      }}
+    >
+      <span
+        className="h-2.5 w-2.5 shrink-0 rounded-full"
+        style={{ backgroundColor: sem.color }}
+        title={sem.label}
+      />
+      <IconoTipo className="h-3.5 w-3.5 shrink-0" style={{ color: tipo.text }} aria-hidden />
+
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-medium">{partes.principal}</span>
+        <span className="block truncate text-[11px] text-muted-foreground">
+          {[partes.numero, partes.cliente].filter(Boolean).join(" · ")}
+        </span>
+      </span>
+
+      <span className="w-28 shrink-0 text-right text-[12px]">
+        {ot.fechaProgramada ? (
+          <>
+            {format(parseISO(ot.fechaProgramada), "d MMM", { locale: es })}
+            {ot.fechaFirmeza && (
+              <span
+                className="ml-1 rounded px-1 text-[10px] font-semibold"
+                style={
+                  ot.fechaFirmeza === "confirmada"
+                    ? { backgroundColor: "#EAF3DE", color: "#27500A" }
+                    : { backgroundColor: "var(--muted)", color: "var(--muted-foreground)" }
+                }
+                title={ot.fechaFirmeza === "confirmada" ? "Fecha firme" : "Fecha tentativa"}
+              >
+                {ot.fechaFirmeza === "confirmada" ? "F" : "t"}
+              </span>
+            )}
+          </>
+        ) : (
+          <span className="text-muted-foreground">sin fecha</span>
+        )}
+      </span>
+
+      <span className="w-24 shrink-0 truncate text-[11px] text-muted-foreground">
+        {ot.cuadrillaPrevista ?? "—"}
+      </span>
+      <span className="w-12 shrink-0 text-right text-[12px] tabular-nums">{ot.jornadas || "—"}</span>
+      <span className="w-10 shrink-0 text-right text-[12px] tabular-nums text-muted-foreground">
+        {ot.cantDocs || "—"}
+      </span>
+    </Link>
   );
-  return <Badge variant="outline" className="bg-yellow-500/15 text-yellow-400 border-yellow-500/25 gap-1"><CloudOff className="h-3 w-3" />Pendiente</Badge>;
 }
 
-const columns: ColumnDef<OrdenTrabajo>[] = [
-  { accessorKey: "codigo", header: "OT", cell: ({ row }) => (
-    <span className="flex items-center gap-2">
-      <span className="font-mono text-sm">{row.original.codigo}</span>
-      {row.original.es_adicional && <Badge variant="outline" className="bg-purple-500/15 text-purple-400 border-purple-500/25">Adicional</Badge>}
-    </span>
-  ) },
-  { id: "obra", header: "Obra", cell: ({ row }) => row.original.obras
-    ? <Link href={`/obras/${row.original.obra_id}`} className="text-primary hover:underline">{row.original.obras.codigo} — {row.original.obras.nombre}</Link>
-    : "—" },
-  { accessorKey: "tipo", header: "Tipo", cell: ({ row }) => TIPO_OT_LABELS[row.original.tipo] || row.original.tipo },
-  { accessorKey: "fecha_programada", header: "Programada", cell: ({ row }) => formatDate(row.original.fecha_programada) },
-  { id: "estado", header: "Estado", cell: ({ row }) => {
-    const ot = row.original;
-    if (ot.es_adicional && !ot.aprobada_comercial) return <Badge variant="outline" className="gap-1 bg-orange-500/15 text-orange-400 border-orange-500/25"><Clock className="h-3 w-3" />Pend. aprob. comercial</Badge>;
-    if (ot.requiere_habilitacion && !ot.habilitacion_aprobada && ot.estado === "pendiente") return <Badge variant="outline" className="gap-1 bg-red-500/15 text-red-400 border-red-500/25"><Shield className="h-3 w-3" />Pend. habilitación</Badge>;
-    return <StatusBadge status={ot.estado} />;
-  } },
-  { id: "sync", header: "Odoo", cell: ({ row }) => <SyncBadge ot={row.original} /> },
-];
-
 export default function OrdenesTrabajoPage() {
-  const { data: ots, isLoading } = useOrdenesTrabajo();
+  const [filtro, setFiltro] = useState<FiltroOrdenes>("abiertas");
+  const [busqueda, setBusqueda] = useState("");
+  const { data, isLoading, isFetching } = useOrdenesOdoo(filtro);
+
+  // Las adicionales recién creadas viven en Supabase hasta que el push las lleva a Odoo.
+  // Entre esos dos momentos no existirían en un listado que lee de Odoo, así que se
+  // muestran aparte, arriba, hasta que sincronizan.
+  const { data: locales } = useOrdenesTrabajo();
+  const enVuelo = (locales ?? []).filter(
+    (o) => o.es_adicional && o.odoo_sync_estado !== "sincronizado",
+  );
+
   const { data: obras } = useObras();
   const createAdicional = useCreateAdicional();
+  const retry = useRetryPushOT();
   const [open, setOpen] = useState(false);
-  const { register, handleSubmit, reset, setValue, watch } = useForm<{ obra_id: string; tipo: string; motivo_adicional: string; descripcion?: string; fecha_programada?: string }>({ defaultValues: { tipo: "ampliacion" } });
+  const { register, handleSubmit, reset, setValue, watch } = useForm<{
+    obra_id: string; tipo: string; motivo_adicional: string; descripcion?: string; fecha_programada?: string;
+  }>({ defaultValues: { tipo: "ampliacion" } });
 
-  function onSubmit(data: { obra_id: string; tipo: string; motivo_adicional: string; descripcion?: string; fecha_programada?: string }) {
-    if (!data.obra_id) { toast.error("Seleccioná la obra"); return; }
-    if (!data.motivo_adicional) { toast.error("Indicá el motivo del adicional"); return; }
-    createAdicional.mutate(data, {
-      onSuccess: () => { toast.success("OT adicional creada — pendiente de aprobación comercial"); setOpen(false); reset(); },
+  const ordenes = useMemo(() => {
+    const lista = data?.ordenes ?? [];
+    const q = normalizar(busqueda.trim());
+    if (!q) return lista;
+    return lista.filter((o) => normalizar(o.titulo).includes(q));
+  }, [data, busqueda]);
+
+  function onSubmit(d: { obra_id: string; tipo: string; motivo_adicional: string; descripcion?: string; fecha_programada?: string }) {
+    if (!d.obra_id) return toast.error("Seleccioná la obra");
+    if (!d.motivo_adicional) return toast.error("Indicá el motivo del adicional");
+    createAdicional.mutate(d, {
+      onSuccess: () => {
+        toast.success("OT adicional creada — sincronizando con Odoo");
+        setOpen(false);
+        reset();
+      },
       onError: () => toast.error("Error al crear la OT adicional"),
     });
   }
 
-  if (isLoading) return <div className="space-y-6"><Skeleton className="h-10 w-48" /><Skeleton className="h-96 w-full" /></div>;
-
-  const total = ots?.length || 0;
-  const bloqueadas = ots?.filter((o) => (o.es_adicional && !o.aprobada_comercial) || (o.requiere_habilitacion && !o.habilitacion_aprobada && o.estado === "pendiente")).length || 0;
-
   return (
-    <div className="space-y-6">
-      <PageHeader title="Órdenes de Trabajo" description={`${total} en total · ${bloqueadas} bloqueadas`}>
-        <Button onClick={() => setOpen(true)}><Plus className="mr-2 h-4 w-4" />Nueva OT adicional</Button>
+    <div className="space-y-4">
+      <PageHeader
+        title="Órdenes de Trabajo"
+        description={
+          data
+            ? `${data.conteos.abiertas} abiertas · ${data.conteos.cerradas} cerradas${isFetching ? " · actualizando…" : ""}`
+            : "Cargando…"
+        }
+      >
+        <Button onClick={() => setOpen(true)}>
+          <Plus className="mr-2 h-4 w-4" />
+          Nueva OT adicional
+        </Button>
       </PageHeader>
 
-      {ots && ots.length > 0 ? (
-        <DataTable columns={columns} data={ots} searchKey="codigo" searchPlaceholder="Buscar OT..." />
+      <ChipsFiltro activo={filtro} conteos={data?.conteos} onCambio={setFiltro} />
+
+      <div className="relative max-w-sm">
+        <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={busqueda}
+          onChange={(e) => setBusqueda(e.target.value)}
+          placeholder="Buscar obra, cliente o número…"
+          className="h-8 pl-8 text-[12px]"
+        />
+      </div>
+
+      {enVuelo.length > 0 && (
+        <div className="space-y-1 rounded-md border p-2" style={{ borderColor: CORAL }}>
+          {enVuelo.map((o) => (
+            <div key={o.id} className="flex items-center gap-2 text-[12px]">
+              <span className="font-medium">{o.descripcion || "OT adicional"}</span>
+              {o.odoo_sync_estado === "error" ? (
+                <>
+                  <span style={{ color: "#B42318" }}>no sincronizó: {o.odoo_sync_error}</span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="ml-auto h-7"
+                    disabled={retry.isPending}
+                    onClick={() =>
+                      retry.mutate(o.id, {
+                        onSuccess: () => toast.success("Sincronizada con Odoo"),
+                        onError: (e) => toast.error(e.message),
+                      })
+                    }
+                  >
+                    {retry.isPending ? (
+                      <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                    ) : (
+                      <RefreshCw className="mr-1 h-3 w-3" />
+                    )}
+                    Reintentar
+                  </Button>
+                </>
+              ) : (
+                <span className="text-muted-foreground">creada, sincronizando…</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {isLoading ? (
+        <Skeleton className="h-96 w-full" />
       ) : (
-        <EmptyState icon={ListOrdered} title="Sin órdenes de trabajo" description="Las OTs bajan de Odoo (Comercial). Operaciones puede crear OTs adicionales acá." />
+        <div className="rounded-md border">
+          <div className="flex items-center gap-2 border-b bg-muted/40 px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+            <span className="w-2.5 shrink-0" title="Habilitación" />
+            <span className="w-3.5 shrink-0" title="Tipo" />
+            <span className="min-w-0 flex-1">Obra</span>
+            <span className="w-28 shrink-0 text-right">Fecha</span>
+            <span className="w-24 shrink-0">Cuadrilla</span>
+            <span className="w-12 shrink-0 text-right">Jorn</span>
+            <span className="w-10 shrink-0 text-right">Doc</span>
+          </div>
+          {ordenes.length > 0 ? (
+            ordenes.map((ot) => <Fila key={ot.id} ot={ot} />)
+          ) : (
+            <p className="px-3 py-8 text-center text-[12px] text-muted-foreground">
+              {busqueda ? "Ninguna orden coincide con la búsqueda." : "No hay órdenes en este filtro."}
+            </p>
+          )}
+        </div>
       )}
 
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent className="overflow-y-auto sm:max-w-lg">
           <SheetHeader><SheetTitle>Nueva OT adicional</SheetTitle></SheetHeader>
-          <p className="mt-2 text-sm text-muted-foreground">Trabajo extra detectado en obra. Queda pendiente hasta que Comercial lo apruebe en Odoo.</p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Trabajo extra detectado en obra. Queda pendiente hasta que Comercial lo apruebe en Odoo.
+          </p>
           <form onSubmit={handleSubmit(onSubmit)} className="mt-6 space-y-4">
             <div className="space-y-2">
               <Label>Obra *</Label>
-              <Select value={watch("obra_id") || ""} onValueChange={(val) => val && setValue("obra_id", val)}>
-                <SelectTrigger><SelectValue placeholder="Seleccionar obra..." /></SelectTrigger>
-                <SelectContent>{obras?.filter((o) => o.estado !== "cancelada").map((o) => <SelectItem key={o.id} value={o.id}>{o.codigo} — {o.nombre}</SelectItem>)}</SelectContent>
+              <Select value={watch("obra_id") || ""} onValueChange={(v) => v && setValue("obra_id", v)}>
+                <SelectTrigger><SelectValue placeholder="Seleccionar obra…" /></SelectTrigger>
+                <SelectContent>
+                  {obras?.filter((o) => o.estado !== "cancelada").map((o) => (
+                    <SelectItem key={o.id} value={o.id}>{o.codigo} — {o.nombre}</SelectItem>
+                  ))}
+                </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
               <Label>Tipo *</Label>
-              <Select value={watch("tipo")} onValueChange={(val) => val && setValue("tipo", val)}>
+              <Select value={watch("tipo")} onValueChange={(v) => v && setValue("tipo", v)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>{Object.entries(TIPO_OT_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
+                <SelectContent>
+                  {Object.entries(TIPO_OT_LABELS).map(([k, v]) => (
+                    <SelectItem key={k} value={k}>{v}</SelectItem>
+                  ))}
+                </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2"><Label>Motivo del adicional *</Label><Textarea {...register("motivo_adicional", { required: true })} rows={2} placeholder="Por qué surge este trabajo extra..." /></div>
-            <div className="space-y-2"><Label>Descripción</Label><Textarea {...register("descripcion")} rows={2} placeholder="Qué hay que hacer..." /></div>
-            <div className="space-y-2"><Label>Fecha programada</Label><Input type="date" {...register("fecha_programada")} /></div>
+            <div className="space-y-2">
+              <Label>Motivo del adicional *</Label>
+              <Textarea {...register("motivo_adicional", { required: true })} rows={2} placeholder="Por qué surge este trabajo extra…" />
+            </div>
+            <div className="space-y-2">
+              <Label>Descripción</Label>
+              <Textarea {...register("descripcion")} rows={2} placeholder="Qué hay que hacer…" />
+            </div>
+            <div className="space-y-2">
+              <Label>Fecha programada</Label>
+              <Input type="date" {...register("fecha_programada")} />
+            </div>
             <div className="flex justify-end pt-2">
-              <Button type="submit" disabled={createAdicional.isPending}>{createAdicional.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Crear adicional</Button>
+              <Button type="submit" disabled={createAdicional.isPending}>
+                {createAdicional.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Crear adicional
+              </Button>
             </div>
           </form>
         </SheetContent>

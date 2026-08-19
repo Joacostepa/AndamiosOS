@@ -244,8 +244,44 @@ lo que las fracciones capturan. Calibrar mezclaría la unidad con su uso típico
 
 ### ADVERTENCIA: hoy esta sección se muestra en ~1% de los informes
 
-**997 de 1003 OTs no tienen `x_duracion_est`.** El campo recién pasó a ser obligatorio en
-la vista de Comercial para las OTs de armado, así que se llena **de acá en adelante**.
+**997 de 1003 OTs no tienen `x_duracion_est`.** El campo se llena **de acá en adelante**.
+
+**Y hubo que arreglar algo en Odoo para que "de acá en adelante" fuera cierto.** El
+formulario de Comercial tenía `invisible="x_tipo != 'armado'"` sobre `x_duracion_est`: un
+desarme no podía estimarse aunque se supiera cuánto iba a llevar. Como el **78% de las
+ventas tienen desarme** y §2 es todo o nada, la sección no se iba a mostrar nunca — ni
+siquiera para las obras nuevas. Estaba estructuralmente muerta, no sólo históricamente
+vacía.
+
+Corregido en `scripts/odoo-duracion-estimada-todos-los-tipos.mjs`: duración y dotación
+son visibles y obligatorias en TODOS los tipos de OT.
+
+### El sugerido para el desarme
+
+Al cargar una OT que no es de armado, el formulario muestra una referencia calculada:
+
+> Sugerido: 2 jornada(s). El armado de esta obra son 3.
+
+La regla es `max(1, round(armado × 0,6))`, y sale de medir **415 obras** con armado y
+desarme ejecutados:
+
+| Armado | Desarme (mediana) | Ratio | Casos |
+| --- | --- | --- | --- |
+| 1 día | 1 día (97%) | 1,03 | 355 |
+| 2 días | 1 día (93%) | 0,54 | 27 |
+| 3 días | 2 días (87%) | 0,62 | 15 |
+| 4 días | 2 días | 0,54 | 7 |
+| 6 días | ~4 días | 0,63 | 4 |
+
+**Cuidado con el ratio de horas-hombre:** el crudo da 0,94, pero el **42% de las obras
+tiene el desarme con exactamente las mismas horas que el armado** —mismo personal y mismas
+horas copiadas en los dos partes—. Es un artefacto de carga, no una regularidad. Sacando
+esos casos la mediana cae a 0,50–0,75, que ya coincide con la de días. Calibrar contra el
+promedio crudo habría dado una sugerencia al doble.
+
+**Se sugiere, no se precarga.** Si el valor viene puesto en el campo se acepta sin
+pensarlo, y lo que se busca es que Comercial diga cuánto es. El texto informa al lado;
+cuando se lo ignora, fue una decisión.
 
 Consecuencia: en el backfill de las ~278 obras históricas —incluida S00116— esta sección
 **no aparece**. Va a empezar a poblarse con las obras que se cierren de ahora en más.

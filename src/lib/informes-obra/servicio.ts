@@ -47,6 +47,8 @@ export function armarInforme(venta: VentaCerrada, lote: LoteCierre): {
       tipo: (p.otId ? tipoPorOt.get(p.otId) : null) ?? "otro",
       horasHombre: p.horasHombre,
       fletes: lote.fletesPorParte.get(p.id) ?? 0,
+      costo: p.costo,
+      costoUsd: p.costoUsd,
       sector: p.sector,
       // La primera línea de las notas: el relato entero vive ahí, pero en una tabla sólo
       // entra el encabezado.
@@ -69,13 +71,19 @@ export function armarInforme(venta: VentaCerrada, lote: LoteCierre): {
     costoOperativo: venta.costoOperativo,
     margenContribucion: venta.margenContribucion,
     margenPct: venta.margenPct,
+    usd: {
+      facturadoNeto: venta.facturadoNetoUsd,
+      costoOperativo: venta.costoOperativoUsd,
+      margenContribucion: venta.margenUsd,
+      margenPct: venta.margenPctUsd,
+    },
   };
 
   const desde = visitas[0]?.fecha ?? null;
   const hasta = visitas[visitas.length - 1]?.fecha ?? null;
 
   const datos: DatosInforme = {
-    formato: 1,
+    formato: 2,
     venta: {
       id: venta.id,
       nombre: venta.nombre,
@@ -310,6 +318,8 @@ function aListado(i: InformeObra): InformeListado {
     desvioHoras: i.datos.estimado?.desvioHoras ?? null,
     margenPct: i.datos.economia.margenPct,
     facturado: i.datos.economia.facturadoNeto,
+    facturadoUsd: i.datos.economia.usd?.facturadoNeto ?? null,
+    margenPctUsd: i.datos.economia.usd?.margenPct ?? null,
     inconsistencias: i.inconsistencias.length,
   };
 }

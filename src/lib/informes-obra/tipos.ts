@@ -62,6 +62,9 @@ export type JornadaInforme = {
   tipo: string;
   horasHombre: number;
   fletes: number;
+  /** Costo del día en pesos y su equivalente al CCL de ESE día. */
+  costo: number;
+  costoUsd: number;
   sector: string | null;
   /** Primera línea de las notas. El relato entero vive ahí y no en campos separados. */
   nota: string | null;
@@ -94,11 +97,35 @@ export type Economia = {
   costoOperativo: number;
   margenContribucion: number;
   margenPct: number;
+  /**
+   * Lo mismo en dólares, convertido al CCL de la fecha de CADA movimiento: las facturas
+   * al día de emisión y los costos al día del parte diario.
+   *
+   * NO ES UN ADORNO, es la única columna comparable entre obras. Con esta inflación, un
+   * costo por jornada de $404.800 de mayo y otro de agosto no se pueden poner al lado; en
+   * USD sí. Y el margen en USD no coincide con el de pesos: esa diferencia es el efecto
+   * del tipo de cambio, y es información, no ruido.
+   *
+   * Opcional porque los informes con `formato: 1` se generaron antes de incorporarla.
+   */
+  usd?: {
+    facturadoNeto: number;
+    costoOperativo: number;
+    margenContribucion: number;
+    margenPct: number;
+  };
 };
 
 export type ParaCotizar = {
   costoPorVisita: number | null;
   costoPorHoraHombre: number | null;
+  /**
+   * Los mismos dos números en USD. SON LOS QUE SE REUSAN: un "costo por hora-hombre" en
+   * pesos sólo sirve para la obra que lo produjo, porque a los tres meses la cifra ya no
+   * significa lo mismo.
+   */
+  costoPorVisitaUsd: number | null;
+  costoPorHoraHombreUsd: number | null;
   /** Días promedio entre VISITAS, no entre partes. */
   ritmoDias: number | null;
   huecoMaximoDias: number | null;
@@ -110,8 +137,15 @@ export type ParaCotizar = {
 
 /** El informe entero, tal como se congela en `datos`. */
 export type DatosInforme = {
-  /** Formato de los datos. Sube si la forma cambia de manera incompatible. */
-  formato: 1;
+  /**
+   * Formato de los datos. Sube si la forma cambia.
+   *   1 — sólo pesos.
+   *   2 — suma la columna en dólares al CCL de cada fecha (economia.usd, costoUsd).
+   *
+   * Los informes viejos NO se migran: conservan la forma que tenían al generarse, que es
+   * el punto de congelarlos. La UI tiene que tolerar el formato 1.
+   */
+  formato: 1 | 2;
   venta: {
     id: number;
     nombre: string;
@@ -171,6 +205,9 @@ export type InformeListado = {
   desvioHoras: number | null;
   margenPct: number;
   facturado: number;
+  /** El comparable entre obras. null en los informes de formato 1. */
+  facturadoUsd: number | null;
+  margenPctUsd: number | null;
   inconsistencias: number;
 };
 

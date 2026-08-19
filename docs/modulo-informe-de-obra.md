@@ -258,10 +258,27 @@ que el módulo mejore con el tiempo, no la que lo justifica hoy.
 Cuando no se muestra, en su lugar va una línea: *"Sin estimación previa: las OTs de esta
 obra se crearon antes de que la duración estimada fuera obligatoria."*
 
-### 3. Economía
+### 3. Economía — en pesos Y en dólares
 
 `x_facturado_neto`, `x_costo_mano_obra`, `x_costo_fletes`, `x_costo_operativo`,
 `x_margen_contribucion`, `x_margen_pct`. Formato `es-AR`.
+
+**Y la columna en dólares, que es la que se compara entre obras:**
+`x_facturado_neto_usd`, `x_costo_operativo_usd`, `x_margen_usd`, `x_margen_pct_usd`, más
+`x_aba_parte_diario.x_costo_total_usd` por jornada.
+
+Odoo convierte **cada monto al CCL de su propia fecha**: las facturas al día de emisión y
+los costos al día del parte diario. Con esta inflación, un costo por jornada de mayo y
+otro de agosto no se pueden poner al lado en pesos; en dólares sí. Toda la sección §7
+—que es la que justifica el informe— apoya sobre eso.
+
+**El margen en USD no coincide con el de pesos, y eso es información.** Esa diferencia es
+el efecto del tipo de cambio entre las fechas de facturación y las de ejecución. Medido
+sobre las 278 obras: 0,7 puntos de diferencia media, con casos de hasta 8,3.
+
+**Resultado sobre el histórico:** el costo por hora-hombre en dólares de 261 obras
+promedia **USD 18,69**, con un rango de **13,27 a 31,35**. Ése es el número reusable para
+cotizar, y ese rango de 2,4× es exactamente la pregunta que el módulo abre.
 
 **Los campos económicos son computados y `store=true` en Odoo**, encadenados:
 `x_margen_pct` depende de `x_margen_contribucion` y `x_facturado_neto`, que a su vez
@@ -461,7 +478,9 @@ pantalla de 20 ML?". Con 278 informes guardados esa pregunta se vuelve contestab
 es otro módulo y conviene esperar a tener datos cargados por el flujo nuevo y no
 importados.
 
-**La tarifa histórica.** Verificar si el costo usa el valor hora de la fecha del parte o
-el vigente al calcular. Si es lo segundo, todos los costos históricos están valuados a una
-sola tarifa y las comparaciones entre obras de distintos meses no son válidas. Es una
-pregunta sobre el costeo de Odoo, no sobre este módulo.
+**La tarifa histórica: RESUELTO.** La pregunta era si el costo usa el valor hora de la
+fecha del parte o el vigente al calcular. Verificado en el compute de Odoo: cada monto se
+convierte al CCL de su propia fecha —las facturas al día de emisión, los costos al día del
+parte diario—. Los costos históricos NO están valuados a una sola tarifa, y por lo tanto
+las comparaciones entre obras de distintos meses **sí son válidas, en dólares**. Por eso
+la columna USD entró al informe en vez de quedar fuera de alcance.

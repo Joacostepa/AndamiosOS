@@ -166,6 +166,10 @@ export function paraCotizarDe(
 ): ParaCotizar {
   const costo = economia.costoManoObra + economia.costoFletes;
   const horas = jornadas.reduce((s, j) => s + j.horasHombre, 0);
+  // El costo en USD sale de los PARTES, cada uno convertido al CCL de su propio día, y no
+  // de convertir el total de pesos al dólar de hoy. Esa es toda la diferencia: una obra
+  // de mayo y otra de agosto sólo se pueden comparar si cada una se valuó a su fecha.
+  const costoUsd = jornadas.reduce((s, j) => s + j.costoUsd, 0) || economia.usd?.costoOperativo || 0;
 
   // Huecos ENTRE VISITAS, no entre partes. Contando partes, dos cargados el mismo día
   // meten un hueco de 0 que arrastra el promedio hacia abajo y no significa nada.
@@ -176,6 +180,10 @@ export function paraCotizarDe(
   return {
     costoPorVisita: visitas.length > 0 ? Math.round(costo / visitas.length) : null,
     costoPorHoraHombre: horas > 0 ? Math.round(costo / horas) : null,
+    costoPorVisitaUsd:
+      visitas.length > 0 && costoUsd > 0 ? Math.round(costoUsd / visitas.length) : null,
+    costoPorHoraHombreUsd:
+      horas > 0 && costoUsd > 0 ? Math.round((costoUsd / horas) * 100) / 100 : null,
     ritmoDias: huecos.length > 0
       ? Math.round((huecos.reduce((s, d) => s + d, 0) / huecos.length) * 10) / 10
       : null,

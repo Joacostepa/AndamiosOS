@@ -26,6 +26,9 @@ import type { FiltroInformes, InformeListado } from "@/lib/informes-obra/tipos";
 const money = new Intl.NumberFormat("es-AR", {
   style: "currency", currency: "ARS", maximumFractionDigits: 0,
 });
+const usd = new Intl.NumberFormat("es-AR", {
+  style: "currency", currency: "USD", maximumFractionDigits: 0,
+});
 
 export default function InformesObraPage() {
   const { data, isLoading, error } = useInformesObra();
@@ -151,10 +154,22 @@ function Fila({ informe: i }: { informe: InformeListado }) {
         {i.visitas} visita{i.visitas === 1 ? "" : "s"}
       </span>
 
-      <span className="w-28 shrink-0 text-right tabular-nums">{money.format(i.facturado)}</span>
+      {/* Se lista en USD, que es lo comparable entre obras de meses distintos; los pesos
+          van abajo en chico para no perder el número con el que se factura. */}
+      <span className="w-28 shrink-0 text-right tabular-nums">
+        {i.facturadoUsd !== null ? usd.format(i.facturadoUsd) : money.format(i.facturado)}
+        <span className="block text-[10px] text-muted-foreground">
+          {money.format(i.facturado)}
+        </span>
+      </span>
 
       <span className="w-20 shrink-0 text-right text-[12px] tabular-nums">
-        {i.margenPct.toFixed(1)}%
+        {(i.margenPctUsd ?? i.margenPct).toFixed(1)}%
+        {i.margenPctUsd !== null && (
+          <span className="block text-[10px] text-muted-foreground">
+            {i.margenPct.toFixed(1)}% ARS
+          </span>
+        )}
       </span>
 
       <span className="w-20 shrink-0 text-right text-[11px] text-muted-foreground">

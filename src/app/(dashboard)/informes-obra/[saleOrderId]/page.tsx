@@ -29,6 +29,12 @@ import { COSTEO_CORTO, type DatosInforme, type InformeObra } from "@/lib/informe
 const money = new Intl.NumberFormat("es-AR", {
   style: "currency", currency: "ARS", maximumFractionDigits: 0,
 });
+const usd = new Intl.NumberFormat("es-AR", {
+  style: "currency", currency: "USD", maximumFractionDigits: 0,
+});
+const usd2 = new Intl.NumberFormat("es-AR", {
+  style: "currency", currency: "USD", maximumFractionDigits: 2,
+});
 const dec = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 1 });
 const ICONO_TIPO = { arriba: ArrowUp, abajo: ArrowDown, otro: MoreHorizontal } as const;
 
@@ -274,8 +280,12 @@ function Estimado({ datos: d }: { datos: DatosInforme }) {
 
 function Economia({ datos: d }: { datos: DatosInforme }) {
   const e = d.economia;
+  const u = e.usd;
   return (
     <Seccion titulo="Economía">
+      <p className="mb-2 text-[11px] uppercase tracking-wide text-muted-foreground">
+        En pesos
+      </p>
       <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <Dato etiqueta="Facturado neto" valor={money.format(e.facturadoNeto)} />
         <Dato etiqueta="Mano de obra" valor={money.format(e.costoManoObra)} />
@@ -284,6 +294,31 @@ function Economia({ datos: d }: { datos: DatosInforme }) {
         <Dato etiqueta="Contribución" valor={money.format(e.margenContribucion)} />
         <Dato etiqueta="Margen" valor={`${dec.format(e.margenPct)}%`} />
       </dl>
+
+      {/* LA COLUMNA QUE SE COMPARA. Cada monto convertido al CCL de su propia fecha: las
+          facturas al día de emisión y los costos al día del parte. Con esta inflación es
+          la única forma de poner una obra de mayo al lado de una de agosto. */}
+      {u && (
+        <>
+          <p className="mb-2 mt-4 text-[11px] uppercase tracking-wide text-muted-foreground">
+            En dólares · CCL de cada fecha
+          </p>
+          <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Dato etiqueta="Facturado neto" valor={usd.format(u.facturadoNeto)} />
+            <Dato etiqueta="Costo operativo" valor={usd.format(u.costoOperativo)} />
+            <Dato etiqueta="Contribución" valor={usd.format(u.margenContribucion)} />
+            <Dato etiqueta="Margen" valor={`${dec.format(u.margenPct)}%`} />
+          </dl>
+          {Math.abs(u.margenPct - e.margenPct) >= 0.1 && (
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              El margen en dólares ({dec.format(u.margenPct)}%) no coincide con el de pesos
+              ({dec.format(e.margenPct)}%): esa diferencia es el efecto del tipo de cambio
+              entre las fechas de facturación y las de ejecución, y es información, no un
+              error de cálculo.
+            </p>
+          )}
+        </>
+      )}
       {/* OBLIGATORIA, no opcional. En alquiler de andamios el material ES el negocio: si
           el informe dice "91,4% de margen" sin esto, alguien cotiza la próxima con ese
           número en la cabeza. */}
@@ -302,13 +337,33 @@ function ParaCotizar({ datos: d }: { datos: DatosInforme }) {
   return (
     <Seccion titulo="Para la próxima cotización">
       <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        {/* Los dos de arriba en USD son LOS QUE SE REUSAN para cotizar: el número en
+            pesos sólo sirve para la obra que lo produjo. */}
         <Dato
           etiqueta="Costo por visita"
-          valor={c.costoPorVisita !== null ? money.format(c.costoPorVisita) : "—"}
+          valor={
+            <>
+              {c.costoPorVisitaUsd != null ? usd.format(c.costoPorVisitaUsd) : "—"}
+              {c.costoPorVisita !== null && (
+                <span className="block text-[11px] font-normal text-muted-foreground">
+                  {money.format(c.costoPorVisita)}
+                </span>
+              )}
+            </>
+          }
         />
         <Dato
           etiqueta="Costo por hora-hombre"
-          valor={c.costoPorHoraHombre !== null ? money.format(c.costoPorHoraHombre) : "—"}
+          valor={
+            <>
+              {c.costoPorHoraHombreUsd != null ? usd2.format(c.costoPorHoraHombreUsd) : "—"}
+              {c.costoPorHoraHombre !== null && (
+                <span className="block text-[11px] font-normal text-muted-foreground">
+                  {money.format(c.costoPorHoraHombre)}
+                </span>
+              )}
+            </>
+          }
         />
         <Dato
           etiqueta="Ritmo entre visitas"
@@ -376,6 +431,7 @@ function Cronologia({ datos: d }: { datos: DatosInforme }) {
               <th className="pb-1 font-medium">Tipo</th>
               <th className="pb-1 text-right font-medium">hh</th>
               <th className="pb-1 text-right font-medium">Fletes</th>
+              <th className="pb-1 text-right font-medium">Costo USD</th>
               <th className="pb-1 font-medium">Nota</th>
             </tr>
           </thead>
@@ -397,6 +453,9 @@ function Cronologia({ datos: d }: { datos: DatosInforme }) {
                   </td>
                   <td className="py-1 text-right tabular-nums">{dec.format(j.horasHombre)}</td>
                   <td className="py-1 text-right tabular-nums">{j.fletes || "—"}</td>
+                  <td className="py-1 text-right tabular-nums">
+                    {j.costoUsd ? usd.format(j.costoUsd) : "—"}
+                  </td>
                   <td className="py-1 text-muted-foreground">{j.nota ?? "—"}</td>
                 </tr>
               );

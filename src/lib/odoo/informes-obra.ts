@@ -52,6 +52,9 @@ const CAMPOS_VENTA = [
   "x_estado_costeo", "x_studio_tcnico",
   "x_facturado_neto", "x_costo_mano_obra", "x_costo_fletes", "x_costo_operativo",
   "x_margen_contribucion", "x_margen_pct",
+  // La columna en dólares, convertida al CCL de la fecha de cada movimiento. Es la única
+  // comparable entre obras de meses distintos.
+  "x_facturado_neto_usd", "x_costo_operativo_usd", "x_margen_usd", "x_margen_pct_usd",
 ];
 
 const CAMPOS_OT = [
@@ -60,7 +63,7 @@ const CAMPOS_OT = [
 
 const CAMPOS_PARTE = [
   "x_fecha", "x_orden_trabajo_id", "x_cuadrilla_id", "x_horas_hombre", "x_sector",
-  "x_notas", "x_cant_fotos", "x_estado",
+  "x_notas", "x_cant_fotos", "x_estado", "x_costo_total", "x_costo_total_usd",
 ];
 
 export type VentaCerrada = {
@@ -75,6 +78,10 @@ export type VentaCerrada = {
   costoOperativo: number;
   margenContribucion: number;
   margenPct: number;
+  facturadoNetoUsd: number;
+  costoOperativoUsd: number;
+  margenUsd: number;
+  margenPctUsd: number;
 };
 
 export type OtCerrada = {
@@ -97,6 +104,8 @@ export type ParteCerrado = {
   notas: string | null;
   fotos: number;
   estado: string | null;
+  costo: number;
+  costoUsd: number;
 };
 
 /** Todo lo que hace falta para armar N informes, ya joineado por venta. */
@@ -123,6 +132,10 @@ function mapVenta(v: Record<string, unknown>): VentaCerrada {
     costoOperativo: num(v.x_costo_operativo as number | false),
     margenContribucion: num(v.x_margen_contribucion as number | false),
     margenPct: num(v.x_margen_pct as number | false),
+    facturadoNetoUsd: num(v.x_facturado_neto_usd as number | false),
+    costoOperativoUsd: num(v.x_costo_operativo_usd as number | false),
+    margenUsd: num(v.x_margen_usd as number | false),
+    margenPctUsd: num(v.x_margen_pct_usd as number | false),
   };
 }
 
@@ -212,6 +225,9 @@ export async function fetchLote(ventas: VentaCerrada[]): Promise<LoteCierre> {
     notas: str(p.x_notas as string | false),
     fotos: num(p.x_cant_fotos as number | false),
     estado: str(p.x_estado as string | false),
+    costo: num(p.x_costo_total as number | false),
+    // Convertido al CCL del día del parte, no al de hoy: por eso sirve para comparar.
+    costoUsd: num(p.x_costo_total_usd as number | false),
   }));
 
   const partesPorOt = new Map<number, ParteCerrado[]>();

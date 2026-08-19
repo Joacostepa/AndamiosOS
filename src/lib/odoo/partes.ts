@@ -131,6 +131,8 @@ async function crearFotos(
 export async function cerrarJornada(
   asignacionId: number,
   datos: DatosCierre,
+  /** La persona confirmó que la obra terminó: la OT pasa a completada. */
+  finalizarOt = false,
 ): Promise<ResultadoCierre> {
   const pasos: PasoCierre[] = [];
   const registrar = (nombre: string, ok: boolean, detalle?: string) =>
@@ -207,14 +209,18 @@ export async function cerrarJornada(
   //
   // Son independientes entre sí: van todas juntas y la cola de client.ts las reparte.
   // Encadenadas eran ~6 round-trips de ~800 ms uno detrás del otro.
-  const [manoObra, flete, incidencias, fotos, marcada, duplicados] = await Promise.allSettled([
-    crearLineasManoObra(parteId, datos, fecha),
-    crearLineasFlete(parteId, datos, fecha),
-    crearLineasIncidencia(parteId, datos),
-    crearFotos(parteId, datos),
-    write("x_aba_asignacion", [asignacionId], { x_parte_id: parteId }),
-    avisoDuplicados,
-  ]);
+  const [manoObra, flete, incidencias, fotos, marcada, duplicados, estadoOt] =
+    await Promise.allSettled([
+      crearLineasManoObra(parteId, datos, fecha),
+      crearLineasFlete(parteId, datos, fecha),
+      crearLineasIncidencia(parteId, datos),
+      crearFotos(parteId, datos),
+      write("x_aba_asignacion", [asignacionId], { x_parte_id: parteId }),
+      avisoDuplicados,
+      // El estado de la OT no puede tirar abajo el parte: si falla, el parte queda igual
+      // y la OT se corrige a mano o en el próximo cierre.
+      actualizarEstadoOt(otId, finalizarOt),
+    ]);
 
   if (manoObra.status === "rejected") registrar("Personal y horarios", false, mensaje(manoObra.reason));
   else if (manoObra.value > 0) {
@@ -247,6 +253,12 @@ export async function cerrarJornada(
     marcada.status === "rejected" ? mensaje(marcada.reason) : undefined,
   );
 
+  if (estadoOt.status === "rejected") {
+    registrar("Estado de la orden de trabajo", false, mensaje(estadoOt.reason));
+  } else if (estadoOt.value) {
+    registrar(estadoOt.value, true);
+  }
+
   if (duplicados.status === "fulfilled" && duplicados.value.length > 0) {
     registrar(
       "Ojo: ya existía otro parte para esa obra y fecha",
@@ -260,6 +272,43 @@ export async function cerrarJornada(
 
 function mensaje(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
+}
+
+/**
+ * Mueve el estado de la ORDEN DE TRABAJO según lo que dice el parte.
+ *
+ * EL PROBLEMA: el parte queda asociado a la OT pero no la cierra, y nadie la cerraba a
+ * mano. Medido: de 48 OTs activas, 27 ya no tenían ninguna jornada pendiente en el
+ * tablero. Se acumulan obras terminadas que siguen figurando como trabajo por hacer.
+ *
+ * Dos movimientos, con criterios distintos a propósito:
+ *
+ *  - pendiente → en_proceso es AUTOMÁTICO. Es seguro porque no esconde nada: la OT sigue
+ *    en el tablero, sólo deja de decir que no se empezó.
+ *
+ *  - → completada NO es automático. Cerrarla al cargar el último parte planificado parece
+ *    obvio y es peligroso: la duración estimada se equivoca seguido, así que una obra
+ *    estimada en 3 jornadas que en realidad lleva 5 se cerraría sola en la tercera y
+ *    desaparecería del tablero con la cuadrilla todavía trabajando. Por eso la decide una
+ *    persona, y se le pregunta en el único momento en que tiene el dato: al cargar el
+ *    parte de la última jornada que quedaba pendiente.
+ */
+async function actualizarEstadoOt(otId: number, finalizar: boolean): Promise<string | null> {
+  const [ot] = await read<{ id: number; x_estado: string | false }>(
+    "x_aba_orden_trabajo",
+    [otId],
+    ["x_estado"],
+  );
+  if (!ot) return null;
+
+  if (finalizar) {
+    if (ot.x_estado === "completada") return null;
+    await write("x_aba_orden_trabajo", [otId], { x_estado: "completada" });
+    return "Orden de trabajo completada";
+  }
+  if (ot.x_estado !== "pendiente") return null;
+  await write("x_aba_orden_trabajo", [otId], { x_estado: "en_proceso" });
+  return "Orden de trabajo en proceso";
 }
 
 /**

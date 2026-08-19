@@ -42,7 +42,11 @@ export function useEmpleados() {
 
 export function useCerrarJornada() {
   const qc = useQueryClient();
-  return useMutation<ResultadoCierre, Error, { asignacionId: number; datos: DatosCierre }>({
+  return useMutation<
+    ResultadoCierre,
+    Error,
+    { asignacionId: number; datos: DatosCierre; finalizarOt?: boolean }
+  >({
     mutationFn: (body) =>
       pedir<ResultadoCierre>("/api/planificacion/partes", {
         method: "POST",

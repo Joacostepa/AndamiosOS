@@ -71,9 +71,43 @@ function habilitacionPendiente(ot: OtTablero): boolean {
   return ot.habSemaforo === "rojo" || ot.habSemaforo === "vencida";
 }
 
-function TarjetaOt({ obra, onDetalle }: { obra: ObraPendiente; onDetalle: (ot: OtTablero) => void }) {
+/**
+ * Qué tan arriba va una obra. Menor = más arriba.
+ *
+ * NO se agrupa por esto. La bandeja ya se agrupa por habilitación, y agrupar por dos ejes
+ * a la vez vuelve la lista ilegible. La prioridad se resuelve con el ORDEN, y la tarjeta
+ * dice por qué está donde está: así se puede verificar de un vistazo en vez de confiar.
+ */
+function prioridad(ot: OtTablero, hoy: string): number {
+  if (ot.urgencia === "alta") return 0;
+  // Un compromiso vencido es lo más urgente después de lo declarado urgente: alguien le
+  // dio una fecha al cliente y esa fecha ya pasó.
+  if (ot.fechaComprometida && ot.fechaComprometida < hoy) return 1;
+  if (ot.fechaComprometida) return 2;
+  return 3;
+}
+
+/** Lo que explica la posición de la tarjeta: la fecha prometida y su desvío. */
+function lineaCompromiso(ot: OtTablero, hoy: string): { texto: string; alerta: boolean } | null {
+  if (!ot.fechaComprometida) return null;
+  const label = format(parseISO(ot.fechaComprometida), "d MMM", { locale: es });
+  if (ot.fechaComprometida < hoy) return { texto: `venció el ${label}`, alerta: true };
+  if (ot.fechaComprometida === hoy) return { texto: "comprometida HOY", alerta: true };
+  return { texto: `comprometida ${label}`, alerta: false };
+}
+
+function TarjetaOt({
+  obra,
+  hoy,
+  onDetalle,
+}: {
+  obra: ObraPendiente;
+  hoy: string;
+  onDetalle: (ot: OtTablero) => void;
+}) {
   const { ot, totales, pendientes, cerradas } = obra;
   const empezada = cerradas > 0;
+  const compromiso = lineaCompromiso(ot, hoy);
   const { setNodeRef, attributes, listeners, isDragging } = useDraggable({
     id: `ot:${ot.id}`,
     data: { ot },
@@ -162,10 +196,20 @@ function TarjetaOt({ obra, onDetalle }: { obra: ObraPendiente; onDetalle: (ot: O
             ? `${ot.jornadas} jornada${ot.jornadas === 1 ? "" : "s"}`
             : `${fraccionLabel(ot.jornadas)} de jornada`}
         {ot.tecnico ? ` · ${ot.tecnico}` : ""}
-        {ot.fechaProgramada
-          ? ` · prev. ${format(parseISO(ot.fechaProgramada), "d MMM", { locale: es })}`
-          : ""}
       </p>
+
+      {/* El compromiso con el cliente va en su propia línea y no diluido entre el resto:
+          es lo que explica por qué la obra está arriba de la lista. Sin esto el orden
+          sería una decisión invisible que hay que creer. */}
+      {compromiso && (
+        <p
+          className={`mt-0.5 truncate text-[10px] ${compromiso.alerta ? "font-semibold" : "font-medium"}`}
+          style={{ color: compromiso.alerta ? "#B42318" : tipo.text }}
+          title="Fecha que Comercial le prometió al cliente"
+        >
+          {compromiso.texto}
+        </p>
+      )}
     </div>
   );
 }
@@ -205,6 +249,7 @@ function Grupo({
 export function PanelSinAsignar({
   ots,
   planificadas,
+  hoy,
   colapsado,
   onColapsar,
   onDetalle,
@@ -213,6 +258,8 @@ export function PanelSinAsignar({
   ots: ObraPendiente[];
   /** Obras que ya están en la grilla, para el buscador. Sólo las del rango cargado. */
   planificadas: ObraPlanificada[];
+  /** Hoy en yyyy-MM-dd: define qué compromiso está vencido. */
+  hoy: string;
   colapsado: boolean;
   onColapsar: (valor: boolean) => void;
   onDetalle: (ot: OtTablero) => void;
@@ -230,16 +277,23 @@ export function PanelSinAsignar({
 
   const filtradas = useMemo(() => {
     const orden = [...ots].sort((a, b) => {
-      // Las empezadas van primero: son las que esperan retomarse y no hay que perderlas
-      // de vista entre las que nunca se tocaron.
+      // Urgencia declarada, después compromiso vencido, después compromiso a futuro.
+      const pa = prioridad(a.ot, hoy);
+      const pb = prioridad(b.ot, hoy);
+      if (pa !== pb) return pa - pb;
+      // Dentro del mismo nivel manda la fecha prometida, la más próxima primero.
+      const fa = a.ot.fechaComprometida ?? "9999";
+      const fb = b.ot.fechaComprometida ?? "9999";
+      if (fa !== fb) return fa.localeCompare(fb);
+      // Las empezadas antes que las que nunca se tocaron: esperan retomarse y no hay que
+      // perderlas de vista.
       if ((a.cerradas > 0) !== (b.cerradas > 0)) return a.cerradas > 0 ? -1 : 1;
-      if ((a.ot.urgencia === "alta") !== (b.ot.urgencia === "alta")) return a.ot.urgencia === "alta" ? -1 : 1;
       return (a.ot.fechaProgramada ?? "9999").localeCompare(b.ot.fechaProgramada ?? "9999");
     });
     if (!q) return orden;
     // Con 46 obras, encontrar una puntual escaneando no funciona.
     return orden.filter((o) => normalizar(`${o.ot.titulo} ${o.ot.tecnico ?? ""}`).includes(q));
-  }, [ots, q]);
+  }, [ots, q, hoy]);
 
   const listas = filtradas.filter((o) => !habilitacionPendiente(o.ot));
   const pendientesHab = filtradas.filter((o) => habilitacionPendiente(o.ot));
@@ -335,7 +389,7 @@ export function PanelSinAsignar({
             onToggle={() => {}}
           >
             {listas.map((obra) => (
-              <TarjetaOt key={obra.ot.id} obra={obra} onDetalle={onDetalle} />
+              <TarjetaOt key={obra.ot.id} obra={obra} hoy={hoy} onDetalle={onDetalle} />
             ))}
           </Grupo>
 
@@ -346,7 +400,7 @@ export function PanelSinAsignar({
             onToggle={() => setPendientesAbierto((v) => !v)}
           >
             {pendientesHab.map((obra) => (
-              <TarjetaOt key={obra.ot.id} obra={obra} onDetalle={onDetalle} />
+              <TarjetaOt key={obra.ot.id} obra={obra} hoy={hoy} onDetalle={onDetalle} />
             ))}
           </Grupo>
 

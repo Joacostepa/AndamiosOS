@@ -74,9 +74,9 @@ await asegurarVista(
      <xpath expr="//field[@name='x_fecha_programada']" position="after">
        ${BADGE}
        <div colspan="2" class="text-muted">
-         <p>Poné la fecha que acordaste con el cliente. Cuando Operaciones planifique la obra
-         en el tablero, esta fecha pasa a mostrar el primer día que la cuadrilla todavía
-         tiene pendiente, y al lado vas a ver si es tentativa o si ya está confirmada.</p>
+         <p>Esta es la fecha del <b>tablero</b>, no la que vos comprometiste: la mantiene
+         Planificación y muestra el primer día que la obra todavía tiene pendiente. Si dice
+         algo distinto a lo que prometiste, ahí tenés el desvío.</p>
        </div>
      </xpath>
    </data>`,

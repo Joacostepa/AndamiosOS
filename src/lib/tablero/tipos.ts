@@ -52,7 +52,13 @@ export type OtTablero = {
   cantDocs: number;
   docIds: number[];
   ordenVenta: string | null;
+  /** Lo que dice el plan. La escribe el tablero. */
   fechaProgramada: string | null;
+  /**
+   * Lo que Comercial le prometió al cliente. La escribe una persona en Odoo y el tablero
+   * NO la toca: es contra esto que se mide si la planificación llega tarde.
+   */
+  fechaComprometida: string | null;
   url: string;
 };
 

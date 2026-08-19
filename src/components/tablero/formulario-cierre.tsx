@@ -58,6 +58,7 @@ export function FormularioCierre({
   fecha,
   asignacionId,
   parteId,
+  esUltimaJornada,
   onOpenChange,
 }: {
   abierto: boolean;
@@ -67,6 +68,11 @@ export function FormularioCierre({
   fecha: string | null;
   asignacionId: number | null;
   parteId: number | null;
+  /**
+   * Es la última jornada de la OT que quedaba sin parte. Sólo entonces tiene sentido
+   * preguntar si la obra terminó: antes la respuesta es siempre "quedan más".
+   */
+  esUltimaJornada: boolean;
   onOpenChange: (abierto: boolean) => void;
 }) {
   const soloLectura = !!parteId;
@@ -77,6 +83,10 @@ export function FormularioCierre({
   const guardando = cerrar.isPending || editar.isPending;
 
   const [editando, setEditando] = useState(false);
+  // null = todavía no contestó. Se exige respuesta en vez de asumir: asumir que terminó
+  // esconde trabajo, y asumir que no acumula OTs abiertas para siempre, que es lo que
+  // venía pasando.
+  const [obraFinalizada, setObraFinalizada] = useState<boolean | null>(null);
   const [estado, setEstado] = useState<EstadoParte>("ejecutado");
   const [fechaParte, setFechaParte] = useState("");
   const [motivo, setMotivo] = useState<string>("");
@@ -135,6 +145,7 @@ export function FormularioCierre({
     }
     setResultado(null);
     setEditando(false);
+    setObraFinalizada(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [abierto, parteCargado, parteId, fecha]);
 
@@ -207,6 +218,10 @@ export function FormularioCierre({
     };
   }
 
+  // Se pregunta sólo al CREAR el parte de la última jornada pendiente y sólo si se
+  // ejecutó: si la jornada no se hizo, la obra no terminó y no hay nada que preguntar.
+  const preguntarPorLaObra = !parteId && esUltimaJornada && estado === "ejecutado";
+
   function guardar() {
     if (estado === "no_ejecutado" && !motivo) {
       toast.error("Elegí el motivo por el que no se ejecutó");
@@ -222,6 +237,10 @@ export function FormularioCierre({
     }
     if (estado === "ejecutado" && !cuadrillaId) {
       toast.error("Falta la cuadrilla que ejecutó la jornada");
+      return;
+    }
+    if (preguntarPorLaObra && obraFinalizada === null) {
+      toast.error("Falta indicar si la orden de trabajo está finalizada");
       return;
     }
     const datos = armarDatos();
@@ -241,8 +260,11 @@ export function FormularioCierre({
     };
 
     if (parteId && ot) editar.mutate({ parteId, otId: ot.id, datos }, alTerminar);
-    else if (asignacionId) cerrar.mutate({ asignacionId, datos }, alTerminar);
+    else if (asignacionId) {
+      cerrar.mutate({ asignacionId, datos, finalizarOt: obraFinalizada === true }, alTerminar);
+    }
   }
+
 
   const titulo = ot?.titulo ?? "Jornada";
   const fechaLabel = fecha ? format(parseISO(fecha), "EEEE d 'de' MMMM", { locale: es }) : "";
@@ -631,6 +653,52 @@ export function FormularioCierre({
                   )}
                 </div>
               </>
+            )}
+
+            {/* ── ¿Terminó la obra? ──
+                Sólo en la última jornada que quedaba sin parte. Es el único momento en
+                que quien carga tiene el dato: acaba de leer lo que mandó el capataz. Que
+                lo decida una persona y no la duración estimada, que se equivoca seguido:
+                cerrar sola una obra que sigue en pie la borraría del tablero. */}
+            {preguntarPorLaObra && (
+              <div className="space-y-2 rounded-md border p-3" style={{ borderColor: CORAL }}>
+                <p className="text-sm font-medium">
+                  Es la última jornada planificada de esta obra
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  ¿La orden de trabajo está finalizada o quedan más jornadas?
+                </p>
+                <div className="flex gap-2 pt-0.5">
+                  <Button
+                    type="button"
+                    variant={obraFinalizada === true ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setObraFinalizada(true)}
+                    style={obraFinalizada === true ? { backgroundColor: CORAL, color: "#fff" } : undefined}
+                  >
+                    Está finalizada
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={obraFinalizada === false ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setObraFinalizada(false)}
+                    style={obraFinalizada === false ? { backgroundColor: CORAL, color: "#fff" } : undefined}
+                  >
+                    Quedan más jornadas
+                  </Button>
+                </div>
+                {obraFinalizada === true && (
+                  <p className="text-[11px] text-muted-foreground">
+                    La OT pasa a completada y sale del tablero.
+                  </p>
+                )}
+                {obraFinalizada === false && (
+                  <p className="text-[11px] text-muted-foreground">
+                    La OT sigue abierta. Agregale las jornadas que faltan desde el tablero.
+                  </p>
+                )}
+              </div>
             )}
 
             {/* ── Qué se guardó y qué no ── */}

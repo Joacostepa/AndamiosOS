@@ -93,7 +93,13 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const parsed = z
-    .object({ asignacionId: z.number().int().positive(), datos: datosSchema })
+    .object({
+      asignacionId: z.number().int().positive(),
+      datos: datosSchema,
+      // Sólo se manda cuando la persona contestó que la obra terminó. Ausente = la OT
+      // no se cierra: cerrar de más esconde trabajo, cerrar de menos sólo acumula.
+      finalizarOt: z.boolean().optional(),
+    })
     .safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
@@ -103,7 +109,9 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    return NextResponse.json(await cerrarJornada(parsed.data.asignacionId, parsed.data.datos));
+    return NextResponse.json(
+      await cerrarJornada(parsed.data.asignacionId, parsed.data.datos, parsed.data.finalizarOt),
+    );
   } catch (e) {
     return errorResponse(e);
   }

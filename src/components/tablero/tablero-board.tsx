@@ -664,6 +664,7 @@ export function TableroBoard() {
           <PanelSinAsignar
             ots={sinAsignar}
             planificadas={planificadas}
+            hoy={hoyISO}
             colapsado={panelColapsado}
             onColapsar={colapsarPanel}
             onDetalle={(ot) => {
@@ -743,6 +744,17 @@ export function TableroBoard() {
         fecha={cierre?.fecha ?? null}
         asignacionId={cierre?.asignacionId ?? null}
         parteId={cierre?.parteId ?? null}
+        // `progreso` cuenta TODAS las asignaciones de la OT, no sólo las del rango
+        // visible: si no, una obra que sigue la semana que viene se leería como terminada.
+        esUltimaJornada={(() => {
+          const otId = cierre ? bloquesPorClave.get(cierre.bloqueKey)?.otId : null;
+          if (!otId) return false;
+          const p = data.progreso.find((x) => x.otId === otId);
+          // Falta cerrar exactamente ésta, y no queda nada por planificar de la obra.
+          if (!p || p.asignadas - p.cerradas !== 1) return false;
+          const pendiente = sinAsignar.find((x) => x.ot.id === otId);
+          return (pendiente?.pendientes ?? 0) === 0;
+        })()}
         onOpenChange={(abierto) => !abierto && setCierre(null)}
       />
 

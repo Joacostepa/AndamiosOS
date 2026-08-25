@@ -199,6 +199,22 @@ export function TableroBoard() {
     contenedor.current = nodo;
   }, []);
 
+  /**
+   * El auto-scroll de dnd-kit queda desactivado DENTRO del tablero.
+   *
+   * Arrastrar una tarjeta hacia la bandeja de la derecha pasa siempre por el borde
+   * derecho de la grilla, y ahí el auto-scroll leía "quiere ver el día siguiente" y
+   * corría la semana sola justo mientras el usuario apuntaba al panel. El scroll
+   * horizontal del tablero es del usuario: la barra o el arrastre del encabezado.
+   *
+   * Se apaga por contenedor y no en general: los demás scrollers (la bandeja) siguen
+   * acompañando el arrastre.
+   */
+  const autoScroll = useMemo(
+    () => ({ canScroll: (nodo: Element) => nodo !== contenedor.current }),
+    [],
+  );
+
   /** Lleva una fecha al borde izquierdo útil, salteando la columna fija de cuadrillas. */
   const scrollAFecha = useCallback((fecha: string, suave = true) => {
     const cont = contenedor.current;
@@ -667,6 +683,7 @@ export function TableroBoard() {
       <DndContext
         sensors={sensors}
         collisionDetection={detectarColision}
+        autoScroll={autoScroll}
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
         onDragCancel={() => setArrastrando(null)}

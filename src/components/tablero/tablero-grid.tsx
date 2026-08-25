@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { PointerEvent as PointerEventReact } from "react";
 import { format, isSameDay, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { AlertTriangle, MousePointerClick } from "lucide-react";
@@ -192,6 +193,40 @@ export function TableroGrid({
     return () => observador.disconnect();
   }, []);
 
+  // ── Desplazamiento arrastrando el encabezado ──────────────────────────────
+  //
+  // Con el auto-scroll del arrastre apagado, la fila de días pasa a ser el agarre para
+  // correr la grilla: se toma cualquier día y se arrastra, como en una tabla de Gantt.
+  // La otra forma sigue siendo la barra de scroll.
+  //
+  // El desplazamiento se aplica de a pasos (contra el evento anterior) y no contra el
+  // punto donde arrancó: al llegar al borde el rango carga una semana más y el board
+  // corrige `scrollLeft` para que no salte, y una base fija de arranque desharía esa
+  // corrección en el movimiento siguiente.
+  const pan = useRef<{ x: number } | null>(null);
+
+  function iniciarPan(e: PointerEventReact<HTMLDivElement>) {
+    // El táctil ya scrollea solo: capturar el puntero ahí rompería el gesto nativo.
+    if (e.pointerType === "touch" || e.button !== 0 || !propio.current) return;
+    pan.current = { x: e.clientX };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  }
+
+  function moverPan(e: PointerEventReact<HTMLDivElement>) {
+    const cont = propio.current;
+    if (!cont || !pan.current) return;
+    cont.scrollLeft -= e.clientX - pan.current.x;
+    pan.current = { x: e.clientX };
+  }
+
+  function terminarPan(e: PointerEventReact<HTMLDivElement>) {
+    if (!pan.current) return;
+    pan.current = null;
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+  }
+
   const enCelda = (cuadrillaId: number, fecha: string) =>
     asignaciones.filter((a) => a.cuadrillaId === cuadrillaId && a.fecha === fecha);
 
@@ -313,7 +348,11 @@ export function TableroGrid({
             <div
               key={`h-${f}`}
               data-fecha={f}
-              className="sticky top-0 z-20 flex h-10 items-center justify-center gap-1.5 border-b border-r bg-card"
+              className="sticky top-0 z-20 flex h-10 cursor-grab select-none items-center justify-center gap-1.5 border-b border-r bg-card active:cursor-grabbing"
+              onPointerDown={iniciarPan}
+              onPointerMove={moverPan}
+              onPointerUp={terminarPan}
+              onPointerCancel={terminarPan}
               style={{
                 // Separador de semana: ubicarse sin tener que leer las fechas.
                 borderLeft: esLunes(f) ? "2px solid var(--border)" : undefined,

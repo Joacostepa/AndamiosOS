@@ -226,9 +226,16 @@ export function TarjetaAsignacion({
   onEstado: (e: "tentativa" | "confirmada") => void;
   onQuitar: () => void;
 }) {
+  // Ids temporales (negativos): la obra se soltó recién y Odoo todavía no devolvió su
+  // número. Hasta que llegue no se arrastra ni se edita — la escritura viajaría con un id
+  // que Odoo no conoce y volvería rebotada, con la tarjeta saltando de vuelta al lugar
+  // anterior. Dura lo que tarda la creación, cerca de un segundo.
+  const guardando = bloque.ids.some((id) => id < 0);
+
   const { setNodeRef: dragRef, attributes, listeners, isDragging } = useDraggable({
     id: `bloque:${bloque.key}`,
     data: { bloque },
+    disabled: guardando,
   });
   // La tarjeta también es zona de drop: soltar sobre ella reordena el día.
   const { setNodeRef: dropRef, isOver } = useDroppable({
@@ -264,7 +271,15 @@ export function TarjetaAsignacion({
         outline: seleccionada ? `2px solid ${CORAL}` : isOver ? `2px dashed ${CORAL}` : undefined,
         outlineOffset: "-1px",
       }}
-      className="group/tarjeta relative z-10 m-0.5 cursor-grab rounded-[4px] active:cursor-grabbing"
+      className={cn(
+        // select-none: apretar sobre el texto y arrastrar hacía que el navegador
+        // extendiera una SELECCIÓN, y una selección que se estira más allá del borde
+        // scrollea el contenedor sola — el mismo síntoma que el auto-scroll, por otro
+        // camino. La tarjeta es un agarre para arrastrar, no un texto para seleccionar.
+        "group/tarjeta relative z-10 m-0.5 select-none rounded-[4px]",
+        guardando ? "cursor-progress" : "cursor-grab active:cursor-grabbing",
+      )}
+      title={guardando ? "Guardando en Odoo…" : undefined}
       {...attributes}
       {...listeners}
       role="button"
@@ -292,9 +307,12 @@ export function TarjetaAsignacion({
         candado={candado}
       />
 
+      {/* El menú no aparece mientras se guarda: todas sus opciones escriben, y con el id
+          temporal cualquiera de ellas rebota. */}
       <div
         className={cn(
           "absolute right-0.5 top-0.5 transition-opacity",
+          guardando && "hidden",
           menuAbierto
             ? "opacity-100"
             : "pointer-events-none opacity-0 group-hover/tarjeta:pointer-events-auto group-hover/tarjeta:opacity-100",

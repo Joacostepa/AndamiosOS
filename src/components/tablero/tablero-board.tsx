@@ -200,20 +200,22 @@ export function TableroBoard() {
   }, []);
 
   /**
-   * El auto-scroll de dnd-kit queda desactivado DENTRO del tablero.
+   * El auto-scroll de dnd-kit queda apagado ENTERO mientras se arrastra.
    *
    * Arrastrar una tarjeta hacia la bandeja de la derecha pasa siempre por el borde
-   * derecho de la grilla, y ahí el auto-scroll leía "quiere ver el día siguiente" y
-   * corría la semana sola justo mientras el usuario apuntaba al panel. El scroll
-   * horizontal del tablero es del usuario: la barra o el arrastre del encabezado.
+   * derecho, y ahí el auto-scroll leía "quiere ver el día siguiente" y corría la vista
+   * sola justo mientras el usuario apuntaba al panel.
    *
-   * Se apaga por contenedor y no en general: los demás scrollers (la bandeja) siguen
-   * acompañando el arrastre.
+   * Un primer intento lo apagó sólo para el contenedor de la grilla (`canScroll`), y no
+   * alcanzó: dnd-kit recorre TODOS los ancestros con scroll de la tarjeta, así que al
+   * saltear la grilla seguía de largo y scrolleaba el siguiente —el `<main>` del
+   * dashboard, que es overflow-auto, y arriba de él el documento—. Por eso la vista se
+   * movía incluso con el puntero fuera del tablero.
+   *
+   * Apagado del todo, moverse queda en manos del usuario: la barra de scroll o el
+   * arrastre del encabezado de días.
    */
-  const autoScroll = useMemo(
-    () => ({ canScroll: (nodo: Element) => nodo !== contenedor.current }),
-    [],
-  );
+  const autoScroll = useMemo(() => ({ enabled: false }), []);
 
   /** Lleva una fecha al borde izquierdo útil, salteando la columna fija de cuadrillas. */
   const scrollAFecha = useCallback((fecha: string, suave = true) => {
@@ -454,6 +456,24 @@ export function TableroBoard() {
 
   // ── Escrituras ─────────────────────────────────────────────────────────────
 
+  /**
+   * Una obra recién soltada se pinta al instante con ids TEMPORALES (negativos) y recién
+   * ~1s después, cuando Odoo contesta, se cambian por los reales. En esa ventana la
+   * tarjeta ya se ve y se puede agarrar, pero cualquier escritura viajaría con un id que
+   * Odoo no conoce y vuelve rebotada.
+   *
+   * La tarjeta no se deja arrastrar mientras tanto (ver TarjetaAsignacion), pero el
+   * reordenamiento de una celda mueve a TODAS las obras del día, así que la que está
+   * guardándose puede entrar por arrastrar a una vecina. Por eso el freno también está acá.
+   */
+  const sinGuardar = (b: Bloque) => b.ids.some((id) => id < 0);
+
+  function avisarGuardando() {
+    toast.info("La obra se está guardando", {
+      description: "Todavía no tiene su número en Odoo. Probá de nuevo en un segundo.",
+    });
+  }
+
   /** Cuántos bloques hay ya en una celda: define el orden de apilado del nuevo. */
   function proximoOrden(cuadrillaId: number, fecha: string): number {
     const enCelda = (data?.asignaciones ?? []).filter(
@@ -498,6 +518,7 @@ export function TableroBoard() {
     fecha: string,
     opts: { permitirDomingo?: boolean } = {},
   ) {
+    if (sinGuardar(bloque)) return avisarGuardando();
     const dias = fechasDeJornadas(fecha, bloque.ids.length, opts);
     const orden = proximoOrden(cuadrillaId, dias[0]);
     const movimientos: MovimientoAsignacion[] = bloque.ids.map((id, i) => ({
@@ -515,6 +536,7 @@ export function TableroBoard() {
    * puede sacar vale para los dos gestos.
    */
   function volverABandeja(bloque: Bloque) {
+    if (sinGuardar(bloque)) return avisarGuardando();
     const motivo = motivoNoVuelveABandeja(bloque);
     if (motivo) {
       toast.error("No se puede devolver a la bandeja", { description: motivo });
@@ -549,6 +571,9 @@ export function TableroBoard() {
     const desdeIdx = enCelda.findIndex((b) => b.key === origen.key);
     const hastaIdx = enCelda.findIndex((b) => b.key === destino.key);
     if (desdeIdx < 0 || hastaIdx < 0 || desdeIdx === hastaIdx) return;
+    // El reordenamiento reescribe el orden de TODAS las obras del día: si una recién se
+    // soltó, el lote entero rebota. Se espera a que termine de guardarse.
+    if (enCelda.some(sinGuardar)) return avisarGuardando();
 
     const reordenados = enCelda.slice();
     const [movido] = reordenados.splice(desdeIdx, 1);

@@ -85,7 +85,12 @@ function errorResponse(e: unknown) {
 }
 
 function invalido(issues: z.ZodIssue[]) {
-  return NextResponse.json({ error: issues.map((i) => i.message).join(" · ") }, { status: 400 });
+  // Con el campo adelante: "Invalid input" a secas, que es lo que llegaba al toast, no
+  // alcanza para saber qué mandó mal la pantalla.
+  const detalle = issues.map((i) =>
+    i.path.length > 0 ? `${i.path.join(".")}: ${i.message}` : i.message,
+  );
+  return NextResponse.json({ error: detalle.join(" · ") }, { status: 400 });
 }
 
 /**
@@ -120,8 +125,15 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   const body = await req.json().catch(() => null);
 
-  const mover = moverSchema.safeParse(body);
-  if (mover.success) {
+  // Cuál de las dos formas es se decide por la CLAVE, no probando una y cayendo en la
+  // otra. Probando, un payload de mover con algo inválido adentro terminaba reportando
+  // los errores del OTRO esquema —"falta ids", "falta cambio"—, que es lo que llegaba al
+  // toast: un mensaje que no dice nada de lo que realmente estaba mal.
+  const esMover = !!body && typeof body === "object" && "movimientos" in body;
+
+  if (esMover) {
+    const mover = moverSchema.safeParse(body);
+    if (!mover.success) return invalido(mover.error.issues);
     try {
       await moverAsignaciones(mover.data.movimientos);
       // La OT no cambia al mover, así que se resuelve después de responder junto con la

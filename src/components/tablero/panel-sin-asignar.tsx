@@ -123,7 +123,11 @@ function TarjetaOt({
       ref={setNodeRef}
       {...attributes}
       {...listeners}
-      className="cursor-grab rounded-md border p-2 transition-colors hover:border-foreground/25 active:cursor-grabbing"
+      // select-none: apretar sobre el texto y arrastrar hacía que el navegador extendiera
+      // una SELECCIÓN, y una selección que se estira más allá del borde scrollea el
+      // contenedor sola — el mismo síntoma que el auto-scroll, por otro camino. Acá el
+      // texto es un agarre para arrastrar, no algo para seleccionar.
+      className="cursor-grab select-none rounded-md border p-2 transition-colors hover:border-foreground/25 active:cursor-grabbing"
       style={{
         opacity: isDragging ? 0.35 : 1,
         backgroundColor: tipo.bg,

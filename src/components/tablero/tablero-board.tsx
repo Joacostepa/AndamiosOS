@@ -547,13 +547,17 @@ export function TableroBoard() {
     const liberables = jornadasLiberables(bloque);
     borrar.mutate(liberables, {
       onSuccess: () => {
-        const conservadas = bloque.ids.length - liberables.length;
-        if (conservadas > 0) {
-          toast.success(
-            `Obra suspendida: ${liberables.length} jornada(s) vuelven a sin asignar`,
-            { description: `Se conservan ${conservadas} ya cerrada(s) con su parte.` },
-          );
-        }
+        // El aviso sale SIEMPRE, no sólo cuando quedan jornadas cerradas. Un arrastre
+        // borra varios registros en Odoo, y que la tarjeta desaparezca sin decir nada
+        // deja la duda de si el gesto salió o si se perdió algo.
+        const n = liberables.length;
+        const conservadas = bloque.ids.length - n;
+        toast.success(`Obra suspendida: ${n} jornada${n === 1 ? "" : "s"} vuelven a la bandeja`, {
+          description:
+            conservadas > 0
+              ? `Se conservan ${conservadas} ya cerrada${conservadas === 1 ? "" : "s"} con su parte.`
+              : "Quedan como pendientes de planificar en el panel de la derecha.",
+        });
       },
     });
   }

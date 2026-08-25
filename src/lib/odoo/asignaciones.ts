@@ -127,6 +127,36 @@ type OdooAsigRow = {
  * Quedan afuera "Simple" (módulos hogareños) y "Alquiler Sin Montaje".
  * Las obras sin habilitar entran igual: el semáforo advierte, no bloquea.
  */
+/**
+ * Avance de una obra: cuántas de sus jornadas están TOMADAS y cuántas ya se HICIERON.
+ * De esa resta sale lo que la bandeja muestra como pendiente.
+ *
+ * REGLA DE NEGOCIO: una jornada con parte NO EJECUTADO no cuenta para ninguna de las dos.
+ * El día no produjo trabajo —llovió, el cliente no habilitó, faltó el permiso: son los
+ * motivos de x_motivo_no_ejec— así que la obra sigue necesitando esa jornada y tiene que
+ * volver a la bandeja para replanificarse. La tarjeta roja se queda en la grilla como
+ * registro de lo que pasó ese día; una cosa es la historia y otra el trabajo que falta.
+ *
+ * Antes se contaba "tiene parte" a secas, y un día de lluvia se descontaba como hecho:
+ * la obra salía de la bandeja con una jornada menos de trabajo real y nadie la miraba
+ * más, porque a la bandeja nadie va a buscar una obra que ya se fue de ahí.
+ *
+ * El dominio va con el OR explícito: en Odoo, una condición sobre `x_parte_id.x_estado`
+ * se resuelve como subconsulta y deja afuera las asignaciones que todavía no tienen
+ * parte, que son justamente las que más cuentan como tomadas.
+ */
+const DOM_TOMADAS = ["|", ["x_parte_id", "=", false], ["x_parte_id.x_estado", "!=", "no_ejecutado"]];
+const DOM_HECHAS = [["x_parte_id", "!=", false], ["x_parte_id.x_estado", "!=", "no_ejecutado"]];
+
+/** Las dos consultas de avance, juntas para que el tablero y el listado no diverjan. */
+export function consultasDeAvance() {
+  const porOt = (dominio: unknown[]) =>
+    executeKw<{ x_ot_id: M2O; __count: number }[]>(
+      "x_aba_asignacion", "read_group", [dominio, ["x_ot_id"], ["x_ot_id"]], { lazy: false },
+    );
+  return [porOt(DOM_TOMADAS), porOt(DOM_HECHAS)] as const;
+}
+
 const DOMINIO_OTS_CANDIDATAS = [
   ["x_estado", "in", ["pendiente", "en_proceso"]],
   ["x_order_id.x_studio_tipo_de_contrato", "=", "Obra "],
@@ -208,14 +238,9 @@ export async function fetchTablero(desde: string, hasta: string): Promise<Tabler
       ["x_orden_trabajo_id", "x_fecha", "x_cuadrilla_id", "x_estado", "x_motivo_no_ejec"],
     ),
     // Avance por OT, sin traer todas las asignaciones históricas: cuántas jornadas
-    // tiene en el tablero y cuántas ya se cerraron. Con eso la bandeja sabe si a una
-    // obra le quedan jornadas por planificar aunque parte de ella ya se haya ejecutado.
-    executeKw<{ x_ot_id: M2O; __count: number }[]>(
-      "x_aba_asignacion", "read_group", [[], ["x_ot_id"], ["x_ot_id"]], { lazy: false },
-    ),
-    executeKw<{ x_ot_id: M2O; __count: number }[]>(
-      "x_aba_asignacion", "read_group", [[["x_parte_id", "!=", false]], ["x_ot_id"], ["x_ot_id"]], { lazy: false },
-    ),
+    // tiene tomadas y cuántas ya se hicieron. Con eso la bandeja sabe si a una obra le
+    // quedan jornadas por planificar aunque parte de ella ya se haya ejecutado.
+    ...consultasDeAvance(),
   ]);
 
   const asignaciones = asigsRaw.map(mapAsig);

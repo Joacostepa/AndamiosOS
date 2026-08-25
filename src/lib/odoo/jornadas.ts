@@ -13,6 +13,7 @@
 // nada, porque dejó de cumplir el filtro.
 
 import { searchRead, executeKw, create, read } from "./client";
+import { consultasDeAvance } from "./asignaciones";
 import { fetchParte } from "./partes";
 import type { JornadaListado, ListadoJornadas } from "@/lib/tablero/tipos-jornada";
 
@@ -70,7 +71,7 @@ export async function fetchListadoJornadas(fecha: string, hoy: string): Promise<
         // navegación, así se puede mirar adelante sin que parezca que faltan partes.
         [["id", "=", 0]];
 
-  const [asigsDia, asigsSinConfirmar, cuadrillasRaw, otsDisponiblesRaw, gruposTotal, gruposConParte] =
+  const [asigsDia, asigsSinConfirmar, cuadrillasRaw, otsDisponiblesRaw, gruposTomadas, gruposHechas] =
     await Promise.all([
       searchRead<FilaAsig>("x_aba_asignacion", dominioDelDia, CAMPOS_ASIG, {
         order: "x_cuadrilla_id, x_orden_dia, id",
@@ -95,12 +96,10 @@ export async function fetchListadoJornadas(fecha: string, hoy: string): Promise<
         ["x_name", "x_tipo"],
         { order: "x_name" },
       ),
-      executeKw<{ x_ot_id: M2O; __count: number }[]>(
-        "x_aba_asignacion", "read_group", [[], ["x_ot_id"], ["x_ot_id"]], { lazy: false },
-      ),
-      executeKw<{ x_ot_id: M2O; __count: number }[]>(
-        "x_aba_asignacion", "read_group", [[["x_parte_id", "!=", false]], ["x_ot_id"], ["x_ot_id"]], { lazy: false },
-      ),
+      // Mismo avance que usa la bandeja del tablero, de la misma fuente: son la misma
+      // pregunta —cuánto le queda a la obra— y contestarlas distinto es cuestión de
+      // tiempo (ver consultasDeAvance: una jornada no ejecutada no cuenta como hecha).
+      ...consultasDeAvance(),
     ]);
 
   const todas = [...asigsDia, ...asigsSinConfirmar];
@@ -128,8 +127,8 @@ export async function fetchListadoJornadas(fecha: string, hoy: string): Promise<
   const partes = await Promise.all(parteIds.map((id) => fetchParte(id)));
   const partePorId = new Map(parteIds.map((id, i) => [id, partes[i]]));
 
-  const totalPorOt = new Map(gruposTotal.map((g) => [m2oId(g.x_ot_id) ?? 0, g.__count]));
-  const conPartePorOt = new Map(gruposConParte.map((g) => [m2oId(g.x_ot_id) ?? 0, g.__count]));
+  const tomadasPorOt = new Map(gruposTomadas.map((g) => [m2oId(g.x_ot_id) ?? 0, g.__count]));
+  const hechasPorOt = new Map(gruposHechas.map((g) => [m2oId(g.x_ot_id) ?? 0, g.__count]));
 
   const mapear = (a: FilaAsig, tentativaVencida: boolean): JornadaListado => {
     const otId = m2oId(a.x_ot_id) ?? 0;
@@ -137,8 +136,8 @@ export async function fetchListadoJornadas(fecha: string, hoy: string): Promise<
     const dur = Number(ot?.x_duracion_est);
     const jornadasOt =
       Number.isFinite(dur) && dur > 0 ? dur : Number(ot?.x_jornadas_num) || 1;
-    const asignadas = totalPorOt.get(otId) ?? 0;
-    const conParte = conPartePorOt.get(otId) ?? 0;
+    const asignadas = tomadasPorOt.get(otId) ?? 0;
+    const hechas = hechasPorOt.get(otId) ?? 0;
     const parteId = m2oId(a.x_parte_id);
 
     return {
@@ -157,7 +156,7 @@ export async function fetchListadoJornadas(fecha: string, hoy: string): Promise<
       fleteSugerido: FLETES_SUGERIDOS_POR_DIA,
       parte: parteId ? (partePorId.get(parteId) ?? null) : null,
       // Falta cerrar sólo ésta, y la obra no tiene jornadas sin planificar.
-      ultimaDeLaOt: asignadas - conParte === 1 && Math.ceil(jornadasOt) <= asignadas,
+      ultimaDeLaOt: asignadas - hechas === 1 && Math.ceil(jornadasOt) <= asignadas,
       tentativaVencida,
     };
   };

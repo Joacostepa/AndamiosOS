@@ -65,12 +65,24 @@ export type ObraPlanificada = {
 // día — "me queda media jornada libre en la cuadrilla 1, ¿qué desarme corto tengo?"—,
 // que hoy se resuelve escaneando la lista entera.
 //
-// LOS CHIPS LLEVAN EL NÚMERO Y SÓLO APARECEN LOS QUE TIENEN OBRAS. Así no hay baldes
-// vacíos que ocupen lugar, y de paso el panel muestra la forma de la bandeja sin que
-// haya que filtrar nada. Medido sobre las 34 obras de hoy: 25 dicen "1 jornada", 5 son
-// de varios días y 4 de ¼. Ese "25" es además un diagnóstico — la duración estimada está
-// cargada en el 19% de las OTs, así que buena parte de ese grupo es el valor por defecto
-// y no una medición. El filtro no puede ser mejor que el dato que filtra.
+// LOS CHIPS DE DURACIÓN SON LA ESCALA COMPLETA, con su número al lado. Los que no tienen
+// obras se muestran apagados y no se pueden apretar.
+//
+// La primera versión mostraba sólo los que tenían obras, para no ocupar lugar con baldes
+// vacíos. El problema es que así no se puede VERIFICAR que no falte nada: quien mira la
+// lista tiene que confiar en que toda obra cayó en algún balde. Con la escala entera, los
+// números de los chips suman exactamente el total del encabezado, y esa suma se chequea de
+// un vistazo. Además la ausencia pasa a ser información: "no tengo ninguna de media
+// jornada" es un dato, y un hueco en la escala no lo dice.
+//
+// Ninguna obra puede quedar sin chip, por construcción: duracionDe siempre devuelve un
+// balde —repartirJornadas redondea cualquier duración a la fracción más cercana, así que
+// una obra de 0,4 jornadas cae en ½— y los grupos se arman recorriendo la lista.
+//
+// Medido sobre las 34 obras de hoy: 25 dicen "1 jornada", 5 son de varios días y 4 de ¼.
+// Ese "25" es además un diagnóstico — la duración estimada está cargada en el 19% de las
+// OTs, así que buena parte de ese grupo es el valor por defecto y no una medición. El
+// filtro no puede ser mejor que el dato que filtra.
 //
 // NO SE PERSISTEN entre sesiones, a diferencia del panel colapsado o las cuadrillas
 // visibles: un filtro que sobrevive a un refresh es cómo alguien termina creyendo que la
@@ -89,24 +101,25 @@ type ClaveDuracion = FraccionStr | "varios";
  * Las fracciones pendientes son las ÚLTIMAS del reparto, igual que cuando se planifica
  * (ver asignarObra): así el resto fraccionario cae donde va a caer de verdad.
  */
-function duracionDe(obra: ObraPendiente): { clave: ClaveDuracion; orden: number; label: string } {
+function duracionDe(obra: ObraPendiente): ClaveDuracion {
   const todas = repartirJornadas(obra.ot.jornadas);
   const quedan = todas.slice(Math.max(0, todas.length - obra.pendientes));
-
-  if (quedan.length > 1) {
-    return { clave: "varios", orden: 99, label: `Varios días` };
-  }
-  const f = quedan[0] ?? "1";
-  const i = FRACCIONES.findIndex((x) => x.value === f);
-  const fr = FRACCIONES[i] ?? FRACCIONES[FRACCIONES.length - 1];
-  return {
-    clave: fr.value,
-    orden: i,
-    // Las dos unidades juntas: el sistema guarda jornadas y el planificador piensa en
-    // horas. Con una sola, alguien tiene que traducir en la cabeza cada vez.
-    label: fr.value === "1" ? "1 jornada · 8 h" : `${fr.label} · ${fr.horas} h`,
-  };
+  if (quedan.length > 1) return "varios";
+  return (quedan[0] ?? "1") as ClaveDuracion;
 }
+
+/**
+ * La escala completa de duración, de menor a mayor. Es la MISMA de la que salen las
+ * fracciones al planificar, así que un tamaño posible no puede faltar acá.
+ */
+const ESCALA_DURACION: { clave: ClaveDuracion; label: string; orden: number }[] = [
+  ...FRACCIONES.map((f, i) => ({
+    clave: f.value as ClaveDuracion,
+    label: f.value === "1" ? "1 jornada · 8 h" : `${f.label} · ${f.horas} h`,
+    orden: i,
+  })),
+  { clave: "varios", label: "Varios días", orden: 99 },
+];
 
 const TIPOS_BANDEJA = [
   { clave: "armado", label: "Armado" },
@@ -124,21 +137,29 @@ function Chip({
   onClick,
   children,
   cantidad,
+  titulo,
 }: {
   activo: boolean;
   onClick: () => void;
   children: React.ReactNode;
   cantidad: number;
+  titulo?: string;
 }) {
+  // Sin obras no se apaga: se muestra apagado. Es la diferencia entre "no hay ninguna de
+  // este tamaño" —que es un dato— y no decir nada, que obliga a suponer.
+  const vacio = cantidad === 0 && !activo;
   return (
     <button
       type="button"
       onClick={onClick}
-      className="flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] transition-colors"
+      disabled={vacio}
+      title={titulo}
+      className="flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] transition-colors disabled:cursor-default"
       style={{
         backgroundColor: activo ? CORAL : undefined,
         borderColor: activo ? CORAL : undefined,
         color: activo ? "#fff" : undefined,
+        opacity: vacio ? 0.4 : 1,
       }}
     >
       {children}
@@ -398,7 +419,7 @@ export function PanelSinAsignar({
   const { chipsTipo, chipsDuracion, conFiltros } = useMemo(() => {
     const porTipo = (o: ObraPendiente) => tipoFiltro === null || tipoDe(o.ot) === tipoFiltro;
     const porDuracion = (o: ObraPendiente) =>
-      duracionFiltro === null || duracionDe(o).clave === duracionFiltro;
+      duracionFiltro === null || duracionDe(o) === duracionFiltro;
 
     const paraTipo = filtradas.filter(porDuracion);
     const paraDuracion = filtradas.filter(porTipo);
@@ -406,21 +427,21 @@ export function PanelSinAsignar({
     const chipsTipo = TIPOS_BANDEJA.map((t) => ({
       ...t,
       cantidad: paraTipo.filter((o) => tipoDe(o.ot) === t.clave).length,
-    })).filter((t) => t.cantidad > 0 || t.clave === tipoFiltro);
+    })).filter((t) => t.clave !== "otro" || t.cantidad > 0 || t.clave === tipoFiltro);
 
-    const baldes = new Map<ClaveDuracion, { label: string; orden: number; cantidad: number }>();
+    // La escala arranca completa —los seis baldes, en orden de menor a mayor— y encima se
+    // cuentan las obras. Así los números suman siempre el total del encabezado, que es lo
+    // que permite comprobar de un vistazo que no quedó ninguna obra sin balde.
+    const baldes = new Map<ClaveDuracion, { label: string; orden: number; cantidad: number }>(
+      ESCALA_DURACION.map((b) => [b.clave, { label: b.label, orden: b.orden, cantidad: 0 }]),
+    );
     for (const o of paraDuracion) {
-      const d = duracionDe(o);
-      const prev = baldes.get(d.clave);
-      baldes.set(d.clave, { label: d.label, orden: d.orden, cantidad: (prev?.cantidad ?? 0) + 1 });
-    }
-    if (duracionFiltro && !baldes.has(duracionFiltro)) {
-      const ref = FRACCIONES.find((f) => f.value === duracionFiltro);
-      baldes.set(duracionFiltro, {
-        label: duracionFiltro === "varios" ? "Varios días" : `${ref?.label} · ${ref?.horas} h`,
-        orden: 98,
-        cantidad: 0,
-      });
+      const clave = duracionDe(o);
+      const balde = baldes.get(clave);
+      if (balde) balde.cantidad++;
+      // Un balde fuera de la escala sería un bug de duracionDe, no un caso de uso: se
+      // agrega igual, antes que perder la obra de vista.
+      else baldes.set(clave, { label: String(clave), orden: 98, cantidad: 1 });
     }
     const chipsDuracion = [...baldes.entries()]
       .map(([clave, v]) => ({ clave, ...v }))
@@ -532,6 +553,11 @@ export function PanelSinAsignar({
                 key={d.clave}
                 activo={duracionFiltro === d.clave}
                 cantidad={d.cantidad}
+                titulo={
+                  d.cantidad === 0
+                    ? `Ninguna obra de ${d.label}`
+                    : `${d.cantidad} obra(s) de ${d.label}, por lo que les queda`
+                }
                 onClick={() => setDuracionFiltro((v) => (v === d.clave ? null : d.clave))}
               >
                 {d.label}

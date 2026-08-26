@@ -15,6 +15,7 @@ import { searchRead, write, executeKw, read, authenticate } from "./client";
 import type {
   AsignacionTablero,
   CambioAsignacion,
+  DetalleOt,
   DocumentoOt,
   MovimientoAsignacion,
   NuevaAsignacion,
@@ -278,6 +279,82 @@ export async function fetchTablero(desde: string, hasta: string): Promise<Tabler
         })
         .filter((p) => p.otId);
     })(),
+  };
+}
+
+/**
+ * La ficha de una OT: lo que se lee al abrir el panel lateral y no antes.
+ *
+ * Son dos lecturas encadenadas —la OT y después su orden— porque el cliente, la
+ * dirección de obra, el técnico con nombre y apellido y el vendedor viven en sale.order.
+ * Encadenadas y no en paralelo: hay que leer la OT para saber cuál es su orden.
+ *
+ * Relevado sobre las 52 OTs candidatas: todos estos campos están cargados en el 100% de
+ * los casos salvo la firmeza (37%), el desvío (21%) y la duración sugerida (25%), que
+ * son justamente los que sólo tienen sentido cuando existen.
+ */
+export async function fetchDetalleOt(otId: number): Promise<DetalleOt> {
+  const [ot] = await read<{
+    x_order_id: M2O;
+    x_hab_etapa: string | false;
+    x_hab_dias: number | false;
+    x_fecha_firmeza: string | false;
+    x_periodo: string | false;
+    x_desvio: string | false;
+    x_duracion_sugerida: string | false;
+  }>("x_aba_orden_trabajo", [otId], [
+    "x_order_id", "x_hab_etapa", "x_hab_dias", "x_fecha_firmeza",
+    "x_periodo", "x_desvio", "x_duracion_sugerida",
+  ]);
+  if (!ot) throw new Error("La OT no existe");
+
+  const ordenId = m2oId(ot.x_order_id);
+  const [orden] = ordenId
+    ? await read<{ partner_id: M2O; partner_shipping_id: M2O; x_studio_tcnico: M2O; user_id: M2O }>(
+        "sale.order",
+        [ordenId],
+        ["partner_id", "partner_shipping_id", "x_studio_tcnico", "user_id"],
+      )
+    : [];
+
+  // La obra vive en un contacto HIJO del cliente, de tipo "delivery", cuyo nombre ES la
+  // dirección ("Av. Callao 1810 (FACHADA CALLAO)") y cuyo padre es el cliente de verdad.
+  // Por eso no alcanza con el nombre que muestra el many2one —que viene con todo pegado,
+  // "CLIENTE, Calle 123"—: hay que leer el contacto.
+  const idEnvio = m2oId(orden?.partner_shipping_id);
+  const idCliente = m2oId(orden?.partner_id);
+  const ids = [...new Set([idEnvio, idCliente].filter((x): x is number => x != null))];
+  const contactos = ids.length
+    ? await read<{
+        id: number;
+        name: string | false;
+        street: string | false;
+        street2: string | false;
+        city: string | false;
+        phone: string | false;
+        type: string | false;
+        parent_id: M2O;
+      }>("res.partner", ids, ["name", "street", "street2", "city", "phone", "type", "parent_id"])
+    : [];
+  const obra = contactos.find((c) => c.id === idEnvio) ?? contactos.find((c) => c.id === idCliente);
+
+  const calle = [str(obra?.street), str(obra?.street2), str(obra?.city)].filter(Boolean).join(", ");
+  return {
+    // El cliente es el PADRE del contacto de obra. Sin padre, el contacto ya es el cliente.
+    cliente: m2oName(obra?.parent_id) ?? str(obra?.name),
+    // Varias fichas tienen la dirección sólo en el nombre y la calle vacía.
+    direccionObra: calle || (obra?.type === "delivery" ? str(obra?.name) : null),
+    // El teléfono de la ficha de obra del cliente. La OT tiene su propio contacto, pero
+    // está cargado en el 12% de los casos: cuando falta, éste es el número al que se llama.
+    telFichaCliente: str(obra?.phone),
+    tecnicoNombre: m2oName(orden?.x_studio_tcnico),
+    vendedor: m2oName(orden?.user_id),
+    habEtapa: str(ot.x_hab_etapa),
+    habDias: num(ot.x_hab_dias),
+    fechaFirmeza: str(ot.x_fecha_firmeza),
+    periodo: str(ot.x_periodo),
+    desvio: str(ot.x_desvio),
+    duracionSugerida: str(ot.x_duracion_sugerida),
   };
 }
 

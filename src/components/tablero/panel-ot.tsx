@@ -4,9 +4,11 @@ import { useQuery } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import {
-  AlertTriangle, ExternalLink, FileText, Phone, Pin, ShieldCheck, User, Clock, CalendarDays,
+  AlertTriangle, Building2, CalendarCheck, ExternalLink, FileText, Phone, Pin, ShieldCheck,
+  User, UserRound, Users, Clock, CalendarDays,
 } from "lucide-react";
 import { useNotasFijadas } from "@/hooks/use-habilitaciones";
+import { ETAPA_LABEL, type HabEtapa } from "@/lib/habilitaciones/tipos";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -14,7 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { semaforo } from "@/lib/tablero/colores";
 import { fraccionLabel } from "@/lib/tablero/fracciones";
 import type { Bloque } from "@/lib/tablero/bloques";
-import type { DocumentoOt, OtTablero } from "@/lib/tablero/tipos";
+import type { DetalleOt, DocumentoOt, OtTablero } from "@/lib/tablero/tipos";
 
 // Panel lateral de la OT: todo lo que hace falta para coordinar la jornada sin salir
 // del tablero. La carga de partes, el circuito de habilitación y los costos viven en
@@ -50,6 +52,25 @@ function NotasFijadas({ otId }: { otId: number }) {
       ))}
     </div>
   );
+}
+
+/**
+ * La ficha completa de la OT, pedida al abrir el panel.
+ *
+ * No viaja con el tablero a propósito: esa llamada trae medio centenar de OTs y se
+ * repite todo el día; esto se mira de a una. Ver /api/planificacion/ot.
+ */
+function useDetalle(otId: number | null) {
+  return useQuery({
+    queryKey: ["tablero-ot-detalle", otId],
+    queryFn: async () => {
+      const res = await fetch(`/api/planificacion/ot?otId=${otId}`);
+      if (!res.ok) throw new Error("No se pudo leer la ficha de la OT");
+      return ((await res.json()) as { detalle: DetalleOt }).detalle;
+    },
+    enabled: !!otId,
+    staleTime: 5 * 60 * 1000,
+  });
 }
 
 function Fila({ icono, etiqueta, children }: { icono: React.ReactNode; etiqueta: string; children: React.ReactNode }) {
@@ -112,14 +133,20 @@ export function PanelOt({
   ot,
   bloque,
   cuadrillaNombre,
+  cuadrillaPrevista,
   onOpenChange,
 }: {
   ot: OtTablero | null;
   bloque: Bloque | null;
   cuadrillaNombre: string | null;
+  /** La cuadrilla que la OT trae sugerida de Odoo (x_cuadrilla_prevista_id), ya con nombre. */
+  cuadrillaPrevista: string | null;
   onOpenChange: (abierto: boolean) => void;
 }) {
   const sem = semaforo(ot?.habSemaforo);
+  const { data: detalle } = useDetalle(ot?.id ?? null);
+  const etapa = detalle?.habEtapa ? ETAPA_LABEL[detalle.habEtapa as HabEtapa] : null;
+  const fecha = (f: string) => format(parseISO(f), "d MMM yyyy", { locale: es });
 
   return (
     <Sheet open={!!ot} onOpenChange={onOpenChange}>
@@ -133,7 +160,8 @@ export function PanelOt({
             <div className="space-y-4 px-4 pb-6">
               <div className="flex flex-wrap items-center gap-1.5">
                 <Badge variant="secondary">{TIPO_LABEL[ot.tipo] ?? ot.tipo}</Badge>
-                {ot.tecnico && <Badge variant="outline">{ot.tecnico}</Badge>}
+                {/* El técnico deja de ser una badge con las iniciales ("GS") y pasa a su
+                    propia fila con nombre y apellido, que es lo que sirve para ubicarlo. */}
                 {ot.urgencia === "alta" && (
                   <Badge style={{ backgroundColor: "#D92D20", color: "#fff" }}>Urgencia alta</Badge>
                 )}
@@ -151,6 +179,68 @@ export function PanelOt({
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" style={{ color: "#D92D20" }} />
                   <p className="whitespace-pre-wrap">{ot.motivoUrgencia}</p>
                 </div>
+              )}
+
+              {/* QUIÉN y DÓNDE, arriba de todo. Antes el panel no lo decía: el cliente
+                  salía de partir el título de la OT, que no siempre lo trae —"Desarme ·
+                  S00719 · Av. Callao 1810" no tiene cliente— y la dirección quedaba
+                  mezclada ahí adentro. En la orden de venta están los dos, siempre. */}
+              {(detalle?.cliente || detalle?.direccionObra) && (
+                <Fila icono={<Building2 className="h-4 w-4" />} etiqueta="Cliente">
+                  {detalle.cliente ?? "—"}
+                  {detalle.direccionObra && (
+                    <p className="text-xs text-muted-foreground">{detalle.direccionObra}</p>
+                  )}
+                </Fila>
+              )}
+
+              {(detalle?.tecnicoNombre || ot.tecnico || detalle?.vendedor) && (
+                <Fila icono={<UserRound className="h-4 w-4" />} etiqueta="Técnico">
+                  {detalle?.tecnicoNombre ?? ot.tecnico ?? "—"}
+                  {detalle?.vendedor && (
+                    <p className="text-xs text-muted-foreground">Vendedor: {detalle.vendedor}</p>
+                  )}
+                </Fila>
+              )}
+
+              <Separator />
+
+              {/* La fecha que Comercial prometió. Es contra esto que se mide si la
+                  planificación llega tarde, y hasta ahora sólo se veía en la bandeja:
+                  al abrir la obra desaparecía justo cuando se decide dónde ponerla. */}
+              {ot.fechaComprometida && (
+                <Fila icono={<CalendarCheck className="h-4 w-4" />} etiqueta="Comprometida al cliente">
+                  {fecha(ot.fechaComprometida)}
+                  {detalle?.fechaFirmeza && (
+                    <p className="text-xs text-muted-foreground">
+                      {detalle.fechaFirmeza === "confirmada"
+                        ? "Fecha firme"
+                        : "Tentativa · puede moverse"}
+                    </p>
+                  )}
+                </Fila>
+              )}
+
+              {/* Sin bloque a la vista, la fecha de la OT es lo único que ubica la obra:
+                  puede estar planificada fuera del rango cargado. */}
+              {!bloque && ot.fechaProgramada && (
+                <Fila icono={<CalendarDays className="h-4 w-4" />} etiqueta="Programada">
+                  {fecha(ot.fechaProgramada)}
+                  <p className="text-xs text-muted-foreground">Fuera de las semanas que estás viendo.</p>
+                </Fila>
+              )}
+
+              {/* La cuadrilla que ya venía sugerida, sólo cuando aporta algo: si el bloque
+                  ya está en esa misma cuadrilla, repetirlo es ruido. */}
+              {cuadrillaPrevista && cuadrillaPrevista !== cuadrillaNombre && (
+                <Fila icono={<Users className="h-4 w-4" />} etiqueta="Cuadrilla prevista">
+                  {cuadrillaPrevista}
+                  {bloque && (
+                    <p className="text-xs text-muted-foreground">
+                      En el tablero está en {cuadrillaNombre ?? "otra cuadrilla"}.
+                    </p>
+                  )}
+                </Fila>
               )}
 
               {bloque && (
@@ -174,20 +264,35 @@ export function PanelOt({
                   {sem.label}
                   {ot.habAlerta ? ` · ${ot.habAlerta}` : ""}
                 </span>
+                {/* El semáforo dice el color; la ETAPA dice qué falta para poder ir, que
+                    es lo que el que planifica necesita para decidir si pone la fecha. */}
+                {etapa && (
+                  <p className="text-xs text-muted-foreground">
+                    {etapa}
+                    {detalle && detalle.habDias > 0 && ` · ${detalle.habDias} días en trámite`}
+                  </p>
+                )}
                 {ot.habVencimiento && (
                   <p className="text-xs text-muted-foreground">
-                    Vence el {format(parseISO(ot.habVencimiento), "d MMM yyyy", { locale: es })}
+                    Vence el {fecha(ot.habVencimiento)}
                   </p>
                 )}
               </Fila>
 
-              {(ot.contactoObra || ot.telObra) && (
+              {/* El contacto de la OT manda. Cuando no está —el 88% de los casos— se cae
+                  al teléfono de la ficha de obra del cliente, que es al que se llama
+                  igual, y se aclara de dónde salió para que nadie lo confunda con un
+                  dato cargado para esta jornada. */}
+              {(ot.contactoObra || ot.telObra || detalle?.telFichaCliente) && (
                 <Fila icono={<Phone className="h-4 w-4" />} etiqueta="Contacto en obra">
-                  {ot.contactoObra ?? "—"}
-                  {ot.telObra && (
+                  {ot.contactoObra ?? (ot.telObra ? "—" : "Según la ficha del cliente")}
+                  {(ot.telObra ?? detalle?.telFichaCliente) && (
                     <p>
-                      <a href={`tel:${ot.telObra.replace(/\s/g, "")}`} className="text-sm underline">
-                        {ot.telObra}
+                      <a
+                        href={`tel:${(ot.telObra ?? detalle?.telFichaCliente ?? "").replace(/[^\d+]/g, "")}`}
+                        className="text-sm underline"
+                      >
+                        {ot.telObra ?? detalle?.telFichaCliente}
                       </a>
                     </p>
                   )}
@@ -200,8 +305,20 @@ export function PanelOt({
                 {ot.personalPorJornada > 0 ? ` · ${ot.personalPorJornada} personas` : ""}
                 <p className="text-xs text-muted-foreground">
                   Ejecutado: {ot.diasObra} día{ot.diasObra === 1 ? "" : "s"} · {ot.horasHombre} h hombre
+                  {detalle?.desvio ? ` · ${detalle.desvio} vs estimado` : ""}
                 </p>
+                {/* CUÁNDO se ejecutó, no sólo cuánto. Para planificar un desarme, saber
+                    que el armado corrió de febrero a julio es la mitad de la decisión. */}
+                {detalle?.periodo && (
+                  <p className="text-xs text-muted-foreground">{detalle.periodo}</p>
+                )}
               </Fila>
+
+              {detalle?.duracionSugerida && (
+                <Fila icono={<Clock className="h-4 w-4" />} etiqueta="Duración sugerida">
+                  <p className="whitespace-pre-wrap text-sm">{detalle.duracionSugerida}</p>
+                </Fila>
+              )}
 
               {ot.observaciones && (
                 <Fila icono={<User className="h-4 w-4" />} etiqueta="Observaciones">

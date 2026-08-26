@@ -72,6 +72,41 @@ export type ParteTablero = {
   motivoNoEjec: string | null;
 };
 
+/**
+ * Lo que se lee al ABRIR la ficha de una OT, y sólo entonces.
+ *
+ * Va aparte del payload del tablero a propósito: eso trae 52 OTs en la llamada que más
+ * se repite, y nada de esto hace falta hasta que alguien hace clic en una tarjeta.
+ *
+ * Mezcla la OT con su orden de venta porque la pregunta del que planifica no distingue:
+ * quién es el cliente y dónde queda la obra viven en sale.order, no en la OT.
+ */
+export type DetalleOt = {
+  /** De la orden de venta. Hasta ahora el cliente salía de partir el título de la OT,
+   *  que no siempre lo trae ("Desarme · S00719 · Av. Callao 1810"). */
+  cliente: string | null;
+  direccionObra: string | null;
+  /**
+   * Teléfono de la ficha de obra del cliente en Odoo. La OT tiene su propio contacto
+   * (x_tel_obra) pero está cargado en el 12% de las OTs; éste, en la mayoría.
+   */
+  telFichaCliente: string | null;
+  /** Nombre completo. En la OT el técnico son iniciales ("GS"), que no dicen nada. */
+  tecnicoNombre: string | null;
+  vendedor: string | null;
+  /** Etapa del trámite de habilitación (a…f). Ver ETAPA_LABEL. */
+  habEtapa: string | null;
+  habDias: number;
+  /** "Tentativa — puede moverse" / "Confirmada — fecha firme", sobre la fecha comprometida. */
+  fechaFirmeza: string | null;
+  /** Rango ya ejecutado, calculado por Odoo: "11/02 al 25/07/2026 (6 jornadas)". */
+  periodo: string | null;
+  /** Desvío de lo ejecutado contra lo estimado ("-34%"). */
+  desvio: string | null;
+  /** Sugerencia de duración con su explicación (sirve sobre todo para el desarme). */
+  duracionSugerida: string | null;
+};
+
 export type DocumentoOt = {
   id: number;
   nombre: string;

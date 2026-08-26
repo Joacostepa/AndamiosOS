@@ -890,6 +890,12 @@ export function TableroBoard() {
         ot={panelOt}
         bloque={panelBloque}
         cuadrillaNombre={panelCuadrilla}
+        // El id de la cuadrilla sugerida viene con la OT; el nombre lo tiene el tablero.
+        cuadrillaPrevista={
+          panelOt?.cuadrillaPrevistaId != null
+            ? (data.cuadrillas.find((c) => c.id === panelOt.cuadrillaPrevistaId)?.nombre ?? null)
+            : null
+        }
         onOpenChange={(abierto) => !abierto && setPanel(null)}
       />
     </div>

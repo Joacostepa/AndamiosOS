@@ -20,9 +20,10 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { CommandSearch } from "@/components/layout/command-search";
+import type { Rol } from "@/lib/auth/roles";
 import Link from "next/link";
 
-export function Header() {
+export function Header({ rol }: { rol: Rol | null }) {
   const { data: user } = useUser();
   const { data: alertasCount } = useAlertasCount();
   const { theme, setTheme } = useTheme();
@@ -44,7 +45,7 @@ export function Header() {
       <SidebarTrigger />
       <Separator orientation="vertical" className="h-6" />
 
-      <CommandSearch />
+      <CommandSearch rol={rol} />
 
       <div className="flex-1" />
 

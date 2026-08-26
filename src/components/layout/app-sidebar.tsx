@@ -4,7 +4,8 @@ import { useRef, useCallback } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { navigation } from "@/lib/constants/navigation";
+import { navegacionPara } from "@/lib/constants/navigation";
+import type { Rol } from "@/lib/auth/roles";
 import { usePendientesDeParte } from "@/hooks/use-jornadas";
 import { CORAL } from "@/lib/tablero/colores";
 import {
@@ -23,7 +24,10 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
-export function AppSidebar() {
+export function AppSidebar({ rol }: { rol: Rol | null }) {
+  // El menú sale del rol, con la misma lista que usa el middleware para bloquear rutas:
+  // un menú que ofrece una pantalla que después rebota es peor que no ofrecerla.
+  const navigation = navegacionPara(rol);
   const pathname = usePathname();
   const { data: pendientesPartes } = usePendientesDeParte();
   const { setOpen, isMobile } = useSidebar();

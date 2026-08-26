@@ -12,10 +12,11 @@ import {
   CommandItem,
 } from "@/components/ui/command";
 import { useClientes } from "@/hooks/use-clientes";
-import { navigation } from "@/lib/constants/navigation";
+import { navegacionPara } from "@/lib/constants/navigation";
+import type { Rol } from "@/lib/auth/roles";
 import { Search, Users } from "lucide-react";
 
-export function CommandSearch() {
+export function CommandSearch({ rol }: { rol: Rol | null }) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
 
@@ -41,8 +42,9 @@ export function CommandSearch() {
     [router]
   );
 
-  // Flatten navigation items
-  const navItems = navigation.flatMap((group) =>
+  // Flatten navigation items — sólo los del rol: el buscador es otra puerta al mismo
+  // menú, y filtrar uno solo dejaría la otra abierta.
+  const navItems = navegacionPara(rol).flatMap((group) =>
     group.items.map((item) => ({
       ...item,
       label: group.label,

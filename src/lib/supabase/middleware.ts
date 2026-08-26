@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { inicioDe, puedeVer, type Rol } from "@/lib/auth/roles";
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -68,9 +69,31 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // Con sesión, el rol decide a dónde puede entrar. Se consulta sólo en las navegaciones
+  // —las llamadas a /api quedan afuera, ver puedeVer— así que es una query por página, no
+  // por request. Con el perfil sin crear, `rol` viene null y manda la lista más chica.
+  let rol: Rol | null = null;
+  if (user && !request.nextUrl.pathname.startsWith("/api/")) {
+    const { data: perfil } = await supabase
+      .from("user_profiles")
+      .select("rol")
+      .eq("id", user.id)
+      .single();
+    rol = (perfil?.rol as Rol | undefined) ?? null;
+  }
+
   if (user && isAuthOnlyPath) {
     const url = request.nextUrl.clone();
-    url.pathname = "/";
+    url.pathname = inicioDe(rol);
+    return NextResponse.redirect(url);
+  }
+
+  // Pedir una ruta que no le toca no es un error: se lo lleva a su pantalla de arranque.
+  // El menú ya no la muestra, así que llegar acá es escribir la URL a mano o volver sobre
+  // un enlace viejo.
+  if (user && !isPublicPath && !puedeVer(rol, request.nextUrl.pathname)) {
+    const url = request.nextUrl.clone();
+    url.pathname = inicioDe(rol);
     return NextResponse.redirect(url);
   }
 

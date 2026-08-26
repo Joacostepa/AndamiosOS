@@ -6,6 +6,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+import { rutasDe, type Rol } from "@/lib/auth/roles";
+
 export type NavSubItem = { title: string; href: string };
 export type NavItem = { title: string; href: string; icon: LucideIcon; subItems?: NavSubItem[] };
 export type NavGroup = { label?: string; items: NavItem[] };
@@ -83,3 +85,22 @@ export const navigation: NavGroup[] = [
     ],
   },
 ];
+
+/**
+ * El menú que le corresponde a un rol.
+ *
+ * Filtra con la MISMA lista con la que el middleware bloquea las rutas (roles.ts), así el
+ * menú no puede prometer una pantalla que después rebota. Los grupos que quedan sin ítems
+ * desaparecen enteros: un encabezado "Depósito y Logística" con nada debajo es peor que
+ * no estar.
+ */
+export function navegacionPara(rol: Rol | null | undefined): NavGroup[] {
+  const permitidas = rutasDe(rol);
+  if (permitidas === null) return navigation;
+  return navigation
+    .map((g) => ({
+      ...g,
+      items: g.items.filter((i) => permitidas.some((r) => i.href === r || i.href.startsWith(`${r}/`))),
+    }))
+    .filter((g) => g.items.length > 0);
+}

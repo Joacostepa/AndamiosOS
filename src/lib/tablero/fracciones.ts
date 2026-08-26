@@ -8,12 +8,17 @@ import { parseISO } from "date-fns";
 
 export type FraccionStr = "0.10" | "0.25" | "0.50" | "0.75" | "1";
 
-export const FRACCIONES: { value: FraccionStr; label: string; detalle: string }[] = [
-  { value: "0.10", label: "mín", detalle: "Mínimo · ~1,5 h con viaje" },
-  { value: "0.25", label: "¼", detalle: "Un cuarto · 2 h" },
-  { value: "0.50", label: "½", detalle: "Media · 4 h" },
-  { value: "0.75", label: "¾", detalle: "Tres cuartos · 6 h" },
-  { value: "1", label: "1", detalle: "Jornada completa · 8 h" },
+/**
+ * `horas` es la lectura de negocio, no la multiplicación: el mínimo no son 0,8 h (0,10 ×
+ * 8) sino ~1,5 h, porque lo que hace corta a esa jornada es el viaje, no el trabajo. Va
+ * en la tabla y no calculado en cada pantalla para que ese criterio viva en un solo lado.
+ */
+export const FRACCIONES: { value: FraccionStr; label: string; detalle: string; horas: number }[] = [
+  { value: "0.10", label: "mín", detalle: "Mínimo · ~1,5 h con viaje", horas: 1.5 },
+  { value: "0.25", label: "¼", detalle: "Un cuarto · 2 h", horas: 2 },
+  { value: "0.50", label: "½", detalle: "Media · 4 h", horas: 4 },
+  { value: "0.75", label: "¾", detalle: "Tres cuartos · 6 h", horas: 6 },
+  { value: "1", label: "1", detalle: "Jornada completa · 8 h", horas: 8 },
 ];
 
 export const CAPACIDAD_DIARIA = 1;

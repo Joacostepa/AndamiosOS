@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { colorTipo, semaforo, CORAL, ACENTO_BG, URGENCIA_ALTA_BORDE } from "@/lib/tablero/colores";
-import { fraccionLabel } from "@/lib/tablero/fracciones";
+import { fraccionLabel, repartirJornadas, FRACCIONES, type FraccionStr } from "@/lib/tablero/fracciones";
 import { partesTitulo, normalizar } from "@/lib/tablero/titulo";
 import type { OtTablero } from "@/lib/tablero/tipos";
 
@@ -58,6 +58,94 @@ export type ObraPlanificada = {
   fechaInicio: string;
   jornadas: number;
 };
+
+// ── Filtros de la bandeja ────────────────────────────────────────────────────
+//
+// Dos ejes, y sólo dos: TIPO y DURACIÓN. Contestan la pregunta con la que se llena un
+// día — "me queda media jornada libre en la cuadrilla 1, ¿qué desarme corto tengo?"—,
+// que hoy se resuelve escaneando la lista entera.
+//
+// LOS CHIPS LLEVAN EL NÚMERO Y SÓLO APARECEN LOS QUE TIENEN OBRAS. Así no hay baldes
+// vacíos que ocupen lugar, y de paso el panel muestra la forma de la bandeja sin que
+// haya que filtrar nada. Medido sobre las 34 obras de hoy: 25 dicen "1 jornada", 5 son
+// de varios días y 4 de ¼. Ese "25" es además un diagnóstico — la duración estimada está
+// cargada en el 19% de las OTs, así que buena parte de ese grupo es el valor por defecto
+// y no una medición. El filtro no puede ser mejor que el dato que filtra.
+//
+// NO SE PERSISTEN entre sesiones, a diferencia del panel colapsado o las cuadrillas
+// visibles: un filtro que sobrevive a un refresh es cómo alguien termina creyendo que la
+// bandeja está vacía.
+
+/** Los cinco valores de fracción más el cajón de las obras que no entran en un día. */
+type ClaveDuracion = FraccionStr | "varios";
+
+/**
+ * En qué balde de duración cae una obra, medido sobre lo que le QUEDA.
+ *
+ * Lo que importa para llenar un día es el trabajo que falta, no el original: a la obra de
+ * Callao le quedan 6 de 8 jornadas, y si le quedara una sola tendría que aparecer entre
+ * las de una jornada aunque haya empezado siendo de ocho.
+ *
+ * Las fracciones pendientes son las ÚLTIMAS del reparto, igual que cuando se planifica
+ * (ver asignarObra): así el resto fraccionario cae donde va a caer de verdad.
+ */
+function duracionDe(obra: ObraPendiente): { clave: ClaveDuracion; orden: number; label: string } {
+  const todas = repartirJornadas(obra.ot.jornadas);
+  const quedan = todas.slice(Math.max(0, todas.length - obra.pendientes));
+
+  if (quedan.length > 1) {
+    return { clave: "varios", orden: 99, label: `Varios días` };
+  }
+  const f = quedan[0] ?? "1";
+  const i = FRACCIONES.findIndex((x) => x.value === f);
+  const fr = FRACCIONES[i] ?? FRACCIONES[FRACCIONES.length - 1];
+  return {
+    clave: fr.value,
+    orden: i,
+    // Las dos unidades juntas: el sistema guarda jornadas y el planificador piensa en
+    // horas. Con una sola, alguien tiene que traducir en la cabeza cada vez.
+    label: fr.value === "1" ? "1 jornada · 8 h" : `${fr.label} · ${fr.horas} h`,
+  };
+}
+
+const TIPOS_BANDEJA = [
+  { clave: "armado", label: "Armado" },
+  { clave: "desarme", label: "Desarme" },
+  { clave: "otro", label: "Otro" },
+] as const;
+
+/** El tipo de la OT, normalizado a los tres cajones que muestra el filtro. */
+function tipoDe(ot: OtTablero): string {
+  return ot.tipo === "armado" || ot.tipo === "desarme" ? ot.tipo : "otro";
+}
+
+function Chip({
+  activo,
+  onClick,
+  children,
+  cantidad,
+}: {
+  activo: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+  cantidad: number;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] transition-colors"
+      style={{
+        backgroundColor: activo ? CORAL : undefined,
+        borderColor: activo ? CORAL : undefined,
+        color: activo ? "#fff" : undefined,
+      }}
+    >
+      {children}
+      <span className={activo ? "opacity-80" : "text-muted-foreground"}>{cantidad}</span>
+    </button>
+  );
+}
 
 /**
  * La habilitación deja de ser una franja de color y pasa a ser el criterio de
@@ -277,6 +365,10 @@ export function PanelSinAsignar({
   const { setNodeRef, isOver, active } = useDroppable({ id: ID_BANDEJA });
   const soltando = isOver && String(active?.id ?? "").startsWith("bloque:");
 
+  const [tipoFiltro, setTipoFiltro] = useState<string | null>(null);
+  const [duracionFiltro, setDuracionFiltro] = useState<ClaveDuracion | null>(null);
+  const hayFiltro = tipoFiltro !== null || duracionFiltro !== null;
+
   const q = normalizar(busqueda.trim());
 
   const filtradas = useMemo(() => {
@@ -299,8 +391,46 @@ export function PanelSinAsignar({
     return orden.filter((o) => normalizar(`${o.ot.titulo} ${o.ot.tecnico ?? ""}`).includes(q));
   }, [ots, q, hoy]);
 
-  const listas = filtradas.filter((o) => !habilitacionPendiente(o.ot));
-  const pendientesHab = filtradas.filter((o) => habilitacionPendiente(o.ot));
+  // Los contadores de cada chip se cuentan sobre la lista filtrada por el OTRO eje: el
+  // número dice cuántas obras quedarían si lo apretaras, que es lo que uno espera de un
+  // filtro. El chip activo se dibuja siempre, aunque quede en cero, para que no
+  // desaparezca abajo del dedo.
+  const { chipsTipo, chipsDuracion, conFiltros } = useMemo(() => {
+    const porTipo = (o: ObraPendiente) => tipoFiltro === null || tipoDe(o.ot) === tipoFiltro;
+    const porDuracion = (o: ObraPendiente) =>
+      duracionFiltro === null || duracionDe(o).clave === duracionFiltro;
+
+    const paraTipo = filtradas.filter(porDuracion);
+    const paraDuracion = filtradas.filter(porTipo);
+
+    const chipsTipo = TIPOS_BANDEJA.map((t) => ({
+      ...t,
+      cantidad: paraTipo.filter((o) => tipoDe(o.ot) === t.clave).length,
+    })).filter((t) => t.cantidad > 0 || t.clave === tipoFiltro);
+
+    const baldes = new Map<ClaveDuracion, { label: string; orden: number; cantidad: number }>();
+    for (const o of paraDuracion) {
+      const d = duracionDe(o);
+      const prev = baldes.get(d.clave);
+      baldes.set(d.clave, { label: d.label, orden: d.orden, cantidad: (prev?.cantidad ?? 0) + 1 });
+    }
+    if (duracionFiltro && !baldes.has(duracionFiltro)) {
+      const ref = FRACCIONES.find((f) => f.value === duracionFiltro);
+      baldes.set(duracionFiltro, {
+        label: duracionFiltro === "varios" ? "Varios días" : `${ref?.label} · ${ref?.horas} h`,
+        orden: 98,
+        cantidad: 0,
+      });
+    }
+    const chipsDuracion = [...baldes.entries()]
+      .map(([clave, v]) => ({ clave, ...v }))
+      .sort((a, b) => a.orden - b.orden);
+
+    return { chipsTipo, chipsDuracion, conFiltros: filtradas.filter(porTipo).filter(porDuracion) };
+  }, [filtradas, tipoFiltro, duracionFiltro]);
+
+  const listas = conFiltros.filter((o) => !habilitacionPendiente(o.ot));
+  const pendientesHab = conFiltros.filter((o) => habilitacionPendiente(o.ot));
 
   // Sólo se buscan las ya planificadas cuando hay texto: sin búsqueda, la sección no
   // aporta nada y le sacaría lugar a la bandeja.
@@ -355,7 +485,7 @@ export function PanelSinAsignar({
           className="rounded-full px-1.5 text-[11px] font-medium"
           style={{ backgroundColor: "#FAEEDA", color: "#854F0B" }}
         >
-          {filtradas.length === ots.length ? ots.length : `${filtradas.length}/${ots.length}`}
+          {conFiltros.length === ots.length ? ots.length : `${conFiltros.length}/${ots.length}`}
         </span>
         <button
           type="button"
@@ -378,13 +508,46 @@ export function PanelSinAsignar({
         />
       </div>
 
+      {(chipsTipo.length > 0 || chipsDuracion.length > 0) && (
+        <div className="space-y-1 border-b px-2.5 py-1.5">
+          <div className="flex flex-wrap gap-1">
+            {chipsTipo.map((t) => {
+              const Icono = ICONO_TIPO[colorTipo(t.clave).icono];
+              return (
+                <Chip
+                  key={t.clave}
+                  activo={tipoFiltro === t.clave}
+                  cantidad={t.cantidad}
+                  onClick={() => setTipoFiltro((v) => (v === t.clave ? null : t.clave))}
+                >
+                  <Icono className="h-3 w-3" aria-hidden />
+                  {t.label}
+                </Chip>
+              );
+            })}
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {chipsDuracion.map((d) => (
+              <Chip
+                key={d.clave}
+                activo={duracionFiltro === d.clave}
+                cantidad={d.cantidad}
+                onClick={() => setDuracionFiltro((v) => (v === d.clave ? null : d.clave))}
+              >
+                {d.label}
+              </Chip>
+            ))}
+          </div>
+        </div>
+      )}
+
       {soltando && (
         <p className="px-2.5 py-1.5 text-[11px]" style={{ color: CORAL }}>
           Soltá para devolver la obra a sin asignar
         </p>
       )}
 
-      {filtradas.length > 0 || yaPlanificadas.length > 0 ? (
+      {conFiltros.length > 0 || yaPlanificadas.length > 0 ? (
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-2">
           <Grupo
             titulo="Listas para planificar"
@@ -457,9 +620,26 @@ export function PanelSinAsignar({
           )}
         </div>
       ) : (
-        <p className="flex flex-1 items-center justify-center px-4 text-center text-[11px] text-muted-foreground">
-          {ots.length === 0 ? "No quedan obras sin asignar." : "Ninguna obra coincide con la búsqueda."}
-        </p>
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4 text-center text-[11px] text-muted-foreground">
+          <p>
+            {ots.length === 0
+              ? "No quedan obras sin asignar."
+              : hayFiltro
+                ? "Ninguna obra con esos filtros."
+                : "Ninguna obra coincide con la búsqueda."}
+          </p>
+          {/* Una lista vacía sin explicación es cómo alguien concluye que la bandeja se
+              quedó sin trabajo. Se dice por qué y se ofrece el camino de vuelta. */}
+          {hayFiltro && (
+            <button
+              type="button"
+              onClick={() => { setTipoFiltro(null); setDuracionFiltro(null); }}
+              className="rounded border px-2 py-1 text-[11px] hover:border-foreground/25"
+            >
+              Ver todas ({filtradas.length})
+            </button>
+          )}
+        </div>
       )}
     </div>
   );

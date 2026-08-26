@@ -23,7 +23,7 @@ import {
 import { useParte, useCerrarJornada, useEditarParte, useEmpleados } from "@/hooks/use-parte";
 import { CORAL } from "@/lib/tablero/colores";
 import type { Bloque } from "@/lib/tablero/bloques";
-import type { CuadrillaTablero, OtTablero } from "@/lib/tablero/tipos";
+import type { OtTablero } from "@/lib/tablero/tipos";
 
 // Formulario de cierre de jornada. Se cierra por OBRA, no por jornada de la cuadrilla:
 // si una cuadrilla hace tres obras el mismo día, cada una se cierra por separado con
@@ -53,7 +53,6 @@ export function FormularioCierre({
   abierto,
   bloque,
   ot,
-  cuadrillas,
   /** Fecha de la jornada que se cierra (un bloque multi-día tiene varias). */
   fecha,
   asignacionId,
@@ -64,7 +63,6 @@ export function FormularioCierre({
   abierto: boolean;
   bloque: Bloque | null;
   ot: OtTablero | undefined;
-  cuadrillas: CuadrillaTablero[];
   fecha: string | null;
   asignacionId: number | null;
   parteId: number | null;
@@ -99,6 +97,7 @@ export function FormularioCierre({
   const [observaciones, setObservaciones] = useState("");
   const [manoObra, setManoObra] = useState<LineaManoObra[]>([]);
   const [viajes, setViajes] = useState(0);
+  const [camionEnObra, setCamionEnObra] = useState(false);
   const [tercerizado, setTercerizado] = useState(false);
   const [costoFlete, setCostoFlete] = useState("");
   const [incidencias, setIncidencias] = useState<LineaIncidencia[]>([]);
@@ -125,6 +124,7 @@ export function FormularioCierre({
       setObservaciones(parteCargado.observaciones ?? "");
       setManoObra(parteCargado.manoObra.map(({ tarea, personas, horaDesde, horaHasta }) => ({ tarea, personas, horaDesde, horaHasta })));
       setViajes(parteCargado.flete?.cantidad ?? 0);
+      setCamionEnObra(parteCargado.camionEnObra);
       setTercerizado(parteCargado.flete?.tercerizado ?? false);
       setCostoFlete(parteCargado.flete?.costoManual ? String(parteCargado.flete.costoManual) : "");
       setIncidencias(parteCargado.incidencias);
@@ -202,6 +202,7 @@ export function FormularioCierre({
       fecha: fechaParte || (fecha ?? ""),
       cuadrillaId: cuadrillaId ? Number(cuadrillaId) : null,
       punteroId: punteroId ? Number(punteroId) : null,
+      camionEnObra,
       estado,
       motivoNoEjec: ejecutado ? null : motivo || null,
       sector: sector.trim() || null,
@@ -235,8 +236,8 @@ export function FormularioCierre({
       });
       return;
     }
-    if (estado === "ejecutado" && !cuadrillaId) {
-      toast.error("Falta la cuadrilla que ejecutó la jornada");
+    if (estado === "ejecutado" && !punteroId) {
+      toast.error("Falta el capataz que estuvo a cargo de la jornada");
       return;
     }
     if (preguntarPorLaObra && obraFinalizada === null) {
@@ -365,43 +366,27 @@ export function FormularioCierre({
             ) : (
               <>
                 {/* ── Datos del día ── */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label>Cuadrilla real</Label>
-                    <Select
-                      items={Object.fromEntries(cuadrillas.map((c) => [String(c.id), c.nombre]))}
-                      value={cuadrillaId}
-                      onValueChange={(v) => setCuadrillaId(v ?? "")}
-                      disabled={!enModoEdicion}
-                    >
-                      <SelectTrigger><SelectValue placeholder="Cuadrilla" /></SelectTrigger>
-                      <SelectContent>
-                        {cuadrillas.map((c) => (
-                          <SelectItem key={c.id} value={String(c.id)}>{c.nombre}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1.5">
-                    {/* El puntero es un hecho del día: cambia con ausencias y rotaciones,
-                        por eso va en el parte y no en la fila del tablero. */}
-                    <Label>Puntero</Label>
-                    <Select
-                      items={Object.fromEntries((empleados ?? []).map((e) => [String(e.id), e.nombre]))}
-                      value={punteroId}
-                      onValueChange={(v) => setPunteroId(v ?? "")}
-                      disabled={!enModoEdicion}
-                    >
-                      <SelectTrigger><SelectValue placeholder="Responsable de cuadrilla" /></SelectTrigger>
-                      <SelectContent className="max-h-[50vh]">
-                        {(empleados ?? []).map((e) => (
-                          <SelectItem key={e.id} value={String(e.id)}>
-                            {e.nombre}{e.escala ? ` · ${e.escala}` : ""}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                {/* La cuadrilla no se pregunta: se guarda la que estaba planificada. "Cuadrilla 3"
+                    es una etiqueta que cambia de integrantes todos los días; quien responde por la
+                    jornada es una persona, y ese es el dato que se carga. La cuadrilla sigue
+                    viajando al parte porque el informe de obra la usa. */}
+                <div className="space-y-1.5">
+                  <Label>Capataz</Label>
+                  <Select
+                    items={Object.fromEntries((empleados ?? []).map((e) => [String(e.id), e.nombre]))}
+                    value={punteroId}
+                    onValueChange={(v) => setPunteroId(v ?? "")}
+                    disabled={!enModoEdicion}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Quién estuvo a cargo" /></SelectTrigger>
+                    <SelectContent className="max-h-[50vh]">
+                      {(empleados ?? []).map((e) => (
+                        <SelectItem key={e.id} value={String(e.id)}>
+                          {e.nombre}{e.escala ? ` · ${e.escala}` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="space-y-1.5">
@@ -519,6 +504,19 @@ export function FormularioCierre({
                     <span className="text-xs text-muted-foreground">
                       viajes redondos · sugerido {sugerenciaViajes}
                     </span>
+                  </div>
+                  {/* En el parte y no en la línea de flete: la línea no existe con cero
+                      viajes, y el camión que se queda es un hecho del día igual. */}
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      checked={camionEnObra}
+                      onCheckedChange={(v) => setCamionEnObra(v === true)}
+                      disabled={!enModoEdicion}
+                      id="camion-en-obra"
+                    />
+                    <Label htmlFor="camion-en-obra" className="text-sm font-normal">
+                      El camión quedó en obra
+                    </Label>
                   </div>
                   <div className="flex items-center gap-2">
                     <Checkbox

@@ -44,6 +44,8 @@ function valoresParte(datos: DatosCierre, otId: number): Record<string, unknown>
     x_tareas: ejecutado ? (datos.tareas ?? false) : false,
     x_bloqueos: datos.observaciones ?? false,
     x_puntero_id: datos.punteroId ?? false,
+    // Sólo tiene sentido en el día que se trabajó: si no se ejecutó, el camión no fue.
+    x_camion_en_obra: ejecutado && datos.camionEnObra,
   };
 }
 
@@ -373,7 +375,7 @@ export async function fetchParte(parteId: number): Promise<ParteCargado | null> 
   const [parte] = await read<Record<string, unknown>>("x_aba_parte_diario", [parteId], [
     "x_orden_trabajo_id", "x_fecha", "x_cuadrilla_id", "x_estado", "x_motivo_no_ejec",
     "x_sector", "x_clima", "x_objetivo", "x_tareas", "x_bloqueos", "x_horas_hombre",
-    "x_costo_total", "x_cant_fotos", "x_puntero_id",
+    "x_costo_total", "x_cant_fotos", "x_puntero_id", "x_camion_en_obra",
   ]);
   if (!parte) return null;
 
@@ -397,6 +399,7 @@ export async function fetchParte(parteId: number): Promise<ParteCargado | null> 
     fecha: texto(parte.x_fecha) ?? "",
     cuadrillaId: m2oId(parte.x_cuadrilla_id as [number, string] | false),
     punteroId: m2oId(parte.x_puntero_id as [number, string] | false),
+    camionEnObra: parte.x_camion_en_obra === true,
     estado: parte.x_estado === "no_ejecutado" ? "no_ejecutado" : "ejecutado",
     motivoNoEjec: texto(parte.x_motivo_no_ejec),
     sector: texto(parte.x_sector),

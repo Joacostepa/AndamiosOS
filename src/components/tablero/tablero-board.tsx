@@ -877,7 +877,6 @@ export function TableroBoard() {
         abierto={!!cierre}
         bloque={cierre ? (bloquesPorClave.get(cierre.bloqueKey) ?? null) : null}
         ot={cierre ? otsPorId.get(bloquesPorClave.get(cierre.bloqueKey)?.otId ?? 0) : undefined}
-        cuadrillas={data.cuadrillas}
         fecha={cierre?.fecha ?? null}
         asignacionId={cierre?.asignacionId ?? null}
         parteId={cierre?.parteId ?? null}

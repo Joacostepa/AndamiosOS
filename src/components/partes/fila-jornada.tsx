@@ -16,6 +16,7 @@ import { fraccionLabel } from "@/lib/tablero/fracciones";
 import { ATAJOS_SALIDA, formatHora, horasEfectivas, parseHora } from "@/lib/tablero/horas";
 import { MOMENTOS_FOTO, MOTIVOS_NO_EJEC, TIPOS_INCIDENCIA } from "@/lib/tablero/tipos-parte";
 import { comprimirFoto, pesoLegible, type FotoComprimida } from "@/lib/tablero/imagenes";
+import { useEmpleados } from "@/hooks/use-parte";
 import type { JornadaListado } from "@/lib/tablero/tipos-jornada";
 
 // Una fila del listado de partes. Se edita EN LÍNEA, sin modal: abrir y cerrar un diálogo
@@ -27,7 +28,16 @@ export type Borrador = {
   estado: "ejecutado" | "no_ejecutado";
   motivo: string;
   reprogramarA: string;
+  /**
+   * La cuadrilla NO se pregunta: se arrastra de lo planificado. Sigue viajando al parte
+   * porque el informe de obra la usa, pero elegir "Cuadrilla 1..5" a mano no describía
+   * nada — las cuadrillas se arman y se desarman todos los días.
+   */
   cuadrillaId: string;
+  /** Quién estuvo a cargo. Es el dato que sí identifica quién hizo la jornada. */
+  capatazId: string;
+  /** El camión no volvió: se quedó en la obra. Con el desde/hasta salen las horas paradas. */
+  camionEnObra: boolean;
   /** Texto y no número: tiene que poder estar VACÍO cuando la OT no trae dotación. */
   personas: string;
   desde: string;
@@ -36,7 +46,7 @@ export type Borrador = {
   tercerizado: boolean;
   costoFlete: string;
   sector: string;
-  notas: string;
+  observaciones: string;
   incidenciaTipo: string;
   incidenciaDesc: string;
   /**
@@ -65,6 +75,8 @@ export function borradorDe(j: JornadaListado): Borrador {
     motivo: "",
     reprogramarA: "",
     cuadrillaId: j.cuadrillaId ? String(j.cuadrillaId) : "",
+    capatazId: "",
+    camionEnObra: false,
     personas: j.personalPrevisto > 0 ? String(j.personalPrevisto) : "",
     desde: "08:00",
     hasta: "17:00",
@@ -72,7 +84,7 @@ export function borradorDe(j: JornadaListado): Borrador {
     tercerizado: false,
     costoFlete: "",
     sector: "",
-    notas: "",
+    observaciones: "",
     incidenciaTipo: "",
     incidenciaDesc: "",
     fotos: [],
@@ -103,7 +115,7 @@ export function erroresDe(b: Borrador, j: JornadaListado): string[] {
   if (d !== null && h !== null && h <= d) e.push("La salida tiene que ser posterior a la entrada");
   const p = Number(b.personas);
   if (!b.personas.trim() || !Number.isFinite(p) || p <= 0) e.push("Falta la cantidad de personas");
-  if (!b.cuadrillaId) e.push("Falta la cuadrilla");
+  if (!b.capatazId) e.push("Falta el capataz");
   if (j.ultimaDeLaOt && b.finalizarOt === null) e.push("Falta decir si la OT está finalizada");
   return e;
 }
@@ -128,6 +140,9 @@ export function FilaJornada({
   onToggle: () => void;
   onCambio: (b: Borrador) => void;
 }) {
+  // La lista de empleados cambia muy poco y el hook la cachea, así que pedirla por fila
+  // no cuesta: todas las filas comparten la misma query.
+  const { data: empleados } = useEmpleados();
   const tipo = colorTipo(jornada.tipo);
   const IconoTipo = ICONO_TIPO[tipo.icono];
   const partes = partesTitulo(jornada.titulo);
@@ -270,11 +285,11 @@ export function FilaJornada({
                 </span>
               </label>
               <label className="space-y-1 sm:col-span-2">
-                <span className="text-[11px] font-medium">Notas</span>
+                <span className="text-[11px] font-medium">Observaciones</span>
                 <Textarea
                   rows={2}
-                  value={borrador.notas}
-                  onChange={(e) => set({ notas: e.target.value })}
+                  value={borrador.observaciones}
+                  onChange={(e) => set({ observaciones: e.target.value })}
                   placeholder="Lo que mandó el capataz"
                 />
               </label>
@@ -355,30 +370,49 @@ export function FilaJornada({
 
               {/* ── Cuadrilla real, fletes, sector ── */}
               <div className="grid gap-3 sm:grid-cols-3">
+                {/* El capataz reemplaza a la cuadrilla: "Cuadrilla 3" es una etiqueta que
+                    cambia de integrantes todos los días, y el que responde por la jornada
+                    es una persona. Sale de la base de empleados de Odoo, ordenada por
+                    escala, así que los capataces quedan arriba de la lista. */}
                 <label className="space-y-1">
-                  <span className="text-[11px] font-medium">Cuadrilla que fue</span>
+                  <span className="text-[11px] font-medium">Capataz</span>
                   <Select
-                    items={Object.fromEntries(cuadrillas.map((c) => [String(c.id), c.nombre]))}
-                    value={borrador.cuadrillaId}
-                    onValueChange={(v) => v && set({ cuadrillaId: v })}
+                    items={Object.fromEntries((empleados ?? []).map((e) => [String(e.id), e.nombre]))}
+                    value={borrador.capatazId}
+                    onValueChange={(v) => v && set({ capatazId: v })}
                   >
-                    <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {cuadrillas.map((c) => (
-                        <SelectItem key={c.id} value={String(c.id)}>{c.nombre}</SelectItem>
+                    <SelectTrigger className="h-8">
+                      <SelectValue placeholder="Quién estuvo a cargo" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-[50vh]">
+                      {(empleados ?? []).map((e) => (
+                        <SelectItem key={e.id} value={String(e.id)}>
+                          {e.nombre}{e.escala ? ` · ${e.escala}` : ""}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </label>
-                <label className="space-y-1">
+                <div className="space-y-1">
                   <span className="text-[11px] font-medium">Viajes de flete</span>
-                  <Input
-                    className="h-8 w-20"
-                    inputMode="numeric"
-                    value={borrador.fletes}
-                    onChange={(e) => set({ fletes: e.target.value.replace(/[^\d]/g, "") })}
-                  />
-                </label>
+                  <div className="flex items-center gap-3">
+                    <Input
+                      className="h-8 w-20"
+                      inputMode="numeric"
+                      value={borrador.fletes}
+                      onChange={(e) => set({ fletes: e.target.value.replace(/[^\d]/g, "") })}
+                    />
+                    {/* Va acá y no en la línea de flete: el camión que se queda es un hecho
+                        del día, y la línea de flete ni siquiera existe con cero viajes. */}
+                    <label className="flex items-center gap-1.5 text-[11px]">
+                      <Checkbox
+                        checked={borrador.camionEnObra}
+                        onCheckedChange={(v) => set({ camionEnObra: v === true })}
+                      />
+                      Quedó en obra
+                    </label>
+                  </div>
+                </div>
                 <label className="space-y-1">
                   <span className="text-[11px] font-medium">Sector / frente</span>
                   <Input
@@ -410,11 +444,11 @@ export function FilaJornada({
               )}
 
               <label className="space-y-1 block">
-                <span className="text-[11px] font-medium">Notas</span>
+                <span className="text-[11px] font-medium">Observaciones</span>
                 <Textarea
                   rows={2}
-                  value={borrador.notas}
-                  onChange={(e) => set({ notas: e.target.value })}
+                  value={borrador.observaciones}
+                  onChange={(e) => set({ observaciones: e.target.value })}
                   placeholder="Lo que mandó el capataz por WhatsApp"
                 />
               </label>

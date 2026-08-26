@@ -92,8 +92,13 @@ export type Empleado = { id: number; nombre: string; escala: string | null };
 export type DatosCierre = {
   fecha: string;
   cuadrillaId: number | null;
-  /** Responsable de la cuadrilla ese día. Cambia con ausencias y rotaciones. */
+  /** El capataz que estuvo a cargo ese día. Cambia con ausencias y rotaciones. */
   punteroId: number | null;
+  /**
+   * El camión no volvió: se quedó en la obra. Con el desde/hasta del parte alcanza para
+   * medir cuánto tiempo estuvo parado, así que no hace falta cargar las horas aparte.
+   */
+  camionEnObra: boolean;
   estado: EstadoParte;
   motivoNoEjec: string | null;
   sector: string | null;
@@ -123,6 +128,7 @@ export type ParteCargado = {
   fecha: string;
   cuadrillaId: number | null;
   punteroId: number | null;
+  camionEnObra: boolean;
   estado: EstadoParte;
   motivoNoEjec: string | null;
   sector: string | null;

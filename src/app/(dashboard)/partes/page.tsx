@@ -41,8 +41,11 @@ function aDatosCierre(b: Borrador, j: JornadaListado): DatosCierre {
   const personas = Number(b.personas) || 0;
   return {
     fecha: j.fecha,
+    // La cuadrilla ya no se pregunta: viaja la planificada, que es la que usa el informe
+    // de obra. Lo que se carga a mano es el capataz.
     cuadrillaId: b.cuadrillaId ? Number(b.cuadrillaId) : null,
-    punteroId: null,
+    punteroId: b.capatazId ? Number(b.capatazId) : null,
+    camionEnObra: b.camionEnObra,
     estado: b.estado,
     motivoNoEjec: ejecutado ? null : (b.motivo as DatosCierre["motivoNoEjec"]),
     sector: b.sector.trim() || null,
@@ -51,7 +54,7 @@ function aDatosCierre(b: Borrador, j: JornadaListado): DatosCierre {
     // El proceso nunca separó objetivo de tareas: los 1276 partes tienen los dos vacíos y
     // todo el relato en notas. Un solo campo de texto.
     tareas: null,
-    observaciones: b.notas.trim() || null,
+    observaciones: b.observaciones.trim() || null,
     manoObra: ejecutado && personas > 0
       ? [{ tarea: j.tipo === "desarme" ? "desarme" : "armado", personas, horaDesde: desde, horaHasta: hasta }]
       : [],

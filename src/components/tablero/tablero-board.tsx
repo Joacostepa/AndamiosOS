@@ -29,6 +29,7 @@ import { DialogoCandado, type PedidoConfirmacion } from "./dialogo-candado";
 import { useCandado } from "@/hooks/use-habilitaciones";
 import {
   useTablero,
+  useFeriados,
   useCrearAsignaciones,
   useActualizarAsignaciones,
   useMoverAsignaciones,
@@ -154,6 +155,13 @@ export function TableroBoard() {
   const hasta = iso(addDays(inicioVisible, diasVisibles + 6));
 
   const { data, isLoading, isFetching, error, refetch } = useTablero(desde, hasta);
+  // Los feriados son marca visual y nada más: no cambian la capacidad de la cuadrilla ni
+  // el reparto de una obra de varias jornadas (ver src/lib/feriados/argentina.ts).
+  const { data: feriadosData } = useFeriados(desde, hasta);
+  const feriados = useMemo(
+    () => new Map((feriadosData?.feriados ?? []).map((f) => [f.fecha, f.nombre])),
+    [feriadosData],
+  );
   const crear = useCrearAsignaciones();
   const actualizar = useActualizarAsignaciones();
   const mover = useMoverAsignaciones();
@@ -723,6 +731,7 @@ export function TableroBoard() {
               contenedorRef={asignarContenedor}
               cuadrillas={cuadrillasVisibles}
               fechas={fechas}
+              feriados={feriados}
               semanaCentrada={semanaCentrada}
               asignaciones={data.asignaciones}
               ots={otsPorId}

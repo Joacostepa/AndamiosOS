@@ -53,6 +53,20 @@ export function colorTipo(tipo: string | null | undefined): ColorTipo {
   return TIPO_OT[tipo ?? ""] ?? TIPO_OT_NEUTRO;
 }
 
+// ── Feriado nacional ─────────────────────────────────────────────────────────
+//
+// Violeta apagado, y no por gusto: es el único tono que no está hablando de otra cosa en
+// el tablero. El beige (#F1EFE8) ya es la canaleta del domingo, el coral es hoy y la
+// acción, el rojo es error y sobreasignación, el ámbar es "obra empezada", y el azul y el
+// ámbar suaves son el relleno de las tarjetas de armado y desarme. Un feriado pintado con
+// cualquiera de esos se leería como un estado de las obras y no del día.
+//
+// La columna va apenas teñida y el encabezado más marcado: lo que tiene que saltar es el
+// DÍA, y las tarjetas que caigan encima tienen que seguir legibles.
+export const FERIADO_COLUMNA = "#F4F0FA";
+export const FERIADO_ENCABEZADO = "#E9E1F6";
+export const FERIADO_TEXTO = "#5B4B8A";
+
 // Semáforo de habilitación (x_hab_semaforo). Se ve como un punto en la esquina de la
 // tarjeta: advierte, no bloquea — las obras sin habilitar entran igual al tablero.
 export const SEMAFORO: Record<string, { color: string; label: string }> = {

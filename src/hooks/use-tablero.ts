@@ -8,6 +8,7 @@ import {
   type QueryClient,
 } from "@tanstack/react-query";
 import { toast } from "sonner";
+import type { Feriado } from "@/lib/feriados/argentina";
 import type {
   AsignacionTablero,
   CambioAsignacion,
@@ -58,6 +59,28 @@ export function useTablero(desde: string, hasta: string) {
     refetchOnWindowFocus: false,
     retry: 2,
     retryDelay: (intento) => 800 * 2 ** intento,
+  });
+}
+
+/**
+ * Feriados nacionales del rango visible.
+ *
+ * Query aparte de la del tablero: cambian una vez al año, no dependen de Odoo y no
+ * tienen por qué volver a pedirse cada vez que se refresca la semana. Si la API de
+ * terceros no contesta, el servidor devuelve el respaldo local, así que esto no falla.
+ */
+export function useFeriados(desde: string, hasta: string) {
+  // Se piden los AÑOS completos, no el rango exacto: el rango del tablero crece al
+  // scrollear, y cachear por año con datos recortados al rango viejo dejaría feriados
+  // afuera sin volver a preguntar. Un año entero son 19 fechas.
+  const anios: [string, string] = [`${desde.slice(0, 4)}-01-01`, `${hasta.slice(0, 4)}-12-31`];
+  return useQuery({
+    queryKey: ["feriados", ...anios],
+    queryFn: () => pedir<{ feriados: Feriado[] }>(`/api/feriados?desde=${anios[0]}&hasta=${anios[1]}`),
+    enabled: !!desde && !!hasta,
+    staleTime: 24 * 60 * 60 * 1000,
+    gcTime: 24 * 60 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 }
 

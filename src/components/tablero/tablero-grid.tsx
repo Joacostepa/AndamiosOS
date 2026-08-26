@@ -10,7 +10,7 @@ import { TarjetaAsignacion } from "./tarjeta-asignacion";
 import { agruparBloques, esDomingo, repartirEnCarriles } from "@/lib/tablero/bloques";
 import { accionDeCierre, bloqueCerrado, type AccionCierre } from "@/lib/tablero/cierre";
 import { MOTIVOS_NO_EJEC } from "@/lib/tablero/tipos-parte";
-import { colorCuadrilla, CORAL } from "@/lib/tablero/colores";
+import { colorCuadrilla, CORAL, FERIADO_ENCABEZADO, FERIADO_TEXTO } from "@/lib/tablero/colores";
 import { ocupacionCelda, capacidadDelRango } from "@/lib/tablero/fracciones";
 import type { FraccionStr } from "@/lib/tablero/fracciones";
 import type { Bloque } from "@/lib/tablero/bloques";
@@ -78,6 +78,29 @@ const ALTO_MIN_FILA = 72;
 
 const DECIMAL = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 });
 
+/** Día del encabezado: "mié 26". Se usa suelto y también dentro del rótulo del feriado. */
+function DiaDelEncabezado({ d, esHoy }: { d: Date; esHoy: boolean }) {
+  return (
+    <>
+      <span className="text-[10px] uppercase text-muted-foreground">
+        {format(d, "EEE", { locale: es })}
+      </span>
+      {/* Hoy sale del canal de FONDO: pintar la columna de rosado usaba el mismo canal
+          que el estado de error y el día de hoy parecía roto. */}
+      {esHoy ? (
+        <span
+          className="flex items-center justify-center px-1 text-[12px] font-semibold tabular-nums text-white"
+          style={{ backgroundColor: CORAL, borderRadius: 10, height: 19, minWidth: 19 }}
+        >
+          {format(d, "d")}
+        </span>
+      ) : (
+        <span className="text-[13px] font-medium">{format(d, "d")}</span>
+      )}
+    </>
+  );
+}
+
 function esLunes(fecha: string): boolean {
   return parseISO(fecha).getDay() === 1;
 }
@@ -115,6 +138,7 @@ function anchoDeColumna(
 export function TableroGrid({
   cuadrillas,
   fechas,
+  feriados,
   semanaCentrada,
   asignaciones,
   ots,
@@ -132,6 +156,12 @@ export function TableroGrid({
 }: {
   cuadrillas: CuadrillaTablero[];
   fechas: string[];
+  /**
+   * Feriados nacionales por fecha (fecha → nombre). Es SÓLO una marca visual: la columna
+   * se tiñe y el encabezado lo dice. No cambia la capacidad ni el reparto de jornadas —
+   * a diferencia del domingo, un feriado sigue siendo un día hábil para el tablero.
+   */
+  feriados: Map<string, string>;
   /**
    * Los 7 días de la semana centrada en el viewport: el período contra el que se mide la
    * carga de cada fila. No alcanza con `fechas`, que es todo el rango cargado y crece al
@@ -344,6 +374,9 @@ export function TableroGrid({
           const esHoy = isSameDay(d, hoy);
           const canaleta = colapsado(f);
           const domingoActivo = domingosActivos.has(f);
+          // Un feriado que cae domingo no se anuncia: la canaleta mide 28px y el dato no
+          // agrega nada — ese día ya no se trabaja por domingo.
+          const feriado = canaleta ? null : (feriados.get(f) ?? null);
           return (
             <div
               key={`h-${f}`}
@@ -353,10 +386,11 @@ export function TableroGrid({
               onPointerMove={moverPan}
               onPointerUp={terminarPan}
               onPointerCancel={terminarPan}
+              title={feriado ?? undefined}
               style={{
                 // Separador de semana: ubicarse sin tener que leer las fechas.
                 borderLeft: esLunes(f) ? "2px solid var(--border)" : undefined,
-                backgroundColor: canaleta ? "#F1EFE8" : "var(--card)",
+                backgroundColor: canaleta ? "#F1EFE8" : feriado ? FERIADO_ENCABEZADO : "var(--card)",
               }}
             >
               {canaleta ? (
@@ -372,24 +406,23 @@ export function TableroGrid({
                       <span className="text-[11px] text-muted-foreground">domingo</span>
                       <span className="mt-0.5 text-[13px] font-medium">{format(d, "d")}</span>
                     </span>
-                  ) : (
-                    <>
-                      <span className="text-[10px] uppercase text-muted-foreground">
-                        {format(d, "EEE", { locale: es })}
+                  ) : feriado ? (
+                    // El feriado se NOMBRA, no se insinúa: la palabra arriba y el día
+                    // abajo, igual que el domingo trabajado. El nombre entero va en el
+                    // title, porque "Puente turístico no laborable" no entra en 168px.
+                    <span className="flex flex-col items-center leading-none">
+                      <span
+                        className="text-[9px] font-semibold uppercase tracking-wide"
+                        style={{ color: FERIADO_TEXTO }}
+                      >
+                        Feriado
                       </span>
-                      {/* Hoy sale del canal de FONDO: pintar la columna de rosado usaba el
-                          mismo canal que el estado de error y el día de hoy parecía roto. */}
-                      {esHoy ? (
-                        <span
-                          className="flex items-center justify-center px-1 text-[12px] font-semibold tabular-nums text-white"
-                          style={{ backgroundColor: CORAL, borderRadius: 10, height: 19, minWidth: 19 }}
-                        >
-                          {format(d, "d")}
-                        </span>
-                      ) : (
-                        <span className="text-[13px] font-medium">{format(d, "d")}</span>
-                      )}
-                    </>
+                      <span className="mt-0.5 flex items-center gap-1.5">
+                        <DiaDelEncabezado d={d} esHoy={esHoy} />
+                      </span>
+                    </span>
+                  ) : (
+                    <DiaDelEncabezado d={d} esHoy={esHoy} />
                   )}
                   {diasTodasSobre.has(f) && (
                     <AlertTriangle
@@ -465,6 +498,7 @@ export function TableroGrid({
                       esDomingo={esDomingo(f)}
                       colapsada={colapsado(f)}
                       inicioSemana={esLunes(f)}
+                      feriado={feriados.has(f)}
                       pasada={f < hoyISO}
                       fracciones={enCelda(cuadrilla.id, f).map((a) => a.fraccion)}
                     />

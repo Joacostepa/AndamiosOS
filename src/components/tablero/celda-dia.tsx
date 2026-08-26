@@ -2,7 +2,7 @@
 
 import { useDroppable } from "@dnd-kit/core";
 import { ocupacionCelda } from "@/lib/tablero/fracciones";
-import { colorOcupacion, ACENTO_BG, CORAL, RIEL_OCUPACION } from "@/lib/tablero/colores";
+import { colorOcupacion, ACENTO_BG, CORAL, FERIADO_COLUMNA, RIEL_OCUPACION } from "@/lib/tablero/colores";
 
 // Celda cuadrilla × día: es el fondo droppable de la columna y lleva la barra de
 // ocupación al pie. Ocupa todos los carriles de la fila (grid-row 1 / -1), así que las
@@ -27,6 +27,7 @@ export function CeldaDia({
   esDomingo,
   colapsada = false,
   inicioSemana = false,
+  feriado = false,
   pasada = false,
   fracciones,
 }: {
@@ -38,6 +39,11 @@ export function CeldaDia({
   colapsada?: boolean;
   /** Lunes: lleva el separador de semana, que baja por toda la grilla. */
   inicioSemana?: boolean;
+  /**
+   * Feriado nacional: la columna se tiñe para que el día se lea de un vistazo. Es SÓLO
+   * eso — la celda sigue aceptando drop y sumando capacidad como cualquier día hábil.
+   */
+  feriado?: boolean;
   /** Anterior a hoy: fondo apenas distinto para ver dónde corta el presente. */
   pasada?: boolean;
   fracciones: number[];
@@ -60,13 +66,17 @@ export function CeldaDia({
         // El pasado lleva un gris neutro MUY tenue: sirve para ver de un vistazo dónde
         // corta el presente y nada más. No compite con el pill coral de hoy ni con los
         // estados de capacidad, porque no significa nada — sólo "esto ya fue".
+        // El feriado gana sobre el gris del pasado: uno dice "esto ya fue" y el otro es
+        // un dato del día que vale igual antes y después de hoy.
         backgroundColor: dropActivo
           ? ACENTO_BG
           : colapsada
             ? "#F1EFE8"
-            : pasada
-              ? "color-mix(in oklch, var(--foreground) 2.5%, transparent)"
-              : undefined,
+            : feriado
+              ? FERIADO_COLUMNA
+              : pasada
+                ? "color-mix(in oklch, var(--foreground) 2.5%, transparent)"
+                : undefined,
         // El separador de semana recorre la altura completa: en el encabezado solo, a
         // 40px, no alcanza para ubicarse cuando se scrollea entre semanas.
         borderLeft: inicioSemana ? "2px solid var(--border)" : undefined,

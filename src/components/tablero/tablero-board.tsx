@@ -53,6 +53,7 @@ import type { MovimientoAsignacion, NuevaAsignacion, TableroPayload } from "@/li
 
 const CLAVE_CUADRILLAS = "tablero:cuadrillas";
 const CLAVE_PANEL = "tablero:panel-colapsado";
+const CLAVE_DOMINGOS = "tablero:domingos-abiertos";
 
 /** Ancho de la columna fija de cuadrillas: hay que descontarlo al hacer snap de semana. */
 const ANCHO_RECURSO = 168;
@@ -65,6 +66,24 @@ const UMBRAL_BORDE = 240;
 const MAX_SEMANAS = 8;
 
 const iso = (d: Date) => format(d, "yyyy-MM-dd");
+
+/**
+ * Domingos habilitados a mano. Se guardan porque planificar un domingo lleva varios pasos
+ * —abrirlo, arrastrar, cerrar la jornada— y un refresco en el medio no tiene que plegarlo.
+ * Se descartan los anteriores a hoy: trabajar un domingo es excepcional, y sin poda la
+ * lista crecería para siempre con fechas que ya no se miran.
+ */
+function leerDomingosGuardados(hoyISO: string): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const crudo = window.localStorage.getItem(CLAVE_DOMINGOS);
+    const fechas = crudo ? (JSON.parse(crudo) as unknown) : null;
+    if (!Array.isArray(fechas)) return [];
+    return fechas.filter((f): f is string => typeof f === "string" && f >= hoyISO);
+  } catch {
+    return [];
+  }
+}
 
 function leerVisiblesGuardadas(): number[] | null {
   if (typeof window === "undefined") return null;
@@ -139,6 +158,9 @@ export function TableroBoard() {
   const [panelColapsado, setPanelColapsado] = useState<boolean>(
     () => typeof window !== "undefined" && window.localStorage.getItem(CLAVE_PANEL) === "true",
   );
+  const [domingosAbiertos, setDomingosAbiertos] = useState<Set<string>>(
+    () => new Set(leerDomingosGuardados(format(new Date(), "yyyy-MM-dd"))),
+  );
   const [arrastrando, setArrastrando] = useState<
     { tipo: "ot"; otId: number } | { tipo: "bloque"; bloque: Bloque } | null
   >(null);
@@ -185,6 +207,18 @@ export function TableroBoard() {
   function colapsarPanel(valor: boolean) {
     setPanelColapsado(valor);
     if (typeof window !== "undefined") window.localStorage.setItem(CLAVE_PANEL, String(valor));
+  }
+
+  function alternarDomingo(fecha: string) {
+    setDomingosAbiertos((prev) => {
+      const siguiente = new Set(prev);
+      if (siguiente.has(fecha)) siguiente.delete(fecha);
+      else siguiente.add(fecha);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(CLAVE_DOMINGOS, JSON.stringify([...siguiente]));
+      }
+      return siguiente;
+    });
   }
 
   function cambiarVisibles(ids: number[]) {
@@ -738,6 +772,8 @@ export function TableroBoard() {
               partes={data.partes}
               bloqueSeleccionado={panel?.bloqueKey ?? resaltado}
               hoy={hoyISO}
+              domingosAbiertos={domingosAbiertos}
+              onToggleDomingo={alternarDomingo}
               // El parte NO se carga desde el tablero: se navega al listado.
               //
               // Son dos personas y dos momentos —quien carga lo hace a la mañana con los

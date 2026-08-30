@@ -153,6 +153,8 @@ export function TableroGrid({
   onEstado,
   onQuitar,
   candados,
+  domingosAbiertos,
+  onToggleDomingo,
 }: {
   cuadrillas: CuadrillaTablero[];
   fechas: string[];
@@ -193,6 +195,14 @@ export function TableroGrid({
    * frenar a Operaciones por un dato que depende de terceros. El freno está al confirmar.
    */
   candados?: Set<number>;
+  /**
+   * Domingos habilitados a mano desde el encabezado, en yyyy-MM-dd. Se suman a los que ya
+   * tienen trabajo asignado para decidir qué domingo se despliega. Vive en el board porque
+   * se persiste entre sesiones; acá sólo se lee.
+   */
+  domingosAbiertos: Set<string>;
+  /** Alterna la habilitación manual de ese domingo. */
+  onToggleDomingo: (fecha: string) => void;
 }) {
   const hoy = new Date();
 
@@ -234,18 +244,25 @@ export function TableroGrid({
   // corrige `scrollLeft` para que no salte, y una base fija de arranque desharía esa
   // corrección en el movimiento siguiente.
   const pan = useRef<{ x: number } | null>(null);
+  // El encabezado es a la vez agarre para desplazar y botón para abrir un domingo. Se
+  // distinguen por el movimiento: si el puntero se corrió, fue un arrastre y el clic que
+  // el navegador dispara después no tiene que abrir nada.
+  const panMovio = useRef(false);
 
   function iniciarPan(e: PointerEventReact<HTMLDivElement>) {
     // El táctil ya scrollea solo: capturar el puntero ahí rompería el gesto nativo.
     if (e.pointerType === "touch" || e.button !== 0 || !propio.current) return;
     pan.current = { x: e.clientX };
+    panMovio.current = false;
     e.currentTarget.setPointerCapture(e.pointerId);
   }
 
   function moverPan(e: PointerEventReact<HTMLDivElement>) {
     const cont = propio.current;
     if (!cont || !pan.current) return;
-    cont.scrollLeft -= e.clientX - pan.current.x;
+    const dx = e.clientX - pan.current.x;
+    if (Math.abs(dx) > 2) panMovio.current = true;
+    cont.scrollLeft -= dx;
     pan.current = { x: e.clientX };
   }
 
@@ -263,10 +280,20 @@ export function TableroGrid({
   // Un domingo se colapsa si NINGUNA cuadrilla visible tiene algo asignado. Así el ritmo
   // de la semana no se mueve al scrollear —la columna está siempre— y un domingo
   // trabajado se vuelve notorio justamente porque se ensancha.
+  //
+  // Pero eso solo no alcanza: para que un domingo tenga trabajo hay que poder asignarlo, y
+  // la canaleta no acepta drop. Antes la única puerta era "Trabajar el domingo" del diálogo
+  // de jornadas, que exige una obra que venga del sábado — un domingo suelto quedaba fuera.
+  // Por eso el domingo también se puede abrir a mano desde su encabezado: es esporádico, así
+  // que la habilitación es por domingo y no una preferencia global.
+  const conTrabajo = (f: string) => cuadrillas.some((c) => enCelda(c.id, f).length > 0);
   const domingosActivos = new Set(
-    fechas.filter((f) => esDomingo(f) && cuadrillas.some((c) => enCelda(c.id, f).length > 0)),
+    fechas.filter((f) => esDomingo(f) && (conTrabajo(f) || domingosAbiertos.has(f))),
   );
   const colapsado = (f: string) => esDomingo(f) && !domingosActivos.has(f);
+  // Se puede volver a plegar mientras esté vacío. Con trabajo asignado no: plegarlo
+  // escondería jornadas reales detrás de una canaleta de 28px.
+  const puedePlegar = (f: string) => esDomingo(f) && !conTrabajo(f);
 
   // ── Ancho de columna: la ventana de 8 días entra exacta ────────────────────
   //
@@ -377,16 +404,37 @@ export function TableroGrid({
           // Un feriado que cae domingo no se anuncia: la canaleta mide 28px y el dato no
           // agrega nada — ese día ya no se trabaja por domingo.
           const feriado = canaleta ? null : (feriados.get(f) ?? null);
+          // El domingo se abre y se cierra desde su propio encabezado. El handler va acá y
+          // no en un botón hijo: este div captura el puntero para el desplazamiento, y con
+          // la captura activa el navegador dispara el click sobre el elemento que captura,
+          // así que un botón adentro nunca se enteraría.
+          const alternable = esDomingo(f) && (canaleta || puedePlegar(f));
+          const alternar = () => { if (alternable && !panMovio.current) onToggleDomingo(f); };
+          const tituloDomingo = canaleta
+            ? `Domingo ${format(d, "d MMM", { locale: es })} · sin trabajo — clic para habilitarlo`
+            : `Domingo ${format(d, "d MMM", { locale: es })} habilitado a mano · clic para volver a plegarlo`;
           return (
             <div
               key={`h-${f}`}
               data-fecha={f}
-              className="sticky top-0 z-20 flex h-10 cursor-grab select-none items-center justify-center gap-1.5 border-b border-r bg-card active:cursor-grabbing"
+              className={`sticky top-0 z-20 flex h-10 select-none items-center justify-center gap-1.5 border-b border-r bg-card active:cursor-grabbing ${
+                alternable ? "cursor-pointer hover:bg-black/[0.05]" : "cursor-grab"
+              }`}
               onPointerDown={iniciarPan}
               onPointerMove={moverPan}
               onPointerUp={terminarPan}
               onPointerCancel={terminarPan}
-              title={feriado ?? undefined}
+              onClick={alternar}
+              role={alternable ? "button" : undefined}
+              tabIndex={alternable ? 0 : undefined}
+              onKeyDown={
+                alternable
+                  ? (e) => {
+                      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggleDomingo(f); }
+                    }
+                  : undefined
+              }
+              title={alternable ? tituloDomingo : (feriado ?? undefined)}
               style={{
                 // Separador de semana: ubicarse sin tener que leer las fechas.
                 borderLeft: esLunes(f) ? "2px solid var(--border)" : undefined,
@@ -394,9 +442,7 @@ export function TableroGrid({
               }}
             >
               {canaleta ? (
-                <span className="text-[11px] text-muted-foreground" title={`Domingo ${format(d, "d MMM", { locale: es })} · sin trabajo`}>
-                  D
-                </span>
+                <span className="text-[11px] text-muted-foreground">D</span>
               ) : (
                 <>
                   {domingoActivo ? (

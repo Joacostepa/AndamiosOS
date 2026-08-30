@@ -82,6 +82,20 @@ export type ParteTablero = {
  * quién es el cliente y dónde queda la obra viven en sale.order, no en la OT.
  */
 export type DetalleOt = {
+  /**
+   * QUÉ HAY QUE EJECUTAR: la estructura concreta que la cuadrilla tiene que montar o
+   * bajar. Es la primera pregunta del que abre la tarjeta y hasta ahora el panel no la
+   * contestaba — el único texto era `observaciones`, que es otra cosa (accesos, horarios).
+   *
+   * Lo escribe Comercial en la OT de Odoo, precargado con el párrafo técnico de la
+   * propuesta de la venta.
+   */
+  detalleTecnico: string | null;
+  /**
+   * Cuándo Operaciones confirmó en obra el estado de la estructura. Si tiene fecha, el
+   * detalle técnico de arriba NO es lo vendido: es lo que se armó de verdad.
+   */
+  estructuraConfirmadaEl: string | null;
   /** De la orden de venta. Hasta ahora el cliente salía de partir el título de la OT,
    *  que no siempre lo trae ("Desarme · S00719 · Av. Callao 1810"). */
   cliente: string | null;

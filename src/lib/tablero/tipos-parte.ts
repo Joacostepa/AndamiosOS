@@ -110,6 +110,14 @@ export type DatosCierre = {
   flete: LineaFlete | null;
   incidencias: LineaIncidencia[];
   fotos: FotoParaSubir[];
+  /**
+   * Qué quedó efectivamente armado. Sólo viaja cuando se cierra la OT (`finalizarOt`) y
+   * el tipo deja estructura en pie: armado, ampliación o desmonte parcial.
+   *
+   * Es el dato que después lee Comercial para emitir el desarme. Sin esto, la OT de
+   * desarme describe lo vendido, que meses más tarde no es lo que hay en la obra.
+   */
+  ejecutadoReal: string | null;
 };
 
 export type PasoCierre = { nombre: string; ok: boolean; detalle?: string };
@@ -144,3 +152,43 @@ export type ParteCargado = {
   incidencias: LineaIncidencia[];
   fotos: { momento: string; descripcion: string | null }[];
 };
+
+/** Los tipos de OT que redefinen qué hay armado en la obra. */
+export const DEJAN_ESTRUCTURA = new Set(["armado", "ampliacion", "desmonte_parcial"]);
+
+/**
+ * El motivo por el que no se puede guardar todavía, o null si está listo.
+ *
+ * Se exige que el texto CAMBIE cuando dijeron que hubo diferencias: apretar "hubo
+ * diferencias" y dejar el texto igual es no haber contestado.
+ */
+export function faltaAsBuilt(
+  tipo: string,
+  finalizada: boolean,
+  coincide: boolean | null,
+  texto: string,
+  previsto: string | null,
+): string | null {
+  if (!finalizada || !DEJAN_ESTRUCTURA.has(tipo)) return null;
+  if (coincide === null) return "Falta decir si quedó como estaba previsto";
+  if (coincide) return null;
+  const limpio = texto.trim();
+  if (!limpio) return "Falta describir qué quedó armado";
+  if (limpio === (previsto ?? "").trim()) {
+    return "Dijiste que hubo diferencias: escribí cuáles";
+  }
+  return null;
+}
+
+/** El texto que se manda a Odoo, o null si no corresponde sellar nada. */
+export function asBuiltAEnviar(
+  tipo: string,
+  finalizada: boolean,
+  coincide: boolean | null,
+  texto: string,
+  previsto: string | null,
+): string | null {
+  if (!finalizada || !DEJAN_ESTRUCTURA.has(tipo)) return null;
+  if (coincide === true) return previsto?.trim() || null;
+  return texto.trim() || null;
+}

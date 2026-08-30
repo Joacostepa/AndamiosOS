@@ -28,6 +28,11 @@ export type JornadaListado = {
    * al guardarla se pregunta si la orden de trabajo terminó.
    */
   ultimaDeLaOt: boolean;
+  /**
+   * Qué había que ejecutar, según la OT. Precarga el as-built al cerrarla: el que carga
+   * confirma o corrige, en vez de escribir desde cero en el celular.
+   */
+  detalleTecnico: string | null;
   /** Tentativa cuya fecha ya pasó: va a la sección plegada del pie. */
   tentativaVencida: boolean;
 };

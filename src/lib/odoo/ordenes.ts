@@ -156,7 +156,7 @@ const CAMPOS_FICHA = [
   "x_desvio", "x_horas_hombre", "x_jornadas_hombre_estimadas",
   "x_costo_mano_obra", "x_costo_fletes", "x_costo_total",
   "x_hab_etapa", "x_hab_vencimiento",
-  "x_contacto_obra", "x_tel_obra", "x_observaciones",
+  "x_contacto_obra", "x_tel_obra", "x_observaciones", "x_detalle_tecnico",
 ];
 
 /**
@@ -248,6 +248,7 @@ export async function fetchOrdenDetalle(id: number): Promise<OrdenDetalle | null
     contactoObra: str(fila.x_contacto_obra as string | false),
     telObra: str(fila.x_tel_obra as string | false),
     observaciones: str(fila.x_observaciones as string | false),
+    detalleTecnico: str(fila.x_detalle_tecnico as string | false),
     // La venta es de Comercial y no se gestiona desde esta app: acá el enlace externo a
     // Odoo sí corresponde.
     urlVenta: ordenVentaId ? `${root}/odoo/sale.order/${ordenVentaId}` : null,

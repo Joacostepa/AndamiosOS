@@ -232,6 +232,15 @@ export default function FichaOrdenPage({ params }: { params: Promise<{ id: strin
               valor={format(parseISO(ot.fechaComprometida), "d MMM yyyy", { locale: es })}
             />
           )}
+          {/* Qué estructura hay que montar o bajar. Va ANTES de las observaciones porque
+              son dos cosas distintas y ésta es la que define el trabajo; observaciones es
+              cómo llegar y con qué restricciones. */}
+          <div>
+            <p className="text-[11px] text-muted-foreground">Qué hay que ejecutar</p>
+            <p className="whitespace-pre-wrap text-[13px]">
+              {ot.detalleTecnico ?? <span className="text-muted-foreground">Sin detalle técnico cargado</span>}
+            </p>
+          </div>
           {ot.observaciones && (
             <div>
               <p className="text-[11px] text-muted-foreground">Observaciones</p>

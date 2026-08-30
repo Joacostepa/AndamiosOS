@@ -14,9 +14,12 @@ import { colorTipo, CORAL } from "@/lib/tablero/colores";
 import { partesTitulo } from "@/lib/tablero/titulo";
 import { fraccionLabel } from "@/lib/tablero/fracciones";
 import { ATAJOS_SALIDA, formatHora, horasEfectivas, parseHora } from "@/lib/tablero/horas";
-import { MOMENTOS_FOTO, MOTIVOS_NO_EJEC, TIPOS_INCIDENCIA } from "@/lib/tablero/tipos-parte";
+import {
+  MOMENTOS_FOTO, MOTIVOS_NO_EJEC, TIPOS_INCIDENCIA, DEJAN_ESTRUCTURA, faltaAsBuilt,
+} from "@/lib/tablero/tipos-parte";
 import { comprimirFoto, pesoLegible, type FotoComprimida } from "@/lib/tablero/imagenes";
 import { useEmpleados } from "@/hooks/use-parte";
+import { ComoQuedoArmado } from "@/components/partes/como-quedo-armado";
 import type { JornadaListado } from "@/lib/tablero/tipos-jornada";
 
 // Una fila del listado de partes. Se edita EN LÍNEA, sin modal: abrir y cerrar un diálogo
@@ -60,6 +63,10 @@ export type Borrador = {
   fotos: FotoEnBorrador[];
   /** Respuesta a "¿la OT está finalizada?". null = todavía no contestó. */
   finalizarOt: boolean | null;
+  /** El as-built: ¿quedó como estaba previsto? null = todavía no contestó. */
+  armadoCoincide: boolean | null;
+  /** Qué quedó armado, cuando NO coincide con lo previsto. */
+  armadoReal: string;
 };
 
 export type FotoEnBorrador = FotoComprimida & { momento: string };
@@ -89,6 +96,8 @@ export function borradorDe(j: JornadaListado): Borrador {
     incidenciaDesc: "",
     fotos: [],
     finalizarOt: null,
+    armadoCoincide: null,
+    armadoReal: "",
   };
 }
 
@@ -117,6 +126,10 @@ export function erroresDe(b: Borrador, j: JornadaListado): string[] {
   if (!b.personas.trim() || !Number.isFinite(p) || p <= 0) e.push("Falta la cantidad de personas");
   if (!b.capatazId) e.push("Falta el capataz");
   if (j.ultimaDeLaOt && b.finalizarOt === null) e.push("Falta decir si la OT está finalizada");
+  const faltaAs = faltaAsBuilt(
+    j.tipo, j.ultimaDeLaOt && b.finalizarOt === true, b.armadoCoincide, b.armadoReal, j.detalleTecnico,
+  );
+  if (faltaAs) e.push(faltaAs);
   return e;
 }
 
@@ -526,6 +539,27 @@ export function FilaJornada({
                       Finalizar OT
                     </Button>
                   </div>
+
+                  {/* Cerrar un armado sin decir qué quedó armado es perder el dato para
+                      siempre: para cuando se emita el desarme, nadie se acuerda. */}
+                  {borrador.finalizarOt === true && DEJAN_ESTRUCTURA.has(jornada.tipo) && (
+                    <ComoQuedoArmado
+                      compacto
+                      previsto={jornada.detalleTecnico}
+                      coincide={borrador.armadoCoincide}
+                      texto={borrador.armadoReal}
+                      onCoincide={(v) =>
+                        set({
+                          armadoCoincide: v,
+                          armadoReal:
+                            v === false && !borrador.armadoReal
+                              ? (jornada.detalleTecnico ?? "")
+                              : borrador.armadoReal,
+                        })
+                      }
+                      onTexto={(v) => set({ armadoReal: v })}
+                    />
+                  )}
                 </div>
               )}
             </>

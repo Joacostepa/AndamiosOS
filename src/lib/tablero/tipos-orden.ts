@@ -74,6 +74,8 @@ export type OrdenDetalle = OrdenListado & {
   contactoObra: string | null;
   telObra: string | null;
   observaciones: string | null;
+  /** Qué estructura hay que montar o bajar. Ver DetalleOt.detalleTecnico en ./tipos. */
+  detalleTecnico: string | null;
   urlVenta: string | null;
   /** Id de sale.order. Lo necesita el enlace al informe de obra, que se indexa por venta. */
   ventaId: number | null;

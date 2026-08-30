@@ -62,6 +62,8 @@ const datosSchema = z
         descripcion: z.string().nullable().optional(),
       }),
     ),
+    // Sólo llega cuando se cierra la OT y el trabajo deja estructura en pie.
+    ejecutadoReal: z.string().nullable().default(null),
   })
   // El motivo es obligatorio cuando no se ejecutó: es el dato que permite medir después
   // cuántas jornadas se pierden por lluvia o por el cliente.

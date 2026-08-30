@@ -18,9 +18,12 @@ import { cn } from "@/lib/utils";
 import { comprimirFoto, pesoLegible, type FotoComprimida } from "@/lib/tablero/imagenes";
 import {
   MOTIVOS_NO_EJEC, TAREAS, TIPOS_INCIDENCIA, MOMENTOS_FOTO, horaADecimal, decimalAHora,
+  DEJAN_ESTRUCTURA, asBuiltAEnviar, faltaAsBuilt,
   type DatosCierre, type EstadoParte, type LineaManoObra, type LineaIncidencia,
 } from "@/lib/tablero/tipos-parte";
 import { useParte, useCerrarJornada, useEditarParte, useEmpleados } from "@/hooks/use-parte";
+import { useDetalleOt } from "@/hooks/use-detalle-ot";
+import { ComoQuedoArmado } from "@/components/partes/como-quedo-armado";
 import { CORAL } from "@/lib/tablero/colores";
 import type { Bloque } from "@/lib/tablero/bloques";
 import type { OtTablero } from "@/lib/tablero/tipos";
@@ -74,6 +77,8 @@ export function FormularioCierre({
   onOpenChange: (abierto: boolean) => void;
 }) {
   const soloLectura = !!parteId;
+  // El bloque puede abrirse antes de que el tablero tenga la OT en memoria.
+  const tipoOt = ot?.tipo ?? "";
   const { data: parteCargado, isLoading: cargandoParte } = useParte(parteId);
   const { data: empleados } = useEmpleados();
   const cerrar = useCerrarJornada();
@@ -85,6 +90,9 @@ export function FormularioCierre({
   // esconde trabajo, y asumir que no acumula OTs abiertas para siempre, que es lo que
   // venía pasando.
   const [obraFinalizada, setObraFinalizada] = useState<boolean | null>(null);
+  // El as-built: si quedó como estaba previsto y, si no, qué quedó. Ver ComoQuedoArmado.
+  const [armadoCoincide, setArmadoCoincide] = useState<boolean | null>(null);
+  const [armadoReal, setArmadoReal] = useState("");
   const [estado, setEstado] = useState<EstadoParte>("ejecutado");
   const [fechaParte, setFechaParte] = useState("");
   const [motivo, setMotivo] = useState<string>("");
@@ -146,6 +154,11 @@ export function FormularioCierre({
     setResultado(null);
     setEditando(false);
     setObraFinalizada(null);
+    // El as-built también: el diálogo es uno solo y se reusa para todas las obras. Sin
+    // esto, cerrar un armado y abrir el siguiente arrastraría el texto del anterior, que
+    // es exactamente el dato que no puede estar mal.
+    setArmadoCoincide(null);
+    setArmadoReal("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [abierto, parteCargado, parteId, fecha]);
 
@@ -216,12 +229,19 @@ export function FormularioCierre({
         : null,
       incidencias: ejecutado ? incidencias.filter((i) => i.descripcion.trim()) : [],
       fotos: ejecutado ? fotos.map((f) => ({ nombre: f.nombre, base64: f.base64, momento: f.momento })) : [],
+      ejecutadoReal: asBuiltAEnviar(tipoOt, obraFinalizada === true, armadoCoincide, armadoReal, previsto),
     };
   }
 
   // Se pregunta sólo al CREAR el parte de la última jornada pendiente y sólo si se
   // ejecutó: si la jornada no se hizo, la obra no terminó y no hay nada que preguntar.
   const preguntarPorLaObra = !parteId && esUltimaJornada && estado === "ejecutado";
+
+  // El detalle técnico de la OT precarga el as-built. Se pide sólo cuando hace falta:
+  // la ficha es una llamada aparte y no tiene por qué salir al abrir cualquier cierre.
+  const necesitaAsBuilt = preguntarPorLaObra && DEJAN_ESTRUCTURA.has(tipoOt);
+  const { data: fichaOt } = useDetalleOt(necesitaAsBuilt ? (ot?.id ?? null) : null);
+  const previsto = fichaOt?.detalleTecnico ?? null;
 
   function guardar() {
     if (estado === "no_ejecutado" && !motivo) {
@@ -242,6 +262,13 @@ export function FormularioCierre({
     }
     if (preguntarPorLaObra && obraFinalizada === null) {
       toast.error("Falta indicar si la orden de trabajo está finalizada");
+      return;
+    }
+    const falta = faltaAsBuilt(tipoOt, preguntarPorLaObra && obraFinalizada === true, armadoCoincide, armadoReal, previsto);
+    if (falta) {
+      toast.error(falta, {
+        description: "Es lo que va a leer Comercial cuando emita la OT de desarme.",
+      });
       return;
     }
     const datos = armarDatos();
@@ -690,6 +717,18 @@ export function FormularioCierre({
                   <p className="text-[11px] text-muted-foreground">
                     La OT pasa a completada y sale del tablero.
                   </p>
+                )}
+                {obraFinalizada === true && DEJAN_ESTRUCTURA.has(tipoOt) && (
+                  <ComoQuedoArmado
+                    previsto={previsto}
+                    coincide={armadoCoincide}
+                    texto={armadoReal}
+                    onCoincide={(v) => {
+                      setArmadoCoincide(v);
+                      if (v === false && !armadoReal) setArmadoReal(previsto ?? "");
+                    }}
+                    onTexto={setArmadoReal}
+                  />
                 )}
                 {obraFinalizada === false && (
                   <p className="text-[11px] text-muted-foreground">

@@ -296,6 +296,7 @@ export async function fetchTablero(desde: string, hasta: string): Promise<Tabler
 export async function fetchDetalleOt(otId: number): Promise<DetalleOt> {
   const [ot] = await read<{
     x_order_id: M2O;
+    x_detalle_tecnico: string | false;
     x_hab_etapa: string | false;
     x_hab_dias: number | false;
     x_fecha_firmeza: string | false;
@@ -303,17 +304,20 @@ export async function fetchDetalleOt(otId: number): Promise<DetalleOt> {
     x_desvio: string | false;
     x_duracion_sugerida: string | false;
   }>("x_aba_orden_trabajo", [otId], [
-    "x_order_id", "x_hab_etapa", "x_hab_dias", "x_fecha_firmeza",
+    "x_order_id", "x_detalle_tecnico", "x_hab_etapa", "x_hab_dias", "x_fecha_firmeza",
     "x_periodo", "x_desvio", "x_duracion_sugerida",
   ]);
   if (!ot) throw new Error("La OT no existe");
 
   const ordenId = m2oId(ot.x_order_id);
   const [orden] = ordenId
-    ? await read<{ partner_id: M2O; partner_shipping_id: M2O; x_studio_tcnico: M2O; user_id: M2O }>(
+    ? await read<{
+        partner_id: M2O; partner_shipping_id: M2O; x_studio_tcnico: M2O; user_id: M2O;
+        x_estructura_fecha: string | false;
+      }>(
         "sale.order",
         [ordenId],
-        ["partner_id", "partner_shipping_id", "x_studio_tcnico", "user_id"],
+        ["partner_id", "partner_shipping_id", "x_studio_tcnico", "user_id", "x_estructura_fecha"],
       )
     : [];
 
@@ -340,6 +344,8 @@ export async function fetchDetalleOt(otId: number): Promise<DetalleOt> {
 
   const calle = [str(obra?.street), str(obra?.street2), str(obra?.city)].filter(Boolean).join(", ");
   return {
+    detalleTecnico: str(ot.x_detalle_tecnico),
+    estructuraConfirmadaEl: str(orden?.x_estructura_fecha),
     // El cliente es el PADRE del contacto de obra. Sin padre, el contacto ya es el cliente.
     cliente: m2oName(obra?.parent_id) ?? str(obra?.name),
     // Varias fichas tienen la dirección sólo en el nombre y la calle vacía.

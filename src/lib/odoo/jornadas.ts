@@ -113,8 +113,10 @@ export async function fetchListadoJornadas(fecha: string, hoy: string): Promise<
         x_personal_por_jornada: number | false;
         x_duracion_est: string | false;
         x_jornadas_num: number | false;
+        x_detalle_tecnico: string | false;
       }>("x_aba_orden_trabajo", otIds, [
         "x_name", "x_tipo", "x_personal_por_jornada", "x_duracion_est", "x_jornadas_num",
+        "x_detalle_tecnico",
       ])
     : [];
   const otPorId = new Map(ots.map((o) => [o.id, o]));
@@ -157,6 +159,10 @@ export async function fetchListadoJornadas(fecha: string, hoy: string): Promise<
       parte: parteId ? (partePorId.get(parteId) ?? null) : null,
       // Falta cerrar sólo ésta, y la obra no tiene jornadas sin planificar.
       ultimaDeLaOt: asignadas - hechas === 1 && Math.ceil(jornadasOt) <= asignadas,
+      // Precarga del as-built cuando se cierra la OT. Viaja acá y no en una llamada
+      // aparte porque el listado ya lee la OT entera: es un campo más de un read que ya
+      // se hace.
+      detalleTecnico: str(ot?.x_detalle_tecnico),
       tentativaVencida,
     };
   };

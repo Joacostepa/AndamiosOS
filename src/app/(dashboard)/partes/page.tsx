@@ -23,7 +23,7 @@ import {
   type Borrador,
 } from "@/components/partes/fila-jornada";
 import type { JornadaListado } from "@/lib/tablero/tipos-jornada";
-import type { DatosCierre } from "@/lib/tablero/tipos-parte";
+import { asBuiltAEnviar, type DatosCierre } from "@/lib/tablero/tipos-parte";
 
 // Carga de partes diarios. Es el ÚNICO lugar donde se crea un parte.
 //
@@ -73,6 +73,10 @@ function aDatosCierre(b: Borrador, j: JornadaListado): DatosCierre {
     fotos: ejecutado
       ? b.fotos.map((f) => ({ nombre: f.nombre, base64: f.base64, momento: f.momento }))
       : [],
+    // El as-built viaja sólo cuando se cierra la OT y el trabajo deja estructura en pie.
+    ejecutadoReal: asBuiltAEnviar(
+      j.tipo, j.ultimaDeLaOt && b.finalizarOt === true, b.armadoCoincide, b.armadoReal, j.detalleTecnico,
+    ),
   } as DatosCierre;
 }
 

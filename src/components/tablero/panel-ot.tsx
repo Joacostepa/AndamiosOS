@@ -4,19 +4,20 @@ import { useQuery } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import {
-  AlertTriangle, Building2, CalendarCheck, ExternalLink, FileText, Phone, Pin, ShieldCheck,
-  User, UserRound, Users, Clock, CalendarDays,
+  AlertTriangle, Building2, CalendarCheck, ExternalLink, FileText, Hammer, Phone, Pin,
+  ShieldCheck, User, UserRound, Users, Clock, CalendarDays,
 } from "lucide-react";
+import { useDetalleOt } from "@/hooks/use-detalle-ot";
 import { useNotasFijadas } from "@/hooks/use-habilitaciones";
 import { ETAPA_LABEL, type HabEtapa } from "@/lib/habilitaciones/tipos";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { semaforo } from "@/lib/tablero/colores";
+import { CORAL, semaforo } from "@/lib/tablero/colores";
 import { fraccionLabel } from "@/lib/tablero/fracciones";
 import type { Bloque } from "@/lib/tablero/bloques";
-import type { DetalleOt, DocumentoOt, OtTablero } from "@/lib/tablero/tipos";
+import type { DocumentoOt, OtTablero } from "@/lib/tablero/tipos";
 
 // Panel lateral de la OT: todo lo que hace falta para coordinar la jornada sin salir
 // del tablero. La carga de partes, el circuito de habilitación y los costos viven en
@@ -55,22 +56,49 @@ function NotasFijadas({ otId }: { otId: number }) {
 }
 
 /**
- * La ficha completa de la OT, pedida al abrir el panel.
+ * Qué estructura hay que montar o bajar.
  *
- * No viaja con el tablero a propósito: esa llamada trae medio centenar de OTs y se
- * repite todo el día; esto se mira de a una. Ver /api/planificacion/ot.
+ * Lo carga Comercial en la OT de Odoo, precargado con el párrafo técnico de la propuesta
+ * de la venta (cubre 517 de las 632 obras confirmadas; el resto cae a las líneas de la
+ * orden). Sin esto la cuadrilla salía sabiendo la dirección y nada más.
  */
-function useDetalle(otId: number | null) {
-  return useQuery({
-    queryKey: ["tablero-ot-detalle", otId],
-    queryFn: async () => {
-      const res = await fetch(`/api/planificacion/ot?otId=${otId}`);
-      if (!res.ok) throw new Error("No se pudo leer la ficha de la OT");
-      return ((await res.json()) as { detalle: DetalleOt }).detalle;
-    },
-    enabled: !!otId,
-    staleTime: 5 * 60 * 1000,
-  });
+function DetalleTecnico({
+  texto,
+  confirmadoEl,
+  cargando,
+}: {
+  texto?: string | null;
+  /** Fecha en que Operaciones confirmó la estructura en obra. */
+  confirmadoEl?: string | null;
+  cargando: boolean;
+}) {
+  return (
+    <div className="space-y-1.5 rounded-md border-l-4 bg-muted/40 px-3 py-2.5" style={{ borderLeftColor: CORAL }}>
+      <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">
+        <Hammer className="h-3.5 w-3.5" />
+        Qué hay que ejecutar
+      </p>
+      {cargando ? (
+        <Skeleton className="h-4 w-3/4" />
+      ) : texto ? (
+        <>
+          <p className="whitespace-pre-wrap text-sm leading-snug">{texto}</p>
+          {/* Cambia cómo hay que leer el texto de arriba: con fecha, no es lo que se
+              vendió sino lo que se armó de verdad, verificado por alguien que estuvo. */}
+          {confirmadoEl && (
+            <p className="text-xs text-muted-foreground">
+              Estructura confirmada en obra el{" "}
+              {format(parseISO(confirmadoEl), "d MMM yyyy", { locale: es })}
+            </p>
+          )}
+        </>
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          Sin detalle técnico cargado. Pedíselo a Comercial antes de mandar la cuadrilla.
+        </p>
+      )}
+    </div>
+  );
 }
 
 function Fila({ icono, etiqueta, children }: { icono: React.ReactNode; etiqueta: string; children: React.ReactNode }) {
@@ -144,7 +172,7 @@ export function PanelOt({
   onOpenChange: (abierto: boolean) => void;
 }) {
   const sem = semaforo(ot?.habSemaforo);
-  const { data: detalle } = useDetalle(ot?.id ?? null);
+  const { data: detalle } = useDetalleOt(ot?.id ?? null);
   const etapa = detalle?.habEtapa ? ETAPA_LABEL[detalle.habEtapa as HabEtapa] : null;
   const fecha = (f: string) => format(parseISO(f), "d MMM yyyy", { locale: es });
 
@@ -172,14 +200,27 @@ export function PanelOt({
                 )}
               </div>
 
-              <NotasFijadas otId={ot.id} />
-
               {ot.urgencia === "alta" && ot.motivoUrgencia && (
                 <div className="flex gap-2 rounded-md border p-2 text-sm" style={{ borderColor: "#D92D20" }}>
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" style={{ color: "#D92D20" }} />
                   <p className="whitespace-pre-wrap">{ot.motivoUrgencia}</p>
                 </div>
               )}
+
+              {/* QUÉ HAY QUE EJECUTAR, antes que nada.
+                  Es la primera pregunta del que abre la tarjeta y hasta acá el panel no la
+                  contestaba: la dirección y el cliente estaban, la estructura no. Va en
+                  caja destacada y no como una Fila más porque no es un dato de contexto,
+                  es el trabajo.
+                  El vacío SE MUESTRA: una OT sin detalle técnico es un problema para
+                  quien planifica, y no mostrar nada lo esconde. */}
+              <DetalleTecnico
+                texto={detalle?.detalleTecnico}
+                confirmadoEl={detalle?.estructuraConfirmadaEl}
+                cargando={!detalle}
+              />
+
+              <NotasFijadas otId={ot.id} />
 
               {/* QUIÉN y DÓNDE, arriba de todo. Antes el panel no lo decía: el cliente
                   salía de partir el título de la OT, que no siempre lo trae —"Desarme ·

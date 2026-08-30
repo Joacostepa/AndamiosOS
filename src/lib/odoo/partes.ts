@@ -11,6 +11,7 @@
 // Tampoco escribe x_name: lo arma Odoo.
 
 import { searchRead, create, write, executeKw, read } from "./client";
+import { DEJAN_ESTRUCTURA } from "@/lib/tablero/tipos-parte";
 import type {
   DatosCierre,
   ParteCargado,
@@ -211,7 +212,7 @@ export async function cerrarJornada(
   //
   // Son independientes entre sí: van todas juntas y la cola de client.ts las reparte.
   // Encadenadas eran ~6 round-trips de ~800 ms uno detrás del otro.
-  const [manoObra, flete, incidencias, fotos, marcada, duplicados, estadoOt] =
+  const [manoObra, flete, incidencias, fotos, marcada, duplicados, estadoOt, estructura] =
     await Promise.allSettled([
       crearLineasManoObra(parteId, datos, fecha),
       crearLineasFlete(parteId, datos, fecha),
@@ -225,6 +226,9 @@ export async function cerrarJornada(
       // El estado de la OT no puede tirar abajo el parte: si falla, el parte queda igual
       // y la OT se corrige a mano o en el próximo cierre.
       actualizarEstadoOt(otId, finalizarOt),
+      // Ídem el as-built: va en su propio paso para que, si falla, se vea exactamente eso
+      // y no quede escondido detrás de "la OT se completó".
+      sellarEstructura(otId, finalizarOt ? datos.ejecutadoReal : null, fecha),
     ]);
 
   if (manoObra.status === "rejected") registrar("Personal y horarios", false, mensaje(manoObra.reason));
@@ -262,6 +266,12 @@ export async function cerrarJornada(
     registrar("Estado de la orden de trabajo", false, mensaje(estadoOt.reason));
   } else if (estadoOt.value) {
     registrar(estadoOt.value, true);
+  }
+
+  if (estructura.status === "rejected") {
+    registrar("Lo que quedó armado", false, mensaje(estructura.reason));
+  } else if (estructura.value) {
+    registrar(estructura.value, true);
   }
 
   if (duplicados.status === "fulfilled" && duplicados.value.length > 0) {
@@ -314,6 +324,52 @@ async function actualizarEstadoOt(otId: number, finalizar: boolean): Promise<str
   if (ot.x_estado !== "pendiente") return null;
   await write("x_aba_orden_trabajo", [otId], { x_estado: "en_proceso" });
   return "Orden de trabajo en proceso";
+}
+
+/**
+ * Sella LO QUE QUEDÓ EFECTIVAMENTE ARMADO, en dos lugares y por dos motivos distintos.
+ *
+ * EL PROBLEMA: el armado real casi nunca es idéntico al vendido —cambian alturas, metros,
+ * sectores— y esa diferencia hoy muere en la cabeza del capataz. Meses después, cuando el
+ * cliente llama para desarmar, Comercial emite la OT describiendo lo VENDIDO y la cuadrilla
+ * llega a bajar algo que no es lo que dice el papel.
+ *
+ *   OT.x_ejecutado_real       → el snapshot de ESTA intervención. Queda para siempre.
+ *   venta.x_estructura_actual → el estado vigente de la obra. Es el que hereda el desarme:
+ *                               el compute de x_detalle_tecnico lo lee primero.
+ *
+ * Una obra con un armado y dos ampliaciones deja tres snapshots y un solo estado actual.
+ *
+ * El desarme y el mantenimiento NO sellan: no cambian lo que hay en pie. El desmonte
+ * parcial sí, porque deja menos estructura de la que había.
+ */
+async function sellarEstructura(
+  otId: number,
+  ejecutadoReal: string | null,
+  fecha: string,
+): Promise<string | null> {
+  const texto = ejecutadoReal?.trim();
+  if (!texto) return null;
+
+  const [ot] = await read<{ id: number; x_tipo: string | false; x_order_id: [number, string] | false }>(
+    "x_aba_orden_trabajo", [otId], ["x_tipo", "x_order_id"],
+  );
+  if (!ot || typeof ot.x_tipo !== "string" || !DEJAN_ESTRUCTURA.has(ot.x_tipo)) return null;
+
+  await write("x_aba_orden_trabajo", [otId], { x_ejecutado_real: texto });
+
+  // Sin venta vinculada el snapshot igual queda en la OT; lo que se pierde es la herencia
+  // al desarme, porque el estado vigente vive en la venta (x_obra_id está vacío en las
+  // 1007 OTs, así que la venta es el único ancla que existe).
+  const ventaId = m2oId(ot.x_order_id);
+  if (!ventaId) return "Lo que quedó armado, guardado en la OT (la OT no tiene venta vinculada)";
+
+  await write("sale.order", [ventaId], {
+    x_estructura_actual: texto,
+    x_estructura_fecha: fecha || false,
+    x_estructura_ot_id: otId,
+  });
+  return "Lo que quedó armado: la OT de desarme va a nacer con esto";
 }
 
 /**

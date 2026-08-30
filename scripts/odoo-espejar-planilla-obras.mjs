@@ -150,7 +150,12 @@ const filas = leerPlanilla();
 const { corregidas } = fechasEfectivas(filas);
 
 const [cuadrillas, otsOdoo] = await Promise.all([
-  searchRead("x_aba_cuadrilla", [], ["x_name"]),
+  // Sólo las activas. La columna PUNTERO de la planilla trae, según la fila, o una cuadrilla
+  // de planificación (CUADRILLA 1..5) o el nombre del puntero — que es una PERSONA, y cuyo
+  // lugar es x_puntero_id en el parte, no la cuadrilla de la asignación. Pidiendo sólo las
+  // activas, un nombre de persona simplemente no matchea y la cuadrilla queda vacía, en vez
+  // de plantar una referencia a una cuadrilla dada de baja que el tablero no puede dibujar.
+  searchRead("x_aba_cuadrilla", [["x_activa", "=", true]], ["x_name"]),
   searchRead("x_aba_orden_trabajo", [], ["x_order_id", "x_tipo", "x_estado", "x_andamios_id", "x_fecha_ejecucion", "x_fecha_fin_ejecucion"]),
 ]);
 const cuadrillaId = Object.fromEntries(cuadrillas.map((c) => [c.x_name.toUpperCase(), c.id]));

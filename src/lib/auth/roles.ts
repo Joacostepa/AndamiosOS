@@ -21,7 +21,11 @@ const MODULOS_ARRANQUE = ["/planificacion", "/ordenes-trabajo", "/partes"];
 /** null = ve todo. */
 const RUTAS_POR_ROL: Record<Rol, string[] | null> = {
   admin: null,
-  operativo: MODULOS_ARRANQUE,
+  // Habilitaciones se suma acá y NO a MODULOS_ARRANQUE: es un módulo de oficina —pedirle
+  // documentación al cliente y validarla— que no tiene nada que hacer en depósito ni en
+  // campo. Va con su ayuda propia adentro, así que quien entra no necesita capacitación
+  // previa para abrirlo.
+  operativo: [...MODULOS_ARRANQUE, "/habilitaciones"],
   // Todavía no se trabajaron como perfiles propios. Arrancan con lo mismo que operativo:
   // ante la duda, de menos. Cuando depósito y campo tengan su circuito, se abre acá.
   deposito: MODULOS_ARRANQUE,

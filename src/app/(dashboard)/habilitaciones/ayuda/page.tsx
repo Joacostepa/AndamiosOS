@@ -141,8 +141,20 @@ export default function AyudaHabilitacionesPage() {
           necesita que alguien lo mire.
         </p>
         <p>
-          Los <Termino>paquetes</Termino> son listas armadas: aplicás uno y te crea los requisitos de
-          una. Cambiar de paquete no borra lo que ya enviaste ni lo que agregaste a mano.
+          Los <Termino>paquetes</Termino> son los combos ya armados: elegís uno del desplegable y te
+          crea todos los requisitos de una, en vez de cargarlos a mano.
+        </p>
+        <ul className="ml-4 list-disc space-y-1.5">
+          <li><Termino>Básico</Termino> — sólo la nómina de ART. Es el que se aplica solo al marcar &quot;aplica&quot;.</li>
+          <li><Termino>+ No repetición</Termino> — la nómina más la cláusula de no repetición.</li>
+          <li><Termino>+ SVO</Termino> — suma el SVO y el aviso de obra.</li>
+          <li><Termino>Completo</Termino> — los ocho, para los clientes más exigentes.</li>
+        </ul>
+        <p>
+          El paquete es un punto de partida, no una jaula: si cambiás a otro,{" "}
+          <Termino>no se borra</Termino> lo que ya mandaste ni lo que agregaste a mano. Y si el cliente
+          pide algo que no está en ningún combo, lo escribís abajo de la lista con el nombre que
+          quieras y pasa a ser un requisito más.
         </p>
       </Seccion>
 
@@ -160,6 +172,40 @@ export default function AyudaHabilitacionesPage() {
           y los papeles llegan después. Pide un motivo escrito. Existe a propósito: un sistema que no
           admite lo que pasa en la realidad termina esquivado por afuera, y ahí sí no queda registro
           de nada.
+        </p>
+      </Seccion>
+
+      <Seccion titulo="El vencimiento">
+        <p>
+          Muchas habilitaciones caducan: la nómina de ART vence, el seguro vence. Si la obra sigue
+          armada cuando eso pasa, estás sin cobertura y nadie se entera.
+        </p>
+        <p>
+          Por eso, en <Termino>Documentación del cliente</Termino> hay un campo{" "}
+          <Termino>Vence el</Termino>. Cargalo siempre que la documentación tenga fecha de corte: es{" "}
+          <Termino>el único aviso que te llega solo</Termino>, sin que tengas que acordarte de mirar.
+        </p>
+        <p>
+          Con la fecha cargada, la obra aparece en el grupo{" "}
+          <Termino>Vencen en menos de 30 días</Termino> de la bandeja, y el semáforo cambia cuando ya
+          venció. Sin fecha, nadie te va a avisar nada.
+        </p>
+      </Seccion>
+
+      <Seccion titulo="Las notas">
+        <p>
+          Para lo que no entra en ningún campo: <em>&quot;el administrador atiende después de las 11&quot;</em>,{" "}
+          <em>&quot;la nómina la manda el contador, no el cliente&quot;</em>,{" "}
+          <em>&quot;pidieron todo junto y no de a uno&quot;</em>.
+        </p>
+        <p>
+          Es lo que hoy vive en tu cabeza o en un mail viejo, y que la próxima persona que agarre la
+          obra no tiene forma de saber. Con gente rotando, es lo que evita empezar de cero.
+        </p>
+        <p>
+          El <Termino>chinche</Termino> la fija arriba y además la muestra en el tablero, para quien
+          planifica la obra. Usalo sólo para lo que alguien más necesita saber sí o sí — si fijás
+          todo, deja de destacar nada.
         </p>
       </Seccion>
 

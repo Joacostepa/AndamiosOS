@@ -112,7 +112,8 @@ export function ListadoRequisitos({ otId, requisitos }: { otId: number; requisit
         {/* El paquete es un punto de partida, no una jaula: una vez aplicado, los
             requisitos se agregan y se quitan uno por uno. Cambiar de paquete no borra
             los que ya se enviaron ni los agregados a mano. */}
-        <div className="ml-auto w-52">
+        {/* data-tour: el recorrido guiado se cuelga de este nodo (ver lib/habilitaciones/tour.ts) */}
+        <div className="ml-auto w-52" data-tour="paquetes">
           <Select
             onValueChange={(paqueteId: string | null) => {
               if (!paqueteId) return;
@@ -265,7 +266,8 @@ export function ListadoRequisitos({ otId, requisitos }: { otId: number; requisit
         })}
       </ul>
 
-      <div className="flex items-center gap-2 border-t px-3 py-2">
+      {/* data-tour: el recorrido guiado se cuelga de este nodo (ver lib/habilitaciones/tour.ts) */}
+      <div data-tour="agregar-requisito" className="flex items-center gap-2 border-t px-3 py-2">
         <Input
           value={nuevo}
           onChange={(e) => setNuevo(e.target.value)}

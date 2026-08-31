@@ -157,7 +157,9 @@ function Ficha({ ficha, otId }: { ficha: FichaHabilitacion; otId: number }) {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <NotasObra otId={otId} notas={ficha.notas} />
+        <div data-tour="notas">
+          <NotasObra otId={otId} notas={ficha.notas} />
+        </div>
         <div data-tour="historial">
           <Historial ficha={ficha} />
         </div>
@@ -188,11 +190,11 @@ function BarraTriage({ ficha, otId }: { ficha: FichaHabilitacion; otId: number }
 
   if (ficha.triage === "no_aplica") {
     return (
-      <div className="flex items-center gap-3 rounded-md border px-3 py-2 text-[13px]">
+      <div data-tour="barra-triage" className="flex items-center gap-3 rounded-md border px-3 py-2 text-[13px]">
         <CircleX className="h-4 w-4 shrink-0 text-muted-foreground" />
         <span className="flex-1 text-muted-foreground">
-          Marcada <strong>no aplica</strong> — está fuera de la cola y no cuenta en el total.
-          Sus requisitos, notas e historial se conservan.
+          Marcada <strong>no aplica</strong>: no hay documentación que tramitar, así que la obra
+          quedó <strong>habilitada</strong> y en verde. Sus requisitos, notas e historial se conservan.
         </span>
         <Button
           size="sm"
@@ -209,7 +211,7 @@ function BarraTriage({ ficha, otId }: { ficha: FichaHabilitacion; otId: number }
 
   if (ficha.triage === null) {
     return (
-      <div className="flex items-center gap-3 rounded-md border px-3 py-2 text-[13px]" style={{ backgroundColor: "#FEF6E7" }}>
+      <div data-tour="barra-triage" className="flex items-center gap-3 rounded-md border px-3 py-2 text-[13px]" style={{ backgroundColor: "#FEF6E7" }}>
         <TriangleAlert className="h-4 w-4 shrink-0" style={{ color: "#B54708" }} />
         <span className="flex-1">Recién llegada — falta definir si la habilitación aplica.</span>
         <Button
@@ -223,7 +225,7 @@ function BarraTriage({ ficha, otId }: { ficha: FichaHabilitacion; otId: number }
           size="sm"
           variant="outline"
           disabled={triage.isPending}
-          onClick={() => decidir("no_aplica", "Fuera de la cola")}
+          onClick={() => decidir("no_aplica", "No aplica · la obra queda habilitada")}
         >
           No aplica
         </Button>
@@ -234,12 +236,12 @@ function BarraTriage({ ficha, otId }: { ficha: FichaHabilitacion; otId: number }
   // En gestión: la salida está, pero discreta — sacar de la cola una obra que ya se
   // está trabajando no debería ser tan fácil como marcar un requisito.
   return (
-    <div className="flex items-center gap-3 px-1 text-[11px] text-muted-foreground">
+    <div data-tour="barra-triage" className="flex items-center gap-3 px-1 text-[11px] text-muted-foreground">
       <span className="flex-1">En gestión desde el triage.</span>
       <button
         className="underline hover:text-foreground"
         disabled={triage.isPending}
-        onClick={() => decidir("no_aplica", 'Fuera de la cola · queda en "No aplican"')}
+        onClick={() => decidir("no_aplica", "No aplica · la obra queda habilitada")}
       >
         Marcar que no aplica
       </button>
@@ -315,7 +317,8 @@ function ColumnaDocumentacion({ ficha, otId }: { ficha: FichaHabilitacion; otId:
         <span className="text-[10px] text-muted-foreground">No manda mail: registra la fecha.</span>
       </div>
 
-      <div className="flex items-end gap-2 border-t pt-3">
+      {/* data-tour: el recorrido guiado se cuelga de este nodo (ver lib/habilitaciones/tour.ts) */}
+      <div data-tour="vencimiento" className="flex items-end gap-2 border-t pt-3">
         <div className="flex-1">
           <label htmlFor="venc" className="text-[11px] text-muted-foreground">
             Vence el

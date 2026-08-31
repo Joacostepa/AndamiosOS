@@ -39,13 +39,22 @@ export const PASOS_BANDEJA: PasoTour[] = [
   },
   {
     ancla: "grupo-recien-llegadas",
-    titulo: "Lo primero: ¿aplica o no aplica?",
+    titulo: "Lo primero de todo: ¿aplica o no aplica?",
     texto:
-      "Toda obra nueva empieza acá y necesita una decisión tuya.<br><br>" +
-      "<b>No aplica</b> es una obra que no tiene que tramitar documentación. No queda pendiente de nada: se da por " +
-      "<b>habilitada</b> y pasa a verde.<br><br>" +
-      "<b>Aplica</b> la manda a la cola para pedirle los papeles al cliente.<br><br>" +
-      "Con las casillas de la izquierda resolvés varias juntas. Si te equivocás se puede deshacer.",
+      "Toda obra nueva cae acá y no se mueve hasta que vos decidas.<br><br>" +
+      "<b>Aplica</b> significa que el cliente pide documentación: la obra entra a la cola y te crea el " +
+      "primer requisito para arrancar.",
+    lado: "bottom",
+  },
+  {
+    ancla: "grupo-recien-llegadas",
+    titulo: "\"No aplica\" habilita la obra en el acto",
+    texto:
+      "Es para las obras donde <b>no hay que mandarle nada a nadie</b>: el cliente no pide papeles.<br><br>" +
+      "Apretarlo no la deja en un limbo — la obra queda <b>habilitada</b> y pasa a <b>verde</b> ahí mismo, " +
+      "lista para armar. No hay que hacer nada más con ella.<br><br>" +
+      "Es la mitad de los casos, así que resolverlas rápido es lo que mantiene la bandeja limpia. Con las " +
+      "casillas de la izquierda hacés varias juntas, y si te equivocaste se deshace.",
     lado: "bottom",
   },
   {
@@ -122,6 +131,39 @@ export const PASOS_FICHA: PasoTour[] = [
     lado: "left",
   },
   {
+    ancla: "barra-triage",
+    titulo: "Acá también decidís si aplica",
+    texto:
+      "Lo mismo que en la bandeja pero para esta obra sola, y con la vuelta atrás siempre a mano.<br><br>" +
+      "Acordate: <b>no aplica</b> es cuando no hay que mandarle documentación a nadie, y deja la obra " +
+      "<b>habilitada</b> en el acto. Los requisitos, las notas y el historial no se borran.",
+    lado: "bottom",
+  },
+  {
+    ancla: "vencimiento",
+    titulo: "El vencimiento — esto es lo que más te va a servir",
+    texto:
+      "Muchas habilitaciones caducan: la nómina de ART vence, el seguro vence. Si la obra sigue armada " +
+      "cuando eso pasa, estás sin cobertura y nadie se entera.<br><br>" +
+      "Cargá acá la fecha y el sistema <b>te avisa solo</b>: la obra aparece en <b>Vencen en menos de 30 días</b> " +
+      "en la bandeja, y el semáforo cambia cuando ya venció.<br><br>" +
+      "Es el único aviso que te llega sin que tengas que acordarte de mirar. Cargalo siempre que la " +
+      "documentación tenga fecha de corte.",
+    lado: "top",
+  },
+  {
+    ancla: "paquetes",
+    titulo: "Los combos: no cargues los papeles a mano",
+    texto:
+      "Cada cliente pide una lista distinta, pero se repiten. Por eso hay <b>paquetes</b> ya armados: elegís " +
+      "uno y te crea todos los requisitos de una.<br><br>" +
+      "<b>Básico</b> es sólo la nómina de ART. <b>+ No repetición</b> le suma la cláusula. <b>+ SVO</b> agrega " +
+      "el SVO y el aviso de obra. <b>Completo</b> son los ocho, para los clientes más exigentes.<br><br>" +
+      "El paquete es un punto de partida, no una jaula: podés cambiarlo después. Si cambiás a otro, " +
+      "<b>no se borra</b> lo que ya mandaste ni lo que agregaste a mano.",
+    lado: "bottom",
+  },
+  {
     ancla: "requisitos",
     titulo: "Los papeles, uno por uno",
     texto:
@@ -130,6 +172,28 @@ export const PASOS_FICHA: PasoTour[] = [
       "justamente lo que te obliga a volver a leer el mail.<br><br>" +
       "Arriba tenés <b>marcar todo</b> y <b>aprobar todo</b>, porque normalmente mandás un mail con todo junto. " +
       "Los botones de a uno siguen estando para cuando va de a uno.",
+    lado: "top",
+  },
+  {
+    ancla: "agregar-requisito",
+    titulo: "Y si el cliente pide algo que no está en el combo",
+    texto:
+      "Lo escribís acá con el nombre que quieras y listo — pasa a ser un requisito más de esta obra, con " +
+      "los mismos estados y los mismos botones.<br><br>" +
+      "Sirve para los pedidos raros: un formulario propio del consorcio, una constancia puntual. También " +
+      "podés borrar los del paquete que ese cliente no pida.",
+    lado: "top",
+  },
+  {
+    ancla: "notas",
+    titulo: "Las notas: lo que no entra en ningún campo",
+    texto:
+      "\"El administrador atiende después de las 11\", \"la nómina la manda el contador, no el cliente\", " +
+      "\"pidieron mandar todo junto y no de a uno\".<br><br>" +
+      "Todo eso que hoy vive en tu cabeza o en un mail viejo, y que la próxima persona que agarre la obra " +
+      "no tiene forma de saber.<br><br>" +
+      "Con el <b>chinche</b> la fijás arriba, y además aparece en el tablero para quien planifica la obra. " +
+      "Usalo para lo que alguien más necesita saber sí o sí.",
     lado: "top",
   },
   {

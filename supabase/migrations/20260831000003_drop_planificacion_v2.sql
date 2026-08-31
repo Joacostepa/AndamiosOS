@@ -23,6 +23,11 @@
 
 BEGIN;
 
+-- ot_jornadas es de la misma tanda de junio y tampoco la usa nadie, pero tiene 21
+-- filas y se queda: sólo se le saca el FK, que es lo único que impide el DROP de
+-- abajo. Queda con asignacion_id apuntando a nada, que es lo que ya era.
+ALTER TABLE ot_jornadas DROP CONSTRAINT IF EXISTS ot_jornadas_asignacion_id_fkey;
+
 -- Los triggers de auditoría cuelgan de las tablas y se van con ellas; los
 -- borro explícito igual para que el DROP no dependa del orden del CASCADE.
 DROP TRIGGER IF EXISTS trg_audit_plan_bloqueos ON planificacion_bloqueos;

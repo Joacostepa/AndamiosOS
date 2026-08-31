@@ -137,22 +137,48 @@ export function useRemoveOperarioPlantel() {
   });
 }
 
-// Jornadas futuras (fecha >= hoy) por cuadrilla — para la regla de borrar/desactivar.
+/**
+ * Jornadas futuras (fecha >= hoy) por cuadrilla — para la regla de borrar/desactivar.
+ * Devuelve un mapa por id de cuadrilla de SUPABASE, que es con lo que indexa la página.
+ *
+ * El plan vive en Odoo desde el tablero v3. Antes esta cuenta salía de
+ * `planificacion_asignaciones`, que quedó vacía en esa mudanza y hacía que la guarda
+ * dijera que todas las cuadrillas estaban libres.
+ *
+ * EL CRUCE ES POR NOMBRE, y es la parte frágil: las cuadrillas de Supabase no guardan
+ * el id de Odoo, así que lo único en común es cómo se llaman ("Cuadrilla 3" ↔
+ * "CUADRILLA 3"). Se normaliza mayúsculas, acentos y espacios. Si alguien renombra de
+ * un solo lado, la cuadrilla deja de matchear y la guarda vuelve a leerse como libre;
+ * el arreglo de fondo es guardar el id de Odoo en la tabla, que es otro cambio.
+ */
+const normalizarNombre = (s: string) =>
+  s.toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "").replace(/\s+/g, " ").trim();
+
 export function useFuturasPorCuadrilla() {
   const supabase = createClient();
   return useQuery({
     queryKey: ["cuadrillas", "futuras"],
     queryFn: async () => {
-      const hoy = new Date().toISOString().slice(0, 10);
-      const { data, error } = await supabase
-        .from("planificacion_asignaciones")
-        .select("cuadrilla_id")
-        .gte("fecha", hoy);
+      const [{ data: locales, error }, res] = await Promise.all([
+        supabase.from("cuadrillas").select("id, nombre"),
+        fetch("/api/planificacion/cuadrillas-futuras"),
+      ]);
       if (error) throw error;
-      const map: Record<string, number> = {};
-      for (const r of (data ?? []) as { cuadrilla_id: string }[]) {
-        map[r.cuadrilla_id] = (map[r.cuadrilla_id] ?? 0) + 1;
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error ?? `Error ${res.status}`);
       }
+      const { cuadrillas: odoo } = (await res.json()) as {
+        cuadrillas: { id: number; nombre: string; futuras: number }[];
+      };
+
+      const futurasPorNombre = new Map(odoo.map((c) => [normalizarNombre(c.nombre), c.futuras]));
+      const map: Record<string, number> = {};
+      for (const c of (locales ?? []) as { id: string; nombre: string }[]) {
+        map[c.id] = futurasPorNombre.get(normalizarNombre(c.nombre)) ?? 0;
+      }
+      // Una cuadrilla que existe en Odoo y no en Supabase no entra al mapa a propósito:
+      // si no está en la página de configuración, no hay nada que guardar de su borrado.
       return map;
     },
   });

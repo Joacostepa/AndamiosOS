@@ -283,6 +283,45 @@ export async function fetchTablero(desde: string, hasta: string): Promise<Tabler
 }
 
 /**
+ * Jornadas de hoy en adelante por cuadrilla. La usa la página de configuración para
+ * frenar el borrado o la desactivación de una cuadrilla que todavía tiene trabajo.
+ *
+ * Va contra Odoo y no contra Supabase por una razón concreta: hasta ahora esta cuenta
+ * salía de `planificacion_asignaciones`, la tabla del tablero anterior, que dejó de
+ * recibir escrituras cuando el plan se mudó a Odoo. La guarda venía respondiendo cero
+ * para todas las cuadrillas, así que se podía desactivar una con la semana llena.
+ *
+ * Devuelve el nombre además del id porque del otro lado las cuadrillas son las de
+ * Supabase, que no guardan el id de Odoo: el cruce es por nombre. Ver useFuturasPorCuadrilla.
+ */
+export async function fetchFuturasPorCuadrilla(
+  desde: string,
+): Promise<{ id: number; nombre: string; futuras: number }[]> {
+  const [cuadrillas, grupos] = await Promise.all([
+    searchRead<{ id: number; x_name: string | false }>("x_aba_cuadrilla", [], ["x_name"]),
+    executeKw<{ x_cuadrilla_id: M2O; __count: number }[]>(
+      "x_aba_asignacion",
+      "read_group",
+      [[["x_fecha", ">=", desde]], ["x_cuadrilla_id"], ["x_cuadrilla_id"]],
+      { lazy: false },
+    ),
+  ]);
+
+  const porId = new Map<number, number>();
+  for (const g of grupos) {
+    const id = m2oId(g.x_cuadrilla_id);
+    // Las asignaciones sin cuadrilla no le suman trabajo futuro a ninguna.
+    if (id != null) porId.set(id, g.__count);
+  }
+
+  return cuadrillas.map((c) => ({
+    id: c.id,
+    nombre: str(c.x_name) ?? `Cuadrilla #${c.id}`,
+    futuras: porId.get(c.id) ?? 0,
+  }));
+}
+
+/**
  * La ficha de una OT: lo que se lee al abrir el panel lateral y no antes.
  *
  * Son dos lecturas encadenadas —la OT y después su orden— porque el cliente, la

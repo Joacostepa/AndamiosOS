@@ -426,67 +426,108 @@ export async function fetchEmpleados(): Promise<{ id: number; nombre: string; es
     .sort((a, b) => escalaNum(b.escala) - escalaNum(a.escala) || a.nombre.localeCompare(b.nombre));
 }
 
-/** Lee un parte con sus líneas, para ver o editar lo ya cargado. */
-export async function fetchParte(parteId: number): Promise<ParteCargado | null> {
-  const [parte] = await read<Record<string, unknown>>("x_aba_parte_diario", [parteId], [
-    "x_orden_trabajo_id", "x_fecha", "x_cuadrilla_id", "x_estado", "x_motivo_no_ejec",
-    "x_sector", "x_clima", "x_objetivo", "x_tareas", "x_bloqueos", "x_horas_hombre",
-    "x_costo_total", "x_cant_fotos", "x_puntero_id", "x_camion_en_obra",
-  ]);
-  if (!parte) return null;
+const CAMPOS_PARTE = [
+  "x_orden_trabajo_id", "x_fecha", "x_cuadrilla_id", "x_estado", "x_motivo_no_ejec",
+  "x_sector", "x_clima", "x_objetivo", "x_tareas", "x_bloqueos", "x_horas_hombre",
+  "x_costo_total", "x_cant_fotos", "x_puntero_id", "x_camion_en_obra",
+];
 
-  const [manoObra, fletes, incidencias, fotos] = await Promise.all([
-    searchRead<Record<string, unknown>>("x_aba_mano_obra", [["x_parte_diario_id", "=", parteId]],
-      ["x_tarea", "x_personas", "x_hora_desde", "x_hora_hasta", "x_horas", "x_horas_hombre"]),
-    searchRead<Record<string, unknown>>("x_aba_flete", [["x_parte_diario_id", "=", parteId]],
-      ["x_cantidad", "x_tercerizado", "x_costo_manual"]),
-    searchRead<Record<string, unknown>>("x_aba_incidencia", [["x_parte_diario_id", "=", parteId]],
-      ["x_tipo", "x_descripcion"]),
-    searchRead<Record<string, unknown>>("x_aba_foto", [["x_parte_diario_id", "=", parteId]],
-      ["x_momento", "x_descripcion"]),
+/**
+ * Lee VARIOS partes con sus líneas, en 5 llamadas fijas.
+ *
+ * POR QUÉ EN LOTE: el listado de un día trae un parte por jornada cargada, y leerlos de a
+ * uno son 5 round-trips CADA UNO (cabecera + mano de obra + fletes + incidencias + fotos).
+ * Con 5 jornadas cargadas eran 25 llamadas que la cola de client.ts reparte de a 4: unos
+ * 5 segundos de pantalla en blanco antes de poder cargar el primer parte. Agrupando por
+ * `in` son 5 llamadas, no importa cuántos partes haya.
+ */
+export async function fetchPartes(parteIds: number[]): Promise<Map<number, ParteCargado>> {
+  const ids = [...new Set(parteIds)];
+  if (ids.length === 0) return new Map();
+
+  const [cabeceras, manoObra, fletes, incidencias, fotos] = await Promise.all([
+    read<Record<string, unknown>>("x_aba_parte_diario", ids, CAMPOS_PARTE),
+    searchRead<Record<string, unknown>>("x_aba_mano_obra", [["x_parte_diario_id", "in", ids]],
+      ["x_parte_diario_id", "x_tarea", "x_personas", "x_hora_desde", "x_hora_hasta", "x_horas", "x_horas_hombre"]),
+    searchRead<Record<string, unknown>>("x_aba_flete", [["x_parte_diario_id", "in", ids]],
+      ["x_parte_diario_id", "x_cantidad", "x_tercerizado", "x_costo_manual"]),
+    searchRead<Record<string, unknown>>("x_aba_incidencia", [["x_parte_diario_id", "in", ids]],
+      ["x_parte_diario_id", "x_tipo", "x_descripcion"]),
+    searchRead<Record<string, unknown>>("x_aba_foto", [["x_parte_diario_id", "in", ids]],
+      ["x_parte_diario_id", "x_momento", "x_descripcion"]),
   ]);
 
   const num = (v: unknown) => (typeof v === "number" ? v : 0);
   const texto = (v: unknown) => (typeof v === "string" && v.trim() !== "" ? v : null);
 
-  return {
-    id: parteId,
-    otId: m2oId(parte.x_orden_trabajo_id as [number, string] | false) ?? 0,
-    fecha: texto(parte.x_fecha) ?? "",
-    cuadrillaId: m2oId(parte.x_cuadrilla_id as [number, string] | false),
-    punteroId: m2oId(parte.x_puntero_id as [number, string] | false),
-    camionEnObra: parte.x_camion_en_obra === true,
-    estado: parte.x_estado === "no_ejecutado" ? "no_ejecutado" : "ejecutado",
-    motivoNoEjec: texto(parte.x_motivo_no_ejec),
-    sector: texto(parte.x_sector),
-    clima: texto(parte.x_clima),
-    objetivo: texto(parte.x_objetivo),
-    tareas: texto(parte.x_tareas),
-    observaciones: texto(parte.x_bloqueos),
-    horasHombre: num(parte.x_horas_hombre),
-    costoTotal: num(parte.x_costo_total),
-    manoObra: manoObra.map((l) => ({
-      tarea: String(l.x_tarea ?? "armado"),
-      personas: num(l.x_personas),
-      horaDesde: num(l.x_hora_desde),
-      horaHasta: num(l.x_hora_hasta),
-      horas: num(l.x_horas),
-      horasHombre: num(l.x_horas_hombre),
-    })),
-    flete: fletes.length
-      ? {
-          cantidad: num(fletes[0].x_cantidad),
-          tercerizado: fletes[0].x_tercerizado === true,
-          costoManual: num(fletes[0].x_costo_manual),
-        }
-      : null,
-    incidencias: incidencias.map((i) => ({
-      tipo: String(i.x_tipo ?? "otro"),
-      descripcion: texto(i.x_descripcion) ?? "",
-    })),
-    fotos: fotos.map((f) => ({
-      momento: String(f.x_momento ?? "durante"),
-      descripcion: texto(f.x_descripcion),
-    })),
-  };
+  /** Agrupa las líneas por el parte al que cuelgan. */
+  function porParte(filas: Record<string, unknown>[]): Map<number, Record<string, unknown>[]> {
+    const mapa = new Map<number, Record<string, unknown>[]>();
+    for (const f of filas) {
+      const id = m2oId(f.x_parte_diario_id as [number, string] | false);
+      if (id === null) continue;
+      const lista = mapa.get(id);
+      if (lista) lista.push(f);
+      else mapa.set(id, [f]);
+    }
+    return mapa;
+  }
+
+  const manoObraPorParte = porParte(manoObra);
+  const fletesPorParte = porParte(fletes);
+  const incidenciasPorParte = porParte(incidencias);
+  const fotosPorParte = porParte(fotos);
+
+  const resultado = new Map<number, ParteCargado>();
+  for (const parte of cabeceras) {
+    const parteId = num(parte.id);
+    if (!parteId) continue;
+    const fletesDelParte = fletesPorParte.get(parteId) ?? [];
+    resultado.set(parteId, {
+      id: parteId,
+      otId: m2oId(parte.x_orden_trabajo_id as [number, string] | false) ?? 0,
+      fecha: texto(parte.x_fecha) ?? "",
+      cuadrillaId: m2oId(parte.x_cuadrilla_id as [number, string] | false),
+      punteroId: m2oId(parte.x_puntero_id as [number, string] | false),
+      camionEnObra: parte.x_camion_en_obra === true,
+      estado: parte.x_estado === "no_ejecutado" ? "no_ejecutado" : "ejecutado",
+      motivoNoEjec: texto(parte.x_motivo_no_ejec),
+      sector: texto(parte.x_sector),
+      clima: texto(parte.x_clima),
+      objetivo: texto(parte.x_objetivo),
+      tareas: texto(parte.x_tareas),
+      observaciones: texto(parte.x_bloqueos),
+      horasHombre: num(parte.x_horas_hombre),
+      costoTotal: num(parte.x_costo_total),
+      manoObra: (manoObraPorParte.get(parteId) ?? []).map((l) => ({
+        tarea: String(l.x_tarea ?? "armado"),
+        personas: num(l.x_personas),
+        horaDesde: num(l.x_hora_desde),
+        horaHasta: num(l.x_hora_hasta),
+        horas: num(l.x_horas),
+        horasHombre: num(l.x_horas_hombre),
+      })),
+      flete: fletesDelParte.length
+        ? {
+            cantidad: num(fletesDelParte[0].x_cantidad),
+            tercerizado: fletesDelParte[0].x_tercerizado === true,
+            costoManual: num(fletesDelParte[0].x_costo_manual),
+          }
+        : null,
+      incidencias: (incidenciasPorParte.get(parteId) ?? []).map((i) => ({
+        tipo: String(i.x_tipo ?? "otro"),
+        descripcion: texto(i.x_descripcion) ?? "",
+      })),
+      fotos: (fotosPorParte.get(parteId) ?? []).map((f) => ({
+        momento: String(f.x_momento ?? "durante"),
+        descripcion: texto(f.x_descripcion),
+      })),
+    });
+  }
+  return resultado;
+}
+
+/** Lee un parte con sus líneas, para ver o editar lo ya cargado. */
+export async function fetchParte(parteId: number): Promise<ParteCargado | null> {
+  return (await fetchPartes([parteId])).get(parteId) ?? null;
 }

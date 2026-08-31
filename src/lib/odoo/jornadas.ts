@@ -14,7 +14,7 @@
 
 import { searchRead, executeKw, create, read } from "./client";
 import { consultasDeAvance } from "./asignaciones";
-import { fetchParte } from "./partes";
+import { fetchPartes } from "./partes";
 import type { JornadaListado, ListadoJornadas } from "@/lib/tablero/tipos-jornada";
 
 type M2O = [number, string] | false;
@@ -54,6 +54,29 @@ function fraccionNum(v: string | false | null | undefined): number {
 const FLETES_SUGERIDOS_POR_DIA = 1;
 
 /**
+ * Hasta dónde se mira atrás buscando tentativas sin confirmar, y cuántas se traen.
+ *
+ * POR QUÉ HAY UN LÍMITE: el filtro es "fecha < hoy, tentativa, sin parte", que no lo
+ * cumple nadie por un rato — lo cumple para siempre. Toda tentativa vieja que el
+ * planificador nunca confirmó ni borró se queda en la lista, así que la consulta y el
+ * `read` de OTs que viene después crecen mes a mes hasta volver lenta una pantalla que
+ * arrancó rápida.
+ *
+ * Dos meses es más que suficiente: una jornada que se trabajó y nadie cargó en ese plazo
+ * ya no se va a cargar de memoria. El tope de 50 es la red de contención para la primera
+ * vez que alguien abra esto con años de tentativas acumuladas.
+ */
+const DIAS_ATRAS_SIN_CONFIRMAR = 60;
+const MAX_SIN_CONFIRMAR = 50;
+
+/** `hoy` menos N días, en YYYY-MM-DD. */
+function diasAntes(iso: string, dias: number): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - dias);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
  * El listado de un día.
  *
  * Dos orígenes, a propósito:
@@ -78,9 +101,14 @@ export async function fetchListadoJornadas(fecha: string, hoy: string): Promise<
       }),
       searchRead<FilaAsig>(
         "x_aba_asignacion",
-        [["x_fecha", "<", hoy], ["x_estado", "=", "tentativa"], ["x_parte_id", "=", false]],
+        [
+          ["x_fecha", "<", hoy],
+          ["x_fecha", ">=", diasAntes(hoy, DIAS_ATRAS_SIN_CONFIRMAR)],
+          ["x_estado", "=", "tentativa"],
+          ["x_parte_id", "=", false],
+        ],
         CAMPOS_ASIG,
-        { order: "x_fecha desc, id" },
+        { order: "x_fecha desc, id", limit: MAX_SIN_CONFIRMAR },
       ),
       searchRead<{ id: number; x_name: string | false }>(
         "x_aba_cuadrilla",
@@ -125,9 +153,11 @@ export async function fetchListadoJornadas(fecha: string, hoy: string): Promise<
   // Buscar por OT+fecha haría que una jornada se apropie de un parte histórico cargado
   // directamente en Odoo; ya pasó una vez y borró líneas. cerrarJornada avisa si detecta
   // un duplicado, que es la mitad segura de ese chequeo.
+  //
+  // Se leen TODOS de una: fetchPartes agrupa por `in` y son 5 llamadas fijas, no 5 por
+  // parte. De a uno, un día con cinco jornadas cargadas eran 25 round-trips.
   const parteIds = [...new Set(todas.map((a) => m2oId(a.x_parte_id)).filter((x): x is number => !!x))];
-  const partes = await Promise.all(parteIds.map((id) => fetchParte(id)));
-  const partePorId = new Map(parteIds.map((id, i) => [id, partes[i]]));
+  const partePorId = await fetchPartes(parteIds);
 
   const tomadasPorOt = new Map(gruposTomadas.map((g) => [m2oId(g.x_ot_id) ?? 0, g.__count]));
   const hechasPorOt = new Map(gruposHechas.map((g) => [m2oId(g.x_ot_id) ?? 0, g.__count]));

@@ -52,8 +52,18 @@ export function useCerrarJornada() {
         method: "POST",
         body: JSON.stringify(body),
       }),
-    // El tablero se refresca para que la tarjeta pase a "cerrada".
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["tablero"] }),
+    // El tablero se refresca para que la tarjeta pase a "cerrada", y el LISTADO DE PARTES
+    // para que la fila deje de decir "sin cargar".
+    //
+    // Sin invalidar ["jornadas"], guardar dejaba la pantalla exactamente igual que antes:
+    // el borrador se limpia al terminar, así que la fila volvía al checkbox vacío y el
+    // contador de pendientes no bajaba. Se leía como que no había guardado nada — y al
+    // volver a cargarla y guardar de nuevo se creaba un parte duplicado en Odoo.
+    // La clave sin fecha alcanza las tres: el día, el badge del sidebar y los otros días.
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["jornadas"] });
+      qc.invalidateQueries({ queryKey: ["tablero"] });
+    },
   });
 }
 
@@ -67,6 +77,7 @@ export function useEditarParte() {
       }),
     onSuccess: (_r, vars) => {
       qc.invalidateQueries({ queryKey: ["parte", vars.parteId] });
+      qc.invalidateQueries({ queryKey: ["jornadas"] });
       qc.invalidateQueries({ queryKey: ["tablero"] });
     },
   });

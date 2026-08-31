@@ -155,7 +155,13 @@ export function FilaJornada({
 }) {
   // La lista de empleados cambia muy poco y el hook la cachea, así que pedirla por fila
   // no cuesta: todas las filas comparten la misma query.
-  const { data: empleados } = useEmpleados();
+  //
+  // El error NO se puede ignorar: el capataz es obligatorio para guardar y sale de acá.
+  // Con Odoo caído la lista viene vacía, no hay nada para elegir, y el único cartel era
+  // "Falta el capataz" en rojo para siempre — sin decir que el problema no es del que
+  // está cargando ni que reintentar sirve.
+  const { data: empleados, isError: fallaronEmpleados, isLoading: cargandoEmpleados, refetch: recargarEmpleados } =
+    useEmpleados();
   const tipo = colorTipo(jornada.tipo);
   const IconoTipo = ICONO_TIPO[tipo.icono];
   const partes = partesTitulo(jornada.titulo);
@@ -393,9 +399,18 @@ export function FilaJornada({
                     items={Object.fromEntries((empleados ?? []).map((e) => [String(e.id), e.nombre]))}
                     value={borrador.capatazId}
                     onValueChange={(v) => v && set({ capatazId: v })}
+                    disabled={fallaronEmpleados}
                   >
                     <SelectTrigger className="h-8">
-                      <SelectValue placeholder="Quién estuvo a cargo" />
+                      <SelectValue
+                        placeholder={
+                          fallaronEmpleados
+                            ? "No se pudo traer la lista"
+                            : cargandoEmpleados
+                              ? "Cargando…"
+                              : "Quién estuvo a cargo"
+                        }
+                      />
                     </SelectTrigger>
                     <SelectContent className="max-h-[50vh]">
                       {(empleados ?? []).map((e) => (
@@ -405,6 +420,19 @@ export function FilaJornada({
                       ))}
                     </SelectContent>
                   </Select>
+                  {fallaronEmpleados && (
+                    <span className="block text-[10px]" style={{ color: "#B42318" }}>
+                      No se pudo traer la lista de empleados de Odoo. Sin capataz no se puede
+                      guardar el parte.{" "}
+                      <button
+                        type="button"
+                        onClick={() => recargarEmpleados()}
+                        className="underline underline-offset-2"
+                      >
+                        Reintentar
+                      </button>
+                    </span>
+                  )}
                 </label>
                 <div className="space-y-1">
                   <span className="text-[11px] font-medium">Viajes de flete</span>

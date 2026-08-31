@@ -18,6 +18,9 @@ import { OdooError } from "@/lib/odoo/client";
 // El parte en sí se guarda por /api/planificacion/partes: es el mismo cierre de siempre.
 
 export const dynamic = "force-dynamic";
+// El listado son varias consultas a Odoo Online, que a ~800 ms cada una rozan el default
+// de la plataforma en un día cargado.
+export const maxDuration = 300;
 
 const fechaSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha YYYY-MM-DD");
 

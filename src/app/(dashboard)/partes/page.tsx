@@ -33,6 +33,13 @@ import { asBuiltAEnviar, type DatosCierre } from "@/lib/tablero/tipos-parte";
 
 const iso = (d: Date) => format(d, "yyyy-MM-dd");
 
+/** El registro sin las claves indicadas. Se usa para soltar sólo los borradores guardados. */
+function sinLas<T>(registro: Record<number, T>, ids: number[]): Record<number, T> {
+  const resto = { ...registro };
+  for (const id of ids) delete resto[id];
+  return resto;
+}
+
 /** Traduce el borrador de una fila a lo que espera la API del parte. */
 function aDatosCierre(b: Borrador, j: JornadaListado): DatosCierre {
   const ejecutado = b.estado === "ejecutado";
@@ -108,7 +115,16 @@ function Contenido() {
   const cuadrillas = useMemo(() => data?.cuadrillas ?? [], [data]);
   const otsDisponibles = useMemo(() => data?.otsDisponibles ?? [], [data]);
 
-  const pendientes = jornadas.filter((j) => !j.parte);
+  // TODAS las filas que la pantalla deja editar, incluidas las tentativas vencidas de la
+  // sección plegada. Guardar tiene que mirar acá y no sólo el día: esas filas se pueden
+  // desplegar y completar enteras, y si el guardado no las junta se llenan para nada.
+  const filas = useMemo(() => [...jornadas, ...sinConfirmar], [jornadas, sinConfirmar]);
+
+  // Las del día elegido. Es lo que cuenta el encabezado y lo que llena el atajo: barrer
+  // "confirmar como planificado" sobre jornadas viejas plegadas inventaría horas-hombre
+  // sin que nadie las vea.
+  const pendientesDelDia = jornadas.filter((j) => !j.parte);
+  const guardables = filas.filter((j) => !j.parte);
   const cargadas = jornadas.filter((j) => j.parte);
 
   // El pie suma SÓLO lo cargado y sube a medida que se carga. Sirve de control: si al
@@ -116,17 +132,17 @@ function Contenido() {
   const totales = useMemo(() => {
     const hhGuardadas = cargadas.reduce((s, j) => s + (j.parte?.horasHombre ?? 0), 0);
     const hhBorrador = Object.entries(borradores).reduce((s, [id, b]) => {
-      const j = jornadas.find((x) => x.asignacionId === Number(id));
+      const j = filas.find((x) => x.asignacionId === Number(id));
       return j && !j.parte && b.estado === "ejecutado" ? s + horasHombreDe(b) : s;
     }, 0);
     const fletes =
       cargadas.reduce((s, j) => s + (j.parte?.flete?.cantidad ?? 0), 0) +
       Object.entries(borradores).reduce((s, [id, b]) => {
-        const j = jornadas.find((x) => x.asignacionId === Number(id));
+        const j = filas.find((x) => x.asignacionId === Number(id));
         return j && !j.parte ? s + (Number(b.fletes) || 0) : s;
       }, 0);
     return { hh: hhGuardadas + hhBorrador, fletes };
-  }, [cargadas, borradores, jornadas]);
+  }, [cargadas, borradores, filas]);
 
   function abrir(j: JornadaListado) {
     setAbiertas((prev) => ({ ...prev, [j.asignacionId]: !prev[j.asignacionId] }));
@@ -139,7 +155,7 @@ function Contenido() {
   function confirmarComoPlanificado() {
     const nuevos: Record<number, Borrador> = { ...borradores };
     let sinDotacion = 0;
-    for (const j of pendientes) {
+    for (const j of pendientesDelDia) {
       if (nuevos[j.asignacionId]) continue;
       nuevos[j.asignacionId] = borradorDe(j);
       if (j.personalPrevisto <= 0) sinDotacion++;
@@ -153,7 +169,7 @@ function Contenido() {
   }
 
   async function guardarTodo() {
-    const aGuardar = pendientes
+    const aGuardar = guardables
       .map((j) => ({ j, b: borradores[j.asignacionId] }))
       .filter((x): x is { j: JornadaListado; b: Borrador } => !!x.b);
 
@@ -164,6 +180,9 @@ function Contenido() {
     const conError = aGuardar.filter((x) => erroresDe(x.b, x.j).length > 0);
     if (conError.length > 0) {
       for (const x of conError) setAbiertas((prev) => ({ ...prev, [x.j.asignacionId]: true }));
+      // Una tentativa vencida incompleta vive en la sección plegada del pie: desplegarla
+      // sola no se ve, y el error señalaría una fila que no está en pantalla.
+      if (conError.some((x) => x.j.tentativaVencida)) setVencidasAbierto(true);
       toast.error(`${conError.length} fila(s) incompletas`, {
         description: erroresDe(conError[0].b, conError[0].j).join(" · "),
       });
@@ -173,11 +192,24 @@ function Contenido() {
     // Se guardan de a una y no en paralelo: cada parte son varias escrituras a Odoo, y
     // cinco a la vez multiplicadas por la cola del servidor terminan en 429.
     setGuardando({ hechas: 0, total: aGuardar.length });
-    let ok = 0;
+    // Qué filas quedaron efectivamente escritas. SÓLO ésas pierden el borrador: si la
+    // tercera falla, lo que se tipeó en la cuarta y la quinta —fotos incluidas— tiene que
+    // seguir ahí. Vaciar el mapa entero hacía que un error en el medio se llevara puesto
+    // todo lo que faltaba guardar.
+    const guardados: number[] = [];
     // Las fotos se suben de a una y pueden fallar sin voltear el parte. Si eso no se
     // avisa, la pantalla dice "guardado" y las fotos no están: quien las sacó se entera
     // meses después, cuando el cliente reclama y no hay con qué contestarle.
     const fotosFallidas: string[] = [];
+    // Los pasos que Odoo rechazó sin voltear el parte. El backend los venía informando y
+    // esta pantalla los tiraba: un parte podía guardarse SIN la línea de mano de obra
+    // —cero horas-hombre, cero costo— y el cartel decía "1 parte guardado". Peor todavía
+    // si lo que falla es marcar la jornada: la asignación queda sin vincular y el próximo
+    // guardado crea un parte duplicado.
+    const incompletos: string[] = [];
+    const anotar = (j: JornadaListado, texto: string) =>
+      incompletos.push(`${j.titulo.slice(0, 30)} — ${texto}`);
+
     for (const { j, b } of aGuardar) {
       try {
         const r = await cerrar.mutateAsync({
@@ -185,12 +217,26 @@ function Contenido() {
           datos: aDatosCierre(b, j),
           finalizarOt: b.finalizarOt === true,
         });
+        // El parte existe: la fila ya no se vuelve a guardar aunque algo de acá abajo
+        // falle. Reintentarla crearía un duplicado, que es peor que el paso que falló.
+        guardados.push(j.asignacionId);
         fotosFallidas.push(...(r?.fotosFallidas ?? []));
-        if (b.estado === "no_ejecutado" && b.reprogramarA) {
-          await reprogramar.mutateAsync({ asignacionId: j.asignacionId, reprogramarA: b.reprogramarA });
+        for (const paso of r?.pasos ?? []) {
+          // Las fotos tienen su propio aviso, con los nombres de las que se cayeron.
+          if (!paso.ok && paso.nombre !== "Fotos") {
+            anotar(j, paso.detalle ? `${paso.nombre}: ${paso.detalle}` : paso.nombre);
+          }
         }
-        ok++;
-        setGuardando({ hechas: ok, total: aGuardar.length });
+        if (b.estado === "no_ejecutado" && b.reprogramarA) {
+          try {
+            await reprogramar.mutateAsync({ asignacionId: j.asignacionId, reprogramarA: b.reprogramarA });
+          } catch (e) {
+            // El parte de la jornada perdida quedó guardado; lo que no se creó es la
+            // jornada nueva. Se dice, en vez de reportar el parte como fallado.
+            anotar(j, `no se pudo reprogramar al ${b.reprogramarA}: ${e instanceof Error ? e.message : String(e)}`);
+          }
+        }
+        setGuardando({ hechas: guardados.length, total: aGuardar.length });
       } catch (e) {
         toast.error(`No se pudo guardar ${j.titulo.slice(0, 40)}`, {
           description: e instanceof Error ? e.message : String(e),
@@ -199,16 +245,27 @@ function Contenido() {
       }
     }
     setGuardando(null);
-    if (ok > 0) {
-      setBorradores({});
-      setAbiertas({});
-      toast.success(`${ok} parte(s) guardado(s)`);
-      if (fotosFallidas.length > 0) {
-        toast.warning(
-          `${fotosFallidas.length} foto(s) no se subieron`,
-          { description: fotosFallidas.join(", ") },
-        );
-      }
+
+    if (guardados.length > 0) {
+      setBorradores((prev) => sinLas(prev, guardados));
+      setAbiertas((prev) => sinLas(prev, guardados));
+      toast.success(`${guardados.length} parte(s) guardado(s)`);
+    }
+    // Los dos avisos que siguen son pérdidas de datos que nadie va a ver después: se
+    // quedan hasta que la persona los cierre, en vez de irse solos a los cinco segundos.
+    if (fotosFallidas.length > 0) {
+      toast.warning(`${fotosFallidas.length} foto(s) no se subieron`, {
+        description: `${fotosFallidas.join(", ")} — hay que volver a cargarlas.`,
+        duration: Infinity,
+        closeButton: true,
+      });
+    }
+    if (incompletos.length > 0) {
+      toast.warning(`${incompletos.length} cosa(s) quedaron sin guardar en Odoo`, {
+        description: incompletos.join(" · "),
+        duration: Infinity,
+        closeButton: true,
+      });
     }
   }
 
@@ -224,7 +281,7 @@ function Contenido() {
         <div>
           <h1 className="text-[15px] font-medium capitalize">Partes del {fechaLabel}</h1>
           <p className="text-[12px] text-muted-foreground">
-            {jornadas.length} jornada{jornadas.length === 1 ? "" : "s"} · {pendientes.length} sin cargar
+            {jornadas.length} jornada{jornadas.length === 1 ? "" : "s"} · {pendientesDelDia.length} sin cargar
             {isFetching && " · actualizando…"}
           </p>
         </div>
@@ -405,7 +462,7 @@ function Contenido() {
         <div className="ml-auto flex items-center gap-2">
           {/* Atajo, nunca la acción principal: usado sin mirar mete horas-hombre
               inventadas, que van derecho al costo de la obra. */}
-          <Button variant="outline" size="sm" onClick={confirmarComoPlanificado} disabled={pendientes.length === 0}>
+          <Button variant="outline" size="sm" onClick={confirmarComoPlanificado} disabled={pendientesDelDia.length === 0}>
             Confirmar como planificado
           </Button>
           <Button

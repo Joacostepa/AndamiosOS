@@ -14,6 +14,10 @@ import { OdooError } from "@/lib/odoo/client";
 // edición simultánea, gana la última escritura.
 
 export const dynamic = "force-dynamic";
+// Un parte con fotos son ~10 escrituras a Odoo Online, y cada foto va en base64 de unos
+// cientos de KB. Con el default de la plataforma (10-15 s) el guardado moría en 504 justo
+// en los partes que más importan: los que traen la prueba de lo que se hizo.
+export const maxDuration = 300;
 
 const hora = z.number().min(0).max(24);
 

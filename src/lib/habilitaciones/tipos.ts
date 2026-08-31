@@ -25,12 +25,20 @@ export type TipoGestion =
   | "triage" | "consulta" | "reclamo" | "envio" | "aprobacion"
   | "observacion" | "permiso" | "renovacion" | "excepcion";
 
+/**
+ * Las etapas dicen QUIÉN TIENE LA PELOTA, no en qué casillero está el registro.
+ *
+ * La versión anterior confundía: la etapa `b` decía "esperando requisitos del cliente"
+ * y la `c` "documentación enviada", con lo cual la palabra "requisito" significaba dos
+ * cosas distintas según la etapa —la lista que el cliente pide, y el papel que le
+ * mandamos— y no se entendía de quién era el próximo movimiento.
+ */
 export const ETAPA_LABEL: Record<HabEtapa, string> = {
-  a: "Falta consultar requisitos al cliente",
-  b: "Esperando requisitos del cliente",
-  c: "Documentación enviada — esperando validación",
+  a: "Nuestra — falta consultarle al cliente qué pide",
+  b: "Del cliente — tiene que decir qué papeles pide",
+  c: "Del cliente — tiene que validar lo que le mandamos",
   d: "Habilitada",
-  e: "Habilitación vencida — renovar",
+  e: "Vencida — hay que renovar",
   f: "No aplica",
 };
 
@@ -201,6 +209,10 @@ export type FichaHabilitacion = {
   vencimiento: string | null;
   observaciones: string | null;
   triage: "aplica" | "no_aplica" | null;
+  /** Fecha en que alguien declaró habilitada la obra. null = todavía no se habilitó. */
+  habilitadaEl: string | null;
+  /** Sólo si se habilitó sin tener todo aprobado: la excepción, documentada. */
+  habilitadaMotivo: string | null;
   syncEstado: EstadoSync;
   syncError: string | null;
   permiso: Permiso;

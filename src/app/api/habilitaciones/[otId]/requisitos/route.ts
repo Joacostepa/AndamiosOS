@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import {
   agregarRequisito, aplicarPaquete, borrarRequisito, cambiarEstadoRequisito,
-  fetchGestionDe, registrarGestion,
+  fetchGestionDe, marcarTodosLosRequisitos, registrarGestion,
 } from "@/lib/habilitaciones/servicio";
 import { errorResponse, invalido, parseOtId, sesion, sincronizarLuego } from "../../_comun";
 
@@ -41,6 +41,12 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ otId: stri
   }
 }
 
+// Dos formas de mover requisitos, no una que reemplaza a la otra: a veces se manda un
+// mail con todos los papeles y el cliente contesta "está todo bien" —eso es un gesto
+// único y registrarlo de a uno son dieciséis clics— y a veces se manda y se aprueba de
+// a uno. Conviven.
+const masivoSchema = z.object({ todos: z.enum(["enviado", "aprobado"]) });
+
 const patchSchema = z
   .object({
     requisitoId: z.string().uuid(),
@@ -57,7 +63,29 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ otId: str
   const otId = parseOtId((await ctx.params).otId);
   if (!otId) return invalido("Id de OT inválido");
 
-  const parsed = patchSchema.safeParse(await req.json().catch(() => null));
+  const cuerpo = await req.json().catch(() => null);
+
+  const masivo = masivoSchema.safeParse(cuerpo);
+  if (masivo.success) {
+    try {
+      const { db, userId } = await sesion();
+      const n = await marcarTodosLosRequisitos(db, otId, masivo.data.todos);
+      if (n > 0) {
+        await registrarGestion(
+          db, otId,
+          masivo.data.todos === "enviado" ? "envio" : "aprobacion",
+          `${n} requisito${n === 1 ? "" : "s"} en un solo gesto`,
+          userId,
+        );
+        sincronizarLuego(db, otId);
+      }
+      return NextResponse.json({ ok: true, movidos: n, gestion: await fetchGestionDe(db, otId) });
+    } catch (e) {
+      return errorResponse(e);
+    }
+  }
+
+  const parsed = patchSchema.safeParse(cuerpo);
   if (!parsed.success) return invalido(parsed.error.issues.map((i) => i.message).join(" · "));
 
   const { requisitoId, estado, motivo } = parsed.data;

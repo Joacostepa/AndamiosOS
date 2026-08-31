@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/shared/empty-state";
+import { BloqueHabilitacion } from "@/components/habilitaciones/bloque-habilitacion";
 import { veredicto } from "@/lib/habilitaciones/derivacion";
 import { ETAPA_LABEL, TIPO_GESTION_LABEL } from "@/lib/habilitaciones/tipos";
 import { partesTitulo } from "@/lib/tablero/titulo";
@@ -116,6 +117,8 @@ function Ficha({ ficha, otId }: { ficha: FichaHabilitacion; otId: number }) {
           <p className="text-muted-foreground">{v.detalle}</p>
         </div>
       </div>
+
+      <BloqueHabilitacion ficha={ficha} otId={otId} />
 
       <BarraTriage ficha={ficha} otId={otId} />
 

@@ -147,6 +147,49 @@ export function useCambiarRequisito(otId: number) {
   });
 }
 
+/** Mover TODOS los requisitos que corresponda de un solo gesto. */
+export function useMarcarTodos(otId: number) {
+  const aplicar = useAplicar(otId);
+  return useMutation({
+    mutationFn: (todos: "enviado" | "aprobado") =>
+      pedir<{ movidos: number }>(`/api/habilitaciones/${otId}/requisitos`, {
+        method: "PATCH",
+        body: JSON.stringify({ todos }),
+      }),
+    onSuccess: aplicar,
+  });
+}
+
+/**
+ * Declarar habilitada la obra, o revertirlo.
+ *
+ * Invalida la ficha entera y no sólo la gestión: la etapa y el semáforo los computa Odoo
+ * a partir del estado que este gesto acaba de cambiar, así que hay que volver a leerlos.
+ */
+export function useDeclararHabilitacion(otId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { habilitar: boolean; faltan: number; motivo?: string | null }) =>
+      pedir(`/api/habilitaciones/${otId}/habilitacion`, { method: "POST", body: JSON.stringify(v) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["habilitacion", otId] });
+      qc.invalidateQueries({ queryKey: ["habilitaciones"] });
+    },
+  });
+}
+
+/** Registrar que ya se le consultó al cliente. Es lo único que pasa de la etapa `a` a la `b`. */
+export function useRegistrarConsulta(otId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => pedir(`/api/habilitaciones/${otId}/consulta`, { method: "POST" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["habilitacion", otId] });
+      qc.invalidateQueries({ queryKey: ["habilitaciones"] });
+    },
+  });
+}
+
 export function useAgregarRequisito(otId: number) {
   const aplicar = useAplicar(otId);
   return useMutation({

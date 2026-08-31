@@ -9,7 +9,7 @@ import {
 import { toast } from "sonner";
 import {
   useAdjuntos, useAgregarRequisito, useBorrarAdjunto, useBorrarRequisito,
-  useCambiarRequisito, usePaquetes, useSubirAdjunto, urlFirmada,
+  useCambiarRequisito, useMarcarTodos, usePaquetes, useSubirAdjunto, urlFirmada,
 } from "@/hooks/use-habilitaciones";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,6 +50,7 @@ const SIGUIENTE: Record<EstadoRequisito, string> = {
 
 export function ListadoRequisitos({ otId, requisitos }: { otId: number; requisitos: Requisito[] }) {
   const cambiar = useCambiarRequisito(otId);
+  const marcarTodos = useMarcarTodos(otId);
   const agregar = useAgregarRequisito(otId);
   const borrar = useBorrarRequisito(otId);
   const { data: paquetes } = usePaquetes();
@@ -59,6 +60,20 @@ export function ListadoRequisitos({ otId, requisitos }: { otId: number; requisit
   const [motivo, setMotivo] = useState("");
 
   const aprobados = requisitos.filter((r) => r.estado === "aprobado").length;
+  const observados = requisitos.filter((r) => r.estado === "observado").length;
+  // Un botón masivo sólo mueve lo que corresponde: "enviar todo" no toca lo ya aprobado,
+  // y "aprobar todo" no resucita una observación sin que alguien la mire.
+  const porMover = {
+    enviado: requisitos.filter((r) => r.estado === "pendiente").length,
+    aprobado: requisitos.filter((r) => r.estado === "enviado").length,
+  };
+
+  function enMasa(todos: "enviado" | "aprobado") {
+    marcarTodos.mutate(todos, {
+      onSuccess: (r) => toast.success(`${r.movidos} requisito${r.movidos === 1 ? "" : "s"} actualizado${r.movidos === 1 ? "" : "s"}`),
+      onError: (e) => toast.error(e instanceof Error ? e.message : "No se pudo actualizar"),
+    });
+  }
 
   function avanzar(r: Requisito) {
     const destino: EstadoRequisito =
@@ -120,6 +135,41 @@ export function ListadoRequisitos({ otId, requisitos }: { otId: number; requisit
           </Select>
         </div>
       </header>
+
+      {/* MASIVO Y DE A UNO CONVIVEN: la oficina manda un mail con todos los papeles y el
+          cliente contesta "está todo bien" —gestos únicos que registrar de a uno son
+          dieciséis clics— pero también se manda y se aprueba de a uno. Cada botón dice
+          cuántos va a mover y desaparece cuando no hay ninguno: así nunca se aprieta a
+          ciegas ni atropella lo ya resuelto ni lo observado, que necesita mirarse. */}
+      {(porMover.enviado > 0 || porMover.aprobado > 0) && (
+        <div className="flex items-center gap-2 border-b px-3 py-2">
+          {porMover.enviado > 0 && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={marcarTodos.isPending}
+              onClick={() => enMasa("enviado")}
+            >
+              Marcar {porMover.enviado} como enviado{porMover.enviado === 1 ? "" : "s"}
+            </Button>
+          )}
+          {porMover.aprobado > 0 && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={marcarTodos.isPending}
+              onClick={() => enMasa("aprobado")}
+            >
+              Aprobar {porMover.aprobado} enviado{porMover.aprobado === 1 ? "" : "s"}
+            </Button>
+          )}
+          {observados > 0 && (
+            <span className="text-xs text-muted-foreground">
+              {observados} observado{observados === 1 ? "" : "s"} quedan afuera: hay que corregirlos.
+            </span>
+          )}
+        </div>
+      )}
 
       <ul>
         {requisitos.map((r) => {

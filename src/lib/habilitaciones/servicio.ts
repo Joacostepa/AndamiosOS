@@ -32,6 +32,8 @@ type FilaHabOt = {
   hab_fecha_envio: string | null;
   hab_fecha: string | null;
   hab_vencimiento: string | null;
+  habilitada_el: string | null;
+  habilitada_motivo: string | null;
   sync_estado: "pendiente" | "sincronizado" | "error" | "huerfana";
   sync_error: string | null;
   sync_intentos: number;
@@ -50,7 +52,7 @@ async function cabecerasDe(db: DB, otIds: number[]): Promise<Map<number, FilaHab
 
   const { data, error } = await db
     .from("hab_ots")
-    .select("odoo_ot_id, triage, triage_fecha, hab_estado, hab_fecha_consulta, hab_fecha_envio, hab_fecha, hab_vencimiento, sync_estado, sync_error, sync_intentos")
+    .select("odoo_ot_id, triage, triage_fecha, hab_estado, hab_fecha_consulta, hab_fecha_envio, hab_fecha, hab_vencimiento, habilitada_el, habilitada_motivo, sync_estado, sync_error, sync_intentos")
     .in("odoo_ot_id", otIds);
   if (error) throw new Error(error.message);
 
@@ -61,7 +63,7 @@ async function cabecerasDe(db: DB, otIds: number[]): Promise<Map<number, FilaHab
     const { data: creadas, error: e2 } = await db
       .from("hab_ots")
       .upsert(faltantes.map((odoo_ot_id) => ({ odoo_ot_id })), { onConflict: "odoo_ot_id" })
-      .select("odoo_ot_id, triage, triage_fecha, hab_estado, hab_fecha_consulta, hab_fecha_envio, hab_fecha, hab_vencimiento, sync_estado, sync_error, sync_intentos");
+      .select("odoo_ot_id, triage, triage_fecha, hab_estado, hab_fecha_consulta, hab_fecha_envio, hab_fecha, hab_vencimiento, habilitada_el, habilitada_motivo, sync_estado, sync_error, sync_intentos");
     if (e2) throw new Error(e2.message);
     for (const f of creadas ?? []) mapa.set(f.odoo_ot_id, f as FilaHabOt);
   }
@@ -202,6 +204,8 @@ export async function fetchFicha(db: DB, otId: number): Promise<FichaHabilitacio
     vencimiento: base.vencimiento,
     observaciones: base.observaciones,
     triage: cab?.triage ?? null,
+    habilitadaEl: cab?.habilitada_el ?? null,
+    habilitadaMotivo: cab?.habilitada_motivo ?? null,
     syncEstado: cab?.sync_estado ?? "pendiente",
     syncError: cab?.sync_error ?? null,
     permiso: enOdoo.permiso,
@@ -291,7 +295,6 @@ export async function triar(
   decision: DecisionTriage,
   autorId: string | null,
 ): Promise<void> {
-  const hoy = hoyISO();
   await cabecerasDe(db, otIds);
 
   const { error } = await db
@@ -304,10 +307,15 @@ export async function triar(
       triage_fecha: decision === "pendiente" ? null : new Date().toISOString(),
       triage_autor: decision === "pendiente" ? null : autorId,
       sync_estado: "pendiente",
-      // "Aplica" sella la fecha de consulta en el mismo gesto que crea los requisitos.
-      // Si no, Odoo computa etapa `a` ("falta consultar requisitos") sobre una obra que
-      // ya tiene los requisitos cargados: la etapa va por fechas, no por conteo.
-      ...(decision === "aplica" ? { hab_fecha_consulta: hoy } : {}),
+      // TRIAR NO ES CONSULTAR. Antes "Aplica" sellaba la fecha de consulta en el mismo
+      // gesto, y la obra saltaba a "esperando al cliente" sin que nadie lo hubiera
+      // llamado: el tablero afirmaba que la pelota la tenía el cliente cuando la teníamos
+      // nosotros. Decidir que la obra necesita habilitación y haberle preguntado qué pide
+      // son dos cosas, y la segunda tiene su propio gesto (registrarConsulta).
+      //
+      // Volver a la cola sí borra la consulta: si la obra deja de aplicar, la fecha de
+      // consulta no describe nada.
+      ...(decision === "pendiente" ? { hab_fecha_consulta: null } : {}),
     })
     .in("odoo_ot_id", otIds);
   if (error) throw new Error(error.message);
@@ -420,6 +428,104 @@ export async function cambiarEstadoRequisito(
   return previo.odoo_ot_id as number;
 }
 
+/**
+ * Marcar TODOS los requisitos de una obra de una vez.
+ *
+ * La oficina manda un mail con todos los papeles y el cliente contesta "está todo bien":
+ * son gestos únicos que el modelo obligaba a registrar de a uno —con el paquete Completo,
+ * dieciséis clics por obra—. Los botones por requisito siguen estando: a veces se manda
+ * de a uno y se aprueba de a uno, y esto no reemplaza eso, lo acompaña.
+ *
+ * Sólo mueve lo que corresponde: "marcar todo enviado" no toca lo ya aprobado ni pisa
+ * una observación pendiente de corregir, y "aprobar todo" no resucita lo observado sin
+ * que alguien lo mire. Un botón masivo que atropella estados es peor que no tenerlo.
+ */
+export async function marcarTodosLosRequisitos(
+  db: DB,
+  otId: number,
+  estado: "enviado" | "aprobado",
+): Promise<number> {
+  const hoy = hoyISO();
+  const desde = estado === "enviado" ? ["pendiente"] : ["enviado"];
+
+  const { data: alcanzados, error: e0 } = await db
+    .from("hab_requisitos").select("id, fecha_envio").eq("odoo_ot_id", otId).in("estado", desde);
+  if (e0) throw new Error(e0.message);
+  if (!alcanzados?.length) return 0;
+
+  const cambio: Record<string, unknown> = { estado, motivo_obs: null };
+  if (estado === "aprobado") cambio.fecha_resolucion = hoy;
+
+  const { error } = await db
+    .from("hab_requisitos").update(cambio).in("id", alcanzados.map((r) => r.id));
+  if (error) throw new Error(error.message);
+
+  // La fecha de envío se sella una sola vez por requisito, igual que en el gesto suelto.
+  if (estado === "enviado") {
+    const sinFecha = alcanzados.filter((r) => !r.fecha_envio).map((r) => r.id);
+    if (sinFecha.length > 0) {
+      await db.from("hab_requisitos").update({ fecha_envio: hoy }).in("id", sinFecha);
+    }
+  }
+  return alcanzados.length;
+}
+
+/**
+ * Registrar que ya se le consultó al cliente qué papeles pide.
+ *
+ * Es lo que mueve la obra de "la pelota es nuestra" a "la pelota es del cliente", y
+ * ahora es un gesto propio en vez de un efecto del triage.
+ */
+export async function registrarConsulta(db: DB, otId: number, autorId: string | null): Promise<void> {
+  const { error } = await db
+    .from("hab_ots")
+    .update({ hab_fecha_consulta: hoyISO(), sync_estado: "pendiente" })
+    .eq("odoo_ot_id", otId);
+  if (error) throw new Error(error.message);
+  await registrarGestion(db, otId, "consulta", "Se le consultó al cliente qué documentación pide", autorId);
+}
+
+/**
+ * Declarar la obra habilitada, o revertir esa declaración.
+ *
+ * `motivo` sólo se guarda cuando se habilita con requisitos sin aprobar: es la excepción
+ * documentada, el mismo patrón que el candado usa para el expediente faltante. Existe
+ * porque a veces el cliente autoriza por teléfono y los papeles llegan después, y un
+ * sistema que no admite eso se termina esquivando.
+ */
+export async function declararHabilitacion(
+  db: DB,
+  otId: number,
+  opts: { habilitar: boolean; motivo: string | null; autorId: string | null },
+): Promise<void> {
+  const { error } = await db
+    .from("hab_ots")
+    .update(
+      opts.habilitar
+        ? {
+            habilitada_el: hoyISO(),
+            habilitada_por: opts.autorId,
+            habilitada_motivo: opts.motivo,
+            sync_estado: "pendiente",
+          }
+        : { habilitada_el: null, habilitada_por: null, habilitada_motivo: null, sync_estado: "pendiente" },
+    )
+    .eq("odoo_ot_id", otId);
+  if (error) throw new Error(error.message);
+
+  await registrarGestion(
+    db,
+    otId,
+    "aprobacion",
+    opts.habilitar
+      ? opts.motivo
+        ? `Habilitada por excepción — ${opts.motivo}`
+        : "Habilitada con todos los requisitos aprobados"
+      : "Se revirtió la habilitación",
+    opts.autorId,
+  );
+}
+
 export async function agregarRequisito(db: DB, otId: number, nombre: string): Promise<void> {
   const { data } = await db
     .from("hab_requisitos").select("orden").eq("odoo_ot_id", otId)
@@ -486,7 +592,7 @@ export async function notasFijadasDe(db: DB, otIds: number[]): Promise<Map<numbe
 export async function sincronizarOt(db: DB, otId: number): Promise<void> {
   const { data: cab, error } = await db
     .from("hab_ots")
-    .select("triage, hab_fecha_consulta, hab_vencimiento, sync_intentos")
+    .select("triage, hab_fecha_consulta, hab_vencimiento, habilitada_el, sync_intentos")
     .eq("odoo_ot_id", otId)
     .maybeSingle();
   if (error) throw new Error(error.message);
@@ -501,7 +607,7 @@ export async function sincronizarOt(db: DB, otId: number): Promise<void> {
       hab_fecha_consulta: cab?.hab_fecha_consulta ?? null,
       hab_vencimiento: cab?.hab_vencimiento ?? null,
     },
-    { triage: cab?.triage ?? null },
+    { triage: cab?.triage ?? null, habilitadaEl: cab?.habilitada_el ?? null },
   );
 
   try {

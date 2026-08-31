@@ -47,29 +47,28 @@ function minFecha(fechas: (string | null)[]): string | null {
   return v[0] ?? null;
 }
 
-function maxFecha(fechas: (string | null)[]): string | null {
-  const v = fechas.filter((f): f is string => !!f).sort();
-  return v[v.length - 1] ?? null;
-}
-
 /**
  * Los cuatro inputs que la app escribe en Odoo, derivados de los requisitos.
  *
- * IDEMPOTENTE A PROPÓSITO: las fechas salen de los propios requisitos y no de `hoy`,
- * así el job de reconciliación puede recalcular cuantas veces quiera y llegar siempre
- * al mismo resultado. La única que no es derivable es `hab_fecha_consulta` —consultarle
- * al cliente es una decisión, no un efecto— y por eso se conserva de lo que ya había.
+ * IDEMPOTENTE A PROPÓSITO: las fechas salen de los propios requisitos y no de `hoy`, así
+ * el job de reconciliación puede recalcular cuantas veces quiera y llegar siempre al
+ * mismo resultado.
+ *
+ * DOS DE LOS CINCO NO SE DERIVAN, SE CONSERVAN, y por la misma razón: son decisiones de
+ * una persona, no efectos de los papeles.
+ *
+ *   hab_fecha_consulta ← haberle preguntado al cliente qué pide (registrarConsulta)
+ *   hab_estado=habilitada ← que alguien declare habilitada la obra (declararHabilitacion)
  *
  * OJO con la etapa: el compute de Odoo la resuelve por FECHAS, no por conteo de
- * requisitos. Etapa `a` significa "sin x_hab_fecha_consulta", no "sin requisitos". Por
- * eso crear los requisitos y sellar la fecha de consulta tiene que ser un solo gesto
- * (ver aplicarPaquete en lib/odoo/habilitaciones.ts); si no, la obra queda con nueve
- * requisitos cargados y mostrándose como "falta consultar".
+ * requisitos. Etapa `a` significa "sin x_hab_fecha_consulta", no "sin requisitos", así
+ * que una obra puede tener los nueve papeles cargados y seguir en `a` — y está bien:
+ * cargar el paquete no es haberle preguntado nada a nadie.
  */
 export function derivarInputs(
   requisitos: Requisito[],
   actual: Pick<InputsHabilitacion, "hab_fecha_consulta" | "hab_vencimiento">,
-  opts: { triage: "aplica" | "no_aplica" | null },
+  opts: { triage: "aplica" | "no_aplica" | null; habilitadaEl?: string | null },
 ): InputsHabilitacion {
   // El triage manda sobre todo lo demás: "no aplica" saca la obra de la cola y Odoo
   // computa etapa `f` y semáforo gris solo.
@@ -87,25 +86,59 @@ export function derivarInputs(
   // la etapa `c` describe que la documentación ya fue mandada al menos una vez.
   const fechaEnvio = minFecha(requisitos.map((r) => r.fecha_envio));
 
-  const conRequisitos = requisitos.length > 0;
-  const todosAprobados = conRequisitos && requisitos.every((r) => r.estado === "aprobado");
   const algunoMovido = requisitos.some((r) => r.estado !== "pendiente");
 
+  // HABILITAR ES UNA DECISIÓN, NO UN EFECTO. Antes la obra pasaba sola a `habilitada` al
+  // aprobar el último papel: nadie la habilitaba, pasaba — y el semáforo se ponía verde
+  // sin que quedara registrado quién se hizo cargo. Ahora el estado sale de que alguien
+  // haya apretado el botón, y la derivación como mucho llega a `en_curso`.
+  //
+  // Es la misma regla que ya valía para hab_fecha_consulta, aplicada donde faltaba.
   let estado: HabEstado = "pendiente";
-  if (todosAprobados) estado = "habilitada";
+  if (opts.habilitadaEl) estado = "habilitada";
   else if (algunoMovido || fechaEnvio) estado = "en_curso";
 
   return {
     hab_estado: estado,
     hab_fecha_consulta: actual.hab_fecha_consulta,
     hab_fecha_envio: fechaEnvio,
-    // La fecha de habilitación es la del último papel aprobado, no la de hoy: si esto
-    // se recalcula en marzo por una reconciliación, la obra no se "habilita" en marzo.
-    hab_fecha: todosAprobados
-      ? maxFecha(requisitos.map((r) => r.fecha_resolucion)) ?? actual.hab_fecha_consulta
-      : null,
+    // La fecha que se muestra es la del día en que se habilitó, no la de hoy: una
+    // reconciliación en marzo no puede "re-habilitar" en marzo una obra de agosto.
+    hab_fecha: opts.habilitadaEl ?? null,
     hab_vencimiento: actual.hab_vencimiento,
   };
+}
+
+/**
+ * Si la obra está en condiciones de habilitarse, y qué le falta si no.
+ *
+ * Sin requisitos NO está lista, y el motivo se dice: antes una obra a la que se le
+ * borraban todos los requisitos quedaba trabada para siempre en la etapa `b` —
+ * `every()` sobre una lista vacía da true, así que había que pedir `length > 0`, y eso
+ * dejaba un estado sin salida y sin aviso. Ahora la salida existe: el botón queda
+ * apagado, dice por qué, y la excepción con motivo escrito sigue disponible.
+ */
+export function estadoDeHabilitacion(requisitos: Requisito[]): {
+  listo: boolean;
+  total: number;
+  aprobados: number;
+  faltan: number;
+  motivo: string | null;
+} {
+  const total = requisitos.length;
+  const aprobados = requisitos.filter((r) => r.estado === "aprobado").length;
+  const faltan = total - aprobados;
+
+  if (total === 0) {
+    return { listo: false, total, aprobados, faltan, motivo: "No hay requisitos cargados." };
+  }
+  if (faltan > 0) {
+    return {
+      listo: false, total, aprobados, faltan,
+      motivo: `Falta${faltan === 1 ? "" : "n"} aprobar ${faltan} de ${total}.`,
+    };
+  }
+  return { listo: true, total, aprobados, faltan, motivo: null };
 }
 
 // ─── Bandeja ────────────────────────────────────────────────────────────────
@@ -117,8 +150,8 @@ const TITULOS: Record<ClaveGrupo, string> = {
   recien_llegadas: "Recién llegadas — definir si aplica",
   critica: "Se arman en 3 días o menos y no están listas",
   atrasada: "Fecha pasada y siguen sin habilitar",
-  esperando_cliente: "Esperando respuesta del cliente",
-  validacion: "Documentación enviada, esperando validación",
+  esperando_cliente: "Falta consultar, o el cliente no dijo qué pide",
+  validacion: "Ya le mandamos todo — falta que el cliente valide",
   por_vencer: `Vencen en menos de ${DIAS_AVISO_VENCIMIENTO} días`,
 };
 

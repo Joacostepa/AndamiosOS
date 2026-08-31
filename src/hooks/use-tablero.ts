@@ -89,7 +89,11 @@ export function useFeriados(desde: string, hasta: string) {
 
 // ── Andamiaje de las mutaciones optimistas ───────────────────────────────────
 
-type Contexto = { previos: [readonly unknown[], TableroPayload | undefined][] };
+type Contexto = {
+  previos: [readonly unknown[], TableroPayload | undefined][];
+  /** Ids temporales que creó esta mutación, en el orden en que se pidieron. */
+  temporales?: number[];
+};
 
 /** Aplica un cambio a todas las semanas cacheadas y devuelve el snapshot para revertir. */
 async function aplicarOptimista(
@@ -105,6 +109,10 @@ async function aplicarOptimista(
 function revertir(qc: QueryClient, ctx: Contexto | undefined, mensaje: string, error: Error) {
   for (const [clave, data] of ctx?.previos ?? []) qc.setQueryData(clave, data);
   toast.error(mensaje, { description: error.message });
+  // Cuando algo falla el refresco NO se agrupa: la pantalla acaba de volver atrás y hay
+  // que saber ya qué quedó realmente escrito en Odoo. Agrupar está bien mientras todo
+  // sale bien, que es el caso normal.
+  void qc.invalidateQueries({ queryKey: CLAVE });
 }
 
 /** Suma una jornada al avance de cada OT indicada (crea la entrada si no estaba). */
@@ -131,6 +139,28 @@ function restarProgreso(progreso: TableroPayload["progreso"], otIds: number[]) {
 // chocar nunca con un id real.
 let proximoIdTemporal = -1;
 
+/**
+ * Refresco de fondo contra Odoo, AGRUPADO.
+ *
+ * Antes cada escritura invalidaba al terminar, y planificar es una ráfaga de arrastres:
+ * eran N consultas de ~49 KB y ~1,4 s cada una contra una Odoo Online que limita la
+ * concurrencia, encoladas una atrás de la otra.
+ *
+ * No es lo que pinta la pantalla —todas las mutaciones son optimistas y exactas, ids
+ * reales incluidos— sino la red que trae lo que hayan tocado otros. Así que puede
+ * esperar a que la mano pare, y ahí se hace una sola.
+ */
+let refrescoPendiente: ReturnType<typeof setTimeout> | null = null;
+const ESPERA_REFRESCO = 1500;
+
+function refrescarPronto(qc: QueryClient) {
+  if (refrescoPendiente) clearTimeout(refrescoPendiente);
+  refrescoPendiente = setTimeout(() => {
+    refrescoPendiente = null;
+    void qc.invalidateQueries({ queryKey: CLAVE });
+  }, ESPERA_REFRESCO);
+}
+
 // ── Mutaciones ───────────────────────────────────────────────────────────────
 
 export function useCrearAsignaciones() {
@@ -141,9 +171,10 @@ export function useCrearAsignaciones() {
         method: "POST",
         body: JSON.stringify({ asignaciones }),
       }),
-    onMutate: (asignaciones) => {
-      const nuevas: AsignacionTablero[] = asignaciones.map((a) => ({
-        id: proximoIdTemporal--,
+    onMutate: async (asignaciones) => {
+      const temporales = asignaciones.map(() => proximoIdTemporal--);
+      const nuevas: AsignacionTablero[] = asignaciones.map((a, i) => ({
+        id: temporales[i],
         otId: a.otId,
         fecha: a.fecha,
         cuadrillaId: a.cuadrillaId,
@@ -154,14 +185,42 @@ export function useCrearAsignaciones() {
         // Una asignación recién creada nunca nace cerrada.
         parteId: null,
       }));
-      return aplicarOptimista(qc, (data) => ({
+      const ctx = await aplicarOptimista(qc, (data) => ({
         ...data,
         asignaciones: [...data.asignaciones, ...nuevas],
         progreso: sumarProgreso(data.progreso, nuevas.map((n) => n.otId)),
       }));
+      return { ...ctx, temporales };
+    },
+    /**
+     * Los ids reales entran en cuanto Odoo contesta, sin esperar al refetch.
+     *
+     * Es la mitad de lo que se sentía como "queda cargando": la tarjeta se bloquea
+     * mientras tenga ids negativos (ver `guardando` en TarjetaAsignacion — no se puede
+     * arrastrar, sin menú, cursor de reloj), y antes esos ids negativos vivían hasta que
+     * volvía el tablero entero. O sea que se esperaban ~1,4 s por una respuesta que ya
+     * teníamos en la mano: el POST devuelve los ids creados.
+     */
+    onSuccess: ({ ids }, _vars, ctx) => {
+      const temporales = ctx?.temporales ?? [];
+      // Odoo devuelve los ids en el mismo orden en que se mandaron los valores. Si las
+      // longitudes no coinciden no se adivina el emparejamiento: se deja que el refresco
+      // de fondo traiga la verdad, en vez de dejar tarjetas apuntando a otra fila.
+      if (ids.length !== temporales.length) return;
+      const real = new Map(temporales.map((t, i) => [t, ids[i]]));
+      qc.setQueriesData<TableroPayload>({ queryKey: CLAVE }, (data) =>
+        data
+          ? {
+              ...data,
+              asignaciones: data.asignaciones.map((a) =>
+                real.has(a.id) ? { ...a, id: real.get(a.id) as number } : a,
+              ),
+            }
+          : data,
+      );
     },
     onError: (error, _vars, ctx) => revertir(qc, ctx, "No se pudo asignar", error),
-    onSettled: () => qc.invalidateQueries({ queryKey: CLAVE }),
+    onSettled: () => refrescarPronto(qc),
   });
 }
 
@@ -191,7 +250,7 @@ export function useActualizarAsignaciones() {
         ),
       })),
     onError: (error, _vars, ctx) => revertir(qc, ctx, "No se pudo guardar el cambio", error),
-    onSettled: () => qc.invalidateQueries({ queryKey: CLAVE }),
+    onSettled: () => refrescarPronto(qc),
   });
 }
 
@@ -221,7 +280,7 @@ export function useMoverAsignaciones() {
       }));
     },
     onError: (error, _vars, ctx) => revertir(qc, ctx, "No se pudo mover la obra", error),
-    onSettled: () => qc.invalidateQueries({ queryKey: CLAVE }),
+    onSettled: () => refrescarPronto(qc),
   });
 }
 
@@ -245,7 +304,7 @@ export function useBorrarAsignaciones() {
         };
       }),
     onError: (error, _vars, ctx) => revertir(qc, ctx, "No se pudo quitar del tablero", error),
-    onSettled: () => qc.invalidateQueries({ queryKey: CLAVE }),
+    onSettled: () => refrescarPronto(qc),
   });
 }
 
@@ -301,7 +360,7 @@ export function useCrearTarea() {
       }));
     },
     onError: (error, _vars, ctx) => revertir(qc, ctx, "No se pudo crear la tarea", error),
-    onSettled: () => qc.invalidateQueries({ queryKey: CLAVE }),
+    onSettled: () => refrescarPronto(qc),
   });
 }
 
@@ -347,7 +406,7 @@ export function useActualizarTareas() {
       }));
     },
     onError: (error, _vars, ctx) => revertir(qc, ctx, "No se pudo guardar la tarea", error),
-    onSettled: () => qc.invalidateQueries({ queryKey: CLAVE }),
+    onSettled: () => refrescarPronto(qc),
   });
 }
 
@@ -377,7 +436,7 @@ export function useMoverTareas() {
       }));
     },
     onError: (error, _vars, ctx) => revertir(qc, ctx, "No se pudo mover la tarea", error),
-    onSettled: () => qc.invalidateQueries({ queryKey: CLAVE }),
+    onSettled: () => refrescarPronto(qc),
   });
 }
 
@@ -398,6 +457,6 @@ export function useBorrarTareas() {
         ),
       })),
     onError: (error, _vars, ctx) => revertir(qc, ctx, "No se pudo borrar la tarea", error),
-    onSettled: () => qc.invalidateQueries({ queryKey: CLAVE }),
+    onSettled: () => refrescarPronto(qc),
   });
 }

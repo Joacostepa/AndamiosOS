@@ -718,8 +718,13 @@ export function TableroBoard() {
             : conservadas > 0
               ? `Se conservan ${conservadas} ya cerrada${conservadas === 1 ? "" : "s"} con su parte.`
               : "Quedan como pendientes de planificar en el panel de la derecha.",
-          // Más que el default: hay que leer el aviso y recién ahí decidir si fue un error.
-          duration: 10000,
+          // Más que el default —hay que leer el aviso y recién ahí decidir si fue un
+          // error— pero no diez segundos: quitar una obra suele venir seguido de mover
+          // otras, y el cartel se quedaba tapando la esquina del tablero durante los dos
+          // arrastres siguientes. Seis alcanzan para leerlo y decidir.
+          duration: 6000,
+          // Y si ya lo leyó, que pueda sacarlo: sin la X hay que esperarlo sí o sí.
+          closeButton: true,
           action: {
             label: "Deshacer",
             onClick: () => {

@@ -11,7 +11,7 @@ import { PopoverNotasDia } from "./notas-jornada";
 import { agruparBloques, esDomingo, repartirEnCarriles } from "@/lib/tablero/bloques";
 import { accionDeCierre, bloqueCerrado, type AccionCierre } from "@/lib/tablero/cierre";
 import { MOTIVOS_NO_EJEC } from "@/lib/tablero/tipos-parte";
-import { colorCuadrilla, CORAL, FERIADO_ENCABEZADO, FERIADO_TEXTO } from "@/lib/tablero/colores";
+import { colorCuadrilla, CORAL, FERIADO_ENCABEZADO, FERIADO_TEXTO, NOTA } from "@/lib/tablero/colores";
 import { ocupacionCelda, capacidadDelRango } from "@/lib/tablero/fracciones";
 import type { FraccionStr } from "@/lib/tablero/fracciones";
 import { notasDe, notasDeCuadrilla } from "@/lib/tablero/tipos-nota";
@@ -494,6 +494,14 @@ export function TableroGrid({
                 // Separador de semana: ubicarse sin tener que leer las fechas.
                 borderLeft: esLunes(f) ? "2px solid var(--border)" : undefined,
                 backgroundColor: canaleta ? "#F1EFE8" : feriado ? FERIADO_ENCABEZADO : "var(--card)",
+                // Franja ámbar del día con notas. Va como sombra INTERNA y no como borde
+                // ni como fondo: el fondo ya lo usan el feriado y la canaleta, y un borde
+                // cambiaría el alto de la celda y desalinearía la fila de días. Así se
+                // apila con el feriado, que es otro dato del mismo día.
+                //
+                // Es la mitad que se ve sin buscar: un chip de 16px, por más color que
+                // tenga, hay que estar mirándolo. La franja se lee barriendo la grilla.
+                boxShadow: notasDelDia.length > 0 ? `inset 0 -3px 0 ${NOTA.franja}` : undefined,
               }}
             >
               {canaleta ? (
@@ -566,15 +574,28 @@ export function TableroGrid({
                           ? `${notasDelDia.length} nota${notasDelDia.length === 1 ? "" : "s"} este día`
                           : "Anotar algo de este día"
                       }
-                      className={`absolute bottom-0 right-0 flex h-4 cursor-pointer items-center gap-0.5 rounded-tl px-1 text-muted-foreground transition-opacity hover:bg-black/[0.06] hover:text-foreground ${
+                      // Con notas: chip ÁMBAR LLENO. Sin notas: el mismo botón en gris y
+                      // sólo al pasar el mouse — es la puerta para anotar en cualquier
+                      // día, pero un ícono fijo en las 21 columnas del rango sería más
+                      // ruido que dato, y le sacaría fuerza justo a los días que sí
+                      // tienen algo escrito.
+                      className={`absolute bottom-0.5 right-0.5 flex h-[15px] cursor-pointer items-center gap-0.5 rounded px-1 transition-opacity ${
                         notasDelDia.length > 0
                           ? "opacity-100"
-                          : "opacity-0 focus-visible:opacity-100 group-hover/dia:opacity-100"
+                          : "text-muted-foreground opacity-0 hover:bg-black/[0.06] hover:text-foreground focus-visible:opacity-100 group-hover/dia:opacity-100"
                       }`}
+                      style={
+                        notasDelDia.length > 0
+                          ? { backgroundColor: NOTA.fondo, color: NOTA.texto }
+                          : undefined
+                      }
                     >
                       <StickyNote className="h-2.5 w-2.5" />
-                      {notasDelDia.length > 1 && (
-                        <span className="text-[9px] font-semibold tabular-nums">
+                      {/* El contador va SIEMPRE que haya notas, incluido el 1: es un chip,
+                          no un ícono suelto, y "1" dice cuánto hay que leer antes de
+                          abrirlo. */}
+                      {notasDelDia.length > 0 && (
+                        <span className="text-[9px] font-bold tabular-nums leading-none">
                           {notasDelDia.length}
                         </span>
                       )}
@@ -672,7 +693,12 @@ export function TableroGrid({
                                   type="button"
                                   title={suyas.map((n) => n.texto).join(" · ")}
                                   aria-label={`${suyas.length} nota${suyas.length === 1 ? "" : "s"} de ${cuadrilla.nombre} este día`}
-                                  className="absolute bottom-0 right-0 z-20 flex h-4 w-4 cursor-pointer items-center justify-center rounded-tl text-foreground/70 hover:bg-black/[0.06] hover:text-foreground"
+                                  // Ámbar lleno, igual que el chip del encabezado: si la
+                                  // fila tiene una nota propia se tiene que ver sin
+                                  // pasarle el mouse por arriba. Un glifo gris contra el
+                                  // fondo de la celda desaparecía.
+                                  className="absolute bottom-0 right-0 z-20 flex h-4 w-4 cursor-pointer items-center justify-center rounded-tl hover:brightness-95"
+                                  style={{ backgroundColor: NOTA.fondo, color: NOTA.texto }}
                                 >
                                   <StickyNote className="h-2.5 w-2.5" />
                                 </button>

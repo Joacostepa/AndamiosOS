@@ -89,6 +89,26 @@ export const FERIADO_COLUMNA = "#F4F0FA";
 export const FERIADO_ENCABEZADO = "#E9E1F6";
 export const FERIADO_TEXTO = "#5B4B8A";
 
+// ── Nota de la jornada ───────────────────────────────────────────────────────
+//
+// Ámbar de post-it, y es el único tono que quedaba libre EN EL ENCABEZADO: ahí el coral
+// es "hoy", el violeta es el feriado, el rojo es el aviso de que todas las cuadrillas
+// están sobreasignadas y el beige es la canaleta del domingo. El ámbar existe en las
+// tarjetas —desarme, urgencia media— pero nunca en la fila de días, así que no se pisa.
+//
+// Y es la convención: una nota escrita es amarilla en todos lados. La marca NO dice
+// "atención, hay un problema" —para eso está el rojo, y confundirlos haría que un día con
+// un aviso se lea como un día roto— dice "acá alguien anotó algo".
+//
+// El texto va marrón oscuro y no blanco: sobre #EF9F27 el blanco queda en 2:1 y a 9px de
+// contador no se lee. Es el mismo marrón del rótulo de desarme.
+export const NOTA = {
+  fondo: "#EF9F27",
+  texto: "#633806",
+  /** Franja bajo el encabezado del día. Es lo que se ve barriendo la grilla entera. */
+  franja: "#EF9F27",
+} as const;
+
 // Semáforo de habilitación (x_hab_semaforo). Se ve como un punto en la esquina de la
 // tarjeta: advierte, no bloquea — las obras sin habilitar entran igual al tablero.
 export const SEMAFORO: Record<string, { color: string; label: string }> = {

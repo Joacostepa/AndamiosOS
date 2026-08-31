@@ -773,7 +773,10 @@ export function TableroBoard() {
       : null;
 
   return (
-    <div className="flex h-[calc(100vh-8rem)] flex-col">
+    // min-w-0: el tablero es ancho por naturaleza y ya scrollea adentro. Sin esto puede
+    // empujar el ancho de la pagina y aparece un segundo scroll horizontal, el de afuera,
+    // que mueve la pantalla entera unos pocos pixeles en vez de mover la grilla.
+    <div className="flex h-[calc(100vh-8rem)] min-w-0 flex-col">
       <TopbarTablero
         rangoLabel={rangoLabel}
         cuadrillas={data.cuadrillas}

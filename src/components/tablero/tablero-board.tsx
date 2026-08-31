@@ -148,7 +148,9 @@ export function TableroBoard() {
   // Resaltado sin abrir el panel lateral: al saltar desde el buscador lo que se quiere es
   // VER dónde cayó la obra, y el panel de la OT taparía justamente eso.
   const [resaltado, setResaltado] = useState<string | null>(null);
-  const [jornadasDe, setJornadasDe] = useState<string | null>(null);
+  // El editor de jornadas es de la OBRA, no de la tarjeta: si la obra quedó partida en
+  // varios tramos hay que poder verlos y arreglarlos juntos. Por eso guarda el otId.
+  const [jornadasDe, setJornadasDe] = useState<number | null>(null);
   const [cierre, setCierre] = useState<{
     bloqueKey: string;
     asignacionId: number;
@@ -436,6 +438,26 @@ export function TableroBoard() {
     return mapa;
   }, [data]);
 
+  // Todas las jornadas de la obra que se está editando, sin importar en qué tarjeta o
+  // cuadrilla caen: es lo que hace que una obra partida se pueda arreglar de un lado solo.
+  const jornadasDeLaObra = useMemo(
+    () =>
+      jornadasDe == null ? [] : (data?.asignaciones ?? []).filter((a) => a.otId === jornadasDe),
+    [data, jornadasDe],
+  );
+
+  // Cuántos días y cuántos tramos separados tiene planificada cada obra. La tarjeta lo usa
+  // para avisar que lo que se ve es una parte: sin eso, una obra partida se lee como una
+  // obra de un día y el resto del plan queda invisible.
+  const planPorObra = useMemo(() => {
+    const mapa = new Map<number, { dias: number; tramos: number }>();
+    for (const b of bloquesPorClave.values()) {
+      const actual = mapa.get(b.otId) ?? { dias: 0, tramos: 0 };
+      mapa.set(b.otId, { dias: actual.dias + b.fechas.length, tramos: actual.tramos + 1 });
+    }
+    return mapa;
+  }, [bloquesPorClave]);
+
   // Obras ya en la grilla, para que el buscador conteste "¿esta obra ya la planifiqué?".
   //
   // LIMITACIÓN: sólo alcanza el rango cargado. El tablero pide las asignaciones por fecha,
@@ -611,6 +633,17 @@ export function TableroBoard() {
           }],
     );
 
+    // ¿La obra va a REAPARECER en la bandeja? La bandeja no mira si la obra tiene tarjetas:
+    // resta las jornadas tomadas contra la duración estimada de la OT. Si a la obra le
+    // quedan otros tramos planificados —el caso de la obra partida— sacar éste no la
+    // devuelve a ningún lado, y decir que "vuelve a la bandeja" mandaba a buscarla a un
+    // panel donde no estaba. Se avisa dónde quedó.
+    const asignadasAhora =
+      data?.progreso.find((p) => p.otId === bloque.otId)?.asignadas ?? bloque.ids.length;
+    const quedanEnTablero = asignadasAhora - liberables.length;
+    const totales = repartirJornadas(otsPorId.get(bloque.otId)?.jornadas ?? 1).length;
+    const vuelveALaBandeja = totales - quedanEnTablero > 0;
+
     borrar.mutate(liberables, {
       onSuccess: () => {
         // El aviso sale SIEMPRE, no sólo cuando quedan jornadas cerradas. Un arrastre
@@ -618,9 +651,13 @@ export function TableroBoard() {
         // deja la duda de si el gesto salió o si se perdió algo.
         const n = liberables.length;
         const conservadas = bloque.ids.length - n;
-        toast.success(`Obra suspendida: ${n} jornada${n === 1 ? "" : "s"} vuelven a la bandeja`, {
-          description:
-            conservadas > 0
+        const titulo = vuelveALaBandeja
+          ? `Obra suspendida: ${n} jornada${n === 1 ? "" : "s"} vuelven a la bandeja`
+          : `Se quitaron ${n} jornada${n === 1 ? "" : "s"} del tablero`;
+        toast.success(titulo, {
+          description: !vuelveALaBandeja
+            ? `La obra NO vuelve a la bandeja: le quedan ${quedanEnTablero} jornada${quedanEnTablero === 1 ? "" : "s"} planificada${quedanEnTablero === 1 ? "" : "s"} en otras fechas. Editalas desde el menú de esa tarjeta, en "Jornadas de la obra".`
+            : conservadas > 0
               ? `Se conservan ${conservadas} ya cerrada${conservadas === 1 ? "" : "s"} con su parte.`
               : "Quedan como pendientes de planificar en el panel de la derecha.",
           // Más que el default: hay que leer el aviso y recién ahí decidir si fue un error.
@@ -809,6 +846,7 @@ export function TableroBoard() {
               semanaCentrada={semanaCentrada}
               asignaciones={data.asignaciones}
               ots={otsPorId}
+              planPorObra={planPorObra}
               partes={data.partes}
               bloqueSeleccionado={panel?.bloqueKey ?? resaltado}
               hoy={hoyISO}
@@ -845,7 +883,7 @@ export function TableroBoard() {
                 setPanel({ otId: b.otId, bloqueKey: b.key });
               }}
               onFraccion={(b, f: FraccionStr) => actualizar.mutate({ ids: b.ids, cambio: { fraccion: f } })}
-              onEditarJornadas={(b) => setJornadasDe(b.key)}
+              onEditarJornadas={(b) => setJornadasDe(b.otId)}
               // CONFIRMAR es el único momento donde el permiso frena. Volver a
               // tentativa nunca pregunta nada: aflojar el compromiso no necesita
               // permiso de nadie.
@@ -910,13 +948,20 @@ export function TableroBoard() {
       </DndContext>
 
       <DialogoJornadas
-        abierto={!!jornadasDe}
-        bloque={jornadasDe ? (bloquesPorClave.get(jornadasDe) ?? null) : null}
-        ot={jornadasDe ? otsPorId.get(bloquesPorClave.get(jornadasDe)?.otId ?? 0) : undefined}
-        guardando={actualizar.isPending}
+        abierto={jornadasDe != null}
+        otId={jornadasDe}
+        ot={jornadasDe != null ? otsPorId.get(jornadasDe) : undefined}
+        asignaciones={jornadasDeLaObra}
+        cuadrillas={data.cuadrillas}
+        // `progreso` cuenta las jornadas de la obra en CUALQUIER fecha; `jornadasDeLaObra`
+        // sólo las del rango cargado. La diferencia son días que existen y no se ven.
+        fueraDeRango={Math.max(
+          0,
+          (data.progreso.find((p) => p.otId === jornadasDe)?.asignadas ?? 0) - jornadasDeLaObra.length,
+        )}
+        guardando={guardando}
         onGuardar={(cambios) => {
-          const bloque = jornadasDe ? bloquesPorClave.get(jornadasDe) : null;
-          if (!bloque) return;
+          if (jornadasDe == null) return;
 
           // Cada día puede quedar con una fracción distinta, así que se agrupan los que
           // comparten valor para no hacer una escritura por jornada.
@@ -928,15 +973,25 @@ export function TableroBoard() {
             actualizar.mutate({ ids, cambio: { fraccion: fraccion as FraccionStr } });
           }
 
+          // Los cambios de fecha van por `mover`, que es la forma del PATCH que acepta una
+          // fecha distinta por id: es exactamente lo que hace falta para cerrar el hueco de
+          // una obra partida sin tocar la cuadrilla ni el apilado.
+          if (cambios.fechas.length > 0) {
+            mover.mutate(
+              cambios.fechas.map((f) => ({ id: f.asignacionId, fecha: f.fecha })),
+            );
+          }
+
           if (cambios.nuevas.length > 0) {
+            const estado = jornadasDeLaObra[0]?.estado ?? "tentativa";
             crear.mutate(
               cambios.nuevas.map((n) => ({
-                otId: bloque.otId,
+                otId: jornadasDe,
                 fecha: n.fecha,
-                cuadrillaId: bloque.cuadrillaId,
+                cuadrillaId: n.cuadrillaId,
                 fraccion: n.fraccion,
-                estado: bloque.estado,
-                ordenDia: bloque.ordenDia,
+                estado,
+                ordenDia: n.ordenDia,
               })),
             );
           }

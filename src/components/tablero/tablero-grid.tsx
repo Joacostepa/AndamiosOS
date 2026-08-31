@@ -142,6 +142,7 @@ export function TableroGrid({
   semanaCentrada,
   asignaciones,
   ots,
+  planPorObra,
   partes,
   bloqueSeleccionado,
   hoy: hoyISO,
@@ -172,6 +173,11 @@ export function TableroGrid({
   semanaCentrada: string[];
   asignaciones: AsignacionTablero[];
   ots: Map<number, OtTablero>;
+  /**
+   * Plan completo de cada obra: días planificados y en cuántos tramos separados quedaron.
+   * La tarjeta muestra un tramo; con esto puede decir que hay más y cuántos.
+   */
+  planPorObra: Map<number, { dias: number; tramos: number }>;
   partes: ParteTablero[];
   bloqueSeleccionado: string | null;
   /** Fecha de hoy en yyyy-MM-dd: define desde cuándo se puede cerrar una jornada. */
@@ -560,6 +566,7 @@ export function TableroGrid({
                         key={bloque.key}
                         bloque={bloque}
                         ot={ots.get(bloque.otId)}
+                        plan={planPorObra.get(bloque.otId)}
                         colocacion={colocacion}
                         carril={carril}
                         seleccionada={bloqueSeleccionado === bloque.key}

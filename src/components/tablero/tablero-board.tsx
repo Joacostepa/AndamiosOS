@@ -27,6 +27,7 @@ import { FormularioCierre } from "./formulario-cierre";
 import { DialogoJornadas } from "./dialogo-jornadas";
 import { DialogoCandado, type PedidoConfirmacion } from "./dialogo-candado";
 import { useCandado } from "@/hooks/use-habilitaciones";
+import { useNotasJornada } from "@/hooks/use-notas-jornada";
 import {
   useTablero,
   useFeriados,
@@ -186,6 +187,10 @@ export function TableroBoard() {
     () => new Map((feriadosData?.feriados ?? []).map((f) => [f.fecha, f.nombre])),
     [feriadosData],
   );
+  // Notas de la jornada. Consulta aparte de la del tablero y no un campo más del
+  // payload: van a Supabase, no a Odoo, y escribir una nota no tiene por qué reconsultar
+  // las asignaciones del rango entero (ni al revés).
+  const { data: notas } = useNotasJornada(desde, hasta);
   const crear = useCrearAsignaciones();
   const actualizar = useActualizarAsignaciones();
   const mover = useMoverAsignaciones();
@@ -848,6 +853,7 @@ export function TableroBoard() {
               ots={otsPorId}
               planPorObra={planPorObra}
               partes={data.partes}
+              notas={notas ?? []}
               bloqueSeleccionado={panel?.bloqueKey ?? resaltado}
               hoy={hoyISO}
               domingosAbiertos={domingosAbiertos}

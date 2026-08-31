@@ -4,7 +4,7 @@ import { Suspense, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { addDays, format, parseISO, subDays } from "date-fns";
 import { es } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, ChevronDown, ChevronRight as ChevronDer, Loader2, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronDown, ChevronRight as ChevronDer, Loader2, Plus, StickyNote } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -13,6 +13,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FRACCIONES } from "@/lib/tablero/fracciones";
 import { useCerrarJornada } from "@/hooks/use-parte";
+import { useNotasJornada } from "@/hooks/use-notas-jornada";
+import { PopoverNotasDia } from "@/components/tablero/notas-jornada";
 import { CORAL } from "@/lib/tablero/colores";
 import { parseHora } from "@/lib/tablero/horas";
 import {
@@ -85,6 +87,50 @@ function aDatosCierre(b: Borrador, j: JornadaListado): DatosCierre {
       j.tipo, j.ultimaDeLaOt && b.finalizarOt === true, b.armadoCoincide, b.armadoReal, j.detalleTecnico,
     ),
   } as DatosCierre;
+}
+
+/**
+ * Lo anotado para ese día, arriba del listado.
+ *
+ * Está acá y no sólo en el tablero porque muchas veces la nota ES la explicación del
+ * parte: "faltó el chofer" o "corte de calle" son el motivo de no ejecutada que después
+ * hay que elegir en la fila, y hoy eso se busca en un WhatsApp de ayer. Y en el otro
+ * sentido: quien carga a la mañana es el que se entera de estas cosas, así que también
+ * tiene que poder anotarlas sin irse a planificar.
+ */
+function NotasDelDia({
+  fecha,
+  cuadrillas,
+}: {
+  fecha: string;
+  cuadrillas: { id: number; nombre: string }[];
+}) {
+  const { data } = useNotasJornada(fecha, fecha);
+  const notas = data ?? [];
+
+  return (
+    <PopoverNotasDia
+      fecha={fecha}
+      notas={notas}
+      cuadrillas={cuadrillas}
+      trigger={
+        <button
+          type="button"
+          className="flex w-full cursor-pointer items-center gap-1.5 rounded-md border px-3 py-1.5 text-left text-[12px] hover:bg-muted/40"
+        >
+          <StickyNote className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          {notas.length === 0 ? (
+            <span className="text-muted-foreground">Sin notas de este día</span>
+          ) : (
+            <span className="truncate">{notas.map((n) => n.texto).join(" · ")}</span>
+          )}
+          <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
+            {notas.length === 0 ? "Anotar" : "Ver"}
+          </span>
+        </button>
+      }
+    />
+  );
 }
 
 function Contenido() {
@@ -297,6 +343,8 @@ function Contenido() {
           </Button>
         </div>
       </div>
+
+      <NotasDelDia fecha={fecha} cuadrillas={cuadrillas} />
 
       {isLoading ? (
         <Skeleton className="h-64 w-full" />

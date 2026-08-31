@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { ocupacionCelda } from "@/lib/tablero/fracciones";
 import { colorOcupacion, ACENTO_BG, CORAL, FERIADO_COLUMNA, RIEL_OCUPACION } from "@/lib/tablero/colores";
@@ -30,6 +31,7 @@ export function CeldaDia({
   feriado = false,
   pasada = false,
   fracciones,
+  marcaNota = null,
 }: {
   cuadrillaId: number;
   fecha: string;
@@ -47,6 +49,15 @@ export function CeldaDia({
   /** Anterior a hoy: fondo apenas distinto para ver dónde corta el presente. */
   pasada?: boolean;
   fracciones: number[];
+  /**
+   * Marca de que ESTA cuadrilla tiene una nota este día ("arranca 10 h"). Llega armada
+   * desde la grilla —es un popover— porque la celda no tiene por qué saber de notas: acá
+   * sólo se le hace lugar.
+   *
+   * Va en la franja de abajo, que es la única parte de la celda donde no cae una tarjeta:
+   * las tarjetas se ubican en los carriles y esta franja queda reservada para el riel.
+   */
+  marcaNota?: ReactNode;
 }) {
   const { setNodeRef, isOver, active } = useDroppable({
     id: `celda:${cuadrillaId}:${fecha}`,
@@ -89,8 +100,10 @@ export function CeldaDia({
           hace saltar la línea de base de la fila al asignar. */}
       {!colapsada && (
         <div
-          className="absolute inset-x-1 bottom-1 h-1 overflow-hidden rounded-full"
-          style={{ backgroundColor: RIEL_OCUPACION }}
+          className="absolute bottom-1 left-1 h-1 overflow-hidden rounded-full"
+          // El riel se corre cuando hay marca de nota: comparten la franja de abajo y
+          // superpuestos el ícono se leía sobre la barra roja de la sobreasignación.
+          style={{ right: marcaNota ? 18 : 4, backgroundColor: RIEL_OCUPACION }}
           title={ocupada ? ocupacion.label : undefined}
         >
           <div
@@ -104,6 +117,8 @@ export function CeldaDia({
           />
         </div>
       )}
+
+      {!colapsada && marcaNota}
     </div>
   );
 }

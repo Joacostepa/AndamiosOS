@@ -4,16 +4,19 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { PointerEvent as PointerEventReact } from "react";
 import { format, isSameDay, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
-import { AlertTriangle, MousePointerClick } from "lucide-react";
+import { AlertTriangle, MousePointerClick, StickyNote } from "lucide-react";
 import { CeldaDia } from "./celda-dia";
 import { TarjetaAsignacion } from "./tarjeta-asignacion";
+import { PopoverNotasDia } from "./notas-jornada";
 import { agruparBloques, esDomingo, repartirEnCarriles } from "@/lib/tablero/bloques";
 import { accionDeCierre, bloqueCerrado, type AccionCierre } from "@/lib/tablero/cierre";
 import { MOTIVOS_NO_EJEC } from "@/lib/tablero/tipos-parte";
 import { colorCuadrilla, CORAL, FERIADO_ENCABEZADO, FERIADO_TEXTO } from "@/lib/tablero/colores";
 import { ocupacionCelda, capacidadDelRango } from "@/lib/tablero/fracciones";
 import type { FraccionStr } from "@/lib/tablero/fracciones";
+import { notasDe, notasDeCuadrilla } from "@/lib/tablero/tipos-nota";
 import type { Bloque } from "@/lib/tablero/bloques";
+import type { NotaJornada } from "@/lib/tablero/tipos-nota";
 import type { AsignacionTablero, CuadrillaTablero, OtTablero, ParteTablero } from "@/lib/tablero/tipos";
 
 // Grilla del tablero: filas = cuadrillas, columnas = días, celdas = asignaciones.
@@ -144,6 +147,7 @@ export function TableroGrid({
   ots,
   planPorObra,
   partes,
+  notas,
   bloqueSeleccionado,
   hoy: hoyISO,
   contenedorRef,
@@ -179,6 +183,12 @@ export function TableroGrid({
    */
   planPorObra: Map<number, { dias: number; tramos: number }>;
   partes: ParteTablero[];
+  /**
+   * Lo que hay que tener en cuenta esos días y no es una obra: "el chofer se va 14 h",
+   * "llevar material a Turme". Llegan por rango de fechas, así que una misma nota puede
+   * aplicar a varias columnas (ver notasDe en tipos-nota).
+   */
+  notas: NotaJornada[];
   bloqueSeleccionado: string | null;
   /** Fecha de hoy en yyyy-MM-dd: define desde cuándo se puede cerrar una jornada. */
   hoy: string;
@@ -419,11 +429,14 @@ export function TableroGrid({
           const tituloDomingo = canaleta
             ? `Domingo ${format(d, "d MMM", { locale: es })} · sin trabajo — clic para habilitarlo`
             : `Domingo ${format(d, "d MMM", { locale: es })} habilitado a mano · clic para volver a plegarlo`;
+          // Las del día entero MÁS las de cada cuadrilla: el encabezado es el único lugar
+          // que ve la columna completa, así que es el que tiene que decir "acá hay algo".
+          const notasDelDia = canaleta ? [] : notasDe(notas, f);
           return (
             <div
               key={`h-${f}`}
               data-fecha={f}
-              className={`sticky top-0 z-20 flex h-10 select-none items-center justify-center gap-1.5 border-b border-r bg-card active:cursor-grabbing ${
+              className={`group/dia sticky top-0 z-20 flex h-10 select-none items-center justify-center gap-1.5 border-b border-r bg-card active:cursor-grabbing ${
                 alternable ? "cursor-pointer hover:bg-black/[0.05]" : "cursor-grab"
               }`}
               onPointerDown={iniciarPan}
@@ -485,6 +498,54 @@ export function TableroGrid({
                   )}
                 </>
               )}
+
+              {/* Notas del día. Va ABSOLUTA y no en el flujo del flex para que agregarle
+                  una nota a un día no corra el número de lugar: el encabezado se lee de
+                  un barrido horizontal y los días tienen que quedar alineados.
+
+                  Sin notas queda invisible hasta que el mouse entra en la columna: es
+                  una puerta que hace falta poder abrir en cualquier día, pero un ícono
+                  gris en las 21 columnas del rango sería más ruido que el dato. */}
+              {!canaleta && (
+                <PopoverNotasDia
+                  fecha={f}
+                  notas={notasDelDia}
+                  cuadrillas={cuadrillas}
+                  trigger={
+                    <button
+                      type="button"
+                      // El encabezado captura el puntero para desplazar la grilla, y con
+                      // la captura activa el click llega al div que capturó y no al
+                      // botón. Cortando la propagación del pointerdown el pan nunca
+                      // arranca; la del click evita que además se pliegue el domingo.
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => e.stopPropagation()}
+                      title={
+                        notasDelDia.length > 0
+                          ? notasDelDia.map((n) => n.texto).join(" · ")
+                          : "Anotar algo de este día"
+                      }
+                      aria-label={
+                        notasDelDia.length > 0
+                          ? `${notasDelDia.length} nota${notasDelDia.length === 1 ? "" : "s"} este día`
+                          : "Anotar algo de este día"
+                      }
+                      className={`absolute bottom-0 right-0 flex h-4 cursor-pointer items-center gap-0.5 rounded-tl px-1 text-muted-foreground transition-opacity hover:bg-black/[0.06] hover:text-foreground ${
+                        notasDelDia.length > 0
+                          ? "opacity-100"
+                          : "opacity-0 focus-visible:opacity-100 group-hover/dia:opacity-100"
+                      }`}
+                    >
+                      <StickyNote className="h-2.5 w-2.5" />
+                      {notasDelDia.length > 1 && (
+                        <span className="text-[9px] font-semibold tabular-nums">
+                          {notasDelDia.length}
+                        </span>
+                      )}
+                    </button>
+                  }
+                />
+              )}
             </div>
           );
         })}
@@ -541,20 +602,50 @@ export function TableroGrid({
                     gridTemplateRows: `repeat(${carriles}, minmax(${ALTO_CARRIL}px, ${ALTO_CARRIL_MAX}px)) 1fr ${ALTO_BARRA}px`,
                   }}
                 >
-                  {fechas.map((f, i) => (
-                    <CeldaDia
-                      key={`${cuadrilla.id}-${f}`}
-                      cuadrillaId={cuadrilla.id}
-                      fecha={f}
-                      columna={i}
-                      esDomingo={esDomingo(f)}
-                      colapsada={colapsado(f)}
-                      inicioSemana={esLunes(f)}
-                      feriado={feriados.has(f)}
-                      pasada={f < hoyISO}
-                      fracciones={enCelda(cuadrilla.id, f).map((a) => a.fraccion)}
-                    />
-                  ))}
+                  {fechas.map((f, i) => {
+                    // SÓLO las de esta cuadrilla. Las del día entero ya las canta el
+                    // encabezado, y repetirlas en cada fila pondría la misma marca en
+                    // las cinco celdas de la columna.
+                    const suyas = colapsado(f) ? [] : notasDeCuadrilla(notas, f, cuadrilla.id);
+                    return (
+                      <CeldaDia
+                        key={`${cuadrilla.id}-${f}`}
+                        cuadrillaId={cuadrilla.id}
+                        fecha={f}
+                        columna={i}
+                        esDomingo={esDomingo(f)}
+                        colapsada={colapsado(f)}
+                        inicioSemana={esLunes(f)}
+                        feriado={feriados.has(f)}
+                        pasada={f < hoyISO}
+                        fracciones={enCelda(cuadrilla.id, f).map((a) => a.fraccion)}
+                        marcaNota={
+                          suyas.length === 0 ? null : (
+                            <PopoverNotasDia
+                              fecha={f}
+                              // El popover de una celda muestra TODO lo del día, no sólo
+                              // lo de la fila: quien lo abre está mirando ese día, y
+                              // esconderle "hoy no hay camión" porque la marca era de la
+                              // cuadrilla sería quedarse con la mitad del dato.
+                              notas={notasDe(notas, f, cuadrilla.id)}
+                              cuadrillas={cuadrillas}
+                              cuadrillaInicial={cuadrilla.id}
+                              trigger={
+                                <button
+                                  type="button"
+                                  title={suyas.map((n) => n.texto).join(" · ")}
+                                  aria-label={`${suyas.length} nota${suyas.length === 1 ? "" : "s"} de ${cuadrilla.nombre} este día`}
+                                  className="absolute bottom-0 right-0 z-20 flex h-4 w-4 cursor-pointer items-center justify-center rounded-tl text-foreground/70 hover:bg-black/[0.06] hover:text-foreground"
+                                >
+                                  <StickyNote className="h-2.5 w-2.5" />
+                                </button>
+                              }
+                            />
+                          )
+                        }
+                      />
+                    );
+                  })}
 
                   {ubicados.map(({ bloque, colocacion, carril }) => {
                     const accion = accionDeCierre(bloque, hoyISO);

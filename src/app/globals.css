@@ -130,3 +130,68 @@
     @apply font-sans;
   }
 }
+/* ── Recorrido guiado (driver.js) ────────────────────────────────────────────
+ *
+ * El popover viene con estilos propios que no saben nada del tema de la app: en modo
+ * oscuro quedaba una tarjeta blanca flotando. Se lo ata a las mismas variables que usa
+ * todo lo demás, así sigue al tema sin que haya que tocar nada al cambiarlo.
+ *
+ * El CSS de la librería se importa en el hook que la usa (src/hooks/use-tour.ts). */
+.driver-popover.tour-aba {
+  background-color: var(--card);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 10px 30px -12px rgb(0 0 0 / 0.35);
+  max-width: 24rem;
+  padding: 1rem 1.1rem 0.9rem;
+}
+
+.driver-popover.tour-aba .driver-popover-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.35;
+  margin-bottom: 0.4rem;
+}
+
+.driver-popover.tour-aba .driver-popover-description {
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: var(--muted-foreground);
+}
+
+/* El texto de los pasos usa <b> para lo que hay que retener; sin esto hereda el gris
+ * del párrafo y el resalte se pierde. */
+.driver-popover.tour-aba .driver-popover-description b {
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.driver-popover.tour-aba .driver-popover-progress-text {
+  font-size: 0.6875rem;
+  color: var(--muted-foreground);
+}
+
+.driver-popover.tour-aba .driver-popover-navigation-btns button {
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+  border: none;
+  border-radius: calc(var(--radius) - 2px);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  padding: 0.3rem 0.7rem;
+  text-shadow: none;
+}
+
+.driver-popover.tour-aba .driver-popover-navigation-btns button.driver-popover-prev-btn {
+  background-color: transparent;
+  color: var(--muted-foreground);
+}
+
+.driver-popover.tour-aba .driver-popover-close-btn {
+  color: var(--muted-foreground);
+}
+
+.driver-popover.tour-aba .driver-popover-arrow {
+  border-color: var(--card);
+}

@@ -19,6 +19,9 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/shared/empty-state";
 import { BloqueHabilitacion } from "@/components/habilitaciones/bloque-habilitacion";
+import { BotonAyuda } from "@/components/habilitaciones/boton-ayuda";
+import { useTour } from "@/hooks/use-tour";
+import { PASOS_FICHA, TOUR_FICHA } from "@/lib/habilitaciones/tour";
 import { veredicto } from "@/lib/habilitaciones/derivacion";
 import { ETAPA_LABEL, TIPO_GESTION_LABEL } from "@/lib/habilitaciones/tipos";
 import { partesTitulo } from "@/lib/tablero/titulo";
@@ -68,6 +71,9 @@ function Ficha({ ficha, otId }: { ficha: FichaHabilitacion; otId: number }) {
     etapa: ficha.etapa,
     fechaProgramada: ficha.fechaProgramada,
   });
+  // La ficha ya está en pantalla cuando este componente se monta: el tour puede arrancar.
+  // Es la continuación del de la bandeja, que termina invitando a abrir una obra.
+  const tour = useTour(TOUR_FICHA, PASOS_FICHA, { listo: true });
 
   return (
     <div className="space-y-4">
@@ -90,16 +96,21 @@ function Ficha({ ficha, otId }: { ficha: FichaHabilitacion; otId: number }) {
         </a>
       </div>
 
-      <div>
-        <h1 className="text-lg font-semibold">{partes.principal}</h1>
-        <p className="text-[13px] text-muted-foreground">
-          {[partes.numero, partes.cliente].filter(Boolean).join(" · ")}
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-lg font-semibold">{partes.principal}</h1>
+          <p className="text-[13px] text-muted-foreground">
+            {[partes.numero, partes.cliente].filter(Boolean).join(" · ")}
+          </p>
+        </div>
+        <BotonAyuda onRecorrido={tour.reiniciar} />
       </div>
 
       {/* EL VEREDICTO, ARRIBA DE TODO: responde lo único que le importa a Operaciones.
           Se calcula cruzando los dos trámites y es lo que alimenta el candado. */}
+      {/* data-tour: el recorrido guiado se cuelga de este nodo (ver lib/habilitaciones/tour.ts) */}
       <div
+        data-tour="veredicto"
         className="flex items-start gap-3 rounded-md border px-3 py-2.5"
         style={
           v.puedeArmar
@@ -131,19 +142,25 @@ function Ficha({ ficha, otId }: { ficha: FichaHabilitacion; otId: number }) {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <ColumnaDocumentacion ficha={ficha} otId={otId} />
+        <div data-tour="permiso">
         <ColumnaPermiso
           otId={otId}
           permiso={ficha.permiso}
           urlVenta={ficha.urlVenta}
           pedidosPrevios={ficha.gestiones.filter((g) => g.tipo === "consulta").length}
         />
+        </div>
       </div>
 
-      <ListadoRequisitos otId={otId} requisitos={ficha.requisitos} />
+      <div data-tour="requisitos">
+        <ListadoRequisitos otId={otId} requisitos={ficha.requisitos} />
+      </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <NotasObra otId={otId} notas={ficha.notas} />
-        <Historial ficha={ficha} />
+        <div data-tour="historial">
+          <Historial ficha={ficha} />
+        </div>
       </div>
     </div>
   );

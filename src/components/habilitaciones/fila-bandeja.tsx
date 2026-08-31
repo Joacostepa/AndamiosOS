@@ -27,12 +27,15 @@ export function Fila({
   seleccionable,
   seleccionada,
   onSeleccionar,
+  anclaTour = false,
 }: {
   fila: FilaBandeja;
   grupo: ClaveGrupo;
   seleccionable: boolean;
   seleccionada: boolean;
   onSeleccionar: (otId: number, valor: boolean) => void;
+  /** Marca esta fila como el ejemplo que resalta el recorrido guiado. */
+  anclaTour?: boolean;
 }) {
   const partes = partesTitulo(fila.titulo);
   const sem = semaforo(fila.semaforo);
@@ -51,7 +54,11 @@ export function Fila({
     : `esperando a ${fila.tecnicoNombre ?? "el técnico"}`;
 
   return (
-    <div className="flex items-center gap-2 border-b px-3 py-2 text-[13px] hover:bg-muted/40">
+    // data-tour: el recorrido guiado se cuelga de este nodo (ver lib/habilitaciones/tour.ts)
+    <div
+      className="flex items-center gap-2 border-b px-3 py-2 text-[13px] hover:bg-muted/40"
+      data-tour={anclaTour ? "fila-obra" : undefined}
+    >
       {seleccionable && (
         <Checkbox
           checked={seleccionada}

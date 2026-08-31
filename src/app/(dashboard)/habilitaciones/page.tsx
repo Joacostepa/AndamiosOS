@@ -6,6 +6,9 @@ import { ChevronDown, ChevronRight, Loader2, RefreshCw, TriangleAlert, Undo2 } f
 import { toast } from "sonner";
 import { partesTitulo } from "@/lib/tablero/titulo";
 import { useBandejaHabilitaciones, useReconciliar, useTriage } from "@/hooks/use-habilitaciones";
+import { useTour } from "@/hooks/use-tour";
+import { PASOS_BANDEJA, TOUR_BANDEJA } from "@/lib/habilitaciones/tour";
+import { BotonAyuda } from "@/components/habilitaciones/boton-ayuda";
 import { Fila } from "@/components/habilitaciones/fila-bandeja";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -34,6 +37,9 @@ export default function HabilitacionesPage() {
   const triage = useTriage();
   const reconciliar = useReconciliar();
   const [seleccion, setSeleccion] = useState<Set<number>>(new Set());
+  // Arranca recién con la bandeja en pantalla: antes de eso los elementos que resalta
+  // todavía no existen y el recorrido saldría vacío.
+  const tour = useTour(TOUR_BANDEJA, PASOS_BANDEJA, { listo: !isLoading && !!data });
 
   function alternar(otId: number, valor: boolean) {
     setSeleccion((prev) => {
@@ -93,10 +99,15 @@ export default function HabilitacionesPage() {
 
   return (
     <div className="space-y-5">
-      <PageHeader
-        title="Habilitaciones"
-        description={`Las obras entran solas al crearse la OT en Odoo · ${total} en trámite`}
-      />
+      {/* data-tour: el recorrido guiado se cuelga de este nodo (ver lib/habilitaciones/tour.ts) */}
+      <div data-tour="bandeja-header">
+        <PageHeader
+          title="Habilitaciones"
+          description={`Las obras entran solas al crearse la OT en Odoo · ${total} en trámite`}
+        >
+          <BotonAyuda onRecorrido={tour.reiniciar} />
+        </PageHeader>
+      </div>
 
       {/* El push a Odoo es el único punto que puede fallar en silencio. Si nadie puede
           ver que hay 12 en error, el job de reconciliación no alcanza. */}
@@ -144,7 +155,7 @@ export default function HabilitacionesPage() {
           description="Las obras aparecen acá solas al crearse la OT en Odoo."
         />
       ) : (
-        grupos.map((grupo) => (
+        grupos.map((grupo, i) => (
           <Grupo
             key={grupo.clave}
             grupo={grupo}
@@ -152,6 +163,7 @@ export default function HabilitacionesPage() {
             onSeleccionar={alternar}
             onTriar={triar}
             triando={triage.isPending}
+            primero={i === 0}
           />
         ))
       )}
@@ -186,7 +198,8 @@ function NoAplican({
   if (filas.length === 0) return null;
 
   return (
-    <section className="rounded-md border">
+    // data-tour: el recorrido guiado se cuelga de este nodo (ver lib/habilitaciones/tour.ts)
+    <section className="rounded-md border" data-tour="no-aplican">
       <button
         onClick={() => setAbierto((v) => !v)}
         className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted/40"
@@ -236,12 +249,15 @@ function Grupo({
   onSeleccionar,
   onTriar,
   triando,
+  primero = false,
 }: {
   grupo: GrupoBandeja;
   seleccion: Set<number>;
   onSeleccionar: (otId: number, valor: boolean) => void;
   onTriar: (decision: "aplica" | "no_aplica", otIds: number[]) => void;
   triando: boolean;
+  /** El primer grupo aporta la fila de ejemplo del recorrido guiado. */
+  primero?: boolean;
 }) {
   const esTriage = grupo.clave === "recien_llegadas";
   const idsDelGrupo = grupo.filas.map((f) => f.otId);
@@ -251,7 +267,11 @@ function Grupo({
   const objetivo = seleccionados.length > 0 ? seleccionados : idsDelGrupo;
 
   return (
-    <section className="rounded-md border">
+    // data-tour: el recorrido guiado se cuelga de estos nodos (ver lib/habilitaciones/tour.ts)
+    <section
+      className="rounded-md border"
+      data-tour={esTriage ? "grupo-recien-llegadas" : grupo.peligro ? "grupos" : undefined}
+    >
       <header
         className="flex items-center gap-3 border-b px-3 py-2"
         style={grupo.peligro ? { backgroundColor: "#FDECEA" } : undefined}
@@ -288,7 +308,7 @@ function Grupo({
       </header>
 
       <div>
-        {grupo.filas.map((fila) => (
+        {grupo.filas.map((fila, i) => (
           <Fila
             key={fila.otId}
             fila={fila}
@@ -296,6 +316,7 @@ function Grupo({
             seleccionable={esTriage}
             seleccionada={seleccion.has(fila.otId)}
             onSeleccionar={onSeleccionar}
+            anclaTour={primero && i === 0}
           />
         ))}
       </div>

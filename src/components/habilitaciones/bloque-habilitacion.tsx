@@ -88,8 +88,10 @@ export function BloqueHabilitacion({ ficha, otId }: { ficha: FichaHabilitacion; 
   return (
     <div className="space-y-2 rounded-md border px-3 py-2.5">
       <div className="flex flex-wrap items-center gap-3">
+        {/* data-tour: el recorrido guiado se cuelga de este nodo (ver lib/habilitaciones/tour.ts) */}
         <Button
           size="lg"
+          data-tour="boton-habilitar"
           disabled={!est.listo || declarar.isPending}
           onClick={() => habilitar(null)}
           style={est.listo ? { backgroundColor: "#27500A" } : undefined}
@@ -124,6 +126,7 @@ export function BloqueHabilitacion({ ficha, otId }: { ficha: FichaHabilitacion; 
             size="sm"
             variant="outline"
             className="ml-auto"
+            data-tour="boton-consulta"
             disabled={consulta.isPending}
             onClick={() =>
               consulta.mutate(undefined, {

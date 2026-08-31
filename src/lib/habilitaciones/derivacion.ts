@@ -141,6 +141,54 @@ export function estadoDeHabilitacion(requisitos: Requisito[]): {
   return { listo: true, total, aprobados, faltan, motivo: null };
 }
 
+/**
+ * Espeja los computes de Odoo para la UI optimista. NO se escribe nunca.
+ *
+ * La ficha lee la OT y su venta en dos llamadas SECUENCIALES a Odoo —hay que leer la OT
+ * para saber cuál es la venta— y eso son ~520 ms medidos, más el resto del viaje. Si
+ * después de habilitar se invalidara la ficha, cada clic costaría cerca de un segundo.
+ *
+ * Y sería peor que lento: el push a Odoo sale en after(), o sea DESPUÉS de responder, así
+ * que un refetch disparado por la respuesta puede leer el estado viejo y mostrarlo. Lento
+ * y desactualizado a la vez.
+ *
+ * Por eso se predice acá con la misma fórmula que corre en Odoo (ver el encabezado de
+ * este archivo) y se parchea la caché. Es una PREDICCIÓN para que la pantalla responda ya;
+ * la próxima lectura real la corrige, y si el push falló queda en sync_estado = 'error',
+ * visible en el contador de la bandeja.
+ *
+ * Si algún día cambia el compute en Odoo, cambia también acá. Es el precio de no esperar
+ * medio segundo por cada clic, y está acotado a estos dos campos.
+ */
+export function preverDerivados(v: {
+  habEstado: HabEstado | null;
+  fechaConsulta: string | null;
+  fechaEnvio: string | null;
+  vencimiento: string | null;
+  otEjecutada: boolean;
+  hoy?: string;
+}): { etapa: "a" | "b" | "c" | "d" | "e" | "f"; semaforo: "rojo" | "amarillo" | "verde" | "vencida" | "gris" } {
+  const hoy = v.hoy ?? hoyISO();
+  const estado = v.habEstado ?? "pendiente";
+
+  const semaforo =
+    estado === "no_aplica" ? "gris"
+    : estado === "habilitada"
+      ? v.vencimiento && v.vencimiento < hoy && !v.otEjecutada ? "vencida" : "verde"
+      : estado === "en_curso" ? "amarillo"
+      : "rojo";
+
+  const etapa =
+    estado === "no_aplica" ? "f"
+    : semaforo === "vencida" ? "e"
+    : estado === "habilitada" ? "d"
+    : v.fechaEnvio ? "c"
+    : v.fechaConsulta ? "b"
+    : "a";
+
+  return { etapa, semaforo };
+}
+
 // ─── Bandeja ────────────────────────────────────────────────────────────────
 
 /** Días de aviso antes del vencimiento. El módulo avisa, no renueva. */

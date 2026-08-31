@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
+import { hoyISO, preverDerivados } from "@/lib/habilitaciones/derivacion";
 import type {
   AdjuntoRequisito, Bandeja, EstadoRequisito, FichaHabilitacion, ModalidadPermiso,
   Nota, Paquete, TipoGestion, TramiteEstado,
@@ -161,32 +162,72 @@ export function useMarcarTodos(otId: number) {
 }
 
 /**
- * Declarar habilitada la obra, o revertirlo.
+ * Parchea la ficha en caché sin volver a pedirla.
  *
- * Invalida la ficha entera y no sólo la gestión: la etapa y el semáforo los computa Odoo
- * a partir del estado que este gesto acaba de cambiar, así que hay que volver a leerlos.
+ * Invalidar cuesta ~520 ms de Odoo en dos llamadas secuenciales, y encima el push sale en
+ * after() —después de responder—, así que el refetch puede leer el estado viejo. Se
+ * aplica el cambio que ya conocemos y se predicen etapa y semáforo con la misma fórmula
+ * que corre en Odoo. La bandeja sólo se marca vencida: no está montada, así que no
+ * dispara ninguna lectura hasta que se vuelva a ella.
  */
-export function useDeclararHabilitacion(otId: number) {
+function useParchearFicha(otId: number) {
   const qc = useQueryClient();
+  return (cambio: Partial<FichaHabilitacion>) => {
+    qc.setQueryData<FichaHabilitacion>(["habilitacion", otId], (prev) => {
+      if (!prev) return prev;
+      const siguiente = { ...prev, ...cambio };
+      // Mismo criterio que derivarInputs, para que la predicción no se separe de lo que
+      // el servidor va a escribir: al revertir, una obra sin ningún papel movido vuelve a
+      // `pendiente` (semáforo rojo) y no a `en_curso` (amarillo).
+      const habEstado = siguiente.habilitadaEl
+        ? "habilitada"
+        : siguiente.triage === "no_aplica"
+          ? "no_aplica"
+          : siguiente.requisitos.some((r) => r.estado !== "pendiente") || siguiente.fechaEnvio
+            ? "en_curso"
+            : "pendiente";
+
+      const { etapa, semaforo } = preverDerivados({
+        habEstado,
+        fechaConsulta: siguiente.fechaConsulta,
+        fechaEnvio: siguiente.fechaEnvio,
+        vencimiento: siguiente.vencimiento,
+        otEjecutada: ["completada", "cancelada"].includes(siguiente.estadoOt),
+      });
+      return { ...siguiente, etapa, semaforo };
+    });
+    qc.invalidateQueries({ queryKey: ["habilitaciones"] });
+  };
+}
+
+/** Declarar habilitada la obra, o revertirlo. */
+export function useDeclararHabilitacion(otId: number) {
+  const parchear = useParchearFicha(otId);
   return useMutation({
     mutationFn: (v: { habilitar: boolean; faltan: number; motivo?: string | null }) =>
-      pedir(`/api/habilitaciones/${otId}/habilitacion`, { method: "POST", body: JSON.stringify(v) }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["habilitacion", otId] });
-      qc.invalidateQueries({ queryKey: ["habilitaciones"] });
+      pedir<RespuestaGestion>(`/api/habilitaciones/${otId}/habilitacion`, {
+        method: "POST",
+        body: JSON.stringify(v),
+      }),
+    onSuccess: (res, v) => {
+      const hoy = hoyISO();
+      parchear({
+        habilitadaEl: v.habilitar ? hoy : null,
+        habilitadaMotivo: v.habilitar ? (v.faltan > 0 ? (v.motivo ?? null) : null) : null,
+        fechaHabilitada: v.habilitar ? hoy : null,
+        ...(res.gestion ?? {}),
+      });
     },
   });
 }
 
 /** Registrar que ya se le consultó al cliente. Es lo único que pasa de la etapa `a` a la `b`. */
 export function useRegistrarConsulta(otId: number) {
-  const qc = useQueryClient();
+  const parchear = useParchearFicha(otId);
   return useMutation({
-    mutationFn: () => pedir(`/api/habilitaciones/${otId}/consulta`, { method: "POST" }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["habilitacion", otId] });
-      qc.invalidateQueries({ queryKey: ["habilitaciones"] });
-    },
+    mutationFn: () =>
+      pedir<RespuestaGestion>(`/api/habilitaciones/${otId}/consulta`, { method: "POST" }),
+    onSuccess: (res) => parchear({ fechaConsulta: hoyISO(), ...(res.gestion ?? {}) }),
   });
 }
 

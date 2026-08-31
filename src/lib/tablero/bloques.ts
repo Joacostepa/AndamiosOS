@@ -22,6 +22,15 @@ export function siguienteDiaLaboral(fecha: string): string {
 }
 
 /**
+ * ¿`b` sigue a `a` sin hueco? El domingo no cuenta como hueco —una obra de viernes a
+ * lunes es continua— pero si ESE domingo se trabajó, tampoco lo corta: vale tanto el día
+ * calendario siguiente como el día laboral siguiente.
+ */
+export function sonContiguas(a: string, b: string): boolean {
+  return b === format(addDays(parseISO(a), 1), "yyyy-MM-dd") || b === siguienteDiaLaboral(a);
+}
+
+/**
  * Las N fechas corridas que ocuparía una obra que arranca en `inicio`.
  *
  * `permitirDomingo` sólo habilita ARRANCAR en domingo, y se pasa únicamente cuando el
@@ -110,7 +119,7 @@ export function agruparBloques(asignaciones: AsignacionTablero[]): Bloque[] {
 
     for (const a of ordenadas) {
       const previa = tramo[tramo.length - 1];
-      if (previa && a.fecha !== siguienteDiaLaboral(previa.fecha)) cerrar();
+      if (previa && !sonContiguas(previa.fecha, a.fecha)) cerrar();
       tramo.push(a);
     }
     cerrar();

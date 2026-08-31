@@ -65,6 +65,7 @@ function labelTipo(tipo: string | null | undefined): string {
 export function ContenidoTarjeta({
   ot,
   bloque,
+  plan,
   compacta = false,
   vieneDeAntes = false,
   sigueDespues = false,
@@ -74,6 +75,12 @@ export function ContenidoTarjeta({
 }: {
   ot: OtTablero | undefined;
   bloque: Pick<Bloque, "estado" | "fraccion" | "fechas" | "multiDia">;
+  /**
+   * Plan completo de la obra. Cuando quedó partida en tramos no corridos, esta tarjeta es
+   * sólo una parte y el contador lo dice ("1/3j"): si no, una obra de tres días partida se
+   * lee como tres obras de un día y nadie encuentra el resto del plan.
+   */
+  plan?: { dias: number; tramos: number };
   compacta?: boolean;
   /** El bloque empieza antes / termina después de la semana visible. */
   vieneDeAntes?: boolean;
@@ -95,6 +102,7 @@ export function ContenidoTarjeta({
   const urgente = ot?.urgencia === "alta";
   const partes = partesTitulo(ot?.titulo ?? "OT");
   const noEjecutada = cierre?.estado === "no_ejecutado";
+  const partida = (plan?.tramos ?? 1) > 1;
   // El texto conserva el color del tipo aunque el relleno no esté: el tipo se lee igual
   // en una tentativa. Sobre el fondo blanco de la tentativa estos tonos oscuros
   // contrastan de sobra.
@@ -157,8 +165,16 @@ export function ContenidoTarjeta({
         >
           {partes.principal}
         </span>
-        <span className="shrink-0 text-[11px] font-semibold tabular-nums" style={{ color: colorTexto }}>
-          {bloque.multiDia ? `${bloque.fechas.length}j` : fraccionLabel(bloque.fraccion)}
+        <span
+          className="shrink-0 text-[11px] font-semibold tabular-nums"
+          style={{ color: colorTexto }}
+          title={partida ? `Obra partida: ${plan!.dias} días en ${plan!.tramos} tramos` : undefined}
+        >
+          {partida
+            ? `${bloque.fechas.length}/${plan!.dias}j`
+            : bloque.multiDia
+              ? `${bloque.fechas.length}j`
+              : fraccionLabel(bloque.fraccion)}
         </span>
         {urgente && (
           <AlertTriangle
@@ -192,6 +208,7 @@ export function ContenidoTarjeta({
 export function TarjetaAsignacion({
   bloque,
   ot,
+  plan,
   colocacion,
   carril,
   seleccionada,
@@ -209,6 +226,8 @@ export function TarjetaAsignacion({
 }: {
   bloque: Bloque;
   ot: OtTablero | undefined;
+  /** Días y tramos que tiene planificada la obra entera, no sólo este tramo. */
+  plan?: { dias: number; tramos: number };
   colocacion: Colocacion;
   carril: number;
   seleccionada: boolean;
@@ -300,6 +319,7 @@ export function TarjetaAsignacion({
       <ContenidoTarjeta
         ot={ot}
         bloque={bloque}
+        plan={plan}
         vieneDeAntes={colocacion.vieneDeAntes}
         sigueDespues={colocacion.sigueDespues}
         cierre={cierre}
@@ -363,12 +383,16 @@ export function TarjetaAsignacion({
 
             <DropdownMenuSeparator />
             {/* Siempre disponible: es la única forma de estirar una obra de un día a
-                dos, porque una vez asignada ya no está en la bandeja para re-arrastrar. */}
+                dos, porque una vez asignada ya no está en la bandeja para re-arrastrar.
+                Abre TODAS las jornadas de la obra, no sólo las de esta tarjeta: si el plan
+                quedó partido en tramos, éste es el único lado desde donde se vuelve a unir. */}
             <DropdownMenuItem onClick={onEditarJornadas}>
               <CalendarRange className="mr-2 h-4 w-4" />
-              {bloque.multiDia
-                ? `Jornadas de la obra (${bloque.fechas.length} días)`
-                : "Jornadas de la obra (agregar días)"}
+              {plan && plan.tramos > 1
+                ? `Jornadas de la obra (${plan.dias} días en ${plan.tramos} tramos)`
+                : bloque.multiDia
+                  ? `Jornadas de la obra (${bloque.fechas.length} días)`
+                  : "Jornadas de la obra (agregar días)"}
             </DropdownMenuItem>
 
             {!bloque.multiDia && (

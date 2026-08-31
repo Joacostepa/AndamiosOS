@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { PointerEvent as PointerEventReact } from "react";
+import type { MouseEvent as MouseEventReact, PointerEvent as PointerEventReact } from "react";
 import { format, isSameDay, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { AlertTriangle, MousePointerClick, StickyNote } from "lucide-react";
@@ -106,6 +106,25 @@ function DiaDelEncabezado({ d, esHoy }: { d: Date; esHoy: boolean }) {
 
 function esLunes(fecha: string): boolean {
   return parseISO(fecha).getDay() === 1;
+}
+
+/**
+ * ¿El evento pasó FÍSICAMENTE adentro de este elemento?
+ *
+ * Los portales de React propagan por el árbol de REACT, no por el del DOM. El popover de
+ * notas se pinta en un portal colgado del body, pero en el árbol de React vive adentro
+ * del encabezado del día, así que sus clics igual le llegan a los handlers de acá.
+ *
+ * Eso rompía el popover entero: apretar cualquier botón de adentro corría `iniciarPan`,
+ * que hace setPointerCapture sobre el encabezado, y con la captura activa el navegador
+ * dispara el click sobre el div que capturó — el botón nunca se enteraba. "Agregar" y
+ * "borrar" no hacían nada; ⌘+Enter sí, porque un keydown no pasa por este camino.
+ *
+ * Comparar contra el DOM separa las dos cosas: si el target no cuelga del encabezado, es
+ * contenido portalizado y acá no se mira.
+ */
+function pasoAdentro(e: { currentTarget: HTMLElement; target: EventTarget | null }): boolean {
+  return e.target instanceof Node && e.currentTarget.contains(e.target);
 }
 
 /**
@@ -274,6 +293,7 @@ export function TableroGrid({
   const panMovio = useRef(false);
 
   function iniciarPan(e: PointerEventReact<HTMLDivElement>) {
+    if (!pasoAdentro(e)) return;
     // El táctil ya scrollea solo: capturar el puntero ahí rompería el gesto nativo.
     if (e.pointerType === "touch" || e.button !== 0 || !propio.current) return;
     pan.current = { x: e.clientX };
@@ -433,7 +453,12 @@ export function TableroGrid({
           // la captura activa el navegador dispara el click sobre el elemento que captura,
           // así que un botón adentro nunca se enteraría.
           const alternable = esDomingo(f) && (canaleta || puedePlegar(f));
-          const alternar = () => { if (alternable && !panMovio.current) onToggleDomingo(f); };
+          // `pasoAdentro` por lo mismo que en iniciarPan: sin eso, tocar cualquier cosa
+          // del popover de notas sobre un domingo lo plegaba de golpe.
+          const alternar = (e: MouseEventReact<HTMLDivElement>) => {
+            if (!pasoAdentro(e)) return;
+            if (alternable && !panMovio.current) onToggleDomingo(f);
+          };
           const tituloDomingo = canaleta
             ? `Domingo ${format(d, "d MMM", { locale: es })} · sin trabajo — clic para habilitarlo`
             : `Domingo ${format(d, "d MMM", { locale: es })} habilitado a mano · clic para volver a plegarlo`;
@@ -457,6 +482,9 @@ export function TableroGrid({
               onKeyDown={
                 alternable
                   ? (e) => {
+                      // Sin `pasoAdentro`, escribir una nota sobre un domingo era una
+                      // trampa: cada Enter del textarea plegaba la columna.
+                      if (!pasoAdentro(e)) return;
                       if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggleDomingo(f); }
                     }
                   : undefined

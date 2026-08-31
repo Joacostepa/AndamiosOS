@@ -96,3 +96,14 @@ export function colorOcupacion(nivel: "libre" | "parcial" | "completa" | "sobre"
 export const RIEL_OCUPACION = "#E8E6DF";
 
 export const URGENCIA_ALTA_BORDE = "#D92D20";
+
+// Urgencia de la OT (x_urgencia). La decide una persona en Odoo; el tablero sólo la lee.
+//
+// ALTA usa el rojo fuerte, el mismo de la sobreasignación y del error: es el único tono
+// que ya significa "esto no puede pasar de largo" en el resto del tablero. MEDIA va en
+// ámbar apagado y SIN franja ni borde — es una advertencia de segundo orden, y darle los
+// mismos canales que a alta las igualaría, que es justo lo contrario de lo que se pide.
+export const URGENCIA = {
+  alta: { fuerte: URGENCIA_ALTA_BORDE, suave: "#FDECEA", texto: "#912018", label: "URGENTE" },
+  media: { fuerte: "#EF9F27", suave: "#FAEEDA", texto: "#854F0B", label: "MEDIA" },
+} as const;

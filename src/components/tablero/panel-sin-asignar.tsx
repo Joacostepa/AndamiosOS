@@ -19,7 +19,7 @@ import {
   MapPin,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { colorTipo, semaforo, CORAL, ACENTO_BG, URGENCIA_ALTA_BORDE } from "@/lib/tablero/colores";
+import { colorTipo, semaforo, CORAL, ACENTO_BG, URGENCIA } from "@/lib/tablero/colores";
 import { fraccionLabel, repartirJornadas, FRACCIONES, type FraccionStr } from "@/lib/tablero/fracciones";
 import { partesTitulo, normalizar } from "@/lib/tablero/titulo";
 import type { OtTablero } from "@/lib/tablero/tipos";
@@ -170,14 +170,32 @@ function Chip({
 
 /**
  * La habilitación deja de ser una franja de color y pasa a ser el criterio de
- * agrupación: rojo y vencida a un lado, el resto al otro.
- *
- * `gris` va con las listas y no con las pendientes. Es el caso que más aparece, y "sin
- * datos de habilitación" no es lo mismo que "habilitación vencida": mandarlo al grupo de
- * pendientes lo llenaría de obras que probablemente estén bien y lo volvería ruido.
+ * agrupación: rojo y vencida a un lado, el resto al otro. El amarillo —"en curso"— va con
+ * las habilitadas: el trámite avanza y la obra se puede planificar mientras tanto.
  */
 function habilitacionPendiente(ot: OtTablero): boolean {
   return ot.habSemaforo === "rojo" || ot.habSemaforo === "vencida";
+}
+
+/**
+ * LA URGENCIA LA DECIDE LA OT EN ODOO. Es `x_urgencia`, que carga una persona: el tablero
+ * no la deduce de la fecha comprometida, del semáforo ni de nada más. Un criterio
+ * calculado pondría obras arriba de todo por una regla que Operaciones no eligió.
+ *
+ * Todo lo urgente pasa por estas dos funciones —el grupo fijo de la bandeja, el orden y el
+ * resaltado de la tarjeta— así que si algún día el criterio cambia, se cambia acá y nada
+ * más.
+ *
+ * ESTADO DEL DATO (medido contra Odoo, 65 OTs candidatas): 0 en alta, 2 en media, el resto
+ * sin cargar —la app lee el vacío como "baja"—. Mientras nadie marque una OT como urgente
+ * en Odoo, el grupo de urgentes no aparece: `Grupo` no dibuja nada cuando está en cero.
+ */
+function esUrgente(ot: OtTablero): boolean {
+  return ot.urgencia === "alta";
+}
+
+function esUrgenciaMedia(ot: OtTablero): boolean {
+  return ot.urgencia === "media";
 }
 
 /**
@@ -188,12 +206,16 @@ function habilitacionPendiente(ot: OtTablero): boolean {
  * dice por qué está donde está: así se puede verificar de un vistazo en vez de confiar.
  */
 function prioridad(ot: OtTablero, hoy: string): number {
-  if (ot.urgencia === "alta") return 0;
+  if (esUrgente(ot)) return 0;
   // Un compromiso vencido es lo más urgente después de lo declarado urgente: alguien le
   // dio una fecha al cliente y esa fecha ya pasó.
   if (ot.fechaComprometida && ot.fechaComprometida < hoy) return 1;
   if (ot.fechaComprometida) return 2;
-  return 3;
+  // La urgencia media ordena, y nada más: no arma grupo ni pinta la tarjeta. Va DESPUÉS
+  // del compromiso para no alterar un orden que ya funcionaba — "en menor medida" también
+  // quiere decir que no desplaza a lo que ya estaba decidido.
+  if (esUrgenciaMedia(ot)) return 3;
+  return 4;
 }
 
 /** Lo que explica la posición de la tarjeta: la fecha prometida y su desvío. */
@@ -224,7 +246,8 @@ function TarjetaOt({
   const tipo = colorTipo(ot.tipo);
   const IconoTipo = ICONO_TIPO[tipo.icono];
   const sem = semaforo(ot.habSemaforo);
-  const urgente = ot.urgencia === "alta";
+  const urgente = esUrgente(ot);
+  const media = esUrgenciaMedia(ot);
   const partes = partesTitulo(ot.titulo);
 
   return (
@@ -240,10 +263,19 @@ function TarjetaOt({
       style={{
         opacity: isDragging ? 0.35 : 1,
         backgroundColor: tipo.bg,
-        borderColor: "transparent",
+        // El borde rojo es SÓLO de la urgencia alta. Es el canal más caro que le queda a
+        // esta tarjeta y por eso no lo comparte con nada: si también marcara "media", las
+        // dos se leerían igual desde lejos, que es exactamente lo que hay que evitar.
+        borderColor: urgente ? URGENCIA.alta.fuerte : "transparent",
         // La franja ya no es el semáforo —eso ahora lo dice el grupo— sino "empezada",
-        // que es el estado que hay que no perder de vista dentro de cada grupo.
-        borderLeft: empezada ? "5px solid #EF9F27" : "5px solid transparent",
+        // que es el estado que hay que no perder de vista dentro de cada grupo. La urgencia
+        // alta se la queda cuando hay conflicto: no se pierde nada, porque "empezada" tiene
+        // además su propio renglón arriba con las jornadas hechas.
+        borderLeft: urgente
+          ? `5px solid ${URGENCIA.alta.fuerte}`
+          : empezada
+            ? "5px solid #EF9F27"
+            : "5px solid transparent",
       }}
     >
       {empezada && (
@@ -281,9 +313,24 @@ function TarjetaOt({
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-0.5">
+          {/* Alta va en rojo pleno y media en ámbar suave: el mismo lugar, dos pesos.
+              Leídas de reojo, la primera salta y la segunda se nota sin gritar. */}
           {urgente && (
-            <span className="rounded px-1 text-[9px] font-semibold" style={{ backgroundColor: "#FDECEA", color: URGENCIA_ALTA_BORDE }}>
-              URG
+            <span
+              className="rounded px-1 text-[9px] font-semibold"
+              style={{ backgroundColor: URGENCIA.alta.fuerte, color: "#fff" }}
+              title="Urgencia alta, marcada en la OT"
+            >
+              {URGENCIA.alta.label}
+            </span>
+          )}
+          {media && (
+            <span
+              className="rounded px-1 text-[9px] font-semibold"
+              style={{ backgroundColor: URGENCIA.media.suave, color: URGENCIA.media.texto }}
+              title="Urgencia media, marcada en la OT"
+            >
+              {URGENCIA.media.label}
             </span>
           )}
           {/* Botón aparte para el detalle: el cuerpo de la tarjeta es el asa de
@@ -311,6 +358,19 @@ function TarjetaOt({
         {ot.tecnico ? ` · ${ot.tecnico}` : ""}
       </p>
 
+      {/* El motivo de la urgencia, igual que el compromiso: lo que explica por qué esta
+          obra está arriba de todo y salteando el grupo de habilitación. Una tarjeta
+          urgente sin motivo se lee como un error del sistema, no como una decisión. */}
+      {urgente && (
+        <p
+          className="mt-0.5 line-clamp-2 text-[10px] font-semibold"
+          style={{ color: URGENCIA.alta.texto }}
+          title={ot.motivoUrgencia ?? "Marcada como urgente en la OT, sin motivo cargado"}
+        >
+          {ot.motivoUrgencia ?? "urgente — sin motivo cargado en la OT"}
+        </p>
+      )}
+
       {/* El compromiso con el cliente va en su propia línea y no diluido entre el resto:
           es lo que explica por qué la obra está arriba de la lista. Sin esto el orden
           sería una decisión invisible que hay que creer. */}
@@ -327,18 +387,31 @@ function TarjetaOt({
   );
 }
 
-/** Encabezado plegable de un grupo. El plegado es visual: adentro se arrastra igual. */
+/**
+ * Encabezado plegable de un grupo. El plegado es visual: adentro se arrastra igual.
+ *
+ * Un grupo vacío no se dibuja. Es lo que hace que el grupo de urgentes no ocupe lugar
+ * mientras nadie marque una OT como urgente en Odoo.
+ *
+ * `fijo` es el grupo que no se pliega: se muestra sin chevron, porque un control que no
+ * hace nada es peor que no tenerlo.
+ */
 function Grupo({
   titulo,
   cantidad,
   abierto,
   onToggle,
+  fijo = false,
+  color,
   children,
 }: {
   titulo: string;
   cantidad: number;
   abierto: boolean;
   onToggle: () => void;
+  fijo?: boolean;
+  /** Color del encabezado. Sin valor, el gris de siempre. */
+  color?: string;
   children: React.ReactNode;
 }) {
   if (cantidad === 0) return null;
@@ -346,13 +419,27 @@ function Grupo({
     <div>
       <button
         type="button"
-        onClick={onToggle}
-        className="flex w-full items-center gap-1.5 rounded px-1 py-1 text-left text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground hover:bg-muted"
+        onClick={fijo ? undefined : onToggle}
+        disabled={fijo}
+        className={`flex w-full items-center gap-1.5 rounded px-1 py-1 text-left text-[11px] font-semibold uppercase tracking-[0.04em] ${
+          color ? "" : "text-muted-foreground"
+        } ${fijo ? "cursor-default" : "hover:bg-muted"}`}
+        style={color ? { color } : undefined}
         aria-expanded={abierto}
       >
-        {abierto ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+        {!fijo &&
+          (abierto ? (
+            <ChevronDown className="h-3.5 w-3.5" />
+          ) : (
+            <ChevronRight className="h-3.5 w-3.5" />
+          ))}
         {titulo}
-        <span className="rounded-full bg-muted px-1.5 text-[10px] font-medium">{cantidad}</span>
+        <span
+          className={`rounded-full px-1.5 text-[10px] font-medium ${color ? "" : "bg-muted"}`}
+          style={color ? { backgroundColor: color, color: "#fff" } : undefined}
+        >
+          {cantidad}
+        </span>
       </button>
       {abierto && <div className="mt-1 space-y-1.5">{children}</div>}
     </div>
@@ -389,6 +476,10 @@ export function PanelSinAsignar({
   const [tipoFiltro, setTipoFiltro] = useState<string | null>(null);
   const [duracionFiltro, setDuracionFiltro] = useState<ClaveDuracion | null>(null);
   const hayFiltro = tipoFiltro !== null || duracionFiltro !== null;
+
+  // Sobre la bandeja ENTERA, sin filtros ni búsqueda: es lo que se muestra con el panel
+  // plegado, donde no hay ningún filtro visible que explique por qué el número es menor.
+  const urgentesTotales = ots.filter((o) => esUrgente(o.ot)).length;
 
   const q = normalizar(busqueda.trim());
 
@@ -450,8 +541,22 @@ export function PanelSinAsignar({
     return { chipsTipo, chipsDuracion, conFiltros: filtradas.filter(porTipo).filter(porDuracion) };
   }, [filtradas, tipoFiltro, duracionFiltro]);
 
-  const listas = conFiltros.filter((o) => !habilitacionPendiente(o.ot));
-  const pendientesHab = conFiltros.filter((o) => habilitacionPendiente(o.ot));
+  // LA URGENCIA SALTEA LA HABILITACIÓN. Las urgentes se sacan de los dos grupos de
+  // habilitación y van a uno propio arriba de todo, siempre abierto.
+  //
+  // El motivo es concreto: el grupo "Con habilitación pendiente" arranca PLEGADO, así que
+  // una obra urgente sin habilitar quedaba escondida detrás de un clic — Operaciones no la
+  // veía tarde, no la veía. Ordenarla primero dentro de su grupo no alcanzaba: seguía
+  // abajo del otro grupo entero y había que scrollear hasta ella.
+  //
+  // Cada obra sigue apareciendo en UN solo grupo, así que los tres contadores siguen
+  // sumando el total del encabezado y se puede verificar de un vistazo que no falta
+  // ninguna. La tarjeta urgente conserva su punto de semáforo: está arriba porque es
+  // urgente, no porque esté habilitada, y esas dos cosas no pueden confundirse.
+  const urgentes = conFiltros.filter((o) => esUrgente(o.ot));
+  const resto = conFiltros.filter((o) => !esUrgente(o.ot));
+  const listas = resto.filter((o) => !habilitacionPendiente(o.ot));
+  const pendientesHab = resto.filter((o) => habilitacionPendiente(o.ot));
 
   // Sólo se buscan las ya planificadas cuando hay texto: sin búsqueda, la sección no
   // aporta nada y le sacaría lugar a la bandeja.
@@ -480,6 +585,18 @@ export function PanelSinAsignar({
         >
           {ots.length}
         </span>
+        {/* Con el panel plegado, una obra urgente es invisible. El contador rojo es lo
+            único que puede decir "abrí esto" desde 44px de ancho. Cuenta sobre `ots`, no
+            sobre los filtros: plegado no hay filtros a la vista que expliquen un faltante. */}
+        {urgentesTotales > 0 && (
+          <span
+            className="rounded-full px-1.5 text-[11px] font-semibold"
+            style={{ backgroundColor: URGENCIA.alta.fuerte, color: "#fff" }}
+            title={`${urgentesTotales} obra(s) urgente(s) sin planificar`}
+          >
+            {urgentesTotales}
+          </span>
+        )}
         <span className="mt-1 text-[10px] uppercase tracking-wide text-muted-foreground [writing-mode:vertical-rl]">
           Sin asignar
         </span>
@@ -576,9 +693,23 @@ export function PanelSinAsignar({
       {conFiltros.length > 0 || yaPlanificadas.length > 0 ? (
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-2">
           <Grupo
-            titulo="Listas para planificar"
+            titulo="Urgentes"
+            cantidad={urgentes.length}
+            abierto
+            fijo
+            color={URGENCIA.alta.fuerte}
+            onToggle={() => {}}
+          >
+            {urgentes.map((obra) => (
+              <TarjetaOt key={obra.ot.id} obra={obra} hoy={hoy} onDetalle={onDetalle} />
+            ))}
+          </Grupo>
+
+          <Grupo
+            titulo="Habilitadas"
             cantidad={listas.length}
             abierto
+            fijo
             onToggle={() => {}}
           >
             {listas.map((obra) => (

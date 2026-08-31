@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactElement } from "react";
+import { useEffect, useRef, useState, type ReactElement } from "react";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { Trash2, Users } from "lucide-react";
@@ -124,10 +124,27 @@ export function PopoverNotasDia({
   const [hasta, setHasta] = useState("");
   const [rangoAbierto, setRangoAbierto] = useState(false);
   const agregar = useAgregarNotaJornada();
+  const campo = useRef<HTMLTextAreaElement | null>(null);
+
+  // El foco va al campo al abrir. La única razón para abrir esto en un día sin notas es
+  // escribir una, y sin esto había que acertarle al textarea antes de poder tipear.
+  // Se espera un frame porque el popover mueve el foco a su propio contenedor al montar.
+  useEffect(() => {
+    if (!abierto) return;
+    const id = requestAnimationFrame(() => campo.current?.focus());
+    return () => cancelAnimationFrame(id);
+  }, [abierto]);
 
   function guardar() {
     const limpio = texto.trim();
-    if (!limpio) return;
+    // Sin texto NO es un no-op silencioso: el botón queda apretable a propósito y el clic
+    // manda el foco al campo. Antes iba `disabled`, y `disabled:pointer-events-none` hace
+    // que el navegador ni registre el clic — apretar "Agregar" con el campo vacío no
+    // producía absolutamente nada, ni un cursor distinto, y se leía como que estaba roto.
+    if (!limpio) {
+      campo.current?.focus();
+      return;
+    }
     if (hasta && hasta < fecha) {
       toast.error("El último día no puede ser anterior al primero");
       return;
@@ -179,8 +196,18 @@ export function PopoverNotasDia({
 
         <div className="space-y-2 border-t p-2.5">
           <Textarea
+            ref={campo}
             value={texto}
             onChange={(e) => setTexto(e.target.value)}
+            // Enter solo hace salto de línea —una nota puede tener dos renglones— así que
+            // guardar es ⌘/Ctrl+Enter, que es lo que ya hace la mano en cualquier campo
+            // de comentario.
+            onKeyDown={(e) => {
+              if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                e.preventDefault();
+                guardar();
+              }
+            }}
             placeholder="Ej: el chofer avisó que se va temprano"
             className="min-h-14 text-[12px]"
           />
@@ -199,12 +226,13 @@ export function PopoverNotasDia({
             </Select>
             <Button
               size="sm"
-              className="h-7 px-3 text-[11px]"
+              // Atenuado mientras no hay texto, pero NUNCA `disabled`: ver guardar().
+              className={`h-7 px-3 text-[11px] ${texto.trim() ? "" : "opacity-60"}`}
               style={{ backgroundColor: CORAL, color: "#fff" }}
-              disabled={!texto.trim() || agregar.isPending}
+              disabled={agregar.isPending}
               onClick={guardar}
             >
-              Agregar
+              {agregar.isPending ? "Guardando…" : "Agregar"}
             </Button>
           </div>
 

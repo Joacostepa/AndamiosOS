@@ -592,7 +592,7 @@ export async function notasFijadasDe(db: DB, otIds: number[]): Promise<Map<numbe
 export async function sincronizarOt(db: DB, otId: number): Promise<void> {
   const { data: cab, error } = await db
     .from("hab_ots")
-    .select("triage, hab_fecha_consulta, hab_vencimiento, habilitada_el, sync_intentos")
+    .select("triage, triage_fecha, hab_fecha_consulta, hab_vencimiento, habilitada_el, sync_intentos")
     .eq("odoo_ot_id", otId)
     .maybeSingle();
   if (error) throw new Error(error.message);
@@ -607,7 +607,13 @@ export async function sincronizarOt(db: DB, otId: number): Promise<void> {
       hab_fecha_consulta: cab?.hab_fecha_consulta ?? null,
       hab_vencimiento: cab?.hab_vencimiento ?? null,
     },
-    { triage: cab?.triage ?? null, habilitadaEl: cab?.habilitada_el ?? null },
+    {
+      triage: cab?.triage ?? null,
+      habilitadaEl: cab?.habilitada_el ?? null,
+      // Una obra que no aplica queda habilitada desde el día en que se decidió que no
+      // aplicaba: es la fecha que corresponde mostrar, no la de hoy.
+      triadaEl: cab?.triage_fecha ? String(cab.triage_fecha).slice(0, 10) : null,
+    },
   );
 
   try {

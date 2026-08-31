@@ -179,13 +179,13 @@ function useParchearFicha(otId: number) {
       // Mismo criterio que derivarInputs, para que la predicción no se separe de lo que
       // el servidor va a escribir: al revertir, una obra sin ningún papel movido vuelve a
       // `pendiente` (semáforo rojo) y no a `en_curso` (amarillo).
-      const habEstado = siguiente.habilitadaEl
+      // "No aplica" es habilitada: no hay nada que tramitar, así que no hay nada que la
+      // frene. Mismo criterio que derivarInputs.
+      const habEstado = siguiente.habilitadaEl || siguiente.triage === "no_aplica"
         ? "habilitada"
-        : siguiente.triage === "no_aplica"
-          ? "no_aplica"
-          : siguiente.requisitos.some((r) => r.estado !== "pendiente") || siguiente.fechaEnvio
-            ? "en_curso"
-            : "pendiente";
+        : siguiente.requisitos.some((r) => r.estado !== "pendiente") || siguiente.fechaEnvio
+          ? "en_curso"
+          : "pendiente";
 
       const { etapa, semaforo } = preverDerivados({
         habEstado,

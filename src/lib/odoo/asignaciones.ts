@@ -178,7 +178,7 @@ function mapOt(row: OdooOtRow, base: string, actionId: number | null): OtTablero
     jornadas,
     personalPorJornada: num(row.x_personal_por_jornada),
     cuadrillaPrevistaId: m2oId(row.x_cuadrilla_prevista_id),
-    habSemaforo: str(row.x_hab_semaforo) ?? "gris",
+    habSemaforo: str(row.x_hab_semaforo) ?? "rojo",
     habAlerta: str(row.x_hab_alerta),
     habVencimiento: str(row.x_hab_vencimiento),
     tecnico: str(row.x_tecnico),

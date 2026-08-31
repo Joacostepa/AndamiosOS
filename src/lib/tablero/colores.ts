@@ -74,11 +74,12 @@ export const SEMAFORO: Record<string, { color: string; label: string }> = {
   amarillo: { color: "#EF9F27", label: "Habilitación próxima a vencer" },
   rojo: { color: "#D92D20", label: "Habilitación crítica" },
   vencida: { color: "#7A271A", label: "Habilitación vencida" },
-  gris: { color: "#B4B4B4", label: "Sin datos de habilitación" },
 };
 
+// Sin valor no hay gris: una obra de la que no sabemos nada NO está habilitada, y eso es
+// rojo. El gris decía "sin datos" y se confundía con "no hace falta", que ahora va verde.
 export function semaforo(valor: string | null | undefined) {
-  return SEMAFORO[valor ?? "gris"] ?? SEMAFORO.gris;
+  return SEMAFORO[valor ?? "rojo"] ?? SEMAFORO.rojo;
 }
 
 // La barra es UNA sola señal: cuánto de la capacidad diaria está ocupado, y si se pasó.

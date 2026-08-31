@@ -15,8 +15,14 @@ export type HabEtapa = "a" | "b" | "c" | "d" | "e" | "f";
 /** x_hab_alerta: COMPUTADO en Odoo, readonly. */
 export type HabAlerta = "ok" | "proxima" | "critica" | "atrasada" | "vencida";
 
-/** x_hab_semaforo: COMPUTADO en Odoo, readonly. */
-export type HabSemaforo = "rojo" | "amarillo" | "verde" | "vencida" | "gris";
+/**
+ * x_hab_semaforo: COMPUTADO en Odoo, readonly.
+ *
+ * SIN GRIS: una obra está habilitada o no lo está. El gris significaba "no aplica" y se
+ * leía como "sin datos", que es otra cosa — una obra que no necesita tramitar nada no
+ * tiene nada que la frene, así que va en verde.
+ */
+export type HabSemaforo = "rojo" | "amarillo" | "verde" | "vencida";
 
 export type ModalidadPermiso = "sin_permiso" | "con_expediente" | "esperar_permiso";
 export type TramiteEstado = "no_presentado" | "presentado" | "emitido";

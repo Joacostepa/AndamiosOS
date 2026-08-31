@@ -68,16 +68,24 @@ function minFecha(fechas: (string | null)[]): string | null {
 export function derivarInputs(
   requisitos: Requisito[],
   actual: Pick<InputsHabilitacion, "hab_fecha_consulta" | "hab_vencimiento">,
-  opts: { triage: "aplica" | "no_aplica" | null; habilitadaEl?: string | null },
+  opts: { triage: "aplica" | "no_aplica" | null; habilitadaEl?: string | null; triadaEl?: string | null },
 ): InputsHabilitacion {
-  // El triage manda sobre todo lo demás: "no aplica" saca la obra de la cola y Odoo
-  // computa etapa `f` y semáforo gris solo.
+  // NO HAY GRIS: una obra está habilitada o no lo está. "No aplica" no es un tercer
+  // estado colgado al costado — es una obra que no necesita tramitar nada, o sea que no
+  // tiene nada que la frene: queda HABILITADA, en verde, sin pasar por los requisitos.
+  //
+  // Antes iba a un `no_aplica` que Odoo pintaba gris con la etiqueta "sin datos de
+  // habilitación", y eso mezclaba dos cosas distintas —"no hace falta" y "no sabemos"—
+  // en el mismo color. Con 27 de 60 obras ahí, casi la mitad del tablero no decía nada.
+  //
+  // El dato de que no aplicaba no se pierde: vive en hab_ots.triage, que es lo que arma
+  // la sección "No aplican" de la bandeja.
   if (opts.triage === "no_aplica") {
     return {
-      hab_estado: "no_aplica",
+      hab_estado: "habilitada",
       hab_fecha_consulta: actual.hab_fecha_consulta,
       hab_fecha_envio: null,
-      hab_fecha: null,
+      hab_fecha: opts.habilitadaEl ?? opts.triadaEl ?? null,
       hab_vencimiento: actual.hab_vencimiento,
     };
   }
@@ -167,20 +175,18 @@ export function preverDerivados(v: {
   vencimiento: string | null;
   otEjecutada: boolean;
   hoy?: string;
-}): { etapa: "a" | "b" | "c" | "d" | "e" | "f"; semaforo: "rojo" | "amarillo" | "verde" | "vencida" | "gris" } {
+}): { etapa: "a" | "b" | "c" | "d" | "e" | "f"; semaforo: "rojo" | "amarillo" | "verde" | "vencida" } {
   const hoy = v.hoy ?? hoyISO();
   const estado = v.habEstado ?? "pendiente";
 
   const semaforo =
-    estado === "no_aplica" ? "gris"
-    : estado === "habilitada"
+    estado === "habilitada"
       ? v.vencimiento && v.vencimiento < hoy && !v.otEjecutada ? "vencida" : "verde"
       : estado === "en_curso" ? "amarillo"
       : "rojo";
 
   const etapa =
-    estado === "no_aplica" ? "f"
-    : semaforo === "vencida" ? "e"
+    semaforo === "vencida" ? "e"
     : estado === "habilitada" ? "d"
     : v.fechaEnvio ? "c"
     : v.fechaConsulta ? "b"

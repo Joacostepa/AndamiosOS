@@ -109,7 +109,7 @@ function mapOt(r: FilaOt, base: string, actionId: number | null): OrdenListado {
     fechaProgramada: str(r.x_fecha_programada),
     fechaComprometida: str(r.x_fecha_comprometida),
     fechaFirmeza: str(r.x_fecha_firmeza),
-    habSemaforo: str(r.x_hab_semaforo) ?? "gris",
+    habSemaforo: str(r.x_hab_semaforo) ?? "rojo",
     habAlerta: str(r.x_hab_alerta),
     grupoProg: str(r.x_grupo_prog),
     cuadrillaPrevista: m2oName(r.x_cuadrilla_prevista_id),

@@ -144,6 +144,9 @@ export function TableroGrid({
   feriados,
   semanaCentrada,
   asignaciones,
+  onCrearTarea,
+  onTareaHecha,
+  onEditarTarea,
   ots,
   planPorObra,
   partes,
@@ -176,6 +179,11 @@ export function TableroGrid({
    */
   semanaCentrada: string[];
   asignaciones: AsignacionTablero[];
+  /** Doble clic en una celda vacía: crear una tarjeta de operaciones ahí. */
+  onCrearTarea: (cuadrillaId: number, fecha: string) => void;
+  /** Menú de una tarjeta de operaciones. */
+  onTareaHecha: (bloque: Bloque, hecha: boolean) => void;
+  onEditarTarea: (bloque: Bloque) => void;
   ots: Map<number, OtTablero>;
   /**
    * Plan completo de cada obra: días planificados y en cuántos tramos separados quedaron.
@@ -619,6 +627,7 @@ export function TableroGrid({
                         feriado={feriados.has(f)}
                         pasada={f < hoyISO}
                         fracciones={enCelda(cuadrilla.id, f).map((a) => a.fraccion)}
+                        onCrearTarea={() => onCrearTarea(cuadrilla.id, f)}
                         marcaNota={
                           suyas.length === 0 ? null : (
                             <PopoverNotasDia
@@ -656,12 +665,20 @@ export function TableroGrid({
                       <TarjetaAsignacion
                         key={bloque.key}
                         bloque={bloque}
-                        ot={ots.get(bloque.otId)}
-                        plan={planPorObra.get(bloque.otId)}
+                        // Una tarea no tiene OT ni plan de obra: los dos quedan
+                        // indefinidos y la tarjeta se dibuja con lo que trae el bloque.
+                        ot={bloque.tarea ? undefined : ots.get(bloque.otId)}
+                        plan={bloque.tarea ? undefined : planPorObra.get(bloque.otId)}
                         colocacion={colocacion}
                         carril={carril}
                         seleccionada={bloqueSeleccionado === bloque.key}
-                        ejecutada={bloque.fechas.some((f) => ejecutadas.has(`${bloque.otId}:${f}`))}
+                        // Una tarea hecha se atenúa igual que una obra ejecutada: ya no
+                        // reclama nada, pero sigue ocupando su lugar en el día.
+                        ejecutada={
+                          bloque.tarea
+                            ? bloque.tarea.hecha
+                            : bloque.fechas.some((f) => ejecutadas.has(`${bloque.otId}:${f}`))
+                        }
                         // "Ya pasó" no es lo relevante: lo relevante es si tiene parte.
                         // Atenuar todo lo pasado por igual escondía justo las jornadas que
                         // requieren acción — las que se trabajaron y nadie cargó.
@@ -677,13 +694,15 @@ export function TableroGrid({
                             : null
                         }
                         accionCierre={accion}
-                        candado={candados?.has(bloque.otId) ?? false}
+                        candado={!bloque.tarea && (candados?.has(bloque.otId) ?? false)}
                         onCerrarJornada={(a) => onCerrarJornada(bloque, a)}
                         onAbrir={() => onAbrirBloque(bloque)}
                         onFraccion={(f) => onFraccion(bloque, f)}
                         onEditarJornadas={() => onEditarJornadas(bloque)}
                         onEstado={(e) => onEstado(bloque, e)}
                         onQuitar={() => onQuitar(bloque)}
+                        onTareaHecha={(h) => onTareaHecha(bloque, h)}
+                        onEditarTarea={() => onEditarTarea(bloque)}
                       />
                     );
                   })}

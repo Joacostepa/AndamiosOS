@@ -32,6 +32,7 @@ export function CeldaDia({
   pasada = false,
   fracciones,
   marcaNota = null,
+  onCrearTarea,
 }: {
   cuadrillaId: number;
   fecha: string;
@@ -58,6 +59,15 @@ export function CeldaDia({
    * las tarjetas se ubican en los carriles y esta franja queda reservada para el riel.
    */
   marcaNota?: ReactNode;
+  /**
+   * Doble clic en la celda: crea una tarjeta de operaciones acá.
+   *
+   * DOBLE Y NO SIMPLE a propósito. La celda es zona de drop y el clic simple no hace
+   * nada hoy, pero soltar una obra termina en un clic sobre la celda y abriría el
+   * diálogo cada vez que alguien planifica. El doble clic es el gesto de "crear acá"
+   * en cualquier calendario, y no se pisa con el arrastre.
+   */
+  onCrearTarea?: () => void;
 }) {
   const { setNodeRef, isOver, active } = useDroppable({
     id: `celda:${cuadrillaId}:${fecha}`,
@@ -95,6 +105,10 @@ export function CeldaDia({
         outlineOffset: "-2px",
       }}
       className="relative border-b border-r"
+      // La celda colapsada (canaleta del domingo) no crea nada: no acepta drop y no
+      // tiene alto para mostrar lo que se cree.
+      onDoubleClick={colapsada ? undefined : onCrearTarea}
+      title={!colapsada && onCrearTarea ? "Doble clic para agregar una tarea acá" : undefined}
     >
       {/* El riel va SIEMPRE (salvo en la canaleta): una barra que aparece y desaparece
           hace saltar la línea de base de la fila al asignar. */}

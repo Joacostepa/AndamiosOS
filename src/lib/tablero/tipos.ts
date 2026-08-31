@@ -16,9 +16,55 @@ export type CuadrillaTablero = {
   tercerizada: boolean;
 };
 
+/** Tipos de trabajo interno que Operaciones le asigna a una cuadrilla. */
+export const TIPOS_TAREA = {
+  deposito: "Depósito",
+  mantenimiento: "Mantenimiento",
+  traslado: "Traslado",
+  retiro: "Retiro de material",
+  capacitacion: "Capacitación",
+  otro: "Otro",
+} as const;
+
+export type TipoTarea = keyof typeof TIPOS_TAREA;
+
+export function tipoTareaLabel(t: string | null | undefined): string {
+  return TIPOS_TAREA[(t ?? "otro") as TipoTarea] ?? TIPOS_TAREA.otro;
+}
+
+/**
+ * De dónde salió la fila. El tablero lee de dos bases —las obras de Odoo, las tareas
+ * operativas de Supabase— y las mezcla en un solo array para que la capacidad de la
+ * celda y el armado de bloques no tengan que saberlo. Esto es lo único que las separa,
+ * y lo miran sólo las escrituras, para saber a qué backend escribir.
+ */
+export type OrigenAsignacion = "ot" | "tarea";
+
+/**
+ * Datos propios de una tarjeta de operaciones. Van EN la asignación y no en un mapa
+ * aparte —al revés que las OTs, que se buscan por id en `ots`— porque una tarea no
+ * tiene ficha ni existe fuera del tablero: todo lo que hay que mostrar cabe acá.
+ */
+export type DatosTarea = {
+  /** Días de la misma tarea. Es la clave con la que se agrupan en una tarjeta. */
+  grupoId: number;
+  titulo: string;
+  tipo: string;
+  /** Sin parte diario: el cierre de una tarea es un sí o un no. */
+  hecha: boolean;
+};
+
 export type AsignacionTablero = {
   id: number;
+  /**
+   * De qué lado vive. Por defecto "ot": todo lo que ya existía lo es, y así el tipo no
+   * obliga a tocar cada sitio que construye una asignación.
+   */
+  origen?: OrigenAsignacion;
+  /** 0 cuando `origen` es "tarea": no hay OT detrás. */
   otId: number;
+  /** Sólo en las tareas operativas. */
+  tarea?: DatosTarea;
   fecha: string; // yyyy-MM-dd
   cuadrillaId: number | null;
   fraccion: number; // 0.10 | 0.25 | 0.50 | 0.75 | 1
@@ -27,6 +73,28 @@ export type AsignacionTablero = {
   notas: string | null;
   /** Parte diario del cierre. Si tiene valor, la jornada ya se cerró. */
   parteId: number | null;
+};
+
+/** Alta de una tarjeta de operaciones. Una fila por día. */
+export type NuevaTarea = {
+  titulo: string;
+  tipo: TipoTarea;
+  notas?: string | null;
+  cuadrillaId: number | null;
+  fecha: string;
+  fraccion: FraccionStr;
+  ordenDia?: number;
+};
+
+export type CambioTarea = {
+  titulo?: string;
+  tipo?: TipoTarea;
+  notas?: string | null;
+  cuadrillaId?: number | null;
+  fecha?: string;
+  fraccion?: FraccionStr;
+  ordenDia?: number;
+  hecha?: boolean;
 };
 
 export type OtTablero = {

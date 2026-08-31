@@ -9,11 +9,14 @@ import {
 } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { Feriado } from "@/lib/feriados/argentina";
+import { fechasDeJornadas } from "@/lib/tablero/bloques";
 import type {
   AsignacionTablero,
   CambioAsignacion,
   MovimientoAsignacion,
   NuevaAsignacion,
+  CambioTarea,
+  NuevaTarea,
   TableroPayload,
 } from "@/lib/tablero/tipos";
 
@@ -242,6 +245,159 @@ export function useBorrarAsignaciones() {
         };
       }),
     onError: (error, _vars, ctx) => revertir(qc, ctx, "No se pudo quitar del tablero", error),
+    onSettled: () => qc.invalidateQueries({ queryKey: CLAVE }),
+  });
+}
+
+// ── Tarjetas de operaciones ──────────────────────────────────────────────────
+//
+// Van a /api/planificacion/tareas (Supabase) en vez de /asignaciones (Odoo), pero
+// escriben en el MISMO array optimista: en la caché una tarea es una asignación más, y
+// tiene que serlo para que la capacidad de la celda y los bloques la vean. Lo único que
+// cambia es a qué endpoint viaja.
+//
+// Qué operación corresponde a cuál la decide el board mirando `bloque.origen`.
+
+export function useCrearTarea() {
+  const qc = useQueryClient();
+  return useMutation<
+    { ids: number[] },
+    Error,
+    NuevaTarea & { dias?: number },
+    Contexto
+  >({
+    mutationFn: (tarea) =>
+      pedir<{ ids: number[] }>("/api/planificacion/tareas", {
+        method: "POST",
+        body: JSON.stringify(tarea),
+      }),
+    onMutate: (tarea) => {
+      // El grupo real lo asigna Supabase; hasta que vuelva, los días comparten un grupo
+      // temporal negativo para que ya se dibujen como una sola tarjeta.
+      const grupoTemporal = proximoIdTemporal--;
+      const fechas = fechasDeJornadas(tarea.fecha, tarea.dias ?? 1, { permitirDomingo: true });
+      const nuevas: AsignacionTablero[] = fechas.map((fecha) => ({
+        id: proximoIdTemporal--,
+        origen: "tarea",
+        otId: 0,
+        tarea: {
+          grupoId: grupoTemporal,
+          titulo: tarea.titulo,
+          tipo: tarea.tipo,
+          hecha: false,
+        },
+        fecha,
+        cuadrillaId: tarea.cuadrillaId,
+        fraccion: Number(tarea.fraccion),
+        estado: "confirmada",
+        ordenDia: tarea.ordenDia ?? 0,
+        notas: tarea.notas ?? null,
+        parteId: null,
+      }));
+      // Sin tocar `progreso`: eso cuenta jornadas de OBRAS y una tarea no es una.
+      return aplicarOptimista(qc, (data) => ({
+        ...data,
+        asignaciones: [...data.asignaciones, ...nuevas],
+      }));
+    },
+    onError: (error, _vars, ctx) => revertir(qc, ctx, "No se pudo crear la tarea", error),
+    onSettled: () => qc.invalidateQueries({ queryKey: CLAVE }),
+  });
+}
+
+export function useActualizarTareas() {
+  const qc = useQueryClient();
+  return useMutation<
+    { ok: true },
+    Error,
+    { ids: number[]; cambio: CambioTarea } | { grupoId: number; cambio: CambioTarea },
+    Contexto
+  >({
+    mutationFn: (body) =>
+      pedir<{ ok: true }>("/api/planificacion/tareas", {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    onMutate: (body) => {
+      const { cambio } = body;
+      // Renombrar toca todos los días de la tarea; cambiar la fracción, sólo los que se
+      // pasaron. Por eso el filtro mira el grupo en un caso y los ids en el otro.
+      const alcanza = (a: AsignacionTablero) =>
+        "grupoId" in body ? a.tarea?.grupoId === body.grupoId : body.ids.includes(a.id);
+      return aplicarOptimista(qc, (data) => ({
+        ...data,
+        asignaciones: data.asignaciones.map((a) =>
+          a.origen === "tarea" && a.tarea && alcanza(a)
+            ? {
+                ...a,
+                ...(cambio.fecha !== undefined ? { fecha: cambio.fecha } : {}),
+                ...(cambio.cuadrillaId !== undefined ? { cuadrillaId: cambio.cuadrillaId } : {}),
+                ...(cambio.fraccion !== undefined ? { fraccion: Number(cambio.fraccion) } : {}),
+                ...(cambio.ordenDia !== undefined ? { ordenDia: cambio.ordenDia } : {}),
+                ...(cambio.notas !== undefined ? { notas: cambio.notas ?? null } : {}),
+                tarea: {
+                  ...a.tarea,
+                  ...(cambio.titulo !== undefined ? { titulo: cambio.titulo } : {}),
+                  ...(cambio.tipo !== undefined ? { tipo: cambio.tipo } : {}),
+                  ...(cambio.hecha !== undefined ? { hecha: cambio.hecha } : {}),
+                },
+              }
+            : a,
+        ),
+      }));
+    },
+    onError: (error, _vars, ctx) => revertir(qc, ctx, "No se pudo guardar la tarea", error),
+    onSettled: () => qc.invalidateQueries({ queryKey: CLAVE }),
+  });
+}
+
+/** Mover una tarjeta de operaciones: cada día a su nueva fecha y cuadrilla. */
+export function useMoverTareas() {
+  const qc = useQueryClient();
+  return useMutation<{ ok: true }, Error, MovimientoAsignacion[], Contexto>({
+    mutationFn: (movimientos) =>
+      pedir<{ ok: true }>("/api/planificacion/tareas", {
+        method: "PATCH",
+        body: JSON.stringify({ movimientos }),
+      }),
+    onMutate: (movimientos) => {
+      const porId = new Map(movimientos.map((m) => [m.id, m]));
+      return aplicarOptimista(qc, (data) => ({
+        ...data,
+        asignaciones: data.asignaciones.map((a) => {
+          const m = a.origen === "tarea" ? porId.get(a.id) : undefined;
+          if (!m) return a;
+          return {
+            ...a,
+            fecha: m.fecha,
+            ...(m.cuadrillaId !== undefined ? { cuadrillaId: m.cuadrillaId } : {}),
+            ...(m.ordenDia !== undefined ? { ordenDia: m.ordenDia } : {}),
+          };
+        }),
+      }));
+    },
+    onError: (error, _vars, ctx) => revertir(qc, ctx, "No se pudo mover la tarea", error),
+    onSettled: () => qc.invalidateQueries({ queryKey: CLAVE }),
+  });
+}
+
+export function useBorrarTareas() {
+  const qc = useQueryClient();
+  return useMutation<{ ok: true }, Error, number[], Contexto>({
+    mutationFn: (ids) =>
+      pedir<{ ok: true }>("/api/planificacion/tareas", {
+        method: "DELETE",
+        body: JSON.stringify({ ids }),
+      }),
+    onMutate: (ids) =>
+      aplicarOptimista(qc, (data) => ({
+        ...data,
+        // Sin tocar `progreso`, por lo mismo que en el alta.
+        asignaciones: data.asignaciones.filter(
+          (a) => !(a.origen === "tarea" && ids.includes(a.id)),
+        ),
+      })),
+    onError: (error, _vars, ctx) => revertir(qc, ctx, "No se pudo borrar la tarea", error),
     onSettled: () => qc.invalidateQueries({ queryKey: CLAVE }),
   });
 }

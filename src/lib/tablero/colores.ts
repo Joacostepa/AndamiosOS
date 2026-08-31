@@ -49,6 +49,28 @@ export const TIPO_OT: Record<string, ColorTipo> = {
 
 export const TIPO_OT_NEUTRO: ColorTipo = { bg: "#F1EFE8", text: "#5F5E5A", icono: "otro" };
 
+// ── Tarjeta de operaciones ───────────────────────────────────────────────────
+//
+// Trabajo interno de una cuadrilla (depósito, traslado, mantenimiento). No es una obra:
+// no tiene cliente, ni habilitación, ni parte.
+//
+// VA EN EL FONDO, que es el canal que ya significa "qué clase de trabajo es esto" —azul
+// armado, ámbar desarme—. Una tarea es otra clase de trabajo, así que le corresponde ese
+// canal y no otro. Los demás están ocupados y usarlos diría algo falso: el borde
+// punteado ya significa "tentativa", y la franja izquierda es el semáforo.
+//
+// El violeta es el tono que quedaba libre entre las tarjetas. Lo comparte con la columna
+// de feriado (FERIADO_COLUMNA), que es mucho más pálida y va detrás: una tarea sobre un
+// feriado se distingue igual por el borde y por el texto.
+//
+// Y se distingue sobre todo por AUSENCIA: sin flecha de dirección, sin punto de
+// semáforo, sin cliente, sin urgencia. Al lado de una obra se ve visiblemente más vacía,
+// que es una señal que sobrevive al blanco y negro y al daltonismo.
+export const TAREA: ColorTipo = { bg: "#EDEAFB", text: "#332A72", icono: "otro" };
+
+/** La franja izquierda de una tarea: no hay semáforo que mostrar, así que la toma el tipo. */
+export const TAREA_FRANJA = "#7B6BD8";
+
 export function colorTipo(tipo: string | null | undefined): ColorTipo {
   return TIPO_OT[tipo ?? ""] ?? TIPO_OT_NEUTRO;
 }

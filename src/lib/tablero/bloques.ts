@@ -9,7 +9,12 @@
 // registra después en los partes diarios, no acá.
 
 import { addDays, format, parseISO } from "date-fns";
-import type { AsignacionTablero, EstadoAsignacion } from "./tipos";
+import type {
+  AsignacionTablero,
+  DatosTarea,
+  EstadoAsignacion,
+  OrigenAsignacion,
+} from "./tipos";
 
 export function esDomingo(fecha: string): boolean {
   return parseISO(fecha).getDay() === 0;
@@ -61,7 +66,16 @@ export type Bloque = {
   /** Estable mientras no cambien los ids: sirve de key de React y de id de drag. */
   key: string;
   ids: number[];
+  /**
+   * De qué base salieron sus días. Un bloque es siempre homogéneo —la clave de
+   * agrupación separa obras de tareas— así que alcanza con mirarlo una vez para saber
+   * a qué backend mandar la escritura.
+   */
+  origen: OrigenAsignacion;
+  /** 0 en un bloque de tarea. */
   otId: number;
+  /** Presente sólo cuando `origen` es "tarea". */
+  tarea?: DatosTarea;
   cuadrillaId: number | null;
   /** Fechas del bloque, ordenadas y corridas. */
   fechas: string[];
@@ -85,7 +99,12 @@ export type Bloque = {
 export function agruparBloques(asignaciones: AsignacionTablero[]): Bloque[] {
   const porGrupo = new Map<string, AsignacionTablero[]>();
   for (const a of asignaciones) {
-    const k = `${a.otId}:${a.cuadrillaId ?? "sin"}`;
+    // Una tarea operativa se agrupa por su grupo_id, no por otId —que en ella es 0—:
+    // si no, TODAS las tareas de una cuadrilla caerían en el mismo grupo y se leerían
+    // como una sola tarjeta de varios días. El prefijo mantiene los dos espacios de id
+    // separados: la obra 7 y la tarea 7 no son lo mismo.
+    const propietario = a.tarea ? `t${a.tarea.grupoId}` : `o${a.otId}`;
+    const k = `${propietario}:${a.cuadrillaId ?? "sin"}`;
     const lista = porGrupo.get(k);
     if (lista) lista.push(a);
     else porGrupo.set(k, [a]);
@@ -100,7 +119,11 @@ export function agruparBloques(asignaciones: AsignacionTablero[]): Bloque[] {
       if (tramo.length === 0) return;
       const primera = tramo[0];
       bloques.push({
-        key: tramo.map((t) => t.id).join("-"),
+        // El prefijo va en la key porque es id de drag y key de React: sin él, la obra
+        // y la tarea que compartieran número de id colisionarían en el DnD.
+        key: `${primera.tarea ? "t" : "o"}${tramo.map((t) => t.id).join("-")}`,
+        origen: (primera.origen ?? "ot") as OrigenAsignacion,
+        tarea: primera.tarea,
         ids: tramo.map((t) => t.id),
         partes: tramo.map((t) => t.parteId),
         otId: primera.otId,

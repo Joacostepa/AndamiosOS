@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
-import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, AlertTriangle, CalendarRange, Check, CircleCheck, CircleDashed, ClipboardCheck, Lock, MoreHorizontal, MoreVertical, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, AlertTriangle, CalendarRange, Check, CircleCheck, CircleDashed, ClipboardCheck, Lock, MoreHorizontal, MoreVertical, Pencil, Trash2, Wrench } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -14,11 +14,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { FRACCIONES, fraccionLabel, type FraccionStr } from "@/lib/tablero/fracciones";
-import { colorTipo, semaforo, URGENCIA_ALTA_BORDE, CORAL } from "@/lib/tablero/colores";
+import { colorTipo, semaforo, TAREA, TAREA_FRANJA, URGENCIA_ALTA_BORDE, CORAL } from "@/lib/tablero/colores";
 import { partesTitulo } from "@/lib/tablero/titulo";
 import { jornadasLiberables } from "@/lib/tablero/cierre";
 import type { Bloque, Colocacion } from "@/lib/tablero/bloques";
-import type { OtTablero } from "@/lib/tablero/tipos";
+import { tipoTareaLabel, type OtTablero } from "@/lib/tablero/tipos";
 
 /** Cierre de la jornada visible en la tarjeta. */
 export type EstadoCierre = {
@@ -74,7 +74,7 @@ export function ContenidoTarjeta({
   candado = false,
 }: {
   ot: OtTablero | undefined;
-  bloque: Pick<Bloque, "estado" | "fraccion" | "fechas" | "multiDia">;
+  bloque: Pick<Bloque, "estado" | "fraccion" | "fechas" | "multiDia" | "tarea">;
   /**
    * Plan completo de la obra. Cuando quedó partida en tramos no corridos, esta tarjeta es
    * sólo una parte y el contador lo dice ("1/3j"): si no, una obra de tres días partida se
@@ -95,11 +95,17 @@ export function ContenidoTarjeta({
    */
   candado?: boolean;
 }) {
-  const tipo = colorTipo(ot?.tipo);
-  const IconoTipo = ICONO_TIPO[tipo.icono];
+  // Una tarjeta de operaciones no tiene OT detrás: título, tipo y estado salen del
+  // propio bloque. Todo lo que sigue mira `tarea` para apagar los canales que hablan de
+  // una obra —semáforo, urgencia, cliente, dirección del tipo— porque en una tarea no
+  // significan nada y mostrarlos vacíos la haría leer como una obra a la que le faltan
+  // datos, que es justo lo contrario de lo que es.
+  const tarea = bloque.tarea;
+  const tipo = tarea ? TAREA : colorTipo(ot?.tipo);
+  const IconoTipo = tarea ? Wrench : ICONO_TIPO[tipo.icono];
   const confirmada = bloque.estado === "confirmada";
   const sem = semaforo(ot?.habSemaforo);
-  const urgente = ot?.urgencia === "alta";
+  const urgente = !tarea && ot?.urgencia === "alta";
   const partes = partesTitulo(ot?.titulo ?? "OT");
   const noEjecutada = cierre?.estado === "no_ejecutado";
   const partida = (plan?.tramos ?? 1) > 1;
@@ -129,7 +135,9 @@ export function ContenidoTarjeta({
               : "1px dashed var(--border)",
         // La franja izquierda es el semáforo de habilitación: aplica siempre y es lo que
         // más se mira. Un punto de 6px se perdía con la grilla llena.
-        borderLeft: `5px solid ${noEjecutada ? "#D92D20" : sem.color}`,
+        // En una tarea no hay habilitación que semaforear, así que la franja la toma el
+        // violeta del tipo en vez de mentir un verde.
+        borderLeft: `5px solid ${noEjecutada ? "#D92D20" : tarea ? TAREA_FRANJA : sem.color}`,
       }}
     >
       <div className="flex items-baseline gap-1">
@@ -145,7 +153,8 @@ export function ContenidoTarjeta({
           style={{ color: colorTexto }}
           aria-hidden
         />
-        {cierre?.estado === "ejecutado" && (
+        {/* En una obra el tilde lo pone el parte; en una tarea, el booleano `hecha`. */}
+        {(cierre?.estado === "ejecutado" || tarea?.hecha) && (
           <CircleCheck className="h-3 w-3 shrink-0 self-center" style={{ color: "#639922" }} />
         )}
         {noEjecutada && (
@@ -161,9 +170,13 @@ export function ContenidoTarjeta({
         <span
           className="min-w-0 flex-1 truncate text-[12px] font-medium leading-tight"
           style={{ color: colorTexto }}
-          title={`${labelTipo(ot?.tipo)} — ${ot?.titulo ?? ""} — ${sem.label}`}
+          title={
+            tarea
+              ? `${tipoTareaLabel(tarea.tipo)} — ${tarea.titulo}`
+              : `${labelTipo(ot?.tipo)} — ${ot?.titulo ?? ""} — ${sem.label}`
+          }
         >
-          {partes.principal}
+          {tarea ? tarea.titulo : partes.principal}
         </span>
         <span
           className="shrink-0 text-[11px] font-semibold tabular-nums"
@@ -192,14 +205,18 @@ export function ContenidoTarjeta({
         style={{ color: colorTexto, opacity: 0.75 }}
       >
         {/* El tipo ya no va en texto: lo dice el ícono, y repetirlo gastaba el ancho que
-            necesita la dirección. Tampoco dice "tentativa": lo comunica el borde. */}
-        {[
-          partes.cliente,
-          ot?.tecnico,
-          noEjecutada ? (cierre?.motivoLabel ?? "no ejecutada") : null,
-        ]
-          .filter(Boolean)
-          .join(" · ")}
+            necesita la dirección. Tampoco dice "tentativa": lo comunica el borde.
+            En una tarea sí va el tipo: es lo único que la clasifica, y el ícono de la
+            llave es el mismo para todas. */}
+        {tarea
+          ? [tipoTareaLabel(tarea.tipo), tarea.hecha ? "hecha" : null].filter(Boolean).join(" · ")
+          : [
+              partes.cliente,
+              ot?.tecnico,
+              noEjecutada ? (cierre?.motivoLabel ?? "no ejecutada") : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
       </p>
     </div>
   );
@@ -223,6 +240,8 @@ export function TarjetaAsignacion({
   onEditarJornadas,
   onEstado,
   onQuitar,
+  onTareaHecha,
+  onEditarTarea,
 }: {
   bloque: Bloque;
   ot: OtTablero | undefined;
@@ -244,6 +263,9 @@ export function TarjetaAsignacion({
   onEditarJornadas: () => void;
   onEstado: (e: "tentativa" | "confirmada") => void;
   onQuitar: () => void;
+  /** Sólo en tarjetas de operaciones: el cierre de una tarea es un sí o un no. */
+  onTareaHecha?: (hecha: boolean) => void;
+  onEditarTarea?: () => void;
 }) {
   // Ids temporales (negativos): la obra se soltó recién y Odoo todavía no devolvió su
   // número. Hasta que llegue no se arrastra ni se edita — la escritura viajaría con un id
@@ -359,6 +381,43 @@ export function TarjetaAsignacion({
             <MoreVertical className="h-3 w-3" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
+            {/* UNA TAREA TIENE OTRO MENÚ. No se confirma (no es borrador: la puso
+                Operaciones y va), no tiene jornadas de obra que editar ni parte que
+                cerrar. Lo único que comparte con una obra es la fracción y el quitar. */}
+            {bloque.tarea ? (
+              <>
+                <DropdownMenuItem onClick={() => onTareaHecha?.(!bloque.tarea!.hecha)}>
+                  {bloque.tarea.hecha ? (
+                    <CircleDashed className="mr-2 h-4 w-4" />
+                  ) : (
+                    <Check className="mr-2 h-4 w-4" />
+                  )}
+                  {bloque.tarea.hecha ? "Marcar como pendiente" : "Marcar como hecha"}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onEditarTarea?.()}>
+                  <Pencil className="mr-2 h-4 w-4" />
+                  Editar tarea
+                </DropdownMenuItem>
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>Fracción de jornada</DropdownMenuLabel>
+                  {FRACCIONES.map((f) => (
+                    <DropdownMenuItem key={f.value} onClick={() => onFraccion(f.value)}>
+                      <span className="mr-2 w-4 text-center">{f.label}</span>
+                      {f.detalle}
+                      {Number(f.value) === bloque.fraccion && (
+                        <Check className="ml-auto h-3.5 w-3.5" />
+                      )}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuGroup>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={onQuitar} style={{ color: CORAL }}>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Borrar tarea
+                </DropdownMenuItem>
+              </>
+            ) : (
+              <>
             {/* El cierre se ofrece solo cuando la fecha ya llegó: un parte creado por
                 adelantado queda huérfano si después se reprograma. */}
             {accionCierre && (
@@ -419,6 +478,8 @@ export function TarjetaAsignacion({
                     ? `Suspender: liberar ${liberables} jornada${liberables === 1 ? "" : "s"}`
                     : "Quitar del tablero"}
                 </DropdownMenuItem>
+              </>
+            )}
               </>
             )}
           </DropdownMenuContent>

@@ -25,6 +25,7 @@ import { ContenidoTarjeta } from "./tarjeta-asignacion";
 import { PanelOt } from "./panel-ot";
 import { FormularioCierre } from "./formulario-cierre";
 import { DialogoJornadas } from "./dialogo-jornadas";
+import { DialogoTarea, type ValoresTarea } from "./dialogo-tarea";
 import { DialogoCandado, type PedidoConfirmacion } from "./dialogo-candado";
 import { useCandado } from "@/hooks/use-habilitaciones";
 import { useNotasJornada } from "@/hooks/use-notas-jornada";
@@ -35,11 +36,16 @@ import {
   useActualizarAsignaciones,
   useMoverAsignaciones,
   useBorrarAsignaciones,
+  useCrearTarea,
+  useActualizarTareas,
+  useMoverTareas,
+  useBorrarTareas,
 } from "@/hooks/use-tablero";
 import { agruparBloques, fechasDeJornadas, type Bloque } from "@/lib/tablero/bloques";
 import { jornadasLiberables, motivoNoVuelveABandeja, type AccionCierre } from "@/lib/tablero/cierre";
 import { toast } from "sonner";
 import { aFraccionStr, repartirJornadas, type FraccionStr } from "@/lib/tablero/fracciones";
+import { type TipoTarea } from "@/lib/tablero/tipos";
 import type { ObraPendiente, ObraPlanificada } from "./panel-sin-asignar";
 import type { MovimientoAsignacion, NuevaAsignacion, TableroPayload } from "@/lib/tablero/tipos";
 
@@ -146,6 +152,10 @@ export function TableroBoard() {
   const expansionPendiente = useRef(false);
   const [visibles, setVisibles] = useState<number[] | null>(leerVisiblesGuardadas);
   const [panel, setPanel] = useState<{ otId: number; bloqueKey: string | null } | null>(null);
+  // Alta de una tarjeta de operaciones: guarda la celda donde se hizo doble clic, que es
+  // la que le da cuadrilla y día. Y la tarjeta que se está editando, si es una edición.
+  const [tareaNueva, setTareaNueva] = useState<{ cuadrillaId: number; fecha: string } | null>(null);
+  const [tareaEnEdicion, setTareaEnEdicion] = useState<Bloque | null>(null);
   // Resaltado sin abrir el panel lateral: al saltar desde el buscador lo que se quiere es
   // VER dónde cayó la obra, y el panel de la OT taparía justamente eso.
   const [resaltado, setResaltado] = useState<string | null>(null);
@@ -195,7 +205,21 @@ export function TableroBoard() {
   const actualizar = useActualizarAsignaciones();
   const mover = useMoverAsignaciones();
   const borrar = useBorrarAsignaciones();
-  const guardando = crear.isPending || actualizar.isPending || mover.isPending || borrar.isPending;
+  // Las tareas escriben en Supabase y las obras en Odoo, pero se sienten igual: el
+  // board elige el par según `bloque.origen` y nada más arriba se entera.
+  const crearTarea = useCrearTarea();
+  const actualizarTarea = useActualizarTareas();
+  const moverTarea = useMoverTareas();
+  const borrarTarea = useBorrarTareas();
+  const guardando =
+    crear.isPending ||
+    actualizar.isPending ||
+    mover.isPending ||
+    borrar.isPending ||
+    crearTarea.isPending ||
+    actualizarTarea.isPending ||
+    moverTarea.isPending ||
+    borrarTarea.isPending;
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
@@ -596,7 +620,10 @@ export function TableroBoard() {
       cuadrillaId,
       ordenDia: orden,
     }));
-    mover.mutate(movimientos);
+    // Un bloque es homogéneo, así que alcanza con mirar su origen una vez: los días de
+    // una tarea viajan a Supabase y los de una obra a Odoo.
+    if (bloque.origen === "tarea") moverTarea.mutate(movimientos);
+    else mover.mutate(movimientos);
   }
 
   /**
@@ -606,6 +633,32 @@ export function TableroBoard() {
    */
   function volverABandeja(bloque: Bloque) {
     if (sinGuardar(bloque)) return avisarGuardando();
+
+    // UNA TAREA NO VUELVE A NINGUNA BANDEJA: no salió de un pedido que quede pendiente,
+    // así que quitarla es borrarla. Se ofrece deshacer por el mismo motivo que en una
+    // obra —el gesto es barato y el error, silencioso— pero sin nada del cálculo de
+    // jornadas liberables ni de progreso, que son de una OT.
+    if (bloque.origen === "tarea" && bloque.tarea) {
+      const t = bloque.tarea;
+      const restaurar = {
+        titulo: t.titulo,
+        tipo: t.tipo as TipoTarea,
+        notas: bloque.notas ?? "",
+        cuadrillaId: bloque.cuadrillaId,
+        fecha: bloque.fechas[0],
+        fraccion: aFraccionStr(bloque.fraccionesPorDia?.[0] ?? bloque.fraccion),
+        dias: bloque.fechas.length,
+      };
+      borrarTarea.mutate(bloque.ids, {
+        onSuccess: () => {
+          toast.success(`Tarea borrada: ${t.titulo}`, {
+            action: { label: "Deshacer", onClick: () => crearTarea.mutate(restaurar) },
+          });
+        },
+      });
+      return;
+    }
+
     const motivo = motivoNoVuelveABandeja(bloque);
     if (motivo) {
       toast.error("No se puede devolver a la bandeja", { description: motivo });
@@ -704,10 +757,25 @@ export function TableroBoard() {
     const [movido] = reordenados.splice(desdeIdx, 1);
     reordenados.splice(hastaIdx, 0, movido);
 
-    const movimientos: MovimientoAsignacion[] = reordenados.flatMap((b, orden) =>
-      b.ids.map((id, i) => ({ id, fecha: b.fechas[i], ordenDia: orden })),
-    );
-    mover.mutate(movimientos);
+    // Acá SÍ se mezclan: en una celda pueden convivir obras y tareas, y reordenar el día
+    // las toca a todas. Se separa por origen porque cada lote va a una base distinta.
+    const movs = (soloTareas: boolean): MovimientoAsignacion[] =>
+      reordenados
+        .filter((b) => (b.origen === "tarea") === soloTareas)
+        .flatMap((b) =>
+          b.ids.map((id, i) => ({
+            id,
+            fecha: b.fechas[i],
+            // El orden es el del día completo, no el del sublote: si se numerara dentro
+            // de cada origen, una obra y una tarea compartirían el 0 y el apilado
+            // quedaría a merced del desempate por id.
+            ordenDia: reordenados.indexOf(b),
+          })),
+        );
+    const deObras = movs(false);
+    const deTareas = movs(true);
+    if (deObras.length > 0) mover.mutate(deObras);
+    if (deTareas.length > 0) moverTarea.mutate(deTareas);
   }
 
   // ── Drag & drop ────────────────────────────────────────────────────────────
@@ -886,9 +954,16 @@ export function TableroBoard() {
               // desmontó, asi que una guarda por "menu abierto" llega tarde.
               onAbrirBloque={(b) => {
                 if (cierre) return;
+                // Una tarea no tiene ficha en Odoo que mostrar: el clic abre su propio
+                // diálogo, que es el único lugar donde vive.
+                if (b.origen === "tarea") return setTareaEnEdicion(b);
                 setPanel({ otId: b.otId, bloqueKey: b.key });
               }}
-              onFraccion={(b, f: FraccionStr) => actualizar.mutate({ ids: b.ids, cambio: { fraccion: f } })}
+              onFraccion={(b, f: FraccionStr) =>
+                b.origen === "tarea"
+                  ? actualizarTarea.mutate({ ids: b.ids, cambio: { fraccion: f } })
+                  : actualizar.mutate({ ids: b.ids, cambio: { fraccion: f } })
+              }
               onEditarJornadas={(b) => setJornadasDe(b.otId)}
               // CONFIRMAR es el único momento donde el permiso frena. Volver a
               // tentativa nunca pregunta nada: aflojar el compromiso no necesita
@@ -909,6 +984,9 @@ export function TableroBoard() {
               }}
               candados={otsBloqueadas}
               onQuitar={volverABandeja}
+              onCrearTarea={(cuadrillaId, fecha) => setTareaNueva({ cuadrillaId, fecha })}
+              onTareaHecha={(b, hecha) => actualizarTarea.mutate({ ids: b.ids, cambio: { hecha } })}
+              onEditarTarea={(b) => setTareaEnEdicion(b)}
             />
           ) : (
             <div className="flex flex-1 items-center justify-center p-6 text-center text-sm text-muted-foreground">
@@ -952,6 +1030,62 @@ export function TableroBoard() {
           )}
         </DragOverlay>
       </DndContext>
+
+      {/* Alta y edición comparten diálogo: los campos son los mismos y la diferencia
+          —crear filas nuevas o actualizar el grupo entero— la resuelve onGuardar. */}
+      <DialogoTarea
+        abierto={tareaNueva !== null || tareaEnEdicion !== null}
+        fecha={tareaNueva?.fecha ?? tareaEnEdicion?.fechas[0] ?? null}
+        cuadrillaId={tareaNueva?.cuadrillaId ?? tareaEnEdicion?.cuadrillaId ?? null}
+        cuadrillas={data?.cuadrillas ?? []}
+        edicion={
+          tareaEnEdicion?.tarea
+            ? {
+                grupoId: tareaEnEdicion.tarea.grupoId,
+                titulo: tareaEnEdicion.tarea.titulo,
+                tipo: tareaEnEdicion.tarea.tipo as TipoTarea,
+                notas: tareaEnEdicion.notas ?? "",
+                fraccion: aFraccionStr(tareaEnEdicion.fraccionesPorDia?.[0] ?? tareaEnEdicion.fraccion),
+                dias: tareaEnEdicion.fechas.length,
+              }
+            : null
+        }
+        guardando={crearTarea.isPending || actualizarTarea.isPending}
+        onOpenChange={(abierto) => {
+          if (!abierto) {
+            setTareaNueva(null);
+            setTareaEnEdicion(null);
+          }
+        }}
+        onGuardar={(v: ValoresTarea) => {
+          if (tareaEnEdicion?.tarea) {
+            // El título y el tipo son de la TAREA y van por grupo: cambiarlos en un solo
+            // día dejaría la misma tarjeta diciendo dos cosas distintas. La fracción y
+            // las notas son del día, y van por ids.
+            actualizarTarea.mutate({
+              grupoId: tareaEnEdicion.tarea.grupoId,
+              cambio: { titulo: v.titulo, tipo: v.tipo, notas: v.notas },
+            });
+            actualizarTarea.mutate({
+              ids: tareaEnEdicion.ids,
+              cambio: { fraccion: v.fraccion },
+            });
+          } else if (tareaNueva) {
+            crearTarea.mutate({
+              titulo: v.titulo,
+              tipo: v.tipo,
+              notas: v.notas,
+              cuadrillaId: tareaNueva.cuadrillaId,
+              fecha: tareaNueva.fecha,
+              fraccion: v.fraccion,
+              dias: v.dias,
+              ordenDia: proximoOrden(tareaNueva.cuadrillaId, tareaNueva.fecha),
+            });
+          }
+          setTareaNueva(null);
+          setTareaEnEdicion(null);
+        }}
+      />
 
       <DialogoJornadas
         abierto={jornadasDe != null}

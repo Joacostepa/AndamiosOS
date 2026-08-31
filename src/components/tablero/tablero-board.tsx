@@ -38,7 +38,7 @@ import {
 import { agruparBloques, fechasDeJornadas, type Bloque } from "@/lib/tablero/bloques";
 import { jornadasLiberables, motivoNoVuelveABandeja, type AccionCierre } from "@/lib/tablero/cierre";
 import { toast } from "sonner";
-import { repartirJornadas, type FraccionStr } from "@/lib/tablero/fracciones";
+import { aFraccionStr, repartirJornadas, type FraccionStr } from "@/lib/tablero/fracciones";
 import type { ObraPendiente, ObraPlanificada } from "./panel-sin-asignar";
 import type { MovimientoAsignacion, NuevaAsignacion, TableroPayload } from "@/lib/tablero/tipos";
 
@@ -587,6 +587,30 @@ export function TableroBoard() {
     // Solo las jornadas sin parte: las cerradas se conservan, o el parte quedaría
     // huérfano y la obra volvería a la bandeja como si nunca se hubiera empezado.
     const liberables = jornadasLiberables(bloque);
+
+    // Se fotografía lo que se va a borrar ANTES de borrarlo, para poder deshacer. No se
+    // pierde ningún dato duro —los partes ni se tocan— pero sí el trabajo de planificar:
+    // las fechas, la fracción de cada día, la cuadrilla y el orden. En una obra de veinte
+    // jornadas eso es media tarde.
+    //
+    // Deshacer y no "¿estás seguro?": un confirm grava todos los usos, incluido el caso
+    // barato de una obra tentativa de un día, y a la semana se clickea sin leer — queda la
+    // fricción y el error igual. El undo no cuesta nada en el camino de ida. Cubre los dos
+    // gestos, porque el arrastre al panel pasa por acá igual que la opción del menú.
+    const restaurar: NuevaAsignacion[] = bloque.ids.flatMap((_, i) =>
+      bloque.partes[i] != null
+        ? []
+        : [{
+            otId: bloque.otId,
+            fecha: bloque.fechas[i],
+            cuadrillaId: bloque.cuadrillaId,
+            fraccion: aFraccionStr(bloque.fraccionesPorDia?.[i] ?? bloque.fraccion),
+            estado: bloque.estado,
+            ordenDia: bloque.ordenDia,
+            notas: bloque.notas,
+          }],
+    );
+
     borrar.mutate(liberables, {
       onSuccess: () => {
         // El aviso sale SIEMPRE, no sólo cuando quedan jornadas cerradas. Un arrastre
@@ -599,6 +623,19 @@ export function TableroBoard() {
             conservadas > 0
               ? `Se conservan ${conservadas} ya cerrada${conservadas === 1 ? "" : "s"} con su parte.`
               : "Quedan como pendientes de planificar en el panel de la derecha.",
+          // Más que el default: hay que leer el aviso y recién ahí decidir si fue un error.
+          duration: 10000,
+          action: {
+            label: "Deshacer",
+            onClick: () => {
+              crear.mutate(restaurar, {
+                onSuccess: () =>
+                  toast.success(
+                    `Obra restaurada: ${restaurar.length} jornada${restaurar.length === 1 ? "" : "s"} vuelven al tablero`,
+                  ),
+              });
+            },
+          },
         });
       },
     });

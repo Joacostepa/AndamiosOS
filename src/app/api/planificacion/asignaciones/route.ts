@@ -9,6 +9,8 @@ import {
   sincronizarFechaProgramada,
 } from "@/lib/odoo/asignaciones";
 import { OdooError } from "@/lib/odoo/client";
+import { createClient } from "@/lib/supabase/server";
+import { registrarConfirmacion } from "@/lib/planificacion/confirmaciones";
 
 // Escrituras del Tablero de Planificación sobre x_aba_asignacion (Odoo).
 //
@@ -62,6 +64,18 @@ const actualizarSchema = z.object({
       notas: z.string().nullable().optional(),
     })
     .refine((c) => Object.keys(c).length > 0, "Nada para actualizar"),
+  /**
+   * Sólo para el cambio de ESTADO: de qué obra y de qué días son estos ids, para poder
+   * anotar quién confirmó sin pagar una lectura más a Odoo. El tablero los tiene a mano
+   * —son el bloque que se está tocando— y una consulta de vuelta le sumaría ~800 ms al
+   * gesto que más se repite después del arrastre.
+   */
+  contexto: z
+    .object({
+      otId: z.number().int().positive(),
+      fechas: z.array(fecha),
+    })
+    .optional(),
 });
 
 const moverSchema = z.object({
@@ -149,8 +163,35 @@ export async function PATCH(req: NextRequest) {
   if (!parsed.success) return invalido(parsed.error.issues);
 
   try {
-    await actualizarAsignaciones(parsed.data.ids, parsed.data.cambio);
-    sincronizarLuego(otsDeAsignaciones(parsed.data.ids));
+    const { ids, cambio, contexto } = parsed.data;
+    await actualizarAsignaciones(ids, cambio);
+    sincronizarLuego(otsDeAsignaciones(ids));
+
+    // El registro de quién confirmó se escribe ACÁ, en la misma request que cambia el
+    // estado, y no desde el cliente con una llamada aparte: así no hay forma de cambiar
+    // el estado sin dejar rastro, y el autor sale de la sesión y no del body.
+    //
+    // No va en after() como la sincronización con Odoo: eso es un dato derivado que se
+    // puede recalcular, esto es auditoría y si se pierde no se recupera.
+    if (cambio.estado && contexto) {
+      try {
+        const db = await createClient();
+        const { data } = await db.auth.getUser();
+        await registrarConfirmacion(db, {
+          asignacionIds: ids,
+          otId: contexto.otId,
+          fechas: contexto.fechas,
+          estado: cambio.estado,
+          autorId: data.user?.id ?? null,
+        });
+      } catch (e) {
+        // El estado YA cambió en Odoo, que es la acción que el usuario pidió: no se la
+        // tira abajo porque falló el registro. Pero tampoco se miente — `registrado:
+        // false` viaja de vuelta y el tablero avisa que quedó sin firmar.
+        console.error("[planificacion] no se pudo registrar la confirmación", e);
+        return NextResponse.json({ ok: true, registrado: false });
+      }
+    }
     return NextResponse.json({ ok: true });
   } catch (e) {
     return errorResponse(e);

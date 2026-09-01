@@ -8,6 +8,7 @@ import {
   ShieldCheck, User, UserRound, Users, Clock, CalendarDays,
 } from "lucide-react";
 import { useDetalleOt } from "@/hooks/use-detalle-ot";
+import { HistorialConfirmacion } from "./historial-confirmacion";
 import { useNotasFijadas } from "@/hooks/use-habilitaciones";
 import { ETAPA_LABEL, type HabEtapa } from "@/lib/habilitaciones/tipos";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -199,6 +200,14 @@ export function PanelOt({
                   </Badge>
                 )}
               </div>
+
+              {/* Quién y cuándo, pegado al badge de arriba: ese dice QUÉ estado tiene la
+                  jornada, esto dice quién la dejó así. Separarlos obligaría a mirar dos
+                  lugares del panel para una sola pregunta.
+                  No se muestra nada mientras no haya historial — las obras confirmadas
+                  antes de que esto existiera no tienen registro, y un "sin datos" en cada
+                  panel sería ruido permanente por algo que se llena solo con el uso. */}
+              <HistorialConfirmacion otId={ot.id} />
 
               {ot.urgencia === "alta" && ot.motivoUrgencia && (
                 <div className="flex gap-2 rounded-md border p-2 text-sm" style={{ borderColor: "#D92D20" }}>

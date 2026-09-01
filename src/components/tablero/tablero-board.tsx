@@ -974,7 +974,18 @@ export function TableroBoard() {
               // tentativa nunca pregunta nada: aflojar el compromiso no necesita
               // permiso de nadie.
               onEstado={(b, estado) => {
-                const aplicar = () => actualizar.mutate({ ids: b.ids, cambio: { estado } });
+                const aplicar = () =>
+                  actualizar.mutate({
+                    ids: b.ids,
+                    cambio: { estado },
+                    // De qué obra y de qué días son estos ids. Viaja desde acá porque el
+                    // bloque ya lo sabe: sin esto el servidor tendría que releer Odoo
+                    // para poder anotar quién confirmó, y le sumaría ~800 ms al gesto.
+                    // Las tareas de operaciones no tienen OT (otId 0) y no se registran:
+                    // no son un compromiso con un cliente.
+                    contexto:
+                      b.otId > 0 ? { otId: b.otId, fechas: b.fechas } : undefined,
+                  });
                 if (estado !== "confirmada") return aplicar();
 
                 const f = candados?.get(b.otId);

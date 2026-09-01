@@ -10,6 +10,8 @@ import {
 import { toast } from "sonner";
 import type { Feriado } from "@/lib/feriados/argentina";
 import { fechasDeJornadas } from "@/lib/tablero/bloques";
+import { CLAVE_CONFIRMACIONES } from "@/hooks/use-confirmaciones";
+import type { RegistroConfirmacion } from "@/lib/tablero/tipos-confirmacion";
 import type {
   AsignacionTablero,
   CambioAsignacion,
@@ -226,9 +228,16 @@ export function useCrearAsignaciones() {
 
 export function useActualizarAsignaciones() {
   const qc = useQueryClient();
-  return useMutation<{ ok: true }, Error, { ids: number[]; cambio: CambioAsignacion }, Contexto>({
+  return useMutation<
+    { ok: true; registrado?: boolean },
+    Error,
+    // `contexto` sólo viaja al cambiar el ESTADO: dice de qué obra y de qué días son
+    // estos ids, para que el servidor pueda anotar quién confirmó sin releer Odoo.
+    { ids: number[]; cambio: CambioAsignacion; contexto?: RegistroConfirmacion },
+    Contexto
+  >({
     mutationFn: (body) =>
-      pedir<{ ok: true }>("/api/planificacion/asignaciones", {
+      pedir<{ ok: true; registrado?: boolean }>("/api/planificacion/asignaciones", {
         method: "PATCH",
         body: JSON.stringify(body),
       }),
@@ -249,6 +258,18 @@ export function useActualizarAsignaciones() {
             : a,
         ),
       })),
+    onSuccess: ({ registrado }, { cambio, contexto }) => {
+      if (!cambio.estado || !contexto) return;
+      // El historial del panel cambió: se vuelve a pedir sólo el de esta obra.
+      void qc.invalidateQueries({ queryKey: [...CLAVE_CONFIRMACIONES, contexto.otId] });
+      // El estado SÍ cambió en Odoo pero el registro no se pudo escribir. Se avisa en vez
+      // de dejarlo pasar: una auditoría con agujeros silenciosos no sirve de auditoría.
+      if (registrado === false) {
+        toast.warning("La jornada cambió de estado, pero no quedó registrado quién lo hizo", {
+          description: "El cambio está guardado en Odoo. El historial de confirmaciones de esta obra va a tener un hueco.",
+        });
+      }
+    },
     onError: (error, _vars, ctx) => revertir(qc, ctx, "No se pudo guardar el cambio", error),
     onSettled: () => refrescarPronto(qc),
   });

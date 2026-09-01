@@ -141,7 +141,14 @@ export function ContenidoTarjeta({
           : vencidaSinParte
             ? "1px dashed #D92D20"
             : confirmada
-              ? "1px solid transparent"
+              // Contorno del MISMO tono que el relleno, apenas más oscuro. Antes era
+              // transparente: contra el fondo blanco de la celda la tarjeta se
+              // distinguía sola por el relleno, pero apiladas dos del mismo tipo no
+              // había nada que dijera dónde termina una y empieza la otra — tres
+              // desarmes seguidos se leían como una sola tarjeta con tres renglones.
+              // No se usa un gris neutro: el borde tiene que pertenecer a la tarjeta,
+              // no dibujar una grilla nueva encima de la que ya hay.
+              ? `1px solid color-mix(in oklch, ${tipo.text} 30%, transparent)`
               : "1px dashed var(--border)",
         // La franja izquierda es el semáforo de habilitación: aplica siempre y es lo que
         // más se mira. Un punto de 6px se perdía con la grilla llena.
@@ -240,6 +247,23 @@ export function ContenidoTarjeta({
  */
 const ALTO_DOS_LINEAS = 38;
 
+/**
+ * Aire entre dos tarjetas apiladas en el mismo día.
+ *
+ * Sale del alto, no de un margen: las tarjetas de una celda se posicionan cada una con
+ * su `marginTop` desde el borde de arriba, así que un margen inferior no empuja a la de
+ * abajo — quedaban pegadas, borde con borde. Antes esto lo daba el `m-0.5` de cada
+ * carril, que dejó de aplicar cuando el alto pasó a ser proporcional.
+ */
+const SEPARACION = 3;
+
+/**
+ * Por más comprimida que quede, una tarjeta nunca baja de acá: es lo que necesita el
+ * renglón de la dirección. Sólo entra en juego en un día muy sobreasignado, donde la
+ * alternativa sería una tarjeta ilegible.
+ */
+const ALTO_MINIMO = 18;
+
 export function TarjetaAsignacion({
   bloque,
   ot,
@@ -297,6 +321,10 @@ export function TarjetaAsignacion({
   // que Odoo no conoce y volvería rebotada, con la tarjeta saltando de vuelta al lugar
   // anterior. Dura lo que tarda la creación, cerca de un segundo.
   const guardando = bloque.ids.some((id) => id < 0);
+  // Lo que realmente mide en pantalla: el alto que le tocó menos el aire que le deja a la
+  // de abajo. Es contra ESTE número que se decide si entran dos renglones — descontar
+  // después habría dejado tarjetas de 35px intentando dibujar dos líneas.
+  const altoReal = Math.max(alto - SEPARACION, ALTO_MINIMO);
 
   const { setNodeRef: dragRef, attributes, listeners, isDragging } = useDraggable({
     id: `bloque:${bloque.key}`,
@@ -335,7 +363,7 @@ export function TarjetaAsignacion({
         // no la celda. El margen es lo que la apila debajo de las otras del día.
         alignSelf: "start",
         marginTop: top,
-        height: alto,
+        height: altoReal,
         // Se atenúa lo TERMINADO, no lo pasado. Una jornada vencida sin parte queda a
         // opacidad plena: es la que reclama que alguien la cargue.
         opacity: isDragging ? 0.35 : vencidaSinParte ? 1 : ejecutada ? 0.55 : 1,
@@ -347,7 +375,7 @@ export function TarjetaAsignacion({
         // extendiera una SELECCIÓN, y una selección que se estira más allá del borde
         // scrollea el contenedor sola — el mismo síntoma que el auto-scroll, por otro
         // camino. La tarjeta es un agarre para arrastrar, no un texto para seleccionar.
-        "group/tarjeta relative z-10 m-0.5 select-none rounded-[4px]",
+        "group/tarjeta relative z-10 mx-0.5 select-none rounded-[4px]",
         guardando ? "cursor-progress" : "cursor-grab active:cursor-grabbing",
       )}
       title={guardando ? "Guardando en Odoo…" : undefined}
@@ -372,7 +400,7 @@ export function TarjetaAsignacion({
         ot={ot}
         bloque={bloque}
         plan={plan}
-        unaLinea={alto < ALTO_DOS_LINEAS}
+        unaLinea={altoReal < ALTO_DOS_LINEAS}
         vieneDeAntes={colocacion.vieneDeAntes}
         sigueDespues={colocacion.sigueDespues}
         cierre={cierre}

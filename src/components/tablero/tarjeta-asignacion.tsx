@@ -72,6 +72,7 @@ export function ContenidoTarjeta({
   cierre = null,
   vencidaSinParte = false,
   candado = false,
+  unaLinea = false,
 }: {
   ot: OtTablero | undefined;
   bloque: Pick<Bloque, "estado" | "fraccion" | "fechas" | "multiDia" | "tarea">;
@@ -94,6 +95,14 @@ export function ContenidoTarjeta({
    * se arrastra y se planifica igual. El freno está al confirmar.
    */
   candado?: boolean;
+  /**
+   * La tarjeta es demasiado baja para dos renglones: se queda sólo con el de arriba.
+   *
+   * Pasa desde que el alto es proporcional a la fracción — una jornada de ¼ mide 24px y
+   * ahí entra una línea. Se sacrifica el cliente y no la dirección: la dirección es lo
+   * que identifica la obra de un vistazo, el cliente es contexto y está en el panel.
+   */
+  unaLinea?: boolean;
 }) {
   // Una tarjeta de operaciones no tiene OT detrás: título, tipo y estado salen del
   // propio bloque. Todo lo que sigue mira `tarea` para apagar los canales que hablan de
@@ -117,7 +126,8 @@ export function ContenidoTarjeta({
   return (
     <div
       className={cn(
-        "flex h-full min-w-0 flex-col justify-center gap-0.5 rounded-[4px] px-2 py-1",
+        "flex h-full min-w-0 flex-col justify-center gap-0.5 overflow-hidden rounded-[4px] px-2",
+        unaLinea ? "py-0" : "py-1",
         compacta && "shadow-md",
       )}
       style={{
@@ -200,6 +210,7 @@ export function ContenidoTarjeta({
         )}
       </div>
 
+      {!unaLinea && (
       <p
         className="truncate text-[10px] leading-tight"
         style={{ color: colorTexto, opacity: 0.75 }}
@@ -218,16 +229,24 @@ export function ContenidoTarjeta({
               .filter(Boolean)
               .join(" · ")}
       </p>
+      )}
     </div>
   );
 }
+
+/**
+ * Por debajo de esto sólo entra un renglón: el de arriba mide ~16px y el padding y el
+ * borde se comen el resto. Una jornada de ¼ (24px) cae siempre de este lado.
+ */
+const ALTO_DOS_LINEAS = 38;
 
 export function TarjetaAsignacion({
   bloque,
   ot,
   plan,
   colocacion,
-  carril,
+  top,
+  alto,
   seleccionada,
   ejecutada,
   vencidaSinParte,
@@ -248,7 +267,13 @@ export function TarjetaAsignacion({
   /** Días y tramos que tiene planificada la obra entera, no sólo este tramo. */
   plan?: { dias: number; tramos: number };
   colocacion: Colocacion;
-  carril: number;
+  /** Desplazamiento desde el borde de arriba de la celda, en px. */
+  top: number;
+  /**
+   * Alto en px, proporcional a la fracción de jornada. Lo calcula repartirPorAltura: la
+   * tarjeta no decide cuánto mide, lo decide cuánto trabajo representa.
+   */
+  alto: number;
   seleccionada: boolean;
   ejecutada: boolean;
   /** Alguna jornada ya pasó sin parte cargado. */
@@ -305,7 +330,12 @@ export function TarjetaAsignacion({
       }}
       style={{
         gridColumn: `${colocacion.colInicio + 1} / span ${colocacion.span}`,
-        gridRow: carril + 1,
+        gridRow: 1,
+        // `start` y no el estirado por defecto del grid: el alto lo manda la fracción,
+        // no la celda. El margen es lo que la apila debajo de las otras del día.
+        alignSelf: "start",
+        marginTop: top,
+        height: alto,
         // Se atenúa lo TERMINADO, no lo pasado. Una jornada vencida sin parte queda a
         // opacidad plena: es la que reclama que alguien la cargue.
         opacity: isDragging ? 0.35 : vencidaSinParte ? 1 : ejecutada ? 0.55 : 1,
@@ -342,6 +372,7 @@ export function TarjetaAsignacion({
         ot={ot}
         bloque={bloque}
         plan={plan}
+        unaLinea={alto < ALTO_DOS_LINEAS}
         vieneDeAntes={colocacion.vieneDeAntes}
         sigueDespues={colocacion.sigueDespues}
         cierre={cierre}

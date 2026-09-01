@@ -8,7 +8,7 @@ import { AlertTriangle, MousePointerClick, StickyNote } from "lucide-react";
 import { CeldaDia } from "./celda-dia";
 import { TarjetaAsignacion } from "./tarjeta-asignacion";
 import { PopoverNotasDia } from "./notas-jornada";
-import { agruparBloques, esDomingo, repartirEnCarriles } from "@/lib/tablero/bloques";
+import { agruparBloques, esDomingo, repartirPorAltura } from "@/lib/tablero/bloques";
 import { accionDeCierre, bloqueCerrado, type AccionCierre } from "@/lib/tablero/cierre";
 import { MOTIVOS_NO_EJEC } from "@/lib/tablero/tipos-parte";
 import { colorCuadrilla, CORAL, FERIADO_ENCABEZADO, FERIADO_TEXTO, NOTA } from "@/lib/tablero/colores";
@@ -23,17 +23,17 @@ import type { AsignacionTablero, CuadrillaTablero, OtTablero, ParteTablero } fro
 //
 // El problema que resuelve la forma: una obra de varias jornadas se ve en TODOS los
 // días que ocupa, no solo el que arranca. Por eso cada fila es una sub-grilla de días
-// y las tarjetas se colocan con grid-column: span N sobre carriles (filas internas)
-// que evitan que dos obras del mismo día se pisen.
+// y las tarjetas se colocan con grid-column: span N. El ALTO de cada una es su fracción
+// de jornada: la celda vale 1,00 y lo que sobra queda a la vista (ver repartirPorAltura).
 //
 // El rango visible son varias semanas y la grilla scrollea en horizontal (v3): un bloque
 // que arranca el viernes y sigue el lunes se ve entero. Quedan fijos el encabezado de
 // días (vertical) y la columna de cuadrillas (horizontal); sin eso, scrollear a la
 // semana siguiente hace perder de vista de quién es cada fila.
 //
-// El alto de fila lo define el contenido —la cuadrilla con más carriles ocupados— con un
-// mínimo bajo. Antes el mínimo era 132px y con 5 cuadrillas había que scrollear en
-// vertical, que es justo la comparación que el planificador viene a hacer.
+// TODAS las filas miden lo mismo: una jornada más el riel. El alto ya no depende de
+// cuántas tarjetas se apilan sino de cuánto trabajo representan, así que la grilla es
+// regular y entra entera — que es justo la comparación que el planificador viene a hacer.
 
 const ANCHO_RECURSO = 168;
 /**
@@ -74,10 +74,18 @@ const ALTO_BARRA = 10;
  * franjas enormes con las tarjetas pegadas arriba y un hueco muerto abajo, que se ve más
  * lleno y se lee peor. Para eso está el techo.
  */
-const ALTO_CARRIL = 38;
-const ALTO_CARRIL_MAX = 54;
-/** Piso del alto de fila. La fila crece con sus carriles; esto es sólo el mínimo. */
-const ALTO_MIN_FILA = 72;
+/**
+ * LA CELDA VALE UNA JORNADA. Es la unidad de la que cuelga todo lo vertical: una tarjeta
+ * de jornada completa mide esto, media mide la mitad, y lo que sobra queda a la vista.
+ *
+ * 96px sale del piso de legibilidad: la tarjeta más chica que se dibuja es un cuarto de
+ * celda (ver PISO_ALTO en bloques.ts) y 24px es lo que necesita una línea con la
+ * dirección. Más alto haría scrollear en vertical con muchas cuadrillas, que es justo la
+ * comparación que el planificador viene a hacer.
+ */
+const ALTO_CELDA = 96;
+/** Aire entre la última tarjeta y el riel. */
+const RESPIRO_FILA = 8;
 
 const DECIMAL = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 });
 
@@ -387,22 +395,21 @@ export function TableroGrid({
 
   const hayAlgoAsignado = cuadrillas.some((c) => fechas.some((f) => enCelda(c.id, f).length > 0));
 
-  // El alto de cada fila sale de sus carriles. Se calcula antes del render de las filas
-  // porque la plantilla de la grilla los necesita todos juntos.
+  // TODAS LAS FILAS MIDEN LO MISMO: una jornada, más el riel.
+  //
+  // Antes el alto salía de cuántas tarjetas se apilaban (carriles x 38..54px), así que una
+  // cuadrilla con cuatro obras en un día medía 216px y la de al lado 72. Ahora la altura
+  // dice cuánto ocupa el trabajo, no cuántas tarjetas hay: un día sobreasignado comprime
+  // las suyas en vez de estirar la fila. Además de leerse mejor, la grilla se vuelve
+  // regular y entra entera sin scrollear, que es lo que permite comparar cuadrillas.
+  const ALTO_FILA = ALTO_CELDA + ALTO_BARRA + RESPIRO_FILA;
   const porCuadrilla = cuadrillas.map((cuadrilla, indice) => {
     const deLaCuadrilla = asignaciones.filter((a) => a.cuadrillaId === cuadrilla.id);
-    const ubicados = repartirEnCarriles(agruparBloques(deLaCuadrilla), fechas);
-    const carriles = Math.max(1, ...ubicados.map((u) => u.carril + 1));
     return {
       cuadrilla,
       indice,
       deLaCuadrilla,
-      ubicados,
-      carriles,
-      alto: Math.max(ALTO_MIN_FILA, carriles * ALTO_CARRIL + ALTO_BARRA + 8),
-      // El techo es lo que impide que con 3 cuadrillas cada fila se estire a 240px y
-      // deje las tarjetas chiquitas arriba con un hueco muerto abajo.
-      altoMax: Math.max(ALTO_MIN_FILA, carriles * ALTO_CARRIL_MAX + ALTO_BARRA + 8),
+      ubicados: repartirPorAltura(agruparBloques(deLaCuadrilla), fechas),
     };
   });
 
@@ -432,7 +439,7 @@ export function TableroGrid({
           // El alto sale del contenido, entre un piso y un techo. La pista `1fr` del final
           // se come el sobrante: sin ella el reparto lo absorbían las filas y con pocas
           // cuadrillas quedaban enormes y medio vacías.
-          gridTemplateRows: `40px ${porCuadrilla.map((c) => `minmax(${c.alto}px, ${c.altoMax}px)`).join(" ")} 1fr`,
+          gridTemplateRows: `40px ${porCuadrilla.map(() => `${ALTO_FILA}px`).join(" ")} 1fr`,
           minWidth: anchoMinimo,
         }}
       >
@@ -608,7 +615,7 @@ export function TableroGrid({
         })}
 
         {/* ── Una fila por cuadrilla ── */}
-        {porCuadrilla.map(({ cuadrilla, indice, deLaCuadrilla, ubicados, carriles }) => {
+        {porCuadrilla.map(({ cuadrilla, indice, deLaCuadrilla, ubicados }) => {
           const color = colorCuadrilla(indice);
 
           // Carga de LA SEMANA CENTRADA, no del rango cargado: la comparación que importa
@@ -654,9 +661,11 @@ export function TableroGrid({
                   className="grid h-full"
                   style={{
                     gridTemplateColumns: plantillaInterna,
-                    // Los carriles crecen hasta su techo y recién ahí el sobrante va al
-                    // 1fr: así la tarjeta usa el alto que la fila tiene disponible.
-                    gridTemplateRows: `repeat(${carriles}, minmax(${ALTO_CARRIL}px, ${ALTO_CARRIL_MAX}px)) 1fr ${ALTO_BARRA}px`,
+                    // Una sola pista para la jornada y otra para el riel. Dentro de la
+                    // primera, cada tarjeta se ubica con su propio alto y desplazamiento
+                    // (ver repartirPorAltura), que es lo que hace que el alto signifique
+                    // algo en vez de ser un casillero más.
+                    gridTemplateRows: `${ALTO_CELDA}px ${ALTO_BARRA}px`,
                   }}
                 >
                   {fechas.map((f, i) => {
@@ -710,7 +719,7 @@ export function TableroGrid({
                     );
                   })}
 
-                  {ubicados.map(({ bloque, colocacion, carril }) => {
+                  {ubicados.map(({ bloque, colocacion, top, alto }) => {
                     const accion = accionDeCierre(bloque, hoyISO);
                     const parteDelBloque = bloqueCerrado(bloque)
                       ? partesPorId.get(bloque.partes.find((x) => x != null) as number)
@@ -724,7 +733,10 @@ export function TableroGrid({
                         ot={bloque.tarea ? undefined : ots.get(bloque.otId)}
                         plan={bloque.tarea ? undefined : planPorObra.get(bloque.otId)}
                         colocacion={colocacion}
-                        carril={carril}
+                        // De fracción de jornada a píxeles. La conversión vive acá
+                        // porque la celda es la que sabe cuánto mide una jornada.
+                        top={top * ALTO_CELDA}
+                        alto={alto * ALTO_CELDA}
                         seleccionada={bloqueSeleccionado === bloque.key}
                         // Una tarea hecha se atenúa igual que una obra ejecutada: ya no
                         // reclama nada, pero sigue ocupando su lugar en el día.

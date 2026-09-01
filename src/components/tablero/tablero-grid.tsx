@@ -661,11 +661,17 @@ export function TableroGrid({
                   className="grid h-full"
                   style={{
                     gridTemplateColumns: plantillaInterna,
-                    // Una sola pista para la jornada y otra para el riel. Dentro de la
-                    // primera, cada tarjeta se ubica con su propio alto y desplazamiento
-                    // (ver repartirPorAltura), que es lo que hace que el alto signifique
-                    // algo en vez de ser un casillero más.
-                    gridTemplateRows: `${ALTO_CELDA}px ${ALTO_BARRA}px`,
+                    // La jornada, el respiro, y el riel. Dentro de la primera pista cada
+                    // tarjeta se ubica con su propio alto y desplazamiento (ver
+                    // repartirPorAltura), que es lo que hace que el alto signifique algo
+                    // en vez de ser un casillero más.
+                    //
+                    // El `1fr` del medio NO es decorativo: tiene que absorber el respiro
+                    // de la fila. Sin él las pistas suman menos que el alto de la fila, y
+                    // como la celda abarca `1 / -1` sus bordes terminaban 8px antes que
+                    // los de la columna de cuadrillas —que cuelga de la grilla externa—.
+                    // Se veía como líneas desfasadas entre una fila y la siguiente.
+                    gridTemplateRows: `${ALTO_CELDA}px 1fr ${ALTO_BARRA}px`,
                   }}
                 >
                   {fechas.map((f, i) => {

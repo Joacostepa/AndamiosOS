@@ -78,7 +78,7 @@ const OT_FIELDS = [
   "x_duracion_est", "x_jornadas_num", "x_personal_por_jornada", "x_cuadrilla_prevista_id",
   "x_hab_semaforo", "x_hab_alerta", "x_hab_vencimiento", "x_tecnico", "x_contacto_obra",
   "x_tel_obra", "x_observaciones", "x_dias_obra", "x_horas_hombre", "x_cant_docs",
-  "x_doc_ids", "x_fecha_programada", "x_fecha_comprometida",
+  "x_doc_ids", "x_fecha_programada", "x_fecha_comprometida", "x_fecha_desde",
 ];
 
 const ASIG_FIELDS = ["id", "x_ot_id", "x_fecha", "x_cuadrilla_id", "x_fraccion", "x_estado", "x_orden_dia", "x_notas", "x_parte_id"];
@@ -108,6 +108,7 @@ type OdooOtRow = {
   x_doc_ids: number[] | false;
   x_fecha_programada: string | false;
   x_fecha_comprometida: string | false;
+  x_fecha_desde: string | false;
 };
 
 type OdooAsigRow = {
@@ -192,6 +193,7 @@ function mapOt(row: OdooOtRow, base: string, actionId: number | null): OtTablero
     ordenVenta: m2oName(row.x_order_id),
     fechaProgramada: str(row.x_fecha_programada),
     fechaComprometida: str(row.x_fecha_comprometida),
+    fechaDesde: str(row.x_fecha_desde),
     url: urlOt(base, actionId, row.id),
   };
 }

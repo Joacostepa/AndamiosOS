@@ -16,12 +16,14 @@ import {
   Search,
   Inbox,
   Info,
+  Lock,
   MapPin,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { colorTipo, semaforo, CORAL, ACENTO_BG, URGENCIA } from "@/lib/tablero/colores";
 import { fraccionLabel, repartirJornadas, FRACCIONES, type FraccionStr } from "@/lib/tablero/fracciones";
 import { partesTitulo, normalizar } from "@/lib/tablero/titulo";
+import { lineaPiso } from "@/lib/tablero/fecha-desde";
 import type { OtTablero } from "@/lib/tablero/tipos";
 
 // Panel lateral de obras sin asignar. Es una COLUMNA y no una franja horizontal
@@ -239,6 +241,9 @@ function TarjetaOt({
   const { ot, totales, pendientes, cerradas } = obra;
   const empezada = cerradas > 0;
   const compromiso = lineaCompromiso(ot, hoy);
+  // Sin fecha planificada: en la bandeja la obra todavía no está en la grilla, así que
+  // la línea informa el piso pero nunca lo marca como violado.
+  const pisoLinea = lineaPiso(ot, null);
   const { setNodeRef, attributes, listeners, isDragging } = useDraggable({
     id: `ot:${ot.id}`,
     data: { ot },
@@ -381,6 +386,21 @@ function TarjetaOt({
           title="Fecha que Comercial le prometió al cliente"
         >
           {compromiso.texto}
+        </p>
+      )}
+
+      {/* El piso acordado con el cliente. Va DESPUÉS del compromiso porque se leen como
+          los dos extremos de la ventana —"no antes del 12 · comprometida 18"— y en ese
+          orden. Acá nunca está en rojo: en la bandeja la obra todavía no tiene día, así
+          que no hay nada violado; el rojo aparece cuando ya está sobre la grilla. */}
+      {pisoLinea && (
+        <p
+          className="mt-0.5 flex items-center gap-1 truncate text-[10px] font-medium"
+          style={{ color: tipo.text }}
+          title="El cliente no la recibe antes de esta fecha"
+        >
+          <Lock className="h-2.5 w-2.5 shrink-0" aria-hidden />
+          {pisoLinea.texto}
         </p>
       )}
     </div>

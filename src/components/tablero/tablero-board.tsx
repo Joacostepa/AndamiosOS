@@ -45,6 +45,7 @@ import { agruparBloques, fechasDeJornadas, type Bloque } from "@/lib/tablero/blo
 import { jornadasLiberables, motivoNoVuelveABandeja, type AccionCierre } from "@/lib/tablero/cierre";
 import { toast } from "sonner";
 import { aFraccionStr, repartirJornadas, type FraccionStr } from "@/lib/tablero/fracciones";
+import { friccionDePiso, piso, violaPiso } from "@/lib/tablero/fecha-desde";
 import { type TipoTarea } from "@/lib/tablero/tipos";
 import type { ObraPendiente, ObraPlanificada } from "./panel-sin-asignar";
 import type { MovimientoAsignacion, NuevaAsignacion, TableroPayload } from "@/lib/tablero/tipos";
@@ -567,6 +568,26 @@ export function TableroBoard() {
     });
   }
 
+  /**
+   * Avisa —y NO frena— cuando la obra queda antes del piso acordado con el cliente.
+   *
+   * POR QUÉ NO BLOQUEA: planificar es un borrador. Poner tentativamente una obra el 8
+   * sabiendo que arranca el 12, para ver cómo queda la semana, es una forma legítima de
+   * armarlo. Es el mismo criterio que ya rige el candado de habilitación (ver
+   * DialogoCandado): la fricción va al CONFIRMAR, que es cuando la fecha se le promete al
+   * cliente y la cuadrilla queda tomada. Un candado que estorba se rompe.
+   *
+   * Lo que sí hace es que no pase inadvertido: hoy este dato no existe en ningún lado y
+   * Planificación se entera cuando la cuadrilla llega y no la reciben.
+   */
+  function avisarPiso(otId: number, fecha: string) {
+    const ot = otsPorId.get(otId);
+    if (!ot || !violaPiso(ot, fecha)) return;
+    toast.warning(`Esta obra no entra antes del ${piso(ot)}`, {
+      description: `La dejaste el ${format(parseISO(fecha), "d MMM", { locale: es })}. Se puede planificar igual, pero al confirmar te va a pedir el motivo.`,
+    });
+  }
+
   /** Cuántos bloques hay ya en una celda: define el orden de apilado del nuevo. */
   function proximoOrden(cuadrillaId: number, fecha: string): number {
     const enCelda = (data?.asignaciones ?? []).filter(
@@ -592,6 +613,7 @@ export function TableroBoard() {
     const fracciones = todas.slice(todas.length - cuantas);
     const dias = fechasDeJornadas(fecha, fracciones.length, opts);
     const orden = proximoOrden(cuadrillaId, dias[0]);
+    avisarPiso(otId, dias[0]);
 
     const nuevas: NuevaAsignacion[] = dias.map((f, i) => ({
       otId,
@@ -614,6 +636,9 @@ export function TableroBoard() {
     if (sinGuardar(bloque)) return avisarGuardando();
     const dias = fechasDeJornadas(fecha, bloque.ids.length, opts);
     const orden = proximoOrden(cuadrillaId, dias[0]);
+    // Una tarea no sale de una OT y no tiene piso: otId es 0 y avisarPiso no encuentra
+    // nada, pero se filtra acá para que la intención quede escrita.
+    if (bloque.origen !== "tarea") avisarPiso(bloque.otId, dias[0]);
     const movimientos: MovimientoAsignacion[] = bloque.ids.map((id, i) => ({
       id,
       fecha: dias[i],
@@ -989,12 +1014,18 @@ export function TableroBoard() {
                 if (estado !== "confirmada") return aplicar();
 
                 const f = candados?.get(b.otId);
-                if (!f?.friccion) return aplicar();
+                // El permiso primero: es el único que puede hacer que el trabajo sea
+                // ilegal. Si pasa, recién ahí se mira el acuerdo comercial. Se evalúa una
+                // sola por vez a propósito — dos diálogos encadenados para un clic se
+                // leen como que el sistema no quiere que trabajes.
+                const friccion =
+                  f?.friccion ?? friccionDePiso(otsPorId.get(b.otId) ?? { fechaDesde: null }, b.fechas[0]);
+                if (!friccion) return aplicar();
 
                 setPedidoCandado({
                   otId: b.otId,
-                  friccion: f.friccion,
-                  pedidosPrevios: f.pedidosPrevios,
+                  friccion,
+                  pedidosPrevios: f?.pedidosPrevios ?? 0,
                   confirmar: aplicar,
                 });
               }}

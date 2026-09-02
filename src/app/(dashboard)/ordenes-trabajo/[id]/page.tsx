@@ -233,11 +233,25 @@ export default function FichaOrdenPage({ params }: { params: Promise<{ id: strin
             <Dato label="Contacto en obra" valor={ot.contactoObra ?? "—"} />
             <Dato label="Teléfono" valor={ot.telObra ?? "—"} />
           </div>
-          {ot.fechaComprometida && (
-            <Dato
-              label="Comprometida al cliente"
-              valor={format(parseISO(ot.fechaComprometida), "d MMM yyyy", { locale: es })}
-            />
+          {/* Las dos fechas del acuerdo, juntas y en este orden: son el piso y el techo
+              de la misma ventana. Cada una se muestra sólo si está cargada — casi
+              siempre no hay ninguna, y dos campos vacíos con etiqueta sólo generan la
+              duda de si había que llenarlos. */}
+          {(ot.fechaDesde || ot.fechaComprometida) && (
+            <div className="grid grid-cols-2 gap-3">
+              {ot.fechaDesde && (
+                <Dato
+                  label="No entra antes de"
+                  valor={format(parseISO(ot.fechaDesde), "d MMM yyyy", { locale: es })}
+                />
+              )}
+              {ot.fechaComprometida && (
+                <Dato
+                  label="Comprometida al cliente"
+                  valor={format(parseISO(ot.fechaComprometida), "d MMM yyyy", { locale: es })}
+                />
+              )}
+            </div>
           )}
           {/* Qué estructura hay que montar o bajar. Va ANTES de las observaciones porque
               son dos cosas distintas y ésta es la que define el trabajo; observaciones es

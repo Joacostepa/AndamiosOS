@@ -61,7 +61,7 @@ const CAMPOS = [
   "x_name", "x_estado", "x_tipo", "x_order_id", "x_fecha_programada", "x_fecha_firmeza",
   "x_fecha_comprometida", "x_hab_semaforo", "x_hab_alerta", "x_grupo_prog",
   "x_cuadrilla_prevista_id", "x_jornadas_num", "x_personal_por_jornada", "x_dias_obra",
-  "x_cant_docs", "x_es_adicional", "x_aprobada_comercial", "x_urgencia",
+  "x_cant_docs", "x_es_adicional", "x_aprobada_comercial", "x_urgencia", "x_fecha_desde",
 ];
 
 type FilaOt = {
@@ -84,6 +84,7 @@ type FilaOt = {
   x_es_adicional: boolean;
   x_aprobada_comercial: boolean;
   x_urgencia: string | false;
+  x_fecha_desde: string | false;
 };
 
 // El id de la acción se resuelve una vez: es estable y evita un RPC por request.
@@ -110,6 +111,7 @@ function mapOt(r: FilaOt, base: string, actionId: number | null): OrdenListado {
     ordenVenta: m2oName(r.x_order_id),
     fechaProgramada: str(r.x_fecha_programada),
     fechaComprometida: str(r.x_fecha_comprometida),
+    fechaDesde: str(r.x_fecha_desde),
     fechaFirmeza: str(r.x_fecha_firmeza),
     habSemaforo: str(r.x_hab_semaforo) ?? "rojo",
     habAlerta: str(r.x_hab_alerta),

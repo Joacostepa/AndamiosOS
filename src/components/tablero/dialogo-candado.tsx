@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2, Lock, TriangleAlert } from "lucide-react";
+import { CalendarClock, Loader2, Lock, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { useRegistrarCandado } from "@/hooks/use-habilitaciones";
 import { Button } from "@/components/ui/button";
@@ -49,7 +49,10 @@ export function DialogoCandado({
   // Se desestructura a locales porque `seguir()` es una función anidada y el
   // estrechamiento del `if (!pedido)` no la alcanza.
   const { friccion, otId, pedidosPrevios, confirmar } = pedido;
-  const necesitaMotivo = friccion.tipo === "bloqueo" || friccion.tipo === "falta_expediente";
+  const necesitaMotivo =
+    friccion.tipo === "bloqueo" ||
+    friccion.tipo === "falta_expediente" ||
+    friccion.tipo === "antes_de_piso";
 
   function cerrar() {
     setMotivo("");
@@ -96,6 +99,8 @@ export function DialogoCandado({
           <DialogTitle className="flex items-center gap-2">
             {friccion.tipo === "bloqueo" ? (
               <Lock className="h-4 w-4" style={{ color: "#912018" }} />
+            ) : friccion.tipo === "antes_de_piso" ? (
+              <CalendarClock className="h-4 w-4" style={{ color: "#B54708" }} />
             ) : (
               <TriangleAlert className="h-4 w-4" style={{ color: "#B54708" }} />
             )}
@@ -103,7 +108,9 @@ export function DialogoCandado({
               ? "No se puede confirmar sin el permiso"
               : friccion.tipo === "pedir_modalidad"
                 ? "Falta la modalidad de permiso"
-                : "Falta el número de expediente"}
+                : friccion.tipo === "antes_de_piso"
+                  ? "La obra no entra todavía"
+                  : "Falta el número de expediente"}
           </DialogTitle>
           <DialogDescription>{friccion.motivo}</DialogDescription>
         </DialogHeader>
@@ -134,7 +141,9 @@ export function DialogoCandado({
             <p className="text-[12px] text-muted-foreground">
               {friccion.tipo === "bloqueo"
                 ? "Se puede confirmar igual, pero la excepción queda registrada con tu nombre y la fecha."
-                : "El número de expediente lo tenemos nosotros. Si confirmás sin él, decí por qué."}
+                : friccion.tipo === "antes_de_piso"
+                  ? `La dejaste el ${friccion.fecha} y el cliente la recibe a partir del ${friccion.piso}. Se puede confirmar igual —a veces se reacuerda por teléfono— pero decí por qué, porque si no la cuadrilla viaja y vuelve.`
+                  : "El número de expediente lo tenemos nosotros. Si confirmás sin él, decí por qué."}
             </p>
             <Textarea
               value={motivo}

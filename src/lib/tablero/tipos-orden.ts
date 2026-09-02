@@ -30,6 +30,8 @@ export type OrdenListado = {
   ordenVenta: string | null;
   fechaProgramada: string | null;
   fechaComprometida: string | null;
+  /** El PISO acordado con el cliente: antes de este día la obra no entra. Ver fecha-desde.ts. */
+  fechaDesde: string | null;
   /** tentativa | confirmada | null (la puso una persona, no el tablero). */
   fechaFirmeza: string | null;
   habSemaforo: string;

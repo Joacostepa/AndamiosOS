@@ -290,6 +290,15 @@ export type Friccion =
   | { tipo: "pedir_modalidad"; motivo: string; tecnico: string | null; dias: number | null }
   /** Se armó con expediente y el número no está. Motivo escrito obligatorio. */
   | { tipo: "falta_expediente"; motivo: string }
+  /**
+   * La jornada quedó ANTES del día a partir del cual el cliente recibe la obra.
+   *
+   * No sale de friccionAlConfirmar: ésta no es del permiso sino del acuerdo comercial, y
+   * se calcula en el cliente porque el tablero ya tiene los dos datos (`fechaDesde` de la
+   * OT y el día del bloque) sin ir a buscar nada. Vive en este tipo igualmente porque el
+   * diálogo del candado es uno solo: lo que cambia es el motivo, no el gesto.
+   */
+  | { tipo: "antes_de_piso"; motivo: string; piso: string; fecha: string }
   | null;
 
 /**

@@ -127,6 +127,15 @@ export type OtTablero = {
    * NO la toca: es contra esto que se mide si la planificación llega tarde.
    */
   fechaComprometida: string | null;
+  /**
+   * El PISO: antes de esta fecha la obra no puede entrar. Lo acuerda Comercial con el
+   * cliente ("a partir del 12 puede entrar") y no es lo mismo que `fechaComprometida`,
+   * que es un TECHO —lo que se prometió—. Las dos juntas describen la ventana real: una
+   * obra puede tener las dos y hay que caer entre medio.
+   *
+   * Casi siempre es null: la mayoría de las obras entran cuando hay lugar.
+   */
+  fechaDesde: string | null;
   url: string;
 };
 

@@ -1,11 +1,10 @@
 "use client";
 
-import { Bell, LogOut, User, Sun, Moon, Monitor } from "lucide-react";
+import { LogOut, User, Sun, Moon, Monitor } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useUser } from "@/hooks/use-user";
-import { useAlertasCount } from "@/hooks/use-alertas";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -20,12 +19,11 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { CommandSearch } from "@/components/layout/command-search";
+import { Campanita } from "@/components/layout/campanita";
 import type { Rol } from "@/lib/auth/roles";
-import Link from "next/link";
 
 export function Header({ rol }: { rol: Rol | null }) {
   const { data: user } = useUser();
-  const { data: alertasCount } = useAlertasCount();
   const { theme, setTheme } = useTheme();
   const router = useRouter();
   const supabase = createClient();
@@ -71,16 +69,7 @@ export function Header({ rol }: { rol: Rol | null }) {
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <div className="relative">
-        <Button variant="ghost" size="icon" render={<Link href="/alertas" />}>
-          <Bell className="h-4 w-4" />
-        </Button>
-        {!!alertasCount && alertasCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-red-500 text-[10px] font-bold text-white flex items-center justify-center">
-            {alertasCount > 9 ? "9+" : alertasCount}
-          </span>
-        )}
-      </div>
+      <Campanita />
 
       <DropdownMenu>
         <DropdownMenuTrigger

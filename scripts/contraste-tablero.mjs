@@ -228,7 +228,9 @@ const TEXTO = [
   // Chrome, que también se movió. El destructivo entra por el cajón de planificación:
   // el aviso de conflicto de las notas va a 10px y es lo único que separa "se guardó" de
   // "le pisaste el texto a alguien".
-  ["aviso de conflicto", "var(--destructive)", "var(--card)"],
+  ["aviso de conflicto", "var(--tb-peligro-text)", "var(--tb-cajon)"],
+  ["texto del cajón", "var(--foreground)", "var(--tb-cajon)"],
+  ["secundario del cajón", "var(--muted-foreground)", "var(--tb-cajon)"],
   ["texto secundario sobre tarjeta", "var(--muted-foreground)", "var(--card)"],
   ["texto secundario sobre fondo", "var(--muted-foreground)", "var(--background)"],
 ];
@@ -272,6 +274,9 @@ const ESTADO = [
 ];
 
 const VELO = [
+  // El cajón contra las celdas de la grilla: tiene que leerse como otro plano sin
+  // convertirse en un bloque que compite con las tarjetas que tiene arriba.
+  ["plano del cajón", "var(--tb-cajon)", "var(--background)"],
   ["canaleta del domingo", "var(--tb-canaleta)", "var(--card)"],
   ["columna de feriado", "var(--tb-feriado-columna)", "var(--background)"],
   ["día pasado", "var(--tb-pasado)", "var(--card)"],

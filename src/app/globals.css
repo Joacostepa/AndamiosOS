@@ -130,6 +130,15 @@
    * el canal del estado desaparecía justo cuando el del tipo se apagaba. El token dice lo
    * que la regla siempre quiso decir — "lo mismo que hay detrás". */
   --tb-tentativa: var(--card);
+  /* El cajón de planificación. NO es un color, es un PLANO: un tono neutro apenas
+   * hundido respecto de la grilla, como el pie de una ventana.
+   *
+   * Y no lleva hue a propósito, aunque tenga que verse "otra cosa". En el tablero cada
+   * tono ya significa algo —azul armado, ámbar desarme, violeta feriado y tarea, rojo
+   * error, coral hoy—, así que un cajón teñido se leería como un estado más de las
+   * obras. Lo que tiene que decir es "esto es de otra clase", y eso lo dice el plano:
+   * distinta superficie, sin grilla de celdas encima, separado por el borde. */
+  --tb-cajon: oklch(0.96 0 0);
   --tb-canaleta: #f1efe8;
   /* Opaco y no un velo con alpha: el velo se declaraba en porcentaje de --foreground y
    * ese porcentaje no significa lo mismo en los dos temas. 2,5% de negro sobre blanco es
@@ -266,6 +275,10 @@
   --tb-neutro-text: oklch(0.85 0.008 90);
 
   --tb-tentativa: var(--background);
+  /* En oscuro el hundido va al revés que la intuición: la superficie de la grilla es
+   * 0.20 y el fondo de las celdas 0.13, así que 0.17 se mete entre los dos y queda como
+   * un plano propio sin ser ni lo uno ni lo otro. */
+  --tb-cajon: oklch(0.17 0 0);
   --tb-canaleta: oklch(0.155 0.004 90);
   --tb-pasado: oklch(0.165 0 0);
   --tb-acento-bg: oklch(0.28 0.05 42);

@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, ListChecks, Plus, StickyNote, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CAJON, PELIGRO, PELIGRO_TEXTO } from "@/lib/tablero/colores";
 import {
   ConflictoNota,
   useActualizarPendiente,
@@ -44,10 +45,16 @@ const CLAVE_ALTO = "cajon-planificacion-alto";
  * así que el cajón se estaría redimensionando solo mientras alguien trabaja.
  */
 const ALTO_BARRA = 44;
-const ALTO_DEFECTO = 240;
+const ALTO_DEFECTO = 280;
 const ALTO_MIN = 120;
-/** Techo relativo: el cajón nunca se queda con más de dos tercios de lo que hay. */
-const ALTO_MAX = () => Math.max(ALTO_MIN, Math.round(window.innerHeight * 0.66));
+/**
+ * Lo mínimo que le queda a la grilla: su fila de días (40px) más una fila de cuadrilla
+ * (96 + 10 + 8). El techo del cajón se mide contra el CONTENEDOR y no contra la ventana:
+ * medido contra la ventana el número no significaba nada —podía ser más de lo que hay,
+ * y entonces el arrastre seguía "subiendo" sin que se moviera nada—. Contra el
+ * contenedor el tope quiere decir algo: podés subirlo hasta que quede una cuadrilla.
+ */
+const MINIMO_GRILLA = 40 + 114;
 
 function leerGuardado<T>(clave: string, parsear: (crudo: string) => T | null, porDefecto: T): T {
   if (typeof window === "undefined") return porDefecto;
@@ -82,6 +89,7 @@ export function CajonPlanificacion() {
     ),
   );
   const [arrastrando, setArrastrando] = useState(false);
+  const raiz = useRef<HTMLDivElement>(null);
 
   const { data, isLoading } = useCajon();
   const pendientes = useMemo(() => data?.pendientes ?? [], [data]);
@@ -93,15 +101,17 @@ export function CajonPlanificacion() {
     guardar(CLAVE_ABIERTO, String(v));
   };
 
-  // Arrastre del borde de arriba. Con captura del puntero: sin ella, salirse del div de
-  // 6px mientras se arrastra corta el gesto, que es justo lo que pasa siempre.
+  // Arrastre del borde de arriba. Con captura del puntero: sin ella, salirse de la franja
+  // mientras se arrastra corta el gesto, que es justo lo que pasa siempre.
   const empezarArrastre = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!abierto) return;
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
     const yInicial = e.clientY;
     const altoInicial = alto;
-    const techo = ALTO_MAX();
+    // El alto del contenedor menos lo que la grilla necesita para seguir siendo grilla.
+    const disponible = raiz.current?.parentElement?.clientHeight ?? 0;
+    const techo = Math.max(ALTO_MIN, disponible - MINIMO_GRILLA);
     setArrastrando(true);
 
     const mover = (ev: PointerEvent) => {
@@ -123,13 +133,18 @@ export function CajonPlanificacion() {
 
   return (
     <div
+      ref={raiz}
       className={cn(
-        "flex shrink-0 flex-col overflow-hidden border-t bg-card",
+        "flex shrink-0 flex-col overflow-hidden border-t",
         // La transición se apaga mientras se arrastra: animar cada píxel del gesto lo
         // hace sentir elástico y con retraso.
         !arrastrando && "transition-[height] duration-300 ease-out",
       )}
-      style={{ height: abierto ? `${alto}px` : `${ALTO_BARRA}px` }}
+      style={{
+        height: abierto ? `${alto}px` : `${ALTO_BARRA}px`,
+        // Plano propio, ni la superficie de la grilla ni el fondo de las celdas. Ver CAJON.
+        backgroundColor: CAJON,
+      }}
     >
       {/* La manija. Va como franja propia arriba de la barra y no sobre la barra misma:
           la barra es un botón que abre y cierra, y un gesto de arrastre encima de un
@@ -137,13 +152,13 @@ export function CajonPlanificacion() {
       {abierto && (
         <div
           onPointerDown={empezarArrastre}
-          className="group/manija flex h-1.5 shrink-0 cursor-ns-resize items-center justify-center hover:bg-foreground/10"
+          className="group/manija flex h-2.5 shrink-0 cursor-ns-resize items-center justify-center bg-foreground/[0.04] hover:bg-foreground/10"
           role="separator"
           aria-orientation="horizontal"
           aria-label="Arrastrá para cambiar el alto del cajón"
           title="Arrastrá para cambiar el alto"
         >
-          <div className="h-0.5 w-8 rounded-full bg-foreground/20 group-hover/manija:bg-foreground/40" />
+          <div className="h-[3px] w-10 rounded-full bg-foreground/25 group-hover/manija:bg-foreground/50" />
         </div>
       )}
 
@@ -266,12 +281,18 @@ function ColumnaPendientes({
   };
 
   return (
+    // Las dos columnas comparten esqueleto: encabezado de alto fijo, cuerpo elástico y
+    // pie de alto fijo. Es lo que hace que las líneas horizontales de una lleguen
+    // exactamente a las de la otra. Antes la izquierda tenía pie y la derecha no, y el
+    // textarea flotaba con margen propio: nada de un lado coincidía con nada del otro.
     <section className="flex min-h-0 flex-col border-r">
-      <h2 className="px-3 pt-2 text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-        Pendientes
-      </h2>
+      <div className="flex h-7 shrink-0 items-center px-3">
+        <h2 className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+          Pendientes
+        </h2>
+      </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-1.5 py-1">
+      <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-1">
         {cargando ? (
           <p className="px-1.5 py-2 text-[11px] text-muted-foreground">Cargando…</p>
         ) : abiertos.length === 0 && hechos.length === 0 ? (
@@ -317,7 +338,7 @@ function ColumnaPendientes({
         )}
       </div>
 
-      <div className="flex shrink-0 items-center gap-1.5 border-t px-3 py-1.5">
+      <div className="flex h-9 shrink-0 items-center gap-1.5 border-t px-3">
         <Plus className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
         <input
           value={texto}
@@ -432,22 +453,19 @@ function ColumnaNotas({ inicial }: { inicial: NotaCajon }) {
         : "Guardado";
 
   return (
+    // Mismo esqueleto que Pendientes: encabezado de 28px, cuerpo elástico, pie de 36px.
     <section className="flex min-h-0 flex-col">
-      <div className="flex items-baseline gap-2 px-3 pt-2">
+      <div className="flex h-7 shrink-0 items-center px-3">
         <h2 className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
           Notas generales
         </h2>
-        <span
-          className={cn(
-            "ml-auto text-[10px]",
-            conflicto ? "font-medium text-destructive" : "text-muted-foreground",
-          )}
-          role="status"
-        >
-          {estado}
-        </span>
       </div>
 
+      {/* El textarea va A RAS y sin recuadro propio. Encajonado adentro de la columna
+          —con borde, radio y margen— no se alineaba con nada de la izquierda: arrancaba
+          más abajo que la lista y terminaba más arriba que la barra de alta. Ahora el
+          área de escritura ocupa su columna igual que la lista ocupa la suya, y la única
+          línea que las separa es la que ya divide las dos. */}
       <textarea
         value={borrador}
         onChange={(e) => setBorrador(e.target.value)}
@@ -458,23 +476,33 @@ function ColumnaNotas({ inicial }: { inicial: NotaCajon }) {
         // en ningún lado. Es la única parte de la UI donde se puede explicar la
         // diferencia en el momento en que importa.
         placeholder="Lo que no vence: “los desarmes de Olivos van con el camión chico”, teléfonos, acuerdos.&#10;&#10;Lo que pasa un día puntual va en la nota del día, arriba en la grilla."
-        className="mx-3 mt-1.5 min-h-0 flex-1 resize-none rounded-md border bg-background px-2.5 py-2 text-[12px] leading-relaxed outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+        className="min-h-0 flex-1 resize-none border-0 bg-transparent px-3 pb-1 text-[12px] leading-relaxed outline-none placeholder:text-muted-foreground focus-visible:bg-foreground/[0.03]"
       />
 
       {/* El conflicto no es un callejón: se muestran LAS DOS versiones y decide una
-          persona. Pisar en silencio era el bug que esto vino a evitar, pero dejar un
-          cartel de error sin salida es la otra mitad del mismo problema — el texto
-          propio quedaría inguardable para siempre. */}
-      {conflicto ? (
-        <div className="mx-3 mb-3 mt-1.5 shrink-0 rounded-md border border-destructive/40 p-2">
-          <p className="text-[10px] font-medium text-destructive">
+          persona. Pisar en silencio era el bug que esto vino a evitar, pero un cartel de
+          error sin salida es la otra mitad del mismo problema — el texto propio quedaría
+          inguardable para siempre.
+          Rompe la alineación con la izquierda a propósito: es una interrupción, y tiene
+          que verse como tal. */}
+      {conflicto && (
+        <div className="mx-3 mb-1 shrink-0 rounded-md border p-2" style={{ borderColor: PELIGRO }}>
+          <p className="text-[10px] font-medium" style={{ color: PELIGRO_TEXTO }}>
             {conflicto.autor} guardó su versión mientras escribías. Arriba está la tuya;
             acá abajo, la suya.
           </p>
           <p className="mt-1 max-h-16 overflow-y-auto whitespace-pre-wrap rounded bg-muted px-2 py-1 text-[11px] leading-snug">
             {conflicto.texto || <span className="text-muted-foreground">(vacío)</span>}
           </p>
-          <div className="mt-1.5 flex gap-2">
+        </div>
+      )}
+
+      {/* El pie espeja la barra de alta de la izquierda: mismo alto, mismo borde
+          superior, misma sangría. Acá vive el estado del guardado —que antes estaba
+          arriba, desalineando el encabezado— y las salidas del conflicto. */}
+      <div className="flex h-9 shrink-0 items-center gap-2 border-t px-3">
+        {conflicto ? (
+          <>
             <button
               type="button"
               // Adopta el sello nuevo: el próximo guardado ya no choca y el texto propio
@@ -500,11 +528,13 @@ function ColumnaNotas({ inicial }: { inicial: NotaCajon }) {
             >
               Quedarme con la suya
             </button>
-          </div>
-        </div>
-      ) : (
-        <div className="h-3 shrink-0" />
-      )}
+          </>
+        ) : (
+          <span className="ml-auto text-[10px] text-muted-foreground" role="status">
+            {estado}
+          </span>
+        )}
+      </div>
     </section>
   );
 }

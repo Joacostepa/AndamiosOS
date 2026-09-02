@@ -128,6 +128,15 @@ export const FERIADO_TEXTO = "var(--tb-feriado-texto)";
  * no por un tono: la canaleta se hunde y el pasado se vela. En oscuro hundirse es ir a
  * más oscuro, que es justo lo contrario del beige que tenían clavado.
  */
+/**
+ * Superficie del cajón de planificación.
+ *
+ * Es un PLANO y no un color: neutro, apenas hundido respecto de la grilla. Tiene que
+ * leerse como otra clase de cosa, y eso en este tablero no se puede hacer con hue —cada
+ * tono ya significa un estado de las obras— así que se hace con superficie.
+ */
+export const CAJON = "var(--tb-cajon)";
+
 export const CANALETA = "var(--tb-canaleta)";
 export const PASADO = "var(--tb-pasado)";
 

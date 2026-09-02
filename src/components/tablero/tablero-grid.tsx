@@ -1,17 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { PointerEvent as PointerEventReact } from "react";
+import type { MouseEvent as MouseEventReact, PointerEvent as PointerEventReact } from "react";
 import { format, isSameDay, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { AlertTriangle, MousePointerClick, StickyNote } from "lucide-react";
 import { CeldaDia } from "./celda-dia";
 import { TarjetaAsignacion } from "./tarjeta-asignacion";
 import { PopoverNotasDia } from "./notas-jornada";
-import { agruparBloques, esDomingo, repartirEnCarriles } from "@/lib/tablero/bloques";
+import { agruparBloques, esDomingo, repartirPorAltura } from "@/lib/tablero/bloques";
 import { accionDeCierre, bloqueCerrado, type AccionCierre } from "@/lib/tablero/cierre";
 import { MOTIVOS_NO_EJEC } from "@/lib/tablero/tipos-parte";
-import { colorCuadrilla, CORAL, FERIADO_ENCABEZADO, FERIADO_TEXTO } from "@/lib/tablero/colores";
+import { colorCuadrilla, CORAL, FERIADO_ENCABEZADO, FERIADO_TEXTO, NOTA } from "@/lib/tablero/colores";
 import { ocupacionCelda, capacidadDelRango } from "@/lib/tablero/fracciones";
 import type { FraccionStr } from "@/lib/tablero/fracciones";
 import { notasDe, notasDeCuadrilla } from "@/lib/tablero/tipos-nota";
@@ -23,17 +23,17 @@ import type { AsignacionTablero, CuadrillaTablero, OtTablero, ParteTablero } fro
 //
 // El problema que resuelve la forma: una obra de varias jornadas se ve en TODOS los
 // días que ocupa, no solo el que arranca. Por eso cada fila es una sub-grilla de días
-// y las tarjetas se colocan con grid-column: span N sobre carriles (filas internas)
-// que evitan que dos obras del mismo día se pisen.
+// y las tarjetas se colocan con grid-column: span N. El ALTO de cada una es su fracción
+// de jornada: la celda vale 1,00 y lo que sobra queda a la vista (ver repartirPorAltura).
 //
 // El rango visible son varias semanas y la grilla scrollea en horizontal (v3): un bloque
 // que arranca el viernes y sigue el lunes se ve entero. Quedan fijos el encabezado de
 // días (vertical) y la columna de cuadrillas (horizontal); sin eso, scrollear a la
 // semana siguiente hace perder de vista de quién es cada fila.
 //
-// El alto de fila lo define el contenido —la cuadrilla con más carriles ocupados— con un
-// mínimo bajo. Antes el mínimo era 132px y con 5 cuadrillas había que scrollear en
-// vertical, que es justo la comparación que el planificador viene a hacer.
+// TODAS las filas miden lo mismo: una jornada más el riel. El alto ya no depende de
+// cuántas tarjetas se apilan sino de cuánto trabajo representan, así que la grilla es
+// regular y entra entera — que es justo la comparación que el planificador viene a hacer.
 
 const ANCHO_RECURSO = 168;
 /**
@@ -74,10 +74,18 @@ const ALTO_BARRA = 10;
  * franjas enormes con las tarjetas pegadas arriba y un hueco muerto abajo, que se ve más
  * lleno y se lee peor. Para eso está el techo.
  */
-const ALTO_CARRIL = 38;
-const ALTO_CARRIL_MAX = 54;
-/** Piso del alto de fila. La fila crece con sus carriles; esto es sólo el mínimo. */
-const ALTO_MIN_FILA = 72;
+/**
+ * LA CELDA VALE UNA JORNADA. Es la unidad de la que cuelga todo lo vertical: una tarjeta
+ * de jornada completa mide esto, media mide la mitad, y lo que sobra queda a la vista.
+ *
+ * 96px sale del piso de legibilidad: la tarjeta más chica que se dibuja es un cuarto de
+ * celda (ver PISO_ALTO en bloques.ts) y 24px es lo que necesita una línea con la
+ * dirección. Más alto haría scrollear en vertical con muchas cuadrillas, que es justo la
+ * comparación que el planificador viene a hacer.
+ */
+const ALTO_CELDA = 96;
+/** Aire entre la última tarjeta y el riel. */
+const RESPIRO_FILA = 8;
 
 const DECIMAL = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 });
 
@@ -106,6 +114,25 @@ function DiaDelEncabezado({ d, esHoy }: { d: Date; esHoy: boolean }) {
 
 function esLunes(fecha: string): boolean {
   return parseISO(fecha).getDay() === 1;
+}
+
+/**
+ * ¿El evento pasó FÍSICAMENTE adentro de este elemento?
+ *
+ * Los portales de React propagan por el árbol de REACT, no por el del DOM. El popover de
+ * notas se pinta en un portal colgado del body, pero en el árbol de React vive adentro
+ * del encabezado del día, así que sus clics igual le llegan a los handlers de acá.
+ *
+ * Eso rompía el popover entero: apretar cualquier botón de adentro corría `iniciarPan`,
+ * que hace setPointerCapture sobre el encabezado, y con la captura activa el navegador
+ * dispara el click sobre el div que capturó — el botón nunca se enteraba. "Agregar" y
+ * "borrar" no hacían nada; ⌘+Enter sí, porque un keydown no pasa por este camino.
+ *
+ * Comparar contra el DOM separa las dos cosas: si el target no cuelga del encabezado, es
+ * contenido portalizado y acá no se mira.
+ */
+function pasoAdentro(e: { currentTarget: HTMLElement; target: EventTarget | null }): boolean {
+  return e.target instanceof Node && e.currentTarget.contains(e.target);
 }
 
 /**
@@ -274,6 +301,7 @@ export function TableroGrid({
   const panMovio = useRef(false);
 
   function iniciarPan(e: PointerEventReact<HTMLDivElement>) {
+    if (!pasoAdentro(e)) return;
     // El táctil ya scrollea solo: capturar el puntero ahí rompería el gesto nativo.
     if (e.pointerType === "touch" || e.button !== 0 || !propio.current) return;
     pan.current = { x: e.clientX };
@@ -367,22 +395,21 @@ export function TableroGrid({
 
   const hayAlgoAsignado = cuadrillas.some((c) => fechas.some((f) => enCelda(c.id, f).length > 0));
 
-  // El alto de cada fila sale de sus carriles. Se calcula antes del render de las filas
-  // porque la plantilla de la grilla los necesita todos juntos.
+  // TODAS LAS FILAS MIDEN LO MISMO: una jornada, más el riel.
+  //
+  // Antes el alto salía de cuántas tarjetas se apilaban (carriles x 38..54px), así que una
+  // cuadrilla con cuatro obras en un día medía 216px y la de al lado 72. Ahora la altura
+  // dice cuánto ocupa el trabajo, no cuántas tarjetas hay: un día sobreasignado comprime
+  // las suyas en vez de estirar la fila. Además de leerse mejor, la grilla se vuelve
+  // regular y entra entera sin scrollear, que es lo que permite comparar cuadrillas.
+  const ALTO_FILA = ALTO_CELDA + ALTO_BARRA + RESPIRO_FILA;
   const porCuadrilla = cuadrillas.map((cuadrilla, indice) => {
     const deLaCuadrilla = asignaciones.filter((a) => a.cuadrillaId === cuadrilla.id);
-    const ubicados = repartirEnCarriles(agruparBloques(deLaCuadrilla), fechas);
-    const carriles = Math.max(1, ...ubicados.map((u) => u.carril + 1));
     return {
       cuadrilla,
       indice,
       deLaCuadrilla,
-      ubicados,
-      carriles,
-      alto: Math.max(ALTO_MIN_FILA, carriles * ALTO_CARRIL + ALTO_BARRA + 8),
-      // El techo es lo que impide que con 3 cuadrillas cada fila se estire a 240px y
-      // deje las tarjetas chiquitas arriba con un hueco muerto abajo.
-      altoMax: Math.max(ALTO_MIN_FILA, carriles * ALTO_CARRIL_MAX + ALTO_BARRA + 8),
+      ubicados: repartirPorAltura(agruparBloques(deLaCuadrilla), fechas),
     };
   });
 
@@ -412,7 +439,7 @@ export function TableroGrid({
           // El alto sale del contenido, entre un piso y un techo. La pista `1fr` del final
           // se come el sobrante: sin ella el reparto lo absorbían las filas y con pocas
           // cuadrillas quedaban enormes y medio vacías.
-          gridTemplateRows: `40px ${porCuadrilla.map((c) => `minmax(${c.alto}px, ${c.altoMax}px)`).join(" ")} 1fr`,
+          gridTemplateRows: `40px ${porCuadrilla.map(() => `${ALTO_FILA}px`).join(" ")} 1fr`,
           minWidth: anchoMinimo,
         }}
       >
@@ -433,7 +460,12 @@ export function TableroGrid({
           // la captura activa el navegador dispara el click sobre el elemento que captura,
           // así que un botón adentro nunca se enteraría.
           const alternable = esDomingo(f) && (canaleta || puedePlegar(f));
-          const alternar = () => { if (alternable && !panMovio.current) onToggleDomingo(f); };
+          // `pasoAdentro` por lo mismo que en iniciarPan: sin eso, tocar cualquier cosa
+          // del popover de notas sobre un domingo lo plegaba de golpe.
+          const alternar = (e: MouseEventReact<HTMLDivElement>) => {
+            if (!pasoAdentro(e)) return;
+            if (alternable && !panMovio.current) onToggleDomingo(f);
+          };
           const tituloDomingo = canaleta
             ? `Domingo ${format(d, "d MMM", { locale: es })} · sin trabajo — clic para habilitarlo`
             : `Domingo ${format(d, "d MMM", { locale: es })} habilitado a mano · clic para volver a plegarlo`;
@@ -457,6 +489,9 @@ export function TableroGrid({
               onKeyDown={
                 alternable
                   ? (e) => {
+                      // Sin `pasoAdentro`, escribir una nota sobre un domingo era una
+                      // trampa: cada Enter del textarea plegaba la columna.
+                      if (!pasoAdentro(e)) return;
                       if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggleDomingo(f); }
                     }
                   : undefined
@@ -466,6 +501,14 @@ export function TableroGrid({
                 // Separador de semana: ubicarse sin tener que leer las fechas.
                 borderLeft: esLunes(f) ? "2px solid var(--border)" : undefined,
                 backgroundColor: canaleta ? "#F1EFE8" : feriado ? FERIADO_ENCABEZADO : "var(--card)",
+                // Franja ámbar del día con notas. Va como sombra INTERNA y no como borde
+                // ni como fondo: el fondo ya lo usan el feriado y la canaleta, y un borde
+                // cambiaría el alto de la celda y desalinearía la fila de días. Así se
+                // apila con el feriado, que es otro dato del mismo día.
+                //
+                // Es la mitad que se ve sin buscar: un chip de 16px, por más color que
+                // tenga, hay que estar mirándolo. La franja se lee barriendo la grilla.
+                boxShadow: notasDelDia.length > 0 ? `inset 0 -3px 0 ${NOTA.franja}` : undefined,
               }}
             >
               {canaleta ? (
@@ -538,15 +581,28 @@ export function TableroGrid({
                           ? `${notasDelDia.length} nota${notasDelDia.length === 1 ? "" : "s"} este día`
                           : "Anotar algo de este día"
                       }
-                      className={`absolute bottom-0 right-0 flex h-4 cursor-pointer items-center gap-0.5 rounded-tl px-1 text-muted-foreground transition-opacity hover:bg-black/[0.06] hover:text-foreground ${
+                      // Con notas: chip ÁMBAR LLENO. Sin notas: el mismo botón en gris y
+                      // sólo al pasar el mouse — es la puerta para anotar en cualquier
+                      // día, pero un ícono fijo en las 21 columnas del rango sería más
+                      // ruido que dato, y le sacaría fuerza justo a los días que sí
+                      // tienen algo escrito.
+                      className={`absolute bottom-0.5 right-0.5 flex h-[15px] cursor-pointer items-center gap-0.5 rounded px-1 transition-opacity ${
                         notasDelDia.length > 0
                           ? "opacity-100"
-                          : "opacity-0 focus-visible:opacity-100 group-hover/dia:opacity-100"
+                          : "text-muted-foreground opacity-0 hover:bg-black/[0.06] hover:text-foreground focus-visible:opacity-100 group-hover/dia:opacity-100"
                       }`}
+                      style={
+                        notasDelDia.length > 0
+                          ? { backgroundColor: NOTA.fondo, color: NOTA.texto }
+                          : undefined
+                      }
                     >
                       <StickyNote className="h-2.5 w-2.5" />
-                      {notasDelDia.length > 1 && (
-                        <span className="text-[9px] font-semibold tabular-nums">
+                      {/* El contador va SIEMPRE que haya notas, incluido el 1: es un chip,
+                          no un ícono suelto, y "1" dice cuánto hay que leer antes de
+                          abrirlo. */}
+                      {notasDelDia.length > 0 && (
+                        <span className="text-[9px] font-bold tabular-nums leading-none">
                           {notasDelDia.length}
                         </span>
                       )}
@@ -559,7 +615,7 @@ export function TableroGrid({
         })}
 
         {/* ── Una fila por cuadrilla ── */}
-        {porCuadrilla.map(({ cuadrilla, indice, deLaCuadrilla, ubicados, carriles }) => {
+        {porCuadrilla.map(({ cuadrilla, indice, deLaCuadrilla, ubicados }) => {
           const color = colorCuadrilla(indice);
 
           // Carga de LA SEMANA CENTRADA, no del rango cargado: la comparación que importa
@@ -605,9 +661,17 @@ export function TableroGrid({
                   className="grid h-full"
                   style={{
                     gridTemplateColumns: plantillaInterna,
-                    // Los carriles crecen hasta su techo y recién ahí el sobrante va al
-                    // 1fr: así la tarjeta usa el alto que la fila tiene disponible.
-                    gridTemplateRows: `repeat(${carriles}, minmax(${ALTO_CARRIL}px, ${ALTO_CARRIL_MAX}px)) 1fr ${ALTO_BARRA}px`,
+                    // La jornada, el respiro, y el riel. Dentro de la primera pista cada
+                    // tarjeta se ubica con su propio alto y desplazamiento (ver
+                    // repartirPorAltura), que es lo que hace que el alto signifique algo
+                    // en vez de ser un casillero más.
+                    //
+                    // El `1fr` del medio NO es decorativo: tiene que absorber el respiro
+                    // de la fila. Sin él las pistas suman menos que el alto de la fila, y
+                    // como la celda abarca `1 / -1` sus bordes terminaban 8px antes que
+                    // los de la columna de cuadrillas —que cuelga de la grilla externa—.
+                    // Se veía como líneas desfasadas entre una fila y la siguiente.
+                    gridTemplateRows: `${ALTO_CELDA}px 1fr ${ALTO_BARRA}px`,
                   }}
                 >
                   {fechas.map((f, i) => {
@@ -644,7 +708,12 @@ export function TableroGrid({
                                   type="button"
                                   title={suyas.map((n) => n.texto).join(" · ")}
                                   aria-label={`${suyas.length} nota${suyas.length === 1 ? "" : "s"} de ${cuadrilla.nombre} este día`}
-                                  className="absolute bottom-0 right-0 z-20 flex h-4 w-4 cursor-pointer items-center justify-center rounded-tl text-foreground/70 hover:bg-black/[0.06] hover:text-foreground"
+                                  // Ámbar lleno, igual que el chip del encabezado: si la
+                                  // fila tiene una nota propia se tiene que ver sin
+                                  // pasarle el mouse por arriba. Un glifo gris contra el
+                                  // fondo de la celda desaparecía.
+                                  className="absolute bottom-0 right-0 z-20 flex h-4 w-4 cursor-pointer items-center justify-center rounded-tl hover:brightness-95"
+                                  style={{ backgroundColor: NOTA.fondo, color: NOTA.texto }}
                                 >
                                   <StickyNote className="h-2.5 w-2.5" />
                                 </button>
@@ -656,7 +725,7 @@ export function TableroGrid({
                     );
                   })}
 
-                  {ubicados.map(({ bloque, colocacion, carril }) => {
+                  {ubicados.map(({ bloque, colocacion, top, alto }) => {
                     const accion = accionDeCierre(bloque, hoyISO);
                     const parteDelBloque = bloqueCerrado(bloque)
                       ? partesPorId.get(bloque.partes.find((x) => x != null) as number)
@@ -670,7 +739,10 @@ export function TableroGrid({
                         ot={bloque.tarea ? undefined : ots.get(bloque.otId)}
                         plan={bloque.tarea ? undefined : planPorObra.get(bloque.otId)}
                         colocacion={colocacion}
-                        carril={carril}
+                        // De fracción de jornada a píxeles. La conversión vive acá
+                        // porque la celda es la que sabe cuánto mide una jornada.
+                        top={top * ALTO_CELDA}
+                        alto={alto * ALTO_CELDA}
                         seleccionada={bloqueSeleccionado === bloque.key}
                         // Una tarea hecha se atenúa igual que una obra ejecutada: ya no
                         // reclama nada, pero sigue ocupando su lugar en el día.

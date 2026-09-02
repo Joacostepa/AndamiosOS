@@ -718,8 +718,13 @@ export function TableroBoard() {
             : conservadas > 0
               ? `Se conservan ${conservadas} ya cerrada${conservadas === 1 ? "" : "s"} con su parte.`
               : "Quedan como pendientes de planificar en el panel de la derecha.",
-          // Más que el default: hay que leer el aviso y recién ahí decidir si fue un error.
-          duration: 10000,
+          // Más que el default —hay que leer el aviso y recién ahí decidir si fue un
+          // error— pero no diez segundos: quitar una obra suele venir seguido de mover
+          // otras, y el cartel se quedaba tapando la esquina del tablero durante los dos
+          // arrastres siguientes. Seis alcanzan para leerlo y decidir.
+          duration: 6000,
+          // Y si ya lo leyó, que pueda sacarlo: sin la X hay que esperarlo sí o sí.
+          closeButton: true,
           action: {
             label: "Deshacer",
             onClick: () => {
@@ -969,7 +974,18 @@ export function TableroBoard() {
               // tentativa nunca pregunta nada: aflojar el compromiso no necesita
               // permiso de nadie.
               onEstado={(b, estado) => {
-                const aplicar = () => actualizar.mutate({ ids: b.ids, cambio: { estado } });
+                const aplicar = () =>
+                  actualizar.mutate({
+                    ids: b.ids,
+                    cambio: { estado },
+                    // De qué obra y de qué días son estos ids. Viaja desde acá porque el
+                    // bloque ya lo sabe: sin esto el servidor tendría que releer Odoo
+                    // para poder anotar quién confirmó, y le sumaría ~800 ms al gesto.
+                    // Las tareas de operaciones no tienen OT (otId 0) y no se registran:
+                    // no son un compromiso con un cliente.
+                    contexto:
+                      b.otId > 0 ? { otId: b.otId, fechas: b.fechas } : undefined,
+                  });
                 if (estado !== "confirmada") return aplicar();
 
                 const f = candados?.get(b.otId);

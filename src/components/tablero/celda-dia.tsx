@@ -6,8 +6,8 @@ import { ocupacionCelda } from "@/lib/tablero/fracciones";
 import { colorOcupacion, ACENTO_BG, CORAL, FERIADO_COLUMNA, RIEL_OCUPACION } from "@/lib/tablero/colores";
 
 // Celda cuadrilla × día: es el fondo droppable de la columna y lleva la barra de
-// ocupación al pie. Ocupa todos los carriles de la fila (grid-row 1 / -1), así que las
-// tarjetas se dibujan encima; la última fila de la grilla queda reservada para la barra.
+// ocupación al pie. Ocupa el alto entero de la fila (grid-row 1 / -1), así que las
+// tarjetas se dibujan encima; la última pista de la grilla queda reservada para la barra.
 //
 // DECISIÓN (densidad): la celda vacía no dice "libre". Lo vacío ya se lee como vacío, y
 // repetir la palabra en cada celda era ruido que competía con lo que sí importa. Por lo
@@ -56,7 +56,7 @@ export function CeldaDia({
    * sólo se le hace lugar.
    *
    * Va en la franja de abajo, que es la única parte de la celda donde no cae una tarjeta:
-   * las tarjetas se ubican en los carriles y esta franja queda reservada para el riel.
+   * las tarjetas viven en la pista de la jornada y esta franja queda reservada para el riel.
    */
   marcaNota?: ReactNode;
   /**

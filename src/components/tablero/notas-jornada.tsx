@@ -175,7 +175,20 @@ export function PopoverNotasDia({
   return (
     <Popover open={abierto} onOpenChange={setAbierto}>
       <PopoverTrigger render={trigger} />
-      <PopoverContent align="start" className="w-80 gap-0 p-0">
+      <PopoverContent
+        align="start"
+        className="w-80 gap-0 p-0"
+        // El popover no deja escapar sus eventos al contenedor.
+        //
+        // Se pinta en un portal, pero los portales de React propagan por el árbol de
+        // REACT: sus clics le llegan igual a quien lo contiene —el encabezado del día,
+        // que arrastra la grilla, o la celda, que crea una tarea con doble clic—. Cortar
+        // acá lo hace independiente de dónde se lo cuelgue; la guarda del encabezado
+        // (ver pasoAdentro en tablero-grid) es la otra mitad, del lado del que escucha.
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+        onDoubleClick={(e) => e.stopPropagation()}
+      >
         <header className="border-b px-2.5 py-2">
           <p className="text-[12px] font-semibold capitalize">{fechaLarga(fecha)}</p>
           <p className="text-[10px] text-muted-foreground">

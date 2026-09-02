@@ -1,16 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import {
-  ChevronDown,
-  ChevronRight,
-  ListChecks,
-  Maximize2,
-  Minimize2,
-  Plus,
-  StickyNote,
-  X,
-} from "lucide-react";
+import { ChevronDown, ChevronRight, ListChecks, Plus, StickyNote, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   ConflictoNota,
@@ -42,38 +33,55 @@ const CLAVE_ABIERTO = "cajon-planificacion-abierto";
 const CLAVE_ALTO = "cajon-planificacion-alto";
 
 /**
- * Las tres alturas.
+ * El alto del cajón: uno solo, y lo mueve el usuario arrastrando el borde de arriba.
  *
- * Cada píxel de acá sale de la grilla: una fila de cuadrilla mide 114px, así que un
- * cajón de 288 —el del diseño original— se comía dos filas y media. 240 deja ver una
- * fila más y alcanza igual para cinco pendientes sin scrollear, que es el uso normal.
- * El agrandado va en vh y no en px fijos: en un monitor grande 440px es poco y en un
- * portátil es media pantalla.
+ * Antes eran dos fijos con un botón de agrandar. Se fueron los dos porque cada píxel del
+ * cajón sale de la grilla, y cuánto vale eso depende de cuántas cuadrillas estés mirando
+ * —una fila mide 114px— y de la pantalla. Adivinarlo es peor que dejar decidir.
+ *
+ * Lo que NO se hace es crecer solo para llenar el blanco que queda debajo de la grilla:
+ * ese blanco aparece cuando hay pocas cuadrillas visibles y desaparece al prender otra,
+ * así que el cajón se estaría redimensionando solo mientras alguien trabaja.
  */
 const ALTO_BARRA = 44;
-const ALTO_ABIERTO = 240;
-const ALTO_GRANDE = "min(52vh, 460px)";
+const ALTO_DEFECTO = 240;
+const ALTO_MIN = 120;
+/** Techo relativo: el cajón nunca se queda con más de dos tercios de lo que hay. */
+const ALTO_MAX = () => Math.max(ALTO_MIN, Math.round(window.innerHeight * 0.66));
 
-function leerBool(clave: string): boolean {
-  if (typeof window === "undefined") return false;
+function leerGuardado<T>(clave: string, parsear: (crudo: string) => T | null, porDefecto: T): T {
+  if (typeof window === "undefined") return porDefecto;
   try {
-    return window.localStorage.getItem(clave) === "true";
+    const crudo = window.localStorage.getItem(clave);
+    return crudo === null ? porDefecto : (parsear(crudo) ?? porDefecto);
   } catch {
-    return false;
+    return porDefecto;
   }
 }
 
-function guardarBool(clave: string, valor: boolean) {
+function guardar(clave: string, valor: string) {
   try {
-    window.localStorage.setItem(clave, String(valor));
+    window.localStorage.setItem(clave, valor);
   } catch {
     // Modo privado o storage lleno: el cajón funciona igual, sólo no recuerda.
   }
 }
 
 export function CajonPlanificacion() {
-  const [abierto, setAbierto] = useState(() => leerBool(CLAVE_ABIERTO));
-  const [grande, setGrande] = useState(() => leerBool(CLAVE_ALTO));
+  const [abierto, setAbierto] = useState(() =>
+    leerGuardado(CLAVE_ABIERTO, (c) => c === "true", false),
+  );
+  const [alto, setAlto] = useState(() =>
+    leerGuardado(
+      CLAVE_ALTO,
+      (c) => {
+        const n = Number(c);
+        return Number.isFinite(n) && n >= ALTO_MIN ? n : null;
+      },
+      ALTO_DEFECTO,
+    ),
+  );
+  const [arrastrando, setArrastrando] = useState(false);
 
   const { data, isLoading } = useCajon();
   const pendientes = useMemo(() => data?.pendientes ?? [], [data]);
@@ -82,32 +90,76 @@ export function CajonPlanificacion() {
 
   const alternar = (v: boolean) => {
     setAbierto(v);
-    guardarBool(CLAVE_ABIERTO, v);
+    guardar(CLAVE_ABIERTO, String(v));
+  };
+
+  // Arrastre del borde de arriba. Con captura del puntero: sin ella, salirse del div de
+  // 6px mientras se arrastra corta el gesto, que es justo lo que pasa siempre.
+  const empezarArrastre = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!abierto) return;
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const yInicial = e.clientY;
+    const altoInicial = alto;
+    const techo = ALTO_MAX();
+    setArrastrando(true);
+
+    const mover = (ev: PointerEvent) => {
+      // Arriba es más alto: el borde sube, el cajón crece.
+      setAlto(Math.min(techo, Math.max(ALTO_MIN, altoInicial + (yInicial - ev.clientY))));
+    };
+    const soltar = () => {
+      setArrastrando(false);
+      window.removeEventListener("pointermove", mover);
+      window.removeEventListener("pointerup", soltar);
+      setAlto((actual) => {
+        guardar(CLAVE_ALTO, String(actual));
+        return actual;
+      });
+    };
+    window.addEventListener("pointermove", mover);
+    window.addEventListener("pointerup", soltar);
   };
 
   return (
     <div
-      className="flex shrink-0 flex-col overflow-hidden border-t bg-card transition-[height] duration-300 ease-out"
-      style={{ height: abierto ? (grande ? ALTO_GRANDE : `${ALTO_ABIERTO}px`) : `${ALTO_BARRA}px` }}
+      className={cn(
+        "flex shrink-0 flex-col overflow-hidden border-t bg-card",
+        // La transición se apaga mientras se arrastra: animar cada píxel del gesto lo
+        // hace sentir elástico y con retraso.
+        !arrastrando && "transition-[height] duration-300 ease-out",
+      )}
+      style={{ height: abierto ? `${alto}px` : `${ALTO_BARRA}px` }}
     >
+      {/* La manija. Va como franja propia arriba de la barra y no sobre la barra misma:
+          la barra es un botón que abre y cierra, y un gesto de arrastre encima de un
+          botón termina siempre en un clic que no se quiso dar. */}
+      {abierto && (
+        <div
+          onPointerDown={empezarArrastre}
+          className="group/manija flex h-1.5 shrink-0 cursor-ns-resize items-center justify-center hover:bg-foreground/10"
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label="Arrastrá para cambiar el alto del cajón"
+          title="Arrastrá para cambiar el alto"
+        >
+          <div className="h-0.5 w-8 rounded-full bg-foreground/20 group-hover/manija:bg-foreground/40" />
+        </div>
+      )}
+
       <Barra
         abierto={abierto}
-        grande={grande}
         hechos={hechos.length}
         totales={pendientes.length}
         onAlternar={() => alternar(!abierto)}
-        onGrande={() => {
-          setGrande(!grande);
-          guardarBool(CLAVE_ALTO, !grande);
-        }}
       />
 
       {abierto && (
-        // Pendientes a la IZQUIERDA y más anchos: es lo que cambia todos los días. Los
-        // criterios se leen cada tanto y se escriben menos, así que no necesitan la
-        // mitad. El diseño original partía 50/50 porque las dos columnas cambiaban por
-        // semana; sin semana dejaron de pesar lo mismo.
-        <div className="grid min-h-0 flex-1 grid-cols-[3fr_2fr]">
+        // Las notas se llevan la parte grande. Un pendiente es UN RENGLÓN corto
+        // —"confirmar plantel de la 1"— y lo que necesita es alto, no ancho: darle más
+        // columna sólo alarga el blanco a la derecha del texto. Las notas son prosa
+        // libre, y ahí el ancho sí es lo que hace que se puedan leer.
+        <div className="grid min-h-0 flex-1 grid-cols-[2fr_3fr]">
           <ColumnaPendientes
             abiertos={abiertos}
             hechos={hechos}
@@ -137,18 +189,14 @@ export function CajonPlanificacion() {
 
 function Barra({
   abierto,
-  grande,
   hechos,
   totales,
   onAlternar,
-  onGrande,
 }: {
   abierto: boolean;
-  grande: boolean;
   hechos: number;
   totales: number;
   onAlternar: () => void;
-  onGrande: () => void;
 }) {
   const completo = totales > 0 && hechos === totales;
   return (
@@ -186,23 +234,9 @@ function Barra({
 
       <span className="flex items-center gap-1.5 text-[12px] font-medium text-muted-foreground">
         <StickyNote className="h-3.5 w-3.5" aria-hidden />
-        Criterios
+        Notas generales
       </span>
 
-      {abierto && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onGrande();
-          }}
-          className="ml-auto rounded p-1 text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
-          title={grande ? "Achicar el cajón" : "Agrandar el cajón"}
-          aria-label={grande ? "Achicar el cajón" : "Agrandar el cajón"}
-        >
-          {grande ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
-        </button>
-      )}
     </div>
   );
 }
@@ -344,7 +378,7 @@ function ItemPendiente({ pendiente }: { pendiente: Pendiente }) {
   );
 }
 
-// ── Criterios ────────────────────────────────────────────────────────────────
+// ── Notas generales ────────────────────────────────────────────────────────────────
 
 const DEBOUNCE_MS = 600;
 
@@ -401,7 +435,7 @@ function ColumnaNotas({ inicial }: { inicial: NotaCajon }) {
     <section className="flex min-h-0 flex-col">
       <div className="flex items-baseline gap-2 px-3 pt-2">
         <h2 className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-          Criterios
+          Notas generales
         </h2>
         <span
           className={cn(
@@ -418,12 +452,12 @@ function ColumnaNotas({ inicial }: { inicial: NotaCajon }) {
         value={borrador}
         onChange={(e) => setBorrador(e.target.value)}
         maxLength={20_000}
-        aria-label="Criterios de planificación"
+        aria-label="Notas generales de planificación"
         // El placeholder tiene que hacer el reparto con las notas del día, o el primero
         // que quiera anotar "el jueves falta Juan" lo escribe acá y el jueves no aparece
         // en ningún lado. Es la única parte de la UI donde se puede explicar la
         // diferencia en el momento en que importa.
-        placeholder="Criterios y datos que no vencen: “los desarmes de Olivos van con el camión chico”, teléfonos, acuerdos.&#10;&#10;Lo que pasa un día puntual va en la nota del día, arriba en la grilla."
+        placeholder="Lo que no vence: “los desarmes de Olivos van con el camión chico”, teléfonos, acuerdos.&#10;&#10;Lo que pasa un día puntual va en la nota del día, arriba en la grilla."
         className="mx-3 mt-1.5 min-h-0 flex-1 resize-none rounded-md border bg-background px-2.5 py-2 text-[12px] leading-relaxed outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
       />
 

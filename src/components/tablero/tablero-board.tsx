@@ -941,106 +941,115 @@ export function TableroBoard() {
         onDragCancel={() => setArrastrando(null)}
       >
         <div className="flex min-h-0 flex-1 overflow-hidden rounded-md border">
-          {cuadrillasVisibles.length > 0 ? (
-            <TableroGrid
-              contenedorRef={asignarContenedor}
-              cuadrillas={cuadrillasVisibles}
-              fechas={fechas}
-              feriados={feriados}
-              semanaCentrada={semanaCentrada}
-              asignaciones={data.asignaciones}
-              ots={otsPorId}
-              planPorObra={planPorObra}
-              partes={data.partes}
-              notas={notas ?? []}
-              bloqueSeleccionado={panel?.bloqueKey ?? resaltado}
-              hoy={hoyISO}
-              domingosAbiertos={domingosAbiertos}
-              onToggleDomingo={alternarDomingo}
-              // El parte NO se carga desde el tablero: se navega al listado.
-              //
-              // Son dos personas y dos momentos —quien carga lo hace a la mañana con los
-              // WhatsApp del día anterior, el planificador mira el tablero para
-              // planificar— y el formulario del parte es el que alimenta el costo de mano
-              // de obra. Con dos lugares para cargarlo, terminan divergiendo.
-              onCerrarJornada={(b, accion: NonNullable<AccionCierre>) => {
-                setPanel(null);
-                // CREAR un parte se hace sólo en el listado. VER o corregir uno ya
-                // cargado sigue abriendo el formulario acá: el listado todavía no edita,
-                // y mandar a una pantalla que no puede hacer el trabajo es peor que
-                // abrir el formulario que sí puede.
-                if (accion.tipo === "cerrar") {
-                  router.push(`/partes?fecha=${accion.fecha}&ot=${b.otId}`);
-                  return;
-                }
-                setCierre({
-                  bloqueKey: b.key,
-                  asignacionId: accion.asignacionId,
-                  fecha: accion.fecha,
-                  parteId: accion.parteId,
-                });
-              }}
-              // Con el modal de cierre abierto no se abre ningun panel. El clic que
-              // cierra el menu ⋮ llega a la tarjeta DESPUES de que el menu se
-              // desmontó, asi que una guarda por "menu abierto" llega tarde.
-              onAbrirBloque={(b) => {
-                if (cierre) return;
-                // Una tarea no tiene ficha en Odoo que mostrar: el clic abre su propio
-                // diálogo, que es el único lugar donde vive.
-                if (b.origen === "tarea") return setTareaEnEdicion(b);
-                setPanel({ otId: b.otId, bloqueKey: b.key });
-              }}
-              onFraccion={(b, f: FraccionStr) =>
-                b.origen === "tarea"
-                  ? actualizarTarea.mutate({ ids: b.ids, cambio: { fraccion: f } })
-                  : actualizar.mutate({ ids: b.ids, cambio: { fraccion: f } })
-              }
-              onEditarJornadas={(b) => setJornadasDe(b.otId)}
-              // CONFIRMAR es el único momento donde el permiso frena. Volver a
-              // tentativa nunca pregunta nada: aflojar el compromiso no necesita
-              // permiso de nadie.
-              onEstado={(b, estado) => {
-                const aplicar = () =>
-                  actualizar.mutate({
-                    ids: b.ids,
-                    cambio: { estado },
-                    // De qué obra y de qué días son estos ids. Viaja desde acá porque el
-                    // bloque ya lo sabe: sin esto el servidor tendría que releer Odoo
-                    // para poder anotar quién confirmó, y le sumaría ~800 ms al gesto.
-                    // Las tareas de operaciones no tienen OT (otId 0) y no se registran:
-                    // no son un compromiso con un cliente.
-                    contexto:
-                      b.otId > 0 ? { otId: b.otId, fechas: b.fechas } : undefined,
+          {/* Grilla y cajón comparten COLUMNA, y la bandeja queda afuera. Antes el cajón
+              era hermano de toda la fila y al abrirlo le comía 240px también a la
+              bandeja — que es una lista vertical de 36 obras que se scrollea, o sea lo
+              que menos conviene achicar. El cajón habla de la grilla; que le saque alto
+              sólo a ella. */}
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            {cuadrillasVisibles.length > 0 ? (
+              <TableroGrid
+                contenedorRef={asignarContenedor}
+                cuadrillas={cuadrillasVisibles}
+                fechas={fechas}
+                feriados={feriados}
+                semanaCentrada={semanaCentrada}
+                asignaciones={data.asignaciones}
+                ots={otsPorId}
+                planPorObra={planPorObra}
+                partes={data.partes}
+                notas={notas ?? []}
+                bloqueSeleccionado={panel?.bloqueKey ?? resaltado}
+                hoy={hoyISO}
+                domingosAbiertos={domingosAbiertos}
+                onToggleDomingo={alternarDomingo}
+                // El parte NO se carga desde el tablero: se navega al listado.
+                //
+                // Son dos personas y dos momentos —quien carga lo hace a la mañana con los
+                // WhatsApp del día anterior, el planificador mira el tablero para
+                // planificar— y el formulario del parte es el que alimenta el costo de mano
+                // de obra. Con dos lugares para cargarlo, terminan divergiendo.
+                onCerrarJornada={(b, accion: NonNullable<AccionCierre>) => {
+                  setPanel(null);
+                  // CREAR un parte se hace sólo en el listado. VER o corregir uno ya
+                  // cargado sigue abriendo el formulario acá: el listado todavía no edita,
+                  // y mandar a una pantalla que no puede hacer el trabajo es peor que
+                  // abrir el formulario que sí puede.
+                  if (accion.tipo === "cerrar") {
+                    router.push(`/partes?fecha=${accion.fecha}&ot=${b.otId}`);
+                    return;
+                  }
+                  setCierre({
+                    bloqueKey: b.key,
+                    asignacionId: accion.asignacionId,
+                    fecha: accion.fecha,
+                    parteId: accion.parteId,
                   });
-                if (estado !== "confirmada") return aplicar();
+                }}
+                // Con el modal de cierre abierto no se abre ningun panel. El clic que
+                // cierra el menu ⋮ llega a la tarjeta DESPUES de que el menu se
+                // desmontó, asi que una guarda por "menu abierto" llega tarde.
+                onAbrirBloque={(b) => {
+                  if (cierre) return;
+                  // Una tarea no tiene ficha en Odoo que mostrar: el clic abre su propio
+                  // diálogo, que es el único lugar donde vive.
+                  if (b.origen === "tarea") return setTareaEnEdicion(b);
+                  setPanel({ otId: b.otId, bloqueKey: b.key });
+                }}
+                onFraccion={(b, f: FraccionStr) =>
+                  b.origen === "tarea"
+                    ? actualizarTarea.mutate({ ids: b.ids, cambio: { fraccion: f } })
+                    : actualizar.mutate({ ids: b.ids, cambio: { fraccion: f } })
+                }
+                onEditarJornadas={(b) => setJornadasDe(b.otId)}
+                // CONFIRMAR es el único momento donde el permiso frena. Volver a
+                // tentativa nunca pregunta nada: aflojar el compromiso no necesita
+                // permiso de nadie.
+                onEstado={(b, estado) => {
+                  const aplicar = () =>
+                    actualizar.mutate({
+                      ids: b.ids,
+                      cambio: { estado },
+                      // De qué obra y de qué días son estos ids. Viaja desde acá porque el
+                      // bloque ya lo sabe: sin esto el servidor tendría que releer Odoo
+                      // para poder anotar quién confirmó, y le sumaría ~800 ms al gesto.
+                      // Las tareas de operaciones no tienen OT (otId 0) y no se registran:
+                      // no son un compromiso con un cliente.
+                      contexto:
+                        b.otId > 0 ? { otId: b.otId, fechas: b.fechas } : undefined,
+                    });
+                  if (estado !== "confirmada") return aplicar();
 
-                const f = candados?.get(b.otId);
-                // El permiso primero: es el único que puede hacer que el trabajo sea
-                // ilegal. Si pasa, recién ahí se mira el acuerdo comercial. Se evalúa una
-                // sola por vez a propósito — dos diálogos encadenados para un clic se
-                // leen como que el sistema no quiere que trabajes.
-                const friccion =
-                  f?.friccion ?? friccionDePiso(otsPorId.get(b.otId) ?? { fechaDesde: null }, b.fechas[0]);
-                if (!friccion) return aplicar();
+                  const f = candados?.get(b.otId);
+                  // El permiso primero: es el único que puede hacer que el trabajo sea
+                  // ilegal. Si pasa, recién ahí se mira el acuerdo comercial. Se evalúa una
+                  // sola por vez a propósito — dos diálogos encadenados para un clic se
+                  // leen como que el sistema no quiere que trabajes.
+                  const friccion =
+                    f?.friccion ?? friccionDePiso(otsPorId.get(b.otId) ?? { fechaDesde: null }, b.fechas[0]);
+                  if (!friccion) return aplicar();
 
-                setPedidoCandado({
-                  otId: b.otId,
-                  friccion,
-                  pedidosPrevios: f?.pedidosPrevios ?? 0,
-                  confirmar: aplicar,
-                });
-              }}
-              candados={otsBloqueadas}
-              onQuitar={volverABandeja}
-              onCrearTarea={(cuadrillaId, fecha) => setTareaNueva({ cuadrillaId, fecha })}
-              onTareaHecha={(b, hecha) => actualizarTarea.mutate({ ids: b.ids, cambio: { hecha } })}
-              onEditarTarea={(b) => setTareaEnEdicion(b)}
-            />
-          ) : (
-            <div className="flex flex-1 items-center justify-center p-6 text-center text-sm text-muted-foreground">
-              No hay cuadrillas visibles. Elegí cuáles ver desde el selector de arriba.
-            </div>
-          )}
+                  setPedidoCandado({
+                    otId: b.otId,
+                    friccion,
+                    pedidosPrevios: f?.pedidosPrevios ?? 0,
+                    confirmar: aplicar,
+                  });
+                }}
+                candados={otsBloqueadas}
+                onQuitar={volverABandeja}
+                onCrearTarea={(cuadrillaId, fecha) => setTareaNueva({ cuadrillaId, fecha })}
+                onTareaHecha={(b, hecha) => actualizarTarea.mutate({ ids: b.ids, cambio: { hecha } })}
+                onEditarTarea={(b) => setTareaEnEdicion(b)}
+              />
+            ) : (
+              <div className="flex flex-1 items-center justify-center p-6 text-center text-sm text-muted-foreground">
+                No hay cuadrillas visibles. Elegí cuáles ver desde el selector de arriba.
+              </div>
+            )}
+
+            <CajonPlanificacion />
+          </div>
 
           <PanelSinAsignar
             ots={sinAsignar}
@@ -1078,11 +1087,6 @@ export function TableroBoard() {
           )}
         </DragOverlay>
       </DndContext>
-
-      {/* El cajón va DENTRO del flex-col y después del área de scroll: así abrirlo le
-          saca alto a la grilla en vez de taparla. Es hermano y no hijo del DndContext
-          porque no participa del arrastre — nada se suelta ahí. */}
-      <CajonPlanificacion />
 
       {/* Alta y edición comparten diálogo: los campos son los mismos y la diferencia
           —crear filas nuevas o actualizar el grupo entero— la resuelve onGuardar. */}

@@ -14,7 +14,7 @@ import {
 //
 //   GET                                 → { nota, pendientes }
 //   PUT     { texto, updatedAt }        → guarda las notas · 409 si otro escribió antes
-//   POST    { texto }                   → agrega un pendiente al final
+//   POST    { texto }                   → agrega al final, devuelve { pendiente }
 //   PATCH   { id, hecho? | texto? }     → tilda / corrige
 //   DELETE  { pendienteId }
 //
@@ -88,8 +88,8 @@ export async function POST(req: NextRequest) {
   try {
     const db = await createClient();
     const { data } = await db.auth.getUser();
-    await agregarPendiente(db, parsed.data.texto, data.user?.id ?? null);
-    return NextResponse.json({ ok: true });
+    const pendiente = await agregarPendiente(db, parsed.data.texto, data.user?.id ?? null);
+    return NextResponse.json({ pendiente });
   } catch (e) {
     return errorResponse(e);
   }

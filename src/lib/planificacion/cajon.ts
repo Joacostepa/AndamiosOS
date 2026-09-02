@@ -79,10 +79,17 @@ async function leerNota(db: DB): Promise<NotaCajon> {
 /**
  * Borra los pendientes tildados hace más de DIAS_RETENCION_HECHOS.
  *
- * VA EN LA LECTURA a propósito, y no en un cron: no hay scheduler en este proyecto, la
- * tabla es diminuta, y lo que se busca es que la lista esté limpia CUANDO ALGUIEN LA
- * ABRE. Si nadie abre el cajón nada se purga, que es exactamente lo que corresponde:
- * no hay a quién molestarle la vista.
+ * VA EN LA LECTURA y no en un cron: no hay scheduler en este proyecto, la tabla es
+ * diminuta, y lo que se busca es que la lista esté limpia CUANDO ALGUIEN LA ABRE. Si
+ * nadie abre el cajón nada se purga, que es lo que corresponde: no hay a quién
+ * molestarle la vista.
+ *
+ * Pero NO se espera antes de leer. Encadenada, esta purga le sumaba un viaje entero a
+ * cada carga, y como al principio el cliente invalidaba después de cada mutación, eso
+ * era un DELETE de más por cada tecla. Va en paralelo con los dos selects: si justo
+ * borra algo que el select alcanzó a traer, ese ítem sobrevive un render de más adentro
+ * del plegable de hechos, que está cerrado. Es mantenimiento, no un dato que alguien
+ * esté esperando.
  */
 async function purgarHechosViejos(db: DB): Promise<void> {
   const corte = new Date(Date.now() - DIAS_RETENCION_HECHOS * 86_400_000).toISOString();
@@ -97,9 +104,8 @@ async function purgarHechosViejos(db: DB): Promise<void> {
 }
 
 export async function leerCajon(db: DB): Promise<Cajon> {
-  await purgarHechosViejos(db);
-
   const [nota, pendientes] = await Promise.all([
+    purgarHechosViejos(db),
     leerNota(db),
     db
       .from(TABLA_PENDIENTES)
@@ -110,7 +116,7 @@ export async function leerCajon(db: DB): Promise<Cajon> {
         if (error) throw new Error(error.message);
         return (data ?? []).map((f) => mapearPendiente(f as unknown as FilaPendiente));
       }),
-  ]);
+  ]).then(([, n, p]) => [n, p] as const);
 
   return { nota, pendientes };
 }
@@ -153,7 +159,7 @@ export async function agregarPendiente(
   db: DB,
   texto: string,
   autorId: string | null,
-): Promise<void> {
+): Promise<Pendiente> {
   const { data, error: errorMax } = await db
     .from(TABLA_PENDIENTES)
     .select("posicion")
@@ -162,10 +168,15 @@ export async function agregarPendiente(
   if (errorMax) throw new Error(errorMax.message);
 
   const posicion = (data?.[0]?.posicion ?? 0) + 1;
-  const { error } = await db
+  // Devuelve la fila: el cliente la pintó optimista con un id inventado y necesita el
+  // real para poder tildarla o borrarla sin recargar la lista entera.
+  const { data: creada, error } = await db
     .from(TABLA_PENDIENTES)
-    .insert({ texto, posicion, autor_id: autorId });
+    .insert({ texto, posicion, autor_id: autorId })
+    .select(CAMPOS_PENDIENTE)
+    .single();
   if (error) throw new Error(error.message);
+  return mapearPendiente(creada as unknown as FilaPendiente);
 }
 
 /**

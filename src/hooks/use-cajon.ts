@@ -1,11 +1,22 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Cajon, CambioPendiente, NotaCajon } from "@/lib/tablero/tipos-cajon";
+import type { Cajon, CambioPendiente, NotaCajon, Pendiente } from "@/lib/tablero/tipos-cajon";
 
 // Cajón de planificación. Todo pasa por /api/planificacion/cajon, que habla con Supabase.
 
 const CLAVE = ["cajon-planificacion"] as const;
+
+// LAS TRES MUTACIONES DE PENDIENTES SON OPTIMISTAS Y NINGUNA INVALIDA.
+//
+// La primera versión sólo hacía optimista el tildado, con el argumento de que agregar y
+// borrar eran "gestos de a uno". Era falso: se cargan cinco pendientes seguidos. Y encima
+// cada mutación invalidaba, así que un Enter costaba POST → GET → y ese GET arrastraba la
+// purga de hechos viejos: tres o cuatro viajes antes de que se moviera un píxel.
+//
+// Ahora la caché se actualiza a mano con lo que devuelve el servidor y no hay refetch.
+// Lo que escriba otra persona llega igual: la query refetchea al volver a la pestaña, y
+// el cajón se remonta cada vez que se abre.
 
 /** Lo tira el guardado de notas cuando otro escribió primero. Trae la versión de al lado. */
 export class ConflictoNota extends Error {
@@ -41,11 +52,6 @@ export function useCajon() {
   });
 }
 
-function useInvalidar() {
-  const qc = useQueryClient();
-  return () => qc.invalidateQueries({ queryKey: CLAVE });
-}
-
 /**
  * Guarda las notas mandando el `updatedAt` que se leyó.
  *
@@ -68,27 +74,76 @@ export function useGuardarNota() {
   });
 }
 
+/**
+ * Agrega un pendiente, optimista.
+ *
+ * El ítem se pinta con un id inventado y el servidor devuelve la fila real, que lo
+ * reemplaza. Sin ese reemplazo el ítem quedaría con un id que no existe y el primer
+ * tilde o borrado se iría contra la nada.
+ */
 export function useAgregarPendiente() {
-  const invalidar = useInvalidar();
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: (texto: string) =>
-      pedir("/api/planificacion/cajon", { method: "POST", body: JSON.stringify({ texto }) }),
-    onSuccess: invalidar,
+      pedir<{ pendiente: Pendiente }>("/api/planificacion/cajon", {
+        method: "POST",
+        body: JSON.stringify({ texto }),
+      }),
+    onMutate: async (texto) => {
+      await qc.cancelQueries({ queryKey: CLAVE });
+      const previo = qc.getQueryData<Cajon>(CLAVE);
+      const provisorio = `temp:${crypto.randomUUID()}`;
+      qc.setQueryData<Cajon>(CLAVE, (prev) =>
+        prev
+          ? {
+              ...prev,
+              pendientes: [
+                ...prev.pendientes,
+                {
+                  id: provisorio,
+                  texto,
+                  hecho: false,
+                  posicion: Math.max(0, ...prev.pendientes.map((p) => p.posicion)) + 1,
+                  hechoAt: null,
+                  autorNombre: null,
+                },
+              ],
+            }
+          : prev,
+      );
+      return { previo, provisorio };
+    },
+    onSuccess: ({ pendiente }, _t, ctx) => {
+      qc.setQueryData<Cajon>(CLAVE, (prev) =>
+        prev
+          ? {
+              ...prev,
+              pendientes: prev.pendientes.map((p) =>
+                p.id === ctx?.provisorio ? pendiente : p,
+              ),
+            }
+          : prev,
+      );
+    },
+    onError: (_e, _t, ctx) => {
+      if (ctx?.previo) qc.setQueryData(CLAVE, ctx.previo);
+    },
   });
 }
 
 /**
- * Tilda / corrige un pendiente, OPTIMISTA — la única mutación del cajón que lo es.
+ * Tilda / corrige un pendiente, optimista.
  *
- * Un checkbox es un gesto de ráfaga: se tildan tres seguidos y el ida y vuelta se siente
- * como que la casilla no responde. El resto (agregar, borrar) son gestos de a uno y
- * pueden esperar la confirmación, igual que las notas de la jornada.
+ * Un ítem recién agregado que todavía no volvió del servidor tiene id provisorio: no se
+ * manda nada, sólo se pinta. El PATCH contra un id inventado sería un 400 seguro.
  */
 export function useActualizarPendiente() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (v: { id: string } & CambioPendiente) =>
-      pedir("/api/planificacion/cajon", { method: "PATCH", body: JSON.stringify(v) }),
+    mutationFn: (v: { id: string } & CambioPendiente) => {
+      if (v.id.startsWith("temp:")) return Promise.resolve({ ok: true });
+      return pedir("/api/planificacion/cajon", { method: "PATCH", body: JSON.stringify(v) });
+    },
     onMutate: async ({ id, ...cambio }) => {
       await qc.cancelQueries({ queryKey: CLAVE });
       const previo = qc.getQueryData<Cajon>(CLAVE);
@@ -102,7 +157,7 @@ export function useActualizarPendiente() {
                       ...p,
                       ...cambio,
                       // El sello viaja junto: de él depende de qué lado del plegable de
-                      // hechos cae el ítem mientras el servidor confirma.
+                      // hechos cae el ítem.
                       hechoAt:
                         cambio.hecho === undefined
                           ? p.hechoAt
@@ -120,18 +175,30 @@ export function useActualizarPendiente() {
     onError: (_e, _v, ctx) => {
       if (ctx?.previo) qc.setQueryData(CLAVE, ctx.previo);
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: CLAVE }),
   });
 }
 
+/** Borra un pendiente, optimista. Ver la nota de arriba sobre los ids provisorios. */
 export function useBorrarPendiente() {
-  const invalidar = useInvalidar();
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: (pendienteId: string) =>
-      pedir("/api/planificacion/cajon", {
+    mutationFn: (pendienteId: string) => {
+      if (pendienteId.startsWith("temp:")) return Promise.resolve({ ok: true });
+      return pedir("/api/planificacion/cajon", {
         method: "DELETE",
         body: JSON.stringify({ pendienteId }),
-      }),
-    onSuccess: invalidar,
+      });
+    },
+    onMutate: async (pendienteId) => {
+      await qc.cancelQueries({ queryKey: CLAVE });
+      const previo = qc.getQueryData<Cajon>(CLAVE);
+      qc.setQueryData<Cajon>(CLAVE, (prev) =>
+        prev ? { ...prev, pendientes: prev.pendientes.filter((p) => p.id !== pendienteId) } : prev,
+      );
+      return { previo };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.previo) qc.setQueryData(CLAVE, ctx.previo);
+    },
   });
 }

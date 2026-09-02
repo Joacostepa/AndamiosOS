@@ -15,8 +15,16 @@
 
 export type Rol = "admin" | "operativo" | "deposito" | "campo";
 
-/** El circuito operativo terminado. Todo lo demás queda fuera hasta que se trabaje. */
-const MODULOS_ARRANQUE = ["/planificacion", "/ordenes-trabajo", "/partes"];
+/**
+ * El circuito operativo terminado. Todo lo demás queda fuera hasta que se trabaje.
+ *
+ * `/alertas` está acá porque la campanita del header la ve TODO EL MUNDO y lleva a esa
+ * página: dejarla afuera daría un badge con un número que al hacer clic rebota al
+ * inicio. Abrirla es seguro sin mirar el rol —las políticas de RLS de `alertas` ya
+ * filtran por destinatario, así que cada uno ve sólo lo suyo—; lo que no se puede es
+ * mostrar el aviso y esconder el destino.
+ */
+const MODULOS_ARRANQUE = ["/planificacion", "/ordenes-trabajo", "/partes", "/alertas"];
 
 /** null = ve todo. */
 const RUTAS_POR_ROL: Record<Rol, string[] | null> = {

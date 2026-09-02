@@ -1,6 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { z } from "zod";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { declararHabilitacion, fetchGestionDe } from "@/lib/habilitaciones/servicio";
+import { fetchOt, leerOt } from "@/lib/odoo/habilitaciones";
+import { claveDe, crearAlertas } from "@/lib/alertas/servicio";
 import { errorResponse, invalido, parseOtId, sesion, sincronizarLuego } from "../../_comun";
 
 // POST /api/habilitaciones/:otId/habilitacion — declarar la obra habilitada, o revertir.
@@ -42,8 +45,45 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ otId: stri
       autorId: userId,
     });
     sincronizarLuego(db, otId);
+    if (parsed.data.habilitar) avisarHabilitada(db, otId, parsed.data.faltan > 0);
     return NextResponse.json({ ok: true, gestion: await fetchGestionDe(db, otId) });
   } catch (e) {
     return errorResponse(e);
   }
+}
+
+/**
+ * Avisa a operaciones que la obra quedó habilitada.
+ *
+ * Es EL aviso de este módulo para la otra oficina: habilitar es el gate que destraba la
+ * obra en el tablero, y hasta ahora quien planifica se enteraba sólo si volvía a mirar
+ * la pantalla. Si Agustina habilita a las cuatro de la tarde, operaciones lo sabe a las
+ * cuatro de la tarde.
+ *
+ * Corre DESPUÉS de responder, igual que el push a Odoo: necesita leer el título de la OT
+ * —otro RPC de ~800 ms— y nadie va a esperar por el texto de una notificación. Sólo al
+ * habilitar: revertir no genera aviso, y por la clave única tampoco lo genera volver a
+ * habilitar después.
+ */
+function avisarHabilitada(db: SupabaseClient, otId: number, porExcepcion: boolean) {
+  after(async () => {
+    try {
+      const ot = await fetchOt(otId);
+      const titulo = ot ? leerOt(ot.ot).titulo : `OT ${otId}`;
+      await crearAlertas(db, [
+        {
+          tipo: "ot_habilitada",
+          clave: claveDe("ot_habilitada", otId),
+          titulo: `Habilitada — ${titulo}`,
+          descripcion: porExcepcion
+            ? "Habilitada por excepción, con requisitos sin aprobar. Ya se puede programar."
+            : "Ya se puede programar.",
+          prioridad: "alta",
+          enlace: `/ordenes-trabajo/${otId}`,
+        },
+      ]);
+    } catch (e) {
+      console.error(`[alertas] no se pudo avisar la habilitación de la OT ${otId}`, e);
+    }
+  });
 }

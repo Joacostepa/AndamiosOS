@@ -10,7 +10,7 @@
 // está vacío en las 1003 OTs; el que está cargado al 100% es x_order_id. Por eso no hay
 // enlaces a /obras/[id]: del lado de Odoo esa relación no existe.
 
-import { searchRead, searchCount, read, executeKw } from "./client";
+import { searchRead, searchCount, read, executeKw, write } from "./client";
 import type {
   ConteosOrdenes,
   FiltroOrdenes,
@@ -18,6 +18,7 @@ import type {
   ListadoOrdenes,
   OrdenDetalle,
   OrdenListado,
+  Urgencia,
 } from "@/lib/tablero/tipos-orden";
 // Relativo y no con alias: es el único import de VALOR que cruza de lib/odoo a
 // lib/tablero (los demás son de tipos, que se borran al compilar), y así el módulo se
@@ -60,7 +61,7 @@ const CAMPOS = [
   "x_name", "x_estado", "x_tipo", "x_order_id", "x_fecha_programada", "x_fecha_firmeza",
   "x_fecha_comprometida", "x_hab_semaforo", "x_hab_alerta", "x_grupo_prog",
   "x_cuadrilla_prevista_id", "x_jornadas_num", "x_personal_por_jornada", "x_dias_obra",
-  "x_cant_docs", "x_es_adicional", "x_aprobada_comercial",
+  "x_cant_docs", "x_es_adicional", "x_aprobada_comercial", "x_urgencia",
 ];
 
 type FilaOt = {
@@ -82,6 +83,7 @@ type FilaOt = {
   x_cant_docs: number | false;
   x_es_adicional: boolean;
   x_aprobada_comercial: boolean;
+  x_urgencia: string | false;
 };
 
 // El id de la acción se resuelve una vez: es estable y evita un RPC por request.
@@ -111,6 +113,9 @@ function mapOt(r: FilaOt, base: string, actionId: number | null): OrdenListado {
     fechaFirmeza: str(r.x_fecha_firmeza),
     habSemaforo: str(r.x_hab_semaforo) ?? "rojo",
     habAlerta: str(r.x_hab_alerta),
+    // El vacío se lee como `baja`, igual que en el tablero: Odoo deja el selection sin
+    // valor en las OTs viejas y "sin marcar" y "baja" significan lo mismo.
+    urgencia: (str(r.x_urgencia) as Urgencia | null) ?? "baja",
     grupoProg: str(r.x_grupo_prog),
     cuadrillaPrevista: m2oName(r.x_cuadrilla_prevista_id),
     jornadas: num(r.x_jornadas_num),
@@ -155,7 +160,7 @@ const CAMPOS_FICHA = [
   ...CAMPOS,
   "x_desvio", "x_horas_hombre", "x_jornadas_hombre_estimadas",
   "x_costo_mano_obra", "x_costo_fletes", "x_costo_total",
-  "x_hab_etapa", "x_hab_vencimiento",
+  "x_hab_etapa", "x_hab_vencimiento", "x_motivo_urgencia",
   "x_contacto_obra", "x_tel_obra", "x_observaciones", "x_detalle_tecnico",
 ];
 
@@ -245,6 +250,7 @@ export async function fetchOrdenDetalle(id: number): Promise<OrdenDetalle | null
     costoTotal: num(fila.x_costo_total as number | false),
     habEtapa: str(fila.x_hab_etapa as string | false),
     habVencimiento: str(fila.x_hab_vencimiento as string | false),
+    motivoUrgencia: str(fila.x_motivo_urgencia as string | false),
     contactoObra: str(fila.x_contacto_obra as string | false),
     telObra: str(fila.x_tel_obra as string | false),
     observaciones: str(fila.x_observaciones as string | false),
@@ -255,6 +261,43 @@ export async function fetchOrdenDetalle(id: number): Promise<OrdenDetalle | null
     ventaId: ordenVentaId,
     jornadasPlanificadas,
   };
+}
+
+/**
+ * Marca la urgencia de una OT. Es la ÚNICA escritura de este módulo a Odoo.
+ *
+ * Existe porque hasta ahora la urgencia sólo se podía marcar entrando a Odoo, y por eso
+ * no la marcó nadie: 0 de 64 OTs activas en `alta`. El tablero ya sabía pintarla —borde
+ * rojo, grupo de urgentes— y la maquinaria estaba esperando un dato que nadie podía
+ * cargar desde donde trabaja.
+ *
+ * El motivo se borra al bajar de `alta`: un "se lo prometí al cliente para el jueves"
+ * colgado de una OT que ya no es urgente miente sobre por qué está donde está.
+ */
+export async function marcarUrgencia(
+  otId: number,
+  urgencia: Urgencia,
+  motivo: string | null,
+): Promise<void> {
+  await write("x_aba_orden_trabajo", [otId], {
+    x_urgencia: urgencia,
+    x_motivo_urgencia: urgencia === "alta" ? (motivo ?? "") : "",
+  });
+}
+
+/** Las OTs activas marcadas como urgentes. Para el barrido de notificaciones. */
+export async function fetchOtsUrgentes(): Promise<{ id: number; titulo: string; motivo: string | null }[]> {
+  const filas = await searchRead<{ id: number; x_name: string | false; x_motivo_urgencia: string | false }>(
+    "x_aba_orden_trabajo",
+    [...ACTIVAS, ["x_urgencia", "=", "alta"]],
+    ["x_name", "x_motivo_urgencia"],
+    { limit: 200 },
+  );
+  return filas.map((f) => ({
+    id: f.id,
+    titulo: str(f.x_name) ?? `OT #${f.id}`,
+    motivo: str(f.x_motivo_urgencia),
+  }));
 }
 
 /** Cuántas OTs hay por estado, para el encabezado. Barato y sirve de control. */

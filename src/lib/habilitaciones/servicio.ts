@@ -15,6 +15,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   escribirInputs, fetchOt, fetchOtsActivas, leerOt, otsExistentes, urlOdooOt, urlOdooVenta,
 } from "@/lib/odoo/habilitaciones";
+import { claveDe, crearAlertas } from "@/lib/alertas/servicio";
 import { derivarInputs, hoyISO, agruparBandeja, DIAS_DEDUP_CONSULTA } from "./derivacion";
 import type {
   Bandeja, EstadoRequisito, FichaHabilitacion, FilaBandeja, Gestion, InputsHabilitacion,
@@ -46,9 +47,17 @@ type FilaHabOt = {
  * llegadas` sin que nadie la dé de alta. Eso se logra acá — no hay webhook ni alta
  * manual: la bandeja lee las OTs activas de Odoo y siembra la fila local que falte, con
  * `triage = null`, que es exactamente lo que significa "recién llegada".
+ *
+ * Devuelve además QUÉ OTs se sembraron en esta corrida. Ese dato es la detección de "OT
+ * nueva" para las notificaciones: acá y en ningún otro lado se sabe que una OT apareció
+ * por primera vez, porque las OTs no se dan de alta en Supabase — se descubren leyendo
+ * Odoo. El aviso lo crea fetchBandeja, que es quien tiene los títulos.
  */
-async function cabecerasDe(db: DB, otIds: number[]): Promise<Map<number, FilaHabOt>> {
-  if (otIds.length === 0) return new Map();
+async function cabecerasDe(
+  db: DB,
+  otIds: number[],
+): Promise<{ mapa: Map<number, FilaHabOt>; nuevas: number[] }> {
+  if (otIds.length === 0) return { mapa: new Map(), nuevas: [] };
 
   const { data, error } = await db
     .from("hab_ots")
@@ -68,7 +77,7 @@ async function cabecerasDe(db: DB, otIds: number[]): Promise<Map<number, FilaHab
     for (const f of creadas ?? []) mapa.set(f.odoo_ot_id, f as FilaHabOt);
   }
 
-  return mapa;
+  return { mapa, nuevas: faltantes };
 }
 
 // ─── Bandeja ────────────────────────────────────────────────────────────────
@@ -76,7 +85,7 @@ async function cabecerasDe(db: DB, otIds: number[]): Promise<Map<number, FilaHab
 export async function fetchBandeja(db: DB): Promise<Bandeja> {
   const otsOdoo = await fetchOtsActivas();
   const otIds = otsOdoo.map((o) => o.ot.id);
-  const cabeceras = await cabecerasDe(db, otIds);
+  const { mapa: cabeceras, nuevas } = await cabecerasDe(db, otIds);
 
   const [requisitos, notas] = await Promise.all([
     db.from("hab_requisitos").select("odoo_ot_id, estado").in("odoo_ot_id", otIds),
@@ -124,6 +133,29 @@ export async function fetchBandeja(db: DB): Promise<Bandeja> {
       url: urlOdooOt(ot.id),
     };
   });
+
+  // El aviso de OT nueva. Va acá y no en cabecerasDe porque el título ("Armado · S01933
+  // · Granz SRL") sale de Odoo y sólo está armado a esta altura. Si falla, crearAlertas
+  // loguea y sigue: la bandeja no se cae por una notificación.
+  if (nuevas.length > 0) {
+    const porId = new Map(filas.map((f) => [f.otId, f]));
+    await crearAlertas(
+      db,
+      nuevas.map((otId) => {
+        const f = porId.get(otId);
+        return {
+          tipo: "ot_nueva" as const,
+          clave: claveDe("ot_nueva", otId),
+          titulo: f?.titulo ?? `OT ${otId}`,
+          descripcion: f?.fechaProgramada
+            ? `Programada para el ${f.fechaProgramada}. Falta triarla.`
+            : "Todavía sin fecha programada. Falta triarla.",
+          prioridad: "media" as const,
+          enlace: `/habilitaciones/${otId}`,
+        };
+      }),
+    );
+  }
 
   const grupos = agruparBandeja(filas);
   return {
@@ -186,7 +218,26 @@ export async function fetchFicha(db: DB, otId: number): Promise<FichaHabilitacio
   ]);
 
   const base = leerOt(enOdoo.ot);
-  const cab = cabeceras.get(otId);
+  const cab = cabeceras.mapa.get(otId);
+
+  // Si la OT se sembró ACÁ, el aviso tiene que salir igual. Entrar por la URL directa a
+  // una OT que todavía nadie vio es raro pero posible, y sin esto esa OT no avisaría
+  // NUNCA: la cabecera ya existiría, así que ni la bandeja ni el barrido la contarían
+  // como nueva y el aviso se perdería en silencio.
+  if (cabeceras.nuevas.length > 0) {
+    await crearAlertas(db, [
+      {
+        tipo: "ot_nueva",
+        clave: claveDe("ot_nueva", otId),
+        titulo: base.titulo,
+        descripcion: base.fechaProgramada
+          ? `Programada para el ${base.fechaProgramada}. Falta triarla.`
+          : "Todavía sin fecha programada. Falta triarla.",
+        prioridad: "media",
+        enlace: `/habilitaciones/${otId}`,
+      },
+    ]);
+  }
 
   return {
     otId: base.otId,

@@ -11,6 +11,16 @@ export type FiltroOrdenes =
   | "en_curso"
   | "cerradas";
 
+/**
+ * `x_urgencia` en Odoo. Es el único eje de prioridad que tiene la OT, y lo decide una
+ * persona: el tablero no lo deduce de la fecha ni del semáforo (ver panel-sin-asignar).
+ *
+ * ESTADO DEL DATO (medido el 2026-09-01 sobre las 64 OTs activas): 60 en baja, 4 en
+ * media, 0 en alta. Nadie marcó nunca una como urgente — hasta ahora sólo se podía
+ * hacer entrando a Odoo. Por eso la ficha de la OT tiene el botón para marcarla.
+ */
+export type Urgencia = "baja" | "media" | "alta";
+
 export type OrdenListado = {
   id: number;
   titulo: string;
@@ -24,6 +34,8 @@ export type OrdenListado = {
   fechaFirmeza: string | null;
   habSemaforo: string;
   habAlerta: string | null;
+  /** baja | media | alta. La carga una persona; Odoo la deja en `baja` por defecto. */
+  urgencia: Urgencia;
   /** a_con | b_sin: si tiene fecha programada o falta coordinar. */
   grupoProg: string | null;
   cuadrillaPrevista: string | null;
@@ -71,6 +83,8 @@ export type OrdenDetalle = OrdenListado & {
   costoTotal: number;
   habEtapa: string | null;
   habVencimiento: string | null;
+  /** Por qué es urgente. Sólo tiene sentido con urgencia = alta. */
+  motivoUrgencia: string | null;
   contactoObra: string | null;
   telObra: string | null;
   observaciones: string | null;

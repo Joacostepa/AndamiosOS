@@ -41,6 +41,9 @@ export async function updateSession(request: NextRequest) {
   //   Va acá y no la rama /api/informes-obra entera: las rutas de LECTURA del módulo sí
   //   requieren sesión. Este endpoint se protege con CRON_SECRET (ver su _comun.ts), que
   //   falla cerrado si la variable no está configurada.
+  // /api/alertas/barrido: el otro cron. Mismo caso y misma protección — y va la ruta
+  //   completa, no "/api/alertas": la campanita lee esa rama CON sesión, y abrirla entera
+  //   dejaría las alertas de todos accesibles sin login.
   // /cotizador y /api/public: cotizador hogareño para clientes finales (sin cuenta).
   const publicPaths = [
     "/login",
@@ -48,6 +51,7 @@ export async function updateSession(request: NextRequest) {
     "/api/odoo/sync",
     "/api/odoo/webhooks",
     "/api/informes-obra/generar",
+    "/api/alertas/barrido",
     "/cotizador",
     "/api/public",
   ];

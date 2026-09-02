@@ -6,6 +6,7 @@ import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { ArrowDown, ArrowLeft, ArrowUp, Check, ExternalLink, FileBarChart, MoreHorizontal, Square } from "lucide-react";
 import { useOrdenOdoo } from "@/hooks/use-ordenes-odoo";
+import { MarcarUrgencia } from "@/components/ordenes/marcar-urgencia";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { colorTipo, semaforo, CORAL } from "@/lib/tablero/colores";
@@ -100,6 +101,12 @@ export default function FichaOrdenPage({ params }: { params: Promise<{ id: strin
         >
           {ot.estado.replace("_", " ")}
         </span>
+      </div>
+
+      {/* La urgencia va arriba de todo y no dentro de un bloque: es lo único de esta
+          pantalla que se ESCRIBE, y es lo que cambia dónde aparece la OT en el tablero. */}
+      <div className="flex justify-end">
+        <MarcarUrgencia otId={ot.id} urgencia={ot.urgencia} motivo={ot.motivoUrgencia} />
       </div>
 
       {/* ── 1. Estimado contra real ── */}

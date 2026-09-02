@@ -3,6 +3,10 @@
     {
       "path": "/api/informes-obra/generar",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/alertas/barrido",
+      "schedule": "0 8 * * 1-5"
     }
   ]
 }

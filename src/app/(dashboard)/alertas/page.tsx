@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useAlertas, useMarkAlertaRead, type Alerta } from "@/hooks/use-alertas";
 import { PageHeader } from "@/components/shared/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -7,30 +8,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatRelativeDate } from "@/lib/utils/formatters";
-import {
-  AlertTriangle,
-  Bell,
-  CheckCircle,
-  FileWarning,
-  Package,
-} from "lucide-react";
+import { CheckCircle, ChevronRight } from "lucide-react";
+import { PRIORIDAD_COLORS, IconoAlerta } from "@/components/alertas/presentacion";
 import { cn } from "@/lib/utils";
 
-const PRIORIDAD_COLORS: Record<string, string> = {
-  critica: "bg-red-500/15 text-red-400 border-red-500/25",
-  alta: "bg-orange-500/15 text-orange-400 border-orange-500/25",
-  media: "bg-yellow-500/15 text-yellow-400 border-yellow-500/25",
-  baja: "bg-blue-500/15 text-blue-400 border-blue-500/25",
-};
-
-const TIPO_ICONS: Record<string, React.ReactNode> = {
-  documento_vencimiento: <FileWarning className="h-5 w-5" />,
-  stock_bajo_minimo: <Package className="h-5 w-5" />,
-  remito_pendiente: <AlertTriangle className="h-5 w-5" />,
-};
-
 export default function AlertasPage() {
-  const { data: alertas, isLoading } = useAlertas();
+  const { data, isLoading } = useAlertas();
   const markRead = useMarkAlertaRead();
 
   if (isLoading) {
@@ -42,17 +25,29 @@ export default function AlertasPage() {
     );
   }
 
-  const noLeidas = alertas?.filter((a) => !a.leida) || [];
-  const leidas = alertas?.filter((a) => a.leida) || [];
+  const alertas = data?.alertas ?? [];
+  const noLeidas = alertas.filter((a) => !a.leida);
+  const leidas = alertas.filter((a) => a.leida);
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Alertas"
-        description={`${noLeidas.length} alertas sin leer`}
-      />
+      <div className="flex items-start justify-between gap-4">
+        <PageHeader
+          title="Alertas"
+          description={`${noLeidas.length} ${noLeidas.length === 1 ? "alerta sin leer" : "alertas sin leer"}`}
+        />
+        {noLeidas.length > 1 && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => markRead.mutate(noLeidas.map((a) => a.id))}
+          >
+            Marcar todas leídas
+          </Button>
+        )}
+      </div>
 
-      {alertas && alertas.length > 0 ? (
+      {alertas.length > 0 ? (
         <div className="space-y-3">
           {noLeidas.length > 0 && (
             <div className="space-y-2">
@@ -72,7 +67,7 @@ export default function AlertasPage() {
           {leidas.length > 0 && (
             <div className="space-y-2">
               <h3 className="text-sm font-medium text-muted-foreground mt-6">
-                Leidas ({leidas.length})
+                Leídas ({leidas.length})
               </h3>
               {leidas.map((alerta) => (
                 <AlertaCard key={alerta.id} alerta={alerta} />
@@ -102,42 +97,64 @@ function AlertaCard({
   alerta: Alerta;
   onMarkRead?: () => void;
 }) {
-  return (
-    <Card
-      className={cn(
-        "transition-colors",
-        !alerta.leida && "border-primary/20 bg-primary/5"
-      )}
-    >
-      <CardContent className="flex items-start gap-4 py-4">
-        <div className="mt-0.5 text-muted-foreground">
-          {TIPO_ICONS[alerta.tipo] || <Bell className="h-5 w-5" />}
+  // EL AVISO TIENE QUE LLEVAR A ALGÚN LADO. Un cartel que dice "la obra se habilitó" y
+  // te deja a pie obliga a buscarla a mano, que es el trabajo que venía a ahorrar. Al
+  // entrar queda leída: si fuiste a verla, ya no es novedad.
+  const cuerpo = (
+    <CardContent className="flex items-start gap-4 py-4">
+      <div className="mt-0.5 text-muted-foreground">
+        <IconoAlerta tipo={alerta.tipo} className="h-5 w-5" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <p className="font-medium text-sm">{alerta.titulo}</p>
+          <Badge
+            variant="outline"
+            className={cn("text-xs", PRIORIDAD_COLORS[alerta.prioridad])}
+          >
+            {alerta.prioridad}
+          </Badge>
         </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <p className="font-medium text-sm">{alerta.titulo}</p>
-            <Badge
-              variant="outline"
-              className={cn("text-xs", PRIORIDAD_COLORS[alerta.prioridad])}
-            >
-              {alerta.prioridad}
-            </Badge>
-          </div>
-          {alerta.descripcion && (
-            <p className="text-sm text-muted-foreground mt-1">
-              {alerta.descripcion}
-            </p>
-          )}
-          <p className="text-xs text-muted-foreground mt-1">
-            {formatRelativeDate(alerta.created_at)}
+        {alerta.descripcion && (
+          <p className="text-sm text-muted-foreground mt-1">
+            {alerta.descripcion}
           </p>
-        </div>
-        {!alerta.leida && onMarkRead && (
-          <Button variant="ghost" size="sm" onClick={onMarkRead}>
-            Marcar leida
-          </Button>
         )}
-      </CardContent>
-    </Card>
+        <p className="text-xs text-muted-foreground mt-1">
+          {formatRelativeDate(alerta.created_at)}
+        </p>
+      </div>
+      {!alerta.leida && onMarkRead && (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={(e) => {
+            // El botón vive adentro del enlace: sin esto, marcar leído también navega.
+            e.preventDefault();
+            e.stopPropagation();
+            onMarkRead();
+          }}
+        >
+          Marcar leída
+        </Button>
+      )}
+      {alerta.enlace && (
+        <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
+      )}
+    </CardContent>
+  );
+
+  const clases = cn(
+    "transition-colors",
+    !alerta.leida && "border-primary/20 bg-primary/5",
+    alerta.enlace && "hover:border-primary/40",
+  );
+
+  if (!alerta.enlace) return <Card className={clases}>{cuerpo}</Card>;
+
+  return (
+    <Link href={alerta.enlace} onClick={() => onMarkRead?.()} className="block">
+      <Card className={clases}>{cuerpo}</Card>
+    </Link>
   );
 }

@@ -21,7 +21,8 @@ export default function DashboardPage() {
   const { data: obras, isLoading: obrasLoading } = useObras();
   const { data: stock, isLoading: stockLoading } = useStock();
   const { data: alertasCount } = useAlertasCount();
-  const { data: alertas } = useAlertas();
+  const { data: bandejaAlertas } = useAlertas();
+  const alertas = bandejaAlertas?.alertas;
   const { data: remitos } = useRemitos();
   const { data: personal } = usePersonal();
   const { data: incidentes } = useIncidentes();

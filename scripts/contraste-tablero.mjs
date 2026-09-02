@@ -225,7 +225,10 @@ const TEXTO = [
   // Rellenos con texto blanco. Son la razón por la que existen los `-solido`.
   ["botón ejecutado", "#ffffff", "var(--tb-ok-solido)"],
   ["badge urgencia alta", "#ffffff", "var(--tb-peligro-solido)"],
-  // Chrome, que también se movió.
+  // Chrome, que también se movió. El destructivo entra por el cajón de planificación:
+  // el aviso de conflicto de las notas va a 10px y es lo único que separa "se guardó" de
+  // "le pisaste el texto a alguien".
+  ["aviso de conflicto", "var(--destructive)", "var(--card)"],
   ["texto secundario sobre tarjeta", "var(--muted-foreground)", "var(--card)"],
   ["texto secundario sobre fondo", "var(--muted-foreground)", "var(--background)"],
 ];

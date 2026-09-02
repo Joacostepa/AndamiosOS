@@ -23,6 +23,7 @@ import { TableroGrid, DIAS_VENTANA } from "./tablero-grid";
 import { PanelSinAsignar, ID_BANDEJA } from "./panel-sin-asignar";
 import { ContenidoTarjeta } from "./tarjeta-asignacion";
 import { PanelOt } from "./panel-ot";
+import { CajonPlanificacion } from "./cajon-planificacion";
 import { FormularioCierre } from "./formulario-cierre";
 import { DialogoJornadas } from "./dialogo-jornadas";
 import { DialogoTarea, type ValoresTarea } from "./dialogo-tarea";
@@ -1077,6 +1078,11 @@ export function TableroBoard() {
           )}
         </DragOverlay>
       </DndContext>
+
+      {/* El cajón va DENTRO del flex-col y después del área de scroll: así abrirlo le
+          saca alto a la grilla en vez de taparla. Es hermano y no hijo del DndContext
+          porque no participa del arrastre — nada se suelta ahí. */}
+      <CajonPlanificacion />
 
       {/* Alta y edición comparten diálogo: los campos son los mismos y la diferencia
           —crear filas nuevas o actualizar el grupo entero— la resuelve onGuardar. */}

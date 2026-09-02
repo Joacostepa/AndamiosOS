@@ -25,7 +25,7 @@ import { useParte, useCerrarJornada, useEditarParte, useEmpleados } from "@/hook
 import { SelectorCapataz } from "@/components/partes/selector-capataz";
 import { useDetalleOt } from "@/hooks/use-detalle-ot";
 import { ComoQuedoArmado } from "@/components/partes/como-quedo-armado";
-import { CORAL } from "@/lib/tablero/colores";
+import { CORAL, OK, OK_SOLIDO, PELIGRO, PELIGRO_SOLIDO } from "@/lib/tablero/colores";
 import type { Bloque } from "@/lib/tablero/bloques";
 import type { OtTablero } from "@/lib/tablero/tipos";
 
@@ -337,7 +337,11 @@ export function FormularioCierre({
                   )}
                   style={
                     estado === valor
-                      ? { backgroundColor: valor === "ejecutado" ? "#639922" : "#D92D20", borderColor: "transparent" }
+                      ? {
+                          // Los `-solido` y no los de trazo: estos llevan texto blanco encima.
+                          backgroundColor: valor === "ejecutado" ? OK_SOLIDO : PELIGRO_SOLIDO,
+                          borderColor: "transparent",
+                        }
                       : undefined
                   }
                 >
@@ -741,9 +745,9 @@ export function FormularioCierre({
                 {resultado.pasos.map((p, i) => (
                   <p key={i} className="flex items-center gap-1.5 text-xs">
                     {p.ok ? (
-                      <Check className="h-3 w-3" style={{ color: "#639922" }} />
+                      <Check className="h-3 w-3" style={{ color: OK }} />
                     ) : (
-                      <AlertTriangle className="h-3 w-3" style={{ color: "#D92D20" }} />
+                      <AlertTriangle className="h-3 w-3" style={{ color: PELIGRO }} />
                     )}
                     <span className={p.ok ? "" : "font-medium"}>{p.nombre}</span>
                     {p.detalle && <span className="text-muted-foreground">· {p.detalle}</span>}

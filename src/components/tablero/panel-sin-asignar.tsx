@@ -20,7 +20,15 @@ import {
   MapPin,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { colorTipo, semaforo, CORAL, ACENTO_BG, URGENCIA } from "@/lib/tablero/colores";
+import {
+  colorTipo,
+  semaforo,
+  CORAL,
+  ACENTO_BG,
+  ALERTA,
+  PELIGRO_TEXTO,
+  URGENCIA,
+} from "@/lib/tablero/colores";
 import { fraccionLabel, repartirJornadas, FRACCIONES, type FraccionStr } from "@/lib/tablero/fracciones";
 import { partesTitulo, normalizar } from "@/lib/tablero/titulo";
 import { lineaPiso } from "@/lib/tablero/fecha-desde";
@@ -279,14 +287,14 @@ function TarjetaOt({
         borderLeft: urgente
           ? `5px solid ${URGENCIA.alta.fuerte}`
           : empezada
-            ? "5px solid #EF9F27"
+            ? `5px solid ${ALERTA}`
             : "5px solid transparent",
       }}
     >
       {empezada && (
         <p
           className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide"
-          style={{ color: "#854F0B" }}
+          style={{ color: URGENCIA.media.texto }}
         >
           <PlayCircle className="h-3 w-3" />
           Empezada · {cerradas} de {totales} jornadas hechas
@@ -323,7 +331,7 @@ function TarjetaOt({
           {urgente && (
             <span
               className="rounded px-1 text-[9px] font-semibold"
-              style={{ backgroundColor: URGENCIA.alta.fuerte, color: "#fff" }}
+              style={{ backgroundColor: URGENCIA.alta.solido, color: "#fff" }}
               title="Urgencia alta, marcada en la OT"
             >
               {URGENCIA.alta.label}
@@ -344,7 +352,7 @@ function TarjetaOt({
             type="button"
             onClick={(e) => { e.stopPropagation(); onDetalle(ot); }}
             onPointerDown={(e) => e.stopPropagation()}
-            className="rounded p-1 hover:bg-black/5"
+            className="rounded p-1 hover:bg-foreground/10"
             style={{ color: tipo.text }}
             title="Ver detalle de la obra"
             aria-label="Ver detalle de la obra"
@@ -382,7 +390,7 @@ function TarjetaOt({
       {compromiso && (
         <p
           className={`mt-0.5 truncate text-[10px] ${compromiso.alerta ? "font-semibold" : "font-medium"}`}
-          style={{ color: compromiso.alerta ? "#B42318" : tipo.text }}
+          style={{ color: compromiso.alerta ? PELIGRO_TEXTO : tipo.text }}
           title="Fecha que Comercial le prometió al cliente"
         >
           {compromiso.texto}
@@ -601,7 +609,7 @@ export function PanelSinAsignar({
         </button>
         <span
           className="rounded-full px-1.5 text-[11px] font-medium"
-          style={{ backgroundColor: "#FAEEDA", color: "#854F0B" }}
+          style={{ backgroundColor: URGENCIA.media.suave, color: URGENCIA.media.texto }}
         >
           {ots.length}
         </span>
@@ -611,7 +619,7 @@ export function PanelSinAsignar({
         {urgentesTotales > 0 && (
           <span
             className="rounded-full px-1.5 text-[11px] font-semibold"
-            style={{ backgroundColor: URGENCIA.alta.fuerte, color: "#fff" }}
+            style={{ backgroundColor: URGENCIA.alta.solido, color: "#fff" }}
             title={`${urgentesTotales} obra(s) urgente(s) sin planificar`}
           >
             {urgentesTotales}
@@ -641,7 +649,7 @@ export function PanelSinAsignar({
         </p>
         <span
           className="rounded-full px-1.5 text-[11px] font-medium"
-          style={{ backgroundColor: "#FAEEDA", color: "#854F0B" }}
+          style={{ backgroundColor: URGENCIA.media.suave, color: URGENCIA.media.texto }}
         >
           {conFiltros.length === ots.length ? ots.length : `${conFiltros.length}/${ots.length}`}
         </span>

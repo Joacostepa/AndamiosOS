@@ -3,7 +3,15 @@
 import type { ReactNode } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { ocupacionCelda } from "@/lib/tablero/fracciones";
-import { colorOcupacion, ACENTO_BG, CORAL, FERIADO_COLUMNA, RIEL_OCUPACION } from "@/lib/tablero/colores";
+import {
+  colorOcupacion,
+  ACENTO_BG,
+  CANALETA,
+  CORAL,
+  FERIADO_COLUMNA,
+  PASADO,
+  RIEL_OCUPACION,
+} from "@/lib/tablero/colores";
 
 // Celda cuadrilla × día: es el fondo droppable de la columna y lleva la barra de
 // ocupación al pie. Ocupa el alto entero de la fila (grid-row 1 / -1), así que las
@@ -84,19 +92,19 @@ export function CeldaDia({
       style={{
         gridColumn: columna + 1,
         gridRow: "1 / -1",
-        // El pasado lleva un gris neutro MUY tenue: sirve para ver de un vistazo dónde
+        // El pasado lleva un velo neutro MUY tenue: sirve para ver de un vistazo dónde
         // corta el presente y nada más. No compite con el pill coral de hoy ni con los
         // estados de capacidad, porque no significa nada — sólo "esto ya fue".
-        // El feriado gana sobre el gris del pasado: uno dice "esto ya fue" y el otro es
+        // El feriado gana sobre el velo del pasado: uno dice "esto ya fue" y el otro es
         // un dato del día que vale igual antes y después de hoy.
         backgroundColor: dropActivo
           ? ACENTO_BG
           : colapsada
-            ? "#F1EFE8"
+            ? CANALETA
             : feriado
               ? FERIADO_COLUMNA
               : pasada
-                ? "color-mix(in oklch, var(--foreground) 2.5%, transparent)"
+                ? PASADO
                 : undefined,
         // El separador de semana recorre la altura completa: en el encabezado solo, a
         // 40px, no alcanza para ubicarse cuando se scrollea entre semanas.

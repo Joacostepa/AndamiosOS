@@ -15,7 +15,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CORAL, semaforo } from "@/lib/tablero/colores";
+import { AVISO, CORAL, PELIGRO, PELIGRO_SOLIDO, semaforo } from "@/lib/tablero/colores";
 import { fraccionLabel } from "@/lib/tablero/fracciones";
 import type { Bloque } from "@/lib/tablero/bloques";
 import type { DocumentoOt, OtTablero } from "@/lib/tablero/tipos";
@@ -45,10 +45,13 @@ function NotasFijadas({ otId }: { otId: number }) {
   if (!notas?.length) return null;
 
   return (
-    <div className="space-y-1.5 rounded-md border p-2" style={{ backgroundColor: "#FEF6E7" }}>
+    <div
+      className="space-y-1.5 rounded-md border p-2"
+      style={{ backgroundColor: AVISO.fondo, borderColor: AVISO.borde, color: AVISO.texto }}
+    >
       {notas.map((n) => (
         <div key={n.id} className="flex gap-2 text-sm">
-          <Pin className="mt-0.5 h-3.5 w-3.5 shrink-0" style={{ color: "#B54708" }} />
+          <Pin className="mt-0.5 h-3.5 w-3.5 shrink-0" style={{ color: AVISO.icono }} />
           <p className="whitespace-pre-wrap">{n.texto}</p>
         </div>
       ))}
@@ -192,7 +195,7 @@ export function PanelOt({
                 {/* El técnico deja de ser una badge con las iniciales ("GS") y pasa a su
                     propia fila con nombre y apellido, que es lo que sirve para ubicarlo. */}
                 {ot.urgencia === "alta" && (
-                  <Badge style={{ backgroundColor: "#D92D20", color: "#fff" }}>Urgencia alta</Badge>
+                  <Badge style={{ backgroundColor: PELIGRO_SOLIDO, color: "#fff" }}>Urgencia alta</Badge>
                 )}
                 {bloque && (
                   <Badge variant="outline">
@@ -210,8 +213,8 @@ export function PanelOt({
               <HistorialConfirmacion otId={ot.id} />
 
               {ot.urgencia === "alta" && ot.motivoUrgencia && (
-                <div className="flex gap-2 rounded-md border p-2 text-sm" style={{ borderColor: "#D92D20" }}>
-                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" style={{ color: "#D92D20" }} />
+                <div className="flex gap-2 rounded-md border p-2 text-sm" style={{ borderColor: PELIGRO }}>
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" style={{ color: PELIGRO }} />
                   <p className="whitespace-pre-wrap">{ot.motivoUrgencia}</p>
                 </div>
               )}

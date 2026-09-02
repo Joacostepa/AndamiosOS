@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "contraste": "node scripts/contraste-tablero.mjs"
   },
   "dependencies": {
     "@afipsdk/afip.js": "^1.2.3",

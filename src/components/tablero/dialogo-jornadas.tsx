@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FRACCIONES, ocupacionCelda, type FraccionStr, aFraccionStr } from "@/lib/tablero/fracciones";
 import { siguienteDiaLaboral, sonContiguas } from "@/lib/tablero/bloques";
-import { CORAL } from "@/lib/tablero/colores";
+import { AVISO, CORAL, OK } from "@/lib/tablero/colores";
 import type { AsignacionTablero, CuadrillaTablero, OtTablero } from "@/lib/tablero/tipos";
 
 // Días de una obra: cuántos son, qué día cae cada uno y qué fracción ocupa.
@@ -243,7 +243,10 @@ export function DialogoJornadas({
         </DialogHeader>
 
         {fueraDeRango > 0 && (
-          <p className="flex items-start gap-1.5 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
+          <p
+            className="flex items-start gap-1.5 rounded border p-2 text-xs"
+            style={{ backgroundColor: AVISO.fondo, borderColor: AVISO.borde, color: AVISO.texto }}
+          >
             <TriangleAlert className="mt-px h-3.5 w-3.5 shrink-0" />
             <span>
               La obra tiene {fueraDeRango} jornada{fueraDeRango === 1 ? "" : "s"} más fuera de las
@@ -294,7 +297,7 @@ export function DialogoJornadas({
 
               {fila.cerrada ? (
                 <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                  <CircleCheck className="h-3.5 w-3.5" style={{ color: "#639922" }} />
+                  <CircleCheck className="h-3.5 w-3.5" style={{ color: OK }} />
                   Cerrada · {FRACCIONES.find((f) => f.value === fila.fraccion)?.label ?? ""}
                   <Lock className="h-3 w-3" />
                 </span>
@@ -371,7 +374,7 @@ export function DialogoJornadas({
         </div>
 
         {repetidas.size > 0 ? (
-          <p className="text-xs text-red-600">
+          <p className="text-xs text-destructive">
             Hay dos jornadas el mismo día. Cambiá una de fecha o quitala.
           </p>
         ) : (

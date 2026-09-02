@@ -82,25 +82,125 @@
   --sidebar-accent-foreground: oklch(0.9 0 0);
   --sidebar-border: oklch(0.25 0 0);
   --sidebar-ring: oklch(0.62 0.16 42);
+
+  /* ── Tablero: identidad ────────────────────────────────────────────────────
+   *
+   * Tono por tipo de OT y por cuadrilla. Son PASTELES SOBRE BLANCO: el `bg` es un
+   * tinte apenas más saturado que la celda, el `text` el mismo tono a L≈0.30, y el
+   * `borde` la versión plena para trazos de 3–5px.
+   *
+   * Los hex son los del spec ABA y no se tocan: acá sólo dejaron de vivir en el TS.
+   * La variante oscura está más abajo, en .dark — ver la nota que la encabeza. */
+  --tb-azul-bg: #e6f1fb;
+  --tb-azul-borde: #378add;
+  --tb-azul-text: #0c447c;
+  --tb-ambar-bg: #faeeda;
+  --tb-ambar-borde: #ef9f27;
+  --tb-ambar-text: #633806;
+  --tb-verde-bg: #eaf3de;
+  --tb-verde-borde: #639922;
+  --tb-verde-text: #27500a;
+  --tb-rosa-bg: #fbeaf0;
+  --tb-rosa-borde: #e06090;
+  --tb-rosa-text: #72243e;
+  --tb-violeta-bg: #edeafb;
+  --tb-violeta-borde: #7b6bd8;
+  --tb-violeta-text: #332a72;
+  --tb-teal-bg: #def2f1;
+  --tb-teal-borde: #2aa79e;
+  --tb-teal-text: #0b4f4a;
+  --tb-coral-bg: #faece7;
+  --tb-coral-borde: #d85a30;
+  --tb-coral-text: #993c1d;
+  --tb-gris-bg: #edeff2;
+  --tb-gris-borde: #6b7a8d;
+  --tb-gris-text: #2e3a47;
+  --tb-neutro-bg: #f1efe8;
+  --tb-neutro-text: #5f5e5a;
+
+  /* ── Tablero: estructura de la grilla ──────────────────────────────────────
+   *
+   * Fondos que hablan del DÍA, no de la obra. La regla que los ata: la canaleta se
+   * hunde respecto de la celda y el feriado flota; en los dos temas se mantiene esa
+   * relación, aunque el sentido de "hundirse" se invierta. */
+  /* Relleno de la tarjeta TENTATIVA. El lenguaje del tablero dice "sólido = confirmada,
+   * transparente = tentativa", pero estaba escrito como `var(--card)`, que en claro es
+   * blanco y por eso PARECÍA transparente. En oscuro la superficie no es el fondo, así
+   * que la tentativa pasaba a tener relleno y se volvía indistinguible de la confirmada:
+   * el canal del estado desaparecía justo cuando el del tipo se apagaba. El token dice lo
+   * que la regla siempre quiso decir — "lo mismo que hay detrás". */
+  --tb-tentativa: var(--card);
+  --tb-canaleta: #f1efe8;
+  /* Opaco y no un velo con alpha: el velo se declaraba en porcentaje de --foreground y
+   * ese porcentaje no significa lo mismo en los dos temas. 2,5% de negro sobre blanco es
+   * ΔL 0.008 (invisible); el mismo 2,5% de blanco sobre la superficie oscura es ΔL 0.10
+   * (un escalón). Con un tono opaco el "cuánto se hunde el día que ya fue" se fija de una
+   * vez, igual en los dos. En el ternario de celda-dia no se superpone con nada. */
+  --tb-pasado: oklch(0.955 0 0);
+  --tb-acento-bg: #faece7;
+  --tb-feriado-columna: #f4f0fa;
+  --tb-feriado-encabezado: #e9e1f6;
+  --tb-feriado-texto: #5b4b8a;
+  /* Barra de ocupación. En claro el relleno es MÁS OSCURO que el riel; en oscuro se
+   * invierte, porque lo que tiene que leerse siempre es "el lleno resalta y el vacío
+   * no". Un riel claro con relleno gris sobre fondo negro se lee al revés. */
+  --tb-riel: #e8e6df;
+  --tb-riel-relleno: #b4b2a9;
+
+  /* ── Tablero: semánticos ───────────────────────────────────────────────────
+   *
+   * Verde / ámbar / rojo. Son los únicos que NO se tiñen con el tema: rojo tiene que
+   * seguir siendo rojo. Lo que cambia entre temas es la luminancia.
+   *
+   * `-solido` es la variante para relleno con texto blanco encima, y es más oscura
+   * que la de trazo a propósito: blanco sobre el verde de marca (#639922) da 3,3:1 y
+   * no pasa AA a 12px. Los trazos —franjas, bordes, íconos— usan la otra. */
+  --tb-ok: #639922;
+  --tb-ok-solido: oklch(0.52 0.13 140);
+  --tb-alerta: #ef9f27;
+  --tb-peligro: #d92d20;
+  --tb-peligro-solido: #d92d20;
+  --tb-peligro-suave: #fdecea;
+  --tb-peligro-text: #912018;
+  /* Habilitación vencida: un paso más profundo que `peligro`, no otro color. */
+  --tb-vencida: #7a271a;
+  --tb-candado: #912018;
+  --tb-aviso-bg: #fef6e7;
+  --tb-aviso-borde: #f5d9a0;
+  --tb-aviso-text: #7a4405;
+  --tb-aviso-icono: #b54708;
+  /* La nota de la jornada es un chip saturado: el mismo par sirve en los dos temas. */
+  --tb-nota-bg: #ef9f27;
+  --tb-nota-text: #633806;
+  --tb-inactivo: #8a8880;
 }
 
 .dark {
   --background: oklch(0.13 0 0);
   --foreground: oklch(0.93 0 0);
-  --card: oklch(0.17 0 0);
+  /* La superficie sube de 0.17 a 0.20. A cuatro puntos del fondo, la columna sticky de
+   * cuadrillas y la fila de días del tablero no se despegaban del cuerpo de la grilla. */
+  --card: oklch(0.2 0 0);
   --card-foreground: oklch(0.93 0 0);
-  --popover: oklch(0.17 0 0);
+  --popover: oklch(0.2 0 0);
   --popover-foreground: oklch(0.93 0 0);
   /* Coral ABA #D85A30 — color primario / acción */
   --primary: oklch(0.62 0.16 42);
   --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.22 0 0);
+  /* Suben con la superficie: a 0.22 sobre una card de 0.20 quedaban dos puntos de
+   * diferencia y un hover no se veía. */
+  --secondary: oklch(0.25 0 0);
   --secondary-foreground: oklch(0.93 0 0);
-  --muted: oklch(0.22 0 0);
-  --muted-foreground: oklch(0.6 0 0);
-  --accent: oklch(0.22 0.02 42);
+  --muted: oklch(0.25 0 0);
+  /* 0.6 sobre la card nueva daba 4,2:1 — por debajo de AA. */
+  --muted-foreground: oklch(0.68 0 0);
+  --accent: oklch(0.25 0.02 42);
   --accent-foreground: oklch(0.93 0 0);
   --destructive: oklch(0.704 0.191 22.216);
+  /* El borde queda como estaba, a 10%, y no es por dejarlo pasar: parecía flojo a ojo,
+   * pero medido da ΔL 0.28 contra la superficie, casi el triple que el borde del modo
+   * claro (0.10). Subirlo dibujaba una jaula. Cerca del negro la percepción engaña para
+   * el lado contrario del que uno espera; ver scripts/contraste-tablero.mjs. */
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.62 0.16 42);
@@ -117,6 +217,81 @@
   --sidebar-accent-foreground: oklch(0.9 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.62 0.16 42);
+
+  /* ── Tablero en oscuro ──────────────────────────────────────────────────────
+   *
+   * NO es la paleta clara invertida ni aclarada: son tres reglas distintas según qué
+   * significa cada color, y por eso hay tres bloques y no uno.
+   *
+   * 1) IDENTIDAD (tipo de OT, cuadrilla, feriado). El pastel claro es un tinte sobre
+   *    blanco; el equivalente oscuro es el MISMO hue como tinte sobre la superficie
+   *    —L≈0.27, croma bajo— y el texto sube a L≈0.86 conservando el hue. Dejar el
+   *    pastel encendido convertía cada tarjeta confirmada en el objeto más brillante
+   *    de la pantalla: el canal que codifica el tipo terminaba gritando más fuerte
+   *    que el semáforo y que la urgencia, al revés de lo que la paleta quiso decir.
+   *
+   * 2) ESTRUCTURA. Deja de haber hex y pasa a relaciones contra la superficie. La
+   *    canaleta del domingo se hunde POR DEBAJO de la card (0.155) en vez de ser el
+   *    beige #F1EFE8, que en oscuro era una banda blanca vertical.
+   *
+   * 3) SEMÁNTICOS. Mismo hue, más luminancia: los rojos del spec están calibrados
+   *    contra blanco y sobre negro se hunden. `vencida` sigue siendo un paso más
+   *    profundo que `peligro`, pero ahora se separan también en hue para que no se
+   *    confundan cuando los dos están sobre fondo oscuro. */
+  --tb-azul-bg: oklch(0.27 0.045 254);
+  --tb-azul-borde: oklch(0.7 0.14 254);
+  --tb-azul-text: oklch(0.86 0.06 254);
+  --tb-ambar-bg: oklch(0.27 0.04 70);
+  --tb-ambar-borde: oklch(0.78 0.14 66);
+  --tb-ambar-text: oklch(0.87 0.08 75);
+  --tb-verde-bg: oklch(0.27 0.04 140);
+  --tb-verde-borde: oklch(0.72 0.15 140);
+  --tb-verde-text: oklch(0.87 0.09 140);
+  --tb-rosa-bg: oklch(0.28 0.045 355);
+  --tb-rosa-borde: oklch(0.72 0.15 355);
+  --tb-rosa-text: oklch(0.87 0.07 355);
+  --tb-violeta-bg: oklch(0.28 0.05 288);
+  --tb-violeta-borde: oklch(0.68 0.15 288);
+  --tb-violeta-text: oklch(0.86 0.07 288);
+  --tb-teal-bg: oklch(0.27 0.035 185);
+  --tb-teal-borde: oklch(0.72 0.11 185);
+  --tb-teal-text: oklch(0.87 0.07 185);
+  --tb-coral-bg: oklch(0.28 0.05 42);
+  --tb-coral-borde: oklch(0.7 0.15 42);
+  --tb-coral-text: oklch(0.87 0.07 42);
+  --tb-gris-bg: oklch(0.27 0.012 245);
+  --tb-gris-borde: oklch(0.7 0.03 245);
+  --tb-gris-text: oklch(0.86 0.02 245);
+  --tb-neutro-bg: oklch(0.26 0.006 90);
+  --tb-neutro-text: oklch(0.85 0.008 90);
+
+  --tb-tentativa: var(--background);
+  --tb-canaleta: oklch(0.155 0.004 90);
+  --tb-pasado: oklch(0.165 0 0);
+  --tb-acento-bg: oklch(0.28 0.05 42);
+  --tb-feriado-columna: oklch(0.185 0.022 288);
+  --tb-feriado-encabezado: oklch(0.26 0.042 288);
+  --tb-feriado-texto: oklch(0.8 0.09 288);
+  --tb-riel: oklch(0.28 0 0);
+  --tb-riel-relleno: oklch(0.55 0 0);
+
+  --tb-ok: oklch(0.72 0.15 140);
+  --tb-ok-solido: oklch(0.55 0.14 140);
+  --tb-alerta: oklch(0.78 0.14 66);
+  --tb-peligro: oklch(0.68 0.19 28);
+  /* El relleno de badge no se aclara: tiene texto blanco encima. */
+  --tb-peligro-solido: #d92d20;
+  --tb-peligro-suave: oklch(0.28 0.06 28);
+  --tb-peligro-text: oklch(0.86 0.08 28);
+  --tb-vencida: oklch(0.54 0.16 25);
+  --tb-candado: oklch(0.75 0.13 32);
+  --tb-aviso-bg: oklch(0.25 0.035 70);
+  --tb-aviso-borde: oklch(0.35 0.05 70);
+  --tb-aviso-text: oklch(0.87 0.07 75);
+  --tb-aviso-icono: oklch(0.8 0.13 65);
+  --tb-nota-bg: #ef9f27;
+  --tb-nota-text: #633806;
+  --tb-inactivo: oklch(0.62 0 0);
 }
 
 @layer base {

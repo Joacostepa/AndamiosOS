@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
+import { AVISO, CANDADO } from "@/lib/tablero/colores";
 import type { Friccion } from "@/lib/habilitaciones/derivacion";
 
 // El candado al CONFIRMAR una jornada. Tres situaciones distintas, tres respuestas.
@@ -98,11 +99,11 @@ export function DialogoCandado({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {friccion.tipo === "bloqueo" ? (
-              <Lock className="h-4 w-4" style={{ color: "#912018" }} />
+              <Lock className="h-4 w-4" style={{ color: CANDADO }} />
             ) : friccion.tipo === "antes_de_piso" ? (
-              <CalendarClock className="h-4 w-4" style={{ color: "#B54708" }} />
+              <CalendarClock className="h-4 w-4" style={{ color: AVISO.icono }} />
             ) : (
-              <TriangleAlert className="h-4 w-4" style={{ color: "#B54708" }} />
+              <TriangleAlert className="h-4 w-4" style={{ color: AVISO.icono }} />
             )}
             {friccion.tipo === "bloqueo"
               ? "No se puede confirmar sin el permiso"
@@ -116,7 +117,10 @@ export function DialogoCandado({
         </DialogHeader>
 
         {friccion.tipo === "pedir_modalidad" && (
-          <div className="space-y-2 rounded-md border px-3 py-2.5 text-[13px]" style={{ backgroundColor: "#FEF6E7" }}>
+          <div
+            className="space-y-2 rounded-md border px-3 py-2.5 text-[13px]"
+            style={{ backgroundColor: AVISO.fondo, borderColor: AVISO.borde, color: AVISO.texto }}
+          >
             <p>
               Esta obra no tiene modalidad de permiso definida
               {friccion.dias !== null ? ` hace ${friccion.dias} días` : ""}.

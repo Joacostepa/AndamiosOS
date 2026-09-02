@@ -11,7 +11,15 @@ import { PopoverNotasDia } from "./notas-jornada";
 import { agruparBloques, esDomingo, repartirPorAltura } from "@/lib/tablero/bloques";
 import { accionDeCierre, bloqueCerrado, type AccionCierre } from "@/lib/tablero/cierre";
 import { MOTIVOS_NO_EJEC } from "@/lib/tablero/tipos-parte";
-import { colorCuadrilla, CORAL, FERIADO_ENCABEZADO, FERIADO_TEXTO, NOTA } from "@/lib/tablero/colores";
+import {
+  colorCuadrilla,
+  CANALETA,
+  CORAL,
+  FERIADO_ENCABEZADO,
+  FERIADO_TEXTO,
+  NOTA,
+  PELIGRO,
+} from "@/lib/tablero/colores";
 import { ocupacionCelda, capacidadDelRango } from "@/lib/tablero/fracciones";
 import type { FraccionStr } from "@/lib/tablero/fracciones";
 import { notasDe, notasDeCuadrilla } from "@/lib/tablero/tipos-nota";
@@ -477,7 +485,9 @@ export function TableroGrid({
               key={`h-${f}`}
               data-fecha={f}
               className={`group/dia sticky top-0 z-20 flex h-10 select-none items-center justify-center gap-1.5 border-b border-r bg-card active:cursor-grabbing ${
-                alternable ? "cursor-pointer hover:bg-black/[0.05]" : "cursor-grab"
+                // foreground/8 y no black/5: en oscuro el negro sobre negro no es un
+                // hover, es nada. Ligado al texto, el velo sigue al tema solo.
+                alternable ? "cursor-pointer hover:bg-foreground/[0.08]" : "cursor-grab"
               }`}
               onPointerDown={iniciarPan}
               onPointerMove={moverPan}
@@ -500,7 +510,7 @@ export function TableroGrid({
               style={{
                 // Separador de semana: ubicarse sin tener que leer las fechas.
                 borderLeft: esLunes(f) ? "2px solid var(--border)" : undefined,
-                backgroundColor: canaleta ? "#F1EFE8" : feriado ? FERIADO_ENCABEZADO : "var(--card)",
+                backgroundColor: canaleta ? CANALETA : feriado ? FERIADO_ENCABEZADO : "var(--card)",
                 // Franja ámbar del día con notas. Va como sombra INTERNA y no como borde
                 // ni como fondo: el fondo ya lo usan el feriado y la canaleta, y un borde
                 // cambiaría el alto de la celda y desalinearía la fila de días. Así se
@@ -543,7 +553,7 @@ export function TableroGrid({
                   {diasTodasSobre.has(f) && (
                     <AlertTriangle
                       className="h-3 w-3 shrink-0"
-                      style={{ color: "#D92D20" }}
+                      style={{ color: PELIGRO }}
                       aria-label="Todas las cuadrillas visibles están sobreasignadas este día"
                     />
                   )}
@@ -589,7 +599,7 @@ export function TableroGrid({
                       className={`absolute bottom-0.5 right-0.5 flex h-[15px] cursor-pointer items-center gap-0.5 rounded px-1 transition-opacity ${
                         notasDelDia.length > 0
                           ? "opacity-100"
-                          : "text-muted-foreground opacity-0 hover:bg-black/[0.06] hover:text-foreground focus-visible:opacity-100 group-hover/dia:opacity-100"
+                          : "text-muted-foreground opacity-0 hover:bg-foreground/10 hover:text-foreground focus-visible:opacity-100 group-hover/dia:opacity-100"
                       }`}
                       style={
                         notasDelDia.length > 0

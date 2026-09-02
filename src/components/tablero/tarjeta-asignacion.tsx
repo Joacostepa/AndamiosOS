@@ -14,7 +14,20 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { FRACCIONES, fraccionLabel, type FraccionStr } from "@/lib/tablero/fracciones";
-import { colorTipo, semaforo, TAREA, TAREA_FRANJA, URGENCIA_ALTA_BORDE, CORAL } from "@/lib/tablero/colores";
+import {
+  colorTipo,
+  semaforo,
+  TAREA,
+  TAREA_FRANJA,
+  URGENCIA_ALTA_BORDE,
+  CANDADO,
+  CORAL,
+  TENTATIVA,
+  OK,
+  PELIGRO,
+  PELIGRO_SUAVE,
+  PELIGRO_TEXTO,
+} from "@/lib/tablero/colores";
 import { partesTitulo } from "@/lib/tablero/titulo";
 import { jornadasLiberables } from "@/lib/tablero/cierre";
 import type { Bloque, Colocacion } from "@/lib/tablero/bloques";
@@ -119,9 +132,14 @@ export function ContenidoTarjeta({
   const noEjecutada = cierre?.estado === "no_ejecutado";
   const partida = (plan?.tramos ?? 1) > 1;
   // El texto conserva el color del tipo aunque el relleno no esté: el tipo se lee igual
-  // en una tentativa. Sobre el fondo blanco de la tentativa estos tonos oscuros
-  // contrastan de sobra.
-  const colorTexto = noEjecutada ? "#7A271A" : tipo.text;
+  // en una tentativa.
+  //
+  // Esto es lo que estaba roto en oscuro, y es el caso peor de todo el módulo: la
+  // tentativa se pinta con `var(--card)` —que sigue al tema— pero el texto salía de la
+  // paleta clara, así que quedaba navy #0C447C sobre casi negro, en 1,4:1. No es que se
+  // viera mal: no se leía. Ahora `tipo.text` es un token y en oscuro ya viene claro, así
+  // que el par se arregla sin tocar nada de esta lógica.
+  const colorTexto = noEjecutada ? PELIGRO_TEXTO : tipo.text;
 
   return (
     <div
@@ -133,13 +151,13 @@ export function ContenidoTarjeta({
       style={{
         // El relleno es el canal del ESTADO: sólido = confirmada, transparente =
         // tentativa. El tono de ese relleno es el canal del TIPO.
-        backgroundColor: noEjecutada ? "#FDECEA" : confirmada ? tipo.bg : "var(--card)",
+        backgroundColor: noEjecutada ? PELIGRO_SUAVE : confirmada ? tipo.bg : TENTATIVA,
         // El borde punteado rojo es el mismo lenguaje de "pendiente" del listado de
         // partes: la jornada ya pasó y nadie cargó nada.
         border: noEjecutada
-          ? "1px solid #D92D20"
+          ? `1px solid ${PELIGRO}`
           : vencidaSinParte
-            ? "1px dashed #D92D20"
+            ? `1px dashed ${PELIGRO}`
             : confirmada
               // Contorno del MISMO tono que el relleno, apenas más oscuro. Antes era
               // transparente: contra el fondo blanco de la celda la tarjeta se
@@ -154,7 +172,7 @@ export function ContenidoTarjeta({
         // más se mira. Un punto de 6px se perdía con la grilla llena.
         // En una tarea no hay habilitación que semaforear, así que la franja la toma el
         // violeta del tipo en vez de mentir un verde.
-        borderLeft: `5px solid ${noEjecutada ? "#D92D20" : tarea ? TAREA_FRANJA : sem.color}`,
+        borderLeft: `5px solid ${noEjecutada ? PELIGRO : tarea ? TAREA_FRANJA : sem.color}`,
       }}
     >
       <div className="flex items-baseline gap-1">
@@ -172,15 +190,15 @@ export function ContenidoTarjeta({
         />
         {/* En una obra el tilde lo pone el parte; en una tarea, el booleano `hecha`. */}
         {(cierre?.estado === "ejecutado" || tarea?.hecha) && (
-          <CircleCheck className="h-3 w-3 shrink-0 self-center" style={{ color: "#639922" }} />
+          <CircleCheck className="h-3 w-3 shrink-0 self-center" style={{ color: OK }} />
         )}
         {noEjecutada && (
-          <AlertTriangle className="h-3 w-3 shrink-0 self-center" style={{ color: "#D92D20" }} />
+          <AlertTriangle className="h-3 w-3 shrink-0 self-center" style={{ color: PELIGRO }} />
         )}
         {candado && (
           <Lock
             className="h-3 w-3 shrink-0 self-center"
-            style={{ color: "#912018" }}
+            style={{ color: CANDADO }}
             aria-label="El cliente pidió esperar el permiso emitido"
           />
         )}

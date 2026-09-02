@@ -5,6 +5,7 @@ import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { ChevronDown, ChevronRight, CircleCheck, CircleDashed } from "lucide-react";
 import { useConfirmaciones } from "@/hooks/use-confirmaciones";
+import { INACTIVO, OK } from "@/lib/tablero/colores";
 import type { Confirmacion } from "@/lib/tablero/tipos-confirmacion";
 
 // Quién confirmó esta obra, y cuándo.
@@ -30,7 +31,7 @@ function Linea({ c, destacada }: { c: Confirmacion; destacada?: boolean }) {
     <div className="flex items-start gap-1.5">
       <Icono
         className="mt-0.5 h-3 w-3 shrink-0"
-        style={{ color: confirmada ? "#639922" : "#8A8880" }}
+        style={{ color: confirmada ? OK : INACTIVO }}
       />
       <span className={destacada ? "text-[12px]" : "text-[11px] text-muted-foreground"}>
         <span className="font-medium">{confirmada ? "Confirmada" : "Volvió a tentativa"}</span>

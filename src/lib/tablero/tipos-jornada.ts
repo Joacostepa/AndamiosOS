@@ -33,6 +33,12 @@ export type JornadaListado = {
    * confirma o corrige, en vez de escribir desde cero en el celular.
    */
   detalleTecnico: string | null;
+  /**
+   * Iniciales del técnico de la obra ("JS", "GS"). Es a quién preguntarle cuando lo
+   * que está en obra no coincide con lo que dice la OT — la pregunta que hoy se hace
+   * por WhatsApp averiguando primero de quién es la obra.
+   */
+  tecnico: string | null;
   /** Tentativa cuya fecha ya pasó: va a la sección plegada del pie. */
   tentativaVencida: boolean;
 };

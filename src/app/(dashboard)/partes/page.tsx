@@ -57,7 +57,11 @@ function aDatosCierre(b: Borrador, j: JornadaListado): DatosCierre {
     camionEnObra: b.camionEnObra,
     estado: b.estado,
     motivoNoEjec: ejecutado ? null : (b.motivo as DatosCierre["motivoNoEjec"]),
-    sector: b.sector.trim() || null,
+    // El sector salió del formulario: describía un frente de obra que en los hechos nadie
+    // llenaba —el informe de obra ya lo daba por null en el 97% de las obras— y ocupaba
+    // un tercio del ancho de la fila. Los partes viejos conservan el suyo y se siguen
+    // mostrando; lo que deja de existir es la pregunta.
+    sector: null,
     clima: null,
     objetivo: null,
     // El proceso nunca separó objetivo de tareas: los 1276 partes tienen los dos vacíos y
@@ -223,12 +227,30 @@ function Contenido() {
       toast.info("No hay nada para guardar");
       return;
     }
+    // UNA FILA A MEDIAS NO FRENA A LAS COMPLETAS.
+    //
+    // Antes, encontrar un solo error abortaba el guardado entero. Eso convertía una fila
+    // que no se podía terminar —falta el capataz porque nadie sabe quién estuvo, falta
+    // saber si la OT cerró— en un tapón: las otras cuatro estaban impecables y no había
+    // forma de bajarlas. La salida practicable era vaciar la fila incompleta para
+    // destrabar, y ahí se pierde lo poco que sí se sabía de ella.
+    //
+    // Ahora se guarda lo que está listo y las incompletas quedan como borrador, abiertas
+    // y señaladas. Nada se pierde y nada bloquea.
+    const listas = aGuardar.filter((x) => erroresDe(x.b, x.j).length === 0);
     const conError = aGuardar.filter((x) => erroresDe(x.b, x.j).length > 0);
+
     if (conError.length > 0) {
       for (const x of conError) setAbiertas((prev) => ({ ...prev, [x.j.asignacionId]: true }));
       // Una tentativa vencida incompleta vive en la sección plegada del pie: desplegarla
-      // sola no se ve, y el error señalaría una fila que no está en pantalla.
+      // sola no se ve, y el aviso señalaría una fila que no está en pantalla.
       if (conError.some((x) => x.j.tentativaVencida)) setVencidasAbierto(true);
+    }
+
+    // Sin ninguna lista, el aviso es el único resultado del clic y tiene que explicar qué
+    // falta. Con filas listas, el guardado sigue y las incompletas se avisan al final,
+    // para que el cartel no compita con el progreso.
+    if (listas.length === 0) {
       toast.error(`${conError.length} fila(s) incompletas`, {
         description: erroresDe(conError[0].b, conError[0].j).join(" · "),
       });
@@ -237,7 +259,7 @@ function Contenido() {
 
     // Se guardan de a una y no en paralelo: cada parte son varias escrituras a Odoo, y
     // cinco a la vez multiplicadas por la cola del servidor terminan en 429.
-    setGuardando({ hechas: 0, total: aGuardar.length });
+    setGuardando({ hechas: 0, total: listas.length });
     // Qué filas quedaron efectivamente escritas. SÓLO ésas pierden el borrador: si la
     // tercera falla, lo que se tipeó en la cuarta y la quinta —fotos incluidas— tiene que
     // seguir ahí. Vaciar el mapa entero hacía que un error en el medio se llevara puesto
@@ -256,7 +278,7 @@ function Contenido() {
     const anotar = (j: JornadaListado, texto: string) =>
       incompletos.push(`${j.titulo.slice(0, 30)} — ${texto}`);
 
-    for (const { j, b } of aGuardar) {
+    for (const { j, b } of listas) {
       try {
         const r = await cerrar.mutateAsync({
           asignacionId: j.asignacionId,
@@ -282,7 +304,7 @@ function Contenido() {
             anotar(j, `no se pudo reprogramar al ${b.reprogramarA}: ${e instanceof Error ? e.message : String(e)}`);
           }
         }
-        setGuardando({ hechas: guardados.length, total: aGuardar.length });
+        setGuardando({ hechas: guardados.length, total: listas.length });
       } catch (e) {
         toast.error(`No se pudo guardar ${j.titulo.slice(0, 40)}`, {
           description: e instanceof Error ? e.message : String(e),
@@ -311,6 +333,14 @@ function Contenido() {
         description: incompletos.join(" · "),
         duration: Infinity,
         closeButton: true,
+      });
+    }
+    // Al final y no antes: lo que se guardó ya se avisó, y esto dice qué QUEDA. Sin
+    // `duration: Infinity` a propósito — no es una pérdida de datos, el borrador sigue
+    // en pantalla y la fila quedó abierta mostrando qué le falta.
+    if (conError.length > 0) {
+      toast.info(`${conError.length} fila(s) quedaron sin guardar`, {
+        description: `${erroresDe(conError[0].b, conError[0].j).join(" · ")}. Siguen cargadas como borrador.`,
       });
     }
   }

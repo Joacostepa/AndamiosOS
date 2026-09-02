@@ -22,6 +22,7 @@ import {
   type DatosCierre, type EstadoParte, type LineaManoObra, type LineaIncidencia,
 } from "@/lib/tablero/tipos-parte";
 import { useParte, useCerrarJornada, useEditarParte, useEmpleados } from "@/hooks/use-parte";
+import { SelectorCapataz } from "@/components/partes/selector-capataz";
 import { useDetalleOt } from "@/hooks/use-detalle-ot";
 import { ComoQuedoArmado } from "@/components/partes/como-quedo-armado";
 import { CORAL } from "@/lib/tablero/colores";
@@ -80,7 +81,8 @@ export function FormularioCierre({
   // El bloque puede abrirse antes de que el tablero tenga la OT en memoria.
   const tipoOt = ot?.tipo ?? "";
   const { data: parteCargado, isLoading: cargandoParte } = useParte(parteId);
-  const { data: empleados } = useEmpleados();
+  const { data: empleados, isError: fallaronEmpleados, isLoading: cargandoEmpleados, refetch: recargarEmpleados } =
+    useEmpleados();
   const cerrar = useCerrarJornada();
   const editar = useEditarParte();
   const guardando = cerrar.isPending || editar.isPending;
@@ -399,21 +401,15 @@ export function FormularioCierre({
                     viajando al parte porque el informe de obra la usa. */}
                 <div className="space-y-1.5">
                   <Label>Capataz</Label>
-                  <Select
-                    items={Object.fromEntries((empleados ?? []).map((e) => [String(e.id), e.nombre]))}
-                    value={punteroId}
-                    onValueChange={(v) => setPunteroId(v ?? "")}
-                    disabled={!enModoEdicion}
-                  >
-                    <SelectTrigger><SelectValue placeholder="Quién estuvo a cargo" /></SelectTrigger>
-                    <SelectContent className="max-h-[50vh]">
-                      {(empleados ?? []).map((e) => (
-                        <SelectItem key={e.id} value={String(e.id)}>
-                          {e.nombre}{e.escala ? ` · ${e.escala}` : ""}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <SelectorCapataz
+                    empleados={empleados ?? []}
+                    valor={punteroId}
+                    onCambio={setPunteroId}
+                    cargando={cargandoEmpleados}
+                    error={fallaronEmpleados}
+                    onReintentar={() => recargarEmpleados()}
+                    deshabilitado={!enModoEdicion}
+                  />
                 </div>
 
                 <div className="space-y-1.5">

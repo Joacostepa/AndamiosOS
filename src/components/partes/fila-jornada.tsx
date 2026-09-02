@@ -20,6 +20,7 @@ import {
 import { comprimirFoto, pesoLegible, type FotoComprimida } from "@/lib/tablero/imagenes";
 import { useEmpleados } from "@/hooks/use-parte";
 import { ComoQuedoArmado } from "@/components/partes/como-quedo-armado";
+import { SelectorCapataz } from "@/components/partes/selector-capataz";
 import type { JornadaListado } from "@/lib/tablero/tipos-jornada";
 
 // Una fila del listado de partes. Se edita EN LÍNEA, sin modal: abrir y cerrar un diálogo
@@ -48,7 +49,6 @@ export type Borrador = {
   fletes: string;
   tercerizado: boolean;
   costoFlete: string;
-  sector: string;
   observaciones: string;
   incidenciaTipo: string;
   incidenciaDesc: string;
@@ -90,7 +90,6 @@ export function borradorDe(j: JornadaListado): Borrador {
     fletes: String(j.fleteSugerido),
     tercerizado: false,
     costoFlete: "",
-    sector: "",
     observaciones: "",
     incidenciaTipo: "",
     incidenciaDesc: "",
@@ -247,6 +246,7 @@ export function FilaJornada({
       {/* ── Expandida ── */}
       {abierta && borrador && (
         <div className="space-y-3 border-t bg-card px-3 py-3">
+          <QueHayQueEjecutar jornada={jornada} />
           <div className="flex items-center gap-2">
             <Button
               type="button"
@@ -309,7 +309,7 @@ export function FilaJornada({
                   rows={2}
                   value={borrador.observaciones}
                   onChange={(e) => set({ observaciones: e.target.value })}
-                  placeholder="Lo que mandó el capataz"
+                  placeholder="Cualquier cosa del día que valga la pena registrar"
                 />
               </label>
             </div>
@@ -387,52 +387,22 @@ export function FilaJornada({
                 )}
               </p>
 
-              {/* ── Cuadrilla real, fletes, sector ── */}
-              <div className="grid gap-3 sm:grid-cols-3">
+              {/* ── Capataz y fletes ── */}
+              <div className="grid gap-3 sm:grid-cols-2">
                 {/* El capataz reemplaza a la cuadrilla: "Cuadrilla 3" es una etiqueta que
                     cambia de integrantes todos los días, y el que responde por la jornada
                     es una persona. Sale de la base de empleados de Odoo, ordenada por
                     escala, así que los capataces quedan arriba de la lista. */}
                 <label className="space-y-1">
                   <span className="text-[11px] font-medium">Capataz</span>
-                  <Select
-                    items={Object.fromEntries((empleados ?? []).map((e) => [String(e.id), e.nombre]))}
-                    value={borrador.capatazId}
-                    onValueChange={(v) => v && set({ capatazId: v })}
-                    disabled={fallaronEmpleados}
-                  >
-                    <SelectTrigger className="h-8">
-                      <SelectValue
-                        placeholder={
-                          fallaronEmpleados
-                            ? "No se pudo traer la lista"
-                            : cargandoEmpleados
-                              ? "Cargando…"
-                              : "Quién estuvo a cargo"
-                        }
-                      />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-[50vh]">
-                      {(empleados ?? []).map((e) => (
-                        <SelectItem key={e.id} value={String(e.id)}>
-                          {e.nombre}{e.escala ? ` · ${e.escala}` : ""}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {fallaronEmpleados && (
-                    <span className="block text-[10px]" style={{ color: "#B42318" }}>
-                      No se pudo traer la lista de empleados de Odoo. Sin capataz no se puede
-                      guardar el parte.{" "}
-                      <button
-                        type="button"
-                        onClick={() => recargarEmpleados()}
-                        className="underline underline-offset-2"
-                      >
-                        Reintentar
-                      </button>
-                    </span>
-                  )}
+                  <SelectorCapataz
+                    empleados={empleados ?? []}
+                    valor={borrador.capatazId}
+                    onCambio={(id) => set({ capatazId: id })}
+                    cargando={cargandoEmpleados}
+                    error={fallaronEmpleados}
+                    onReintentar={() => recargarEmpleados()}
+                  />
                 </label>
                 <div className="space-y-1">
                   <span className="text-[11px] font-medium">Viajes de flete</span>
@@ -454,15 +424,6 @@ export function FilaJornada({
                     </label>
                   </div>
                 </div>
-                <label className="space-y-1">
-                  <span className="text-[11px] font-medium">Sector / frente</span>
-                  <Input
-                    className="h-8"
-                    value={borrador.sector}
-                    onChange={(e) => set({ sector: e.target.value })}
-                    placeholder="Contrafrente, medianera…"
-                  />
-                </label>
               </div>
 
               <label className="flex items-center gap-2 text-[11px]">
@@ -490,7 +451,7 @@ export function FilaJornada({
                   rows={2}
                   value={borrador.observaciones}
                   onChange={(e) => set({ observaciones: e.target.value })}
-                  placeholder="Lo que mandó el capataz por WhatsApp"
+                  placeholder="Cualquier cosa del día que valga la pena registrar"
                 />
               </label>
 
@@ -605,6 +566,7 @@ export function FilaJornada({
           formulario completo del tablero. */}
       {abierta && !borrador && parte && (
         <div className="space-y-1 border-t bg-card px-3 py-3 text-[12px]">
+          <QueHayQueEjecutar jornada={jornada} />
           <p className="font-medium">Parte cargado el {format(parseISO(parte.fecha), "d 'de' MMMM", { locale: es })}</p>
           {parte.manoObra.map((l, i) => (
             <p key={i} className="text-muted-foreground">
@@ -616,6 +578,47 @@ export function FilaJornada({
           {parte.observaciones && <p className="text-muted-foreground">{parte.observaciones}</p>}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Qué hay que ejecutar y de quién es la obra.
+ *
+ * FALTABA EN TODA LA PANTALLA. El parte se identificaba sólo por la dirección, y con eso
+ * no alcanza para saber si lo que se hizo es lo que había que hacer: en la misma obra hay
+ * armados, ampliaciones y desmontes parciales, y el que carga a la mañana no estuvo ahí.
+ * El dato ya viajaba en la jornada —lo usa la precarga del as-built— pero no se mostraba
+ * en ningún lado.
+ *
+ * El técnico va al lado porque es la respuesta a la pregunta que sigue: cuando lo que
+ * está en obra no coincide con lo que dice la OT, hay que preguntarle a alguien. Hoy eso
+ * arranca por averiguar de quién es la obra.
+ *
+ * Si la OT no tiene detalle cargado se dice, en vez de no mostrar nada: "sin detalle" es
+ * información —hay que preguntar— y un bloque ausente se lee como que no hacía falta.
+ */
+function QueHayQueEjecutar({ jornada }: { jornada: JornadaListado }) {
+  if (!jornada.detalleTecnico && !jornada.tecnico) return null;
+  return (
+    <div className="rounded-md border bg-muted/30 px-2.5 py-2">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+          Qué hay que ejecutar
+        </span>
+        {jornada.tecnico && (
+          <span className="shrink-0 text-[10px] text-muted-foreground">
+            Téc. <span className="font-medium text-foreground">{jornada.tecnico}</span>
+          </span>
+        )}
+      </div>
+      <p className="mt-0.5 whitespace-pre-wrap text-[12px] leading-snug">
+        {jornada.detalleTecnico ?? (
+          <span className="text-muted-foreground">
+            La OT no tiene detalle técnico cargado.
+          </span>
+        )}
+      </p>
     </div>
   );
 }

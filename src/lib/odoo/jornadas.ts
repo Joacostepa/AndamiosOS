@@ -142,9 +142,10 @@ export async function fetchListadoJornadas(fecha: string, hoy: string): Promise<
         x_duracion_est: string | false;
         x_jornadas_num: number | false;
         x_detalle_tecnico: string | false;
+        x_tecnico: string | false;
       }>("x_aba_orden_trabajo", otIds, [
         "x_name", "x_tipo", "x_personal_por_jornada", "x_duracion_est", "x_jornadas_num",
-        "x_detalle_tecnico",
+        "x_detalle_tecnico", "x_tecnico",
       ])
     : [];
   const otPorId = new Map(ots.map((o) => [o.id, o]));
@@ -193,6 +194,8 @@ export async function fetchListadoJornadas(fecha: string, hoy: string): Promise<
       // aparte porque el listado ya lee la OT entera: es un campo más de un read que ya
       // se hace.
       detalleTecnico: str(ot?.x_detalle_tecnico),
+      // Un campo más del read que ya se hace, igual que detalleTecnico.
+      tecnico: str(ot?.x_tecnico),
       tentativaVencida,
     };
   };

@@ -88,6 +88,42 @@ const CODIGO_COMPUTE = `for rec in self:
             if not conNum and calleConNum:
                 obra = calle
         if not obra:
+            # LA VENTA APUNTA AL CLIENTE Y NO A UN CONTACTO DE OBRA. Si el cliente tiene un
+            # solo contacto de entrega, ése es la obra: alguien lo cargó y después no lo
+            # eligió en el presupuesto. Vale más que el street del cliente, que muy seguido
+            # es la oficina de la administración y mandaría la cuadrilla a otro lado.
+            # Con dos o más no se adivina: no hay en la venta nada que diga cuál es.
+            #
+            # SALVO QUE EL CLIENTE SE LLAME COMO SU PROPIA CALLE. "Consorcio de Propietarios
+            # Combatientes de Malvinas 3131/33" ES ese edificio: su street es la obra, y el
+            # contacto de entrega que tiene cargado es OTRA obra suya. Ahí adivinar sería
+            # pisar un dato bueno con uno inventado.
+            propio = False
+            if cli and calle:
+                acentos = [('á','a'),('à','a'),('ä','a'),('â','a'),('é','e'),('è','e'),('ë','e'),('ê','e'),('í','i'),('ì','i'),('ï','i'),('î','i'),('ó','o'),('ò','o'),('ö','o'),('ô','o'),('ú','u'),('ù','u'),('ü','u'),('û','u'),('ñ','n')]
+                nomNorm = cli.lower()
+                calleNorm = calle.lower()
+                for par in acentos:
+                    nomNorm = nomNorm.replace(par[0], par[1])
+                    calleNorm = calleNorm.replace(par[0], par[1])
+                limpio = ''
+                for ch in calleNorm:
+                    limpio = limpio + (ch if ch.isalpha() else ' ')
+                for tok in limpio.split():
+                    # 5 letras para no engancharse con "san", "av" o "de".
+                    if len(tok) >= 5 and tok in nomNorm:
+                        propio = True
+                        break
+            if (not propio) and s and not s['parent_id'] and p:
+                entregas = []
+                for c in p['child_ids']:
+                    if c['type'] == 'delivery':
+                        entregas.append(c)
+                if len(entregas) == 1:
+                    obra = ' '.join((entregas[0]['name'] or '').split())
+                    if not obra:
+                        obra = ' '.join((entregas[0]['street'] or '').split())
+        if not obra:
             obra = calle
         if not obra and p:
             obra = ' '.join((p['street'] or '').split())
@@ -117,6 +153,12 @@ const DEPENDS = [
   "x_order_id.partner_id.street",
   "x_order_id.partner_id.parent_id",
   "x_order_id.partner_id.parent_id.name",
+  // El contacto de obra que la venta no eligió: si aparece uno, el nombre tiene que
+  // dejar de mostrar la calle del cliente y pasar a mostrar la obra.
+  "x_order_id.partner_id.child_ids",
+  "x_order_id.partner_id.child_ids.name",
+  "x_order_id.partner_id.child_ids.type",
+  "x_order_id.partner_id.child_ids.street",
   "x_order_id.partner_shipping_id",
   "x_order_id.partner_shipping_id.name",
   "x_order_id.partner_shipping_id.street",
@@ -130,7 +172,19 @@ const ETIQUETAS = {
   desmonte_parcial: "Desmonte parcial", otro: "Otro",
 };
 
-function nombreNuevo(ot, orden, porId) {
+const sinTilde = (x) => x.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
+/** ¿El cliente se llama como su propia calle? Entonces el cliente ES el edificio. */
+function seLlamaComoLaCalle(cli, calle) {
+  if (!cli || !calle) return false;
+  const nom = sinTilde(cli);
+  return sinTilde(calle)
+    .replace(/[^a-z]+/g, " ")
+    .split(" ")
+    .some((tok) => tok.length >= 5 && nom.includes(tok));
+}
+
+function nombreNuevo(ot, orden, porId, entregasDe) {
   const t = ETIQUETAS[ot.x_tipo] ?? "OT";
   if (!orden) return t;
 
@@ -149,6 +203,14 @@ function nombreNuevo(ot, orden, porId) {
   let obra = cli && crudo.toUpperCase().startsWith(cli.toUpperCase().slice(0, 12)) ? "" : crudo;
   const tieneNum = (x) => /\d/.test(x);
   if (obra && calle && !tieneNum(obra) && tieneNum(calle)) obra = calle;
+  if (!obra && s && !s.parent_id && p && !seLlamaComoLaCalle(cli, calle)) {
+    const entregas = entregasDe.get(p.id) ?? [];
+    if (entregas.length === 1) {
+      obra =
+        (entregas[0].name || "").split(/\s+/).filter(Boolean).join(" ") ||
+        (entregas[0].street || "").split(/\s+/).filter(Boolean).join(" ");
+    }
+  }
   if (!obra) obra = calle;
   if (!obra && p) obra = (p.street || "").split(/\s+/).filter(Boolean).join(" ");
   obra = obra.slice(0, LARGO);
@@ -212,9 +274,25 @@ const idsPadre = [...partners.values()].map((p) => p.parent_id && p.parent_id[0]
 const padres = await enLotes("res.partner", [...new Set(idsPadre)], ["name", "parent_id", "street"]);
 for (const [id, p] of padres) if (!partners.has(id)) partners.set(id, p);
 
+// Los contactos de entrega de cada cliente, para el caso en que la venta no eligió ninguno.
+const entregasDe = new Map();
+const clientes = [...partners.values()].filter((p) => !p.parent_id).map((p) => p.id);
+for (let i = 0; i < clientes.length; i += 200) {
+  const lote = await searchRead(
+    "res.partner",
+    [["parent_id", "in", clientes.slice(i, i + 200)], ["type", "=", "delivery"]],
+    ["name", "parent_id", "street"],
+  );
+  for (const h of lote) {
+    const k = h.parent_id[0];
+    if (!entregasDe.has(k)) entregasDe.set(k, []);
+    entregasDe.get(k).push(h);
+  }
+}
+
 const cambios = [];
 for (const ot of ots) {
-  const nuevo = nombreNuevo(ot, ot.x_order_id ? ordenes.get(ot.x_order_id[0]) : null, partners);
+  const nuevo = nombreNuevo(ot, ot.x_order_id ? ordenes.get(ot.x_order_id[0]) : null, partners, entregasDe);
   if (nuevo !== String(ot.x_name || "")) cambios.push({ id: ot.id, antes: String(ot.x_name || ""), nuevo });
 }
 
@@ -242,6 +320,28 @@ function muestra(titulo, lista, n) {
 muestra("la venta fue al cliente, sin contacto de obra → ahora cae a street", sinContacto, 12);
 muestra("el recorte a 72 se comía la dirección → ahora recorta al cliente", recortadas, 12);
 
+// LAS ADIVINADAS. Acá la venta no eligió contacto de entrega y la dirección sale del único
+// que tiene el cliente. Es la mejor apuesta disponible —un contacto `delivery` existe para
+// enviar a una obra, el street del cliente es su oficina— pero sigue siendo una apuesta: si
+// ese cliente tiene dos obras y sólo cargó una, las dos OTs van a mostrar la misma. Se
+// listan para que se puedan mirar de a una, y se arreglan de raíz eligiendo la dirección de
+// entrega en el presupuesto: con el depends nuevo el nombre se actualiza solo.
+const adivinadas = [];
+for (const ot of ots) {
+  const o = ot.x_order_id ? ordenes.get(ot.x_order_id[0]) : null;
+  if (!o) continue;
+  const s = partners.get(o.partner_shipping_id?.[0]);
+  if (!s || s.parent_id) continue;
+  const hijos = entregasDe.get(s.id) ?? [];
+  const cli = (s.name || "").split(",")[0].trim();
+  const calle = (s.street || "").split(/\s+/).filter(Boolean).join(" ");
+  if (seLlamaComoLaCalle(cli, calle)) continue; // el cliente es el edificio, no se adivina
+  if (hijos.length === 1) adivinadas.push(`  ${o.name}  cliente=${JSON.stringify(s.name)}  street=${JSON.stringify(s.street)}  →  ${JSON.stringify(hijos[0].name)}`);
+  else if (hijos.length > 1) adivinadas.push(`  ${o.name}  cliente=${JSON.stringify(s.name)}  tiene ${hijos.length} contactos de obra, NO se adivina → queda el street`);
+}
+console.log(`\nDirecciones adivinadas del único contacto de obra sin usar: ${adivinadas.length}`);
+adivinadas.forEach((a) => console.log(a));
+
 // Red de seguridad: ninguna OT tiene que PERDER la altura que hoy muestra. Si antes se
 // leía algo con número y ahora no, el cambio empeoró esa fila y hay que mirarla.
 const empeoran = ganan.filter((c) => /\d/.test(principal(c.antes)) && !/\d/.test(principal(c.nuevo)));
@@ -251,7 +351,7 @@ for (const c of empeoran.slice(0, 10)) {
 }
 
 const sinArreglo = ots.filter((ot) => {
-  const nuevo = nombreNuevo(ot, ot.x_order_id ? ordenes.get(ot.x_order_id[0]) : null, partners);
+  const nuevo = nombreNuevo(ot, ot.x_order_id ? ordenes.get(ot.x_order_id[0]) : null, partners, entregasDe);
   return !nuevo.includes(" — ");
 });
 console.log(`\nQuedan sin dirección (no hay calle en ningún lado): ${sinArreglo.length}`);
@@ -293,7 +393,7 @@ const despues = await searchRead(MODELO, [], ["id", "x_name", "x_tipo", "x_order
 let discrepan = 0;
 let conDireccion = 0;
 for (const ot of despues) {
-  const esperado = nombreNuevo(ot, ot.x_order_id ? ordenes.get(ot.x_order_id[0]) : null, partners);
+  const esperado = nombreNuevo(ot, ot.x_order_id ? ordenes.get(ot.x_order_id[0]) : null, partners, entregasDe);
   if (String(ot.x_name || "") !== esperado) {
     if (discrepan < 5) console.log(`  ≠ #${ot.id}\n      Odoo: ${ot.x_name}\n      sim:  ${esperado}`);
     discrepan++;

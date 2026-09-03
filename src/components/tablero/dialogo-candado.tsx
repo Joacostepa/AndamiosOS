@@ -12,7 +12,12 @@ import {
 import { AVISO, CANDADO } from "@/lib/tablero/colores";
 import type { Friccion } from "@/lib/habilitaciones/derivacion";
 
-// El candado al CONFIRMAR una jornada. Tres situaciones distintas, tres respuestas.
+// El candado al CONFIRMAR una jornada.
+//
+// HOY SÓLO LLEGA `antes_de_piso`. Las tres fricciones de permiso —bloqueo, modalidad sin
+// definir, expediente sin número— se desconectaron del tablero (ver tablero-board.tsx):
+// preguntaban en cada confirmación por algo que Operaciones no puede resolver. Las ramas
+// quedan escritas porque el diálogo es genérico y volver a enchufarlas es una línea.
 //
 // POR QUÉ ACÁ Y NO AL PLANIFICAR: planificar es un borrador, y poner una obra tentativa
 // para la semana que viene sabiendo que el permiso sale en tres días es legítimo.

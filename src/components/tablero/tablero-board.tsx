@@ -1002,9 +1002,8 @@ export function TableroBoard() {
                     : actualizar.mutate({ ids: b.ids, cambio: { fraccion: f } })
                 }
                 onEditarJornadas={(b) => setJornadasDe(b.otId)}
-                // CONFIRMAR es el único momento donde el permiso frena. Volver a
-                // tentativa nunca pregunta nada: aflojar el compromiso no necesita
-                // permiso de nadie.
+                // Volver a tentativa nunca pregunta nada: aflojar el compromiso no
+                // necesita permiso de nadie.
                 onEstado={(b, estado) => {
                   const aplicar = () =>
                     actualizar.mutate({
@@ -1020,19 +1019,23 @@ export function TableroBoard() {
                     });
                   if (estado !== "confirmada") return aplicar();
 
-                  const f = candados?.get(b.otId);
-                  // El permiso primero: es el único que puede hacer que el trabajo sea
-                  // ilegal. Si pasa, recién ahí se mira el acuerdo comercial. Se evalúa una
-                  // sola por vez a propósito — dos diálogos encadenados para un clic se
-                  // leen como que el sistema no quiere que trabajes.
-                  const friccion =
-                    f?.friccion ?? friccionDePiso(otsPorId.get(b.otId) ?? { fechaDesde: null }, b.fechas[0]);
+                  // EL PERMISO NO FRENA AL CONFIRMAR. El candado se sigue viendo en la
+                  // tarjeta —el dato es cierto y sirve—, pero preguntar en cada
+                  // confirmación por algo que Operaciones no puede resolver (la modalidad
+                  // la define el técnico, el permiso lo emite el GCBA) convertía el gesto
+                  // más frecuente del tablero en un trámite. Lo que queda es el acuerdo
+                  // comercial: ir antes del día que el cliente recibe la obra sí es una
+                  // decisión de Operaciones, y esa cuadrilla viaja y vuelve vacía.
+                  const friccion = friccionDePiso(
+                    otsPorId.get(b.otId) ?? { fechaDesde: null },
+                    b.fechas[0],
+                  );
                   if (!friccion) return aplicar();
 
                   setPedidoCandado({
                     otId: b.otId,
                     friccion,
-                    pedidosPrevios: f?.pedidosPrevios ?? 0,
+                    pedidosPrevios: 0,
                     confirmar: aplicar,
                   });
                 }}

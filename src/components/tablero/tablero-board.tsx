@@ -30,6 +30,7 @@ import { DialogoTarea, type ValoresTarea } from "./dialogo-tarea";
 import { DialogoCandado, type PedidoConfirmacion } from "./dialogo-candado";
 import { useCandado } from "@/hooks/use-habilitaciones";
 import { useNotasJornada } from "@/hooks/use-notas-jornada";
+import { useClima } from "@/hooks/use-clima";
 import {
   useTablero,
   useFeriados,
@@ -511,6 +512,12 @@ export function TableroBoard() {
 
   const hoyISO = format(new Date(), "yyyy-MM-dd");
 
+  // Lluvia y viento del encabezado. Igual que los feriados: marca visual y nada más, no
+  // cambia capacidad ni reparto. Se pide desde HOY y no desde el rango visible porque el
+  // pronóstico son nueve días desde hoy y no se mueve al scrollear (ver use-clima.ts): el
+  // resto de las columnas se queda sin chip, y eso NO quiere decir que vaya a estar lindo.
+  const { data: clima } = useClima(hoyISO);
+
   // El rótulo nombra la ventana que se está viendo, que ya no es una semana de
   // calendario: arranca en el primer día visible y llega hasta el mismo día de la
   // semana siguiente.
@@ -953,6 +960,7 @@ export function TableroBoard() {
                 cuadrillas={cuadrillasVisibles}
                 fechas={fechas}
                 feriados={feriados}
+                clima={clima}
                 semanaCentrada={semanaCentrada}
                 asignaciones={data.asignaciones}
                 ots={otsPorId}

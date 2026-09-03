@@ -181,6 +181,10 @@
   /* La nota de la jornada es un chip saturado: el mismo par sirve en los dos temas. */
   --tb-nota-bg: #ef9f27;
   --tb-nota-text: #633806;
+  /* Lluvia y viento del encabezado. Azul para no chocar con el ámbar de las notas, que
+     vive en la misma fila del encabezado a 150px de distancia. */
+  --tb-clima-bg: #e6eefb;
+  --tb-clima-text: #14477d;
   --tb-inactivo: #8a8880;
 }
 
@@ -304,6 +308,8 @@
   --tb-aviso-icono: oklch(0.8 0.13 65);
   --tb-nota-bg: #ef9f27;
   --tb-nota-text: #633806;
+  --tb-clima-bg: oklch(0.28 0.05 250);
+  --tb-clima-text: oklch(0.85 0.08 250);
   --tb-inactivo: oklch(0.62 0 0);
 }
 

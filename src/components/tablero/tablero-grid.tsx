@@ -8,6 +8,7 @@ import { AlertTriangle, MousePointerClick, StickyNote } from "lucide-react";
 import { CeldaDia } from "./celda-dia";
 import { TarjetaAsignacion } from "./tarjeta-asignacion";
 import { PopoverNotasDia } from "./notas-jornada";
+import { ChipClima, textoClima } from "./chip-clima";
 import { agruparBloques, esDomingo, repartirPorAltura } from "@/lib/tablero/bloques";
 import { accionDeCierre, bloqueCerrado, type AccionCierre } from "@/lib/tablero/cierre";
 import { MOTIVOS_NO_EJEC } from "@/lib/tablero/tipos-parte";
@@ -25,6 +26,7 @@ import type { FraccionStr } from "@/lib/tablero/fracciones";
 import { notasDe, notasDeCuadrilla } from "@/lib/tablero/tipos-nota";
 import type { Bloque } from "@/lib/tablero/bloques";
 import type { NotaJornada } from "@/lib/tablero/tipos-nota";
+import type { ClimaDia } from "@/lib/clima/pronostico";
 import type { AsignacionTablero, CuadrillaTablero, OtTablero, ParteTablero } from "@/lib/tablero/tipos";
 
 // Grilla del tablero: filas = cuadrillas, columnas = días, celdas = asignaciones.
@@ -196,6 +198,7 @@ export function TableroGrid({
   onEstado,
   onQuitar,
   candados,
+  clima,
   domingosAbiertos,
   onToggleDomingo,
 }: {
@@ -207,6 +210,12 @@ export function TableroGrid({
    * a diferencia del domingo, un feriado sigue siendo un día hábil para el tablero.
    */
   feriados: Map<string, string>;
+  /**
+   * Lluvia y viento por fecha, para el encabezado. Sólo llega el horizonte del pronóstico
+   * —nueve días—; el resto del rango no tiene entrada, y eso NO significa buen tiempo.
+   * Como el feriado, es una marca visual: no cambia capacidad ni reparto de jornadas.
+   */
+  clima?: Map<string, ClimaDia>;
   /**
    * Los 7 días de la semana centrada en el viewport: el período contra el que se mide la
    * carga de cada fila. No alcanza con `fechas`, que es todo el rango cargado y crece al
@@ -480,6 +489,16 @@ export function TableroGrid({
           // Las del día entero MÁS las de cada cuadrilla: el encabezado es el único lugar
           // que ve la columna completa, así que es el que tiene que decir "acá hay algo".
           const notasDelDia = canaleta ? [] : notasDe(notas, f);
+          // El clima del día, si cae dentro del horizonte del pronóstico. En la canaleta no
+          // va: mide 28px y ese domingo no se trabaja.
+          const climaDelDia = canaleta ? undefined : clima?.get(f);
+          // El tooltip del día junta lo que haya. La línea del clima va SIEMPRE que haya
+          // dato, incluso cuando no hay nada que avisar: es lo único que distingue "no va a
+          // llover" de "todavía no hay pronóstico", que a simple vista se ven igual.
+          const titulo =
+            [alternable ? tituloDomingo : feriado, climaDelDia && textoClima(climaDelDia)]
+              .filter(Boolean)
+              .join(" · ") || undefined;
           return (
             <div
               key={`h-${f}`}
@@ -506,7 +525,7 @@ export function TableroGrid({
                     }
                   : undefined
               }
-              title={alternable ? tituloDomingo : (feriado ?? undefined)}
+              title={titulo}
               style={{
                 // Separador de semana: ubicarse sin tener que leer las fechas.
                 borderLeft: esLunes(f) ? "2px solid var(--border)" : undefined,
@@ -559,6 +578,8 @@ export function TableroGrid({
                   )}
                 </>
               )}
+
+              {climaDelDia && <ChipClima clima={climaDelDia} />}
 
               {/* Notas del día. Va ABSOLUTA y no en el flujo del flex para que agregarle
                   una nota a un día no corra el número de lugar: el encabezado se lee de

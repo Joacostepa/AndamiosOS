@@ -199,6 +199,16 @@ export const CANDADO = "var(--tb-candado)";
 /** Gris de "todavía no": historial sin confirmar. */
 export const INACTIVO = "var(--tb-inactivo)";
 
+// Chip de lluvia y viento del encabezado. AZUL y no ámbar aunque sea un aviso: el ámbar en
+// este tablero ya es la nota del día, y las dos cosas viven a 150px una de otra en la misma
+// fila. Dos chips ámbar en el mismo encabezado se leerían como lo mismo. El azul además
+// dice "clima" sin tener que leerlo. El nivel fuerte sí pasa a rojo, que es el idioma del
+// tablero para "esto te va a frenar".
+export const CLIMA = {
+  fondo: "var(--tb-clima-bg)",
+  texto: "var(--tb-clima-text)",
+} as const;
+
 /** Recuadro de aviso ámbar (panel de OT, diálogo del candado). */
 export const AVISO = {
   fondo: "var(--tb-aviso-bg)",

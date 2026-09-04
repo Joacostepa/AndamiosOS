@@ -83,16 +83,21 @@ async function cabecerasDe(
 // ─── Bandeja ────────────────────────────────────────────────────────────────
 
 export async function fetchBandeja(db: DB): Promise<Bandeja> {
-  const otsOdoo = await fetchOtsActivas();
-  const otIds = otsOdoo.map((o) => o.ot.id);
-  const { mapa: cabeceras, nuevas } = await cabecerasDe(db, otIds);
-
-  const [requisitos, notas] = await Promise.all([
-    db.from("hab_requisitos").select("odoo_ot_id, estado").in("odoo_ot_id", otIds),
-    db.from("hab_notas").select("odoo_ot_id, texto").in("odoo_ot_id", otIds).eq("fijada", true),
+  // Los conteos salen SIN filtrar por otId, para poder pedirlos en paralelo con Odoo en
+  // vez de esperar a saber qué OTs hay. Las dos tablas son chicas —110 requisitos en
+  // total, y las notas fijadas son un puñado— así que traerlas enteras cuesta lo mismo
+  // que traer un subconjunto: contra Supabase se paga por request (~300 ms fijos), no por
+  // fila. Las filas de OTs que no están en la bandeja simplemente no se leen del mapa.
+  const [otsOdoo, requisitos, notas] = await Promise.all([
+    fetchOtsActivas(),
+    db.from("hab_requisitos").select("odoo_ot_id, estado"),
+    db.from("hab_notas").select("odoo_ot_id, texto").eq("fijada", true),
   ]);
   if (requisitos.error) throw new Error(requisitos.error.message);
   if (notas.error) throw new Error(notas.error.message);
+
+  const otIds = otsOdoo.map((o) => o.ot.id);
+  const { mapa: cabeceras, nuevas } = await cabecerasDe(db, otIds);
 
   const conteo = new Map<number, { total: number; aprobados: number; observados: number }>();
   for (const r of requisitos.data ?? []) {
@@ -182,40 +187,51 @@ export async function fetchBandeja(db: DB): Promise<Bandeja> {
  * Las mutaciones devuelven esto y el hook lo mete en la caché con setQueryData, sin
  * refetch. Ver use-habilitaciones.ts.
  */
-export async function fetchGestionDe(db: DB, otId: number): Promise<{
+export type BloqueGestion = {
   requisitos: Requisito[];
   notas: Nota[];
   gestiones: Gestion[];
   reclamos: number;
-}> {
-  const [reqs, notas, gestiones] = await Promise.all([
-    db.from("hab_requisitos").select("*").eq("odoo_ot_id", otId).order("orden").order("created_at"),
-    db.from("hab_notas").select("*, user_profiles(nombre)").eq("odoo_ot_id", otId)
-      .order("fijada", { ascending: false }).order("created_at", { ascending: false }),
-    db.from("hab_gestiones").select("*, user_profiles(nombre)").eq("odoo_ot_id", otId)
-      .order("created_at", { ascending: false }),
-  ]);
-  if (reqs.error) throw new Error(reqs.error.message);
-  if (notas.error) throw new Error(notas.error.message);
-  if (gestiones.error) throw new Error(gestiones.error.message);
+};
 
-  const listaGestiones = (gestiones.data ?? []).map(mapGestion);
+export async function fetchGestionDe(db: DB, otId: number): Promise<BloqueGestion> {
+  // UNA ida a la base, no tres. Medido: cada request a Supabase cuesta ~300 ms FIJOS
+  // desde Argentina —una fila cuesta lo mismo que sesenta, con 23 ms de RTT—, así que lo
+  // único que importa acá es la CANTIDAD de idas, no el tamaño de lo que se trae. Las
+  // tres consultas iban en Promise.all y aun así pagaban ~460 ms; la función las resuelve
+  // adentro de Postgres y arma el mismo objeto, joins de autor incluidos.
+  const { data, error } = await db.rpc("hab_gestion_de", { p_ot_id: otId });
+  if (error) throw new Error(error.message);
+  return normalizarBloque(data);
+}
+
+/** El JSON que devuelven las funciones de Postgres, con los tipos del módulo. */
+function normalizarBloque(data: unknown): BloqueGestion {
+  const b = (data ?? {}) as {
+    requisitos?: Requisito[];
+    notas?: Nota[];
+    gestiones?: Gestion[];
+    reclamos?: number;
+  };
   return {
-    requisitos: (reqs.data ?? []) as Requisito[],
-    notas: (notas.data ?? []).map(mapNota),
-    gestiones: listaGestiones,
-    reclamos: listaGestiones.filter((g) => g.tipo === "reclamo").length,
+    requisitos: b.requisitos ?? [],
+    notas: b.notas ?? [],
+    gestiones: b.gestiones ?? [],
+    reclamos: b.reclamos ?? 0,
   };
 }
 
 export async function fetchFicha(db: DB, otId: number): Promise<FichaHabilitacion | null> {
-  const enOdoo = await fetchOt(otId);
-  if (!enOdoo) return null;
-
-  const [cabeceras, gestion] = await Promise.all([
+  // LAS TRES EN PARALELO. Antes se esperaba a Odoo —dos llamadas encadenadas, ~500 ms—
+  // y recién después salían las de Supabase, pero ninguna de las dos depende de la otra:
+  // se piden por otId, que ya viene en la URL. Serializarlas sumaba un tramo entero de
+  // espera a cada apertura de ficha para nada.
+  const [enOdoo, cabeceras, gestion] = await Promise.all([
+    fetchOt(otId),
     cabecerasDe(db, [otId]),
     fetchGestionDe(db, otId),
   ]);
+  if (!enOdoo) return null;
 
   const base = leerOt(enOdoo.ot);
   const cab = cabeceras.mapa.get(otId);
@@ -266,15 +282,8 @@ export async function fetchFicha(db: DB, otId: number): Promise<FichaHabilitacio
   };
 }
 
-type ConPerfil = { user_profiles?: { nombre: string } | null };
-
-function mapNota(n: ConPerfil & Record<string, unknown>): Nota {
-  return { ...(n as unknown as Nota), autor_nombre: n.user_profiles?.nombre ?? null };
-}
-
-function mapGestion(g: ConPerfil & Record<string, unknown>): Gestion {
-  return { ...(g as unknown as Gestion), autor_nombre: g.user_profiles?.nombre ?? null };
-}
+// mapNota y mapGestion ya no existen: el join del autor lo hace hab_gestion_de en la
+// misma consulta, así que el `autor_nombre` llega armado desde Postgres.
 
 // ─── Gestiones (append-only) ────────────────────────────────────────────────
 
@@ -456,27 +465,37 @@ export async function listarPaquetes(db: DB): Promise<Paquete[]> {
 
 // ─── Requisitos ─────────────────────────────────────────────────────────────
 
-export async function cambiarEstadoRequisito(
+/**
+ * Mueve un requisito de estado y devuelve la ficha fresca, TODO EN UNA IDA A LA BASE.
+ *
+ * Antes eran cinco round trips secuenciales —select previo, update, insert del historial,
+ * y tres selects para devolver el bloque— y a ~300 ms fijos cada uno daban ~1,5 s en la
+ * acción más frecuente del módulo. La función `hab_mover_requisito` hace las cinco cosas
+ * en la misma transacción (ver la migración 20260904000001).
+ *
+ * De paso desaparece la lectura previa: el sellado de `fecha_envio` se resuelve con un
+ * COALESCE adentro del UPDATE, así que ya no hace falta leer el requisito para saber si
+ * ya tenía fecha. Y el autor sale de `auth.uid()`, o sea del JWT que ya viaja en la
+ * request: la ruta tampoco necesita preguntarle a Supabase quién es el usuario.
+ *
+ * El historial sigue siendo append-only por RLS: la función es SECURITY INVOKER.
+ */
+export async function moverRequisito(
   db: DB,
   requisitoId: string,
   estado: EstadoRequisito,
   motivo: string | null,
-): Promise<number> {
-  const hoy = hoyISO();
-  const { data: previo, error: e0 } = await db
-    .from("hab_requisitos").select("odoo_ot_id, fecha_envio").eq("id", requisitoId).single();
-  if (e0) throw new Error(e0.message);
-
-  const cambio: Record<string, unknown> = { estado, motivo_obs: estado === "observado" ? motivo : null };
-  // La fecha de envío se sella la primera vez y no se pisa: es la que sostiene la etapa
-  // `c` en Odoo y el "días sin respuesta" de la fila.
-  if (estado === "enviado" && !previo.fecha_envio) cambio.fecha_envio = hoy;
-  if (estado === "aprobado" || estado === "observado") cambio.fecha_resolucion = hoy;
-  if (estado === "pendiente") { cambio.fecha_envio = null; cambio.fecha_resolucion = null; }
-
-  const { error } = await db.from("hab_requisitos").update(cambio).eq("id", requisitoId);
+): Promise<{ otId: number; gestion: BloqueGestion }> {
+  const { data, error } = await db.rpc("hab_mover_requisito", {
+    p_requisito_id: requisitoId,
+    p_estado: estado,
+    p_motivo: motivo,
+  });
   if (error) throw new Error(error.message);
-  return previo.odoo_ot_id as number;
+  return {
+    otId: (data as { otId: number }).otId,
+    gestion: normalizarBloque(data),
+  };
 }
 
 /**
@@ -495,30 +514,15 @@ export async function marcarTodosLosRequisitos(
   db: DB,
   otId: number,
   estado: "enviado" | "aprobado",
-): Promise<number> {
-  const hoy = hoyISO();
-  const desde = estado === "enviado" ? ["pendiente"] : ["enviado"];
-
-  const { data: alcanzados, error: e0 } = await db
-    .from("hab_requisitos").select("id, fecha_envio").eq("odoo_ot_id", otId).in("estado", desde);
-  if (e0) throw new Error(e0.message);
-  if (!alcanzados?.length) return 0;
-
-  const cambio: Record<string, unknown> = { estado, motivo_obs: null };
-  if (estado === "aprobado") cambio.fecha_resolucion = hoy;
-
-  const { error } = await db
-    .from("hab_requisitos").update(cambio).in("id", alcanzados.map((r) => r.id));
+): Promise<{ movidos: number; gestion: BloqueGestion }> {
+  // Cuatro idas a la base pasaron a una, por lo mismo que moverRequisito. El registro en
+  // el historial va adentro de la función y sólo si movió algo.
+  const { data, error } = await db.rpc("hab_mover_todos", { p_ot_id: otId, p_estado: estado });
   if (error) throw new Error(error.message);
-
-  // La fecha de envío se sella una sola vez por requisito, igual que en el gesto suelto.
-  if (estado === "enviado") {
-    const sinFecha = alcanzados.filter((r) => !r.fecha_envio).map((r) => r.id);
-    if (sinFecha.length > 0) {
-      await db.from("hab_requisitos").update({ fecha_envio: hoy }).in("id", sinFecha);
-    }
-  }
-  return alcanzados.length;
+  return {
+    movidos: (data as { movidos: number }).movidos,
+    gestion: normalizarBloque(data),
+  };
 }
 
 /**

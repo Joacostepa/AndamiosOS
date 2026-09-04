@@ -20,6 +20,22 @@ export async function sesion(): Promise<Sesion> {
   return { db, userId: data.user?.id ?? null };
 }
 
+/**
+ * El cliente con la sesión del usuario, SIN preguntarle a Supabase quién es.
+ *
+ * `sesion()` llama a `auth.getUser()`, que valida el JWT contra el servidor de auth: es
+ * un round trip más, y a ~300 ms fijos por request contra Supabase eso se nota en cada
+ * clic. Cuando el autor de lo que se escribe lo resuelve Postgres con `auth.uid()` —o
+ * cuando la operación no tiene autor— ese viaje no compra nada.
+ *
+ * NO AFLOJA NINGUNA GARANTÍA: `createClient()` arma el cliente con el JWT de la cookie y
+ * es Postgres el que lo verifica al aplicar RLS. Lo que se saltea es preguntar dos veces.
+ * Usar `sesion()` sigue siendo lo correcto donde el userId se necesita en TypeScript.
+ */
+export function db(): Promise<SupabaseClient> {
+  return createClient();
+}
+
 export function errorResponse(e: unknown) {
   const msg = e instanceof OdooError ? e.message : e instanceof Error ? e.message : String(e);
   return NextResponse.json({ error: msg }, { status: 502 });

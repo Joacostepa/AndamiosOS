@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import {
-  useAdjuntos, useAgregarRequisito, useBorrarAdjunto, useBorrarRequisito,
+  useAdjuntosDeOt, useAgregarRequisito, useBorrarAdjunto, useBorrarRequisito,
   useCambiarRequisito, useMarcarTodos, usePaquetes, useSubirAdjunto, urlFirmada,
 } from "@/hooks/use-habilitaciones";
 import { Button } from "@/components/ui/button";
@@ -18,7 +18,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { diasEntre, hoyISO } from "@/lib/habilitaciones/derivacion";
-import type { EstadoRequisito, Requisito } from "@/lib/habilitaciones/tipos";
+import type { AdjuntoRequisito, EstadoRequisito, Requisito } from "@/lib/habilitaciones/tipos";
 
 // Listado de requisitos. Es lo que hace usable una obra exigente.
 //
@@ -54,6 +54,9 @@ export function ListadoRequisitos({ otId, requisitos }: { otId: number; requisit
   const agregar = useAgregarRequisito(otId);
   const borrar = useBorrarRequisito(otId);
   const { data: paquetes } = usePaquetes();
+  // UNA consulta para los archivos de toda la obra, no una por requisito: ver
+  // useAdjuntosDeOt. Cada fila recibe los suyos ya resueltos.
+  const { data: adjuntosPorRequisito } = useAdjuntosDeOt(otId);
 
   const [nuevo, setNuevo] = useState("");
   const [observando, setObservando] = useState<string | null>(null);
@@ -203,7 +206,11 @@ export function ListadoRequisitos({ otId, requisitos }: { otId: number; requisit
                   </span>
                 </span>
 
-                <Adjuntos otId={otId} requisitoId={r.id} />
+                <Adjuntos
+                  otId={otId}
+                  requisitoId={r.id}
+                  adjuntos={adjuntosPorRequisito?.[r.id] ?? []}
+                />
 
                 <Button size="sm" variant="outline" onClick={() => avanzar(r)} disabled={cambiar.isPending}>
                   {SIGUIENTE[r.estado]}
@@ -297,13 +304,21 @@ export function ListadoRequisitos({ otId, requisitos }: { otId: number; requisit
  * capacitaciones, se sabe exactamente qué reemplazar; con todo colgado de la obra hay
  * que adivinar cuál de los nueve PDFs es.
  */
-function Adjuntos({ otId, requisitoId }: { otId: number; requisitoId: string }) {
-  const { data: adjuntos } = useAdjuntos(otId, requisitoId);
+function Adjuntos({
+  otId,
+  requisitoId,
+  adjuntos,
+}: {
+  otId: number;
+  requisitoId: string;
+  /** Ya resueltos por la consulta única de la obra: acá no se pide nada a la red. */
+  adjuntos: AdjuntoRequisito[];
+}) {
   const subir = useSubirAdjunto(otId, requisitoId);
-  const borrar = useBorrarAdjunto(otId, requisitoId);
+  const borrar = useBorrarAdjunto(otId);
   const [abierto, setAbierto] = useState(false);
 
-  const n = adjuntos?.length ?? 0;
+  const n = adjuntos.length;
 
   return (
     <div className="relative shrink-0">
@@ -320,7 +335,7 @@ function Adjuntos({ otId, requisitoId }: { otId: number; requisitoId: string }) 
       {abierto && (
         <div className="absolute right-0 top-8 z-20 w-72 rounded-md border bg-popover p-2 shadow-md">
           <ul className="mb-2 space-y-1">
-            {(adjuntos ?? []).map((a) => (
+            {adjuntos.map((a) => (
               <li key={a.path} className="flex items-center gap-1 text-[12px]">
                 <button
                   className="min-w-0 flex-1 truncate text-left hover:underline"

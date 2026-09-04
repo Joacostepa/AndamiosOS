@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import {
-  agregarRequisito, aplicarPaquete, borrarRequisito, cambiarEstadoRequisito,
-  fetchGestionDe, marcarTodosLosRequisitos, registrarGestion,
+  agregarRequisito, aplicarPaquete, borrarRequisito,
+  fetchGestionDe, marcarTodosLosRequisitos, moverRequisito,
 } from "@/lib/habilitaciones/servicio";
-import { errorResponse, invalido, parseOtId, sesion, sincronizarLuego } from "../../_comun";
+import { db as conectar, errorResponse, invalido, parseOtId, sincronizarLuego } from "../../_comun";
 
 // Requisitos de una OT.
 //
@@ -13,8 +13,13 @@ import { errorResponse, invalido, parseOtId, sesion, sincronizarLuego } from "..
 //   DELETE → sacar el que el cliente no pide
 //
 // Cada cambio de estado resincroniza la OT: los cuatro inputs de Odoo se derivan de
-// estos registros. Va en after(), porque marcar un requisito tiene que ser instantáneo
-// y un RPC a Odoo tarda ~800 ms.
+// estos registros. Va en after(), porque marcar un requisito tiene que ser instantáneo.
+//
+// UNA SOLA IDA A SUPABASE POR GESTO. Medido: cada request a Supabase cuesta ~300 ms
+// FIJOS, así que lo que importa es la CANTIDAD de idas y no el tamaño de la consulta.
+// El PATCH hacía cinco —auth, select, update, insert del historial, y el bloque de
+// vuelta— y ahora hace una: ver hab_mover_requisito en la migración 20260904000001.
+// Tampoco se llama a `sesion()`: el autor lo resuelve Postgres con auth.uid().
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +36,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ otId: stri
   if (!parsed.success) return invalido(parsed.error.issues.map((i) => i.message).join(" · "));
 
   try {
-    const { db } = await sesion();
+    const db = await conectar();
     if ("paqueteId" in parsed.data) await aplicarPaquete(db, otId, parsed.data.paqueteId);
     else await agregarRequisito(db, otId, parsed.data.nombre);
     sincronizarLuego(db, otId);
@@ -68,18 +73,11 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ otId: str
   const masivo = masivoSchema.safeParse(cuerpo);
   if (masivo.success) {
     try {
-      const { db, userId } = await sesion();
-      const n = await marcarTodosLosRequisitos(db, otId, masivo.data.todos);
-      if (n > 0) {
-        await registrarGestion(
-          db, otId,
-          masivo.data.todos === "enviado" ? "envio" : "aprobacion",
-          `${n} requisito${n === 1 ? "" : "s"} en un solo gesto`,
-          userId,
-        );
-        sincronizarLuego(db, otId);
-      }
-      return NextResponse.json({ ok: true, movidos: n, gestion: await fetchGestionDe(db, otId) });
+      // Sin `sesion()`: el autor del registro lo pone Postgres con auth.uid().
+      const base = await conectar();
+      const { movidos, gestion } = await marcarTodosLosRequisitos(base, otId, masivo.data.todos);
+      if (movidos > 0) sincronizarLuego(base, otId);
+      return NextResponse.json({ ok: true, movidos, gestion });
     } catch (e) {
       return errorResponse(e);
     }
@@ -90,18 +88,12 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ otId: str
 
   const { requisitoId, estado, motivo } = parsed.data;
   try {
-    const { db, userId } = await sesion();
-    await cambiarEstadoRequisito(db, requisitoId, estado, motivo ?? null);
-
-    // El historial guarda las transiciones que después hay que poder demostrar.
-    const tipo = estado === "enviado" ? "envio"
-      : estado === "aprobado" ? "aprobacion"
-      : estado === "observado" ? "observacion"
-      : null;
-    if (tipo) await registrarGestion(db, otId, tipo, motivo?.trim() || null, userId);
-
-    sincronizarLuego(db, otId);
-    return NextResponse.json({ ok: true, gestion: await fetchGestionDe(db, otId) });
+    // Una sola ida a la base: mueve el requisito, registra la transición en el historial
+    // y devuelve la ficha fresca. Ver moverRequisito en el servicio.
+    const base = await conectar();
+    const { gestion } = await moverRequisito(base, requisitoId, estado, motivo ?? null);
+    sincronizarLuego(base, otId);
+    return NextResponse.json({ ok: true, gestion });
   } catch (e) {
     return errorResponse(e);
   }
@@ -117,7 +109,7 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ otId: st
   if (!parsed.success) return invalido("Requisito inválido");
 
   try {
-    const { db } = await sesion();
+    const db = await conectar();
     await borrarRequisito(db, parsed.data.requisitoId);
     sincronizarLuego(db, otId);
     return NextResponse.json({ ok: true, gestion: await fetchGestionDe(db, otId) });

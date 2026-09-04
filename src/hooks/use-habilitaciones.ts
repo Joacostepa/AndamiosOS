@@ -32,11 +32,27 @@ async function pedir<T>(url: string, init?: RequestInit): Promise<T> {
 
 // ─── Bandeja ────────────────────────────────────────────────────────────────
 
+/**
+ * La bandeja. Se refresca sola, que es lo que antes no pasaba.
+ *
+ * LAS OTs NUEVAS: no hay demora de sincronización —`cabecerasDe` siembra la fila en la
+ * misma lectura, así que una OT recién creada en Odoo aparece en cuanto se lee la
+ * bandeja—. Lo que fallaba es que la bandeja no se volvía a leer NUNCA: sin staleTime pero
+ * con `refetchOnWindowFocus: false`, con la pestaña abierta se quedaba congelada hasta
+ * que alguien navegaba a otro lado y volvía. De ahí el "tarda en aparecer".
+ *
+ * Ahora se relee cada 2 minutos y al volver a la pestaña. Y el `staleTime` de 60 s hace lo
+ * inverso en el caso frecuente: ir a la bandeja, abrir una obra y volver ya no dispara de
+ * nuevo las dos llamadas a Odoo y las dos a Supabase para traer lo mismo.
+ */
 export function useBandejaHabilitaciones() {
   return useQuery({
     queryKey: ["habilitaciones"],
     queryFn: () => pedir<Bandeja>("/api/habilitaciones"),
-    refetchOnWindowFocus: false,
+    staleTime: 60_000,
+    refetchInterval: 120_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -78,12 +94,21 @@ export function useReconciliar() {
 
 // ─── Ficha ──────────────────────────────────────────────────────────────────
 
+/**
+ * La ficha de una obra.
+ *
+ * `staleTime` de 60 s porque volver a entrar a la misma obra cuesta caro: dos llamadas a
+ * Odoo más una a Supabase. Las mutaciones ya parchean esta entrada con setQueryData
+ * (ver useAplicar), así que lo que se ve nunca queda atrasado respecto de lo que uno hizo
+ * — el minuto sólo evita releer lo que no cambió.
+ */
 export function useHabilitacion(otId: number | null) {
   return useQuery({
     queryKey: ["habilitacion", otId],
     queryFn: async () =>
       (await pedir<{ ficha: FichaHabilitacion }>(`/api/habilitaciones/${otId}`)).ficha,
     enabled: !!otId,
+    staleTime: 60_000,
     refetchOnWindowFocus: false,
   });
 }
@@ -261,21 +286,27 @@ function prefijo(otId: number, requisitoId: string) {
   return `habilitaciones/${otId}/${requisitoId}`;
 }
 
-export function useAdjuntos(otId: number, requisitoId: string) {
-  const supabase = createClient();
+/**
+ * Los archivos de TODOS los requisitos de la obra, en una sola consulta.
+ *
+ * ANTES ERA UNO POR REQUISITO. Cada `<Adjuntos>` hacía su propio storage.list() desde el
+ * browser: con 12 requisitos, 12 requests de ~300 ms que el navegador además serializa de
+ * a 6, casi todos devolviendo cero archivos. Y sin staleTime, o sea otra vez enteros en
+ * cada montaje de la ficha. Ahora los lista el servidor en paralelo y el browser paga un
+ * viaje (ver /api/habilitaciones/[otId]/adjuntos).
+ */
+export function useAdjuntosDeOt(otId: number) {
   return useQuery({
-    queryKey: ["hab-adjuntos", otId, requisitoId],
-    queryFn: async (): Promise<AdjuntoRequisito[]> => {
-      const { data, error } = await supabase.storage.from(BUCKET).list(prefijo(otId, requisitoId));
-      if (error) throw error;
-      return (data ?? [])
-        .filter((f) => f.id !== null)
-        .map((f) => ({
-          nombre: f.name,
-          path: `${prefijo(otId, requisitoId)}/${f.name}`,
-          tamano: (f.metadata?.size as number | undefined) ?? null,
-        }));
+    queryKey: ["hab-adjuntos", otId],
+    queryFn: async () => {
+      const r = await pedir<{ adjuntos: Record<string, AdjuntoRequisito[]> }>(
+        `/api/habilitaciones/${otId}/adjuntos`,
+      );
+      return r.adjuntos;
     },
+    enabled: !!otId,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -289,11 +320,12 @@ export function useSubirAdjunto(otId: number, requisitoId: string) {
         .upload(`${prefijo(otId, requisitoId)}/${archivo.name}`, archivo, { upsert: true });
       if (error) throw error;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["hab-adjuntos", otId, requisitoId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["hab-adjuntos", otId] }),
   });
 }
 
-export function useBorrarAdjunto(otId: number, requisitoId: string) {
+/** Borra por path completo, así que no necesita saber de qué requisito cuelga. */
+export function useBorrarAdjunto(otId: number) {
   const supabase = createClient();
   const qc = useQueryClient();
   return useMutation({
@@ -301,7 +333,7 @@ export function useBorrarAdjunto(otId: number, requisitoId: string) {
       const { error } = await supabase.storage.from(BUCKET).remove([path]);
       if (error) throw error;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["hab-adjuntos", otId, requisitoId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["hab-adjuntos", otId] }),
   });
 }
 

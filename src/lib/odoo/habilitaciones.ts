@@ -61,6 +61,7 @@ const CAMPOS_OT = [
 const CAMPOS_VENTA = [
   "name", "x_permiso_modalidad", "x_permiso_definida", "x_tramite_estado",
   "x_expediente_nro", "x_expediente_fecha", "x_permiso_fecha", "x_studio_tcnico",
+  "x_lleva_permiso",
   ...CAMPOS_TRABAJO,
 ];
 
@@ -95,6 +96,7 @@ type FilaVenta = Partial<FilaTrabajo> & {
   x_expediente_fecha: string | false;
   x_permiso_fecha: string | false;
   x_studio_tcnico: M2O;
+  x_lleva_permiso: string | false;
 };
 
 export type OtConPermiso = {
@@ -107,14 +109,16 @@ export type OtConPermiso = {
 function mapPermiso(v: FilaVenta | undefined, tecnicoOt: string | null): Permiso {
   if (!v) {
     return {
-      ventaId: null, ventaNombre: null, modalidad: null, modalidadDefinida: null,
-      tramite: null, expedienteNro: null, expedienteFecha: null, permisoFecha: null,
-      tecnicoId: null, tecnicoNombre: tecnicoOt,
+      ventaId: null, ventaNombre: null, llevaPermiso: null, modalidad: null,
+      modalidadDefinida: null, tramite: null, expedienteNro: null, expedienteFecha: null,
+      permisoFecha: null, tecnicoId: null, tecnicoNombre: tecnicoOt,
     };
   }
   return {
     ventaId: v.id,
     ventaNombre: str(v.name),
+    // null = nadie contestó todavía. Distinto de "no lleva", que es una decisión tomada.
+    llevaPermiso: str(v.x_lleva_permiso) === null ? null : str(v.x_lleva_permiso) === "si",
     modalidad: (str(v.x_permiso_modalidad) as ModalidadPermiso | null) ?? null,
     modalidadDefinida: str(v.x_permiso_definida),
     tramite: (str(v.x_tramite_estado) as TramiteEstado | null) ?? null,

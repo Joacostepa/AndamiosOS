@@ -358,6 +358,34 @@ export function friccionAlConfirmar(
   return null;
 }
 
+/**
+ * Lo que FRENA al confirmar en el tablero. Es un subconjunto de friccionAlConfirmar.
+ *
+ * DEJA AFUERA `pedir_modalidad` a propósito, y esa es toda la diferencia. Esa fricción
+ * salta cuando la modalidad está vacía, o sea en el 98,9% de las órdenes, y por eso el
+ * candado se apagó entero el 3/9: un aviso que sale siempre deja de significar algo.
+ *
+ * Ahora la modalidad se pregunta en la venta y es obligatoria para confirmarla, así que
+ * "falta la modalidad" deja de ser un estado que Operaciones tenga que resolver mirando
+ * una tarjeta — se resuelve antes, donde está quien sabe la respuesta.
+ *
+ * EL DATO ES EL CORTE, no la fecha. Las dos que quedan exigen que la modalidad esté
+ * cargada, así que las órdenes viejas —sin modalidad— no disparan nada solas. Medido al
+ * 5/9 sobre las 60 OTs activas: 35 sin modalidad no avisan, 9 avisarían por permiso sin
+ * emitir y 4 por expediente sin número.
+ *
+ * Y no incluye el caso "se arma sin expediente ni permiso": es una excepción ya decidida
+ * comercialmente al cotizar, y volver a preguntarla al planificar sería hacerle firmar dos
+ * veces lo mismo a Operaciones.
+ */
+export function friccionDelTablero(
+  permiso: Parameters<typeof friccionAlConfirmar>[0],
+  hoy: string = hoyISO(),
+): Friccion {
+  const f = friccionAlConfirmar(permiso, hoy);
+  return f && f.tipo === "pedir_modalidad" ? null : f;
+}
+
 /** Los dos trámites cruzados, en una línea, para el encabezado de la ficha. */
 export function veredicto(
   permiso: Parameters<typeof friccionAlConfirmar>[0],

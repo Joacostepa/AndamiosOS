@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { permisosDeOts } from "@/lib/odoo/habilitaciones";
-import { friccionAlConfirmar } from "@/lib/habilitaciones/derivacion";
+import { friccionDelTablero } from "@/lib/habilitaciones/derivacion";
 import {
   contarConsultas, hayConsultaReciente, registrarGestion,
 } from "@/lib/habilitaciones/servicio";
@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
     const fricciones: FriccionDeOt[] = await Promise.all(
       otIds.map(async (otId) => {
         const permiso = permisos.get(otId);
-        const friccion = permiso ? friccionAlConfirmar(permiso) : null;
+        const friccion = permiso ? friccionDelTablero(permiso) : null;
         return {
           otId,
           friccion,

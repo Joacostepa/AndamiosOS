@@ -6,6 +6,7 @@ import { es } from "date-fns/locale";
 import { ExternalLink, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useActualizarPermiso, useRegistrarGestion } from "@/hooks/use-habilitaciones";
+import { AVISO } from "@/lib/tablero/colores";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -73,10 +74,38 @@ export function ColumnaPermiso({
         )}
       </header>
 
+      {/* SI LLEVA GESTORÍA O NO. Es la primera de las dos preguntas y la contesta Comercial
+          al cotizar, en la solapa "Trabajo a ejecutar" de la venta — acá se LEE, no se
+          edita, porque es parte de lo que se vendió y se cobró.
+
+          Se muestra siempre que esté contestada, incluso cuando es "no": saber que esta
+          obra no tramita permiso es tan útil como saber que sí, y es lo que explica por
+          qué abajo no hay modalidad que elegir. */}
+      {permiso.llevaPermiso !== null && (
+        <div
+          className="rounded-md border px-2.5 py-2 text-[12px]"
+          style={
+            permiso.llevaPermiso
+              ? { backgroundColor: AVISO.fondo, borderColor: AVISO.borde, color: AVISO.texto }
+              : undefined
+          }
+        >
+          {permiso.llevaPermiso ? (
+            <>
+              <strong>Lleva permiso de implantación (GCBA).</strong> La gestoría es nuestra.
+            </>
+          ) : (
+            <span className="text-muted-foreground">
+              No lleva permiso de implantación: no hay trámite que gestionar.
+            </span>
+          )}
+        </div>
+      )}
+
       {/* LA DECISIÓN ES DEL CLIENTE. Nosotros no la elegimos: la transmite el técnico. */}
       <div className="space-y-2">
         <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
-          Decisión del cliente
+          Con qué se arma
         </Label>
         <div className="flex flex-col gap-1">
           {MODALIDADES.map((m) => (

@@ -51,10 +51,13 @@ export const ETAPA_LABEL: Record<HabEtapa, string> = {
   f: "No aplica",
 };
 
+// LEÍDAS COMO RESPUESTA A "¿con qué se arma?". El campo dejó de ser una lista suelta:
+// ahora es la segunda pregunta, y sólo aparece cuando la orden lleva gestoría de
+// implantación. Los valores son los mismos de siempre — lo que cambió es el encuadre.
 export const MODALIDAD_LABEL: Record<ModalidadPermiso, string> = {
-  sin_permiso: "Sin permiso — el cliente asume",
-  con_expediente: "Con expediente en trámite",
-  esperar_permiso: "Esperar el permiso emitido",
+  esperar_permiso: "Se arma con el permiso emitido",
+  con_expediente: "Se arma con el número de expediente",
+  sin_permiso: "Se arma sin expediente ni permiso",
 };
 
 export const TRAMITE_LABEL: Record<TramiteEstado, string> = {
@@ -144,6 +147,12 @@ export type HabOt = InputsHabilitacion & {
 export type Permiso = {
   ventaId: number | null;
   ventaNombre: string | null;
+  /**
+   * ¿La orden lleva gestoría de implantación (GCBA)? Es lo que ABA cobra, y la primera de
+   * las dos preguntas: `modalidad` —con qué se arma— sólo tiene sentido cuando esto es
+   * true. null = nadie contestó.
+   */
+  llevaPermiso: boolean | null;
   modalidad: ModalidadPermiso | null;
   modalidadDefinida: string | null;
   tramite: TramiteEstado | null;

@@ -1069,33 +1069,41 @@ export function TableroBoard() {
                     });
                   if (estado !== "confirmada") return aplicar();
 
-                  // EL PERMISO NO FRENA AL CONFIRMAR. El candado se sigue viendo en la
-                  // tarjeta —el dato es cierto y sirve—, pero preguntar en cada
-                  // confirmación por algo que Operaciones no puede resolver (la modalidad
-                  // la define el técnico, el permiso lo emite el GCBA) convertía el gesto
-                  // más frecuente del tablero en un trámite. Lo que queda es la VENTANA
-                  // que puso el cliente —entrar antes del piso o terminar después del
-                  // techo—, que sí son decisiones de Operaciones.
+                  // EL PERMISO PRIMERO: es el único que puede hacer que el trabajo sea
+                  // ilegal. Si pasa, recién ahí se mira la ventana del cliente.
+                  //
+                  // VOLVIÓ A ENCHUFARSE el 5/9, después de que la modalidad pasara a
+                  // preguntarse en la venta y a ser obligatoria para confirmarla. Se había
+                  // apagado entero porque la fricción "falta la modalidad" saltaba en el
+                  // 98,9% de las obras; ésa ya no llega acá (ver friccionDelTablero) y
+                  // quedan sólo las dos precisas: permiso sin emitir cuando el cliente
+                  // pidió esperarlo, y expediente sin número. Las órdenes viejas no tienen
+                  // modalidad cargada, así que no disparan ninguna.
+                  const f = candados?.get(b.otId);
+                  // Se evalúa UNA sola por vez a propósito: dos diálogos encadenados para
+                  // un clic se leen como que el sistema no quiere que trabajes.
                   //
                   // El techo se mide contra el ÚLTIMO día de la obra entera y no contra
                   // esta jornada: el cliente pidió el trabajo terminado. Por eso sale de
                   // planPorObra, que suma todos los tramos.
                   const plan = planPorObra.get(b.otId);
-                  const friccion = friccionDeVentana(
-                    otsPorId.get(b.otId) ?? { fechaDesde: null, fechaAntesDe: null },
-                    {
-                      primerDia: b.fechas[0],
-                      // Si la obra todavía no está en el plan cargado, el bloque que se
-                      // confirma es lo único que se sabe de ella.
-                      ultimoDia: plan?.ultimoDia ?? b.fechas[b.fechas.length - 1],
-                    },
-                  );
+                  const friccion =
+                    f?.friccion ??
+                    friccionDeVentana(
+                      otsPorId.get(b.otId) ?? { fechaDesde: null, fechaAntesDe: null },
+                      {
+                        primerDia: b.fechas[0],
+                        // Si la obra todavía no está en el plan cargado, el bloque que se
+                        // confirma es lo único que se sabe de ella.
+                        ultimoDia: plan?.ultimoDia ?? b.fechas[b.fechas.length - 1],
+                      },
+                    );
                   if (!friccion) return aplicar();
 
                   setPedidoCandado({
                     otId: b.otId,
                     friccion,
-                    pedidosPrevios: 0,
+                    pedidosPrevios: f?.pedidosPrevios ?? 0,
                     confirmar: aplicar,
                   });
                 }}

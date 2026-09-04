@@ -14,10 +14,16 @@ import type { Friccion } from "@/lib/habilitaciones/derivacion";
 
 // El candado al CONFIRMAR una jornada.
 //
-// HOY SÓLO LLEGA `antes_de_piso`. Las tres fricciones de permiso —bloqueo, modalidad sin
-// definir, expediente sin número— se desconectaron del tablero (ver tablero-board.tsx):
-// preguntaban en cada confirmación por algo que Operaciones no puede resolver. Las ramas
-// quedan escritas porque el diálogo es genérico y volver a enchufarlas es una línea.
+// LLEGAN CUATRO DE LAS CINCO. Las de la ventana del cliente —antes del piso, después del
+// techo— y dos de permiso: `bloqueo` y `falta_expediente`.
+//
+// LA QUE NO LLEGA es `pedir_modalidad`, y vale la pena saber por qué. El candado entero se
+// apagó el 3/9 porque esa fricción saltaba en el 98,9% de las obras: la modalidad de
+// permiso sólo se podía cargar desde la ficha de habilitaciones, o sea después de cerrada
+// la venta y en una pantalla donde Comercial no entra. Desde el 5/9 se pregunta en la
+// orden de venta y es obligatoria para confirmarla, así que el resto del candado volvió —
+// pero ésa ya no tiene sentido acá: se resuelve antes, donde está quien sabe la respuesta.
+// La rama queda escrita porque el diálogo es genérico (ver friccionDelTablero).
 //
 // POR QUÉ ACÁ Y NO AL PLANIFICAR: planificar es un borrador, y poner una obra tentativa
 // para la semana que viene sabiendo que el permiso sale en tres días es legítimo.

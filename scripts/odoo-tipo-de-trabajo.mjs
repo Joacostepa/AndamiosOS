@@ -126,6 +126,23 @@ const CAMPOS = [
     selection_ids: opciones([["si", "Sí"], ["no", "No"]]),
   },
   {
+    // LA GESTORÍA DE IMPLANTACIÓN. Es lo que faltaba, y no era un valor más de
+    // x_permiso_modalidad: son DOS preguntas que ese campo tenía aplastadas en una.
+    //
+    //   A — ¿la orden lleva gestoría de implantación? (esto, y es lo que se cobra)
+    //   B — si la lleva, ¿con qué se arma? (x_permiso_modalidad, que ya existe)
+    //
+    // Sin separarlas, "sin_permiso" quedaba ambiguo entre "no corresponde trámite" y "hay
+    // trámite pero armamos antes de que salga nada" — justo la distinción que importa.
+    // Con la pregunta A afuera, los tres valores que ya existen son exactamente las tres
+    // formas de armar cuando SÍ hay trámite, y las 11 órdenes cargadas como sin_permiso
+    // conservan el significado con el que se cargaron.
+    name: "x_lleva_permiso",
+    field_description: "Lleva permiso de implantación (GCBA)",
+    ttype: "selection",
+    selection_ids: opciones([["si", "Sí"], ["no", "No"]]),
+  },
+  {
     name: "x_syh_presencial",
     field_description: "SyH presencial",
     ttype: "selection",
@@ -140,6 +157,20 @@ const CAMPOS = [
     depends: "date_order",
     compute: COMPUTE_EXIGE,
   },
+];
+
+// ─── Las etiquetas del campo que ya existía ─────────────────────────────────
+//
+// x_permiso_modalidad no cambia de valores ni de significado: cambia de ENCUADRE. Deja de
+// ser una lista suelta y pasa a ser la segunda pregunta —"con qué se arma"— que sólo
+// aparece cuando la primera dice que sí. Las etiquetas se reescriben para que se lean como
+// respuestas a esa pregunta y no como tres modalidades sin sujeto.
+//
+// Los VALUE no se tocan: son lo que leen la app, el candado y las 27 órdenes ya cargadas.
+const ETIQUETAS_MODALIDAD = [
+  ["esperar_permiso", "Se arma con el permiso emitido"],
+  ["con_expediente", "Se arma con el número de expediente — gestión iniciada"],
+  ["sin_permiso", "Se arma sin expediente ni permiso — el cliente autoriza"],
 ];
 
 // ─── El bloqueo de verdad ───────────────────────────────────────────────────
@@ -180,8 +211,13 @@ for rec in records:
     elif rec.x_trabajo_ambito == 'obra':
         if not rec.x_trabajo_obra:
             f.append('Tipo de obra')
-        elif rec.x_trabajo_obra in ${JSON.stringify(CON_BANDEJA).replace(/"/g, "'")} and not rec.x_alambre_concertina:
-            f.append('Si lleva alambre de concertina')
+        elif rec.x_trabajo_obra in ${JSON.stringify(CON_BANDEJA).replace(/"/g, "'")}:
+            if not rec.x_alambre_concertina:
+                f.append('Si lleva alambre de concertina')
+            if not rec.x_lleva_permiso:
+                f.append('Si lleva permiso de implantacion')
+            elif rec.x_lleva_permiso == 'si' and not rec.x_permiso_modalidad:
+                f.append('Con que se arma (permiso de implantacion)')
     elif rec.x_trabajo_ambito == 'evento' and not rec.x_trabajo_evento:
         f.append('Tipo de evento')
     if not rec.x_syh_presencial:
@@ -231,6 +267,18 @@ const ARCH = `<data>
         <field name="x_alambre_concertina" widget="radio" options="{'horizontal': true}"
                invisible="x_trabajo_ambito != 'obra' or x_trabajo_obra not in ${LISTA_BANDEJA}"
                required="${EXIGE} and x_trabajo_ambito == 'obra' and x_trabajo_obra in ${LISTA_BANDEJA}"/>
+        <!-- El permiso de implantación se pregunta en los MISMOS tres tipos que el
+             alambre: son los que van contra la vía pública. -->
+        <field name="x_lleva_permiso" widget="radio" options="{'horizontal': true}"
+               invisible="x_trabajo_ambito != 'obra' or x_trabajo_obra not in ${LISTA_BANDEJA}"
+               required="${EXIGE} and x_trabajo_ambito == 'obra' and x_trabajo_obra in ${LISTA_BANDEJA}"/>
+        <!-- CON QUÉ SE ARMA. Es x_permiso_modalidad, el campo que ya existía y que hasta
+             hoy no se podía cargar desde NINGUNA vista de Odoo: sólo desde la ficha de
+             habilitaciones de la app, o sea después de cerrada la venta y en una pantalla
+             donde Comercial no entra. De ahí que estuviera al 1,1%. -->
+        <field name="x_permiso_modalidad"
+               invisible="x_lleva_permiso != 'si' or x_trabajo_obra not in ${LISTA_BANDEJA}"
+               required="${EXIGE} and x_lleva_permiso == 'si' and x_trabajo_obra in ${LISTA_BANDEJA}"/>
       </group>
       <group>
         <field name="x_syh_presencial" widget="radio" options="{'horizontal': true}"
@@ -381,6 +429,50 @@ for (const c of CAMPOS) {
   const f = despues[c.name];
   console.log(`  ${c.name.padEnd(24)} ${f ? f.type : "NO EXISTE"}  ${f?.selection ? JSON.stringify(f.selection) : ""}`);
 }
+
+// ── Las etiquetas de la modalidad ───────────────────────────────────────────
+
+const [campoModalidad] = await searchRead(
+  "ir.model.fields",
+  [["model", "=", MODEL], ["name", "=", "x_permiso_modalidad"]],
+  ["id"],
+);
+if (campoModalidad) {
+  for (const [value, name] of ETIQUETAS_MODALIDAD) {
+    const [op] = await searchRead(
+      "ir.model.fields.selection",
+      [["field_id", "=", campoModalidad.id], ["value", "=", value]],
+      ["id", "name"],
+    );
+    if (op && op.name !== name) {
+      await write("ir.model.fields.selection", [op.id], { name });
+      console.log(`✓ modalidad ${value}: "${op.name}" → "${name}"`);
+    }
+  }
+}
+
+// ── Completar "lleva permiso" en lo que se deduce solo ──────────────────────
+//
+// esperar_permiso y con_expediente implican que HAY gestoría: no se puede esperar un
+// permiso que nadie tramita. sin_permiso NO se deduce —puede ser "no corresponde" o "hay
+// trámite y armamos antes"— y esas quedan vacías a propósito, para que alguien las mire.
+const deducibles = await searchRead(
+  MODEL,
+  [["x_permiso_modalidad", "in", ["esperar_permiso", "con_expediente"]], ["x_lleva_permiso", "=", false]],
+  ["id", "name"],
+  { limit: 500 },
+);
+if (deducibles.length > 0) {
+  await write(MODEL, deducibles.map((o) => o.id), { x_lleva_permiso: "si" });
+  console.log(`✓ ${deducibles.length} órdenes completadas con "lleva permiso = sí" (implícito en su modalidad)`);
+}
+const ambiguas = await searchRead(
+  MODEL,
+  [["x_permiso_modalidad", "=", "sin_permiso"], ["x_lleva_permiso", "=", false]],
+  ["name"],
+  { limit: 100 },
+);
+console.log(`· ${ambiguas.length} con sin_permiso quedan SIN deducir: puede ser "no corresponde" o "hay trámite y se armó antes"`);
 
 // ── El bloqueo al confirmar ─────────────────────────────────────────────────
 

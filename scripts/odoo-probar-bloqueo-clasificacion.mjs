@@ -44,6 +44,12 @@ await write("sale.order", [orden], { x_trabajo_obra: "estructura_pantalla" });
 bien += (await intentar("tipo con bandeja y sin contestar el alambre → bloquea", true)) ? 1 : 0;
 
 await write("sale.order", [orden], { x_alambre_concertina: "no" });
+bien += (await intentar("sin contestar el permiso de implantación → bloquea", true)) ? 1 : 0;
+
+await write("sale.order", [orden], { x_lleva_permiso: "si" });
+bien += (await intentar("lleva permiso pero sin decir con qué se arma → bloquea", true)) ? 1 : 0;
+
+await write("sale.order", [orden], { x_permiso_modalidad: "con_expediente" });
 bien += (await intentar("todo completo → confirma", false)) ? 1 : 0;
 
 await write("sale.order", [orden], { state: "draft" });
@@ -69,4 +75,4 @@ try {
   console.log(`✗ orden vieja ${vieja.name}: la regla la bloqueó — ${e.message}`);
 }
 
-console.log(bien === 5 ? "\n✓ los 5 escenarios dieron lo esperado" : `\n✗ ${5 - bien} escenarios fallaron`);
+console.log(bien === 7 ? "\n✓ los 7 escenarios dieron lo esperado" : `\n✗ ${7 - bien} escenarios fallaron`);

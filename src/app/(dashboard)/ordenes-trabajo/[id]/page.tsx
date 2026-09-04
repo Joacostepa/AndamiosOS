@@ -237,12 +237,20 @@ export default function FichaOrdenPage({ params }: { params: Promise<{ id: strin
               de la misma ventana. Cada una se muestra sólo si está cargada — casi
               siempre no hay ninguna, y dos campos vacíos con etiqueta sólo generan la
               duda de si había que llenarlos. */}
-          {(ot.fechaDesde || ot.fechaComprometida) && (
+          {(ot.fechaDesde || ot.fechaAntesDe || ot.fechaComprometida) && (
             <div className="grid grid-cols-2 gap-3">
               {ot.fechaDesde && (
                 <Dato
                   label="No entra antes de"
                   valor={format(parseISO(ot.fechaDesde), "d MMM yyyy", { locale: es })}
+                />
+              )}
+              {/* El otro extremo de la ventana. La etiqueta dice TERMINADA porque es lo
+                  único que lo distingue del piso y de la comprometida. */}
+              {ot.fechaAntesDe && (
+                <Dato
+                  label="Terminada antes de"
+                  valor={format(parseISO(ot.fechaAntesDe), "d MMM yyyy", { locale: es })}
                 />
               )}
               {ot.fechaComprometida && (

@@ -196,13 +196,26 @@ export type OtTablero = {
   fechaComprometida: string | null;
   /**
    * El PISO: antes de esta fecha la obra no puede entrar. Lo acuerda Comercial con el
-   * cliente ("a partir del 12 puede entrar") y no es lo mismo que `fechaComprometida`,
-   * que es un TECHO —lo que se prometió—. Las dos juntas describen la ventana real: una
-   * obra puede tener las dos y hay que caer entre medio.
+   * cliente ("a partir del 12 puede entrar").
+   *
+   * SON TRES FECHAS Y NO HAY QUE MEZCLARLAS. `fechaDesde` y `fechaAntesDe` son la VENTANA
+   * del cliente —restricciones, y el tablero las valida—; `fechaComprometida` es NUESTRA
+   * promesa dentro de esa ventana, que ordena la cola y mide el desvío pero no restringe
+   * nada. El caso que las separa: el cliente pide "antes del 15" y Comercial promete el
+   * 12; perder el 12 es un desvío, perder el 15 es incumplir.
    *
    * Casi siempre es null: la mayoría de las obras entran cuando hay lugar.
    */
   fechaDesde: string | null;
+  /**
+   * El TECHO: la obra tiene que estar TERMINADA antes de esta fecha. Lo pone el cliente
+   * ("necesito la protección armada antes del 15") y junto con `fechaDesde` describe la
+   * ventana real.
+   *
+   * OJO CON LA ASIMETRÍA: el piso se mide contra el primer día y esto contra el ÚLTIMO de
+   * la obra entera. Ver src/lib/tablero/ventana.ts.
+   */
+  fechaAntesDe: string | null;
   url: string;
 };
 

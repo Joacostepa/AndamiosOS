@@ -32,6 +32,8 @@ export type OrdenListado = {
   fechaComprometida: string | null;
   /** El PISO acordado con el cliente: antes de este día la obra no entra. Ver fecha-desde.ts. */
   fechaDesde: string | null;
+  /** Fecha límite del cliente: la obra tiene que estar terminada antes. */
+  fechaAntesDe: string | null;
   /** tentativa | confirmada | null (la puso una persona, no el tablero). */
   fechaFirmeza: string | null;
   habSemaforo: string;

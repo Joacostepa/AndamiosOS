@@ -31,7 +31,7 @@ import {
 } from "@/lib/tablero/colores";
 import { fraccionLabel, repartirJornadas, FRACCIONES, type FraccionStr } from "@/lib/tablero/fracciones";
 import { partesTitulo, normalizar } from "@/lib/tablero/titulo";
-import { lineaPiso } from "@/lib/tablero/fecha-desde";
+import { lineaVentana } from "@/lib/tablero/ventana";
 import type { OtTablero } from "@/lib/tablero/tipos";
 
 // Panel lateral de obras sin asignar. Es una COLUMNA y no una franja horizontal
@@ -249,9 +249,9 @@ function TarjetaOt({
   const { ot, totales, pendientes, cerradas } = obra;
   const empezada = cerradas > 0;
   const compromiso = lineaCompromiso(ot, hoy);
-  // Sin fecha planificada: en la bandeja la obra todavía no está en la grilla, así que
-  // la línea informa el piso pero nunca lo marca como violado.
-  const pisoLinea = lineaPiso(ot, null);
+  // Sin fecha planificada: en la bandeja la obra todavía no está en la grilla, así que la
+  // línea informa la ventana —"entre el 12 y el 15"— pero nunca la marca como violada.
+  const pisoLinea = lineaVentana(ot, { primerDia: null, ultimoDia: null });
   const { setNodeRef, attributes, listeners, isDragging } = useDraggable({
     id: `ot:${ot.id}`,
     data: { ot },

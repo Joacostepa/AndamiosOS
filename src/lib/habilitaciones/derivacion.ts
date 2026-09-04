@@ -299,6 +299,15 @@ export type Friccion =
    * diálogo del candado es uno solo: lo que cambia es el motivo, no el gesto.
    */
   | { tipo: "antes_de_piso"; motivo: string; piso: string; fecha: string }
+  /**
+   * La obra TERMINA después de la fecha límite que puso el cliente.
+   *
+   * El otro extremo de la misma ventana, y por las mismas razones que el piso vive acá.
+   * Ojo con la asimetría: el piso mira el PRIMER día de la jornada y esto mira el ÚLTIMO
+   * de la obra entera, porque lo que el cliente pide es el trabajo terminado. Ver
+   * src/lib/tablero/ventana.ts.
+   */
+  | { tipo: "despues_de_techo"; motivo: string; techo: string; fecha: string }
   | null;
 
 /**

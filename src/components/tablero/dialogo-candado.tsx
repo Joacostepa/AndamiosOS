@@ -58,7 +58,8 @@ export function DialogoCandado({
   const necesitaMotivo =
     friccion.tipo === "bloqueo" ||
     friccion.tipo === "falta_expediente" ||
-    friccion.tipo === "antes_de_piso";
+    friccion.tipo === "antes_de_piso" ||
+    friccion.tipo === "despues_de_techo";
 
   function cerrar() {
     setMotivo("");
@@ -105,7 +106,7 @@ export function DialogoCandado({
           <DialogTitle className="flex items-center gap-2">
             {friccion.tipo === "bloqueo" ? (
               <Lock className="h-4 w-4" style={{ color: CANDADO }} />
-            ) : friccion.tipo === "antes_de_piso" ? (
+            ) : friccion.tipo === "antes_de_piso" || friccion.tipo === "despues_de_techo" ? (
               <CalendarClock className="h-4 w-4" style={{ color: AVISO.icono }} />
             ) : (
               <TriangleAlert className="h-4 w-4" style={{ color: AVISO.icono }} />
@@ -116,7 +117,9 @@ export function DialogoCandado({
                 ? "Falta la modalidad de permiso"
                 : friccion.tipo === "antes_de_piso"
                   ? "La obra no entra todavía"
-                  : "Falta el número de expediente"}
+                  : friccion.tipo === "despues_de_techo"
+                    ? "La obra termina después de la fecha límite"
+                    : "Falta el número de expediente"}
           </DialogTitle>
           <DialogDescription>{friccion.motivo}</DialogDescription>
         </DialogHeader>
@@ -152,7 +155,11 @@ export function DialogoCandado({
                 ? "Se puede confirmar igual, pero la excepción queda registrada con tu nombre y la fecha."
                 : friccion.tipo === "antes_de_piso"
                   ? `La dejaste el ${friccion.fecha} y el cliente la recibe a partir del ${friccion.piso}. Se puede confirmar igual —a veces se reacuerda por teléfono— pero decí por qué, porque si no la cuadrilla viaja y vuelve.`
-                  : "El número de expediente lo tenemos nosotros. Si confirmás sin él, decí por qué."}
+                  : friccion.tipo === "despues_de_techo"
+                    // El día que se muestra es el ÚLTIMO de la obra, no el de esta jornada:
+                    // el cliente pidió el trabajo terminado, no empezado.
+                    ? `Con el plan de hoy la obra termina el ${friccion.fecha} y el cliente la pidió antes del ${friccion.techo}. Se puede confirmar igual —a veces se reacuerda— pero decí por qué, porque es una condición que le pusieron a la obra.`
+                    : "El número de expediente lo tenemos nosotros. Si confirmás sin él, decí por qué."}
             </p>
             <Textarea
               value={motivo}

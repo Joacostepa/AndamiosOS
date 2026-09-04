@@ -47,7 +47,9 @@ import { agruparBloques, fechasDeJornadas, type Bloque } from "@/lib/tablero/blo
 import { jornadasLiberables, motivoNoVuelveABandeja, type AccionCierre } from "@/lib/tablero/cierre";
 import { toast } from "sonner";
 import { aFraccionStr, repartirJornadas, type FraccionStr } from "@/lib/tablero/fracciones";
-import { friccionDePiso, piso, violaPiso } from "@/lib/tablero/fecha-desde";
+import {
+  friccionDeVentana, piso, techo, violaPiso, violaTecho,
+} from "@/lib/tablero/ventana";
 import { type TipoTarea } from "@/lib/tablero/tipos";
 import type { ObraPendiente, ObraPlanificada } from "./panel-sin-asignar";
 import type { MovimientoAsignacion, NuevaAsignacion, TableroPayload } from "@/lib/tablero/tipos";
@@ -76,6 +78,23 @@ const UMBRAL_BORDE = 240;
 const MAX_SEMANAS = 8;
 
 const iso = (d: Date) => format(d, "yyyy-MM-dd");
+
+/**
+ * Lo planificado de una obra, sumando todos sus tramos.
+ *
+ * `ultimoDia` es lo que hace falta para el techo: el cliente pide el trabajo TERMINADO,
+ * así que la fecha contra la que se mide es la del último día, no la del bloque que se
+ * está tocando. Ver src/lib/tablero/ventana.ts.
+ */
+export type PlanObra = {
+  dias: number;
+  tramos: number;
+  primerDia: string | null;
+  ultimoDia: string | null;
+};
+
+const min = (a: string | null, b: string) => (a && a < b ? a : b);
+const max = (a: string | null, b: string) => (a && a > b ? a : b);
 
 /**
  * Domingos habilitados a mano. Se guardan porque planificar un domingo lleva varios pasos
@@ -482,10 +501,18 @@ export function TableroBoard() {
   // para avisar que lo que se ve es una parte: sin eso, una obra partida se lee como una
   // obra de un día y el resto del plan queda invisible.
   const planPorObra = useMemo(() => {
-    const mapa = new Map<number, { dias: number; tramos: number }>();
+    const mapa = new Map<number, PlanObra>();
     for (const b of bloquesPorClave.values()) {
-      const actual = mapa.get(b.otId) ?? { dias: 0, tramos: 0 };
-      mapa.set(b.otId, { dias: actual.dias + b.fechas.length, tramos: actual.tramos + 1 });
+      const actual = mapa.get(b.otId) ?? { dias: 0, tramos: 0, primerDia: null, ultimoDia: null };
+      // El primero y el último de la obra ENTERA, no del tramo: una obra partida en dos
+      // tramos termina cuando termina el segundo, y el techo se mide contra eso.
+      const fechas = [...b.fechas].sort();
+      mapa.set(b.otId, {
+        dias: actual.dias + b.fechas.length,
+        tramos: actual.tramos + 1,
+        primerDia: min(actual.primerDia, fechas[0]),
+        ultimoDia: max(actual.ultimoDia, fechas[fechas.length - 1]),
+      });
     }
     return mapa;
   }, [bloquesPorClave]);
@@ -590,10 +617,25 @@ export function TableroBoard() {
    */
   function avisarPiso(otId: number, fecha: string) {
     const ot = otsPorId.get(otId);
-    if (!ot || !violaPiso(ot, fecha)) return;
-    toast.warning(`Esta obra no entra antes del ${piso(ot)}`, {
-      description: `La dejaste el ${format(parseISO(fecha), "d MMM", { locale: es })}. Se puede planificar igual, pero al confirmar te va a pedir el motivo.`,
-    });
+    if (!ot) return;
+
+    if (violaPiso(ot, fecha)) {
+      toast.warning(`Esta obra no entra antes del ${piso(ot)}`, {
+        description: `La dejaste el ${format(parseISO(fecha), "d MMM", { locale: es })}. Se puede planificar igual, pero al confirmar te va a pedir el motivo.`,
+      });
+      return;
+    }
+
+    // EL TECHO SE MIRA CONTRA EL DÍA QUE SE SOLTÓ, no contra el plan completo, y es una
+    // aproximación a propósito: acá la asignación todavía no está escrita, así que el
+    // último día de la obra no incluye lo que se acaba de soltar. Alcanza para el caso
+    // que importa —soltar directamente después de la fecha límite— y el cruce fino, con
+    // la obra entera, lo hace la fricción al confirmar, que es donde frena de verdad.
+    if (violaTecho(ot, fecha)) {
+      toast.warning(`El cliente la pidió terminada antes del ${techo(ot)}`, {
+        description: `La dejaste el ${format(parseISO(fecha), "d MMM", { locale: es })}. Se puede planificar igual, pero al confirmar te va a pedir el motivo.`,
+      });
+    }
   }
 
   /** Cuántos bloques hay ya en una celda: define el orden de apilado del nuevo. */
@@ -1031,12 +1073,22 @@ export function TableroBoard() {
                   // tarjeta —el dato es cierto y sirve—, pero preguntar en cada
                   // confirmación por algo que Operaciones no puede resolver (la modalidad
                   // la define el técnico, el permiso lo emite el GCBA) convertía el gesto
-                  // más frecuente del tablero en un trámite. Lo que queda es el acuerdo
-                  // comercial: ir antes del día que el cliente recibe la obra sí es una
-                  // decisión de Operaciones, y esa cuadrilla viaja y vuelve vacía.
-                  const friccion = friccionDePiso(
-                    otsPorId.get(b.otId) ?? { fechaDesde: null },
-                    b.fechas[0],
+                  // más frecuente del tablero en un trámite. Lo que queda es la VENTANA
+                  // que puso el cliente —entrar antes del piso o terminar después del
+                  // techo—, que sí son decisiones de Operaciones.
+                  //
+                  // El techo se mide contra el ÚLTIMO día de la obra entera y no contra
+                  // esta jornada: el cliente pidió el trabajo terminado. Por eso sale de
+                  // planPorObra, que suma todos los tramos.
+                  const plan = planPorObra.get(b.otId);
+                  const friccion = friccionDeVentana(
+                    otsPorId.get(b.otId) ?? { fechaDesde: null, fechaAntesDe: null },
+                    {
+                      primerDia: b.fechas[0],
+                      // Si la obra todavía no está en el plan cargado, el bloque que se
+                      // confirma es lo único que se sabe de ella.
+                      ultimoDia: plan?.ultimoDia ?? b.fechas[b.fechas.length - 1],
+                    },
                   );
                   if (!friccion) return aplicar();
 

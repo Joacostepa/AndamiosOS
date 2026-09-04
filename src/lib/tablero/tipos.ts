@@ -17,6 +17,29 @@ export type CuadrillaTablero = {
 };
 
 /** Tipos de trabajo interno que Operaciones le asigna a una cuadrilla. */
+/**
+ * Qué clase de trabajo es la OT. Es el `x_tipo` de Odoo, con sus mismas etiquetas.
+ *
+ * Copiadas de la selección del campo, no inventadas: si en Odoo se agrega un valor,
+ * `tipoOtLabel` lo muestra crudo en vez de mentir con "Otro" — un tipo desconocido tiene
+ * que verse raro en pantalla, no disfrazarse del que menos importa.
+ */
+export const TIPOS_OT = {
+  armado: "Armado",
+  desarme: "Desarme",
+  ampliacion: "Ampliación",
+  desmonte_parcial: "Desmonte parcial",
+  mantenimiento: "Mantenimiento",
+  otro: "Otro",
+} as const;
+
+export type TipoOt = keyof typeof TIPOS_OT;
+
+export function tipoOtLabel(t: string | null | undefined): string {
+  if (!t) return TIPOS_OT.otro;
+  return TIPOS_OT[t as TipoOt] ?? t;
+}
+
 export const TIPOS_TAREA = {
   deposito: "Depósito",
   mantenimiento: "Mantenimiento",

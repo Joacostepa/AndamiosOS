@@ -64,8 +64,12 @@ export function colorCuadrilla(indice: number): ColorCuadrilla {
 export type ColorTipo = { bg: string; text: string; icono: "arriba" | "abajo" | "otro" };
 
 // Medido contra Odoo (1003 OTs): desarme 444 (44,3%), armado 315 (31,4%), otro 244 (24,3%).
-// mantenimiento / ampliacion / desmonte_parcial existen en el modelo pero no se usan:
-// caen en el gris neutro hasta que aparezcan.
+//
+// ampliacion / desmonte_parcial / mantenimiento caen en el gris neutro, o sea que se ven
+// IGUALES entre sí. En el tablero no molesta —lo que se planifica es armado o desarme—
+// pero ya no es cierto que no se usen: al 04/09/2026, entre las 60 OTs activas hay 1
+// ampliación y 1 desmonte parcial. Donde importa distinguirlos hay que escribir la
+// palabra y no confiar en el color (ver ChipTipoOt en la bandeja de habilitaciones).
 export const TIPO_OT: Record<string, ColorTipo> = {
   armado: { bg: "var(--tb-azul-bg)", text: "var(--tb-azul-text)", icono: "arriba" },
   desarme: { bg: "var(--tb-ambar-bg)", text: "var(--tb-ambar-text)", icono: "abajo" },

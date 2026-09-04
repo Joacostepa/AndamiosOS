@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import {
   useHabilitacion, useRegistrarGestion, useTriage, useVencimiento,
 } from "@/hooks/use-habilitaciones";
+import { ChipTipoOt } from "@/components/habilitaciones/chip-tipo-ot";
 import { ColumnaPermiso } from "@/components/habilitaciones/columna-permiso";
 import { ListadoRequisitos } from "@/components/habilitaciones/listado-requisitos";
 import { NotasObra } from "@/components/habilitaciones/notas-obra";
@@ -98,7 +99,13 @@ function Ficha({ ficha, otId }: { ficha: FichaHabilitacion; otId: number }) {
 
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-lg font-semibold">{partes.principal}</h1>
+          {/* El tipo al lado del título y no en la línea de abajo: entrar a una ficha
+              desde la bandeja no puede hacer perder de vista si esto es un armado o un
+              desarme. Es el mismo chip que la lista. */}
+          <div className="flex items-center gap-2">
+            <h1 className="text-lg font-semibold">{partes.principal}</h1>
+            <ChipTipoOt tipo={ficha.tipo} />
+          </div>
           <p className="text-[13px] text-muted-foreground">
             {[partes.numero, partes.cliente].filter(Boolean).join(" · ")}
           </p>

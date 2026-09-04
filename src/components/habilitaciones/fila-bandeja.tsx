@@ -5,6 +5,7 @@ import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { Pin, TriangleAlert } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ChipTipoOt } from "@/components/habilitaciones/chip-tipo-ot";
 import { semaforo } from "@/lib/tablero/colores";
 import { partesTitulo } from "@/lib/tablero/titulo";
 import { UMBRAL_DIAS } from "@/lib/habilitaciones/derivacion";
@@ -72,6 +73,8 @@ export function Fila({
         style={{ backgroundColor: sem.color }}
         title={sem.label}
       />
+
+      <ChipTipoOt tipo={fila.tipo} enColumna />
 
       <Link href={`/habilitaciones/${fila.otId}`} className="min-w-0 flex-1">
         <span className="block truncate font-medium">{partes.principal}</span>

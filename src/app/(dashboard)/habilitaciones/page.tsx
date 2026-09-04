@@ -9,6 +9,7 @@ import { useBandejaHabilitaciones, useReconciliar, useTriage } from "@/hooks/use
 import { useTour } from "@/hooks/use-tour";
 import { PASOS_BANDEJA, TOUR_BANDEJA } from "@/lib/habilitaciones/tour";
 import { BotonAyuda } from "@/components/habilitaciones/boton-ayuda";
+import { ChipTipoOt } from "@/components/habilitaciones/chip-tipo-ot";
 import { Fila } from "@/components/habilitaciones/fila-bandeja";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -223,6 +224,8 @@ function NoAplican({
               key={f.otId}
               className="flex items-center gap-2 border-t px-3 py-2 text-[13px]"
             >
+              {/* El mismo chip que arriba: son las mismas obras y la pregunta es la misma. */}
+              <ChipTipoOt tipo={f.tipo} enColumna />
               <Link href={`/habilitaciones/${f.otId}`} className="min-w-0 flex-1 truncate">
                 {partesTitulo(f.titulo).principal}
               </Link>

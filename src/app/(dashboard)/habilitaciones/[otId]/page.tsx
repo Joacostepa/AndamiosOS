@@ -5,7 +5,7 @@ import Link from "next/link";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import {
-  ArrowLeft, CircleCheck, CircleX, ExternalLink, Loader2, TriangleAlert,
+  ArrowLeft, CircleCheck, CircleX, ExternalLink, HardHat, Loader2, TriangleAlert,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -25,6 +25,7 @@ import { useTour } from "@/hooks/use-tour";
 import { PASOS_FICHA, TOUR_FICHA } from "@/lib/habilitaciones/tour";
 import { veredicto } from "@/lib/habilitaciones/derivacion";
 import { ETAPA_LABEL, TIPO_GESTION_LABEL } from "@/lib/habilitaciones/tipos";
+import { AVISO } from "@/lib/tablero/colores";
 import { partesTitulo } from "@/lib/tablero/titulo";
 import type { FichaHabilitacion, HabEtapa } from "@/lib/habilitaciones/tipos";
 
@@ -135,6 +136,27 @@ function Ficha({ ficha, otId }: { ficha: FichaHabilitacion; otId: number }) {
           <p className="text-muted-foreground">{v.detalle}</p>
         </div>
       </div>
+
+      {/* EL TÉCNICO DE SyH DEL CLIENTE. Va acá arriba, pegado al veredicto, porque cambia
+          qué hay que mandar: no es un dato de la obra, es un papel más que el cliente
+          tiene que aprobar antes de dejar entrar a la cuadrilla. Abajo, en el listado,
+          aparece además como requisito propio, que es lo que lo hace perseguible. */}
+      {ficha.trabajo.syhPresencial === true && (
+        <div
+          className="flex items-start gap-2.5 rounded-md border-l-4 bg-muted/40 px-3 py-2.5"
+          style={{ borderLeftColor: AVISO.icono }}
+        >
+          <HardHat className="mt-0.5 h-4 w-4 shrink-0" style={{ color: AVISO.icono }} />
+          <div className="text-[13px]">
+            <p className="font-semibold">El cliente contrató técnico de Seguridad e Higiene</p>
+            <p className="text-muted-foreground">
+              Hay que enviarle la documentación del técnico para que lo aprueben a entrar a
+              la obra.
+              {ficha.trabajo.tipoLabel && ` · ${ficha.trabajo.tipoLabel}`}
+            </p>
+          </div>
+        </div>
+      )}
 
       <BloqueHabilitacion ficha={ficha} otId={otId} />
 

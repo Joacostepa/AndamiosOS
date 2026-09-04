@@ -4,8 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import {
-  AlertTriangle, Building2, CalendarCheck, ExternalLink, FileText, Hammer, Phone, Pin,
-  ShieldCheck, User, UserRound, Users, Clock, CalendarDays,
+  AlertTriangle, Building2, CalendarCheck, Construction, ExternalLink, Fence, FileText,
+  Hammer, HardHat, Phone, Pin, ShieldCheck, User, UserRound, Users, Clock, CalendarDays,
 } from "lucide-react";
 import { useDetalleOt } from "@/hooks/use-detalle-ot";
 import { HistorialConfirmacion } from "./historial-confirmacion";
@@ -15,10 +15,10 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AVISO, CORAL, PELIGRO, PELIGRO_SOLIDO, semaforo } from "@/lib/tablero/colores";
+import { ALERTA, AVISO, CORAL, PELIGRO, PELIGRO_SOLIDO, semaforo } from "@/lib/tablero/colores";
 import { fraccionLabel } from "@/lib/tablero/fracciones";
 import type { Bloque } from "@/lib/tablero/bloques";
-import type { DocumentoOt, OtTablero } from "@/lib/tablero/tipos";
+import type { DocumentoOt, OtTablero, TrabajoOt } from "@/lib/tablero/tipos";
 
 // Panel lateral de la OT: todo lo que hace falta para coordinar la jornada sin salir
 // del tablero. La carga de partes, el circuito de habilitación y los costos viven en
@@ -32,6 +32,72 @@ const TIPO_LABEL: Record<string, string> = {
   mantenimiento: "Mantenimiento",
   otro: "Otro",
 };
+
+/**
+ * Lo que esta jornada necesita ADEMÁS de la cuadrilla.
+ *
+ * Sale de la clasificación que Comercial carga en la venta y son las dos cosas que, si no
+ * se ven acá, se descubren en la obra: que hay que llevar concertina y que tiene que
+ * estar el técnico de Seguridad e Higiene del cliente.
+ *
+ * SE MUESTRA SÓLO CUANDO HAY ALGO. Una caja fija diciendo "sin requisitos" en las obras
+ * normales entrenaría a saltearla, y entonces no se leería el día que sí dice algo.
+ *
+ * VA EN CAJA DESTACADA, como "Qué hay que ejecutar", porque no es contexto: es trabajo que
+ * hay que preparar antes de salir. La barra ámbar la distingue de la coral del detalle
+ * técnico y de las notas fijadas, que son ámbar enteras.
+ *
+ * NO VA EN LA TARJETA del tablero: la primera línea ya lleva tipo, parte, candado,
+ * dirección, fracción y urgencia, y por debajo de 38px se queda sin el segundo renglón.
+ * Meter dos íconos más ahí le come ancho a la dirección, que es lo último que este diseño
+ * sacrifica. Tampoco va en el parte: el parte se completa DESPUÉS de la jornada, o sea
+ * cuando ya no sirve para cargar el camión.
+ */
+function QueNecesita({ trabajo }: { trabajo: TrabajoOt | undefined }) {
+  if (!trabajo) return null;
+  const syh = trabajo.syhPresencial === true;
+  if (!trabajo.alambre && !syh) return null;
+
+  return (
+    <div
+      className="space-y-2 rounded-md border-l-4 bg-muted/40 px-3 py-2.5"
+      style={{ borderLeftColor: ALERTA }}
+    >
+      <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">
+        <Construction className="h-3.5 w-3.5" />
+        Qué necesita esta jornada
+      </p>
+
+      {trabajo.alambre && (
+        <div className="flex gap-2 text-sm">
+          <Fence className="mt-0.5 h-4 w-4 shrink-0" style={{ color: ALERTA }} />
+          <p className="leading-snug">
+            <span className="font-medium">Lleva alambre de concertina.</span>{" "}
+            <span className="text-muted-foreground">
+              Va sobre la bandeja de protección — hay que cargarlo con el material.
+            </span>
+          </p>
+        </div>
+      )}
+
+      {syh && (
+        <div className="flex gap-2 text-sm">
+          <HardHat className="mt-0.5 h-4 w-4 shrink-0" style={{ color: ALERTA }} />
+          <p className="leading-snug">
+            <span className="font-medium">El cliente contrató técnico de SyH.</span>{" "}
+            <span className="text-muted-foreground">
+              Tiene que estar en obra el día del trabajo: hay que coordinarlo antes.
+            </span>
+          </p>
+        </div>
+      )}
+
+      {trabajo.tipoLabel && (
+        <p className="text-xs text-muted-foreground">{trabajo.tipoLabel}</p>
+      )}
+    </div>
+  );
+}
 
 /**
  * Las notas fijadas de la habilitación, acá y no sólo en su módulo.
@@ -231,6 +297,8 @@ export function PanelOt({
                 confirmadoEl={detalle?.estructuraConfirmadaEl}
                 cargando={!detalle}
               />
+
+              <QueNecesita trabajo={detalle?.trabajo} />
 
               <NotasFijadas otId={ot.id} />
 

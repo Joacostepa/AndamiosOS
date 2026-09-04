@@ -7,6 +7,9 @@
 export type EstadoRequisito = "pendiente" | "enviado" | "observado" | "aprobado";
 
 /** Los 4 valores escribibles de x_hab_estado en Odoo. */
+import type { TrabajoOt } from "@/lib/tablero/tipos";
+export type { TrabajoOt };
+
 export type HabEstado = "pendiente" | "en_curso" | "habilitada" | "no_aplica";
 
 /** x_hab_etapa: COMPUTADO en Odoo, readonly. La app nunca lo escribe. */
@@ -154,6 +157,8 @@ export type Permiso = {
 
 /** Una fila de la bandeja. */
 export type FilaBandeja = {
+  /** Qué se arma y qué necesita. Sale de la venta, igual que el permiso. */
+  trabajo: TrabajoOt;
   otId: number;
   titulo: string;
   ventaNombre: string | null;
@@ -200,6 +205,8 @@ export type Bandeja = {
 };
 
 export type FichaHabilitacion = {
+  /** Qué se arma y qué necesita. Sale de la venta, igual que el permiso. */
+  trabajo: TrabajoOt;
   otId: number;
   titulo: string;
   tipo: string;

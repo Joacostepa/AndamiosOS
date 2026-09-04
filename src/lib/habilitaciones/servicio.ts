@@ -80,6 +80,43 @@ async function cabecerasDe(
   return { mapa, nuevas: faltantes };
 }
 
+/**
+ * El requisito que nace de que el cliente haya contratado técnico de Seguridad e Higiene.
+ *
+ * POR QUÉ UN REQUISITO Y NO UNA ETIQUETA MÁS. Este módulo ya sabe perseguir papeles: los
+ * requisitos se mandan, se rebotan con motivo, se aprueban, cuentan en el "3/4" de la fila
+ * y bloquean declarar la obra habilitada hasta estar todos aprobados. La documentación del
+ * técnico de SyH es exactamente eso — un papel que hay que mandar y que el cliente tiene
+ * que aprobar antes de dejar entrar a la cuadrilla—, así que entra por la puerta que ya
+ * existe en vez de estrenar una. Un cartel avisa; un requisito se persigue.
+ *
+ * ORIGEN "manual" Y NO "paquete" a propósito: aplicarPaquete borra los pendientes de
+ * origen `paquete` que no estén en el paquete nuevo, y este requisito no pertenece a
+ * ninguno — cambiar de paquete lo borraría y la próxima lectura lo volvería a crear, en un
+ * ciclo que ensucia el historial.
+ *
+ * NO SE BORRA si después alguien pasa la orden a "SyH: no". Es el mismo criterio que ya
+ * rige el triage: deshacer una decisión no destruye el trabajo hecho. Deja de exigirse
+ * para las obras nuevas y listo.
+ */
+export const REQUISITO_SYH = "Documentación de técnico de SyH";
+
+/** Orden alto: va al final del listado, después de los papeles del paquete. */
+const ORDEN_SYH = 500;
+
+async function sembrarRequisitoSyh(db: DB, otIds: number[]): Promise<void> {
+  if (otIds.length === 0) return;
+  const { error } = await db.from("hab_requisitos").insert(
+    otIds.map((odoo_ot_id) => ({
+      odoo_ot_id,
+      nombre: REQUISITO_SYH,
+      origen: "manual" as const,
+      orden: ORDEN_SYH,
+    })),
+  );
+  if (error) throw new Error(error.message);
+}
+
 // ─── Bandeja ────────────────────────────────────────────────────────────────
 
 export async function fetchBandeja(db: DB): Promise<Bandeja> {
@@ -90,7 +127,7 @@ export async function fetchBandeja(db: DB): Promise<Bandeja> {
   // fila. Las filas de OTs que no están en la bandeja simplemente no se leen del mapa.
   const [otsOdoo, requisitos, notas] = await Promise.all([
     fetchOtsActivas(),
-    db.from("hab_requisitos").select("odoo_ot_id, estado"),
+    db.from("hab_requisitos").select("odoo_ot_id, estado, nombre"),
     db.from("hab_notas").select("odoo_ot_id, texto").eq("fijada", true),
   ]);
   if (requisitos.error) throw new Error(requisitos.error.message);
@@ -113,7 +150,7 @@ export async function fetchBandeja(db: DB): Promise<Bandeja> {
     fijadas.set(n.odoo_ot_id, [...(fijadas.get(n.odoo_ot_id) ?? []), n.texto]);
   }
 
-  const filas: FilaBandeja[] = otsOdoo.map(({ ot, permiso }) => {
+  const filas: FilaBandeja[] = otsOdoo.map(({ ot, permiso, trabajo }) => {
     const base = leerOt(ot);
     const cab = cabeceras.get(ot.id);
     return {
@@ -133,6 +170,7 @@ export async function fetchBandeja(db: DB): Promise<Bandeja> {
       modalidad: permiso.modalidad,
       tramite: permiso.tramite,
       tecnicoNombre: permiso.tecnicoNombre,
+      trabajo,
       requisitos: conteo.get(ot.id) ?? { total: 0, aprobados: 0, observados: 0 },
       notasFijadas: fijadas.get(ot.id) ?? [],
       url: urlOdooOt(ot.id),
@@ -161,6 +199,21 @@ export async function fetchBandeja(db: DB): Promise<Bandeja> {
       }),
     );
   }
+
+  // El requisito de SyH, para las obras en gestión donde el cliente contrató técnico y
+  // todavía no lo tienen. Es UNA escritura y sólo cuando falta algo: el listado completo
+  // de requisitos ya vino en la lectura de arriba, así que detectarlo no cuesta una
+  // consulta más. La fila recién lo va a contar en la próxima lectura, que con el refresco
+  // de la bandeja llega sola.
+  const yaTieneSyh = new Set(
+    (requisitos.data ?? []).filter((r) => r.nombre === REQUISITO_SYH).map((r) => r.odoo_ot_id),
+  );
+  await sembrarRequisitoSyh(
+    db,
+    filas
+      .filter((f) => f.trabajo.syhPresencial === true && f.triage === "aplica" && !yaTieneSyh.has(f.otId))
+      .map((f) => f.otId),
+  );
 
   const grupos = agruparBandeja(filas);
   return {
@@ -276,6 +329,7 @@ export async function fetchFicha(db: DB, otId: number): Promise<FichaHabilitacio
     syncEstado: cab?.sync_estado ?? "pendiente",
     syncError: cab?.sync_error ?? null,
     permiso: enOdoo.permiso,
+    trabajo: enOdoo.trabajo,
     ...gestion,
     url: urlOdooOt(otId),
     urlVenta: urlOdooVenta(enOdoo.permiso.ventaId),

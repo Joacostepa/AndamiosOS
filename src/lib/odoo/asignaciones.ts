@@ -12,6 +12,7 @@
 // (varias llamadas RPC en paralelo) y las escrituras son de a un registro.
 
 import { searchRead, write, executeKw, read, authenticate } from "./client";
+import { CAMPOS_TRABAJO, leerTrabajo, type FilaTrabajo } from "./trabajo";
 import type {
   AsignacionTablero,
   CambioAsignacion,
@@ -355,10 +356,13 @@ export async function fetchDetalleOt(otId: number): Promise<DetalleOt> {
     ? await read<{
         partner_id: M2O; partner_shipping_id: M2O; x_studio_tcnico: M2O; user_id: M2O;
         x_estructura_fecha: string | false;
-      }>(
+      } & Partial<FilaTrabajo>>(
         "sale.order",
         [ordenId],
-        ["partner_id", "partner_shipping_id", "x_studio_tcnico", "user_id", "x_estructura_fecha"],
+        // La clasificación del trabajo viaja en la MISMA lectura: la venta ya se estaba
+        // leyendo para el cliente y el vendedor, así que no cuesta una llamada más.
+        ["partner_id", "partner_shipping_id", "x_studio_tcnico", "user_id", "x_estructura_fecha",
+         ...CAMPOS_TRABAJO],
       )
     : [];
 
@@ -402,6 +406,7 @@ export async function fetchDetalleOt(otId: number): Promise<DetalleOt> {
     periodo: str(ot.x_periodo),
     desvio: str(ot.x_desvio),
     duracionSugerida: str(ot.x_duracion_sugerida),
+    trabajo: leerTrabajo(orden),
   };
 }
 

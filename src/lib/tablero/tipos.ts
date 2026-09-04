@@ -16,7 +16,6 @@ export type CuadrillaTablero = {
   tercerizada: boolean;
 };
 
-/** Tipos de trabajo interno que Operaciones le asigna a una cuadrilla. */
 /**
  * Qué clase de trabajo es la OT. Es el `x_tipo` de Odoo, con sus mismas etiquetas.
  *
@@ -40,6 +39,51 @@ export function tipoOtLabel(t: string | null | undefined): string {
   return TIPOS_OT[t as TipoOt] ?? t;
 }
 
+// ─── Qué se arma ────────────────────────────────────────────────────────────
+//
+// La clasificación que Comercial carga en la solapa "Trabajo a ejecutar" de la orden de
+// venta. Vive en sale.order y la leen dos módulos —el tablero y habilitaciones— así que
+// el tipo y las etiquetas van acá, en un solo lugar.
+
+export const TIPOS_TRABAJO_OBRA = {
+  pantalla_proteccion: "Pantalla de protección",
+  estructura_pantalla: "Estructura + pantalla",
+  estructura_sin_pantalla: "Estructura sin pantalla",
+  torre: "Torre",
+  plataforma: "Plataforma",
+  sercha: "Sercha",
+  apuntalamiento_vertical: "Apuntalamiento vertical",
+} as const;
+
+export const TIPOS_TRABAJO_EVENTO = {
+  tribuna: "Tribuna",
+  escenario: "Escenario",
+  otros: "Otros",
+} as const;
+
+export type TrabajoOt = {
+  ambito: "obra" | "evento" | null;
+  /** El tipo que corresponde al ámbito, ya resuelto: no hay que elegir entre dos campos. */
+  tipo: string | null;
+  tipoLabel: string | null;
+  /**
+   * Alambre de concertina sobre la bandeja de protección.
+   *
+   * YA VIENE RESUELTO CONTRA EL TIPO. En Odoo el campo puede quedar en "sí" y escondido si
+   * alguien lo contesta y después cambia el tipo a uno sin bandeja; acá eso no llega nunca,
+   * porque el que lo lee de Odoo exige además que el tipo sea uno de los tres que la
+   * llevan. Un solo lugar donde acordarse, en vez de en cada pantalla.
+   */
+  alambre: boolean;
+  /** null = nadie contestó todavía, que no es lo mismo que "no lleva". */
+  syhPresencial: boolean | null;
+};
+
+export function trabajoTipoLabel(t: TrabajoOt): string | null {
+  return t.tipoLabel;
+}
+
+/** Tipos de trabajo interno que Operaciones le asigna a una cuadrilla. */
 export const TIPOS_TAREA = {
   deposito: "Depósito",
   mantenimiento: "Mantenimiento",
@@ -219,6 +263,12 @@ export type DetalleOt = {
   desvio: string | null;
   /** Sugerencia de duración con su explicación (sirve sobre todo para el desarme). */
   duracionSugerida: string | null;
+  /**
+   * Qué se arma, y qué necesita esta jornada además de la cuadrilla: el alambre de
+   * concertina y si el cliente contrató un técnico de SyH que tiene que estar en obra.
+   * Lo carga Comercial en la venta; acá se muestra, no se edita.
+   */
+  trabajo: TrabajoOt;
 };
 
 export type DocumentoOt = {

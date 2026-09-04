@@ -19,10 +19,12 @@
 // dos direcciones: de 567 ventas con OTs, 436 tienen 2 (armado + desarme) y 131 una.
 
 import { searchRead, read, write } from "./client";
+import { CAMPOS_TRABAJO, leerTrabajo, type FilaTrabajo } from "./trabajo";
 import type {
   HabAlerta, HabEstado, HabEtapa, HabSemaforo, InputsHabilitacion,
   ModalidadPermiso, Permiso, TramiteEstado,
 } from "@/lib/habilitaciones/tipos";
+import type { TrabajoOt } from "@/lib/tablero/tipos";
 
 type M2O = [number, string] | false;
 
@@ -54,9 +56,12 @@ const CAMPOS_OT = [
   "x_hab_vencimiento", "x_hab_obs", "x_hab_responsable_id",
 ];
 
+// La clasificación del trabajo viaja con el permiso: la venta ya se lee entera para el
+// permiso, así que sumar estos cinco campos no cuesta ninguna llamada más.
 const CAMPOS_VENTA = [
   "name", "x_permiso_modalidad", "x_permiso_definida", "x_tramite_estado",
   "x_expediente_nro", "x_expediente_fecha", "x_permiso_fecha", "x_studio_tcnico",
+  ...CAMPOS_TRABAJO,
 ];
 
 export type FilaOtHab = {
@@ -80,7 +85,7 @@ export type FilaOtHab = {
   x_hab_responsable_id: M2O;
 };
 
-type FilaVenta = {
+type FilaVenta = Partial<FilaTrabajo> & {
   id: number;
   name: string | false;
   x_permiso_modalidad: string | false;
@@ -95,6 +100,8 @@ type FilaVenta = {
 export type OtConPermiso = {
   ot: FilaOtHab;
   permiso: Permiso;
+  /** Qué se arma y qué necesita. Ver src/lib/odoo/trabajo.ts. */
+  trabajo: TrabajoOt;
 };
 
 function mapPermiso(v: FilaVenta | undefined, tecnicoOt: string | null): Permiso {
@@ -133,10 +140,10 @@ export async function fetchOtsActivas(): Promise<OtConPermiso[]> {
   const ventas = ventaIds.length ? await read<FilaVenta>(VENTA, ventaIds, CAMPOS_VENTA) : [];
   const porId = new Map(ventas.map((v) => [v.id, v]));
 
-  return ots.map((ot) => ({
-    ot,
-    permiso: mapPermiso(porId.get(m2oId(ot.x_order_id) ?? -1), str(ot.x_tecnico)),
-  }));
+  return ots.map((ot) => {
+    const venta = porId.get(m2oId(ot.x_order_id) ?? -1);
+    return { ot, permiso: mapPermiso(venta, str(ot.x_tecnico)), trabajo: leerTrabajo(venta) };
+  });
 }
 
 /** Una sola OT, para la ficha. */
@@ -147,7 +154,7 @@ export async function fetchOt(otId: number): Promise<OtConPermiso | null> {
 
   const ventaId = m2oId(ot.x_order_id);
   const ventas = ventaId ? await read<FilaVenta>(VENTA, [ventaId], CAMPOS_VENTA) : [];
-  return { ot, permiso: mapPermiso(ventas[0], str(ot.x_tecnico)) };
+  return { ot, permiso: mapPermiso(ventas[0], str(ot.x_tecnico)), trabajo: leerTrabajo(ventas[0]) };
 }
 
 /**

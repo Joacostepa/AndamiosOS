@@ -3,10 +3,10 @@
 import Link from "next/link";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
-import { Pin, TriangleAlert } from "lucide-react";
+import { HardHat, Pin, TriangleAlert } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ChipTipoOt } from "@/components/habilitaciones/chip-tipo-ot";
-import { semaforo } from "@/lib/tablero/colores";
+import { AVISO, semaforo } from "@/lib/tablero/colores";
 import { partesTitulo } from "@/lib/tablero/titulo";
 import { UMBRAL_DIAS } from "@/lib/habilitaciones/derivacion";
 import { MODALIDAD_LABEL } from "@/lib/habilitaciones/tipos";
@@ -80,6 +80,21 @@ export function Fila({
         <span className="block truncate font-medium">{partes.principal}</span>
         <span className="block truncate text-[11px] text-muted-foreground">{contexto}</span>
       </Link>
+
+      {/* EL CLIENTE CONTRATÓ TÉCNICO DE SyH. Acá no es un dato de color: significa que hay
+          un papel más que mandar y hacer aprobar antes de que la cuadrilla pueda entrar a
+          la obra. Va como chip y no en la línea de contexto —que ya tiene cliente,
+          modalidad y requisitos— porque cambia el trabajo de quien mira la bandeja. */}
+      {fila.trabajo.syhPresencial === true && (
+        <span
+          className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium"
+          style={{ backgroundColor: AVISO.fondo, color: AVISO.texto }}
+          title="El cliente contrató técnico de Seguridad e Higiene: hay que enviar su documentación para que lo aprueben a entrar"
+        >
+          <HardHat className="h-3 w-3" />
+          SyH
+        </span>
+      )}
 
       {fila.requisitos.observados > 0 && (
         <span

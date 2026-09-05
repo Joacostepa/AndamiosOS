@@ -22,6 +22,11 @@ export function useOrdenesOdoo(filtro: FiltroOrdenes) {
     // Cambiar de chip no vacía la tabla: se muestra el filtro anterior hasta que llega el
     // nuevo, para que los contadores no parpadeen.
     placeholderData: keepPreviousData,
+    // Un minuto de vigencia. Sin esto, ir de planificación a órdenes y volver repetía las
+    // llamadas a Odoo enteras para traer lo mismo — y volver es lo que más se hace.
+    // Un minuto es corto para una lista que se mira, no se edita: lo que se escribe acá
+    // invalida la query igual.
+    staleTime: 60_000,
     refetchOnWindowFocus: false,
   });
 }

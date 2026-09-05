@@ -132,19 +132,37 @@ function mapOt(r: FilaOt, base: string, actionId: number | null): OrdenListado {
   };
 }
 
+/** Lo mínimo para contar los chips de las activas. Tres campos, sin nada más. */
+type FilaConteo = {
+  x_hab_alerta: string | false;
+  x_grupo_prog: string | false;
+  x_dias_obra: number | false;
+};
+
 /**
  * Listado + contadores de los chips.
  *
- * Los contadores salen de `search_count` y no de contar en el cliente: con 1003 OTs, traer
- * todo para contar seis números sería absurdo. Son seis llamadas baratas que la cola del
- * cliente Odoo reparte de a cuatro.
+ * TRES LLAMADAS, NO OCHO. Antes eran seis `search_count` —uno por chip— más el listado más
+ * el id de la acción, y ese último iba SECUENCIAL antes de todo aunque no depende de nada:
+ * un round trip entero de espera para armar una URL. Medido, la pantalla tardaba entre 940
+ * y 1400 ms, y en ráfaga pegaba contra el límite de Odoo Online y saltaba a varios
+ * segundos por los reintentos.
+ *
+ * Cinco de los seis chips son SUBCONJUNTOS de las OTs activas, que hoy son 62. Traerlas una
+ * vez con los tres campos que los discriminan y contar en memoria cuesta una sola llamada
+ * en vez de cinco. Sólo `cerradas` vive en otro dominio —son 1012— y se sigue contando en
+ * Odoo, que es lo correcto: traer mil filas para contarlas sí sería absurdo.
+ *
+ * Las tres van en el mismo Promise.all, o sea una sola tanda de la cola de 4.
+ *
+ * Y NO DEPENDE DEL `limit` DEL LISTADO. Los conteos salen de su propia lectura, así que el
+ * día que las activas pasen de 400 la tabla se va a truncar pero los números van a seguir
+ * siendo ciertos.
  */
 export async function fetchOrdenes(filtro: FiltroOrdenes): Promise<ListadoOrdenes> {
   const base = process.env.ODOO_URL ?? "";
-  const actionId = await otActionId();
 
-  const claves = Object.keys(DOMINIOS) as FiltroOrdenes[];
-  const [filas, ...cuentas] = await Promise.all([
+  const [filas, activas, cerradas, actionId] = await Promise.all([
     searchRead<FilaOt>(
       "x_aba_orden_trabajo",
       DOMINIOS[filtro],
@@ -153,10 +171,29 @@ export async function fetchOrdenes(filtro: FiltroOrdenes): Promise<ListadoOrdene
       // primero en un ASC, así que se ordena por el agrupador antes que por la fecha.
       { order: "x_grupo_prog, x_fecha_programada, id", limit: 400 },
     ),
-    ...claves.map((k) => searchCount("x_aba_orden_trabajo", DOMINIOS[k])),
+    searchRead<FilaConteo>(
+      "x_aba_orden_trabajo",
+      ACTIVAS,
+      ["x_hab_alerta", "x_grupo_prog", "x_dias_obra"],
+      { limit: 2000 },
+    ),
+    searchCount("x_aba_orden_trabajo", DOMINIOS.cerradas),
+    // Va acá y no antes: es cacheado a nivel módulo, pero en un lambda frío se pedía igual
+    // y en serie. Adentro de la tanda no cuesta tiempo de pared.
+    otActionId(),
   ]);
 
-  const conteos = Object.fromEntries(claves.map((k, i) => [k, cuentas[i]])) as ConteosOrdenes;
+  // Los mismos criterios que DOMINIOS, aplicados en memoria. Si alguno cambia allá, cambia
+  // acá: por eso están pegados y no repartidos por el archivo.
+  const conteos: ConteosOrdenes = {
+    abiertas: activas.length,
+    critica: activas.filter((o) => o.x_hab_alerta === "critica").length,
+    proxima: activas.filter((o) => o.x_hab_alerta === "proxima").length,
+    sin_fecha: activas.filter((o) => o.x_grupo_prog === "b_sin").length,
+    en_curso: activas.filter((o) => num(o.x_dias_obra) > 0).length,
+    cerradas,
+  };
+
   return { ordenes: filas.map((f) => mapOt(f, base, actionId)), conteos };
 }
 

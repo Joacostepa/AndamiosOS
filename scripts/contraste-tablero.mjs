@@ -67,6 +67,17 @@ function deOklch(L, C, H, alpha) {
 
 const aLineal = (c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
 
+/** El porcentaje de un color-mix, que puede venir literal ("14%") o como var(). */
+function porcentaje(valor, mapa) {
+  const v = valor.trim();
+  const ref = v.match(/^var\((--[\w-]+)\)$/);
+  const bruto = ref ? mapa.get(ref[1]) : v;
+  if (bruto === undefined) throw new Error(`Token sin definir: ${ref[1]}`);
+  const n = parseFloat(bruto);
+  if (!Number.isFinite(n)) throw new Error(`Porcentaje ilegible en color-mix: ${valor}`);
+  return n / 100;
+}
+
 /**
  * Resuelve un valor CSS a color lineal. Entiende hex, oklch(), `transparent`, `var(--x)`
  * y el `color-mix(in oklch, A p%, B)` que usan los velos del tablero.
@@ -103,9 +114,13 @@ function color(valor, mapa, visto = new Set()) {
 
   // color-mix(in oklch, A p%, B). El único caso que hay es mezclar contra `transparent`,
   // que en CSS es "el color A con alpha p" — no un gris intermedio.
-  const mix = v.match(/^color-mix\(\s*in oklch\s*,\s*(.+?)\s+([\d.]+)%\s*,\s*(.+?)\s*\)$/);
+  //
+  // El porcentaje puede venir como var(): la trama de la tentativa lo saca de
+  // --tb-trama-alfa, que cambia por tema. Sin esto el par no matcheaba y el chequeo
+  // pasaba de largo en silencio, que es justo lo que este script existe para evitar.
+  const mix = v.match(/^color-mix\(\s*in oklch\s*,\s*(.+?)\s+(var\(--[\w-]+\)|[\d.]+%)\s*,\s*(.+?)\s*\)$/);
   if (mix) {
-    const p = parseFloat(mix[2]) / 100;
+    const p = porcentaje(mix[2], mapa);
     const a = color(mix[1], mapa, visto);
     const b = color(mix[3], mapa, visto);
     if (b.a === 0) return { ...a, a: a.a * p };
@@ -284,6 +299,37 @@ const VELO = [
   ["riel de ocupación", "var(--tb-riel)", "var(--card)"],
 ];
 
+// La TRAMA diagonal de la tarjeta tentativa: la franja contra el relleno que tiene detrás.
+//
+// TIENE BANDA PROPIA Y POR TEMA, que es lo único incómodo de todo este archivo. La razón
+// es la misma que ya justificó medir en ΔL en vez de WCAG, pero espejada: ΔL también se
+// deforma cerca del negro, sólo que al revés. En claro la franja se compone sobre blanco
+// y el ΔL crece despacio (14% → 0.046); en oscuro se compone sobre L=0.13 con un tono de
+// tipo que es casi blanco, y arranca alto: NI AL 2% entra en la banda de velo (0.116).
+//
+// No es que el diseño esté mal en oscuro —mirado, al 6% se lee como textura y queda
+// claramente por detrás del texto—: es que la banda 0.02–0.10 se calibró para velos que
+// cubren TODA la celda, y esto es un rayado que cubre 2 de cada 7 píxeles. Forzar el
+// número habría significado bajar la alfa hasta apagar la trama para que un chequeo diera
+// verde.
+//
+// Las bandas de abajo salen del barrido real: en claro el 8-20% entra; en oscuro el 4-8%.
+// Sirven para lo que tienen que servir — si alguien empareja las dos alfas "para
+// simplificar", cualquiera de los dos temas se sale.
+// El tono va SIN var(): lo envuelve el armado de la franja, abajo.
+const TRAMA = [
+  ["trama tentativa armado", "--tb-azul-text"],
+  ["trama tentativa desarme", "--tb-ambar-text"],
+  ["trama tentativa sin tipo", "--tb-neutro-text"],
+  ["trama tentativa tarea", "--tb-violeta-text"],
+];
+
+/** Piso y techo de la trama, por tema. Ver el comentario de TRAMA. */
+const BANDA_TRAMA = {
+  CLARO: [0.02, 0.1],
+  OSCURO: [0.15, 0.25],
+};
+
 // Lo que queda afuera a sabiendas. Sin esta lista la tentación es aflojar el piso, que es
 // como se pierde un chequeo entero.
 const EXENCIONES = [
@@ -339,6 +385,12 @@ function chequear(tema, mapa) {
   for (const [nombre, frente, fondo] of VELO) {
     const d = deltaL(frente, color(fondo, mapa), mapa);
     linea(d >= 0.02 && d <= 0.1, nombre, d, "ΔL", "0.02 – 0.10");
+  }
+  const [piso, techo] = BANDA_TRAMA[tema];
+  for (const [nombre, tono] of TRAMA) {
+    const franja = `color-mix(in oklch, var(${tono}) var(--tb-trama-alfa), transparent)`;
+    const d = deltaL(franja, color("var(--tb-tentativa)", mapa), mapa);
+    linea(d >= piso && d <= techo, nombre, d, "ΔL", `${piso.toFixed(2)} – ${techo.toFixed(2)}`);
   }
 }
 

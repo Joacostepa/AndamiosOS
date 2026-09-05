@@ -23,6 +23,7 @@ import {
   CANDADO,
   CORAL,
   TENTATIVA,
+  tramaTentativa,
   OK,
   PELIGRO,
   PELIGRO_SUAVE,
@@ -50,12 +51,13 @@ export type AccionCierre =
 //
 // Lenguaje visual (v3). Cada canal codifica UNA cosa y sólo una:
 //   fondo + ícono → TIPO de OT (armado sube, desarme baja, resto neutro)
-//   borde punteado + fondo transparente → tentativa (borrador, pero ocupa capacidad)
+//   borde punteado + trama diagonal → tentativa (borrador, pero ocupa capacidad)
 //   franja izquierda → semáforo de habilitación
 //   triángulo rojo   → urgencia alta
 //
 // El tipo y el estado son canales INDEPENDIENTES: una tentativa de armado conserva el
-// ícono y el color de texto del armado, y sólo pierde el relleno.
+// ícono y el color de texto del armado, y sólo pierde el relleno sólido — la trama que lo
+// reemplaza sale del mismo tono, así que el tipo se sigue leyendo.
 
 const ICONO_TIPO = { arriba: ArrowUp, abajo: ArrowDown, otro: MoreHorizontal } as const;
 
@@ -152,6 +154,16 @@ export function ContenidoTarjeta({
         // El relleno es el canal del ESTADO: sólido = confirmada, transparente =
         // tentativa. El tono de ese relleno es el canal del TIPO.
         backgroundColor: noEjecutada ? PELIGRO_SUAVE : confirmada ? tipo.bg : TENTATIVA,
+        // …y la tentativa suma una trama diagonal, porque "transparente" contra una celda
+        // casi blanca no se veía: quedaba definida sólo por el borde punteado. La trama
+        // toma el tono del TIPO, así que no gasta un canal de color nuevo.
+        //
+        // No se aplica a la no ejecutada: ésa ya tiene relleno rojo propio y es un estado
+        // posterior —tiene parte cargado, así que su asignación quedó confirmada—. Se
+        // excluye igual por si alguna vez llegan juntas: dos señales de estado encima
+        // convertirían la más grave en decoración.
+        backgroundImage:
+          !confirmada && !noEjecutada ? tramaTentativa(tipo.text) : undefined,
         // El borde punteado rojo es el mismo lenguaje de "pendiente" del listado de
         // partes: la jornada ya pasó y nadie cargó nada.
         border: noEjecutada

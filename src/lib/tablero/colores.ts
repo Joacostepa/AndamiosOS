@@ -153,6 +153,40 @@ export const PASADO = "var(--tb-pasado)";
  */
 export const TENTATIVA = "var(--tb-tentativa)";
 
+/**
+ * Trama diagonal de la tarjeta tentativa.
+ *
+ * EL PROBLEMA: el relleno "lo mismo que hay detrás" funciona mientras haya algo detrás.
+ * En claro la celda es casi blanca y la tarjeta también, así que la tentativa quedaba
+ * definida sólo por su borde punteado: un rectángulo vacío que se pierde entre las
+ * confirmadas y contra la propia grilla.
+ *
+ * POR QUÉ TRAMA Y NO UN TINTE: los canales de color ya están todos ocupados —el fondo es
+ * el TIPO, la franja es el semáforo, el rojo es peligro, el violeta es tarea—. Pintar la
+ * tentativa de cualquier tono diría algo falso en alguno de esos canales, y aclarar el
+ * tono del tipo la haría leer como "confirmada pero pálida", que es justo el binario que
+ * hay que sostener. La textura es el único canal libre, y además es la convención de
+ * "provisorio" que ya trae cualquier planificador.
+ *
+ * EL TONO SALE DEL TIPO, no de un gris: una tentativa de armado se sigue leyendo azul y
+ * una de desarme ámbar. Es la misma regla que ya rige el texto y el ícono — el estado
+ * apaga el relleno, nunca el tipo.
+ *
+ * Los números importan. La franja es de 2px cada 7px porque el texto de la tarjeta es de
+ * 11-12px: a paso más fino la trama compite con las letras y aparece moiré al hacer
+ * scroll. Y una jornada de ¼ mide 24px de alto, así que el paso tiene que dejar ver tres
+ * o cuatro franjas para leerse como textura y no como una mancha.
+ *
+ * La INTENSIDAD no está acá sino en --tb-trama-alfa, que cambia por tema: la trama se
+ * tiñe con el color del tipo, que en claro es oscuro sobre blanco y en oscuro es claro
+ * sobre casi negro, así que el mismo porcentaje no rinde lo mismo. Es la misma lección
+ * que ya dejó escrita --tb-pasado.
+ */
+export function tramaTentativa(colorDelTipo: string): string {
+  const tinta = `color-mix(in oklch, ${colorDelTipo} var(--tb-trama-alfa), transparent)`;
+  return `repeating-linear-gradient(45deg, ${tinta} 0 2px, transparent 2px 7px)`;
+}
+
 // ── Nota de la jornada ───────────────────────────────────────────────────────
 //
 // Ámbar de post-it, y es el único tono que quedaba libre EN EL ENCABEZADO: ahí el coral

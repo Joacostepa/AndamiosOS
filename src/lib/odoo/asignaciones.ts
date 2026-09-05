@@ -219,11 +219,15 @@ function mapAsig(row: OdooAsigRow): AsignacionTablero {
 export async function fetchTablero(desde: string, hasta: string): Promise<TableroPayload> {
   const base = process.env.ODOO_URL ?? "";
   // Se resuelve el login ANTES del lote: si no, las lecturas en paralelo arrancan todas
-  // pidiendo autenticación y Odoo las limita (ver la cola en client.ts).
+  // pidiendo autenticación y Odoo las limita (ver la cola en client.ts). Con ODOO_UID
+  // seteado esto no sale a la red.
   await authenticate();
-  const actionId = await otActionId();
 
-  const [cuadrillasRaw, asigsRaw, otsCandidatas, partesRaw, gruposAsignadas, gruposCerradas] = await Promise.all([
+  // otActionId va ADENTRO del lote, no antes. Es cacheado a nivel módulo, pero en un
+  // lambda frío se pedía igual y en serie: un round trip entero de espera para armar una
+  // URL que no depende de nada. Es el mismo arreglo que en fetchOrdenes.
+  const [actionId, cuadrillasRaw, asigsRaw, otsCandidatas, partesRaw, gruposAsignadas, gruposCerradas] = await Promise.all([
+    otActionId(),
     searchRead<{ id: number; x_name: string | false; x_tercerizada: boolean }>(
       "x_aba_cuadrilla",
       [["x_activa", "=", true]],

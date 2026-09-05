@@ -59,6 +59,16 @@ export function useTablero(desde: string, hasta: string) {
     // que es otra vez el borde, y pide otra semana. Un lazo que se retroalimenta.
     // Conservando los datos previos la grilla nunca se desmonta y el scroll queda quieto.
     placeholderData: keepPreviousData,
+    // MEDIO MINUTO DE VIGENCIA. El payload del tablero son seis lecturas a Odoo (~500 ms a
+    // 1,2 s medidos), y sin esto se repetían enteras cada vez que alguien vuelve del panel
+    // de una OT, de habilitaciones o de órdenes. Volver es lo que más se hace.
+    //
+    // Es corto a propósito y no un minuto como en las otras pantallas: el tablero es
+    // COMPARTIDO y lo edita más de una persona a la vez. Media hora de datos viejos acá
+    // sería que dos personas planifiquen sobre estados distintos.
+    //
+    // Lo que uno mismo escribe no espera: cada mutación invalida esta query.
+    staleTime: 30_000,
     // Odoo Online limita las consultas concurrentes: no conviene refetchear cada vez
     // que la pestaña vuelve al foco, ni reintentar en ráfaga si algo falló.
     refetchOnWindowFocus: false,

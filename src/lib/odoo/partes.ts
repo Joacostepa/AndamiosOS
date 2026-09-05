@@ -9,6 +9,29 @@
 // REGLA DE NEGOCIO: la app NUNCA manda costos ni horas-hombre. Los calcula Odoo con la
 // tarifa vigente a esa fecha (x_horas, x_horas_hombre, x_valor_hora, x_costo, x_costo_*).
 // Tampoco escribe x_name: lo arma Odoo.
+//
+// ── POR QUÉ ACÁ SE CUENTAN LAS LLAMADAS DE A UNA ─────────────────────────────────────
+//
+// Un round-trip a Odoo Online cuesta ~250 ms. Pero NO todas las escrituras valen igual:
+// el parte cuelga de una cadena de campos calculados que llega hasta la venta.
+//
+//   parte → OT (12 calculados sobre x_parte_diario_ids) → venta (4) → obra (5)
+//
+// Y en el camino la OT y la obra tienen un automatismo `on_create_or_write` que llama por
+// HTTPS a esta misma app (/api/odoo/webhooks/...). Odoo espera esa respuesta dentro de la
+// transacción. Medido contra la instancia real:
+//
+//   read de la OT ............................  250 ms
+//   write en el parte que no toca costos .....  250 ms
+//   create de una foto de 320 KB .............  560 ms
+//   write en la OT (dispara el webhook) ...... 1330 ms
+//   create de una línea de mano de obra ...... 1120 ms   ← recalcula costos → OT
+//   create del parte ......................... 2740 ms   ← ídem, más la cascada entera
+//
+// O sea: las fotos son baratas y CADA ESCRITURA QUE LLEGA A LA OT CUESTA UN SEGUNDO. Por
+// eso todo lo que se pueda viajar junto viaja junto —las líneas van anidadas en el mismo
+// create de la cabecera, las fotos en un solo create, la OT se lee una vez y se escribe
+// una vez— aunque el código quede menos obvio que una llamada por cosa.
 
 import { searchRead, create, write, executeKw, read } from "./client";
 import { DEJAN_ESTRUCTURA } from "@/lib/tablero/tipos-parte";
@@ -50,76 +73,154 @@ function valoresParte(datos: DatosCierre, otId: number): Record<string, unknown>
   };
 }
 
-// La fecha de la línea NO es decorativa: Odoo busca con ella la tarifa vigente. Sin
-// fecha, el costo del flete sale CERO (medido contra la instancia real). Va en todas
-// las líneas que la tienen, aunque el valor lo siga calculando Odoo.
-async function crearLineasManoObra(parteId: number, datos: DatosCierre, fecha: string): Promise<number> {
-  if (datos.estado !== "ejecutado" || datos.manoObra.length === 0) return 0;
-  const ids = await executeKw<number | number[]>("x_aba_mano_obra", "create", [
-    datos.manoObra.map((l) => ({
-      x_parte_diario_id: parteId,
-      x_fecha: fecha,
-      x_tarea: l.tarea,
-      x_personas: l.personas,
-      x_hora_desde: l.horaDesde,
-      x_hora_hasta: l.horaHasta,
-    })),
-  ]);
-  return Array.isArray(ids) ? ids.length : 1;
-}
-
-async function crearLineasFlete(parteId: number, datos: DatosCierre, fecha: string): Promise<number> {
-  if (datos.estado !== "ejecutado" || !datos.flete || datos.flete.cantidad <= 0) return 0;
-  await create("x_aba_flete", {
-    x_parte_diario_id: parteId,
-    x_fecha: fecha,
-    x_cantidad: datos.flete.cantidad,
-    x_tercerizado: datos.flete.tercerizado,
-    // x_costo_manual solo tiene sentido en el tercerizado; el propio lo tarifa Odoo.
-    x_costo_manual: datos.flete.tercerizado ? (datos.flete.costoManual ?? 0) : 0,
-  });
-  return 1;
-}
-
-async function crearLineasIncidencia(parteId: number, datos: DatosCierre): Promise<number> {
-  if (datos.estado !== "ejecutado" || datos.incidencias.length === 0) return 0;
-  const ids = await executeKw<number | number[]>("x_aba_incidencia", "create", [
-    datos.incidencias.map((i) => ({
-      x_parte_diario_id: parteId,
-      x_tipo: i.tipo,
-      x_descripcion: i.descripcion,
-    })),
-  ]);
-  return Array.isArray(ids) ? ids.length : 1;
+/** Cuántas líneas describe el parte. Sólo para informar el paso, ya no para contar creates. */
+function cuentaLineas(datos: DatosCierre): number {
+  if (datos.estado !== "ejecutado") return 0;
+  const flete = datos.flete && datos.flete.cantidad > 0 ? 1 : 0;
+  return datos.manoObra.length + flete + datos.incidencias.length;
 }
 
 /**
- * Las fotos van de a UN registro por foto para poder informar cuáles fallaron: si de
- * ocho se caen dos, el parte igual queda guardado y el usuario reintenta solo esas.
+ * Las líneas del parte como COMANDOS one2many, para que viajen dentro del mismo
+ * create/write de la cabecera.
  *
- * Se lanzan todas juntas y las serializa la cola de client.ts. En serie, ocho fotos eran
- * ocho round-trips de ~800 ms encadenados; en paralelo se pagan de a MAX_CONCURRENTES.
+ * Antes eran tres llamadas aparte (una por modelo) y cada una recalculaba los costos del
+ * parte, que suben a la OT, que dispara el webhook: ~1,1 s cada una. Anidadas, la cascada
+ * corre UNA vez al cerrar la transacción de la cabecera.
+ *
+ * `reemplazar` antepone (5, 0, 0), que en Odoo desvincula todo lo que colgaba. Como
+ * x_parte_diario_id es `required` en los tres modelos, desvincular equivale a borrar: no
+ * quedan líneas huérfanas (verificado contra la instancia real). Es lo que hace falta al
+ * reeditar un parte para que las líneas se reemplacen en vez de acumularse.
+ *
+ * La fecha de la línea NO es decorativa: Odoo busca con ella la tarifa vigente. Sin fecha,
+ * el costo del flete sale CERO (medido contra la instancia real). Va en todas las líneas
+ * que la tienen, aunque el valor lo siga calculando Odoo.
+ */
+function comandosLineas(
+  datos: DatosCierre,
+  fecha: string,
+  reemplazar: boolean,
+): Record<string, unknown[]> {
+  const ejecutado = datos.estado === "ejecutado";
+  const vaciar = reemplazar ? [[5, 0, 0]] : [];
+
+  const manoObra = ejecutado
+    ? datos.manoObra.map((l) => [
+        0, 0,
+        {
+          x_fecha: fecha,
+          x_tarea: l.tarea,
+          x_personas: l.personas,
+          x_hora_desde: l.horaDesde,
+          x_hora_hasta: l.horaHasta,
+        },
+      ])
+    : [];
+
+  const flete = ejecutado && datos.flete && datos.flete.cantidad > 0
+    ? [[
+        0, 0,
+        {
+          x_fecha: fecha,
+          x_cantidad: datos.flete.cantidad,
+          x_tercerizado: datos.flete.tercerizado,
+          // x_costo_manual solo tiene sentido en el tercerizado; el propio lo tarifa Odoo.
+          x_costo_manual: datos.flete.tercerizado ? (datos.flete.costoManual ?? 0) : 0,
+        },
+      ]]
+    : [];
+
+  const incidencias = ejecutado
+    ? datos.incidencias.map((i) => [0, 0, { x_tipo: i.tipo, x_descripcion: i.descripcion }])
+    : [];
+
+  // Sólo se mandan las claves que tienen algo que decir: en un alta sin líneas, un
+  // one2many vacío es ruido que igual hace a Odoo mirar la relación.
+  const cmds: Record<string, unknown[]> = {};
+  for (const [campo, nuevas] of [
+    ["x_mano_obra_ids", manoObra],
+    ["x_flete_ids", flete],
+    ["x_incidencia_ids", incidencias],
+  ] as const) {
+    const todos = [...vaciar, ...nuevas];
+    if (todos.length > 0) cmds[campo] = todos;
+  }
+  return cmds;
+}
+
+// Cuántos bytes de base64 entran en un create de fotos. No es un límite de Odoo sino
+// prudencia: un cuerpo JSON-RPC gigante es lo primero que se corta en un timeout, y si se
+// corta hay que volver a subirlo entero. Con fotos de ~300 KB entran seis por lote.
+const BYTES_POR_LOTE = 2_000_000;
+
+/**
+ * Sube las fotos del parte.
+ *
+ * EN LOTES, no de a una: `create` de Odoo acepta una lista de valores y crea todos los
+ * registros en una sola llamada. Ocho fotos eran ocho round-trips; ahora son uno o dos.
+ * A diferencia de las líneas, las fotos NO cuelgan de ningún campo calculado de la OT
+ * (x_cant_fotos muere en el parte), así que no arrastran la cascada: una foto de 320 KB
+ * cuesta ~560 ms y no ~1,1 s.
+ *
+ * SI UN LOTE FALLA se reintenta foto por foto. Cuesta una segunda subida en el peor caso,
+ * pero es lo único que permite decir CUÁL se cayó: si de ocho se caen dos, el parte igual
+ * queda guardado y quien las sacó sabe cuáles volver a cargar. Sin ese detalle la pantalla
+ * diría "guardado" y las fotos no estarían.
  */
 async function crearFotos(
   parteId: number,
   datos: DatosCierre,
 ): Promise<{ subidas: number; fallidas: string[] }> {
   if (datos.estado !== "ejecutado" || datos.fotos.length === 0) return { subidas: 0, fallidas: [] };
-  const resultados = await Promise.all(
-    datos.fotos.map((f) =>
-      create("x_aba_foto", {
-        x_parte_diario_id: parteId,
-        x_imagen: f.base64,
-        x_momento: f.momento,
-        x_descripcion: f.descripcion ?? false,
-      }).then(
-        () => null,
-        () => f.nombre,
-      ),
-    ),
+
+  const valores = (f: DatosCierre["fotos"][number]) => ({
+    x_parte_diario_id: parteId,
+    x_imagen: f.base64,
+    x_momento: f.momento,
+    x_descripcion: f.descripcion ?? false,
+  });
+
+  // Armado de lotes por peso, no por cantidad: cuatro fotos de 1 MB no son lo mismo que
+  // cuatro de 200 KB. Una sola foto que se pase del presupuesto igual va sola en su lote.
+  const lotes: DatosCierre["fotos"][] = [];
+  let actual: DatosCierre["fotos"] = [];
+  let pesoActual = 0;
+  for (const f of datos.fotos) {
+    if (actual.length > 0 && pesoActual + f.base64.length > BYTES_POR_LOTE) {
+      lotes.push(actual);
+      actual = [];
+      pesoActual = 0;
+    }
+    actual.push(f);
+    pesoActual += f.base64.length;
+  }
+  if (actual.length > 0) lotes.push(actual);
+
+  const fallidas: string[] = [];
+  let subidas = 0;
+
+  // Los lotes van juntos y los serializa la cola de client.ts.
+  await Promise.all(
+    lotes.map(async (lote) => {
+      try {
+        await executeKw("x_aba_foto", "create", [lote.map(valores)]);
+        subidas += lote.length;
+        return;
+      } catch {
+        // Cae al reintento individual.
+      }
+      const resultados = await Promise.all(
+        lote.map((f) => create("x_aba_foto", valores(f)).then(() => null, () => f.nombre)),
+      );
+      for (const nombre of resultados) {
+        if (nombre === null) subidas++;
+        else fallidas.push(nombre);
+      }
+    }),
   );
-  const fallidas = resultados.filter((n): n is string => n !== null);
-  return { subidas: resultados.length - fallidas.length, fallidas };
+
+  return { subidas, fallidas };
 }
 
 /**
@@ -153,6 +254,16 @@ export async function cerrarJornada(
 
   const fecha = datos.fecha || str(asignacion.x_fecha) || "";
 
+  // La OT se lee ACÁ, en paralelo con la escritura del parte, aunque recién se use al
+  // final: sólo depende de otId, que ya está. Encadenada detrás del parte era un
+  // round-trip más en el camino crítico por nada.
+  //
+  // El catch vacío NO se traga el error: sólo marca la promesa como manejada para que, si
+  // el parte falla antes de que alguien la espere, Node no la reporte como rechazo huérfano.
+  // Quien la await más abajo sigue recibiendo la excepción y la informa como paso fallido.
+  const otLeida = leerOt(otId);
+  otLeida.catch(() => {});
+
   // ── 1) El parte ────────────────────────────────────────────────────────────
   //
   // SOLO se reescribe el parte que YA está vinculado a esta asignación (reedición de un
@@ -170,13 +281,30 @@ export async function cerrarJornada(
   // El aviso de duplicado no bloquea nada: se dispara junto con el resto y se lee al final.
   let avisoDuplicados: Promise<number[]> = Promise.resolve([]);
 
+  // La cabecera y las líneas viajan en la MISMA llamada (ver comandosLineas). Al reeditar,
+  // el (5, 0, 0) que antepone borra las anteriores dentro de la misma transacción, así que
+  // ya no hace falta barrerlas antes ni cuidar el orden.
+  //
+  // Efecto secundario querido: si una línea es inválida, no se guarda nada. Antes el parte
+  // quedaba igual y la línea no, y un parte sin mano de obra son cero horas-hombre y cero
+  // costo — una obra que figura trabajada gratis. Es mejor que falle entero y se reintente.
+  const lineas = cuentaLineas(datos);
+
   if (parteVinculado !== null) {
     parteId = parteVinculado;
-    await write("x_aba_parte_diario", [parteId], valoresParte({ ...datos, fecha }, otId));
+    await write("x_aba_parte_diario", [parteId], {
+      ...valoresParte({ ...datos, fecha }, otId),
+      ...comandosLineas(datos, fecha, true),
+    });
     registrar("Parte diario actualizado", true, `#${parteId}`);
+    if (lineas > 0) registrar("Líneas reemplazadas", true, `${lineas}`);
   } else {
-    parteId = await create("x_aba_parte_diario", valoresParte({ ...datos, fecha }, otId));
+    parteId = await create("x_aba_parte_diario", {
+      ...valoresParte({ ...datos, fecha }, otId),
+      ...comandosLineas(datos, fecha, false),
+    });
     registrar("Parte diario", true, `#${parteId}`);
+    if (lineas > 0) registrar("Personal, fletes e incidencias", true, `${lineas} línea${lineas === 1 ? "" : "s"}`);
 
     // Si ya había otro parte para esa OT y fecha, se avisa: puede ser un duplicado a
     // resolver en Odoo, pero no se toca.
@@ -196,51 +324,22 @@ export async function cerrarJornada(
   // exactamente qué se guardó.
   const resultado: ResultadoCierre = { parteId, reutilizado, pasos, fotosFallidas: [] };
 
-  // Si se reutilizó un parte, sus líneas viejas se reemplazan para no duplicar. Tiene
-  // que terminar ANTES de crear las nuevas, o el borrado se llevaría puestas a las
-  // recién creadas.
-  if (reutilizado) {
-    try {
-      await borrarLineas(parteId);
-      registrar("Líneas anteriores reemplazadas", true);
-    } catch (e) {
-      registrar("Líneas anteriores reemplazadas", false, mensaje(e));
-    }
-  }
-
-  // ── 2..6) Líneas, fotos y cierre de la jornada ─────────────────────────────
+  // ── 2..5) Fotos, jornada y orden de trabajo ────────────────────────────────
   //
   // Son independientes entre sí: van todas juntas y la cola de client.ts las reparte.
-  // Encadenadas eran ~6 round-trips de ~800 ms uno detrás del otro.
-  const [manoObra, flete, incidencias, fotos, marcada, duplicados, estadoOt, estructura] =
-    await Promise.allSettled([
-      crearLineasManoObra(parteId, datos, fecha),
-      crearLineasFlete(parteId, datos, fecha),
-      crearLineasIncidencia(parteId, datos),
-      crearFotos(parteId, datos),
-      // El parte CONFIRMA la jornada: es la prueba de que pasó. Una jornada que se
-      // trabajó no puede quedar como tentativa, y así el listado de partes puede ofrecer
-      // las tentativas vencidas sin dejarlas colgadas en ese estado para siempre.
-      write("x_aba_asignacion", [asignacionId], { x_parte_id: parteId, x_estado: "confirmada" }),
-      avisoDuplicados,
-      // El estado de la OT no puede tirar abajo el parte: si falla, el parte queda igual
-      // y la OT se corrige a mano o en el próximo cierre.
-      actualizarEstadoOt(otId, finalizarOt),
-      // Ídem el as-built: va en su propio paso para que, si falla, se vea exactamente eso
-      // y no quede escondido detrás de "la OT se completó".
-      sellarEstructura(otId, finalizarOt ? datos.ejecutadoReal : null, fecha),
-    ]);
-
-  if (manoObra.status === "rejected") registrar("Personal y horarios", false, mensaje(manoObra.reason));
-  else if (manoObra.value > 0) {
-    registrar("Personal y horarios", true, `${manoObra.value} línea${manoObra.value === 1 ? "" : "s"}`);
-  }
-
-  if (flete.status === "rejected") registrar("Fletes", false, mensaje(flete.reason));
-  else if (flete.value > 0) registrar("Fletes", true);
-
-  if (incidencias.status === "rejected") registrar("Incidencias", false, mensaje(incidencias.reason));
-  else if (incidencias.value > 0) registrar("Incidencias", true, `${incidencias.value}`);
+  const [fotos, marcada, duplicados, ot] = await Promise.allSettled([
+    crearFotos(parteId, datos),
+    // El parte CONFIRMA la jornada: es la prueba de que pasó. Una jornada que se
+    // trabajó no puede quedar como tentativa, y así el listado de partes puede ofrecer
+    // las tentativas vencidas sin dejarlas colgadas en ese estado para siempre.
+    write("x_aba_asignacion", [asignacionId], { x_parte_id: parteId, x_estado: "confirmada" }),
+    avisoDuplicados,
+    // Estado y as-built en una sola pasada por la OT: son dos decisiones distintas pero
+    // un solo registro, y cada write a la OT dispara el webhook. Nada de esto puede tirar
+    // abajo el parte: si falla, el parte queda igual y la OT se corrige a mano o en el
+    // próximo cierre.
+    actualizarOt(otLeida, finalizarOt, finalizarOt ? datos.ejecutadoReal : null, fecha),
+  ]);
 
   if (fotos.status === "rejected") {
     registrar("Fotos", false, mensaje(fotos.reason));
@@ -262,16 +361,12 @@ export async function cerrarJornada(
     marcada.status === "rejected" ? mensaje(marcada.reason) : undefined,
   );
 
-  if (estadoOt.status === "rejected") {
-    registrar("Estado de la orden de trabajo", false, mensaje(estadoOt.reason));
-  } else if (estadoOt.value) {
-    registrar(estadoOt.value, true);
-  }
-
-  if (estructura.status === "rejected") {
-    registrar("Lo que quedó armado", false, mensaje(estructura.reason));
-  } else if (estructura.value) {
-    registrar(estructura.value, true);
+  if (ot.status === "rejected") {
+    // Un solo write cubre estado y as-built, así que un fallo se los lleva a los dos: se
+    // nombran los dos para que no parezca que el as-built sí quedó.
+    registrar("Orden de trabajo", false, mensaje(ot.reason));
+  } else {
+    for (const paso of ot.value) registrar(paso, true);
   }
 
   if (duplicados.status === "fulfilled" && duplicados.value.length > 0) {
@@ -289,9 +384,31 @@ function mensaje(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
+type OtDelParte = {
+  id: number;
+  x_estado: string | false;
+  x_tipo: string | false;
+  x_order_id: [number, string] | false;
+};
+
 /**
- * Mueve el estado de la ORDEN DE TRABAJO según lo que dice el parte.
+ * Los tres campos de la OT que el cierre necesita, en UN read.
  *
+ * Antes eran dos: uno para decidir el estado y otro para el as-built. Los pedía la misma
+ * OT, con 250 ms cada uno y sin depender el uno del otro.
+ */
+async function leerOt(otId: number): Promise<OtDelParte | null> {
+  const [ot] = await read<OtDelParte>(
+    "x_aba_orden_trabajo", [otId], ["x_estado", "x_tipo", "x_order_id"],
+  );
+  return ot ?? null;
+}
+
+/**
+ * Deja la ORDEN DE TRABAJO como la dejó la jornada: su estado y, si corresponde, lo que
+ * quedó efectivamente armado. Devuelve un paso por cada cosa que se movió.
+ *
+ * ── EL ESTADO ────────────────────────────────────────────────────────────────
  * EL PROBLEMA: el parte queda asociado a la OT pero no la cierra, y nadie la cerraba a
  * mano. Medido: de 48 OTs activas, 27 ya no tenían ninguna jornada pendiente en el
  * tablero. Se acumulan obras terminadas que siguen figurando como trabajo por hacer.
@@ -307,28 +424,8 @@ function mensaje(e: unknown): string {
  *    desaparecería del tablero con la cuadrilla todavía trabajando. Por eso la decide una
  *    persona, y se le pregunta en el único momento en que tiene el dato: al cargar el
  *    parte de la última jornada que quedaba pendiente.
- */
-async function actualizarEstadoOt(otId: number, finalizar: boolean): Promise<string | null> {
-  const [ot] = await read<{ id: number; x_estado: string | false }>(
-    "x_aba_orden_trabajo",
-    [otId],
-    ["x_estado"],
-  );
-  if (!ot) return null;
-
-  if (finalizar) {
-    if (ot.x_estado === "completada") return null;
-    await write("x_aba_orden_trabajo", [otId], { x_estado: "completada" });
-    return "Orden de trabajo completada";
-  }
-  if (ot.x_estado !== "pendiente") return null;
-  await write("x_aba_orden_trabajo", [otId], { x_estado: "en_proceso" });
-  return "Orden de trabajo en proceso";
-}
-
-/**
- * Sella LO QUE QUEDÓ EFECTIVAMENTE ARMADO, en dos lugares y por dos motivos distintos.
  *
+ * ── LO QUE QUEDÓ ARMADO ──────────────────────────────────────────────────────
  * EL PROBLEMA: el armado real casi nunca es idéntico al vendido —cambian alturas, metros,
  * sectores— y esa diferencia hoy muere en la cabeza del capataz. Meses después, cuando el
  * cliente llama para desarmar, Comercial emite la OT describiendo lo VENDIDO y la cuadrilla
@@ -342,68 +439,88 @@ async function actualizarEstadoOt(otId: number, finalizar: boolean): Promise<str
  *
  * El desarme y el mantenimiento NO sellan: no cambian lo que hay en pie. El desmonte
  * parcial sí, porque deja menos estructura de la que había.
+ *
+ * ── POR QUÉ JUNTOS ───────────────────────────────────────────────────────────
+ * Son dos decisiones independientes sobre el MISMO registro, y cada write a la OT arrastra
+ * la cascada de calculados y el webhook: ~1,3 s. Escribirlas por separado pagaba eso dos
+ * veces para guardar dos campos de la misma fila. La venta sí queda aparte: es otro
+ * registro y sólo se toca cuando hay as-built.
  */
-async function sellarEstructura(
-  otId: number,
+async function actualizarOt(
+  otLeida: Promise<OtDelParte | null>,
+  finalizar: boolean,
   ejecutadoReal: string | null,
   fecha: string,
-): Promise<string | null> {
+): Promise<string[]> {
+  const ot = await otLeida;
+  if (!ot) return [];
+
+  const cambios: Record<string, unknown> = {};
+  const pasos: string[] = [];
+
+  if (finalizar) {
+    if (ot.x_estado !== "completada") {
+      cambios.x_estado = "completada";
+      pasos.push("Orden de trabajo completada");
+    }
+  } else if (ot.x_estado === "pendiente") {
+    cambios.x_estado = "en_proceso";
+    pasos.push("Orden de trabajo en proceso");
+  }
+
   const texto = ejecutadoReal?.trim();
-  if (!texto) return null;
+  const sella = !!texto && typeof ot.x_tipo === "string" && DEJAN_ESTRUCTURA.has(ot.x_tipo);
+  if (sella) cambios.x_ejecutado_real = texto;
 
-  const [ot] = await read<{ id: number; x_tipo: string | false; x_order_id: [number, string] | false }>(
-    "x_aba_orden_trabajo", [otId], ["x_tipo", "x_order_id"],
-  );
-  if (!ot || typeof ot.x_tipo !== "string" || !DEJAN_ESTRUCTURA.has(ot.x_tipo)) return null;
+  if (Object.keys(cambios).length === 0) return pasos;
+  await write("x_aba_orden_trabajo", [ot.id], cambios);
 
-  await write("x_aba_orden_trabajo", [otId], { x_ejecutado_real: texto });
+  if (!sella) return pasos;
 
   // Sin venta vinculada el snapshot igual queda en la OT; lo que se pierde es la herencia
   // al desarme, porque el estado vigente vive en la venta (x_obra_id está vacío en las
   // 1007 OTs, así que la venta es el único ancla que existe).
   const ventaId = m2oId(ot.x_order_id);
-  if (!ventaId) return "Lo que quedó armado, guardado en la OT (la OT no tiene venta vinculada)";
+  if (!ventaId) {
+    pasos.push("Lo que quedó armado, guardado en la OT (la OT no tiene venta vinculada)");
+    return pasos;
+  }
 
   await write("sale.order", [ventaId], {
     x_estructura_actual: texto,
     x_estructura_fecha: fecha || false,
-    x_estructura_ot_id: otId,
+    x_estructura_ot_id: ot.id,
   });
-  return "Lo que quedó armado: la OT de desarme va a nacer con esto";
+  pasos.push("Lo que quedó armado: la OT de desarme va a nacer con esto");
+  return pasos;
 }
 
 /**
- * Borra las líneas de un parte (al reeditarlo se reemplazan, no se acumulan).
- * Los tres modelos se barren en paralelo: no se pisan entre sí.
+ * Actualiza un parte ya cargado (cabecera + líneas; las fotos se suman, no se reemplazan).
+ *
+ * Cabecera y líneas van en un solo write con (5, 0, 0) al frente: el borrado y el alta de
+ * las nuevas ocurren dentro de la misma transacción, así que ya no hay que barrer primero
+ * ni cuidar que el borrado no se lleve puestas a las recién creadas. Eran hasta siete
+ * llamadas —tres búsquedas, tres unlink y tres creates, cada una recalculando los costos
+ * que suben a la OT— y ahora es una.
  */
-async function borrarLineas(parteId: number): Promise<void> {
-  await Promise.all(
-    ["x_aba_mano_obra", "x_aba_flete", "x_aba_incidencia"].map(async (modelo) => {
-      const ids = await searchRead<{ id: number }>(modelo, [["x_parte_diario_id", "=", parteId]], ["id"]);
-      if (ids.length) await executeKw(modelo, "unlink", [ids.map((r) => r.id)]);
-    }),
-  );
-}
-
-/** Actualiza un parte ya cargado (cabecera + líneas, las fotos se suman). */
 export async function editarParte(parteId: number, datos: DatosCierre, otId: number): Promise<ResultadoCierre> {
   const pasos: PasoCierre[] = [];
-  // La cabecera y el barrido de líneas viejas no dependen entre sí; las líneas nuevas sí
-  // tienen que esperar al barrido, o se borrarían recién creadas.
-  await Promise.all([
-    write("x_aba_parte_diario", [parteId], valoresParte(datos, otId)),
-    borrarLineas(parteId),
-  ]);
+
+  // Las fotos no cuelgan de los calculados de la OT, así que no compiten con el write:
+  // van en paralelo desde el arranque. El catch vacío es sólo para que un fallo del write
+  // no deje esta promesa como rechazo huérfano; el await de abajo sigue viendo el error.
+  const fotosSubiendo = crearFotos(parteId, datos);
+  fotosSubiendo.catch(() => {});
+
+  await write("x_aba_parte_diario", [parteId], {
+    ...valoresParte(datos, otId),
+    ...comandosLineas(datos, datos.fecha, true),
+  });
   pasos.push({ nombre: "Parte diario actualizado", ok: true, detalle: `#${parteId}` });
+  pasos.push({ nombre: "Líneas reemplazadas", ok: true, detalle: `${cuentaLineas(datos)}` });
 
-  const [, , , { subidas, fallidas }] = await Promise.all([
-    crearLineasManoObra(parteId, datos, datos.fecha),
-    crearLineasFlete(parteId, datos, datos.fecha),
-    crearLineasIncidencia(parteId, datos),
-    crearFotos(parteId, datos),
-  ]);
-  pasos.push({ nombre: "Líneas reemplazadas", ok: true });
-
+  const { subidas, fallidas } = await fotosSubiendo;
   if (subidas > 0 || fallidas.length > 0) {
     pasos.push({ nombre: "Fotos nuevas", ok: fallidas.length === 0, detalle: `${subidas} subida(s)` });
   }

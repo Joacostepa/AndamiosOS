@@ -32,6 +32,11 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# ...menos la plantilla, que NO tiene secretos y es lo unico que le dice a alguien que
+# clona el repo que estas variables existen. Estaba cayendo en el .env* de arriba, asi que
+# durante meses se edito un archivo que nunca viajo. Ojo al agregarle una variable: lo que
+# se escriba aca se versiona, asi que van placeholders y nunca un valor real.
+!.env.example
 
 # vercel
 .vercel

@@ -232,6 +232,10 @@ export type Ubicacion = {
  * pasó, no cuánto"— y mantiene todas las filas de la misma altura, que es lo que permite
  * comparar cuadrillas sin scrollear.
  *
+ * Y CUANDO ALGO NO ENTRA, lo que se achica es el grupo de tarjetas encadenadas entre sí,
+ * nunca la fila entera: un día mal encajado no puede cambiarle el tamaño a otro día que
+ * está perfecto. Ver el paso 5.
+ *
  * Devuelve todo en fracciones de jornada, no en píxeles: cuánto mide una jornada en
  * pantalla lo decide la grilla.
  */
@@ -286,16 +290,73 @@ export function repartirPorAltura(bloques: Bloque[], fechasVisibles: string[]): 
     return top;
   });
 
-  // 5. Red de seguridad: si el apilado igual se pasó del alto de la celda —puede pasar con
-  //    bloques de varios días que no encajan perfecto— se baja todo a escala. La fila
-  //    nunca crece.
-  const fondo = Math.max(1, ...tops.map((t, i) => t + alto[i]));
-  const ajuste = fondo > 1 ? 1 / fondo : 1;
+  // 5. Red de seguridad, ACOTADA AL GRUPO QUE NO ENTRA.
+  //
+  // El apilado puede pasarse del alto de la celda aunque las alturas sumen 1,00, porque un
+  // bloque de varios días lleva UN solo `top` a todos sus días: hereda el del día más
+  // cargado y en otro día ese desplazamiento deja abajo menos lugar del que hace falta.
+  //
+  // ESTO ANTES ESCALABA LA FILA ENTERA y era el bug: un día mal encajado achicaba semanas
+  // de esa cuadrilla, en días que no tenían nada que ver. Medido en el tablero real —
+  // cuadrilla 2, obra del 12 al 14 de septiembre— dejaba el 8 de septiembre dibujado al
+  // 75% sin ninguna señal. Invisible desde adentro: sólo se detectó midiendo píxeles.
+  //
+  // Ahora el ajuste va por GRUPO CONECTADO: dos bloques están en el mismo grupo si
+  // comparten una columna, directa o transitivamente. Un bloque de varios días es
+  // justamente lo que encadena días vecinos, así que el grupo es exactamente el conjunto
+  // de tarjetas que se empujan entre sí. Lo que no está encadenado no se entera.
+  //
+  // NO SE REORDENA para hacerlo entrar. Colocar los multi-día primero resolvería más
+  // casos, pero cambiaría qué tarjeta va arriba de cuál, y ese orden es el orden previsto
+  // del día: es información, no acomodo. Antes que mentir sobre el orden, se achica.
+  const padre = ubicados.map((_, i) => i);
+  const raiz = (i: number): number => {
+    while (padre[i] !== i) {
+      padre[i] = padre[padre[i]];
+      i = padre[i];
+    }
+    return i;
+  };
+  const primeroEnColumna = new Map<number, number>();
+  ubicados.forEach(({ colocacion }, i) => {
+    for (const c of columnasDe(colocacion)) {
+      const otro = primeroEnColumna.get(c);
+      if (otro === undefined) primeroEnColumna.set(c, i);
+      else {
+        const a = raiz(i);
+        const b = raiz(otro);
+        if (a !== b) padre[a] = b;
+      }
+    }
+  });
 
-  return ubicados.map(({ bloque, colocacion }, i) => ({
-    bloque,
-    colocacion,
-    top: tops[i] * ajuste,
-    alto: alto[i] * ajuste,
-  }));
+  const fondoDe = new Map<number, number>();
+  ubicados.forEach((_, i) => {
+    const r = raiz(i);
+    fondoDe.set(r, Math.max(fondoDe.get(r) ?? 1, tops[i] + alto[i]));
+  });
+
+  // Que quede dicho. Hasta ahora esto fallaba en silencio y se manifestaba como tarjetas
+  // más chicas de lo que decían, que es de las cosas más difíciles de ver que hay.
+  for (const [r, fondo] of fondoDe) {
+    if (fondo <= 1 + 1e-6) continue;
+    const delGrupo = ubicados.filter((_, i) => raiz(i) === r);
+    console.warn(
+      `[tablero] el apilado de la cuadrilla ${delGrupo[0]?.bloque.cuadrillaId ?? "?"} no entra en la celda ` +
+        `(pide ${fondo.toFixed(2)} jornadas): se achica al ${Math.round((100 / fondo))}% el grupo de ` +
+        `${delGrupo.length} tarjeta(s) entre ${delGrupo[0]?.bloque.fechas[0]} y ` +
+        `${delGrupo[delGrupo.length - 1]?.bloque.fechas.at(-1)}. El resto de la fila no se toca.`,
+    );
+  }
+
+  return ubicados.map(({ bloque, colocacion }, i) => {
+    const fondo = fondoDe.get(raiz(i)) ?? 1;
+    const ajuste = fondo > 1 ? 1 / fondo : 1;
+    return {
+      bloque,
+      colocacion,
+      top: tops[i] * ajuste,
+      alto: alto[i] * ajuste,
+    };
+  });
 }

@@ -28,7 +28,9 @@ import { FormularioCierre } from "./formulario-cierre";
 import { DialogoJornadas } from "./dialogo-jornadas";
 import { DialogoTarea, type ValoresTarea } from "./dialogo-tarea";
 import { DialogoCandado, type PedidoConfirmacion } from "./dialogo-candado";
+import { DialogoDestinoJornadas, type PedidoDestino } from "./dialogo-destino-jornadas";
 import { useCandado } from "@/hooks/use-habilitaciones";
+import { usePlanJornadas, useFijarJornadasPlan } from "@/hooks/use-plan-jornadas";
 import { useNotasJornada } from "@/hooks/use-notas-jornada";
 import { useClima } from "@/hooks/use-clima";
 import {
@@ -50,7 +52,7 @@ import { aFraccionStr, repartirJornadas, type FraccionStr } from "@/lib/tablero/
 import {
   friccionDeVentana, piso, techo, violaPiso, violaTecho,
 } from "@/lib/tablero/ventana";
-import { type TipoTarea } from "@/lib/tablero/tipos";
+import { type OtTablero, type TipoTarea } from "@/lib/tablero/tipos";
 import type { ObraPendiente, ObraPlanificada } from "./panel-sin-asignar";
 import type { MovimientoAsignacion, NuevaAsignacion, TableroPayload } from "@/lib/tablero/tipos";
 
@@ -208,6 +210,10 @@ export function TableroBoard() {
   // El editor de jornadas es de la OBRA, no de la tarjeta: si la obra quedó partida en
   // varios tramos hay que poder verlos y arreglarlos juntos. Por eso guarda el otId.
   const [jornadasDe, setJornadasDe] = useState<number | null>(null);
+  // Pregunta pendiente de "¿a dónde va el trabajo de esta jornada?". Lleva adentro la
+  // acción a ejecutar, así el mismo diálogo sirve para los dos caminos por los que se
+  // sacan jornadas —el arrastre a la bandeja y el editor de jornadas— sin duplicar la regla.
+  const [destino, setDestino] = useState<PedidoDestino | null>(null);
   const [cierre, setCierre] = useState<{
     bloqueKey: string;
     asignacionId: number;
@@ -257,6 +263,11 @@ export function TableroBoard() {
   const actualizarTarea = useActualizarTareas();
   const moverTarea = useMoverTareas();
   const borrarTarea = useBorrarTareas();
+  // Cuántas jornadas tiene cada obra según OPERACIONES, cuando difiere del estimado de
+  // Comercial. Consulta aparte por lo mismo que las notas: va a Supabase, y corregir la
+  // duración de una obra no tiene por qué reconsultar el rango entero de Odoo.
+  const { porOt: planPorOt } = usePlanJornadas();
+  const fijarPlan = useFijarJornadasPlan();
   const guardando =
     crear.isPending ||
     actualizar.isPending ||
@@ -486,6 +497,20 @@ export function TableroBoard() {
     [data],
   );
 
+  /**
+   * Cuántas jornadas tiene la obra HOY: el número que fijó Operaciones si alguien lo
+   * corrigió, y si no el estimado de Comercial.
+   *
+   * Es la ÚNICA puerta por la que entra esa duración, y por eso vive acá en vez de
+   * repetida en cada cuenta: si la bandeja restara contra un número y el aviso de "vuelve
+   * a la bandeja" contra otro, el tablero diría dos cosas distintas de la misma obra en
+   * la misma pantalla.
+   */
+  const duracionDe = useCallback(
+    (ot: OtTablero) => planPorOt.get(ot.id)?.jornadas ?? ot.jornadas,
+    [planPorOt],
+  );
+
   // Bandeja: obras a las que les quedan jornadas por planificar. No es "asignada sí o
   // no": una obra de 4 jornadas que se ejecutó 2 y se suspendió vuelve acá con 2
   // pendientes, sin perder el rastro de lo ya hecho.
@@ -496,16 +521,19 @@ export function TableroBoard() {
       .filter((o) => ["pendiente", "en_proceso"].includes(o.estado))
       .map((ot) => {
         const avance = progreso.get(ot.id);
-        const totales = repartirJornadas(ot.jornadas).length;
+        const duracion = duracionDe(ot);
+        const totales = repartirJornadas(duracion).length;
         return {
           ot,
+          duracion,
           totales,
           pendientes: totales - (avance?.asignadas ?? 0),
           cerradas: avance?.cerradas ?? 0,
+          corregida: planPorOt.has(ot.id),
         };
       })
       .filter((x) => x.pendientes > 0);
-  }, [data]);
+  }, [data, duracionDe, planPorOt]);
 
   const bloquesPorClave = useMemo(() => {
     const mapa = new Map<string, Bloque>();
@@ -795,49 +823,70 @@ export function TableroBoard() {
     // quedan otros tramos planificados —el caso de la obra partida— sacar éste no la
     // devuelve a ningún lado, y decir que "vuelve a la bandeja" mandaba a buscarla a un
     // panel donde no estaba. Se avisa dónde quedó.
+    const ot = otsPorId.get(bloque.otId);
     const asignadasAhora =
       data?.progreso.find((p) => p.otId === bloque.otId)?.asignadas ?? bloque.ids.length;
     const quedanEnTablero = asignadasAhora - liberables.length;
-    const totales = repartirJornadas(otsPorId.get(bloque.otId)?.jornadas ?? 1).length;
+    const duracion = ot ? duracionDe(ot) : 1;
+    const totales = repartirJornadas(duracion).length;
     const vuelveALaBandeja = totales - quedanEnTablero > 0;
 
-    borrar.mutate(liberables, {
-      onSuccess: () => {
-        // El aviso sale SIEMPRE, no sólo cuando quedan jornadas cerradas. Un arrastre
-        // borra varios registros en Odoo, y que la tarjeta desaparezca sin decir nada
-        // deja la duda de si el gesto salió o si se perdió algo.
-        const n = liberables.length;
-        const conservadas = bloque.ids.length - n;
-        const titulo = vuelveALaBandeja
-          ? `Obra suspendida: ${n} jornada${n === 1 ? "" : "s"} vuelven a la bandeja`
-          : `Se quitaron ${n} jornada${n === 1 ? "" : "s"} del tablero`;
-        toast.success(titulo, {
-          description: !vuelveALaBandeja
-            ? `La obra NO vuelve a la bandeja: le quedan ${quedanEnTablero} jornada${quedanEnTablero === 1 ? "" : "s"} planificada${quedanEnTablero === 1 ? "" : "s"} en otras fechas. Editalas desde el menú de esa tarjeta, en "Jornadas de la obra".`
-            : conservadas > 0
-              ? `Se conservan ${conservadas} ya cerrada${conservadas === 1 ? "" : "s"} con su parte.`
-              : "Quedan como pendientes de planificar en el panel de la derecha.",
-          // Más que el default —hay que leer el aviso y recién ahí decidir si fue un
-          // error— pero no diez segundos: quitar una obra suele venir seguido de mover
-          // otras, y el cartel se quedaba tapando la esquina del tablero durante los dos
-          // arrastres siguientes. Seis alcanzan para leerlo y decidir.
-          duration: 6000,
-          // Y si ya lo leyó, que pueda sacarlo: sin la X hay que esperarlo sí o sí.
-          closeButton: true,
-          action: {
-            label: "Deshacer",
-            onClick: () => {
-              crear.mutate(restaurar, {
-                onSuccess: () =>
-                  toast.success(
-                    `Obra restaurada: ${restaurar.length} jornada${restaurar.length === 1 ? "" : "s"} vuelven al tablero`,
-                  ),
-              });
+    const aplicar = () =>
+      borrar.mutate(liberables, {
+        onSuccess: () => {
+          // El aviso sale SIEMPRE, no sólo cuando quedan jornadas cerradas. Un arrastre
+          // borra varios registros en Odoo, y que la tarjeta desaparezca sin decir nada
+          // deja la duda de si el gesto salió o si se perdió algo.
+          const n = liberables.length;
+          const conservadas = bloque.ids.length - n;
+          const titulo = vuelveALaBandeja
+            ? `Obra suspendida: ${n} jornada${n === 1 ? "" : "s"} vuelven a la bandeja`
+            : `Se quitaron ${n} jornada${n === 1 ? "" : "s"} del tablero`;
+          toast.success(titulo, {
+            description: !vuelveALaBandeja
+              ? `La obra NO vuelve a la bandeja: le quedan ${quedanEnTablero} jornada${quedanEnTablero === 1 ? "" : "s"} planificada${quedanEnTablero === 1 ? "" : "s"} en otras fechas. Editalas desde el menú de esa tarjeta, en "Jornadas de la obra".`
+              : conservadas > 0
+                ? `Se conservan ${conservadas} ya cerrada${conservadas === 1 ? "" : "s"} con su parte.`
+                : "Quedan como pendientes de planificar en el panel de la derecha.",
+            // Más que el default —hay que leer el aviso y recién ahí decidir si fue un
+            // error— pero no diez segundos: quitar una obra suele venir seguido de mover
+            // otras, y el cartel se quedaba tapando la esquina del tablero durante los dos
+            // arrastres siguientes. Seis alcanzan para leerlo y decidir.
+            duration: 6000,
+            // Y si ya lo leyó, que pueda sacarlo: sin la X hay que esperarlo sí o sí.
+            closeButton: true,
+            action: {
+              label: "Deshacer",
+              onClick: () => {
+                crear.mutate(restaurar, {
+                  onSuccess: () =>
+                    toast.success(
+                      `Obra restaurada: ${restaurar.length} jornada${restaurar.length === 1 ? "" : "s"} vuelven al tablero`,
+                    ),
+                });
+              },
             },
-          },
-        });
-      },
-    });
+          });
+        },
+      });
+
+    // ¿Hay algo que preguntar? Sólo si la obra efectivamente vuelve a la bandeja —si le
+    // quedan otros tramos planificados no vuelve a ningún lado y no hay decisión— y sólo
+    // si "la obra es más corta" es una respuesta posible: sacar la última jornada de una
+    // obra de un día no la acorta, la desplanifica, y bajarla hasta cero sería cancelar la
+    // OT, que se hace en Odoo.
+    const duracionNueva = Number((duracion - liberables.length).toFixed(2));
+    if (vuelveALaBandeja && duracionNueva >= 1) {
+      setDestino({
+        otId: bloque.otId,
+        titulo: ot?.titulo ?? `OT #${bloque.otId}`,
+        cantidad: liberables.length,
+        duracionNueva,
+        aplicar,
+      });
+      return;
+    }
+    aplicar();
   }
 
   /** Reordenar el apilado de un día: define el orden previsto de las obras. */
@@ -1287,11 +1336,72 @@ export function TableroBoard() {
               })),
             );
           }
-          if (cambios.borradas.length > 0) borrar.mutate(cambios.borradas);
+          // Las jornadas que se sacan pasan por la MISMA pregunta que el arrastre a la
+          // bandeja: son el mismo hecho —una jornada menos en el tablero— y si sólo un
+          // camino preguntara, la mitad de las veces el dato no se registraría y la obra
+          // volvería a quedar pidiendo un día que nadie va a trabajar.
+          if (cambios.borradas.length > 0) {
+            const obra = otsPorId.get(jornadasDe);
+            const duracion = obra ? duracionDe(obra) : 1;
+            const asignadasAhora =
+              data.progreso.find((p) => p.otId === jornadasDe)?.asignadas ?? 0;
+            const quedan = asignadasAhora - cambios.borradas.length;
+            const vuelveALaBandeja = repartirJornadas(duracion).length - quedan > 0;
+            const duracionNueva = Number((duracion - cambios.borradas.length).toFixed(2));
+            const aplicar = () => borrar.mutate(cambios.borradas);
+
+            if (vuelveALaBandeja && duracionNueva >= 1) {
+              setDestino({
+                otId: jornadasDe,
+                titulo: obra?.titulo ?? `OT #${jornadasDe}`,
+                cantidad: cambios.borradas.length,
+                duracionNueva,
+                aplicar,
+              });
+            } else {
+              aplicar();
+            }
+          }
 
           setJornadasDe(null);
         }}
         onOpenChange={(abierto) => !abierto && setJornadasDe(null)}
+      />
+
+      <DialogoDestinoJornadas
+        pedido={destino}
+        guardando={guardando || fijarPlan.isPending}
+        onBandeja={(p) => {
+          p.aplicar();
+          setDestino(null);
+        }}
+        onNoHaciaFalta={(p) => {
+          p.aplicar();
+          // El número queda del lado de Operaciones y el estimado de Comercial no se
+          // toca: es lo que hace que el Informe de Obra siga midiendo el desvío contra lo
+          // que se estimó, en vez de contra una estimación corregida a posteriori —que
+          // daría cero siempre y taparía justo lo que hay que medir—.
+          fijarPlan.mutate(
+            {
+              otId: p.otId,
+              jornadas: p.duracionNueva,
+              motivo: `Se sacaron ${p.cantidad} jornada${p.cantidad === 1 ? "" : "s"} del tablero: la obra es más corta que el estimado.`,
+            },
+            {
+              onSuccess: () =>
+                toast.success(
+                  `La obra queda en ${p.duracionNueva} jornada${p.duracionNueva === 1 ? "" : "s"}`,
+                  { description: "No vuelve a la bandeja. El estimado de Comercial no se tocó." },
+                ),
+              onError: (e) =>
+                toast.error("No se pudo guardar la duración", {
+                  description: e instanceof Error ? e.message : String(e),
+                }),
+            },
+          );
+          setDestino(null);
+        }}
+        onCerrar={() => setDestino(null)}
       />
 
       <DialogoCandado pedido={pedidoCandado} onCerrar={() => setPedidoCandado(null)} />
@@ -1327,6 +1437,7 @@ export function TableroBoard() {
             ? (data.cuadrillas.find((c) => c.id === panelOt.cuadrillaPrevistaId)?.nombre ?? null)
             : null
         }
+        plan={panelOt ? (planPorOt.get(panelOt.id) ?? null) : null}
         onOpenChange={(abierto) => !abierto && setPanel(null)}
       />
     </div>

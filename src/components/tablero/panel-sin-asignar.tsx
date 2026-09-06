@@ -26,6 +26,7 @@ import {
   CORAL,
   ACENTO_BG,
   ALERTA,
+  NOTA,
   PELIGRO_TEXTO,
   URGENCIA,
 } from "@/lib/tablero/colores";
@@ -52,12 +53,21 @@ const ICONO_TIPO = { arriba: ArrowUp, abajo: ArrowDown, otro: MoreHorizontal } a
 /** Obra con jornadas por planificar, y cuánto de ella ya se ejecutó. */
 export type ObraPendiente = {
   ot: OtTablero;
-  /** Jornadas totales previstas de la obra. */
+  /**
+   * Cuántas jornadas tiene la obra según el tablero: el número de Operaciones si alguien
+   * lo corrigió, y si no el estimado de Comercial. Viene resuelto desde el board para que
+   * la bandeja no tenga dos ideas de la misma obra — `ot.jornadas` es SIEMPRE el estimado
+   * y no se usa para mostrar duración.
+   */
+  duracion: number;
+  /** Jornadas totales previstas, ya repartidas en días. */
   totales: number;
   /** Las que faltan planificar. */
   pendientes: number;
   /** Las que ya tienen parte cargado: si hay, la obra está empezada. */
   cerradas: number;
+  /** Operaciones fijó la duración: `duracion` ya no es el estimado de Comercial. */
+  corregida: boolean;
 };
 
 /** Una obra que YA está en la grilla, para poder encontrarla desde el buscador. */
@@ -112,7 +122,7 @@ type ClaveDuracion = FraccionStr | "varios";
  * (ver asignarObra): así el resto fraccionario cae donde va a caer de verdad.
  */
 function duracionDe(obra: ObraPendiente): ClaveDuracion {
-  const todas = repartirJornadas(obra.ot.jornadas);
+  const todas = repartirJornadas(obra.duracion);
   const quedan = todas.slice(Math.max(0, todas.length - obra.pendientes));
   if (quedan.length > 1) return "varios";
   return (quedan[0] ?? "1") as ClaveDuracion;
@@ -252,8 +262,13 @@ function TarjetaOt({
   hoy: string;
   onDetalle: (ot: OtTablero) => void;
 }) {
-  const { ot, totales, pendientes, cerradas } = obra;
+  const { ot, duracion, totales, pendientes, cerradas, corregida } = obra;
   const empezada = cerradas > 0;
+  // Nadie estimó la obra y nadie la corrigió: lo que la bandeja resta es el fallback de
+  // la importación (0 o 1), no una duración. Se marca porque el número se lee igual que
+  // cualquier otro y no lo es — hay obras así con 17 jornadas planificadas contra un
+  // "estimado" de 1. Se apaga en cuanto alguien fija la duración desde el tablero.
+  const sinEstimar = ot.sinEstimar && !corregida;
   const compromiso = lineaCompromiso(ot, hoy);
   // Sin fecha planificada: en la bandeja la obra todavía no está en la grilla, así que la
   // línea informa la ventana —"entre el 12 y el 15"— pero nunca la marca como violada.
@@ -368,13 +383,27 @@ function TarjetaOt({
         </div>
       </div>
 
-      <p className="mt-1 truncate text-[10px]" style={{ color: tipo.text, opacity: 0.7 }}>
-        {empezada || pendientes < totales
-          ? `quedan ${pendientes} de ${totales} jornadas`
-          : ot.jornadas >= 1
-            ? `${ot.jornadas} jornada${ot.jornadas === 1 ? "" : "s"}`
-            : `${fraccionLabel(ot.jornadas)} de jornada`}
-        {ot.tecnico ? ` · ${ot.tecnico}` : ""}
+      <p
+        className="mt-1 flex items-center gap-1 text-[10px]"
+        style={{ color: tipo.text, opacity: 0.7 }}
+      >
+        <span className="truncate">
+          {empezada || pendientes < totales
+            ? `quedan ${pendientes} de ${totales} jornadas`
+            : duracion >= 1
+              ? `${duracion} jornada${duracion === 1 ? "" : "s"}`
+              : `${fraccionLabel(duracion)} de jornada`}
+          {ot.tecnico ? ` · ${ot.tecnico}` : ""}
+        </span>
+        {sinEstimar && (
+          <span
+            className="shrink-0 rounded px-1 text-[9px] font-semibold uppercase tracking-wide"
+            style={{ backgroundColor: NOTA.fondo, color: NOTA.texto }}
+            title="Nadie cargó la duración estimada en Odoo: el número de al lado es el default de la importación, no una estimación. Se corrige al planificar la obra."
+          >
+            sin estimar
+          </span>
+        )}
       </p>
 
       {/* El motivo de la urgencia, igual que el compromiso: lo que explica por qué esta

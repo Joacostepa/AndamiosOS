@@ -15,7 +15,9 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ALERTA, AVISO, CORAL, PELIGRO, PELIGRO_SOLIDO, semaforo } from "@/lib/tablero/colores";
+import {
+  ALERTA, AVISO, CORAL, NOTA, PELIGRO, PELIGRO_SOLIDO, semaforo,
+} from "@/lib/tablero/colores";
 import { fraccionLabel } from "@/lib/tablero/fracciones";
 import type { Bloque } from "@/lib/tablero/bloques";
 import type { DocumentoOt, OtTablero, TrabajoOt } from "@/lib/tablero/tipos";
@@ -232,6 +234,7 @@ export function PanelOt({
   bloque,
   cuadrillaNombre,
   cuadrillaPrevista,
+  plan,
   onOpenChange,
 }: {
   ot: OtTablero | null;
@@ -239,6 +242,15 @@ export function PanelOt({
   cuadrillaNombre: string | null;
   /** La cuadrilla que la OT trae sugerida de Odoo (x_cuadrilla_prevista_id), ya con nombre. */
   cuadrillaPrevista: string | null;
+  /**
+   * La duración que fijó Operaciones, cuando difiere del estimado de Comercial.
+   *
+   * Se muestran LAS DOS y no sólo la vigente: la ficha es donde alguien va a preguntarse
+   * por qué el tablero dice siete si la venta decía ocho, y esconder una de las dos
+   * convierte esa pregunta en un misterio. Mismo criterio que "Duración sugerida", que
+   * también convive con el estimado sin reemplazarlo.
+   */
+  plan: { jornadas: number; motivo: string | null; autorNombre: string | null } | null;
   onOpenChange: (abierto: boolean) => void;
 }) {
   const sem = semaforo(ot?.habSemaforo);
@@ -421,9 +433,25 @@ export function PanelOt({
               )}
 
               <Fila icono={<Clock className="h-4 w-4" />} etiqueta="Duración">
-                {ot.jornadas} jornada{ot.jornadas === 1 ? "" : "s"} estimada
-                {ot.jornadas === 1 ? "" : "s"}
+                {ot.sinEstimar ? (
+                  <span style={{ color: NOTA.texto }}>
+                    Sin estimar — nadie cargó la duración en Odoo
+                  </span>
+                ) : (
+                  <>
+                    {ot.jornadas} jornada{ot.jornadas === 1 ? "" : "s"} estimada
+                    {ot.jornadas === 1 ? "" : "s"}
+                  </>
+                )}
                 {ot.personalPorJornada > 0 ? ` · ${ot.personalPorJornada} personas` : ""}
+                {plan && (
+                  <p className="text-xs" style={{ color: NOTA.texto }}>
+                    Operaciones planifica {plan.jornadas} jornada
+                    {plan.jornadas === 1 ? "" : "s"}
+                    {plan.autorNombre ? ` · ${plan.autorNombre}` : ""}
+                    {plan.motivo ? ` — ${plan.motivo}` : ""}
+                  </p>
+                )}
                 <p className="text-xs text-muted-foreground">
                   Ejecutado: {ot.diasObra} día{ot.diasObra === 1 ? "" : "s"} · {ot.horasHombre} h hombre
                   {detalle?.desvio ? ` · ${detalle.desvio} vs estimado` : ""}

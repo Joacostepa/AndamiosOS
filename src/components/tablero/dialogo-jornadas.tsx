@@ -3,7 +3,9 @@
 import { useState } from "react";
 import { addDays, format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
-import { CalendarPlus, CircleCheck, Link2, Lock, Plus, TriangleAlert, Trash2 } from "lucide-react";
+import {
+  CalendarPlus, ChevronsRight, CircleCheck, Link2, Lock, Plus, TriangleAlert, Trash2,
+} from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -47,6 +49,12 @@ type Fila = {
   fecha: string;
   fraccion: string;
   cerrada: boolean;
+  /**
+   * La fecha ya se le prometió al cliente. No congela la fila —este diálogo siempre dejó
+   * editar la fecha de una confirmada— pero moverla rompe esa promesa, y hasta ahora eso
+   * pasaba en silencio. Ver `confirmadasMovidas`.
+   */
+  confirmada: boolean;
   cuadrillaId: number | null;
   ordenDia: number;
 };
@@ -61,6 +69,7 @@ function filasDe(asignaciones: AsignacionTablero[]): Fila[] {
       fecha: a.fecha,
       fraccion: aFraccionStr(a.fraccion),
       cerrada: a.parteId != null,
+      confirmada: a.estado === "confirmada",
       cuadrillaId: a.cuadrillaId,
       ordenDia: a.ordenDia,
     }))
@@ -158,6 +167,29 @@ export function DialogoJornadas({
   );
 
   const hayHueco = filas.some((f, i) => i > 0 && !sonContiguas(filas[i - 1].fecha, f.fecha));
+
+  // Jornadas confirmadas que cambiaron de fecha en esta edición.
+  //
+  // AVISA, NO BLOQUEA. Confirmar es el momento en que la fecha se le prometió al cliente
+  // —por eso motivoNoVuelveABandeja sí frena la vuelta a la bandeja— pero correr una obra
+  // porque entró un trabajo urgente es exactamente para lo que existe el corrimiento:
+  // prohibirlo dejaría el gesto sin uso. Lo que no puede pasar es que la promesa se rompa
+  // sin que nadie se entere, y hoy se rompe en silencio.
+  const confirmadasMovidas = cambios.fechas.filter(
+    (f) => originalPorId.get(f.asignacionId)?.confirmada,
+  ).length;
+
+  // ¿El plan termina después de lo que se prometió? Se mira SIEMPRE y no sólo al correr:
+  // la pregunta es del plan, no del gesto. Los dos campos los carga una persona en Odoo y
+  // el tablero no los toca, así que son la única referencia externa contra la cual un
+  // corrimiento puede estar mal.
+  const ultimoDia = filas.length > 0 ? filas[filas.length - 1].fecha : null;
+  const compromisos = ultimoDia
+    ? ([
+        ["comprometida con el cliente", ot?.fechaComprometida],
+        ["tope de la obra", ot?.fechaAntesDe],
+      ] as const).filter(([, f]) => f != null && ultimoDia > f)
+    : [];
   // Juntar mueve fechas, y la de una jornada cerrada ya quedó escrita en su parte. Con
   // alguna cerrada, el arreglo es a mano fila por fila.
   const puedeJuntar = hayHueco && filas.length > 1 && !filas.some((f) => f.cerrada);
@@ -177,6 +209,10 @@ export function DialogoJornadas({
           fecha,
           fraccion: "1",
           cerrada: false,
+          // Nace tentativa aunque el resto de la obra esté confirmada: el estado real se
+          // lo pone el board al crearla, y darla por confirmada acá haría saltar el aviso
+          // de "movés jornadas confirmadas" por un día que todavía no se prometió.
+          confirmada: false,
           // Hereda la cuadrilla y el apilado del último día: extender una obra no la cambia
           // de cuadrilla.
           cuadrillaId: ultima?.cuadrillaId ?? asignaciones[0]?.cuadrillaId ?? null,
@@ -203,11 +239,41 @@ export function DialogoJornadas({
           fecha: siguiente,
           fraccion: "1",
           cerrada: false,
+          confirmada: false,
           cuadrillaId: ultima.cuadrillaId,
           ordenDia: ultima.ordenDia,
         },
       ];
     });
+  }
+
+  /**
+   * Corre esta jornada y todas las que siguen un día hábil hacia adelante.
+   *
+   * EL CASO QUE RESUELVE: una obra de diez jornadas y el planificador necesita el
+   * miércoles de esa cuadrilla para otro trabajo. Hasta ahora el único camino era borrar
+   * el día del medio, y borrar significa otra cosa —la jornada vuelve a la bandeja como
+   * trabajo pendiente— cuando en realidad la obra no cambió: sigue siendo de diez días y
+   * termina uno más tarde. Quedaba además partida en dos tarjetas y con una jornada
+   * fantasma en la bandeja que nadie iba a planificar.
+   *
+   * SE CORRE, NO SE BORRA: no toca la bandeja, no toca la duración, no crea ni destruye
+   * jornadas. Es el gesto de meterle un hueco a la obra.
+   *
+   * De a UN día por clic y sin selector de cuántos: para dos días se hace clic dos veces,
+   * que es más directo que abrir un menú, y como esto es estado local hasta que se
+   * guarda, equivocarse sale gratis (Cancelar).
+   *
+   * Las CERRADAS no se mueven aunque caigan en el tramo: su fecha ya quedó escrita en el
+   * parte. Si el corrimiento las hace chocar con otra, salta el aviso de fechas
+   * repetidas, que ya frena el guardado.
+   */
+  function correrDesde(indice: number) {
+    setFilas((prev) =>
+      prev.map((fila, i) =>
+        i < indice || fila.cerrada ? fila : { ...fila, fecha: siguienteDiaLaboral(fila.fecha) },
+      ),
+    );
   }
 
   /**
@@ -319,6 +385,15 @@ export function DialogoJornadas({
                   </Select>
                   <button
                     type="button"
+                    onClick={() => correrDesde(i)}
+                    className="rounded p-1 text-muted-foreground hover:bg-muted"
+                    title="Correr esta jornada y las que siguen un día hábil hacia adelante"
+                    aria-label="Correr desde esta jornada"
+                  >
+                    <ChevronsRight className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setFilas((prev) => prev.filter((_, idx) => idx !== i))}
                     className="rounded p-1 text-muted-foreground hover:bg-muted"
                     title="Quitar esta jornada"
@@ -385,6 +460,34 @@ export function DialogoJornadas({
             </p>
           )
         )}
+
+        {confirmadasMovidas > 0 && (
+          <p
+            className="flex items-start gap-1.5 rounded border p-2 text-xs"
+            style={{ backgroundColor: AVISO.fondo, borderColor: AVISO.borde, color: AVISO.texto }}
+          >
+            <TriangleAlert className="mt-px h-3.5 w-3.5 shrink-0" />
+            <span>
+              Estás moviendo {confirmadasMovidas} jornada{confirmadasMovidas === 1 ? "" : "s"}{" "}
+              confirmada{confirmadasMovidas === 1 ? "" : "s"}: esa fecha ya se le prometió al
+              cliente.
+            </span>
+          </p>
+        )}
+
+        {compromisos.map(([que, fecha]) => (
+          <p
+            key={que}
+            className="flex items-start gap-1.5 rounded border p-2 text-xs"
+            style={{ backgroundColor: AVISO.fondo, borderColor: AVISO.borde, color: AVISO.texto }}
+          >
+            <TriangleAlert className="mt-px h-3.5 w-3.5 shrink-0" />
+            <span>
+              La obra termina el {format(parseISO(ultimoDia as string), "d MMM", { locale: es })} y
+              la fecha {que} es el {format(parseISO(fecha as string), "d MMM", { locale: es })}.
+            </span>
+          </p>
+        ))}
 
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={guardando}>

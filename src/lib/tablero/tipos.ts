@@ -173,6 +173,19 @@ export type OtTablero = {
   motivoUrgencia: string | null;
   /** Jornadas previstas. x_duracion_est manda; x_jornadas_num es el fallback. */
   jornadas: number;
+  /**
+   * Nadie cargó x_duracion_est: `jornadas` viene del fallback y no de una estimación.
+   *
+   * IMPORTA porque el fallback miente en silencio. En las OTs importadas x_jornadas_num
+   * es 0 o 1, así que la bandeja resta contra un total que nadie puso: al 06/09/2026 hay
+   * 35 OTs activas así, y una de ellas —San Martín 1225— tiene 17 jornadas planificadas
+   * contra un "estimado" de 1. Sin esta marca no hay forma de distinguir una obra de una
+   * jornada de una obra de la que no se sabe nada.
+   *
+   * Es sólo el arrastre de la importación de agosto: de las 30 OTs creadas desde
+   * entonces, las 30 tienen estimado. Se apaga solo a medida que las viejas se cierran.
+   */
+  sinEstimar: boolean;
   personalPorJornada: number;
   cuadrillaPrevistaId: number | null;
   habSemaforo: string;

@@ -179,6 +179,9 @@ function mapOt(row: OdooOtRow, base: string, actionId: number | null): OtTablero
     urgencia: str(row.x_urgencia) ?? "baja",
     motivoUrgencia: str(row.x_motivo_urgencia),
     jornadas,
+    // El fallback ya se aplicó arriba, así que `jornadas` no dice si alguien estimó o no.
+    // Esto sí: es la marca que la bandeja usa para no restar contra un número inventado.
+    sinEstimar: !str(row.x_duracion_est),
     personalPorJornada: num(row.x_personal_por_jornada),
     cuadrillaPrevistaId: m2oId(row.x_cuadrilla_prevista_id),
     habSemaforo: str(row.x_hab_semaforo) ?? "rojo",

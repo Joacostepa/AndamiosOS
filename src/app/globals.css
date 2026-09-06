@@ -128,7 +128,17 @@
    * blanco y por eso PARECÍA transparente. En oscuro la superficie no es el fondo, así
    * que la tentativa pasaba a tener relleno y se volvía indistinguible de la confirmada:
    * el canal del estado desaparecía justo cuando el del tipo se apagaba. El token dice lo
-   * que la regla siempre quiso decir — "lo mismo que hay detrás". */
+   * que la regla siempre quiso decir — "lo mismo que hay detrás".
+   *
+   * PRECISIÓN, porque de acá salió una idea equivocada que estaba escrita más abajo: lo
+   * que hay detrás de una tarjeta NO es --card. La celda del tablero no pinta fondo
+   * (ver el ternario de celda-dia: sólo canaleta, feriado, pasado y drop lo usan), así
+   * que lo que se ve es --background, que baja del SidebarInset. En claro eso deja la
+   * tentativa apenas POR ENCIMA de la celda —ΔL 0.015, --card 1.0 contra --background
+   * 0.985— y esos 15 milésimos son toda la separación de relleno que hay. No se puede
+   * agrandar: bajar la tentativa la acerca al relleno de "sin tipo" (#f1efe8, L 0.952) y
+   * a ΔE 0.03 el chequeo de ESTADO corta, que es el canal que dice cuál está confirmada.
+   * Se queda en --card justamente por esos 0.015; el resto lo carga la trama. */
   --tb-tentativa: var(--card);
   /* Cuánta tinta lleva la trama diagonal de la tentativa (ver tramaTentativa en
    * lib/tablero/colores.ts). Es un PORCENTAJE y va por tema a propósito, por la misma
@@ -136,12 +146,24 @@
    * mismo en los dos.
    *
    * La trama se tiñe con el color del TIPO, que en claro es oscuro sobre blanco y en
-   * oscuro es claro sobre casi negro. Medido sobre las tarjetas: al 14% parejo, en claro
-   * queda justo —apenas por encima del umbral en que se lee como textura— y en oscuro
-   * grita. Y en oscuro necesita menos ayuda de entrada, porque ahí la tentativa
-   * (--background, 0.13) ya es más OSCURA que la celda (0.20) y se distingue sola; en
-   * claro las dos son casi blancas y la trama es lo único que las separa. */
-  --tb-trama-alfa: 14%;
+   * oscuro es claro sobre casi negro, así que el mismo porcentaje rinde varias veces más
+   * allá que acá.
+   *
+   * SUBIÓ DE 14% A 19%, y no por gusto: en claro la trama no ayuda a leer la tentativa,
+   * es LO ÚNICO que separa una tarjeta de una celda vacía. El relleno no puede hacer el
+   * trabajo (ver --tb-tentativa: quedan 0.015 de ΔL y están topeados por el chequeo de
+   * ESTADO), así que al 14% una grilla llena se leía casi tan clara como una vacía y no
+   * se veía dónde quedaba lugar para meter una jornada — que es la pregunta con la que
+   * se abre el tablero.
+   *
+   * EL TECHO NO ES EL TEXTO, aunque sea lo primero que uno teme: la franja se tiñe con
+   * el color de las letras, pero cubre 2 de cada 7 píxeles y el resto sigue siendo el
+   * relleno. El peor caso —un trazo cayendo justo sobre una franja, navy #0c447c— da
+   * 7,7:1 al 14% y 7,0:1 al 19%, contra los 4,5:1 que pide AA. El techo real es que la
+   * trama deje de leerse como textura y empiece a leerse como relleno pálido, que es lo
+   * que mide la banda de contraste-tablero (0.02–0.10 ΔL en claro): pasa de 0.05 a 0.06,
+   * o sea que sube un escalón y sigue lejos del techo. */
+  --tb-trama-alfa: 19%;
   /* El cajón de planificación. NO es un color, es un PLANO: un tono neutro apenas
    * hundido respecto de la grilla, como el pie de una ventana.
    *
@@ -297,9 +319,13 @@
    * de claro— la franja salta a 0.32 ΔL, tres veces la del tema claro. Al 6% queda en
    * 0.21, que sobre negro se lee como textura y no como rayado.
    *
-   * Y acá la trama tiene menos trabajo: en oscuro la tentativa (--background, 0.13) ya es
-   * más OSCURA que la celda (0.20) y se distingue sola. En claro las dos son casi blancas
-   * y la trama es lo único que las separa. */
+   * ACÁ DECÍA que en oscuro la trama tiene menos trabajo porque la tentativa (0.13) es
+   * más oscura que la celda (0.20). Es falso: la celda no pinta fondo y también es
+   * --background, así que en oscuro el relleno de la tentativa es EXACTAMENTE el de la
+   * celda —ΔL 0.000, menos separación de la que hay en claro— y la trama es lo único
+   * que las separa, igual que allá. Lo que sí es cierto es que no necesita más ayuda:
+   * al 6% ya rinde 0.21 ΔL, más del triple de lo que da claro al 19%. Por eso este
+   * número no acompañó la subida del otro. */
   --tb-trama-alfa: 6%;
   /* En oscuro el hundido va al revés que la intuición: la superficie de la grilla es
    * 0.20 y el fondo de las celdas 0.13, así que 0.17 se mete entre los dos y queda como

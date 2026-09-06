@@ -26,6 +26,7 @@ import { SelectorCapataz } from "@/components/partes/selector-capataz";
 import { useDetalleOt } from "@/hooks/use-detalle-ot";
 import { ComoQuedoArmado } from "@/components/partes/como-quedo-armado";
 import { CORAL, OK, OK_SOLIDO, PELIGRO, PELIGRO_SOLIDO } from "@/lib/tablero/colores";
+import { horasEfectivas } from "@/lib/tablero/horas";
 import type { Bloque } from "@/lib/tablero/bloques";
 import type { OtTablero } from "@/lib/tablero/tipos";
 
@@ -45,13 +46,10 @@ function comoItems(opciones: readonly { value: string; label: string }[]): Recor
   return Object.fromEntries(opciones.map((o) => [o.value, o.label]));
 }
 
-/** Horas efectivas de un rango, descontando el almuerzo de 12 a 13 (igual que Odoo). */
-function horasEfectivas(desde: number, hasta: number): number {
-  if (hasta <= desde) return 0;
-  const brutas = hasta - desde;
-  const solapaAlmuerzo = Math.max(0, Math.min(hasta, 13) - Math.max(desde, 12));
-  return Math.max(0, brutas - solapaAlmuerzo);
-}
+// Las horas salen de lib/tablero/horas.ts y ya no de una copia local. Había dos versiones
+// del mismo cálculo —ésta y la de la biblioteca— y al aceptar el turno que cruza la
+// medianoche esta copia se habría quedado devolviendo 0 para toda jornada nocturna
+// corregida desde el tablero, en silencio.
 
 export function FormularioCierre({
   abierto,

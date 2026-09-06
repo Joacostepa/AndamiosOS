@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { cerrarJornada, editarParte, fetchParte } from "@/lib/odoo/partes";
 import { OdooError } from "@/lib/odoo/client";
+import { duracionTurno, MAX_HORAS_TURNO } from "@/lib/tablero/horas";
 
 // Cierre de jornada desde el tablero.
 //
@@ -74,9 +75,17 @@ const datosSchema = z
   .refine((d) => d.estado === "ejecutado" || !!d.motivoNoEjec, {
     message: "Falta el motivo de no ejecución",
   })
-  .refine((d) => d.manoObra.every((l) => l.horaHasta > l.horaDesde), {
-    message: "La hora de fin tiene que ser posterior a la de inicio",
-  });
+  // Una salida ANTERIOR a la entrada es el turno de noche: se entra a las 22 y se sale a
+  // las 2 del día siguiente. Lo que no se acepta es lo que no se puede interpretar —la
+  // misma hora en los dos campos— ni lo que casi seguro es un error de tipeo: la entrada
+  // y la salida escritas al revés dan un "turno" de más de MAX_HORAS_TURNO.
+  .refine((d) => d.manoObra.every((l) => l.horaHasta !== l.horaDesde), {
+    message: "La entrada y la salida no pueden ser la misma hora",
+  })
+  .refine(
+    (d) => d.manoObra.every((l) => duracionTurno(l.horaDesde, l.horaHasta) <= MAX_HORAS_TURNO),
+    { message: `Hay un turno de más de ${MAX_HORAS_TURNO} horas: revisá la entrada y la salida` },
+  );
 
 function errorResponse(e: unknown) {
   const msg = e instanceof OdooError ? e.message : e instanceof Error ? e.message : String(e);

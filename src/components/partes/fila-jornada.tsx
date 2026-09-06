@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ArrowDown, ArrowUp, Camera, Check, ChevronDown, ChevronRight, Loader2, MoreHorizontal, Square, X } from "lucide-react";
-import { format, parseISO } from "date-fns";
+import { addDays, format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,15 @@ import { cn } from "@/lib/utils";
 import { colorTipo, CORAL } from "@/lib/tablero/colores";
 import { partesTitulo } from "@/lib/tablero/titulo";
 import { fraccionLabel } from "@/lib/tablero/fracciones";
-import { ATAJOS_SALIDA, formatHora, horasEfectivas, parseHora } from "@/lib/tablero/horas";
+import {
+  ATAJOS_SALIDA,
+  cruzaMedianoche,
+  duracionTurno,
+  formatHora,
+  horasEfectivas,
+  MAX_HORAS_TURNO,
+  parseHora,
+} from "@/lib/tablero/horas";
 import {
   MOMENTOS_FOTO, MOTIVOS_NO_EJEC, TIPOS_INCIDENCIA, DEJAN_ESTRUCTURA, faltaAsBuilt,
 } from "@/lib/tablero/tipos-parte";
@@ -120,7 +128,20 @@ export function erroresDe(b: Borrador, j: JornadaListado): string[] {
   const h = parseHora(b.hasta);
   if (d === null) e.push("Hora de entrada inválida");
   if (h === null) e.push("Hora de salida inválida");
-  if (d !== null && h !== null && h <= d) e.push("La salida tiene que ser posterior a la entrada");
+  // Una salida ANTERIOR a la entrada ya no es un error: es el turno de noche, que termina
+  // al día siguiente. Lo que sí se rechaza es lo que no se puede interpretar.
+  if (d !== null && h !== null) {
+    if (h === d) {
+      e.push("La entrada y la salida no pueden ser la misma hora");
+    } else if (duracionTurno(d, h) > MAX_HORAS_TURNO) {
+      // El error natural al aceptar turnos nocturnos: escribir 17 en "desde" y 8 en
+      // "hasta". El mensaje nombra el caso en vez de decir sólo que está mal.
+      // Horas decimales y no "15:00": acá el número es una CANTIDAD, no un horario, y
+      // escribirlo con dos puntos lo haría leer como una hora del reloj.
+      const horas = duracionTurno(d, h).toFixed(1).replace(".0", "").replace(".", ",");
+      e.push(`El turno da ${horas} h: ¿se cambiaron de lugar la entrada y la salida?`);
+    }
+  }
   const p = Number(b.personas);
   if (!b.personas.trim() || !Number.isFinite(p) || p <= 0) e.push("Falta la cantidad de personas");
   if (!b.capatazId) e.push("Falta el capataz");
@@ -351,6 +372,17 @@ export function FilaJornada({
                     }}
                   />
                 </label>
+
+                {/* La única señal de que se entendió que el turno cruza la medianoche.
+                    Como no hay casilla que marcar, esto es lo que separa un turno de
+                    noche de un error de tipeo: si aparece sin que se haya trabajado de
+                    noche, quien carga lo ve y corrige. Va pegado al campo "Hasta", que es
+                    el que cambia de significado. */}
+                {desde !== null && hasta !== null && cruzaMedianoche(desde, hasta) && (
+                  <span className="pb-1.5 text-[11px] font-medium text-muted-foreground">
+                    +1 día · termina el {format(addDays(parseISO(jornada.fecha), 1), "d/M")}
+                  </span>
+                )}
 
                 {/* Los atajos son la entrada principal: 5 horarios cubren el 99% de lo
                     cargado y todos arrancan a las 8. Escribir es la excepción. */}

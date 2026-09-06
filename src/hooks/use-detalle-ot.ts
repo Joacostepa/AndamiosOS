@@ -21,6 +21,16 @@ export function useDetalleOt(otId: number | null) {
       return ((await res.json()) as { detalle: DetalleOt }).detalle;
     },
     enabled: !!otId,
-    staleTime: 5 * 60 * 1000,
+    // 30 segundos y no cinco minutos, que es lo que había. Cuando se eligió ese número la
+    // ficha era de sólo lectura y no cambiaba nunca: cachearla fuerte era gratis.
+    //
+    // Ya no. Desde que "Qué hay que ejecutar" se corrige desde Odoo, esta ficha se mira
+    // JUSTO DESPUÉS de haberla cambiado, para confirmar que la corrección llegó. Con cinco
+    // minutos la pantalla seguía mostrando el texto viejo y lo que se concluía era que el
+    // cambio no había funcionado — pasó apenas se estrenó el campo.
+    //
+    // Es el mismo valor que el tablero. La ficha se pide de a una OT, así que el costo de
+    // refrescarla más seguido es una llamada, no las seis del tablero.
+    staleTime: 30_000,
   });
 }

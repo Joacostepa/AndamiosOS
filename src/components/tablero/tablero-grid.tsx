@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { MouseEvent as MouseEventReact, PointerEvent as PointerEventReact } from "react";
 import { format, isSameDay, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
@@ -191,6 +191,7 @@ export function TableroGrid({
   bloqueSeleccionado,
   hoy: hoyISO,
   contenedorRef,
+  onGeometriaCambiada,
   onCerrarJornada,
   onAbrirBloque,
   onFraccion,
@@ -251,6 +252,21 @@ export function TableroGrid({
    * llega por prop es mutar una prop.
    */
   contenedorRef?: (nodo: HTMLDivElement | null) => void;
+  /**
+   * Cambió el ANCHO de las columnas.
+   *
+   * El scroll del board es un número de píxeles, y las columnas no miden siempre lo mismo:
+   * el ancho sale de repartir el contenedor MEDIDO entre los días de la ventana (ver
+   * anchoDeColumna). Esa medición llega después del primer pintado —hasta entonces vale un
+   * fallback— y vuelve a cambiar cada vez que cambia el ancho útil: al plegar el panel
+   * derecho, al redimensionar la ventana, o cuando aparece la barra de scroll vertical
+   * porque entraron tarjetas nuevas. En todos esos casos la grilla se ensancha o se
+   * angosta debajo de un scrollLeft que se queda quieto, y la vista termina en otro día.
+   *
+   * Se avisa para que el board vuelva a poner en el borde la fecha que estaba ahí, que es
+   * lo único que el usuario tiene en la cabeza.
+   */
+  onGeometriaCambiada?: () => void;
   onCerrarJornada: (bloque: Bloque, accion: NonNullable<AccionCierre>) => void;
   onAbrirBloque: (bloque: Bloque) => void;
   onFraccion: (bloque: Bloque, f: FraccionStr) => void;
@@ -388,6 +404,33 @@ export function TableroGrid({
     .join(" ");
   const anchoMinimo =
     ANCHO_RECURSO + fechas.reduce((s, f) => s + (colapsado(f) ? ANCHO_CANALETA : anchoDia), 0);
+
+  // ── Aviso de cambio de geometría ───────────────────────────────────────────
+  //
+  // SE MIRA `anchoDia` Y NADA MÁS, y la tentación es mirar más. La plantilla entera
+  // cambia con cada día que se suma al rango, y un domingo que se despliega también
+  // corre lo que tiene a la derecha — pero las dos cosas pasan JUSTO mientras el usuario
+  // scrollea contra el borde, y ahí `fechaBorde` viene un frame atrasado (se actualiza
+  // dentro de un rAF). Reanclar en ese momento tironearía la vista hacia atrás durante el
+  // propio scroll: cambiaríamos un salto raro cada tanto por uno en cada ampliación.
+  //
+  // Agregar días al final no mueve nada de lo que ya está en pantalla, así que no hay
+  // nada que corregir. Y el domingo que se despliega quedó afuera a sabiendas: de las 112
+  // asignaciones que hay en Odoo, UNA cayó en domingo. Es un salto que casi no puede
+  // ocurrir, y cubrirlo costaría el de todos los días.
+  //
+  // Va en un efecto de LAYOUT: corre con el DOM ya actualizado y antes de que el navegador
+  // pinte, así el reanclado no se ve como un salto. Y corre ANTES que los efectos del
+  // board —los hijos primero—, que es lo que le permite al board saber que todavía tiene
+  // pendiente la compensación de una ampliación por la izquierda.
+  const anchoPrevioDia = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    const previo = anchoPrevioDia.current;
+    anchoPrevioDia.current = anchoDia;
+    // Primera medición: no hay posición anterior que preservar.
+    if (previo === null || previo === anchoDia) return;
+    onGeometriaCambiada?.();
+  });
 
   // Jornadas ya ejecutadas (parte diario cargado): la tarjeta se atenúa.
   const ejecutadas = new Set(

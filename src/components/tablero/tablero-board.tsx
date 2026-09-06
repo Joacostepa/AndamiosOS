@@ -171,6 +171,15 @@ export function TableroBoard() {
   // deducía la semana; con la ventana anclada en hoy el borde izquierdo es lo que
   // define qué se está mirando, y de él salen el rótulo y el período de capacidad.
   const [fechaVisible, setFechaVisible] = useState(() => iso(ancla));
+  // La misma fecha, en ref. No es duplicación por comodidad: `fechaVisible` es estado y se
+  // actualiza dentro de un requestAnimationFrame, así que en el efecto de layout que
+  // reancla el scroll puede venir un frame atrasado — justo el frame en el que cambió la
+  // geometría. Con el ref se lee lo último medido.
+  //
+  // Arranca en hoy y no en null a propósito: la primera vez que cambia la geometría es
+  // cuando el ResizeObserver mide el contenedor, y ahí todavía no hubo ningún scroll del
+  // usuario. Sin este valor inicial, ese primer reanclado no tendría a dónde ir.
+  const fechaBorde = useRef(iso(ancla));
   // Semana a la que hay que ir apenas termine de cargarse. Va en ref y no en estado: es
   // una intención pendiente, no algo que se pinte, y como estado forzaba un render de más.
   const pendienteScroll = useRef<string | null>(null);
@@ -376,6 +385,38 @@ export function TableroBoard() {
     scrollAFecha(objetivo);
   }, [fechas, scrollAFecha]);
 
+  /**
+   * La grilla cambió de ancho sin cambiar de rango: se vuelve a poner en el borde la
+   * fecha que estaba ahí.
+   *
+   * QUÉ ARREGLA. El ancho de columna se calcula repartiendo el contenedor MEDIDO entre
+   * los 8 días de la ventana (anchoDeColumna), y esa medición llega tarde: la hace un
+   * ResizeObserver que corre DESPUÉS del primer pintado. Hasta entonces la columna vale un
+   * fallback de 168px cuando en pantalla ancha mide ~229. Y vuelve a cambiar cada vez que
+   * cambia el ancho útil — plegar el panel derecho, redimensionar, o que aparezca la barra
+   * de scroll vertical cuando entran las tarjetas de la semana que se acaba de pedir.
+   *
+   * Como el scroll es un número de píxeles, cada uno de esos momentos corría la grilla
+   * abajo de un scrollLeft quieto. Se veía así: abrías el tablero, scrolleabas a la
+   * derecha —lo que basta para tocar el borde y pedir una semana más, porque la ventana
+   * inicial deja apenas seis columnas de recorrido— y unos segundos después, cuando
+   * llegaba esa semana, la vista saltaba sola a otro día. Y en el arranque el tablero no
+   * abría en hoy sino un par de columnas antes, porque el centrado inicial calculaba el
+   * destino con las columnas todavía sin medir.
+   *
+   * Anclar a una FECHA en vez de a un píxel arregla los dos, porque la fecha es lo único
+   * que no cambia cuando cambia el ancho.
+   */
+  const reanclarScroll = useCallback(() => {
+    // Si hay una ampliación por la IZQUIERDA en vuelo, el reanclado no va: el efecto de
+    // compensación que corre justo después ya va a corregir el scroll contra el ancho que
+    // midió antes de prepender, y las dos correcciones se sumarían sobre el mismo scroll.
+    // Se puede leer el ref acá porque los efectos del hijo corren antes que los del padre:
+    // cuando la grilla avisa, el board todavía no lo limpió.
+    if (anchoPrevio.current !== null) return;
+    scrollAFecha(fechaBorde.current, false);
+  }, [scrollAFecha]);
+
   // Arranca mostrando la semana actual, no la anterior que se carga de contexto.
   //
   // No sirve hacerlo al montar: mientras carga hay un skeleton y la grilla —dueña del
@@ -418,7 +459,10 @@ export function TableroBoard() {
         break;
       }
     }
-    if (primera) setFechaVisible(primera);
+    if (primera) {
+      fechaBorde.current = primera;
+      setFechaVisible(primera);
+    }
     // `semanas` entra en las dependencias porque el tope de ampliación se evalúa acá; el
     // efecto que engancha el listener se vuelve a correr y reengancha la versión fresca.
   }, [semanas]);
@@ -1072,6 +1116,7 @@ export function TableroBoard() {
             {cuadrillasVisibles.length > 0 ? (
               <TableroGrid
                 contenedorRef={asignarContenedor}
+                onGeometriaCambiada={reanclarScroll}
                 cuadrillas={cuadrillasVisibles}
                 fechas={fechas}
                 feriados={feriados}

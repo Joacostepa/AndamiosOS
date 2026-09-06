@@ -11,8 +11,10 @@
 // mismos avisos sin pensar, y por eso dos pestañas abiertas a la vez no duplican nada.
 // Ningún llamador necesita saber qué ya avisó.
 
+import { after } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Rol } from "@/lib/auth/roles";
+import { enviarASlack } from "./slack";
 
 type DB = SupabaseClient;
 
@@ -77,14 +79,48 @@ export async function crearAlertas(db: DB, alertas: NuevaAlerta[]): Promise<numb
     destinatario_rol: a.destinatarioRol === undefined ? "operativo" : a.destinatarioRol,
   }));
 
+  // `clave` además de `id` porque con ignoreDuplicates el select devuelve SÓLO las filas
+  // que se insertaron, y la clave es lo que permite volver de esas filas a los avisos
+  // originales para mandarlos a Slack. Sin ella habría que adivinar cuáles fueron.
   const { data, error } = await db
     .from("alertas")
     .upsert(filas, { onConflict: "clave", ignoreDuplicates: true })
-    .select("id");
+    .select("id, clave");
 
   if (error) {
     console.error("[alertas] no se pudieron crear los avisos", error.message);
     return 0;
   }
-  return data?.length ?? 0;
+
+  const creadas = data ?? [];
+  if (creadas.length > 0) {
+    const nuevas = new Set(creadas.map((f) => f.clave as string));
+    espejarEnSlack(alertas.filter((a) => nuevas.has(a.clave)));
+  }
+  return creadas.length;
+}
+
+/**
+ * Empuja los avisos nuevos a Slack sin hacer esperar a nadie.
+ *
+ * VA EN after() Y NO SE ESPERA. crearAlertas() se llama desde el render de la bandeja de
+ * habilitaciones, que es una pantalla que la gente abre todo el día: sumarle dos POST a
+ * Slack —cada uno con su viaje de red— sería pagar latencia visible por un mensaje que a
+ * nadie le urge medio segundo antes. Un `void promesa` suelto tampoco sirve, porque en
+ * serverless la función se congela al devolver la respuesta y el fetch queda a mitad de
+ * camino; `after()` es lo que mantiene viva la instancia hasta que termine.
+ *
+ * ESTÁ ACÁ ADENTRO Y NO EN CADA LLAMADOR a propósito: son cinco lugares los que crean
+ * avisos hoy y van a ser más. Colgado del único punto por el que pasan todos, un aviso
+ * nuevo llega a Slack sin que quien lo escriba tenga que acordarse de nada.
+ */
+function espejarEnSlack(nuevas: NuevaAlerta[]): void {
+  if (nuevas.length === 0) return;
+  try {
+    after(() => enviarASlack(nuevas));
+  } catch {
+    // after() exige un contexto de request. Si algún día esto se llama desde un script
+    // suelto, el aviso ya quedó guardado en la base y sólo se pierde el eco en Slack.
+    void enviarASlack(nuevas);
+  }
 }

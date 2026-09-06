@@ -4,6 +4,7 @@ import {
   FileWarning,
   Package,
   ShieldCheck,
+  ShieldOff,
   Siren,
   Sparkles,
 } from "lucide-react";
@@ -29,10 +30,14 @@ export const PRIORIDAD_PUNTO: Record<string, string> = {
 };
 
 const ICONOS: Record<string, typeof Bell> = {
-  // Los tres avisos de operaciones.
+  // Los avisos de operaciones.
   ot_nueva: Sparkles,
   ot_habilitada: ShieldCheck,
   ot_urgente: Siren,
+  // El mismo escudo que la habilitación pero tachado: es el reverso de ese aviso y se
+  // reconoce de un vistazo como "esto es lo de la habilitación, al revés". Un ícono de
+  // otra familia haría pensar en otra cosa.
+  ot_deshabilitada: ShieldOff,
   // Tipos previstos en el schema original, todavía sin productor.
   documento_vencimiento: FileWarning,
   stock_bajo_minimo: Package,

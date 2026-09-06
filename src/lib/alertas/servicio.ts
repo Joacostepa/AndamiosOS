@@ -17,14 +17,19 @@ import type { Rol } from "@/lib/auth/roles";
 type DB = SupabaseClient;
 
 /**
- * Los tres avisos que existen hoy.
+ * Los avisos que existen hoy.
  *
  * `ot_urgente` sale de `x_urgencia = alta` en Odoo, un campo que hoy nadie marca (medido
  * el 2026-09-01: 60 OTs activas en baja, 4 en media, 0 en alta). El aviso está bien y no
  * va a sonar hasta que alguien marque una — por eso la ficha de OT ahora tiene el botón
  * para marcarla desde la app, que antes obligaba a entrar a Odoo.
+ *
+ * `ot_deshabilitada` es el reverso de `ot_habilitada`, y existe porque faltaba la mitad
+ * fea del par: habilitar avisaba "ya se puede programar" y revertir no avisaba nada. Si la
+ * obra ya se había planificado con esa habilitación, quien planifica no se enteraba de que
+ * se cayó — se enteraba el día que la cuadrilla no podía entrar a la obra.
  */
-export type TipoAlerta = "ot_nueva" | "ot_habilitada" | "ot_urgente";
+export type TipoAlerta = "ot_nueva" | "ot_habilitada" | "ot_urgente" | "ot_deshabilitada";
 
 export type Prioridad = "baja" | "media" | "alta" | "critica";
 

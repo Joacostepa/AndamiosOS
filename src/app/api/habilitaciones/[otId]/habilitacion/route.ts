@@ -45,7 +45,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ otId: stri
       autorId: userId,
     });
     sincronizarLuego(db, otId);
-    if (parsed.data.habilitar) avisarHabilitada(db, otId, parsed.data.faltan > 0);
+    avisar(db, otId, parsed.data.habilitar, parsed.data.faltan > 0);
     return NextResponse.json({ ok: true, gestion: await fetchGestionDe(db, otId) });
   } catch (e) {
     return errorResponse(e);
@@ -53,37 +53,60 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ otId: stri
 }
 
 /**
- * Avisa a operaciones que la obra quedó habilitada.
+ * Avisa a operaciones lo que pasó con la habilitación, en los dos sentidos.
  *
  * Es EL aviso de este módulo para la otra oficina: habilitar es el gate que destraba la
  * obra en el tablero, y hasta ahora quien planifica se enteraba sólo si volvía a mirar
  * la pantalla. Si Agustina habilita a las cuatro de la tarde, operaciones lo sabe a las
  * cuatro de la tarde.
  *
+ * REVERTIR TAMBIÉN AVISA, y antes no lo hacía. Era la mitad fea del par: la habilitación
+ * gritaba "ya se puede programar" y la vuelta atrás era muda. El problema no es simétrico
+ * —es peor—: si la obra ya se planificó apoyada en esa habilitación, nadie tiene por qué
+ * volver a mirar la ficha, así que la caída se descubría el día que la cuadrilla no podía
+ * entrar. Y revertir no despanifica, así que la jornada sigue en el tablero: el aviso lo
+ * dice, porque sacarla es una decisión de quien planifica.
+ *
+ * Va en `critica` mientras que la habilitación va en `alta`. No es que importe más: es que
+ * la habilitación habilita a hacer algo —se puede ignorar y no pasa nada— y esto INVALIDA
+ * algo que quizás ya se hizo.
+ *
  * Corre DESPUÉS de responder, igual que el push a Odoo: necesita leer el título de la OT
- * —otro RPC de ~800 ms— y nadie va a esperar por el texto de una notificación. Sólo al
- * habilitar: revertir no genera aviso, y por la clave única tampoco lo genera volver a
- * habilitar después.
+ * —otro RPC— y nadie va a esperar por el texto de una notificación.
+ *
+ * Un aviso por tipo y por OT, para siempre (ver claveDe): la primera vuelta atrás de una
+ * obra avisa, la segunda no. Es la regla de toda la campanita —cuenta novedades, no
+ * transiciones— y el ida y vuelta completo ya queda en hab_gestiones.
  */
-function avisarHabilitada(db: SupabaseClient, otId: number, porExcepcion: boolean) {
+function avisar(db: SupabaseClient, otId: number, habilitada: boolean, porExcepcion: boolean) {
   after(async () => {
     try {
       const ot = await fetchOt(otId);
       const titulo = ot ? leerOt(ot.ot).titulo : `OT ${otId}`;
       await crearAlertas(db, [
-        {
-          tipo: "ot_habilitada",
-          clave: claveDe("ot_habilitada", otId),
-          titulo: `Habilitada — ${titulo}`,
-          descripcion: porExcepcion
-            ? "Habilitada por excepción, con requisitos sin aprobar. Ya se puede programar."
-            : "Ya se puede programar.",
-          prioridad: "alta",
-          enlace: `/ordenes-trabajo/${otId}`,
-        },
+        habilitada
+          ? {
+              tipo: "ot_habilitada",
+              clave: claveDe("ot_habilitada", otId),
+              titulo: `Habilitada — ${titulo}`,
+              descripcion: porExcepcion
+                ? "Habilitada por excepción, con requisitos sin aprobar. Ya se puede programar."
+                : "Ya se puede programar.",
+              prioridad: "alta",
+              enlace: `/ordenes-trabajo/${otId}`,
+            }
+          : {
+              tipo: "ot_deshabilitada",
+              clave: claveDe("ot_deshabilitada", otId),
+              titulo: `Se revirtió la habilitación — ${titulo}`,
+              descripcion:
+                "La obra volvió a estar sin habilitar. Si ya tenía jornadas planificadas, siguen en el tablero: revisalas.",
+              prioridad: "critica",
+              enlace: `/ordenes-trabajo/${otId}`,
+            },
       ]);
     } catch (e) {
-      console.error(`[alertas] no se pudo avisar la habilitación de la OT ${otId}`, e);
+      console.error(`[alertas] no se pudo avisar el cambio de habilitación de la OT ${otId}`, e);
     }
   });
 }

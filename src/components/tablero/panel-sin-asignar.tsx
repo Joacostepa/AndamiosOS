@@ -179,9 +179,15 @@ function Chip({
 }
 
 /**
- * La habilitación deja de ser una franja de color y pasa a ser el criterio de
- * agrupación: rojo y vencida a un lado, el resto al otro. El amarillo —"en curso"— va con
- * las habilitadas: el trámite avanza y la obra se puede planificar mientras tanto.
+ * La habilitación deja de ser una franja de color y pasa a ser el criterio de agrupación:
+ * rojo y vencida a un lado, el resto al otro.
+ *
+ * El amarillo —"en curso"— cae del lado de las que SE PUEDEN PLANIFICAR: el trámite avanza
+ * y la obra se puede meter en el tablero mientras tanto. Es a propósito, y por eso el grupo
+ * NO se llama "habilitadas": una obra en curso no está habilitada, y el título que lo decía
+ * hacía que alguien la buscara en Habilitaciones, la viera en trámite y reportara un bug
+ * que no existía. El grupo agrupa por si frena o no la planificación; cuál está habilitada
+ * lo dice el punto de semáforo de la tarjeta.
  */
 function habilitacionPendiente(ot: OtTablero): boolean {
   return ot.habSemaforo === "rojo" || ot.habSemaforo === "vencida";
@@ -733,8 +739,21 @@ export function PanelSinAsignar({
             ))}
           </Grupo>
 
+          {/* "Se pueden planificar" y no "Habilitadas", que es lo que decía y era FALSO
+              para el amarillo: ese grupo junta verde con amarillo a propósito —el trámite
+              en curso no frena la planificación, ver habilitacionPendiente— pero el título
+              afirmaba que estaban habilitadas.
+
+              Se detectó desde afuera y de la peor manera: alguien vio una obra acá, la
+              buscó en Habilitaciones, la encontró "en curso" y vino a reportar un bug. El
+              bug era el cartel. Con 1 sola OT en amarillo contra 21 en verde, un título
+              equivocado casi siempre parece correcto — que es lo que lo hacía durar.
+
+              El nombre ahora describe el CRITERIO real del grupo, que es lo que le sirve a
+              quien planifica. Cuál está habilitada y cuál en trámite lo sigue diciendo el
+              punto de semáforo de cada tarjeta, que es donde esa distinción vive. */}
           <Grupo
-            titulo="Habilitadas"
+            titulo="Se pueden planificar"
             cantidad={listas.length}
             abierto
             fijo

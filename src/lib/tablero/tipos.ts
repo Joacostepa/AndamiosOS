@@ -77,6 +77,19 @@ export type TrabajoOt = {
   alambre: boolean;
   /** null = nadie contestó todavía, que no es lo mismo que "no lleva". */
   syhPresencial: boolean | null;
+  /**
+   * A quién de la obra hay que mandarle la documentación de NUESTRO personal (ART, curso
+   * de altura, psicofísico) para que nos habiliten a entrar.
+   *
+   * OJO: no confundir con `syhPresencial`, que es lo contrario —si nosotros tenemos que
+   * poner un técnico de Seguridad e Higiene en obra—. Éste es el destinatario de los
+   * papeles, y es el dato que le faltaba al circuito de habilitaciones: sus etapas y sus
+   * gestiones giran alrededor de un ida y vuelta con el cliente del que no se guardaba
+   * con QUIÉN.
+   *
+   * null = no hay ninguno de los tres datos cargados.
+   */
+  syhObra: { nombre: string | null; celular: string | null; email: string | null } | null;
 };
 
 export function trabajoTipoLabel(t: TrabajoOt): string | null {

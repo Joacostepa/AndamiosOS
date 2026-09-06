@@ -87,6 +87,35 @@ export function BloqueHabilitacion({ ficha, otId }: { ficha: FichaHabilitacion; 
 
   return (
     <div className="space-y-2 rounded-md border px-3 py-2.5">
+      {/* A QUIÉN MANDARLE LOS PAPELES. Va acá arriba, pegado a los botones de consultar y
+          habilitar, porque es el dato que hace falta JUSTO en ese momento: todo este
+          bloque es un ida y vuelta con alguien de la obra, y hasta ahora ese alguien no
+          estaba en ninguna pantalla — había que ir a buscarlo a la venta o preguntarle a
+          Comercial. El teléfono y el mail son enlaces: desde el celular, tocar y llamar.
+
+          Se muestra sólo si hay algo cargado. No se pone un vacío que diga "sin contacto":
+          las órdenes viejas no lo tienen y nunca lo van a tener, y un hueco repetido en
+          cada obra vieja sería ruido permanente por un dato que ya no se puede completar. */}
+      {ficha.trabajo.syhObra && (
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[13px]">
+          <span className="text-muted-foreground">Mandarle los papeles a</span>
+          <span className="font-medium">{ficha.trabajo.syhObra.nombre ?? "—"}</span>
+          {ficha.trabajo.syhObra.celular && (
+            <a
+              href={`tel:${ficha.trabajo.syhObra.celular.replace(/[^+\d]/g, "")}`}
+              className="underline underline-offset-2"
+            >
+              {ficha.trabajo.syhObra.celular}
+            </a>
+          )}
+          {ficha.trabajo.syhObra.email && (
+            <a href={`mailto:${ficha.trabajo.syhObra.email}`} className="underline underline-offset-2">
+              {ficha.trabajo.syhObra.email}
+            </a>
+          )}
+        </p>
+      )}
+
       <div className="flex flex-wrap items-center gap-3">
         {/* data-tour: el recorrido guiado se cuelga de este nodo (ver lib/habilitaciones/tour.ts) */}
         <Button

@@ -26,6 +26,9 @@ export const CAMPOS_TRABAJO = [
   "x_trabajo_evento",
   "x_alambre_concertina",
   "x_syh_presencial",
+  "x_hab_syh_nombre",
+  "x_hab_syh_celular",
+  "x_hab_syh_email",
 ];
 
 export type FilaTrabajo = {
@@ -34,6 +37,9 @@ export type FilaTrabajo = {
   x_trabajo_evento: string | false;
   x_alambre_concertina: string | false;
   x_syh_presencial: string | false;
+  x_hab_syh_nombre: string | false;
+  x_hab_syh_celular: string | false;
+  x_hab_syh_email: string | false;
 };
 
 const txt = (v: string | false | null | undefined): string | null =>
@@ -46,6 +52,7 @@ export const TRABAJO_VACIO: TrabajoOt = {
   tipoLabel: null,
   alambre: false,
   syhPresencial: null,
+  syhObra: null,
 };
 
 export function leerTrabajo(v: Partial<FilaTrabajo> | undefined | null): TrabajoOt {
@@ -71,5 +78,28 @@ export function leerTrabajo(v: Partial<FilaTrabajo> | undefined | null): Trabajo
     alambre: ambito === "obra" && !!tipo && CON_BANDEJA.has(tipo) && txt(v.x_alambre_concertina) === "si",
     // null y false son distintos: nadie contestó vs. contestaron que no.
     syhPresencial: txt(v.x_syh_presencial) === null ? null : txt(v.x_syh_presencial) === "si",
+    syhObra: leerSyhObra(v),
   };
+}
+
+/**
+ * A quién de la obra hay que mandarle la documentación de nuestro personal.
+ *
+ * NO ES lo mismo que `syhPresencial`, que dice si NOSOTROS ponemos un técnico en obra.
+ * Éste es el destinatario de los papeles —el que valida y nos deja entrar— y es el que le
+ * faltaba al circuito de habilitaciones: el módulo registra que se reclamó tres veces y
+ * hasta ahora no podía decir a quién. Se carga en la venta y es obligatorio para confirmar
+ * una obra (ver scripts/odoo-contacto-syh-orden.mjs).
+ *
+ * Devuelve null cuando no hay NINGUNO de los tres, para que la UI pueda preguntar "¿hay
+ * contacto?" en vez de mirar tres campos. Con uno solo cargado ya devuelve el objeto: una
+ * ficha a medias sirve igual —un teléfono sin apellido se puede llamar— y esconderla sería
+ * peor que mostrarla incompleta.
+ */
+function leerSyhObra(v: Partial<FilaTrabajo>): TrabajoOt["syhObra"] {
+  const nombre = txt(v.x_hab_syh_nombre);
+  const celular = txt(v.x_hab_syh_celular);
+  const email = txt(v.x_hab_syh_email);
+  if (!nombre && !celular && !email) return null;
+  return { nombre, celular, email };
 }

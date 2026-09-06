@@ -76,6 +76,14 @@ const UMBRAL_BORDE = 240;
  * que sin techo un scroll largo termina pidiendo medio año por request.
  */
 const MAX_SEMANAS = 8;
+/**
+ * Cuánto dura el destello que ubica una obra al saltar desde el panel.
+ *
+ * Alcanza para encontrarla con la vista después del scroll y es corto para que no se lea
+ * como un estado de la tarjeta: lo que sí es estado —seleccionada, no ejecutada, vencida
+ * sin parte— se queda hasta que cambia el hecho que lo produjo.
+ */
+const MS_DESTELLO = 4000;
 
 const iso = (d: Date) => format(d, "yyyy-MM-dd");
 
@@ -180,7 +188,23 @@ export function TableroBoard() {
   const [tareaEnEdicion, setTareaEnEdicion] = useState<Bloque | null>(null);
   // Resaltado sin abrir el panel lateral: al saltar desde el buscador lo que se quiere es
   // VER dónde cayó la obra, y el panel de la OT taparía justamente eso.
-  const [resaltado, setResaltado] = useState<string | null>(null);
+  //
+  // Es un DESTELLO para ubicarla después de scrollear, no una selección. Se apagaba
+  // nunca: `setResaltado` se llamaba en un solo lugar y nada lo devolvía a null, así que
+  // la tarjeta quedaba con el contorno coral para el resto de la sesión. Peor que un
+  // detalle: el contorno de "seleccionada" es lo único que la separa del borde rojo de
+  // "no ejecutada", y una tarjeta marcada para siempre sin motivo se lee como una alarma.
+  //
+  // Lleva el momento en que se encendió y no sólo la clave, para que volver a saltar a la
+  // MISMA obra vuelva a destellar: con la clave sola el estado no cambiaba, React no
+  // re-renderizaba y el segundo clic no hacía nada visible.
+  const [resaltado, setResaltado] = useState<{ key: string; desde: number } | null>(null);
+
+  useEffect(() => {
+    if (!resaltado) return;
+    const t = setTimeout(() => setResaltado(null), MS_DESTELLO);
+    return () => clearTimeout(t);
+  }, [resaltado]);
   // El editor de jornadas es de la OBRA, no de la tarjeta: si la obra quedó partida en
   // varios tramos hay que poder verlos y arreglarlos juntos. Por eso guarda el otId.
   const [jornadasDe, setJornadasDe] = useState<number | null>(null);
@@ -1009,7 +1033,7 @@ export function TableroBoard() {
                 planPorObra={planPorObra}
                 partes={data.partes}
                 notas={notas ?? []}
-                bloqueSeleccionado={panel?.bloqueKey ?? resaltado}
+                bloqueSeleccionado={panel?.bloqueKey ?? resaltado?.key ?? null}
                 hoy={hoyISO}
                 domingosAbiertos={domingosAbiertos}
                 onToggleDomingo={alternarDomingo}
@@ -1133,7 +1157,7 @@ export function TableroBoard() {
               setPanel({ otId: ot.id, bloqueKey: null });
             }}
             onIrABloque={(bloqueKey, fecha) => {
-              setResaltado(bloqueKey);
+              setResaltado({ key: bloqueKey, desde: Date.now() });
               scrollAFecha(fecha);
             }}
           />

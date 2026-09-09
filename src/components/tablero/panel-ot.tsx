@@ -222,7 +222,12 @@ function Documentos({ otId, cantidad }: { otId: number; cantidad: number }) {
               <FileText className="h-6 w-6 text-muted-foreground" />
             </div>
           )}
-          <p className="truncate px-1.5 py-1 text-[10px] text-muted-foreground">{d.nombre}</p>
+          <p className="truncate px-1.5 py-1 text-[10px] text-muted-foreground">
+            {/* Distingue lo que alguien subió PARA la cuadrilla de los papeles de la
+                venta, que van en el mismo grid y son mayoría. */}
+            {d.instruccion && <span className="font-semibold text-foreground">Instrucción · </span>}
+            {d.nombre}
+          </p>
         </a>
       ))}
     </div>
@@ -484,9 +489,12 @@ export function PanelOt({
 
               <div className="space-y-2">
                 <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                  Documentación ({ot.cantDocs})
+                  Documentación ({ot.cantDocs + ot.cantInstrucciones})
                 </p>
-                <Documentos otId={ot.id} cantidad={ot.cantDocs} />
+                {/* Las dos fuentes se suman: los croquis que Comercial sube EN la OT y los
+                    papeles de la venta. Con sólo cantDocs, una OT que tiene instrucciones
+                    pero ningún adjunto en la venta decía "Sin documentación". */}
+                <Documentos otId={ot.id} cantidad={ot.cantDocs + ot.cantInstrucciones} />
               </div>
 
               <a

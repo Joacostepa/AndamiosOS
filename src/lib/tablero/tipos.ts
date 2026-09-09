@@ -225,6 +225,15 @@ export type OtTablero = {
   horasHombre: number;
   cantDocs: number;
   docIds: number[];
+  /**
+   * Adjuntos cargados en la propia OT (croquis, fotos de lo que hay que ejecutar).
+   *
+   * Va aparte de `cantDocs`, que cuenta los de la VENTA y es un computado de Odoo. El panel
+   * suma los dos para decidir si pide los adjuntos: mirando sólo cantDocs, una OT con
+   * instrucciones pero sin papeles de la venta decía "Sin documentación adjunta" y no los
+   * pedía nunca.
+   */
+  cantInstrucciones: number;
   ordenVenta: string | null;
   /** Lo que dice el plan. La escribe el tablero. */
   fechaProgramada: string | null;
@@ -329,6 +338,8 @@ export type DocumentoOt = {
   id: number;
   nombre: string;
   mimetype: string;
+  /** Lo subió Comercial EN LA OT para la cuadrilla, no viene de la orden de venta. */
+  instruccion: boolean;
   url: string;
 };
 

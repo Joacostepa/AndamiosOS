@@ -82,6 +82,9 @@ const OT_FIELDS = [
   "x_doc_ids", "x_fecha_programada", "x_fecha_comprometida", "x_fecha_desde", "x_fecha_antes_de",
   // Related a la venta: la dirección de obra sin pasar por el truncado de x_name.
   "x_direccion_obra", "x_obra_referencia",
+  // Fotos y croquis que Comercial sube EN LA OT. Distinto de x_doc_ids, que espeja los
+  // adjuntos de la venta y es de sólo lectura.
+  "x_instrucciones_ids",
 ];
 
 const ASIG_FIELDS = ["id", "x_ot_id", "x_fecha", "x_cuadrilla_id", "x_fraccion", "x_estado", "x_orden_dia", "x_notas", "x_parte_id"];
@@ -115,6 +118,7 @@ type OdooOtRow = {
   x_fecha_antes_de: string | false;
   x_direccion_obra: string | false;
   x_obra_referencia: string | false;
+  x_instrucciones_ids: number[] | false;
 };
 
 type OdooAsigRow = {
@@ -201,6 +205,7 @@ function mapOt(row: OdooOtRow, base: string, actionId: number | null): OtTablero
     horasHombre: num(row.x_horas_hombre),
     cantDocs: num(row.x_cant_docs),
     docIds: Array.isArray(row.x_doc_ids) ? row.x_doc_ids : [],
+    cantInstrucciones: Array.isArray(row.x_instrucciones_ids) ? row.x_instrucciones_ids.length : 0,
     ordenVenta: m2oName(row.x_order_id),
     fechaProgramada: str(row.x_fecha_programada),
     fechaComprometida: str(row.x_fecha_comprometida),
@@ -437,8 +442,19 @@ export async function fetchDetalleOt(otId: number): Promise<DetalleOt> {
 /** Adjuntos de una OT, para la vista previa del panel lateral. */
 export async function fetchDocumentosOt(otId: number): Promise<DocumentoOt[]> {
   const base = (process.env.ODOO_URL ?? "").replace(/\/+$/, "");
-  const [ot] = await read<{ x_doc_ids: number[] | false }>("x_aba_orden_trabajo", [otId], ["x_doc_ids"]);
-  const ids = Array.isArray(ot?.x_doc_ids) ? ot.x_doc_ids : [];
+  // DOS FUENTES. `x_instrucciones_ids` lo sube Comercial en la propia OT —croquis, fotos
+  // de lo que hay que ejecutar— y `x_doc_ids` espeja los adjuntos de la orden de venta.
+  // Las instrucciones van PRIMERO: son las que la cuadrilla necesita antes de salir; la
+  // propuesta y los papeles de la venta son contexto.
+  const [ot] = await read<{ x_doc_ids: number[] | false; x_instrucciones_ids: number[] | false }>(
+    "x_aba_orden_trabajo",
+    [otId],
+    ["x_doc_ids", "x_instrucciones_ids"],
+  );
+  const instrucciones = Array.isArray(ot?.x_instrucciones_ids) ? ot.x_instrucciones_ids : [];
+  const deLaVenta = Array.isArray(ot?.x_doc_ids) ? ot.x_doc_ids : [];
+  // Un mismo archivo podría estar en las dos: se muestra una vez, como instrucción.
+  const ids = [...new Set([...instrucciones, ...deLaVenta])];
   if (ids.length === 0) return [];
 
   const adjuntos = await read<{ id: number; name: string | false; mimetype: string | false }>(
@@ -446,13 +462,17 @@ export async function fetchDocumentosOt(otId: number): Promise<DocumentoOt[]> {
     ids,
     ["name", "mimetype"],
   );
-  return adjuntos.map((a) => ({
-    id: a.id,
-    nombre: str(a.name) ?? `Adjunto #${a.id}`,
-    mimetype: str(a.mimetype) ?? "",
-    // /web/content sirve el archivo con la sesión de Odoo del usuario en el browser.
-    url: `${base}/web/content/${a.id}?download=false`,
-  }));
+  const esInstruccion = new Set(instrucciones);
+  return adjuntos
+    .map((a) => ({
+      id: a.id,
+      nombre: str(a.name) ?? `Adjunto #${a.id}`,
+      mimetype: str(a.mimetype) ?? "",
+      instruccion: esInstruccion.has(a.id),
+      // /web/content sirve el archivo con la sesión de Odoo del usuario en el browser.
+      url: `${base}/web/content/${a.id}?download=false`,
+    }))
+    .sort((a, b) => Number(b.instruccion) - Number(a.instruccion));
 }
 
 // ── Escritura ────────────────────────────────────────────────────────────────

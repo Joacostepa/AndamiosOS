@@ -30,6 +30,7 @@ export const navigation: NavGroup[] = [
       { title: "Ordenes de Trabajo", href: "/ordenes-trabajo", icon: ListOrdered },
       { title: "Habilitaciones", href: "/habilitaciones", icon: ShieldCheck },
       { title: "Informes de obra", href: "/informes-obra", icon: FileBarChart },
+      { title: "Mapa de Obras", href: "/mapa-obras", icon: MapPin },
       { title: "Planificacion", href: "/planificacion", icon: Calendar },
     ],
   },

@@ -26,6 +26,8 @@ export type OrdenListado = {
   titulo: string;
   /** Campo propio en Odoo. Null en las OTs viejas: ahí decide `direccionDeObra()`. */
   direccionObra: string | null;
+  /** Cómo se reconoce el lugar desde la calle ("Banco Galicia"). */
+  referenciaObra: string | null;
   tipo: string;
   estado: string;
   /** Venta de la que cuelga. El vínculo real: x_obra_id está vacío en las 1003. */

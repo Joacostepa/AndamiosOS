@@ -223,7 +223,9 @@ export function ContenidoTarjeta({
           title={
             tarea
               ? `${tipoTareaLabel(tarea.tipo)} — ${tarea.titulo}`
-              : `${labelTipo(ot?.tipo)} — ${ot?.titulo ?? ""} — ${sem.label}`
+              : [labelTipo(ot?.tipo), ot?.titulo ?? "", ot?.referenciaObra, sem.label]
+                  .filter(Boolean)
+                  .join(" — ")
           }
         >
           {tarea ? tarea.titulo : direccion}

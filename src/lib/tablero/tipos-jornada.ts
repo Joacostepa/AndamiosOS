@@ -14,6 +14,8 @@ export type JornadaListado = {
   titulo: string;
   /** Campo propio en Odoo. Null en las OTs viejas: decide `direccionDeObra()`. */
   direccionObra: string | null;
+  /** Cómo se reconoce el lugar desde la calle ("Banco Galicia"). */
+  referenciaObra: string | null;
   tipo: string;
   /** Cuadrilla PLANIFICADA. La real se elige al cargar y puede diferir. */
   cuadrillaId: number | null;

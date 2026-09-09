@@ -185,6 +185,14 @@ export type OtTablero = {
    * título. Null en las OTs viejas: ahí manda el fallback de `direccionDeObra()`.
    */
   direccionObra: string | null;
+  /**
+   * Cómo se reconoce el lugar desde la calle: "Banco Galicia", "Edificio Edesur".
+   *
+   * NO va en la línea principal de la tarjeta: ahí manda la dirección y el ancho está
+   * peleado. Vive en el tooltip, en el panel y en la ficha, que es donde la cuadrilla
+   * mira antes de salir.
+   */
+  referenciaObra: string | null;
   tipo: string;
   estado: string;
   urgencia: string;
@@ -288,6 +296,8 @@ export type DetalleOt = {
    *  que no siempre lo trae ("Desarme · S00719 · Av. Callao 1810"). */
   cliente: string | null;
   direccionObra: string | null;
+  /** Cómo se reconoce el lugar desde la calle ("Banco Galicia"). Lo carga Comercial. */
+  referenciaObra: string | null;
   /**
    * Teléfono de la ficha de obra del cliente en Odoo. La OT tiene su propio contacto
    * (x_tel_obra) pero está cargado en el 12% de las OTs; éste, en la mayoría.

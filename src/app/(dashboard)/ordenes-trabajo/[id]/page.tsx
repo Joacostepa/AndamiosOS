@@ -92,6 +92,11 @@ export default function FichaOrdenPage({ params }: { params: Promise<{ id: strin
         <IconoTipo className="mt-1 h-5 w-5 shrink-0" style={{ color: tipo.text }} aria-hidden />
         <div className="min-w-0 flex-1">
           <h1 className="text-[17px] font-medium leading-tight">{direccion}</h1>
+          {/* Cómo se reconoce el lugar desde la calle. Va pegado al título y antes del
+              contexto comercial: es lo que se lee antes de salir para la obra. */}
+          {ot.referenciaObra && (
+            <p className="text-[12px] font-medium">{ot.referenciaObra}</p>
+          )}
           <p className="text-[12px] text-muted-foreground">
             {[partes.tipo, partes.numero, partes.cliente].filter(Boolean).join(" · ")}
           </p>

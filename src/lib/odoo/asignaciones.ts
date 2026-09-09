@@ -81,7 +81,7 @@ const OT_FIELDS = [
   "x_tel_obra", "x_observaciones", "x_dias_obra", "x_horas_hombre", "x_cant_docs",
   "x_doc_ids", "x_fecha_programada", "x_fecha_comprometida", "x_fecha_desde", "x_fecha_antes_de",
   // Related a la venta: la dirección de obra sin pasar por el truncado de x_name.
-  "x_direccion_obra",
+  "x_direccion_obra", "x_obra_referencia",
 ];
 
 const ASIG_FIELDS = ["id", "x_ot_id", "x_fecha", "x_cuadrilla_id", "x_fraccion", "x_estado", "x_orden_dia", "x_notas", "x_parte_id"];
@@ -114,6 +114,7 @@ type OdooOtRow = {
   x_fecha_desde: string | false;
   x_fecha_antes_de: string | false;
   x_direccion_obra: string | false;
+  x_obra_referencia: string | false;
 };
 
 type OdooAsigRow = {
@@ -178,6 +179,7 @@ function mapOt(row: OdooOtRow, base: string, actionId: number | null): OtTablero
     id: row.id,
     titulo: str(row.x_name) ?? `OT #${row.id}`,
     direccionObra: str(row.x_direccion_obra),
+    referenciaObra: str(row.x_obra_referencia),
     tipo: str(row.x_tipo) ?? "otro",
     estado: str(row.x_estado) ?? "pendiente",
     urgencia: str(row.x_urgencia) ?? "baja",
@@ -358,9 +360,11 @@ export async function fetchDetalleOt(otId: number): Promise<DetalleOt> {
     x_periodo: string | false;
     x_desvio: string | false;
     x_duracion_sugerida: string | false;
+    x_direccion_obra: string | false;
+    x_obra_referencia: string | false;
   }>("x_aba_orden_trabajo", [otId], [
     "x_order_id", "x_detalle_tecnico", "x_hab_etapa", "x_hab_dias", "x_fecha_firmeza",
-    "x_periodo", "x_desvio", "x_duracion_sugerida",
+    "x_periodo", "x_desvio", "x_duracion_sugerida", "x_direccion_obra", "x_obra_referencia",
   ]);
   if (!ot) throw new Error("La OT no existe");
 
@@ -406,8 +410,15 @@ export async function fetchDetalleOt(otId: number): Promise<DetalleOt> {
     estructuraConfirmadaEl: str(orden?.x_estructura_fecha),
     // El cliente es el PADRE del contacto de obra. Sin padre, el contacto ya es el cliente.
     cliente: m2oName(obra?.parent_id) ?? str(obra?.name),
-    // Varias fichas tienen la dirección sólo en el nombre y la calle vacía.
-    direccionObra: calle || (obra?.type === "delivery" ? str(obra?.name) : null),
+    // EL CAMPO PROPIO MANDA. Antes esto derivaba la dirección de los contactos por su
+    // cuenta, así que el panel podía mostrar una calle distinta a la de la tarjeta —que
+    // sale de x_direccion_obra— para la misma OT. Ahora las dos leen lo mismo, y la
+    // derivación queda de respaldo para las ventas sin el campo cargado.
+    direccionObra:
+      str(ot.x_direccion_obra) ??
+      calle ??
+      (obra?.type === "delivery" ? str(obra?.name) : null),
+    referenciaObra: str(ot.x_obra_referencia),
     // El teléfono de la ficha de obra del cliente. La OT tiene su propio contacto, pero
     // está cargado en el 12% de los casos: cuando falta, éste es el número al que se llama.
     telFichaCliente: str(obra?.phone),

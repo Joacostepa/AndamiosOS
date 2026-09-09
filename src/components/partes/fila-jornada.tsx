@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { colorTipo, CORAL } from "@/lib/tablero/colores";
-import { partesTitulo, direccionDeObra } from "@/lib/tablero/titulo";
+import { direccionDeObra } from "@/lib/tablero/titulo";
 import { fraccionLabel } from "@/lib/tablero/fracciones";
 import {
   ATAJOS_SALIDA,
@@ -184,7 +184,6 @@ export function FilaJornada({
     useEmpleados();
   const tipo = colorTipo(jornada.tipo);
   const IconoTipo = ICONO_TIPO[tipo.icono];
-  const partes = partesTitulo(jornada.titulo);
   const direccion = direccionDeObra(jornada);
   const cuadrillaPlan = cuadrillas.find((c) => c.id === jornada.cuadrillaId)?.nombre ?? "sin cuadrilla";
   const parte = jornada.parte;
@@ -236,6 +235,11 @@ export function FilaJornada({
 
         <span className="min-w-0 flex-1 truncate text-[13px]" title={jornada.titulo}>
           {direccion}
+          {/* La referencia va en la MISMA línea y atenuada: la fila es de una sola
+              altura y un renglón extra rompería la densidad del listado. */}
+          {jornada.referenciaObra && (
+            <span className="text-muted-foreground"> · {jornada.referenciaObra}</span>
+          )}
         </span>
 
         {jornada.tentativaVencida && (

@@ -324,6 +324,11 @@ export function PanelOt({
                   {detalle.direccionObra && (
                     <p className="text-xs text-muted-foreground">{detalle.direccionObra}</p>
                   )}
+                  {/* Cómo se reconoce el lugar desde la calle. Va en su propio renglón y no
+                      pegado a la dirección: es lo que la cuadrilla busca cuando llega. */}
+                  {detalle.referenciaObra && (
+                    <p className="text-xs font-medium">{detalle.referenciaObra}</p>
+                  )}
                 </Fila>
               )}
 

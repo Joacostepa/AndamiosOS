@@ -180,6 +180,11 @@ export type CambioTarea = {
 export type OtTablero = {
   id: number;
   titulo: string;
+  /**
+   * La dirección de obra como campo propio (`x_direccion_obra` en Odoo), no como pedazo del
+   * título. Null en las OTs viejas: ahí manda el fallback de `direccionDeObra()`.
+   */
+  direccionObra: string | null;
   tipo: string;
   estado: string;
   urgencia: string;

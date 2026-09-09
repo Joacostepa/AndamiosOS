@@ -41,6 +41,23 @@ export function partesTitulo(titulo: string): PartesTitulo {
   };
 }
 
+/**
+ * La dirección de la obra, con la del campo propio adelante y el título como red.
+ *
+ * `x_direccion_obra` (Odoo) es el dato bueno: lo carga Comercial con el autocompletado de
+ * Google, viaja venta → OT por un `related` y NO pasa por el truncado a 72 de `x_name`.
+ * Partir el título queda sólo para lo viejo: las OTs anteriores al backfill y las ventas
+ * donde no había dirección en ningún lado.
+ *
+ * Es la ÚNICA función que decide qué dirección se muestra. Si mañana el campo gana o pierde
+ * prioridad, se cambia acá y no en las siete pantallas que la usan.
+ */
+export function direccionDeObra(ot: { direccionObra?: string | null; titulo?: string | null }): string {
+  const propia = ot.direccionObra?.trim();
+  if (propia) return propia;
+  return partesTitulo(ot.titulo ?? "").principal;
+}
+
 /** Normaliza para buscar sin depender de tildes ni mayúsculas. */
 export function normalizar(texto: string): string {
   return texto

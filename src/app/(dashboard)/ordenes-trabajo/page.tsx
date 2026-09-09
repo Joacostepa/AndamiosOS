@@ -11,7 +11,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { colorTipo, semaforo } from "@/lib/tablero/colores";
-import { partesTitulo, normalizar } from "@/lib/tablero/titulo";
+import { partesTitulo, normalizar, direccionDeObra } from "@/lib/tablero/titulo";
 import type { FiltroOrdenes, OrdenListado } from "@/lib/tablero/tipos-orden";
 
 // Listado de Órdenes de Trabajo, leído de Odoo.
@@ -36,6 +36,7 @@ function Fila({ ot }: { ot: OrdenListado }) {
   const IconoTipo = ICONO_TIPO[tipo.icono];
   const sem = semaforo(ot.habSemaforo);
   const partes = partesTitulo(ot.titulo);
+  const direccion = direccionDeObra(ot);
   const critica = ot.habAlerta === "critica";
   const sinFecha = ot.grupoProg === "b_sin";
 
@@ -59,7 +60,7 @@ function Fila({ ot }: { ot: OrdenListado }) {
       <IconoTipo className="h-3.5 w-3.5 shrink-0" style={{ color: tipo.text }} aria-hidden />
 
       <span className="min-w-0 flex-1">
-        <span className="block truncate font-medium">{partes.principal}</span>
+        <span className="block truncate font-medium">{direccion}</span>
         <span className="block truncate text-[11px] text-muted-foreground">
           {[partes.numero, partes.cliente].filter(Boolean).join(" · ")}
         </span>
@@ -108,7 +109,8 @@ export default function OrdenesTrabajoPage() {
     const lista = data?.ordenes ?? [];
     const q = normalizar(busqueda.trim());
     if (!q) return lista;
-    return lista.filter((o) => normalizar(o.titulo).includes(q));
+    // La dirección va aparte: desde el backfill hay obras cuya calle no está en el título.
+    return lista.filter((o) => normalizar(`${o.titulo} ${o.direccionObra ?? ""}`).includes(q));
   }, [data, busqueda]);
 
   return (

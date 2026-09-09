@@ -31,7 +31,7 @@ import {
   URGENCIA,
 } from "@/lib/tablero/colores";
 import { fraccionLabel, repartirJornadas, FRACCIONES, type FraccionStr } from "@/lib/tablero/fracciones";
-import { partesTitulo, normalizar } from "@/lib/tablero/titulo";
+import { partesTitulo, normalizar, direccionDeObra } from "@/lib/tablero/titulo";
 import { lineaVentana } from "@/lib/tablero/ventana";
 import type { OtTablero } from "@/lib/tablero/tipos";
 
@@ -283,6 +283,7 @@ function TarjetaOt({
   const urgente = esUrgente(ot);
   const media = esUrgenciaMedia(ot);
   const partes = partesTitulo(ot.titulo);
+  const direccion = direccionDeObra(ot);
 
   return (
     <div
@@ -343,7 +344,7 @@ function TarjetaOt({
           )}
           {/* La dirección entra completa: para eso el panel es vertical. */}
           <p className="text-[12px] font-medium leading-snug" style={{ color: tipo.text }}>
-            {partes.principal}
+            {direccion}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-0.5">
@@ -563,7 +564,11 @@ export function PanelSinAsignar({
     });
     if (!q) return orden;
     // Con 46 obras, encontrar una puntual escaneando no funciona.
-    return orden.filter((o) => normalizar(`${o.ot.titulo} ${o.ot.tecnico ?? ""}`).includes(q));
+    // La dirección entra aparte del título: desde el backfill hay obras cuya calle vive
+    // sólo en el campo propio, y buscarlas por el título no las encontraría.
+    return orden.filter((o) =>
+      normalizar(`${o.ot.titulo} ${o.ot.direccionObra ?? ""} ${o.ot.tecnico ?? ""}`).includes(q),
+    );
   }, [ots, q, hoy]);
 
   // Los contadores de cada chip se cuentan sobre la lista filtrada por el OTRO eje: el
@@ -626,7 +631,9 @@ export function PanelSinAsignar({
   const yaPlanificadas = useMemo(() => {
     if (!q) return [];
     return planificadas
-      .filter((p) => normalizar(`${p.ot.titulo} ${p.ot.tecnico ?? ""}`).includes(q))
+      .filter((p) =>
+        normalizar(`${p.ot.titulo} ${p.ot.direccionObra ?? ""} ${p.ot.tecnico ?? ""}`).includes(q),
+      )
       .sort((a, b) => a.fechaInicio.localeCompare(b.fechaInicio));
   }, [planificadas, q]);
 
@@ -817,7 +824,7 @@ export function PanelSinAsignar({
               {yaPlanificadas.length > 0 ? (
                 <div className="mt-1 space-y-1">
                   {yaPlanificadas.map((p) => {
-                    const partes = partesTitulo(p.ot.titulo);
+                    const direccion = direccionDeObra(p.ot);
                     const tipo = colorTipo(p.ot.tipo);
                     const IconoTipo = ICONO_TIPO[tipo.icono];
                     return (
@@ -829,7 +836,7 @@ export function PanelSinAsignar({
                       >
                         <IconoTipo className="h-3.5 w-3.5 shrink-0" style={{ color: tipo.text }} aria-hidden />
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[12px] font-medium">{partes.principal}</span>
+                          <span className="block truncate text-[12px] font-medium">{direccion}</span>
                           <span className="block truncate text-[10px] text-muted-foreground">
                             {p.cuadrillaNombre ?? "sin cuadrilla"} ·{" "}
                             {format(parseISO(p.fechaInicio), "EEE d MMM", { locale: es })}

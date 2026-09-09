@@ -24,6 +24,8 @@ export type Urgencia = "baja" | "media" | "alta";
 export type OrdenListado = {
   id: number;
   titulo: string;
+  /** Campo propio en Odoo. Null en las OTs viejas: ahí decide `direccionDeObra()`. */
+  direccionObra: string | null;
   tipo: string;
   estado: string;
   /** Venta de la que cuelga. El vínculo real: x_obra_id está vacío en las 1003. */

@@ -156,6 +156,7 @@ export async function fetchBandeja(db: DB): Promise<Bandeja> {
     return {
       otId: base.otId,
       titulo: base.titulo,
+      direccionObra: base.direccionObra,
       ventaNombre: base.ventaNombre,
       tipo: base.tipo,
       estadoOt: base.estadoOt,
@@ -311,6 +312,7 @@ export async function fetchFicha(db: DB, otId: number): Promise<FichaHabilitacio
   return {
     otId: base.otId,
     titulo: base.titulo,
+    direccionObra: base.direccionObra,
     tipo: base.tipo,
     estadoOt: base.estadoOt,
     fechaProgramada: base.fechaProgramada,

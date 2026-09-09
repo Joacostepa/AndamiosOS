@@ -49,6 +49,7 @@ const ACTIVAS = [["x_estado", "in", ["pendiente", "en_proceso"]]];
 
 const CAMPOS_OT = [
   "x_name", "x_estado", "x_tipo", "x_order_id", "x_fecha_programada", "x_tecnico",
+  "x_direccion_obra",
   // Computados en Odoo — se LEEN, nunca se escriben.
   "x_hab_etapa", "x_hab_semaforo", "x_hab_alerta", "x_hab_dias",
   // Escribibles — son los inputs de los de arriba.
@@ -68,6 +69,7 @@ const CAMPOS_VENTA = [
 export type FilaOtHab = {
   id: number;
   x_name: string | false;
+  x_direccion_obra: string | false;
   x_estado: string | false;
   x_tipo: string | false;
   x_order_id: M2O;
@@ -241,6 +243,7 @@ export function leerOt(ot: FilaOtHab) {
   return {
     otId: ot.id,
     titulo: str(ot.x_name) ?? `OT #${ot.id}`,
+    direccionObra: str(ot.x_direccion_obra),
     tipo: str(ot.x_tipo) ?? "otro",
     estadoOt: str(ot.x_estado) ?? "pendiente",
     fechaProgramada: str(ot.x_fecha_programada),

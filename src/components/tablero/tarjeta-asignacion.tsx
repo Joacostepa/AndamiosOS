@@ -29,7 +29,7 @@ import {
   PELIGRO_SUAVE,
   PELIGRO_TEXTO,
 } from "@/lib/tablero/colores";
-import { partesTitulo } from "@/lib/tablero/titulo";
+import { partesTitulo, direccionDeObra } from "@/lib/tablero/titulo";
 import { jornadasLiberables } from "@/lib/tablero/cierre";
 import type { Bloque, Colocacion } from "@/lib/tablero/bloques";
 import { tipoTareaLabel, type OtTablero } from "@/lib/tablero/tipos";
@@ -130,7 +130,10 @@ export function ContenidoTarjeta({
   const confirmada = bloque.estado === "confirmada";
   const sem = semaforo(ot?.habSemaforo);
   const urgente = !tarea && ot?.urgencia === "alta";
+  // El título se sigue partiendo por el CLIENTE, que vive sólo ahí. La dirección ya no:
+  // sale de su campo propio y sólo cae al título cuando la OT es anterior al backfill.
   const partes = partesTitulo(ot?.titulo ?? "OT");
+  const direccion = direccionDeObra({ direccionObra: ot?.direccionObra, titulo: ot?.titulo });
   const noEjecutada = cierre?.estado === "no_ejecutado";
   const partida = (plan?.tramos ?? 1) > 1;
   // El texto conserva el color del tipo aunque el relleno no esté: el tipo se lee igual
@@ -223,7 +226,7 @@ export function ContenidoTarjeta({
               : `${labelTipo(ot?.tipo)} — ${ot?.titulo ?? ""} — ${sem.label}`
           }
         >
-          {tarea ? tarea.titulo : partes.principal}
+          {tarea ? tarea.titulo : direccion}
         </span>
         <span
           className="shrink-0 text-[11px] font-semibold tabular-nums"

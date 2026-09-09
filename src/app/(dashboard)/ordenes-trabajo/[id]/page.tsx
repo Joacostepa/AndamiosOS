@@ -10,7 +10,7 @@ import { MarcarUrgencia } from "@/components/ordenes/marcar-urgencia";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { colorTipo, semaforo, CORAL } from "@/lib/tablero/colores";
-import { partesTitulo } from "@/lib/tablero/titulo";
+import { partesTitulo, direccionDeObra } from "@/lib/tablero/titulo";
 import { formatHora } from "@/lib/tablero/horas";
 import { MOTIVOS_NO_EJEC } from "@/lib/tablero/tipos-parte";
 
@@ -66,6 +66,7 @@ export default function FichaOrdenPage({ params }: { params: Promise<{ id: strin
   const IconoTipo = ICONO_TIPO[tipo.icono];
   const sem = semaforo(ot.habSemaforo);
   const partes = partesTitulo(ot.titulo);
+  const direccion = direccionDeObra(ot);
   const cerradas = ot.jornadasPlanificadas.filter((j) => j.parteId).length;
 
   // El desvío viene de Odoo como TEXTO ("+44%"). Ya llega parseado del servidor, porque
@@ -90,7 +91,7 @@ export default function FichaOrdenPage({ params }: { params: Promise<{ id: strin
       <div className="flex items-start gap-2">
         <IconoTipo className="mt-1 h-5 w-5 shrink-0" style={{ color: tipo.text }} aria-hidden />
         <div className="min-w-0 flex-1">
-          <h1 className="text-[17px] font-medium leading-tight">{partes.principal}</h1>
+          <h1 className="text-[17px] font-medium leading-tight">{direccion}</h1>
           <p className="text-[12px] text-muted-foreground">
             {[partes.tipo, partes.numero, partes.cliente].filter(Boolean).join(" · ")}
           </p>

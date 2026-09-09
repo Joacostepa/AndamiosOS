@@ -12,6 +12,8 @@ export type JornadaListado = {
   fecha: string;
   otId: number;
   titulo: string;
+  /** Campo propio en Odoo. Null en las OTs viejas: decide `direccionDeObra()`. */
+  direccionObra: string | null;
   tipo: string;
   /** Cuadrilla PLANIFICADA. La real se elige al cargar y puede diferir. */
   cuadrillaId: number | null;

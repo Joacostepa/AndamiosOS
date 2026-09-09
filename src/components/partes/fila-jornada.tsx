@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { colorTipo, CORAL } from "@/lib/tablero/colores";
-import { partesTitulo } from "@/lib/tablero/titulo";
+import { partesTitulo, direccionDeObra } from "@/lib/tablero/titulo";
 import { fraccionLabel } from "@/lib/tablero/fracciones";
 import {
   ATAJOS_SALIDA,
@@ -185,6 +185,7 @@ export function FilaJornada({
   const tipo = colorTipo(jornada.tipo);
   const IconoTipo = ICONO_TIPO[tipo.icono];
   const partes = partesTitulo(jornada.titulo);
+  const direccion = direccionDeObra(jornada);
   const cuadrillaPlan = cuadrillas.find((c) => c.id === jornada.cuadrillaId)?.nombre ?? "sin cuadrilla";
   const parte = jornada.parte;
   const cargado = !!parte;
@@ -234,7 +235,7 @@ export function FilaJornada({
         <IconoTipo className="h-3.5 w-3.5 shrink-0" style={{ color: tipo.text }} aria-hidden />
 
         <span className="min-w-0 flex-1 truncate text-[13px]" title={jornada.titulo}>
-          {partes.principal}
+          {direccion}
         </span>
 
         {jornada.tentativaVencida && (

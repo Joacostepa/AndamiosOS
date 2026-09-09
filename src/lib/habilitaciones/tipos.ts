@@ -170,6 +170,8 @@ export type FilaBandeja = {
   trabajo: TrabajoOt;
   otId: number;
   titulo: string;
+  /** Campo propio en Odoo. Null en las OTs viejas: decide `direccionDeObra()`. */
+  direccionObra: string | null;
   ventaNombre: string | null;
   tipo: string;
   estadoOt: string;
@@ -218,6 +220,8 @@ export type FichaHabilitacion = {
   trabajo: TrabajoOt;
   otId: number;
   titulo: string;
+  /** Campo propio en Odoo. Null en las OTs viejas: decide `direccionDeObra()`. */
+  direccionObra: string | null;
   tipo: string;
   estadoOt: string;
   fechaProgramada: string | null;

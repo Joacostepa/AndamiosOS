@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { ChevronDown, ChevronRight, Loader2, RefreshCw, TriangleAlert, Undo2 } from "lucide-react";
 import { toast } from "sonner";
-import { partesTitulo } from "@/lib/tablero/titulo";
+import { direccionDeObra } from "@/lib/tablero/titulo";
 import { useBandejaHabilitaciones, useReconciliar, useTriage } from "@/hooks/use-habilitaciones";
 import { useTour } from "@/hooks/use-tour";
 import { PASOS_BANDEJA, TOUR_BANDEJA } from "@/lib/habilitaciones/tour";
@@ -227,7 +227,7 @@ function NoAplican({
               {/* El mismo chip que arriba: son las mismas obras y la pregunta es la misma. */}
               <ChipTipoOt tipo={f.tipo} enColumna />
               <Link href={`/habilitaciones/${f.otId}`} className="min-w-0 flex-1 truncate">
-                {partesTitulo(f.titulo).principal}
+                {direccionDeObra(f)}
               </Link>
               <Button
                 size="sm"

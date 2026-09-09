@@ -62,11 +62,13 @@ const CAMPOS = [
   "x_fecha_comprometida", "x_hab_semaforo", "x_hab_alerta", "x_grupo_prog",
   "x_cuadrilla_prevista_id", "x_jornadas_num", "x_personal_por_jornada", "x_dias_obra",
   "x_cant_docs", "x_es_adicional", "x_aprobada_comercial", "x_urgencia", "x_fecha_desde", "x_fecha_antes_de",
+  "x_direccion_obra",
 ];
 
 type FilaOt = {
   id: number;
   x_name: string | false;
+  x_direccion_obra: string | false;
   x_estado: string | false;
   x_tipo: string | false;
   x_order_id: M2O;
@@ -107,6 +109,7 @@ function mapOt(r: FilaOt, base: string, actionId: number | null): OrdenListado {
   return {
     id: r.id,
     titulo: str(r.x_name) ?? `OT #${r.id}`,
+    direccionObra: str(r.x_direccion_obra),
     tipo: str(r.x_tipo) ?? "otro",
     estado: str(r.x_estado) ?? "pendiente",
     ordenVenta: m2oName(r.x_order_id),

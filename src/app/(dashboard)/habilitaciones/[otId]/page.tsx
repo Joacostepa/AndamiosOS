@@ -26,7 +26,7 @@ import { PASOS_FICHA, TOUR_FICHA } from "@/lib/habilitaciones/tour";
 import { veredicto } from "@/lib/habilitaciones/derivacion";
 import { ETAPA_LABEL, TIPO_GESTION_LABEL } from "@/lib/habilitaciones/tipos";
 import { AVISO } from "@/lib/tablero/colores";
-import { partesTitulo } from "@/lib/tablero/titulo";
+import { partesTitulo, direccionDeObra } from "@/lib/tablero/titulo";
 import type { FichaHabilitacion, HabEtapa } from "@/lib/habilitaciones/tipos";
 
 // Ficha de una habilitación.
@@ -69,6 +69,7 @@ export default function FichaHabilitacionPage({
 
 function Ficha({ ficha, otId }: { ficha: FichaHabilitacion; otId: number }) {
   const partes = partesTitulo(ficha.titulo);
+  const direccion = direccionDeObra(ficha);
   const v = veredicto(ficha.permiso, {
     etapa: ficha.etapa,
     fechaProgramada: ficha.fechaProgramada,
@@ -104,7 +105,7 @@ function Ficha({ ficha, otId }: { ficha: FichaHabilitacion; otId: number }) {
               desde la bandeja no puede hacer perder de vista si esto es un armado o un
               desarme. Es el mismo chip que la lista. */}
           <div className="flex items-center gap-2">
-            <h1 className="text-lg font-semibold">{partes.principal}</h1>
+            <h1 className="text-lg font-semibold">{direccion}</h1>
             <ChipTipoOt tipo={ficha.tipo} />
           </div>
           <p className="text-[13px] text-muted-foreground">

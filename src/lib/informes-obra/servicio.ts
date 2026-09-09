@@ -10,7 +10,7 @@ import {
   fetchLote, fetchVenta, fetchVentasCerradas, ventasReabiertas,
   type LoteCierre, type OtCerrada, type ParteCerrado, type VentaCerrada,
 } from "@/lib/odoo/informes-obra";
-import { partesTitulo } from "@/lib/tablero/titulo";
+import { direccionDeObra } from "@/lib/tablero/titulo";
 import {
   estimadoDe, inconsistenciasDe, paraCotizarDe, sectoresDe, visitasDe, diasEntre,
 } from "./calculo";
@@ -132,11 +132,17 @@ export function armarInforme(venta: VentaCerrada, lote: LoteCierre): {
   return { datos, inconsistencias };
 }
 
-/** La dirección vive en el título de la OT, no en un campo de la venta. */
+/**
+ * La dirección de la obra, tomando la primera OT que tenga una.
+ *
+ * Ya no sale del título: `direccionDeObra` prefiere el campo propio y sólo cae a partirlo
+ * en las OTs anteriores al backfill. Se recorren todas porque un informe junta armado y
+ * desarme, y basta con que una de las dos la traiga.
+ */
 function direccionDe(ots: OtCerrada[]): string | null {
   for (const o of ots) {
-    const p = partesTitulo(o.titulo);
-    if (p.principal?.trim()) return p.principal.trim();
+    const d = direccionDeObra(o).trim();
+    if (d) return d;
   }
   return null;
 }

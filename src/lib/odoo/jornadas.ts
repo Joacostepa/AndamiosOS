@@ -143,9 +143,10 @@ export async function fetchListadoJornadas(fecha: string, hoy: string): Promise<
         x_jornadas_num: number | false;
         x_detalle_tecnico: string | false;
         x_tecnico: string | false;
+        x_direccion_obra: string | false;
       }>("x_aba_orden_trabajo", otIds, [
         "x_name", "x_tipo", "x_personal_por_jornada", "x_duracion_est", "x_jornadas_num",
-        "x_detalle_tecnico", "x_tecnico",
+        "x_detalle_tecnico", "x_tecnico", "x_direccion_obra",
       ])
     : [];
   const otPorId = new Map(ots.map((o) => [o.id, o]));
@@ -178,6 +179,7 @@ export async function fetchListadoJornadas(fecha: string, hoy: string): Promise<
       fecha: str(a.x_fecha) ?? "",
       otId,
       titulo: str(ot?.x_name) ?? `OT #${otId}`,
+      direccionObra: str(ot?.x_direccion_obra),
       tipo: str(ot?.x_tipo) ?? "otro",
       cuadrillaId: m2oId(a.x_cuadrilla_id),
       fraccion: fraccionNum(a.x_fraccion),

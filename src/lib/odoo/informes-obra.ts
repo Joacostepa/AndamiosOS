@@ -59,6 +59,7 @@ const CAMPOS_VENTA = [
 
 const CAMPOS_OT = [
   "x_name", "x_tipo", "x_order_id", "x_duracion_est", "x_hab_etapa", "x_hab_semaforo",
+  "x_direccion_obra",
 ];
 
 const CAMPOS_PARTE = [
@@ -88,6 +89,7 @@ export type OtCerrada = {
   id: number;
   ventaId: number | null;
   titulo: string;
+  direccionObra: string | null;
   tipo: string;
   duracionEst: string | null;
   habEtapa: string | null;
@@ -193,6 +195,7 @@ export async function fetchLote(ventas: VentaCerrada[]): Promise<LoteCierre> {
     id: o.id as number,
     ventaId: m2oId(o.x_order_id as M2O),
     titulo: str(o.x_name as string | false) ?? `OT ${o.id}`,
+    direccionObra: str(o.x_direccion_obra as string | false),
     tipo: str(o.x_tipo as string | false) ?? "otro",
     duracionEst: str(o.x_duracion_est as string | false),
     habEtapa: str(o.x_hab_etapa as string | false),

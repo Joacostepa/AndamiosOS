@@ -7,7 +7,7 @@ import { HardHat, Pin, TriangleAlert } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ChipTipoOt } from "@/components/habilitaciones/chip-tipo-ot";
 import { AVISO, semaforo } from "@/lib/tablero/colores";
-import { partesTitulo } from "@/lib/tablero/titulo";
+import { partesTitulo, direccionDeObra } from "@/lib/tablero/titulo";
 import { UMBRAL_DIAS } from "@/lib/habilitaciones/derivacion";
 import { MODALIDAD_LABEL } from "@/lib/habilitaciones/tipos";
 import type { ClaveGrupo, FilaBandeja } from "@/lib/habilitaciones/tipos";
@@ -39,6 +39,7 @@ export function Fila({
   anclaTour?: boolean;
 }) {
   const partes = partesTitulo(fila.titulo);
+  const direccion = direccionDeObra(fila);
   const sem = semaforo(fila.semaforo);
   const vencidoElUmbral = fila.dias > UMBRAL_DIAS[grupo];
 
@@ -64,7 +65,7 @@ export function Fila({
         <Checkbox
           checked={seleccionada}
           onCheckedChange={(v) => onSeleccionar(fila.otId, v === true)}
-          aria-label={`Seleccionar ${partes.principal}`}
+          aria-label={`Seleccionar ${direccion}`}
         />
       )}
 
@@ -77,7 +78,7 @@ export function Fila({
       <ChipTipoOt tipo={fila.tipo} enColumna />
 
       <Link href={`/habilitaciones/${fila.otId}`} className="min-w-0 flex-1">
-        <span className="block truncate font-medium">{partes.principal}</span>
+        <span className="block truncate font-medium">{direccion}</span>
         <span className="block truncate text-[11px] text-muted-foreground">{contexto}</span>
       </Link>
 

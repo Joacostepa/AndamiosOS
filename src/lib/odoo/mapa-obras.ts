@@ -16,6 +16,7 @@
 // pantalla que lo mostrara. Por eso el color del punto sale de ahí y no del tipo de trabajo.
 
 import { searchRead, read } from "./client";
+import { fetchFotosTelegram } from "@/lib/mapa-obras/fotos-telegram";
 
 type M2O = [number, string] | false;
 
@@ -85,12 +86,15 @@ function diasDesde(fecha: string, hoy: Date): number {
 }
 
 export type FotoObra = {
-  id: number;
+  /** Número para las de Odoo (partes), uuid para las de Telegram. */
+  id: number | string;
   /** Fecha del parte donde se cargó, no de la foto. Es lo que hay. */
   fecha: string | null;
   descripcion: string | null;
   /** Ruta propia, no de Odoo: /web/image necesita la sesión de Odoo en el browser. */
   url: string;
+  /** De dónde salió. Las de Telegram las mandó la cuadrilla al grupo. */
+  origen: "parte" | "telegram";
 };
 
 type FilaOt = {
@@ -170,9 +174,17 @@ export async function fetchMapaObras(): Promise<ObraEnMapa[]> {
       fecha: str(parte.x_fecha),
       descripcion: str(f.x_descripcion),
       url: `/api/operaciones/foto/${f.id}`,
+      origen: "parte",
     });
     fotosPorVenta.set(ventaId, lista);
   }
+  // Las del grupo de Telegram, recuperadas del export. Son la fuente grande: cubren 51 de
+  // las 85 obras armadas contra 15 de los partes.
+  const deTelegram = await fetchFotosTelegram(filas.map((f) => f.id));
+  for (const [ventaId, lista] of deTelegram) {
+    fotosPorVenta.set(ventaId, [...(fotosPorVenta.get(ventaId) ?? []), ...lista]);
+  }
+
   // La más nueva primero: es la que muestra el estado actual.
   for (const lista of fotosPorVenta.values()) {
     lista.sort((a, b) => (b.fecha ?? "").localeCompare(a.fecha ?? ""));

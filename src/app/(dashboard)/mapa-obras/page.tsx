@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { useQuery } from "@tanstack/react-query";
 import { ExternalLink, MapPin, Search, TriangleAlert, X } from "lucide-react";
+import { VisorFotos } from "@/components/mapa-obras/visor-fotos";
 import { PageHeader } from "@/components/shared/page-header";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -277,6 +278,9 @@ function ListaObras({
  */
 function FichaObra({ obra, onCerrar }: { obra: ObraEnMapa; onCerrar: () => void }) {
   const a = antiguedadDe(obra.diasArmado);
+  // Desde qué foto se abrió el visor. null = cerrado. Se guarda el índice y no un booleano
+  // porque el visor tiene que arrancar en la miniatura que se tocó, no siempre en la primera.
+  const [visorDesde, setVisorDesde] = useState<number | null>(null);
   return (
     <div className="absolute bottom-3 left-3 right-3 max-h-[55%] overflow-y-auto rounded-lg border bg-background/95 p-3 shadow-lg backdrop-blur sm:right-auto sm:w-96">
       <div className="flex items-start gap-2">
@@ -326,12 +330,11 @@ function FichaObra({ obra, onCerrar }: { obra: ObraEnMapa; onCerrar: () => void 
           de las fotos vive en el grupo de Telegram y todavía no entra por acá. */}
       {obra.fotos.length > 0 && (
         <div className="mt-2 flex gap-1.5 overflow-x-auto border-t pt-2">
-          {obra.fotos.map((f) => (
-            <a
+          {obra.fotos.map((f, idx) => (
+            <button
               key={f.id}
-              href={f.url}
-              target="_blank"
-              rel="noopener noreferrer"
+              type="button"
+              onClick={() => setVisorDesde(idx)}
               className="group relative shrink-0 overflow-hidden rounded border"
               title={[f.descripcion, f.fecha].filter(Boolean).join(" · ") || "Foto de la obra"}
             >
@@ -347,7 +350,7 @@ function FichaObra({ obra, onCerrar }: { obra: ObraEnMapa; onCerrar: () => void 
                   {f.fecha}
                 </span>
               )}
-            </a>
+            </button>
           ))}
         </div>
       )}
@@ -367,6 +370,15 @@ function FichaObra({ obra, onCerrar }: { obra: ObraEnMapa; onCerrar: () => void 
           {obra.queEstaArmado ?? "Sin detalle cargado en la OT de armado."}
         </p>
       </div>
+
+      {visorDesde !== null && (
+        <VisorFotos
+          fotos={obra.fotos}
+          indiceInicial={visorDesde}
+          titulo={obra.direccion}
+          onCerrar={() => setVisorDesde(null)}
+        />
+      )}
     </div>
   );
 }

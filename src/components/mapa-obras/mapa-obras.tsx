@@ -11,6 +11,15 @@ import { TRAMOS, tramoDe, type ObraEnMapa } from "@/lib/mapa-obras/antiguedad";
 
 // El mapa. MapLibre GL con tiles VECTORIALES, no Leaflet con imágenes.
 //
+// PINNEADO EN LA v5 A PROPÓSITO. La v6 resuelve su Web Worker con
+// `new URL("./maplibre-gl-worker.mjs", import.meta.url)`, y cuando Next empaqueta la
+// librería ese archivo no queda al lado del chunk: el navegador pide una ruta que no
+// existe, el server contesta el HTML del 404 y falla con "non-JavaScript MIME type of
+// text/html". El mapa queda en blanco CON los controles funcionando, porque lo único que
+// se rompe es el worker que decodifica los tiles. La v5 inlinea el worker y no tiene el
+// problema. Antes de subir a la v6 hay que resolver eso —probablemente con setWorkerUrl()
+// apuntando a una copia en /public— o vuelve el rectángulo blanco.
+//
 // POR QUÉ VECTORIAL: el zoom es continuo y las etiquetas se redibujan nítidas en cualquier
 // nivel, en vez de escalar una imagen y saltar de un nivel al siguiente. Es la diferencia
 // entre un mapa que se siente moderno y uno que se siente de 2012.
@@ -74,8 +83,7 @@ export function MapaObras({
   useEffect(() => {
     let vivo = true;
     (async () => {
-      // maplibre-gl v6 exporta con nombre, no default: `(await import(...)).default` es undefined.
-      const maplibre = await import("maplibre-gl");
+      const maplibre = (await import("maplibre-gl")).default;
       if (!vivo || !contenedor.current || mapa.current) return;
 
       const m = new maplibre.Map({

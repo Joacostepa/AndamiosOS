@@ -321,6 +321,37 @@ function FichaObra({ obra, onCerrar }: { obra: ObraEnMapa; onCerrar: () => void 
         )}
       </p>
 
+      {/* Las fotos van ARRIBA del texto: se entiende más rápido una imagen de la fachada
+          que tres renglones de descripción técnica. Sólo 15 de 83 obras tienen; el resto
+          de las fotos vive en el grupo de Telegram y todavía no entra por acá. */}
+      {obra.fotos.length > 0 && (
+        <div className="mt-2 flex gap-1.5 overflow-x-auto border-t pt-2">
+          {obra.fotos.map((f) => (
+            <a
+              key={f.id}
+              href={f.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group relative shrink-0 overflow-hidden rounded border"
+              title={[f.descripcion, f.fecha].filter(Boolean).join(" · ") || "Foto de la obra"}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={f.url}
+                alt={f.descripcion ?? "Foto de la obra"}
+                loading="lazy"
+                className="h-20 w-28 bg-muted object-cover transition-transform group-hover:scale-105"
+              />
+              {f.fecha && (
+                <span className="absolute bottom-0 right-0 bg-black/60 px-1 text-[9px] text-white">
+                  {f.fecha}
+                </span>
+              )}
+            </a>
+          ))}
+        </div>
+      )}
+
       <div className="mt-2 border-t pt-2">
         <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
           Qué está armado

@@ -15,7 +15,7 @@
 // excelente o una estructura que alguien se olvidó de bajar, y hasta ahora no había ninguna
 // pantalla que lo mostrara. Por eso el color del punto sale de ahí y no del tipo de trabajo.
 
-import { searchRead } from "./client";
+import { searchRead, read } from "./client";
 
 type M2O = [number, string] | false;
 
@@ -55,6 +55,8 @@ export type ObraEnMapa = {
   queEstaArmado: string | null;
   /** El texto de arriba es el as-built y no el plan. Cambia cuánto hay que confiarle. */
   esAsBuilt: boolean;
+  /** Fotos de los partes de esa obra, la más nueva primero. Puede venir vacío. */
+  fotos: FotoObra[];
   vencida: boolean;
   url: string;
 };
@@ -82,6 +84,15 @@ function diasDesde(fecha: string, hoy: Date): number {
   return Math.floor((hoy.getTime() - d.getTime()) / 86_400_000);
 }
 
+export type FotoObra = {
+  id: number;
+  /** Fecha del parte donde se cargó, no de la foto. Es lo que hay. */
+  fecha: string | null;
+  descripcion: string | null;
+  /** Ruta propia, no de Odoo: /web/image necesita la sesión de Odoo en el browser. */
+  url: string;
+};
+
 type FilaOt = {
   id: number;
   x_order_id: M2O;
@@ -107,19 +118,64 @@ export async function fetchMapaObras(): Promise<ObraEnMapa[]> {
   // Qué hay armado en cada obra, de la PRIMERA OT de armado. Una venta puede tener varias
   // —ampliaciones, etapas—; la primera es la que levantó la estructura. Va en una segunda
   // consulta y no en un `related`: son dos modelos y el dato es opcional.
-  const ots = filas.length
-    ? await searchRead<FilaOt>(
+  const todasLasOts = filas.length
+    ? await searchRead<FilaOt & { x_tipo: string | false }>(
         "x_aba_orden_trabajo",
-        [["x_order_id", "in", filas.map((f) => f.id)], ["x_tipo", "=", "armado"]],
-        ["x_order_id", "x_detalle_tecnico", "x_ejecutado_real"],
-        { limit: 2000, order: "id" },
+        [["x_order_id", "in", filas.map((f) => f.id)]],
+        ["x_order_id", "x_tipo", "x_detalle_tecnico", "x_ejecutado_real"],
+        { limit: 3000, order: "id" },
       )
     : [];
+  const ots = todasLasOts.filter((o) => o.x_tipo === "armado");
   const armadoPorVenta = new Map<number, FilaOt>();
   for (const o of ots) {
     const ventaId = Array.isArray(o.x_order_id) ? o.x_order_id[0] : null;
     // `order: "id"` garantiza que la primera que llega es la más vieja.
     if (ventaId != null && !armadoPorVenta.has(ventaId)) armadoPorVenta.set(ventaId, o);
+  }
+
+  // LAS FOTOS QUE YA EXISTEN. Salen de los partes diarios: parte → OT → venta. Se toman de
+  // CUALQUIER parte de la venta y no sólo de los de armado —son 15 obras contra 13, y las
+  // 98 fotos cargadas tienen momento "final", o sea que todas muestran cómo quedó—.
+  //
+  // Sólo se traen los METADATOS. El binario pesa ~200 KB por foto y viaja por su propia
+  // ruta, para no meter 20 MB de base64 en la respuesta del mapa.
+  const partes = ots.length
+    ? await searchRead<{ id: number; x_orden_trabajo_id: M2O; x_fecha: string | false }>(
+        "x_aba_parte_diario",
+        [["x_orden_trabajo_id", "in", todasLasOts.map((o) => o.id)], ["x_cant_fotos", ">", 0]],
+        ["x_orden_trabajo_id", "x_fecha"],
+        { limit: 3000 },
+      )
+    : [];
+  const ventaDeOt = new Map(todasLasOts.map((o) => [o.id, Array.isArray(o.x_order_id) ? o.x_order_id[0] : null]));
+  const parteInfo = new Map(partes.map((p) => [p.id, p]));
+  const fotos = partes.length
+    ? await searchRead<{ id: number; x_parte_diario_id: M2O; x_descripcion: string | false }>(
+        "x_aba_foto",
+        [["x_parte_diario_id", "in", partes.map((p) => p.id)]],
+        ["x_parte_diario_id", "x_descripcion"],
+        { limit: 2000 },
+      )
+    : [];
+  const fotosPorVenta = new Map<number, FotoObra[]>();
+  for (const f of fotos) {
+    const parte = parteInfo.get(Array.isArray(f.x_parte_diario_id) ? f.x_parte_diario_id[0] : -1);
+    if (!parte) continue;
+    const ventaId = ventaDeOt.get(Array.isArray(parte.x_orden_trabajo_id) ? parte.x_orden_trabajo_id[0] : -1);
+    if (ventaId == null) continue;
+    const lista = fotosPorVenta.get(ventaId) ?? [];
+    lista.push({
+      id: f.id,
+      fecha: str(parte.x_fecha),
+      descripcion: str(f.x_descripcion),
+      url: `/api/operaciones/foto/${f.id}`,
+    });
+    fotosPorVenta.set(ventaId, lista);
+  }
+  // La más nueva primero: es la que muestra el estado actual.
+  for (const lista of fotosPorVenta.values()) {
+    lista.sort((a, b) => (b.fecha ?? "").localeCompare(a.fecha ?? ""));
   }
 
   const hoy = new Date();
@@ -141,9 +197,20 @@ export async function fetchMapaObras(): Promise<ObraEnMapa[]> {
         finEstimado: fin,
         queEstaArmado: asBuilt ?? str(ot?.x_detalle_tecnico),
         esAsBuilt: asBuilt != null,
+        fotos: fotosPorVenta.get(f.id) ?? [],
         // Sigue armada después de la fecha en que se estimó que terminaba.
         vencida: fin ? diasDesde(fin, hoy) > 0 : false,
         url: `${base}/odoo/sales/${f.id}`,
       };
     });
+}
+
+/**
+ * El JPEG de una foto. Va por una ruta propia y no por /web/image de Odoo, que exige la
+ * sesión de Odoo en el browser del usuario — algo que la app no puede dar por hecho.
+ */
+export async function fetchFotoBinaria(fotoId: number): Promise<Buffer | null> {
+  const [f] = await read<{ x_imagen: string | false }>("x_aba_foto", [fotoId], ["x_imagen"]);
+  if (!f || typeof f.x_imagen !== "string" || !f.x_imagen) return null;
+  return Buffer.from(f.x_imagen, "base64");
 }

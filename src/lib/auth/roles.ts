@@ -33,7 +33,10 @@ const RUTAS_POR_ROL: Record<Rol, string[] | null> = {
   // documentación al cliente y validarla— que no tiene nada que hacer en depósito ni en
   // campo. Va con su ayuda propia adentro, así que quien entra no necesita capacitación
   // previa para abrirlo.
-  operativo: [...MODULOS_ARRANQUE, "/habilitaciones"],
+  // El Mapa de Obras se suma acá y no a MODULOS_ARRANQUE: es de SÓLO LECTURA —no escribe
+  // nada, ni en Odoo ni en Supabase— y contesta una pregunta que es de Operaciones, no de
+  // depósito ni de campo: qué tenemos parado en la calle y desde cuándo.
+  operativo: [...MODULOS_ARRANQUE, "/habilitaciones", "/mapa-obras"],
   // Todavía no se trabajaron como perfiles propios. Arrancan con lo mismo que operativo:
   // ante la duda, de menos. Cuando depósito y campo tengan su circuito, se abre acá.
   deposito: MODULOS_ARRANQUE,

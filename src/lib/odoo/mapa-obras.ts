@@ -45,6 +45,16 @@ export type ObraEnMapa = {
   diasArmado: number | null;
   /** Fin de obra estimado. Si ya pasó, la obra sigue armada más de lo previsto. */
   finEstimado: string | null;
+  /**
+   * Qué estructura hay parada. Sale de la PRIMERA OT de armado de la venta.
+   *
+   * Prefiere el as-built (`x_ejecutado_real`, lo que Operaciones registró al cerrar) sobre el
+   * detalle planificado: en un mapa de lo que está armado HOY, lo que se armó de verdad vale
+   * más que lo que se había previsto. Sólo 26 de 83 lo tienen, así que el resto cae al plan.
+   */
+  queEstaArmado: string | null;
+  /** El texto de arriba es el as-built y no el plan. Cambia cuánto hay que confiarle. */
+  esAsBuilt: boolean;
   vencida: boolean;
   url: string;
 };
@@ -72,6 +82,13 @@ function diasDesde(fecha: string, hoy: Date): number {
   return Math.floor((hoy.getTime() - d.getTime()) / 86_400_000);
 }
 
+type FilaOt = {
+  id: number;
+  x_order_id: M2O;
+  x_detalle_tecnico: string | false;
+  x_ejecutado_real: string | false;
+};
+
 export async function fetchMapaObras(): Promise<ObraEnMapa[]> {
   const base = (process.env.ODOO_URL ?? "").replace(/\/+$/, "");
   const filas = await searchRead<Fila>(
@@ -87,11 +104,31 @@ export async function fetchMapaObras(): Promise<ObraEnMapa[]> {
     { limit: 1000 },
   );
 
+  // Qué hay armado en cada obra, de la PRIMERA OT de armado. Una venta puede tener varias
+  // —ampliaciones, etapas—; la primera es la que levantó la estructura. Va en una segunda
+  // consulta y no en un `related`: son dos modelos y el dato es opcional.
+  const ots = filas.length
+    ? await searchRead<FilaOt>(
+        "x_aba_orden_trabajo",
+        [["x_order_id", "in", filas.map((f) => f.id)], ["x_tipo", "=", "armado"]],
+        ["x_order_id", "x_detalle_tecnico", "x_ejecutado_real"],
+        { limit: 2000, order: "id" },
+      )
+    : [];
+  const armadoPorVenta = new Map<number, FilaOt>();
+  for (const o of ots) {
+    const ventaId = Array.isArray(o.x_order_id) ? o.x_order_id[0] : null;
+    // `order: "id"` garantiza que la primera que llega es la más vieja.
+    if (ventaId != null && !armadoPorVenta.has(ventaId)) armadoPorVenta.set(ventaId, o);
+  }
+
   const hoy = new Date();
   return filas
     .filter((f) => typeof f.x_obra_lat === "number" && typeof f.x_obra_lng === "number")
     .map((f) => {
       const fin = str(f.x_fecha_fin_obra_estimada);
+      const ot = armadoPorVenta.get(f.id);
+      const asBuilt = str(ot?.x_ejecutado_real);
       return {
         ventaId: f.id,
         venta: f.name,
@@ -102,6 +139,8 @@ export async function fetchMapaObras(): Promise<ObraEnMapa[]> {
         lng: f.x_obra_lng as number,
         diasArmado: str(f.x_fecha_armado) ? diasDesde(str(f.x_fecha_armado)!, hoy) : null,
         finEstimado: fin,
+        queEstaArmado: asBuilt ?? str(ot?.x_detalle_tecnico),
+        esAsBuilt: asBuilt != null,
         // Sigue armada después de la fecha en que se estimó que terminaba.
         vencida: fin ? diasDesde(fin, hoy) > 0 : false,
         url: `${base}/odoo/sales/${f.id}`,

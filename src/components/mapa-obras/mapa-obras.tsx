@@ -73,6 +73,7 @@ export function MapaObras({
 }) {
   const contenedor = useRef<HTMLDivElement>(null);
   const mapa = useRef<MapLibreMap | null>(null);
+  const observador = useRef<ResizeObserver | null>(null);
   const { resolvedTheme } = useTheme();
   // El estado —y no una ref— es lo que destraba el efecto de los puntos. Con una ref, el
   // efecto que dibuja corría una sola vez, encontraba el mapa a medio inicializar y no se
@@ -108,9 +109,15 @@ export function MapaObras({
         setListo(true);
       });
       mapa.current = m;
+
+      const ro = new ResizeObserver(() => m.resize());
+      ro.observe(contenedor.current);
+      observador.current = ro;
     })();
     return () => {
       vivo = false;
+      observador.current?.disconnect();
+      observador.current = null;
       mapa.current?.remove();
       mapa.current = null;
       setListo(false);
@@ -192,15 +199,17 @@ export function MapaObras({
   useEffect(() => {
     const m = mapa.current;
     if (!m || !listo || !m.getLayer(CAPA_PUNTO)) return;
-    m.setPaintProperty(CAPA_PUNTO, "circle-stroke-width", [
-      "case", ["==", ["get", "ventaId"], seleccionada ?? -1], 4, 2,
-    ]);
+    // UN SOLO "interpolate" por zoom en toda la expresión: MapLibre rechaza dos anidados
+    // ("Only one zoom-based step or interpolate subexpression may be used"). Por eso el
+    // `case` va ADENTRO de cada parada y no envolviendo dos interpolates.
+    const sel = ["==", ["get", "ventaId"], seleccionada ?? -1];
     m.setPaintProperty(CAPA_PUNTO, "circle-radius", [
-      "case",
-      ["==", ["get", "ventaId"], seleccionada ?? -1],
-      ["interpolate", ["linear"], ["zoom"], 9, 8, 13, 12, 16, 16],
-      ["interpolate", ["linear"], ["zoom"], 9, 4, 13, 7, 16, 11],
+      "interpolate", ["linear"], ["zoom"],
+      9, ["case", sel, 8, 4],
+      13, ["case", sel, 12, 7],
+      16, ["case", sel, 16, 11],
     ]);
+    m.setPaintProperty(CAPA_PUNTO, "circle-stroke-width", ["case", sel, 4, 2]);
     const obra = obras.find((o) => o.ventaId === seleccionada);
     if (obra) m.flyTo({ center: [obra.lng, obra.lat], zoom: Math.max(m.getZoom(), 15), duration: 700 });
   }, [seleccionada, listo, obras]);

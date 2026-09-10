@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { useQuery } from "@tanstack/react-query";
-import { ExternalLink, MapPin, Search, TriangleAlert } from "lucide-react";
+import { ExternalLink, MapPin, Search, TriangleAlert, X } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -48,6 +48,7 @@ export default function MapaObrasPage() {
 
   const todas = useMemo(() => data?.obras ?? [], [data]);
   const conteos = useMemo(() => contarPorTramo(todas), [todas]);
+  const obraSeleccionada = todas.find((o) => o.ventaId === seleccionada) ?? null;
 
   const visibles = useMemo(() => {
     const q = normalizar(busqueda.trim());
@@ -141,7 +142,7 @@ export default function MapaObrasPage() {
             seleccionada={seleccionada}
             onSeleccionar={setSeleccionada}
           />
-          <div className="min-h-[24rem] overflow-hidden rounded-lg border">
+          <div className="relative min-h-[24rem] overflow-hidden rounded-lg border">
             {isLoading ? (
               <Skeleton className="h-full w-full" />
             ) : (
@@ -150,6 +151,12 @@ export default function MapaObrasPage() {
                 seleccionada={seleccionada}
                 onSeleccionar={setSeleccionada}
               />
+            )}
+            {/* La ficha va FLOTANDO sobre el mapa y no en un popup anclado al punto: el
+                texto de qué hay armado son varias líneas y un globo de ese tamaño pegado
+                al marcador tapa media ciudad y se mueve con el mapa. */}
+            {obraSeleccionada && (
+              <FichaObra obra={obraSeleccionada} onCerrar={() => setSeleccionada(null)} />
             )}
           </div>
         </div>
@@ -260,6 +267,75 @@ function ListaObras({
         <MapPin className="h-3 w-3" />
         {obras.length === total ? `${total} obras` : `${obras.length} de ${total}`}
       </p>
+    </div>
+  );
+}
+
+/**
+ * Qué hay parado en esa obra. Es la razón de ser del clic: la dirección ya se lee en la
+ * lista, lo que no estaba en ningún lado es QUÉ estructura hay levantada ahí.
+ */
+function FichaObra({ obra, onCerrar }: { obra: ObraEnMapa; onCerrar: () => void }) {
+  const a = antiguedadDe(obra.diasArmado);
+  return (
+    <div className="absolute bottom-3 left-3 right-3 max-h-[55%] overflow-y-auto rounded-lg border bg-background/95 p-3 shadow-lg backdrop-blur sm:right-auto sm:w-96">
+      <div className="flex items-start gap-2">
+        <span
+          className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full"
+          style={{ backgroundColor: a.color }}
+          aria-hidden
+        />
+        <div className="min-w-0 flex-1">
+          <p className="text-[13px] font-semibold leading-tight">{obra.direccion}</p>
+          {obra.referencia && (
+            <p className="text-[12px] font-medium text-muted-foreground">{obra.referencia}</p>
+          )}
+          <p className="truncate text-[11px] text-muted-foreground">{obra.cliente ?? "—"}</p>
+        </div>
+        <a
+          href={obra.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="shrink-0 text-muted-foreground hover:text-foreground"
+          title={`Abrir ${obra.venta} en Odoo`}
+        >
+          <ExternalLink className="h-4 w-4" />
+        </a>
+        <button
+          type="button"
+          onClick={onCerrar}
+          className="shrink-0 text-muted-foreground hover:text-foreground"
+          aria-label="Cerrar"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+        <span className="font-semibold" style={{ color: a.color }}>{textoDias(obra.diasArmado)}</span>
+        {obra.vencida && (
+          <span className="flex items-center gap-0.5 font-semibold" style={{ color: TRAMOS.larga.color }}>
+            <TriangleAlert className="h-3 w-3" />
+            pasó el fin estimado {obra.finEstimado}
+          </span>
+        )}
+      </p>
+
+      <div className="mt-2 border-t pt-2">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+          Qué está armado
+          {/* No es lo mismo lo que se planificó que lo que la cuadrilla dejó parado. Cuando
+              existe el as-built manda, y conviene que se note cuál de los dos se está leyendo. */}
+          {obra.queEstaArmado && (
+            <span className="ml-1 font-normal normal-case">
+              {obra.esAsBuilt ? "· como quedó en obra" : "· según lo previsto"}
+            </span>
+          )}
+        </p>
+        <p className="mt-1 whitespace-pre-line text-[12px] leading-snug">
+          {obra.queEstaArmado ?? "Sin detalle cargado en la OT de armado."}
+        </p>
+      </div>
     </div>
   );
 }

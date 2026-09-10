@@ -23,8 +23,8 @@ import {
 //
 // Por eso el color es la ANTIGÜEDAD y no el tipo de trabajo: el tipo ya se ve en el tablero.
 
-const MapaLeaflet = dynamic(
-  () => import("@/components/mapa-obras/mapa-leaflet").then((m) => m.MapaLeaflet),
+const MapaObras = dynamic(
+  () => import("@/components/mapa-obras/mapa-obras").then((m) => m.MapaObras),
   {
     ssr: false,
     loading: () => <Skeleton className="h-full w-full rounded-lg" />,
@@ -145,7 +145,7 @@ export default function MapaObrasPage() {
             {isLoading ? (
               <Skeleton className="h-full w-full" />
             ) : (
-              <MapaLeaflet
+              <MapaObras
                 obras={visibles}
                 seleccionada={seleccionada}
                 onSeleccionar={setSeleccionada}

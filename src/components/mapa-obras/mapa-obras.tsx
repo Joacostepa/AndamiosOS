@@ -1,5 +1,9 @@
 "use client";
 
+// El CSS va ESTÁTICO y arriba. Importado con `await import(...)` adentro del efecto, el
+// bundler de Next no lo procesa: el mapa quedaba sin las reglas de .maplibregl-canvas y se
+// veía un rectángulo blanco con los controles desalineados.
+import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef, useState } from "react";
 import { useTheme } from "next-themes";
 import type { Map as MapLibreMap, GeoJSONSource } from "maplibre-gl";
@@ -65,13 +69,13 @@ export function MapaObras({
   // efecto que dibuja corría una sola vez, encontraba el mapa a medio inicializar y no se
   // volvía a ejecutar nunca: el mapa quedaba vacío. Fue exactamente el bug de la v1.
   const [listo, setListo] = useState(false);
+  const [falla, setFalla] = useState<string | null>(null);
 
   useEffect(() => {
     let vivo = true;
     (async () => {
       // maplibre-gl v6 exporta con nombre, no default: `(await import(...)).default` es undefined.
       const maplibre = await import("maplibre-gl");
-      await import("maplibre-gl/dist/maplibre-gl.css");
       if (!vivo || !contenedor.current || mapa.current) return;
 
       const m = new maplibre.Map({
@@ -85,8 +89,15 @@ export function MapaObras({
       m.addControl(new maplibre.FullscreenControl(), "top-left");
       // Zoom con la rueda, sin pedir Ctrl: es lo primero que la gente intenta en un mapa.
       m.scrollZoom.enable();
+      m.on("error", (e) => {
+        console.error("[mapa-obras]", e.error ?? e);
+        if (vivo) setFalla(e.error?.message ?? "No se pudo cargar el mapa");
+      });
       m.on("load", () => {
-        if (vivo) setListo(true);
+        if (!vivo) return;
+        // Si el contenedor todavía no tenía alto al construirse, el canvas queda en 0.
+        m.resize();
+        setListo(true);
       });
       mapa.current = m;
     })();
@@ -186,5 +197,14 @@ export function MapaObras({
     if (obra) m.flyTo({ center: [obra.lng, obra.lat], zoom: Math.max(m.getZoom(), 15), duration: 700 });
   }, [seleccionada, listo, obras]);
 
-  return <div ref={contenedor} className="h-full w-full" />;
+  return (
+    <div className="relative h-full w-full">
+      <div ref={contenedor} className="h-full w-full" />
+      {falla && (
+        <div className="absolute inset-0 flex items-center justify-center bg-background/90 p-4 text-center">
+          <p className="text-sm text-muted-foreground">{falla}</p>
+        </div>
+      )}
+    </div>
+  );
 }

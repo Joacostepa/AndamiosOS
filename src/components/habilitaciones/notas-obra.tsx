@@ -6,24 +6,30 @@ import { es } from "date-fns/locale";
 import { Pin, PinOff, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAgregarNota, useBorrarNota, useFijarNota } from "@/hooks/use-habilitaciones";
+import { useUser } from "@/hooks/use-user";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import type { Nota } from "@/lib/habilitaciones/tipos";
 
-// Notas de la obra.
+// Notas de la obra — el MISMO hilo que el panel del tablero muestra como "Comentarios".
+// Una obra tiene una sola conversación: lo que se anota acá lo lee Operaciones en la
+// tarjeta, y lo que Operaciones habla con el cliente se lee acá.
 //
 // LAS NOTAS SON DE LA OBRA, NO DE AGUSTINA. Son cosas como "el administrador sólo
 // atiende martes y jueves" o "la nómina la piden con foto carnet de cada operario, si
-// falta una rebotan todo el paquete". Hoy eso vive en su cabeza y en su casilla de mail:
-// si está de licencia, se pierde.
+// falta una rebotan todo el paquete". Antes eso vivía en su cabeza y en su casilla de
+// mail: si estaba de licencia, se perdía.
 //
-// Por eso las FIJADAS se ven también desde el panel del tablero y desde la ficha de la
-// OT, no encerradas en este módulo.
+// EL PIN YA NO DECIDE SI SE VE, SINO DÓNDE. El panel del tablero mostraba únicamente lo
+// fijado y de 20 notas cargadas había CERO fijadas, así que no mostró ninguna nunca.
+// Ahora se ve el hilo entero en las dos pantallas y fijar sirve para lo permanente, que
+// no puede hundirse debajo de la charla de ayer.
 
 export function NotasObra({ otId, notas }: { otId: number; notas: Nota[] }) {
   const agregar = useAgregarNota(otId);
   const fijar = useFijarNota(otId);
   const borrar = useBorrarNota(otId);
+  const { data: usuario } = useUser();
   const [texto, setTexto] = useState("");
 
   function guardar(fijada: boolean) {
@@ -62,19 +68,30 @@ export function NotasObra({ otId, notas }: { otId: number; notas: Nota[] }) {
               size="icon"
               variant="ghost"
               className="h-7 w-7"
-              title={n.fijada ? "Dejar de fijar" : "Fijar arriba y mostrar en el tablero"}
+              title={n.fijada ? "Dejar de fijar" : "Fijar arriba de todo"}
               onClick={() => fijar.mutate({ notaId: n.id, fijada: !n.fijada })}
             >
               {n.fijada ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
             </Button>
-            <Button
-              size="icon"
-              variant="ghost"
-              className="h-7 w-7"
-              onClick={() => borrar.mutate(n.id)}
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
+            {/* Sólo el autor. Borrar la nota de otro borra el único registro de una
+                conversación a la que no estuviste; la regla la aplica la RLS, esto es
+                que el botón no prometa algo que el servidor va a rechazar. */}
+            {n.autor_id === usuario?.id && (
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7"
+                title="Borrar"
+                onClick={() =>
+                  borrar.mutate(n.id, {
+                    onError: (e) =>
+                      toast.error(e instanceof Error ? e.message : "No se pudo borrar"),
+                  })
+                }
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            )}
           </li>
         ))}
         {notas.length === 0 && (
@@ -100,7 +117,7 @@ export function NotasObra({ otId, notas }: { otId: number; notas: Nota[] }) {
             variant="outline"
             onClick={() => guardar(true)}
             disabled={!texto.trim() || agregar.isPending}
-            title="Se ve arriba de todo y también en el panel del tablero"
+            title="Queda arriba de todo, acá y en el panel del tablero"
           >
             <Pin className="mr-1 h-3.5 w-3.5" />
             Agregar y fijar

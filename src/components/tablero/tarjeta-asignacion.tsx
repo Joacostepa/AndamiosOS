@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
-import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, AlertTriangle, CalendarRange, Check, CircleCheck, CircleDashed, ClipboardCheck, Lock, MoreHorizontal, MoreVertical, Pencil, Trash2, Wrench } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, AlertTriangle, CalendarRange, Check, CircleCheck, CircleDashed, ClipboardCheck, Lock, MessageSquare, MoreHorizontal, MoreVertical, Pencil, Trash2, Wrench } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -33,6 +33,7 @@ import { partesTitulo, direccionDeObra } from "@/lib/tablero/titulo";
 import { jornadasLiberables } from "@/lib/tablero/cierre";
 import type { Bloque, Colocacion } from "@/lib/tablero/bloques";
 import { tipoTareaLabel, type OtTablero } from "@/lib/tablero/tipos";
+import { tituloResumen, type ResumenComentarios } from "@/lib/tablero/tipos-comentario";
 
 /** Cierre de la jornada visible en la tarjeta. */
 export type EstadoCierre = {
@@ -87,6 +88,7 @@ export function ContenidoTarjeta({
   cierre = null,
   vencidaSinParte = false,
   candado = false,
+  comentarios = null,
   unaLinea = false,
 }: {
   ot: OtTablero | undefined;
@@ -110,6 +112,16 @@ export function ContenidoTarjeta({
    * se arrastra y se planifica igual. El freno está al confirmar.
    */
   candado?: boolean;
+  /**
+   * Lo que Operaciones habló con el cliente sobre esta obra. Sólo el conteo y el último:
+   * el hilo se lee en el panel.
+   *
+   * SE MUESTRA COMO ÍCONO Y NO COMO TEXTO. Una tarjeta puede medir 18px y quedarse en un
+   * solo renglón; ahí no entra ni media línea de comentario, y en las que sí entran el
+   * segundo renglón ya lo tienen tomado el cliente y el técnico. El texto del último va
+   * en el `title`, que es gratis en ancho y suficiente para decidir si abrir el panel.
+   */
+  comentarios?: ResumenComentarios | null;
   /**
    * La tarjeta es demasiado baja para dos renglones: se queda sólo con el de arriba.
    *
@@ -217,6 +229,25 @@ export function ContenidoTarjeta({
             aria-label="El cliente pidió esperar el permiso emitido"
           />
         )}
+        {/* Hay algo hablado con el cliente sobre esta obra. No es una alerta: va en el
+            color del tipo, como las flechas de continuidad, y no en ámbar ni rojo — esos
+            dos canales ya significan otra cosa en esta tarjeta y sumarles un tercer uso
+            los vacía. El contador sólo cuando hay más de uno: "1" al lado del globito no
+            agrega nada y gasta el ancho de la dirección. */}
+        {comentarios && (
+          <span
+            className="flex shrink-0 items-center gap-px self-center"
+            style={{ color: colorTexto }}
+            title={tituloResumen(comentarios)}
+          >
+            <MessageSquare className="h-3 w-3" aria-label="Tiene comentarios" />
+            {comentarios.cantidad > 1 && (
+              <span className="text-[9px] font-semibold leading-none tabular-nums">
+                {comentarios.cantidad}
+              </span>
+            )}
+          </span>
+        )}
         <span
           className="min-w-0 flex-1 truncate text-[12px] font-medium leading-tight"
           style={{ color: colorTexto }}
@@ -312,6 +343,7 @@ export function TarjetaAsignacion({
   cierre,
   accionCierre,
   candado = false,
+  comentarios = null,
   onCerrarJornada,
   onAbrir,
   onFraccion,
@@ -341,6 +373,8 @@ export function TarjetaAsignacion({
   accionCierre: AccionCierre;
   /** El cliente pidió esperar el permiso emitido. Avisa; no impide arrastrar. */
   candado?: boolean;
+  /** Resumen del hilo de la obra, para el globito. null = no tiene comentarios. */
+  comentarios?: ResumenComentarios | null;
   onCerrarJornada: (accion: NonNullable<AccionCierre>) => void;
   onAbrir: () => void;
   onFraccion: (f: FraccionStr) => void;
@@ -441,6 +475,7 @@ export function TarjetaAsignacion({
         cierre={cierre}
         vencidaSinParte={vencidaSinParte}
         candado={candado}
+        comentarios={comentarios}
       />
 
       {/* El menú no aparece mientras se guarda: todas sus opciones escriben, y con el id

@@ -18,6 +18,7 @@ import {
   Info,
   Lock,
   MapPin,
+  MessageSquare,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
@@ -34,6 +35,7 @@ import { fraccionLabel, repartirJornadas, FRACCIONES, type FraccionStr } from "@
 import { partesTitulo, normalizar, direccionDeObra } from "@/lib/tablero/titulo";
 import { lineaVentana } from "@/lib/tablero/ventana";
 import type { OtTablero } from "@/lib/tablero/tipos";
+import { tituloResumen, type ResumenComentarios } from "@/lib/tablero/tipos-comentario";
 
 // Panel lateral de obras sin asignar. Es una COLUMNA y no una franja horizontal
 // porque la tarjeta de obra es vertical por naturaleza: en la franja, la dirección
@@ -256,10 +258,13 @@ function lineaCompromiso(ot: OtTablero, hoy: string): { texto: string; alerta: b
 function TarjetaOt({
   obra,
   hoy,
+  comentarios,
   onDetalle,
 }: {
   obra: ObraPendiente;
   hoy: string;
+  /** Resumen del hilo de la obra. null = nadie comentó nada todavía. */
+  comentarios: ResumenComentarios | null;
   onDetalle: (ot: OtTablero) => void;
 }) {
   const { ot, duracion, totales, pendientes, cerradas, corregida } = obra;
@@ -329,10 +334,29 @@ function TarjetaOt({
                 por el ancho, y es lo que libera lugar para la dirección. */}
             <IconoTipo className="h-3.5 w-3.5 shrink-0" aria-hidden />
             {partes.numero ?? "OT"}
+            {/* Hay algo hablado con el cliente sobre esta obra. En la bandeja es donde
+                más pesa: acá se decide en qué día va, y "el encargado pidió el martes"
+                es exactamente lo que cambia esa decisión. El texto del último va en el
+                title; el hilo entero, en el panel. */}
+            {comentarios && (
+              <span
+                className="ml-auto flex shrink-0 items-center gap-px"
+                title={tituloResumen(comentarios)}
+              >
+                <MessageSquare className="h-3 w-3" aria-label="Tiene comentarios" />
+                {comentarios.cantidad > 1 && (
+                  <span className="text-[9px] font-semibold leading-none tabular-nums">
+                    {comentarios.cantidad}
+                  </span>
+                )}
+              </span>
+            )}
             {/* El semáforo sigue estando: dentro del grupo de listas conviven verde,
-                amarillo y gris, y la diferencia importa. */}
+                amarillo y gris, y la diferencia importa.
+                El `ml-auto` se lo lleva el globito cuando está: son los dos únicos de
+                este renglón que van pegados a la derecha, y dos empujes compiten. */}
             <span
-              className="ml-auto h-2 w-2 shrink-0 rounded-full"
+              className={`${comentarios ? "" : "ml-auto "}h-2 w-2 shrink-0 rounded-full`}
               style={{ backgroundColor: sem.color }}
               title={sem.label}
             />
@@ -513,6 +537,7 @@ function Grupo({
 export function PanelSinAsignar({
   ots,
   planificadas,
+  comentarios,
   hoy,
   colapsado,
   onColapsar,
@@ -522,6 +547,8 @@ export function PanelSinAsignar({
   ots: ObraPendiente[];
   /** Obras que ya están en la grilla, para el buscador. Sólo las del rango cargado. */
   planificadas: ObraPlanificada[];
+  /** Resumen del hilo de cada OT, resuelto de una sola consulta en el board. */
+  comentarios?: Map<number, ResumenComentarios>;
   /** Hoy en yyyy-MM-dd: define qué compromiso está vencido. */
   hoy: string;
   colapsado: boolean;
@@ -771,7 +798,7 @@ export function PanelSinAsignar({
             onToggle={() => {}}
           >
             {urgentes.map((obra) => (
-              <TarjetaOt key={obra.ot.id} obra={obra} hoy={hoy} onDetalle={onDetalle} />
+              <TarjetaOt key={obra.ot.id} obra={obra} hoy={hoy} comentarios={comentarios?.get(obra.ot.id) ?? null} onDetalle={onDetalle} />
             ))}
           </Grupo>
 
@@ -796,7 +823,7 @@ export function PanelSinAsignar({
             onToggle={() => {}}
           >
             {listas.map((obra) => (
-              <TarjetaOt key={obra.ot.id} obra={obra} hoy={hoy} onDetalle={onDetalle} />
+              <TarjetaOt key={obra.ot.id} obra={obra} hoy={hoy} comentarios={comentarios?.get(obra.ot.id) ?? null} onDetalle={onDetalle} />
             ))}
           </Grupo>
 
@@ -807,7 +834,7 @@ export function PanelSinAsignar({
             onToggle={() => setPendientesAbierto((v) => !v)}
           >
             {pendientesHab.map((obra) => (
-              <TarjetaOt key={obra.ot.id} obra={obra} hoy={hoy} onDetalle={onDetalle} />
+              <TarjetaOt key={obra.ot.id} obra={obra} hoy={hoy} comentarios={comentarios?.get(obra.ot.id) ?? null} onDetalle={onDetalle} />
             ))}
           </Grupo>
 

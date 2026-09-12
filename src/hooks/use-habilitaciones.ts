@@ -411,26 +411,6 @@ export function useVencimiento(otId: number) {
   });
 }
 
-/**
- * Las notas fijadas de una OT, para el panel del tablero y la ficha de la OT.
- *
- * No toca Odoo: abrir un panel no puede costar los ~800 ms de un RPC para mostrar dos
- * líneas de texto.
- */
-export function useNotasFijadas(otId: number | null) {
-  return useQuery({
-    queryKey: ["hab-notas-fijadas", otId],
-    queryFn: async () => {
-      const r = await pedir<{ notas: Record<string, Nota[]> }>(
-        `/api/habilitaciones/notas-fijadas?otIds=${otId}`,
-      );
-      return r.notas[String(otId)] ?? [];
-    },
-    enabled: !!otId,
-    staleTime: 60_000,
-  });
-}
-
 // ─── Candado del tablero ────────────────────────────────────────────────────
 
 /**

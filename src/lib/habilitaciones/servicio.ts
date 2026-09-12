@@ -16,6 +16,9 @@ import {
   escribirInputs, fetchOt, fetchOtsActivas, leerOt, otsExistentes, urlOdooOt, urlOdooVenta,
 } from "@/lib/odoo/habilitaciones";
 import { claveDe, crearAlertas } from "@/lib/alertas/servicio";
+import {
+  TABLA as TABLA_COMENTARIOS, borrarComentario, comentar, fijarComentario,
+} from "@/lib/comentarios-ot";
 import { derivarInputs, hoyISO, agruparBandeja, DIAS_DEDUP_CONSULTA } from "./derivacion";
 import type {
   Bandeja, EstadoRequisito, FichaHabilitacion, FilaBandeja, Gestion, InputsHabilitacion,
@@ -128,7 +131,7 @@ export async function fetchBandeja(db: DB): Promise<Bandeja> {
   const [otsOdoo, requisitos, notas] = await Promise.all([
     fetchOtsActivas(),
     db.from("hab_requisitos").select("odoo_ot_id, estado, nombre"),
-    db.from("hab_notas").select("odoo_ot_id, texto").eq("fijada", true),
+    db.from(TABLA_COMENTARIOS).select("odoo_ot_id, texto").eq("fijada", true),
   ]);
   if (requisitos.error) throw new Error(requisitos.error.message);
   if (notas.error) throw new Error(notas.error.message);
@@ -658,38 +661,16 @@ export async function borrarRequisito(db: DB, requisitoId: string): Promise<numb
 
 // ─── Notas ──────────────────────────────────────────────────────────────────
 
-export async function agregarNota(
-  db: DB, otId: number, texto: string, fijada: boolean, autorId: string | null,
-): Promise<void> {
-  const { error } = await db.from("hab_notas").insert({
-    odoo_ot_id: otId, texto, fijada, autor_id: autorId,
-  });
-  if (error) throw new Error(error.message);
-}
-
-export async function fijarNota(db: DB, notaId: string, fijada: boolean): Promise<void> {
-  const { error } = await db.from("hab_notas").update({ fijada }).eq("id", notaId);
-  if (error) throw new Error(error.message);
-}
-
-export async function borrarNota(db: DB, notaId: string): Promise<void> {
-  const { error } = await db.from("hab_notas").delete().eq("id", notaId);
-  if (error) throw new Error(error.message);
-}
-
-/** Las notas fijadas de varias OTs — las lee el panel del tablero. */
-export async function notasFijadasDe(db: DB, otIds: number[]): Promise<Map<number, Nota[]>> {
-  if (otIds.length === 0) return new Map();
-  const { data, error } = await db
-    .from("hab_notas").select("*").in("odoo_ot_id", otIds).eq("fijada", true)
-    .order("created_at", { ascending: false });
-  if (error) throw new Error(error.message);
-  const mapa = new Map<number, Nota[]>();
-  for (const n of (data ?? []) as Nota[]) {
-    mapa.set(n.odoo_ot_id, [...(mapa.get(n.odoo_ot_id) ?? []), n]);
-  }
-  return mapa;
-}
+// Las notas de la obra son los COMENTARIOS DE LA OT y viven en ot_comentarios, que este
+// módulo comparte con el panel del tablero: una obra tiene UNA conversación, no una por
+// pantalla. Las escrituras se delegan en src/lib/comentarios-ot.ts para que la tabla
+// tenga un solo dueño; acá se reexportan con los nombres que ya usan las rutas del
+// módulo.
+//
+// `notasFijadasDe` ya no existe: la usaba el panel del tablero para mostrar sólo lo
+// fijado, y de 20 notas cargadas había CERO fijadas — o sea, el panel nunca mostró una.
+// Ahora muestra el hilo entero y el pin sólo decide el orden.
+export { comentar as agregarNota, fijarComentario as fijarNota, borrarComentario as borrarNota };
 
 // ─── Sincronización con Odoo ────────────────────────────────────────────────
 

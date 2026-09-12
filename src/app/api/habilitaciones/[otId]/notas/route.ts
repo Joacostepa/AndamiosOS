@@ -3,12 +3,15 @@ import { z } from "zod";
 import { agregarNota, borrarNota, fetchGestionDe, fijarNota } from "@/lib/habilitaciones/servicio";
 import { errorResponse, invalido, parseOtId, sesion } from "../../_comun";
 
-// Notas de la obra.
+// Notas de la obra — que son los COMENTARIOS DE LA OT, en la tabla que este módulo
+// comparte con el tablero (ot_comentarios). Una obra tiene UNA conversación: lo que
+// Agustina anota acá es lo mismo que Operaciones lee en el panel de la tarjeta, y al
+// revés.
 //
 // LAS NOTAS SON DE LA OBRA, NO DE AGUSTINA: "el administrador sólo atiende martes y
 // jueves", "la nómina la piden con foto carnet de cada operario, si falta una rebotan
-// todo el paquete". Hoy eso vive en su cabeza y en su casilla de mail: si está de
-// licencia, se pierde. Por eso las fijadas se ven también desde el panel del tablero.
+// todo el paquete". Antes eso vivía en su cabeza y en su casilla de mail: si estaba de
+// licencia, se perdía.
 //
 // No tocan Odoo: son gestión pura, nadie las lee desde el ERP.
 
@@ -27,8 +30,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ otId: stri
   if (!parsed.success) return invalido(parsed.error.issues.map((i) => i.message).join(" · "));
 
   try {
-    const { db, userId } = await sesion();
-    await agregarNota(db, otId, parsed.data.texto, parsed.data.fijada ?? false, userId);
+    // El autor NO se pasa: lo pone el default de la columna (auth.uid()) y la política
+    // de RLS impide firmarlo con el nombre de otro. Ver src/lib/comentarios-ot.ts.
+    const { db } = await sesion();
+    await agregarNota(db, otId, parsed.data.texto, parsed.data.fijada ?? false);
     return NextResponse.json({ ok: true, gestion: await fetchGestionDe(db, otId) });
   } catch (e) {
     return errorResponse(e);

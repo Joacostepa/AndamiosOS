@@ -30,6 +30,7 @@ import { DialogoTarea, type ValoresTarea } from "./dialogo-tarea";
 import { DialogoCandado, type PedidoConfirmacion } from "./dialogo-candado";
 import { DialogoDestinoJornadas, type PedidoDestino } from "./dialogo-destino-jornadas";
 import { useCandado } from "@/hooks/use-habilitaciones";
+import { useResumenComentarios } from "@/hooks/use-comentarios-ot";
 import { usePlanJornadas, useFijarJornadasPlan } from "@/hooks/use-plan-jornadas";
 import { useNotasJornada } from "@/hooks/use-notas-jornada";
 import { useClima } from "@/hooks/use-clima";
@@ -633,6 +634,20 @@ export function TableroBoard() {
     });
   }, [bloquesPorClave, otsPorId, data]);
 
+  // ── Comentarios de la obra ────────────────────────────────────────────────
+  //
+  // Sólo el conteo y el último de cada OT, para el globito. El hilo entero lo pide el
+  // panel al abrirse. Una sola consulta a Supabase para todo lo que está en pantalla,
+  // igual que el candado y por el mismo motivo.
+  //
+  // INCLUYE LA BANDEJA y no sólo la grilla: es justo ahí donde "el cliente pidió el
+  // martes" cambia una decisión, porque es donde se decide en qué día va la obra.
+  const otIdsConHilo = useMemo(
+    () => [...new Set([...otIdsEnTablero, ...sinAsignar.map((o) => o.ot.id)])],
+    [otIdsEnTablero, sinAsignar],
+  );
+  const { data: comentarios } = useResumenComentarios(otIdsConHilo);
+
   const hoyISO = format(new Date(), "yyyy-MM-dd");
 
   // Lluvia y viento del encabezado. Igual que los feriados: marca visual y nada más, no
@@ -1226,6 +1241,7 @@ export function TableroBoard() {
                   });
                 }}
                 candados={otsBloqueadas}
+                comentarios={comentarios}
                 onQuitar={volverABandeja}
                 onCrearTarea={(cuadrillaId, fecha) => setTareaNueva({ cuadrillaId, fecha })}
                 onTareaHecha={(b, hecha) => actualizarTarea.mutate({ ids: b.ids, cambio: { hecha } })}
@@ -1243,6 +1259,7 @@ export function TableroBoard() {
           <PanelSinAsignar
             ots={sinAsignar}
             planificadas={planificadas}
+            comentarios={comentarios}
             hoy={hoyISO}
             colapsado={panelColapsado}
             onColapsar={colapsarPanel}

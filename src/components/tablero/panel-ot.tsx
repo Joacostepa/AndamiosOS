@@ -5,18 +5,18 @@ import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import {
   AlertTriangle, Building2, CalendarCheck, Construction, ExternalLink, Fence, FileText,
-  Hammer, HardHat, Phone, Pin, ShieldCheck, User, UserRound, Users, Clock, CalendarDays,
+  Hammer, HardHat, Phone, ShieldCheck, User, UserRound, Users, Clock, CalendarDays,
 } from "lucide-react";
 import { useDetalleOt } from "@/hooks/use-detalle-ot";
 import { HistorialConfirmacion } from "./historial-confirmacion";
-import { useNotasFijadas } from "@/hooks/use-habilitaciones";
+import { ComentariosOt } from "./comentarios-ot";
 import { ETAPA_LABEL, type HabEtapa } from "@/lib/habilitaciones/tipos";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  ALERTA, AVISO, CORAL, NOTA, PELIGRO, PELIGRO_SOLIDO, semaforo,
+  ALERTA, CORAL, NOTA, PELIGRO, PELIGRO_SOLIDO, semaforo,
 } from "@/lib/tablero/colores";
 import { fraccionLabel } from "@/lib/tablero/fracciones";
 import type { Bloque } from "@/lib/tablero/bloques";
@@ -94,32 +94,6 @@ function QueNecesita({ trabajo }: { trabajo: TrabajoOt | undefined }) {
       {trabajo.tipoLabel && (
         <p className="text-xs text-muted-foreground">{trabajo.tipoLabel}</p>
       )}
-    </div>
-  );
-}
-
-/**
- * Las notas fijadas de la habilitación, acá y no sólo en su módulo.
- *
- * "El administrador sólo atiende martes y jueves" es información que necesita quien
- * planifica, en el momento en que está por prometer una fecha. Encerrarla en
- * /habilitaciones es dejarla donde no sirve.
- */
-function NotasFijadas({ otId }: { otId: number }) {
-  const { data: notas } = useNotasFijadas(otId);
-  if (!notas?.length) return null;
-
-  return (
-    <div
-      className="space-y-1.5 rounded-md border p-2"
-      style={{ backgroundColor: AVISO.fondo, borderColor: AVISO.borde, color: AVISO.texto }}
-    >
-      {notas.map((n) => (
-        <div key={n.id} className="flex gap-2 text-sm">
-          <Pin className="mt-0.5 h-3.5 w-3.5 shrink-0" style={{ color: AVISO.icono }} />
-          <p className="whitespace-pre-wrap">{n.texto}</p>
-        </div>
-      ))}
     </div>
   );
 }
@@ -314,7 +288,11 @@ export function PanelOt({
 
               <QueNecesita trabajo={detalle?.trabajo} />
 
-              <NotasFijadas otId={ot.id} />
+              {/* EL HILO DE LA OBRA, arriba y no al pie del panel. Lo que Operaciones
+                  habló con el cliente —"entramos 8am el martes", "si llueve corre al
+                  jueves"— cambia lo que hay que hacer con la jornada, así que va con lo
+                  que hay que ejecutar y no entre los datos de contexto. */}
+              <ComentariosOt otId={ot.id} />
 
               {/* QUIÉN y DÓNDE, arriba de todo. Antes el panel no lo decía: el cliente
                   salía de partir el título de la OT, que no siempre lo trae —"Desarme ·

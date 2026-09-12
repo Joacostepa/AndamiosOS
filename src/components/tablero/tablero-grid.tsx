@@ -26,6 +26,7 @@ import type { FraccionStr } from "@/lib/tablero/fracciones";
 import { notasDe, notasDeCuadrilla } from "@/lib/tablero/tipos-nota";
 import type { Bloque } from "@/lib/tablero/bloques";
 import type { NotaJornada } from "@/lib/tablero/tipos-nota";
+import type { ResumenComentarios } from "@/lib/tablero/tipos-comentario";
 import type { ClimaDia } from "@/lib/clima/pronostico";
 import type { AsignacionTablero, CuadrillaTablero, OtTablero, ParteTablero } from "@/lib/tablero/tipos";
 
@@ -199,6 +200,7 @@ export function TableroGrid({
   onEstado,
   onQuitar,
   candados,
+  comentarios,
   clima,
   domingosAbiertos,
   onToggleDomingo,
@@ -279,6 +281,12 @@ export function TableroGrid({
    * frenar a Operaciones por un dato que depende de terceros. El freno está al confirmar.
    */
   candados?: Set<number>;
+  /**
+   * Resumen del hilo de cada OT, para el globito de la tarjeta. Llega resuelto para todo
+   * el tablero de una sola consulta: una por tarjeta serían cien viajes para dibujar un
+   * ícono de 12px.
+   */
+  comentarios?: Map<number, ResumenComentarios>;
   /**
    * Domingos habilitados a mano desde el encabezado, en yyyy-MM-dd. Se suman a los que ya
    * tienen trabajo asignado para decidir qué domingo se despliega. Vive en el board porque
@@ -841,6 +849,9 @@ export function TableroGrid({
                         }
                         accionCierre={accion}
                         candado={!bloque.tarea && (candados?.has(bloque.otId) ?? false)}
+                        // Una tarea de operaciones no tiene obra detrás, así que tampoco
+                        // tiene hilo: el globito ahí sería una promesa vacía.
+                        comentarios={bloque.tarea ? null : (comentarios?.get(bloque.otId) ?? null)}
                         onCerrarJornada={(a) => onCerrarJornada(bloque, a)}
                         onAbrir={() => onAbrirBloque(bloque)}
                         onFraccion={(f) => onFraccion(bloque, f)}

@@ -11,9 +11,14 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import type { Nota } from "@/lib/habilitaciones/tipos";
 
-// Notas de la obra — el MISMO hilo que el panel del tablero muestra como "Comentarios".
-// Una obra tiene una sola conversación: lo que se anota acá lo lee Operaciones en la
-// tarjeta, y lo que Operaciones habla con el cliente se lee acá.
+// Notas de la obra, del lado de la HABILITACIÓN: el trámite de papeles con el cliente.
+//
+// NO es el hilo que Operaciones ve en la tarjeta del tablero. Comparten tabla
+// (ot_comentarios) y se separan por `ambito`, porque son dos conversaciones con dos
+// interlocutores: acá se habla con el área de SyH del cliente sobre qué papeles pide y
+// si los aprobó; allá se habla con quien está en la obra sobre cuándo y cómo se entra.
+// Estuvieron juntas un día y el resultado fue un panel de tablero con 19 líneas de
+// trámite y una sola útil.
 //
 // LAS NOTAS SON DE LA OBRA, NO DE AGUSTINA. Son cosas como "el administrador sólo
 // atiende martes y jueves" o "la nómina la piden con foto carnet de cada operario, si
@@ -117,7 +122,7 @@ export function NotasObra({ otId, notas }: { otId: number; notas: Nota[] }) {
             variant="outline"
             onClick={() => guardar(true)}
             disabled={!texto.trim() || agregar.isPending}
-            title="Queda arriba de todo, acá y en el panel del tablero"
+            title="Queda arriba de todo en esta lista"
           >
             <Pin className="mr-1 h-3.5 w-3.5" />
             Agregar y fijar

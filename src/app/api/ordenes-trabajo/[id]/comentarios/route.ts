@@ -5,7 +5,15 @@ import {
   borrarComentario, comentar, comentariosDeOt, fijarComentario,
 } from "@/lib/comentarios-ot";
 
-// El hilo de una OT: GET lo lee, POST agrega, PATCH fija, DELETE borra.
+const AMBITO = "operaciones" as const;
+
+// El hilo de OPERACIONES de una OT: GET lo lee, POST agrega, PATCH fija, DELETE borra.
+//
+// EL ÁMBITO ESTÁ CLAVADO ACÁ Y NO LLEGA POR EL BODY. Es la propiedad de esta ruta, no una
+// opción de quien llama: desde el tablero se escriben comentarios de operaciones y nunca
+// otra cosa. Si viniera por parámetro, alcanzaría un bug en el cliente para volver a
+// meter el expediente de la habilitación adentro del panel — que es justo de lo que este
+// módulo viene de salir.
 //
 // Todas trabajan con la SESIÓN del usuario y no con la service role: las políticas de
 // RLS de ot_comentarios son las que garantizan que el autor sea quien dice ser y que
@@ -41,7 +49,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
 
   try {
     const { db } = await sesion();
-    return NextResponse.json({ comentarios: await comentariosDeOt(db, otId) });
+    return NextResponse.json({ comentarios: await comentariosDeOt(db, otId, AMBITO) });
   } catch (e) {
     return error(e);
   }
@@ -69,8 +77,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   try {
     const { db, user } = await sesion();
     if (!user) return NextResponse.json({ error: "Sin sesión" }, { status: 401 });
-    await comentar(db, otId, parsed.data.texto, parsed.data.fijado ?? false);
-    return NextResponse.json({ comentarios: await comentariosDeOt(db, otId) });
+    await comentar(db, otId, parsed.data.texto, AMBITO, parsed.data.fijado ?? false);
+    return NextResponse.json({ comentarios: await comentariosDeOt(db, otId, AMBITO) });
   } catch (e) {
     return error(e);
   }
@@ -88,7 +96,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   try {
     const { db } = await sesion();
     await fijarComentario(db, parsed.data.id, parsed.data.fijado);
-    return NextResponse.json({ comentarios: await comentariosDeOt(db, otId) });
+    return NextResponse.json({ comentarios: await comentariosDeOt(db, otId, AMBITO) });
   } catch (e) {
     return error(e);
   }
@@ -106,7 +114,7 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: stri
   try {
     const { db } = await sesion();
     await borrarComentario(db, parsed.data.id);
-    return NextResponse.json({ comentarios: await comentariosDeOt(db, otId) });
+    return NextResponse.json({ comentarios: await comentariosDeOt(db, otId, AMBITO) });
   } catch (e) {
     // Que la RLS no haya dejado borrar no es una falla del servidor: es la regla de que
     // el comentario ajeno no se toca, y al usuario le tiene que llegar como tal. Un 502

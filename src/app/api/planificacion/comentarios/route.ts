@@ -21,7 +21,9 @@ export async function GET(req: NextRequest) {
 
   try {
     const db = await createClient();
-    const mapa = await resumenComentarios(db, otIds);
+    // Sólo los de operaciones: el globito de la tarjeta no puede prender por una nota
+    // de trámite que quien planifica no va a leer ni le sirve.
+    const mapa = await resumenComentarios(db, otIds, "operaciones");
     return NextResponse.json({ resumen: Object.fromEntries(mapa) });
   } catch (e) {
     return NextResponse.json(

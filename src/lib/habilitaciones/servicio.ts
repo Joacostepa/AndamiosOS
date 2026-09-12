@@ -131,7 +131,7 @@ export async function fetchBandeja(db: DB): Promise<Bandeja> {
   const [otsOdoo, requisitos, notas] = await Promise.all([
     fetchOtsActivas(),
     db.from("hab_requisitos").select("odoo_ot_id, estado, nombre"),
-    db.from(TABLA_COMENTARIOS).select("odoo_ot_id, texto").eq("fijada", true),
+    db.from(TABLA_COMENTARIOS).select("odoo_ot_id, texto").eq("ambito", "habilitacion").eq("fijada", true),
   ]);
   if (requisitos.error) throw new Error(requisitos.error.message);
   if (notas.error) throw new Error(notas.error.message);
@@ -661,16 +661,27 @@ export async function borrarRequisito(db: DB, requisitoId: string): Promise<numb
 
 // ─── Notas ──────────────────────────────────────────────────────────────────
 
-// Las notas de la obra son los COMENTARIOS DE LA OT y viven en ot_comentarios, que este
-// módulo comparte con el panel del tablero: una obra tiene UNA conversación, no una por
-// pantalla. Las escrituras se delegan en src/lib/comentarios-ot.ts para que la tabla
-// tenga un solo dueño; acá se reexportan con los nombres que ya usan las rutas del
-// módulo.
+// Las notas de la obra viven en ot_comentarios, la misma tabla que el panel del tablero,
+// pero en OTRO ÁMBITO: acá es 'habilitacion' y allá 'operaciones'. Son dos conversaciones
+// sobre la misma OT con dos interlocutores distintos — con el área de SyH del cliente por
+// los papeles, y con quien está en la obra por la jornada— y compartieron hilo durante un
+// día. El panel del tablero terminó mostrando 19 líneas de trámite y una sola útil.
+//
+// La tabla tiene UN SOLO DUEÑO (src/lib/comentarios-ot.ts) y este módulo la usa a través
+// de él. El ámbito se clava acá, no lo eligen las rutas: que una ruta pueda decidir en
+// qué conversación escribe es exactamente cómo se vuelven a mezclar.
 //
 // `notasFijadasDe` ya no existe: la usaba el panel del tablero para mostrar sólo lo
 // fijado, y de 20 notas cargadas había CERO fijadas — o sea, el panel nunca mostró una.
-// Ahora muestra el hilo entero y el pin sólo decide el orden.
-export { comentar as agregarNota, fijarComentario as fijarNota, borrarComentario as borrarNota };
+// Ahora cada pantalla muestra su hilo entero y el pin sólo decide el orden.
+
+const AMBITO_HAB = "habilitacion" as const;
+
+export function agregarNota(db: DB, otId: number, texto: string, fijada: boolean) {
+  return comentar(db, otId, texto, AMBITO_HAB, fijada);
+}
+
+export { fijarComentario as fijarNota, borrarComentario as borrarNota };
 
 // ─── Sincronización con Odoo ────────────────────────────────────────────────
 

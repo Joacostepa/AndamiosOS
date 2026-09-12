@@ -3,10 +3,10 @@ import { z } from "zod";
 import { agregarNota, borrarNota, fetchGestionDe, fijarNota } from "@/lib/habilitaciones/servicio";
 import { errorResponse, invalido, parseOtId, sesion } from "../../_comun";
 
-// Notas de la obra — que son los COMENTARIOS DE LA OT, en la tabla que este módulo
-// comparte con el tablero (ot_comentarios). Una obra tiene UNA conversación: lo que
-// Agustina anota acá es lo mismo que Operaciones lee en el panel de la tarjeta, y al
-// revés.
+// Notas de la obra, ámbito HABILITACIÓN. Comparten tabla con los comentarios que
+// Operaciones escribe en el tablero (ot_comentarios) y se separan por `ambito`: son dos
+// conversaciones con dos interlocutores distintos. El ámbito lo clava el servicio, no
+// esta ruta — ver src/lib/habilitaciones/servicio.ts.
 //
 // LAS NOTAS SON DE LA OBRA, NO DE AGUSTINA: "el administrador sólo atiende martes y
 // jueves", "la nómina la piden con foto carnet de cada operario, si falta una rebotan

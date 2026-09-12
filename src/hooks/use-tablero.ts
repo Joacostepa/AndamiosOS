@@ -210,6 +210,8 @@ export function useCrearAsignaciones() {
         notas: a.notas ?? null,
         // Una asignación recién creada nunca nace cerrada.
         parteId: null,
+        // Ni fija: se planifica primero y se clava después, si hay motivo.
+        motivoFija: null,
       }));
       const ctx = await aplicarOptimista(qc, (data) => ({
         ...data,
@@ -412,6 +414,8 @@ export function useCrearTarea() {
         ordenDia: tarea.ordenDia ?? 0,
         notas: tarea.notas ?? null,
         parteId: null,
+        // Ver mapear() en src/lib/tablero/tareas.ts: una tarea todavía no se puede fijar.
+        motivoFija: null,
       }));
       // Sin tocar `progreso`: eso cuenta jornadas de OBRAS y una tarea no es una.
       return aplicarOptimista(qc, (data) => ({

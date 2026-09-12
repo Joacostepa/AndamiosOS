@@ -9,7 +9,9 @@
 import { format, isToday, isYesterday, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 
-export const ACCIONES = ["crear", "mover", "fraccion", "cuadrilla", "quitar"] as const;
+export const ACCIONES = [
+  "crear", "mover", "fraccion", "cuadrilla", "quitar", "fijar", "soltar",
+] as const;
 export type AccionMovimiento = (typeof ACCIONES)[number];
 
 /**
@@ -25,6 +27,12 @@ export type EstadoBloque = {
   cuadrillaNombre: string | null;
   /** Fracción de jornada (1 = completa). Sólo cuando el gesto la toca o la crea. */
   fraccion?: number;
+  /**
+   * Por qué el bloque no se desplazaba. Viaja en el registro —y no se resuelve contra
+   * Odoo al leerlo— porque el motivo se borra al soltar la obra: si no queda acá, el
+   * historial no puede decir por qué había estado fija.
+   */
+  motivoFija?: string | null;
 };
 
 export type Movimiento = {
@@ -153,6 +161,22 @@ export function fraseMovimiento(m: Movimiento): string {
       const n = antes?.fechas.length ?? 0;
       return `Quitó del tablero ${rango(antes?.fechas ?? [])}${n > 1 ? ` · ${n} jornadas` : ""}`;
     }
+
+    // EL MOTIVO VA EN LA FRASE, no escondido en un tooltip: es todo el contenido del
+    // gesto. "Fijó Callao 1810" no dice nada; "Fijó Callao 1810 — grúa alquilada" es
+    // justo lo que alguien necesita leer tres días después, cuando llueve y hay que
+    // decidir si esa obra sale igual.
+    case "fijar":
+      return `Fijó ${rango(despues?.fechas ?? [])}${
+        despues?.motivoFija ? ` — ${despues.motivoFija}` : ""
+      }`;
+
+    // Al soltar el motivo se borra, así que el único lugar donde queda escrito es este
+    // registro. Por eso se muestra el de ANTES: es la respuesta a "¿por qué estaba fija?".
+    case "soltar":
+      return `Soltó ${rango(antes?.fechas ?? [])}${
+        antes?.motivoFija ? ` · estaba fija: ${antes.motivoFija}` : ""
+      }`;
   }
 }
 

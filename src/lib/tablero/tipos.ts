@@ -153,6 +153,25 @@ export type AsignacionTablero = {
   notas: string | null;
   /** Parte diario del cierre. Si tiene valor, la jornada ya se cerró. */
   parteId: number | null;
+  /**
+   * Por qué esta jornada NO se desplaza: "la grúa está alquilada", "el evento es el
+   * sábado", "el consorcio abre sólo ese día". Con texto está fija; null, no.
+   *
+   * ES UN SOLO CAMPO Y NO UN PAR booleano+motivo a propósito: el motivo es obligatorio,
+   * así que "fija sin motivo" y "motivo colgado en una obra ya soltada" son estados que
+   * sólo pueden existir para estar mal.
+   *
+   * VA EN LA JORNADA Y NO EN LA OT. Una obra de 3 horas es una sola asignación de ¼, y
+   * fijarla no toca el resto de lo que la cuadrilla tiene ese día. Si viviera en la OT,
+   * fijar una obra de 8 jornadas congelaría las ocho, y el día que llueve en la jornada 3
+   * las jornadas 4 a 8 quedarían clavadas en un plan que tampoco se puede ejecutar.
+   *
+   * NO ES LO MISMO QUE `estado`. Confirmada es "esta fecha se le prometió al cliente";
+   * fija es "esta fecha no se puede cambiar ni aunque llueva". Una obra confirmada se
+   * corre igual cuando se suspende el día —hay que avisarle al cliente, nada más—; una
+   * fija se queda y obliga a que alguien decida.
+   */
+  motivoFija: string | null;
 };
 
 /** Alta de una tarjeta de operaciones. Una fila por día. */
@@ -380,6 +399,8 @@ export type CambioAsignacion = {
   estado?: EstadoAsignacion;
   ordenDia?: number;
   notas?: string | null;
+  /** Texto = fijar a este día; null = soltar. */
+  motivoFija?: string | null;
 };
 
 export type MovimientoAsignacion = {

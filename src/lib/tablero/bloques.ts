@@ -88,6 +88,16 @@ export type Bloque = {
   estado: EstadoAsignacion;
   ordenDia: number;
   notas: string | null;
+  /**
+   * Por qué el bloque no se desplaza, o null si se puede mover. Es el motivo del primer
+   * día que lo tenga.
+   *
+   * NO CORTA EL BLOQUE, a diferencia de la fracción. Hoy se fija la tarjeta entera —el
+   * menú no ofrece otra cosa— así que un bloque con unos días fijos y otros no todavía no
+   * existe. Si mañana se fija un solo día (el campo lo soporta), la tarjeta entera queda
+   * trabada: es el error seguro, no el peligroso, y se arregla cortando acá.
+   */
+  motivoFija: string | null;
   multiDia: boolean;
 };
 
@@ -135,6 +145,9 @@ export function agruparBloques(asignaciones: AsignacionTablero[]): Bloque[] {
         estado: tramo.every((t) => t.estado === "confirmada") ? "confirmada" : "tentativa",
         ordenDia: primera.ordenDia,
         notas: primera.notas,
+        // Alcanza con que UN día esté fijo para que la tarjeta no se arrastre: moverla
+        // movería ese día también.
+        motivoFija: tramo.find((t) => t.motivoFija)?.motivoFija ?? null,
         multiDia: tramo.length > 1,
       });
       tramo = [];

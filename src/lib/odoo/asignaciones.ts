@@ -87,7 +87,7 @@ const OT_FIELDS = [
   "x_instrucciones_ids",
 ];
 
-const ASIG_FIELDS = ["id", "x_ot_id", "x_fecha", "x_cuadrilla_id", "x_fraccion", "x_estado", "x_orden_dia", "x_notas", "x_parte_id"];
+const ASIG_FIELDS = ["id", "x_ot_id", "x_fecha", "x_cuadrilla_id", "x_fraccion", "x_estado", "x_orden_dia", "x_notas", "x_parte_id", "x_motivo_fija"];
 
 type OdooOtRow = {
   id: number;
@@ -131,6 +131,7 @@ type OdooAsigRow = {
   x_orden_dia: number | false;
   x_notas: string | false;
   x_parte_id: M2O;
+  x_motivo_fija: string | false;
 };
 
 /**
@@ -226,6 +227,7 @@ function mapAsig(row: OdooAsigRow): AsignacionTablero {
     ordenDia: num(row.x_orden_dia),
     notas: str(row.x_notas),
     parteId: m2oId(row.x_parte_id),
+    motivoFija: str(row.x_motivo_fija),
   };
 }
 
@@ -522,6 +524,9 @@ export async function actualizarAsignaciones(ids: number[], cambio: CambioAsigna
   if (cambio.estado !== undefined) values.x_estado = cambio.estado;
   if (cambio.ordenDia !== undefined) values.x_orden_dia = cambio.ordenDia;
   if (cambio.notas !== undefined) values.x_notas = cambio.notas ?? false;
+  // Con texto queda fija; con null se suelta. El `?? false` es el "vacío" de Odoo, que
+  // para un char no es "" sino false — un "" pasaría a contar como fija.
+  if (cambio.motivoFija !== undefined) values.x_motivo_fija = cambio.motivoFija || false;
   if (Object.keys(values).length === 0) return;
   await write("x_aba_asignacion", ids, values);
 }

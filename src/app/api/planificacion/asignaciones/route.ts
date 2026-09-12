@@ -60,6 +60,7 @@ const estadoBloqueSchema = z.object({
   cuadrillaId: z.number().int().positive().nullable(),
   cuadrillaNombre: z.string().nullable(),
   fraccion: z.number().positive().optional(),
+  motivoFija: z.string().nullable().optional(),
 });
 
 const registroSchema = z.object({
@@ -102,6 +103,9 @@ const actualizarSchema = z.object({
       estado: estado.optional(),
       ordenDia: z.number().int().min(0).optional(),
       notas: z.string().nullable().optional(),
+      // El tope es el mismo que el `size` del campo en Odoo: si acá entrara más, Odoo lo
+      // cortaría en silencio y el motivo que se guarda no sería el que se escribió.
+      motivoFija: z.string().max(300).nullable().optional(),
     })
     .refine((c) => Object.keys(c).length > 0, "Nada para actualizar"),
   /**

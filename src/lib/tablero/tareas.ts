@@ -56,6 +56,13 @@ function mapear(f: Fila): AsignacionTablero {
     notas: f.notas,
     // No hay parte diario: el cierre de una tarea es el booleano `hecha`.
     parteId: null,
+    // UNA TAREA NUNCA ES FIJA, por ahora. El motivo vive en x_aba_asignacion, que es de
+    // Odoo, y una tarea vive en Supabase (tablero_tareas): fijarlas pide una columna más
+    // de este lado. No se agregó porque el caso que motivó todo esto —la lluvia— casi no
+    // las toca: depósito y mantenimiento se hacen igual, y para eso alcanza con destildar
+    // la cuadrilla al correr el día. Si algún traslado resulta que sí o sí va tal fecha,
+    // la salida es `motivo_fija TEXT` acá y el mismo diálogo.
+    motivoFija: null,
   };
 }
 

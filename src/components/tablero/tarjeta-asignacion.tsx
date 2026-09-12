@@ -33,7 +33,7 @@ import { partesTitulo, direccionDeObra } from "@/lib/tablero/titulo";
 import { jornadasLiberables } from "@/lib/tablero/cierre";
 import type { Bloque, Colocacion } from "@/lib/tablero/bloques";
 import { tipoTareaLabel, type OtTablero } from "@/lib/tablero/tipos";
-import { tituloResumen, type ResumenComentarios } from "@/lib/tablero/tipos-comentario";
+import { tituloResumen, type ResumenEnTarjeta } from "@/lib/tablero/tipos-comentario";
 
 /** Cierre de la jornada visible en la tarjeta. */
 export type EstadoCierre = {
@@ -121,7 +121,7 @@ export function ContenidoTarjeta({
    * segundo renglón ya lo tienen tomado el cliente y el técnico. El texto del último va
    * en el `title`, que es gratis en ancho y suficiente para decidir si abrir el panel.
    */
-  comentarios?: ResumenComentarios | null;
+  comentarios?: ResumenEnTarjeta | null;
   /**
    * La tarjeta es demasiado baja para dos renglones: se queda sólo con el de arriba.
    *
@@ -229,20 +229,40 @@ export function ContenidoTarjeta({
             aria-label="El cliente pidió esperar el permiso emitido"
           />
         )}
-        {/* Hay algo hablado con el cliente sobre esta obra. No es una alerta: va en el
-            color del tipo, como las flechas de continuidad, y no en ámbar ni rojo — esos
-            dos canales ya significan otra cosa en esta tarjeta y sumarles un tercer uso
-            los vacía. El contador sólo cuando hay más de uno: "1" al lado del globito no
-            agrega nada y gasta el ancho de la dirección. */}
+        {/* Hay algo hablado con el cliente sobre esta obra.
+            VA EN EL COLOR DEL TIPO y no en ámbar ni rojo: esos dos canales ya significan
+            otra cosa en esta tarjeta —urgencia y jornada no ejecutada— y sumarles un
+            tercer uso los vacía a los tres. El chip es un tinte del mismo color del
+            texto, igual que el borde de la tarjeta confirmada.
+            DOS PESOS, no uno. Leído: chip quieto, que dice "acá hay algo escrito". Sin
+            leer: late (ver .tb-comentario-nuevo en globals.css) y se apaga en cuanto
+            alguien abre el panel. Un chip que late para siempre se vuelve parte del
+            fondo, y entonces el día que trae algo tampoco se mira.
+            El contador sólo con más de uno: un "1" al lado del globito no agrega nada y
+            gasta el ancho que necesita la dirección. */}
         {comentarios && (
           <span
-            className="flex shrink-0 items-center gap-px self-center"
+            className="relative flex shrink-0 items-center gap-px self-center rounded-[3px] px-[3px] py-[1px]"
             style={{ color: colorTexto }}
             title={tituloResumen(comentarios)}
           >
-            <MessageSquare className="h-3 w-3" aria-label="Tiene comentarios" />
+            {/* El relleno va en su propia capa para poder latirle la opacidad sin
+                arrastrar el ícono ni el número. Leído queda quieto en 0,14; sin leer
+                respira entre 0,14 y 0,42 — los dos estados son el mismo chip con
+                distinta intensidad, no dos cosas distintas. */}
+            <span
+              aria-hidden
+              className={cn(
+                "absolute inset-0 rounded-[3px] bg-current",
+                comentarios.sinLeer ? "tb-comentario-nuevo" : "opacity-[0.14]",
+              )}
+            />
+            <MessageSquare
+              className="relative h-3 w-3"
+              aria-label={comentarios.sinLeer ? "Comentarios sin leer" : "Tiene comentarios"}
+            />
             {comentarios.cantidad > 1 && (
-              <span className="text-[9px] font-semibold leading-none tabular-nums">
+              <span className="relative text-[9px] font-semibold leading-none tabular-nums">
                 {comentarios.cantidad}
               </span>
             )}
@@ -374,7 +394,7 @@ export function TarjetaAsignacion({
   /** El cliente pidió esperar el permiso emitido. Avisa; no impide arrastrar. */
   candado?: boolean;
   /** Resumen del hilo de la obra, para el globito. null = no tiene comentarios. */
-  comentarios?: ResumenComentarios | null;
+  comentarios?: ResumenEnTarjeta | null;
   onCerrarJornada: (accion: NonNullable<AccionCierre>) => void;
   onAbrir: () => void;
   onFraccion: (f: FraccionStr) => void;

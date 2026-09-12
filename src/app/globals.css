@@ -372,6 +372,53 @@
     @apply font-sans;
   }
 }
+/* ── Comentario sin leer, en la tarjeta del tablero ──────────────────────────
+ *
+ * El chip del globito late mientras hay algo escrito que quien mira todavía no abrió.
+ * Se apaga solo al abrir el panel de esa obra: una animación que no termina nunca deja
+ * de significar nada en dos días, y entonces el día que sí importa tampoco se mira.
+ *
+ * LATE EL FONDO Y NO EL TAMAÑO. La tarjeta es `overflow-hidden` y puede medir 18px de
+ * alto: un halo que se expande —el `ping` de manual— queda recortado contra el borde y
+ * se ve como un parpadeo sucio. Cambiar la opacidad del relleno se queda adentro de la
+ * caja del chip y se lee igual de bien a ese tamaño.
+ *
+ * LO QUE LATE ES UNA CAPA APARTE, con `background-color: currentColor`, y lo que se anima
+ * es su OPACIDAD. La primera versión animaba el `background-color` del chip entre dos
+ * `color-mix(… currentColor …)`, que es más corto de escribir y más frágil de lo que
+ * parece: cuándo se resuelve `currentColor` adentro de un keyframe depende del motor, y
+ * un navegador que lo resuelva mal deja el chip sin fondo o parpadeando en negro. La
+ * opacidad interpola igual en todos lados.
+ *
+ * currentColor —y no un token— para que el chip herede el color del TIPO de la OT: el
+ * latido sale azul en un armado y bordó en un desarme sin pasarle nada. No estrena ningún
+ * par (fondo, texto), así que no hay nada que registrar en scripts/contraste-tablero.mjs.
+ *
+ * 2,2s y no medio segundo: es una respiración, no una alarma. Al lado del triángulo de
+ * urgencia y del candado, un parpadeo rápido convertiría la tarjeta en una consola. */
+@keyframes tb-latido-comentario {
+  0%,
+  100% {
+    opacity: 0.14;
+  }
+  50% {
+    opacity: 0.42;
+  }
+}
+
+.tb-comentario-nuevo {
+  animation: tb-latido-comentario 2.2s ease-in-out infinite;
+}
+
+/* Quien pidió menos movimiento igual tiene que ver que hay algo sin leer: se queda con
+ * el relleno fuerte, que es el pico del latido, sin el latido. */
+@media (prefers-reduced-motion: reduce) {
+  .tb-comentario-nuevo {
+    animation: none;
+    opacity: 0.42;
+  }
+}
+
 /* ── Recorrido guiado (driver.js) ────────────────────────────────────────────
  *
  * El popover viene con estilos propios que no saben nada del tema de la app: en modo

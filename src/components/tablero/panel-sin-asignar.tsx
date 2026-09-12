@@ -35,7 +35,7 @@ import { fraccionLabel, repartirJornadas, FRACCIONES, type FraccionStr } from "@
 import { partesTitulo, normalizar, direccionDeObra } from "@/lib/tablero/titulo";
 import { lineaVentana } from "@/lib/tablero/ventana";
 import type { OtTablero } from "@/lib/tablero/tipos";
-import { tituloResumen, type ResumenComentarios } from "@/lib/tablero/tipos-comentario";
+import { tituloResumen, type ResumenEnTarjeta } from "@/lib/tablero/tipos-comentario";
 
 // Panel lateral de obras sin asignar. Es una COLUMNA y no una franja horizontal
 // porque la tarjeta de obra es vertical por naturaleza: en la franja, la dirección
@@ -264,7 +264,7 @@ function TarjetaOt({
   obra: ObraPendiente;
   hoy: string;
   /** Resumen del hilo de la obra. null = nadie comentó nada todavía. */
-  comentarios: ResumenComentarios | null;
+  comentarios: ResumenEnTarjeta | null;
   onDetalle: (ot: OtTablero) => void;
 }) {
   const { ot, duracion, totales, pendientes, cerradas, corregida } = obra;
@@ -340,12 +340,24 @@ function TarjetaOt({
                 title; el hilo entero, en el panel. */}
             {comentarios && (
               <span
-                className="ml-auto flex shrink-0 items-center gap-px"
+                className="relative ml-auto flex shrink-0 items-center gap-px rounded-[3px] px-[3px] py-[1px]"
                 title={tituloResumen(comentarios)}
               >
-                <MessageSquare className="h-3 w-3" aria-label="Tiene comentarios" />
+                {/* El mismo chip de la grilla, pieza por pieza: un objeto se ve igual en
+                    todas las superficies, que es la regla del módulo. El color lo hereda
+                    del renglón, que ya viene pintado con el del tipo. */}
+                <span
+                  aria-hidden
+                  className={`absolute inset-0 rounded-[3px] bg-current ${
+                    comentarios.sinLeer ? "tb-comentario-nuevo" : "opacity-[0.14]"
+                  }`}
+                />
+                <MessageSquare
+                  className="relative h-3 w-3"
+                  aria-label={comentarios.sinLeer ? "Comentarios sin leer" : "Tiene comentarios"}
+                />
                 {comentarios.cantidad > 1 && (
-                  <span className="text-[9px] font-semibold leading-none tabular-nums">
+                  <span className="relative text-[9px] font-semibold leading-none tabular-nums">
                     {comentarios.cantidad}
                   </span>
                 )}
@@ -548,7 +560,7 @@ export function PanelSinAsignar({
   /** Obras que ya están en la grilla, para el buscador. Sólo las del rango cargado. */
   planificadas: ObraPlanificada[];
   /** Resumen del hilo de cada OT, resuelto de una sola consulta en el board. */
-  comentarios?: Map<number, ResumenComentarios>;
+  comentarios?: Map<number, ResumenEnTarjeta>;
   /** Hoy en yyyy-MM-dd: define qué compromiso está vencido. */
   hoy: string;
   colapsado: boolean;

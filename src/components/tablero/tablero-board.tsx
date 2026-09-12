@@ -31,6 +31,8 @@ import { DialogoCandado, type PedidoConfirmacion } from "./dialogo-candado";
 import { DialogoDestinoJornadas, type PedidoDestino } from "./dialogo-destino-jornadas";
 import { useCandado } from "@/hooks/use-habilitaciones";
 import { useResumenComentarios } from "@/hooks/use-comentarios-ot";
+import { haySinLeer, leerVistos, marcarVisto, type Vistos } from "@/lib/tablero/comentarios-vistos";
+import type { ResumenEnTarjeta } from "@/lib/tablero/tipos-comentario";
 import { usePlanJornadas, useFijarJornadasPlan } from "@/hooks/use-plan-jornadas";
 import { useNotasJornada } from "@/hooks/use-notas-jornada";
 import { useClima } from "@/hooks/use-clima";
@@ -646,7 +648,56 @@ export function TableroBoard() {
     () => [...new Set([...otIdsEnTablero, ...sinAsignar.map((o) => o.ot.id)])],
     [otIdsEnTablero, sinAsignar],
   );
-  const { data: comentarios } = useResumenComentarios(otIdsConHilo);
+  const { data: resumenComentarios } = useResumenComentarios(otIdsConHilo);
+
+  // Qué comentarios ya miró quien está sentado acá. Se lee en el inicializador y no en un
+  // efecto, igual que `panelColapsado`: leerlo después haría que el tablero se pinte una
+  // vez con todo quieto y enseguida arranque a latir, que es un destello en cada carga.
+  const [vistos, setVistos] = useState<Vistos>(leerVistos);
+
+  /** El resumen con el estado de lectura resuelto, que es lo que baja a las tarjetas. */
+  const comentarios = useMemo(() => {
+    const mapa = new Map<number, ResumenEnTarjeta>();
+    for (const [otId, r] of resumenComentarios ?? []) {
+      mapa.set(otId, { ...r, sinLeer: haySinLeer(vistos, otId, r.ultimo.createdAt) });
+    }
+    return mapa;
+  }, [resumenComentarios, vistos]);
+
+  /**
+   * Abrir el panel de una obra es haber visto sus comentarios: ahí se apaga el latido.
+   *
+   * MARCA HASTA AHORA y no hasta el último que conoce el resumen. Si marcara el último
+   * conocido, el comentario que acabás de escribir vos haría latir tu propia tarjeta: el
+   * resumen todavía trae el de antes. "Miré esta obra a las 14:32" deja adentro todo lo
+   * escrito hasta las 14:32, tuyo incluido, y deja afuera lo que llegue después.
+   *
+   * El `max` con lo que ya sabemos cubre el reloj del navegador atrasado respecto del de
+   * la base, que es de donde sale created_at.
+   */
+  const marcarLeida = useCallback(
+    (otId: number) => {
+      const ultimo = resumenComentarios?.get(otId)?.ultimo.createdAt ?? "";
+      const ahora = new Date().toISOString();
+      setVistos((previos) => marcarVisto(previos, otId, ahora > ultimo ? ahora : ultimo));
+    },
+    [resumenComentarios],
+  );
+
+  /** Abre el panel de una obra y da sus comentarios por leídos. */
+  const abrirPanel = useCallback(
+    (otId: number, bloqueKey: string | null) => {
+      setPanel({ otId, bloqueKey });
+      marcarLeida(otId);
+    },
+    [marcarLeida],
+  );
+
+  /** Cierra el panel. Vuelve a marcar por lo que se haya escrito con el panel abierto. */
+  const cerrarPanel = useCallback(() => {
+    if (panel) marcarLeida(panel.otId);
+    setPanel(null);
+  }, [panel, marcarLeida]);
 
   const hoyISO = format(new Date(), "yyyy-MM-dd");
 
@@ -1153,7 +1204,7 @@ export function TableroBoard() {
                 // planificar— y el formulario del parte es el que alimenta el costo de mano
                 // de obra. Con dos lugares para cargarlo, terminan divergiendo.
                 onCerrarJornada={(b, accion: NonNullable<AccionCierre>) => {
-                  setPanel(null);
+                  cerrarPanel();
                   // CREAR un parte se hace sólo en el listado. VER o corregir uno ya
                   // cargado sigue abriendo el formulario acá: el listado todavía no edita,
                   // y mandar a una pantalla que no puede hacer el trabajo es peor que
@@ -1177,7 +1228,7 @@ export function TableroBoard() {
                   // Una tarea no tiene ficha en Odoo que mostrar: el clic abre su propio
                   // diálogo, que es el único lugar donde vive.
                   if (b.origen === "tarea") return setTareaEnEdicion(b);
-                  setPanel({ otId: b.otId, bloqueKey: b.key });
+                  abrirPanel(b.otId, b.key);
                 }}
                 onFraccion={(b, f: FraccionStr) =>
                   b.origen === "tarea"
@@ -1265,7 +1316,7 @@ export function TableroBoard() {
             onColapsar={colapsarPanel}
             onDetalle={(ot) => {
               if (cierre) return;
-              setPanel({ otId: ot.id, bloqueKey: null });
+              abrirPanel(ot.id, null);
             }}
             onIrABloque={(bloqueKey, fecha) => {
               setResaltado({ key: bloqueKey, desde: Date.now() });
@@ -1500,7 +1551,7 @@ export function TableroBoard() {
             : null
         }
         plan={panelOt ? (planPorOt.get(panelOt.id) ?? null) : null}
-        onOpenChange={(abierto) => !abierto && setPanel(null)}
+        onOpenChange={(abierto) => !abierto && cerrarPanel()}
       />
     </div>
   );

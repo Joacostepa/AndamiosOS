@@ -51,12 +51,29 @@ export function cuando(iso: string): string {
 }
 
 /**
+ * El resumen tal como lo consume la tarjeta, con el estado de lectura de QUIEN MIRA
+ * resuelto encima.
+ *
+ * `sinLeer` no viene del servidor y no puede venir: es una marca por persona y por
+ * dispositivo que vive en localStorage (ver comentarios-vistos.ts). El board la cruza con
+ * el resumen una sola vez y la baja ya calculada — que la tarjeta lea localStorage sería
+ * tocar el disco una vez por celda, y encima en render.
+ */
+export type ResumenEnTarjeta = ResumenComentarios & {
+  /** Hay algo escrito que esta persona todavía no abrió. Es lo que hace latir el chip. */
+  sinLeer: boolean;
+};
+
+/**
  * Lo que sopla la tarjeta al pasar el mouse: el último comentario entero, con quién y
- * cuándo. Es el `title` de un ícono de 12px, así que no hay dónde poner más — y con esto
+ * cuándo. Es el `title` de un chip de 12px, así que no hay dónde poner más — y con esto
  * alcanza para decidir si vale la pena abrir el panel.
  */
-export function tituloResumen(r: ResumenComentarios): string {
+export function tituloResumen(r: ResumenComentarios & { sinLeer?: boolean }): string {
+  // El encabezado va PRIMERO y sólo cuando corresponde: es lo que explica por qué esta
+  // tarjeta late y las de al lado no.
+  const encabezado = r.sinLeer ? "Sin leer\n\n" : "";
   const pie = `${r.ultimo.autorNombre ?? "—"} · ${cuando(r.ultimo.createdAt)}`;
   const otros = r.cantidad > 1 ? `\n\n(${r.cantidad} comentarios en total)` : "";
-  return `${r.ultimo.texto}\n${pie}${otros}`;
+  return `${encabezado}${r.ultimo.texto}\n${pie}${otros}`;
 }

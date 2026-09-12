@@ -26,7 +26,7 @@ import type { FraccionStr } from "@/lib/tablero/fracciones";
 import { notasDe, notasDeCuadrilla } from "@/lib/tablero/tipos-nota";
 import type { Bloque } from "@/lib/tablero/bloques";
 import type { NotaJornada } from "@/lib/tablero/tipos-nota";
-import type { ResumenComentarios } from "@/lib/tablero/tipos-comentario";
+import type { ResumenEnTarjeta } from "@/lib/tablero/tipos-comentario";
 import type { ClimaDia } from "@/lib/clima/pronostico";
 import type { AsignacionTablero, CuadrillaTablero, OtTablero, ParteTablero } from "@/lib/tablero/tipos";
 
@@ -286,7 +286,7 @@ export function TableroGrid({
    * el tablero de una sola consulta: una por tarjeta serían cien viajes para dibujar un
    * ícono de 12px.
    */
-  comentarios?: Map<number, ResumenComentarios>;
+  comentarios?: Map<number, ResumenEnTarjeta>;
   /**
    * Domingos habilitados a mano desde el encabezado, en yyyy-MM-dd. Se suman a los que ya
    * tienen trabajo asignado para decidir qué domingo se despliega. Vive en el board porque

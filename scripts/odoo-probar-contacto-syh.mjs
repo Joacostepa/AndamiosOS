@@ -2,25 +2,38 @@
 // Acompaña a odoo-contacto-syh-orden.mjs: si alguien toca esa automatización o esa vista,
 // esto dice si sigue funcionando.
 //
-// OJO: CREA COTIZACIONES REALES Y LAS BORRA. No queda basura, pero cada corrida consume
-// números de la secuencia de ventas (S02523, S02524...). No es gratis correrlo en loop.
+// OJO: CREA COTIZACIONES Y ÓRDENES DE TRABAJO REALES Y LAS BORRA. No queda basura, pero
+// cada corrida consume números de la secuencia de ventas (S02523, S02524...). No es gratis
+// correrlo en loop.
 //
-// Comprueba siete cosas:
-//   · que una Obra sin el contacto no se pueda confirmar
-//   · que con los tres campos sí
-//   · que un contrato Simple se confirme igual sin el contacto — el bloqueo es SÓLO Obra,
-//     y ésta es la que más importa: si falla, Comercial no puede cerrar ventas chicas
+// LAS OTS DE PRUEBA VAN SIN OBRA A PROPÓSITO. El webhook "AndamiosOS sync ordenes de
+// trabajo" se dispara igual al crearlas, pero la app descarta las OTs sin obra
+// (omitida_sin_obra), así que la prueba no ensucia Supabase. Si algún día se le pone
+// x_obra_id a estas OTs, cada corrida deja una fila de prueba del otro lado.
+//
+// Comprueba:
+//   · que una Obra nueva SIN el contacto ahora SÍ se confirme — el cambio: el dato dejó de
+//     pedirse al cerrar la venta
+//   · que a esa misma venta no se le pueda generar una OT sin el contacto
+//   · que con los tres campos la OT se cree
+//   · que a un contrato Simple se le genere la OT igual sin el contacto — el bloqueo es
+//     SÓLO Obra, y ésta es la que más importa: si falla, Comercial no puede ejecutar
+//     ventas chicas
+//   · que a una venta VIEJA se le siga pudiendo generar OTs sin el dato: a las de antes del
+//     2026-09-04 nunca se les pidió y su habilitación ya pasó
+//   · que una OT ya creada se pueda seguir escribiendo, porque la regla es on_create y la
+//     app le escribe estado y fechas todo el tiempo
 //   · que el botón "Traer del cliente" copie lo que hay
 //   · que el botón NO borre lo cargado cuando el origen está vacío
 //   · que con un contacto cuyo nombre es una dirección traiga la PERSONA y no la calle —
 //     el caso mayoritario, y el que se me había escapado en la primera versión
-//   · que una orden vieja ya confirmada se siga pudiendo escribir, porque la regla se
-//     dispara sólo en el cambio de estado y la app le escribe a órdenes confirmadas
+//   · que una orden vieja ya confirmada se siga pudiendo escribir
 //
 // Correr: node --env-file=.env.local scripts/odoo-probar-contacto-syh.mjs
 
 import { searchRead, create, write, executeKw } from "./odoo-rpc.mjs";
 
+const OT = "x_aba_orden_trabajo";
 const ACCION_TRAER = "ABA — Traer contacto de SyH del cliente";
 const CAMPOS = ["x_hab_syh_nombre", "x_hab_syh_celular", "x_hab_syh_email"];
 
@@ -71,12 +84,28 @@ async function intentarConfirmar(orden, etiqueta, esperaBloqueo) {
   }
 }
 
+/** Intenta generar una OT colgada de la venta. Devuelve el id si se creó, null si rebotó. */
+async function intentarGenerarOt(orden, etiqueta, esperaBloqueo) {
+  let otId = null;
+  try {
+    otId = await create(OT, { x_order_id: orden, x_tipo: "armado", x_name: "OT de prueba SyH" });
+    chequear(!esperaBloqueo, etiqueta, `creó la OT #${otId}${esperaBloqueo ? "  ← TENDRÍA QUE HABER BLOQUEADO" : ""}`);
+  } catch (e) {
+    chequear(esperaBloqueo, etiqueta, String(e.message).split("\n").slice(0, 3).join(" · "));
+  }
+  return otId;
+}
+
+const borrarOt = (id) => (id ? executeKw(OT, "unlink", [[id]]) : Promise.resolve());
+
 async function borrar(orden) {
+  const ots = await searchRead(OT, [["x_order_id", "=", orden]], ["id"]);
+  if (ots.length) await executeKw(OT, "unlink", [ots.map((o) => o.id)]);
   await write("sale.order", [orden], { state: "draft" });
   await executeKw("sale.order", "unlink", [[orden]]);
 }
 
-// ── 1 y 2: el bloqueo en una Obra ───────────────────────────────────────────
+// ── 1: confirmar ya NO pide el contacto ─────────────────────────────────────
 
 console.log(`Cliente de prueba: ${socio.name} · ${socio.phone} · ${socio.email}\n`);
 
@@ -84,22 +113,75 @@ const obra = await nuevaOrden("Obra ");
 const [oObra] = await searchRead("sale.order", [["id", "=", obra]], ["name"]);
 console.log(`Cotización Obra de prueba: ${oObra.name} (id ${obra})\n`);
 
-await intentarConfirmar(obra, "Obra sin contacto de SyH → bloquea", true);
+await intentarConfirmar(obra, "Obra sin contacto de SyH → CONFIRMA igual (el dato ya no se pide al vender)", false);
+
+// La venta tiene que quedar confirmada: las OTs cuelgan de una venta confirmada.
+const [tras] = await searchRead("sale.order", [["id", "=", obra]], ["state"]);
+if (tras.state === "draft") await executeKw("sale.order", "action_confirm", [[obra]]);
+
+// ── 2 y 3: el bloqueo, ahora al generar la OT ───────────────────────────────
+
+await intentarGenerarOt(obra, "OT sobre una Obra nueva sin contacto de SyH → bloquea", true);
 
 await write("sale.order", [obra], {
   x_hab_syh_nombre: "Prueba Tester",
   x_hab_syh_celular: "11-0000-0000",
   x_hab_syh_email: "prueba@ejemplo.com",
 });
-await intentarConfirmar(obra, "Obra con los tres campos → confirma", false);
+const otBuena = await intentarGenerarOt(obra, "OT con los tres campos cargados → se crea", false);
 
-// ── 3: el contrato Simple no se toca ────────────────────────────────────────
+// ── 4: una OT ya creada se sigue pudiendo escribir ──────────────────────────
+//
+// La regla es on_create. Si alguien la pasara a on_create_or_write, la app quedaría sin
+// poder mover el estado de ninguna OT de una venta a la que le falte el dato.
+if (otBuena) {
+  await write("sale.order", [obra], { x_hab_syh_nombre: false, x_hab_syh_celular: false, x_hab_syh_email: false });
+  try {
+    await write(OT, [otBuena], { x_estado: "en_proceso" });
+    chequear(true, "a una OT ya creada se le puede escribir aunque falte el contacto (la regla es on_create)");
+  } catch (e) {
+    chequear(false, "a una OT ya creada se le puede escribir aunque falte el contacto", e.message);
+  }
+  await borrarOt(otBuena);
+}
+
+// ── 5: el contrato Simple no se toca ────────────────────────────────────────
 
 const simple = await nuevaOrden("Simple");
-await intentarConfirmar(simple, "Simple sin contacto de SyH → confirma igual (el bloqueo es sólo Obra)", false);
+await intentarConfirmar(simple, "Simple sin contacto de SyH → confirma", false);
+const [sSimple] = await searchRead("sale.order", [["id", "=", simple]], ["state"]);
+if (sSimple.state === "draft") await executeKw("sale.order", "action_confirm", [[simple]]);
+const otSimple = await intentarGenerarOt(simple, "OT sobre un Simple sin contacto → se crea (el bloqueo es sólo Obra)", false);
+await borrarOt(otSimple);
 await borrar(simple);
 
-// ── 4 y 5: el botón ─────────────────────────────────────────────────────────
+// ── 6: a las ventas viejas no se les pide ───────────────────────────────────
+//
+// x_exige_clasificacion marca las órdenes desde el 2026-09-04. Una obra vendida antes que
+// hoy genera el desarme no tiene por qué frenarse por un dato que nunca se le pidió.
+const [ventaVieja] = await searchRead(
+  "sale.order",
+  [
+    ["state", "in", ["sale", "done"]],
+    ["x_studio_tipo_de_contrato", "=", "Obra "],
+    ["x_exige_clasificacion", "=", false],
+    ["x_hab_syh_nombre", "=", false],
+  ],
+  ["id", "name"],
+  { limit: 1, order: "date_order asc" },
+);
+if (ventaVieja) {
+  const otVieja = await intentarGenerarOt(
+    ventaVieja.id,
+    `OT sobre la venta vieja ${ventaVieja.name} (sin contacto) → se crea`,
+    false,
+  );
+  await borrarOt(otVieja);
+} else {
+  console.log("· no hay ninguna venta Obra vieja sin contacto: se saltea esa prueba");
+}
+
+// ── 7, 8 y 9: el botón ──────────────────────────────────────────────────────
 
 const [accion] = await searchRead("ir.actions.server", [["name", "=", ACCION_TRAER]], ["id"]);
 if (!accion) {
@@ -120,13 +202,13 @@ if (!accion) {
 
   await write("sale.order", [obra], { x_hab_syh_nombre: false, x_hab_syh_celular: false, x_hab_syh_email: false });
   await correrBoton(obra);
-  const [tras] = await searchRead("sale.order", [["id", "=", obra]], CAMPOS);
+  const [copiado] = await searchRead("sale.order", [["id", "=", obra]], CAMPOS);
   chequear(
-    tras.x_hab_syh_nombre === nombreEsperado &&
-      tras.x_hab_syh_celular === telEsperado &&
-      tras.x_hab_syh_email === socio.email,
+    copiado.x_hab_syh_nombre === nombreEsperado &&
+      copiado.x_hab_syh_celular === telEsperado &&
+      copiado.x_hab_syh_email === socio.email,
     "el botón copia nombre, teléfono y mail del cliente",
-    `${tras.x_hab_syh_nombre} · ${tras.x_hab_syh_celular} · ${tras.x_hab_syh_email}`,
+    `${copiado.x_hab_syh_nombre} · ${copiado.x_hab_syh_celular} · ${copiado.x_hab_syh_email}`,
   );
 
   // Un origen SIN NADA no puede vaciar lo que ya está cargado. Tiene que estar pelado el
@@ -196,11 +278,13 @@ await borrar(obra);
 const quedan = await executeKw("sale.order", "search_count", [[["id", "in", [obra, simple]]]]);
 console.log(`\n✓ cotizaciones de prueba borradas (quedan ${quedan} con esos ids)`);
 
-// ── 6: las órdenes viejas se siguen pudiendo escribir ───────────────────────
+const otsHuerfanas = await executeKw(OT, "search_count", [[["x_name", "=", "OT de prueba SyH"]]]);
+console.log(`✓ OTs de prueba borradas (quedan ${otsHuerfanas})`);
+
+// ── 10: las órdenes viejas se siguen pudiendo escribir ──────────────────────
 //
-// La regla se dispara SÓLO cuando cambia el estado, así que editar una confirmada vieja
-// —que es lo que hace la app— no puede quedar bloqueado por un campo que esa orden nunca
-// va a tener.
+// La app le escribe a ventas confirmadas todo el tiempo. Ninguna regla de SyH puede
+// trabar eso: la de ahora ni siquiera vive en sale.order.
 const [vieja] = await searchRead(
   "sale.order",
   [["state", "in", ["sale", "done"]], ["x_studio_tipo_de_contrato", "=", "Obra "], ["x_hab_syh_nombre", "=", false]],

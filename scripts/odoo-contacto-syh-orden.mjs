@@ -35,16 +35,27 @@
 // NUNCA BORRA: si el origen no tiene el dato, el campo se queda como estaba. Apretar el
 // botón no puede dejarte peor que antes.
 //
-// OBLIGATORIOS AL CONFIRMAR, SÓLO EN OBRA Y SÓLO EN LAS NUEVAS.
-//   · Al confirmar y no en el borrador: armar un presupuesto lleva varios ratos.
+// OBLIGATORIOS AL GENERAR LA OT, SÓLO EN OBRA Y SÓLO EN LAS NUEVAS.
+//   · Al generar la orden de trabajo y NO al confirmar la venta. Antes se pedía al
+//     confirmar y estaba demasiado temprano: confirmar es cerrar la venta, y ahí Comercial
+//     todavía no sabe quién va a recibir los papeles del otro lado. Se sabe cuando hay
+//     trabajo que programar, que es exactamente cuando nace la OT — y es el último momento
+//     en que sirve, porque el paso siguiente es mandar a la cuadrilla. Pedirlo antes es
+//     pedirle a Comercial un dato que todavía no tiene, y un campo que no se puede
+//     contestar se llena con cualquier cosa o frena la venta.
 //   · Sólo en contratos "Obra ": un Simple —módulo hogareño— no pasa por habilitación, y
 //     un bloqueo que no distinguiera dejaría a Comercial sin poder cerrar ventas chicas.
-//   · Sólo en las nuevas: se reutiliza x_exige_clasificacion, el calculado que ya marca
-//     las órdenes con date_order >= 2026-09-04. Se comprobó que a esa fecha hay UNA sola
-//     orden Obra confirmada, así que reusarlo en vez de estrenar otro campo con otra fecha
-//     cuesta exactamente esa orden y evita tener dos definiciones de "nueva" conviviendo.
-//     Lo que viene de verdad son las 1458 cotizaciones Obra abiertas: al confirmarse, su
-//     date_order salta a hoy y todas van a pedir el dato.
+//   · Sólo en las nuevas: se reutiliza x_exige_clasificacion, el calculado de la VENTA que
+//     ya marca las órdenes con date_order >= 2026-09-04. Se mira en la venta y no en la
+//     fecha de la OT a propósito: una obra vendida en abril que hoy genera el desarme no
+//     tiene por qué frenarse por un dato que nunca se le pidió, y la habilitación de esa
+//     obra ya pasó. Lo que viene de verdad son las cotizaciones Obra abiertas: al
+//     confirmarse su date_order salta a hoy, y la primera OT que se les cree va a pedirlo.
+//
+// EL BLOQUEO VIVE EN LA OT, EL DATO EN LA VENTA. La regla corre al crear un
+// x_aba_orden_trabajo y lee los tres campos de su x_order_id. Una OT sin venta —los
+// adicionales que la app crea contra la obra— no se bloquea: no hay dónde leer el dato y
+// la app no tiene forma de mostrar un UserError de Odoo.
 //
 // Idempotente: se puede re-correr sin duplicar.
 //
@@ -56,8 +67,13 @@ import { version, authenticate, searchRead, create, write, executeKw, fieldsGet 
 
 const APLICAR = process.argv.includes("--aplicar");
 const MODEL = "sale.order";
+const OT = "x_aba_orden_trabajo";
 const VISTA = "sale.order.form.aba.syh.contacto";
-const AUTOMATIZACION = "ABA — Exigir contacto de SyH al confirmar";
+const AUTOMATIZACION = "ABA — Exigir contacto de SyH al generar la OT";
+// La versión anterior de esta misma regla, que bloqueaba la CONFIRMACIÓN de la venta. Se
+// borra al aplicar: si quedaran las dos, el dato se pediría dos veces y la primera sería
+// justo la que se quiso sacar.
+const AUTOMATIZACION_VIEJA = "ABA — Exigir contacto de SyH al confirmar";
 const ACCION_TRAER = "ABA — Traer contacto de SyH del cliente";
 
 // El calculado que ya marca "esta orden es nueva". Se reusa, no se duplica: ver el
@@ -134,27 +150,36 @@ const CODIGO_TRAER = `for rec in records:
 
 // ── El bloqueo ──────────────────────────────────────────────────────────────
 //
-// Espeja exactamente la condición de la vista. Tiene que estar en los dos lados: el
-// `required` del formulario es comodidad —marca el campo en rojo antes de guardar— y esto
-// es la regla, porque una orden se puede confirmar por fuera del formulario (importación,
-// otra vista, la API).
+// Corre sobre la OT RECIÉN CREADA y mira los tres campos de su venta. Es la única regla:
+// el formulario de la venta ya no marca los campos en rojo, porque al confirmar todavía no
+// se exigen y no hay forma de pintar de rojo un campo de la venta desde el alta de la OT.
+//
+// SÓLO AL CREAR, nunca al escribir: la app le escribe a las OTs todo el tiempo —estado,
+// fechas, avance— y una regla que corriera en cada write dejaría trabada la ejecución de
+// una obra por un dato comercial que a esa altura ya no cambia nada.
+//
+// Una OT sin x_order_id se saltea: son los adicionales que la app crea colgados de la obra
+// y no de la venta. No hay dónde leer el dato, y del otro lado no hay nadie mirando Odoo.
 const CODIGO_BLOQUEO = `faltan = []
 for rec in records:
-    if rec.x_studio_tipo_de_contrato != 'Obra ':
+    venta = rec.x_order_id
+    if not venta:
         continue
-    if not rec.${CAMPO_EXIGE}:
+    if venta.x_studio_tipo_de_contrato != 'Obra ':
+        continue
+    if not venta.${CAMPO_EXIGE}:
         continue
     f = []
-    if not rec.x_hab_syh_nombre:
+    if not venta.x_hab_syh_nombre:
         f.append('Nombre y apellido')
-    if not rec.x_hab_syh_celular:
+    if not venta.x_hab_syh_celular:
         f.append('Celular')
-    if not rec.x_hab_syh_email:
+    if not venta.x_hab_syh_email:
         f.append('Email')
     if f:
-        faltan.append(rec.name + ' → ' + ', '.join(f))
+        faltan.append(venta.name + ' → ' + ', '.join(f))
 if faltan:
-    raise UserError('Falta el contacto de SyH de la obra, en la solapa Trabajo a ejecutar.\\n\\nEs a quien hay que mandarle la documentacion de nuestro personal para que nos habiliten a entrar. Si es la misma persona que el contacto de la orden, usa el boton "Traer del cliente".\\n\\n' + '\\n'.join(faltan))
+    raise UserError('No se puede generar la orden de trabajo: falta el contacto de SyH de la obra.\\n\\nEsta en la venta, solapa Trabajo a ejecutar. Es a quien hay que mandarle la documentacion de nuestro personal (ART, curso de altura, psicofisico) para que nos habiliten a entrar. Si es la misma persona que el contacto de la orden, usa el boton "Traer del cliente".\\n\\n' + '\\n'.join(faltan))
 `;
 
 /**
@@ -166,10 +191,13 @@ if faltan:
  * Anclar a un campo obligaría a competir por prioridad con las otras dos que ya cuelgan
  * del mismo lugar.
  *
- * NO SE REDECLARAN x_studio_tipo_de_contrato NI x_exige_clasificacion aunque los use el
- * modificador: los declaran las vistas de prioridad 31 y 32, que se aplican antes que
- * ésta (33), así que para cuando este bloque entra ya están en el formulario. Declararlos
- * de nuevo pondría el mismo campo dos veces en el form, que Odoo rechaza.
+ * SIN `required` EN LOS CAMPOS. Lo tenían cuando la regla se disparaba al confirmar: ahí el
+ * modificador se podía escribir en función de `state` y avisaba antes de guardar. Ahora el
+ * momento es otro —el alta de una OT, que puede pasar meses después y desde otra pantalla—
+ * y no hay expresión de este formulario que lo represente. Un `required` que se encendiera
+ * apenas la venta tiene OTs le pediría el dato a las 1100 OTs viejas cada vez que alguien
+ * abre una venta a editar otra cosa. El aviso queda en el texto de ayuda y la regla, en el
+ * servidor.
  */
 const arch = (accionId) => `<data>
   <xpath expr="//page[@name='aba_alcance']" position="inside">
@@ -178,16 +206,13 @@ const arch = (accionId) => `<data>
       <p>A quién de la obra hay que mandarle la documentación de nuestra gente (ART, curso
          de altura, psicofísico) para que nos habiliten a entrar. NO es lo mismo que "SyH
          presencial", que dice si nosotros tenemos que poner un técnico en obra.
-         Hace falta para confirmar la orden, no para guardar la cotización.</p>
+         Hace falta para generar la orden de trabajo, no para confirmar la venta.</p>
     </div>
     <group>
       <group>
-        <field name="x_hab_syh_nombre"
-               required="${CAMPO_EXIGE} and state in ('sale', 'done') and x_studio_tipo_de_contrato == 'Obra '"/>
-        <field name="x_hab_syh_celular"
-               required="${CAMPO_EXIGE} and state in ('sale', 'done') and x_studio_tipo_de_contrato == 'Obra '"/>
-        <field name="x_hab_syh_email" widget="email"
-               required="${CAMPO_EXIGE} and state in ('sale', 'done') and x_studio_tipo_de_contrato == 'Obra '"/>
+        <field name="x_hab_syh_nombre"/>
+        <field name="x_hab_syh_celular"/>
+        <field name="x_hab_syh_email" widget="email"/>
       </group>
       <group>
         <button name="${accionId}" type="action" string="Traer del cliente" icon="fa-user"
@@ -205,6 +230,8 @@ console.log(`Odoo ${v.server_version} · uid=${await authenticate()}\n`);
 
 const [modelo] = await searchRead("ir.model", [["model", "=", MODEL]], ["id"]);
 if (!modelo) throw new Error(`No existe el modelo ${MODEL}`);
+const [modeloOt] = await searchRead("ir.model", [["model", "=", OT]], ["id"]);
+if (!modeloOt) throw new Error(`No existe el modelo ${OT}`);
 
 const existentes = await fieldsGet(MODEL, ["type"]);
 console.log("Campos:");
@@ -212,13 +239,17 @@ for (const c of CAMPOS) {
   console.log(`  ${c.name in existentes ? "ya existe" : "FALTA   "}  ${c.name.padEnd(22)} ${c.ttype}`);
 }
 
-// Las dos dependencias duras. Si falta cualquiera, la vista rompe el formulario entero al
-// renderizarlo, así que se comprueban ANTES de escribir nada.
+// Las dependencias duras, comprobadas ANTES de escribir nada: sin ellas la regla revienta
+// en cada alta de OT, que es peor que no tenerla.
 if (!(CAMPO_EXIGE in existentes)) {
   throw new Error(
-    `Falta ${CAMPO_EXIGE}, que lo crea odoo-tipo-de-trabajo.mjs. ` +
-      `Sin él el modificador de esta vista no se puede evaluar.`,
+    `Falta ${MODEL}.${CAMPO_EXIGE}, que lo crea odoo-tipo-de-trabajo.mjs. ` +
+      `Sin él la regla no sabe qué venta es "nueva".`,
   );
+}
+const camposOt = await fieldsGet(OT, ["type", "relation"]);
+if (camposOt.x_order_id?.relation !== MODEL) {
+  throw new Error(`${OT}.x_order_id no apunta a ${MODEL}: la regla no tendría de dónde leer el contacto`);
 }
 const [pagina] = await searchRead(
   "ir.ui.view",
@@ -231,15 +262,27 @@ console.log(`\nAncla: página aba_alcance de la vista #${pagina.id} — ok`);
 const [yaEsta] = await searchRead("ir.ui.view", [["name", "=", VISTA]], ["id"]);
 console.log(yaEsta ? `Vista ${VISTA}: ya existe (#${yaEsta.id}), se actualiza` : `Vista ${VISTA}: se crea`);
 const [autoExiste] = await searchRead("base.automation", [["name", "=", AUTOMATIZACION]], ["id"]);
-console.log(autoExiste ? `Automatización: ya existe (#${autoExiste.id}), se actualiza` : "Automatización: se crea");
+console.log(autoExiste ? `Automatización: ya existe (#${autoExiste.id}), se actualiza` : `Automatización: se crea sobre ${OT} (on_create)`);
+const [autoVieja] = await searchRead("base.automation", [["name", "=", AUTOMATIZACION_VIEJA]], ["id"]);
+console.log(autoVieja
+  ? `Regla vieja "${AUTOMATIZACION_VIEJA}" (#${autoVieja.id}): se BORRA — el dato deja de pedirse al confirmar`
+  : `Regla vieja "${AUTOMATIZACION_VIEJA}": no está, nada que borrar`);
 
 const cuenta = (dom) => executeKw(MODEL, "search_count", [dom]);
 const DOM_OBRA = ["x_studio_tipo_de_contrato", "=", "Obra "];
 console.log("\nA quién le va a pedir el dato:");
-console.log(`  órdenes Obra ya confirmadas y nuevas (lo piden ya): ${await cuenta([["state", "in", ["sale", "done"]], DOM_OBRA, [CAMPO_EXIGE, "=", true]])}`);
-console.log(`  órdenes Obra confirmadas viejas (no se les pide):   ${await cuenta([["state", "in", ["sale", "done"]], DOM_OBRA, [CAMPO_EXIGE, "=", false]])}`);
-console.log(`  cotizaciones Obra abiertas (lo van a pedir al confirmar): ${await cuenta([["state", "in", ["draft", "sent"]], DOM_OBRA])}`);
-console.log(`  cotizaciones que NO son Obra (nunca se les pide):   ${await cuenta([["state", "in", ["draft", "sent"]], ["x_studio_tipo_de_contrato", "!=", "Obra "]])}`);
+console.log(`  órdenes Obra confirmadas y nuevas (lo piden en su próxima OT): ${await cuenta([["state", "in", ["sale", "done"]], DOM_OBRA, [CAMPO_EXIGE, "=", true]])}`);
+console.log(`  órdenes Obra confirmadas viejas (nunca se les pide):           ${await cuenta([["state", "in", ["sale", "done"]], DOM_OBRA, [CAMPO_EXIGE, "=", false]])}`);
+console.log(`  cotizaciones Obra abiertas (ahora confirman sin el dato):      ${await cuenta([["state", "in", ["draft", "sent"]], DOM_OBRA])}`);
+console.log(`  cotizaciones que NO son Obra (nunca se les pide):              ${await cuenta([["state", "in", ["draft", "sent"]], ["x_studio_tipo_de_contrato", "!=", "Obra "]])}`);
+
+// Las que ya están confirmadas, son nuevas y NO tienen el dato: son las que se van a topar
+// con el bloqueo la próxima vez que alguien les genere una OT.
+const sinDato = await cuenta([
+  ["state", "in", ["sale", "done"]], DOM_OBRA, [CAMPO_EXIGE, "=", true],
+  "|", "|", ["x_hab_syh_nombre", "=", false], ["x_hab_syh_celular", "=", false], ["x_hab_syh_email", "=", false],
+]);
+console.log(`\n  de ésas, sin el contacto cargado (van a rebotar al generar la OT): ${sinDato}`);
 
 if (!APLICAR) {
   console.log("\nNo se escribió nada. Para aplicar: --aplicar");
@@ -301,22 +344,31 @@ if (yaEsta) {
   console.log(`✓ vista #${id} creada`);
 }
 
-const [campoEstado] = await searchRead(
-  "ir.model.fields",
-  [["model", "=", MODEL], ["name", "=", "state"]],
-  ["id"],
-);
+// La regla vieja se va PRIMERO. Si el paso de abajo fallara, el peor escenario es quedarse
+// sin bloqueo por un rato; al revés —las dos vivas— el dato se pediría en los dos momentos
+// y Comercial no podría confirmar, que es justo lo que este cambio viene a sacar.
+if (autoVieja) {
+  await executeKw("base.automation", "unlink", [[autoVieja.id]]);
+  console.log(`✓ regla vieja #${autoVieja.id} borrada: confirmar una venta ya no pide el contacto`);
+  // Odoo arrastra la acción anidada al borrar la automatización, pero si quedó suelta
+  // —una corrida a medias, alguien que la desenganchó— se limpia acá.
+  const huerfanas = await searchRead(
+    "ir.actions.server",
+    [["name", "=", AUTOMATIZACION_VIEJA], ["model_id", "=", modelo.id]],
+    ["id"],
+  );
+  if (huerfanas.length) {
+    await executeKw("ir.actions.server", "unlink", [huerfanas.map((a) => a.id)]);
+    console.log(`· ${huerfanas.length} acción(es) huérfana(s) de la regla vieja borradas`);
+  }
+}
 
 const valoresAuto = {
   name: AUTOMATIZACION,
-  model_id: modelo.id,
-  // Sólo cuando se TOCA el estado, y sólo en el salto de cotización a confirmada. Sin
-  // esto la regla correría en cada write y le rompería las escrituras a la app, que le
-  // escribe campos a órdenes ya confirmadas.
-  trigger: "on_create_or_write",
-  trigger_field_ids: [[6, 0, [campoEstado.id]]],
-  filter_pre_domain: JSON.stringify([["state", "in", ["draft", "sent"]]]),
-  filter_domain: JSON.stringify([["state", "in", ["sale", "done"]]]),
+  model_id: modeloOt.id,
+  // SÓLO AL CREAR. La app le escribe a las OTs constantemente —estado, fechas, avance— y
+  // un on_create_or_write dejaría trabada la ejecución de la obra por un dato comercial.
+  trigger: "on_create",
   active: true,
 };
 
@@ -328,20 +380,24 @@ if (autoExiste) {
     ["id"],
   );
   if (acciones.length) {
-    await write("ir.actions.server", [acciones[0].id], { state: "code", code: CODIGO_BLOQUEO });
+    await write("ir.actions.server", [acciones[0].id], {
+      state: "code",
+      code: CODIGO_BLOQUEO,
+      model_id: modeloOt.id,
+    });
     console.log(`✓ automatización #${autoExiste.id} actualizada`);
   }
 } else {
   const autoId = await create("base.automation", valoresAuto);
   await create("ir.actions.server", {
     name: AUTOMATIZACION,
-    model_id: modelo.id,
+    model_id: modeloOt.id,
     state: "code",
     code: CODIGO_BLOQUEO,
     base_automation_id: autoId,
     usage: "base_automation",
   });
-  console.log(`✓ automatización #${autoId} creada`);
+  console.log(`✓ automatización #${autoId} creada sobre ${OT} (on_create)`);
 }
 
 // ── Verificar ───────────────────────────────────────────────────────────────
@@ -352,4 +408,14 @@ for (const c of CAMPOS) {
   const f = despues[c.name];
   console.log(`  ${c.name.padEnd(22)} ${f ? `${f.type} · "${f.string}"` : "NO EXISTE"}`);
 }
+
+const reglas = await searchRead(
+  "base.automation",
+  ["|", ["name", "=", AUTOMATIZACION], ["name", "=", AUTOMATIZACION_VIEJA]],
+  ["name", "model_name", "trigger", "active"],
+);
+console.log("\nReglas de contacto de SyH que quedan:");
+if (!reglas.length) console.log("  ninguna  ← algo salió mal");
+for (const r of reglas) console.log(`  ${r.active ? "activa" : "INACTIVA"} · ${r.model_name} · ${r.trigger} · ${r.name}`);
+
 console.log("\n✅ Listo. Probar el bloqueo con: node --env-file=.env.local scripts/odoo-probar-contacto-syh.mjs");

@@ -13,7 +13,7 @@ import { fechasDeJornadas } from "@/lib/tablero/bloques";
 import { CLAVE_CONFIRMACIONES } from "@/hooks/use-confirmaciones";
 import { CLAVE_ACTIVIDAD } from "@/hooks/use-actividad";
 import type { RegistroConfirmacion } from "@/lib/tablero/tipos-confirmacion";
-import type { RegistroMovimiento } from "@/lib/tablero/tipos-movimiento";
+import type { RegistroCorrida, RegistroMovimiento } from "@/lib/tablero/tipos-movimiento";
 import type {
   AsignacionTablero,
   CambioAsignacion,
@@ -340,6 +340,55 @@ export function useMoverAsignaciones() {
       }));
     },
     onError: (error, _vars, ctx) => revertir(qc, ctx, "No se pudo mover la obra", error),
+    onSettled: () => refrescarPronto(qc),
+  });
+}
+
+/**
+ * Correr un día: muchas jornadas de muchas obras, en un solo gesto.
+ *
+ * NO REVIERTE CUANDO FALLA, a diferencia de todas las demás. Las otras mandan una
+ * escritura y si rebota no pasó nada, así que devolver la pantalla al estado anterior la
+ * deja diciendo la verdad. Ésta manda una escritura POR FECHA DESTINO: si la tercera
+ * falla, las dos primeras ya se aplicaron en Odoo, y volver atrás la pantalla entera
+ * mostraría un plan que ya no existe. Se pide el tablero de nuevo, que es lo único que
+ * sabe cómo quedó — y el error se avisa igual.
+ */
+export function useCorrerDia() {
+  const qc = useQueryClient();
+  return useMutation<
+    { ok: true; escrituras: number; loteId: string | null; filas: Record<string, string> },
+    Error,
+    {
+      motivo: string;
+      movimientos: MovimientoAsignacion[];
+      registros: RegistroCorrida[];
+      deshaceA?: Record<string, string>;
+    },
+    Contexto
+  >({
+    mutationFn: (body) =>
+      pedir<{ ok: true; escrituras: number; loteId: string | null; filas: Record<string, string> }>(
+        "/api/planificacion/corrimiento",
+        { method: "POST", body: JSON.stringify(body) },
+      ),
+    onMutate: ({ movimientos }) => {
+      const porId = new Map(movimientos.map((m) => [m.id, m.fecha]));
+      return aplicarOptimista(qc, (data) => ({
+        ...data,
+        asignaciones: data.asignaciones.map((a) => {
+          const fecha = porId.get(a.id);
+          return fecha ? { ...a, fecha } : a;
+        }),
+      }));
+    },
+    onError: (error) => {
+      toast.error("El corrimiento quedó a medias", {
+        description: `${error.message} · Se vuelve a pedir el tablero para ver cómo quedó.`,
+      });
+      void qc.invalidateQueries({ queryKey: CLAVE });
+      void qc.invalidateQueries({ queryKey: CLAVE_ACTIVIDAD });
+    },
     onSettled: () => refrescarPronto(qc),
   });
 }

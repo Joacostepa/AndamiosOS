@@ -541,6 +541,66 @@ export async function moverAsignaciones(movimientos: MovimientoAsignacion[]): Pr
   }
 }
 
+/**
+ * Correr un día: mueve muchas jornadas de una, AGRUPADAS POR FECHA DESTINO.
+ *
+ * moverAsignaciones escribe de a una porque cada jornada de un bloque va a un día
+ * distinto. Acá no: un corrimiento manda muchas jornadas al MISMO día, y Odoo acepta
+ * write(ids[], values). La cuenta cambia de "una escritura por jornada" a "una por fecha
+ * destino" — treinta y cuatro jornadas de una semana pasan de 34 escrituras a 7.
+ *
+ * IMPORTA MÁS DE LO QUE PARECE: cada write que llega a la asignación dispara la cascada de
+ * calculados que sube hasta la obra, cerca de un segundo cada uno. 34 segundos de una
+ * request es un timeout; 7 es una espera.
+ *
+ * NO TOCA CUADRILLA NI ORDEN. Correr el día cambia CUÁNDO y nada más: el apilado dentro
+ * del día es el orden previsto de las obras, y reordenarlo sería inventar información.
+ *
+ * EN SERIE Y NO EN PARALELO: Odoo Online limita la concurrencia, y siete requests juntas
+ * se encolan igual pero con más chance de que una rebote.
+ *
+ * Devuelve cuántas escrituras hizo, para poder medirlo en producción.
+ */
+export async function correrAsignaciones(movimientos: MovimientoAsignacion[]): Promise<number> {
+  const porFecha = new Map<string, number[]>();
+  for (const m of movimientos) {
+    const ya = porFecha.get(m.fecha);
+    if (ya) ya.push(m.id);
+    else porFecha.set(m.fecha, [m.id]);
+  }
+  for (const [fecha, ids] of porFecha) {
+    await write("x_aba_asignacion", ids, { x_fecha: fecha });
+  }
+  return porFecha.size;
+}
+
+/**
+ * Las que un corrimiento NO puede tocar: fijadas a mano o con parte ya cargado.
+ *
+ * ES LA ÚNICA GUARDA QUE NO PUEDE VIVIR EN EL CLIENTE. Todo lo demás del corrimiento se
+ * calcula en el tablero y se manda hecho —el "antes" de los registros, las fechas
+ * destino—, igual que en el resto del módulo, porque releerlo de Odoo le sumaría segundos
+ * al gesto. Pero esto es la invariante entera de la función: si el tablero de quien
+ * corre el día tiene treinta segundos de atraso y alguien fijó una obra en el medio, la
+ * obra fija se movería igual y nadie se enteraría. Cuesta una lectura.
+ */
+export async function asignacionesNoMovibles(
+  ids: number[],
+): Promise<{ id: number; motivo: string }[]> {
+  if (ids.length === 0) return [];
+  const filas = await read<{ id: number; x_motivo_fija: string | false; x_parte_id: M2O }>(
+    "x_aba_asignacion",
+    ids,
+    ["x_motivo_fija", "x_parte_id"],
+  );
+  return filas
+    .filter((f) => f.x_motivo_fija || m2oId(f.x_parte_id) !== null)
+    .map((f) => ({
+      id: f.id,
+      motivo: str(f.x_motivo_fija) ?? "ya tiene el parte cargado",
+    }));
+}
+
 export async function borrarAsignaciones(ids: number[]): Promise<void> {
   if (ids.length === 0) return;
   await executeKw("x_aba_asignacion", "unlink", [ids]);

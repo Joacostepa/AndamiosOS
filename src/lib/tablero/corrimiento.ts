@@ -76,6 +76,15 @@ export type Corrimiento = {
   ultimoDia: string | null;
   /** La cascada se cortó por TOPE_CASCADA y no por haber encontrado lugar. */
   truncado: boolean;
+  /**
+   * La cascada llegó al borde de lo que el tablero tiene cargado y se frenó ahí.
+   *
+   * NO ES LO MISMO QUE HABER ENCONTRADO UN DÍA LIBRE, y es el único modo en que esta
+   * función puede mentir: si una cuadrilla está tomada más allá del rango cargado, acá se
+   * ve un hueco que no existe, y lo que se corre encima cae sobre trabajo que no se está
+   * mirando. El que planifica tiene que enterarse y scrollear el tablero antes de correr.
+   */
+  alBorde: boolean;
 };
 
 export type EntradaCorrimiento = {
@@ -87,6 +96,12 @@ export type EntradaCorrimiento = {
   /** Qué cuadrillas se corren. Las que sí salieron se destildan y no entran. */
   cuadrillaIds: number[];
   modo: ModoCorrimiento;
+  /**
+   * Último día que el tablero tiene cargado. Lo que hay más allá no está en
+   * `asignaciones`, así que un día vacío de ahí en adelante no significa nada. Ver
+   * `alBorde`.
+   */
+  hastaCargado: string;
 };
 
 /** Una asignación que este gesto puede mover. */
@@ -129,6 +144,7 @@ export function planearCorrimiento(entrada: EntradaCorrimiento): Corrimiento {
   // semana que viene, el mes que viene— no se entera. Correr todo sin frenarse empujaría
   // trabajo de octubre por una lluvia de septiembre.
   let truncado = false;
+  let alBorde = false;
   const cadenas = new Map<number, string[]>();
   for (const cuadrillaId of enFoco) {
     const cadena = [dia];
@@ -136,6 +152,13 @@ export function planearCorrimiento(entrada: EntradaCorrimiento): Corrimiento {
       let d = dia;
       while (cadena.length < TOPE_CASCADA) {
         const sig = siguienteDiaLaboral(d);
+        // El hueco que frena la cascada tiene que ser un hueco DE VERDAD. Más allá de lo
+        // cargado no hay datos, así que todos los días parecen libres: ahí no se frena
+        // porque haya lugar, se frena porque no se ve.
+        if (sig > entrada.hastaCargado) {
+          if (moviblesDe(cuadrillaId, d).length > 0) alBorde = true;
+          break;
+        }
         if (moviblesDe(cuadrillaId, sig).length === 0) break;
         cadena.push(sig);
         d = sig;
@@ -317,6 +340,7 @@ export function planearCorrimiento(entrada: EntradaCorrimiento): Corrimiento {
     obras: new Set(movidas.map((m) => m.a.otId)).size,
     ultimoDia: fechasDestino.at(-1) ?? null,
     truncado,
+    alBorde,
   };
 }
 

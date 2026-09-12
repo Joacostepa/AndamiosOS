@@ -50,7 +50,7 @@ const CUADRILLAS = [
 let fallaron = 0;
 
 function correr(nombre, entrada, esperado) {
-  const r = planearCorrimiento({ cuadrillas: CUADRILLAS, ...entrada });
+  const r = planearCorrimiento({ cuadrillas: CUADRILLAS, hastaCargado: "2026-12-31", ...entrada });
   const movidos = r.movimientos
     .map((m) => {
       const a = entrada.asignaciones.find((x) => x.id === m.id);
@@ -284,7 +284,28 @@ console.log(`Semana: ${[JUE, VIE, SAB, LUN, MAR, MIE].map(nombreDia).join(" · "
   );
 }
 
-// ── 10. Deshacer devuelve cada jornada a su día ──────────────────────────────
+// ── 10. El borde de lo cargado no es un día libre ────────────────────────────
+// Si el tablero llega hasta el viernes, el hueco del sábado no existe: no se sabe.
+{
+  const asignaciones = [asig(101, JUE, 2), asig(102, VIE, 2)];
+  const r = planearCorrimiento({
+    asignaciones,
+    ots: new Map([[101, ot(101, "Callao")], [102, ot(102, "Beiró")]]),
+    cuadrillas: CUADRILLAS,
+    dia: JUE,
+    cuadrillaIds: [2],
+    modo: "cascada",
+    hastaCargado: VIE,
+  });
+  const ok = r.alBorde === true && r.movimientos.length === 2;
+  console.log(`${ok ? "✓" : "✗"} avisa cuando la cascada llega al borde de lo cargado`);
+  if (!ok) {
+    fallaron++;
+    console.log("   alBorde:", r.alBorde, "· movimientos:", r.movimientos.length);
+  }
+}
+
+// ── 11. Deshacer devuelve cada jornada a su día ──────────────────────────────
 {
   const asignaciones = [asig(101, JUE, 2), asig(101, VIE, 2), asig(102, SAB, 2)];
   const r = planearCorrimiento({
@@ -294,6 +315,7 @@ console.log(`Semana: ${[JUE, VIE, SAB, LUN, MAR, MIE].map(nombreDia).join(" · "
     dia: JUE,
     cuadrillaIds: [2],
     modo: "cascada",
+    hastaCargado: "2026-12-31",
   });
   const vuelta = invertirCorrimiento(r.registros);
   const ida = new Map(r.movimientos.map((m) => [m.id, m.fecha]));

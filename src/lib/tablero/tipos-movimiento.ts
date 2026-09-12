@@ -52,6 +52,8 @@ export type Movimiento = {
    * null en los gestos de a una, que son casi todos.
    */
   loteId: string | null;
+  /** Por qué se hizo. Sólo lo pide el corrimiento; un arrastre no se justifica. */
+  motivo: string | null;
   /**
    * El lote entero, ya sumado. Sólo viene en el panel de actividad, que colapsa las filas
    * de un lote en una línea; en la ficha de una obra NO viene, porque ahí cada obra tiene
@@ -214,13 +216,17 @@ export function fraseMovimiento(m: Movimiento): string {
       const desde = antes?.fechas[0];
       const hasta = despues?.fechas[0];
       const tramo = desde && hasta ? ` del ${dia(desde)} al ${dia(hasta)}` : "";
+      // El motivo va SIEMPRE, en los dos casos: dentro de un mes la pregunta que se le
+      // hace a este historial es por qué se corrió una semana entera, y "lluvia" la
+      // contesta en una palabra.
+      const porque = m.motivo ? ` — ${m.motivo}` : "";
       if (m.lote) {
         return `Corrió el día${tramo} · ${m.lote.jornadas} jornada${
           m.lote.jornadas === 1 ? "" : "s"
-        } de ${m.lote.obras} obra${m.lote.obras === 1 ? "" : "s"}`;
+        } de ${m.lote.obras} obra${m.lote.obras === 1 ? "" : "s"}${porque}`;
       }
       const n = antes?.fechas.length ?? 0;
-      return `Se corrió${tramo}${n > 1 ? ` · ${n} jornadas` : ""}`;
+      return `Se corrió${tramo}${n > 1 ? ` · ${n} jornadas` : ""}${porque}`;
     }
   }
 }

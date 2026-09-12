@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, History, Loader2, RefreshCw } from "lucide-react";
+import { CalendarX2, ChevronLeft, ChevronRight, History, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SelectorCuadrillas } from "./selector-cuadrillas";
 import type { CuadrillaTablero } from "@/lib/tablero/tipos";
@@ -18,6 +18,7 @@ export function TopbarTablero({
   onHoy,
   onRefrescar,
   onActividad,
+  onCorrerDia,
 }: {
   rangoLabel: string;
   cuadrillas: CuadrillaTablero[];
@@ -32,6 +33,8 @@ export function TopbarTablero({
   onRefrescar: () => void;
   /** Abre el panel de actividad. Un ícono, en un lugar que ya estaba vacío. */
   onActividad: () => void;
+  /** Abre el diálogo de suspender un día y correr lo que había. */
+  onCorrerDia: () => void;
 }) {
   return (
     <div className="flex flex-wrap items-center gap-3 pb-3">
@@ -65,6 +68,16 @@ export function TopbarTablero({
             Guardando en Odoo…
           </span>
         )}
+        {/* CON TEXTO Y NO CON ÍCONO, a diferencia de la actividad: es la acción más
+            grande del tablero —un clic mueve treinta jornadas— y un ícono suelto se
+            aprieta por accidente. Que haya que leer qué dice es parte del freno.
+            NO VA EN EL ENCABEZADO DEL DÍA, que sería el lugar natural: ese ya es agarre
+            para desplazar la grilla, botón para abrir el domingo y disparador del popover
+            de notas. Un cuarto gesto ahí adentro no entra. */}
+        <Button variant="outline" size="sm" onClick={onCorrerDia}>
+          <CalendarX2 className="mr-1.5 h-4 w-4" />
+          Correr un día
+        </Button>
         {/* La actividad entra por un ícono y no por un panel fijo: en el tablero no
             sobra un píxel, y esto se consulta de vez en cuando. Al lado de Refrescar
             porque las dos son acciones sobre el tablero entero, no sobre una obra. */}

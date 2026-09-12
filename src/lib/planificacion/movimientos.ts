@@ -18,7 +18,7 @@ type DB = SupabaseClient;
 const TABLA = "plan_movimientos";
 
 const COLUMNAS =
-  "id, odoo_ot_id, ot_titulo, accion, asignacion_ids, antes, despues, deshace_a, lote_id, created_at, user_profiles(nombre)";
+  "id, odoo_ot_id, ot_titulo, accion, asignacion_ids, antes, despues, deshace_a, lote_id, motivo, created_at, user_profiles(nombre)";
 
 type Fila = {
   id: string;
@@ -30,6 +30,7 @@ type Fila = {
   despues: EstadoBloque | null;
   deshace_a: string | null;
   lote_id: string | null;
+  motivo: string | null;
   created_at: string;
   user_profiles?: { nombre: string } | null;
 };
@@ -45,6 +46,7 @@ function mapear(f: Fila, deshechos: Set<string>): Movimiento {
     despues: f.despues,
     deshaceA: f.deshace_a,
     loteId: f.lote_id,
+    motivo: f.motivo,
     deshecho: deshechos.has(f.id),
     autorNombre: f.user_profiles?.nombre ?? null,
     createdAt: f.created_at,
@@ -147,7 +149,7 @@ export async function registrarMovimiento(
 export async function registrarCorrimiento(
   db: DB,
   registros: RegistroCorrida[],
-  opts: { deshaceA?: Map<number, string> } = {},
+  opts: { motivo: string; deshaceA?: Map<number, string> },
 ): Promise<{ loteId: string; porOt: Map<number, string> } | null> {
   if (registros.length === 0) return null;
   const loteId = crypto.randomUUID();
@@ -165,6 +167,7 @@ export async function registrarCorrimiento(
           despues: r.despues,
           deshace_a: opts.deshaceA?.get(r.otId) ?? null,
           lote_id: loteId,
+          motivo: opts.motivo,
         })),
       )
       .select("id, odoo_ot_id");

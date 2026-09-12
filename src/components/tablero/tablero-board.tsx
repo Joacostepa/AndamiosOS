@@ -30,6 +30,8 @@ import { DialogoJornadas } from "./dialogo-jornadas";
 import { DialogoTarea, type ValoresTarea } from "./dialogo-tarea";
 import { DialogoCandado, type PedidoConfirmacion } from "./dialogo-candado";
 import { DialogoFijar, type PedidoFijar } from "./dialogo-fijar";
+import { DialogoCorrerDia } from "./dialogo-correr-dia";
+import { invertirCorrimiento, type Corrimiento } from "@/lib/tablero/corrimiento";
 import { DialogoDestinoJornadas, type PedidoDestino } from "./dialogo-destino-jornadas";
 import { useCandado } from "@/hooks/use-habilitaciones";
 import { useResumenComentarios } from "@/hooks/use-comentarios-ot";
@@ -45,6 +47,7 @@ import {
   useCrearAsignaciones,
   useActualizarAsignaciones,
   useMoverAsignaciones,
+  useCorrerDia,
   useBorrarAsignaciones,
   useCrearTarea,
   useActualizarTareas,
@@ -279,6 +282,7 @@ export function TableroBoard() {
   const crear = useCrearAsignaciones();
   const actualizar = useActualizarAsignaciones();
   const mover = useMoverAsignaciones();
+  const correrDia = useCorrerDia();
   const borrar = useBorrarAsignaciones();
   // Las tareas escriben en Supabase y las obras en Odoo, pero se sienten igual: el
   // board elige el par según `bloque.origen` y nada más arriba se entera.
@@ -530,6 +534,7 @@ export function TableroBoard() {
   const { data: candados } = useCandado(otIdsEnTablero);
   const [pedidoCandado, setPedidoCandado] = useState<PedidoConfirmacion | null>(null);
   const [pedidoFijar, setPedidoFijar] = useState<PedidoFijar | null>(null);
+  const [corrimientoAbierto, setCorrimientoAbierto] = useState(false);
 
   /** Las OTs que llevan candado visible en la tarjeta. Se arrastran igual. */
   const otsBloqueadas = useMemo(() => {
@@ -1145,6 +1150,41 @@ export function TableroBoard() {
   }
 
   /**
+   * Suspender un día: manda el plan que armó el diálogo y ofrece deshacerlo entero.
+   *
+   * EL DESHACER NO RECALCULA, invierte los registros: cada jornada vuelve al día del que
+   * salió aunque el tablero haya cambiado de forma en el medio. La guarda de
+   * ofrecerDeshacer —que todas las asignaciones sigan existiendo— es la misma que la del
+   * arrastre, sólo que acá son treinta en vez de tres: si alguien tocó una sola, el lote
+   * no vuelve. Es estricto a propósito. Devolver la mitad de un corrimiento sería dejar el
+   * tablero en un estado que no eligió nadie.
+   */
+  function correrElDia(plan: Corrimiento, datos: { dia: string; motivo: string }) {
+    correrDia.mutate(
+      { motivo: datos.motivo, movimientos: plan.movimientos, registros: plan.registros },
+      {
+        onSuccess: ({ filas }) => {
+          setCorrimientoAbierto(false);
+          const vuelta = invertirCorrimiento(plan.registros);
+          ofrecerDeshacer({
+            etiqueta: `Corrido el ${format(parseISO(datos.dia), "EEE d MMM", { locale: es })} · ${plan.jornadas} jornadas`,
+            asignacionIds: plan.movimientos.map((m) => m.id),
+            ejecutar: () =>
+              correrDia.mutate({
+                motivo: `Deshacer: ${datos.motivo}`,
+                movimientos: vuelta.movimientos,
+                registros: vuelta.registros,
+                // Cada fila de la vuelta apunta a la de ida de su misma obra, para que el
+                // panel marque el corrimiento original como deshecho.
+                deshaceA: filas,
+              }),
+          });
+        },
+      },
+    );
+  }
+
+  /**
    * Devolver una obra a la bandeja de sin asignar. Único camino: lo usan por igual el
    * arrastre al panel y la opción del menú de la tarjeta, así que la regla de qué se
    * puede sacar vale para los dos gestos.
@@ -1467,6 +1507,7 @@ export function TableroBoard() {
         onNext={() => irASemana(1)}
         onHoy={() => scrollAFecha(hoyISO)}
         onActividad={() => setActividadAbierta(true)}
+        onCorrerDia={() => setCorrimientoAbierto(true)}
         onRefrescar={() => refetch()}
       />
 
@@ -1904,6 +1945,18 @@ export function TableroBoard() {
       <DialogoCandado pedido={pedidoCandado} onCerrar={() => setPedidoCandado(null)} />
 
       <DialogoFijar pedido={pedidoFijar} onCerrar={() => setPedidoFijar(null)} />
+
+      <DialogoCorrerDia
+        abierto={corrimientoAbierto}
+        hoy={hoyISO}
+        hastaCargado={hasta}
+        asignaciones={data.asignaciones}
+        ots={otsPorId}
+        cuadrillas={data.cuadrillas}
+        guardando={correrDia.isPending}
+        onCerrar={() => setCorrimientoAbierto(false)}
+        onCorrer={correrElDia}
+      />
 
       <PanelActividad abierto={actividadAbierta} onOpenChange={setActividadAbierta} />
 

@@ -19,6 +19,7 @@ import { es } from "date-fns/locale";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { TopbarTablero } from "./topbar-tablero";
+import { PanelActividad } from "./panel-actividad";
 import { TableroGrid, DIAS_VENTANA } from "./tablero-grid";
 import { PanelSinAsignar, ID_BANDEJA } from "./panel-sin-asignar";
 import { ContenidoTarjeta } from "./tarjeta-asignacion";
@@ -33,6 +34,7 @@ import { useCandado } from "@/hooks/use-habilitaciones";
 import { useResumenComentarios } from "@/hooks/use-comentarios-ot";
 import { haySinLeer, leerVistos, marcarVisto, type Vistos } from "@/lib/tablero/comentarios-vistos";
 import type { ResumenEnTarjeta } from "@/lib/tablero/tipos-comentario";
+import type { EstadoBloque } from "@/lib/tablero/tipos-movimiento";
 import { usePlanJornadas, useFijarJornadasPlan } from "@/hooks/use-plan-jornadas";
 import { useNotasJornada } from "@/hooks/use-notas-jornada";
 import { useClima } from "@/hooks/use-clima";
@@ -159,6 +161,13 @@ const detectarColision: CollisionDetection = (args) => {
   return dentro.length > 0 ? dentro : rectIntersection(args);
 };
 
+/**
+ * Cuánto vive un "deshacer". Pasados dos minutos el mundo se movió: pudieron cerrar la
+ * jornada, moverla de nuevo o soltar otra obra encima. Un deshacer viejo no es una ayuda,
+ * es una sorpresa.
+ */
+const VENTANA_UNDO = 2 * 60 * 1000;
+
 export function TableroBoard() {
   // EL ANCLA ES HOY, no el lunes de esta semana: se planifica desde hoy hacia adelante.
   // Un miércoles a la mañana, el lunes pasado ya no es una decisión — ocupaba dos
@@ -238,6 +247,7 @@ export function TableroBoard() {
   const [domingosAbiertos, setDomingosAbiertos] = useState<Set<string>>(
     () => new Set(leerDomingosGuardados(format(new Date(), "yyyy-MM-dd"))),
   );
+  const [actividadAbierta, setActividadAbierta] = useState(false);
   const [arrastrando, setArrastrando] = useState<
     { tipo: "ot"; otId: number } | { tipo: "bloque"; bloque: Bloque } | null
   >(null);
@@ -836,7 +846,165 @@ export function TableroBoard() {
       estado: "tentativa",
       ordenDia: orden,
     }));
-    crear.mutate(nuevas);
+    crear.mutate({
+      asignaciones: nuevas,
+      registro: {
+        otId,
+        otTitulo: tituloDeOt(otId),
+        accion: "crear",
+        antes: null,
+        despues: {
+          fechas: dias,
+          cuadrillaId,
+          cuadrillaNombre: nombreCuadrilla(cuadrillaId),
+          fraccion: Number(fracciones[0]),
+        },
+      },
+    });
+  }
+
+  // ── Deshacer el último gesto ──────────────────────────────────────────────
+  //
+  // POR QUÉ UN UNDO Y NO UN "¿ESTÁS SEGURO?": es el mismo criterio que ya rige quitar del
+  // tablero. Un confirm grava todos los usos —incluido el arrastre correcto, que son la
+  // enorme mayoría— y a la semana se clickea sin leer: queda la fricción y el error igual.
+  // El undo no cuesta nada en el camino de ida.
+  //
+  // UNO SOLO Y EL ÚLTIMO. No es una pila: deshacer tres arrastres hacia atrás obliga a
+  // recordar en qué orden pasaron, y el tablero es de varias personas a la vez — el
+  // tercero hacia atrás puede ser de otro. Lo que resuelve el problema real ("lo arrastré
+  // sin querer") es poder volver del gesto que acabás de hacer.
+  //
+  // CADUCA. Pasados dos minutos el mundo se movió: pudieron cerrar la jornada, moverla de
+  // nuevo o soltar otra obra encima. Un deshacer viejo no es una ayuda, es una sorpresa.
+  const ultimoDeshacible = useRef<{
+    etiqueta: string;
+    asignacionIds: number[];
+    ejecutar: () => void;
+    expira: number;
+  } | null>(null);
+
+  /**
+   * ¿Sigue siendo seguro deshacer esto?
+   *
+   * La guarda es que las asignaciones sigan existiendo tal como las dejó el gesto. Si
+   * alguien las movió, las cerró o las sacó del tablero en el medio, deshacer pisaría una
+   * decisión ajena que quien aprieta el botón no está viendo.
+   */
+  /**
+   * Deshacer el último gesto, si todavía es seguro.
+   *
+   * LA GUARDA: que las asignaciones sigan existiendo tal como las dejó el gesto, y que no
+   * hayan pasado dos minutos. Si alguien las movió, las cerró o las sacó del tablero en el
+   * medio, deshacer pisaría una decisión ajena que quien aprieta el botón no está viendo.
+   *
+   * Va en useCallback y no como función suelta por el linter de React: `Date.now()` es
+   * impuro y una función del cuerpo del componente se asume llamable durante el render.
+   */
+  const deshacer = useCallback(() => {
+    const accion = ultimoDeshacible.current;
+    if (!accion) {
+      toast.info("No hay nada reciente para deshacer");
+      return;
+    }
+    const vivas = new Set((data?.asignaciones ?? []).map((a) => a.id));
+    const impedimento =
+      Date.now() > accion.expira
+        ? "El movimiento ya es viejo"
+        : accion.asignacionIds.every((id) => vivas.has(id))
+          ? null
+          : "La obra cambió desde entonces";
+
+    if (impedimento) {
+      toast.error("No se puede deshacer", {
+        description: `${impedimento}. Movela a mano desde el tablero.`,
+      });
+      ultimoDeshacible.current = null;
+      return;
+    }
+    ultimoDeshacible.current = null;
+    accion.ejecutar();
+  }, [data]);
+
+  // El toast y el atajo llaman por ref, no por closure: los dos se arman una sola vez y
+  // tienen que ejecutar la versión fresca, que cambia cada vez que llega el tablero.
+  const deshacerRef = useRef(deshacer);
+  useEffect(() => {
+    deshacerRef.current = deshacer;
+  }, [deshacer]);
+
+  /**
+   * Guarda el gesto como deshacible y lo ofrece en un toast.
+   *
+   * UN SOLO TOAST, con id fijo: en una ráfaga de diez arrastres no se apilan diez
+   * carteles, el último pisa al anterior. Diez segundos alcanzan para darse cuenta de que
+   * la tarjeta cayó donde no era; más que eso el cartel se queda tapando la esquina
+   * durante los dos arrastres siguientes.
+   */
+  const ofrecerDeshacer = useCallback(
+    (accion: { etiqueta: string; asignacionIds: number[]; ejecutar: () => void }) => {
+      ultimoDeshacible.current = { ...accion, expira: Date.now() + VENTANA_UNDO };
+      toast.success(accion.etiqueta, {
+        id: "tablero-deshacer",
+        duration: 10000,
+        closeButton: true,
+        description: "⌘Z para volver atrás",
+        action: { label: "Deshacer", onClick: () => deshacerRef.current() },
+      });
+    },
+    [],
+  );
+
+  // ⌘Z / Ctrl+Z. El toast es lo que lo enseña; el atajo es lo que usa el que ya lo sabe,
+  // sin tener que apuntarle a un cartel que se está por ir.
+  //
+  // No dispara mientras se está escribiendo: adentro de un campo, ⌘Z es deshacer el
+  // tipeo y robárselo sería peor que no tener atajo.
+  useEffect(() => {
+    function alTeclado(e: KeyboardEvent) {
+      if (e.key !== "z" && e.key !== "Z") return;
+      if (!e.metaKey && !e.ctrlKey) return;
+      if (e.shiftKey) return;
+      const foco = document.activeElement;
+      if (
+        foco instanceof HTMLInputElement ||
+        foco instanceof HTMLTextAreaElement ||
+        (foco instanceof HTMLElement && foco.isContentEditable)
+      ) {
+        return;
+      }
+      e.preventDefault();
+      deshacerRef.current();
+    }
+    window.addEventListener("keydown", alTeclado);
+    return () => window.removeEventListener("keydown", alTeclado);
+  }, []);
+
+  // ── Registro de lo que se hace en el tablero ──────────────────────────────
+  //
+  // El "antes" lo manda el cliente porque lo tiene en memoria: pedírselo de vuelta a Odoo
+  // sumaría ~800 ms al gesto que más se repite. Lo que NO manda el cliente es el autor ni
+  // la decisión de registrar — eso lo pone la ruta con la sesión.
+  //
+  // El nombre de la cuadrilla viaja junto al id: el historial tiene que poder decir
+  // "Cuadrilla 3" aunque esa cuadrilla se archive en Odoo el mes que viene.
+  function nombreCuadrilla(id: number | null): string | null {
+    return id == null ? null : (data?.cuadrillas.find((c) => c.id === id)?.nombre ?? null);
+  }
+
+  function estadoDelBloque(
+    b: Pick<Bloque, "fechas" | "cuadrillaId" | "fraccion">,
+  ): EstadoBloque {
+    return {
+      fechas: b.fechas,
+      cuadrillaId: b.cuadrillaId,
+      cuadrillaNombre: nombreCuadrilla(b.cuadrillaId),
+      fraccion: b.fraccion,
+    };
+  }
+
+  function tituloDeOt(otId: number): string | null {
+    return otsPorId.get(otId)?.titulo ?? null;
   }
 
   function moverBloque(
@@ -859,8 +1027,59 @@ export function TableroBoard() {
     }));
     // Un bloque es homogéneo, así que alcanza con mirar su origen una vez: los días de
     // una tarea viajan a Supabase y los de una obra a Odoo.
-    if (bloque.origen === "tarea") moverTarea.mutate(movimientos);
-    else mover.mutate(movimientos);
+    if (bloque.origen === "tarea") return moverTarea.mutate(movimientos);
+
+    const antes = estadoDelBloque(bloque);
+    const despues: EstadoBloque = {
+      fechas: dias,
+      cuadrillaId,
+      cuadrillaNombre: nombreCuadrilla(cuadrillaId),
+      fraccion: bloque.fraccion,
+    };
+    // Nada que deshacer si el bloque cayó donde ya estaba: pasa seguido —se levanta la
+    // tarjeta y se suelta en la misma celda— y ofrecer deshacer un no-movimiento es ruido.
+    const seMovio =
+      antes.fechas.join() !== despues.fechas.join() || antes.cuadrillaId !== despues.cuadrillaId;
+
+    mover.mutate(
+      {
+        movimientos,
+        registro: {
+          otId: bloque.otId,
+          otTitulo: tituloDeOt(bloque.otId),
+          accion: "mover",
+          antes,
+          despues,
+        },
+      },
+      {
+        onSuccess: ({ movimientoId }) => {
+          if (!seMovio) return;
+          ofrecerDeshacer({
+            etiqueta: `Movida a ${format(parseISO(dias[0]), "EEE d MMM", { locale: es })}`,
+            asignacionIds: bloque.ids,
+            ejecutar: () =>
+              mover.mutate({
+                // Vuelve cada jornada a su día, su cuadrilla y su lugar en la pila.
+                movimientos: bloque.ids.map((id, i) => ({
+                  id,
+                  fecha: bloque.fechas[i],
+                  cuadrillaId: bloque.cuadrillaId,
+                  ordenDia: bloque.ordenDia,
+                })),
+                registro: {
+                  otId: bloque.otId,
+                  otTitulo: tituloDeOt(bloque.otId),
+                  accion: "mover",
+                  antes: despues,
+                  despues: antes,
+                  deshaceA: movimientoId ?? null,
+                },
+              }),
+          });
+        },
+      },
+    );
   }
 
   /**
@@ -942,7 +1161,16 @@ export function TableroBoard() {
     const vuelveALaBandeja = totales - quedanEnTablero > 0;
 
     const aplicar = () =>
-      borrar.mutate(liberables, {
+      borrar.mutate({
+        ids: liberables,
+        registro: {
+          otId: bloque.otId,
+          otTitulo: tituloDeOt(bloque.otId),
+          accion: "quitar",
+          antes: estadoDelBloque(bloque),
+          despues: null,
+        },
+      }, {
         onSuccess: () => {
           // El aviso sale SIEMPRE, no sólo cuando quedan jornadas cerradas. Un arrastre
           // borra varios registros en Odoo, y que la tarjeta desaparezca sin decir nada
@@ -968,7 +1196,16 @@ export function TableroBoard() {
             action: {
               label: "Deshacer",
               onClick: () => {
-                crear.mutate(restaurar, {
+                crear.mutate({
+                  asignaciones: restaurar,
+                  registro: {
+                    otId: bloque.otId,
+                    otTitulo: tituloDeOt(bloque.otId),
+                    accion: "crear",
+                    antes: null,
+                    despues: estadoDelBloque(bloque),
+                  },
+                }, {
                   onSuccess: () =>
                     toast.success(
                       `Obra restaurada: ${restaurar.length} jornada${restaurar.length === 1 ? "" : "s"} vuelven al tablero`,
@@ -1037,7 +1274,10 @@ export function TableroBoard() {
         );
     const deObras = movs(false);
     const deTareas = movs(true);
-    if (deObras.length > 0) mover.mutate(deObras);
+    // SIN REGISTRO: reordenar dentro del mismo día no cambia cuándo ni con quién se
+    // trabaja, sólo cómo se apilan las tarjetas en la celda. Anotarlo llenaría el
+    // historial de líneas que no dicen nada y taparía los movimientos que sí importan.
+    if (deObras.length > 0) mover.mutate({ movimientos: deObras });
     if (deTareas.length > 0) moverTarea.mutate(deTareas);
   }
 
@@ -1161,6 +1401,7 @@ export function TableroBoard() {
         onPrev={() => irASemana(-1)}
         onNext={() => irASemana(1)}
         onHoy={() => scrollAFecha(hoyISO)}
+        onActividad={() => setActividadAbierta(true)}
         onRefrescar={() => refetch()}
       />
 
@@ -1431,15 +1672,31 @@ export function TableroBoard() {
           // fecha distinta por id: es exactamente lo que hace falta para cerrar el hueco de
           // una obra partida sin tocar la cuadrilla ni el apilado.
           if (cambios.fechas.length > 0) {
-            mover.mutate(
-              cambios.fechas.map((f) => ({ id: f.asignacionId, fecha: f.fecha })),
-            );
+            const fechasNuevas = cambios.fechas.map((f) => f.fecha).sort();
+            mover.mutate({
+              movimientos: cambios.fechas.map((f) => ({ id: f.asignacionId, fecha: f.fecha })),
+              registro: {
+                otId: jornadasDe,
+                otTitulo: tituloDeOt(jornadasDe),
+                accion: "mover",
+                antes: {
+                  fechas: jornadasDeLaObra.map((j) => j.fecha).sort(),
+                  cuadrillaId: jornadasDeLaObra[0]?.cuadrillaId ?? null,
+                  cuadrillaNombre: nombreCuadrilla(jornadasDeLaObra[0]?.cuadrillaId ?? null),
+                },
+                despues: {
+                  fechas: fechasNuevas,
+                  cuadrillaId: jornadasDeLaObra[0]?.cuadrillaId ?? null,
+                  cuadrillaNombre: nombreCuadrilla(jornadasDeLaObra[0]?.cuadrillaId ?? null),
+                },
+              },
+            });
           }
 
           if (cambios.nuevas.length > 0) {
             const estado = jornadasDeLaObra[0]?.estado ?? "tentativa";
-            crear.mutate(
-              cambios.nuevas.map((n) => ({
+            crear.mutate({
+              asignaciones: cambios.nuevas.map((n) => ({
                 otId: jornadasDe,
                 fecha: n.fecha,
                 cuadrillaId: n.cuadrillaId,
@@ -1447,7 +1704,18 @@ export function TableroBoard() {
                 estado,
                 ordenDia: n.ordenDia,
               })),
-            );
+              registro: {
+                otId: jornadasDe,
+                otTitulo: tituloDeOt(jornadasDe),
+                accion: "crear",
+                antes: null,
+                despues: {
+                  fechas: cambios.nuevas.map((n) => n.fecha).sort(),
+                  cuadrillaId: cambios.nuevas[0]?.cuadrillaId ?? null,
+                  cuadrillaNombre: nombreCuadrilla(cambios.nuevas[0]?.cuadrillaId ?? null),
+                },
+              },
+            });
           }
           // Las jornadas que se sacan pasan por la MISMA pregunta que el arrastre a la
           // bandeja: son el mismo hecho —una jornada menos en el tablero— y si sólo un
@@ -1461,7 +1729,24 @@ export function TableroBoard() {
             const quedan = asignadasAhora - cambios.borradas.length;
             const vuelveALaBandeja = repartirJornadas(duracion).length - quedan > 0;
             const duracionNueva = Number((duracion - cambios.borradas.length).toFixed(2));
-            const aplicar = () => borrar.mutate(cambios.borradas);
+            const aplicar = () =>
+              borrar.mutate({
+                ids: cambios.borradas,
+                registro: {
+                  otId: jornadasDe,
+                  otTitulo: tituloDeOt(jornadasDe),
+                  accion: "quitar",
+                  antes: {
+                    fechas: jornadasDeLaObra
+                      .filter((j) => cambios.borradas.includes(j.id))
+                      .map((j) => j.fecha)
+                      .sort(),
+                    cuadrillaId: jornadasDeLaObra[0]?.cuadrillaId ?? null,
+                    cuadrillaNombre: nombreCuadrilla(jornadasDeLaObra[0]?.cuadrillaId ?? null),
+                  },
+                  despues: null,
+                },
+              });
 
             if (vuelveALaBandeja && duracionNueva >= 1) {
               setDestino({
@@ -1518,6 +1803,8 @@ export function TableroBoard() {
       />
 
       <DialogoCandado pedido={pedidoCandado} onCerrar={() => setPedidoCandado(null)} />
+
+      <PanelActividad abierto={actividadAbierta} onOpenChange={setActividadAbierta} />
 
       <FormularioCierre
         abierto={!!cierre}

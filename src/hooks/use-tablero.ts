@@ -12,6 +12,7 @@ import type { Feriado } from "@/lib/feriados/argentina";
 import { fechasDeJornadas } from "@/lib/tablero/bloques";
 import { CLAVE_CONFIRMACIONES } from "@/hooks/use-confirmaciones";
 import type { RegistroConfirmacion } from "@/lib/tablero/tipos-confirmacion";
+import type { RegistroMovimiento } from "@/lib/tablero/tipos-movimiento";
 import type {
   AsignacionTablero,
   CambioAsignacion,
@@ -177,13 +178,18 @@ function refrescarPronto(qc: QueryClient) {
 
 export function useCrearAsignaciones() {
   const qc = useQueryClient();
-  return useMutation<{ ids: number[] }, Error, NuevaAsignacion[], Contexto>({
-    mutationFn: (asignaciones) =>
-      pedir<{ ids: number[] }>("/api/planificacion/asignaciones", {
+  return useMutation<
+    { ids: number[]; movimientoId?: string | null },
+    Error,
+    { asignaciones: NuevaAsignacion[]; registro?: RegistroMovimiento },
+    Contexto
+  >({
+    mutationFn: (body) =>
+      pedir<{ ids: number[]; movimientoId?: string | null }>("/api/planificacion/asignaciones", {
         method: "POST",
-        body: JSON.stringify({ asignaciones }),
+        body: JSON.stringify(body),
       }),
-    onMutate: async (asignaciones) => {
+    onMutate: async ({ asignaciones }) => {
       const temporales = asignaciones.map(() => proximoIdTemporal--);
       const nuevas: AsignacionTablero[] = asignaciones.map((a, i) => ({
         id: temporales[i],
@@ -239,15 +245,20 @@ export function useCrearAsignaciones() {
 export function useActualizarAsignaciones() {
   const qc = useQueryClient();
   return useMutation<
-    { ok: true; registrado?: boolean },
+    { ok: true; registrado?: boolean; movimientoId?: string | null },
     Error,
     // `contexto` sólo viaja al cambiar el ESTADO: dice de qué obra y de qué días son
     // estos ids, para que el servidor pueda anotar quién confirmó sin releer Odoo.
-    { ids: number[]; cambio: CambioAsignacion; contexto?: RegistroConfirmacion },
+    {
+      ids: number[];
+      cambio: CambioAsignacion;
+      contexto?: RegistroConfirmacion;
+      registro?: RegistroMovimiento;
+    },
     Contexto
   >({
     mutationFn: (body) =>
-      pedir<{ ok: true; registrado?: boolean }>("/api/planificacion/asignaciones", {
+      pedir<{ ok: true; registrado?: boolean; movimientoId?: string | null }>("/api/planificacion/asignaciones", {
         method: "PATCH",
         body: JSON.stringify(body),
       }),
@@ -288,13 +299,18 @@ export function useActualizarAsignaciones() {
 /** Mover un bloque: cada jornada a su nueva fecha, todas juntas. */
 export function useMoverAsignaciones() {
   const qc = useQueryClient();
-  return useMutation<{ ok: true }, Error, MovimientoAsignacion[], Contexto>({
-    mutationFn: (movimientos) =>
-      pedir<{ ok: true }>("/api/planificacion/asignaciones", {
+  return useMutation<
+    { ok: true; movimientoId?: string | null },
+    Error,
+    { movimientos: MovimientoAsignacion[]; registro?: RegistroMovimiento },
+    Contexto
+  >({
+    mutationFn: (body) =>
+      pedir<{ ok: true; movimientoId?: string | null }>("/api/planificacion/asignaciones", {
         method: "PATCH",
-        body: JSON.stringify({ movimientos }),
+        body: JSON.stringify(body),
       }),
-    onMutate: (movimientos) => {
+    onMutate: ({ movimientos }) => {
       const porId = new Map(movimientos.map((m) => [m.id, m]));
       return aplicarOptimista(qc, (data) => ({
         ...data,
@@ -317,13 +333,18 @@ export function useMoverAsignaciones() {
 
 export function useBorrarAsignaciones() {
   const qc = useQueryClient();
-  return useMutation<{ ok: true }, Error, number[], Contexto>({
-    mutationFn: (ids) =>
-      pedir<{ ok: true }>("/api/planificacion/asignaciones", {
+  return useMutation<
+    { ok: true; movimientoId?: string | null },
+    Error,
+    { ids: number[]; registro?: RegistroMovimiento },
+    Contexto
+  >({
+    mutationFn: (body) =>
+      pedir<{ ok: true; movimientoId?: string | null }>("/api/planificacion/asignaciones", {
         method: "DELETE",
-        body: JSON.stringify({ ids }),
+        body: JSON.stringify(body),
       }),
-    onMutate: (ids) =>
+    onMutate: ({ ids }) =>
       aplicarOptimista(qc, (data) => {
         const borradas = data.asignaciones.filter((a) => ids.includes(a.id));
         return {

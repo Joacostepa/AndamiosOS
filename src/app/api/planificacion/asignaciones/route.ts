@@ -11,6 +11,8 @@ import {
 import { OdooError } from "@/lib/odoo/client";
 import { createClient } from "@/lib/supabase/server";
 import { registrarConfirmacion } from "@/lib/planificacion/confirmaciones";
+import { registrarMovimiento } from "@/lib/planificacion/movimientos";
+import { ACCIONES } from "@/lib/tablero/tipos-movimiento";
 
 // Escrituras del Tablero de Planificación sobre x_aba_asignacion (Odoo).
 //
@@ -21,6 +23,17 @@ import { registrarConfirmacion } from "@/lib/planificacion/confirmaciones";
 // REGLA DE NEGOCIO: la app es la única que escribe asignaciones; en Odoo se ven en
 // solo lectura. Ante conflicto de edición simultánea gana la última escritura.
 // Ruta protegida por sesión (no está en publicPaths del middleware).
+//
+// TODA ESCRITURA DEJA RASTRO en plan_movimientos: quién, cuándo, y cómo estaba el bloque
+// antes y después. Se anota ACÁ y no desde el cliente para que no haya forma de mover una
+// tarjeta sin registro, y para que el autor salga de la sesión y no del body. El "antes"
+// sí lo manda el tablero, que lo tiene en memoria: leerlo de vuelta en Odoo le sumaría
+// ~800 ms al gesto que más se repite del módulo. Misma decisión que el `contexto` de las
+// confirmaciones, y por el mismo motivo.
+//
+// EL CAMBIO DE ESTADO NO PASA POR ACÁ: lo registra plan_confirmaciones, con su propia
+// granularidad (una fila por jornada) y su propia pantalla. Dos tablas anotando el mismo
+// hecho es cómo terminan diciendo cosas distintas.
 //
 // Toda escritura resincroniza además la fecha programada de la OT afectada, para que
 // Comercial pueda contestar "¿cuándo vienen?" desde Odoo sin abrir el tablero (ver
@@ -34,7 +47,33 @@ const fecha = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha YYYY-MM-DD");
 const fraccion = z.enum(["0.10", "0.25", "0.50", "0.75", "1"]);
 const estado = z.enum(["tentativa", "confirmada"]);
 
+/**
+ * Lo que el tablero manda para que el gesto quede registrado.
+ *
+ * Es OPCIONAL en el esquema y no puede no serlo: si faltara, la validación rebotaría el
+ * movimiento entero por no poder anotarlo, y el historial pasaría de ser una ayuda a ser
+ * un requisito para poder planificar. Lo que se pierde cuando no viene es la línea del
+ * historial, no la jornada.
+ */
+const estadoBloqueSchema = z.object({
+  fechas: z.array(fecha),
+  cuadrillaId: z.number().int().positive().nullable(),
+  cuadrillaNombre: z.string().nullable(),
+  fraccion: z.number().positive().optional(),
+});
+
+const registroSchema = z.object({
+  otId: z.number().int().positive(),
+  otTitulo: z.string().nullable(),
+  accion: z.enum(ACCIONES),
+  antes: estadoBloqueSchema.nullable(),
+  despues: estadoBloqueSchema.nullable(),
+  deshaceA: z.string().uuid().nullable().optional(),
+});
+
+
 const crearSchema = z.object({
+  registro: registroSchema.optional(),
   asignaciones: z
     .array(
       z.object({
@@ -54,6 +93,7 @@ const crearSchema = z.object({
 // (mover un bloque multi-jornada mueve todos sus días juntos).
 const actualizarSchema = z.object({
   ids: z.array(z.number().int().positive()).min(1),
+  registro: registroSchema.optional(),
   cambio: z
     .object({
       fecha: fecha.optional(),
@@ -79,6 +119,7 @@ const actualizarSchema = z.object({
 });
 
 const moverSchema = z.object({
+  registro: registroSchema.optional(),
   movimientos: z
     .array(
       z.object({
@@ -91,7 +132,23 @@ const moverSchema = z.object({
     .min(1),
 });
 
-const borrarSchema = z.object({ ids: z.array(z.number().int().positive()).min(1) });
+const borrarSchema = z.object({
+  ids: z.array(z.number().int().positive()).min(1),
+  registro: registroSchema.optional(),
+});
+
+/**
+ * Anota el gesto y devuelve su id, que el tablero necesita para poder encadenar un
+ * "deshacer". Nunca tira: registrarMovimiento se traga su propio error.
+ */
+async function anotar(
+  registro: z.infer<typeof registroSchema> | undefined,
+  asignacionIds: number[],
+): Promise<string | null> {
+  if (!registro) return null;
+  const db = await createClient();
+  return registrarMovimiento(db, registro, asignacionIds);
+}
 
 function errorResponse(e: unknown) {
   const msg = e instanceof OdooError ? e.message : e instanceof Error ? e.message : String(e);
@@ -130,7 +187,9 @@ export async function POST(req: NextRequest) {
   try {
     const ids = await crearAsignaciones(parsed.data.asignaciones);
     sincronizarLuego(parsed.data.asignaciones.map((a) => a.otId));
-    return NextResponse.json({ ids });
+    // Los ids recién existen después de crear, así que el registro va acá y no antes.
+    const movimientoId = await anotar(parsed.data.registro, ids);
+    return NextResponse.json({ ids, movimientoId });
   } catch (e) {
     return errorResponse(e);
   }
@@ -149,11 +208,13 @@ export async function PATCH(req: NextRequest) {
     const mover = moverSchema.safeParse(body);
     if (!mover.success) return invalido(mover.error.issues);
     try {
+      const ids = mover.data.movimientos.map((m) => m.id);
       await moverAsignaciones(mover.data.movimientos);
       // La OT no cambia al mover, así que se resuelve después de responder junto con la
       // sincronización, sin sumar una lectura al camino crítico.
-      sincronizarLuego(otsDeAsignaciones(mover.data.movimientos.map((m) => m.id)));
-      return NextResponse.json({ ok: true });
+      sincronizarLuego(otsDeAsignaciones(ids));
+      const movimientoId = await anotar(mover.data.registro, ids);
+      return NextResponse.json({ ok: true, movimientoId });
     } catch (e) {
       return errorResponse(e);
     }
@@ -163,9 +224,10 @@ export async function PATCH(req: NextRequest) {
   if (!parsed.success) return invalido(parsed.error.issues);
 
   try {
-    const { ids, cambio, contexto } = parsed.data;
+    const { ids, cambio, contexto, registro } = parsed.data;
     await actualizarAsignaciones(ids, cambio);
     sincronizarLuego(otsDeAsignaciones(ids));
+    const movimientoId = await anotar(registro, ids);
 
     // El registro de quién confirmó se escribe ACÁ, en la misma request que cambia el
     // estado, y no desde el cliente con una llamada aparte: así no hay forma de cambiar
@@ -189,10 +251,10 @@ export async function PATCH(req: NextRequest) {
         // tira abajo porque falló el registro. Pero tampoco se miente — `registrado:
         // false` viaja de vuelta y el tablero avisa que quedó sin firmar.
         console.error("[planificacion] no se pudo registrar la confirmación", e);
-        return NextResponse.json({ ok: true, registrado: false });
+        return NextResponse.json({ ok: true, registrado: false, movimientoId });
       }
     }
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, movimientoId });
   } catch (e) {
     return errorResponse(e);
   }
@@ -209,7 +271,10 @@ export async function DELETE(req: NextRequest) {
     const otIds = await otsDeAsignaciones(parsed.data.ids);
     await borrarAsignaciones(parsed.data.ids);
     sincronizarLuego(otIds);
-    return NextResponse.json({ ok: true });
+    // Se anota DESPUÉS de borrar, con los ids que ya no existen: son justamente lo que
+    // hace falta para saber qué se fue del tablero.
+    const movimientoId = await anotar(parsed.data.registro, parsed.data.ids);
+    return NextResponse.json({ ok: true, movimientoId });
   } catch (e) {
     return errorResponse(e);
   }

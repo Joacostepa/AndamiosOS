@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { hoyISO, preverDerivados } from "@/lib/habilitaciones/derivacion";
 import type {
   AdjuntoRequisito, Bandeja, EstadoRequisito, FichaHabilitacion, ModalidadPermiso,
-  Nota, Paquete, TipoGestion, TramiteEstado,
+  Paquete, TipoGestion, TramiteEstado,
 } from "@/lib/habilitaciones/tipos";
 import type { FriccionDeOt } from "@/app/api/habilitaciones/candado/route";
 

@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { useDetalleOt } from "@/hooks/use-detalle-ot";
 import { HistorialConfirmacion } from "./historial-confirmacion";
+import { MovimientosOt } from "./movimientos-ot";
 import { ComentariosOt } from "./comentarios-ot";
 import { ETAPA_LABEL, type HabEtapa } from "@/lib/habilitaciones/tipos";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -265,6 +266,11 @@ export function PanelOt({
                   antes de que esto existiera no tienen registro, y un "sin datos" en cada
                   panel sería ruido permanente por algo que se llena solo con el uso. */}
               <HistorialConfirmacion otId={ot.id} />
+
+              {/* Y qué más le pasó a esta obra: de qué día se movió, quién la planificó,
+                  quién le sacó jornadas. Junto al de confirmaciones y no en otra parte
+                  del panel: son las dos mitades de "¿por qué esta obra está acá?". */}
+              <MovimientosOt otId={ot.id} />
 
               {ot.urgencia === "alta" && ot.motivoUrgencia && (
                 <div className="flex gap-2 rounded-md border p-2 text-sm" style={{ borderColor: PELIGRO }}>

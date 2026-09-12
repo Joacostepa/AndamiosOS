@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, Loader2, RefreshCw } from "lucide-react";
+import { ChevronLeft, ChevronRight, History, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SelectorCuadrillas } from "./selector-cuadrillas";
 import type { CuadrillaTablero } from "@/lib/tablero/tipos";
@@ -17,6 +17,7 @@ export function TopbarTablero({
   onNext,
   onHoy,
   onRefrescar,
+  onActividad,
 }: {
   rangoLabel: string;
   cuadrillas: CuadrillaTablero[];
@@ -29,6 +30,8 @@ export function TopbarTablero({
   onNext: () => void;
   onHoy: () => void;
   onRefrescar: () => void;
+  /** Abre el panel de actividad. Un ícono, en un lugar que ya estaba vacío. */
+  onActividad: () => void;
 }) {
   return (
     <div className="flex flex-wrap items-center gap-3 pb-3">
@@ -62,6 +65,19 @@ export function TopbarTablero({
             Guardando en Odoo…
           </span>
         )}
+        {/* La actividad entra por un ícono y no por un panel fijo: en el tablero no
+            sobra un píxel, y esto se consulta de vez en cuando. Al lado de Refrescar
+            porque las dos son acciones sobre el tablero entero, no sobre una obra. */}
+        <Button
+          variant="outline"
+          size="icon"
+          className="size-8"
+          onClick={onActividad}
+          aria-label="Actividad del tablero"
+          title="Quién movió qué, y cuándo"
+        >
+          <History className="h-4 w-4" />
+        </Button>
         <Button variant="outline" size="sm" onClick={onRefrescar} disabled={refrescando}>
           <RefreshCw className={`mr-1.5 h-4 w-4 ${refrescando ? "animate-spin" : ""}`} />
           Refrescar

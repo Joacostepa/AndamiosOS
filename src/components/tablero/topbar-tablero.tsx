@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarX2, ChevronLeft, ChevronRight, History, Loader2, RefreshCw } from "lucide-react";
+import { CalendarX2, ChevronLeft, ChevronRight, HardHat, History, Loader2, RefreshCw, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SelectorCuadrillas } from "./selector-cuadrillas";
 import type { CuadrillaTablero } from "@/lib/tablero/tipos";
@@ -19,6 +19,8 @@ export function TopbarTablero({
   onRefrescar,
   onActividad,
   onCorrerDia,
+  queEjecutar,
+  onQueEjecutar,
 }: {
   rangoLabel: string;
   cuadrillas: CuadrillaTablero[];
@@ -35,6 +37,9 @@ export function TopbarTablero({
   onActividad: () => void;
   /** Abre el diálogo de suspender un día y correr lo que había. */
   onCorrerDia: () => void;
+  /** Las tarjetas muestran qué hay que ejecutar en vez del cliente y el técnico. */
+  queEjecutar: boolean;
+  onQueEjecutar: (v: boolean) => void;
 }) {
   return (
     <div className="flex flex-wrap items-center gap-3 pb-3">
@@ -59,6 +64,30 @@ export function TopbarTablero({
         conAsignaciones={conAsignaciones}
         onChange={onCuadrillas}
       />
+
+      {/* QUÉ MUESTRA LA TARJETA. Va junto al selector de cuadrillas y no del lado
+          derecho: los dos deciden QUÉ SE VE en la grilla, mientras que lo de la derecha
+          —correr un día, actividad, refrescar— son acciones sobre el tablero.
+          NO DICE "ON/OFF": dice cuál de los dos modos está puesto, porque un interruptor
+          sin etiqueta obliga a apretarlo para averiguar qué hace. */}
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => onQueEjecutar(!queEjecutar)}
+        title={
+          queEjecutar
+            ? "Las tarjetas muestran qué hay que ejecutar. Tocá para volver al cliente y el técnico."
+            : "Las tarjetas muestran el cliente y el técnico. Tocá para ver qué hay que ejecutar."
+        }
+        aria-pressed={queEjecutar}
+      >
+        {queEjecutar ? (
+          <HardHat className="mr-1.5 h-4 w-4" />
+        ) : (
+          <Users className="mr-1.5 h-4 w-4" />
+        )}
+        {queEjecutar ? "Qué ejecutar" : "Cliente y técnico"}
+      </Button>
 
       <div className="ml-auto flex items-center gap-3">
         {/* Las escrituras van a Odoo de a una; este es el único indicador de que algo viaja. */}

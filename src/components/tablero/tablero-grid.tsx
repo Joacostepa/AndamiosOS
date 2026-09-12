@@ -197,6 +197,7 @@ export function TableroGrid({
   onAbrirBloque,
   onFraccion,
   onEditarJornadas,
+  queEjecutar,
   onEstado,
   onFijar,
   onSoltar,
@@ -275,6 +276,8 @@ export function TableroGrid({
   onAbrirBloque: (bloque: Bloque) => void;
   onFraccion: (bloque: Bloque, f: FraccionStr) => void;
   onEditarJornadas: (bloque: Bloque) => void;
+  /** Las tarjetas muestran qué hay que ejecutar en vez del cliente y el técnico. */
+  queEjecutar: boolean;
   onEstado: (bloque: Bloque, e: "tentativa" | "confirmada") => void;
   onFijar: (bloque: Bloque) => void;
   onSoltar: (bloque: Bloque) => void;
@@ -853,6 +856,7 @@ export function TableroGrid({
                         }
                         accionCierre={accion}
                         candado={!bloque.tarea && (candados?.has(bloque.otId) ?? false)}
+                        queEjecutar={queEjecutar}
                         // Una tarea de operaciones no tiene obra detrás, así que tampoco
                         // tiene hilo: el globito ahí sería una promesa vacía.
                         comentarios={bloque.tarea ? null : (comentarios?.get(bloque.otId) ?? null)}

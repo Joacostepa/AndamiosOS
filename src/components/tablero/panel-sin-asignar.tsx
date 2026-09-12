@@ -259,12 +259,18 @@ function TarjetaOt({
   obra,
   hoy,
   comentarios,
+  queEjecutar,
   onDetalle,
 }: {
   obra: ObraPendiente;
   hoy: string;
   /** Resumen del hilo de la obra. null = nadie comentó nada todavía. */
   comentarios: ResumenEnTarjeta | null;
+  /**
+   * Mostrar QUÉ HAY QUE EJECUTAR en lugar del cliente y el técnico. La dirección no se
+   * toca: es lo que identifica la obra. Ver ContenidoTarjeta.
+   */
+  queEjecutar: boolean;
   onDetalle: (ot: OtTablero) => void;
 }) {
   const { ot, duracion, totales, pendientes, cerradas, corregida } = obra;
@@ -373,11 +379,30 @@ function TarjetaOt({
               title={sem.label}
             />
           </p>
-          {partes.cliente && (
-            <p className="truncate text-[11px]" style={{ color: tipo.text, opacity: 0.75 }} title={partes.cliente}>
-              {partes.cliente}
-            </p>
-          )}
+          {/* EN DOS RENGLONES Y NO TRUNCADA A UNO, a diferencia de la grilla: acá el
+              panel es vertical y hay ancho. La mediana del detalle técnico son 205
+              caracteres, así que dos renglones muestran la obra corta entera ("Pantalla
+              12ML + Alambre") y de la larga se lee lo suficiente para decidir. El resto,
+              en el tooltip. */}
+          {queEjecutar
+            ? ot.detalleTecnico && (
+                <p
+                  className="line-clamp-2 text-[11px] leading-snug"
+                  style={{ color: tipo.text, opacity: 0.75 }}
+                  title={ot.detalleTecnico}
+                >
+                  {ot.detalleTecnico}
+                </p>
+              )
+            : partes.cliente && (
+                <p
+                  className="truncate text-[11px]"
+                  style={{ color: tipo.text, opacity: 0.75 }}
+                  title={partes.cliente}
+                >
+                  {partes.cliente}
+                </p>
+              )}
           {/* La dirección entra completa: para eso el panel es vertical. */}
           <p className="text-[12px] font-medium leading-snug" style={{ color: tipo.text }}>
             {direccion}
@@ -430,7 +455,7 @@ function TarjetaOt({
             : duracion >= 1
               ? `${duracion} jornada${duracion === 1 ? "" : "s"}`
               : `${fraccionLabel(duracion)} de jornada`}
-          {ot.tecnico ? ` · ${ot.tecnico}` : ""}
+          {!queEjecutar && ot.tecnico ? ` · ${ot.tecnico}` : ""}
         </span>
         {sinEstimar && (
           <span
@@ -552,6 +577,7 @@ export function PanelSinAsignar({
   comentarios,
   hoy,
   colapsado,
+  queEjecutar,
   onColapsar,
   onDetalle,
   onIrABloque,
@@ -564,6 +590,8 @@ export function PanelSinAsignar({
   /** Hoy en yyyy-MM-dd: define qué compromiso está vencido. */
   hoy: string;
   colapsado: boolean;
+  /** Las tarjetas muestran qué hay que ejecutar en vez del cliente y el técnico. */
+  queEjecutar: boolean;
   onColapsar: (valor: boolean) => void;
   onDetalle: (ot: OtTablero) => void;
   onIrABloque: (bloqueKey: string, fecha: string) => void;
@@ -810,7 +838,7 @@ export function PanelSinAsignar({
             onToggle={() => {}}
           >
             {urgentes.map((obra) => (
-              <TarjetaOt key={obra.ot.id} obra={obra} hoy={hoy} comentarios={comentarios?.get(obra.ot.id) ?? null} onDetalle={onDetalle} />
+              <TarjetaOt key={obra.ot.id} obra={obra} hoy={hoy} comentarios={comentarios?.get(obra.ot.id) ?? null} queEjecutar={queEjecutar} onDetalle={onDetalle} />
             ))}
           </Grupo>
 
@@ -835,7 +863,7 @@ export function PanelSinAsignar({
             onToggle={() => {}}
           >
             {listas.map((obra) => (
-              <TarjetaOt key={obra.ot.id} obra={obra} hoy={hoy} comentarios={comentarios?.get(obra.ot.id) ?? null} onDetalle={onDetalle} />
+              <TarjetaOt key={obra.ot.id} obra={obra} hoy={hoy} comentarios={comentarios?.get(obra.ot.id) ?? null} queEjecutar={queEjecutar} onDetalle={onDetalle} />
             ))}
           </Grupo>
 
@@ -846,7 +874,7 @@ export function PanelSinAsignar({
             onToggle={() => setPendientesAbierto((v) => !v)}
           >
             {pendientesHab.map((obra) => (
-              <TarjetaOt key={obra.ot.id} obra={obra} hoy={hoy} comentarios={comentarios?.get(obra.ot.id) ?? null} onDetalle={onDetalle} />
+              <TarjetaOt key={obra.ot.id} obra={obra} hoy={hoy} comentarios={comentarios?.get(obra.ot.id) ?? null} queEjecutar={queEjecutar} onDetalle={onDetalle} />
             ))}
           </Grupo>
 

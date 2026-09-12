@@ -90,6 +90,7 @@ export function ContenidoTarjeta({
   candado = false,
   comentarios = null,
   unaLinea = false,
+  queEjecutar = false,
 }: {
   ot: OtTablero | undefined;
   bloque: Pick<Bloque, "estado" | "fraccion" | "fechas" | "multiDia" | "tarea" | "motivoFija">;
@@ -122,6 +123,15 @@ export function ContenidoTarjeta({
    * en el `title`, que es gratis en ancho y suficiente para decidir si abrir el panel.
    */
   comentarios?: ResumenEnTarjeta | null;
+  /**
+   * El segundo renglón muestra QUÉ HAY QUE EJECUTAR en vez del cliente y el técnico.
+   *
+   * LA DIRECCIÓN NO SE TOCA, y es el punto entero del diseño: es lo que dice CUÁL obra es
+   * cada tarjeta de un vistazo. Reemplazarla por el detalle técnico llenaría la grilla de
+   * tarjetas que dicen "Pantalla 12ML" sin decir dónde. Lo que cambia es qué la acompaña:
+   * el contexto comercial o el operativo.
+   */
+  queEjecutar?: boolean;
   /**
    * La tarjeta es demasiado baja para dos renglones: se queda sólo con el de arriba.
    *
@@ -291,7 +301,16 @@ export function ContenidoTarjeta({
           title={
             tarea
               ? `${tipoTareaLabel(tarea.tipo)} — ${tarea.titulo}`
-              : [labelTipo(ot?.tipo), ot?.titulo ?? "", ot?.referenciaObra, sem.label]
+              : [
+                  labelTipo(ot?.tipo),
+                  ot?.titulo ?? "",
+                  ot?.referenciaObra,
+                  sem.label,
+                  // En las tarjetas de un solo renglón el segundo no se dibuja, así que
+                  // sin esto el modo "qué ejecutar" no mostraría nada — y son el 16% de
+                  // las jornadas. Acá el ancho es gratis.
+                  queEjecutar ? ot?.detalleTecnico : null,
+                ]
                   .filter(Boolean)
                   .join(" — ")
           }
@@ -324,6 +343,9 @@ export function ContenidoTarjeta({
       <p
         className="truncate text-[10px] leading-tight"
         style={{ color: colorTexto, opacity: 0.75 }}
+        // La mediana del detalle técnico son 205 caracteres y acá entran unos 40: el
+        // tooltip es donde se lee entero. Sin esto el modo sería media frase cortada.
+        title={queEjecutar && !tarea ? (ot?.detalleTecnico ?? undefined) : undefined}
       >
         {/* El tipo ya no va en texto: lo dice el ícono, y repetirlo gastaba el ancho que
             necesita la dirección. Tampoco dice "tentativa": lo comunica el borde.
@@ -332,8 +354,18 @@ export function ContenidoTarjeta({
         {tarea
           ? [tipoTareaLabel(tarea.tipo), tarea.hecha ? "hecha" : null].filter(Boolean).join(" · ")
           : [
-              partes.cliente,
-              ot?.tecnico,
+              // UNA TAREA NO CAMBIA con el toggle: no tiene OT detrás, así que no hay
+              // "qué ejecutar" que mostrar — lo que hay que hacer ya es su título.
+              //
+              // SIN DETALLE CARGADO VUELVE AL CLIENTE Y EL TÉCNICO en vez de dejar el
+              // renglón vacío. Al medirlo lo tenían las 65 OTs activas, así que es un caso
+              // de borde —una OT recién creada—, pero un renglón en blanco se lee como que
+              // la tarjeta está rota y no como que falta un dato.
+              ...(queEjecutar && ot?.detalleTecnico
+                ? [ot.detalleTecnico]
+                : [partes.cliente, ot?.tecnico]),
+              // La jornada no ejecutada se sigue diciendo en los dos modos: es el estado
+              // de ESTA jornada, no contexto de la obra, y es lo que reclama atención.
               noEjecutada ? (cierre?.motivoLabel ?? "no ejecutada") : null,
             ]
               .filter(Boolean)
@@ -380,6 +412,7 @@ export function TarjetaAsignacion({
   cierre,
   accionCierre,
   candado = false,
+  queEjecutar = false,
   comentarios = null,
   onCerrarJornada,
   onAbrir,
@@ -412,6 +445,8 @@ export function TarjetaAsignacion({
   accionCierre: AccionCierre;
   /** El cliente pidió esperar el permiso emitido. Avisa; no impide arrastrar. */
   candado?: boolean;
+  /** El segundo renglón muestra qué hay que ejecutar. Ver ContenidoTarjeta. */
+  queEjecutar?: boolean;
   /** Resumen del hilo de la obra, para el globito. null = no tiene comentarios. */
   comentarios?: ResumenEnTarjeta | null;
   onCerrarJornada: (accion: NonNullable<AccionCierre>) => void;
@@ -518,6 +553,7 @@ export function TarjetaAsignacion({
         cierre={cierre}
         vencidaSinParte={vencidaSinParte}
         candado={candado}
+        queEjecutar={queEjecutar}
         comentarios={comentarios}
       />
 

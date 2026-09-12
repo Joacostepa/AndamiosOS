@@ -76,6 +76,13 @@ import type { MovimientoAsignacion, NuevaAsignacion, TableroPayload } from "@/li
 
 const CLAVE_CUADRILLAS = "tablero:cuadrillas";
 const CLAVE_PANEL = "tablero:panel-colapsado";
+/**
+ * Qué acompaña a la dirección en las tarjetas: el contexto comercial (cliente, técnico) o
+ * el operativo (qué hay que ejecutar). Se recuerda porque no es una consulta puntual sino
+ * un modo de trabajo: el que arma la semana mira lo comercial, el que reparte las
+ * cuadrillas a la mañana mira lo que hay que montar.
+ */
+const CLAVE_QUE_EJECUTAR = "tablero:que-ejecutar";
 const CLAVE_DOMINGOS = "tablero:domingos-abiertos";
 
 /** Ancho de la columna fija de cuadrillas: hay que descontarlo al hacer snap de semana. */
@@ -245,6 +252,11 @@ export function TableroBoard() {
     fecha: string;
     parteId: number | null;
   } | null>(null);
+  const [queEjecutar, setQueEjecutar] = useState<boolean>(
+    () =>
+      typeof window !== "undefined" &&
+      window.localStorage.getItem(CLAVE_QUE_EJECUTAR) === "true",
+  );
   const [panelColapsado, setPanelColapsado] = useState<boolean>(
     () => typeof window !== "undefined" && window.localStorage.getItem(CLAVE_PANEL) === "true",
   );
@@ -318,6 +330,13 @@ export function TableroBoard() {
     () => visibles ?? defaultCongelado ?? [],
     [visibles, defaultCongelado],
   );
+
+  function cambiarQueEjecutar(valor: boolean) {
+    setQueEjecutar(valor);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(CLAVE_QUE_EJECUTAR, String(valor));
+    }
+  }
 
   function colapsarPanel(valor: boolean) {
     setPanelColapsado(valor);
@@ -1507,6 +1526,8 @@ export function TableroBoard() {
         onNext={() => irASemana(1)}
         onHoy={() => scrollAFecha(hoyISO)}
         onActividad={() => setActividadAbierta(true)}
+        queEjecutar={queEjecutar}
+        onQueEjecutar={cambiarQueEjecutar}
         onCorrerDia={() => setCorrimientoAbierto(true)}
         onRefrescar={() => refetch()}
       />
@@ -1640,6 +1661,7 @@ export function TableroBoard() {
                 }}
                 candados={otsBloqueadas}
                 comentarios={comentarios}
+                queEjecutar={queEjecutar}
                 onFijar={(b) =>
                   setPedidoFijar({
                     otId: b.otId,
@@ -1668,6 +1690,7 @@ export function TableroBoard() {
             comentarios={comentarios}
             hoy={hoyISO}
             colapsado={panelColapsado}
+            queEjecutar={queEjecutar}
             onColapsar={colapsarPanel}
             onDetalle={(ot) => {
               if (cierre) return;
@@ -1686,6 +1709,7 @@ export function TableroBoard() {
               <ContenidoTarjeta
                 ot={otsPorId.get(arrastrando.bloque.otId)}
                 bloque={arrastrando.bloque}
+                queEjecutar={queEjecutar}
                 compacta
               />
             </div>

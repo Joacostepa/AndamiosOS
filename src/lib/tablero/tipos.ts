@@ -212,6 +212,16 @@ export type OtTablero = {
    * mira antes de salir.
    */
   referenciaObra: string | null;
+  /**
+   * QUÉ HAY QUE EJECUTAR: la estructura concreta que la cuadrilla tiene que montar o
+   * bajar ("Pantalla 12ML + Alambre"). Lo escribe Comercial en la OT.
+   *
+   * ESTÁ TAMBIÉN EN DetalleOt, y no es una duplicación por descuido: ahí se lee al abrir
+   * la ficha de UNA obra, con su fecha de confirmación en obra al lado; acá viaja con el
+   * tablero entero porque el toggle "qué ejecutar" lo pinta en las 52 tarjetas a la vez, y
+   * pedirlo de a una sería un RPC por tarjeta.
+   */
+  detalleTecnico: string | null;
   tipo: string;
   estado: string;
   urgencia: string;

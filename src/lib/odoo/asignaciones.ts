@@ -82,6 +82,17 @@ const OT_FIELDS = [
   "x_doc_ids", "x_fecha_programada", "x_fecha_comprometida", "x_fecha_desde", "x_fecha_antes_de",
   // Related a la venta: la dirección de obra sin pasar por el truncado de x_name.
   "x_direccion_obra", "x_obra_referencia",
+  // QUÉ HAY QUE EJECUTAR, en el payload del tablero y no sólo en la ficha.
+  //
+  // Viaja con las ~52 OTs de la consulta que más se repite del módulo, así que se midió
+  // antes de sumarlo (2026-09-12, 65 OTs activas): lo tienen las 65, es texto plano, la
+  // mediana son 205 caracteres y el total ~14 KB sobre un payload de ~49 KB. El 29% de más
+  // es transferencia sobre una consulta que es casi toda latencia.
+  //
+  // SE PIDE SIEMPRE, aunque el toggle de la topbar esté apagado: traerlo condicionalmente
+  // partiría la caché del tablero en dos formas distintas del mismo rango, y obligaría a
+  // recargar todo al prender el toggle — que es justo cuando el usuario quiere verlo ya.
+  "x_detalle_tecnico",
   // Fotos y croquis que Comercial sube EN LA OT. Distinto de x_doc_ids, que espeja los
   // adjuntos de la venta y es de sólo lectura.
   "x_instrucciones_ids",
@@ -118,6 +129,7 @@ type OdooOtRow = {
   x_fecha_antes_de: string | false;
   x_direccion_obra: string | false;
   x_obra_referencia: string | false;
+  x_detalle_tecnico: string | false;
   x_instrucciones_ids: number[] | false;
 };
 
@@ -185,6 +197,7 @@ function mapOt(row: OdooOtRow, base: string, actionId: number | null): OtTablero
     titulo: str(row.x_name) ?? `OT #${row.id}`,
     direccionObra: str(row.x_direccion_obra),
     referenciaObra: str(row.x_obra_referencia),
+    detalleTecnico: str(row.x_detalle_tecnico),
     tipo: str(row.x_tipo) ?? "otro",
     estado: str(row.x_estado) ?? "pendiente",
     urgencia: str(row.x_urgencia) ?? "baja",

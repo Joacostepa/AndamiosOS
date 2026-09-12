@@ -10,7 +10,7 @@ import { format, isToday, isYesterday, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 
 export const ACCIONES = [
-  "crear", "mover", "fraccion", "cuadrilla", "quitar", "fijar", "soltar",
+  "crear", "mover", "fraccion", "cuadrilla", "quitar", "fijar", "soltar", "correr",
 ] as const;
 export type AccionMovimiento = (typeof ACCIONES)[number];
 
@@ -47,6 +47,17 @@ export type Movimiento = {
   despues: EstadoBloque | null;
   /** Este movimiento deshizo aquél. */
   deshaceA: string | null;
+  /**
+   * Gesto masivo al que pertenece: correr un día toca doce obras y escribe doce filas.
+   * null en los gestos de a una, que son casi todos.
+   */
+  loteId: string | null;
+  /**
+   * El lote entero, ya sumado. Sólo viene en el panel de actividad, que colapsa las filas
+   * de un lote en una línea; en la ficha de una obra NO viene, porque ahí cada obra tiene
+   * que ver lo suyo y no el total de un gesto que tocó a otras once.
+   */
+  lote?: { jornadas: number; obras: number };
   /** Alguien ya deshizo éste. Lo resuelve el servicio, no está en la fila. */
   deshecho: boolean;
   autorNombre: string | null;
@@ -82,6 +93,22 @@ export function fraseConfirmacion(c: ConfirmacionAgrupada): string {
   if (n === 0) return verbo;
   return `${verbo} ${rango(c.fechas)}${n > 1 ? ` · ${n} jornadas` : ""}`;
 }
+
+/**
+ * Una fila del historial de un corrimiento: qué le pasó a UNA obra en UNA cuadrilla.
+ *
+ * Lleva los `asignacionIds` adentro —a diferencia de RegistroMovimiento, donde los pone la
+ * ruta— porque un corrimiento escribe muchas filas de una vez y cada una tiene los suyos.
+ * Van ordenados por fecha de origen, igual que `antes.fechas`: es lo que permite devolver
+ * cada jornada a su día al deshacer.
+ */
+export type RegistroCorrida = {
+  otId: number;
+  otTitulo: string | null;
+  asignacionIds: number[];
+  antes: EstadoBloque;
+  despues: EstadoBloque;
+};
 
 /** Lo que la ruta recibe del tablero para poder registrar el gesto. */
 export type RegistroMovimiento = {
@@ -177,6 +204,24 @@ export function fraseMovimiento(m: Movimiento): string {
       return `Soltó ${rango(antes?.fechas ?? [])}${
         antes?.motivoFija ? ` · estaba fija: ${antes.motivoFija}` : ""
       }`;
+
+    // DOS FRASES PARA EL MISMO HECHO, según desde dónde se mire. En el panel de actividad
+    // las doce filas del lote se colapsan en una y lo que importa es el tamaño del gesto:
+    // "corrió el jueves 17 · 34 jornadas de 12 obras". En la ficha de UNA obra el total no
+    // significa nada —esa obra no se movió 34 jornadas— y lo que hace falta es qué le pasó
+    // a ella.
+    case "correr": {
+      const desde = antes?.fechas[0];
+      const hasta = despues?.fechas[0];
+      const tramo = desde && hasta ? ` del ${dia(desde)} al ${dia(hasta)}` : "";
+      if (m.lote) {
+        return `Corrió el día${tramo} · ${m.lote.jornadas} jornada${
+          m.lote.jornadas === 1 ? "" : "s"
+        } de ${m.lote.obras} obra${m.lote.obras === 1 ? "" : "s"}`;
+      }
+      const n = antes?.fechas.length ?? 0;
+      return `Se corrió${tramo}${n > 1 ? ` · ${n} jornadas` : ""}`;
+    }
   }
 }
 

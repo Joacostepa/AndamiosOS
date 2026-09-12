@@ -271,12 +271,12 @@ console.log("\nCampos:");
 console.log(`  x_soporte       ${campos.x_soporte.type} ${JSON.stringify(campos.x_soporte.selection)}`);
 console.log(`  x_no_a_la_orden ${campos.x_no_a_la_orden.type}`);
 
-const conSoporte = await executeKw(MODEL, "read_group", [[["x_soporte", "!=", false]], ["id"], ["x_soporte"]], { lazy: true });
-const nao = await executeKw(MODEL, "search_count", [[["x_no_a_la_orden", "=", true]]]);
 const total = await executeKw(MODEL, "search_count", [[]]);
 console.log(`\nDatos: ${total} cheques`);
-for (const g of conSoporte) console.log(`  ${g.x_soporte}: ${g.__count}`);
-console.log(`  no a la orden: ${nao}`);
+for (const [valor, etiqueta] of [["fisico", "Físico"], ["echeq", "E-cheq"], [false, "sin cargar"]]) {
+  console.log(`  ${etiqueta}: ${await executeKw(MODEL, "search_count", [[["x_soporte", "=", valor]]])}`);
+}
+console.log(`  no a la orden: ${await executeKw(MODEL, "search_count", [[["x_no_a_la_orden", "=", true]]])}`);
 
 const quedanSucios = await executeKw(MODEL, "search_count", [
   ["|", ["name", "ilike", "fisico"], ["name", "ilike", "no a la orden"]],

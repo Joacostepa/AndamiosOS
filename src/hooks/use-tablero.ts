@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import type { Feriado } from "@/lib/feriados/argentina";
 import { fechasDeJornadas } from "@/lib/tablero/bloques";
 import { CLAVE_CONFIRMACIONES } from "@/hooks/use-confirmaciones";
+import { CLAVE_ACTIVIDAD } from "@/hooks/use-actividad";
 import type { RegistroConfirmacion } from "@/lib/tablero/tipos-confirmacion";
 import type { RegistroMovimiento } from "@/lib/tablero/tipos-movimiento";
 import type {
@@ -162,6 +163,12 @@ let proximoIdTemporal = -1;
  * No es lo que pinta la pantalla —todas las mutaciones son optimistas y exactas, ids
  * reales incluidos— sino la red que trae lo que hayan tocado otros. Así que puede
  * esperar a que la mano pare, y ahí se hace una sola.
+ *
+ * ARRASTRA TAMBIÉN LA ACTIVIDAD, porque toda escritura del tablero deja un movimiento
+ * registrado. Va acá y no en cada mutación por lo mismo que el tablero: en una ráfaga de
+ * diez arrastres se pide una vez, no diez. Con el panel cerrado la consulta está
+ * deshabilitada, así que invalidar sólo la marca vieja y no pide nada hasta que alguien
+ * la abre.
  */
 let refrescoPendiente: ReturnType<typeof setTimeout> | null = null;
 const ESPERA_REFRESCO = 1500;
@@ -171,6 +178,7 @@ function refrescarPronto(qc: QueryClient) {
   refrescoPendiente = setTimeout(() => {
     refrescoPendiente = null;
     void qc.invalidateQueries({ queryKey: CLAVE });
+    void qc.invalidateQueries({ queryKey: CLAVE_ACTIVIDAD });
   }, ESPERA_REFRESCO);
 }
 

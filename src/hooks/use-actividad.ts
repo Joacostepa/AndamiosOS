@@ -9,7 +9,11 @@ import type { EntradaActividad } from "@/lib/tablero/tipos-movimiento";
 // —"¿quién movió esto?"— y cargarla siempre le sumaría una consulta a cada entrada al
 // tablero para algo que la mayoría de las veces nadie mira.
 
-const CLAVE = ["actividad"] as const;
+/**
+ * Se exporta porque la invalida `refrescarPronto` en use-tablero: cada escritura del
+ * tablero deja un movimiento, así que la actividad envejece con cada arrastre.
+ */
+export const CLAVE_ACTIVIDAD = ["actividad"] as const;
 
 async function pedir(url: string): Promise<EntradaActividad[]> {
   const res = await fetch(url);
@@ -23,21 +27,31 @@ async function pedir(url: string): Promise<EntradaActividad[]> {
 /** Todo el tablero. `activo` es lo que evita pedirla con el panel cerrado. */
 export function useActividad(activo: boolean) {
   return useQuery({
-    queryKey: CLAVE,
+    queryKey: CLAVE_ACTIVIDAD,
     queryFn: () => pedir("/api/planificacion/movimientos"),
     enabled: activo,
-    // Mientras el panel está abierto se refresca al volver a la ventana: es justo el
-    // gesto de "vengo a ver si alguien tocó algo".
-    staleTime: 30_000,
+    // LO PROPIO llega solo: cada escritura del tablero invalida esta clave desde
+    // refrescarPronto, así que lo que hacés vos aparece en la lista sin tocar nada.
+    //
+    // LO DE LOS DEMÁS necesita preguntar, y por eso hay un latido de 20 s MIENTRAS EL
+    // PANEL ESTÁ ABIERTO. Es una consulta liviana a Supabase y sólo corre con el panel a
+    // la vista: alguien que lo deja abierto en un costado ve aparecer lo que mueve el
+    // resto sin refrescar la página, que es justo para lo que se abre.
+    refetchInterval: activo ? 20_000 : false,
+    // Corto, porque es una pantalla que se abre para ver qué pasó recién. Con el minuto
+    // por defecto, cerrarla y volver a abrirla mostraba lo de hace un minuto.
+    staleTime: 10_000,
   });
 }
 
 /** Sólo los movimientos de una obra, para el panel de la tarjeta. */
 export function useActividadDeOt(otId: number | null) {
   return useQuery({
-    queryKey: [...CLAVE, otId],
+    queryKey: [...CLAVE_ACTIVIDAD, otId],
     queryFn: () => pedir(`/api/planificacion/movimientos?otId=${otId}`),
     enabled: !!otId,
-    staleTime: 60_000,
+    // Sin latido: esto vive adentro del panel de una obra, que se abre, se lee y se
+    // cierra. Lo que se escribe desde el tablero lo invalida refrescarPronto igual.
+    staleTime: 10_000,
   });
 }

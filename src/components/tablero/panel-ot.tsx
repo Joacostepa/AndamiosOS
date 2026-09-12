@@ -74,10 +74,7 @@ function QueNecesita({ trabajo }: { trabajo: TrabajoOt | undefined }) {
         <div className="flex gap-2 text-sm">
           <Fence className="mt-0.5 h-4 w-4 shrink-0" style={{ color: ALERTA }} />
           <p className="leading-snug">
-            <span className="font-medium">Lleva alambre de concertina.</span>{" "}
-            <span className="text-muted-foreground">
-              Va sobre la bandeja de protección — hay que cargarlo con el material.
-            </span>
+            <span className="font-medium">Lleva alambre de concertina.</span>
           </p>
         </div>
       )}

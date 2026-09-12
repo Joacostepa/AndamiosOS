@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
-import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, AlertTriangle, CalendarRange, Check, CircleCheck, CircleDashed, ClipboardCheck, Lock, MessageSquare, MoreHorizontal, MoreVertical, Pencil, Trash2, Wrench } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, AlertTriangle, CalendarRange, Check, CircleCheck, CircleDashed, ClipboardCheck, Lock, MessageSquare, MoreHorizontal, MoreVertical, Pencil, Pin, PinOff, Trash2, Wrench } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -92,7 +92,7 @@ export function ContenidoTarjeta({
   unaLinea = false,
 }: {
   ot: OtTablero | undefined;
-  bloque: Pick<Bloque, "estado" | "fraccion" | "fechas" | "multiDia" | "tarea">;
+  bloque: Pick<Bloque, "estado" | "fraccion" | "fechas" | "multiDia" | "tarea" | "motivoFija">;
   /**
    * Plan completo de la obra. Cuando quedó partida en tramos no corridos, esta tarjeta es
    * sólo una parte y el contador lo dice ("1/3j"): si no, una obra de tres días partida se
@@ -228,6 +228,23 @@ export function ContenidoTarjeta({
             style={{ color: CANDADO }}
             aria-label="El cliente pidió esperar el permiso emitido"
           />
+        )}
+        {/* La obra no se mueve de este día.
+            VA EN EL COLOR DEL TEXTO DE LA TARJETA, no en un color propio, por lo mismo que
+            el chip de comentarios: el ámbar y el rojo ya significan otra cosa acá
+            —urgencia, jornada no ejecutada— y sumarles un tercer uso los vacía a los tres.
+            El pin es un GLIFO, no una señal de color: lo que dice lo dice la forma.
+            Tampoco usa el ícono del candado, que ya es el permiso de habilitación: dos
+            cosas distintas con el mismo dibujo se leen como la misma.
+            El motivo va en el `title` del span —no en un aria-label del svg— para que se
+            lea con el mouse encima, que es como se consulta. */}
+        {bloque.motivoFija && (
+          <span
+            className="flex shrink-0 self-center"
+            title={`No se mueve de este día — ${bloque.motivoFija}`}
+          >
+            <Pin className="h-3 w-3" style={{ color: colorTexto }} aria-label="Obra fija" />
+          </span>
         )}
         {/* Hay algo hablado con el cliente sobre esta obra.
             VA EN EL COLOR DEL TIPO y no en ámbar ni rojo: esos dos canales ya significan
@@ -369,6 +386,8 @@ export function TarjetaAsignacion({
   onFraccion,
   onEditarJornadas,
   onEstado,
+  onFijar,
+  onSoltar,
   onQuitar,
   onTareaHecha,
   onEditarTarea,
@@ -400,6 +419,10 @@ export function TarjetaAsignacion({
   onFraccion: (f: FraccionStr) => void;
   onEditarJornadas: () => void;
   onEstado: (e: "tentativa" | "confirmada") => void;
+  /** Abre el diálogo que pide el motivo. */
+  onFijar: () => void;
+  /** Suelta sin preguntar: soltar no necesita justificarse, fijar sí. */
+  onSoltar: () => void;
   onQuitar: () => void;
   /** Sólo en tarjetas de operaciones: el cierre de una tarea es un sí o un no. */
   onTareaHecha?: (hecha: boolean) => void;
@@ -587,6 +610,25 @@ export function TarjetaAsignacion({
                 <Check className="mr-2 h-4 w-4" />
               )}
               {bloque.estado === "confirmada" ? "Volver a tentativa" : "Confirmar"}
+            </DropdownMenuItem>
+
+            {/* VA PEGADO A CONFIRMAR porque son las dos cosas que se dicen de un bloque, y
+                es justo acá donde conviene que se vea que NO son lo mismo: confirmada es
+                "esta fecha se le prometió al cliente", fija es "esta fecha no se puede
+                cambiar ni aunque llueva". Una obra confirmada se corre igual el día que se
+                suspende la jornada —hay que avisarle al cliente, nada más—; una fija se
+                queda y obliga a que alguien decida.
+                SOLTAR NO PREGUNTA NADA. Fijar cuesta escribir un motivo porque si fijar
+                fuera gratis se fijaría todo; soltar es volver al estado normal del
+                tablero, y cobrarle fricción a eso sólo lograría que nadie suelte. Queda
+                igual en el historial, con el motivo que tenía. */}
+            <DropdownMenuItem onClick={bloque.motivoFija ? onSoltar : onFijar}>
+              {bloque.motivoFija ? (
+                <PinOff className="mr-2 h-4 w-4" />
+              ) : (
+                <Pin className="mr-2 h-4 w-4" />
+              )}
+              {bloque.motivoFija ? "Soltar: puede moverse" : "Fijar: no se mueve de este día"}
             </DropdownMenuItem>
 
             <DropdownMenuSeparator />

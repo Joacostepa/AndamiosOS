@@ -285,6 +285,9 @@ export function useActualizarAsignaciones() {
                 ...(cambio.estado !== undefined ? { estado: cambio.estado } : {}),
                 ...(cambio.ordenDia !== undefined ? { ordenDia: cambio.ordenDia } : {}),
                 ...(cambio.notas !== undefined ? { notas: cambio.notas ?? null } : {}),
+                ...(cambio.motivoFija !== undefined
+                  ? { motivoFija: cambio.motivoFija || null }
+                  : {}),
               }
             : a,
         ),

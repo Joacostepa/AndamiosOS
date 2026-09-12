@@ -29,6 +29,7 @@ import { FormularioCierre } from "./formulario-cierre";
 import { DialogoJornadas } from "./dialogo-jornadas";
 import { DialogoTarea, type ValoresTarea } from "./dialogo-tarea";
 import { DialogoCandado, type PedidoConfirmacion } from "./dialogo-candado";
+import { DialogoFijar, type PedidoFijar } from "./dialogo-fijar";
 import { DialogoDestinoJornadas, type PedidoDestino } from "./dialogo-destino-jornadas";
 import { useCandado } from "@/hooks/use-habilitaciones";
 import { useResumenComentarios } from "@/hooks/use-comentarios-ot";
@@ -528,6 +529,7 @@ export function TableroBoard() {
   );
   const { data: candados } = useCandado(otIdsEnTablero);
   const [pedidoCandado, setPedidoCandado] = useState<PedidoConfirmacion | null>(null);
+  const [pedidoFijar, setPedidoFijar] = useState<PedidoFijar | null>(null);
 
   /** Las OTs que llevan candado visible en la tarjeta. Se arrastran igual. */
   const otsBloqueadas = useMemo(() => {
@@ -776,6 +778,31 @@ export function TableroBoard() {
   }
 
   /**
+   * La obra está fija y el gesto la sacaría de su día: devuelve el motivo, o null.
+   *
+   * ACÁ SÍ FRENA, a diferencia del piso y del techo del cliente, que avisan y dejan pasar.
+   * La diferencia es qué significa cada cosa: la ventana del cliente es una restricción
+   * que se puede renegociar por teléfono, y planificar contra ella es una hipótesis de
+   * trabajo legítima. Que una obra esté fija es una decisión que alguien ya tomó y
+   * escribió —la grúa está alquilada, el permiso tiene fecha— y arrastrarla sin querer la
+   * borraría en silencio. Para moverla hay que soltarla primero, un clic en el menú de la
+   * tarjeta: ese paso extra ES la decisión. Mismo criterio que motivoNoVuelveABandeja.
+   *
+   * COMPARA LAS FECHAS Y NO EL GESTO: pasar la tarjeta a otra cuadrilla el mismo día no
+   * rompe nada. Lo que está fijo es la fecha, no quién la hace.
+   */
+  function fijaQueSeMueve(bloque: Bloque, fechasDestino: string[]): string | null {
+    if (!bloque.motivoFija) return null;
+    return bloque.fechas.join() === fechasDestino.join() ? null : bloque.motivoFija;
+  }
+
+  function avisarFija(fecha: string, motivo: string) {
+    toast.error(`No se mueve del ${format(parseISO(fecha), "EEE d MMM", { locale: es })}`, {
+      description: `${motivo} · Para moverla, soltala desde el menú de la tarjeta.`,
+    });
+  }
+
+  /**
    * Avisa —y NO frena— cuando la obra queda antes del piso acordado con el cliente.
    *
    * POR QUÉ NO BLOQUEA: planificar es un borrador. Poner tentativamente una obra el 8
@@ -993,13 +1020,16 @@ export function TableroBoard() {
   }
 
   function estadoDelBloque(
-    b: Pick<Bloque, "fechas" | "cuadrillaId" | "fraccion">,
+    b: Pick<Bloque, "fechas" | "cuadrillaId" | "fraccion" | "motivoFija">,
   ): EstadoBloque {
     return {
       fechas: b.fechas,
       cuadrillaId: b.cuadrillaId,
       cuadrillaNombre: nombreCuadrilla(b.cuadrillaId),
       fraccion: b.fraccion,
+      // Viaja en el registro porque al soltar la obra el motivo se borra de Odoo: si no
+      // queda acá, el historial no puede contestar por qué había estado fija.
+      motivoFija: b.motivoFija,
     };
   }
 
@@ -1015,6 +1045,8 @@ export function TableroBoard() {
   ) {
     if (sinGuardar(bloque)) return avisarGuardando();
     const dias = fechasDeJornadas(fecha, bloque.ids.length, opts);
+    const trabada = fijaQueSeMueve(bloque, dias);
+    if (trabada) return avisarFija(bloque.fechas[0], trabada);
     const orden = proximoOrden(cuadrillaId, dias[0]);
     // Una tarea no sale de una OT y no tiene piso: otId es 0 y avisarPiso no encuentra
     // nada, pero se filtra acá para que la intención quede escrita.
@@ -1083,12 +1115,45 @@ export function TableroBoard() {
   }
 
   /**
+   * Clavar el bloque a sus días, o soltarlo.
+   *
+   * NO SE OFRECE DESHACER, a diferencia del arrastre. El undo existe porque un arrastre
+   * se dispara sin querer y su efecto —la obra apareció otro día— es difícil de notar en
+   * una grilla llena. Fijar cuesta abrir un menú, escribir un motivo y apretar un botón,
+   * y el resultado se ve en la tarjeta: no hay nada que deshacer a ciegas. Lo contrario
+   * está a un clic en el mismo menú.
+   */
+  function fijarBloque(bloque: Bloque, motivo: string | null) {
+    if (sinGuardar(bloque)) return avisarGuardando();
+    const antes = estadoDelBloque(bloque);
+    actualizar.mutate({
+      ids: bloque.ids,
+      cambio: { motivoFija: motivo },
+      registro: {
+        otId: bloque.otId,
+        otTitulo: tituloDeOt(bloque.otId),
+        accion: motivo ? "fijar" : "soltar",
+        antes,
+        despues: { ...antes, motivoFija: motivo },
+      },
+    });
+    toast.success(
+      motivo
+        ? `Fija al ${format(parseISO(bloque.fechas[0]), "EEE d MMM", { locale: es })}`
+        : "Soltada: ya se puede mover",
+    );
+  }
+
+  /**
    * Devolver una obra a la bandeja de sin asignar. Único camino: lo usan por igual el
    * arrastre al panel y la opción del menú de la tarjeta, así que la regla de qué se
    * puede sacar vale para los dos gestos.
    */
   function volverABandeja(bloque: Bloque) {
     if (sinGuardar(bloque)) return avisarGuardando();
+    // Sacarla del tablero es la forma más brusca de moverla de su día: si está fija,
+    // también hay que soltarla primero.
+    if (bloque.motivoFija) return avisarFija(bloque.fechas[0], bloque.motivoFija);
 
     // UNA TAREA NO VUELVE A NINGUNA BANDEJA: no salió de un pedido que quede pendiente,
     // así que quitarla es borrarla. Se ofrece deshacer por el mismo motivo que en una
@@ -1534,6 +1599,14 @@ export function TableroBoard() {
                 }}
                 candados={otsBloqueadas}
                 comentarios={comentarios}
+                onFijar={(b) =>
+                  setPedidoFijar({
+                    otId: b.otId,
+                    fechas: b.fechas,
+                    fijar: (motivo) => fijarBloque(b, motivo),
+                  })
+                }
+                onSoltar={(b) => fijarBloque(b, null)}
                 onQuitar={volverABandeja}
                 onCrearTarea={(cuadrillaId, fecha) => setTareaNueva({ cuadrillaId, fecha })}
                 onTareaHecha={(b, hecha) => actualizarTarea.mutate({ ids: b.ids, cambio: { hecha } })}
@@ -1657,6 +1730,32 @@ export function TableroBoard() {
         guardando={guardando}
         onGuardar={(cambios) => {
           if (jornadasDe == null) return;
+
+          // LA MISMA TRABA QUE EL ARRASTRE, porque es el mismo hecho: una jornada fija que
+          // cambia de día. Este diálogo es el otro camino para moverla —y encima no
+          // muestra cuáles están fijas—, así que sin esto el pin se saltea sin querer
+          // justo cuando se replanifica la obra entera.
+          //
+          // SE RECHAZA TODO EL GUARDADO y no sólo la jornada trabada: aplicar la mitad de
+          // lo que se pidió deja la obra en un estado que nadie eligió.
+          const fijas = new Map(
+            jornadasDeLaObra.filter((j) => j.motivoFija).map((j) => [j.id, j] as const),
+          );
+          if (fijas.size > 0) {
+            const movida = cambios.fechas.find(
+              (f) => fijas.has(f.asignacionId) && fijas.get(f.asignacionId)!.fecha !== f.fecha,
+            );
+            const borrada = cambios.borradas.find((id) => fijas.has(id));
+            const trabada = movida
+              ? fijas.get(movida.asignacionId)!
+              : borrada != null
+                ? fijas.get(borrada)!
+                : null;
+            if (trabada) {
+              avisarFija(trabada.fecha, trabada.motivoFija!);
+              return;
+            }
+          }
 
           // Cada día puede quedar con una fracción distinta, así que se agrupan los que
           // comparten valor para no hacer una escritura por jornada.
@@ -1803,6 +1902,8 @@ export function TableroBoard() {
       />
 
       <DialogoCandado pedido={pedidoCandado} onCerrar={() => setPedidoCandado(null)} />
+
+      <DialogoFijar pedido={pedidoFijar} onCerrar={() => setPedidoFijar(null)} />
 
       <PanelActividad abierto={actividadAbierta} onOpenChange={setActividadAbierta} />
 

@@ -198,6 +198,8 @@ export function TableroGrid({
   onFraccion,
   onEditarJornadas,
   onEstado,
+  onFijar,
+  onSoltar,
   onQuitar,
   candados,
   comentarios,
@@ -274,6 +276,8 @@ export function TableroGrid({
   onFraccion: (bloque: Bloque, f: FraccionStr) => void;
   onEditarJornadas: (bloque: Bloque) => void;
   onEstado: (bloque: Bloque, e: "tentativa" | "confirmada") => void;
+  onFijar: (bloque: Bloque) => void;
+  onSoltar: (bloque: Bloque) => void;
   onQuitar: (bloque: Bloque) => void;
   /**
    * OTs cuyo cliente pidió no armar sin el permiso emitido. La tarjeta muestra el
@@ -857,6 +861,8 @@ export function TableroGrid({
                         onFraccion={(f) => onFraccion(bloque, f)}
                         onEditarJornadas={() => onEditarJornadas(bloque)}
                         onEstado={(e) => onEstado(bloque, e)}
+                        onFijar={() => onFijar(bloque)}
+                        onSoltar={() => onSoltar(bloque)}
                         onQuitar={() => onQuitar(bloque)}
                         onTareaHecha={(h) => onTareaHecha(bloque, h)}
                         onEditarTarea={() => onEditarTarea(bloque)}

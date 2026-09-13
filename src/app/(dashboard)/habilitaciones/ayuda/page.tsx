@@ -165,7 +165,9 @@ export default function AyudaHabilitacionesPage() {
         </p>
         <p>
           No pasa solo: alguien tiene que decidirlo, y queda registrado quién y cuándo. Si te
-          apuraste, <Termino>Revertir</Termino> lo deshace.
+          apuraste, <Termino>Revertir</Termino> lo deshace. Las obras habilitadas salen de la
+          cola, pero quedan al pie de la bandeja, en <Termino>Habilitadas</Termino>, la más
+          reciente primero, y desde ahí también se revierten.
         </p>
         <p>
           <Termino>Habilitar por excepción</Termino> es para cuando el cliente autoriza por teléfono

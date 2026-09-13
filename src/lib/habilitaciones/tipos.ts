@@ -183,6 +183,10 @@ export type FilaBandeja = {
   dias: number;
   vencimiento: string | null;
   triage: "aplica" | "no_aplica" | null;
+  /** Cuándo alguien la declaró habilitada. Null si no lo está (o si "no aplica"). */
+  habilitadaEl: string | null;
+  habilitadaMotivo: string | null;
+  habilitadaPor: string | null;
   syncEstado: EstadoSync;
   modalidad: ModalidadPermiso | null;
   tramite: TramiteEstado | null;
@@ -213,6 +217,12 @@ export type Bandeja = {
    * obras de un clic y un clic de más no puede ser irreversible.
    */
   noAplican: FilaBandeja[];
+  /**
+   * Las declaradas habilitadas, la más reciente primero. Tampoco suman al total. Existen
+   * por lo mismo que `noAplican`: habilitar saca la obra de los grupos, y sin esta lista
+   * la única forma de volver sobre un error era acordarse de la dirección y tipear la URL.
+   */
+  habilitadas: FilaBandeja[];
 };
 
 export type FichaHabilitacion = {

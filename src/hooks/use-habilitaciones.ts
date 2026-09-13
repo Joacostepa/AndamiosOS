@@ -80,6 +80,28 @@ export function useTriage() {
   });
 }
 
+/**
+ * Revertir una habilitación desde la bandeja, sin abrir la ficha.
+ *
+ * Es la misma ruta que el botón de la ficha —registra en el historial, avisa a
+ * Operaciones y empuja a Odoo—; lo único distinto es que el otId viaja en la mutación,
+ * porque desde la lista se revierte cualquiera.
+ */
+export function useRevertirHabilitacion() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (otId: number) =>
+      pedir(`/api/habilitaciones/${otId}/habilitacion`, {
+        method: "POST",
+        body: JSON.stringify({ habilitar: false, faltan: 0 }),
+      }),
+    onSuccess: (_d, otId) => {
+      qc.invalidateQueries({ queryKey: ["habilitaciones"] });
+      qc.invalidateQueries({ queryKey: ["habilitacion", otId] });
+    },
+  });
+}
+
 export function useReconciliar() {
   const qc = useQueryClient();
   return useMutation({

@@ -38,6 +38,7 @@ type FilaHabOt = {
   hab_vencimiento: string | null;
   habilitada_el: string | null;
   habilitada_motivo: string | null;
+  habilitador: { nombre: string | null } | null;
   sync_estado: "pendiente" | "sincronizado" | "error" | "huerfana";
   sync_error: string | null;
   sync_intentos: number;
@@ -56,6 +57,11 @@ type FilaHabOt = {
  * por primera vez, porque las OTs no se dan de alta en Supabase — se descubren leyendo
  * Odoo. El aviso lo crea fetchBandeja, que es quien tiene los títulos.
  */
+// El nombre de quien habilitó viaja embebido en la misma consulta: ir a buscarlo aparte
+// sería otra ida a Supabase, que es lo único que cuesta (ver fetchGestionDe).
+const COLUMNAS_CABECERA =
+  "odoo_ot_id, triage, triage_fecha, hab_estado, hab_fecha_consulta, hab_fecha_envio, hab_fecha, hab_vencimiento, habilitada_el, habilitada_motivo, habilitador:user_profiles!habilitada_por(nombre), sync_estado, sync_error, sync_intentos";
+
 async function cabecerasDe(
   db: DB,
   otIds: number[],
@@ -64,20 +70,22 @@ async function cabecerasDe(
 
   const { data, error } = await db
     .from("hab_ots")
-    .select("odoo_ot_id, triage, triage_fecha, hab_estado, hab_fecha_consulta, hab_fecha_envio, hab_fecha, hab_vencimiento, habilitada_el, habilitada_motivo, sync_estado, sync_error, sync_intentos")
+    .select(COLUMNAS_CABECERA)
     .in("odoo_ot_id", otIds);
   if (error) throw new Error(error.message);
 
-  const mapa = new Map<number, FilaHabOt>((data ?? []).map((f) => [f.odoo_ot_id, f as FilaHabOt]));
+  const mapa = new Map<number, FilaHabOt>(
+    (data ?? []).map((f) => [f.odoo_ot_id, f as unknown as FilaHabOt]),
+  );
 
   const faltantes = otIds.filter((id) => !mapa.has(id));
   if (faltantes.length > 0) {
     const { data: creadas, error: e2 } = await db
       .from("hab_ots")
       .upsert(faltantes.map((odoo_ot_id) => ({ odoo_ot_id })), { onConflict: "odoo_ot_id" })
-      .select("odoo_ot_id, triage, triage_fecha, hab_estado, hab_fecha_consulta, hab_fecha_envio, hab_fecha, hab_vencimiento, habilitada_el, habilitada_motivo, sync_estado, sync_error, sync_intentos");
+      .select(COLUMNAS_CABECERA);
     if (e2) throw new Error(e2.message);
-    for (const f of creadas ?? []) mapa.set(f.odoo_ot_id, f as FilaHabOt);
+    for (const f of creadas ?? []) mapa.set(f.odoo_ot_id, f as unknown as FilaHabOt);
   }
 
   return { mapa, nuevas: faltantes };
@@ -170,6 +178,9 @@ export async function fetchBandeja(db: DB): Promise<Bandeja> {
       dias: base.dias,
       vencimiento: base.vencimiento,
       triage: cab?.triage ?? null,
+      habilitadaEl: cab?.habilitada_el ?? null,
+      habilitadaMotivo: cab?.habilitada_motivo ?? null,
+      habilitadaPor: cab?.habilitador?.nombre ?? null,
       syncEstado: cab?.sync_estado ?? "pendiente",
       modalidad: permiso.modalidad,
       tramite: permiso.tramite,
@@ -227,6 +238,12 @@ export async function fetchBandeja(db: DB): Promise<Bandeja> {
     noAplican: filas
       .filter((f) => f.triage === "no_aplica")
       .sort((a, b) => a.titulo.localeCompare(b.titulo)),
+    // Sólo las OTs activas, porque es lo que se lee de Odoo: una obra ya completada no
+    // tiene habilitación que corregir. La más reciente arriba — un error de habilitación
+    // se descubre enseguida, no a los tres meses.
+    habilitadas: filas
+      .filter((f) => f.triage === "aplica" && f.habilitadaEl)
+      .sort((a, b) => b.habilitadaEl!.localeCompare(a.habilitadaEl!)),
   };
 }
 

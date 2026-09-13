@@ -2,10 +2,19 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ChevronDown, ChevronRight, Loader2, RefreshCw, TriangleAlert, Undo2 } from "lucide-react";
+import { format, parseISO } from "date-fns";
+import { es } from "date-fns/locale";
+import {
+  ChevronDown, ChevronRight, Loader2, RefreshCw, RotateCcw, TriangleAlert, Undo2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { direccionDeObra } from "@/lib/tablero/titulo";
-import { useBandejaHabilitaciones, useReconciliar, useTriage } from "@/hooks/use-habilitaciones";
+import {
+  useBandejaHabilitaciones, useReconciliar, useRevertirHabilitacion, useTriage,
+} from "@/hooks/use-habilitaciones";
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
 import { useTour } from "@/hooks/use-tour";
 import { PASOS_BANDEJA, TOUR_BANDEJA } from "@/lib/habilitaciones/tour";
 import { BotonAyuda } from "@/components/habilitaciones/boton-ayuda";
@@ -174,7 +183,119 @@ export default function HabilitacionesPage() {
         onVolver={(otIds) => triar("pendiente", otIds)}
         triando={triage.isPending}
       />
+
+      <Habilitadas filas={data?.habilitadas ?? []} />
     </div>
+  );
+}
+
+/**
+ * Las declaradas habilitadas, al pie y colapsadas, la más reciente primero.
+ *
+ * Mismo criterio que "No aplican": habilitar saca la obra de los grupos de arriba, y sin
+ * esta lista la única forma de corregir un error era acordarse de qué obra fue y entrar
+ * por la URL. La vuelta atrás tiene que estar a mano sin competir con la cola.
+ *
+ * REVERTIR PIDE CONFIRMACIÓN acá y no en la ficha: en la ficha uno está parado sobre esa
+ * obra; en una lista el botón de al lado es otra, y revertir le manda a Operaciones un
+ * aviso crítico que no se despacha solo.
+ */
+function Habilitadas({ filas }: { filas: FilaBandeja[] }) {
+  const [abierto, setAbierto] = useState(false);
+  const [aRevertir, setARevertir] = useState<FilaBandeja | null>(null);
+  const revertir = useRevertirHabilitacion();
+  if (filas.length === 0) return null;
+
+  function confirmar() {
+    if (!aRevertir) return;
+    revertir.mutate(aRevertir.otId, {
+      onSuccess: () => {
+        toast.success("Se revirtió la habilitación · la obra vuelve a la cola");
+        setARevertir(null);
+      },
+      onError: (e) => toast.error(e instanceof Error ? e.message : "No se pudo revertir"),
+    });
+  }
+
+  return (
+    <section className="rounded-md border">
+      <button
+        onClick={() => setAbierto((v) => !v)}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted/40"
+      >
+        {abierto ? (
+          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+        ) : (
+          <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+        )}
+        <h2 className="text-[13px] font-medium text-muted-foreground">Habilitadas</h2>
+        <span className="rounded-full bg-muted px-2 py-0.5 text-[11px]">{filas.length}</span>
+        <span className="ml-auto hidden text-[11px] text-muted-foreground sm:inline">
+          la más reciente primero · no cuentan en el total
+        </span>
+      </button>
+
+      {abierto && (
+        <ul>
+          {filas.map((f) => (
+            <li
+              key={f.otId}
+              className="flex items-center gap-2 border-t px-3 py-2 text-[13px]"
+            >
+              <ChipTipoOt tipo={f.tipo} enColumna />
+              <Link href={`/habilitaciones/${f.otId}`} className="min-w-0 flex-1">
+                <span className="block truncate">{direccionDeObra(f)}</span>
+                <span className="block truncate text-[11px] text-muted-foreground">
+                  {[
+                    `Habilitada el ${format(parseISO(f.habilitadaEl!), "d MMM", { locale: es })}`,
+                    f.habilitadaPor ? `por ${f.habilitadaPor}` : null,
+                  ].filter(Boolean).join(" ")}
+                  {f.habilitadaMotivo && (
+                    <span style={{ color: "#B54708" }}> · por excepción — {f.habilitadaMotivo}</span>
+                  )}
+                </span>
+              </Link>
+              <span className="hidden w-16 shrink-0 text-right text-[12px] sm:inline">
+                {f.fechaProgramada
+                  ? format(parseISO(f.fechaProgramada), "d MMM", { locale: es })
+                  : "—"}
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={revertir.isPending}
+                onClick={() => setARevertir(f)}
+              >
+                <RotateCcw className="mr-1 h-3.5 w-3.5" />
+                Revertir
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <Dialog open={!!aRevertir} onOpenChange={(abrir) => !abrir && setARevertir(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>¿Revertir la habilitación?</DialogTitle>
+            <DialogDescription>
+              {aRevertir && direccionDeObra(aRevertir)} vuelve a la cola sin habilitar y
+              Operaciones recibe un aviso. Si ya tiene jornadas planificadas, siguen en el
+              tablero. Los requisitos y el historial no se tocan.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setARevertir(null)}>
+              Cancelar
+            </Button>
+            <Button onClick={confirmar} disabled={revertir.isPending}>
+              {revertir.isPending && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
+              Revertir
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </section>
   );
 }
 

@@ -5,9 +5,10 @@ import Link from "next/link";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import {
-  AlarmClock, ChevronDown, ChevronRight, Loader2, RefreshCw, RotateCcw, Search, TriangleAlert,
-  Undo2, X,
+  AlarmClock, CalendarDays, ChevronDown, ChevronRight, Loader2, RefreshCw, RotateCcw, Search,
+  TriangleAlert, Undo2, X,
 } from "lucide-react";
+import { PanelPlanificacion } from "@/components/habilitaciones/panel-planificacion";
 import { coincide } from "@/lib/habilitaciones/buscar";
 import {
   DialogoPosponer, obraDeFila, type ObraAPosponer,
@@ -59,6 +60,7 @@ export default function HabilitacionesPage() {
   const [seleccion, setSeleccion] = useState<Set<number>>(new Set());
   const [busqueda, setBusqueda] = useState("");
   const [aPosponer, setAPosponer] = useState<ObraAPosponer | null>(null);
+  const [planAbierto, setPlanAbierto] = useState(false);
   // Arranca recién con la bandeja en pantalla: antes de eso los elementos que resalta
   // todavía no existen y el recorrido saldría vacío.
   const tour = useTour(TOUR_BANDEJA, PASOS_BANDEJA, { listo: !isLoading && !!data });
@@ -140,7 +142,14 @@ export default function HabilitacionesPage() {
               : `Las obras entran solas al crearse la OT en Odoo · ${total} en trámite${totalPospuestas > 0 ? ` · ${totalPospuestas} pospuestas` : ""}`
           }
         >
-          <BotonAyuda onRecorrido={tour.reiniciar} />
+          <div className="flex items-center gap-2">
+            {/* La planificación, en sólo lectura, para ver qué viene sin salir de acá. */}
+            <Button size="sm" variant="outline" onClick={() => setPlanAbierto(true)}>
+              <CalendarDays className="mr-1.5 h-3.5 w-3.5" />
+              Planificación
+            </Button>
+            <BotonAyuda onRecorrido={tour.reiniciar} />
+          </div>
         </PageHeader>
       </div>
 
@@ -260,6 +269,8 @@ export default function HabilitacionesPage() {
       <Habilitadas filas={habilitadas} abiertoForzado={buscando} />
 
       <DialogoPosponer obra={aPosponer} onCerrar={() => setAPosponer(null)} />
+
+      <PanelPlanificacion abierto={planAbierto} onOpenChange={setPlanAbierto} bandeja={data} />
     </div>
   );
 }

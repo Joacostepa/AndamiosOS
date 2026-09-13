@@ -6,6 +6,7 @@ import { es } from "date-fns/locale";
 import { HardHat, Pin, TriangleAlert } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ChipTipoOt } from "@/components/habilitaciones/chip-tipo-ot";
+import { ChipUrgencia } from "@/components/habilitaciones/chip-urgencia";
 import { AVISO, semaforo } from "@/lib/tablero/colores";
 import { partesTitulo, direccionDeObra } from "@/lib/tablero/titulo";
 import { UMBRAL_DIAS } from "@/lib/habilitaciones/derivacion";
@@ -78,7 +79,13 @@ export function Fila({
       <ChipTipoOt tipo={fila.tipo} enColumna />
 
       <Link href={`/habilitaciones/${fila.otId}`} className="min-w-0 flex-1">
-        <span className="block truncate font-medium">{direccion}</span>
+        {/* La prioridad va DELANTE de la dirección y no en una columna propia: sólo 7 de
+            65 OTs la tienen, y una columna fija correría todas las direcciones para
+            dejar un hueco en casi todas las filas. */}
+        <span className="flex min-w-0 items-center gap-1.5">
+          <ChipUrgencia urgencia={fila.urgencia} motivo={fila.motivoUrgencia} />
+          <span className="truncate font-medium">{direccion}</span>
+        </span>
         <span className="block truncate text-[11px] text-muted-foreground">{contexto}</span>
       </Link>
 

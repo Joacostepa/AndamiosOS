@@ -21,6 +21,7 @@ import { useTour } from "@/hooks/use-tour";
 import { PASOS_BANDEJA, TOUR_BANDEJA } from "@/lib/habilitaciones/tour";
 import { BotonAyuda } from "@/components/habilitaciones/boton-ayuda";
 import { ChipTipoOt } from "@/components/habilitaciones/chip-tipo-ot";
+import { ChipUrgencia } from "@/components/habilitaciones/chip-urgencia";
 import { Fila } from "@/components/habilitaciones/fila-bandeja";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -308,7 +309,10 @@ function Habilitadas({
             >
               <ChipTipoOt tipo={f.tipo} enColumna />
               <Link href={`/habilitaciones/${f.otId}`} className="min-w-0 flex-1">
-                <span className="block truncate">{direccionDeObra(f)}</span>
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <ChipUrgencia urgencia={f.urgencia} motivo={f.motivoUrgencia} />
+                  <span className="truncate">{direccionDeObra(f)}</span>
+                </span>
                 <span className="block truncate text-[11px] text-muted-foreground">
                   {[
                     `Habilitada el ${format(parseISO(f.habilitadaEl!), "d MMM", { locale: es })}`,

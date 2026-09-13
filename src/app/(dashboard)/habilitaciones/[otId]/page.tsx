@@ -12,6 +12,7 @@ import {
   useHabilitacion, useRegistrarGestion, useTriage, useVencimiento,
 } from "@/hooks/use-habilitaciones";
 import { ChipTipoOt } from "@/components/habilitaciones/chip-tipo-ot";
+import { ChipUrgencia } from "@/components/habilitaciones/chip-urgencia";
 import { DetalleTecnico } from "@/components/tablero/detalle-tecnico";
 import { ColumnaPermiso } from "@/components/habilitaciones/columna-permiso";
 import { ListadoRequisitos } from "@/components/habilitaciones/listado-requisitos";
@@ -105,9 +106,14 @@ function Ficha({ ficha, otId }: { ficha: FichaHabilitacion; otId: number }) {
           {/* El tipo al lado del título y no en la línea de abajo: entrar a una ficha
               desde la bandeja no puede hacer perder de vista si esto es un armado o un
               desarme. Es el mismo chip que la lista. */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-lg font-semibold">{direccion}</h1>
             <ChipTipoOt tipo={ficha.tipo} />
+            <ChipUrgencia urgencia={ficha.urgencia} motivo={ficha.motivoUrgencia} />
+            {/* En la ficha el motivo va escrito: el title no se lee desde un celular. */}
+            {ficha.urgencia !== "baja" && ficha.motivoUrgencia && (
+              <span className="text-[12px] text-muted-foreground">{ficha.motivoUrgencia}</span>
+            )}
           </div>
           <p className="text-[13px] text-muted-foreground">
             {[partes.numero, partes.cliente].filter(Boolean).join(" · ")}

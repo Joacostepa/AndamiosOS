@@ -22,7 +22,7 @@ import { searchRead, read, write } from "./client";
 import { CAMPOS_TRABAJO, leerTrabajo, type FilaTrabajo } from "./trabajo";
 import type {
   HabAlerta, HabEstado, HabEtapa, HabSemaforo, InputsHabilitacion,
-  ModalidadPermiso, Permiso, TramiteEstado,
+  ModalidadPermiso, Permiso, TramiteEstado, UrgenciaOt,
 } from "@/lib/habilitaciones/tipos";
 import type { TrabajoOt } from "@/lib/tablero/tipos";
 
@@ -50,6 +50,9 @@ const ACTIVAS = [["x_estado", "in", ["pendiente", "en_proceso"]]];
 const CAMPOS_OT = [
   "x_name", "x_estado", "x_tipo", "x_order_id", "x_fecha_programada", "x_tecnico",
   "x_direccion_obra",
+  // La prioridad de la OT. La decide una persona (desde Odoo o la ficha de OT de la app);
+  // acá sólo se lee.
+  "x_urgencia", "x_motivo_urgencia",
   // Computados en Odoo — se LEEN, nunca se escriben.
   "x_hab_etapa", "x_hab_semaforo", "x_hab_alerta", "x_hab_dias",
   // Escribibles — son los inputs de los de arriba.
@@ -75,6 +78,8 @@ export type FilaOtHab = {
   x_order_id: M2O;
   x_fecha_programada: string | false;
   x_tecnico: string | false;
+  x_urgencia: string | false;
+  x_motivo_urgencia: string | false;
   x_hab_etapa: string | false;
   x_hab_semaforo: string | false;
   x_hab_alerta: string | false;
@@ -268,6 +273,9 @@ export function leerOt(ot: FilaOtHab) {
     tipo: str(ot.x_tipo) ?? "otro",
     estadoOt: str(ot.x_estado) ?? "pendiente",
     fechaProgramada: str(ot.x_fecha_programada),
+    // Vacío es "baja": así lo lee también el tablero (asignaciones.ts).
+    urgencia: (str(ot.x_urgencia) as UrgenciaOt | null) ?? "baja",
+    motivoUrgencia: str(ot.x_motivo_urgencia),
     etapa: str(ot.x_hab_etapa) as HabEtapa | null,
     semaforo: str(ot.x_hab_semaforo) as HabSemaforo | null,
     alerta: str(ot.x_hab_alerta) as HabAlerta | null,

@@ -164,8 +164,13 @@ export type Permiso = {
   tecnicoNombre: string | null;
 };
 
+/** x_urgencia de la OT. Vacío en Odoo se lee como "baja". */
+export type UrgenciaOt = "alta" | "media" | "baja";
+
 /** Una fila de la bandeja. */
 export type FilaBandeja = {
+  urgencia: UrgenciaOt;
+  motivoUrgencia: string | null;
   /** Qué se arma y qué necesita. Sale de la venta, igual que el permiso. */
   trabajo: TrabajoOt;
   otId: number;
@@ -233,6 +238,8 @@ export type FichaHabilitacion = {
   /** Campo propio en Odoo. Null en las OTs viejas: decide `direccionDeObra()`. */
   direccionObra: string | null;
   tipo: string;
+  urgencia: UrgenciaOt;
+  motivoUrgencia: string | null;
   /** x_detalle_tecnico de la OT: el mismo "Qué hay que ejecutar" que ve Operaciones. */
   detalleTecnico: string | null;
   /** x_estructura_fecha de la venta: cuándo se confirmó en obra lo que se armó. */

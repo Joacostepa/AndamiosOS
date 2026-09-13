@@ -216,6 +216,8 @@ const ORDEN: ClaveGrupo[] = [
 
 const PELIGRO = new Set<ClaveGrupo>(["critica", "atrasada"]);
 
+const RANGO_URGENCIA: Record<FilaBandeja["urgencia"], number> = { alta: 0, media: 1, baja: 2 };
+
 /**
  * A qué grupo va una fila, o null si no está en trámite.
  *
@@ -259,8 +261,16 @@ export function agruparBandeja(filas: FilaBandeja[], hoy: string = hoyISO()): Gr
     clave,
     titulo: TITULOS[clave],
     peligro: PELIGRO.has(clave),
-    // Dentro de cada grupo, primero lo que se cae antes; sin fecha, lo más viejo.
+    // Dentro de cada grupo, primero la prioridad de la OT —alta, media, baja—, después lo
+    // que se cae antes y, sin fecha, lo más viejo.
+    //
+    // LA PRIORIDAD ORDENA, NO AGRUPA. Un grupo "Urgentes" arriba de todo sacaría a la obra
+    // del grupo que dice qué hay que hacer con ella —consultar, esperar validación—, que
+    // es la pregunta de esta bandeja. El tablero sí la agrupa porque ahí la pregunta es
+    // otra: qué se programa primero.
     filas: porClave.get(clave)!.sort((a, b) => {
+      const porUrgencia = RANGO_URGENCIA[a.urgencia] - RANGO_URGENCIA[b.urgencia];
+      if (porUrgencia !== 0) return porUrgencia;
       if (a.fechaProgramada && b.fechaProgramada) {
         return a.fechaProgramada.localeCompare(b.fechaProgramada);
       }

@@ -25,6 +25,9 @@ function textoBuscable(f: FilaBandeja): string {
       String(f.otId),
       f.tecnicoNombre,
       tipoOtLabel(f.tipo),
+      // "prioridad alta" / "urgente": la baja no se indexa, igual que no lleva chip.
+      f.urgencia !== "baja" ? `prioridad ${f.urgencia} urgente` : null,
+      f.motivoUrgencia,
       f.modalidad ? MODALIDAD_LABEL[f.modalidad] : null,
       f.trabajo.tipoLabel,
       f.habilitadaPor,

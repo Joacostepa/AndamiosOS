@@ -5,10 +5,10 @@ import Link from "next/link";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import {
-  AlarmClock, CalendarDays, ChevronDown, ChevronRight, Loader2, RefreshCw, RotateCcw, Search,
+  AlarmClock, ChevronDown, ChevronRight, Loader2, RefreshCw, RotateCcw, Search,
   TriangleAlert, Undo2, X,
 } from "lucide-react";
-import { PanelPlanificacion } from "@/components/habilitaciones/panel-planificacion";
+import { BotonPlanificacion } from "@/components/habilitaciones/planificacion-contexto";
 import { coincide } from "@/lib/habilitaciones/buscar";
 import {
   DialogoPosponer, obraDeFila, type ObraAPosponer,
@@ -60,7 +60,6 @@ export default function HabilitacionesPage() {
   const [seleccion, setSeleccion] = useState<Set<number>>(new Set());
   const [busqueda, setBusqueda] = useState("");
   const [aPosponer, setAPosponer] = useState<ObraAPosponer | null>(null);
-  const [planAbierto, setPlanAbierto] = useState(false);
   // Arranca recién con la bandeja en pantalla: antes de eso los elementos que resalta
   // todavía no existen y el recorrido saldría vacío.
   const tour = useTour(TOUR_BANDEJA, PASOS_BANDEJA, { listo: !isLoading && !!data });
@@ -143,11 +142,9 @@ export default function HabilitacionesPage() {
           }
         >
           <div className="flex items-center gap-2">
-            {/* La planificación, en sólo lectura, para ver qué viene sin salir de acá. */}
-            <Button size="sm" variant="outline" onClick={() => setPlanAbierto(true)}>
-              <CalendarDays className="mr-1.5 h-3.5 w-3.5" />
-              Planificación
-            </Button>
+            {/* La planificación, en sólo lectura, para ver qué viene sin salir de acá. El
+                panel vive en el layout del módulo (ver planificacion-contexto.tsx). */}
+            <BotonPlanificacion />
             <BotonAyuda onRecorrido={tour.reiniciar} />
           </div>
         </PageHeader>
@@ -269,8 +266,6 @@ export default function HabilitacionesPage() {
       <Habilitadas filas={habilitadas} abiertoForzado={buscando} />
 
       <DialogoPosponer obra={aPosponer} onCerrar={() => setAPosponer(null)} />
-
-      <PanelPlanificacion abierto={planAbierto} onOpenChange={setPlanAbierto} bandeja={data} />
     </div>
   );
 }

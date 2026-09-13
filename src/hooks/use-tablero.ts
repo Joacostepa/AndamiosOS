@@ -49,7 +49,17 @@ async function pedir<T>(url: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
-export function useTablero(desde: string, hasta: string) {
+export function useTablero(
+  desde: string,
+  hasta: string,
+  /**
+   * Releer solo cada 2 minutos y al volver a la pestaña. El tablero NO lo usa —ahí cada
+   * mutación propia ya invalida, y Odoo limita las consultas concurrentes—; lo usa el panel
+   * de planificación de Habilitaciones, que puede quedar abierto todo el día sin escribir
+   * nada, y sin esto mostraría para siempre lo que había al abrirlo.
+   */
+  opts: { refrescoAutomatico?: boolean } = {},
+) {
   return useQuery({
     queryKey: claveTablero(desde, hasta),
     queryFn: () =>
@@ -73,7 +83,10 @@ export function useTablero(desde: string, hasta: string) {
     staleTime: 30_000,
     // Odoo Online limita las consultas concurrentes: no conviene refetchear cada vez
     // que la pestaña vuelve al foco, ni reintentar en ráfaga si algo falló.
-    refetchOnWindowFocus: false,
+    refetchOnWindowFocus: opts.refrescoAutomatico ?? false,
+    // Sólo con la pestaña a la vista: una pestaña olvidada de fondo no le pega a Odoo.
+    refetchInterval: opts.refrescoAutomatico ? 120_000 : false,
+    refetchIntervalInBackground: false,
     retry: 2,
     retryDelay: (intento) => 800 * 2 ** intento,
   });

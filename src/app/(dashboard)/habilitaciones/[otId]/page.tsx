@@ -27,6 +27,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/shared/empty-state";
 import { BloqueHabilitacion } from "@/components/habilitaciones/bloque-habilitacion";
 import { BotonAyuda } from "@/components/habilitaciones/boton-ayuda";
+import { BotonPlanificacion } from "@/components/habilitaciones/planificacion-contexto";
 import { useTour } from "@/hooks/use-tour";
 import { PASOS_FICHA, TOUR_FICHA } from "@/lib/habilitaciones/tour";
 import { hoyISO, veredicto } from "@/lib/habilitaciones/derivacion";
@@ -124,7 +125,10 @@ function Ficha({ ficha, otId }: { ficha: FichaHabilitacion; otId: number }) {
             {[partes.numero, partes.cliente].filter(Boolean).join(" · ")}
           </p>
         </div>
-        <BotonAyuda onRecorrido={tour.reiniciar} />
+        <div className="flex shrink-0 items-center gap-2">
+          <BotonPlanificacion />
+          <BotonAyuda onRecorrido={tour.reiniciar} />
+        </div>
       </div>
 
       {/* EL VEREDICTO, ARRIBA DE TODO: responde lo único que le importa a Operaciones.

@@ -8,7 +8,7 @@
 // quién va a dónde; la de Habilitaciones es qué viene y si está habilitado, y eso se
 // contesta con una lista por día.
 
-import { direccionDeObra } from "@/lib/tablero/titulo";
+import { direccionDeObra, partesTitulo } from "@/lib/tablero/titulo";
 import type { EstadoAsignacion, TableroPayload } from "@/lib/tablero/tipos";
 import type { Bandeja, FilaBandeja, UrgenciaOt } from "./tipos";
 
@@ -21,6 +21,12 @@ export type TarjetaAgenda = {
   asignacionId: number;
   otId: number;
   direccion: string;
+  /**
+   * Sale del título de la OT ("Armado · S02525 · Estudio De Maio Patiño"), igual que en la
+   * tarjeta del tablero y en la bandeja: el payload del tablero no trae el cliente aparte.
+   * Null en los títulos que no lo incluyen.
+   */
+  cliente: string | null;
   tipo: string;
   urgencia: UrgenciaOt;
   cuadrilla: string | null;
@@ -82,6 +88,7 @@ export function armarAgenda(payload: TableroPayload, bandeja: Bandeja | undefine
       asignacionId: a.id,
       otId: a.otId,
       direccion: direccionDeObra(ot),
+      cliente: partesTitulo(ot.titulo).cliente,
       tipo: ot.tipo,
       urgencia: (ot.urgencia === "alta" || ot.urgencia === "media" ? ot.urgencia : "baja") as UrgenciaOt,
       cuadrilla: a.cuadrillaId ? (cuadrillas.get(a.cuadrillaId) ?? null) : null,

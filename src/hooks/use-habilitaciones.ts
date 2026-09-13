@@ -102,6 +102,27 @@ export function useRevertirHabilitacion() {
   });
 }
 
+/**
+ * Posponer una obra hasta una fecha, o reactivarla (`hasta: null`).
+ *
+ * Invalida en vez de parchear: la vuelta que guarda el servidor puede ser ANTERIOR a la
+ * pedida (si la obra se arma antes), y lo que tiene que verse es esa.
+ */
+export function usePosponer() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { otId: number; hasta: string | null; motivo?: string | null }) =>
+      pedir<{ ok: true; hasta: string | null }>(`/api/habilitaciones/${v.otId}/posponer`, {
+        method: "POST",
+        body: JSON.stringify({ hasta: v.hasta, motivo: v.motivo ?? null }),
+      }),
+    onSuccess: (_d, v) => {
+      qc.invalidateQueries({ queryKey: ["habilitaciones"] });
+      qc.invalidateQueries({ queryKey: ["habilitacion", v.otId] });
+    },
+  });
+}
+
 export function useReconciliar() {
   const qc = useQueryClient();
   return useMutation({

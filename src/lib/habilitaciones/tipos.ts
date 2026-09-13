@@ -32,7 +32,7 @@ export type TramiteEstado = "no_presentado" | "presentado" | "emitido";
 
 export type TipoGestion =
   | "triage" | "consulta" | "reclamo" | "envio" | "aprobacion"
-  | "observacion" | "permiso" | "renovacion" | "excepcion";
+  | "observacion" | "permiso" | "renovacion" | "excepcion" | "posposicion";
 
 /**
  * Las etapas dicen QUIÉN TIENE LA PELOTA, no en qué casillero está el registro.
@@ -76,6 +76,7 @@ export const TIPO_GESTION_LABEL: Record<TipoGestion, string> = {
   permiso: "Permiso",
   renovacion: "Renovación",
   excepcion: "Excepción",
+  posposicion: "Posposición",
 };
 
 /** Lo que la app SÍ escribe en Odoo. Los otros cuatro x_hab_* son computados. */
@@ -180,6 +181,12 @@ export type JornadaHab = {
 export type FilaBandeja = {
   urgencia: UrgenciaOt;
   motivoUrgencia: string | null;
+  /** La primera jornada del tablero de hoy en adelante. Null = nada planificado adelante. */
+  primeraJornada: string | null;
+  /** Hasta cuándo está pospuesta, ya corregida por la planificación. Null = en la cola. */
+  pospuestaHasta: string | null;
+  pospuestaMotivo: string | null;
+  pospuestaPor: string | null;
   /** Qué se arma y qué necesita. Sale de la venta, igual que el permiso. */
   trabajo: TrabajoOt;
   otId: number;
@@ -237,6 +244,11 @@ export type Bandeja = {
    * la única forma de volver sobre un error era acordarse de la dirección y tipear la URL.
    */
   habilitadas: FilaBandeja[];
+  /**
+   * Las pospuestas, la que vuelve antes primero. Tampoco suman al total: no hay nada que
+   * hacer con ellas todavía. Vuelven solas a su grupo (ver vueltaDePospuesta).
+   */
+  pospuestas: FilaBandeja[];
 };
 
 export type FichaHabilitacion = {
@@ -263,6 +275,10 @@ export type FichaHabilitacion = {
   };
   /** Las jornadas del tablero, en orden. Vacío = la obra está en la bandeja sin asignar. */
   jornadas: JornadaHab[];
+  /** Hasta cuándo está pospuesta, ya corregida por la planificación. Null = en la cola. */
+  pospuestaHasta: string | null;
+  pospuestaMotivo: string | null;
+  pospuestaPor: string | null;
   estadoOt: string;
   fechaProgramada: string | null;
   etapa: HabEtapa | null;

@@ -158,6 +158,25 @@ export default function AyudaHabilitacionesPage() {
         </p>
       </Seccion>
 
+      <Seccion titulo="Posponer">
+        <p>
+          Si falta mucho para la obra —pasa sobre todo con las que llevan permiso—, mandar la
+          documentación ahora no sirve: la nómina se vence antes de que entre la cuadrilla. El reloj
+          de cada fila la <Termino>pospone</Termino>: sale de la cola hasta la fecha que elijas y
+          queda al pie, en <Termino>Pospuestas</Termino>.
+        </p>
+        <p>
+          El calendario sugiere 10 días antes de la obra y no deja elegir después. La obra{" "}
+          <Termino>vuelve sola</Termino> en esa fecha, o antes si Operaciones la planifica para
+          dentro de menos de 10 días. Cada vez que Operaciones planifica una obra pospuesta te llega
+          un aviso a la campanita, con cuándo vuelve.
+        </p>
+        <p>
+          Desde Pospuestas o desde la ficha la podés <Termino>reactivar</Termino> cuando quieras, o
+          cambiarle la fecha. Todo queda en el historial.
+        </p>
+      </Seccion>
+
       <Seccion titulo="Habilitar">
         <p>
           El botón verde se prende solo cuando <Termino>todos</Termino> los requisitos están

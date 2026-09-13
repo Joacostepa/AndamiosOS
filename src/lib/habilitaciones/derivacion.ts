@@ -42,6 +42,13 @@ export function diasEntre(desde: string, hasta: string): number {
   return Math.round((b - a) / 86_400_000);
 }
 
+/** La fecha `n` días después (o antes, con `n` negativo). */
+export function sumarDias(fecha: string, n: number): string {
+  const d = new Date(`${fecha}T00:00:00`);
+  d.setDate(d.getDate() + n);
+  return hoyISO(d);
+}
+
 function minFecha(fechas: (string | null)[]): string | null {
   const v = fechas.filter((f): f is string => !!f).sort();
   return v[0] ?? null;
@@ -290,6 +297,58 @@ export const UMBRAL_DIAS: Record<ClaveGrupo, number> = {
   validacion: 7,
   por_vencer: 9999,
 };
+
+// ─── Posponer ───────────────────────────────────────────────────────────────
+
+/**
+ * Cuántos días antes de la obra vuelve a la bandeja una habilitación pospuesta.
+ *
+ * Es el margen para armar, mandar y hacer aprobar la documentación sin mandarla tan
+ * temprano que la nómina se venza antes de que entre la cuadrilla. Decisión de JS
+ * (2026-09-13).
+ */
+export const DIAS_ANTES_DE_LA_OBRA = 10;
+
+export type CausaVuelta = "elegida" | "programada" | "planificacion";
+
+/**
+ * Cuándo vuelve a la bandeja una obra pospuesta: la MÁS TEMPRANA entre la fecha que eligió
+ * Habilitaciones, 10 días antes de la fecha programada y 10 días antes de la primera
+ * jornada del tablero.
+ *
+ * POSPONER NO ES ESCONDER. La fecha elegida es un "no antes de lo necesario", y la obra
+ * vuelve antes si se acerca: si Operaciones la planifica para dentro de una semana, esperar
+ * a la fecha elegida sería descubrir el faltante el día que la cuadrilla no puede entrar.
+ *
+ * Nunca al revés: si la obra se atrasa, la vuelta no se aleja. Eso no se resuelve acá sino
+ * guardando la fecha adelantada (ver resolverPospuestas en servicio.ts).
+ *
+ * Ante empate gana la planificación, que es la causa más concreta y la que se avisa.
+ */
+export function vueltaDePospuesta(v: {
+  hasta: string;
+  fechaProgramada: string | null;
+  primeraJornada: string | null;
+}): { fecha: string; causa: CausaVuelta } {
+  const candidatas: { fecha: string; causa: CausaVuelta }[] = [{ fecha: v.hasta, causa: "elegida" }];
+  if (v.fechaProgramada) {
+    candidatas.push({ fecha: sumarDias(v.fechaProgramada, -DIAS_ANTES_DE_LA_OBRA), causa: "programada" });
+  }
+  if (v.primeraJornada) {
+    candidatas.push({ fecha: sumarDias(v.primeraJornada, -DIAS_ANTES_DE_LA_OBRA), causa: "planificacion" });
+  }
+  return candidatas.reduce((min, c) => (c.fecha <= min.fecha ? c : min));
+}
+
+/**
+ * La última fecha que se puede elegir al posponer: 10 días antes de lo primero que pase
+ * —la fecha programada o la primera jornada—. Null si la obra no tiene ninguna de las dos:
+ * ahí no hay contra qué limitar y vale la fecha que se elija.
+ */
+export function topePosponer(fechaProgramada: string | null, primeraJornada: string | null): string | null {
+  const obra = [fechaProgramada, primeraJornada].filter((f): f is string => !!f).sort()[0];
+  return obra ? sumarDias(obra, -DIAS_ANTES_DE_LA_OBRA) : null;
+}
 
 // ─── Veredicto y candado ────────────────────────────────────────────────────
 

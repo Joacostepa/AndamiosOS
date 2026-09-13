@@ -5,12 +5,14 @@ import Link from "next/link";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import {
-  ArrowLeft, CircleCheck, CircleX, ExternalLink, HardHat, Loader2, TriangleAlert,
+  AlarmClock, ArrowLeft, CircleCheck, CircleX, ExternalLink, HardHat, Loader2, TriangleAlert,
+  Undo2,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
-  useHabilitacion, useRegistrarGestion, useTriage, useVencimiento,
+  useHabilitacion, usePosponer, useRegistrarGestion, useTriage, useVencimiento,
 } from "@/hooks/use-habilitaciones";
+import { DialogoPosponer } from "@/components/habilitaciones/dialogo-posponer";
 import { ChipTipoOt } from "@/components/habilitaciones/chip-tipo-ot";
 import { ChipUrgencia } from "@/components/habilitaciones/chip-urgencia";
 import { FechasObra } from "@/components/habilitaciones/fechas-obra";
@@ -26,7 +28,7 @@ import { BloqueHabilitacion } from "@/components/habilitaciones/bloque-habilitac
 import { BotonAyuda } from "@/components/habilitaciones/boton-ayuda";
 import { useTour } from "@/hooks/use-tour";
 import { PASOS_FICHA, TOUR_FICHA } from "@/lib/habilitaciones/tour";
-import { veredicto } from "@/lib/habilitaciones/derivacion";
+import { hoyISO, veredicto } from "@/lib/habilitaciones/derivacion";
 import { ETAPA_LABEL, TIPO_GESTION_LABEL } from "@/lib/habilitaciones/tipos";
 import { AVISO } from "@/lib/tablero/colores";
 import { partesTitulo, direccionDeObra } from "@/lib/tablero/titulo";
@@ -185,6 +187,8 @@ function Ficha({ ficha, otId }: { ficha: FichaHabilitacion; otId: number }) {
 
       <BloqueHabilitacion ficha={ficha} otId={otId} />
 
+      <BarraPospuesta ficha={ficha} otId={otId} />
+
       <BarraTriage ficha={ficha} otId={otId} />
 
       {ficha.syncEstado === "error" && (
@@ -299,6 +303,82 @@ function BarraTriage({ ficha, otId }: { ficha: FichaHabilitacion; otId: number }
       >
         Marcar que no aplica
       </button>
+    </div>
+  );
+}
+
+/**
+ * Posponer desde la ficha, o ver que está pospuesta y traerla de vuelta.
+ *
+ * Pospuesta, va en caja ámbar y arriba: quien entra a la ficha tiene que saber que esta
+ * obra no está en la cola antes de ponerse a mandar papeles. Sin posponer, es una línea
+ * discreta — la mayoría de las obras no la necesitan.
+ */
+function BarraPospuesta({ ficha, otId }: { ficha: FichaHabilitacion; otId: number }) {
+  const [abierto, setAbierto] = useState(false);
+  const posponer = usePosponer();
+  if (ficha.triage === "no_aplica" || ficha.habilitadaEl) return null;
+
+  const hoy = hoyISO();
+  const obra = {
+    otId,
+    direccion: direccionDeObra(ficha),
+    fechaProgramada: ficha.fechaProgramada,
+    primeraJornada: ficha.jornadas.find((j) => j.fecha >= hoy)?.fecha ?? null,
+    pospuestaHasta: ficha.pospuestaHasta,
+  };
+  const dialogo = <DialogoPosponer obra={abierto ? obra : null} onCerrar={() => setAbierto(false)} />;
+
+  if (!ficha.pospuestaHasta) {
+    return (
+      <div className="flex items-center gap-2 px-1 text-[11px] text-muted-foreground">
+        <AlarmClock className="h-3.5 w-3.5 shrink-0" />
+        <span className="flex-1">¿Falta mucho para la obra? Posponela y vuelve sola a la cola.</span>
+        <button className="underline hover:text-foreground" onClick={() => setAbierto(true)}>
+          Posponer
+        </button>
+        {dialogo}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="flex flex-wrap items-center gap-3 rounded-md border px-3 py-2.5 text-[13px]"
+      style={{ backgroundColor: "#FEF6E7", borderColor: "#F5C86B" }}
+    >
+      <AlarmClock className="h-4 w-4 shrink-0" style={{ color: "#B54708" }} />
+      <div className="min-w-0 flex-1">
+        <p className="font-semibold">
+          Pospuesta hasta el {format(parseISO(ficha.pospuestaHasta), "EEEE d 'de' MMMM", { locale: es })}
+        </p>
+        <p className="text-muted-foreground">
+          Vuelve sola a la cola, o antes si Operaciones la planifica.
+          {ficha.pospuestaPor && ` Pospuesta por ${ficha.pospuestaPor}.`}
+          {ficha.pospuestaMotivo && ` ${ficha.pospuestaMotivo}`}
+        </p>
+      </div>
+      <Button size="sm" variant="ghost" onClick={() => setAbierto(true)}>
+        Cambiar fecha
+      </Button>
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={posponer.isPending}
+        onClick={() =>
+          posponer.mutate(
+            { otId, hasta: null },
+            {
+              onSuccess: () => toast.success("De vuelta en la cola"),
+              onError: (e) => toast.error(e instanceof Error ? e.message : "No se pudo reactivar"),
+            },
+          )
+        }
+      >
+        <Undo2 className="mr-1 h-3.5 w-3.5" />
+        Reactivar
+      </Button>
+      {dialogo}
     </div>
   );
 }

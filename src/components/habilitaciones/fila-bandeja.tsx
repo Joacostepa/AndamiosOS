@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
-import { HardHat, Pin, TriangleAlert } from "lucide-react";
+import { AlarmClock, HardHat, Pin, TriangleAlert } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ChipTipoOt } from "@/components/habilitaciones/chip-tipo-ot";
 import { ChipUrgencia } from "@/components/habilitaciones/chip-urgencia";
@@ -29,6 +30,7 @@ export function Fila({
   seleccionable,
   seleccionada,
   onSeleccionar,
+  onPosponer,
   anclaTour = false,
 }: {
   fila: FilaBandeja;
@@ -36,6 +38,8 @@ export function Fila({
   seleccionable: boolean;
   seleccionada: boolean;
   onSeleccionar: (otId: number, valor: boolean) => void;
+  /** Abre el diálogo para posponer esta obra. */
+  onPosponer?: (fila: FilaBandeja) => void;
   /** Marca esta fila como el ejemplo que resalta el recorrido guiado. */
   anclaTour?: boolean;
 }) {
@@ -136,6 +140,21 @@ export function Fila({
           ? format(parseISO(fila.fechaProgramada), "d MMM", { locale: es })
           : "—"}
       </span>
+
+      {/* Al final de la fila y como ícono: es un gesto de todas las filas, y un botón con
+          texto repetido 30 veces le come el ancho a la dirección. */}
+      {onPosponer && (
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="shrink-0 text-muted-foreground"
+          title="Posponer: sacarla de la cola hasta una fecha"
+          aria-label={`Posponer ${direccion}`}
+          onClick={() => onPosponer(fila)}
+        >
+          <AlarmClock className="h-4 w-4" />
+        </Button>
+      )}
     </div>
   );
 }

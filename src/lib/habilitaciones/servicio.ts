@@ -13,13 +13,16 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  escribirInputs, fetchOt, fetchOtsActivas, leerOt, otsExistentes, urlOdooOt, urlOdooVenta,
+  agendaDe, escribirInputs, fetchOt, fetchOtsActivas, leerOt, otsExistentes, primerasJornadas,
+  urlOdooOt, urlOdooVenta,
 } from "@/lib/odoo/habilitaciones";
-import { claveDe, crearAlertas } from "@/lib/alertas/servicio";
+import { claveDe, crearAlertas, type NuevaAlerta } from "@/lib/alertas/servicio";
 import {
   TABLA as TABLA_COMENTARIOS, borrarComentario, comentar, fijarComentario,
 } from "@/lib/comentarios-ot";
-import { derivarInputs, hoyISO, agruparBandeja, DIAS_DEDUP_CONSULTA } from "./derivacion";
+import {
+  derivarInputs, hoyISO, agruparBandeja, DIAS_DEDUP_CONSULTA, vueltaDePospuesta,
+} from "./derivacion";
 import type {
   Bandeja, EstadoRequisito, FichaHabilitacion, FilaBandeja, Gestion, InputsHabilitacion,
   Nota, Paquete, Requisito, TipoGestion,
@@ -39,6 +42,10 @@ type FilaHabOt = {
   habilitada_el: string | null;
   habilitada_motivo: string | null;
   habilitador: { nombre: string | null } | null;
+  pospuesta_hasta: string | null;
+  pospuesta_motivo: string | null;
+  pospuesta_aviso: string | null;
+  pospusador: { nombre: string | null } | null;
   sync_estado: "pendiente" | "sincronizado" | "error" | "huerfana";
   sync_error: string | null;
   sync_intentos: number;
@@ -60,7 +67,7 @@ type FilaHabOt = {
 // El nombre de quien habilitó viaja embebido en la misma consulta: ir a buscarlo aparte
 // sería otra ida a Supabase, que es lo único que cuesta (ver fetchGestionDe).
 const COLUMNAS_CABECERA =
-  "odoo_ot_id, triage, triage_fecha, hab_estado, hab_fecha_consulta, hab_fecha_envio, hab_fecha, hab_vencimiento, habilitada_el, habilitada_motivo, habilitador:user_profiles!habilitada_por(nombre), sync_estado, sync_error, sync_intentos";
+  "odoo_ot_id, triage, triage_fecha, hab_estado, hab_fecha_consulta, hab_fecha_envio, hab_fecha, hab_vencimiento, habilitada_el, habilitada_motivo, habilitador:user_profiles!habilitada_por(nombre), pospuesta_hasta, pospuesta_motivo, pospuesta_aviso, pospusador:user_profiles!pospuesta_por(nombre), sync_estado, sync_error, sync_intentos";
 
 async function cabecerasDe(
   db: DB,
@@ -136,10 +143,12 @@ export async function fetchBandeja(db: DB): Promise<Bandeja> {
   // total, y las notas fijadas son un puñado— así que traerlas enteras cuesta lo mismo
   // que traer un subconjunto: contra Supabase se paga por request (~300 ms fijos), no por
   // fila. Las filas de OTs que no están en la bandeja simplemente no se leen del mapa.
-  const [otsOdoo, requisitos, notas] = await Promise.all([
+  const [otsOdoo, requisitos, notas, jornadas] = await Promise.all([
     fetchOtsActivas(),
     db.from("hab_requisitos").select("odoo_ot_id, estado, nombre"),
     db.from(TABLA_COMENTARIOS).select("odoo_ot_id, texto").eq("ambito", "habilitacion").eq("fijada", true),
+    // Para las pospuestas: si Operaciones planificó la obra, la vuelta se adelanta.
+    primerasJornadas(hoyISO()),
   ]);
   if (requisitos.error) throw new Error(requisitos.error.message);
   if (notas.error) throw new Error(notas.error.message);
@@ -183,6 +192,11 @@ export async function fetchBandeja(db: DB): Promise<Bandeja> {
       habilitadaEl: cab?.habilitada_el ?? null,
       habilitadaMotivo: cab?.habilitada_motivo ?? null,
       habilitadaPor: cab?.habilitador?.nombre ?? null,
+      primeraJornada: jornadas.get(ot.id) ?? null,
+      // La guardada; resolverPospuestas la corrige (o la borra) antes de agrupar.
+      pospuestaHasta: cab?.pospuesta_hasta ?? null,
+      pospuestaMotivo: cab?.pospuesta_motivo ?? null,
+      pospuestaPor: cab?.pospusador?.nombre ?? null,
       syncEstado: cab?.sync_estado ?? "pendiente",
       modalidad: permiso.modalidad,
       tramite: permiso.tramite,
@@ -232,7 +246,11 @@ export async function fetchBandeja(db: DB): Promise<Bandeja> {
       .map((f) => f.otId),
   );
 
-  const grupos = agruparBandeja(filas);
+  // Antes de agrupar: puede devolver obras a la cola, y la que vuelve tiene que caer en su
+  // grupo en esta misma lectura, no en la próxima.
+  await resolverPospuestas(db, filas, cabeceras);
+
+  const grupos = agruparBandeja(filas.filter((f) => !f.pospuestaHasta));
   return {
     grupos,
     total: grupos.reduce((n, g) => n + g.filas.length, 0),
@@ -246,6 +264,11 @@ export async function fetchBandeja(db: DB): Promise<Bandeja> {
     habilitadas: filas
       .filter((f) => f.triage === "aplica" && f.habilitadaEl)
       .sort((a, b) => b.habilitadaEl!.localeCompare(a.habilitadaEl!)),
+    // Una pospuesta que después se habilitó o se marcó "no aplica" ya no está esperando
+    // nada: se ve en su lista, no acá.
+    pospuestas: filas
+      .filter((f) => f.pospuestaHasta && f.triage !== "no_aplica" && !f.habilitadaEl)
+      .sort((a, b) => a.pospuestaHasta!.localeCompare(b.pospuestaHasta!)),
   };
 }
 
@@ -331,11 +354,22 @@ export async function fetchFicha(db: DB, otId: number): Promise<FichaHabilitacio
     ]);
   }
 
+  // La misma regla que la bandeja, sin escribir nada: la ficha sólo muestra. Si ya le tocó
+  // volver, se muestra en la cola aunque la bandeja todavía no la haya despertado.
+  const hoy = hoyISO();
+  const primeraJornada = (enOdoo.agenda?.jornadas ?? []).find((j) => j.fecha >= hoy)?.fecha ?? null;
+  const vuelta = cab?.pospuesta_hasta
+    ? vueltaDePospuesta({ hasta: cab.pospuesta_hasta, fechaProgramada: base.fechaProgramada, primeraJornada })
+    : null;
+
   return {
     otId: base.otId,
     titulo: base.titulo,
     direccionObra: base.direccionObra,
     tipo: base.tipo,
+    pospuestaHasta: vuelta && vuelta.fecha > hoy ? vuelta.fecha : null,
+    pospuestaMotivo: cab?.pospuesta_motivo ?? null,
+    pospuestaPor: cab?.pospusador?.nombre ?? null,
     urgencia: base.urgencia,
     motivoUrgencia: base.motivoUrgencia,
     detalleTecnico: enOdoo.ejecutar?.detalleTecnico ?? null,
@@ -373,6 +407,203 @@ export async function fetchFicha(db: DB, otId: number): Promise<FichaHabilitacio
 
 // mapNota y mapGestion ya no existen: el join del autor lo hace hab_gestion_de en la
 // misma consulta, así que el `autor_nombre` llega armado desde Postgres.
+
+// ─── Posponer ───────────────────────────────────────────────────────────────
+
+/** "7/10". Para el historial y los avisos, que son texto plano. */
+function fechaCorta(fecha: string): string {
+  const [, m, d] = fecha.split("-");
+  return `${Number(d)}/${Number(m)}`;
+}
+
+/** La posposición no se puede hacer tal como se pidió. La ruta lo devuelve como 400. */
+export class PosponerInvalido extends Error {}
+
+/**
+ * Posponer una obra hasta una fecha.
+ *
+ * Se guarda la vuelta YA CORREGIDA: si se pide hasta el 30 y la obra se arma el 5, queda
+ * hasta el 25. Así lo que dice la lista de pospuestas es lo que va a pasar.
+ *
+ * `pospuesta_aviso` arranca con la primera jornada que la obra ya tenía: posponer una obra
+ * planificada no puede disparar en la próxima lectura "Operaciones planificó la obra".
+ */
+export async function posponer(
+  db: DB,
+  otId: number,
+  opts: { hasta: string; motivo: string | null; autorId: string | null },
+): Promise<{ hasta: string }> {
+  const hoy = hoyISO();
+  if (opts.hasta <= hoy) throw new PosponerInvalido("La fecha tiene que ser posterior a hoy");
+
+  const [agenda] = await Promise.all([agendaDe(otId, hoy), cabecerasDe(db, [otId])]);
+  if (!agenda) throw new PosponerInvalido("La OT no existe en Odoo");
+
+  const vuelta = vueltaDePospuesta({ hasta: opts.hasta, ...agenda });
+  if (vuelta.fecha <= hoy) {
+    throw new PosponerInvalido(
+      "La obra se arma en menos de 10 días: ya es momento de mandar la documentación",
+    );
+  }
+
+  const { error } = await db
+    .from("hab_ots")
+    .update({
+      pospuesta_hasta: vuelta.fecha,
+      pospuesta_motivo: opts.motivo,
+      pospuesta_por: opts.autorId,
+      pospuesta_el: new Date().toISOString(),
+      pospuesta_aviso: agenda.primeraJornada,
+    })
+    .eq("odoo_ot_id", otId);
+  if (error) throw new Error(error.message);
+
+  const recorte = vuelta.fecha < opts.hasta
+    ? ` (se pidió hasta el ${fechaCorta(opts.hasta)}; la obra va antes)`
+    : "";
+  await registrarGestion(
+    db,
+    otId,
+    "posposicion",
+    `Pospuesta hasta el ${fechaCorta(vuelta.fecha)}${recorte}${opts.motivo ? ` — ${opts.motivo}` : ""}`,
+    opts.autorId,
+  );
+  return { hasta: vuelta.fecha };
+}
+
+/** Sacarla de pospuestas antes de tiempo. */
+export async function reactivar(db: DB, otId: number, autorId: string | null): Promise<void> {
+  const { error } = await db
+    .from("hab_ots")
+    .update({
+      pospuesta_hasta: null, pospuesta_motivo: null, pospuesta_por: null,
+      pospuesta_el: null, pospuesta_aviso: null,
+    })
+    .eq("odoo_ot_id", otId);
+  if (error) throw new Error(error.message);
+  await registrarGestion(db, otId, "posposicion", "Se reactivó: vuelve a la bandeja", autorId);
+}
+
+/**
+ * Aplica la regla de vuelta a las pospuestas de la bandeja. Muta `pospuestaHasta` de cada
+ * fila: queda la fecha corregida, o null si la obra vuelve a la cola.
+ *
+ * VIVE EN LA LECTURA DE LA BANDEJA, como la siembra de OTs nuevas, porque es el único lugar
+ * donde se ven juntas la posposición (Supabase) y la planificación (Odoo). Así funciona
+ * aunque la obra se planifique directo en Odoo y sin un proceso aparte.
+ *
+ * TRES COSAS PUEDEN PASAR, y cada una deja rastro:
+ *   · Le tocó volver → se borra la posposición, va al historial y se avisa. Alta si fue
+ *     porque Operaciones la planificó: ahí hay una jornada real esperando.
+ *   · La vuelta se adelantó → se guarda la fecha nueva, que nunca se aleja sola.
+ *   · Operaciones la planificó sin que le toque volver todavía → se avisa una vez por
+ *     cada fecha nueva, con cuándo vuelve.
+ *
+ * Las escrituras van condicionadas al valor leído: dos lecturas de la bandeja en paralelo
+ * no dejan dos veces "volvió a la bandeja" en el historial. Los avisos ya son idempotentes
+ * por clave.
+ */
+async function resolverPospuestas(
+  db: DB,
+  filas: FilaBandeja[],
+  cabeceras: Map<number, FilaHabOt>,
+): Promise<void> {
+  const hoy = hoyISO();
+  const alertas: NuevaAlerta[] = [];
+  const escrituras: Promise<void>[] = [];
+
+  function escribir(
+    otId: number,
+    antes: string,
+    cambio: Record<string, unknown>,
+    gestion: string | null,
+  ) {
+    escrituras.push(
+      (async () => {
+        const { data, error } = await db
+          .from("hab_ots")
+          .update(cambio)
+          .eq("odoo_ot_id", otId)
+          .eq("pospuesta_hasta", antes)
+          .select("odoo_ot_id");
+        if (error) throw new Error(error.message);
+        // Si otra lectura ya la movió, no se duplica el historial.
+        if (gestion && (data ?? []).length > 0) {
+          await registrarGestion(db, otId, "posposicion", gestion, null);
+        }
+      })(),
+    );
+  }
+
+  for (const f of filas) {
+    const cab = cabeceras.get(f.otId);
+    if (!cab?.pospuesta_hasta) continue;
+
+    const guardada = cab.pospuesta_hasta;
+    const vuelta = vueltaDePospuesta({
+      hasta: guardada,
+      fechaProgramada: f.fechaProgramada,
+      primeraJornada: f.primeraJornada,
+    });
+    const enlace = `/habilitaciones/${f.otId}`;
+    const razon =
+      vuelta.causa === "planificacion"
+        ? `Operaciones la planificó para el ${fechaCorta(f.primeraJornada!)}`
+        : vuelta.causa === "programada"
+          ? `Se arma el ${fechaCorta(f.fechaProgramada!)}`
+          : `Llegó la fecha elegida`;
+
+    if (vuelta.fecha <= hoy) {
+      f.pospuestaHasta = null;
+      escribir(
+        f.otId,
+        guardada,
+        {
+          pospuesta_hasta: null, pospuesta_motivo: null, pospuesta_por: null,
+          pospuesta_el: null, pospuesta_aviso: null,
+        },
+        `Volvió a la bandeja — ${razon}`,
+      );
+      alertas.push({
+        tipo: "hab_pospuesta",
+        clave: claveDe("hab_pospuesta", f.otId, `vuelve:${guardada}`),
+        titulo: `Volvió a la bandeja — ${f.titulo}`,
+        descripcion: `${razon}. Estaba pospuesta${cab.pospuesta_motivo ? `: ${cab.pospuesta_motivo}` : "."}`,
+        prioridad: vuelta.causa === "planificacion" ? "alta" : "media",
+        enlace,
+      });
+      continue;
+    }
+
+    f.pospuestaHasta = vuelta.fecha;
+    const cambio: Record<string, unknown> = {};
+    let gestion: string | null = null;
+
+    if (vuelta.fecha < guardada) {
+      cambio.pospuesta_hasta = vuelta.fecha;
+      gestion = `Se adelantó la vuelta al ${fechaCorta(vuelta.fecha)} — ${razon}`;
+    }
+
+    const planificadaNueva =
+      f.primeraJornada && f.primeraJornada !== cab.pospuesta_aviso ? f.primeraJornada : null;
+    if (planificadaNueva) {
+      cambio.pospuesta_aviso = planificadaNueva;
+      alertas.push({
+        tipo: "hab_pospuesta",
+        clave: claveDe("hab_pospuesta", f.otId, `planificada:${planificadaNueva}`),
+        titulo: `Planificaron una obra pospuesta — ${f.titulo}`,
+        descripcion: `Operaciones la planificó para el ${fechaCorta(planificadaNueva)}. Vuelve a la bandeja el ${fechaCorta(vuelta.fecha)}.`,
+        prioridad: "media",
+        enlace,
+      });
+    }
+
+    if (Object.keys(cambio).length > 0) escribir(f.otId, guardada, cambio, gestion);
+  }
+
+  await Promise.all(escrituras);
+  await crearAlertas(db, alertas);
+}
 
 // ─── Gestiones (append-only) ────────────────────────────────────────────────
 

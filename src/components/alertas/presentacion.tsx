@@ -1,4 +1,5 @@
 import {
+  AlarmClock,
   AlertTriangle,
   Bell,
   FileWarning,
@@ -38,6 +39,8 @@ const ICONOS: Record<string, typeof Bell> = {
   // reconoce de un vistazo como "esto es lo de la habilitación, al revés". Un ícono de
   // otra familia haría pensar en otra cosa.
   ot_deshabilitada: ShieldOff,
+  // El mismo reloj que el botón de posponer en la bandeja.
+  hab_pospuesta: AlarmClock,
   // Tipos previstos en el schema original, todavía sin productor.
   documento_vencimiento: FileWarning,
   stock_bajo_minimo: Package,

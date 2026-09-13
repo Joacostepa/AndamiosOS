@@ -31,6 +31,8 @@ function textoBuscable(f: FilaBandeja): string {
       f.modalidad ? MODALIDAD_LABEL[f.modalidad] : null,
       f.trabajo.tipoLabel,
       f.habilitadaPor,
+      f.pospuestaHasta ? "pospuesta" : null,
+      f.pospuestaMotivo,
       ...f.notasFijadas,
     ]
       .filter(Boolean)

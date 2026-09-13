@@ -45,6 +45,9 @@ const DESTINOS: Record<TipoAlerta, Canal[]> = {
   ot_habilitada: ["logistica"],
   ot_deshabilitada: ["logistica"],
   ot_urgente: ["logistica"],
+  // Es de Habilitaciones para Habilitaciones: la obra que había pospuesto necesita que
+  // alguien le mande los papeles. A logística no le cambia nada.
+  hab_pospuesta: ["syh"],
 };
 
 /**
@@ -95,6 +98,14 @@ const ESTILO: Record<
     plural: "OTs urgentes",
     destacado: true,
     prefijos: ["Urgente"],
+  },
+  hab_pospuesta: {
+    color: "#d97706",
+    emoji: "⏰",
+    rotulo: "Pospuesta",
+    plural: "obras pospuestas con novedades",
+    destacado: false,
+    prefijos: ["Volvió a la bandeja", "Planificaron una obra pospuesta"],
   },
 };
 

@@ -31,7 +31,10 @@ type DB = SupabaseClient;
  * obra ya se había planificado con esa habilitación, quien planifica no se enteraba de que
  * se cayó — se enteraba el día que la cuadrilla no podía entrar a la obra.
  */
-export type TipoAlerta = "ot_nueva" | "ot_habilitada" | "ot_urgente" | "ot_deshabilitada";
+export type TipoAlerta =
+  | "ot_nueva" | "ot_habilitada" | "ot_urgente" | "ot_deshabilitada"
+  /** Una obra pospuesta en Habilitaciones volvió a la bandeja, o Operaciones la planificó. */
+  | "hab_pospuesta";
 
 export type Prioridad = "baja" | "media" | "alta" | "critica";
 
@@ -56,8 +59,11 @@ export type NuevaAlerta = {
  * novedades, no transiciones, y repetir el mismo cartel es la forma más rápida de que la
  * gente deje de mirarlo. El historial de idas y vueltas ya vive en hab_gestiones.
  */
-export function claveDe(tipo: TipoAlerta, otId: number): string {
-  return `${tipo}:${otId}`;
+export function claveDe(tipo: TipoAlerta, otId: number, sufijo?: string): string {
+  // El sufijo es para los avisos que SÍ se repiten por obra con sentido distinto cada vez:
+  // "Operaciones planificó la obra pospuesta para el 7/10" y, si la mueven, "…para el 2/10"
+  // son dos novedades. Sigue siendo idempotente: la misma fecha no avisa dos veces.
+  return sufijo ? `${tipo}:${otId}:${sufijo}` : `${tipo}:${otId}`;
 }
 
 /**

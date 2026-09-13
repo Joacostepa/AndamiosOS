@@ -315,6 +315,50 @@ export async function permisosDeOts(otIds: number[]): Promise<Map<number, Permis
   );
 }
 
+/**
+ * La primera jornada de hoy en adelante de cada OT activa, en UNA lectura.
+ *
+ * Filtra por el estado de la OT con un dominio sobre el many2one, así no hace falta saber
+ * antes qué OTs hay: va en paralelo con fetchOtsActivas y no suma espera a la bandeja.
+ */
+export async function primerasJornadas(hoy: string): Promise<Map<number, string>> {
+  const filas = await searchRead<{ x_ot_id: M2O; x_fecha: string | false }>(
+    "x_aba_asignacion",
+    [["x_fecha", ">=", hoy], ["x_ot_id.x_estado", "in", ["pendiente", "en_proceso"]]],
+    ["x_ot_id", "x_fecha"],
+    { order: "x_fecha, id", limit: 3000 },
+  );
+  const mapa = new Map<number, string>();
+  for (const f of filas) {
+    const id = m2oId(f.x_ot_id);
+    const fecha = str(f.x_fecha);
+    // Vienen ordenadas por fecha: la primera que aparece de cada OT es la más temprana.
+    if (id && fecha && !mapa.has(id)) mapa.set(id, fecha);
+  }
+  return mapa;
+}
+
+/** Lo mínimo para posponer una obra: su fecha programada y su primera jornada. */
+export async function agendaDe(
+  otId: number,
+  hoy: string,
+): Promise<{ fechaProgramada: string | null; primeraJornada: string | null } | null> {
+  const [ots, jornadas] = await Promise.all([
+    read<{ id: number; x_fecha_programada: string | false }>(OT, [otId], ["x_fecha_programada"]),
+    searchRead<{ x_fecha: string | false }>(
+      "x_aba_asignacion",
+      [["x_ot_id", "=", otId], ["x_fecha", ">=", hoy]],
+      ["x_fecha"],
+      { order: "x_fecha, id", limit: 1 },
+    ),
+  ]);
+  if (!ots[0]) return null;
+  return {
+    fechaProgramada: str(ots[0].x_fecha_programada),
+    primeraJornada: str(jornadas[0]?.x_fecha),
+  };
+}
+
 /** Los ids de OT que siguen existiendo en Odoo, para detectar filas huérfanas. */
 export async function otsExistentes(otIds: number[]): Promise<Set<number>> {
   const ids = [...new Set(otIds)].filter((id) => Number.isInteger(id) && id > 0);

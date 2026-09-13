@@ -5,14 +5,18 @@ import Link from "next/link";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import {
-  ChevronDown, ChevronRight, Loader2, RefreshCw, RotateCcw, Search, TriangleAlert, Undo2, X,
+  AlarmClock, ChevronDown, ChevronRight, Loader2, RefreshCw, RotateCcw, Search, TriangleAlert,
+  Undo2, X,
 } from "lucide-react";
 import { coincide } from "@/lib/habilitaciones/buscar";
+import {
+  DialogoPosponer, obraDeFila, type ObraAPosponer,
+} from "@/components/habilitaciones/dialogo-posponer";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { direccionDeObra } from "@/lib/tablero/titulo";
 import {
-  useBandejaHabilitaciones, useReconciliar, useRevertirHabilitacion, useTriage,
+  useBandejaHabilitaciones, usePosponer, useReconciliar, useRevertirHabilitacion, useTriage,
 } from "@/hooks/use-habilitaciones";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -53,6 +57,7 @@ export default function HabilitacionesPage() {
   const reconciliar = useReconciliar();
   const [seleccion, setSeleccion] = useState<Set<number>>(new Set());
   const [busqueda, setBusqueda] = useState("");
+  const [aPosponer, setAPosponer] = useState<ObraAPosponer | null>(null);
   // Arranca recién con la bandeja en pantalla: antes de eso los elementos que resalta
   // todavía no existen y el recorrido saldría vacío.
   const tour = useTour(TOUR_BANDEJA, PASOS_BANDEJA, { listo: !isLoading && !!data });
@@ -116,6 +121,8 @@ export default function HabilitacionesPage() {
     .filter((g) => g.filas.length > 0);
   const noAplican = filtrar(data?.noAplican ?? []);
   const habilitadas = filtrar(data?.habilitadas ?? []);
+  const pospuestas = filtrar(data?.pospuestas ?? []);
+  const totalPospuestas = data?.pospuestas.length ?? 0;
   const total = data?.total ?? 0;
   const enTramite = grupos.reduce((n, g) => n + g.filas.length, 0);
   const desincronizadas = data?.desincronizadas ?? 0;
@@ -129,7 +136,7 @@ export default function HabilitacionesPage() {
           description={
             buscando
               ? `${enTramite} de ${total} en trámite coinciden con la búsqueda`
-              : `Las obras entran solas al crearse la OT en Odoo · ${total} en trámite`
+              : `Las obras entran solas al crearse la OT en Odoo · ${total} en trámite${totalPospuestas > 0 ? ` · ${totalPospuestas} pospuestas` : ""}`
           }
         >
           <BotonAyuda onRecorrido={tour.reiniciar} />
@@ -199,7 +206,7 @@ export default function HabilitacionesPage() {
 
       {grupos.length === 0 ? (
         buscando ? (
-          noAplican.length + habilitadas.length === 0 ? (
+          noAplican.length + habilitadas.length + pospuestas.length === 0 ? (
             <EmptyState
               icon={Search}
               title="Nada coincide"
@@ -227,10 +234,17 @@ export default function HabilitacionesPage() {
             onTriar={triar}
             triando={triage.isPending}
             filtrado={buscando}
+            onPosponer={(f) => setAPosponer(obraDeFila(f))}
             primero={i === 0}
           />
         ))
       )}
+
+      <Pospuestas
+        filas={pospuestas}
+        abiertoForzado={buscando}
+        onCambiar={(f) => setAPosponer(obraDeFila(f))}
+      />
 
       {/* Buscando, las dos listas del pie se abren solas: si la obra que se busca está
           habilitada o descartada, tener que adivinarlo y abrir la lista es justo lo que
@@ -243,7 +257,102 @@ export default function HabilitacionesPage() {
       />
 
       <Habilitadas filas={habilitadas} abiertoForzado={buscando} />
+
+      <DialogoPosponer obra={aPosponer} onCerrar={() => setAPosponer(null)} />
     </div>
+  );
+}
+
+/**
+ * Las pospuestas, al pie, la que vuelve antes primero.
+ *
+ * Van ANTES de "No aplican" y "Habilitadas": son las únicas de las tres que todavía tienen
+ * trabajo pendiente, sólo que no ahora. Colapsadas igual que las otras dos — si se vieran
+ * abiertas, posponer no sacaría nada de la vista.
+ */
+function Pospuestas({
+  filas,
+  abiertoForzado = false,
+  onCambiar,
+}: {
+  filas: FilaBandeja[];
+  abiertoForzado?: boolean;
+  onCambiar: (fila: FilaBandeja) => void;
+}) {
+  const [abiertoManual, setAbierto] = useState(false);
+  const abierto = abiertoManual || abiertoForzado;
+  const posponer = usePosponer();
+  if (filas.length === 0) return null;
+
+  return (
+    <section className="rounded-md border">
+      <button
+        onClick={() => setAbierto((v) => !v)}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted/40"
+      >
+        {abierto ? (
+          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+        ) : (
+          <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+        )}
+        <AlarmClock className="h-3.5 w-3.5 text-muted-foreground" />
+        <h2 className="text-[13px] font-medium text-muted-foreground">Pospuestas</h2>
+        <span className="rounded-full bg-muted px-2 py-0.5 text-[11px]">{filas.length}</span>
+        <span className="ml-auto hidden text-[11px] text-muted-foreground sm:inline">
+          vuelven solas a la cola · no cuentan en el total
+        </span>
+      </button>
+
+      {abierto && (
+        <ul>
+          {filas.map((f) => (
+            <li key={f.otId} className="flex flex-wrap items-center gap-2 border-t px-3 py-2 text-[13px]">
+              <ChipTipoOt tipo={f.tipo} enColumna />
+              <Link href={`/habilitaciones/${f.otId}`} className="min-w-0 flex-1">
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <ChipUrgencia urgencia={f.urgencia} motivo={f.motivoUrgencia} />
+                  <span className="truncate">{direccionDeObra(f)}</span>
+                </span>
+                <span className="block truncate text-[11px] text-muted-foreground">
+                  <span className="font-medium text-foreground">
+                    Vuelve el {format(parseISO(f.pospuestaHasta!), "EEE d MMM", { locale: es })}
+                  </span>
+                  {f.pospuestaPor && ` · pospuesta por ${f.pospuestaPor}`}
+                  {f.pospuestaMotivo && ` — ${f.pospuestaMotivo}`}
+                  {f.primeraJornada &&
+                    ` · planificada para el ${format(parseISO(f.primeraJornada), "d MMM", { locale: es })}`}
+                </span>
+              </Link>
+              <span className="hidden w-16 shrink-0 text-right text-[12px] sm:inline">
+                {f.fechaProgramada
+                  ? format(parseISO(f.fechaProgramada), "d MMM", { locale: es })
+                  : "—"}
+              </span>
+              <Button size="sm" variant="ghost" onClick={() => onCambiar(f)}>
+                Cambiar fecha
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={posponer.isPending}
+                onClick={() =>
+                  posponer.mutate(
+                    { otId: f.otId, hasta: null },
+                    {
+                      onSuccess: () => toast.success("De vuelta en la cola"),
+                      onError: (e) => toast.error(e instanceof Error ? e.message : "No se pudo reactivar"),
+                    },
+                  )
+                }
+              >
+                <Undo2 className="mr-1 h-3.5 w-3.5" />
+                Reactivar
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
@@ -445,6 +554,7 @@ function Grupo({
   onTriar,
   triando,
   filtrado = false,
+  onPosponer,
   primero = false,
 }: {
   grupo: GrupoBandeja;
@@ -454,6 +564,7 @@ function Grupo({
   triando: boolean;
   /** Hay una búsqueda: el grupo trae sólo las filas que coinciden. */
   filtrado?: boolean;
+  onPosponer: (fila: FilaBandeja) => void;
   /** El primer grupo aporta la fila de ejemplo del recorrido guiado. */
   primero?: boolean;
 }) {
@@ -518,6 +629,7 @@ function Grupo({
             seleccionable={esTriage}
             seleccionada={seleccion.has(fila.otId)}
             onSeleccionar={onSeleccionar}
+            onPosponer={onPosponer}
             anclaTour={primero && i === 0}
           />
         ))}

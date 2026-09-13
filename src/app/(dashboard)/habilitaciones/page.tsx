@@ -5,8 +5,10 @@ import Link from "next/link";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import {
-  ChevronDown, ChevronRight, Loader2, RefreshCw, RotateCcw, TriangleAlert, Undo2,
+  ChevronDown, ChevronRight, Loader2, RefreshCw, RotateCcw, Search, TriangleAlert, Undo2, X,
 } from "lucide-react";
+import { coincide } from "@/lib/habilitaciones/buscar";
+import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { direccionDeObra } from "@/lib/tablero/titulo";
 import {
@@ -35,9 +37,11 @@ import type { FilaBandeja, GrupoBandeja } from "@/lib/habilitaciones/tipos";
 // tiene una acción y un reclamo distintos, y la planilla tenía dos casillas para un
 // proceso de cinco pasos.
 //
-// SIN BUSCADOR NI PAGINADO, a propósito: con ~19 obras en trámite no hay que encontrar
-// nada, hay que decidir por dónde empezar. El día que haga falta buscar es porque el
-// módulo se llenó de ruido, y eso es lo que hay que arreglar, no el buscador.
+// SIN PAGINADO, pero CON BUSCADOR. Al principio no lo tenía a propósito —con ~19 obras
+// en trámite no había nada que encontrar—, pero la bandeja pasó a tener también las
+// habilitadas y las que no aplican, y la pregunta "¿dónde quedó Azara 856?" se contesta
+// escribiendo, no abriendo tres listas. Filtra en el browser sobre lo ya cargado: ver
+// lib/habilitaciones/buscar.ts.
 //
 // NO HAY BOTÓN "NUEVA OBRA": las habilitaciones nacen con la OT en Odoo. La primera
 // acción de Agustina es el triage, no el alta.
@@ -47,6 +51,7 @@ export default function HabilitacionesPage() {
   const triage = useTriage();
   const reconciliar = useReconciliar();
   const [seleccion, setSeleccion] = useState<Set<number>>(new Set());
+  const [busqueda, setBusqueda] = useState("");
   // Arranca recién con la bandeja en pantalla: antes de eso los elementos que resalta
   // todavía no existen y el recorrido saldría vacío.
   const tour = useTour(TOUR_BANDEJA, PASOS_BANDEJA, { listo: !isLoading && !!data });
@@ -103,8 +108,15 @@ export default function HabilitacionesPage() {
     );
   }
 
-  const grupos = data?.grupos ?? [];
+  const buscando = busqueda.trim() !== "";
+  const filtrar = (filas: FilaBandeja[]) => filas.filter((f) => coincide(f, busqueda));
+  const grupos = (data?.grupos ?? [])
+    .map((g) => ({ ...g, filas: filtrar(g.filas) }))
+    .filter((g) => g.filas.length > 0);
+  const noAplican = filtrar(data?.noAplican ?? []);
+  const habilitadas = filtrar(data?.habilitadas ?? []);
   const total = data?.total ?? 0;
+  const enTramite = grupos.reduce((n, g) => n + g.filas.length, 0);
   const desincronizadas = data?.desincronizadas ?? 0;
 
   return (
@@ -113,10 +125,36 @@ export default function HabilitacionesPage() {
       <div data-tour="bandeja-header">
         <PageHeader
           title="Habilitaciones"
-          description={`Las obras entran solas al crearse la OT en Odoo · ${total} en trámite`}
+          description={
+            buscando
+              ? `${enTramite} de ${total} en trámite coinciden con la búsqueda`
+              : `Las obras entran solas al crearse la OT en Odoo · ${total} en trámite`
+          }
         >
           <BotonAyuda onRecorrido={tour.reiniciar} />
         </PageHeader>
+      </div>
+
+      <div className="relative">
+        <Search className="pointer-events-none absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={busqueda}
+          onChange={(e) => setBusqueda(e.target.value)}
+          onKeyDown={(e) => e.key === "Escape" && setBusqueda("")}
+          placeholder="Buscar por dirección, cliente, OT, orden de venta, técnico…"
+          aria-label="Buscar obras"
+          className="h-9 pr-8 pl-8 text-[13px]"
+        />
+        {buscando && (
+          <button
+            type="button"
+            onClick={() => setBusqueda("")}
+            className="absolute top-1/2 right-2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:text-foreground"
+            aria-label="Borrar búsqueda"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
       {/* El push a Odoo es el único punto que puede fallar en silencio. Si nadie puede
@@ -159,11 +197,25 @@ export default function HabilitacionesPage() {
       )}
 
       {grupos.length === 0 ? (
-        <EmptyState
-          icon={ShieldCheck}
-          title="No hay nada en trámite"
-          description="Las obras aparecen acá solas al crearse la OT en Odoo."
-        />
+        buscando ? (
+          noAplican.length + habilitadas.length === 0 ? (
+            <EmptyState
+              icon={Search}
+              title="Nada coincide"
+              description={`Ninguna obra activa coincide con “${busqueda.trim()}”.`}
+            />
+          ) : (
+            <p className="px-1 text-[13px] text-muted-foreground">
+              Ninguna obra en trámite coincide. Abajo están las que sí.
+            </p>
+          )
+        ) : (
+          <EmptyState
+            icon={ShieldCheck}
+            title="No hay nada en trámite"
+            description="Las obras aparecen acá solas al crearse la OT en Odoo."
+          />
+        )
       ) : (
         grupos.map((grupo, i) => (
           <Grupo
@@ -173,18 +225,23 @@ export default function HabilitacionesPage() {
             onSeleccionar={alternar}
             onTriar={triar}
             triando={triage.isPending}
+            filtrado={buscando}
             primero={i === 0}
           />
         ))
       )}
 
+      {/* Buscando, las dos listas del pie se abren solas: si la obra que se busca está
+          habilitada o descartada, tener que adivinarlo y abrir la lista es justo lo que
+          el buscador vino a evitar. */}
       <NoAplican
-        filas={data?.noAplican ?? []}
+        filas={noAplican}
         onVolver={(otIds) => triar("pendiente", otIds)}
         triando={triage.isPending}
+        abiertoForzado={buscando}
       />
 
-      <Habilitadas filas={data?.habilitadas ?? []} />
+      <Habilitadas filas={habilitadas} abiertoForzado={buscando} />
     </div>
   );
 }
@@ -200,8 +257,15 @@ export default function HabilitacionesPage() {
  * obra; en una lista el botón de al lado es otra, y revertir le manda a Operaciones un
  * aviso crítico que no se despacha solo.
  */
-function Habilitadas({ filas }: { filas: FilaBandeja[] }) {
-  const [abierto, setAbierto] = useState(false);
+function Habilitadas({
+  filas,
+  abiertoForzado = false,
+}: {
+  filas: FilaBandeja[];
+  abiertoForzado?: boolean;
+}) {
+  const [abiertoManual, setAbierto] = useState(false);
+  const abierto = abiertoManual || abiertoForzado;
   const [aRevertir, setARevertir] = useState<FilaBandeja | null>(null);
   const revertir = useRevertirHabilitacion();
   if (filas.length === 0) return null;
@@ -311,12 +375,15 @@ function NoAplican({
   filas,
   onVolver,
   triando,
+  abiertoForzado = false,
 }: {
   filas: FilaBandeja[];
   onVolver: (otIds: number[]) => void;
   triando: boolean;
+  abiertoForzado?: boolean;
 }) {
-  const [abierto, setAbierto] = useState(false);
+  const [abiertoManual, setAbierto] = useState(false);
+  const abierto = abiertoManual || abiertoForzado;
   if (filas.length === 0) return null;
 
   return (
@@ -373,6 +440,7 @@ function Grupo({
   onSeleccionar,
   onTriar,
   triando,
+  filtrado = false,
   primero = false,
 }: {
   grupo: GrupoBandeja;
@@ -380,6 +448,8 @@ function Grupo({
   onSeleccionar: (otId: number, valor: boolean) => void;
   onTriar: (decision: "aplica" | "no_aplica", otIds: number[]) => void;
   triando: boolean;
+  /** Hay una búsqueda: el grupo trae sólo las filas que coinciden. */
+  filtrado?: boolean;
   /** El primer grupo aporta la fila de ejemplo del recorrido guiado. */
   primero?: boolean;
 }) {
@@ -413,7 +483,11 @@ function Grupo({
             <span className="text-[11px] text-muted-foreground">
               {seleccionados.length > 0
                 ? `${seleccionados.length} seleccionadas`
-                : "todas"}
+                : filtrado
+                  // Sin selección los botones actúan sobre el grupo VISIBLE. Con una
+                  // búsqueda eso ya no es "todas", y decirlo evita triar de más.
+                  ? `las ${grupo.filas.length} que coinciden`
+                  : "todas"}
             </span>
             <Button size="sm" onClick={() => onTriar("aplica", objetivo)} disabled={triando}>
               {triando && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}

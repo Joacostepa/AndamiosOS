@@ -5,13 +5,14 @@ import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import {
   AlertTriangle, Building2, CalendarCheck, Construction, ExternalLink, Fence, FileText,
-  Hammer, HardHat, Phone, ShieldCheck, User, UserRound, Users, Clock, CalendarDays,
+  HardHat, Phone, ShieldCheck, User, UserRound, Users, Clock, CalendarDays,
   CalendarRange, Check, CircleDashed, ClipboardCheck, Pin, PinOff, Trash2,
 } from "lucide-react";
 import { useDetalleOt } from "@/hooks/use-detalle-ot";
 import { HistorialConfirmacion } from "./historial-confirmacion";
 import { MovimientosOt } from "./movimientos-ot";
 import { ComentariosOt } from "./comentarios-ot";
+import { DetalleTecnico } from "./detalle-tecnico";
 import { ETAPA_LABEL, type HabEtapa } from "@/lib/habilitaciones/tipos";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
@@ -94,52 +95,6 @@ function QueNecesita({ trabajo }: { trabajo: TrabajoOt | undefined }) {
 
       {trabajo.tipoLabel && (
         <p className="text-xs text-muted-foreground">{trabajo.tipoLabel}</p>
-      )}
-    </div>
-  );
-}
-
-/**
- * Qué estructura hay que montar o bajar.
- *
- * Lo carga Comercial en la OT de Odoo, precargado con el párrafo técnico de la propuesta
- * de la venta (cubre 517 de las 632 obras confirmadas; el resto cae a las líneas de la
- * orden). Sin esto la cuadrilla salía sabiendo la dirección y nada más.
- */
-function DetalleTecnico({
-  texto,
-  confirmadoEl,
-  cargando,
-}: {
-  texto?: string | null;
-  /** Fecha en que Operaciones confirmó la estructura en obra. */
-  confirmadoEl?: string | null;
-  cargando: boolean;
-}) {
-  return (
-    <div className="space-y-1.5 rounded-md border-l-4 bg-muted/40 px-3 py-2.5" style={{ borderLeftColor: CORAL }}>
-      <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">
-        <Hammer className="h-3.5 w-3.5" />
-        Qué hay que ejecutar
-      </p>
-      {cargando ? (
-        <Skeleton className="h-4 w-3/4" />
-      ) : texto ? (
-        <>
-          <p className="whitespace-pre-wrap text-sm leading-snug">{texto}</p>
-          {/* Cambia cómo hay que leer el texto de arriba: con fecha, no es lo que se
-              vendió sino lo que se armó de verdad, verificado por alguien que estuvo. */}
-          {confirmadoEl && (
-            <p className="text-xs text-muted-foreground">
-              Estructura confirmada en obra el{" "}
-              {format(parseISO(confirmadoEl), "d MMM yyyy", { locale: es })}
-            </p>
-          )}
-        </>
-      ) : (
-        <p className="text-sm text-muted-foreground">
-          Sin detalle técnico cargado. Pedíselo a Comercial antes de mandar la cuadrilla.
-        </p>
       )}
     </div>
   );

@@ -106,6 +106,11 @@ export type OtConPermiso = {
   permiso: Permiso;
   /** Qué se arma y qué necesita. Ver src/lib/odoo/trabajo.ts. */
   trabajo: TrabajoOt;
+  /**
+   * El "Qué hay que ejecutar" del tablero. Sólo lo trae `fetchOt` (la ficha): en la
+   * bandeja no se muestra, y son ~200 caracteres por OT que nadie iba a leer.
+   */
+  ejecutar?: { detalleTecnico: string | null; estructuraConfirmadaEl: string | null };
 };
 
 function mapPermiso(v: FilaVenta | undefined, tecnicoOt: string | null): Permiso {
@@ -154,13 +159,29 @@ export async function fetchOtsActivas(): Promise<OtConPermiso[]> {
 
 /** Una sola OT, para la ficha. */
 export async function fetchOt(otId: number): Promise<OtConPermiso | null> {
-  const filas = await read<FilaOtHab>(OT, [otId], CAMPOS_OT);
+  // Los mismos campos que lee el panel del tablero (fetchDetalleOt), sumados a las dos
+  // lecturas que ya se hacían: ni una llamada más a Odoo.
+  const filas = await read<FilaOtHab & { x_detalle_tecnico: string | false }>(
+    OT, [otId], [...CAMPOS_OT, "x_detalle_tecnico"],
+  );
   const ot = filas[0];
   if (!ot) return null;
 
   const ventaId = m2oId(ot.x_order_id);
-  const ventas = ventaId ? await read<FilaVenta>(VENTA, [ventaId], CAMPOS_VENTA) : [];
-  return { ot, permiso: mapPermiso(ventas[0], str(ot.x_tecnico)), trabajo: leerTrabajo(ventas[0]) };
+  const ventas = ventaId
+    ? await read<FilaVenta & { x_estructura_fecha: string | false }>(
+        VENTA, [ventaId], [...CAMPOS_VENTA, "x_estructura_fecha"],
+      )
+    : [];
+  return {
+    ot,
+    permiso: mapPermiso(ventas[0], str(ot.x_tecnico)),
+    trabajo: leerTrabajo(ventas[0]),
+    ejecutar: {
+      detalleTecnico: str(ot.x_detalle_tecnico),
+      estructuraConfirmadaEl: str(ventas[0]?.x_estructura_fecha),
+    },
+  };
 }
 
 /**

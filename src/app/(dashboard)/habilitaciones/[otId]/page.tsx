@@ -12,6 +12,7 @@ import {
   useHabilitacion, useRegistrarGestion, useTriage, useVencimiento,
 } from "@/hooks/use-habilitaciones";
 import { ChipTipoOt } from "@/components/habilitaciones/chip-tipo-ot";
+import { DetalleTecnico } from "@/components/tablero/detalle-tecnico";
 import { ColumnaPermiso } from "@/components/habilitaciones/columna-permiso";
 import { ListadoRequisitos } from "@/components/habilitaciones/listado-requisitos";
 import { NotasObra } from "@/components/habilitaciones/notas-obra";
@@ -137,6 +138,18 @@ function Ficha({ ficha, otId }: { ficha: FichaHabilitacion; otId: number }) {
           <p className="text-muted-foreground">{v.detalle}</p>
         </div>
       </div>
+
+      {/* QUÉ HAY QUE EJECUTAR, el mismo texto que ve Operaciones en el tablero. Qué papeles
+          pide el cliente depende de qué se va a hacer —no es lo mismo una torre de un día
+          que una fachada de seis meses—, y hasta ahora había que ir a buscarlo a Odoo.
+          Lleva el tipo de OT en el encabezado: armado y desarme de la misma obra comparten
+          el texto, y lo que distingue a una de otra es eso. */}
+      <DetalleTecnico
+        texto={ficha.detalleTecnico}
+        confirmadoEl={ficha.estructuraConfirmadaEl}
+        tipo={ficha.tipo}
+        clasificacion={ficha.trabajo.tipoLabel}
+      />
 
       {/* EL TÉCNICO DE SyH DEL CLIENTE. Va acá arriba, pegado al veredicto, porque cambia
           qué hay que mandar: no es un dato de la obra, es un papel más que el cliente

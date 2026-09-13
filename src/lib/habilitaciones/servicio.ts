@@ -334,6 +334,8 @@ export async function fetchFicha(db: DB, otId: number): Promise<FichaHabilitacio
     titulo: base.titulo,
     direccionObra: base.direccionObra,
     tipo: base.tipo,
+    detalleTecnico: enOdoo.ejecutar?.detalleTecnico ?? null,
+    estructuraConfirmadaEl: enOdoo.ejecutar?.estructuraConfirmadaEl ?? null,
     estadoOt: base.estadoOt,
     fechaProgramada: base.fechaProgramada,
     etapa: base.etapa,

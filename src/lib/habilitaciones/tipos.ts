@@ -233,6 +233,10 @@ export type FichaHabilitacion = {
   /** Campo propio en Odoo. Null en las OTs viejas: decide `direccionDeObra()`. */
   direccionObra: string | null;
   tipo: string;
+  /** x_detalle_tecnico de la OT: el mismo "Qué hay que ejecutar" que ve Operaciones. */
+  detalleTecnico: string | null;
+  /** x_estructura_fecha de la venta: cuándo se confirmó en obra lo que se armó. */
+  estructuraConfirmadaEl: string | null;
   estadoOt: string;
   fechaProgramada: string | null;
   etapa: HabEtapa | null;

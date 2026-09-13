@@ -26,6 +26,7 @@ import { PASOS_BANDEJA, TOUR_BANDEJA } from "@/lib/habilitaciones/tour";
 import { BotonAyuda } from "@/components/habilitaciones/boton-ayuda";
 import { ChipTipoOt } from "@/components/habilitaciones/chip-tipo-ot";
 import { ChipUrgencia } from "@/components/habilitaciones/chip-urgencia";
+import { ChipPantalla } from "@/components/habilitaciones/chip-pantalla";
 import { Fila } from "@/components/habilitaciones/fila-bandeja";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -311,6 +312,7 @@ function Pospuestas({
               <Link href={`/habilitaciones/${f.otId}`} className="min-w-0 flex-1">
                 <span className="flex min-w-0 items-center gap-1.5">
                   <ChipUrgencia urgencia={f.urgencia} motivo={f.motivoUrgencia} />
+                  <ChipPantalla trabajo={f.trabajo} />
                   <span className="truncate">{direccionDeObra(f)}</span>
                 </span>
                 <span className="block truncate text-[11px] text-muted-foreground">
@@ -420,6 +422,7 @@ function Habilitadas({
               <Link href={`/habilitaciones/${f.otId}`} className="min-w-0 flex-1">
                 <span className="flex min-w-0 items-center gap-1.5">
                   <ChipUrgencia urgencia={f.urgencia} motivo={f.motivoUrgencia} />
+                  <ChipPantalla trabajo={f.trabajo} />
                   <span className="truncate">{direccionDeObra(f)}</span>
                 </span>
                 <span className="block truncate text-[11px] text-muted-foreground">

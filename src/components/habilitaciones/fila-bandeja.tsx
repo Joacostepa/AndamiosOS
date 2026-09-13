@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ChipTipoOt } from "@/components/habilitaciones/chip-tipo-ot";
 import { ChipUrgencia } from "@/components/habilitaciones/chip-urgencia";
+import { ChipPantalla } from "@/components/habilitaciones/chip-pantalla";
 import { AVISO, semaforo } from "@/lib/tablero/colores";
 import { partesTitulo, direccionDeObra } from "@/lib/tablero/titulo";
 import { UMBRAL_DIAS } from "@/lib/habilitaciones/derivacion";
@@ -88,6 +89,7 @@ export function Fila({
             dejar un hueco en casi todas las filas. */}
         <span className="flex min-w-0 items-center gap-1.5">
           <ChipUrgencia urgencia={fila.urgencia} motivo={fila.motivoUrgencia} />
+          <ChipPantalla trabajo={fila.trabajo} />
           <span className="truncate font-medium">{direccion}</span>
         </span>
         <span className="block truncate text-[11px] text-muted-foreground">{contexto}</span>

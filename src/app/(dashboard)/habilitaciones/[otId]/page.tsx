@@ -15,6 +15,7 @@ import {
 import { DialogoPosponer } from "@/components/habilitaciones/dialogo-posponer";
 import { ChipTipoOt } from "@/components/habilitaciones/chip-tipo-ot";
 import { ChipUrgencia } from "@/components/habilitaciones/chip-urgencia";
+import { ChipPantalla } from "@/components/habilitaciones/chip-pantalla";
 import { FechasObra } from "@/components/habilitaciones/fechas-obra";
 import { DetalleTecnico } from "@/components/tablero/detalle-tecnico";
 import { ColumnaPermiso } from "@/components/habilitaciones/columna-permiso";
@@ -113,6 +114,7 @@ function Ficha({ ficha, otId }: { ficha: FichaHabilitacion; otId: number }) {
             <h1 className="text-lg font-semibold">{direccion}</h1>
             <ChipTipoOt tipo={ficha.tipo} />
             <ChipUrgencia urgencia={ficha.urgencia} motivo={ficha.motivoUrgencia} />
+            <ChipPantalla trabajo={ficha.trabajo} />
             {/* En la ficha el motivo va escrito: el title no se lee desde un celular. */}
             {ficha.urgencia !== "baja" && ficha.motivoUrgencia && (
               <span className="text-[12px] text-muted-foreground">{ficha.motivoUrgencia}</span>

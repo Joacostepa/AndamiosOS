@@ -167,6 +167,15 @@ export type Permiso = {
 /** x_urgencia de la OT. Vacío en Odoo se lee como "baja". */
 export type UrgenciaOt = "alta" | "media" | "baja";
 
+/** Una jornada de la OT en el tablero (x_aba_asignacion). */
+export type JornadaHab = {
+  fecha: string;
+  cuadrilla: string | null;
+  estado: "tentativa" | "confirmada";
+  /** Ya tiene parte cargado: la jornada se ejecutó (o se registró que no). */
+  conParte: boolean;
+};
+
 /** Una fila de la bandeja. */
 export type FilaBandeja = {
   urgencia: UrgenciaOt;
@@ -244,6 +253,16 @@ export type FichaHabilitacion = {
   detalleTecnico: string | null;
   /** x_estructura_fecha de la venta: cuándo se confirmó en obra lo que se armó. */
   estructuraConfirmadaEl: string | null;
+  /** Las fechas del acuerdo con el cliente, cargadas en la OT. */
+  fechas: {
+    desde: string | null;
+    antesDe: string | null;
+    comprometida: string | null;
+    /** x_fecha_firmeza: "confirmada" o tentativa. */
+    firmeza: string | null;
+  };
+  /** Las jornadas del tablero, en orden. Vacío = la obra está en la bandeja sin asignar. */
+  jornadas: JornadaHab[];
   estadoOt: string;
   fechaProgramada: string | null;
   etapa: HabEtapa | null;

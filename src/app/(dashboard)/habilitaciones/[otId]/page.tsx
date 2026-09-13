@@ -13,6 +13,7 @@ import {
 } from "@/hooks/use-habilitaciones";
 import { ChipTipoOt } from "@/components/habilitaciones/chip-tipo-ot";
 import { ChipUrgencia } from "@/components/habilitaciones/chip-urgencia";
+import { FechasObra } from "@/components/habilitaciones/fechas-obra";
 import { DetalleTecnico } from "@/components/tablero/detalle-tecnico";
 import { ColumnaPermiso } from "@/components/habilitaciones/columna-permiso";
 import { ListadoRequisitos } from "@/components/habilitaciones/listado-requisitos";
@@ -156,6 +157,10 @@ function Ficha({ ficha, otId }: { ficha: FichaHabilitacion; otId: number }) {
         tipo={ficha.tipo}
         clasificacion={ficha.trabajo.tipoLabel}
       />
+
+      {/* CUÁNDO VA: las fechas acordadas en la OT y las jornadas del tablero. Qué tan
+          urgente es el trámite depende de esto más que de la fecha programada sola. */}
+      <FechasObra ficha={ficha} />
 
       {/* EL TÉCNICO DE SyH DEL CLIENTE. Va acá arriba, pegado al veredicto, porque cambia
           qué hay que mandar: no es un dato de la obra, es un papel más que el cliente

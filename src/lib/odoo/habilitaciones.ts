@@ -22,7 +22,7 @@ import { searchRead, read, write } from "./client";
 import { CAMPOS_TRABAJO, leerTrabajo, type FilaTrabajo } from "./trabajo";
 import type {
   HabAlerta, HabEstado, HabEtapa, HabSemaforo, InputsHabilitacion,
-  ModalidadPermiso, Permiso, TramiteEstado, UrgenciaOt,
+  JornadaHab, ModalidadPermiso, Permiso, TramiteEstado, UrgenciaOt,
 } from "@/lib/habilitaciones/tipos";
 import type { TrabajoOt } from "@/lib/tablero/tipos";
 
@@ -116,6 +116,18 @@ export type OtConPermiso = {
    * bandeja no se muestra, y son ~200 caracteres por OT que nadie iba a leer.
    */
   ejecutar?: { detalleTecnico: string | null; estructuraConfirmadaEl: string | null };
+  /**
+   * Las fechas del acuerdo y las jornadas del tablero. Sólo con `fetchOt(id, { agenda:
+   * true })`, que es la ficha: los avisos y las rutas que llaman a fetchOt por el título
+   * no tienen por qué pagar la lectura de asignaciones.
+   */
+  agenda?: {
+    fechaDesde: string | null;
+    fechaAntesDe: string | null;
+    fechaComprometida: string | null;
+    fechaFirmeza: string | null;
+    jornadas: JornadaHab[];
+  };
 };
 
 function mapPermiso(v: FilaVenta | undefined, tecnicoOt: string | null): Permiso {
@@ -163,12 +175,39 @@ export async function fetchOtsActivas(): Promise<OtConPermiso[]> {
 }
 
 /** Una sola OT, para la ficha. */
-export async function fetchOt(otId: number): Promise<OtConPermiso | null> {
-  // Los mismos campos que lee el panel del tablero (fetchDetalleOt), sumados a las dos
-  // lecturas que ya se hacían: ni una llamada más a Odoo.
-  const filas = await read<FilaOtHab & { x_detalle_tecnico: string | false }>(
-    OT, [otId], [...CAMPOS_OT, "x_detalle_tecnico"],
-  );
+export async function fetchOt(
+  otId: number,
+  opts: { agenda?: boolean } = {},
+): Promise<OtConPermiso | null> {
+  // Los mismos campos que lee el panel del tablero (fetchDetalleOt), sumados a las
+  // lecturas que ya se hacían. Las jornadas van EN PARALELO con la OT: se piden por otId,
+  // así que no hace falta esperar a leerla.
+  const [filas, asignaciones] = await Promise.all([
+    read<FilaOtHab & {
+      x_detalle_tecnico: string | false;
+      x_fecha_desde?: string | false;
+      x_fecha_antes_de?: string | false;
+      x_fecha_comprometida?: string | false;
+      x_fecha_firmeza?: string | false;
+    }>(
+      OT,
+      [otId],
+      [
+        ...CAMPOS_OT, "x_detalle_tecnico",
+        ...(opts.agenda
+          ? ["x_fecha_desde", "x_fecha_antes_de", "x_fecha_comprometida", "x_fecha_firmeza"]
+          : []),
+      ],
+    ),
+    opts.agenda
+      ? searchRead<{ id: number; x_fecha: string | false; x_cuadrilla_id: M2O; x_estado: string | false; x_parte_id: M2O }>(
+          "x_aba_asignacion",
+          [["x_ot_id", "=", otId]],
+          ["x_fecha", "x_cuadrilla_id", "x_estado", "x_parte_id"],
+          { order: "x_fecha, id" },
+        )
+      : Promise.resolve([]),
+  ]);
   const ot = filas[0];
   if (!ot) return null;
 
@@ -186,6 +225,26 @@ export async function fetchOt(otId: number): Promise<OtConPermiso | null> {
       detalleTecnico: str(ot.x_detalle_tecnico),
       estructuraConfirmadaEl: str(ventas[0]?.x_estructura_fecha),
     },
+    ...(opts.agenda
+      ? {
+          agenda: {
+            fechaDesde: str(ot.x_fecha_desde),
+            fechaAntesDe: str(ot.x_fecha_antes_de),
+            fechaComprometida: str(ot.x_fecha_comprometida),
+            fechaFirmeza: str(ot.x_fecha_firmeza),
+            jornadas: asignaciones
+              .filter((a) => str(a.x_fecha))
+              .map((a) => ({
+                fecha: str(a.x_fecha)!,
+                cuadrilla: m2oName(a.x_cuadrilla_id),
+                // Mismo criterio que la ficha de OT (ordenes.ts): lo que no es
+                // confirmada es tentativa.
+                estado: a.x_estado === "confirmada" ? ("confirmada" as const) : ("tentativa" as const),
+                conParte: m2oId(a.x_parte_id) !== null,
+              })),
+          },
+        }
+      : {}),
   };
 }
 

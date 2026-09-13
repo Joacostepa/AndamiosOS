@@ -303,7 +303,7 @@ export async function fetchFicha(db: DB, otId: number): Promise<FichaHabilitacio
   // se piden por otId, que ya viene en la URL. Serializarlas sumaba un tramo entero de
   // espera a cada apertura de ficha para nada.
   const [enOdoo, cabeceras, gestion] = await Promise.all([
-    fetchOt(otId),
+    fetchOt(otId, { agenda: true }),
     cabecerasDe(db, [otId]),
     fetchGestionDe(db, otId),
   ]);
@@ -340,6 +340,13 @@ export async function fetchFicha(db: DB, otId: number): Promise<FichaHabilitacio
     motivoUrgencia: base.motivoUrgencia,
     detalleTecnico: enOdoo.ejecutar?.detalleTecnico ?? null,
     estructuraConfirmadaEl: enOdoo.ejecutar?.estructuraConfirmadaEl ?? null,
+    fechas: {
+      desde: enOdoo.agenda?.fechaDesde ?? null,
+      antesDe: enOdoo.agenda?.fechaAntesDe ?? null,
+      comprometida: enOdoo.agenda?.fechaComprometida ?? null,
+      firmeza: enOdoo.agenda?.fechaFirmeza ?? null,
+    },
+    jornadas: enOdoo.agenda?.jornadas ?? [],
     estadoOt: base.estadoOt,
     fechaProgramada: base.fechaProgramada,
     etapa: base.etapa,

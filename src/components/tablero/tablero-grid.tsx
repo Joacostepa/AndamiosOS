@@ -48,6 +48,26 @@ import type { AsignacionTablero, CuadrillaTablero, OtTablero, ParteTablero } fro
 
 const ANCHO_RECURSO = 168;
 /**
+ * En celular la columna de cuadrillas mide menos de la mitad.
+ *
+ * A 168px, en un teléfono de 390px la columna fija se comía casi la mitad de la pantalla y
+ * quedaba lugar para un día y pico. Con 64px entran dos días enteros, que es lo mínimo para
+ * ver si una obra sigue al día siguiente. El nombre se abrevia ("C2") y la carga pierde el
+ * texto del exceso: el rojo ya dice que se pasó.
+ */
+const ANCHO_RECURSO_MOVIL = 64;
+
+/** Ancho de la columna fija de cuadrillas. El board lo necesita para el scroll. */
+export function anchoRecursoPara(compacta: boolean): number {
+  return compacta ? ANCHO_RECURSO_MOVIL : ANCHO_RECURSO;
+}
+
+/** "CUADRILLA 2" → "C2". Los nombres que no siguen el patrón quedan como están y se cortan. */
+function abreviarCuadrilla(nombre: string): string {
+  const m = nombre.match(/cuadrilla\s*(\d+)/i);
+  return m ? `C${m[1]}` : nombre;
+}
+/**
  * A 132px las direcciones se cortaban casi siempre ("Corrientes 144…", "Ángel Gallard…")
  * y la tarjeta perdía justo el dato que sirve para identificar la obra. El ancho manda
  * sobre la cantidad de días a la vista: para eso está el scroll.
@@ -70,6 +90,12 @@ export const DIAS_VENTANA = 8;
  * es preferible scrollear a no poder leer.
  */
 const ANCHO_DIA_MINIMO = 150;
+/**
+ * El mismo piso en celular, un poco más bajo: a 140px entran dos días en un teléfono de
+ * 390px. Con 150 entraba uno y nueve décimos, y el segundo quedaba cortado contra el borde,
+ * que es justo lo que este archivo evita en la computadora.
+ */
+const ANCHO_DIA_MINIMO_MOVIL = 140;
 /** Domingo sin trabajo: una canaleta, no una columna. */
 const ANCHO_CANALETA = 28;
 /** Franja al pie de la celda donde vive el riel de ocupación. */
@@ -159,6 +185,8 @@ function anchoDeColumna(
   fechas: string[],
   hoy: string,
   colapsado: (f: string) => boolean,
+  anchoRecurso: number,
+  piso: number,
 ): number {
   if (!anchoContenedor) return ANCHO_MIN_DIA;
 
@@ -172,8 +200,8 @@ function anchoDeColumna(
   const anchos = ventana.length - canaletas;
   if (anchos <= 0) return ANCHO_MIN_DIA;
 
-  const disponible = anchoContenedor - ANCHO_RECURSO - canaletas * ANCHO_CANALETA;
-  return Math.max(ANCHO_DIA_MINIMO, Math.floor(disponible / anchos));
+  const disponible = anchoContenedor - anchoRecurso - canaletas * ANCHO_CANALETA;
+  return Math.max(piso, Math.floor(disponible / anchos));
 }
 
 export function TableroGrid({
@@ -207,6 +235,7 @@ export function TableroGrid({
   clima,
   domingosAbiertos,
   onToggleDomingo,
+  compacta,
 }: {
   cuadrillas: CuadrillaTablero[];
   fechas: string[];
@@ -302,6 +331,11 @@ export function TableroGrid({
   domingosAbiertos: Set<string>;
   /** Alterna la habilitación manual de ese domingo. */
   onToggleDomingo: (fecha: string) => void;
+  /**
+   * Pantalla de celular: columna de cuadrillas angosta y días un poco más angostos. Ver
+   * ANCHO_RECURSO_MOVIL.
+   */
+  compacta: boolean;
 }) {
   const hoy = new Date();
 
@@ -405,7 +439,15 @@ export function TableroGrid({
   //
   // Ahora se mide el contenedor y se reparte para que entren los 8 días de la ventana
   // justos: sin sobrante y sin columna cortada.
-  const anchoDia = anchoDeColumna(anchoContenedor, fechas, hoyISO, colapsado);
+  const anchoRecurso = anchoRecursoPara(compacta);
+  const anchoDia = anchoDeColumna(
+    anchoContenedor,
+    fechas,
+    hoyISO,
+    colapsado,
+    anchoRecurso,
+    compacta ? ANCHO_DIA_MINIMO_MOVIL : ANCHO_DIA_MINIMO,
+  );
 
   // La plantilla externa impone los anchos; la interna los repite para que las celdas de
   // cada fila caigan exactamente bajo su encabezado. En las columnas elásticas la interna
@@ -418,7 +460,7 @@ export function TableroGrid({
     .map((f) => (colapsado(f) ? `${ANCHO_CANALETA}px` : "minmax(0, 1fr)"))
     .join(" ");
   const anchoMinimo =
-    ANCHO_RECURSO + fechas.reduce((s, f) => s + (colapsado(f) ? ANCHO_CANALETA : anchoDia), 0);
+    anchoRecurso + fechas.reduce((s, f) => s + (colapsado(f) ? ANCHO_CANALETA : anchoDia), 0);
 
   // ── Aviso de cambio de geometría ───────────────────────────────────────────
   //
@@ -499,7 +541,7 @@ export function TableroGrid({
         <div className="pointer-events-none sticky left-0 top-0 z-10 h-0 w-0 overflow-visible">
           <div
             className="absolute flex w-max items-center gap-2 rounded-lg border bg-card/95 px-4 py-3 text-sm text-muted-foreground shadow-sm"
-            style={{ left: ANCHO_RECURSO + 24, top: 64 }}
+            style={{ left: anchoRecurso + 24, top: 64 }}
           >
             <MousePointerClick className="h-4 w-4" />
             Nada planificado en este rango: arrastrá una obra del panel derecho a un día.
@@ -510,7 +552,7 @@ export function TableroGrid({
       <div
         className="grid min-h-full"
         style={{
-          gridTemplateColumns: `${ANCHO_RECURSO}px ${plantillaExterna}`,
+          gridTemplateColumns: `${anchoRecurso}px ${plantillaExterna}`,
           // El alto sale del contenido, entre un piso y un techo. La pista `1fr` del final
           // se come el sobrante: sin ella el reparto lo absorbían las filas y con pocas
           // cuadrillas quedaban enormes y medio vacías.
@@ -520,7 +562,8 @@ export function TableroGrid({
       >
         {/* ── Encabezado ── */}
         <div className="sticky left-0 top-0 z-30 flex h-10 items-center border-b border-r bg-card px-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-          Cuadrillas
+          {/* En 64px no entra la palabra, y la columna se explica sola: cada fila dice "C2". */}
+          {compacta ? "" : "Cuadrillas"}
         </div>
         {fechas.map((f) => {
           const d = parseISO(f);
@@ -720,12 +763,12 @@ export function TableroGrid({
           return (
             <div key={cuadrilla.id} className="contents">
               <div
-                className="sticky left-0 z-20 flex flex-col justify-center gap-0.5 border-b border-r bg-card px-2 py-1.5"
+                className={`sticky left-0 z-20 flex flex-col justify-center gap-0.5 border-b border-r bg-card py-1.5 ${compacta ? "px-1.5" : "px-2"}`}
                 style={{ borderLeft: `3px solid ${color.borde}` }}
               >
                 <p className="truncate text-[12px] font-medium" title={cuadrilla.nombre}>
-                  {cuadrilla.nombre}
-                  {cuadrilla.tercerizada && (
+                  {compacta ? abreviarCuadrilla(cuadrilla.nombre) : cuadrilla.nombre}
+                  {cuadrilla.tercerizada && !compacta && (
                     <span className="ml-1 text-[10px] font-normal text-muted-foreground">terc.</span>
                   )}
                 </p>
@@ -739,9 +782,15 @@ export function TableroGrid({
                       : "Carga de la semana que está centrada en pantalla"
                   }
                 >
-                  {DECIMAL.format(jornadas)} / {capacidad}
-                  {exceso > 0 && ` · +${DECIMAL.format(exceso)}`}
-                  {jornadas === 0 && " · libre"}
+                  {compacta ? (
+                    `${DECIMAL.format(jornadas)}/${capacidad}`
+                  ) : (
+                    <>
+                      {DECIMAL.format(jornadas)} / {capacidad}
+                      {exceso > 0 && ` · +${DECIMAL.format(exceso)}`}
+                      {jornadas === 0 && " · libre"}
+                    </>
+                  )}
                 </p>
               </div>
 

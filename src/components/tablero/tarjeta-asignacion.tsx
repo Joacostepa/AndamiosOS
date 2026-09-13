@@ -516,6 +516,11 @@ export function TarjetaAsignacion({
         opacity: isDragging ? 0.35 : vencidaSinParte ? 1 : ejecutada ? 0.55 : 1,
         outline: seleccionada ? `2px solid ${CORAL}` : isOver ? `2px dashed ${CORAL}` : undefined,
         outlineOffset: "-1px",
+        // Táctil: sin demora de doble toque, y sin el menú de "copiar / compartir" que iOS
+        // abre al mantener apretado, que es justo el gesto que agarra la tarjeta (ver los
+        // sensores en tablero-board).
+        touchAction: "manipulation",
+        WebkitTouchCallout: "none",
       }}
       className={cn(
         // select-none: apretar sobre el texto y arrastrar hacía que el navegador

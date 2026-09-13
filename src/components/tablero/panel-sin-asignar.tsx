@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useDraggable, useDroppable } from "@dnd-kit/core";
+import { useDndContext, useDraggable, useDroppable } from "@dnd-kit/core";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import {
@@ -309,6 +309,10 @@ function TarjetaOt({
       style={{
         opacity: isDragging ? 0.35 : 1,
         backgroundColor: tipo.bg,
+        // Táctil: sin demora de doble toque, y sin el menú de "copiar / compartir" que iOS
+        // abre al mantener apretado, que es justo el gesto que agarra la tarjeta.
+        touchAction: "manipulation",
+        WebkitTouchCallout: "none",
         // El borde rojo es SÓLO de la urgencia alta. Es el canal más caro que le queda a
         // esta tarjeta y por eso no lo comparte con nada: si también marcara "media", las
         // dos se leerían igual desde lejos, que es exactamente lo que hay que evitar.
@@ -577,6 +581,7 @@ export function PanelSinAsignar({
   comentarios,
   hoy,
   colapsado,
+  flotante,
   queEjecutar,
   onColapsar,
   onDetalle,
@@ -590,6 +595,11 @@ export function PanelSinAsignar({
   /** Hoy en yyyy-MM-dd: define qué compromiso está vencido. */
   hoy: string;
   colapsado: boolean;
+  /**
+   * Celular: la bandeja abierta flota encima de la grilla en vez de ocupar una columna. En
+   * 390px una columna de 300px dejaba sesenta para el tablero.
+   */
+  flotante: boolean;
   /** Las tarjetas muestran qué hay que ejecutar en vez del cliente y el técnico. */
   queEjecutar: boolean;
   onColapsar: (valor: boolean) => void;
@@ -601,7 +611,17 @@ export function PanelSinAsignar({
   // mezcle con lo que no. NO es un bloqueo: se abre con un clic y adentro las tarjetas se
   // arrastran igual que cualquier otra. El semáforo advierte, no impide planificar.
   const [pendientesAbierto, setPendientesAbierto] = useState(false);
-  const { setNodeRef, isOver, active } = useDroppable({ id: ID_BANDEJA });
+  // ¿Se está arrastrando una obra DE ACÁ hacia la grilla?
+  //
+  // En celular importa dos veces. La bandeja flota encima de la grilla, así que mientras se
+  // arrastra se corre hacia afuera para dejar ver los días. Y deja de ser destino: el
+  // rectángulo que dnd-kit midió al empezar el arrastre sigue diciendo que la bandeja está
+  // ahí, y soltar sobre un día que estaba debajo caería "en la bandeja" y no haría nada.
+  // En la computadora no cambia nada: soltar una obra de la bandeja en la bandeja nunca
+  // hizo nada.
+  const { active: activoGlobal } = useDndContext();
+  const arrastrandoObra = String(activoGlobal?.id ?? "").startsWith("ot:");
+  const { setNodeRef, isOver, active } = useDroppable({ id: ID_BANDEJA, disabled: arrastrandoObra });
   const soltando = isOver && String(active?.id ?? "").startsWith("bloque:");
 
   const [tipoFiltro, setTipoFiltro] = useState<string | null>(null);
@@ -744,7 +764,13 @@ export function PanelSinAsignar({
   return (
     <div
       ref={setNodeRef}
-      className="flex w-[300px] shrink-0 flex-col border-l transition-colors"
+      className={
+        flotante
+          ? `absolute inset-y-0 right-0 z-40 flex w-[min(320px,88vw)] flex-col border-l bg-card shadow-xl transition-[transform,opacity] duration-150 ${
+              arrastrandoObra ? "pointer-events-none translate-x-full opacity-0" : ""
+            }`
+          : "flex w-[300px] shrink-0 flex-col border-l transition-colors"
+      }
       style={{
         backgroundColor: soltando ? ACENTO_BG : undefined,
         outline: soltando ? `2px dashed ${CORAL}` : undefined,

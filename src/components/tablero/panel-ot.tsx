@@ -6,6 +6,7 @@ import { es } from "date-fns/locale";
 import {
   AlertTriangle, Building2, CalendarCheck, Construction, ExternalLink, Fence, FileText,
   Hammer, HardHat, Phone, ShieldCheck, User, UserRound, Users, Clock, CalendarDays,
+  CalendarRange, Check, CircleDashed, ClipboardCheck, Pin, PinOff, Trash2,
 } from "lucide-react";
 import { useDetalleOt } from "@/hooks/use-detalle-ot";
 import { HistorialConfirmacion } from "./historial-confirmacion";
@@ -19,7 +20,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   ALERTA, CORAL, NOTA, PELIGRO, PELIGRO_SOLIDO, semaforo,
 } from "@/lib/tablero/colores";
-import { fraccionLabel } from "@/lib/tablero/fracciones";
+import { FRACCIONES, fraccionLabel, type FraccionStr } from "@/lib/tablero/fracciones";
+import { accionDeCierre, jornadasCerradas, jornadasLiberables, type AccionCierre } from "@/lib/tablero/cierre";
+import { Button } from "@/components/ui/button";
 import type { Bloque } from "@/lib/tablero/bloques";
 import type { DocumentoOt, OtTablero, TrabajoOt } from "@/lib/tablero/tipos";
 
@@ -203,12 +206,172 @@ function Documentos({ otId, cantidad }: { otId: number; cantidad: number }) {
   );
 }
 
+/**
+ * Lo que se puede hacer con esta jornada: lo mismo que el menú ⋮ de la tarjeta.
+ *
+ * EXISTE POR EL CELULAR. El ⋮ aparece al pasar el mouse, y en una pantalla táctil no hay
+ * mouse: tocar la tarjeta abre este panel, y hasta acá el panel sólo mostraba datos. O sea
+ * que desde un teléfono no había forma de confirmar, fijar, cambiar la fracción ni cerrar la
+ * jornada — y cerrar la jornada es justo lo que alguien hace desde la obra.
+ *
+ * SE VE TAMBIÉN EN LA COMPUTADORA, a propósito: una tablet es ancha y táctil, y esconderlo
+ * por ancho de pantalla la dejaría afuera. En la computadora es un segundo camino al mismo
+ * gesto, y no molesta.
+ *
+ * Los botones miden 40px de alto en pantalla chica, que es lo mínimo que se toca con el
+ * dedo sin errarle. En la computadora vuelven al tamaño de siempre.
+ *
+ * El motivo de una obra fija va escrito acá, entero: en la tarjeta vive en un tooltip, y en
+ * un celular un tooltip no se puede leer.
+ */
+function AccionesJornada({
+  bloque,
+  hoy,
+  onEstado,
+  onFijar,
+  onSoltar,
+  onFraccion,
+  onEditarJornadas,
+  onCerrarJornada,
+  onQuitar,
+}: {
+  bloque: Bloque;
+  hoy: string;
+  onEstado: (e: "tentativa" | "confirmada") => void;
+  onFijar: () => void;
+  onSoltar: () => void;
+  onFraccion: (f: FraccionStr) => void;
+  onEditarJornadas: () => void;
+  onCerrarJornada: (accion: NonNullable<AccionCierre>) => void;
+  onQuitar: () => void;
+}) {
+  const accion = accionDeCierre(bloque, hoy);
+  const liberables = jornadasLiberables(bloque).length;
+  const cerradas = jornadasCerradas(bloque);
+  // Recién soltada: todavía no tiene su número en Odoo y cualquier escritura rebotaría.
+  const guardando = bloque.ids.some((id) => id < 0);
+  const boton = "h-10 justify-start md:h-8";
+  const confirmada = bloque.estado === "confirmada";
+
+  return (
+    <div className="space-y-2">
+      {bloque.motivoFija && (
+        <div className="flex gap-2 rounded-md border px-3 py-2 text-sm">
+          <Pin className="mt-0.5 h-4 w-4 shrink-0" />
+          <p className="leading-snug">
+            <span className="font-medium">No se mueve de este día.</span> {bloque.motivoFija}
+          </p>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-1.5">
+        {accion && (
+          <Button
+            variant="outline"
+            size="sm"
+            className={boton}
+            disabled={guardando}
+            onClick={() => onCerrarJornada(accion)}
+          >
+            <ClipboardCheck className="mr-1.5 h-4 w-4" />
+            {accion.tipo === "cerrar" ? "Cerrar jornada" : "Ver parte"}
+          </Button>
+        )}
+        <Button
+          variant="outline"
+          size="sm"
+          className={boton}
+          disabled={guardando}
+          onClick={() => onEstado(confirmada ? "tentativa" : "confirmada")}
+        >
+          {confirmada ? (
+            <CircleDashed className="mr-1.5 h-4 w-4" />
+          ) : (
+            <Check className="mr-1.5 h-4 w-4" />
+          )}
+          {confirmada ? "A tentativa" : "Confirmar"}
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className={boton}
+          disabled={guardando}
+          onClick={bloque.motivoFija ? onSoltar : onFijar}
+        >
+          {bloque.motivoFija ? (
+            <PinOff className="mr-1.5 h-4 w-4" />
+          ) : (
+            <Pin className="mr-1.5 h-4 w-4" />
+          )}
+          {bloque.motivoFija ? "Soltar" : "Fijar al día"}
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className={boton}
+          disabled={guardando}
+          onClick={onEditarJornadas}
+        >
+          <CalendarRange className="mr-1.5 h-4 w-4" />
+          Jornadas
+        </Button>
+        {liberables > 0 && (
+          <Button
+            variant="outline"
+            size="sm"
+            className={boton}
+            style={{ color: CORAL }}
+            disabled={guardando}
+            onClick={onQuitar}
+          >
+            <Trash2 className="mr-1.5 h-4 w-4" />
+            {cerradas > 0 ? `Liberar ${liberables}` : "Quitar"}
+          </Button>
+        )}
+      </div>
+
+      {/* Sólo en una jornada suelta, igual que en el menú: en un bloque de varios días cada
+          día tiene su fracción, y eso se edita desde "Jornadas". */}
+      {!bloque.multiDia && (
+        <div className="flex flex-wrap items-center gap-1">
+          <span className="mr-1 text-xs text-muted-foreground">Fracción</span>
+          {FRACCIONES.map((f) => {
+            const actual = Number(f.value) === bloque.fraccion;
+            return (
+              <Button
+                key={f.value}
+                variant={actual ? "secondary" : "outline"}
+                size="sm"
+                className="h-10 min-w-10 px-2 md:h-7 md:min-w-0"
+                disabled={guardando}
+                aria-pressed={actual}
+                title={f.detalle}
+                onClick={() => onFraccion(f.value)}
+              >
+                {f.label}
+              </Button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function PanelOt({
   ot,
   bloque,
   cuadrillaNombre,
   cuadrillaPrevista,
   plan,
+  hoy,
+  onEstado,
+  onFijar,
+  onSoltar,
+  onFraccion,
+  onEditarJornadas,
+  onCerrarJornada,
+  onQuitar,
   onOpenChange,
 }: {
   ot: OtTablero | null;
@@ -225,6 +388,16 @@ export function PanelOt({
    * también convive con el estimado sin reemplazarlo.
    */
   plan: { jornadas: number; motivo: string | null; autorNombre: string | null } | null;
+  /** Hoy en yyyy-MM-dd: desde cuándo se puede cerrar una jornada. */
+  hoy: string;
+  /** Las acciones del menú de la tarjeta, sobre el bloque abierto. Ver AccionesJornada. */
+  onEstado: (e: "tentativa" | "confirmada") => void;
+  onFijar: () => void;
+  onSoltar: () => void;
+  onFraccion: (f: FraccionStr) => void;
+  onEditarJornadas: () => void;
+  onCerrarJornada: (accion: NonNullable<AccionCierre>) => void;
+  onQuitar: () => void;
   onOpenChange: (abierto: boolean) => void;
 }) {
   const sem = semaforo(ot?.habSemaforo);
@@ -263,6 +436,23 @@ export function PanelOt({
                   antes de que esto existiera no tienen registro, y un "sin datos" en cada
                   panel sería ruido permanente por algo que se llena solo con el uso. */}
               <HistorialConfirmacion otId={ot.id} />
+
+              {/* QUÉ SE PUEDE HACER, arriba y no al pie: en un celular este panel es la
+                  única puerta a las acciones de la jornada, y al pie quedaban debajo de
+                  medio metro de datos. Una tarea de operaciones no abre este panel. */}
+              {bloque && bloque.origen !== "tarea" && (
+                <AccionesJornada
+                  bloque={bloque}
+                  hoy={hoy}
+                  onEstado={onEstado}
+                  onFijar={onFijar}
+                  onSoltar={onSoltar}
+                  onFraccion={onFraccion}
+                  onEditarJornadas={onEditarJornadas}
+                  onCerrarJornada={onCerrarJornada}
+                  onQuitar={onQuitar}
+                />
+              )}
 
               {/* Y qué más le pasó a esta obra: de qué día se movió, quién la planificó,
                   quién le sacó jornadas. Junto al de confirmaciones y no en otra parte

@@ -4,7 +4,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import {
   DndContext,
   DragOverlay,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   pointerWithin,
   rectIntersection,
   useSensor,
@@ -20,7 +21,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { TopbarTablero } from "./topbar-tablero";
 import { PanelActividad } from "./panel-actividad";
-import { TableroGrid, DIAS_VENTANA } from "./tablero-grid";
+import { TableroGrid, DIAS_VENTANA, anchoRecursoPara } from "./tablero-grid";
 import { PanelSinAsignar, ID_BANDEJA } from "./panel-sin-asignar";
 import { ContenidoTarjeta } from "./tarjeta-asignacion";
 import { PanelOt } from "./panel-ot";
@@ -56,6 +57,7 @@ import {
 } from "@/hooks/use-tablero";
 import { agruparBloques, fechasDeJornadas, type Bloque } from "@/lib/tablero/bloques";
 import { jornadasLiberables, motivoNoVuelveABandeja, type AccionCierre } from "@/lib/tablero/cierre";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
 import { aFraccionStr, repartirJornadas, type FraccionStr } from "@/lib/tablero/fracciones";
 import {
@@ -85,8 +87,6 @@ const CLAVE_PANEL = "tablero:panel-colapsado";
 const CLAVE_QUE_EJECUTAR = "tablero:que-ejecutar";
 const CLAVE_DOMINGOS = "tablero:domingos-abiertos";
 
-/** Ancho de la columna fija de cuadrillas: hay que descontarlo al hacer snap de semana. */
-const ANCHO_RECURSO = 168;
 /** A cuántos px del borde del scroll se carga otra semana. */
 const UMBRAL_BORDE = 240;
 /**
@@ -317,7 +317,38 @@ export function TableroBoard() {
     moverTarea.isPending ||
     borrarTarea.isPending;
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  // DOS SENSORES Y NO UNO, separados por cómo se toca y no por el ancho de la pantalla.
+  //
+  // Con el mouse la tarjeta se agarra apenas se mueve 6px, como siempre. Con el dedo eso no
+  // sirve: deslizar para scrollear la grilla ES mover el dedo sobre una tarjeta —la grilla
+  // está casi toda cubierta de tarjetas—, así que cada intento de ver otro día agarraba una
+  // obra y la arrastraba. En táctil hay que MANTENER APRETADO un cuarto de segundo: el dedo
+  // que desliza scrollea, el que se queda quieto agarra. La tolerancia deja que el dedo
+  // tiemble un poco sin que se lea como scroll.
+  //
+  // Va por tipo de toque y no por `esMovil` porque una tablet es ancha y táctil: es donde
+  // más se va a arrastrar, y tiene el mismo problema que el teléfono.
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
+  );
+
+  // Pantalla de celular: menos de 768px, el mismo corte que `md:` de Tailwind.
+  //
+  // La columna de cuadrillas se angosta y la bandeja deja de ser una columna: en 390px una
+  // columna de 300px dejaba sesenta para la grilla. El ancho de la columna va también a un
+  // ref porque lo leen el snap y el listener de scroll, que se arman una sola vez y tienen
+  // que ver el valor fresco si se gira el teléfono.
+  const esMovil = useIsMobile();
+  const anchoRecurso = anchoRecursoPara(esMovil);
+  const anchoRecursoRef = useRef(anchoRecurso);
+  useEffect(() => {
+    anchoRecursoRef.current = anchoRecurso;
+  }, [anchoRecurso]);
+  // En celular la bandeja arranca cerrada SIEMPRE y no se recuerda: abierta tapa la grilla,
+  // así que encontrarla abierta al día siguiente sería abrir el tablero sin ver el tablero.
+  // La preferencia de la computadora (`panelColapsado`) no se toca.
+  const [bandejaMovilAbierta, setBandejaMovilAbierta] = useState(false);
 
   // Sin preferencia guardada se deriva un default con criterio, sin escribirlo: recién
   // cuando el usuario elige, la selección pasa a ser suya y se persiste.
@@ -400,7 +431,7 @@ export function TableroBoard() {
     if (!cont || !nodo) return;
     // No se usa scrollIntoView: alinearía la columna contra el borde del contenedor, y
     // ahí la tapa la columna sticky de cuadrillas.
-    cont.scrollTo({ left: nodo.offsetLeft - ANCHO_RECURSO, behavior: suave ? "smooth" : "auto" });
+    cont.scrollTo({ left: nodo.offsetLeft - anchoRecursoRef.current, behavior: suave ? "smooth" : "auto" });
   }, []);
 
   // Compensación al prepender una semana: se corrige antes de pintar, así no se ve saltar.
@@ -488,7 +519,7 @@ export function TableroBoard() {
     // scroll porque las columnas no son todas del mismo ancho (el domingo colapsado mide
     // 28px). Se toma la primera cuyo borde derecho ya entró en el viewport útil: la que
     // está apenas tapada por la columna sticky de cuadrillas no cuenta como visible.
-    const izquierda = cont.scrollLeft + ANCHO_RECURSO;
+    const izquierda = cont.scrollLeft + anchoRecursoRef.current;
     let primera: string | null = null;
     for (const nodo of cont.querySelectorAll<HTMLElement>("[data-fecha]")) {
       if (nodo.offsetLeft + nodo.offsetWidth > izquierda + 1) {
@@ -1169,6 +1200,117 @@ export function TableroBoard() {
   }
 
   /**
+   * Confirmar o volver a tentativa. Lo usan la tarjeta y el panel de la obra: un solo
+   * camino, para que el candado de habilitación y la ventana del cliente frenen igual
+   * desde los dos lados.
+   *
+   * Volver a tentativa nunca pregunta nada: aflojar el compromiso no necesita permiso de
+   * nadie.
+   *
+   * `antesDelCandado` corre justo antes de abrir el diálogo de fricción, y sólo si se abre.
+   * El panel lo usa para cerrarse: la hoja del panel y el diálogo son dos modales, y uno
+   * encima del otro se pelean el foco.
+   */
+  function cambiarEstado(
+    b: Bloque,
+    estado: "tentativa" | "confirmada",
+    antesDelCandado?: () => void,
+  ) {
+    const aplicar = () =>
+      actualizar.mutate({
+        ids: b.ids,
+        cambio: { estado },
+        // De qué obra y de qué días son estos ids. Viaja desde acá porque el
+        // bloque ya lo sabe: sin esto el servidor tendría que releer Odoo
+        // para poder anotar quién confirmó, y le sumaría ~800 ms al gesto.
+        // Las tareas de operaciones no tienen OT (otId 0) y no se registran:
+        // no son un compromiso con un cliente.
+        contexto:
+          b.otId > 0 ? { otId: b.otId, fechas: b.fechas } : undefined,
+      });
+    if (estado !== "confirmada") return aplicar();
+
+    // EL PERMISO PRIMERO: es el único que puede hacer que el trabajo sea
+    // ilegal. Si pasa, recién ahí se mira la ventana del cliente.
+    //
+    // VOLVIÓ A ENCHUFARSE el 5/9, después de que la modalidad pasara a
+    // preguntarse en la venta y a ser obligatoria para confirmarla. Se había
+    // apagado entero porque la fricción "falta la modalidad" saltaba en el
+    // 98,9% de las obras; ésa ya no llega acá (ver friccionDelTablero) y
+    // quedan sólo las dos precisas: permiso sin emitir cuando el cliente
+    // pidió esperarlo, y expediente sin número. Las órdenes viejas no tienen
+    // modalidad cargada, así que no disparan ninguna.
+    const f = candados?.get(b.otId);
+    // Se evalúa UNA sola por vez a propósito: dos diálogos encadenados para
+    // un clic se leen como que el sistema no quiere que trabajes.
+    //
+    // El techo se mide contra el ÚLTIMO día de la obra entera y no contra
+    // esta jornada: el cliente pidió el trabajo terminado. Por eso sale de
+    // planPorObra, que suma todos los tramos.
+    const plan = planPorObra.get(b.otId);
+    const friccion =
+      f?.friccion ??
+      friccionDeVentana(
+        otsPorId.get(b.otId) ?? { fechaDesde: null, fechaAntesDe: null },
+        {
+          primerDia: b.fechas[0],
+          // Si la obra todavía no está en el plan cargado, el bloque que se
+          // confirma es lo único que se sabe de ella.
+          ultimoDia: plan?.ultimoDia ?? b.fechas[b.fechas.length - 1],
+        },
+      );
+    if (!friccion) return aplicar();
+
+    antesDelCandado?.();
+    setPedidoCandado({
+      otId: b.otId,
+      friccion,
+      pedidosPrevios: f?.pedidosPrevios ?? 0,
+      confirmar: aplicar,
+    });
+  }
+
+  /** Cerrar o ver la jornada. Lo usan la tarjeta y el panel de la obra. */
+  function cerrarJornada(b: Bloque, accion: NonNullable<AccionCierre>) {
+    // El parte NO se carga desde el tablero: se navega al listado.
+    //
+    // Son dos personas y dos momentos —quien carga lo hace a la mañana con los
+    // WhatsApp del día anterior, el planificador mira el tablero para
+    // planificar— y el formulario del parte es el que alimenta el costo de mano
+    // de obra. Con dos lugares para cargarlo, terminan divergiendo.
+    cerrarPanel();
+    // CREAR un parte se hace sólo en el listado. VER o corregir uno ya
+    // cargado sigue abriendo el formulario acá: el listado todavía no edita,
+    // y mandar a una pantalla que no puede hacer el trabajo es peor que
+    // abrir el formulario que sí puede.
+    if (accion.tipo === "cerrar") {
+      router.push(`/partes?fecha=${accion.fecha}&ot=${b.otId}`);
+      return;
+    }
+    setCierre({
+      bloqueKey: b.key,
+      asignacionId: accion.asignacionId,
+      fecha: accion.fecha,
+      parteId: accion.parteId,
+    });
+  }
+
+  /** Cambiar la fracción de un bloque. Lo usan la tarjeta y el panel de la obra. */
+  function cambiarFraccion(b: Bloque, f: FraccionStr) {
+    if (b.origen === "tarea") actualizarTarea.mutate({ ids: b.ids, cambio: { fraccion: f } });
+    else actualizar.mutate({ ids: b.ids, cambio: { fraccion: f } });
+  }
+
+  /** Pedir el motivo para fijar un bloque a su día. Lo usan la tarjeta y el panel. */
+  function pedirFijar(b: Bloque) {
+    setPedidoFijar({
+      otId: b.otId,
+      fechas: b.fechas,
+      fijar: (motivo) => fijarBloque(b, motivo),
+    });
+  }
+
+  /**
    * Suspender un día: manda el plan que armó el diálogo y ofrece deshacerlo entero.
    *
    * EL DESHACER NO RECALCULA, invierte los registros: cada jornada vuelve al día del que
@@ -1429,6 +1571,9 @@ export function TableroBoard() {
       const otId = Number(activo.slice(3));
       const celda = celdaDe(destino, over.data.current);
       if (!celda) return;
+      // En celular la bandeja se había corrido para dejar ver la grilla. Una vez que la obra
+      // cayó en un día, lo que se quiere ver es dónde cayó, no la bandeja de vuelta encima.
+      if (esMovil) setBandejaMovilAbierta(false);
       // Soltar sobre una columna de domingo activa SÍ planifica en domingo: es un gesto
       // explícito. La canaleta del domingo sin trabajo no acepta drop, así que el único
       // modo de llegar acá es apuntando a un domingo que ya se trabaja.
@@ -1513,7 +1658,10 @@ export function TableroBoard() {
     // min-w-0: el tablero es ancho por naturaleza y ya scrollea adentro. Sin esto puede
     // empujar el ancho de la pagina y aparece un segundo scroll horizontal, el de afuera,
     // que mueve la pantalla entera unos pocos pixeles en vez de mover la grilla.
-    <div className="flex h-[calc(100vh-8rem)] min-w-0 flex-col">
+    //
+    // `dvh` y no `vh`: en el celular `100vh` mide la pantalla SIN descontar la barra del
+    // navegador, y el pie de la grilla quedaba tapado.
+    <div className="flex h-[calc(100dvh-8rem)] min-w-0 flex-col">
       <TopbarTablero
         rangoLabel={rangoLabel}
         cuadrillas={data.cuadrillas}
@@ -1540,7 +1688,8 @@ export function TableroBoard() {
         onDragEnd={onDragEnd}
         onDragCancel={() => setArrastrando(null)}
       >
-        <div className="flex min-h-0 flex-1 overflow-hidden rounded-md border">
+        {/* `relative`: en celular la bandeja flota adentro de este marco. */}
+        <div className="relative flex min-h-0 flex-1 overflow-hidden rounded-md border">
           {/* Grilla y cajón comparten COLUMNA, y la bandeja queda afuera. Antes el cajón
               era hermano de toda la fila y al abrirlo le comía 240px también a la
               bandeja — que es una lista vertical de 36 obras que se scrollea, o sea lo
@@ -1565,29 +1714,7 @@ export function TableroBoard() {
                 hoy={hoyISO}
                 domingosAbiertos={domingosAbiertos}
                 onToggleDomingo={alternarDomingo}
-                // El parte NO se carga desde el tablero: se navega al listado.
-                //
-                // Son dos personas y dos momentos —quien carga lo hace a la mañana con los
-                // WhatsApp del día anterior, el planificador mira el tablero para
-                // planificar— y el formulario del parte es el que alimenta el costo de mano
-                // de obra. Con dos lugares para cargarlo, terminan divergiendo.
-                onCerrarJornada={(b, accion: NonNullable<AccionCierre>) => {
-                  cerrarPanel();
-                  // CREAR un parte se hace sólo en el listado. VER o corregir uno ya
-                  // cargado sigue abriendo el formulario acá: el listado todavía no edita,
-                  // y mandar a una pantalla que no puede hacer el trabajo es peor que
-                  // abrir el formulario que sí puede.
-                  if (accion.tipo === "cerrar") {
-                    router.push(`/partes?fecha=${accion.fecha}&ot=${b.otId}`);
-                    return;
-                  }
-                  setCierre({
-                    bloqueKey: b.key,
-                    asignacionId: accion.asignacionId,
-                    fecha: accion.fecha,
-                    parteId: accion.parteId,
-                  });
-                }}
+                onCerrarJornada={cerrarJornada}
                 // Con el modal de cierre abierto no se abre ningun panel. El clic que
                 // cierra el menu ⋮ llega a la tarjeta DESPUES de que el menu se
                 // desmontó, asi que una guarda por "menu abierto" llega tarde.
@@ -1598,77 +1725,14 @@ export function TableroBoard() {
                   if (b.origen === "tarea") return setTareaEnEdicion(b);
                   abrirPanel(b.otId, b.key);
                 }}
-                onFraccion={(b, f: FraccionStr) =>
-                  b.origen === "tarea"
-                    ? actualizarTarea.mutate({ ids: b.ids, cambio: { fraccion: f } })
-                    : actualizar.mutate({ ids: b.ids, cambio: { fraccion: f } })
-                }
+                onFraccion={cambiarFraccion}
                 onEditarJornadas={(b) => setJornadasDe(b.otId)}
-                // Volver a tentativa nunca pregunta nada: aflojar el compromiso no
-                // necesita permiso de nadie.
-                onEstado={(b, estado) => {
-                  const aplicar = () =>
-                    actualizar.mutate({
-                      ids: b.ids,
-                      cambio: { estado },
-                      // De qué obra y de qué días son estos ids. Viaja desde acá porque el
-                      // bloque ya lo sabe: sin esto el servidor tendría que releer Odoo
-                      // para poder anotar quién confirmó, y le sumaría ~800 ms al gesto.
-                      // Las tareas de operaciones no tienen OT (otId 0) y no se registran:
-                      // no son un compromiso con un cliente.
-                      contexto:
-                        b.otId > 0 ? { otId: b.otId, fechas: b.fechas } : undefined,
-                    });
-                  if (estado !== "confirmada") return aplicar();
-
-                  // EL PERMISO PRIMERO: es el único que puede hacer que el trabajo sea
-                  // ilegal. Si pasa, recién ahí se mira la ventana del cliente.
-                  //
-                  // VOLVIÓ A ENCHUFARSE el 5/9, después de que la modalidad pasara a
-                  // preguntarse en la venta y a ser obligatoria para confirmarla. Se había
-                  // apagado entero porque la fricción "falta la modalidad" saltaba en el
-                  // 98,9% de las obras; ésa ya no llega acá (ver friccionDelTablero) y
-                  // quedan sólo las dos precisas: permiso sin emitir cuando el cliente
-                  // pidió esperarlo, y expediente sin número. Las órdenes viejas no tienen
-                  // modalidad cargada, así que no disparan ninguna.
-                  const f = candados?.get(b.otId);
-                  // Se evalúa UNA sola por vez a propósito: dos diálogos encadenados para
-                  // un clic se leen como que el sistema no quiere que trabajes.
-                  //
-                  // El techo se mide contra el ÚLTIMO día de la obra entera y no contra
-                  // esta jornada: el cliente pidió el trabajo terminado. Por eso sale de
-                  // planPorObra, que suma todos los tramos.
-                  const plan = planPorObra.get(b.otId);
-                  const friccion =
-                    f?.friccion ??
-                    friccionDeVentana(
-                      otsPorId.get(b.otId) ?? { fechaDesde: null, fechaAntesDe: null },
-                      {
-                        primerDia: b.fechas[0],
-                        // Si la obra todavía no está en el plan cargado, el bloque que se
-                        // confirma es lo único que se sabe de ella.
-                        ultimoDia: plan?.ultimoDia ?? b.fechas[b.fechas.length - 1],
-                      },
-                    );
-                  if (!friccion) return aplicar();
-
-                  setPedidoCandado({
-                    otId: b.otId,
-                    friccion,
-                    pedidosPrevios: f?.pedidosPrevios ?? 0,
-                    confirmar: aplicar,
-                  });
-                }}
+                onEstado={cambiarEstado}
                 candados={otsBloqueadas}
+                compacta={esMovil}
                 comentarios={comentarios}
                 queEjecutar={queEjecutar}
-                onFijar={(b) =>
-                  setPedidoFijar({
-                    otId: b.otId,
-                    fechas: b.fechas,
-                    fijar: (motivo) => fijarBloque(b, motivo),
-                  })
-                }
+                onFijar={pedirFijar}
                 onSoltar={(b) => fijarBloque(b, null)}
                 onQuitar={volverABandeja}
                 onCrearTarea={(cuadrillaId, fecha) => setTareaNueva({ cuadrillaId, fecha })}
@@ -1689,9 +1753,12 @@ export function TableroBoard() {
             planificadas={planificadas}
             comentarios={comentarios}
             hoy={hoyISO}
-            colapsado={panelColapsado}
+            // En celular la bandeja no es una columna: flota encima de la grilla, arranca
+            // cerrada y no se recuerda. Ver `bandejaMovilAbierta`.
+            colapsado={esMovil ? !bandejaMovilAbierta : panelColapsado}
+            flotante={esMovil}
             queEjecutar={queEjecutar}
-            onColapsar={colapsarPanel}
+            onColapsar={esMovil ? (v) => setBandejaMovilAbierta(!v) : colapsarPanel}
             onDetalle={(ot) => {
               if (cierre) return;
               abrirPanel(ot.id, null);
@@ -2016,6 +2083,36 @@ export function TableroBoard() {
             : null
         }
         plan={panelOt ? (planPorOt.get(panelOt.id) ?? null) : null}
+        hoy={hoyISO}
+        // LAS MISMAS ACCIONES QUE EL MENÚ DE LA TARJETA, por el mismo camino. En un celular
+        // el ⋮ no existe —aparece al pasar el mouse—, así que el panel es la única puerta
+        // para confirmar, fijar o cerrar la jornada. Pasan por las mismas funciones que la
+        // tarjeta para que el candado, la ventana del cliente y las trabas de la obra fija
+        // frenen igual desde los dos lados.
+        //
+        // Las que abren un diálogo cierran el panel antes: la hoja y el diálogo son dos
+        // modales, y uno encima del otro se pelean el foco.
+        onEstado={(e) => panelBloque && cambiarEstado(panelBloque, e, cerrarPanel)}
+        onFijar={() => {
+          if (!panelBloque) return;
+          cerrarPanel();
+          pedirFijar(panelBloque);
+        }}
+        onSoltar={() => panelBloque && fijarBloque(panelBloque, null)}
+        onFraccion={(f) => panelBloque && cambiarFraccion(panelBloque, f)}
+        onEditarJornadas={() => {
+          if (!panelOt) return;
+          cerrarPanel();
+          setJornadasDe(panelOt.id);
+        }}
+        onCerrarJornada={(accion) => panelBloque && cerrarJornada(panelBloque, accion)}
+        onQuitar={() => {
+          if (!panelBloque) return;
+          // Si no se puede quitar, el panel queda abierto: el aviso explica por qué, y
+          // cerrarlo le sacaría la obra de adelante justo cuando la está mirando.
+          if (!panelBloque.motivoFija && !motivoNoVuelveABandeja(panelBloque)) cerrarPanel();
+          volverABandeja(panelBloque);
+        }}
         onOpenChange={(abierto) => !abierto && cerrarPanel()}
       />
     </div>

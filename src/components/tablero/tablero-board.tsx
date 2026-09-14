@@ -1118,16 +1118,19 @@ export function TableroBoard() {
    * Guarda el gesto como deshacible y lo ofrece en un toast.
    *
    * UN SOLO TOAST, con id fijo: en una ráfaga de diez arrastres no se apilan diez
-   * carteles, el último pisa al anterior. Diez segundos alcanzan para darse cuenta de que
-   * la tarjeta cayó donde no era; más que eso el cartel se queda tapando la esquina
-   * durante los dos arrastres siguientes.
+   * carteles, el último pisa al anterior.
+   *
+   * Cuatro segundos, lo mismo que cualquier otro aviso de la app. Eran diez y el cartel se
+   * quedaba tapando la esquina durante los arrastres siguientes —más todavía porque sonner
+   * pausa el contador con el mouse encima—. El cartel es el recordatorio y nada más: ⌘Z
+   * sigue deshaciendo durante toda la VENTANA_UNDO aunque ya se haya ido.
    */
   const ofrecerDeshacer = useCallback(
     (accion: { etiqueta: string; asignacionIds: number[]; ejecutar: () => void }) => {
       ultimoDeshacible.current = { ...accion, expira: Date.now() + VENTANA_UNDO };
       toast.success(accion.etiqueta, {
         id: "tablero-deshacer",
-        duration: 10000,
+        duration: 4000,
         closeButton: true,
         description: "⌘Z para volver atrás",
         action: { label: "Deshacer", onClick: () => deshacerRef.current() },

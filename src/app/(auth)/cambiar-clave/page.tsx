@@ -47,8 +47,11 @@ export default function CambiarClavePage() {
       return;
     }
 
-    router.push("/");
-    router.refresh();
+    // Carga completa y no router.push: al iniciar sesión el router del cliente guardó que
+    // "/" redirigía acá, y con push reusaba esa respuesta — se quedaba en esta misma
+    // pantalla con el botón girando. Una carga nueva pasa por el proxy, que ya ve la
+    // contraseña cambiada y lo manda a su pantalla de arranque.
+    window.location.assign("/");
   }
 
   async function salir() {
@@ -103,7 +106,7 @@ export default function CambiarClavePage() {
             Guardar contraseña
           </Button>
           <div className="flex justify-between text-sm">
-            <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => router.push("/")}>
+            <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => window.location.assign("/")}>
               Volver
             </button>
             <button type="button" className="text-muted-foreground hover:text-foreground" onClick={salir}>

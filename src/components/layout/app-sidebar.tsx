@@ -5,7 +5,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { navegacionPara } from "@/lib/constants/navigation";
-import type { Rol } from "@/lib/auth/roles";
+import { puedeAbrir } from "@/lib/auth/acceso";
+import { useAcceso } from "@/components/providers/acceso-provider";
 import { usePendientesDeParte } from "@/hooks/use-jornadas";
 import { CORAL } from "@/lib/tablero/colores";
 import {
@@ -24,12 +25,15 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
-export function AppSidebar({ rol }: { rol: Rol | null }) {
-  // El menú sale del rol, con la misma lista que usa el middleware para bloquear rutas:
-  // un menú que ofrece una pantalla que después rebota es peor que no ofrecerla.
-  const navigation = navegacionPara(rol);
+export function AppSidebar() {
+  // El menú sale de los permisos de quien entra, con las mismas funciones que usa el proxy
+  // para bloquear rutas: un menú que ofrece una pantalla que después rebota es peor que no
+  // ofrecerla.
+  const acceso = useAcceso();
+  const navigation = navegacionPara(acceso);
   const pathname = usePathname();
-  const { data: pendientesPartes } = usePendientesDeParte();
+  // El contador sólo para quien ve Partes: para el resto sería un 403 cada cinco minutos.
+  const { data: pendientesPartes } = usePendientesDeParte(puedeAbrir(acceso, "/partes"));
   const { setOpen, isMobile } = useSidebar();
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 

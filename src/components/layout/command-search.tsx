@@ -13,10 +13,11 @@ import {
 } from "@/components/ui/command";
 import { useClientes } from "@/hooks/use-clientes";
 import { navegacionPara } from "@/lib/constants/navigation";
-import type { Rol } from "@/lib/auth/roles";
+import { useAcceso } from "@/components/providers/acceso-provider";
 import { Search, Users } from "lucide-react";
 
-export function CommandSearch({ rol }: { rol: Rol | null }) {
+export function CommandSearch() {
+  const acceso = useAcceso();
   const [open, setOpen] = useState(false);
   const router = useRouter();
 
@@ -42,9 +43,9 @@ export function CommandSearch({ rol }: { rol: Rol | null }) {
     [router]
   );
 
-  // Flatten navigation items — sólo los del rol: el buscador es otra puerta al mismo
+  // Flatten navigation items — sólo los permitidos: el buscador es otra puerta al mismo
   // menú, y filtrar uno solo dejaría la otra abierta.
-  const navItems = navegacionPara(rol).flatMap((group) =>
+  const navItems = navegacionPara(acceso).flatMap((group) =>
     group.items.map((item) => ({
       ...item,
       label: group.label,

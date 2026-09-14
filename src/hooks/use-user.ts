@@ -2,15 +2,18 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
+import type { Permisos, Rol } from "@/lib/auth/acceso";
 
 export type UserProfile = {
   id: string;
   email: string;
   nombre: string;
   apellido: string;
-  rol: "admin" | "operativo" | "deposito" | "campo";
+  rol: Rol;
   activo: boolean;
   telefono: string | null;
+  permisos: Permisos;
+  debe_cambiar_clave: boolean;
 };
 
 export function useUser() {

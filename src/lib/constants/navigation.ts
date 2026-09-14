@@ -6,7 +6,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import { rutasDe, type Rol } from "@/lib/auth/roles";
+import { puedeAbrir, type Acceso } from "@/lib/auth/acceso";
 
 export type NavSubItem = { title: string; href: string };
 export type NavItem = { title: string; href: string; icon: LucideIcon; subItems?: NavSubItem[] };
@@ -81,6 +81,7 @@ export const navigation: NavGroup[] = [
           { title: "Fletes por zona", href: "/configuracion/fletes" },
           { title: "Precios fachadas", href: "/configuracion/precios-fachadas" },
           { title: "Imágenes referencia", href: "/configuracion/imagenes" },
+          { title: "Usuarios", href: "/configuracion/usuarios" },
         ],
       },
     ],
@@ -88,20 +89,21 @@ export const navigation: NavGroup[] = [
 ];
 
 /**
- * El menú que le corresponde a un rol.
+ * El menú que le corresponde a quien entra.
  *
- * Filtra con la MISMA lista con la que el middleware bloquea las rutas (roles.ts), así el
- * menú no puede prometer una pantalla que después rebota. Los grupos que quedan sin ítems
- * desaparecen enteros: un encabezado "Depósito y Logística" con nada debajo es peor que
- * no estar.
+ * Filtra con la MISMA función con la que el proxy bloquea las rutas (acceso.ts), así el
+ * menú no puede prometer una pantalla que después rebota. Los sub-ítems se filtran igual
+ * —Usuarios es sólo de admin aunque Configuración no lo sea— y los grupos que quedan sin
+ * ítems desaparecen enteros: un encabezado "Depósito y Logística" con nada debajo es peor
+ * que no estar.
  */
-export function navegacionPara(rol: Rol | null | undefined): NavGroup[] {
-  const permitidas = rutasDe(rol);
-  if (permitidas === null) return navigation;
+export function navegacionPara(acceso: Acceso | null): NavGroup[] {
   return navigation
     .map((g) => ({
       ...g,
-      items: g.items.filter((i) => permitidas.some((r) => i.href === r || i.href.startsWith(`${r}/`))),
+      items: g.items
+        .map((i) => (i.subItems ? { ...i, subItems: i.subItems.filter((s) => puedeAbrir(acceso, s.href)) } : i))
+        .filter((i) => puedeAbrir(acceso, i.href) && (!i.subItems || i.subItems.length > 0)),
     }))
     .filter((g) => g.items.length > 0);
 }

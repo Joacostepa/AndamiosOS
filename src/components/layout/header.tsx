@@ -1,6 +1,6 @@
 "use client";
 
-import { LogOut, User, Sun, Moon, Monitor } from "lucide-react";
+import { LogOut, User, Sun, Moon, Monitor, KeyRound } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -20,9 +20,9 @@ import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { CommandSearch } from "@/components/layout/command-search";
 import { Campanita } from "@/components/layout/campanita";
-import type { Rol } from "@/lib/auth/roles";
+import { etiquetaRol } from "@/lib/auth/acceso";
 
-export function Header({ rol }: { rol: Rol | null }) {
+export function Header() {
   const { data: user } = useUser();
   const { theme, setTheme } = useTheme();
   const router = useRouter();
@@ -43,7 +43,7 @@ export function Header({ rol }: { rol: Rol | null }) {
       <SidebarTrigger />
       <Separator orientation="vertical" className="h-6" />
 
-      <CommandSearch rol={rol} />
+      <CommandSearch />
 
       <div className="flex-1" />
 
@@ -93,9 +93,11 @@ export function Header({ rol }: { rol: Rol | null }) {
                 <p className="text-xs text-muted-foreground">
                   {user?.email}
                 </p>
-                <p className="text-xs text-muted-foreground capitalize">
-                  {user?.rol}
-                </p>
+                {user && (
+                  <p className="text-xs text-muted-foreground">
+                    {etiquetaRol(user.rol)}
+                  </p>
+                )}
               </div>
             </DropdownMenuLabel>
           </DropdownMenuGroup>
@@ -103,6 +105,10 @@ export function Header({ rol }: { rol: Rol | null }) {
           <DropdownMenuItem>
             <User className="mr-2 h-4 w-4" />
             Perfil
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => router.push("/cambiar-clave")}>
+            <KeyRound className="mr-2 h-4 w-4" />
+            Cambiar contraseña
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={handleLogout}>

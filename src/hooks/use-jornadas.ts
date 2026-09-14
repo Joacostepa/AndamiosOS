@@ -37,9 +37,10 @@ export function useJornadas(fecha: string) {
  * Se refresca cada 5 minutos y no en cada navegación: cada consulta a Odoo cuesta unos
  * 800 ms y este número cambia unas pocas veces por día.
  */
-export function usePendientesDeParte() {
+export function usePendientesDeParte(habilitado = true) {
   return useQuery({
     queryKey: ["jornadas", "pendientes"],
+    enabled: habilitado,
     queryFn: async () => (await pedir<{ pendientes: number }>("/api/planificacion/jornadas?pendientes=1")).pendientes,
     staleTime: 5 * 60 * 1000,
     refetchInterval: 5 * 60 * 1000,

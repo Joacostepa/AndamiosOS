@@ -13,8 +13,12 @@
 //   node --env-file=.env.local scripts/supabase-alta-usuario.mjs \
 //     --email juan@empresa.com --password 123456 --rol operativo --nombre "Juan" --apellido "Perez"
 //
-// Roles (enum user_role): admin | operativo | deposito | campo. Ver src/lib/auth/roles.ts
-// para qué ve cada uno.
+// LO NORMAL YA ES LA PANTALLA: Configuración → Usuarios. Este script queda para el caso
+// en que no hay ningún admin que pueda entrar a hacerlo.
+//
+// Roles (enum user_role): admin | operativo | deposito | campo. Los módulos de cada
+// perfil son los de PERFILES en src/lib/auth/acceso.ts (copiados abajo: un .mjs no puede
+// importar TypeScript). Después se ajustan uno por uno desde la pantalla.
 
 import { createClient } from "@supabase/supabase-js";
 
@@ -70,8 +74,19 @@ if (existente) {
 
 // El perfil es lo que define el rol. Va con la service role, que es la única que puede
 // escribir la columna desde la migración 20260826000001.
+const CIRCUITO = { planificacion: "editar", "ordenes-trabajo": "editar", partes: "editar" };
+const PERMISOS_DEL_PERFIL = {
+  admin: {},
+  operativo: { ...CIRCUITO, habilitaciones: "editar", "mapa-obras": "ver" },
+  deposito: CIRCUITO,
+  campo: CIRCUITO,
+};
+
 const { error: errPerfil } = await sb
   .from("user_profiles")
-  .upsert({ id: userId, email, nombre, apellido, rol, activo: true }, { onConflict: "id" });
+  .upsert(
+    { id: userId, email, nombre, apellido, rol, activo: true, permisos: PERMISOS_DEL_PERFIL[rol] },
+    { onConflict: "id" },
+  );
 if (errPerfil) throw new Error(errPerfil.message);
 console.log(`✓ perfil: ${nombre} ${apellido} · rol ${rol}`);

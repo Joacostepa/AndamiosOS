@@ -1,5 +1,5 @@
-import { createClient } from "@/lib/supabase/server";
-import type { Rol } from "@/lib/auth/roles";
+import { accesoActual } from "@/lib/auth/servidor";
+import { AccesoProvider } from "@/components/providers/acceso-provider";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { Header } from "@/components/layout/header";
@@ -11,26 +11,23 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // El rol se lee en el servidor y baja como prop: pedirlo desde el cliente haría que el
-  // menú completo se pinte por un instante antes de recortarse, que es justo lo que se
-  // quiere evitar. La puerta de verdad igual es el middleware.
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  const { data: perfil } = user
-    ? await supabase.from("user_profiles").select("rol").eq("id", user.id).single()
-    : { data: null };
-  const rol = (perfil?.rol as Rol | undefined) ?? null;
+  // Los permisos se leen en el servidor y bajan por contexto: pedirlos desde el cliente
+  // haría que el menú completo se pinte por un instante antes de recortarse, que es justo
+  // lo que se quiere evitar. La puerta de verdad igual es el proxy.
+  const sesion = await accesoActual();
 
   return (
     <QueryProvider>
-      <SidebarProvider defaultOpen={false}>
-        <AppSidebar rol={rol} />
-        <SidebarInset>
-          <Header rol={rol} />
-          <main className="flex-1 overflow-auto p-6">{children}</main>
-        </SidebarInset>
-      </SidebarProvider>
-      <Toaster />
+      <AccesoProvider acceso={sesion?.acceso ?? null}>
+        <SidebarProvider defaultOpen={false}>
+          <AppSidebar />
+          <SidebarInset>
+            <Header />
+            <main className="flex-1 overflow-auto p-6">{children}</main>
+          </SidebarInset>
+        </SidebarProvider>
+        <Toaster />
+      </AccesoProvider>
     </QueryProvider>
   );
 }

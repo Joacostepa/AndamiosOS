@@ -49,6 +49,15 @@ async function pedir<T>(url: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
+/**
+ * Fechas de todas las jornadas de una obra, fuera del rango cargado. No es una query: se
+ * pide una vez al hacer clic en el buscador y no hay nada que mantener fresco.
+ */
+export async function fechasDeObra(otId: number): Promise<string[]> {
+  const { fechas } = await pedir<{ fechas: string[] }>(`/api/planificacion/fechas-ot?otId=${otId}`);
+  return fechas;
+}
+
 export function useTablero(
   desde: string,
   hasta: string,

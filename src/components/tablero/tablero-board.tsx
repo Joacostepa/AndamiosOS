@@ -15,7 +15,7 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { useRouter } from "next/navigation";
-import { addDays, format, parseISO, startOfDay } from "date-fns";
+import { addDays, differenceInCalendarDays, format, parseISO, startOfDay } from "date-fns";
 import { es } from "date-fns/locale";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -54,6 +54,7 @@ import {
   useActualizarTareas,
   useMoverTareas,
   useBorrarTareas,
+  fechasDeObra,
 } from "@/hooks/use-tablero";
 import { agruparBloques, fechasDeJornadas, type Bloque } from "@/lib/tablero/bloques";
 import { jornadasLiberables, motivoNoVuelveABandeja, type AccionCierre } from "@/lib/tablero/cierre";
@@ -685,9 +686,8 @@ export function TableroBoard() {
 
   // Obras ya en la grilla, para que el buscador conteste "¿esta obra ya la planifiqué?".
   //
-  // LIMITACIÓN: sólo alcanza el rango cargado. El tablero pide las asignaciones por fecha,
-  // así que una obra planificada para dentro de dos meses no está en memoria y no hay cómo
-  // encontrarla sin preguntarle a Odoo. El panel lo dice en vez de afirmar que no existe.
+  // Sólo alcanza el rango cargado: el tablero pide las asignaciones por fecha. Lo que queda
+  // afuera lo cubre `fueraDeRango`, más abajo.
   const planificadas = useMemo<ObraPlanificada[]>(() => {
     const nombres = new Map((data?.cuadrillas ?? []).map((c) => [c.id, c.nombre]));
     return [...bloquesPorClave.values()].flatMap((b) => {
@@ -702,6 +702,105 @@ export function TableroBoard() {
       }];
     });
   }, [bloquesPorClave, otsPorId, data]);
+
+  // Obras con jornadas planificadas pero NINGUNA en las semanas cargadas.
+  //
+  // Sin esto el buscador no las encontraba en ningún lado: no están en la bandeja —no les
+  // queda nada por planificar— ni en `planificadas`, que sólo ve el rango. Pasó con una
+  // obra tentativa el lunes siguiente al último día cargado: se veía en el tablero después
+  // de scrollear, y buscándola desde la semana actual decía "ninguna obra coincide".
+  //
+  // `progreso` cuenta las jornadas en CUALQUIER fecha, así que alcanza para saber que la
+  // obra está planificada sin pedirle nada más a Odoo. Dónde cae se pregunta al hacer clic.
+  const fueraDeRango = useMemo<OtTablero[]>(() => {
+    if (!data) return [];
+    const conJornadas = new Set(data.progreso.filter((p) => p.asignadas > 0).map((p) => p.otId));
+    return data.ots.filter((ot) => conJornadas.has(ot.id) && !planPorObra.has(ot.id));
+  }, [data, planPorObra]);
+
+  // Obra a destellar apenas su tarjeta llegue de Odoo. Al saltar a una fecha fuera del
+  // rango las columnas aparecen enseguida pero las asignaciones tardan: el destello se
+  // resuelve cuando llegan, no cuando se hace clic.
+  const pendienteResaltado = useRef<{ otId: number; fecha: string } | null>(null);
+
+  const resolverResaltado = useCallback(() => {
+    const p = pendienteResaltado.current;
+    if (!p) return;
+    for (const b of bloquesPorClave.values()) {
+      if (b.otId === p.otId && b.fechas.includes(p.fecha)) {
+        pendienteResaltado.current = null;
+        setResaltado({ key: b.key, desde: Date.now() });
+        return;
+      }
+    }
+  }, [bloquesPorClave]);
+
+  // Al frame siguiente y no en el cuerpo del efecto: el destello va después de que la
+  // tarjeta se pinte, y un setState síncrono acá encadenaría un render extra.
+  useEffect(() => {
+    if (!pendienteResaltado.current) return;
+    const id = requestAnimationFrame(resolverResaltado);
+    return () => cancelAnimationFrame(id);
+  }, [resolverResaltado]);
+
+  /**
+   * Lleva a una obra planificada fuera de las semanas cargadas: pregunta sus fechas, amplía
+   * el rango hasta cubrirla y la destella.
+   *
+   * Va a la PRIMERA jornada de hoy en adelante, que es lo que se busca al planificar; si ya
+   * pasaron todas, a la última. Más allá del tope de semanas el tablero no llega, así que
+   * ahí se dice la fecha en vez de fingir que se puede ir.
+   */
+  const irAObra = useCallback(
+    async (otId: number) => {
+      let fechasObra: string[];
+      try {
+        fechasObra = await fechasDeObra(otId);
+      } catch (e) {
+        toast.error("No se pudo buscar la fecha de la obra", {
+          description: e instanceof Error ? e.message : String(e),
+        });
+        return;
+      }
+
+      const hoy = iso(ancla);
+      const objetivo = fechasObra.find((f) => f >= hoy) ?? fechasObra[fechasObra.length - 1];
+      if (!objetivo) {
+        toast.info("La obra ya no tiene jornadas planificadas", {
+          description: "Refrescá el tablero para ver el estado actual.",
+        });
+        return;
+      }
+
+      // Semana del objetivo contada desde la de hoy: 0 es la de hoy, negativa hacia atrás.
+      const semana = Math.floor(differenceInCalendarDays(parseISO(objetivo), ancla) / 7);
+      if (semana > MAX_SEMANAS || -semana > MAX_SEMANAS) {
+        toast.info(
+          `Planificada para el ${format(parseISO(objetivo), "EEEE d 'de' MMMM", { locale: es })}`,
+          { description: `Queda más lejos de las ${MAX_SEMANAS} semanas que recorre el tablero.` },
+        );
+        return;
+      }
+
+      pendienteResaltado.current = { otId, fecha: objetivo };
+      // Una semana de más a la derecha cuando entra: así la fecha puede quedar en el borde
+      // izquierdo con días a la vista, en vez de ser la última columna.
+      const antes = Math.max(semanas.antes, -semana);
+      const despues = Math.max(semanas.despues, Math.min(MAX_SEMANAS, semana + 1));
+      if (antes === semanas.antes && despues === semanas.despues) {
+        scrollAFecha(objetivo);
+        resolverResaltado();
+        return;
+      }
+      // Mismo mecanismo que las flechas: el scroll espera a que la columna exista, y al
+      // agregar semanas antes se compensa el ancho.
+      pendienteScroll.current = objetivo;
+      expansionPendiente.current = true;
+      if (antes > semanas.antes) anchoPrevio.current = contenedor.current?.scrollWidth ?? null;
+      setSemanas({ antes, despues });
+    },
+    [ancla, semanas, scrollAFecha, resolverResaltado],
+  );
 
   // ── Comentarios de la obra ────────────────────────────────────────────────
   //
@@ -1751,6 +1850,8 @@ export function TableroBoard() {
           <PanelSinAsignar
             ots={sinAsignar}
             planificadas={planificadas}
+            fueraDeRango={fueraDeRango}
+            onIrAObra={irAObra}
             comentarios={comentarios}
             hoy={hoyISO}
             // En celular la bandeja no es una columna: flota encima de la grilla, arranca

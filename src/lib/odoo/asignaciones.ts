@@ -321,6 +321,24 @@ export async function fetchTablero(desde: string, hasta: string): Promise<Tabler
 }
 
 /**
+ * Las fechas de todas las jornadas de una OT, sin límite de rango y sin repetir.
+ *
+ * La usa el buscador del tablero para una obra planificada fuera de las semanas cargadas:
+ * `progreso` dice que la obra tiene jornadas, pero no dónde caen, y traer las asignaciones
+ * de todas las fechas en cada carga del tablero sería pedir el histórico entero por una
+ * pregunta que se hace de a una obra y sólo al hacer clic.
+ */
+export async function fechasDeOt(otId: number): Promise<string[]> {
+  const filas = await searchRead<{ x_fecha: string | false }>(
+    "x_aba_asignacion",
+    [["x_ot_id", "=", otId]],
+    ["x_fecha"],
+    { order: "x_fecha" },
+  );
+  return [...new Set(filas.map((f) => str(f.x_fecha)).filter((f): f is string => !!f))];
+}
+
+/**
  * Jornadas de hoy en adelante por cuadrilla. La usa la página de configuración para
  * frenar el borrado o la desactivación de una cuadrilla que todavía tiene trabajo.
  *

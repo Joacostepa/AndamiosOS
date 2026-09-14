@@ -16,6 +16,7 @@ import {
   Search,
   Inbox,
   Info,
+  Loader2,
   Lock,
   MapPin,
   MessageSquare,
@@ -578,6 +579,8 @@ function Grupo({
 export function PanelSinAsignar({
   ots,
   planificadas,
+  fueraDeRango,
+  onIrAObra,
   comentarios,
   hoy,
   colapsado,
@@ -590,6 +593,10 @@ export function PanelSinAsignar({
   ots: ObraPendiente[];
   /** Obras que ya están en la grilla, para el buscador. Sólo las del rango cargado. */
   planificadas: ObraPlanificada[];
+  /** Obras planificadas con todas sus jornadas fuera del rango cargado. */
+  fueraDeRango: OtTablero[];
+  /** Busca las fechas de la obra en Odoo y lleva el tablero hasta ahí. */
+  onIrAObra: (otId: number) => Promise<void>;
   /** Resumen del hilo de cada OT, resuelto de una sola consulta en el board. */
   comentarios?: Map<number, ResumenEnTarjeta>;
   /** Hoy en yyyy-MM-dd: define qué compromiso está vencido. */
@@ -724,6 +731,27 @@ export function PanelSinAsignar({
       .sort((a, b) => a.fechaInicio.localeCompare(b.fechaInicio));
   }, [planificadas, q]);
 
+  const masAdelante = useMemo(() => {
+    if (!q) return [];
+    return fueraDeRango.filter((ot) =>
+      normalizar(`${ot.titulo} ${ot.direccionObra ?? ""} ${ot.tecnico ?? ""}`).includes(q),
+    );
+  }, [fueraDeRango, q]);
+
+  // Qué obra se está yendo a buscar a Odoo: el clic tarda un segundo y sin marca parece
+  // que no hizo nada.
+  const [yendoA, setYendoA] = useState<number | null>(null);
+  async function irAObra(otId: number) {
+    if (yendoA !== null) return;
+    setYendoA(otId);
+    try {
+      await onIrAObra(otId);
+    } finally {
+      setYendoA(null);
+    }
+  }
+  const totalPlanificadas = yaPlanificadas.length + masAdelante.length;
+
   if (colapsado) {
     return (
       <div className="flex w-11 shrink-0 flex-col items-center gap-2 border-l py-2">
@@ -853,8 +881,31 @@ export function PanelSinAsignar({
         </p>
       )}
 
-      {conFiltros.length > 0 || yaPlanificadas.length > 0 ? (
+      {/* Con texto en el buscador la lista se muestra SIEMPRE, aunque la bandeja no tenga
+          coincidencias: ahí abajo está "Ya planificadas", que es justo donde suele estar
+          lo que no aparece. Antes, sin coincidencias en la bandeja caía al mensaje vacío
+          y "ninguna obra coincide" se leía como que la obra no existía. */}
+      {conFiltros.length > 0 || q ? (
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-2">
+          {conFiltros.length === 0 && (
+            <div className="flex flex-wrap items-center gap-2 px-1 text-[11px] text-muted-foreground">
+              <p>
+                {hayFiltro
+                  ? "Ninguna obra sin asignar con esos filtros."
+                  : "Ninguna obra sin asignar coincide."}
+              </p>
+              {hayFiltro && (
+                <button
+                  type="button"
+                  onClick={() => { setTipoFiltro(null); setDuracionFiltro(null); }}
+                  className="rounded border px-2 py-0.5 text-[11px] hover:border-foreground/25"
+                >
+                  Ver todas ({filtradas.length})
+                </button>
+              )}
+            </div>
+          )}
+
           <Grupo
             titulo="Urgentes"
             cantidad={urgentes.length}
@@ -911,10 +962,10 @@ export function PanelSinAsignar({
               <p className="px-1 py-1 text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
                 Ya planificadas
                 <span className="ml-1.5 rounded-full bg-muted px-1.5 text-[10px] font-medium">
-                  {yaPlanificadas.length}
+                  {totalPlanificadas}
                 </span>
               </p>
-              {yaPlanificadas.length > 0 ? (
+              {totalPlanificadas > 0 ? (
                 <div className="mt-1 space-y-1">
                   {yaPlanificadas.map((p) => {
                     const direccion = direccionDeObra(p.ot);
@@ -940,13 +991,43 @@ export function PanelSinAsignar({
                       </button>
                     );
                   })}
+                  {/* Planificadas fuera de las semanas cargadas. No se sabe la fecha hasta
+                      preguntarle a Odoo, así que la fila no la inventa: dice que está más
+                      allá y el clic la busca. */}
+                  {masAdelante.map((ot) => {
+                    const direccion = direccionDeObra(ot);
+                    const tipo = colorTipo(ot.tipo);
+                    const IconoTipo = ICONO_TIPO[tipo.icono];
+                    const yendo = yendoA === ot.id;
+                    return (
+                      <button
+                        key={`fuera:${ot.id}`}
+                        type="button"
+                        onClick={() => irAObra(ot.id)}
+                        disabled={yendoA !== null}
+                        className="flex w-full items-center gap-1.5 rounded border border-dashed px-2 py-1.5 text-left hover:border-foreground/25 disabled:cursor-wait"
+                      >
+                        <IconoTipo className="h-3.5 w-3.5 shrink-0" style={{ color: tipo.text }} aria-hidden />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[12px] font-medium">{direccion}</span>
+                          <span className="block truncate text-[10px] text-muted-foreground">
+                            {yendo ? "buscando la fecha…" : "fuera de las semanas a la vista"}
+                          </span>
+                        </span>
+                        {yendo ? (
+                          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
+                        ) : (
+                          <MapPin className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               ) : (
-                // No dice "no está planificada": el buscador sólo ve el rango cargado, y
-                // afirmar de más sobre lo que no se miró es peor que no decir nada.
+                // Mira las obras activas en cualquier fecha, no sólo las semanas cargadas.
+                // Una OT ya completada no está entre las candidatas del tablero.
                 <p className="px-1 text-[10px] text-muted-foreground">
-                  Nada en las semanas cargadas. Si puede estar más adelante, scrolleá y
-                  volvé a buscar.
+                  Ninguna obra activa planificada coincide.
                 </p>
               )}
             </div>

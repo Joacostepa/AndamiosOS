@@ -1,11 +1,109 @@
-# Handoff — Gestoría de permisos de andamio (actualizado 2026-09-15, noche)
+# Handoff — Gestoría de permisos de andamio (actualizado 2026-09-15, 18:00)
 
 Para retomar en una sesión nueva. El diseño completo y todo lo aprendido está en
 `docs/modulo-gestoria-permisos.md`; esto es el estado, **lo que falta para que el circuito
 quede 100 % automático** y el orden para seguir.
 
 Para arrancar: "Leé docs/handoff-gestoria-permisos.md y docs/modulo-gestoria-permisos.md y
-seguimos con lo que falta".
+seguimos con lo que falta". **Empezar por § "Estado al cierre 15/09 18:00".**
+
+---
+
+## Estado al cierre 15/09 18:00 — primera presentación real en TAD (S02466)
+
+### Lo primero en la sesión nueva
+
+1. **Verificar si se creó la presentación nueva de S02466** (trámite
+   `c877aee2-fa45-4bb3-9e53-78ea9b60eb1c`). JS tocó "Empezar de cero" y "Volver a presentar"
+   a las ~17:59. En ese momento la última tarea `tad_presentar` era la **35**: en `error`, con
+   `resultado.borrador_descartado = 12988373` (el descarte sí se guardó). Todavía no se veía
+   una tarea 36.
+   - **Si no hay tarea 36:** que JS toque "Volver a presentar" otra vez.
+   - **Si la hay:** seguir `~/Library/Logs/andamios-robot-tad.log` y las capturas de la tarea
+     (`tramites/<id>/tad/<tarea>-NN-*.png` en el bucket `permisos-via-publica`).
+2. **Qué esperar de la corrida:** borrador nuevo → 7 adjuntos (nota, póliza, informe,
+   encomienda, croquis, aviso, otra documentación) → Persona Jurídica → 4 más (reglamento
+   4,8 MB / 21 págs, acta de asamblea ×2, DNI del administrador) → "Datos del trámite" →
+   Confirmar. **Nunca se vio la pantalla después de "Confirmar trámite"**: revisar que el
+   robot lea el EX y que el expediente quede vinculado a S02466 y a Odoo.
+3. **S02465 (Salguero 359):** la encomienda del CPAU (Registro Web 00329521985) espera que JS
+   firme, pague y cargue a mano en tramites.cpau.org. Después sube el certificado visado en la
+   ficha.
+
+### Lo que se aprendió hoy de TAD (implementado; detalle en el diseño, § Presentación automática)
+
+- **Orden de Tamara:**
+  1. Adjuntar lo que aparece **sin tocar** Persona Jurídica ni "Datos del trámite".
+  2. Persona Jurídica y sus 4 casilleros nuevos.
+  3. "Datos del trámite" y Confirmar.
+  
+  En otro orden TAD falla. El robot arma cada tanda con lo que ve en pantalla.
+- **El número del adjunto puede ser RE, no sólo IF:** el croquis y "Otra documentación" salieron
+  RE. El robot acepta cualquier sigla menos EX.
+- **TAD sube el archivo apenas se elige** y "Adjuntar" queda desactivado hasta que termina
+  (máx. 20 MB). El robot espera hasta 3 min (commit `bed4c04`).
+- **Cartel "No se pudo establecer comunicación con el servicio" = TAD caído, no borrador roto.**
+  El robot guarda `resultado.tad_caido` y la ficha oculta "Empezar de cero".
+- **TAD caído es común (Tamara):** si la presentación frena por TAD y no se tocó Confirmar,
+  vuelve sola a la cola cada 30 min, hasta 16 veces (`pvp_tareas.reintentar_desde`, migración
+  `20260915000008`, ya aplicada). En la ficha aparecen "Probar ahora" y "Dejar de reintentar".
+- **Sospecha sin confirmar:** un borrador deja de cargar sus documentos (el robot espera 3 × 3
+  min y frena) cuando **una subida falla o queda a medias**:
+  - **12984454:** póliza encriptada;
+  - **12988373:** el robot se cortó con el reglamento todavía subiendo;
+  - **12986313:** fue durante la caída de TAD.
+  
+  Si vuelve a pasar con subidas completas, la sospecha es falsa.
+- **Borradores descartados hoy:** 12984454, 12986313 y 12988373. Todos borrados a mano por JS.
+- **Números de documento que quedaron sueltos en GDE:**
+  - IF-2026-41611319 (nota);
+  - de 12988373: IF-2026-41662510, IF-2026-41662519, IF-2026-41662561, IF-2026-41662588,
+    RE-2026-41662633, IF-2026-41663879 y RE-2026-41663885.
+
+### Supabase cayó y se subió a Small
+
+A las 16:35 todo el proyecto quedó Unhealthy: API, login, storage con 544 y timeouts del
+pooler. La base era NANO y tenía el Disk IO agotado. JS reinició y subió el compute a **Small**
+(~US$15/mes). **Si la app o el robot se cuelgan con `fetch failed` o timeouts, probar Supabase
+con curl antes de buscar en el código.**
+
+### Operar el robot (se hizo varias veces hoy)
+
+- **Frenar:** `launchctl bootout gui/$(id -u)/ar.com.andamiosbuenosaires.robot-tad` y esperar a
+  que no quede `worker-tad.mjs`. Si cortó una presentación, la tarea queda `tomada`: pasarla a
+  `pendiente` para retomarla, o a `error` con `resultado.borrador` para poder descartarla desde
+  la ficha. El log muestra "Target page, context or browser has been closed".
+- **Reinstalar** después de tocar el robot: `bash robot/instalar-launchd.sh`, con 0 tareas
+  `tomada`.
+- **No abrir TAD en el navegador mientras el robot presenta:** es la misma cuenta. Para borrar
+  un borrador, frenar antes el robot. El link es https://tad.buenosaires.gob.ar/tramitesadistancia/
+- **Botones de la ficha:**
+  - "Seguir desde el borrador";
+  - "Empezar de cero": primero se borra el borrador en TAD;
+  - "Volver a presentar";
+  - durante un reintento, "Probar ahora" y "Dejar de reintentar".
+
+### Pendientes chicos que salieron hoy
+
+- **Tarea `tomada` para siempre:** si se para el robot en medio de una presentación, la tarea
+  queda así. Arreglarlo al arrancar el worker (devolver las tomadas viejas) o en el SIGTERM.
+- **Salir ordenado de la ventana de Adjuntar** cuando el robot se frena ahí, si se confirma la
+  sospecha de los borradores.
+- **Bajar lo que el robot escribe en Supabase en cada vuelta.**
+- **Rotar `PERMISOS_MAIL_CLAVE`:** se escribió en el chat el 15/09.
+
+**Commits de la tarde:**
+
+| Commit | Qué hace |
+| --- | --- |
+| `c0c251f` | Empezar de cero |
+| `4456577` | Aviso de TAD caído |
+| `2639d71` | Reintento automático |
+| `4a2adc2` | Orden de Tamara |
+| `92c697d` | Números RE |
+| `bed4c04` | Espera de la subida |
+
+Todos publicados. El robot de la Mac quedó reinstalado con `bed4c04`.
 
 ---
 

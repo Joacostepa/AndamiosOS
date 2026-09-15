@@ -1,24 +1,25 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
+import { getDocumentProxy } from "unpdf";
 import { z } from "zod";
 import type { ChequeoPoliza, RevisionPoliza, Tramite } from "./tipos";
 
 // Revisión de la póliza de RC que sube el productor, antes de presentarla en TAD.
 //
-// DOS PASOS A PROPÓSITO: Claude LEE el PDF y devuelve lo que dice (quiénes son coasegurados,
-// a favor de quién está la no repetición, suma, vigencia); el VEREDICTO lo decide este
-// código comparando contra el trámite. Así "¿está bien?" no depende de cómo el modelo
+// DOS PASOS A PROPÓSITO: Claude LEE el PDF y contesta preguntas concretas sobre ESTE titular;
+// el VEREDICTO lo decide este código. Así "¿está bien?" no depende de cómo el modelo
 // interprete lo que pide el Gobierno, y cada observación se puede explicar con una regla.
+//
+// NO SE LE PIDE LA LISTA DE COASEGURADOS: un endoso real de La Mercantil Andina (15/09) trae
+// 20 páginas con cientos de coasegurados y cláusulas de no repetición. Transcribirlas corta
+// la respuesta; preguntar "¿figura este CUIT como coasegurado?" no.
 //
 // LO QUE CAUSÓ LAS SUBSANACIONES (ver docs/modulo-gestoria-permisos.md § Póliza): el GCBA
 // pide el titular del lote como COASEGURADO y la cláusula de NO REPETICIÓN a favor del
 // GCBA. Son dos listas distintas con dos sujetos distintos, y se venían confundiendo.
 
 const MODELO = "claude-opus-5";
-const CUIT_GCBA = "34999032089";
 const SUMA_MINIMA = 1_000_000;
-
-const Entidad = z.object({ nombre: z.string(), cuit: z.string().nullable() });
 
 const Leido = z.object({
   es_poliza: z.boolean(),
@@ -26,41 +27,48 @@ const Leido = z.object({
   numero_poliza: z.string().nullable(),
   vigencia_hasta: z.string().nullable(),
   suma_asegurada: z.number().nullable(),
-  coasegurados: z.array(Entidad),
-  no_repeticion_a_favor: z.array(Entidad),
+  titular_como_coasegurado: z.boolean(),
+  titular_en_no_repeticion: z.boolean(),
+  como_figura_titular: z.string().nullable(),
+  gcba_en_no_repeticion: z.boolean(),
   gcba_asegurado_adicional: z.boolean(),
   indemnidad_gcba: z.boolean(),
 });
 
-const SISTEMA = `Leés pólizas y certificados de cobertura de responsabilidad civil que un productor de seguros emite para Emprendimientos y Estructuras S.A. (Andamios Buenos Aires). Se presentan al Gobierno de la Ciudad Autónoma de Buenos Aires (GCBA) para obtener permisos de andamio en la vía pública.
+const SISTEMA = `Leés pólizas, endosos y certificados de cobertura de responsabilidad civil que un productor de seguros emite para Emprendimientos y Estructuras S.A. (Andamios Buenos Aires). Se presentan al Gobierno de la Ciudad Autónoma de Buenos Aires (GCBA) para obtener permisos de andamio en la vía pública. Suelen traer listas largas de coasegurados y de cláusulas de no repetición con muchas empresas y consorcios.
 
-Extraé lo que el documento dice, tal cual está escrito. No completes con lo que debería decir: si algo no aparece, dejalo en null, en lista vacía o en false.
+Contestá sobre lo que el documento dice, no sobre lo que debería decir. Si algo no aparece, contestá null o false.
 
-- es_poliza: si el documento es una póliza o certificado de cobertura de responsabilidad civil.
+- es_poliza: si es una póliza, endoso o certificado de cobertura de responsabilidad civil.
 - vigencia_hasta: fin de la vigencia, en formato AAAA-MM-DD.
 - suma_asegurada: la suma asegurada de responsabilidad civil en pesos, como número.
-- coasegurados: quiénes figuran como coasegurados o asegurados adicionales, con su CUIT si figura.
-- no_repeticion_a_favor: a favor de quiénes está la cláusula de no repetición (o de renuncia a la subrogación), con su CUIT si figura.
-- gcba_asegurado_adicional: true sólo si el GCBA figura como asegurado adicional o coasegurado.
-- indemnidad_gcba: true sólo si el documento dice expresamente que se mantiene la indemnidad del GCBA.
+- titular_como_coasegurado: si el titular indicado figura en la lista de coasegurados o asegurados adicionales. Buscalo por CUIT y por nombre.
+- titular_en_no_repeticion: si el titular figura en la cláusula de no repetición (o renuncia a la subrogación).
+- como_figura_titular: el texto exacto con el que aparece el titular, si aparece.
+- gcba_en_no_repeticion: si el Gobierno de la Ciudad Autónoma de Buenos Aires (GCBA, CUIT 34-99903208-9) figura en la cláusula de no repetición.
+- gcba_asegurado_adicional: si el GCBA figura como asegurado adicional o coasegurado.
+- indemnidad_gcba: si dice expresamente que se mantiene la indemnidad del GCBA.
 
-Las dos listas se confunden seguido y hay que separarlas con cuidado: una misma entidad puede estar en las dos, en una sola o en ninguna. Copiá cada nombre en la lista donde el documento lo pone.`;
+Las listas de coasegurados y de no repetición se confunden seguido: una misma entidad puede estar en las dos, en una sola o en ninguna. Contestá cada pregunta mirando la lista que corresponde.`;
 
-const digitos = (s: string | null | undefined) => (s ?? "").replace(/\D/g, "");
-const esGcba = (e: z.infer<typeof Entidad>) =>
-  digitos(e.cuit) === CUIT_GCBA || /GOBIERNO DE LA CIUDAD|G\.?\s?C\.?\s?B\.?\s?A\b|CIUDAD AUT[OÓ]NOMA DE BUENOS AIRES/i.test(e.nombre);
-
-/** Un PDF encriptado (aunque se abra sin contraseña) lo rechaza TAD al adjuntarlo. */
-function estaEncriptado(pdf: Buffer): boolean {
-  return pdf.includes("/Encrypt");
+/**
+ * Si el PDF pide contraseña para ABRIRSE. Es lo único que rechaza TAD: muchas pólizas vienen
+ * con protección de permisos (no imprimir, no copiar) y se abren igual — la del 15/09 tenía
+ * /Encrypt y siempre se subió sin problema. Buscar /Encrypt en los bytes las frenaba a todas.
+ */
+async function pideContrasena(pdf: Buffer): Promise<boolean> {
+  try {
+    await getDocumentProxy(new Uint8Array(pdf));
+    return false;
+  } catch (e) {
+    return (e as { name?: string })?.name === "PasswordException";
+  }
 }
 
-function chequear(leido: z.infer<typeof Leido>, tramite: Pick<Tramite, "titular_nombre" | "titular_cuit" | "permiso_hasta">): ChequeoPoliza[] {
-  const titular = tramite.titular_cuit ?? "";
-  const nombreTitular = tramite.titular_nombre ?? "el titular del lote";
-  const coasegurado = leido.coasegurados.some((c) => digitos(c.cuit) === titular);
-  const titularEnNoRepeticion = leido.no_repeticion_a_favor.some((c) => digitos(c.cuit) === titular);
+type TramitePoliza = Pick<Tramite, "titular_nombre" | "titular_cuit" | "permiso_hasta">;
 
+function chequear(leido: z.infer<typeof Leido>, tramite: TramitePoliza): ChequeoPoliza[] {
+  const nombreTitular = tramite.titular_nombre ?? "el titular del lote";
   return [
     {
       clave: "es_poliza",
@@ -70,19 +78,19 @@ function chequear(leido: z.infer<typeof Leido>, tramite: Pick<Tramite, "titular_
     },
     {
       clave: "coasegurado",
-      ok: coasegurado,
+      ok: leido.titular_como_coasegurado,
       bloquea: true,
-      detalle: coasegurado
-        ? `${nombreTitular} figura como coasegurado.`
-        : titularEnNoRepeticion
+      detalle: leido.titular_como_coasegurado
+        ? `${nombreTitular} figura como coasegurado${leido.como_figura_titular ? ` ("${leido.como_figura_titular}")` : ""}.`
+        : leido.titular_en_no_repeticion
           ? `${nombreTitular} está en la cláusula de no repetición, pero tiene que figurar como COASEGURADO.`
-          : `Falta ${nombreTitular} (CUIT ${titular}) como coasegurado.`,
+          : `Falta ${nombreTitular} (CUIT ${tramite.titular_cuit}) como coasegurado.`,
     },
     {
       clave: "no_repeticion_gcba",
-      ok: leido.no_repeticion_a_favor.some(esGcba),
+      ok: leido.gcba_en_no_repeticion,
       bloquea: true,
-      detalle: leido.no_repeticion_a_favor.some(esGcba)
+      detalle: leido.gcba_en_no_repeticion
         ? "Tiene la cláusula de no repetición a favor del GCBA."
         : "Falta la cláusula de no repetición a favor del Gobierno de la Ciudad Autónoma de Buenos Aires (CUIT 34-99903208-9).",
     },
@@ -128,19 +136,16 @@ function chequear(leido: z.infer<typeof Leido>, tramite: Pick<Tramite, "titular_
   ];
 }
 
-export async function revisarPoliza(
-  pdf: Buffer,
-  tramite: Pick<Tramite, "titular_nombre" | "titular_cuit" | "permiso_hasta">,
-): Promise<RevisionPoliza> {
-  if (estaEncriptado(pdf)) {
+export async function revisarPoliza(pdf: Buffer, tramite: TramitePoliza): Promise<RevisionPoliza> {
+  if (await pideContrasena(pdf)) {
     return {
       modelo: null,
       leido: null,
       chequeos: [{
-        clave: "encriptado",
+        clave: "contrasena",
         ok: false,
         bloquea: true,
-        detalle: "El PDF está protegido o encriptado y TAD lo rechaza. Hay que mandarlo sin protección.",
+        detalle: "El PDF pide contraseña para abrirse y TAD lo rechaza. Hay que mandarlo sin contraseña.",
       }],
     };
   }
@@ -154,7 +159,7 @@ export async function revisarPoliza(
       role: "user",
       content: [
         { type: "document", source: { type: "base64", media_type: "application/pdf", data: pdf.toString("base64") } },
-        { type: "text", text: "Leé este documento y completá los datos." },
+        { type: "text", text: `Titular del lote: ${tramite.titular_nombre ?? "sin nombre"}, CUIT ${tramite.titular_cuit ?? "sin CUIT"}.` },
       ],
     }],
     output_config: { format: zodOutputFormat(Leido) },

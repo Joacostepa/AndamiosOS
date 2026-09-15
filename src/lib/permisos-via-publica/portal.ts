@@ -2,8 +2,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { read, searchRead } from "@/lib/odoo/client";
 import { crearAlertas } from "@/lib/alertas/servicio";
 import { enviarMail } from "@/lib/mail";
-import { pedirEndoso, registrarEvento, urlBase } from "./endosos";
-import { legajoDe, type TipoDueno, type VentaParaIniciar } from "./tipos";
+import { BUCKET, pedirEndoso, registrarEvento, urlBase } from "./endosos";
+import { revisarDocumentoCliente, tipoDeArchivo } from "./revision-legajo";
+import { NOMBRE_DOCUMENTO, legajoDe, type Tramite, type TipoDueno, type VentaParaIniciar } from "./tipos";
 
 // El portal del cliente: abrir el trámite cuando se confirma la venta, mandarle el link y
 // recibir quién es el dueño del lote y su legajo. Todo con service role, detrás del secret
@@ -280,16 +281,81 @@ export async function cargarTitular(
   if (!t.titular_cargado_at || t.titular_cuit !== datos.cuit) await pedirEndoso(db, tramiteId, null);
 }
 
-/** Un documento del legajo que subió el cliente. Queda "cargado" hasta que exista la revisión. */
+/**
+ * Un documento que el cliente completó y firmó en el portal. Lo arma la app con la plantilla
+ * y la firma dibujada, así que no hay nada que revisar: queda "ok" con la constancia de
+ * firma (quién, DNI, cuándo, desde dónde y el hash del PDF) guardada en la revisión.
+ */
+export async function guardarDocumentoFirmado(
+  db: SupabaseClient,
+  tramiteId: string,
+  clave: string,
+  archivo: { path: string; nombre: string },
+  constancia: Record<string, unknown> & { firmante: string; dni: string },
+): Promise<void> {
+  const { data: previo } = await db.from("pvp_documentos").select("id, version").eq("tramite_id", tramiteId).eq("clave", clave).maybeSingle();
+  const ahora = new Date().toISOString();
+  const valores = {
+    estado: "ok", archivo_path: archivo.path, archivo_nombre: archivo.nombre, version: (previo?.version ?? 0) + 1,
+    subido_por: "cliente", subido_at: ahora, observacion: null, revisado_at: ahora, updated_at: ahora,
+    revision: {
+      modelo: null,
+      leido: constancia,
+      chequeos: [{ clave: "firma_electronica", ok: true, bloquea: true, detalle: `Completada y firmada en el portal por ${constancia.firmante} (DNI ${constancia.dni}).` }],
+    },
+  };
+  const { error } = previo
+    ? await db.from("pvp_documentos").update(valores).eq("id", previo.id)
+    : await db.from("pvp_documentos").insert({ ...valores, tramite_id: tramiteId, clave, origen: "cliente" });
+  if (error) throw new Error(error.message);
+  await registrarEvento(db, tramiteId, "documento_subido", `${NOMBRE_DOCUMENTO[clave] ?? clave}: firmada en el portal por ${constancia.firmante} (DNI ${constancia.dni}).`, { clave, path: archivo.path }, "cliente");
+}
+
+/** Un documento del legajo que subió el cliente. Queda "revisando"; la revisión va aparte. */
 export async function registrarDocumentoCliente(db: SupabaseClient, documentoId: string, archivo: { path: string; nombre: string }): Promise<void> {
   const { data: doc } = await db.from("pvp_documentos").select("tramite_id, clave, version").eq("id", documentoId).single();
   if (!doc) throw new Error("El documento no existe");
   const ahora = new Date().toISOString();
   const version = doc.version + 1;
   const { error } = await db.from("pvp_documentos").update({
-    estado: "cargado", archivo_path: archivo.path, archivo_nombre: archivo.nombre, version,
-    subido_por: "cliente", subido_at: ahora, observacion: null, updated_at: ahora,
+    estado: "revisando", archivo_path: archivo.path, archivo_nombre: archivo.nombre, version,
+    subido_por: "cliente", subido_at: ahora, observacion: null, revision: null, revisado_at: null, updated_at: ahora,
   }).eq("id", documentoId);
   if (error) throw new Error(error.message);
   await registrarEvento(db, doc.tramite_id, "documento_subido", `${archivo.nombre} (versión ${version})`, { clave: doc.clave, path: archivo.path }, "cliente");
+}
+
+/**
+ * Revisa con IA un documento del legajo y deja ok u observado con el motivo para el cliente.
+ * Nunca tira: si la revisión falla queda "cargado" con una nota para que lo mire una persona.
+ */
+export async function revisarDocumentoDelCliente(db: SupabaseClient, documentoId: string): Promise<void> {
+  const { data: doc } = await db.from("pvp_documentos")
+    .select("id, tramite_id, clave, version, archivo_path, pvp_tramites!inner(direccion, titular_nombre, titular_cuit, tipo_dueno)")
+    .eq("id", documentoId).single();
+  if (!doc?.archivo_path) return;
+  const tramite = doc.pvp_tramites as unknown as Pick<Tramite, "direccion" | "titular_nombre" | "titular_cuit" | "tipo_dueno">;
+  const ahora = () => new Date().toISOString();
+
+  try {
+    const tipo = tipoDeArchivo(doc.archivo_path);
+    if (!tipo) throw new Error("formato de archivo que no se puede revisar");
+    const { data: archivo, error } = await db.storage.from(BUCKET).download(doc.archivo_path);
+    if (error || !archivo) throw new Error("no se encontró el archivo subido");
+
+    const revision = await revisarDocumentoCliente(Buffer.from(await archivo.arrayBuffer()), tipo, doc.clave, tramite);
+    const fallas = revision.chequeos.filter((c) => !c.ok && c.bloquea);
+    const estado = fallas.length === 0 ? "ok" : "observado";
+    const observacion = fallas.length === 0 ? null : fallas.map((c) => c.detalle).join(" ");
+    await db.from("pvp_documentos").update({ estado, revision, revisado_at: ahora(), observacion, updated_at: ahora() }).eq("id", documentoId);
+    await registrarEvento(db, doc.tramite_id, "documento_revisado", `${NOMBRE_DOCUMENTO[doc.clave] ?? doc.clave}: ${estado === "ok" ? "correcto" : observacion}`, { clave: doc.clave, estado, version: doc.version }, "ia");
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    await db.from("pvp_documentos").update({
+      estado: "cargado",
+      observacion: `No se pudo revisar automáticamente (${msg}). Lo revisa una persona de ABA.`,
+      updated_at: ahora(),
+    }).eq("id", documentoId);
+    await registrarEvento(db, doc.tramite_id, "documento_revisado", `No se pudo revisar ${doc.clave}: ${msg}`, { error: msg }, "ia");
+  }
 }

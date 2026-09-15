@@ -12,6 +12,7 @@ export const dynamic = "force-dynamic";
 export type PortalCliente = {
   direccion: string;
   cliente_nombre: string | null;
+  permiso_hasta: string | null;
   titular: { tipo: TipoDueno; esInquilino: boolean; nombre: string; cuit: string } | null;
   documentos: { id: string; clave: string; estado: EstadoDocumento; archivo_nombre: string | null; observacion: string | null }[];
 };
@@ -29,6 +30,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ token: str
   const portal: PortalCliente = {
     direccion: t.direccion,
     cliente_nombre: t.cliente_nombre,
+    permiso_hasta: t.permiso_hasta,
     titular: t.titular_cargado_at
       ? { tipo: t.tipo_dueno, esInquilino: t.es_inquilino, nombre: t.titular_nombre, cuit: t.titular_cuit }
       : null,

@@ -1,0 +1,187 @@
+import Anthropic from "@anthropic-ai/sdk";
+import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
+import { z } from "zod";
+import { ETIQUETA_DUENO, NOMBRE_DOCUMENTO, formatoCuit, type ChequeoPoliza, type RevisionDocumento, type Tramite } from "./tipos";
+
+// Revisión de cada documento que sube el cliente en su portal, apenas lo sube.
+//
+// Mismo criterio que la póliza: Claude LEE (qué documento es, qué nombre, CUIT y dirección
+// trae, si está firmado, si está vigente) y el VEREDICTO sale de reglas en código. El motivo
+// que ve el cliente sale de esas reglas, en castellano y sin jerga.
+//
+// EL ERROR MÁS CARO es que el peticionante del aviso de obra no sea el dueño del lote: el
+// GCBA lo rechaza y el endoso sale a nombre de otro. Por eso el titular cargado se cruza
+// con cada documento que nombra a alguien.
+//
+// Ante la duda observa (docs/modulo-gestoria-permisos.md § 2): la IA nunca aprueba en
+// silencio algo que no pudo leer.
+
+const MODELO = "claude-opus-5";
+
+type Regla = "titular" | "direccion" | "cuit" | "firma" | "vigencia";
+
+/** Qué es cada documento y qué se cruza. */
+const CRITERIOS: Record<string, { descripcion: string; reglas: Regla[] }> = {
+  aviso_obra: {
+    descripcion: "Aviso de obra o permiso de obra (registro de obra) del GCBA, o la constancia de su trámite (DGROC / DGIUR). Tiene que ser de la dirección de la obra y a nombre del dueño del lote.",
+    reglas: ["titular", "direccion"],
+  },
+  acta_asamblea: { descripcion: "Acta de asamblea del consorcio que designa al administrador, legalizada.", reglas: ["vigencia"] },
+  reglamento: { descripcion: "Reglamento de copropiedad del edificio de la obra.", reglas: ["direccion"] },
+  dni_administrador: { descripcion: "DNI argentino del administrador del consorcio, frente y dorso.", reglas: [] },
+  dni_apoderado: { descripcion: "DNI argentino del apoderado de la empresa, frente y dorso.", reglas: [] },
+  dni: { descripcion: "DNI argentino del dueño del lote, frente y dorso.", reglas: ["titular"] },
+  constancia_cuit: { descripcion: "Constancia de inscripción en ARCA (ex AFIP) del dueño del lote.", reglas: ["cuit"] },
+  nota_solicitud: { descripcion: "Nota de solicitud del permiso de uso del espacio público para el andamio, firmada por el representante del dueño.", reglas: ["firma"] },
+  acta_compromiso: { descripcion: "Acta de compromiso del GCBA para el permiso de andamio en la vía pública, firmada.", reglas: ["firma"] },
+  poder: { descripcion: "Poder otorgado por la empresa dueña del lote, certificado por escribano.", reglas: ["titular"] },
+  estatuto: { descripcion: "Estatuto o contrato social de la empresa dueña del lote, certificado.", reglas: ["titular"] },
+  acta_directorio: { descripcion: "Acta de directorio o de asamblea que designa las autoridades de la empresa dueña del lote.", reglas: ["titular", "vigencia"] },
+  nota_autorizacion: { descripcion: "Nota firmada por el dueño del lote autorizando la instalación del andamio o el trámite del permiso.", reglas: ["firma"] },
+  titulo_propiedad: { descripcion: "Título de propiedad (escritura) del inmueble de la obra.", reglas: ["titular", "direccion"] },
+  contrato_alquiler: { descripcion: "Contrato de alquiler del inmueble de la obra.", reglas: ["direccion"] },
+  nota_dueno: { descripcion: "Nota firmada por el dueño del inmueble autorizando al inquilino a instalar el andamio.", reglas: ["firma"] },
+};
+
+const Lectura = z.object({
+  tipo_detectado: z.string(),
+  es_el_documento_pedido: z.boolean(),
+  legible: z.boolean(),
+  nombre_que_figura: z.string().nullable(),
+  cuit_que_figura: z.string().nullable(),
+  direccion_que_figura: z.string().nullable(),
+  coincide_titular: z.boolean().nullable(),
+  coincide_direccion: z.boolean().nullable(),
+  firmado: z.boolean().nullable(),
+  vigente: z.boolean().nullable(),
+});
+
+const SISTEMA = `Revisás documentos que un cliente sube para tramitar ante el Gobierno de la Ciudad Autónoma de Buenos Aires un permiso de andamio en la vía pública. Te dicen qué documento se pidió, quién es el dueño del lote y dónde es la obra.
+
+Contestá sobre lo que el documento muestra, no sobre lo que debería mostrar. Si algo no se ve o no aplica, contestá null.
+
+- tipo_detectado: qué documento es en realidad, en pocas palabras.
+- es_el_documento_pedido: si corresponde al documento pedido. Un documento de otro tipo, aunque sea parecido, es false.
+- legible: si se puede leer lo importante. Una foto borrosa, cortada o a la que le falta una cara que se pidió es false.
+- nombre_que_figura / cuit_que_figura / direccion_que_figura: el titular, CUIT y dirección que trae el documento, tal cual.
+- coincide_titular: si el documento está a nombre del dueño del lote indicado (aceptá diferencias de mayúsculas, abreviaturas como "Cons. de Prop." o el orden de nombre y apellido). null si no nombra a nadie.
+- coincide_direccion: si la dirección del documento es la de la obra (misma calle y altura; aceptá abreviaturas). null si no trae dirección.
+- firmado: si tiene firma. null si no es un documento que se firme.
+- vigente: si a la fecha indicada sigue vigente (mandato, designación). null si no tiene vigencia.`;
+
+type TramiteLegajo = Pick<Tramite, "direccion" | "titular_nombre" | "titular_cuit" | "tipo_dueno">;
+
+function chequear(clave: string, l: z.infer<typeof Lectura>, t: TramiteLegajo): ChequeoPoliza[] {
+  const nombre = NOMBRE_DOCUMENTO[clave] ?? clave;
+  const reglas = CRITERIOS[clave]?.reglas ?? [];
+  const titular = t.titular_nombre ?? "el dueño del lote";
+  const chequeos: ChequeoPoliza[] = [
+    {
+      clave: "es_el_documento",
+      ok: l.es_el_documento_pedido,
+      bloquea: true,
+      detalle: l.es_el_documento_pedido ? `Es ${nombre.toLowerCase()}.` : `Esto parece ${l.tipo_detectado.toLowerCase()}, y lo que hace falta es: ${nombre.toLowerCase()}.`,
+    },
+    {
+      clave: "legible",
+      ok: l.legible,
+      bloquea: true,
+      detalle: l.legible ? "Se lee bien." : "No se lee bien o está incompleto: subilo de nuevo más nítido y completo.",
+    },
+  ];
+  // Si no es el documento pedido, cruzar datos no suma: el motivo ya está dicho.
+  if (!l.es_el_documento_pedido) return chequeos;
+
+  if (reglas.includes("cuit")) {
+    const coincide = (l.cuit_que_figura ?? "").replace(/\D/g, "") === t.titular_cuit;
+    chequeos.push({
+      clave: "cuit",
+      ok: coincide,
+      bloquea: true,
+      detalle: coincide
+        ? `El CUIT coincide con el cargado (${formatoCuit(t.titular_cuit ?? "")}).`
+        : l.cuit_que_figura
+          ? `La constancia es del CUIT ${l.cuit_que_figura} y el dueño cargado tiene CUIT ${formatoCuit(t.titular_cuit ?? "")}.`
+          : "No se ve el CUIT en la constancia.",
+    });
+  }
+  if (reglas.includes("titular") && l.coincide_titular !== null) {
+    chequeos.push({
+      clave: "titular",
+      ok: l.coincide_titular,
+      bloquea: true,
+      detalle: l.coincide_titular
+        ? `Está a nombre de ${titular}.`
+        : `Está a nombre de ${l.nombre_que_figura ?? "otra persona"}, y el dueño del lote cargado es ${titular}. Si el dueño es otro, corregilo arriba.`,
+    });
+  }
+  if (reglas.includes("direccion") && l.coincide_direccion !== null) {
+    chequeos.push({
+      clave: "direccion",
+      ok: l.coincide_direccion,
+      bloquea: true,
+      detalle: l.coincide_direccion
+        ? "La dirección coincide con la de la obra."
+        : `Es de ${l.direccion_que_figura ?? "otra dirección"}, y la obra es en ${t.direccion}.`,
+    });
+  }
+  if (reglas.includes("firma") && l.firmado !== null) {
+    chequeos.push({ clave: "firma", ok: l.firmado, bloquea: true, detalle: l.firmado ? "Está firmada." : "Falta la firma." });
+  }
+  if (reglas.includes("vigencia") && l.vigente !== null) {
+    chequeos.push({ clave: "vigencia", ok: l.vigente, bloquea: true, detalle: l.vigente ? "Está vigente." : "No está vigente: hace falta la designación actual." });
+  }
+  return chequeos;
+}
+
+type Tipo = "application/pdf" | "image/jpeg" | "image/png" | "image/webp";
+
+export function tipoDeArchivo(path: string): Tipo | null {
+  const ext = path.split(".").pop()?.toLowerCase();
+  if (ext === "pdf") return "application/pdf";
+  if (ext === "jpg" || ext === "jpeg") return "image/jpeg";
+  if (ext === "png") return "image/png";
+  if (ext === "webp") return "image/webp";
+  return null;
+}
+
+export async function revisarDocumentoCliente(
+  archivo: Buffer,
+  tipo: Tipo,
+  clave: string,
+  tramite: TramiteLegajo,
+): Promise<RevisionDocumento> {
+  const criterio = CRITERIOS[clave];
+  const datos = archivo.toString("base64");
+  const bloque: Anthropic.ContentBlockParam =
+    tipo === "application/pdf"
+      ? { type: "document", source: { type: "base64", media_type: tipo, data: datos } }
+      : { type: "image", source: { type: "base64", media_type: tipo, data: datos } };
+
+  const respuesta = await new Anthropic().messages.parse({
+    model: MODELO,
+    max_tokens: 16000,
+    system: SISTEMA,
+    messages: [{
+      role: "user",
+      content: [
+        bloque,
+        {
+          type: "text",
+          text: [
+            `Documento pedido: ${NOMBRE_DOCUMENTO[clave] ?? clave}. ${criterio?.descripcion ?? ""}`,
+            `Dueño del lote: ${tramite.titular_nombre ?? "sin cargar"} (CUIT ${tramite.titular_cuit ?? "sin cargar"}${tramite.tipo_dueno ? `, ${ETIQUETA_DUENO[tramite.tipo_dueno].toLowerCase()}` : ""}).`,
+            `Obra: ${tramite.direccion}.`,
+            `Fecha de hoy: ${new Date().toISOString().slice(0, 10)}.`,
+          ].join("\n"),
+        },
+      ],
+    }],
+    output_config: { format: zodOutputFormat(Lectura) },
+  });
+
+  if (respuesta.stop_reason === "refusal") throw new Error("El modelo no quiso leer el documento");
+  if (!respuesta.parsed_output) throw new Error("No se pudo leer el documento");
+
+  return { modelo: MODELO, leido: respuesta.parsed_output, chequeos: chequear(clave, respuesta.parsed_output, tramite) };
+}

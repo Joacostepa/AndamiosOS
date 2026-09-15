@@ -2,17 +2,21 @@
 
 import { use, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, Circle, Loader2, Upload } from "lucide-react";
+import { CheckCircle2, Circle, CircleAlert, Loader2, Upload } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { PortalCliente } from "@/app/api/public/permiso/[token]/route";
-import { ETIQUETA_DUENO, NOMBRE_DOCUMENTO, cuitValido, formatoCuit, type TipoDueno } from "@/lib/permisos-via-publica/tipos";
+import { ETIQUETA_DUENO, NOMBRE_DOCUMENTO, clavesFirmables, cuitValido, formatoCuit, type TipoDueno } from "@/lib/permisos-via-publica/tipos";
+import { FirmarDocumentos } from "./firmar";
 
-// Portal del cliente para el permiso de andamio. Llega por mail (o WhatsApp) al confirmarse
-// la venta. Primero: quién es el dueño del lote y su CUIT —con eso ABA ya pide el seguro—.
+// Portal del cliente para el permiso de andamio. Llega por mail (o WhatsApp) al iniciarse el
+// trámite. Primero: quién es el dueño del lote y su CUIT —con eso ABA ya pide el seguro—.
 // Después: los documentos que corresponden a ese tipo de dueño, de a uno y cuando pueda.
+//
+// Cada documento se revisa apenas se sube: si no es el que se pidió, no se lee o no coincide
+// con el dueño o la dirección de la obra, el cliente ve el motivo acá mismo.
 
 const BUCKET = "permisos-via-publica";
-const EXTENSIONES = ["pdf", "jpg", "jpeg", "png", "heic", "webp"];
+const EXTENSIONES = ["pdf", "jpg", "jpeg", "png", "webp"];
 
 export default function PortalPermisoPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = use(params);
@@ -24,11 +28,14 @@ export default function PortalPermisoPage({ params }: { params: Promise<{ token:
       if (!res.ok) throw new Error(body?.error ?? "No se pudo cargar");
       return body as PortalCliente;
     },
+    // Mientras se revisa algo (~20 s), se consulta seguido para mostrar el resultado solo.
+    refetchInterval: (q) => (q.state.data?.documentos.some((d) => d.estado === "revisando") ? 4_000 : false),
     retry: false,
   });
   const [editando, setEditando] = useState(false);
   const datos = consulta.data;
-  const cargados = datos?.documentos.filter((d) => d.estado !== "falta").length ?? 0;
+  const correctos = datos?.documentos.filter((d) => d.estado === "ok").length ?? 0;
+  const aCorregir = datos?.documentos.filter((d) => d.estado === "observado").length ?? 0;
 
   return (
     <main className="min-h-screen bg-gray-50 px-4 py-8 text-gray-900">
@@ -38,7 +45,7 @@ export default function PortalPermisoPage({ params }: { params: Promise<{ token:
           <h1 className="text-2xl font-semibold">Permiso de andamio{datos ? ` · ${datos.direccion}` : ""}</h1>
           <p className="mt-1 text-sm text-gray-600">
             Para pedir al Gobierno de la Ciudad el permiso de uso del espacio público necesitamos saber quién es el dueño
-            del lote y algunos documentos. Podés cargarlos de a poco: lo que subas queda guardado.
+            del lote y algunos documentos. Podés cargarlos de a poco: lo que subas queda guardado y lo revisamos en el momento.
           </p>
         </header>
 
@@ -67,16 +74,21 @@ export default function PortalPermisoPage({ params }: { params: Promise<{ token:
               </div>
             </section>
 
+            {clavesFirmables(datos.titular.tipo).some((clave) => datos.documentos.find((d) => d.clave === clave)?.estado !== "ok") && (
+              <FirmarDocumentos token={token} portal={datos} onListo={() => consulta.refetch()} />
+            )}
+
             <section className="space-y-3">
               <h2 className="text-lg font-medium">
-                Documentos · {cargados} de {datos.documentos.length}
+                Documentos · {correctos} de {datos.documentos.length} correctos
+                {aCorregir > 0 && <span className="text-red-700"> · {aCorregir} para corregir</span>}
               </h2>
               {datos.documentos.map((d) => (
                 <FilaDocumento key={d.id} token={token} doc={d} onSubido={() => consulta.refetch()} />
               ))}
-              {datos.documentos.length > 0 && cargados === datos.documentos.length && (
+              {datos.documentos.length > 0 && correctos === datos.documentos.length && (
                 <p className="rounded-md bg-green-50 p-3 text-sm text-green-800">
-                  ¡Listo! Ya tenemos todo. Lo revisamos y te avisamos si hace falta corregir algo.
+                  ¡Listo! Ya tenemos todo y está correcto. Te avisamos cuando presentemos el trámite.
                 </p>
               )}
             </section>
@@ -156,11 +168,10 @@ function FilaDocumento({ token, doc, onSubido }: { token: string; doc: PortalCli
   const input = useRef<HTMLInputElement>(null);
   const [subiendo, setSubiendo] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const cargado = doc.estado !== "falta";
 
   async function subir(archivo: File) {
     const extension = archivo.name.split(".").pop()?.toLowerCase() ?? "";
-    if (!EXTENSIONES.includes(extension)) return setError("Tiene que ser un PDF o una foto.");
+    if (!EXTENSIONES.includes(extension)) return setError("Tiene que ser un PDF o una foto (JPG o PNG).");
     setSubiendo(true);
     setError(null);
     try {
@@ -180,19 +191,28 @@ function FilaDocumento({ token, doc, onSubido }: { token: string; doc: PortalCli
     }
   }
 
+  const icono =
+    doc.estado === "ok" ? <CheckCircle2 className="size-5 shrink-0 text-green-600" />
+    : doc.estado === "observado" ? <CircleAlert className="size-5 shrink-0 text-red-600" />
+    : doc.estado === "revisando" ? <Loader2 className="size-5 shrink-0 animate-spin text-blue-600" />
+    : doc.estado === "cargado" ? <CheckCircle2 className="size-5 shrink-0 text-gray-400" />
+    : <Circle className="size-5 shrink-0 text-gray-300" />;
+
   return (
-    <article className="flex flex-wrap items-center gap-3 rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
-      {cargado ? <CheckCircle2 className="size-5 shrink-0 text-green-600" /> : <Circle className="size-5 shrink-0 text-gray-300" />}
+    <article className={`flex flex-wrap items-center gap-3 rounded-lg border bg-white p-3 shadow-sm ${doc.estado === "observado" ? "border-red-200" : "border-gray-200"}`}>
+      {icono}
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium">{NOMBRE_DOCUMENTO[doc.clave] ?? doc.clave}</p>
         {doc.archivo_nombre && <p className="truncate text-xs text-gray-500">{doc.archivo_nombre}</p>}
-        {doc.observacion && <p className="text-xs text-red-700">{doc.observacion}</p>}
+        {doc.estado === "revisando" && <p className="text-xs text-blue-700">Revisando…</p>}
+        {doc.estado === "ok" && <p className="text-xs text-green-700">Correcto</p>}
+        {doc.observacion && <p className={`text-xs ${doc.estado === "observado" ? "text-red-700" : "text-gray-600"}`}>{doc.observacion}</p>}
         {error && <p className="text-xs text-red-700">{error}</p>}
       </div>
       <input
         ref={input}
         type="file"
-        accept="application/pdf,image/*"
+        accept="application/pdf,image/jpeg,image/png,image/webp"
         className="hidden"
         onChange={(ev) => {
           const archivo = ev.target.files?.[0];
@@ -200,15 +220,17 @@ function FilaDocumento({ token, doc, onSubido }: { token: string; doc: PortalCli
           if (archivo) subir(archivo);
         }}
       />
-      <button
-        type="button"
-        onClick={() => input.current?.click()}
-        disabled={subiendo}
-        className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm ${cargado ? "border border-gray-300" : "bg-gray-900 text-white"} disabled:opacity-60`}
-      >
-        {subiendo ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
-        {cargado ? "Reemplazar" : "Subir"}
-      </button>
+      {doc.estado !== "revisando" && (
+        <button
+          type="button"
+          onClick={() => input.current?.click()}
+          disabled={subiendo}
+          className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm ${doc.estado === "falta" || doc.estado === "observado" ? "bg-gray-900 text-white" : "border border-gray-300"} disabled:opacity-60`}
+        >
+          {subiendo ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
+          {doc.estado === "falta" ? "Subir" : doc.estado === "observado" ? "Subir otro" : "Reemplazar"}
+        </button>
+      )}
     </article>
   );
 }

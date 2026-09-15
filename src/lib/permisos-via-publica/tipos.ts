@@ -113,6 +113,20 @@ export const LEGAJO_INQUILINO: ItemLegajo[] = [
   { clave: "nota_dueno", nombre: "Nota del dueño autorizando el andamio" },
 ];
 
+/**
+ * Los documentos que el cliente puede COMPLETAR Y FIRMAR en el portal en vez de imprimir,
+ * firmar y escanear: el acta de compromiso del GCBA y la nota de ABA. La nota es la misma
+ * plantilla ("solicitamos el permiso… autorizamos a Emprendimientos y Estructuras") y en el
+ * legajo se llama "de solicitud" para consorcios y empresas y "de autorización" para personas.
+ */
+export const clavesFirmables = (tipo: TipoDueno) => ["acta_compromiso", tipo === "persona" ? "nota_autorizacion" : "nota_solicitud"];
+
+export const CARACTER_POR_DEFECTO: Record<TipoDueno, string> = {
+  consorcio: "Administrador",
+  empresa: "Apoderado",
+  persona: "Propietario",
+};
+
 export function legajoDe(tipo: TipoDueno, esInquilino: boolean): ItemLegajo[] {
   return [...LEGAJO[tipo], ...(esInquilino ? LEGAJO_INQUILINO : [])];
 }
@@ -151,20 +165,27 @@ export type EstadoDocumento = "falta" | "pedido" | "cargado" | "revisando" | "ok
 /** `bloquea: false` = se muestra pero no frena (lo pide la ficha y nunca lo observaron). */
 export type ChequeoPoliza = { clave: string; ok: boolean; bloquea: boolean; detalle: string };
 
-export type RevisionPoliza = {
+/** Lo que queda guardado de cualquier revisión: qué leyó el modelo y las reglas que se aplicaron. */
+export type RevisionDocumento = {
   modelo: string | null;
+  leido: unknown;
+  chequeos: ChequeoPoliza[];
+};
+
+export type RevisionPoliza = RevisionDocumento & {
   leido: {
     es_poliza: boolean;
     compania: string | null;
     numero_poliza: string | null;
     vigencia_hasta: string | null;
     suma_asegurada: number | null;
-    coasegurados: { nombre: string; cuit: string | null }[];
-    no_repeticion_a_favor: { nombre: string; cuit: string | null }[];
+    titular_como_coasegurado: boolean;
+    titular_en_no_repeticion: boolean;
+    como_figura_titular: string | null;
+    gcba_en_no_repeticion: boolean;
     gcba_asegurado_adicional: boolean;
     indemnidad_gcba: boolean;
   } | null;
-  chequeos: ChequeoPoliza[];
 };
 
 export type Documento = {
@@ -178,7 +199,7 @@ export type Documento = {
   version: number;
   subido_por: string | null;
   subido_at: string | null;
-  revision: RevisionPoliza | null;
+  revision: RevisionDocumento | null;
   revisado_at: string | null;
   observacion: string | null;
   pedido_at: string | null;

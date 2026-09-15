@@ -1,20 +1,22 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { BUCKET } from "@/lib/permisos-via-publica/endosos";
-import { registrarDocumentoCliente, tramiteDeToken } from "@/lib/permisos-via-publica/portal";
+import { registrarDocumentoCliente, revisarDocumentoDelCliente, tramiteDeToken } from "@/lib/permisos-via-publica/portal";
 
 // POST /api/public/permiso/:token/documentos/:docId — el cliente sube un documento de su
 // legajo, en los mismos dos pasos que el portal del productor:
 //
 //   { accion: "url" }                  → URL firmada para subir directo al bucket
-//   { accion: "listo", path, nombre }  → se registra como "cargado"
+//   { accion: "listo", path, nombre }  → se registra y se revisa con IA (después de responder)
 //
-// Acepta PDF o foto: un DNI se saca con el celular.
+// Acepta PDF o foto: un DNI se saca con el celular. NO HEIC (la foto por defecto del iPhone):
+// la revisión no lo puede leer, y el iPhone lo convierte a JPG solo al subirlo desde el navegador.
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
-const EXTENSIONES = ["pdf", "jpg", "jpeg", "png", "heic", "webp"] as const;
+const EXTENSIONES = ["pdf", "jpg", "jpeg", "png", "webp"] as const;
 
 const schema = z.discriminatedUnion("accion", [
   z.object({ accion: z.literal("url"), extension: z.enum(EXTENSIONES) }),
@@ -25,7 +27,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
   const { token, docId } = await ctx.params;
   if (!/^[0-9a-f-]{36}$/i.test(docId)) return NextResponse.json({ error: "Documento inválido" }, { status: 400 });
   const parsed = schema.safeParse(await req.json().catch(() => null));
-  if (!parsed.success) return NextResponse.json({ error: "Tiene que ser un PDF o una foto" }, { status: 400 });
+  if (!parsed.success) return NextResponse.json({ error: "Tiene que ser un PDF o una foto (JPG o PNG)" }, { status: 400 });
 
   const db = createAdminClient();
   const t = await tramiteDeToken(db, token);
@@ -50,5 +52,6 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
   }
+  after(() => revisarDocumentoDelCliente(db, docId));
   return NextResponse.json({ ok: true });
 }

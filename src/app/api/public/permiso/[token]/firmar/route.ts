@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { BUCKET } from "@/lib/permisos-via-publica/endosos";
-import { guardarDocumentoFirmado, tramiteDeToken } from "@/lib/permisos-via-publica/portal";
+import { guardarDocumentoFirmado, siLegajoCompletoGenerar, tramiteDeToken } from "@/lib/permisos-via-publica/portal";
 import { generarActaCompromiso, generarNotaAutorizacion } from "@/lib/permisos-via-publica/documentos-firmados";
 import { clavesFirmables, type TipoDueno } from "@/lib/permisos-via-publica/tipos";
 
@@ -18,7 +18,7 @@ import { clavesFirmables, type TipoDueno } from "@/lib/permisos-via-publica/tipo
 // notificaciones legales del trámite (docs/modulo-gestoria-permisos.md § 5).
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 const schema = z.object({
   firmante: z.string().trim().min(3).max(120),
@@ -98,5 +98,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
   }
+  // Si con la firma quedó completo el legajo, se generan informe técnico y croquis (~1 min).
+  after(() => siLegajoCompletoGenerar(db, t.id));
   return NextResponse.json({ ok: true });
 }

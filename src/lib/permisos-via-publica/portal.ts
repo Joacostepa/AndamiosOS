@@ -311,6 +311,39 @@ export async function guardarDocumentoFirmado(
   await registrarEvento(db, tramiteId, "documento_subido", `${NOMBRE_DOCUMENTO[clave] ?? clave}: firmada en el portal por ${constancia.firmante} (DNI ${constancia.dni}).`, { clave, path: archivo.path }, "cliente");
 }
 
+/**
+ * Cuando TODO el legajo del cliente queda correcto, genera solos el informe técnico y el
+ * croquis (decidido con JS, 2026-09-15: se arman con lo que cargó y validó el cliente, no
+ * antes). Una sola vez: si ya hay informe generado, no hace nada. Nunca tira.
+ *
+ * Acá se va a enganchar también la encomienda del CPAU cuando esté el robot.
+ */
+export async function siLegajoCompletoGenerar(db: SupabaseClient, tramiteId: string): Promise<void> {
+  const { data: docs } = await db.from("pvp_documentos").select("clave, origen, estado").eq("tramite_id", tramiteId);
+  const legajo = (docs ?? []).filter((d) => d.origen === "cliente");
+  if (legajo.length === 0 || legajo.some((d) => d.estado !== "ok")) return;
+  if ((docs ?? []).some((d) => d.clave === "informe_tecnico" && d.estado === "ok")) return;
+
+  const { data: t } = await db.from("pvp_tramites").select("direccion, es_prueba").eq("id", tramiteId).single();
+  try {
+    const { generarDocumentosAba } = await import("./generacion");
+    const r = await generarDocumentosAba(db, tramiteId);
+    await registrarEvento(db, tramiteId, "documento_revisado", `Legajo completo: se generaron solos el informe técnico y el croquis${r.plancheta ? "" : " (sin plancheta)"}.`, r, "sistema");
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    await registrarEvento(db, tramiteId, "documento_revisado", `Legajo completo, pero no se pudieron generar el informe técnico y el croquis: ${msg}`, { error: msg }, "sistema");
+    if (t?.es_prueba) return;
+    await crearAlertas(db, [{
+      tipo: "permiso_novedad",
+      clave: `permiso_novedad:tramite:${tramiteId}:generar:${msg.slice(0, 40)}`,
+      titulo: `No se pudo generar el informe técnico — ${t?.direccion ?? "trámite"}`,
+      descripcion: `${msg} Corregilo y generalo desde la ficha.`,
+      prioridad: "alta",
+      enlace: `/permisos-via-publica/tramites/${tramiteId}`,
+    }]);
+  }
+}
+
 /** Un documento del legajo que subió el cliente. Queda "revisando"; la revisión va aparte. */
 export async function registrarDocumentoCliente(db: SupabaseClient, documentoId: string, archivo: { path: string; nombre: string }): Promise<void> {
   const { data: doc } = await db.from("pvp_documentos").select("tramite_id, clave, version").eq("id", documentoId).single();
@@ -349,6 +382,7 @@ export async function revisarDocumentoDelCliente(db: SupabaseClient, documentoId
     const observacion = fallas.length === 0 ? null : fallas.map((c) => c.detalle).join(" ");
     await db.from("pvp_documentos").update({ estado, revision, revisado_at: ahora(), observacion, updated_at: ahora() }).eq("id", documentoId);
     await registrarEvento(db, doc.tramite_id, "documento_revisado", `${NOMBRE_DOCUMENTO[doc.clave] ?? doc.clave}: ${estado === "ok" ? "correcto" : observacion}`, { clave: doc.clave, estado, version: doc.version }, "ia");
+    if (estado === "ok") await siLegajoCompletoGenerar(db, doc.tramite_id);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     await db.from("pvp_documentos").update({

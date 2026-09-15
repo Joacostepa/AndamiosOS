@@ -70,6 +70,33 @@ Riveros Zanetta sabe que el robot usa su cuenta miBA.
 - Decisiones: disparador `x_lleva_permiso = sí`; link al confirmar la venta; sólo ventas
   nuevas; el titular lo carga el cliente; ARCA cuando haya certificado.
 
+## ▶ Cómo seguir en la próxima sesión (escrito el 15/09 al cerrar)
+
+Decisiones de JS al cierre:
+- **Informe técnico y croquis se generan solos cuando TODO el legajo del cliente queda
+  correcto** (revisado por IA o firmado en el portal). Ya está hecho:
+  `siLegajoCompletoGenerar` en `src/lib/permisos-via-publica/portal.ts`. Si faltan medidas en
+  la venta, alerta y se generan a mano desde la ficha.
+- **La encomienda del CPAU se dispara sola en ese mismo momento** (legajo completo y
+  validado). Engancharla en `siLegajoCompletoGenerar`.
+
+Orden sugerido:
+1. **Mapear el asistente del CPAU:** `node --env-file=robot/.env.robot robot/mapear-cpau-wizard.mjs`.
+   Entra con la cuenta de Hougassian, avanza sólo con Siguiente, no finaliza, y compara el
+   Histórico antes y después. Mirar las capturas en `robot/capturas/cpau-mapeo/`.
+2. **Definir con JS:** pago con tarjeta o transferencia; qué pasa arriba de 120 m² (el tramo
+   de $50.000 es "hasta 120").
+3. **Robot de encomienda:** una tarea `cpau_encomienda` en `pvp_tareas` que el worker de la
+   Mac toma (como `odoo_sincronizar`), con los valores de la tabla "Encomienda del CPAU" del
+   diseño. Empezar en modo supervisado: completa todo y espera un clic antes de Finalizar.
+   Después: firma, pago, carga en tramites.cpau.org y descarga del certificado visado desde
+   el Histórico → documento `encomienda_cpau` del trámite.
+4. **Probar punta a punta con "Probar el circuito"** (el trámite de prueba no tiene venta:
+   decidir si la prueba también dispara la encomienda o se corta antes).
+
+Para arrancar: "Leé docs/handoff-gestoria-permisos.md y docs/modulo-gestoria-permisos.md y
+seguimos con el mapeo del CPAU".
+
 ## Próximos pasos acordados (en este orden)
 
 ### 1. ~~Robot corriendo solo en la Mac~~ (hecho)

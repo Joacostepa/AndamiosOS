@@ -709,6 +709,11 @@ Probado con Trelles 1086 (pantalla 8 ml → 4 × 2 módulos, manzana 057-035 con
 Laprida 1845 (estructura + pantalla, manzana 015-142 con 25 lotes). Si el catastro falla,
 el croquis sale con el aviso en la lámina y el documento queda observado.
 
+**Cuándo se generan (JS, 2026-09-15):** solos, apenas todo el legajo del cliente queda
+correcto (`siLegajoCompletoGenerar`, desde la revisión de cada documento y desde la firma en
+el portal). Una sola vez; el botón de la ficha los regenera a mano. La encomienda del CPAU se
+va a disparar en el mismo punto.
+
 Pendiente: la lámina de bastidor del Canva (frente con Largo/Ancho/Alto) no se usa porque
 el sistema es siempre multidireccional; la encomienda del CPAU (robot RETP).
 

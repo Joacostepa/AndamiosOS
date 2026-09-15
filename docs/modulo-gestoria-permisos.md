@@ -680,6 +680,17 @@ cuando se presenta en TAD.
 - **Secciones "según obra"** del informe: **estándar por tipo**, validado una vez por
   Hougassian. Pantalla: apoyo, protección peatonal, esferas. Estructura: además plataformas,
   media sombra, base de fijación y escalera interna.
+- **Croquis (JS, 2026-09-15; Hougassian ya está al tanto):** láminas del Canva "Croquis
+  Implantación del Andamio" por tipo: portada · plancheta · pantalla (render 3D con base,
+  alto y ancho de bandeja + vista frontal) · estructura con pantalla y cerramiento (render +
+  Largo/Ancho/Alto) · torre (render + medidas) · andamio de bastidor (frente + medidas).
+  **La plancheta va DIBUJADA** con la geometría oficial (EPOK): manzana, lotes numerados,
+  calles y el lote de la obra en naranja — ya se presentó así (Gorriti 6009). Las planchetas
+  escaneadas no están publicadas (EPOK `planos/` da 404).
+- Datos de parcela sin carga manual: USIG normaliza la dirección (`servicios.usig…/normalizar`,
+  da `cod_calle`) → EPOK `catastro/parcela/?codigo_calle=&altura=` da SMP, frente/fondo y
+  todas las puertas (frentes desde/hasta para el CPAU) → `geometria/?smp=` y `smp/{s}/{m}/`
+  para dibujar la manzana. EPOK filtra clientes sin user agent de navegador.
 - Nota del dueño para inquilinos: no hay plantilla en el Drive (sólo una de YPF Gas de 2021):
   hay que redactarla.
 

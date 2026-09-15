@@ -85,6 +85,20 @@ export function useTramite(id: string) {
   });
 }
 
+/** Genera informe técnico y croquis. Sin venta (prueba) hay que pasar tipo y medidas. */
+export function useGenerarDocumentos(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (medidas: { tipo: string; base: number; alto: number } | null) =>
+      pedir<{ tipo: string; base: number; alto: number; smp: string | null; plancheta: boolean }>(`/api/permisos-via-publica/tramites/${id}/generar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(medidas ?? {}),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tramite-permiso", id] }),
+  });
+}
+
 export function useReenviarLink(id: string) {
   const qc = useQueryClient();
   return useMutation({

@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useBorrarTramite, useReenviarLink, useTramite } from "@/hooks/use-permisos-via-publica";
+import { GenerarDocumentos } from "@/components/permisos-via-publica/generar-documentos";
 import {
   ETIQUETA_DUENO, ETIQUETA_ESTADO_DOCUMENTO, NOMBRE_DOCUMENTO, formatoCuit,
   type Documento, type EstadoDocumento,
@@ -145,6 +146,7 @@ export default function FichaTramitePage({ params }: { params: Promise<{ id: str
       </section>
 
       <ListaDocumentos titulo={`Legajo del cliente · ${legajo.filter((d) => d.estado !== "falta").length} de ${legajo.length}`} documentos={legajo} />
+      <GenerarDocumentos tramiteId={t.id} conVenta={!!t.odoo_venta_id} />
       {propios.length > 0 && <ListaDocumentos titulo="Documentos de ABA y del seguro" documentos={propios} />}
 
       <section className="rounded-md border">

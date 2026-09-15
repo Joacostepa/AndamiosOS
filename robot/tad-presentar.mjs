@@ -121,6 +121,33 @@ async function sinProteccion(archivo) {
   return true;
 }
 
+/**
+ * TAD rechaza ALGUNOS PDF con firma digital: "No pudimos adjuntar tu documento. El archivo se
+ * encuentra previamente firmado o con espacios de firma" (S02466, 15/09: la certificación digital
+ * de reproducciones del Colegio de Escribanos que trae el acta de asamblea). No todos: el aviso de
+ * obra de la DGROC, firmado en GDE, entró. Por eso se adjunta el original y, sólo si TAD lo rechaza
+ * por eso, se aplana con qpdf: sellos, texto y firmas se ven igual en la página (probado con esa
+ * acta, 5 páginas idénticas); lo que se va es el certificado digital y los campos de firma.
+ * Devuelve la copia aplanada, con el mismo nombre, en una subcarpeta.
+ */
+async function sinFirmaDigital(archivo) {
+  const dir = path.join(path.dirname(archivo), "sin-firma");
+  mkdirSync(dir, { recursive: true });
+  const salida = path.join(dir, path.basename(archivo));
+  try {
+    await ejecutar(QPDF, ["--flatten-annotations=all", "--remove-restrictions", archivo, salida]);
+  } catch (e) {
+    // Código 3 = sólo advertencias: el archivo igual se escribe.
+    if (!existsSync(salida)) {
+      throw new Trabado(`"${path.basename(archivo)}" tiene firma digital y TAD no lo acepta; no se le pudo sacar (${e.code === "ENOENT" ? "falta qpdf en la Mac: brew install qpdf" : String(e.message).split("\n")[0]})`);
+    }
+  }
+  if (/\/ByteRange\b/.test(readFileSync(salida).toString("latin1"))) {
+    throw new Trabado(`"${path.basename(archivo)}" tiene firma digital y TAD no lo acepta; qpdf no se la pudo sacar`);
+  }
+  return salida;
+}
+
 /** Baja del bucket los archivos de cada casillero. Uno va tal cual; varios se unen en un PDF. */
 async function prepararAdjuntos(db, payload, tareaId) {
   const dir = path.join(TMP, String(tareaId));
@@ -371,7 +398,22 @@ function filaDeCasillero(page, casillero) {
  * hecho (IF-2026-41611319 en el casillero), y el robot frenó por ese texto. Si el casillero ya
  * tiene un IF (se sigue desde un borrador), no se vuelve a adjuntar: cada adjunto es un IF oficial.
  */
-async function adjuntar(page, { casillero, archivo }) {
+const RECHAZADO = /No pudimos adjuntar/i;
+const FIRMADO = /previamente firmado|espacios de firma/i;
+
+/** Cierra la ventana de Adjuntar sin adjuntar: la × de arriba o, si no está, Escape. */
+async function cerrarDialogo(page, dialogo) {
+  const cruz = dialogo.locator("button.btn-close, button.close, button[aria-label]").first();
+  if (await cruz.count()) await cruz.click({ timeout: 5000 }).catch(() => {});
+  else await page.keyboard.press("Escape");
+  await dialogo.waitFor({ state: "hidden", timeout: 15000 }).catch(() => {});
+  if (await dialogo.isVisible().catch(() => false)) {
+    await page.keyboard.press("Escape");
+    await dialogo.waitFor({ state: "hidden", timeout: 10000 }).catch(() => { throw new Trabado("No se pudo cerrar la ventana de Adjuntar de TAD"); });
+  }
+}
+
+async function adjuntar(page, { casillero, archivo }, { aplanado = false } = {}) {
   const fila = filaDeCasillero(page, casillero);
   if (!(await fila.count())) throw new Trabado(`No aparece el casillero "${casillero}" en TAD`);
   const previo = normal(await fila.innerText().catch(() => "")).match(IF_ADJUNTO)?.[0];
@@ -380,19 +422,29 @@ async function adjuntar(page, { casillero, archivo }) {
   await fila.locator("button", { hasText: /Adjuntar/ }).first().click({ timeout: 15000 });
   const dialogo = page.locator(".modal.show").filter({ hasText: /Adjunt[aá] documentaci[oó]n/ }).last();
   await dialogo.waitFor({ state: "visible", timeout: 20000 });
+  const texto = async () => normal(await dialogo.innerText().catch(() => ""));
+  // Un rechazo anterior que haya quedado escrito en la ventana no cuenta como rechazo de este archivo.
+  const rechazoViejo = RECHAZADO.test(await texto());
   await dialogo.locator("input[type=file]").first().setInputFiles(archivo);
   const nombre = path.basename(archivo);
-  await hasta(page, async () => normal(await dialogo.innerText()).includes(nombre), 20000);
+  await hasta(page, async () => (await texto()).includes(nombre), 20000);
 
   // TAD sube el archivo apenas se elige (ruedita al lado del nombre) y deja "Adjuntar"
   // desactivado hasta que termina. 15 s no alcanzaron para el reglamento de S02466 (4,8 MB,
-  // 15/09): se espera hasta 3 minutos. Todavía no se generó ningún documento oficial, así que si
-  // no termina se puede reintentar.
+  // 15/09): se espera hasta 3 minutos. Si TAD rechaza el archivo, "Adjuntar" queda desactivado
+  // para siempre y abajo dice "No pudimos adjuntar tu documento…": ahí se deja de esperar (el
+  // 15/09 el robot esperó los 3 minutos y lo tomó por TAD lento). Todavía no se generó ningún
+  // documento oficial, así que se puede reintentar.
   const boton = dialogo.locator("button:visible").filter({ hasText: /^\s*Adjuntar\s*$/ }).last();
-  const habilitado = await hasta(page, async () => await boton.isEnabled(), 180000);
-  if (!habilitado) {
-    const aviso = normal(await dialogo.innerText().catch(() => "")).match(/(?:Error|No se pudo|supera|excede|formato)[^.]{0,160}\.?/i)?.[0];
-    if (aviso) throw new Trabado(`"${casillero}": TAD no aceptó el archivo (${aviso})`);
+  await hasta(page, async () => (await boton.isEnabled()) || (!rechazoViejo && RECHAZADO.test(await texto())), 180000);
+  if (!(await boton.isEnabled().catch(() => false))) {
+    const t = await texto();
+    if (FIRMADO.test(t) && !aplanado) {
+      await cerrarDialogo(page, dialogo);
+      return adjuntar(page, { casillero, archivo: await sinFirmaDigital(archivo) }, { aplanado: true });
+    }
+    const aviso = t.match(/No pudimos adjuntar.{0,200}/i)?.[0] ?? t.match(/(?:Error|No se pudo|supera|excede|formato)[^.]{0,160}\.?/i)?.[0];
+    if (aviso) throw new Trabado(`"${casillero}": TAD no aceptó el archivo${aplanado ? " ni sin la firma digital" : ""} (${aviso})`);
     throw new TadNoCarga(`"${casillero}": TAD no terminó de subir el archivo en 3 minutos`);
   }
   const guardado = page.waitForResponse((r) => r.request().method() === "PUT" && /personaDocumento\/save/.test(r.url()), { timeout: 120000 }).catch(() => null);
@@ -402,7 +454,7 @@ async function adjuntar(page, { casillero, archivo }) {
   try { cuerpo = res ? await res.json() : null; } catch { /* sin cuerpo */ }
 
   const numero = await hasta(page, async () => normal(await fila.innerText()).match(IF_ADJUNTO)?.[0], 45000);
-  if (numero) return { yaEstaba: false, if: numero };
+  if (numero) return { yaEstaba: false, if: numero, aplanado };
   const enDialogo = normal(await dialogo.innerText().catch(() => "")).match(/(?:Error|No se pudo)[^.]{0,160}\./)?.[0];
   throw new Trabado(`"${casillero}": el documento no quedó en el casillero (${enDialogo ?? (res ? cuerpo?.mensaje ?? `HTTP ${res.status()}` : "TAD no respondió")}). Puede haber quedado un IF: revisar el borrador`);
 }
@@ -627,7 +679,7 @@ export async function presentarEnTad({ db, tarea, page, log }) {
       for (const a of tanda) {
         const r = await adjuntar(page, a);
         estado.adjuntados += 1;
-        log(`TAD: ${r.yaEstaba ? "ya estaba" : "adjunto"} ${estado.adjuntados}/${adjuntos.length} — ${a.casillero} (${r.if})`);
+        log(`TAD: ${r.yaEstaba ? "ya estaba" : "adjunto"} ${estado.adjuntados}/${adjuntos.length} — ${a.casillero} (${r.if})${r.aplanado ? " — sin la firma digital: TAD no la aceptaba" : ""}`);
       }
     };
     const primeros = [];

@@ -1078,6 +1078,12 @@ tomó como falla del adjunto. Quedó el borrador 12984454 con ese IF. Cambios:
   dejó de mostrar sus casilleros. El robot usa este orden desde ese día y arma cada tanda con
   lo que muestra TAD. Antes de empezar espera a ver la lista de casilleros (3 min, si no:
   `TadNoCarga`). La prueba no cambia: sólo llena el formulario, no toca Jurídica ni adjunta.
+  Primera corrida con este orden (tarea 33, borrador 12988373, 17:29): nota, póliza, informe
+  y encomienda entraron sin el cartel rojo. El robot frenó en el croquis, pero el croquis
+  **sí había quedado**: TAD le dio **RE-2026-41662633-GCABA-SSGOU**, no un IF.
+- **El número del adjunto no siempre es IF.** Puede venir con otras siglas del sistema de
+  documentos del Gobierno (RE en el croquis). Desde el 15/09 el robot acepta cualquier sigla
+  menos EX (expediente) para dar un adjunto por hecho o para saltearlo al seguir un borrador.
   Sin confirmar todavía: el borrador 12986313 tampoco cargaba los documentos a las 16:15 y no
   tenía el formulario guardado. Puede que, además, TAD estuviera caído de verdad.
 - **Empezar de cero** (en la ficha, con borrador pendiente y la presentación en error): sólo

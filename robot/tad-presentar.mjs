@@ -352,7 +352,10 @@ async function llenarYGuardar(page, f, p, log) {
 
 // ── Adjuntar y confirmar ────────────────────────────────────────────────────
 
-const IF_ADJUNTO = /IF-\d{4}-\d+-GCABA-[A-Z]+/;
+// El número GEDO que TAD le da al documento adjuntado. No siempre es IF: el croquis de S02466
+// salió RE-2026-41662633-GCABA-SSGOU (15/09) y el robot, que sólo buscaba "IF-", lo dio por
+// fallido. Se acepta cualquier sigla menos EX (expediente).
+const IF_ADJUNTO = /\b(?!EX-)[A-Z]{2,5}-\d{4}-\d{5,}-+GCABA-[A-Z]+/;
 
 function filaDeCasillero(page, casillero) {
   return page.locator("div.row, li, .documento, div")

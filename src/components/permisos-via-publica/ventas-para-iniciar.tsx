@@ -32,8 +32,8 @@ export function VentasParaIniciar() {
           Ventas para iniciar <span className="text-muted-foreground">· {data.length}</span>
         </h2>
         <p className="text-[12px] text-muted-foreground">
-          Confirmadas con permiso de implantación y sin trámite. Al iniciar se le manda al cliente el link para cargar el dueño
-          del lote y su documentación.
+          Confirmadas con permiso de implantación y sin trámite. Al iniciar sale el link para cargar el dueño del lote y su
+          documentación: al cliente o, en modo supervisado, al vendedor de la orden para que se lo pase.
         </p>
       </header>
       <ul>
@@ -47,6 +47,7 @@ export function VentasParaIniciar() {
                 </p>
                 <p className="text-[12px] text-muted-foreground">
                   {v.cliente ?? "Sin cliente"} · {v.email ?? "sin mail"}
+                  {v.vendedor && ` · vendedor: ${v.vendedor}`}
                   {v.problemaMail && <span className="text-orange-400"> · {v.problemaMail} Se inicia igual y el link se manda por WhatsApp.</span>}
                 </p>
                 {/* "Se arma con el expediente" = la gestión ya se inició: puede estar en curso por
@@ -64,7 +65,7 @@ export function VentasParaIniciar() {
                   iniciar.mutate(v.ventaId, {
                     onSuccess: (r) => {
                       if (r.resultado === "ya_abierto") toast.info("Esta venta ya tenía trámite");
-                      else if (r.linkEnviado) toast.success(`Trámite iniciado: le mandamos el link a ${v.email}`);
+                      else if (r.linkEnviado) toast.success(`Trámite iniciado: le mandamos el link a ${r.linkEnviadoA ?? v.email}`);
                       else toast.warning("Trámite iniciado, pero el mail no salió: copiá el link y mandalo por WhatsApp");
                       router.push(`/permisos-via-publica/tramites/${r.tramiteId}`);
                     },

@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChipEstado } from "@/components/permisos-via-publica/chip-estado";
 import { VentasParaIniciar } from "@/components/permisos-via-publica/ventas-para-iniciar";
+import { ModoSupervisado } from "@/components/permisos-via-publica/modo-supervisado";
 import { useBandejaPermisos, useCrearPrueba, useRevisarAhora } from "@/hooks/use-permisos-via-publica";
 import { coincide, estadoVinculo, type EstadoRobot, type Expediente } from "@/lib/permisos-via-publica/tipos";
 
@@ -117,6 +118,8 @@ export default function PermisosViaPublicaPage() {
         </div>
       )}
 
+      <ModoSupervisado supervision={data.supervision} />
+
       <div className="relative max-w-sm">
         <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
         <Input
@@ -147,13 +150,16 @@ export default function PermisosViaPublicaPage() {
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                       <span className="text-[13px] font-medium">{t.direccion}</span>
                       {t.es_prueba && <span className="rounded bg-purple-500/15 px-1.5 py-0.5 text-[11px] text-purple-300">PRUEBA</span>}
-                      <span className="text-[12px] text-muted-foreground">{t.odoo_venta_nombre} · {t.cliente_nombre}</span>
+                      <span className="text-[12px] text-muted-foreground">
+                        {[t.odoo_venta_nombre, t.cliente_nombre].filter(Boolean).join(" · ")}
+                        {t.vendedor_nombre && ` · vendedor: ${t.vendedor_nombre}`}
+                      </span>
                     </div>
                     <div className="mt-1 flex flex-wrap gap-x-3 text-[12px] text-muted-foreground">
                       {t.link_error ? (
                         <span className="text-orange-400">Link sin mandar</span>
                       ) : (
-                        <span>{t.link_enviado_at ? "Link enviado" : "Mandando link…"}</span>
+                        <span>{t.link_enviado_at ? `Link enviado${t.link_enviado_a ? ` a ${t.link_enviado_a}` : ""}` : "Mandando link…"}</span>
                       )}
                       <span>{t.titular_cargado_at ? `Dueño: ${t.titular_nombre}` : "Falta el dueño del lote"}</span>
                       {legajo.length > 0 && <span>Legajo {legajo.filter((d) => d.estado !== "falta").length}/{legajo.length}</span>}
@@ -230,8 +236,11 @@ function FilaExpediente({ e, historial = false }: { e: Expediente; historial?: b
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <span className="font-mono text-[12px] text-muted-foreground">EX-{e.numero}</span>
           <span className="text-[13px] font-medium">{titulo}</span>
-          {e.odoo_venta_nombre && e.direccion && (
-            <span className="text-[12px] text-muted-foreground">{e.odoo_venta_nombre}</span>
+          {/* Número de orden y cliente, para saber de quién es sin abrir la ficha. */}
+          {(e.odoo_venta_nombre || e.cliente) && (
+            <span className="text-[12px] text-muted-foreground">
+              {[e.odoo_venta_nombre !== titulo ? e.odoo_venta_nombre : null, e.cliente].filter(Boolean).join(" · ")}
+            </span>
           )}
           {/* Hasta que alguien confirme la venta, el robot no escribe el trámite en Odoo. */}
           {vinculo === "propuesto" && (

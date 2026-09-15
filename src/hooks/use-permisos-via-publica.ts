@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Bandeja, FichaExpediente, FichaTramite, VentaParaIniciar } from "@/lib/permisos-via-publica/tipos";
+import type { Supervision } from "@/lib/permisos-via-publica/supervision";
 
 async function pedir<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
@@ -46,11 +47,47 @@ export function useVentasParaIniciar() {
   });
 }
 
+/** Guarda los interruptores del modo supervisado. */
+export function useGuardarSupervision() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (cambios: Partial<Supervision>) =>
+      pedir<Supervision>("/api/permisos-via-publica/supervision", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(cambios),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["permisos-via-publica"] }),
+  });
+}
+
+/** "Pedir endoso a Segucom" desde la ficha del trámite (modo supervisado). */
+export function usePedirEndosoTramite(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => pedir<{ ok: true }>(`/api/permisos-via-publica/tramites/${id}/endoso`, { method: "POST" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tramite-permiso", id] }),
+  });
+}
+
+/** Sube el certificado visado de la encomienda del CPAU. */
+export function useSubirCertificado(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (archivo: File) => {
+      const form = new FormData();
+      form.append("archivo", archivo);
+      return pedir<{ ok: true; estado: string; observacion: string | null }>(`/api/permisos-via-publica/tramites/${id}/certificado`, { method: "POST", body: form });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tramite-permiso", id] }),
+  });
+}
+
 export function useIniciarTramite() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (ventaId: number) =>
-      pedir<{ resultado: string; tramiteId: string; linkEnviado?: boolean }>(`/api/permisos-via-publica/ventas/${ventaId}/iniciar`, { method: "POST" }),
+      pedir<{ resultado: string; tramiteId: string; linkEnviado?: boolean; linkEnviadoA?: string | null }>(`/api/permisos-via-publica/ventas/${ventaId}/iniciar`, { method: "POST" }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["permisos-ventas-para-iniciar"] });
       qc.invalidateQueries({ queryKey: ["permisos-via-publica"] });

@@ -1027,6 +1027,39 @@ TAD marca uno, se fuerzan los dos. La altura se escribe pegada a la calle elegid
 Backspace (borrar hacía perder la calle y Autocompletar respondía "No se obtuvieron
 resultados").
 
+### Modo supervisado, vendedor y gestor (15/09)
+
+**Decidido con JS para las primeras semanas con clientes reales** (después se apagan desde la
+bandeja, sin tocar código). Tabla `pvp_config` (`20260915000007_permisos_supervision.sql`,
+aplicada), `src/lib/permisos-via-publica/supervision.ts`, panel "Modo supervisado" en la bandeja.
+Arranca todo en manual:
+
+| Interruptor | Manual (hoy) | Automático |
+| --- | --- | --- |
+| Link al cliente | "Iniciar trámite" le manda el link **al vendedor de la orden**, con texto para WhatsApp, y él se lo pasa al cliente | el link va al cliente |
+| Endoso | al cargar el dueño del lote se avisa; sale con **"Pedir endoso a Segucom"** en la ficha del trámite | sale solo |
+| Encomienda | con el legajo completo se avisa; se arma con el botón de la ficha | el robot la arma solo (Finalizar sigue manual) |
+| Presentación | con todo listo se avisa; se presenta con **"Presentar ahora"** | el robot presenta solo |
+
+**Avisos de paso pendiente** (`src/lib/permisos-via-publica/gestion.ts → avisarPasoPendiente`):
+alerta en la campanita/#syh y mail a quien gestiona con copia al vendedor, una sola vez por
+trámite y paso.
+
+**Mails:** todos van con **copia al vendedor de la orden y a quien gestiona** el trámite, y las
+**respuestas van siempre al vendedor** (Reply-To). Vendedor = `sale.order.user_id` → `res.users`
+(email o login; se guarda en `pvp_tramites.vendedor_nombre/email` al abrir). Gestor = quien
+apretó "Iniciar trámite" (`pvp_tramites.creado_por` → `user_profiles.email`). Si no hay vendedor,
+responde el gestor. El pedido a Segucom junta vendedores y gestores de todos los trámites del mail.
+Remitente: sigue siendo `PERMISOS_MAIL` (js@).
+
+**Certificado del CPAU:** `POST /api/permisos-via-publica/tramites/[id]/certificado` y el campo
+"Certificado visado" en la sección de la encomienda. Controla que el PDF se lea y sea del CPAU,
+deja `encomienda_cpau` en `ok` y llama a `siListoPresentar`. (El botón de subir PDF de la ficha
+del expediente es sólo para la póliza: la revisa como póliza.)
+
+**Tablas:** número de orden, cliente y vendedor a la vista en ventas para iniciar, trámites
+nuevos, expedientes y encabezados de las fichas.
+
 ### Otros hallazgos del 15/09
 
 - **Login miBA:** la redirección ahora termina en `login.buenosaires.gob.ar/auth/realms/mail`

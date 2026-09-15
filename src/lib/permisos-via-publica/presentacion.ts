@@ -3,6 +3,8 @@ import { registrarEvento } from "./endosos";
 import { normalizar, parcelaPorDireccion } from "./catastro";
 import { FaltanDatos } from "./generacion";
 import { NOMBRE_DOCUMENTO, type TipoDueno } from "./tipos";
+import { leerSupervision } from "./supervision";
+import { avisarPasoPendiente } from "./gestion";
 
 // La presentación del permiso en TAD: qué documento va en cada casillero, cuándo un trámite
 // está listo y los datos que necesita el robot de la Mac (robot/tad-presentar.mjs). La app
@@ -198,6 +200,11 @@ export async function siListoPresentar(db: SupabaseClient, tramiteId: string): P
     if (!t || t.es_prueba || !evaluar(t, docs).listo) return false;
     const { count } = await db.from("pvp_tareas").select("id", { count: "exact", head: true }).eq("tipo", "tad_presentar").eq("tramite_id", tramiteId);
     if (count) return false;
+    if (!(await leerSupervision(db)).presentacionAutomatica) {
+      // Modo supervisado: se presenta con el botón de la ficha; se le avisa a quien gestiona.
+      await avisarPasoPendiente(db, tramiteId, "presentacion");
+      return false;
+    }
     return (await pedirPresentacion(db, tramiteId)).resultado === "pedida";
   } catch (e) {
     console.error("[presentacion] no se pudo pedir la presentación", tramiteId, e instanceof Error ? e.message : e);

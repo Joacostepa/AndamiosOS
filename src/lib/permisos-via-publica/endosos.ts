@@ -136,8 +136,14 @@ async function mandarAProductor(db: SupabaseClient, productorId: string, filas: 
     "Joaquín",
   ].join("\n");
 
+  // Copia al vendedor y a quien gestiona cada trámite del pedido; las respuestas, a los
+  // vendedores (JS, 2026-09-15). Import dinámico: gestion.ts importa este archivo.
+  const { contactosDeTramite, copias, responderA } = await import("./gestion");
+  const contactos = await Promise.all(filas.map((f) => contactosDeTramite(db, f.tramite_id)));
   await enviarMail({
     para: p.email,
+    cc: copias(contactos, p.email),
+    responderA: responderA(contactos),
     asunto: `${prueba ? "[PRUEBA] " : ""}${recordatorio ? `Recordatorio: endosos pendientes (${filas.length})` : `Endosos para pedir — Andamios Buenos Aires (${filas.length})`}`,
     texto,
   });

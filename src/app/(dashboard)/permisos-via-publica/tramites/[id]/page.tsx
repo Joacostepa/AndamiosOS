@@ -12,7 +12,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useBorrarTramite, useReenviarLink, useTramite } from "@/hooks/use-permisos-via-publica";
+import { useBorrarTramite, usePedirEndosoTramite, useReenviarLink, useTramite } from "@/hooks/use-permisos-via-publica";
 import { GenerarDocumentos } from "@/components/permisos-via-publica/generar-documentos";
 import { EncomiendaCpau } from "@/components/permisos-via-publica/encomienda-cpau";
 import { PresentacionTad } from "@/components/permisos-via-publica/presentacion-tad";
@@ -57,7 +57,10 @@ export default function FichaTramitePage({ params }: { params: Promise<{ id: str
       <Link href="/permisos-via-publica" className="inline-flex items-center gap-1 text-[13px] text-muted-foreground hover:text-foreground">
         <ArrowLeft className="size-4" /> Permisos de andamio
       </Link>
-      <PageHeader title={t.direccion} description={`Trámite nuevo · ${t.odoo_venta_nombre ?? "sin venta"}`} />
+      <PageHeader
+        title={t.direccion}
+        description={`Trámite nuevo · ${[t.odoo_venta_nombre ?? "sin venta", t.cliente_nombre, t.vendedor_nombre ? `vendedor: ${t.vendedor_nombre}` : null].filter(Boolean).join(" · ")}`}
+      />
 
       {t.es_prueba && (
         <section className="space-y-2 rounded-md border border-purple-500/30 bg-purple-500/10 p-3 text-[13px]">
@@ -104,7 +107,11 @@ export default function FichaTramitePage({ params }: { params: Promise<{ id: str
         <h3 className="font-semibold">Portal del cliente</h3>
         <p className="text-muted-foreground">
           {t.cliente_nombre ?? "Cliente sin nombre"} · {t.cliente_email ?? "sin mail en Odoo"}
-          {t.link_enviado_at && <> · link enviado el {cuando(t.link_enviado_at)}</>}
+          {t.link_enviado_at && <> · link enviado{t.link_enviado_a ? ` a ${t.link_enviado_a}` : ""} el {cuando(t.link_enviado_at)}</>}
+        </p>
+        <p className="text-[12px] text-muted-foreground">
+          Vendedor: {t.vendedor_nombre ? `${t.vendedor_nombre}${t.vendedor_email ? ` (${t.vendedor_email})` : " (sin mail en Odoo)"}` : "sin vendedor en la orden"} · recibe copia
+          de todos los mails y las respuestas.
         </p>
         {t.link_error && <p className="text-orange-400">{t.link_error}</p>}
         {linkCliente && (
@@ -142,6 +149,9 @@ export default function FichaTramitePage({ params }: { params: Promise<{ id: str
             {t.es_inquilino ? " · quien contrata alquila" : ""}
             <span className="block text-[12px] text-muted-foreground">Cargado por el cliente el {cuando(t.titular_cargado_at)}</span>
           </p>
+        ) : null}
+        {t.titular_cargado_at ? (
+          <PedirEndoso tramiteId={t.id} poliza={documentos.find((d) => d.clave === "poliza_rc") ?? null} />
         ) : (
           <p className="text-muted-foreground">El cliente todavía no lo cargó.</p>
         )}
@@ -166,6 +176,39 @@ export default function FichaTramitePage({ params }: { params: Promise<{ id: str
           ))}
         </ul>
       </section>
+    </div>
+  );
+}
+
+/**
+ * "Pedir endoso a Segucom": en modo supervisado es la única forma de que salga el pedido.
+ * Se muestra mientras la póliza no está pedida ni lista; después permite volver a pedir.
+ */
+function PedirEndoso({ tramiteId, poliza }: { tramiteId: string; poliza: Documento | null }) {
+  const pedirEndoso = usePedirEndosoTramite(tramiteId);
+  const estado = poliza?.estado ?? "falta";
+  const yaPedido = ["pedido", "revisando", "ok"].includes(estado);
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="text-[12px] text-muted-foreground">
+        Póliza: {poliza ? ETIQUETA_ESTADO_DOCUMENTO[poliza.estado] : "sin pedir"}
+        {poliza?.pedido_at && ` · pedida el ${cuando(poliza.pedido_at)}`}
+      </span>
+      <Button
+        size="sm"
+        variant={yaPedido ? "outline" : "default"}
+        disabled={pedirEndoso.isPending}
+        onClick={() => {
+          if (yaPedido && !window.confirm("El endoso ya se pidió. ¿Mandar el pedido a Segucom otra vez?")) return;
+          pedirEndoso.mutate(undefined, {
+            onSuccess: () => toast.success("Pedido de endoso enviado a Segucom"),
+            onError: (err) => toast.error(err instanceof Error ? err.message : "No se pudo pedir"),
+          });
+        }}
+      >
+        {pedirEndoso.isPending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+        {yaPedido ? "Volver a pedir el endoso" : "Pedir endoso a Segucom"}
+      </Button>
     </div>
   );
 }

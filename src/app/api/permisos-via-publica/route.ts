@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { agrupar, type Bandeja, type EstadoRobot, type Expediente, type TramiteNuevo } from "@/lib/permisos-via-publica/tipos";
+import { leerSupervision } from "@/lib/permisos-via-publica/supervision";
 
 // GET /api/permisos-via-publica
 //
@@ -19,11 +20,12 @@ export async function GET() {
       db.from("pvp_tareas").select("id", { count: "exact", head: true }).in("estado", ["pendiente", "tomada"]),
       // Trámites abiertos desde una venta que todavía no tienen expediente en TAD.
       db.from("pvp_tramites")
-        .select("id, direccion, odoo_venta_nombre, cliente_nombre, titular_nombre, titular_cargado_at, link_enviado_at, link_error, created_at, es_prueba, pvp_documentos(estado, origen, clave)")
+        .select("id, direccion, odoo_venta_nombre, cliente_nombre, vendedor_nombre, titular_nombre, titular_cargado_at, link_enviado_at, link_enviado_a, link_error, created_at, es_prueba, pvp_documentos(estado, origen, clave)")
         .is("expediente_id", null)
         .order("created_at", { ascending: false }),
     ]);
     if (expedientes.error) throw expedientes.error;
+    const supervision = await leerSupervision(db);
 
     const todas = (expedientes.data ?? []) as Expediente[];
     // El historial (finalizados anteriores al robot) va aparte: no entra en los grupos del día a día.
@@ -36,6 +38,7 @@ export async function GET() {
       grupos: agrupar(filas),
       total: filas.length,
       historial,
+      supervision,
       robot: (robot.data as EstadoRobot | null) ?? null,
       revisando: (abiertas.count ?? 0) > 0,
     };

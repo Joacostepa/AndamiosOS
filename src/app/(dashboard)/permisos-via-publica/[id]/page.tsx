@@ -90,7 +90,10 @@ export default function FichaPermisoPage({ params }: { params: Promise<{ id: str
         <ArrowLeft className="size-4" /> Permisos de andamio
       </Link>
 
-      <PageHeader title={e.direccion ?? e.titular ?? `EX-${e.numero}`} description={e.expediente}>
+      <PageHeader
+        title={e.direccion ?? e.titular ?? `EX-${e.numero}`}
+        description={[e.expediente, e.odoo_venta_nombre, e.cliente].filter(Boolean).join(" · ")}
+      >
         {permisoUrl && (
           // Button es de base-ui (no tiene asChild): un <a> con las mismas clases.
           <a href={permisoUrl} target="_blank" rel="noreferrer" className={buttonVariants({ size: "sm" })}>

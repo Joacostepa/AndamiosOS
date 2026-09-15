@@ -50,6 +50,18 @@ la Mac reinstalado con ese código.
 - **Cada vez que se para el robot en medio de una vuelta** el log muestra "Target page, context
   or browser has been closed": no es una falla, es la interrupción.
 
+## Actualización 2026-09-15 (tarde) — modo supervisado
+
+- **JS quiere probar con ventas reales.** Para las primeras ~2 semanas: el link va al
+  **vendedor** (no al cliente), y el endoso, la encomienda y la presentación se disparan con
+  botones de la ficha; la app avisa cuando están para hacerse. Interruptores en la bandeja
+  ("Modo supervisado"). Todos los mails con copia al vendedor y al gestor; respuestas al vendedor.
+- **Tarjeta del CPAU:** no hace falta todavía. En la primera encomienda real, firma/pago/carga
+  se hacen a mano; el robot captura lo que aparece después de Finalizar. El certificado visado
+  se sube en la ficha ("Certificado visado") y eso habilita la presentación.
+- **Para la prueba:** avisar a Tamara qué venta es (que no mande el Google Form ni lo tramite en
+  paralelo).
+
 ## Lo que falta, en detalle
 
 ### A. Presentar en TAD (lo más importante)

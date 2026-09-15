@@ -3,12 +3,42 @@
 import { CheckCircle2, ExternalLink, FileSignature, Loader2, RotateCcw, TriangleAlert, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { useEncomienda, type AccionEncomienda } from "@/hooks/use-permisos-via-publica";
+import { useEncomienda, useSubirCertificado, type AccionEncomienda } from "@/hooks/use-permisos-via-publica";
 import { formatoCuit, type EncomiendaFicha } from "@/lib/permisos-via-publica/tipos";
 
 // Encomienda del CPAU en la ficha del trámite. El robot de la Mac la completa y frena en
 // Confirmar; acá una persona revisa el resumen y toca "Finalizar en el CPAU". Firma, pago y
 // carga en tramites.cpau.org todavía se hacen a mano.
+
+/**
+ * "Subir certificado del CPAU": el PDF completo de la encomienda visada, que hoy se baja a mano
+ * del Histórico de retp.cpau.org. Con eso el documento queda listo y, si está todo, se pide la
+ * presentación en TAD (o se avisa, en modo supervisado).
+ */
+function SubirCertificado({ tramiteId }: { tramiteId: string }) {
+  const subir = useSubirCertificado(tramiteId);
+  return (
+    <label className="flex flex-wrap items-center gap-2 border-t pt-2 text-[12px]">
+      <span className="text-muted-foreground">Certificado visado (PDF del Histórico del CPAU):</span>
+      <input
+        type="file"
+        accept="application/pdf,.pdf"
+        disabled={subir.isPending}
+        className="max-w-full text-[12px] file:mr-2 file:rounded file:border file:bg-background file:px-2 file:py-1"
+        onChange={(ev) => {
+          const archivo = ev.target.files?.[0];
+          if (!archivo) return;
+          subir.mutate(archivo, {
+            onSuccess: (r) => (r.estado === "ok" ? toast.success("Certificado del CPAU cargado") : toast.warning(`Certificado cargado pero observado: ${r.observacion}`)),
+            onError: (err) => toast.error(err instanceof Error ? err.message : "No se pudo subir"),
+          });
+          ev.target.value = "";
+        }}
+      />
+      {subir.isPending && <Loader2 className="size-4 animate-spin" />}
+    </label>
+  );
+}
 
 export function EncomiendaCpau({ tramiteId, encomienda: e, esPrueba }: { tramiteId: string; encomienda: EncomiendaFicha | null; esPrueba: boolean }) {
   const accion = useEncomienda(tramiteId);
@@ -118,6 +148,8 @@ export function EncomiendaCpau({ tramiteId, encomienda: e, esPrueba }: { tramite
           {pedirBoton("Volver a armarla")}
         </div>
       )}
+
+      <SubirCertificado tramiteId={tramiteId} />
 
       {e && e.capturas.length > 0 && (
         <details>

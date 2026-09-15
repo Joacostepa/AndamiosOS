@@ -4,6 +4,8 @@
 // EL DE TAD, tal cual lo lee el robot. Acá no se decide nada sobre el trámite; sólo cómo se
 // agrupa y cómo se nombra lo que dice el Gobierno.
 
+import type { Supervision } from "./supervision";
+
 export type Solapa = "en_curso" | "finalizado";
 
 export type Expediente = {
@@ -161,6 +163,11 @@ export type Tramite = {
   titular_cargado_at: string | null;
   link_enviado_at: string | null;
   link_error: string | null;
+  /** A quién salió el link: el cliente o, en modo supervisado, el vendedor. */
+  link_enviado_a: string | null;
+  /** Vendedor de la orden en Odoo: va en copia de todo y le llegan las respuestas. */
+  vendedor_nombre: string | null;
+  vendedor_email: string | null;
   /** Trámite de prueba: los mails van a la casilla de la app y no crea alertas. */
   es_prueba: boolean;
 };
@@ -315,12 +322,14 @@ export type VentaParaIniciar = {
   /** Por qué el mail no va a salir (vacío, inválido, mal escrito). null = sale. */
   problemaMail: string | null;
   modalidad: string | null;
+  /** Vendedor de la orden (nombre). */
+  vendedor: string | null;
 };
 
 /** Un trámite abierto desde una venta que todavía no se presentó en TAD. */
 export type TramiteNuevo = Pick<
   Tramite,
-  "id" | "direccion" | "odoo_venta_nombre" | "cliente_nombre" | "titular_nombre" | "titular_cargado_at" | "link_enviado_at" | "link_error" | "created_at" | "es_prueba"
+  "id" | "direccion" | "odoo_venta_nombre" | "cliente_nombre" | "vendedor_nombre" | "titular_nombre" | "titular_cargado_at" | "link_enviado_at" | "link_enviado_a" | "link_error" | "created_at" | "es_prueba"
 > & { pvp_documentos: Pick<Documento, "estado" | "origen" | "clave">[] };
 
 /**
@@ -402,6 +411,8 @@ export type Bandeja = {
   total: number;
   /** Finalizados anteriores al robot, del más nuevo al más viejo. */
   historial: Expediente[];
+  /** Interruptores del modo supervisado. */
+  supervision: Supervision;
   robot: EstadoRobot | null;
   /** Hay una revisión pedida o corriendo. */
   revisando: boolean;

@@ -4,6 +4,8 @@ import { crearAlertas } from "@/lib/alertas/servicio";
 import { enviarMail } from "@/lib/mail";
 import { BUCKET, pedirEndoso, registrarEvento, urlBase } from "./endosos";
 import { revisarDocumentoCliente, tipoDeArchivo } from "./revision-legajo";
+import { leerSupervision } from "./supervision";
+import { avisarPasoPendiente, contactosDeTramite, copias, responderA, vendedorDeVenta } from "./gestion";
 import { NOMBRE_DOCUMENTO, legajoDe, type Tramite, type TipoDueno, type VentaParaIniciar } from "./tipos";
 
 // El portal del cliente: abrir el trámite cuando se confirma la venta, mandarle el link y
@@ -35,6 +37,7 @@ type VentaPermiso = {
   x_lleva_permiso: string | false;
   x_direccion_obra: string | false;
   partner_id: [number, string] | false;
+  user_id: [number, string] | false;
 };
 
 export function linkCliente(token: string | null, origen?: string | null): string | null {
@@ -57,6 +60,8 @@ export type ResultadoApertura = {
   resultado: "abierto" | "ya_abierto" | "no_existe" | "no_confirmada" | "no_lleva_permiso" | "anterior_al_corte";
   tramiteId: string | null;
   linkEnviado?: boolean;
+  /** A quién salió el link: el cliente o, en modo supervisado, el vendedor. */
+  linkEnviadoA?: string | null;
 };
 
 /**
@@ -75,7 +80,7 @@ export async function abrirTramiteDeVenta(
   opts: { origen?: string | null; userId?: string | null; manual?: boolean } = {},
 ): Promise<ResultadoApertura> {
   const [v] = await read<VentaPermiso>("sale.order", [ventaId], [
-    "name", "state", "date_order", "x_lleva_permiso", "x_direccion_obra", "partner_id",
+    "name", "state", "date_order", "x_lleva_permiso", "x_direccion_obra", "partner_id", "user_id",
   ]);
   const nada = (resultado: ResultadoApertura["resultado"]): ResultadoApertura => ({ resultado, tramiteId: null });
   if (!v) return nada("no_existe");
@@ -91,6 +96,9 @@ export async function abrirTramiteDeVenta(
   const [cliente] = v.partner_id
     ? await read<{ id: number; name: string; email: string | false }>("res.partner", [v.partner_id[0]], ["name", "email"])
     : [];
+  // El vendedor de la orden: recibe el link en modo supervisado, va en copia de todo y le
+  // llegan las respuestas.
+  const vendedor = await vendedorDeVenta(v.id).catch(() => null);
 
   const { data: nuevo, error } = await db.from("pvp_tramites").insert({
     odoo_venta_id: v.id,
@@ -98,6 +106,8 @@ export async function abrirTramiteDeVenta(
     direccion: v.x_direccion_obra || v.name,
     cliente_nombre: cliente?.name ?? null,
     cliente_email: cliente?.email || null,
+    vendedor_nombre: vendedor?.nombre ?? (v.user_id ? v.user_id[1] : null),
+    vendedor_email: vendedor?.email ?? null,
     permiso_hasta: seisMesesDesdeHoy(),
     creado_por: opts.userId ?? null,
   }).select("id").single();
@@ -112,7 +122,8 @@ export async function abrirTramiteDeVenta(
     opts.manual ? "persona" : "sistema",
   );
   const linkEnviado = await mandarLinkCliente(db, nuevo.id, opts.origen);
-  return { resultado: "abierto", tramiteId: nuevo.id, linkEnviado };
+  const { data: enviado } = await db.from("pvp_tramites").select("link_enviado_a").eq("id", nuevo.id).maybeSingle();
+  return { resultado: "abierto", tramiteId: nuevo.id, linkEnviado, linkEnviadoA: enviado?.link_enviado_a ?? null };
 }
 
 /** Desde cuándo se ofrecen ventas para iniciar: incluye las que "todavía no arrancaron". */
@@ -135,7 +146,7 @@ export async function ventasParaIniciar(db: SupabaseClient): Promise<VentaParaIn
       // armar, no que no haya gestión. Esas obras también tramitan el permiso (JS, 15/09).
       "|", ["x_tramite_estado", "=", false], ["x_tramite_estado", "=", "no_presentado"],
     ],
-    ["name", "state", "date_order", "x_lleva_permiso", "x_direccion_obra", "partner_id", "x_permiso_modalidad"],
+    ["name", "state", "date_order", "x_lleva_permiso", "x_direccion_obra", "partner_id", "user_id", "x_permiso_modalidad"],
     { order: "date_order desc", limit: 100 },
   );
   if (ventas.length === 0) return [];
@@ -164,6 +175,7 @@ export async function ventasParaIniciar(db: SupabaseClient): Promise<VentaParaIn
       email,
       problemaMail: problemaDeMail(email),
       modalidad: v.x_permiso_modalidad || null,
+      vendedor: v.user_id ? v.user_id[1] : null,
     };
   });
 }
@@ -176,16 +188,41 @@ export async function mandarLinkCliente(db: SupabaseClient, tramiteId: string, o
   if (!t) throw new Error("El trámite no existe");
 
   // En prueba el "cliente" es la casilla de la app: nunca le escribe a nadie de afuera.
-  const para = t.es_prueba ? process.env.PERMISOS_MAIL ?? null : t.cliente_email;
+  // Modo supervisado (JS, 2026-09-15): el link le llega al VENDEDOR de la orden, que se lo pasa
+  // al cliente. Siempre con copia al vendedor y a quien gestiona, y las respuestas al vendedor.
+  const [sup, contactos] = await Promise.all([leerSupervision(db), contactosDeTramite(db, tramiteId)]);
+  const alVendedor = !t.es_prueba && !sup.linkAlCliente;
+  const para = t.es_prueba
+    ? process.env.PERMISOS_MAIL ?? null
+    : alVendedor ? contactos.vendedor?.email ?? contactos.gestor?.email ?? null : t.cliente_email;
   const url = linkCliente(t.token_cliente, origen);
-  const problema = url ? problemaDeMail(para) : "No se sabe la URL de la app para armar el link (NEXT_PUBLIC_APP_URL).";
+  const problema = !url
+    ? "No se sabe la URL de la app para armar el link (NEXT_PUBLIC_APP_URL)."
+    : alVendedor && !para ? "La orden no tiene vendedor con mail en Odoo y nadie gestiona el trámite desde la app." : problemaDeMail(para);
 
   if (!problema) {
     try {
+      const orden = [t.odoo_venta_nombre, t.cliente_nombre].filter(Boolean).join(" · ");
       await enviarMail({
         para: para!.trim(),
-        asunto: `${t.es_prueba ? "[PRUEBA] " : ""}Permiso de andamio para ${t.direccion} — datos y documentación`,
-        texto: [
+        cc: copias(contactos, para),
+        responderA: responderA(contactos),
+        asunto: alVendedor
+          ? `Permiso de andamio para ${t.direccion}${orden ? ` (${orden})` : ""} — pasale el link al cliente`
+          : `${t.es_prueba ? "[PRUEBA] " : ""}Permiso de andamio para ${t.direccion} — datos y documentación`,
+        texto: alVendedor ? [
+          `Hola${contactos.vendedor ? ` ${contactos.vendedor.nombre.split(" ")[0]}` : ""},`,
+          "",
+          `Se inició el trámite del permiso de uso del espacio público para el andamio de ${t.direccion}${orden ? ` (${orden})` : ""}.`,
+          "",
+          "Pasale este link al cliente para que cargue los datos del dueño del lote y su documentación (no hace falta crear una cuenta):",
+          url!,
+          "",
+          "Texto para mandarle por WhatsApp:",
+          `"Hola${t.cliente_nombre ? ` ${t.cliente_nombre}` : ""}! Para tramitar el permiso del andamio de ${t.direccion} necesitamos los datos y documentos del dueño del lote. Cargalos en este link, no hace falta crear una cuenta: ${url}"`,
+          "",
+          "Este mail te llega a vos y no al cliente porque la app está en modo supervisado.",
+        ].join("\n") : [
           ...(t.es_prueba ? ["[PRUEBA] Este mail es lo que le llegaría al cliente.", ""] : []),
           `Hola${t.cliente_nombre ? ` ${t.cliente_nombre}` : ""}, ¿cómo estás?`,
           "",
@@ -202,8 +239,12 @@ export async function mandarLinkCliente(db: SupabaseClient, tramiteId: string, o
           "Andamios Buenos Aires",
         ].join("\n"),
       });
-      await db.from("pvp_tramites").update({ link_enviado_at: new Date().toISOString(), link_error: null }).eq("id", tramiteId);
-      await registrarEvento(db, tramiteId, "link_cliente", `Se le mandó el link a ${para}.`, {}, "sistema");
+      await db.from("pvp_tramites").update({ link_enviado_at: new Date().toISOString(), link_error: null, link_enviado_a: para!.trim() }).eq("id", tramiteId);
+      await registrarEvento(
+        db, tramiteId, "link_cliente",
+        alVendedor ? `Se le mandó el link al vendedor (${para}) para que se lo pase al cliente.` : `Se le mandó el link a ${para}.`,
+        { para, cc: copias(contactos, para) }, "sistema",
+      );
       return true;
     } catch (e) {
       return anotarProblema(e instanceof Error ? e.message : String(e));
@@ -278,7 +319,11 @@ export async function cargarTitular(
   );
   await registrarEvento(db, tramiteId, "titular_cargado", `${datos.nombre} (CUIT ${datos.cuit})`, datos, "cliente");
 
-  if (!t.titular_cargado_at || t.titular_cuit !== datos.cuit) await pedirEndoso(db, tramiteId, null);
+  if (!t.titular_cargado_at || t.titular_cuit !== datos.cuit) {
+    // Modo supervisado: el pedido a Segucom lo hace una persona desde la ficha; se le avisa.
+    if ((await leerSupervision(db)).endosoAutomatico) await pedirEndoso(db, tramiteId, null);
+    else await avisarPasoPendiente(db, tramiteId, "endoso");
+  }
 }
 
 /**
@@ -335,11 +380,16 @@ export async function siLegajoCompletoGenerar(db: SupabaseClient, tramiteId: str
     return avisarFalla("No se pudo generar el informe técnico", "no se pudieron generar el informe técnico y el croquis", "generar", e);
   }
 
-  try {
-    const { pedirEncomienda } = await import("./encomienda");
-    await pedirEncomienda(db, tramiteId);
-  } catch (e) {
-    await avisarFalla("No se pudo pedir la encomienda del CPAU", "no se pudo pedir la encomienda del CPAU", "encomienda", e);
+  if (!(await leerSupervision(db)).encomiendaAutomatica) {
+    // Modo supervisado: la encomienda se arma desde la ficha; se le avisa a quien gestiona.
+    await avisarPasoPendiente(db, tramiteId, "encomienda");
+  } else {
+    try {
+      const { pedirEncomienda } = await import("./encomienda");
+      await pedirEncomienda(db, tramiteId);
+    } catch (e) {
+      await avisarFalla("No se pudo pedir la encomienda del CPAU", "no se pudo pedir la encomienda del CPAU", "encomienda", e);
+    }
   }
 
   async function avisarFalla(titulo: string, frase: string, clave: string, e: unknown) {

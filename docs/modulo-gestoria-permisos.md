@@ -642,9 +642,46 @@ rotarlo: `update pvp_productores set token = replace(gen_random_uuid()::text || 
 Mail sin cargar o mal escrito (`@gmai.com`, `@hotmial.com`…): no se manda, queda
 `link_error` y sale una alerta para mandarlo por WhatsApp o corregirlo en Odoo.
 
-Pendiente del portal: notas prellenadas para descargar (nota de solicitud, acta de
-compromiso, nota del dueño), revisión con IA del legajo, recordatorios al cliente y el
-paso de trámite nuevo a expediente cuando se presenta en TAD.
+**Revisión del legajo (2026-09-15)** — `src/lib/permisos-via-publica/revision-legajo.ts`.
+Cada documento se revisa al subirlo (PDF, JPG, PNG o WEBP; sin HEIC). Claude lee y el
+veredicto sale de reglas por documento: es el pedido, se lee, y según el tipo titular,
+dirección de la obra, CUIT de la constancia, firma y vigencia. El cliente ve el motivo en
+el portal. Si la revisión falla queda "cargado" para una persona; nunca se aprueba sola.
+Probado con la prueba de JS: rechazó una propuesta comercial subida como constancia de CUIT,
+una licencia de conducir como nota, y un aviso de obra de otra dirección.
+
+**Firma en el portal (2026-09-15)** — `documentos-firmados.ts` + `POST /api/public/permiso/[token]/firmar`.
+"Completar y firmar" genera con una sola firma el **Acta de compromiso** (texto del
+formulario oficial del GCBA, tal cual, con los blancos completos) y la **Nota de ABA**
+(membrete con el logo del bucket `empresa/logo.png`; "de solicitud" para consorcio y
+empresa, "de autorización" para persona). Es **firma electrónica** (dibujada + constancia al
+pie de cada página; se guardan IP, dispositivo y sha256 del PDF en la revisión), no firma
+digital certificada. Domicilio electrónico del acta = `PERMISOS_MAIL`. Falta la plantilla
+de la nota del dueño para inquilinos.
+
+**Póliza, corrección (2026-09-15):** sólo se frena si el PDF **pide contraseña para abrirse**.
+Las pólizas de La Mercantil Andina vienen con protección de permisos (`/Encrypt`), se abren
+y TAD las acepta. A Claude no se le piden las listas (un endoso real tiene 20 páginas) sino
+si figura el titular como coasegurado y el GCBA en la no repetición.
+
+Pendiente del portal: recordatorios al cliente y el paso de trámite nuevo a expediente
+cuando se presenta en TAD.
+
+### Informe técnico y medidas — decidido 2026-09-15
+
+- **Sistema:** se asume **multidireccional** (el único modelo firmado: "MODELO DE INFORME
+  TÉCNICO MULTIDIRECCIONAL CON FIRMA.docx", Memoria de Cálculo Estructural de Hougassian).
+  Una obra de bastidor sube su informe a mano en la ficha.
+- **Medidas, en Odoo, solapa "Trabajo a ejecutar" → "Qué se arma"** (propuesta de JS):
+  - estructura con o sin pantalla → campos **Base** y **Altura** (m² = base × altura);
+  - sólo pantalla de protección → **metros lineales** traídos de la línea de pantalla de la
+    orden, **editables**;
+  - cualquier otro tipo → el permiso se pide por **200 m²**.
+- **Secciones "según obra"** del informe: **estándar por tipo**, validado una vez por
+  Hougassian. Pantalla: apoyo, protección peatonal, esferas. Estructura: además plataformas,
+  media sombra, base de fijación y escalera interna.
+- Nota del dueño para inquilinos: no hay plantilla en el Drive (sólo una de YPF Gas de 2021):
+  hay que redactarla.
 
 ### Documentos que sube ABA — todos automáticos
 

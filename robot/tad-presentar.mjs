@@ -19,7 +19,9 @@
 // Todo lo aprendido del formulario: docs/modulo-gestoria-permisos.md § "Presentación en TAD".
 import os from "node:os";
 import path from "node:path";
-import { mkdirSync, writeFileSync, statSync } from "node:fs";
+import { mkdirSync, writeFileSync, statSync, readFileSync, existsSync, renameSync } from "node:fs";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { PDFDocument } from "pdf-lib";
 import { ir, esperarCarga } from "./tad-comun.mjs";
 
@@ -95,6 +97,30 @@ async function unirEnPdf(partes) {
   return salida.save();
 }
 
+const ejecutar = promisify(execFile);
+const QPDF = existsSync("/opt/homebrew/bin/qpdf") ? "/opt/homebrew/bin/qpdf" : "qpdf";
+
+/**
+ * TAD NO acepta PDFs encriptados, ni siquiera los que sólo tienen protección de permisos (se
+ * abren sin clave): "Error generando documento PDF, en importación: PdfReader not opened with
+ * owner password" (S02466, póliza de La Mercantil Andina, 15/09). Se les saca la protección con
+ * qpdf (`brew install qpdf`); el contenido no cambia. Devuelve si hubo que hacerlo.
+ */
+async function sinProteccion(archivo) {
+  if (!/\/Encrypt\b/.test(readFileSync(archivo).toString("latin1"))) return false;
+  const salida = archivo.replace(/\.pdf$/i, "") + "-sin-proteccion.pdf";
+  try {
+    await ejecutar(QPDF, ["--decrypt", archivo, salida]);
+  } catch (e) {
+    // qpdf sale con código 3 cuando sólo hubo advertencias: el archivo igual se escribe.
+    if (!existsSync(salida)) {
+      throw new Trabado(`"${path.basename(archivo)}" está encriptado y TAD no lo acepta; no se le pudo sacar la protección (${e.code === "ENOENT" ? "falta qpdf en la Mac: brew install qpdf" : String(e.message).split("\n")[0]})`);
+    }
+  }
+  renameSync(salida, archivo);
+  return true;
+}
+
 /** Baja del bucket los archivos de cada casillero. Uno va tal cual; varios se unen en un PDF. */
 async function prepararAdjuntos(db, payload, tareaId) {
   const dir = path.join(TMP, String(tareaId));
@@ -103,10 +129,18 @@ async function prepararAdjuntos(db, payload, tareaId) {
   for (const [i, a] of payload.adjuntos.entries()) {
     if (!a.archivos.length) throw new Trabado(`El casillero "${a.casillero}" no tiene archivo`);
     const partes = [];
-    for (const f of a.archivos) {
+    for (const [k, f] of a.archivos.entries()) {
       const { data, error } = await db.storage.from(BUCKET).download(f.path);
       if (error || !data) throw new Trabado(`No se pudo bajar ${f.nombre}: ${error?.message ?? "sin datos"}`);
-      partes.push({ bytes: new Uint8Array(await data.arrayBuffer()), nombre: f.nombre || f.path });
+      let bytes = new Uint8Array(await data.arrayBuffer());
+      const nombre = f.nombre || f.path;
+      // Un PDF protegido se desprotege antes de adjuntarlo o de unirlo con otros.
+      if (/\.pdf$/i.test(nombre)) {
+        const tmp = path.join(dir, `parte-${i + 1}-${k + 1}.pdf`);
+        writeFileSync(tmp, bytes);
+        if (await sinProteccion(tmp)) bytes = new Uint8Array(readFileSync(tmp));
+      }
+      partes.push({ bytes, nombre });
     }
     let destino;
     if (partes.length === 1) {
@@ -517,12 +551,10 @@ export async function presentarEnTad({ db, tarea, page, log }) {
     log(`TAD: borrador ${estado.borrador}${prueba ? " (prueba)" : ""}`);
     }
 
-    const juridicaElegida = () => page.evaluate(() => {
-      const l = [...document.querySelectorAll("label")].find((x) => /Persona Juridica/i.test(x.innerText));
-      const i = l?.querySelector("input") ?? (l?.htmlFor ? document.getElementById(l.htmlFor) : null);
-      return !!i?.checked;
-    }).catch(() => false);
-    if (!prueba && !(await juridicaElegida())) {
+    // Persona Jurídica se elige si faltan SUS casilleros. Al reabrir un borrador TAD muestra el
+    // radio sin marcar y sin los 4 casilleros de persona jurídica (S02466, 15/09).
+    const casillerosJuridica = async () => /Copia del DNI del apoderado/i.test(normal(await page.locator("body").innerText()));
+    if (!prueba && !(await casillerosJuridica())) {
       // Genera documentos en TAD y redibuja la página: esperar antes de tocar Completar.
       const generado = page.waitForResponse((r) => /requisitosExternos\/generarDocumento/.test(r.url()), { timeout: 60000 }).catch(() => null);
       await page.getByText("Persona Juridica", { exact: true }).first().click();

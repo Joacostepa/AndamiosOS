@@ -668,8 +668,11 @@ digital certificada. Domicilio electrónico del acta = `PERMISOS_MAIL`. Falta la
 de la nota del dueño para inquilinos.
 
 **Póliza, corrección (2026-09-15):** sólo se frena si el PDF **pide contraseña para abrirse**.
-Las pólizas de La Mercantil Andina vienen con protección de permisos (`/Encrypt`), se abren
-y TAD las acepta. A Claude no se le piden las listas (un endoso real tiene 20 páginas) sino
+Las pólizas de La Mercantil Andina vienen con protección de permisos (`/Encrypt`) y se abren.
+~~TAD las acepta~~ → **TAD NO las acepta** (visto con S02466): "Error generando documento PDF,
+en importación: PdfReader not opened with owner password". El robot de presentación les saca
+la protección con `qpdf --decrypt` (instalado con Homebrew en la Mac) antes de adjuntarlas; el
+contenido no cambia (probado: 16 páginas antes y después). A Claude no se le piden las listas (un endoso real tiene 20 páginas) sino
 si figura el titular como coasegurado y el GCBA en la no repetición.
 
 Pendiente del portal: recordatorios al cliente y el paso de trámite nuevo a expediente

@@ -5,6 +5,7 @@ import { Loader2, Play } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useIniciarTramite, useVentasParaIniciar } from "@/hooks/use-permisos-via-publica";
+import { coincideTexto } from "@/lib/permisos-via-publica/tipos";
 
 // Ventas con "Lleva permiso = Sí" que todavía no arrancaron. "Iniciar trámite" abre el
 // trámite y le manda el link al cliente; de ahí en adelante el proceso sigue solo.
@@ -14,7 +15,7 @@ import { useIniciarTramite, useVentasParaIniciar } from "@/hooks/use-permisos-vi
 
 const dia = (iso: string | null) => (iso ? iso.split("-").reverse().join("/") : "—");
 
-export function VentasParaIniciar() {
+export function VentasParaIniciar({ busqueda = "" }: { busqueda?: string }) {
   const { data, isLoading, error } = useVentasParaIniciar();
   const iniciar = useIniciarTramite();
   const router = useRouter();
@@ -24,12 +25,15 @@ export function VentasParaIniciar() {
     return <p className="text-[12px] text-orange-400">No se pudieron leer las ventas para iniciar: {error instanceof Error ? error.message : ""}</p>;
   }
   if (!data || data.length === 0) return null;
+  // El buscador de la bandeja: dirección, número de orden, cliente, mail o vendedor.
+  const ventas = data.filter((v) => coincideTexto([v.direccion, v.venta, v.cliente, v.email, v.vendedor], busqueda));
+  if (busqueda && ventas.length === 0) return null;
 
   return (
     <section className="rounded-md border border-yellow-500/30">
       <header className="border-b px-3 py-2">
         <h2 className="text-[14px] font-semibold">
-          Ventas para iniciar <span className="text-muted-foreground">· {data.length}</span>
+          Ventas para iniciar <span className="text-muted-foreground">· {busqueda ? `${ventas.length} de ${data.length}` : data.length}</span>
         </h2>
         <p className="text-[12px] text-muted-foreground">
           Confirmadas con permiso de implantación y sin trámite. Al iniciar sale el link para cargar el dueño del lote y su
@@ -37,7 +41,7 @@ export function VentasParaIniciar() {
         </p>
       </header>
       <ul>
-        {data.map((v) => {
+        {ventas.map((v) => {
           const pendiente = iniciar.isPending && iniciar.variables === v.ventaId;
           return (
             <li key={v.ventaId} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b px-3 py-2.5 text-[13px] last:border-b-0">

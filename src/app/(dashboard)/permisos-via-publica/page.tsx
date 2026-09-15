@@ -16,7 +16,7 @@ import { ChipEstado } from "@/components/permisos-via-publica/chip-estado";
 import { VentasParaIniciar } from "@/components/permisos-via-publica/ventas-para-iniciar";
 import { ModoSupervisado } from "@/components/permisos-via-publica/modo-supervisado";
 import { useBandejaPermisos, useCrearPrueba, useRevisarAhora } from "@/hooks/use-permisos-via-publica";
-import { coincide, estadoVinculo, type EstadoRobot, type Expediente } from "@/lib/permisos-via-publica/tipos";
+import { coincide, coincideTexto, estadoVinculo, type EstadoRobot, type Expediente } from "@/lib/permisos-via-publica/tipos";
 
 // Permisos vía pública — los expedientes de TAD sin entrar a TAD.
 //
@@ -67,6 +67,9 @@ export default function PermisosViaPublicaPage() {
   const dormido = robotDormido(robot);
   const grupos = data.grupos.map((g) => ({ ...g, filas: g.filas.filter((e) => coincide(e, busqueda)) }));
   const historial = data.historial.filter((e) => coincide(e, busqueda));
+  const tramitesNuevos = data.tramitesNuevos.filter((t) =>
+    coincideTexto([t.direccion, t.odoo_venta_nombre, t.cliente_nombre, t.vendedor_nombre, t.titular_nombre], busqueda),
+  );
 
   function pedirRevision() {
     revisar.mutate(undefined, {
@@ -130,18 +133,21 @@ export default function PermisosViaPublicaPage() {
         />
       </div>
 
-      <VentasParaIniciar />
+      <VentasParaIniciar busqueda={busqueda} />
 
-      {data.tramitesNuevos.length > 0 && (
+      {tramitesNuevos.length > 0 && (
         <section className="rounded-md border">
           <header className="border-b px-3 py-2">
             <h2 className="text-[14px] font-semibold">
-              Trámites nuevos <span className="text-muted-foreground">· {data.tramitesNuevos.length}</span>
+              Trámites nuevos{" "}
+              <span className="text-muted-foreground">
+                · {busqueda ? `${tramitesNuevos.length} de ${data.tramitesNuevos.length}` : data.tramitesNuevos.length}
+              </span>
             </h2>
             <p className="text-[12px] text-muted-foreground">Ventas confirmadas con permiso, todavía sin presentar en TAD.</p>
           </header>
           <ul>
-            {data.tramitesNuevos.map((t) => {
+            {tramitesNuevos.map((t) => {
               const legajo = t.pvp_documentos.filter((d) => d.origen === "cliente");
               const poliza = t.pvp_documentos.find((d) => d.clave === "poliza_rc");
               return (

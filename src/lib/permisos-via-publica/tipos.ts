@@ -510,6 +510,13 @@ export function agrupar(expedientes: Expediente[]): GrupoExpedientes[] {
   }));
 }
 
+/** Búsqueda sin mayúsculas ni tildes sobre varios campos: basta con que uno contenga lo buscado. */
+export function coincideTexto(valores: (string | null | undefined)[], busqueda: string): boolean {
+  const q = normalizarEstado(busqueda);
+  if (!q) return true;
+  return valores.some((v) => v && normalizarEstado(v).includes(q));
+}
+
 export function coincide(e: Expediente, busqueda: string): boolean {
   const q = normalizarEstado(busqueda);
   if (!q) return true;

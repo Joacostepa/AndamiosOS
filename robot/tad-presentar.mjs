@@ -588,17 +588,52 @@ export async function presentarEnTad({ db, tarea, page, log }) {
     log(`TAD: borrador ${estado.borrador}${prueba ? " (prueba)" : ""}`);
     }
 
-    // Persona Jurídica se elige si faltan SUS casilleros. Al reabrir un borrador TAD muestra el
-    // radio sin marcar y sin los 4 casilleros de persona jurídica (S02466, 15/09).
-    const casillerosJuridica = async () => /Copia del DNI del apoderado/i.test(normal(await page.locator("body").innerText()));
-    if (!prueba && !(await casillerosJuridica())) {
-      // Genera documentos en TAD y redibuja la página: esperar antes de tocar Completar.
+    if (prueba) {
+      // La prueba sólo llena y guarda el formulario (no adjunta nada). Si lo que falla es borrar
+      // el borrador, la prueba igual pasó y queda anotado el motivo para borrarlo a mano.
+      const f = await abrirFormulario(page);
+      const obra = await llenarYGuardar(page, f, p, log);
+      await foto("formulario-guardado");
+      let motivo = null;
+      const borrado = await borrarBorrador(page, estado.borrador, foto).catch((e) => { motivo = e.message.split("\n")[0]; return false; });
+      return { etapa: "prueba", borrador: estado.borrador, borrador_borrado: borrado, borrador_error: motivo, obra, capturas };
+    }
+
+    // El orden es el de Tamara (15/09): en otro orden TAD falla. En S02466 el borrador con el
+    // formulario guardado primero dejó de cargar sus documentos ("Error al obtener los
+    // documentos vinculados").
+    //   1. Adjuntar los casilleros que TAD ya muestra, SIN tocar Persona Jurídica ni "Datos del trámite".
+    //   2. Elegir Persona Jurídica y adjuntar los casilleros nuevos que aparecen.
+    //   3. Recién ahí "Datos del trámite" y Confirmar.
+    // Qué casillero va en cada tanda sale de lo que muestra TAD, no de una lista fija. Antes de
+    // mirar se espera a que esté la lista: si no, todo caería en la segunda tanda.
+    const hayLista = await hasta(page, async () => (await filaDeCasillero(page, "Nota de solicitud dirigida").count()) > 0, 180000);
+    if (!hayLista) throw new TadNoCarga("TAD no mostró los casilleros del trámite en 3 minutos");
+    const subir = async (tanda) => {
+      for (const a of tanda) {
+        const r = await adjuntar(page, a);
+        estado.adjuntados += 1;
+        log(`TAD: ${r.yaEstaba ? "ya estaba" : "adjunto"} ${estado.adjuntados}/${adjuntos.length} — ${a.casillero} (${r.if})`);
+      }
+    };
+    const primeros = [];
+    for (const a of adjuntos) if (await filaDeCasillero(page, a.casillero).count()) primeros.push(a);
+    await subir(primeros);
+
+    const juridica = adjuntos.filter((a) => !primeros.includes(a));
+    if (juridica.length) {
+      // Genera documentos en TAD y redibuja la página: esperar a que aparezcan los casilleros nuevos.
+      log(`TAD: Persona Jurídica (${juridica.length} casilleros más)`);
       const generado = page.waitForResponse((r) => /requisitosExternos\/generarDocumento/.test(r.url()), { timeout: 60000 }).catch(() => null);
       await page.getByText("Persona Juridica", { exact: true }).first().click();
       await generado;
       await page.waitForLoadState("networkidle", { timeout: 30000 }).catch(() => {});
-      await page.waitForTimeout(5000);
+      const aparecieron = await hasta(page, async () => (await filaDeCasillero(page, juridica[0].casillero).count()) > 0, 90000);
+      if (!aparecieron) throw new TadNoCarga(`Después de elegir Persona Jurídica no apareció "${juridica[0].casillero}"`);
+      await page.waitForTimeout(3000);
+      await subir(juridica);
     }
+    await foto("adjuntos");
 
     // En un borrador que se sigue, el formulario ya puede estar guardado (✓ "Editar").
     let obra = null;
@@ -609,21 +644,6 @@ export async function presentarEnTad({ db, tarea, page, log }) {
       obra = await llenarYGuardar(page, f, p, log);
       await foto("formulario-guardado");
     }
-
-    if (prueba) {
-      // El formulario ya se guardó: si lo que falla es borrar el borrador, la prueba igual pasó
-      // y queda anotado el motivo para borrarlo a mano.
-      let motivo = null;
-      const borrado = await borrarBorrador(page, estado.borrador, foto).catch((e) => { motivo = e.message.split("\n")[0]; return false; });
-      return { etapa: "prueba", borrador: estado.borrador, borrador_borrado: borrado, borrador_error: motivo, obra, capturas };
-    }
-
-    for (const a of adjuntos) {
-      const r = await adjuntar(page, a);
-      estado.adjuntados += 1;
-      log(`TAD: ${r.yaEstaba ? "ya estaba" : "adjunto"} ${estado.adjuntados}/${adjuntos.length} — ${a.casillero} (${r.if})`);
-    }
-    await foto("adjuntos");
 
     estado.confirmado = true;
     const numero = await confirmar(page, foto, () => estado.expediente);

@@ -1067,6 +1067,19 @@ tomó como falla del adjunto. Quedó el borrador 12984454 con ese IF. Cambios:
   
   También: si se presentó pero no se pudo guardar el expediente, el error ahora lleva
   `confirmado`, para que nadie vuelva a presentar.
+- **Orden de carga (15/09, truco de Tamara).** Tamara dice que en otro orden TAD falla. El
+  orden que funciona:
+  1. Adjuntar todo lo que aparece **sin tocar** Persona Jurídica ni "Datos del trámite".
+  2. Elegir **Persona Jurídica** y adjuntar los casilleros nuevos que aparecen: estatuto,
+     designación de autoridades, poder y DNI del apoderado.
+  3. Recién ahí **"Datos del trámite"** y Confirmar.
+  
+  Coincide con S02466: el borrador 12984454, con Jurídica y el formulario hechos primero,
+  dejó de mostrar sus casilleros. El robot usa este orden desde ese día y arma cada tanda con
+  lo que muestra TAD. Antes de empezar espera a ver la lista de casilleros (3 min, si no:
+  `TadNoCarga`). La prueba no cambia: sólo llena el formulario, no toca Jurídica ni adjunta.
+  Sin confirmar todavía: el borrador 12986313 tampoco cargaba los documentos a las 16:15 y no
+  tenía el formulario guardado. Puede que, además, TAD estuviera caído de verdad.
 - **Empezar de cero** (en la ficha, con borrador pendiente y la presentación en error): sólo
   para un borrador que realmente no sirve y **con TAD funcionando**. Una persona lo borra en
   TAD (Mis trámites → Borradores) y toca el botón. La app anota `borrador_descartado` en la

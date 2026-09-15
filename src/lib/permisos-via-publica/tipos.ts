@@ -367,6 +367,10 @@ export type EncomiendaFicha = {
  * y la última tarea `tad_presentar` del robot.
  */
 export type PresentacionFicha = {
+  /** Borrador de TAD que dejó alguna presentación anterior: la próxima sigue desde ahí. */
+  borradorPendiente: number | null;
+  /** Alguna presentación anterior tocó "Confirmar trámite": no se ofrece presentar de nuevo. */
+  confirmadoAntes: boolean;
   estado: {
     listo: boolean;
     faltan: string[];

@@ -12,7 +12,7 @@ import type { PresentacionFicha } from "@/lib/permisos-via-publica/tipos";
 
 export function PresentacionTad({
   tramiteId,
-  presentacion: { estado, tarea },
+  presentacion: { estado, tarea, borradorPendiente, confirmadoAntes },
   esPrueba,
   expedienteId,
 }: {
@@ -100,7 +100,10 @@ export function PresentacionTad({
       )}
 
       {/* Si ya se tocó "Confirmar trámite" no se ofrece presentar de nuevo: primero hay que mirar TAD. */}
-      {!trabajando && !expedienteId && !(tarea?.estado === "error" && r?.confirmado) && (esPrueba || estado.listo || tarea?.estado === "error") && (
+      {!esPrueba && confirmadoAntes && !expedienteId && (
+        <p className="text-[12px] text-orange-400">Una presentación anterior tocó «Confirmar trámite»: revisá en TAD si salió el expediente antes de volver a presentar.</p>
+      )}
+      {!trabajando && !expedienteId && !(confirmadoAntes && !esPrueba) && (esPrueba || estado.listo || tarea?.estado === "error") && (
         <Button
           size="sm"
           variant="outline"
@@ -109,14 +112,14 @@ export function PresentacionTad({
             lanzar(
               esPrueba
                 ? undefined
-                : tarea?.estado === "error" && r?.borrador
-                  ? `El robot sigue desde el borrador ${r.borrador} de TAD: no rehace lo que ya está (formulario ni adjuntos con IF), adjunta lo que falta y confirma. ¿Seguro?`
+                : borradorPendiente
+                  ? `El robot sigue desde el borrador ${borradorPendiente} de TAD: no rehace lo que ya está (formulario ni adjuntos con IF), adjunta lo que falta y confirma. ¿Seguro?`
                   : "El robot va a presentar el trámite en TAD con estos documentos. ¿Seguro?",
             )
           }
         >
           {pedir.isPending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
-          {esPrueba ? "Probar en TAD (sin presentar)" : tarea?.estado === "error" && r?.borrador ? "Seguir desde el borrador" : tarea?.estado === "error" ? "Volver a presentar" : "Presentar ahora"}
+          {esPrueba ? "Probar en TAD (sin presentar)" : borradorPendiente ? "Seguir desde el borrador" : tarea?.estado === "error" ? "Volver a presentar" : "Presentar ahora"}
         </Button>
       )}
 

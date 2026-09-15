@@ -691,8 +691,13 @@ while (!apagando) {
       }
       await atenderPresentacion({ db, tarea, page, log, avisar, sincronizar: (lista) => sincronizarOdoo(lista) });
     } catch (e) {
+      // Falló antes de empezar (p. ej. en el login): se guarda igual el borrador que se estaba
+      // siguiendo, para que el próximo pedido no arranque de cero y duplique los adjuntos.
       log("!! presentación en TAD", e.message);
-      await db.from("pvp_tareas").update({ estado: "error", error: e.message.slice(0, 500), terminada_at: new Date().toISOString() }).eq("id", tareaId);
+      await db.from("pvp_tareas").update({
+        estado: "error", error: e.message.slice(0, 500), terminada_at: new Date().toISOString(),
+        resultado: { borrador: tarea.payload?.continuar_borrador ?? null, adjuntados: 0, confirmado: false },
+      }).eq("id", tareaId);
     }
   } else if (tarea?.tipo === "odoo_sincronizar") {
     // Alguien confirmó un vínculo en la ficha: escribir en Odoo no necesita entrar a TAD.

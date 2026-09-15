@@ -103,9 +103,12 @@ export async function entrar(page) {
     throw new Error(`TAD está representando a otra persona (${texto.replace(/\s+/g, " ").trim()})`);
   }
 
-  await elegir.click({ timeout: 15000 });
+  // TAD puede seguir "Cargando..." con la página tapada aunque el selector ya se vea (14:56 del
+  // 15/09: el clic no llegó en 15 s). Se espera a que termine antes de elegir.
+  await esperarCarga(page, 120000);
+  await elegir.click({ timeout: 30000 });
   await page.waitForTimeout(1500);
-  await page.getByText(/EMPRENDIMIENTOS Y ESTRUCTURAS/i).first().click({ timeout: 15000 });
+  await page.getByText(/EMPRENDIMIENTOS Y ESTRUCTURAS/i).first().click({ timeout: 30000 });
   await representando.waitFor({ timeout: 15000 });
   await page.waitForTimeout(3000);
 }

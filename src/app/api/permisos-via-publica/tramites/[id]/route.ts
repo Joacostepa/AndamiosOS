@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { linkCliente } from "@/lib/permisos-via-publica/portal";
 import { PRODUCTOR_PRUEBA, linkProductor } from "@/lib/permisos-via-publica/endosos";
-import { estadoPresentacion } from "@/lib/permisos-via-publica/presentacion";
+import { borradorPendiente, estadoPresentacion } from "@/lib/permisos-via-publica/presentacion";
 import type { Documento, EncomiendaFicha, Evento, FichaTramite, PresentacionFicha, Tramite } from "@/lib/permisos-via-publica/tipos";
 
 // GET /api/permisos-via-publica/tramites/:id — la ficha de un trámite abierto desde una
@@ -24,10 +24,11 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     db.from("pvp_tareas").select("id, estado, payload, resultado, error, created_at, terminada_at")
       .eq("tipo", "cpau_encomienda").eq("tramite_id", id).order("created_at", { ascending: false }).limit(1),
   ]);
-  const [presentaciones, requisitos] = await Promise.all([
+  const [presentaciones, requisitos, pendiente] = await Promise.all([
     db.from("pvp_tareas").select("id, estado, payload, resultado, error, created_at, terminada_at")
       .eq("tipo", "tad_presentar").eq("tramite_id", id).order("created_at", { ascending: false }).limit(1),
     estadoPresentacion(db, id),
+    borradorPendiente(db, id),
   ]);
   if (t.error) return NextResponse.json({ error: t.error.message }, { status: 500 });
   if (!t.data) return NextResponse.json({ error: "El trámite no existe" }, { status: 404 });
@@ -58,6 +59,8 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   const tareaTad = presentaciones.data?.[0] as Omit<NonNullable<PresentacionFicha["tarea"]>, "capturas"> & { resultado: { capturas?: string[] } | null } | undefined;
   const presentacion: PresentacionFicha = {
     estado: requisitos,
+    borradorPendiente: pendiente.borrador,
+    confirmadoAntes: pendiente.confirmadoAntes,
     tarea: tareaTad
       ? {
           ...tareaTad,

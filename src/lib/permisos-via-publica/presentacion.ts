@@ -169,6 +169,20 @@ export async function armarPayloadPresentacion(db: SupabaseClient, tramiteId: st
   };
 }
 
+/**
+ * El borrador de TAD que dejaron las presentaciones anteriores del trámite (el más reciente que
+ * se conozca, sacado del resultado o del pedido de cada tarea) y si alguna tocó "Confirmar
+ * trámite". Lo usan el pedido de presentación y la ficha.
+ */
+export async function borradorPendiente(db: SupabaseClient, tramiteId: string): Promise<{ borrador: number | null; confirmadoAntes: boolean }> {
+  const { data } = await db.from("pvp_tareas").select("estado, payload, resultado")
+    .eq("tipo", "tad_presentar").eq("tramite_id", tramiteId).order("created_at", { ascending: false }).limit(20);
+  const tareas = (data ?? []) as { estado: string; payload: { es_prueba?: boolean; continuar_borrador?: number | null } | null; resultado: { borrador?: number | null; confirmado?: boolean } | null }[];
+  const reales = tareas.filter((t) => !t.payload?.es_prueba);
+  const borrador = reales.map((t) => t.resultado?.borrador ?? t.payload?.continuar_borrador ?? null).find((b) => !!b) ?? null;
+  return { borrador, confirmadoAntes: reales.some((t) => t.estado === "error" && !!t.resultado?.confirmado) };
+}
+
 /** Deja la presentación en la cola del robot. Una abierta por trámite. */
 export async function pedirPresentacion(
   db: SupabaseClient,
@@ -177,15 +191,15 @@ export async function pedirPresentacion(
 ): Promise<{ resultado: "pedida" | "ya_pedida" }> {
   const payload = await armarPayloadPresentacion(db, tramiteId);
 
-  // Si la anterior se frenó con un borrador ya creado, se sigue desde ese borrador: empezar de
-  // cero duplicaría los adjuntos, que son IF oficiales (S02466, 15/09). Si ya había tocado
-  // "Confirmar trámite", no se vuelve a presentar hasta revisar TAD.
-  const { data: previa } = await db.from("pvp_tareas").select("estado, resultado")
-    .eq("tipo", "tad_presentar").eq("tramite_id", tramiteId).order("created_at", { ascending: false }).limit(1).maybeSingle();
-  const anterior = previa?.resultado as { borrador?: number | null; confirmado?: boolean } | null;
-  if (!payload.es_prueba && previa?.estado === "error") {
-    if (anterior?.confirmado) throw new FaltanDatos("La presentación anterior llegó a tocar «Confirmar trámite»: revisá en TAD si salió el expediente antes de volver a presentar.");
-    if (anterior?.borrador) payload.continuar_borrador = anterior.borrador;
+  // Si alguna presentación anterior dejó un borrador, se sigue desde ese borrador: empezar de
+  // cero duplicaría los adjuntos, que son IF oficiales (S02466, 15/09). Se mira TODO el historial
+  // y no sólo la última: una corrida que falla antes de abrir el borrador (p. ej. en el login) no
+  // trae el número. Si alguna llegó a tocar "Confirmar trámite", no se vuelve a presentar hasta
+  // revisar TAD.
+  if (!payload.es_prueba) {
+    const previo = await borradorPendiente(db, tramiteId);
+    if (previo.confirmadoAntes) throw new FaltanDatos("Una presentación anterior llegó a tocar «Confirmar trámite»: revisá en TAD si salió el expediente antes de volver a presentar.");
+    if (previo.borrador) payload.continuar_borrador = previo.borrador;
   }
 
   const { error } = await db.from("pvp_tareas").insert({ tipo: "tad_presentar", tramite_id: tramiteId, payload, pedida_por: opts.userId ?? null });

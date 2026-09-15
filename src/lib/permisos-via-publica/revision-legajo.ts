@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { ETIQUETA_DUENO, NOMBRE_DOCUMENTO, formatoCuit, type ChequeoPoliza, type RevisionDocumento, type Tramite } from "./tipos";
+import { normalizar, parcelaPorDireccion, type Parcela } from "./catastro";
 
 // Revisión de cada documento que sube el cliente en su portal, apenas lo sube.
 //
@@ -72,7 +73,44 @@ Contestá sobre lo que el documento muestra, no sobre lo que debería mostrar. S
 
 type TramiteLegajo = Pick<Tramite, "direccion" | "titular_nombre" | "titular_cuit" | "tipo_dueno">;
 
-function chequear(clave: string, l: z.infer<typeof Lectura>, t: TramiteLegajo): ChequeoPoliza[] {
+const plano = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
+/** "21a" → "021A", "063" → "063": como las escribe el catastro. */
+const tramoSmp = (s: string) => {
+  const m = s.trim().toUpperCase().match(/^0*(\d+)([A-Z]*)$/);
+  return m ? `${m[1].padStart(3, "0")}${m[2]}` : s.trim().toUpperCase();
+};
+
+/**
+ * ¿La dirección que trae el documento es la del lote de la obra? Además del veredicto de la IA
+ * (misma calle y altura), acepta:
+ *   - la sección/manzana/parcela impresa en el documento igual a la del lote;
+ *   - una altura de la misma calle que es otra puerta del mismo lote.
+ * Un edificio puede tener varias puertas: el aviso de obra de Guido 1923 vino como "GUIDO 1927 -
+ * Sección 011, Manzana 063, Parcela 021a" y el catastro dice que 1923 y 1927 son el lote
+ * 011-063-021A (JS, 2026-09-15, S02466). Devuelve el motivo si coincide, o null.
+ */
+export function direccionDelLote(direccionQueFigura: string | null, lote: Parcela | null): string | null {
+  if (!direccionQueFigura || !lote) return null;
+  const texto = plano(direccionQueFigura);
+  const smp = texto.match(/SECCION\s*:?\s*(\w{1,4})\D+?MANZANA\s*:?\s*(\w{1,4})\D+?PARCELA\s*:?\s*(\w{1,5})/);
+  if (smp && `${tramoSmp(smp[1])}-${tramoSmp(smp[2])}-${tramoSmp(smp[3])}` === lote.smp.toUpperCase()) {
+    return `Es del mismo lote que la obra (sección ${tramoSmp(smp[1])}, manzana ${tramoSmp(smp[2])}, parcela ${tramoSmp(smp[3])}).`;
+  }
+  const alturas = new Set((texto.split(/SECCION/)[0].match(/\b\d{1,5}\b/g) ?? []).map(Number));
+  const puerta = lote.puertas.find((p) => {
+    const palabra = plano(p.calle).replace(/[^A-Z ]/g, " ").split(/\s+/).find((w) => w.length > 2 && !["AV", "AVDA", "DR", "GRAL", "ING"].includes(w));
+    return alturas.has(p.altura) && !!palabra && texto.includes(palabra);
+  });
+  return puerta ? `${puerta.calle} ${puerta.altura} es otra puerta del mismo lote que la obra (${lote.smp}).` : null;
+}
+
+/** El lote de la obra en el catastro (parcela y puertas), o null si no se encuentra. */
+async function loteDeLaObra(direccion: string): Promise<Parcela | null> {
+  const n = await normalizar(direccion).catch(() => null);
+  return n ? parcelaPorDireccion(n.codCalle, n.altura).catch(() => null) : null;
+}
+
+function chequear(clave: string, l: z.infer<typeof Lectura>, t: TramiteLegajo, lote: Parcela | null = null): ChequeoPoliza[] {
   const nombre = NOMBRE_DOCUMENTO[clave] ?? clave;
   const reglas = CRITERIOS[clave]?.reglas ?? [];
   const titular = t.titular_nombre ?? "el dueño del lote";
@@ -117,13 +155,16 @@ function chequear(clave: string, l: z.infer<typeof Lectura>, t: TramiteLegajo): 
     });
   }
   if (reglas.includes("direccion") && l.coincide_direccion !== null) {
+    // La IA compara calle y altura; el catastro agrega el caso de un lote con varias puertas.
+    const mismoLote = l.coincide_direccion ? null : direccionDelLote(l.direccion_que_figura, lote);
+    const ok = l.coincide_direccion || !!mismoLote;
     chequeos.push({
       clave: "direccion",
-      ok: l.coincide_direccion,
+      ok,
       bloquea: true,
       detalle: l.coincide_direccion
         ? "La dirección coincide con la de la obra."
-        : `Es de ${l.direccion_que_figura ?? "otra dirección"}, y la obra es en ${t.direccion}.`,
+        : mismoLote ?? `Es de ${l.direccion_que_figura ?? "otra dirección"}, y la obra es en ${t.direccion}.`,
     });
   }
   if (reglas.includes("firma") && l.firmado !== null) {
@@ -153,6 +194,8 @@ export async function revisarDocumentoCliente(
   tramite: TramiteLegajo,
 ): Promise<RevisionDocumento> {
   const criterio = CRITERIOS[clave];
+  // El lote de la obra (parcela y puertas) para aceptar otra puerta del mismo edificio.
+  const lote = criterio?.reglas.includes("direccion") ? await loteDeLaObra(tramite.direccion) : null;
   const datos = archivo.toString("base64");
   const bloque: Anthropic.ContentBlockParam =
     tipo === "application/pdf"
@@ -184,5 +227,5 @@ export async function revisarDocumentoCliente(
   if (respuesta.stop_reason === "refusal") throw new Error("El modelo no quiso leer el documento");
   if (!respuesta.parsed_output) throw new Error("No se pudo leer el documento");
 
-  return { modelo: MODELO, leido: respuesta.parsed_output, chequeos: chequear(clave, respuesta.parsed_output, tramite) };
+  return { modelo: MODELO, leido: respuesta.parsed_output, chequeos: chequear(clave, respuesta.parsed_output, tramite, lote) };
 }

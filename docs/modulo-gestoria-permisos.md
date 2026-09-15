@@ -141,6 +141,12 @@ un motivo en castellano para el cliente. Además cruza el legajo:
 - ~~Que el peticionante del Aviso de Obra sea el dueño del lote~~ → **no**: el peticionante del
   aviso de obra puede ser cualquiera (JS, 2026-09-15, primera venta real S02465). Del aviso sólo
   se controla que sea de la dirección de la obra.
+- **Dirección = el lote, no la puerta exacta** (JS, 2026-09-15, S02466): un edificio puede tener
+  varias puertas. El aviso de obra de Guido 1923 vino como "GUIDO 1927 - Sección 011, Manzana
+  063, Parcela 021a", y en el catastro 1923 y 1927 son el lote 011-063-021A. La revisión busca el
+  lote de la obra (USIG + EPOK) y acepta la dirección si la IA la da por igual, si la
+  sección/manzana/parcela impresa es la del lote, o si la altura es otra puerta de ese lote
+  (`direccionDelLote` en `revision-legajo.ts`).
 - Acta de Asamblea / designación de autoridades **vigente**.
 - Coincidencia de CUIT, razón social y dirección entre documentos y con la venta.
 - Firmas presentes en nota y acta.
@@ -763,16 +769,22 @@ Todos los ids llevan el prefijo `ContentPlaceHolder1_Wizard1_`.
 - **Desde la pantalla 4 el botón `…CancelButton` dice "Guardar Borrador"**, no "Salir". El
   primer mapeo lo tocó para salir; no quedó nada porque la validación de la pantalla lo frenó,
   pero el robot **nunca** debe salir por ahí: se abandona la página yendo a otra URL.
-- **Los intentos sin terminar aparecen en el Histórico sin RETP Nro ni visado y con
-  "Conf S"** (hay dos: Juramento 1717 y Pellegrini 1219, al lado de la definitiva). Para
-  comparar antes/después hay que contar por R.Nro, no por RETP Nro. El chequeo de sólo
-  lectura es `robot/revisar-cpau-historico.mjs`.
+- **Un registro finalizado pero todavía no visado aparece en el Histórico sin RETP Nro ni
+  visado y con "Conf S"** (visto con S02465 el 15/09; Juramento 1717 y Pellegrini 1219 son
+  dos que Tamara no terminó de visar y repitió). Para comparar antes/después hay que contar por
+  R.Nro, no por RETP Nro. El chequeo de sólo lectura es `robot/revisar-cpau-historico.mjs`.
 - Validaciones con dos textos: "El Dato es Obligatorio" y "El Campo es Obligatorio", más
   "La encomienda requiere un frente / una Actividad, mínimo".
 
-**Lo que sigue sin verse** (pasa después de Finalizar y sólo se puede mirar con una
-encomienda real): número de encomienda, firma, compra/pago, carga en tramites.cpau.org y
-descarga del certificado desde el Histórico.
+**Después de Finalizar — visto con la primera real (S02465, 15/09, R.Nro 00329521985):** la
+pantalla dice sólo «En hora buena, se ha generado el Registro Web nro:0329521985» con un botón
+**Imprimir**. En el RETP no hay firma ni pago. En el Histórico la fila queda **sin RETP Nro, sin
+Visado, con "Conf S" y sin Certificado** hasta que se firma, se paga, se carga en
+tramites.cpau.org y el CPAU la visa; recién ahí aparecen RETP Nro, fecha de visado y
+"versión para imprimir" en Certificado. **Corrige lo anotado antes:** las filas "Conf S" sin RETP
+Nro (Juramento 1717, Pellegrini 1219) no eran intentos abandonados sino registros web que no
+llegaron a visarse (Tamara repitió esas dos). Lo que sigue sin verse: firma, compra/pago y
+carga en tramites.cpau.org.
 
 ### Robot de la encomienda — construido 2026-09-15
 

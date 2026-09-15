@@ -13,7 +13,10 @@
 // LO QUE NO HACE, A PROPÓSITO
 //   - No abre el detalle del expediente: TAD le agrega una "Constancia de Consulta" cada
 //     vez (verificado 2026-09-14). Todo sale de la lista, de la tarea y de Notificaciones.
-//   - No presenta, no subsana, no confirma. Esta es la fase 1: mirar.
+//   - No presenta, no subsana, no confirma en TAD. Esta es la fase 1: mirar.
+//
+// TAMBIÉN ATIENDE la encomienda del CPAU (tarea `cpau_encomienda`, robot/cpau-encomienda.mjs):
+// completa el asistente, frena en Confirmar y finaliza sólo con la aprobación de la ficha.
 //
 // CUÁNDO
 //   Cada 30 min de lunes a viernes de 8 a 20 (hora de Buenos Aires), cada 2 h fuera de ese
@@ -33,6 +36,7 @@ import { createClient } from "@supabase/supabase-js";
 import { abrir, entrar, ir, fotografo } from "./tad-comun.mjs";
 import { parsearCaratula, sinAltura, textoDePdf } from "./caratula.mjs";
 import { parsearPermiso } from "./permiso.mjs";
+import { atenderEncomienda } from "./cpau-encomienda.mjs";
 import { read, searchRead, write } from "../scripts/odoo-rpc.mjs";
 
 const UNA_VEZ = process.argv.includes("--una-vez");
@@ -631,7 +635,7 @@ async function tomarTarea() {
   const { data } = await db.from("pvp_tareas").select("id").eq("estado", "pendiente").order("created_at").limit(1);
   if (!data?.length) return null;
   const { data: tomada } = await db.from("pvp_tareas").update({ estado: "tomada", tomada_at: new Date().toISOString() })
-    .eq("id", data[0].id).eq("estado", "pendiente").select("id, tipo").maybeSingle();
+    .eq("id", data[0].id).eq("estado", "pendiente").select("id, tipo, payload, tramite_id").maybeSingle();
   return tomada ?? null;
 }
 
@@ -639,7 +643,15 @@ log(`Robot de TAD en ${os.hostname()}${UNA_VEZ ? " (una vuelta)" : ""}`);
 while (!apagando) {
   const tarea = await tomarTarea();
   const tareaId = tarea?.id ?? null;
-  if (tarea?.tipo === "odoo_sincronizar") {
+  if (tarea?.tipo === "cpau_encomienda") {
+    // Encomienda del CPAU: navegador propio, no toca la sesión de TAD. Nunca se reintenta
+    // sola (una segunda pasada con Finalizar duplicaría la encomienda): el resultado queda en
+    // la tarea y la ficha decide.
+    await atenderEncomienda({ db, tarea, log, avisar }).catch(async (e) => {
+      log("!! encomienda del CPAU", e.message);
+      await db.from("pvp_tareas").update({ estado: "error", error: e.message.slice(0, 500), terminada_at: new Date().toISOString() }).eq("id", tareaId);
+    });
+  } else if (tarea?.tipo === "odoo_sincronizar") {
     // Alguien confirmó un vínculo en la ficha: escribir en Odoo no necesita entrar a TAD.
     const fin = (cambios) => db.from("pvp_tareas").update({ ...cambios, terminada_at: new Date().toISOString() }).eq("id", tareaId);
     try {

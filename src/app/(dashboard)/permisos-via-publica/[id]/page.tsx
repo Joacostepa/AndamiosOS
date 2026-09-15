@@ -44,6 +44,7 @@ const ETIQUETA_EVENTO: Record<TipoEvento, string> = {
   aviso_productor: "Aviso a Segucom",
   link_cliente: "Link al cliente",
   titular_cargado: "El cliente cargó el dueño del lote",
+  encomienda_cpau: "Encomienda del CPAU",
 };
 
 const TRAMITE: Record<string, string> = { no_presentado: "No presentado", presentado: "Presentado", emitido: "Emitido" };

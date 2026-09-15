@@ -61,7 +61,7 @@ export type TipoEvento =
   | "motivo" | "permiso_descargado" | "vinculado_odoo" | "error_robot" | "caratula_leida"
   | "vinculo_confirmado" | "vinculo_descartado" | "odoo_escrito" | "odoo_conflicto"
   | "tramite_abierto" | "documento_pedido" | "documento_subido" | "documento_revisado" | "aviso_productor"
-  | "link_cliente" | "titular_cargado";
+  | "link_cliente" | "titular_cargado" | "encomienda_cpau";
 
 export type TipoDueno = "consorcio" | "empresa" | "persona";
 
@@ -318,9 +318,40 @@ export type TramiteNuevo = Pick<
   "id" | "direccion" | "odoo_venta_nombre" | "cliente_nombre" | "titular_nombre" | "titular_cargado_at" | "link_enviado_at" | "link_error" | "created_at" | "es_prueba"
 > & { pvp_documentos: Pick<Documento, "estado" | "origen" | "clave">[] };
 
+/**
+ * La última encomienda del CPAU del trámite (tarea `cpau_encomienda` del robot).
+ * `esperando_aprobacion` = el robot completó todo y frenó en Confirmar.
+ */
+export type EncomiendaFicha = {
+  id: number;
+  estado: "pendiente" | "tomada" | "esperando_aprobacion" | "ok" | "error";
+  payload: {
+    es_prueba: boolean;
+    finalizar: boolean;
+    direccion: string;
+    propietario: { nombre: string; cuit: string };
+    frente: { calle: string; desde: number; hasta: number };
+    superficie: string;
+    descripcion: string;
+  };
+  resultado: {
+    etapa?: "confirmar" | "finalizada";
+    resumen?: string;
+    calle_cpau?: string | null;
+    texto_final?: string;
+    registro?: string | null;
+    finalizado?: boolean;
+  } | null;
+  error: string | null;
+  created_at: string;
+  terminada_at: string | null;
+  capturas: { nombre: string; url: string | null }[];
+};
+
 export type FichaTramite = {
   tramite: Tramite;
   documentos: (Documento & { url: string | null })[];
+  encomienda: EncomiendaFicha | null;
   eventos: Evento[];
   /** El link del portal, para copiarlo y mandarlo por WhatsApp. */
   linkCliente: string | null;

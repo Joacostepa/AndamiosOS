@@ -81,7 +81,27 @@ export function useTramite(id: string) {
     queryKey: ["tramite-permiso", id],
     queryFn: () => pedir<FichaTramite>(`/api/permisos-via-publica/tramites/${id}`),
     staleTime: 30_000,
-    refetchInterval: (q) => (q.state.data?.documentos.some((d) => d.estado === "revisando") ? 5_000 : 60_000),
+    // Seguido mientras se revisa un documento o el robot trabaja en la encomienda del CPAU.
+    refetchInterval: (q) =>
+      q.state.data?.documentos.some((d) => d.estado === "revisando") || ["pendiente", "tomada"].includes(q.state.data?.encomienda?.estado ?? "")
+        ? 5_000
+        : 60_000,
+  });
+}
+
+export type AccionEncomienda = "pedir" | "finalizar" | "descartar";
+
+/** Encomienda del CPAU: pedirla al robot, aprobar el Finalizar o descartarla. */
+export function useEncomienda(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (accion: AccionEncomienda) =>
+      pedir<{ ok?: true; resultado?: "pedida" | "ya_pedida" }>(`/api/permisos-via-publica/tramites/${id}/encomienda`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accion }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tramite-permiso", id] }),
   });
 }
 

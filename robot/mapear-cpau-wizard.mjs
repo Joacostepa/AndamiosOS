@@ -2,15 +2,17 @@
 //
 // Para automatizar la encomienda hace falta ver las pantallas que siguen (inmueble, frentes,
 // clasificación, actividades, descripción). Llegar ahí obliga a completar los pasos
-// anteriores: se cargan los datos de ABA tal cual figuran en un certificado real
-// (EX-2026-38891134) y se avanza sólo con "Siguiente".
+// anteriores: se cargan los datos tal cual figuran en un certificado real
+// (EX-2026-38891134, Trelles) y se avanza sólo con "Siguiente".
 //
 // GARANTÍAS:
-//   - Sólo se hace clic en botones cuyo id termina en "NextButton". Nunca Finalizar,
-//     Guardar, Confirmar, Comprar ni Pagar.
+//   - Sólo se hace clic en botones cuyo id termina en "NextButton" Y cuyo texto no es
+//     Finalizar, Guardar, Confirmar, Comprar, Pagar ni Aceptar.
+//   - Desde "Otros Comitentes" el botón CancelButton dice "Guardar Borrador": NUNCA se toca.
+//     Para salir se abandona la página yendo al Histórico.
 //   - Si una pantalla tiene obligatorios vacíos que no sabemos completar, se corta ahí.
-//   - Cuenta las filas del Histórico ANTES y DESPUÉS: si cambian, lo dice en grande.
-//   - Sale con "Cancelar" y cierra la sesión.
+//   - Compara el Histórico (TODAS las filas por R.Nro, también las que no tienen RETP Nro,
+//     que son los intentos sin confirmar) ANTES y DESPUÉS.
 //
 // ⚠️ Entra con la cuenta del matriculado (Hougassian). Correr sólo con el OK de JS.
 //
@@ -37,7 +39,27 @@ const COMITENTE = {
   txtComMail: "tam@andamiosbuenosaires.com.ar",
 };
 
-const PROHIBIDO = /finish|finalizar|guardar|save|confirmar|comprar|pagar|aceptar/i;
+// Datos Inmueble del mismo certificado (el propietario es el titular del lote).
+const INMUEBLE = {
+  ddlPropietarioTipoDocId: "CUIT/CUIL",
+  txtPropietarioNroDoc: "30641067950",
+  txtPropietarioNombre: "CONS PROP TRELLES 1084 86 88 GAONA 2402",
+  txtInmCP: "0",
+};
+
+// Frente del certificado: calle del catálogo del CPAU (sus ids no son los de USIG).
+const FRENTE = { buscar: "TRELLES", calleId: "1478", nombre: "TRELLES MANUEL RICARDO", desde: "1084", hasta: "1088" };
+
+// Pantallas que sabemos completar, por el título que muestra el asistente.
+// Clasificación: Tipo SRP, Destino ADM, Clase HA y Zona G1 vienen preseleccionados; sólo la
+// superficie (Trelles: 8 ml × 4 = 32 m²).
+const COMPLETAR = {
+  "Datos Inmueble": INMUEBLE,
+  "Clasificación": { txtSuperficie: "32" },
+  "Descripción Tareas": { txtTareasDes: "Pantalla de protección peatonal de 8 mts lineales." },
+};
+
+const PROHIBIDO = /finish|finalizar|guardar|borrador|save|confirmar|comprar|pagar|aceptar/i;
 let n = 0;
 
 async function foto(page, nombre) {
@@ -47,15 +69,17 @@ async function foto(page, nombre) {
   await page.screenshot({ path: `${base}.png`, fullPage: true });
   const info = await page.evaluate(() => ({
     url: location.href,
+    titulo: document.querySelector("[id*='Wizard1'] h1, [id*='Wizard1'] h2, [id*='Wizard1'] h3, .titulo, legend + * b")?.innerText?.trim() ?? null,
     texto: document.body.innerText,
     campos: [...document.querySelectorAll("input,select,textarea")]
       .filter((e) => e.type !== "hidden")
-      .map((e) => ({ id: e.id, type: e.type, valor: e.value, requerido: !!e.closest("tr")?.innerText.trim().startsWith("*"), opciones: e.tagName === "SELECT" ? [...e.options].map((o) => o.text) : undefined })),
-    botones: [...document.querySelectorAll("input[type=submit],input[type=button],button,a[id]")].map((b) => `${b.id} "${(b.value || b.innerText || "").trim()}"`),
+      .map((e) => ({ id: e.id, type: e.type, valor: e.value, opciones: e.tagName === "SELECT" ? [...e.options].map((o) => `${o.value}=${o.text}`) : undefined })),
+    botones: [...document.querySelectorAll("input[type=submit],input[type=button],input[type=image],button,a[id]")].map((b) => `${b.id} "${(b.value || b.innerText || "").trim()}"`),
   }));
   writeFileSync(`${base}.json`, JSON.stringify(info, null, 2));
-  console.log(`\n== ${n} ${nombre}\n${info.texto.replace(/©.*$/s, "").replace(/\s*\n\s*/g, "\n").trim().slice(0, 1800)}`);
-  console.log("campos:", info.campos.map((c) => `${c.id}${c.valor ? `=${c.valor}` : ""}${c.opciones ? `[${c.opciones.slice(0, 8).join("|")}]` : ""}`).join(", "));
+  writeFileSync(`${base}.html`, await page.content());
+  console.log(`\n== ${n} ${nombre}\n${info.texto.replace(/©.*$/s, "").replace(/\s*\n\s*/g, "\n").trim().slice(0, 2500)}`);
+  console.log("campos:", info.campos.map((c) => `${c.id}${c.valor ? `=${c.valor}` : ""}${c.opciones ? `[${c.opciones.slice(0, 12).join("|")}${c.opciones.length > 12 ? `|…(${c.opciones.length})` : ""}]` : ""}`).join(", "));
   console.log("botones:", info.botones.join(" · "));
   return info;
 }
@@ -63,71 +87,118 @@ async function foto(page, nombre) {
 async function filasHistorico(page) {
   await page.goto("https://retp.cpau.org/FrmHisto.aspx", { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(2500);
-  return page.locator("tr").filter({ hasText: /Habilitación\s+\d{8,}/ }).count();
+  const textos = await page.locator("tr").evaluateAll((trs) => trs.map((t) => t.innerText.replace(/\s+/g, " ").trim()));
+  return textos.map((t) => t.match(/^(\d{11}) /)?.[1]).filter(Boolean);
 }
 
 async function siguiente(page) {
   const boton = page.locator("input[id$='NextButton']").first();
-  const id = (await boton.count()) ? await boton.getAttribute("id") : null;
-  if (!id || PROHIBIDO.test(id)) return false;
+  if (!(await boton.count())) return false;
+  const id = await boton.getAttribute("id");
+  const texto = (await boton.getAttribute("value")) ?? "";
+  if (PROHIBIDO.test(id) || PROHIBIDO.test(texto) || !/siguiente/i.test(texto)) {
+    console.log(`\n(no se toca el botón ${id} "${texto.trim()}")`);
+    return false;
+  }
   await Promise.all([page.waitForLoadState("domcontentloaded").catch(() => {}), boton.click()]);
   return true;
 }
 
+async function completar(page, valores) {
+  for (const [campo, valor] of Object.entries(valores)) {
+    const sel = `#ContentPlaceHolder1_Wizard1_${campo}`;
+    if (campo.startsWith("ddl")) await page.selectOption(sel, { label: valor }).catch((e) => console.log("!!", campo, e.message));
+    else await page.fill(sel, valor).catch((e) => console.log("!!", campo, e.message));
+    await page.waitForTimeout(300);
+  }
+}
+
 const browser = await chromium.launch({ headless: true });
 const page = await (await browser.newContext({ locale: "es-AR", viewport: { width: 1366, height: 900 } })).newPage();
+let antes = null;
 try {
   await page.goto("https://retp.cpau.org/FrmMain.aspx?ReturnUrl=/", { waitUntil: "domcontentloaded" });
   await page.fill("#ctl05_usernameTextBox", process.env.CPAU_USUARIO);
   await page.fill("#ctl05_passwordTextBox", process.env.CPAU_CLAVE);
   await Promise.all([page.waitForLoadState("domcontentloaded"), page.click("#ctl05_loginButton")]);
 
-  const antes = await filasHistorico(page);
-  console.log(`Histórico ANTES: ${antes} encomiendas`);
+  antes = await filasHistorico(page);
+  console.log(`Histórico ANTES: ${antes.length} filas, la más nueva ${antes[0]}`);
 
   await page.goto("https://retp.cpau.org/FrmNewRetp.aspx", { waitUntil: "domcontentloaded" });
   await page.selectOption("#ContentPlaceHolder1_Wizard1_ddlTipoRetpId", { label: "Habilitación" });
   await page.waitForTimeout(2500);
   await page.selectOption("#ContentPlaceHolder1_Wizard1_ddlTipoEncoId", { label: "Habilitación Estructura Transitoria" });
-  await foto(page, "1-datos-basicos");
+  await foto(page, "datos-basicos");
   if (!(await siguiente(page))) throw new Error("No hay Siguiente en Datos Básicos");
 
-  const matricula = await foto(page, "2-datos-matricula");
+  const matricula = await foto(page, "datos-matricula");
   if (!matricula.campos.find((c) => c.id.endsWith("txtMatNro"))?.valor) {
     throw new Error("La matrícula no viene cargada: se corta acá para no inventar datos del matriculado");
   }
   if (!(await siguiente(page))) throw new Error("No hay Siguiente en Datos Matrícula");
 
   await page.waitForTimeout(1500);
-  for (const [campo, valor] of Object.entries(COMITENTE)) {
-    const sel = `#ContentPlaceHolder1_Wizard1_${campo}`;
-    if (campo.startsWith("ddl")) await page.selectOption(sel, { label: valor }).catch((e) => console.log("!!", campo, e.message));
-    else await page.fill(sel, valor).catch((e) => console.log("!!", campo, e.message));
-  }
-  await foto(page, "3-datos-comitente");
+  await completar(page, COMITENTE);
+  await foto(page, "datos-comitente");
 
-  for (let paso = 4; paso <= 10; paso++) {
+  for (let paso = 4; paso <= 12; paso++) {
     if (!(await siguiente(page))) {
-      console.log("\nNo hay más 'Siguiente' (probablemente la pantalla final): se corta sin tocar nada.");
+      console.log("\nNo hay más 'Siguiente' permitido: se corta sin tocar nada.");
       break;
     }
-    const info = await foto(page, `${paso}-pantalla`);
-    // Un error de validación deja la misma pantalla con un mensaje: ahí se corta.
-    if (/obligatorio|requerido|debe ingresar|inválid/i.test(info.texto)) {
+    await page.waitForTimeout(1500);
+    const cuerpo = await page.locator("body").innerText();
+    if (/es Obligatorio|debe ingresar|inválid|requiere/i.test(cuerpo)) {
+      await foto(page, `${paso}-validacion`);
       console.log("\nLa pantalla pide datos que este mapeo no completa: se corta acá.");
       break;
     }
+    // La pantalla Confirmar repite todos los títulos en el resumen: ahí no se completa nada.
+    const esConfirmar = (await page.locator("input[id$='FinishButton']").count()) > 0;
+    const titulo = esConfirmar ? null : Object.keys(COMPLETAR).find((t) => cuerpo.includes(t));
+    await foto(page, `${paso}-pantalla`);
+    if (titulo) {
+      await completar(page, COMPLETAR[titulo]);
+      await foto(page, `${paso}-completada`);
+    }
+    // Frentes: "Buscar" llena el desplegable de calles del catálogo del CPAU y "Agregar" suma
+    // la fila a la grilla del asistente (no guarda nada fuera de la sesión).
+    if (cuerpo.includes("Calle a Buscar")) {
+      await page.fill("#ContentPlaceHolder1_Wizard1_txttexttofindcalles", FRENTE.buscar);
+      await Promise.all([page.waitForLoadState("domcontentloaded").catch(() => {}), page.click("#ContentPlaceHolder1_Wizard1_cmdFindCalle")]);
+      await page.waitForTimeout(2500);
+      const calles = await foto(page, `${paso}-calles-encontradas`);
+      const opciones = calles.campos.find((c) => c.id.endsWith("ddlCalleId"))?.opciones ?? [];
+      const opcion = opciones.find((o) => o.startsWith(`${FRENTE.calleId}=`) || o.includes(FRENTE.nombre));
+      if (!opcion) {
+        console.log(`\nNo aparece la calle ${FRENTE.calleId} ${FRENTE.nombre}: se corta acá.`);
+        break;
+      }
+      await page.selectOption("#ContentPlaceHolder1_Wizard1_ddlCalleId", opcion.split("=")[0]);
+      await page.fill("#ContentPlaceHolder1_Wizard1_txtAlturaDesde", FRENTE.desde);
+      await page.fill("#ContentPlaceHolder1_Wizard1_txtAlturaHasta", FRENTE.hasta);
+      await Promise.all([page.waitForLoadState("domcontentloaded").catch(() => {}), page.click("#ContentPlaceHolder1_Wizard1_cmdAddCalle")]);
+      await page.waitForTimeout(2500);
+      await foto(page, `${paso}-frente-agregado`);
+    }
+    // Actividades: HAB / HET / M2 vienen elegidos; se carga la superficie y "Agregar" suma la fila.
+    if (cuerpo.includes("Detalle de Servicio")) {
+      await page.fill("#ContentPlaceHolder1_Wizard1_txtValor", "32");
+      await Promise.all([page.waitForLoadState("domcontentloaded").catch(() => {}), page.click("#ContentPlaceHolder1_Wizard1_cmdAddActividades")]);
+      await page.waitForTimeout(2500);
+      await foto(page, `${paso}-actividad-agregada`);
+    }
   }
-
-  const cancelar = page.locator("input[id$='CancelButton']").first();
-  if (await cancelar.count()) await cancelar.click().catch(() => {});
-  await page.waitForTimeout(2000);
-
-  const despues = await filasHistorico(page);
-  console.log(`\nHistórico DESPUÉS: ${despues} encomiendas`);
-  if (despues !== antes) console.log("\n⚠️⚠️⚠️  EL HISTÓRICO CAMBIÓ: revisar en retp.cpau.org si quedó un borrador o un registro  ⚠️⚠️⚠️");
-  else console.log("✓ No se creó nada.");
 } finally {
+  // Salir SIN tocar CancelButton (a esta altura dice "Guardar Borrador").
+  const despues = await filasHistorico(page).catch(() => null);
+  if (despues && antes) {
+    console.log(`\nHistórico DESPUÉS: ${despues.length} filas, la más nueva ${despues[0]}`);
+    const nuevas = despues.filter((r) => !antes.includes(r));
+    if (nuevas.length) console.log(`\n⚠️⚠️⚠️  FILAS NUEVAS EN EL HISTÓRICO: ${nuevas.join(", ")} — revisar en retp.cpau.org  ⚠️⚠️⚠️`);
+    else console.log("✓ No se creó nada.");
+  } else console.log("\n⚠️ No se pudo comparar el Histórico: revisar a mano.");
   await page.locator("a", { hasText: /Logout/i }).first().click().catch(() => {});
   await browser.close();
 }

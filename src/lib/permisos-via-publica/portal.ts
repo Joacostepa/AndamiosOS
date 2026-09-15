@@ -316,7 +316,9 @@ export async function guardarDocumentoFirmado(
  * croquis (decidido con JS, 2026-09-15: se arman con lo que cargó y validó el cliente, no
  * antes). Una sola vez: si ya hay informe generado, no hace nada. Nunca tira.
  *
- * Acá se va a enganchar también la encomienda del CPAU cuando esté el robot.
+ * En el mismo momento se pide la encomienda del CPAU (JS, 2026-09-15): el robot la completa
+ * y frena en Confirmar hasta que alguien aprueba en la ficha. También en las pruebas, que
+ * nunca se finalizan.
  */
 export async function siLegajoCompletoGenerar(db: SupabaseClient, tramiteId: string): Promise<void> {
   const { data: docs } = await db.from("pvp_documentos").select("clave, origen, estado").eq("tramite_id", tramiteId);
@@ -330,14 +332,25 @@ export async function siLegajoCompletoGenerar(db: SupabaseClient, tramiteId: str
     const r = await generarDocumentosAba(db, tramiteId);
     await registrarEvento(db, tramiteId, "documento_revisado", `Legajo completo: se generaron solos el informe técnico y el croquis${r.plancheta ? "" : " (sin plancheta)"}.`, r, "sistema");
   } catch (e) {
+    return avisarFalla("No se pudo generar el informe técnico", "no se pudieron generar el informe técnico y el croquis", "generar", e);
+  }
+
+  try {
+    const { pedirEncomienda } = await import("./encomienda");
+    await pedirEncomienda(db, tramiteId);
+  } catch (e) {
+    await avisarFalla("No se pudo pedir la encomienda del CPAU", "no se pudo pedir la encomienda del CPAU", "encomienda", e);
+  }
+
+  async function avisarFalla(titulo: string, frase: string, clave: string, e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
-    await registrarEvento(db, tramiteId, "documento_revisado", `Legajo completo, pero no se pudieron generar el informe técnico y el croquis: ${msg}`, { error: msg }, "sistema");
+    await registrarEvento(db, tramiteId, clave === "encomienda" ? "encomienda_cpau" : "documento_revisado", `Legajo completo, pero ${frase}: ${msg}`, { error: msg }, "sistema");
     if (t?.es_prueba) return;
     await crearAlertas(db, [{
       tipo: "permiso_novedad",
-      clave: `permiso_novedad:tramite:${tramiteId}:generar:${msg.slice(0, 40)}`,
-      titulo: `No se pudo generar el informe técnico — ${t?.direccion ?? "trámite"}`,
-      descripcion: `${msg} Corregilo y generalo desde la ficha.`,
+      clave: `permiso_novedad:tramite:${tramiteId}:${clave}:${msg.slice(0, 40)}`,
+      titulo: `${titulo} — ${t?.direccion ?? "trámite"}`,
+      descripcion: `${msg} Corregilo y hacelo desde la ficha.`,
       prioridad: "alta",
       enlace: `/permisos-via-publica/tramites/${tramiteId}`,
     }]);

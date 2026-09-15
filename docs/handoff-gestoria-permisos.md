@@ -81,18 +81,21 @@ Decisiones de JS al cierre:
   validado). Engancharla en `siLegajoCompletoGenerar`.
 
 Orden sugerido:
-1. **Mapear el asistente del CPAU:** `node --env-file=robot/.env.robot robot/mapear-cpau-wizard.mjs`.
-   Entra con la cuenta de Hougassian, avanza sólo con Siguiente, no finaliza, y compara el
-   Histórico antes y después. Mirar las capturas en `robot/capturas/cpau-mapeo/`.
-2. **Definir con JS:** pago con tarjeta o transferencia; qué pasa arriba de 120 m² (el tramo
-   de $50.000 es "hasta 120").
-3. **Robot de encomienda:** una tarea `cpau_encomienda` en `pvp_tareas` que el worker de la
-   Mac toma (como `odoo_sincronizar`), con los valores de la tabla "Encomienda del CPAU" del
-   diseño. Empezar en modo supervisado: completa todo y espera un clic antes de Finalizar.
-   Después: firma, pago, carga en tramites.cpau.org y descarga del certificado visado desde
-   el Histórico → documento `encomienda_cpau` del trámite.
-4. **Probar punta a punta con "Probar el circuito"** (el trámite de prueba no tiene venta:
-   decidir si la prueba también dispara la encomienda o se corta antes).
+1. ~~**Mapear el asistente del CPAU**~~ **hecho (15/09):** las 11 pantallas hasta Confirmar,
+   con ids y trampas ("Guardar Borrador" en el botón de salir, borradores sin RETP Nro) en
+   `docs/modulo-gestoria-permisos.md` § Asistente "Nuevo RETP". Lo de después de Finalizar
+   (firma, pago, carga) sólo se ve con la primera encomienda real.
+2. ~~**Definir con JS**~~ **(15/09):** tarjeta; el importe es siempre el mismo.
+3. ~~**Robot de encomienda**~~ **hecho (15/09), supervisado:** se pide sola con el legajo
+   completo, el robot frena en Confirmar y finaliza con el botón de la ficha. Probado contra
+   el CPAU real hasta Confirmar (Trelles). Ver `docs/modulo-gestoria-permisos.md` § Robot de
+   la encomienda. **Falta publicar** (commit + push) para que la ficha y el disparo estén en
+   Vercel; el robot de la Mac ya tiene el código nuevo.
+4. **Primera encomienda real:** tocar Finalizar mirando, ver en las capturas qué pide
+   después (firma, pago con tarjeta, carga en tramites.cpau.org) y automatizar eso. Antes,
+   JS carga la tarjeta en `robot/.env.robot`.
+5. **Probar punta a punta con "Probar el circuito":** la prueba sí pide la encomienda y
+   llega hasta Confirmar (con el frente de Trelles si la dirección no existe); nunca finaliza.
 
 Para arrancar: "Leé docs/handoff-gestoria-permisos.md y docs/modulo-gestoria-permisos.md y
 seguimos con el mapeo del CPAU".

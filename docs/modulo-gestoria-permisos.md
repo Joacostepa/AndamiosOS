@@ -734,9 +734,82 @@ Bajado de TAD el 15/09. **Corrige lo anotado en § 6** (decía "destino Otros"):
 | Pago | $50.000 · concepto "EVHA Reg.Habilit. Hasta 120" | **tramo hasta 120 m²**: una estructura más grande cae en otro tramo |
 
 El certificado presentado son 5 páginas: el registro (×3), el certificado del CPAU para
-habilitación y el comprobante de pago. El asistente está mapeado hasta "Datos Comitente"
-(capturas `robot/capturas/cpau-0*`); el resto se mapea con `robot/mapear-cpau-wizard.mjs`
-(sin finalizar, verifica que el Histórico no cambie).
+habilitación y el comprobante de pago.
+
+### Asistente "Nuevo RETP" — mapeado completo (2026-09-15)
+
+Recorrido entero con `robot/mapear-cpau-wizard.mjs` usando los datos de Trelles, hasta la
+pantalla **Confirmar**, sin tocar Finalizar. El resumen quedó idéntico al certificado real y
+el Histórico no cambió. Capturas y HTML de cada pantalla: `robot/capturas/cpau-mapeo/`.
+Todos los ids llevan el prefijo `ContentPlaceHolder1_Wizard1_`.
+
+| # | Pantalla | Qué carga el robot | Ids |
+| --- | --- | --- | --- |
+| 1 | Datos Básicos | Habilitación / Habilitación Estructura Transitoria (el 2º desplegable se llena tras un postback) | `ddlTipoRetpId`=HAB, `ddlTipoEncoId`=HE |
+| 2 | Datos Matrícula | nada: viene cargado de la cuenta de Hougassian | `txtMatNro`=12658 |
+| 3 | Datos Comitente | datos fijos de EyE | `ddlComTipoDocId`, `txtComNroDoc`, `txtComNom`, `txtComDom`, `txtComLoca`, `txtComEmpresa`, `ddlComTipoAcreID`=RI, `txtComAcreFecha`, `txtComAcreNro`, `txtComTelefono`, `txtComCelular`, `txtComMail` |
+| 4 | Otros Comitentes | nada | — |
+| 5 | Datos Inmueble | titular del lote: tipo doc **6 = CUIT/CUIL**, CUIT, nombre; **CP = 0** (así va en el real); localidad viene puesta | `ddlPropietarioTipoDocId`, `txtPropietarioNroDoc`, `txtPropietarioNombre`, `txtInmCP` |
+| 6 | Otros Propietarios | nada | — |
+| 7 | Frentes | escribir la calle → **Buscar** (llena `ddlCalleId` con el catálogo del CPAU) → elegir → altura desde/hasta → **Agregar** (suma la fila a la grilla; sin fila no deja seguir) | `txttexttofindcalles`, `cmdFindCalle`, `ddlCalleId`, `txtAlturaDesde`, `txtAlturaHasta`, `cmdAddCalle` |
+| 8 | Clasificación | SRP / ADM / HA / G1 **vienen preseleccionados**; sólo la superficie | `txtSuperficie` |
+| 9 | Actividades | HAB / HET / M2 vienen elegidos; superficie → **Agregar** (sin fila no deja seguir) | `txtValor`, `cmdAddActividades` |
+| 10 | Descripción Tareas | "Pantalla de protección peatonal de N mts lineales." / según tipo | `txtTareasDes` |
+| 11 | Confirmar | resumen completo (Nº de registro 0 hasta finalizar) | `FinishNavigationTemplateContainerID_FinishButton` "Finalizar" |
+
+**Trampas encontradas:**
+- **Desde la pantalla 4 el botón `…CancelButton` dice "Guardar Borrador"**, no "Salir". El
+  primer mapeo lo tocó para salir; no quedó nada porque la validación de la pantalla lo frenó,
+  pero el robot **nunca** debe salir por ahí: se abandona la página yendo a otra URL.
+- **Los intentos sin terminar aparecen en el Histórico sin RETP Nro ni visado y con
+  "Conf S"** (hay dos: Juramento 1717 y Pellegrini 1219, al lado de la definitiva). Para
+  comparar antes/después hay que contar por R.Nro, no por RETP Nro. El chequeo de sólo
+  lectura es `robot/revisar-cpau-historico.mjs`.
+- Validaciones con dos textos: "El Dato es Obligatorio" y "El Campo es Obligatorio", más
+  "La encomienda requiere un frente / una Actividad, mínimo".
+
+**Lo que sigue sin verse** (pasa después de Finalizar y sólo se puede mirar con una
+encomienda real): número de encomienda, firma, compra/pago, carga en tramites.cpau.org y
+descarga del certificado desde el Histórico.
+
+### Robot de la encomienda — construido 2026-09-15
+
+Decidido con JS: **se hace sola y supervisada**. Pago con **tarjeta** (la carga JS en
+`robot/.env.robot`, nunca en el repo); el importe es siempre el mismo, así que más de 120 m²
+no frena nada.
+
+| Pieza | Dónde |
+| --- | --- |
+| Datos, pedir / aprobar / descartar | `src/lib/permisos-via-publica/encomienda.ts` |
+| Disparo | `siLegajoCompletoGenerar` (portal.ts): después de generar informe y croquis |
+| API | `POST /api/permisos-via-publica/tramites/[id]/encomienda` `{accion: pedir \| finalizar \| descartar}` |
+| Ficha | sección "Encomienda del CPAU" (`components/permisos-via-publica/encomienda-cpau.tsx`) |
+| Robot | `robot/cpau-encomienda.mjs`, lo toma `worker-tad.mjs` (tarea `cpau_encomienda`) |
+| Prueba sin finalizar | `node --env-file=.env.local --env-file=robot/.env.robot robot/probar-encomienda.mjs` |
+| Migración | `20260915000004_permisos_encomienda_cpau.sql` (aplicada) |
+
+**Circuito:** legajo completo → informe y croquis → tarea `cpau_encomienda` (`pendiente`) →
+el robot completa las 11 pantallas, compara el resumen con lo pedido (CUIT, m², frente,
+descripción) y frena → `esperando_aprobacion` con resumen y capturas, aviso en campanita y
+#syh → una persona toca **Finalizar en el CPAU** → la tarea vuelve a `pendiente` con
+`payload.finalizar` → el robot completa todo otra vez (la sesión ASP.NET no aguanta horas) y
+toca Finalizar → captura lo que aparece y el R.Nro nuevo del Histórico → `ok`.
+
+**Datos:** propietario = titular del portal; medidas = las del informe técnico generado;
+frente = puertas del lote en EPOK sobre la calle de la obra (desde = la menor, hasta = la
+mayor; en Trelles da 1084–1090, la presentada decía 1084–1088); m² = pantalla ml × 4,
+estructura/torre base × alto, redondeado para arriba; descripción según tipo.
+
+**Calle:** el catastro abrevia ("TRELLES, MANUEL R.") y el CPAU no ("TRELLES MANUEL
+RICARDO"). Se busca por la primera palabra y cada palabra del catastro tiene que ser el
+comienzo de una palabra de la opción; empate → error, que decida una persona.
+
+**Nunca:** toca "Guardar Borrador"; finaliza una prueba (la prueba sin catastro usa el
+frente de Trelles y llega a Confirmar); reintenta sola una tarea. Si falla **después** de
+Finalizar, la ficha lo dice en rojo: revisar el Histórico antes de volver a pedirla.
+
+**Falta** (con la primera encomienda real): firma, pago con tarjeta, carga en
+tramites.cpau.org y bajar el certificado visado como documento `encomienda_cpau`.
 
 Pendiente de JS: pago con tarjeta o transferencia; si la encomienda espera el cobro al
 cliente (decidido el 14/09, antes de que el link saliera al confirmar la venta).

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2, PenLine } from "lucide-react";
+import { FileText, Loader2, PenLine } from "lucide-react";
 import { FirmaPad } from "@/components/permisos-via-publica/firma-pad";
 import type { PortalCliente } from "@/app/api/public/permiso/[token]/route";
 import { CARACTER_POR_DEFECTO, formatoCuit } from "@/lib/permisos-via-publica/tipos";
@@ -22,7 +22,30 @@ export function FirmarDocumentos({ token, portal, onListo }: { token: string; po
   const [firma, setFirma] = useState<string | null>(null);
   const [acepto, setAcepto] = useState(false);
   const [enviando, setEnviando] = useState(false);
+  const [abriendo, setAbriendo] = useState<"acta" | "nota" | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Leer antes de firmar: el PDF se arma en el momento con lo que ya completó, sin firma.
+  async function leer(documento: "acta" | "nota") {
+    setAbriendo(documento);
+    setError(null);
+    try {
+      const res = await fetch(`/api/public/permiso/${token}/vista-previa`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ documento, firmante, dni, caracter, domicilio, trabajos }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? "No se pudo abrir el documento");
+      const url = URL.createObjectURL(await res.blob());
+      window.open(url, "_blank", "noopener");
+      // El navegador todavía lo está abriendo: recién después se libera.
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo abrir el documento");
+    } finally {
+      setAbriendo(null);
+    }
+  }
 
   const dniOk = /^\d{7,8}$/.test(dni.replace(/\D/g, ""));
   const listo = firmante.trim().length >= 3 && dniOk && caracter.trim().length >= 2 && domicilio.trim().length >= 5 && trabajos.trim().length >= 3 && !!firma && acepto;
@@ -84,6 +107,32 @@ export function FirmarDocumentos({ token, portal, onListo }: { token: string; po
           <span className="text-gray-600">Trabajos a realizar</span>
           <input value={trabajos} onChange={(ev) => setTrabajos(ev.target.value)} className={campo} />
         </label>
+      </div>
+
+      <div className="grid gap-2 rounded-md border border-gray-200 p-3">
+        <p className="text-sm text-gray-600">
+          Leelos antes de firmar. Se abren con los datos que completaste hasta ahora, sin la firma.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => leer("acta")}
+            disabled={abriendo !== null}
+            className="inline-flex items-center gap-2 rounded-md border border-gray-300 px-3 py-2 text-sm disabled:opacity-50"
+          >
+            {abriendo === "acta" ? <Loader2 className="size-4 animate-spin" /> : <FileText className="size-4" />}
+            Leer el Acta de compromiso
+          </button>
+          <button
+            type="button"
+            onClick={() => leer("nota")}
+            disabled={abriendo !== null}
+            className="inline-flex items-center gap-2 rounded-md border border-gray-300 px-3 py-2 text-sm disabled:opacity-50"
+          >
+            {abriendo === "nota" ? <Loader2 className="size-4 animate-spin" /> : <FileText className="size-4" />}
+            Leer la Nota
+          </button>
+        </div>
       </div>
 
       <div className="grid gap-1 text-sm">

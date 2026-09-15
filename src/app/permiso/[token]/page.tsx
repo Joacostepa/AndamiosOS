@@ -232,7 +232,17 @@ function FilaDocumento({ token, doc, onSubido }: { token: string; doc: PortalCli
       {icono}
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium">{NOMBRE_DOCUMENTO[doc.clave] ?? doc.clave}</p>
-        {doc.archivo_nombre && <p className="truncate text-xs text-gray-500">{doc.archivo_nombre}</p>}
+        {doc.archivo_nombre && (
+          <p className="truncate text-xs text-gray-500">
+            {doc.archivo_nombre}
+            {doc.url && (
+              <>
+                {" · "}
+                <a href={doc.url} target="_blank" rel="noreferrer" className="underline">Ver</a>
+              </>
+            )}
+          </p>
+        )}
         {doc.estado === "revisando" && <p className="text-xs text-blue-700">Revisando…</p>}
         {doc.estado === "ok" && <p className="text-xs text-green-700">Correcto</p>}
         {doc.observacion && <p className={`text-xs ${doc.estado === "observado" ? "text-red-700" : "text-gray-600"}`}>{doc.observacion}</p>}

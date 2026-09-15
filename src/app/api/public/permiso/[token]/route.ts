@@ -21,7 +21,8 @@ export type PortalCliente = {
     /** Sólo en consorcios: la persona del administrador, que va como coasegurado. */
     administrador: { nombre: string; cuit: string } | null;
   } | null;
-  documentos: { id: string; clave: string; estado: EstadoDocumento; archivo_nombre: string | null; observacion: string | null }[];
+  /** Cada documento con un link temporal (10 min) para que el cliente pueda leerlo. */
+  documentos: { id: string; clave: string; estado: EstadoDocumento; archivo_nombre: string | null; observacion: string | null; url: string | null }[];
 };
 
 export async function GET(_req: NextRequest, ctx: { params: Promise<{ token: string }> }) {
@@ -31,8 +32,15 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ token: str
   if (!t) return NextResponse.json({ error: "El link no es válido" }, { status: 404 });
 
   const { data } = await db.from("pvp_documentos")
-    .select("id, clave, estado, archivo_nombre, observacion")
+    .select("id, clave, estado, archivo_nombre, observacion, archivo_path")
     .eq("tramite_id", t.id).eq("origen", "cliente").order("created_at");
+
+  // Link temporal para que el cliente pueda leer lo que subió y lo que firmó en el portal.
+  const documentos = await Promise.all(((data ?? []) as (Pick<Documento, "id" | "clave" | "estado" | "archivo_nombre" | "observacion"> & { archivo_path: string | null })[])
+    .map(async ({ archivo_path, ...d }) => ({
+      ...d,
+      url: archivo_path ? (await db.storage.from("permisos-via-publica").createSignedUrl(archivo_path, 600)).data?.signedUrl ?? null : null,
+    })));
 
   const portal: PortalCliente = {
     direccion: t.direccion,
@@ -44,7 +52,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ token: str
           administrador: t.administrador_cuit ? { nombre: t.administrador_nombre, cuit: t.administrador_cuit } : null,
         }
       : null,
-    documentos: (data ?? []) as Pick<Documento, "id" | "clave" | "estado" | "archivo_nombre" | "observacion">[],
+    documentos,
   };
   return NextResponse.json(portal);
 }

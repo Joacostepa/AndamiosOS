@@ -123,9 +123,14 @@ class Escritor {
   }
 }
 
-/** La constancia de firma electrónica al pie de cada página. */
-function pieDeFirma(doc: PDFDocument, fuente: PDFFont, datos: DatosFirma, ctx: ContextoFirma) {
-  const texto = `Firmado electrónicamente por ${datos.firmante} (DNI ${datos.dni}) el ${fechaHoy(ctx.firmadoAt)} a las ${horaHoy(ctx.firmadoAt)} en el portal de Andamios Buenos Aires.`;
+/**
+ * La constancia de firma electrónica al pie de cada página. En el borrador que el cliente lee
+ * antes de firmar dice que todavía no está firmado.
+ */
+function pieDeFirma(doc: PDFDocument, fuente: PDFFont, datos: DatosFirma, ctx: ContextoFirma, borrador = false) {
+  const texto = borrador
+    ? "BORRADOR — todavía sin firmar. Así queda el documento cuando lo firmes en el portal de Andamios Buenos Aires."
+    : `Firmado electrónicamente por ${datos.firmante} (DNI ${datos.dni}) el ${fechaHoy(ctx.firmadoAt)} a las ${horaHoy(ctx.firmadoAt)} en el portal de Andamios Buenos Aires.`;
   const paginas = doc.getPages();
   const gris = rgb(0.45, 0.45, 0.45);
   paginas.forEach((p, i) => {
@@ -145,7 +150,11 @@ async function nuevoDocumento(titulo: string) {
   return { doc, normal, negrita, escritor: new Escritor(doc, normal, negrita) };
 }
 
-export async function generarActaCompromiso(datos: DatosFirma, firmaPng: Uint8Array, ctx: ContextoFirma): Promise<Uint8Array> {
+/**
+ * El acta de compromiso. Sin `firmaPng` sale el BORRADOR que el cliente lee en el portal antes
+ * de firmar: mismo texto y mismos datos, con el espacio de la firma vacío (JS, 15/09).
+ */
+export async function generarActaCompromiso(datos: DatosFirma, firmaPng: Uint8Array | null, ctx: ContextoFirma): Promise<Uint8Array> {
   const { doc, normal, escritor: e } = await nuevoDocumento("Acta de compromiso");
   const representacion = ctx.tipoDueno === "persona" ? "por derecho propio," : `en nombre y representación de **${ctx.titularNombre}**`;
 
@@ -200,20 +209,22 @@ export async function generarActaCompromiso(datos: DatosFirma, firmaPng: Uint8Ar
   e.asegurar(230);
   e.parrafo("En prueba de conformidad, se firman dos ejemplares de un mismo tenor y a un sólo efecto, en la fecha consignada al principio de este instrumento.");
   e.espacio(18);
-  e.imagen(await doc.embedPng(firmaPng), 56);
+  if (firmaPng) e.imagen(await doc.embedPng(firmaPng), 56);
+  else e.espacio(56);
   e.linea(200);
   e.parrafo("Firma responsable autorizado", { alineado: "izquierda", despues: 2 });
   e.parrafo(`Aclaración: **${datos.firmante}**`, { alineado: "izquierda", despues: 2 });
   e.parrafo(`Documento: **DNI ${datos.dni}**`, { alineado: "izquierda", despues: 2 });
   e.parrafo(`Entidad: **${ctx.tipoDueno === "persona" ? "Por derecho propio" : ctx.titularNombre}**`, { alineado: "izquierda", despues: 2 });
 
-  pieDeFirma(doc, normal, datos, ctx);
+  pieDeFirma(doc, normal, datos, ctx, !firmaPng);
   return doc.save();
 }
 
+/** La nota de ABA. Sin `firmaPng` sale el borrador que el cliente lee antes de firmar. */
 export async function generarNotaAutorizacion(
   datos: DatosFirma,
-  firmaPng: Uint8Array,
+  firmaPng: Uint8Array | null,
   ctx: ContextoFirma,
   logoPng?: Uint8Array | null,
 ): Promise<Uint8Array> {
@@ -244,11 +255,12 @@ export async function generarNotaAutorizacion(
   const caracter = ctx.tipoDueno === "persona" ? datos.caracter : `${datos.caracter} de ${ctx.titularNombre}`;
   e.parrafo(`En carácter de: **${caracter}**`, { alineado: "izquierda", despues: 18 });
   e.parrafo("Firma:", { alineado: "izquierda", despues: 0 });
-  e.imagen(await doc.embedPng(firmaPng), 56, MARGEN + 50);
+  if (firmaPng) e.imagen(await doc.embedPng(firmaPng), 56, MARGEN + 50);
+  else e.espacio(56);
   e.espacio(14);
   e.parrafo(`Aclaración: **${datos.firmante}**`, { alineado: "izquierda", despues: 18 });
   e.parrafo(`DNI: **${datos.dni}**`, { alineado: "izquierda" });
 
-  pieDeFirma(doc, normal, datos, ctx);
+  pieDeFirma(doc, normal, datos, ctx, !firmaPng);
   return doc.save();
 }

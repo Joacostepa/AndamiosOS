@@ -681,6 +681,13 @@ pie de cada página; se guardan IP, dispositivo y sha256 del PDF en la revisión
 digital certificada. Domicilio electrónico del acta = `PERMISOS_MAIL`. Falta la plantilla
 de la nota del dueño para inquilinos.
 
+**Leerlos antes de firmar (JS, 2026-09-15):** en el portal no había forma de leer el acta ni la
+nota. Ahora "Completar y firmar" tiene **"Leer el Acta de compromiso"** y **"Leer la Nota"**:
+`POST /api/public/permiso/[token]/vista-previa` arma el PDF en el momento con lo que el cliente
+completó hasta ahí, sin firma, con el pie "BORRADOR — todavía sin firmar" y lo que falta como
+"(a completar)". No guarda nada ni toca el legajo. Después de firmar, cada documento del portal
+trae un **link temporal de 10 minutos** ("Ver"), así puede releer lo que firmó y lo que subió.
+
 **Póliza, corrección (2026-09-15):** sólo se frena si el PDF **pide contraseña para abrirse**.
 Las pólizas de La Mercantil Andina vienen con protección de permisos (`/Encrypt`) y se abren.
 ~~TAD las acepta~~ → **TAD NO las acepta** (visto con S02466): "Error generando documento PDF,

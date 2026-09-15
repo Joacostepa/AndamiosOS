@@ -170,19 +170,22 @@ export async function ventasParaIniciar(db: SupabaseClient): Promise<VentaParaIn
 /** Manda (o reenvía) el link del portal al mail del cliente. Devuelve si salió. */
 export async function mandarLinkCliente(db: SupabaseClient, tramiteId: string, origen?: string | null): Promise<boolean> {
   const { data: t } = await db.from("pvp_tramites")
-    .select("id, direccion, odoo_venta_nombre, cliente_nombre, cliente_email, token_cliente")
+    .select("id, direccion, odoo_venta_nombre, cliente_nombre, cliente_email, token_cliente, es_prueba")
     .eq("id", tramiteId).single();
   if (!t) throw new Error("El trámite no existe");
 
+  // En prueba el "cliente" es la casilla de la app: nunca le escribe a nadie de afuera.
+  const para = t.es_prueba ? process.env.PERMISOS_MAIL ?? null : t.cliente_email;
   const url = linkCliente(t.token_cliente, origen);
-  const problema = url ? problemaDeMail(t.cliente_email) : "No se sabe la URL de la app para armar el link (NEXT_PUBLIC_APP_URL).";
+  const problema = url ? problemaDeMail(para) : "No se sabe la URL de la app para armar el link (NEXT_PUBLIC_APP_URL).";
 
   if (!problema) {
     try {
       await enviarMail({
-        para: t.cliente_email!.trim(),
-        asunto: `Permiso de andamio para ${t.direccion} — datos y documentación`,
+        para: para!.trim(),
+        asunto: `${t.es_prueba ? "[PRUEBA] " : ""}Permiso de andamio para ${t.direccion} — datos y documentación`,
         texto: [
+          ...(t.es_prueba ? ["[PRUEBA] Este mail es lo que le llegaría al cliente.", ""] : []),
           `Hola${t.cliente_nombre ? ` ${t.cliente_nombre}` : ""}, ¿cómo estás?`,
           "",
           `Para tramitar el permiso de uso del espacio público del andamio de ${t.direccion} necesitamos algunos datos y documentos del dueño del lote.`,
@@ -199,7 +202,7 @@ export async function mandarLinkCliente(db: SupabaseClient, tramiteId: string, o
         ].join("\n"),
       });
       await db.from("pvp_tramites").update({ link_enviado_at: new Date().toISOString(), link_error: null }).eq("id", tramiteId);
-      await registrarEvento(db, tramiteId, "link_cliente", `Se le mandó el link a ${t.cliente_email}.`, {}, "sistema");
+      await registrarEvento(db, tramiteId, "link_cliente", `Se le mandó el link a ${para}.`, {}, "sistema");
       return true;
     } catch (e) {
       return anotarProblema(e instanceof Error ? e.message : String(e));
@@ -210,6 +213,7 @@ export async function mandarLinkCliente(db: SupabaseClient, tramiteId: string, o
   async function anotarProblema(msg: string): Promise<false> {
     await db.from("pvp_tramites").update({ link_error: msg.slice(0, 300) }).eq("id", tramiteId);
     await registrarEvento(db, tramiteId, "link_cliente", `No se mandó el link: ${msg}`, {}, "sistema");
+    if (t!.es_prueba) return false;
     await crearAlertas(db, [{
       tipo: "permiso_novedad",
       clave: `permiso_novedad:tramite:${tramiteId}:link`,
@@ -220,6 +224,25 @@ export async function mandarLinkCliente(db: SupabaseClient, tramiteId: string, o
     }]);
     return false;
   }
+}
+
+/**
+ * Un trámite de prueba para ver el circuito entero sin escribirle a nadie: el link "del
+ * cliente" y el pedido de endoso llegan a la casilla de la app (PERMISOS_MAIL).
+ */
+export async function crearTramiteDePrueba(db: SupabaseClient, userId: string | null, origen?: string | null): Promise<{ tramiteId: string; linkEnviado: boolean }> {
+  const { data, error } = await db.from("pvp_tramites").insert({
+    direccion: "Obra de prueba — Av. Siempre Viva 742, CABA",
+    cliente_nombre: "Cliente de prueba",
+    cliente_email: process.env.PERMISOS_MAIL ?? null,
+    permiso_hasta: seisMesesDesdeHoy(),
+    es_prueba: true,
+    creado_por: userId,
+  }).select("id").single();
+  if (error || !data) throw new Error(error?.message ?? "No se pudo crear la prueba");
+  await registrarEvento(db, data.id, "tramite_abierto", "Trámite de prueba: los mails llegan a la casilla de la app.", { por: userId }, "persona");
+  const linkEnviado = await mandarLinkCliente(db, data.id, origen);
+  return { tramiteId: data.id, linkEnviado };
 }
 
 export async function tramiteDeToken(db: SupabaseClient, token: string) {

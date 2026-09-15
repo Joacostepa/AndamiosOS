@@ -12,21 +12,27 @@ import { formatoCuit, type Tramite } from "./tipos";
 // manda varias pólizas en un mail —hay que adivinar cuál es de qué obra— y si está de
 // vacaciones el mail queda en su casilla. El link lo resuelve cualquiera en Segucom, cada
 // póliza entra en el casillero de su obra, y la revisión le contesta en el momento.
+//
+// MODO PRUEBA: los pedidos de un trámite de prueba NUNCA van a Segucom. Salen a nombre del
+// productor "prueba" (mail de la app, link propio) y no crean alertas, que irían a Slack.
 
 export const BUCKET = "permisos-via-publica";
 const PRODUCTOR = "segucom";
+export const PRODUCTOR_PRUEBA = "prueba";
 const DIA = 86_400_000;
 
 type Actor = "persona" | "productor" | "ia" | "sistema" | "cliente";
+type TramitePedido = Pick<Tramite, "direccion" | "titular_nombre" | "titular_cuit" | "permiso_hasta" | "expediente_id" | "es_prueba">;
 type FilaPedido = {
   id: string;
   tramite_id: string;
   pedido_at: string | null;
   aviso_enviado_at: string | null;
   recordatorio_at: string | null;
-  pvp_tramites: Pick<Tramite, "direccion" | "titular_nombre" | "titular_cuit" | "permiso_hasta" | "expediente_id">;
+  pvp_tramites: TramitePedido;
 };
 
+const COLUMNAS_TRAMITE = "direccion, titular_nombre, titular_cuit, permiso_hasta, expediente_id, es_prueba";
 const dia = (iso: string | null) => (iso ? iso.slice(0, 10).split("-").reverse().join("/") : "—");
 
 /** Origen de los links: el del pedido si lo hay; en el cron, el de producción. */
@@ -51,8 +57,15 @@ export async function productorDeToken(db: SupabaseClient, token: string): Promi
   return data;
 }
 
-const enlaceInterno = (t: { expediente_id: string | null }) =>
-  t.expediente_id ? `/permisos-via-publica/${t.expediente_id}` : "/permisos-via-publica";
+/** El link al portal de un productor (el de prueba se muestra en la ficha de las pruebas). */
+export async function linkProductor(db: SupabaseClient, productorId: string, origen?: string | null): Promise<string | null> {
+  const { data } = await db.from("pvp_productores").select("token").eq("id", productorId).maybeSingle();
+  const base = urlBase(origen);
+  return data?.token && base ? `${base}/endosos/${data.token}` : null;
+}
+
+const enlaceInterno = (tramiteId: string, t: { expediente_id: string | null }) =>
+  t.expediente_id ? `/permisos-via-publica/${t.expediente_id}` : `/permisos-via-publica/tramites/${tramiteId}`;
 
 /** Deja la póliza del trámite en "pedido". El aviso sale aparte (avisarProductor), agrupado. */
 export async function pedirEndoso(db: SupabaseClient, tramiteId: string, userId: string | null): Promise<void> {
@@ -66,18 +79,27 @@ export async function pedirEndoso(db: SupabaseClient, tramiteId: string, userId:
     { onConflict: "tramite_id,clave" },
   );
   if (error) throw new Error(`No se pudo registrar el pedido: ${error.message}`);
-  await registrarEvento(db,tramiteId, "documento_pedido", "Se pidió el endoso de la póliza a Segucom.", { por: userId }, "persona");
+  await registrarEvento(db, tramiteId, "documento_pedido", "Se pidió el endoso de la póliza a Segucom.", { por: userId }, "persona");
 }
 
 async function pendientes(db: SupabaseClient): Promise<FilaPedido[]> {
   const { data, error } = await db
     .from("pvp_documentos")
-    .select("id, tramite_id, pedido_at, aviso_enviado_at, recordatorio_at, pvp_tramites!inner(direccion, titular_nombre, titular_cuit, permiso_hasta, expediente_id)")
+    .select(`id, tramite_id, pedido_at, aviso_enviado_at, recordatorio_at, pvp_tramites!inner(${COLUMNAS_TRAMITE})`)
     .eq("clave", "poliza_rc")
     .eq("estado", "pedido")
     .order("pedido_at");
   if (error) throw new Error(error.message);
   return (data ?? []) as unknown as FilaPedido[];
+}
+
+/** Cada pedido a su productor: los reales a Segucom, los de prueba al productor de prueba. */
+function porProductor(filas: FilaPedido[]): [string, FilaPedido[]][] {
+  const grupos: [string, FilaPedido[]][] = [
+    [PRODUCTOR, filas.filter((f) => !f.pvp_tramites.es_prueba)],
+    [PRODUCTOR_PRUEBA, filas.filter((f) => f.pvp_tramites.es_prueba)],
+  ];
+  return grupos.filter(([, g]) => g.length > 0);
 }
 
 function listado(filas: FilaPedido[]): string {
@@ -87,14 +109,16 @@ function listado(filas: FilaPedido[]): string {
     .join("\n");
 }
 
-async function mandarAProductor(db: SupabaseClient, filas: FilaPedido[], recordatorio: boolean, origen?: string | null) {
-  const { data: p } = await db.from("pvp_productores").select("nombre, email, token").eq("id", PRODUCTOR).eq("activo", true).maybeSingle();
-  if (!p) throw new Error("No hay un productor activo configurado");
+async function mandarAProductor(db: SupabaseClient, productorId: string, filas: FilaPedido[], recordatorio: boolean, origen?: string | null) {
+  const { data: p } = await db.from("pvp_productores").select("nombre, email, token").eq("id", productorId).eq("activo", true).maybeSingle();
+  if (!p) throw new Error(`No hay un productor "${productorId}" activo`);
   const base = urlBase(origen);
   if (!base) throw new Error("No se sabe la URL de la app para armar el link (NEXT_PUBLIC_APP_URL)");
 
+  const prueba = productorId === PRODUCTOR_PRUEBA;
   const una = filas.length === 1;
   const texto = [
+    ...(prueba ? ["[PRUEBA] Este mail es lo que le llegaría a Gonzalo. No se le mandó nada a Segucom.", ""] : []),
     "Hola Gonza, ¿cómo estás?",
     "",
     recordatorio
@@ -114,39 +138,45 @@ async function mandarAProductor(db: SupabaseClient, filas: FilaPedido[], recorda
 
   await enviarMail({
     para: p.email,
-    asunto: recordatorio ? `Recordatorio: endosos pendientes (${filas.length})` : `Endosos para pedir — Andamios Buenos Aires (${filas.length})`,
+    asunto: `${prueba ? "[PRUEBA] " : ""}${recordatorio ? `Recordatorio: endosos pendientes (${filas.length})` : `Endosos para pedir — Andamios Buenos Aires (${filas.length})`}`,
     texto,
   });
 }
 
 /**
- * Manda UN mail con todos los pedidos que todavía no avisaron. Si el mail falla, el pedido
- * queda sin aviso y con el error a la vista en la ficha; el cron lo reintenta.
+ * Manda UN mail por productor con todos los pedidos que todavía no avisaron. Si el mail
+ * falla, el pedido queda sin aviso y con el error a la vista en la ficha; el cron lo reintenta.
  */
 export async function avisarProductor(db: SupabaseClient, origen?: string | null): Promise<number> {
   const sinAviso = (await pendientes(db)).filter((f) => !f.aviso_enviado_at);
-  if (sinAviso.length === 0) return 0;
-  const ids = sinAviso.map((f) => f.id);
-  try {
-    await mandarAProductor(db, sinAviso, false, origen);
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    await db.from("pvp_documentos").update({ aviso_error: msg.slice(0, 300) }).in("id", ids);
-    console.error("[endosos] no se pudo avisar al productor", msg);
-    return 0;
+  let avisados = 0;
+  for (const [productorId, grupo] of porProductor(sinAviso)) {
+    const ids = grupo.map((f) => f.id);
+    try {
+      await mandarAProductor(db, productorId, grupo, false, origen);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      await db.from("pvp_documentos").update({ aviso_error: msg.slice(0, 300) }).in("id", ids);
+      console.error("[endosos] no se pudo avisar al productor", productorId, msg);
+      continue;
+    }
+    await db.from("pvp_documentos").update({ aviso_enviado_at: new Date().toISOString(), aviso_error: null }).in("id", ids);
+    for (const f of grupo) {
+      await registrarEvento(
+        db, f.tramite_id, "aviso_productor",
+        productorId === PRODUCTOR_PRUEBA ? "Se mandó el pedido de prueba a la casilla de la app (no a Segucom)." : "Se le mandó el pedido por mail a Segucom.",
+        {}, "sistema",
+      );
+    }
+    avisados += grupo.length;
   }
-  const ahora = new Date().toISOString();
-  await db.from("pvp_documentos").update({ aviso_enviado_at: ahora, aviso_error: null }).in("id", ids);
-  for (const f of sinAviso) {
-    await registrarEvento(db,f.tramite_id, "aviso_productor", "Se le mandó el pedido por mail a Segucom.", {}, "sistema");
-  }
-  return sinAviso.length;
+  return avisados;
 }
 
 /**
- * Lo que corre el cron cada mañana: reintenta avisos, recuerda a Segucom lo que lleva más
+ * Lo que corre el cron cada mañana: reintenta avisos, recuerda al productor lo que lleva más
  * de un día sin subirse y, si después del recordatorio sigue sin subirse, avisa a ABA para
- * que alguien llame.
+ * que alguien llame (sólo por pedidos reales).
  */
 export async function recordarEndosos(db: SupabaseClient): Promise<{ avisos: number; recordatorios: number; trabados: number }> {
   const avisos = await avisarProductor(db);
@@ -155,24 +185,24 @@ export async function recordarEndosos(db: SupabaseClient): Promise<{ avisos: num
 
   const aRecordar = filas.filter((f) => f.aviso_enviado_at && !f.recordatorio_at && ahora - Date.parse(f.aviso_enviado_at) > DIA);
   let recordatorios = 0;
-  if (aRecordar.length > 0) {
+  for (const [productorId, grupo] of porProductor(aRecordar)) {
     try {
-      await mandarAProductor(db, aRecordar, true);
-      await db.from("pvp_documentos").update({ recordatorio_at: new Date().toISOString() }).in("id", aRecordar.map((f) => f.id));
-      recordatorios = aRecordar.length;
+      await mandarAProductor(db, productorId, grupo, true);
+      await db.from("pvp_documentos").update({ recordatorio_at: new Date().toISOString() }).in("id", grupo.map((f) => f.id));
+      recordatorios += grupo.length;
     } catch (e) {
-      console.error("[endosos] no se pudo mandar el recordatorio", e);
+      console.error("[endosos] no se pudo mandar el recordatorio", productorId, e);
     }
   }
 
-  const trabados = filas.filter((f) => f.recordatorio_at && ahora - Date.parse(f.recordatorio_at) > DIA);
+  const trabados = filas.filter((f) => !f.pvp_tramites.es_prueba && f.recordatorio_at && ahora - Date.parse(f.recordatorio_at) > DIA);
   await crearAlertas(db, trabados.map((f) => ({
     tipo: "permiso_endoso" as const,
     clave: `permiso_endoso:${f.id}:sin_subir:${(f.pedido_at ?? "").slice(0, 10)}`,
     titulo: `Segucom no subió la póliza — ${f.pvp_tramites.direccion}`,
     descripcion: `Se pidió el ${dia(f.pedido_at)} y ya se le recordó. Hay que llamar a Gonzalo.`,
     prioridad: "alta" as const,
-    enlace: enlaceInterno(f.pvp_tramites),
+    enlace: enlaceInterno(f.tramite_id, f.pvp_tramites),
   })));
 
   return { avisos, recordatorios, trabados: trabados.length };
@@ -194,18 +224,19 @@ export async function registrarSubida(
     subido_por: actor, subido_at: ahora, observacion: null, revision: null, revisado_at: null, updated_at: ahora,
   }).eq("id", documentoId);
   if (e2) throw new Error(e2.message);
-  await registrarEvento(db,doc.tramite_id, "documento_subido", `${archivo.nombre} (versión ${version})`, { path: archivo.path }, actor);
+  await registrarEvento(db, doc.tramite_id, "documento_subido", `${archivo.nombre} (versión ${version})`, { path: archivo.path }, actor);
 }
 
 /** Lee la póliza con IA, decide ok/observado y avisa a ABA cuando quedó lista. Nunca tira. */
 export async function revisarDocumento(db: SupabaseClient, documentoId: string): Promise<void> {
   const { data: doc } = await db
     .from("pvp_documentos")
-    .select("id, tramite_id, version, archivo_path, pvp_tramites!inner(direccion, titular_nombre, titular_cuit, permiso_hasta, expediente_id)")
+    .select(`id, tramite_id, version, archivo_path, pvp_tramites!inner(${COLUMNAS_TRAMITE})`)
     .eq("id", documentoId)
     .single();
   if (!doc?.archivo_path) return;
-  const tramite = doc.pvp_tramites as unknown as FilaPedido["pvp_tramites"];
+  const tramite = doc.pvp_tramites as unknown as TramitePedido;
+  const alertar: typeof crearAlertas = (d, alertas) => (tramite.es_prueba ? Promise.resolve(0) : crearAlertas(d, alertas));
 
   try {
     const { data: archivo, error } = await db.storage.from(BUCKET).download(doc.archivo_path);
@@ -217,15 +248,15 @@ export async function revisarDocumento(db: SupabaseClient, documentoId: string):
     const ahora = new Date().toISOString();
 
     await db.from("pvp_documentos").update({ estado, revision, revisado_at: ahora, observacion, updated_at: ahora }).eq("id", documentoId);
-    await registrarEvento(db,doc.tramite_id, "documento_revisado", estado === "ok" ? "La póliza cumple lo que pide el GCBA." : `Observada: ${observacion}`, { estado, version: doc.version }, "ia");
+    await registrarEvento(db, doc.tramite_id, "documento_revisado", estado === "ok" ? "La póliza cumple lo que pide el GCBA." : `Observada: ${observacion}`, { estado, version: doc.version }, "ia");
 
     if (estado === "ok") {
-      await crearAlertas(db, [{
+      await alertar(db, [{
         tipo: "permiso_endoso",
         clave: `permiso_endoso:${documentoId}:ok:v${doc.version}`,
         titulo: `Póliza lista — ${tramite.direccion}`,
         descripcion: "Segucom subió el endoso y cumple lo que pide el GCBA. Ya se puede presentar o subsanar.",
-        enlace: enlaceInterno(tramite),
+        enlace: enlaceInterno(doc.tramite_id, tramite),
       }]);
     }
   } catch (e) {
@@ -234,14 +265,14 @@ export async function revisarDocumento(db: SupabaseClient, documentoId: string):
       observacion: `No se pudo revisar sola (${msg}). La tiene que mirar una persona.`,
       updated_at: new Date().toISOString(),
     }).eq("id", documentoId);
-    await registrarEvento(db,doc.tramite_id, "documento_revisado", `No se pudo revisar: ${msg}`, { error: msg }, "ia");
-    await crearAlertas(db, [{
+    await registrarEvento(db, doc.tramite_id, "documento_revisado", `No se pudo revisar: ${msg}`, { error: msg }, "ia");
+    await alertar(db, [{
       tipo: "permiso_endoso",
       clave: `permiso_endoso:${documentoId}:error:v${doc.version}`,
       titulo: `Revisar la póliza a mano — ${tramite.direccion}`,
       descripcion: msg,
       prioridad: "alta",
-      enlace: enlaceInterno(tramite),
+      enlace: enlaceInterno(doc.tramite_id, tramite),
     }]);
   }
 }

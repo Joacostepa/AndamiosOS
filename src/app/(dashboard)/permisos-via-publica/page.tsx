@@ -4,7 +4,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { formatDistanceToNowStrict, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
-import { Landmark, Loader2, RefreshCw, Search, TriangleAlert } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { FlaskConical, Landmark, Loader2, RefreshCw, Search, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -13,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChipEstado } from "@/components/permisos-via-publica/chip-estado";
 import { VentasParaIniciar } from "@/components/permisos-via-publica/ventas-para-iniciar";
-import { useBandejaPermisos, useRevisarAhora } from "@/hooks/use-permisos-via-publica";
+import { useBandejaPermisos, useCrearPrueba, useRevisarAhora } from "@/hooks/use-permisos-via-publica";
 import { coincide, estadoVinculo, type EstadoRobot, type Expediente } from "@/lib/permisos-via-publica/tipos";
 
 // Permisos vía pública — los expedientes de TAD sin entrar a TAD.
@@ -40,6 +41,8 @@ export default function PermisosViaPublicaPage() {
   const { data, isLoading, error } = useBandejaPermisos();
   const revisar = useRevisarAhora();
   const [busqueda, setBusqueda] = useState("");
+  const crearPrueba = useCrearPrueba();
+  const router = useRouter();
 
   if (isLoading) {
     return (
@@ -77,6 +80,22 @@ export default function PermisosViaPublicaPage() {
         title="Permisos de andamio"
         description={`${data.total} expedientes en TAD · última revisión ${hace(robot?.ultimo_ok_at)}`}
       >
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={crearPrueba.isPending}
+          onClick={() =>
+            crearPrueba.mutate(undefined, {
+              onSuccess: (r) => {
+                toast.success(r.linkEnviado ? "Prueba creada: te llegó el link a tu mail" : "Prueba creada, pero el mail no salió: usá el link de la ficha");
+                router.push(`/permisos-via-publica/tramites/${r.tramiteId}`);
+              },
+              onError: (e) => toast.error(e instanceof Error ? e.message : "No se pudo crear la prueba"),
+            })
+          }
+        >
+          {crearPrueba.isPending ? <Loader2 className="size-4 animate-spin" /> : <FlaskConical className="size-4" />} Probar el circuito
+        </Button>
         <Button onClick={pedirRevision} disabled={data.revisando || revisar.isPending} variant="outline" size="sm">
           {data.revisando ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
           {data.revisando ? "Revisando TAD…" : "Revisar ahora"}
@@ -126,6 +145,7 @@ export default function PermisosViaPublicaPage() {
                   <Link href={`/permisos-via-publica/tramites/${t.id}`} className="block px-3 py-2.5 hover:bg-muted/40">
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                       <span className="text-[13px] font-medium">{t.direccion}</span>
+                      {t.es_prueba && <span className="rounded bg-purple-500/15 px-1.5 py-0.5 text-[11px] text-purple-300">PRUEBA</span>}
                       <span className="text-[12px] text-muted-foreground">{t.odoo_venta_nombre} · {t.cliente_nombre}</span>
                     </div>
                     <div className="mt-1 flex flex-wrap gap-x-3 text-[12px] text-muted-foreground">

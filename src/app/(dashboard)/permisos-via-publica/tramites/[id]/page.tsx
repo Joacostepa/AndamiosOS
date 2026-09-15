@@ -2,16 +2,17 @@
 
 import { use } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
-import { ArrowLeft, CheckCircle2, CircleAlert, CircleMinus, Copy, ExternalLink, Loader2, Send, TriangleAlert } from "lucide-react";
+import { ArrowLeft, CheckCircle2, CircleAlert, CircleMinus, Copy, ExternalLink, FlaskConical, Loader2, Send, Trash2, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useReenviarLink, useTramite } from "@/hooks/use-permisos-via-publica";
+import { useBorrarTramite, useReenviarLink, useTramite } from "@/hooks/use-permisos-via-publica";
 import {
   ETIQUETA_DUENO, ETIQUETA_ESTADO_DOCUMENTO, NOMBRE_DOCUMENTO, formatoCuit,
   type Documento, type EstadoDocumento,
@@ -36,13 +37,15 @@ export default function FichaTramitePage({ params }: { params: Promise<{ id: str
   const { id } = use(params);
   const { data, isLoading, error } = useTramite(id);
   const reenviar = useReenviarLink(id);
+  const borrar = useBorrarTramite(id);
+  const router = useRouter();
 
   if (isLoading) return <Skeleton className="h-64 w-full" />;
   if (error || !data) {
     return <EmptyState icon={TriangleAlert} title="No se pudo abrir el trámite" description={error instanceof Error ? error.message : undefined} />;
   }
 
-  const { tramite: t, documentos, eventos, linkCliente } = data;
+  const { tramite: t, documentos, eventos, linkCliente, linkProductorPrueba } = data;
   const legajo = documentos.filter((d) => d.origen === "cliente");
   const propios = documentos.filter((d) => d.origen !== "cliente");
 
@@ -52,6 +55,47 @@ export default function FichaTramitePage({ params }: { params: Promise<{ id: str
         <ArrowLeft className="size-4" /> Permisos de andamio
       </Link>
       <PageHeader title={t.direccion} description={`Trámite nuevo · ${t.odoo_venta_nombre ?? "sin venta"}`} />
+
+      {t.es_prueba && (
+        <section className="space-y-2 rounded-md border border-purple-500/30 bg-purple-500/10 p-3 text-[13px]">
+          <p className="flex items-center gap-1.5 font-semibold text-purple-300">
+            <FlaskConical className="size-4" /> Trámite de prueba
+          </p>
+          <p className="text-muted-foreground">
+            Todos los mails llegan a tu casilla: el link &quot;del cliente&quot; y el pedido de endoso. No se le escribe a ningún
+            cliente ni a Segucom, y no salen avisos a Slack.
+          </p>
+          <ol className="list-decimal space-y-0.5 pl-5 text-muted-foreground">
+            <li>Abrí el link del cliente (abajo) y cargá un dueño con un CUIT válido, por ejemplo 30-71546290-3.</li>
+            <li>Te llega el mail &quot;[PRUEBA] Endosos para pedir&quot;. Abrí la página de Segucom de prueba y subí una póliza.</li>
+            <li>A los segundos ves la revisión en esa página y acá.</li>
+          </ol>
+          <div className="flex flex-wrap gap-2">
+            {linkProductorPrueba && (
+              <a href={linkProductorPrueba} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[12px] underline-offset-2 hover:underline">
+                Página de Segucom (prueba) <ExternalLink className="size-3" />
+              </a>
+            )}
+            <Button
+              size="sm"
+              variant="outline"
+              className="ml-auto"
+              disabled={borrar.isPending}
+              onClick={() =>
+                borrar.mutate(undefined, {
+                  onSuccess: () => {
+                    toast.success("Prueba borrada");
+                    router.push("/permisos-via-publica");
+                  },
+                  onError: (err) => toast.error(err instanceof Error ? err.message : "No se pudo borrar"),
+                })
+              }
+            >
+              {borrar.isPending ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />} Borrar la prueba
+            </Button>
+          </div>
+        </section>
+      )}
 
       <section className="space-y-2 rounded-md border p-3 text-[13px]">
         <h3 className="font-semibold">Portal del cliente</h3>

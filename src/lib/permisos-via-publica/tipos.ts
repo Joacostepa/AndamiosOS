@@ -142,6 +142,8 @@ export type Tramite = {
   titular_cargado_at: string | null;
   link_enviado_at: string | null;
   link_error: string | null;
+  /** Trámite de prueba: los mails van a la casilla de la app y no crea alertas. */
+  es_prueba: boolean;
 };
 
 export type EstadoDocumento = "falta" | "pedido" | "cargado" | "revisando" | "ok" | "observado";
@@ -292,7 +294,7 @@ export type VentaParaIniciar = {
 /** Un trámite abierto desde una venta que todavía no se presentó en TAD. */
 export type TramiteNuevo = Pick<
   Tramite,
-  "id" | "direccion" | "odoo_venta_nombre" | "cliente_nombre" | "titular_nombre" | "titular_cargado_at" | "link_enviado_at" | "link_error" | "created_at"
+  "id" | "direccion" | "odoo_venta_nombre" | "cliente_nombre" | "titular_nombre" | "titular_cargado_at" | "link_enviado_at" | "link_error" | "created_at" | "es_prueba"
 > & { pvp_documentos: Pick<Documento, "estado" | "origen" | "clave">[] };
 
 export type FichaTramite = {
@@ -301,6 +303,8 @@ export type FichaTramite = {
   eventos: Evento[];
   /** El link del portal, para copiarlo y mandarlo por WhatsApp. */
   linkCliente: string | null;
+  /** Sólo en pruebas: la página "de Segucom" de prueba, para subir una póliza. */
+  linkProductorPrueba: string | null;
 };
 
 export type Bandeja = {

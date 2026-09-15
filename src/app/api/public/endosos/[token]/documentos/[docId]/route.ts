@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { BUCKET, productorDeToken, registrarSubida, revisarDocumento } from "@/lib/permisos-via-publica/endosos";
+import { BUCKET, PRODUCTOR_PRUEBA, productorDeToken, registrarSubida, revisarDocumento } from "@/lib/permisos-via-publica/endosos";
 
 // POST /api/public/endosos/:token/documentos/:docId
 //
@@ -31,13 +31,16 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
   if (!parsed.success) return NextResponse.json({ error: "Pedido inválido" }, { status: 400 });
 
   const db = createAdminClient();
-  if (!(await productorDeToken(db, token))) {
+  const productor = await productorDeToken(db, token);
+  if (!productor) {
     return NextResponse.json({ error: "El link no es válido o ya no está activo" }, { status: 404 });
   }
 
-  const { data: doc } = await db.from("pvp_documentos").select("id, tramite_id, clave, estado").eq("id", docId).maybeSingle();
-  // El productor sólo sube pólizas, y sólo las que se le pidieron.
-  if (!doc || doc.clave !== "poliza_rc" || doc.estado === "falta") {
+  const { data: doc } = await db.from("pvp_documentos")
+    .select("id, tramite_id, clave, estado, pvp_tramites!inner(es_prueba)").eq("id", docId).maybeSingle();
+  const esPrueba = (doc?.pvp_tramites as unknown as { es_prueba: boolean } | undefined)?.es_prueba;
+  // El productor sólo sube pólizas, sólo las que se le pidieron, y el de prueba sólo pruebas.
+  if (!doc || doc.clave !== "poliza_rc" || doc.estado === "falta" || esPrueba !== (productor.id === PRODUCTOR_PRUEBA)) {
     return NextResponse.json({ error: "Este endoso no está pedido" }, { status: 404 });
   }
   const prefijo = `tramites/${doc.tramite_id}/poliza_rc-`;

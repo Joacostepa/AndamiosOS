@@ -58,6 +58,24 @@ export function useIniciarTramite() {
   });
 }
 
+/** "Probar el circuito": trámite de prueba cuyos mails llegan a la casilla de la app. */
+export function useCrearPrueba() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => pedir<{ tramiteId: string; linkEnviado: boolean }>("/api/permisos-via-publica/prueba", { method: "POST" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["permisos-via-publica"] }),
+  });
+}
+
+/** Sólo trámites de prueba: el servidor rechaza borrar uno real. */
+export function useBorrarTramite(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => pedir<{ ok: true }>(`/api/permisos-via-publica/tramites/${id}`, { method: "DELETE" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["permisos-via-publica"] }),
+  });
+}
+
 export function useTramite(id: string) {
   return useQuery({
     queryKey: ["tramite-permiso", id],

@@ -19,7 +19,7 @@ export async function GET() {
       db.from("pvp_tareas").select("id", { count: "exact", head: true }).in("estado", ["pendiente", "tomada"]),
       // Trámites abiertos desde una venta que todavía no tienen expediente en TAD.
       db.from("pvp_tramites")
-        .select("id, direccion, odoo_venta_nombre, cliente_nombre, titular_nombre, titular_cargado_at, link_enviado_at, link_error, created_at, pvp_documentos(estado, origen, clave)")
+        .select("id, direccion, odoo_venta_nombre, cliente_nombre, titular_nombre, titular_cargado_at, link_enviado_at, link_error, created_at, es_prueba, pvp_documentos(estado, origen, clave)")
         .is("expediente_id", null)
         .order("created_at", { ascending: false }),
     ]);

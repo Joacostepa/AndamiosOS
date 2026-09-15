@@ -13,7 +13,14 @@ export type PortalCliente = {
   direccion: string;
   cliente_nombre: string | null;
   permiso_hasta: string | null;
-  titular: { tipo: TipoDueno; esInquilino: boolean; nombre: string; cuit: string } | null;
+  titular: {
+    tipo: TipoDueno;
+    esInquilino: boolean;
+    nombre: string;
+    cuit: string;
+    /** Sólo en consorcios: la persona del administrador, que va como coasegurado. */
+    administrador: { nombre: string; cuit: string } | null;
+  } | null;
   documentos: { id: string; clave: string; estado: EstadoDocumento; archivo_nombre: string | null; observacion: string | null }[];
 };
 
@@ -32,7 +39,10 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ token: str
     cliente_nombre: t.cliente_nombre,
     permiso_hasta: t.permiso_hasta,
     titular: t.titular_cargado_at
-      ? { tipo: t.tipo_dueno, esInquilino: t.es_inquilino, nombre: t.titular_nombre, cuit: t.titular_cuit }
+      ? {
+          tipo: t.tipo_dueno, esInquilino: t.es_inquilino, nombre: t.titular_nombre, cuit: t.titular_cuit,
+          administrador: t.administrador_cuit ? { nombre: t.administrador_nombre, cuit: t.administrador_cuit } : null,
+        }
       : null,
     documentos: (data ?? []) as Pick<Documento, "id" | "clave" | "estado" | "archivo_nombre" | "observacion">[],
   };

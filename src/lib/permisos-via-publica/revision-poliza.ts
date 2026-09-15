@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { getDocumentProxy } from "unpdf";
 import { z } from "zod";
-import type { ChequeoPoliza, RevisionPoliza, Tramite } from "./tipos";
+import { formatoCuit, type ChequeoPoliza, type RevisionPoliza, type Tramite } from "./tipos";
 
 // Revisión de la póliza de RC que sube el productor, antes de presentarla en TAD.
 //
@@ -17,6 +17,9 @@ import type { ChequeoPoliza, RevisionPoliza, Tramite } from "./tipos";
 // LO QUE CAUSÓ LAS SUBSANACIONES (ver docs/modulo-gestoria-permisos.md § Póliza): el GCBA
 // pide el titular del lote como COASEGURADO y la cláusula de NO REPETICIÓN a favor del
 // GCBA. Son dos listas distintas con dos sujetos distintos, y se venían confundiendo.
+//
+// EN CONSORCIOS ABA pide además al administrador (la persona) como coasegurado (JS, 15/09). El
+// GCBA no lo exige: si falta es una advertencia y la póliza no queda observada.
 
 const MODELO = "claude-opus-5";
 const SUMA_MINIMA = 1_000_000;
@@ -30,6 +33,8 @@ const Leido = z.object({
   titular_como_coasegurado: z.boolean(),
   titular_en_no_repeticion: z.boolean(),
   como_figura_titular: z.string().nullable(),
+  administrador_como_coasegurado: z.boolean(),
+  como_figura_administrador: z.string().nullable(),
   gcba_en_no_repeticion: z.boolean(),
   gcba_asegurado_adicional: z.boolean(),
   indemnidad_gcba: z.boolean(),
@@ -45,6 +50,8 @@ Contestá sobre lo que el documento dice, no sobre lo que debería decir. Si alg
 - titular_como_coasegurado: si el titular indicado figura en la lista de coasegurados o asegurados adicionales. Buscalo por CUIT y por nombre.
 - titular_en_no_repeticion: si el titular figura en la cláusula de no repetición (o renuncia a la subrogación).
 - como_figura_titular: el texto exacto con el que aparece el titular, si aparece.
+- administrador_como_coasegurado: si el administrador del consorcio indicado (una persona) figura en la lista de coasegurados o asegurados adicionales. Buscalo por CUIT/CUIL y por nombre. false si no se indica administrador.
+- como_figura_administrador: el texto exacto con el que aparece el administrador, si aparece.
 - gcba_en_no_repeticion: si el Gobierno de la Ciudad Autónoma de Buenos Aires (GCBA, CUIT 34-99903208-9) figura en la cláusula de no repetición.
 - gcba_asegurado_adicional: si el GCBA figura como asegurado adicional o coasegurado.
 - indemnidad_gcba: si dice expresamente que se mantiene la indemnidad del GCBA.
@@ -65,7 +72,7 @@ async function pideContrasena(pdf: Buffer): Promise<boolean> {
   }
 }
 
-type TramitePoliza = Pick<Tramite, "titular_nombre" | "titular_cuit" | "permiso_hasta">;
+type TramitePoliza = Pick<Tramite, "titular_nombre" | "titular_cuit" | "administrador_nombre" | "administrador_cuit" | "permiso_hasta">;
 
 function chequear(leido: z.infer<typeof Leido>, tramite: TramitePoliza): ChequeoPoliza[] {
   const nombreTitular = tramite.titular_nombre ?? "el titular del lote";
@@ -86,6 +93,17 @@ function chequear(leido: z.infer<typeof Leido>, tramite: TramitePoliza): Chequeo
           ? `${nombreTitular} está en la cláusula de no repetición, pero tiene que figurar como COASEGURADO.`
           : `Falta ${nombreTitular} (CUIT ${tramite.titular_cuit}) como coasegurado.`,
     },
+    // Sólo cuando el trámite tiene administrador cargado (consorcios nuevos). No frena.
+    ...(tramite.administrador_cuit
+      ? [{
+          clave: "coasegurado_administrador",
+          ok: leido.administrador_como_coasegurado,
+          bloquea: false,
+          detalle: leido.administrador_como_coasegurado
+            ? `El administrador ${tramite.administrador_nombre} figura como coasegurado${leido.como_figura_administrador ? ` ("${leido.como_figura_administrador}")` : ""}.`
+            : `Falta el administrador ${tramite.administrador_nombre} (CUIT ${formatoCuit(tramite.administrador_cuit)}) como coasegurado. No frena el trámite.`,
+        }]
+      : []),
     {
       clave: "no_repeticion_gcba",
       ok: leido.gcba_en_no_repeticion,
@@ -159,7 +177,15 @@ export async function revisarPoliza(pdf: Buffer, tramite: TramitePoliza): Promis
       role: "user",
       content: [
         { type: "document", source: { type: "base64", media_type: "application/pdf", data: pdf.toString("base64") } },
-        { type: "text", text: `Titular del lote: ${tramite.titular_nombre ?? "sin nombre"}, CUIT ${tramite.titular_cuit ?? "sin CUIT"}.` },
+        {
+          type: "text",
+          text: [
+            `Titular del lote: ${tramite.titular_nombre ?? "sin nombre"}, CUIT ${tramite.titular_cuit ?? "sin CUIT"}.`,
+            tramite.administrador_cuit
+              ? `Administrador del consorcio: ${tramite.administrador_nombre}, CUIT/CUIL ${tramite.administrador_cuit}.`
+              : "No se indica administrador.",
+          ].join("\n"),
+        },
       ],
     }],
     output_config: { format: zodOutputFormat(Leido) },

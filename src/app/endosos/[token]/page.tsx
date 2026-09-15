@@ -54,7 +54,8 @@ export default function EndososPage({ params }: { params: Promise<{ token: strin
           <p className="text-sm text-gray-500">Andamios Buenos Aires</p>
           <h1 className="text-2xl font-semibold">Endosos de pólizas de RC</h1>
           <p className="mt-1 text-sm text-gray-600">
-            Cada póliza tiene que llevar al <b>titular del lote como coasegurado</b> y la <b>cláusula de no repetición a
+            Cada póliza tiene que llevar al <b>titular del lote como coasegurado</b> (en consorcios, también al{" "}
+            <b>administrador</b>) y la <b>cláusula de no repetición a
             favor del Gobierno de la Ciudad Autónoma de Buenos Aires</b> (CUIT 34-99903208-9), con suma asegurada mayor a
             $1.000.000, vigencia hasta el fin del permiso y el PDF sin protección.
           </p>
@@ -129,6 +130,11 @@ function Tarjeta({ token, fila, onSubida }: { token: string; fila: FilaEndoso; o
         <div>
           <p className="font-medium">{fila.titular_nombre}</p>
           <p className="text-sm text-gray-600">CUIT {formatoCuit(fila.titular_cuit ?? "")} · Obra: {fila.direccion}</p>
+          {fila.administrador_cuit && (
+            <p className="text-sm text-gray-600">
+              También coasegurado — administrador: {fila.administrador_nombre} · CUIT {formatoCuit(fila.administrador_cuit)}
+            </p>
+          )}
           <p className="text-sm text-gray-600">Permiso hasta el {dia(fila.permiso_hasta)} · pedido el {dia(fila.pedido_at)}</p>
         </div>
         <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${estado.clase}`}>

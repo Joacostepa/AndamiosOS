@@ -20,7 +20,7 @@ import { normalizar, parcelaPorDireccion, type Parcela } from "./catastro";
 
 const MODELO = "claude-opus-5";
 
-type Regla = "titular" | "direccion" | "cuit" | "firma" | "vigencia";
+type Regla = "titular" | "direccion" | "cuit" | "firma" | "vigencia" | "administrador";
 
 /** Qué es cada documento y qué se cruza. */
 const CRITERIOS: Record<string, { descripcion: string; reglas: Regla[] }> = {
@@ -28,9 +28,9 @@ const CRITERIOS: Record<string, { descripcion: string; reglas: Regla[] }> = {
     descripcion: "Aviso de obra o permiso de obra (registro de obra) del GCBA, o la constancia de su trámite (DGROC / DGIUR). Tiene que ser de la dirección de la obra; el peticionante puede ser cualquier persona.",
     reglas: ["direccion"],
   },
-  acta_asamblea: { descripcion: "Acta de asamblea del consorcio que designa al administrador, legalizada.", reglas: ["vigencia"] },
+  acta_asamblea: { descripcion: "Acta de asamblea del consorcio que designa al administrador, legalizada.", reglas: ["vigencia", "administrador"] },
   reglamento: { descripcion: "Reglamento de copropiedad del edificio de la obra.", reglas: ["direccion"] },
-  dni_administrador: { descripcion: "DNI argentino del administrador del consorcio, frente y dorso.", reglas: [] },
+  dni_administrador: { descripcion: "DNI argentino del administrador del consorcio, frente y dorso.", reglas: ["administrador"] },
   dni_apoderado: { descripcion: "DNI argentino del apoderado de la empresa, frente y dorso.", reglas: [] },
   dni: { descripcion: "DNI argentino del dueño del lote, frente y dorso.", reglas: ["titular"] },
   constancia_cuit: { descripcion: "Constancia de inscripción en ARCA (ex AFIP) del dueño del lote.", reglas: ["cuit"] },
@@ -53,6 +53,7 @@ const Lectura = z.object({
   cuit_que_figura: z.string().nullable(),
   direccion_que_figura: z.string().nullable(),
   coincide_titular: z.boolean().nullable(),
+  coincide_administrador: z.boolean().nullable(),
   coincide_direccion: z.boolean().nullable(),
   firmado: z.boolean().nullable(),
   vigente: z.boolean().nullable(),
@@ -67,11 +68,12 @@ Contestá sobre lo que el documento muestra, no sobre lo que debería mostrar. S
 - legible: si se puede leer lo importante. Una foto borrosa, cortada o a la que le falta una cara que se pidió es false.
 - nombre_que_figura / cuit_que_figura / direccion_que_figura: el titular, CUIT y dirección que trae el documento, tal cual.
 - coincide_titular: si el documento está a nombre del dueño del lote indicado (aceptá diferencias de mayúsculas, abreviaturas como "Cons. de Prop." o el orden de nombre y apellido). null si no nombra a nadie.
+- coincide_administrador: si la persona que el documento designa o identifica como administrador del consorcio es el administrador indicado (aceptá diferencias de mayúsculas, abreviaturas o el orden de nombre y apellido). null si no se indica administrador o el documento no nombra a nadie.
 - coincide_direccion: si la dirección del documento es la de la obra (misma calle y altura; aceptá abreviaturas). null si no trae dirección.
 - firmado: si tiene firma. null si no es un documento que se firme.
 - vigente: si a la fecha indicada sigue vigente (mandato, designación). null si no tiene vigencia.`;
 
-type TramiteLegajo = Pick<Tramite, "direccion" | "titular_nombre" | "titular_cuit" | "tipo_dueno">;
+type TramiteLegajo = Pick<Tramite, "direccion" | "titular_nombre" | "titular_cuit" | "tipo_dueno" | "administrador_nombre" | "administrador_cuit">;
 
 const plano = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
 /** "21a" → "021A", "063" → "063": como las escribe el catastro. */
@@ -173,6 +175,18 @@ function chequear(clave: string, l: z.infer<typeof Lectura>, t: TramiteLegajo, l
   if (reglas.includes("vigencia") && l.vigente !== null) {
     chequeos.push({ clave: "vigencia", ok: l.vigente, bloquea: true, detalle: l.vigente ? "Está vigente." : "No está vigente: hace falta la designación actual." });
   }
+  // El administrador cargado va como coasegurado en el endoso: si el acta o el DNI nombran a otra
+  // persona, el pedido a Segucom salió con otro nombre. Advertencia: no frena el legajo (JS, 15/09).
+  if (reglas.includes("administrador") && t.administrador_cuit && l.coincide_administrador !== null) {
+    chequeos.push({
+      clave: "administrador",
+      ok: l.coincide_administrador,
+      bloquea: false,
+      detalle: l.coincide_administrador
+        ? `Coincide con el administrador cargado (${t.administrador_nombre}).`
+        : `Nombra a ${l.nombre_que_figura ?? "otra persona"}, y el administrador cargado es ${t.administrador_nombre}. Si cambió, corregilo arriba: va como coasegurado en el seguro.`,
+    });
+  }
   return chequeos;
 }
 
@@ -215,6 +229,9 @@ export async function revisarDocumentoCliente(
           text: [
             `Documento pedido: ${NOMBRE_DOCUMENTO[clave] ?? clave}. ${criterio?.descripcion ?? ""}`,
             `Dueño del lote: ${tramite.titular_nombre ?? "sin cargar"} (CUIT ${tramite.titular_cuit ?? "sin cargar"}${tramite.tipo_dueno ? `, ${ETIQUETA_DUENO[tramite.tipo_dueno].toLowerCase()}` : ""}).`,
+            tramite.administrador_cuit
+              ? `Administrador del consorcio: ${tramite.administrador_nombre} (CUIT/CUIL ${tramite.administrador_cuit}).`
+              : "No se indica administrador.",
             `Obra: ${tramite.direccion}.`,
             `Fecha de hoy: ${new Date().toISOString().slice(0, 10)}.`,
           ].join("\n"),

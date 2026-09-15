@@ -67,6 +67,11 @@ export default function PortalPermisoPage({ params }: { params: Promise<{ token:
                     CUIT {formatoCuit(datos.titular.cuit)} · {ETIQUETA_DUENO[datos.titular.tipo]}
                     {datos.titular.esInquilino ? " · quien contrata alquila" : ""}
                   </p>
+                  {datos.titular.administrador && (
+                    <p className="text-sm text-gray-600">
+                      Administrador: {datos.titular.administrador.nombre} · CUIT {formatoCuit(datos.titular.administrador.cuit)}
+                    </p>
+                  )}
                 </div>
                 <button type="button" onClick={() => setEditando(true)} className="text-sm text-gray-600 underline">
                   Cambiar
@@ -104,9 +109,15 @@ function FormTitular({ token, actual, onListo }: { token: string; actual: Portal
   const [esInquilino, setEsInquilino] = useState(actual?.esInquilino ?? false);
   const [nombre, setNombre] = useState(actual?.nombre ?? "");
   const [cuit, setCuit] = useState(actual ? formatoCuit(actual.cuit) : "");
+  const [adminNombre, setAdminNombre] = useState(actual?.administrador?.nombre ?? "");
+  const [adminCuit, setAdminCuit] = useState(actual?.administrador ? formatoCuit(actual.administrador.cuit) : "");
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const cuitOk = cuitValido(cuit);
+  // En consorcios el administrador va como coasegurado en el seguro: se pide acá, con el dueño.
+  const esConsorcio = tipo === "consorcio";
+  const adminCuitOk = cuitValido(adminCuit);
+  const adminOk = !esConsorcio || (adminNombre.trim().length >= 3 && adminCuitOk);
 
   async function guardar(ev: React.FormEvent) {
     ev.preventDefault();
@@ -115,7 +126,7 @@ function FormTitular({ token, actual, onListo }: { token: string; actual: Portal
     const res = await fetch(`/api/public/permiso/${token}/titular`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tipoDueno: tipo, esInquilino, nombre, cuit }),
+      body: JSON.stringify({ tipoDueno: tipo, esInquilino, nombre, cuit, administrador: esConsorcio ? { nombre: adminNombre, cuit: adminCuit } : null }),
     });
     setGuardando(false);
     if (!res.ok) return setError((await res.json().catch(() => null))?.error ?? "No se pudo guardar");
@@ -152,10 +163,28 @@ function FormTitular({ token, actual, onListo }: { token: string; actual: Portal
         <input value={cuit} onChange={(ev) => setCuit(ev.target.value)} placeholder="30-12345678-9" inputMode="numeric" className="rounded-md border border-gray-300 px-3 py-2" />
         {cuit && !cuitOk && <span className="text-red-700">El CUIT no es válido. Revisá los números.</span>}
       </label>
+      {esConsorcio && (
+        <fieldset className="grid gap-3 rounded-md border border-gray-200 p-3">
+          <legend className="px-1 text-sm font-medium">Administrador del consorcio</legend>
+          <p className="text-sm text-gray-600">
+            Va como coasegurado en el seguro del andamio. Completalo aunque todavía no tengas el resto de los documentos: con
+            esto ya pedimos el seguro.
+          </p>
+          <label className="grid gap-1 text-sm">
+            <span className="text-gray-600">Nombre y apellido del administrador</span>
+            <input value={adminNombre} onChange={(ev) => setAdminNombre(ev.target.value)} className="rounded-md border border-gray-300 px-3 py-2" />
+          </label>
+          <label className="grid gap-1 text-sm">
+            <span className="text-gray-600">CUIT o CUIL del administrador</span>
+            <input value={adminCuit} onChange={(ev) => setAdminCuit(ev.target.value)} placeholder="20-12345678-9" inputMode="numeric" className="rounded-md border border-gray-300 px-3 py-2" />
+            {adminCuit && !adminCuitOk && <span className="text-red-700">El CUIT/CUIL no es válido. Revisá los números.</span>}
+          </label>
+        </fieldset>
+      )}
       {error && <p className="text-sm text-red-700">{error}</p>}
       <button
         type="submit"
-        disabled={!tipo || nombre.trim().length < 3 || !cuitOk || guardando}
+        disabled={!tipo || nombre.trim().length < 3 || !cuitOk || !adminOk || guardando}
         className="inline-flex items-center gap-2 rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
       >
         {guardando && <Loader2 className="size-4 animate-spin" />} Guardar y seguir

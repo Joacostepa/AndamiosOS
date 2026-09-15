@@ -151,6 +151,9 @@ export type Tramite = {
   direccion: string;
   titular_nombre: string | null;
   titular_cuit: string | null;
+  /** En consorcios, la persona del administrador: va también como coasegurado en el endoso (JS, 15/09). */
+  administrador_nombre: string | null;
+  administrador_cuit: string | null;
   permiso_hasta: string | null;
   estado: string;
   created_at: string;

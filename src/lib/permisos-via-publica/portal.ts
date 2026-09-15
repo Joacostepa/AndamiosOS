@@ -294,22 +294,26 @@ export async function tramiteDeToken(db: SupabaseClient, token: string) {
 }
 
 /**
- * El cliente dijo quién es el dueño del lote. Arma la lista de documentos que le toca y,
- * si es la primera vez o cambió el CUIT, pide el endoso a Segucom. El aviso por mail al
- * productor lo manda quien llama, después de responder.
+ * El cliente dijo quién es el dueño del lote y, en consorcios, quién es el administrador (va
+ * también como coasegurado en el endoso, JS 15/09). Arma la lista de documentos que le toca y,
+ * si es la primera vez o cambió el CUIT del dueño o del administrador, pide el endoso a
+ * Segucom. El aviso por mail al productor lo manda quien llama, después de responder.
  */
 export async function cargarTitular(
   db: SupabaseClient,
   tramiteId: string,
-  datos: { tipoDueno: TipoDueno; esInquilino: boolean; nombre: string; cuit: string },
+  datos: { tipoDueno: TipoDueno; esInquilino: boolean; nombre: string; cuit: string; administrador: { nombre: string; cuit: string } | null },
 ): Promise<void> {
-  const { data: t } = await db.from("pvp_tramites").select("titular_cuit, titular_cargado_at").eq("id", tramiteId).single();
+  const { data: t } = await db.from("pvp_tramites").select("titular_cuit, titular_cargado_at, administrador_cuit").eq("id", tramiteId).single();
   if (!t) throw new Error("El trámite no existe");
   const ahora = new Date().toISOString();
+  const administrador = datos.tipoDueno === "consorcio" ? datos.administrador : null;
 
   const { error } = await db.from("pvp_tramites").update({
     tipo_dueno: datos.tipoDueno, es_inquilino: datos.esInquilino,
-    titular_nombre: datos.nombre, titular_cuit: datos.cuit, titular_cargado_at: ahora, updated_at: ahora,
+    titular_nombre: datos.nombre, titular_cuit: datos.cuit,
+    administrador_nombre: administrador?.nombre ?? null, administrador_cuit: administrador?.cuit ?? null,
+    titular_cargado_at: ahora, updated_at: ahora,
   }).eq("id", tramiteId);
   if (error) throw new Error(error.message);
 
@@ -317,9 +321,10 @@ export async function cargarTitular(
     legajoDe(datos.tipoDueno, datos.esInquilino).map((d) => ({ tramite_id: tramiteId, clave: d.clave, origen: "cliente", estado: "falta" })),
     { onConflict: "tramite_id,clave", ignoreDuplicates: true },
   );
-  await registrarEvento(db, tramiteId, "titular_cargado", `${datos.nombre} (CUIT ${datos.cuit})`, datos, "cliente");
+  const conAdministrador = administrador ? ` · administrador ${administrador.nombre} (CUIT ${administrador.cuit})` : "";
+  await registrarEvento(db, tramiteId, "titular_cargado", `${datos.nombre} (CUIT ${datos.cuit})${conAdministrador}`, datos, "cliente");
 
-  if (!t.titular_cargado_at || t.titular_cuit !== datos.cuit) {
+  if (!t.titular_cargado_at || t.titular_cuit !== datos.cuit || (t.administrador_cuit ?? null) !== (administrador?.cuit ?? null)) {
     // Modo supervisado: el pedido a Segucom lo hace una persona desde la ficha; se le avisa.
     if ((await leerSupervision(db)).endosoAutomatico) await pedirEndoso(db, tramiteId, null);
     else await avisarPasoPendiente(db, tramiteId, "endoso");
@@ -427,10 +432,10 @@ export async function registrarDocumentoCliente(db: SupabaseClient, documentoId:
  */
 export async function revisarDocumentoDelCliente(db: SupabaseClient, documentoId: string): Promise<void> {
   const { data: doc } = await db.from("pvp_documentos")
-    .select("id, tramite_id, clave, version, archivo_path, pvp_tramites!inner(direccion, titular_nombre, titular_cuit, tipo_dueno)")
+    .select("id, tramite_id, clave, version, archivo_path, pvp_tramites!inner(direccion, titular_nombre, titular_cuit, tipo_dueno, administrador_nombre, administrador_cuit)")
     .eq("id", documentoId).single();
   if (!doc?.archivo_path) return;
-  const tramite = doc.pvp_tramites as unknown as Pick<Tramite, "direccion" | "titular_nombre" | "titular_cuit" | "tipo_dueno">;
+  const tramite = doc.pvp_tramites as unknown as Pick<Tramite, "direccion" | "titular_nombre" | "titular_cuit" | "tipo_dueno" | "administrador_nombre" | "administrador_cuit">;
   const ahora = () => new Date().toISOString();
 
   try {

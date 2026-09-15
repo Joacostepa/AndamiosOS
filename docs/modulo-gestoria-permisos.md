@@ -597,6 +597,20 @@ social + CUIT). Decidido con JS (2026-09-15):
   no carga).
 - Las respuestas de los Google Forms actuales **no se importan** por ahora.
 
+**Administrador como coasegurado (JS, 2026-09-15):** en consorcios el endoso lleva, además del
+consorcio, a **la persona del administrador** como coasegurado. El GCBA no lo exige.
+- El cliente lo carga en el **primer paso del portal**, junto con el consorcio: nombre y
+  apellido + CUIT/CUIL con dígito verificador. Se pide ahí, antes que el resto del legajo, para
+  que el pedido a Segucom salga enseguida. Cambiar el administrador vuelve a pedir el endoso.
+- El mail a Gonzalo y la página de Segucom muestran al administrador en la fila de la obra.
+- **Revisión de la póliza:** si figura el consorcio pero no el administrador, es una
+  **advertencia** (`coasegurado_administrador`, no frena).
+- **Revisión del legajo:** el acta de asamblea y el DNI del administrador se cruzan con el
+  administrador cargado (regla `administrador`, advertencia).
+- **Sólo obras nuevas:** columnas `pvp_tramites.administrador_nombre` y `administrador_cuit`
+  (`20260915000009_permisos_administrador_coasegurado.sql`, aplicada). En los trámites
+  anteriores quedan vacías y el pedido sale como antes.
+
 ### Apertura del trámite y link al cliente — decidido 2026-09-15
 
 - **Disparador:** `sale.order.x_lleva_permiso = 'si'` en una venta confirmada. Es el

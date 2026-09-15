@@ -7,8 +7,8 @@ import type { ChequeoPoliza, EstadoDocumento, RevisionPoliza, Tramite } from "@/
 //
 // Lo que ve el productor de seguros en su link: los endosos pendientes, los observados y los
 // que quedaron listos en las últimas dos semanas (para que vea que llegaron). Sin sesión:
-// lo protege el token. Devuelve sólo obra, titular, CUIT, fechas y el resultado de la
-// revisión — nada del legajo del cliente.
+// lo protege el token. Devuelve sólo obra, titular, CUIT, administrador (en consorcios), fechas
+// y el resultado de la revisión — nada del legajo del cliente.
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +23,8 @@ export type FilaEndoso = {
   direccion: string;
   titular_nombre: string | null;
   titular_cuit: string | null;
+  administrador_nombre: string | null;
+  administrador_cuit: string | null;
   permiso_hasta: string | null;
 };
 
@@ -35,7 +37,7 @@ type Fila = {
   pedido_at: string | null;
   revisado_at: string | null;
   revision: RevisionPoliza | null;
-  pvp_tramites: Pick<Tramite, "direccion" | "titular_nombre" | "titular_cuit" | "permiso_hasta" | "es_prueba">;
+  pvp_tramites: Pick<Tramite, "direccion" | "titular_nombre" | "titular_cuit" | "administrador_nombre" | "administrador_cuit" | "permiso_hasta" | "es_prueba">;
 };
 
 const CATORCE_DIAS = 14 * 86_400_000;
@@ -48,7 +50,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ token: str
 
   const { data, error } = await db
     .from("pvp_documentos")
-    .select("id, estado, observacion, archivo_nombre, subido_at, pedido_at, revisado_at, revision, pvp_tramites!inner(direccion, titular_nombre, titular_cuit, permiso_hasta, es_prueba)")
+    .select("id, estado, observacion, archivo_nombre, subido_at, pedido_at, revisado_at, revision, pvp_tramites!inner(direccion, titular_nombre, titular_cuit, administrador_nombre, administrador_cuit, permiso_hasta, es_prueba)")
     .eq("clave", "poliza_rc")
     .in("estado", ["pedido", "revisando", "observado", "ok"])
     .order("pedido_at", { ascending: true });
@@ -71,6 +73,8 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ token: str
       direccion: f.pvp_tramites.direccion,
       titular_nombre: f.pvp_tramites.titular_nombre,
       titular_cuit: f.pvp_tramites.titular_cuit,
+      administrador_nombre: f.pvp_tramites.administrador_nombre,
+      administrador_cuit: f.pvp_tramites.administrador_cuit,
       permiso_hasta: f.pvp_tramites.permiso_hasta,
     }));
 

@@ -147,6 +147,11 @@ export default function FichaTramitePage({ params }: { params: Promise<{ id: str
           <p>
             {t.titular_nombre} · CUIT {formatoCuit(t.titular_cuit ?? "")} · {t.tipo_dueno ? ETIQUETA_DUENO[t.tipo_dueno] : ""}
             {t.es_inquilino ? " · quien contrata alquila" : ""}
+            {t.administrador_cuit && (
+              <span className="block">
+                Administrador (coasegurado): {t.administrador_nombre} · CUIT {formatoCuit(t.administrador_cuit)}
+              </span>
+            )}
             <span className="block text-[12px] text-muted-foreground">Cargado por el cliente el {cuando(t.titular_cargado_at)}</span>
           </p>
         ) : null}

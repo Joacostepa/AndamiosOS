@@ -22,7 +22,7 @@ export const PRODUCTOR_PRUEBA = "prueba";
 const DIA = 86_400_000;
 
 type Actor = "persona" | "productor" | "ia" | "sistema" | "cliente";
-type TramitePedido = Pick<Tramite, "direccion" | "titular_nombre" | "titular_cuit" | "permiso_hasta" | "expediente_id" | "es_prueba">;
+type TramitePedido = Pick<Tramite, "direccion" | "titular_nombre" | "titular_cuit" | "administrador_nombre" | "administrador_cuit" | "permiso_hasta" | "expediente_id" | "es_prueba">;
 type FilaPedido = {
   id: string;
   tramite_id: string;
@@ -32,7 +32,7 @@ type FilaPedido = {
   pvp_tramites: TramitePedido;
 };
 
-const COLUMNAS_TRAMITE = "direccion, titular_nombre, titular_cuit, permiso_hasta, expediente_id, es_prueba";
+const COLUMNAS_TRAMITE = "direccion, titular_nombre, titular_cuit, administrador_nombre, administrador_cuit, permiso_hasta, expediente_id, es_prueba";
 const dia = (iso: string | null) => (iso ? iso.slice(0, 10).split("-").reverse().join("/") : "—");
 
 /** Origen de los links: el del pedido si lo hay; en el cron, el de producción. */
@@ -104,8 +104,13 @@ function porProductor(filas: FilaPedido[]): [string, FilaPedido[]][] {
 
 function listado(filas: FilaPedido[]): string {
   return filas
-    .map(({ pvp_tramites: t }) =>
-      `- ${t.titular_nombre}, CUIT ${formatoCuit(t.titular_cuit ?? "")}. Obra: ${t.direccion}. Permiso hasta el ${dia(t.permiso_hasta)}.`)
+    .map(({ pvp_tramites: t }) => {
+      // En consorcios nuevos, el administrador también va como coasegurado (JS, 15/09).
+      const administrador = t.administrador_cuit
+        ? ` Administrador, también coasegurado: ${t.administrador_nombre}, CUIT ${formatoCuit(t.administrador_cuit)}.`
+        : "";
+      return `- ${t.titular_nombre}, CUIT ${formatoCuit(t.titular_cuit ?? "")}.${administrador} Obra: ${t.direccion}. Permiso hasta el ${dia(t.permiso_hasta)}.`;
+    })
     .join("\n");
 }
 
@@ -123,7 +128,7 @@ async function mandarAProductor(db: SupabaseClient, productorId: string, filas: 
     "",
     recordatorio
       ? `Te recuerdo ${una ? "este endoso que todavía no se subió" : "estos endosos que todavía no se subieron"}:`
-      : `Te pido el endoso de la póliza de RC para ${una ? "esta obra" : "estas obras"}: el titular como coasegurado y la cláusula de no repetición a favor del GCBA.`,
+      : `Te pido el endoso de la póliza de RC para ${una ? "esta obra" : "estas obras"}: el titular como coasegurado${filas.some((f) => f.pvp_tramites.administrador_cuit) ? " (y, donde lo indico, también el administrador del consorcio)" : ""} y la cláusula de no repetición a favor del GCBA.`,
     "",
     listado(filas),
     "",

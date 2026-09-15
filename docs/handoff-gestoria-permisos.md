@@ -54,6 +54,15 @@ seguimos con lo que falta". **Empezar por § "Estado al cierre 15/09 18:00".**
     RE-2026-41670589, IF-2026-41670593, RE-2026-41670594 e IF-2026-41670612.
 - Los de la presentación (12989635) van de IF-2026-41671148 a IF-2026-41671261.
 
+### Cambios pedidos por JS a la noche (15/09)
+
+- **Avisos del módulo a `#permisos-de-andamio-`** (ya no a #syh): los tres tipos (`permiso_novedad`,
+  `permiso_robot` y `permiso_endoso`), desde la app y desde el robot, con `SLACK_WEBHOOK_PERMISOS`
+  (en `.env.local` y en Vercel). Sin esa variable vuelven a #syh.
+- **Administrador del consorcio como coasegurado:** el cliente lo carga en el primer paso del
+  portal, junto con el consorcio, y sale en el pedido a Gonzalo. Si la póliza no lo trae, es una
+  advertencia. Sólo obras nuevas. Detalle en el diseño, § Póliza.
+
 ### Lo que se aprendió hoy de TAD (implementado; detalle en el diseño, § Presentación automática)
 
 - **Orden de Tamara:**

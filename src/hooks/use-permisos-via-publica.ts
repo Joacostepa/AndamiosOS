@@ -83,9 +83,20 @@ export function useTramite(id: string) {
     staleTime: 30_000,
     // Seguido mientras se revisa un documento o el robot trabaja en la encomienda del CPAU.
     refetchInterval: (q) =>
-      q.state.data?.documentos.some((d) => d.estado === "revisando") || ["pendiente", "tomada"].includes(q.state.data?.encomienda?.estado ?? "")
+      q.state.data?.documentos.some((d) => d.estado === "revisando") ||
+      ["pendiente", "tomada"].includes(q.state.data?.encomienda?.estado ?? "") ||
+      ["pendiente", "tomada"].includes(q.state.data?.presentacion.tarea?.estado ?? "")
         ? 5_000
         : 60_000,
+  });
+}
+
+/** Pide la presentación en TAD (o la prueba, en un trámite de prueba). */
+export function usePresentacion(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => pedir<{ resultado: "pedida" | "ya_pedida" }>(`/api/permisos-via-publica/tramites/${id}/presentacion`, { method: "POST" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tramite-permiso", id] }),
   });
 }
 

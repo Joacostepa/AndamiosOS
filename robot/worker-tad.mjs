@@ -17,6 +17,8 @@
 //
 // TAMBIÉN ATIENDE la encomienda del CPAU (tarea `cpau_encomienda`, robot/cpau-encomienda.mjs):
 // completa el asistente, frena en Confirmar y finaliza sólo con la aprobación de la ficha.
+// Y la presentación en TAD (tarea `tad_presentar`, robot/tad-presentar.mjs): formulario,
+// adjuntos y "Confirmar trámite", automática, con la misma sesión de TAD.
 //
 // CUÁNDO
 //   Cada 30 min de lunes a viernes de 8 a 20 (hora de Buenos Aires), cada 2 h fuera de ese
@@ -33,10 +35,11 @@
 import os from "node:os";
 import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
-import { abrir, entrar, ir, fotografo } from "./tad-comun.mjs";
+import { abrir, entrar, ir, fotografo, esperarCarga, totalDeLista } from "./tad-comun.mjs";
 import { parsearCaratula, sinAltura, textoDePdf } from "./caratula.mjs";
 import { parsearPermiso } from "./permiso.mjs";
 import { atenderEncomienda } from "./cpau-encomienda.mjs";
+import { atenderPresentacion } from "./tad-presentar.mjs";
 import { read, searchRead, write } from "../scripts/odoo-rpc.mjs";
 
 const UNA_VEZ = process.argv.includes("--una-vez");
@@ -155,14 +158,21 @@ async function sesionViva(page) {
 }
 
 async function tablaVisible(page) {
+  await esperarCarga(page);
   // "Todos" es una <option> del selector de tamaño de página de ESTA solapa.
   const sel = page.locator("select:visible").filter({ has: page.locator("option", { hasText: "Todos" }) }).first();
   if (await sel.count()) {
-    await sel.selectOption({ label: "Todos" }, { timeout: 5000 }).catch(() => {});
+    await sel.selectOption({ label: "Todos" }, { timeout: 15000 }).catch(() => {});
     await page.waitForTimeout(4000);
+    await esperarCarga(page);
   }
   const filas = page.locator("tr:visible").filter({ hasText: /EX-\d{4}-/ });
-  return (await filas.allInnerTexts()).map(parsearFila).filter(Boolean);
+  const leidas = (await filas.allInnerTexts()).map(parsearFila).filter(Boolean);
+  // Una lista cortada (15/09: 5 de 16 porque TAD seguía cargando y no se pudo elegir "Todos")
+  // no se usa: el robot seguiría sólo 5 expedientes sin darse cuenta.
+  const total = await totalDeLista(page);
+  if (total !== null && leidas.length < total) throw new Error(`TAD mostró ${leidas.length} de ${total} filas: la lista no terminó de cargar`);
+  return leidas;
 }
 
 async function solapa(page, nombre) {
@@ -469,16 +479,24 @@ async function revisar(page) {
   }
   const { enCurso, tareas, finalizados } = await leerListas(page);
   const conTarea = new Set(tareas.map((t) => t.numero));
-  const leidos = [
-    ...enCurso.map((f) => ({ ...f, solapa: "en_curso" })),
-    ...finalizados.map((f) => ({ ...f, solapa: "finalizado" })),
-  ];
-  log(`Leídos: ${enCurso.length} en curso, ${tareas.length} tareas, ${finalizados.length} finalizados${cargaInicial ? " (carga inicial, sin avisos)" : ""}`);
 
   const { data: previos, error: errorPrevios } = await db.from("pvp_expedientes").select("*");
   // Una lista vacía por error haría que todo parezca nuevo.
   if (errorPrevios) throw new Error(`No se pudieron leer los expedientes guardados: ${errorPrevios.message}`);
   const porNumero = new Map((previos ?? []).map((e) => [e.numero, e]));
+
+  // De Finalizados sólo interesan los que ya se seguían (pasaron de en curso a archivados).
+  // La cuenta tiene casi 600 finalizados históricos: darlos de alta dispara, para cada uno, la
+  // descarga del permiso, abrir el detalle para la carátula (una Constancia de Consulta en cada
+  // expediente del Gobierno) y un aviso. Pasó el 15/09 cuando "Todos" empezó a elegirse bien.
+  // Los históricos (finalizados anteriores al robot, guardados como historial) tampoco se
+  // releen: son sólo la fila de la lista.
+  const finalizadosSeguidos = finalizados.filter((f) => porNumero.has(f.numero) && !porNumero.get(f.numero).historico);
+  const leidos = [
+    ...enCurso.map((f) => ({ ...f, solapa: "en_curso" })),
+    ...finalizadosSeguidos.map((f) => ({ ...f, solapa: "finalizado" })),
+  ];
+  log(`Leídos: ${enCurso.length} en curso, ${tareas.length} tareas, ${finalizados.length} finalizados (${finalizadosSeguidos.length} seguidos)${cargaInicial ? " (carga inicial, sin avisos)" : ""}`);
   const avisos = [];
   const ahora = new Date().toISOString();
 
@@ -545,8 +563,9 @@ async function revisar(page) {
     }
   }
 
-  // Permisos emitidos sin PDF guardado.
+  // Permisos emitidos sin PDF guardado. Los históricos no: son casi 600 descargas.
   for (const exp of porNumero.values()) {
+    if (exp.historico) continue;
     if (exp.permiso_path) {
       if (!exp.permiso_emitido_el) await fechasDelBucket(exp).catch((e) => log("!! fechas del permiso", exp.numero, e.message));
       continue;
@@ -570,8 +589,9 @@ async function revisar(page) {
   }
 
   // Carátula: una sola vez por expediente (ver leerCaratula).
+  // Nunca en los históricos: cada detalle abierto es una Constancia de Consulta en TAD.
   for (const exp of porNumero.values()) {
-    if (exp.caratula_leida_at) continue;
+    if (exp.caratula_leida_at || exp.historico) continue;
     const r = await leerCaratula(page, exp);
     if (r.datos) {
       Object.assign(exp, r.datos);
@@ -581,8 +601,9 @@ async function revisar(page) {
     }
   }
 
-  // Vínculo con Odoo.
+  // Vínculo con Odoo (no en los históricos: sin carátula no hay dirección, y serían ~600 consultas por vuelta).
   for (const exp of porNumero.values()) {
+    if (exp.historico) continue;
     try {
       const v = await vincularOdoo(exp);
       if (!v) continue;
@@ -659,6 +680,20 @@ while (!apagando) {
       log("!! encomienda del CPAU", e.message);
       await db.from("pvp_tareas").update({ estado: "error", error: e.message.slice(0, 500), terminada_at: new Date().toISOString() }).eq("id", tareaId);
     });
+  } else if (tarea?.tipo === "tad_presentar") {
+    // Presentación en TAD: usa la MISMA sesión que las vueltas (dos sesiones de la cuenta miBA
+    // se pisan). Nunca se reintenta sola: el resultado queda en la tarea y en el trámite.
+    try {
+      if (!browser.isConnected()) ({ browser, page } = await abrir());
+      if (!(await sesionViva(page))) {
+        log("Entrando a TAD…");
+        await entrar(page);
+      }
+      await atenderPresentacion({ db, tarea, page, log, avisar, sincronizar: (lista) => sincronizarOdoo(lista) });
+    } catch (e) {
+      log("!! presentación en TAD", e.message);
+      await db.from("pvp_tareas").update({ estado: "error", error: e.message.slice(0, 500), terminada_at: new Date().toISOString() }).eq("id", tareaId);
+    }
   } else if (tarea?.tipo === "odoo_sincronizar") {
     // Alguien confirmó un vínculo en la ficha: escribir en Odoo no necesita entrar a TAD.
     const fin = (cambios) => db.from("pvp_tareas").update({ ...cambios, terminada_at: new Date().toISOString() }).eq("id", tareaId);

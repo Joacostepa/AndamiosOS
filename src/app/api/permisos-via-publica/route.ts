@@ -25,11 +25,17 @@ export async function GET() {
     ]);
     if (expedientes.error) throw expedientes.error;
 
-    const filas = (expedientes.data ?? []) as Expediente[];
+    const todas = (expedientes.data ?? []) as Expediente[];
+    // El historial (finalizados anteriores al robot) va aparte: no entra en los grupos del día a día.
+    const filas = todas.filter((e) => !e.historico);
+    const historial = todas
+      .filter((e) => e.historico)
+      .sort((a, b) => String(b.creado_tad).localeCompare(String(a.creado_tad)) || b.numero.localeCompare(a.numero));
     const bandeja: Bandeja = {
       tramitesNuevos: (nuevos.data ?? []) as TramiteNuevo[],
       grupos: agrupar(filas),
       total: filas.length,
+      historial,
       robot: (robot.data as EstadoRobot | null) ?? null,
       revisando: (abiertas.count ?? 0) > 0,
     };

@@ -54,6 +54,11 @@ export type Expediente = {
   odoo_error: string | null;
   visto_primero_at: string;
   visto_ultimo_at: string;
+  /**
+   * Finalizado anterior al robot, guardado como historial (15/09): sólo la fila de la lista de
+   * TAD. El robot no lo relee, no abre su detalle ni baja su permiso.
+   */
+  historico: boolean;
 };
 
 export type TipoEvento =
@@ -61,7 +66,7 @@ export type TipoEvento =
   | "motivo" | "permiso_descargado" | "vinculado_odoo" | "error_robot" | "caratula_leida"
   | "vinculo_confirmado" | "vinculo_descartado" | "odoo_escrito" | "odoo_conflicto"
   | "tramite_abierto" | "documento_pedido" | "documento_subido" | "documento_revisado" | "aviso_productor"
-  | "link_cliente" | "titular_cargado" | "encomienda_cpau";
+  | "link_cliente" | "titular_cargado" | "encomienda_cpau" | "presentacion_tad";
 
 export type TipoDueno = "consorcio" | "empresa" | "persona";
 
@@ -348,10 +353,41 @@ export type EncomiendaFicha = {
   capturas: { nombre: string; url: string | null }[];
 };
 
+/**
+ * La presentación en TAD del trámite: qué falta para poder presentar (casillero por casillero)
+ * y la última tarea `tad_presentar` del robot.
+ */
+export type PresentacionFicha = {
+  estado: {
+    listo: boolean;
+    faltan: string[];
+    casilleros: { casillero: string; documentos: { clave: string; nombre: string; ok: boolean }[]; ok: boolean }[];
+  };
+  tarea: {
+    id: number;
+    estado: "pendiente" | "tomada" | "esperando_aprobacion" | "ok" | "error";
+    payload: { es_prueba: boolean; obra: { calle: string; altura: number; smp: string }; adjuntos: { casillero: string }[] };
+    resultado: {
+      etapa?: "prueba" | "presentado";
+      expediente?: string;
+      borrador?: number | null;
+      borrador_borrado?: boolean;
+      adjuntados?: number;
+      confirmado?: boolean;
+      obra?: { calle: string; barrio: string; comuna: string; smp: string };
+    } | null;
+    error: string | null;
+    created_at: string;
+    terminada_at: string | null;
+    capturas: { nombre: string; url: string | null }[];
+  } | null;
+};
+
 export type FichaTramite = {
   tramite: Tramite;
   documentos: (Documento & { url: string | null })[];
   encomienda: EncomiendaFicha | null;
+  presentacion: PresentacionFicha;
   eventos: Evento[];
   /** El link del portal, para copiarlo y mandarlo por WhatsApp. */
   linkCliente: string | null;
@@ -362,7 +398,10 @@ export type FichaTramite = {
 export type Bandeja = {
   tramitesNuevos: TramiteNuevo[];
   grupos: GrupoExpedientes[];
+  /** Expedientes que se siguen (sin el historial). */
   total: number;
+  /** Finalizados anteriores al robot, del más nuevo al más viejo. */
+  historial: Expediente[];
   robot: EstadoRobot | null;
   /** Hay una revisión pedida o corriendo. */
   revisando: boolean;

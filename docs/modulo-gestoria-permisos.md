@@ -913,11 +913,132 @@ la direccion ingresada": es lo que pasó en las 3 carátulas sin altura (Salcedo
 Pellegrini). El robot tiene que **verificar que sección/manzana/parcela coincidan con EPOK**
 antes de seguir; si no, frena.
 
+### Guardar y Adjuntar — mapeado (15/09, `robot/mapear-tad-adjuntar.mjs`)
+
+**Llenar el formulario** (probado de punta a punta con Trelles 1086 y los datos de ABA):
+- Elegir **Persona Jurídica** genera un documento en TAD (`POST requisitosExternos/generarDocumento`)
+  y redibuja la página: esperar a que termine antes de tocar "Completar", o el formulario
+  queda en blanco.
+- Después de eso **el iframe queda de ~250 px** y los clics a los campos de arriba no llegan:
+  agrandarlo a mano (`iframe[id^='caratulaVariable']` → 4200 px).
+- **Tipear tecla por tecla** (`pressSequentially`): con `fill()` el formulario no registró
+  "Razón social" (quedó en rojo "No se permite vacío" aunque se veía escrita).
+- **Verificar la altura** después de escribirla: una vez se perdió la primera tecla
+  ("TRELLES, MANUEL R. 086") y Autocompletar no encontró nada. Repetir si la sección vuelve vacía.
+- El domicilio comercial autocompleta igual: MATURIN 2570 → Comuna 15 · PATERNAL · 059-100-041b.
+
+**Guardar** (`button.btn-guardar` dentro del iframe): el aviso "Formulario guardado!" no se
+llega a ver, pero **el casillero "Datos del Trámite" pasa a ✓ "Editar"** y TAD recibe
+`PUT tad2-rest/tramite/` con el id. Si falta algo, el formulario dice "Verifique los datos
+ingresados en el campo: X": reescribir X y volver a guardar.
+
+**Adjuntar**: el botón abre un diálogo «Adjuntá documentación · Nuevo documento | Mis
+documentos · Elegí un archivo o arrastrá y soltá · Peso máximo: 20MB». Un `input[type=file]`
+en el diálogo → aparece «archivo.pdf (990 B)» → botón **Adjuntar** del diálogo. Eso hace:
+1. `PUT tad2-rest/documento/generarDocumentoGEDO/` con `idTramite` → **crea un documento
+   oficial en GDE con número IF** (p. ej. IF-2026-41508096-GCABA-SSGOU).
+2. `PUT tad2-rest/personaDocumento/save` con ese número → lo asocia (sin el id del trámite en
+   el cuerpo).
+
+> ⚠️ **Adjuntar genera un IF oficial aunque el trámite sea un borrador, y no se borra desde
+> TAD.** En el mapeo del 15/09 quedó el **IF-2026-41508096-GCABA-SSGOU** con un PDF que dice
+> "PRUEBA — NO PRESENTAR" (el paso 2 se bloqueó, así que no quedó asociado a EyE ni al
+> borrador, que se borró). **No se vuelve a probar Adjuntar con archivos de prueba.** Para el
+> robot: cada reintento de un adjunto crea otro IF, y adjuntar antes de la aprobación deja IF
+> aunque la presentación se descarte.
+
+### Presentación automática — construida (15/09)
+
+**Decidido con JS: automática de punta a punta, sin aprobación** ("cuanto menos intervención
+humana mejor"): el robot adjunta y confirma solo. En lugar del clic de una persona, frena ante
+cualquier cosa que no coincide y no reintenta nada.
+
+| Pieza | Dónde |
+| --- | --- |
+| Casilleros ↔ documentos, requisitos, datos, pedir | `src/lib/permisos-via-publica/presentacion.ts` |
+| Disparo | al quedar OK un documento del cliente (`portal.ts`) o la póliza (`endosos.ts`), y el cron `/api/alertas/barrido` (`barridoPresentaciones`). Una sola vez por trámite |
+| API | `POST /api/permisos-via-publica/tramites/[id]/presentacion` (volver a presentar / probar) |
+| Ficha | sección "Presentación en TAD" (`components/permisos-via-publica/presentacion-tad.tsx`): checklist por casillero, estado, EX, capturas |
+| Robot | `robot/tad-presentar.mjs`, lo toma `worker-tad.mjs` (tarea `tad_presentar`) con la MISMA sesión de TAD |
+| Migración | `20260915000005_permisos_presentacion_tad.sql` (aplicada) |
+
+**Listo para presentar** = dueño del lote cargado, `permiso_hasta`, y todos los documentos de
+los casilleros en `ok` con archivo (incluye encomienda del CPAU, póliza con compañía y
+vencimiento leídos, informe y croquis). **Hoy ningún trámite llega**: falta el certificado de
+la encomienda (firma, pago, carga y descarga del visado).
+
+**Casilleros** (Persona Jurídica): nota ← `nota_solicitud` (persona: `nota_autorizacion`) ·
+seguro ← `poliza_rc` · informe ← `informe_tecnico` · encomienda ← `encomienda_cpau` · croquis
+← `croquis` · aviso ← `aviso_obra` · estatuto ← reglamento / estatuto / título · autoridades
+← acta de asamblea / acta de directorio / DNI · poder ← acta de asamblea / poder / nota ·
+DNI apoderado ← DNI del administrador / apoderado / DNI · otra documentación ← acta de
+compromiso + constancia de CUIT (+ contrato y nota del dueño si alquila), unidos en un PDF.
+**Persona física: a confirmar con Tamara.**
+
+**Qué hace el robot:** baja y arma los adjuntos (varios archivos → un PDF; tope 20 MB) → inicia
+el trámite → Persona Jurídica → formulario (datos de ABA fijos, obra con la calle y la altura
+del catastro, fechas hoy → `permiso_hasta`, seguro de la revisión de la póliza) →
+**verifica que TAD dé la sección/manzana/parcela de EPOK** → Guardar → adjunta cada casillero
+esperando `personaDocumento/save` sin error → "Confirmar trámite" (y la pantalla que siga,
+tocando un único Confirmar/Aceptar) → lee el EX de la red o de la pantalla → crea
+`pvp_expedientes` con vínculo por número a la venta → `pvp_tramites.expediente_id`, estado
+`presentado` → `sincronizarOdoo` escribe `presentado` en la venta.
+
+**Frena (tarea en error, trámite `trabado`, aviso a #syh) si:** falta un archivo o no se puede
+unir, TAD no ofrece la calle con esa altura o la parcela no coincide, el formulario no guarda,
+un adjunto falla, o después de confirmar no aparece un EX. El aviso dice si ya se tocó
+Confirmar o cuántos adjuntos (IF) quedaron en el borrador, para no presentar dos veces.
+
+**Prueba** (trámite de prueba, botón "Probar en TAD"): llena y guarda el formulario, verifica la
+parcela y borra el borrador. No elige Persona Jurídica, no adjunta, no presenta.
+
+**Sin ver todavía:** la pantalla después de "Confirmar trámite" y dónde aparece el EX. La
+primera presentación real lo muestra en las capturas.
+
+### Historial de finalizados y robustez del robot (15/09)
+
+**Qué pasó:** al hacer que el robot espere el "Cargando..." de TAD, la solapa **Finalizados**
+empezó a leerse entera (antes el selector "Todos" fallaba en silencio y se veían 5 de ~600).
+El robot dio de alta **591 expedientes finalizados de 2019 a agosto de 2026** y bajó 92 PDF de
+permisos antes de que se lo parara. **No abrió ningún detalle** (0 Constancias de Consulta), no
+tocó Odoo ni mandó avisos (salen al final de la vuelta).
+
+**Decisión de JS: quedan como historial.** Columna `pvp_expedientes.historico`
+(`20260915000006_permisos_historial.sql`, aplicada): 591 marcados, 92 con el PDF del permiso.
+Un expediente histórico es sólo la fila de la lista de TAD: **el robot no lo relee, no baja su
+permiso, no abre su detalle y no lo busca en Odoo.** La bandeja lo muestra aparte, en
+"Historial" (plegado, con el mismo buscador). No tiene dirección: saldría de la carátula, y
+abrirla deja una constancia en cada expediente.
+
+**Reglas nuevas del robot** (`robot/worker-tad.mjs`, `robot/tad-comun.mjs`):
+- **De Finalizados sólo se actualizan los que ya se seguían** (pasaron de en curso a
+  archivados). Un finalizado desconocido no se da de alta.
+- **`esperarCarga`:** antes de navegar y después de elegir "Todos", espera hasta 90 s a que no
+  haya un "Cargando..." visible (con TAD lento la página queda gris y los clics no llegan).
+- **Lista incompleta = vuelta cortada:** si la tabla muestra menos filas que el "Mostrando X a
+  Y de Z", se corta la vuelta en vez de seguir con 5 de 16.
+
+**Formulario de la presentación:** además del tipeo tecla por tecla, antes de cada Guardar el
+robot compara lo que **el widget ZK tiene registrado** en cada campo de texto con lo esperado y
+lo corrige por la API de ZK (`setValue` + `fireOnChange`). Hizo falta porque "Razón social" y
+"CUIT/CUIL" quedaban en rojo "No se permite vacío" con el valor a la vista. "CUIT/CUIL",
+"Teléfono", "N° de documento", "Primer nombre/apellido" están dos veces (legal y contacto): si
+TAD marca uno, se fuerzan los dos. La altura se escribe pegada a la calle elegida, sin
+Backspace (borrar hacía perder la calle y Autocompletar respondía "No se obtuvieron
+resultados").
+
 ### Otros hallazgos del 15/09
 
 - **Login miBA:** la redirección ahora termina en `login.buenosaires.gob.ar/auth/realms/mail`
   (misma pantalla, mismos ids) y a veces tarda más de 20 s. `entrar()` espera 60 s y recarga
-  una vez; nunca manda la clave dos veces.
+  una vez; nunca manda la clave dos veces. Además reconoce **tres pantallas**: el login de
+  miBA, TAD pidiendo "Seleccione a quién representar" (miBA ya tenía la sesión y redirigió
+  solo) o TAD ya representando a EyE. Pasó a las 11:34 del 15/09: TAD cortó la sesión
+  (`tramitesadistancia/?init=` en blanco con "Extender sesión / Continuar sesión"), miBA
+  redirigió directo y el robot esperaba un formulario que nunca apareció.
+- **"¿Abandonar el trámite?":** salir del asistente de un trámite por el menú abre un diálogo
+  con "Sí, abandonar"; si nadie lo contesta queda tapando la página. `ir()` lo acepta (el
+  borrador queda guardado igual).
 - **Caída de Supabase** (02:55–05:53): la API devolvía "Could not query the database for the
   schema cache". El robot leía TAD, tomaba todo como nuevo y decía "Vuelta OK" sin guardar.
   Ahora corta la vuelta antes de entrar a TAD si Supabase no responde, y no dice OK si no pudo

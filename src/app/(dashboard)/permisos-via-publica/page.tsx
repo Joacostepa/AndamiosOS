@@ -65,6 +65,7 @@ export default function PermisosViaPublicaPage() {
   const robot = data.robot;
   const dormido = robotDormido(robot);
   const grupos = data.grupos.map((g) => ({ ...g, filas: g.filas.filter((e) => coincide(e, busqueda)) }));
+  const historial = data.historial.filter((e) => coincide(e, busqueda));
 
   function pedirRevision() {
     revisar.mutate(undefined, {
@@ -195,13 +196,34 @@ export default function PermisosViaPublicaPage() {
           </section>
         ))
       )}
+
+      {data.historial.length > 0 && (
+        <details className="rounded-md border" open={!!busqueda && historial.length > 0}>
+          <summary className="cursor-pointer px-3 py-2">
+            <span className="text-[14px] font-semibold">
+              Historial <span className="text-muted-foreground">· {busqueda ? `${historial.length} de ${data.historial.length}` : data.historial.length}</span>
+            </span>
+            <span className="block text-[12px] text-muted-foreground">
+              Expedientes finalizados anteriores al robot. Sólo lo que muestra la lista de TAD: el robot no abre su detalle ni los sigue.
+            </span>
+          </summary>
+          <ul className="border-t">
+            {historial.slice(0, 200).map((e) => (
+              <FilaExpediente key={e.id} e={e} historial />
+            ))}
+          </ul>
+          {historial.length > 200 && (
+            <p className="border-t px-3 py-2 text-[12px] text-muted-foreground">Se muestran 200: usá el buscador para encontrar uno.</p>
+          )}
+        </details>
+      )}
     </div>
   );
 }
 
-function FilaExpediente({ e }: { e: Expediente }) {
+function FilaExpediente({ e, historial = false }: { e: Expediente; historial?: boolean }) {
   const titulo = e.direccion ?? e.odoo_venta_nombre ?? e.titular ?? "Sin datos de la obra";
-  const vinculo = estadoVinculo(e);
+  const vinculo = historial ? "confirmado" : estadoVinculo(e);
   return (
     <li className="border-b last:border-b-0">
       <Link href={`/permisos-via-publica/${e.id}`} className="block px-3 py-2.5 hover:bg-muted/40">
@@ -221,8 +243,10 @@ function FilaExpediente({ e }: { e: Expediente }) {
           <ChipEstado expediente={e} className="ml-auto" />
         </div>
         <div className="mt-1 flex flex-wrap gap-x-3 text-[12px] text-muted-foreground">
-          <span>En este estado {hace(e.estado_desde).replace("hace ", "desde hace ")}</span>
+          {/* En el historial "desde hace" sería la hora en que se guardó, no un dato de TAD. */}
+          {!historial && <span>En este estado {hace(e.estado_desde).replace("hace ", "desde hace ")}</span>}
           {e.creado_tad && <span>Presentado el {e.creado_tad.split("-").reverse().join("/")}</span>}
+          {historial && e.permiso_path && <span>Permiso guardado</span>}
         </div>
         {e.motivo_subsanacion && (
           <p className="mt-1 line-clamp-2 text-[12px] text-red-300">Motivo: {e.motivo_subsanacion}</p>

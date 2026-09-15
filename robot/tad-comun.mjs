@@ -52,24 +52,88 @@ export function cuerpo(texto) {
  * La clave se manda una sola vez: reintentar el envío puede bloquear la cuenta miBA.
  */
 export async function entrar(page) {
+  const TAD = "https://tad.buenosaires.gob.ar/tramitesadistancia/";
   const formulario = page.locator("#email");
-  await page.goto("https://tad.buenosaires.gob.ar/tramitesadistancia/", { waitUntil: "domcontentloaded" });
-  try {
-    await formulario.waitFor({ state: "visible", timeout: 60000 });
-  } catch {
-    await page.goto("https://tad.buenosaires.gob.ar/tramitesadistancia/", { waitUntil: "domcontentloaded" });
-    await formulario.waitFor({ state: "visible", timeout: 60000 });
+  const representando = page.getByText(/Representando a:/i).first();
+  const elegir = page.getByText(/Seleccione a qui[eé]n representar/i).first();
+  // Tres pantallas posibles después de ir a TAD: el login de miBA, TAD pidiendo a quién
+  // representar (miBA ya tenía la sesión y redirigió solo) o TAD ya representando. El 15/09,
+  // después de que TAD cortara la sesión, miBA redirigió directo y el robot esperaba un
+  // formulario que nunca apareció.
+  const pantalla = async () => {
+    if (await representando.isVisible().catch(() => false)) return "adentro";
+    if (await elegir.isVisible().catch(() => false)) return "elegir";
+    if (await formulario.isVisible().catch(() => false)) return "login";
+    return null;
+  };
+  const esperarPantalla = async (ms) => {
+    const fin = Date.now() + ms;
+    while (Date.now() < fin) {
+      const p = await pantalla();
+      if (p) return p;
+      await page.waitForTimeout(1000);
+    }
+    return null;
+  };
+
+  await page.goto(TAD, { waitUntil: "domcontentloaded" });
+  let donde = await esperarPantalla(60000);
+  if (!donde) {
+    await page.goto(TAD, { waitUntil: "domcontentloaded" });
+    donde = await esperarPantalla(60000);
   }
-  await page.fill("#email", process.env.MIBA_USUARIO);
-  await page.fill("#password-text-field", process.env.MIBA_CLAVE);
-  await page.click("#login");
-  await page.waitForURL(/tad\.buenosaires\.gob\.ar/, { timeout: 30000 });
-  await page.waitForTimeout(6000);
-  await page.getByText(/Seleccione a qui[eé]n representar/i).first().click();
+  if (!donde) throw new Error("TAD no mostró ni el login de miBA ni su página de inicio");
+
+  if (donde === "login") {
+    await page.fill("#email", process.env.MIBA_USUARIO);
+    await page.fill("#password-text-field", process.env.MIBA_CLAVE);
+    await page.click("#login");
+    await page.waitForURL(/tad\.buenosaires\.gob\.ar/, { timeout: 30000 });
+    await page.waitForTimeout(6000);
+    donde = await esperarPantalla(60000);
+    if (donde === "login" || !donde) throw new Error("miBA no dejó entrar (sigue en el login)");
+  }
+
+  if (donde === "adentro") {
+    const texto = await representando.evaluate((e) => e.closest("button, div")?.innerText ?? e.innerText).catch(() => "");
+    if (/EMPRENDI/i.test(texto)) {
+      await page.waitForTimeout(2000);
+      return;
+    }
+    throw new Error(`TAD está representando a otra persona (${texto.replace(/\s+/g, " ").trim()})`);
+  }
+
+  await elegir.click({ timeout: 15000 });
   await page.waitForTimeout(1500);
-  await page.getByText(/EMPRENDIMIENTOS Y ESTRUCTURAS/i).first().click();
-  await page.getByText(/Representando a:/i).first().waitFor({ timeout: 15000 });
+  await page.getByText(/EMPRENDIMIENTOS Y ESTRUCTURAS/i).first().click({ timeout: 15000 });
+  await representando.waitFor({ timeout: 15000 });
   await page.waitForTimeout(3000);
+}
+
+/**
+ * Espera a que TAD termine de cargar: mientras hay un "Cargando..." visible la página queda
+ * gris y los clics no llegan (15/09: más de 30 s, y la lista de En curso se leyó con 5 filas
+ * porque no se pudo elegir "Todos"). Devuelve false si a los `ms` sigue cargando.
+ */
+export async function esperarCarga(page, ms = 90000) {
+  const cargando = () => page.evaluate(() =>
+    [...document.querySelectorAll("body *")].some((e) => e.childElementCount === 0 && e.offsetParent && e.textContent.trim() === "Cargando..."),
+  ).catch(() => false);
+  const fin = Date.now() + ms;
+  while (Date.now() < fin) {
+    if (!(await cargando())) return true;
+    await page.waitForTimeout(1500);
+  }
+  return false;
+}
+
+/** El total de la tabla visible según "Mostrando X a Y de Z" (null si no hay paginado a la vista). */
+export async function totalDeLista(page) {
+  return page.evaluate(() => {
+    const el = [...document.querySelectorAll("body *")].find((e) => e.childElementCount === 0 && e.offsetParent && /Mostrando \d+ a \d+ de \d+/.test(e.textContent));
+    const m = el?.textContent.match(/de (\d+)/);
+    return m ? Number(m[1]) : null;
+  }).catch(() => null);
 }
 
 /**
@@ -77,7 +141,24 @@ export async function entrar(page) {
  * /notificaciones) rebota a /nuevo-tramite, así que siempre se va haciendo click.
  */
 export async function ir(page, seccion) {
+  await esperarCarga(page);
+  await abandonarSiPregunta(page);
   // Sin anclar: el botón del menú trae pegado el contador ("Mis trámites\n2").
   await page.getByText(new RegExp(seccion, "i")).first().click();
-  await page.waitForTimeout(7000);
+  await page.waitForTimeout(3000);
+  // Salir del asistente de un trámite pregunta si se lo abandona; si nadie contesta, la ventana
+  // queda abierta tapando la página y la vuelta siguiente no puede hacer clic (15/09). El
+  // borrador queda guardado igual, así que se acepta.
+  if (await abandonarSiPregunta(page)) await page.getByText(new RegExp(seccion, "i")).first().click().catch(() => {});
+  await page.waitForTimeout(4000);
+  await esperarCarga(page);
+}
+
+/** Si TAD pregunta "¿abandonar el trámite?", toca "Sí, abandonar". Devuelve si lo tocó. */
+export async function abandonarSiPregunta(page) {
+  const boton = page.locator(".modal.show button:visible", { hasText: /S[ií],\s*abandonar/i }).first();
+  if (!(await boton.count().catch(() => 0))) return false;
+  await boton.click({ timeout: 5000 }).catch(() => {});
+  await page.waitForTimeout(3000);
+  return true;
 }

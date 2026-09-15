@@ -37,6 +37,19 @@ la Mac reinstalado con ese código.
 
 ---
 
+## Actualización 2026-09-15 (mediodía)
+
+- **Presentación en TAD construida, automática** (§ A). Probada por la cola en modo prueba
+  (llena y guarda el formulario, verifica la parcela, borra el borrador); hoy no llega ningún
+  trámite real porque falta el certificado de la encomienda.
+- **591 expedientes finalizados históricos** quedaron guardados como historial (decisión de
+  JS) después de que el robot empezara a leer Finalizados entero. El robot no los sigue ni abre
+  su detalle. Ver diseño § "Historial de finalizados y robustez del robot".
+- **IF-2026-41508096-GCABA-SSGOU** quedó creado en GDE por la prueba de Adjuntar (PDF "PRUEBA —
+  NO PRESENTAR"). No se vuelve a probar Adjuntar.
+- **Cada vez que se para el robot en medio de una vuelta** el log muestra "Target page, context
+  or browser has been closed": no es una falla, es la interrupción.
+
 ## Lo que falta, en detalle
 
 ### A. Presentar en TAD (lo más importante)
@@ -73,7 +86,13 @@ dirección para que Autocompletar llene comuna/barrio/SMP**). Los valores de ABA
 carátula presentada de EX-2026-30158135. Lo único sin ver: "Guardar", los "Adjuntar" y el
 Resumen/Confirmar.
 
-**Qué construir** (mismo patrón que la encomienda):
+**Construido el 15/09 — automática, sin aprobación (decisión de JS).** Ver
+`docs/modulo-gestoria-permisos.md` § "Presentación automática". Se dispara sola cuando el
+trámite está listo; hoy no llega ninguno porque falta el certificado de la encomienda (B).
+Lo único sin ver es la pantalla después de "Confirmar trámite": la muestra la primera real.
+Adjuntar crea un IF oficial en GDE aunque sea borrador: **no probar Adjuntar**.
+
+**Lo que se había planeado (queda como referencia):**
 - Tarea `tad_presentar` en `pvp_tareas` (migración: agregar el tipo) con `esperando_aprobacion`
   antes de "Confirmar trámite". Robot nuevo `robot/tad-presentar.mjs`, lo toma `worker-tad.mjs`
   (usa la misma sesión de TAD o una propia: decidir; hoy la sesión queda abierta entre vueltas).

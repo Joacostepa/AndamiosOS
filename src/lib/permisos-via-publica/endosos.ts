@@ -258,6 +258,10 @@ export async function revisarDocumento(db: SupabaseClient, documentoId: string):
         descripcion: "Segucom subió el endoso y cumple lo que pide el GCBA. Ya se puede presentar o subsanar.",
         enlace: enlaceInterno(doc.tramite_id, tramite),
       }]);
+      // Si la póliza era lo último que faltaba, se presenta sola en TAD. Import dinámico:
+      // presentacion.ts importa este archivo.
+      const { siListoPresentar } = await import("./presentacion");
+      await siListoPresentar(db, doc.tramite_id);
     }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

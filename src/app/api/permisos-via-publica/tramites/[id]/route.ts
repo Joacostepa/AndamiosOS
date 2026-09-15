@@ -3,7 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { linkCliente } from "@/lib/permisos-via-publica/portal";
 import { PRODUCTOR_PRUEBA, linkProductor } from "@/lib/permisos-via-publica/endosos";
-import type { Documento, EncomiendaFicha, Evento, FichaTramite, Tramite } from "@/lib/permisos-via-publica/tipos";
+import { estadoPresentacion } from "@/lib/permisos-via-publica/presentacion";
+import type { Documento, EncomiendaFicha, Evento, FichaTramite, PresentacionFicha, Tramite } from "@/lib/permisos-via-publica/tipos";
 
 // GET /api/permisos-via-publica/tramites/:id — la ficha de un trámite abierto desde una
 // venta (todavía sin expediente): el link del portal para copiar, el dueño que cargó el
@@ -22,6 +23,11 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     db.from("pvp_eventos").select("*").eq("tramite_id", id).order("created_at", { ascending: false }),
     db.from("pvp_tareas").select("id, estado, payload, resultado, error, created_at, terminada_at")
       .eq("tipo", "cpau_encomienda").eq("tramite_id", id).order("created_at", { ascending: false }).limit(1),
+  ]);
+  const [presentaciones, requisitos] = await Promise.all([
+    db.from("pvp_tareas").select("id, estado, payload, resultado, error, created_at, terminada_at")
+      .eq("tipo", "tad_presentar").eq("tramite_id", id).order("created_at", { ascending: false }).limit(1),
+    estadoPresentacion(db, id),
   ]);
   if (t.error) return NextResponse.json({ error: t.error.message }, { status: 500 });
   if (!t.data) return NextResponse.json({ error: "El trámite no existe" }, { status: 404 });
@@ -48,10 +54,26 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       }
     : null;
 
+  // La última presentación en TAD y qué falta para poder presentar.
+  const tareaTad = presentaciones.data?.[0] as Omit<NonNullable<PresentacionFicha["tarea"]>, "capturas"> & { resultado: { capturas?: string[] } | null } | undefined;
+  const presentacion: PresentacionFicha = {
+    estado: requisitos,
+    tarea: tareaTad
+      ? {
+          ...tareaTad,
+          capturas: await Promise.all((tareaTad.resultado?.capturas ?? []).map(async (path) => ({
+            nombre: path.split("/").pop()!.replace(/^\d+-\d+-/, "").replace(/\.png$/, "").replace(/-/g, " "),
+            url: (await db.storage.from("permisos-via-publica").createSignedUrl(path, 600)).data?.signedUrl ?? null,
+          }))),
+        }
+      : null,
+  };
+
   const ficha: FichaTramite = {
     tramite,
     documentos,
     encomienda,
+    presentacion,
     eventos: (eventos.data ?? []) as Evento[],
     linkCliente: linkCliente(tramite.token_cliente, req.nextUrl.origin),
     // El token del productor sólo lo lee la service role: se arma acá y sólo para pruebas.

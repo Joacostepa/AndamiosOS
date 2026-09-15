@@ -15,6 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useBorrarTramite, useReenviarLink, useTramite } from "@/hooks/use-permisos-via-publica";
 import { GenerarDocumentos } from "@/components/permisos-via-publica/generar-documentos";
 import { EncomiendaCpau } from "@/components/permisos-via-publica/encomienda-cpau";
+import { PresentacionTad } from "@/components/permisos-via-publica/presentacion-tad";
 import {
   ETIQUETA_DUENO, ETIQUETA_ESTADO_DOCUMENTO, NOMBRE_DOCUMENTO, formatoCuit,
   type Documento, type EstadoDocumento,
@@ -149,6 +150,7 @@ export default function FichaTramitePage({ params }: { params: Promise<{ id: str
       <ListaDocumentos titulo={`Legajo del cliente · ${legajo.filter((d) => d.estado !== "falta").length} de ${legajo.length}`} documentos={legajo} />
       <GenerarDocumentos tramiteId={t.id} conVenta={!!t.odoo_venta_id} />
       <EncomiendaCpau tramiteId={t.id} encomienda={data.encomienda} esPrueba={t.es_prueba} />
+      <PresentacionTad tramiteId={t.id} presentacion={data.presentacion} esPrueba={t.es_prueba} expedienteId={t.expediente_id} />
       {propios.length > 0 && <ListaDocumentos titulo="Documentos de ABA y del seguro" documentos={propios} />}
 
       <section className="rounded-md border">

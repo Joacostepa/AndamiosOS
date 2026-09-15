@@ -5,6 +5,7 @@ import { fetchOtsUrgentes } from "@/lib/odoo/ordenes";
 import { claveDe, crearAlertas } from "@/lib/alertas/servicio";
 import { OdooError } from "@/lib/odoo/client";
 import { recordarEndosos } from "@/lib/permisos-via-publica/endosos";
+import { barridoPresentaciones } from "@/lib/permisos-via-publica/presentacion";
 
 // GET/POST /api/alertas/barrido — el cron que hace que los avisos lleguen solos.
 //
@@ -80,11 +81,16 @@ async function correr(req: NextRequest) {
     //    no puede tapar los avisos de OTs de arriba.
     const endosos = await recordarEndosos(db).catch((e) => ({ error: e instanceof Error ? e.message : String(e) }));
 
+    // 4. Permisos listos para presentar en TAD que no se pidieron solos (un documento que se
+    //    corrigió a mano, una encomienda que llegó después). Una sola vez por trámite.
+    const presentacionesPedidas = await barridoPresentaciones(db).catch((e) => ({ error: e instanceof Error ? e.message : String(e) }));
+
     return NextResponse.json({
       otsActivas: bandeja.total,
       urgentesEnOdoo: urgentes.length,
       avisosDeUrgenciaCreados: creadasUrgentes,
       endosos,
+      presentacionesPedidas,
     });
   } catch (e) {
     const msg = e instanceof OdooError ? e.message : e instanceof Error ? e.message : String(e);

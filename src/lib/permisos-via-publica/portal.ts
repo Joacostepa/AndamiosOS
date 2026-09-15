@@ -395,7 +395,12 @@ export async function revisarDocumentoDelCliente(db: SupabaseClient, documentoId
     const observacion = fallas.length === 0 ? null : fallas.map((c) => c.detalle).join(" ");
     await db.from("pvp_documentos").update({ estado, revision, revisado_at: ahora(), observacion, updated_at: ahora() }).eq("id", documentoId);
     await registrarEvento(db, doc.tramite_id, "documento_revisado", `${NOMBRE_DOCUMENTO[doc.clave] ?? doc.clave}: ${estado === "ok" ? "correcto" : observacion}`, { clave: doc.clave, estado, version: doc.version }, "ia");
-    if (estado === "ok") await siLegajoCompletoGenerar(db, doc.tramite_id);
+    if (estado === "ok") {
+      await siLegajoCompletoGenerar(db, doc.tramite_id);
+      // Si con este documento quedó todo, se presenta sola en TAD.
+      const { siListoPresentar } = await import("./presentacion");
+      await siListoPresentar(db, doc.tramite_id);
+    }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     await db.from("pvp_documentos").update({

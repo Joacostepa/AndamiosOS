@@ -45,6 +45,7 @@ const ETIQUETA_EVENTO: Record<TipoEvento, string> = {
   link_cliente: "Link al cliente",
   titular_cargado: "El cliente cargó el dueño del lote",
   encomienda_cpau: "Encomienda del CPAU",
+  presentacion_tad: "Presentación en TAD",
 };
 
 const TRAMITE: Record<string, string> = { no_presentado: "No presentado", presentado: "Presentado", emitido: "Emitido" };

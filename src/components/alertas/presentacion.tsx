@@ -2,6 +2,8 @@ import {
   AlarmClock,
   AlertTriangle,
   Bell,
+  Bot,
+  Landmark,
   FileWarning,
   Package,
   ShieldCheck,
@@ -41,6 +43,9 @@ const ICONOS: Record<string, typeof Bell> = {
   ot_deshabilitada: ShieldOff,
   // El mismo reloj que el botón de posponer en la bandeja.
   hab_pospuesta: AlarmClock,
+  // El mismo edificio de gobierno que el menú de Permisos vía pública.
+  permiso_novedad: Landmark,
+  permiso_robot: Bot,
   // Tipos previstos en el schema original, todavía sin productor.
   documento_vencimiento: FileWarning,
   stock_bajo_minimo: Package,

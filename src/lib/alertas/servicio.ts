@@ -34,7 +34,15 @@ type DB = SupabaseClient;
 export type TipoAlerta =
   | "ot_nueva" | "ot_habilitada" | "ot_urgente" | "ot_deshabilitada"
   /** Una obra pospuesta en Habilitaciones volvió a la bandeja, o Operaciones la planificó. */
-  | "hab_pospuesta";
+  | "hab_pospuesta"
+  /**
+   * Novedad de un expediente de TAD: observado, permiso emitido, archivado. Los crea el
+   * robot (robot/worker-tad.mjs) directo en la tabla, no por crearAlertas: corre fuera de
+   * Next. Están acá para que la campanita y Slack los conozcan.
+   */
+  | "permiso_novedad"
+  /** El robot de TAD no puede revisar (login, TAD caído, pantalla cambiada). */
+  | "permiso_robot";
 
 export type Prioridad = "baja" | "media" | "alta" | "critica";
 

@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "contraste": "node scripts/contraste-tablero.mjs"
+    "contraste": "node scripts/contraste-tablero.mjs",
+    "robot:tad": "node --env-file=.env.local --env-file=robot/.env.robot robot/worker-tad.mjs"
   },
   "dependencies": {
     "@afipsdk/afip.js": "^1.2.3",
@@ -56,8 +57,10 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.1",
+    "playwright": "^1.63.0",
     "supabase": "^2.84.5",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "unpdf": "^1.8.1"
   }
 }

@@ -2,7 +2,7 @@ import {
   Building2, Users, Wrench, Package, Truck, UserCheck, BarChart3, Bell,
   Settings, FileText, ClipboardList, Calculator, Calendar, HardHat,
   PackagePlus, AlertTriangle, Search, Car, Hammer, MessageSquare,
-  MapPin, Fingerprint, Bot, Building, ListOrdered, ShieldCheck, FileBarChart,
+  MapPin, Fingerprint, Bot, Building, ListOrdered, ShieldCheck, FileBarChart, Landmark,
   type LucideIcon,
 } from "lucide-react";
 
@@ -32,6 +32,15 @@ export const navigation: NavGroup[] = [
       { title: "Informes de obra", href: "/informes-obra", icon: FileBarChart },
       { title: "Mapa de Obras", href: "/mapa-obras", icon: MapPin },
       { title: "Planificacion", href: "/planificacion", icon: Calendar },
+    ],
+  },
+  {
+    // Trámites que ABA hace ante organismos por cuenta del cliente. Grupo propio y no
+    // dentro de Operaciones: es un servicio que se cobra y tiene su propio circuito, y es
+    // donde van a sumarse las próximas gestorías.
+    label: "Gestorias",
+    items: [
+      { title: "Permisos de andamio", href: "/permisos-via-publica", icon: Landmark },
     ],
   },
   {

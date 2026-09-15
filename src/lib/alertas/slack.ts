@@ -48,6 +48,9 @@ const DESTINOS: Record<TipoAlerta, Canal[]> = {
   // Es de Habilitaciones para Habilitaciones: la obra que había pospuesto necesita que
   // alguien le mande los papeles. A logística no le cambia nada.
   hab_pospuesta: ["syh"],
+  // Los permisos de vía pública son parte de la documentación de obra.
+  permiso_novedad: ["syh"],
+  permiso_robot: ["syh"],
 };
 
 /**
@@ -106,6 +109,22 @@ const ESTILO: Record<
     plural: "obras pospuestas con novedades",
     destacado: false,
     prefijos: ["Volvió a la bandeja", "Planificaron una obra pospuesta"],
+  },
+  permiso_novedad: {
+    color: "#2563eb",
+    emoji: "🏛️",
+    rotulo: "Permiso de andamio",
+    plural: "novedades de permisos",
+    destacado: false,
+    prefijos: [],
+  },
+  permiso_robot: {
+    color: "#d97706",
+    emoji: "🤖",
+    rotulo: "Robot de TAD",
+    plural: "avisos del robot de TAD",
+    destacado: false,
+    prefijos: [],
   },
 };
 

@@ -44,3 +44,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# capturas del robot de permisos: tienen datos de clientes y del expediente
+/robot/capturas/

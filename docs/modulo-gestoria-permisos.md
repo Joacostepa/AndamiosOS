@@ -138,7 +138,9 @@ Claude lee cada PDF o foto (con visión) y devuelve, por documento, `ok` u `obse
 un motivo en castellano para el cliente. Además cruza el legajo:
 
 - Que se lea y sea el documento que dice ser.
-- **Que el peticionante del Aviso de Obra sea el dueño del lote** — el error más caro.
+- ~~Que el peticionante del Aviso de Obra sea el dueño del lote~~ → **no**: el peticionante del
+  aviso de obra puede ser cualquiera (JS, 2026-09-15, primera venta real S02465). Del aviso sólo
+  se controla que sea de la dirección de la obra.
 - Acta de Asamblea / designación de autoridades **vigente**.
 - Coincidencia de CUIT, razón social y dirección entre documentos y con la venta.
 - Firmas presentes en nota y acta.

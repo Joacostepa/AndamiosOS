@@ -9,9 +9,10 @@ import { ETIQUETA_DUENO, NOMBRE_DOCUMENTO, formatoCuit, type ChequeoPoliza, type
 // trae, si está firmado, si está vigente) y el VEREDICTO sale de reglas en código. El motivo
 // que ve el cliente sale de esas reglas, en castellano y sin jerga.
 //
-// EL ERROR MÁS CARO es que el peticionante del aviso de obra no sea el dueño del lote: el
-// GCBA lo rechaza y el endoso sale a nombre de otro. Por eso el titular cargado se cruza
-// con cada documento que nombra a alguien.
+// El titular cargado se cruza con los documentos que acreditan al dueño (DNI, poder,
+// estatuto, título…). NO con el aviso de obra: el peticionante puede ser cualquiera y no tiene
+// que ser el dueño del lote (JS, 2026-09-15, con la primera venta real: S02465). Del aviso sólo
+// se controla que sea de la dirección de la obra.
 //
 // Ante la duda observa (docs/modulo-gestoria-permisos.md § 2): la IA nunca aprueba en
 // silencio algo que no pudo leer.
@@ -23,8 +24,8 @@ type Regla = "titular" | "direccion" | "cuit" | "firma" | "vigencia";
 /** Qué es cada documento y qué se cruza. */
 const CRITERIOS: Record<string, { descripcion: string; reglas: Regla[] }> = {
   aviso_obra: {
-    descripcion: "Aviso de obra o permiso de obra (registro de obra) del GCBA, o la constancia de su trámite (DGROC / DGIUR). Tiene que ser de la dirección de la obra y a nombre del dueño del lote.",
-    reglas: ["titular", "direccion"],
+    descripcion: "Aviso de obra o permiso de obra (registro de obra) del GCBA, o la constancia de su trámite (DGROC / DGIUR). Tiene que ser de la dirección de la obra; el peticionante puede ser cualquier persona.",
+    reglas: ["direccion"],
   },
   acta_asamblea: { descripcion: "Acta de asamblea del consorcio que designa al administrador, legalizada.", reglas: ["vigencia"] },
   reglamento: { descripcion: "Reglamento de copropiedad del edificio de la obra.", reglas: ["direccion"] },

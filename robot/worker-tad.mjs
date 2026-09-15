@@ -462,6 +462,65 @@ async function sincronizarOdoo(lista) {
   return escritas;
 }
 
+// ── Presentaciones sin número ───────────────────────────────────────────────
+//
+// TAD a veces toma la presentación y deja el número "en espera" (S02466, 15/09). El robot de
+// presentación deja la tarea en ok con etapa presentado_sin_numero y el trámite en "presentado",
+// sin expediente. Cuando el expediente aparece en En curso se vincula acá: tiene que haberse creado
+// ese día o después, no estar vinculado a otro trámite y tener en la carátula la misma sección,
+// manzana y parcela que la obra. Con uno solo se vincula como una presentación con número (a la
+// venta, por "numero": es nuestra presentación, no una propuesta); con más de uno se avisa.
+
+const smp = (s, m, p) => [s, m, p].map((x) => String(x ?? "").trim().toUpperCase().replace(/^0+(?=[0-9A-Z])/, "")).join("-");
+const diaEnBuenosAires = (iso) => new Date(iso).toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
+
+async function vincularPresentaciones(porNumero) {
+  const avisos = [];
+  const { data: tramites, error } = await db.from("pvp_tramites")
+    .select("id, direccion, odoo_venta_id, odoo_venta_nombre, cliente_nombre").is("expediente_id", null).eq("es_prueba", false);
+  if (error) throw new Error(error.message);
+  if (!tramites?.length) return avisos;
+  const { data: tareas, error: errorTareas } = await db.from("pvp_tareas")
+    .select("id, tramite_id, payload, resultado, terminada_at").eq("tipo", "tad_presentar").eq("estado", "ok").in("tramite_id", tramites.map((t) => t.id));
+  if (errorTareas) throw new Error(errorTareas.message);
+  const esperando = (tareas ?? []).filter((t) => t.resultado?.etapa === "presentado_sin_numero");
+  if (!esperando.length) return avisos;
+  const { data: vinculados } = await db.from("pvp_tramites").select("expediente_id").not("expediente_id", "is", null);
+  const tomados = new Set((vinculados ?? []).map((v) => v.expediente_id));
+
+  for (const tarea of esperando) {
+    const t = tramites.find((x) => x.id === tarea.tramite_id);
+    const obra = smp(...String(tarea.payload?.obra?.smp ?? "").split("-"));
+    const desde = diaEnBuenosAires(tarea.resultado.presentado_at ?? tarea.terminada_at);
+    const candidatos = [...porNumero.values()].filter((e) =>
+      !e.historico && e.solapa === "en_curso" && !tomados.has(e.id) && e.creado_tad >= desde && e.seccion && smp(e.seccion, e.manzana, e.parcela) === obra);
+    if (candidatos.length > 1) {
+      avisos.push({ tipo: "permiso_robot", clave: `permiso_robot:tramite:${t.id}:presentado_varios`, titulo: `Elegir el expediente — ${t.direccion}`, descripcion: `Se presentó sin número y aparecieron ${candidatos.length} expedientes de esa parcela: ${candidatos.map((c) => `EX-${c.numero}`).join(", ")}. Vincularlo a mano.`, prioridad: "media", enlace: `/permisos-via-publica/tramites/${t.id}` });
+    }
+    if (candidatos.length !== 1) continue;
+
+    const exp = candidatos[0];
+    const ahora = new Date().toISOString();
+    const venta = t.odoo_venta_id ? { odoo_venta_id: t.odoo_venta_id, odoo_venta_nombre: t.odoo_venta_nombre, cliente: t.cliente_nombre ?? exp.cliente ?? null, odoo_vinculo_por: "numero" } : {};
+    const { error: errorExp } = await db.from("pvp_expedientes").update({ ...venta, updated_at: ahora }).eq("id", exp.id);
+    if (errorExp) { log("!! vincular presentación", exp.numero, errorExp.message); continue; }
+    const { error: errorTramite } = await db.from("pvp_tramites").update({ expediente_id: exp.id, updated_at: ahora }).eq("id", t.id);
+    if (errorTramite) { log("!! vincular presentación", exp.numero, errorTramite.message); continue; }
+    await db.from("pvp_tareas").update({ resultado: { ...tarea.resultado, etapa: "presentado", expediente: exp.expediente } }).eq("id", tarea.id);
+    Object.assign(exp, venta);
+    tomados.add(exp.id);
+    const { error: errorEvento } = await db.from("pvp_eventos").insert({
+      tramite_id: t.id, expediente_id: exp.id, tipo: "presentacion_tad", actor: "robot",
+      detalle: `Apareció el número de la presentación: ${exp.expediente} (parcela ${obra}, creado el ${exp.creado_tad}).`,
+      datos: { tarea_id: tarea.id, expediente: exp.expediente },
+    });
+    if (errorEvento) log("!! evento de la presentación", errorEvento.message);
+    avisos.push({ tipo: "permiso_novedad", clave: `permiso_novedad:${exp.numero}:presentado`, titulo: `Presentado en TAD — ${t.direccion}`, descripcion: `${exp.expediente}${t.odoo_venta_nombre ? ` · ${t.odoo_venta_nombre}` : ""}`, enlace: `/permisos-via-publica/${exp.id}` });
+    log(`Presentación ${t.direccion} → ${exp.expediente}`);
+  }
+  return avisos;
+}
+
 // ── Una vuelta ──────────────────────────────────────────────────────────────
 
 async function revisar(page) {
@@ -599,6 +658,14 @@ async function revisar(page) {
     } else if (r.error) {
       log(`!! carátula EX-${exp.numero}: ${r.error}`);
     }
+  }
+
+  // Presentaciones que TAD dejó sin número: antes de proponer ventas por dirección, que para
+  // estos expedientes la venta ya se sabe.
+  try {
+    avisos.push(...(await vincularPresentaciones(porNumero)));
+  } catch (e) {
+    log("!! presentaciones sin número", e.message);
   }
 
   // Vínculo con Odoo (no en los históricos: sin carátula no hay dirección, y serían ~600 consultas por vuelta).

@@ -180,14 +180,16 @@ export async function borradorPendiente(db: SupabaseClient, tramiteId: string): 
   const ultimo = reales.map((t) => t.resultado?.borrador ?? t.payload?.continuar_borrador ?? null).find((b) => !!b) ?? null;
   // Si el último borrador conocido se descartó, no se vuelve a uno anterior: se empieza de cero.
   const borrador = ultimo && !descartados.has(ultimo) ? ultimo : null;
-  return { borrador, confirmadoAntes: reales.some((t) => t.estado === "error" && !!t.resultado?.confirmado) };
+  // Presentado sin número (TAD lo dejó "en espera", S02466 15/09) también es presentado: no se vuelve a presentar.
+  const confirmadoAntes = reales.some((t) => (t.estado === "error" && !!t.resultado?.confirmado) || (t.estado === "ok" && t.resultado?.etapa === "presentado_sin_numero"));
+  return { borrador, confirmadoAntes };
 }
 
 type TareaPresentacion = {
   id: number;
   estado: string;
   payload: { es_prueba?: boolean; continuar_borrador?: number | null } | null;
-  resultado: { borrador?: number | null; confirmado?: boolean; borrador_descartado?: number } | null;
+  resultado: { etapa?: string; borrador?: number | null; confirmado?: boolean; borrador_descartado?: number } | null;
 };
 
 async function presentacionesReales(db: SupabaseClient, tramiteId: string): Promise<TareaPresentacion[]> {

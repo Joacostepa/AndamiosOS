@@ -522,7 +522,17 @@ async function abrirBorradorUnaVez(page, id, estado) {
   if (!casilleros) throw new TadNoCarga("TAD no terminó de cargar los documentos del borrador en 3 minutos");
 }
 
-/** "Confirmar trámite" y lo que venga (Resumen o diálogo) hasta ver el EX. */
+/**
+ * TAD tomó la presentación pero dejó el número para después (S02466, 15/09): "Generación de trámite
+ * pendiente · Número de expediente en espera · Tenemos problemas para generar el expediente
+ * electrónico de tu trámite… podrás visualizarlo en Trámites en curso".
+ */
+const EN_ESPERA = /Generaci[oó]n de tr[aá]mite pendiente|N[uú]mero de expediente\s*en espera/i;
+
+/**
+ * "Confirmar trámite" y lo que venga (Resumen o diálogo) hasta ver el EX. Devuelve el número,
+ * { pendiente: true } si TAD dejó el número en espera, o null.
+ */
 async function confirmar(page, foto, expedienteDeRed) {
   await page.locator("button:visible", { hasText: /^\s*Confirmar tr[aá]mite\s*$/ }).last().click({ timeout: 15000 });
   for (let paso = 1; paso <= 5; paso++) {
@@ -531,6 +541,8 @@ async function confirmar(page, foto, expedienteDeRed) {
     const t = normal(await page.locator("body").innerText());
     const numero = expedienteDeRed() ?? ex(t)?.[0];
     if (numero) return numero;
+    // Presentado sin número: en esa pantalla no hay nada más que tocar.
+    if (EN_ESPERA.test(t)) return { pendiente: true };
     // Pantalla intermedia: se toca un único botón de confirmar/aceptar, visible.
     const seguir = page.locator(".modal.show button:visible, button:visible").filter({ hasText: /^\s*(Confirmar tr[aá]mite|Confirmar|Aceptar)\s*$/ });
     if (await seguir.count()) {
@@ -712,6 +724,10 @@ export async function presentarEnTad({ db, tarea, page, log }) {
 
     estado.confirmado = true;
     const numero = await confirmar(page, foto, () => estado.expediente);
+    if (numero?.pendiente) {
+      log(`TAD: presentado; el número de expediente quedó en espera (borrador ${estado.borrador})`);
+      return { etapa: "presentado_sin_numero", borrador: estado.borrador, adjuntados: estado.adjuntados, confirmado: true, presentado_at: new Date().toISOString(), obra, capturas };
+    }
     if (!numero) throw new Trabado("Se tocó «Confirmar trámite» pero no apareció el número de expediente: revisar en TAD si se presentó");
     estado.expediente = numero;
     await foto("presentado");
@@ -755,6 +771,16 @@ export async function atenderPresentacion({ db, tarea, page, log, avisar, sincro
     if (r.etapa === "prueba") {
       await db.from("pvp_tareas").update({ estado: "ok", resultado: r, terminada_at: ahora() }).eq("id", tarea.id);
       await evento(`Prueba en TAD: formulario llenado y guardado (${r.obra.calle}, ${r.obra.barrio}, ${r.obra.smp}). ${r.borrador_borrado ? "El borrador se borró." : `No se pudo borrar el borrador ${r.borrador}${r.borrador_error ? ` (${r.borrador_error})` : ""}: borrarlo a mano.`} No se adjuntó ni se presentó nada.`, { tarea_id: tarea.id });
+      return;
+    }
+
+    if (r.etapa === "presentado_sin_numero") {
+      // Ya no se puede volver a presentar (borradorPendiente lo cuenta como confirmado). El worker
+      // lo vincula solo cuando el expediente aparezca en En curso (vincularPresentaciones).
+      await db.from("pvp_tramites").update({ estado: "presentado", updated_at: ahora() }).eq("id", tarea.tramite_id);
+      await db.from("pvp_tareas").update({ estado: "ok", resultado: r, error: null, terminada_at: ahora() }).eq("id", tarea.id);
+      await evento("Presentado en TAD. TAD dejó el número de expediente «en espera» y lo genera después: el robot lo vincula solo cuando aparezca en Trámites en curso.", { tarea_id: tarea.id, borrador: r.borrador });
+      await avisar([{ tipo: "permiso_novedad", clave: `permiso_novedad:tramite:${tarea.tramite_id}:presentado_sin_numero`, titulo: `Presentado en TAD — ${p.direccion}`, descripcion: `El número de expediente quedó en espera: aparece solo en la ficha cuando TAD lo genere.${p.odoo_venta_nombre ? ` · ${p.odoo_venta_nombre}` : ""}`, enlace: `/permisos-via-publica/tramites/${tarea.tramite_id}` }]);
       return;
     }
 

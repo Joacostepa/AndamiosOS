@@ -30,6 +30,7 @@ export function PresentacionTad({
   const programada = tarea?.estado === "pendiente" && !!tarea.reintentar_desde;
   const trabajando = tarea && ["pendiente", "tomada"].includes(tarea.estado) && !programada;
   const r = tarea?.resultado;
+  const sinNumero = tarea?.estado === "ok" && r?.etapa === "presentado_sin_numero";
 
   function lanzar(aviso?: string) {
     if (aviso && !window.confirm(aviso)) return;
@@ -123,6 +124,16 @@ export function PresentacionTad({
         </p>
       )}
 
+      {sinNumero && (
+        <p className="flex items-start gap-1.5 text-green-300">
+          <Clock className="mt-0.5 size-4 shrink-0" />
+          <span>
+            <strong>Presentado en TAD.</strong> TAD dejó el número de expediente «en espera» y lo genera después. El robot lo
+            vincula solo apenas aparece en Trámites en curso (revisa cada 30 min). No hay que volver a presentar.
+          </span>
+        </p>
+      )}
+
       {tarea?.estado === "ok" && r?.etapa === "prueba" && (
         <p className="text-green-300">
           Prueba OK: formulario guardado en TAD con {r.obra?.calle} → {r.obra?.barrio}, {r.obra?.comuna}, parcela {r.obra?.smp}.{" "}
@@ -144,7 +155,7 @@ export function PresentacionTad({
       )}
 
       {/* Si ya se tocó "Confirmar trámite" no se ofrece presentar de nuevo: primero hay que mirar TAD. */}
-      {!esPrueba && confirmadoAntes && !expedienteId && (
+      {!esPrueba && confirmadoAntes && !expedienteId && !sinNumero && (
         <p className="text-[12px] text-orange-400">Una presentación anterior tocó «Confirmar trámite»: revisá en TAD si salió el expediente antes de volver a presentar.</p>
       )}
       {!trabajando && !programada && !expedienteId && !(confirmadoAntes && !esPrueba) && (esPrueba || estado.listo || tarea?.estado === "error") && (

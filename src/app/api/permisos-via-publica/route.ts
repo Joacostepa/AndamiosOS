@@ -17,7 +17,9 @@ export async function GET() {
     const [expedientes, robot, abiertas, nuevos] = await Promise.all([
       db.from("pvp_expedientes").select("*"),
       db.from("pvp_robot").select("*").eq("id", "tad").maybeSingle(),
-      db.from("pvp_tareas").select("id", { count: "exact", head: true }).in("estado", ["pendiente", "tomada"]),
+      // Un reintento programado para dentro de media hora no cuenta: la bandeja no tiene que
+      // refrescarse cada 10 s mientras espera.
+      db.from("pvp_tareas").select("id", { count: "exact", head: true }).in("estado", ["pendiente", "tomada"]).or("reintentar_desde.is.null,estado.eq.tomada"),
       // Trámites abiertos desde una venta que todavía no tienen expediente en TAD.
       db.from("pvp_tramites")
         .select("id, direccion, odoo_venta_nombre, cliente_nombre, vendedor_nombre, titular_nombre, titular_cargado_at, link_enviado_at, link_enviado_a, link_error, created_at, es_prueba, pvp_documentos(estado, origen, clave)")

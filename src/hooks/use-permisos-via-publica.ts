@@ -122,7 +122,9 @@ export function useTramite(id: string) {
     refetchInterval: (q) =>
       q.state.data?.documentos.some((d) => d.estado === "revisando") ||
       ["pendiente", "tomada"].includes(q.state.data?.encomienda?.estado ?? "") ||
-      ["pendiente", "tomada"].includes(q.state.data?.presentacion.tarea?.estado ?? "")
+      // Un reintento programado (TAD no respondía) espera media hora: no hace falta mirar cada 5 s.
+      (["pendiente", "tomada"].includes(q.state.data?.presentacion.tarea?.estado ?? "") && !q.state.data?.presentacion.tarea?.reintentar_desde) ||
+      q.state.data?.presentacion.tarea?.estado === "tomada"
         ? 5_000
         : 60_000,
   });
@@ -137,15 +139,20 @@ export function usePresentacion(id: string) {
   });
 }
 
-/** Deja de seguir el borrador de TAD (ya borrado a mano): la próxima presentación arma uno nuevo. */
-export function useDescartarBorrador(id: string) {
+export type AccionPresentacion = "descartar_borrador" | "probar_ahora" | "dejar_de_reintentar";
+
+/**
+ * Acciones sobre la presentación desde la ficha: dejar de seguir el borrador de TAD (ya borrado a
+ * mano) y adelantar o cortar el reintento automático cuando TAD no respondía.
+ */
+export function useAccionPresentacion(id: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () =>
-      pedir<{ borrador: number }>(`/api/permisos-via-publica/tramites/${id}/presentacion`, {
+    mutationFn: (accion: AccionPresentacion) =>
+      pedir<{ borrador?: number; ok?: true }>(`/api/permisos-via-publica/tramites/${id}/presentacion`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accion: "descartar_borrador" }),
+        body: JSON.stringify({ accion }),
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["tramite-permiso", id] }),
   });

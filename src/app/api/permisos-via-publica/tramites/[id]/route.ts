@@ -25,7 +25,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       .eq("tipo", "cpau_encomienda").eq("tramite_id", id).order("created_at", { ascending: false }).limit(1),
   ]);
   const [presentaciones, requisitos, pendiente] = await Promise.all([
-    db.from("pvp_tareas").select("id, estado, payload, resultado, error, created_at, terminada_at")
+    db.from("pvp_tareas").select("id, estado, payload, resultado, error, reintentar_desde, created_at, terminada_at")
       .eq("tipo", "tad_presentar").eq("tramite_id", id).order("created_at", { ascending: false }).limit(1),
     estadoPresentacion(db, id),
     borradorPendiente(db, id),

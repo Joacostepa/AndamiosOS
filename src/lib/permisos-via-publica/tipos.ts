@@ -389,9 +389,14 @@ export type PresentacionFicha = {
       confirmado?: boolean;
       /** Al frenarse, TAD mostraba "No se pudo establecer comunicación con el servicio". */
       tad_caido?: boolean;
+      /** Reintento automático por TAD caído: cuál fue el último y cuántos se hacen como mucho. */
+      reintento?: number;
+      reintentos_max?: number;
       obra?: { calle: string; barrio: string; comuna: string; smp: string };
     } | null;
     error: string | null;
+    /** Con estado "pendiente": TAD no respondía y el robot vuelve a intentar desde esta hora. */
+    reintentar_desde: string | null;
     created_at: string;
     terminada_at: string | null;
     capturas: { nombre: string; url: string | null }[];

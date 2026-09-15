@@ -1035,6 +1035,38 @@ tomó como falla del adjunto. Quedó el borrador 12984454 con ese IF. Cambios:
   guarda `resultado.tad_caido`. El error empieza con "TAD tiene caído el servicio de documentos…"
   y en la ficha sale el aviso de revisar el borrador en TAD en lugar de "Empezar de cero". No se
   frena apenas ve el cartel, porque a veces está y el adjunto sale igual.
+- **Reintento automático cuando TAD no responde (15/09).** Según Tamara, que TAD ande mal es
+  muy común. **Cuándo reintenta:** la presentación frenó por TAD y todavía no se tocó
+  "Confirmar trámite". Cuenta como falla de TAD:
+  - `tad_caido`;
+  - `TadNoCarga`: página, borrador o formulario que no cargan;
+  - una falla del login antes de empezar.
+  
+  **Cómo:** `frenarPresentacion` deja la **misma** tarea en `pendiente` con
+  `reintentar_desde` = ahora + 30 min, `payload.continuar_borrador` y `payload.reintento`.
+  El worker no toma la tarea antes de esa hora. El reintento sigue desde el borrador y saltea
+  el formulario guardado y los casilleros con IF. Hasta 16 intentos (~8 h); después queda en
+  error con aviso.
+  
+  **Avisos:** uno al primer reintento (clave `…:reintentos`) y otro si se agotan.
+  
+  **No reintenta:**
+  - pruebas;
+  - "miBA no dejó entrar" (insistir bloquearía la cuenta);
+  - adjuntos rechazados;
+  - dirección que no da la parcela;
+  - nada después de Confirmar.
+  
+  **En la ficha:** "TAD no responde: vuelve a intentar solo a las HH:MM (intento N de 16)",
+  con los botones **Probar ahora** y **Dejar de reintentar**. Migración 20260915000008
+  (`pvp_tareas.reintentar_desde`). La bandeja no cuenta los reintentos programados como
+  "revisando".
+  
+  **Riesgo aceptado:** un adjunto que TAD tomó sin mostrar el IF en el casillero se vuelve a
+  subir y deja un IF suelto de más.
+  
+  También: si se presentó pero no se pudo guardar el expediente, el error ahora lleva
+  `confirmado`, para que nadie vuelva a presentar.
 - **Empezar de cero** (en la ficha, con borrador pendiente y la presentación en error): sólo
   para un borrador que realmente no sirve y **con TAD funcionando**. Una persona lo borra en
   TAD (Mis trámites → Borradores) y toca el botón. La app anota `borrador_descartado` en la

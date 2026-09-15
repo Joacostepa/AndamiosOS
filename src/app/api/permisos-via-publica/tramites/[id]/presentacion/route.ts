@@ -3,7 +3,7 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { FaltanDatos } from "@/lib/permisos-via-publica/generacion";
-import { descartarBorrador, pedirPresentacion } from "@/lib/permisos-via-publica/presentacion";
+import { descartarBorrador, manejarReintento, pedirPresentacion } from "@/lib/permisos-via-publica/presentacion";
 
 // POST /api/permisos-via-publica/tramites/:id/presentacion — la presentación en TAD.
 //   (sin cuerpo) o { accion: "pedir" }  pide la presentación. Normalmente se pide sola cuando el
@@ -11,12 +11,14 @@ import { descartarBorrador, pedirPresentacion } from "@/lib/permisos-via-publica
 //     (que llena y guarda el formulario y borra el borrador, sin adjuntar ni presentar).
 //   { accion: "descartar_borrador" }  deja de seguir el borrador de TAD (ya borrado a mano) para
 //     que la próxima presentación arme uno nuevo.
+//   { accion: "probar_ahora" | "dejar_de_reintentar" }  el reintento automático cuando TAD no
+//     respondía: adelantarlo o cortarlo.
 // El proxy exige nivel "editar". No espera al robot.
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const schema = z.object({ accion: z.enum(["pedir", "descartar_borrador"]).default("pedir") });
+const schema = z.object({ accion: z.enum(["pedir", "descartar_borrador", "probar_ahora", "dejar_de_reintentar"]).default("pedir") });
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
@@ -28,7 +30,12 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const userId = auth.user?.id ?? null;
   const db = createAdminClient();
   try {
-    if (parsed.data.accion === "descartar_borrador") return NextResponse.json({ borrador: await descartarBorrador(db, id, userId) });
+    const { accion } = parsed.data;
+    if (accion === "descartar_borrador") return NextResponse.json({ borrador: await descartarBorrador(db, id, userId) });
+    if (accion === "probar_ahora" || accion === "dejar_de_reintentar") {
+      await manejarReintento(db, id, accion, userId);
+      return NextResponse.json({ ok: true });
+    }
     return NextResponse.json(await pedirPresentacion(db, id, { userId }));
   } catch (e) {
     if (e instanceof FaltanDatos) return NextResponse.json({ error: e.message }, { status: 400 });

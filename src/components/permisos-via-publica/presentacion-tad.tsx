@@ -1,14 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { CheckCircle2, CircleAlert, ExternalLink, Landmark, Loader2, RotateCcw, Send, TriangleAlert } from "lucide-react";
+import { CheckCircle2, CircleAlert, Clock, ExternalLink, Landmark, Loader2, RefreshCw, RotateCcw, Send, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { useDescartarBorrador, usePresentacion } from "@/hooks/use-permisos-via-publica";
+import { useAccionPresentacion, usePresentacion } from "@/hooks/use-permisos-via-publica";
 import type { PresentacionFicha } from "@/lib/permisos-via-publica/tipos";
 
 // Presentación en TAD en la ficha del trámite. Es automática: se pide sola cuando está todo y
 // el robot adjunta y confirma. Acá se ve qué falta, qué hizo el robot y, si se frenó, por qué.
+
+const hora = (iso: string | null | undefined) =>
+  iso ? new Date(iso).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }) : "";
 
 export function PresentacionTad({
   tramiteId,
@@ -22,8 +25,10 @@ export function PresentacionTad({
   expedienteId: string | null;
 }) {
   const pedir = usePresentacion(tramiteId);
-  const descartar = useDescartarBorrador(tramiteId);
-  const trabajando = tarea && ["pendiente", "tomada"].includes(tarea.estado);
+  const accion = useAccionPresentacion(tramiteId);
+  // Un reintento programado (TAD no respondía) está en la cola, pero el robot no está trabajando.
+  const programada = tarea?.estado === "pendiente" && !!tarea.reintentar_desde;
+  const trabajando = tarea && ["pendiente", "tomada"].includes(tarea.estado) && !programada;
   const r = tarea?.resultado;
 
   function lanzar(aviso?: string) {
@@ -31,6 +36,14 @@ export function PresentacionTad({
     pedir.mutate(undefined, {
       onSuccess: (x) => toast.success(x.resultado === "ya_pedida" ? "Ya hay una presentación en curso" : esPrueba ? "Prueba pedida: el robot la toma en unos segundos" : "Presentación pedida"),
       onError: (e) => toast.error(e instanceof Error ? e.message : "No se pudo pedir"),
+    });
+  }
+
+  function reintento(que: "probar_ahora" | "dejar_de_reintentar", aviso?: string) {
+    if (aviso && !window.confirm(aviso)) return;
+    accion.mutate(que, {
+      onSuccess: () => toast.success(que === "probar_ahora" ? "El robot prueba TAD en unos segundos" : "Se dejó de reintentar"),
+      onError: (e) => toast.error(e instanceof Error ? e.message : "No se pudo"),
     });
   }
 
@@ -66,7 +79,37 @@ export function PresentacionTad({
         <p className="flex items-center gap-1.5 text-blue-300">
           <Loader2 className="size-4 animate-spin" />
           {esPrueba ? "El robot está probando el formulario en TAD…" : "El robot está presentando en TAD (varios minutos; la Mac tiene que estar prendida)…"}
+          {r?.reintento ? ` Reintento ${r.reintento} de ${r.reintentos_max}.` : ""}
         </p>
+      )}
+
+      {programada && (
+        <div className="space-y-1.5">
+          <p className="flex items-start gap-1.5 text-orange-300">
+            <Clock className="mt-0.5 size-4 shrink-0" />
+            <span>
+              TAD no responde: el robot vuelve a intentar solo a las <strong>{hora(tarea?.reintentar_desde)}</strong>
+              {r?.reintento ? ` (intento ${r.reintento} de ${r.reintentos_max})` : ""}
+              {r?.borrador ? `, desde el borrador ${r.borrador}` : ""}. No hace falta tocar nada.
+            </span>
+          </p>
+          {tarea?.error && <p className="text-[12px] text-muted-foreground">Último intento: {tarea.error}</p>}
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" disabled={accion.isPending} onClick={() => reintento("probar_ahora")}>
+              {accion.isPending ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+              Probar ahora
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-muted-foreground"
+              disabled={accion.isPending}
+              onClick={() => reintento("dejar_de_reintentar", "El robot deja de reintentar y la presentación queda frenada hasta que alguien la vuelva a pedir. ¿Seguro?")}
+            >
+              Dejar de reintentar
+            </Button>
+          </div>
+        </div>
       )}
 
       {tarea?.estado === "ok" && r?.etapa === "presentado" && (
@@ -104,7 +147,7 @@ export function PresentacionTad({
       {!esPrueba && confirmadoAntes && !expedienteId && (
         <p className="text-[12px] text-orange-400">Una presentación anterior tocó «Confirmar trámite»: revisá en TAD si salió el expediente antes de volver a presentar.</p>
       )}
-      {!trabajando && !expedienteId && !(confirmadoAntes && !esPrueba) && (esPrueba || estado.listo || tarea?.estado === "error") && (
+      {!trabajando && !programada && !expedienteId && !(confirmadoAntes && !esPrueba) && (esPrueba || estado.listo || tarea?.estado === "error") && (
         <Button
           size="sm"
           variant="outline"
@@ -135,18 +178,18 @@ export function PresentacionTad({
           size="sm"
           variant="ghost"
           className="ml-2 text-muted-foreground"
-          disabled={descartar.isPending}
+          disabled={accion.isPending}
           onClick={() => {
             if (!window.confirm(
               `¿Ya borraste el borrador ${borradorPendiente} en TAD (Mis trámites → Borradores)?\n\nLa app deja de seguirlo y la próxima presentación arma un borrador nuevo desde cero: vuelve a llenar el formulario y a adjuntar todo, así que los IF de ese borrador se generan de nuevo.`,
             )) return;
-            descartar.mutate(undefined, {
+            accion.mutate("descartar_borrador", {
               onSuccess: (x) => toast.success(`Borrador ${x.borrador} descartado: ahora «Volver a presentar» arma uno nuevo`),
               onError: (e) => toast.error(e instanceof Error ? e.message : "No se pudo descartar"),
             });
           }}
         >
-          {descartar.isPending ? <Loader2 className="size-4 animate-spin" /> : <RotateCcw className="size-4" />}
+          {accion.isPending ? <Loader2 className="size-4 animate-spin" /> : <RotateCcw className="size-4" />}
           Empezar de cero
         </Button>
       )}

@@ -39,7 +39,7 @@ import { abrir, entrar, ir, fotografo, esperarCarga, totalDeLista } from "./tad-
 import { parsearCaratula, sinAltura, textoDePdf } from "./caratula.mjs";
 import { parsearPermiso } from "./permiso.mjs";
 import { atenderEncomienda } from "./cpau-encomienda.mjs";
-import { atenderPresentacion } from "./tad-presentar.mjs";
+import { atenderPresentacion, frenarPresentacion } from "./tad-presentar.mjs";
 import { read, searchRead, write } from "../scripts/odoo-rpc.mjs";
 
 const UNA_VEZ = process.argv.includes("--una-vez");
@@ -661,7 +661,9 @@ for (const senal of ["SIGINT", "SIGTERM"]) {
 }
 
 async function tomarTarea() {
-  const { data } = await db.from("pvp_tareas").select("id").eq("estado", "pendiente").order("created_at").limit(1);
+  // Una presentación que espera su reintento (TAD no respondía) no se toma antes de hora.
+  const { data } = await db.from("pvp_tareas").select("id").eq("estado", "pendiente")
+    .or(`reintentar_desde.is.null,reintentar_desde.lte.${new Date().toISOString()}`).order("created_at").limit(1);
   if (!data?.length) return null;
   const { data: tomada } = await db.from("pvp_tareas").update({ estado: "tomada", tomada_at: new Date().toISOString() })
     .eq("id", data[0].id).eq("estado", "pendiente").select("id, tipo, payload, tramite_id").maybeSingle();
@@ -682,7 +684,8 @@ while (!apagando) {
     });
   } else if (tarea?.tipo === "tad_presentar") {
     // Presentación en TAD: usa la MISMA sesión que las vueltas (dos sesiones de la cuenta miBA
-    // se pisan). Nunca se reintenta sola: el resultado queda en la tarea y en el trámite.
+    // se pisan). Si frena por TAD (caído o sin cargar) vuelve sola a la cola cada 30 min; por
+    // cualquier otra cosa queda en error en la tarea y en el trámite.
     try {
       if (!browser.isConnected()) ({ browser, page } = await abrir());
       if (!(await sesionViva(page))) {
@@ -691,13 +694,12 @@ while (!apagando) {
       }
       await atenderPresentacion({ db, tarea, page, log, avisar, sincronizar: (lista) => sincronizarOdoo(lista) });
     } catch (e) {
-      // Falló antes de empezar (p. ej. en el login): se guarda igual el borrador que se estaba
-      // siguiendo, para que el próximo pedido no arranque de cero y duplique los adjuntos.
+      // Falló antes de empezar (TAD o el login que no cargan): se reintenta sola, desde el
+      // borrador que se estaba siguiendo. Si miBA rechazó la clave no: insistir puede bloquear
+      // la cuenta.
       log("!! presentación en TAD", e.message);
-      await db.from("pvp_tareas").update({
-        estado: "error", error: e.message.slice(0, 500), terminada_at: new Date().toISOString(),
-        resultado: { borrador: tarea.payload?.continuar_borrador ?? null, adjuntados: 0, confirmado: false },
-      }).eq("id", tareaId);
+      await frenarPresentacion({ db, tarea, log, avisar, e, transitorio: !/miBA no dejó entrar/.test(e.message) })
+        .catch((x) => log("!! no se pudo registrar el freno de la presentación", x.message));
     }
   } else if (tarea?.tipo === "odoo_sincronizar") {
     // Alguien confirmó un vínculo en la ficha: escribir en Odoo no necesita entrar a TAD.

@@ -1,148 +1,196 @@
-# Handoff — Gestoría de permisos de andamio (2026-09-14)
+# Handoff — Gestoría de permisos de andamio (actualizado 2026-09-15, noche)
 
 Para retomar en una sesión nueva. El diseño completo y todo lo aprendido está en
-`docs/modulo-gestoria-permisos.md`; esto es sólo el estado y lo que sigue.
-
-## Dónde estamos
-
-**Objetivo (JS):** automatizar de punta a punta el permiso de uso de andamio en vía pública
-(GCBA/TAD + encomienda CPAU) que hoy hace Tamara a mano. Hougassian autorizó su firma; Jorge
-Riveros Zanetta sabe que el robot usa su cuenta miBA.
-
-**Hecho y en main (commit `86942d8`):**
-- Menú **Gestorías → Permisos de andamio** (`/permisos-via-publica`), módulo
-  `permisos-via-publica` en `src/lib/auth/acceso.ts`.
-- Tablas `pvp_expedientes`, `pvp_eventos`, `pvp_tareas`, `pvp_robot` + bucket privado
-  `permisos-via-publica`. Migraciones `20260914000001` y `…0002` **ya aplicadas** a mano.
-- Robot `robot/worker-tad.mjs` (`npm run robot:tad`, `-- --una-vez` para una vuelta): lee la
-  lista de TAD, motivos de subsanación, permisos emitidos, carátula (una vez por expediente)
-  y vincula con Odoo por nº de expediente o dirección. Avisos `permiso_novedad` /
-  `permiso_robot` → campanita + #syh.
-- Pruebas de fase 0 en `robot/prueba-*.mjs` (sólo lectura). Credenciales en
-  `robot/.env.robot` y capturas en `robot/capturas/` — ambos ignorados por git.
-
-**Datos cargados:** 21 expedientes (16 en curso, 5 finalizados), 2 tareas de subsanación
-(ambas por la póliza: cláusula de no repetición a favor del GCBA), 5 permisos PDF.
-
-**Última acción de la sesión anterior:** una vuelta del robot leyendo las 21 carátulas
-(~40 s c/u). Si se cortó a mitad, la próxima vuelta sigue con las que falten
-(`caratula_leida_at` nulo). Log: `robot/capturas/vuelta-caratulas.log`.
-
-## Lo primero al retomar (verificar)
-
-1. Resultado de las carátulas:
-   `select numero, direccion, barrio, odoo_venta_nombre, caratula_error from pvp_expedientes order by numero;`
-   (con `npx supabase db query --db-url "$SUPABASE_DB_URL" "…"` tras `set -a; . ./.env.local; set +a`).
-2. **Bug conocido:** una carátula devolvió `"Pellegrini, Carlos"` sin altura (TAD guarda
-   algunas calles como "APELLIDO, NOMBRE"). La dirección queda sin número y el vínculo por
-   dirección con Odoo no puede funcionar. Revisar `robot/caratula.mjs` y ver el texto crudo
-   del PDF en el bucket (`caratula_path`).
-3. Cuántos quedaron vinculados con Odoo y si los vínculos "por dirección" son correctos
-   (evento `vinculado_odoo` dice por cuál se vinculó).
-
-## Actualización 2026-09-14 (noche) — verificaciones y pasos 1 y 2 hechos
-
-- Carátulas: 21/21. "Pellegrini, Carlos" no era un bug de lectura: la carátula de TAD viene
-  sin altura ni datos catastrales (se escribió la calle sin el buscador). Idem "Salcedo" y
-  "Parana". Parser arreglado y re-aplicado desde el bucket, sin volver a entrar a TAD.
-- Vínculos: 16/21 por dirección, todos coherentes; ninguno por número (0 ventas con
-  `x_expediente_nro`). Detalle en `docs/modulo-gestoria-permisos.md` § Fase 1c.
-- **Paso 1 hecho:** LaunchAgent instalado (`robot/instalar-launchd.sh`).
-- **Paso 2 hecho:** el robot escribe en la venta con vínculo confirmado. **Falta que JS
-  confirme los 16 vínculos** en la ficha y vincule a mano los 3 sin altura: hasta entonces
-  no se escribe nada en Odoo.
-
-## Actualización 2026-09-15 — endoso automático y portal del cliente
-
-- **Hecho y publicado (commit `2479e14`):** endoso de la póliza con portal para Segucom
-  (`/endosos/[token]`), revisión con Claude al subir, mail desde js@, recordatorios.
-- **Hecho y publicado después** (hasta `1fb18eb`): portal del cliente (`/permiso/[token]`)
-  con revisión con IA de cada documento y "Completar y firmar" (acta de compromiso + nota);
-  botón "Iniciar trámite" en la bandeja (**inicio manual**: el automatismo de Odoo id 52 está
-  desactivado); modo prueba ("Probar el circuito"); medidas del permiso en la venta de Odoo;
-  informe técnico y croquis generados solos con la plancheta del catastro. Ver
-  `docs/modulo-gestoria-permisos.md`.
-- `PERMISOS_MAIL` y `PERMISOS_MAIL_CLAVE` ya están en Vercel (clave de aplicación de js@;
-  quedó escrita en el chat del 15/09: conviene rotarla).
-- **Siguiente:** encomienda del CPAU. Mapear el resto del asistente con
-  `robot/mapear-cpau-wizard.mjs` (con OK de JS: entra con la cuenta de Hougassian) y
-  definir pago (tarjeta o transferencia).
-- Decisiones: disparador `x_lleva_permiso = sí`; link al confirmar la venta; sólo ventas
-  nuevas; el titular lo carga el cliente; ARCA cuando haya certificado.
-
-## ▶ Cómo seguir en la próxima sesión (escrito el 15/09 al cerrar)
-
-Decisiones de JS al cierre:
-- **Informe técnico y croquis se generan solos cuando TODO el legajo del cliente queda
-  correcto** (revisado por IA o firmado en el portal). Ya está hecho:
-  `siLegajoCompletoGenerar` en `src/lib/permisos-via-publica/portal.ts`. Si faltan medidas en
-  la venta, alerta y se generan a mano desde la ficha.
-- **La encomienda del CPAU se dispara sola en ese mismo momento** (legajo completo y
-  validado). Engancharla en `siLegajoCompletoGenerar`.
-
-Orden sugerido:
-1. ~~**Mapear el asistente del CPAU**~~ **hecho (15/09):** las 11 pantallas hasta Confirmar,
-   con ids y trampas ("Guardar Borrador" en el botón de salir, borradores sin RETP Nro) en
-   `docs/modulo-gestoria-permisos.md` § Asistente "Nuevo RETP". Lo de después de Finalizar
-   (firma, pago, carga) sólo se ve con la primera encomienda real.
-2. ~~**Definir con JS**~~ **(15/09):** tarjeta; el importe es siempre el mismo.
-3. ~~**Robot de encomienda**~~ **hecho (15/09), supervisado:** se pide sola con el legajo
-   completo, el robot frena en Confirmar y finaliza con el botón de la ficha. Probado contra
-   el CPAU real hasta Confirmar (Trelles). Ver `docs/modulo-gestoria-permisos.md` § Robot de
-   la encomienda. **Falta publicar** (commit + push) para que la ficha y el disparo estén en
-   Vercel; el robot de la Mac ya tiene el código nuevo.
-4. **Primera encomienda real:** tocar Finalizar mirando, ver en las capturas qué pide
-   después (firma, pago con tarjeta, carga en tramites.cpau.org) y automatizar eso. Antes,
-   JS carga la tarjeta en `robot/.env.robot`.
-5. **Probar punta a punta con "Probar el circuito":** la prueba sí pide la encomienda y
-   llega hasta Confirmar (con el frente de Trelles si la dirección no existe); nunca finaliza.
+`docs/modulo-gestoria-permisos.md`; esto es el estado, **lo que falta para que el circuito
+quede 100 % automático** y el orden para seguir.
 
 Para arrancar: "Leé docs/handoff-gestoria-permisos.md y docs/modulo-gestoria-permisos.md y
-seguimos con el mapeo del CPAU".
+seguimos con lo que falta".
 
-## Próximos pasos acordados (en este orden)
+---
 
-### 1. ~~Robot corriendo solo en la Mac~~ (hecho)
-Hoy sólo corre si alguien lo arranca. Instalar un LaunchAgent (`~/Library/LaunchAgents`) que:
-lo arranque al iniciar sesión, lo reinicie si se cae (`KeepAlive`), use `caffeinate` para
-que la Mac no duerma, y escriba log a un archivo. Confirmar con JS antes de instalar.
+## Objetivo
 
-### 2. ~~Escribir en Odoo el estado del permiso~~ (hecho)
-Hoy `sale.order.x_tramite_estado` (no_presentado/presentado/emitido), `x_expediente_nro`,
-`x_expediente_fecha` y `x_permiso_fecha` se cargan a mano, y de ellos dependen el candado
-del tablero y Habilitaciones (`src/lib/habilitaciones/derivacion.ts`, ruta
-`src/app/api/habilitaciones/[otId]/permiso/route.ts`).
-- El robot escribe esos campos cuando el vínculo está confirmado.
-- **Vínculos por dirección: confirmación humana una vez** (botón en la ficha) antes de
-  escribir en Odoo. Vínculos por número: se escriben directo.
-- Mapeo: INICIACION/SUBSANACION → `presentado`; TRAMITACION o archivado con permiso →
-  `emitido` + `x_permiso_fecha` (fecha de la notificación).
-- Ojo: escribir en la venta dispara la cascada de calculados (~1 s por write, ver memoria
-  "Cascada de calculados y webhooks").
+Que nadie haga a mano el permiso de uso de andamio en vía pública (GCBA/TAD + encomienda
+CPAU) que hoy hace Tamara. Hougassian autorizó su firma; Jorge Riveros Zanetta sabe que el
+robot usa su cuenta miBA. Los primeros ~10 trámites van **supervisados** (el robot deja todo
+listo y una persona aprueba el último clic).
 
-### 3. Póliza (causa de las subsanaciones actuales)
-- Generar el pedido de endoso a Gonzalo Costa con el texto exacto: coasegurado el titular del
-  lote, GCBA asegurado adicional, cláusula de no repetición e indemnidad a favor del GCBA,
-  cobertura > $1.000.000, vigencia ≥ fin del permiso, PDF no encriptado.
-- Revisión con IA (Claude, visión sobre PDF) de la póliza que vuelve, antes de presentar.
+## El circuito y dónde está cada paso
 
-### 4. Trámite desde la venta + portal del cliente
-Ver fases 1–3 de `docs/modulo-gestoria-permisos.md`.
+| # | Paso | Estado |
+| --- | --- | --- |
+| 1 | Venta confirmada con `x_lleva_permiso = sí` → se abre el trámite | 🟡 con botón "Iniciar trámite" (automatismo de Odoo id 52 desactivado a propósito) |
+| 2 | Link del portal al cliente (mail + copiar para WhatsApp) | ✅ |
+| 3 | Cliente carga el dueño del lote → pedido de endoso a Segucom (portal, recordatorios, revisión con IA de la póliza) | ✅ |
+| 4 | Cliente carga el legajo → revisión con IA; acta y nota firmadas en el portal | ✅ (falta plantilla de nota del dueño para inquilinos; faltan recordatorios al cliente) |
+| 5 | Legajo completo → informe técnico y croquis generados solos | ✅ (sólo multidireccional) |
+| 6 | Encomienda del CPAU | 🟡 el robot completa y frena en Confirmar; "Finalizar en el CPAU" desde la ficha. **Falta firma, pago, carga y certificado** |
+| 7 | **Presentar en TAD** → EX → `presentado` en Odoo | ❌ **no existe** |
+| 8 | Seguimiento diario de TAD (estados, motivo, permiso, Odoo) | ✅ |
+| 9 | **Subsanación** (clasificar el motivo, corregir, subsanar en TAD) | ❌ sólo lee el motivo y avisa |
+| 10 | Permiso emitido → al cliente | 🟡 se descarga y escribe Odoo; **no se le manda al cliente** |
+| 11 | **Renovación** (vence − 30 días) | ❌ |
+
+Último commit: `c626b41` (encomienda del CPAU supervisada), publicado en Vercel y el robot de
+la Mac reinstalado con ese código.
+
+---
+
+## Lo que falta, en detalle
+
+### A. Presentar en TAD (lo más importante)
+
+Hoy es lo único que obliga a que una persona haga el trámite.
+
+**Lo que ya se sabe** (modulo § Fase 0 y § Carátula):
+- Trámite *"Solicitud de permiso para la instalación de andamios en el espacio publico"*
+  (organismo SSGOU, `idTipoTramite=324`). Se entra con miBA (`robot/tad-comun.mjs → entrar`)
+  y se navega **siempre con el menú**.
+- **Iniciar trámite** → modal "Seleccionar representación" → EMPRENDIMIENTOS Y ESTRUCTURAS
+  S.A. → Confirmar → asistente de 3 pasos:
+  1. *Datos del solicitante* (razón social, CUIT, mail de aviso, teléfono, apoderado) → Continuar.
+  2. *Adjuntá documentación*: botón **Completar** de "Datos del trámite" + un **Adjuntar**
+     por casillero.
+  3. *Resumen* → **Confirmar trámite** → sale el EX.
+- Lo que va en "Datos del trámite" (sale de la carátula de trámites presentados): carácter
+  Representante Técnico · Andamio · Persona Jurídica · calle y altura, barrio, comuna,
+  **sección / manzana / parcela**, CP · representante legal JS (apoderado) · contacto
+  `tam@` · fechas desde hoy hasta +6 meses (`pvp_tramites.permiso_hasta`) · seguro:
+  compañía y vencimiento (salen de la revisión de la póliza) · declaración jurada Sí.
+- Casilleros y a qué documento del trámite va cada uno: modulo § 1 ("Mapeo a los casilleros
+  de TAD") y § Fase 0 (lista con los nombres exactos). En consorcios: estatuto → Reglamento;
+  designación de autoridades y poder → Acta de Asamblea; DNI del apoderado → administrador;
+  Otra documentación → Acta de compromiso.
+- Todo en PDF; la póliza no puede pedir contraseña (las de La Mercantil con `/Encrypt` pasan).
+
+**Mapeado el 15/09 con borradores de prueba (decisión de JS), después borrados.** Todo en
+`docs/modulo-gestoria-permisos.md` § "Presentación en TAD — mapeo": borradores (llegar al
+paso 1 crea uno; la solapa carga en ~18 s y permite borrar), paso 2 con el radio Persona
+Física/Jurídica y los 12 casilleros, y el formulario "Datos del trámite" (iframe ZK, 53
+campos con su `name`, opciones de cada desplegable, fechas dd/mm/aaaa, y **cómo cargar la
+dirección para que Autocompletar llene comuna/barrio/SMP**). Los valores de ABA salen de la
+carátula presentada de EX-2026-30158135. Lo único sin ver: "Guardar", los "Adjuntar" y el
+Resumen/Confirmar.
+
+**Qué construir** (mismo patrón que la encomienda):
+- Tarea `tad_presentar` en `pvp_tareas` (migración: agregar el tipo) con `esperando_aprobacion`
+  antes de "Confirmar trámite". Robot nuevo `robot/tad-presentar.mjs`, lo toma `worker-tad.mjs`
+  (usa la misma sesión de TAD o una propia: decidir; hoy la sesión queda abierta entre vueltas).
+- Datos catastrales: USIG + EPOK ya dan SMP (`src/lib/permisos-via-publica/catastro.ts`).
+  **Verificar** de dónde salen barrio, comuna y CP (EPOK `parcela` no los trae; probar USIG
+  "datos útiles" con las coordenadas de `normalizar`).
+- **"Listo para presentar"**: hoy no hay máquina de estados en `pvp_tramites.estado` (queda
+  `abierto`). Regla del diseño: legajo del cliente ok + póliza ok + encomienda con
+  certificado + informe + croquis. Disparar la tarea ahí.
+- Al salir el EX: crear/vincular `pvp_expedientes` y `pvp_tramites.expediente_id`, vínculo
+  con la venta como seguro (`odoo_vinculo_por = 'numero'`), y dejar que `sincronizarOdoo`
+  escriba `presentado`.
+- Ojo: **abrir el detalle de un expediente agrega una Constancia de Consulta**. El paso 2 de
+  una subsanación ya muestra "Confirmar trámite": nunca tocar sin aprobación.
+
+### B. Terminar la encomienda del CPAU
+
+Construido hasta Finalizar (`robot/cpau-encomienda.mjs`, ficha, `encomienda.ts`). Falta lo
+que viene después, que **sólo se ve con la primera encomienda real**:
+1. **JS carga la tarjeta en `robot/.env.robot`** (nunca por el chat ni en el repo).
+2. Primera encomienda real: tocar "Finalizar en el CPAU" mirando. El robot deja las capturas
+   de después de Finalizar en el bucket (`tramites/<id>/cpau/<tarea>-f*.png`) y el texto en
+   `pvp_tareas.resultado.texto_final`.
+3. Con eso, automatizar (según el instructivo de Tamara): **firma** (hoy la pega con
+   ilovepdf), **compra** "Encomienda de habilitación de cartel o estructuras transitorias"
+   ($50.000, concepto "EVHA Reg.Habilit. Hasta 120", siempre igual), **carga en
+   tramites.cpau.org** con n° de encomienda y comprobante, y **bajar el certificado visado**
+   desde el Histórico (columna Certificado) como documento `encomienda_cpau` (PDF completo:
+   registro ×3 + certificado + comprobante de pago).
+- Para probar cambios sin gastar: `node --env-file=.env.local --env-file=robot/.env.robot robot/probar-encomienda.mjs`.
+- Diferencia a mirar: el frente sale de las puertas del catastro (Trelles da 1084–1090; la
+  presentada decía 1084–1088).
+
+### C. Subsanaciones
+
+Hoy el robot lee el motivo (`pvp_expedientes.motivo_subsanacion`) y avisa. Falta:
+- **IA que clasifique el motivo** en acciones: póliza → volver a pedir el endoso solo
+  (`motivoDePoliza` en `tipos.ts` ya lo detecta por palabras; la póliza exige coasegurado =
+  titular Y no repetición a favor del GCBA, dos cosas distintas); croquis / informe →
+  regenerar; documento del cliente → pedírselo en el portal con el motivo exacto.
+- **Robot `tad_subsanar`**: Tareas pendientes → ícono `build` → asistente de 3 pasos; el
+  paso 2 pide **sólo los casilleros observados** y ya muestra "Confirmar trámite".
+  Supervisado.
+- Expedientes viejos (anteriores al portal) no tienen legajo en la app: la ficha del
+  expediente ya permite pedir endoso y subir PDF a mano; decidir si alcanza.
+
+### D. Cierre y renovación
+
+- **Permiso al cliente:** cuando el robot baja la RS del permiso (`pvp_expedientes.permiso_path`),
+  mandarla por mail al cliente del trámite (`enviarMail` en `src/lib/mail.ts`; verificar si
+  soporta adjunto o mandar link firmado) y cerrar el trámite.
+- **Renovación:** `pvp_expedientes.permiso_vence` ya está. En el cron `/api/alertas/barrido`
+  (L–V 8 h), a vence − 30 días corridos abrir la renovación. **Averiguar** si en TAD es el
+  mismo trámite o uno distinto, y qué documentos se repiten (póliza con vigencia nueva seguro).
+- Vigencia otorgada puede ser menor a la pedida: usar siempre la del PDF.
+
+### E. Cosas chicas
+
+- **Apertura sola:** reactivar el automatismo de Odoo "AndamiosOS permisos de venta" (id 52)
+  corriendo `scripts/odoo-webhook-ventas-permiso.mjs` sin `--desactivar`. JS lo dejó manual
+  "por las dudas"; decidir cuándo.
+- **Recordatorios al cliente** si no carga el legajo (cadencia a definir; mismo cron).
+- **Nota del dueño para inquilinos:** redactar la plantilla (en el Drive sólo hay una de YPF
+  Gas de 2021).
+- **Interruptor de supervisión** en Configuración (encomienda y presentación) para después
+  de ~10 trámites bien.
+- **"Probar el circuito" de punta a punta** con JS: la prueba ya llega hasta Confirmar en el
+  CPAU (con el frente de Trelles porque la dirección es inventada) y nunca finaliza.
+- Vínculos del 14/09: **verificar si JS confirmó los 16 vínculos por dirección** y vinculó a
+  mano los 3 sin altura (Salcedo, Parana, Pellegrini Carlos); sin eso no se escribe Odoo.
+
+### F. Operativo
+
+- **El robot sólo corre con la Mac mini prendida** (LaunchAgent, `robot/instalar-launchd.sh`;
+  reinstalar después de cambiar código). Después: servidor en la nube, probando antes si TAD
+  y AGIP aceptan IPs de afuera de Argentina.
+- **Rotar credenciales:** Clave Ciudad, CPAU (Hougassian), miBA de Jorge y
+  `PERMISOS_MAIL_CLAVE` (clave de aplicación de js@, quedó escrita en el chat del 15/09).
+- **Casilla propia** en vez de js@: cambiar `PERMISOS_MAIL`, el mail de aviso de TAD y el
+  domicilio electrónico del acta de compromiso.
+
+---
+
+## Orden sugerido para mañana
+
+1. **Verificar que todo sigue vivo:** `tail ~/Library/Logs/andamios-robot-tad.log` (vueltas
+   OK) y en la base `select tipo, estado, error, created_at from pvp_tareas order by created_at desc limit 5;`
+   (con `npx supabase db query --db-url "$SUPABASE_DB_URL" "…"` tras `set -a; . ./.env.local; set +a`).
+2. **Decidir con JS** cómo mapear el paso 2 de TAD (A: real supervisado o borrador de prueba).
+3. **Construir la presentación en TAD** (A), empezando por el mapeo y los datos catastrales
+   que faltan (barrio, comuna, CP).
+4. En paralelo, cuando haya una encomienda real: **terminar la encomienda** (B).
+5. Subsanaciones (C) → cierre y renovación (D) → chicas (E).
 
 ## Decisiones pendientes de JS
-- ¿El sistema del andamio (multidireccional / bastidor / mixto) está en Odoo o se asume
-  multidireccional? (define el modelo de informe técnico)
-- ~~¿Cómo se pide el endoso?~~ → **siempre por mail a Gonzalo Costa, gcosta@segucom.com.ar**
-  (JS, 2026-09-14).
-- Rotar credenciales (Clave Ciudad, CPAU, miBA de Jorge) — "más adelante".
-- Tarjeta para el CPAU (virtual con límite) o pago por transferencia (el CPAU lo acepta).
+
+- Mapeo del paso 2 de TAD: con trámite real supervisado o con un borrador de prueba.
+- Cuándo reactivar la apertura automática desde Odoo.
+- Cadencia de recordatorios al cliente.
+- Si los expedientes viejos se subsanan con la app o siguen a mano.
+- Rotación de credenciales y casilla propia ("más adelante").
+- ¿Se importan los expedientes de la planilla DOCS TRACKER?
 
 ## Reglas que no se leen en el código
+
 - **Nunca `supabase db push`** (historial remoto vacío). Migraciones con `db query`, sin
   comentarios `--`, en un bloque `DO $mig$`.
 - **TAD:** navegar siempre con el menú (URL directa rebota); sólo filas `tr:visible`; abrir
-  el detalle de un expediente **agrega una Constancia de Consulta** → no abrirlo en cada
-  vuelta; el paso 2 de una subsanación ya muestra "Confirmar trámite" → no tocar.
+  el detalle de un expediente **agrega una Constancia de Consulta**; el paso 2 de una
+  subsanación ya muestra "Confirmar trámite" → no tocar sin aprobación.
 - **Firewall de AGIP:** bloquea URLs inventadas y user agent headless. No probar URLs a ciegas.
 - **SUBSANACIÓN ≠ hay que corregir:** manda la tarea pendiente.
-- El robot NO presenta, subsana ni paga nada todavía (fase de mirar).
+- **CPAU:** desde la pantalla 4 del asistente el botón de salir dice **"Guardar Borrador"**:
+  salir por URL. Los intentos sin terminar aparecen en el Histórico sin RETP Nro: comparar
+  por R.Nro (`robot/revisar-cpau-historico.mjs`). Una tarea que tocó Finalizar **nunca** se
+  reintenta sola.
+- **Endoso:** siempre por el portal de Segucom / mail a gcosta@segucom.com.ar, nunca Slack.
+- **Pruebas:** un trámite de prueba no le escribe a nadie de afuera, no crea alertas y nunca
+  finaliza la encomienda.
+- La tarjeta y las credenciales viven sólo en `robot/.env.robot` (ignorado por git).

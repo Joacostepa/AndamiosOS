@@ -456,7 +456,11 @@ async function sincronizarOdoo(lista) {
 
 async function revisar(page) {
   const inicio = Date.now();
-  const { data: robotRow } = await db.from("pvp_robot").select("ultimo_ok_at").eq("id", "tad").maybeSingle();
+  // Si Supabase no contesta, la vuelta se corta ANTES de entrar a TAD. Pasó el 15/09 de
+  // madrugada ("Could not query the database for the schema cache"): sin este corte el robot
+  // leía TAD, tomaba los 21 expedientes como nuevos, no guardaba nada y decía "Vuelta OK".
+  const { data: robotRow, error: errorRobot } = await db.from("pvp_robot").select("ultimo_ok_at").eq("id", "tad").maybeSingle();
+  if (errorRobot) throw new Error(`Supabase no responde: ${errorRobot.message}`);
   const cargaInicial = !robotRow?.ultimo_ok_at;
 
   if (!(await sesionViva(page))) {
@@ -471,7 +475,9 @@ async function revisar(page) {
   ];
   log(`Leídos: ${enCurso.length} en curso, ${tareas.length} tareas, ${finalizados.length} finalizados${cargaInicial ? " (carga inicial, sin avisos)" : ""}`);
 
-  const { data: previos } = await db.from("pvp_expedientes").select("*");
+  const { data: previos, error: errorPrevios } = await db.from("pvp_expedientes").select("*");
+  // Una lista vacía por error haría que todo parezca nuevo.
+  if (errorPrevios) throw new Error(`No se pudieron leer los expedientes guardados: ${errorPrevios.message}`);
   const porNumero = new Map((previos ?? []).map((e) => [e.numero, e]));
   const avisos = [];
   const ahora = new Date().toISOString();
@@ -599,11 +605,13 @@ async function revisar(page) {
 
   await avisar(avisos);
   const fin = new Date();
-  await db.from("pvp_robot").upsert({
+  const { error: errorLatido } = await db.from("pvp_robot").upsert({
     id: "tad", ultima_revision_at: fin.toISOString(), ultimo_ok_at: fin.toISOString(),
     proxima_revision_at: new Date(fin.getTime() + proximoIntervalo()).toISOString(),
     equipo: os.hostname(), updated_at: fin.toISOString(),
   });
+  // Sin latido guardado la pantalla dice "el robot no revisa desde…": que el log no diga OK.
+  if (errorLatido) throw new Error(`La vuelta terminó pero no se pudo guardar en Supabase: ${errorLatido.message}`);
   log(`Vuelta OK en ${Math.round((Date.now() - inicio) / 1000)} s · ${avisos.length} avisos`);
   return { leidos: leidos.length, tareas: tareas.length, avisos: avisos.length };
 }

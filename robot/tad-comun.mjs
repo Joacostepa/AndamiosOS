@@ -43,10 +43,23 @@ export function cuerpo(texto) {
   return texto.slice(desde >= 0 ? desde + 45 : 0, hasta > 0 ? hasta : undefined).trim();
 }
 
-/** Login miBA (un intento) + representar a Emprendimientos y Estructuras. */
+/**
+ * Login miBA (un intento) + representar a Emprendimientos y Estructuras.
+ *
+ * La redirección de TAD al login pasa por varios realms de login.buenosaires.gob.ar (desde
+ * el 15/09 termina en "realms/mail", misma pantalla y mismos ids) y a veces tarda más de 20 s
+ * (07:39 del 15/09). Se espera hasta 60 s y, si el formulario no aparece, se recarga UNA vez.
+ * La clave se manda una sola vez: reintentar el envío puede bloquear la cuenta miBA.
+ */
 export async function entrar(page) {
+  const formulario = page.locator("#email");
   await page.goto("https://tad.buenosaires.gob.ar/tramitesadistancia/", { waitUntil: "domcontentloaded" });
-  await page.locator("#email").waitFor({ state: "visible", timeout: 20000 });
+  try {
+    await formulario.waitFor({ state: "visible", timeout: 60000 });
+  } catch {
+    await page.goto("https://tad.buenosaires.gob.ar/tramitesadistancia/", { waitUntil: "domcontentloaded" });
+    await formulario.waitFor({ state: "visible", timeout: 60000 });
+  }
   await page.fill("#email", process.env.MIBA_USUARIO);
   await page.fill("#password-text-field", process.env.MIBA_CLAVE);
   await page.click("#login");

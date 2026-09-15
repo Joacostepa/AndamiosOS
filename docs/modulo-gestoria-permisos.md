@@ -822,6 +822,107 @@ mismo checklist del trámite con origen `aba`, igual que los del cliente (`clien
 póliza (`productor`), y el trámite pasa a `listo_para_presentar` sólo cuando los tres
 orígenes están completos y revisados.
 
+## Presentación en TAD — mapeo con borradores de prueba (2026-09-15)
+
+Decidido con JS: mapear con un borrador de prueba y borrarlo. Scripts:
+`robot/mapear-tad-presentacion.mjs` (pasos 1 y 2), `robot/mapear-tad-formulario.mjs`
+(formulario; `--solo-direccion` para probar sólo el domicilio), `robot/revisar-tad-borradores*.mjs`
+(sólo lectura) y `robot/borrar-tad-borrador.mjs <ids>` (borra sólo esos ids). Capturas en
+`robot/capturas/tad-presentacion/` y `robot/capturas/tad-formulario/`. Todos corren con el
+robot de launchd parado (dos sesiones de la misma cuenta miBA se pisan).
+
+**Traba de seguridad de los mapeos:** todos los pedidos pasan por `route`. Desde el paso 2 se
+bloquea cualquier pedido que no sea GET salvo los eventos del formulario (`POST /zkau`), y se
+registra. Nunca se toca "Guardar" ni "Confirmar trámite".
+
+### Borradores
+
+- **Llegar al paso 1 crea un borrador** (no alcanza con tocar "Iniciar trámite"). La prueba
+  del 14/09 dejó el 12975549 (20:37:00, igual a la captura del paso 1).
+- La cuenta tiene **142 borradores** (29 páginas de a 5), casi todos de Tamara: uno más no
+  molesta, pero se borran los nuestros.
+- La solapa **sí carga, tarda ~18 s** (el 14/09 se esperaban 30 s y se miraba mal el texto).
+  API: `GET tad2-rest/misTramites/sinEE/persona/445010/178035/paginado?size=5` con `id`,
+  `fechaAlta` (ms), `estadoCalculado`. Cada fila tiene **delete** (pide "Eliminar") y
+  **file_open**. Borrar es `DELETE tad2-rest/tramite/<id>`.
+- Los 9 borradores de los mapeos del 14 y 15/09 se borraron con `robot/borrar-tad-borrador.mjs`
+  (sólo deja pasar el DELETE de los ids indicados): la cuenta volvió a 141. El 12970127
+  (14/09 14:52) es de Tamara y no se tocó.
+
+### Pasos
+
+1. *Datos del solicitante*: EyE (CUIT 30711116504) y el apoderado Jorge Riveros Zanetta, con
+   domicilios. Sólo lectura → **Continuar** (guarda persona y domicilio, crea el trámite con
+   `PUT tad2-rest/tramite/`).
+2. *Adjuntá documentación*: primero **"Persona Fisica / Persona Juridica"** (radio; elegir
+   hace `PUT tad2-rest/tramite/saveTramiteGrupoDocumento/<id>/293` y
+   `POST requisitosExternos/generarDocumento/0` por cada casillero nuevo). Grupos: 292 Física,
+   293 Jurídica. Casilleros:
+   - Siempre: **Datos del Trámite** (Completar) · Nota de solicitud dirigida a la Dirección
+     General de Ordenamiento del Espacio Público… · Seguro de Responsabilidad Civil (solo hoja
+     de asegurados y fecha de vencimiento) · Informe Técnico del andamio firmado por un
+     arquitecto o ingeniero donde consten las medidas · Certificado de Encomienda Profesional
+     emitido por el colegio de Ingenieros o por CPAU · Croquis del lugar a instalar · Aviso de
+     obra presentado ante la DGROC y la DGIUR · Otra documentación (opcional).
+   - Con **Persona Jurídica**, además: Copia autenticada del estatuto o acto constitutivo… ·
+     Copia autenticada del instrumento de designación de autoridades vigente · Poder
+     autenticado por escribano público · Copia del DNI del apoderado.
+3. *Resumen* → **Confirmar trámite** (no mapeado: es la presentación).
+
+### Formulario "Datos del trámite"
+
+Se abre debajo de "Completar" en un **iframe** (`/render/formulario/display?ffcc=FFCC_Carátula
+Variable_CSGEP_V7`) hecho con **ZK**: cada tecla, desplegable o botón manda `POST /zkau`.
+Desplegables ZK: input `<uuid>-real`, botón `<uuid>-btn`, lista `<uuid>-pp .z-comboitem`. Los
+textos traen **espacios no comunes**: comparar siempre normalizando (`\s+`). Termina en
+**Guardar**.
+
+| Campo (`name`) | Qué es | Valor para ABA |
+| --- | --- | --- |
+| `caracter` (desplegable) | Profesional · Propietario · Representante Legal · **Representante Técnico** · Apoderado · Titular · Socio Gerente · Contribuyente · Presidente | Representante Técnico |
+| `solicitud` (desplegable) | **Andamio** · Cerco de obra con ocupación de acera · Grúas en vereda · Grupo electrógeno | Andamio |
+| `personeria` (desplegable) | Persona Física · **Persona Jurídica** (agrega los campos `*_legal` y `razon_social`) | Persona Jurídica |
+| `dom_caba_calle` (desplegable) + Autocompletar | domicilio de la obra; llena `…_comuna`, `…_barrio`, `…_seccion`, `…_manzana`, `…_parcela`, `…_cpu` | ver "Dirección" abajo |
+| `dom_caba_piso`, `dom_caba_dpto`, `dom_caba_cp` | | vacíos / CP |
+| `razon_social`, `cuit_razon_social` | persona jurídica | EMPRENDIMIENTOS Y ESTRUCTURAS S.A. · 30711116504 |
+| `nombre_1_legal`, `apellido_1_legal`, `tipo_docum_legal` (desplegable), `num_docum_legal`, `tipo_societario`, `actividad_principal`, `cuit_legal`, `telefono_legal` | representante legal | JOAQUIN · STEPANSKY · DU - DOCUMENTO UNICO · 36684541 · **APODERADO** · **ANDAMIO** · 20366845411 · 1156257054 |
+| `dom_fiscal_calle` (desplegable) + Autocompletar, `dom_fiscal_piso/dpto/cp` (CP obligatorio) | domicilio comercial en CABA | MATURIN 2570 (Paternal, Comuna 15, 059-100-041b) · CP 1416 |
+| `nombre_1..3_contacto`, `apellido_1..3_contacto`, `tipo_docum_contacto` (desplegable: CI · **DU - DOCUMENTO UNICO** · LC · LE · PA · EXT · PRC · OT), `num_docum_contacto`, `cuit_contacto`, `telefono_contacto`, `email_contacto` | contacto | JOAQUIN STEPANSKY · DU 36684541 · 20366845411 · 1156257054 · tam@andamiosbuenosaires.com.ar (Tamara figura como "tercer nombre" en la presentada) |
+| `fecha_desde_instalado`, `fecha_hasta_instalado` (datebox) | **dd/mm/aaaa** | hoy / `permiso_hasta` (la presentada: 30/06/2026 → 30/12/2026) |
+| `compania_seguro`, `vigencia_seguro` (datebox) | seguro | de la revisión de la póliza (la presentada: "MERCANTIL ANDINA", 30/06/2027) |
+
+Valores tomados de la carátula de EX-2026-30158135 (Av. Santa Fe 4645, presentada por Tamara):
+la dirección de la obra salió "Av. Santa Fe 4645 · PALERMO · Comuna 14 · 021-019-005d · CP 1111",
+o sea que en ese trámite Autocompletar sí llenó los datos catastrales.
+| `importante` (desplegable) | declaración jurada: **Si** | Si |
+
+**Dirección — resuelto (15/09, probado con Trelles 1086):**
+1. Escribir en `dom_caba_calle` la **primera palabra** de la calle (de a una letra: cada tecla
+   es un evento ZK que trae sugerencias).
+2. Las sugerencias son **sólo calles con rango** ("TRELLES, MANUEL R. [601-2300]"), con el
+   mismo nombre que el catastro (USIG/EPOK). Hay calles repetidas por tramo ("TRELLES,
+   MANUEL R. AV. [2301-2800]"): elegir la que **incluye la altura** de la obra.
+3. Al elegirla el campo queda `"TRELLES, MANUEL R. "` (con espacio): ir al final y escribir la
+   **altura sin espacio extra** → `"TRELLES, MANUEL R. 1086"`. **Tab** (no Escape: vuelve al
+   texto de la sugerencia).
+4. **Autocompletar** → `Comuna 7 · FLORES · 057 · 035 · 001a · cpu "null"` (igual a EPOK
+   057-035-001A).
+
+Sin el paso 3, o con doble espacio, Autocompletar responde "No se obtuvieron resultados para
+la direccion ingresada": es lo que pasó en las 3 carátulas sin altura (Salcedo, Parana,
+Pellegrini). El robot tiene que **verificar que sección/manzana/parcela coincidan con EPOK**
+antes de seguir; si no, frena.
+
+### Otros hallazgos del 15/09
+
+- **Login miBA:** la redirección ahora termina en `login.buenosaires.gob.ar/auth/realms/mail`
+  (misma pantalla, mismos ids) y a veces tarda más de 20 s. `entrar()` espera 60 s y recarga
+  una vez; nunca manda la clave dos veces.
+- **Caída de Supabase** (02:55–05:53): la API devolvía "Could not query the database for the
+  schema cache". El robot leía TAD, tomaba todo como nuevo y decía "Vuelta OK" sin guardar.
+  Ahora corta la vuelta antes de entrar a TAD si Supabase no responde, y no dice OK si no pudo
+  guardar el latido.
+
 ## Decisiones pendientes
 
 0. ~~Cuenta miBA para TAD~~ → la de Jorge Patricio Riveros Zanetta (nivel 3). Confirmar que

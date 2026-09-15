@@ -1084,6 +1084,12 @@ tomó como falla del adjunto. Quedó el borrador 12984454 con ese IF. Cambios:
 - **El número del adjunto no siempre es IF.** Puede venir con otras siglas del sistema de
   documentos del Gobierno (RE en el croquis). Desde el 15/09 el robot acepta cualquier sigla
   menos EX (expediente) para dar un adjunto por hecho o para saltearlo al seguir un borrador.
+- **La subida del archivo tarda.** TAD sube el archivo apenas se elige: aparece una ruedita
+  al lado del nombre y "Adjuntar" queda desactivado hasta que termina. El peso máximo es 20 MB.
+  El 15/09 (tarea 34) el reglamento de 4,8 MB no terminó de subir en los 15 s que esperaba el
+  robot, y se frenó después de Persona Jurídica con 7/11. Ahora espera hasta 3 minutos. Si TAD
+  muestra un aviso en la ventana, frena con ese motivo; si no, es `TadNoCarga` y reintenta
+  solo. En ese punto todavía no se generó el documento oficial.
   Sin confirmar todavía: el borrador 12986313 tampoco cargaba los documentos a las 16:15 y no
   tenía el formulario guardado. Puede que, además, TAD estuviera caído de verdad.
 - **Empezar de cero** (en la ficha, con borrador pendiente y la presentación en error): sólo

@@ -384,8 +384,19 @@ async function adjuntar(page, { casillero, archivo }) {
   const nombre = path.basename(archivo);
   await hasta(page, async () => normal(await dialogo.innerText()).includes(nombre), 20000);
 
+  // TAD sube el archivo apenas se elige (ruedita al lado del nombre) y deja "Adjuntar"
+  // desactivado hasta que termina. 15 s no alcanzaron para el reglamento de S02466 (4,8 MB,
+  // 15/09): se espera hasta 3 minutos. Todavía no se generó ningún documento oficial, así que si
+  // no termina se puede reintentar.
+  const boton = dialogo.locator("button:visible").filter({ hasText: /^\s*Adjuntar\s*$/ }).last();
+  const habilitado = await hasta(page, async () => await boton.isEnabled(), 180000);
+  if (!habilitado) {
+    const aviso = normal(await dialogo.innerText().catch(() => "")).match(/(?:Error|No se pudo|supera|excede|formato)[^.]{0,160}\.?/i)?.[0];
+    if (aviso) throw new Trabado(`"${casillero}": TAD no aceptó el archivo (${aviso})`);
+    throw new TadNoCarga(`"${casillero}": TAD no terminó de subir el archivo en 3 minutos`);
+  }
   const guardado = page.waitForResponse((r) => r.request().method() === "PUT" && /personaDocumento\/save/.test(r.url()), { timeout: 120000 }).catch(() => null);
-  await dialogo.locator("button:visible").filter({ hasText: /^\s*Adjuntar\s*$/ }).last().click({ timeout: 15000 });
+  await boton.click({ timeout: 15000 });
   const res = await guardado;
   let cuerpo = null;
   try { cuerpo = res ? await res.json() : null; } catch { /* sin cuerpo */ }

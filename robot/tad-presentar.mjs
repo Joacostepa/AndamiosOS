@@ -125,9 +125,11 @@ async function sinProteccion(archivo) {
  * TAD rechaza ALGUNOS PDF con firma digital: "No pudimos adjuntar tu documento. El archivo se
  * encuentra previamente firmado o con espacios de firma" (S02466, 15/09: la certificación digital
  * de reproducciones del Colegio de Escribanos que trae el acta de asamblea). No todos: el aviso de
- * obra de la DGROC, firmado en GDE, entró. Por eso se adjunta el original y, sólo si TAD lo rechaza
- * por eso, se aplana con qpdf: sellos, texto y firmas se ven igual en la página (probado con esa
- * acta, 5 páginas idénticas); lo que se va es el certificado digital y los campos de firma.
+ * obra de la DGROC, firmado en GDE, entró. Se aplana con qpdf: sellos, texto y firmas se ven igual
+ * en la página (probado con esa acta, 5 páginas idénticas); lo que se va es el certificado digital
+ * y los campos de firma. Se usa ANTES de subir (prepararAdjuntos, todo lo firmado menos el aviso de
+ * obra: el rechazo deja el borrador sin cargar sus documentos al reabrirlo) y, si igual TAD rechaza
+ * algo por la firma, en la misma ventana de Adjuntar.
  * Devuelve la copia aplanada, con el mismo nombre, en una subcarpeta.
  */
 async function sinFirmaDigital(archivo) {
@@ -166,6 +168,11 @@ async function prepararAdjuntos(db, payload, tareaId) {
         const tmp = path.join(dir, `parte-${i + 1}-${k + 1}.pdf`);
         writeFileSync(tmp, bytes);
         if (await sinProteccion(tmp)) bytes = new Uint8Array(readFileSync(tmp));
+        // Con firma digital se aplana ANTES de subir: el rechazo de TAD deja el borrador sin cargar sus
+        // documentos al volver a abrirlo (12989045, 15/09). El aviso de obra no: TAD lo acepta firmado.
+        if (f.clave !== "aviso_obra" && /\/ByteRange\b/.test(Buffer.from(bytes).toString("latin1"))) {
+          bytes = new Uint8Array(readFileSync(await sinFirmaDigital(tmp)));
+        }
       }
       partes.push({ bytes, nombre });
     }
@@ -401,19 +408,7 @@ function filaDeCasillero(page, casillero) {
 const RECHAZADO = /No pudimos adjuntar/i;
 const FIRMADO = /previamente firmado|espacios de firma/i;
 
-/** Cierra la ventana de Adjuntar sin adjuntar: la × de arriba o, si no está, Escape. */
-async function cerrarDialogo(page, dialogo) {
-  const cruz = dialogo.locator("button.btn-close, button.close, button[aria-label]").first();
-  if (await cruz.count()) await cruz.click({ timeout: 5000 }).catch(() => {});
-  else await page.keyboard.press("Escape");
-  await dialogo.waitFor({ state: "hidden", timeout: 15000 }).catch(() => {});
-  if (await dialogo.isVisible().catch(() => false)) {
-    await page.keyboard.press("Escape");
-    await dialogo.waitFor({ state: "hidden", timeout: 10000 }).catch(() => { throw new Trabado("No se pudo cerrar la ventana de Adjuntar de TAD"); });
-  }
-}
-
-async function adjuntar(page, { casillero, archivo }, { aplanado = false } = {}) {
+async function adjuntar(page, { casillero, archivo }) {
   const fila = filaDeCasillero(page, casillero);
   if (!(await fila.count())) throw new Trabado(`No aparece el casillero "${casillero}" en TAD`);
   const previo = normal(await fila.innerText().catch(() => "")).match(IF_ADJUNTO)?.[0];
@@ -437,12 +432,16 @@ async function adjuntar(page, { casillero, archivo }, { aplanado = false } = {})
   // documento oficial, así que se puede reintentar.
   const boton = dialogo.locator("button:visible").filter({ hasText: /^\s*Adjuntar\s*$/ }).last();
   await hasta(page, async () => (await boton.isEnabled()) || (!rechazoViejo && RECHAZADO.test(await texto())), 180000);
+  let aplanado = false;
+  if (!(await boton.isEnabled().catch(() => false)) && FIRMADO.test(await texto())) {
+    // Rechazado por la firma digital: se elige la copia aplanada EN LA MISMA ventana. Cerrarla abre
+    // "¿Abandonar el proceso de carga de documentación?" y el robot quedó trabado ahí (15/09).
+    await dialogo.locator("input[type=file]").first().setInputFiles(await sinFirmaDigital(archivo));
+    await hasta(page, async () => await boton.isEnabled(), 180000);
+    aplanado = true;
+  }
   if (!(await boton.isEnabled().catch(() => false))) {
     const t = await texto();
-    if (FIRMADO.test(t) && !aplanado) {
-      await cerrarDialogo(page, dialogo);
-      return adjuntar(page, { casillero, archivo: await sinFirmaDigital(archivo) }, { aplanado: true });
-    }
     const aviso = t.match(/No pudimos adjuntar.{0,200}/i)?.[0] ?? t.match(/(?:Error|No se pudo|supera|excede|formato)[^.]{0,160}\.?/i)?.[0];
     if (aviso) throw new Trabado(`"${casillero}": TAD no aceptó el archivo${aplanado ? " ni sin la firma digital" : ""} (${aviso})`);
     throw new TadNoCarga(`"${casillero}": TAD no terminó de subir el archivo en 3 minutos`);

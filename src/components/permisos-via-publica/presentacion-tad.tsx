@@ -99,7 +99,8 @@ export function PresentacionTad({
         </div>
       )}
 
-      {!trabajando && !expedienteId && (esPrueba || estado.listo || tarea?.estado === "error") && (
+      {/* Si ya se tocó "Confirmar trámite" no se ofrece presentar de nuevo: primero hay que mirar TAD. */}
+      {!trabajando && !expedienteId && !(tarea?.estado === "error" && r?.confirmado) && (esPrueba || estado.listo || tarea?.estado === "error") && (
         <Button
           size="sm"
           variant="outline"
@@ -108,14 +109,14 @@ export function PresentacionTad({
             lanzar(
               esPrueba
                 ? undefined
-                : tarea?.estado === "error"
-                  ? `Volver a presentar ${r?.adjuntados ? `crea de nuevo los adjuntos (ya hay ${r.adjuntados} IF en el borrador ${r.borrador}). ` : ""}¿Seguro?`
+                : tarea?.estado === "error" && r?.borrador
+                  ? `El robot sigue desde el borrador ${r.borrador} de TAD: no rehace lo que ya está (formulario ni adjuntos con IF), adjunta lo que falta y confirma. ¿Seguro?`
                   : "El robot va a presentar el trámite en TAD con estos documentos. ¿Seguro?",
             )
           }
         >
           {pedir.isPending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
-          {esPrueba ? "Probar en TAD (sin presentar)" : tarea?.estado === "error" ? "Volver a presentar" : "Presentar ahora"}
+          {esPrueba ? "Probar en TAD (sin presentar)" : tarea?.estado === "error" && r?.borrador ? "Seguir desde el borrador" : tarea?.estado === "error" ? "Volver a presentar" : "Presentar ahora"}
         </Button>
       )}
 

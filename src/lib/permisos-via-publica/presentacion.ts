@@ -121,6 +121,8 @@ export type PayloadPresentacion = {
   hasta: string;
   seguro: { compania: string; vencimiento: string };
   adjuntos: { casillero: string; archivos: { clave: string; path: string; nombre: string }[] }[];
+  /** Borrador de TAD de una presentación que se frenó: el robot sigue desde ahí. */
+  continuar_borrador?: number | null;
 };
 
 export async function armarPayloadPresentacion(db: SupabaseClient, tramiteId: string): Promise<PayloadPresentacion> {
@@ -174,6 +176,18 @@ export async function pedirPresentacion(
   opts: { userId?: string | null } = {},
 ): Promise<{ resultado: "pedida" | "ya_pedida" }> {
   const payload = await armarPayloadPresentacion(db, tramiteId);
+
+  // Si la anterior se frenó con un borrador ya creado, se sigue desde ese borrador: empezar de
+  // cero duplicaría los adjuntos, que son IF oficiales (S02466, 15/09). Si ya había tocado
+  // "Confirmar trámite", no se vuelve a presentar hasta revisar TAD.
+  const { data: previa } = await db.from("pvp_tareas").select("estado, resultado")
+    .eq("tipo", "tad_presentar").eq("tramite_id", tramiteId).order("created_at", { ascending: false }).limit(1).maybeSingle();
+  const anterior = previa?.resultado as { borrador?: number | null; confirmado?: boolean } | null;
+  if (!payload.es_prueba && previa?.estado === "error") {
+    if (anterior?.confirmado) throw new FaltanDatos("La presentación anterior llegó a tocar «Confirmar trámite»: revisá en TAD si salió el expediente antes de volver a presentar.");
+    if (anterior?.borrador) payload.continuar_borrador = anterior.borrador;
+  }
+
   const { error } = await db.from("pvp_tareas").insert({ tipo: "tad_presentar", tramite_id: tramiteId, payload, pedida_por: opts.userId ?? null });
   if (error?.code === "23505") return { resultado: "ya_pedida" };
   if (error) throw new Error(error.message);
@@ -183,7 +197,9 @@ export async function pedirPresentacion(
     db, tramiteId, "presentacion_tad",
     payload.es_prueba
       ? `Prueba de presentación pedida: el robot llena y guarda el formulario en TAD (${payload.obra.calle} ${payload.obra.altura}) y borra el borrador. No adjunta ni presenta.`
-      : `Listo para presentar: el robot presenta en TAD (${payload.obra.calle} ${payload.obra.altura}, SMP ${payload.obra.smp}, ${payload.adjuntos.length} casilleros).`,
+      : payload.continuar_borrador
+        ? `Se pidió seguir la presentación desde el borrador ${payload.continuar_borrador}: el robot saltea lo que ya está y adjunta el resto.`
+        : `Listo para presentar: el robot presenta en TAD (${payload.obra.calle} ${payload.obra.altura}, SMP ${payload.obra.smp}, ${payload.adjuntos.length} casilleros).`,
     { tramite_id: tramiteId }, opts.userId ? "persona" : "sistema",
   );
   return { resultado: "pedida" };

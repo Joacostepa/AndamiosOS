@@ -318,12 +318,28 @@ async function llenarYGuardar(page, f, p, log) {
 
 // ── Adjuntar y confirmar ────────────────────────────────────────────────────
 
-async function adjuntar(page, { casillero, archivo }) {
-  const fila = page.locator("div.row, li, .documento, div")
+const IF_ADJUNTO = /IF-\d{4}-\d+-GCABA-[A-Z]+/;
+
+function filaDeCasillero(page, casillero) {
+  return page.locator("div.row, li, .documento, div")
     .filter({ has: page.locator(".refiere-doc", { hasText: new RegExp(`^\\s*${escapar(casillero)}`) }) })
     .filter({ has: page.locator("button", { hasText: /Adjuntar/ }) })
     .last();
+}
+
+/**
+ * Adjunta un archivo en un casillero. ÉXITO = el casillero muestra el número de IF del documento.
+ * Los avisos generales de la página NO cuentan: el 15/09 (S02466) TAD mostró "Error al obtener los
+ * documentos vinculados. No se pudo establecer comunicación con el servicio" con el adjunto bien
+ * hecho (IF-2026-41611319 en el casillero), y el robot frenó por ese texto. Si el casillero ya
+ * tiene un IF (se sigue desde un borrador), no se vuelve a adjuntar: cada adjunto es un IF oficial.
+ */
+async function adjuntar(page, { casillero, archivo }) {
+  const fila = filaDeCasillero(page, casillero);
   if (!(await fila.count())) throw new Trabado(`No aparece el casillero "${casillero}" en TAD`);
+  const previo = normal(await fila.innerText().catch(() => "")).match(IF_ADJUNTO)?.[0];
+  if (previo) return { yaEstaba: true, if: previo };
+
   await fila.locator("button", { hasText: /Adjuntar/ }).first().click({ timeout: 15000 });
   const dialogo = page.locator(".modal.show").filter({ hasText: /Adjunt[aá] documentaci[oó]n/ }).last();
   await dialogo.waitFor({ state: "visible", timeout: 20000 });
@@ -331,16 +347,43 @@ async function adjuntar(page, { casillero, archivo }) {
   const nombre = path.basename(archivo);
   await hasta(page, async () => normal(await dialogo.innerText()).includes(nombre), 20000);
 
-  const guardado = page.waitForResponse((r) => r.request().method() === "PUT" && /personaDocumento\/save/.test(r.url()), { timeout: 120000 });
+  const guardado = page.waitForResponse((r) => r.request().method() === "PUT" && /personaDocumento\/save/.test(r.url()), { timeout: 120000 }).catch(() => null);
   await dialogo.locator("button:visible").filter({ hasText: /^\s*Adjuntar\s*$/ }).last().click({ timeout: 15000 });
-  const res = await guardado.catch(() => null);
-  if (!res) throw new Trabado(`"${casillero}": TAD no confirmó el adjunto (no llegó personaDocumento/save). Puede haber quedado un IF: revisar el borrador`);
+  const res = await guardado;
   let cuerpo = null;
-  try { cuerpo = await res.json(); } catch { /* sin cuerpo */ }
+  try { cuerpo = res ? await res.json() : null; } catch { /* sin cuerpo */ }
+
+  const numero = await hasta(page, async () => normal(await fila.innerText()).match(IF_ADJUNTO)?.[0], 45000);
+  if (numero) return { yaEstaba: false, if: numero };
+  const enDialogo = normal(await dialogo.innerText().catch(() => "")).match(/(?:Error|No se pudo)[^.]{0,160}\./)?.[0];
+  throw new Trabado(`"${casillero}": el documento no quedó en el casillero (${enDialogo ?? (res ? cuerpo?.mensaje ?? `HTTP ${res.status()}` : "TAD no respondió")}). Puede haber quedado un IF: revisar el borrador`);
+}
+
+/**
+ * Abre un borrador existente desde Mis trámites → Borradores (para seguir una presentación que
+ * se frenó) y deja la página en el paso 2. Verifica que TAD haya abierto ESE borrador.
+ */
+async function abrirBorrador(page, id, listo, estado) {
+  await ir(page, "Mis trámites");
+  const lista = page.waitForResponse((r) => /misTramites\/sinEE\/persona\/.+\/paginado/.test(r.url()), { timeout: 120000 });
+  await page.getByText("Borradores", { exact: true }).first().click();
+  const borradores = JSON.parse(await (await lista).text()).respuesta.content;
+  await listo("borradores");
   await page.waitForTimeout(3000);
-  const error = normal(await page.locator("body").innerText()).match(/Error al actualizar documento oficial[^.]*\.|No se pudo establecer comunicaci[oó]n[^.]*\./)?.[0];
-  if (!res.ok() || cuerpo?.error || error) throw new Trabado(`"${casillero}": el adjunto falló (${error ?? cuerpo?.mensaje ?? `HTTP ${res.status()}`}). Puede haber quedado un IF: revisar el borrador`);
-  return normal(await fila.innerText().catch(() => "")).slice(0, 200);
+  const pos = borradores.findIndex((b) => b.id === id);
+  if (pos < 0) throw new Trabado(`El borrador ${id} no aparece en Borradores (¿se presentó o se borró a mano?)`);
+
+  estado.borrador = null;
+  await page.locator("tr:visible").filter({ hasText: /BORRADOR/i }).nth(pos).getByText("file_open", { exact: true }).click({ timeout: 15000 });
+  await page.waitForTimeout(10000);
+  await listo("borrador abierto");
+  if (/Paso 1 de 3/.test(normal(await page.locator("body").innerText()))) {
+    await page.locator("button:visible", { hasText: /^\s*Continuar\s*$/ }).first().click({ timeout: 15000 });
+    await page.waitForTimeout(10000);
+    await listo("paso 2");
+  }
+  if (!/Paso 2 de 3/.test(normal(await page.locator("body").innerText()))) throw new Trabado(`Al abrir el borrador ${id} TAD no mostró el paso de documentación`);
+  if (estado.borrador !== id) throw new Trabado(`Se pidió seguir el borrador ${id} y TAD abrió ${estado.borrador ?? "otro"}: se frena`);
 }
 
 /** "Confirmar trámite" y lo que venga (Resumen o diálogo) hasta ver el EX. */
@@ -442,6 +485,11 @@ export async function presentarEnTad({ db, tarea, page, log }) {
     // TAD a veces queda "Cargando..." con la página gris y los clics no llegan: antes de cada
     // paso se espera a que termine (hasta 90 s); si no termina, se frena.
     const listo = async (paso) => { if (!(await esperarCarga(page))) throw new Trabado(`TAD siguió cargando más de 90 s (${paso})`); };
+    if (p.continuar_borrador && !prueba) {
+      // Se sigue una presentación que se frenó: mismo borrador, sin rehacer lo que ya está.
+      await abrirBorrador(page, p.continuar_borrador, listo, estado);
+      log(`TAD: sigue el borrador ${estado.borrador}`);
+    } else {
     await ir(page, "Inicio");
     const buscador = page.getByPlaceholder(/Busc[aá] un tr[aá]mite/i).first();
     await buscador.waitFor({ state: "visible", timeout: 30000 });
@@ -467,8 +515,14 @@ export async function presentarEnTad({ db, tarea, page, log }) {
     await listo("paso 2");
     if (!estado.borrador) throw new Trabado("TAD no creó el borrador del trámite");
     log(`TAD: borrador ${estado.borrador}${prueba ? " (prueba)" : ""}`);
+    }
 
-    if (!prueba) {
+    const juridicaElegida = () => page.evaluate(() => {
+      const l = [...document.querySelectorAll("label")].find((x) => /Persona Juridica/i.test(x.innerText));
+      const i = l?.querySelector("input") ?? (l?.htmlFor ? document.getElementById(l.htmlFor) : null);
+      return !!i?.checked;
+    }).catch(() => false);
+    if (!prueba && !(await juridicaElegida())) {
       // Genera documentos en TAD y redibuja la página: esperar antes de tocar Completar.
       const generado = page.waitForResponse((r) => /requisitosExternos\/generarDocumento/.test(r.url()), { timeout: 60000 }).catch(() => null);
       await page.getByText("Persona Juridica", { exact: true }).first().click();
@@ -477,9 +531,15 @@ export async function presentarEnTad({ db, tarea, page, log }) {
       await page.waitForTimeout(5000);
     }
 
-    const f = await abrirFormulario(page);
-    const obra = await llenarYGuardar(page, f, p, log);
-    await foto("formulario-guardado");
+    // En un borrador que se sigue, el formulario ya puede estar guardado (✓ "Editar").
+    let obra = null;
+    if (/Datos del Tr[aá]mite.{0,40}Editar/.test(normal(await page.locator("body").innerText()))) {
+      log("TAD: el formulario ya estaba guardado en el borrador");
+    } else {
+      const f = await abrirFormulario(page);
+      obra = await llenarYGuardar(page, f, p, log);
+      await foto("formulario-guardado");
+    }
 
     if (prueba) {
       // El formulario ya se guardó: si lo que falla es borrar el borrador, la prueba igual pasó
@@ -490,9 +550,9 @@ export async function presentarEnTad({ db, tarea, page, log }) {
     }
 
     for (const a of adjuntos) {
-      await adjuntar(page, a);
+      const r = await adjuntar(page, a);
       estado.adjuntados += 1;
-      log(`TAD: adjunto ${estado.adjuntados}/${adjuntos.length} — ${a.casillero}`);
+      log(`TAD: ${r.yaEstaba ? "ya estaba" : "adjunto"} ${estado.adjuntados}/${adjuntos.length} — ${a.casillero} (${r.if})`);
     }
     await foto("adjuntos");
 

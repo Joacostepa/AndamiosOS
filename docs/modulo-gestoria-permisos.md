@@ -1009,6 +1009,18 @@ parcela y borra el borrador. No elige Persona Jurídica, no adjunta, no presenta
 **Sin ver todavía:** la pantalla después de "Confirmar trámite" y dónde aparece el EX. La
 primera presentación real lo muestra en las capturas.
 
+**Primera presentación real (S02466, Guido 1923, 15/09):** formulario guardado y la nota de
+solicitud adjuntada (IF-2026-41611319), pero el robot frenó porque TAD mostró arriba "Error al
+obtener los documentos vinculados. No se pudo establecer comunicación con el servicio" y lo
+tomó como falla del adjunto. Quedó el borrador 12984454 con ese IF. Cambios:
+- **Adjunto OK = el casillero muestra el número de IF.** Los avisos generales de la página no
+  cuentan. Si el casillero ya tiene un IF, no se vuelve a adjuntar.
+- **Seguir desde el borrador:** si la presentación anterior quedó en error con borrador y sin
+  tocar "Confirmar trámite", el siguiente pedido lleva `continuar_borrador` y el robot lo abre
+  desde Borradores (verifica el id), no rehace el formulario si ya está guardado ni los
+  casilleros con IF, adjunta el resto y confirma. Si ya se tocó Confirmar, la app no deja
+  volver a presentar. En la ficha el botón dice "Seguir desde el borrador".
+
 ### Historial de finalizados y robustez del robot (15/09)
 
 **Qué pasó:** al hacer que el robot espere el "Cargando..." de TAD, la solapa **Finalizados**

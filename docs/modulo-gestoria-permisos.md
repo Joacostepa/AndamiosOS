@@ -45,7 +45,7 @@ Este módulo **no reemplaza** a Habilitaciones: lo alimenta.
 | --- | --- | --- |
 | Vía A · Permiso emitido | `esperar_permiso` | llegar a `emitido` |
 | Vía B · Expediente en trámite | `con_expediente` | llegar a `presentado` (hay EX) |
-| Vía C · Sin gestión | `sin_permiso` | nada — no se abre trámite |
+| Vía C · Se arma sin esperar | `sin_permiso` | **igual se tramita** (JS, 2026-09-15): la modalidad dice cuándo se puede armar, no si hay gestión |
 
 ---
 
@@ -603,6 +603,11 @@ social + CUIT). Decidido con JS (2026-09-15):
   (Google Forms + Tamara).
 - **Mail al cliente de la venta** y, además, el **link visible y copiable en la ficha**
   para mandarlo por WhatsApp. Sin mail (o con uno mal escrito) no se manda y se avisa.
+- **Por ahora el inicio es MANUAL, con un botón** (JS, 2026-09-15, "por las dudas; después
+  vemos si lo automatizamos"). El automatismo de Odoo "AndamiosOS permisos de venta" (id 52)
+  existe pero está **desactivado**; se reactiva corriendo
+  `scripts/odoo-webhook-ventas-permiso.mjs` sin `--desactivar`. Estuvo activo unos minutos
+  el 15/09 y no abrió ningún trámite.
 
 ### Construido (2026-09-15)
 

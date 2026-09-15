@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChipEstado } from "@/components/permisos-via-publica/chip-estado";
+import { VentasParaIniciar } from "@/components/permisos-via-publica/ventas-para-iniciar";
 import { useBandejaPermisos, useRevisarAhora } from "@/hooks/use-permisos-via-publica";
 import { coincide, estadoVinculo, type EstadoRobot, type Expediente } from "@/lib/permisos-via-publica/tipos";
 
@@ -105,6 +106,8 @@ export default function PermisosViaPublicaPage() {
           className="pl-8"
         />
       </div>
+
+      <VentasParaIniciar />
 
       {data.tramitesNuevos.length > 0 && (
         <section className="rounded-md border">

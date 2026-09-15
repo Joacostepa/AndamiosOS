@@ -4,6 +4,9 @@ import { abrirTramiteDeVenta } from "@/lib/permisos-via-publica/portal";
 
 // POST /api/odoo/webhooks/ventas-permiso?secret=...
 //
+// ⚠️ HOY EL AUTOMATISMO DE ODOO QUE LLAMA ACÁ ESTÁ DESACTIVADO (id 52): JS prefirió iniciar a
+// mano con el botón de la bandeja (2026-09-15). La ruta queda lista para cuando se reactive.
+//
 // Receptor del automatismo "AndamiosOS permisos de venta" (scripts/odoo-webhook-ventas-permiso.mjs):
 // Odoo avisa cuando en una venta cambia `state` o `x_lleva_permiso`. Si la venta quedó
 // confirmada con permiso de implantación, se abre el trámite y se le manda el link del
@@ -40,7 +43,7 @@ export async function POST(req: NextRequest) {
     const db = createAdminClient();
     for (const id of ventas) {
       try {
-        console.log(`[webhook venta ${id}] ${await abrirTramiteDeVenta(db, id, origen)}`);
+        console.log(`[webhook venta ${id}] ${(await abrirTramiteDeVenta(db, id, { origen })).resultado}`);
       } catch (e) {
         console.error(`[webhook venta ${id}] no se pudo abrir el trámite`, e);
       }

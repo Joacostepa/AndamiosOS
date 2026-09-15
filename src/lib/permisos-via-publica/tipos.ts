@@ -276,6 +276,19 @@ export type ClaveGrupo = "accion" | "gobierno" | "emitidos";
 
 export type GrupoExpedientes = { clave: ClaveGrupo; titulo: string; descripcion: string; filas: Expediente[] };
 
+/** Una venta con permiso que todavía no arrancó: lo que ofrece el botón "Iniciar trámite". */
+export type VentaParaIniciar = {
+  ventaId: number;
+  venta: string;
+  fecha: string | null;
+  direccion: string | null;
+  cliente: string | null;
+  email: string | null;
+  /** Por qué el mail no va a salir (vacío, inválido, mal escrito). null = sale. */
+  problemaMail: string | null;
+  modalidad: string | null;
+};
+
 /** Un trámite abierto desde una venta que todavía no se presentó en TAD. */
 export type TramiteNuevo = Pick<
   Tramite,

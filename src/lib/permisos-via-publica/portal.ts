@@ -1,9 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { read } from "@/lib/odoo/client";
+import { read, searchRead } from "@/lib/odoo/client";
 import { crearAlertas } from "@/lib/alertas/servicio";
 import { enviarMail } from "@/lib/mail";
 import { pedirEndoso, registrarEvento, urlBase } from "./endosos";
-import { legajoDe, type TipoDueno } from "./tipos";
+import { legajoDe, type TipoDueno, type VentaParaIniciar } from "./tipos";
 
 // El portal del cliente: abrir el trámite cuando se confirma la venta, mandarle el link y
 // recibir quién es el dueño del lote y su legajo. Todo con service role, detrás del secret
@@ -52,23 +52,40 @@ export function problemaDeMail(email: string | null): string | null {
   return null;
 }
 
+export type ResultadoApertura = {
+  resultado: "abierto" | "ya_abierto" | "no_existe" | "no_confirmada" | "no_lleva_permiso" | "anterior_al_corte";
+  tramiteId: string | null;
+  linkEnviado?: boolean;
+};
+
 /**
- * Lo que dispara el webhook de Odoo. Idempotente: el webhook llega en cada write que toca
- * `state` o `x_lleva_permiso`, y sólo la primera vez que la venta califica abre algo.
- * Devuelve qué pasó, para el log.
+ * Abre el trámite de una venta y le manda el link al cliente: de ahí en adelante el proceso
+ * sigue solo (titular → endoso a Segucom → legajo).
+ *
+ * HOY SE LLAMA A MANO, con el botón "Iniciar trámite" de la bandeja (decidido con JS,
+ * 2026-09-15: "por las dudas, después vemos si lo automatizamos"). El webhook de Odoo que
+ * también la llama está desactivado; si se reactiva, respeta CORTE_VENTAS.
+ *
+ * Idempotente: una venta con trámite abierto devuelve el que ya tiene.
  */
-export async function abrirTramiteDeVenta(db: SupabaseClient, ventaId: number, origen?: string | null): Promise<string> {
+export async function abrirTramiteDeVenta(
+  db: SupabaseClient,
+  ventaId: number,
+  opts: { origen?: string | null; userId?: string | null; manual?: boolean } = {},
+): Promise<ResultadoApertura> {
   const [v] = await read<VentaPermiso>("sale.order", [ventaId], [
     "name", "state", "date_order", "x_lleva_permiso", "x_direccion_obra", "partner_id",
   ]);
-  if (!v) return "no_existe";
-  if (v.state !== "sale" && v.state !== "done") return "no_confirmada";
-  if (v.x_lleva_permiso !== "si") return "no_lleva_permiso";
-  if (!v.date_order || v.date_order < CORTE_VENTAS) return "anterior_al_corte";
+  const nada = (resultado: ResultadoApertura["resultado"]): ResultadoApertura => ({ resultado, tramiteId: null });
+  if (!v) return nada("no_existe");
+  if (v.state !== "sale" && v.state !== "done") return nada("no_confirmada");
+  if (v.x_lleva_permiso !== "si") return nada("no_lleva_permiso");
+  if (!opts.manual && (!v.date_order || v.date_order < CORTE_VENTAS)) return nada("anterior_al_corte");
 
-  const { data: previo } = await db.from("pvp_tramites").select("id")
+  const buscarPrevio = () => db.from("pvp_tramites").select("id")
     .eq("odoo_venta_id", ventaId).is("expediente_id", null).maybeSingle();
-  if (previo) return "ya_abierto";
+  const { data: previo } = await buscarPrevio();
+  if (previo) return { resultado: "ya_abierto", tramiteId: previo.id };
 
   const [cliente] = v.partner_id
     ? await read<{ id: number; name: string; email: string | false }>("res.partner", [v.partner_id[0]], ["name", "email"])
@@ -81,14 +98,73 @@ export async function abrirTramiteDeVenta(db: SupabaseClient, ventaId: number, o
     cliente_nombre: cliente?.name ?? null,
     cliente_email: cliente?.email || null,
     permiso_hasta: seisMesesDesdeHoy(),
+    creado_por: opts.userId ?? null,
   }).select("id").single();
-  // Dos webhooks casi juntos: el índice único deja pasar a uno solo.
-  if (error?.code === "23505") return "ya_abierto";
+  // Dos clics (o dos webhooks) casi juntos: el índice único deja pasar a uno solo.
+  if (error?.code === "23505") return { resultado: "ya_abierto", tramiteId: (await buscarPrevio()).data?.id ?? null };
   if (error || !nuevo) throw new Error(error?.message ?? "No se pudo abrir el trámite");
 
-  await registrarEvento(db, nuevo.id, "tramite_abierto", `Venta ${v.name} confirmada con permiso de implantación.`, { odoo_venta_id: v.id }, "sistema");
-  await mandarLinkCliente(db, nuevo.id, origen);
-  return "abierto";
+  await registrarEvento(
+    db, nuevo.id, "tramite_abierto",
+    opts.manual ? `Iniciado a mano desde la venta ${v.name}.` : `Venta ${v.name} confirmada con permiso de implantación.`,
+    { odoo_venta_id: v.id, por: opts.userId ?? null },
+    opts.manual ? "persona" : "sistema",
+  );
+  const linkEnviado = await mandarLinkCliente(db, nuevo.id, opts.origen);
+  return { resultado: "abierto", tramiteId: nuevo.id, linkEnviado };
+}
+
+/** Desde cuándo se ofrecen ventas para iniciar: incluye las que "todavía no arrancaron". */
+export const DESDE_VENTAS_A_INICIAR = "2026-08-01 00:00:00";
+
+/**
+ * Las ventas que piden permiso y todavía no arrancaron: confirmadas desde
+ * DESDE_VENTAS_A_INICIAR con "Lleva permiso = Sí", sin trámite presentado ni emitido en
+ * Odoo, y sin trámite en la app ni expediente de TAD vinculado. Es una lista para que una
+ * persona decida: si aparece una que no corresponde, no se inicia y listo.
+ */
+export async function ventasParaIniciar(db: SupabaseClient): Promise<VentaParaIniciar[]> {
+  const ventas = await searchRead<VentaPermiso & { x_permiso_modalidad: string | false }>(
+    "sale.order",
+    [
+      ["state", "in", ["sale", "done"]],
+      ["x_lleva_permiso", "=", "si"],
+      ["date_order", ">=", DESDE_VENTAS_A_INICIAR],
+      // La modalidad NO filtra: "se arma sin expediente ni permiso" dice cuándo se puede
+      // armar, no que no haya gestión. Esas obras también tramitan el permiso (JS, 15/09).
+      "|", ["x_tramite_estado", "=", false], ["x_tramite_estado", "=", "no_presentado"],
+    ],
+    ["name", "state", "date_order", "x_lleva_permiso", "x_direccion_obra", "partner_id", "x_permiso_modalidad"],
+    { order: "date_order desc", limit: 100 },
+  );
+  if (ventas.length === 0) return [];
+
+  const ids = ventas.map((v) => v.id);
+  const [tramites, expedientes] = await Promise.all([
+    db.from("pvp_tramites").select("odoo_venta_id").in("odoo_venta_id", ids),
+    db.from("pvp_expedientes").select("odoo_venta_id").in("odoo_venta_id", ids),
+  ]);
+  const usadas = new Set([...(tramites.data ?? []), ...(expedientes.data ?? [])].map((r) => Number(r.odoo_venta_id)));
+  const pendientes = ventas.filter((v) => !usadas.has(v.id));
+
+  const partnerIds = [...new Set(pendientes.map((v) => (v.partner_id ? v.partner_id[0] : 0)).filter(Boolean))];
+  const partners = partnerIds.length ? await read<{ id: number; name: string; email: string | false }>("res.partner", partnerIds, ["name", "email"]) : [];
+  const porId = new Map(partners.map((p) => [p.id, p]));
+
+  return pendientes.map((v) => {
+    const p = v.partner_id ? porId.get(v.partner_id[0]) : undefined;
+    const email = p?.email || null;
+    return {
+      ventaId: v.id,
+      venta: v.name,
+      fecha: v.date_order ? v.date_order.slice(0, 10) : null,
+      direccion: v.x_direccion_obra || null,
+      cliente: p?.name ?? null,
+      email,
+      problemaMail: problemaDeMail(email),
+      modalidad: v.x_permiso_modalidad || null,
+    };
+  });
 }
 
 /** Manda (o reenvía) el link del portal al mail del cliente. Devuelve si salió. */

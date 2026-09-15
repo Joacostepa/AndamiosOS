@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Bandeja, FichaExpediente, FichaTramite } from "@/lib/permisos-via-publica/tipos";
+import type { Bandeja, FichaExpediente, FichaTramite, VentaParaIniciar } from "@/lib/permisos-via-publica/tipos";
 
 async function pedir<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
@@ -35,6 +35,26 @@ export function useExpediente(id: string) {
     // Mientras una póliza se revisa (~1 min) se consulta seguido, para que el resultado
     // aparezca sin recargar.
     refetchInterval: (q) => (q.state.data?.documentos.some((d) => d.estado === "revisando") ? 5_000 : 60_000),
+  });
+}
+
+export function useVentasParaIniciar() {
+  return useQuery({
+    queryKey: ["permisos-ventas-para-iniciar"],
+    queryFn: () => pedir<VentaParaIniciar[]>("/api/permisos-via-publica/ventas"),
+    staleTime: 60_000,
+  });
+}
+
+export function useIniciarTramite() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (ventaId: number) =>
+      pedir<{ resultado: string; tramiteId: string; linkEnviado?: boolean }>(`/api/permisos-via-publica/ventas/${ventaId}/iniciar`, { method: "POST" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["permisos-ventas-para-iniciar"] });
+      qc.invalidateQueries({ queryKey: ["permisos-via-publica"] });
+    },
   });
 }
 

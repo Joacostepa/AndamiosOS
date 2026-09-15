@@ -484,6 +484,59 @@ seguro y mail de contacto. Columnas nuevas en `pvp_expedientes`
   reciente con fecha anterior a la presentación—. El evento registra por cuál de los dos
   se vinculó. No escribe nada en Odoo todavía.
 
+**Resultado de la lectura de carátulas (2026-09-14):** 21 de 21 leídas.
+- **3 sin altura** ("Salcedo", "Parana", "Pellegrini, Carlos"; las tres con contacto `rr@`):
+  en TAD se escribió la calle sin elegirla del buscador de direcciones. La carátula misma
+  no trae altura ni barrio/comuna/sección/manzana/parcela, y guarda las calles con nombre de
+  persona como "APELLIDO, NOMBRE". No es un error de lectura; el parser ahora invierte el
+  nombre y deja vacíos los datos catastrales (antes se comía la etiqueta siguiente: barrio =
+  "Comuna:"). Esas tres se vinculan a mano.
+- 2 carátulas piden "hasta 24/02/2026", antes de la presentación (error de tipeo del año).
+  El permiso de una salió igual hasta 24/02/2027.
+- **Vínculo por dirección: 16 de 21**, todos coherentes (misma dirección y cliente, venta
+  días antes de la presentación). Sin venta: Laprida 1845 y Av. Santa Fe 4645 (no hay venta
+  con esa dirección en Odoo) y las 3 sin altura. Av. Córdoba 2914 tiene dos expedientes del
+  mismo día sobre la misma venta (S02419).
+
+## Fase 1c — el robot solo y escribiendo en Odoo (construida 2026-09-14)
+
+| Pieza | Dónde |
+| --- | --- |
+| LaunchAgent | `robot/instalar-launchd.sh` (`--desinstalar` para sacarlo). Log en `~/Library/Logs/andamios-robot-tad.log` |
+| Vínculo y escritura | `sincronizarOdoo` en `robot/worker-tad.mjs` |
+| Fechas del permiso | `robot/permiso.mjs` |
+| Confirmar / descartar / vincular a mano | ficha `/permisos-via-publica/[id]` → `POST /api/permisos-via-publica/[id]/vinculo` → funciones `pvp_resolver_vinculo` / `pvp_vincular_a_mano` |
+| Migración | `20260914000003_permisos_via_publica_odoo.sql` (aplicada) |
+
+**Robot solo:** arranca al iniciar sesión, se reinicia si se cae (con 1 min entre intentos),
+`caffeinate -is` evita que la Mac se duerma sola. Después de cambiar el código hay que
+volver a correr el instalador (el proceso vivo tiene el código viejo).
+
+**Vínculo:** por número de expediente es seguro y se escribe directo. Por dirección es una
+**propuesta** hasta que una persona la confirma en la ficha ("Es esta venta" / "No es
+esta" / "Es otra venta: S0…"). Una venta descartada no se vuelve a proponer. La altura se
+compara como número entero (`ilike "712"` también encontraba "5712").
+
+**Qué escribe en `sale.order`** (sólo lo que cambia: cada write cuesta ~1 s de cascada):
+
+| TAD | `x_tramite_estado` | además |
+| --- | --- | --- |
+| Iniciación / Subsanación (en curso) | `presentado` | `x_expediente_nro` (EX completo), `x_expediente_fecha` (creación en TAD) |
+| Tramitación, o archivado con el PDF del permiso | `emitido` | lo anterior + `x_permiso_fecha` |
+| Archivado sin permiso, estado desconocido | — no se toca — | |
+
+`x_permiso_fecha` = fecha de la notificación RS (`CreationDate` del PDF: el texto dice "desde
+la suscripción de la presente", sin fecha). La vigencia otorgada se guarda en
+`pvp_expedientes.permiso_vence`.
+
+**No pisa** (queda en `odoo_error`, visible en la ficha): un `x_expediente_nro` cargado a mano
+que no es de ninguno de nuestros expedientes de esa venta, ni un estado más avanzado (Odoo
+"emitido" y TAD "presentado" = probable renovación; retroceder cerraría el candado). Dos
+expedientes en la misma venta: manda el más avanzado, después el más nuevo, después el número.
+
+**No escribe** `x_permiso_modalidad` (decisión comercial) ni `x_lleva_permiso`, ni registra
+la gestión en el historial de Habilitaciones (queda en `pvp_eventos`).
+
 ## Decisiones pendientes
 
 0. ~~Cuenta miBA para TAD~~ → la de Jorge Patricio Riveros Zanetta (nivel 3). Confirmar que

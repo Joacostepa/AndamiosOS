@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChipEstado } from "@/components/permisos-via-publica/chip-estado";
 import { useBandejaPermisos, useRevisarAhora } from "@/hooks/use-permisos-via-publica";
-import { coincide, type EstadoRobot, type Expediente } from "@/lib/permisos-via-publica/tipos";
+import { coincide, estadoVinculo, type EstadoRobot, type Expediente } from "@/lib/permisos-via-publica/tipos";
 
 // Permisos vía pública — los expedientes de TAD sin entrar a TAD.
 //
@@ -141,6 +141,7 @@ export default function PermisosViaPublicaPage() {
 
 function FilaExpediente({ e }: { e: Expediente }) {
   const titulo = e.direccion ?? e.odoo_venta_nombre ?? e.titular ?? "Sin datos de la obra";
+  const vinculo = estadoVinculo(e);
   return (
     <li className="border-b last:border-b-0">
       <Link href={`/permisos-via-publica/${e.id}`} className="block px-3 py-2.5 hover:bg-muted/40">
@@ -149,6 +150,13 @@ function FilaExpediente({ e }: { e: Expediente }) {
           <span className="text-[13px] font-medium">{titulo}</span>
           {e.odoo_venta_nombre && e.direccion && (
             <span className="text-[12px] text-muted-foreground">{e.odoo_venta_nombre}</span>
+          )}
+          {/* Hasta que alguien confirme la venta, el robot no escribe el trámite en Odoo. */}
+          {vinculo === "propuesto" && (
+            <span className="rounded bg-yellow-500/15 px-1.5 py-0.5 text-[11px] text-yellow-300">Confirmar venta</span>
+          )}
+          {vinculo === "sin_vincular" && (
+            <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">Sin venta</span>
           )}
           <ChipEstado expediente={e} className="ml-auto" />
         </div>

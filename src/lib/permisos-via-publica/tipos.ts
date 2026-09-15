@@ -39,13 +39,62 @@ export type Expediente = {
   caratula_path: string | null;
   caratula_leida_at: string | null;
   caratula_error: string | null;
+  /** Del PDF del permiso: día de la firma y vigencia otorgada (puede ser menor a la pedida). */
+  permiso_emitido_el: string | null;
+  permiso_vence: string | null;
+  /** Cómo se llegó a la venta. "direccion" es una propuesta hasta que alguien la confirma. */
+  odoo_vinculo_por: "numero" | "direccion" | "persona" | null;
+  odoo_vinculo_confirmado_at: string | null;
+  odoo_vinculo_confirmado_por: string | null;
+  odoo_ventas_descartadas: number[];
+  /** Lo último que el robot dejó escrito en la venta. */
+  odoo_escrito: Record<string, string> | null;
+  odoo_escrito_at: string | null;
+  /** Por qué el robot NO escribió en la venta (conflicto con lo cargado a mano). */
+  odoo_error: string | null;
   visto_primero_at: string;
   visto_ultimo_at: string;
 };
 
 export type TipoEvento =
   | "alta" | "cambio_estado" | "tarea_subsanacion" | "tarea_resuelta"
-  | "motivo" | "permiso_descargado" | "vinculado_odoo" | "error_robot" | "caratula_leida";
+  | "motivo" | "permiso_descargado" | "vinculado_odoo" | "error_robot" | "caratula_leida"
+  | "vinculo_confirmado" | "vinculo_descartado" | "odoo_escrito" | "odoo_conflicto";
+
+export type EstadoVinculo = "sin_vincular" | "propuesto" | "confirmado";
+
+/**
+ * Un vínculo por dirección es una PROPUESTA: la misma dirección tiene varias ventas y uno
+ * equivocado le abriría el candado del tablero a la obra de otro. El robot no escribe en
+ * Odoo hasta que una persona lo confirma. Por número de expediente es exacto.
+ */
+export function estadoVinculo(
+  e: Pick<Expediente, "odoo_venta_id" | "odoo_vinculo_por" | "odoo_vinculo_confirmado_at">,
+): EstadoVinculo {
+  if (!e.odoo_venta_id) return "sin_vincular";
+  return e.odoo_vinculo_por === "numero" || e.odoo_vinculo_confirmado_at ? "confirmado" : "propuesto";
+}
+
+/**
+ * La carátula no trae altura cuando en TAD se escribió la calle sin elegirla del buscador
+ * (pasa también que la guarda como "APELLIDO, NOMBRE"). Sin altura no se puede proponer
+ * una venta: hay que vincularla a mano.
+ */
+export const sinAltura = (direccion: string | null) => !!direccion && !/\d/.test(direccion);
+
+/** La venta vinculada tal como está hoy en Odoo, para comparar antes de confirmar. */
+export type VentaOdoo = {
+  id: number;
+  nombre: string;
+  direccion: string | null;
+  cliente: string | null;
+  fecha: string | null;
+  modalidad: string | null;
+  tramite: string | null;
+  expedienteNro: string | null;
+  permisoFecha: string | null;
+  url: string | null;
+};
 
 export type Evento = {
   id: number;
@@ -83,6 +132,9 @@ export type FichaExpediente = {
   eventos: Evento[];
   /** URL firmada del permiso emitido, válida 10 minutos. */
   permisoUrl: string | null;
+  /** null si no hay venta vinculada o si Odoo no respondió (ver ventaError). */
+  venta: VentaOdoo | null;
+  ventaError: string | null;
 };
 
 /** Sin tildes y en mayúsculas: TAD escribe "SUBSANACIÓN" y "SUBSANACION" en la misma lista. */

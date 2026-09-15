@@ -17,15 +17,36 @@ const ETIQUETAS = [
   "Desde cuando estará instalado", "Hasta cuando estará instalado", "Compañía",
   "Vigencia del seguro de responsabilidad social \\(vencimiento\\)", "Carácter", "Solicitud", "Personería",
 ];
-const SIGUIENTE = `(?=\\s*(?:${ETIQUETAS.join("|")}|Datos persona|Datos del Representante|Domicilio comercial|Datos de contacto|Fechas de la solicitud|Seguro|Declaración jurada|Importante|Digitally signed)\\s*:?|$)`;
+const TITULOS = "Datos persona|Datos del Representante|Domicilio comercial|Datos de contacto|Fechas de la solicitud|Seguro|Declaración jurada|Importante|Digitally signed";
+const RENGLON_NUEVO = `\\n(?!\\s*(?:${ETIQUETAS.join("|")}|${TITULOS})\\s*:?)`;
 
 function campo(texto, etiqueta) {
-  // (.+?) y no (.*?): "Comuna: Comuna 2" empieza con el nombre de otra etiqueta y con un
-  // valor vacío permitido el corte caía antes de leer nada.
-  const m = texto.match(new RegExp(`${etiqueta}\\s*:\\s*(.+?)${SIGUIENTE}`, "s"));
+  // Cada etiqueta empieza renglón y el valor es el resto del renglón (más los renglones
+  // siguientes que no empiecen con otra etiqueta, por si un valor largo se partió).
+  //
+  // POR QUÉ POR RENGLONES: cuando TAD deja un campo vacío la carátula trae "Barrio:\nComuna:"
+  // y leer "hasta la próxima etiqueta" con un valor obligatorio se comía la etiqueta
+  // siguiente como valor (barrio = "Comuna:"). Pasó en EX-2026-40716285 y EX-2026-16561366.
+  const m = texto.match(new RegExp(`(?:^|\\n)[ \\t]*${etiqueta}[ \\t]*:[ \\t]*([^\\n]*(?:${RENGLON_NUEVO}[^\\n]*)*)`));
   const v = m?.[1]?.replace(/\s+/g, " ").trim();
   return v && v !== "null" ? v : null;
 }
+
+/**
+ * "PELLEGRINI, CARLOS" → "Carlos Pellegrini"; "LAPRIDA 1845" → "Laprida 1845".
+ *
+ * TAD guarda algunas calles con nombre de persona como "APELLIDO, NOMBRE" cuando se escribe
+ * la calle sin elegirla del buscador de direcciones. En esos casos tampoco guarda la altura
+ * ni los datos catastrales: la dirección queda sin número (ver sinAltura).
+ */
+function normalizarDireccion(calle) {
+  const invertida = calle.match(/^([^,\d]+),\s*([^,\d]+)$/);
+  const texto = invertida ? `${invertida[2]} ${invertida[1]}` : calle;
+  return texto.replace(/\b([A-ZÁÉÍÓÚÑ]+)\b/g, (p) => p.charAt(0) + p.slice(1).toLowerCase());
+}
+
+/** Una dirección sin altura no se puede cruzar con Odoo: hay que vincularla a mano. */
+export const sinAltura = (direccion) => !!direccion && !/\d/.test(direccion);
 
 function fecha(v) {
   const m = v?.match(/(\d{2})\/(\d{2})\/(\d{4})/);
@@ -45,7 +66,7 @@ export function parsearCaratula(texto) {
   const obra = texto.split(/Domicilio de donde se colocara/i)[1].split(/Datos persona/i)[0];
   const calle = campo(obra, "Calle y altura");
   return {
-    direccion: calle ? calle.replace(/\b([A-ZÁÉÍÓÚÑ]+)\b/g, (p) => p.charAt(0) + p.slice(1).toLowerCase()) : null,
+    direccion: calle ? normalizarDireccion(calle) : null,
     barrio: campo(obra, "Barrio"),
     comuna: campo(obra, "Comuna"),
     seccion: campo(obra, "Sección"),

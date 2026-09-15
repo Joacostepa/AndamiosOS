@@ -36,6 +36,25 @@ export function useExpediente(id: string) {
   });
 }
 
+export type AccionVinculo = { accion: "confirmar" } | { accion: "descartar" } | { accion: "vincular"; venta: string };
+
+/** Confirmar, descartar o elegir a mano la venta de Odoo de un expediente. */
+export function useVinculoVenta(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: AccionVinculo) =>
+      pedir<{ ok: true }>(`/api/permisos-via-publica/${id}/vinculo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["permiso-via-publica", id] });
+      qc.invalidateQueries({ queryKey: ["permisos-via-publica"] });
+    },
+  });
+}
+
 export function useRevisarAhora() {
   const qc = useQueryClient();
   return useMutation({

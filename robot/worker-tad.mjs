@@ -7,7 +7,8 @@
 //      No adjunta ni confirma nada.
 //   4. Si un expediente pasó a Tramitación o se archivó, busca la "NOTIFICACION PERMISO",
 //      baja el PDF y lo sube al bucket privado.
-//   5. Intenta vincular cada expediente con su venta de Odoo por x_expediente_nro.
+//   5. Vincula cada expediente con su venta de Odoo (por número o por dirección) y, si el
+//      vínculo es seguro, escribe el estado del permiso en la venta (sincronizarOdoo).
 //
 // LO QUE NO HACE, A PROPÓSITO
 //   - No abre el detalle del expediente: TAD le agrega una "Constancia de Consulta" cada
@@ -30,8 +31,9 @@ import os from "node:os";
 import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import { abrir, entrar, ir, fotografo } from "./tad-comun.mjs";
-import { parsearCaratula, textoDePdf } from "./caratula.mjs";
-import { searchRead } from "../scripts/odoo-rpc.mjs";
+import { parsearCaratula, sinAltura, textoDePdf } from "./caratula.mjs";
+import { parsearPermiso } from "./permiso.mjs";
+import { read, searchRead, write } from "../scripts/odoo-rpc.mjs";
 
 const UNA_VEZ = process.argv.includes("--una-vez");
 const MIN = 60_000;
@@ -45,7 +47,8 @@ const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABA
   auth: { persistSession: false, autoRefreshToken: false },
 });
 const foto = fotografo("robot");
-const log = (...a) => console.log(new Date().toLocaleString("es-AR"), ...a);
+// h23: sin él Node escribe "09:10" a las 21:10, y el log no dice si fue de mañana o de noche.
+const log = (...a) => console.log(new Date().toLocaleString("es-AR", { hourCycle: "h23" }), ...a);
 
 // ── Utilidades ──────────────────────────────────────────────────────────────
 
@@ -206,11 +209,22 @@ async function bajarPermiso(page, numero) {
     fila.getByText("file_download").click(),
   ]);
   const archivo = descarga.suggestedFilename();
-  const ruta = await descarga.path();
+  const buffer = readFileSync(await descarga.path());
   const path = `${numero}/${archivo}`;
-  const { error } = await db.storage.from(BUCKET).upload(path, readFileSync(ruta), { contentType: "application/pdf", upsert: true });
+  const { error } = await db.storage.from(BUCKET).upload(path, buffer, { contentType: "application/pdf", upsert: true });
   if (error) throw new Error(`No se pudo subir el permiso: ${error.message}`);
-  return { path, notificacion: archivo.replace(/\.pdf$/i, "") };
+  const fechas = await parsearPermiso(buffer).catch(() => ({}));
+  return { path, notificacion: archivo.replace(/\.pdf$/i, ""), fechas };
+}
+
+/** Fechas de un permiso que ya está en el bucket (los bajados antes de leerlas). No entra a TAD. */
+async function fechasDelBucket(exp) {
+  const { data, error } = await db.storage.from(BUCKET).download(exp.permiso_path);
+  if (error) throw new Error(`No se pudo leer el permiso guardado: ${error.message}`);
+  const f = await parsearPermiso(Buffer.from(await data.arrayBuffer()));
+  const cambios = { permiso_emitido_el: f.emitido_el, permiso_vence: f.vence };
+  await db.from("pvp_expedientes").update(cambios).eq("id", exp.id);
+  Object.assign(exp, cambios);
 }
 
 /**
@@ -291,22 +305,29 @@ const deVenta = (v, por) => ({
   odoo_venta_id: v.id,
   odoo_venta_nombre: v.name,
   cliente: Array.isArray(v.partner_id) ? v.partner_id[1] : null,
-  _por: por,
+  odoo_vinculo_por: por,
 });
 
 /**
  * Busca la venta del expediente. Primero por número (x_expediente_nro), que es exacto. Si
- * no está —el caso normal hoy: casi nadie lo cargó—, por la dirección que dio la carátula:
+ * no está —el caso normal hoy: nadie lo cargó—, por la dirección que dio la carátula:
  * calle y altura en x_direccion_obra, quedándose con la venta más reciente anterior a la
  * presentación. La misma dirección puede tener varias ventas (renovaciones, otra obra años
  * después); la anterior más cercana a la fecha del expediente es la que lo originó.
+ *
+ * Un vínculo por dirección es una PROPUESTA: sincronizarOdoo no lo usa hasta que una persona
+ * lo confirma en la ficha. Las ventas que alguien descartó no se vuelven a proponer.
  */
 async function vincularOdoo(exp) {
   if (exp.odoo_venta_id || !process.env.ODOO_URL) return null;
+  const descartadas = exp.odoo_ventas_descartadas ?? [];
+  const noDescartada = descartadas.length ? [["id", "not in", descartadas]] : [];
   const digitos = exp.numero.split("-")[1];
-  const porNumero = await searchRead("sale.order", [["x_expediente_nro", "ilike", digitos]], VENTA_CAMPOS, { limit: 2 });
+  const porNumero = await searchRead("sale.order", [["x_expediente_nro", "ilike", digitos], ...noDescartada], VENTA_CAMPOS, { limit: 2 });
   if (porNumero.length === 1) return deVenta(porNumero[0], "numero");
 
+  // Sin altura no hay cómo elegir entre las ventas de toda una calle: se vincula a mano.
+  if (sinAltura(exp.direccion)) return null;
   const m = exp.direccion?.match(/^(.*?)\s+(\d{1,5})\b/);
   if (!m) return null;
   const palabra = m[1].split(/\s+/).filter((p) => !/^(av|avda|avenida|del?|la|los|las|gral|dr)\.?$/i.test(p)).sort((a, b) => b.length - a.length)[0];
@@ -314,11 +335,117 @@ async function vincularOdoo(exp) {
   const hasta = exp.creado_tad ? `${exp.creado_tad} 23:59:59` : new Date().toISOString().slice(0, 19).replace("T", " ");
   const candidatas = await searchRead(
     "sale.order",
-    [["x_direccion_obra", "ilike", palabra], ["x_direccion_obra", "ilike", m[2]], ["state", "in", ["sale", "done"]], ["date_order", "<=", hasta]],
+    [["x_direccion_obra", "ilike", palabra], ["x_direccion_obra", "ilike", m[2]], ["state", "in", ["sale", "done"]], ["date_order", "<=", hasta], ...noDescartada],
     VENTA_CAMPOS,
-    { limit: 1, order: "date_order desc" },
+    { limit: 10, order: "date_order desc" },
   );
-  return candidatas.length === 1 ? deVenta(candidatas[0], "direccion") : null;
+  // ilike "712" también trae "Corrientes 5712": la altura tiene que estar como número entero.
+  const altura = new RegExp(`(^|\\D)${m[2]}(\\D|$)`);
+  const venta = candidatas.find((v) => altura.test(v.x_direccion_obra || ""));
+  return venta ? deVenta(venta, "direccion") : null;
+}
+
+// ── Escritura en Odoo ───────────────────────────────────────────────────────
+//
+// Los campos de sale.order que deciden el candado del tablero y Habilitaciones (ver
+// src/lib/habilitaciones/derivacion.ts). Hasta ahora se cargaban a mano.
+
+const ORDEN_TRAMITE = { no_presentado: 0, presentado: 1, emitido: 2 };
+const CAMPO = { x_tramite_estado: "trámite", x_expediente_nro: "expediente", x_expediente_fecha: "presentado el", x_permiso_fecha: "permiso emitido el" };
+const describir = (cambios) => Object.entries(cambios).map(([k, v]) => `${CAMPO[k]} ${v}`).join(" · ");
+
+const vinculoSeguro = (exp) => !!exp.odoo_venta_id && (exp.odoo_vinculo_por === "numero" || !!exp.odoo_vinculo_confirmado_at);
+
+/**
+ * Lo que la venta tiene que decir según TAD. null = TAD no dice nada que se pueda escribir
+ * (archivado sin permiso, estado nuevo que no conocemos): la venta no se toca.
+ *
+ * TRAMITACIÓN es "salió el permiso" en este trámite. Archivado con el PDF del permiso
+ * guardado, también. Iniciación y Subsanación son "presentado": Subsanación no vuelve el
+ * trámite atrás, el expediente sigue existiendo y la obra se puede amparar en él.
+ */
+function deseadoEnOdoo(exp) {
+  const emitido = exp.estado_tad === "TRAMITACION" || (exp.solapa === "finalizado" && !!exp.permiso_path);
+  const presentado = exp.solapa === "en_curso" && ["INICIACION", "SUBSANACION"].includes(exp.estado_tad);
+  if (!emitido && !presentado) return null;
+  const v = { x_tramite_estado: emitido ? "emitido" : "presentado", x_expediente_nro: exp.expediente };
+  if (exp.creado_tad) v.x_expediente_fecha = exp.creado_tad;
+  if (emitido && exp.permiso_emitido_el) v.x_permiso_fecha = exp.permiso_emitido_el;
+  return v;
+}
+
+/**
+ * Escribe en cada venta con vínculo seguro lo que dice TAD. Sólo los campos que cambian:
+ * cada write a la venta dispara la cascada de calculados (~1 s), y una vuelta sin
+ * novedades no tiene por qué costar 16 segundos.
+ *
+ * NO PISA, y lo deja anotado en odoo_error para verlo en la ficha:
+ *   - un número de expediente cargado a mano que no es ninguno de los nuestros de esa venta
+ *     (puede ser un expediente de otra cuenta, o de papel);
+ *   - un estado más avanzado: si Odoo dice "emitido" y TAD "presentado", lo probable es una
+ *     renovación de una obra con permiso vigente, y retroceder le cerraría el candado.
+ */
+async function sincronizarOdoo(lista) {
+  if (!process.env.ODOO_URL) return 0;
+  const expedientes = lista ?? (await db.from("pvp_expedientes").select("*")).data ?? [];
+
+  const porVenta = new Map();
+  for (const exp of expedientes.filter(vinculoSeguro)) {
+    const d = deseadoEnOdoo(exp);
+    if (d) porVenta.set(exp.odoo_venta_id, [...(porVenta.get(exp.odoo_venta_id) ?? []), { exp, d }]);
+  }
+  if (porVenta.size === 0) return 0;
+
+  const ventas = await read("sale.order", [...porVenta.keys()], ["name", ...Object.keys(CAMPO)]);
+  const actual = new Map(ventas.map((v) => [v.id, v]));
+
+  const anotar = async (exp, mensaje) => {
+    if (exp.odoo_error === mensaje) return;
+    await db.from("pvp_expedientes").update({ odoo_error: mensaje }).eq("id", exp.id);
+    await evento(exp.id, "odoo_conflicto", mensaje);
+    exp.odoo_error = mensaje;
+  };
+
+  let escritas = 0;
+  for (const [ventaId, candidatos] of porVenta) {
+    const venta = actual.get(ventaId);
+    // Dos expedientes de la misma venta (se presentó dos veces, o una renovación): manda el
+    // más avanzado y, a igualdad, el más nuevo. El número desempata el mismo día (Av. Córdoba
+    // 2914 tiene dos del 01/09): sin eso el elegido dependería del orden de la consulta.
+    candidatos.sort((a, b) =>
+      ORDEN_TRAMITE[b.d.x_tramite_estado] - ORDEN_TRAMITE[a.d.x_tramite_estado] ||
+      String(b.exp.creado_tad).localeCompare(String(a.exp.creado_tad)) ||
+      b.exp.numero.localeCompare(a.exp.numero));
+    const [{ exp, d }, ...otros] = candidatos;
+    for (const o of otros) {
+      await anotar(o.exp, `La venta ${venta?.name ?? ventaId} ya la lleva EX-${exp.numero} (más avanzado o más nuevo): este no se escribe.`);
+    }
+    if (!venta) { await anotar(exp, `La venta ${ventaId} ya no existe en Odoo.`); continue; }
+
+    const cargado = venta.x_expediente_nro || "";
+    if (cargado && !candidatos.some((c) => cargado.includes(c.exp.numero.split("-")[1]))) {
+      await anotar(exp, `La venta ya tiene cargado otro expediente (${cargado}). No se tocó: revisar a mano.`);
+      continue;
+    }
+    if ((ORDEN_TRAMITE[venta.x_tramite_estado] ?? -1) > ORDEN_TRAMITE[d.x_tramite_estado]) {
+      await anotar(exp, `Odoo ya dice "${venta.x_tramite_estado}" y TAD "${d.x_tramite_estado}": no se retrocede.`);
+      continue;
+    }
+
+    const cambios = Object.fromEntries(Object.entries(d).filter(([k, v]) => (venta[k] || null) !== v));
+    if (Object.keys(cambios).length > 0) {
+      await write("sale.order", [ventaId], cambios);
+      escritas++;
+      const antes = Object.fromEntries(Object.keys(cambios).map((k) => [k, venta[k] || null]));
+      await evento(exp.id, "odoo_escrito", `${venta.name}: ${describir(cambios)}`, { odoo_venta_id: ventaId, antes, despues: cambios });
+      log(`Odoo ${venta.name} ← EX-${exp.numero}: ${describir(cambios)}`);
+    }
+    if (Object.keys(cambios).length > 0 || exp.odoo_error || !exp.odoo_escrito) {
+      await db.from("pvp_expedientes").update({ odoo_escrito: d, odoo_escrito_at: new Date().toISOString(), odoo_error: null }).eq("id", exp.id);
+      Object.assign(exp, { odoo_escrito: d, odoo_error: null });
+    }
+  }
+  return escritas;
 }
 
 // ── Una vuelta ──────────────────────────────────────────────────────────────
@@ -410,12 +537,18 @@ async function revisar(page) {
 
   // Permisos emitidos sin PDF guardado.
   for (const exp of porNumero.values()) {
+    if (exp.permiso_path) {
+      if (!exp.permiso_emitido_el) await fechasDelBucket(exp).catch((e) => log("!! fechas del permiso", exp.numero, e.message));
+      continue;
+    }
     const emitido = exp.estado_tad === "TRAMITACION" || exp.solapa === "finalizado";
-    if (!emitido || exp.permiso_path) continue;
+    if (!emitido) continue;
     try {
       const permiso = await bajarPermiso(page, exp.numero);
       if (!permiso) continue;
-      await db.from("pvp_expedientes").update({ permiso_path: permiso.path, permiso_notificacion: permiso.notificacion }).eq("id", exp.id);
+      const cambios = { permiso_path: permiso.path, permiso_notificacion: permiso.notificacion, permiso_emitido_el: permiso.fechas.emitido_el ?? null, permiso_vence: permiso.fechas.vence ?? null };
+      await db.from("pvp_expedientes").update(cambios).eq("id", exp.id);
+      Object.assign(exp, cambios);
       await evento(exp.id, "permiso_descargado", `Se guardó ${permiso.notificacion}.`, { path: permiso.path });
       if (!cargaInicial) {
         avisos.push({ tipo: "permiso_novedad", clave: `permiso_novedad:${exp.numero}:permiso`, titulo: `Permiso disponible — ${nombreObra(exp)}`, descripcion: `EX-${exp.numero}. Ya se puede descargar desde la app.`, enlace: `/permisos-via-publica/${exp.id}` });
@@ -443,14 +576,22 @@ async function revisar(page) {
     try {
       const v = await vincularOdoo(exp);
       if (!v) continue;
-      const { _por, ...cambios } = v;
-      await db.from("pvp_expedientes").update(cambios).eq("id", exp.id);
-      await evento(exp.id, "vinculado_odoo", `${v.odoo_venta_nombre}${v.cliente ? ` · ${v.cliente}` : ""} (por ${_por === "numero" ? "número de expediente" : "dirección"})`, v);
+      await db.from("pvp_expedientes").update(v).eq("id", exp.id);
+      Object.assign(exp, v);
+      const porDireccion = v.odoo_vinculo_por === "direccion";
+      await evento(exp.id, "vinculado_odoo", `${v.odoo_venta_nombre}${v.cliente ? ` · ${v.cliente}` : ""} (por ${porDireccion ? "dirección: falta que una persona lo confirme" : "número de expediente"})`, v);
+      if (porDireccion && !cargaInicial) {
+        avisos.push({ tipo: "permiso_novedad", clave: `permiso_novedad:${exp.numero}:vinculo`, titulo: `Confirmar la venta — ${nombreObra(exp)}`, descripcion: `EX-${exp.numero} parece ser ${v.odoo_venta_nombre}. Hasta confirmarlo no se escribe nada en Odoo.`, enlace: `/permisos-via-publica/${exp.id}` });
+      }
     } catch (e) {
       log("!! odoo", exp.numero, e.message);
       break; // Odoo caído: no tiene sentido probar 16 veces.
     }
   }
+
+  // Estado del permiso en la venta, sólo con vínculo seguro. Un Odoo caído no invalida lo
+  // que se leyó de TAD: se reintenta en la vuelta siguiente.
+  await sincronizarOdoo([...porNumero.values()]).catch((e) => log("!! escritura en Odoo", e.message));
 
   await avisar(avisos);
   const fin = new Date();
@@ -481,20 +622,33 @@ async function registrarError(page, e) {
 let { browser, page } = await abrir();
 let proxima = 0;
 let apagando = false;
-process.on("SIGINT", async () => { apagando = true; log("Cerrando…"); await browser.close().catch(() => {}); process.exit(0); });
+// SIGTERM es cómo lo para launchd (robot/instalar-launchd.sh); SIGINT, Ctrl+C a mano.
+for (const senal of ["SIGINT", "SIGTERM"]) {
+  process.on(senal, async () => { apagando = true; log(`Cerrando (${senal})…`); await browser.close().catch(() => {}); process.exit(0); });
+}
 
 async function tomarTarea() {
   const { data } = await db.from("pvp_tareas").select("id").eq("estado", "pendiente").order("created_at").limit(1);
   if (!data?.length) return null;
   const { data: tomada } = await db.from("pvp_tareas").update({ estado: "tomada", tomada_at: new Date().toISOString() })
-    .eq("id", data[0].id).eq("estado", "pendiente").select("id").maybeSingle();
-  return tomada?.id ?? null;
+    .eq("id", data[0].id).eq("estado", "pendiente").select("id, tipo").maybeSingle();
+  return tomada ?? null;
 }
 
 log(`Robot de TAD en ${os.hostname()}${UNA_VEZ ? " (una vuelta)" : ""}`);
 while (!apagando) {
-  const tareaId = await tomarTarea();
-  if (tareaId || Date.now() >= proxima || UNA_VEZ) {
+  const tarea = await tomarTarea();
+  const tareaId = tarea?.id ?? null;
+  if (tarea?.tipo === "odoo_sincronizar") {
+    // Alguien confirmó un vínculo en la ficha: escribir en Odoo no necesita entrar a TAD.
+    const fin = (cambios) => db.from("pvp_tareas").update({ ...cambios, terminada_at: new Date().toISOString() }).eq("id", tareaId);
+    try {
+      await fin({ estado: "ok", resultado: { escritas: await sincronizarOdoo() } });
+    } catch (e) {
+      log("!! escritura en Odoo", e.message);
+      await fin({ estado: "error", error: e.message.slice(0, 500) });
+    }
+  } else if (tareaId || Date.now() >= proxima || UNA_VEZ) {
     try {
       if (!browser.isConnected()) ({ browser, page } = await abrir());
       const resultado = await revisar(page);

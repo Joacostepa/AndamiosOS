@@ -20,6 +20,7 @@ const dia = (iso: string | null) => (iso ? iso.slice(0, 10).split("-").reverse()
 const ESTADO: Record<FilaEndoso["estado"], { texto: string; clase: string }> = {
   falta: { texto: "Falta", clase: "bg-gray-100 text-gray-700" },
   pedido: { texto: "Para subir", clase: "bg-amber-100 text-amber-800" },
+  cargado: { texto: "Recibida", clase: "bg-blue-100 text-blue-800" },
   revisando: { texto: "Revisando…", clase: "bg-blue-100 text-blue-800" },
   observado: { texto: "Hay que corregir", clase: "bg-red-100 text-red-800" },
   ok: { texto: "Recibida y correcta", clase: "bg-green-100 text-green-800" },

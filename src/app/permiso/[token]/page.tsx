@@ -1,0 +1,214 @@
+"use client";
+
+import { use, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { CheckCircle2, Circle, Loader2, Upload } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
+import type { PortalCliente } from "@/app/api/public/permiso/[token]/route";
+import { ETIQUETA_DUENO, NOMBRE_DOCUMENTO, cuitValido, formatoCuit, type TipoDueno } from "@/lib/permisos-via-publica/tipos";
+
+// Portal del cliente para el permiso de andamio. Llega por mail (o WhatsApp) al confirmarse
+// la venta. Primero: quién es el dueño del lote y su CUIT —con eso ABA ya pide el seguro—.
+// Después: los documentos que corresponden a ese tipo de dueño, de a uno y cuando pueda.
+
+const BUCKET = "permisos-via-publica";
+const EXTENSIONES = ["pdf", "jpg", "jpeg", "png", "heic", "webp"];
+
+export default function PortalPermisoPage({ params }: { params: Promise<{ token: string }> }) {
+  const { token } = use(params);
+  const consulta = useQuery({
+    queryKey: ["portal-permiso", token],
+    queryFn: async () => {
+      const res = await fetch(`/api/public/permiso/${token}`, { cache: "no-store" });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(body?.error ?? "No se pudo cargar");
+      return body as PortalCliente;
+    },
+    retry: false,
+  });
+  const [editando, setEditando] = useState(false);
+  const datos = consulta.data;
+  const cargados = datos?.documentos.filter((d) => d.estado !== "falta").length ?? 0;
+
+  return (
+    <main className="min-h-screen bg-gray-50 px-4 py-8 text-gray-900">
+      <div className="mx-auto max-w-2xl space-y-6">
+        <header>
+          <p className="text-sm text-gray-500">Andamios Buenos Aires</p>
+          <h1 className="text-2xl font-semibold">Permiso de andamio{datos ? ` · ${datos.direccion}` : ""}</h1>
+          <p className="mt-1 text-sm text-gray-600">
+            Para pedir al Gobierno de la Ciudad el permiso de uso del espacio público necesitamos saber quién es el dueño
+            del lote y algunos documentos. Podés cargarlos de a poco: lo que subas queda guardado.
+          </p>
+        </header>
+
+        {consulta.error && <p className="rounded-md bg-red-50 p-3 text-sm text-red-700">{consulta.error.message}</p>}
+        {consulta.isLoading && <p className="text-sm text-gray-500">Cargando…</p>}
+
+        {datos && (!datos.titular || editando) && (
+          <FormTitular token={token} actual={datos.titular} onListo={() => { setEditando(false); consulta.refetch(); }} />
+        )}
+
+        {datos?.titular && !editando && (
+          <>
+            <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <p className="text-sm text-gray-500">Dueño del lote</p>
+                  <p className="font-medium">{datos.titular.nombre}</p>
+                  <p className="text-sm text-gray-600">
+                    CUIT {formatoCuit(datos.titular.cuit)} · {ETIQUETA_DUENO[datos.titular.tipo]}
+                    {datos.titular.esInquilino ? " · quien contrata alquila" : ""}
+                  </p>
+                </div>
+                <button type="button" onClick={() => setEditando(true)} className="text-sm text-gray-600 underline">
+                  Cambiar
+                </button>
+              </div>
+            </section>
+
+            <section className="space-y-3">
+              <h2 className="text-lg font-medium">
+                Documentos · {cargados} de {datos.documentos.length}
+              </h2>
+              {datos.documentos.map((d) => (
+                <FilaDocumento key={d.id} token={token} doc={d} onSubido={() => consulta.refetch()} />
+              ))}
+              {datos.documentos.length > 0 && cargados === datos.documentos.length && (
+                <p className="rounded-md bg-green-50 p-3 text-sm text-green-800">
+                  ¡Listo! Ya tenemos todo. Lo revisamos y te avisamos si hace falta corregir algo.
+                </p>
+              )}
+            </section>
+          </>
+        )}
+      </div>
+    </main>
+  );
+}
+
+function FormTitular({ token, actual, onListo }: { token: string; actual: PortalCliente["titular"]; onListo: () => void }) {
+  const [tipo, setTipo] = useState<TipoDueno | null>(actual?.tipo ?? null);
+  const [esInquilino, setEsInquilino] = useState(actual?.esInquilino ?? false);
+  const [nombre, setNombre] = useState(actual?.nombre ?? "");
+  const [cuit, setCuit] = useState(actual ? formatoCuit(actual.cuit) : "");
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const cuitOk = cuitValido(cuit);
+
+  async function guardar(ev: React.FormEvent) {
+    ev.preventDefault();
+    setGuardando(true);
+    setError(null);
+    const res = await fetch(`/api/public/permiso/${token}/titular`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tipoDueno: tipo, esInquilino, nombre, cuit }),
+    });
+    setGuardando(false);
+    if (!res.ok) return setError((await res.json().catch(() => null))?.error ?? "No se pudo guardar");
+    onListo();
+  }
+
+  return (
+    <form onSubmit={guardar} className="space-y-4 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+      <h2 className="text-lg font-medium">¿Quién es el dueño del lote?</h2>
+      <div className="flex flex-wrap gap-2">
+        {(Object.keys(ETIQUETA_DUENO) as TipoDueno[]).map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setTipo(t)}
+            className={`rounded-md border px-3 py-2 text-sm ${tipo === t ? "border-gray-900 bg-gray-900 text-white" : "border-gray-300 bg-white"}`}
+          >
+            {ETIQUETA_DUENO[t]}
+          </button>
+        ))}
+      </div>
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={esInquilino} onChange={(ev) => setEsInquilino(ev.target.checked)} />
+        Quien contrata el andamio alquila el inmueble (no es el dueño)
+      </label>
+      <label className="grid gap-1 text-sm">
+        <span className="text-gray-600">
+          {tipo === "persona" ? "Nombre y apellido del dueño" : "Razón social, tal como figura en la constancia de CUIT"}
+        </span>
+        <input value={nombre} onChange={(ev) => setNombre(ev.target.value)} className="rounded-md border border-gray-300 px-3 py-2" />
+      </label>
+      <label className="grid gap-1 text-sm">
+        <span className="text-gray-600">CUIT del dueño</span>
+        <input value={cuit} onChange={(ev) => setCuit(ev.target.value)} placeholder="30-12345678-9" inputMode="numeric" className="rounded-md border border-gray-300 px-3 py-2" />
+        {cuit && !cuitOk && <span className="text-red-700">El CUIT no es válido. Revisá los números.</span>}
+      </label>
+      {error && <p className="text-sm text-red-700">{error}</p>}
+      <button
+        type="submit"
+        disabled={!tipo || nombre.trim().length < 3 || !cuitOk || guardando}
+        className="inline-flex items-center gap-2 rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+      >
+        {guardando && <Loader2 className="size-4 animate-spin" />} Guardar y seguir
+      </button>
+    </form>
+  );
+}
+
+function FilaDocumento({ token, doc, onSubido }: { token: string; doc: PortalCliente["documentos"][number]; onSubido: () => void }) {
+  const input = useRef<HTMLInputElement>(null);
+  const [subiendo, setSubiendo] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const cargado = doc.estado !== "falta";
+
+  async function subir(archivo: File) {
+    const extension = archivo.name.split(".").pop()?.toLowerCase() ?? "";
+    if (!EXTENSIONES.includes(extension)) return setError("Tiene que ser un PDF o una foto.");
+    setSubiendo(true);
+    setError(null);
+    try {
+      const api = `/api/public/permiso/${token}/documentos/${doc.id}`;
+      const r1 = await fetch(api, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ accion: "url", extension }) });
+      const destino = await r1.json();
+      if (!r1.ok) throw new Error(destino.error ?? "No se pudo preparar la subida");
+      const { error: e } = await createClient().storage.from(BUCKET).uploadToSignedUrl(destino.path, destino.token, archivo, { contentType: archivo.type || undefined });
+      if (e) throw new Error(e.message);
+      const r2 = await fetch(api, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ accion: "listo", path: destino.path, nombre: archivo.name }) });
+      if (!r2.ok) throw new Error((await r2.json().catch(() => null))?.error ?? "No se pudo registrar");
+      onSubido();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo subir");
+    } finally {
+      setSubiendo(false);
+    }
+  }
+
+  return (
+    <article className="flex flex-wrap items-center gap-3 rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
+      {cargado ? <CheckCircle2 className="size-5 shrink-0 text-green-600" /> : <Circle className="size-5 shrink-0 text-gray-300" />}
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium">{NOMBRE_DOCUMENTO[doc.clave] ?? doc.clave}</p>
+        {doc.archivo_nombre && <p className="truncate text-xs text-gray-500">{doc.archivo_nombre}</p>}
+        {doc.observacion && <p className="text-xs text-red-700">{doc.observacion}</p>}
+        {error && <p className="text-xs text-red-700">{error}</p>}
+      </div>
+      <input
+        ref={input}
+        type="file"
+        accept="application/pdf,image/*"
+        className="hidden"
+        onChange={(ev) => {
+          const archivo = ev.target.files?.[0];
+          ev.target.value = "";
+          if (archivo) subir(archivo);
+        }}
+      />
+      <button
+        type="button"
+        onClick={() => input.current?.click()}
+        disabled={subiendo}
+        className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm ${cargado ? "border border-gray-300" : "bg-gray-900 text-white"} disabled:opacity-60`}
+      >
+        {subiendo ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
+        {cargado ? "Reemplazar" : "Subir"}
+      </button>
+    </article>
+  );
+}

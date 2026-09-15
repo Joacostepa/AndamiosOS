@@ -20,6 +20,7 @@ import {
 const COLOR: Record<EstadoDocumento, string> = {
   falta: "bg-muted text-muted-foreground",
   pedido: "bg-yellow-500/15 text-yellow-300",
+  cargado: "bg-blue-500/15 text-blue-300",
   revisando: "bg-blue-500/15 text-blue-300",
   ok: "bg-green-500/15 text-green-300",
   observado: "bg-red-500/15 text-red-300",

@@ -1,0 +1,38 @@
+import { NextRequest, NextResponse } from "next/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { tramiteDeToken } from "@/lib/permisos-via-publica/portal";
+import type { Documento, EstadoDocumento, TipoDueno } from "@/lib/permisos-via-publica/tipos";
+
+// GET /api/public/permiso/:token — lo que ve el cliente en su portal: la obra, el dueño que
+// cargó y sus documentos. Sólo los de origen "cliente": la póliza y lo que hace ABA no son
+// cosa suya. Sin sesión: lo protege el token.
+
+export const dynamic = "force-dynamic";
+
+export type PortalCliente = {
+  direccion: string;
+  cliente_nombre: string | null;
+  titular: { tipo: TipoDueno; esInquilino: boolean; nombre: string; cuit: string } | null;
+  documentos: { id: string; clave: string; estado: EstadoDocumento; archivo_nombre: string | null; observacion: string | null }[];
+};
+
+export async function GET(_req: NextRequest, ctx: { params: Promise<{ token: string }> }) {
+  const { token } = await ctx.params;
+  const db = createAdminClient();
+  const t = await tramiteDeToken(db, token);
+  if (!t) return NextResponse.json({ error: "El link no es válido" }, { status: 404 });
+
+  const { data } = await db.from("pvp_documentos")
+    .select("id, clave, estado, archivo_nombre, observacion")
+    .eq("tramite_id", t.id).eq("origen", "cliente").order("created_at");
+
+  const portal: PortalCliente = {
+    direccion: t.direccion,
+    cliente_nombre: t.cliente_nombre,
+    titular: t.titular_cargado_at
+      ? { tipo: t.tipo_dueno, esInquilino: t.es_inquilino, nombre: t.titular_nombre, cuit: t.titular_cuit }
+      : null,
+    documentos: (data ?? []) as Pick<Documento, "id" | "clave" | "estado" | "archivo_nombre" | "observacion">[],
+  };
+  return NextResponse.json(portal);
+}

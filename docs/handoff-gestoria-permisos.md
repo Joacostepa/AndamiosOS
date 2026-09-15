@@ -52,6 +52,17 @@ Riveros Zanetta sabe que el robot usa su cuenta miBA.
   confirme los 16 vínculos** en la ficha y vincule a mano los 3 sin altura: hasta entonces
   no se escribe nada en Odoo.
 
+## Actualización 2026-09-15 — endoso automático y portal del cliente
+
+- **Hecho y publicado (commit `2479e14`):** endoso de la póliza con portal para Segucom
+  (`/endosos/[token]`), revisión con Claude al subir, mail desde js@, recordatorios.
+- **Hecho, sin publicar todavía:** portal del cliente (`/permiso/[token]`), webhook de ventas
+  y ficha de trámites nuevos. Ver `docs/modulo-gestoria-permisos.md` § Portal del cliente.
+- **Falta para que ande solo:** (1) `PERMISOS_MAIL` y `PERMISOS_MAIL_CLAVE` en Vercel,
+  (2) publicar, (3) correr `scripts/odoo-webhook-ventas-permiso.mjs`.
+- Decisiones: disparador `x_lleva_permiso = sí`; link al confirmar la venta; sólo ventas
+  nuevas; el titular lo carga el cliente; ARCA cuando haya certificado.
+
 ## Próximos pasos acordados (en este orden)
 
 ### 1. ~~Robot corriendo solo en la Mac~~ (hecho)

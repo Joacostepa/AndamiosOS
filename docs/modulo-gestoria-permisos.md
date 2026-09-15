@@ -589,7 +589,20 @@ social + CUIT). Decidido con JS (2026-09-15):
   no carga).
 - Las respuestas de los Google Forms actuales **no se importan** por ahora.
 
-El pedido de endoso espera el pago, igual que la encomienda.
+### Apertura del trámite y link al cliente — decidido 2026-09-15
+
+- **Disparador:** `sale.order.x_lleva_permiso = 'si'` en una venta confirmada. Es el
+  "Lleva permiso de implantación (GCBA)" Sí/No de la solapa **Trabajo a ejecutar** (vista
+  `sale.order.form.aba.tipo.trabajo`), obligatorio al confirmar en pantalla / estructura con
+  pantalla / estructura sin pantalla. **No** la línea del producto 146 (JS): al 15/09, 38
+  ventas desde agosto tienen la línea y sólo 25 el campo en Sí.
+- **El link sale al confirmar la venta**, sin esperar el pago (cambia lo decidido el 14/09).
+  Por lo tanto el pedido de endoso sale apenas el cliente carga el titular, también sin
+  esperar el pago.
+- **Sólo ventas nuevas**: las confirmadas desde que se publique. Las en curso siguen como hoy
+  (Google Forms + Tamara).
+- **Mail al cliente de la venta** y, además, el **link visible y copiable en la ficha**
+  para mandarlo por WhatsApp. Sin mail (o con uno mal escrito) no se manda y se avisa.
 
 ### Construido (2026-09-15)
 
@@ -610,6 +623,23 @@ no frenan:** GCBA asegurado adicional e indemnidad (los pide la ficha, nunca los
 
 El link del productor se ve con el token de `pvp_productores` (sólo service role). Para
 rotarlo: `update pvp_productores set token = replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '') where id = 'segucom'`.
+
+### Portal del cliente — construido 2026-09-15
+
+| Pieza | Dónde |
+| --- | --- |
+| Columnas del cliente en `pvp_tramites` (token, mail, tipo de dueño, inquilino, link enviado) + estado `cargado` | `supabase/migrations/20260915000002_permisos_portal_cliente.sql` (aplicada) |
+| Abrir trámite desde la venta, mandar link, cargar titular, registrar documentos | `src/lib/permisos-via-publica/portal.ts` (`CORTE_VENTAS = 2026-09-15`) |
+| Webhook de Odoo | `POST /api/odoo/webhooks/ventas-permiso?secret=` + automatismo `scripts/odoo-webhook-ventas-permiso.mjs` (sólo `state` y `x_lleva_permiso`; **se corre después de publicar**) |
+| Portal | `/permiso/[token]`: paso 1 dueño del lote (tipo, inquilino, razón social, CUIT con dígito verificador) → pide el endoso; paso 2 legajo según tipo (PDF o foto, directo al bucket) |
+| Interno | bandeja "Trámites nuevos" + ficha `/permisos-via-publica/tramites/[id]` con el link para copiar y "Reenviar por mail" (relee el mail de Odoo) |
+
+Mail sin cargar o mal escrito (`@gmai.com`, `@hotmial.com`…): no se manda, queda
+`link_error` y sale una alerta para mandarlo por WhatsApp o corregirlo en Odoo.
+
+Pendiente del portal: notas prellenadas para descargar (nota de solicitud, acta de
+compromiso, nota del dueño), revisión con IA del legajo, recordatorios al cliente y el
+paso de trámite nuevo a expediente cuando se presenta en TAD.
 
 ### Documentos que sube ABA — todos automáticos
 

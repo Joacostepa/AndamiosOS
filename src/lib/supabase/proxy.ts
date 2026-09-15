@@ -46,8 +46,12 @@ export async function updateSession(request: NextRequest) {
   // /cotizador y /api/public: cotizador hogareño para clientes finales (sin cuenta).
   // /endosos: portal del productor de seguros (Segucom) para subir pólizas. Lo protege el
   //   token de la URL, que valida /api/public/endosos; la página sola no muestra nada.
+  // /permiso/: portal del cliente para su legajo, protegido por el token de la URL. CON la
+  //   barra final a propósito: la comparación es por prefijo y "/permiso" sin barra dejaría
+  //   pública también la pantalla interna /permisos-via-publica.
   const publicPaths = [
     "/endosos",
+    "/permiso/",
     "/login",
     "/auth",
     "/api/odoo/sync",

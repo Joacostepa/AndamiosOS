@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Bandeja, FichaExpediente } from "@/lib/permisos-via-publica/tipos";
+import type { Bandeja, FichaExpediente, FichaTramite } from "@/lib/permisos-via-publica/tipos";
 
 async function pedir<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
@@ -35,6 +35,23 @@ export function useExpediente(id: string) {
     // Mientras una póliza se revisa (~1 min) se consulta seguido, para que el resultado
     // aparezca sin recargar.
     refetchInterval: (q) => (q.state.data?.documentos.some((d) => d.estado === "revisando") ? 5_000 : 60_000),
+  });
+}
+
+export function useTramite(id: string) {
+  return useQuery({
+    queryKey: ["tramite-permiso", id],
+    queryFn: () => pedir<FichaTramite>(`/api/permisos-via-publica/tramites/${id}`),
+    staleTime: 30_000,
+    refetchInterval: (q) => (q.state.data?.documentos.some((d) => d.estado === "revisando") ? 5_000 : 60_000),
+  });
+}
+
+export function useReenviarLink(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => pedir<{ ok: boolean }>(`/api/permisos-via-publica/tramites/${id}/link`, { method: "POST" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tramite-permiso", id] }),
   });
 }
 

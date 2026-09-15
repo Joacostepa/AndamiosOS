@@ -42,6 +42,8 @@ const ETIQUETA_EVENTO: Record<TipoEvento, string> = {
   documento_subido: "Documento subido",
   documento_revisado: "Revisión del documento",
   aviso_productor: "Aviso a Segucom",
+  link_cliente: "Link al cliente",
+  titular_cargado: "El cliente cargó el dueño del lote",
 };
 
 const TRAMITE: Record<string, string> = { no_presentado: "No presentado", presentado: "Presentado", emitido: "Emitido" };

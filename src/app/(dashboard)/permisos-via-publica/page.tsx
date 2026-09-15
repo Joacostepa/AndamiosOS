@@ -106,6 +106,43 @@ export default function PermisosViaPublicaPage() {
         />
       </div>
 
+      {data.tramitesNuevos.length > 0 && (
+        <section className="rounded-md border">
+          <header className="border-b px-3 py-2">
+            <h2 className="text-[14px] font-semibold">
+              Trámites nuevos <span className="text-muted-foreground">· {data.tramitesNuevos.length}</span>
+            </h2>
+            <p className="text-[12px] text-muted-foreground">Ventas confirmadas con permiso, todavía sin presentar en TAD.</p>
+          </header>
+          <ul>
+            {data.tramitesNuevos.map((t) => {
+              const legajo = t.pvp_documentos.filter((d) => d.origen === "cliente");
+              const poliza = t.pvp_documentos.find((d) => d.clave === "poliza_rc");
+              return (
+                <li key={t.id} className="border-b last:border-b-0">
+                  <Link href={`/permisos-via-publica/tramites/${t.id}`} className="block px-3 py-2.5 hover:bg-muted/40">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                      <span className="text-[13px] font-medium">{t.direccion}</span>
+                      <span className="text-[12px] text-muted-foreground">{t.odoo_venta_nombre} · {t.cliente_nombre}</span>
+                    </div>
+                    <div className="mt-1 flex flex-wrap gap-x-3 text-[12px] text-muted-foreground">
+                      {t.link_error ? (
+                        <span className="text-orange-400">Link sin mandar</span>
+                      ) : (
+                        <span>{t.link_enviado_at ? "Link enviado" : "Mandando link…"}</span>
+                      )}
+                      <span>{t.titular_cargado_at ? `Dueño: ${t.titular_nombre}` : "Falta el dueño del lote"}</span>
+                      {legajo.length > 0 && <span>Legajo {legajo.filter((d) => d.estado !== "falta").length}/{legajo.length}</span>}
+                      {poliza && <span>Póliza: {poliza.estado}</span>}
+                    </div>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+
       {data.total === 0 ? (
         <EmptyState
           icon={Landmark}

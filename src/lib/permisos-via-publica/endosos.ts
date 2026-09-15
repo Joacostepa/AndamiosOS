@@ -17,7 +17,7 @@ export const BUCKET = "permisos-via-publica";
 const PRODUCTOR = "segucom";
 const DIA = 86_400_000;
 
-type Actor = "persona" | "productor" | "ia" | "sistema";
+type Actor = "persona" | "productor" | "ia" | "sistema" | "cliente";
 type FilaPedido = {
   id: string;
   tramite_id: string;
@@ -30,13 +30,13 @@ type FilaPedido = {
 const dia = (iso: string | null) => (iso ? iso.slice(0, 10).split("-").reverse().join("/") : "—");
 
 /** Origen de los links: el del pedido si lo hay; en el cron, el de producción. */
-function urlBase(origen?: string | null): string | null {
+export function urlBase(origen?: string | null): string | null {
   if (origen) return origen;
   if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "");
   return process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : null;
 }
 
-async function evento(db: SupabaseClient, tramiteId: string, tipo: string, detalle: string, datos: object, actor: Actor) {
+export async function registrarEvento(db: SupabaseClient, tramiteId: string, tipo: string, detalle: string, datos: object, actor: Actor) {
   const { data: t } = await db.from("pvp_tramites").select("expediente_id").eq("id", tramiteId).maybeSingle();
   const { error } = await db.from("pvp_eventos").insert({
     tramite_id: tramiteId, expediente_id: t?.expediente_id ?? null, tipo, detalle, datos, actor,
@@ -66,7 +66,7 @@ export async function pedirEndoso(db: SupabaseClient, tramiteId: string, userId:
     { onConflict: "tramite_id,clave" },
   );
   if (error) throw new Error(`No se pudo registrar el pedido: ${error.message}`);
-  await evento(db, tramiteId, "documento_pedido", "Se pidió el endoso de la póliza a Segucom.", { por: userId }, "persona");
+  await registrarEvento(db,tramiteId, "documento_pedido", "Se pidió el endoso de la póliza a Segucom.", { por: userId }, "persona");
 }
 
 async function pendientes(db: SupabaseClient): Promise<FilaPedido[]> {
@@ -138,7 +138,7 @@ export async function avisarProductor(db: SupabaseClient, origen?: string | null
   const ahora = new Date().toISOString();
   await db.from("pvp_documentos").update({ aviso_enviado_at: ahora, aviso_error: null }).in("id", ids);
   for (const f of sinAviso) {
-    await evento(db, f.tramite_id, "aviso_productor", "Se le mandó el pedido por mail a Segucom.", {}, "sistema");
+    await registrarEvento(db,f.tramite_id, "aviso_productor", "Se le mandó el pedido por mail a Segucom.", {}, "sistema");
   }
   return sinAviso.length;
 }
@@ -194,7 +194,7 @@ export async function registrarSubida(
     subido_por: actor, subido_at: ahora, observacion: null, revision: null, revisado_at: null, updated_at: ahora,
   }).eq("id", documentoId);
   if (e2) throw new Error(e2.message);
-  await evento(db, doc.tramite_id, "documento_subido", `${archivo.nombre} (versión ${version})`, { path: archivo.path }, actor);
+  await registrarEvento(db,doc.tramite_id, "documento_subido", `${archivo.nombre} (versión ${version})`, { path: archivo.path }, actor);
 }
 
 /** Lee la póliza con IA, decide ok/observado y avisa a ABA cuando quedó lista. Nunca tira. */
@@ -217,7 +217,7 @@ export async function revisarDocumento(db: SupabaseClient, documentoId: string):
     const ahora = new Date().toISOString();
 
     await db.from("pvp_documentos").update({ estado, revision, revisado_at: ahora, observacion, updated_at: ahora }).eq("id", documentoId);
-    await evento(db, doc.tramite_id, "documento_revisado", estado === "ok" ? "La póliza cumple lo que pide el GCBA." : `Observada: ${observacion}`, { estado, version: doc.version }, "ia");
+    await registrarEvento(db,doc.tramite_id, "documento_revisado", estado === "ok" ? "La póliza cumple lo que pide el GCBA." : `Observada: ${observacion}`, { estado, version: doc.version }, "ia");
 
     if (estado === "ok") {
       await crearAlertas(db, [{
@@ -234,7 +234,7 @@ export async function revisarDocumento(db: SupabaseClient, documentoId: string):
       observacion: `No se pudo revisar sola (${msg}). La tiene que mirar una persona.`,
       updated_at: new Date().toISOString(),
     }).eq("id", documentoId);
-    await evento(db, doc.tramite_id, "documento_revisado", `No se pudo revisar: ${msg}`, { error: msg }, "ia");
+    await registrarEvento(db,doc.tramite_id, "documento_revisado", `No se pudo revisar: ${msg}`, { error: msg }, "ia");
     await crearAlertas(db, [{
       tipo: "permiso_endoso",
       clave: `permiso_endoso:${documentoId}:error:v${doc.version}`,

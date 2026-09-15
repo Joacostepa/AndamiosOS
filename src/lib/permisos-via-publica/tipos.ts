@@ -60,7 +60,62 @@ export type TipoEvento =
   | "alta" | "cambio_estado" | "tarea_subsanacion" | "tarea_resuelta"
   | "motivo" | "permiso_descargado" | "vinculado_odoo" | "error_robot" | "caratula_leida"
   | "vinculo_confirmado" | "vinculo_descartado" | "odoo_escrito" | "odoo_conflicto"
-  | "tramite_abierto" | "documento_pedido" | "documento_subido" | "documento_revisado" | "aviso_productor";
+  | "tramite_abierto" | "documento_pedido" | "documento_subido" | "documento_revisado" | "aviso_productor"
+  | "link_cliente" | "titular_cargado";
+
+export type TipoDueno = "consorcio" | "empresa" | "persona";
+
+export const ETIQUETA_DUENO: Record<TipoDueno, string> = {
+  consorcio: "Un consorcio",
+  empresa: "Una empresa",
+  persona: "Una persona",
+};
+
+type ItemLegajo = { clave: string; nombre: string };
+
+/**
+ * Lo que el cliente tiene que subir según quién es el dueño del lote. Sale de los
+ * instructivos de Tamara (docs/modulo-gestoria-permisos.md § 1).
+ */
+export const LEGAJO: Record<TipoDueno, ItemLegajo[]> = {
+  consorcio: [
+    { clave: "aviso_obra", nombre: "Aviso o permiso de obra" },
+    { clave: "acta_asamblea", nombre: "Acta de asamblea con la designación del administrador (legalizada y vigente)" },
+    { clave: "reglamento", nombre: "Reglamento de copropiedad" },
+    { clave: "dni_administrador", nombre: "DNI del administrador (frente y dorso)" },
+    { clave: "constancia_cuit", nombre: "Constancia de CUIT del consorcio" },
+    { clave: "nota_solicitud", nombre: "Nota de solicitud firmada" },
+    { clave: "acta_compromiso", nombre: "Acta de compromiso firmada" },
+  ],
+  empresa: [
+    { clave: "aviso_obra", nombre: "Aviso o permiso de obra" },
+    { clave: "poder", nombre: "Poder certificado por escribano" },
+    { clave: "estatuto", nombre: "Estatuto certificado" },
+    { clave: "acta_directorio", nombre: "Acta de directorio con la designación de autoridades" },
+    { clave: "dni_apoderado", nombre: "DNI del apoderado (frente y dorso)" },
+    { clave: "constancia_cuit", nombre: "Constancia de CUIT" },
+    { clave: "nota_solicitud", nombre: "Nota de solicitud firmada" },
+    { clave: "acta_compromiso", nombre: "Acta de compromiso firmada" },
+  ],
+  persona: [
+    { clave: "aviso_obra", nombre: "Aviso de obra" },
+    { clave: "dni", nombre: "DNI (frente y dorso)" },
+    { clave: "constancia_cuit", nombre: "Constancia de CUIT" },
+    { clave: "nota_autorizacion", nombre: "Nota de autorización firmada" },
+    { clave: "acta_compromiso", nombre: "Acta de compromiso firmada" },
+    { clave: "titulo_propiedad", nombre: "Título de propiedad" },
+  ],
+};
+
+/** Si quien contrata alquila: lo del dueño más esto. */
+export const LEGAJO_INQUILINO: ItemLegajo[] = [
+  { clave: "contrato_alquiler", nombre: "Contrato de alquiler" },
+  { clave: "nota_dueno", nombre: "Nota del dueño autorizando el andamio" },
+];
+
+export function legajoDe(tipo: TipoDueno, esInquilino: boolean): ItemLegajo[] {
+  return [...LEGAJO[tipo], ...(esInquilino ? LEGAJO_INQUILINO : [])];
+}
 
 /**
  * El trámite: la unidad de trabajo para presentar (o subsanar) un permiso, con o sin
@@ -78,9 +133,18 @@ export type Tramite = {
   permiso_hasta: string | null;
   estado: string;
   created_at: string;
+  /** Del portal del cliente (trámites abiertos desde una venta). */
+  cliente_nombre: string | null;
+  cliente_email: string | null;
+  token_cliente: string | null;
+  tipo_dueno: TipoDueno | null;
+  es_inquilino: boolean;
+  titular_cargado_at: string | null;
+  link_enviado_at: string | null;
+  link_error: string | null;
 };
 
-export type EstadoDocumento = "falta" | "pedido" | "revisando" | "ok" | "observado";
+export type EstadoDocumento = "falta" | "pedido" | "cargado" | "revisando" | "ok" | "observado";
 
 /** `bloquea: false` = se muestra pero no frena (lo pide la ficha y nunca lo observaron). */
 export type ChequeoPoliza = { clave: string; ok: boolean; bloquea: boolean; detalle: string };
@@ -122,6 +186,7 @@ export type Documento = {
 };
 
 export const NOMBRE_DOCUMENTO: Record<string, string> = {
+  ...Object.fromEntries([...Object.values(LEGAJO).flat(), ...LEGAJO_INQUILINO].map((d) => [d.clave, d.nombre])),
   poliza_rc: "Póliza de RC (endoso)",
   encomienda_cpau: "Encomienda del CPAU",
   croquis: "Croquis",
@@ -131,6 +196,7 @@ export const NOMBRE_DOCUMENTO: Record<string, string> = {
 export const ETIQUETA_ESTADO_DOCUMENTO: Record<EstadoDocumento, string> = {
   falta: "Falta",
   pedido: "Pedido",
+  cargado: "Cargado",
   revisando: "Revisando",
   ok: "Lista",
   observado: "Observada",
@@ -193,7 +259,7 @@ export type Evento = {
   tipo: TipoEvento;
   detalle: string | null;
   datos: Record<string, unknown>;
-  actor: "robot" | "gcba" | "persona" | "productor" | "ia" | "sistema";
+  actor: "robot" | "gcba" | "persona" | "productor" | "ia" | "sistema" | "cliente";
   created_at: string;
 };
 
@@ -210,7 +276,22 @@ export type ClaveGrupo = "accion" | "gobierno" | "emitidos";
 
 export type GrupoExpedientes = { clave: ClaveGrupo; titulo: string; descripcion: string; filas: Expediente[] };
 
+/** Un trámite abierto desde una venta que todavía no se presentó en TAD. */
+export type TramiteNuevo = Pick<
+  Tramite,
+  "id" | "direccion" | "odoo_venta_nombre" | "cliente_nombre" | "titular_nombre" | "titular_cargado_at" | "link_enviado_at" | "link_error" | "created_at"
+> & { pvp_documentos: Pick<Documento, "estado" | "origen" | "clave">[] };
+
+export type FichaTramite = {
+  tramite: Tramite;
+  documentos: (Documento & { url: string | null })[];
+  eventos: Evento[];
+  /** El link del portal, para copiarlo y mandarlo por WhatsApp. */
+  linkCliente: string | null;
+};
+
 export type Bandeja = {
+  tramitesNuevos: TramiteNuevo[];
   grupos: GrupoExpedientes[];
   total: number;
   robot: EstadoRobot | null;

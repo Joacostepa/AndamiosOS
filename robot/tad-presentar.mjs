@@ -629,6 +629,11 @@ export async function presentarEnTad({ db, tarea, page, log }) {
     await foto("presentado");
     return { etapa: "presentado", expediente: normal(numero), borrador: estado.borrador, obra, capturas };
   } catch (e) {
+    // Con el servicio de documentos de TAD caído el robot se frena por lo que venga después
+    // (formulario que no carga, adjunto sin IF, borrador que no abre) y el motivo confunde: el
+    // 15/09 se borró un borrador sano creyéndolo roto. No se frena apenas aparece el cartel
+    // (a las 14:13 estaba y la nota se adjuntó igual): sólo se anota para explicar el error.
+    estado.tad_caido = /No se pudo establecer comunicaci[oó]n con el servicio/i.test(normal(await page.locator("body").innerText().catch(() => "")));
     await foto("error");
     // Una prueba no deja borradores aunque falle (nunca adjuntó nada). Una real sí: el borrador
     // puede tener adjuntos (IF) y es la base para seguir a mano.
@@ -685,7 +690,8 @@ export async function atenderPresentacion({ db, tarea, page, log, avisar, sincro
     log(`TAD: presentado ${fila.expediente}`);
     await sincronizar([exp]).catch((e) => log("!! Odoo después de presentar", e.message));
   } catch (e) {
-    const msg = (e?.message ?? String(e)).slice(0, 500);
+    const caido = "TAD tiene caído el servicio de documentos («No se pudo establecer comunicación con el servicio»): es una falla de TAD, no del borrador. No borrarlo; probar más tarde con «Seguir desde el borrador». ";
+    const msg = `${e?.tad_caido && !e?.confirmado ? caido : ""}${e?.message ?? String(e)}`.slice(0, 700);
     const cartel = e?.confirmado
       ? "Se tocó «Confirmar trámite»: revisar en TAD si salió el expediente antes de volver a pedirla. "
       : e?.adjuntados
@@ -694,7 +700,7 @@ export async function atenderPresentacion({ db, tarea, page, log, avisar, sincro
     log("!! TAD presentar", msg);
     await db.from("pvp_tareas").update({
       estado: "error", error: msg, terminada_at: ahora(),
-      resultado: { capturas: e?.capturas ?? [], borrador: e?.borrador ?? null, borrador_borrado: e?.borrador_borrado ?? null, adjuntados: e?.adjuntados ?? 0, confirmado: !!e?.confirmado },
+      resultado: { capturas: e?.capturas ?? [], borrador: e?.borrador ?? null, borrador_borrado: e?.borrador_borrado ?? null, adjuntados: e?.adjuntados ?? 0, confirmado: !!e?.confirmado, tad_caido: !!e?.tad_caido },
     }).eq("id", tarea.id);
     if (!p.es_prueba) await db.from("pvp_tramites").update({ estado: "trabado", updated_at: ahora() }).eq("id", tarea.tramite_id);
     await evento(`La presentación en TAD se frenó: ${cartel}${msg}`, { tarea_id: tarea.id });

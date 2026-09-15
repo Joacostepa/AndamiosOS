@@ -1025,16 +1025,22 @@ tomó como falla del adjunto. Quedó el borrador 12984454 con ese IF. Cambios:
   volver a presentar. En la ficha el botón dice "Seguir desde el borrador".
 - **Póliza encriptada:** TAD la rechazó ("PdfReader not opened with owner password") y el
   robot la desprotege con `qpdf --decrypt` antes de adjuntar.
-- **Borrador roto → Empezar de cero:** después del adjunto fallido de la póliza, el borrador
-  12984454 abría con el formulario bien guardado pero **sin la lista de casilleros**, también
-  a mano en el navegador. El robot esperó 3 × 3 minutos y frenó. No es lentitud: TAD ya no puede
-  mostrar esos documentos. En la ficha, con un borrador pendiente y la presentación en error,
-  aparece **"Empezar de cero"**: una persona borra el borrador en TAD (Mis trámites →
-  Borradores) y toca el botón. La app anota `borrador_descartado` en la tarea que lo dejó, así
-  `borradorPendiente` deja de devolverlo y no vuelve a uno anterior, y registra el evento.
-  Después "Volver a presentar" arma un borrador nuevo. Costo: los IF del borrador viejo
-  (la nota, IF-2026-41611319) quedan sueltos en GEDO y se generan de nuevo. El robot NO borra
-  borradores reales: sólo el de la prueba.
+- **TAD con el servicio de documentos caído (15/09 desde 14:13):** el borrador 12984454 dejó de
+  cargar los casilleros y lo tomamos por roto. Lo borramos y el borrador nuevo (12986313,
+  15:33) mostró lo mismo: "Error al obtener los documentos vinculados. No se pudo establecer
+  comunicación con el servicio", y el formulario ZK no cargó en 2 × 60 s. **El borrador no
+  estaba roto: era TAD.** Con ese cartel, no borrar nada y esperar a que TAD vuelva.
+  Costo del error: la nota (IF-2026-41611319) quedó suelta en GEDO y se genera otra.
+  Desde entonces, cuando la presentación se frena, el robot mira si el cartel está en pantalla y
+  guarda `resultado.tad_caido`. El error empieza con "TAD tiene caído el servicio de documentos…"
+  y en la ficha sale el aviso de revisar el borrador en TAD en lugar de "Empezar de cero". No se
+  frena apenas ve el cartel, porque a veces está y el adjunto sale igual.
+- **Empezar de cero** (en la ficha, con borrador pendiente y la presentación en error): sólo
+  para un borrador que realmente no sirve y **con TAD funcionando**. Una persona lo borra en
+  TAD (Mis trámites → Borradores) y toca el botón. La app anota `borrador_descartado` en la
+  tarea que lo dejó (`borradorPendiente` deja de devolverlo y no vuelve a uno anterior) y
+  registra el evento. "Volver a presentar" arma uno nuevo y regenera todos los IF. El robot NO
+  borra borradores reales: sólo el de la prueba.
 
 ### Historial de finalizados y robustez del robot (15/09)
 

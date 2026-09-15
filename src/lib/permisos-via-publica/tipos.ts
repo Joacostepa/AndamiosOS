@@ -387,6 +387,8 @@ export type PresentacionFicha = {
       borrador_borrado?: boolean;
       adjuntados?: number;
       confirmado?: boolean;
+      /** Al frenarse, TAD mostraba "No se pudo establecer comunicación con el servicio". */
+      tad_caido?: boolean;
       obra?: { calle: string; barrio: string; comuna: string; smp: string };
     } | null;
     error: string | null;

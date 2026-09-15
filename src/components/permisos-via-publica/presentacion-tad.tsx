@@ -123,8 +123,14 @@ export function PresentacionTad({
           {esPrueba ? "Probar en TAD (sin presentar)" : borradorPendiente ? "Seguir desde el borrador" : tarea?.estado === "error" ? "Volver a presentar" : "Presentar ahora"}
         </Button>
       )}
-      {/* Para un borrador que TAD ya no abre bien: se borra a mano en TAD y la app deja de seguirlo. */}
-      {!esPrueba && !trabajando && !expedienteId && !confirmadoAntes && borradorPendiente && tarea?.estado === "error" && (
+      {/* Para un borrador que TAD ya no abre bien: se borra a mano en TAD y la app deja de seguirlo.
+          Con TAD caído no se ofrece: el borrador está sano y borrarlo regenera los IF (15/09). */}
+      {!esPrueba && tarea?.estado === "error" && r?.tad_caido && !r?.confirmado && (
+        <p className="text-[12px] text-orange-400">
+          TAD estaba con falla en su servicio de documentos. Antes de volver a intentar, abrí el borrador {borradorPendiente ?? r.borrador} en TAD: si arriba ya no aparece el cartel rojo «No se pudo establecer comunicación con el servicio», cerrá TAD y tocá «Seguir desde el borrador».
+        </p>
+      )}
+      {!esPrueba && !trabajando && !expedienteId && !confirmadoAntes && borradorPendiente && tarea?.estado === "error" && !r?.tad_caido && (
         <Button
           size="sm"
           variant="ghost"

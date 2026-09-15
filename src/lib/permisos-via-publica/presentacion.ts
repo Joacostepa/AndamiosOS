@@ -175,12 +175,54 @@ export async function armarPayloadPresentacion(db: SupabaseClient, tramiteId: st
  * trámite". Lo usan el pedido de presentación y la ficha.
  */
 export async function borradorPendiente(db: SupabaseClient, tramiteId: string): Promise<{ borrador: number | null; confirmadoAntes: boolean }> {
-  const { data } = await db.from("pvp_tareas").select("estado, payload, resultado")
-    .eq("tipo", "tad_presentar").eq("tramite_id", tramiteId).order("created_at", { ascending: false }).limit(20);
-  const tareas = (data ?? []) as { estado: string; payload: { es_prueba?: boolean; continuar_borrador?: number | null } | null; resultado: { borrador?: number | null; confirmado?: boolean } | null }[];
-  const reales = tareas.filter((t) => !t.payload?.es_prueba);
-  const borrador = reales.map((t) => t.resultado?.borrador ?? t.payload?.continuar_borrador ?? null).find((b) => !!b) ?? null;
+  const reales = await presentacionesReales(db, tramiteId);
+  const descartados = new Set(reales.filter((t) => t.resultado?.borrador_descartado).map((t) => t.resultado?.borrador_descartado));
+  const ultimo = reales.map((t) => t.resultado?.borrador ?? t.payload?.continuar_borrador ?? null).find((b) => !!b) ?? null;
+  // Si el último borrador conocido se descartó, no se vuelve a uno anterior: se empieza de cero.
+  const borrador = ultimo && !descartados.has(ultimo) ? ultimo : null;
   return { borrador, confirmadoAntes: reales.some((t) => t.estado === "error" && !!t.resultado?.confirmado) };
+}
+
+type TareaPresentacion = {
+  id: number;
+  estado: string;
+  payload: { es_prueba?: boolean; continuar_borrador?: number | null } | null;
+  resultado: { borrador?: number | null; confirmado?: boolean; borrador_descartado?: number } | null;
+};
+
+async function presentacionesReales(db: SupabaseClient, tramiteId: string): Promise<TareaPresentacion[]> {
+  const { data, error } = await db.from("pvp_tareas").select("id, estado, payload, resultado")
+    .eq("tipo", "tad_presentar").eq("tramite_id", tramiteId).order("created_at", { ascending: false }).limit(20);
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as TareaPresentacion[]).filter((t) => !t.payload?.es_prueba);
+}
+
+/**
+ * Deja de seguir el borrador de TAD del trámite para que la próxima presentación arme uno nuevo.
+ * Es para un borrador que TAD ya no puede abrir (S02466, 15/09: después de un adjunto fallido
+ * dejó de mostrar los casilleros). El borrador lo borra una persona en TAD; acá sólo se anota,
+ * en la tarea que lo dejó, que no hay que volver a él. Los IF que tenía quedan sueltos en GEDO y
+ * la presentación nueva los vuelve a generar.
+ */
+export async function descartarBorrador(db: SupabaseClient, tramiteId: string, userId: string | null): Promise<number> {
+  const reales = await presentacionesReales(db, tramiteId);
+  if (reales.some((t) => ["pendiente", "tomada"].includes(t.estado))) throw new FaltanDatos("El robot está presentando este trámite: esperá a que termine.");
+  const { borrador, confirmadoAntes } = await borradorPendiente(db, tramiteId);
+  if (confirmadoAntes) throw new FaltanDatos("Una presentación anterior llegó a tocar «Confirmar trámite»: revisá en TAD si salió el expediente.");
+  if (!borrador) throw new FaltanDatos("El trámite no tiene un borrador de TAD pendiente.");
+
+  const tarea = reales.find((t) => (t.resultado?.borrador ?? t.payload?.continuar_borrador) === borrador)!;
+  const { error } = await db.from("pvp_tareas")
+    .update({ resultado: { ...(tarea.resultado ?? {}), borrador_descartado: borrador } })
+    .eq("id", tarea.id);
+  if (error) throw new Error(error.message);
+
+  await registrarEvento(
+    db, tramiteId, "presentacion_tad",
+    `Se descartó el borrador ${borrador} de TAD (se borra a mano en TAD): la próxima presentación arma un borrador nuevo y vuelve a adjuntar todo.`,
+    { tramite_id: tramiteId, borrador }, userId ? "persona" : "sistema",
+  );
+  return borrador;
 }
 
 /** Deja la presentación en la cola del robot. Una abierta por trámite. */

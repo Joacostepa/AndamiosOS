@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { CheckCircle2, CircleAlert, ExternalLink, Landmark, Loader2, Send, TriangleAlert } from "lucide-react";
+import { CheckCircle2, CircleAlert, ExternalLink, Landmark, Loader2, RotateCcw, Send, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { usePresentacion } from "@/hooks/use-permisos-via-publica";
+import { useDescartarBorrador, usePresentacion } from "@/hooks/use-permisos-via-publica";
 import type { PresentacionFicha } from "@/lib/permisos-via-publica/tipos";
 
 // Presentación en TAD en la ficha del trámite. Es automática: se pide sola cuando está todo y
@@ -22,6 +22,7 @@ export function PresentacionTad({
   expedienteId: string | null;
 }) {
   const pedir = usePresentacion(tramiteId);
+  const descartar = useDescartarBorrador(tramiteId);
   const trabajando = tarea && ["pendiente", "tomada"].includes(tarea.estado);
   const r = tarea?.resultado;
 
@@ -120,6 +121,27 @@ export function PresentacionTad({
         >
           {pedir.isPending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
           {esPrueba ? "Probar en TAD (sin presentar)" : borradorPendiente ? "Seguir desde el borrador" : tarea?.estado === "error" ? "Volver a presentar" : "Presentar ahora"}
+        </Button>
+      )}
+      {/* Para un borrador que TAD ya no abre bien: se borra a mano en TAD y la app deja de seguirlo. */}
+      {!esPrueba && !trabajando && !expedienteId && !confirmadoAntes && borradorPendiente && tarea?.estado === "error" && (
+        <Button
+          size="sm"
+          variant="ghost"
+          className="ml-2 text-muted-foreground"
+          disabled={descartar.isPending}
+          onClick={() => {
+            if (!window.confirm(
+              `¿Ya borraste el borrador ${borradorPendiente} en TAD (Mis trámites → Borradores)?\n\nLa app deja de seguirlo y la próxima presentación arma un borrador nuevo desde cero: vuelve a llenar el formulario y a adjuntar todo, así que los IF de ese borrador se generan de nuevo.`,
+            )) return;
+            descartar.mutate(undefined, {
+              onSuccess: (x) => toast.success(`Borrador ${x.borrador} descartado: ahora «Volver a presentar» arma uno nuevo`),
+              onError: (e) => toast.error(e instanceof Error ? e.message : "No se pudo descartar"),
+            });
+          }}
+        >
+          {descartar.isPending ? <Loader2 className="size-4 animate-spin" /> : <RotateCcw className="size-4" />}
+          Empezar de cero
         </Button>
       )}
 

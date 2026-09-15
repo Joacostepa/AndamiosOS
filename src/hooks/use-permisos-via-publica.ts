@@ -137,6 +137,20 @@ export function usePresentacion(id: string) {
   });
 }
 
+/** Deja de seguir el borrador de TAD (ya borrado a mano): la próxima presentación arma uno nuevo. */
+export function useDescartarBorrador(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      pedir<{ borrador: number }>(`/api/permisos-via-publica/tramites/${id}/presentacion`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accion: "descartar_borrador" }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tramite-permiso", id] }),
+  });
+}
+
 export type AccionEncomienda = "pedir" | "finalizar" | "descartar";
 
 /** Encomienda del CPAU: pedirla al robot, aprobar el Finalizar o descartarla. */

@@ -1023,6 +1023,18 @@ tomó como falla del adjunto. Quedó el borrador 12984454 con ese IF. Cambios:
   desde Borradores (verifica el id), no rehace el formulario si ya está guardado ni los
   casilleros con IF, adjunta el resto y confirma. Si ya se tocó Confirmar, la app no deja
   volver a presentar. En la ficha el botón dice "Seguir desde el borrador".
+- **Póliza encriptada:** TAD la rechazó ("PdfReader not opened with owner password") y el
+  robot la desprotege con `qpdf --decrypt` antes de adjuntar.
+- **Borrador roto → Empezar de cero:** después del adjunto fallido de la póliza, el borrador
+  12984454 abría con el formulario bien guardado pero **sin la lista de casilleros**, también
+  a mano en el navegador. El robot esperó 3 × 3 minutos y frenó. No es lentitud: TAD ya no puede
+  mostrar esos documentos. En la ficha, con un borrador pendiente y la presentación en error,
+  aparece **"Empezar de cero"**: una persona borra el borrador en TAD (Mis trámites →
+  Borradores) y toca el botón. La app anota `borrador_descartado` en la tarea que lo dejó, así
+  `borradorPendiente` deja de devolverlo y no vuelve a uno anterior, y registra el evento.
+  Después "Volver a presentar" arma un borrador nuevo. Costo: los IF del borrador viejo
+  (la nota, IF-2026-41611319) quedan sueltos en GEDO y se generan de nuevo. El robot NO borra
+  borradores reales: sólo el de la prueba.
 
 ### Historial de finalizados y robustez del robot (15/09)
 

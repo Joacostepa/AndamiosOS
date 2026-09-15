@@ -115,6 +115,9 @@ con curl antes de buscar en el código.**
   sospecha de los borradores.
 - **Bajar lo que el robot escribe en Supabase en cada vuelta.**
 - **Rotar `PERMISOS_MAIL_CLAVE`:** se escribió en el chat el 15/09.
+- **Regenerar `SLACK_WEBHOOK_PERMISOS`** (canal `#permisos-de-andamio-`): la URL se escribió en
+  el chat el 15/09. Después de regenerarlo, cambiarlo en `.env.local` (lo usa el robot) y en
+  Vercel, y reinstalar el robot.
 
 **Commits de la tarde:**
 

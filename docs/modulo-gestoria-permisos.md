@@ -458,7 +458,7 @@ el importe exacto** al CBU del CPAU — alternativa a tener tarjeta en el robot.
 | Pantalla | `/permisos-via-publica` y `/permisos-via-publica/[id]` |
 | APIs | `GET /api/permisos-via-publica`, `GET …/[id]`, `POST …/revisar` |
 | Permisos | módulo `permisos-via-publica` en `src/lib/auth/acceso.ts` (perfil Oficina lo trae) |
-| Avisos | tipos `permiso_novedad` y `permiso_robot` → campanita + `#syh-documentacion-de-obra` |
+| Avisos | tipos `permiso_novedad`, `permiso_robot` y `permiso_endoso` → campanita + `#permisos-de-andamio-` (`SLACK_WEBHOOK_PERMISOS`, desde el 15/09; sin esa variable, `#syh-documentacion-de-obra`) |
 
 **Frecuencia:** cada 30 min L–V 8–20 h, cada 2 h fuera de horario, y a pedido ("Revisar
 ahora", el robot mira la cola cada 20 s). La sesión de TAD queda abierta entre vueltas.

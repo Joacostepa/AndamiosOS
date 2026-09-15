@@ -20,11 +20,12 @@
 import type { NuevaAlerta, TipoAlerta } from "./servicio";
 
 /** Los canales reales del workspace. Un Incoming Webhook está atado a UN canal. */
-type Canal = "syh" | "logistica";
+type Canal = "syh" | "logistica" | "permisos";
 
 const NOMBRE_CANAL: Record<Canal, string> = {
   syh: "#syh-documentacion-de-obra",
   logistica: "#logistica-operativa",
+  permisos: "#permisos-de-andamio-",
 };
 
 /**
@@ -48,10 +49,10 @@ const DESTINOS: Record<TipoAlerta, Canal[]> = {
   // Es de Habilitaciones para Habilitaciones: la obra que había pospuesto necesita que
   // alguien le mande los papeles. A logística no le cambia nada.
   hab_pospuesta: ["syh"],
-  // Los permisos de vía pública son parte de la documentación de obra.
-  permiso_novedad: ["syh"],
-  permiso_robot: ["syh"],
-  permiso_endoso: ["syh"],
+  // Los permisos de vía pública tienen canal propio desde el 15/09 (JS): antes iban a #syh.
+  permiso_novedad: ["permisos"],
+  permiso_robot: ["permisos"],
+  permiso_endoso: ["permisos"],
 };
 
 /**
@@ -156,6 +157,8 @@ function tituloLimpio(a: NuevaAlerta): string {
 const MAX_EN_LISTA = 8;
 
 function webhookDe(canal: Canal): string | undefined {
+  // Sin el webhook propio de permisos todavía configurado, siguen yendo a #syh como antes.
+  if (canal === "permisos") return process.env.SLACK_WEBHOOK_PERMISOS || process.env.SLACK_WEBHOOK_SYH;
   return canal === "syh" ? process.env.SLACK_WEBHOOK_SYH : process.env.SLACK_WEBHOOK_LOGISTICA;
 }
 

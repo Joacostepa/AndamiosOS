@@ -128,7 +128,8 @@ async function avisar(alertas) {
   const { data, error } = await db.from("alertas").upsert(filas, { onConflict: "clave", ignoreDuplicates: true }).select("clave");
   if (error) return log("!! no se pudieron crear avisos", error.message);
   const nuevas = new Set((data ?? []).map((f) => f.clave));
-  const webhook = process.env.SLACK_WEBHOOK_SYH;
+  // Canal propio de permisos de andamio (15/09); sin ese webhook configurado, #syh como antes.
+  const webhook = process.env.SLACK_WEBHOOK_PERMISOS || process.env.SLACK_WEBHOOK_SYH;
   if (!webhook) return;
   for (const a of alertas.filter((x) => nuevas.has(x.clave))) {
     const url = urlApp(a.enlace);

@@ -56,10 +56,17 @@ Riveros Zanetta sabe que el robot usa su cuenta miBA.
 
 - **Hecho y publicado (commit `2479e14`):** endoso de la póliza con portal para Segucom
   (`/endosos/[token]`), revisión con Claude al subir, mail desde js@, recordatorios.
-- **Hecho, sin publicar todavía:** portal del cliente (`/permiso/[token]`), webhook de ventas
-  y ficha de trámites nuevos. Ver `docs/modulo-gestoria-permisos.md` § Portal del cliente.
-- **Falta para que ande solo:** (1) `PERMISOS_MAIL` y `PERMISOS_MAIL_CLAVE` en Vercel,
-  (2) publicar, (3) correr `scripts/odoo-webhook-ventas-permiso.mjs`.
+- **Hecho y publicado después** (hasta `1fb18eb`): portal del cliente (`/permiso/[token]`)
+  con revisión con IA de cada documento y "Completar y firmar" (acta de compromiso + nota);
+  botón "Iniciar trámite" en la bandeja (**inicio manual**: el automatismo de Odoo id 52 está
+  desactivado); modo prueba ("Probar el circuito"); medidas del permiso en la venta de Odoo;
+  informe técnico y croquis generados solos con la plancheta del catastro. Ver
+  `docs/modulo-gestoria-permisos.md`.
+- `PERMISOS_MAIL` y `PERMISOS_MAIL_CLAVE` ya están en Vercel (clave de aplicación de js@;
+  quedó escrita en el chat del 15/09: conviene rotarla).
+- **Siguiente:** encomienda del CPAU. Mapear el resto del asistente con
+  `robot/mapear-cpau-wizard.mjs` (con OK de JS: entra con la cuenta de Hougassian) y
+  definir pago (tarjeta o transferencia).
 - Decisiones: disparador `x_lleva_permiso = sí`; link al confirmar la venta; sólo ventas
   nuevas; el titular lo carga el cliente; ARCA cuando haya certificado.
 

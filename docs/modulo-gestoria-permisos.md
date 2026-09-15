@@ -694,6 +694,48 @@ cuando se presenta en TAD.
 - Nota del dueño para inquilinos: no hay plantilla en el Drive (sólo una de YPF Gas de 2021):
   hay que redactarla.
 
+### Informe técnico y croquis — construido 2026-09-15
+
+| Pieza | Dónde |
+| --- | --- |
+| Catastro (USIG + EPOK, con reintentos) | `src/lib/permisos-via-publica/catastro.ts` |
+| Informe técnico (pdf-lib) | `informe-tecnico.ts` — texto del aceptado en EX-2026-38891134, 24–27 páginas según tipo |
+| Croquis (pdf-lib) | `croquis.ts` — portada, plancheta dibujada, sector a ocupar (+ vista frontal en pantalla) |
+| Orquestación | `generacion.ts` → `POST /api/permisos-via-publica/tramites/[id]/generar` y botón en la ficha |
+| Imágenes y firma | bucket privado `permisos-via-publica/plantillas/` (croquis/, informe/, comun/firma-hougassian.png), sacadas de los PDF aceptados y del Canva |
+| Medidas | Odoo `x_permiso_base`, `x_permiso_altura`, `x_permiso_metros_lineales`, `x_permiso_m2` |
+
+Probado con Trelles 1086 (pantalla 8 ml → 4 × 2 módulos, manzana 057-035 con 33 lotes) y
+Laprida 1845 (estructura + pantalla, manzana 015-142 con 25 lotes). Si el catastro falla,
+el croquis sale con el aviso en la lámina y el documento queda observado.
+
+Pendiente: la lámina de bastidor del Canva (frente con Largo/Ancho/Alto) no se usa porque
+el sistema es siempre multidireccional; la encomienda del CPAU (robot RETP).
+
+### Encomienda del CPAU — lo que dice un certificado real (EX-2026-38891134, Trelles)
+
+Bajado de TAD el 15/09. **Corrige lo anotado en § 6** (decía "destino Otros"):
+
+| Campo del RETP | Valor en Trelles | De dónde sale al automatizar |
+| --- | --- | --- |
+| Tipo de Retp / Encomienda | HAB – Habilitación / HE – Habilitación Estructura Transitoria | fijo |
+| Matriculado | Arq. Eduardo Hougassian, mat. 12658 (usuario `hougassian`) | fijo |
+| Comitente | Joaquin Stepansky (DNI) · Emprendimientos y Estructuras S.A. · Maturin 2570, CABA · Reg.Insp.Gral.Just. 08/10/2008 nº 1809609 · tel 08103621555 · tam@ | fijo |
+| Propietario del inmueble | CONS PROP TRELLES 1084 86 88 GAONA 2402 · CUIT 30641067950 | titular del lote que carga el cliente |
+| Frentes | TRELLES MANUEL RICARDO (id CPAU 1478) 1084 a 1088 | puertas del lote en EPOK sobre la calle de la obra; la calle se busca en el catálogo del CPAU (sus ids no son los de USIG) |
+| Clasificación | Tipo SRP – Serv. Profesionales · Destino **ADM – Administrativo** · Clase HA – Habilitación · Zona **G1 – Corredor alto** | fijo |
+| Superficie / actividad | 32 m² · "Habilitación Estructura Transitoria" M2 = 32 | `x_permiso_m2` (8 ml × 4 = 32 ✓) |
+| Descripción | "Pantalla de protección peatonal de 8 mts lineales." | según tipo y medidas |
+| Pago | $50.000 · concepto "EVHA Reg.Habilit. Hasta 120" | **tramo hasta 120 m²**: una estructura más grande cae en otro tramo |
+
+El certificado presentado son 5 páginas: el registro (×3), el certificado del CPAU para
+habilitación y el comprobante de pago. El asistente está mapeado hasta "Datos Comitente"
+(capturas `robot/capturas/cpau-0*`); el resto se mapea con `robot/mapear-cpau-wizard.mjs`
+(sin finalizar, verifica que el Histórico no cambie).
+
+Pendiente de JS: pago con tarjeta o transferencia; si la encomienda espera el cobro al
+cliente (decidido el 14/09, antes de que el link saliera al confirmar la venta).
+
 ### Documentos que sube ABA — todos automáticos
 
 Además de la póliza, los documentos propios del legajo **no los hace nadie a mano**: la

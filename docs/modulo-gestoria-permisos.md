@@ -1098,6 +1098,34 @@ tomó como falla del adjunto. Quedó el borrador 12984454 con ese IF. Cambios:
   tarea que lo dejó (`borradorPendiente` deja de devolverlo y no vuelve a uno anterior) y
   registra el evento. "Volver a presentar" arma uno nuevo y regenera todos los IF. El robot NO
   borra borradores reales: sólo el de la prueba.
+- **PDF con firma digital (15/09, S02466, tareas 37 y 38).** TAD rechazó el acta de asamblea
+  (certificación digital de reproducciones del Colegio de Escribanos): *"No pudimos adjuntar tu
+  documento. El archivo se encuentra previamente firmado o con espacios de firma"*. "Adjuntar"
+  queda desactivado, y el robot esperaba 3 min y lo tomaba por TAD lento. El aviso de obra, firmado
+  en GDE, entra firmado. Cómo quedó:
+  1. `prepararAdjuntos` aplana con `qpdf --flatten-annotations=all --remove-restrictions` todo
+     PDF con `/ByteRange`, menos el aviso de obra. Sellos, texto y firma se ven igual (probado
+     página por página con esa acta); se va el certificado digital.
+  2. Si igual TAD rechaza algo por la firma, se elige la copia aplanada **en la misma ventana**.
+     Cerrarla abre *"¿Abandonar el proceso de carga de documentación?"*, que tapa la página.
+  3. Cualquier otro "No pudimos adjuntar" frena al toque como rechazo, sin reintento.
+- **Borrador con un adjunto rechazado = borrador que no carga (confirmado).** Al reabrirlos,
+  12988373 y 12989045 no mostraron sus casilleros en 3 × 3 min. No se sigue: se empieza de cero.
+- **Presentado sin número (15/09, tarea 39).** Después de "Confirmar trámite" TAD mostró
+  *"Generación de trámite pendiente · Número de expediente en espera · Tenemos problemas para
+  generar el expediente electrónico de tu trámite. Cuando lo solucionemos, tu número de
+  expediente se generará automáticamente y podrás visualizarlo en Trámites en curso"*. Qué hace
+  cada parte:
+  - **Robot de presentación:** deja la tarea `ok` con `etapa: presentado_sin_numero` y
+    `presentado_at`, y el trámite en `presentado` sin expediente.
+  - **App:** `borradorPendiente` lo cuenta como confirmado (no deja volver a presentar) y la
+    ficha dice que el número está en espera.
+  - **Worker, en cada vuelta (`vincularPresentaciones`, después de las carátulas y antes de
+    proponer ventas por dirección):** busca un expediente en curso, creado ese día o después (hora
+    de Buenos Aires), sin trámite y con la sección/manzana/parcela de la obra en la carátula.
+    Con uno solo, lo vincula al trámite, a la venta por `numero` y pasa la tarea a `presentado`
+    con el EX; `sincronizarOdoo` escribe `presentado`. Con más de uno, aviso
+    `permiso_robot:tramite:<id>:presentado_varios` para vincularlo a mano.
 
 ### Historial de finalizados y robustez del robot (15/09)
 

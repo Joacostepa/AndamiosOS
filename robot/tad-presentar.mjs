@@ -393,16 +393,42 @@ async function adjuntar(page, { casillero, archivo }) {
   throw new Trabado(`"${casillero}": el documento no quedó en el casillero (${enDialogo ?? (res ? cuerpo?.mensaje ?? `HTTP ${res.status()}` : "TAD no respondió")}). Puede haber quedado un IF: revisar el borrador`);
 }
 
+/** TAD no terminó de cargar (servicio lento o caído): se puede reintentar. */
+class TadNoCarga extends Trabado {}
+
 /**
  * Abre un borrador existente desde Mis trámites → Borradores (para seguir una presentación que
- * se frenó) y deja la página en el paso 2. Verifica que TAD haya abierto ESE borrador.
+ * se frenó) y deja la página en el paso 2 con los casilleros a la vista. Verifica que TAD haya
+ * abierto ESE borrador.
+ *
+ * El 15/09 (S02466) el borrador abrió pero la lista de documentos quedó "Cargando..." más de 90 s:
+ * es el servicio de "documentos vinculados" de TAD, que ese día también tiró "Error al obtener los
+ * documentos vinculados". Por eso se espera hasta 3 minutos y, si no carga, se sale y se reintenta
+ * (3 veces, con 1 minuto entre medio).
  */
-async function abrirBorrador(page, id, listo, estado) {
+async function abrirBorrador(page, id, estado, log) {
+  for (let intento = 1; intento <= 3; intento++) {
+    try {
+      await abrirBorradorUnaVez(page, id, estado);
+      return;
+    } catch (e) {
+      if (!(e instanceof TadNoCarga) || intento === 3) throw e;
+      log(`TAD: el borrador ${id} no terminó de cargar (intento ${intento}: ${e.message}); se reintenta en 1 minuto`);
+      await ir(page, "Mis trámites").catch(() => {});
+      await page.waitForTimeout(60000);
+    }
+  }
+}
+
+async function abrirBorradorUnaVez(page, id, estado) {
+  const cargado = async (paso) => { if (!(await esperarCarga(page, 180000))) throw new TadNoCarga(`TAD siguió cargando más de 3 minutos (${paso})`); };
   await ir(page, "Mis trámites");
-  const lista = page.waitForResponse((r) => /misTramites\/sinEE\/persona\/.+\/paginado/.test(r.url()), { timeout: 120000 });
+  const lista = page.waitForResponse((r) => /misTramites\/sinEE\/persona\/.+\/paginado/.test(r.url()), { timeout: 120000 }).catch(() => null);
   await page.getByText("Borradores", { exact: true }).first().click();
-  const borradores = JSON.parse(await (await lista).text()).respuesta.content;
-  await listo("borradores");
+  const respuesta = await lista;
+  if (!respuesta) throw new TadNoCarga("la lista de borradores no respondió");
+  const borradores = JSON.parse(await respuesta.text()).respuesta.content;
+  await cargado("borradores");
   await page.waitForTimeout(3000);
   const pos = borradores.findIndex((b) => b.id === id);
   if (pos < 0) throw new Trabado(`El borrador ${id} no aparece en Borradores (¿se presentó o se borró a mano?)`);
@@ -410,14 +436,22 @@ async function abrirBorrador(page, id, listo, estado) {
   estado.borrador = null;
   await page.locator("tr:visible").filter({ hasText: /BORRADOR/i }).nth(pos).getByText("file_open", { exact: true }).click({ timeout: 15000 });
   await page.waitForTimeout(10000);
-  await listo("borrador abierto");
+  await cargado("borrador abierto");
   if (/Paso 1 de 3/.test(normal(await page.locator("body").innerText()))) {
     await page.locator("button:visible", { hasText: /^\s*Continuar\s*$/ }).first().click({ timeout: 15000 });
     await page.waitForTimeout(10000);
-    await listo("paso 2");
+    await cargado("paso 2");
   }
   if (!/Paso 2 de 3/.test(normal(await page.locator("body").innerText()))) throw new Trabado(`Al abrir el borrador ${id} TAD no mostró el paso de documentación`);
   if (estado.borrador !== id) throw new Trabado(`Se pidió seguir el borrador ${id} y TAD abrió ${estado.borrador ?? "otro"}: se frena`);
+
+  // Cargado = se ven los casilleros. Los avisos de error de la página no deciden: TAD mostró
+  // "Error al obtener los documentos vinculados" con la lista bien cargada.
+  const casilleros = await hasta(page, async () => {
+    const texto = normal(await page.locator("body").innerText());
+    return /Nota de solicitud dirigida/.test(texto) && (await esperarCarga(page, 1000)) ? true : null;
+  }, 180000);
+  if (!casilleros) throw new TadNoCarga("TAD no terminó de cargar los documentos del borrador en 3 minutos");
 }
 
 /** "Confirmar trámite" y lo que venga (Resumen o diálogo) hasta ver el EX. */
@@ -521,7 +555,7 @@ export async function presentarEnTad({ db, tarea, page, log }) {
     const listo = async (paso) => { if (!(await esperarCarga(page))) throw new Trabado(`TAD siguió cargando más de 90 s (${paso})`); };
     if (p.continuar_borrador && !prueba) {
       // Se sigue una presentación que se frenó: mismo borrador, sin rehacer lo que ya está.
-      await abrirBorrador(page, p.continuar_borrador, listo, estado);
+      await abrirBorrador(page, p.continuar_borrador, estado, log);
       log(`TAD: sigue el borrador ${estado.borrador}`);
     } else {
     await ir(page, "Inicio");

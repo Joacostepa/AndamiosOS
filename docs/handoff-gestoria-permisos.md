@@ -84,8 +84,8 @@ Ver fases 1–3 de `docs/modulo-gestoria-permisos.md`.
 ## Decisiones pendientes de JS
 - ¿El sistema del andamio (multidireccional / bastidor / mixto) está en Odoo o se asume
   multidireccional? (define el modelo de informe técnico)
-- ¿El endoso a Gonzalo se pide por mail desde js@ o por el canal de Slack "seguros y
-  cauciones"?
+- ~~¿Cómo se pide el endoso?~~ → **siempre por mail a Gonzalo Costa, gcosta@segucom.com.ar**
+  (JS, 2026-09-14).
 - Rotar credenciales (Clave Ciudad, CPAU, miBA de Jorge) — "más adelante".
 - Tarjeta para el CPAU (virtual con límite) o pago por transferencia (el CPAU lo acepta).
 

@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   Bell,
   Bot,
+  FileCheck,
   Landmark,
   FileWarning,
   Package,
@@ -46,6 +47,7 @@ const ICONOS: Record<string, typeof Bell> = {
   // El mismo edificio de gobierno que el menú de Permisos vía pública.
   permiso_novedad: Landmark,
   permiso_robot: Bot,
+  permiso_endoso: FileCheck,
   // Tipos previstos en el schema original, todavía sin productor.
   documento_vencimiento: FileWarning,
   stock_bajo_minimo: Package,

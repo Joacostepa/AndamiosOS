@@ -59,7 +59,98 @@ export type Expediente = {
 export type TipoEvento =
   | "alta" | "cambio_estado" | "tarea_subsanacion" | "tarea_resuelta"
   | "motivo" | "permiso_descargado" | "vinculado_odoo" | "error_robot" | "caratula_leida"
-  | "vinculo_confirmado" | "vinculo_descartado" | "odoo_escrito" | "odoo_conflicto";
+  | "vinculo_confirmado" | "vinculo_descartado" | "odoo_escrito" | "odoo_conflicto"
+  | "tramite_abierto" | "documento_pedido" | "documento_subido" | "documento_revisado" | "aviso_productor";
+
+/**
+ * El trámite: la unidad de trabajo para presentar (o subsanar) un permiso, con o sin
+ * expediente. El titular del lote es el coasegurado de la póliza y NO es el cliente de
+ * Odoo, que muchas veces es la constructora.
+ */
+export type Tramite = {
+  id: string;
+  expediente_id: string | null;
+  odoo_venta_id: number | null;
+  odoo_venta_nombre: string | null;
+  direccion: string;
+  titular_nombre: string | null;
+  titular_cuit: string | null;
+  permiso_hasta: string | null;
+  estado: string;
+  created_at: string;
+};
+
+export type EstadoDocumento = "falta" | "pedido" | "revisando" | "ok" | "observado";
+
+/** `bloquea: false` = se muestra pero no frena (lo pide la ficha y nunca lo observaron). */
+export type ChequeoPoliza = { clave: string; ok: boolean; bloquea: boolean; detalle: string };
+
+export type RevisionPoliza = {
+  modelo: string | null;
+  leido: {
+    es_poliza: boolean;
+    compania: string | null;
+    numero_poliza: string | null;
+    vigencia_hasta: string | null;
+    suma_asegurada: number | null;
+    coasegurados: { nombre: string; cuit: string | null }[];
+    no_repeticion_a_favor: { nombre: string; cuit: string | null }[];
+    gcba_asegurado_adicional: boolean;
+    indemnidad_gcba: boolean;
+  } | null;
+  chequeos: ChequeoPoliza[];
+};
+
+export type Documento = {
+  id: string;
+  tramite_id: string;
+  clave: string;
+  origen: "cliente" | "aba" | "productor";
+  estado: EstadoDocumento;
+  archivo_path: string | null;
+  archivo_nombre: string | null;
+  version: number;
+  subido_por: string | null;
+  subido_at: string | null;
+  revision: RevisionPoliza | null;
+  revisado_at: string | null;
+  observacion: string | null;
+  pedido_at: string | null;
+  aviso_enviado_at: string | null;
+  aviso_error: string | null;
+  recordatorio_at: string | null;
+};
+
+export const NOMBRE_DOCUMENTO: Record<string, string> = {
+  poliza_rc: "Póliza de RC (endoso)",
+  encomienda_cpau: "Encomienda del CPAU",
+  croquis: "Croquis",
+  informe_tecnico: "Informe técnico",
+};
+
+export const ETIQUETA_ESTADO_DOCUMENTO: Record<EstadoDocumento, string> = {
+  falta: "Falta",
+  pedido: "Pedido",
+  revisando: "Revisando",
+  ok: "Lista",
+  observado: "Observada",
+};
+
+export const formatoCuit = (c: string) => (c.length === 11 ? `${c.slice(0, 2)}-${c.slice(2, 10)}-${c.slice(10)}` : c);
+
+/** Dígito verificador de CUIT/CUIL (módulo 11). */
+export function cuitValido(cuit: string): boolean {
+  const d = cuit.replace(/\D/g, "");
+  if (d.length !== 11) return false;
+  const pesos = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2];
+  const suma = pesos.reduce((s, p, i) => s + p * Number(d[i]), 0);
+  const resto = 11 - (suma % 11);
+  const verificador = resto === 11 ? 0 : resto === 10 ? 9 : resto;
+  return verificador === Number(d[10]);
+}
+
+/** El motivo de la subsanación habla de la póliza: hay que pedir un endoso. */
+export const motivoDePoliza = (motivo: string | null) => !!motivo && /P[OÓ]LIZA|SEGURO|NO REPETICI|COASEGURAD/i.test(motivo);
 
 export type EstadoVinculo = "sin_vincular" | "propuesto" | "confirmado";
 
@@ -102,7 +193,7 @@ export type Evento = {
   tipo: TipoEvento;
   detalle: string | null;
   datos: Record<string, unknown>;
-  actor: "robot" | "gcba" | "persona";
+  actor: "robot" | "gcba" | "persona" | "productor" | "ia" | "sistema";
   created_at: string;
 };
 
@@ -135,6 +226,9 @@ export type FichaExpediente = {
   /** null si no hay venta vinculada o si Odoo no respondió (ver ventaError). */
   venta: VentaOdoo | null;
   ventaError: string | null;
+  tramite: Tramite | null;
+  /** Con URL firmada de 10 minutos para ver el PDF, si hay uno subido. */
+  documentos: (Documento & { url: string | null })[];
 };
 
 /** Sin tildes y en mayúsculas: TAD escribe "SUBSANACIÓN" y "SUBSANACION" en la misma lista. */

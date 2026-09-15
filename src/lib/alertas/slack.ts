@@ -51,6 +51,7 @@ const DESTINOS: Record<TipoAlerta, Canal[]> = {
   // Los permisos de vía pública son parte de la documentación de obra.
   permiso_novedad: ["syh"],
   permiso_robot: ["syh"],
+  permiso_endoso: ["syh"],
 };
 
 /**
@@ -123,6 +124,14 @@ const ESTILO: Record<
     emoji: "🤖",
     rotulo: "Robot de TAD",
     plural: "avisos del robot de TAD",
+    destacado: false,
+    prefijos: [],
+  },
+  permiso_endoso: {
+    color: "#0891b2",
+    emoji: "📄",
+    rotulo: "Póliza",
+    plural: "novedades de pólizas",
     destacado: false,
     prefijos: [],
   },

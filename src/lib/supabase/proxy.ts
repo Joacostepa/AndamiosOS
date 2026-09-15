@@ -44,7 +44,10 @@ export async function updateSession(request: NextRequest) {
   //   completa, no "/api/alertas": la campanita lee esa rama CON sesión, y abrirla entera
   //   dejaría las alertas de todos accesibles sin login.
   // /cotizador y /api/public: cotizador hogareño para clientes finales (sin cuenta).
+  // /endosos: portal del productor de seguros (Segucom) para subir pólizas. Lo protege el
+  //   token de la URL, que valida /api/public/endosos; la página sola no muestra nada.
   const publicPaths = [
+    "/endosos",
     "/login",
     "/auth",
     "/api/odoo/sync",

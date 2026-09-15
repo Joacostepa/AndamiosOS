@@ -12,6 +12,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChipEstado } from "@/components/permisos-via-publica/chip-estado";
+import { DocumentosTramite } from "@/components/permisos-via-publica/documentos-tramite";
 import { useExpediente, useVinculoVenta, type AccionVinculo } from "@/hooks/use-permisos-via-publica";
 import {
   estadoVinculo, explicacionEstado, sinAltura,
@@ -36,6 +37,11 @@ const ETIQUETA_EVENTO: Record<TipoEvento, string> = {
   vinculo_descartado: "Venta descartada",
   odoo_escrito: "Escrito en Odoo",
   odoo_conflicto: "No se escribió en Odoo",
+  tramite_abierto: "Se abrió el trámite",
+  documento_pedido: "Documento pedido",
+  documento_subido: "Documento subido",
+  documento_revisado: "Revisión del documento",
+  aviso_productor: "Aviso a Segucom",
 };
 
 const TRAMITE: Record<string, string> = { no_presentado: "No presentado", presentado: "Presentado", emitido: "Emitido" };
@@ -72,7 +78,7 @@ export default function FichaPermisoPage({ params }: { params: Promise<{ id: str
     return <EmptyState icon={TriangleAlert} title="No se pudo abrir el expediente" description={error instanceof Error ? error.message : undefined} />;
   }
 
-  const { expediente: e, eventos, permisoUrl, venta, ventaError } = data;
+  const { expediente: e, eventos, permisoUrl, venta, ventaError, tramite, documentos } = data;
 
   return (
     <div className="space-y-5">
@@ -142,6 +148,8 @@ export default function FichaPermisoPage({ params }: { params: Promise<{ id: str
           )}
         </section>
       )}
+
+      <DocumentosTramite e={e} tramite={tramite} documentos={documentos} />
 
       <VentaDeOdoo e={e} venta={venta} ventaError={ventaError} />
 

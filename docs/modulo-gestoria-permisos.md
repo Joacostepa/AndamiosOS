@@ -537,6 +537,88 @@ expedientes en la misma venta: manda el más avanzado, después el más nuevo, d
 **No escribe** `x_permiso_modalidad` (decisión comercial) ni `x_lleva_permiso`, ni registra
 la gestión en el historial de Habilitaciones (queda en `pvp_eventos`).
 
+## Póliza: coasegurado Y no repetición (2026-09-14)
+
+El endoso se pide **siempre por mail a Gonzalo Costa, gcosta@segucom.com.ar** (asunto "RC"
+en el historial; lo venía mandando Tamara con copia a am, gs, rr y jpm).
+
+**Por qué se repiten las subsanaciones:** en junio Gonzalo puso por error los CUIT de los
+consorcios en la cláusula de no repetición; Tamara pidió pasarlos a coasegurados y desde
+entonces se pide sólo "coasegurar". Pero el GCBA pide **las dos cosas, a sujetos
+distintos**:
+
+| Qué | A favor de quién |
+| --- | --- |
+| Coasegurado | el titular del lote (consorcio / empresa / persona) |
+| Cláusula de no repetición + asegurado adicional + indemnidad | el GCBA |
+
+Las dos subsanaciones pendientes del 14/09 (EX-2026-40709185 Paraná 1167 y EX-2026-38571164
+Ing. Huergo 913) son exactamente eso. La revisión con IA de la póliza tiene que chequear las
+dos por separado. La cláusula del GCBA ya se le reclamó a Gonzalo (JS, 14/09).
+
+### Pedido de endoso automático — decidido 2026-09-14
+
+**Portal de Segucom, no respuesta por mail.** Gonzalo a veces manda varias pólizas en un
+mail (hay que adivinar cuál es de qué obra) y si está de vacaciones el mail queda en su
+casilla. Con un link lo puede resolver cualquiera en Segucom.
+
+- **Una página fija para el productor** (`/endosos/[token]`), no un link por pedido: lista
+  de endosos pendientes (obra, titular + CUIT, fechas del permiso) con "Subir póliza" por
+  fila. Tres pedidos juntos se resuelven juntos.
+- **Revisión al subir:** la IA lee el PDF en el momento y chequea coasegurado = titular de
+  ESA fila, cláusula de no repetición a favor del GCBA, suma > $1.000.000, vigencia ≥ fin
+  del permiso, no encriptado. Si falta algo se lo dice ahí mismo.
+- **El mail es sólo el aviso** ("hay N endosos para pedir" + link). Sale de
+  **js@andamiosbuenosaires.com.ar** por ahora (variable `PERMISOS_MAIL`); la app sólo
+  manda, no lee casillas.
+- Recordatorio si no se sube en ~24 h hábiles; después aviso a Tamara y #syh.
+- Si igual llega por mail: botón en la ficha para que alguien de ABA suba el PDF (misma
+  revisión).
+- El token sólo sube pólizas y ve obra/titular/CUIT; se puede rotar. Pedido sale solo,
+  sin clic de aprobación (decidido).
+
+**Titular del lote:** no es el cliente de Odoo (muchas veces es la constructora) y **no lo
+carga ABA: lo carga el cliente** en el primer paso de su portal (tipo de dueño + razón
+social + CUIT). Decidido con JS (2026-09-15):
+- Se arranca con **el nombre que escribe el cliente**, el CUIT validado por dígito
+  verificador y cruzado después con los documentos del legajo (aviso de obra, acta,
+  estatuto). Apenas se valida, sale solo el pedido a Segucom.
+- **ARCA se conecta cuando esté el certificado** de la empresa (`/api/afip` hoy es un stub)
+  para traer la razón social exacta por CUIT.
+- El formulario de la ficha interna queda como excepción (expedientes viejos, cliente que
+  no carga).
+- Las respuestas de los Google Forms actuales **no se importan** por ahora.
+
+El pedido de endoso espera el pago, igual que la encomienda.
+
+### Construido (2026-09-15)
+
+| Pieza | Dónde |
+| --- | --- |
+| Tablas `pvp_tramites`, `pvp_documentos`, `pvp_productores` (+ `pvp_eventos.tramite_id`) | `supabase/migrations/20260915000001_permisos_tramites_documentos.sql` (aplicada) |
+| Pedido, aviso, recordatorio, subida y revisión | `src/lib/permisos-via-publica/endosos.ts` |
+| Lectura de la póliza con Claude (`claude-opus-5`) + chequeos en código | `src/lib/permisos-via-publica/revision-poliza.ts` |
+| Mail saliente (SMTP de Gmail) | `src/lib/mail.ts` — variables `PERMISOS_MAIL`, `PERMISOS_MAIL_CLAVE` |
+| Portal del productor | `/endosos/[token]` + `GET /api/public/endosos/[token]` + `POST …/documentos/[docId]` (URL firmada, sube directo al bucket) |
+| Ficha interna | sección "Documentos del trámite": titular + CUIT (con dígito verificador), "Pedir endoso a Segucom", "Subir PDF", "Volver a pedir" |
+| Recordatorios | cron `/api/alertas/barrido` (L–V 8 h): reintenta avisos, recuerda a las 24 h, alerta `permiso_endoso` a las 48 h |
+
+**Chequeos que frenan:** es póliza, no encriptada (`/Encrypt` en el PDF), titular como
+coasegurado (por CUIT; si está sólo en no repetición lo dice), no repetición a favor del
+GCBA (CUIT 34-99903208-9 o nombre), suma > $1.000.000, vigencia ≥ permiso. **Se muestran y
+no frenan:** GCBA asegurado adicional e indemnidad (los pide la ficha, nunca los observaron).
+
+El link del productor se ve con el token de `pvp_productores` (sólo service role). Para
+rotarlo: `update pvp_productores set token = replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '') where id = 'segucom'`.
+
+### Documentos que sube ABA — todos automáticos
+
+Además de la póliza, los documentos propios del legajo **no los hace nadie a mano**: la
+encomienda del CPAU (robot RETP, § 6), el croquis y el informe técnico (§ 3). Entran al
+mismo checklist del trámite con origen `aba`, igual que los del cliente (`cliente`) y la
+póliza (`productor`), y el trámite pasa a `listo_para_presentar` sólo cuando los tres
+orígenes están completos y revisados.
+
 ## Decisiones pendientes
 
 0. ~~Cuenta miBA para TAD~~ → la de Jorge Patricio Riveros Zanetta (nivel 3). Confirmar que

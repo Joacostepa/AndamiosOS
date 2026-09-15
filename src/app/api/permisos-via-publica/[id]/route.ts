@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { read } from "@/lib/odoo/client";
 import { urlOdooVenta } from "@/lib/odoo/habilitaciones";
-import type { Evento, Expediente, FichaExpediente, VentaOdoo } from "@/lib/permisos-via-publica/tipos";
+import type { Documento, Evento, Expediente, FichaExpediente, Tramite, VentaOdoo } from "@/lib/permisos-via-publica/tipos";
 
 // GET /api/permisos-via-publica/:id
 //
@@ -69,13 +69,23 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
   if (!exp.data) return NextResponse.json({ error: "El expediente no existe" }, { status: 404 });
 
   const expediente = exp.data as Expediente;
-  const [permisoUrl, odoo] = await Promise.all([
-    expediente.permiso_path
-      ? db.storage.from("permisos-via-publica").createSignedUrl(expediente.permiso_path, 600).then((f) => f.data?.signedUrl ?? null)
-      : Promise.resolve(null),
-    expediente.odoo_venta_id ? ventaDeOdoo(expediente.odoo_venta_id) : Promise.resolve({ venta: null, ventaError: null }),
-  ]);
+  const firmar = (path: string | null) =>
+    path
+      ? db.storage.from("permisos-via-publica").createSignedUrl(path, 600).then((f) => f.data?.signedUrl ?? null)
+      : Promise.resolve(null);
 
-  const ficha: FichaExpediente = { expediente, eventos: (eventos.data ?? []) as Evento[], permisoUrl, ...odoo };
+  const [permisoUrl, odoo, tramite] = await Promise.all([
+    firmar(expediente.permiso_path),
+    expediente.odoo_venta_id ? ventaDeOdoo(expediente.odoo_venta_id) : Promise.resolve({ venta: null, ventaError: null }),
+    db.from("pvp_tramites").select("*").eq("expediente_id", id).maybeSingle().then((r) => (r.data as Tramite | null) ?? null),
+  ]);
+  const { data: docs } = tramite
+    ? await db.from("pvp_documentos").select("*").eq("tramite_id", tramite.id).order("created_at")
+    : { data: [] };
+  const documentos = await Promise.all(
+    ((docs ?? []) as Documento[]).map(async (d) => ({ ...d, url: await firmar(d.archivo_path) })),
+  );
+
+  const ficha: FichaExpediente = { expediente, eventos: (eventos.data ?? []) as Evento[], permisoUrl, ...odoo, tramite, documentos };
   return NextResponse.json(ficha);
 }

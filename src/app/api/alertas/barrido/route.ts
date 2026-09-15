@@ -4,6 +4,7 @@ import { fetchBandeja } from "@/lib/habilitaciones/servicio";
 import { fetchOtsUrgentes } from "@/lib/odoo/ordenes";
 import { claveDe, crearAlertas } from "@/lib/alertas/servicio";
 import { OdooError } from "@/lib/odoo/client";
+import { recordarEndosos } from "@/lib/permisos-via-publica/endosos";
 
 // GET/POST /api/alertas/barrido — el cron que hace que los avisos lleguen solos.
 //
@@ -74,10 +75,16 @@ async function correr(req: NextRequest) {
       })),
     );
 
+    // 3. Endosos de pólizas: reintenta los avisos a Segucom que fallaron, le recuerda lo
+    //    que lleva más de un día sin subirse y avisa a ABA si ni así se sube. Un fallo acá
+    //    no puede tapar los avisos de OTs de arriba.
+    const endosos = await recordarEndosos(db).catch((e) => ({ error: e instanceof Error ? e.message : String(e) }));
+
     return NextResponse.json({
       otsActivas: bandeja.total,
       urgentesEnOdoo: urgentes.length,
       avisosDeUrgenciaCreados: creadasUrgentes,
+      endosos,
     });
   } catch (e) {
     const msg = e instanceof OdooError ? e.message : e instanceof Error ? e.message : String(e);

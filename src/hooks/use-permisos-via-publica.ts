@@ -32,7 +32,35 @@ export function useExpediente(id: string) {
     queryKey: ["permiso-via-publica", id],
     queryFn: () => pedir<FichaExpediente>(`/api/permisos-via-publica/${id}`),
     staleTime: 30_000,
-    refetchInterval: 60_000,
+    // Mientras una póliza se revisa (~1 min) se consulta seguido, para que el resultado
+    // aparezca sin recargar.
+    refetchInterval: (q) => (q.state.data?.documentos.some((d) => d.estado === "revisando") ? 5_000 : 60_000),
+  });
+}
+
+export function usePedirEndoso(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { titularNombre: string; titularCuit: string; permisoHasta: string | null }) =>
+      pedir<{ ok: true }>(`/api/permisos-via-publica/${id}/endoso`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["permiso-via-publica", id] }),
+  });
+}
+
+/** Subir a mano el PDF de un documento (p. ej. la póliza que Segucom mandó por mail). */
+export function useSubirDocumento(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ documentoId, archivo }: { documentoId: string; archivo: File }) => {
+      const form = new FormData();
+      form.append("archivo", archivo);
+      return pedir<{ ok: true }>(`/api/permisos-via-publica/documentos/${documentoId}`, { method: "POST", body: form });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["permiso-via-publica", id] }),
   });
 }
 

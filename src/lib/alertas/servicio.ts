@@ -42,7 +42,9 @@ export type TipoAlerta =
    */
   | "permiso_novedad"
   /** El robot de TAD no puede revisar (login, TAD caído, pantalla cambiada). */
-  | "permiso_robot";
+  | "permiso_robot"
+  /** Endoso de la póliza: quedó lista, no se pudo revisar, o Segucom no la sube. */
+  | "permiso_endoso";
 
 export type Prioridad = "baja" | "media" | "alta" | "critica";
 

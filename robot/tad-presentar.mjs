@@ -150,8 +150,63 @@ async function sinFirmaDigital(archivo) {
   return salida;
 }
 
+const GS = ["/opt/homebrew/bin/gs", "/usr/local/bin/gs"].find((p) => existsSync(p)) ?? null;
+/** Desde este peso se comprime el PDF antes de adjuntarlo. */
+const COMPRIMIR_DESDE = 4 * 1024 * 1024;
+const mb = (bytes) => `${(bytes / 1048576).toFixed(1).replace(".", ",")} MB`;
+
+async function paginas(archivo) {
+  const { stdout } = await ejecutar(QPDF, ["--show-npages", archivo]).catch((e) => ({ stdout: e.stdout ?? "" }));
+  return Number(String(stdout).trim()) || null;
+}
+
+/**
+ * TAD no llegó a convertir en documento oficial un reglamento escaneado de 9,9 MB en 2 minutos
+ * (S02128, 16/09: "TAD no respondió"), y uno de 4,8 MB (S02466) entró bien. Los PDF de más de 4 MB
+ * se comprimen con Ghostscript hasta quedar en 4 MB o menos: primero /ebook (150 dpi) y, si no
+ * alcanza, /screen (72 dpi). Probado con ese reglamento (57 hojas de CamScanner): /ebook lo dejaba
+ * en 9,7 MB y /screen en 3,9 MB, legible.
+ *   - Siempre -dAutoRotatePages=/None: sin eso Ghostscript dio vuelta 180° una hoja escrita a
+ *     máquina ("adivina" la orientación por el texto).
+ *   - Se descarta un resultado con otra cantidad de páginas, y se usa el más chico sólo si achicó
+ *     al menos un 10 %. Si no, o si falta Ghostscript (`brew install ghostscript`), va el original.
+ * Devuelve qué pasó, para el log (null si no hacía falta comprimir).
+ */
+export async function comprimirSiPesa(archivo) {
+  const antes = statSync(archivo).size;
+  if (antes <= COMPRIMIR_DESDE || !/\.pdf$/i.test(archivo)) return null;
+  if (!GS) return { antes, despues: antes, usado: false, motivo: "falta Ghostscript" };
+  const paginasOriginal = await paginas(archivo);
+  const fallas = [];
+  let mejor = null;
+  for (const calidad of ["/ebook", "/screen"]) {
+    const salida = `${archivo.replace(/\.pdf$/i, "")}-${calidad.slice(1)}.pdf`;
+    try {
+      await ejecutar(GS, [
+        "-sDEVICE=pdfwrite", "-dCompatibilityLevel=1.5", `-dPDFSETTINGS=${calidad}`, "-dAutoRotatePages=/None",
+        "-dNOPAUSE", "-dQUIET", "-dBATCH", "-dSAFER", `-sOutputFile=${salida}`, archivo,
+      ], { timeout: 180000 });
+    } catch (e) {
+      fallas.push(`${calidad}: ${String(e.message).split("\n")[0]}`);
+      continue;
+    }
+    if (!existsSync(salida) || (await paginas(salida)) !== paginasOriginal) {
+      fallas.push(`${calidad}: cambió la cantidad de páginas`);
+      continue;
+    }
+    const tamano = statSync(salida).size;
+    if (!mejor || tamano < mejor.tamano) mejor = { salida, tamano, calidad };
+    if (tamano <= COMPRIMIR_DESDE) break;
+  }
+  if (!mejor || mejor.tamano >= antes * 0.9) {
+    return { antes, despues: mejor?.tamano ?? antes, usado: false, motivo: fallas.join("; ") || "no achicó" };
+  }
+  renameSync(mejor.salida, archivo);
+  return { antes, despues: mejor.tamano, usado: true, calidad: mejor.calidad };
+}
+
 /** Baja del bucket los archivos de cada casillero. Uno va tal cual; varios se unen en un PDF. */
-async function prepararAdjuntos(db, payload, tareaId) {
+async function prepararAdjuntos(db, payload, tareaId, log = () => {}) {
   const dir = path.join(TMP, String(tareaId));
   mkdirSync(dir, { recursive: true });
   const listos = [];
@@ -184,6 +239,11 @@ async function prepararAdjuntos(db, payload, tareaId) {
     } else {
       destino = path.join(dir, `${String(i + 1).padStart(2, "0")}-${a.archivos.map((f) => f.clave).join("+")}.pdf`);
       writeFileSync(destino, await unirEnPdf(partes));
+    }
+    // Un PDF pesado se comprime: TAD no llegó a procesar uno de 9,9 MB (S02128, 16/09).
+    const compresion = await comprimirSiPesa(destino);
+    if (compresion) {
+      log(`TAD: "${a.casillero}" pesa ${mb(compresion.antes)}: ${compresion.usado ? `comprimido a ${mb(compresion.despues)} (${compresion.calidad})` : `va sin comprimir (${compresion.motivo})`}`);
     }
     if (statSync(destino).size > MAX_BYTES) throw new Trabado(`"${a.casillero}" pesa más de 20 MB`);
     listos.push({ casillero: a.casillero, archivo: destino });
@@ -446,13 +506,15 @@ async function adjuntar(page, { casillero, archivo }) {
     if (aviso) throw new Trabado(`"${casillero}": TAD no aceptó el archivo${aplanado ? " ni sin la firma digital" : ""} (${aviso})`);
     throw new TadNoCarga(`"${casillero}": TAD no terminó de subir el archivo en 3 minutos`);
   }
-  const guardado = page.waitForResponse((r) => r.request().method() === "PUT" && /personaDocumento\/save/.test(r.url()), { timeout: 120000 }).catch(() => null);
+  // Generar el documento oficial de un archivo grande tarda: 2 minutos no alcanzaron para uno de
+  // 9,9 MB (S02128, 16/09). Se espera hasta 5 minutos la respuesta y 90 s el número en el casillero.
+  const guardado = page.waitForResponse((r) => r.request().method() === "PUT" && /personaDocumento\/save/.test(r.url()), { timeout: 300000 }).catch(() => null);
   await boton.click({ timeout: 15000 });
   const res = await guardado;
   let cuerpo = null;
   try { cuerpo = res ? await res.json() : null; } catch { /* sin cuerpo */ }
 
-  const numero = await hasta(page, async () => normal(await fila.innerText()).match(IF_ADJUNTO)?.[0], 45000);
+  const numero = await hasta(page, async () => normal(await fila.innerText()).match(IF_ADJUNTO)?.[0], 90000);
   if (numero) return { yaEstaba: false, if: numero, aplanado };
   const enDialogo = normal(await dialogo.innerText().catch(() => "")).match(/(?:Error|No se pudo)[^.]{0,160}\./)?.[0];
   throw new Trabado(`"${casillero}": el documento no quedó en el casillero (${enDialogo ?? (res ? cuerpo?.mensaje ?? `HTTP ${res.status()}` : "TAD no respondió")}). Puede haber quedado un IF: revisar el borrador`);
@@ -628,7 +690,7 @@ export async function presentarEnTad({ db, tarea, page, log }) {
   page.on("response", alResponder);
 
   try {
-    const adjuntos = prueba ? [] : await prepararAdjuntos(db, p, tarea.id);
+    const adjuntos = prueba ? [] : await prepararAdjuntos(db, p, tarea.id, log);
 
     // TAD a veces queda "Cargando..." con la página gris y los clics no llegan: antes de cada
     // paso se espera a que termine (hasta 90 s); si no termina, se frena.

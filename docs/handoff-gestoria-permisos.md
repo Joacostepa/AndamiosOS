@@ -1,11 +1,12 @@
-# Handoff — Gestoría de permisos de andamio (actualizado 2026-09-16, 11:30)
+# Handoff — Gestoría de permisos de andamio (actualizado 2026-09-16, tarde)
 
 Para retomar en una sesión nueva. El diseño completo y todo lo aprendido está en
 `docs/modulo-gestoria-permisos.md`; esto es el estado, **lo que falta para que el circuito
 quede 100 % automático** y el orden para seguir.
 
 Para arrancar: "Leé docs/handoff-gestoria-permisos.md y docs/modulo-gestoria-permisos.md y
-seguimos con lo que falta". **Empezar por § "Estado 16/09 11:30".**
+seguimos con lo que falta". **Empezar por § "Estado 16/09 11:30" y seguir con § "Cierre de la
+encomienda del CPAU — en curso".**
 
 ---
 
@@ -44,6 +45,63 @@ presentación, expediente y Odoo. `vincularPresentaciones` se vio funcionando co
      27066992220). La póliza pasó todo lo obligatorio, pero **no la trae como coasegurada**:
      quedó la advertencia `coasegurado_administrador` (no frena). **Decisión pendiente de JS:**
      pedirle a Gonzalo que la agregue antes de presentar, o presentar así.
+3. **Terminar la automatización del cierre de la encomienda del CPAU** (ver la sección que
+   sigue). Cuando esté, S02465 y S02128 se pueden cerrar con el robot en vez de a mano.
+
+## Cierre de la encomienda del CPAU — en curso (16/09)
+
+**Objetivo (JS, 16/09):** que el robot haga solo lo que hoy se hace a mano después de
+"Finalizar" en el RETP: bajar la encomienda, firmarla, **pagarla** y cargarla en la Plataforma
+del CPAU, **sin botón de aprobación**, pago incluido. Siempre es el producto de $50.000.
+
+**Decisiones de JS:**
+- Las cuentas de perfil.cpau.org y tramites.cpau.org son **las mismas del RETP** (`CPAU_USUARIO` /
+  `CPAU_CLAVE`, la cuenta de Hougassian).
+- Firmas: **"Firma JS"** para el comitente y **"Firma 01"** (Hougassian) para el matriculado.
+  Están en el bucket: `plantillas/comun/firma-js.png` y `firma-hougassian-encomienda.png`. La
+  `firma-hougassian.png` de siempre sigue para el informe técnico.
+- **S02465 y S02128 quedan como están**, aunque su registro muestre mal el documento del
+  propietario (ver abajo). Se corrige para las próximas.
+- La tarjeta la carga JS en `robot/.env.robot`. Los 9 campos están vacíos, cada uno con su
+  formato en el comentario de arriba (titular, número, vencimiento MMAA, código, mail, DNI,
+  calle, número de puerta, nacimiento DDMMAAAA). Sin comillas y sin comentarios en la línea.
+
+**Ya mapeado** (detalle técnico en el diseño, § "Cierre de la encomienda — mapeo 16/09"):
+1. **Bajar la encomienda sin firmas:** del Histórico del RETP, botón de la ventana ("Show") de la
+   fila → registro de 3 hojas. El CPAU le pega HTML detrás del PDF: se corta en el último `%%EOF`.
+2. **Firmar:** posiciones medidas en las 3 hojas y **probado** con el registro de S02128 (en una
+   copia local, no se cargó nada).
+3. **Pagar:** producto 51 → Comprar Ahora → carrito → Finalizar Compra → checkout (Visa Crédito ya
+   elegida) → Procesar Pago → formulario de Decidir (SPS). Sin código por SMS ni app del banco a la
+   vista. **Queda sin ver lo que pasa después de "Aceptar"** (resultado y comprobante): sólo se
+   ve con un pago real.
+4. **Plataforma:** no tiene login. Paso 1 = matrícula + DNI del matriculado + aceptar la
+   declaración jurada. **Pasos 2 y 3 sin mapear.**
+
+**Lo que falta, en orden:**
+1. **Parte 2 — mapear los pasos 2 y 3 de la Plataforma** hasta antes de "Enviar" (instructivo:
+   Habilitación de Est. Trans. + n° de encomienda + PDF firmado → Siguiente → Pago electrónico +
+   n° de comprobante + PDF del comprobante → Enviar).
+2. **Parte 3 — construir el robot** que encadene todo después de Finalizar, y **arreglar el
+   documento del propietario** para las próximas: esperar la recarga al elegir "CUIT/CUIL" y, al
+   terminar, verificar el CUIT en el registro bajado, no sólo en la pantalla de Confirmar.
+3. **Primera corrida real** (con la tarjeta cargada): ver la pantalla después de "Aceptar", de
+   dónde sale el comprobante y el número que pide la Plataforma.
+4. **Seguir el visado:** mirar el Histórico hasta que aparezca el certificado, bajarlo como
+   documento `encomienda_cpau` y dejar que se presente solo en TAD.
+
+**Cosas a tener en cuenta:**
+- **El error del propietario:** en S02465 y S02128 la pantalla de Confirmar decía "CUIT/CUIL" y el
+  CUIT del consorcio, pero el registro que generó el CPAU dice "Documento Único" con el DNI de JS
+  (el del comitente). En la de Guido 1923 que hizo Tamara a mano salió bien. Causa sin confirmar.
+- **Quedó una intención de pago sin pagar** en la cuenta de Hougassian (operación 292118), del
+  mapeo. Autorizado por JS; no genera cargos.
+- **Seguridad:** el PDF "INSTRUCTIVO ENCOMIENDA (pendiente de revisión)" en Descargas de la Mac
+  mini tiene en texto plano la clave del CPAU y los datos completos de la tarjeta, código incluido.
+  Recomendado: borrarlo, cambiar la clave del CPAU y evaluar una tarjeta virtual para el robot.
+- Scripts de mapeo (sólo lectura o sin pagar): `robot/mapear-cpau-cierre.mjs` (Histórico, tienda
+  y Plataforma) y `robot/mapear-cpau-compra.mjs` (compra hasta el formulario de Decidir).
+  Capturas en `robot/capturas/cpau-cierre/` y `cpau-compra/`, ignoradas por git.
 
 ### Lo que se aprendió a la tarde-noche (15/09, implementado salvo lo marcado)
 

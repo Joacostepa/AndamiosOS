@@ -864,11 +864,71 @@ comienzo de una palabra de la opción; empate → error, que decida una persona.
 frente de Trelles y llega a Confirmar); reintenta sola una tarea. Si falla **después** de
 Finalizar, la ficha lo dice en rojo: revisar el Histórico antes de volver a pedirla.
 
-**Falta** (con la primera encomienda real): firma, pago con tarjeta, carga en
-tramites.cpau.org y bajar el certificado visado como documento `encomienda_cpau`.
+**Falta:** firma, pago, carga en tramites.cpau.org y bajar el certificado visado como documento
+`encomienda_cpau`. En curso: ver § "Cierre de la encomienda — mapeo 16/09".
 
-Pendiente de JS: pago con tarjeta o transferencia; si la encomienda espera el cobro al
-cliente (decidido el 14/09, antes de que el link saliera al confirmar la venta).
+### Cierre de la encomienda — mapeo 16/09
+
+Decidido con JS: **todo automático, pago incluido y sin aprobación**. Siempre se compra el
+producto de $50.000. Las cuentas de la tienda y la Plataforma son las del RETP (Hougassian). Los
+pasos manuales salen del instructivo de Tamara ("INSTRUCTIVO ENCOMIENDA"). Scripts:
+`robot/mapear-cpau-cierre.mjs` y `robot/mapear-cpau-compra.mjs`.
+
+**1. Encomienda sin firmas (Histórico del RETP, `FrmHisto.aspx`).**
+- El filtro "hasta" viene en hoy a las 0 h: lo del día no aparece. Se pone mañana y Enter; la
+  grilla pagina (links 2, 3…). La fila se busca por R.Nro (11 dígitos, ej. `00329522116`); trae
+  también el RETP Nro (ej. `00002897696`).
+- Botones de cada fila (`input type=image`): `Select` (arrow-right), **`Show`**
+  (`popup-window.png`) y `H3` (`buttonimprimir.png`). Los dos últimos hacen postback y descargan
+  `Retp.pdf`: **`Show` = el registro de 3 hojas (lo que se firma)**; `H3` = el certificado de 1
+  hoja.
+- **Los PDF vienen rotos:** detrás del `%%EOF` hay ~36 KB de HTML (`iTextSharp.text.Document` +
+  la página ASP.NET). Se corta en el último `%%EOF` y queda válido.
+- La encomienda presentada en S02466 son 5 hojas: registro firmado ×3 + certificado visado +
+  comprobante de pago ("EVHA Reg.Habilit. Hasta 120 … 50000.0").
+
+**2. Firmas.** Registro A4 (595 × 842 pt), las tres hojas iguales. Textos al pie (`getTextContent`):
+"Firma Comitente" x=44 y=24, "Firma Matriculado" x=215 y=24, "Firma CPAU" x=386 y=24; el cuadro va
+de y≈33 a y≈78. Columnas: comitente 44–210, matriculado 215–381. Se estampa con pdf-lib a 40 pt de
+alto, centrada en su columna: **JS** (`plantillas/comun/firma-js.png`, 800 px, fondo transparente)
+en comitente y **Hougassian** (`plantillas/comun/firma-hougassian-encomienda.png`, la "Firma 01")
+en matriculado. "Firma CPAU" queda vacía: la pone el Consejo al visar. Probado sobre el registro
+de S02128.
+
+**3. Pago (perfil.cpau.org).**
+- Login: `#username`, `#password`, botón "Ingresar" (se habilita al completar). La API es
+  **`cpauorgapi.azurewebsites.net`** (`POST /api/Auth/login`), no cpau.org.
+- Producto 51 "Habilitaciones de cartel o estructuras transitorias", $50.000 → **"Comprar Ahora"**
+  → `/store/carrito` (el carrito vive en el navegador: no escribe nada) → **"Finalizar Compra"** →
+  `/store/checkout` (tampoco escribe). **"Visa Crédito" viene elegida por defecto**; los radios
+  tienen `pointer-events-none`, así que no se tocan.
+- **"Procesar Pago"** → `POST /api/store/checkout`
+  `{"productos":[{"productoId":51,"cantidad":1}],"tarjeta":"1","cuotas":1,"solicitaEnvio":false}` →
+  POST de formulario a `sps.decidir.com/sps-ar/Validar` (`NROCOMERCIO=00050711`, `NROOPERACION`,
+  `MEDIODEPAGO=1`, `MONTO` en centavos, `EMAILCLIENTE`, `URLDINAMICA=…/api/Store/resultadooperacionproducto`)
+  → `live.decidir.com/forms/Validar`.
+- **Formulario de Decidir:** `NOMBREENTARJETA` (30), `NROTARJETA` (16, sin espacios),
+  `VENCTARJETA` (MMAA), `CODSEGURIDAD`, `EMAILCLIENTE` (30), `TIPODOC` (select: DNI/CI/LE/LC),
+  `NRODOC`, `CALLE` (20), `NROPUERTA`, `FECHANACIMIENTO` (DDMMAAAA) y submit `ok` = **"Aceptar"**
+  (lo que cobra). No se vio paso de verificación por SMS. Variables en `robot/.env.robot`:
+  `CPAU_TARJETA_TITULAR`, `_NUMERO`, `_VENCIMIENTO`, `_CODIGO`, `_MAIL`, `_DNI`, `_CALLE`,
+  `_NRO_PUERTA`, `_NACIMIENTO`.
+- **Sin ver todavía:** la pantalla después de "Aceptar", el comprobante y qué número pide la
+  Plataforma. El mapeo del 16/09 dejó una operación sin pagar (292118).
+
+**4. Carga (tramites.cpau.org/Plataforma).** Sin login. "Proceso de alta de trámites", paso 1:
+`#matricula` (12658), `#dni` (el del matriculado: figura en "Datos Matrícula" del RETP y en el
+registro), `#tyc` (declaración jurada) y `#validarPaso1` "Siguiente". **Pasos 2 y 3 sin mapear**;
+según el instructivo: Habilitación de Est. Trans. + n° de encomienda + registro firmado →
+Siguiente → Pago electrónico + n° de comprobante + PDF del comprobante → Enviar.
+
+**Error del propietario (a corregir para las próximas).** En S02465 y S02128 la pantalla de
+Confirmar mostraba "CUIT/CUIL" y el CUIT del consorcio (lo guarda `resultado.resumen`), pero el
+registro que genera el CPAU dice "Documento Único" con el DNI del comitente. En la de Guido 1923,
+cargada a mano, salió bien. Sospecha: `ddlPropietarioTipoDocId` recarga la página y el robot
+escribe el número sin esperar. Arreglo previsto: esperar el postback y, después de Finalizar,
+bajar el registro (`Show`) y verificar ahí el CUIT del propietario. JS decidió dejar esas dos
+encomiendas como están.
 
 ### Documentos que sube ABA — todos automáticos
 

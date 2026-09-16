@@ -532,6 +532,12 @@ La ruta va en `publicPaths` de `src/lib/supabase/proxy.ts` (la ruta completa, no
 entera: la bandeja se lee con sesión) y la protege `CRON_SECRET`, como a los otros dos crons.
 Sin eso el proxy la corta con 401 y el cron no avisa nunca: probado contra producción.
 
+**También avisa cuando vuelve** (JS, 2026-09-15): si el robot está al día pero la última caída
+se había avisado, sale un segundo aviso ("estuvo 2 h 10 sin dar señales, desde las 14:05"). No
+hace falta guardar estado: el propio aviso de la caída es el registro —se mira el último
+`permiso_robot:sin_senales:<hora>` y se compara con la última vuelta buena—, y la clave
+`permiso_robot:volvio:<misma hora>` hace que salga una sola vez por episodio.
+
 **Vínculo:** por número de expediente es seguro y se escribe directo. Por dirección es una
 **propuesta** hasta que una persona la confirma en la ficha ("Es esta venta" / "No es
 esta" / "Es otra venta: S0…"). Una venta descartada no se vuelve a proponer. La altura se

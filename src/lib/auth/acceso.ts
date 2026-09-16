@@ -13,7 +13,7 @@
 // Esto NO es sólo el menú: el proxy usa estas mismas funciones para bloquear páginas y
 // APIs. Un menú filtrado y una URL abierta es una cortina, no un permiso.
 
-export const ROLES = ["admin", "operativo", "deposito", "campo"] as const;
+export const ROLES = ["admin", "operativo", "deposito", "campo", "comercial"] as const;
 export type Rol = (typeof ROLES)[number];
 export type Nivel = "ver" | "editar";
 
@@ -134,6 +134,15 @@ export const PERFILES: readonly { rol: Rol; titulo: string; descripcion: string;
   },
   { rol: "deposito", titulo: "Depósito", descripcion: "Planificación, órdenes de trabajo y partes.", permisos: CIRCUITO },
   { rol: "campo", titulo: "Campo", descripcion: "Planificación, órdenes de trabajo y partes.", permisos: CIRCUITO },
+  // Asistentes comerciales: miran la planificación para contestarle al cliente, pero no la
+  // mueven; trabajan la gestoría de permisos. OJO: las alertas sin destinatario van al rol
+  // operativo, así que este rol no las ve en la campanita (tampoco las de la gestoría).
+  {
+    rol: "comercial",
+    titulo: "Comercial",
+    descripcion: "Planificación en sólo lectura, mapa de obras y permisos de andamio.",
+    permisos: { planificacion: "ver", "mapa-obras": "ver", "permisos-via-publica": "editar" },
+  },
 ];
 
 export function etiquetaRol(rol: Rol | null | undefined): string {

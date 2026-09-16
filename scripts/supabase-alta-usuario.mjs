@@ -37,7 +37,7 @@ if (!email || !password) {
   console.error("Faltan --email y --password");
   process.exit(1);
 }
-if (!["admin", "operativo", "deposito", "campo"].includes(rol)) {
+if (!["admin", "operativo", "deposito", "campo", "comercial"].includes(rol)) {
   console.error(`Rol inválido: ${rol}`);
   process.exit(1);
 }
@@ -77,9 +77,10 @@ if (existente) {
 const CIRCUITO = { planificacion: "editar", "ordenes-trabajo": "editar", partes: "editar" };
 const PERMISOS_DEL_PERFIL = {
   admin: {},
-  operativo: { ...CIRCUITO, habilitaciones: "editar", "mapa-obras": "ver" },
+  operativo: { ...CIRCUITO, habilitaciones: "editar", "permisos-via-publica": "editar", "mapa-obras": "ver" },
   deposito: CIRCUITO,
   campo: CIRCUITO,
+  comercial: { planificacion: "ver", "mapa-obras": "ver", "permisos-via-publica": "editar" },
 };
 
 const { error: errPerfil } = await sb

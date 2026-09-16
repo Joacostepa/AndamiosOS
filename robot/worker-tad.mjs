@@ -158,6 +158,25 @@ async function sesionViva(page) {
   return /tad\.buenosaires\.gob\.ar/.test(page.url()) && (await page.getByText(/Representando a:/i).count()) > 0;
 }
 
+/**
+ * Antes de presentar no alcanza con mirar la página abierta: TAD cierra la sesión a los 15-20
+ * minutos sin uso y la página vieja sigue diciendo "Representando a:". Así falló S02128 dos veces
+ * el 16/09 (12:33 y 13:07) y la tarea 36 el 15/09: el robot iba a "Inicio" y caía en el login de
+ * miBA. Se recarga y se mira qué contesta TAD; ante la duda, false (entrar() sabe qué hacer si la
+ * sesión seguía viva).
+ */
+async function sesionVivaRecargando(page) {
+  if (!/tad\.buenosaires\.gob\.ar/.test(page.url())) return false;
+  await page.reload({ waitUntil: "domcontentloaded", timeout: 60000 }).catch(() => {});
+  const fin = Date.now() + 45000;
+  while (Date.now() < fin) {
+    if (/login\.buenosaires\.gob\.ar/.test(page.url())) return false;
+    if (await sesionViva(page)) return true;
+    await page.waitForTimeout(1000);
+  }
+  return false;
+}
+
 async function tablaVisible(page) {
   await esperarCarga(page);
   // "Todos" es una <option> del selector de tamaño de página de ESTA solapa.
@@ -770,7 +789,7 @@ while (!apagando) {
     // cualquier otra cosa queda en error en la tarea y en el trámite.
     try {
       if (!browser.isConnected()) ({ browser, page } = await abrir());
-      if (!(await sesionViva(page))) {
+      if (!(await sesionVivaRecargando(page))) {
         log("Entrando a TAD…");
         await entrar(page);
       }

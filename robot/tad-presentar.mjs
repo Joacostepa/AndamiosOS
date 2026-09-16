@@ -638,9 +638,15 @@ export async function presentarEnTad({ db, tarea, page, log }) {
       await abrirBorrador(page, p.continuar_borrador, estado, log);
       log(`TAD: sigue el borrador ${estado.borrador}`);
     } else {
+    // Si TAD cerró la sesión, "Inicio" lleva al login de miBA: es una falla de TAD, no del
+    // trámite, así que se reintenta sola (16/09, S02128). No se crea nada antes de este punto.
+    const sesionCerrada = () => /login\.buenosaires\.gob\.ar/.test(page.url());
     await ir(page, "Inicio");
+    if (sesionCerrada()) throw new TadNoCarga("TAD cerró la sesión antes de empezar la presentación");
     const buscador = page.getByPlaceholder(/Busc[aá] un tr[aá]mite/i).first();
-    await buscador.waitFor({ state: "visible", timeout: 30000 });
+    await buscador.waitFor({ state: "visible", timeout: 30000 }).catch((e) => {
+      throw sesionCerrada() ? new TadNoCarga("TAD cerró la sesión antes de empezar la presentación") : e;
+    });
     await buscador.fill("andamios");
     await buscador.press("Enter");
     await page.waitForTimeout(7000);

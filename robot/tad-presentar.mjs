@@ -506,18 +506,39 @@ async function adjuntar(page, { casillero, archivo }) {
     if (aviso) throw new Trabado(`"${casillero}": TAD no aceptó el archivo${aplanado ? " ni sin la firma digital" : ""} (${aviso})`);
     throw new TadNoCarga(`"${casillero}": TAD no terminó de subir el archivo en 3 minutos`);
   }
-  // Generar el documento oficial de un archivo grande tarda: 2 minutos no alcanzaron para uno de
-  // 9,9 MB (S02128, 16/09). Se espera hasta 5 minutos la respuesta y 90 s el número en el casillero.
-  const guardado = page.waitForResponse((r) => r.request().method() === "PUT" && /personaDocumento\/save/.test(r.url()), { timeout: 300000 }).catch(() => null);
-  await boton.click({ timeout: 15000 });
-  const res = await guardado;
+  // Generar el documento oficial de un archivo grande tarda: 2 minutos no alcanzaron para el
+  // reglamento de S02128 (9,9 MB) ni 5 para el mismo comprimido a 3,9 MB (57 páginas, 16/09). Se
+  // espera hasta 10 minutos la respuesta y 90 s el número en el casillero. Se anota si el pedido
+  // salió y si el navegador lo cortó, para que el motivo diga dónde se trabó.
+  const esGuardar = (req) => req.method() === "PUT" && /personaDocumento\/save/.test(req.url());
+  const pedido = { enviado: false, fallo: null, desde: Date.now() };
+  let cortado;
+  const fallado = new Promise((r) => { cortado = r; });
+  const alPedir = (req) => { if (esGuardar(req)) pedido.enviado = true; };
+  const alFallar = (req) => { if (esGuardar(req)) { pedido.fallo = req.failure()?.errorText ?? "sin detalle"; cortado(null); } };
+  page.on("request", alPedir);
+  page.on("requestfailed", alFallar);
+  let res = null;
   let cuerpo = null;
-  try { cuerpo = res ? await res.json() : null; } catch { /* sin cuerpo */ }
+  try {
+    const guardado = page.waitForResponse((r) => esGuardar(r.request()), { timeout: 600000 }).catch(() => null);
+    await boton.click({ timeout: 15000 });
+    res = await Promise.race([guardado, fallado]);
+    try { cuerpo = res ? await res.json() : null; } catch { /* sin cuerpo */ }
+  } finally {
+    page.off("request", alPedir);
+    page.off("requestfailed", alFallar);
+  }
+  const segundos = Math.round((Date.now() - pedido.desde) / 1000);
 
   const numero = await hasta(page, async () => normal(await fila.innerText()).match(IF_ADJUNTO)?.[0], 90000);
   if (numero) return { yaEstaba: false, if: numero, aplanado };
   const enDialogo = normal(await dialogo.innerText().catch(() => "")).match(/(?:Error|No se pudo)[^.]{0,160}\./)?.[0];
-  throw new Trabado(`"${casillero}": el documento no quedó en el casillero (${enDialogo ?? (res ? cuerpo?.mensaje ?? `HTTP ${res.status()}` : "TAD no respondió")}). Puede haber quedado un IF: revisar el borrador`);
+  const motivo = enDialogo
+    ?? (res ? `${cuerpo?.mensaje ?? `HTTP ${res.status()}`} a los ${segundos} s`
+      : pedido.fallo ? `el navegador cortó el pedido a los ${segundos} s: ${pedido.fallo}`
+        : pedido.enviado ? `TAD no respondió en ${segundos} s` : "el pedido para generar el documento no llegó a salir");
+  throw new Trabado(`"${casillero}": el documento no quedó en el casillero (${motivo}). Puede haber quedado un IF: revisar el borrador`);
 }
 
 /**

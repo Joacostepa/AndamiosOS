@@ -43,6 +43,9 @@ export async function updateSession(request: NextRequest) {
   // /api/alertas/barrido: el otro cron. Mismo caso y misma protección — y va la ruta
   //   completa, no "/api/alertas": la campanita lee esa rama CON sesión, y abrirla entera
   //   dejaría las alertas de todos accesibles sin login.
+  // /api/permisos-via-publica/latido: el cron que avisa si el robot de TAD dejó de dar
+  //   señales. Otra vez la ruta completa: la bandeja de permisos cuelga de esa misma rama y
+  //   se lee con sesión. También lo protege CRON_SECRET.
   // /cotizador y /api/public: cotizador hogareño para clientes finales (sin cuenta).
   // /endosos: portal del productor de seguros (Segucom) para subir pólizas. Lo protege el
   //   token de la URL, que valida /api/public/endosos; la página sola no muestra nada.
@@ -58,6 +61,7 @@ export async function updateSession(request: NextRequest) {
     "/api/odoo/webhooks",
     "/api/informes-obra/generar",
     "/api/alertas/barrido",
+    "/api/permisos-via-publica/latido",
     "/cotizador",
     "/api/public",
   ];

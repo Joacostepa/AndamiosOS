@@ -528,6 +528,9 @@ El cron `/api/permisos-via-publica/latido` (cada 30 min, `vercel.json`) mira `pv
 `#permisos-de-andamio-`. El umbral sale del propio robot —él deja cuándo es la próxima vuelta,
 30 min en horario hábil y 2 h fuera—, así que de madrugada no avisa de más. **Un aviso por
 caída:** la clave lleva la hora de la última vuelta buena, que no cambia mientras está caído.
+La ruta va en `publicPaths` de `src/lib/supabase/proxy.ts` (la ruta completa, no la rama
+entera: la bandeja se lee con sesión) y la protege `CRON_SECRET`, como a los otros dos crons.
+Sin eso el proxy la corta con 401 y el cron no avisa nunca: probado contra producción.
 
 **Vínculo:** por número de expediente es seguro y se escribe directo. Por dirección es una
 **propuesta** hasta que una persona la confirma en la ficha ("Es esta venta" / "No es

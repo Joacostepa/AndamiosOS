@@ -520,6 +520,15 @@ seguro y mail de contacto. Columnas nuevas en `pvp_expedientes`
 `caffeinate -is` evita que la Mac se duerma sola. Después de cambiar el código hay que
 volver a correr el instalador (el proceso vivo tiene el código viejo).
 
+**Aviso cuando deja de dar señales (JS, 2026-09-15).** La Mac se puede apagar, quedarse sin
+internet o reiniciarse por una actualización: las tareas esperan en la cola y nadie se entera.
+El cron `/api/permisos-via-publica/latido` (cada 30 min, `vercel.json`) mira `pvp_robot` con
+`src/lib/permisos-via-publica/robot-latido.ts`: si `proxima_revision_at` venció hace más de
+20 minutos, avisa (`permiso_robot`, prioridad alta) a la campanita y a
+`#permisos-de-andamio-`. El umbral sale del propio robot —él deja cuándo es la próxima vuelta,
+30 min en horario hábil y 2 h fuera—, así que de madrugada no avisa de más. **Un aviso por
+caída:** la clave lleva la hora de la última vuelta buena, que no cambia mientras está caído.
+
 **Vínculo:** por número de expediente es seguro y se escribe directo. Por dirección es una
 **propuesta** hasta que una persona la confirma en la ficha ("Es esta venta" / "No es
 esta" / "Es otra venta: S0…"). Una venta descartada no se vuelve a proponer. La altura se

@@ -6,6 +6,7 @@ import { claveDe, crearAlertas } from "@/lib/alertas/servicio";
 import { OdooError } from "@/lib/odoo/client";
 import { recordarEndosos } from "@/lib/permisos-via-publica/endosos";
 import { barridoPresentaciones } from "@/lib/permisos-via-publica/presentacion";
+import { revisarLatidoRobot } from "@/lib/permisos-via-publica/robot-latido";
 
 // GET/POST /api/alertas/barrido — el cron que hace que los avisos lleguen solos.
 //
@@ -85,12 +86,17 @@ async function correr(req: NextRequest) {
     //    corrigió a mano, una encomienda que llegó después). Una sola vez por trámite.
     const presentacionesPedidas = await barridoPresentaciones(db).catch((e) => ({ error: e instanceof Error ? e.message : String(e) }));
 
+    // 5. El robot de TAD vive en la Mac de la oficina: si dejó de dar señales, avisa. Lo mira
+    //    también su propio cron cada 30 min; acá va por si ese cron falla.
+    const robot = await revisarLatidoRobot(db);
+
     return NextResponse.json({
       otsActivas: bandeja.total,
       urgentesEnOdoo: urgentes.length,
       avisosDeUrgenciaCreados: creadasUrgentes,
       endosos,
       presentacionesPedidas,
+      robot,
     });
   } catch (e) {
     const msg = e instanceof OdooError ? e.message : e instanceof Error ? e.message : String(e);

@@ -62,6 +62,13 @@ seguimos con lo que falta". **Empezar por § "Estado al cierre 15/09 18:00".**
 - **Administrador del consorcio como coasegurado:** el cliente lo carga en el primer paso del
   portal, junto con el consorcio, y sale en el pedido a Gonzalo. Si la póliza no lo trae, es una
   advertencia. Sólo obras nuevas. Detalle en el diseño, § Póliza.
+- **El cliente puede leer el acta y la nota antes de firmar** ("Leer el Acta de compromiso" /
+  "Leer la Nota": el PDF sin firma, marcado como borrador) y abrir lo que ya subió o firmó con
+  un link de 10 minutos.
+- **Aviso si el robot deja de dar señales:** cron `/api/permisos-via-publica/latido` cada 30 min
+  → `#permisos-de-andamio-`. Detalle en el diseño, § Fase 1c.
+- **Pendiente en la Mac (lo hace JS):** inicio de sesión automático y encendido después de un
+  corte de luz, cable de red, UPS chico y frenar las actualizaciones automáticas de macOS.
 
 ### Lo que se aprendió hoy de TAD (implementado; detalle en el diseño, § Presentación automática)
 

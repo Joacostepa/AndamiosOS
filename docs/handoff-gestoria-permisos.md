@@ -1,15 +1,15 @@
-# Handoff — Gestoría de permisos de andamio (actualizado 2026-09-16, 07:00)
+# Handoff — Gestoría de permisos de andamio (actualizado 2026-09-16, 11:30)
 
 Para retomar en una sesión nueva. El diseño completo y todo lo aprendido está en
 `docs/modulo-gestoria-permisos.md`; esto es el estado, **lo que falta para que el circuito
 quede 100 % automático** y el orden para seguir.
 
 Para arrancar: "Leé docs/handoff-gestoria-permisos.md y docs/modulo-gestoria-permisos.md y
-seguimos con lo que falta". **Empezar por § "Estado 16/09 07:00".**
+seguimos con lo que falta". **Empezar por § "Estado 16/09 11:30".**
 
 ---
 
-## Estado 16/09 07:00 — S02466 con expediente: el circuito salió entero solo
+## Estado 16/09 11:30 — S02466 con expediente: el circuito salió entero solo
 
 **Lo grande del día: se presentó el primer permiso entero sin que nadie tocara TAD.** El robot
 armó el borrador 12989635, adjuntó los 11 casilleros, llenó y guardó el formulario y tocó
@@ -30,15 +30,20 @@ presentación, expediente y Odoo. `vincularPresentaciones` se vio funcionando co
 
 ### Lo primero en la sesión nueva
 
-1. **Seguir el expediente EX-2026-41680986.** Ahora manda el GCBA: el robot mira cada 30 min y
-   avisa cuando pase a **Subsanación** (hay que corregir, ver § C) o a **Tramitación** (salió el
-   permiso). Nada que hacer hasta entonces.
-2. **S02465 (Salguero 359):** la encomienda del CPAU (Registro Web 00329521985) espera que JS
-   firme, pague y cargue a mano en tramites.cpau.org. Después sube el certificado visado en la
-   ficha y eso habilita la presentación. Es lo único que frena el segundo permiso.
-3. **S02465 (Salguero 359):** la encomienda del CPAU (Registro Web 00329521985) espera que JS
-   firme, pague y cargue a mano en tramites.cpau.org. Después sube el certificado visado en la
-   ficha y eso habilita la presentación.
+1. **Seguir el expediente EX-2026-41680986 (S02466).** Ahora manda el GCBA: el robot mira cada
+   30 min y avisa cuando pase a **Subsanación** (hay que corregir, ver § C) o a **Tramitación**
+   (salió el permiso). Nada que hacer hasta entonces.
+2. **S02465 (Salguero 359) y S02128 (Av. Corrientes 2810): falta sólo el CPAU.** Las dos tienen
+   el Registro Web generado y esperan lo mismo: que JS firme, pague y cargue la encomienda a mano
+   en tramites.cpau.org y suba el certificado visado en la ficha. Con eso se presentan.
+   - **S02465:** Registro Web 00329521985.
+   - **S02128:** Registro Web 00329522116 (16/09 11:34). Es una venta de julio habilitada como
+     excepción (`VENTAS_A_INICIAR_ADEMAS` en `portal.ts`). Se inició a las 11:21 y a las 11:34
+     ya tenía todo `ok`: legajo del cliente (7 documentos), póliza, informe técnico y croquis.
+     **Primer trámite real con administrador coasegurado** (Patricia Beatriz Saggese, CUIT
+     27066992220). La póliza pasó todo lo obligatorio, pero **no la trae como coasegurada**:
+     quedó la advertencia `coasegurado_administrador` (no frena). **Decisión pendiente de JS:**
+     pedirle a Gonzalo que la agregue antes de presentar, o presentar así.
 
 ### Lo que se aprendió a la tarde-noche (15/09, implementado salvo lo marcado)
 
@@ -142,6 +147,12 @@ con curl antes de buscar en el código.**
   sospecha de los borradores.
 - **Bajar lo que el robot escribe en Supabase en cada vuelta.**
 - **Rotar `PERMISOS_MAIL_CLAVE`:** se escribió en el chat el 15/09.
+- **Mensaje engañoso del login (16/09 11:18):** miBA aceptó la clave, pero TAD quedó en blanco en
+  `tramitesadistancia/?init=` y `entrar()` tiró "miBA no dejó entrar (sigue en el login)"
+  (`robot/tad-comun.mjs:93-94`). La vuelta de las 11:30 entró bien. En una vuelta no importa,
+  pero **en una presentación ese mensaje no se reintenta** (`frenarPresentacion`). Separar los dos
+  casos: login rechazado (no reintentar, para no bloquear la cuenta) y TAD que no carga después
+  del login (`TadNoCarga`, reintentar).
 - **Regenerar `SLACK_WEBHOOK_PERMISOS`** (canal `#permisos-de-andamio-`): la URL se escribió en
   el chat el 15/09. Después de regenerarlo, cambiarlo en `.env.local` (lo usa el robot) y en
   Vercel, y reinstalar el robot.
@@ -170,7 +181,16 @@ con curl antes de buscar en el código.**
 | `1f2ef33` + `b9ed63a` | Aviso a Slack cuando el robot deja de dar señales (y su arreglo en el proxy) |
 | `2e22de6` | El latido también avisa cuando el robot vuelve |
 
-Todos publicados. El robot de la Mac quedó reinstalado con el código de `2e22de6`.
+**Commits del 16/09:**
+
+| Commit | Qué hace |
+| --- | --- |
+| `63f46c3` | Un solo aviso "Ya tiene número de expediente" cuando se vincula una presentación |
+| `dc9ae8e` | S02128 aparece para iniciar aunque sea de julio (excepción puntual) |
+
+Todos publicados. El robot de la Mac quedó reinstalado con el código de `63f46c3` (el de
+`dc9ae8e` es sólo de la app). Aparte, en main hay un commit de otra sesión que no es de este
+módulo: `78df0bf`, perfil Comercial para las asistentes comerciales (con su migración).
 
 ---
 

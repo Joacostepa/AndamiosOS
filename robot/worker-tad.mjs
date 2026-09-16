@@ -516,7 +516,13 @@ async function vincularPresentaciones(porNumero) {
       datos: { tarea_id: tarea.id, expediente: exp.expediente },
     });
     if (errorEvento) log("!! evento de la presentación", errorEvento.message);
-    avisos.push({ tipo: "permiso_novedad", clave: `permiso_novedad:${exp.numero}:presentado`, titulo: `Presentado en TAD — ${t.direccion}`, descripcion: `${exp.expediente}${t.odoo_venta_nombre ? ` · ${t.odoo_venta_nombre}` : ""}`, enlace: `/permisos-via-publica/${exp.id}` });
+    avisos.push({
+      tipo: "permiso_novedad",
+      clave: `permiso_novedad:${exp.numero}:presentado`,
+      titulo: `Ya tiene número de expediente — ${t.direccion}`,
+      descripcion: `${exp.expediente}${t.odoo_venta_nombre ? ` · ${t.odoo_venta_nombre}` : ""} · presentado el ${(exp.creado_tad ?? "").split("-").reverse().join("/")}, en ${exp.estado_tad}. Queda escrito en la venta de Odoo.`,
+      enlace: `/permisos-via-publica/${exp.id}`,
+    });
     log(`Presentación ${t.direccion} → ${exp.expediente}`);
   }
   return avisos;
@@ -664,7 +670,15 @@ async function revisar(page) {
   // Presentaciones que TAD dejó sin número: antes de proponer ventas por dirección, que para
   // estos expedientes la venta ya se sabe.
   try {
-    avisos.push(...(await vincularPresentaciones(porNumero)));
+    const nuevos = await vincularPresentaciones(porNumero);
+    avisos.push(...nuevos);
+    // Si el expediente es de una presentación nuestra, el "Expediente nuevo en TAD" de más
+    // arriba sobra: con el número asignado alcanza un solo mensaje, el de la vinculación.
+    for (const aviso of nuevos) {
+      const numero = aviso.clave.match(/^permiso_novedad:(.+):presentado$/)?.[1];
+      const i = numero ? avisos.findIndex((a) => a.clave === `permiso_novedad:${numero}:alta`) : -1;
+      if (i >= 0) avisos.splice(i, 1);
+    }
   } catch (e) {
     log("!! presentaciones sin número", e.message);
   }

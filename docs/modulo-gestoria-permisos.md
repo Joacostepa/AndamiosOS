@@ -1165,6 +1165,11 @@ tomó como falla del adjunto. Quedó el borrador 12984454 con ese IF. Cambios:
     Con uno solo, lo vincula al trámite, a la venta por `numero` y pasa la tarea a `presentado`
     con el EX; `sincronizarOdoo` escribe `presentado`. Con más de uno, aviso
     `permiso_robot:tramite:<id>:presentado_varios` para vincularlo a mano.
+  - **El aviso al canal** dice "Ya tiene número de expediente — <obra>" con el EX, la venta, la
+    fecha de presentación y el estado en TAD, y **reemplaza** al "Expediente nuevo en TAD" de esa
+    misma vuelta: de un expediente nuestro sale un solo mensaje, no dos (JS, 16/09).
+  - **Probado en real:** S02466 se presentó el 15/09 a las 19:09 sin número y el robot lo vinculó
+    solo el 16/09 a las 00:08 con EX-2026-41680986, escribiendo Odoo en el mismo minuto.
 
 ### Historial de finalizados y robustez del robot (15/09)
 

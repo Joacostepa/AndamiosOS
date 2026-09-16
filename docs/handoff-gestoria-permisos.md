@@ -1,15 +1,15 @@
-# Handoff — Gestoría de permisos de andamio (actualizado 2026-09-15, 22:45)
+# Handoff — Gestoría de permisos de andamio (actualizado 2026-09-16, 07:00)
 
 Para retomar en una sesión nueva. El diseño completo y todo lo aprendido está en
 `docs/modulo-gestoria-permisos.md`; esto es el estado, **lo que falta para que el circuito
 quede 100 % automático** y el orden para seguir.
 
 Para arrancar: "Leé docs/handoff-gestoria-permisos.md y docs/modulo-gestoria-permisos.md y
-seguimos con lo que falta". **Empezar por § "Estado al cierre 15/09 22:45".**
+seguimos con lo que falta". **Empezar por § "Estado 16/09 07:00".**
 
 ---
 
-## Estado al cierre 15/09 22:45 — S02466 presentado en TAD, número de expediente en espera
+## Estado 16/09 07:00 — S02466 con expediente: el circuito salió entero solo
 
 **Lo grande del día: se presentó el primer permiso entero sin que nadie tocara TAD.** El robot
 armó el borrador 12989635, adjuntó los 11 casilleros, llenó y guardó el formulario y tocó
@@ -18,28 +18,24 @@ expediente en espera · Tenemos problemas para generar el expediente electrónic
 podrás visualizarlo en Trámites en curso"* (captura `39-03-confirmar-1.png`). O sea: la
 presentación entró y **falta que el GCBA le asigne el número**.
 
-**Al cierre (22:45) el EX todavía no apareció:** TAD sigue mostrando 16 expedientes en curso,
-el trámite `c877aee2-fa45-4bb3-9e53-78ea9b60eb1c` está en `presentado` sin `expediente_id`, y
-la tarea **39** quedó `ok` con `etapa: presentado_sin_numero`. El robot corre bien (vueltas
-limpias 19:30, 20:02 y 22:05).
+**El número apareció a la madrugada y se vinculó solo.** A las 00:08:08 el robot leyó el
+expediente nuevo en "En curso" y lo cruzó con la presentación por la parcela (11-63-21A):
+**EX-2026-41680986- -GCABA-SSGOU**, en INICIACION, creado el 15/09. A las 00:08:14 escribió en
+Odoo `x_tramite_estado = presentado`, `x_expediente_nro` y `x_expediente_fecha = 2026-09-15`
+(verificado contra Odoo, sin `odoo_error`), y a las 00:08:15 salieron los avisos al canal. La
+tarea **39** quedó `ok` con `etapa: presentado` y el trámite con su `expediente_id`.
+
+**Así que el circuito completo funcionó sin que nadie tocara TAD:** encomienda, legajo,
+presentación, expediente y Odoo. `vincularPresentaciones` se vio funcionando con un caso real.
 
 ### Lo primero en la sesión nueva
 
-1. **Ver si apareció el EX de S02466.** Mirar el log (`Presentación GUIDO 1923 → EX-…`) o la
-   base: `select estado, expediente_id from pvp_tramites where id = 'c877aee2-…'`.
-   - **Se vincula solo** (`vincularPresentaciones` en `robot/worker-tad.mjs`, en cada vuelta):
-     expediente en curso, creado el 15/09 o después, sin trámite y con la misma
-     sección/manzana/parcela que la obra (011-063-021A) en la carátula. Queda en
-     `pvp_tramites.expediente_id`, la venta por `numero`, y `sincronizarOdoo` escribe
-     `presentado` en S02466.
-   - Si aparecen dos de esa parcela avisa (`presentado_varios`) y se vincula a mano.
-   - **Si a media mañana sigue sin aparecer:** entrar a TAD (con el robot parado) y mirar Mis
-     trámites → En curso. Puede que el GCBA no lo haya generado nunca, y ahí hay que ver con
-     Tamara cómo se reclama. **No volver a presentar:** la app no lo deja y duplicaría los 11 IF.
-   - **Es la primera vez que pasa esto**, así que la vinculación automática todavía no se vio
-     funcionando con un caso real: seguirla de cerca.
-2. **Mirar `#permisos-de-andamio-`.** Desde anoche todos los avisos del módulo van a ese canal.
-   Si el robot se cayó en la noche, ahí tiene que estar el aviso (y el de vuelta).
+1. **Seguir el expediente EX-2026-41680986.** Ahora manda el GCBA: el robot mira cada 30 min y
+   avisa cuando pase a **Subsanación** (hay que corregir, ver § C) o a **Tramitación** (salió el
+   permiso). Nada que hacer hasta entonces.
+2. **S02465 (Salguero 359):** la encomienda del CPAU (Registro Web 00329521985) espera que JS
+   firme, pague y cargue a mano en tramites.cpau.org. Después sube el certificado visado en la
+   ficha y eso habilita la presentación. Es lo único que frena el segundo permiso.
 3. **S02465 (Salguero 359):** la encomienda del CPAU (Registro Web 00329521985) espera que JS
    firme, pague y cargue a mano en tramites.cpau.org. Después sube el certificado visado en la
    ficha y eso habilita la presentación.

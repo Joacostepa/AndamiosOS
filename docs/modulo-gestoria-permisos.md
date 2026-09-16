@@ -1196,7 +1196,8 @@ tomó como falla del adjunto. Quedó el borrador 12984454 con ese IF. Cambios:
   TAD (Mis trámites → Borradores) y toca el botón. La app anota `borrador_descartado` en la
   tarea que lo dejó (`borradorPendiente` deja de devolverlo y no vuelve a uno anterior) y
   registra el evento. "Volver a presentar" arma uno nuevo y regenera todos los IF. El robot NO
-  borra borradores reales: sólo el de la prueba.
+  borra borradores reales por su cuenta: sólo el de la prueba. A mano, con el robot frenado, se
+  puede borrar uno real con `robot/borrar-tad-borrador.mjs <id>` (16/09, a pedido de JS).
 - **PDF con firma digital (15/09, S02466, tareas 37 y 38).** TAD rechazó el acta de asamblea
   (certificación digital de reproducciones del Colegio de Escribanos): *"No pudimos adjuntar tu
   documento. El archivo se encuentra previamente firmado o con espacios de firma"*. "Adjuntar"
@@ -1230,6 +1231,38 @@ tomó como falla del adjunto. Quedó el borrador 12984454 con ese IF. Cambios:
     misma vuelta: de un expediente nuestro sale un solo mensaje, no dos (JS, 16/09).
   - **Probado en real:** S02466 se presentó el 15/09 a las 19:09 sin número y el robot lo vinculó
     solo el 16/09 a las 00:08 con EX-2026-41680986, escribiendo Odoo en el mismo minuto.
+
+### Presentación automática — 16/09 (S02128)
+
+S02128 se presentó a las 18:57 (EX-2026-41877012, tarea 49) después de una tarde de fallas.
+Lo que dejó:
+
+- **Sesión nueva por presentación (`70742f9`).** Con la sesión de las vueltas de lectura, TAD
+  mandaba al login de miBA al rato de empezar (12:31, 13:06, 13:11 y 13:35), incluso con la página
+  recién recargada mostrando "Representando a:". La única que arrancó bien venía de un login
+  recién hecho. Ahora el worker, antes de cada `tad_presentar`, cierra el navegador, abre uno
+  nuevo y llama a `entrar()`. Cuesta un login por presentación.
+- **Login a mitad de camino = `TadNoCarga`.** Si una presentación sin confirmar termina en
+  `login.buenosaires.gob.ar`, el catch de `presentarEnTad` convierte el error en `TadNoCarga`
+  ("TAD cerró la sesión en medio de la presentación") y vuelve sola a la cola desde el borrador.
+- **Compresión de PDF pesados (`9242a87`).** `comprimirSiPesa` pasa por Ghostscript
+  (`/opt/homebrew/bin/gs`) todo PDF de más de 4 MB: `/ebook` y, si no queda en 4 MB, `/screen`, con
+  `-dAutoRotatePages=/None` (sin eso `/screen` giró una hoja 180°). Se usa sólo si conserva la
+  cantidad de páginas y achica al menos 10 %. El reglamento de S02128 pasó de 9,9 MB (57 páginas,
+  imágenes JPEG 2000 de iText) a 3,9 MB. El log dice `"<casillero>" pesa X MB: comprimido a Y MB`.
+- **Espera del documento oficial (`c3ac552`).** Después de "Adjuntar", hasta 10 min la respuesta
+  de `PUT personaDocumento/save` y 90 s el número en el casillero. Si falla, el motivo distingue
+  "TAD no respondió en N s", "el navegador cortó el pedido" y "el pedido no llegó a salir".
+- **Adjunto colgado = borrador roto (confirmado).** El estatuto no tuvo respuesta en 12998722
+  (13:24, 9,9 MB, esperando 2 min) ni en 12999516 (14:11, 3,9 MB, 5 min). Después ninguno de los
+  dos volvió a mostrar sus documentos al reabrirlos (5 intentos en total). Se borraron y se
+  empezó de cero.
+- **TAD de tarde vs. de noche.** El mismo estatuto comprimido entró a las 18:54 en 22 s, y los 11
+  adjuntos en 2 minutos. No era la cantidad de páginas (el de S02466 tenía 21 y 5 MB). A la tarde
+  TAD también quedaba minutos en "Cargando..." después del login.
+- **Pendiente: clic tapado por `divLoading`.** El tercer intento de abrir 12999516 frenó con
+  "`<div id="divLoading" class="loading">` … intercepts pointer events" (el "Cargando..." de TAD
+  encima del botón). Como no es `TadNoCarga`, la tarea quedó en `error` sin reintento.
 
 ### Historial de finalizados y robustez del robot (15/09)
 

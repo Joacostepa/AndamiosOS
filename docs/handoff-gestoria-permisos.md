@@ -1,12 +1,80 @@
-# Handoff — Gestoría de permisos de andamio (actualizado 2026-09-16, tarde)
+# Handoff — Gestoría de permisos de andamio (actualizado 2026-09-16, noche)
 
 Para retomar en una sesión nueva. El diseño completo y todo lo aprendido está en
 `docs/modulo-gestoria-permisos.md`; esto es el estado, **lo que falta para que el circuito
 quede 100 % automático** y el orden para seguir.
 
 Para arrancar: "Leé docs/handoff-gestoria-permisos.md y docs/modulo-gestoria-permisos.md y
-seguimos con lo que falta". **Empezar por § "Estado 16/09 11:30" y seguir con § "Cierre de la
-encomienda del CPAU — en curso".**
+seguimos con lo que falta". **Empezar por § "Estado 16/09 19:00", seguir con § "Estado 16/09
+11:30" y después § "Cierre de la encomienda del CPAU — en curso".**
+
+---
+
+## Estado 16/09 19:00 — S02128 presentado: EX-2026-41877012
+
+**S02128 (Av. Corrientes 2810 esq. Pueyrredon) quedó presentado en TAD con número en el acto.**
+Tarea **49**, borrador 13004673: a las 18:53 armó el borrador, en 2 minutos adjuntó los 11
+casilleros (el estatuto de 57 páginas entró en 22 s), llenó el formulario (Balvanera, Comuna 3,
+SMP 013-098-001A; corrigió por ZK 8 campos que el formulario no había registrado) y a las 18:57:03
+confirmó: **EX-2026-41877012- -GCABA-SSGOU**. A las 18:57:12 escribió Odoo (S02128 presentado el
+2026-09-16) y salió el aviso "Presentado en TAD" a `#permisos-de-andamio-`. El trámite quedó
+`presentado` con el expediente vinculado por `numero`.
+
+Se presentó **sin la administradora como coasegurada** en la póliza (quedaba la advertencia
+`coasegurado_administrador`). Si el GCBA lo observa, entra por Subsanación.
+
+**Costó toda la tarde. Lo que pasó, en orden:**
+1. **12:31, 13:06, 13:11 y 13:35 — TAD cerraba la sesión apenas empezaba la presentación.** El
+   robot caía en el login de miBA; a las 13:11 y 13:35, aunque al recargar la página dijera
+   "Representando a:". La
+   única que pasó el inicio (13:18) venía de un login recién hecho. **Arreglo (`70742f9`):** cada
+   presentación cierra el navegador, abre uno nuevo y hace login completo. Y si TAD lo saca al
+   login en el medio, es `TadNoCarga` y se reintenta sola desde el borrador. Desde entonces no
+   volvió a pasar.
+2. **13:24 — el estatuto (reglamento del consorcio, 9,9 MB) no quedó en el casillero** del
+   borrador 12998722: TAD no contestó `personaDocumento/save`. **Arreglo (`9242a87`):** el robot
+   comprime con **Ghostscript** todo PDF de más de 4 MB (`/ebook` y, si no alcanza, `/screen`, sin
+   rotar y con la misma cantidad de páginas): quedó en 3,9 MB. **Ghostscript quedó instalado con
+   Homebrew en la Mac mini** (como qpdf: si el robot se muda, instalarlo).
+3. **13:44 y 13:48 — "Seguir desde el borrador" no abrió 12998722** (la lista de documentos no
+   cargaba). Se frenó la tarea 46, se borró el borrador desde la Mac mini y se empezó de cero.
+4. **14:03–14:11 — borrador nuevo 12999516:** 7 adjuntos bien y **el estatuto comprimido tampoco
+   tuvo respuesta en 5 minutos**. Se descartó que fuera el peso (el de S02466 tenía 5 MB y 21
+   páginas y entró). **Cambio (`c3ac552`):** la espera sube a 10 min y el motivo dice si el pedido
+   salió, si el navegador lo cortó o si TAD no contestó.
+5. **14:28–14:44 — "Seguir desde el borrador" tampoco abrió 12999516** (3 intentos). El tercero
+   frenó con un clic tapado por el "Cargando..." de TAD (`divLoading`), que no se toma como TAD
+   lento: la tarea 48 quedó en `error` sin reintento. A esa hora también falló una vuelta de
+   lectura por lo mismo.
+6. **18:50 — se borró 12999516, se descartó en la app y se pidió de cero** (tarea 49, a pedido de
+   JS, todo desde la Mac mini). Entró todo de una.
+
+**Conclusiones (detalle en el diseño, § "Presentación automática — 16/09"):**
+- **Un adjunto que queda colgado rompe el borrador para siempre** (ya no es sospecha: 12998722 y
+  12999516). "Seguir desde el borrador" no sirve: hay que borrarlo y empezar de cero.
+- **TAD a la tarde no procesaba el estatuto; a la noche sí, en 22 s.** No eran las 57 páginas.
+  Si un documento pesado se cuelga de día, conviene reintentar a la noche con borrador nuevo
+  antes que gastar borradores a la tarde.
+- **Borrar un borrador real desde acá:** frenar el robot, `node --env-file=robot/.env.robot
+  robot/borrar-tad-borrador.mjs <id>` (la traba sólo deja pasar el DELETE de ese id), marcar
+  `resultado.borrador_descartado` en la tarea que lo dejó y reinstalar el robot. Se hizo con
+  12998722 (13:55) y 12999516 (18:48).
+
+**Números sueltos en GDE que dejaron los dos borradores borrados:**
+- de 12998722: IF-2026-41795544, IF-2026-41795589, IF-2026-41795724, IF-2026-41795817,
+  RE-2026-41795950, IF-2026-41795973 y RE-2026-41796000;
+- de 12999516: IF-2026-41809878, IF-2026-41809960, IF-2026-41810095, IF-2026-41810164,
+  RE-2026-41810264, IF-2026-41810287 y RE-2026-41810322.
+
+Los de la presentación (13004673) van de IF-2026-41876699 a IF-2026-41876871.
+
+**Pendientes nuevos del robot de TAD:**
+- **Clic tapado por `divLoading`** ("… intercepts pointer events"): tratarlo como `TadNoCarga`
+  para que la presentación se reintente sola (tarea 48).
+- **Adjunto colgado:** hoy frena con `Trabado` y el botón ofrece "Seguir desde el borrador", que
+  ya se sabe que no abre. Evaluar que la ficha proponga directamente borrar y empezar de cero
+  (o que el robot lo reintente de noche).
+- El arreglo de `fea6fd0` (recargar para verificar la sesión) quedó reemplazado por `70742f9`.
 
 ---
 
@@ -31,22 +99,20 @@ presentación, expediente y Odoo. `vincularPresentaciones` se vio funcionando co
 
 ### Lo primero en la sesión nueva
 
-1. **Seguir el expediente EX-2026-41680986 (S02466).** Ahora manda el GCBA: el robot mira cada
-   30 min y avisa cuando pase a **Subsanación** (hay que corregir, ver § C) o a **Tramitación**
-   (salió el permiso). Nada que hacer hasta entonces.
-2. **S02465 (Salguero 359) y S02128 (Av. Corrientes 2810): falta sólo el CPAU.** Las dos tienen
-   el Registro Web generado y esperan lo mismo: que JS firme, pague y cargue la encomienda a mano
-   en tramites.cpau.org y suba el certificado visado en la ficha. Con eso se presentan.
-   - **S02465:** Registro Web 00329521985.
-   - **S02128:** Registro Web 00329522116 (16/09 11:34). Es una venta de julio habilitada como
-     excepción (`VENTAS_A_INICIAR_ADEMAS` en `portal.ts`). Se inició a las 11:21 y a las 11:34
-     ya tenía todo `ok`: legajo del cliente (7 documentos), póliza, informe técnico y croquis.
-     **Primer trámite real con administrador coasegurado** (Patricia Beatriz Saggese, CUIT
-     27066992220). La póliza pasó todo lo obligatorio, pero **no la trae como coasegurada**:
-     quedó la advertencia `coasegurado_administrador` (no frena). **Decisión pendiente de JS:**
-     pedirle a Gonzalo que la agregue antes de presentar, o presentar así.
+1. **Seguir los expedientes EX-2026-41680986 (S02466) y EX-2026-41877012 (S02128).** Ahora
+   manda el GCBA: el robot mira cada 30 min y avisa cuando pasen a **Subsanación** (hay que
+   corregir, ver § C) o a **Tramitación** (salió el permiso). Nada que hacer hasta entonces.
+2. **S02465 (Salguero 359): falta sólo el CPAU** (trámite `abierto` al 16/09 19:00). Tiene el
+   Registro Web 00329521985 y espera que se firme, pague y cargue la encomienda en
+   tramites.cpau.org y se suba el certificado visado en la ficha. Con eso se presenta.
+   - **S02128** ya está presentado (§ "Estado 16/09 19:00"). Era una venta de julio habilitada
+     como excepción (`VENTAS_A_INICIAR_ADEMAS` en `portal.ts`), Registro Web 00329522116, primer
+     trámite real con administradora coasegurada (Patricia Beatriz Saggese, CUIT 27066992220),
+     que la póliza no traía: se presentó con esa advertencia.
 3. **Terminar la automatización del cierre de la encomienda del CPAU** (ver la sección que
-   sigue). Cuando esté, S02465 y S02128 se pueden cerrar con el robot en vez de a mano.
+   sigue). Cuando esté, las próximas encomiendas se cierran con el robot en vez de a mano.
+4. **Pendientes nuevos del robot de TAD** (§ "Estado 16/09 19:00"): el clic tapado por
+   `divLoading` y qué ofrecer cuando un adjunto queda colgado.
 
 ## Cierre de la encomienda del CPAU — en curso (16/09)
 
@@ -110,7 +176,8 @@ del CPAU, **sin botón de aprobación**, pago incluido. Siempre es el producto d
   *Pendiente:* usar la obra de la presentación anterior si USIG falla.
 - **Abrir TAD en el navegador corta la sesión del robot**, aunque se cierre enseguida.
   `sesionViva` mira la página sin recargar, y el robot cae en el login de miBA (tarea 36).
-  *Pendiente:* verificar la sesión recargando y reintentar si aparece el login.
+  *Resuelto el 16/09 (`70742f9`):* cada presentación entra con navegador nuevo y login completo,
+  y un login a mitad de camino se reintenta solo.
 - **TAD rechaza algunos PDF con firma digital:** "No pudimos adjuntar tu documento. El archivo
   se encuentra previamente firmado o con espacios de firma". Pasó con el acta de asamblea
   (certificación digital del Colegio de Escribanos); el aviso de obra, firmado en GDE, entra.
@@ -161,8 +228,9 @@ del CPAU, **sin botón de aprobación**, pago incluido. Siempre es el producto d
 - **TAD caído es común (Tamara):** si la presentación frena por TAD y no se tocó Confirmar,
   vuelve sola a la cola cada 30 min, hasta 16 veces (`pvp_tareas.reintentar_desde`, migración
   `20260915000008`, ya aplicada). En la ficha aparecen "Probar ahora" y "Dejar de reintentar".
-- **Sospecha sin confirmar:** un borrador deja de cargar sus documentos (el robot espera 3 × 3
-  min y frena) cuando **una subida falla o queda a medias**:
+- **Sospecha confirmada el 16/09** (12998722 y 12999516, § "Estado 16/09 19:00"): un borrador
+  deja de cargar sus documentos (el robot espera 3 × 3 min y frena) cuando **una subida falla o
+  queda a medias**:
   - **12984454:** póliza encriptada;
   - **12988373:** el robot se cortó con el reglamento todavía subiendo;
   - **12986313:** fue durante la caída de TAD.
@@ -245,8 +313,13 @@ con curl antes de buscar en el código.**
 | --- | --- |
 | `63f46c3` | Un solo aviso "Ya tiene número de expediente" cuando se vincula una presentación |
 | `dc9ae8e` | S02128 aparece para iniciar aunque sea de julio (excepción puntual) |
+| `5479fce` + `f279dbf` | Handoff de las 11:30 y mapeo del cierre de la encomienda del CPAU |
+| `fea6fd0` | Verificar la sesión recargando antes de presentar (reemplazado por `70742f9`) |
+| `9242a87` | Los PDF de más de 4 MB se comprimen con Ghostscript antes de adjuntar |
+| `70742f9` | Cada presentación entra con sesión nueva; login a mitad de camino = reintento |
+| `c3ac552` | El adjunto espera 10 min y el motivo dice si el pedido salió, se cortó o no hubo respuesta |
 
-Todos publicados. El robot de la Mac quedó reinstalado con el código de `63f46c3` (el de
+Todos publicados. El robot de la Mac quedó reinstalado con el código de `c3ac552` (el de
 `dc9ae8e` es sólo de la app). Aparte, en main hay un commit de otra sesión que no es de este
 módulo: `78df0bf`, perfil Comercial para las asistentes comerciales (con su migración).
 

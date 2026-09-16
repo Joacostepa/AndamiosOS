@@ -806,6 +806,11 @@ export async function presentarEnTad({ db, tarea, page, log }) {
     // 15/09 se borró un borrador sano creyéndolo roto. No se frena apenas aparece el cartel
     // (a las 14:13 estaba y la nota se adjuntó igual): sólo se anota para explicar el error.
     estado.tad_caido = /No se pudo establecer comunicaci[oó]n con el servicio/i.test(normal(await page.locator("body").innerText().catch(() => "")));
+    // TAD sacó al robot al login de miBA en medio de la presentación (tarea 45, 16/09, al ir a
+    // Borradores): es TAD, no el trámite. Sin confirmar, vuelve sola a la cola desde el borrador.
+    if (!estado.confirmado && !(e instanceof TadNoCarga) && /login\.buenosaires\.gob\.ar/.test(page.url())) {
+      e = new TadNoCarga(`TAD cerró la sesión en medio de la presentación (${String(e?.message ?? e).split("\n")[0]})`);
+    }
     await foto("error");
     // Una prueba no deja borradores aunque falle (nunca adjuntó nada). Una real sí: el borrador
     // puede tener adjuntos (IF) y es la base para seguir a mano.

@@ -158,25 +158,6 @@ async function sesionViva(page) {
   return /tad\.buenosaires\.gob\.ar/.test(page.url()) && (await page.getByText(/Representando a:/i).count()) > 0;
 }
 
-/**
- * Antes de presentar no alcanza con mirar la página abierta: TAD cierra la sesión a los 15-20
- * minutos sin uso y la página vieja sigue diciendo "Representando a:". Así falló S02128 dos veces
- * el 16/09 (12:33 y 13:07) y la tarea 36 el 15/09: el robot iba a "Inicio" y caía en el login de
- * miBA. Se recarga y se mira qué contesta TAD; ante la duda, false (entrar() sabe qué hacer si la
- * sesión seguía viva).
- */
-async function sesionVivaRecargando(page) {
-  if (!/tad\.buenosaires\.gob\.ar/.test(page.url())) return false;
-  await page.reload({ waitUntil: "domcontentloaded", timeout: 60000 }).catch(() => {});
-  const fin = Date.now() + 45000;
-  while (Date.now() < fin) {
-    if (/login\.buenosaires\.gob\.ar/.test(page.url())) return false;
-    if (await sesionViva(page)) return true;
-    await page.waitForTimeout(1000);
-  }
-  return false;
-}
-
 async function tablaVisible(page) {
   await esperarCarga(page);
   // "Todos" es una <option> del selector de tamaño de página de ESTA solapa.
@@ -788,11 +769,14 @@ while (!apagando) {
     // se pisan). Si frena por TAD (caído o sin cargar) vuelve sola a la cola cada 30 min; por
     // cualquier otra cosa queda en error en la tarea y en el trámite.
     try {
-      if (!browser.isConnected()) ({ browser, page } = await abrir());
-      if (!(await sesionVivaRecargando(page))) {
-        log("Entrando a TAD…");
-        await entrar(page);
-      }
+      // Siempre con navegador nuevo y login completo. El 16/09 S02128 frenó 4 veces porque TAD
+      // cerró la sesión apenas empezaba (12:31, 13:06, 13:11 y 13:35), dos de ellas con la página
+      // recargada diciendo "Representando a:"; la única que pasó el inicio (13:18) venía de un
+      // login recién hecho. Cuesta un login por presentación.
+      await browser.close().catch(() => {});
+      ({ browser, page } = await abrir());
+      log("Entrando a TAD con sesión nueva para presentar…");
+      await entrar(page);
       await atenderPresentacion({ db, tarea, page, log, avisar, sincronizar: (lista) => sincronizarOdoo(lista) });
     } catch (e) {
       // Falló antes de empezar (TAD o el login que no cargan): se reintenta sola, desde el

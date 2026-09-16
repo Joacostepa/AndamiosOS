@@ -1,33 +1,48 @@
-# Handoff — Gestoría de permisos de andamio (actualizado 2026-09-15, 19:20)
+# Handoff — Gestoría de permisos de andamio (actualizado 2026-09-15, 22:45)
 
 Para retomar en una sesión nueva. El diseño completo y todo lo aprendido está en
 `docs/modulo-gestoria-permisos.md`; esto es el estado, **lo que falta para que el circuito
 quede 100 % automático** y el orden para seguir.
 
 Para arrancar: "Leé docs/handoff-gestoria-permisos.md y docs/modulo-gestoria-permisos.md y
-seguimos con lo que falta". **Empezar por § "Estado al cierre 15/09 18:00".**
+seguimos con lo que falta". **Empezar por § "Estado al cierre 15/09 22:45".**
 
 ---
 
-## Estado al cierre 15/09 19:20 — S02466 presentado en TAD, número de expediente en espera
+## Estado al cierre 15/09 22:45 — S02466 presentado en TAD, número de expediente en espera
+
+**Lo grande del día: se presentó el primer permiso entero sin que nadie tocara TAD.** El robot
+armó el borrador 12989635, adjuntó los 11 casilleros, llenó y guardó el formulario y tocó
+"Confirmar trámite" a las 19:09. TAD contestó *"Generación de trámite pendiente · Número de
+expediente en espera · Tenemos problemas para generar el expediente electrónico de tu trámite…
+podrás visualizarlo en Trámites en curso"* (captura `39-03-confirmar-1.png`). O sea: la
+presentación entró y **falta que el GCBA le asigne el número**.
+
+**Al cierre (22:45) el EX todavía no apareció:** TAD sigue mostrando 16 expedientes en curso,
+el trámite `c877aee2-fa45-4bb3-9e53-78ea9b60eb1c` está en `presentado` sin `expediente_id`, y
+la tarea **39** quedó `ok` con `etapa: presentado_sin_numero`. El robot corre bien (vueltas
+limpias 19:30, 20:02 y 22:05).
 
 ### Lo primero en la sesión nueva
 
-1. **Ver si apareció el EX de S02466** (trámite `c877aee2-fa45-4bb3-9e53-78ea9b60eb1c`,
-   tarea **39**). A las 19:09 el robot tocó "Confirmar trámite" con los 11 adjuntos del
-   borrador 12989635 y el formulario guardado. TAD mostró *"Generación de trámite pendiente ·
-   Número de expediente en espera · Tenemos problemas para generar el expediente electrónico…
-   podrás visualizarlo en Trámites en curso"* (captura `39-03-confirmar-1.png`).
-   - **Se vincula solo** (`vincularPresentaciones` en `robot/worker-tad.mjs`). Condiciones: el
-     expediente está en curso, se creó ese día o después, no tiene trámite y su carátula tiene
-     la misma sección/manzana/parcela que la obra (011-063-021A). Queda en
-     `pvp_tramites.expediente_id`, con la venta por `numero`, y escribe `presentado` en Odoo.
-     En el log: "Presentación GUIDO 1923 → EX-…".
-   - Si aparecen dos de esa parcela, avisa (`presentado_varios`) y se vincula a mano.
-   - **No volver a presentar:** la app ya no lo deja.
-2. **S02465 (Salguero 359):** la encomienda del CPAU (Registro Web 00329521985) espera que JS
+1. **Ver si apareció el EX de S02466.** Mirar el log (`Presentación GUIDO 1923 → EX-…`) o la
+   base: `select estado, expediente_id from pvp_tramites where id = 'c877aee2-…'`.
+   - **Se vincula solo** (`vincularPresentaciones` en `robot/worker-tad.mjs`, en cada vuelta):
+     expediente en curso, creado el 15/09 o después, sin trámite y con la misma
+     sección/manzana/parcela que la obra (011-063-021A) en la carátula. Queda en
+     `pvp_tramites.expediente_id`, la venta por `numero`, y `sincronizarOdoo` escribe
+     `presentado` en S02466.
+   - Si aparecen dos de esa parcela avisa (`presentado_varios`) y se vincula a mano.
+   - **Si a media mañana sigue sin aparecer:** entrar a TAD (con el robot parado) y mirar Mis
+     trámites → En curso. Puede que el GCBA no lo haya generado nunca, y ahí hay que ver con
+     Tamara cómo se reclama. **No volver a presentar:** la app no lo deja y duplicaría los 11 IF.
+   - **Es la primera vez que pasa esto**, así que la vinculación automática todavía no se vio
+     funcionando con un caso real: seguirla de cerca.
+2. **Mirar `#permisos-de-andamio-`.** Desde anoche todos los avisos del módulo van a ese canal.
+   Si el robot se cayó en la noche, ahí tiene que estar el aviso (y el de vuelta).
+3. **S02465 (Salguero 359):** la encomienda del CPAU (Registro Web 00329521985) espera que JS
    firme, pague y cargue a mano en tramites.cpau.org. Después sube el certificado visado en la
-   ficha.
+   ficha y eso habilita la presentación.
 
 ### Lo que se aprendió a la tarde-noche (15/09, implementado salvo lo marcado)
 
@@ -146,7 +161,20 @@ con curl antes de buscar en el código.**
 | `92c697d` | Números RE |
 | `bed4c04` | Espera de la subida |
 
-Todos publicados. El robot de la Mac quedó reinstalado con `bed4c04`.
+**Commits de la noche:**
+
+| Commit | Qué hace |
+| --- | --- |
+| `9c2a445` | TAD rechaza el PDF con firma digital: se aplana y se vuelve a adjuntar |
+| `3ab1e89` | Aplanar antes de subir y no cerrar la ventana de Adjuntar |
+| `9f7f25f` | Presentación sin número de expediente, vinculada sola cuando aparece |
+| `72bda5f` | Los avisos del módulo van a `#permisos-de-andamio-` |
+| `2b8d5cb` | El administrador del consorcio, también coasegurado |
+| `89314b3` | El cliente puede leer el acta y la nota antes de firmarlas |
+| `1f2ef33` + `b9ed63a` | Aviso a Slack cuando el robot deja de dar señales (y su arreglo en el proxy) |
+| `2e22de6` | El latido también avisa cuando el robot vuelve |
+
+Todos publicados. El robot de la Mac quedó reinstalado con el código de `2e22de6`.
 
 ---
 
@@ -167,14 +195,14 @@ listo y una persona aprueba el último clic).
 | 4 | Cliente carga el legajo → revisión con IA; acta y nota firmadas en el portal | ✅ (falta plantilla de nota del dueño para inquilinos; faltan recordatorios al cliente) |
 | 5 | Legajo completo → informe técnico y croquis generados solos | ✅ (sólo multidireccional) |
 | 6 | Encomienda del CPAU | 🟡 el robot completa y frena en Confirmar; "Finalizar en el CPAU" desde la ficha. **Falta firma, pago, carga y certificado** |
-| 7 | **Presentar en TAD** → EX → `presentado` en Odoo | ❌ **no existe** |
+| 7 | **Presentar en TAD** → EX → `presentado` en Odoo | ✅ **presentó sola la primera real (S02466, 15/09)**. Si TAD deja el número "en espera", el robot lo vincula cuando aparece (falta verlo pasar una vez) |
 | 8 | Seguimiento diario de TAD (estados, motivo, permiso, Odoo) | ✅ |
 | 9 | **Subsanación** (clasificar el motivo, corregir, subsanar en TAD) | ❌ sólo lee el motivo y avisa |
 | 10 | Permiso emitido → al cliente | 🟡 se descarga y escribe Odoo; **no se le manda al cliente** |
 | 11 | **Renovación** (vence − 30 días) | ❌ |
 
-Último commit: `c626b41` (encomienda del CPAU supervisada), publicado en Vercel y el robot de
-la Mac reinstalado con ese código.
+Último commit: `2e22de6` (el latido del robot también avisa cuando vuelve), publicado en Vercel
+y el robot de la Mac reinstalado con ese código.
 
 ---
 

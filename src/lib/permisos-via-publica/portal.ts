@@ -130,6 +130,14 @@ export async function abrirTramiteDeVenta(
 export const DESDE_VENTAS_A_INICIAR = "2026-08-01 00:00:00";
 
 /**
+ * Ventas anteriores a DESDE_VENTAS_A_INICIAR que igual se ofrecen, una por una, a pedido de JS.
+ * No se baja la fecha: traería otras ventas de julio que no hay que tramitar por acá.
+ *   - S02128 (alquiler, Av. Corrientes 2810): confirmada el 22/07; "Lleva permiso = Sí" se
+ *     marcó el 16/09 (JS, 16/09).
+ */
+export const VENTAS_A_INICIAR_ADEMAS = ["S02128"];
+
+/**
  * Las ventas que piden permiso y todavía no arrancaron: confirmadas desde
  * DESDE_VENTAS_A_INICIAR con "Lleva permiso = Sí", sin trámite presentado ni emitido en
  * Odoo, y sin trámite en la app ni expediente de TAD vinculado. Es una lista para que una
@@ -141,7 +149,8 @@ export async function ventasParaIniciar(db: SupabaseClient): Promise<VentaParaIn
     [
       ["state", "in", ["sale", "done"]],
       ["x_lleva_permiso", "=", "si"],
-      ["date_order", ">=", DESDE_VENTAS_A_INICIAR],
+      // Desde la fecha, o alguna de las excepciones puntuales anteriores a esa fecha.
+      "|", ["date_order", ">=", DESDE_VENTAS_A_INICIAR], ["name", "in", VENTAS_A_INICIAR_ADEMAS],
       // La modalidad NO filtra: "se arma sin expediente ni permiso" dice cuándo se puede
       // armar, no que no haya gestión. Esas obras también tramitan el permiso (JS, 15/09).
       "|", ["x_tramite_estado", "=", false], ["x_tramite_estado", "=", "no_presentado"],

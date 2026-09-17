@@ -437,6 +437,77 @@ export async function registrarDocumentoCliente(db: SupabaseClient, documentoId:
 }
 
 /**
+ * Un documento del legajo quedó observado: se le escribe al cliente con el motivo y el link para
+ * reemplazarlo, con copia a quien gestiona y al vendedor (las respuestas, al vendedor). Sale solo
+ * también en modo supervisado (JS, 16/09, con el acta vencida de S01826). Una vez por versión del
+ * documento. Si el mail del cliente no sirve, avisa al equipo. Nunca tira.
+ */
+export async function pedirCorreccionAlCliente(db: SupabaseClient, documentoId: string, origen?: string | null): Promise<boolean> {
+  try {
+    const { data: doc } = await db.from("pvp_documentos")
+      .select("id, tramite_id, clave, version, estado, observacion, pvp_tramites!inner(direccion, odoo_venta_nombre, cliente_nombre, cliente_email, token_cliente, es_prueba)")
+      .eq("id", documentoId).single();
+    if (!doc || doc.estado !== "observado") return false;
+    const t = doc.pvp_tramites as unknown as Pick<Tramite, "direccion" | "odoo_venta_nombre" | "cliente_nombre" | "cliente_email" | "token_cliente" | "es_prueba">;
+
+    const { count } = await db.from("pvp_eventos").select("id", { count: "exact", head: true })
+      .eq("tramite_id", doc.tramite_id).eq("tipo", "link_cliente").contains("datos", { documento_id: doc.id, version: doc.version });
+    if (count) return false;
+
+    const nombre = NOMBRE_DOCUMENTO[doc.clave] ?? doc.clave;
+    const contactos = await contactosDeTramite(db, doc.tramite_id);
+    const para = t.es_prueba ? process.env.PERMISOS_MAIL ?? null : t.cliente_email;
+    const url = linkCliente(t.token_cliente, origen);
+    const problema = !url ? "No se sabe la URL de la app para armar el link (NEXT_PUBLIC_APP_URL)." : problemaDeMail(para);
+    const enlace = `/permisos-via-publica/tramites/${doc.tramite_id}`;
+
+    if (problema) {
+      await registrarEvento(db, doc.tramite_id, "link_cliente", `No se le pudo pedir al cliente que corrija ${nombre}: ${problema}`, { documento_id: doc.id, version: doc.version, error: problema }, "sistema");
+      if (!t.es_prueba) {
+        await crearAlertas(db, [{
+          tipo: "permiso_novedad",
+          clave: `permiso_novedad:documento:${doc.id}:v${doc.version}:sin_mail`,
+          titulo: `Pedile al cliente que corrija ${nombre.toLowerCase()} — ${t.direccion}`,
+          descripcion: `Quedó observado (${doc.observacion ?? "sin motivo"}) y no salió el mail: ${problema}`,
+          prioridad: "alta",
+          enlace,
+        }]);
+      }
+      return false;
+    }
+
+    await enviarMail({
+      para: para!.trim(),
+      cc: t.es_prueba ? [] : copias(contactos, para),
+      responderA: responderA(contactos),
+      asunto: `${t.es_prueba ? "[PRUEBA] " : ""}Permiso de andamio para ${t.direccion} — hay que volver a subir un documento`,
+      texto: [
+        ...(t.es_prueba ? ["[PRUEBA] Este mail es lo que le llegaría al cliente.", ""] : []),
+        `Hola${t.cliente_nombre ? ` ${t.cliente_nombre}` : ""}, ¿cómo estás?`,
+        "",
+        `Revisamos la documentación del permiso del andamio de ${t.direccion} y hay un documento que necesitamos que vuelvas a subir:`,
+        "",
+        nombre,
+        `Motivo: ${doc.observacion ?? "no cumple lo que pide el Gobierno de la Ciudad."}`,
+        "",
+        "Subilo corregido en el mismo link, con el botón «Reemplazar» de ese documento (no hace falta crear una cuenta):",
+        url!,
+        "",
+        "Cualquier duda, respondé este mail.",
+        "",
+        "Saludos,",
+        "Andamios Buenos Aires",
+      ].join("\n"),
+    });
+    await registrarEvento(db, doc.tramite_id, "link_cliente", `Se le pidió a ${para} que vuelva a subir ${nombre}.`, { documento_id: doc.id, version: doc.version, para, cc: copias(contactos, para) }, "sistema");
+    return true;
+  } catch (e) {
+    console.error("[portal] no se pudo pedir la corrección al cliente", documentoId, e instanceof Error ? e.message : e);
+    return false;
+  }
+}
+
+/**
  * Revisa con IA un documento del legajo y deja ok u observado con el motivo para el cliente.
  * Nunca tira: si la revisión falla queda "cargado" con una nota para que lo mire una persona.
  */
@@ -460,6 +531,7 @@ export async function revisarDocumentoDelCliente(db: SupabaseClient, documentoId
     const observacion = fallas.length === 0 ? null : fallas.map((c) => c.detalle).join(" ");
     await db.from("pvp_documentos").update({ estado, revision, revisado_at: ahora(), observacion, updated_at: ahora() }).eq("id", documentoId);
     await registrarEvento(db, doc.tramite_id, "documento_revisado", `${NOMBRE_DOCUMENTO[doc.clave] ?? doc.clave}: ${estado === "ok" ? "correcto" : observacion}`, { clave: doc.clave, estado, version: doc.version }, "ia");
+    if (estado === "observado") await pedirCorreccionAlCliente(db, documentoId);
     if (estado === "ok") {
       await siLegajoCompletoGenerar(db, doc.tramite_id);
       // Si con este documento quedó todo, se presenta sola en TAD.

@@ -28,7 +28,12 @@ const CRITERIOS: Record<string, { descripcion: string; reglas: Regla[] }> = {
     descripcion: "Aviso de obra o permiso de obra (registro de obra) del GCBA, o la constancia de su trámite (DGROC / DGIUR). Tiene que ser de la dirección de la obra; el peticionante puede ser cualquier persona.",
     reglas: ["direccion"],
   },
-  acta_asamblea: { descripcion: "Acta de asamblea del consorcio que designa al administrador, legalizada.", reglas: ["vigencia", "administrador"] },
+  // Ley 941 de la Ciudad, art. 13 (texto de la Ley 5932): el mandato del administrador dura un
+  // año y lo renueva la asamblea. El reglamento de S01826 no fija plazo y el acta tampoco (16/09).
+  acta_asamblea: {
+    descripcion: "Acta de asamblea del consorcio que designa o renueva al administrador, legalizada. En la Ciudad de Buenos Aires el mandato del administrador dura un año (Ley 941, art. 13), contado desde la fecha que fije la asamblea o, si no la fija, desde la asamblea, y se renueva en asamblea: está vigente sólo si esa designación o renovación tiene menos de un año a la fecha de hoy.",
+    reglas: ["vigencia", "administrador"],
+  },
   reglamento: { descripcion: "Reglamento de copropiedad del edificio de la obra.", reglas: ["direccion"] },
   dni_administrador: { descripcion: "DNI argentino del administrador del consorcio, frente y dorso.", reglas: ["administrador"] },
   dni_apoderado: { descripcion: "DNI argentino del apoderado de la empresa, frente y dorso.", reglas: [] },
@@ -173,7 +178,10 @@ function chequear(clave: string, l: z.infer<typeof Lectura>, t: TramiteLegajo, l
     chequeos.push({ clave: "firma", ok: l.firmado, bloquea: true, detalle: l.firmado ? "Está firmada." : "Falta la firma." });
   }
   if (reglas.includes("vigencia") && l.vigente !== null) {
-    chequeos.push({ clave: "vigencia", ok: l.vigente, bloquea: true, detalle: l.vigente ? "Está vigente." : "No está vigente: hace falta la designación actual." });
+    const vencida = clave === "acta_asamblea"
+      ? "No está vigente: en la Ciudad el mandato del administrador dura un año y lo renueva la asamblea (Ley 941, art. 13). Subí el acta de la asamblea que designó o renovó al administrador hace menos de un año."
+      : "No está vigente: subí el acta con la designación de autoridades actual.";
+    chequeos.push({ clave: "vigencia", ok: l.vigente, bloquea: true, detalle: l.vigente ? "Está vigente." : vencida });
   }
   // El administrador cargado va como coasegurado en el endoso: si el acta o el DNI nombran a otra
   // persona, el pedido a Segucom salió con otro nombre. Advertencia: no frena el legajo (JS, 15/09).

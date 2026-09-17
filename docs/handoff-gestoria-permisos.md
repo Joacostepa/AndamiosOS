@@ -14,15 +14,63 @@ seguimos con lo que falta". **Empezar por § "Noche 16/09", seguir con § "Estad
 
 ### Lo primero mañana
 
-1. **S02086 (Gascón 21): legajo completo, falta armar la encomienda del CPAU** (botón en la ficha,
-   modo supervisado). El aviso a Slack salió a las 22:00, pero **el mail a Tamara y al vendedor
-   no** (la revisión se corrió desde la Mac, sin la clave del mail): avisarles o armarla directo.
+1. **S02086 (Gascón 21): primera corrida real del cierre automático de la encomienda.** Antes:
+   confirmar que Hougassian armó la regla de reenvío a `permisos-andamio@` (se le mandó el
+   instructivo el 16/09). Después, en horario de oficina, tocar **"Armar la encomienda ahora"** y
+   seguirla (§ "Cierre automático de la encomienda" abajo). S02086 además **espera el endoso de
+   la póliza** ("Pedir endoso a Segucom", sigue con botón): sin eso no se presenta aunque llegue el
+   certificado.
 2. **S01826 (Nahuel Huapi 5100): esperar el acta de renovación del administrador.** Se le pidió al
    cliente por mail a las 22:20 (ver abajo). Cuando la suba se revisa sola; si queda ok, el legajo
    se completa y se generan informe técnico y croquis.
 3. **Ver pasar solos, con un caso real**, el mail de corrección y el aviso a Slack de un documento
    observado, y una presentación programada a las 19:00. Hasta ahora sólo se probó el cálculo.
 4. Siguen en pie los pendientes de § "Estado 16/09 19:00" y el cierre de la encomienda del CPAU.
+
+### Cierre automático de la encomienda del CPAU (construido 16/09 a la noche)
+
+**Decisión de JS:** tocar "Armar la encomienda" hace todo sin frenar. Código: `robot/cpau-cierre.mjs`
+(piezas) y `continuarCierre` en `robot/cpau-encomienda.mjs` (etapas en `resultado.cierre.etapa`:
+`finalizada → firmada → pagada → cargada → certificado`). `pedirEncomienda` manda `finalizar: true`.
+
+- **Registro sin firmas:** Histórico → botón "ver" de la fila, **apenas se finaliza** (después el
+  CPAU lo muestra procesado). Controla R.Nro, CUIT del propietario y 3 hojas.
+- **Firmas:** JS (comitente) y Hougassian "Firma 01" (matriculado) con pdf-lib en las 3 hojas; la
+  columna "Firma CPAU" nunca se toca. **JS propuso agregar el sello del CPAU nosotros: se descartó**
+  (falsificar la validación del Consejo); el PDF sellado llega por mail.
+- **Pago:** tienda → Comprar Ahora → Finalizar Compra → Visa Crédito → Procesar Pago → Decidir con la
+  tarjeta de `robot/.env.robot` (`CPAU_TARJETA_*`, cargada el 16/09). Controla `MONTO=5000000` y
+  comercio `00050711`; el n° de operación sale del POST a Decidir. **Antes de "Aceptar" anota
+  `pago.intentado_at`**: si no queda confirmado, no se repite nunca solo. Sin capturas con la
+  tarjeta a la vista (se suben al bucket). Comprobante = PDF de la pantalla final.
+- **Plataforma** (mapeada completa del HTML): `#matricula` 12658, `#dni` 11816203, `#tyc`,
+  `#validarPaso1` (POST `/Check/`) → `#tipoEnco`=`HE`, `#nroForm`=R.Nro sin ceros, `#enco` → `#tipopago`=
+  `PAGO`, `#pagoseguro`=operación, `#comprobante` → `#submit_data` (POST `/grabar`). PDF ≤ 3 MB. Misma
+  traba que el pago (`plataforma.intentado_at`).
+- **Certificado:** el CPAU se lo manda a Hougassian; él lo reenvía a **permisos-andamio@** (IMAP, clave
+  de aplicación en `robot/.env.robot`). La tarea queda `pendiente` y se revisa cada 15 min (hasta 5
+  días). Toma el PDF que trae "Número de Registro <R.Nro>" + "CERTIFICA QUE", lo sube como
+  `encomienda_cpau` ok (subido_por `robot`) y avisa. El cron del latido ahora también corre
+  `barridoPresentaciones`, así que la presentación sale sola.
+- **Errores:** antes de pagar o cargar se reintenta solo 3 veces (10 min). `CierreFrenado` (pago o
+  carga intentados sin confirmar, pago rechazado, PDF incompleto) → error + aviso alto. En la ficha:
+  etapas del cierre y botón **"Reanudar el cierre"** (acción `reanudar`). **No se puede "Volver a
+  armar" ni "Descartar" una encomienda finalizada** (sería otra encomienda y otro pago).
+- **Probado sin pagar ni enviar:** firma sobre el registro de S02128 (bien ubicada); Plataforma
+  completa hasta antes de "Enviar"; pago hasta el formulario de Decidir completo sin "Aceptar"
+  (operación 292168 quedó sin pagar, como la 292118 del mapeo); mail: búsqueda y chequeos con el
+  PDF de S02128; **tramo final de punta a punta con el worker** (tarea de prueba 50 en "cargada":
+  esperó, encontró el mail, subió el certificado y quedó `ok`; todo borrado después).
+- **Sin ver todavía (primera corrida real):** la pantalla después de "Aceptar" (se reconoce por
+  "aprobad…", "rechazad…"; si no dice nada claro, frena) y la de después de "Enviar" en la Plataforma
+  (idem). Mirar las capturas `k..` de la tarea.
+- **Presentación automática prendida** (`pvp_config.supervision.presentacion_automatica = true`, 16/09
+  23:20). Al prenderla no había ningún trámite listo.
+- Pruebas manuales: `robot/probar-cpau-cierre.mjs firma|plataforma|pago|mail` (ninguna paga ni envía).
+
+**Seguridad:** la tarjeta y las dos claves de aplicación de la casilla se pasaron por el chat. La
+primera clave quedó creada en otra cuenta (probablemente js@): borrarla. Cambiar la de
+permisos-andamio@ cuando se pueda.
 
 ### La API de Claude se quedó sin saldo (12:32 → 22:00)
 
@@ -90,6 +138,9 @@ seguimos con lo que falta". **Empezar por § "Noche 16/09", seguir con § "Estad
 | `539c11b` | Botón "Pedir corrección" para reenviar |
 | `1656dce` | Aviso a Slack de documento o póliza observados |
 | `b5eba2a` | Presentaciones en TAD de 19 a 7; fuera de horario quedan programadas |
+| `c3ac518` + `93b9522` | Certificado del CPAU: une encomienda y certificación y exige registro + certificación |
+| `13dc88a` | Script para cargar la tarjeta y mapeo del Histórico visado |
+| `b97eb83` | Cierre automático de la encomienda: finaliza, firma, paga, carga y toma el certificado del mail |
 
 ---
 
@@ -197,7 +248,7 @@ presentación, expediente y Odoo. `vincularPresentaciones` se vio funcionando co
 4. **Pendientes nuevos del robot de TAD** (§ "Estado 16/09 19:00"): el clic tapado por
    `divLoading` y qué ofrecer cuando un adjunto queda colgado.
 
-## Cierre de la encomienda del CPAU — en curso (16/09)
+## Cierre de la encomienda del CPAU — mapeo (16/09; construido a la noche, ver § "Noche 16/09")
 
 **Objetivo (JS, 16/09):** que el robot haga solo lo que hoy se hace a mano después de
 "Finalizar" en el RETP: bajar la encomienda, firmarla, **pagarla** y cargarla en la Plataforma

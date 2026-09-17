@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { revisarLatidoRobot } from "@/lib/permisos-via-publica/robot-latido";
+import { barridoPresentaciones } from "@/lib/permisos-via-publica/presentacion";
 
 // GET/POST /api/permisos-via-publica/latido — el cron que avisa cuando el robot de TAD deja de
 // dar señales (cada 30 minutos, ver vercel.json).
@@ -11,9 +12,12 @@ import { revisarLatidoRobot } from "@/lib/permisos-via-publica/robot-latido";
 //
 // Es idempotente: avisa una sola vez por caída (ver robot-latido.ts). GET además de POST porque
 // Vercel Cron dispara con GET.
+//
+// De paso pide las presentaciones que quedaron listas sin que nadie tocara la app: el robot sube
+// solo el certificado del CPAU que llega por mail (16/09) y eso no pasa por siListoPresentar.
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 /** Service role: el cron no trae cookies y este endpoint escribe avisos. */
 function servicio() {
@@ -36,7 +40,10 @@ function autorizado(req: NextRequest): boolean {
 
 async function correr(req: NextRequest) {
   if (!autorizado(req)) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
-  return NextResponse.json(await revisarLatidoRobot(servicio()));
+  const db = servicio();
+  const latido = await revisarLatidoRobot(db);
+  const presentacionesPedidas = await barridoPresentaciones(db).catch(() => 0);
+  return NextResponse.json({ ...latido, presentacionesPedidas });
 }
 
 export const GET = correr;

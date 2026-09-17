@@ -122,7 +122,8 @@ export function useTramite(id: string) {
     // Seguido mientras se revisa un documento o el robot trabaja en la encomienda del CPAU.
     refetchInterval: (q) =>
       q.state.data?.documentos.some((d) => d.estado === "revisando") ||
-      ["pendiente", "tomada"].includes(q.state.data?.encomienda?.estado ?? "") ||
+      // La encomienda esperando el mail del certificado vuelve a la cola cada 15 min: sin apuro.
+      (["pendiente", "tomada"].includes(q.state.data?.encomienda?.estado ?? "") && !q.state.data?.encomienda?.reintentar_desde) ||
       // Un reintento programado (TAD no respondía) espera media hora: no hace falta mirar cada 5 s.
       (["pendiente", "tomada"].includes(q.state.data?.presentacion.tarea?.estado ?? "") && !q.state.data?.presentacion.tarea?.reintentar_desde) ||
       q.state.data?.presentacion.tarea?.estado === "tomada"
@@ -159,9 +160,9 @@ export function useAccionPresentacion(id: string) {
   });
 }
 
-export type AccionEncomienda = "pedir" | "finalizar" | "descartar";
+export type AccionEncomienda = "pedir" | "finalizar" | "descartar" | "reanudar";
 
-/** Encomienda del CPAU: pedirla al robot, aprobar el Finalizar o descartarla. */
+/** Encomienda del CPAU: pedirla al robot, reanudar el cierre, aprobar el Finalizar (tareas viejas) o descartarla. */
 export function useEncomienda(id: string) {
   const qc = useQueryClient();
   return useMutation({

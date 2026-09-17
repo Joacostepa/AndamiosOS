@@ -8,10 +8,11 @@ import { formatoCuit } from "./tipos";
 // La encomienda profesional del CPAU (RETP) de un trámite: arma los datos y le deja la tarea
 // al robot de la Mac (robot/cpau-encomienda.mjs). La app nunca habla con el CPAU.
 //
-// SUPERVISADO (JS, 2026-09-15): el robot completa todo y frena en Confirmar; una persona
-// revisa el resumen en la ficha y aprueba, y recién ahí el robot toca Finalizar. Firma, pago
-// (tarjeta) y carga en tramites.cpau.org quedan a mano hasta ver esas pantallas con la
-// primera encomienda real. Un trámite de prueba llega a Confirmar y nunca se finaliza.
+// SIN APROBACIÓN DESDE EL 16/09 (JS: "apenas aprieto el botón, que haga absolutamente todo"): el
+// pedido sale con `finalizar` y el robot finaliza, firma, paga, carga en la Plataforma del CPAU y
+// espera el mail con el certificado (robot/cpau-encomienda.mjs y robot/cpau-cierre.mjs). Un
+// trámite de prueba llega a Confirmar y nunca se finaliza. Antes (15/09) frenaba en Confirmar y
+// una persona aprobaba: aprobarEncomienda queda para las tareas viejas.
 //
 // DE DÓNDE SALE CADA DATO:
 //   propietario → el titular del lote que cargó el cliente en el portal
@@ -79,7 +80,7 @@ export async function armarPayload(db: SupabaseClient, tramiteId: string): Promi
 
   return {
     es_prueba: !!t.es_prueba,
-    finalizar: false,
+    finalizar: !t.es_prueba,
     direccion,
     tipo: leido.tipo,
     base: leido.base,
@@ -98,6 +99,10 @@ export async function pedirEncomienda(
   opts: { userId?: string | null } = {},
 ): Promise<{ resultado: "pedida" | "ya_pedida"; payload: PayloadEncomienda }> {
   const payload = await armarPayload(db, tramiteId);
+  // Una encomienda ya finalizada (y quizás pagada) no se vuelve a armar: sería otra encomienda y
+  // otro pago. Se reanuda el cierre.
+  const cierre = await cierreEnCurso(db, tramiteId);
+  if (cierre) throw new FaltanDatos(`Ya hay una encomienda finalizada en el CPAU (R.Nro ${cierre.registro}, etapa «${cierre.etapa}»): se reanuda el cierre, no se arma otra.`);
   const { error } = await db.from("pvp_tareas").insert({ tipo: "cpau_encomienda", tramite_id: tramiteId, payload, pedida_por: opts.userId ?? null });
   if (error?.code === "23505") return { resultado: "ya_pedida", payload };
   if (error) throw new Error(error.message);
@@ -135,8 +140,37 @@ export async function aprobarEncomienda(db: SupabaseClient, tramiteId: string, u
   await registrarEvento(db, tramiteId, "encomienda_cpau", "Se aprobó el resumen: el robot va a tocar Finalizar en el CPAU.", { tarea_id: tarea.id, por: userId }, "persona");
 }
 
+/** La última encomienda finalizada del trámite cuyo cierre no terminó (sin certificado), o null. */
+async function cierreEnCurso(db: SupabaseClient, tramiteId: string): Promise<{ id: number; estado: string; etapa: string; registro: string } | null> {
+  const { data } = await db.from("pvp_tareas").select("id, estado, resultado")
+    .eq("tipo", "cpau_encomienda").eq("tramite_id", tramiteId).order("created_at", { ascending: false }).limit(1).maybeSingle();
+  const r = data?.resultado as { registro?: string; cierre?: { etapa?: string } } | null;
+  if (!data || !r?.cierre?.etapa || r.cierre.etapa === "certificado") return null;
+  return { id: data.id, estado: data.estado, etapa: r.cierre.etapa, registro: r.registro ?? "?" };
+}
+
+/**
+ * "Reanudar el cierre": una encomienda finalizada cuyo cierre se frenó vuelve a la cola y sigue
+ * desde la etapa donde quedó. Un pago o una carga intentados sin confirmar vuelven a frenar: eso
+ * lo resuelve una persona mirando el CPAU.
+ */
+export async function reanudarCierre(db: SupabaseClient, tramiteId: string, userId: string | null): Promise<void> {
+  const cierre = await cierreEnCurso(db, tramiteId);
+  if (!cierre) throw new FaltanDatos("No hay un cierre de encomienda para reanudar.");
+  if (cierre.estado !== "error") throw new FaltanDatos("El cierre no está frenado: el robot lo está siguiendo.");
+  const { data: tarea } = await db.from("pvp_tareas").select("resultado").eq("id", cierre.id).single();
+  const resultado = tarea?.resultado as { cierre: Record<string, unknown> };
+  const { data, error } = await db.from("pvp_tareas")
+    .update({ estado: "pendiente", tomada_at: null, reintentar_desde: null, error: null, resultado: { ...resultado, cierre: { ...resultado.cierre, reintentos: 0 } } })
+    .eq("id", cierre.id).eq("estado", "error").select("id");
+  if (error) throw new Error(error.message);
+  if (!data?.length) throw new FaltanDatos("La encomienda cambió mientras tanto: recargá la ficha.");
+  await registrarEvento(db, tramiteId, "encomienda_cpau", `Se reanudó el cierre de la encomienda desde «${cierre.etapa}».`, { tarea_id: cierre.id, por: userId }, userId ? "persona" : "sistema");
+}
+
 /** Descarta la encomienda que espera aprobación (o que todavía no tomó el robot) para pedirla de nuevo. */
 export async function descartarEncomienda(db: SupabaseClient, tramiteId: string, userId: string | null): Promise<void> {
+  if (await cierreEnCurso(db, tramiteId)) throw new FaltanDatos("La encomienda ya está finalizada en el CPAU: no se puede descartar.");
   const ahora = new Date().toISOString();
   const { data, error } = await db.from("pvp_tareas")
     .update({ estado: "error", error: "Descartada por una persona desde la ficha.", terminada_at: ahora })

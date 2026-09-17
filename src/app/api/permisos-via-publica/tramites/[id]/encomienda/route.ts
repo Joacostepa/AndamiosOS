@@ -3,17 +3,18 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { FaltanDatos } from "@/lib/permisos-via-publica/generacion";
-import { aprobarEncomienda, descartarEncomienda, pedirEncomienda } from "@/lib/permisos-via-publica/encomienda";
+import { aprobarEncomienda, descartarEncomienda, pedirEncomienda, reanudarCierre } from "@/lib/permisos-via-publica/encomienda";
 
 // POST /api/permisos-via-publica/tramites/:id/encomienda — la encomienda del CPAU del trámite.
-//   { accion: "pedir" }      deja la tarea al robot (completa todo y frena en Confirmar)
-//   { accion: "finalizar" }  una persona revisó el resumen: el robot toca Finalizar
+//   { accion: "pedir" }      deja la tarea al robot: finaliza, firma, paga, carga y espera el certificado
+//   { accion: "reanudar" }   vuelve a la cola un cierre que se frenó, desde la etapa donde quedó
+//   { accion: "finalizar" }  (tareas viejas) una persona revisó el resumen: el robot toca Finalizar
 //   { accion: "descartar" }  tira la que espera aprobación, para volver a pedirla
 // El proxy exige nivel "editar". No espera al robot: la ficha se entera sola.
 
 export const dynamic = "force-dynamic";
 
-const schema = z.object({ accion: z.enum(["pedir", "finalizar", "descartar"]) });
+const schema = z.object({ accion: z.enum(["pedir", "finalizar", "descartar", "reanudar"]) });
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
@@ -27,7 +28,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
   try {
     if (parsed.data.accion === "pedir") return NextResponse.json(await pedirEncomienda(db, id, { userId }));
-    if (parsed.data.accion === "finalizar") await aprobarEncomienda(db, id, userId);
+    if (parsed.data.accion === "reanudar") await reanudarCierre(db, id, userId);
+    else if (parsed.data.accion === "finalizar") await aprobarEncomienda(db, id, userId);
     else await descartarEncomienda(db, id, userId);
     return NextResponse.json({ ok: true });
   } catch (e) {

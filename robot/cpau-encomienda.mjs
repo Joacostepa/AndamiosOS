@@ -4,13 +4,13 @@
 // El payload lo arma la app (src/lib/permisos-via-publica/encomienda.ts) con el titular del
 // lote, el frente del catastro, la superficie y la descripción.
 //
-// DOS PASADAS, SUPERVISADO:
-//   1. Completa las 11 pantallas del asistente y FRENA en Confirmar. Sale sin tocar nada:
-//      la tarea queda `esperando_aprobacion` con el resumen y las capturas.
-//   2. Cuando una persona aprueba en la ficha (payload.finalizar), vuelve a completar todo
-//      —la sesión ASP.NET no aguanta horas esperando— y recién ahí toca Finalizar. Captura lo
-//      que aparece después sin tocar nada más: firma, pago y carga todavía no se conocen.
-//   Un trámite de prueba nunca pasa de la primera.
+// SIN APROBACIÓN DESDE EL 16/09 (JS: "apenas aprieto el botón, que haga absolutamente todo"):
+//   el pedido llega con payload.finalizar y el robot completa las 11 pantallas, compara el resumen
+//   y finaliza en la misma pasada. Después sigue solo con el cierre (robot/cpau-cierre.mjs): baja y
+//   firma el registro, paga, carga en la Plataforma y espera el mail con el certificado. Cada etapa
+//   queda en resultado.cierre, así una vuelta que se corta sigue donde estaba.
+//   Una tarea sin finalizar (las viejas o una prueba) frena en Confirmar como antes: queda
+//   `esperando_aprobacion` y un trámite de prueba nunca finaliza.
 //
 // GARANTÍAS (aprendidas en el mapeo del 15/09, ver docs/modulo-gestoria-permisos.md):
 //   - "Siguiente" sólo si el id termina en NextButton y el texto dice Siguiente. Desde la
@@ -21,6 +21,7 @@
 //   - Histórico antes y después contando por R.Nro (los intentos sin terminar no tienen
 //     RETP Nro): en la primera pasada no puede aparecer ninguna fila.
 import { chromium } from "playwright";
+import { CierreFrenado, bajarRegistro, buscarCertificadoEnMail, cargarEnPlataforma, firmarRegistro, pagarEncomienda } from "./cpau-cierre.mjs";
 
 const RETP = "https://retp.cpau.org";
 const P = "#ContentPlaceHolder1_Wizard1_";
@@ -275,9 +276,14 @@ export async function hacerEncomienda({ db, tarea, log }) {
   }
 }
 
+const ESPERA_CERTIFICADO_MIN = 15;
+const ESPERA_CERTIFICADO_DIAS = 5;
+const REINTENTOS_CIERRE = 3;
+
 /**
- * Atiende una tarea `cpau_encomienda` de punta a punta: corre el robot y deja el resultado en
- * la tarea, el documento `encomienda_cpau` del trámite, el historial y los avisos.
+ * Atiende una tarea `cpau_encomienda` de punta a punta: la encomienda en el RETP y, si se finalizó,
+ * el cierre (firma, pago, Plataforma, certificado). Deja el resultado en la tarea, el documento
+ * `encomienda_cpau` del trámite, el historial y los avisos.
  */
 export async function atenderEncomienda({ db, tarea, log, avisar }) {
   const p = tarea.payload ?? {};
@@ -290,6 +296,11 @@ export async function atenderEncomienda({ db, tarea, log, avisar }) {
     if (error) log("!! evento de la encomienda", error.message);
   };
   const aviso = (a) => (p.es_prueba ? Promise.resolve() : avisar([{ enlace, ...a }]));
+  const ctx = { db, tarea, log, avisar, p, ahora, obra, doc, evento, aviso };
+
+  // La tarea que toma el worker no trae el resultado: una vuelta anterior pudo dejar el cierre a medias.
+  const { data: fresca } = await db.from("pvp_tareas").select("resultado").eq("id", tarea.id).maybeSingle();
+  if (fresca?.resultado?.cierre) return continuarCierre({ ...ctx, resultado: fresca.resultado });
 
   log(`CPAU: encomienda de ${obra}${p.finalizar && !p.es_prueba ? " — FINALIZAR" : ""}${p.es_prueba ? " (prueba)" : ""}`);
   try {
@@ -313,19 +324,15 @@ export async function atenderEncomienda({ db, tarea, log, avisar }) {
       return;
     }
 
-    await db.from("pvp_tareas").update({ estado: "ok", resultado: r, terminada_at: ahora() }).eq("id", tarea.id);
-    await doc({
-      estado: "pedido",
-      observacion: `Registrada en el CPAU${r.registro ? ` (R.Nro ${r.registro})` : ""}. Falta firmar, pagar con tarjeta y cargarla en tramites.cpau.org: por ahora a mano (mirá las capturas de lo que apareció después de Finalizar).`,
-    });
-    await evento(`Encomienda finalizada en el CPAU${r.registro ? ` (R.Nro ${r.registro})` : " (no apareció la fila nueva en el Histórico: revisar)"}.`, { tarea_id: tarea.id, registro: r.registro });
-    await aviso({
-      tipo: "permiso_novedad",
-      clave: `permiso_novedad:tramite:${tarea.tramite_id}:encomienda-finalizada:${tarea.id}`,
-      titulo: `Encomienda finalizada en el CPAU — ${obra}`,
-      descripcion: `${r.registro ? `R.Nro ${r.registro}. ` : ""}Falta firma, pago y carga en tramites.cpau.org.`,
-    });
-    log(`CPAU: finalizada ${r.registro ?? "(sin R.Nro)"}`);
+    // "se ha generado el Registro Web nro …" por si la fila nueva no apareció en el Histórico.
+    const registro = r.registro ?? r.texto_final?.match(/Registro Web\s*(?:nro\.?|n[°º])?\s*:?\s*(\d{6,11})/i)?.[1]?.padStart(11, "0") ?? null;
+    if (!registro) throw Object.assign(new Error("Se finalizó en el CPAU pero no apareció el R.Nro: revisar el Histórico"), { finalizado: true, capturas: r.capturas });
+    const resultado = { ...r, registro, cierre: { etapa: "finalizada", finalizada_at: ahora() } };
+    await db.from("pvp_tareas").update({ resultado }).eq("id", tarea.id);
+    await doc({ estado: "pedido", observacion: `Registrada en el CPAU (R.Nro ${registro}). El robot sigue solo: firma, pago y carga en la Plataforma.` });
+    await evento(`Encomienda finalizada en el CPAU (R.Nro ${registro}).`, { tarea_id: tarea.id, registro });
+    log(`CPAU: finalizada ${registro}`);
+    return continuarCierre({ ...ctx, resultado });
   } catch (e) {
     const msg = (e?.message ?? String(e)).slice(0, 500);
     const despuesDeFinalizar = !!e?.finalizado;
@@ -344,5 +351,171 @@ export async function atenderEncomienda({ db, tarea, log, avisar }) {
       descripcion: `${cartel}${msg}`,
       prioridad: "alta",
     });
+  }
+}
+
+/**
+ * El cierre de una encomienda finalizada, etapa por etapa (resultado.cierre.etapa):
+ *   finalizada → firmada → pagada → cargada → certificado.
+ * Pago y carga se anotan ANTES de tocar el botón y nunca se repiten solos. Mientras se espera el
+ * mail con el certificado la tarea vuelve a la cola cada 15 minutos (hasta 5 días). Un error antes
+ * de pagar o de cargar se reintenta solo hasta 3 veces.
+ */
+async function continuarCierre({ db, tarea, log, p, ahora, obra, doc, evento, aviso, resultado }) {
+  const cierre = { ...resultado.cierre };
+  const registro = resultado.registro;
+  resultado.capturas = resultado.capturas ?? [];
+  const guardar = async (cambios, extra = {}) => {
+    Object.assign(cierre, cambios);
+    resultado.cierre = cierre;
+    const { error } = await db.from("pvp_tareas").update({ resultado, ...extra }).eq("id", tarea.id);
+    if (error) throw new CierreFrenado(`No se pudo anotar la etapa del cierre en Supabase (${error.message}): se frena para no repetir pasos`);
+  };
+  const subir = async (path, bytes) => {
+    const { error } = await db.storage.from(BUCKET).upload(path, bytes, { contentType: "application/pdf", upsert: true });
+    if (error) throw new Error(`No se pudo guardar ${path}: ${error.message}`);
+    return path;
+  };
+  const bajar = async (path) => {
+    const { data, error } = await db.storage.from(BUCKET).download(path);
+    if (error || !data) throw new Error(`No se pudo bajar ${path}: ${error?.message ?? "sin datos"}`);
+    return Buffer.from(await data.arrayBuffer());
+  };
+  const base = `tramites/${tarea.tramite_id}/cpau`;
+
+  const browser = await chromium.launch({ headless: true });
+  const context = await browser.newContext({ locale: "es-AR", viewport: { width: 1366, height: 900 }, userAgent: UA, acceptDownloads: true });
+  let n = resultado.capturas.length;
+  const foto = async (nombre) => {
+    const page = context.pages().at(-1);
+    if (!page) return;
+    n += 1;
+    const slug = plano(nombre).toLowerCase().replace(/ /g, "-") || "pantalla";
+    const path = `${base}/${tarea.id}-k${String(n).padStart(2, "0")}-${slug}.png`;
+    const { error } = await db.storage.from(BUCKET).upload(path, await page.screenshot({ fullPage: true }), { contentType: "image/png", upsert: true });
+    if (!error) resultado.capturas.push(path);
+  };
+
+  try {
+    if (cierre.etapa === "finalizada") {
+      log(`CPAU: bajando y firmando el registro ${registro}`);
+      const page = await context.newPage();
+      await entrar(page);
+      const sinFirmas = await bajarRegistro({ page, registro, cuitPropietario: p.propietario?.cuit });
+      const firmado = await firmarRegistro({ db, registro: sinFirmas });
+      await subir(`${base}/registro-${registro}.pdf`, sinFirmas);
+      await guardar({ etapa: "firmada", registro_firmado: await subir(`${base}/registro-${registro}-firmado.pdf`, firmado), firmada_at: ahora() });
+      await page.locator("a", { hasText: /Logout/i }).first().click().catch(() => {});
+      await page.close();
+      await evento("Se bajó el registro de la encomienda y se firmó (comitente: JS; matriculado: Hougassian).", { tarea_id: tarea.id, registro });
+    }
+
+    if (cierre.etapa === "firmada") {
+      if (cierre.pago?.intentado_at) {
+        throw new CierreFrenado(`El pago ya se había intentado (operación ${cierre.pago.operacion}) y no quedó confirmado: revisar la compra en perfil.cpau.org y el resumen de la tarjeta antes de seguir`);
+      }
+      log("CPAU: pagando la encomienda en la tienda");
+      const r = await pagarEncomienda({
+        context, foto, log,
+        alIntentar: ({ operacion }) => guardar({ pago: { operacion, intentado_at: ahora() } }),
+      });
+      if (!r.aprobado) {
+        // Rechazado no cobra: se limpia el intento para poder reanudar después de revisar la tarjeta.
+        await guardar({ pago: { operacion: r.operacion, intentado_at: null, rechazado_at: ahora(), texto: r.texto } });
+        throw new CierreFrenado(`El pago de la encomienda fue rechazado (operación ${r.operacion}): ${r.texto.slice(0, 200)}`);
+      }
+      if (!r.comprobante) throw new CierreFrenado(`La encomienda se pagó (operación ${r.operacion}) pero no se pudo guardar el comprobante: conseguirlo en perfil.cpau.org`);
+      const comprobante = await subir(`${base}/comprobante-${r.operacion}.pdf`, r.comprobante);
+      await guardar({ etapa: "pagada", pago: { ...cierre.pago, aprobado_at: ahora(), comprobante, texto: r.texto, url: r.url } });
+      await evento(`Encomienda pagada en la tienda del CPAU: $50.000, operación ${r.operacion}.`, { tarea_id: tarea.id, operacion: r.operacion });
+      await aviso({
+        tipo: "permiso_novedad",
+        clave: `permiso_novedad:tramite:${tarea.tramite_id}:encomienda-pagada:${tarea.id}`,
+        titulo: `Encomienda del CPAU pagada — ${obra}`,
+        descripcion: `$50.000 con la tarjeta del robot · operación ${r.operacion} · R.Nro ${registro}.`,
+      });
+    }
+
+    if (cierre.etapa === "pagada") {
+      if (cierre.plataforma?.intentado_at) {
+        throw new CierreFrenado("La carga en la Plataforma del CPAU ya se había intentado y no quedó confirmada: revisar antes de volver a cargarla");
+      }
+      log("CPAU: cargando la encomienda en la Plataforma");
+      const r = await cargarEnPlataforma({
+        context, foto, registro,
+        registroFirmado: await bajar(cierre.registro_firmado),
+        operacion: cierre.pago.operacion,
+        comprobante: await bajar(cierre.pago.comprobante),
+        alIntentar: () => guardar({ plataforma: { intentado_at: ahora() } }),
+      });
+      await guardar({ etapa: "cargada", plataforma: { ...cierre.plataforma, enviada_at: ahora(), texto: r.texto } });
+      await doc({ estado: "pedido", observacion: `Cargada en el CPAU (R.Nro ${registro}, pago ${cierre.pago.operacion}). Falta que la vise y llegue el certificado por mail a permisos-andamio@.` });
+      await evento("Encomienda cargada en la Plataforma del CPAU: queda esperar el visado y el mail con el certificado.", { tarea_id: tarea.id });
+      await aviso({
+        tipo: "permiso_novedad",
+        clave: `permiso_novedad:tramite:${tarea.tramite_id}:encomienda-cargada:${tarea.id}`,
+        titulo: `Encomienda cargada en el CPAU — ${obra}`,
+        descripcion: `R.Nro ${registro}. El CPAU la visa en 30-40 min (en horario de oficina) y Hougassian reenvía el PDF a permisos-andamio@: el robot lo toma solo.`,
+      });
+    }
+
+    if (cierre.etapa === "cargada") {
+      const llego = await buscarCertificadoEnMail({ registro, desde: cierre.plataforma.enviada_at, log });
+      if (!llego) {
+        const dias = (Date.now() - Date.parse(cierre.plataforma.enviada_at)) / 86_400_000;
+        if (dias > ESPERA_CERTIFICADO_DIAS) {
+          throw new CierreFrenado(`Pasaron ${ESPERA_CERTIFICADO_DIAS} días desde la carga y no llegó a permisos-andamio@ el mail del CPAU con el certificado: pedirle a Hougassian que lo reenvíe`);
+        }
+        const cuando = new Date(Date.now() + ESPERA_CERTIFICADO_MIN * 60_000).toISOString();
+        await guardar({ ultima_busqueda_at: ahora() }, { estado: "pendiente", reintentar_desde: cuando });
+        return;
+      }
+      const fallas = llego.chequeos.filter((c) => !c.ok && c.bloquea);
+      if (fallas.length) {
+        throw new CierreFrenado(`Llegó un PDF del CPAU para el R.Nro ${registro} pero no está completo: ${fallas.map((c) => c.clave).join(", ")}`);
+      }
+      const path = await subir(`tramites/${tarea.tramite_id}/encomienda_cpau-${Date.now()}.pdf`, llego.pdf);
+      const { data: previo } = await db.from("pvp_documentos").select("id, version").eq("tramite_id", tarea.tramite_id).eq("clave", "encomienda_cpau").maybeSingle();
+      const valores = {
+        estado: "ok", archivo_path: path, archivo_nombre: llego.nombre, version: (previo?.version ?? 0) + 1,
+        subido_por: "robot", subido_at: ahora(), revisado_at: ahora(), updated_at: ahora(), observacion: null,
+        revision: { modelo: null, leido: { mail: llego.mail, registro }, chequeos: llego.chequeos.map((c) => ({ ...c, detalle: c.ok ? c.detalle : `Falta: ${c.detalle}` })) },
+      };
+      const { error } = previo
+        ? await db.from("pvp_documentos").update(valores).eq("id", previo.id)
+        : await db.from("pvp_documentos").insert({ ...valores, tramite_id: tarea.tramite_id, clave: "encomienda_cpau", origen: "aba" });
+      if (error) throw new Error(`No se pudo guardar el certificado del CPAU: ${error.message}`);
+      await guardar({ etapa: "certificado", certificado: { path, nombre: llego.nombre, mail: llego.mail, recibido_at: ahora() } }, { estado: "ok", terminada_at: ahora(), reintentar_desde: null, error: null });
+      await evento(`Llegó el certificado del CPAU por mail (${llego.nombre}) y quedó cargado: se presenta en TAD en el horario de presentación.`, { tarea_id: tarea.id, path, mail: llego.mail });
+      await aviso({
+        tipo: "permiso_novedad",
+        clave: `permiso_novedad:tramite:${tarea.tramite_id}:encomienda-certificado:${tarea.id}`,
+        titulo: `Certificado del CPAU recibido — ${obra}`,
+        descripcion: `${llego.nombre} · R.Nro ${registro}. Con esto el trámite queda listo para presentar en TAD (de 19 a 7).`,
+      });
+      log(`CPAU: certificado de ${registro} cargado`);
+    }
+  } catch (e) {
+    const msg = (e?.message ?? String(e)).slice(0, 500);
+    const frenado = e instanceof CierreFrenado;
+    const reintentos = cierre.reintentos ?? 0;
+    log(`!! CPAU cierre (${cierre.etapa})`, msg);
+    if (!frenado && reintentos < REINTENTOS_CIERRE) {
+      await guardar({ reintentos: reintentos + 1, ultimo_error: msg }, { estado: "pendiente", reintentar_desde: new Date(Date.now() + 10 * 60_000).toISOString() }).catch(() => {});
+      await evento(`El cierre de la encomienda se frenó en «${cierre.etapa}» y se reintenta solo en 10 minutos (${reintentos + 1} de ${REINTENTOS_CIERRE}): ${msg}`, { tarea_id: tarea.id });
+      return;
+    }
+    await db.from("pvp_tareas").update({ estado: "error", error: msg, terminada_at: ahora(), resultado: { ...resultado, cierre } }).eq("id", tarea.id);
+    await doc({ estado: "observado", observacion: `El cierre de la encomienda se frenó en «${cierre.etapa}»: ${msg}` });
+    await evento(`El cierre de la encomienda del CPAU se frenó en «${cierre.etapa}»: ${msg}`, { tarea_id: tarea.id, etapa: cierre.etapa });
+    await aviso({
+      tipo: "permiso_robot",
+      clave: `permiso_robot:tramite:${tarea.tramite_id}:encomienda-cierre:${tarea.id}:${cierre.etapa}`,
+      titulo: `⚠️ Se frenó el cierre de la encomienda del CPAU — ${obra}`,
+      descripcion: `Etapa «${cierre.etapa}». ${msg}`,
+      prioridad: "alta",
+    });
+  } finally {
+    await browser.close().catch(() => {});
   }
 }

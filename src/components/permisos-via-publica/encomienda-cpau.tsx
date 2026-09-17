@@ -7,9 +7,9 @@ import { Button } from "@/components/ui/button";
 import { useEncomienda, useSubirCertificado, type AccionEncomienda } from "@/hooks/use-permisos-via-publica";
 import { formatoCuit, type EncomiendaFicha } from "@/lib/permisos-via-publica/tipos";
 
-// Encomienda del CPAU en la ficha del trámite. El robot de la Mac la completa y frena en
-// Confirmar; acá una persona revisa el resumen y toca "Finalizar en el CPAU". Firma, pago y
-// carga en tramites.cpau.org todavía se hacen a mano.
+// Encomienda del CPAU en la ficha del trámite. Desde el 16/09 el robot de la Mac hace todo sin
+// frenar: finaliza, firma, paga, carga en tramites.cpau.org y espera el mail con el certificado.
+// Acá se ve en qué etapa va y, si se frenó, por qué. "Subir certificado" queda para cargarlo a mano.
 
 /**
  * "Subir certificado del CPAU": la encomienda final (el CPAU la publica 30-40 min después de
@@ -66,6 +66,17 @@ function SubirCertificado({ tramiteId }: { tramiteId: string }) {
   );
 }
 
+const ETAPAS: { clave: NonNullable<NonNullable<EncomiendaFicha["resultado"]>["cierre"]>["etapa"]; texto: string }[] = [
+  { clave: "finalizada", texto: "Finalizada en el RETP" },
+  { clave: "firmada", texto: "Registro firmado" },
+  { clave: "pagada", texto: "Pagada ($50.000)" },
+  { clave: "cargada", texto: "Cargada en la Plataforma" },
+  { clave: "certificado", texto: "Certificado recibido" },
+];
+
+const hora = (iso: string | null | undefined) =>
+  iso ? new Date(iso).toLocaleString("es-AR", { day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }) : "";
+
 export function EncomiendaCpau({ tramiteId, encomienda: e, esPrueba }: { tramiteId: string; encomienda: EncomiendaFicha | null; esPrueba: boolean }) {
   const accion = useEncomienda(tramiteId);
 
@@ -83,7 +94,10 @@ export function EncomiendaCpau({ tramiteId, encomienda: e, esPrueba }: { tramite
   );
 
   const p = e?.payload;
-  const trabajando = e && ["pendiente", "tomada"].includes(e.estado);
+  const cierre = e?.resultado?.cierre;
+  const esperandoMail = e?.estado === "pendiente" && cierre?.etapa === "cargada" && !!e.reintentar_desde;
+  const trabajando = e && ["pendiente", "tomada"].includes(e.estado) && !esperandoMail;
+  const indice = cierre ? ETAPAS.findIndex((x) => x.clave === cierre.etapa) : -1;
 
   return (
     <section className="space-y-2 rounded-md border p-3 text-[13px]">
@@ -94,8 +108,9 @@ export function EncomiendaCpau({ tramiteId, encomienda: e, esPrueba }: { tramite
       {!e && (
         <>
           <p className="text-muted-foreground">
-            Se pide sola cuando el legajo del cliente queda completo y se generan el informe técnico y el croquis. El robot la
-            completa en el CPAU y frena antes de Finalizar.
+            {esPrueba
+              ? "Prueba: el robot la completa en el CPAU hasta Confirmar y nunca la finaliza."
+              : "Con el botón, el robot hace todo sin frenar: la carga y finaliza en el RETP, firma el registro (JS y Hougassian), paga $50.000 con la tarjeta, la carga en tramites.cpau.org y espera el mail del CPAU con el certificado."}
           </p>
           {pedirBoton("Armar la encomienda ahora")}
         </>
@@ -114,10 +129,39 @@ export function EncomiendaCpau({ tramiteId, encomienda: e, esPrueba }: { tramite
         </dl>
       )}
 
+      {cierre && (
+        <ol className="flex flex-wrap gap-x-3 gap-y-1 text-[12px]">
+          {ETAPAS.map((x, i) => (
+            <li key={x.clave} className={`flex items-center gap-1 ${i <= indice ? "text-green-300" : "text-muted-foreground"}`}>
+              {i <= indice ? <CheckCircle2 className="size-3.5" /> : <span className="inline-block size-3.5 rounded-full border" />}
+              {x.texto}
+            </li>
+          ))}
+        </ol>
+      )}
+      {cierre && (
+        <p className="text-[12px] text-muted-foreground">
+          {e?.resultado?.registro && <>R.Nro {e.resultado.registro}. </>}
+          {cierre.pago?.operacion && cierre.pago.aprobado_at && <>Pago: operación {cierre.pago.operacion}. </>}
+          {cierre.certificado && <>Certificado: {cierre.certificado.nombre} ({hora(cierre.certificado.recibido_at)}). </>}
+        </p>
+      )}
+
       {trabajando && (
         <p className="flex items-center gap-1.5 text-blue-300">
           <Loader2 className="size-4 animate-spin" />
-          {e.payload.finalizar ? "El robot está finalizando la encomienda en el CPAU…" : "El robot la está completando en el CPAU (un par de minutos; la Mac tiene que estar prendida)…"}
+          {cierre
+            ? `El robot está siguiendo el cierre (${ETAPAS[Math.min(indice + 1, ETAPAS.length - 1)].texto.toLowerCase()})…`
+            : e.payload.finalizar
+              ? "El robot la está cargando y finalizando en el CPAU (unos minutos; la Mac tiene que estar prendida)…"
+              : "El robot la está completando en el CPAU (un par de minutos; la Mac tiene que estar prendida)…"}
+        </p>
+      )}
+
+      {esperandoMail && (
+        <p className="text-blue-300">
+          Cargada en el CPAU. Falta que la vise (30–40 min en horario de oficina) y que Hougassian reenvíe el mail a
+          permisos-andamio@: el robot revisa la casilla cada 15 minutos{cierre?.ultima_busqueda_at ? ` (última: ${hora(cierre.ultima_busqueda_at)})` : ""}.
         </p>
       )}
 
@@ -155,11 +199,14 @@ export function EncomiendaCpau({ tramiteId, encomienda: e, esPrueba }: { tramite
         </div>
       )}
 
-      {e?.estado === "ok" && (
+      {e?.estado === "ok" && !cierre && (
         <p className="text-green-300">
-          Finalizada en el CPAU{e.resultado?.registro ? ` (R.Nro ${e.resultado.registro})` : ""}. Falta firmar, pagar con tarjeta y cargarla en
-          tramites.cpau.org: por ahora a mano. Mirá en las capturas qué apareció después de Finalizar.
+          Finalizada en el CPAU{e.resultado?.registro ? ` (R.Nro ${e.resultado.registro})` : ""}. Esta es de antes del cierre automático: firma,
+          pago y carga se hicieron a mano.
         </p>
+      )}
+      {e?.estado === "ok" && cierre?.etapa === "certificado" && (
+        <p className="text-green-300">Listo: el certificado del CPAU quedó cargado y el trámite se presenta en TAD en el horario de presentación.</p>
       )}
 
       {e?.estado === "error" && (
@@ -168,10 +215,26 @@ export function EncomiendaCpau({ tramiteId, encomienda: e, esPrueba }: { tramite
             <TriangleAlert className="mt-0.5 size-4 shrink-0" />
             <span>
               {e.resultado?.finalizado && <strong>Falló después de tocar Finalizar: revisá el Histórico del CPAU antes de volver a pedirla. </strong>}
+              {cierre && <strong>El cierre se frenó en «{ETAPAS[indice]?.texto ?? cierre.etapa}». </strong>}
               {e.error}
             </span>
           </p>
-          {pedirBoton("Volver a armarla")}
+          {cierre ? (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={accion.isPending}
+              onClick={() => {
+                if (window.confirm("El robot sigue el cierre desde donde quedó. Un pago o una carga que ya se intentaron no se repiten: si el error habla de eso, revisá el CPAU primero. ¿Reanudar?")) {
+                  lanzar("reanudar", "Reanudado: el robot sigue en unos segundos");
+                }
+              }}
+            >
+              {accion.isPending ? <Loader2 className="size-4 animate-spin" /> : <RotateCcw className="size-4" />} Reanudar el cierre
+            </Button>
+          ) : (
+            pedirBoton("Volver a armarla")
+          )}
         </div>
       )}
 

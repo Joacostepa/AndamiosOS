@@ -21,7 +21,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     db.from("pvp_tramites").select("*").eq("id", id).maybeSingle(),
     db.from("pvp_documentos").select("*").eq("tramite_id", id).order("created_at"),
     db.from("pvp_eventos").select("*").eq("tramite_id", id).order("created_at", { ascending: false }),
-    db.from("pvp_tareas").select("id, estado, payload, resultado, error, created_at, terminada_at")
+    db.from("pvp_tareas").select("id, estado, payload, resultado, error, reintentar_desde, created_at, terminada_at")
       .eq("tipo", "cpau_encomienda").eq("tramite_id", id).order("created_at", { ascending: false }).limit(1),
   ]);
   const [presentaciones, requisitos, pendiente] = await Promise.all([
@@ -49,7 +49,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     ? {
         ...tarea,
         capturas: await Promise.all((tarea.resultado?.capturas ?? []).map(async (path) => ({
-          nombre: path.split("/").pop()!.replace(/^\d+-[cf]\d+-/, "").replace(/\.png$/, "").replace(/-/g, " "),
+          nombre: path.split("/").pop()!.replace(/^\d+-[cfk]\d+-/, "").replace(/\.png$/, "").replace(/-/g, " "),
           url: (await db.storage.from("permisos-via-publica").createSignedUrl(path, 600)).data?.signedUrl ?? null,
         }))),
       }

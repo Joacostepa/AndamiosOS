@@ -358,8 +358,22 @@ export type EncomiendaFicha = {
     texto_final?: string;
     registro?: string | null;
     finalizado?: boolean;
+    /** Cierre sin personas (16/09): robot/cpau-encomienda.mjs lo avanza etapa por etapa. */
+    cierre?: {
+      etapa: "finalizada" | "firmada" | "pagada" | "cargada" | "certificado";
+      finalizada_at?: string;
+      firmada_at?: string;
+      pago?: { operacion?: string; intentado_at?: string | null; aprobado_at?: string; rechazado_at?: string };
+      plataforma?: { intentado_at?: string; enviada_at?: string };
+      ultima_busqueda_at?: string;
+      certificado?: { nombre: string; recibido_at: string };
+      reintentos?: number;
+      ultimo_error?: string;
+    };
   } | null;
   error: string | null;
+  /** En la cola con hora: esperando el mail con el certificado o un reintento del cierre. */
+  reintentar_desde: string | null;
   created_at: string;
   terminada_at: string | null;
   capturas: { nombre: string; url: string | null }[];

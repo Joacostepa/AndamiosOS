@@ -440,8 +440,8 @@ export async function registrarDocumentoCliente(db: SupabaseClient, documentoId:
  * Un documento del legajo quedó observado: se le escribe al cliente con el motivo y el link para
  * reemplazarlo, con copia a quien gestiona y al vendedor (las respuestas, al vendedor). Sale solo
  * también en modo supervisado (JS, 16/09, con el acta vencida de S01826). Una vez por versión del
- * documento; `forzar` lo reenvía (botón de la ficha, p. ej. después de corregir el mail en Odoo). Si
- * el mail del cliente no sirve, avisa al equipo. Nunca tira: devuelve si salió y, si no, por qué.
+ * documento; `forzar` lo reenvía (botón de la ficha, p. ej. después de corregir el mail en Odoo).
+ * Nunca tira: devuelve si salió y, si no, por qué (el aviso al equipo lo arma quien la llama).
  */
 export async function pedirCorreccionAlCliente(
   db: SupabaseClient,
@@ -465,20 +465,9 @@ export async function pedirCorreccionAlCliente(
     const para = t.es_prueba ? process.env.PERMISOS_MAIL ?? null : t.cliente_email;
     const url = linkCliente(t.token_cliente, opts.origen);
     const problema = !url ? "No se sabe la URL de la app para armar el link (NEXT_PUBLIC_APP_URL)." : problemaDeMail(para);
-    const enlace = `/permisos-via-publica/tramites/${doc.tramite_id}`;
 
     if (problema) {
       await registrarEvento(db, doc.tramite_id, "link_cliente", `No se le pudo pedir al cliente que corrija ${nombre}: ${problema}`, { documento_id: doc.id, version: doc.version, error: problema }, "sistema");
-      if (!t.es_prueba) {
-        await crearAlertas(db, [{
-          tipo: "permiso_novedad",
-          clave: `permiso_novedad:documento:${doc.id}:v${doc.version}:sin_mail`,
-          titulo: `Pedile al cliente que corrija ${nombre.toLowerCase()} — ${t.direccion}`,
-          descripcion: `Quedó observado (${doc.observacion ?? "sin motivo"}) y no salió el mail: ${problema}`,
-          prioridad: "alta",
-          enlace,
-        }]);
-      }
       return { enviado: false, motivo: problema };
     }
 
@@ -538,7 +527,21 @@ export async function revisarDocumentoDelCliente(db: SupabaseClient, documentoId
     const observacion = fallas.length === 0 ? null : fallas.map((c) => c.detalle).join(" ");
     await db.from("pvp_documentos").update({ estado, revision, revisado_at: ahora(), observacion, updated_at: ahora() }).eq("id", documentoId);
     await registrarEvento(db, doc.tramite_id, "documento_revisado", `${NOMBRE_DOCUMENTO[doc.clave] ?? doc.clave}: ${estado === "ok" ? "correcto" : observacion}`, { clave: doc.clave, estado, version: doc.version }, "ia");
-    if (estado === "observado") await pedirCorreccionAlCliente(db, documentoId);
+    if (estado === "observado") {
+      // El mail al cliente sale solo y el equipo se entera por Slack de qué está mal y de si el
+      // pedido le llegó al cliente (JS, 16/09). Un aviso por versión del documento.
+      const mail = await pedirCorreccionAlCliente(db, documentoId);
+      if (!tramite.es_prueba) {
+        await crearAlertas(db, [{
+          tipo: "permiso_novedad",
+          clave: `permiso_novedad:documento:${documentoId}:v${doc.version}:observado`,
+          titulo: `Documento observado — ${tramite.direccion}`,
+          descripcion: `${NOMBRE_DOCUMENTO[doc.clave] ?? doc.clave}: ${observacion} ${mail.enviado ? "Ya se le pidió la corrección al cliente por mail." : `No salió el mail al cliente (${mail.motivo}): pedíselo por otro medio.`}`,
+          prioridad: mail.enviado ? "media" : "alta",
+          enlace: `/permisos-via-publica/tramites/${doc.tramite_id}`,
+        }]).catch(() => 0);
+      }
+    }
     if (estado === "ok") {
       await siLegajoCompletoGenerar(db, doc.tramite_id);
       // Si con este documento quedó todo, se presenta sola en TAD.

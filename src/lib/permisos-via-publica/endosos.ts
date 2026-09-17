@@ -262,6 +262,19 @@ export async function revisarDocumento(db: SupabaseClient, documentoId: string):
     await db.from("pvp_documentos").update({ estado, revision, revisado_at: ahora, observacion, updated_at: ahora }).eq("id", documentoId);
     await registrarEvento(db, doc.tramite_id, "documento_revisado", estado === "ok" ? "La póliza cumple lo que pide el GCBA." : `Observada: ${observacion}`, { estado, version: doc.version }, "ia");
 
+    // Lo que suben mal también se avisa al canal (JS, 16/09). Segucom la ve observada en su portal;
+    // el mail a Gonzalo, si hace falta, lo manda una persona.
+    if (estado === "observado") {
+      await alertar(db, [{
+        tipo: "permiso_endoso",
+        clave: `permiso_endoso:${documentoId}:observado:v${doc.version}`,
+        titulo: `Póliza observada — ${tramite.direccion}`,
+        descripcion: `${observacion} Segucom la ve observada en su portal.`,
+        prioridad: "alta",
+        enlace: enlaceInterno(doc.tramite_id, tramite),
+      }]);
+    }
+
     if (estado === "ok") {
       await alertar(db, [{
         tipo: "permiso_endoso",

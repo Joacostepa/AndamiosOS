@@ -231,6 +231,29 @@ export const NOMBRE_DOCUMENTO: Record<string, string> = {
   informe_tecnico: "Informe técnico",
 };
 
+/**
+ * Tope de lo que se puede subir al legajo. La API de Claude acepta 32 MB por pedido y el archivo
+ * viaja en base64 (pesa un tercio más), así que arriba de 20 MB la revisión ni se intenta; TAD
+ * tampoco toma adjuntos de más de 20 MB. El 17/09 un cliente subió el libro de actas entero
+ * (32,8 MB, 92 páginas) de Av. Córdoba 950 y el documento quedó sin revisar sin que él se enterara.
+ */
+export const MAX_ARCHIVO_LEGAJO = 20 * 1024 * 1024;
+
+const ACTAS = ["acta_asamblea", "acta_directorio"];
+const LARGOS = ["reglamento", "estatuto", "poder", "titulo_propiedad", "contrato_alquiler"];
+
+/** Qué decirle a quien sube un archivo demasiado grande, según el documento. */
+export function motivoArchivoGrande(clave: string, bytes: number): string {
+  const pesa = `El archivo pesa ${(bytes / 1048576).toLocaleString("es-AR", { maximumFractionDigits: 1 })} MB y no se puede revisar (el máximo son ${MAX_ARCHIVO_LEGAJO / 1048576} MB).`;
+  if (ACTAS.includes(clave)) {
+    return `${pesa} No hace falta el libro de actas completo: subí sólo las hojas del acta de la asamblea que designó o renovó al administrador.`;
+  }
+  if (LARGOS.includes(clave)) {
+    return `${pesa} Volvé a escanearlo en menor calidad (por ejemplo en blanco y negro o en modo "texto"), así pesa menos.`;
+  }
+  return `${pesa} Sacale una foto más liviana o escanealo en menor calidad.`;
+}
+
 export const ETIQUETA_ESTADO_DOCUMENTO: Record<EstadoDocumento, string> = {
   falta: "Falta",
   pedido: "Pedido",

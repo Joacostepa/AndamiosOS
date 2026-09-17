@@ -63,6 +63,16 @@ con el acta todavía observada; el acta quedó ok a las 13:14 (§ siguiente).
   clientes no les llegó ningún aviso de que ya está bien: avisarles (vendedor).
 - **S01826 queda con el legajo completo;** falta sólo la póliza de Segucom para presentarse.
 
+### El libro de actas que no entraba en la revisión (17/09, tarde)
+
+- El cliente de **Av. Córdoba 950 (S02202)** subió el libro de actas completo (32,8 MB, 92 hojas) y la
+  API lo rechazó por tamaño: el documento quedó "cargado" y nadie se enteró hasta mirar la ficha.
+- La revisé a mano: la asamblea del 17/12/2025, en la última hoja, renueva por un año a Mario Alberto
+  Lopez (RPA 5308), que es el administrador cargado. **Quedó ok** (JS: dejarla pasar), con el detalle
+  en el historial. Ese trámite tiene todo salvo la póliza.
+- **Arreglo:** tope de 20 MB al subir, avisado en el portal y en la revisión, con un motivo distinto
+  según el documento (§ "Noche 16/09 — revisión con IA…" del diseño).
+
 ### Lo primero en la sesión nueva
 
 1. **S02086 (Gascón 21): sigue sin encomienda.** Tocar "Armar la encomienda ahora" en horario de

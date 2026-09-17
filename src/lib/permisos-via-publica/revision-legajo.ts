@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
-import { ETIQUETA_DUENO, NOMBRE_DOCUMENTO, formatoCuit, type ChequeoPoliza, type RevisionDocumento, type Tramite } from "./tipos";
+import { ETIQUETA_DUENO, MAX_ARCHIVO_LEGAJO, NOMBRE_DOCUMENTO, formatoCuit, motivoArchivoGrande, type ChequeoPoliza, type RevisionDocumento, type Tramite } from "./tipos";
 import { normalizar, parcelaPorDireccion, type Parcela } from "./catastro";
 
 // Revisión de cada documento que sube el cliente en su portal, apenas lo sube.
@@ -256,6 +256,12 @@ export async function revisarDocumentoCliente(
   tramite: TramiteLegajo,
 ): Promise<RevisionDocumento> {
   const criterio = CRITERIOS[clave];
+  // Un archivo demasiado grande no se manda: la API lo rechaza con 413 y el documento quedaba
+  // "cargado" esperando a una persona. Observado, el cliente recibe el motivo y lo puede arreglar.
+  if (archivo.length > MAX_ARCHIVO_LEGAJO) {
+    const detalle = motivoArchivoGrande(clave, archivo.length);
+    return { modelo: null, leido: { bytes: archivo.length }, chequeos: [{ clave: "tamano", ok: false, bloquea: true, detalle }] };
+  }
   // El lote de la obra (parcela y puertas) para aceptar otra puerta del mismo edificio.
   const lote = criterio?.reglas.includes("direccion") ? await loteDeLaObra(tramite.direccion) : null;
   const datos = archivo.toString("base64");

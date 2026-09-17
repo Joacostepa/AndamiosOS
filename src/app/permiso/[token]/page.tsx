@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { CheckCircle2, Circle, CircleAlert, Loader2, Upload } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { PortalCliente } from "@/app/api/public/permiso/[token]/route";
-import { ETIQUETA_DUENO, NOMBRE_DOCUMENTO, clavesFirmables, cuitValido, formatoCuit, type TipoDueno } from "@/lib/permisos-via-publica/tipos";
+import { ETIQUETA_DUENO, MAX_ARCHIVO_LEGAJO, NOMBRE_DOCUMENTO, clavesFirmables, cuitValido, formatoCuit, motivoArchivoGrande, type TipoDueno } from "@/lib/permisos-via-publica/tipos";
 import { FirmarDocumentos } from "./firmar";
 
 // Portal del cliente para el permiso de andamio. Llega por mail (o WhatsApp) al iniciarse el
@@ -201,6 +201,8 @@ function FilaDocumento({ token, doc, onSubido }: { token: string; doc: PortalCli
   async function subir(archivo: File) {
     const extension = archivo.name.split(".").pop()?.toLowerCase() ?? "";
     if (!EXTENSIONES.includes(extension)) return setError("Tiene que ser un PDF o una foto (JPG o PNG).");
+    // Se avisa acá, antes de subirlo: si no, el cliente espera la subida entera para nada.
+    if (archivo.size > MAX_ARCHIVO_LEGAJO) return setError(motivoArchivoGrande(doc.clave, archivo.size));
     setSubiendo(true);
     setError(null);
     try {

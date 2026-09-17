@@ -1328,6 +1328,15 @@ Lo que dejó:
   la IA. El motivo dice las fechas ("mandato desde el 04/11/2025 hasta el 04/11/2026", "el mandato
   venció el 13/09/2025"). "Hoy" es la fecha de Buenos Aires (antes, UTC: después de las 21 h era
   mañana). Las dos actas se volvieron a revisar desde la Mac y quedaron ok.
+- **Archivos demasiado grandes (17/09).** El cliente de Av. Córdoba 950 (S02202) subió el libro de
+  actas entero escaneado (32,8 MB, 92 hojas): la API lo rechazó con 413 (`request_too_large`; el
+  límite es 32 MB por pedido y el archivo viaja en base64, un tercio más pesado) y el documento quedó
+  "cargado" esperando a una persona, sin que el cliente supiera por qué. Ahora hay un tope de
+  **20 MB** (`MAX_ARCHIVO_LEGAJO`, el mismo que acepta TAD por adjunto): el portal avisa antes de
+  subir y la revisión ni siquiera llama a la API. El motivo cambia según el documento
+  (`motivoArchivoGrande`): en las actas dice que no hace falta el libro completo sino las hojas de la
+  asamblea; en reglamentos y estatutos, que lo escanee en menor calidad; en DNI y constancias, que
+  saque una foto más liviana. Como queda observado, el mail de corrección sale solo.
 - **Horario de presentación (`horario.ts`).** TAD se usa de 19:00 a 07:00 (Buenos Aires).
   `pedirPresentacion` fuera de horario inserta la tarea con `reintentar_desde` = 19:00 de ese día
   (salvo pruebas); `manejarReintento("probar_ahora")` es "Presentar ya". En el robot,

@@ -47,17 +47,29 @@ Los avisos "pagada", "cargada" y "certificado recibido" salieron a `#permisos-de
   volver…").
 - El CPAU visó en 17 minutos (9:27 → 9:44), en horario de oficina.
 
-**Estado de S01826:** encomienda `ok` (subida por `robot`), pero **no se presenta todavía**: el acta
-de asamblea sigue observada (vencida, § "Noche 16/09") y la póliza está pedida a Segucom desde las
-9:13. El informe técnico y el croquis se generaron a mano a las 9:14, con el acta observada.
+**Estado de S01826:** encomienda `ok` (subida por `robot`), pero **no se presenta todavía**: la póliza
+está pedida a Segucom desde las 9:13. El informe técnico y el croquis se generaron a mano a las 9:14,
+con el acta todavía observada; el acta quedó ok a las 13:14 (§ siguiente).
+
+### Actas de asamblea rechazadas estando vigentes (17/09, mediodía)
+
+- **Tucumán 969 (S02516)** (asamblea del 04/11/2025 que ratifica a Staino SA) y **Nahuel Huapi 5100
+  (S01826)** (asamblea del 07/11/2025, mandato de Abálsamo del 01/11/2025 al 31/03/2027) quedaron
+  "no vigente" en el portal y a los dos clientes les salió el mail de corrección (Tucumán dos veces).
+  La IA decidía la vigencia sola y le erraba: con el mismo PDF dio vencida y vigente.
+- **Arreglo:** la IA lee las fechas y el código calcula; si el acta fija un final, vale ese plazo
+  aunque pase el año (JS). Detalle en el diseño, § "Noche 16/09 — revisión con IA…".
+- Las dos actas se volvieron a revisar desde la Mac con el código nuevo y quedaron **ok**. A los
+  clientes no les llegó ningún aviso de que ya está bien: avisarles (vendedor).
+- **S01826 queda con el legajo completo;** falta sólo la póliza de Segucom para presentarse.
 
 ### Lo primero en la sesión nueva
 
 1. **S02086 (Gascón 21): sigue sin encomienda.** Tocar "Armar la encomienda ahora" en horario de
    oficina (datos: pantalla 21 ml → 84 m², frente GASCON 21–35, consorcio CUIT 30711216258). Sigue
    esperando el endoso de la póliza.
-2. **S01826:** esperar el acta de renovación del administrador y la póliza; con eso se presenta sola
-   (de 19 a 7).
+2. **S01826:** el acta ya quedó ok (ver arriba); falta la póliza de Segucom y con eso se presenta
+   sola (de 19 a 7).
 3. **S02465 (Salguero 359):** la póliza quedó lista a las 11:22 y hay una `tad_presentar`
    (tarea 52) programada para las 19:00.
 4. Filtro anti-Spam en permisos-andamio@ (JS).

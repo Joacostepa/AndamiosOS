@@ -5,8 +5,91 @@ Para retomar en una sesión nueva. El diseño completo y todo lo aprendido está
 quede 100 % automático** y el orden para seguir.
 
 Para arrancar: "Leé docs/handoff-gestoria-permisos.md y docs/modulo-gestoria-permisos.md y
-seguimos con lo que falta". **Empezar por § "Estado 16/09 19:00", seguir con § "Estado 16/09
-11:30" y después § "Cierre de la encomienda del CPAU — en curso".**
+seguimos con lo que falta". **Empezar por § "Noche 16/09", seguir con § "Estado 16/09 19:00",
+§ "Estado 16/09 11:30" y después § "Cierre de la encomienda del CPAU — en curso".**
+
+---
+
+## Noche 16/09 — saldo de Claude, correcciones automáticas y horario de TAD
+
+### Lo primero mañana
+
+1. **S02086 (Gascón 21): legajo completo, falta armar la encomienda del CPAU** (botón en la ficha,
+   modo supervisado). El aviso a Slack salió a las 22:00, pero **el mail a Tamara y al vendedor
+   no** (la revisión se corrió desde la Mac, sin la clave del mail): avisarles o armarla directo.
+2. **S01826 (Nahuel Huapi 5100): esperar el acta de renovación del administrador.** Se le pidió al
+   cliente por mail a las 22:20 (ver abajo). Cuando la suba se revisa sola; si queda ok, el legajo
+   se completa y se generan informe técnico y croquis.
+3. **Ver pasar solos, con un caso real**, el mail de corrección y el aviso a Slack de un documento
+   observado, y una presentación programada a las 19:00. Hasta ahora sólo se probó el cálculo.
+4. Siguen en pie los pendientes de § "Estado 16/09 19:00" y el cierre de la encomienda del CPAU.
+
+### La API de Claude se quedó sin saldo (12:32 → 22:00)
+
+- Desde las 12:32 **todas las revisiones con IA fallaron** con `400 credit balance is too low`.
+  Quedaron 7 documentos del portal en "cargado": S02086 (DNI del administrador y constancia de
+  CUIT) y S01826 (constancia de CUIT, DNI del administrador, reglamento, acta de asamblea y aviso
+  de obra). **El cliente vio el JSON de la API en inglés** en el portal y nadie se enteró.
+- JS cargó saldo en https://console.anthropic.com/settings/billing (conviene la recarga
+  automática). La clave de `.env.local` es de la misma cuenta.
+- Se volvieron a revisar los 7 desde la Mac: 6 ok y el acta de S01826 observada.
+- **Arreglo (`2db08a9`, `falla-ia.ts`):** quien sube el archivo (cliente o Segucom) ve sólo "No se
+  pudo revisar automáticamente. Lo revisa una persona de ABA."; el error va al historial. Si la
+  falla es de la cuenta (sin saldo, clave rechazada, límite de uso o API caída), sale **un aviso
+  por día y por tipo** a `#permisos-de-andamio-` con qué hacer. Probado con la API real sin saldo.
+
+### Mail automático al cliente cuando un documento queda observado
+
+- **Pedido de JS:** que sea automático, directo al cliente y también en modo supervisado, y que lo
+  que suban mal se avise por Slack.
+- **Cómo quedó (`d206fa1`, `539c11b`, `1656dce`):**
+  - Cuando la revisión observa un documento del portal, `pedirCorreccionAlCliente` le escribe al
+    cliente con el documento, el motivo y el link del portal ("Reemplazar"). Copia a gestor y
+    vendedor; respuestas al vendedor. Una vez por versión del documento (evento `link_cliente`
+    con `documento_id` y `version`).
+  - Aviso a Slack "Documento observado — <dirección>" con el motivo y si el mail salió
+    (prioridad media) o no (alta, con el motivo: mail vacío o mal escrito).
+  - Póliza de Segucom observada: aviso "Póliza observada — <dirección>". A Gonzalo no le sale
+    nada automático (lo manda una persona, como siempre).
+  - Botón **"Pedir corrección"** en los observados del legajo, sólo para **reenviar**; relee de
+    Odoo el mail del cliente antes de mandar.
+- **Vigencia del acta de asamblea con la Ley 941:** en la Ciudad el mandato del administrador dura
+  un año y lo renueva la asamblea (art. 13, texto de la Ley 5932). Está en el criterio de la
+  revisión y en el motivo que ve el cliente. Antes la IA decidía la vigencia sin regla.
+- **S01826:**
+  - El acta es de la asamblea del 13/09/2024 (designa a Matías Abálsamo desde esa fecha, sin plazo;
+    el reglamento, art. 13, tampoco fija plazo), así que venció el 13/09/2025.
+  - El mail del cliente estaba mal en Odoo (`@gmai.com`): se corrigió a
+    `consorciosmanhuapi5100@gmail.com` en el contacto 7948 y en el trámite.
+  - El pedido de corrección salió a las 22:20 con el botón (copia am@ y tam@).
+- **Mandar mails desde la Mac no se puede:** `PERMISOS_MAIL_CLAVE` es variable protegida en
+  Vercel y `vercel env pull` la trae vacía. Lo que tenga que mandar mail se dispara desde la app.
+
+### Horario de presentación en TAD: de 19 a 7
+
+- **Decisión de JS (`b5eba2a`):** a la tarde TAD falla seguido (15/09: 12 fallas de 14:10 a 18:52 y
+  presentado 19:09; 16/09: 8 fallas de 12:31 a 14:27 y presentado 18:57). Son pocos datos y
+  mezclados con arreglos del robot: **revisar el horario hacia el 30/09** con las horas de
+  `tomada_at` y el resultado de cada `tad_presentar`.
+- **Cómo quedó:**
+  - Pedida fuera de horario (botón o automática), la tarea queda `pendiente` con
+    `reintentar_desde` = 19:00 de ese día (`horario.ts`). La ficha dice "Programada" con
+    **"Presentar ya"** (pide confirmación) y **"No presentar"**.
+  - Los reintentos del robot por TAD caído siguen cada 30 min, pero dentro del horario
+    (`dentroDelHorario` en `robot/tad-presentar.mjs`, duplicado a propósito).
+  - Las pruebas (sólo formulario) no esperan. De 7 a 19 no se presenta: de la mañana no hay datos.
+- El robot quedó reinstalado a las 22:16 con este código.
+
+### Commits de la noche del 16/09
+
+| Commit | Qué hace |
+| --- | --- |
+| `15a2b60` | Handoff al 16/09 19:00 |
+| `2db08a9` | Sin saldo en Claude: el cliente no ve el error técnico y se avisa al canal |
+| `d206fa1` | Mail al cliente cuando un documento queda observado; vigencia del acta con la Ley 941 |
+| `539c11b` | Botón "Pedir corrección" para reenviar |
+| `1656dce` | Aviso a Slack de documento o póliza observados |
+| `b5eba2a` | Presentaciones en TAD de 19 a 7; fuera de horario quedan programadas |
 
 ---
 
@@ -263,7 +346,10 @@ con curl antes de buscar en el código.**
   - "Seguir desde el borrador";
   - "Empezar de cero": primero se borra el borrador en TAD;
   - "Volver a presentar";
-  - durante un reintento, "Probar ahora" y "Dejar de reintentar".
+  - durante un reintento, "Probar ahora" y "Dejar de reintentar";
+  - con la presentación programada para las 19:00 (desde el 16/09), "Presentar ya" y "No
+    presentar";
+  - en un documento observado del legajo, "Pedir corrección" (reenvía el mail al cliente).
 
 ### Pendientes chicos que salieron hoy
 

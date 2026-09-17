@@ -1264,6 +1264,31 @@ Lo que dejó:
   "`<div id="divLoading" class="loading">` … intercepts pointer events" (el "Cargando..." de TAD
   encima del botón). Como no es `TadNoCarga`, la tarea quedó en `error` sin reintento.
 
+### Noche 16/09 — revisión con IA, correcciones al cliente y horario de TAD
+
+- **Falla de la API de Claude (`falla-ia.ts`).** El 16/09 la cuenta se quedó sin saldo de 12:32 a
+  22:00 y el portal le mostró al cliente el JSON de la API. Ahora `observacionSinRevisar` deja sólo
+  "No se pudo revisar automáticamente. Lo revisa una persona de ABA." (salvo motivos propios,
+  `NoRevisable`: formato o archivo que falta). `fallaDeCuenta` reconoce saldo (400 "credit balance"
+  / 402 / `billing_error`), clave (401/403), límite (429) y caída (5xx o sin conexión), y
+  `avisarFallaDeCuenta` crea `permiso_robot:ia:<tipo>:<fecha>` (un aviso por día y tipo). Lo usan
+  la revisión del legajo (`portal.ts`) y la de la póliza (`endosos.ts`).
+- **Corrección automática al cliente.** Documento del portal observado → `pedirCorreccionAlCliente`:
+  mail al cliente (motivo + link del portal), copia gestor y vendedor, respuestas al vendedor. Sale
+  también en modo supervisado (JS, 16/09). Idempotente por `documento_id` + `version` en un evento
+  `link_cliente`; `forzar` (ruta `POST tramites/:id/correccion`, botón "Pedir corrección") lo
+  reenvía y antes relee el mail del cliente de Odoo. Aviso
+  `permiso_novedad:documento:<id>:v<version>:observado` con el motivo y si salió el mail. Póliza
+  observada: `permiso_endoso:<id>:observado:v<version>`.
+- **Vigencia del acta de asamblea.** Ley 941 de la Ciudad, art. 13 (texto de la Ley 5932): el
+  mandato del administrador dura un año y lo renueva la asamblea. Va en `CRITERIOS.acta_asamblea`
+  y en el motivo que ve el cliente.
+- **Horario de presentación (`horario.ts`).** TAD se usa de 19:00 a 07:00 (Buenos Aires).
+  `pedirPresentacion` fuera de horario inserta la tarea con `reintentar_desde` = 19:00 de ese día
+  (salvo pruebas); `manejarReintento("probar_ahora")` es "Presentar ya". En el robot,
+  `frenarPresentacion` corre el reintento con `dentroDelHorario`. La ficha distingue "Programada"
+  (sin `resultado.reintento`) de un reintento por TAD caído. Revisar con datos hacia el 30/09.
+
 ### Historial de finalizados y robustez del robot (15/09)
 
 **Qué pasó:** al hacer que el robot espere el "Cargando..." de TAD, la solapa **Finalizados**

@@ -1,12 +1,66 @@
-# Handoff — Gestoría de permisos de andamio (actualizado 2026-09-16, noche)
+# Handoff — Gestoría de permisos de andamio (actualizado 2026-09-17, mediodía)
 
 Para retomar en una sesión nueva. El diseño completo y todo lo aprendido está en
 `docs/modulo-gestoria-permisos.md`; esto es el estado, **lo que falta para que el circuito
 quede 100 % automático** y el orden para seguir.
 
 Para arrancar: "Leé docs/handoff-gestoria-permisos.md y docs/modulo-gestoria-permisos.md y
-seguimos con lo que falta". **Empezar por § "Noche 16/09", seguir con § "Estado 16/09 19:00",
-§ "Estado 16/09 11:30" y después § "Cierre de la encomienda del CPAU — en curso".**
+seguimos con lo que falta". **Empezar por § "17/09 — primera encomienda cerrada sola", seguir con
+§ "Noche 16/09", § "Estado 16/09 19:00" y § "Estado 16/09 11:30".**
+
+---
+
+## 17/09 — primera encomienda cerrada sola (S01826, Nahuel Huapi 5100)
+
+**El cierre automático de la encomienda funcionó de punta a punta con un caso real.** No fue
+S02086 como estaba previsto: Tamara tocó "Armar la encomienda ahora" en **S01826** a las 9:24
+(tarea **51**, pedida por tam@). Sin que nadie tocara el CPAU:
+
+| Hora | Etapa | Detalle |
+| --- | --- | --- |
+| 9:25:28 | Resumen OK | 100 m², NAHUEL HUAPI 5082–5100 (pantalla de 25 ml) |
+| 9:25:40 | Finalizada | R.Nro **00329522249** |
+| 9:25:52 | Firmada | registro bajado del Histórico y firmado (JS y Hougassian) |
+| 9:26:38 | Pagada | **operación 292177**, autorización 008017. Pantalla de Decidir (`live.decidir.com/forms/Transaccion`): *"¡Su operación fue realizada con éxito!"* |
+| 9:27:00 | Cargada | Plataforma: *"Su tramite fue informado con exito. ¿Desea cargar otro tramite para el mismo Profesional? Si No"* (diálogo "ATENCION" dentro de la página) |
+| 9:44 | Visada | el CPAU le manda a Hougassian "Certificado de Encomienda Profesional" desde atencion@cpau.org |
+| 10:05 / 10:13 | Reenvío | Hougassian lo reenvía a rr@ y después a permisos-andamio@ (**a mano** desde Outlook, "RV: Encomienda") |
+| 11:29:47 | Certificado | `2897802.pdf` (RETP 2897802), 6 hojas: registro ×3, certificación ×2, comprobante ("EVHA Reg.Habilit. Hasta 120 · Enc Nº:2933/329522249 · 50000.00") |
+
+Los avisos "pagada", "cargada" y "certificado recibido" salieron a `#permisos-de-andamio-`.
+
+**Lo que se aprendió:**
+- **El reenvío de Hougassian cayó en Spam** de permisos-andamio@ y quedó ahí de 10:13 a ~11:25, hasta
+  que alguien lo movió a Recibidos. Por eso el certificado y el aviso llegaron 1 h 16 tarde.
+  **Arreglo (`643d2b0`):** el robot busca en todo el correo ("Todos", incluye lo archivado) y en Spam;
+  si lo encuentra en Spam, el aviso lo dice. **Pendiente de JS:** filtro de Gmail en
+  permisos-andamio@ para `edyhougassian@hotmail.com` → "Nunca enviarlo a Spam". No se sabe si
+  Hougassian armó una regla o reenvía a mano (el de hoy fue a mano, reenvío de un reenvío).
+- **Con el código del 16/09 a la noche el robot habría frenado después de pagar:** no reconocía
+  "realizada con éxito" (buscaba "exitos" sin tilde). Se corrigió a la mañana, antes de la corrida
+  (`643d2b0`): "éxito" cuenta como aprobado; si la pantalla dice aprobado y rechazado a la vez es
+  dudoso y frena **sin** liberar la traba del pago (un rechazo la libera y "Reanudar" vuelve a
+  cobrar); el comprobante se guarda en el bucket antes de decidir.
+- **Plataforma:** la carga ya no se da por hecha si la pantalla trae un error ("el número
+  ingresado no existe" también decía "ingresad"). El POST a `/grabar` es un formulario común, no
+  AJAX; las validaciones del navegador salen en el diálogo "ATENCION" ("Regrese haciendo click en
+  volver…").
+- El CPAU visó en 17 minutos (9:27 → 9:44), en horario de oficina.
+
+**Estado de S01826:** encomienda `ok` (subida por `robot`), pero **no se presenta todavía**: el acta
+de asamblea sigue observada (vencida, § "Noche 16/09") y la póliza está pedida a Segucom desde las
+9:13. El informe técnico y el croquis se generaron a mano a las 9:14, con el acta observada.
+
+### Lo primero en la sesión nueva
+
+1. **S02086 (Gascón 21): sigue sin encomienda.** Tocar "Armar la encomienda ahora" en horario de
+   oficina (datos: pantalla 21 ml → 84 m², frente GASCON 21–35, consorcio CUIT 30711216258). Sigue
+   esperando el endoso de la póliza.
+2. **S01826:** esperar el acta de renovación del administrador y la póliza; con eso se presenta sola
+   (de 19 a 7).
+3. **S02465 (Salguero 359):** la póliza quedó lista a las 11:22 y hay una `tad_presentar`
+   (tarea 52) programada para las 19:00.
+4. Filtro anti-Spam en permisos-andamio@ (JS).
 
 ---
 

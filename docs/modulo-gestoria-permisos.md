@@ -939,6 +939,32 @@ final, 30-40 minutos después; hay que unir los dos. La ruta `tramites/:id/certi
 dos PDF, los une con pdf-lib (primero la encomienda, cortando lo que el CPAU pega después del
 `%%EOF`) y observa el documento si le falta el registro o la certificación.
 
+### Cierre de la encomienda — primera corrida real (17/09, S01826)
+
+Tarea 51, de "Armar la encomienda ahora" (9:24) al certificado cargado (11:29), sin intervención en
+el CPAU. Detalle y horarios en el handoff, § "17/09". Lo que faltaba ver:
+
+- **Después de "Aceptar" (Decidir):** la página pasa a `live.decidir.com/forms/Transaccion` con
+  *"¡Su operación fue realizada con éxito! … Código de operación: 292177 Código de autorización:
+  008017"*, sin el número de tarjeta a la vista. El PDF de esa pantalla sirvió como comprobante: la
+  Plataforma lo aceptó y el CPAU visó. El n° que pide la Plataforma ("Nro de operacion Pago Seguro")
+  es el `NROOPERACION` del POST a Decidir.
+- **Después de "Enviar" (Plataforma):** `/grabar` es un POST de formulario común (no AJAX). La
+  respuesta es la misma página con el diálogo "ATENCION": *"Su tramite fue informado con exito.
+  ¿Desea cargar otro tramite para el mismo Profesional? Si No"*. Las validaciones del navegador
+  usan el mismo diálogo ("Regrese haciendo click en volver y solucione los siguientes problemas").
+- **Visado:** 17 minutos (9:27 → 9:44). El mail del CPAU sale de `atencion@cpau.org`, asunto
+  "Encomienda", con `<RETP Nro>.pdf` (1,2 MB, 6 hojas: registro ×3, certificación ×2, comprobante
+  del CPAU con "Enc Nº:<n° encomienda>/<R.Nro>").
+- **Reenvío:** Hougassian lo reenvió a mano desde Outlook y **cayó en Spam** de permisos-andamio@.
+  `buscarCertificadoEnMail` ahora recorre "Todos" (`\All`, incluye lo archivado) y Spam (`\Junk`), y
+  marca `mail.en_spam`; el aviso lo menciona.
+- **Criterios de pantalla (`leerResultadoPago`, `cargaConfirmada`):** "éxito" cuenta como aprobado
+  (con el criterio anterior el robot frenaba después de pagar). Aprobado y rechazado a la vez →
+  dudoso: frena sin liberar `pago.intentado_at`, porque sólo un rechazo claro permite volver a
+  cobrar con "Reanudar". La carga no se da por hecha si la pantalla trae un error. El comprobante se
+  sube al bucket antes de decidir, para poder seguir a mano si frena.
+
 ### Documentos que sube ABA — todos automáticos
 
 Además de la póliza, los documentos propios del legajo **no los hace nadie a mano**: la

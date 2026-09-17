@@ -907,6 +907,20 @@ const REINTENTO_MIN = 30;
 const REINTENTOS_MAX = 16;
 
 /**
+ * Horario de presentación: de 19 a 7, hora de Buenos Aires (JS, 16/09; el porqué está en
+ * src/lib/permisos-via-publica/horario.ts, que la app usa al pedir la presentación). Un reintento
+ * que caería fuera de horario pasa a las 19:00 de ese día. Argentina no tiene horario de verano.
+ */
+const HORARIO_DESDE = 19;
+const HORARIO_HASTA = 7;
+export function dentroDelHorario(d) {
+  const h = Number(new Intl.DateTimeFormat("en-GB", { hour: "2-digit", hourCycle: "h23", timeZone: "America/Argentina/Buenos_Aires" }).format(d));
+  if (h >= HORARIO_DESDE || h < HORARIO_HASTA) return d;
+  const fecha = d.toLocaleDateString("sv-SE", { timeZone: "America/Argentina/Buenos_Aires" });
+  return new Date(`${fecha}T${String(HORARIO_DESDE).padStart(2, "0")}:00:00-03:00`);
+}
+
+/**
  * Deja frenada una presentación. Si el motivo es TAD (servicio caído, página que no carga, login
  * que no responde) y no se tocó "Confirmar trámite", vuelve a la cola para dentro de 30 minutos,
  * hasta 16 veces: que TAD ande mal es muy común (Tamara, 15/09). El reintento sigue desde el mismo
@@ -931,7 +945,7 @@ export async function frenarPresentacion({ db, tarea, log, avisar, e, transitori
   log("!! TAD presentar", msg);
 
   if (!p.es_prueba && !e?.confirmado && deTad && intento <= REINTENTOS_MAX) {
-    const cuando = new Date(ahora.getTime() + REINTENTO_MIN * 60_000);
+    const cuando = dentroDelHorario(new Date(ahora.getTime() + REINTENTO_MIN * 60_000));
     const hora = cuando.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "America/Argentina/Buenos_Aires" });
     const { error } = await db.from("pvp_tareas").update({
       estado: "pendiente", reintentar_desde: cuando.toISOString(), error: msg, terminada_at: ahora.toISOString(),
@@ -943,7 +957,7 @@ export async function frenarPresentacion({ db, tarea, log, avisar, e, transitori
       await db.from("pvp_tramites").update({ estado: "trabado", updated_at: ahora.toISOString() }).eq("id", tarea.tramite_id);
       await evento(`TAD no responde: la presentación se reintenta sola a las ${hora} (intento ${intento} de ${REINTENTOS_MAX}). ${msg}`);
       if (intento === 1) {
-        await avisar([{ tipo: "permiso_robot", clave: `permiso_robot:tramite:${tarea.tramite_id}:presentar:${tarea.id}:reintentos`, titulo: `TAD no responde — ${p.direccion}`, descripcion: `El robot reintenta la presentación sola cada ${REINTENTO_MIN} min (hasta ${REINTENTOS_MAX} veces)${borrador ? ` desde el borrador ${borrador}` : ""}. ${msg}`.slice(0, 280), prioridad: "media", enlace }]);
+        await avisar([{ tipo: "permiso_robot", clave: `permiso_robot:tramite:${tarea.tramite_id}:presentar:${tarea.id}:reintentos`, titulo: `TAD no responde — ${p.direccion}`, descripcion: `El robot reintenta la presentación sola cada ${REINTENTO_MIN} min de ${HORARIO_DESDE} a ${HORARIO_HASTA} h (hasta ${REINTENTOS_MAX} veces; la próxima a las ${hora})${borrador ? ` desde el borrador ${borrador}` : ""}. ${msg}`.slice(0, 280), prioridad: "media", enlace }]);
       }
       return;
     }

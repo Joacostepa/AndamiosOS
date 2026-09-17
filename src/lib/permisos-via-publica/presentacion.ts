@@ -5,6 +5,7 @@ import { FaltanDatos } from "./generacion";
 import { NOMBRE_DOCUMENTO, type TipoDueno } from "./tipos";
 import { leerSupervision } from "./supervision";
 import { avisarPasoPendiente } from "./gestion";
+import { HORARIO_DESDE, HORARIO_HASTA, proximoHorarioDePresentacion } from "./horario";
 
 // La presentación del permiso en TAD: qué documento va en cada casillero, cuándo un trámite
 // está listo y los datos que necesita el robot de la Mac (robot/tad-presentar.mjs). La app
@@ -230,20 +231,20 @@ export async function descartarBorrador(db: SupabaseClient, tramiteId: string, u
 export type AccionReintento = "probar_ahora" | "dejar_de_reintentar";
 
 /**
- * El reintento automático de la presentación (TAD no respondía, ver frenarPresentacion en el
- * robot): "probar_ahora" adelanta el próximo intento; "dejar_de_reintentar" lo corta y deja la
- * tarea en error, con el borrador para seguir con el botón. Si el robot la tomó en el medio, no
- * se toca.
+ * Una presentación que espera en la cola: el reintento automático (TAD no respondía, ver
+ * frenarPresentacion en el robot) o la pedida fuera del horario de presentación (horario.ts).
+ * "probar_ahora" la adelanta ("Presentar ya"); "dejar_de_reintentar" la corta y deja la tarea en
+ * error, con el borrador para seguir con el botón. Si el robot la tomó en el medio, no se toca.
  */
 export async function manejarReintento(db: SupabaseClient, tramiteId: string, accion: AccionReintento, userId: string | null): Promise<void> {
   const { data: tarea, error: e1 } = await db.from("pvp_tareas").select("id, error")
     .eq("tipo", "tad_presentar").eq("tramite_id", tramiteId).eq("estado", "pendiente").not("reintentar_desde", "is", null).maybeSingle();
   if (e1) throw new Error(e1.message);
-  if (!tarea) throw new FaltanDatos("No hay un reintento esperando: el robot ya lo está intentando o terminó.");
+  if (!tarea) throw new FaltanDatos("No hay una presentación esperando: el robot ya la está haciendo o terminó.");
 
   const cambios = accion === "probar_ahora"
     ? { reintentar_desde: new Date().toISOString() }
-    : { estado: "error", reintentar_desde: null, error: `Se dejó de reintentar desde la ficha. ${tarea.error ?? ""}`.trim(), terminada_at: new Date().toISOString() };
+    : { estado: "error", reintentar_desde: null, error: `Se frenó desde la ficha. ${tarea.error ?? ""}`.trim(), terminada_at: new Date().toISOString() };
   const { data, error } = await db.from("pvp_tareas").update(cambios).eq("id", tarea.id).eq("estado", "pendiente").select("id");
   if (error) throw new Error(error.message);
   if (!data?.length) throw new FaltanDatos("El robot justo tomó la presentación: esperá a que termine.");
@@ -251,18 +252,21 @@ export async function manejarReintento(db: SupabaseClient, tramiteId: string, ac
   await registrarEvento(
     db, tramiteId, "presentacion_tad",
     accion === "probar_ahora"
-      ? "Se pidió probar TAD ahora: el robot toma la presentación en unos segundos."
-      : "Se dejó de reintentar la presentación en TAD: queda frenada hasta que alguien la vuelva a pedir.",
+      ? "Se pidió presentar ya: el robot toma la presentación en unos segundos."
+      : "Se frenó la presentación en TAD que esperaba en la cola: queda frenada hasta que alguien la vuelva a pedir.",
     { tramite_id: tramiteId, tarea_id: tarea.id }, userId ? "persona" : "sistema",
   );
 }
 
-/** Deja la presentación en la cola del robot. Una abierta por trámite. */
+/**
+ * Deja la presentación en la cola del robot. Una abierta por trámite. Fuera del horario de
+ * presentación (19 a 7, horario.ts) queda esperando las 19:00; la prueba no espera.
+ */
 export async function pedirPresentacion(
   db: SupabaseClient,
   tramiteId: string,
   opts: { userId?: string | null } = {},
-): Promise<{ resultado: "pedida" | "ya_pedida" }> {
+): Promise<{ resultado: "pedida" | "ya_pedida"; programadaPara: string | null }> {
   const payload = await armarPayloadPresentacion(db, tramiteId);
 
   // Si alguna presentación anterior dejó un borrador, se sigue desde ese borrador: empezar de
@@ -276,21 +280,25 @@ export async function pedirPresentacion(
     if (previo.borrador) payload.continuar_borrador = previo.borrador;
   }
 
-  const { error } = await db.from("pvp_tareas").insert({ tipo: "tad_presentar", tramite_id: tramiteId, payload, pedida_por: opts.userId ?? null });
-  if (error?.code === "23505") return { resultado: "ya_pedida" };
+  const programada = payload.es_prueba ? null : proximoHorarioDePresentacion();
+  const { error } = await db.from("pvp_tareas").insert({
+    tipo: "tad_presentar", tramite_id: tramiteId, payload, pedida_por: opts.userId ?? null, reintentar_desde: programada?.toISOString() ?? null,
+  });
+  if (error?.code === "23505") return { resultado: "ya_pedida", programadaPara: null };
   if (error) throw new Error(error.message);
 
   if (!payload.es_prueba) await db.from("pvp_tramites").update({ estado: "listo_para_presentar", updated_at: new Date().toISOString() }).eq("id", tramiteId);
+  const enHorario = `Se presenta a las ${HORARIO_DESDE}:00: TAD se usa de ${HORARIO_DESDE} a ${HORARIO_HASTA} porque a la tarde falla seguido («Presentar ya» en la ficha para adelantarla).`;
   await registrarEvento(
     db, tramiteId, "presentacion_tad",
     payload.es_prueba
       ? `Prueba de presentación pedida: el robot llena y guarda el formulario en TAD (${payload.obra.calle} ${payload.obra.altura}) y borra el borrador. No adjunta ni presenta.`
       : payload.continuar_borrador
-        ? `Se pidió seguir la presentación desde el borrador ${payload.continuar_borrador}: el robot saltea lo que ya está y adjunta el resto.`
-        : `Listo para presentar: el robot presenta en TAD (${payload.obra.calle} ${payload.obra.altura}, SMP ${payload.obra.smp}, ${payload.adjuntos.length} casilleros).`,
-    { tramite_id: tramiteId }, opts.userId ? "persona" : "sistema",
+        ? `Se pidió seguir la presentación desde el borrador ${payload.continuar_borrador}: el robot saltea lo que ya está y adjunta el resto.${programada ? ` ${enHorario}` : ""}`
+        : `Listo para presentar: el robot presenta en TAD (${payload.obra.calle} ${payload.obra.altura}, SMP ${payload.obra.smp}, ${payload.adjuntos.length} casilleros).${programada ? ` ${enHorario}` : ""}`,
+    { tramite_id: tramiteId, programada_para: programada?.toISOString() ?? null }, opts.userId ? "persona" : "sistema",
   );
-  return { resultado: "pedida" };
+  return { resultado: "pedida", programadaPara: programada?.toISOString() ?? null };
 }
 
 /**

@@ -382,7 +382,7 @@ export type PresentacionFicha = {
   tarea: {
     id: number;
     estado: "pendiente" | "tomada" | "esperando_aprobacion" | "ok" | "error";
-    payload: { es_prueba: boolean; obra: { calle: string; altura: number; smp: string }; adjuntos: { casillero: string }[] };
+    payload: { es_prueba: boolean; obra: { calle: string; altura: number; smp: string }; adjuntos: { casillero: string }[]; continuar_borrador?: number | null };
     resultado: {
       /** presentado_sin_numero: TAD tomó la presentación y dejó el número de expediente "en espera". */
       etapa?: "prueba" | "presentado" | "presentado_sin_numero";

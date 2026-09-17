@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useAccionPresentacion, usePresentacion } from "@/hooks/use-permisos-via-publica";
 import type { PresentacionFicha } from "@/lib/permisos-via-publica/tipos";
+import { HORARIO_DESDE, HORARIO_HASTA } from "@/lib/permisos-via-publica/horario";
 
 // Presentación en TAD en la ficha del trámite. Es automática: se pide sola cuando está todo y
 // el robot adjunta y confirma. Acá se ve qué falta, qué hizo el robot y, si se frenó, por qué.
@@ -26,8 +27,10 @@ export function PresentacionTad({
 }) {
   const pedir = usePresentacion(tramiteId);
   const accion = useAccionPresentacion(tramiteId);
-  // Un reintento programado (TAD no respondía) está en la cola, pero el robot no está trabajando.
+  // En la cola con hora (reintento porque TAD no respondía, o pedida fuera del horario de
+  // presentación): el robot no está trabajando.
   const programada = tarea?.estado === "pendiente" && !!tarea.reintentar_desde;
+  const esReintento = programada && !!tarea?.resultado?.reintento;
   const trabajando = tarea && ["pendiente", "tomada"].includes(tarea.estado) && !programada;
   const r = tarea?.resultado;
   const sinNumero = tarea?.estado === "ok" && r?.etapa === "presentado_sin_numero";
@@ -35,7 +38,16 @@ export function PresentacionTad({
   function lanzar(aviso?: string) {
     if (aviso && !window.confirm(aviso)) return;
     pedir.mutate(undefined, {
-      onSuccess: (x) => toast.success(x.resultado === "ya_pedida" ? "Ya hay una presentación en curso" : esPrueba ? "Prueba pedida: el robot la toma en unos segundos" : "Presentación pedida"),
+      onSuccess: (x) =>
+        toast.success(
+          x.resultado === "ya_pedida"
+            ? "Ya hay una presentación en curso"
+            : esPrueba
+              ? "Prueba pedida: el robot la toma en unos segundos"
+              : x.programadaPara
+                ? `Presentación programada para las ${hora(x.programadaPara)}`
+                : "Presentación pedida",
+        ),
       onError: (e) => toast.error(e instanceof Error ? e.message : "No se pudo pedir"),
     });
   }
@@ -43,7 +55,7 @@ export function PresentacionTad({
   function reintento(que: "probar_ahora" | "dejar_de_reintentar", aviso?: string) {
     if (aviso && !window.confirm(aviso)) return;
     accion.mutate(que, {
-      onSuccess: () => toast.success(que === "probar_ahora" ? "El robot prueba TAD en unos segundos" : "Se dejó de reintentar"),
+      onSuccess: () => toast.success(que === "probar_ahora" ? "El robot la toma en unos segundos" : esReintento ? "Se dejó de reintentar" : "Presentación frenada"),
       onError: (e) => toast.error(e instanceof Error ? e.message : "No se pudo"),
     });
   }
@@ -86,28 +98,56 @@ export function PresentacionTad({
 
       {programada && (
         <div className="space-y-1.5">
-          <p className="flex items-start gap-1.5 text-orange-300">
-            <Clock className="mt-0.5 size-4 shrink-0" />
-            <span>
-              TAD no responde: el robot vuelve a intentar solo a las <strong>{hora(tarea?.reintentar_desde)}</strong>
-              {r?.reintento ? ` (intento ${r.reintento} de ${r.reintentos_max})` : ""}
-              {r?.borrador ? `, desde el borrador ${r.borrador}` : ""}. No hace falta tocar nada.
-            </span>
-          </p>
-          {tarea?.error && <p className="text-[12px] text-muted-foreground">Último intento: {tarea.error}</p>}
+          {esReintento ? (
+            <p className="flex items-start gap-1.5 text-orange-300">
+              <Clock className="mt-0.5 size-4 shrink-0" />
+              <span>
+                TAD no responde: el robot vuelve a intentar solo a las <strong>{hora(tarea?.reintentar_desde)}</strong>
+                {r?.reintento ? ` (intento ${r.reintento} de ${r.reintentos_max})` : ""}
+                {r?.borrador ? `, desde el borrador ${r.borrador}` : ""}. No hace falta tocar nada.
+              </span>
+            </p>
+          ) : (
+            <p className="flex items-start gap-1.5 text-blue-300">
+              <Clock className="mt-0.5 size-4 shrink-0" />
+              <span>
+                Programada: el robot la presenta a las <strong>{hora(tarea?.reintentar_desde)}</strong>
+                {tarea?.payload?.continuar_borrador ? `, desde el borrador ${tarea.payload.continuar_borrador}` : ""}. TAD se usa de{" "}
+                {HORARIO_DESDE} a {HORARIO_HASTA} porque a la tarde falla seguido. No hace falta tocar nada.
+              </span>
+            </p>
+          )}
+          {esReintento && tarea?.error && <p className="text-[12px] text-muted-foreground">Último intento: {tarea.error}</p>}
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" disabled={accion.isPending} onClick={() => reintento("probar_ahora")}>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={accion.isPending}
+              onClick={() =>
+                reintento(
+                  "probar_ahora",
+                  esReintento ? undefined : "A la tarde TAD falla seguido y un intento fallido puede dejar el borrador roto. ¿Presentar igual ahora?",
+                )
+              }
+            >
               {accion.isPending ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
-              Probar ahora
+              {esReintento ? "Probar ahora" : "Presentar ya"}
             </Button>
             <Button
               size="sm"
               variant="ghost"
               className="text-muted-foreground"
               disabled={accion.isPending}
-              onClick={() => reintento("dejar_de_reintentar", "El robot deja de reintentar y la presentación queda frenada hasta que alguien la vuelva a pedir. ¿Seguro?")}
+              onClick={() =>
+                reintento(
+                  "dejar_de_reintentar",
+                  esReintento
+                    ? "El robot deja de reintentar y la presentación queda frenada hasta que alguien la vuelva a pedir. ¿Seguro?"
+                    : "La presentación programada se frena y queda así hasta que alguien la vuelva a pedir. ¿Seguro?",
+                )
+              }
             >
-              Dejar de reintentar
+              {esReintento ? "Dejar de reintentar" : "No presentar"}
             </Button>
           </div>
         </div>

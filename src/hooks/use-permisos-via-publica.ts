@@ -134,7 +134,7 @@ export function useTramite(id: string) {
 export function usePresentacion(id: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => pedir<{ resultado: "pedida" | "ya_pedida" }>(`/api/permisos-via-publica/tramites/${id}/presentacion`, { method: "POST" }),
+    mutationFn: () => pedir<{ resultado: "pedida" | "ya_pedida"; programadaPara: string | null }>(`/api/permisos-via-publica/tramites/${id}/presentacion`, { method: "POST" }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["tramite-permiso", id] }),
   });
 }

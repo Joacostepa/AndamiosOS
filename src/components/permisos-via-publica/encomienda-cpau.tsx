@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { CheckCircle2, ExternalLink, FileSignature, Loader2, RotateCcw, TriangleAlert, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -11,32 +12,57 @@ import { formatoCuit, type EncomiendaFicha } from "@/lib/permisos-via-publica/ti
 // carga en tramites.cpau.org todavía se hacen a mano.
 
 /**
- * "Subir certificado del CPAU": el PDF completo de la encomienda visada, que hoy se baja a mano
- * del Histórico de retp.cpau.org. Con eso el documento queda listo y, si está todo, se pide la
- * presentación en TAD (o se avisa, en modo supervisado).
+ * "Subir certificado del CPAU": la encomienda final (el CPAU la publica 30-40 min después de
+ * cargarla) y la certificación (aparece apenas se carga todo), que se bajan a mano. El servidor
+ * las une en un solo PDF, primero la encomienda. Con eso el documento queda listo y, si está todo,
+ * se pide la presentación en TAD (o se avisa, en modo supervisado).
  */
 function SubirCertificado({ tramiteId }: { tramiteId: string }) {
   const subir = useSubirCertificado(tramiteId);
+  const [encomienda, setEncomienda] = useState<File | null>(null);
+  const [certificacion, setCertificacion] = useState<File | null>(null);
+  const [vuelta, setVuelta] = useState(0); // para vaciar los inputs después de subir
+
+  const elegir = (set: (f: File | null) => void) => (ev: React.ChangeEvent<HTMLInputElement>) => set(ev.target.files?.[0] ?? null);
+  const clase = "max-w-full text-[12px] file:mr-2 file:rounded file:border file:bg-background file:px-2 file:py-1";
+
   return (
-    <label className="flex flex-wrap items-center gap-2 border-t pt-2 text-[12px]">
-      <span className="text-muted-foreground">Certificado visado (PDF del Histórico del CPAU):</span>
-      <input
-        type="file"
-        accept="application/pdf,.pdf"
-        disabled={subir.isPending}
-        className="max-w-full text-[12px] file:mr-2 file:rounded file:border file:bg-background file:px-2 file:py-1"
-        onChange={(ev) => {
-          const archivo = ev.target.files?.[0];
-          if (!archivo) return;
-          subir.mutate(archivo, {
-            onSuccess: (r) => (r.estado === "ok" ? toast.success("Certificado del CPAU cargado") : toast.warning(`Certificado cargado pero observado: ${r.observacion}`)),
-            onError: (err) => toast.error(err instanceof Error ? err.message : "No se pudo subir"),
-          });
-          ev.target.value = "";
-        }}
-      />
-      {subir.isPending && <Loader2 className="size-4 animate-spin" />}
-    </label>
+    <div className="space-y-1.5 border-t pt-2 text-[12px]">
+      <p className="text-muted-foreground">
+        Certificado visado del CPAU: la encomienda final (aparece 30–40 min después de cargarla) y la certificación. Se unen en un solo PDF.
+      </p>
+      <div key={vuelta} className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+        <label className="flex items-center gap-2">
+          <span>1. Encomienda</span>
+          <input type="file" accept="application/pdf,.pdf" disabled={subir.isPending} className={clase} onChange={elegir(setEncomienda)} />
+        </label>
+        <label className="flex items-center gap-2">
+          <span>2. Certificación</span>
+          <input type="file" accept="application/pdf,.pdf" disabled={subir.isPending} className={clase} onChange={elegir(setCertificacion)} />
+        </label>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={!encomienda || subir.isPending}
+          onClick={() => {
+            if (!encomienda) return;
+            if (!certificacion && !window.confirm("Falta la certificación. ¿Subir sólo la encomienda?")) return;
+            subir.mutate(certificacion ? [encomienda, certificacion] : [encomienda], {
+              onSuccess: (r) => {
+                if (r.estado === "ok") toast.success("Certificado del CPAU cargado");
+                else toast.warning(`Certificado cargado pero observado: ${r.observacion}`);
+                setEncomienda(null);
+                setCertificacion(null);
+                setVuelta((v) => v + 1);
+              },
+              onError: (err) => toast.error(err instanceof Error ? err.message : "No se pudo subir"),
+            });
+          }}
+        >
+          {subir.isPending ? <Loader2 className="size-4 animate-spin" /> : <FileSignature className="size-4" />} Subir
+        </Button>
+      </div>
+    </div>
   );
 }
 

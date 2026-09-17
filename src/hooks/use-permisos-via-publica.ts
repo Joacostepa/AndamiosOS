@@ -74,9 +74,10 @@ export function usePedirEndosoTramite(id: string) {
 export function useSubirCertificado(id: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (archivo: File) => {
+    /** La encomienda final y la certificación, en ese orden: el servidor las une en un PDF. */
+    mutationFn: (archivos: File[]) => {
       const form = new FormData();
-      form.append("archivo", archivo);
+      for (const archivo of archivos) form.append("archivo", archivo);
       return pedir<{ ok: true; estado: string; observacion: string | null }>(`/api/permisos-via-publica/tramites/${id}/certificado`, { method: "POST", body: form });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["tramite-permiso", id] }),

@@ -185,8 +185,21 @@ async function tocarExacto(page, texto) {
   await page.waitForTimeout(3000);
 }
 
-const APROBADO = /aprobad|exitos|pago (realizado|confirmado|acreditado)|gracias por su (compra|pago)|operaci[oó]n (realizada|aprobada)/i;
-const RECHAZADO = /rechazad|denegad|no autorizad|no fue aprobad|fondos insuficientes|tarjeta inv[aá]lid|datos inv[aá]lidos/i;
+const APROBADO = /aprobad|exitos|[eé]xito|pago (realizado|confirmado|acreditado)|gracias por su (compra|pago)|operaci[oó]n (realizada|aprobada)/i;
+const RECHAZADO = /rechazad|denegad|no autorizad|no (fue|ha sido|pudo ser) (aprobad|procesad|realizad|acreditad)|sin [eé]xito|no exitos|fondos insuficientes|tarjeta inv[aá]lid|datos inv[aá]lidos/i;
+
+/**
+ * Qué dice la pantalla después de "Aceptar". Sólo es "rechazado" si no hay ninguna señal de
+ * aprobación: un rechazo libera la traba del pago y "Reanudar" vuelve a cobrar. Si dice las dos
+ * cosas o ninguna es "dudoso" y frena con la traba puesta.
+ */
+export function leerResultadoPago(texto) {
+  const aprobado = APROBADO.test(texto);
+  const rechazado = RECHAZADO.test(texto);
+  if (aprobado && !rechazado) return "aprobado";
+  if (rechazado && !aprobado) return "rechazado";
+  return "dudoso";
+}
 
 /**
  * Compra el producto 51 y paga con la tarjeta. `alIntentar({ operacion })` se llama ANTES de tocar
@@ -194,7 +207,7 @@ const RECHAZADO = /rechazad|denegad|no autorizad|no fue aprobad|fondos insuficie
  * "Aceptar" (prueba). Devuelve el n° de operación de Pago Seguro, el texto de la pantalla final y
  * un PDF de esa pantalla como comprobante.
  */
-export async function pagarEncomienda({ context, foto = async () => {}, alIntentar = async () => {}, pagar = true, log = () => {} }) {
+export async function pagarEncomienda({ context, foto = async () => {}, alIntentar = async () => {}, alComprobante = async () => {}, pagar = true, log = () => {} }) {
   const datos = tarjeta();
   const page = await context.newPage();
   let decidir = null;
@@ -242,11 +255,16 @@ export async function pagarEncomienda({ context, foto = async () => {}, alIntent
     await page.waitForLoadState("networkidle", { timeout: 60000 }).catch(() => {});
     await page.waitForTimeout(10000);
     const texto = (await page.locator("body").innerText().catch(() => "")).replace(/\s+/g, " ").trim();
-    if (!/decidir\.com\/forms\/Validar/.test(page.url())) await foto("despues de pagar");
-    const comprobante = await page.pdf({ format: "A4", printBackground: true }).catch(() => null);
-    if (RECHAZADO.test(texto) && !APROBADO.test(texto)) return { operacion, aprobado: false, texto: texto.slice(0, 1500), url: page.url() };
-    if (!APROBADO.test(texto)) {
-      throw new CierreFrenado(`Se tocó «Aceptar» en el pago (operación ${operacion}) pero la pantalla no dice si se aprobó: revisar la compra en perfil.cpau.org y el resumen de la tarjeta antes de seguir. Pantalla: ${texto.slice(0, 300)}`);
+    // Si sigue en el formulario de Decidir tiene la tarjeta a la vista: ni captura ni PDF.
+    const enFormulario = /decidir\.com\/forms\/Validar/.test(page.url());
+    if (!enFormulario) await foto("despues de pagar");
+    const comprobante = enFormulario ? null : await page.pdf({ format: "A4", printBackground: true }).catch(() => null);
+    // Se guarda antes de decidir: si la pantalla es dudosa, una persona sigue con este PDF.
+    if (comprobante) await alComprobante(Buffer.from(comprobante)).catch((e) => log("!! comprobante del CPAU", e.message));
+    const resultado = leerResultadoPago(texto);
+    if (resultado === "rechazado") return { operacion, aprobado: false, texto: texto.slice(0, 1500), url: page.url() };
+    if (resultado === "dudoso") {
+      throw new CierreFrenado(`Se tocó «Aceptar» en el pago (operación ${operacion}) pero la pantalla no dice claro si se aprobó: revisar la compra en perfil.cpau.org y el resumen de la tarjeta antes de seguir. Pantalla: ${texto.slice(0, 300)}`);
     }
     return { operacion, aprobado: true, texto: texto.slice(0, 1500), url: page.url(), comprobante: comprobante ? Buffer.from(comprobante) : null };
   } finally {
@@ -258,6 +276,11 @@ export async function pagarEncomienda({ context, foto = async () => {}, alIntent
 // ── 4. Plataforma ──────────────────────────────────────────────────────────
 
 const ENVIADO = /gracias|recibid|registrad|ingresad|correctamente|con [eé]xito|exitosamente|n[uú]mero de tr[aá]mite/i;
+// "El número ingresado no existe" también dice "ingresad": con cualquiera de estas no se da por cargada.
+const NO_ENVIADO = /error|no existe|inexistente|inv[aá]lid|incorrect|no se pudo|no corresponde|ya (fue|ha sido|se encuentra|est[aá]) (cargad|registrad|ingresad|informad|presentad)|duplicad|regrese haciendo click|debe (completar|adjuntar|ingresar|seleccionar)/i;
+
+/** La pantalla después de "Enviar" confirma la carga y no trae ningún error. */
+export const cargaConfirmada = (texto) => ENVIADO.test(texto) && !NO_ENVIADO.test(texto);
 
 /**
  * Carga la encomienda firmada y el pago en la Plataforma. `alIntentar()` se llama ANTES de "Enviar".
@@ -302,8 +325,8 @@ export async function cargarEnPlataforma({ context, registro, registroFirmado, o
     await page.waitForTimeout(6000);
     const texto = (await page.locator("body").innerText().catch(() => "")).replace(/\s+/g, " ").trim();
     await foto("plataforma enviada");
-    if (avisos.length && !ENVIADO.test(texto)) throw new CierreFrenado(`Se tocó «Enviar» en la Plataforma y mostró: ${avisos.join(" · ")}. Revisar antes de volver a cargar.`);
-    if (!ENVIADO.test(texto)) throw new CierreFrenado(`Se tocó «Enviar» en la Plataforma pero la pantalla no confirma la carga: revisar antes de volver a cargar. Pantalla: ${texto.slice(0, 300)}`);
+    if (avisos.length && !cargaConfirmada(texto)) throw new CierreFrenado(`Se tocó «Enviar» en la Plataforma y mostró: ${avisos.join(" · ")}. Revisar antes de volver a cargar.`);
+    if (!cargaConfirmada(texto)) throw new CierreFrenado(`Se tocó «Enviar» en la Plataforma pero la pantalla no confirma la carga: revisar antes de volver a cargar. Pantalla: ${texto.slice(0, 300)}`);
     return { texto: texto.slice(0, 1500), url: page.url() };
   } finally {
     await page.close().catch(() => {});
@@ -344,26 +367,37 @@ export async function buscarCertificadoEnMail({ registro, desde, log = () => {} 
   if (!user || !pass) throw new CierreFrenado("Faltan PERMISOS_BUZON y PERMISOS_BUZON_CLAVE en robot/.env.robot");
   const cliente = new ImapFlow({ host: "imap.gmail.com", port: 993, secure: true, auth: { user, pass }, logger: false });
   await cliente.connect();
-  const candado = await cliente.getMailboxLock("INBOX");
   try {
-    const uids = (await cliente.search({ since: new Date(new Date(desde).getTime() - 86_400_000) }, { uid: true })) || [];
-    for (const uid of [...uids].reverse()) {
-      const mensaje = await cliente.fetchOne(String(uid), { source: true }, { uid: true });
-      if (!mensaje?.source) continue;
-      const mail = await simpleParser(mensaje.source);
-      for (const adjunto of await adjuntosPdf(mail)) {
-        const chequeos = await verificarCertificado(adjunto.bytes, registro).catch(() => null);
-        if (!chequeos?.find((c) => c.clave === "registro")?.ok) continue;
-        log(`CPAU: llegó el certificado de ${registro} por mail (${adjunto.nombre})`);
-        return {
-          pdf: Buffer.from(adjunto.bytes), nombre: adjunto.nombre, chequeos,
-          mail: { asunto: mail.subject ?? null, de: mail.from?.text ?? null, fecha: mail.date?.toISOString() ?? null },
-        };
+    // Todo el correo (lo archivado también) y Spam, no sólo Recibidos: el primer reenvío real de
+    // Hougassian (17/09, S01826) cayó en Spam y el robot no lo vio hasta que alguien lo movió.
+    const cajas = await cliente.list();
+    const todo = cajas.find((b) => b.specialUse === "\\All")?.path ?? "INBOX";
+    const spam = cajas.find((b) => b.specialUse === "\\Junk")?.path;
+    for (const caja of [todo, spam].filter(Boolean)) {
+      const candado = await cliente.getMailboxLock(caja);
+      try {
+        const uids = (await cliente.search({ since: new Date(new Date(desde).getTime() - 86_400_000) }, { uid: true })) || [];
+        for (const uid of [...uids].reverse()) {
+          const mensaje = await cliente.fetchOne(String(uid), { source: true }, { uid: true });
+          if (!mensaje?.source) continue;
+          const mail = await simpleParser(mensaje.source);
+          for (const adjunto of await adjuntosPdf(mail)) {
+            const chequeos = await verificarCertificado(adjunto.bytes, registro).catch(() => null);
+            if (!chequeos?.find((c) => c.clave === "registro")?.ok) continue;
+            const enSpam = caja === spam;
+            log(`CPAU: llegó el certificado de ${registro} por mail (${adjunto.nombre}${enSpam ? ", estaba en Spam" : ""})`);
+            return {
+              pdf: Buffer.from(adjunto.bytes), nombre: adjunto.nombre, chequeos,
+              mail: { asunto: mail.subject ?? null, de: mail.from?.text ?? null, fecha: mail.date?.toISOString() ?? null, en_spam: enSpam },
+            };
+          }
+        }
+      } finally {
+        candado.release();
       }
     }
     return null;
   } finally {
-    candado.release();
     await cliente.logout().catch(() => {});
   }
 }

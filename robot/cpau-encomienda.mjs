@@ -418,14 +418,16 @@ async function continuarCierre({ db, tarea, log, p, ahora, obra, doc, evento, av
       const r = await pagarEncomienda({
         context, foto, log,
         alIntentar: ({ operacion }) => guardar({ pago: { operacion, intentado_at: ahora() } }),
+        // Antes de saber si se aprobó: si la pantalla es dudosa y frena, el PDF ya está en el bucket.
+        alComprobante: async (bytes) => guardar({ pago: { ...cierre.pago, comprobante: await subir(`${base}/comprobante-${cierre.pago.operacion}.pdf`, bytes) } }),
       });
       if (!r.aprobado) {
         // Rechazado no cobra: se limpia el intento para poder reanudar después de revisar la tarjeta.
         await guardar({ pago: { operacion: r.operacion, intentado_at: null, rechazado_at: ahora(), texto: r.texto } });
         throw new CierreFrenado(`El pago de la encomienda fue rechazado (operación ${r.operacion}): ${r.texto.slice(0, 200)}`);
       }
-      if (!r.comprobante) throw new CierreFrenado(`La encomienda se pagó (operación ${r.operacion}) pero no se pudo guardar el comprobante: conseguirlo en perfil.cpau.org`);
-      const comprobante = await subir(`${base}/comprobante-${r.operacion}.pdf`, r.comprobante);
+      if (!r.comprobante || !cierre.pago?.comprobante) throw new CierreFrenado(`La encomienda se pagó (operación ${r.operacion}) pero no se pudo guardar el comprobante: conseguirlo en perfil.cpau.org`);
+      const comprobante = cierre.pago.comprobante;
       await guardar({ etapa: "pagada", pago: { ...cierre.pago, aprobado_at: ahora(), comprobante, texto: r.texto, url: r.url } });
       await evento(`Encomienda pagada en la tienda del CPAU: $50.000, operación ${r.operacion}.`, { tarea_id: tarea.id, operacion: r.operacion });
       await aviso({
@@ -491,7 +493,7 @@ async function continuarCierre({ db, tarea, log, p, ahora, obra, doc, evento, av
         tipo: "permiso_novedad",
         clave: `permiso_novedad:tramite:${tarea.tramite_id}:encomienda-certificado:${tarea.id}`,
         titulo: `Certificado del CPAU recibido — ${obra}`,
-        descripcion: `${llego.nombre} · R.Nro ${registro}. Con esto el trámite queda listo para presentar en TAD (de 19 a 7).`,
+        descripcion: `${llego.nombre} · R.Nro ${registro}. Con esto el trámite queda listo para presentar en TAD (de 19 a 7).${llego.mail.en_spam ? " El mail había caído en Spam de permisos-andamio@: marcarlo como «No es spam»." : ""}`,
       });
       log(`CPAU: certificado de ${registro} cargado`);
     }

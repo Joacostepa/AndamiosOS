@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { crearAlertas } from "@/lib/alertas/servicio";
 import { enviarMail } from "@/lib/mail";
 import { revisarPoliza } from "./revision-poliza";
+import { NoRevisable, avisarFallaDeCuenta, fallaDeCuenta, observacionSinRevisar } from "./falla-ia";
 import { formatoCuit, type Tramite } from "./tipos";
 
 // El endoso de la póliza de RC, de punta a punta: pedido → aviso a Segucom → subida en su
@@ -251,7 +252,7 @@ export async function revisarDocumento(db: SupabaseClient, documentoId: string):
 
   try {
     const { data: archivo, error } = await db.storage.from(BUCKET).download(doc.archivo_path);
-    if (error || !archivo) throw new Error("No se encontró el archivo subido");
+    if (error || !archivo) throw new NoRevisable("no se encontró el archivo subido");
     const revision = await revisarPoliza(Buffer.from(await archivo.arrayBuffer()), tramite);
     const fallas = revision.chequeos.filter((c) => !c.ok && c.bloquea);
     const estado = fallas.length === 0 ? "ok" : "observado";
@@ -275,17 +276,20 @@ export async function revisarDocumento(db: SupabaseClient, documentoId: string):
       await siListoPresentar(db, doc.tramite_id);
     }
   } catch (e) {
+    // La observación la puede ver Segucom: sin el error de la API. El detalle queda en el historial.
     const msg = e instanceof Error ? e.message : String(e);
+    const falla = fallaDeCuenta(e);
     await db.from("pvp_documentos").update({
-      observacion: `No se pudo revisar sola (${msg}). La tiene que mirar una persona.`,
+      observacion: observacionSinRevisar(e, "La tiene que mirar una persona."),
       updated_at: new Date().toISOString(),
     }).eq("id", documentoId);
-    await registrarEvento(db, doc.tramite_id, "documento_revisado", `No se pudo revisar: ${msg}`, { error: msg }, "ia");
+    await registrarEvento(db, doc.tramite_id, "documento_revisado", `No se pudo revisar: ${falla ? `${falla.motivo}. ` : ""}${msg}`, { error: msg, falla: falla?.tipo ?? null }, "ia");
+    if (falla && !tramite.es_prueba) await avisarFallaDeCuenta(db, falla);
     await alertar(db, [{
       tipo: "permiso_endoso",
       clave: `permiso_endoso:${documentoId}:error:v${doc.version}`,
       titulo: `Revisar la póliza a mano — ${tramite.direccion}`,
-      descripcion: msg,
+      descripcion: falla ? `${falla.motivo}. ${falla.queHacer}` : msg.slice(0, 280),
       prioridad: "alta",
       enlace: enlaceInterno(doc.tramite_id, tramite),
     }]);

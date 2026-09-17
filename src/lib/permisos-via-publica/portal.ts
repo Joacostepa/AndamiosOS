@@ -4,6 +4,7 @@ import { crearAlertas } from "@/lib/alertas/servicio";
 import { enviarMail } from "@/lib/mail";
 import { BUCKET, pedirEndoso, registrarEvento, urlBase } from "./endosos";
 import { revisarDocumentoCliente, tipoDeArchivo } from "./revision-legajo";
+import { NoRevisable, avisarFallaDeCuenta, fallaDeCuenta, observacionSinRevisar } from "./falla-ia";
 import { leerSupervision } from "./supervision";
 import { avisarPasoPendiente, contactosDeTramite, copias, responderA, vendedorDeVenta } from "./gestion";
 import { NOMBRE_DOCUMENTO, legajoDe, type Tramite, type TipoDueno, type VentaParaIniciar } from "./tipos";
@@ -441,17 +442,17 @@ export async function registrarDocumentoCliente(db: SupabaseClient, documentoId:
  */
 export async function revisarDocumentoDelCliente(db: SupabaseClient, documentoId: string): Promise<void> {
   const { data: doc } = await db.from("pvp_documentos")
-    .select("id, tramite_id, clave, version, archivo_path, pvp_tramites!inner(direccion, titular_nombre, titular_cuit, tipo_dueno, administrador_nombre, administrador_cuit)")
+    .select("id, tramite_id, clave, version, archivo_path, pvp_tramites!inner(direccion, titular_nombre, titular_cuit, tipo_dueno, administrador_nombre, administrador_cuit, es_prueba)")
     .eq("id", documentoId).single();
   if (!doc?.archivo_path) return;
-  const tramite = doc.pvp_tramites as unknown as Pick<Tramite, "direccion" | "titular_nombre" | "titular_cuit" | "tipo_dueno" | "administrador_nombre" | "administrador_cuit">;
+  const tramite = doc.pvp_tramites as unknown as Pick<Tramite, "direccion" | "titular_nombre" | "titular_cuit" | "tipo_dueno" | "administrador_nombre" | "administrador_cuit" | "es_prueba">;
   const ahora = () => new Date().toISOString();
 
   try {
     const tipo = tipoDeArchivo(doc.archivo_path);
-    if (!tipo) throw new Error("formato de archivo que no se puede revisar");
+    if (!tipo) throw new NoRevisable("formato de archivo que no se puede revisar");
     const { data: archivo, error } = await db.storage.from(BUCKET).download(doc.archivo_path);
-    if (error || !archivo) throw new Error("no se encontró el archivo subido");
+    if (error || !archivo) throw new NoRevisable("no se encontró el archivo subido");
 
     const revision = await revisarDocumentoCliente(Buffer.from(await archivo.arrayBuffer()), tipo, doc.clave, tramite);
     const fallas = revision.chequeos.filter((c) => !c.ok && c.bloquea);
@@ -466,12 +467,16 @@ export async function revisarDocumentoDelCliente(db: SupabaseClient, documentoId
       await siListoPresentar(db, doc.tramite_id);
     }
   } catch (e) {
+    // La observación la ve el cliente en el portal: sin el error de la API (16/09 vio el JSON en
+    // inglés de "credit balance too low"). El detalle queda en el historial.
     const msg = e instanceof Error ? e.message : String(e);
+    const falla = fallaDeCuenta(e);
     await db.from("pvp_documentos").update({
       estado: "cargado",
-      observacion: `No se pudo revisar automáticamente (${msg}). Lo revisa una persona de ABA.`,
+      observacion: observacionSinRevisar(e, "Lo revisa una persona de ABA."),
       updated_at: ahora(),
     }).eq("id", documentoId);
-    await registrarEvento(db, doc.tramite_id, "documento_revisado", `No se pudo revisar ${doc.clave}: ${msg}`, { error: msg }, "ia");
+    await registrarEvento(db, doc.tramite_id, "documento_revisado", `No se pudo revisar ${doc.clave}: ${falla ? `${falla.motivo}. ` : ""}${msg}`, { error: msg, falla: falla?.tipo ?? null }, "ia");
+    if (falla && !tramite.es_prueba) await avisarFallaDeCuenta(db, falla);
   }
 }

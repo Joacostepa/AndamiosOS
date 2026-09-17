@@ -440,24 +440,30 @@ export async function registrarDocumentoCliente(db: SupabaseClient, documentoId:
  * Un documento del legajo quedó observado: se le escribe al cliente con el motivo y el link para
  * reemplazarlo, con copia a quien gestiona y al vendedor (las respuestas, al vendedor). Sale solo
  * también en modo supervisado (JS, 16/09, con el acta vencida de S01826). Una vez por versión del
- * documento. Si el mail del cliente no sirve, avisa al equipo. Nunca tira.
+ * documento; `forzar` lo reenvía (botón de la ficha, p. ej. después de corregir el mail en Odoo). Si
+ * el mail del cliente no sirve, avisa al equipo. Nunca tira: devuelve si salió y, si no, por qué.
  */
-export async function pedirCorreccionAlCliente(db: SupabaseClient, documentoId: string, origen?: string | null): Promise<boolean> {
+export async function pedirCorreccionAlCliente(
+  db: SupabaseClient,
+  documentoId: string,
+  opts: { origen?: string | null; forzar?: boolean } = {},
+): Promise<{ enviado: boolean; motivo: string | null }> {
   try {
     const { data: doc } = await db.from("pvp_documentos")
       .select("id, tramite_id, clave, version, estado, observacion, pvp_tramites!inner(direccion, odoo_venta_nombre, cliente_nombre, cliente_email, token_cliente, es_prueba)")
       .eq("id", documentoId).single();
-    if (!doc || doc.estado !== "observado") return false;
+    if (!doc) return { enviado: false, motivo: "El documento no existe." };
+    if (doc.estado !== "observado") return { enviado: false, motivo: "El documento no está observado." };
     const t = doc.pvp_tramites as unknown as Pick<Tramite, "direccion" | "odoo_venta_nombre" | "cliente_nombre" | "cliente_email" | "token_cliente" | "es_prueba">;
 
     const { count } = await db.from("pvp_eventos").select("id", { count: "exact", head: true })
       .eq("tramite_id", doc.tramite_id).eq("tipo", "link_cliente").contains("datos", { documento_id: doc.id, version: doc.version });
-    if (count) return false;
+    if (count && !opts.forzar) return { enviado: false, motivo: "Ya se le pidió esta corrección." };
 
     const nombre = NOMBRE_DOCUMENTO[doc.clave] ?? doc.clave;
     const contactos = await contactosDeTramite(db, doc.tramite_id);
     const para = t.es_prueba ? process.env.PERMISOS_MAIL ?? null : t.cliente_email;
-    const url = linkCliente(t.token_cliente, origen);
+    const url = linkCliente(t.token_cliente, opts.origen);
     const problema = !url ? "No se sabe la URL de la app para armar el link (NEXT_PUBLIC_APP_URL)." : problemaDeMail(para);
     const enlace = `/permisos-via-publica/tramites/${doc.tramite_id}`;
 
@@ -473,7 +479,7 @@ export async function pedirCorreccionAlCliente(db: SupabaseClient, documentoId: 
           enlace,
         }]);
       }
-      return false;
+      return { enviado: false, motivo: problema };
     }
 
     await enviarMail({
@@ -499,11 +505,12 @@ export async function pedirCorreccionAlCliente(db: SupabaseClient, documentoId: 
         "Andamios Buenos Aires",
       ].join("\n"),
     });
-    await registrarEvento(db, doc.tramite_id, "link_cliente", `Se le pidió a ${para} que vuelva a subir ${nombre}.`, { documento_id: doc.id, version: doc.version, para, cc: copias(contactos, para) }, "sistema");
-    return true;
+    await registrarEvento(db, doc.tramite_id, "link_cliente", `Se le pidió a ${para} que vuelva a subir ${nombre}.`, { documento_id: doc.id, version: doc.version, para, cc: copias(contactos, para) }, opts.forzar ? "persona" : "sistema");
+    return { enviado: true, motivo: null };
   } catch (e) {
-    console.error("[portal] no se pudo pedir la corrección al cliente", documentoId, e instanceof Error ? e.message : e);
-    return false;
+    const motivo = e instanceof Error ? e.message : String(e);
+    console.error("[portal] no se pudo pedir la corrección al cliente", documentoId, motivo);
+    return { enviado: false, motivo };
   }
 }
 

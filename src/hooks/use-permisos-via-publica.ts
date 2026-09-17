@@ -196,6 +196,20 @@ export function useReenviarLink(id: string) {
   });
 }
 
+/** Le vuelve a pedir al cliente que corrija un documento observado (mail con el motivo y el link). */
+export function usePedirCorreccion(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (documentoId: string) =>
+      pedir<{ ok: boolean }>(`/api/permisos-via-publica/tramites/${id}/correccion`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ documentoId }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tramite-permiso", id] }),
+  });
+}
+
 export function usePedirEndoso(id: string) {
   const qc = useQueryClient();
   return useMutation({

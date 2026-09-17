@@ -12,7 +12,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useBorrarTramite, usePedirEndosoTramite, useReenviarLink, useTramite } from "@/hooks/use-permisos-via-publica";
+import { useBorrarTramite, usePedirCorreccion, usePedirEndosoTramite, useReenviarLink, useTramite } from "@/hooks/use-permisos-via-publica";
 import { GenerarDocumentos } from "@/components/permisos-via-publica/generar-documentos";
 import { EncomiendaCpau } from "@/components/permisos-via-publica/encomienda-cpau";
 import { PresentacionTad } from "@/components/permisos-via-publica/presentacion-tad";
@@ -162,7 +162,7 @@ export default function FichaTramitePage({ params }: { params: Promise<{ id: str
         )}
       </section>
 
-      <ListaDocumentos titulo={`Legajo del cliente · ${legajo.filter((d) => d.estado !== "falta").length} de ${legajo.length}`} documentos={legajo} />
+      <ListaDocumentos titulo={`Legajo del cliente · ${legajo.filter((d) => d.estado !== "falta").length} de ${legajo.length}`} documentos={legajo} tramiteId={t.id} />
       <GenerarDocumentos tramiteId={t.id} conVenta={!!t.odoo_venta_id} />
       <EncomiendaCpau tramiteId={t.id} encomienda={data.encomienda} esPrueba={t.es_prueba} />
       <PresentacionTad tramiteId={t.id} presentacion={data.presentacion} esPrueba={t.es_prueba} expedienteId={t.expediente_id} />
@@ -218,7 +218,12 @@ function PedirEndoso({ tramiteId, poliza }: { tramiteId: string; poliza: Documen
   );
 }
 
-function ListaDocumentos({ titulo, documentos }: { titulo: string; documentos: (Documento & { url: string | null })[] }) {
+/**
+ * `tramiteId` sólo en el legajo del cliente: habilita "Pedir corrección" en lo observado. El mail
+ * sale solo cuando la revisión observa; el botón lo reenvía (p. ej. con el mail corregido en Odoo).
+ */
+function ListaDocumentos({ titulo, documentos, tramiteId }: { titulo: string; documentos: (Documento & { url: string | null })[]; tramiteId?: string }) {
+  const correccion = usePedirCorreccion(tramiteId ?? "");
   return (
     <section className="rounded-md border text-[13px]">
       <header className="border-b px-3 py-2">
@@ -231,6 +236,22 @@ function ListaDocumentos({ titulo, documentos }: { titulo: string; documentos: (
             <div className="flex flex-wrap items-center gap-2">
               <span>{NOMBRE_DOCUMENTO[d.clave] ?? d.clave}</span>
               <span className={`rounded px-1.5 py-0.5 text-[11px] ${COLOR[d.estado]}`}>{ETIQUETA_ESTADO_DOCUMENTO[d.estado]}</span>
+              {tramiteId && d.estado === "observado" && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7"
+                  disabled={correccion.isPending}
+                  onClick={() =>
+                    correccion.mutate(d.id, {
+                      onSuccess: () => toast.success("Se le pidió la corrección al cliente por mail"),
+                      onError: (err) => toast.error(err instanceof Error ? err.message : "No se pudo mandar"),
+                    })
+                  }
+                >
+                  {correccion.isPending && correccion.variables === d.id ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />} Pedir corrección
+                </Button>
+              )}
               {d.url && (
                 <a href={d.url} target="_blank" rel="noreferrer" className="ml-auto inline-flex items-center gap-1 text-[12px] hover:underline">
                   {d.archivo_nombre ?? "Ver"} <ExternalLink className="size-3" />

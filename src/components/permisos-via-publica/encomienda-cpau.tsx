@@ -46,7 +46,7 @@ function SubirCertificado({ tramiteId }: { tramiteId: string }) {
           disabled={!encomienda || subir.isPending}
           onClick={() => {
             if (!encomienda) return;
-            if (!certificacion && !window.confirm("Falta la certificación. ¿Subir sólo la encomienda?")) return;
+            if (!certificacion && !window.confirm("No elegiste la certificación. Si ese PDF ya la trae (las 5 hojas juntas), subilo solo. ¿Seguir?")) return;
             subir.mutate(certificacion ? [encomienda, certificacion] : [encomienda], {
               onSuccess: (r) => {
                 if (r.estado === "ok") toast.success("Certificado del CPAU cargado");

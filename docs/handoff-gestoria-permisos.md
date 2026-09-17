@@ -209,8 +209,6 @@ del CPAU, **sin botón de aprobación**, pago incluido. Siempre es el producto d
 - Firmas: **"Firma JS"** para el comitente y **"Firma 01"** (Hougassian) para el matriculado.
   Están en el bucket: `plantillas/comun/firma-js.png` y `firma-hougassian-encomienda.png`. La
   `firma-hougassian.png` de siempre sigue para el informe técnico.
-- **S02465 y S02128 quedan como están**, aunque su registro muestre mal el documento del
-  propietario (ver abajo). Se corrige para las próximas.
 - La tarjeta la carga JS en `robot/.env.robot`. Los 9 campos están vacíos, cada uno con su
   formato en el comentario de arriba (titular, número, vencimiento MMAA, código, mail, DNI,
   calle, número de puerta, nacimiento DDMMAAAA). Sin comillas y sin comentarios en la línea.
@@ -231,18 +229,27 @@ del CPAU, **sin botón de aprobación**, pago incluido. Siempre es el producto d
 1. **Parte 2 — mapear los pasos 2 y 3 de la Plataforma** hasta antes de "Enviar" (instructivo:
    Habilitación de Est. Trans. + n° de encomienda + PDF firmado → Siguiente → Pago electrónico +
    n° de comprobante + PDF del comprobante → Enviar).
-2. **Parte 3 — construir el robot** que encadene todo después de Finalizar, y **arreglar el
-   documento del propietario** para las próximas: esperar la recarga al elegir "CUIT/CUIL" y, al
-   terminar, verificar el CUIT en el registro bajado, no sólo en la pantalla de Confirmar.
+2. **Parte 3 — construir el robot** que encadene todo después de Finalizar. El registro sin
+   firmas se baja **apenas se finaliza**: después de que el CPAU lo procesa, el mismo "Show" lo
+   muestra distinto (ver "El propietario" abajo).
 3. **Primera corrida real** (con la tarjeta cargada): ver la pantalla después de "Aceptar", de
    dónde sale el comprobante y el número que pide la Plataforma.
-4. **Seguir el visado:** mirar el Histórico hasta que aparezca el certificado, bajarlo como
-   documento `encomienda_cpau` y dejar que se presente solo en TAD.
+4. **Seguir el visado:** lo que va a TAD como "Certificado de Encomienda Profesional" son **5
+   hojas en un PDF**: el registro firmado y sellado por el CPAU (3 hojas), la certificación ("EL
+   CONSEJO PROFESIONAL … CERTIFICA QUE", con QR) y el comprobante de pago de $50.000. Según JS
+   (16/09), **la certificación aparece apenas se carga todo en la Plataforma y la encomienda final
+   30-40 minutos después**, y hay que unir los dos PDF. Hoy se bajan a mano y se suben en la ficha
+   ("1. Encomienda" + "2. Certificación", la app los une: `c3ac518`). Falta ver de qué pantalla
+   salen para que el robot los baje solo.
 
 **Cosas a tener en cuenta:**
-- **El error del propietario:** en S02465 y S02128 la pantalla de Confirmar decía "CUIT/CUIL" y el
-  CUIT del consorcio, pero el registro que generó el CPAU dice "Documento Único" con el DNI de JS
-  (el del comitente). En la de Guido 1923 que hizo Tamara a mano salió bien. Causa sin confirmar.
+- **El propietario: falsa alarma (revisado el 16/09 a la noche).** Los PDF que se subieron a TAD
+  de S02465 y S02128, hechos por el robot, dicen "CUIT/CUIL" y el CUIT del consorcio, igual que
+  Guido 1923 y los de Tamara del 01/09 (Uruguay 1275, Córdoba 2914, Anchorena 1170); todos con
+  "Usuario Reg/Ins/Upd NA hougassian hougassian". Lo que decía "Documento Único 36684541" (el DNI
+  de JS) era el registro de S02128 **bajado del Histórico después de que el CPAU lo procesó**
+  (usuario "cristian cristian cristian", con n° de encomienda): el CPAU lo muestra así, pero no es
+  lo que se presenta. No hay nada que arreglar en el robot.
 - **Quedó una intención de pago sin pagar** en la cuenta de Hougassian (operación 292118), del
   mapeo. Autorizado por JS; no genera cargos.
 - **Seguridad:** el PDF "INSTRUCTIVO ENCOMIENDA (pendiente de revisión)" en Descargas de la Mac

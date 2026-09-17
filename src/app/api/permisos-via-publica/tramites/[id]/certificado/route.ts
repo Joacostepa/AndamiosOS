@@ -55,9 +55,15 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     // Un PDF que no se puede leer queda observado, pero se guarda.
   }
   const esDelCpau = /Encomienda de Tarea Profesional|Consejo Profesional de Arquitectura|CPAU/i.test(texto);
+  // Lo que se subió a TAD en S02466, S02465 y S02128 (y los de Tamara del 01/09) son 5 hojas: el
+  // registro firmado y sellado (3), la certificación ("… CERTIFICA QUE") y el comprobante de pago.
+  const tieneRegistro = /Registro de Encomienda de Tarea Profesional/i.test(texto);
+  const tieneCertificacion = /CERTIFICA QUE/i.test(texto);
   const chequeos = [
     { clave: "lectura", ok: texto.trim().length > 50, bloquea: true, detalle: texto.trim().length > 50 ? "El PDF se lee." : "El PDF no tiene texto legible." },
-    { clave: "cpau", ok: esDelCpau, bloquea: true, detalle: esDelCpau ? "Es un registro de encomienda del CPAU." : "No parece un registro de encomienda del CPAU." },
+    { clave: "cpau", ok: esDelCpau, bloquea: true, detalle: esDelCpau ? "Es del CPAU." : "No parece un documento del CPAU." },
+    { clave: "registro", ok: tieneRegistro, bloquea: true, detalle: tieneRegistro ? "Trae el registro de la encomienda." : "Falta el registro de la encomienda (las hojas firmadas)." },
+    { clave: "certificacion", ok: tieneCertificacion, bloquea: true, detalle: tieneCertificacion ? "Trae la certificación del CPAU." : "Falta la certificación del CPAU." },
   ];
   const fallas = chequeos.filter((c) => !c.ok);
 

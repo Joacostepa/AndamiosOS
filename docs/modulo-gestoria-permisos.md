@@ -922,13 +922,22 @@ registro), `#tyc` (declaración jurada) y `#validarPaso1` "Siguiente". **Pasos 2
 según el instructivo: Habilitación de Est. Trans. + n° de encomienda + registro firmado →
 Siguiente → Pago electrónico + n° de comprobante + PDF del comprobante → Enviar.
 
-**Error del propietario (a corregir para las próximas).** En S02465 y S02128 la pantalla de
-Confirmar mostraba "CUIT/CUIL" y el CUIT del consorcio (lo guarda `resultado.resumen`), pero el
-registro que genera el CPAU dice "Documento Único" con el DNI del comitente. En la de Guido 1923,
-cargada a mano, salió bien. Sospecha: `ddlPropietarioTipoDocId` recarga la página y el robot
-escribe el número sin esperar. Arreglo previsto: esperar el postback y, después de Finalizar,
-bajar el registro (`Show`) y verificar ahí el CUIT del propietario. JS decidió dejar esas dos
-encomiendas como están.
+**El propietario: falsa alarma (16/09 a la noche).** Se creyó que el robot guardaba mal el
+documento del propietario porque el registro de S02128 bajado con "Show" del Histórico decía
+"Documento Único" y el DNI del comitente. Pero ese registro se bajó **después** de que el CPAU lo
+procesara (Usuario Reg/Ins/Upd "cristian cristian cristian", con n° de encomienda 2929). Los PDF
+que se presentaron en TAD de S02465 y S02128 dicen "CUIT/CUIL" y el CUIT del consorcio, con
+"NA hougassian hougassian", igual que los de Tamara. `ddlPropietarioTipoDocId` no recarga la página
+(no tiene `onchange`). Para el cierre automático: bajar el registro sin firmas apenas se finaliza.
+
+**Lo que va a TAD como "Certificado de Encomienda Profesional"** (los 5 PDF revisados: Guido 1923,
+Salguero 359, Corrientes 2810 y tres de Tamara del 01/09) son 5 hojas: registro firmado por JS y
+Hougassian y sellado por el CPAU (3), certificación ("EL CONSEJO PROFESIONAL DE ARQUITECTURA Y
+URBANISMO CERTIFICA QUE", RETP y n° de encomienda, QR) y comprobante de pago ($50.000, "Sistema Pago
+Seguro"). JS (16/09): la certificación aparece apenas se carga todo en la Plataforma; la encomienda
+final, 30-40 minutos después; hay que unir los dos. La ruta `tramites/:id/certificado` recibe uno o
+dos PDF, los une con pdf-lib (primero la encomienda, cortando lo que el CPAU pega después del
+`%%EOF`) y observa el documento si le falta el registro o la certificación.
 
 ### Documentos que sube ABA — todos automáticos
 

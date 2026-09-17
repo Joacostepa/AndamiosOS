@@ -31,7 +31,7 @@ const CRITERIOS: Record<string, { descripcion: string; reglas: Regla[] }> = {
   // Ley 941 de la Ciudad, art. 13 (texto de la Ley 5932): el mandato del administrador dura un
   // año y lo renueva la asamblea. El reglamento de S01826 no fija plazo y el acta tampoco (16/09).
   acta_asamblea: {
-    descripcion: "Acta de asamblea del consorcio que designa o renueva al administrador, legalizada. En la Ciudad de Buenos Aires el mandato del administrador dura un año (Ley 941, art. 13), contado desde la fecha que fije la asamblea o, si no la fija, desde la asamblea, y se renueva en asamblea: está vigente sólo si esa designación o renovación tiene menos de un año a la fecha de hoy.",
+    descripcion: "Acta de asamblea del consorcio que designa o renueva al administrador, legalizada. Si el acta fija hasta cuándo dura el mandato, vale ese plazo. Si no lo fija, en la Ciudad de Buenos Aires el mandato del administrador dura un año (Ley 941, art. 13), contado desde la fecha que fije la asamblea o, si no la fija, desde la asamblea: está vigente sólo si esa designación o renovación tiene menos de un año a la fecha de hoy.",
     reglas: ["vigencia", "administrador"],
   },
   reglamento: { descripcion: "Reglamento de copropiedad del edificio de la obra.", reglas: ["direccion"] },
@@ -62,6 +62,8 @@ const Lectura = z.object({
   coincide_direccion: z.boolean().nullable(),
   firmado: z.boolean().nullable(),
   vigente: z.boolean().nullable(),
+  fecha_designacion: z.string().nullable(),
+  vigente_hasta: z.string().nullable(),
 });
 
 const SISTEMA = `Revisás documentos que un cliente sube para tramitar ante el Gobierno de la Ciudad Autónoma de Buenos Aires un permiso de andamio en la vía pública. Te dicen qué documento se pidió, quién es el dueño del lote y dónde es la obra.
@@ -76,7 +78,9 @@ Contestá sobre lo que el documento muestra, no sobre lo que debería mostrar. S
 - coincide_administrador: si la persona que el documento designa o identifica como administrador del consorcio es el administrador indicado (aceptá diferencias de mayúsculas, abreviaturas o el orden de nombre y apellido). null si no se indica administrador o el documento no nombra a nadie.
 - coincide_direccion: si la dirección del documento es la de la obra (misma calle y altura; aceptá abreviaturas). null si no trae dirección.
 - firmado: si tiene firma. null si no es un documento que se firme.
-- vigente: si a la fecha indicada sigue vigente (mandato, designación). null si no tiene vigencia.`;
+- vigente: si a la fecha indicada sigue vigente (mandato, designación). null si no tiene vigencia.
+- fecha_designacion: en actas que designan, renuevan o ratifican un mandato, la fecha (AAAA-MM-DD) desde la que corre: la que fije el acta o, si no fija ninguna, la de la asamblea o reunión. null si no se ve o no aplica.
+- vigente_hasta: la fecha (AAAA-MM-DD) en que termina ese mandato, sólo si el documento la escribe. null si no la escribe.`;
 
 type TramiteLegajo = Pick<Tramite, "direccion" | "titular_nombre" | "titular_cuit" | "tipo_dueno" | "administrador_nombre" | "administrador_cuit">;
 
@@ -117,7 +121,45 @@ async function loteDeLaObra(direccion: string): Promise<Parcela | null> {
   return n ? parcelaPorDireccion(n.codCalle, n.altura).catch(() => null) : null;
 }
 
-function chequear(clave: string, l: z.infer<typeof Lectura>, t: TramiteLegajo, lote: Parcela | null = null): ChequeoPoliza[] {
+/** Hoy en Buenos Aires, AAAA-MM-DD (después de las 21 h la fecha UTC ya es mañana). */
+export const hoyBuenosAires = (d = new Date()) => d.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
+
+const FECHA = /^\d{4}-\d{2}-\d{2}$/;
+const fechaAR = (iso: string) => iso.split("-").reverse().join("/");
+
+type Vigencia = { vigente: boolean; desde: string | null; hasta: string | null; futura?: boolean };
+
+/**
+ * Vigencia del mandato con las fechas que leyó la IA, calculada acá. La IA sola le erraba: el acta
+ * de Tucumán 969 (S02516, asamblea del 04/11/2025) salió "vencida" dos veces el 17/09/2026 y
+ * "vigente" otras dos con el mismo PDF. Si el acta fija hasta cuándo dura el mandato, vale ese
+ * plazo aunque pase el año (JS, 17/09: Nahuel Huapi 5100 lo renovó del 01/11/2025 al 31/03/2027).
+ * Si no, en consorcios dura un año (Ley 941, art. 13) desde la fecha en que corre. Sin ninguna
+ * fecha legible queda lo que contestó la IA.
+ */
+export function vigenciaDelMandato(clave: string, l: Pick<z.infer<typeof Lectura>, "vigente" | "fecha_designacion" | "vigente_hasta">, hoy: string): Vigencia | null {
+  const desde = l.fecha_designacion && FECHA.test(l.fecha_designacion) ? l.fecha_designacion : null;
+  const fijado = l.vigente_hasta && FECHA.test(l.vigente_hasta) ? l.vigente_hasta : null;
+  const unAnio = clave === "acta_asamblea" && desde ? `${Number(desde.slice(0, 4)) + 1}${desde.slice(4)}` : null;
+  const hasta = fijado ?? unAnio;
+  // Un mandato que "empieza" después de hoy es casi seguro una fecha mal leída: ante la duda, observa.
+  if (desde && desde > hoy) return { vigente: false, desde, hasta, futura: true };
+  if (hasta) return { vigente: hoy <= hasta, desde, hasta };
+  return l.vigente === null ? null : { vigente: l.vigente, desde, hasta: null };
+}
+
+function detalleVigencia(clave: string, v: Vigencia): string {
+  if (v.futura) return `No se pudo confirmar la vigencia: la fecha que se lee en el acta (${fechaAR(v.desde!)}) es posterior a hoy. Revisá que sea el acta correcta y que la fecha se lea bien.`;
+  const tramo = [v.desde && `desde el ${fechaAR(v.desde)}`, v.hasta && `hasta el ${fechaAR(v.hasta)}`].filter(Boolean).join(" ");
+  if (v.vigente) return tramo ? `Está vigente (mandato ${tramo}).` : "Está vigente.";
+  if (clave === "acta_asamblea") {
+    const cuando = v.hasta ? `el mandato venció el ${fechaAR(v.hasta)}. En` : "en";
+    return `No está vigente: ${cuando} la Ciudad el mandato del administrador dura un año y lo renueva la asamblea (Ley 941, art. 13). Subí el acta de la asamblea que designó o renovó al administrador hace menos de un año.`;
+  }
+  return `No está vigente${v.hasta ? ` (venció el ${fechaAR(v.hasta)})` : ""}: subí el acta con la designación de autoridades actual.`;
+}
+
+function chequear(clave: string, l: z.infer<typeof Lectura>, t: TramiteLegajo, lote: Parcela | null = null, hoy = hoyBuenosAires()): ChequeoPoliza[] {
   const nombre = NOMBRE_DOCUMENTO[clave] ?? clave;
   const reglas = CRITERIOS[clave]?.reglas ?? [];
   const titular = t.titular_nombre ?? "el dueño del lote";
@@ -177,11 +219,9 @@ function chequear(clave: string, l: z.infer<typeof Lectura>, t: TramiteLegajo, l
   if (reglas.includes("firma") && l.firmado !== null) {
     chequeos.push({ clave: "firma", ok: l.firmado, bloquea: true, detalle: l.firmado ? "Está firmada." : "Falta la firma." });
   }
-  if (reglas.includes("vigencia") && l.vigente !== null) {
-    const vencida = clave === "acta_asamblea"
-      ? "No está vigente: en la Ciudad el mandato del administrador dura un año y lo renueva la asamblea (Ley 941, art. 13). Subí el acta de la asamblea que designó o renovó al administrador hace menos de un año."
-      : "No está vigente: subí el acta con la designación de autoridades actual.";
-    chequeos.push({ clave: "vigencia", ok: l.vigente, bloquea: true, detalle: l.vigente ? "Está vigente." : vencida });
+  const vigencia = reglas.includes("vigencia") ? vigenciaDelMandato(clave, l, hoy) : null;
+  if (vigencia) {
+    chequeos.push({ clave: "vigencia", ok: vigencia.vigente, bloquea: true, detalle: detalleVigencia(clave, vigencia) });
   }
   // El administrador cargado va como coasegurado en el endoso: si el acta o el DNI nombran a otra
   // persona, el pedido a Segucom salió con otro nombre. Advertencia: no frena el legajo (JS, 15/09).
@@ -241,7 +281,7 @@ export async function revisarDocumentoCliente(
               ? `Administrador del consorcio: ${tramite.administrador_nombre} (CUIT/CUIL ${tramite.administrador_cuit}).`
               : "No se indica administrador.",
             `Obra: ${tramite.direccion}.`,
-            `Fecha de hoy: ${new Date().toISOString().slice(0, 10)}.`,
+            `Fecha de hoy: ${hoyBuenosAires()}.`,
           ].join("\n"),
         },
       ],

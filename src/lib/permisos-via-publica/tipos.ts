@@ -476,6 +476,8 @@ export type FichaExpediente = {
   eventos: Evento[];
   /** URL firmada del permiso emitido, válida 10 minutos. */
   permisoUrl: string | null;
+  /** URL firmada de la carátula que bajó el robot (trae el número de expediente), válida 10 minutos. */
+  caratulaUrl: string | null;
   /** null si no hay venta vinculada o si Odoo no respondió (ver ventaError). */
   venta: VentaOdoo | null;
   ventaError: string | null;

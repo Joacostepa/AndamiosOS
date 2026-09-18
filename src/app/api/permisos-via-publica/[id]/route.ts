@@ -74,8 +74,9 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
       ? db.storage.from("permisos-via-publica").createSignedUrl(path, 600).then((f) => f.data?.signedUrl ?? null)
       : Promise.resolve(null);
 
-  const [permisoUrl, odoo, tramite] = await Promise.all([
+  const [permisoUrl, caratulaUrl, odoo, tramite] = await Promise.all([
     firmar(expediente.permiso_path),
+    firmar(expediente.caratula_path),
     expediente.odoo_venta_id ? ventaDeOdoo(expediente.odoo_venta_id) : Promise.resolve({ venta: null, ventaError: null }),
     db.from("pvp_tramites").select("*").eq("expediente_id", id).maybeSingle().then((r) => (r.data as Tramite | null) ?? null),
   ]);
@@ -86,6 +87,6 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
     ((docs ?? []) as Documento[]).map(async (d) => ({ ...d, url: await firmar(d.archivo_path) })),
   );
 
-  const ficha: FichaExpediente = { expediente, eventos: (eventos.data ?? []) as Evento[], permisoUrl, ...odoo, tramite, documentos };
+  const ficha: FichaExpediente = { expediente, eventos: (eventos.data ?? []) as Evento[], permisoUrl, caratulaUrl, ...odoo, tramite, documentos };
   return NextResponse.json(ficha);
 }

@@ -82,7 +82,7 @@ export default function FichaPermisoPage({ params }: { params: Promise<{ id: str
     return <EmptyState icon={TriangleAlert} title="No se pudo abrir el expediente" description={error instanceof Error ? error.message : undefined} />;
   }
 
-  const { expediente: e, eventos, permisoUrl, venta, ventaError, tramite, documentos } = data;
+  const { expediente: e, eventos, permisoUrl, caratulaUrl, venta, ventaError, tramite, documentos } = data;
 
   return (
     <div className="space-y-5">
@@ -94,6 +94,12 @@ export default function FichaPermisoPage({ params }: { params: Promise<{ id: str
         title={e.direccion ?? e.titular ?? `EX-${e.numero}`}
         description={[e.expediente, e.odoo_venta_nombre, e.cliente].filter(Boolean).join(" · ")}
       >
+        {/* La carátula la baja el robot al entrar al expediente: es el PDF con el número. */}
+        {caratulaUrl && (
+          <a href={caratulaUrl} target="_blank" rel="noreferrer" className={buttonVariants({ size: "sm", variant: "outline" })}>
+            <Download className="size-4" /> Descargar carátula
+          </a>
+        )}
         {permisoUrl && (
           // Button es de base-ui (no tiene asChild): un <a> con las mismas clases.
           <a href={permisoUrl} target="_blank" rel="noreferrer" className={buttonVariants({ size: "sm" })}>

@@ -292,26 +292,40 @@ export async function escribirPermiso(ventaId: number, cambio: CambioPermiso): P
   await write(VENTA, [ventaId], valores);
 }
 
+/** El permiso de una OT junto con QUÉ HACE esa OT, que es lo que decide si el permiso aplica. */
+export type PermisoDeOt = { permiso: Permiso; tipoOt: string | null };
+
 /**
  * El permiso de las OTs pedidas, para el candado del tablero.
  *
  * Es la única lectura que el tablero necesita para decidir si una jornada se puede
  * confirmar, y no toca Supabase: los tres campos que deciden viven en sale.order. Si
  * Supabase estuviera caído la planificación sigue funcionando.
+ *
+ * DEVUELVE TAMBIÉN EL TIPO DE OT porque el permiso vive en la VENTA y ahí es de la obra
+ * entera: el armado y el desarme de la misma obra comparten modalidad, y sin saber cuál
+ * es cuál el desarme hereda un freno que no le corresponde. Sale de la lectura que ya se
+ * hacía, así que no agrega ni un viaje a Odoo.
  */
-export async function permisosDeOts(otIds: number[]): Promise<Map<number, Permiso>> {
+export async function permisosDeOts(otIds: number[]): Promise<Map<number, PermisoDeOt>> {
   const ids = [...new Set(otIds)].filter((id) => Number.isInteger(id) && id > 0);
   if (ids.length === 0) return new Map();
 
-  const ots = await read<{ id: number; x_order_id: M2O; x_tecnico: string | false }>(
-    OT, ids, ["x_order_id", "x_tecnico"],
+  const ots = await read<{ id: number; x_order_id: M2O; x_tecnico: string | false; x_tipo: string | false }>(
+    OT, ids, ["x_order_id", "x_tecnico", "x_tipo"],
   );
   const ventaIds = [...new Set(ots.map((o) => m2oId(o.x_order_id)).filter((x): x is number => x !== null))];
   const ventas = ventaIds.length ? await read<FilaVenta>(VENTA, ventaIds, CAMPOS_VENTA) : [];
   const porId = new Map(ventas.map((v) => [v.id, v]));
 
   return new Map(
-    ots.map((o) => [o.id, mapPermiso(porId.get(m2oId(o.x_order_id) ?? -1), str(o.x_tecnico))]),
+    ots.map((o) => [
+      o.id,
+      {
+        permiso: mapPermiso(porId.get(m2oId(o.x_order_id) ?? -1), str(o.x_tecnico)),
+        tipoOt: str(o.x_tipo),
+      },
+    ]),
   );
 }
 

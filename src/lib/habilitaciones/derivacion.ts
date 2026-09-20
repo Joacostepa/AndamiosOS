@@ -428,7 +428,27 @@ export function friccionAlConfirmar(
 }
 
 /**
+ * Los tipos de OT que PONEN estructura nueva en la vía pública.
+ *
+ * EL PERMISO PROTEGE OCUPAR LA VEREDA, así que se pide donde eso pasa y no en el resto.
+ * Un desarme saca el andamio: si el permiso no está, desarmar es lo que RESUELVE el
+ * problema, no lo que lo crea — frenarlo deja la estructura en la calle, que es
+ * exactamente lo contrario de lo que el freno persigue.
+ *
+ * NO ES UN DETALLE DE BORDE, y el motivo es cómo están armados los datos: la modalidad de
+ * permiso vive en la VENTA, no en la OT, así que todas las OTs de una obra la comparten.
+ * El desarme de una obra hereda el "esperar permiso" que se cargó para su armado, y sin
+ * este corte lo hereda para siempre: el permiso de un armado de marzo seguiría frenando
+ * el desarme de octubre.
+ */
+const TIPOS_QUE_OCUPAN_VIA_PUBLICA = new Set(["armado", "ampliacion"]);
+
+/**
  * Lo que FRENA al confirmar en el tablero. Es un subconjunto de friccionAlConfirmar.
+ *
+ * SÓLO APLICA A LO QUE ARMA (ver TIPOS_QUE_OCUPAN_VIA_PUBLICA). Las otras confirman sin
+ * preguntas: Operaciones no tiene nada que decidir sobre el permiso de una obra que está
+ * sacando de la calle.
  *
  * DEJA AFUERA `pedir_modalidad` a propósito, y esa es toda la diferencia. Esa fricción
  * salta cuando la modalidad está vacía, o sea en el 98,9% de las órdenes, y por eso el
@@ -449,8 +469,10 @@ export function friccionAlConfirmar(
  */
 export function friccionDelTablero(
   permiso: Parameters<typeof friccionAlConfirmar>[0],
+  tipoOt: string | null,
   hoy: string = hoyISO(),
 ): Friccion {
+  if (!TIPOS_QUE_OCUPAN_VIA_PUBLICA.has(tipoOt ?? "")) return null;
   const f = friccionAlConfirmar(permiso, hoy);
   return f && f.tipo === "pedir_modalidad" ? null : f;
 }

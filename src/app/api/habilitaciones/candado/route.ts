@@ -21,6 +21,11 @@ import type { Friccion } from "@/lib/habilitaciones/derivacion";
 // LA DOCUMENTACIÓN NO ENTRA ACÁ. Sigue siendo advertencia, como hoy: es papelería
 // nuestra que se resuelve en el día. La modalidad de permiso es una instrucción del
 // cliente sobre cómo asumir un riesgo legal, y saltearla no es un atraso administrativo.
+//
+// Y SÓLO APLICA A LO QUE ARMA. El permiso vive en la venta, o sea que es de la obra
+// entera: sin mirar qué hace cada OT, el desarme heredaba el freno del armado y
+// Operaciones tenía que escribir un motivo para sacar de la calle un andamio que ya
+// estaba puesto. Por eso se lee el tipo de OT junto con el permiso.
 
 export const dynamic = "force-dynamic";
 
@@ -37,8 +42,8 @@ export async function GET(req: NextRequest) {
 
     const fricciones: FriccionDeOt[] = await Promise.all(
       otIds.map(async (otId) => {
-        const permiso = permisos.get(otId);
-        const friccion = permiso ? friccionDelTablero(permiso) : null;
+        const fila = permisos.get(otId);
+        const friccion = fila ? friccionDelTablero(fila.permiso, fila.tipoOt) : null;
         return {
           otId,
           friccion,

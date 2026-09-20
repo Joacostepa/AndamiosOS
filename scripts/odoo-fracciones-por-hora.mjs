@@ -23,18 +23,27 @@
 // Idempotente: se puede re-correr, chequea cada valor antes de crearlo.
 //
 // Correr: node --env-file=.env.local scripts/odoo-fracciones-por-hora.mjs
-import { version, authenticate, searchRead, create, fieldsGet } from "./odoo-rpc.mjs";
+import { version, authenticate, searchRead, create, write, fieldsGet } from "./odoo-rpc.mjs";
 
 const MODEL = "x_aba_asignacion";
 const CAMPO = "x_fraccion";
 
-// La secuencia los intercala en la escala existente (0,10=10 · 0,25=20 · 0,50=30 ·
-// 0,75=40 · 1=50), para que la lista de Odoo se lea de menor a mayor como la del tablero.
 const NUEVOS = [
-  { value: "0.375", name: "0,375 — 3 h", sequence: 25 },
-  { value: "0.625", name: "0,625 — 5 h", sequence: 35 },
-  { value: "0.875", name: "0,875 — 7 h", sequence: 45 },
+  { value: "0.375", name: "0,375 — 3 h" },
+  { value: "0.625", name: "0,625 — 5 h" },
+  { value: "0.875", name: "0,875 — 7 h" },
 ];
+
+/**
+ * La escala completa, en orden. El script NO confía en las secuencias que ya están: las
+ * cinco originales se crearon con el one2many del modelo y Odoo las renumeró de 0 a 4,
+ * así que cualquier número que se le ponga a un valor nuevo lo manda al final de la lista.
+ * Reescribir las ocho es lo único que deja la lista leyéndose de menor a mayor.
+ *
+ * El orden es cosmético —la app trae su propia escala— pero esta lista la ve quien abre
+ * una asignación en Odoo, y una escala de tiempo desordenada se lee como un error.
+ */
+const ESCALA = ["0.10", "0.25", "0.375", "0.50", "0.625", "0.75", "0.875", "1"];
 
 const v = await version();
 console.log(`Odoo ${v.server_version} · uid=${await authenticate()}\n`);
@@ -74,9 +83,36 @@ for (const opcion of NUEVOS) {
   console.log(`   ✓ ${opcion.value} agregado (${opcion.name})`);
 }
 
-// ── 3) Cómo quedó ────────────────────────────────────────────────────────────
+// ── 3) El orden de la lista ──────────────────────────────────────────────────
+console.log("\n3) Orden:");
+const opciones = await searchRead(
+  "ir.model.fields.selection",
+  [["field_id", "=", campo.id]],
+  ["value", "sequence"],
+);
+const sobran = opciones.filter((o) => !ESCALA.includes(o.value)).map((o) => o.value);
+if (sobran.length) {
+  // No se tocan: un valor fuera de la escala significa que alguien cambió el campo por
+  // otro lado, y reordenar a ciegas lo dejaría en un lugar que no le corresponde.
+  console.log(`   ⚠ valores fuera de la escala conocida, se dejan como están: ${sobran.join(", ")}`);
+}
+for (const [i, value] of ESCALA.entries()) {
+  const op = opciones.find((o) => o.value === value);
+  if (!op) {
+    console.log(`   ⚠ falta ${value} en el campo`);
+    continue;
+  }
+  if (op.sequence === i) {
+    console.log(`   · ${value} ya está en la posición ${i}`);
+    continue;
+  }
+  await write("ir.model.fields.selection", [op.id], { sequence: i });
+  console.log(`   ✓ ${value} movido a la posición ${i} (estaba en ${op.sequence})`);
+}
+
+// ── 4) Cómo quedó ────────────────────────────────────────────────────────────
 const despues = await fieldsGet(MODEL, ["selection"]);
-console.log("\n3) Escala final:");
+console.log("\n4) Escala final:");
 for (const [value, name] of despues[CAMPO].selection) console.log(`   · ${value} → ${name}`);
 
 // Nada de esto cambia registros: se cuentan para dejar constancia de que siguen iguales.

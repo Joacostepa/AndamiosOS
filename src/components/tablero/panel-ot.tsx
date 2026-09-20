@@ -5,7 +5,7 @@ import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import {
   AlertTriangle, Building2, CalendarCheck, Construction, ExternalLink, Fence, FileText,
-  HardHat, Phone, ShieldCheck, User, UserRound, Users, Clock, CalendarDays,
+  HardHat, Lock, Phone, ShieldCheck, User, UserRound, Users, Clock, CalendarDays,
   CalendarRange, Check, CircleDashed, ClipboardCheck, Pin, PinOff, Trash2,
 } from "lucide-react";
 import { useDetalleOt } from "@/hooks/use-detalle-ot";
@@ -23,6 +23,7 @@ import {
 } from "@/lib/tablero/colores";
 import { FRACCIONES, fraccionLabel, type FraccionStr } from "@/lib/tablero/fracciones";
 import { accionDeCierre, jornadasCerradas, jornadasLiberables, type AccionCierre } from "@/lib/tablero/cierre";
+import { lineaVentana } from "@/lib/tablero/ventana";
 import { Button } from "@/components/ui/button";
 import type { Bloque } from "@/lib/tablero/bloques";
 import type { DocumentoOt, OtTablero, TrabajoOt } from "@/lib/tablero/tipos";
@@ -319,6 +320,7 @@ export function PanelOt({
   cuadrillaNombre,
   cuadrillaPrevista,
   plan,
+  planObra,
   hoy,
   onEstado,
   onFijar,
@@ -343,6 +345,16 @@ export function PanelOt({
    * también convive con el estimado sin reemplazarlo.
    */
   plan: { jornadas: number; motivo: string | null; autorNombre: string | null } | null;
+  /**
+   * En qué días cayó la obra ENTERA, sumando todos sus tramos.
+   *
+   * NO ES `plan`, aunque el nombre se parezca: aquél es cuántas jornadas dijo Operaciones
+   * que lleva; éste es dónde quedaron. Sirve para una sola cosa —medir la ventana del
+   * cliente contra el plan de verdad— y tiene que ser la obra entera y no el bloque
+   * abierto: el techo es sobre el trabajo TERMINADO, y una obra partida en dos tramos
+   * termina cuando termina el segundo. Ver el encabezado de ventana.ts.
+   */
+  planObra: { primerDia: string | null; ultimoDia: string | null } | null;
   /** Hoy en yyyy-MM-dd: desde cuándo se puede cerrar una jornada. */
   hoy: string;
   /** Las acciones del menú de la tarjeta, sobre el bloque abierto. Ver AccionesJornada. */
@@ -359,6 +371,16 @@ export function PanelOt({
   const { data: detalle } = useDetalleOt(ot?.id ?? null);
   const etapa = detalle?.habEtapa ? ETAPA_LABEL[detalle.habEtapa as HabEtapa] : null;
   const fecha = (f: string) => format(parseISO(f), "d MMM yyyy", { locale: es });
+  // Acá SÍ se mide contra el plan, al revés que en la bandeja: la obra ya está en la
+  // grilla, así que la línea no sólo informa la ventana sino que dice si el lugar donde
+  // quedó la respeta. Es la misma función que usa la bandeja para que las dos superficies
+  // no puedan discrepar (ver el encabezado de ventana.ts).
+  const ventana = ot
+    ? lineaVentana(ot, {
+        primerDia: planObra?.primerDia ?? null,
+        ultimoDia: planObra?.ultimoDia ?? null,
+      })
+    : null;
 
   return (
     <Sheet open={!!ot} onOpenChange={onOpenChange}>
@@ -470,6 +492,28 @@ export function PanelOt({
               )}
 
               <Separator />
+
+              {/* LA VENTANA DEL CLIENTE — "no antes del 12", "terminada antes del 15".
+                  Es la restricción que Comercial cargó en la venta, y le pasaba lo mismo
+                  que a la fecha comprometida acá abajo: se veía en la bandeja y
+                  desaparecía al planificar la obra, que es cuando hay que defenderla. El
+                  caso real: alguien pone una obra en una fecha lejana PORQUE leyó el
+                  piso, y después nadie puede saber por qué está ahí.
+
+                  A diferencia de la bandeja, acá puede salir en rojo: una vez que la obra
+                  está en la grilla, la ventana se compara contra el día en que quedó. */}
+              {ventana && (
+                <Fila icono={<Lock className="h-4 w-4" />} etiqueta="Ventana del cliente">
+                  <span style={ventana.alerta ? { color: PELIGRO_SOLIDO, fontWeight: 500 } : undefined}>
+                    {ventana.texto}
+                  </span>
+                  {ventana.alerta && (
+                    <p className="text-xs text-muted-foreground">
+                      El plan de hoy no respeta lo que se acordó con el cliente.
+                    </p>
+                  )}
+                </Fila>
+              )}
 
               {/* La fecha que Comercial prometió. Es contra esto que se mide si la
                   planificación llega tarde, y hasta ahora sólo se veía en la bandeja:

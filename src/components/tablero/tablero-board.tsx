@@ -2187,6 +2187,9 @@ export function TableroBoard() {
             : null
         }
         plan={panelOt ? (planPorOt.get(panelOt.id) ?? null) : null}
+        // La obra entera, no el bloque abierto: el techo se mide contra el último día de
+        // todos los tramos. Es el mismo mapa con el que frena la fricción al confirmar.
+        planObra={panelOt ? (planPorObra.get(panelOt.id) ?? null) : null}
         hoy={hoyISO}
         // LAS MISMAS ACCIONES QUE EL MENÚ DE LA TARJETA, por el mismo camino. En un celular
         // el ⋮ no existe —aparece al pasar el mouse—, así que el panel es la única puerta

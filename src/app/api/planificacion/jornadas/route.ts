@@ -7,6 +7,7 @@ import {
   reprogramarJornada,
 } from "@/lib/odoo/jornadas";
 import { OdooError } from "@/lib/odoo/client";
+import { VALORES_FRACCION } from "@/lib/tablero/fracciones";
 
 // Listado de partes diarios.
 //
@@ -60,7 +61,7 @@ const noPlanificadaSchema = z.object({
   otId: z.number().int().positive(),
   fecha: fechaSchema,
   cuadrillaId: z.number().int().positive().nullable(),
-  fraccion: z.enum(["0.10", "0.25", "0.50", "0.75", "1"]),
+  fraccion: z.enum(VALORES_FRACCION),
 });
 
 const reprogramarSchema = z.object({

@@ -615,7 +615,7 @@ export function TarjetaAsignacion({
                   <DropdownMenuLabel>Fracción de jornada</DropdownMenuLabel>
                   {FRACCIONES.map((f) => (
                     <DropdownMenuItem key={f.value} onClick={() => onFraccion(f.value)}>
-                      <span className="mr-2 w-4 text-center">{f.label}</span>
+                      <span className="mr-2 w-6 text-center">{f.label}</span>
                       {f.detalle}
                       {Number(f.value) === bloque.fraccion && (
                         <Check className="ml-auto h-3.5 w-3.5" />
@@ -693,7 +693,7 @@ export function TarjetaAsignacion({
                 <DropdownMenuLabel>Fracción de jornada</DropdownMenuLabel>
                 {FRACCIONES.map((f) => (
                   <DropdownMenuItem key={f.value} onClick={() => onFraccion(f.value)}>
-                    <span className="mr-2 w-4 text-center">{f.label}</span>
+                    <span className="mr-2 w-6 text-center">{f.label}</span>
                     {f.detalle}
                     {Number(f.value) === bloque.fraccion && <Check className="ml-auto h-3.5 w-3.5" />}
                   </DropdownMenuItem>

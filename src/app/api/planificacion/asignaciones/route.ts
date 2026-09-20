@@ -13,6 +13,7 @@ import { createClient } from "@/lib/supabase/server";
 import { registrarConfirmacion } from "@/lib/planificacion/confirmaciones";
 import { registrarMovimiento } from "@/lib/planificacion/movimientos";
 import { ACCIONES } from "@/lib/tablero/tipos-movimiento";
+import { VALORES_FRACCION } from "@/lib/tablero/fracciones";
 
 // Escrituras del Tablero de Planificación sobre x_aba_asignacion (Odoo).
 //
@@ -44,7 +45,9 @@ import { ACCIONES } from "@/lib/tablero/tipos-movimiento";
 export const dynamic = "force-dynamic";
 
 const fecha = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha YYYY-MM-DD");
-const fraccion = z.enum(["0.10", "0.25", "0.50", "0.75", "1"]);
+// Sale de la escala y no se copia: los valores tienen que coincidir con el selection de
+// Odoo, así que el día que se agrega un tamaño tiene que ser un solo cambio acá adentro.
+const fraccion = z.enum(VALORES_FRACCION);
 const estado = z.enum(["tentativa", "confirmada"]);
 
 /**

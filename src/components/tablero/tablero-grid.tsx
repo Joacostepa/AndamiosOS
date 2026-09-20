@@ -21,7 +21,7 @@ import {
   NOTA,
   PELIGRO,
 } from "@/lib/tablero/colores";
-import { ocupacionCelda, capacidadDelRango } from "@/lib/tablero/fracciones";
+import { ocupacionCelda, capacidadDelRango, redondearFraccion } from "@/lib/tablero/fracciones";
 import type { FraccionStr } from "@/lib/tablero/fracciones";
 import { notasDe, notasDeCuadrilla } from "@/lib/tablero/tipos-nota";
 import type { Bloque } from "@/lib/tablero/bloques";
@@ -124,6 +124,9 @@ const ALTO_CELDA = 96;
 /** Aire entre la última tarjeta y el riel. */
 const RESPIRO_FILA = 8;
 
+// Dos decimales para MOSTRAR, aunque la carga se calcule con tres: una semana con jornadas
+// de 3 h y 5 h suma 4,375 y "4,38 / 6" se lee de un vistazo, "4,375 / 6" no. El tercer
+// decimal existe para que las sumas cierren, no para leerlo.
 const DECIMAL = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 });
 
 /** Día del encabezado: "mié 26". Se usa suelto y también dentro del rótulo del feriado. */
@@ -758,7 +761,7 @@ export function TableroGrid({
           // El domingo suma capacidad sólo si ESTA cuadrilla trabaja ese domingo.
           const conTrabajo = new Set(deLaSemana.map((a) => a.fecha));
           const capacidad = capacidadDelRango(semanaCentrada, conTrabajo);
-          const exceso = Number((jornadas - capacidad).toFixed(2));
+          const exceso = redondearFraccion(jornadas - capacidad);
 
           return (
             <div key={cuadrilla.id} className="contents">

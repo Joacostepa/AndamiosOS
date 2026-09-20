@@ -10,6 +10,7 @@ import {
   moverTareas,
 } from "@/lib/tablero/tareas";
 import { TIPOS_TAREA } from "@/lib/tablero/tipos";
+import { VALORES_FRACCION } from "@/lib/tablero/fracciones";
 
 // Tarjetas de operaciones del tablero.
 //
@@ -26,7 +27,7 @@ import { TIPOS_TAREA } from "@/lib/tablero/tipos";
 export const dynamic = "force-dynamic";
 
 const fecha = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha YYYY-MM-DD");
-const fraccion = z.enum(["0.10", "0.25", "0.50", "0.75", "1"]);
+const fraccion = z.enum(VALORES_FRACCION);
 // El enum se deriva de TIPOS_TAREA para que agregar un tipo sea un solo cambio, pero
 // conservando el tipo literal: con `as [string, ...]` zod devolvía `string` y el cambio
 // dejaba de encajar en CambioTarea.

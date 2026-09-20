@@ -122,7 +122,11 @@ export const ATAJOS_SALIDA: { hora: number; fraccion: string; horas: number }[] 
   { hora: 17, fraccion: "1", horas: 8 },
 ];
 
-/** Qué fracción de jornada representan esas horas-hombre, para comparar con lo planificado. */
+/**
+ * Qué fracción de jornada representan esas horas-hombre, para comparar con lo planificado.
+ * Tres decimales, como toda la aritmética de fracciones: con dos, las tres horas
+ * planificadas (0,375) no coinciden con las tres horas cargadas y el desvío es del redondeo.
+ */
 export function fraccionDeHoras(horas: number): number {
-  return Math.round((horas / 8) * 100) / 100;
+  return Math.round((horas / 8) * 1000) / 1000;
 }

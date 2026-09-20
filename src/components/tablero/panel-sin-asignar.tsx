@@ -32,7 +32,12 @@ import {
   PELIGRO_TEXTO,
   URGENCIA,
 } from "@/lib/tablero/colores";
-import { fraccionLabel, repartirJornadas, FRACCIONES, type FraccionStr } from "@/lib/tablero/fracciones";
+import {
+  fraccionLabel,
+  repartirJornadas,
+  FRACCIONES_ESTIMADO,
+  type FraccionStr,
+} from "@/lib/tablero/fracciones";
 import { partesTitulo, normalizar, direccionDeObra } from "@/lib/tablero/titulo";
 import { lineaVentana } from "@/lib/tablero/ventana";
 import type { OtTablero } from "@/lib/tablero/tipos";
@@ -132,11 +137,15 @@ function duracionDe(obra: ObraPendiente): ClaveDuracion {
 }
 
 /**
- * La escala completa de duración, de menor a mayor. Es la MISMA de la que salen las
- * fracciones al planificar, así que un tamaño posible no puede faltar acá.
+ * La escala de duración de la bandeja, de menor a mayor. Es la MISMA que reparte
+ * `repartirJornadas`, así que un balde posible no puede faltar acá.
+ *
+ * ES LA GRUESA, no la de la tarjeta: acá se clasifica el estimado de Comercial, que no
+ * distingue 3 h de 4 h. Los tamaños finos de Operaciones no son baldes —separarían obras
+ * que para llenar un día son lo mismo, y este panel tiene el ancho que tiene.
  */
 const ESCALA_DURACION: { clave: ClaveDuracion; label: string; orden: number }[] = [
-  ...FRACCIONES.map((f, i) => ({
+  ...FRACCIONES_ESTIMADO.map((f, i) => ({
     clave: f.value as ClaveDuracion,
     label: f.value === "1" ? "1 jornada · 8 h" : `${f.label} · ${f.horas} h`,
     orden: i,

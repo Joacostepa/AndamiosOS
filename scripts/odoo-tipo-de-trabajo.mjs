@@ -49,6 +49,26 @@ const VISTA = "sale.order.form.aba.tipo.trabajo";
 // edición de una orden vieja —cambiar un método de pago— en un formulario de alta.
 const FECHA_CORTE = "2026-09-04";
 
+/**
+ * SÓLO SE LE PIDE A LAS OBRAS. Son tres tipos de contrato y dos de ellos no tienen nada
+ * que clasificar: en "Simple" y "Alquiler Sin Montaje" el andamio no lo armamos nosotros
+ * —se alquila el material y lo monta el cliente—, así que preguntar qué se arma, si lleva
+ * concertina o si hace falta permiso de implantación es pedir datos de un trabajo que no
+ * existe. Hasta hoy los pedía igual y frenaba la confirmación de 79 órdenes abiertas que
+ * nunca van a poder contestarlos.
+ *
+ * OJO CON EL ESPACIO FINAL: el valor es "Obra " y no "Obra". Es un campo de Studio y así
+ * quedó guardado; sin el espacio la comparación da falso SIEMPRE y la validación se apaga
+ * entera, que es peor que el problema que vino a resolver.
+ *
+ * MISMO CRITERIO QUE LA PROGRAMACIÓN, que ya filtraba así (ver la automatización
+ * "AndamiosOS exige programación al confirmar"): dos validaciones de la misma solapa con
+ * criterios distintos sobre qué es una obra sería incoherente. Eso incluye las órdenes sin
+ * tipo cargado —9 hoy, todas sin confirmar—: no son "Obra ", así que no se les pide,
+ * exactamente como ya pasa con la duración.
+ */
+const CONTRATO_OBRA = "Obra ";
+
 // EL ANCLA ES date_order, NO create_date. Verificado contra la base: Odoo pisa date_order
 // con el momento de la confirmación —S01415 se creó en abril y su date_order es del 3 de
 // septiembre, el día que se confirmó—. Eso es exactamente lo que hace falta:
@@ -203,6 +223,8 @@ const AUTOMATIZACION = "ABA — Exigir clasificación del trabajo al confirmar";
 // reconfirme una orden vieja: ahí también corresponde clasificarla.
 const CODIGO_BLOQUEO = `faltan = []
 for rec in records:
+    if rec.x_studio_tipo_de_contrato != '${CONTRATO_OBRA}':
+        continue
     if not rec.date_order or str(rec.date_order)[:10] < '${FECHA_CORTE}':
         continue
     f = []
@@ -239,8 +261,16 @@ if faltan:
 // Queda: alcance técnico → qué se arma → cuánto lleva.
 const LISTA_BANDEJA = JSON.stringify(CON_BANDEJA).replace(/"/g, "'");
 
-/** Obligatorio al confirmar, y sólo en las órdenes nuevas. Ver FECHA_CORTE. */
-const EXIGE = `${CAMPO_EXIGE} and state in ('sale', 'done')`;
+/**
+ * Obligatorio al confirmar, sólo en las órdenes nuevas (ver FECHA_CORTE) y sólo en las
+ * de obra (ver CONTRATO_OBRA).
+ *
+ * El filtro por contrato hace falta ACÁ ADEMÁS de en la automatización, aunque el que
+ * bloquea de verdad sea el otro: este `required` impide GUARDAR, así que sin él una orden
+ * Simple ya confirmada no se podría editar —cambiarle un método de pago, corregir una
+ * línea— sin completar antes una clasificación que no le corresponde.
+ */
+const EXIGE = `${CAMPO_EXIGE} and state in ('sale', 'done') and x_studio_tipo_de_contrato == '${CONTRATO_OBRA}'`;
 
 const ARCH = `<data>
   <xpath expr="//field[@name='x_alcance_tecnico']" position="after">

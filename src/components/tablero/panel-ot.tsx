@@ -5,7 +5,7 @@ import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import {
   AlertTriangle, Building2, CalendarCheck, Construction, ExternalLink, Fence, FileText,
-  HardHat, Lock, Phone, ShieldCheck, User, UserRound, Users, Clock, CalendarDays,
+  HardHat, Phone, ShieldCheck, User, UserRound, Users, Clock, CalendarDays,
   CalendarRange, Check, CircleDashed, ClipboardCheck, Pin, PinOff, Trash2,
 } from "lucide-react";
 import { useDetalleOt } from "@/hooks/use-detalle-ot";
@@ -502,8 +502,12 @@ export function PanelOt({
 
                   A diferencia de la bandeja, acá puede salir en rojo: una vez que la obra
                   está en la grilla, la ventana se compara contra el día en que quedó. */}
+              {/* CalendarRange y NO el candado, aunque la bandeja use candado para esto:
+                  este panel se abre desde una tarjeta de la grilla, y ahí el candado ya
+                  significa otra cosa —el permiso municipal sin emitir—. El mismo dibujo
+                  para dos cosas distintas a un clic de distancia se lee como la misma. */}
               {ventana && (
-                <Fila icono={<Lock className="h-4 w-4" />} etiqueta="Ventana del cliente">
+                <Fila icono={<CalendarRange className="h-4 w-4" />} etiqueta="Ventana del cliente">
                   <span style={ventana.alerta ? { color: PELIGRO_SOLIDO, fontWeight: 500 } : undefined}>
                     {ventana.texto}
                   </span>

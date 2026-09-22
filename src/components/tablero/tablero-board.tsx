@@ -41,6 +41,8 @@ import type { ResumenEnTarjeta } from "@/lib/tablero/tipos-comentario";
 import type { EstadoBloque } from "@/lib/tablero/tipos-movimiento";
 import { usePlanJornadas, useFijarJornadasPlan } from "@/hooks/use-plan-jornadas";
 import { useNotasJornada } from "@/hooks/use-notas-jornada";
+import { useAvisosTablero } from "@/hooks/use-avisos-tablero";
+import { direccionDeObra } from "@/lib/tablero/titulo";
 import { useClima } from "@/hooks/use-clima";
 import {
   useTablero,
@@ -292,6 +294,12 @@ export function TableroBoard() {
   // payload: van a Supabase, no a Odoo, y escribir una nota no tiene por qué reconsultar
   // las asignaciones del rango entero (ni al revés).
   const { data: notas } = useNotasJornada(desde, hasta);
+
+  // Los cambios de los demás, en vivo. Mientras esta pantalla esté abierta escucha los
+  // avisos del resto, refresca y dice quién hizo qué: sin esto, el tablero sólo se entera
+  // de lo ajeno cuando uno mismo escribe algo — que es lo que hizo que un cambio de
+  // Ezequiel apareciera dieciséis minutos tarde, pegado a un gesto de Juan.
+  useAvisosTablero();
   const crear = useCrearAsignaciones();
   const actualizar = useActualizarAsignaciones();
   const mover = useMoverAsignaciones();
@@ -1318,10 +1326,14 @@ export function TableroBoard() {
     estado: "tentativa" | "confirmada",
     antesDelCandado?: () => void,
   ) {
+    const otDelBloque = otsPorId.get(b.otId);
     const aplicar = () =>
       actualizar.mutate({
         ids: b.ids,
         cambio: { estado },
+        // Para la línea que ven los demás. La dirección y no el título entero: "Azara 856"
+        // se lee de un vistazo, "Armado · S02525 · Estudio De Maio Patiño — Azara 856" no.
+        obra: otDelBloque ? direccionDeObra(otDelBloque) : null,
         // De qué obra y de qué días son estos ids. Viaja desde acá porque el
         // bloque ya lo sabe: sin esto el servidor tendría que releer Odoo
         // para poder anotar quién confirmó, y le sumaría ~800 ms al gesto.

@@ -12,6 +12,7 @@ import type { Feriado } from "@/lib/feriados/argentina";
 import { fechasDeJornadas } from "@/lib/tablero/bloques";
 import { CLAVE_CONFIRMACIONES } from "@/hooks/use-confirmaciones";
 import { CLAVE_ACTIVIDAD } from "@/hooks/use-actividad";
+import { avisarCambio } from "@/lib/tablero/avisos";
 import type { RegistroConfirmacion } from "@/lib/tablero/tipos-confirmacion";
 import type { RegistroCorrida, RegistroMovimiento } from "@/lib/tablero/tipos-movimiento";
 import type {
@@ -90,10 +91,20 @@ export function useTablero(
     //
     // Lo que uno mismo escribe no espera: cada mutación invalida esta query.
     staleTime: 30_000,
-    // Odoo Online limita las consultas concurrentes: no conviene refetchear cada vez
-    // que la pestaña vuelve al foco, ni reintentar en ráfaga si algo falló.
-    refetchOnWindowFocus: opts.refrescoAutomatico ?? false,
-    // Sólo con la pestaña a la vista: una pestaña olvidada de fondo no le pega a Odoo.
+    // AL VOLVER A LA PESTAÑA SÍ, siempre. Es la red de seguridad de los avisos en vivo
+    // (ver use-avisos-tablero): un aviso que se perdió porque a alguien se le cortó el
+    // wifi no deja la pantalla desactualizada para siempre. Y es barato justamente porque
+    // no es periódico — cuesta cuando alguien vuelve a mirar, que es cuando importa.
+    //
+    // Es el caso exacto del 21/09: Juan volvió al tablero después de un rato con datos de
+    // dieciséis minutos antes. Sólo con esto ya se habría enterado al volver.
+    refetchOnWindowFocus: true,
+    // EL INTERVALO QUEDA APAGADO EN EL TABLERO y no hace falta: los cambios de los demás
+    // llegan por aviso en vivo, que avisa en ~180 ms en vez de esperar dos minutos y no
+    // consulta nada cuando no pasó nada. Preguntar cada dos minutos costaba seis lecturas
+    // y ~1,2 s por pantalla hubiera o no novedades.
+    // Sigue disponible para quien lo pida (el panel de Habilitaciones lo usa), y sólo con
+    // la pestaña a la vista: una olvidada de fondo no le pega a Odoo.
     refetchInterval: opts.refrescoAutomatico ? 120_000 : false,
     refetchIntervalInBackground: false,
     retry: 2,
@@ -251,7 +262,8 @@ export function useCrearAsignaciones() {
      * volvía el tablero entero. O sea que se esperaban ~1,4 s por una respuesta que ya
      * teníamos en la mano: el POST devuelve los ids creados.
      */
-    onSuccess: ({ ids }, _vars, ctx) => {
+    onSuccess: ({ ids }, { registro }, ctx) => {
+      avisarCambio("planificó", registro?.otTitulo);
       const temporales = ctx?.temporales ?? [];
       // Odoo devuelve los ids en el mismo orden en que se mandaron los valores. Si las
       // longitudes no coinciden no se adivina el emparejamiento: se deja que el refresco
@@ -274,6 +286,19 @@ export function useCrearAsignaciones() {
   });
 }
 
+/**
+ * Cómo se lee el gesto en la pantalla de los demás. Un solo cambio por vez: el tablero
+ * manda una cosa por PATCH, no un combo.
+ */
+function accionDeCambio(c: CambioAsignacion): string {
+  if (c.estado) return c.estado === "confirmada" ? "confirmó" : "volvió a tentativa";
+  if (c.fraccion !== undefined) return "cambió la duración de";
+  if (c.motivoFija !== undefined) return c.motivoFija ? "fijó" : "soltó";
+  if (c.notas !== undefined) return "dejó una nota en";
+  if (c.fecha !== undefined || c.cuadrillaId !== undefined) return "movió";
+  return "cambió";
+}
+
 export function useActualizarAsignaciones() {
   const qc = useQueryClient();
   return useMutation<
@@ -286,13 +311,23 @@ export function useActualizarAsignaciones() {
       cambio: CambioAsignacion;
       contexto?: RegistroConfirmacion;
       registro?: RegistroMovimiento;
+      /**
+       * Qué obra es, para la línea que ven los demás. SE QUEDA EN EL NAVEGADOR: no va en
+       * el body, porque el servidor no lo necesita —ya tiene los ids— y mandarle un dato
+       * de presentación sería darle otra cosa que validar. El cambio de estado es el
+       * único gesto que no lleva `registro`, así que sin esto el aviso diría "confirmó
+       * una jornada" justo en el caso que motivó todo esto.
+       */
+      obra?: string | null;
     },
     Contexto
   >({
-    mutationFn: (body) =>
+    // El body se arma campo por campo y no con un spread: así se ve de un vistazo qué
+    // viaja al servidor, y `obra` —que es sólo para el aviso a los demás— no se cuela.
+    mutationFn: ({ ids, cambio, contexto, registro }) =>
       pedir<{ ok: true; registrado?: boolean; movimientoId?: string | null }>("/api/planificacion/asignaciones", {
         method: "PATCH",
-        body: JSON.stringify(body),
+        body: JSON.stringify({ ids, cambio, contexto, registro }),
       }),
     onMutate: ({ ids, cambio }) =>
       aplicarOptimista(qc, (data) => ({
@@ -314,7 +349,8 @@ export function useActualizarAsignaciones() {
             : a,
         ),
       })),
-    onSuccess: ({ registrado }, { cambio, contexto }) => {
+    onSuccess: ({ registrado }, { cambio, contexto, registro, obra }) => {
+      avisarCambio(accionDeCambio(cambio), obra ?? registro?.otTitulo);
       if (!cambio.estado || !contexto) return;
       // El historial del panel cambió: se vuelve a pedir sólo el de esta obra.
       void qc.invalidateQueries({ queryKey: [...CLAVE_CONFIRMACIONES, contexto.otId] });
@@ -361,6 +397,7 @@ export function useMoverAsignaciones() {
         }),
       }));
     },
+    onSuccess: (_d, { registro }) => avisarCambio("movió", registro?.otTitulo),
     onError: (error, _vars, ctx) => revertir(qc, ctx, "No se pudo mover la obra", error),
     onSettled: () => refrescarPronto(qc),
   });
@@ -404,6 +441,7 @@ export function useCorrerDia() {
         }),
       }));
     },
+    onSuccess: () => avisarCambio("corrió un día del tablero"),
     onError: (error) => {
       toast.error("El corrimiento quedó a medias", {
         description: `${error.message} · Se vuelve a pedir el tablero para ver cómo quedó.`,
@@ -439,6 +477,7 @@ export function useBorrarAsignaciones() {
           progreso: restarProgreso(data.progreso, borradas.map((a) => a.otId)),
         };
       }),
+    onSuccess: (_d, { registro }) => avisarCambio("quitó del tablero", registro?.otTitulo),
     onError: (error, _vars, ctx) => revertir(qc, ctx, "No se pudo quitar del tablero", error),
     onSettled: () => refrescarPronto(qc),
   });
@@ -497,6 +536,7 @@ export function useCrearTarea() {
         asignaciones: [...data.asignaciones, ...nuevas],
       }));
     },
+    onSuccess: (_d, tarea) => avisarCambio("agregó una tarea", tarea.titulo),
     onError: (error, _vars, ctx) => revertir(qc, ctx, "No se pudo crear la tarea", error),
     onSettled: () => refrescarPronto(qc),
   });
@@ -543,6 +583,7 @@ export function useActualizarTareas() {
         ),
       }));
     },
+    onSuccess: () => avisarCambio("cambió una tarea"),
     onError: (error, _vars, ctx) => revertir(qc, ctx, "No se pudo guardar la tarea", error),
     onSettled: () => refrescarPronto(qc),
   });
@@ -573,6 +614,7 @@ export function useMoverTareas() {
         }),
       }));
     },
+    onSuccess: () => avisarCambio("movió una tarea"),
     onError: (error, _vars, ctx) => revertir(qc, ctx, "No se pudo mover la tarea", error),
     onSettled: () => refrescarPronto(qc),
   });
@@ -594,6 +636,7 @@ export function useBorrarTareas() {
           (a) => !(a.origen === "tarea" && ids.includes(a.id)),
         ),
       })),
+    onSuccess: () => avisarCambio("borró una tarea"),
     onError: (error, _vars, ctx) => revertir(qc, ctx, "No se pudo borrar la tarea", error),
     onSettled: () => refrescarPronto(qc),
   });

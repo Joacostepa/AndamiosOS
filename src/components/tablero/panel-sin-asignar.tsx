@@ -23,6 +23,13 @@ import {
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+} from "@/components/ui/dropdown-menu";
+import {
   colorTipo,
   semaforo,
   CORAL,
@@ -35,6 +42,7 @@ import {
 import {
   fraccionLabel,
   repartirJornadas,
+  FRACCIONES,
   FRACCIONES_ESTIMADO,
   type FraccionStr,
 } from "@/lib/tablero/fracciones";
@@ -130,7 +138,7 @@ type ClaveDuracion = FraccionStr | "varios";
  * (ver asignarObra): así el resto fraccionario cae donde va a caer de verdad.
  */
 function duracionDe(obra: ObraPendiente): ClaveDuracion {
-  const todas = repartirJornadas(obra.duracion);
+  const todas = repartirJornadas(obra.duracion, obra.corregida);
   const quedan = todas.slice(Math.max(0, todas.length - obra.pendientes));
   if (quedan.length > 1) return "varios";
   return (quedan[0] ?? "1") as ClaveDuracion;
@@ -271,6 +279,7 @@ function TarjetaOt({
   comentarios,
   queEjecutar,
   onDetalle,
+  onDuracion,
 }: {
   obra: ObraPendiente;
   hoy: string;
@@ -282,6 +291,8 @@ function TarjetaOt({
    */
   queEjecutar: boolean;
   onDetalle: (ot: OtTablero) => void;
+  /** Fijar cuánto dura la obra, desde acá mismo. Ver el menú de duración más abajo. */
+  onDuracion: (ot: OtTablero, f: FraccionStr) => void;
 }) {
   const { ot, duracion, totales, pendientes, cerradas, corregida } = obra;
   const empezada = cerradas > 0;
@@ -290,6 +301,9 @@ function TarjetaOt({
   // cualquier otro y no lo es — hay obras así con 17 jornadas planificadas contra un
   // "estimado" de 1. Se apaga en cuanto alguien fija la duración desde el tablero.
   const sinEstimar = ot.sinEstimar && !corregida;
+  // Una obra que entra en un día, sin nada ejecutado ni planificado: recién ahí "cuánto
+  // lleva" es una sola fracción y se puede elegir de una lista.
+  const editableDuracion = !empezada && pendientes === totales && totales === 1;
   const compromiso = lineaCompromiso(ot, hoy);
   // Sin fecha planificada: en la bandeja la obra todavía no está en la grilla, así que la
   // línea informa la ventana —"entre el 12 y el 15"— pero nunca la marca como violada.
@@ -463,14 +477,58 @@ function TarjetaOt({
         className="mt-1 flex items-center gap-1 text-[10px]"
         style={{ color: tipo.text, opacity: 0.7 }}
       >
-        <span className="truncate">
-          {empezada || pendientes < totales
-            ? `quedan ${pendientes} de ${totales} jornadas`
-            : duracion >= 1
-              ? `${duracion} jornada${duracion === 1 ? "" : "s"}`
-              : `${fraccionLabel(duracion)} de jornada`}
-          {!queEjecutar && ot.tecnico ? ` · ${ot.tecnico}` : ""}
-        </span>
+        {/* LA DURACIÓN SE PUEDE FIJAR DESDE ACÁ, y no sólo cuando la obra ya está en una
+            fecha. Antes el único lugar para decir "esto es media jornada" era la tarjeta
+            de la grilla, y eso se guarda en la asignación de Odoo: al sacar la obra del
+            tablero se borraba y había que volver a ponerla. Acá se guarda del lado de
+            Operaciones y sobrevive.
+
+            SÓLO EN LAS QUE ENTRAN EN UN DÍA. En una obra de varias jornadas el número no
+            es una fracción sino una cantidad, y ésa se corrige desde "Jornadas de la
+            obra" una vez planificada. Tampoco en las empezadas: con partes cargados, lo
+            que queda ya no es una decisión libre. */}
+        {editableDuracion ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              className="flex items-center gap-0.5 rounded px-1 -mx-1 hover:bg-foreground/10"
+              // Igual que el botón de detalle: el cuerpo de la tarjeta es el asa de
+              // arrastre y sin esto abrir el menú empieza a arrastrar la obra.
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+              title="Cuánto lleva esta obra"
+            >
+              <span className="truncate">
+                {duracion >= 1
+                  ? `${duracion} jornada${duracion === 1 ? "" : "s"}`
+                  : `${fraccionLabel(duracion)} de jornada`}
+              </span>
+              <ChevronDown className="h-2.5 w-2.5 shrink-0 opacity-60" aria-hidden />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-56">
+              <DropdownMenuLabel>Cuánto lleva</DropdownMenuLabel>
+              {FRACCIONES.map((f) => (
+                <DropdownMenuItem
+                  key={f.value}
+                  onClick={() => onDuracion(ot, f.value)}
+                >
+                  <span className="mr-2 w-6 text-center">{f.label}</span>
+                  {f.detalle}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
+          <span className="truncate">
+            {empezada || pendientes < totales
+              ? `quedan ${pendientes} de ${totales} jornadas`
+              : duracion >= 1
+                ? `${duracion} jornada${duracion === 1 ? "" : "s"}`
+                : `${fraccionLabel(duracion)} de jornada`}
+          </span>
+        )}
+        {!queEjecutar && ot.tecnico ? (
+          <span className="truncate">{`· ${ot.tecnico}`}</span>
+        ) : null}
         {sinEstimar && (
           <span
             className="shrink-0 rounded px-1 text-[9px] font-semibold uppercase tracking-wide"
@@ -597,6 +655,7 @@ export function PanelSinAsignar({
   queEjecutar,
   onColapsar,
   onDetalle,
+  onDuracion,
   onIrABloque,
 }: {
   ots: ObraPendiente[];
@@ -620,6 +679,8 @@ export function PanelSinAsignar({
   queEjecutar: boolean;
   onColapsar: (valor: boolean) => void;
   onDetalle: (ot: OtTablero) => void;
+  /** Fijar cuánto dura una obra desde la bandeja, sin tener que planificarla antes. */
+  onDuracion: (ot: OtTablero, f: FraccionStr) => void;
   onIrABloque: (bloqueKey: string, fecha: string) => void;
 }) {
   const [busqueda, setBusqueda] = useState("");
@@ -924,7 +985,7 @@ export function PanelSinAsignar({
             onToggle={() => {}}
           >
             {urgentes.map((obra) => (
-              <TarjetaOt key={obra.ot.id} obra={obra} hoy={hoy} comentarios={comentarios?.get(obra.ot.id) ?? null} queEjecutar={queEjecutar} onDetalle={onDetalle} />
+              <TarjetaOt key={obra.ot.id} obra={obra} hoy={hoy} comentarios={comentarios?.get(obra.ot.id) ?? null} queEjecutar={queEjecutar} onDetalle={onDetalle} onDuracion={onDuracion} />
             ))}
           </Grupo>
 
@@ -949,7 +1010,7 @@ export function PanelSinAsignar({
             onToggle={() => {}}
           >
             {listas.map((obra) => (
-              <TarjetaOt key={obra.ot.id} obra={obra} hoy={hoy} comentarios={comentarios?.get(obra.ot.id) ?? null} queEjecutar={queEjecutar} onDetalle={onDetalle} />
+              <TarjetaOt key={obra.ot.id} obra={obra} hoy={hoy} comentarios={comentarios?.get(obra.ot.id) ?? null} queEjecutar={queEjecutar} onDetalle={onDetalle} onDuracion={onDuracion} />
             ))}
           </Grupo>
 
@@ -960,7 +1021,7 @@ export function PanelSinAsignar({
             onToggle={() => setPendientesAbierto((v) => !v)}
           >
             {pendientesHab.map((obra) => (
-              <TarjetaOt key={obra.ot.id} obra={obra} hoy={hoy} comentarios={comentarios?.get(obra.ot.id) ?? null} queEjecutar={queEjecutar} onDetalle={onDetalle} />
+              <TarjetaOt key={obra.ot.id} obra={obra} hoy={hoy} comentarios={comentarios?.get(obra.ot.id) ?? null} queEjecutar={queEjecutar} onDetalle={onDetalle} onDuracion={onDuracion} />
             ))}
           </Grupo>
 

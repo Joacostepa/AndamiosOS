@@ -62,7 +62,7 @@ import { agruparBloques, fechasDeJornadas, type Bloque } from "@/lib/tablero/blo
 import { jornadasLiberables, motivoNoVuelveABandeja, type AccionCierre } from "@/lib/tablero/cierre";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
-import { aFraccionStr, repartirJornadas, type FraccionStr } from "@/lib/tablero/fracciones";
+import { aFraccionStr, repartirJornadas, FRACCIONES, type FraccionStr } from "@/lib/tablero/fracciones";
 import {
   friccionDeVentana, piso, techo, violaPiso, violaTecho,
 } from "@/lib/tablero/ventana";
@@ -645,7 +645,7 @@ export function TableroBoard() {
       .map((ot) => {
         const avance = progreso.get(ot.id);
         const duracion = duracionDe(ot);
-        const totales = repartirJornadas(duracion).length;
+        const totales = repartirJornadas(duracion, planPorOt.has(ot.id)).length;
         return {
           ot,
           duracion,
@@ -1018,7 +1018,10 @@ export function TableroBoard() {
 
     // Si la obra ya tiene jornadas en el tablero (o ejecutadas y liberadas), se
     // planifican solo las que faltan, no la duración completa otra vez.
-    const todas = repartirJornadas(ot.jornadas);
+    // duracionDe y NO ot.jornadas: aquél es SIEMPRE el estimado de Comercial, así que
+    // una obra que Operaciones dejó en media jornada volvía del arrastre como jornada
+    // entera. La bandeja ya mostraba el número corregido; el arrastre lo ignoraba.
+    const todas = repartirJornadas(duracionDe(ot), planPorOt.has(otId));
     const pendiente = sinAsignar.find((x) => x.ot.id === otId);
     const cuantas = Math.min(todas.length, pendiente?.pendientes ?? todas.length);
     const fracciones = todas.slice(todas.length - cuantas);
@@ -1410,9 +1413,43 @@ export function TableroBoard() {
   }
 
   /** Cambiar la fracción de un bloque. Lo usan la tarjeta y el panel de la obra. */
+  /**
+   * Cambiar cuánto ocupa la jornada. En una obra de UN SOLO DÍA eso además fija cuánto
+   * dura la obra.
+   *
+   * POR QUÉ SE FIJA. La fracción vive en la asignación de Odoo, o sea en "esta obra, este
+   * día, esta cuadrilla": al sacar la obra del tablero la asignación se borra y la
+   * fracción se va con ella. Alguien dejaba una obra en media jornada, la sacaba, la
+   * volvía a arrastrar y aparecía otra vez de jornada entera — y no había dónde mirar por
+   * qué. Guardarla en el plan de Operaciones (plan_jornadas_ot) es lo único que sobrevive
+   * a la vuelta a la bandeja.
+   *
+   * SÓLO CON UNA JORNADA, y por eso se mira el progreso y no el bloque: la obra puede
+   * tener otros tramos fuera del rango cargado. Cambiarle la fracción a un día de una obra
+   * de tres no dice cuánto dura la obra entera, y para eso ya está "Jornadas de la obra".
+   *
+   * NO PISA EL ESTIMADO DE COMERCIAL. El número queda del lado de Operaciones, que es lo
+   * que permite que el Informe de Obra siga midiendo el desvío contra lo que se estimó.
+   */
   function cambiarFraccion(b: Bloque, f: FraccionStr) {
-    if (b.origen === "tarea") actualizarTarea.mutate({ ids: b.ids, cambio: { fraccion: f } });
-    else actualizar.mutate({ ids: b.ids, cambio: { fraccion: f } });
+    if (b.origen === "tarea") {
+      actualizarTarea.mutate({ ids: b.ids, cambio: { fraccion: f } });
+      return;
+    }
+    actualizar.mutate({ ids: b.ids, cambio: { fraccion: f } });
+
+    const asignadas = data?.progreso.find((p) => p.otId === b.otId)?.asignadas ?? b.ids.length;
+    if (b.multiDia || asignadas !== 1 || b.otId <= 0) return;
+
+    const horas = FRACCIONES.find((x) => x.value === f)?.horas;
+    fijarPlan.mutate({
+      otId: b.otId,
+      jornadas: Number(f),
+      // Se anota solo: cambiar la fracción es un gesto de un clic que se repite todo el
+      // día, y pedir un texto cada vez lo convertiría en un trámite —con el resultado
+      // conocido de que se escriba un punto para salir del paso.
+      motivo: `Operaciones la dejó en ${horas ?? Number(f) * 8} h desde el tablero.`,
+    });
   }
 
   /** Pedir el motivo para fijar un bloque a su día. Lo usan la tarjeta y el panel. */
@@ -1537,7 +1574,7 @@ export function TableroBoard() {
       data?.progreso.find((p) => p.otId === bloque.otId)?.asignadas ?? bloque.ids.length;
     const quedanEnTablero = asignadasAhora - liberables.length;
     const duracion = ot ? duracionDe(ot) : 1;
-    const totales = repartirJornadas(duracion).length;
+    const totales = repartirJornadas(duracion, planPorOt.has(bloque.otId)).length;
     const vuelveALaBandeja = totales - quedanEnTablero > 0;
 
     const aplicar = () =>
@@ -1879,6 +1916,17 @@ export function TableroBoard() {
               if (cierre) return;
               abrirPanel(ot.id, null);
             }}
+            // Fijar la duración ANTES de planificar. Va al plan de Operaciones, igual que
+            // cuando se cambia la fracción de una obra de un día en la grilla: es el mismo
+            // dato dicho desde otra pantalla, y por eso se guarda en el mismo lugar.
+            onDuracion={(ot, f) => {
+              const horas = FRACCIONES.find((x) => x.value === f)?.horas;
+              fijarPlan.mutate({
+                otId: ot.id,
+                jornadas: Number(f),
+                motivo: `Operaciones la dejó en ${horas ?? Number(f) * 8} h desde la bandeja.`,
+              });
+            }}
             onIrABloque={(bloqueKey, fecha) => {
               setResaltado({ key: bloqueKey, desde: Date.now() });
               scrollAFecha(fecha);
@@ -2074,7 +2122,8 @@ export function TableroBoard() {
             const asignadasAhora =
               data.progreso.find((p) => p.otId === jornadasDe)?.asignadas ?? 0;
             const quedan = asignadasAhora - cambios.borradas.length;
-            const vuelveALaBandeja = repartirJornadas(duracion).length - quedan > 0;
+            const vuelveALaBandeja =
+              repartirJornadas(duracion, planPorOt.has(jornadasDe)).length - quedan > 0;
             const duracionNueva = Number((duracion - cambios.borradas.length).toFixed(2));
             const aplicar = () =>
               borrar.mutate({

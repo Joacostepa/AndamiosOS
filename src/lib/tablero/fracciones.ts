@@ -130,22 +130,29 @@ export function aFraccionStr(n: number): FraccionStr {
 }
 
 /**
- * Reparte la duración estimada de una OT en fracciones por jornada.
+ * Reparte la duración de una OT en fracciones por jornada.
  * REGLA DE NEGOCIO: una obra de más de una jornada ocupa 1,00 en cada día que abarca;
  * el resto fraccionario (ej. 2,5 jornadas) cae en el último día.
  *
- * VA CONTRA LA ESCALA GRUESA: lo que entra es el estimado de Comercial, y redondearlo a
- * la escala fina lo haría parecer más preciso de lo que es (2,4 jornadas saldría como
- * "2 días y 3 h"). Operaciones afina después en la tarjeta, que es donde se sabe.
+ * LA ESCALA DEPENDE DE QUIÉN PUSO EL NÚMERO, y por eso `deOperaciones` no es un detalle:
+ *
+ *   · el estimado de COMERCIAL va contra la escala gruesa. Redondearlo fino lo haría
+ *     parecer más preciso de lo que es: 2,4 jornadas saldría como "2 días y 3 h" cuando
+ *     nadie midió eso.
+ *   · lo que fijó OPERACIONES va contra la escala fina, porque es un número que alguien
+ *     eligió mirando el trabajo. Con la gruesa, una obra que se dejó en 3 h volvería de
+ *     la bandeja convertida en ¼ —dos horas— y el tamaño elegido se perdería en el
+ *     redondeo, que es exactamente lo que este camino viene a evitar.
  */
-export function repartirJornadas(duracion: number): FraccionStr[] {
+export function repartirJornadas(duracion: number, deOperaciones = false): FraccionStr[] {
+  const escala = deOperaciones ? FRACCIONES : FRACCIONES_ESTIMADO;
   if (!Number.isFinite(duracion) || duracion <= 0) return ["1"];
-  if (duracion < 1) return [fraccionMasCercana(duracion, FRACCIONES_ESTIMADO)];
+  if (duracion < 1) return [fraccionMasCercana(duracion, escala)];
 
   const completas = Math.floor(duracion);
   const resto = redondearFraccion(duracion - completas);
   const dias: FraccionStr[] = Array.from({ length: completas }, () => "1" as FraccionStr);
-  if (resto >= 0.05) dias.push(fraccionMasCercana(resto, FRACCIONES_ESTIMADO));
+  if (resto >= 0.05) dias.push(fraccionMasCercana(resto, escala));
   return dias;
 }
 

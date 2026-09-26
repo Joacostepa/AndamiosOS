@@ -128,6 +128,22 @@ export const LEGAJO_INQUILINO: ItemLegajo[] = [
  */
 export const clavesFirmables = (tipo: TipoDueno) => ["acta_compromiso", tipo === "persona" ? "nota_autorizacion" : "nota_solicitud"];
 
+/**
+ * Cuánto del recuadro de firma tiene que estar dibujado para que sea una firma. Nace de
+ * SANTA FE AV. 3085 (S02599, 24/09): el cliente mandó el recuadro VACÍO —la imagen quedó
+ * transparente entera— y el acta y la nota se presentaron en TAD sin firma; el Gobierno las
+ * observó ("AMBAS SIN FIRMA DE PUÑO Y LETRA DEL SR ADM SCAMPINI JORGE"). Un clic sin arrastrar
+ * no dibuja nada y hasta entonces alcanzaba para dar por firmado.
+ *
+ * 0,2 % de los píxeles del recuadro. Las once firmas reales que hubo hasta hoy ocupan entre
+ * 1,1 % y 2,8 %, así que hay cinco veces de margen: sólo frena lo que está prácticamente en
+ * blanco. Es proporción, no píxeles: no cambia con la densidad de la pantalla.
+ */
+export const MINIMO_TINTA_FIRMA = 0.002;
+
+/** Desde qué opacidad un píxel del recuadro cuenta como trazo (0 a 255). */
+export const MINIMO_ALFA_FIRMA = 32;
+
 export const CARACTER_POR_DEFECTO: Record<TipoDueno, string> = {
   consorcio: "Administrador",
   empresa: "Apoderado",

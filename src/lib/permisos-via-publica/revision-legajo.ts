@@ -10,6 +10,10 @@ import { normalizar, parcelaPorDireccion, type Parcela } from "./catastro";
 // trae, si está firmado, si está vigente) y el VEREDICTO sale de reglas en código. El motivo
 // que ve el cliente sale de esas reglas, en castellano y sin jerga.
 //
+// La IA contesta lo que ve; TODO lo que decida el veredicto tiene que tener su campo en
+// `Lectura` y su regla acá. Lo que la IA anota de más en un campo de texto libre no lo lee
+// nadie: así pasó el acta incompleta de TRES SARGENTOS 436 (ver la regla "completo").
+//
 // El titular cargado se cruza con los documentos que acreditan al dueño (DNI, poder,
 // estatuto, título…). NO con el aviso de obra: el peticionante puede ser cualquiera y no tiene
 // que ser el dueño del lote (JS, 2026-09-15, con la primera venta real: S02465). Del aviso sólo
@@ -20,7 +24,8 @@ import { normalizar, parcelaPorDireccion, type Parcela } from "./catastro";
 
 const MODELO = "claude-opus-5";
 
-type Regla = "titular" | "direccion" | "cuit" | "firma" | "vigencia" | "administrador";
+/** "completo" va en los formularios que el cliente llena y firma; ver `chequear`. */
+type Regla = "titular" | "direccion" | "cuit" | "firma" | "vigencia" | "administrador" | "completo";
 
 /** Qué es cada documento y qué se cruza. */
 const CRITERIOS: Record<string, { descripcion: string; reglas: Regla[] }> = {
@@ -39,15 +44,15 @@ const CRITERIOS: Record<string, { descripcion: string; reglas: Regla[] }> = {
   dni_apoderado: { descripcion: "DNI argentino del apoderado de la empresa, frente y dorso.", reglas: [] },
   dni: { descripcion: "DNI argentino del dueño del lote, frente y dorso.", reglas: ["titular"] },
   constancia_cuit: { descripcion: "Constancia de inscripción en ARCA (ex AFIP) del dueño del lote.", reglas: ["cuit"] },
-  nota_solicitud: { descripcion: "Nota de solicitud del permiso de uso del espacio público para el andamio, firmada por el representante del dueño.", reglas: ["firma"] },
-  acta_compromiso: { descripcion: "Acta de compromiso del GCBA para el permiso de andamio en la vía pública, firmada.", reglas: ["firma"] },
+  nota_solicitud: { descripcion: "Nota de solicitud del permiso de uso del espacio público para el andamio, con lugar y fecha, firmada y aclarada por el representante del dueño.", reglas: ["firma", "completo"] },
+  acta_compromiso: { descripcion: "Acta de compromiso del GCBA para el permiso de andamio en la vía pública, con el encabezado completo (fecha, solicitante, representación, CUIT, domicilio real y domicilio electrónico), todas sus hojas y firmada al pie.", reglas: ["firma", "completo"] },
   poder: { descripcion: "Poder otorgado por la empresa dueña del lote, certificado por escribano.", reglas: ["titular"] },
   estatuto: { descripcion: "Estatuto o contrato social de la empresa dueña del lote, certificado.", reglas: ["titular"] },
   acta_directorio: { descripcion: "Acta de directorio o de asamblea que designa las autoridades de la empresa dueña del lote.", reglas: ["titular", "vigencia"] },
-  nota_autorizacion: { descripcion: "Nota firmada por el dueño del lote autorizando la instalación del andamio o el trámite del permiso.", reglas: ["firma"] },
+  nota_autorizacion: { descripcion: "Nota firmada por el dueño del lote autorizando la instalación del andamio o el trámite del permiso, con lugar y fecha y la firma aclarada.", reglas: ["firma", "completo"] },
   titulo_propiedad: { descripcion: "Título de propiedad (escritura) del inmueble de la obra.", reglas: ["titular", "direccion"] },
   contrato_alquiler: { descripcion: "Contrato de alquiler del inmueble de la obra.", reglas: ["direccion"] },
-  nota_dueno: { descripcion: "Nota firmada por el dueño del inmueble autorizando al inquilino a instalar el andamio.", reglas: ["firma"] },
+  nota_dueno: { descripcion: "Nota firmada por el dueño del inmueble autorizando al inquilino a instalar el andamio, con lugar y fecha y la firma aclarada.", reglas: ["firma", "completo"] },
 };
 
 const Lectura = z.object({
@@ -61,6 +66,8 @@ const Lectura = z.object({
   coincide_administrador: z.boolean().nullable(),
   coincide_direccion: z.boolean().nullable(),
   firmado: z.boolean().nullable(),
+  campos_en_blanco: z.array(z.string()).nullable(),
+  faltan_hojas: z.boolean().nullable(),
   vigente: z.boolean().nullable(),
   fecha_designacion: z.string().nullable(),
   vigente_hasta: z.string().nullable(),
@@ -78,6 +85,8 @@ Contestá sobre lo que el documento muestra, no sobre lo que debería mostrar. S
 - coincide_administrador: si la persona que el documento designa o identifica como administrador del consorcio es el administrador indicado (aceptá diferencias de mayúsculas, abreviaturas o el orden de nombre y apellido). null si no se indica administrador o el documento no nombra a nadie.
 - coincide_direccion: si la dirección del documento es la de la obra (misma calle y altura; aceptá abreviaturas). null si no trae dirección.
 - firmado: si tiene firma. null si no es un documento que se firme.
+- campos_en_blanco: en un formulario que se completa (acta de compromiso, notas), los espacios que quedaron SIN LLENAR, nombrados como los nombra el documento ("fecha", "CUIT", "domicilio real", "aclaración"). Mirá también el encabezado y el pie, no sólo el cuerpo. Lista vacía si está todo completo. null si no es un documento con espacios para completar.
+- faltan_hojas: true si al documento le faltan hojas: empieza o termina cortado a mitad de una frase o de una cláusula, la numeración salta, o falta la hoja del encabezado o la de la firma. false si está entero. null si no se puede saber.
 - vigente: si a la fecha indicada sigue vigente (mandato, designación). null si no tiene vigencia.
 - fecha_designacion: en actas que designan, renuevan o ratifican un mandato, la fecha (AAAA-MM-DD) desde la que corre: la que fije el acta o, si no fija ninguna, la de la asamblea o reunión. null si no se ve o no aplica.
 - vigente_hasta: la fecha (AAAA-MM-DD) en que termina ese mandato, sólo si el documento la escribe. null si no la escribe.`;
@@ -218,6 +227,21 @@ function chequear(clave: string, l: z.infer<typeof Lectura>, t: TramiteLegajo, l
   }
   if (reglas.includes("firma") && l.firmado !== null) {
     chequeos.push({ clave: "firma", ok: l.firmado, bloquea: true, detalle: l.firmado ? "Está firmada." : "Falta la firma." });
+  }
+  // FIRMADO NO ES LO MISMO QUE COMPLETO. TRES SARGENTOS 436 (S01845, 22/09): el escaneo del acta
+  // estaba firmado al pie y empezaba en la mitad de la CLÁUSULA TERCERA —la primera hoja, la del
+  // encabezado, no estaba—. El Gobierno observó el expediente ("LA MISMA SE ENCUENTRA INCOMPLETA
+  // EN LA PRIMER HOJA"). La IA lo había visto y lo escribió, pero en un campo de texto libre que
+  // ninguna regla leía: la única regla de estos documentos era la firma.
+  if (reglas.includes("completo")) {
+    const enBlanco = l.campos_en_blanco ?? [];
+    const cortado = l.faltan_hojas === true;
+    const ok = enBlanco.length === 0 && !cortado;
+    const motivos = [
+      cortado && "Le faltan hojas: subilo entero, con todas sus páginas (incluida la del encabezado).",
+      enBlanco.length > 0 && `Quedaron sin completar: ${enBlanco.join(", ")}. Completalos, firmalo y subilo de nuevo.`,
+    ].filter(Boolean);
+    chequeos.push({ clave: "completo", ok, bloquea: true, detalle: ok ? "Está completo." : motivos.join(" ") });
   }
   const vigencia = reglas.includes("vigencia") ? vigenciaDelMandato(clave, l, hoy) : null;
   if (vigencia) {

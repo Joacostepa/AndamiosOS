@@ -4,8 +4,8 @@ import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { BUCKET } from "@/lib/permisos-via-publica/endosos";
 import { guardarDocumentoFirmado, siLegajoCompletoGenerar, tramiteDeToken } from "@/lib/permisos-via-publica/portal";
-import { generarActaCompromiso, generarNotaAutorizacion } from "@/lib/permisos-via-publica/documentos-firmados";
-import { clavesFirmables, type TipoDueno } from "@/lib/permisos-via-publica/tipos";
+import { generarActaCompromiso, generarNotaAutorizacion, tintaDeFirma } from "@/lib/permisos-via-publica/documentos-firmados";
+import { MINIMO_TINTA_FIRMA, clavesFirmables, type TipoDueno } from "@/lib/permisos-via-publica/tipos";
 
 // POST /api/public/permiso/:token/firmar — el cliente completa y firma en el portal el acta
 // de compromiso del GCBA y la nota de ABA, en un solo paso y con una sola firma.
@@ -63,6 +63,18 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
     firmadoAt,
   };
   const firmaPng = Buffer.from(datos.firma.split(",")[1], "base64");
+  // El recuadro tiene que tener algo dibujado. SANTA FE AV. 3085 (S02599, 24/09) se presentó en
+  // TAD con el acta y la nota SIN FIRMA porque llegó un PNG transparente entero y nadie lo miró:
+  // el Gobierno observó el expediente. Se controla acá y no sólo en el navegador, que es el que
+  // arma el PNG y el que se puede saltear.
+  const tinta = tintaDeFirma(firmaPng);
+  if (tinta === null || tinta < MINIMO_TINTA_FIRMA) {
+    return NextResponse.json({
+      error: tinta === null
+        ? "No se pudo leer la firma. Borrala y firmá de nuevo, o probá desde otro navegador."
+        : "El recuadro quedó vacío o la firma es muy chica: firmá de nuevo ocupando buena parte del recuadro.",
+    }, { status: 400 });
+  }
   const [claveActa, claveNota] = clavesFirmables(contexto.tipoDueno);
   // El logo del membrete vive en el bucket público "empresa". Sin logo la nota sale igual,
   // con el nombre en texto.
@@ -84,6 +96,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
       firmado_at: firmadoAt.toISOString(),
       ip: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
       dispositivo: req.headers.get("user-agent"),
+      // Qué parte del recuadro quedó dibujada: queda en el historial como prueba de que la
+      // firma tenía trazo, que es lo que faltó en S02599.
+      tinta_firma: Number(tinta.toFixed(4)),
     };
 
     for (const p of piezas) {

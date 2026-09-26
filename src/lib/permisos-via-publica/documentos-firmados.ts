@@ -1,5 +1,6 @@
+import { inflateSync } from "node:zlib";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage, type PDFPage } from "pdf-lib";
-import { formatoCuit, type TipoDueno } from "./tipos";
+import { MINIMO_ALFA_FIRMA, formatoCuit, type TipoDueno } from "./tipos";
 
 // El Acta de compromiso del GCBA y la Nota de autorización de ABA, completas y firmadas.
 //
@@ -27,6 +28,78 @@ export type ContextoFirma = {
   domicilioElectronico: string;
   firmadoAt: Date;
 };
+
+// ── ¿El recuadro de firma tiene algo dibujado? ──────────────────────────────
+
+/** Deshace el filtro de una línea del PNG (RFC 2083 § 6), en el lugar. */
+function desfiltrar(filtro: number, linea: Buffer, previa: Buffer, bpp: number) {
+  for (let i = 0; i < linea.length; i++) {
+    const izq = i >= bpp ? linea[i - bpp] : 0;
+    const arriba = previa[i];
+    const diagonal = i >= bpp ? previa[i - bpp] : 0;
+    let v = linea[i];
+    if (filtro === 1) v += izq;
+    else if (filtro === 2) v += arriba;
+    else if (filtro === 3) v += (izq + arriba) >> 1;
+    else if (filtro === 4) {
+      // Paeth: se queda con el vecino más parecido a la suma de los tres.
+      const p = izq + arriba - diagonal;
+      const a = Math.abs(p - izq), b = Math.abs(p - arriba), c = Math.abs(p - diagonal);
+      v += a <= b && a <= c ? izq : b <= c ? arriba : diagonal;
+    }
+    linea[i] = v & 0xff;
+  }
+}
+
+/**
+ * Qué proporción del recuadro de firma está dibujada (0 a 1), leyendo el canal alfa del PNG.
+ * `null` si el PNG no es el que devuelve el canvas del navegador (RGBA de 8 bits, sin
+ * entrelazar) o si no se pudo descomprimir: quien la llama trata ese caso como "no se pudo
+ * mirar" y no deja pasar la firma. Ver MINIMO_TINTA_FIRMA en tipos.ts.
+ */
+export function tintaDeFirma(png: Uint8Array): number | null {
+  const b = Buffer.from(png);
+  const FIRMA = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+  if (b.length < 8 || FIRMA.some((v, i) => b[i] !== v)) return null;
+
+  let cabecera: { ancho: number; alto: number; bits: number; color: number; entrelazado: number } | null = null;
+  const datos: Buffer[] = [];
+  for (let i = 8; i + 12 <= b.length; ) {
+    const largo = b.readUInt32BE(i);
+    const tipo = b.toString("latin1", i + 4, i + 8);
+    const cuerpo = b.subarray(i + 8, i + 8 + largo);
+    if (tipo === "IHDR" && cuerpo.length >= 13) {
+      cabecera = { ancho: cuerpo.readUInt32BE(0), alto: cuerpo.readUInt32BE(4), bits: cuerpo[8], color: cuerpo[9], entrelazado: cuerpo[12] };
+    } else if (tipo === "IDAT") datos.push(cuerpo);
+    else if (tipo === "IEND") break;
+    i += largo + 12;
+  }
+  if (!cabecera || !datos.length) return null;
+  const { ancho, alto, bits, color, entrelazado } = cabecera;
+  if (bits !== 8 || color !== 6 || entrelazado !== 0 || !ancho || !alto) return null;
+
+  let crudo: Buffer;
+  try {
+    crudo = inflateSync(Buffer.concat(datos));
+  } catch {
+    return null;
+  }
+  const bpp = 4;
+  const largoLinea = ancho * bpp;
+  if (crudo.length < (largoLinea + 1) * alto) return null;
+
+  const linea = Buffer.alloc(largoLinea);
+  const previa = Buffer.alloc(largoLinea);
+  let conTinta = 0;
+  for (let y = 0; y < alto; y++) {
+    const arranca = y * (largoLinea + 1);
+    crudo.copy(linea, 0, arranca + 1, arranca + 1 + largoLinea);
+    desfiltrar(crudo[arranca], linea, previa, bpp);
+    for (let x = 3; x < largoLinea; x += bpp) if (linea[x] >= MINIMO_ALFA_FIRMA) conTinta++;
+    linea.copy(previa);
+  }
+  return conTinta / (ancho * alto);
+}
 
 const A4: [number, number] = [595.28, 841.89];
 const MARGEN = 64;

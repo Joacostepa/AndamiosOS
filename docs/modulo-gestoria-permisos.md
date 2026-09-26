@@ -124,6 +124,14 @@ Link público por trámite (`/permiso/[token]`), sin login, como `/cotizador`.
 
 - Descarga de **nota de solicitud, acta de compromiso y nota del dueño ya completadas**, para
   sólo firmar y subir.
+- **Completar y firmar en el portal**, sin imprimir ni escanear: la app arma el acta y la nota
+  con la firma dibujada en la pantalla. **El recuadro tiene que tener trazo**: se controla en el
+  navegador y otra vez en el servidor (`tintaDeFirma`, mínimo `MINIMO_TINTA_FIRMA` = 0,2 % del
+  recuadro; las firmas reales ocupan entre 1,1 % y 2,8 %). Sale de SANTA FE AV. 3085 (S02599,
+  24/09): llegó el recuadro vacío —la imagen transparente entera—, el acta y la nota se
+  presentaron en TAD sin firma y el Gobierno observó el expediente. Un clic sin arrastrar no
+  dibuja nada y hasta entonces alcanzaba para dar por firmado. Como estos documentos los arma
+  la app, no pasan por la revisión con IA: **el único control es ése**.
 - Muestra el estado en lenguaje del cliente, qué falta y por qué se rechazó algo.
 - Recordatorios automáticos si no carga (cadencia a definir).
 - El token es aleatorio, se guarda hasheado y se puede revocar.
@@ -150,6 +158,13 @@ un motivo en castellano para el cliente. Además cruza el legajo:
 - Acta de Asamblea / designación de autoridades **vigente**.
 - Coincidencia de CUIT, razón social y dirección entre documentos y con la venta.
 - Firmas presentes en nota y acta.
+- **Nota y acta completas, no sólo firmadas**: sin blancos sin llenar y con todas las hojas
+  (regla `completo` en `revision-legajo.ts`). Sale de TRES SARGENTOS 436 (S01845, 22/09): el
+  escaneo del acta estaba firmado al pie y le faltaba el encabezado —fecha, solicitante,
+  representación, CUIT, domicilio—, y el Gobierno observó el expediente. La IA lo había visto y
+  lo había escrito en un campo de texto libre que ninguna regla leía. **Lo que decide el
+  veredicto tiene que tener su campo en `Lectura` y su regla en `chequear`**; lo que la IA
+  anota de más no lo lee nadie.
 - Dirección del Aviso de Obra = dirección de la obra.
 
 Regla: la IA **nunca aprueba en silencio** algo dudoso; ante la duda marca `observado` para

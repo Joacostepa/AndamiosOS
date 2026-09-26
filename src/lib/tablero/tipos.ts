@@ -361,6 +361,31 @@ export type DetalleOt = {
    * Lo carga Comercial en la venta; acá se muestra, no se edita.
    */
   trabajo: TrabajoOt;
+  /**
+   * La orden de venta de la que cuelga esta OT. Viaja porque los contactos de obra se
+   * crean contra ELLA y no contra la OT: sin esto el panel tendría que volver a leer la
+   * OT sólo para saber a qué orden pertenece.
+   */
+  ventaId: number | null;
+  /**
+   * Quiénes atienden en la obra. Son de la ORDEN, no de la OT: el armado, el desarme y la
+   * ampliación son la misma obra y la misma gente, así que una OT nueva los tiene por
+   * definición en vez de arrancar de cero.
+   *
+   * Distinto de `contactoObra`/`telObra` de la OT, que es el contacto de ESA jornada y lo
+   * precarga Odoo desde la ficha del cliente.
+   */
+  contactosObra: ContactoObra[];
+};
+
+/** Una persona de la obra, colgada de la orden de venta. */
+export type ContactoObra = {
+  id: number;
+  nombre: string;
+  /** Texto libre: "encargado", "la que abre", "arquitecta". */
+  rol: string | null;
+  telefono: string | null;
+  email: string | null;
 };
 
 export type DocumentoOt = {

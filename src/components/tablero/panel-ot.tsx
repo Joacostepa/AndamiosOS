@@ -6,9 +6,12 @@ import { es } from "date-fns/locale";
 import {
   AlertTriangle, Building2, CalendarCheck, Construction, ExternalLink, Fence, FileText,
   HardHat, Phone, ShieldCheck, User, UserRound, Users, Clock, CalendarDays,
-  CalendarRange, Check, CircleDashed, ClipboardCheck, Pin, PinOff, Trash2,
+  CalendarRange, Check, CircleDashed, ClipboardCheck, Pin, PinOff, Plus, Trash2, X,
 } from "lucide-react";
+import { useState } from "react";
 import { useDetalleOt } from "@/hooks/use-detalle-ot";
+import { useAgregarContactoObra, useBorrarContactoObra } from "@/hooks/use-contactos-obra";
+import { Input } from "@/components/ui/input";
 import { HistorialConfirmacion } from "./historial-confirmacion";
 import { MovimientosOt } from "./movimientos-ot";
 import { ComentariosOt } from "./comentarios-ot";
@@ -26,7 +29,7 @@ import { accionDeCierre, jornadasCerradas, jornadasLiberables, type AccionCierre
 import { lineaVentana } from "@/lib/tablero/ventana";
 import { Button } from "@/components/ui/button";
 import type { Bloque } from "@/lib/tablero/bloques";
-import type { DocumentoOt, OtTablero, TrabajoOt } from "@/lib/tablero/tipos";
+import type { ContactoObra, DocumentoOt, OtTablero, TrabajoOt } from "@/lib/tablero/tipos";
 
 // Panel lateral de la OT: todo lo que hace falta para coordinar la jornada sin salir
 // del tablero. La carga de partes, el circuito de habilitación y los costos viven en
@@ -98,6 +101,137 @@ function QueNecesita({ trabajo }: { trabajo: TrabajoOt | undefined }) {
         <p className="text-xs text-muted-foreground">{trabajo.tipoLabel}</p>
       )}
     </div>
+  );
+}
+
+/**
+ * La gente de la obra. Se agrega desde acá y queda guardada en la ORDEN.
+ *
+ * POR QUÉ ACÁ Y NO EN ODOO: Operaciones descubre estos contactos hablando por teléfono
+ * mientras coordina la jornada, con el tablero abierto. Mandarlos a la orden de venta a
+ * anotarlo es pedirles que cambien de pantalla justo cuando tienen el dato en la mano —y
+ * así es como el dato se pierde. En Odoo se pueden cargar igual, desde la solapa "Trabajo
+ * a ejecutar" de la orden: es la misma lista.
+ *
+ * EL FORMULARIO ARRANCA CERRADO. Tres campos fijos ocupando el panel en las obras donde
+ * nadie va a agregar a nadie es ruido permanente por algo que pasa de a ratos.
+ */
+function ContactosDeObra({
+  otId,
+  ventaId,
+  contactos,
+}: {
+  otId: number;
+  /** La orden de la que cuelgan. Sin ella no hay dónde guardar: el "+" no se ofrece. */
+  ventaId: number | null;
+  contactos: ContactoObra[];
+}) {
+  const [abierto, setAbierto] = useState(false);
+  const [nombre, setNombre] = useState("");
+  const [rol, setRol] = useState("");
+  const [telefono, setTelefono] = useState("");
+  const [email, setEmail] = useState("");
+  const agregar = useAgregarContactoObra(otId);
+  const borrar = useBorrarContactoObra(otId);
+
+  const limpiar = () => { setNombre(""); setRol(""); setTelefono(""); setEmail(""); setAbierto(false); };
+
+  function guardar() {
+    if (!ventaId || !nombre.trim()) return;
+    agregar.mutate(
+      { ventaId, nombre: nombre.trim(), rol: rol.trim(), telefono: telefono.trim(), email: email.trim() },
+      { onSuccess: limpiar },
+    );
+  }
+
+  // Sin contactos y sin venta no hay nada que mostrar ni dónde guardar.
+  if (contactos.length === 0 && !ventaId) return null;
+
+  return (
+    <Fila icono={<Users className="h-4 w-4" />} etiqueta="Gente de la obra">
+      {contactos.length === 0 && !abierto && (
+        <p className="text-sm text-muted-foreground">Nadie más cargado todavía.</p>
+      )}
+
+      <ul className="space-y-1.5">
+        {contactos.map((c) => (
+          <li key={c.id} className="flex items-start gap-2">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm">
+                {c.nombre}
+                {c.rol && <span className="text-muted-foreground"> · {c.rol}</span>}
+              </p>
+              {/* El teléfono como link: este panel se abre desde la obra, en un celular. */}
+              {c.telefono && (
+                <a href={`tel:${c.telefono.replace(/[^\d+]/g, "")}`} className="text-sm underline">
+                  {c.telefono}
+                </a>
+              )}
+              {c.email && (
+                <a href={`mailto:${c.email}`} className="block truncate text-xs text-muted-foreground underline">
+                  {c.email}
+                </a>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => borrar.mutate(c.id)}
+              disabled={borrar.isPending}
+              className="shrink-0 rounded p-1 text-muted-foreground hover:bg-foreground/10"
+              title={`Quitar a ${c.nombre} de la obra`}
+              aria-label={`Quitar a ${c.nombre} de la obra`}
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </li>
+        ))}
+      </ul>
+
+      {ventaId && !abierto && (
+        <button
+          type="button"
+          onClick={() => setAbierto(true)}
+          className="mt-1 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Agregar contacto
+        </button>
+      )}
+
+      {abierto && (
+        <div className="mt-2 space-y-1.5 rounded-md border p-2">
+          <Input
+            value={nombre}
+            onChange={(e) => setNombre(e.target.value)}
+            placeholder="Nombre y apellido"
+            className="h-8 text-sm"
+            autoFocus
+          />
+          <Input value={rol} onChange={(e) => setRol(e.target.value)} placeholder="Rol — encargado, arquitecta…" className="h-8 text-sm" />
+          <Input value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder="Teléfono" className="h-8 text-sm" inputMode="tel" />
+          <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email (opcional)" className="h-8 text-sm" inputMode="email" />
+          <p className="text-[11px] text-muted-foreground">
+            Queda guardado en la obra: las próximas órdenes de trabajo ya lo traen.
+          </p>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={limpiar} disabled={agregar.isPending}>
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              className="ml-auto"
+              style={{ backgroundColor: CORAL, color: "#fff" }}
+              /* El nombre es lo único que se exige: muchas veces se tiene el teléfono y el
+                 rol pero no el mail, y pedirlo todo termina en que no se cargue nada. */
+              disabled={!nombre.trim() || agregar.isPending}
+              onClick={guardar}
+            >
+              {agregar.isPending ? "Guardando…" : "Agregar"}
+            </Button>
+          </div>
+        </div>
+      )}
+    </Fila>
   );
 }
 
@@ -612,6 +746,19 @@ export function PanelOt({
                   )}
                 </Fila>
               )}
+
+              {/* LA GENTE DE LA OBRA, que es más de una: el encargado, la arquitecta, el
+                  que abre el portón. Va pegado al contacto de arriba porque contestan la
+                  misma pregunta —a quién llamo— pero son cosas distintas: aquél es el
+                  contacto de ESTA orden de trabajo y lo precarga Odoo desde la ficha del
+                  cliente; éstos son de la OBRA y los va sumando Operaciones al ir
+                  hablando. Por eso quedan en la orden de venta y no en la OT: la próxima
+                  orden de trabajo de esta misma obra ya los trae. */}
+              <ContactosDeObra
+                otId={ot.id}
+                ventaId={detalle?.ventaId ?? null}
+                contactos={detalle?.contactosObra ?? []}
+              />
 
               <Fila icono={<Clock className="h-4 w-4" />} etiqueta="Duración">
                 {ot.sinEstimar ? (

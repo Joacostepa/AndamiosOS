@@ -411,13 +411,14 @@ export async function fetchDetalleOt(otId: number): Promise<DetalleOt> {
     ? await read<{
         partner_id: M2O; partner_shipping_id: M2O; x_studio_tcnico: M2O; user_id: M2O;
         x_estructura_fecha: string | false;
+        x_contactos_obra_ids: number[] | false;
       } & Partial<FilaTrabajo>>(
         "sale.order",
         [ordenId],
         // La clasificación del trabajo viaja en la MISMA lectura: la venta ya se estaba
         // leyendo para el cliente y el vendedor, así que no cuesta una llamada más.
         ["partner_id", "partner_shipping_id", "x_studio_tcnico", "user_id", "x_estructura_fecha",
-         ...CAMPOS_TRABAJO],
+         "x_contactos_obra_ids", ...CAMPOS_TRABAJO],
       )
     : [];
 
@@ -441,6 +442,15 @@ export async function fetchDetalleOt(otId: number): Promise<DetalleOt> {
       }>("res.partner", ids, ["name", "street", "street2", "city", "phone", "type", "parent_id"])
     : [];
   const obra = contactos.find((c) => c.id === idEnvio) ?? contactos.find((c) => c.id === idCliente);
+
+  // Los contactos de la obra. Una lectura más, y sólo cuando alguien abre el panel: no
+  // viajan con el tablero, que trae medio centenar de OTs y se repite todo el día.
+  const idsContactos = Array.isArray(orden?.x_contactos_obra_ids) ? orden.x_contactos_obra_ids : [];
+  const contactosObra = idsContactos.length
+    ? await read<{ id: number; x_name: string | false; x_rol: string | false; x_telefono: string | false; x_email: string | false }>(
+        "x_aba_contacto_obra", idsContactos, ["x_name", "x_rol", "x_telefono", "x_email"],
+      )
+    : [];
 
   const calle = [str(obra?.street), str(obra?.street2), str(obra?.city)].filter(Boolean).join(", ");
   return {
@@ -469,6 +479,14 @@ export async function fetchDetalleOt(otId: number): Promise<DetalleOt> {
     desvio: str(ot.x_desvio),
     duracionSugerida: str(ot.x_duracion_sugerida),
     trabajo: leerTrabajo(orden),
+    ventaId: ordenId,
+    contactosObra: contactosObra.map((c) => ({
+      id: c.id,
+      nombre: str(c.x_name) ?? "—",
+      rol: str(c.x_rol),
+      telefono: str(c.x_telefono),
+      email: str(c.x_email),
+    })),
   };
 }
 
@@ -727,4 +745,41 @@ export async function sincronizarFechaProgramada(otIds: number[]): Promise<void>
       });
     }),
   );
+}
+
+// ── Contactos de la obra ─────────────────────────────────────────────────────
+//
+// Cuelgan de la ORDEN DE VENTA y no de la OT: el armado, el desarme y la ampliación son
+// la misma obra y la misma gente, así que una OT nueva los tiene por definición. Sin esto
+// cada OT arrancaba de cero — medido el 26/09, de las 8 órdenes con más de una OT, CINCO
+// tenían un contacto distinto en cada una.
+
+const CONTACTO = "x_aba_contacto_obra";
+
+/** Agrega una persona a la obra. Devuelve el id creado. */
+export async function crearContactoObra(datos: {
+  ventaId: number;
+  nombre: string;
+  rol?: string | null;
+  telefono?: string | null;
+  email?: string | null;
+}): Promise<number> {
+  return executeKw<number>(CONTACTO, "create", [{
+    x_order_id: datos.ventaId,
+    x_name: datos.nombre,
+    x_rol: datos.rol || false,
+    x_telefono: datos.telefono || false,
+    x_email: datos.email || false,
+  }]);
+}
+
+/**
+ * Saca una persona de la obra.
+ *
+ * Se borra de verdad y no se archiva: es una lista de teléfonos, no un registro contable.
+ * Quien se equivocó al cargarlo quiere que desaparezca, y un contacto "inactivo" que
+ * sigue apareciendo en algún lado sería peor que no tenerlo.
+ */
+export async function borrarContactoObra(id: number): Promise<void> {
+  await executeKw(CONTACTO, "unlink", [[id]]);
 }

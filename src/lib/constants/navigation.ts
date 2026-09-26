@@ -1,5 +1,5 @@
 import {
-  Building2, Users, Wrench, Package, Truck, UserCheck, BarChart3, Bell,
+  Building2, Users, Wrench, Package, Truck, UserCheck, Bell,
   Settings, FileText, ClipboardList, Calculator, Calendar, HardHat,
   PackagePlus, AlertTriangle, Search, Car, Hammer, MessageSquare,
   MapPin, Fingerprint, Bot, Building, ListOrdered, ShieldCheck, FileBarChart, Landmark, SlidersHorizontal,
@@ -13,9 +13,6 @@ export type NavItem = { title: string; href: string; icon: LucideIcon; subItems?
 export type NavGroup = { label?: string; items: NavItem[] };
 
 export const navigation: NavGroup[] = [
-  {
-    items: [{ title: "Inicio", href: "/", icon: BarChart3 }],
-  },
   {
     label: "Comercial",
     items: [

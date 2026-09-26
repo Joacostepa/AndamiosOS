@@ -138,6 +138,11 @@ export async function updateSession(request: NextRequest) {
     return motivo ? rechazar(403, motivo) : supabaseResponse;
   }
 
+  // "/" no tiene página: es "donde arranco", y cada uno arranca en la suya. Va antes de
+  // puedeAbrir porque el admin abre cualquier ruta y sin esto caería en un 404. El login,
+  // el cambio de clave y el logo del menú apuntan acá.
+  if (pathname === "/") return redirigir(inicioDe(acceso));
+
   // Pedir una página que no le toca no es un error: se lo lleva a su pantalla de arranque.
   // El menú ya no la muestra, así que llegar acá es escribir la URL a mano o volver sobre
   // un enlace viejo.

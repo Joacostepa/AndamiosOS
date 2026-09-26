@@ -65,12 +65,6 @@ export function useAlertas() {
   });
 }
 
-/** El número del badge. Comparte la consulta con useAlertas: no agrega un viaje. */
-export function useAlertasCount() {
-  const q = useAlertas();
-  return { ...q, data: q.data?.sinLeer ?? 0 };
-}
-
 export function useMarkAlertaRead() {
   const supabase = createClient();
   const queryClient = useQueryClient();

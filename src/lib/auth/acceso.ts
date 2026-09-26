@@ -28,7 +28,6 @@ type DefModulo = {
 
 // El orden es el del menú, y es el que usa la pantalla de usuarios para agrupar.
 const DEFINICION = [
-  { id: "inicio", titulo: "Inicio", grupo: "General", rutas: ["/"], soloLectura: true },
   { id: "clientes", titulo: "Clientes", grupo: "Comercial", rutas: ["/clientes"] },
   { id: "relevamientos", titulo: "Relevamientos", grupo: "Comercial", rutas: ["/comercial/relevamientos"] },
   { id: "asistente-comercial", titulo: "Asistente comercial", grupo: "Comercial", rutas: ["/comercial/asistente"] },
@@ -240,14 +239,13 @@ export function motivoDeRechazoApi(
 }
 
 /**
- * A dónde va cuando entra, o cuando pide algo que no le toca.
+ * A dónde va cuando entra, cuando abre "/" o cuando pide algo que no le toca.
  *
- * Inicio si lo tiene; si no Planificación, que es la pantalla con la que arranca el día;
- * si no, su primer módulo; y si no tiene ninguno, Alertas, que abre cualquiera. Sin esto
- * alguien sin Inicio caería en "/" y quedaría rebotando.
+ * Planificación, que es la pantalla con la que arranca el día; si no la tiene, su primer
+ * módulo; y si no tiene ninguno, Alertas, que abre cualquiera. "/" no tiene pantalla
+ * propia: el dashboard que había se sacó (2026-09-26) porque nadie lo usaba.
  */
 export function inicioDe(acceso: Acceso | null | undefined): string {
-  if (puedeAbrir(acceso, "/")) return "/";
   if (puedeAbrir(acceso, "/planificacion")) return "/planificacion";
   return MODULOS.find((m) => puedeAbrir(acceso, m.rutas[0]))?.rutas[0] ?? "/alertas";
 }

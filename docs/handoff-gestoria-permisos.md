@@ -1,12 +1,81 @@
-# Handoff — Gestoría de permisos de andamio (actualizado 2026-09-17, mediodía)
+# Handoff — Gestoría de permisos de andamio (actualizado 2026-09-26)
 
 Para retomar en una sesión nueva. El diseño completo y todo lo aprendido está en
 `docs/modulo-gestoria-permisos.md`; esto es el estado, **lo que falta para que el circuito
 quede 100 % automático** y el orden para seguir.
 
 Para arrancar: "Leé docs/handoff-gestoria-permisos.md y docs/modulo-gestoria-permisos.md y
-seguimos con lo que falta". **Empezar por § "17/09 — primera encomienda cerrada sola", seguir con
-§ "Noche 16/09", § "Estado 16/09 19:00" y § "Estado 16/09 11:30".**
+seguimos con lo que falta". **Empezar por § "Estado al 26/09", seguir con § "17/09 — primera
+encomienda cerrada sola", § "Noche 16/09" y § "Estado 16/09 19:00".**
+
+---
+
+## Estado al 26/09 — 12 expedientes presentados y el circuito andando solo
+
+Desde el 17/09 el circuito viene funcionando sin que nadie toque TAD ni el CPAU. **12 expedientes
+presentados**, todos por el robot:
+
+| Día | Ventas presentadas |
+| --- | --- |
+| 15–16/09 | S02466 (Guido 1923), S02128 (Corrientes 2810) |
+| 17/09 | S02465 (Salguero 359) |
+| 18/09 | S01826 (Nahuel Huapi 5100) · S02202 (Av. Córdoba 950) · S02086 (Gascón 21) · S02516 (Tucumán 969), las cuatro seguidas a partir de las 19:00 |
+| 21/09 | S02571 (Bolívar 542) |
+| 22/09 | S02563 (Av. Triunvirato 4528) |
+| 24/09 | S01845 (Tres Sargentos 436) · S02629 (Av. Jujuy 1761) · S02599 (Santa Fe 3085), las tres entre las 19:07 y las 19:21 |
+
+**Dos ya volvieron con subsanación** (las primeras del circuito nuevo): S02599, con el motivo
+*"DEBERA SUBSANAR NOTA DE SOLICITUD Y ACTA COMPROMISO, AMBAS SIN FIRMA DE PUÑO Y LETRA DEL SR ADM
+SCAMPINI JORGE"*, y S01845. Subsanar sigue siendo a mano (§ C).
+
+**Botón "Descargar carátula" en la ficha del expediente (`5ceb456`).** El robot bajaba la carátula
+desde el 14/09 y la guardaba, pero la ficha sólo firmaba el permiso y los documentos del legajo: no
+había forma de bajarla de la app.
+
+### El corte de luz del 22/09 y lo que dejó
+
+Se cortó la luz en la Mac mini a las 16:28, con **dos reinicios, 20:14 y 21:08**. Qué aguantó y qué no:
+
+- **Las dos encomiendas de esa tarde se habían pagado y cargado antes del corte** (Jujuy 1761 a las
+  16:22, operación 292453; Tres Sargentos a las 16:27, 292454). Ningún pago a medias.
+- **El latido avisó bien:** "no da señales hace 1 h 18" a las 17:30 y "volvió, estuvo 4 h 33" a las
+  21:00.
+- **Lo que falló:** la encomienda de Tres Sargentos quedó `tomada` y el robot no la volvió a tomar
+  nunca (`tomarTarea` sólo mira las pendientes). Era el pendiente anotado desde el 15/09. Se
+  destrabó a mano y a los 20 segundos encontró el certificado en el mail.
+- Después del segundo reinicio, el robot presentó Triunvirato solo a las 21:21.
+
+**Arreglado (`6009c69`):** al arrancar, cualquier tarea `tomada` es huérfana —el worker es uno
+solo— y se resuelve según el tipo (`recuperarTareasCortadas` en `worker-tad.mjs`):
+
+| Tarea cortada | Qué hace |
+| --- | --- |
+| Encomienda con el cierre empezado | vuelve a la cola: las etapas están anotadas y el pago y la carga tienen su traba (`intentado_at`) |
+| Encomienda cortada dentro del asistente | queda en error: pudo quedar finalizada en el CPAU, lo mira una persona en el Histórico |
+| Presentación en TAD | queda en error, **nunca se reintenta sola**: puede haber quedado un borrador o confirmada |
+| Escritura en Odoo | vuelve a la cola |
+
+Cada una deja evento en la ficha y aviso de prioridad alta. Probado con dos tareas falsas: la
+presentación quedó en error con el motivo y la encomienda volvió a la cola.
+
+**Fecha de presentación en hora de Buenos Aires (`6009c69`).** Se tomaba en UTC, y como se presenta
+de 19 a 7, **lo presentado después de las 21 quedaba con la fecha del día siguiente**. Pasó con
+S02563 (presentada el 22 a las 21:21, decía 23/09): se corrigió en `pvp_expedientes` y en
+`x_expediente_fecha` de la venta. Las que salen entre las 19 y las 21 —la mayoría— nunca se vieron
+afectadas; revisadas una por una en Odoo, están bien.
+
+### Lo primero en la sesión nueva
+
+1. **Subsanaciones:** S02599 y S01845 esperan corrección a mano. Es lo más pesado que queda sin
+   automatizar (§ C).
+2. **El aviso del certificado del CPAU miente un poco:** dice "con esto el trámite queda listo para
+   presentar" sin mirar el resto del legajo. El 21/09 JS leyó eso para Triunvirato y esperó una
+   presentación que no salía, porque faltaba la póliza. Conviene que el texto mire si falta algo.
+3. **Mandar la carátula al cliente y a la vendedora cuando aparece el número** (pedido de JS,
+   17/09). `enviarMail` todavía no manda adjuntos (nodemailer sí, es agregar el campo) y el webhook
+   de Slack **no puede subir archivos**: ahí va un link. Falta decidir si ese mail sale directo al
+   cliente o a la vendedora para que lo reenvíe.
+4. Siguen en pie los pendientes de § "17/09" y de § "Noche 16/09".
 
 ---
 

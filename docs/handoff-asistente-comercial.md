@@ -41,9 +41,10 @@ En producción: `https://andamios-os.vercel.app/comercial/asistente` y `/comerci
 **Base y servicios:**
 
 - **Supabase:**
-  - migraciones `20260926000001` a `…07` aplicadas (la `…06`, después del deploy de `2ddfa47`;
-    la `…07`, la búsqueda, antes del deploy del buscador);
-  - criterio v2 vigente;
+  - migraciones `20260926000001` a `…08` aplicadas. La `…06`, después del deploy de `2ddfa47`;
+    la `…07` (la búsqueda), antes del deploy del buscador; la `…08` (criterio v3), después de
+    `29d73c2`;
+  - criterio v3 vigente (el frente del lote contra el catastro);
   - lista de alquiler JUN26 (48 piezas) activa.
 - **Odoo:** campo `sale.order.x_asistente_ref` (id 37954).
 - **ElevenLabs:**
@@ -235,8 +236,17 @@ tiene la dirección. Cuesta ~US$ 1.
 - **Provincia:** ARBA (IDEBA) tiene los dibujos de las parcelas, pero sin frente ni números de
   puerta. Cerca de una dirección aparecen ~9 candidatas, así que se podría estimar pero no
   verificar. Por ahora sigue el criterio: el frente lo da el cliente.
-- **El criterio** todavía nombra "Dateas". Se puede cambiar a "verificar_frente_lote
-  (catastro de la Ciudad)" desde Parámetros → Criterio.
+
+**Criterio v3** (migración `20260926000008`, aplicada el 26/09 a pedido de JS). Cambian los
+puntos 3 y 4 de Geometría:
+
+- el frente se verifica SIEMPRE contra el catastro (`verificar_frente_lote`), ya no en Dateas;
+- si la altura no es oficial, se pregunta cuál de las vecinas es;
+- si los m.l. no cierran, se pregunta por qué;
+- la esquina se anota como decisión «esquina».
+
+Verificado que las conversaciones nuevas arrancan con el v3. Las abiertas siguen con el v2,
+pero la herramienta y el bloqueo ya rigen para todas.
 
 ### Voz en vivo más fluida (26/09 a la noche)
 

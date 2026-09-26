@@ -337,7 +337,7 @@ tiene caché de 1 h.
 | `src/app/api/comercial/parametros/` | Tarifas, historial, criterio, lista de alquiler, productos, renders, vendedores |
 | `src/app/api/whatsapp/webhook/` | El webhook de Meta |
 
-**Datos** (migraciones `20260926000001` a `…06`):
+**Datos** (migraciones `20260926000001` a `…08`):
 
 - `cotizacion_parametros` (+ `_cambios`), `cotizacion_criterios`, `lista_alquiler` (+ `_piezas`),
   `cotizacion_renders`, `cotizacion_productos_odoo`;

@@ -37,9 +37,13 @@ export type Tarifas = {
     gestoriaCaba: number;
     mediaSombraM2: number;
     fenolicoM2: number;
+    /** Rango para obras complejas (torres altas, industria, geometría especial). */
     ingenieria: Rango;
     ingenieriaTorreSimple: number;
-    syh: Rango;
+    /** La memoria de cálculo estándar: el opcional de toda bandeja y fachada. */
+    ingenieriaMemoria: number;
+    /** Técnico de Seguridad e Higiene presente en obra, por jornada. */
+    syhJornada: number;
     fleteGbaCercano: number;
     fleteCaba: Rango;
     fleteLaPlata: number;

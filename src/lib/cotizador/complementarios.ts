@@ -3,6 +3,10 @@
 // Van como líneas propias y, salvo la media sombra, son de ÚNICA VEZ: quedan fuera de la base
 // de la renovación (criterio §3.5, §4.1). Cuando el parámetro es un rango, el monto lo elige el
 // vendedor y el motor controla que caiga adentro; si no cae, hace falta el motivo.
+//
+// S&H E INGENIERÍA TIENEN VALOR ESTÁNDAR (Joaquín, 26/09): el técnico de SyH va por jornada y la
+// memoria de cálculo tiene un monto fijo. Son los opcionales de toda bandeja y fachada (los
+// agrega solos el borrador: ver opcionalesEstandar en src/lib/asistente/borrador.ts).
 
 import { nuevaLinea, numero, pesos, type Aviso, type Linea, type Rango, type Resultado, type Seccion, type Tarifas } from "./tipos.ts";
 
@@ -11,8 +15,12 @@ export type TipoComplementario = "flete" | "ingenieria" | "syh" | "gestoria" | "
 export type EntradaComplementario = {
   tipo: TipoComplementario;
   seccion: Seccion;
-  /** Monto elegido (rangos) o monto manual. En media sombra, los m². */
+  /** Monto elegido (rangos) o monto manual. En S&H, el valor por jornada si no es el de tarifa. */
   monto?: number;
+  /** S&H: jornadas con el técnico en obra. Si no viene, el borrador pone las de armado + desarme. */
+  jornadas?: number;
+  /** Aclaración que va entre paréntesis en la descripción (p. ej. "armado y desarme"). */
+  detalle?: string;
   metros2?: number;
   /** Flete: a dónde. */
   zona?: "gba_cercano" | "caba" | "la_plata" | "otra";
@@ -94,8 +102,11 @@ export function cotizarComplementario(e: EntradaComplementario, t: Tarifas): Res
       break;
     }
     case "ingenieria":
+      // Sin monto: la memoria de cálculo estándar. Con monto (obra compleja o torre simple), se
+      // controla contra el rango que va del piso de torre simple al techo de obras complejas.
       if (e.monto === undefined) {
-        pendientes.push({ codigo: "monto_ingenieria", pregunta: `Ingeniería: va de ${pesos(c.ingenieriaTorreSimple)} (torre simple) a ${pesos(c.ingenieria.max)} lo habitual (${pesos(c.ingenieria.min)} – ${pesos(c.ingenieria.max)}). ¿Cuánto?` });
+        precio = c.ingenieriaMemoria;
+        calculo = "memoria de cálculo estándar, única vez";
       } else {
         precio = e.monto;
         desvio = controlarRango(precio, { min: c.ingenieriaTorreSimple, max: c.ingenieria.max }, "Ingeniería", e.motivo, avisos);
@@ -103,13 +114,17 @@ export function cotizarComplementario(e: EntradaComplementario, t: Tarifas): Res
       }
       break;
     case "syh":
-      if (e.monto === undefined) {
-        pendientes.push({ codigo: "monto_syh", pregunta: `Seguridad e Higiene va de ${pesos(c.syh.min)} a ${pesos(c.syh.max)} según jornadas (en obras chicas se aclara y no va como línea). ¿Cuánto?` });
-      } else {
-        precio = e.monto;
-        desvio = controlarRango(precio, c.syh, "Seguridad e Higiene", e.motivo, avisos);
-        calculo = "S&H, única vez";
+      if (!(e.jornadas && e.jornadas > 0)) {
+        pendientes.push({ codigo: "jornadas_syh", pregunta: "El técnico de Seguridad e Higiene se cotiza por jornada: faltan las jornadas de armado y desarme." });
+        break;
       }
+      precio = e.monto ?? c.syhJornada;
+      if (e.monto !== undefined && e.monto !== c.syhJornada) {
+        if (!e.motivo?.trim()) avisos.push({ nivel: "bloqueo", codigo: "motivo_precio", texto: `El técnico de SyH es ${pesos(c.syhJornada)} por jornada: para usar ${pesos(e.monto)} hace falta el motivo.` });
+        else desvio = { tarifa: `${pesos(c.syhJornada)} por jornada`, motivo: e.motivo.trim() };
+      }
+      cantidad = e.jornadas;
+      calculo = `${numero(e.jornadas)} jornada${e.jornadas === 1 ? "" : "s"} × ${pesos(precio)}`;
       break;
     case "media_sombra":
       if (!(e.metros2 && e.metros2 > 0)) {
@@ -131,7 +146,10 @@ export function cotizarComplementario(e: EntradaComplementario, t: Tarifas): Res
         grupo: "complementario",
         seccion: e.seccion,
         producto: e.producto ?? PRODUCTO[e.tipo],
-        descripcion: DESCRIPCION[e.tipo],
+        descripcion:
+          e.tipo === "syh"
+            ? `Técnico de Seguridad e Higiene en obra — ${numero(cantidad)} jornada${cantidad === 1 ? "" : "s"}${e.detalle ? ` (${e.detalle})` : ""}`
+            : DESCRIPCION[e.tipo],
         cantidad,
         precioUnitario: precio,
         unicaVez: e.tipo !== "media_sombra",

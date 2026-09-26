@@ -70,6 +70,19 @@ Cualquier cambio en el presupuesto vence la acción y hay que volver a proponerl
 Cada orden lleva `x_asistente_ref`, así un reintento no duplica nada. Después de guardar, el
 neto de Odoo tiene que coincidir con el del motor.
 
+**Opcionales estándar** (Joaquín, 26/09). Toda bandeja y fachada sale sola con estos
+opcionales, que no suman al subtotal:
+
+| Opcional | Cómo se calcula | Cuándo |
+| --- | --- | --- |
+| Concertina | 10 % del metro de bandeja por los m.l. facturables | Sólo bandejas |
+| Técnico de Seguridad e Higiene | $ 250.000 por jornada, por las jornadas de armado + desarme (una jornada corta cuenta entera) | Bandejas y fachadas |
+| Memoria de cálculo | $ 1.250.000 | Bandejas y fachadas. **Pasados los 6 m de altura va en la base**, porque es obligatoria (Decreto 911/96, criterio §6.1) |
+
+- Si el cliente pide alguno, pasa a la base.
+- Si el vendedor lo saca, no vuelve a aparecer al recalcular.
+- Todo está en `opcionalesEstandar` (`src/lib/asistente/borrador.ts`) y los valores en Tarifas.
+
 **Tope de gasto:** `asistente_tope_diario_usd` (hoy US$ 30 por persona y por día). Se cambia en
 Parámetros.
 
@@ -259,7 +272,7 @@ tiene caché de 1 h.
 | `src/app/api/comercial/parametros/` | Tarifas, historial, criterio, lista de alquiler, productos, renders, vendedores |
 | `src/app/api/whatsapp/webhook/` | El webhook de Meta |
 
-**Datos** (migraciones `20260926000001` a `…04`):
+**Datos** (migraciones `20260926000001` a `…06`):
 
 - `cotizacion_parametros` (+ `_cambios`), `cotizacion_criterios`, `lista_alquiler` (+ `_piezas`),
   `cotizacion_renders`, `cotizacion_productos_odoo`;
@@ -297,7 +310,8 @@ webhook de WhatsApp, y cada uno tiene su secreto o firma.
   - los siguientes: US$ 0,08 a 0,20;
   - un presupuesto completo conversado: ~US$ 1 a 3.
 
-  La pantalla de uso por persona sale de `asistente_mensajes.uso`.
+  El uso de cada pedido queda en `asistente_mensajes.uso` (y el tope diario lo calcula
+  `gastoDelDia`), pero **la pantalla de uso por persona y por mes todavía no está hecha**.
 - **ElevenLabs**: la voz en vivo se cobra por minuto según el plan; transcribir, ~US$ 0,40 por
   hora de audio.
 - **WhatsApp**: responder dentro de las 24 h de un mensaje del vendedor no tiene costo de Meta.

@@ -76,7 +76,15 @@ export type DatosBorrador = {
   perfilComercial: Record<string, string>;
   /** Notas internas para el chatter de la orden. */
   notasInternas: string | null;
+  /**
+   * Opcionales estándar que el vendedor sacó (técnico de SyH, memoria de cálculo): no vuelven a
+   * aparecer solos. Vuelven si se agregan a mano con agregar_complementario.
+   */
+  opcionalesDescartados: OpcionalEstandar[];
 };
+
+/** Los que el borrador agrega solo en toda bandeja y fachada (ver opcionalesEstandar). */
+export type OpcionalEstandar = "syh" | "ingenieria";
 
 export function borradorVacio(): DatosBorrador {
   return {
@@ -100,6 +108,7 @@ export function borradorVacio(): DatosBorrador {
     conflictoCanal: { revisado: false, resultado: null },
     perfilComercial: {},
     notasInternas: null,
+    opcionalesDescartados: [],
   };
 }
 
@@ -150,6 +159,55 @@ export type ResultadoBorrador = {
   calculadoCon: { listaAlquiler: string | null; fecha: string };
 };
 
+/** Pasados estos metros de altura, la memoria de cálculo es obligatoria (Decreto 911/96, criterio §6.1). */
+export const ALTURA_MEMORIA_OBLIGATORIA = 6;
+
+/** Altura de la estructura que se cotiza (la mayor, si hay bandeja y fachada). */
+function alturaEstructura(d: DatosBorrador): number | null {
+  const h = Math.max(d.calculos.bandeja?.altura ?? 0, d.calculos.fachada?.altura ?? 0);
+  return h > 0 ? h : null;
+}
+
+/** Jornadas con técnico de SyH: las de armado más las de desarme (una jornada corta cuenta entera). */
+function jornadasSyh(d: DatosBorrador): number | null {
+  const { armado, desarme } = d.jornadas;
+  if (!armado || !desarme) return null;
+  return Math.ceil(armado) + Math.ceil(desarme);
+}
+
+/**
+ * Los opcionales de toda bandeja y fachada (Joaquín, 26/09): el técnico de SyH por jornada y la
+ * memoria de cálculo. La concertina no va acá: es parte de la bandeja y por defecto es opcional.
+ *
+ * Salen solos salvo que ya estén cargados a mano (en cualquier sección) o que el vendedor los
+ * haya sacado. No dependen de que el asistente se acuerde.
+ *
+ * Pasados los 6 m de altura la memoria de cálculo es obligatoria por ley, así que va en la base.
+ */
+function opcionalesEstandar(d: DatosBorrador): EntradaComplementario[] {
+  if (!d.calculos.bandeja && !d.calculos.fachada) return [];
+  const cargados = new Set((d.calculos.complementarios ?? []).map((c) => c.tipo));
+  const fuera = new Set(d.opcionalesDescartados);
+  const salen: EntradaComplementario[] = [];
+  if (!cargados.has("syh") && !fuera.has("syh")) salen.push({ tipo: "syh", seccion: "opcional" });
+  if (!cargados.has("ingenieria") && !fuera.has("ingenieria")) {
+    const obligatoria = (alturaEstructura(d) ?? 0) > ALTURA_MEMORIA_OBLIGATORIA;
+    salen.push({ tipo: "ingenieria", seccion: obligatoria ? "base" : "opcional" });
+  }
+  return salen;
+}
+
+/** Pasados los 6 m, dónde quedó la memoria de cálculo: en la base está bien; si no, se avisa. */
+function avisoMemoria(d: DatosBorrador, lineas: Linea[]): Aviso[] {
+  const h = alturaEstructura(d);
+  if (h === null || h <= ALTURA_MEMORIA_OBLIGATORIA) return [];
+  const ing = lineas.find((l) => l.id === "ingenieria");
+  const ley = `pasados los ${ALTURA_MEMORIA_OBLIGATORIA} m la memoria de cálculo es obligatoria (Decreto 911/96)`;
+  if (!ing) return [{ nivel: "advertencia", codigo: "memoria_obligatoria", texto: `Estructura de ${h} m sin memoria de cálculo: ${ley}. Si no se cobra, que quede claro por qué.` }];
+  if (ing.seccion !== "base") return [{ nivel: "advertencia", codigo: "memoria_obligatoria", texto: `Estructura de ${h} m con la memoria de cálculo como ${ing.seccion}: ${ley}, así que corresponde en la base.` }];
+  return [{ nivel: "info", codigo: "memoria_obligatoria", texto: `Estructura de ${h} m: ${ley}, por eso va en la base y no como opcional.` }];
+}
+
 export type ContextoCalculo = { tarifas: Tarifas; lista: { id: string; piezas: PiezaDeLista[] } | null; hoy: string };
 
 export function recalcular(d: DatosBorrador, ctx: ContextoCalculo): ResultadoBorrador {
@@ -166,7 +224,16 @@ export function recalcular(d: DatosBorrador, ctx: ContextoCalculo): ResultadoBor
     });
   }
   if (d.calculos.manoObra) parciales.push({ grupo: "mano_obra", r: cotizarManoObra(d.calculos.manoObra, t) });
-  for (const c of d.calculos.complementarios ?? []) parciales.push({ grupo: "complementario", r: cotizarComplementario(c, t) });
+  // Al técnico de SyH, si no le dijeron cuántas jornadas, le tocan las de armado + desarme.
+  const jornadas = jornadasSyh(d);
+  const conJornadas = (c: EntradaComplementario): EntradaComplementario =>
+    c.tipo === "syh" && c.jornadas === undefined && jornadas !== null ? { ...c, jornadas, detalle: "armado y desarme" } : c;
+  for (const c of d.calculos.complementarios ?? []) parciales.push({ grupo: "complementario", r: cotizarComplementario(conJornadas(c), t) });
+  for (const c of opcionalesEstandar(d)) {
+    // El técnico de SyH aparece cuando se saben las jornadas (se preguntan siempre, §4.9).
+    if (c.tipo === "syh" && jornadas === null) continue;
+    parciales.push({ grupo: "complementario", r: cotizarComplementario(conJornadas(c), t) });
+  }
 
   // Una misma línea (p. ej. la gestoría) puede salir de dos cálculos: gana la primera.
   const vistas = new Set<string>();
@@ -185,7 +252,7 @@ export function recalcular(d: DatosBorrador, ctx: ContextoCalculo): ResultadoBor
     null;
 
   const totales = calcularTotales(lineas, { ivaPct: t.ivaPct, renovacionPct });
-  const avisos = [...parciales.flatMap((p) => p.r.avisos), ...(lineas.length ? chequear(lineas, totales, t) : [])];
+  const avisos = [...parciales.flatMap((p) => p.r.avisos), ...avisoMemoria(d, lineas), ...(lineas.length ? chequear(lineas, totales, t) : [])];
   const pendientes = parciales.flatMap((p) => p.r.pendientes);
 
   return {

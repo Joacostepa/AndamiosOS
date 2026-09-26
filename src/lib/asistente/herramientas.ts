@@ -28,7 +28,7 @@ import type { ProductoOdoo } from "@/lib/parametros-cotizacion/tipos";
 import { enLetras } from "@/lib/cotizador/letras";
 import {
   alcanceTecnico, aplicarCambios, borradorVacio, opcionDuracion, recalcular,
-  type DatosBorrador, type ResultadoBorrador,
+  type DatosBorrador, type OpcionalEstandar, type ResultadoBorrador,
 } from "./borrador";
 import { crearBorrador, guardarBorrador, leerAccionPorNumero, type Borrador, type Conversacion, type Vendedor } from "./datos";
 import { proponerAccion, rechazarAccion, verificarConfirmacion, ejecutarAccion, vistaAccion } from "./acciones";
@@ -421,7 +421,7 @@ const HERRAMIENTAS = [
       precioMl: z.number().optional(),
       motivoPrecio: z.string().optional(),
       bonificacionPct: z.number().optional().describe("Bonificación sobre lista en %; la renovación sigue sobre lista. Requiere motivoPrecio."),
-      concertina: seccionONo.describe("base si el cliente la pidió; opcional si la va a evaluar"),
+      concertina: seccionONo.default("opcional").describe("Por defecto opcional (criterio §4.8). base si el cliente la pidió; no, sólo si la descartó"),
       gestoria: seccionONo,
       enCaba: z.boolean(),
     }),
@@ -503,7 +503,11 @@ const HERRAMIENTAS = [
   }),
   definir({
     nombre: "agregar_complementario",
-    descripcion: "Agrega o reemplaza un ítem complementario con valor en Parámetros: flete (zona), ingeniería, S&H (rango: pasá monto), gestoría (sólo CABA) o media sombra (m²). Son de única vez salvo la media sombra.",
+    descripcion:
+      "Agrega o reemplaza un ítem complementario con valor en Parámetros: flete (zona), ingeniería, S&H, gestoría (sólo CABA) o media sombra (m²). Son de única vez salvo la media sombra. " +
+      "En toda bandeja y fachada, el técnico de SyH (por jornada) y la memoria de cálculo ya salen solos como opcionales (la memoria, en la base si la estructura pasa los 6 m): " +
+      "usá esto para pasarlos a la base porque el cliente los pidió, cambiar las jornadas de SyH o poner un monto de ingeniería de obra compleja. " +
+      "Ingeniería sin monto = memoria de cálculo estándar. S&H sin jornadas = las de armado + desarme.",
     etiqueta: "Agregando un ítem",
     esquema: z.object({
       tipo: z.enum(["flete", "ingenieria", "syh", "gestoria", "media_sombra"]),
@@ -514,11 +518,14 @@ const HERRAMIENTAS = [
       enCaba: z.boolean().optional(),
       motivo: z.string().optional(),
       unidad: z.string().optional().describe("Para opcionales: «por mes», «por jornada»"),
+      jornadas: z.number().optional().describe("S&H: jornadas con el técnico en obra. Por defecto, las de armado + desarme"),
     }),
     ejecutar: async (i, ctx) => {
       const b = await mutar(ctx, (d) => ({
         ...d,
         calculos: { ...d.calculos, complementarios: [...(d.calculos.complementarios ?? []).filter((c) => c.tipo !== i.tipo), i] },
+        // Si se había sacado y ahora se pide de nuevo, vuelve.
+        opcionalesDescartados: d.opcionalesDescartados.filter((x) => x !== i.tipo),
         trabajo: { ...d.trabajo, ...(i.tipo === "syh" && i.seccion === "base" ? { syhPresencial: "si" as const } : {}), ...(i.tipo === "gestoria" && i.seccion === "base" ? { llevaPermiso: "si" as const } : {}) },
       }), { agregar_complementario: i });
       return { contenido: json(resumenParaModelo(b)) };
@@ -566,7 +573,10 @@ const HERRAMIENTAS = [
         if (linea.grupo === "alquiler") delete c.alquiler;
         if (linea.grupo === "mano_obra") delete c.manoObra;
         if (linea.grupo === "complementario") c.complementarios = (c.complementarios ?? []).filter((x) => x.tipo !== id);
-        return { ...d, calculos: c };
+        // Un opcional estándar que se saca no vuelve a salir solo al recalcular.
+        const estandar: OpcionalEstandar | null = id === "syh" || id === "ingenieria" ? id : null;
+        const descartados = estandar && !d.opcionalesDescartados.includes(estandar) ? [...d.opcionalesDescartados, estandar] : d.opcionalesDescartados;
+        return { ...d, calculos: c, opcionalesDescartados: descartados };
       }, { quitar: id });
       return { contenido: json(resumenParaModelo(b)) };
     },

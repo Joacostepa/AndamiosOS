@@ -19,6 +19,7 @@ import { calcularTotales, type Totales } from "../cotizador/totales.ts";
 import { chequear } from "../cotizador/chequeos.ts";
 import { validarCuit } from "../cotizador/cuit.ts";
 import type { Aviso, Linea, Pendiente, Resultado, Tarifas } from "../cotizador/tipos.ts";
+import type { Lote } from "../catastro/caba.ts";
 
 export type Modelo = "A" | "B" | "C" | "D";
 export type Contrato = "Obra " | "Simple" | "Alquiler Sin Montaje";
@@ -35,7 +36,12 @@ export type DatosBorrador = {
     /** true = no está en Odoo y hay que darlo de alta al guardar (con confirmación). */
     esNuevo: boolean;
   };
-  obra: { direccion: string | null; enCaba: boolean | null };
+  obra: {
+    direccion: string | null;
+    enCaba: boolean | null;
+    /** El lote verificado contra el catastro (verificar_frente_lote). Sólo lo escribe esa herramienta. */
+    lote: Lote | null;
+  };
   modelo: Modelo | null;
   contrato: Contrato | null;
   /** Resumen corto para el nombre del PDF y la oportunidad: "Bandeja de protección 10 m.l.". */
@@ -89,7 +95,7 @@ export type OpcionalEstandar = "syh" | "ingenieria";
 export function borradorVacio(): DatosBorrador {
   return {
     cliente: { partnerId: null, razonSocial: null, contacto: null, celular: null, email: null, cuit: null, domicilio: null, esNuevo: false },
-    obra: { direccion: null, enCaba: null },
+    obra: { direccion: null, enCaba: null, lote: null },
     modelo: null,
     contrato: null,
     referencia: null,
@@ -208,6 +214,70 @@ function avisoMemoria(d: DatosBorrador, lineas: Linea[]): Aviso[] {
   return [{ nivel: "info", codigo: "memoria_obligatoria", texto: `Estructura de ${h} m: ${ley}, por eso va en la base y no como opcional.` }];
 }
 
+const suma = (xs: number[]) => Math.round(xs.reduce((a, b) => a + b, 0) * 100) / 100;
+const m = (n: number) => `${n.toLocaleString("es-AR", { maximumFractionDigits: 2 })} m`;
+
+/** El frente del lote para comparar: la suma de las caras medidas, o el de AGIP si no hay plano. */
+export function frenteDelLote(lote: Lote): number | null {
+  return lote.caras.length ? suma(lote.caras) : lote.frenteCatastro;
+}
+
+/**
+ * Criterio, Geometría 3 y 4: en CABA el frente se verifica contra la parcela (Joaquín, 26/09:
+ * "siempre"), y si es esquina se pregunta si van los dos frentes o uno. Sin verificar no se
+ * puede guardar. Fuera de CABA el frente lo da el cliente y no bloquea.
+ *
+ * Los m.l. cotizados que no cierran con el frente son una advertencia, no un bloqueo: una obra
+ * puede ocupar dos lotes o cubrir sólo un tramo (Arengreen 655: 24 m.l. contra lotes de 5,63
+ * y 8 m).
+ */
+export function chequeoLote(d: DatosBorrador): { avisos: Aviso[]; faltante: Faltante | null } {
+  const cotizados = [
+    d.calculos.bandeja ? { que: "La bandeja", ml: d.calculos.bandeja.metros } : null,
+    d.calculos.fachada ? { que: "La estructura en fachada", ml: suma(d.calculos.fachada.frentes) } : null,
+  ].filter((x): x is { que: string; ml: number } => x !== null);
+  if (!cotizados.length || d.obra.enCaba === false) return { avisos: [], faltante: null };
+
+  const lote = d.obra.lote;
+  const vigente = lote !== null && lote.direccionConsultada.trim() === (d.obra.direccion ?? "").trim();
+  if (!vigente) {
+    return {
+      avisos: [],
+      faltante: {
+        codigo: "frente_lote",
+        texto: lote
+          ? "Cambió la dirección de la obra: hay que volver a verificar el frente del lote (verificar_frente_lote)."
+          : "Falta verificar el frente del lote contra el catastro de la Ciudad (verificar_frente_lote).",
+      },
+    };
+  }
+  const frente = frenteDelLote(lote);
+  if (!frente) {
+    return { avisos: [], faltante: { codigo: "frente_lote", texto: "El catastro no tiene la medida del frente: pedísela al vendedor (verificar_frente_lote con frenteConfirmado)." } };
+  }
+
+  const origen = lote.fuente === "vendedor" ? `según el vendedor: ${lote.nota ?? "sin detalle"}` : `catastro, parcela ${lote.smp}`;
+  const avisos: Aviso[] = [{ nivel: "info", codigo: "frente_lote", texto: `Frente del lote: ${lote.caras.length > 1 ? `${lote.caras.map(m).join(" + ")} = ` : ""}${m(frente)} (${origen}).` }];
+  if (lote.esquina) {
+    const decidido = d.decisiones.esquina;
+    avisos.push({
+      nivel: decidido ? "info" : "advertencia",
+      codigo: "esquina",
+      texto: `El lote es esquina (${lote.calles.join(" y ") || "dos caras"}${lote.caras.length > 1 ? `: ${lote.caras.map(m).join(" y ")}` : ""}). ${decidido ? `Se decidió: ${decidido}.` : "¿Van los dos frentes o uno solo? Anotalo en decisiones.esquina."}`,
+    });
+  }
+  const menor = lote.esquina && lote.caras.length > 1 ? Math.min(...lote.caras) : frente;
+  for (const c of cotizados) {
+    const tolerancia = Math.max(1, frente * 0.05);
+    if (c.ml > frente + tolerancia) {
+      avisos.push({ nivel: "advertencia", codigo: "frente_mayor", texto: `${c.que} tiene ${m(c.ml)}.l. y el frente del lote es ${m(frente)} (${origen}): ¿toma lotes vecinos o la medida está mal?` });
+    } else if (c.ml < menor - tolerancia) {
+      avisos.push({ nivel: "advertencia", codigo: "frente_menor", texto: `${c.que} tiene ${m(c.ml)}.l. y el frente del lote es ${m(frente)} (${origen}): ¿cubre sólo un tramo?` });
+    }
+  }
+  return { avisos, faltante: null };
+}
+
 export type ContextoCalculo = { tarifas: Tarifas; lista: { id: string; piezas: PiezaDeLista[] } | null; hoy: string };
 
 export function recalcular(d: DatosBorrador, ctx: ContextoCalculo): ResultadoBorrador {
@@ -252,7 +322,7 @@ export function recalcular(d: DatosBorrador, ctx: ContextoCalculo): ResultadoBor
     null;
 
   const totales = calcularTotales(lineas, { ivaPct: t.ivaPct, renovacionPct });
-  const avisos = [...parciales.flatMap((p) => p.r.avisos), ...avisoMemoria(d, lineas), ...(lineas.length ? chequear(lineas, totales, t) : [])];
+  const avisos = [...parciales.flatMap((p) => p.r.avisos), ...avisoMemoria(d, lineas), ...chequeoLote(d).avisos, ...(lineas.length ? chequear(lineas, totales, t) : [])];
   const pendientes = parciales.flatMap((p) => p.r.pendientes);
 
   return {
@@ -277,6 +347,10 @@ export function faltantesParaEmitir(d: DatosBorrador, r: { lineas: Linea[]; avis
     if (c.cuit && !validarCuit(c.cuit).valido) f.push({ codigo: "cuit", texto: `El CUIT ${c.cuit} no valida: confirmalo contra la constancia antes de cargarlo.` });
   }
   if (!d.obra.direccion?.trim()) f.push({ codigo: "obra", texto: "Falta la dirección de la obra." });
+  else {
+    const lote = chequeoLote(d).faltante;
+    if (lote) f.push(lote);
+  }
   if (!d.contrato) f.push({ codigo: "contrato", texto: "Falta el tipo de contrato (Obra, Simple o Alquiler Sin Montaje)." });
   const conMontaje = d.contrato === "Obra ";
   if (conMontaje && (d.jornadas.armado === null || d.jornadas.desarme === null)) {

@@ -27,9 +27,10 @@ import type { PiezaDeLista } from "@/lib/cotizador/alquiler";
 import type { ProductoOdoo } from "@/lib/parametros-cotizacion/tipos";
 import { enLetras } from "@/lib/cotizador/letras";
 import {
-  alcanceTecnico, aplicarCambios, borradorVacio, opcionDuracion, recalcular,
+  alcanceTecnico, aplicarCambios, borradorVacio, frenteDelLote, opcionDuracion, recalcular,
   type DatosBorrador, type OpcionalEstandar, type ResultadoBorrador,
 } from "./borrador";
+import { consultarLote, type ConsultaLote, type Lote } from "@/lib/catastro/caba";
 import { crearBorrador, guardarBorrador, leerAccionPorNumero, type Borrador, type Conversacion, type Vendedor } from "./datos";
 import { proponerAccion, rechazarAccion, verificarConfirmacion, ejecutarAccion, vistaAccion } from "./acciones";
 import { crearEjecutor, type PayloadGuardar, type PayloadMail } from "./ejecutores";
@@ -105,6 +106,11 @@ export function resumenCortoBorrador(b: Borrador): string {
     `versión ${b.version}`,
   ].filter(Boolean);
   return partes.join(" · ");
+}
+
+/** Lo que el motor dice del lote después de verificarlo: frente, esquina y si los metros cierran. */
+function avisosDeLote(b: Borrador): string[] {
+  return (b.resultado?.avisos ?? []).filter((a) => ["frente_lote", "esquina", "frente_mayor", "frente_menor"].includes(a.codigo)).map((a) => a.texto);
 }
 
 /** Aplica un cambio al borrador, recalcula con el motor, guarda (versión nueva) y avisa a la pantalla. */
@@ -260,6 +266,65 @@ const HERRAMIENTAS = [
           : `${r.ventas.length} presupuestos y ${r.oportunidades.length} oportunidades con esa dirección${otros.length ? `; ${otros.length} de otro técnico` : ""}.`;
       await mutar(ctx, (d) => ({ ...d, conflictoCanal: { revisado: true, resultado: texto } }), { conflictoCanal: texto });
       return { contenido: json({ ...r, conclusion: texto, deOtroTecnico: otros.map((v) => `${v.numero} (${v.tecnico})`) }) };
+    },
+  }),
+  definir({
+    nombre: "verificar_frente_lote",
+    descripcion:
+      "Verifica el frente del lote de la obra (la dirección del borrador) contra el catastro de la Ciudad: frente, fondo y pisos de la parcela, y si es esquina, cada cara medida sobre el plano. " +
+      "OBLIGATORIO en CABA para toda bandeja y estructura en fachada (criterio, Geometría 3): sin esto no se puede guardar. Hacelo apenas tengas la dirección, antes de cotizar los metros, y contale al vendedor si no cierra. " +
+      "Si la altura no es una puerta oficial, devuelve las parcelas vecinas: preguntale cuál es la obra y volvé a llamar con su smp. " +
+      "Sólo si el catastro no tiene la medida: llamá con frenteConfirmado y de dónde sale.",
+    etiqueta: "Verificando el frente en el catastro",
+    esquema: z.object({
+      smp: z.string().optional().describe("La parcela elegida entre las vecinas (sección-manzana-parcela, p. ej. 009-081-018)"),
+      frenteConfirmado: z.number().positive().optional().describe("Sólo si el catastro no da la medida: los metros de frente que da el vendedor"),
+      origen: z.string().optional().describe("De dónde sale frenteConfirmado: «medido en obra», «lo pasó el cliente»"),
+    }),
+    ejecutar: async (i, ctx) => {
+      const d = ctx.borrador.datos;
+      const direccion = d.obra.direccion?.trim();
+      if (!direccion) return { contenido: "Primero cargá la dirección de la obra (actualizar_borrador).", esError: true };
+
+      if (i.frenteConfirmado) {
+        const actual = d.obra.lote?.direccionConsultada === direccion ? d.obra.lote : null;
+        if (actual?.fuente === "catastro" && frenteDelLote(actual)) {
+          return { contenido: `El catastro ya da ${frenteDelLote(actual)} m de frente: esa es la medida del lote. Si la obra cubre otra, cotizá esos metros y queda el aviso para que se vea.`, esError: true };
+        }
+        if (!i.origen?.trim()) return { contenido: "Decí de dónde sale la medida (medido en obra, lo pasó el cliente).", esError: true };
+        const lote: Lote = {
+          fuente: "vendedor", direccionConsultada: direccion, smp: actual?.smp ?? i.smp ?? null, direccionOficial: actual?.direccionOficial ?? null,
+          frenteCatastro: null, caras: [i.frenteConfirmado], tramosCortos: [], esquina: false, calles: actual?.calles ?? [],
+          fondo: actual?.fondo ?? null, superficie: actual?.superficie ?? null, pisos: actual?.pisos ?? null, nota: i.origen.trim(), consultado: new Date().toISOString(),
+        };
+        const b = await mutar(ctx, (x) => ({ ...x, obra: { ...x.obra, lote } }), { verificar_frente_lote: { frenteConfirmado: i.frenteConfirmado, origen: lote.nota } });
+        return { contenido: json({ ok: true, lote, avisos: avisosDeLote(b) }) };
+      }
+
+      let r: ConsultaLote;
+      try {
+        r = await consultarLote({ direccion, enCaba: d.obra.enCaba, smp: i.smp });
+      } catch (e) {
+        return {
+          contenido: `El catastro de la Ciudad no responde (${e instanceof Error ? e.message : e}). Probá de nuevo en un rato; si urge, pedile la medida al vendedor y llamá con frenteConfirmado.`,
+          esError: true,
+        };
+      }
+      if (r.estado === "puerta_no_oficial") {
+        return { contenido: json({ ...r, siguiente: "Esa altura no es una puerta oficial. Preguntale al vendedor cuál de estas parcelas es la obra (o si ocupa varias) y volvé a llamar con su smp." }) };
+      }
+      if (r.estado === "fuera_de_caba") {
+        return { contenido: json({ ...r, siguiente: "Fuera de CABA no hay catastro para consultar: el frente lo da el cliente (criterio, Geometría 3) y no bloquea. Si el borrador dice que es CABA, corregí obra.enCaba." }) };
+      }
+      if (r.estado === "no_encontrado") return { contenido: json(r), esError: true };
+      const lote = r.lote;
+      const b = await mutar(ctx, (x) => ({ ...x, obra: { ...x.obra, lote } }), { verificar_frente_lote: { smp: lote.smp } });
+      return {
+        contenido: json({
+          ok: true, lote, avisos: avisosDeLote(b),
+          ...(frenteDelLote(lote) ? {} : { siguiente: "El catastro tiene la parcela pero no la medida del frente: pedísela al vendedor y llamá con frenteConfirmado." }),
+        }),
+      };
     },
   }),
   definir({
@@ -707,6 +772,14 @@ function notaHtml(d: DatosBorrador, r: ResultadoBorrador): string {
   const desvios = r.lineas.filter((l) => l.desvio);
   if (desvios.length) {
     partes.push(`<p><b>Precios fuera de tarifa:</b></p><ul>${desvios.map((l) => `<li>${esc(l.descripcion)}: ${esc(l.calculo)} — tarifa ${esc(l.desvio!.tarifa)}. Motivo: ${esc(l.desvio!.motivo)}</li>`).join("")}</ul>`);
+  }
+  const lote = d.obra.lote;
+  const frente = lote ? frenteDelLote(lote) : null;
+  if (lote && frente) {
+    const detalle = lote.fuente === "vendedor"
+      ? `según el vendedor (${esc(lote.nota ?? "sin detalle")})`
+      : `catastro de la Ciudad, parcela ${esc(lote.smp ?? "—")}${lote.direccionOficial ? ` (${esc(lote.direccionOficial)})` : ""}`;
+    partes.push(`<p><b>Frente del lote:</b> ${lote.caras.length > 1 ? `${lote.caras.join(" + ")} = ` : ""}${frente} m, ${detalle}${lote.esquina ? `; esquina${lote.calles.length ? ` (${esc(lote.calles.join(" y "))})` : ""}` : ""}${lote.pisos ? `; ${lote.pisos} pisos` : ""}.</p>`);
   }
   const fuera = r.lineas.filter((l) => l.seccion !== "base");
   if (fuera.length) {

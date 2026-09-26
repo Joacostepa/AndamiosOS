@@ -19,6 +19,8 @@ export function PanelBorrador({ borrador }: { borrador: BorradorVista | null }) 
   const base = r?.lineas.filter((l) => l.seccion === "base") ?? [];
   const otras = r?.lineas.filter((l) => l.seccion !== "base") ?? [];
   const bloqueos = r?.avisos.filter((a) => a.nivel !== "info") ?? [];
+  // "Frente del lote: 7,84 m (catastro, parcela 009-081-018)." — lo verificado, para verlo de un vistazo.
+  const frente = r?.avisos.find((a) => a.codigo === "frente_lote" && a.nivel === "info")?.texto ?? null;
 
   return (
     <div className="space-y-4 p-4 text-[13px]">
@@ -35,6 +37,7 @@ export function PanelBorrador({ borrador }: { borrador: BorradorVista | null }) 
         <p className="text-muted-foreground">
           {[d.cliente.razonSocial, d.obra.direccion].filter(Boolean).join(" · ") || "Sin cliente ni obra todavía"}
         </p>
+        {frente && <p className="text-[12px] text-muted-foreground">{frente}</p>}
         {d.modelo && <p className="text-[12px] text-muted-foreground">{MODELOS[d.modelo]}{d.contrato ? ` · contrato ${d.contrato.trim()}` : ""}</p>}
       </div>
 

@@ -25,6 +25,8 @@ En producción: `https://andamios-os.vercel.app/comercial/asistente` y `/comerci
 | Mensaje de WhatsApp para el cliente, solo y con su nombre | ✅ 26/09 a la noche (ver § más abajo) |
 | A Odoo va sólo la base (sin opcionales) | ✅ 26/09 a la noche; S02715 y S02716 corregidas |
 | Buscador de conversaciones, archivar y eliminar las vacías | ✅ 26/09 a la noche (ver § más abajo) |
+| Voz en vivo más fluida (ElevenLabs, esfuerzo `low`, respuestas descartadas) | ✅ `0ea373a` (ver § más abajo) |
+| Frente del lote verificado contra el catastro de la Ciudad | ✅ 26/09 a la noche (ver § más abajo) |
 | WhatsApp | Construido y probado simulando a Meta. **Sin configurar: lo postergó JS** |
 | Parámetros de cotización (7 pestañas) | ✅ |
 
@@ -192,6 +194,49 @@ mensaje ("...", "Hola, ¿cómo estás?"). El botón de archivar aparecía sólo 
 - el borrado de una vacía de prueba y el rechazo de una con mensajes.
 
 La pantalla no la probó Claude, que no tiene login.
+
+### Frente del lote contra el catastro (26/09 a la noche)
+
+**Pedido de JS:** en bandejas y estructuras "siempre hay que verificar los metros de fachada
+del lote". El criterio ya lo decía ("en CABA se verifica el frente contra la parcela
+(Dateas)"), pero el asistente no tenía cómo hacerlo.
+
+**Cómo quedó:**
+
+- **Herramienta** `verificar_frente_lote`, que consulta el catastro público del GCBA
+  (`src/lib/catastro/`; detalle en el doc del módulo, § "Frente del lote").
+- **Bloqueo:** faltante `frente_lote` (`chequeoLote` en `borrador.ts`). Aplica en CABA, con
+  bandeja o fachada, mientras el frente no esté verificado para la dirección actual.
+- **Avisos que no bloquean:**
+  - `frente_mayor` y `frente_menor`, con tolerancia de 1 m o 5 %;
+  - `esquina`, que es advertencia hasta que se anote `decisiones.esquina`.
+- **Dónde queda:** el lote se guarda en `datos.obra.lote`. Sólo lo escribe la herramienta; el
+  esquema de `actualizar_borrador` no lo acepta.
+- **Tests:** 5 de la medición (`frentes.test.ts`) y 8 del motor (`lote.test.ts`).
+
+**Probado contra el catastro real:**
+
+| Dirección | Resultado |
+| --- | --- |
+| Riobamba 653 | 7,84 (AGIP 7,84) |
+| Navarro 2369 | 27,04 (AGIP 27,02) |
+| Chile 865 | 14,90 (AGIP 14,72) |
+| Esmeralda 570 | Esquina: 25,93 + 35,82 |
+| Riobamba 651 y Arengreen 655 | Puertas no oficiales: devuelve las vecinas |
+| Riobamba 651, Lomas de Zamora | Fuera de CABA |
+
+Tarda de 0,1 a 1,2 s.
+
+**Sin probar:** una charla real con el asistente, para ver que llame a la herramienta apenas
+tiene la dirección. Cuesta ~US$ 1.
+
+**Pendiente para JS:**
+
+- **Provincia:** ARBA (IDEBA) tiene los dibujos de las parcelas, pero sin frente ni números de
+  puerta. Cerca de una dirección aparecen ~9 candidatas, así que se podría estimar pero no
+  verificar. Por ahora sigue el criterio: el frente lo da el cliente.
+- **El criterio** todavía nombra "Dateas". Se puede cambiar a "verificar_frente_lote
+  (catastro de la Ciudad)" desde Parámetros → Criterio.
 
 ### Voz en vivo más fluida (26/09 a la noche)
 

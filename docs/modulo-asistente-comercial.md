@@ -105,6 +105,31 @@ opcionales, que no suman al subtotal:
 - Si el vendedor lo saca, no vuelve a aparecer al recalcular.
 - Todo está en `opcionalesEstandar` (`src/lib/asistente/borrador.ts`) y los valores en Tarifas.
 
+**Frente del lote** (Joaquín, 26/09: "siempre"; criterio, Geometría 3 y 4). En CABA, toda
+bandeja y estructura en fachada se verifica contra el catastro de la Ciudad con
+`verificar_frente_lote`. **Sin eso no se puede guardar.**
+
+- **Fuente:** los servicios públicos del GCBA, sin clave (`src/lib/catastro/caba.ts`):
+  - USIG normaliza la dirección;
+  - EPOK da la parcela: frente y fondo de AGIP, pisos y puertas oficiales;
+  - el dibujo de la parcela y de la manzana permite medir cada cara a la calle
+    (`src/lib/catastro/frentes.ts`).
+
+  Es lo mismo que muestran Ciudad 3D y Dateas.
+- **Puertas no oficiales:** el catastro responde sólo por puertas oficiales. Si la altura no
+  es una (Riobamba 651), devuelve las 3 parcelas vecinas y el asistente pregunta cuál es.
+- **Esquinas:** AGIP da un solo frente aunque el lote sea esquina. Las caras se miden sobre el
+  plano: Esmeralda 570 da 25,93 m sobre Esmeralda y 35,82 m sobre Tucumán. El asistente
+  pregunta si van los dos frentes y lo anota en `decisiones.esquina`.
+- **Cuando los metros no cierran,** el motor avisa sin bloquear: la bandeja puede tomar lotes
+  vecinos o cubrir un tramo (Arengreen 655: 24 m.l. contra lotes de 5,63 y 8 m).
+- **Otros casos:**
+  - fuera de CABA el frente lo da el cliente y no bloquea;
+  - si el catastro no tiene la medida o no responde, el vendedor la declara con su origen
+    ("medido en obra");
+  - si cambia la dirección, hay que volver a verificar.
+- El frente verificado queda en el panel del presupuesto y en la nota interna de la orden.
+
 **Tope de gasto:** `asistente_tope_diario_usd` (hoy US$ 30 por persona y por día). Se cambia en
 Parámetros.
 

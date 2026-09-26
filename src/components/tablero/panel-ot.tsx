@@ -6,7 +6,7 @@ import { es } from "date-fns/locale";
 import {
   AlertTriangle, Building2, CalendarCheck, Construction, ExternalLink, Fence, FileText,
   HardHat, Phone, ShieldCheck, User, UserRound, Users, Clock, CalendarDays,
-  CalendarRange, Check, CircleDashed, ClipboardCheck, Pin, PinOff, Plus, Trash2, X,
+  CalendarRange, Check, CircleCheck, CircleDashed, ClipboardCheck, Pin, PinOff, Plus, Trash2, X,
 } from "lucide-react";
 import { useState } from "react";
 import { useDetalleOt } from "@/hooks/use-detalle-ot";
@@ -22,7 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  ALERTA, CORAL, NOTA, PELIGRO, PELIGRO_SOLIDO, semaforo,
+  ALERTA, CORAL, NOTA, OK, PELIGRO, PELIGRO_SOLIDO, semaforo,
 } from "@/lib/tablero/colores";
 import { FRACCIONES, fraccionLabel, type FraccionStr } from "@/lib/tablero/fracciones";
 import { accionDeCierre, jornadasCerradas, jornadasLiberables, type AccionCierre } from "@/lib/tablero/cierre";
@@ -232,6 +232,43 @@ function ContactosDeObra({
         </div>
       )}
     </Fila>
+  );
+}
+
+/**
+ * Lo que la cuadrilla dejó armado de verdad, sellado en obra al cerrar la última jornada.
+ *
+ * SÓLO SE MUESTRA CUANDO EXISTE. Una caja fija diciendo "todavía no se cerró" en todas
+ * las OTs en curso —que son la mayoría de las que se abren en el tablero— entrenaría a
+ * saltearla, y entonces no se leería el día que sí dice algo.
+ *
+ * EN VERDE y no en coral como "Qué hay que ejecutar": ese color marca lo que hay que
+ * hacer, y éste es un hecho consumado y verificado por alguien que estuvo. Son dos cajas
+ * parecidas a propósito —hablan de la misma estructura— y el color es lo que las separa
+ * de un vistazo.
+ */
+function LoQueQuedoArmado({ texto, previsto }: { texto?: string | null; previsto?: string | null }) {
+  if (!texto?.trim()) return null;
+  // CUANDO SE ARMÓ LO PREVISTO no se repite el párrafo: la caja de arriba ya lo dice, y
+  // verlo dos veces palabra por palabra hace dudar de si son dos cosas distintas. Lo que
+  // aporta acá es OTRA cosa —que alguien fue, miró y confirmó— y eso se dice con una línea.
+  const sinCambios = texto.trim() === (previsto ?? "").trim();
+  return (
+    <div className="space-y-1.5 rounded-md border-l-4 bg-muted/40 px-3 py-2.5" style={{ borderLeftColor: OK }}>
+      <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">
+        <CircleCheck className="h-3.5 w-3.5" />
+        Lo que quedó armado
+      </p>
+      {sinCambios ? (
+        <p className="text-sm leading-snug">Se ejecutó lo previsto, sin diferencias.</p>
+      ) : (
+        <p className="whitespace-pre-wrap text-sm leading-snug">{texto}</p>
+      )}
+      <p className="text-[11px] text-muted-foreground">
+        Confirmado en obra al cerrar la jornada. Si esta obra deja estructura en pie, es lo
+        que va a ir a bajar el desarme.
+      </p>
+    </div>
   );
 }
 
@@ -591,6 +628,16 @@ export function PanelOt({
               />
 
               <QueNecesita trabajo={detalle?.trabajo} />
+
+              {/* LO QUE QUEDÓ ARMADO, en su propia caja y debajo de lo previsto.
+                  Se sellaba al cerrar la última jornada y no se veía DESDE NINGÚN LADO:
+                  en Odoo estaba en un formulario que ninguna acción abre, y acá no se
+                  leía. 83 OTs lo tienen guardado.
+                  VA SEPARADO de "Qué hay que ejecutar" aunque hablen de lo mismo: aquél
+                  dice lo que hay que hacer y se lee ANTES de salir, éste lo que se hizo y
+                  se lee DESPUÉS. Mezclados, nadie sabe cuál está mirando — que es
+                  justamente lo que venía pasando. */}
+              <LoQueQuedoArmado texto={detalle?.ejecutadoReal} previsto={detalle?.detalleTecnico} />
 
               {/* EL HILO DE LA OBRA, arriba y no al pie del panel. Lo que Operaciones
                   habló con el cliente —"entramos 8am el martes", "si llueve corre al

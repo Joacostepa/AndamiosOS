@@ -400,9 +400,11 @@ export async function fetchDetalleOt(otId: number): Promise<DetalleOt> {
     x_duracion_sugerida: string | false;
     x_direccion_obra: string | false;
     x_obra_referencia: string | false;
+    x_ejecutado_real: string | false;
   }>("x_aba_orden_trabajo", [otId], [
     "x_order_id", "x_detalle_tecnico", "x_hab_etapa", "x_hab_dias", "x_fecha_firmeza",
     "x_periodo", "x_desvio", "x_duracion_sugerida", "x_direccion_obra", "x_obra_referencia",
+    "x_ejecutado_real",
   ]);
   if (!ot) throw new Error("La OT no existe");
 
@@ -479,6 +481,7 @@ export async function fetchDetalleOt(otId: number): Promise<DetalleOt> {
     desvio: str(ot.x_desvio),
     duracionSugerida: str(ot.x_duracion_sugerida),
     trabajo: leerTrabajo(orden),
+    ejecutadoReal: str(ot.x_ejecutado_real),
     ventaId: ordenId,
     contactosObra: contactosObra.map((c) => ({
       id: c.id,

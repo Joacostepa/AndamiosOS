@@ -362,6 +362,18 @@ export type DetalleOt = {
    */
   trabajo: TrabajoOt;
   /**
+   * LO QUE QUEDÓ ARMADO DE VERDAD en esta intervención, sellado por Operaciones al cerrar
+   * la última jornada. Es un hecho verificado por alguien que estuvo, no una previsión.
+   *
+   * NO ES `detalleTecnico`, y la diferencia importa: aquél dice lo que HAY QUE hacer y se
+   * lee antes de salir; éste dice lo que se HIZO y se lee después. Cuando la obra deja
+   * estructura en pie, este texto es además el que hereda la OT de desarme.
+   *
+   * Es el snapshot de ESTA orden de trabajo. El estado vigente de la obra —que puede
+   * venir de una ampliación posterior— vive en la venta.
+   */
+  ejecutadoReal: string | null;
+  /**
    * La orden de venta de la que cuelga esta OT. Viaja porque los contactos de obra se
    * crean contra ELLA y no contra la OT: sin esto el panel tendría que volver a leer la
    * OT sólo para saber a qué orden pertenece.

@@ -6,8 +6,7 @@ seguir. El plan original (aprobado el 26/09) está en
 `~/.claude/plans/buenas-ahora-quiero-que-flickering-haven.md`.
 
 Para arrancar: "Leé docs/handoff-asistente-comercial.md y docs/modulo-asistente-comercial.md y
-seguimos con lo que falta". **Empezar por § "Lo primero en la sesión nueva": hay un cambio
-terminado que todavía no está subido.**
+seguimos con lo que falta". **Empezar por § "Lo primero en la sesión nueva".**
 
 ---
 
@@ -22,17 +21,18 @@ En producción: `https://andamios-os.vercel.app/comercial/asistente` y `/comerci
 | Consultas de Odoo y pendientes del día | ✅ |
 | Tablero de planificación (sólo lectura) | ✅ Desde `c9cc288` |
 | Voz en vivo (ElevenLabs) | ✅ Probada por el agente real en modo texto y por JS desde la app |
-| **Opcionales estándar** (concertina, técnico de SyH, memoria de cálculo) | ⚠️ **Terminado y probado, SIN SUBIR** (ver § siguiente) |
+| Opcionales estándar (concertina, técnico de SyH, memoria de cálculo) | ✅ Desde `2ddfa47`, con el criterio v2 (ver § siguiente) |
 | WhatsApp | Construido y probado simulando a Meta. **Sin configurar: lo postergó JS** |
 | Parámetros de cotización (7 pestañas) | ✅ |
 
-**Commits en main:** `d4538c5` (el módulo) y `c9cc288` (el tablero y la doc de ElevenLabs).
+**Commits en main:** `d4538c5` (el módulo), `c9cc288` (el tablero y la doc de ElevenLabs) y
+`2ddfa47` (los opcionales estándar y este handoff).
 
 **Base y servicios:**
 
 - **Supabase:**
-  - migraciones `20260926000001` a `…05` aplicadas;
-  - **la `…06` está pendiente y va después del deploy** (ver § siguiente);
+  - migraciones `20260926000001` a `…06` aplicadas, la última después del deploy de `2ddfa47`;
+  - criterio v2 vigente;
   - lista de alquiler JUN26 (48 piezas) activa.
 - **Odoo:** campo `sale.order.x_asistente_ref` (id 37954).
 - **ElevenLabs:**
@@ -46,7 +46,7 @@ En producción: `https://andamios-os.vercel.app/comercial/asistente` y `/comerci
   (Conversaciones) quedan unas charlas de prueba.
 - **Usuarios:** por ahora lo usa sólo Joaquín (admin). Gabriel y Jorge todavía no tienen usuario.
 
-### El cambio sin subir: opcionales estándar (26/09 a la tarde)
+### Opcionales estándar (26/09 a la tarde)
 
 **Pedido de JS:** en toda bandeja y fachada tienen que salir, como opcionales:
 
@@ -81,50 +81,37 @@ En producción: `https://andamios-os.vercel.app/comercial/asistente` y `/comerci
 - «sacá el técnico» y después «cambiá a 15 m»: el técnico no vuelve y la concertina pasa a
   $ 210.000.
 
-**Migraciones:**
+**Migraciones (las dos aplicadas el 26/09, en este orden):**
 
-- `20260926000005` (parámetros `syh_jornada` e `ingenieria_memoria`): **aplicada**. Sólo agrega;
-  el código que está en producción no la lee.
-- `20260926000006`: **pendiente, y va DESPUÉS de que esté deployado el código nuevo**. Hace tres
-  cosas:
-  - crea el criterio v2, con cuatro líneas cambiadas;
-  - renombra `ingenieria` a "Ingeniería — obras complejas";
-  - borra el rango viejo `syh`.
+1. `20260926000005`: agrega los parámetros `syh_jornada` e `ingenieria_memoria`. Se aplicó antes
+   del deploy.
+2. `20260926000006`: se aplicó después del deploy de `2ddfa47`. Hizo tres cosas:
+   - creó el criterio v2, con cuatro líneas cambiadas (§3.3, §4.8 y el punto 11 del checklist);
+   - renombró `ingenieria` a "Ingeniería — obras complejas";
+   - borró el rango viejo `syh`.
 
-  El código que está hoy en producción lee `syh` como rango y se rompería sin él. Ya está
-  ensayada dos veces con ROLLBACK. Si alguna de las líneas del criterio v1 no está tal cual, falla
-  sin escribir nada.
+Verificado después:
+
+- criterio v2 vigente y único;
+- el motor carga las tarifas nuevas;
+- las conversaciones nuevas arrancan con el v2;
+- el historial registra los cuatro cambios.
 
 ---
 
 ## Lo primero en la sesión nueva
 
-1. **Subir el cambio de opcionales (con el OK de JS)**:
-   1. revisar `git status`: tienen que estar los archivos de arriba, `docs/handoff-asistente-comercial.md`
-      y `docs/modulo-asistente-comercial.md`;
-   2. correr `npm test` (39 tests), `npx tsc --noEmit` y `npm run build`;
-   3. commit y push a main;
-   4. esperar el deploy de Vercel:
-      `gh api repos/Joacostepa/AndamiosOS/commits/<sha>/status --jq .state` tiene que dar `success`;
-   5. ensayar la 6 con `node --env-file=.env.local scripts/probar-migracion.mjs supabase/migrations/20260926000006_criterio_opcionales.sql`
-      y aplicarla con `scripts/apply-migration.mjs`;
-   6. verificar en la base:
-      - `cotizacion_criterios` tiene la versión 2 vigente;
-      - ya no está el parámetro `syh`;
-      - `ingenieria` se llama "Ingeniería — obras complejas".
-
-   **Si el código ya está en producción y en `cotizacion_criterios` no hay versión 2, la 6 no se
-   aplicó: aplicarla.**
-2. **Preguntarle a JS cómo le va** con el chat, los audios y la voz en el celular. La pantalla
+1. **Preguntarle a JS cómo le va** con el chat, los audios y la voz en el celular. La pantalla
    nunca la probó Claude: no tiene login, y no hay que crear usuarios ni entrar como otro para
    probarla.
    - Si falla la voz, mirar primero la charla en ElevenLabs (Conversaciones) y los logs de Vercel
      de `/api/comercial/asistente/voz/llm`.
    - En la primera prueba de JS, el micrófono tomó una conversación de al lado: en lugares con
      gente hablando conviene el botón de silenciar.
-3. **Mirar el uso real.** En `asistente_conversaciones` y `asistente_mensajes` están el canal,
+2. **Mirar el uso real.** En `asistente_conversaciones` y `asistente_mensajes` están el canal,
    `uso` y `modelo_servido` de cada pedido. Hay que ver cuánto gasta y cuánto tarda con uso de
    verdad antes de dárselo a Gabriel y Jorge.
+3. **Si JS trae correcciones**, seguir § "Cómo se va a ir mejorando".
 
 ---
 

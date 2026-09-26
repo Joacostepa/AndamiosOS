@@ -29,7 +29,6 @@ type DefModulo = {
 // El orden es el del menú, y es el que usa la pantalla de usuarios para agrupar.
 const DEFINICION = [
   { id: "clientes", titulo: "Clientes", grupo: "Comercial", rutas: ["/clientes"] },
-  { id: "relevamientos", titulo: "Relevamientos", grupo: "Comercial", rutas: ["/comercial/relevamientos"] },
   { id: "asistente-comercial", titulo: "Asistente comercial", grupo: "Comercial", rutas: ["/comercial/asistente"] },
   { id: "parametros-cotizacion", titulo: "Parámetros de cotización", grupo: "Comercial", rutas: ["/comercial/parametros"] },
   { id: "obras", titulo: "Obras", grupo: "Operaciones", rutas: ["/obras"] },
@@ -110,7 +109,6 @@ const APIS: Record<string, readonly ModuloId[]> = {
   "/api/fichadas": ["fichadas"],
   "/api/comercial/asistente": ["asistente-comercial"],
   "/api/comercial/parametros": ["parametros-cotizacion"],
-  "/api/ai/relevamiento": ["relevamientos"],
   "/api/ai/computo": ["computos"],
 };
 const PREFIJOS_API = Object.keys(APIS).sort((a, b) => b.length - a.length);

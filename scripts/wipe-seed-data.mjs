@@ -16,7 +16,7 @@ const TABLES = [
   "imagenes_referencia","incidentes","inspecciones","insumos","lista_precios",
   "mantenimientos","movimientos","obras","oportunidades","ordenes_trabajo","partes_obra",
   "periodos_alquiler","permisos_municipales","personal","planificacion_tareas",
-  "proyecto_archivos","proyectos_tecnicos","qr_tokens","relevamientos","remito_items",
+  "proyecto_archivos","proyectos_tecnicos","qr_tokens","remito_items",
   "remitos","solicitud_extra_items","solicitudes_extra","stock","stock_por_obra","vehiculos",
 ];
 const KEEP = ["user_profiles","configuracion"];

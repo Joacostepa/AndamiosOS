@@ -15,7 +15,7 @@ Documentación funcional y de arquitectura del proyecto.
 
 | Odoo (fuente de verdad) | AndamiosOS (operativo) |
 |---|---|
-| Clientes (`res.partner`) | Relevamientos, oficina técnica (cómputos) |
+| Clientes (`res.partner`) | Oficina técnica (cómputos) |
 | CRM / cotizaciones (`sale.order`) | Remitos, depósito, logística, control de insumos |
 | Facturación (l10n_ar), cobranzas | Habilitaciones, fichadas, planificación |
 | Flota (`fleet.vehicle`) | Obras, órdenes de trabajo |

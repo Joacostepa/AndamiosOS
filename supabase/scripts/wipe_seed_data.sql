@@ -60,7 +60,6 @@ TRUNCATE TABLE
   proyecto_archivos,
   proyectos_tecnicos,
   qr_tokens,
-  relevamientos,
   remito_items,
   remitos,
   solicitud_extra_items,

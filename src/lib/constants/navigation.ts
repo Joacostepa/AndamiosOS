@@ -18,7 +18,6 @@ export const navigation: NavGroup[] = [
     items: [
       { title: "Asistente comercial", href: "/comercial/asistente", icon: Bot },
       { title: "Clientes", href: "/clientes", icon: Users },
-      { title: "Relevamientos", href: "/comercial/relevamientos", icon: MapPin },
       { title: "Parámetros de cotización", href: "/comercial/parametros", icon: SlidersHorizontal },
     ],
   },

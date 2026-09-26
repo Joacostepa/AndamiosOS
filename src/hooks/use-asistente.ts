@@ -99,6 +99,8 @@ export type EnVivo = {
   texto: string;
   herramientas: { id: string; etiqueta: string; estado: "inicio" | "ok" | "error" }[];
   pensando: boolean;
+  /** Pasó una herramienta desde el último texto: lo que sigue es otra tanda y va en otro párrafo. */
+  corte?: boolean;
 };
 
 const VACIO: EnVivo = { vendedor: null, texto: "", herramientas: [], pensando: false };
@@ -120,7 +122,13 @@ export function useChat(conversacionId: string | null, opciones: { onEvento?: (e
     onEvento.current?.(e);
     switch (e.t) {
       case "texto":
-        setEnVivo((v) => ({ ...v, texto: v.texto + e.d, pensando: false }));
+        // Cada vuelta del modelo trae su texto sin separador: sin esto se leía "…que viene.Según…".
+        setEnVivo((v) => ({
+          ...v,
+          texto: v.texto + (v.corte && v.texto && !/\s$/.test(v.texto) ? "\n\n" : "") + e.d,
+          pensando: false,
+          corte: false,
+        }));
         break;
       case "pensando":
         setEnVivo((v) => ({ ...v, pensando: e.on }));
@@ -128,7 +136,7 @@ export function useChat(conversacionId: string | null, opciones: { onEvento?: (e
       case "herramienta":
         setEnVivo((v) => {
           const otras = v.herramientas.filter((h) => h.id !== e.id);
-          return { ...v, herramientas: [...otras, { id: e.id, etiqueta: e.etiqueta, estado: e.estado }] };
+          return { ...v, herramientas: [...otras, { id: e.id, etiqueta: e.etiqueta, estado: e.estado }], corte: true };
         });
         break;
       case "borrador":

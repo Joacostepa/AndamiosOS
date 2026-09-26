@@ -34,6 +34,7 @@ import { crearBorrador, guardarBorrador, leerAccionPorNumero, type Borrador, typ
 import { proponerAccion, rechazarAccion, verificarConfirmacion, ejecutarAccion, vistaAccion } from "./acciones";
 import { crearEjecutor, type PayloadGuardar, type PayloadMail } from "./ejecutores";
 import { generarPdfDelBorrador } from "./pdf";
+import { consultarPlanificacion, puedeVerPlanificacion } from "./planificacion";
 import type { BorradorVista, Evento } from "./eventos";
 
 // ── Contexto ────────────────────────────────────────────────────────────────────────────
@@ -276,6 +277,28 @@ const HERRAMIENTAS = [
       const v = await verPresupuesto(venta);
       if (!v) return { contenido: `No encontré ${venta}.`, esError: true };
       return { contenido: json(await estadoObra(v.id)) };
+    },
+  }),
+  definir({
+    nombre: "consultar_planificacion",
+    descripcion:
+      "El Tablero de Planificación, SÓLO LECTURA (el tablero es de Operaciones): qué tiene cada cuadrilla cada día y cuánto le queda libre " +
+      "(la jornada de una cuadrilla es 1,00 = 8 h), lo confirmado y lo tentativo, las tareas de Operaciones, feriados y domingos; " +
+      "las obras que faltan planificar (jornadas, urgencia, habilitación, ventana del cliente); y con `obra`, todas las fechas de esa obra " +
+      "aunque caigan fuera del rango. Rango por defecto: 7 días desde hoy; máximo 31. Para decir cuándo se podría armar algo nuevo, buscá " +
+      "días con horas libres suficientes y aclará que es según el tablero de hoy y que la fecha la confirma Operaciones.",
+    etiqueta: "Mirando el tablero de planificación",
+    esquema: z.object({
+      desde: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("AAAA-MM-DD. Por defecto, hoy"),
+      hasta: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("AAAA-MM-DD. Por defecto, desde + 6 días"),
+      cuadrilla: z.string().optional().describe("Parte del nombre de una cuadrilla"),
+      obra: z.string().optional().describe("Parte de la dirección, del título de la OT o el número de venta (S02457)"),
+    }),
+    ejecutar: async (i, ctx) => {
+      if (!(await puedeVerPlanificacion(ctx.db, ctx.usuarioId))) {
+        return { contenido: "Tu usuario no tiene acceso a Planificación: el tablero no se puede consultar. Lo habilita un administrador.", esError: true };
+      }
+      return { contenido: json(await consultarPlanificacion(ctx.db, { ...i, hoy: ctx.hoy })) };
     },
   }),
   definir({

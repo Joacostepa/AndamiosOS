@@ -2,12 +2,14 @@
 
 Un asistente con IA para los vendedores de ABA. Arma presupuestos (orden borrador en Odoo y el
 PDF de la Propuesta Técnico-Económica), re-emite presupuestos viejos a valor de hoy y contesta
-consultas sobre Odoo: clientes, presupuestos, saldos, obras y pendientes del día. Se le puede
+consultas sobre Odoo (clientes, presupuestos, saldos, obras y pendientes del día) y sobre el
+Tablero de Planificación (qué tiene cada cuadrilla, qué hay libre, cuándo se arma una obra).
+Del tablero sólo lee. Se le puede
 escribir, dictar o mandar audios, hablar en vivo por voz, y escribir por WhatsApp.
 
-Estado: **construido y probado, sin deploy** (2026-09-26). Las migraciones 1 a 4 ya están
-aplicadas en Supabase. La voz en vivo y WhatsApp esperan las cuentas de ElevenLabs y de Meta
-(§ Voz, § WhatsApp).
+Estado: **en producción** desde el 2026-09-26 (commit `d4538c5`), con las migraciones 1 a 4
+aplicadas en Supabase. La voz (audios y voz en vivo) está configurada con ElevenLabs.
+WhatsApp espera la cuenta de Meta (§ WhatsApp).
 
 ---
 
@@ -114,30 +116,35 @@ Dos cosas distintas, las dos con ElevenLabs:
 
 ### Configurar ElevenLabs (una vez)
 
-1. Crear la cuenta de ElevenLabs con un plan que incluya Agents.
-2. **Settings → API Keys**: crear una clave con permiso de Speech to Text y de Agents. Va a
-   `ELEVENLABS_API_KEY`.
-3. **Agents → New agent** (en blanco):
-   - **Language**: Spanish.
-   - **Voice**: una voz rioplatense o latinoamericana (en la Voice Library, buscar
-     "Argentina"). Usar el modelo de voz de baja latencia que recomiende la pantalla.
-   - **First message**: «Hola, te escucho.»
-   - **System prompt**: no se usa (las respuestas las arma nuestro endpoint). Poner una línea
-     que lo diga.
-   - **LLM → Custom LLM**:
-     - Server URL: `https://andamios-os.vercel.app/api/comercial/asistente/voz/llm`
-       (ElevenLabs le agrega `/chat/completions`; también existe el alias `/v1/chat/completions`);
-     - Model ID: cualquiera (`asistente-aba`);
-     - API key: un secreto nuevo con un valor generado por
-       `openssl rand -hex 32`. El mismo valor va a `ELEVENLABS_LLM_SECRETO`.
-   - **ASR keywords** (opcional): andamio, bandeja, concertina, multidireccional, fenólico,
-     media sombra, Odoo, CUIT, UOCRA, CAC, gestoría, silleteros.
-   - **Security**: activar la autenticación (agente privado), para que sólo arranque con el
-     token que da nuestro servidor, y agregar el dominio de la app a la lista permitida. Si
-     al tocar Hablar aparece un error de *override*, habilitar ahí el campo que nombra: la app
-     manda el token de sesión como *custom LLM extra body*.
+Estado (2026-09-26): **configurado**. El agente es "Asistente ABA"
+(`agent_6901m3exw16xeykr468230jm6t73`), las tres variables están en Vercel (Production) y la
+cadena se probó con el agente real en modo texto.
+
+Si hay que rehacerlo:
+
+1. Crear la cuenta de ElevenLabs.
+2. **Desarrolladores → Claves API**: crear una clave restringida a **De voz a texto** y
+   **ElevenLabs Agents (escritura)**. Va a `ELEVENLABS_API_KEY`. Con esa clave el agente se
+   puede configurar por API (`PATCH /v1/convai/agents/{id}`), que es como se hizo.
+3. Crear un agente en blanco (**Agents → Nuevo agente**) y dejarlo así:
+
+   | Qué | Valor | Por qué |
+   | --- | --- | --- |
+   | Idioma | `es` | De eso depende que entienda lo que se le dice |
+   | Modelo de voz | `eleven_flash_v2_5` | El `eleven_flash_v2` sólo habla inglés |
+   | Voz | una argentina, a elección (p. ej. *Amanda – Warm Argentine Narrator*) | — |
+   | Primer mensaje | «Hola, te escucho.» | — |
+   | LLM | **Custom LLM**: URL `https://andamios-os.vercel.app/api/comercial/asistente/voz/llm`, Model ID `asistente-aba`, API key = un secreto con el valor de `ELEVENLABS_LLM_SECRETO` (`openssl rand -hex 32`) | ElevenLabs le agrega `/chat/completions` (también existe el alias `/v1/chat/completions`) |
+   | LLM de respaldo | **Desactivado** | Si nuestro servidor tarda o falla, un modelo de respaldo contestaría sin ver Odoo ni las tarifas, o sea que inventaría precios |
+   | `cascade_timeout_seconds` | **15** | Con el valor de fábrica (4 s), si el servidor arranca en frío la frase de espera llega tarde, ElevenLabs repite el pedido y el turno se procesa dos veces |
+   | Tiempo de espera suave | Desactivado | La frase de espera ya la dice nuestro endpoint a los 3 s |
+   | Keywords (ASR) | andamio, bandeja, concertina, multidireccional, fenólico, media sombra, silleteros, Odoo, CUIT, UOCRA, CAC, gestoría… | Jerga de obra |
+   | Duración máxima | 1800 s | La de fábrica es 10 minutos |
+   | Autenticación | activada, con `andamios-os.vercel.app` en la lista permitida | Sólo arranca con el token que da nuestro servidor |
+   | Override `custom_llm_extra_body` | **permitido** | Por ahí viaja el token de sesión firmado; sin esto nuestro endpoint rechaza todo |
+
 4. El id del agente va a `ELEVENLABS_AGENT_ID`.
-5. Cargar las tres variables en Vercel (Production) y hacer el deploy. Con la clave sola
+5. Cargar las tres variables en Vercel (Production) y hacer el redeploy. Con la clave sola
    aparece el micrófono; con las tres, el botón Hablar.
 
 Cómo se protege el endpoint público de voz:
@@ -245,6 +252,7 @@ tiene caché de 1 h.
 | `src/lib/asistente/` | `turno.ts` (el loop), `prompt.ts` (instrucciones y aviso por turno), `herramientas.ts` (~30 herramientas con zod), `borrador.ts`, `acciones.ts` + `ejecutores.ts` (confirmación y escritura), `confirmacion.ts` (qué cuenta como «sí»), `datos.ts`, `nueva-conversacion.ts` |
 | `src/lib/odoo/comercial.ts` | Lecturas: clientes, presupuestos, PDF adjuntos, precios recientes, conflicto de canal, pendientes del día, estado de obra, `consultar_odoo` (sólo lectura, sobre res.partner, sale.order y sus líneas, crm.lead, account.move, account.payment, OT, obras, productos y empleados) |
 | `src/lib/odoo/presupuestos.ts` | Escrituras (sólo desde una acción confirmada) |
+| `src/lib/asistente/planificacion.ts` | El tablero, **sólo lectura**, con la misma fuente y las mismas cuentas que la pantalla (`fetchTablero`, tareas de Operaciones, duración corregida por Operaciones, `ocupacionCelda`, `repartirJornadas`). Exige el permiso de Planificación |
 | `src/lib/voz/` | ElevenLabs (Scribe y token del agente) y el token de sesión firmado |
 | `src/lib/whatsapp/` | API de Meta, formato de WhatsApp y el procesamiento de lo que llega |
 | `src/app/api/comercial/asistente/` | chat (SSE), conversaciones, acciones (botón), adjuntos (URL firmada), PDFs, transcribir, voz (token y endpoint del LLM) |
@@ -298,9 +306,9 @@ webhook de WhatsApp, y cada uno tiene su secreto o firma.
 
 ## Pendiente
 
-- Deploy (migraciones ya aplicadas) y alta de Gabriel y Jorge con `asistente-comercial`
-  (edición).
-- Cuentas de ElevenLabs y de Meta (§ Voz y § WhatsApp). Después, cargar los WhatsApp en
+- Alta de Gabriel y Jorge con `asistente-comercial` (edición).
+- Elegir la voz del agente (hoy tiene una de fábrica) y probar la voz en vivo desde el celular.
+- WhatsApp (postergado): cuenta de Meta (§ WhatsApp) y después cargar los WhatsApp en
   Vendedores.
 - **Rotar la API key de Odoo** que está en texto plano en `references/odoo.md` de la skill.
 - Piloto: Joaquín hace 5 presupuestos reales en paralelo con la skill y compara número por

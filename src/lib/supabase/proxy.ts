@@ -52,7 +52,11 @@ export async function updateSession(request: NextRequest) {
   // /permiso/: portal del cliente para su legajo, protegido por el token de la URL. CON la
   //   barra final a propósito: la comparación es por prefijo y "/permiso" sin barra dejaría
   //   pública también la pantalla interna /permisos-via-publica.
+  // /api/comercial/asistente/voz/llm: el "cerebro" del agente de voz; lo llama ElevenLabs
+  //   (sin cookie). Lo protegen el secreto del agente y el token firmado de la sesión de voz.
   const publicPaths = [
+    "/api/comercial/asistente/voz/llm",
+    "/api/whatsapp/webhook",
     "/endosos",
     "/permiso/",
     "/login",

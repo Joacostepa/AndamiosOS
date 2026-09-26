@@ -2,7 +2,7 @@ import {
   Building2, Users, Wrench, Package, Truck, UserCheck, BarChart3, Bell,
   Settings, FileText, ClipboardList, Calculator, Calendar, HardHat,
   PackagePlus, AlertTriangle, Search, Car, Hammer, MessageSquare,
-  MapPin, Fingerprint, Bot, Building, ListOrdered, ShieldCheck, FileBarChart, Landmark,
+  MapPin, Fingerprint, Bot, Building, ListOrdered, ShieldCheck, FileBarChart, Landmark, SlidersHorizontal,
   type LucideIcon,
 } from "lucide-react";
 
@@ -19,8 +19,10 @@ export const navigation: NavGroup[] = [
   {
     label: "Comercial",
     items: [
+      { title: "Asistente comercial", href: "/comercial/asistente", icon: Bot },
       { title: "Clientes", href: "/clientes", icon: Users },
       { title: "Relevamientos", href: "/comercial/relevamientos", icon: MapPin },
+      { title: "Parámetros de cotización", href: "/comercial/parametros", icon: SlidersHorizontal },
     ],
   },
   {
@@ -88,7 +90,6 @@ export const navigation: NavGroup[] = [
           { title: "Datos empresa", href: "/configuracion/empresa" },
           { title: "Lista de precios", href: "/configuracion/lista-precios" },
           { title: "Fletes por zona", href: "/configuracion/fletes" },
-          { title: "Precios fachadas", href: "/configuracion/precios-fachadas" },
           { title: "Imágenes referencia", href: "/configuracion/imagenes" },
           { title: "Usuarios", href: "/configuracion/usuarios" },
         ],

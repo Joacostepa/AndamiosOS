@@ -53,6 +53,8 @@ const DESTINOS: Record<TipoAlerta, Canal[]> = {
   permiso_novedad: ["permisos"],
   permiso_robot: ["permisos"],
   permiso_endoso: ["permisos"],
+  // Del asistente comercial: sólo campanita, a propósito (ver servicio.ts).
+  asistente_aviso: [],
 };
 
 /**
@@ -133,6 +135,14 @@ const ESTILO: Record<
     emoji: "📄",
     rotulo: "Póliza",
     plural: "novedades de pólizas",
+    destacado: false,
+    prefijos: [],
+  },
+  asistente_aviso: {
+    color: "#7c3aed",
+    emoji: "🤖",
+    rotulo: "Asistente comercial",
+    plural: "avisos del asistente comercial",
     destacado: false,
     prefijos: [],
   },

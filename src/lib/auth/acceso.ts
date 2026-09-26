@@ -31,6 +31,8 @@ const DEFINICION = [
   { id: "inicio", titulo: "Inicio", grupo: "General", rutas: ["/"], soloLectura: true },
   { id: "clientes", titulo: "Clientes", grupo: "Comercial", rutas: ["/clientes"] },
   { id: "relevamientos", titulo: "Relevamientos", grupo: "Comercial", rutas: ["/comercial/relevamientos"] },
+  { id: "asistente-comercial", titulo: "Asistente comercial", grupo: "Comercial", rutas: ["/comercial/asistente"] },
+  { id: "parametros-cotizacion", titulo: "Parámetros de cotización", grupo: "Comercial", rutas: ["/comercial/parametros"] },
   { id: "obras", titulo: "Obras", grupo: "Operaciones", rutas: ["/obras"] },
   { id: "ordenes-trabajo", titulo: "Órdenes de trabajo", grupo: "Operaciones", rutas: ["/ordenes-trabajo"] },
   { id: "habilitaciones", titulo: "Habilitaciones", grupo: "Operaciones", rutas: ["/habilitaciones"] },
@@ -107,6 +109,8 @@ const APIS: Record<string, readonly ModuloId[]> = {
   "/api/operaciones": ["mapa-obras"],
   "/api/informes-obra": ["informes-obra"],
   "/api/fichadas": ["fichadas"],
+  "/api/comercial/asistente": ["asistente-comercial"],
+  "/api/comercial/parametros": ["parametros-cotizacion"],
   "/api/ai/relevamiento": ["relevamientos"],
   "/api/ai/computo": ["computos"],
 };

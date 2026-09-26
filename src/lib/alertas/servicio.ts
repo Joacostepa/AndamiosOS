@@ -44,7 +44,13 @@ export type TipoAlerta =
   /** El robot de TAD no puede revisar (login, TAD caído, pantalla cambiada). */
   | "permiso_robot"
   /** Endoso de la póliza: quedó lista, no se pudo revisar, o Segucom no la sube. */
-  | "permiso_endoso";
+  | "permiso_endoso"
+  /**
+   * El asistente comercial le avisa algo a los administradores (el "avisar a Joaquín" del
+   * criterio: la misma dirección ya cotizada por otro vendedor, un caso que no encaja).
+   * SÓLO CAMPANITA: no sale a Slack, así el modelo lo puede usar sin pedir confirmación.
+   */
+  | "asistente_aviso";
 
 export type Prioridad = "baja" | "media" | "alta" | "critica";
 

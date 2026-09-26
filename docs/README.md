@@ -7,6 +7,7 @@ Documentación funcional y de arquitectura del proyecto.
 
 - [AndamiosOS_Diseno_Producto_v1.md](./AndamiosOS_Diseno_Producto_v1.md) — Diseño de producto (MVP).
 - [flujo-operativo-ABA.md](./flujo-operativo-ABA.md) — Circuito operativo de referencia (Obra → OT → Habilitación → Ejecución → Remitos → Desarme).
+- [modulo-asistente-comercial.md](./modulo-asistente-comercial.md) — Asistente comercial con IA (chat, voz, WhatsApp) y Parámetros de cotización: uso, configuración de ElevenLabs y Meta, arquitectura y pruebas.
 
 ## Arquitectura: Odoo ↔ AndamiosOS (resumen)
 

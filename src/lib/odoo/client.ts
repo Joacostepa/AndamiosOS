@@ -108,15 +108,25 @@ function esperaDeReintento(res: Response, intento: number): number {
   return 300 * 2 ** intento + Math.random() * 200;
 }
 
+/**
+ * Opciones de transporte (no son kwargs de Odoo).
+ *
+ * timeoutMs: corta la llamada si Odoo no contesta a tiempo. Opt-in: el tablero y los syncs
+ * siguen como estaban. Lo usa el asistente comercial, donde una consulta colgada deja al
+ * vendedor esperando frente al chat sin saber por qué; mejor un error legible a tiempo.
+ */
+export type OpcionesRpc = { timeoutMs?: number };
+
 /** Llamada cruda a JSON-RPC, ya encolada y con reintentos. */
 async function jsonRpc<T>(
   service: JsonRpcService,
   method: string,
   args: unknown[],
+  opciones: OpcionesRpc = {},
 ): Promise<T> {
   await tomarTurno();
   try {
-    return await jsonRpcSinCola<T>(service, method, args);
+    return await jsonRpcSinCola<T>(service, method, args, opciones);
   } finally {
     liberarTurno();
   }
@@ -128,6 +138,7 @@ async function jsonRpcSinCola<T>(
   service: JsonRpcService,
   method: string,
   args: unknown[],
+  opciones: OpcionesRpc = {},
 ): Promise<T> {
   const cfg = getConfig();
 
@@ -145,8 +156,12 @@ async function jsonRpcSinCola<T>(
         }),
         // Las llamadas a Odoo nunca se cachean: son datos vivos.
         cache: "no-store",
+        signal: opciones.timeoutMs ? AbortSignal.timeout(opciones.timeoutMs) : undefined,
       });
     } catch (e) {
+      if (e instanceof DOMException && (e.name === "TimeoutError" || e.name === "AbortError")) {
+        throw new OdooError(`Odoo no respondió en ${Math.round((opciones.timeoutMs ?? 0) / 1000)} s. Probá de nuevo en un momento.`, e);
+      }
       throw new OdooError(`No se pudo conectar con Odoo (${cfg.url})`, e);
     }
 
@@ -246,18 +261,16 @@ export async function executeKw<T = unknown>(
   method: string,
   args: unknown[] = [],
   kwargs: Record<string, unknown> = {},
+  opciones: OpcionesRpc = {},
 ): Promise<T> {
   const cfg = getConfig();
   const uid = await authenticate();
-  return jsonRpc<T>("object", "execute_kw", [
-    cfg.db,
-    uid,
-    cfg.apiKey,
-    model,
-    method,
-    args,
-    kwargs,
-  ]);
+  return jsonRpc<T>(
+    "object",
+    "execute_kw",
+    [cfg.db, uid, cfg.apiKey, model, method, args, kwargs],
+    opciones,
+  );
 }
 
 // ── Helpers de conveniencia sobre los métodos más usados de Odoo ──────────────

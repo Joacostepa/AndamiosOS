@@ -853,6 +853,10 @@ export async function presentarEnTad({ db, tarea, page, log }) {
 export async function atenderPresentacion({ db, tarea, page, log, avisar, sincronizar }) {
   const p = tarea.payload ?? {};
   const ahora = () => new Date().toISOString();
+  // La fecha de presentación es la del día en Buenos Aires, no la de UTC: se presenta de 19 a 7,
+  // así que después de las 21 el día UTC ya es el siguiente y la venta de Odoo quedaba con la
+  // fecha de mañana (22/09: S02563 presentada 21:21 quedó como 23/09).
+  const hoy = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
   const evento = async (detalle, datos = {}, expedienteId = null) => {
     const { error } = await db.from("pvp_eventos").insert({ tramite_id: tarea.tramite_id, expediente_id: expedienteId, tipo: "presentacion_tad", detalle, datos, actor: "robot" });
     if (error) log("!! evento de la presentación", error.message);
@@ -884,7 +888,7 @@ export async function atenderPresentacion({ db, tarea, page, log, avisar, sincro
       expediente: `EX-${m[1]}-${m[2]}- -GCABA-${m[3]}`, numero, organismo: m[3],
       nombre: "Solicitud de permiso para la instalación de andamios en el espacio publico",
       titular: "EMPRENDIMIENTOS Y ESTRUCTURAS S.A.", estado_tad: "INICIACION", solapa: "en_curso",
-      creado_tad: ahora().slice(0, 10), direccion: p.direccion, cliente: p.cliente_nombre ?? null,
+      creado_tad: hoy(), direccion: p.direccion, cliente: p.cliente_nombre ?? null,
       odoo_venta_id: p.odoo_venta_id ?? null, odoo_venta_nombre: p.odoo_venta_nombre ?? null,
       odoo_vinculo_por: p.odoo_venta_id ? "numero" : null,
     };

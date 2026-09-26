@@ -752,7 +752,62 @@ async function tomarTarea() {
   return tomada ?? null;
 }
 
+/**
+ * Tareas que quedaron `tomada` de una corrida anterior. El worker es uno solo, así que al arrancar
+ * cualquier tomada es huérfana: el robot se cortó en el medio. El 22/09 se cortó la luz de la Mac
+ * mientras cerraba una encomienda y la tarea quedó tomada para siempre, porque `tomarTarea` sólo
+ * mira las pendientes; nadie la vio hasta que la destrabamos a mano.
+ *
+ * Qué se hace con cada una:
+ *   - encomienda con el cierre empezado → vuelve a la cola. Las etapas están anotadas y el pago y
+ *     la carga tienen su propia traba (`intentado_at`), así que no se repiten.
+ *   - encomienda sin cierre → error: se cortó dentro del asistente y pudo quedar finalizada en el
+ *     CPAU. La revisa una persona en el Histórico antes de volver a pedirla.
+ *   - presentación en TAD → error, NUNCA se reintenta sola: puede haber quedado un borrador con
+ *     adjuntos, o confirmada. Presentar dos veces es un expediente de más.
+ *   - escritura en Odoo → vuelve a la cola: repetirla no tiene consecuencias.
+ */
+async function recuperarTareasCortadas() {
+  const { data: tareas, error } = await db.from("pvp_tareas").select("id, tipo, tramite_id, tomada_at, resultado").eq("estado", "tomada");
+  if (error) return log("!! no se pudieron revisar las tareas cortadas", error.message);
+  if (!tareas?.length) return;
+
+  const ahora = new Date().toISOString();
+  const avisos = [];
+  for (const t of tareas) {
+    const cuando = t.tomada_at ? new Date(t.tomada_at).toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }) : "antes";
+    const cierre = t.resultado?.cierre?.etapa ?? null;
+    const vuelve = t.tipo === "odoo_sincronizar" || (t.tipo === "cpau_encomienda" && !!cierre);
+    if (vuelve) {
+      await db.from("pvp_tareas").update({ estado: "pendiente", tomada_at: null }).eq("id", t.id).eq("estado", "tomada");
+      log(`Tarea ${t.id} (${t.tipo}${cierre ? `, cierre en «${cierre}»` : ""}) se había cortado el ${cuando}: vuelve a la cola`);
+      continue;
+    }
+    const motivo = t.tipo === "tad_presentar"
+      ? `El robot se cortó en medio de la presentación (venía trabajando desde el ${cuando}). Antes de volver a presentar hay que mirar en TAD si quedó un borrador a medias o si el trámite se llegó a confirmar: presentar dos veces deja un expediente de más.`
+      : t.tipo === "cpau_encomienda"
+        ? `El robot se cortó mientras armaba la encomienda (desde el ${cuando}). Puede haber quedado finalizada en el CPAU: revisar el Histórico por R.Nro antes de volver a pedirla.`
+        : `El robot se cortó mientras la hacía (desde el ${cuando}).`;
+    await db.from("pvp_tareas").update({ estado: "error", error: motivo.slice(0, 500), terminada_at: ahora }).eq("id", t.id).eq("estado", "tomada");
+    log(`!! tarea ${t.id} (${t.tipo}) cortada el ${cuando}: queda en error`);
+    if (t.tramite_id) {
+      const tipo = t.tipo === "cpau_encomienda" ? "encomienda_cpau" : t.tipo === "tad_presentar" ? "presentacion_tad" : "error_robot";
+      await db.from("pvp_eventos").insert({ tramite_id: t.tramite_id, tipo, detalle: motivo, datos: { tarea_id: t.id }, actor: "robot" });
+      avisos.push({
+        tipo: "permiso_robot",
+        clave: `permiso_robot:tarea:${t.id}:cortada`,
+        titulo: `⚠️ Una tarea quedó cortada — ${t.tipo === "tad_presentar" ? "presentación en TAD" : "encomienda del CPAU"}`,
+        descripcion: motivo,
+        prioridad: "alta",
+        enlace: `/permisos-via-publica/tramites/${t.tramite_id}`,
+      });
+    }
+  }
+  await avisar(avisos);
+}
+
 log(`Robot de TAD en ${os.hostname()}${UNA_VEZ ? " (una vuelta)" : ""}`);
+await recuperarTareasCortadas();
 while (!apagando) {
   const tarea = await tomarTarea();
   const tareaId = tarea?.id ?? null;

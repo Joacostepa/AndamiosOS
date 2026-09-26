@@ -24,6 +24,7 @@ En producción: `https://andamios-os.vercel.app/comercial/asistente` y `/comerci
 | Opcionales estándar (concertina, técnico de SyH, memoria de cálculo) | ✅ Desde `2ddfa47`, con el criterio v2 (ver § siguiente) |
 | Mensaje de WhatsApp para el cliente, solo y con su nombre | ✅ 26/09 a la noche (ver § más abajo) |
 | A Odoo va sólo la base (sin opcionales) | ✅ 26/09 a la noche; S02715 y S02716 corregidas |
+| Buscador de conversaciones, archivar y eliminar las vacías | ✅ 26/09 a la noche (ver § más abajo) |
 | WhatsApp | Construido y probado simulando a Meta. **Sin configurar: lo postergó JS** |
 | Parámetros de cotización (7 pestañas) | ✅ |
 
@@ -32,12 +33,14 @@ En producción: `https://andamios-os.vercel.app/comercial/asistente` y `/comerci
 - `d4538c5`: el módulo;
 - `c9cc288`: el tablero y la doc de ElevenLabs;
 - `2ddfa47`: los opcionales estándar y este handoff;
-- el del 26/09 a la noche: el mensaje de WhatsApp y la base sola en Odoo.
+- `de3a070`: el mensaje de WhatsApp y la base sola en Odoo;
+- el siguiente: el buscador de conversaciones.
 
 **Base y servicios:**
 
 - **Supabase:**
-  - migraciones `20260926000001` a `…06` aplicadas, la última después del deploy de `2ddfa47`;
+  - migraciones `20260926000001` a `…07` aplicadas (la `…06`, después del deploy de `2ddfa47`;
+    la `…07`, la búsqueda, antes del deploy del buscador);
   - criterio v2 vigente;
   - lista de alquiler JUN26 (48 piezas) activa.
 - **Odoo:** campo `sale.order.x_asistente_ref` (id 37954).
@@ -150,6 +153,46 @@ Las oportunidades 3539 y 3541 se acomodaron solas. No quedan líneas `is_optiona
 ~US$ 1). Pide `amount_untaxed === 12 × 140.000`, así que desde `2ddfa47` tendría que haber
 fallado; con este cambio vuelve a cerrar. Correrla antes del piloto.
 
+### Buscador de conversaciones (26/09 a la noche)
+
+**El problema** (pedido de JS): la lista muestra las últimas 40 y los títulos son el primer
+mensaje ("...", "Hola, ¿cómo estás?"). El botón de archivar aparecía sólo al pasar el mouse
+(en el celular, nunca) y JS no sabía que existía.
+
+**Cómo quedó:**
+
+- **Búsqueda:** `asistente_buscar` (migración `…07`, con `unaccent`).
+  - Encuentra las conversaciones con TODAS las palabras, en cualquier orden, sin acentos,
+    entre el título, el cliente, el contacto, la obra, el número de Odoo y el texto de los
+    mensajes (`humano` y `asistente`).
+  - Incluye las archivadas.
+  - Devuelve también el mensaje donde aparecen más palabras. El recorte y el resaltado están
+    en `src/lib/asistente/busqueda.ts` (5 tests).
+  - La función la puede ejecutar sólo `service_role`: con `p_todos` devolvería charlas
+    ajenas. Verificado que con la clave anon da `permission denied`.
+- **Admins:** un admin busca en las de todos (decisión de JS). Las ve marcadas "de Fulano",
+  sin menú y en sólo lectura.
+- **Lista:** cliente y obra debajo del título. Sale del borrador (`completarListado` en
+  `datos.ts`), pasado por `prolijo`.
+- **Archivar y desarchivar:**
+  - menú "⋯", visible siempre en el celular;
+  - aviso con "Deshacer";
+  - escribir en una archivada la devuelve a la lista (`agregarMensajes`).
+- **Eliminar:** sólo si no tiene mensajes y el borrador no está en Odoo
+  (`eliminarConversacionVacia`; la API responde 409 si no). Las que tienen mensajes son el
+  respaldo de lo que se guardó en Odoo y la fuente del gasto del día: borrarlas reiniciaría
+  el tope.
+- **Rendimiento:** recorre el texto de todas las conversaciones en cada búsqueda. Con cientos
+  va sobrado; con decenas de miles, pasar a una columna de búsqueda guardada.
+
+**Probado contra la base real:**
+
+- la búsqueda con y sin acentos, varias palabras, número de Odoo y cliente;
+- el permiso de la función;
+- el borrado de una vacía de prueba y el rechazo de una con mensajes.
+
+La pantalla no la probó Claude, que no tiene login.
+
 ---
 
 ## Lo primero en la sesión nueva
@@ -165,6 +208,8 @@ fallado; con este cambio vuelve a cerrar. Correrla antes del piloto.
    `uso` y `modelo_servido` de cada pedido. Hay que ver cuánto gasta y cuánto tarda con uso de
    verdad antes de dárselo a Gabriel y Jorge.
 3. **Si JS trae correcciones**, seguir § "Cómo se va a ir mejorando".
+4. **Preguntarle si probó el buscador y el menú "⋯" en el celular.** Si guardó un presupuesto
+   nuevo, preguntarle si le salieron solos el mensaje de WhatsApp y la orden sin opcionales.
 
 ---
 
@@ -200,8 +245,10 @@ Gabriel y Jorge dejen anotado lo que no les sirvió. No contestó: queda como id
 - **Si se toca el agente en la pantalla de ElevenLabs**, recargar la página antes: la
   configuración se hizo por API, y guardar una página abierta de antes la pisa.
 - **Dar de alta a Gabriel y Jorge** con `asistente-comercial` (editar) y `planificacion` (ver).
-  Sin Planificación, el asistente no les muestra el tablero. Decisión pendiente: ¿también las
-  asistentes comerciales?
+  - Sin Planificación, el asistente no les muestra el tablero.
+  - Con rol comercial, **no admin**: un admin puede abrir y buscar las charlas de todos.
+    Cada vendedor ve sólo las suyas (pantallas y RLS). JS lo sabe desde el 26/09.
+  - Decisión pendiente: ¿también las asistentes comerciales?
 - **Revisar las tarifas.** Son las del criterio v2 (julio y agosto) y nadie las tocó desde la
   carga. Se le ofreció compararlas con lo cobrado en las órdenes de Odoo del último mes.
 - **Rotar la API key de Odoo**, que está en texto plano en la skill

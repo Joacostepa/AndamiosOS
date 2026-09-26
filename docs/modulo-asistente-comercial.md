@@ -30,6 +30,20 @@ WhatsApp espera la cuenta de Meta (§ WhatsApp).
 
 - La lista de conversaciones está a la izquierda (en el celular, en una hoja) y el chat en el
   centro.
+  - Cada una muestra el cliente, la obra y el número de Odoo del presupuesto, porque el
+    título es el primer mensaje.
+  - Muestra las últimas 40. **El buscador** de arriba encuentra el resto:
+    - busca por cliente, obra, número de Odoo, título y el texto de los mensajes;
+    - no distingue acentos ni mayúsculas;
+    - pide todas las palabras, en cualquier orden;
+    - muestra el pedacito del mensaje donde aparece;
+    - encuentra también las archivadas;
+    - a un admin le encuentra las de todos, marcadas "de Gabriel…", en sólo lectura.
+  - **Menú "⋯"** (visible en el celular): Archivar / Desarchivar. Una conversación sin
+    mensajes se puede eliminar.
+  - Las que tienen mensajes no se borran: son el respaldo de lo que se guardó en Odoo, y de
+    ahí sale el gasto del día (borrarlas reiniciaría el tope).
+  - Si se escribe en una archivada, vuelve sola a la lista.
 - **El presupuesto en construcción** está a la derecha (en el celular, en el botón con el
   importe). Muestra las líneas, los totales, la renovación, lo que falta y los avisos.
 - Compositor:

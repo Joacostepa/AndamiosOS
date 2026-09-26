@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import type { AccionVista, BorradorVista, Evento, PdfVista } from "@/lib/asistente/eventos";
 import type { ItemChat } from "@/lib/asistente/vista";
@@ -48,11 +48,37 @@ export function useCrearConversacion() {
   });
 }
 
+/** Buscar en título, cliente, obra, número de Odoo y mensajes (también las archivadas). */
+export function useBuscarConversaciones(q: string) {
+  const texto = q.trim();
+  return useQuery({
+    queryKey: ["asistente-buscar", texto],
+    queryFn: async () => (await pedir<{ conversaciones: ConversacionListada[] }>(`${BASE}/conversaciones?q=${encodeURIComponent(texto)}`)).conversaciones,
+    enabled: texto.length >= 2,
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
+  });
+}
+
+function refrescarListas(qc: ReturnType<typeof useQueryClient>) {
+  void qc.invalidateQueries({ queryKey: ["asistente-conversaciones"] });
+  void qc.invalidateQueries({ queryKey: ["asistente-buscar"] });
+}
+
 export function useArchivarConversacion() {
   const qc = useQueryClient();
+  return useMutation<{ ok: true }, Error, { id: string; archivar: boolean }>({
+    mutationFn: ({ id, archivar }) => pedir(`${BASE}/conversaciones/${id}`, { method: "PATCH", body: JSON.stringify({ archivar }) }),
+    onSuccess: () => refrescarListas(qc),
+  });
+}
+
+/** Sólo las que no tienen mensajes; las demás se archivan. */
+export function useEliminarConversacion() {
+  const qc = useQueryClient();
   return useMutation<{ ok: true }, Error, string>({
-    mutationFn: (id) => pedir(`${BASE}/conversaciones/${id}`, { method: "PATCH", body: JSON.stringify({ archivar: true }) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["asistente-conversaciones"] }),
+    mutationFn: (id) => pedir(`${BASE}/conversaciones/${id}`, { method: "DELETE" }),
+    onSuccess: () => refrescarListas(qc),
   });
 }
 

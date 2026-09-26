@@ -13,7 +13,9 @@ import { PanelBorrador } from "@/components/asistente/panel-borrador";
 import { ListaConversaciones } from "@/components/asistente/lista-conversaciones";
 import { ModoVoz } from "@/components/asistente/modo-voz";
 import { TarjetaAccion, TarjetaPdf, TarjetaWhatsapp } from "@/components/asistente/tarjetas";
-import { useArchivarConversacion, useChat, useConversacion, useConversaciones, useCrearConversacion } from "@/hooks/use-asistente";
+import {
+  useArchivarConversacion, useChat, useConversacion, useConversaciones, useCrearConversacion, useEliminarConversacion,
+} from "@/hooks/use-asistente";
 
 // Comercial → Asistente. Un chat con el asistente comercial (Claude), que arma presupuestos con
 // el motor de precios, los guarda en Odoo cuando se confirma y contesta consultas de Odoo.
@@ -37,6 +39,7 @@ function Asistente() {
   const lista = useConversaciones();
   const crear = useCrearConversacion();
   const archivar = useArchivarConversacion();
+  const eliminar = useEliminarConversacion();
   const detalle = useConversacion(actual);
   const chat = useChat(actual);
   const { reiniciar } = chat;
@@ -79,13 +82,31 @@ function Asistente() {
   const subtotal = borrador?.resultado?.totales.subtotal ?? 0;
   const propia = detalle.data?.conversacion.propia ?? true;
 
+  const salirSiEsLaActual = (id: string) => {
+    if (id === actual) router.replace("/comercial/asistente");
+  };
+
+  const archivarConversacion = (id: string, siArchivar: boolean) =>
+    archivar.mutate({ id, archivar: siArchivar }, {
+      onSuccess: () => {
+        if (!siArchivar) return void toast.success("Conversación desarchivada");
+        salirSiEsLaActual(id);
+        toast.success("Conversación archivada", {
+          description: "La encontrás con el buscador.",
+          action: { label: "Deshacer", onClick: () => archivar.mutate({ id, archivar: false }) },
+        });
+      },
+      onError: (e) => toast.error(e.message),
+    });
+
   const listaConversaciones = (
     <ListaConversaciones
       conversaciones={lista.data ?? []}
       actual={actual}
       onElegir={elegir}
       onNueva={nueva}
-      onArchivar={(id) => archivar.mutate(id, { onSuccess: () => id === actual && router.replace("/comercial/asistente") })}
+      onArchivar={archivarConversacion}
+      onEliminar={(id) => eliminar.mutate(id, { onSuccess: () => salirSiEsLaActual(id), onError: (e) => toast.error(e.message) })}
       creando={crear.isPending}
     />
   );

@@ -6,6 +6,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type Anthropic from "@anthropic-ai/sdk";
 import { executeKw } from "@/lib/odoo/client";
 import { normalizarBorrador, type DatosBorrador, type ResultadoBorrador } from "./borrador";
+import { recortarFragmento, type Tramo } from "./busqueda";
+import { prolijo } from "./mensaje-cliente";
 
 type Db = SupabaseClient;
 
@@ -88,31 +90,104 @@ export type ConversacionListada = {
   created_at: string;
   venta: string | null;
   estadoBorrador: string | null;
+  /** Del borrador, para reconocer la charla sin abrirla: el título es el primer mensaje. */
+  cliente: string | null;
+  obra: string | null;
+  archivada: boolean;
+  /** Nombre del dueño si no es de quien mira (un admin buscando en las de todos). */
+  dueno: string | null;
+  /** Sólo en la búsqueda: el pedacito del mensaje donde aparece lo buscado. */
+  fragmento?: Tramo[] | null;
 };
+
+type FilaListada = Pick<Conversacion, "id" | "titulo" | "canal" | "estado" | "usuario_id" | "ultimo_mensaje_at" | "created_at" | "borrador_id">;
+const COLUMNAS_LISTA = "id, titulo, canal, estado, usuario_id, ultimo_mensaje_at, created_at, borrador_id";
+
+/** Suma a cada conversación el cliente, la obra y el número de Odoo de su borrador, y el dueño si es ajena. */
+async function completarListado(db: Db, filas: FilaListada[], usuarioId: string): Promise<ConversacionListada[]> {
+  const ids = filas.map((c) => c.borrador_id).filter((x): x is string => !!x);
+  const ajenos = [...new Set(filas.map((c) => c.usuario_id).filter((u) => u !== usuarioId))];
+  const [borradores, perfiles] = await Promise.all([
+    ids.length
+      ? db.from("cotizacion_borradores").select("id, odoo_venta_nombre, estado, cliente:datos->cliente->>razonSocial, obra:datos->obra->>direccion").in("id", ids)
+      : Promise.resolve({ data: [] }),
+    ajenos.length ? db.from("user_profiles").select("id, nombre, apellido").in("id", ajenos) : Promise.resolve({ data: [] }),
+  ]);
+  type B = { id: string; odoo_venta_nombre: string | null; estado: string; cliente: string | null; obra: string | null };
+  const porId = new Map(((borradores.data ?? []) as B[]).map((b) => [b.id, b]));
+  const nombres = new Map(((perfiles.data ?? []) as { id: string; nombre: string | null; apellido: string | null }[])
+    .map((p) => [p.id, [p.nombre, p.apellido].filter(Boolean).join(" ") || "otra persona"]));
+  return filas.map((c) => {
+    const b = c.borrador_id ? porId.get(c.borrador_id) : undefined;
+    return {
+      id: c.id,
+      titulo: c.titulo,
+      canal: c.canal,
+      ultimo_mensaje_at: c.ultimo_mensaje_at,
+      created_at: c.created_at,
+      venta: b?.odoo_venta_nombre ?? null,
+      estadoBorrador: b?.estado ?? null,
+      cliente: b?.cliente?.trim() ? prolijo(b.cliente) : null,
+      obra: b?.obra?.trim() ? prolijo(b.obra) : null,
+      archivada: c.estado === "archivada",
+      dueno: c.usuario_id === usuarioId ? null : nombres.get(c.usuario_id) ?? "otra persona",
+    };
+  });
+}
 
 export async function listarConversaciones(db: Db, usuarioId: string, limite = 40): Promise<ConversacionListada[]> {
   const { data, error } = await db
     .from("asistente_conversaciones")
-    .select("id, titulo, canal, ultimo_mensaje_at, created_at, borrador_id")
+    .select(COLUMNAS_LISTA)
     .eq("usuario_id", usuarioId)
     .eq("estado", "activa")
     .order("ultimo_mensaje_at", { ascending: false, nullsFirst: false })
     .limit(limite);
   if (error) falla("No se pudieron leer las conversaciones", error);
-  const ids = (data ?? []).map((c) => c.borrador_id).filter(Boolean);
-  const { data: borradores } = ids.length
-    ? await db.from("cotizacion_borradores").select("id, odoo_venta_nombre, estado").in("id", ids)
-    : { data: [] as { id: string; odoo_venta_nombre: string | null; estado: string }[] };
-  const porId = new Map((borradores ?? []).map((b) => [b.id, b]));
-  return (data ?? []).map((c) => ({
-    id: c.id,
-    titulo: c.titulo,
-    canal: c.canal,
-    ultimo_mensaje_at: c.ultimo_mensaje_at,
-    created_at: c.created_at,
-    venta: porId.get(c.borrador_id)?.odoo_venta_nombre ?? null,
-    estadoBorrador: porId.get(c.borrador_id)?.estado ?? null,
-  }));
+  return completarListado(db, (data ?? []) as FilaListada[], usuarioId);
+}
+
+/**
+ * Busca en las conversaciones (también las archivadas) por título, cliente, obra, número de
+ * Odoo y texto de los mensajes (asistente_buscar). `todos`: las de todos, sólo para admins.
+ */
+export async function buscarConversaciones(db: Db, usuarioId: string, q: string, todos: boolean): Promise<ConversacionListada[]> {
+  const { data: hallados, error } = await db.rpc("asistente_buscar", { p_usuario: usuarioId, p_q: q, p_todos: todos, p_limite: 30 });
+  if (error) falla("No se pudo buscar", error);
+  const orden = (hallados ?? []) as { id: string; fragmento: string | null }[];
+  if (!orden.length) return [];
+  const { data, error: e2 } = await db.from("asistente_conversaciones").select(COLUMNAS_LISTA).in("id", orden.map((h) => h.id));
+  if (e2) falla("No se pudieron leer las conversaciones", e2);
+  const porId = new Map((await completarListado(db, (data ?? []) as FilaListada[], usuarioId)).map((c) => [c.id, c]));
+  return orden.flatMap((h) => {
+    const c = porId.get(h.id);
+    return c ? [{ ...c, fragmento: h.fragmento ? recortarFragmento(h.fragmento, q) : null }] : [];
+  });
+}
+
+/** Archivar la saca de la lista; el buscador la sigue encontrando y se puede desarchivar. */
+export async function archivarConversacion(db: Db, id: string, archivar: boolean): Promise<void> {
+  const { error } = await db.from("asistente_conversaciones")
+    .update({ estado: archivar ? "archivada" : "activa", updated_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) falla("No se pudo archivar la conversación", error);
+}
+
+/**
+ * Borra de verdad SÓLO una conversación sin mensajes (y su borrador vacío). Las que tienen
+ * mensajes se archivan: son el respaldo de lo que se guardó en Odoo y de ahí sale el gasto
+ * del día (el tope) — borrarlas lo reiniciaría.
+ */
+export async function eliminarConversacionVacia(db: Db, conv: Conversacion): Promise<boolean> {
+  const { count, error } = await db.from("asistente_mensajes").select("id", { count: "exact", head: true }).eq("conversacion_id", conv.id);
+  if (error) falla("No se pudo revisar la conversación", error);
+  if ((count ?? 0) > 0) return false;
+  const b = conv.borrador_id ? await leerBorrador(db, conv.borrador_id) : null;
+  if (b?.odoo_venta_id) return false;
+  const { error: e1 } = await db.from("asistente_conversaciones").delete().eq("id", conv.id);
+  if (e1) falla("No se pudo borrar la conversación", e1);
+  if (b) await db.from("cotizacion_borradores").delete().eq("id", b.id);
+  return true;
 }
 
 /** El candado de turno: una respuesta a la vez por conversación. */
@@ -150,7 +225,8 @@ export async function agregarMensajes(db: Db, conversacionId: string, siguienteS
   const filas = mensajes.map((m, i) => ({ ...m, conversacion_id: conversacionId, seq: siguienteSeq + i, interrumpido: m.interrumpido ?? false }));
   const { error } = await db.from("asistente_mensajes").insert(filas);
   if (error) falla("No se pudo guardar la conversación", error);
-  await db.from("asistente_conversaciones").update({ ultimo_mensaje_at: new Date().toISOString() }).eq("id", conversacionId);
+  // Si se sigue una charla archivada (abierta desde el buscador), vuelve a la lista.
+  await db.from("asistente_conversaciones").update({ ultimo_mensaje_at: new Date().toISOString(), estado: "activa" }).eq("id", conversacionId);
   return siguienteSeq + mensajes.length;
 }
 

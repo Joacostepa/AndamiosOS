@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { esAdmin } from "@/lib/auth/acceso";
-import { leerBorrador, leerConversacion, leerMensajes, type Accion } from "@/lib/asistente/datos";
+import {
+  archivarConversacion, eliminarConversacionVacia, leerBorrador, leerConversacion, leerMensajes, type Accion,
+} from "@/lib/asistente/datos";
 import { historialParaPantalla } from "@/lib/asistente/vista";
 import { vistaBorrador } from "@/lib/asistente/herramientas";
 import { vistaAccion } from "@/lib/asistente/acciones";
@@ -10,7 +12,9 @@ import { errorResponse, exigirModulo, invalido } from "../../../_comun";
 
 // GET   /api/comercial/asistente/conversaciones/:id — la charla para mostrar, el borrador, las
 //       acciones y los PDFs.
-// PATCH /api/comercial/asistente/conversaciones/:id — renombrar o archivar.
+// PATCH  /api/comercial/asistente/conversaciones/:id — renombrar, archivar o desarchivar.
+// DELETE /api/comercial/asistente/conversaciones/:id — sólo si no tiene mensajes; las demás
+//        se archivan (ver eliminarConversacionVacia).
 
 export const dynamic = "force-dynamic";
 
@@ -63,11 +67,28 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     const db = createAdminClient();
     const conv = await leerConversacion(db, id);
     if (!conv || conv.usuario_id !== quien.userId) return NextResponse.json({ error: "No existe esa conversación." }, { status: 404 });
-    await db.from("asistente_conversaciones").update({
-      ...(parsed.data.titulo ? { titulo: parsed.data.titulo } : {}),
-      ...(parsed.data.archivar ? { estado: "archivada" } : {}),
-      updated_at: new Date().toISOString(),
-    }).eq("id", id);
+    if (parsed.data.titulo) {
+      await db.from("asistente_conversaciones").update({ titulo: parsed.data.titulo, updated_at: new Date().toISOString() }).eq("id", id);
+    }
+    if (parsed.data.archivar !== undefined) await archivarConversacion(db, id, parsed.data.archivar);
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    return errorResponse(e);
+  }
+}
+
+export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const { id } = await ctx.params;
+  if (!z.string().uuid().safeParse(id).success) return invalido("Id inválido");
+  const quien = await exigirModulo("asistente-comercial", "editar");
+  if (quien instanceof NextResponse) return quien;
+  try {
+    const db = createAdminClient();
+    const conv = await leerConversacion(db, id);
+    if (!conv || conv.usuario_id !== quien.userId) return NextResponse.json({ error: "No existe esa conversación." }, { status: 404 });
+    if (!(await eliminarConversacionVacia(db, conv))) {
+      return NextResponse.json({ error: "Sólo se borran las conversaciones sin mensajes. Esta se puede archivar." }, { status: 409 });
+    }
     return NextResponse.json({ ok: true });
   } catch (e) {
     return errorResponse(e);

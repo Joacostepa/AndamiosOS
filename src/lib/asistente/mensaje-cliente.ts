@@ -16,8 +16,11 @@ export type DatosMensajeCliente = {
 const EN_MINUSCULA = new Set(["de", "del", "la", "las", "los", "y", "e", "al"]);
 const SIGLAS = new Set(["caba", "pb"]);
 
-/** Lo que viene todo en mayúsculas (así está en Odoo) se pasa a "Riobamba 651"; lo demás, tal cual. */
-function prolijo(s: string): string {
+/**
+ * Lo que viene todo en mayúsculas (así está en Odoo) se pasa a "Riobamba 651"; lo demás, tal
+ * cual. También lo usa la lista de conversaciones para el cliente y la obra.
+ */
+export function prolijo(s: string): string {
   const t = s.trim().replace(/\s+/g, " ");
   if (t !== t.toUpperCase()) return t;
   return t

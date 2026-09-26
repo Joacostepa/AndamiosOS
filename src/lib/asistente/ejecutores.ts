@@ -144,6 +144,9 @@ async function guardar(ctx: ContextoEjecucion, a: Accion, p: PayloadGuardar, pas
       pdf: { id: vista.id, nombre: vista.nombre },
       canceladaVieja: p.cancelarVentaId ? p.cancelarVentaNombre : null,
       avisos,
+      // Para el modelo (la tarjeta no lo muestra). Va acá y no sólo en las instrucciones porque
+      // éstas quedan congeladas en cada conversación: así vale también para las ya abiertas.
+      siguiente: "Sin preguntar, armá ya el mensaje para el cliente con mensaje_whatsapp: el vendedor lo quiere junto al PDF final. Después ofrecé mandarla por mail.",
     },
     pasos,
   };

@@ -105,7 +105,6 @@ export type LineaOrden = {
   precioUnitario: number;
   descuentoPct?: number;
   isRental: boolean;
-  opcional: boolean;
 };
 
 export type DatosOrden = {
@@ -131,7 +130,6 @@ function valoresOrden(d: DatosOrden, reemplazarLineas: boolean): Record<string, 
     price_unit: l.precioUnitario,
     discount: l.descuentoPct ?? 0,
     is_rental: l.isRental,
-    is_optional: l.opcional,
     tax_ids: [[6, 0, [d.impuestoIvaId]]],
   }]);
   return {

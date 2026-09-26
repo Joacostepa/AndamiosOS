@@ -1,4 +1,4 @@
-# Handoff — Asistente comercial (actualizado 2026-09-26, cierre del día)
+# Handoff — Asistente comercial (actualizado 2026-09-26, a la noche)
 
 Para retomar en una sesión nueva. Cómo funciona el módulo, cómo se configura y cómo se prueba
 está en `docs/modulo-asistente-comercial.md`; esto es el estado, lo que falta y el orden para
@@ -22,11 +22,17 @@ En producción: `https://andamios-os.vercel.app/comercial/asistente` y `/comerci
 | Tablero de planificación (sólo lectura) | ✅ Desde `c9cc288` |
 | Voz en vivo (ElevenLabs) | ✅ Probada por el agente real en modo texto y por JS desde la app |
 | Opcionales estándar (concertina, técnico de SyH, memoria de cálculo) | ✅ Desde `2ddfa47`, con el criterio v2 (ver § siguiente) |
+| Mensaje de WhatsApp para el cliente, solo y con su nombre | ✅ 26/09 a la noche (ver § más abajo) |
+| A Odoo va sólo la base (sin opcionales) | ✅ 26/09 a la noche; S02715 y S02716 corregidas |
 | WhatsApp | Construido y probado simulando a Meta. **Sin configurar: lo postergó JS** |
 | Parámetros de cotización (7 pestañas) | ✅ |
 
-**Commits en main:** `d4538c5` (el módulo), `c9cc288` (el tablero y la doc de ElevenLabs) y
-`2ddfa47` (los opcionales estándar y este handoff).
+**Commits en main:**
+
+- `d4538c5`: el módulo;
+- `c9cc288`: el tablero y la doc de ElevenLabs;
+- `2ddfa47`: los opcionales estándar y este handoff;
+- el del 26/09 a la noche: el mensaje de WhatsApp y la base sola en Odoo.
 
 **Base y servicios:**
 
@@ -96,6 +102,53 @@ Verificado después:
 - el motor carga las tarifas nuevas;
 - las conversaciones nuevas arrancan con el v2;
 - el historial registra los cuatro cambios.
+
+### Mensaje de WhatsApp para el cliente (26/09 a la noche)
+
+**Pedido de JS** (charla de la S01917 → S02716): que junto con el PDF final salga solo el
+mensaje para el cliente, dirigido a él por su nombre y amable. Antes había que pedirlo, y salía
+"Hola, ¿cómo estás?" sin nombre porque el borrador no tenía contacto.
+
+**Cómo quedó:**
+
+- La plantilla está en `src/lib/asistente/mensaje-cliente.ts`, con 5 tests. Saluda por el
+  nombre, nombra la obra (lo que viene en mayúsculas de Odoo pasa a "Riobamba 651") y, si es
+  una re-emisión, dice "la propuesta actualizada".
+- El nombre de pila lo pasa el modelo (`mensaje_whatsapp.nombre`). En Odoo los particulares
+  están de las dos maneras ("NAVALLES VERONICA", "Diego Izzo") y hay empresas con CUIT 20, así
+  que con una regla se saludaría mal.
+- Sale solo por dos vías: el resultado de guardar trae un `siguiente` que se lo pide al
+  modelo (así vale para las conversaciones ya abiertas) y las instrucciones lo dicen para las
+  nuevas.
+
+### A Odoo va sólo la base (26/09 a la noche)
+
+**El problema:** los opcionales se cargaban en la orden como líneas con `is_optional`, pero
+Odoo 19 las suma igual al `amount_untaxed`, y la oportunidad del CRM copia ese total. Pasaba
+en cada bandeja y fachada desde `2ddfa47`, y es el aviso naranja "Odoo calculó un neto…".
+Antes del 26/09 no había ninguna línea `is_optional` en Odoo.
+
+**Lo que decidió JS:** a la orden va sólo la base, como hacía la skill ("la base + los
+opcionales que el cliente acepte").
+
+- Los opcionales y los adicionales quedan en el PDF adjunto y en una lista de la nota
+  interna, con su precio. Si el cliente acepta uno, se agrega en ese momento.
+- El resumen que se confirma lo avisa en la línea "Sólo en el PDF, no en la orden".
+- Se sacó `LineaOrden.opcional` (`src/lib/odoo/presupuestos.ts`): ya no se escribe
+  `is_optional`. `comercial.ts` lo sigue leyendo para las órdenes viejas.
+
+**Órdenes corregidas en Odoo el 26/09**, con una nota en cada una que lista lo que se sacó:
+
+| Orden | Cliente | Antes | Después |
+| --- | --- | --- | --- |
+| S02715 | Karina Rosso | $ 5.796.000 | $ 3.360.000 |
+| S02716 | Fernando Mena | $ 3.640.000 | $ 1.890.000 |
+
+Las oportunidades 3539 y 3541 se acomodaron solas. No quedan líneas `is_optional` en Odoo.
+
+**Sin probar contra Odoo real:** la prueba punta a punta (`scripts/test-asistente-e2e.mts`,
+~US$ 1). Pide `amount_untaxed === 12 × 140.000`, así que desde `2ddfa47` tendría que haber
+fallado; con este cambio vuelve a cerrar. Correrla antes del piloto.
 
 ---
 

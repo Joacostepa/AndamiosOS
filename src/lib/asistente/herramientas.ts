@@ -34,6 +34,7 @@ import { crearBorrador, guardarBorrador, leerAccionPorNumero, type Borrador, typ
 import { proponerAccion, rechazarAccion, verificarConfirmacion, ejecutarAccion, vistaAccion } from "./acciones";
 import { crearEjecutor, type PayloadGuardar, type PayloadMail } from "./ejecutores";
 import { generarPdfDelBorrador } from "./pdf";
+import { mensajeParaCliente } from "./mensaje-cliente";
 import { consultarPlanificacion, puedeVerPlanificacion } from "./planificacion";
 import type { BorradorVista, Evento } from "./eventos";
 
@@ -604,21 +605,18 @@ const HERRAMIENTAS = [
   }),
   definir({
     nombre: "mensaje_whatsapp",
-    descripcion: "El mensaje para mandarle al cliente por WhatsApp junto con el PDF (plantilla de la casa, con el nombre de pila del contacto). Se muestra con un botón para copiar.",
+    descripcion: "El mensaje para que el vendedor le mande al cliente por WhatsApp junto con el PDF final (plantilla de la casa: lo saluda por su nombre y nombra la obra). Se muestra en una tarjeta con botón para copiar.",
     etiqueta: "Armando el mensaje para WhatsApp",
-    esquema: z.object({ mailEnviado: z.boolean().describe("true si ya se mandó por mail") }),
-    ejecutar: async ({ mailEnviado }, ctx) => {
-      const nombre = (ctx.borrador.datos.cliente.contacto ?? "").trim().split(/\s+/)[0] || "";
-      const texto = [
-        `Hola${nombre ? ` ${nombre}` : ""}, ¿cómo estás?`,
-        mailEnviado
-          ? "Te comento que ya te enviamos por mail la propuesta que nos pediste, y también te la comparto por acá para que la tengas a mano."
-          : "Te comparto por acá la propuesta que nos pediste.",
-        "Cualquier duda o consulta, estoy a disposición.",
-        "¡Saludos!",
-      ].join("\n");
+    esquema: z.object({
+      nombre: z.string().describe("Nombre de pila de la persona a la que va, bien escrito: el del contacto o, si el cliente es un particular, el suyo («Verónica» para NAVALLES VERONICA; ojo, en Odoo a veces va primero el apellido). Vacío si no se sabe."),
+      mailEnviado: z.boolean().describe("true si ya se mandó por mail"),
+    }),
+    ejecutar: async ({ nombre, mailEnviado }, ctx) => {
+      const texto = mensajeParaCliente({
+        nombre, obra: ctx.borrador.datos.obra.direccion, actualizada: !!ctx.borrador.origen_venta_id, mailEnviado,
+      });
       ctx.emitir({ t: "whatsapp", texto });
-      return { contenido: json({ ok: true, texto }) };
+      return { contenido: json({ ok: true, texto, nota: "Ya lo ve en la tarjeta, con botón para copiar: no lo copies en tu respuesta." }) };
     },
   }),
 
@@ -710,6 +708,10 @@ function notaHtml(d: DatosBorrador, r: ResultadoBorrador): string {
   if (desvios.length) {
     partes.push(`<p><b>Precios fuera de tarifa:</b></p><ul>${desvios.map((l) => `<li>${esc(l.descripcion)}: ${esc(l.calculo)} — tarifa ${esc(l.desvio!.tarifa)}. Motivo: ${esc(l.desvio!.motivo)}</li>`).join("")}</ul>`);
   }
+  const fuera = r.lineas.filter((l) => l.seccion !== "base");
+  if (fuera.length) {
+    partes.push(`<p><b>En el PDF pero no en la orden</b> (si el cliente acepta alguno, se agrega):</p><ul>${fuera.map((l) => `<li>${l.seccion === "opcional" ? "Opcional" : "Adicional"}: ${esc(l.descripcion)} — ${pesos(l.importe)}${l.unidad ? ` ${esc(l.unidad)}` : ""}</li>`).join("")}</ul>`);
+  }
   const decisiones = Object.entries(d.decisiones);
   if (decisiones.length) partes.push(`<p><b>Decisiones:</b> ${decisiones.map(([k, v]) => `${esc(k)}: ${esc(v)}`).join(" · ")}</p>`);
   const perfil = Object.entries(d.perfilComercial);
@@ -729,14 +731,19 @@ async function proponerGuardar(ctx: ContextoHerramientas, toolUseId: string): Pr
   const d = b.datos;
   const productos = new Map(ctx.productos.map((p) => [p.clave, p]));
   const lineas = [];
-  for (const l of r.lineas) {
+  // A la orden va sólo la base. Odoo 19 suma al total también las líneas con is_optional (la
+  // S02716 quedó en $ 3.640.000 con una base de $ 1.890.000), así que los opcionales y los
+  // adicionales quedan en el PDF adjunto y en la nota interna: si el cliente acepta uno, se
+  // agrega en ese momento. Es la regla de la skill (Joaquín, 26/09).
+  const fueraDeLaOrden = r.lineas.filter((l) => l.seccion !== "base");
+  for (const l of r.lineas.filter((x) => x.seccion === "base")) {
     const p = productos.get(l.producto);
     if (!p || !p.activo || p.verificado_ok === false) {
       return { contenido: `La línea «${l.descripcion}» usa el producto ${l.producto}, que no está disponible en Odoo. Revisá Parámetros → Productos de Odoo.`, esError: true };
     }
     lineas.push({
       productId: p.product_id, descripcion: l.descripcion, cantidad: l.cantidad, precioUnitario: l.precioUnitario,
-      descuentoPct: l.descuentoPct, isRental: p.is_rental, opcional: l.seccion !== "base",
+      descuentoPct: l.descuentoPct, isRental: p.is_rental,
     });
   }
 
@@ -784,6 +791,9 @@ async function proponerGuardar(ctx: ContextoHerramientas, toolUseId: string): Pr
     `Obra: ${d.obra.direccion}`,
     `Neto: ${pesos(r.totales.subtotal)} + IVA${r.totales.renovacion ? ` · renovación ${pesos(r.totales.renovacion.monto)} por mes` : ""}`,
     `Técnico: ${ctx.vendedor.tecnicoNombre ?? "—"} · Vendedor: ${ctx.vendedor.vendedorNombre ?? "—"} · Contrato: ${d.contrato?.trim()}`,
+    ...(fueraDeLaOrden.length
+      ? [`Sólo en el PDF, no en la orden: ${fueraDeLaOrden.map((l) => `${l.descripcion.split(" — ")[0]} ${pesos(l.importe)}`).join(" · ")}`]
+      : []),
     ...(payload.cancelarVentaId ? [`Re-emisión: se cancela ${cancelarVentaNombre ?? "la venta vieja"}`] : []),
   ].join("\n");
   const resumenVoz = `${b.odoo_venta_id ? `Actualizo ${b.odoo_venta_nombre}` : "Guardo el presupuesto en Odoo"} para ${c.razonSocial}, obra ${d.obra.direccion}, por ${enLetras(r.totales.subtotal)} pesos más IVA${crearCliente ? ", dando de alta al cliente" : ""}${payload.cancelarVentaId ? `, y cancelo ${cancelarVentaNombre ?? "la venta vieja"}` : ""}. ¿Confirmás?`;

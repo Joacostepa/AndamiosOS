@@ -40,7 +40,10 @@ WhatsApp espera la cuenta de Meta (§ WhatsApp).
 - Tarjetas:
   - la acción a confirmar, con los botones Confirmar y Cancelar;
   - el PDF, para verlo, descargarlo o compartirlo directo a WhatsApp desde el celular;
-  - el mensaje para el cliente, listo para copiar.
+  - el mensaje para el cliente, listo para copiar. Sale solo con el PDF final, sin que el
+    vendedor lo pida: saluda por el nombre de pila, nombra la obra y, si es una re-emisión,
+    dice "la propuesta actualizada". El nombre lo elige el asistente, porque en Odoo los
+    particulares están cargados de las dos maneras ("NAVALLES VERONICA", "Diego Izzo").
 
 **Nada se escribe en Odoo sin confirmación.** El asistente propone la acción y lee el resumen.
 El vendedor confirma de una de dos maneras:
@@ -60,9 +63,13 @@ Cualquier cambio en el presupuesto vence la acción y hay que volver a proponerl
 
 - da de alta el cliente (por CUIT, sin duplicar);
 - crea o actualiza la orden en **borrador**: nunca la confirma y nunca crea productos;
+- a la orden va **sólo la base**. Los opcionales y los adicionales quedan en el PDF y en la
+  nota interna, y si el cliente acepta uno se agrega en ese momento. Odoo 19 suma al total
+  también las líneas marcadas como opcionales (`is_optional`), y la oportunidad copia ese
+  total;
 - completa la solapa "Trabajo a ejecutar";
 - vincula la oportunidad del CRM, sin moverla de etapa;
-- deja una nota con quién lo pidió y los desvíos de tarifa;
+- deja una nota con quién lo pidió, los desvíos de tarifa y lo que quedó fuera de la orden;
 - adjunta el PDF final;
 - al re-emitir, cancela la orden vieja;
 - manda el mail con la plantilla de la casa.
@@ -80,6 +87,7 @@ opcionales, que no suman al subtotal:
 | Memoria de cálculo | $ 1.250.000 | Bandejas y fachadas. **Pasados los 6 m de altura va en la base**, porque es obligatoria (Decreto 911/96, criterio §6.1) |
 
 - Si el cliente pide alguno, pasa a la base.
+- No van a la orden de Odoo: quedan en el PDF y en la nota interna (ver arriba).
 - Si el vendedor lo saca, no vuelve a aparecer al recalcular.
 - Todo está en `opcionalesEstandar` (`src/lib/asistente/borrador.ts`) y los valores en Tarifas.
 

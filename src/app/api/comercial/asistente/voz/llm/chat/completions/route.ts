@@ -29,8 +29,16 @@ function autorizado(req: NextRequest): boolean {
   return timingSafeEqual(Buffer.from(recibido), Buffer.from(esperado));
 }
 
-const PRIMERA_ESPERA = ["A ver... ", "Dale, dejame ver... ", "Un segundo... ", "Mmm, a ver... "];
+// Sin "Dale": el asistente ya arranca muchas respuestas así y quedaba "Dale, dejame ver... Dale, …".
+const PRIMERA_ESPERA = ["A ver... ", "Dejame ver... ", "Un segundito... ", "Ahí lo miro... ", "Ya te digo... "];
 const ESPERA_LARGA = ["Sigo con eso... ", "Ya casi lo tengo... ", "Un momento más... "];
+// Hasta la primera palabra tarda 2,5 a 4,5 s (medido el 26/09). Con la espera a los 3 s casi
+// toda respuesta arrancaba con "a ver...", y eso es lo que más sonaba a robot: sale sólo si de
+// verdad tarda (herramientas, Odoo).
+const PRIMERA_ESPERA_MS = 4_500;
+// Si ElevenLabs descartó el pedido anterior (el vendedor siguió hablando), ese turno puede tardar
+// unos segundos en soltar el candado: se lo espera callado (la frase de espera tapa el silencio).
+const ESPERA_OCUPADO_MS = 12_000;
 
 /** Lo que se va a decir: sin markdown (asteriscos, numerales, viñetas) que el TTS leería. */
 function paraDecir(t: string): string {
@@ -69,10 +77,9 @@ export async function POST(req: NextRequest) {
       };
       enviar(chunk({ role: "assistant", content: "" }));
 
-      // Silencios. Por teléfono, unos segundos callado parece que se cortó: si a los 3 s no dijo
-      // nada (o arrancó una herramienta) va una frase de espera corta, y mientras siga trabajando,
-      // otra cada 20 s de silencio (máx. 4 en total). Terminan en "... " para que la voz las diga
-      // con entonación de pausa.
+      // Silencios. Por teléfono, unos segundos callado parece que se cortó: si a los 4,5 s no dijo
+      // nada va una frase de espera corta, y mientras siga trabajando, otra cada 20 s de silencio
+      // (máx. 4 en total). Terminan en "... " para que la voz las diga con entonación de pausa.
       let dijoAlgo = false;
       let rellenos = 0;
       let ultimoDicho = Date.now();
@@ -94,7 +101,7 @@ export async function POST(req: NextRequest) {
         rellenos++;
       };
       const reloj = setInterval(() => {
-        if (Date.now() - ultimoDicho >= (dijoAlgo || rellenos > 0 ? 20_000 : 3_000)) rellenar();
+        if (Date.now() - ultimoDicho >= (dijoAlgo || rellenos > 0 ? 20_000 : PRIMERA_ESPERA_MS)) rellenar();
       }, 500);
 
       try {
@@ -103,17 +110,15 @@ export async function POST(req: NextRequest) {
           decir("Te escucho.");
           return;
         }
-        // Si el turno anterior todavía está soltando el candado (interrupción), se reintenta un poco.
+        // Si el turno anterior todavía está soltando el candado (interrupción), se reintenta.
         let ocupado = false;
-        for (let intento = 0; intento < 6; intento++) {
+        for (let intento = 0; intento < ESPERA_OCUPADO_MS / 500; intento++) {
           ocupado = false;
           for await (const ev of ejecutarTurno({ db, conversacionId: sesion.conversacionId, usuarioId: sesion.usuarioId, entrada: { tipo: "mensaje", texto, adjuntos: [], canal: "voz" }, signal: corte.signal })) {
             if (ev.t !== "texto") nuevaTanda = true;
             if (ev.t === "texto") {
               dijoAlgo = true;
               decir(paraDecir(ev.d));
-            } else if (ev.t === "herramienta" && ev.estado === "inicio" && !dijoAlgo && rellenos === 0) {
-              rellenar();
             } else if (ev.t === "continuar") {
               decir(" Me está llevando más de lo pensado. Decime «seguí» y continúo.");
             } else if (ev.t === "error") {

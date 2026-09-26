@@ -146,7 +146,7 @@ export async function contextoDelTurno(
   const partes = [
     `Ahora: ${ahora}.`,
     `Habla: ${p.vendedor.nombre}${p.vendedor.tecnicoNombre ? ` (técnico en Odoo: ${p.vendedor.tecnicoNombre}${p.vendedor.vendedorNombre ? `; vendedor de sus órdenes: ${p.vendedor.vendedorNombre}` : ""})` : " (sin vínculo con Odoo todavía)"}.`,
-    `Canal: ${p.canal === "voz" ? "VOZ — respuestas cortas, sin tablas ni markdown, números dichos claro; la frase de espera la dice la voz sola, no anuncies lo que vas a buscar" : p.canal === "whatsapp" ? "WhatsApp — mensajes cortos, sin tablas ni títulos, negrita con *un asterisco*; el PDF y el mensaje para el cliente le llegan como mensajes aparte, y lo que se confirma le llega con botones (también vale que conteste «sí»)" : "chat escrito"}.`,
+    `Canal: ${p.canal === "voz" ? "VOZ, como por teléfono — frases cortas y naturales, como las diría una persona; sin tablas ni markdown; números dichos claro. No arranques cada respuesta con la misma muletilla («Dale», «Perfecto», «Listo») ni repitas lo que te acaba de decir. La frase de espera la dice la voz sola: no anuncies lo que vas a buscar. Si llega sólo «...», se quedó callado un rato: retomá con algo muy corto («¿Seguimos?»), sin repetir la pregunta entera" : p.canal === "whatsapp" ? "WhatsApp — mensajes cortos, sin tablas ni títulos, negrita con *un asterisco*; el PDF y el mensaje para el cliente le llegan como mensajes aparte, y lo que se confirma le llega con botones (también vale que conteste «sí»)" : "chat escrito"}.`,
     `Borrador: ${p.resumenBorrador}`,
   ];
   if (p.parametrosVersion !== null) {

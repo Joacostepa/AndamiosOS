@@ -141,13 +141,27 @@ Dos cosas distintas, las dos con ElevenLabs:
    borrador. La pantalla se va actualizando mientras se habla.
 
    En voz:
-   - el esfuerzo del modelo es el de `asistente_esfuerzo_voz` (hoy `medium`), para que tarde
-     menos en contestar;
-   - si a los 3 s no dijo nada, la voz dice sola una frase de espera («A ver...»);
-   - las respuestas son cortas, sin markdown y con los números dichos en palabras.
+   - el esfuerzo del modelo es el de `asistente_esfuerzo_voz` (`low` desde el 26/09; antes
+     `medium`), para que tarde menos en contestar;
+   - si a los 4,5 s no dijo nada, la voz dice sola una frase de espera («A ver...»). Con 3 s
+     salía en casi todas las respuestas, porque la primera palabra tarda 2,5 a 4,5 s, y era lo
+     que más sonaba a robot;
+   - las respuestas son cortas, naturales, sin muletillas repetidas, sin markdown y con los
+     números dichos en palabras.
 
-   Medido: una consulta con dos búsquedas en Odoo tarda ~12 s en total, con la primera
-   palabra a los 3 s.
+   **ElevenLabs descarta respuestas.** Cuando cree que el vendedor terminó, pide una
+   respuesta. Si el vendedor sigue hablando, la descarta sin decirla y vuelve a pedir con la
+   frase completa. En la prueba del 26/09 llegaron 14 pedidos y se escucharon 8.
+   - Nuestra respuesta ya quedó guardada, así que el turno siguiente lleva una nota para el
+     modelo: "tu respuesta anterior no se llegó a decir" (`src/lib/voz/continuacion.ts`).
+   - Se reconoce porque la frase nueva empieza con la anterior.
+   - Si el turno descartado todavía no soltó el candado, se lo espera hasta 12 s callado.
+
+   Medido: una consulta con dos búsquedas en Odoo tarda ~12 s en total. La primera palabra
+   tardaba 2,5 a 4,5 s con `medium`; con `low`, todavía sin medir.
+
+   **Sólo anda desde la app.** Probarlo desde la página de ElevenLabs falla ("custom_llm
+   generation failed"), porque ahí no hay token de sesión y nuestro endpoint lo rechaza.
 
 ### Configurar ElevenLabs (una vez)
 
@@ -168,7 +182,11 @@ Si hay que rehacerlo:
    | Idioma | `es` | De eso depende que entienda lo que se le dice |
    | Modelo de voz | `eleven_flash_v2_5` | El `eleven_flash_v2` sólo habla inglés |
    | Voz | una argentina, a elección (p. ej. *Amanda – Warm Argentine Narrator*) | — |
-   | Primer mensaje | «Hola, te escucho.» | — |
+   | Primer mensaje | «Hola, que queres que hagamos?.» | Lo cambió JS desde la pantalla (antes: «Hola, te escucho.») |
+   | Detección de voces de fondo (`vad.background_voice_detection`) | **activada** (26/09) | Tomaba como del vendedor lo que hablaban al lado |
+   | Turnos (`turn.turn_eagerness`) | **patient** (26/09) | Con `normal` decidía que el vendedor había terminado en cada pausa de la frase |
+   | Silencio (`turn.turn_timeout`) | **20 s** (26/09; antes 7) | A los 7 s de silencio (mirando la pantalla) retomaba la charla solo |
+   | No interrumpen (`turn.interruption_ignore_terms`) | ajá, ahá, mhm, ok, okey | Un "ajá" mientras habla no la corta |
    | LLM | **Custom LLM**: URL `https://andamios-os.vercel.app/api/comercial/asistente/voz/llm`, Model ID `asistente-aba`, API key = un secreto con el valor de `ELEVENLABS_LLM_SECRETO` (`openssl rand -hex 32`) | ElevenLabs le agrega `/chat/completions` (también existe el alias `/v1/chat/completions`) |
    | LLM de respaldo | **Desactivado** | Si nuestro servidor tarda o falla, un modelo de respaldo contestaría sin ver Odoo ni las tarifas, o sea que inventaría precios |
    | `cascade_timeout_seconds` | **15** | Con el valor de fábrica (4 s), si el servidor arranca en frío la frase de espera llega tarde, ElevenLabs repite el pedido y el turno se procesa dos veces |

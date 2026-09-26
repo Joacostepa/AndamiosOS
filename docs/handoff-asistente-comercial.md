@@ -193,6 +193,57 @@ mensaje ("...", "Hola, ¿cómo estás?"). El botón de archivar aparecía sólo 
 
 La pantalla no la probó Claude, que no tiene login.
 
+### Voz en vivo más fluida (26/09 a la noche)
+
+**Lo que dijo JS:** "no es fluido, se siente súper robótico, se corta mucho cuando escucha
+otra cosa si está abierto el micrófono".
+
+**Lo que mostró su charla de las 17:17** (ElevenLabs `conv_5301m3fnta45egjvqkgb5kd4x1pn` más
+nuestra base):
+
+1. **La frase de espera iba en casi todas las respuestas.** La primera palabra tardaba 2,5 a
+   4,4 s y la frase salía a los 3 s: "Dale, dejame ver... Dale, …".
+2. **ElevenLabs descartó 6 de 14 respuestas** porque JS siguió hablando después de una pausa.
+   Las nuestras quedaron guardadas, y el asistente contestaba sobre cosas que nadie escuchó.
+3. **Tomó como de JS una conversación de al lado.**
+4. **Un "Todavía estoy terminando lo anterior"**: el turno descartado no había soltado el
+   candado.
+5. **A los 7 s de silencio, ElevenLabs le hizo retomar la charla** (le manda "...").
+
+**Lo que se cambió:**
+
+- **ElevenLabs** (por API, el 26/09; la copia de antes quedó en el scratchpad de la sesión, no
+  en el repo):
+  - detección de voces de fondo encendida;
+  - `turn_eagerness` en `patient`;
+  - `turn_timeout` en 20;
+  - que ajá, ahá, mhm, ok y okey no interrumpan.
+
+  Verificado que cambiaron sólo esos cuatro campos.
+- **Parámetros:** `asistente_esfuerzo_voz` de `medium` a `low`, con motivo en el historial.
+- **Código:**
+  - frase de espera a los 4,5 s y sin "Dale";
+  - ya no sale al arrancar una herramienta;
+  - espera de hasta 12 s si el turno anterior no soltó el candado;
+  - nota de continuación (`src/lib/voz/continuacion.ts`, 4 tests);
+  - en voz, el contexto de cada turno pide frases naturales y sin muletillas, y dice qué
+    hacer con el "...".
+
+  Todo esto rige también en las charlas abiertas.
+
+**Falta:**
+
+- **Medir la latencia con `low`.**
+- **Que JS lo pruebe.** Recordarle que si tiene abierta la pantalla del agente en
+  ElevenLabs, la recargue antes de guardar nada.
+- **Decisión de JS: probar la voz con `eleven_v3_conversational`** (modo expresivo: más
+  natural, ~280 ms, 70+ idiomas). No conserva las características de voces clonadas
+  profesionales, así que la voz argentina que eligió puede sonar distinta. Hoy es
+  `eleven_flash_v2_5`, la más rápida y la más plana. Se cambia y se vuelve con un solo
+  `PATCH`.
+- **Idea para obra: "mantener apretado para hablar"** (micrófono apagado salvo mientras se
+  aprieta). Con ruido de obra, es lo único que corta el problema de raíz. No se hizo.
+
 ---
 
 ## Lo primero en la sesión nueva
@@ -278,9 +329,8 @@ Gabriel y Jorge dejen anotado lo que no les sirvió. No contestó: queda como id
 
   Hoy hay pruebas punta a punta (`scripts/test-asistente-*.mts`) y los tests del motor, no un set
   de evaluación. Cada corrida cuesta ~US$ 0,50 a 1 por caso.
-- **Latencia en voz.** Una consulta con dos búsquedas en Odoo tarda unos 12 a 15 s; la frase de
-  espera sale a los 3 s. Si molesta, bajar `asistente_esfuerzo_voz` a `low` en Parámetros (no
-  hace falta deploy) y medir.
+- **Latencia en voz.** Molestó (JS, 26/09): ya se bajó `asistente_esfuerzo_voz` a `low`. Falta
+  medirla con uso real (ver § "Voz en vivo más fluida").
 - **Borrar las 8 claves viejas de `configuracion`** (la lista está en el doc del módulo,
   § Pendiente). No las lee ningún código.
 - **Más adelante:** la llamada telefónica. Es el mismo agente de voz con un número de Twilio, y el

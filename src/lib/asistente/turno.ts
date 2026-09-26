@@ -23,6 +23,7 @@ import {
   leerAccion, type FilaMensaje, type NuevoMensaje,
 } from "./datos";
 import { contextoDelTurno } from "./prompt";
+import { notaDeContinuacion } from "@/lib/voz/continuacion";
 import { definicionesParaApi, ejecutarHerramienta, etiquetaDe, resumenCortoBorrador, vistaBorrador, type ContextoHerramientas } from "./herramientas";
 import { ejecutarAccion, presentarAcciones, rechazarAccion, vencerAccionesDelTurno, vistaAccion } from "./acciones";
 import { crearEjecutor } from "./ejecutores";
@@ -143,6 +144,7 @@ export async function* ejecutarTurno(p: {
     // ── Entrada del vendedor ──────────────────────────────────────────────────────
     const nuevos: NuevoMensaje[] = [];
     let resultadoBoton: string | null = null;
+    let notaVoz: string | null = null;
     // Reparación: si la historia terminó con un pedido de herramienta sin respuesta (no
     // debería pasar: se guardan juntos), se le responde "interrumpido" antes de seguir.
     const ultima = historia.at(-1);
@@ -155,6 +157,7 @@ export async function* ejecutarTurno(p: {
 
     if (p.entrada.tipo === "mensaje") {
       textoVendedor = p.entrada.texto.trim();
+      if (canal === "voz") notaVoz = notaDeContinuacion([...historia].reverse().find((m) => m.tipo === "humano"), textoVendedor);
       const adjuntos = await subirAdjuntos(db, cliente, p.entrada.adjuntos);
       const contenido: Anthropic.Beta.BetaContentBlockParam[] = [...reparacion, ...adjuntos, { type: "text", text: textoVendedor || "(sin texto)" }];
       nuevos.push({ rol: "user", tipo: "humano", contenido, texto: textoVendedor, canal, turno_id: turnoId, uso: null, modelo_servido: null });
@@ -196,7 +199,7 @@ export async function* ejecutarTurno(p: {
         vendedor, canal, parametrosVersion: conv.parametros_version, resumenBorrador: resumenCortoBorrador(ctx.borrador),
       });
       // Un solo aviso de sistema por turno, justo después del vendedor (así lo pide la API).
-      const aviso = resultadoBoton ? `${resultadoBoton}\n\n${contexto}` : contexto;
+      const aviso = [resultadoBoton, notaVoz, contexto].filter(Boolean).join("\n\n");
       nuevos.push({ rol: "system", tipo: "contexto", contenido: aviso, texto: null, canal: null, turno_id: turnoId, uso: null, modelo_servido: null });
       seq = await agregarMensajes(db, conv.id, seq, nuevos);
       mensajes.push(...nuevos.map((m) => ({ role: m.rol, content: m.contenido }) as Anthropic.Beta.BetaMessageParam));

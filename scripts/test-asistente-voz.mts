@@ -2,11 +2,13 @@
 // por ElevenLabs y llama al endpoint Custom LLM (…/voz/llm/chat/completions) como lo haría el
 // agente, con el secreto y el token de sesión firmado. Claude, Odoo y la base son los reales.
 //
-// Cubre: rechazo con otro secreto, el formato del stream (chat.completion.chunk + [DONE]), la
-// frase de espera antes de los 3,5 s, que lo dicho no traiga markdown ni tandas pegadas, y que
-// el turno quede guardado con canal "voz". Borra la conversación al final.
+// Cubre: rechazo con otro secreto, el formato del stream (chat.completion.chunk + [DONE]), algo
+// dicho antes de los 5 s (la frase de espera sale a los 4,5 s si no habló), que lo dicho no traiga
+// markdown ni tandas pegadas, que el turno quede guardado con canal "voz" y la nota cuando el
+// vendedor siguió hablando (ElevenLabs descartó la respuesta anterior). Borra la conversación al
+// final.
 //
-// Cuesta ~US$ 0,50 de API.
+// Cuesta ~US$ 0,70 de API.
 //
 // Correr: npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/test-asistente-voz.mts
 
@@ -75,7 +77,7 @@ try {
   const r = await hablar("¿Qué presupuestos le hicimos al Consorcio Moldes 3556? Decime el último nomás.");
   ok(r.status === 200 && !r.rara, "stream con el formato de OpenAI (chat.completion.chunk)");
   ok(r.fin && r.done, "termina con finish_reason stop y [DONE]");
-  ok(r.primera !== null && r.primera < 3.5, `algo dicho antes de los 3,5 s (${r.primera?.toFixed(1)} s)`);
+  ok(r.primera !== null && r.primera < 5, `algo dicho antes de los 5 s (${r.primera?.toFixed(1)} s)`);
   ok(!/\*\*|^#|\|/m.test(r.dicho), "sin markdown");
   ok(!/[a-záéíóúñ][.?!][A-ZÁÉÍÓÚÑ¿]/.test(r.dicho), "sin tandas pegadas (\"Odoo.Ojo\")");
   ok(/S0\d{4}/.test(r.dicho), "nombra el presupuesto");
@@ -83,6 +85,14 @@ try {
   const { data: filas } = await db.from("asistente_mensajes").select("rol, tipo, canal").eq("conversacion_id", conv.id).order("seq");
   ok(filas?.some((f) => f.tipo === "humano" && f.canal === "voz"), "el mensaje quedó guardado con canal voz");
   ok(filas?.at(-1)?.rol === "assistant", "la respuesta quedó guardada");
+
+  // ElevenLabs descarta la respuesta si el vendedor sigue hablando y vuelve a pedir con la frase
+  // completa: el modelo tiene que saber que su respuesta anterior no se escuchó.
+  await hablar("Quiero cotizar una bandeja de diez metros.");
+  const seguida = await hablar("Quiero cotizar una bandeja de diez metros. Corta, a tres metros de altura.");
+  const { data: avisos } = await db.from("asistente_mensajes").select("contenido").eq("conversacion_id", conv.id).eq("tipo", "contexto").order("seq", { ascending: false }).limit(1);
+  ok(/siguió hablando/.test(JSON.stringify(avisos?.[0]?.contenido ?? "")), "la frase continuada lleva la nota de que la respuesta anterior no se dijo");
+  ok(seguida.status === 200 && seguida.dicho.length > 0, "y contesta");
 } finally {
   const { data: borradores } = await db.from("cotizacion_borradores").select("id").eq("conversacion_id", conv.id);
   for (const b of borradores ?? []) {

@@ -6,6 +6,7 @@ import {
   archivarConversacion, eliminarConversacionVacia, leerBorrador, leerConversacion, leerMensajes, type Accion,
 } from "@/lib/asistente/datos";
 import { historialParaPantalla } from "@/lib/asistente/vista";
+import { ultimoMensajeParaCliente } from "@/lib/asistente/mensaje-cliente";
 import { vistaBorrador } from "@/lib/asistente/herramientas";
 import { vistaAccion } from "@/lib/asistente/acciones";
 import { errorResponse, exigirModulo, invalido } from "../../../_comun";
@@ -53,6 +54,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
       borrador: borrador ? vistaBorrador(borrador) : null,
       acciones: ((acciones.data ?? []) as Accion[]).map(vistaAccion),
       pdfs: conUrl,
+      whatsapp: ultimoMensajeParaCliente(mensajes),
     });
   } catch (e) {
     return errorResponse(e);

@@ -84,6 +84,7 @@ function Asistente() {
       .slice(0, 3);
   }, [chat.acciones, detalle.data?.acciones]);
   const pdf = chat.pdfs[0] ?? detalle.data?.pdfs[0] ?? null;
+  const whatsapp = chat.whatsapp ?? detalle.data?.whatsapp ?? null;
   const subtotal = borrador?.resultado?.totales.subtotal ?? 0;
   const propia = detalle.data?.conversacion.propia ?? true;
 
@@ -169,7 +170,7 @@ function Asistente() {
                   <div className="space-y-2 pl-9">
                     {acciones.map((a) => <TarjetaAccion key={a.id} accion={a} onDecidir={chat.decidir} ocupado={chat.respondiendo} />)}
                     {pdf && <TarjetaPdf pdf={pdf} />}
-                    {chat.whatsapp && <TarjetaWhatsapp texto={chat.whatsapp} telefono={borrador?.datos.cliente.celular} />}
+                    {whatsapp && <TarjetaWhatsapp texto={whatsapp} telefono={borrador?.datos.cliente.celular} />}
                   </div>
                 )}
               </div>

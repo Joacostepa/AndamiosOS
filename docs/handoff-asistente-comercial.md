@@ -31,6 +31,7 @@ En producción: `https://andamios-os.vercel.app/comercial/asistente` y `/comerci
 | Las tarjetas (confirmar, PDF, WhatsApp) quedan a la vista al terminar | ✅ 28/09, `062d0aa` |
 | Esfuerzo del chat en `medium` | 28/09, a medir (ver § "De código") |
 | La pantalla sigue un turno que no le llega por el stream (recarga, otra pestaña, celular) | ✅ 28/09 (ver § Reglas) |
+| La tarjeta del mensaje de WhatsApp sigue ahí al recargar | ✅ 28/09: sale de la historia (`ultimoMensajeParaCliente`, 3 tests) |
 | WhatsApp | Construido y probado simulando a Meta. **Sin configurar: lo postergó JS** |
 | Parámetros de cotización (7 pestañas) | ✅ |
 
@@ -427,9 +428,6 @@ Gabriel y Jorge dejen anotado lo que no les sirvió. No contestó: queda como id
     preguntar y no invente datos.
   - **Primer dato con `medium`** (28/09 20:22, «actualizar la S01557»): 5 llamadas y 4
     herramientas en 29 s.
-- **La tarjeta del mensaje de WhatsApp se pierde al recargar.** Existe sólo mientras llega el
-  stream (`chat.whatsapp`); la conversación guardada no la trae. El texto está en la historia,
-  así que se puede reconstruir en `historialParaPantalla`. Se le ofreció a JS el 28/09.
 - **Borrar las 8 claves viejas de `configuracion`** (la lista está en el doc del módulo,
   § Pendiente). No las lee ningún código.
 - **Más adelante:** la llamada telefónica. Es el mismo agente de voz con un número de Twilio, y el

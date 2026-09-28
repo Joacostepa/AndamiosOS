@@ -31,6 +31,8 @@ export type DetalleConversacion = {
   borrador: BorradorVista | null;
   acciones: AccionVista[];
   pdfs: PdfVista[];
+  /** El último mensaje para el cliente: en vivo llega por el stream, al recargar sale de acá. */
+  whatsapp: string | null;
 };
 
 export function useConversaciones() {

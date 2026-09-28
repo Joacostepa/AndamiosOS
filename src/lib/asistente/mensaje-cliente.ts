@@ -48,3 +48,32 @@ export function mensajeParaCliente(d: DatosMensajeCliente): string {
     "¡Muchas gracias por tenernos en cuenta!",
   ].join("\n");
 }
+
+type Bloque = { type: string; [k: string]: unknown };
+
+/**
+ * El último mensaje que armó la herramienta mensaje_whatsapp, sacado de la historia guardada.
+ * La tarjeta llega en vivo por el stream; sin esto, al recargar la página desaparecía. El texto
+ * está en el resultado de la herramienta ({ ok, texto }); uno con error no cuenta.
+ */
+export function ultimoMensajeParaCliente(filas: { rol: string; tipo: string; contenido: unknown }[]): string | null {
+  const pedidos = new Set<string>();
+  for (const f of filas) {
+    if (f.rol !== "assistant" || !Array.isArray(f.contenido)) continue;
+    for (const b of f.contenido as Bloque[]) if (b.type === "tool_use" && b.name === "mensaje_whatsapp") pedidos.add(String(b.id));
+  }
+  for (let i = filas.length - 1; i >= 0; i--) {
+    const f = filas[i];
+    if (f.tipo !== "resultados" || !Array.isArray(f.contenido)) continue;
+    for (const b of f.contenido as Bloque[]) {
+      if (b.type !== "tool_result" || b.is_error || !pedidos.has(String(b.tool_use_id)) || typeof b.content !== "string") continue;
+      try {
+        const texto = (JSON.parse(b.content) as { texto?: unknown }).texto;
+        if (typeof texto === "string" && texto.trim()) return texto;
+      } catch {
+        // un resultado que no es JSON no trae el mensaje
+      }
+    }
+  }
+  return null;
+}

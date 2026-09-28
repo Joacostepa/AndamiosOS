@@ -43,8 +43,12 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
         return { id: p.id, nombre: p.nombre, tipo: p.tipo as "preview" | "final", url: data?.signedUrl ?? "", version: p.borrador_version };
       }),
     );
+    // Un turno corriendo que esta pantalla no está siguiendo (se recargó, se abrió en otra
+    // pestaña, el celular cortó la conexión): la pantalla lo muestra y consulta hasta que termine.
+    // Mismo vencimiento que el candado (asistente_tomar_turno: 330 s).
+    const trabajando = !!conv.turno_en_curso && Date.now() - Date.parse(conv.turno_en_curso) < 330_000;
     return NextResponse.json({
-      conversacion: { id: conv.id, titulo: conv.titulo, modelo: conv.modelo, propia: conv.usuario_id === quien.userId },
+      conversacion: { id: conv.id, titulo: conv.titulo, modelo: conv.modelo, propia: conv.usuario_id === quien.userId, trabajando },
       items: historialParaPantalla(mensajes),
       borrador: borrador ? vistaBorrador(borrador) : null,
       acciones: ((acciones.data ?? []) as Accion[]).map(vistaAccion),

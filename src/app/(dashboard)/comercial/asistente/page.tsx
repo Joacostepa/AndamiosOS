@@ -40,8 +40,12 @@ function Asistente() {
   const crear = useCrearConversacion();
   const archivar = useArchivarConversacion();
   const eliminar = useEliminarConversacion();
-  const detalle = useConversacion(actual);
   const chat = useChat(actual);
+  const detalle = useConversacion(actual, { seguirTurno: !chat.respondiendo });
+  // Un turno que corre en el servidor pero no llega por el stream de esta pantalla (se recargó a
+  // mitad de una respuesta): se muestra "Pensando…" y se consulta hasta que termine.
+  const trabajando = !chat.respondiendo && !!detalle.data?.conversacion.trabajando;
+  const ocupado = chat.respondiendo || trabajando;
   const { reiniciar } = chat;
   const voz = useQuery({
     queryKey: ["asistente-voz"],
@@ -50,7 +54,7 @@ function Asistente() {
   });
   const [verConversaciones, setVerConversaciones] = useState(false);
   const [verBorrador, setVerBorrador] = useState(false);
-  const [cajaRef, contenidoRef] = useSeguirAbajo(actual, chat.respondiendo);
+  const [cajaRef, contenidoRef] = useSeguirAbajo(actual, ocupado);
 
   useEffect(() => {
     reiniciar();
@@ -153,15 +157,15 @@ function Asistente() {
           <>
             <div ref={cajaRef} className="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-6">
               <div ref={contenidoRef} className="mx-auto max-w-3xl space-y-4">
-                {(detalle.data?.items.length ?? 0) === 0 && !chat.respondiendo && (
+                {(detalle.data?.items.length ?? 0) === 0 && !ocupado && (
                   <div className="flex flex-wrap justify-center gap-2 pt-8">
                     {SUGERENCIAS.map((s) => (
                       <Button key={s} variant="outline" size="sm" onClick={() => chat.enviar(s)}>{s}</Button>
                     ))}
                   </div>
                 )}
-                <Hilo items={detalle.data?.items ?? []} enVivo={chat.enVivo} respondiendo={chat.respondiendo} />
-                {!chat.respondiendo && (
+                <Hilo items={detalle.data?.items ?? []} enVivo={chat.enVivo} respondiendo={ocupado} />
+                {!ocupado && (
                   <div className="space-y-2 pl-9">
                     {acciones.map((a) => <TarjetaAccion key={a.id} accion={a} onDecidir={chat.decidir} ocupado={chat.respondiendo} />)}
                     {pdf && <TarjetaPdf pdf={pdf} />}
@@ -175,9 +179,9 @@ function Asistente() {
                 {(hablar) => (
                   <Compositor
                     conversacionId={actual}
-                    respondiendo={chat.respondiendo}
+                    respondiendo={ocupado}
                     onEnviar={(t, a) => chat.enviar(t, a)}
-                    onParar={chat.parar}
+                    onParar={trabajando ? undefined : chat.parar}
                     transcripcionDisponible={!!voz.data?.transcripcion}
                     onHablar={hablar}
                   />
@@ -186,9 +190,9 @@ function Asistente() {
             ) : propia ? (
               <Compositor
                 conversacionId={actual}
-                respondiendo={chat.respondiendo}
+                respondiendo={ocupado}
                 onEnviar={(t, a) => chat.enviar(t, a)}
-                onParar={chat.parar}
+                onParar={trabajando ? undefined : chat.parar}
                 transcripcionDisponible={!!voz.data?.transcripcion}
               />
             ) : (

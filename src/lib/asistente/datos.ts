@@ -24,6 +24,7 @@ export type Conversacion = {
   criterio_version: number | null;
   parametros_version: number | null;
   borrador_id: string | null;
+  turno_en_curso: string | null;
   ultimo_mensaje_at: string | null;
   created_at: string;
 };
@@ -72,7 +73,7 @@ export async function leerConversacion(db: Db, id: string): Promise<Conversacion
 
 export async function crearConversacion(
   db: Db,
-  c: Omit<Conversacion, "id" | "created_at" | "ultimo_mensaje_at" | "borrador_id" | "estado" | "titulo"> & { titulo?: string | null },
+  c: Omit<Conversacion, "id" | "created_at" | "ultimo_mensaje_at" | "borrador_id" | "turno_en_curso" | "estado" | "titulo"> & { titulo?: string | null },
 ): Promise<Conversacion> {
   const { data, error } = await db.from("asistente_conversaciones").insert({ ...c, estado: "activa" }).select("*").single();
   if (error) falla("No se pudo crear la conversación", error);

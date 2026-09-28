@@ -32,7 +32,8 @@ export function Compositor({
   conversacionId: string;
   respondiendo: boolean;
   onEnviar: (texto: string, adjuntos: Adjunto[]) => void;
-  onParar: () => void;
+  /** Sin onParar el turno no lo sigue esta pantalla (se recargó a mitad): no hay qué cortar. */
+  onParar?: () => void;
   transcripcionDisponible: boolean;
   onHablar?: () => void;
 }) {
@@ -196,8 +197,10 @@ export function Compositor({
             {transcribiendo ? <Loader2 className="animate-spin" /> : grabando ? <Square /> : <Mic />}
           </Button>
         )}
-        {respondiendo ? (
+        {respondiendo && onParar ? (
           <Button size="icon" variant="outline" onClick={onParar} aria-label="Parar"><Square /></Button>
+        ) : respondiendo ? (
+          <Button size="icon" variant="outline" disabled aria-label="El asistente está respondiendo"><Loader2 className="animate-spin" /></Button>
         ) : onHablar && !texto.trim() && !adjuntos.length && !subiendo && !grabando && !transcribiendo ? (
           <Button size="icon" onClick={onHablar} aria-label="Hablar con el asistente" title="Hablar con el asistente">
             <AudioLines />

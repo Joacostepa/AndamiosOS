@@ -1,4 +1,4 @@
-# Handoff — Asistente comercial (actualizado 2026-09-26, a la noche)
+# Handoff — Asistente comercial (actualizado 2026-09-28, a la noche)
 
 Para retomar en una sesión nueva. Cómo funciona el módulo, cómo se configura y cómo se prueba
 está en `docs/modulo-asistente-comercial.md`; esto es el estado, lo que falta y el orden para
@@ -30,6 +30,7 @@ En producción: `https://andamios-os.vercel.app/comercial/asistente` y `/comerci
 | Pegar capturas con Ctrl/Cmd+V | ✅ 28/09, `17dab45` |
 | Las tarjetas (confirmar, PDF, WhatsApp) quedan a la vista al terminar | ✅ 28/09, `062d0aa` |
 | Esfuerzo del chat en `medium` | 28/09, a medir (ver § "De código") |
+| La pantalla sigue un turno que no le llega por el stream (recarga, otra pestaña, celular) | ✅ 28/09 (ver § Reglas) |
 | WhatsApp | Construido y probado simulando a Meta. **Sin configurar: lo postergó JS** |
 | Parámetros de cotización (7 pestañas) | ✅ |
 
@@ -424,6 +425,11 @@ Gabriel y Jorge dejen anotado lo que no les sirvió. No contestó: queda como id
     `fallbacks: "default"`.
   - **Mirar también la calidad**, no sólo el tiempo: que siga preguntando lo que tiene que
     preguntar y no invente datos.
+  - **Primer dato con `medium`** (28/09 20:22, «actualizar la S01557»): 5 llamadas y 4
+    herramientas en 29 s.
+- **La tarjeta del mensaje de WhatsApp se pierde al recargar.** Existe sólo mientras llega el
+  stream (`chat.whatsapp`); la conversación guardada no la trae. El texto está en la historia,
+  así que se puede reconstruir en `historialParaPantalla`. Se le ofreció a JS el 28/09.
 - **Borrar las 8 claves viejas de `configuracion`** (la lista está en el doc del módulo,
   § Pendiente). No las lee ningún código.
 - **Más adelante:** la llamada telefónica. Es el mismo agente de voz con un número de Twilio, y el
@@ -454,6 +460,15 @@ Gabriel y Jorge dejen anotado lo que no les sirvió. No contestó: queda como id
     conversación: un cambio vale para las conversaciones nuevas.
   - Agregar o cambiar herramientas hace que las conversaciones abiertas pierdan el caché una
     vez. No reordenarlas sin necesidad.
+- **Un turno sigue aunque la pantalla se vaya.** El 28/09 la página se recargó a mitad de
+  una respuesta y el turno igual terminó y se guardó (no quedó `interrumpido`). La página nueva
+  no lo sabía: mostraba lo guardado hasta ese momento, el botón libre, y nunca se
+  actualizaba.
+  - **Arreglo:** el detalle de la conversación trae `trabajando` (`turno_en_curso` con menos
+    de 330 s, el mismo vencimiento del candado).
+  - Si la pantalla no está recibiendo el stream, muestra "Pensando…", bloquea el envío y
+    consulta cada 2,5 s hasta que termine (`useConversacion(id, { seguirTurno })`).
+  - Mientras recibe el stream no consulta: lo guardado se mezclaría con lo en vivo.
 - **La confirmación la decide el servidor** (`verificarConfirmacion` + `esConfirmacion`). No
   aflojarla: es lo que evita que un "sí" mal entendido por voz guarde algo en Odoo.
 - **ElevenLabs:**

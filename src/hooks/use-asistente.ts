@@ -25,7 +25,8 @@ async function pedir<T>(url: string, init?: RequestInit): Promise<T> {
 const BASE = "/api/comercial/asistente";
 
 export type DetalleConversacion = {
-  conversacion: { id: string; titulo: string | null; modelo: string; propia: boolean };
+  /** trabajando: hay un turno corriendo en el servidor (puede no ser el de esta pantalla). */
+  conversacion: { id: string; titulo: string | null; modelo: string; propia: boolean; trabajando: boolean };
   items: ItemChat[];
   borrador: BorradorVista | null;
   acciones: AccionVista[];
@@ -82,12 +83,18 @@ export function useEliminarConversacion() {
   });
 }
 
-export function useConversacion(id: string | null) {
+/**
+ * seguirTurno: si el servidor está en medio de un turno que esta pantalla no recibe por el
+ * stream (se recargó la página a mitad de una respuesta), consulta cada 2,5 s hasta que termine.
+ * Mientras esta pantalla recibe el stream va en false: lo guardado se mezclaría con lo en vivo.
+ */
+export function useConversacion(id: string | null, { seguirTurno = false } = {}) {
   return useQuery({
     queryKey: ["asistente-conversacion", id],
     queryFn: () => pedir<DetalleConversacion>(`${BASE}/conversaciones/${id}`),
     enabled: !!id,
     staleTime: 10_000,
+    refetchInterval: (q) => (seguirTurno && q.state.data?.conversacion.trabajando ? 2500 : false),
   });
 }
 

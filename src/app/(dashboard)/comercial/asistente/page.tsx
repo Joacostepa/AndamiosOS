@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
-import { Hilo } from "@/components/asistente/hilo";
+import { Hilo, useSeguirAbajo } from "@/components/asistente/hilo";
 import { Compositor } from "@/components/asistente/compositor";
 import { PanelBorrador } from "@/components/asistente/panel-borrador";
 import { ListaConversaciones } from "@/components/asistente/lista-conversaciones";
@@ -50,6 +50,7 @@ function Asistente() {
   });
   const [verConversaciones, setVerConversaciones] = useState(false);
   const [verBorrador, setVerBorrador] = useState(false);
+  const [cajaRef, contenidoRef] = useSeguirAbajo(actual, chat.respondiendo);
 
   useEffect(() => {
     reiniciar();
@@ -150,8 +151,8 @@ function Asistente() {
           </div>
         ) : (
           <>
-            <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-6">
-              <div className="mx-auto max-w-3xl space-y-4">
+            <div ref={cajaRef} className="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-6">
+              <div ref={contenidoRef} className="mx-auto max-w-3xl space-y-4">
                 {(detalle.data?.items.length ?? 0) === 0 && !chat.respondiendo && (
                   <div className="flex flex-wrap justify-center gap-2 pt-8">
                     {SUGERENCIAS.map((s) => (

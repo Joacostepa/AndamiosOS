@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Bot, CircleX, FileText, ImageIcon, Loader2, Wrench } from "lucide-react";
 import { Markdown } from "@/components/shared/markdown";
 import type { ItemChat } from "@/lib/asistente/vista";
@@ -72,12 +72,58 @@ function BurbujaAsistente({ texto, herramientas, pensando, interrumpido }: {
   );
 }
 
-export function Hilo({ items, enVivo, respondiendo }: { items: ItemChat[]; enVivo: EnVivo; respondiendo: boolean }) {
-  const fin = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    fin.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [items.length, enVivo.texto, enVivo.herramientas.length, respondiendo]);
+function alFondo(caja: HTMLElement) {
+  caja.scrollTop = caja.scrollHeight;
+}
 
+/**
+ * Mantiene el chat abajo de todo mientras crece: la respuesta en vivo, las tarjetas que salen
+ * al terminar (confirmar, PDF, WhatsApp, que van DESPUÉS del hilo), una foto que termina de
+ * cargar o el teclado del celular que achica la pantalla. Si el vendedor subió a leer algo no
+ * lo baja de un tirón; al mandar un mensaje o abrir otra conversación vuelve abajo.
+ *
+ * Devuelve dos callback refs: el primero va en el div que scrollea y el segundo en el que crece
+ * adentro.
+ */
+export function useSeguirAbajo(conversacionId: string | null, respondiendo: boolean) {
+  const [caja, setCaja] = useState<HTMLDivElement | null>(null);
+  const [contenido, setContenido] = useState<HTMLDivElement | null>(null);
+  const abajo = useRef(true);
+
+  useEffect(() => {
+    if (!caja || !contenido) return;
+    const seguir = () => {
+      if (abajo.current) alFondo(caja);
+    };
+    const alScroll = () => {
+      abajo.current = caja.scrollHeight - caja.scrollTop - caja.clientHeight < 80;
+    };
+    const observador = new ResizeObserver(seguir);
+    observador.observe(caja);
+    observador.observe(contenido);
+    caja.addEventListener("scroll", alScroll, { passive: true });
+    return () => {
+      observador.disconnect();
+      caja.removeEventListener("scroll", alScroll);
+    };
+  }, [caja, contenido]);
+
+  useEffect(() => {
+    if (!caja) return;
+    abajo.current = true;
+    alFondo(caja);
+  }, [caja, conversacionId]);
+
+  useEffect(() => {
+    if (!caja || !respondiendo) return;
+    abajo.current = true;
+    alFondo(caja);
+  }, [caja, respondiendo]);
+
+  return [setCaja, setContenido] as const;
+}
+
+export function Hilo({ items, enVivo, respondiendo }: { items: ItemChat[]; enVivo: EnVivo; respondiendo: boolean }) {
   return (
     <div className="space-y-4">
       {items.map((it) =>
@@ -93,7 +139,6 @@ export function Hilo({ items, enVivo, respondiendo }: { items: ItemChat[]; enViv
       {respondiendo && (
         <BurbujaAsistente texto={enVivo.texto} herramientas={enVivo.herramientas} pensando={enVivo.pensando || (!enVivo.texto && !enVivo.herramientas.length)} />
       )}
-      <div ref={fin} />
     </div>
   );
 }

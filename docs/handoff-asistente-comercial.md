@@ -27,6 +27,9 @@ En producción: `https://andamios-os.vercel.app/comercial/asistente` y `/comerci
 | Buscador de conversaciones, archivar y eliminar las vacías | ✅ 26/09 a la noche (ver § más abajo) |
 | Voz en vivo más fluida (ElevenLabs, esfuerzo `low`, respuestas descartadas) | ✅ `0ea373a` (ver § más abajo) |
 | Frente del lote verificado contra el catastro de la Ciudad | ✅ 26/09 a la noche (ver § más abajo) |
+| Pegar capturas con Ctrl/Cmd+V | ✅ 28/09, `17dab45` |
+| Las tarjetas (confirmar, PDF, WhatsApp) quedan a la vista al terminar | ✅ 28/09, `062d0aa` |
+| Esfuerzo del chat en `medium` | 28/09, a medir (ver § "De código") |
 | WhatsApp | Construido y probado simulando a Meta. **Sin configurar: lo postergó JS** |
 | Parámetros de cotización (7 pestañas) | ✅ |
 
@@ -403,6 +406,24 @@ Gabriel y Jorge dejen anotado lo que no les sirvió. No contestó: queda como id
   de evaluación. Cada corrida cuesta ~US$ 0,50 a 1 por caso.
 - **Latencia en voz.** Molestó (JS, 26/09): ya se bajó `asistente_esfuerzo_voz` a `low`. Falta
   medirla con uso real (ver § "Voz en vivo más fluida").
+- **Latencia en el chat: medir `medium` (desde el 28/09).** JS: "es MUY lento, piensa
+  demasiado". El 28/09 se pasó `asistente_esfuerzo` de `high` a `medium` (motivo en el
+  historial de Parámetros). Rige para las conversaciones NUEVAS: cada una congela su esfuerzo.
+  - **Base con `high`** (27 y 28/09, 51 respuestas, sólo JS, todo por chat):
+    - 24,5 min de espera en total;
+    - ~71 % de lo generado fue pensamiento;
+    - la espera sigue casi exacto a los tokens generados (~60 por segundo), así que las
+      herramientas pesan poco;
+    - lo peor fueron los cálculos: torre de la Recoleta 189 s (~10.000 tokens pensando),
+      torres de Sotelo 125 s.
+  - **Cómo se midió:** por `turno_id` en `asistente_mensajes`, del mensaje `humano`/`boton` a
+    la última fila `asistente`. Pensamiento ≈ `uso.output_tokens` menos lo visible (texto +
+    input de las herramientas, a ~3,2 caracteres por token).
+  - **Si sigue lento:** el modo rápido de Opus 5 (`speed: "fast"`, beta
+    `fast-mode-2026-02-01`, el doble por token). Antes probar que conviva con
+    `fallbacks: "default"`.
+  - **Mirar también la calidad**, no sólo el tiempo: que siga preguntando lo que tiene que
+    preguntar y no invente datos.
 - **Borrar las 8 claves viejas de `configuracion`** (la lista está en el doc del módulo,
   § Pendiente). No las lee ningún código.
 - **Más adelante:** la llamada telefónica. Es el mismo agente de voz con un número de Twilio, y el
@@ -451,6 +472,10 @@ Gabriel y Jorge dejen anotado lo que no les sirvió. No contestó: queda como id
     3. mandar `user_message` y responder los `ping` con `pong`.
 
     Se hizo el 26/09; el script no quedó en el repo.
+- **Sonnet 5 hoy no anda.** El aviso de cada turno (vendedor, resumen del borrador, resultado
+  del botón) va como mensaje `system` a mitad de la conversación, y Sonnet 5 no lo acepta: cada
+  pedido daría error. Para usarlo hay que mandar ese aviso de otra forma, sin perder que el
+  resultado del botón no se pueda fingir escribiendo. No cambiar `asistente_modelo` sin eso.
 - **Voz y caché.** Pasar de chat a voz cambia el esfuerzo del pedido, y eso hace perder el caché
   de los mensajes una vez por cambio de canal (~US$ 0,40). No se usó el esfuerzo por mensaje
   (beta `mid-conversation-output-config-2026-07-01`) porque pediría guardar un tipo de mensaje

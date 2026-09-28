@@ -49,6 +49,9 @@ WhatsApp espera la cuenta de Meta (§ WhatsApp).
 - Compositor:
   - texto;
   - clip para fotos, planos en PDF o un audio reenviado;
+  - una captura de pantalla se pega con Ctrl/Cmd+V, con el foco en el cuadro o en cualquier
+    parte del chat. Si lo copiado trae texto (celdas de Excel, un párrafo de Word), se pega el
+    texto y no la imagen;
   - micrófono para grabar un audio que se transcribe (queda en el cuadro para revisarlo);
   - con el cuadro vacío, el botón de la derecha es **Hablar** (voz en vivo).
 - Tarjetas:

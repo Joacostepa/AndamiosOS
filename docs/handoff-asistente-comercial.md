@@ -367,6 +367,23 @@ Gabriel y Jorge dejen anotado lo que no les sirvió. No contestó: queda como id
   1. app de Meta, número dedicado, 4 variables y webhook (paso a paso en el doc del módulo,
      § WhatsApp);
   2. después, cargar los WhatsApp en Parámetros → Vendedores (sólo un admin).
+- **Agente de WhatsApp para clientes (idea de JS, postergada el 26/09).**
+  - **Qué es:** atiende a los clientes, cotiza solo los trabajos fáciles, manda audios y deja
+    todo como oportunidad en Odoo.
+  - **Plan:** en el doc [Agente de WhatsApp para clientes — plan](https://claude.ai/code/artifact/80f5a96c-2a10-4ac0-95b7-b1f3a35b3e64).
+    Tiene etapas (supervisada → fáciles solos → seguimiento), qué se reusa y qué hay que
+    construir, reglas, costos, riesgos y las decisiones pendientes.
+  - **Ya decidido:** se presenta como asistente virtual de ABA y no se hace pasar por una
+    persona. JS lo aceptó; su idea inicial era que el cliente creyera que hablaba con una
+    persona.
+  - **Ya tiene el número:** JS dijo que tiene uno para usar. Falta saber si está en uso en la
+    app de WhatsApp; está preguntado en un comentario del doc.
+  - **Meta:**
+    - desde el 15/01/2026 prohíbe los chatbots de IA de uso general, pero permite la IA de
+      atención de una empresa;
+    - oficialmente, las respuestas dentro de las 24 h son gratis, pero algunos proveedores
+      anuncian un cobro por mensaje desde el 1/10/2026. Confirmarlo al dar de alta la cuenta.
+  - **Al retomarlo:** leer el doc, contestar las decisiones y construir la etapa 1.
 
 ### De código
 

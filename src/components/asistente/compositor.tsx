@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { AudioLines, FileText, Loader2, Mic, Paperclip, SendHorizontal, Square, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { subirAdjunto, type Adjunto } from "@/hooks/use-asistente";
 //   · el micrófono de acá graba un audio largo y lo transcribe (ElevenLabs), y el texto queda
 //     en el cuadro para mirarlo antes de mandarlo;
 //   · el clip sube fotos (de la cámara o la galería), planos en PDF o un audio reenviado;
+//   · una captura de pantalla se pega con Ctrl/Cmd+V, en el cuadro o en cualquier parte del chat;
 //   · con el cuadro vacío, el botón de la derecha es "Hablar" (voz en vivo, si está configurada).
 
 async function pedirJson<T>(url: string, body: unknown): Promise<T> {
@@ -52,7 +53,29 @@ export function Compositor({
     t.style.height = `${Math.min(t.scrollHeight, 220)}px`;
   }, [texto]);
 
-  async function agregar(lista: FileList | null) {
+  // Se escucha en todo el documento: después de tocar el hilo el foco ya no está en el cuadro,
+  // y el Ctrl+V tiene que andar igual. Si se pega en otro campo (el panel del borrador), no se toca.
+  const pegar = useEffectEvent((e: ClipboardEvent) => {
+    const destino = e.target as HTMLElement | null;
+    const otroCampo = destino !== area.current && (destino instanceof HTMLInputElement || destino instanceof HTMLTextAreaElement || !!destino?.isContentEditable);
+    if (otroCampo || !e.clipboardData) return;
+    const lista = Array.from(e.clipboardData.files).filter((f) => f.type.startsWith("image/") || f.type === "application/pdf");
+    if (!lista.length) return;
+    // Copiar celdas de Excel o un párrafo de Word trae el texto y además una imagen de lo
+    // copiado: ahí se quiere el texto. Un archivo copiado del Finder trae su nombre como texto.
+    const texto = e.clipboardData.getData("text/plain").trim();
+    if (texto && !lista.some((f) => texto.includes(f.name))) return;
+    e.preventDefault();
+    void agregar(lista);
+  });
+
+  useEffect(() => {
+    const oyente = (e: ClipboardEvent) => pegar(e);
+    document.addEventListener("paste", oyente);
+    return () => document.removeEventListener("paste", oyente);
+  }, []);
+
+  async function agregar(lista: FileList | File[] | null) {
     if (!lista?.length) return;
     for (const f of Array.from(lista)) {
       if (f.type.startsWith("audio/")) {
@@ -145,7 +168,7 @@ export function Compositor({
       )}
       <div className="flex items-end gap-2">
         <input ref={archivos} type="file" multiple accept="image/*,application/pdf,audio/*" className="hidden" onChange={(e) => agregar(e.target.files)} />
-        <Button variant="ghost" size="icon" onClick={() => archivos.current?.click()} aria-label="Adjuntar foto, plano o audio" disabled={respondiendo}>
+        <Button variant="ghost" size="icon" onClick={() => archivos.current?.click()} aria-label="Adjuntar foto, plano o audio" title="Adjuntar foto, plano o audio (una captura también se pega con Ctrl+V)" disabled={respondiendo}>
           <Paperclip />
         </Button>
         <textarea

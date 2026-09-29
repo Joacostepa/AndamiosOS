@@ -10,7 +10,7 @@ seguimos con lo que falta". **Empezar por § "Lo primero en la sesión nueva".**
 
 ---
 
-## Estado al cierre del 26/09
+## Estado al cierre del 28/09
 
 En producción: `https://andamios-os.vercel.app/comercial/asistente` y `/comercial/parametros`.
 
@@ -29,20 +29,30 @@ En producción: `https://andamios-os.vercel.app/comercial/asistente` y `/comerci
 | Frente del lote verificado contra el catastro de la Ciudad | ✅ 26/09 a la noche (ver § más abajo) |
 | Pegar capturas con Ctrl/Cmd+V | ✅ 28/09, `17dab45` |
 | Las tarjetas (confirmar, PDF, WhatsApp) quedan a la vista al terminar | ✅ 28/09, `062d0aa` |
-| Esfuerzo del chat en `medium` | 28/09, a medir (ver § "De código") |
-| La pantalla sigue un turno que no le llega por el stream (recarga, otra pestaña, celular) | ✅ 28/09 (ver § Reglas) |
-| Internet: busca y lee páginas (CAC, IPC, datos públicos), con fuentes debajo de la respuesta | ✅ 28/09, **sin probar con el asistente real: lo prueba JS** (ver § Reglas) |
-| La tarjeta del mensaje de WhatsApp sigue ahí al recargar | ✅ 28/09: sale de la historia (`ultimoMensajeParaCliente`, 3 tests) |
+| Esfuerzo del chat en `medium` | 28/09, en Parámetros (no es código). A medir (ver § "De código") |
+| La pantalla sigue un turno que no le llega por el stream (recarga, otra pestaña, celular) | ✅ 28/09, `b2093df` (ver § Reglas) |
+| Internet: busca y lee páginas (CAC, IPC, datos públicos), con fuentes debajo de la respuesta | ✅ 28/09, `0bc4f9a`. **Sin probar con el asistente real: lo prueba JS** (ver § Reglas) |
+| La tarjeta del mensaje de WhatsApp sigue ahí al recargar | ✅ 28/09, `ebea983`: sale de la historia (`ultimoMensajeParaCliente`, 3 tests) |
 | WhatsApp | Construido y probado simulando a Meta. **Sin configurar: lo postergó JS** |
 | Parámetros de cotización (7 pestañas) | ✅ |
 
 **Commits en main:**
 
-- `d4538c5`: el módulo;
-- `c9cc288`: el tablero y la doc de ElevenLabs;
-- `2ddfa47`: los opcionales estándar y este handoff;
-- `de3a070`: el mensaje de WhatsApp y la base sola en Odoo;
-- el siguiente: el buscador de conversaciones.
+- **26/09:**
+  - `d4538c5`: el módulo;
+  - `c9cc288`: el tablero y la doc de ElevenLabs;
+  - `2ddfa47`: los opcionales estándar y este handoff;
+  - `de3a070`: el mensaje de WhatsApp y la base sola en Odoo;
+  - `d3a5106`: el buscador de conversaciones;
+  - `0ea373a`: la voz más fluida;
+  - `29d73c2` y `42a7239`: el frente del lote y el criterio v3.
+- **28/09:**
+  - `17dab45`: pegar capturas;
+  - `062d0aa`: las tarjetas a la vista;
+  - `b2093df`: la pantalla sigue una respuesta que no le llega en vivo;
+  - `ebea983`: la tarjeta de WhatsApp al recargar;
+  - `0bc4f9a`: internet;
+  - `c89c495` y `719d100`: sólo documentación.
 
 **Base y servicios:**
 
@@ -62,7 +72,33 @@ En producción: `https://andamios-os.vercel.app/comercial/asistente` y `/comerci
     Vercel (Production) y en `.env.local`.
 - **Sin datos de prueba:** base, Storage y Odoo verificados limpios. En ElevenLabs
   (Conversaciones) quedan unas charlas de prueba.
-- **Usuarios:** por ahora lo usa sólo Joaquín (admin). Gabriel y Jorge todavía no tienen usuario.
+- **Usuarios:** lo usa sólo Joaquín (admin), y a diario: del 26 al 28/09 guardó 8 presupuestos
+  reales y re-emitió 2, todos bien. Gabriel y Jorge todavía no tienen usuario.
+
+### Lo que se hizo el 28/09
+
+**Primero se miró el uso real** del 26 al 28/09:
+- 23 conversaciones y 10 acciones en Odoo, todas bien;
+- las 8 órdenes nuevas (S02717 a S02732) sin líneas de opcionales, y la oportunidad igual al
+  neto;
+- el mensaje de WhatsApp salió siempre con el nombre;
+- gasto: US$ 4,6 a 6,5 por día, unos US$ 1,5 a 2 por presupuesto guardado.
+
+**Lo que pidió JS, en orden:**
+1. **Pegar capturas** en el chat con Ctrl/Cmd+V (`17dab45`).
+2. **Ver las tarjetas** de confirmar y de WhatsApp sin hacer scroll (`062d0aa`). El chat
+   bajaba hasta el final del hilo y las tarjetas se dibujaban después.
+3. **"Piensa demasiado":** se midió (§ "De código") y se bajó el esfuerzo del chat a
+   `medium`. Sonnet 5 hoy no anda (§ Reglas).
+4. **"Se quedó trabajando":** la página se recargó a mitad de una respuesta. El turno terminó
+   en el servidor, pero la pantalla nunca se enteró (`b2093df`).
+5. **La tarjeta de WhatsApp** se perdía al recargar (`ebea983`).
+6. **Consulta de CUIT tipo cuitonline:** se postergó. Queda el camino por ARCA y un problema de
+   seguridad con la clave del certificado (§ "Lo que falta").
+7. **Internet** (`0bc4f9a`), porque para la tribuna no pudo buscar el CAC.
+
+JS también preguntó si se puede mandar un mensaje mientras el asistente piensa. No se puede, a
+propósito: el botón pasa a "Parar" y el servidor atiende un turno a la vez.
 
 ### Opcionales estándar (26/09 a la tarde)
 
@@ -309,19 +345,20 @@ nuestra base):
 
 ## Lo primero en la sesión nueva
 
-1. **Preguntarle a JS cómo le va** con el chat, los audios y la voz en el celular. La pantalla
-   nunca la probó Claude: no tiene login, y no hay que crear usuarios ni entrar como otro para
-   probarla.
-   - Si falla la voz, mirar primero la charla en ElevenLabs (Conversaciones) y los logs de Vercel
-     de `/api/comercial/asistente/voz/llm`.
-   - En la primera prueba de JS, el micrófono tomó una conversación de al lado: en lugares con
-     gente hablando conviene el botón de silenciar.
-2. **Mirar el uso real.** En `asistente_conversaciones` y `asistente_mensajes` están el canal,
-   `uso` y `modelo_servido` de cada pedido. Hay que ver cuánto gasta y cuánto tarda con uso de
-   verdad antes de dárselo a Gabriel y Jorge.
-3. **Si JS trae correcciones**, seguir § "Cómo se va a ir mejorando".
-4. **Preguntarle si probó el buscador y el menú "⋯" en el celular.** Si guardó un presupuesto
-   nuevo, preguntarle si le salieron solos el mensaje de WhatsApp y la orden sin opcionales.
+1. **Preguntarle a JS si probó internet** en una conversación (por ejemplo, el CAC para la
+   tribuna).
+   - Si falló, buscar la charla en `asistente_mensajes` y mirar los logs de Vercel de
+     `/api/comercial/asistente/chat`.
+   - Lo más nuevo y sin probar: `pause_turn` y el texto partido por las fuentes (§ Reglas,
+     Internet).
+2. **Medir `medium`** con la consulta de § "De código", sobre las conversaciones creadas desde
+   el 28/09 a las 20:15. Comparar con la base de `high` y mirar también la calidad.
+3. **Repasar con JS las trabas de sus charlas que quedaron sin resolver** (§ "De código",
+   "Trabas vistas en las charlas"). Dos las tiene que decidir él.
+4. **Si JS trae correcciones**, seguir § "Cómo se va a ir mejorando".
+5. **La pantalla nunca la probó Claude:** no tiene login, y no hay que crear usuarios ni entrar
+   como otro. Los cambios de pantalla del 28/09 se probaron con la página real y el servidor
+   simulado.
 
 ---
 
@@ -475,6 +512,23 @@ Gabriel y Jorge dejen anotado lo que no les sirvió. No contestó: queda como id
     preguntar y no invente datos.
   - **Primer dato con `medium`** (28/09 20:22, «actualizar la S01557»): 5 llamadas y 4
     herramientas en 29 s.
+- **Trabas vistas en las charlas del 27 y 28/09, sin resolver.** Se le propusieron a JS el 28/09
+  y eligió empezar por otras cosas:
+  1. **CUIT de 10 dígitos** (Ramírez, Aquino, Scarvaci). En el de Ramírez faltaba el 0 de un
+     DNI de 7 cifras: 20-08632598-6. Que `validarCuit` (`src/lib/cotizador/cuit.ts`) proponga
+     el 0 agregado y el verificador calculado, para confirmar con el cliente. Con el padrón de
+     ARCA se podría confirmar cuál existe.
+  2. **Guardar sin CUIT (Scarvaci, 27/09): decide JS.** Quería que quedara en Odoo "sí o sí" y
+     terminó en un PDF borrador. ¿Se permite guardar con el CUIT pendiente?
+  3. **"si dale avanza gracias" no contó como un sí:** falta "avanza" en
+     `confirmacion.ts`. Agregar "avanzá", "seguí" y "metele" sin aflojar lo demás.
+  4. **Inventó cornisa y parapeto** (Callao 5, 27/09). Agregar una regla en las instrucciones:
+     no suponer detalles del edificio que no dio el catastro ni el vendedor.
+  5. **Técnico ajeno (S02732): decide JS.** Pidió que el técnico fuera Jorge y el asistente no
+     pudo: toma a quien lo usa. JS lo cambió a mano. ¿Un admin puede elegir técnico y vendedor?
+  6. **Ciudad de la Paz 1828 (28/09):** la puerta no es oficial en el catastro y el presupuesto
+     quedó sin guardar. Preguntarle si lo trabó el chequeo del frente o el CUIT.
+  7. ~~Buscar en internet~~: hecho, `0bc4f9a`.
 - **Borrar las 8 claves viejas de `configuracion`** (la lista está en el doc del módulo,
   § Pendiente). No las lee ningún código.
 - **Más adelante:** la llamada telefónica. Es el mismo agente de voz con un número de Twilio, y el
@@ -580,10 +634,14 @@ Gabriel y Jorge dejen anotado lo que no les sirvió. No contestó: queda como id
 
 ---
 
-## Costos medidos (26/09)
+## Costos medidos (26/09, y uso real al 28/09)
 
 - **Primer turno de una conversación:** US$ 0,45 a 0,50, porque escribe el caché del prompt
   (~34 k tokens).
 - **Turnos siguientes:** US$ 0,07 a 0,20.
 - **Presupuesto completo conversado:** ~US$ 1 a 3.
 - **Tope diario por persona:** US$ 30 (`asistente_tope_diario_usd`, en Parámetros).
+- **Uso real de JS (26 al 28/09, con `high`):** US$ 4,6 a 6,5 por día y unos US$ 1,5 a 2 por
+  presupuesto guardado. Todo con `claude-opus-5`.
+- **Internet:** US$ 0,01 por búsqueda más lo que lee. Las definiciones suman ~6.400 tokens por
+  pedido, que van al caché.

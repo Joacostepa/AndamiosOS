@@ -31,6 +31,7 @@ En producción: `https://andamios-os.vercel.app/comercial/asistente` y `/comerci
 | Las tarjetas (confirmar, PDF, WhatsApp) quedan a la vista al terminar | ✅ 28/09, `062d0aa` |
 | Esfuerzo del chat en `medium` | 28/09, a medir (ver § "De código") |
 | La pantalla sigue un turno que no le llega por el stream (recarga, otra pestaña, celular) | ✅ 28/09 (ver § Reglas) |
+| Internet: busca y lee páginas (CAC, IPC, datos públicos), con fuentes debajo de la respuesta | ✅ 28/09, **sin probar con el asistente real: lo prueba JS** (ver § Reglas) |
 | La tarjeta del mensaje de WhatsApp sigue ahí al recargar | ✅ 28/09: sale de la historia (`ultimoMensajeParaCliente`, 3 tests) |
 | WhatsApp | Construido y probado simulando a Meta. **Sin configurar: lo postergó JS** |
 | Parámetros de cotización (7 pestañas) | ✅ |
@@ -513,6 +514,26 @@ Gabriel y Jorge dejen anotado lo que no les sirvió. No contestó: queda como id
   - Si la pantalla no está recibiendo el stream, muestra "Pensando…", bloquea el envío y
     consulta cada 2,5 s hasta que termine (`useConversacion(id, { seguirTurno })`).
   - Mientras recibe el stream no consulta: lo guardado se mezclaría con lo en vivo.
+- **Internet** (28/09). `web_search` y `web_fetch` son herramientas del servidor de Anthropic:
+  la búsqueda y su resultado vuelven dentro de la misma respuesta, no en una fila de
+  resultados. Detalle en el doc del módulo, § Internet.
+  - **Qué se probó:** la API aceptó las definiciones (se validó con `countTokens`, que no
+    cuesta). El texto nuevo se probó contra los 566 mensajes guardados y ninguno cambia.
+    También hay 5 tests en `respuesta.test.ts`.
+  - **Qué no se probó:** una charla real. JS dijo que la prueba la hace él (~US$ 1). Si falla,
+    mirar los logs de Vercel de `/api/comercial/asistente/chat`.
+  - **`pause_turn`:** si la búsqueda llega al tope de pasos del lado de Anthropic, la respuesta
+    se guarda tal cual y se reenvía para que siga (`turno.ts`). Queda una fila `asistente`
+    seguida de otra `asistente`: la API las junta.
+  - **Texto partido:** con fuentes, la API parte el texto en bloques en medio de una oración.
+    `textoDeRespuesta` los pega; lo que viene después de una búsqueda es otro párrafo. Antes se
+    unían con salto de línea.
+  - **Chips ocultos:** el filtrado con código que hace la búsqueda no se muestra
+    (`HERRAMIENTAS_OCULTAS`).
+  - **Caché:** las definiciones suman ~6.400 tokens por pedido. Las conversaciones abiertas
+    pierden el caché una vez (~US$ 0,40), porque cambió la lista de herramientas.
+  - **Dato fiscal:** para el CUIT de un cliente, la fuente buena sigue siendo el padrón de ARCA
+    (§ "Consulta de CUIT en ARCA"). Lo de internet se confirma con el vendedor.
 - **La confirmación la decide el servidor** (`verificarConfirmacion` + `esConfirmacion`). No
   aflojarla: es lo que evita que un "sí" mal entendido por voz guarde algo en Odoo.
 - **ElevenLabs:**

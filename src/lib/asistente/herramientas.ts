@@ -926,20 +926,44 @@ async function confirmar(ctx: ContextoHerramientas, numero: number): Promise<Res
 
 const POR_NOMBRE = new Map<string, (typeof HERRAMIENTAS)[number]>(HERRAMIENTAS.map((h) => [h.nombre, h]));
 
+// Internet (JS, 28/09): herramientas del servidor de Anthropic. No pasan por ejecutarHerramienta:
+// la búsqueda y su resultado vuelven dentro de la misma respuesta del modelo. Van al final de la
+// lista para no mover el prefijo cacheado de las otras.
+const HERRAMIENTAS_WEB: Anthropic.Beta.BetaToolUnion[] = [
+  {
+    type: "web_search_20260209",
+    name: "web_search",
+    max_uses: 5,
+    user_location: { type: "approximate", city: "Buenos Aires", region: "Buenos Aires", country: "AR", timezone: "America/Argentina/Buenos_Aires" },
+  },
+  // Un PDF del INDEC puede ser enorme: se corta para no llenar la conversación.
+  { type: "web_fetch_20260209", name: "web_fetch", max_uses: 3, max_content_tokens: 15_000 },
+];
+
 let definicionesCache: Anthropic.Beta.BetaToolUnion[] | null = null;
 
 /** Las definiciones para la API, en orden fijo (son parte del prefijo cacheado). */
 export function definicionesParaApi(): Anthropic.Beta.BetaToolUnion[] {
   if (definicionesCache) return definicionesCache;
-  definicionesCache = HERRAMIENTAS.map((h) => {
-    const esquema = z.toJSONSchema(h.esquema, { io: "input" }) as Record<string, unknown>;
-    delete esquema.$schema;
-    return { name: h.nombre, description: h.descripcion, input_schema: esquema as Anthropic.Beta.BetaTool.InputSchema };
-  });
+  definicionesCache = [
+    ...HERRAMIENTAS.map((h) => {
+      const esquema = z.toJSONSchema(h.esquema, { io: "input" }) as Record<string, unknown>;
+      delete esquema.$schema;
+      return { name: h.nombre, description: h.descripcion, input_schema: esquema as Anthropic.Beta.BetaTool.InputSchema };
+    }),
+    ...HERRAMIENTAS_WEB,
+  ];
   return definicionesCache;
 }
 
-export function etiquetaDe(nombre: string): string {
+/** Con el input, la búsqueda en internet dice qué buscó ("Buscando en internet: CAC agosto 2026"). */
+export function etiquetaDe(nombre: string, input?: unknown): string {
+  const i = (input ?? {}) as { query?: unknown; url?: unknown };
+  if (nombre === "web_search") return typeof i.query === "string" && i.query ? `Buscando en internet: ${i.query}` : "Buscando en internet";
+  if (nombre === "web_fetch") {
+    const sitio = typeof i.url === "string" ? i.url.replace(/^https?:\/\/(www\.)?/, "").split("/")[0] : "";
+    return sitio ? `Leyendo ${sitio}` : "Leyendo una página";
+  }
   return POR_NOMBRE.get(nombre)?.etiqueta ?? nombre;
 }
 

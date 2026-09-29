@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Bot, CircleX, FileText, ImageIcon, Loader2, Wrench } from "lucide-react";
+import { Bot, CircleX, FileText, Globe, ImageIcon, Loader2, Wrench } from "lucide-react";
 import { Markdown } from "@/components/shared/markdown";
 import type { ItemChat } from "@/lib/asistente/vista";
 import type { EnVivo } from "@/hooks/use-asistente";
@@ -51,9 +51,10 @@ function BurbujaVendedor({ texto, adjuntos }: { texto: string; adjuntos: { tipo:
   );
 }
 
-function BurbujaAsistente({ texto, herramientas, pensando, interrumpido }: {
+function BurbujaAsistente({ texto, herramientas, fuentes, pensando, interrumpido }: {
   texto: string;
   herramientas: { id: string; etiqueta: string; error?: boolean; estado?: string }[];
+  fuentes?: { url: string; titulo: string }[];
   pensando?: boolean;
   interrumpido?: boolean;
 }) {
@@ -66,6 +67,14 @@ function BurbujaAsistente({ texto, herramientas, pensando, interrumpido }: {
         <Chips herramientas={herramientas} />
         {texto && <Markdown className="text-[14px]">{texto}</Markdown>}
         {pensando && !texto && <p className="flex items-center gap-1.5 text-[13px] text-muted-foreground"><Loader2 className="size-3.5 animate-spin" /> Pensando…</p>}
+        {fuentes && fuentes.length > 0 && (
+          <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
+            <Globe className="size-3" /> Fuentes:
+            {fuentes.map((f) => (
+              <a key={f.url} href={f.url} target="_blank" rel="noreferrer" className="max-w-[16rem] truncate underline underline-offset-2 hover:text-foreground">{f.titulo}</a>
+            ))}
+          </p>
+        )}
         {interrumpido && <p className="text-[11px] text-muted-foreground">(respuesta cortada)</p>}
       </div>
     </div>
@@ -132,7 +141,7 @@ export function Hilo({ items, enVivo, respondiendo }: { items: ItemChat[]; enViv
         ) : it.rol === "sistema" ? (
           <p key={it.id} className="text-center text-[11px] text-muted-foreground">{it.texto}</p>
         ) : (
-          <BurbujaAsistente key={it.id} texto={it.texto} herramientas={it.herramientas} interrumpido={it.interrumpido} />
+          <BurbujaAsistente key={it.id} texto={it.texto} herramientas={it.herramientas} fuentes={it.fuentes} interrumpido={it.interrumpido} />
         ),
       )}
       {respondiendo && enVivo.vendedor && <BurbujaVendedor texto={enVivo.vendedor.texto} adjuntos={enVivo.vendedor.adjuntos.map((a) => ({ tipo: a.tipo, nombre: a.nombre, vista: a.vista }))} />}

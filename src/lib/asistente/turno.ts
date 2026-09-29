@@ -24,7 +24,10 @@ import {
 } from "./datos";
 import { contextoDelTurno } from "./prompt";
 import { notaDeContinuacion } from "@/lib/voz/continuacion";
-import { definicionesParaApi, ejecutarHerramienta, etiquetaDe, resumenCortoBorrador, vistaBorrador, type ContextoHerramientas } from "./herramientas";
+import {
+  definicionesParaApi, ejecutarHerramienta, etiquetaDe, resumenCortoBorrador, vistaBorrador, type ContextoHerramientas,
+} from "./herramientas";
+import { HERRAMIENTAS_OCULTAS, resultadoWebConError } from "./respuesta";
 import { ejecutarAccion, presentarAcciones, rechazarAccion, vencerAccionesDelTurno, vistaAccion } from "./acciones";
 import { crearEjecutor } from "./ejecutores";
 import type { Evento } from "./eventos";
@@ -197,6 +200,8 @@ export async function* ejecutarTurno(p: {
     if (p.entrada.tipo !== "continuar") {
       const contexto = await contextoDelTurno(db, {
         vendedor, canal, parametrosVersion: conv.parametros_version, resumenBorrador: resumenCortoBorrador(ctx.borrador),
+        // Las instrucciones se congelan por conversación: las de antes del 28/09 no dicen nada de internet.
+        avisarInternet: !JSON.stringify(conv.system_snapshot).includes("## Internet"),
       });
       // Un solo aviso de sistema por turno, justo después del vendedor (así lo pide la API).
       const aviso = [resultadoBoton, notaVoz, contexto].filter(Boolean).join("\n\n");
@@ -238,15 +243,40 @@ export async function* ejecutarTurno(p: {
       let mensaje: Anthropic.Beta.BetaMessage;
       let pensando = false;
       let textoParcial = "";
+      // Búsquedas en internet (herramientas del servidor): el input llega de a pedazos; al
+      // cerrarse el bloque ya se sabe qué buscó y la etiqueta lo dice.
+      const web = new Map<number, { id: string; nombre: string; json: string }>();
+      const etiquetasWeb = new Map<string, { nombre: string; etiqueta: string }>();
       try {
         for await (const ev of stream) {
           if (ev.type === "content_block_start") {
-            if (ev.content_block.type === "thinking" && !pensando) {
+            const b = ev.content_block;
+            if (b.type === "thinking" && !pensando) {
               pensando = true;
               yield { t: "pensando", on: true };
-            } else if (ev.content_block.type === "tool_use") {
-              yield { t: "herramienta", id: ev.content_block.id, nombre: ev.content_block.name, etiqueta: etiquetaDe(ev.content_block.name), estado: "inicio" };
+            } else if (b.type === "tool_use") {
+              yield { t: "herramienta", id: b.id, nombre: b.name, etiqueta: etiquetaDe(b.name), estado: "inicio" };
+            } else if (b.type === "server_tool_use" && !HERRAMIENTAS_OCULTAS.has(b.name)) {
+              web.set(ev.index, { id: b.id, nombre: b.name, json: "" });
+              etiquetasWeb.set(b.id, { nombre: b.name, etiqueta: etiquetaDe(b.name) });
+              yield { t: "herramienta", id: b.id, nombre: b.name, etiqueta: etiquetaDe(b.name), estado: "inicio" };
+            } else if ("tool_use_id" in b && b.type.endsWith("_tool_result") && etiquetasWeb.has(b.tool_use_id)) {
+              const { nombre, etiqueta } = etiquetasWeb.get(b.tool_use_id)!;
+              yield { t: "herramienta", id: b.tool_use_id, nombre, etiqueta, estado: resultadoWebConError(b) ? "error" : "ok" };
             }
+          } else if (ev.type === "content_block_delta" && ev.delta.type === "input_json_delta" && web.has(ev.index)) {
+            web.get(ev.index)!.json += ev.delta.partial_json;
+          } else if (ev.type === "content_block_stop" && web.has(ev.index)) {
+            const w = web.get(ev.index)!;
+            let input: unknown = {};
+            try {
+              input = JSON.parse(w.json || "{}");
+            } catch {
+              // sin el input queda la etiqueta genérica
+            }
+            const etiqueta = etiquetaDe(w.nombre, input);
+            etiquetasWeb.set(w.id, { nombre: w.nombre, etiqueta });
+            yield { t: "herramienta", id: w.id, nombre: w.nombre, etiqueta, estado: "inicio" };
           } else if (ev.type === "content_block_delta" && ev.delta.type === "text_delta") {
             if (pensando) {
               pensando = false;
@@ -293,6 +323,14 @@ export async function* ejecutarTurno(p: {
         rol: "assistant", tipo: "asistente", contenido: contenido as unknown as Anthropic.Beta.BetaContentBlockParam[], texto: textoAsistente || null,
         canal: null, turno_id: turnoId, uso: mensaje.usage as unknown as Record<string, number>, modelo_servido: mensaje.model,
       };
+
+      // La búsqueda en internet llegó al tope de pasos del lado de Anthropic: se reenvía la
+      // respuesta tal cual (termina en la búsqueda pendiente) y la API sigue desde ahí.
+      if (mensaje.stop_reason === "pause_turn") {
+        seq = await agregarMensajes(db, conv.id, seq, [filaAsistente]);
+        mensajes.push({ role: "assistant", content: filaAsistente.contenido } as Anthropic.Beta.BetaMessageParam);
+        continue;
+      }
 
       if (mensaje.stop_reason !== "tool_use" || usos.length === 0) {
         seq = await agregarMensajes(db, conv.id, seq, [filaAsistente]);

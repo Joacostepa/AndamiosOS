@@ -335,7 +335,10 @@ export async function leerAccionPorNumero(db: Db, conversacionId: string, numero
 
 // ── Uso y tope diario ───────────────────────────────────────────────────────────────────
 
-/** US$ por millón de tokens (entrada, salida). Escritura de caché de 1 h = 2x; lectura = 0,1x. */
+/**
+ * US$ por millón de tokens (entrada, salida). Escritura de caché de 1 h = 2x; lectura = 0,1x.
+ * Cada búsqueda en internet suma US$ 0,01 (US$ 10 las mil); lo que lee entra como tokens.
+ */
 const PRECIOS: Record<string, { entrada: number; salida: number }> = {
   "claude-opus-5": { entrada: 5, salida: 25 },
   "claude-opus-5-5": { entrada: 4, salida: 20 },
@@ -352,7 +355,8 @@ export function costoUsd(uso: Record<string, number> | null | undefined, modelo:
     ((uso.input_tokens ?? 0) * p.entrada) / m +
     ((uso.cache_creation_input_tokens ?? 0) * p.entrada * 2) / m +
     ((uso.cache_read_input_tokens ?? 0) * p.entrada * 0.1) / m +
-    ((uso.output_tokens ?? 0) * p.salida) / m
+    ((uso.output_tokens ?? 0) * p.salida) / m +
+    ((uso as { server_tool_use?: { web_search_requests?: number } }).server_tool_use?.web_search_requests ?? 0) * 0.01
   );
 }
 

@@ -390,6 +390,52 @@ Gabriel y Jorge dejen anotado lo que no les sirvió. No contestó: queda como id
       anuncian un cobro por mensaje desde el 1/10/2026. Confirmarlo al dar de alta la cuenta.
   - **Al retomarlo:** leer el doc, contestar las decisiones y construir la etapa 1.
 
+- **Consulta de CUIT en ARCA (postergada por JS el 28/09).** Idea de JS: que el asistente
+  verifique el CUIT y traiga los datos del cliente, como hace cuitonline. Se descartó leer
+  cuitonline, que no es oficial, es frágil y va contra sus condiciones. Se usa el padrón oficial
+  de ARCA.
+  - **Qué traería:** si el CUIT existe y está activo, razón social o nombre, domicilio fiscal y
+    condición de IVA.
+  - **Qué resolvería:**
+    - probar las variantes de un CUIT de 10 dígitos (el 0 que falta, el verificador) y
+      proponer la que existe y coincide con el nombre;
+    - avisar si el CUIT es de una persona y no de la sociedad del formulario (Ramírez y
+      Asociados);
+    - traer el domicilio fiscal (Scarvaci, Recoleta);
+    - con el A13, buscar el CUIT por DNI (confirmarlo al integrarlo).
+  - **El certificado ya existe.** Es "ANDAMIOSOS" (CUIT 30711116504), emitido por ARCA para
+    producción el 31/03/2026 y vigente hasta el 30/03/2028. La clave corresponde. Lo creó el
+    intento de marzo (`/api/afip`, commits `0090781`…`399e77d`), que quedó "simplificado
+    temporalmente": hoy sólo da formato al CUIT.
+  - **Por qué no anda.** Probado el 28/09 (sólo login en WSAA, sin ticket): para
+    `ws_sr_padron_a13` y `ws_sr_constancia_inscripcion` ARCA responde "Computador no
+    autorizado a acceder al servicio". Firma y certificado están bien; falta la relación.
+  - **Lo que tiene que hacer JS** (o quien tenga clave fiscal nivel 3 de la empresa):
+    1. entrar al Administrador de Relaciones de Clave Fiscal;
+    2. crear una nueva relación: ARCA → WebServices → "Consulta de Constancia de
+       Inscripción";
+    3. como representante, elegir el computador fiscal ANDAMIOSOS;
+    4. repetir con "Padrón Alcance 13".
+
+    Después, repetir la prueba de login.
+  - **Seguridad, hacerlo ANTES de habilitar los servicios.** La clave privada está en
+    `configuracion.afip_key` y la política "Autenticados pueden ver configuracion" (SELECT,
+    `true`) deja que la lea cualquier usuario con login: 11 usuarios el 28/09, con el registro
+    abierto.
+    - Plan: pasarla a una variable de Vercel sólo del servidor (ya existen `AFIP_KEY`,
+      `AFIP_CERT` y sus `_B64`), verificar que sea la misma por huella y recién después
+      borrarla de la tabla.
+    - Hoy el riesgo es bajo: el certificado no tiene servicios. Crece con cada uno que se le
+      asocie.
+  - **Después, de código:**
+    - la conexión (WSAA con la firma CMS en Node; en Vercel no hay `openssl`);
+    - una herramienta del asistente para usarla apenas llega un CUIT o un formulario de alta,
+      y la regla de que ARCA manda sobre el formulario y avisa si no coinciden;
+    - terminar `/api/afip`.
+
+    Se puede validar la firma antes de que JS habilite nada: si la firma está bien, ARCA
+    contesta "no autorizado" y no un error de firma.
+
 ### De código
 
 - **Pantalla de uso del asistente.** Estaba en el plan y no se hizo: costo y cantidad de pedidos

@@ -32,7 +32,7 @@ En producción: `https://andamios-os.vercel.app/comercial/asistente` y `/comerci
 | Esfuerzo del chat en `medium` | 28/09, en Parámetros (no es código). A medir (ver § "De código") |
 | La pantalla sigue un turno que no le llega por el stream (recarga, otra pestaña, celular) | ✅ 28/09, `b2093df` (ver § Reglas) |
 | Internet: busca y lee páginas (CAC, IPC, datos públicos), con fuentes debajo de la respuesta | ✅ 28/09, `0bc4f9a`. **Sin probar con el asistente real: lo prueba JS** (ver § Reglas) |
-| Render propio desde una foto del chat, y guardarlo en la biblioteca si el vendedor quiere | ✅ 28/09 (ver § Reglas) |
+| Render propio desde una foto del chat, y guardarlo en la biblioteca si el vendedor quiere | ✅ 28/09, `bf19409` (ver § Reglas) |
 | La tarjeta del mensaje de WhatsApp sigue ahí al recargar | ✅ 28/09, `ebea983`: sale de la historia (`ultimoMensajeParaCliente`, 3 tests) |
 | WhatsApp | Construido y probado simulando a Meta. **Sin configurar: lo postergó JS** |
 | Parámetros de cotización (7 pestañas) | ✅ |
@@ -53,6 +53,7 @@ En producción: `https://andamios-os.vercel.app/comercial/asistente` y `/comerci
   - `b2093df`: la pantalla sigue una respuesta que no le llega en vivo;
   - `ebea983`: la tarjeta de WhatsApp al recargar;
   - `0bc4f9a`: internet;
+  - `bf19409`: el render propio desde el chat y la biblioteca;
   - `c89c495` y `719d100`: sólo documentación.
 
 **Base y servicios:**

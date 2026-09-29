@@ -357,6 +357,10 @@ export function faltantesParaEmitir(d: DatosBorrador, r: { lineas: Linea[]; avis
     f.push({ codigo: "jornadas", texto: "Faltan las jornadas de armado y de desarme: las confirma el técnico, nunca se asumen." });
   }
   if (!d.render.eleccion) f.push({ codigo: "render", texto: "Falta decidir el render: el genérico de la biblioteca, uno propio de la obra o ninguno." });
+  // Sin esto la S02740 (28/09) se guardó con "render propio" y el PDF salió sin imagen.
+  else if (d.render.eleccion === "propio" && !d.render.path) {
+    f.push({ codigo: "render_imagen", texto: "Falta la imagen del render propio: que la mande por el chat y cargala con usar_foto_como_render." });
+  }
   if (!d.seccion1?.trim()) f.push({ codigo: "seccion1", texto: "Falta el alcance (Sección 1)." });
   if (!d.seccion2.length) f.push({ codigo: "seccion2", texto: "Falta el anexo técnico (Sección 2)." });
   if (!r.lineas.some((l) => l.seccion === "base")) f.push({ codigo: "oferta", texto: "La oferta no tiene líneas." });

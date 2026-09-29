@@ -32,6 +32,7 @@ En producción: `https://andamios-os.vercel.app/comercial/asistente` y `/comerci
 | Esfuerzo del chat en `medium` | 28/09, en Parámetros (no es código). A medir (ver § "De código") |
 | La pantalla sigue un turno que no le llega por el stream (recarga, otra pestaña, celular) | ✅ 28/09, `b2093df` (ver § Reglas) |
 | Internet: busca y lee páginas (CAC, IPC, datos públicos), con fuentes debajo de la respuesta | ✅ 28/09, `0bc4f9a`. **Sin probar con el asistente real: lo prueba JS** (ver § Reglas) |
+| Render propio desde una foto del chat, y guardarlo en la biblioteca si el vendedor quiere | ✅ 28/09 (ver § Reglas) |
 | La tarjeta del mensaje de WhatsApp sigue ahí al recargar | ✅ 28/09, `ebea983`: sale de la historia (`ultimoMensajeParaCliente`, 3 tests) |
 | WhatsApp | Construido y probado simulando a Meta. **Sin configurar: lo postergó JS** |
 | Parámetros de cotización (7 pestañas) | ✅ |
@@ -96,6 +97,9 @@ En producción: `https://andamios-os.vercel.app/comercial/asistente` y `/comerci
 6. **Consulta de CUIT tipo cuitonline:** se postergó. Queda el camino por ARCA y un problema de
    seguridad con la clave del certificado (§ "Lo que falta").
 7. **Internet** (`0bc4f9a`), porque para la tribuna no pudo buscar el CAC.
+8. **Render propio.** La S02740 (tribuna) se guardó con "render propio" y sin imagen. El
+   asistente no podía tomar la foto del chat e inventó una opción del panel para subirla, que
+   no existe. JS pidió además que pregunte si la deja en la biblioteca.
 
 JS también preguntó si se puede mandar un mensaje mientras el asistente piensa. No se puede, a
 propósito: el botón pasa a "Parar" y el servidor atiende un turno a la vez.
@@ -568,6 +572,19 @@ Gabriel y Jorge dejen anotado lo que no les sirvió. No contestó: queda como id
   - Si la pantalla no está recibiendo el stream, muestra "Pensando…", bloquea el envío y
     consulta cada 2,5 s hasta que termine (`useConversacion(id, { seguirTurno })`).
   - Mientras recibe el stream no consulta: lo guardado se mezclaría con lo en vivo.
+- **Render propio** (28/09). Detalle en el doc del módulo, § Render propio.
+  - **Qué se probó con datos reales, sin gastar:**
+    - con la charla de la tribuna, eligió la última foto y la anterior, y respondió bien con
+      una que no existe y con una charla sin fotos;
+    - el permiso: JS sí, un usuario sin Parámetros no;
+    - el PDF de la tribuna armado en memoria sale con el render en la página 2;
+    - el guardado en la biblioteca: copia, alta, rechazo de nombre repetido y limpieza, con
+      una entrada «ZZ PRUEBA» que se borró enseguida.
+  - **Qué no se probó:** una charla real con el asistente.
+  - **S02740 sigue sin render en Odoo.** Para arreglarla, en esa conversación: "usá la foto que
+    te pasé como render" y confirmar el guardado.
+  - **Permiso de la biblioteca:** el chequeo lo hace el código (`puedeEditarRenders`), porque
+    `cotizacion_render_guardar` mira `auth.uid()` y el asistente corre con service role.
 - **Internet** (28/09). `web_search` y `web_fetch` son herramientas del servidor de Anthropic:
   la búsqueda y su resultado vuelven dentro de la misma respuesta, no en una fila de
   resultados. Detalle en el doc del módulo, § Internet.

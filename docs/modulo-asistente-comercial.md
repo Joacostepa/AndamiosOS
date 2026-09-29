@@ -133,6 +133,25 @@ bandeja y estructura en fachada se verifica contra el catastro de la Ciudad con
   - si cambia la dirección, hay que volver a verificar.
 - El frente verificado queda en el panel del presupuesto y en la nota interna de la orden.
 
+**Render propio** (Joaquín, 28/09: "no siempre lleva renders de la base de datos"). El render
+de la obra se manda por el chat, con el clip o pegándolo, y el asistente lo pone en la propuesta
+con `usar_foto_como_render` (`src/lib/asistente/renders.ts`).
+
+- **Qué foto toma:** la foto ya está en Storage (`adjuntos/<conversación>/`), pero el modelo la
+  ve por la Files API y no conoce la ruta. Por eso la elige el servidor: la última de la
+  conversación, o la anterior con `desdeElFinal: 2`, y sólo de esa conversación. El PDF acepta
+  JPG o PNG.
+- **Sin imagen no se guarda:** "render propio" sin imagen es un faltante (`render_imagen`).
+  Así se había guardado la S02740 sin render.
+- **Ya en Odoo:** si el presupuesto ya estaba guardado, se vuelve a proponer guardar para que
+  el PDF de la orden lo lleve.
+- **Biblioteca:** después pregunta si se deja en la biblioteca. Si el vendedor dice que sí,
+  `guardar_render_en_biblioteca` la copia a `renders/` y la da de alta con tipo y nombre.
+  - Pide permiso de edición en Parámetros de cotización; si no lo tiene, lo manda a Joaquín.
+  - No acepta un nombre repetido dentro del mismo tipo.
+  - Se corrige o se borra en Parámetros → Renders.
+- **Ruta a mano:** `actualizar_borrador` ya no acepta una ruta de imagen.
+
 **Internet** (Joaquín, 28/09: "mirá lo que me responde" cuando pidió el CAC). El asistente
 busca en internet y lee páginas con las herramientas del servidor de Anthropic (`web_search` y
 `web_fetch`), en `HERRAMIENTAS_WEB` (`src/lib/asistente/herramientas.ts`).

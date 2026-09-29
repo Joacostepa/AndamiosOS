@@ -24,7 +24,7 @@ import { validarCuit } from "@/lib/cotizador/cuit";
 import { cotizarVentaMaterial } from "@/lib/cotizador/venta-material";
 import { nuevaLinea, pesos, type Linea, type Tarifas } from "@/lib/cotizador/tipos";
 import type { PiezaDeLista } from "@/lib/cotizador/alquiler";
-import type { ProductoOdoo } from "@/lib/parametros-cotizacion/tipos";
+import { TIPOS_RENDER, type ProductoOdoo, type TipoRender } from "@/lib/parametros-cotizacion/tipos";
 import { enLetras } from "@/lib/cotizador/letras";
 import {
   alcanceTecnico, aplicarCambios, borradorVacio, frenteDelLote, opcionDuracion, recalcular,
@@ -37,6 +37,7 @@ import { crearEjecutor, type PayloadGuardar, type PayloadMail } from "./ejecutor
 import { generarPdfDelBorrador } from "./pdf";
 import { mensajeParaCliente } from "./mensaje-cliente";
 import { consultarPlanificacion, puedeVerPlanificacion } from "./planificacion";
+import { fotoDelChat, guardarRenderEnBiblioteca, puedeEditarRenders } from "./renders";
 import type { BorradorVista, Evento } from "./eventos";
 
 // ── Contexto ────────────────────────────────────────────────────────────────────────────
@@ -140,7 +141,8 @@ const esquemaCambios = z.object({
   referencia: z.string().nullable().optional().describe("Resumen corto de lo que se alquila, para el nombre del PDF: «Bandeja de protección peatonal 10 m.l.»"),
   seccion1: z.string().nullable().optional(),
   seccion2: z.array(z.object({ titulo: z.string(), contenido: z.string() })).optional().describe("Reemplaza la lista entera."),
-  render: z.object({ eleccion: z.enum(["biblioteca", "propio", "ninguno"]).nullable(), renderId: z.string().nullable(), path: z.string().nullable() }).partial().optional(),
+  render: z.object({ eleccion: z.enum(["biblioteca", "propio", "ninguno"]).nullable(), renderId: z.string().nullable() }).partial().optional()
+    .describe("La imagen de un render propio no se carga acá: usá usar_foto_como_render."),
   epigrafe: z.string().nullable().optional(),
   condiciones: z.object({ formaPago: z.string().nullable(), actualizacionCac: z.boolean(), periodoDias: z.number().int(), mostrarTotalConIva: z.boolean() }).partial().optional(),
   aclaraciones: z.string().nullable().optional(),
@@ -682,6 +684,43 @@ const HERRAMIENTAS = [
       });
       ctx.emitir({ t: "whatsapp", texto });
       return { contenido: json({ ok: true, texto, nota: "Ya lo ve en la tarjeta, con botón para copiar: no lo copies en tu respuesta." }) };
+    },
+  }),
+
+  definir({
+    nombre: "usar_foto_como_render",
+    descripcion: "Pone como render de la propuesta una foto que el vendedor mandó por el chat (el render propio de la obra). Toma la última foto de la conversación; con desdeElFinal: 2, la anterior, y así. Es la ÚNICA forma de cargar un render propio: no hay otra pantalla para subirlo, así que no mandes al vendedor a buscar una. El PDF acepta JPG o PNG. Si el presupuesto ya está en Odoo, después hay que volver a guardarlo para que el PDF de la orden lo lleve.",
+    etiqueta: "Poniendo el render en la propuesta",
+    esquema: z.object({ desdeElFinal: z.number().int().min(1).default(1).describe("1 = la última foto que mandó; 2 = la anterior…") }),
+    ejecutar: async ({ desdeElFinal }, ctx) => {
+      const foto = await fotoDelChat(ctx.db, ctx.conversacion.id, desdeElFinal);
+      if ("error" in foto) return { contenido: foto.error, esError: true };
+      const b = await mutar(ctx, (d) => ({ ...d, render: { eleccion: "propio", renderId: null, path: foto.path } }), { render: { eleccion: "propio", path: foto.path } });
+      const siguiente = [
+        "Preguntale al vendedor si quiere dejar esta imagen en la biblioteca de renders para usarla en otras propuestas; si dice que sí, guardar_render_en_biblioteca (proponé vos el tipo y un nombre corto).",
+        ...(b.odoo_venta_nombre ? [`La ${b.odoo_venta_nombre} ya está en Odoo con un PDF sin este render: proponé guardar de nuevo (actualiza la misma orden y adjunta el PDF con el render).`] : []),
+      ];
+      return { contenido: json({ ok: true, foto: foto.nombre, subida: foto.subida, borrador: resumenParaModelo(b), siguiente }) };
+    },
+  }),
+  definir({
+    nombre: "guardar_render_en_biblioteca",
+    descripcion: "Guarda el render propio de este presupuesto (el que se cargó con usar_foto_como_render) en la biblioteca de renders, para ofrecerlo en otras propuestas. Llamala SÓLO si el vendedor dijo que sí cuando se lo preguntaste. Tipo y nombre: proponelos vos y que te los confirme. Se puede cambiar o borrar después en Parámetros → Renders.",
+    etiqueta: "Guardando el render en la biblioteca",
+    esquema: z.object({
+      tipo: z.enum(Object.keys(TIPOS_RENDER) as [TipoRender, ...TipoRender[]]).describe(Object.entries(TIPOS_RENDER).map(([k, v]) => `${k}: ${v}`).join("; ")),
+      nombre: z.string().min(3).max(80).describe("Como lo verían en la lista: «Tribuna multidireccional 3 gradas»"),
+      porDefecto: z.boolean().default(false).describe("true sólo si el vendedor quiere que sea el que se ofrece por defecto para ese tipo"),
+    }),
+    ejecutar: async ({ tipo, nombre, porDefecto }, ctx) => {
+      const r = ctx.borrador.datos.render;
+      if (r.eleccion !== "propio" || !r.path) return { contenido: "Este presupuesto no tiene un render propio cargado: primero usar_foto_como_render.", esError: true };
+      if (!(await puedeEditarRenders(ctx.db, ctx.usuarioId))) {
+        return { contenido: "Quien está usando el asistente no tiene permiso para cargar renders en la biblioteca (es de Parámetros de cotización). Decile que se lo pida a Joaquín: lo puede cargar en Parámetros → Renders.", esError: true };
+      }
+      const g = await guardarRenderEnBiblioteca(ctx.db, { pathOrigen: r.path, tipo, nombre: nombre.trim(), porDefecto, usuarioId: ctx.usuarioId });
+      if ("error" in g) return { contenido: g.error, esError: true };
+      return { contenido: json({ ok: true, id: g.id, tipo, nombre: nombre.trim(), porDefecto, nota: "Ya está en la biblioteca: sale en la lista de renders de las conversaciones nuevas y en Parámetros → Renders." }) };
     },
   }),
 

@@ -34,13 +34,22 @@ El legajo del portal salió mal por dos cosas:
    documentos de origen cliente en ok, el legajo no se completaba nunca. Ahora `cargarTitular`
    borra los documentos del cliente que no están en la lista nueva y deja evento "Ya no se piden: …".
 
-**Pendiente: limpiar S02711 a mano** (el código nuevo no corrige lo que ya quedó). Borrar de
-`pvp_documentos` del trámite `366f11cf-4bd8-4f52-92b1-1bc6afb51dd5`, origen cliente, las claves
-`dni`, `titulo_propiedad`, `nota_autorizacion` y `nota_dueno`, y después correr
-`siLegajoCompletoGenerar` (o que el cliente vuelva a guardar el dueño en el portal y suba
-cualquier versión): con eso se generan informe y croquis y se pide (o se avisa) la encomienda.
-Los otros 9 documentos ya están ok. Desde la sesión de Claude no se pudo: el permiso para
-escribir en la base de producción quedó denegado.
+**S02711 limpiado desde la Mac (02/10, 13:10).** Se borraron de `pvp_documentos` (trámite
+`366f11cf-4bd8-4f52-92b1-1bc6afb51dd5`, origen cliente) `dni`, `titulo_propiedad`,
+`nota_autorizacion` y `nota_dueno`, con evento "Ya no se piden: …", y se corrió
+`siLegajoCompletoGenerar`: los 9 documentos de empresa inquilina ok, **informe técnico y croquis
+generados** (pantalla 25 × 8). El aviso de "encomienda pendiente" (modo supervisado) **no salió**:
+desde la Mac falta `PERMISOS_MAIL_CLAVE` (§ "Noche 16/09").
+
+### Lo primero en la sesión nueva
+
+1. **S02711: "Armar la encomienda ahora"** en la ficha (JS lo toca el 02/10). Es la primera
+   encomienda de una empresa inquilina: mirar frente y metros, y seguir el cierre. Después faltan
+   el certificado del CPAU y la póliza para presentar.
+2. **Reinstalar el robot en la Mac mini** (`git pull && bash robot/instalar-launchd.sh`) para que
+   quede con el código de `02dacb0`. No es urgente: lo que va en cada casillero lo arma la app
+   (`CASILLEROS` en `presentacion.ts`, ya publicado). Si S02711 se presenta antes, controlar en la
+   ficha que "Otra documentación" lleve el contrato de alquiler.
 
 ---
 

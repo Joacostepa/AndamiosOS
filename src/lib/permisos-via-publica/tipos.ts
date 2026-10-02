@@ -121,6 +121,14 @@ export const LEGAJO_INQUILINO: ItemLegajo[] = [
 ];
 
 /**
+ * La empresa prueba el lote con el título si es la dueña o con el contrato si lo alquila, y
+ * en ese caso no hace falta nota del dueño: la firma la empresa inquilina (JS, 02/10, con
+ * Av. Corrientes 985, S02711, la primera empresa inquilina).
+ */
+const LEGAJO_EMPRESA_DUENA: ItemLegajo[] = [{ clave: "titulo_propiedad", nombre: "Título de propiedad" }];
+const LEGAJO_EMPRESA_INQUILINA: ItemLegajo[] = [{ clave: "contrato_alquiler", nombre: "Contrato de alquiler" }];
+
+/**
  * Los documentos que el cliente puede COMPLETAR Y FIRMAR en el portal en vez de imprimir,
  * firmar y escanear: el acta de compromiso del GCBA y la nota de ABA. La nota es la misma
  * plantilla ("solicitamos el permiso… autorizamos a Emprendimientos y Estructuras") y en el
@@ -151,6 +159,7 @@ export const CARACTER_POR_DEFECTO: Record<TipoDueno, string> = {
 };
 
 export function legajoDe(tipo: TipoDueno, esInquilino: boolean): ItemLegajo[] {
+  if (tipo === "empresa") return [...LEGAJO.empresa, ...(esInquilino ? LEGAJO_EMPRESA_INQUILINA : LEGAJO_EMPRESA_DUENA)];
   return [...LEGAJO[tipo], ...(esInquilino ? LEGAJO_INQUILINO : [])];
 }
 

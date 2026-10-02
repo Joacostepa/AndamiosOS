@@ -41,7 +41,7 @@ export const CASILLEROS: Casillero[] = [
   { casillero: "Copia autenticada del instrumento de designación de autoridades", docs: (t) => [({ consorcio: "acta_asamblea", empresa: "acta_directorio", persona: "dni" } as const)[t]] },
   { casillero: "Poder autenticado por escribano", docs: (t) => [({ consorcio: "acta_asamblea", empresa: "poder", persona: "nota_autorizacion" } as const)[t]] },
   { casillero: "Copia del DNI del apoderado", docs: (t) => [({ consorcio: "dni_administrador", empresa: "dni_apoderado", persona: "dni" } as const)[t]] },
-  { casillero: "Otra documentación", docs: (_t, inquilino) => ["acta_compromiso", "constancia_cuit", ...(inquilino ? ["contrato_alquiler", "nota_dueno"] : [])] },
+  { casillero: "Otra documentación", docs: (t, inquilino) => ["acta_compromiso", "constancia_cuit", ...(t === "empresa" ? [inquilino ? "contrato_alquiler" : "titulo_propiedad"] : inquilino ? ["contrato_alquiler", "nota_dueno"] : [])] },
 ];
 
 export type RequisitoCasillero = { casillero: string; documentos: { clave: string; nombre: string; ok: boolean }[]; ok: boolean };

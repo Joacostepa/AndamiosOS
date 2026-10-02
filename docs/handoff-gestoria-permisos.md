@@ -1,12 +1,46 @@
-# Handoff — Gestoría de permisos de andamio (actualizado 2026-09-26)
+# Handoff — Gestoría de permisos de andamio (actualizado 2026-10-02)
 
 Para retomar en una sesión nueva. El diseño completo y todo lo aprendido está en
 `docs/modulo-gestoria-permisos.md`; esto es el estado, **lo que falta para que el circuito
 quede 100 % automático** y el orden para seguir.
 
 Para arrancar: "Leé docs/handoff-gestoria-permisos.md y docs/modulo-gestoria-permisos.md y
-seguimos con lo que falta". **Empezar por § "Estado al 26/09", seguir con § "17/09 — primera
+seguimos con lo que falta". **Empezar por § "02/10", después § "Estado al 26/09", seguir con § "17/09 — primera
 encomienda cerrada sola", § "Noche 16/09" y § "Estado 16/09 19:00".**
+
+---
+
+## 02/10 — la primera empresa inquilina: Av. Corrientes 985 (S02711)
+
+Primer trámite con una **empresa** que **alquila** el lote (CORRIENTES 999 SRL, CUIT 30619093115).
+El legajo del portal salió mal por dos cosas:
+
+1. **La lista de empresa no estaba bien.** Pedía la nota del dueño a la inquilina y a la dueña no le
+   pedía el título. **Lista de JS (02/10):**
+
+   | Empresa dueña del lote | Empresa inquilina |
+   | --- | --- |
+   | Aviso de obra · Constancia de CUIT · Estatuto · Poder · Acta de directorio con la designación de autoridades · DNI del apoderado · Acta de compromiso · Nota de compromiso | lo mismo |
+   | **Título de propiedad** | **Contrato de alquiler** (sin nota del dueño) |
+
+   La "nota de compromiso" es la nota de solicitud que se firma en el portal (JS). Consorcio y
+   persona no cambian: inquilinos de esos siguen con contrato + nota del dueño.
+   En TAD, "Otra documentación" de una empresa lleva acta de compromiso, constancia de CUIT y el
+   título o el contrato. Los criterios de la IA para estatuto, poder y acta de directorio dicen
+   "dueña del lote o inquilina".
+2. **Cambiar el tipo de dueño arrastraba lo de antes.** El cliente se cargó primero como persona
+   (19:58) y después como empresa (20:47): le quedaron DNI (observado, 6 versiones), título,
+   nota de autorización y nota del dueño, y como `siLegajoCompletoGenerar` exige **todos** los
+   documentos de origen cliente en ok, el legajo no se completaba nunca. Ahora `cargarTitular`
+   borra los documentos del cliente que no están en la lista nueva y deja evento "Ya no se piden: …".
+
+**Pendiente: limpiar S02711 a mano** (el código nuevo no corrige lo que ya quedó). Borrar de
+`pvp_documentos` del trámite `366f11cf-4bd8-4f52-92b1-1bc6afb51dd5`, origen cliente, las claves
+`dni`, `titulo_propiedad`, `nota_autorizacion` y `nota_dueno`, y después correr
+`siLegajoCompletoGenerar` (o que el cliente vuelva a guardar el dueño en el portal y suba
+cualquier versión): con eso se generan informe y croquis y se pide (o se avisa) la encomienda.
+Los otros 9 documentos ya están ok. Desde la sesión de Claude no se pudo: el permiso para
+escribir en la base de producción quedó denegado.
 
 ---
 

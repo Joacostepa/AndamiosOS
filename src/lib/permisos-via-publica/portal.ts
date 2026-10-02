@@ -327,10 +327,21 @@ export async function cargarTitular(
   }).eq("id", tramiteId);
   if (error) throw new Error(error.message);
 
+  const legajo = legajoDe(datos.tipoDueno, datos.esInquilino);
   await db.from("pvp_documentos").upsert(
-    legajoDe(datos.tipoDueno, datos.esInquilino).map((d) => ({ tramite_id: tramiteId, clave: d.clave, origen: "cliente", estado: "falta" })),
+    legajo.map((d) => ({ tramite_id: tramiteId, clave: d.clave, origen: "cliente", estado: "falta" })),
     { onConflict: "tramite_id,clave", ignoreDuplicates: true },
   );
+  // Si cambió el tipo de dueño, lo que se pedía antes y ya no va se saca: si no, queda en el
+  // portal y traba el legajo completo. Pasó con S02711 (01/10): cargado primero como persona y
+  // después como empresa, le quedaron el DNI observado y la nota del dueño sin subir.
+  const { data: sobran } = await db.from("pvp_documentos").delete()
+    .eq("tramite_id", tramiteId).eq("origen", "cliente")
+    .not("clave", "in", `(${legajo.map((d) => d.clave).join(",")})`)
+    .select("clave");
+  if (sobran?.length) {
+    await registrarEvento(db, tramiteId, "documento_pedido", `Ya no se piden: ${sobran.map((d) => NOMBRE_DOCUMENTO[d.clave] ?? d.clave).join(", ")}.`, { claves: sobran.map((d) => d.clave) }, "sistema");
+  }
   const conAdministrador = administrador ? ` · administrador ${administrador.nombre} (CUIT ${administrador.cuit})` : "";
   await registrarEvento(db, tramiteId, "titular_cargado", `${datos.nombre} (CUIT ${datos.cuit})${conAdministrador}`, datos, "cliente");
 

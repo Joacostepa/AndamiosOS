@@ -22,6 +22,11 @@ const PRODUCTOR = "segucom";
 export const PRODUCTOR_PRUEBA = "prueba";
 const DIA = 86_400_000;
 
+/** Quién más de cada productor va en copia de los pedidos y recordatorios (JS, 02/10). */
+const COPIAS_PRODUCTOR: Record<string, string[]> = {
+  segucom: ["gcastellano@segucom.com.ar"],
+};
+
 type Actor = "persona" | "productor" | "ia" | "sistema" | "cliente";
 type TramitePedido = Pick<Tramite, "direccion" | "titular_nombre" | "titular_cuit" | "administrador_nombre" | "administrador_cuit" | "permiso_hasta" | "expediente_id" | "es_prueba">;
 type FilaPedido = {
@@ -148,7 +153,7 @@ async function mandarAProductor(db: SupabaseClient, productorId: string, filas: 
   const contactos = await Promise.all(filas.map((f) => contactosDeTramite(db, f.tramite_id)));
   await enviarMail({
     para: p.email,
-    cc: copias(contactos, p.email),
+    cc: [...new Set([...(COPIAS_PRODUCTOR[productorId] ?? []), ...copias(contactos, p.email)])],
     responderA: responderA(contactos),
     asunto: `${prueba ? "[PRUEBA] " : ""}${recordatorio ? `Recordatorio: endosos pendientes (${filas.length})` : `Endosos para pedir — Andamios Buenos Aires (${filas.length})`}`,
     texto,

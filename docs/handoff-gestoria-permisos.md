@@ -41,6 +41,15 @@ El legajo del portal salió mal por dos cosas:
 generados** (pantalla 25 × 8). El aviso de "encomienda pendiente" (modo supervisado) **no salió**:
 desde la Mac falta `PERMISOS_MAIL_CLAVE` (§ "Noche 16/09").
 
+### Copia del endoso a gcastellano@segucom.com.ar (02/10)
+
+Pedido de JS: que el colaborador de Gonzalo reciba el mismo pedido de endoso, **en copia del mismo
+mail** y no en uno aparte. `COPIAS_PRODUCTOR` en `endosos.ts` (por productor: `segucom` →
+gcastellano@), sumado a las copias de vendedor y gestor en `mandarAProductor`. Lo reciben el pedido
+(botón o automático) y los recordatorios; los de prueba no (van al productor `prueba`). Las
+respuestas siguen yendo al vendedor. Sin probar con un mail real: el primero sale con el próximo
+pedido.
+
 ### Lo primero en la sesión nueva
 
 1. **S02711: "Armar la encomienda ahora"** en la ficha (JS lo toca el 02/10). Es la primera
@@ -869,7 +878,7 @@ Hoy el robot lee el motivo (`pvp_expedientes.motivo_subsanacion`) y avisa. Falta
   salir por URL. Los intentos sin terminar aparecen en el Histórico sin RETP Nro: comparar
   por R.Nro (`robot/revisar-cpau-historico.mjs`). Una tarea que tocó Finalizar **nunca** se
   reintenta sola.
-- **Endoso:** siempre por el portal de Segucom / mail a gcosta@segucom.com.ar, nunca Slack.
+- **Endoso:** siempre por el portal de Segucom / mail a gcosta@segucom.com.ar (con copia a gcastellano@segucom.com.ar desde el 02/10), nunca Slack.
 - **Pruebas:** un trámite de prueba no le escribe a nadie de afuera, no crea alertas y nunca
   finaliza la encomienda.
 - La tarjeta y las credenciales viven sólo en `robot/.env.robot` (ignorado por git).

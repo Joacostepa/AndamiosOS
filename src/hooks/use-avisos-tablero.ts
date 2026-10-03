@@ -17,6 +17,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { conectarAvisos, type AvisoTablero } from "@/lib/tablero/avisos";
 import { CLAVE_ACTIVIDAD } from "@/hooks/use-actividad";
+import { CLAVE_SUSPENSIONES } from "@/hooks/use-suspensiones";
 import { useUser } from "@/hooks/use-user";
 
 /**
@@ -73,6 +74,7 @@ export function useAvisosTablero() {
 
         void qc.invalidateQueries({ queryKey: ["tablero"] });
         void qc.invalidateQueries({ queryKey: CLAVE_ACTIVIDAD });
+        void qc.invalidateQueries({ queryKey: CLAVE_SUSPENSIONES });
 
         // `info` y no `warning`: que otro planifique no es un problema, es el uso normal
         // de un tablero compartido. El ámbar está reservado para lo que hay que mirar.

@@ -26,6 +26,7 @@ import type { FraccionStr } from "@/lib/tablero/fracciones";
 import { notasDe, notasDeCuadrilla } from "@/lib/tablero/tipos-nota";
 import type { Bloque } from "@/lib/tablero/bloques";
 import type { NotaJornada } from "@/lib/tablero/tipos-nota";
+import { claveSuspension, type SuspensionDia } from "@/lib/tablero/tipos-suspension";
 import type { ResumenEnTarjeta } from "@/lib/tablero/tipos-comentario";
 import type { ClimaDia } from "@/lib/clima/pronostico";
 import type { AsignacionTablero, CuadrillaTablero, OtTablero, ParteTablero } from "@/lib/tablero/tipos";
@@ -220,6 +221,8 @@ export function TableroGrid({
   planPorObra,
   partes,
   notas,
+  suspensiones,
+  onQuitarSuspension,
   bloqueSeleccionado,
   hoy: hoyISO,
   contenedorRef,
@@ -279,6 +282,12 @@ export function TableroGrid({
    * aplicar a varias columnas (ver notasDe en tipos-nota).
    */
   notas: NotaJornada[];
+  /**
+   * Días suspendidos por cuadrilla (clave `cuadrilla:fecha`, ver claveSuspension): la
+   * celda lleva una tapa con el motivo en vez de quedar en blanco.
+   */
+  suspensiones?: Map<string, SuspensionDia>;
+  onQuitarSuspension?: (s: SuspensionDia) => void;
   bloqueSeleccionado: string | null;
   /** Fecha de hoy en yyyy-MM-dd: define desde cuándo se puede cerrar una jornada. */
   hoy: string;
@@ -820,6 +829,7 @@ export function TableroGrid({
                     // encabezado, y repetirlas en cada fila pondría la misma marca en
                     // las cinco celdas de la columna.
                     const suyas = colapsado(f) ? [] : notasDeCuadrilla(notas, f, cuadrilla.id);
+                    const suspension = suspensiones?.get(claveSuspension(cuadrilla.id, f)) ?? null;
                     return (
                       <CeldaDia
                         key={`${cuadrilla.id}-${f}`}
@@ -833,6 +843,10 @@ export function TableroGrid({
                         pasada={f < hoyISO}
                         fracciones={enCelda(cuadrilla.id, f).map((a) => a.fraccion)}
                         onCrearTarea={() => onCrearTarea(cuadrilla.id, f)}
+                        suspension={suspension}
+                        onQuitarSuspension={
+                          suspension && onQuitarSuspension ? () => onQuitarSuspension(suspension) : undefined
+                        }
                         marcaNota={
                           suyas.length === 0 ? null : (
                             <PopoverNotasDia

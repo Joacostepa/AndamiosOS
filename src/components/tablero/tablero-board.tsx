@@ -41,6 +41,8 @@ import type { ResumenEnTarjeta } from "@/lib/tablero/tipos-comentario";
 import type { EstadoBloque } from "@/lib/tablero/tipos-movimiento";
 import { usePlanJornadas, useFijarJornadasPlan } from "@/hooks/use-plan-jornadas";
 import { useNotasJornada } from "@/hooks/use-notas-jornada";
+import { useQuitarSuspension, useSuspensiones } from "@/hooks/use-suspensiones";
+import { claveSuspension, type SuspensionDia } from "@/lib/tablero/tipos-suspension";
 import { useAvisosTablero } from "@/hooks/use-avisos-tablero";
 import { direccionDeObra } from "@/lib/tablero/titulo";
 import { useClima } from "@/hooks/use-clima";
@@ -294,6 +296,13 @@ export function TableroBoard() {
   // payload: van a Supabase, no a Odoo, y escribir una nota no tiene por qué reconsultar
   // las asignaciones del rango entero (ni al revés).
   const { data: notas } = useNotasJornada(desde, hasta);
+  // Días suspendidos ("correr el día"): la tapa con el motivo en cada celda que no salió.
+  const { data: suspensionesData } = useSuspensiones(desde, hasta);
+  const suspensiones = useMemo(
+    () => new Map((suspensionesData ?? []).map((x) => [claveSuspension(x.cuadrillaId, x.fecha), x])),
+    [suspensionesData],
+  );
+  const quitarSuspension = useQuitarSuspension();
 
   // Los cambios de los demás, en vivo. Mientras esta pantalla esté abierta escucha los
   // avisos del resto, refresca y dice quién hizo qué: sin esto, el tablero sólo se entera
@@ -1471,11 +1480,18 @@ export function TableroBoard() {
    * no vuelve. Es estricto a propósito. Devolver la mitad de un corrimiento sería dejar el
    * tablero en un estado que no eligió nadie.
    */
-  function correrElDia(plan: Corrimiento, datos: { dia: string; motivo: string }) {
+  function correrElDia(plan: Corrimiento, datos: { dia: string; motivo: string; cuadrillaIds: number[] }) {
     correrDia.mutate(
-      { motivo: datos.motivo, movimientos: plan.movimientos, registros: plan.registros },
       {
-        onSuccess: ({ filas }) => {
+        motivo: datos.motivo,
+        movimientos: plan.movimientos,
+        registros: plan.registros,
+        // El día queda tapado con el motivo en las cuadrillas que no salieron: sin esto el
+        // hueco se leía como un día libre (Juan Agustín, 01/10).
+        suspension: { dia: datos.dia, cuadrillaIds: datos.cuadrillaIds },
+      },
+      {
+        onSuccess: ({ filas, loteId }) => {
           setCorrimientoAbierto(false);
           const vuelta = invertirCorrimiento(plan.registros);
           ofrecerDeshacer({
@@ -1489,6 +1505,8 @@ export function TableroBoard() {
                 // Cada fila de la vuelta apunta a la de ida de su misma obra, para que el
                 // panel marque el corrimiento original como deshecho.
                 deshaceA: filas,
+                // Y la tapa del día se levanta con él.
+                levantaLote: loteId ?? undefined,
               }),
           });
         },
@@ -1861,6 +1879,13 @@ export function TableroBoard() {
                 planPorObra={planPorObra}
                 partes={data.partes}
                 notas={notas ?? []}
+                suspensiones={suspensiones}
+                onQuitarSuspension={(x: SuspensionDia) =>
+                  quitarSuspension.mutate(x.id, {
+                    onSuccess: () => toast.success(`Se quitó la marca "${x.motivo}"`),
+                    onError: (e) => toast.error("No se pudo quitar la marca", { description: e.message }),
+                  })
+                }
                 bloqueSeleccionado={panel?.bloqueKey ?? resaltado?.key ?? null}
                 hoy={hoyISO}
                 domingosAbiertos={domingosAbiertos}

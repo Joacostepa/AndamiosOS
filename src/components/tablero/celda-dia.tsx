@@ -2,11 +2,13 @@
 
 import type { ReactNode } from "react";
 import { useDroppable } from "@dnd-kit/core";
+import { CloudRain, Ban, X } from "lucide-react";
 import { ocupacionCelda } from "@/lib/tablero/fracciones";
 import {
   colorOcupacion,
   ACENTO_BG,
   CANALETA,
+  CLIMA,
   CORAL,
   FERIADO_COLUMNA,
   PASADO,
@@ -40,6 +42,8 @@ export function CeldaDia({
   pasada = false,
   fracciones,
   marcaNota = null,
+  suspension = null,
+  onQuitarSuspension,
   onCrearTarea,
 }: {
   cuadrillaId: number;
@@ -67,6 +71,15 @@ export function CeldaDia({
    * las tarjetas viven en la pista de la jornada y esta franja queda reservada para el riel.
    */
   marcaNota?: ReactNode;
+  /**
+   * El día se suspendió para esta cuadrilla ("correr el día"): la celda lleva una tapa
+   * rayada con el motivo. Sin ella el hueco que deja el corrimiento se leía como un día
+   * libre (Juan Agustín, 01/10). Es sólo marca: la celda sigue aceptando drop, y si
+   * después se le asigna algo, la tarjeta se dibuja encima.
+   */
+  suspension?: { motivo: string; autorNombre: string | null } | null;
+  /** Quitar la marca puesta por error. Las jornadas no se tocan. */
+  onQuitarSuspension?: () => void;
   /**
    * Doble clic en la celda: crea una tarjeta de operaciones acá.
    *
@@ -112,12 +125,21 @@ export function CeldaDia({
         outline: dropActivo ? `2px dashed ${CORAL}` : undefined,
         outlineOffset: "-2px",
       }}
-      className="relative border-b border-r"
+      // group/celda: la cruz de la tapa aparece al pasar por la celda (la tapa no toma el puntero).
+      className="group/celda relative border-b border-r"
       // La celda colapsada (canaleta del domingo) no crea nada: no acepta drop y no
       // tiene alto para mostrar lo que se cree.
       onDoubleClick={colapsada ? undefined : onCrearTarea}
       title={!colapsada && onCrearTarea ? "Doble clic para agregar una tarea acá" : undefined}
     >
+      {!colapsada && suspension && (
+        <TapaSuspension
+          motivo={suspension.motivo}
+          autorNombre={suspension.autorNombre}
+          onQuitar={onQuitarSuspension}
+        />
+      )}
+
       {/* El riel va SIEMPRE (salvo en la canaleta): una barra que aparece y desaparece
           hace saltar la línea de base de la fila al asignar. */}
       {!colapsada && (
@@ -141,6 +163,64 @@ export function CeldaDia({
       )}
 
       {!colapsada && marcaNota}
+    </div>
+  );
+}
+
+/** Lluvia, viento o tormenta se pintan con el azul del clima; cualquier otro motivo, en gris. */
+const ES_CLIMA = /llov|lluvi|torment|vient|granizo|clima/i;
+
+function TapaSuspension({
+  motivo,
+  autorNombre,
+  onQuitar,
+}: {
+  motivo: string;
+  autorNombre: string | null;
+  onQuitar?: () => void;
+}) {
+  const clima = ES_CLIMA.test(motivo);
+  const fondo = clima ? CLIMA.fondo : "var(--muted)";
+  const texto = clima ? CLIMA.texto : "var(--muted-foreground)";
+  const Icono = clima ? CloudRain : Ban;
+  return (
+    <div
+      // Encima del fondo de la celda y debajo de las tarjetas. No captura el puntero: la
+      // celda sigue siendo zona de drop y de doble clic.
+      className="pointer-events-none absolute inset-x-0 top-0 bottom-3 flex flex-col items-center justify-center gap-0.5 px-2 text-center"
+      style={{
+        // Rayado y no relleno liso: se lee como "tachado" y no como otra tarjeta.
+        backgroundImage: `repeating-linear-gradient(135deg, ${fondo} 0 6px, transparent 6px 12px)`,
+        color: texto,
+      }}
+      title={`Suspendido: ${motivo}${autorNombre ? ` · lo marcó ${autorNombre}` : ""}`}
+    >
+      <span
+        className="flex max-w-full items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-semibold"
+        style={{ backgroundColor: fondo }}
+      >
+        <Icono className="h-3 w-3 shrink-0" />
+        <span className="truncate">Suspendido</span>
+      </span>
+      <span className="max-w-full truncate rounded px-1 text-[10px] font-medium" style={{ backgroundColor: fondo }}>
+        {motivo}
+      </span>
+      {onQuitar && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onQuitar();
+          }}
+          onDoubleClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+          title="Quitar la marca (las jornadas no se mueven)"
+          aria-label="Quitar la marca de día suspendido"
+          className="pointer-events-auto absolute right-0.5 top-0.5 flex h-4 w-4 items-center justify-center rounded opacity-0 transition-opacity hover:bg-foreground/10 focus-visible:opacity-100 group-hover/celda:opacity-100"
+        >
+          <X className="h-3 w-3" />
+        </button>
+      )}
     </div>
   );
 }

@@ -9,6 +9,7 @@ import {
 import { OdooError } from "@/lib/odoo/client";
 import { createClient } from "@/lib/supabase/server";
 import { registrarCorrimiento } from "@/lib/planificacion/movimientos";
+import { levantarLote, marcarSuspension } from "@/lib/planificacion/suspensiones";
 
 // POST /api/planificacion/corrimiento → suspender un día y correr lo que había.
 //
@@ -65,6 +66,12 @@ const cuerpo = z.object({
    * porque JSON no tiene Map; las claves son ids de OT.
    */
   deshaceA: z.record(z.string(), z.string().uuid()).optional(),
+  /** Qué día y qué cuadrillas quedan marcadas como suspendidas en el tablero. */
+  suspension: z
+    .object({ dia: fecha, cuadrillaIds: z.array(z.number().int().positive()).max(100) })
+    .optional(),
+  /** Deshacer: el lote del corrimiento original, para levantar sus marcas. */
+  levantaLote: z.string().uuid().optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -77,7 +84,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: detalle.join(" · ") }, { status: 400 });
   }
 
-  const { movimientos, registros, deshaceA, motivo } = parsed.data;
+  const { movimientos, registros, deshaceA, motivo, suspension, levantaLote } = parsed.data;
 
   try {
     // SE COMPRUEBA ANTES DE ESCRIBIR NADA y se rechaza el corrimiento ENTERO, no las
@@ -118,6 +125,22 @@ export async function POST(req: NextRequest) {
         ? new Map(Object.entries(deshaceA).map(([ot, id]) => [Number(ot), id]))
         : undefined,
     });
+
+    // La marca del día suspendido. Si falla, las jornadas ya se corrieron: se anota y
+    // no se rechaza el gesto, igual que el registro del historial.
+    try {
+      if (suspension) {
+        const { data } = await db.auth.getUser();
+        await marcarSuspension(
+          db,
+          { fecha: suspension.dia, cuadrillaIds: suspension.cuadrillaIds, motivo, loteId: lote?.loteId ?? null },
+          data.user?.id ?? null,
+        );
+      }
+      if (levantaLote) await levantarLote(db, levantaLote);
+    } catch (e) {
+      console.error("[corrimiento] no se pudo marcar o levantar el día suspendido", e);
+    }
 
     return NextResponse.json({
       ok: true,

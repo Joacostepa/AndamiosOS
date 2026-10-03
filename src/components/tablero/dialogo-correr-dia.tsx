@@ -56,7 +56,7 @@ export function DialogoCorrerDia({
   cuadrillas: CuadrillaTablero[];
   guardando: boolean;
   onCerrar: () => void;
-  onCorrer: (plan: Corrimiento, datos: { dia: string; motivo: string }) => void;
+  onCorrer: (plan: Corrimiento, datos: { dia: string; motivo: string; cuadrillaIds: number[] }) => void;
 }) {
   const [fecha, setFecha] = useState(hoy);
   const [motivo, setMotivo] = useState("Lluvia");
@@ -107,6 +107,13 @@ export function DialogoCorrerDia({
 
   const hayAlgo = (plan?.jornadas ?? 0) > 0;
 
+  // Las cuadrillas que quedan marcadas como suspendidas en el tablero: las tildadas que
+  // tenían algo ese día. Una tildada sin nada asignado no perdió el día, y taparle la
+  // celda vacía diría que algo se suspendió donde no había nada.
+  const suspendidas = cuadrillas
+    .filter((c) => !excluidas.has(c.id) && asignaciones.some((a) => a.fecha === fecha && a.cuadrillaId === c.id))
+    .map((c) => c.id);
+
   return (
     <Dialog open onOpenChange={(a) => !a && cerrar()}>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
@@ -114,7 +121,8 @@ export function DialogoCorrerDia({
           <DialogTitle>Suspender un día y correr lo que había</DialogTitle>
           <DialogDescription>
             Las jornadas pasan al día siguiente. El domingo se saltea; el sábado y los
-            feriados se trabajan, así que cuentan como días hábiles.
+            feriados se trabajan, así que cuentan como días hábiles. El día queda marcado
+            con el motivo en las cuadrillas que no salieron.
           </DialogDescription>
         </DialogHeader>
 
@@ -216,7 +224,7 @@ export function DialogoCorrerDia({
               apretar sin haber leído cuántas obras se mueven. */}
           <Button
             disabled={!hayAlgo || guardando || !motivo.trim() || !!noSePuede}
-            onClick={() => plan && onCorrer(plan, { dia: fecha, motivo: motivo.trim() })}
+            onClick={() => plan && onCorrer(plan, { dia: fecha, motivo: motivo.trim(), cuadrillaIds: suspendidas })}
           >
             {guardando && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             {hayAlgo

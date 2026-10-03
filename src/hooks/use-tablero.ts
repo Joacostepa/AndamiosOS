@@ -12,6 +12,7 @@ import type { Feriado } from "@/lib/feriados/argentina";
 import { fechasDeJornadas } from "@/lib/tablero/bloques";
 import { CLAVE_CONFIRMACIONES } from "@/hooks/use-confirmaciones";
 import { CLAVE_ACTIVIDAD } from "@/hooks/use-actividad";
+import { CLAVE_SUSPENSIONES } from "@/hooks/use-suspensiones";
 import { avisarCambio } from "@/lib/tablero/avisos";
 import type { RegistroConfirmacion } from "@/lib/tablero/tipos-confirmacion";
 import type { RegistroCorrida, RegistroMovimiento } from "@/lib/tablero/tipos-movimiento";
@@ -423,6 +424,8 @@ export function useCorrerDia() {
       movimientos: MovimientoAsignacion[];
       registros: RegistroCorrida[];
       deshaceA?: Record<string, string>;
+      suspension?: { dia: string; cuadrillaIds: number[] };
+      levantaLote?: string;
     },
     Contexto
   >({
@@ -449,7 +452,10 @@ export function useCorrerDia() {
       void qc.invalidateQueries({ queryKey: CLAVE });
       void qc.invalidateQueries({ queryKey: CLAVE_ACTIVIDAD });
     },
-    onSettled: () => refrescarPronto(qc),
+    onSettled: () => {
+      refrescarPronto(qc);
+      void qc.invalidateQueries({ queryKey: CLAVE_SUSPENSIONES });
+    },
   });
 }
 

@@ -10,30 +10,10 @@ cosas, así que ante la duda manda el código y los comentarios largos que tiene
 
 ## Pendiente ahora
 
-1. **Crear `plan_suspensiones` y tapar el 29/09.** El código de los días suspendidos (abajo) ya
-   está en main, pero la tabla no existe todavía: desde la Mac de JS no se pudo crear (falta
-   `SUPABASE_DB_URL` en `.env.local` y la CLI de Supabase no tiene sesión). Hay que pegar en el
-   editor SQL de Supabase el contenido de la migración
-   `supabase/migrations/20261002000001_suspensiones_del_tablero.sql` y después la carga del
-   29/09:
-
-   ```sql
-   INSERT INTO plan_suspensiones (fecha, cuadrilla_odoo_id, motivo, lote_id)
-   SELECT DISTINCT ON ((m.antes->>'cuadrillaId')::bigint)
-     DATE '2026-09-29', (m.antes->>'cuadrillaId')::bigint, m.motivo, m.lote_id
-   FROM plan_movimientos m
-   WHERE m.accion = 'correr'
-     AND m.created_at >= '2026-09-29' AND m.created_at < '2026-09-30'
-     AND (m.antes->>'cuadrillaId')::bigint IN (13, 14)
-     AND m.antes->'fechas' ? '2026-09-29'
-   ORDER BY (m.antes->>'cuadrillaId')::bigint, m.created_at
-   ON CONFLICT (fecha, cuadrilla_odoo_id) DO NOTHING;
-   ```
-
-   Tienen que quedar dos filas: cuadrilla 1 (Odoo 13) y cuadrilla 2 (Odoo 14), "Lluvia". Esos
-   corrimientos se hicieron el 29/09 a las 17:10 y 17:19 (lotes `7b7684e3…` y `3b39b46c…`).
-   Mientras la tabla no exista el tablero anda igual: no aparecen tapas y el corrimiento sigue
-   funcionando (la marca falla en silencio y queda en el log del servidor).
+1. ~~Crear `plan_suspensiones` y tapar el 29/09~~ **hecho el 02/10**: la migración
+   `20261002000001` quedó aplicada y el martes 29/09 tiene las dos marcas "Lluvia" (cuadrilla 1 =
+   Odoo 13, lote `7b7684e3…`; cuadrilla 2 = Odoo 14, lote `3b39b46c…`), sin autor porque se
+   cargaron a mano desde el historial.
 2. **Ver la tapa andando con un corrimiento real** (o uno de prueba deshecho enseguida). No se
    pudo mirar en el navegador cuando se construyó.
 
@@ -100,9 +80,10 @@ el motivo.
 
 ## Reglas que no se leen en el código
 
-- **Migraciones:** nunca `supabase db push`. Se aplican con
-  `node --env-file=.env.local scripts/apply-migration.mjs <archivo>` (pide `SUPABASE_DB_URL`) o
-  pegando el SQL en el editor de Supabase.
+- **Migraciones:** nunca `supabase db push`. Desde el 02/10 la Mac de JS tiene la CLI logueada y
+  el repo vinculado a AndamiosOS (`hrlulbeepyvyjbzjfztu`): se aplican con
+  `npx supabase db query --linked -f supabase/migrations/<archivo>.sql` (por la Management API, sin
+  `SUPABASE_DB_URL`). Para mirar antes: `npx supabase db query --linked -o table "select …"`.
 - **Nada nuevo bajo la query key `["tablero"]`** que no sea el payload de asignaciones (ver arriba).
 - Lo que escriba en Odoo se agrupa y se deshace entero o no se deshace (ver los comentarios de
   `correrElDia` y `useCorrerDia`).

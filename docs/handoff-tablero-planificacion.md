@@ -14,8 +14,8 @@ cosas, así que ante la duda manda el código y los comentarios largos que tiene
    `20261002000001` quedó aplicada y el martes 29/09 tiene las dos marcas "Lluvia" (cuadrilla 1 =
    Odoo 13, lote `7b7684e3…`; cuadrilla 2 = Odoo 14, lote `3b39b46c…`), sin autor porque se
    cargaron a mano desde el historial.
-2. **Ver la tapa andando con un corrimiento real** (o uno de prueba deshecho enseguida). No se
-   pudo mirar en el navegador cuando se construyó.
+2. **Ver la tapa andando con un corrimiento real.** La del 29/09 JS ya la vio en el tablero
+   (02/10) y pidió más color: se cambió a la opción B, que falta mirar en el tablero publicado.
 
 ---
 
@@ -39,10 +39,14 @@ el motivo.
   `use-suspensiones.ts`. Clave de query **propia** (`suspensiones-tablero`), no bajo `["tablero"]`:
   `aplicarOptimista` reescribe todo lo que cuelga de esa clave como si fuera el payload de
   asignaciones. La invalidan el corrimiento y los avisos en vivo de los demás.
-- **La tapa** (`TapaSuspension` en `celda-dia.tsx`): rayado diagonal con "Suspendido" y el motivo.
-  Azul del clima con nube si el motivo es lluvia/viento/tormenta/granizo; gris con ícono de
-  prohibido para cualquier otro. No toma el puntero (la celda sigue aceptando drop y doble clic);
-  si después se asigna algo, la tarjeta va encima. Al pasar por la celda aparece una cruz para
+- **La tapa** (`TapaSuspension` en `celda-dia.tsx`), **opción B que eligió JS el 02/10** entre
+  dos maquetas (la A era un bloque azul lleno, descartada porque en el tablero todo rectángulo
+  lleno es una obra): rayado diagonal con borde punteado, un **sello lleno** con ícono y el
+  motivo, y abajo "SUSPENDIDO". Azul de clima con nube si el motivo es lluvia, viento, tormenta o
+  granizo; gris con ícono de prohibido para cualquier otro. Colores en tokens
+  `--tb-suspendido-*` (claro y oscuro, `SUSPENDIDO` en `colores.ts`) y sus pares en
+  `npm run contraste`. No toma el puntero (la celda sigue aceptando drop y doble clic); si
+  después se asigna algo, la tarjeta va encima. Al pasar por la celda aparece una cruz para
   **quitar la marca** (no mueve jornadas). El tooltip dice quién la marcó.
 
 **Archivos:** `supabase/migrations/20261002000001_suspensiones_del_tablero.sql`,

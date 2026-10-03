@@ -247,6 +247,27 @@ export const CLIMA = {
   texto: "var(--tb-clima-text)",
 } as const;
 
+/**
+ * Tapa del día suspendido (opción B que eligió JS el 02/10): rayado con borde punteado y un
+ * sello lleno con el motivo. Azul del clima para lluvia y similares; gris para el resto.
+ */
+export const SUSPENDIDO = {
+  clima: {
+    fondo: "var(--tb-suspendido-bg)",
+    raya: "var(--tb-suspendido-raya)",
+    borde: "var(--tb-suspendido-borde)",
+    sello: "var(--tb-suspendido-sello)",
+    texto: "var(--tb-suspendido-text)",
+  },
+  otro: {
+    fondo: "var(--tb-suspendido-gris-bg)",
+    raya: "var(--tb-suspendido-gris-raya)",
+    borde: "var(--tb-suspendido-gris-borde)",
+    sello: "var(--tb-suspendido-gris-sello)",
+    texto: "var(--tb-suspendido-gris-text)",
+  },
+} as const;
+
 /** Recuadro de aviso ámbar (panel de OT, diálogo del candado). */
 export const AVISO = {
   fondo: "var(--tb-aviso-bg)",

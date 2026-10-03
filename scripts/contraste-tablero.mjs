@@ -237,6 +237,11 @@ const TEXTO = [
   ["nota de la jornada", "var(--tb-nota-text)", "var(--tb-nota-bg)"],
   ["recuadro de aviso", "var(--tb-aviso-text)", "var(--tb-aviso-bg)"],
   ["encabezado de feriado", "var(--tb-feriado-texto)", "var(--tb-feriado-encabezado)"],
+  // Día suspendido: el sello lleva texto blanco y el rótulo "Suspendido" va sobre el fondo.
+  ["sello de suspendido (clima)", "#ffffff", "var(--tb-suspendido-sello)"],
+  ["rótulo de suspendido (clima)", "var(--tb-suspendido-text)", "var(--tb-suspendido-bg)"],
+  ["sello de suspendido (otro)", "#ffffff", "var(--tb-suspendido-gris-sello)"],
+  ["rótulo de suspendido (otro)", "var(--tb-suspendido-gris-text)", "var(--tb-suspendido-gris-bg)"],
   // Rellenos con texto blanco. Son la razón por la que existen los `-solido`.
   ["botón ejecutado", "#ffffff", "var(--tb-ok-solido)"],
   ["badge urgencia alta", "#ffffff", "var(--tb-peligro-solido)"],

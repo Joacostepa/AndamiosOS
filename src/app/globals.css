@@ -219,6 +219,18 @@
      vive en la misma fila del encabezado a 150px de distancia. */
   --tb-clima-bg: #e6eefb;
   --tb-clima-text: #14477d;
+  /* Día suspendido ("correr el día"): rayado con borde punteado y un sello lleno con el
+     motivo. Azul de clima si es lluvia; gris para cualquier otro motivo. */
+  --tb-suspendido-bg: #e6eefb;
+  --tb-suspendido-raya: #b9cff2;
+  --tb-suspendido-borde: #5b8bd6;
+  --tb-suspendido-sello: #1f5bbf;
+  --tb-suspendido-text: #1f5bbf;
+  --tb-suspendido-gris-bg: #f1f1ef;
+  --tb-suspendido-gris-raya: #d9dadc;
+  --tb-suspendido-gris-borde: #8a8d91;
+  --tb-suspendido-gris-sello: #5f6368;
+  --tb-suspendido-gris-text: #5f6368;
   --tb-inactivo: #8a8880;
 }
 
@@ -358,6 +370,16 @@
   --tb-nota-text: #633806;
   --tb-clima-bg: oklch(0.28 0.05 250);
   --tb-clima-text: oklch(0.85 0.08 250);
+  --tb-suspendido-bg: #1d2a3d;
+  --tb-suspendido-raya: #2c446a;
+  --tb-suspendido-borde: #6f9be0;
+  --tb-suspendido-sello: #2f6fd8;
+  --tb-suspendido-text: #8db4f2;
+  --tb-suspendido-gris-bg: #1b1b1a;
+  --tb-suspendido-gris-raya: #34363a;
+  --tb-suspendido-gris-borde: #8a8d91;
+  --tb-suspendido-gris-sello: #5f6368;
+  --tb-suspendido-gris-text: #b5b7ba;
   --tb-inactivo: oklch(0.62 0 0);
 }
 

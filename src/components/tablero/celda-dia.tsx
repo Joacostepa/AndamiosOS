@@ -8,11 +8,11 @@ import {
   colorOcupacion,
   ACENTO_BG,
   CANALETA,
-  CLIMA,
   CORAL,
   FERIADO_COLUMNA,
   PASADO,
   RIEL_OCUPACION,
+  SUSPENDIDO,
 } from "@/lib/tablero/colores";
 
 // Celda cuadrilla × día: es el fondo droppable de la columna y lleva la barra de
@@ -170,6 +170,11 @@ export function CeldaDia({
 /** Lluvia, viento o tormenta se pintan con el azul del clima; cualquier otro motivo, en gris. */
 const ES_CLIMA = /llov|lluvi|torment|vient|granizo|clima/i;
 
+/**
+ * Opción B (JS, 02/10): rayado con borde punteado y un sello lleno con el motivo. Se eligió
+ * sobre un bloque azul lleno porque en el tablero todo rectángulo lleno es una obra: el
+ * rayado se ve igual de lejos y dice "acá no se trabajó" sin mezclarse con el trabajo.
+ */
 function TapaSuspension({
   motivo,
   autorNombre,
@@ -180,30 +185,32 @@ function TapaSuspension({
   onQuitar?: () => void;
 }) {
   const clima = ES_CLIMA.test(motivo);
-  const fondo = clima ? CLIMA.fondo : "var(--muted)";
-  const texto = clima ? CLIMA.texto : "var(--muted-foreground)";
+  const c = clima ? SUSPENDIDO.clima : SUSPENDIDO.otro;
   const Icono = clima ? CloudRain : Ban;
   return (
     <div
       // Encima del fondo de la celda y debajo de las tarjetas. No captura el puntero: la
       // celda sigue siendo zona de drop y de doble clic.
-      className="pointer-events-none absolute inset-x-0 top-0 bottom-3 flex flex-col items-center justify-center gap-0.5 px-2 text-center"
+      className="pointer-events-none absolute inset-x-1 top-1 bottom-3 flex flex-col items-center justify-center gap-1 rounded border-2 border-dashed px-1.5 text-center"
       style={{
-        // Rayado y no relleno liso: se lee como "tachado" y no como otra tarjeta.
-        backgroundImage: `repeating-linear-gradient(135deg, ${fondo} 0 6px, transparent 6px 12px)`,
-        color: texto,
+        borderColor: c.borde,
+        backgroundColor: c.fondo,
+        backgroundImage: `repeating-linear-gradient(135deg, ${c.raya} 0 8px, transparent 8px 16px)`,
       }}
       title={`Suspendido: ${motivo}${autorNombre ? ` · lo marcó ${autorNombre}` : ""}`}
     >
       <span
-        className="flex max-w-full items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-semibold"
-        style={{ backgroundColor: fondo }}
+        className="flex max-w-full items-center gap-1.5 rounded-full py-1 pl-2 pr-2.5 text-[12px] font-bold text-white shadow-sm"
+        style={{ backgroundColor: c.sello }}
       >
-        <Icono className="h-3 w-3 shrink-0" />
-        <span className="truncate">Suspendido</span>
+        <Icono className="h-3.5 w-3.5 shrink-0" />
+        <span className="truncate">{motivo}</span>
       </span>
-      <span className="max-w-full truncate rounded px-1 text-[10px] font-medium" style={{ backgroundColor: fondo }}>
-        {motivo}
+      <span
+        className="rounded-sm px-1 text-[9px] font-bold uppercase tracking-[0.12em]"
+        style={{ backgroundColor: c.fondo, color: c.texto }}
+      >
+        Suspendido
       </span>
       {onQuitar && (
         <button
@@ -217,6 +224,7 @@ function TapaSuspension({
           title="Quitar la marca (las jornadas no se mueven)"
           aria-label="Quitar la marca de día suspendido"
           className="pointer-events-auto absolute right-0.5 top-0.5 flex h-4 w-4 items-center justify-center rounded opacity-0 transition-opacity hover:bg-foreground/10 focus-visible:opacity-100 group-hover/celda:opacity-100"
+          style={{ color: c.texto }}
         >
           <X className="h-3 w-3" />
         </button>

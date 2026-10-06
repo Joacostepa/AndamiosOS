@@ -1,4 +1,4 @@
-# Handoff — Asistente comercial (actualizado 2026-09-28, a la noche)
+# Handoff — Asistente comercial (actualizado 2026-10-06)
 
 Para retomar en una sesión nueva. Cómo funciona el módulo, cómo se configura y cómo se prueba
 está en `docs/modulo-asistente-comercial.md`; esto es el estado, lo que falta y el orden para
@@ -10,7 +10,7 @@ seguimos con lo que falta". **Empezar por § "Lo primero en la sesión nueva".**
 
 ---
 
-## Estado al cierre del 28/09
+## Estado al 06/10
 
 En producción: `https://andamios-os.vercel.app/comercial/asistente` y `/comercial/parametros`.
 
@@ -36,7 +36,7 @@ En producción: `https://andamios-os.vercel.app/comercial/asistente` y `/comerci
 | La tarjeta del mensaje de WhatsApp sigue ahí al recargar | ✅ 28/09, `ebea983`: sale de la historia (`ultimoMensajeParaCliente`, 3 tests) |
 | WhatsApp | Construido y probado simulando a Meta. **Sin configurar: lo postergó JS** |
 | Parámetros de cotización (7 pestañas) | ✅ |
-| Plan de pagos en cuotas (e-cheqs) como tabla en el PDF | 06/10, **sin commit ni deploy**: ver § "Lo que se hizo el 06/10" |
+| Plan de pagos en cuotas (e-cheqs) como tabla en el PDF | ✅ 06/10, `25ba402`. **Sin probar con el asistente real** (ver § "Lo que se hizo el 06/10") |
 
 **Commits en main:**
 
@@ -56,6 +56,8 @@ En producción: `https://andamios-os.vercel.app/comercial/asistente` y `/comerci
   - `0bc4f9a`: internet;
   - `bf19409`: el render propio desde el chat y la biblioteca;
   - `c89c495` y `719d100`: sólo documentación.
+- **06/10:**
+  - `25ba402`: el plan de pagos en cuotas.
 
 **Base y servicios:**
 
@@ -99,7 +101,9 @@ módulo, § Plan de pagos.
   - 9 tests nuevos (86 en total). El ejemplo de JS da los mismos números al peso, incluido el
     redondeo de la cuota 2 en la columna con IVA;
   - un PDF de muestra mirado página por página.
-- **Sin probar:** una charla real con el asistente (~US$ 1).
+- **Sin probar:** una charla real con el asistente (~US$ 1). Lo prueba JS en una conversación
+  nueva: pedir las cuotas con un presupuesto cotizado y mirar la tabla en la vista previa.
+- **Entre el 28/09 y el 06/10** no se tocó el asistente.
 - **`npm test` falla en esta máquina:** Node 22.16 no corre `.ts` sin
   `--experimental-strip-types`. No es de este cambio. Mientras tanto:
   `node --no-warnings --experimental-strip-types --test "src/lib/**/*.test.ts"`.
@@ -377,20 +381,24 @@ nuestra base):
 
 ## Lo primero en la sesión nueva
 
-1. **Preguntarle a JS si probó internet** en una conversación (por ejemplo, el CAC para la
+1. **Preguntarle a JS si probó el plan de pagos** con un presupuesto real (§ "Lo que se hizo
+   el 06/10"). Si algo salió mal, leer la charla en `asistente_mensajes`: lo que mandó el
+   modelo está en el `tool_use` de `plan_de_pagos` y el cálculo, en `resultado.planPagos`
+   del borrador.
+2. **Preguntarle a JS si probó internet** en una conversación (por ejemplo, el CAC para la
    tribuna).
    - Si falló, buscar la charla en `asistente_mensajes` y mirar los logs de Vercel de
      `/api/comercial/asistente/chat`.
    - Lo más nuevo y sin probar: `pause_turn` y el texto partido por las fuentes (§ Reglas,
      Internet).
-2. **Medir `medium`** con la consulta de § "De código", sobre las conversaciones creadas desde
+3. **Medir `medium`** con la consulta de § "De código", sobre las conversaciones creadas desde
    el 28/09 a las 20:15. Comparar con la base de `high` y mirar también la calidad.
-3. **Repasar con JS las trabas de sus charlas que quedaron sin resolver** (§ "De código",
+4. **Repasar con JS las trabas de sus charlas que quedaron sin resolver** (§ "De código",
    "Trabas vistas en las charlas"). Dos las tiene que decidir él.
-4. **Si JS trae correcciones**, seguir § "Cómo se va a ir mejorando".
-5. **La pantalla nunca la probó Claude:** no tiene login, y no hay que crear usuarios ni entrar
+5. **Si JS trae correcciones**, seguir § "Cómo se va a ir mejorando".
+6. **La pantalla nunca la probó Claude:** no tiene login, y no hay que crear usuarios ni entrar
    como otro. Los cambios de pantalla del 28/09 se probaron con la página real y el servidor
-   simulado.
+   simulado. El panel del plan de pagos (06/10) no se vio en pantalla; el PDF sí.
 
 ---
 

@@ -49,11 +49,22 @@ function direccionBuscable(direccion: string): string {
   return direccion.split(/\s+esq\.?\s+|,|\s+al\s+\d/i)[0].replace(/\bC\.?A\.?B\.?A\.?\b/gi, "").trim();
 }
 
+/** "C.R Escalada de San Martín 2138" → "Escalada de San Martín 2138". */
+const sinIniciales = (direccion: string) => direccion.replace(/^(?:[A-Za-zÀ-ÿ]{1,4}\.)+[A-Za-zÀ-ÿ]{0,4}\.?\s+/, "");
+
+/**
+ * USIG contesta "Calle inexistente" a abreviaturas que no conoce ("C.R Escalada de San Martín"
+ * por Cnel. Remedios, 06/10): si no la encuentra, se prueba sin las iniciales del principio.
+ */
 export async function normalizar(direccion: string): Promise<{ codCalle: number; altura: number; calle: string } | null> {
-  const url = `https://servicios.usig.buenosaires.gob.ar/normalizar/?direccion=${encodeURIComponent(direccionBuscable(direccion))}&geocodificar=true`;
-  const r = await pedir<{ direccionesNormalizadas?: { tipo: string; cod_calle: number; altura: number; nombre_calle: string; cod_partido: string }[] }>(url);
-  const d = r.direccionesNormalizadas?.find((x) => x.tipo === "calle_altura" && x.cod_partido === "caba");
-  return d ? { codCalle: d.cod_calle, altura: d.altura, calle: d.nombre_calle } : null;
+  const buscable = direccionBuscable(direccion);
+  for (const intento of [...new Set([buscable, sinIniciales(buscable)])]) {
+    const url = `https://servicios.usig.buenosaires.gob.ar/normalizar/?direccion=${encodeURIComponent(intento)}&geocodificar=true`;
+    const r = await pedir<{ direccionesNormalizadas?: { tipo: string; cod_calle: number; altura: number; nombre_calle: string; cod_partido: string }[] }>(url);
+    const d = r.direccionesNormalizadas?.find((x) => x.tipo === "calle_altura" && x.cod_partido === "caba");
+    if (d) return { codCalle: d.cod_calle, altura: d.altura, calle: d.nombre_calle };
+  }
+  return null;
 }
 
 export async function parcelaPorDireccion(codCalle: number, altura: number): Promise<Parcela | null> {

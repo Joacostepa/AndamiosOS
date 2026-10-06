@@ -406,6 +406,9 @@ export type EncomiendaFicha = {
     texto_final?: string;
     registro?: string | null;
     finalizado?: boolean;
+    /** El CPAU no respondió antes de Finalizar: el robot la vuelve a armar sola (hasta 3 veces). */
+    reintentos_armado?: number;
+    ultimo_error?: string;
     /** Cierre sin personas (16/09): robot/cpau-encomienda.mjs lo avanza etapa por etapa. */
     cierre?: {
       etapa: "finalizada" | "firmada" | "pagada" | "cargada" | "certificado";

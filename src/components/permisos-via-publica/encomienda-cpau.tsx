@@ -96,7 +96,8 @@ export function EncomiendaCpau({ tramiteId, encomienda: e, esPrueba }: { tramite
   const p = e?.payload;
   const cierre = e?.resultado?.cierre;
   const esperandoMail = e?.estado === "pendiente" && cierre?.etapa === "cargada" && !!e.reintentar_desde;
-  const trabajando = e && ["pendiente", "tomada"].includes(e.estado) && !esperandoMail;
+  const reintentando = e?.estado === "pendiente" && !cierre && !!e.reintentar_desde;
+  const trabajando = e && ["pendiente", "tomada"].includes(e.estado) && !esperandoMail && !reintentando;
   const indice = cierre ? ETAPAS.findIndex((x) => x.clave === cierre.etapa) : -1;
 
   return (
@@ -155,6 +156,13 @@ export function EncomiendaCpau({ tramiteId, encomienda: e, esPrueba }: { tramite
             : e.payload.finalizar
               ? "El robot la está cargando y finalizando en el CPAU (unos minutos; la Mac tiene que estar prendida)…"
               : "El robot la está completando en el CPAU (un par de minutos; la Mac tiene que estar prendida)…"}
+        </p>
+      )}
+
+      {reintentando && (
+        <p className="text-blue-300">
+          El CPAU no respondió y no se llegó a cargar nada: el robot vuelve a intentar solo a las <strong>{hora(e?.reintentar_desde)}</strong>
+          {e?.resultado?.reintentos_armado ? ` (${e.resultado.reintentos_armado} de 3)` : ""}.
         </p>
       )}
 

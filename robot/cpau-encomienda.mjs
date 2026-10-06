@@ -279,6 +279,15 @@ export async function hacerEncomienda({ db, tarea, log }) {
 const ESPERA_CERTIFICADO_MIN = 15;
 const ESPERA_CERTIFICADO_DIAS = 5;
 const REINTENTOS_CIERRE = 3;
+const REINTENTOS_ARMADO = 3;
+
+/**
+ * Timeouts y cortes de red: el CPAU no contestó. Los errores propios (calle que no está, resumen
+ * que no coincide, login rechazado, matrícula ajena) no se arreglan reintentando.
+ */
+function esFallaDelCpau(e) {
+  return e?.name === "TimeoutError" || /Timeout \d+ms exceeded|net::ERR_|ECONNRESET|ETIMEDOUT|ENOTFOUND|socket hang up|Navigation failed/i.test(e?.message ?? "");
+}
 
 /**
  * Atiende una tarea `cpau_encomienda` de punta a punta: la encomienda en el RETP y, si se finalizó,
@@ -337,6 +346,18 @@ export async function atenderEncomienda({ db, tarea, log, avisar }) {
     const msg = (e?.message ?? String(e)).slice(0, 500);
     const despuesDeFinalizar = !!e?.finalizado;
     log("!! CPAU", msg);
+    // El CPAU lento o caído antes de Finalizar no dejó nada hecho: vuelve sola a la cola.
+    const reintentos = fresca?.resultado?.reintentos_armado ?? 0;
+    if (!despuesDeFinalizar && !p.es_prueba && esFallaDelCpau(e) && reintentos < REINTENTOS_ARMADO) {
+      const cuando = new Date(Date.now() + 10 * 60_000).toISOString();
+      await db.from("pvp_tareas").update({
+        estado: "pendiente", reintentar_desde: cuando, error: null,
+        resultado: { capturas: e?.capturas ?? [], finalizado: false, reintentos_armado: reintentos + 1, ultimo_error: msg },
+      }).eq("id", tarea.id);
+      await doc({ estado: "pedido", observacion: `El CPAU no respondió; el robot vuelve a intentar solo en 10 minutos (${reintentos + 1} de ${REINTENTOS_ARMADO}).` });
+      await evento(`El CPAU no respondió antes de empezar la encomienda; se reintenta sola en 10 minutos (${reintentos + 1} de ${REINTENTOS_ARMADO}): ${msg}`, { tarea_id: tarea.id });
+      return;
+    }
     await db.from("pvp_tareas").update({
       estado: "error", error: msg, terminada_at: ahora(),
       resultado: { capturas: e?.capturas ?? [], finalizado: despuesDeFinalizar },

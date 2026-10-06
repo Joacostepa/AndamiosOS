@@ -42,6 +42,18 @@ certificado por mail.
 - **Pendiente:** tocar "Generar informe técnico y croquis" en la ficha de S02437 (JS) y ver que el
   croquis salga ok.
 
+### Pantalla de seguimiento (`5b23c95`)
+
+Pedido de JS: ver cada trámite como una línea de tiempo. Validada primero como maqueta con datos
+reales. `/permisos-via-publica/seguimiento` (Gestorías → Seguimiento de permisos, y botón en la
+bandeja). Una fila por trámite con 7 etapas (abierto, legajo, póliza, encomienda, TAD, GCBA,
+permiso), **quién lo tiene que mover** (Cliente, Segucom, CPAU, Robot, GCBA, ABA), hace cuánto está
+en la etapa y la **fecha estimada** (mediana de abierto→presentado ~2 días y presentado→permiso
+~13 días, con 7 emitidos). Agrupa: necesitan algo / armando / en el GCBA / emitido. Filtro por
+vendedora. Todo se calcula en `seguimiento.ts` con lo que ya hay en la base; no tiene estado propio.
+Al 06/10: los certificados de S01847, S02328 y S02437 llegaron solos (12:00–12:06); a los tres les
+falta sólo la póliza.
+
 ### Lo primero en la sesión nueva
 
 1. Reinstalar el robot en la Mac mini (código de `ee334e8`).

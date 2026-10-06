@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Bandeja, FichaExpediente, FichaTramite, VentaParaIniciar } from "@/lib/permisos-via-publica/tipos";
 import type { Supervision } from "@/lib/permisos-via-publica/supervision";
+import type { Seguimiento } from "@/lib/permisos-via-publica/seguimiento";
 
 async function pedir<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
@@ -24,6 +25,17 @@ export function useBandejaPermisos() {
     staleTime: 30_000,
     refetchInterval: (q) => (q.state.data?.revisando ? 10_000 : 60_000),
     refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+  });
+}
+
+/** El seguimiento de todos los trámites: se refresca cada minuto. */
+export function useSeguimientoPermisos() {
+  return useQuery({
+    queryKey: ["permisos-seguimiento"],
+    queryFn: () => pedir<Seguimiento>("/api/permisos-via-publica/seguimiento"),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
     refetchOnWindowFocus: true,
   });
 }

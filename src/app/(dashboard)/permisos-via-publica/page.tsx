@@ -5,7 +5,7 @@ import Link from "next/link";
 import { formatDistanceToNowStrict, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { useRouter } from "next/navigation";
-import { FlaskConical, Landmark, Loader2, RefreshCw, Search, TriangleAlert } from "lucide-react";
+import { ChartGantt, FlaskConical, Landmark, Loader2, RefreshCw, Search, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -85,6 +85,9 @@ export default function PermisosViaPublicaPage() {
         title="Permisos de andamio"
         description={`${data.total} expedientes en TAD · última revisión ${hace(robot?.ultimo_ok_at)}`}
       >
+        <Button variant="outline" size="sm" render={<Link href="/permisos-via-publica/seguimiento" />}>
+          <ChartGantt className="size-4" /> Seguimiento
+        </Button>
         <Button
           variant="outline"
           size="sm"

@@ -74,9 +74,13 @@ export function AppSidebar() {
             <SidebarGroupContent>
               <SidebarMenu>
                 {group.items.map((item) => {
+                  // Un ítem que cuelga de otro (/permisos-via-publica/seguimiento) se queda con
+                  // la marca: el de arriba no se pinta también.
                   const isActive =
                     pathname === item.href ||
-                    (item.href !== "/" && pathname.startsWith(item.href));
+                    (item.href !== "/" &&
+                      pathname.startsWith(item.href) &&
+                      !group.items.some((o) => o.href.length > item.href.length && o.href.startsWith(item.href) && pathname.startsWith(o.href)));
                   return (
                     <SidebarMenuItem key={item.href}>
                       <SidebarMenuButton

@@ -26,6 +26,7 @@ import { nuevaLinea, pesos, type Linea, type Tarifas } from "@/lib/cotizador/tip
 import type { PiezaDeLista } from "@/lib/cotizador/alquiler";
 import { TIPOS_RENDER, type ProductoOdoo, type TipoRender } from "@/lib/parametros-cotizacion/tipos";
 import { enLetras } from "@/lib/cotizador/letras";
+import { GRUPOS_PLAN } from "@/lib/cotizador/plan-pagos";
 import {
   alcanceTecnico, aplicarCambios, borradorVacio, frenteDelLote, opcionDuracion, recalcular,
   type DatosBorrador, type OpcionalEstandar, type ResultadoBorrador,
@@ -88,6 +89,7 @@ function resumenParaModelo(b: Borrador) {
     iva: r?.totales.iva ?? 0,
     total: r?.totales.total ?? 0,
     renovacion: r?.totales.renovacion ?? null,
+    ...(r?.planPagos ? { planPagos: r.planPagos } : {}),
     pesoManoDeObraPct: r?.totales.pesoManoDeObraPct ?? null,
     pendientes: r?.pendientes ?? [],
     avisos: r?.avisos.filter((a) => a.nivel !== "info").map((a) => a.texto) ?? [],
@@ -777,6 +779,43 @@ const HERRAMIENTAS = [
       return { contenido: json({ ok: !!r, estado: r?.estado ?? a.estado }) };
     },
   }),
+  // Al final de la lista: agregar una herramienta en el medio les cambia el prefijo a todas.
+  definir({
+    nombre: "plan_de_pagos",
+    descripcion: [
+      "Arma la forma de pago en cuotas (e-cheqs diferidos, transferencias) que sale como tabla en el PDF, debajo de «Forma de pago»: fecha, concepto, neto y con IVA, con su total.",
+      "Cada cuota dice QUÉ PARTE de la oferta paga, no cuánto: partes = [{que, pct}], donde que es un grupo (" +
+        Object.entries(GRUPOS_PLAN).map(([k, v]) => `${k}: ${v}`).join("; ") +
+        ") o el id de una línea de la base. «Ingeniería + 50 % de la MO» = [{que: 'ingenieria', pct: 100}, {que: 'mano_obra', pct: 50}].",
+      "Los montos los calcula el motor y cierran al peso con la oferta. Cada línea de la base tiene que quedar repartida al 100 % entre las cuotas; si no, el borrador no se puede guardar y te dice qué falta.",
+      "Si el vendedor da montos en vez de partes, traducilos a porcentajes y mostrale cómo quedó la tabla. Reemplaza el plan entero; null lo saca.",
+      "Con plan, el texto de condiciones.formaPago es opcional (una frase de encabezado); nunca escribas los montos de las cuotas ahí.",
+    ].join(" "),
+    etiqueta: "Armando el plan de pagos",
+    esquema: z.object({
+      plan: z.object({
+        medio: z.string().nullable().describe("Para el encabezado de la columna de fechas: «e-cheq diferido». null si son medios distintos."),
+        cuotas: z.array(z.object({
+          fecha: z.string().nullable().describe("YYYY-MM-DD. El día de la semana lo pone el motor."),
+          cuando: z.string().nullable().describe("Si no hay fecha: «A la aceptación», «Al finalizar el montaje»."),
+          concepto: z.string().describe("Lo que se lee en la tabla: «Ingeniería completa + 50 % MO (A + B)»."),
+          partes: z.array(z.object({ que: z.string(), pct: z.number().positive().max(100) })).min(1),
+        })).min(1),
+      }).nullable(),
+    }),
+    ejecutar: async ({ plan }, ctx) => {
+      const b = await mutar(ctx, (d) => ({ ...d, planPagos: plan }), { plan_de_pagos: plan });
+      const r = b.resultado?.planPagos ?? null;
+      return {
+        contenido: json({
+          ok: !r?.problemas.length,
+          plan: r,
+          ...(r?.problemas.length ? { nota: "El plan no cierra con la oferta: corregilo antes de guardar." } : {}),
+          faltantesParaGuardar: b.resultado?.faltantes.map((f) => f.texto) ?? [],
+        }),
+      };
+    },
+  }),
 ] as const;
 
 // ── Escritura: propuestas y confirmación ────────────────────────────────────────────────
@@ -828,6 +867,10 @@ function notaHtml(d: DatosBorrador, r: ResultadoBorrador): string {
   if (decisiones.length) partes.push(`<p><b>Decisiones:</b> ${decisiones.map(([k, v]) => `${esc(k)}: ${esc(v)}`).join(" · ")}</p>`);
   const perfil = Object.entries(d.perfilComercial);
   if (perfil.length) partes.push(`<p><b>Perfil comercial:</b> ${perfil.map(([k, v]) => `${esc(k)}: ${esc(v)}`).join(" · ")}</p>`);
+  const plan = r.planPagos;
+  if (plan?.filas.length) {
+    partes.push(`<p><b>Plan de pagos${plan.medio ? ` (${esc(plan.medio)})` : ""}:</b></p><ul>${plan.filas.map((f) => `<li>${esc(f.cuando)} — ${esc(f.concepto)}: ${pesos(f.neto)} + IVA = ${pesos(f.conIva)}</li>`).join("")}</ul>`);
+  }
   if (d.conflictoCanal.resultado) partes.push(`<p><b>Conflicto de canal:</b> ${esc(d.conflictoCanal.resultado)}</p>`);
   if (d.notasInternas) partes.push(`<p>${esc(d.notasInternas)}</p>`);
   return partes.join("");
@@ -906,6 +949,7 @@ async function proponerGuardar(ctx: ContextoHerramientas, toolUseId: string): Pr
     ...(fueraDeLaOrden.length
       ? [`Sólo en el PDF, no en la orden: ${fueraDeLaOrden.map((l) => `${l.descripcion.split(" — ")[0]} ${pesos(l.importe)}`).join(" · ")}`]
       : []),
+    ...(r.planPagos?.filas.length ? [`Forma de pago: ${r.planPagos.filas.length} cuotas${r.planPagos.medio ? ` (${r.planPagos.medio})` : ""}, detalle en el PDF y en la nota`] : []),
     ...(payload.cancelarVentaId ? [`Re-emisión: se cancela ${cancelarVentaNombre ?? "la venta vieja"}`] : []),
   ].join("\n");
   const resumenVoz = `${b.odoo_venta_id ? `Actualizo ${b.odoo_venta_nombre}` : "Guardo el presupuesto en Odoo"} para ${c.razonSocial}, obra ${d.obra.direccion}, por ${enLetras(r.totales.subtotal)} pesos más IVA${crearCliente ? ", dando de alta al cliente" : ""}${payload.cancelarVentaId ? `, y cancelo ${cancelarVentaNombre ?? "la venta vieja"}` : ""}. ¿Confirmás?`;

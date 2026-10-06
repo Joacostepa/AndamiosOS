@@ -86,6 +86,13 @@ export type DatosPropuesta = {
   /** En obras en cuotas el ajuste va por cuota dentro de la forma de pago (criterio §4.7). */
   actualizacionCac: boolean;
   formaPago?: string | null;
+  /** Las cuotas, ya calculadas por el motor (src/lib/cotizador/plan-pagos.ts). */
+  planPagos?: {
+    medio: string | null;
+    filas: { cuando: string; concepto: string; neto: number; conIva: number }[];
+    totalNeto: number;
+    totalConIva: number;
+  } | null;
   plazoInicioDiasHabiles: number;
   aclaraciones?: string | null;
   borrador: boolean;
@@ -257,6 +264,38 @@ function bloque(texto: string, clave: string): ReactElement[] {
       }
       return h(Text, { key: `${clave}-${i}`, style: S.body }, ...rich(l));
     });
+}
+
+/** Las cuotas de la forma de pago: fecha, concepto, neto y (si se muestra) con IVA, con su total. */
+function tablaPlan(plan: NonNullable<DatosPropuesta["planPagos"]>, conIva: boolean): ReactElement {
+  const celda = { paddingHorizontal: 8, paddingVertical: 5, justifyContent: "center" as const };
+  const anchos = conIva ? ["28%", "40%", "16%", "16%"] : ["30%", "48%", "22%"];
+  const fila = (key: string, textos: ReactElement[], extra: object = {}) =>
+    h(
+      View,
+      { key, wrap: false, style: { flexDirection: "row", ...extra } },
+      ...textos.map((t, i) => h(View, { key: i, style: { ...celda, width: anchos[i] } }, t)),
+    );
+  const borde = { borderTopWidth: 0.4, borderTopColor: LINE };
+  const importes = (neto: number, iva: number, negrita: boolean) =>
+    [neto, ...(conIva ? [iva] : [])].map((n) => h(Text, { style: { ...S.imp, ...(negrita ? { fontWeight: 700 } : {}) } }, money(n)));
+  return h(
+    View,
+    { key: "plan", style: { borderWidth: 0.4, borderColor: LINE, marginTop: 4, marginBottom: 4, marginLeft: 14 } },
+    fila(
+      "h",
+      [
+        h(Text, { style: S.th }, plan.medio ? `FECHA (${plan.medio.toUpperCase()})` : "FECHA"),
+        h(Text, { style: S.th }, "CONCEPTO"),
+        ...["NETO", ...(conIva ? ["CON IVA"] : [])].map((t) => h(Text, { style: { ...S.th, textAlign: "right" as const } }, t)),
+      ],
+      { backgroundColor: RED },
+    ),
+    ...plan.filas.map((f, i) =>
+      fila(`c${i}`, [h(Text, { style: S.tdesc }, f.cuando), h(Text, { style: S.tdesc }, f.concepto), ...importes(f.neto, f.conIva, false)], borde),
+    ),
+    fila("t", [h(Text, { style: S.totlblHi }, ""), h(Text, { style: S.totlblHi }, "Total"), ...importes(plan.totalNeto, plan.totalConIva, true)], borde),
+  );
 }
 
 function tablaItems(items: ItemPdf[], clave: string): ReactElement {
@@ -478,7 +517,7 @@ export function Propuesta(d: DatosPropuesta): ReactElement {
       : []),
     [
       h(Text, { key: "b", style: { fontWeight: 700 } }, "Forma de pago:"),
-      ` ${d.formaPago?.trim() || "50% de anticipo a la aceptación de la propuesta para iniciar la gestión y 50% restante a la finalización de las tareas de montaje, previo al inicio del uso de las estructuras."}`,
+      ` ${d.formaPago?.trim() || (d.planPagos ? "según el siguiente detalle." : "50% de anticipo a la aceptación de la propuesta para iniciar la gestión y 50% restante a la finalización de las tareas de montaje, previo al inicio del uso de las estructuras.")}`,
     ],
     [h(Text, { key: "b", style: { fontWeight: 700 } }, "Impuestos:"), " todos los valores expresados en esta oferta NO incluyen el IVA."],
     [
@@ -490,6 +529,9 @@ export function Propuesta(d: DatosPropuesta): ReactElement {
       ` el inicio de las tareas se estima en ${d.plazoInicioDiasHabiles} (${enLetras(d.plazoInicioDiasHabiles)}) días hábiles a partir de la acreditación del anticipo y de la habilitación del personal de ABA por parte del cliente.`,
     ],
   ];
+
+  // "Forma de pago" va después del canon y, si está, de la actualización.
+  const indiceFormaPago = d.actualizacionCac ? 2 : 1;
 
   return h(
     Document,
@@ -512,14 +554,17 @@ export function Propuesta(d: DatosPropuesta): ReactElement {
       ...adicionales,
       ...opcionales,
       h(Text, { style: S.sec }, "Condiciones Económicas"),
-      ...condiciones.map((partes, i) =>
+      ...condiciones.flatMap((partes, i) => [
+        // Sin partir: si no, la viñeta queda sola al pie de una hoja y el texto en la siguiente.
         h(
           View,
-          { key: `cond${i}`, style: { flexDirection: "row", paddingLeft: 2 } },
+          { key: `cond${i}`, wrap: false, style: { flexDirection: "row", paddingLeft: 2 } },
           h(Text, { style: { ...S.bul, width: 12 } }, "•"),
           h(Text, { style: { ...S.bul, flex: 1 } }, ...partes),
         ),
-      ),
+        // La tabla de cuotas va debajo de "Forma de pago".
+        ...(i === indiceFormaPago && d.planPagos?.filas.length ? [tablaPlan(d.planPagos, d.mostrarTotalConIva)] : []),
+      ]),
       h(Text, { style: S.sec }, "Aclaraciones Importantes"),
       h(Text, { style: S.body }, d.aclaraciones?.trim() || ACLARACIONES_DEFAULT),
       // El cierre y la firma viajan juntos: una firma sola en la última hoja parece un error.

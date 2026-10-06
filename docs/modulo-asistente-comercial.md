@@ -172,6 +172,31 @@ busca en internet y lee páginas con las herramientas del servidor de Anthropic 
   congeladas no dicen nada de internet. El aviso de cada turno se lo cuenta
   (`avisarInternet` en `contextoDelTurno`).
 
+**Plan de pagos** (Joaquín, 06/10: "un detalle de los e-cheq de cómo tiene que abonar"). La
+forma de pago en cuotas sale como tabla en el PDF, debajo de "Forma de pago": fecha (con el día
+de la semana), concepto, neto y con IVA, y el total. El vendedor la pide en la charla y el
+asistente la arma con `plan_de_pagos`.
+
+- **Cada cuota dice qué parte de la oferta paga, no cuánto:** «ingeniería + 50 % de la MO», «50 %
+  de los canones». Las partes son un grupo (`todo`, `canon`, `mano_obra`, `unica_vez`) o el id de
+  una línea de la base, con su porcentaje. Los montos los pone el motor
+  (`src/lib/cotizador/plan-pagos.ts`), así que si se recotiza el plan acompaña solo.
+- **Cierra al peso:**
+  - cada línea se reparte entera entre sus cuotas, y la última se lleva el peso del
+    redondeo;
+  - la columna con IVA suma exacto el total con IVA de la oferta: los pesos que faltan van a las
+    cuotas con mayor fracción;
+  - el ejemplo de Joaquín da los mismos números (`plan-pagos.test.ts`).
+- **Si no cierra, no se guarda:** una línea que no suma 100 % entre las cuotas, o una parte que
+  no existe, es el faltante `plan_pagos`. El PDF de vista previa sale sin la tabla hasta que se
+  corrija.
+- **Avisos que no bloquean:** una cuota con fecha pasada (por ejemplo, al re-emitir) o que cae
+  sábado o domingo.
+- **Dónde más aparece:** en el panel del presupuesto, en el resumen que se confirma al guardar y
+  en la nota interna de la orden. A la orden de Odoo no le cambia nada.
+- **Sin "con IVA":** si `condiciones.mostrarTotalConIva` es `false`, la tabla sale sólo con el
+  neto.
+
 **Tope de gasto:** `asistente_tope_diario_usd` (hoy US$ 30 por persona y por día). Se cambia en
 Parámetros.
 

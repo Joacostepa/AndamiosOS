@@ -85,6 +85,7 @@ export async function generarPdfDelBorrador(
     mostrarTotalConIva: d.condiciones.mostrarTotalConIva,
     actualizacionCac: d.condiciones.actualizacionCac,
     formaPago: d.condiciones.formaPago,
+    planPagos: r.planPagos && !r.planPagos.problemas.length ? r.planPagos : null,
     plazoInicioDiasHabiles: p.tarifas.plazoInicioDiasHabiles,
     aclaraciones: d.aclaraciones,
     borrador: !final,

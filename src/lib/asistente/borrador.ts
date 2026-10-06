@@ -16,6 +16,7 @@ import { cotizarAlquiler, type EntradaAlquiler, type PiezaDeLista } from "../cot
 import { cotizarManoObra, type EntradaManoObra } from "../cotizador/mano-obra.ts";
 import { cotizarComplementario, type EntradaComplementario } from "../cotizador/complementarios.ts";
 import { calcularTotales, type Totales } from "../cotizador/totales.ts";
+import { calcularPlanPagos, type PlanCalculado, type PlanPagos } from "../cotizador/plan-pagos.ts";
 import { chequear } from "../cotizador/chequeos.ts";
 import { validarCuit } from "../cotizador/cuit.ts";
 import type { Aviso, Linea, Pendiente, Resultado, Tarifas } from "../cotizador/tipos.ts";
@@ -61,6 +62,8 @@ export type DatosBorrador = {
   /** null: la que corresponda al modelo. Un número: la que se pactó. */
   renovacionPct: number | null;
   condiciones: { formaPago: string | null; actualizacionCac: boolean; periodoDias: number; mostrarTotalConIva: boolean };
+  /** Las cuotas de la forma de pago (e-cheqs): partes de la oferta, los montos los pone el motor. */
+  planPagos: PlanPagos | null;
   aclaraciones: string | null;
   /** Lo confirmado por el técnico. NUNCA se asume (criterio §4.9). */
   jornadas: { armado: number | null; desarme: number | null; personas: number | null };
@@ -107,6 +110,7 @@ export function borradorVacio(): DatosBorrador {
     lineasManuales: [],
     renovacionPct: null,
     condiciones: { formaPago: null, actualizacionCac: true, periodoDias: 30, mostrarTotalConIva: true },
+    planPagos: null,
     aclaraciones: null,
     jornadas: { armado: null, desarme: null, personas: null },
     trabajo: { ambito: null, tipoObra: null, tipoEvento: null, concertina: null, llevaPermiso: null, permisoModalidad: null, syhPresencial: null, fechaFinEstimada: null },
@@ -158,6 +162,8 @@ export type ResultadoBorrador = {
   lineas: Linea[];
   totales: Totales;
   renovacionPct: number | null;
+  /** La tabla de cuotas, ya calculada. Ausente en los resultados guardados antes del 06/10. */
+  planPagos?: PlanCalculado | null;
   avisos: Aviso[];
   pendientes: Pendiente[];
   /** Lo que falta para poder guardar en Odoo / emitir. Vacío = se puede. */
@@ -322,22 +328,27 @@ export function recalcular(d: DatosBorrador, ctx: ContextoCalculo): ResultadoBor
     null;
 
   const totales = calcularTotales(lineas, { ivaPct: t.ivaPct, renovacionPct });
-  const avisos = [...parciales.flatMap((p) => p.r.avisos), ...avisoMemoria(d, lineas), ...chequeoLote(d).avisos, ...(lineas.length ? chequear(lineas, totales, t) : [])];
+  const planPagos = d.planPagos?.cuotas.length ? calcularPlanPagos(d.planPagos, lineas, { ivaPct: t.ivaPct, totalConIva: totales.total, hoy: ctx.hoy }) : null;
+  const avisos = [
+    ...parciales.flatMap((p) => p.r.avisos), ...avisoMemoria(d, lineas), ...chequeoLote(d).avisos, ...(lineas.length ? chequear(lineas, totales, t) : []),
+    ...(planPagos?.avisos ?? []),
+  ];
   const pendientes = parciales.flatMap((p) => p.r.pendientes);
 
   return {
     lineas,
     totales,
     renovacionPct,
+    planPagos,
     avisos,
     pendientes,
-    faltantes: faltantesParaEmitir(d, { lineas, avisos, pendientes }),
+    faltantes: faltantesParaEmitir(d, { lineas, avisos, pendientes, planPagos }),
     calculadoCon: { listaAlquiler: ctx.lista?.id ?? null, fecha: ctx.hoy },
   };
 }
 
 /** El checklist del criterio (§5) aplicado: lo que tiene que estar antes de guardar en Odoo. */
-export function faltantesParaEmitir(d: DatosBorrador, r: { lineas: Linea[]; avisos: Aviso[]; pendientes: Pendiente[] }): Faltante[] {
+export function faltantesParaEmitir(d: DatosBorrador, r: { lineas: Linea[]; avisos: Aviso[]; pendientes: Pendiente[]; planPagos?: PlanCalculado | null }): Faltante[] {
   const f: Faltante[] = [];
   const c = d.cliente;
   if (!c.partnerId && !c.esNuevo) f.push({ codigo: "cliente", texto: "Falta el cliente: buscarlo en Odoo (\"ya soy cliente\" no alcanza) o marcarlo como nuevo." });
@@ -365,6 +376,8 @@ export function faltantesParaEmitir(d: DatosBorrador, r: { lineas: Linea[]; avis
   if (!d.seccion2.length) f.push({ codigo: "seccion2", texto: "Falta el anexo técnico (Sección 2)." });
   if (!r.lineas.some((l) => l.seccion === "base")) f.push({ codigo: "oferta", texto: "La oferta no tiene líneas." });
   if (!d.conflictoCanal.revisado) f.push({ codigo: "conflicto_canal", texto: "Falta revisar si otro vendedor ya cotizó esta dirección." });
+  // Un plan de pagos que no cierra con la oferta no sale: el cliente pagaría otra cosa.
+  if (r.planPagos?.problemas.length) f.push({ codigo: "plan_pagos", texto: `El plan de pagos no cierra: ${r.planPagos.problemas.join(" ")}` });
   for (const p of r.pendientes) f.push({ codigo: `pendiente:${p.codigo}`, texto: p.pregunta });
   for (const a of r.avisos.filter((x) => x.nivel === "bloqueo")) f.push({ codigo: `bloqueo:${a.codigo}`, texto: a.texto });
   return f;

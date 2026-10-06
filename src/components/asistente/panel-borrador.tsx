@@ -78,6 +78,25 @@ export function PanelBorrador({ borrador }: { borrador: BorradorVista | null }) 
         </div>
       )}
 
+      {r?.planPagos && r.planPagos.filas.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-[12px] font-medium text-muted-foreground">
+            Plan de pagos{r.planPagos.medio ? ` · ${r.planPagos.medio}` : ""}
+          </p>
+          {r.planPagos.filas.map((f, i) => (
+            <div key={i} className="flex gap-2">
+              <p className="w-24 shrink-0 text-muted-foreground">{f.cuando}</p>
+              <p className="min-w-0 flex-1 leading-snug">{f.concepto}</p>
+              <p className="shrink-0 font-mono tabular-nums">{pesos(f.conIva)}</p>
+            </div>
+          ))}
+          <div className="flex border-t border-border pt-1 text-muted-foreground">
+            <span className="flex-1">Total con IVA</span>
+            <span className="font-mono tabular-nums">{pesos(r.planPagos.totalConIva)}</span>
+          </div>
+        </div>
+      )}
+
       {r && r.faltantes.length > 0 ? (
         <div className="space-y-1 rounded-md border border-border p-2.5">
           <p className="flex items-center gap-1.5 text-[12px] font-medium"><ListChecks className="size-3.5" /> Falta para guardar en Odoo</p>

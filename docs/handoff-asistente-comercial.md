@@ -36,6 +36,7 @@ En producción: `https://andamios-os.vercel.app/comercial/asistente` y `/comerci
 | La tarjeta del mensaje de WhatsApp sigue ahí al recargar | ✅ 28/09, `ebea983`: sale de la historia (`ultimoMensajeParaCliente`, 3 tests) |
 | WhatsApp | Construido y probado simulando a Meta. **Sin configurar: lo postergó JS** |
 | Parámetros de cotización (7 pestañas) | ✅ |
+| Plan de pagos en cuotas (e-cheqs) como tabla en el PDF | 06/10, **sin commit ni deploy**: ver § "Lo que se hizo el 06/10" |
 
 **Commits en main:**
 
@@ -76,6 +77,32 @@ En producción: `https://andamios-os.vercel.app/comercial/asistente` y `/comerci
   (Conversaciones) quedan unas charlas de prueba.
 - **Usuarios:** lo usa sólo Joaquín (admin), y a diario: del 26 al 28/09 guardó 8 presupuestos
   reales y re-emitió 2, todos bien. Gabriel y Jorge todavía no tienen usuario.
+
+### Lo que se hizo el 06/10
+
+**Plan de pagos** (pedido de JS, con una tabla de e-cheqs de ejemplo). Detalle en el doc del
+módulo, § Plan de pagos.
+
+- **Herramienta nueva:** `plan_de_pagos`, al final de la lista. Las conversaciones abiertas
+  pierden el caché una vez (~US$ 0,40).
+- **Campo nuevo del borrador:** `planPagos`, en `borradorVacio()`. El resultado trae
+  `planPagos` calculado.
+- **Faltante nuevo:** `plan_pagos`.
+- **Instrucciones:** una línea en § "Cómo trabajás un presupuesto". Rige para las
+  conversaciones nuevas; las abiertas lo saben por la descripción de la herramienta.
+- **PDF:**
+  - la tabla va debajo de "Forma de pago" y, si no hay texto, la viñeta dice "según el
+    siguiente detalle";
+  - de paso, ninguna viñeta de Condiciones Económicas se parte entre dos hojas. Antes podía
+    quedar la viñeta sola al pie.
+- **Probado:**
+  - 9 tests nuevos (86 en total). El ejemplo de JS da los mismos números al peso, incluido el
+    redondeo de la cuota 2 en la columna con IVA;
+  - un PDF de muestra mirado página por página.
+- **Sin probar:** una charla real con el asistente (~US$ 1).
+- **`npm test` falla en esta máquina:** Node 22.16 no corre `.ts` sin
+  `--experimental-strip-types`. No es de este cambio. Mientras tanto:
+  `node --no-warnings --experimental-strip-types --test "src/lib/**/*.test.ts"`.
 
 ### Lo que se hizo el 28/09
 

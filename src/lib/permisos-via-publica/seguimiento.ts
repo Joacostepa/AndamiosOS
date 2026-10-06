@@ -68,7 +68,7 @@ const nombreDoc = (clave: string) => NOMBRE_DOC[clave] ?? clave;
 type Doc = { tramite_id: string; clave: string; origen: string; estado: string; observacion: string | null; updated_at: string | null; revisado_at: string | null; pedido_at: string | null };
 type Tarea = { tramite_id: string; tipo: string; estado: string; error: string | null; created_at: string; terminada_at: string | null; resultado: Record<string, unknown> | null };
 type Cierre = { etapa?: string; plataforma?: { enviada_at?: string }; pago?: { operacion?: string; aprobado_at?: string } };
-type Exp = { id: string; numero: string; estado_tad: string | null; creado_tad: string | null; estado_desde: string | null; motivo_subsanacion: string | null; permiso_emitido_el: string | null; permiso_vence: string | null };
+type Exp = { id: string; numero: string; odoo_venta_id: number | null; tarea_pendiente: boolean; estado_tad: string | null; creado_tad: string | null; estado_desde: string | null; motivo_subsanacion: string | null; permiso_emitido_el: string | null; permiso_vence: string | null };
 
 const ultima = (xs: (string | null | undefined)[]) => xs.filter((x): x is string => !!x).sort().at(-1) ?? null;
 const primeraLinea = (s: string | null | undefined) => (s ?? "").split("\n")[0].slice(0, 200);
@@ -136,16 +136,25 @@ function etapasDe(t: Record<string, unknown> & { id: string; created_at: string 
   } else if (e.permiso_emitido_el) {
     const vence = e.permiso_vence ? `Vence el ${e.permiso_vence.split("-").reverse().join("/")}` : "Emitido";
     etapas.push({ clave: "gcba", estado: "hecho", fecha: diaTad(e.permiso_emitido_el), detalle: "Aprobado" }, { clave: "permiso", estado: "hecho", fecha: diaTad(e.permiso_emitido_el), detalle: vence });
-  } else if (e.estado_tad === "SUBSANACION") {
+  } else if (e.tarea_pendiente) {
+    // SUBSANACIÓN ≠ hay que corregir: manda la tarea pendiente de TAD.
     etapas.push(
       { clave: "gcba", estado: "trabado", desde: e.estado_desde, quien: "ABA", detalle: "Subsanación: hay que corregir y volver a presentar", motivo: e.motivo_subsanacion },
       { clave: "permiso", estado: "pendiente" },
     );
   } else {
+    const detalle = e.estado_tad === "SUBSANACION" ? "Subsanado, espera que el GCBA revise la corrección" : e.estado_tad === "TRAMITACION" ? "En tramitación" : "En iniciación";
     etapas.push(
-      { clave: "gcba", estado: "curso", desde: e.creado_tad ? diaTad(e.creado_tad) : e.estado_desde, quien: "GCBA", detalle: e.estado_tad === "TRAMITACION" ? "En tramitación" : "En iniciación" },
+      { clave: "gcba", estado: "curso", desde: e.estado_tad === "SUBSANACION" ? e.estado_desde : e.creado_tad ? diaTad(e.creado_tad) : e.estado_desde, quien: "GCBA", detalle },
       { clave: "permiso", estado: "pendiente" },
     );
+  }
+
+  // Presentado por fuera de la app (a mano en TAD): lo que quedó sin terminar acá ya no traba nada.
+  if (e?.creado_tad) {
+    for (const x of etapas.slice(1, 4)) {
+      if (x.estado !== "hecho") Object.assign(x, { estado: "hecho", fecha: null, desde: null, quien: undefined, motivo: null, detalle: "Se presentó a mano, sin terminar esta etapa en la app" });
+    }
   }
   return etapas;
 }
@@ -158,22 +167,26 @@ function mediana(xs: number[]): number | null {
 
 export async function armarSeguimiento(db: SupabaseClient): Promise<Seguimiento> {
   const { data: tramites, error } = await db.from("pvp_tramites")
-    .select("id, odoo_venta_nombre, direccion, cliente_nombre, titular_nombre, administrador_nombre, vendedor_nombre, es_inquilino, estado, created_at, titular_cargado_at, link_enviado_at, expediente_id")
+    .select("id, odoo_venta_id, odoo_venta_nombre, direccion, cliente_nombre, titular_nombre, administrador_nombre, vendedor_nombre, es_inquilino, estado, created_at, titular_cargado_at, link_enviado_at, expediente_id")
     .eq("es_prueba", false)
     .order("created_at", { ascending: false });
   if (error) throw error;
   const ids = (tramites ?? []).map((t) => t.id);
   const expIds = (tramites ?? []).map((t) => t.expediente_id).filter(Boolean);
+  const ventaIds = (tramites ?? []).map((t) => t.odoo_venta_id).filter(Boolean);
   const [docs, tareas, exps, eventos] = await Promise.all([
     db.from("pvp_documentos").select("tramite_id, clave, origen, estado, observacion, updated_at, revisado_at, pedido_at").in("tramite_id", ids),
     db.from("pvp_tareas").select("tramite_id, tipo, estado, error, created_at, terminada_at, resultado").in("tramite_id", ids).in("tipo", ["cpau_encomienda", "tad_presentar"]).order("created_at"),
-    db.from("pvp_expedientes").select("id, numero, estado_tad, creado_tad, estado_desde, motivo_subsanacion, permiso_emitido_el, permiso_vence").in("id", expIds),
+    // También los de la misma venta sin vincular al trámite: los que se presentaron a mano en TAD.
+    db.from("pvp_expedientes").select("id, numero, odoo_venta_id, tarea_pendiente, estado_tad, creado_tad, estado_desde, motivo_subsanacion, permiso_emitido_el, permiso_vence")
+      .eq("historico", false).or(`id.in.(${expIds.join(",") || "00000000-0000-0000-0000-000000000000"}),odoo_venta_id.in.(${ventaIds.join(",") || 0})`),
     db.from("pvp_eventos").select("tramite_id, tipo, detalle, actor, created_at").in("tramite_id", ids).order("created_at", { ascending: false }).limit(2000),
   ]);
   for (const r of [docs, tareas, exps, eventos]) if (r.error) throw r.error;
 
   const filas: FilaSeguimiento[] = (tramites ?? []).map((t) => {
-    const e = (exps.data as Exp[]).find((x) => x.id === t.expediente_id);
+    const e = (exps.data as Exp[]).find((x) => x.id === t.expediente_id)
+      ?? (exps.data as Exp[]).filter((x) => t.odoo_venta_id && x.odoo_venta_id === t.odoo_venta_id).sort((a, b) => String(b.creado_tad).localeCompare(String(a.creado_tad)))[0];
     return {
       id: t.id,
       venta: t.odoo_venta_nombre,

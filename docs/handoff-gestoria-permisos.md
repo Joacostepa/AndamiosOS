@@ -1,12 +1,54 @@
-# Handoff — Gestoría de permisos de andamio (actualizado 2026-10-02)
+# Handoff — Gestoría de permisos de andamio (actualizado 2026-10-06)
 
 Para retomar en una sesión nueva. El diseño completo y todo lo aprendido está en
 `docs/modulo-gestoria-permisos.md`; esto es el estado, **lo que falta para que el circuito
 quede 100 % automático** y el orden para seguir.
 
 Para arrancar: "Leé docs/handoff-gestoria-permisos.md y docs/modulo-gestoria-permisos.md y
-seguimos con lo que falta". **Empezar por § "02/10", después § "Estado al 26/09", seguir con § "17/09 — primera
-encomienda cerrada sola", § "Noche 16/09" y § "Estado 16/09 19:00".**
+seguimos con lo que falta". **Empezar por § "06/10", después § "02/10" y § "Estado al 26/09", seguir con
+§ "17/09 — primera encomienda cerrada sola", § "Noche 16/09" y § "Estado 16/09 19:00".**
+
+---
+
+## 06/10 — encomienda que se reintenta sola y calles con iniciales
+
+### Medrano 317 (S01847): el CPAU no respondió antes de empezar
+
+- 9:36, tarea **80**: `page.goto: Timeout 30000ms` en `FrmHisto.aspx`, la lectura del Histórico
+  **antes** de abrir el asistente (`cpau-encomienda.mjs`, `antes = filasHistorico`). No se cargó nada
+  ni se tocó Finalizar (`finalizado: false`). Era el CPAU lento: a las 10:10 Corrientes 4285 pasó entera.
+- **Arreglo (`ee334e8`):** un timeout o corte de red **antes de Finalizar** deja la tarea `pendiente`
+  con `reintentar_desde` +10 min, hasta 3 veces (`esFallaDelCpau`, `resultado.reintentos_armado`).
+  La ficha dice "El CPAU no respondió… vuelve a intentar solo a las HH:MM (n de 3)". Errores de datos
+  (calle, resumen, login, matrícula) y todo lo posterior a Finalizar siguen sin reintento solo.
+  **Falta reinstalar el robot en la Mac mini** para que lo tenga (`git pull && bash robot/instalar-launchd.sh`).
+- JS tocó "Volver a armarla" (tarea **82**): finalizada 11:33 (R.Nro **00329524258**), firmada,
+  pagada (operación **293201**) y cargada en la Plataforma a las 11:35. Espera el certificado por mail
+  y la póliza (endoso pedido a Segucom a las 9:36).
+
+### Av. Corrientes 4285 (S02328, tarea 81)
+
+Cierre entero solo a las 10:10–10:13: R.Nro **00329524224**, operación **293186**, cargada. Espera el
+certificado por mail.
+
+### C.R Escalada de San Martín 2138 (S02437): croquis sin plancheta
+
+- USIG contesta "Calle inexistente" a **"C.R Escalada…"**; sin calle no hay SMP y el croquis quedó
+  observado ("la dirección no se encontró en el normalizador"). La plancheta de Ciudad 3D tampoco
+  carga, pero **no hace falta**: el croquis se dibuja con la geometría de EPOK, que sí está.
+- **Arreglo (`73769cc`, `catastro.ts → normalizar`):** si no encuentra la dirección, reintenta sin las
+  iniciales del principio ("C.R", "Gral.", "Dr."). Da **067-121A-004C** (lote 4c, esquina La Fronda) y
+  los 24 lotes de la manzana. Lo usan también la encomienda, la presentación y la revisión del legajo.
+- **Pendiente:** tocar "Generar informe técnico y croquis" en la ficha de S02437 (JS) y ver que el
+  croquis salga ok.
+
+### Lo primero en la sesión nueva
+
+1. Reinstalar el robot en la Mac mini (código de `ee334e8`).
+2. Ver llegar los certificados de Medrano 317 y Corrientes 4285 (si tardan, mirar Spam de
+   permisos-andamio@: sigue faltando el filtro para Hougassian).
+3. S02437: croquis regenerado con plancheta.
+4. Siguen en pie los pendientes de § "02/10" y § "Estado al 26/09".
 
 ---
 

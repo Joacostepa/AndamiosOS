@@ -120,6 +120,8 @@ export type DatosOrden = {
   impuestoIvaId: number;
   terminoPagoId: number;
   asistenteRef: string;
+  /** YYYY-MM-DD: hasta cuándo vale la oferta (la misma fecha que dice el PDF). */
+  validez?: string | null;
 };
 
 function valoresOrden(d: DatosOrden, reemplazarLineas: boolean): Record<string, unknown> {
@@ -143,6 +145,7 @@ function valoresOrden(d: DatosOrden, reemplazarLineas: boolean): Record<string, 
     x_direccion_obra: d.direccionObra ?? false,
     x_alcance_tecnico: d.alcanceTecnico ?? false,
     x_asistente_ref: d.asistenteRef,
+    ...(d.validez ? { validity_date: d.validez } : {}),
     ...d.trabajo,
     order_line: reemplazarLineas ? [[5, 0, 0], ...lineas] : lineas,
   };

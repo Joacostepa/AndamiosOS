@@ -5,6 +5,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type Anthropic from "@anthropic-ai/sdk";
 import { executeKw } from "@/lib/odoo/client";
+import { accesoDeFila, esAdmin } from "@/lib/auth/acceso";
 import { normalizarBorrador, type DatosBorrador, type ResultadoBorrador } from "./borrador";
 import { recortarFragmento, type Tramo } from "./busqueda";
 import { prolijo } from "./mensaje-cliente";
@@ -373,6 +374,12 @@ export async function gastoDelDia(db: Db, usuarioId: string): Promise<number> {
 }
 
 // ── Vendedores: quién es quién en Odoo ──────────────────────────────────────────────────
+
+/** Si quien usa el asistente es admin (edita órdenes de otros vendedores). */
+export async function esAdminUsuario(db: Db, usuarioId: string): Promise<boolean> {
+  const { data } = await db.from("user_profiles").select("rol, activo, permisos, debe_cambiar_clave").eq("id", usuarioId).maybeSingle();
+  return esAdmin(accesoDeFila(data));
+}
 
 export type Vendedor = {
   usuarioId: string;

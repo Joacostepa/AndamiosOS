@@ -98,6 +98,11 @@ export type Linea = {
   calculo: string;
   /** Cuando el precio no es el de la tarifa: cuál era la tarifa y por qué se cambió. */
   desvio?: { tarifa: string; motivo: string };
+  /**
+   * Copiada de una orden existente con un producto que no está en la tabla de productos: se
+   * vuelve a escribir con ese mismo producto de Odoo (al editar, no se pierde nada).
+   */
+  productoOdoo?: { id: number; alquiler: boolean };
 };
 
 export type Aviso = {

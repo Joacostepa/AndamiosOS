@@ -201,10 +201,17 @@ export type LineaVenta = {
   descuentoPct: number;
   subtotal: number;
   opcional: boolean;
+  /** is_rental de la línea: hay que respetarlo al volver a escribirla. */
+  alquiler: boolean;
   tipo: "linea" | "seccion" | "nota";
 };
 
 export type VentaDetalle = VentaResumen & {
+  /** El state de Odoo tal cual (draft, sent, sale, cancel): `estado` es para leer. */
+  estadoOdoo: string;
+  clienteId: number | null;
+  tecnicoId: number | null;
+  vendedorId: number | null;
   lineas: LineaVenta[];
   trabajo: Record<string, unknown>;
   oportunidad: { id: number; nombre: string } | null;
@@ -226,9 +233,9 @@ export async function verPresupuesto(ref: string | number): Promise<VentaDetalle
   );
   if (!v) return null;
   const [lineas, adjuntos] = await Promise.all([
-    leer<{ id: number; product_id: M2O; name: string; product_uom_qty: number; price_unit: number; discount: number; price_subtotal: number; is_optional?: boolean; display_type: string | false }>(
+    leer<{ id: number; product_id: M2O; name: string; product_uom_qty: number; price_unit: number; discount: number; price_subtotal: number; is_optional?: boolean; is_rental?: boolean; display_type: string | false }>(
       "sale.order.line", [["order_id", "=", v.id]],
-      ["id", "product_id", "name", "product_uom_qty", "price_unit", "discount", "price_subtotal", "is_optional", "display_type"],
+      ["id", "product_id", "name", "product_uom_qty", "price_unit", "discount", "price_subtotal", "is_optional", "is_rental", "display_type"],
       { order: "sequence, id", limit: 60 },
     ),
     leer<{ id: number; name: string; mimetype: string; file_size: number; create_date: string }>(
@@ -240,6 +247,10 @@ export async function verPresupuesto(ref: string | number): Promise<VentaDetalle
   for (const c of CAMPOS_TRABAJO_VENTA) if (v[c] !== false && v[c] !== null && v[c] !== undefined) trabajo[c] = v[c];
   return {
     ...resumenVenta(v),
+    estadoOdoo: v.state,
+    clienteId: idDe(v.partner_id),
+    tecnicoId: idDe(v.x_studio_tcnico),
+    vendedorId: idDe(v.user_id),
     lineas: lineas.map((l) => ({
       id: l.id,
       productoId: idDe(l.product_id),
@@ -250,6 +261,7 @@ export async function verPresupuesto(ref: string | number): Promise<VentaDetalle
       descuentoPct: l.discount,
       subtotal: Math.round(l.price_subtotal),
       opcional: !!l.is_optional,
+      alquiler: !!l.is_rental,
       tipo: l.display_type === "line_section" ? "seccion" : l.display_type === "line_note" ? "nota" : "linea",
     })),
     trabajo,

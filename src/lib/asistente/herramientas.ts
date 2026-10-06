@@ -15,7 +15,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   buscarClientes, buscarPresupuestos, conflictoCanal, consultarOdoo, ConsultaInvalida, estadoObra, leerAdjuntoVenta,
-  pendientesComerciales, preciosRecientes, verCliente, verPresupuesto,
+  pendientesComerciales, preciosRecientes, verCliente, verPresupuesto, type VentaDetalle,
 } from "@/lib/odoo/comercial";
 import { destinatarioMail } from "@/lib/odoo/presupuestos";
 import { urlOdooVenta } from "@/lib/odoo/habilitaciones";
@@ -28,11 +28,12 @@ import { TIPOS_RENDER, type ProductoOdoo, type TipoRender } from "@/lib/parametr
 import { enLetras } from "@/lib/cotizador/letras";
 import { GRUPOS_PLAN } from "@/lib/cotizador/plan-pagos";
 import {
-  alcanceTecnico, aplicarCambios, borradorVacio, frenteDelLote, opcionDuracion, recalcular,
+  alcanceTecnico, aplicarCambios, borradorVacio, frenteDelLote, normalizarBorrador, opcionDuracion, recalcular,
   type DatosBorrador, type OpcionalEstandar, type ResultadoBorrador,
 } from "./borrador";
 import { consultarLote, type ConsultaLote, type Lote } from "@/lib/catastro/caba";
-import { crearBorrador, guardarBorrador, leerAccionPorNumero, type Borrador, type Conversacion, type Vendedor } from "./datos";
+import { crearBorrador, esAdminUsuario, guardarBorrador, leerAccionPorNumero, type Borrador, type Conversacion, type Vendedor } from "./datos";
+import { compararLineas, comparablesDeOdoo, comparablesDelMotor, lineasDesdeOdoo, productoDeLinea, puedeEditar, textoCambios } from "./edicion";
 import { proponerAccion, rechazarAccion, verificarConfirmacion, ejecutarAccion, vistaAccion } from "./acciones";
 import { crearEjecutor, type PayloadGuardar, type PayloadMail } from "./ejecutores";
 import { generarPdfDelBorrador } from "./pdf";
@@ -124,6 +125,25 @@ async function mutar(ctx: ContextoHerramientas, fn: (d: DatosBorrador) => DatosB
   ctx.borrador = nuevo;
   ctx.emitir({ t: "borrador", borrador: vistaBorrador(nuevo) });
   return nuevo;
+}
+
+/** Cliente, obra, contrato y "Trabajo a ejecutar" de una venta de Odoo (re-emitir o editar). */
+function datosDesdeVenta(v: VentaDetalle): DatosBorrador {
+  const t = v.trabajo as Record<string, string | number | undefined>;
+  const n = (x: unknown) => (x === undefined || x === null || x === "" ? null : Number(x));
+  return aplicarCambios(borradorVacio() as unknown as Record<string, unknown>, {
+    cliente: { partnerId: v.clienteId, razonSocial: v.cliente, esNuevo: false },
+    obra: { direccion: v.direccionObra, enCaba: v.direccionObra ? /caba|capital|c\.a\.b\.a/i.test(v.direccionObra) : null },
+    contrato: v.contrato === "Obra" ? "Obra " : (v.contrato as DatosBorrador["contrato"]),
+    referencia: v.referencia,
+    // Las jornadas que ya están en la orden las confirmó el técnico cuando se cargó.
+    jornadas: { armado: n(t.x_dur_armado), desarme: n(t.x_dur_desarme), personas: n(t.x_personal_armado) },
+    trabajo: {
+      ambito: t.x_trabajo_ambito ?? null, tipoObra: t.x_trabajo_obra ?? null, tipoEvento: t.x_trabajo_evento ?? null,
+      concertina: t.x_alambre_concertina ?? null, llevaPermiso: t.x_lleva_permiso ?? null, syhPresencial: t.x_syh_presencial ?? null,
+      permisoModalidad: t.x_permiso_modalidad ?? null, fechaFinEstimada: t.x_fecha_fin_obra_estimada ?? null,
+    },
+  }) as unknown as DatosBorrador;
 }
 
 // ── Esquemas compartidos ────────────────────────────────────────────────────────────────
@@ -434,18 +454,7 @@ const HERRAMIENTAS = [
       if (desdeVenta) {
         const v = await verPresupuesto(desdeVenta);
         if (!v) return { contenido: `No encontré ${desdeVenta} en Odoo.`, esError: true };
-        const [cliente] = await buscarClientes(v.cliente ?? "", 1);
-        const t = v.trabajo as Record<string, string | undefined>;
-        datos = aplicarCambios(datos as unknown as Record<string, unknown>, {
-          cliente: { partnerId: cliente?.id ?? null, razonSocial: v.cliente, esNuevo: false },
-          obra: { direccion: v.direccionObra, enCaba: v.direccionObra ? /caba|capital|c\.a\.b\.a/i.test(v.direccionObra) : null },
-          contrato: v.contrato === "Obra" ? "Obra " : (v.contrato as DatosBorrador["contrato"]),
-          referencia: v.referencia,
-          trabajo: {
-            ambito: t.x_trabajo_ambito ?? null, tipoObra: t.x_trabajo_obra ?? null, tipoEvento: t.x_trabajo_evento ?? null,
-            concertina: t.x_alambre_concertina ?? null, llevaPermiso: t.x_lleva_permiso ?? null, syhPresencial: t.x_syh_presencial ?? null,
-          },
-        }) as unknown as DatosBorrador;
+        datos = datosDesdeVenta(v);
         origen = v.id;
         lineasViejas = { venta: v.numero, fecha: v.fecha, estado: v.estado, neto: v.neto, lineas: v.lineas, adjuntos: v.adjuntos, alcanceTecnico: v.alcanceTecnico };
       }
@@ -816,6 +825,74 @@ const HERRAMIENTAS = [
       };
     },
   }),
+  definir({
+    nombre: "editar_presupuesto",
+    descripcion: [
+      "Abre un presupuesto que ya está en Odoo para cambiarlo CON EL MISMO NÚMERO (cambiar metros, sacar o agregar algo, corregir un texto o la forma de pago). Es lo que va cuando piden «cambiá la S02712», «agregale el flete a la de Rosso».",
+      "Si la orden la armó el asistente, retoma ese presupuesto completo (cálculos, textos, render, plan de pagos). Si no, copia las líneas de Odoo tal cual y los textos hay que sacarlos del PDF adjunto (leer_pdf_propuesta).",
+      "Precios: se mantienen los de la orden. Si el motor hoy da otro precio, te lo marca en diferencias: mostráselo al vendedor y que decida (para mantener el de la orden, recotizá pasando ese precio con motivoPrecio «precio de la S0XXXX»).",
+      "Sólo órdenes en presupuesto o enviadas; una confirmada o cancelada se re-emite (nuevo_borrador con desdeVenta). Las de otro vendedor las edita sólo un admin. Al guardar se renueva la vigencia y se respetan el vendedor y el técnico de la orden.",
+    ].join(" "),
+    etiqueta: "Abriendo el presupuesto para editarlo",
+    esquema: z.object({ venta: z.string().describe("Número de la venta (S02712)") }),
+    ejecutar: async ({ venta }, ctx) => {
+      const v = await verPresupuesto(venta);
+      if (!v) return { contenido: `No encontré ${venta} en Odoo.`, esError: true };
+      const permiso = puedeEditar(v, ctx.vendedor, await esAdminUsuario(ctx.db, ctx.usuarioId));
+      if (!permiso.ok) return { contenido: permiso.motivo, esError: true };
+
+      // El presupuesto con el que el asistente guardó esta orden, si lo hay (el último).
+      const { data: previo } = await ctx.db
+        .from("cotizacion_borradores").select("id, datos").eq("odoo_venta_id", v.id).neq("estado", "descartado")
+        .order("updated_at", { ascending: false }).limit(1).maybeSingle();
+
+      let datos: DatosBorrador;
+      let sinCopiar: string[] = [];
+      if (previo) {
+        datos = normalizarBorrador(previo.datos);
+        // Lo que se cargó a mano en Odoo después de guardar (un flete, un opcional aceptado) se
+        // copia: al guardar se reescriben todas las líneas y si no, se perdería.
+        const motor = recalcular(datos, { tarifas: ctx.tarifas, lista: ctx.lista, hoy: ctx.hoy });
+        const soloEnOdoo = compararLineas(comparablesDeOdoo(v.lineas), comparablesDelMotor(motor.lineas, ctx.productos)).salen;
+        const extra = lineasDesdeOdoo(v.lineas.filter((l) => soloEnOdoo.some((x) => x.descripcion === l.descripcion && x.productId === l.productoId)), ctx.productos, v.numero);
+        datos.lineasManuales = [...datos.lineasManuales, ...extra.lineas];
+        sinCopiar = extra.sinCopiar;
+      } else {
+        datos = datosDesdeVenta(v);
+        const copia = lineasDesdeOdoo(v.lineas, ctx.productos, v.numero);
+        datos.lineasManuales = copia.lineas;
+        datos.conflictoCanal = { revisado: true, resultado: `Edición de la ${v.numero}` };
+        sinCopiar = copia.sinCopiar;
+      }
+
+      const nuevo = await crearBorrador(ctx.db, ctx.conversacion.id, ctx.usuarioId, datos, null);
+      const resultado = recalcular(nuevo.datos, { tarifas: ctx.tarifas, lista: ctx.lista, hoy: ctx.hoy });
+      const extra = { odoo_venta_id: v.id, odoo_venta_nombre: v.numero, odoo_oportunidad_id: v.oportunidad?.id ?? null, estado: "en_odoo" as const };
+      await ctx.db.from("cotizacion_borradores").update({ resultado, ...extra }).eq("id", nuevo.id);
+      // Una sola edición viva por orden: si se vuelve a una charla vieja, no pisa ésta.
+      await ctx.db.from("cotizacion_borradores").update({ estado: "descartado" }).eq("odoo_venta_id", v.id).neq("id", nuevo.id);
+      await ctx.db.from("asistente_conversaciones").update({ borrador_id: nuevo.id }).eq("id", ctx.conversacion.id);
+      ctx.borrador = { ...nuevo, ...extra, resultado };
+      ctx.emitir({ t: "borrador", borrador: vistaBorrador(ctx.borrador) });
+
+      const diferencias = textoCambios(compararLineas(comparablesDeOdoo(v.lineas), comparablesDelMotor(resultado.lineas, ctx.productos)));
+      return {
+        contenido: json({
+          ok: true,
+          venta: { numero: v.numero, estado: v.estado, fecha: v.fecha, neto: v.neto, tecnico: v.tecnico, vendedor: v.vendedor, deOtroVendedor: permiso.ajena },
+          origen: previo ? "presupuesto del asistente: cálculos, textos y render completos" : "copiada de Odoo: líneas tal cual, sin textos",
+          borrador: resumenParaModelo(ctx.borrador),
+          ...(diferencias.length ? { diferencias } : {}),
+          ...(sinCopiar.length ? { sinCopiar } : {}),
+          siguiente: [
+            diferencias.length ? "Hay diferencias entre la orden y lo que da hoy el motor: mostráselas al vendedor y preguntá si mantiene los precios de la orden o los actualiza." : "",
+            previo ? "" : "Los textos no están: leé el PDF adjunto con leer_pdf_propuesta y cargá la sección 1, la 2 y el render como estaban.",
+            "Hacé los cambios que pidió y proponé guardar: se actualiza la misma orden.",
+          ].filter(Boolean).join(" "),
+        }),
+      };
+    },
+  }),
 ] as const;
 
 // ── Escritura: propuestas y confirmación ────────────────────────────────────────────────
@@ -883,6 +960,9 @@ async function proponerGuardar(ctx: ContextoHerramientas, toolUseId: string): Pr
   if (r.faltantes.length) {
     return { contenido: json({ ok: false, faltan: r.faltantes.map((f) => f.texto), nota: "Completá esto antes de proponer guardar." }), esError: true };
   }
+  if (b.estado === "descartado") {
+    return { contenido: `La ${b.odoo_venta_nombre ?? "orden"} se siguió editando en otra conversación: para cambiarla, abrila de nuevo con editar_presupuesto.`, esError: true };
+  }
   const d = b.datos;
   const productos = new Map(ctx.productos.map((p) => [p.clave, p]));
   const lineas = [];
@@ -892,15 +972,28 @@ async function proponerGuardar(ctx: ContextoHerramientas, toolUseId: string): Pr
   // agrega en ese momento. Es la regla de la skill (Joaquín, 26/09).
   const fueraDeLaOrden = r.lineas.filter((l) => l.seccion !== "base");
   for (const l of r.lineas.filter((x) => x.seccion === "base")) {
+    // Una línea copiada de la orden con un producto fuera de la tabla vuelve con ese producto.
     const p = productos.get(l.producto);
-    if (!p || !p.activo || p.verificado_ok === false) {
+    const producto = l.productoOdoo ?? (p && p.activo && p.verificado_ok !== false ? productoDeLinea(l, ctx.productos) : null);
+    if (!producto) {
       return { contenido: `La línea «${l.descripcion}» usa el producto ${l.producto}, que no está disponible en Odoo. Revisá Parámetros → Productos de Odoo.`, esError: true };
     }
     lineas.push({
-      productId: p.product_id, descripcion: l.descripcion, cantidad: l.cantidad, precioUnitario: l.precioUnitario,
-      descuentoPct: l.descuentoPct, isRental: p.is_rental,
+      productId: producto.id, descripcion: l.descripcion, cantidad: l.cantidad, precioUnitario: l.precioUnitario,
+      descuentoPct: l.descuentoPct, isRental: producto.alquiler,
     });
   }
+
+  // Editar una orden que ya existe: se respetan su vendedor y su técnico (no pasan a ser de
+  // quien la edita) y el resumen muestra qué cambia contra lo que hay hoy en Odoo.
+  const actual = b.odoo_venta_id ? await verPresupuesto(b.odoo_venta_id) : null;
+  if (b.odoo_venta_id && !actual) return { contenido: `La ${b.odoo_venta_nombre} ya no está en Odoo.`, esError: true };
+  if (actual && actual.estadoOdoo !== "draft" && actual.estadoOdoo !== "sent") {
+    return { contenido: `La ${actual.numero} está ${actual.estado} en Odoo: ya no se edita. Si hay que cambiarla, se re-emite.`, esError: true };
+  }
+  const cambios = actual ? textoCambios(compararLineas(comparablesDeOdoo(actual.lineas), lineas.map((l) => ({ ...l, descuentoPct: l.descuentoPct ?? 0 })))) : [];
+  const validez = new Date(`${ctx.hoy}T12:00:00Z`);
+  validez.setUTCDate(validez.getUTCDate() + ctx.tarifas.validezDias);
 
   const c = d.cliente;
   const crearCliente = !c.partnerId && c.esNuevo
@@ -922,8 +1015,9 @@ async function proponerGuardar(ctx: ContextoHerramientas, toolUseId: string): Pr
     partnerId: c.partnerId,
     clienteNombre: c.razonSocial ?? "",
     orden: {
-      vendedorUserId: ctx.vendedor.vendedorUserId,
-      tecnicoEmployeeId: ctx.vendedor.tecnicoEmployeeId,
+      vendedorUserId: actual ? null : ctx.vendedor.vendedorUserId,
+      tecnicoEmployeeId: actual ? null : ctx.vendedor.tecnicoEmployeeId,
+      validez: validez.toISOString().slice(0, 10),
       contrato: d.contrato!,
       referencia: d.referencia,
       direccionObra: d.obra.direccion,
@@ -944,8 +1038,10 @@ async function proponerGuardar(ctx: ContextoHerramientas, toolUseId: string): Pr
     accionTexto,
     `Cliente: ${c.razonSocial}${crearCliente ? " — CLIENTE NUEVO: se da de alta con CUIT " + c.cuit : ""}`,
     `Obra: ${d.obra.direccion}`,
-    `Neto: ${pesos(r.totales.subtotal)} + IVA${r.totales.renovacion ? ` · renovación ${pesos(r.totales.renovacion.monto)} por mes` : ""}`,
-    `Técnico: ${ctx.vendedor.tecnicoNombre ?? "—"} · Vendedor: ${ctx.vendedor.vendedorNombre ?? "—"} · Contrato: ${d.contrato?.trim()}`,
+    `Neto: ${actual && actual.neto !== r.totales.subtotal ? `${pesos(actual.neto)} → ` : ""}${pesos(r.totales.subtotal)} + IVA${r.totales.renovacion ? ` · renovación ${pesos(r.totales.renovacion.monto)} por mes` : ""}`,
+    ...(actual ? (cambios.length ? cambios : ["Las líneas de la orden no cambian"]) : []),
+    `Técnico: ${(actual ? actual.tecnico : ctx.vendedor.tecnicoNombre) ?? "—"} · Vendedor: ${(actual ? actual.vendedor : ctx.vendedor.vendedorNombre) ?? "—"} · Contrato: ${d.contrato?.trim()}`,
+    `Vigencia: hasta el ${validez.toISOString().slice(0, 10).split("-").reverse().join("/")}`,
     ...(fueraDeLaOrden.length
       ? [`Sólo en el PDF, no en la orden: ${fueraDeLaOrden.map((l) => `${l.descripcion.split(" — ")[0]} ${pesos(l.importe)}`).join(" · ")}`]
       : []),

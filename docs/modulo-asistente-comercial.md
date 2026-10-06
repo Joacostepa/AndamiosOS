@@ -197,6 +197,39 @@ asistente la arma con `plan_de_pagos`.
 - **Sin "con IVA":** si `condiciones.mostrarTotalConIva` es `false`, la tabla sale sólo con el
   neto.
 
+**Editar un presupuesto que ya está en Odoo** (Joaquín, 06/10). Con `editar_presupuesto` el
+asistente abre una orden y la cambia con el mismo número. Re-emitir (número nuevo y la vieja
+cancelada) queda para cuando lo pide el vendedor o la orden ya no se puede editar. La lógica pura
+está en `src/lib/asistente/edicion.ts`.
+
+- **De dónde sale el presupuesto:**
+  - si la orden la guardó el asistente, retoma ese borrador completo: cálculos, textos, render
+    y plan de pagos;
+  - si no, copia las líneas de Odoo tal cual (mismo producto, cantidad, precio y descuento) y
+    el asistente saca los textos del PDF adjunto. Una línea con un producto que no está en la
+    tabla se vuelve a escribir con ese mismo producto (`Linea.productoOdoo`). Las secciones y
+    notas de Odoo no se copian; se avisan.
+- **Nada se pierde sin avisar:** al guardar se reescriben todas las líneas de la orden. Por eso,
+  al abrir, lo que hay en Odoo y no en el borrador (un flete o un opcional cargados a mano) se
+  copia. El resumen que se confirma dice qué cambia contra lo que hay hoy en Odoo ("Cambia",
+  "Sale", "Entra" y el neto de antes y de después).
+- **Precios:** se mantienen los de la orden. Si el motor hoy da otro número, el asistente lo
+  muestra y decide el vendedor.
+- **Al guardar:**
+  - se renueva la vigencia (`validity_date`, la misma fecha que dice el PDF);
+  - la orden conserva su vendedor y su técnico;
+  - el PDF se regenera con el mismo número;
+  - la nota interna dice "Editado desde el Asistente Comercial".
+- **Quién edita qué** (`puedeEditar`):
+  - sólo órdenes en presupuesto o enviadas; una confirmada o cancelada se re-emite;
+  - cada uno edita las suyas (por técnico o por vendedor de la orden);
+  - las de otro vendedor, sólo un admin.
+- **Una edición viva por orden:** al abrirla, los otros borradores de esa orden quedan
+  `descartado`. Si alguien vuelve a una charla vieja y propone guardar, el asistente le dice que
+  la orden se siguió editando en otra.
+- **Re-emitir también mejoró:** el cliente sale del id de la orden (antes se buscaba por
+  nombre), y las jornadas y la modalidad del permiso se toman de la orden.
+
 **Tope de gasto:** `asistente_tope_diario_usd` (hoy US$ 30 por persona y por día). Se cambia en
 Parámetros.
 

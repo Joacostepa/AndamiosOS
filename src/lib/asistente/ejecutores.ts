@@ -111,7 +111,7 @@ async function guardar(ctx: ContextoEjecucion, a: Accion, p: PayloadGuardar, pas
   // 5. Nota interna: quién lo pidió, cómo lo confirmó y por qué los precios son los que son.
   if (!pasos.nota) {
     const confirmacion = a.confirmada_via === "boton" ? "con el botón Confirmar" : `por ${a.confirmada_via}: «${esc(String((a as { confirmacion_texto?: string }).confirmacion_texto ?? ""))}»`;
-    await notaInterna(orden.id, `<p><b>Armado desde el Asistente Comercial</b> a pedido de ${esc(ctx.vendedorNombre)}, confirmado ${confirmacion}.</p>${p.notaHtml}`);
+    await notaInterna(orden.id, `<p><b>${b0.odoo_venta_id ? "Editado" : "Armado"} desde el Asistente Comercial</b> a pedido de ${esc(ctx.vendedorNombre)}, confirmado ${confirmacion}.</p>${p.notaHtml}`);
     pasos.nota = true;
   }
 

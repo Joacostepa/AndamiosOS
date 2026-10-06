@@ -54,13 +54,28 @@ vendedora. Todo se calcula en `seguimiento.ts` con lo que ya hay en la base; no 
 Al 06/10: los certificados de S01847, S02328 y S02437 llegaron solos (12:00–12:06); a los tres les
 falta sólo la póliza.
 
+**Arreglo (`924b8f3`), avisado por JS:**
+- **S02599 (Santa Fe 3085, Scampini)** figuraba como subsanación pendiente. Ya se había subsanado: la
+  tarea desapareció de TAD el 29/09, pero TAD deja el estado en SUBSANACION hasta que el GCBA revise.
+  El seguimiento ahora usa `tarea_pendiente`, no el estado: sin tarea dice "Subsanado, espera que
+  el GCBA revise la corrección" y queda en "En el GCBA".
+- **S02521 (Acuña de Figueroa 1312)** se presentó **a mano** en TAD el 02/10 (EX-2026-44242731),
+  con la constancia de CUIT todavía observada en la app. El robot lo vinculó a la venta por
+  dirección, sin confirmar, y `pvp_tramites.expediente_id` quedó vacío. El seguimiento ahora toma
+  también el expediente de la misma venta (`odoo_venta_id`, no histórico); las etapas sin terminar
+  en la app quedan como "Se presentó a mano". **Pendiente de JS:** "Confirmar venta" en la bandeja,
+  porque sin eso el robot no escribe Odoo.
+- Al 06/10 quedan 2 que necesitan algo: S02727 (póliza observada) y S02672 (acta de asamblea
+  observada).
+
 ### Lo primero en la sesión nueva
 
 1. Reinstalar el robot en la Mac mini (código de `ee334e8`).
 2. Ver llegar los certificados de Medrano 317 y Corrientes 4285 (si tardan, mirar Spam de
    permisos-andamio@: sigue faltando el filtro para Hougassian).
-3. S02437: croquis regenerado con plancheta.
-4. Siguen en pie los pendientes de § "02/10" y § "Estado al 26/09".
+3. S02437: croquis regenerado con plancheta (hecho 11:40) y encomienda cerrada sola (pago 293204).
+4. S02521: confirmar la venta del expediente EX-2026-44242731 en la bandeja.
+5. Siguen en pie los pendientes de § "02/10" y § "Estado al 26/09".
 
 ---
 

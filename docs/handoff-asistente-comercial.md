@@ -36,6 +36,7 @@ En producción: `https://andamios-os.vercel.app/comercial/asistente` y `/comerci
 | La tarjeta del mensaje de WhatsApp sigue ahí al recargar | ✅ 28/09, `ebea983`: sale de la historia (`ultimoMensajeParaCliente`, 3 tests) |
 | WhatsApp | Construido y probado simulando a Meta. **Sin configurar: lo postergó JS** |
 | Parámetros de cotización (7 pestañas) | ✅ |
+| Editar un presupuesto de Odoo con el mismo número | ✅ 06/10, `6a5cc7f`. **Sin probar guardando en Odoo** (ver § "Lo que se hizo el 06/10") |
 | Plan de pagos en cuotas (e-cheqs) como tabla en el PDF | ✅ 06/10, `25ba402`. **Sin probar con el asistente real** (ver § "Lo que se hizo el 06/10") |
 
 **Commits en main:**
@@ -58,6 +59,7 @@ En producción: `https://andamios-os.vercel.app/comercial/asistente` y `/comerci
   - `c89c495` y `719d100`: sólo documentación.
 - **06/10:**
   - `25ba402`: el plan de pagos en cuotas.
+  - `6a5cc7f`: editar presupuestos de Odoo con el mismo número.
 
 **Base y servicios:**
 
@@ -104,6 +106,34 @@ módulo, § Plan de pagos.
 - **Sin probar:** una charla real con el asistente (~US$ 1). Lo prueba JS en una conversación
   nueva: pedir las cuotas con un presupuesto cotizado y mirar la tabla en la vista previa.
 - **Entre el 28/09 y el 06/10** no se tocó el asistente.
+
+**Editar presupuestos existentes** (pedido de JS: "ahora sólo puede crear nuevas y
+cancelarlas"). Detalle en el doc del módulo, § Editar un presupuesto.
+
+- **Lo que decidió JS el 06/10:**
+  - se puede editar aunque la oferta esté vencida, y al guardar se renueva la vigencia;
+  - los precios se mantienen; si el motor da otro, el vendedor decide;
+  - las órdenes de otro vendedor las edita sólo un admin (Joaquín).
+- **Herramienta nueva:** `editar_presupuesto`, al final de la lista. Las conversaciones
+  abiertas pierden el caché una vez.
+- **Instrucciones:** el punto 2 de "Qué hacés" ahora dice editar o re-emitir. Rige para las
+  conversaciones nuevas.
+- **Al guardar una orden que ya existe** (también las que el asistente guardó en la misma
+  charla):
+  - ya no se pisan el vendedor ni el técnico. Esto resuelve la traba 5 de las charlas
+    (S02732);
+  - el resumen muestra qué cambia contra Odoo;
+  - se escribe `validity_date`.
+- **Probado:**
+  - 6 tests en `edicion.test.ts` (92 en total);
+  - una simulación SÓLO DE LECTURA contra Odoo y la base reales: las 4 órdenes del asistente
+    más recientes (S02797, S02796, S02782 y S02781) abren sin diferencias, y la S02412 y la
+    S02612 se copian y vuelven idénticas;
+  - el script no quedó en el repo.
+- **Sin probar:** guardar una edición de verdad contra Odoo (una charla real, ~US$ 1). Hacerlo
+  con una orden en presupuesto que se pueda tocar.
+- **Para que lo decida JS:** el criterio §9 dice que un presupuesto viejo se re-emite. Ahora se
+  puede editar. Si quiere, se ajusta el texto del criterio en Parámetros → Criterio.
 - **`npm test` falla en esta máquina:** Node 22.16 no corre `.ts` sin
   `--experimental-strip-types`. No es de este cambio. Mientras tanto:
   `node --no-warnings --experimental-strip-types --test "src/lib/**/*.test.ts"`.
@@ -385,18 +415,20 @@ nuestra base):
    el 06/10"). Si algo salió mal, leer la charla en `asistente_mensajes`: lo que mandó el
    modelo está en el `tool_use` de `plan_de_pagos` y el cálculo, en `resultado.planPagos`
    del borrador.
-2. **Preguntarle a JS si probó internet** en una conversación (por ejemplo, el CAC para la
+2. **Probar editar un presupuesto** con una orden real en presupuesto: abrirla, cambiar algo,
+   guardar, y verificar en Odoo el número, las líneas, el vendedor y el técnico, y la vigencia.
+3. **Preguntarle a JS si probó internet** en una conversación (por ejemplo, el CAC para la
    tribuna).
    - Si falló, buscar la charla en `asistente_mensajes` y mirar los logs de Vercel de
      `/api/comercial/asistente/chat`.
    - Lo más nuevo y sin probar: `pause_turn` y el texto partido por las fuentes (§ Reglas,
      Internet).
-3. **Medir `medium`** con la consulta de § "De código", sobre las conversaciones creadas desde
+4. **Medir `medium`** con la consulta de § "De código", sobre las conversaciones creadas desde
    el 28/09 a las 20:15. Comparar con la base de `high` y mirar también la calidad.
-4. **Repasar con JS las trabas de sus charlas que quedaron sin resolver** (§ "De código",
+5. **Repasar con JS las trabas de sus charlas que quedaron sin resolver** (§ "De código",
    "Trabas vistas en las charlas"). Dos las tiene que decidir él.
-5. **Si JS trae correcciones**, seguir § "Cómo se va a ir mejorando".
-6. **La pantalla nunca la probó Claude:** no tiene login, y no hay que crear usuarios ni entrar
+6. **Si JS trae correcciones**, seguir § "Cómo se va a ir mejorando".
+7. **La pantalla nunca la probó Claude:** no tiene login, y no hay que crear usuarios ni entrar
    como otro. Los cambios de pantalla del 28/09 se probaron con la página real y el servidor
    simulado. El panel del plan de pagos (06/10) no se vio en pantalla; el PDF sí.
 
@@ -564,7 +596,8 @@ Gabriel y Jorge dejen anotado lo que no les sirvió. No contestó: queda como id
      `confirmacion.ts`. Agregar "avanzá", "seguí" y "metele" sin aflojar lo demás.
   4. **Inventó cornisa y parapeto** (Callao 5, 27/09). Agregar una regla en las instrucciones:
      no suponer detalles del edificio que no dio el catastro ni el vendedor.
-  5. **Técnico ajeno (S02732): decide JS.** Pidió que el técnico fuera Jorge y el asistente no
+  5. **Técnico ajeno (S02732): decide JS.** Desde el 06/10, al editar ya no se pisa lo que se
+     cambió a mano en Odoo. Falta decidir si se puede elegir al crear. Pidió que el técnico fuera Jorge y el asistente no
      pudo: toma a quien lo usa. JS lo cambió a mano. ¿Un admin puede elegir técnico y vendedor?
   6. **Ciudad de la Paz 1828 (28/09):** la puerta no es oficial en el catastro y el presupuesto
      quedó sin guardar. Preguntarle si lo trabó el chequeo del frente o el CUIT.

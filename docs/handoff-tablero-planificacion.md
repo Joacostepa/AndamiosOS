@@ -64,6 +64,11 @@ recurrir).
   si fallan los documentos, lo dice.
 - **Celular**: el panel ocupa el ancho completo (antes 75%).
 
+**Ajuste del mismo día (JS, con la ficha publicada):** los comentarios subieron a continuación
+de "Qué hay que ejecutar", antes de "¿Se puede ir?" (al pie no se leían). La duración sugerida de
+Odoo, que traía un párrafo entero, quedó en un renglón dentro de Duración ("Sugerido: 1 jornada ·
+usar · ver cálculo"; "usar" la fija desde la bandeja), y se ocultó el "Sin partes" del período.
+
 **Quedó afuera:** el panel no modal en escritorio (para arrastrar con la ficha abierta) y los
 teléfonos del técnico y el vendedor (no viajan en `DetalleOt`; habría que traerlos de Odoo).
 

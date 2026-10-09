@@ -41,12 +41,13 @@ import type { ContactoObra, DocumentoOt, OtTablero, TrabajoOt } from "@/lib/tabl
 //
 //   1. Encabezado fijo: QUÉ obra es (la dirección, que es como se la nombra en la grilla y
 //      en la bandeja), EN QUÉ ESTADO está y QUÉ se puede hacer con ella.
-//   2. ¿Se puede ir?: habilitación, ventana, compromiso y duración, juntos. Son los datos
+//   2. Qué hay que ejecutar, con las observaciones de Comercial y los documentos pegados.
+//   3. Comentarios: lo que Operaciones habló con el cliente o Comercial le pasó cambia cómo
+//      se hace el trabajo, así que va pegado a él (al pie no se leía).
+//   4. ¿Se puede ir?: habilitación, ventana, compromiso y duración, juntos. Son los datos
 //      de una sola decisión —dónde la pongo— y antes estaban repartidos entre el noveno y
 //      el decimocuarto bloque, la duración debajo del pliegue.
-//   3. Qué hay que ejecutar, con las observaciones de Comercial y los documentos pegados.
-//   4. Contactos: en obra y en ABA (técnico y vendedor), para saber a quién recurrir.
-//   5. Comentarios, compactos.
+//   5. Contactos: en obra y en ABA (técnico y vendedor), para saber a quién recurrir.
 //   6. Historia, plegada con el último evento a la vista.
 //
 // UNA SOLA FICHA PARA LA BANDEJA Y LA GRILLA. Cambian la línea de estado y las acciones,
@@ -662,6 +663,58 @@ function SelectorDuracion({ valor, onCambiar }: { valor: number; onCambiar: (jor
   );
 }
 
+/**
+ * La duración que sugiere Odoo a partir de obras parecidas.
+ *
+ * El campo trae un párrafo entero ("Sugerido: 1 jornada(s). El armado de esta obra se
+ * EJECUTO en 1 visita(s). Medido sobre 415 obras…") que ocupaba más que toda la sección.
+ * Lo que se usa es el número: va en un renglón, con el cálculo detrás de "ver cálculo" y,
+ * desde la bandeja, un "usar" que la fija como duración de un clic.
+ */
+function SugerenciaDuracion({
+  texto,
+  actual,
+  onUsar,
+}: {
+  texto: string;
+  /** La duración vigente. Null si la obra está sin estimar. */
+  actual: number | null;
+  onUsar: ((jornadas: number) => void) | null;
+}) {
+  const [abierto, setAbierto] = useState(false);
+  const m = texto.match(/sugerid[oa]:?\s*([\d.,]+)\s*jornada/i);
+  const sugerido = m ? Number(m[1].replace(",", ".")) : null;
+  const valido = sugerido != null && Number.isFinite(sugerido) && sugerido > 0;
+
+  return (
+    <span className="block text-xs text-muted-foreground">
+      {valido ? (
+        <>
+          Sugerido: {sugerido} jornada{sugerido === 1 ? "" : "s"}
+          {onUsar && sugerido !== actual && (
+            <>
+              {" · "}
+              <button type="button" className="underline hover:text-foreground" onClick={() => onUsar(sugerido)}>
+                usar
+              </button>
+            </>
+          )}
+          {" · "}
+        </>
+      ) : null}
+      <button
+        type="button"
+        className="underline hover:text-foreground"
+        aria-expanded={abierto}
+        onClick={() => setAbierto((v) => !v)}
+      >
+        {abierto ? "ocultar cálculo" : valido ? "ver cálculo" : "ver sugerencia"}
+      </button>
+      {abierto && <span className="mt-1 block whitespace-pre-wrap">{texto}</span>}
+    </span>
+  );
+}
+
 type Estado = { etiqueta: string; detalle: string; tono: "vacio" | "tentativa" | "confirmada" | "neutro" };
 
 export function PanelOt({
@@ -949,6 +1002,32 @@ export function PanelOt({
             </div>
           )}
 
+          {/* ── Qué hay que ejecutar, con lo que lo acompaña ── */}
+          <div className="space-y-3">
+            {/* El vacío SE MUESTRA: una OT sin detalle técnico es un problema para quien
+                planifica. Las observaciones de Comercial van adentro: suelen cambiar cómo
+                se hace el trabajo y se leen junto con él. */}
+            <DetalleTecnico
+              texto={detalle?.detalleTecnico}
+              confirmadoEl={detalle?.estructuraConfirmadaEl}
+              cargando={cargandoDetalle}
+              error={errorDetalle}
+              onReintentar={() => refetch()}
+              observaciones={ot.observaciones}
+            />
+            <QueNecesita trabajo={detalle?.trabajo} />
+            {/* Pegados a lo que hay que hacer: el croquis y el texto se leen juntos, y la
+                cuadrilla en el celular los tiene arriba y no al final de todo. */}
+            <Documentos otId={ot.id} cantidad={ot.cantDocs + ot.cantInstrucciones} />
+            <LoQueQuedoArmado texto={detalle?.ejecutadoReal} previsto={detalle?.detalleTecnico} />
+          </div>
+
+          {/* EL HILO DE LA OBRA, pegado a lo que hay que ejecutar y antes que los datos de
+              planificación: lo que Operaciones habló con el cliente o lo que Comercial le
+              pasó —"entramos 8am el martes", "si llueve corre al jueves"— cambia cómo se hace
+              el trabajo, y al pie de la ficha nadie lo leía (pedido de JS, 09/10). */}
+          <ComentariosOt otId={ot.id} />
+
           {/* ── ¿Se puede ir? Los insumos de una sola decisión: dónde la pongo ── */}
           <Seccion titulo="¿Se puede ir?">
             <dl className="grid grid-cols-[7rem_minmax(0,1fr)] gap-x-3 gap-y-2.5 leading-snug">
@@ -1014,14 +1093,18 @@ export function PanelOt({
                     {detalle?.desvio ? ` · ${detalle.desvio} vs estimado` : ""}
                   </span>
                 )}
-                {detalle?.periodo && <span className="block text-xs text-muted-foreground">{detalle.periodo}</span>}
+                {/* "Sin partes" es lo que Odoo pone cuando no hay período: no dice nada. */}
+                {detalle?.periodo && !/^sin partes$/i.test(detalle.periodo.trim()) && (
+                  <span className="block text-xs text-muted-foreground">{detalle.periodo}</span>
+                )}
+                {detalle?.duracionSugerida && (
+                  <SugerenciaDuracion
+                    texto={detalle.duracionSugerida}
+                    actual={ot.sinEstimar && !plan ? null : duracion}
+                    onUsar={pendiente && !desdeLaGrilla ? onDuracion : null}
+                  />
+                )}
               </Dato>
-
-              {detalle?.duracionSugerida && (
-                <Dato etiqueta="Sugerida">
-                  <span className="whitespace-pre-wrap">{detalle.duracionSugerida}</span>
-                </Dato>
-              )}
 
               {/* La cuadrilla que ya venía sugerida, sólo cuando aporta algo: si el bloque
                   ya está en esa misma cuadrilla, repetirlo es ruido. */}
@@ -1037,26 +1120,6 @@ export function PanelOt({
               )}
             </dl>
           </Seccion>
-
-          {/* ── Qué hay que ejecutar, con lo que lo acompaña ── */}
-          <div className="space-y-3">
-            {/* El vacío SE MUESTRA: una OT sin detalle técnico es un problema para quien
-                planifica. Las observaciones de Comercial van adentro: suelen cambiar cómo
-                se hace el trabajo y se leen junto con él. */}
-            <DetalleTecnico
-              texto={detalle?.detalleTecnico}
-              confirmadoEl={detalle?.estructuraConfirmadaEl}
-              cargando={cargandoDetalle}
-              error={errorDetalle}
-              onReintentar={() => refetch()}
-              observaciones={ot.observaciones}
-            />
-            <QueNecesita trabajo={detalle?.trabajo} />
-            {/* Pegados a lo que hay que hacer: el croquis y el texto se leen juntos, y la
-                cuadrilla en el celular los tiene arriba y no al final de todo. */}
-            <Documentos otId={ot.id} cantidad={ot.cantDocs + ot.cantInstrucciones} />
-            <LoQueQuedoArmado texto={detalle?.ejecutadoReal} previsto={detalle?.detalleTecnico} />
-          </div>
 
           {/* ── A quién recurrir ── */}
           <Seccion titulo="Contactos">
@@ -1119,10 +1182,6 @@ export function PanelOt({
               </div>
             )}
           </Seccion>
-
-          {/* EL HILO DE LA OBRA. Lo que Operaciones habló con el cliente —"entramos 8am el
-              martes", "si llueve corre al jueves"— cambia lo que hay que hacer. */}
-          <ComentariosOt otId={ot.id} />
 
           {/* Por qué está como está: movimientos y confirmaciones en una sola línea de tiempo. */}
           <HistoriaOt otId={ot.id} />

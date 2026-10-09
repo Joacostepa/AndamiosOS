@@ -16,7 +16,9 @@ cosas, así que ante la duda manda el código y los comentarios largos que tiene
    al planificar, las flechas ‹ › y el panel a ancho completo en el celular.
 2. **Ver la tapa de suspensión andando con un corrimiento real.** La del 29/09 JS ya la vio
    (02/10) y pidió más color: se cambió a la opción B, que falta mirar en el tablero publicado.
-3. **Lo que dejó la auditoría del 08/10** (detalle abajo, en "Auditoría UX y técnica"). Lo más
+3. **Aprobar la maqueta de la tarjeta de grilla y el encabezado de día** (artifact de la ficha,
+   fila "Grilla"), y aplicar las entregas 2 y 4 de la auditoría de grilla (ver 09/10).
+4. **Lo que dejó la auditoría del 08/10** (detalle abajo, en "Auditoría UX y técnica"). Lo más
    urgente: el candado que falla abierto para Depósito y Campo, y la RLS abierta.
 
 ---
@@ -141,6 +143,46 @@ asignaciones); el fantasma del arrastre muestra el título crudo y no la tarjeta
 cliente de `sale.order` a `OtTablero` para que la búsqueda por cliente funcione siempre;
 avisar "el armado no tiene fecha" en un desarme cuyo armado también está en la bandeja (a
 validar con Operaciones).
+
+---
+
+## 09/10 — grilla y cajón: auditoría y primeros arreglos
+
+**Pedido (JS):** auditoría de la grilla completa y del cajón de abajo, con capturas. JS aprobó
+arrancar por los bugs (entregas 1 y 3) y pidió maqueta de la tarjeta y el encabezado de día
+antes de tocarlos (entregas 2 y 4, ver "Pendiente").
+
+**Grilla (hecho):**
+- **Dirección tapada por la columna fija**: en un bloque de varios días que arranca antes del
+  primer día a la vista, el renglón de la dirección se queda pegado a la derecha de la columna
+  de cuadrillas (`pegarA` en `ContenidoTarjeta`, `sticky` + `overflow-clip`: con
+  `overflow-hidden` la tarjeta se vuelve contenedor de scroll y el sticky no se pega a la
+  grilla). El segundo renglón no se pega (si es largo ocupa todo el ancho y no podría moverse).
+- **Soltar sobre una tarjeta**: `detectarColision` deja ganar a la CELDA cuando la tarjeta de
+  abajo es de varios días (antes caía en su primer día) o cuando se arrastra desde la bandeja
+  (antes no hacía nada). Soltar un bloque sobre sí mismo sigue sin hacer nada.
+- **El ⋮ de la tarjeta**: visible con foco y siempre en táctil (`hover:none`), `bg-card` en vez
+  de `bg-white` (en oscuro era claro sobre blanco), y Enter sobre el ⋮ ya no abre la ficha.
+
+**Cajón (hecho):**
+- La barra dice **"Pendientes · 2 abiertos"** (decía "20/22", hechos sobre el total) y tiene
+  `focus-visible` propio (el recuadro coral era el anillo de foco).
+- **Alta arriba** de la lista y **sin títulos de columna** (repetían la barra); el estado de las
+  notas pasó a la franja de arriba de su columna, alineada con la del alta.
+- Si falla el alta, **el texto vuelve al campo** y hay toast. Tildar o borrar un pendiente
+  **todavía sin id del servidor** queda deshabilitado unos instantes (antes no se guardaba).
+  Errores de tildar/borrar avisan.
+- Notas: **se guarda lo pendiente al cerrar el cajón** o al desmontar (refs + limpieza), con
+  aviso del navegador si se cierra la pestaña con cambios; un error que no es conflicto muestra
+  **"No se guardó · Reintentar"** (antes quedaba en "Sin guardar" para siempre).
+
+**Pendiente de la auditoría de grilla (detalle en la maqueta y en el reporte):** duración con
+unidad ("½ j", "3 h", "1 j"; "5 de 22 d", "1 j +3"), franja de habilitación sólo cuando no está
+al día, direcciones con `nombrePropio` + "Av." y sin "CABA", "Cuadrilla 1" normal, señales a la
+derecha y comentarios siempre con número, problemas en texto rojo en vez del ⚠ triple, "libre
+1½ j" y cuadrillas pasadas en el encabezado del día, viento con unidad, carga de la fila por día,
+estados de bloque por día (hoy un día ejecutado atenúa los 22), buscador en la grilla, "Mover
+a…" sin arrastrar, tipo de tarea "Ausencia".
 
 ---
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, ListChecks, Plus, StickyNote, X } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { CAJON, PELIGRO, PELIGRO_TEXTO } from "@/lib/tablero/colores";
 import {
@@ -213,7 +214,7 @@ function Barra({
   totales: number;
   onAlternar: () => void;
 }) {
-  const completo = totales > 0 && hechos === totales;
+  const abiertos = totales - hechos;
   return (
     <div
       role="button"
@@ -225,7 +226,9 @@ function Barra({
           onAlternar();
         }
       }}
-      className="flex h-11 shrink-0 cursor-pointer select-none items-center gap-4 px-3 hover:bg-foreground/[0.04]"
+      // focus-visible propio: con el anillo global quedaba un recuadro coral alrededor de la
+      // barra entera después del clic, como si fuera un campo seleccionado.
+      className="flex h-11 shrink-0 cursor-pointer select-none items-center gap-4 px-3 outline-none hover:bg-foreground/[0.04] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/60"
       title={abierto ? "Cerrar el cajón" : "Abrir el cajón"}
       aria-expanded={abierto}
     >
@@ -234,20 +237,21 @@ function Barra({
         aria-hidden
       />
 
-      {/* Cerrado, el número es la mitad de la razón para abrirlo. "X/Y" solo es ambiguo
-          —¿los hechos o los que quedan?— así que el title lo dice con palabras. */}
+      {/* Cerrado, el número es la mitad de la razón para abrirlo, y tiene que ser LOS QUE
+          QUEDAN. Decía "20/22" —hechos sobre el total— y se leía como veinte abiertos
+          cuando eran dos. */}
       <span
-        className="flex items-center gap-1.5 text-[12px] font-medium"
+        className="flex items-center gap-1.5 text-sm font-medium"
         title={totales === 0 ? "Sin pendientes anotados" : `${hechos} de ${totales} hechos`}
       >
         <ListChecks className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
         Pendientes
-        <span className={cn("tabular-nums", completo ? "font-semibold text-primary" : "text-muted-foreground")}>
-          {hechos}/{totales}
+        <span className={cn("tabular-nums", abiertos > 0 ? "text-foreground" : "text-muted-foreground")}>
+          {totales === 0 ? "· ninguno" : abiertos === 0 ? "· todo hecho" : `· ${abiertos} abierto${abiertos === 1 ? "" : "s"}`}
         </span>
       </span>
 
-      <span className="flex items-center gap-1.5 text-[12px] font-medium text-muted-foreground">
+      <span className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
         <StickyNote className="h-3.5 w-3.5" aria-hidden />
         Notas generales
       </span>
@@ -277,7 +281,14 @@ function ColumnaPendientes({
     // Se vacía sin esperar la confirmación: el gesto es escribir y seguir escribiendo, y
     // un campo que se queda lleno medio segundo hace que se agregue dos veces.
     setTexto("");
-    agregar.mutate(limpio);
+    agregar.mutate(limpio, {
+      // Si no se guardó, el texto vuelve al campo y se avisa. Antes el ítem aparecía y
+      // desaparecía, el campo ya estaba vacío, y lo escrito se perdía sin decir nada.
+      onError: (e) => {
+        setTexto((actual) => actual || limpio);
+        toast.error("No se pudo agregar el pendiente", { description: e instanceof Error ? e.message : undefined });
+      },
+    });
   };
 
   return (
@@ -286,18 +297,33 @@ function ColumnaPendientes({
     // exactamente a las de la otra. Antes la izquierda tenía pie y la derecha no, y el
     // textarea flotaba con margen propio: nada de un lado coincidía con nada del otro.
     <section className="flex min-h-0 flex-col border-r">
-      <div className="flex h-7 shrink-0 items-center px-3">
-        <h2 className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-          Pendientes
-        </h2>
+      {/* EL ALTA ARRIBA, pegada a los abiertos. Al pie quedaba debajo de "Hechos (20)", lejos
+          de lo que se está mirando. Sin títulos de columna: la barra ya dice "Pendientes" y
+          "Notas generales", y repetirlos costaba 28px de un cajón que le saca alto a la grilla. */}
+      <div className="flex h-9 shrink-0 items-center gap-1.5 border-b px-3">
+        <Plus className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+        <input
+          value={texto}
+          onChange={(e) => setTexto(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              enviar();
+            }
+          }}
+          placeholder="Agregar pendiente y Enter…"
+          maxLength={500}
+          aria-label="Nuevo pendiente"
+          className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+        />
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-1">
         {cargando ? (
-          <p className="px-1.5 py-2 text-[11px] text-muted-foreground">Cargando…</p>
+          <p className="px-1.5 py-2 text-xs text-muted-foreground">Cargando…</p>
         ) : abiertos.length === 0 && hechos.length === 0 ? (
-          <p className="px-1.5 py-2 text-[11px] text-muted-foreground">
-            Sin pendientes. Agregá el primero abajo.
+          <p className="px-1.5 py-2 text-xs text-muted-foreground">
+            Sin pendientes. Agregá el primero arriba.
           </p>
         ) : (
           <ul className="space-y-px">
@@ -316,7 +342,7 @@ function ColumnaPendientes({
             <button
               type="button"
               onClick={() => setVerHechos(!verHechos)}
-              className="flex w-full items-center gap-1 rounded px-1.5 py-1 text-[11px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
+              className="flex w-full items-center gap-1 rounded px-1.5 py-1 text-xs text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
               aria-expanded={verHechos}
               title={`Se borran solos a los ${DIAS_RETENCION_HECHOS} días de tildados`}
             >
@@ -338,23 +364,6 @@ function ColumnaPendientes({
         )}
       </div>
 
-      <div className="flex h-9 shrink-0 items-center gap-1.5 border-t px-3">
-        <Plus className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
-        <input
-          value={texto}
-          onChange={(e) => setTexto(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              enviar();
-            }
-          }}
-          placeholder="Agregar pendiente y Enter…"
-          maxLength={500}
-          aria-label="Nuevo pendiente"
-          className="min-w-0 flex-1 bg-transparent text-[12px] outline-none placeholder:text-muted-foreground"
-        />
-      </div>
     </section>
   );
 }
@@ -362,6 +371,12 @@ function ColumnaPendientes({
 function ItemPendiente({ pendiente }: { pendiente: Pendiente }) {
   const actualizar = useActualizarPendiente();
   const borrar = useBorrarPendiente();
+  // Recién agregado y todavía sin id del servidor: tildarlo o borrarlo no se guardaba (el
+  // pedido contra un id provisorio no sale) y volvía a aparecer en el próximo refresco.
+  // Son unos cientos de milisegundos: se espera.
+  const provisorio = pendiente.id.startsWith("temp:");
+  const avisar = (que: string) => (e: unknown) =>
+    toast.error(`No se pudo ${que} el pendiente`, { description: e instanceof Error ? e.message : undefined });
 
   return (
     <li className="group/item flex items-start gap-2 rounded px-1.5 py-1 hover:bg-foreground/[0.04]">
@@ -372,15 +387,18 @@ function ItemPendiente({ pendiente }: { pendiente: Pendiente }) {
         <input
           type="checkbox"
           checked={pendiente.hecho}
-          onChange={(e) => actualizar.mutate({ id: pendiente.id, hecho: e.target.checked })}
+          disabled={provisorio}
+          onChange={(e) =>
+            actualizar.mutate({ id: pendiente.id, hecho: e.target.checked }, { onError: avisar("guardar") })
+          }
           className="mt-[3px] h-3.5 w-3.5 shrink-0 cursor-pointer accent-[var(--primary)]"
         />
         <span
           className={cn(
-            "min-w-0 flex-1 text-[12px] leading-snug",
+            "min-w-0 flex-1 text-sm leading-snug",
             pendiente.hecho && "text-muted-foreground line-through",
           )}
-          title={pendiente.autorNombre ? `Lo anotó ${pendiente.autorNombre}` : undefined}
+          title={provisorio ? "Guardando…" : pendiente.autorNombre ? `Lo anotó ${pendiente.autorNombre}` : undefined}
         >
           {pendiente.texto}
         </span>
@@ -388,7 +406,8 @@ function ItemPendiente({ pendiente }: { pendiente: Pendiente }) {
 
       <button
         type="button"
-        onClick={() => borrar.mutate(pendiente.id)}
+        onClick={() => borrar.mutate(pendiente.id, { onError: avisar("borrar") })}
+        disabled={provisorio}
         className="shrink-0 rounded p-0.5 text-muted-foreground opacity-0 hover:bg-foreground/10 hover:text-foreground focus-visible:opacity-100 group-hover/item:opacity-100"
         title="Borrar pendiente"
         aria-label={`Borrar "${pendiente.texto}"`}
@@ -416,6 +435,31 @@ function ColumnaNotas({ inicial }: { inicial: NotaCajon }) {
   // lo que el servidor compara para saber si alguien se metió en el medio.
   const [sello, setSello] = useState(inicial.updatedAt);
   const [conflicto, setConflicto] = useState<Conflicto | null>(null);
+  // Un error que NO es conflicto (red, sesión). Antes se ignoraba: el rótulo quedaba en
+  // "Sin guardar" para siempre y nada reintentaba hasta la próxima tecla.
+  const [fallo, setFallo] = useState(false);
+  const [intento, setIntento] = useState(0);
+
+  // LO PENDIENTE SE MANDA AL CERRAR. El cajón desmonta esta columna al plegarse (y la
+  // página entera al navegar), y la limpieza del efecto de abajo cancelaba el guardado
+  // programado: lo escrito en los últimos 600ms se perdía. Se guarda en refs para que la
+  // limpieza del desmontaje vea el último estado y no el del primer render.
+  const ultimo = useRef({ borrador, guardado, sello, conflicto });
+  ultimo.current = { borrador, guardado, sello, conflicto };
+  useEffect(() => {
+    const avisarSalida = (e: BeforeUnloadEvent) => {
+      const u = ultimo.current;
+      if (u.borrador !== u.guardado) e.preventDefault();
+    };
+    window.addEventListener("beforeunload", avisarSalida);
+    return () => {
+      window.removeEventListener("beforeunload", avisarSalida);
+      const u = ultimo.current;
+      if (u.borrador !== u.guardado && !u.conflicto) mutate({ texto: u.borrador, updatedAt: u.sello });
+    };
+    // Sólo al montar y desmontar: `mutate` es estable y el estado se lee del ref.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     // Con un conflicto abierto NO se reintenta solo: seguir mandando sería insistir en
@@ -428,6 +472,7 @@ function ColumnaNotas({ inicial }: { inicial: NotaCajon }) {
           onSuccess: ({ nota }) => {
             setGuardado(borrador);
             setSello(nota.updatedAt);
+            setFallo(false);
           },
           onError: (e) => {
             if (e instanceof ConflictoNota) {
@@ -436,31 +481,83 @@ function ColumnaNotas({ inicial }: { inicial: NotaCajon }) {
                 texto: e.actual.texto,
                 updatedAt: e.actual.updatedAt,
               });
+            } else {
+              setFallo(true);
             }
           },
         },
       );
     }, DEBOUNCE_MS);
     return () => clearTimeout(t);
-  }, [borrador, guardado, sello, conflicto, mutate]);
+  }, [borrador, guardado, sello, conflicto, mutate, intento]);
 
   const estado = conflicto
     ? `${conflicto.autor} guardó primero`
     : isPending
       ? "Guardando…"
-      : borrador !== guardado
-        ? "Sin guardar"
-        : "Guardado";
+      : fallo
+        ? "No se guardó"
+        : borrador !== guardado
+          ? "Sin guardar"
+          : "Guardado";
 
   return (
     // Mismo esqueleto que Pendientes: encabezado de 28px, cuerpo elástico, pie de 36px.
     <section className="flex min-h-0 flex-col">
-      <div className="flex h-7 shrink-0 items-center px-3">
-        <h2 className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-          Notas generales
-        </h2>
+      {/* La franja de arriba espeja la del alta de pendientes: mismo alto, mismo borde,
+          misma sangría, así las líneas de las dos columnas coinciden. Acá viven el estado
+          del guardado y las salidas del conflicto. */}
+      <div className="flex h-9 shrink-0 items-center gap-2 border-b px-3">
+        {conflicto ? (
+          <>
+            <button
+              type="button"
+              // Adopta el sello nuevo: el próximo guardado ya no choca y el texto propio
+              // pasa a ser el bueno. Lo de la otra persona quedó a la vista para copiar
+              // lo que haga falta antes de apretar.
+              onClick={() => {
+                setSello(conflicto.updatedAt);
+                setConflicto(null);
+              }}
+              className="rounded border px-2 py-0.5 text-xs font-medium hover:bg-foreground/[0.06]"
+            >
+              Guardar la mía
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setBorrador(conflicto.texto);
+                setGuardado(conflicto.texto);
+                setSello(conflicto.updatedAt);
+                setConflicto(null);
+              }}
+              className="rounded border px-2 py-0.5 text-xs text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
+            >
+              Quedarme con la suya
+            </button>
+          </>
+        ) : (
+          <span
+            className={cn("ml-auto flex items-center gap-2 text-xs", fallo ? "font-medium" : "text-muted-foreground")}
+            style={fallo ? { color: PELIGRO_TEXTO } : undefined}
+            role="status"
+          >
+            {estado}
+            {fallo && (
+              <button
+                type="button"
+                className="underline hover:no-underline"
+                onClick={() => {
+                  setFallo(false);
+                  setIntento((n) => n + 1);
+                }}
+              >
+                Reintentar
+              </button>
+            )}
+          </span>
+        )}
       </div>
-
       {/* El textarea va A RAS y sin recuadro propio. Encajonado adentro de la columna
           —con borde, radio y margen— no se alineaba con nada de la izquierda: arrancaba
           más abajo que la lista y terminaba más arriba que la barra de alta. Ahora el
@@ -476,7 +573,7 @@ function ColumnaNotas({ inicial }: { inicial: NotaCajon }) {
         // en ningún lado. Es la única parte de la UI donde se puede explicar la
         // diferencia en el momento en que importa.
         placeholder="Lo que no vence: “los desarmes de Olivos van con el camión chico”, teléfonos, acuerdos.&#10;&#10;Lo que pasa un día puntual va en la nota del día, arriba en la grilla."
-        className="min-h-0 flex-1 resize-none border-0 bg-transparent px-3 pb-1 text-[12px] leading-relaxed outline-none placeholder:text-muted-foreground focus-visible:bg-foreground/[0.03]"
+        className="min-h-0 flex-1 resize-none border-0 bg-transparent px-3 pb-1 text-sm leading-relaxed outline-none placeholder:text-muted-foreground focus-visible:bg-foreground/[0.03]"
       />
 
       {/* El conflicto no es un callejón: se muestran LAS DOS versiones y decide una
@@ -487,54 +584,16 @@ function ColumnaNotas({ inicial }: { inicial: NotaCajon }) {
           que verse como tal. */}
       {conflicto && (
         <div className="mx-3 mb-1 shrink-0 rounded-md border p-2" style={{ borderColor: PELIGRO }}>
-          <p className="text-[10px] font-medium" style={{ color: PELIGRO_TEXTO }}>
+          <p className="text-xs font-medium" style={{ color: PELIGRO_TEXTO }}>
             {conflicto.autor} guardó su versión mientras escribías. Arriba está la tuya;
             acá abajo, la suya.
           </p>
-          <p className="mt-1 max-h-16 overflow-y-auto whitespace-pre-wrap rounded bg-muted px-2 py-1 text-[11px] leading-snug">
+          <p className="mt-1 max-h-16 overflow-y-auto whitespace-pre-wrap rounded bg-muted px-2 py-1 text-xs leading-snug">
             {conflicto.texto || <span className="text-muted-foreground">(vacío)</span>}
           </p>
         </div>
       )}
 
-      {/* El pie espeja la barra de alta de la izquierda: mismo alto, mismo borde
-          superior, misma sangría. Acá vive el estado del guardado —que antes estaba
-          arriba, desalineando el encabezado— y las salidas del conflicto. */}
-      <div className="flex h-9 shrink-0 items-center gap-2 border-t px-3">
-        {conflicto ? (
-          <>
-            <button
-              type="button"
-              // Adopta el sello nuevo: el próximo guardado ya no choca y el texto propio
-              // pasa a ser el bueno. Lo de la otra persona quedó a la vista para copiar
-              // lo que haga falta antes de apretar.
-              onClick={() => {
-                setSello(conflicto.updatedAt);
-                setConflicto(null);
-              }}
-              className="rounded border px-2 py-0.5 text-[11px] font-medium hover:bg-foreground/[0.06]"
-            >
-              Guardar la mía
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setBorrador(conflicto.texto);
-                setGuardado(conflicto.texto);
-                setSello(conflicto.updatedAt);
-                setConflicto(null);
-              }}
-              className="rounded border px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
-            >
-              Quedarme con la suya
-            </button>
-          </>
-        ) : (
-          <span className="ml-auto text-[10px] text-muted-foreground" role="status">
-            {estado}
-          </span>
-        )}
-      </div>
     </section>
   );
 }

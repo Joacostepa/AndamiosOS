@@ -169,11 +169,29 @@ function visiblesPorDefecto(data: TableroPayload): number[] {
 }
 
 // Al soltar sobre una tarjeta hay colisión con la tarjeta y con la celda que tiene
-// debajo. La tarjeta gana: soltar sobre otra tarjeta reordena el día.
+// debajo. La tarjeta gana SÓLO para reordenar: soltar un bloque sobre otra tarjeta de un
+// día la apila en ese orden.
+//
+// LA CELDA GANA en dos casos, porque es la que sabe en qué cuadrilla y en qué DÍA está el
+// puntero:
+//  - La tarjeta de abajo abarca varios días. Antes la obra caía en el PRIMER día de esa
+//    tarjeta: en una fila tapada por una obra de lunes a viernes no había forma de soltar
+//    en el jueves.
+//  - Lo que se arrastra viene de la bandeja. Soltar una obra encima de una tarjeta no
+//    hacía nada —la rama de la bandeja sólo acepta celdas— y no avisaba.
 const detectarColision: CollisionDetection = (args) => {
   const dentro = pointerWithin(args);
   const sobreTarjeta = dentro.find((c) => String(c.id).startsWith("tarjeta:"));
-  if (sobreTarjeta) return [sobreTarjeta];
+  if (sobreTarjeta) {
+    const destino = sobreTarjeta.data?.droppableContainer?.data?.current as { bloque?: Bloque } | undefined;
+    const desdeBandeja = String(args.active.id).startsWith("ot:");
+    // Soltar un bloque sobre SÍ MISMO no hace nada, como siempre: con la celda ganando, un
+    // arrastre corto dentro de una obra de 22 días la movía al día que quedó bajo el puntero.
+    const sobreSiMismo = String(sobreTarjeta.id).slice(8) === String(args.active.id).slice(7);
+    const celda = dentro.find((c) => String(c.id).startsWith("celda:"));
+    if (celda && !sobreSiMismo && (desdeBandeja || destino?.bloque?.multiDia)) return [celda];
+    return [sobreTarjeta];
+  }
   return dentro.length > 0 ? dentro : rectIntersection(args);
 };
 

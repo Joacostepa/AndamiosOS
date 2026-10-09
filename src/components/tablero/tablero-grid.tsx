@@ -927,6 +927,8 @@ export function TableroGrid({
                         // tiene hilo: el globito ahí sería una promesa vacía.
                         comentarios={bloque.tarea ? null : (comentarios?.get(bloque.otId) ?? null)}
                         onCerrarJornada={(a) => onCerrarJornada(bloque, a)}
+                        // Pegada justo a la derecha de la columna fija de cuadrillas.
+                        pegarA={colocacion.span > 1 ? anchoRecurso + 6 : undefined}
                         onAbrir={() => onAbrirBloque(bloque)}
                         onFraccion={(f) => onFraccion(bloque, f)}
                         onEditarJornadas={() => onEditarJornadas(bloque)}

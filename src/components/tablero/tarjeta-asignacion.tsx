@@ -91,7 +91,15 @@ export function ContenidoTarjeta({
   comentarios = null,
   unaLinea = false,
   queEjecutar = false,
+  pegarA,
 }: {
+  /**
+   * Píxeles desde el borde izquierdo del área que scrollea donde se queda pegado el
+   * renglón de la dirección. Sólo en bloques de varios días: si el bloque arranca antes
+   * del primer día a la vista, sin esto la dirección quedaba DEBAJO de la columna fija de
+   * cuadrillas y la tarjeta mostraba sólo "5/22j" y medio renglón.
+   */
+  pegarA?: number;
   ot: OtTablero | undefined;
   bloque: Pick<Bloque, "estado" | "fraccion" | "fechas" | "multiDia" | "tarea" | "motivoFija">;
   /**
@@ -171,7 +179,10 @@ export function ContenidoTarjeta({
   return (
     <div
       className={cn(
-        "flex h-full min-w-0 flex-col justify-center gap-0.5 overflow-hidden rounded-[4px] px-2",
+        // overflow-clip y no -hidden cuando hay renglón pegado: `hidden` vuelve a la tarjeta
+        // un contenedor de scroll y el `sticky` de adentro se pegaría a ella y no a la grilla.
+        "flex h-full min-w-0 flex-col justify-center gap-0.5 rounded-[4px] px-2",
+        pegarA != null ? "overflow-clip" : "overflow-hidden",
         unaLinea ? "py-0" : "py-1",
         compacta && "shadow-md",
       )}
@@ -212,7 +223,10 @@ export function ContenidoTarjeta({
         borderLeft: `5px solid ${noEjecutada ? PELIGRO : tarea ? TAREA_FRANJA : sem.color}`,
       }}
     >
-      <div className="flex items-baseline gap-1">
+      <div
+        className={cn("flex items-baseline gap-1", pegarA != null && "sticky w-fit max-w-full")}
+        style={pegarA != null ? { left: pegarA } : undefined}
+      >
         {/* Las flechas de continuidad van EN LÍNEA y no absolutas: colgadas del borde
             se salían de la grilla y generaban scroll horizontal. */}
         {vieneDeAntes && (
@@ -414,6 +428,7 @@ export function TarjetaAsignacion({
   candado = false,
   queEjecutar = false,
   comentarios = null,
+  pegarA,
   onCerrarJornada,
   onAbrir,
   onFraccion,
@@ -449,6 +464,8 @@ export function TarjetaAsignacion({
   queEjecutar?: boolean;
   /** Resumen del hilo de la obra, para el globito. null = no tiene comentarios. */
   comentarios?: ResumenEnTarjeta | null;
+  /** Dónde se pega el renglón de la dirección al scrollear. Ver ContenidoTarjeta. */
+  pegarA?: number;
   onCerrarJornada: (accion: NonNullable<AccionCierre>) => void;
   onAbrir: () => void;
   onFraccion: (f: FraccionStr) => void;
@@ -560,6 +577,7 @@ export function TarjetaAsignacion({
         candado={candado}
         queEjecutar={queEjecutar}
         comentarios={comentarios}
+        pegarA={pegarA}
       />
 
       {/* El menú no aparece mientras se guarda: todas sus opciones escriben, y con el id
@@ -568,9 +586,11 @@ export function TarjetaAsignacion({
         className={cn(
           "absolute right-0.5 top-0.5 transition-opacity",
           guardando && "hidden",
+          // Aparece al pasar el mouse, con el foco en la tarjeta (teclado) y SIEMPRE en
+          // pantallas táctiles: ahí no hay hover y el menú no existía.
           menuAbierto
             ? "opacity-100"
-            : "pointer-events-none opacity-0 group-hover/tarjeta:pointer-events-auto group-hover/tarjeta:opacity-100",
+            : "pointer-events-none opacity-0 group-hover/tarjeta:pointer-events-auto group-hover/tarjeta:opacity-100 group-focus-within/tarjeta:pointer-events-auto group-focus-within/tarjeta:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100",
         )}
       >
         <DropdownMenu
@@ -586,7 +606,10 @@ export function TarjetaAsignacion({
                 type="button"
                 onClick={(e) => e.stopPropagation()}
                 onPointerDown={(e) => e.stopPropagation()}
-                className="rounded bg-white/70 p-0.5 text-foreground/70 hover:bg-white hover:text-foreground"
+                // Enter sobre el ⋮ subía hasta la tarjeta, que abría la ficha en vez del menú.
+                onKeyDown={(e) => e.stopPropagation()}
+                // bg-card y no bg-white: en oscuro quedaba texto claro sobre blanco (~1,2:1).
+                className="rounded bg-card/80 p-0.5 text-foreground/80 hover:bg-card hover:text-foreground"
                 aria-label="Opciones de la asignación"
               />
             }

@@ -87,6 +87,9 @@ ocupaban toda la ficha); si una miniatura no carga se ve el ícono y no el nombr
   El motivo de una obra fija bajó al cuerpo. Antes el encabezado fijo ocupaba media pantalla.
 - "1 de jornada" pasó a "jornada completa", y el foco inicial va al encabezado y no a la X
   (abría remarcada).
+- **Ojo con Base UI:** un `DropdownMenuLabel` (es un `Menu.GroupLabel`) suelto, fuera de un
+  `DropdownMenuGroup`, tira una excepción al abrir el menú y tumba la página entera ("This page
+  couldn't load"). Pasó con el selector de fracción y se corrigió el mismo día.
 
 **Quedó afuera:** las miniaturas de los documentos se piden directo a Odoo (`/web/content`) y
 sólo cargan si el navegador tiene sesión de Odoo abierta; para que se vean siempre habría que

@@ -29,7 +29,7 @@ import { lineaVentana, violaPiso, violaTecho } from "@/lib/tablero/ventana";
 import { fechasDeJornadas } from "@/lib/tablero/bloques";
 import { direccionDeObra, nombrePropio } from "@/lib/tablero/titulo";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup,
+  DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup,
   DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
@@ -543,14 +543,18 @@ function SelectorFraccion({
         <ChevronDown className="h-3.5 w-3.5" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-56">
-        <DropdownMenuLabel>Cuánto de la jornada ocupa</DropdownMenuLabel>
-        <DropdownMenuRadioGroup value={actual} onValueChange={(v) => onFraccion(v as FraccionStr)}>
-          {FRACCIONES.map((f) => (
-            <DropdownMenuRadioItem key={f.value} value={f.value}>
-              {f.detalle}
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
+        {/* El rótulo TIENE que ir dentro de un Group: Base UI tira una excepción si un
+            GroupLabel queda suelto, y rompía la página entera al abrir este menú. */}
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>Cuánto de la jornada ocupa</DropdownMenuLabel>
+          <DropdownMenuRadioGroup value={actual} onValueChange={(v) => onFraccion(v as FraccionStr)}>
+            {FRACCIONES.map((f) => (
+              <DropdownMenuRadioItem key={f.value} value={f.value}>
+                {f.detalle}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+        </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   );

@@ -1,4 +1,4 @@
-# Handoff — Tablero de planificación (actualizado 2026-10-02)
+# Handoff — Tablero de planificación (actualizado 2026-10-09)
 
 Para retomar en una sesión nueva: "Leé docs/handoff-tablero-planificacion.md y seguimos con las
 mejoras del tablero". Acá van el estado, lo pendiente y las mejoras pedidas, la más nueva arriba.
@@ -10,12 +10,97 @@ cosas, así que ante la duda manda el código y los comentarios largos que tiene
 
 ## Pendiente ahora
 
-1. ~~Crear `plan_suspensiones` y tapar el 29/09~~ **hecho el 02/10**: la migración
-   `20261002000001` quedó aplicada y el martes 29/09 tiene las dos marcas "Lluvia" (cuadrilla 1 =
-   Odoo 13, lote `7b7684e3…`; cuadrilla 2 = Odoo 14, lote `3b39b46c…`), sin autor porque se
-   cargaron a mano desde el historial.
-2. **Ver la tapa andando con un corrimiento real.** La del 29/09 JS ya la vio en el tablero
+1. **Probar la ficha nueva de la OT en el tablero publicado** (09/10, ver abajo). Se validó con
+   `tsc` y `eslint`, pero nadie la vio andando: el dev local redirige a `/login` y no había
+   sesión. Mirar sobre todo "Planificar…" desde la bandeja, que la ficha pase sola a modo grilla
+   al planificar, las flechas ‹ › y el panel a ancho completo en el celular.
+2. **Ver la tapa de suspensión andando con un corrimiento real.** La del 29/09 JS ya la vio
    (02/10) y pidió más color: se cambió a la opción B, que falta mirar en el tablero publicado.
+3. **Lo que dejó la auditoría del 08/10** (detalle abajo, en "Auditoría UX y técnica"). Lo más
+   urgente: el candado que falla abierto para Depósito y Campo, y la RLS abierta.
+
+---
+
+## 09/10 — la ficha de la OT, rediseñada
+
+**Pedido (JS, 08/10):** después de la auditoría, analizar sólo la ficha de una OT abierta desde
+la bandeja. Diagnóstico: desde la bandeja servía para leer y no para hacer nada (no tenía
+acciones), la duración quedaba debajo del pliegue, el título repetía tipo, orden, cliente y
+dirección en tres renglones, había dos historiales con dos formatos de fecha que parecían el
+estado actual, y los comentarios vacíos ocupaban ~220px. JS aprobó una maqueta interactiva
+(artifact "Ficha de OT — maqueta", https://claude.ai/artifact/RMh1bQmRzYMWMHZYcVMyXK) con un
+solo cambio: **observaciones, técnico y vendedor no van ocultos** (las observaciones las carga
+Comercial y suelen traer cosas críticas para Operaciones; técnico y vendedor son a quién
+recurrir).
+
+**Cómo quedó** (`panel-ot.tsx`, el orden está explicado en el encabezado del archivo):
+- **Encabezado fijo**: la dirección como título, "cliente · S0xxxx" con el chip de tipo
+  (`ChipTipoOt`, mismo color que la grilla), una **línea de estado** ("Sin planificar · faltan
+  5 de 5 jornadas" / "Tentativa · Cuadrilla 4 · mar 13 – sáb 17 oct") y las acciones.
+- **Una sola ficha para bandeja y grilla**: cambian sólo el estado y las acciones. Desde la
+  bandeja: **Planificar…** (cuadrilla, día de inicio, muestra qué días ocupa y si respeta la
+  ventana; pasa por `asignarObra`, la misma función que el drop), duración editable (va a
+  `fijarPlan`, igual que el menú de la bandeja), "Ver en el tablero" y Odoo. Desde la grilla:
+  Confirmar (lleno si es tentativa), Fijar, Jornadas, Quitar, Odoo y la fracción.
+- **Al planificar desde la ficha no se cierra**: el panel guarda `seguir: true` y adopta el
+  primer bloque de la obra cuando aparece, así pasa a modo grilla para confirmarla.
+- **Flechas ‹ › (y ← →)** para recorrer la bandeja en el orden en que se ve, con búsqueda y
+  filtros incluidos (`onOrden` de `PanelSinAsignar` → `ordenBandeja` en el board).
+- **"¿Se puede ir?"**: habilitación (la etapa primero; el semáforo y `habAlerta` de detalle, ya
+  no "próxima a vencer · ok"), ventana ("ya se puede" / "el plan la respeta"), comprometida,
+  duración (lo ejecutado sólo si hay algo), sugerida y cuadrilla prevista.
+- **Qué hay que ejecutar** con las **observaciones de comercial adentro** (3 renglones + "ver
+  más", prop `observaciones` de `DetalleTecnico`) y los documentos pegados.
+- **Contactos** en dos grupos: "En obra" (contacto de la OT con botón Llamar, gente de la obra,
+  Maps, referencia) y "En ABA" (técnico y vendedor).
+- **Comentarios** de un renglón que crece, con botón de enviar. Ya no publica dos veces con
+  dos Enter, respeta la composición de tildes y los botones de fijar/borrar se ven con el foco
+  y en pantallas táctiles.
+- **Historia**: `historia-ot.tsx` reemplaza a `historial-confirmacion.tsx` y `movimientos-ot.tsx`
+  (borrados). Junta las dos tablas en una línea de tiempo plegada, con el último evento a la
+  vista y un solo formato de fecha.
+- **Errores**: si falla la ficha, "Qué hay que ejecutar" muestra el error con Reintentar (antes
+  el esqueleto quedaba para siempre); si fallan los comentarios ya no dice "Sin comentarios";
+  si fallan los documentos, lo dice.
+- **Celular**: el panel ocupa el ancho completo (antes 75%).
+
+**Quedó afuera:** el panel no modal en escritorio (para arrastrar con la ficha abierta) y los
+teléfonos del técnico y el vendedor (no viajan en `DetalleOt`; habría que traerlos de Odoo).
+
+---
+
+## 08/10 — Auditoría UX y técnica (pendiente de resolver)
+
+Cuatro auditorías de solo lectura (general, grilla y accesibilidad, paneles y diálogos, capa de
+datos). Nada de esto está arreglado salvo lo de la ficha de arriba. **Confirmado leyendo el
+código:**
+- **Candado que falla abierto (crítico).** Depósito y Campo editan planificación pero no tienen
+  el módulo habilitaciones (`acceso.ts`, `CIRCUITO`), así que `/api/habilitaciones/candado` les
+  da 403. El board ignora el error de `useCandado` y confirma sin fricción. Además el PATCH de
+  asignaciones no valida el permiso del lado del servidor.
+- **RLS abierta**: `plan_suspensiones`, `tablero_tareas` (y según el reporte notas, jornadas,
+  cajón y comentarios) tienen `FOR ALL TO authenticated USING (true)`. Cualquier usuario logueado
+  puede escribir contra Supabase aunque tenga el módulo en solo lectura.
+- **Carga del tablero**: `if (isLoading || !data)` va antes que `if (error)` en `tablero-board`:
+  si falla la primera carga queda el esqueleto para siempre, y si falla una relectura la pantalla
+  de error tapa la grilla aunque haya datos.
+- **Soltar sobre una tarjeta**: una obra de la bandeja soltada encima de una tarjeta no hace
+  nada (la rama `ot:` sólo acepta `celda:`), y un bloque soltado sobre una tarjeta de varios
+  días cae en el primer día de esa tarjeta (`otro.fechas[0]`).
+- **Editor de jornadas**: compara contra las asignaciones vivas y no contra lo que sembró al
+  abrir, así que puede borrar una jornada que otro agregó mientras estaba abierto. También
+  cierra antes de guardar y escribe en llamadas sueltas.
+- **Correr el día** se rompe si se borra la fecha (`format` sobre fecha vacía).
+- **Parte de cierre**: reintentar después de un aviso reenvía todas las fotos.
+- **"Hoy" del servidor en UTC** (`jornadas/route.ts`): de 21 a 24 h cuenta jornadas de hoy como
+  pasadas y deja cargar el parte de mañana.
+
+**Reportado y sin verificar:** el tablero no usa `usePuedeEditar` (quien tiene solo lectura
+arrastra y rebota); "el corrimiento quedó a medias" sale también con 409/400/403; mover un bloque
+no es atómico y falta `maxDuration`; dos personas pueden planificar la misma obra a la vez;
+carrera en `x_fecha_programada`; correr el día no avisa feriados; ⌘Z deshace otra cosa que el
+toast; sin `KeyboardSensor` ni alternativa al arrastre; errores de Odoo en inglés; no hay tests
+de `src/lib/tablero` y `npm test` falla con Node 22.16 sin `--experimental-strip-types`.
 
 ---
 
@@ -70,6 +155,8 @@ el motivo.
 - **Grilla:** `tablero-grid.tsx` (encabezado de días con feriados, clima y notas; una fila por
   cuadrilla), `celda-dia.tsx` (fondo droppable, riel de ocupación, nota de la cuadrilla, tapa
   de suspendido), `tarjeta-asignacion.tsx` (la obra en el día).
+- **Ficha de la OT:** `panel-ot.tsx` (Sheet a la derecha, la misma desde la bandeja y desde la
+  grilla), con `detalle-tecnico.tsx`, `comentarios-ot.tsx` e `historia-ot.tsx`.
 - **Datos:** las asignaciones viven en **Odoo** (`x_aba_asignacion`, cuadrillas `x_aba_cuadrilla`)
   y se leen por `/api/planificacion/tablero` (`use-tablero.ts`, optimista). En **Supabase** viven
   lo que nadie lee desde el ERP: historial de movimientos (`plan_movimientos`, con `lote_id` y

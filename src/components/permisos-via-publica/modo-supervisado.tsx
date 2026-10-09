@@ -1,8 +1,9 @@
 "use client";
 
-import { ShieldCheck } from "lucide-react";
+import { ChevronRight, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
 import { useGuardarSupervision } from "@/hooks/use-permisos-via-publica";
 import type { Supervision } from "@/lib/permisos-via-publica/supervision";
 
@@ -36,23 +37,25 @@ const PASOS: { clave: keyof Supervision; titulo: string; manual: string; automat
   },
 ];
 
-export function ModoSupervisado({ supervision }: { supervision: Supervision }) {
+export function ModoSupervisado({ supervision, className }: { supervision: Supervision; className?: string }) {
   const guardar = useGuardarSupervision();
   const manuales = PASOS.filter((p) => !supervision[p.clave]).length;
 
   return (
-    <details className="rounded-md border" open={false}>
-      <summary className="flex cursor-pointer items-center gap-2 px-3 py-2 text-[13px]">
-        <ShieldCheck className="size-4 text-muted-foreground" />
+    <details className={cn("group rounded-md border bg-card", className)}>
+      <summary className="flex h-9 cursor-pointer list-none items-center gap-2 rounded-md px-3 text-[13px] hover:bg-muted/40 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring [&::-webkit-details-marker]:hidden">
+        <ShieldCheck aria-hidden className="size-4 text-muted-foreground" />
         <span className="font-semibold">Modo supervisado</span>
         <span className="text-muted-foreground">
-          · {manuales === 0 ? "todo automático" : `${manuales} de ${PASOS.length} pasos esperan a una persona`}
+          · {manuales === 0 ? "todo automático" : `${manuales} de ${PASOS.length} pasos manuales`}
         </span>
+        <ChevronRight aria-hidden className="ml-auto size-4 text-muted-foreground transition-transform group-open:rotate-90" />
       </summary>
       <ul className="border-t">
         {PASOS.map((p) => (
           <li key={p.clave} className="flex items-start gap-3 border-b px-3 py-2 text-[13px] last:border-b-0">
             <Switch
+              aria-label={`${p.titulo}: ${supervision[p.clave] ? "automático" : "manual"}`}
               checked={supervision[p.clave]}
               disabled={guardar.isPending}
               onCheckedChange={(valor) =>

@@ -5,6 +5,7 @@
 // agrupa y cómo se nombra lo que dice el Gobierno.
 
 import type { Supervision } from "./supervision";
+import type { ClaveEtapa, EstadoEtapa, Quien } from "./seguimiento";
 
 export type Solapa = "en_curso" | "finalizado";
 
@@ -380,8 +381,30 @@ export type VentaParaIniciar = {
 /** Un trámite abierto desde una venta que todavía no se presentó en TAD. */
 export type TramiteNuevo = Pick<
   Tramite,
-  "id" | "direccion" | "odoo_venta_nombre" | "cliente_nombre" | "vendedor_nombre" | "titular_nombre" | "titular_cargado_at" | "link_enviado_at" | "link_enviado_a" | "link_error" | "created_at" | "es_prueba"
-> & { pvp_documentos: Pick<Documento, "estado" | "origen" | "clave">[] };
+  "id" | "direccion" | "odoo_venta_nombre" | "cliente_nombre" | "vendedor_nombre" | "vendedor_email" | "titular_nombre" | "titular_cargado_at" | "link_enviado_at" | "link_enviado_a" | "link_error" | "created_at" | "es_prueba"
+> & {
+  /** En qué está: la etapa actual que calcula etapasDe (seguimiento.ts), la misma que muestra Seguimiento. */
+  etapa: EtapaActual;
+};
+
+export type EtapaActual = {
+  clave: ClaveEtapa;
+  nombre: string;
+  estado: EstadoEtapa;
+  detalle: string | null;
+  /** Desde cuándo está en esta etapa (null si todavía no empezó). */
+  desde: string | null;
+  motivo: string | null;
+  /** Quiénes la tienen que mover (póliza y encomienda corren en paralelo). */
+  quienes: Quien[];
+  /**
+   * La tiene que mover alguien de ABA: un botón del modo supervisado, el robot frenado, algo
+   * observado o el link al cliente que no salió.
+   */
+  esperaAba: boolean;
+  /** Ya tiene expediente en TAD por la misma venta (presentado a mano). */
+  expediente: string | null;
+};
 
 /**
  * La última encomienda del CPAU del trámite (tarea `cpau_encomienda` del robot).
@@ -603,6 +626,20 @@ export function coincideTexto(valores: (string | null | undefined)[], busqueda: 
 export function coincide(e: Expediente, busqueda: string): boolean {
   const q = normalizarEstado(busqueda);
   if (!q) return true;
-  return [e.expediente, e.titular, e.odoo_venta_nombre, e.direccion, e.barrio, e.cliente, e.motivo_subsanacion]
+  return [e.expediente, `EX-${e.numero}`, e.titular, e.odoo_venta_nombre, e.direccion, e.barrio, e.cliente, e.motivo_subsanacion]
     .some((v) => v && normalizarEstado(v).includes(q));
+}
+
+/** "Av. La Plata 2552, CABA." → "Av. La Plata 2552": la ciudad sobra, todo es CABA. */
+export function direccionCorta(direccion: string | null | undefined): string {
+  return String(direccion ?? "").trim().replace(/[.\s]+$/, "").replace(/[,\s]+(CABA|C\.A\.B\.A|Capital Federal)$/i, "").trim();
+}
+
+/**
+ * Si dos textos dicen lo mismo sin mirar mayúsculas, tildes, puntuación ni ", CABA". En Odoo
+ * muchas veces el cliente se llama como la obra ("Av. La Plata 2552, CABA.") y se leía dos veces.
+ */
+export function mismoTexto(a: string | null | undefined, b: string | null | undefined): boolean {
+  const n = (s: string | null | undefined) => normalizarEstado(direccionCorta(s)).replace(/[^A-Z0-9]/g, "");
+  return !!a && !!b && n(a) === n(b);
 }

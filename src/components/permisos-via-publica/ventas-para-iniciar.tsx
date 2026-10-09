@@ -1,88 +1,150 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Play } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { useIniciarTramite, useVentasParaIniciar } from "@/hooks/use-permisos-via-publica";
-import { coincideTexto } from "@/lib/permisos-via-publica/tipos";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { useIniciarTramite } from "@/hooks/use-permisos-via-publica";
+import { direccionCorta, mismoTexto, type VentaParaIniciar } from "@/lib/permisos-via-publica/tipos";
+import { Advertencia, Aviso, diaCompleto, haceDias, Seccion } from "./bandeja";
 
 // Ventas con "Lleva permiso = Sí" que todavía no arrancaron. "Iniciar trámite" abre el
-// trámite y le manda el link al cliente; de ahí en adelante el proceso sigue solo.
+// trámite y manda el link para cargar el dueño del lote; de ahí en adelante el proceso sigue solo.
 //
 // A MANO A PROPÓSITO (JS, 2026-09-15): el automatismo de Odoo existe pero está apagado hasta
 // ver andar los primeros trámites.
+//
+// La lista la lee la página (comparte la búsqueda y el conteo del encabezado) y llega filtrada.
 
-const dia = (iso: string | null) => (iso ? iso.split("-").reverse().join("/") : "—");
+const nombreCorto = (n: string | null | undefined) => (n ?? "").trim().split(/\s+/)[0] || null;
 
-export function VentasParaIniciar({ busqueda = "" }: { busqueda?: string }) {
-  const { data, isLoading, error } = useVentasParaIniciar();
+export function VentasParaIniciar({
+  ventas,
+  total,
+  isLoading,
+  error,
+  linkAlCliente,
+  busqueda,
+  ahora,
+}: {
+  ventas: VentaParaIniciar[];
+  total: number;
+  isLoading: boolean;
+  error: unknown;
+  /** Modo supervisado: false = el link va a la vendedora para que se lo pase al cliente. */
+  linkAlCliente: boolean;
+  busqueda: string;
+  /** Hora de la última lectura de la bandeja (para "vendida hace N días"). */
+  ahora: number;
+}) {
   const iniciar = useIniciarTramite();
   const router = useRouter();
+  const [aConfirmar, setAConfirmar] = useState<VentaParaIniciar | null>(null);
 
-  if (isLoading) return null;
-  if (error) {
-    return <p className="text-[12px] text-orange-400">No se pudieron leer las ventas para iniciar: {error instanceof Error ? error.message : ""}</p>;
+  if (isLoading) {
+    return (
+      <Seccion titulo="Ventas para iniciar" bajada="Leyendo las ventas de Odoo…">
+        <div className="space-y-2 p-3" aria-busy>
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+        </div>
+      </Seccion>
+    );
   }
-  if (!data || data.length === 0) return null;
-  // El buscador de la bandeja: dirección, número de orden, cliente, mail o vendedor.
-  const ventas = data.filter((v) => coincideTexto([v.direccion, v.venta, v.cliente, v.email, v.vendedor], busqueda));
-  if (busqueda && ventas.length === 0) return null;
+  if (error) {
+    return (
+      <Aviso tono="advertencia" titulo="No se pudieron leer las ventas para iniciar">
+        {error instanceof Error ? error.message : "Odoo no respondió."} El resto de la bandeja está al día.
+      </Aviso>
+    );
+  }
+  if (total === 0 || (busqueda && ventas.length === 0)) return null;
+
+  function lanzar(v: VentaParaIniciar) {
+    iniciar.mutate(v.ventaId, {
+      onSuccess: (r) => {
+        setAConfirmar(null);
+        if (r.resultado === "ya_abierto") toast.info("Esta venta ya tenía trámite");
+        else if (!r.linkEnviado) toast.warning("Trámite iniciado, pero el mail no salió: copiá el link de la ficha y mandalo por WhatsApp");
+        else if (linkAlCliente) toast.success(`Trámite iniciado: le mandamos el link a ${r.linkEnviadoA ?? v.email}`);
+        else toast.success(`Trámite iniciado: el link le llegó a ${r.linkEnviadoA ?? v.vendedor ?? "la vendedora"} para que se lo pase al cliente`);
+        router.push(`/permisos-via-publica/tramites/${r.tramiteId}`);
+      },
+      onError: (err) => toast.error(err instanceof Error ? err.message : "No se pudo iniciar"),
+    });
+  }
 
   return (
-    <section className="rounded-md border border-yellow-500/30">
-      <header className="border-b px-3 py-2">
-        <h2 className="text-[14px] font-semibold">
-          Ventas para iniciar <span className="text-muted-foreground">· {busqueda ? `${ventas.length} de ${data.length}` : data.length}</span>
-        </h2>
-        <p className="text-[12px] text-muted-foreground">
-          Confirmadas con permiso de implantación y sin trámite. Al iniciar sale el link para cargar el dueño del lote y su
-          documentación: al cliente o, en modo supervisado, al vendedor de la orden para que se lo pase.
-        </p>
-      </header>
-      <ul>
-        {ventas.map((v) => {
-          const pendiente = iniciar.isPending && iniciar.variables === v.ventaId;
-          return (
-            <li key={v.ventaId} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b px-3 py-2.5 text-[13px] last:border-b-0">
-              <div className="min-w-0 flex-1">
-                <p className="font-medium">
-                  {v.direccion ?? "Sin dirección de obra"} <span className="font-normal text-muted-foreground">· {v.venta} · {dia(v.fecha)}</span>
-                </p>
-                <p className="text-[12px] text-muted-foreground">
-                  {v.cliente ?? "Sin cliente"} · {v.email ?? "sin mail"}
-                  {v.vendedor && ` · vendedor: ${v.vendedor}`}
-                  {v.problemaMail && <span className="text-orange-400"> · {v.problemaMail} Se inicia igual y el link se manda por WhatsApp.</span>}
-                </p>
-                {/* "Se arma con el expediente" = la gestión ya se inició: puede estar en curso por
-                    fuera de la app y mandarle el link al cliente sería pedirle todo de nuevo. */}
-                {v.modalidad === "con_expediente" && (
-                  <p className="text-[12px] text-yellow-300">
-                    La modalidad dice que la gestión ya se inició: fijate que no esté en curso antes de iniciar.
+    <>
+      <Seccion
+        id="ventas-para-iniciar"
+        titulo="Ventas para iniciar"
+        cantidad={busqueda ? `${ventas.length} de ${total}` : total}
+        bajada={
+          linkAlCliente
+            ? "Confirmadas con permiso y sin trámite. Al iniciar, el cliente recibe el link para cargar el dueño del lote."
+            : "Confirmadas con permiso y sin trámite. Al iniciar, el link va a la vendedora para que se lo pase al cliente."
+        }
+      >
+        <ul>
+          {ventas.map((v) => {
+            const pendiente = iniciar.isPending && iniciar.variables === v.ventaId;
+            const yaIniciada = v.modalidad === "con_expediente";
+            const direccion = direccionCorta(v.direccion);
+            const vendedora = nombreCorto(v.vendedor);
+            const datos = [
+              !mismoTexto(v.cliente, v.direccion) ? v.cliente : null,
+              vendedora ? `vendedora: ${vendedora}` : null,
+            ].filter(Boolean);
+            return (
+              <li key={v.ventaId} className="flex flex-col gap-2 border-b px-3 py-2.5 last:border-b-0 sm:flex-row sm:items-center sm:gap-4">
+                <div className="min-w-0 flex-1 space-y-0.5">
+                  <p className="flex flex-wrap items-baseline gap-x-2">
+                    <span className="text-[13.5px] font-medium">{direccion || "Sin dirección de obra"}</span>
+                    <span className="font-mono text-[12px] text-muted-foreground">{v.venta}</span>
                   </p>
-                )}
-              </div>
-              <Button
-                size="sm"
-                disabled={iniciar.isPending}
-                onClick={() =>
-                  iniciar.mutate(v.ventaId, {
-                    onSuccess: (r) => {
-                      if (r.resultado === "ya_abierto") toast.info("Esta venta ya tenía trámite");
-                      else if (r.linkEnviado) toast.success(`Trámite iniciado: le mandamos el link a ${r.linkEnviadoA ?? v.email}`);
-                      else toast.warning("Trámite iniciado, pero el mail no salió: copiá el link y mandalo por WhatsApp");
-                      router.push(`/permisos-via-publica/tramites/${r.tramiteId}`);
-                    },
-                    onError: (err) => toast.error(err instanceof Error ? err.message : "No se pudo iniciar"),
-                  })
-                }
-              >
-                {pendiente ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />} Iniciar trámite
-              </Button>
-            </li>
-          );
-        })}
-      </ul>
-    </section>
+                  <p className="text-[12px] text-muted-foreground">
+                    {datos.join(" · ")}
+                    {datos.length > 0 && v.fecha && " · "}
+                    {v.fecha && <span title={`Confirmada el ${diaCompleto(v.fecha)}`}>vendida {haceDias(v.fecha, ahora)}</span>}
+                  </p>
+                  {/* Sólo importa el mail del cliente si el link va directo a él. */}
+                  {linkAlCliente && v.problemaMail && (
+                    <Advertencia>{v.problemaMail} Iniciá igual y mandale el link por WhatsApp.</Advertencia>
+                  )}
+                  {linkAlCliente && !v.problemaMail && v.email && <p className="text-[12px] text-muted-foreground">El link va a {v.email}</p>}
+                  {/* "Se arma con el expediente" = la gestión ya se inició: puede estar en curso por
+                      fuera de la app y mandarle el link al cliente sería pedirle todo de nuevo. */}
+                  {yaIniciada && <Advertencia>La modalidad dice que la gestión ya se inició: fijate que no esté en curso antes de iniciar.</Advertencia>}
+                </div>
+                <Button
+                  size="sm"
+                  variant={yaIniciada ? "outline" : "default"}
+                  disabled={iniciar.isPending}
+                  className="self-start sm:self-center"
+                  aria-label={`${yaIniciada ? "Revisar e iniciar" : "Iniciar trámite de"} ${direccion || v.venta}`}
+                  onClick={() => (yaIniciada ? setAConfirmar(v) : lanzar(v))}
+                >
+                  {pendiente ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
+                  {yaIniciada ? "Revisar e iniciar…" : "Iniciar trámite"}
+                </Button>
+              </li>
+            );
+          })}
+        </ul>
+      </Seccion>
+      <ConfirmDialog
+        open={!!aConfirmar}
+        onOpenChange={(abierto) => !abierto && setAConfirmar(null)}
+        title={`¿Iniciar el trámite de ${direccionCorta(aConfirmar?.direccion) || aConfirmar?.venta || ""}?`}
+        description="En Odoo la modalidad dice que la gestión ya se inició. Si el permiso está en curso por fuera de la app, iniciarlo acá le vuelve a pedir el dueño del lote y toda la documentación al cliente. Fijate en TAD o en Seguimiento antes."
+        confirmLabel="Iniciar igual"
+        loading={iniciar.isPending}
+        onConfirm={() => aConfirmar && lanzar(aConfirmar)}
+      />
+    </>
   );
 }

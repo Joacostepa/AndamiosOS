@@ -10,16 +10,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { useSeguimientoPermisos } from "@/hooks/use-permisos-via-publica";
 import { coincideTexto } from "@/lib/permisos-via-publica/tipos";
-import { ETAPAS, type ClaveEtapa, type Etapa, type FilaSeguimiento, type Quien, type Seguimiento } from "@/lib/permisos-via-publica/seguimiento";
+import { ChipQuien } from "@/components/permisos-via-publica/chip-quien";
+import { demoraEtapa, NOMBRE_ETAPA as NOMBRE, resumirEtapas, type Etapa, type FilaSeguimiento, type Quien, type Seguimiento } from "@/lib/permisos-via-publica/seguimiento";
 
 // Seguimiento de permisos: una fila por trámite con su línea de 7 etapas, quién lo tiene que
 // mover y cuándo debería salir. Agrupado como la bandeja: primero lo que pide algo de ABA.
 // Validado con JS como maqueta el 06/10.
 
 const DIA = 86_400_000;
-const NOMBRE = Object.fromEntries(ETAPAS.map((e) => [e.clave, e.nombre])) as Record<ClaveEtapa, string>;
-/** Días en una etapa a partir de los cuales se pinta amarillo y rojo. */
-const LIMITE: Partial<Record<ClaveEtapa, [number, number]>> = { legajo: [2, 5], poliza: [2, 4], encomienda: [1, 3], tad: [1, 2], gcba: [14, 21] };
 
 type Grupo = "mal" | "armando" | "gcba" | "listo";
 const GRUPOS: { clave: Grupo; titulo: string; bajada: string }[] = [
@@ -53,9 +51,7 @@ type Analizada = FilaSeguimiento & {
 };
 
 function analizar(f: FilaSeguimiento, tipico: Seguimiento["tipico"], ahora: number): Analizada {
-  const trabada = f.etapas.find((e) => e.estado === "trabado");
-  const enCurso = f.etapas.filter((e) => e.estado === "curso");
-  const actual = trabada ?? enCurso[0] ?? f.etapas.find((e) => e.estado === "pendiente");
+  const { trabada, enCurso, actual, quienes } = resumirEtapas(f.etapas);
   const listo = f.etapas.every((e) => e.estado === "hecho");
   const grupo: Grupo = listo ? "listo" : trabada ? "mal" : actual?.clave === "gcba" ? "gcba" : "armando";
   const presentado = f.etapas.find((e) => e.clave === "tad" && e.estado === "hecho" && e.fecha);
@@ -71,36 +67,7 @@ function analizar(f: FilaSeguimiento, tipico: Seguimiento["tipico"], ahora: numb
     sale = { texto: `Presentación aprox. ${dia(pres)}${tipico.gcba != null ? ` · permiso aprox. ${fecha(new Date(pres + tipico.gcba * DIA).toISOString())}` : ""}` };
   } else sale = { texto: "" };
 
-  // Póliza y encomienda corren en paralelo: pueden ser dos los que tienen que mover.
-  const quienes = [...new Set((trabada ? [trabada] : enCurso).map((e) => e.quien).filter((q): q is Quien => !!q))];
   return { ...f, grupo, actual, trabada, enCurso, quienes, sale };
-}
-
-function demora(e: Etapa | undefined, ahora: number): "" | "tarde" | "muy" {
-  const lim = e && LIMITE[e.clave];
-  if (!e?.desde || !lim) return "";
-  const d = (ahora - Date.parse(e.desde)) / DIA;
-  return d > lim[1] ? "muy" : d > lim[0] ? "tarde" : "";
-}
-
-const COLOR_QUIEN: Record<Quien, string> = {
-  Cliente: "text-amber-600 dark:text-amber-300",
-  Segucom: "text-blue-600 dark:text-blue-300",
-  CPAU: "text-blue-600 dark:text-blue-300",
-  Robot: "text-muted-foreground",
-  GCBA: "text-muted-foreground",
-  ABA: "text-red-600 dark:text-red-300 bg-red-500/10",
-};
-
-function ChipQuien({ quien, prefijo = "" }: { quien: Quien | "Listo"; prefijo?: string }) {
-  const color = quien === "Listo" ? "text-green-600 dark:text-green-300 bg-green-500/10" : COLOR_QUIEN[quien];
-  return (
-    <span className={cn("inline-flex items-center gap-1.5 rounded-full bg-muted px-2 py-0.5 text-[12px] font-semibold", color)}>
-      <span className="size-1.5 rounded-full bg-current" />
-      {prefijo}
-      {quien}
-    </span>
-  );
 }
 
 function Punto({ estado }: { estado: Etapa["estado"] }) {
@@ -152,7 +119,7 @@ function Linea({ etapas }: { etapas: Etapa[] }) {
 function Tramite({ f, abierto, alternar, ahora }: { f: Analizada; abierto: boolean; alternar: () => void; ahora: number }) {
   const listo = f.grupo === "listo";
   const detalle = f.trabada ? f.trabada.detalle : f.enCurso.map((e) => e.detalle).join(" · ") || (listo ? f.etapas.at(-1)?.detalle : "");
-  const lenta = demora(f.actual, ahora);
+  const lenta = demoraEtapa(f.actual, ahora);
   return (
     <article className={cn("rounded-md border bg-card", f.trabada && "border-l-[3px] border-l-red-500")}>
       <button

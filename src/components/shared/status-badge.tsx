@@ -4,12 +4,12 @@ import { cn } from "@/lib/utils";
 type StatusColor = "blue" | "green" | "yellow" | "orange" | "red" | "gray";
 
 const colorMap: Record<StatusColor, string> = {
-  blue: "bg-blue-500/15 text-blue-400 border-blue-500/25",
-  green: "bg-emerald-500/15 text-emerald-400 border-emerald-500/25",
-  yellow: "bg-yellow-500/15 text-yellow-400 border-yellow-500/25",
-  orange: "bg-orange-500/15 text-orange-400 border-orange-500/25",
-  red: "bg-red-500/15 text-red-400 border-red-500/25",
-  gray: "bg-zinc-500/15 text-zinc-400 border-zinc-500/25",
+  blue: "bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/25",
+  green: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/25",
+  yellow: "bg-yellow-500/15 text-amber-800 dark:text-yellow-400 border-yellow-500/25",
+  orange: "bg-orange-500/15 text-orange-800 dark:text-orange-400 border-orange-500/25",
+  red: "bg-red-500/15 text-red-700 dark:text-red-400 border-red-500/25",
+  gray: "bg-zinc-500/15 text-zinc-700 dark:text-zinc-400 border-zinc-500/25",
 };
 
 // Mapeo de estados a colores

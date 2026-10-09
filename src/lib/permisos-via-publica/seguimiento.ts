@@ -65,17 +65,22 @@ const NOMBRE_DOC: Record<string, string> = {
 };
 const nombreDoc = (clave: string) => NOMBRE_DOC[clave] ?? clave;
 
-type Doc = { tramite_id: string; clave: string; origen: string; estado: string; observacion: string | null; updated_at: string | null; revisado_at: string | null; pedido_at: string | null };
-type Tarea = { tramite_id: string; tipo: string; estado: string; error: string | null; created_at: string; terminada_at: string | null; resultado: Record<string, unknown> | null };
+export type Doc = { tramite_id: string; clave: string; origen: string; estado: string; observacion: string | null; updated_at: string | null; revisado_at: string | null; pedido_at: string | null };
+export type Tarea = { tramite_id: string; tipo: string; estado: string; error: string | null; created_at: string; terminada_at: string | null; resultado: Record<string, unknown> | null };
 type Cierre = { etapa?: string; plataforma?: { enviada_at?: string }; pago?: { operacion?: string; aprobado_at?: string } };
-type Exp = { id: string; numero: string; odoo_venta_id: number | null; tarea_pendiente: boolean; estado_tad: string | null; creado_tad: string | null; estado_desde: string | null; motivo_subsanacion: string | null; permiso_emitido_el: string | null; permiso_vence: string | null };
+export type Exp = { id: string; numero: string; odoo_venta_id: number | null; tarea_pendiente: boolean; estado_tad: string | null; creado_tad: string | null; estado_desde: string | null; motivo_subsanacion: string | null; permiso_emitido_el: string | null; permiso_vence: string | null };
 
 const ultima = (xs: (string | null | undefined)[]) => xs.filter((x): x is string => !!x).sort().at(-1) ?? null;
 const primeraLinea = (s: string | null | undefined) => (s ?? "").split("\n")[0].slice(0, 200);
 /** Las fechas de TAD vienen sin hora: se toman a las 12 de Buenos Aires. */
 const diaTad = (d: string) => `${d}T15:00:00Z`;
 
-function etapasDe(t: Record<string, unknown> & { id: string; created_at: string }, docs: Doc[], tareas: Tarea[], e: Exp | undefined): Etapa[] {
+/**
+ * Las 7 etapas de un trámite. La usan Seguimiento y la bandeja (para "en qué está y quién lo
+ * tiene"). Un paso que espera un botón del modo supervisado queda "pendiente" con quien = ABA:
+ * no está trabado, pero no avanza hasta que alguien de la oficina lo toque.
+ */
+export function etapasDe(t: Record<string, unknown> & { id: string; created_at: string }, docs: Doc[], tareas: Tarea[], e: Exp | undefined): Etapa[] {
   const etapas: Etapa[] = [{ clave: "abierto", estado: "hecho", fecha: t.created_at, detalle: t.link_enviado_at ? "Link del portal enviado" : "Link del portal sin enviar" }];
 
   // Legajo del cliente
@@ -94,9 +99,13 @@ function etapasDe(t: Record<string, unknown> & { id: string; created_at: string 
     etapas.push({ clave: "legajo", estado: "curso", desde: t.titular_cargado_at as string, quien: "Cliente", detalle: `${ok.length} de ${cli.length} ok · faltan ${lista.slice(0, 3).join(", ")}${lista.length > 3 ? "…" : ""}` });
   }
 
+  const legajoHecho = etapas[1].estado === "hecho";
+
   // Póliza
   const pol = docs.find((d) => d.clave === "poliza_rc");
-  if (!pol) etapas.push({ clave: "poliza", estado: "pendiente" });
+  // Modo supervisado: con el dueño cargado, el pedido a Segucom sale con el botón de la ficha.
+  if (!pol && t.titular_cargado_at) etapas.push({ clave: "poliza", estado: "pendiente", desde: t.titular_cargado_at as string, quien: "ABA", detalle: "Falta tocar «Pedir endoso a Segucom»" });
+  else if (!pol) etapas.push({ clave: "poliza", estado: "pendiente" });
   else if (pol.estado === "ok") etapas.push({ clave: "poliza", estado: "hecho", fecha: pol.revisado_at ?? pol.updated_at, detalle: "Endoso revisado ok" });
   else if (pol.estado === "observado") etapas.push({ clave: "poliza", estado: "trabado", desde: pol.updated_at, quien: "Segucom", detalle: "Póliza observada", motivo: pol.observacion });
   else etapas.push({ clave: "poliza", estado: "curso", desde: pol.pedido_at ?? pol.updated_at, quien: "Segucom", detalle: "Endoso pedido a Segucom" });
@@ -114,10 +123,19 @@ function etapasDe(t: Record<string, unknown> & { id: string; created_at: string 
     etapas.push({ clave: "encomienda", estado: "curso", desde: cierre.plataforma?.enviada_at ?? te?.created_at, quien: "CPAU", detalle: `Cargada, espera el visado y el certificado por mail${datosEnc ? ` · ${datosEnc}` : ""}` });
   } else if (te && ["pendiente", "tomada"].includes(te.estado)) {
     etapas.push({ clave: "encomienda", estado: "curso", desde: te.created_at, quien: "Robot", detalle: cierre?.etapa ? `Cierre en «${cierre.etapa}»` : "El robot la está armando" });
+  } else if (te?.estado === "esperando_aprobacion") {
+    etapas.push({ clave: "encomienda", estado: "pendiente", desde: te.terminada_at ?? te.created_at, quien: "ABA", detalle: "El robot frenó en Confirmar: falta «Finalizar en el CPAU»" });
   } else if (enc?.estado === "observado") {
     etapas.push({ clave: "encomienda", estado: "trabado", desde: enc.updated_at, quien: "ABA", detalle: "Observada", motivo: enc.observacion });
   } else if (enc && t.titular_cargado_at) {
     etapas.push({ clave: "encomienda", estado: "pendiente", desde: enc.updated_at, quien: "ABA", detalle: "Falta tocar «Armar la encomienda»" });
+  } else if (legajoHecho && !te && !enc) {
+    // Legajo completo: se generan solos el informe técnico y el croquis y, en modo supervisado,
+    // la encomienda espera el botón. Sin informe, la generación falló y hay que hacerla a mano.
+    const informe = docs.find((d) => d.clave === "informe_tecnico" && d.estado === "ok");
+    etapas.push(informe
+      ? { clave: "encomienda", estado: "pendiente", desde: informe.updated_at, quien: "ABA", detalle: "Falta tocar «Armar la encomienda»" }
+      : { clave: "encomienda", estado: "pendiente", desde: etapas[1].fecha, quien: "ABA", detalle: "Faltan el informe técnico y el croquis: generalos desde la ficha" });
   } else {
     etapas.push({ clave: "encomienda", estado: "pendiente" });
   }
@@ -128,7 +146,10 @@ function etapasDe(t: Record<string, unknown> & { id: string; created_at: string 
   else if (t.estado === "presentado") etapas.push({ clave: "tad", estado: "hecho", fecha: tp?.terminada_at ?? null, detalle: "Presentado, número de expediente en espera" });
   else if (tp?.estado === "error") etapas.push({ clave: "tad", estado: "trabado", desde: tp.terminada_at, quien: "ABA", detalle: "La presentación se frenó", motivo: primeraLinea(tp.error) });
   else if (tp && ["pendiente", "tomada"].includes(tp.estado)) etapas.push({ clave: "tad", estado: "curso", desde: tp.created_at, quien: "Robot", detalle: "Programada (se presenta de 19 a 7)" });
-  else etapas.push({ clave: "tad", estado: "pendiente" });
+  else if (etapas.slice(1, 4).every((x) => x.estado === "hecho") && !tp) {
+    // Modo supervisado: con todo listo, se presenta con el botón de la ficha.
+    etapas.push({ clave: "tad", estado: "pendiente", desde: ultima(etapas.slice(1, 4).map((x) => x.fecha)), quien: "ABA", detalle: "Listo para presentar: falta tocar «Presentar ahora»" });
+  } else etapas.push({ clave: "tad", estado: "pendiente" });
 
   // GCBA y permiso
   if (!e) {
@@ -157,6 +178,34 @@ function etapasDe(t: Record<string, unknown> & { id: string; created_at: string 
     }
   }
   return etapas;
+}
+
+/** Días en una etapa a partir de los cuales se pinta ámbar y rojo. */
+export const LIMITE: Partial<Record<ClaveEtapa, [number, number]>> = { legajo: [2, 5], poliza: [2, 4], encomienda: [1, 3], tad: [1, 2], gcba: [14, 21] };
+
+export const NOMBRE_ETAPA = Object.fromEntries(ETAPAS.map((e) => [e.clave, e.nombre])) as Record<ClaveEtapa, string>;
+
+/**
+ * En qué está un trámite: la etapa trabada si hay una; si no, el botón que espera a ABA; si no,
+ * lo que está en curso; si no, lo próximo. Y quiénes lo tienen que mover (póliza y encomienda
+ * corren en paralelo: pueden ser dos).
+ */
+export function resumirEtapas(etapas: Etapa[]) {
+  const trabada = etapas.find((e) => e.estado === "trabado");
+  const enCurso = etapas.filter((e) => e.estado === "curso");
+  const porTocar = etapas.find((e) => e.estado === "pendiente" && e.quien === "ABA");
+  const actual = trabada ?? porTocar ?? enCurso[0] ?? etapas.find((e) => e.estado === "pendiente");
+  const fuente = trabada ? [trabada] : porTocar ? [porTocar, ...enCurso] : enCurso;
+  const quienes = [...new Set(fuente.map((e) => e.quien).filter((q): q is Quien => !!q))];
+  return { trabada, enCurso, porTocar, actual, quienes };
+}
+
+/** "" a tiempo, "tarde" pasado el primer umbral, "muy" pasado el segundo. */
+export function demoraEtapa(e: Pick<Etapa, "clave" | "desde"> | undefined, ahora: number): "" | "tarde" | "muy" {
+  const lim = e && LIMITE[e.clave];
+  if (!e?.desde || !lim) return "";
+  const d = (ahora - Date.parse(e.desde)) / 86_400_000;
+  return d > lim[1] ? "muy" : d > lim[0] ? "tarde" : "";
 }
 
 function mediana(xs: number[]): number | null {

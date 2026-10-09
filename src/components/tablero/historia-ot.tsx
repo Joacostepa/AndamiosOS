@@ -65,7 +65,7 @@ function Linea({ e }: { e: Evento }) {
   return (
     <li className="flex gap-2">
       <Icono e={e} />
-      <div className="min-w-0 text-[13px] leading-snug">
+      <div className="min-w-0 text-sm leading-snug">
         <p><Texto e={e} /></p>
         <p className="text-xs text-muted-foreground">
           {autor ?? "—"} · {cuando(e.fecha)}
@@ -93,7 +93,7 @@ export function HistoriaOt({ otId }: { otId: number }) {
   const mostrados = abierta ? eventos : eventos.slice(0, 1);
 
   return (
-    <section className="space-y-2.5 border-t pt-3.5">
+    <section className="space-y-2.5">
       <button
         type="button"
         onClick={() => setAbierta((v) => !v)}
@@ -104,7 +104,7 @@ export function HistoriaOt({ otId }: { otId: number }) {
           className="h-3.5 w-3.5 text-muted-foreground transition-transform"
           style={{ transform: abierta ? "rotate(90deg)" : undefined }}
         />
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Historia</span>
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Historia</span>
         {eventos.length > 1 && (
           <span className="text-xs text-muted-foreground">
             {abierta ? "ocultar" : `${eventos.length} eventos · ver todos`}

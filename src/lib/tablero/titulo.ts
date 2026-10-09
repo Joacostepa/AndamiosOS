@@ -65,3 +65,47 @@ export function normalizar(texto: string): string {
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
 }
+
+// Siglas que quedan en mayúsculas al pasar un nombre a formato normal.
+const SIGLAS = new Set(["SA", "SRL", "SAS", "SAU", "SH", "SC", "UTE", "CABA", "AMBA", "YPF", "AFIP", "AYSA", "ABA"]);
+const MINUSCULAS = new Set(["de", "del", "la", "las", "los", "y", "e", "en"]);
+
+/**
+ * Un nombre de Odoo escrito como lo escribe una persona: "JUAN CARLOS RODRIGUEZ" → "Juan
+ * Carlos Rodriguez", "RIVEROS, Jorge" → "Jorge Riveros", "CUADRILLA 3" → "Cuadrilla 3".
+ *
+ * Es SÓLO PARA MOSTRAR: en Odoo no se toca nada. Existe porque los nombres llegan como cada
+ * uno los cargó, y en una misma ficha convivían mayúsculas sostenidas con texto normal, que
+ * se leen como gritos o como títulos.
+ *
+ * NO CAMBIA LO QUE YA ESTÁ BIEN ESCRITO: si el texto no viene mayormente en mayúsculas, se
+ * devuelve igual (salvo el "APELLIDO, Nombre", que se da vuelta). Las siglas conocidas y las
+ * palabras con puntos ("S.A.", "C.A.B.A.") quedan como están.
+ */
+export function nombrePropio(texto: string | null | undefined): string {
+  const t = (texto ?? "").trim();
+  if (!t) return "";
+  // "RIVEROS, Jorge": apellido EN MAYÚSCULAS, coma y nombre, sin números ni puntos. Así una
+  // dirección con coma ("Av. Antártida Argentina, esq. …") no se da vuelta.
+  const partes = t.split(",");
+  const apellidoNombre =
+    partes.length === 2 &&
+    /^[A-ZÁÉÍÓÚÜÑ' -]+$/.test(partes[0].trim()) &&
+    /^[^\d.]+$/.test(partes[1]) &&
+    partes[1].trim().split(/\s+/).length <= 3;
+  const base = apellidoNombre ? `${partes[1].trim()} ${partes[0].trim()}` : t;
+  const letras = base.replace(/[^A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/g, "");
+  const mayus = base.replace(/[^A-ZÁÉÍÓÚÜÑ]/g, "").length;
+  if (letras.length === 0 || mayus / letras.length < 0.6) return base;
+  return base
+    .split(/(\s+)/)
+    .map((palabra, i) => {
+      if (/^\s+$/.test(palabra) || palabra.includes(".")) return palabra;
+      const limpia = palabra.replace(/[^A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/g, "");
+      if (SIGLAS.has(limpia.toUpperCase())) return palabra.toUpperCase();
+      const baja = palabra.toLocaleLowerCase("es");
+      if (i > 0 && MINUSCULAS.has(baja)) return baja;
+      return baja.replace(/^(\P{L}*)(\p{L})/u, (_, pre: string, l: string) => pre + l.toLocaleUpperCase("es"));
+    })
+    .join("");
+}

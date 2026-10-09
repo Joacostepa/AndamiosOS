@@ -71,6 +71,23 @@ usar · ver cálculo"; "usar" la fija desde la bandeja), y se ocultó el "Sin pa
 Los documentos muestran una fila de 3 y "ver los N documentos" (hay obras con 97 adjuntos que
 ocupaban toda la ficha); si una miniatura no carga se ve el ícono y no el nombre del archivo.
 
+**Limpieza visual (JS, 09/10, "por qué hay tantas tipografías y colores"):**
+- **Tres tamaños y dos pesos**: 17px el título (único en semibold), 14px el texto, 12px lo
+  secundario y los títulos de sección. Había siete tamaños.
+- **Bloques separados con una línea** (`divide-y` en el cuerpo, mismo aire en cada uno).
+- **Nombres de Odoo en formato normal, sólo para mostrar**: `nombrePropio()` en `titulo.ts`
+  ("JUAN CARLOS RODRIGUEZ" → "Juan Carlos Rodriguez", "RIVEROS, Jorge" → "Jorge Riveros",
+  "CUADRILLA 3" → "Cuadrilla 3"; deja las siglas como SA/SRL y lo que ya viene bien escrito).
+  Se aplica a cliente, cuadrilla, técnico, vendedor y contactos. En Odoo no se toca nada.
+- **Color sólo con significado**: rojo = problema (ventana rota), verde = confirmada. La nota
+  de duración fijada por Operaciones pasó a gris; el marrón queda para "sin estimar".
+- **Encabezado compacto**: una fila (Cerrar jornada · Confirmar · Fijar · Jornadas · ⋯). Quitar
+  y Odoo van al ⋯ (también desde la bandeja, para que Odoo esté siempre en el mismo lugar). La
+  fracción se cambia desde la línea de estado ("Cuadrilla 3 · mié 14 oct · jornada completa ▾").
+  El motivo de una obra fija bajó al cuerpo. Antes el encabezado fijo ocupaba media pantalla.
+- "1 de jornada" pasó a "jornada completa", y el foco inicial va al encabezado y no a la X
+  (abría remarcada).
+
 **Quedó afuera:** las miniaturas de los documentos se piden directo a Odoo (`/web/content`) y
 sólo cargan si el navegador tiene sesión de Odoo abierta; para que se vean siempre habría que
 servirlas a través de la app. También el panel no modal en escritorio (para arrastrar con la

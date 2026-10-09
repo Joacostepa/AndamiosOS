@@ -90,7 +90,7 @@ function Comentario({
         </div>
       </div>
 
-      <p className="mt-0.5 text-[11px] text-muted-foreground">
+      <p className="mt-0.5 text-xs text-muted-foreground">
         {c.autorNombre ?? "—"} · {cuando(c.createdAt)}
       </p>
     </div>
@@ -130,7 +130,7 @@ export function ComentariosOt({ otId }: { otId: number }) {
   return (
     <section className="space-y-2">
       <div className="flex items-center justify-between">
-        <h3 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Comentarios{lista.length > 0 ? ` (${lista.length})` : ""}
         </h3>
         {ocultos > 0 && (

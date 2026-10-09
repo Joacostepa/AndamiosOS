@@ -4,11 +4,11 @@ import { useQuery } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import {
-  AlertTriangle, CalendarPlus, Check, ChevronLeft, ChevronRight, CircleCheck, CircleDashed,
-  ClipboardCheck, Construction, ExternalLink, Fence, FileText, HardHat, LocateFixed, MapPin,
-  Phone, Pin, PinOff, Plus, CalendarRange, Trash2, X,
+  AlertTriangle, CalendarPlus, Check, ChevronDown, ChevronLeft, ChevronRight, CircleCheck,
+  CircleDashed, ClipboardCheck, Construction, ExternalLink, Fence, FileText, HardHat, LocateFixed,
+  MapPin, MoreHorizontal, Phone, Pin, PinOff, Plus, CalendarRange, Trash2, X,
 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useDetalleOt } from "@/hooks/use-detalle-ot";
 import { useAgregarContactoObra, useBorrarContactoObra } from "@/hooks/use-contactos-obra";
 import { Input } from "@/components/ui/input";
@@ -27,7 +27,11 @@ import { FRACCIONES, fraccionLabel, type FraccionStr } from "@/lib/tablero/fracc
 import { accionDeCierre, jornadasCerradas, jornadasLiberables, type AccionCierre } from "@/lib/tablero/cierre";
 import { lineaVentana, violaPiso, violaTecho } from "@/lib/tablero/ventana";
 import { fechasDeJornadas } from "@/lib/tablero/bloques";
-import { direccionDeObra } from "@/lib/tablero/titulo";
+import { direccionDeObra, nombrePropio } from "@/lib/tablero/titulo";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup,
+  DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import type { Bloque } from "@/lib/tablero/bloques";
 import type { ContactoObra, DocumentoOt, OtTablero, TrabajoOt } from "@/lib/tablero/tipos";
@@ -49,6 +53,12 @@ import type { ContactoObra, DocumentoOt, OtTablero, TrabajoOt } from "@/lib/tabl
 //      el decimocuarto bloque, la duración debajo del pliegue.
 //   5. Contactos: en obra y en ABA (técnico y vendedor), para saber a quién recurrir.
 //   6. Historia, plegada con el último evento a la vista.
+//
+// TRES TAMAÑOS Y DOS PESOS: 17px el título (único en semibold), 14px el texto, 12px lo
+// secundario y los títulos de sección. Los bloques se separan con una línea. El color va
+// sólo donde significa algo: rojo es un problema, verde es confirmada; todo lo demás es gris.
+// Llegó a haber siete tamaños, mayúsculas de Odoo mezcladas con texto normal y un "Quitar"
+// en el mismo rojo que una ventana rota.
 //
 // UNA SOLA FICHA PARA LA BANDEJA Y LA GRILLA. Cambian la línea de estado y las acciones,
 // porque una obra sin jornadas no se confirma ni se fija y una con jornadas no se
@@ -85,7 +95,7 @@ function QueNecesita({ trabajo }: { trabajo: TrabajoOt | undefined }) {
       className="space-y-2 rounded-md border-l-4 bg-muted/40 px-3 py-2.5"
       style={{ borderLeftColor: ALERTA }}
     >
-      <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">
+      <p className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-muted-foreground">
         <Construction className="h-3.5 w-3.5" />
         Qué necesita esta jornada
       </p>
@@ -119,7 +129,7 @@ function QueNecesita({ trabajo }: { trabajo: TrabajoOt | undefined }) {
 function Seccion({ titulo, children }: { titulo: string; children: React.ReactNode }) {
   return (
     <section className="space-y-2.5">
-      <h3 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{titulo}</h3>
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{titulo}</h3>
       {children}
     </section>
   );
@@ -129,7 +139,7 @@ function Seccion({ titulo, children }: { titulo: string; children: React.ReactNo
 function Dato({ etiqueta, children }: { etiqueta: string; children: React.ReactNode }) {
   return (
     <>
-      <dt className="text-[13px] text-muted-foreground">{etiqueta}</dt>
+      <dt className="text-sm text-muted-foreground">{etiqueta}</dt>
       <dd className="min-w-0 text-sm">{children}</dd>
     </>
   );
@@ -199,7 +209,7 @@ function ContactosDeObra({
         <div key={c.id} className="flex items-center gap-2">
           <div className="min-w-0 flex-1 text-sm">
             <p>
-              <span className="font-medium">{c.nombre}</span>
+              <span className="font-medium">{nombrePropio(c.nombre)}</span>
               {c.rol && <span className="text-muted-foreground"> · {c.rol}</span>}
             </p>
             {c.email && (
@@ -226,7 +236,7 @@ function ContactosDeObra({
         <button
           type="button"
           onClick={() => setAbierto(true)}
-          className="flex items-center gap-1 text-[13px] text-muted-foreground hover:text-foreground"
+          className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
         >
           <Plus className="h-3.5 w-3.5" />
           Agregar contacto
@@ -246,7 +256,7 @@ function ContactosDeObra({
           <Input value={rol} onChange={(e) => setRol(e.target.value)} placeholder="Rol — encargado, arquitecta…" aria-label="Rol" className="h-8 text-sm" />
           <Input value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder="Teléfono" aria-label="Teléfono" className="h-8 text-sm" inputMode="tel" />
           <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email (opcional)" aria-label="Email" className="h-8 text-sm" inputMode="email" />
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             Queda guardado en la obra: las próximas órdenes de trabajo ya lo traen.
           </p>
           <div className="flex items-center gap-2">
@@ -290,7 +300,7 @@ function LoQueQuedoArmado({ texto, previsto }: { texto?: string | null; previsto
   const sinCambios = texto.trim() === (previsto ?? "").trim();
   return (
     <div className="space-y-1.5 rounded-md border-l-4 bg-muted/40 px-3 py-2.5" style={{ borderLeftColor: OK }}>
-      <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">
+      <p className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-muted-foreground">
         <CircleCheck className="h-3.5 w-3.5" />
         Lo que quedó armado
       </p>
@@ -299,7 +309,7 @@ function LoQueQuedoArmado({ texto, previsto }: { texto?: string | null; previsto
       ) : (
         <p className="whitespace-pre-wrap text-sm leading-snug">{texto}</p>
       )}
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-xs text-muted-foreground">
         Confirmado en obra al cerrar la jornada. Si esta obra deja estructura en pie, es lo
         que va a ir a bajar el desarme.
       </p>
@@ -341,11 +351,11 @@ function Documentos({ otId, cantidad }: { otId: number; cantidad: number }) {
     staleTime: 5 * 60 * 1000,
   });
 
-  if (cantidad === 0) return <p className="text-[13px] text-muted-foreground">Sin documentación adjunta.</p>;
+  if (cantidad === 0) return <p className="text-sm text-muted-foreground">Sin documentación adjunta.</p>;
   if (isLoading) return <Skeleton className="h-16 w-full" />;
   if (isError) {
     return (
-      <p className="text-[13px] text-muted-foreground">
+      <p className="text-sm text-muted-foreground">
         No se pudieron leer los {cantidad} documentos.{" "}
         <button type="button" className="underline hover:text-foreground" onClick={() => refetch()}>
           Reintentar
@@ -358,7 +368,7 @@ function Documentos({ otId, cantidad }: { otId: number; cantidad: number }) {
   const mostrados = todos ? docs : docs.slice(0, DOCS_VISIBLES);
   return (
     <div className="space-y-1.5">
-      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Documentos ({docs.length || cantidad})</p>
+      <p className="text-xs uppercase tracking-wide text-muted-foreground">Documentos ({docs.length || cantidad})</p>
       <div className="grid grid-cols-3 gap-1.5">
         {mostrados.map((d) => (
           <a
@@ -370,7 +380,7 @@ function Documentos({ otId, cantidad }: { otId: number; cantidad: number }) {
             title={d.nombre}
           >
             <Miniatura doc={d} />
-            <p className="truncate px-1.5 py-1 text-[11px] text-muted-foreground">
+            <p className="truncate px-1.5 py-1 text-xs text-muted-foreground">
               {/* Distingue lo que alguien subió PARA la cuadrilla de los papeles de la
                   venta, que van en el mismo grid y son mayoría. */}
               {d.instruccion && <span className="font-semibold text-foreground">Instrucción · </span>}
@@ -392,18 +402,31 @@ function Documentos({ otId, cantidad }: { otId: number; cantidad: number }) {
   );
 }
 
-/** "Abrir en Odoo", en el mismo lugar desde la bandeja y desde la grilla. */
-function LinkOdoo({ url }: { url: string }) {
+/** "jornada completa", "½ de jornada". "1 de jornada" no se lee. */
+function textoFraccion(n: number): string {
+  return n >= 1 ? "jornada completa" : `${fraccionLabel(n)} de jornada`;
+}
+
+/**
+ * Lo que va en el ⋯: lo que se usa menos o lo que conviene no tener a un clic sin querer.
+ * El mismo lugar desde la bandeja y desde la grilla, así Odoo siempre está en el mismo sitio.
+ */
+function MenuMas({ urlOdoo, children }: { urlOdoo: string; children?: React.ReactNode }) {
   return (
-    <Button
-      variant="ghost"
-      size="sm"
-      className="h-10 text-muted-foreground md:h-8"
-      render={<a href={url} target="_blank" rel="noopener noreferrer" />}
-    >
-      Odoo
-      <ExternalLink className="h-3.5 w-3.5" />
-    </Button>
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={<Button variant="outline" size="icon-sm" className="size-10 md:size-8" aria-label="Más acciones" />}
+      >
+        <MoreHorizontal />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-52">
+        {children}
+        <DropdownMenuItem render={<a href={urlOdoo} target="_blank" rel="noopener noreferrer" />}>
+          <ExternalLink />
+          Abrir en Odoo
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -411,22 +434,17 @@ function LinkOdoo({ url }: { url: string }) {
  * Lo que se puede hacer con esta jornada: lo mismo que el menú ⋮ de la tarjeta.
  *
  * EXISTE POR EL CELULAR. El ⋮ aparece al pasar el mouse, y en una pantalla táctil no hay
- * mouse: tocar la tarjeta abre este panel, y hasta acá el panel sólo mostraba datos. O sea
- * que desde un teléfono no había forma de confirmar, fijar, cambiar la fracción ni cerrar la
- * jornada — y cerrar la jornada es justo lo que alguien hace desde la obra.
+ * mouse: tocar la tarjeta abre este panel, que es la única puerta para confirmar, fijar o
+ * cerrar la jornada desde la obra.
  *
- * SE VE TAMBIÉN EN LA COMPUTADORA, a propósito: una tablet es ancha y táctil, y esconderlo
- * por ancho de pantalla la dejaría afuera. En la computadora es un segundo camino al mismo
- * gesto, y no molesta.
+ * UNA SOLA FILA. Con Quitar, Odoo y las ocho fracciones a la vista el encabezado fijo
+ * llegaba a media pantalla y tapaba "Qué hay que ejecutar". Quitar y Odoo van al ⋯ (Quitar
+ * además deja de estar a un toque sin querer) y la fracción se cambia desde la línea de
+ * estado, donde se lee.
  *
  * Los botones miden 40px de alto en pantalla chica, que es lo mínimo que se toca con el
- * dedo sin errarle. En la computadora vuelven al tamaño de siempre.
- *
- * CONFIRMAR VA LLENO mientras la jornada es tentativa: es el paso siguiente natural de una
- * obra recién puesta. Confirmada, pasa a ser uno más ("A tentativa").
- *
- * El motivo de una obra fija va escrito acá, entero: en la tarjeta vive en un tooltip, y en
- * un celular un tooltip no se puede leer.
+ * dedo sin errarle. CONFIRMAR VA LLENO mientras la jornada es tentativa: es el paso
+ * siguiente natural de una obra recién puesta.
  */
 function AccionesJornada({
   bloque,
@@ -435,7 +453,6 @@ function AccionesJornada({
   onEstado,
   onFijar,
   onSoltar,
-  onFraccion,
   onEditarJornadas,
   onCerrarJornada,
   onQuitar,
@@ -446,7 +463,6 @@ function AccionesJornada({
   onEstado: (e: "tentativa" | "confirmada") => void;
   onFijar: () => void;
   onSoltar: () => void;
-  onFraccion: (f: FraccionStr) => void;
   onEditarJornadas: () => void;
   onCerrarJornada: (accion: NonNullable<AccionCierre>) => void;
   onQuitar: () => void;
@@ -460,95 +476,83 @@ function AccionesJornada({
   const confirmada = bloque.estado === "confirmada";
 
   return (
-    <div className="space-y-2">
-      {bloque.motivoFija && (
-        <div className="flex gap-2 rounded-md border px-3 py-2 text-sm">
-          <Pin className="mt-0.5 h-4 w-4 shrink-0" />
-          <p className="leading-snug">
-            <span className="font-medium">No se mueve de este día.</span> {bloque.motivoFija}
-          </p>
-        </div>
+    <div className="flex flex-wrap items-center gap-1.5">
+      {accion && (
+        <Button variant="outline" size="sm" className={boton} disabled={guardando} onClick={() => onCerrarJornada(accion)}>
+          <ClipboardCheck />
+          {accion.tipo === "cerrar" ? "Cerrar jornada" : "Ver parte"}
+        </Button>
       )}
-
-      <div className="flex flex-wrap items-center gap-1.5">
-        {accion && (
-          <Button
-            variant="outline"
-            size="sm"
-            className={boton}
-            disabled={guardando}
-            onClick={() => onCerrarJornada(accion)}
-          >
-            <ClipboardCheck className="h-4 w-4" />
-            {accion.tipo === "cerrar" ? "Cerrar jornada" : "Ver parte"}
-          </Button>
-        )}
-        <Button
-          variant={confirmada ? "outline" : "default"}
-          size="sm"
-          className={boton}
-          disabled={guardando}
-          title={guardando ? "Guardando la jornada recién puesta…" : undefined}
-          onClick={() => onEstado(confirmada ? "tentativa" : "confirmada")}
-        >
-          {confirmada ? <CircleDashed className="h-4 w-4" /> : <Check className="h-4 w-4" />}
-          {confirmada ? "A tentativa" : "Confirmar"}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          className={boton}
-          disabled={guardando}
-          onClick={bloque.motivoFija ? onSoltar : onFijar}
-        >
-          {bloque.motivoFija ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
-          {bloque.motivoFija ? "Soltar" : "Fijar"}
-        </Button>
-        <Button variant="outline" size="sm" className={boton} disabled={guardando} onClick={onEditarJornadas}>
-          <CalendarRange className="h-4 w-4" />
-          Jornadas
-        </Button>
+      <Button
+        variant={confirmada ? "outline" : "default"}
+        size="sm"
+        className={boton}
+        disabled={guardando}
+        title={guardando ? "Guardando la jornada recién puesta…" : undefined}
+        onClick={() => onEstado(confirmada ? "tentativa" : "confirmada")}
+      >
+        {confirmada ? <CircleDashed /> : <Check />}
+        {confirmada ? "A tentativa" : "Confirmar"}
+      </Button>
+      <Button variant="outline" size="sm" className={boton} disabled={guardando} onClick={bloque.motivoFija ? onSoltar : onFijar}>
+        {bloque.motivoFija ? <PinOff /> : <Pin />}
+        {bloque.motivoFija ? "Soltar" : "Fijar"}
+      </Button>
+      <Button variant="outline" size="sm" className={boton} disabled={guardando} onClick={onEditarJornadas}>
+        <CalendarRange />
+        Jornadas
+      </Button>
+      <MenuMas urlOdoo={urlOdoo}>
         {liberables > 0 && (
-          <Button
-            variant="outline"
-            size="sm"
-            className={boton}
-            style={{ color: PELIGRO_SOLIDO }}
-            disabled={guardando}
-            onClick={onQuitar}
-          >
-            <Trash2 className="h-4 w-4" />
-            {cerradas > 0 ? `Liberar ${liberables}` : "Quitar"}
-          </Button>
+          <>
+            <DropdownMenuItem variant="destructive" disabled={guardando} onClick={onQuitar}>
+              <Trash2 />
+              {cerradas > 0 ? `Liberar ${liberables} jornada${liberables === 1 ? "" : "s"}` : "Quitar del tablero"}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
         )}
-        <LinkOdoo url={urlOdoo} />
-      </div>
-
-      {/* Sólo en una jornada suelta, igual que en el menú: en un bloque de varios días cada
-          día tiene su fracción, y eso se edita desde "Jornadas". */}
-      {!bloque.multiDia && (
-        <div className="flex flex-wrap items-center gap-1">
-          <span className="mr-1 text-xs text-muted-foreground">Fracción</span>
-          {FRACCIONES.map((f) => {
-            const actual = Number(f.value) === bloque.fraccion;
-            return (
-              <Button
-                key={f.value}
-                variant={actual ? "secondary" : "outline"}
-                size="sm"
-                className="h-10 min-w-10 px-2 md:h-7 md:min-w-0"
-                disabled={guardando}
-                aria-pressed={actual}
-                title={f.detalle}
-                onClick={() => onFraccion(f.value)}
-              >
-                {f.label}
-              </Button>
-            );
-          })}
-        </div>
-      )}
+      </MenuMas>
     </div>
+  );
+}
+
+/** La fracción de una jornada suelta, desde la línea de estado: "jornada completa ▾". */
+function SelectorFraccion({
+  bloque,
+  onFraccion,
+}: {
+  bloque: Bloque;
+  onFraccion: (f: FraccionStr) => void;
+}) {
+  const guardando = bloque.ids.some((id) => id < 0);
+  const actual = FRACCIONES.find((f) => Number(f.value) === bloque.fraccion)?.value ?? "";
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        disabled={guardando}
+        render={
+          <button
+            type="button"
+            className="inline-flex items-center gap-0.5 rounded px-1 text-muted-foreground underline decoration-dotted underline-offset-4 hover:text-foreground"
+            title="Cambiar cuánto de la jornada ocupa"
+          />
+        }
+      >
+        {textoFraccion(bloque.fraccion)}
+        <ChevronDown className="h-3.5 w-3.5" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-56">
+        <DropdownMenuLabel>Cuánto de la jornada ocupa</DropdownMenuLabel>
+        <DropdownMenuRadioGroup value={actual} onValueChange={(v) => onFraccion(v as FraccionStr)}>
+          {FRACCIONES.map((f) => (
+            <DropdownMenuRadioItem key={f.value} value={f.value}>
+              {f.detalle}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -613,7 +617,7 @@ function FormPlanificar({
         if (cuadrillaId != null && fecha) onPlanificar(cuadrillaId, fecha);
       }}
     >
-      <p className="text-sm font-semibold">Planificar la obra</p>
+      <p className="text-sm font-medium">Planificar la obra</p>
       <div className="grid grid-cols-2 gap-2">
         <label className="space-y-1">
           <span className="text-xs text-muted-foreground">Cuadrilla</span>
@@ -624,7 +628,7 @@ function FormPlanificar({
           >
             {cuadrillas.map((c) => (
               <option key={c.id} value={c.id}>
-                {c.nombre}{c.id === cuadrillaSugerida ? " (prevista)" : ""}
+                {nombrePropio(c.nombre)}{c.id === cuadrillaSugerida ? " (prevista)" : ""}
               </option>
             ))}
           </select>
@@ -636,7 +640,7 @@ function FormPlanificar({
         </label>
       </div>
       {dias.length > 0 && (
-        <div className="space-y-0.5 text-[13px]">
+        <div className="space-y-0.5 text-sm">
           <p>
             {pendientes === 1 ? "Ocupa " : `${pendientes} jornadas: `}
             <span className="font-medium">{rangoDeFechas(dias[0], dias[dias.length - 1])}</span>
@@ -817,6 +821,7 @@ export function PanelOt({
   const sem = semaforo(ot?.habSemaforo);
   const { data: detalle, isLoading: cargandoDetalle, isError: errorDetalle, refetch } = useDetalleOt(ot?.id ?? null);
   const [planificando, setPlanificando] = useState<number | null>(null);
+  const encabezadoRef = useRef<HTMLElement>(null);
   const etapa = detalle?.habEtapa ? ETAPA_LABEL[detalle.habEtapa as HabEtapa] : null;
   const fecha = (f: string) => format(parseISO(f), "d MMM yyyy", { locale: es });
   const conPlan = !!planObra?.primerDia;
@@ -837,7 +842,7 @@ export function PanelOt({
 
   const desdeLaGrilla = !!bloque && bloque.origen !== "tarea";
   const direccion = detalle?.direccionObra ?? direccionDeObra(ot);
-  const cliente = detalle?.cliente ?? null;
+  const cliente = detalle?.cliente ? nombrePropio(detalle.cliente) : null;
   const duracion = plan?.jornadas ?? ot.jornadas;
   const formAbierto = planificando === ot.id && !desdeLaGrilla && !!pendiente;
 
@@ -846,9 +851,9 @@ export function PanelOt({
         etiqueta: bloque.estado === "confirmada" ? "Confirmada" : "Tentativa",
         tono: bloque.estado === "confirmada" ? "confirmada" : "tentativa",
         detalle: [
-          cuadrillaNombre ?? "Sin cuadrilla",
+          cuadrillaNombre ? nombrePropio(cuadrillaNombre) : "Sin cuadrilla",
           rangoDeFechas(bloque.fechas[0], bloque.fechas[bloque.fechas.length - 1]),
-          bloque.fechas.length > 1 ? `${bloque.fechas.length} jornadas` : `${fraccionLabel(bloque.fraccion)} de jornada`,
+          ...(bloque.multiDia ? [`${bloque.fechas.length} jornadas`] : []),
         ].join(" · "),
       }
     : pendiente
@@ -878,13 +883,17 @@ export function PanelOt({
         ? "ya se puede"
         : null;
 
-  const tecnico = detalle?.tecnicoNombre ?? ot.tecnico;
+  const tecnico = nombrePropio(detalle?.tecnicoNombre ?? ot.tecnico);
+  const vendedor = nombrePropio(detalle?.vendedor);
   const telObra = ot.telObra ?? detalle?.telFichaCliente ?? null;
 
   return (
     <Sheet open onOpenChange={onOpenChange}>
       <SheetContent
         showCloseButton={false}
+        // El foco entra al encabezado y no a la X: si caía en la X, la ficha abría con la X
+        // remarcada como si estuviera elegida.
+        initialFocus={encabezadoRef}
         className="gap-0 overflow-y-auto p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-md"
         onKeyDown={(e) => {
           // ← → recorren la bandeja, salvo cuando se está escribiendo.
@@ -896,14 +905,14 @@ export function PanelOt({
         }}
       >
         {/* ── Encabezado fijo: qué obra, en qué estado, qué se puede hacer ── */}
-        <header className="sticky top-0 z-10 space-y-2.5 border-b bg-popover px-4 pt-4 pb-3">
+        <header ref={encabezadoRef} tabIndex={-1} className="sticky top-0 z-10 space-y-3 border-b bg-popover px-4 pt-4 pb-3 outline-none">
           <div className="flex items-start gap-1">
             <div className="min-w-0 flex-1">
               {/* LA DIRECCIÓN COMO TÍTULO: es como se nombra la obra en la grilla y en la
                   bandeja. El título crudo de Odoo repetía tipo, orden, cliente y dirección
                   en tres renglones, y todo eso volvía a aparecer más abajo. */}
               <SheetTitle className="text-[17px] leading-snug font-semibold">{direccion}</SheetTitle>
-              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-muted-foreground">
+              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
                 <span>{[cliente, ot.ordenVenta].filter(Boolean).join(" · ") || ot.titulo}</span>
                 <ChipTipoOt tipo={ot.tipo} />
                 {ot.urgencia === "alta" && (
@@ -942,9 +951,9 @@ export function PanelOt({
 
           {/* LA LÍNEA DE ESTADO. Antes, desde la bandeja, nada decía "sin planificar": había
               que deducirlo de un "quitó del tablero" en el historial. */}
-          <div className="flex flex-wrap items-center gap-2 text-[13px]">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
             <span
-              className="inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 font-semibold"
+              className="inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 font-medium"
               style={
                 estado.tono === "confirmada"
                   ? { backgroundColor: `color-mix(in oklch, ${OK} 14%, transparent)`, color: OK }
@@ -961,6 +970,12 @@ export function PanelOt({
               {estado.etiqueta}
             </span>
             {estado.detalle && <span className="text-muted-foreground">{estado.detalle}</span>}
+            {desdeLaGrilla && !bloque.multiDia && (
+              <>
+                <span className="text-muted-foreground">·</span>
+                <SelectorFraccion bloque={bloque} onFraccion={onFraccion} />
+              </>
+            )}
             {bloque?.motivoFija && (
               <span className="inline-flex items-center gap-1 text-muted-foreground">
                 <Pin className="h-3 w-3" /> Fija
@@ -976,7 +991,6 @@ export function PanelOt({
               onEstado={onEstado}
               onFijar={onFijar}
               onSoltar={onSoltar}
-              onFraccion={onFraccion}
               onEditarJornadas={onEditarJornadas}
               onCerrarJornada={onCerrarJornada}
               onQuitar={onQuitar}
@@ -996,7 +1010,7 @@ export function PanelOt({
                   Ver en el tablero
                 </Button>
               )}
-              <LinkOdoo url={ot.url} />
+              <MenuMas urlOdoo={ot.url} />
             </div>
           )}
 
@@ -1017,11 +1031,28 @@ export function PanelOt({
           )}
         </header>
 
-        <div className="space-y-6 px-4 pt-4 pb-8">
+        {/* LOS BLOQUES SE SEPARAN CON UNA LÍNEA y el mismo aire arriba y abajo: sólo con
+            espacio y un título gris clarito la ficha se leía como una lista larga. */}
+        <div className="divide-y px-4 pb-6 *:py-5">
           {ot.urgencia === "alta" && ot.motivoUrgencia && (
-            <div className="flex gap-2 rounded-md border p-2 text-sm" style={{ borderColor: PELIGRO }}>
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" style={{ color: PELIGRO }} />
-              <p className="whitespace-pre-wrap">{ot.motivoUrgencia}</p>
+            <div>
+              <div className="flex gap-2 rounded-md border p-2 text-sm" style={{ borderColor: PELIGRO }}>
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" style={{ color: PELIGRO }} />
+                <p className="whitespace-pre-wrap">{ot.motivoUrgencia}</p>
+              </div>
+            </div>
+          )}
+
+          {/* El motivo de una obra fija, entero: en la tarjeta vive en un tooltip, y en un
+              celular un tooltip no se puede leer. */}
+          {desdeLaGrilla && bloque.motivoFija && (
+            <div>
+              <div className="flex gap-2 rounded-md border px-3 py-2 text-sm">
+                <Pin className="mt-0.5 h-4 w-4 shrink-0" />
+                <p className="leading-snug">
+                  <span className="font-medium">No se mueve de este día.</span> {bloque.motivoFija}
+                </p>
+              </div>
             </div>
           )}
 
@@ -1099,7 +1130,7 @@ export function PanelOt({
                   </>
                 )}
                 {plan ? (
-                  <span className="block text-xs" style={{ color: NOTA.texto }}>
+                  <span className="block text-xs text-muted-foreground">
                     La fijó Operaciones{plan.autorNombre ? ` (${plan.autorNombre})` : ""}
                     {plan.motivo ? ` — ${plan.motivo}` : ""}
                     {!ot.sinEstimar && plan.jornadas !== ot.jornadas ? ` · Comercial estimó ${ot.jornadas}` : ""}
@@ -1133,10 +1164,10 @@ export function PanelOt({
                   ya está en esa misma cuadrilla, repetirlo es ruido. */}
               {cuadrillaPrevista && cuadrillaPrevista !== cuadrillaNombre && (
                 <Dato etiqueta="Cuadrilla prevista">
-                  {cuadrillaPrevista}
+                  {nombrePropio(cuadrillaPrevista)}
                   {bloque && (
                     <span className="block text-xs text-muted-foreground">
-                      En el tablero está en {cuadrillaNombre ?? "otra cuadrilla"}.
+                      En el tablero está en {cuadrillaNombre ? nombrePropio(cuadrillaNombre) : "otra cuadrilla"}.
                     </span>
                   )}
                 </Dato>
@@ -1155,7 +1186,7 @@ export function PanelOt({
                 <div className="flex items-center gap-2">
                   <p className="min-w-0 flex-1 text-sm">
                     <span className="font-medium">
-                      {ot.contactoObra ?? (ot.telObra ? "Teléfono de la obra" : "Según la ficha del cliente")}
+                      {ot.contactoObra ? nombrePropio(ot.contactoObra) : ot.telObra ? "Teléfono de la obra" : "Según la ficha del cliente"}
                     </span>
                     {telObra && <span className="block text-xs text-muted-foreground">{telObra}</span>}
                   </p>
@@ -1175,19 +1206,19 @@ export function PanelOt({
                   href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(direccion)}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-[13px] text-muted-foreground hover:text-foreground"
+                  className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
                 >
                   <MapPin className="h-3.5 w-3.5" />
                   Abrir en Maps
                 </a>
               )}
               {/* Cómo se reconoce el lugar desde la calle: lo que la cuadrilla busca al llegar. */}
-              {detalle?.referenciaObra && <p className="text-[13px] font-medium">{detalle.referenciaObra}</p>}
+              {detalle?.referenciaObra && <p className="text-sm font-medium">{detalle.referenciaObra}</p>}
             </div>
 
             {/* TÉCNICO Y VENDEDOR como contactos y no como datos de la venta: para
                 Operaciones son a quién preguntarle cuando algo de la obra no cierra. */}
-            {(tecnico || detalle?.vendedor) && (
+            {(tecnico || vendedor) && (
               <div className="space-y-1.5">
                 <p className="text-xs text-muted-foreground">En ABA</p>
                 {tecnico && (
@@ -1196,9 +1227,9 @@ export function PanelOt({
                     <span className="text-muted-foreground"> · Técnico</span>
                   </p>
                 )}
-                {detalle?.vendedor && (
+                {vendedor && (
                   <p className="text-sm">
-                    <span className="font-medium">{detalle.vendedor}</span>
+                    <span className="font-medium">{vendedor}</span>
                     <span className="text-muted-foreground"> · Ventas</span>
                   </p>
                 )}

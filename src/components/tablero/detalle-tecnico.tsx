@@ -55,13 +55,13 @@ export function DetalleTecnico({
   return (
     <div className="space-y-1.5 rounded-md border-l-4 bg-muted/40 px-3 py-2.5" style={{ borderLeftColor: CORAL }}>
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">
+        <p className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-muted-foreground">
           <Hammer className="h-3.5 w-3.5" />
           Qué hay que ejecutar
         </p>
         {tipo !== undefined && <ChipTipoOt tipo={tipo} />}
         {clasificacion && (
-          <span className="text-[11px] text-muted-foreground">{clasificacion}</span>
+          <span className="text-xs text-muted-foreground">{clasificacion}</span>
         )}
       </div>
       {error ? (
@@ -103,7 +103,7 @@ function Observaciones({ texto }: { texto: string }) {
   const larga = texto.length > 180 || texto.split("\n").length > 3;
   return (
     <div className="mt-2.5 border-t border-foreground/10 pt-2">
-      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Observaciones de comercial</p>
+      <p className="text-xs uppercase tracking-wide text-muted-foreground">Observaciones de comercial</p>
       <p className={`mt-0.5 whitespace-pre-wrap text-sm leading-snug ${entera ? "" : "line-clamp-3"}`}>{texto}</p>
       {larga && (
         <button

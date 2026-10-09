@@ -14,9 +14,10 @@ import type { ClimaDia } from "@/lib/clima/pronostico";
  * encabezado: cuando hay dato, la línea del clima va al tooltip del día aunque no haya
  * nada que avisar.
  *
- * VA ABSOLUTO, abajo a la izquierda, espejando al de notas. Si estuviera en el flujo del
- * flex, los días con clima correrían el número de lugar y la fila de fechas dejaría de
- * leerse de un barrido: es la misma razón por la que las notas están absolutas.
+ * VA EN EL SEGUNDO RENGLÓN DEL ENCABEZADO, junto a lo libre del día, y CON UNIDAD: "34"
+ * solo, a 9px, no decía si era lluvia o viento. Para andamios, 34 km/h sostenidos importa.
+ * (Hasta el 09/10 iba absoluto en una esquina; con el encabezado de dos renglones el número
+ * del día ya no se corre.)
  */
 export function ChipClima({ clima }: { clima: ClimaDia }) {
   if (clima.nivel === "nada") return null;
@@ -33,7 +34,7 @@ export function ChipClima({ clima }: { clima: ClimaDia }) {
     <span
       role="img"
       aria-label={textoClima(clima)}
-      className="pointer-events-none absolute bottom-0.5 left-0.5 flex h-[15px] items-center gap-1 rounded px-1"
+      className="pointer-events-none flex h-[15px] shrink-0 items-center gap-1.5 rounded px-1"
       style={{
         backgroundColor: fuerte ? PELIGRO_SUAVE : CLIMA.fondo,
         color: fuerte ? PELIGRO_TEXTO : CLIMA.texto,
@@ -41,14 +42,14 @@ export function ChipClima({ clima }: { clima: ClimaDia }) {
     >
       {llueve && (
         <span className="flex items-center gap-0.5">
-          <CloudRain className="h-2.5 w-2.5" />
-          <span className="text-[9px] font-bold tabular-nums leading-none">{clima.mm}</span>
+          <CloudRain className="h-3 w-3" />
+          <span className="text-xs font-medium tabular-nums leading-none">{clima.mm} mm</span>
         </span>
       )}
       {sopla && (
         <span className="flex items-center gap-0.5">
-          <Wind className="h-2.5 w-2.5" />
-          <span className="text-[9px] font-bold tabular-nums leading-none">{clima.viento}</span>
+          <Wind className="h-3 w-3" />
+          <span className="text-xs font-medium tabular-nums leading-none">{clima.viento} km/h</span>
         </span>
       )}
     </span>

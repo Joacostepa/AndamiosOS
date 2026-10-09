@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import type { MouseEvent as MouseEventReact, PointerEvent as PointerEventReact } from "react";
 import { format, isSameDay, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
-import { AlertTriangle, MousePointerClick, StickyNote } from "lucide-react";
+import { MousePointerClick, StickyNote } from "lucide-react";
 import { CeldaDia } from "./celda-dia";
 import { TarjetaAsignacion } from "./tarjeta-asignacion";
 import { PopoverNotasDia } from "./notas-jornada";
@@ -19,11 +19,12 @@ import {
   FERIADO_ENCABEZADO,
   FERIADO_TEXTO,
   NOTA,
-  PELIGRO,
+  PELIGRO_TEXTO,
 } from "@/lib/tablero/colores";
 import { ocupacionCelda, capacidadDelRango, redondearFraccion } from "@/lib/tablero/fracciones";
 import type { FraccionStr } from "@/lib/tablero/fracciones";
 import { notasDe, notasDeCuadrilla } from "@/lib/tablero/tipos-nota";
+import { nombrePropio } from "@/lib/tablero/titulo";
 import type { Bloque } from "@/lib/tablero/bloques";
 import type { NotaJornada } from "@/lib/tablero/tipos-nota";
 import { claveSuspension, type SuspensionDia } from "@/lib/tablero/tipos-suspension";
@@ -509,17 +510,21 @@ export function TableroGrid({
   const etiquetaMotivo = (valor: string | null) =>
     MOTIVOS_NO_EJEC.find((m) => m.value === valor)?.label ?? valor;
 
-  // A nivel día sólo se avisa cuando TODAS las cuadrillas visibles están sobre: ahí el
-  // problema es del día y no de una fila. Que una sola esté sobreasignada ya lo dice su
-  // propia celda, y repetirlo arriba era el mismo dato dos veces.
-  const diasTodasSobre = new Set(
-    fechas.filter(
-      (f) =>
-        cuadrillas.length > 0 &&
-        cuadrillas.every(
-          (c) => ocupacionCelda(enCelda(c.id, f).map((a) => a.fraccion)).nivel === "sobre",
-        ),
-    ),
+  // LO QUE QUEDA LIBRE EN EL DÍA y cuántas cuadrillas están pasadas, sumando las filas
+  // visibles. Contesta "¿qué día tiene lugar para esta obra?" sin recorrer cinco celdas.
+  // Antes sólo se avisaba cuando TODAS estaban pasadas, que con cinco cuadrillas no pasaba
+  // nunca: el miércoles con dos de cinco pasadas no decía nada.
+  const resumenDia = new Map(
+    fechas.map((f) => {
+      let libre = 0;
+      let pasadas = 0;
+      for (const c of cuadrillas) {
+        const { total } = ocupacionCelda(enCelda(c.id, f).map((a) => a.fraccion));
+        libre += Math.max(0, 1 - total);
+        if (total > 1) pasadas++;
+      }
+      return [f, { libre: redondearFraccion(libre), pasadas }] as const;
+    }),
   );
 
   const hayAlgoAsignado = cuadrillas.some((c) => fechas.some((f) => enCelda(c.id, f).length > 0));
@@ -568,12 +573,12 @@ export function TableroGrid({
           // El alto sale del contenido, entre un piso y un techo. La pista `1fr` del final
           // se come el sobrante: sin ella el reparto lo absorbían las filas y con pocas
           // cuadrillas quedaban enormes y medio vacías.
-          gridTemplateRows: `40px ${porCuadrilla.map(() => `${ALTO_FILA}px`).join(" ")} 1fr`,
+          gridTemplateRows: `48px ${porCuadrilla.map(() => `${ALTO_FILA}px`).join(" ")} 1fr`,
           minWidth: anchoMinimo,
         }}
       >
         {/* ── Encabezado ── */}
-        <div className="sticky left-0 top-0 z-30 flex h-10 items-center border-b border-r bg-card px-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        <div className="sticky left-0 top-0 z-30 flex h-12 items-center border-b border-r bg-card px-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
           {/* En 64px no entra la palabra, y la columna se explica sola: cada fila dice "C2". */}
           {compacta ? "" : "Cuadrillas"}
         </div>
@@ -616,7 +621,7 @@ export function TableroGrid({
             <div
               key={`h-${f}`}
               data-fecha={f}
-              className={`group/dia sticky top-0 z-20 flex h-10 select-none items-center justify-center gap-1.5 border-b border-r bg-card active:cursor-grabbing ${
+              className={`group/dia sticky top-0 z-20 flex h-12 select-none flex-col items-center justify-center gap-0.5 border-b border-r bg-card active:cursor-grabbing ${
                 // foreground/8 y no black/5: en oscuro el negro sobre negro no es un
                 // hover, es nada. Ligado al texto, el velo sigue al tema solo.
                 alternable ? "cursor-pointer hover:bg-foreground/[0.08]" : "cursor-grab"
@@ -643,56 +648,53 @@ export function TableroGrid({
                 // Separador de semana: ubicarse sin tener que leer las fechas.
                 borderLeft: esLunes(f) ? "2px solid var(--border)" : undefined,
                 backgroundColor: canaleta ? CANALETA : feriado ? FERIADO_ENCABEZADO : "var(--card)",
-                // Franja ámbar del día con notas. Va como sombra INTERNA y no como borde
-                // ni como fondo: el fondo ya lo usan el feriado y la canaleta, y un borde
-                // cambiaría el alto de la celda y desalinearía la fila de días. Así se
-                // apila con el feriado, que es otro dato del mismo día.
-                //
-                // Es la mitad que se ve sin buscar: un chip de 16px, por más color que
-                // tenga, hay que estar mirándolo. La franja se lee barriendo la grilla.
-                boxShadow: notasDelDia.length > 0 ? `inset 0 -3px 0 ${NOTA.franja}` : undefined,
+                // (Ya no hay franja ámbar de notas abajo: repetía el chip y tenía el mismo
+                // hex que la franja de habilitación "próxima a vencer" de las tarjetas.)
               }}
             >
               {canaleta ? (
-                <span className="text-[11px] text-muted-foreground">D</span>
+                <span className="text-xs text-muted-foreground">D</span>
               ) : (
                 <>
-                  {domingoActivo ? (
-                    // El domingo trabajado se nombra entero: es la excepción y tiene que
-                    // cantarse, no confundirse con un día más.
-                    <span className="flex flex-col items-center leading-none">
-                      <span className="text-[11px] text-muted-foreground">domingo</span>
-                      <span className="mt-0.5 text-[13px] font-medium">{format(d, "d")}</span>
-                    </span>
-                  ) : feriado ? (
-                    // El feriado se NOMBRA, no se insinúa: la palabra arriba y el día
-                    // abajo, igual que el domingo trabajado. El nombre entero va en el
-                    // title, porque "Puente turístico no laborable" no entra en 168px.
-                    <span className="flex flex-col items-center leading-none">
-                      <span
-                        className="text-[9px] font-semibold uppercase tracking-wide"
-                        style={{ color: FERIADO_TEXTO }}
-                      >
-                        Feriado
+                  {/* Renglón 1: el día. El feriado y el domingo trabajado se nombran al lado,
+                      en palabras, y no con un rótulo de 9px encima. */}
+                  <span className="flex items-center gap-1.5 leading-none">
+                    {domingoActivo ? (
+                      <>
+                        <span className="text-xs text-muted-foreground">domingo</span>
+                        <span className="text-[13px] font-medium">{format(d, "d")}</span>
+                      </>
+                    ) : (
+                      <DiaDelEncabezado d={d} esHoy={esHoy} />
+                    )}
+                    {feriado && (
+                      <span className="text-xs" style={{ color: FERIADO_TEXTO }}>
+                        · Feriado
                       </span>
-                      <span className="mt-0.5 flex items-center gap-1.5">
-                        <DiaDelEncabezado d={d} esHoy={esHoy} />
-                      </span>
-                    </span>
-                  ) : (
-                    <DiaDelEncabezado d={d} esHoy={esHoy} />
-                  )}
-                  {diasTodasSobre.has(f) && (
-                    <AlertTriangle
-                      className="h-3 w-3 shrink-0"
-                      style={{ color: PELIGRO }}
-                      aria-label="Todas las cuadrillas visibles están sobreasignadas este día"
-                    />
-                  )}
+                    )}
+                  </span>
+                  {/* Renglón 2: clima con unidad · lo libre del día · cuadrillas pasadas. */}
+                  <span className="flex max-w-full items-center gap-1 overflow-hidden whitespace-nowrap px-1 text-xs leading-none text-muted-foreground">
+                    {climaDelDia && <ChipClima clima={climaDelDia} />}
+                    {(() => {
+                      const r = resumenDia.get(f);
+                      if (!r || cuadrillas.length === 0) return null;
+                      return (
+                        <>
+                          <span title="Jornadas libres sumando las cuadrillas visibles">
+                            {r.libre === 0 ? "sin lugar" : `libre ${DECIMAL.format(r.libre)} j`}
+                          </span>
+                          {r.pasadas > 0 && (
+                            <span className="font-medium" style={{ color: PELIGRO_TEXTO }}>
+                              · {r.pasadas} pasada{r.pasadas === 1 ? "" : "s"}
+                            </span>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </span>
                 </>
               )}
-
-              {climaDelDia && <ChipClima clima={climaDelDia} />}
 
               {/* Notas del día. Va ABSOLUTA y no en el flujo del flex para que agregarle
                   una nota a un día no corra el número de lugar: el encabezado se lee de
@@ -730,7 +732,7 @@ export function TableroGrid({
                       // día, pero un ícono fijo en las 21 columnas del rango sería más
                       // ruido que dato, y le sacaría fuerza justo a los días que sí
                       // tienen algo escrito.
-                      className={`absolute bottom-0.5 right-0.5 flex h-[15px] cursor-pointer items-center gap-0.5 rounded px-1 transition-opacity ${
+                      className={`absolute right-0.5 top-0.5 flex h-[15px] cursor-pointer items-center gap-0.5 rounded px-1 transition-opacity ${
                         notasDelDia.length > 0
                           ? "opacity-100"
                           : "text-muted-foreground opacity-0 hover:bg-foreground/10 hover:text-foreground focus-visible:opacity-100 group-hover/dia:opacity-100"
@@ -746,7 +748,7 @@ export function TableroGrid({
                           no un ícono suelto, y "1" dice cuánto hay que leer antes de
                           abrirlo. */}
                       {notasDelDia.length > 0 && (
-                        <span className="text-[9px] font-bold tabular-nums leading-none">
+                        <span className="text-[10px] font-semibold tabular-nums leading-none">
                           {notasDelDia.length}
                         </span>
                       )}
@@ -771,6 +773,11 @@ export function TableroGrid({
           const conTrabajo = new Set(deLaSemana.map((a) => a.fecha));
           const capacidad = capacidadDelRango(semanaCentrada, conTrabajo);
           const exceso = redondearFraccion(jornadas - capacidad);
+          // Los días PASADOS de la semana: la carga semanal sola los diluía — una fila con un
+          // día de casi dos jornadas decía "4,75 / 6" en gris.
+          const diasPasados = semanaCentrada.filter(
+            (f) => ocupacionCelda(deLaCuadrilla.filter((a) => a.fecha === f).map((a) => a.fraccion)).total > 1,
+          ).length;
 
           return (
             <div key={cuadrilla.id} className="contents">
@@ -779,7 +786,7 @@ export function TableroGrid({
                 style={{ borderLeft: `3px solid ${color.borde}` }}
               >
                 <p className="truncate text-[12px] font-medium" title={cuadrilla.nombre}>
-                  {compacta ? abreviarCuadrilla(cuadrilla.nombre) : cuadrilla.nombre}
+                  {compacta ? abreviarCuadrilla(cuadrilla.nombre) : nombrePropio(cuadrilla.nombre)}
                   {cuadrilla.tercerizada && !compacta && (
                     <span className="ml-1 text-[10px] font-normal text-muted-foreground">terc.</span>
                   )}
@@ -787,20 +794,21 @@ export function TableroGrid({
                 {/* La carga como NÚMERO y no como badge. "9,75 de 6 jornadas" se leía mal:
                     el numerador está en jornadas-carga y el denominador en días hábiles. */}
                 <p
-                  className={`text-[10px] tabular-nums ${exceso > 0 ? "font-semibold text-destructive" : "text-muted-foreground"}`}
-                  title={
-                    exceso > 0
-                      ? "Sobreasignada: la carga de esta semana supera sus días con capacidad"
-                      : "Carga de la semana que está centrada en pantalla"
-                  }
+                  className="text-xs tabular-nums text-muted-foreground"
+                  title={`Jornadas de los 7 días desde el primero a la vista, sobre los días con capacidad${
+                    exceso > 0 ? ` · ${DECIMAL.format(exceso)} de más en la semana` : ""
+                  }`}
                 >
                   {compacta ? (
                     `${DECIMAL.format(jornadas)}/${capacidad}`
                   ) : (
                     <>
-                      {DECIMAL.format(jornadas)} / {capacidad}
-                      {exceso > 0 && ` · +${DECIMAL.format(exceso)}`}
-                      {jornadas === 0 && " · libre"}
+                      {jornadas === 0 ? "libre" : `${DECIMAL.format(jornadas)} de ${capacidad} j`}
+                      {diasPasados > 0 && (
+                        <span className="font-medium" style={{ color: PELIGRO_TEXTO }}>
+                          {" "}· {diasPasados} día{diasPasados === 1 ? "" : "s"} pasado{diasPasados === 1 ? "" : "s"}
+                        </span>
+                      )}
                     </>
                   )}
                 </p>
@@ -912,6 +920,7 @@ export function TableroGrid({
                         vencidaSinParte={bloque.fechas.some(
                           (f, i) => f < hoyISO && bloque.partes[i] == null,
                         )}
+                        sinParteDia={bloque.fechas.find((f, i) => f < hoyISO && bloque.partes[i] == null) ?? null}
                         cierre={
                           parteDelBloque
                             ? {

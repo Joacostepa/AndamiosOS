@@ -105,7 +105,23 @@ export function nombrePropio(texto: string | null | undefined): string {
       if (SIGLAS.has(limpia.toUpperCase())) return palabra.toUpperCase();
       const baja = palabra.toLocaleLowerCase("es");
       if (i > 0 && MINUSCULAS.has(baja)) return baja;
+      // Dos letras o menos que no son una preposición: iniciales o siglas ("GS", "H°").
+      if (limpia.length > 0 && limpia.length <= 2 && !MINUSCULAS.has(baja)) return palabra;
       return baja.replace(/^(\P{L}*)(\p{L})/u, (_, pre: string, l: string) => pre + l.toLocaleUpperCase("es"));
     })
     .join("");
+}
+
+/**
+ * La dirección como entra en una tarjeta de la grilla, que tiene unos 20 caracteres: en
+ * formato normal ("AV. CALLAO 1777" → "Av. Callao 1777"), "Avenida" abreviado y sin la
+ * ciudad al final ("CABA", "Buenos Aires"). NO ES ESTÉTICA: el número es lo que distingue
+ * una obra de otra, y "Avenida Raúl Scala…" dos veces en la misma celda no se distinguía.
+ * Sólo para mostrar; la búsqueda y la ficha usan la dirección entera.
+ */
+export function direccionCorta(direccion: string): string {
+  return nombrePropio(direccion)
+    .replace(/^(avenida|av)\b\.?/i, "Av.")
+    .replace(/[\s,–-]+(C\.?A\.?B\.?A\.?|Ciudad Autónoma de Buenos Aires|Capital Federal|(Provincia de )?Buenos Aires)\s*$/i, "")
+    .trim();
 }

@@ -49,13 +49,13 @@ const ALTO_BARRA = 44;
 const ALTO_DEFECTO = 280;
 const ALTO_MIN = 120;
 /**
- * Lo mínimo que le queda a la grilla: su fila de días (40px) más una fila de cuadrilla
+ * Lo mínimo que le queda a la grilla: su fila de días (48px) más una fila de cuadrilla
  * (96 + 10 + 8). El techo del cajón se mide contra el CONTENEDOR y no contra la ventana:
  * medido contra la ventana el número no significaba nada —podía ser más de lo que hay,
  * y entonces el arrastre seguía "subiendo" sin que se moviera nada—. Contra el
  * contenedor el tope quiere decir algo: podés subirlo hasta que quede una cuadrilla.
  */
-const MINIMO_GRILLA = 40 + 114;
+const MINIMO_GRILLA = 48 + 114;
 
 function leerGuardado<T>(clave: string, parsear: (crudo: string) => T | null, porDefecto: T): T {
   if (typeof window === "undefined") return porDefecto;

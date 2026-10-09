@@ -16,8 +16,9 @@ cosas, así que ante la duda manda el código y los comentarios largos que tiene
    al planificar, las flechas ‹ › y el panel a ancho completo en el celular.
 2. **Ver la tapa de suspensión andando con un corrimiento real.** La del 29/09 JS ya la vio
    (02/10) y pidió más color: se cambió a la opción B, que falta mirar en el tablero publicado.
-3. **Aprobar la maqueta de la tarjeta de grilla y el encabezado de día** (artifact de la ficha,
-   fila "Grilla"), y aplicar las entregas 2 y 4 de la auditoría de grilla (ver 09/10).
+3. **Probar en el tablero publicado la tarjeta y el encabezado nuevos de la grilla** (09/10):
+   sobre todo que "libre X j" y "N pasadas" cierren con lo que se ve, y la dirección pegada al
+   scrollear un bloque largo.
 4. **Lo que dejó la auditoría del 08/10** (detalle abajo, en "Auditoría UX y técnica"). Lo más
    urgente: el candado que falla abierto para Depósito y Campo, y la RLS abierta.
 
@@ -176,13 +177,32 @@ antes de tocarlos (entregas 2 y 4, ver "Pendiente").
   aviso del navegador si se cierra la pestaña con cambios; un error que no es conflicto muestra
   **"No se guardó · Reintentar"** (antes quedaba en "Sin guardar" para siempre).
 
-**Pendiente de la auditoría de grilla (detalle en la maqueta y en el reporte):** duración con
-unidad ("½ j", "3 h", "1 j"; "5 de 22 d", "1 j +3"), franja de habilitación sólo cuando no está
-al día, direcciones con `nombrePropio` + "Av." y sin "CABA", "Cuadrilla 1" normal, señales a la
-derecha y comentarios siempre con número, problemas en texto rojo en vez del ⚠ triple, "libre
-1½ j" y cuadrillas pasadas en el encabezado del día, viento con unidad, carga de la fila por día,
-estados de bloque por día (hoy un día ejecutado atenúa los 22), buscador en la grilla, "Mover
-a…" sin arrastrar, tipo de tarea "Ausencia".
+**Tarjeta y encabezado (hecho, JS aprobó la maqueta "Grilla: tarjeta y encabezado de día"):**
+- **Duración con unidad** (`textoOcupa`): "½ j", "3 h", "1 j", "mín"; varios días "4 d"; tramo de
+  obra partida "5 de 22 d", o "1 j +3" si el tramo es de un día. Se acabaron "3/4j" (que se leía
+  ¾) y el "1" pegado al número de la calle.
+- **Franja izquierda sólo si la habilitación no está al día** (o el violeta de una tarea). La
+  habilitada no lleva franja, igual que en la bandeja y la ficha.
+- **El problema de la jornada en texto rojo** en el renglón 2 ("No ejecutada · motivo", "Sin
+  parte del 8/10" con el primer día sin parte, "Urgente"); en tarjetas de un renglón va corto en
+  el renglón 1. Se sacaron los ⚠.
+- **Señales a la derecha de la dirección** (candado, pin, comentarios), así las direcciones
+  arrancan siempre en el mismo lugar. El chip de comentarios lleva número siempre.
+- **Direcciones con `direccionCorta()`** (`titulo.ts`): `nombrePropio`, "Avenida"/"AV." → "Av." y
+  sin "CABA"/"Buenos Aires" al final. `nombrePropio` ahora respeta tokens de 1–2 letras ("GS").
+- Segundo renglón a 11px sin opacidad (`ALTO_DOS_LINEAS` 38 → 40). El tipo "otro" usa un círculo.
+- **Encabezado del día de dos renglones (48px)**: el día (con "· Feriado" o "domingo" en
+  palabras) y abajo el clima **con unidad** ("34 km/h", "12 mm") · **"libre X j"** sumando las
+  cuadrillas visibles · **"N pasadas"** en rojo. Se sacó el ⚠ de "todas pasadas" y la franja
+  ámbar de notas; el chip de notas pasó arriba a la derecha. `MINIMO_GRILLA` del cajón → 48+114.
+- **Fila de cuadrilla**: "Cuadrilla 1" (`nombrePropio`) y "4,75 de 6 j · 1 día pasado" en rojo
+  (días de la semana con más de una jornada).
+
+**Quedó de la auditoría de grilla, sin hacer:** estados de bloque por día (hoy un día ejecutado
+atenúa los 22 y una jornada vencida pone borde rojo a todo el bloque), el segundo renglón de un
+bloque que arranca antes de lo visible sigue tapado, buscador en la grilla, "Mover a…" sin
+arrastrar (alternativa de teclado), tipo de tarea "Ausencia", color de fila de cuadrilla neutro,
+"Qué ejecutar" con estado prendido visible, Quitar/Borrar en rojo en vez de coral.
 
 ---
 

@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
-import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, AlertTriangle, CalendarRange, Check, CircleCheck, CircleDashed, ClipboardCheck, Lock, MessageSquare, MoreHorizontal, MoreVertical, Pencil, Pin, PinOff, Trash2, Wrench } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, CalendarRange, Circle, Check, CircleCheck, CircleDashed, ClipboardCheck, Lock, MessageSquare, MoreVertical, Pencil, Pin, PinOff, Trash2, Wrench } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -19,7 +19,6 @@ import {
   semaforo,
   TAREA,
   TAREA_FRANJA,
-  URGENCIA_ALTA_BORDE,
   CANDADO,
   CORAL,
   TENTATIVA,
@@ -29,7 +28,7 @@ import {
   PELIGRO_SUAVE,
   PELIGRO_TEXTO,
 } from "@/lib/tablero/colores";
-import { partesTitulo, direccionDeObra } from "@/lib/tablero/titulo";
+import { partesTitulo, direccionDeObra, direccionCorta, nombrePropio } from "@/lib/tablero/titulo";
 import { jornadasLiberables } from "@/lib/tablero/cierre";
 import type { Bloque, Colocacion } from "@/lib/tablero/bloques";
 import { tipoTareaLabel, type OtTablero } from "@/lib/tablero/tipos";
@@ -53,14 +52,38 @@ export type AccionCierre =
 // Lenguaje visual (v3). Cada canal codifica UNA cosa y sólo una:
 //   fondo + ícono → TIPO de OT (armado sube, desarme baja, resto neutro)
 //   borde punteado + trama diagonal → tentativa (borrador, pero ocupa capacidad)
-//   franja izquierda → semáforo de habilitación
-//   triángulo rojo   → urgencia alta
+//   franja izquierda → habilitación QUE NO ESTÁ AL DÍA (la habilitada no lleva franja)
+//   texto rojo en el renglón 2 → el problema de la jornada, escrito ("Sin parte del 8/10",
+//                    "Urgente", "No ejecutada · lluvia")
+//
+// (Rediseño del 09/10: la franja verde estaba en casi todas las tarjetas y decía "no hay
+// nada que mirar" con la señal de color más fuerte; el ⚠ significaba tres cosas.)
 //
 // El tipo y el estado son canales INDEPENDIENTES: una tentativa de armado conserva el
 // ícono y el color de texto del armado, y sólo pierde el relleno sólido — la trama que lo
 // reemplaza sale del mismo tono, así que el tipo se sigue leyendo.
 
-const ICONO_TIPO = { arriba: ArrowUp, abajo: ArrowDown, otro: MoreHorizontal } as const;
+// "Otro" con un círculo y no con "⋯": los tres puntos son el dibujo de "más acciones" y la
+// tarjeta parecía tener un menú.
+const ICONO_TIPO = { arriba: ArrowUp, abajo: ArrowDown, otro: Circle } as const;
+
+const GLIFO_JORNADA: Record<string, string> = {
+  "0.1": "mín", "0.25": "¼ j", "0.375": "3 h", "0.5": "½ j", "0.625": "5 h", "0.75": "¾ j", "0.875": "7 h", "1": "1 j",
+};
+
+/**
+ * Cuánto ocupa la tarjeta, CON UNIDAD. "3/4j" quería decir 3 de 4 días y se leía ¾ de
+ * jornada; el "1" pelado se pegaba al número de la calle. Ahora: "½ j", "3 h", "1 j" en un
+ * día; "4 d" en varios; "5 de 22 d" en un tramo de una obra partida, y "1 j +3" en un
+ * tramo de un día (quedan 3 días en otros tramos).
+ */
+function textoOcupa(bloque: Pick<Bloque, "fechas" | "multiDia" | "fraccion">, plan?: { dias: number; tramos: number }): string {
+  const dias = bloque.fechas.length;
+  const partida = (plan?.tramos ?? 1) > 1;
+  const dia = GLIFO_JORNADA[String(Number(bloque.fraccion.toFixed(3)))] ?? fraccionLabel(bloque.fraccion);
+  if (partida && plan) return bloque.multiDia ? `${dias} de ${plan.dias} d` : `${dia} +${plan.dias - dias}`;
+  return bloque.multiDia ? `${dias} d` : dia;
+}
 
 const LABEL_TIPO: Record<string, string> = {
   armado: "Armado",
@@ -92,7 +115,10 @@ export function ContenidoTarjeta({
   unaLinea = false,
   queEjecutar = false,
   pegarA,
+  sinParteDia = null,
 }: {
+  /** El primer día que ya pasó y sigue sin parte, para decirlo en texto. */
+  sinParteDia?: string | null;
   /**
    * Píxeles desde el borde izquierdo del área que scrollea donde se queda pegado el
    * renglón de la dirección. Sólo en bloques de varios días: si el bloque arranca antes
@@ -163,9 +189,18 @@ export function ContenidoTarjeta({
   // El título se sigue partiendo por el CLIENTE, que vive sólo ahí. La dirección ya no:
   // sale de su campo propio y sólo cae al título cuando la OT es anterior al backfill.
   const partes = partesTitulo(ot?.titulo ?? "OT");
-  const direccion = direccionDeObra({ direccionObra: ot?.direccionObra, titulo: ot?.titulo });
+  const direccion = direccionCorta(direccionDeObra({ direccionObra: ot?.direccionObra, titulo: ot?.titulo }));
   const noEjecutada = cierre?.estado === "no_ejecutado";
   const partida = (plan?.tramos ?? 1) > 1;
+  // EL PROBLEMA DE LA JORNADA, EN PALABRAS. Uno solo, el más grave: no ejecutada, después
+  // sin parte, después urgente. Reemplaza al ⚠, que significaba tres cosas.
+  const problema = noEjecutada
+    ? `No ejecutada${cierre?.motivoLabel ? ` · ${cierre.motivoLabel}` : ""}`
+    : vencidaSinParte
+      ? `Sin parte${sinParteDia ? ` del ${Number(sinParteDia.slice(8))}/${Number(sinParteDia.slice(5, 7))}` : ""}`
+      : urgente
+        ? "Urgente"
+        : null;
   // El texto conserva el color del tipo aunque el relleno no esté: el tipo se lee igual
   // en una tentativa.
   //
@@ -220,7 +255,16 @@ export function ContenidoTarjeta({
         // más se mira. Un punto de 6px se perdía con la grilla llena.
         // En una tarea no hay habilitación que semaforear, así que la franja la toma el
         // violeta del tipo en vez de mentir un verde.
-        borderLeft: `5px solid ${noEjecutada ? PELIGRO : tarea ? TAREA_FRANJA : sem.color}`,
+        //
+        // SÓLO CUANDO HAY ALGO QUE MIRAR: habilitación que no está al día, o una tarea (su
+        // violeta). La habilitada no lleva franja — en la bandeja y la ficha "la habilitada
+        // no dice nada" — y el verde queda para "confirmada". La no ejecutada ya tiene todo
+        // el borde rojo.
+        borderLeft: tarea
+          ? `4px solid ${TAREA_FRANJA}`
+          : !noEjecutada && ot && ot.habSemaforo !== "verde"
+            ? `4px solid ${sem.color}`
+            : undefined,
       }}
     >
       <div
@@ -243,9 +287,28 @@ export function ContenidoTarjeta({
         {(cierre?.estado === "ejecutado" || tarea?.hecha) && (
           <CircleCheck className="h-3 w-3 shrink-0 self-center" style={{ color: OK }} />
         )}
-        {noEjecutada && (
-          <AlertTriangle className="h-3 w-3 shrink-0 self-center" style={{ color: PELIGRO }} />
-        )}
+        <span
+          className="min-w-0 flex-1 truncate text-[12px] font-medium leading-tight"
+          style={{ color: colorTexto }}
+          title={
+            tarea
+              ? `${tipoTareaLabel(tarea.tipo)} — ${tarea.titulo}`
+              : [
+                  labelTipo(ot?.tipo),
+                  ot?.titulo ?? "",
+                  ot?.referenciaObra,
+                  sem.label,
+                  // En las tarjetas de un solo renglón el segundo no se dibuja, así que
+                  // sin esto el modo "qué ejecutar" no mostraría nada — y son el 16% de
+                  // las jornadas. Acá el ancho es gratis.
+                  queEjecutar ? ot?.detalleTecnico : null,
+                ]
+                  .filter(Boolean)
+                  .join(" — ")
+          }
+        >
+          {tarea ? tarea.titulo : direccion}
+        </span>
         {candado && (
           <Lock
             className="h-3 w-3 shrink-0 self-center"
@@ -279,8 +342,8 @@ export function ContenidoTarjeta({
             leer: late (ver .tb-comentario-nuevo en globals.css) y se apaga en cuanto
             alguien abre el panel. Un chip que late para siempre se vuelve parte del
             fondo, y entonces el día que trae algo tampoco se mira.
-            El contador sólo con más de uno: un "1" al lado del globito no agrega nada y
-            gasta el ancho que necesita la dirección. */}
+            VA DESPUÉS DE LA DIRECCIÓN, como el pin y el candado: adelante corrían la
+            dirección a otra posición en cada tarjeta y la columna no se leía de un barrido. */}
         {comentarios && (
           <span
             className="relative flex shrink-0 items-center gap-px self-center rounded-[3px] px-[3px] py-[1px]"
@@ -302,52 +365,26 @@ export function ContenidoTarjeta({
               className="relative h-3 w-3"
               aria-label={comentarios.sinLeer ? "Comentarios sin leer" : "Tiene comentarios"}
             />
-            {comentarios.cantidad > 1 && (
-              <span className="relative text-[9px] font-semibold leading-none tabular-nums">
-                {comentarios.cantidad}
-              </span>
-            )}
+            {/* SIEMPRE con número, también el 1: sin número el chip era un cuadradito
+                con borde que parecía una casilla de verificación vacía. */}
+            <span className="relative text-[10px] font-semibold leading-none tabular-nums">
+              {comentarios.cantidad}
+            </span>
+          </span>
+        )}
+        {/* En una tarjeta de un renglón el problema no tiene dónde ir: va acá, corto. */}
+        {unaLinea && problema && (
+          <span className="shrink-0 text-[11px] font-medium" style={{ color: PELIGRO_TEXTO }}>
+            {noEjecutada ? "No ejecutada" : vencidaSinParte ? "Sin parte" : problema}
           </span>
         )}
         <span
-          className="min-w-0 flex-1 truncate text-[12px] font-medium leading-tight"
-          style={{ color: colorTexto }}
-          title={
-            tarea
-              ? `${tipoTareaLabel(tarea.tipo)} — ${tarea.titulo}`
-              : [
-                  labelTipo(ot?.tipo),
-                  ot?.titulo ?? "",
-                  ot?.referenciaObra,
-                  sem.label,
-                  // En las tarjetas de un solo renglón el segundo no se dibuja, así que
-                  // sin esto el modo "qué ejecutar" no mostraría nada — y son el 16% de
-                  // las jornadas. Acá el ancho es gratis.
-                  queEjecutar ? ot?.detalleTecnico : null,
-                ]
-                  .filter(Boolean)
-                  .join(" — ")
-          }
-        >
-          {tarea ? tarea.titulo : direccion}
-        </span>
-        <span
-          className="shrink-0 text-[11px] font-semibold tabular-nums"
+          className="shrink-0 whitespace-nowrap text-[11px] font-medium tabular-nums"
           style={{ color: colorTexto }}
           title={partida ? `Obra partida: ${plan!.dias} días en ${plan!.tramos} tramos` : undefined}
         >
-          {partida
-            ? `${bloque.fechas.length}/${plan!.dias}j`
-            : bloque.multiDia
-              ? `${bloque.fechas.length}j`
-              : fraccionLabel(bloque.fraccion)}
+          {textoOcupa(bloque, plan)}
         </span>
-        {urgente && (
-          <AlertTriangle
-            className="h-3 w-3 shrink-0 self-center"
-            style={{ color: URGENCIA_ALTA_BORDE }}
-          />
-        )}
         {sigueDespues && (
           <ChevronRight className="h-3 w-3 shrink-0 self-center" style={{ color: colorTexto }} />
         )}
@@ -355,8 +392,8 @@ export function ContenidoTarjeta({
 
       {!unaLinea && (
       <p
-        className="truncate text-[10px] leading-tight"
-        style={{ color: colorTexto, opacity: 0.75 }}
+        // 11px y sin opacidad: a 10px y al 75% quedaba debajo del contraste mínimo.
+        className="truncate text-[11px] leading-tight text-foreground/75"
         // La mediana del detalle técnico son 205 caracteres y acá entran unos 40: el
         // tooltip es donde se lee entero. Sin esto el modo sería media frase cortada.
         title={queEjecutar && !tarea ? (ot?.detalleTecnico ?? undefined) : undefined}
@@ -365,6 +402,12 @@ export function ContenidoTarjeta({
             necesita la dirección. Tampoco dice "tentativa": lo comunica el borde.
             En una tarea sí va el tipo: es lo único que la clasifica, y el ícono de la
             llave es el mismo para todas. */}
+        {problema && (
+          <span className="font-medium" style={{ color: PELIGRO_TEXTO }}>
+            {problema}
+            {!tarea && " · "}
+          </span>
+        )}
         {tarea
           ? [tipoTareaLabel(tarea.tipo), tarea.hecha ? "hecha" : null].filter(Boolean).join(" · ")
           : [
@@ -377,10 +420,9 @@ export function ContenidoTarjeta({
               // la tarjeta está rota y no como que falta un dato.
               ...(queEjecutar && ot?.detalleTecnico
                 ? [ot.detalleTecnico]
-                : [partes.cliente, ot?.tecnico]),
-              // La jornada no ejecutada se sigue diciendo en los dos modos: es el estado
-              // de ESTA jornada, no contexto de la obra, y es lo que reclama atención.
-              noEjecutada ? (cierre?.motivoLabel ?? "no ejecutada") : null,
+                : [partes.cliente ? nombrePropio(partes.cliente) : null, ot?.tecnico]),
+              // El estado de la jornada (no ejecutada, sin parte, urgente) va adelante, en
+              // rojo: ver `problema`.
             ]
               .filter(Boolean)
               .join(" · ")}
@@ -394,7 +436,7 @@ export function ContenidoTarjeta({
  * Por debajo de esto sólo entra un renglón: el de arriba mide ~16px y el padding y el
  * borde se comen el resto. Una jornada de ¼ (24px) cae siempre de este lado.
  */
-const ALTO_DOS_LINEAS = 38;
+const ALTO_DOS_LINEAS = 40;
 
 /**
  * Aire entre dos tarjetas apiladas en el mismo día.
@@ -429,6 +471,7 @@ export function TarjetaAsignacion({
   queEjecutar = false,
   comentarios = null,
   pegarA,
+  sinParteDia = null,
   onCerrarJornada,
   onAbrir,
   onFraccion,
@@ -466,6 +509,8 @@ export function TarjetaAsignacion({
   comentarios?: ResumenEnTarjeta | null;
   /** Dónde se pega el renglón de la dirección al scrollear. Ver ContenidoTarjeta. */
   pegarA?: number;
+  /** El primer día pasado sin parte, para decir "Sin parte del 8/10". */
+  sinParteDia?: string | null;
   onCerrarJornada: (accion: NonNullable<AccionCierre>) => void;
   onAbrir: () => void;
   onFraccion: (f: FraccionStr) => void;
@@ -578,6 +623,7 @@ export function TarjetaAsignacion({
         queEjecutar={queEjecutar}
         comentarios={comentarios}
         pegarA={pegarA}
+        sinParteDia={sinParteDia}
       />
 
       {/* El menú no aparece mientras se guarda: todas sus opciones escriben, y con el id

@@ -41,9 +41,9 @@ import type { ContactoObra, DocumentoOt, OtTablero, TrabajoOt } from "@/lib/tabl
 //
 //   1. Encabezado fijo: QUÉ obra es (la dirección, que es como se la nombra en la grilla y
 //      en la bandeja), EN QUÉ ESTADO está y QUÉ se puede hacer con ella.
-//   2. Qué hay que ejecutar, con las observaciones de Comercial y los documentos pegados.
-//   3. Comentarios: lo que Operaciones habló con el cliente o Comercial le pasó cambia cómo
-//      se hace el trabajo, así que va pegado a él (al pie no se leía).
+//   2. Comentarios: lo que Operaciones habló con el cliente o Comercial le pasó cambia cómo
+//      se hace el trabajo y es lo más nuevo de la obra (al pie no se leía).
+//   3. Qué hay que ejecutar, con las observaciones de Comercial y los documentos pegados.
 //   4. ¿Se puede ir?: habilitación, ventana, compromiso y duración, juntos. Son los datos
 //      de una sola decisión —dónde la pongo— y antes estaban repartidos entre el noveno y
 //      el decimocuarto bloque, la duración debajo del pliegue.
@@ -1002,6 +1002,12 @@ export function PanelOt({
             </div>
           )}
 
+          {/* EL HILO DE LA OBRA, lo primero del cuerpo. Lo que Operaciones habló con el
+              cliente o lo que Comercial le pasó —"entramos 8am el martes", "si llueve corre al
+              jueves"— cambia cómo se hace el trabajo y suele ser lo más nuevo que hay que
+              saber de la obra. Al pie nadie lo leía (pedido de JS, 09/10). */}
+          <ComentariosOt otId={ot.id} />
+
           {/* ── Qué hay que ejecutar, con lo que lo acompaña ── */}
           <div className="space-y-3">
             {/* El vacío SE MUESTRA: una OT sin detalle técnico es un problema para quien
@@ -1021,12 +1027,6 @@ export function PanelOt({
             <Documentos otId={ot.id} cantidad={ot.cantDocs + ot.cantInstrucciones} />
             <LoQueQuedoArmado texto={detalle?.ejecutadoReal} previsto={detalle?.detalleTecnico} />
           </div>
-
-          {/* EL HILO DE LA OBRA, pegado a lo que hay que ejecutar y antes que los datos de
-              planificación: lo que Operaciones habló con el cliente o lo que Comercial le
-              pasó —"entramos 8am el martes", "si llueve corre al jueves"— cambia cómo se hace
-              el trabajo, y al pie de la ficha nadie lo leía (pedido de JS, 09/10). */}
-          <ComentariosOt otId={ot.id} />
 
           {/* ── ¿Se puede ir? Los insumos de una sola decisión: dónde la pongo ── */}
           <Seccion titulo="¿Se puede ir?">

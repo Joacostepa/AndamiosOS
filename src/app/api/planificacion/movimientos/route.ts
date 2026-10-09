@@ -30,8 +30,8 @@ export async function GET(req: NextRequest) {
   try {
     const db = await createClient();
 
-    // La ficha de una obra: sólo sus movimientos. Las confirmaciones de esa obra ya las
-    // muestra HistorialConfirmacion, que vive dos centímetros más arriba en el panel.
+    // La ficha de una obra: sólo sus movimientos. Las confirmaciones las pide aparte la
+    // ficha (HistoriaOt) y las intercala en la misma línea de tiempo.
     if (otId) {
       const movimientos = await movimientosDeOt(db, otId);
       return NextResponse.json({

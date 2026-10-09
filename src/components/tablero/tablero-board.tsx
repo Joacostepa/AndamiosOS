@@ -220,7 +220,16 @@ export function TableroBoard() {
   // viejo, que es exactamente lo que se ve como saltos.
   const expansionPendiente = useRef(false);
   const [visibles, setVisibles] = useState<number[] | null>(leerVisiblesGuardadas);
-  const [panel, setPanel] = useState<{ otId: number; bloqueKey: string | null } | null>(null);
+  // `seguir`: la obra se acaba de planificar desde la ficha. El panel adopta su primer
+  // bloque en cuanto aparece en la grilla, y la ficha pasa de "bandeja" a "grilla" sin
+  // cerrarse: lo siguiente que se hace con una obra recién puesta es confirmarla.
+  const [panel, setPanel] = useState<{ otId: number; bloqueKey: string | null; seguir?: boolean } | null>(null);
+  // El orden en que la bandeja muestra sus obras, para las flechas ‹ › de la ficha.
+  const [ordenBandeja, setOrdenBandeja] = useState<number[]>([]);
+  const recibirOrdenBandeja = useCallback(
+    (ids: number[]) => setOrdenBandeja((previo) => (previo.join(",") === ids.join(",") ? previo : ids)),
+    [],
+  );
   // Alta de una tarjeta de operaciones: guarda la celda donde se hizo doble clic, que es
   // la que le da cuadrilla y día. Y la tarjeta que se está editando, si es una edición.
   const [tareaNueva, setTareaNueva] = useState<{ cuadrillaId: number; fecha: string } | null>(null);
@@ -1817,7 +1826,21 @@ export function TableroBoard() {
   }
 
   const panelOt = panel ? (otsPorId.get(panel.otId) ?? null) : null;
-  const panelBloque = panel?.bloqueKey ? (bloquesPorClave.get(panel.bloqueKey) ?? null) : null;
+  const panelBloque = panel?.bloqueKey
+    ? (bloquesPorClave.get(panel.bloqueKey) ?? null)
+    : panel?.seguir
+      ? ([...bloquesPorClave.values()]
+          .filter((b) => b.otId === panel.otId && b.origen !== "tarea")
+          .sort((a, b) => a.fechas[0].localeCompare(b.fechas[0]))[0] ?? null)
+      : null;
+  const panelPendiente = panel ? (sinAsignar.find((x) => x.ot.id === panel.otId) ?? null) : null;
+  // Las flechas sólo desde la bandeja: desde la grilla no hay una lista que recorrer.
+  const panelIndiceBandeja = panel && !panelBloque ? ordenBandeja.indexOf(panel.otId) : -1;
+  const panelPrimerBloque = panel
+    ? ([...bloquesPorClave.values()]
+        .filter((b) => b.otId === panel.otId && b.origen !== "tarea")
+        .sort((a, b) => a.fechas[0].localeCompare(b.fechas[0]))[0] ?? null)
+    : null;
   const panelCuadrilla =
     panelBloque?.cuadrillaId != null
       ? (data.cuadrillas.find((c) => c.id === panelBloque.cuadrillaId)?.nombre ?? null)
@@ -1956,6 +1979,7 @@ export function TableroBoard() {
               setResaltado({ key: bloqueKey, desde: Date.now() });
               scrollAFecha(fecha);
             }}
+            onOrden={recibirOrdenBandeja}
           />
         </div>
 
@@ -2272,11 +2296,57 @@ export function TableroBoard() {
             ? (data.cuadrillas.find((c) => c.id === panelOt.cuadrillaPrevistaId)?.nombre ?? null)
             : null
         }
+        cuadrillas={data.cuadrillas.map((c) => ({ id: c.id, nombre: c.nombre }))}
+        pendiente={
+          panelPendiente ? { pendientes: panelPendiente.pendientes, totales: panelPendiente.totales } : null
+        }
         plan={panelOt ? (planPorOt.get(panelOt.id) ?? null) : null}
         // La obra entera, no el bloque abierto: el techo se mide contra el último día de
         // todos los tramos. Es el mismo mapa con el que frena la fricción al confirmar.
         planObra={panelOt ? (planPorObra.get(panelOt.id) ?? null) : null}
         hoy={hoyISO}
+        navegacion={
+          panelIndiceBandeja < 0
+            ? null
+            : {
+                anterior:
+                  panelIndiceBandeja > 0 ? () => abrirPanel(ordenBandeja[panelIndiceBandeja - 1], null) : null,
+                siguiente:
+                  panelIndiceBandeja < ordenBandeja.length - 1
+                    ? () => abrirPanel(ordenBandeja[panelIndiceBandeja + 1], null)
+                    : null,
+              }
+        }
+        // PLANIFICAR SIN ARRASTRAR, por la misma función que el drop: reparte las mismas
+        // jornadas pendientes, saltea el domingo y avisa el piso de la ventana igual.
+        onPlanificar={(cuadrillaId, fecha) => {
+          if (!panelOt) return;
+          asignarObra(panelOt.id, cuadrillaId, fecha);
+          setPanel({ otId: panelOt.id, bloqueKey: null, seguir: true });
+          scrollAFecha(fecha);
+        }}
+        // Mismo destino que el menú de duración de la bandeja: el plan de Operaciones.
+        onDuracion={(jornadas) => {
+          if (!panelOt) return;
+          fijarPlan.mutate({
+            otId: panelOt.id,
+            jornadas,
+            motivo:
+              jornadas < 1
+                ? `Operaciones la dejó en ${Math.round(jornadas * 8 * 10) / 10} h desde la ficha.`
+                : `Operaciones la dejó en ${jornadas} jornada${jornadas === 1 ? "" : "s"} desde la ficha.`,
+          });
+        }}
+        onVerEnTablero={
+          !panelBloque && panelPrimerBloque
+            ? () => {
+                const b = panelPrimerBloque;
+                cerrarPanel();
+                setResaltado({ key: b.key, desde: Date.now() });
+                scrollAFecha(b.fechas[0]);
+              }
+            : null
+        }
         // LAS MISMAS ACCIONES QUE EL MENÚ DE LA TARJETA, por el mismo camino. En un celular
         // el ⋮ no existe —aparece al pasar el mouse—, así que el panel es la única puerta
         // para confirmar, fijar o cerrar la jornada. Pasan por las mismas funciones que la

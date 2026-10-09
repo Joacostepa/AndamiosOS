@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { Hammer } from "lucide-react";
@@ -22,6 +23,9 @@ export function DetalleTecnico({
   texto,
   confirmadoEl,
   cargando = false,
+  error = false,
+  onReintentar,
+  observaciones,
   tipo,
   clasificacion,
 }: {
@@ -29,6 +33,16 @@ export function DetalleTecnico({
   /** Fecha en que Operaciones confirmó la estructura en obra. */
   confirmadoEl?: string | null;
   cargando?: boolean;
+  /** La ficha no se pudo leer: sin esto el esqueleto quedaba para siempre. */
+  error?: boolean;
+  onReintentar?: () => void;
+  /**
+   * Las observaciones que Comercial carga en la OT: accesos, horarios, restricciones del
+   * cliente. Van ACÁ ADENTRO y no en una fila al pie de la ficha, que es donde estaban:
+   * suelen decir cosas que cambian cómo se hace el trabajo ("entrar por el portón de
+   * atrás", "no antes de las 9"), así que se leen junto con qué hay que hacer.
+   */
+  observaciones?: string | null;
   /**
    * x_tipo de la OT. En el panel del tablero ya va como badge arriba y no se pasa; en la
    * ficha de Habilitaciones va acá, porque qué papeles pedir depende de si se arma o se
@@ -50,7 +64,16 @@ export function DetalleTecnico({
           <span className="text-[11px] text-muted-foreground">{clasificacion}</span>
         )}
       </div>
-      {cargando ? (
+      {error ? (
+        <p className="text-sm text-muted-foreground">
+          No se pudo leer la ficha de la OT.{" "}
+          {onReintentar && (
+            <button type="button" className="underline hover:text-foreground" onClick={onReintentar}>
+              Reintentar
+            </button>
+          )}
+        </p>
+      ) : cargando ? (
         <Skeleton className="h-4 w-3/4" />
       ) : texto ? (
         <>
@@ -68,6 +91,28 @@ export function DetalleTecnico({
         <p className="text-sm text-muted-foreground">
           Sin detalle técnico cargado. Pedíselo a Comercial antes de mandar la cuadrilla.
         </p>
+      )}
+      {observaciones?.trim() && <Observaciones texto={observaciones.trim()} />}
+    </div>
+  );
+}
+
+/** Tres renglones y "ver más": son de largo libre y no pueden empujar todo lo demás. */
+function Observaciones({ texto }: { texto: string }) {
+  const [entera, setEntera] = useState(false);
+  const larga = texto.length > 180 || texto.split("\n").length > 3;
+  return (
+    <div className="mt-2.5 border-t border-foreground/10 pt-2">
+      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Observaciones de comercial</p>
+      <p className={`mt-0.5 whitespace-pre-wrap text-sm leading-snug ${entera ? "" : "line-clamp-3"}`}>{texto}</p>
+      {larga && (
+        <button
+          type="button"
+          className="text-xs text-muted-foreground underline hover:text-foreground"
+          onClick={() => setEntera((v) => !v)}
+        >
+          {entera ? "ver menos" : "ver más"}
+        </button>
       )}
     </div>
   );

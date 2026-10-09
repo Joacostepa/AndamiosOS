@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useDndContext, useDraggable, useDroppable } from "@dnd-kit/core";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
@@ -657,6 +657,7 @@ export function PanelSinAsignar({
   onDetalle,
   onDuracion,
   onIrABloque,
+  onOrden,
 }: {
   ots: ObraPendiente[];
   /** Obras que ya están en la grilla, para el buscador. Sólo las del rango cargado. */
@@ -682,6 +683,8 @@ export function PanelSinAsignar({
   /** Fijar cuánto dura una obra desde la bandeja, sin tener que planificarla antes. */
   onDuracion: (ot: OtTablero, f: FraccionStr) => void;
   onIrABloque: (bloqueKey: string, fecha: string) => void;
+  /** Avisa en qué orden se ven las obras, para recorrerlas desde la ficha con ‹ ›. */
+  onOrden?: (otIds: number[]) => void;
 }) {
   const [busqueda, setBusqueda] = useState("");
   // El grupo de habilitación pendiente arranca plegado para que lo que está listo no se
@@ -789,6 +792,13 @@ export function PanelSinAsignar({
   const resto = conFiltros.filter((o) => !esUrgente(o.ot));
   const listas = resto.filter((o) => !habilitacionPendiente(o.ot));
   const pendientesHab = resto.filter((o) => habilitacionPendiente(o.ot));
+
+  // El orden de la ficha es el que se VE, con la búsqueda y los filtros puestos: la
+  // recorrida con ‹ › tiene que pasar por las mismas tarjetas que tenés adelante.
+  const ordenVisible = [...urgentes, ...listas, ...pendientesHab].map((o) => o.ot.id).join(",");
+  useEffect(() => {
+    onOrden?.(ordenVisible ? ordenVisible.split(",").map(Number) : []);
+  }, [ordenVisible, onOrden]);
 
   // Sólo se buscan las ya planificadas cuando hay texto: sin búsqueda, la sección no
   // aporta nada y le sacaría lugar a la bandeja.

@@ -4,29 +4,30 @@ import { useQuery } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import {
-  AlertTriangle, Building2, CalendarCheck, Construction, ExternalLink, Fence, FileText,
-  HardHat, Phone, ShieldCheck, User, UserRound, Users, Clock, CalendarDays,
-  CalendarRange, Check, CircleCheck, CircleDashed, ClipboardCheck, Pin, PinOff, Plus, Trash2, X,
+  AlertTriangle, CalendarPlus, Check, ChevronLeft, ChevronRight, CircleCheck, CircleDashed,
+  ClipboardCheck, Construction, ExternalLink, Fence, FileText, HardHat, LocateFixed, MapPin,
+  Phone, Pin, PinOff, Plus, CalendarRange, Trash2, X,
 } from "lucide-react";
 import { useState } from "react";
 import { useDetalleOt } from "@/hooks/use-detalle-ot";
 import { useAgregarContactoObra, useBorrarContactoObra } from "@/hooks/use-contactos-obra";
 import { Input } from "@/components/ui/input";
-import { HistorialConfirmacion } from "./historial-confirmacion";
-import { MovimientosOt } from "./movimientos-ot";
+import { HistoriaOt } from "./historia-ot";
 import { ComentariosOt } from "./comentarios-ot";
 import { DetalleTecnico } from "./detalle-tecnico";
+import { ChipTipoOt } from "@/components/habilitaciones/chip-tipo-ot";
 import { ETAPA_LABEL, type HabEtapa } from "@/lib/habilitaciones/tipos";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  ALERTA, CORAL, NOTA, OK, PELIGRO, PELIGRO_SOLIDO, semaforo,
+  ALERTA, NOTA, OK, PELIGRO, PELIGRO_SOLIDO, semaforo,
 } from "@/lib/tablero/colores";
 import { FRACCIONES, fraccionLabel, type FraccionStr } from "@/lib/tablero/fracciones";
 import { accionDeCierre, jornadasCerradas, jornadasLiberables, type AccionCierre } from "@/lib/tablero/cierre";
-import { lineaVentana } from "@/lib/tablero/ventana";
+import { lineaVentana, violaPiso, violaTecho } from "@/lib/tablero/ventana";
+import { fechasDeJornadas } from "@/lib/tablero/bloques";
+import { direccionDeObra } from "@/lib/tablero/titulo";
 import { Button } from "@/components/ui/button";
 import type { Bloque } from "@/lib/tablero/bloques";
 import type { ContactoObra, DocumentoOt, OtTablero, TrabajoOt } from "@/lib/tablero/tipos";
@@ -34,15 +35,24 @@ import type { ContactoObra, DocumentoOt, OtTablero, TrabajoOt } from "@/lib/tabl
 // Panel lateral de la OT: todo lo que hace falta para coordinar la jornada sin salir
 // del tablero. La carga de partes, el circuito de habilitación y los costos viven en
 // Odoo — de acá se linkea, no se edita.
-
-const TIPO_LABEL: Record<string, string> = {
-  armado: "Armado",
-  desarme: "Desarme",
-  ampliacion: "Ampliación",
-  desmonte_parcial: "Desmonte parcial",
-  mantenimiento: "Mantenimiento",
-  otro: "Otro",
-};
+//
+// EL ORDEN ES EL DE LA TAREA, no el de cuándo se fue agregando cada bloque (rediseño del
+// 09/10/2026, sobre una auditoría de la ficha abierta desde la bandeja):
+//
+//   1. Encabezado fijo: QUÉ obra es (la dirección, que es como se la nombra en la grilla y
+//      en la bandeja), EN QUÉ ESTADO está y QUÉ se puede hacer con ella.
+//   2. ¿Se puede ir?: habilitación, ventana, compromiso y duración, juntos. Son los datos
+//      de una sola decisión —dónde la pongo— y antes estaban repartidos entre el noveno y
+//      el decimocuarto bloque, la duración debajo del pliegue.
+//   3. Qué hay que ejecutar, con las observaciones de Comercial y los documentos pegados.
+//   4. Contactos: en obra y en ABA (técnico y vendedor), para saber a quién recurrir.
+//   5. Comentarios, compactos.
+//   6. Historia, plegada con el último evento a la vista.
+//
+// UNA SOLA FICHA PARA LA BANDEJA Y LA GRILLA. Cambian la línea de estado y las acciones,
+// porque una obra sin jornadas no se confirma ni se fija y una con jornadas no se
+// "planifica"; el resto es idéntico. Planificar desde acá convierte una en la otra sin
+// cerrar el panel.
 
 /**
  * Lo que esta jornada necesita ADEMÁS de la cuadrilla.
@@ -104,6 +114,44 @@ function QueNecesita({ trabajo }: { trabajo: TrabajoOt | undefined }) {
   );
 }
 
+/** Título de una sección de la ficha. Pocas y en mayúsculas: los campos de adentro, no. */
+function Seccion({ titulo, children }: { titulo: string; children: React.ReactNode }) {
+  return (
+    <section className="space-y-2.5">
+      <h3 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{titulo}</h3>
+      {children}
+    </section>
+  );
+}
+
+/** Un dato de "¿Se puede ir?": etiqueta a la izquierda, valor a la derecha, un renglón. */
+function Dato({ etiqueta, children }: { etiqueta: string; children: React.ReactNode }) {
+  return (
+    <>
+      <dt className="text-[13px] text-muted-foreground">{etiqueta}</dt>
+      <dd className="min-w-0 text-sm">{children}</dd>
+    </>
+  );
+}
+
+const telefonoLimpio = (t: string) => t.replace(/[^\d+]/g, "");
+
+/** Botón de llamar: en el celular es lo que se toca, y el número subrayado era un blanco chico. */
+function Llamar({ telefono }: { telefono: string }) {
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      className="h-9 shrink-0 md:h-8"
+      render={<a href={`tel:${telefonoLimpio(telefono)}`} />}
+      aria-label={`Llamar al ${telefono}`}
+    >
+      <Phone className="h-3.5 w-3.5" />
+      Llamar
+    </Button>
+  );
+}
+
 /**
  * La gente de la obra. Se agrega desde acá y queda guardada en la ORDEN.
  *
@@ -144,54 +192,40 @@ function ContactosDeObra({
     );
   }
 
-  // Sin contactos y sin venta no hay nada que mostrar ni dónde guardar.
-  if (contactos.length === 0 && !ventaId) return null;
-
   return (
-    <Fila icono={<Users className="h-4 w-4" />} etiqueta="Gente de la obra">
-      {contactos.length === 0 && !abierto && (
-        <p className="text-sm text-muted-foreground">Nadie más cargado todavía.</p>
-      )}
-
-      <ul className="space-y-1.5">
-        {contactos.map((c) => (
-          <li key={c.id} className="flex items-start gap-2">
-            <div className="min-w-0 flex-1">
-              <p className="text-sm">
-                {c.nombre}
-                {c.rol && <span className="text-muted-foreground"> · {c.rol}</span>}
-              </p>
-              {/* El teléfono como link: este panel se abre desde la obra, en un celular. */}
-              {c.telefono && (
-                <a href={`tel:${c.telefono.replace(/[^\d+]/g, "")}`} className="text-sm underline">
-                  {c.telefono}
-                </a>
-              )}
-              {c.email && (
-                <a href={`mailto:${c.email}`} className="block truncate text-xs text-muted-foreground underline">
-                  {c.email}
-                </a>
-              )}
-            </div>
-            <button
-              type="button"
-              onClick={() => borrar.mutate(c.id)}
-              disabled={borrar.isPending}
-              className="shrink-0 rounded p-1 text-muted-foreground hover:bg-foreground/10"
-              title={`Quitar a ${c.nombre} de la obra`}
-              aria-label={`Quitar a ${c.nombre} de la obra`}
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </li>
-        ))}
-      </ul>
+    <>
+      {contactos.map((c) => (
+        <div key={c.id} className="flex items-center gap-2">
+          <div className="min-w-0 flex-1 text-sm">
+            <p>
+              <span className="font-medium">{c.nombre}</span>
+              {c.rol && <span className="text-muted-foreground"> · {c.rol}</span>}
+            </p>
+            {c.email && (
+              <a href={`mailto:${c.email}`} className="block truncate text-xs text-muted-foreground underline">
+                {c.email}
+              </a>
+            )}
+          </div>
+          {c.telefono && <Llamar telefono={c.telefono} />}
+          <button
+            type="button"
+            onClick={() => borrar.mutate(c.id)}
+            disabled={borrar.isPending}
+            className="shrink-0 rounded p-1.5 text-muted-foreground hover:bg-foreground/10"
+            title={`Quitar a ${c.nombre} de la obra`}
+            aria-label={`Quitar a ${c.nombre} de la obra`}
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      ))}
 
       {ventaId && !abierto && (
         <button
           type="button"
           onClick={() => setAbierto(true)}
-          className="mt-1 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+          className="flex items-center gap-1 text-[13px] text-muted-foreground hover:text-foreground"
         >
           <Plus className="h-3.5 w-3.5" />
           Agregar contacto
@@ -199,17 +233,18 @@ function ContactosDeObra({
       )}
 
       {abierto && (
-        <div className="mt-2 space-y-1.5 rounded-md border p-2">
+        <div className="space-y-1.5 rounded-md border p-2">
           <Input
             value={nombre}
             onChange={(e) => setNombre(e.target.value)}
             placeholder="Nombre y apellido"
+            aria-label="Nombre y apellido"
             className="h-8 text-sm"
             autoFocus
           />
-          <Input value={rol} onChange={(e) => setRol(e.target.value)} placeholder="Rol — encargado, arquitecta…" className="h-8 text-sm" />
-          <Input value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder="Teléfono" className="h-8 text-sm" inputMode="tel" />
-          <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email (opcional)" className="h-8 text-sm" inputMode="email" />
+          <Input value={rol} onChange={(e) => setRol(e.target.value)} placeholder="Rol — encargado, arquitecta…" aria-label="Rol" className="h-8 text-sm" />
+          <Input value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder="Teléfono" aria-label="Teléfono" className="h-8 text-sm" inputMode="tel" />
+          <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email (opcional)" aria-label="Email" className="h-8 text-sm" inputMode="email" />
           <p className="text-[11px] text-muted-foreground">
             Queda guardado en la obra: las próximas órdenes de trabajo ya lo traen.
           </p>
@@ -220,7 +255,6 @@ function ContactosDeObra({
             <Button
               size="sm"
               className="ml-auto"
-              style={{ backgroundColor: CORAL, color: "#fff" }}
               /* El nombre es lo único que se exige: muchas veces se tiene el teléfono y el
                  rol pero no el mail, y pedirlo todo termina en que no se cargue nada. */
               disabled={!nombre.trim() || agregar.isPending}
@@ -231,7 +265,7 @@ function ContactosDeObra({
           </div>
         </div>
       )}
-    </Fila>
+    </>
   );
 }
 
@@ -272,20 +306,8 @@ function LoQueQuedoArmado({ texto, previsto }: { texto?: string | null; previsto
   );
 }
 
-function Fila({ icono, etiqueta, children }: { icono: React.ReactNode; etiqueta: string; children: React.ReactNode }) {
-  return (
-    <div className="flex gap-2.5 text-sm">
-      <span className="mt-0.5 text-muted-foreground">{icono}</span>
-      <div className="min-w-0 flex-1">
-        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{etiqueta}</p>
-        <div className="text-sm">{children}</div>
-      </div>
-    </div>
-  );
-}
-
 function Documentos({ otId, cantidad }: { otId: number; cantidad: number }) {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["tablero-documentos", otId],
     queryFn: async () => {
       const res = await fetch(`/api/planificacion/documentos?otId=${otId}`);
@@ -296,40 +318,68 @@ function Documentos({ otId, cantidad }: { otId: number; cantidad: number }) {
     staleTime: 5 * 60 * 1000,
   });
 
-  if (cantidad === 0) return <p className="text-sm text-muted-foreground">Sin documentación adjunta.</p>;
+  if (cantidad === 0) return <p className="text-[13px] text-muted-foreground">Sin documentación adjunta.</p>;
   if (isLoading) return <Skeleton className="h-16 w-full" />;
+  if (isError) {
+    return (
+      <p className="text-[13px] text-muted-foreground">
+        No se pudieron leer los {cantidad} documentos.{" "}
+        <button type="button" className="underline hover:text-foreground" onClick={() => refetch()}>
+          Reintentar
+        </button>
+      </p>
+    );
+  }
 
   const docs = data?.documentos ?? [];
   return (
-    <div className="grid grid-cols-2 gap-2">
-      {docs.map((d) => (
-        <a
-          key={d.id}
-          href={d.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="group overflow-hidden rounded-md border transition-colors hover:border-foreground/30"
-          title={d.nombre}
-        >
-          {d.mimetype.startsWith("image/") ? (
-            // La vista previa sale de Odoo con la sesión del usuario en el browser; si
-            // no hay sesión, queda el nombre del archivo como alternativa.
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={d.url} alt={d.nombre} className="h-20 w-full bg-muted object-cover" />
-          ) : (
-            <div className="flex h-20 items-center justify-center bg-muted">
-              <FileText className="h-6 w-6 text-muted-foreground" />
-            </div>
-          )}
-          <p className="truncate px-1.5 py-1 text-[10px] text-muted-foreground">
-            {/* Distingue lo que alguien subió PARA la cuadrilla de los papeles de la
-                venta, que van en el mismo grid y son mayoría. */}
-            {d.instruccion && <span className="font-semibold text-foreground">Instrucción · </span>}
-            {d.nombre}
-          </p>
-        </a>
-      ))}
+    <div className="space-y-1.5">
+      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Documentos ({cantidad})</p>
+      <div className="grid grid-cols-3 gap-1.5">
+        {docs.map((d) => (
+          <a
+            key={d.id}
+            href={d.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group overflow-hidden rounded-md border transition-colors hover:border-foreground/30"
+            title={d.nombre}
+          >
+            {d.mimetype.startsWith("image/") ? (
+              // La vista previa sale de Odoo con la sesión del usuario en el browser; si
+              // no hay sesión, queda el nombre del archivo como alternativa.
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={d.url} alt={d.nombre} className="h-16 w-full bg-muted object-cover" />
+            ) : (
+              <div className="flex h-16 items-center justify-center bg-muted">
+                <FileText className="h-5 w-5 text-muted-foreground" />
+              </div>
+            )}
+            <p className="truncate px-1.5 py-1 text-[11px] text-muted-foreground">
+              {/* Distingue lo que alguien subió PARA la cuadrilla de los papeles de la
+                  venta, que van en el mismo grid y son mayoría. */}
+              {d.instruccion && <span className="font-semibold text-foreground">Instrucción · </span>}
+              {d.nombre}
+            </p>
+          </a>
+        ))}
+      </div>
     </div>
+  );
+}
+
+/** "Abrir en Odoo", en el mismo lugar desde la bandeja y desde la grilla. */
+function LinkOdoo({ url }: { url: string }) {
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      className="h-10 text-muted-foreground md:h-8"
+      render={<a href={url} target="_blank" rel="noopener noreferrer" />}
+    >
+      Odoo
+      <ExternalLink className="h-3.5 w-3.5" />
+    </Button>
   );
 }
 
@@ -348,12 +398,16 @@ function Documentos({ otId, cantidad }: { otId: number; cantidad: number }) {
  * Los botones miden 40px de alto en pantalla chica, que es lo mínimo que se toca con el
  * dedo sin errarle. En la computadora vuelven al tamaño de siempre.
  *
+ * CONFIRMAR VA LLENO mientras la jornada es tentativa: es el paso siguiente natural de una
+ * obra recién puesta. Confirmada, pasa a ser uno más ("A tentativa").
+ *
  * El motivo de una obra fija va escrito acá, entero: en la tarjeta vive en un tooltip, y en
  * un celular un tooltip no se puede leer.
  */
 function AccionesJornada({
   bloque,
   hoy,
+  urlOdoo,
   onEstado,
   onFijar,
   onSoltar,
@@ -364,6 +418,7 @@ function AccionesJornada({
 }: {
   bloque: Bloque;
   hoy: string;
+  urlOdoo: string;
   onEstado: (e: "tentativa" | "confirmada") => void;
   onFijar: () => void;
   onSoltar: () => void;
@@ -377,7 +432,7 @@ function AccionesJornada({
   const cerradas = jornadasCerradas(bloque);
   // Recién soltada: todavía no tiene su número en Odoo y cualquier escritura rebotaría.
   const guardando = bloque.ids.some((id) => id < 0);
-  const boton = "h-10 justify-start md:h-8";
+  const boton = "h-10 md:h-8";
   const confirmada = bloque.estado === "confirmada";
 
   return (
@@ -391,7 +446,7 @@ function AccionesJornada({
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
         {accion && (
           <Button
             variant="outline"
@@ -400,22 +455,19 @@ function AccionesJornada({
             disabled={guardando}
             onClick={() => onCerrarJornada(accion)}
           >
-            <ClipboardCheck className="mr-1.5 h-4 w-4" />
+            <ClipboardCheck className="h-4 w-4" />
             {accion.tipo === "cerrar" ? "Cerrar jornada" : "Ver parte"}
           </Button>
         )}
         <Button
-          variant="outline"
+          variant={confirmada ? "outline" : "default"}
           size="sm"
           className={boton}
           disabled={guardando}
+          title={guardando ? "Guardando la jornada recién puesta…" : undefined}
           onClick={() => onEstado(confirmada ? "tentativa" : "confirmada")}
         >
-          {confirmada ? (
-            <CircleDashed className="mr-1.5 h-4 w-4" />
-          ) : (
-            <Check className="mr-1.5 h-4 w-4" />
-          )}
+          {confirmada ? <CircleDashed className="h-4 w-4" /> : <Check className="h-4 w-4" />}
           {confirmada ? "A tentativa" : "Confirmar"}
         </Button>
         <Button
@@ -425,21 +477,11 @@ function AccionesJornada({
           disabled={guardando}
           onClick={bloque.motivoFija ? onSoltar : onFijar}
         >
-          {bloque.motivoFija ? (
-            <PinOff className="mr-1.5 h-4 w-4" />
-          ) : (
-            <Pin className="mr-1.5 h-4 w-4" />
-          )}
-          {bloque.motivoFija ? "Soltar" : "Fijar al día"}
+          {bloque.motivoFija ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
+          {bloque.motivoFija ? "Soltar" : "Fijar"}
         </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          className={boton}
-          disabled={guardando}
-          onClick={onEditarJornadas}
-        >
-          <CalendarRange className="mr-1.5 h-4 w-4" />
+        <Button variant="outline" size="sm" className={boton} disabled={guardando} onClick={onEditarJornadas}>
+          <CalendarRange className="h-4 w-4" />
           Jornadas
         </Button>
         {liberables > 0 && (
@@ -447,14 +489,15 @@ function AccionesJornada({
             variant="outline"
             size="sm"
             className={boton}
-            style={{ color: CORAL }}
+            style={{ color: PELIGRO_SOLIDO }}
             disabled={guardando}
             onClick={onQuitar}
           >
-            <Trash2 className="mr-1.5 h-4 w-4" />
+            <Trash2 className="h-4 w-4" />
             {cerradas > 0 ? `Liberar ${liberables}` : "Quitar"}
           </Button>
         )}
+        <LinkOdoo url={urlOdoo} />
       </div>
 
       {/* Sólo en una jornada suelta, igual que en el menú: en un bloque de varios días cada
@@ -485,14 +528,156 @@ function AccionesJornada({
   );
 }
 
+const DIA_CORTO = (f: string) => format(parseISO(f), "EEE d", { locale: es });
+const MES = (f: string) => format(parseISO(f), "MMM", { locale: es });
+
+/** "mar 13 – sáb 17 oct", "mié 8 oct", "lun 28 sep – mar 6 oct". */
+export function rangoDeFechas(primero: string, ultimo: string): string {
+  if (primero === ultimo) return `${DIA_CORTO(primero)} ${MES(primero)}`;
+  if (primero.slice(0, 7) === ultimo.slice(0, 7)) return `${DIA_CORTO(primero)} – ${DIA_CORTO(ultimo)} ${MES(ultimo)}`;
+  return `${DIA_CORTO(primero)} ${MES(primero)} – ${DIA_CORTO(ultimo)} ${MES(ultimo)}`;
+}
+
+/** El primer día hábil después de hoy, o el piso de la ventana si es posterior. */
+function inicioSugerido(hoy: string, piso: string | null): string {
+  const [manana] = fechasDeJornadas(format(new Date(parseISO(hoy).getTime() + 86_400_000), "yyyy-MM-dd"), 1);
+  return piso && piso > manana ? fechasDeJornadas(piso, 1)[0] : manana;
+}
+
+/**
+ * Planificar la obra sin arrastrarla: cuadrilla, día de inicio y listo.
+ *
+ * POR QUÉ: desde la bandeja la ficha servía para leer y no para hacer. Para poner la obra
+ * había que cerrar el panel, ubicar la tarjeta en la bandeja y arrastrarla —y con el
+ * teclado o en una tablet, ni eso—.
+ *
+ * PASA POR LA MISMA FUNCIÓN QUE EL ARRASTRE (asignarObra en el board), así que reparte
+ * las mismas jornadas pendientes, saltea el domingo igual y avisa el piso de la ventana
+ * igual. Acá además se ve ANTES qué días va a ocupar y si respeta la ventana.
+ */
+function FormPlanificar({
+  ot,
+  pendientes,
+  cuadrillas,
+  cuadrillaSugerida,
+  hoy,
+  onPlanificar,
+  onCancelar,
+}: {
+  ot: OtTablero;
+  pendientes: number;
+  cuadrillas: { id: number; nombre: string }[];
+  cuadrillaSugerida: number | null;
+  hoy: string;
+  onPlanificar: (cuadrillaId: number, fecha: string) => void;
+  onCancelar: () => void;
+}) {
+  const [cuadrillaId, setCuadrillaId] = useState<number | null>(
+    cuadrillaSugerida ?? cuadrillas[0]?.id ?? null,
+  );
+  const [fecha, setFecha] = useState(() => inicioSugerido(hoy, ot.fechaDesde));
+  const dias = fecha ? fechasDeJornadas(fecha, Math.max(1, pendientes)) : [];
+  const rompePiso = dias.length > 0 && violaPiso(ot, dias[0]);
+  const rompeTecho = dias.length > 0 && violaTecho(ot, dias[dias.length - 1]);
+  const conVentana = !!ot.fechaDesde || !!ot.fechaAntesDe;
+
+  return (
+    <form
+      className="space-y-3 rounded-lg border bg-muted/30 p-3"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (cuadrillaId != null && fecha) onPlanificar(cuadrillaId, fecha);
+      }}
+    >
+      <p className="text-sm font-semibold">Planificar la obra</p>
+      <div className="grid grid-cols-2 gap-2">
+        <label className="space-y-1">
+          <span className="text-xs text-muted-foreground">Cuadrilla</span>
+          <select
+            className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+            value={cuadrillaId ?? ""}
+            onChange={(e) => setCuadrillaId(Number(e.target.value))}
+          >
+            {cuadrillas.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nombre}{c.id === cuadrillaSugerida ? " (prevista)" : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="space-y-1">
+          <span className="text-xs text-muted-foreground">Desde</span>
+          {/* El valor vacío se ignora: borrar el campo no puede dejar el formulario sin día. */}
+          <Input type="date" className="h-9" value={fecha} onChange={(e) => e.target.value && setFecha(e.target.value)} />
+        </label>
+      </div>
+      {dias.length > 0 && (
+        <div className="space-y-0.5 text-[13px]">
+          <p>
+            {pendientes === 1 ? "Ocupa " : `${pendientes} jornadas: `}
+            <span className="font-medium">{rangoDeFechas(dias[0], dias[dias.length - 1])}</span>
+            {pendientes > 1 && <span className="text-muted-foreground"> (saltea el domingo)</span>}
+          </p>
+          {conVentana && (
+            <p style={{ color: rompePiso || rompeTecho ? PELIGRO_SOLIDO : OK }}>
+              {rompePiso
+                ? "Arranca antes de la ventana del cliente."
+                : rompeTecho
+                  ? "Termina después de la ventana del cliente."
+                  : "Respeta la ventana del cliente."}
+            </p>
+          )}
+        </div>
+      )}
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="ghost" size="sm" onClick={onCancelar}>
+          Cancelar
+        </Button>
+        <Button type="submit" size="sm" disabled={cuadrillaId == null || !fecha}>
+          Planificar
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+/** Duración editable desde la ficha: la misma escala que el menú de la bandeja, más días enteros. */
+function SelectorDuracion({ valor, onCambiar }: { valor: number; onCambiar: (jornadas: number) => void }) {
+  const opciones: { value: string; label: string }[] = [
+    ...FRACCIONES.filter((f) => Number(f.value) < 1).map((f) => ({ value: String(Number(f.value)), label: `${f.label} de jornada` })),
+    ...Array.from({ length: 20 }, (_, i) => ({ value: String(i + 1), label: `${i + 1} jornada${i === 0 ? "" : "s"}` })),
+  ];
+  const actual = String(valor);
+  if (!opciones.some((o) => o.value === actual)) opciones.push({ value: actual, label: `${valor} jornadas` });
+  return (
+    <select
+      aria-label="Duración de la obra"
+      title="Cuánto dura la obra según Operaciones"
+      className="h-10 rounded-lg border bg-background px-2 text-sm font-medium md:h-8"
+      value={actual}
+      onChange={(e) => onCambiar(Number(e.target.value))}
+    >
+      {opciones.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+    </select>
+  );
+}
+
+type Estado = { etiqueta: string; detalle: string; tono: "vacio" | "tentativa" | "confirmada" | "neutro" };
+
 export function PanelOt({
   ot,
   bloque,
   cuadrillaNombre,
   cuadrillaPrevista,
+  cuadrillas,
+  pendiente,
   plan,
   planObra,
   hoy,
+  navegacion,
+  onPlanificar,
+  onDuracion,
+  onVerEnTablero,
   onEstado,
   onFijar,
   onSoltar,
@@ -507,6 +692,10 @@ export function PanelOt({
   cuadrillaNombre: string | null;
   /** La cuadrilla que la OT trae sugerida de Odoo (x_cuadrilla_prevista_id), ya con nombre. */
   cuadrillaPrevista: string | null;
+  /** Las filas del tablero, para elegir dónde planificar. */
+  cuadrillas: { id: number; nombre: string }[];
+  /** Lo que le falta planificar a la obra. Null si ya está entera en el tablero. */
+  pendiente: { pendientes: number; totales: number } | null;
   /**
    * La duración que fijó Operaciones, cuando difiere del estimado de Comercial.
    *
@@ -520,14 +709,25 @@ export function PanelOt({
    * En qué días cayó la obra ENTERA, sumando todos sus tramos.
    *
    * NO ES `plan`, aunque el nombre se parezca: aquél es cuántas jornadas dijo Operaciones
-   * que lleva; éste es dónde quedaron. Sirve para una sola cosa —medir la ventana del
-   * cliente contra el plan de verdad— y tiene que ser la obra entera y no el bloque
-   * abierto: el techo es sobre el trabajo TERMINADO, y una obra partida en dos tramos
-   * termina cuando termina el segundo. Ver el encabezado de ventana.ts.
+   * que lleva; éste es dónde quedaron. Sirve para medir la ventana del cliente contra el
+   * plan de verdad y tiene que ser la obra entera y no el bloque abierto: el techo es
+   * sobre el trabajo TERMINADO. Ver el encabezado de ventana.ts.
    */
   planObra: { primerDia: string | null; ultimoDia: string | null } | null;
   /** Hoy en yyyy-MM-dd: desde cuándo se puede cerrar una jornada. */
   hoy: string;
+  /**
+   * Obra anterior y siguiente de la bandeja, en el orden en que se ve. Es la recorrida
+   * de la mañana: repasar la bandeja de a una sin cerrar y volver a abrir. Null desde la
+   * grilla, donde no hay una lista que recorrer.
+   */
+  navegacion: { anterior: (() => void) | null; siguiente: (() => void) | null } | null;
+  /** Planificar sin arrastrar. Pasa por el mismo camino que soltar en la grilla. */
+  onPlanificar: (cuadrillaId: number, fecha: string) => void;
+  /** Fijar cuánto dura la obra, igual que el menú de duración de la bandeja. */
+  onDuracion: (jornadas: number) => void;
+  /** Llevar el tablero hasta la obra, cuando tiene jornadas en las semanas cargadas. */
+  onVerEnTablero: (() => void) | null;
   /** Las acciones del menú de la tarjeta, sobre el bloque abierto. Ver AccionesJornada. */
   onEstado: (e: "tentativa" | "confirmada") => void;
   onFijar: () => void;
@@ -539,342 +739,394 @@ export function PanelOt({
   onOpenChange: (abierto: boolean) => void;
 }) {
   const sem = semaforo(ot?.habSemaforo);
-  const { data: detalle } = useDetalleOt(ot?.id ?? null);
+  const { data: detalle, isLoading: cargandoDetalle, isError: errorDetalle, refetch } = useDetalleOt(ot?.id ?? null);
+  const [planificando, setPlanificando] = useState<number | null>(null);
   const etapa = detalle?.habEtapa ? ETAPA_LABEL[detalle.habEtapa as HabEtapa] : null;
   const fecha = (f: string) => format(parseISO(f), "d MMM yyyy", { locale: es });
-  // Acá SÍ se mide contra el plan, al revés que en la bandeja: la obra ya está en la
-  // grilla, así que la línea no sólo informa la ventana sino que dice si el lugar donde
-  // quedó la respeta. Es la misma función que usa la bandeja para que las dos superficies
-  // no puedan discrepar (ver el encabezado de ventana.ts).
+  const conPlan = !!planObra?.primerDia;
+  // Se mide contra el plan de la obra entera cuando lo hay: la línea no sólo informa la
+  // ventana sino que dice si el lugar donde quedó la respeta. Es la misma función que usa
+  // la bandeja para que las dos superficies no puedan discrepar (ver ventana.ts).
   const ventana = ot
-    ? lineaVentana(ot, {
-        primerDia: planObra?.primerDia ?? null,
-        ultimoDia: planObra?.ultimoDia ?? null,
-      })
+    ? lineaVentana(ot, { primerDia: planObra?.primerDia ?? null, ultimoDia: planObra?.ultimoDia ?? null })
     : null;
 
-  return (
-    <Sheet open={!!ot} onOpenChange={onOpenChange}>
-      <SheetContent className="overflow-y-auto sm:max-w-md">
-        {ot && (
-          <>
-            <SheetHeader>
-              <SheetTitle className="pr-6 text-base leading-snug">{ot.titulo}</SheetTitle>
-            </SheetHeader>
+  if (!ot) {
+    return (
+      <Sheet open={false} onOpenChange={onOpenChange}>
+        <SheetContent />
+      </Sheet>
+    );
+  }
 
-            <div className="space-y-4 px-4 pb-6">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <Badge variant="secondary">{TIPO_LABEL[ot.tipo] ?? ot.tipo}</Badge>
-                {/* El técnico deja de ser una badge con las iniciales ("GS") y pasa a su
-                    propia fila con nombre y apellido, que es lo que sirve para ubicarlo. */}
+  const desdeLaGrilla = !!bloque && bloque.origen !== "tarea";
+  const direccion = detalle?.direccionObra ?? direccionDeObra(ot);
+  const cliente = detalle?.cliente ?? null;
+  const duracion = plan?.jornadas ?? ot.jornadas;
+  const formAbierto = planificando === ot.id && !desdeLaGrilla && !!pendiente;
+
+  const estado: Estado = bloque
+    ? {
+        etiqueta: bloque.estado === "confirmada" ? "Confirmada" : "Tentativa",
+        tono: bloque.estado === "confirmada" ? "confirmada" : "tentativa",
+        detalle: [
+          cuadrillaNombre ?? "Sin cuadrilla",
+          rangoDeFechas(bloque.fechas[0], bloque.fechas[bloque.fechas.length - 1]),
+          bloque.fechas.length > 1 ? `${bloque.fechas.length} jornadas` : `${fraccionLabel(bloque.fraccion)} de jornada`,
+        ].join(" · "),
+      }
+    : pendiente
+      ? {
+          etiqueta: pendiente.pendientes < pendiente.totales ? "Planificada en parte" : "Sin planificar",
+          tono: "vacio",
+          detalle: `faltan ${pendiente.pendientes} de ${pendiente.totales} jornada${pendiente.totales === 1 ? "" : "s"}`,
+        }
+      : conPlan
+        ? { etiqueta: "Planificada", tono: "neutro", detalle: rangoDeFechas(planObra!.primerDia!, planObra!.ultimoDia ?? planObra!.primerDia!) }
+        : ot.fechaProgramada
+          ? { etiqueta: "Programada", tono: "neutro", detalle: `${fecha(ot.fechaProgramada)} · fuera de las semanas cargadas` }
+          : { etiqueta: "Sin planificar", tono: "vacio", detalle: "" };
+
+  const habExtra = [
+    etapa ? sem.label : null,
+    ot.habAlerta && !/^ok$/i.test(ot.habAlerta.trim()) ? ot.habAlerta : null,
+    detalle && detalle.habDias > 0 ? `${detalle.habDias} días en trámite` : null,
+    ot.habVencimiento ? `vence el ${fecha(ot.habVencimiento)}` : null,
+  ].filter(Boolean).join(" · ");
+
+  const ventanaNota = !ventana || ventana.alerta
+    ? null
+    : conPlan
+      ? "el plan la respeta"
+      : ot.fechaDesde && ot.fechaDesde <= hoy && !ot.fechaAntesDe
+        ? "ya se puede"
+        : null;
+
+  const tecnico = detalle?.tecnicoNombre ?? ot.tecnico;
+  const telObra = ot.telObra ?? detalle?.telFichaCliente ?? null;
+
+  return (
+    <Sheet open onOpenChange={onOpenChange}>
+      <SheetContent
+        showCloseButton={false}
+        className="gap-0 overflow-y-auto p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-md"
+        onKeyDown={(e) => {
+          // ← → recorren la bandeja, salvo cuando se está escribiendo.
+          if (!navegacion) return;
+          const t = e.target as HTMLElement;
+          if (t.closest("input, textarea, select, [contenteditable]")) return;
+          if (e.key === "ArrowLeft" && navegacion.anterior) navegacion.anterior();
+          if (e.key === "ArrowRight" && navegacion.siguiente) navegacion.siguiente();
+        }}
+      >
+        {/* ── Encabezado fijo: qué obra, en qué estado, qué se puede hacer ── */}
+        <header className="sticky top-0 z-10 space-y-2.5 border-b bg-popover px-4 pt-4 pb-3">
+          <div className="flex items-start gap-1">
+            <div className="min-w-0 flex-1">
+              {/* LA DIRECCIÓN COMO TÍTULO: es como se nombra la obra en la grilla y en la
+                  bandeja. El título crudo de Odoo repetía tipo, orden, cliente y dirección
+                  en tres renglones, y todo eso volvía a aparecer más abajo. */}
+              <SheetTitle className="text-[17px] leading-snug font-semibold">{direccion}</SheetTitle>
+              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-muted-foreground">
+                <span>{[cliente, ot.ordenVenta].filter(Boolean).join(" · ") || ot.titulo}</span>
+                <ChipTipoOt tipo={ot.tipo} />
                 {ot.urgencia === "alta" && (
                   <Badge style={{ backgroundColor: PELIGRO_SOLIDO, color: "#fff" }}>Urgencia alta</Badge>
                 )}
-                {bloque && (
-                  <Badge variant="outline">
-                    {bloque.estado === "confirmada" ? "Confirmada" : "Tentativa"}
-                  </Badge>
-                )}
               </div>
+            </div>
+            {navegacion && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Obra anterior de la bandeja"
+                  title="Obra anterior de la bandeja (←)"
+                  disabled={!navegacion.anterior}
+                  onClick={() => navegacion.anterior?.()}
+                >
+                  <ChevronLeft />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Obra siguiente de la bandeja"
+                  title="Obra siguiente de la bandeja (→)"
+                  disabled={!navegacion.siguiente}
+                  onClick={() => navegacion.siguiente?.()}
+                >
+                  <ChevronRight />
+                </Button>
+              </>
+            )}
+            <Button variant="ghost" size="icon-sm" aria-label="Cerrar" onClick={() => onOpenChange(false)}>
+              <X />
+            </Button>
+          </div>
 
-              {/* Quién y cuándo, pegado al badge de arriba: ese dice QUÉ estado tiene la
-                  jornada, esto dice quién la dejó así. Separarlos obligaría a mirar dos
-                  lugares del panel para una sola pregunta.
-                  No se muestra nada mientras no haya historial — las obras confirmadas
-                  antes de que esto existiera no tienen registro, y un "sin datos" en cada
-                  panel sería ruido permanente por algo que se llena solo con el uso. */}
-              <HistorialConfirmacion otId={ot.id} />
-
-              {/* QUÉ SE PUEDE HACER, arriba y no al pie: en un celular este panel es la
-                  única puerta a las acciones de la jornada, y al pie quedaban debajo de
-                  medio metro de datos. Una tarea de operaciones no abre este panel. */}
-              {bloque && bloque.origen !== "tarea" && (
-                <AccionesJornada
-                  bloque={bloque}
-                  hoy={hoy}
-                  onEstado={onEstado}
-                  onFijar={onFijar}
-                  onSoltar={onSoltar}
-                  onFraccion={onFraccion}
-                  onEditarJornadas={onEditarJornadas}
-                  onCerrarJornada={onCerrarJornada}
-                  onQuitar={onQuitar}
-                />
+          {/* LA LÍNEA DE ESTADO. Antes, desde la bandeja, nada decía "sin planificar": había
+              que deducirlo de un "quitó del tablero" en el historial. */}
+          <div className="flex flex-wrap items-center gap-2 text-[13px]">
+            <span
+              className="inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 font-semibold"
+              style={
+                estado.tono === "confirmada"
+                  ? { backgroundColor: `color-mix(in oklch, ${OK} 14%, transparent)`, color: OK }
+                  : { backgroundColor: "var(--muted)" }
+              }
+            >
+              {estado.tono === "confirmada" ? (
+                <CircleCheck className="h-3.5 w-3.5" />
+              ) : estado.tono === "tentativa" ? (
+                <CircleDashed className="h-3.5 w-3.5" />
+              ) : (
+                <span className="h-2 w-2 rounded-full border-[1.5px] border-current opacity-70" />
               )}
+              {estado.etiqueta}
+            </span>
+            {estado.detalle && <span className="text-muted-foreground">{estado.detalle}</span>}
+            {bloque?.motivoFija && (
+              <span className="inline-flex items-center gap-1 text-muted-foreground">
+                <Pin className="h-3 w-3" /> Fija
+              </span>
+            )}
+          </div>
 
-              {/* Y qué más le pasó a esta obra: de qué día se movió, quién la planificó,
-                  quién le sacó jornadas. Junto al de confirmaciones y no en otra parte
-                  del panel: son las dos mitades de "¿por qué esta obra está acá?". */}
-              <MovimientosOt otId={ot.id} />
-
-              {ot.urgencia === "alta" && ot.motivoUrgencia && (
-                <div className="flex gap-2 rounded-md border p-2 text-sm" style={{ borderColor: PELIGRO }}>
-                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" style={{ color: PELIGRO }} />
-                  <p className="whitespace-pre-wrap">{ot.motivoUrgencia}</p>
-                </div>
+          {desdeLaGrilla ? (
+            <AccionesJornada
+              bloque={bloque}
+              hoy={hoy}
+              urlOdoo={ot.url}
+              onEstado={onEstado}
+              onFijar={onFijar}
+              onSoltar={onSoltar}
+              onFraccion={onFraccion}
+              onEditarJornadas={onEditarJornadas}
+              onCerrarJornada={onCerrarJornada}
+              onQuitar={onQuitar}
+            />
+          ) : (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {pendiente && (
+                <Button size="sm" className="h-10 md:h-8" onClick={() => setPlanificando(formAbierto ? null : ot.id)}>
+                  <CalendarPlus className="h-4 w-4" />
+                  Planificar…
+                </Button>
               )}
-
-              {/* QUÉ HAY QUE EJECUTAR, antes que nada.
-                  Es la primera pregunta del que abre la tarjeta y hasta acá el panel no la
-                  contestaba: la dirección y el cliente estaban, la estructura no. Va en
-                  caja destacada y no como una Fila más porque no es un dato de contexto,
-                  es el trabajo.
-                  El vacío SE MUESTRA: una OT sin detalle técnico es un problema para
-                  quien planifica, y no mostrar nada lo esconde. */}
-              <DetalleTecnico
-                texto={detalle?.detalleTecnico}
-                confirmadoEl={detalle?.estructuraConfirmadaEl}
-                cargando={!detalle}
-              />
-
-              <QueNecesita trabajo={detalle?.trabajo} />
-
-              {/* LO QUE QUEDÓ ARMADO, en su propia caja y debajo de lo previsto.
-                  Se sellaba al cerrar la última jornada y no se veía DESDE NINGÚN LADO:
-                  en Odoo estaba en un formulario que ninguna acción abre, y acá no se
-                  leía. 83 OTs lo tienen guardado.
-                  VA SEPARADO de "Qué hay que ejecutar" aunque hablen de lo mismo: aquél
-                  dice lo que hay que hacer y se lee ANTES de salir, éste lo que se hizo y
-                  se lee DESPUÉS. Mezclados, nadie sabe cuál está mirando — que es
-                  justamente lo que venía pasando. */}
-              <LoQueQuedoArmado texto={detalle?.ejecutadoReal} previsto={detalle?.detalleTecnico} />
-
-              {/* EL HILO DE LA OBRA, arriba y no al pie del panel. Lo que Operaciones
-                  habló con el cliente —"entramos 8am el martes", "si llueve corre al
-                  jueves"— cambia lo que hay que hacer con la jornada, así que va con lo
-                  que hay que ejecutar y no entre los datos de contexto. */}
-              <ComentariosOt otId={ot.id} />
-
-              {/* QUIÉN y DÓNDE, arriba de todo. Antes el panel no lo decía: el cliente
-                  salía de partir el título de la OT, que no siempre lo trae —"Desarme ·
-                  S00719 · Av. Callao 1810" no tiene cliente— y la dirección quedaba
-                  mezclada ahí adentro. En la orden de venta están los dos, siempre. */}
-              {(detalle?.cliente || detalle?.direccionObra) && (
-                <Fila icono={<Building2 className="h-4 w-4" />} etiqueta="Cliente">
-                  {detalle.cliente ?? "—"}
-                  {detalle.direccionObra && (
-                    <p className="text-xs text-muted-foreground">{detalle.direccionObra}</p>
-                  )}
-                  {/* Cómo se reconoce el lugar desde la calle. Va en su propio renglón y no
-                      pegado a la dirección: es lo que la cuadrilla busca cuando llega. */}
-                  {detalle.referenciaObra && (
-                    <p className="text-xs font-medium">{detalle.referenciaObra}</p>
-                  )}
-                </Fila>
+              {pendiente && <SelectorDuracion valor={duracion} onCambiar={onDuracion} />}
+              {onVerEnTablero && (
+                <Button variant="outline" size="sm" className="h-10 md:h-8" onClick={onVerEnTablero}>
+                  <LocateFixed className="h-4 w-4" />
+                  Ver en el tablero
+                </Button>
               )}
+              <LinkOdoo url={ot.url} />
+            </div>
+          )}
 
-              {(detalle?.tecnicoNombre || ot.tecnico || detalle?.vendedor) && (
-                <Fila icono={<UserRound className="h-4 w-4" />} etiqueta="Técnico">
-                  {detalle?.tecnicoNombre ?? ot.tecnico ?? "—"}
-                  {detalle?.vendedor && (
-                    <p className="text-xs text-muted-foreground">Vendedor: {detalle.vendedor}</p>
-                  )}
-                </Fila>
-              )}
+          {formAbierto && pendiente && (
+            <FormPlanificar
+              key={ot.id}
+              ot={ot}
+              pendientes={pendiente.pendientes}
+              cuadrillas={cuadrillas}
+              cuadrillaSugerida={ot.cuadrillaPrevistaId}
+              hoy={hoy}
+              onCancelar={() => setPlanificando(null)}
+              onPlanificar={(cuadrillaId, dia) => {
+                setPlanificando(null);
+                onPlanificar(cuadrillaId, dia);
+              }}
+            />
+          )}
+        </header>
 
-              <Separator />
+        <div className="space-y-6 px-4 pt-4 pb-8">
+          {ot.urgencia === "alta" && ot.motivoUrgencia && (
+            <div className="flex gap-2 rounded-md border p-2 text-sm" style={{ borderColor: PELIGRO }}>
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" style={{ color: PELIGRO }} />
+              <p className="whitespace-pre-wrap">{ot.motivoUrgencia}</p>
+            </div>
+          )}
 
-              {/* LA VENTANA DEL CLIENTE — "no antes del 12", "terminada antes del 15".
-                  Es la restricción que Comercial cargó en la venta, y le pasaba lo mismo
-                  que a la fecha comprometida acá abajo: se veía en la bandeja y
-                  desaparecía al planificar la obra, que es cuando hay que defenderla. El
-                  caso real: alguien pone una obra en una fecha lejana PORQUE leyó el
-                  piso, y después nadie puede saber por qué está ahí.
+          {/* ── ¿Se puede ir? Los insumos de una sola decisión: dónde la pongo ── */}
+          <Seccion titulo="¿Se puede ir?">
+            <dl className="grid grid-cols-[7rem_minmax(0,1fr)] gap-x-3 gap-y-2.5 leading-snug">
+              <Dato etiqueta="Habilitación">
+                {/* LA ETAPA PRIMERO: dice qué falta para poder ir, que es lo que decide. El
+                    semáforo y el campo de alerta de Odoo quedan como detalle; pegados en un
+                    renglón daban cosas como "próxima a vencer · ok". */}
+                <span className="flex items-baseline gap-1.5">
+                  <span className="h-2 w-2 shrink-0 translate-y-[-1px] rounded-full" style={{ backgroundColor: sem.color }} />
+                  <span>{etapa ?? sem.label}</span>
+                </span>
+                {habExtra && <span className="ml-3.5 block text-xs text-muted-foreground">{habExtra}</span>}
+              </Dato>
 
-                  A diferencia de la bandeja, acá puede salir en rojo: una vez que la obra
-                  está en la grilla, la ventana se compara contra el día en que quedó. */}
-              {/* CalendarRange y NO el candado, aunque la bandeja use candado para esto:
-                  este panel se abre desde una tarjeta de la grilla, y ahí el candado ya
-                  significa otra cosa —el permiso municipal sin emitir—. El mismo dibujo
-                  para dos cosas distintas a un clic de distancia se lee como la misma. */}
+              {/* LA VENTANA DEL CLIENTE — "no antes del 12", "terminada antes del 15". Sale en
+                  rojo sólo cuando el plan la rompe: en este tablero el rojo es "algo está mal". */}
               {ventana && (
-                <Fila icono={<CalendarRange className="h-4 w-4" />} etiqueta="Ventana del cliente">
+                <Dato etiqueta="Ventana">
                   <span style={ventana.alerta ? { color: PELIGRO_SOLIDO, fontWeight: 500 } : undefined}>
                     {ventana.texto}
                   </span>
-                  {ventana.alerta && (
-                    <p className="text-xs text-muted-foreground">
-                      El plan de hoy no respeta lo que se acordó con el cliente.
-                    </p>
-                  )}
-                </Fila>
+                  {ventanaNota && <span style={{ color: OK }}> · {ventanaNota}</span>}
+                </Dato>
               )}
 
               {/* La fecha que Comercial prometió. Es contra esto que se mide si la
-                  planificación llega tarde, y hasta ahora sólo se veía en la bandeja:
-                  al abrir la obra desaparecía justo cuando se decide dónde ponerla. */}
+                  planificación llega tarde. */}
               {ot.fechaComprometida && (
-                <Fila icono={<CalendarCheck className="h-4 w-4" />} etiqueta="Comprometida al cliente">
+                <Dato etiqueta="Comprometida">
                   {fecha(ot.fechaComprometida)}
                   {detalle?.fechaFirmeza && (
-                    <p className="text-xs text-muted-foreground">
-                      {detalle.fechaFirmeza === "confirmada"
-                        ? "Fecha firme"
-                        : "Tentativa · puede moverse"}
-                    </p>
+                    <span className="text-muted-foreground">
+                      {detalle.fechaFirmeza === "confirmada" ? " · firme" : " · puede moverse"}
+                    </span>
                   )}
-                </Fila>
+                </Dato>
               )}
 
-              {/* Sin bloque a la vista, la fecha de la OT es lo único que ubica la obra:
-                  puede estar planificada fuera del rango cargado. */}
-              {!bloque && ot.fechaProgramada && (
-                <Fila icono={<CalendarDays className="h-4 w-4" />} etiqueta="Programada">
-                  {fecha(ot.fechaProgramada)}
-                  <p className="text-xs text-muted-foreground">Fuera de las semanas que estás viendo.</p>
-                </Fila>
+              <Dato etiqueta="Duración">
+                {ot.sinEstimar && !plan ? (
+                  <span style={{ color: NOTA.texto }}>Sin estimar — nadie cargó la duración en Odoo</span>
+                ) : (
+                  <>
+                    {duracion < 1 ? `${fraccionLabel(duracion)} de jornada` : `${duracion} jornada${duracion === 1 ? "" : "s"}`}
+                    {ot.personalPorJornada > 0 ? ` · ${ot.personalPorJornada} personas` : ""}
+                  </>
+                )}
+                {plan ? (
+                  <span className="block text-xs" style={{ color: NOTA.texto }}>
+                    La fijó Operaciones{plan.autorNombre ? ` (${plan.autorNombre})` : ""}
+                    {plan.motivo ? ` — ${plan.motivo}` : ""}
+                    {!ot.sinEstimar && plan.jornadas !== ot.jornadas ? ` · Comercial estimó ${ot.jornadas}` : ""}
+                  </span>
+                ) : (
+                  !ot.sinEstimar && <span className="block text-xs text-muted-foreground">Estimado de Comercial</span>
+                )}
+                {/* Lo ejecutado sólo cuando hay algo: "0 días · 0 h" en una obra que no
+                    empezó es ruido. CUÁNDO se ejecutó, no sólo cuánto: para planificar un
+                    desarme, saber que el armado corrió de febrero a julio es la mitad. */}
+                {ot.diasObra > 0 && (
+                  <span className="block text-xs text-muted-foreground">
+                    Ejecutado: {ot.diasObra} día{ot.diasObra === 1 ? "" : "s"} · {ot.horasHombre} h hombre
+                    {detalle?.desvio ? ` · ${detalle.desvio} vs estimado` : ""}
+                  </span>
+                )}
+                {detalle?.periodo && <span className="block text-xs text-muted-foreground">{detalle.periodo}</span>}
+              </Dato>
+
+              {detalle?.duracionSugerida && (
+                <Dato etiqueta="Sugerida">
+                  <span className="whitespace-pre-wrap">{detalle.duracionSugerida}</span>
+                </Dato>
               )}
 
               {/* La cuadrilla que ya venía sugerida, sólo cuando aporta algo: si el bloque
                   ya está en esa misma cuadrilla, repetirlo es ruido. */}
               {cuadrillaPrevista && cuadrillaPrevista !== cuadrillaNombre && (
-                <Fila icono={<Users className="h-4 w-4" />} etiqueta="Cuadrilla prevista">
+                <Dato etiqueta="Cuadrilla prevista">
                   {cuadrillaPrevista}
                   {bloque && (
-                    <p className="text-xs text-muted-foreground">
+                    <span className="block text-xs text-muted-foreground">
                       En el tablero está en {cuadrillaNombre ?? "otra cuadrilla"}.
-                    </p>
+                    </span>
                   )}
-                </Fila>
+                </Dato>
               )}
+            </dl>
+          </Seccion>
 
-              {bloque && (
-                <Fila icono={<CalendarDays className="h-4 w-4" />} etiqueta="En el tablero">
-                  {cuadrillaNombre ?? "Sin cuadrilla"} ·{" "}
-                  {bloque.fechas.length > 1
-                    ? `${format(parseISO(bloque.fechas[0]), "d MMM", { locale: es })} – ${format(
-                        parseISO(bloque.fechas[bloque.fechas.length - 1]),
-                        "d MMM",
-                        { locale: es },
-                      )} (${bloque.fechas.length} jornadas)`
-                    : `${format(parseISO(bloque.fechas[0]), "EEE d MMM", { locale: es })} · ${fraccionLabel(bloque.fraccion)} de jornada`}
-                </Fila>
-              )}
+          {/* ── Qué hay que ejecutar, con lo que lo acompaña ── */}
+          <div className="space-y-3">
+            {/* El vacío SE MUESTRA: una OT sin detalle técnico es un problema para quien
+                planifica. Las observaciones de Comercial van adentro: suelen cambiar cómo
+                se hace el trabajo y se leen junto con él. */}
+            <DetalleTecnico
+              texto={detalle?.detalleTecnico}
+              confirmadoEl={detalle?.estructuraConfirmadaEl}
+              cargando={cargandoDetalle}
+              error={errorDetalle}
+              onReintentar={() => refetch()}
+              observaciones={ot.observaciones}
+            />
+            <QueNecesita trabajo={detalle?.trabajo} />
+            {/* Pegados a lo que hay que hacer: el croquis y el texto se leen juntos, y la
+                cuadrilla en el celular los tiene arriba y no al final de todo. */}
+            <Documentos otId={ot.id} cantidad={ot.cantDocs + ot.cantInstrucciones} />
+            <LoQueQuedoArmado texto={detalle?.ejecutadoReal} previsto={detalle?.detalleTecnico} />
+          </div>
 
-              <Separator />
-
-              <Fila icono={<ShieldCheck className="h-4 w-4" />} etiqueta="Habilitación">
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: sem.color }} />
-                  {sem.label}
-                  {ot.habAlerta ? ` · ${ot.habAlerta}` : ""}
-                </span>
-                {/* El semáforo dice el color; la ETAPA dice qué falta para poder ir, que
-                    es lo que el que planifica necesita para decidir si pone la fecha. */}
-                {etapa && (
-                  <p className="text-xs text-muted-foreground">
-                    {etapa}
-                    {detalle && detalle.habDias > 0 && ` · ${detalle.habDias} días en trámite`}
+          {/* ── A quién recurrir ── */}
+          <Seccion titulo="Contactos">
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">En obra</p>
+              {/* El contacto de la OT manda. Cuando no está —el 88% de los casos— se cae al
+                  teléfono de la ficha de obra del cliente, que es al que se llama igual, y
+                  se aclara de dónde salió. */}
+              {(ot.contactoObra || telObra) && (
+                <div className="flex items-center gap-2">
+                  <p className="min-w-0 flex-1 text-sm">
+                    <span className="font-medium">
+                      {ot.contactoObra ?? (ot.telObra ? "Teléfono de la obra" : "Según la ficha del cliente")}
+                    </span>
+                    {telObra && <span className="block text-xs text-muted-foreground">{telObra}</span>}
                   </p>
-                )}
-                {ot.habVencimiento && (
-                  <p className="text-xs text-muted-foreground">
-                    Vence el {fecha(ot.habVencimiento)}
-                  </p>
-                )}
-              </Fila>
-
-              {/* El contacto de la OT manda. Cuando no está —el 88% de los casos— se cae
-                  al teléfono de la ficha de obra del cliente, que es al que se llama
-                  igual, y se aclara de dónde salió para que nadie lo confunda con un
-                  dato cargado para esta jornada. */}
-              {(ot.contactoObra || ot.telObra || detalle?.telFichaCliente) && (
-                <Fila icono={<Phone className="h-4 w-4" />} etiqueta="Contacto en obra">
-                  {ot.contactoObra ?? (ot.telObra ? "—" : "Según la ficha del cliente")}
-                  {(ot.telObra ?? detalle?.telFichaCliente) && (
-                    <p>
-                      <a
-                        href={`tel:${(ot.telObra ?? detalle?.telFichaCliente ?? "").replace(/[^\d+]/g, "")}`}
-                        className="text-sm underline"
-                      >
-                        {ot.telObra ?? detalle?.telFichaCliente}
-                      </a>
-                    </p>
-                  )}
-                </Fila>
+                  {telObra && <Llamar telefono={telObra} />}
+                </div>
               )}
-
-              {/* LA GENTE DE LA OBRA, que es más de una: el encargado, la arquitecta, el
-                  que abre el portón. Va pegado al contacto de arriba porque contestan la
-                  misma pregunta —a quién llamo— pero son cosas distintas: aquél es el
-                  contacto de ESTA orden de trabajo y lo precarga Odoo desde la ficha del
-                  cliente; éstos son de la OBRA y los va sumando Operaciones al ir
-                  hablando. Por eso quedan en la orden de venta y no en la OT: la próxima
-                  orden de trabajo de esta misma obra ya los trae. */}
+              {/* LA GENTE DE LA OBRA: el encargado, la arquitecta, el que abre el portón. Es
+                  de la OBRA y no de esta OT: queda en la orden de venta y la próxima orden
+                  de trabajo de la misma obra ya los trae. */}
               <ContactosDeObra
                 otId={ot.id}
                 ventaId={detalle?.ventaId ?? null}
                 contactos={detalle?.contactosObra ?? []}
               />
+              {direccion && (
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(direccion)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-[13px] text-muted-foreground hover:text-foreground"
+                >
+                  <MapPin className="h-3.5 w-3.5" />
+                  Abrir en Maps
+                </a>
+              )}
+              {/* Cómo se reconoce el lugar desde la calle: lo que la cuadrilla busca al llegar. */}
+              {detalle?.referenciaObra && <p className="text-[13px] font-medium">{detalle.referenciaObra}</p>}
+            </div>
 
-              <Fila icono={<Clock className="h-4 w-4" />} etiqueta="Duración">
-                {ot.sinEstimar ? (
-                  <span style={{ color: NOTA.texto }}>
-                    Sin estimar — nadie cargó la duración en Odoo
-                  </span>
-                ) : (
-                  <>
-                    {ot.jornadas} jornada{ot.jornadas === 1 ? "" : "s"} estimada
-                    {ot.jornadas === 1 ? "" : "s"}
-                  </>
-                )}
-                {ot.personalPorJornada > 0 ? ` · ${ot.personalPorJornada} personas` : ""}
-                {plan && (
-                  <p className="text-xs" style={{ color: NOTA.texto }}>
-                    Operaciones planifica {plan.jornadas} jornada
-                    {plan.jornadas === 1 ? "" : "s"}
-                    {plan.autorNombre ? ` · ${plan.autorNombre}` : ""}
-                    {plan.motivo ? ` — ${plan.motivo}` : ""}
+            {/* TÉCNICO Y VENDEDOR como contactos y no como datos de la venta: para
+                Operaciones son a quién preguntarle cuando algo de la obra no cierra. */}
+            {(tecnico || detalle?.vendedor) && (
+              <div className="space-y-1.5">
+                <p className="text-xs text-muted-foreground">En ABA</p>
+                {tecnico && (
+                  <p className="text-sm">
+                    <span className="font-medium">{tecnico}</span>
+                    <span className="text-muted-foreground"> · Técnico</span>
                   </p>
                 )}
-                <p className="text-xs text-muted-foreground">
-                  Ejecutado: {ot.diasObra} día{ot.diasObra === 1 ? "" : "s"} · {ot.horasHombre} h hombre
-                  {detalle?.desvio ? ` · ${detalle.desvio} vs estimado` : ""}
-                </p>
-                {/* CUÁNDO se ejecutó, no sólo cuánto. Para planificar un desarme, saber
-                    que el armado corrió de febrero a julio es la mitad de la decisión. */}
-                {detalle?.periodo && (
-                  <p className="text-xs text-muted-foreground">{detalle.periodo}</p>
+                {detalle?.vendedor && (
+                  <p className="text-sm">
+                    <span className="font-medium">{detalle.vendedor}</span>
+                    <span className="text-muted-foreground"> · Ventas</span>
+                  </p>
                 )}
-              </Fila>
-
-              {detalle?.duracionSugerida && (
-                <Fila icono={<Clock className="h-4 w-4" />} etiqueta="Duración sugerida">
-                  <p className="whitespace-pre-wrap text-sm">{detalle.duracionSugerida}</p>
-                </Fila>
-              )}
-
-              {ot.observaciones && (
-                <Fila icono={<User className="h-4 w-4" />} etiqueta="Observaciones">
-                  <p className="whitespace-pre-wrap text-sm">{ot.observaciones}</p>
-                </Fila>
-              )}
-
-              <Separator />
-
-              <div className="space-y-2">
-                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                  Documentación ({ot.cantDocs + ot.cantInstrucciones})
-                </p>
-                {/* Las dos fuentes se suman: los croquis que Comercial sube EN la OT y los
-                    papeles de la venta. Con sólo cantDocs, una OT que tiene instrucciones
-                    pero ningún adjunto en la venta decía "Sin documentación". */}
-                <Documentos otId={ot.id} cantidad={ot.cantDocs + ot.cantInstrucciones} />
               </div>
+            )}
+          </Seccion>
 
-              <a
-                href={ot.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 text-sm underline"
-              >
-                <ExternalLink className="h-3.5 w-3.5" />
-                Abrir la OT en Odoo
-                {ot.ordenVenta ? ` (${ot.ordenVenta})` : ""}
-              </a>
-            </div>
-          </>
-        )}
+          {/* EL HILO DE LA OBRA. Lo que Operaciones habló con el cliente —"entramos 8am el
+              martes", "si llueve corre al jueves"— cambia lo que hay que hacer. */}
+          <ComentariosOt otId={ot.id} />
+
+          {/* Por qué está como está: movimientos y confirmaciones en una sola línea de tiempo. */}
+          <HistoriaOt otId={ot.id} />
+        </div>
       </SheetContent>
     </Sheet>
   );

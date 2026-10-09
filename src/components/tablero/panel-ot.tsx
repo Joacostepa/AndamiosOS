@@ -307,7 +307,29 @@ function LoQueQuedoArmado({ texto, previsto }: { texto?: string | null; previsto
   );
 }
 
+/**
+ * La vista previa sale de Odoo con la sesión del usuario en el browser. Sin sesión la
+ * imagen no carga, y el navegador dibujaba en su lugar el nombre del archivo en letra
+ * grande: se cae al ícono, que el nombre ya va abajo.
+ */
+function Miniatura({ doc }: { doc: DocumentoOt }) {
+  const [rota, setRota] = useState(false);
+  if (!doc.mimetype.startsWith("image/") || rota) {
+    return (
+      <div className="flex h-16 items-center justify-center bg-muted">
+        <FileText className="h-5 w-5 text-muted-foreground" />
+      </div>
+    );
+  }
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={doc.url} alt="" onError={() => setRota(true)} className="h-16 w-full bg-muted object-cover" />;
+}
+
+/** Una fila: con 97 adjuntos la grilla entera empujaba todo lo demás fuera de la ficha. */
+const DOCS_VISIBLES = 3;
+
 function Documentos({ otId, cantidad }: { otId: number; cantidad: number }) {
+  const [todos, setTodos] = useState(false);
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["tablero-documentos", otId],
     queryFn: async () => {
@@ -333,11 +355,12 @@ function Documentos({ otId, cantidad }: { otId: number; cantidad: number }) {
   }
 
   const docs = data?.documentos ?? [];
+  const mostrados = todos ? docs : docs.slice(0, DOCS_VISIBLES);
   return (
     <div className="space-y-1.5">
-      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Documentos ({cantidad})</p>
+      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Documentos ({docs.length || cantidad})</p>
       <div className="grid grid-cols-3 gap-1.5">
-        {docs.map((d) => (
+        {mostrados.map((d) => (
           <a
             key={d.id}
             href={d.url}
@@ -346,16 +369,7 @@ function Documentos({ otId, cantidad }: { otId: number; cantidad: number }) {
             className="group overflow-hidden rounded-md border transition-colors hover:border-foreground/30"
             title={d.nombre}
           >
-            {d.mimetype.startsWith("image/") ? (
-              // La vista previa sale de Odoo con la sesión del usuario en el browser; si
-              // no hay sesión, queda el nombre del archivo como alternativa.
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={d.url} alt={d.nombre} className="h-16 w-full bg-muted object-cover" />
-            ) : (
-              <div className="flex h-16 items-center justify-center bg-muted">
-                <FileText className="h-5 w-5 text-muted-foreground" />
-              </div>
-            )}
+            <Miniatura doc={d} />
             <p className="truncate px-1.5 py-1 text-[11px] text-muted-foreground">
               {/* Distingue lo que alguien subió PARA la cuadrilla de los papeles de la
                   venta, que van en el mismo grid y son mayoría. */}
@@ -365,6 +379,15 @@ function Documentos({ otId, cantidad }: { otId: number; cantidad: number }) {
           </a>
         ))}
       </div>
+      {docs.length > DOCS_VISIBLES && (
+        <button
+          type="button"
+          className="text-xs text-muted-foreground underline hover:text-foreground"
+          onClick={() => setTodos((v) => !v)}
+        >
+          {todos ? "ver menos" : `ver los ${docs.length} documentos`}
+        </button>
+      )}
     </div>
   );
 }

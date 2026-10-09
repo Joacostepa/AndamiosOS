@@ -5,8 +5,65 @@ Para retomar en una sesión nueva. El diseño completo y todo lo aprendido está
 quede 100 % automático** y el orden para seguir.
 
 Para arrancar: "Leé docs/handoff-gestoria-permisos.md y docs/modulo-gestoria-permisos.md y
-seguimos con lo que falta". **Empezar por § "09/10", después § "06/10", § "02/10" y § "Estado al 26/09", seguir con
+seguimos con lo que falta". **Empezar por § "09/10 a la noche", después § "09/10", § "06/10", § "02/10" y § "Estado al 26/09", seguir con
 § "17/09 — primera encomienda cerrada sola", § "Noche 16/09" y § "Estado 16/09 19:00".**
+
+---
+
+## 09/10 a la noche — las dos presentadas de cero; «Seguir desde el borrador» no sirve
+
+| Venta | Expediente | Hora | Borrador |
+| --- | --- | --- | --- |
+| S02597 San Martín de Tours 2949 | **EX-2026-45490614** | 20:36 | 13259325 |
+| S02437 C.R Escalada de San Martín 2138 | **EX-2026-45490918** | 20:44 | 13259366 |
+
+Las dos escribieron Odoo solas ("trámite presentado"). Cada una tardó ~7 min de punta a punta.
+
+- **Arreglo de "SAN" (`5322c15`): probado.** TAD dio SAN MARTIN DE TOURS 2949 → Palermo, 021-101-001A.
+- **Arreglo de las fechas (`sincronizarFechas`): sin probar.** En las dos TAD registró las fechas de
+  entrada; el log sólo corrigió los campos de texto de siempre.
+
+### «Seguir desde el borrador» no abre nunca
+
+Se tocó en las dos fichas (tareas 92 y 93): 3 intentos cada una, siempre "TAD no terminó de cargar
+los documentos del borrador en 3 minutos", y los reintentos automáticos iban a fallar igual.
+
+- **Lo que muestra TAD** (captura `92-01-error.png` en el storage): abre el borrador en "Paso 2 de 3"
+  con Persona Jurídica marcada, pero la lista tiene **sólo "Datos del Trámite"**; los 11 casilleros
+  con sus IF no aparecen, sin ningún "Cargando...". No es el robot esperando mal.
+- **Historial en el log:** abrió sólo 2 veces, las dos el 15/09 a minutos de haber frenado
+  (12984454 a las 14:28 y 12988373 a las 17:39). Desde entonces **0 de 8 borradores**, en días y
+  horarios distintos, y ninguno se recuperó después de fallar una vez. Los borradores nuevos, en
+  cambio, entran bien la misma noche.
+- **Qué hacer:** con la tarea en reintento, "Dejar de reintentar" → "Empezar de cero" → "Volver a
+  presentar". Cuesta los IF del borrador viejo.
+
+### Escalada frenó una vez más antes de salir (tarea 94)
+
+Borrador nuevo 13259218: entraron Nota y Seguro y el **Informe Técnico** frenó a los 13 min con "el
+pedido para generar el documento no llegó a salir". La captura `94-01-error.png` muestra el casillero
+vacío con "Adjuntar" disponible y ningún diálogo abierto: TAD no generó IF. El mismo archivo entró en
+14 s en San Martín de Tours a las 20:32 y en la tarea 96 a las 20:40, así que fue un clic que TAD no
+tomó. "Empezar de cero" otra vez y salió.
+
+### Borradores descartados (todavía en TAD) y sus IF sueltos
+
+- **13232997** (S02437, 07/10): IF-2026-45085586, -45085603, -45085656, -45085674, RE-2026-45085706,
+  IF-2026-45085715, RE-2026-45085733, IF-2026-45085773, -45085813, -45085833, -45085868.
+- **13258719** (S02597, 09/10 19:03): IF-2026-45485453, -45485460, -45485479, -45485485,
+  RE-2026-45485497, IF-2026-45485501, RE-2026-45485513, IF-2026-45485529, -45485535, -45485552,
+  -45485556.
+- **13259218** (S02437, 09/10 20:15): IF-2026-45489765, IF-2026-45489771.
+
+### Lo primero en la sesión nueva
+
+1. **Borrar en TAD los 3 borradores de arriba** con el robot frenado (`bash robot/instalar-launchd.sh
+   --desinstalar`, `node --env-file=robot/.env.robot robot/borrar-tad-borrador.mjs <id>` uno por uno,
+   y `bash robot/instalar-launchd.sh`). La app ya los tiene descartados.
+2. **Decidir qué hacer con «Seguir desde el borrador»:** sacar el botón y ofrecer directo «Empezar de
+   cero», o que el robot complete "Datos del Trámite" primero y vea si así aparecen los casilleros
+   (sin probar; riesgo de tocar "Confirmar trámite" sin los documentos).
+3. Ver que el robot guarde la fecha del seguro cuando TAD no la registre (todavía no pasó).
 
 ---
 
@@ -38,8 +95,7 @@ adjuntos quedaron en el borrador: se sigue desde ahí, no de cero. Arreglo en `r
   la calle ("SAN MARTIN", "SAN MARTIN DE", "SAN MARTIN DE TOURS") hasta encontrarla. Sólo en el
   robot; la app no cambia.
 
-**Sin probar contra TAD:** se verificó la sintaxis y las búsquedas que arma; la primera prueba
-real es seguir los dos borradores.
+**Contra TAD (09/10 a la noche):** el de "SAN" anduvo; el de las fechas todavía no tuvo que actuar.
 
 ### La bandeja, rediseñada por urgencia (`15bfdbe`)
 
@@ -70,11 +126,14 @@ andando con datos reales en local antes de subirlo. La bandeja ahora va por lo q
 
 ### Lo primero en la sesión nueva
 
-1. **Reinstalar el robot en la Mac mini** (`git pull && bash robot/instalar-launchd.sh`), con 0
-   tareas `tomada`. A las 19:06 del 09/10 estaba presentando Honduras 4586 (S02078, tarea 91).
-   Incluye el reintento de la encomienda del 06/10 (`ee334e8`), que tampoco estaba instalado.
-2. **"Seguir desde el borrador"** en las fichas de S02437 y S02597. Mirar que el formulario se
-   guarde y que salga el expediente.
+1. **Hecho:** el robot quedó reinstalado en la Mac mini el 09/10 a las 19:37 con el código de
+   `acc863f`, que incluye `5322c15` (fechas y calles con "SAN") y `ee334e8` (reintento de la
+   encomienda). Se reinició entre vueltas, con 0 tareas `tomada` o `pendiente`: Honduras 4586
+   (S02078, tarea 91) ya estaba presentado a las 19:14 (EX-2026-45486213). La vuelta de las 19:27,
+   todavía con el código viejo, frenó en el login de miBA ("Tareas pendientes" no apareció). Con
+   el código nuevo entró bien: 19:38:50 "Leídos: 13 en curso, 1 tareas, 621 finalizados".
+2. ~~"Seguir desde el borrador" en las fichas de S02437 y S02597.~~ No abrió: se presentaron de
+   cero el 09/10 a la noche (ver § "09/10 a la noche").
 3. Siguen en pie los pendientes de § "06/10" y anteriores.
 
 ---
@@ -90,7 +149,7 @@ andando con datos reales en local antes de subirlo. La bandeja ahora va por lo q
   con `reintentar_desde` +10 min, hasta 3 veces (`esFallaDelCpau`, `resultado.reintentos_armado`).
   La ficha dice "El CPAU no respondió… vuelve a intentar solo a las HH:MM (n de 3)". Errores de datos
   (calle, resumen, login, matrícula) y todo lo posterior a Finalizar siguen sin reintento solo.
-  **Falta reinstalar el robot en la Mac mini** para que lo tenga (`git pull && bash robot/instalar-launchd.sh`).
+  Instalado en la Mac mini el 09/10 a las 19:37 (ver § "09/10").
 - JS tocó "Volver a armarla" (tarea **82**): finalizada 11:33 (R.Nro **00329524258**), firmada,
   pagada (operación **293201**) y cargada en la Plataforma a las 11:35. Espera el certificado por mail
   y la póliza (endoso pedido a Segucom a las 9:36).
@@ -139,7 +198,7 @@ falta sólo la póliza.
 
 ### Lo primero en la sesión nueva
 
-1. Reinstalar el robot en la Mac mini (código de `ee334e8`).
+1. Reinstalar el robot en la Mac mini (código de `ee334e8`). Hecho el 09/10 a las 19:37.
 2. Ver llegar los certificados de Medrano 317 y Corrientes 4285 (si tardan, mirar Spam de
    permisos-andamio@: sigue faltando el filtro para Hougassian).
 3. S02437: croquis regenerado con plancheta (hecho 11:40) y encomienda cerrada sola (pago 293204).

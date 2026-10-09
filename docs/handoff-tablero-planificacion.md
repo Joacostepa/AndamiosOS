@@ -10,7 +10,7 @@ cosas, así que ante la duda manda el código y los comentarios largos que tiene
 
 ## Pendiente ahora
 
-1. **Probar la ficha nueva de la OT en el tablero publicado** (09/10, ver abajo). Se validó con
+1. **Probar la ficha nueva de la OT y la bandeja nueva en el tablero publicado** (09/10, ver abajo). Se validó con
    `tsc` y `eslint`, pero nadie la vio andando: el dev local redirige a `/login` y no había
    sesión. Mirar sobre todo "Planificar…" desde la bandeja, que la ficha pase sola a modo grilla
    al planificar, las flechas ‹ › y el panel a ancho completo en el celular.
@@ -100,6 +100,47 @@ sólo cargan si el navegador tiene sesión de Odoo abierta; para que se vean sie
 servirlas a través de la app. También el panel no modal en escritorio (para arrastrar con la
 ficha abierta) y los
 teléfonos del técnico y el vendedor (no viajan en `DetalleOt`; habría que traerlos de Odoo).
+
+---
+
+## 09/10 — la bandeja "Sin asignar", con la tarjeta nueva
+
+**Pedido (JS, 09/10):** auditoría sólo de la bandeja (con captura) y maqueta de la tarjeta
+nueva en el mismo artifact de la ficha (fila "Bandeja: tarjeta propuesta", modo normal y con
+"Qué ejecutar" prendido). JS aprobó con dos decisiones: **sin la palabra Armado/Desarme** (la
+flecha y el color alcanzan) y **sin el botón "i"** (un clic en la tarjeta abre la ficha).
+
+**Cómo quedó** (`panel-sin-asignar.tsx`, `TarjetaOt`):
+- **La dirección primero** (14px, color de texto), con la flecha del tipo. Abajo, en 12px gris,
+  "Cliente · S0xxxx" con `nombrePropio()`. Con **"Qué ejecutar"** ese renglón pasa a ser lo que
+  hay que hacer (2 renglones, color de texto) y la orden se va al renglón de la duración.
+- **Un renglón de condiciones**: duración ("1 jornada ▾", "½ jornada", "3 h", "mínimo (~1,5 h)";
+  el menú ahora marca el valor actual) · compromiso · "desde el 14 oct" **sólo si el piso
+  todavía no pasó** (sin el candado, que es del permiso municipal) · "sin estimar".
+- **Habilitación con texto** cuando no está al día ("Habilitación próxima a vencer", "crítica",
+  "vencida"); la habilitada no dice nada. **"Urgencia media" escrita**: la pastilla ámbar
+  desaparecía sobre el fondo del desarme.
+- **Sin iniciales del técnico** (siguen en la búsqueda y en la ficha). El texto ya no va teñido
+  del tipo en tres opacidades: el fondo sí, el texto en los grises de siempre.
+- **Un clic abre la ficha, apretar y mover arrastra** (como la grilla); Enter también. El menú
+  de duración tiene una guarda (`menuAbierto` / `menuCerradoEn`) porque sus clics suben por el
+  portal hasta la tarjeta. Se sacó el botón "i".
+- **Encabezado**: contador en gris (el ámbar es de urgencia media), buscador "Dirección, cliente
+  u orden…", chips de tipo y de duración en **un solo renglón** con glifos (las horas, con coma
+  decimal, en el tooltip) y `aria-pressed`.
+- **Arreglos**: la búsqueda es **por palabras en cualquier orden** e incluye qué hay que ejecutar
+  (`coincide()`); el grupo "Con habilitación pendiente" **se abre solo** con búsqueda o filtro;
+  el balde de duración va a la escala gruesa (se acabó el chip "0.375"); el encabezado de grupo
+  tiene `focus-visible` propio (el recuadro coral era el anillo de foco que quedaba puesto).
+- Antes, el mismo día: el menú "1 jornada ▾" tumbaba la página (`DropdownMenuLabel` suelto, igual
+  que en la ficha). Corregido en `bcd5eb5`.
+
+**Quedó de la auditoría de la bandeja, sin hacer:** bandeja superpuesta también en tablet
+(768–1024px); el candado de permiso visible en la bandeja (`useCandado` sólo mira obras con
+asignaciones); el fantasma del arrastre muestra el título crudo y no la tarjeta; traer el
+cliente de `sale.order` a `OtTablero` para que la búsqueda por cliente funcione siempre;
+avisar "el armado no tiene fecha" en un desarme cuyo armado también está en la bandeja (a
+validar con Operaciones).
 
 ---
 

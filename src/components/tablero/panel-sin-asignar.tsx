@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useDndContext, useDraggable, useDroppable } from "@dnd-kit/core";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
@@ -15,9 +15,7 @@ import {
   PlayCircle,
   Search,
   Inbox,
-  Info,
   Loader2,
-  Lock,
   MapPin,
   MessageSquare,
 } from "lucide-react";
@@ -26,9 +24,10 @@ import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuGroup,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
 } from "@/components/ui/dropdown-menu";
 import {
   colorTipo,
@@ -41,14 +40,14 @@ import {
   URGENCIA,
 } from "@/lib/tablero/colores";
 import {
-  fraccionLabel,
+  fraccionMasCercana,
   repartirJornadas,
   FRACCIONES,
   FRACCIONES_ESTIMADO,
   type FraccionStr,
 } from "@/lib/tablero/fracciones";
-import { partesTitulo, normalizar, direccionDeObra } from "@/lib/tablero/titulo";
-import { lineaVentana } from "@/lib/tablero/ventana";
+import { partesTitulo, normalizar, direccionDeObra, nombrePropio } from "@/lib/tablero/titulo";
+import { piso } from "@/lib/tablero/ventana";
 import type { OtTablero } from "@/lib/tablero/tipos";
 import { tituloResumen, type ResumenEnTarjeta } from "@/lib/tablero/tipos-comentario";
 
@@ -142,7 +141,9 @@ function duracionDe(obra: ObraPendiente): ClaveDuracion {
   const todas = repartirJornadas(obra.duracion, obra.corregida);
   const quedan = todas.slice(Math.max(0, todas.length - obra.pendientes));
   if (quedan.length > 1) return "varios";
-  return (quedan[0] ?? "1") as ClaveDuracion;
+  // A la escala GRUESA: una obra que Operaciones dejó en 3 h repartía "0.375", que no es
+  // un balde, y aparecía un chip suelto "0.375". Para llenar un día, 3 h es "½".
+  return fraccionMasCercana(Number(quedan[0] ?? "1"), FRACCIONES_ESTIMADO) as ClaveDuracion;
 }
 
 /**
@@ -153,14 +154,41 @@ function duracionDe(obra: ObraPendiente): ClaveDuracion {
  * distingue 3 h de 4 h. Los tamaños finos de Operaciones no son baldes —separarían obras
  * que para llenar un día son lo mismo, y este panel tiene el ancho que tiene.
  */
-const ESCALA_DURACION: { clave: ClaveDuracion; label: string; orden: number }[] = [
+const HORAS = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 1 });
+
+// El chip lleva el glifo ("½") y el tooltip lo que significa ("media jornada, 4 h"): con
+// la escala entera en un solo renglón queda lugar para la lista.
+const ESCALA_DURACION: { clave: ClaveDuracion; label: string; detalle: string; orden: number }[] = [
   ...FRACCIONES_ESTIMADO.map((f, i) => ({
     clave: f.value as ClaveDuracion,
-    label: f.value === "1" ? "1 jornada · 8 h" : `${f.label} · ${f.horas} h`,
+    label: f.label,
+    detalle: f.value === "1" ? "jornada completa (8 h)" : `${f.label} de jornada (${HORAS.format(f.horas)} h)`,
     orden: i,
   })),
-  { clave: "varios", label: "Varios días", orden: 99 },
+  { clave: "varios", label: "+1", detalle: "varios días", orden: 99 },
 ];
+
+/** "jornada completa", "½ jornada", "3 h", "mínimo (~1,5 h)", "4 jornadas". */
+function textoDuracion(n: number): string {
+  if (n > 1) return `${HORAS.format(n)} jornadas`;
+  if (n === 1) return "1 jornada";
+  const f = FRACCIONES.find((x) => Number(x.value) === n) ?? FRACCIONES.find((x) => x.value === fraccionMasCercana(n));
+  if (!f) return `${HORAS.format(n * 8)} h`;
+  if (f.value === "0.10") return "mínimo (~1,5 h)";
+  if (f.label.endsWith("h")) return `${f.label.slice(0, -1)} h`;
+  return `${f.label} jornada`;
+}
+
+/**
+ * ¿La obra coincide con lo que se escribió? Por PALABRAS, en cualquier orden: "1810 callao"
+ * encuentra "Callao 1810" y "storni arenales" encuentra la obra aunque en el título el
+ * cliente y la dirección estén separados. Antes era una subcadena literal.
+ * Entra también qué hay que ejecutar, que la tarjeta muestra con el botón "Qué ejecutar".
+ */
+function coincide(ot: OtTablero, q: string): boolean {
+  const texto = normalizar(`${ot.titulo} ${ot.direccionObra ?? ""} ${ot.tecnico ?? ""} ${ot.detalleTecnico ?? ""}`);
+  return q.split(/\s+/).filter(Boolean).every((palabra) => texto.includes(palabra));
+}
 
 const TIPOS_BANDEJA = [
   { clave: "armado", label: "Armado" },
@@ -195,7 +223,8 @@ function Chip({
       onClick={onClick}
       disabled={vacio}
       title={titulo}
-      className="flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] transition-colors disabled:cursor-default"
+      aria-pressed={activo}
+      className="flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors disabled:cursor-default"
       style={{
         backgroundColor: activo ? CORAL : undefined,
         borderColor: activo ? CORAL : undefined,
@@ -287,8 +316,8 @@ function TarjetaOt({
   /** Resumen del hilo de la obra. null = nadie comentó nada todavía. */
   comentarios: ResumenEnTarjeta | null;
   /**
-   * Mostrar QUÉ HAY QUE EJECUTAR en lugar del cliente y el técnico. La dirección no se
-   * toca: es lo que identifica la obra. Ver ContenidoTarjeta.
+   * Mostrar QUÉ HAY QUE EJECUTAR en lugar del cliente. La dirección no se toca: es lo que
+   * identifica la obra. Ver ContenidoTarjeta.
    */
   queEjecutar: boolean;
   onDetalle: (ot: OtTablero) => void;
@@ -306,13 +335,18 @@ function TarjetaOt({
   // lleva" es una sola fracción y se puede elegir de una lista.
   const editableDuracion = !empezada && pendientes === totales && totales === 1;
   const compromiso = lineaCompromiso(ot, hoy);
-  // Sin fecha planificada: en la bandeja la obra todavía no está en la grilla, así que la
-  // línea informa la ventana —"entre el 12 y el 15"— pero nunca la marca como violada.
-  const pisoLinea = lineaVentana(ot, { primerDia: null, ultimoDia: null });
+  // EL PISO SÓLO SI TODAVÍA RESTRINGE. "no antes del 6 oct" leído el 9 no dice nada, y una
+  // línea que casi nunca dice nada entrena a no leerla el día que sí. Sin ícono de candado:
+  // el candado es el permiso municipal (ver tarjeta-asignacion), no la ventana del cliente.
+  const desde = ot.fechaDesde && ot.fechaDesde > hoy ? piso(ot) : null;
   const { setNodeRef, attributes, listeners, isDragging } = useDraggable({
     id: `ot:${ot.id}`,
     data: { ot },
   });
+  // El menú de duración vive en un portal, pero sus clics suben por el árbol de React hasta
+  // la tarjeta: sin esta guarda, elegir una duración abría además la ficha.
+  const [menuAbierto, setMenuAbierto] = useState(false);
+  const menuCerradoEn = useRef(0);
   const tipo = colorTipo(ot.tipo);
   const IconoTipo = ICONO_TIPO[tipo.icono];
   const sem = semaforo(ot.habSemaforo);
@@ -320,32 +354,49 @@ function TarjetaOt({
   const media = esUrgenciaMedia(ot);
   const partes = partesTitulo(ot.titulo);
   const direccion = direccionDeObra(ot);
+  const orden = partes.numero ?? null;
+  const cliente = partes.cliente ? nombrePropio(partes.cliente) : null;
+  const abrir = () => {
+    if (menuAbierto || Date.now() - menuCerradoEn.current < 400) return;
+    onDetalle(ot);
+  };
 
   return (
     <div
       ref={setNodeRef}
       {...attributes}
       {...listeners}
+      // UN CLIC ABRE LA FICHA, apretar y mover arrastra: igual que las tarjetas de la
+      // grilla. El sensor de arrastre recién arranca a los 6px con el mouse y a los 250ms
+      // con el dedo, así que un clic quieto no se confunde con el gesto de asignar. Antes
+      // había un botón "i" aparte, de 22px, que era el único camino a la ficha.
+      onClick={abrir}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" && !menuAbierto) {
+          e.preventDefault();
+          abrir();
+        }
+      }}
+      aria-label={`${direccion}. Abrir la ficha o arrastrar a la grilla`}
       // select-none: apretar sobre el texto y arrastrar hacía que el navegador extendiera
       // una SELECCIÓN, y una selección que se estira más allá del borde scrollea el
       // contenedor sola — el mismo síntoma que el auto-scroll, por otro camino. Acá el
       // texto es un agarre para arrastrar, no algo para seleccionar.
-      className="cursor-grab select-none rounded-md border p-2 transition-colors hover:border-foreground/25 active:cursor-grabbing"
+      className="cursor-grab select-none space-y-0.5 rounded-lg border p-2.5 transition-colors outline-none hover:border-foreground/25 focus-visible:ring-2 focus-visible:ring-ring/60 active:cursor-grabbing"
       style={{
         opacity: isDragging ? 0.35 : 1,
+        // El fondo sigue siendo el del tipo, igual que en la grilla. El TEXTO ya no: va en
+        // los grises de siempre, que se leen sobre los dos fondos y no se pierden en ámbar.
         backgroundColor: tipo.bg,
         // Táctil: sin demora de doble toque, y sin el menú de "copiar / compartir" que iOS
         // abre al mantener apretado, que es justo el gesto que agarra la tarjeta.
         touchAction: "manipulation",
         WebkitTouchCallout: "none",
         // El borde rojo es SÓLO de la urgencia alta. Es el canal más caro que le queda a
-        // esta tarjeta y por eso no lo comparte con nada: si también marcara "media", las
-        // dos se leerían igual desde lejos, que es exactamente lo que hay que evitar.
+        // esta tarjeta y por eso no lo comparte con nada.
         borderColor: urgente ? URGENCIA.alta.fuerte : "transparent",
-        // La franja ya no es el semáforo —eso ahora lo dice el grupo— sino "empezada",
-        // que es el estado que hay que no perder de vista dentro de cada grupo. La urgencia
-        // alta se la queda cuando hay conflicto: no se pierde nada, porque "empezada" tiene
-        // además su propio renglón arriba con las jornadas hechas.
+        // La franja es "empezada", el estado que hay que no perder de vista dentro de cada
+        // grupo. La urgencia alta se la queda cuando hay conflicto.
         borderLeft: urgente
           ? `5px solid ${URGENCIA.alta.fuerte}`
           : empezada
@@ -354,237 +405,168 @@ function TarjetaOt({
       }}
     >
       {empezada && (
-        <p
-          className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide"
-          style={{ color: URGENCIA.media.texto }}
-        >
-          <PlayCircle className="h-3 w-3" />
+        <p className="flex items-center gap-1 text-xs font-medium text-foreground/75">
+          <PlayCircle className="h-3.5 w-3.5" />
           Empezada · {cerradas} de {totales} jornadas hechas
         </p>
       )}
+
+      {/* LA DIRECCIÓN PRIMERO: es lo que identifica la obra, y es el título de la ficha.
+          El tipo lo dicen la flecha y el fondo, como en la grilla. */}
       <div className="flex items-start gap-1.5">
-        <div className="min-w-0 flex-1">
-          <p className="flex items-center gap-1 text-[10px] uppercase tracking-wide" style={{ color: tipo.text, opacity: 0.8 }}>
-            {/* El ícono reemplaza a la palabra ARMADO / DESARME: dice lo mismo, no compite
-                por el ancho, y es lo que libera lugar para la dirección. */}
-            <IconoTipo className="h-3.5 w-3.5 shrink-0" aria-hidden />
-            {partes.numero ?? "OT"}
-            {/* Hay algo hablado con el cliente sobre esta obra. En la bandeja es donde
-                más pesa: acá se decide en qué día va, y "el encargado pidió el martes"
-                es exactamente lo que cambia esa decisión. El texto del último va en el
-                title; el hilo entero, en el panel. */}
-            {comentarios && (
-              <span
-                className="relative ml-auto flex shrink-0 items-center gap-px rounded-[3px] px-[3px] py-[1px]"
-                title={tituloResumen(comentarios)}
-              >
-                {/* El mismo chip de la grilla, pieza por pieza: un objeto se ve igual en
-                    todas las superficies, que es la regla del módulo. El color lo hereda
-                    del renglón, que ya viene pintado con el del tipo. */}
-                <span
-                  aria-hidden
-                  className={`absolute inset-0 rounded-[3px] bg-current ${
-                    comentarios.sinLeer ? "tb-comentario-nuevo" : "opacity-[0.14]"
-                  }`}
-                />
-                <MessageSquare
-                  className="relative h-3 w-3"
-                  aria-label={comentarios.sinLeer ? "Comentarios sin leer" : "Tiene comentarios"}
-                />
-                {comentarios.cantidad > 1 && (
-                  <span className="relative text-[9px] font-semibold leading-none tabular-nums">
-                    {comentarios.cantidad}
-                  </span>
-                )}
+        <IconoTipo className="mt-0.5 h-3.5 w-3.5 shrink-0" style={{ color: tipo.text }} aria-hidden />
+        <p className="min-w-0 flex-1 text-sm font-medium leading-snug text-foreground">{direccion}</p>
+        {/* Hay algo hablado con el cliente sobre esta obra. En la bandeja es donde más
+            pesa: acá se decide en qué día va. El mismo chip de la grilla. */}
+        {comentarios && (
+          <span
+            className="relative mt-0.5 flex shrink-0 items-center gap-px rounded-[3px] px-[3px] py-[1px]"
+            style={{ color: tipo.text }}
+            title={tituloResumen(comentarios)}
+          >
+            <span
+              aria-hidden
+              className={`absolute inset-0 rounded-[3px] bg-current ${
+                comentarios.sinLeer ? "tb-comentario-nuevo" : "opacity-[0.14]"
+              }`}
+            />
+            <MessageSquare
+              className="relative h-3 w-3"
+              aria-label={comentarios.sinLeer ? "Comentarios sin leer" : "Tiene comentarios"}
+            />
+            {comentarios.cantidad > 1 && (
+              <span className="relative text-[9px] font-semibold leading-none tabular-nums">
+                {comentarios.cantidad}
               </span>
             )}
-            {/* El semáforo sigue estando: dentro del grupo de listas conviven verde,
-                amarillo y gris, y la diferencia importa.
-                El `ml-auto` se lo lleva el globito cuando está: son los dos únicos de
-                este renglón que van pegados a la derecha, y dos empujes compiten. */}
-            <span
-              className={`${comentarios ? "" : "ml-auto "}h-2 w-2 shrink-0 rounded-full`}
-              style={{ backgroundColor: sem.color }}
-              title={sem.label}
-            />
-          </p>
-          {/* EN DOS RENGLONES Y NO TRUNCADA A UNO, a diferencia de la grilla: acá el
-              panel es vertical y hay ancho. La mediana del detalle técnico son 205
-              caracteres, así que dos renglones muestran la obra corta entera ("Pantalla
-              12ML + Alambre") y de la larga se lee lo suficiente para decidir. El resto,
-              en el tooltip. */}
-          {queEjecutar
-            ? ot.detalleTecnico && (
-                <p
-                  className="line-clamp-2 text-[11px] leading-snug"
-                  style={{ color: tipo.text, opacity: 0.75 }}
-                  title={ot.detalleTecnico}
-                >
-                  {ot.detalleTecnico}
-                </p>
-              )
-            : partes.cliente && (
-                <p
-                  className="truncate text-[11px]"
-                  style={{ color: tipo.text, opacity: 0.75 }}
-                  title={partes.cliente}
-                >
-                  {partes.cliente}
-                </p>
-              )}
-          {/* La dirección entra completa: para eso el panel es vertical. */}
-          <p className="text-[12px] font-medium leading-snug" style={{ color: tipo.text }}>
-            {direccion}
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-0.5">
-          {/* Alta va en rojo pleno y media en ámbar suave: el mismo lugar, dos pesos.
-              Leídas de reojo, la primera salta y la segunda se nota sin gritar. */}
-          {urgente && (
-            <span
-              className="rounded px-1 text-[9px] font-semibold"
-              style={{ backgroundColor: URGENCIA.alta.solido, color: "#fff" }}
-              title="Urgencia alta, marcada en la OT"
-            >
-              {URGENCIA.alta.label}
-            </span>
-          )}
-          {media && (
-            <span
-              className="rounded px-1 text-[9px] font-semibold"
-              style={{ backgroundColor: URGENCIA.media.suave, color: URGENCIA.media.texto }}
-              title="Urgencia media, marcada en la OT"
-            >
-              {URGENCIA.media.label}
-            </span>
-          )}
-          {/* Botón aparte para el detalle: el cuerpo de la tarjeta es el asa de
-              arrastre, y un clic ahí se confunde con el gesto de asignar. */}
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); onDetalle(ot); }}
-            onPointerDown={(e) => e.stopPropagation()}
-            className="rounded p-1 hover:bg-foreground/10"
-            style={{ color: tipo.text }}
-            title="Ver detalle de la obra"
-            aria-label="Ver detalle de la obra"
+          </span>
+        )}
+        {urgente && (
+          <span
+            className="mt-0.5 shrink-0 rounded px-1 text-xs font-medium"
+            style={{ backgroundColor: URGENCIA.alta.solido, color: "#fff" }}
+            title="Urgencia alta, marcada en la OT"
           >
-            <Info className="h-3.5 w-3.5" />
-          </button>
-        </div>
+            Urgente
+          </span>
+        )}
       </div>
 
-      <p
-        className="mt-1 flex items-center gap-1 text-[10px]"
-        style={{ color: tipo.text, opacity: 0.7 }}
-      >
-        {/* LA DURACIÓN SE PUEDE FIJAR DESDE ACÁ, y no sólo cuando la obra ya está en una
-            fecha. Antes el único lugar para decir "esto es media jornada" era la tarjeta
-            de la grilla, y eso se guarda en la asignación de Odoo: al sacar la obra del
-            tablero se borraba y había que volver a ponerla. Acá se guarda del lado de
-            Operaciones y sobrevive.
-
-            SÓLO EN LAS QUE ENTRAN EN UN DÍA. En una obra de varias jornadas el número no
-            es una fracción sino una cantidad, y ésa se corrige desde "Jornadas de la
-            obra" una vez planificada. Tampoco en las empezadas: con partes cargados, lo
-            que queda ya no es una decisión libre. */}
-        {editableDuracion ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              className="flex items-center gap-0.5 rounded px-1 -mx-1 hover:bg-foreground/10"
-              // Igual que el botón de detalle: el cuerpo de la tarjeta es el asa de
-              // arrastre y sin esto abrir el menú empieza a arrastrar la obra.
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => e.stopPropagation()}
-              title="Cuánto lleva esta obra"
-            >
-              <span className="truncate">
-                {duracion >= 1
-                  ? `${duracion} jornada${duracion === 1 ? "" : "s"}`
-                  : `${fraccionLabel(duracion)} de jornada`}
-              </span>
-              <ChevronDown className="h-2.5 w-2.5 shrink-0 opacity-60" aria-hidden />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-56">
-              {/* DropdownMenuLabel es un GroupLabel de Base UI: suelto, sin un Group padre,
-                  tira una excepción al abrir el menú y tumba la página entera. */}
-              <DropdownMenuGroup>
-                <DropdownMenuLabel>Cuánto lleva</DropdownMenuLabel>
-                {FRACCIONES.map((f) => (
-                  <DropdownMenuItem
-                    key={f.value}
-                    onClick={() => onDuracion(ot, f.value)}
-                  >
-                    <span className="mr-2 w-6 text-center">{f.label}</span>
-                    {f.detalle}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
+      <div className="space-y-0.5 pl-5 text-xs leading-snug text-foreground/75">
+        {/* "QUÉ EJECUTAR" CAMBIA ESTE RENGLÓN: lo que hay que hacer en lugar del cliente, en
+            dos renglones y en el color del texto, porque en ese modo es lo que se lee. La
+            mediana del detalle técnico son 205 caracteres: dos renglones muestran la obra
+            corta entera y de la larga lo suficiente para decidir. El resto, en la ficha. */}
+        {queEjecutar ? (
+          ot.detalleTecnico && (
+            <p className="line-clamp-2 text-foreground" title={ot.detalleTecnico}>
+              {ot.detalleTecnico}
+            </p>
+          )
         ) : (
-          <span className="truncate">
-            {empezada || pendientes < totales
-              ? `quedan ${pendientes} de ${totales} jornadas`
-              : duracion >= 1
-                ? `${duracion} jornada${duracion === 1 ? "" : "s"}`
-                : `${fraccionLabel(duracion)} de jornada`}
-          </span>
+          <p className="truncate" title={cliente ?? undefined}>
+            {[cliente, orden].filter(Boolean).join(" · ")}
+          </p>
         )}
-        {!queEjecutar && ot.tecnico ? (
-          <span className="truncate">{`· ${ot.tecnico}`}</span>
-        ) : null}
-        {sinEstimar && (
-          <span
-            className="shrink-0 rounded px-1 text-[9px] font-semibold uppercase tracking-wide"
-            style={{ backgroundColor: NOTA.fondo, color: NOTA.texto }}
-            title="Nadie cargó la duración estimada en Odoo: el número de al lado es el default de la importación, no una estimación. Se corrige al planificar la obra."
+
+        <p className="flex flex-wrap items-center gap-x-1">
+          {/* LA DURACIÓN SE PUEDE FIJAR DESDE ACÁ, y no sólo cuando la obra ya está en una
+              fecha: se guarda del lado de Operaciones y sobrevive a sacarla del tablero.
+              SÓLO EN LAS QUE ENTRAN EN UN DÍA: en una de varias jornadas el número es una
+              cantidad y se corrige desde "Jornadas de la obra". Tampoco en las empezadas. */}
+          {editableDuracion ? (
+            <DropdownMenu
+              open={menuAbierto}
+              onOpenChange={(abierto) => {
+                setMenuAbierto(abierto);
+                if (!abierto) menuCerradoEn.current = Date.now();
+              }}
+            >
+              <DropdownMenuTrigger
+                className="-mx-1 flex items-center gap-0.5 rounded px-1 underline decoration-dotted underline-offset-4 hover:bg-foreground/10 hover:text-foreground"
+                // El cuerpo de la tarjeta es el asa de arrastre: sin esto abrir el menú
+                // empieza a arrastrar la obra, o abre la ficha.
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}
+                title="Cuánto lleva esta obra"
+              >
+                {textoDuracion(duracion)}
+                <ChevronDown className="h-3 w-3 shrink-0" aria-hidden />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-56">
+                {/* DropdownMenuLabel es un GroupLabel de Base UI: suelto, sin un Group
+                    padre, tira una excepción al abrir el menú y tumba la página entera. */}
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>Cuánto lleva</DropdownMenuLabel>
+                  <DropdownMenuRadioGroup
+                    value={FRACCIONES.find((f) => Number(f.value) === duracion)?.value ?? ""}
+                    onValueChange={(v) => onDuracion(ot, v as FraccionStr)}
+                  >
+                    {FRACCIONES.map((f) => (
+                      <DropdownMenuRadioItem key={f.value} value={f.value}>
+                        {f.detalle}
+                      </DropdownMenuRadioItem>
+                    ))}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <span>
+              {empezada || pendientes < totales
+                ? `quedan ${pendientes} de ${totales} jornadas`
+                : textoDuracion(duracion)}
+            </span>
+          )}
+          {queEjecutar && orden && <span>· {orden}</span>}
+          {/* El compromiso explica por qué la obra está arriba de la lista. */}
+          {compromiso && (
+            <span
+              className={compromiso.alerta ? "font-medium" : undefined}
+              style={compromiso.alerta ? { color: PELIGRO_TEXTO } : undefined}
+              title="Fecha que Comercial le prometió al cliente"
+            >
+              · {compromiso.texto}
+            </span>
+          )}
+          {desde && <span title="El cliente no la recibe antes de esta fecha">· desde el {desde}</span>}
+          {sinEstimar && (
+            <span
+              className="rounded px-1"
+              style={{ backgroundColor: NOTA.fondo, color: NOTA.texto }}
+              title="Nadie cargó la duración estimada en Odoo: el número de al lado es el default de la importación, no una estimación. Se corrige al planificar la obra."
+            >
+              sin estimar
+            </span>
+          )}
+        </p>
+
+        {/* LA HABILITACIÓN CON TEXTO cuando no está al día. Un punto de 8px con tooltip no
+            se lee en táctil, y el ámbar sobre el fondo del desarme casi no se veía. La
+            habilitada no dice nada: es el estado normal de su grupo. */}
+        {ot.habSemaforo !== "verde" && (
+          <p className="flex items-center gap-1.5">
+            <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: sem.color }} />
+            {sem.label}
+          </p>
+        )}
+
+        {/* La urgencia media escrita: como pastilla ámbar desaparecía sobre el desarme, que
+            tiene el mismo fondo. Ordena y nada más; no pinta la tarjeta. */}
+        {media && <p className="font-medium text-foreground">Urgencia media</p>}
+
+        {/* El motivo de la urgencia alta: una tarjeta urgente sin motivo se lee como un
+            error del sistema, no como una decisión. */}
+        {urgente && (
+          <p
+            className="line-clamp-2 font-medium"
+            style={{ color: URGENCIA.alta.texto }}
+            title={ot.motivoUrgencia ?? "Marcada como urgente en la OT, sin motivo cargado"}
           >
-            sin estimar
-          </span>
+            {ot.motivoUrgencia ?? "urgente — sin motivo cargado en la OT"}
+          </p>
         )}
-      </p>
-
-      {/* El motivo de la urgencia, igual que el compromiso: lo que explica por qué esta
-          obra está arriba de todo y salteando el grupo de habilitación. Una tarjeta
-          urgente sin motivo se lee como un error del sistema, no como una decisión. */}
-      {urgente && (
-        <p
-          className="mt-0.5 line-clamp-2 text-[10px] font-semibold"
-          style={{ color: URGENCIA.alta.texto }}
-          title={ot.motivoUrgencia ?? "Marcada como urgente en la OT, sin motivo cargado"}
-        >
-          {ot.motivoUrgencia ?? "urgente — sin motivo cargado en la OT"}
-        </p>
-      )}
-
-      {/* El compromiso con el cliente va en su propia línea y no diluido entre el resto:
-          es lo que explica por qué la obra está arriba de la lista. Sin esto el orden
-          sería una decisión invisible que hay que creer. */}
-      {compromiso && (
-        <p
-          className={`mt-0.5 truncate text-[10px] ${compromiso.alerta ? "font-semibold" : "font-medium"}`}
-          style={{ color: compromiso.alerta ? PELIGRO_TEXTO : tipo.text }}
-          title="Fecha que Comercial le prometió al cliente"
-        >
-          {compromiso.texto}
-        </p>
-      )}
-
-      {/* El piso acordado con el cliente. Va DESPUÉS del compromiso porque se leen como
-          los dos extremos de la ventana —"no antes del 12 · comprometida 18"— y en ese
-          orden. Acá nunca está en rojo: en la bandeja la obra todavía no tiene día, así
-          que no hay nada violado; el rojo aparece cuando ya está sobre la grilla. */}
-      {pisoLinea && (
-        <p
-          className="mt-0.5 flex items-center gap-1 truncate text-[10px] font-medium"
-          style={{ color: tipo.text }}
-          title="El cliente no la recibe antes de esta fecha"
-        >
-          <Lock className="h-2.5 w-2.5 shrink-0" aria-hidden />
-          {pisoLinea.texto}
-        </p>
-      )}
+      </div>
     </div>
   );
 }
@@ -623,7 +605,9 @@ function Grupo({
         type="button"
         onClick={fijo ? undefined : onToggle}
         disabled={fijo}
-        className={`flex w-full items-center gap-1.5 rounded px-1 py-1 text-left text-[11px] font-semibold uppercase tracking-[0.04em] ${
+        // focus-visible propio: con el anillo global, después del clic quedaba un recuadro
+        // coral alrededor del encabezado que lo hacía parecer un campo de texto.
+        className={`flex w-full items-center gap-1.5 rounded px-1 py-1 text-left text-xs font-semibold uppercase tracking-wide outline-none focus-visible:ring-2 focus-visible:ring-ring/60 ${
           color ? "" : "text-muted-foreground"
         } ${fijo ? "cursor-default" : "hover:bg-muted"}`}
         style={color ? { color } : undefined}
@@ -637,7 +621,7 @@ function Grupo({
           ))}
         {titulo}
         <span
-          className={`rounded-full px-1.5 text-[10px] font-medium ${color ? "" : "bg-muted"}`}
+          className={`rounded-full px-1.5 text-xs font-medium ${color ? "" : "bg-muted"}`}
           style={color ? { backgroundColor: color, color: "#fff" } : undefined}
         >
           {cantidad}
@@ -738,9 +722,7 @@ export function PanelSinAsignar({
     // Con 46 obras, encontrar una puntual escaneando no funciona.
     // La dirección entra aparte del título: desde el backfill hay obras cuya calle vive
     // sólo en el campo propio, y buscarlas por el título no las encontraría.
-    return orden.filter((o) =>
-      normalizar(`${o.ot.titulo} ${o.ot.direccionObra ?? ""} ${o.ot.tecnico ?? ""}`).includes(q),
-    );
+    return orden.filter((o) => coincide(o.ot, q));
   }, [ots, q, hoy]);
 
   // Los contadores de cada chip se cuentan sobre la lista filtrada por el OTRO eje: el
@@ -763,8 +745,8 @@ export function PanelSinAsignar({
     // La escala arranca completa —los seis baldes, en orden de menor a mayor— y encima se
     // cuentan las obras. Así los números suman siempre el total del encabezado, que es lo
     // que permite comprobar de un vistazo que no quedó ninguna obra sin balde.
-    const baldes = new Map<ClaveDuracion, { label: string; orden: number; cantidad: number }>(
-      ESCALA_DURACION.map((b) => [b.clave, { label: b.label, orden: b.orden, cantidad: 0 }]),
+    const baldes = new Map<ClaveDuracion, { label: string; detalle: string; orden: number; cantidad: number }>(
+      ESCALA_DURACION.map((b) => [b.clave, { label: b.label, detalle: b.detalle, orden: b.orden, cantidad: 0 }]),
     );
     for (const o of paraDuracion) {
       const clave = duracionDe(o);
@@ -772,7 +754,7 @@ export function PanelSinAsignar({
       if (balde) balde.cantidad++;
       // Un balde fuera de la escala sería un bug de duracionDe, no un caso de uso: se
       // agrega igual, antes que perder la obra de vista.
-      else baldes.set(clave, { label: String(clave), orden: 98, cantidad: 1 });
+      else baldes.set(clave, { label: String(clave), detalle: String(clave), orden: 98, cantidad: 1 });
     }
     const chipsDuracion = [...baldes.entries()]
       .map(([clave, v]) => ({ clave, ...v }))
@@ -811,7 +793,7 @@ export function PanelSinAsignar({
     if (!q) return [];
     return planificadas
       .filter((p) =>
-        normalizar(`${p.ot.titulo} ${p.ot.direccionObra ?? ""} ${p.ot.tecnico ?? ""}`).includes(q),
+        coincide(p.ot, q),
       )
       .sort((a, b) => a.fechaInicio.localeCompare(b.fechaInicio));
   }, [planificadas, q]);
@@ -819,7 +801,7 @@ export function PanelSinAsignar({
   const masAdelante = useMemo(() => {
     if (!q) return [];
     return fueraDeRango.filter((ot) =>
-      normalizar(`${ot.titulo} ${ot.direccionObra ?? ""} ${ot.tecnico ?? ""}`).includes(q),
+      coincide(ot, q),
     );
   }, [fueraDeRango, q]);
 
@@ -849,10 +831,7 @@ export function PanelSinAsignar({
         >
           <PanelRightOpen className="h-4 w-4" />
         </button>
-        <span
-          className="rounded-full px-1.5 text-[11px] font-medium"
-          style={{ backgroundColor: URGENCIA.media.suave, color: URGENCIA.media.texto }}
-        >
+        <span className="rounded-full bg-muted px-1.5 text-xs font-medium text-muted-foreground">
           {ots.length}
         </span>
         {/* Con el panel plegado, una obra urgente es invisible. El contador rojo es lo
@@ -860,14 +839,14 @@ export function PanelSinAsignar({
             sobre los filtros: plegado no hay filtros a la vista que expliquen un faltante. */}
         {urgentesTotales > 0 && (
           <span
-            className="rounded-full px-1.5 text-[11px] font-semibold"
+            className="rounded-full px-1.5 text-xs font-semibold"
             style={{ backgroundColor: URGENCIA.alta.solido, color: "#fff" }}
             title={`${urgentesTotales} obra(s) urgente(s) sin planificar`}
           >
             {urgentesTotales}
           </span>
         )}
-        <span className="mt-1 text-[10px] uppercase tracking-wide text-muted-foreground [writing-mode:vertical-rl]">
+        <span className="mt-1 text-xs uppercase tracking-wide text-muted-foreground [writing-mode:vertical-rl]">
           Sin asignar
         </span>
       </div>
@@ -892,13 +871,11 @@ export function PanelSinAsignar({
     >
       <div className="flex items-center gap-2 border-b px-2.5 py-2">
         <Inbox className="h-3.5 w-3.5 text-muted-foreground" />
-        <p className="text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Sin asignar
         </p>
-        <span
-          className="rounded-full px-1.5 text-[11px] font-medium"
-          style={{ backgroundColor: URGENCIA.media.suave, color: URGENCIA.media.texto }}
-        >
+        {/* Gris: el ámbar es de la urgencia media, y un contador no es urgente. */}
+        <span className="rounded-full bg-muted px-1.5 text-xs font-medium text-muted-foreground">
           {conFiltros.length === ots.length ? ots.length : `${conFiltros.length}/${ots.length}`}
         </span>
         <button
@@ -917,14 +894,19 @@ export function PanelSinAsignar({
         <Input
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
-          placeholder="Buscar obra, cliente o técnico…"
-          className="h-7 pl-7 text-[12px]"
+          // Honesto: el cliente se encuentra si está en el título de la OT, y el técnico
+          // viaja como iniciales. Decir "técnico" prometía algo que no pasaba.
+          placeholder="Dirección, cliente u orden…"
+          aria-label="Buscar en la bandeja"
+          className="h-8 pl-7 text-sm"
         />
       </div>
 
       {(chipsTipo.length > 0 || chipsDuracion.length > 0) && (
-        <div className="space-y-1 border-b px-2.5 py-1.5">
-          <div className="flex flex-wrap gap-1">
+        <div className="flex flex-wrap items-center gap-1 border-b px-2.5 py-2">
+          {/* Un solo renglón: el tipo con su flecha y la escala de duración con glifos. Los
+              números siguen sumando el total del encabezado. */}
+          <div className="contents">
             {chipsTipo.map((t) => {
               const Icono = ICONO_TIPO[colorTipo(t.clave).icono];
               return (
@@ -932,15 +914,16 @@ export function PanelSinAsignar({
                   key={t.clave}
                   activo={tipoFiltro === t.clave}
                   cantidad={t.cantidad}
+                  titulo={t.label}
                   onClick={() => setTipoFiltro((v) => (v === t.clave ? null : t.clave))}
                 >
-                  <Icono className="h-3 w-3" aria-hidden />
-                  {t.label}
+                  <Icono className="h-3 w-3" aria-label={t.label} />
                 </Chip>
               );
             })}
           </div>
-          <div className="flex flex-wrap gap-1">
+          <span className="mx-0.5 h-4 w-px bg-border" aria-hidden />
+          <div className="contents">
             {chipsDuracion.map((d) => (
               <Chip
                 key={d.clave}
@@ -948,8 +931,8 @@ export function PanelSinAsignar({
                 cantidad={d.cantidad}
                 titulo={
                   d.cantidad === 0
-                    ? `Ninguna obra de ${d.label}`
-                    : `${d.cantidad} obra(s) de ${d.label}, por lo que les queda`
+                    ? `Ninguna obra de ${d.detalle}`
+                    : `${d.cantidad} obra(s) de ${d.detalle}, por lo que les queda`
                 }
                 onClick={() => setDuracionFiltro((v) => (v === d.clave ? null : d.clave))}
               >
@@ -961,7 +944,7 @@ export function PanelSinAsignar({
       )}
 
       {soltando && (
-        <p className="px-2.5 py-1.5 text-[11px]" style={{ color: CORAL }}>
+        <p className="px-2.5 py-1.5 text-xs" style={{ color: CORAL }}>
           Soltá para devolver la obra a sin asignar
         </p>
       )}
@@ -973,7 +956,7 @@ export function PanelSinAsignar({
       {conFiltros.length > 0 || q ? (
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-2">
           {conFiltros.length === 0 && (
-            <div className="flex flex-wrap items-center gap-2 px-1 text-[11px] text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-2 px-1 text-xs text-muted-foreground">
               <p>
                 {hayFiltro
                   ? "Ninguna obra sin asignar con esos filtros."
@@ -983,7 +966,7 @@ export function PanelSinAsignar({
                 <button
                   type="button"
                   onClick={() => { setTipoFiltro(null); setDuracionFiltro(null); }}
-                  className="rounded border px-2 py-0.5 text-[11px] hover:border-foreground/25"
+                  className="rounded border px-2 py-0.5 text-xs hover:border-foreground/25"
                 >
                   Ver todas ({filtradas.length})
                 </button>
@@ -1032,7 +1015,9 @@ export function PanelSinAsignar({
           <Grupo
             titulo="Con habilitación pendiente"
             cantidad={pendientesHab.length}
-            abierto={pendientesAbierto}
+            // Con búsqueda o filtro se abre solo: si la única coincidencia estaba acá
+            // adentro, plegado se leía como que la obra no existía.
+            abierto={pendientesAbierto || !!q || hayFiltro}
             onToggle={() => setPendientesAbierto((v) => !v)}
           >
             {pendientesHab.map((obra) => (
@@ -1044,9 +1029,9 @@ export function PanelSinAsignar({
               grilla a ojo. Dice DÓNDE está, que es lo que hace falta para ir. */}
           {q && (
             <div>
-              <p className="px-1 py-1 text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
+              <p className="px-1 py-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Ya planificadas
-                <span className="ml-1.5 rounded-full bg-muted px-1.5 text-[10px] font-medium">
+                <span className="ml-1.5 rounded-full bg-muted px-1.5 text-xs font-medium">
                   {totalPlanificadas}
                 </span>
               </p>
@@ -1065,8 +1050,8 @@ export function PanelSinAsignar({
                       >
                         <IconoTipo className="h-3.5 w-3.5 shrink-0" style={{ color: tipo.text }} aria-hidden />
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[12px] font-medium">{direccion}</span>
-                          <span className="block truncate text-[10px] text-muted-foreground">
+                          <span className="block truncate text-sm font-medium">{direccion}</span>
+                          <span className="block truncate text-xs text-muted-foreground">
                             {p.cuadrillaNombre ?? "sin cuadrilla"} ·{" "}
                             {format(parseISO(p.fechaInicio), "EEE d MMM", { locale: es })}
                             {p.jornadas > 1 ? ` · ${p.jornadas} jornadas` : ""}
@@ -1094,8 +1079,8 @@ export function PanelSinAsignar({
                       >
                         <IconoTipo className="h-3.5 w-3.5 shrink-0" style={{ color: tipo.text }} aria-hidden />
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[12px] font-medium">{direccion}</span>
-                          <span className="block truncate text-[10px] text-muted-foreground">
+                          <span className="block truncate text-sm font-medium">{direccion}</span>
+                          <span className="block truncate text-xs text-muted-foreground">
                             {yendo ? "buscando la fecha…" : "fuera de las semanas a la vista"}
                           </span>
                         </span>
@@ -1111,7 +1096,7 @@ export function PanelSinAsignar({
               ) : (
                 // Mira las obras activas en cualquier fecha, no sólo las semanas cargadas.
                 // Una OT ya completada no está entre las candidatas del tablero.
-                <p className="px-1 text-[10px] text-muted-foreground">
+                <p className="px-1 text-xs text-muted-foreground">
                   Ninguna obra activa planificada coincide.
                 </p>
               )}
@@ -1119,7 +1104,7 @@ export function PanelSinAsignar({
           )}
         </div>
       ) : (
-        <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4 text-center text-[11px] text-muted-foreground">
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4 text-center text-xs text-muted-foreground">
           <p>
             {ots.length === 0
               ? "No quedan obras sin asignar."
@@ -1133,7 +1118,7 @@ export function PanelSinAsignar({
             <button
               type="button"
               onClick={() => { setTipoFiltro(null); setDuracionFiltro(null); }}
-              className="rounded border px-2 py-1 text-[11px] hover:border-foreground/25"
+              className="rounded border px-2 py-1 text-xs hover:border-foreground/25"
             >
               Ver todas ({filtradas.length})
             </button>

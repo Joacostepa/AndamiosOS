@@ -298,6 +298,36 @@ async function sincronizarZk(f, valores) {
   }, valores);
 }
 
+/**
+ * Lo mismo para las fechas (datebox ZK), que sincronizarZk no cubre porque el widget guarda un
+ * Date y no el texto. El 07/10 (Escalada 2138) "Vigencia del seguro" mostraba 30/06/2027 pero TAD
+ * lo daba vacío, y los tres Guardar fallaron igual. Si lo registrado no es la fecha esperada, se
+ * escribe en el input y updateChange_ hace lo que haría el blur: convertir y avisar al servidor.
+ */
+async function sincronizarFechas(f, valores) {
+  return f.evaluate((vals) => {
+    const dd = (d) => `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+    const corregidos = [];
+    for (const [name, valor] of Object.entries(vals)) {
+      const el = document.querySelector(`input[name="${name}"]`);
+      const w = el && window.zk ? window.zk.Widget.$(el) : null;
+      if (!w) continue;
+      const actual = w.getValue();
+      if (actual && typeof actual.getDate === "function" && dd(actual) === valor) continue;
+      el.value = valor;
+      if (typeof w.updateChange_ === "function") w.updateChange_();
+      else {
+        const [d, m, a] = valor.split("/").map(Number);
+        w.setValue(new Date(a, m - 1, d));
+        w.fire("onChange", { value: valor }, { toServer: true });
+      }
+      if (typeof w.clearErrorMessage === "function") w.clearErrorMessage(true);
+      corregidos.push(name);
+    }
+    return corregidos;
+  }, valores);
+}
+
 async function desplegable(page, f, name, patron) {
   const input = f.locator(`input[name="${name}"]`).first();
   const uuid = (await input.getAttribute("id", { timeout: 10000 })).replace(/-real$/, "");
@@ -315,16 +345,25 @@ async function desplegable(page, f, name, patron) {
 async function direccionUnaVez(page, f, base, d) {
   const input = f.locator(`input[name="${base}"]`).first();
   const uuid = (await input.getAttribute("id")).replace(/-real$/, "");
-  await input.click({ timeout: 10000 });
-  await input.fill("");
-  await input.pressSequentially(d.buscar, { delay: 120 });
-  await page.waitForTimeout(4000);
   const items = f.locator(`#${uuid}-pp .z-comboitem`);
-  const sugerencias = (await items.allInnerTexts()).map(normal);
-  const i = sugerencias.findIndex((s) => {
-    const m = s.match(/^(.*?)\s*\[(\d+)-(\d+)\]$/);
-    return m && mayus(m[1]) === mayus(d.calle) && d.altura >= Number(m[2]) && d.altura <= Number(m[3]);
-  });
+  // TAD muestra sólo 10 sugerencias: con "SAN" (San Martín de Tours, 09/10) la calle no entraba.
+  // Si no aparece, se busca con más palabras de la calle hasta tenerla entera.
+  const palabras = normal(d.calle).split(" ");
+  const busquedas = [...new Set([d.buscar, ...palabras.map((_, k) => palabras.slice(0, k + 1).join(" ")).filter((b) => b.length > d.buscar.length)])];
+  let sugerencias = [];
+  let i = -1;
+  for (const buscar of busquedas) {
+    await input.click({ timeout: 10000 });
+    await input.fill("");
+    await input.pressSequentially(buscar, { delay: 120 });
+    await page.waitForTimeout(4000);
+    sugerencias = (await items.allInnerTexts()).map(normal);
+    i = sugerencias.findIndex((s) => {
+      const m = s.match(/^(.*?)\s*\[(\d+)-(\d+)\]$/);
+      return m && mayus(m[1]) === mayus(d.calle) && d.altura >= Number(m[2]) && d.altura <= Number(m[3]);
+    });
+    if (i >= 0) break;
+  }
   if (i < 0) throw new Trabado(`TAD no ofrece "${d.calle}" con la altura ${d.altura} (${sugerencias.join(" | ") || "sin sugerencias"})`);
   await items.nth(i).click({ timeout: 10000 });
   await page.waitForTimeout(2500);
@@ -412,16 +451,17 @@ async function llenarYGuardar(page, f, p, log) {
   for (const campo of ["nombre_1_contacto", "apellido_1_contacto"]) await texto(page, f, campo, ABA[campo]);
   await desplegable(page, f, "tipo_docum_contacto", /^DU\b/);
   for (const campo of ["num_docum_contacto", "cuit_contacto", "telefono_contacto", "email_contacto"]) await texto(page, f, campo, ABA[campo]);
-  await texto(page, f, "fecha_desde_instalado", dd(new Date()));
-  await texto(page, f, "fecha_hasta_instalado", p.hasta);
+  const fechas = { fecha_desde_instalado: dd(new Date()), fecha_hasta_instalado: p.hasta, vigencia_seguro: p.seguro.vencimiento };
+  await texto(page, f, "fecha_desde_instalado", fechas.fecha_desde_instalado);
+  await texto(page, f, "fecha_hasta_instalado", fechas.fecha_hasta_instalado);
   await texto(page, f, "compania_seguro", p.seguro.compania);
-  await texto(page, f, "vigencia_seguro", p.seguro.vencimiento);
+  await texto(page, f, "vigencia_seguro", fechas.vigencia_seguro);
   await desplegable(page, f, "importante", /^S[ií]$/i);
 
   const textos = { ...ABA, compania_seguro: p.seguro.compania };
   let campoMal = null;
   for (let intento = 1; intento <= 3; intento++) {
-    const corregidos = await sincronizarZk(f, textos);
+    const corregidos = [...await sincronizarZk(f, textos), ...await sincronizarFechas(f, fechas)];
     if (corregidos.length) log(`TAD: el formulario no tenía registrados ${corregidos.join(", ")}: corregidos por ZK`);
     if (normal(await f.locator('input[name="importante"]').first().inputValue()) !== "Si") await desplegable(page, f, "importante", /^S[ií]$/i);
     await page.waitForTimeout(1500);

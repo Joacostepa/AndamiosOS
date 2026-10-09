@@ -1,12 +1,54 @@
-# Handoff — Gestoría de permisos de andamio (actualizado 2026-10-06)
+# Handoff — Gestoría de permisos de andamio (actualizado 2026-10-09)
 
 Para retomar en una sesión nueva. El diseño completo y todo lo aprendido está en
 `docs/modulo-gestoria-permisos.md`; esto es el estado, **lo que falta para que el circuito
 quede 100 % automático** y el orden para seguir.
 
 Para arrancar: "Leé docs/handoff-gestoria-permisos.md y docs/modulo-gestoria-permisos.md y
-seguimos con lo que falta". **Empezar por § "06/10", después § "02/10" y § "Estado al 26/09", seguir con
+seguimos con lo que falta". **Empezar por § "09/10", después § "06/10", § "02/10" y § "Estado al 26/09", seguir con
 § "17/09 — primera encomienda cerrada sola", § "Noche 16/09" y § "Estado 16/09 19:00".**
+
+---
+
+## 09/10 — dos presentaciones frenadas en el formulario de TAD
+
+Las dos frenaron **después** de adjuntar los 11 casilleros, al llenar "Datos del trámite". Los
+adjuntos quedaron en el borrador: se sigue desde ahí, no de cero. Arreglo en `robot/tad-presentar.mjs`.
+
+### C.R Escalada de San Martín 2138 (S02437, tarea 87, borrador 13232997, 07/10 19:00)
+
+- "El formulario no se pudo guardar después de tres intentos: TAD marca el campo Vigencia del
+  seguro de responsabilidad social (vencimiento)". La captura `87-02-error.png` muestra
+  **30/06/2027 escrito** y el aviso "No se permite vacío o espacios en blanco": el widget ZK no
+  registró lo tipeado (lo mismo que "Razón social" el 15/09). El valor era correcto: Vallese y
+  Medrano se presentaron con la misma fecha.
+- Los tres reintentos no corregían nada porque `sincronizarZk` sólo cubre los campos de texto de
+  ABA y la compañía; las fechas son `datebox` (el widget guarda un Date, no el texto).
+- **Arreglo:** `sincronizarFechas` controla antes de cada Guardar las tres fechas
+  (`fecha_desde_instalado`, `fecha_hasta_instalado`, `vigencia_seguro`) y, si lo registrado no es
+  la fecha esperada, la escribe en el input y llama a `updateChange_` (lo que hace el blur). Si
+  corrige algo, el log dice "corregidos por ZK".
+
+### San Martín de Tours 2949 (S02597, tarea 90, borrador 13258719, 09/10 19:06)
+
+- "TAD no ofrece SAN MARTIN DE TOURS con la altura 2949": el robot buscaba con la primera
+  palabra (`buscar` = "SAN", de `presentacion.ts`) y **TAD muestra sólo 10 sugerencias**; la calle
+  no entraba.
+- **Arreglo:** si la sugerencia no aparece, `direccionUnaVez` vuelve a buscar con más palabras de
+  la calle ("SAN MARTIN", "SAN MARTIN DE", "SAN MARTIN DE TOURS") hasta encontrarla. Sólo en el
+  robot; la app no cambia.
+
+**Sin probar contra TAD:** se verificó la sintaxis y las búsquedas que arma; la primera prueba
+real es seguir los dos borradores.
+
+### Lo primero en la sesión nueva
+
+1. **Reinstalar el robot en la Mac mini** (`git pull && bash robot/instalar-launchd.sh`), con 0
+   tareas `tomada`. A las 19:06 del 09/10 estaba presentando Honduras 4586 (S02078, tarea 91).
+   Incluye el reintento de la encomienda del 06/10 (`ee334e8`), que tampoco estaba instalado.
+2. **"Seguir desde el borrador"** en las fichas de S02437 y S02597. Mirar que el formulario se
+   guarde y que salga el expediente.
+3. Siguen en pie los pendientes de § "06/10" y anteriores.
 
 ---
 

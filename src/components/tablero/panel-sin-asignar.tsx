@@ -27,6 +27,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuGroup,
   DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -505,16 +506,20 @@ function TarjetaOt({
               <ChevronDown className="h-2.5 w-2.5 shrink-0 opacity-60" aria-hidden />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-56">
-              <DropdownMenuLabel>Cuánto lleva</DropdownMenuLabel>
-              {FRACCIONES.map((f) => (
-                <DropdownMenuItem
-                  key={f.value}
-                  onClick={() => onDuracion(ot, f.value)}
-                >
-                  <span className="mr-2 w-6 text-center">{f.label}</span>
-                  {f.detalle}
-                </DropdownMenuItem>
-              ))}
+              {/* DropdownMenuLabel es un GroupLabel de Base UI: suelto, sin un Group padre,
+                  tira una excepción al abrir el menú y tumba la página entera. */}
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>Cuánto lleva</DropdownMenuLabel>
+                {FRACCIONES.map((f) => (
+                  <DropdownMenuItem
+                    key={f.value}
+                    onClick={() => onDuracion(ot, f.value)}
+                  >
+                    <span className="mr-2 w-6 text-center">{f.label}</span>
+                    {f.detalle}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuGroup>
             </DropdownMenuContent>
           </DropdownMenu>
         ) : (

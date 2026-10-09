@@ -41,6 +41,33 @@ adjuntos quedaron en el borrador: se sigue desde ahí, no de cero. Arreglo en `r
 **Sin probar contra TAD:** se verificó la sintaxis y las búsquedas que arma; la primera prueba
 real es seguir los dos borradores.
 
+### La bandeja, rediseñada por urgencia (`15bfdbe`)
+
+Pedido de JS: revisión de UX de `/permisos-via-publica` y rediseño completo. Validado por JS
+andando con datos reales en local antes de subirlo. La bandeja ahora va por lo que hay que hacer:
+
+| Sección | Qué entra |
+| --- | --- |
+| Encabezado | "N necesitan acción · N esperan a ABA · N ventas por iniciar — TAD revisado hace X"; "Probar el circuito" pasó al menú "⋯"; "Revisar ahora" se llama "Revisar TAD" |
+| Necesitan acción (rojo) | subsanaciones con tarea en TAD; vacía = "Ninguna subsanación pendiente" |
+| Esperan a ABA (ámbar) | botón pendiente del modo supervisado, robot frenado, documento observado, link sin mandar |
+| Ventas para iniciar | sin dirección repetida, "vendida hace N días"; si la modalidad dice que ya se inició, "Revisar e iniciar…" con confirmación |
+| En curso | lo tiene el cliente, Segucom, el CPAU o el robot |
+| Esperando al Gobierno | expedientes en el GCBA |
+| Plegados | permiso emitido, historial, pruebas |
+
+- Cada fila dice etapa, qué falta, **quién lo tiene** y hace cuánto. Sale de `etapasDe`
+  (`seguimiento.ts`, ahora exportada), así la bandeja y Seguimiento no pueden contar distinto el
+  mismo trámite. La API arma todo en `bandeja.ts → armarBandeja`.
+- Seguimiento ahora también marca "Lo tiene: ABA" cuando hay un botón pendiente (pedir endoso,
+  armar la encomienda, finalizar en el CPAU, presentar ahora).
+- Colores: rojo sólo para bloqueos, ámbar con ícono para advertencias, naranja sólo para "Iniciar
+  trámite". `chip-estado` y `status-badge` con pares claro/oscuro (antes en claro no se leían).
+- El buscador encuentra también por EX-.
+- **Aproximado:** "Presentar ahora" pendiente = legajo, póliza y encomienda hechos y sin tarea de
+  presentación; no repite todos los controles de `presentacion.ts`. **Sin tocar:** el chip ámbar de
+  "Iniciación" (lo usa también la ficha); si en "Esperando al Gobierno" molesta, pasarlo a gris.
+
 ### Lo primero en la sesión nueva
 
 1. **Reinstalar el robot en la Mac mini** (`git pull && bash robot/instalar-launchd.sh`), con 0

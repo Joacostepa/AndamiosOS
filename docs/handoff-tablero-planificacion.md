@@ -68,8 +68,13 @@ recurrir).
 cuerpo, arriba de "Qué hay que ejecutar" (al pie no se leían). La duración sugerida de
 Odoo, que traía un párrafo entero, quedó en un renglón dentro de Duración ("Sugerido: 1 jornada ·
 usar · ver cálculo"; "usar" la fija desde la bandeja), y se ocultó el "Sin partes" del período.
+Los documentos muestran una fila de 3 y "ver los N documentos" (hay obras con 97 adjuntos que
+ocupaban toda la ficha); si una miniatura no carga se ve el ícono y no el nombre del archivo.
 
-**Quedó afuera:** el panel no modal en escritorio (para arrastrar con la ficha abierta) y los
+**Quedó afuera:** las miniaturas de los documentos se piden directo a Odoo (`/web/content`) y
+sólo cargan si el navegador tiene sesión de Odoo abierta; para que se vean siempre habría que
+servirlas a través de la app. También el panel no modal en escritorio (para arrastrar con la
+ficha abierta) y los
 teléfonos del técnico y el vendedor (no viajan en `DetalleOt`; habría que traerlos de Odoo).
 
 ---

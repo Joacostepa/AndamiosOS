@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { format, parseISO } from "date-fns";
+import { differenceInCalendarDays, format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import {
   AlertTriangle, CalendarPlus, Check, ChevronDown, ChevronLeft, ChevronRight, CircleCheck,
@@ -25,7 +25,7 @@ import {
 } from "@/lib/tablero/colores";
 import { FRACCIONES, fraccionLabel, type FraccionStr } from "@/lib/tablero/fracciones";
 import { accionDeCierre, jornadasCerradas, jornadasLiberables, type AccionCierre } from "@/lib/tablero/cierre";
-import { lineaVentana, violaPiso, violaTecho } from "@/lib/tablero/ventana";
+import { piso, techo, violaPiso, violaTecho } from "@/lib/tablero/ventana";
 import { fechasDeJornadas } from "@/lib/tablero/bloques";
 import { direccionDeObra, nombrePropio } from "@/lib/tablero/titulo";
 import {
@@ -829,12 +829,6 @@ export function PanelOt({
   const etapa = detalle?.habEtapa ? ETAPA_LABEL[detalle.habEtapa as HabEtapa] : null;
   const fecha = (f: string) => format(parseISO(f), "d MMM yyyy", { locale: es });
   const conPlan = !!planObra?.primerDia;
-  // Se mide contra el plan de la obra entera cuando lo hay: la línea no sólo informa la
-  // ventana sino que dice si el lugar donde quedó la respeta. Es la misma función que usa
-  // la bandeja para que las dos superficies no puedan discrepar (ver ventana.ts).
-  const ventana = ot
-    ? lineaVentana(ot, { primerDia: planObra?.primerDia ?? null, ultimoDia: planObra?.ultimoDia ?? null })
-    : null;
 
   if (!ot) {
     return (
@@ -879,13 +873,40 @@ export function PanelOt({
     ot.habVencimiento ? `vence el ${fecha(ot.habVencimiento)}` : null,
   ].filter(Boolean).join(" · ");
 
-  const ventanaNota = !ventana || ventana.alerta
+  // LA VENTANA DICHA EN CRIOLLO. La línea corta de la bandeja ("TERMINA después del 7 oct")
+  // es un aviso, no una explicación: acá no se entendía qué había pedido el cliente ni cuándo
+  // terminaba el plan. Primero lo que pidió el cliente, después qué hace el plan con eso.
+  const diaPlan = (f: string) => format(parseISO(f), "EEE d MMM", { locale: es });
+  const desdeVentana = piso(ot);
+  const hastaVentana = techo(ot);
+  const pedidoCliente =
+    desdeVentana && hastaVentana
+      ? `El cliente la recibe entre el ${desdeVentana} y el ${hastaVentana}`
+      : desdeVentana
+        ? `El cliente puede recibirla desde el ${desdeVentana}`
+        : hastaVentana
+          ? `El cliente la necesita terminada antes del ${hastaVentana}`
+          : null;
+  const primerDia = planObra?.primerDia ?? null;
+  const ultimoDia = planObra?.ultimoDia ?? primerDia;
+  const dias = (n: number) => `${n} día${n === 1 ? "" : "s"}`;
+  const ventanaPlan: { texto: string; alerta: boolean } | null = !pedidoCliente
     ? null
-    : conPlan
-      ? "el plan la respeta"
-      : ot.fechaDesde && ot.fechaDesde <= hoy && !ot.fechaAntesDe
-        ? "ya se puede"
-        : null;
+    : primerDia && violaPiso(ot, primerDia)
+      ? {
+          alerta: true,
+          texto: `El plan arranca el ${diaPlan(primerDia)}, ${dias(differenceInCalendarDays(parseISO(ot.fechaDesde!), parseISO(primerDia)))} antes.`,
+        }
+      : ultimoDia && violaTecho(ot, ultimoDia)
+        ? {
+            alerta: true,
+            texto: `El plan termina el ${diaPlan(ultimoDia)}, ${dias(differenceInCalendarDays(parseISO(ultimoDia), parseISO(ot.fechaAntesDe!)))} después.`,
+          }
+        : conPlan
+          ? { alerta: false, texto: "El plan lo respeta." }
+          : ot.fechaDesde && ot.fechaDesde <= hoy && !ot.fechaAntesDe
+            ? { alerta: false, texto: "Ya se puede ir." }
+            : null;
 
   const tecnico = nombrePropio(detalle?.tecnicoNombre ?? ot.tecnico);
   const vendedor = nombrePropio(detalle?.vendedor);
@@ -1102,12 +1123,17 @@ export function PanelOt({
 
               {/* LA VENTANA DEL CLIENTE — "no antes del 12", "terminada antes del 15". Sale en
                   rojo sólo cuando el plan la rompe: en este tablero el rojo es "algo está mal". */}
-              {ventana && (
+              {pedidoCliente && (
                 <Dato etiqueta="Ventana">
-                  <span style={ventana.alerta ? { color: PELIGRO_SOLIDO, fontWeight: 500 } : undefined}>
-                    {ventana.texto}
-                  </span>
-                  {ventanaNota && <span style={{ color: OK }}> · {ventanaNota}</span>}
+                  {pedidoCliente}
+                  {ventanaPlan && (
+                    <span
+                      className="block text-xs"
+                      style={{ color: ventanaPlan.alerta ? PELIGRO_SOLIDO : OK, fontWeight: ventanaPlan.alerta ? 500 : undefined }}
+                    >
+                      {ventanaPlan.texto}
+                    </span>
+                  )}
                 </Dato>
               )}
 

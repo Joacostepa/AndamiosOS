@@ -87,6 +87,10 @@ ocupaban toda la ficha); si una miniatura no carga se ve el ícono y no el nombr
   El motivo de una obra fija bajó al cuerpo. Antes el encabezado fijo ocupaba media pantalla.
 - "1 de jornada" pasó a "jornada completa", y el foco inicial va al encabezado y no a la X
   (abría remarcada).
+- **La ventana del cliente, explicada** (JS no entendía "TERMINA después del 7 oct"): primero lo
+  que pidió el cliente ("El cliente la necesita terminada antes del 7 oct") y abajo qué hace el
+  plan, en rojo si la rompe ("El plan termina el vie 16 oct, 9 días después."). Usa las mismas
+  `violaPiso`/`violaTecho` que la bandeja y la fricción al confirmar.
 - **Ojo con Base UI:** un `DropdownMenuLabel` (es un `Menu.GroupLabel`) suelto, fuera de un
   `DropdownMenuGroup`, tira una excepción al abrir el menú y tumba la página entera ("This page
   couldn't load"). Pasó con el selector de fracción y se corrigió el mismo día.

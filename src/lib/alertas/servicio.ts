@@ -53,7 +53,13 @@ export type TipoAlerta =
    * criterio: la misma dirección ya cotizada por otro vendedor, un caso que no encaja).
    * SÓLO CAMPANITA: no sale a Slack, así el modelo lo puede usar sin pedir confirmación.
    */
-  | "asistente_aviso";
+  | "asistente_aviso"
+  /**
+   * Pañol (docs/modulo-panol.md §7). Los crea el barrido diario a partir de la misma bandeja
+   * que ve el encargado (src/lib/panol/avisos.ts). Van a `deposito` y al canal del pañol.
+   */
+  | "panol_ajuste" | "panol_stock" | "panol_vencida" | "panol_faltante" | "panol_inspeccion"
+  | "panol_sin_alta" | "panol_resumen" | "panol_baja";
 
 export type Prioridad = "baja" | "media" | "alta" | "critica";
 

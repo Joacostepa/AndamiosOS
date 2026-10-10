@@ -7,6 +7,8 @@ import { OdooError } from "@/lib/odoo/client";
 import { recordarEndosos } from "@/lib/permisos-via-publica/endosos";
 import { barridoPresentaciones } from "@/lib/permisos-via-publica/presentacion";
 import { revisarLatidoRobot } from "@/lib/permisos-via-publica/robot-latido";
+import { leerBandeja } from "@/lib/panol/bandeja-servidor";
+import { avisosDeBandeja } from "@/lib/panol/avisos";
 
 // GET/POST /api/alertas/barrido — el cron que hace que los avisos lleguen solos.
 //
@@ -90,6 +92,15 @@ async function correr(req: NextRequest) {
     //    también su propio cron cada 30 min; acá va por si ese cron falla.
     const robot = await revisarLatidoRobot(db);
 
+    // 6. Pañol: arma la misma bandeja que ve el encargado y avisa lo que ya está para actuar
+    //    (préstamos vencidos, faltantes que pasan a pérdida, inspecciones, el resumen de lo
+    //    movido sin nadie a cargo). Sin los nombres de Odoo: el aviso dice "OT 4812" y es
+    //    un viaje menos. Si las tablas del pañol todavía no existen, falla solo esto.
+    const panol = await leerBandeja(db, { userId: null, personaId: null, esEncargado: false }, { conNombresDeOt: false })
+      .then((b) => crearAlertas(db, avisosDeBandeja(b)))
+      .then((creados) => ({ avisosCreados: creados }))
+      .catch((e) => ({ error: e instanceof Error ? e.message : String(e) }));
+
     return NextResponse.json({
       otsActivas: bandeja.total,
       urgentesEnOdoo: urgentes.length,
@@ -97,6 +108,7 @@ async function correr(req: NextRequest) {
       endosos,
       presentacionesPedidas,
       robot,
+      panol,
     });
   } catch (e) {
     const msg = e instanceof OdooError ? e.message : e instanceof Error ? e.message : String(e);

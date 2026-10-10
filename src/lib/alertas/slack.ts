@@ -20,12 +20,13 @@
 import type { NuevaAlerta, TipoAlerta } from "./servicio";
 
 /** Los canales reales del workspace. Un Incoming Webhook está atado a UN canal. */
-type Canal = "syh" | "logistica" | "permisos";
+type Canal = "syh" | "logistica" | "permisos" | "panol";
 
 const NOMBRE_CANAL: Record<Canal, string> = {
   syh: "#syh-documentacion-de-obra",
   logistica: "#logistica-operativa",
   permisos: "#permisos-de-andamio-",
+  panol: "#pañol",
 };
 
 /**
@@ -55,6 +56,15 @@ const DESTINOS: Record<TipoAlerta, Canal[]> = {
   permiso_endoso: ["permisos"],
   // Del asistente comercial: sólo campanita, a propósito (ver servicio.ts).
   asistente_aviso: [],
+  // El pañol tiene su canal: ahí están los encargados, que no son un rol (ver panol/avisos.ts).
+  panol_ajuste: ["panol"],
+  panol_stock: ["panol"],
+  panol_vencida: ["panol"],
+  panol_faltante: ["panol"],
+  panol_inspeccion: ["panol"],
+  panol_sin_alta: ["panol"],
+  panol_resumen: ["panol"],
+  panol_baja: ["panol"],
 };
 
 /**
@@ -146,6 +156,72 @@ const ESTILO: Record<
     destacado: false,
     prefijos: [],
   },
+  // Pañol. Ninguno grita: van todos juntos en el barrido de la mañana, y una inspección
+  // que vence en 15 días no puede sonar igual que una OT urgente.
+  panol_ajuste: {
+    color: "#d97706",
+    emoji: "⚖️",
+    rotulo: "Ajuste por aprobar",
+    plural: "ajustes de conteo por aprobar",
+    destacado: false,
+    prefijos: [],
+  },
+  panol_stock: {
+    color: "#64748b",
+    emoji: "📦",
+    rotulo: "Stock",
+    plural: "artículos para reponer o revisar",
+    destacado: false,
+    prefijos: ["Reponer", "Stock negativo"],
+  },
+  panol_vencida: {
+    color: "#d97706",
+    emoji: "⏰",
+    rotulo: "Préstamo vencido",
+    plural: "préstamos vencidos o que no volvieron",
+    destacado: false,
+    prefijos: ["Préstamo vencido"],
+  },
+  panol_faltante: {
+    color: "#dc2626",
+    emoji: "❓",
+    rotulo: "Faltante para pasar a pérdida",
+    plural: "faltantes para pasar a pérdida",
+    destacado: false,
+    prefijos: [],
+  },
+  panol_inspeccion: {
+    color: "#dc2626",
+    emoji: "🦺",
+    rotulo: "Inspección de seguridad",
+    plural: "inspecciones de seguridad que vencen",
+    destacado: false,
+    prefijos: [],
+  },
+  panol_sin_alta: {
+    color: "#64748b",
+    emoji: "🏷️",
+    rotulo: "Sin alta",
+    plural: "artículos sin alta",
+    destacado: false,
+    prefijos: ["Sin alta"],
+  },
+  panol_resumen: {
+    color: "#2563eb",
+    emoji: "🌙",
+    rotulo: "Movido sin nadie a cargo",
+    plural: "resúmenes de autoservicio",
+    destacado: false,
+    prefijos: ["Movido sin nadie a cargo"],
+  },
+  panol_baja: {
+    color: "#d97706",
+    emoji: "👤",
+    rotulo: "Baja con cosas a cargo",
+    plural: "bajas con cosas a cargo",
+    destacado: false,
+    prefijos: [],
+  },
 };
 
 /**
@@ -169,6 +245,9 @@ const MAX_EN_LISTA = 8;
 function webhookDe(canal: Canal): string | undefined {
   // Sin el webhook propio de permisos todavía configurado, siguen yendo a #syh como antes.
   if (canal === "permisos") return process.env.SLACK_WEBHOOK_PERMISOS || process.env.SLACK_WEBHOOK_SYH;
+  // Mientras no exista #pañol (10/10: no hay canal ni webhook), el depósito es de logística:
+  // van a #logistica-operativa. Con SLACK_WEBHOOK_PANOL cargado, pasan a su canal solos.
+  if (canal === "panol") return process.env.SLACK_WEBHOOK_PANOL || process.env.SLACK_WEBHOOK_LOGISTICA;
   return canal === "syh" ? process.env.SLACK_WEBHOOK_SYH : process.env.SLACK_WEBHOOK_LOGISTICA;
 }
 

@@ -24,6 +24,12 @@ type DefModulo = {
   rutas: readonly string[];
   /** Módulos que no escriben nada: sólo admiten "ver". */
   soloLectura?: boolean;
+  /**
+   * Otro módulo que también abre este, con el mismo nivel. El kiosco del pañol es un
+   * módulo aparte para que el usuario del dispositivo compartido tenga SÓLO eso; pero
+   * quien tiene Pañol en "editar" (un encargado) también tiene que poder abrir el kiosco.
+   */
+  incluidoEn?: string;
 };
 
 // El orden es el del menú, y es el que usa la pantalla de usuarios para agrupar.
@@ -43,7 +49,11 @@ const DEFINICION = [
   { id: "catalogo", titulo: "Catálogo de piezas", grupo: "Depósito y logística", rutas: ["/deposito/catalogo"] },
   { id: "movimientos", titulo: "Movimientos", grupo: "Depósito y logística", rutas: ["/deposito/movimientos"] },
   { id: "remitos", titulo: "Remitos", grupo: "Depósito y logística", rutas: ["/logistica/remitos"] },
-  { id: "insumos", titulo: "Insumos", grupo: "Depósito y logística", rutas: ["/deposito/insumos"] },
+  // `/p/<código>` es a donde lleva un QR escaneado con la cámara del celular.
+  { id: "panol", titulo: "Pañol", grupo: "Depósito y logística", rutas: ["/deposito/panol", "/p"] },
+  // El dispositivo compartido del pañol (ver docs/modulo-panol.md §5): sólo registra
+  // movimientos, a nombre de quien se identifica. No es encargado ni ve la oficina.
+  { id: "panol-kiosco", titulo: "Kiosco del pañol", grupo: "Depósito y logística", rutas: ["/kiosco"], incluidoEn: "panol" },
   { id: "partes", titulo: "Partes de obra", grupo: "Campo", rutas: ["/partes"] },
   { id: "solicitudes-extra", titulo: "Solicitudes extra", grupo: "Campo", rutas: ["/solicitudes-extra"] },
   { id: "incidentes", titulo: "Incidentes", grupo: "Campo", rutas: ["/incidentes"] },
@@ -110,6 +120,8 @@ const APIS: Record<string, readonly ModuloId[]> = {
   "/api/comercial/asistente": ["asistente-comercial"],
   "/api/comercial/parametros": ["parametros-cotizacion"],
   "/api/ai/computo": ["computos"],
+  "/api/panol": ["panol"],
+  "/api/panol/kiosco": ["panol-kiosco", "panol"],
 };
 const PREFIJOS_API = Object.keys(APIS).sort((a, b) => b.length - a.length);
 
@@ -187,7 +199,10 @@ export function esAdmin(acceso: Acceso | null | undefined): boolean {
 export function nivelEn(acceso: Acceso | null | undefined, modulo: ModuloId): Nivel | null {
   if (!acceso?.activo) return null;
   if (acceso.rol === "admin") return "editar";
-  return acceso.permisos[modulo] ?? null;
+  const propio = acceso.permisos[modulo] ?? null;
+  const padre = (MODULOS.find((m) => m.id === modulo)?.incluidoEn ?? null) as ModuloId | null;
+  if (propio === "editar" || !padre) return propio;
+  return acceso.permisos[padre] === "editar" ? "editar" : propio;
 }
 
 function alcanza(tiene: Nivel | null, pide: Nivel): boolean {

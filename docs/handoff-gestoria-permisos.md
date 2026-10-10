@@ -55,6 +55,21 @@ tomó. "Empezar de cero" otra vez y salió.
   -45485556.
 - **13259218** (S02437, 09/10 20:15): IF-2026-45489765, IF-2026-45489771.
 
+### Permisos falsos, S02521 y la revisión de UX (21:00–22:00)
+
+- **Dos "permisos emitidos" eran nuestra nota de solicitud:** Triunvirato 4528 (S02563) y Corrientes 2810 (S02128). A las 17:36 pasaron a Guarda temporal sin resolución; `bajarPermiso` buscaba "PERMISO", que está en el nombre del trámite. Guardó IF-2026-42727758 e IF-2026-41876699 como permiso, y a las 17:38 escribió `emitido` en Odoo. Había un tercero histórico, sin venta: EX-2026-31668214, una nota de prórroga.
+- **Corregido** con `scripts/_tmp-corregir-permisos-falsos.mjs`:
+  - Odoo de las dos ventas volvió a "presentado" sin fecha de permiso.
+  - Se sacó el permiso falso de los 3 expedientes, con un evento en cada uno.
+  - S02521 quedó atado a EX-2026-44242731 y en "presentado", para que no se presente sola otra vez.
+- **Robot:** ahora exige la notificación "NOTIFICACION PERMISO" con resolución `RS-` (`worker-tad.mjs`, `bajarPermiso`). Reinstalado a las 21:23 y verificado: la vuelta terminó OK y no tocó esas ventas.
+- **Ojo al reinstalar después de corregir datos:** una vuelta que ya arrancó tiene los expedientes viejos en memoria y al final sincroniza Odoo con ellos. Hay que frenar el robot, corregir y recién ahí reinstalar.
+- **Revisión de UX completa** del módulo, con tres revisores en paralelo: `docs/permisos-rediseno.md`, con diagnóstico, errores, propuesta y textos. Maqueta: https://claude.ai/artifact/1heoqTfpqPKBvfZy8M3enr.
+- **Pendiente de personas:**
+  - Avisarle a Agustina que Triunvirato no tiene permiso.
+  - Ver en TAD por qué se archivaron esos dos expedientes.
+  - "Confirmar venta" de EX-2026-44242731 (S02521), para que Odoo lo sepa.
+
 ### Lo primero en la sesión nueva
 
 1. **Borrar en TAD los 3 borradores de arriba** con el robot frenado (`bash robot/instalar-launchd.sh
@@ -64,6 +79,7 @@ tomó. "Empezar de cero" otra vez y salió.
    cero», o que el robot complete "Datos del Trámite" primero y vea si así aparecen los casilleros
    (sin probar; riesgo de tocar "Confirmar trámite" sin los documentos).
 3. Ver que el robot guarde la fecha del seguro cuando TAD no la registre (todavía no pasó).
+4. **Rediseño:** decidir lo de `docs/permisos-rediseno.md` § 7 y arrancar por los cambios chicos de § 6. El primero que conviene es el nombre roto del dueño del lote de Echeverría 2931 (E1), antes de pedir su endoso.
 
 ---
 

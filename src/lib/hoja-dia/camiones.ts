@@ -1,8 +1,9 @@
 // La cuenta de la vista Camiones que no estaba en estado.ts: el orden de las filas, cómo se
 // dice la urgencia y quién pidió un pedido, dónde cae una ficha soltada en la línea de
 // tiempo, qué sale de un pendiente del cajón y a quién más avisar después de avisarle al
-// chofer. Pura como estado.ts (la usan la pantalla y los tests) y en un archivo aparte para
-// no pisar lo que otras pantallas agregan a estado.ts al mismo tiempo.
+// chofer, sacar un pedido de su viaje. Pura como estado.ts (la usan la pantalla, el
+// servidor y los tests). Queda en un archivo aparte A PROPÓSITO: depende de estado.ts y no
+// al revés, estado.ts ya tiene 2000 líneas, y lo de acá es sólo de la vista Camiones.
 //
 // Cada función tiene su gemela en la maqueta aprobada: filasOrden ↔ filasOrden,
 // urgenciaTxt ↔ urgHTML, pidioTxt ↔ pidioTxt, ordenEnFila ↔ posDesdeX.

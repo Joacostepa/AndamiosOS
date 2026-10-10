@@ -29,16 +29,22 @@ export type GrupoLinea = { titulo: string; items: ItemLinea[]; vacio: string; so
 
 const tonoTexto = { rojo: "text-hd-rojo", amb: "text-hd-ambar", gris: "text-muted-foreground", "": "" } as const;
 
-export function BotonesDe({ bs, onBoton, max, grande }: { bs: Boton[]; onBoton: (b: Boton) => void; max?: number; grande?: boolean }) {
+/**
+ * Los botones que traen los problemas y avisos (`Boton[]` de estado.ts), los mismos en
+ * Cuadrillas y Camiones. `tamano`: "chip" (la línea de la bandeja y las tarjetas) o "aviso"
+ * (las filas de Camiones; con `grande`, el tamaño normal).
+ */
+export function BotonesDe({ bs, onBoton, max, grande, tamano = "chip" }: { bs: Boton[]; onBoton: (b: Boton, el: HTMLElement) => void; max?: number; grande?: boolean; tamano?: "chip" | "aviso" }) {
   return (
     <>
       {bs.slice(0, max ?? bs.length).map((b, i) => (
         <Button
-          key={`${b.a}-${i}`}
+          key={`${b.a}-${b.l}-${i}`}
+          type="button"
           variant="outline"
-          size="xs"
-          onClick={() => onBoton(b)}
-          className={cn("h-[22px] px-[7px] text-xs max-md:h-9 max-md:px-3 max-md:text-sm", grande && "h-6")}
+          size={tamano === "aviso" && grande ? "default" : "xs"}
+          onClick={(e) => onBoton(b, e.currentTarget)}
+          className={tamano === "chip" ? cn("h-[22px] px-[7px] text-xs max-md:h-9 max-md:px-3 max-md:text-sm", grande && "h-6") : "max-md:h-9 max-md:px-3 max-md:text-sm"}
         >
           {b.l}
         </Button>

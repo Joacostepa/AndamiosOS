@@ -9,7 +9,7 @@ import { useMemo, useState } from "react";
 import { MoreHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Kbd } from "./kbd";
+import { Kbd } from "@/components/hoja-dia/comunes/kbd";
 import {
   camionesQueSirven, cola, diaSemana, hm, horaTxt, lowFirst, lugar, nombreDe, patente, choferDe, choferDelCamion,
   sugeridosDe, txtCerca, txtLibre, txtNadieLibre, esHoy, type ItemCola,

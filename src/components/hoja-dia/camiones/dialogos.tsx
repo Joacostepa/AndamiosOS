@@ -13,8 +13,8 @@ import {
   aCargoDe, calcVeh, choferDelCamion, cNombre, cortoV, hm5, hojaDeCuadrilla, lugar, nombreDe, normHora, obrasCon, patente, vehiculo,
 } from "@/lib/hoja-dia/estado";
 import type { Punto, TipoViaje } from "@/lib/hoja-dia/tipos";
-import { Chips } from "./menu-flotante";
-import { InputHora, horaDe } from "./input-hora";
+import { Chips } from "@/components/hoja-dia/comunes/menu-flotante";
+import { InputHora, horaDe } from "@/components/hoja-dia/comunes/campo-hora";
 import { useCamiones } from "./contexto";
 
 export type Dlg =

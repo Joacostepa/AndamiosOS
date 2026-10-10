@@ -32,7 +32,7 @@ import { Menus, type AbrirDialogo } from "./menus";
 import { Dialogos, type Dlg } from "./dialogos";
 import { NuevoPedido, type PrefPedido } from "./nuevo-pedido";
 import { ListaCarga } from "./lista-carga";
-import { Kbd } from "./kbd";
+import { Kbd } from "@/components/hoja-dia/comunes/kbd";
 
 export function VistaCamiones() {
   const { fecha, irA } = useDiaHoja();

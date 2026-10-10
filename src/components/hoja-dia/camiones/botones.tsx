@@ -3,29 +3,15 @@
 // Los botones que traen los avisos (`Boton[]` de estado.ts) y la línea de un aviso.
 
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { BotonesDe } from "@/components/hoja-dia/comunes/linea-bandeja";
 import type { Aviso, Boton } from "@/lib/hoja-dia/estado";
 import { useCamiones } from "./contexto";
 
+/** Los botones de un aviso en Camiones: los de comunes con el gesto de la vista (y nada en un día pasado). */
 export function Botones({ bs, max, grande }: { bs: Boton[]; max?: number; grande?: boolean }) {
   const { boton, pasado } = useCamiones();
   if (pasado) return null;
-  return (
-    <>
-      {bs.slice(0, max ?? bs.length).map((b, i) => (
-        <Button
-          key={`${b.a}-${b.l}-${i}`}
-          type="button"
-          variant="outline"
-          size={grande ? "default" : "xs"}
-          className="max-md:h-9 max-md:px-3 max-md:text-sm"
-          onClick={(e) => boton(b, e.currentTarget)}
-        >
-          {b.l}
-        </Button>
-      ))}
-    </>
-  );
+  return <BotonesDe bs={bs} max={max} grande={grande} tamano="aviso" onBoton={boton} />;
 }
 
 const TONO = { rojo: "text-hd-rojo", amb: "text-hd-ambar", "": "text-foreground" } as const;

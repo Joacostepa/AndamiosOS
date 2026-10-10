@@ -15,8 +15,8 @@ import {
 } from "@/lib/hoja-dia/estado";
 import { pedidoDesdeCajon, pidioTxt } from "@/lib/hoja-dia/camiones";
 import { TIPOS_VIAJE } from "@/lib/hoja-dia/tipos";
-import { Chips, MenuCabeza, MenuFlotante, MenuItem, MenuSep, MenuTexto, noDevolverFoco } from "./menu-flotante";
-import { InputHora, horaDe } from "./input-hora";
+import { Chips, ItemMenu, MenuCabeza, MenuFlotante, MenuSep, MenuTexto, noDevolverFoco } from "@/components/hoja-dia/comunes/menu-flotante";
+import { InputHora, horaDe } from "@/components/hoja-dia/comunes/campo-hora";
 import { useCamiones, type MenuAbierto } from "./contexto";
 
 export type AbrirDialogo =
@@ -59,12 +59,12 @@ function MenuViaje({ m, cerrar, dialogo, verComo }: { m: Extract<MenuAbierto, { 
   if (paso === "pasar") {
     const otros = dia.camiones.filter((c) => c.choferId && c.vehiculoId !== v0.vehiculoId).map((c) => c.vehiculoId);
     return (
-      <MenuFlotante anchor={m.anchor} onClose={cerrar} label="Pasar a otro camión" ancho={320}>
+      <MenuFlotante anchor={m.anchor} onCerrar={cerrar} label="Pasar a otro camión" ancho={320}>
         <MenuCabeza titulo="Pasar a otro camión" sub={cortoV(dia, v0)} />
         {otros.map((veh) => (
-          <MenuItem key={veh} sub={dondeAnda(dia, veh, ahora).t.slice(0, 34)} onClick={hacer(() => viaje({ accion: "mover", viajeId: m.id, vehiculoId: veh }))}>
+          <ItemMenu key={veh} detalle={dondeAnda(dia, veh, ahora).t.slice(0, 34)} onClick={hacer(() => viaje({ accion: "mover", viajeId: m.id, vehiculoId: veh }))}>
             {nombreDe(dia, choferDelCamion(dia, veh))} · <span className="font-mono text-xs">{patente(dia, veh)}</span>
-          </MenuItem>
+          </ItemMenu>
         ))}
       </MenuFlotante>
     );
@@ -72,7 +72,7 @@ function MenuViaje({ m, cerrar, dialogo, verComo }: { m: Extract<MenuAbierto, { 
 
   const dur = v.dur;
   return (
-    <MenuFlotante anchor={m.anchor} onClose={cerrar} label="Viaje" ancho={330}>
+    <MenuFlotante anchor={m.anchor} onCerrar={cerrar} label="Viaje" ancho={330}>
       <MenuCabeza titulo={textoViaje(dia, v0)} />
       <MenuTexto>
         {flete ? <>Flete de afuera: <b>{v0.fleteExterno}</b></> : v0.vehiculoId ? <><b>{nombreDe(dia, ch)}</b> · <span className="font-mono">{patente(dia, v0.vehiculoId)}</span></> : <b>Sin camión</b>}
@@ -105,21 +105,21 @@ function MenuViaje({ m, cerrar, dialogo, verComo }: { m: Extract<MenuAbierto, { 
       {!pasado && (
         <>
           <MenuSep />
-          {planeado && v0.vehiculoId && !flete && <MenuItem sub={`por ${nombreDe(dia, ch) || "el chofer"}`} onClick={hacer(() => viaje({ accion: "hecho", viajeId: m.id }))}>Marcar hecho</MenuItem>}
-          {!planeado && <MenuItem onClick={hacer(() => viaje({ accion: "deshacer_estado", viajeId: m.id }))}>Volver a «por hacer»</MenuItem>}
-          {planeado && !flete && <MenuItem sub="›" onClick={() => setPaso("pasar")}>{v0.vehiculoId ? "Pasar a otro camión" : "Elegir chofer"}</MenuItem>}
+          {planeado && v0.vehiculoId && !flete && <ItemMenu detalle={`por ${nombreDe(dia, ch) || "el chofer"}`} onClick={hacer(() => viaje({ accion: "hecho", viajeId: m.id }))}>Marcar hecho</ItemMenu>}
+          {!planeado && <ItemMenu onClick={hacer(() => viaje({ accion: "deshacer_estado", viajeId: m.id }))}>Volver a «por hacer»</ItemMenu>}
+          {planeado && !flete && <ItemMenu detalle="›" onClick={() => setPaso("pasar")}>{v0.vehiculoId ? "Pasar a otro camión" : "Elegir chofer"}</ItemMenu>}
           {planeado && !flete && v0.vehiculoId && (der
-            ? <MenuItem sub={`nadie ${v0.tipo === "busca" ? "los busca" : "los lleva"}`} onClick={hacer(() => viaje({ accion: "volver_a_cola", viajeId: m.id }))}>Sacar del camión</MenuItem>
-            : <MenuItem onClick={hacer(() => viaje({ accion: "volver_a_cola", viajeId: m.id }))}>Volver a la cola</MenuItem>)}
-          {planeado && <MenuItem onClick={() => { noDevolverFoco(); cerrar(); dialogo({ t: "hora", id: m.id }, m.anchor); }}>Cambiar hora</MenuItem>}
+            ? <ItemMenu detalle={`nadie ${v0.tipo === "busca" ? "los busca" : "los lleva"}`} onClick={hacer(() => viaje({ accion: "volver_a_cola", viajeId: m.id }))}>Sacar del camión</ItemMenu>
+            : <ItemMenu onClick={hacer(() => viaje({ accion: "volver_a_cola", viajeId: m.id }))}>Volver a la cola</ItemMenu>)}
+          {planeado && <ItemMenu onClick={() => { noDevolverFoco(); cerrar(); dialogo({ t: "hora", id: m.id }, m.anchor); }}>Cambiar hora</ItemMenu>}
           {planeado && !der && !flete && (v0.hora
-            ? <MenuItem onClick={hacer(() => viaje({ accion: "hora", viajeId: m.id, hora: null }))}>Hacerla estimada</MenuItem>
-            : <MenuItem sub="alguien espera" onClick={hacer(() => viaje({ accion: "hora", viajeId: m.id, hora: hm5(t) }))}>Fijar hora</MenuItem>)}
-          {planeado && !der && <MenuItem rojo onClick={() => { noDevolverFoco(); cerrar(); dialogo({ t: "anular", id: m.id }, m.anchor); }}>Anular…</MenuItem>}
+            ? <ItemMenu onClick={hacer(() => viaje({ accion: "hora", viajeId: m.id, hora: null }))}>Hacerla estimada</ItemMenu>
+            : <ItemMenu detalle="alguien espera" onClick={hacer(() => viaje({ accion: "hora", viajeId: m.id, hora: hm5(t) }))}>Fijar hora</ItemMenu>)}
+          {planeado && !der && <ItemMenu rojo onClick={() => { noDevolverFoco(); cerrar(); dialogo({ t: "anular", id: m.id }, m.anchor); }}>Anular…</ItemMenu>}
           {ch && (
             <>
               <MenuSep />
-              <MenuItem onClick={hacer(() => verComo(ch))}>Ver como {nombreDe(dia, ch)}</MenuItem>
+              <ItemMenu onClick={hacer(() => verComo(ch))}>Ver como {nombreDe(dia, ch)}</ItemMenu>
             </>
           )}
         </>
@@ -163,13 +163,13 @@ function MenuFila({ m, cerrar, dialogo, verComo, llamar }: { m: Extract<MenuAbie
   const hacer = (f: () => void) => () => { cerrar(); f(); };
   const hayEstimadas = calcVeh(dia, veh).some((v) => v.estado === "planeado" && !v.hora);
   return (
-    <MenuFlotante anchor={m.anchor} onClose={cerrar} label="Camión" ancho={290}>
+    <MenuFlotante anchor={m.anchor} onCerrar={cerrar} label="Camión" ancho={290}>
       <MenuCabeza titulo={`${N || "Sin chofer"} · ${vehiculoNombre(dia, veh)}`} sub={dondeAnda(dia, veh, ahora).t} />
-      {ch && st?.k === "cambiada" && <MenuItem sub={`${st.ds.length} ${st.ds.length === 1 ? "cambio" : "cambios"}`} onClick={hacer(() => avisar(ch))}>Avisar a {N}</MenuItem>}
-      <MenuItem sub="las estimadas, desde ahora" disabled={!hayEstimadas} onClick={hacer(() => viaje({ accion: "correr_horas", fecha, vehiculoId: veh }))}>Correr horas</MenuItem>
-      <MenuItem onClick={() => { noDevolverFoco(); cerrar(); dialogo({ t: "taller", veh }, m.anchor); }}>Agregar VTV o taller</MenuItem>
-      {ch && <MenuItem onClick={hacer(() => verComo(ch))}>Ver como {N}</MenuItem>}
-      {ch && <MenuItem sub={persona(dia, ch)?.celular ?? "sin celular"} disabled={!persona(dia, ch)?.celular} onClick={hacer(() => llamar(ch))}>Llamar a {N}</MenuItem>}
+      {ch && st?.k === "cambiada" && <ItemMenu detalle={`${st.ds.length} ${st.ds.length === 1 ? "cambio" : "cambios"}`} onClick={hacer(() => avisar(ch))}>Avisar a {N}</ItemMenu>}
+      <ItemMenu detalle="las estimadas, desde ahora" disabled={!hayEstimadas} onClick={hacer(() => viaje({ accion: "correr_horas", fecha, vehiculoId: veh }))}>Correr horas</ItemMenu>
+      <ItemMenu onClick={() => { noDevolverFoco(); cerrar(); dialogo({ t: "taller", veh }, m.anchor); }}>Agregar VTV o taller</ItemMenu>
+      {ch && <ItemMenu onClick={hacer(() => verComo(ch))}>Ver como {N}</ItemMenu>}
+      {ch && <ItemMenu detalle={persona(dia, ch)?.celular ?? "sin celular"} disabled={!persona(dia, ch)?.celular} onClick={hacer(() => llamar(ch))}>Llamar a {N}</ItemMenu>}
     </MenuFlotante>
   );
 }
@@ -197,7 +197,7 @@ function MenuPedido({ m, cerrar }: { m: Extract<MenuAbierto, { t: "ped" }>; cerr
       pedido({ accion: "esperar", pedidoId: p.id, motivo: mot, hasta: h });
     };
     return (
-      <MenuFlotante anchor={m.anchor} onClose={cerrar} label="Esperar" ancho={300}>
+      <MenuFlotante anchor={m.anchor} onCerrar={cerrar} label="Esperar" ancho={300}>
         <MenuCabeza titulo="Esperar…" sub={`${p.que} → ${dest.corto}`} />
         <div className="px-2 pt-1 text-xs font-medium text-muted-foreground">¿Por qué espera?</div>
         <Chips opciones={motivos} valor={mot} onChange={setMot} label="Motivo" />
@@ -211,21 +211,21 @@ function MenuPedido({ m, cerrar }: { m: Extract<MenuAbierto, { t: "ped" }>; cerr
   }
   if (paso === "anular") {
     return (
-      <MenuFlotante anchor={m.anchor} onClose={cerrar} label="Ya no hace falta" ancho={280}>
+      <MenuFlotante anchor={m.anchor} onCerrar={cerrar} label="Ya no hace falta" ancho={280}>
         <MenuCabeza titulo="Ya no hace falta" sub={p.que} />
-        {MOTIVOS_ANULAR_PEDIDO.map((x) => <MenuItem key={x} onClick={hacer(() => pedido({ accion: "anular", pedidoId: p.id, motivo: x }))}>{x}</MenuItem>)}
+        {MOTIVOS_ANULAR_PEDIDO.map((x) => <ItemMenu key={x} onClick={hacer(() => pedido({ accion: "anular", pedidoId: p.id, motivo: x }))}>{x}</ItemMenu>)}
       </MenuFlotante>
     );
   }
   const sinCamion = !p.viajeId && p.estado !== "hecho";
   return (
-    <MenuFlotante anchor={m.anchor} onClose={cerrar} label="Opciones del pedido" ancho={300}>
+    <MenuFlotante anchor={m.anchor} onCerrar={cerrar} label="Opciones del pedido" ancho={300}>
       <MenuCabeza titulo={p.que} sub={`→ ${dest.n} · ${pidioTxt(dia, p)}`} />
       {p.nota && <MenuTexto>{p.nota}</MenuTexto>}
-      {sinCamion && <MenuItem onClick={hacer(() => setPoner(p.id))}>Poner en un camión</MenuItem>}
-      <MenuItem sub="›" onClick={() => { setMot(motivos[0] ?? null); setPaso("esperar"); }}>Esperar…</MenuItem>
-      <MenuItem sub="queda primero" onClick={hacer(() => pedido({ accion: "pasar_a_manana", pedidoId: p.id }))}>Pasar a mañana</MenuItem>
-      <MenuItem rojo sub="›" onClick={() => setPaso("anular")}>Ya no hace falta…</MenuItem>
+      {sinCamion && <ItemMenu onClick={hacer(() => setPoner(p.id))}>Poner en un camión</ItemMenu>}
+      <ItemMenu detalle="›" onClick={() => { setMot(motivos[0] ?? null); setPaso("esperar"); }}>Esperar…</ItemMenu>
+      <ItemMenu detalle="queda primero" onClick={hacer(() => pedido({ accion: "pasar_a_manana", pedidoId: p.id }))}>Pasar a mañana</ItemMenu>
+      <ItemMenu rojo detalle="›" onClick={() => setPaso("anular")}>Ya no hace falta…</ItemMenu>
     </MenuFlotante>
   );
 }
@@ -233,12 +233,12 @@ function MenuPedido({ m, cerrar }: { m: Extract<MenuAbierto, { t: "ped" }>; cerr
 function MenuCajon({ m, cerrar }: { m: Extract<MenuAbierto, { t: "cajon" }>; cerrar: () => void }) {
   const { dia, nuevoPedido } = useCamiones();
   return (
-    <MenuFlotante anchor={m.anchor} onClose={cerrar} label="Cajón del tablero" ancho={300}>
+    <MenuFlotante anchor={m.anchor} onCerrar={cerrar} label="Cajón del tablero" ancho={300}>
       <MenuCabeza titulo="Cajón del tablero" sub="Pendientes que todavía no pasaron a pedido" />
       {dia.cajon.map((k) => (
         <div key={k.id} className="grid gap-0.5">
           <MenuTexto><span className="font-mono break-words">{k.texto}</span></MenuTexto>
-          <MenuItem sub="queda tildado" onClick={() => { noDevolverFoco(); cerrar(); nuevoPedido({ ...pedidoDesdeCajon(k.texto, dia.lugares), cajonPendienteId: k.id }); }}>Pasar a pedido</MenuItem>
+          <ItemMenu detalle="queda tildado" onClick={() => { noDevolverFoco(); cerrar(); nuevoPedido({ ...pedidoDesdeCajon(k.texto, dia.lugares), cajonPendienteId: k.id }); }}>Pasar a pedido</ItemMenu>
         </div>
       ))}
       {!dia.cajon.length && <MenuTexto>No hay pendientes en el cajón.</MenuTexto>}

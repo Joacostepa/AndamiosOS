@@ -1,10 +1,13 @@
 "use client";
 
-// Una hora escrita a mano y tolerante: "745", "7.45", "7h45", "7" → "7:45" / "7:00".
-// Se guarda al salir del campo o con Enter; si no es una hora queda marcado en rojo,
-// con "Hora no válida" y el foco adentro, sin mandar nada.
+// Una hora escrita a mano y tolerante: "745", "7.45", "7h45", "7" → "7:45" / "7:00"
+// (leerHora de estado.ts). Dos formas, la misma regla:
+// - CampoHora (Cuadrillas): se guarda solo al salir del campo o con Enter; si no es una
+//   hora queda en rojo, con "Hora no válida" y el foco adentro, sin mandar nada.
+// - InputHora (Camiones, en diálogos y menús): controlado; al salir se normaliza y quien lo
+//   usa decide cuándo guardar (horaDe) y si mostrar el error (`mal`).
 
-import { useId, useState } from "react";
+import { forwardRef, useId, useState } from "react";
 import { leerHora, normHora } from "@/lib/hoja-dia/estado";
 import { cn } from "@/lib/utils";
 
@@ -87,3 +90,50 @@ export function CampoHora({
     </span>
   );
 }
+
+// ─── InputHora (controlado) ─────────────────────────────────────────────────
+
+type Props = Omit<React.InputHTMLAttributes<HTMLInputElement>, "value" | "onChange"> & {
+  value: string;
+  onChange: (v: string) => void;
+  /** Mostrar el error ("Hora no válida") debajo. */
+  mal?: boolean;
+  etiqueta?: string;
+};
+
+export const InputHora = forwardRef<HTMLInputElement, Props>(function InputHora({ value, onChange, mal, etiqueta, className, id, ...rest }, ref) {
+  const auto = useId();
+  const elId = id ?? auto;
+  return (
+    <span className="inline-flex flex-col gap-1">
+      {etiqueta && (
+        <label htmlFor={elId} className="text-xs font-medium text-muted-foreground">
+          {etiqueta}
+        </label>
+      )}
+      <input
+        {...rest}
+        ref={ref}
+        id={elId}
+        inputMode="numeric"
+        autoComplete="off"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={(e) => {
+          const h = leerHora(e.target.value);
+          if (h) onChange(h);
+          rest.onBlur?.(e);
+        }}
+        aria-invalid={mal || undefined}
+        className={cn(
+          "h-9 w-[110px] rounded-md border border-input bg-transparent px-2 text-sm tabular-nums outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-hd-rojo",
+          className,
+        )}
+      />
+      {mal && <span className="text-xs font-medium text-hd-rojo">Hora no válida</span>}
+    </span>
+  );
+});
+
+/** "7.45" → "7:45" o null. */
+export const horaDe = (v: string) => leerHora(v);

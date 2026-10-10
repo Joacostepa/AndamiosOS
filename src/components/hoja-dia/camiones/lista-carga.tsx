@@ -7,7 +7,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Caja, HojaLateral } from "@/components/hoja-dia/comunes/hoja-lateral";
 import { fechaLarga, hm, hm5, listaCarga, nombreDe, patente, textoListaCarga, type FilaCarga } from "@/lib/hoja-dia/estado";
 import { useCamiones } from "./contexto";
 
@@ -47,29 +47,22 @@ export function ListaCarga({ abierta, cerrar, avisarDeposito }: { abierta: boole
     );
 
   return (
-    <Sheet open={abierta} onOpenChange={(o) => !o && cerrar()}>
-      <SheetContent side="right" className="w-full gap-0 sm:max-w-[560px]">
-        <SheetHeader className="border-b">
-          <SheetTitle>Lista de carga · {fechaLarga(dia.fecha)}</SheetTitle>
-          <SheetDescription>Lo que el depósito tiene que cargar y lo que vuelve, por hora. Sólo viajes que salen del depósito con carga o vuelven con carga.</SheetDescription>
-        </SheetHeader>
-        <div className="grid flex-1 content-start gap-4 overflow-auto p-4">
-          <section className="grid gap-2 rounded-lg border p-3">
-            <h3 className="text-sm font-semibold">Para cargar</h3>
-            {tabla(L.sale, "Nada para cargar.", false)}
-          </section>
-          <section className="grid gap-2 rounded-lg border p-3">
-            <h3 className="text-sm font-semibold">Para recibir</h3>
-            {tabla(L.recibir, "Nada para recibir.", true)}
-          </section>
-          <p className="text-xs text-muted-foreground">Las horas con «~» son estimadas. En la fase 2 esta misma lista está en la tablet del pañol («Para cargar»).</p>
-        </div>
-        <SheetFooter className="flex-row flex-wrap justify-end border-t">
+    <HojaLateral
+      abierta={abierta}
+      onCerrar={cerrar}
+      titulo={`Lista de carga · ${fechaLarga(dia.fecha)}`}
+      sub="Lo que el depósito tiene que cargar y lo que vuelve, por hora. Sólo viajes que salen del depósito con carga o vuelven con carga."
+      pie={
+        <>
           <Button variant="outline" onClick={copiar}>{copiado ? "Copiado" : "Copiar para WhatsApp/Telegram"}</Button>
           <Button variant="outline" onClick={avisarDeposito}>Avisar al depósito</Button>
           <Button variant="outline" onClick={cerrar}>Listo</Button>
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
+        </>
+      }
+    >
+      <Caja titulo="Para cargar">{tabla(L.sale, "Nada para cargar.", false)}</Caja>
+      <Caja titulo="Para recibir">{tabla(L.recibir, "Nada para recibir.", true)}</Caja>
+      <p className="text-xs text-muted-foreground">Las horas con «~» son estimadas. En la fase 2 esta misma lista está en la tablet del pañol («Para cargar»).</p>
+    </HojaLateral>
   );
 }

@@ -9,38 +9,22 @@
 // pidió) y "Avisar al depósito" (si el viaje nuevo sale de ahí con carga). Se calcula ANTES
 // de avisar (seguimientoAviso): después ya no hay diferencia con lo enviado.
 //
-// PARA UNIFICAR: el diálogo de "mandar a mano" es primo de la lista de envío de
-// components/hoja-dia/comunes; cuando exista allá un componente para un solo destinatario,
-// este debería usarlo.
+// El diálogo de "mandar a mano" (un destinatario) es el de comunes/mensaje-a-mano.tsx.
 
-import { PRI } from "@/components/hoja-dia/comunes/boton-coral";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Copy, MessageCircle, Send } from "lucide-react";
-import { Button, buttonVariants } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { DialogoMensaje, type Mensaje } from "@/components/hoja-dia/comunes/mensaje-a-mano";
 import { useDeshacer, useEnviar } from "@/hooks/use-hoja-dia";
 import { nombreDe, persona } from "@/lib/hoja-dia/estado";
 import { seguimientoAviso } from "@/lib/hoja-dia/camiones";
 import { linkWhatsapp } from "@/lib/panol/whatsapp";
+
+export type { Mensaje };
 import type { DiaHoja, Fecha, Minutos } from "@/lib/hoja-dia/tipos";
 
 type Respuesta = { ok: true; texto: string; historialId: string | null; enviado?: boolean; waLink?: string | null; mensaje?: string; link?: string | null };
 
-export type Mensaje = {
-  titulo: string;
-  /** "Para Gómez · 11 5555-0000" */
-  para: string;
-  texto: string;
-  waLink: string | null;
-  /** Lo que salió mal con Telegram, en palabras. */
-  error?: string | null;
-  /** "Ya lo mandé": marca enviado (el chofer) o anota el aviso. */
-  alMandar?: () => void;
-  /** Botones para seguir avisando ("Avisar a Conte", "Avisar al depósito"). */
-  otros?: { l: string; onClick: () => void }[];
-  nota?: string;
-};
 
 export function useAvisar(diaVista: DiaHoja | undefined, fecha: Fecha, ahoraVista: Minutos) {
   // Los avisos se disparan desde toasts que viven más que el render que los creó ("Avisar a
@@ -198,67 +182,4 @@ export function useAvisar(diaVista: DiaHoja | undefined, fecha: Fecha, ahoraVist
 function paraDe(dia: DiaHoja, pid: string) {
   const p = persona(dia, pid);
   return `${p?.nombre ?? ""}${p?.celular ? ` · ${p.celular}` : " · sin celular cargado"}`;
-}
-
-export function DialogoMensaje({ m, onClose }: { m: Mensaje | null; onClose: () => void }) {
-  const [copiado, setCopiado] = useState(false);
-  const copiar = async () => {
-    if (!m) return;
-    try {
-      await navigator.clipboard.writeText(m.texto);
-      setCopiado(true);
-      setTimeout(() => setCopiado(false), 2000);
-    } catch {
-      toast.error("No se pudo copiar: seleccioná el texto y copialo a mano");
-    }
-  };
-  return (
-    <Dialog open={!!m} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-md">
-        {m && (
-          <>
-            <DialogTitle>{m.titulo}</DialogTitle>
-            {m.error && <p className="text-sm font-medium text-hd-rojo">Telegram no lo mandó: {m.error}</p>}
-            <DialogDescription>Para <b className="font-semibold text-foreground">{m.para}</b></DialogDescription>
-            <div className="max-h-[40dvh] overflow-auto rounded-lg bg-muted px-3 py-2 text-[13.5px] leading-relaxed whitespace-pre-wrap select-all">{m.texto}</div>
-            {m.nota && <p className="text-xs text-muted-foreground">{m.nota}</p>}
-            {m.otros && m.otros.length > 0 && (
-              <div className="grid gap-1.5">
-                <p className="text-xs text-muted-foreground">También podés avisar:</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {m.otros.map((o) => (
-                    <Button key={o.l} size="sm" variant="outline" onClick={() => { onClose(); o.onClick(); }}>
-                      {o.l}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            )}
-            <DialogFooter>
-              <Button variant="outline" onClick={copiar}>
-                <Copy /> {copiado ? "Copiado" : "Copiar"}
-              </Button>
-              {m.waLink ? (
-                <a
-                  href={m.waLink}
-                  target="_blank"
-                  rel="noreferrer"
-                  className={buttonVariants({ variant: "outline" })}
-                  onClick={() => { m.alMandar?.(); onClose(); }}
-                >
-                  <MessageCircle /> Abrir WhatsApp
-                </a>
-              ) : null}
-              {m.alMandar && (
-                <Button onClick={() => { m.alMandar?.(); onClose(); }} className={PRI}>
-                  <Send /> Ya lo mandé
-                </Button>
-              )}
-              {!m.alMandar && <Button variant="outline" onClick={onClose}>Listo</Button>}
-            </DialogFooter>
-          </>
-        )}
-      </DialogContent>
-    </Dialog>
-  );
 }

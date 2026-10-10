@@ -18,8 +18,8 @@ import {
 } from "@/lib/hoja-dia/estado";
 import { cuadrillaDeDestino } from "@/lib/hoja-dia/camiones";
 import { TIPOS_VIAJE, type Fecha, type Necesita, type Punto, type Urgencia } from "@/lib/hoja-dia/tipos";
-import { InputHora, horaDe } from "./input-hora";
-import { Kbd } from "./kbd";
+import { InputHora, horaDe } from "@/components/hoja-dia/comunes/campo-hora";
+import { Kbd } from "@/components/hoja-dia/comunes/kbd";
 import { useCamiones } from "./contexto";
 
 export type PrefPedido = { que?: string; hacia?: Punto | null; cajonPendienteId?: string };

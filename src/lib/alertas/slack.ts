@@ -245,8 +245,9 @@ const MAX_EN_LISTA = 8;
 function webhookDe(canal: Canal): string | undefined {
   // Sin el webhook propio de permisos todavía configurado, siguen yendo a #syh como antes.
   if (canal === "permisos") return process.env.SLACK_WEBHOOK_PERMISOS || process.env.SLACK_WEBHOOK_SYH;
-  // El pañol no cae en otro canal: sin su webhook, sólo queda la campanita.
-  if (canal === "panol") return process.env.SLACK_WEBHOOK_PANOL;
+  // Mientras no exista #pañol (10/10: no hay canal ni webhook), el depósito es de logística:
+  // van a #logistica-operativa. Con SLACK_WEBHOOK_PANOL cargado, pasan a su canal solos.
+  if (canal === "panol") return process.env.SLACK_WEBHOOK_PANOL || process.env.SLACK_WEBHOOK_LOGISTICA;
   return canal === "syh" ? process.env.SLACK_WEBHOOK_SYH : process.env.SLACK_WEBHOOK_LOGISTICA;
 }
 

@@ -3,6 +3,7 @@ import { accionAusencia, accionAusenciaSchema } from "@/lib/hoja-dia/acciones";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { mapAusencia } from "@/lib/hoja-dia/servicio";
 import { conPermiso, fallo, fechaValida, invalidoZod, sesion } from "../_comun";
+import { nivelEn } from "@/lib/auth/acceso";
 
 // GET /api/hoja-dia/ausencias?desde=YYYY-MM-DD — las vigentes y las próximas, de todo el
 // personal (el panel "Ausencias"). Las ART "según la asistencia" vienen con el día
@@ -32,7 +33,9 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) return invalidoZod(parsed.error);
   const vista = typeof body?.fechaVista === "string" && fechaValida(body.fechaVista) ? body.fechaVista : undefined;
   try {
-    return NextResponse.json(await accionAusencia(await sesion(), guardia.userId, parsed.data, vista));
+    // Sin la Hoja del día en editar (RRHH desde Personal) escribe el servidor: ver accionAusencia.
+    const puedeHoja = nivelEn(guardia.acceso, "hoja-dia") === "editar";
+    return NextResponse.json(await accionAusencia(await sesion(), guardia.userId, parsed.data, vista, puedeHoja));
   } catch (e) {
     return fallo(e);
   }

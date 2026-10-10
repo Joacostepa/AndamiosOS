@@ -792,8 +792,25 @@ async function sacarDeHojas(g: Grabador, db: DB, pid: string, desde: Fecha, hast
   return out;
 }
 
-export function accionAusencia(db: DB, userId: string, a: AccionAusencia, fechaVista?: Fecha): Promise<Resultado> {
-  return conGrabador(db, userId, { fecha: fechaVista ?? null, entidad: "ausencia", accion: a.accion }, (g) => accionAusenciaCon(g, db, userId, a, fechaVista));
+/** De las hojas tocadas, las que ya se habían mandado (link del a cargo enviado y vigente). */
+async function hojasEnviadas(afect: { fecha: Fecha; c: number }[]): Promise<{ fecha: Fecha; c: number }[]> {
+  if (!afect.length) return [];
+  const r = await createAdminClient().from("hd_links").select("fecha, cuadrilla_odoo_id").eq("rol", "a_cargo").is("anulado_at", null).not("enviada_at", "is", null).in("fecha", [...new Set(afect.map((x) => x.fecha))]);
+  const env = new Set((r.data ?? []).map((l) => `${l.fecha}:${l.cuadrilla_odoo_id}`));
+  return afect.filter((x) => env.has(`${x.fecha}:${x.c}`)).map(({ fecha, c }) => ({ fecha, c }));
+}
+
+/**
+ * Las ausencias las cargan la Hoja del día y RRHH desde Personal (§14). I9: quien tiene
+ * Personal y no la Hoja del día no ve ni puede tocar las hojas por RLS, así que sacar a la
+ * persona de las hojas en silencio no pasaba. Para ellos (`puedeHoja: false`) se escribe
+ * con la service role DESPUÉS de que la ruta verificó Personal en editar, queda igual en el
+ * historial, y no se ofrece Deshacer (deshacer es de la Hoja del día).
+ */
+export async function accionAusencia(db: DB, userId: string, a: AccionAusencia, fechaVista?: Fecha, puedeHoja = true): Promise<Resultado> {
+  const escribe = puedeHoja ? db : createAdminClient();
+  const r = await conGrabador(escribe, userId, { fecha: fechaVista ?? null, entidad: "ausencia", accion: a.accion }, (g) => accionAusenciaCon(g, escribe, userId, a, fechaVista));
+  return puedeHoja ? r : { ...r, historialId: null };
 }
 async function accionAusenciaCon(g: Grabador, db: DB, userId: string, a: AccionAusencia, fechaVista?: Fecha): Promise<Resultado> {
   const dia = await leerDia(fechaVista ?? hoyBA(), { cacheOdoo: true });
@@ -807,6 +824,8 @@ async function accionAusenciaCon(g: Grabador, db: DB, userId: string, a: AccionA
         nota: a.nota ?? null, origen: a.origen ?? "planificador",
       });
       const afect = parcial ? [] : await sacarDeHojas(g, db, a.personaId, a.desde, a.hasta);
+      // Si alguna de esas hojas ya se mandó, hay que avisarle a quien la recibió.
+      const enviadas = await hojasEnviadas(afect);
       const rango = a.hasta ? (a.hasta === a.desde ? `sólo el ${ddmm(a.desde)}` : `del ${ddmm(a.desde)} al ${ddmm(a.hasta)}`) : `desde el ${ddmm(a.desde)}, sin fecha de alta`;
       const f = afect.find((x) => x.fecha === (fechaVista ?? x.fecha));
       const n = N(dia, a.personaId);
@@ -815,7 +834,8 @@ async function accionAusenciaCon(g: Grabador, db: DB, userId: string, a: AccionA
         : f
           ? f.aCargo ? `${n} no viene (${TIPO_AUSENCIA_TXT[a.tipo]}): la ${cNombre(dia, f.c)} quedó sin nadie a cargo` : `${n} no viene (${TIPO_AUSENCIA_TXT[a.tipo]}, ${rango}). Salió de la ${cNombre(dia, f.c)}`
           : `${n} · ${TIPO_AUSENCIA_TXT[a.tipo]} ${rango}`;
-      return listo(userId, texto, g, { ...base, entidadId: String(fila.id), accion: "crear_ausencia" }, { ausenciaId: String(fila.id), afectadas: afect });
+      const aviso = enviadas.length ? `. Ojo: ${enviadas.map((x) => `la hoja de la ${cNombre(dia, x.c)} del ${ddmm(x.fecha)}`).join(", ")} ya se había mandado: hay que avisar el cambio` : "";
+      return listo(userId, `${texto}${aviso}`, g, { ...base, entidadId: String(fila.id), accion: "crear_ausencia" }, { ausenciaId: String(fila.id), afectadas: afect, hojasEnviadas: enviadas });
     }
     case "editar": {
       const v: Fila = {};

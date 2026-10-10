@@ -11,6 +11,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -231,6 +232,34 @@ export function Pantalla({ dia, fecha, ahora, irA, cargando }: { dia: DiaHoja; f
         window.location.href = `/planificacion/hoja?dia=${fecha}`;
     }
   }, [dia, fecha, g, avisos, enviar, llamar, mostrar, abrirDialogo, setPoner, sacarUnRato]);
+
+  // I10: los links desde Cuadrillas (y la campanita) traen a qué ir: ?veh= (la fila del
+  // camión), ?viaje= (la ficha, con su menú) o ?pedido= (resaltado; con &hacer=poner |
+  // esperar | flete, lo que se pidió). Se hace una vez por link y se limpia la URL.
+  const params = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const focoUrl = useRef<string | null>(null);
+  useEffect(() => {
+    const veh = params.get("veh"), viajeId = params.get("viaje"), pedidoId = params.get("pedido"), hacer = params.get("hacer");
+    if (!veh && !viajeId && !pedidoId) return;
+    const k = `${dia.fecha}|${veh}|${viajeId}|${pedidoId}|${hacer}`;
+    if (focoUrl.current === k) return;
+    focoUrl.current = k;
+    const qs = new URLSearchParams(params.toString());
+    for (const x of ["veh", "viaje", "pedido", "hacer"]) qs.delete(x);
+    requestAnimationFrame(() => {
+      if (viajeId && dia.viajes.some((v) => v.id === viajeId)) boton({ l: "", a: "verViaje", id: viajeId }, null);
+      else if (pedidoId && dia.pedidos.some((p) => p.id === pedidoId)) {
+        if (hacer === "poner" && !pasado) setPoner(pedidoId);
+        else if (hacer === "esperar" && !pasado) { mostrar(`ped-${pedidoId}`); boton({ l: "", a: "esperar", id: pedidoId }, document.getElementById(`ped-${pedidoId}`)); }
+        else if (hacer === "flete" && !pasado) abrirDialogo({ t: "flete", pedidoId }, document.getElementById(`ped-${pedidoId}`));
+        else mostrar(`ped-${pedidoId}`);
+      } else if (veh) mostrar(`row-${veh}`);
+      else toast("Eso ya no está en la hoja de este día.");
+      router.replace(`${pathname}?${qs.toString()}`, { scroll: false });
+    });
+  }, [params, dia, pasado, boton, setPoner, mostrar, abrirDialogo, router, pathname]);
 
   const nuevoPedido = useCallback((pref?: PrefPedido) => {
     setVolverA(document.activeElement as HTMLElement | null);

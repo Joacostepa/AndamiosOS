@@ -132,7 +132,8 @@ export function VistaCuadrillas() {
         case "irA": if (c != null) llamarAtencion(c); else if (b.veh) irCamiones(`&veh=${b.veh}`); else setFaltaAbierta(true); return;
         case "verCamion": irCamiones(b.veh ? `&veh=${b.veh}` : ""); return;
         case "verViaje": irCamiones(b.id ? `&viaje=${b.id}` : ""); return;
-        case "irCamiones": case "esperar": case "poner": case "fleteDe": irCamiones(b.id ? `&pedido=${b.id}` : ""); return;
+        case "irCamiones": irCamiones(b.id ? `&pedido=${b.id}` : ""); return;
+        case "esperar": case "poner": case "fleteDe": irCamiones(b.id ? `&pedido=${b.id}&hacer=${b.a === "fleteDe" ? "flete" : b.a}` : ""); return;
         case "tablero": router.push(`/planificacion`); return;
         case "elegirChoferViaje": if (b.id) setMenu({ t: "camion", viajeId: b.id, el: document.activeElement as HTMLElement | null }); return;
         case "vuelvenSolos": if (c != null) viaje.mutate({ accion: "vuelven_solos", fecha, cuadrilla: c }); return;

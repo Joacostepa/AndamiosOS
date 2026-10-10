@@ -29,7 +29,13 @@ export const navigation: NavGroup[] = [
       { title: "Habilitaciones", href: "/habilitaciones", icon: ShieldCheck },
       { title: "Informes de obra", href: "/informes-obra", icon: FileBarChart },
       { title: "Mapa de Obras", href: "/mapa-obras", icon: MapPin },
-      { title: "Planificacion", href: "/planificacion", icon: Calendar },
+      {
+        title: "Planificacion", href: "/planificacion", icon: Calendar,
+        subItems: [
+          { title: "Tablero", href: "/planificacion" },
+          { title: "Hoja del día", href: "/planificacion/hoja" },
+        ],
+      },
     ],
   },
   {

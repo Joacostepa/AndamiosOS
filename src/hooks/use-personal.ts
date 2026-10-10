@@ -26,6 +26,11 @@ export type Personal = {
   activo: boolean;
   observaciones: string | null;
   created_at: string;
+  /** Hoja del día: aparece primero en "Sin asignar" y en la sugerencia de a cargo. */
+  puede_estar_a_cargo?: boolean | null;
+  /** Hoja del día: la hoja le llega por Telegram (vinculado una vez). */
+  telegram_chat_id?: number | null;
+  telegram_usuario?: string | null;
 };
 
 export type PersonalFormData = {

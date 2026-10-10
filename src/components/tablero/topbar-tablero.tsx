@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SelectorCuadrillas } from "./selector-cuadrillas";
+import { PestanasPlanificacion } from "@/components/hoja-dia/comunes/pestanas-planificacion";
 import type { CuadrillaTablero } from "@/lib/tablero/tipos";
 
 // La barra de arriba del tablero.
@@ -63,6 +64,7 @@ export function TopbarTablero({
       {/* En celular el título sobra: el menú lateral ya dice dónde estás, y el renglón que
           ocupa es alto que no tiene la grilla. */}
       <h1 className="hidden text-[15px] font-medium md:block">Planificación</h1>
+      <PestanasPlanificacion />
 
       <div className="flex items-center gap-1">
         <Button variant="outline" size="icon" className="size-7" onClick={onPrev} aria-label="Semana anterior">

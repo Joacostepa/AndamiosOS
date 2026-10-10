@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { diaSemana } from "@/lib/hoja-dia/estado";
 import type { Fecha } from "@/lib/hoja-dia/tipos";
 import { useRefHueco } from "./acciones-hoja";
+import { PestanasPlanificacion } from "./pestanas-planificacion";
 import { useDiaHoja } from "./use-dia-hoja";
 
 const RUTA_CUADRILLAS = "/planificacion/hoja";
@@ -33,6 +34,7 @@ export function EncabezadoHoja() {
 
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2 pb-3">
+      <PestanasPlanificacion />
       <h1 className="hidden text-[17px] font-semibold whitespace-nowrap md:block">Hoja del día</h1>
 
       <nav aria-label="Vista" className="inline-flex gap-0.5 rounded-lg bg-muted p-[3px]">

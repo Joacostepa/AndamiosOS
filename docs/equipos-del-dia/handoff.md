@@ -1,13 +1,29 @@
 # Hoja del día — handoff
 
-Estado real al 10/10/2026 (rama `feat/hoja-del-dia`, sin push ni merge). Pantallas hechas y
-**revisión de código corregida** (ver "Correcciones de la revisión" abajo). Nada aplicado en
-producción.
+Estado real al 10/10/2026 (noche): **en producción.** Mergeado a `main` con el PR #3
+(`d736eca`) y publicado en Vercel. Para retomar: "Leé docs/equipos-del-dia/handoff.md y
+seguimos con lo que falta".
+
+Dónde está: Operaciones › Planificación › **Hoja del día** (`/planificacion/hoja`; Camiones en
+`/planificacion/hoja/camiones`), y la pestaña "Tablero · Hoja del día" arriba del tablero.
+El link del celular es `/h/<token>`. Módulo de permiso propio: `hoja-dia`.
 
 ## Qué hay
 
 - **El módulo completo.** Migración, lógica pura portada de la maqueta (`estado.ts`, `camiones.ts`), servicio de Supabase + Odoo, APIs, link público `/api/public/hoja/[token]` (con foto del remito), bot de Telegram con webhook, hooks de TanStack Query, alertas a la campanita, la precarga de "Cerrar jornada", y las pantallas: Cuadrillas, Camiones, el celular `/h/[token]` (con sin señal), lista de envío, ausencias, la pestaña en Planificación, "Pasar a pedido" en el cajón, Telegram y "Puede estar a cargo" en Legajos. El contrato está en `implementacion.md`.
-- **Nada aplicado ni corrido contra producción.** La migración (con los cambios de la revisión: `hd_aplicar`, `hd_contar`, historial cerrado, `hd_links` sólo para quien edita, bucket con límite) se probó dos veces seguidas dentro de `BEGIN … ROLLBACK` con `npx supabase db query --linked -f` (la migración dos veces + una prueba de `hd_aplicar`/`hd_contar` que aborta a propósito); después se verificó que `hd_hojas`, `hd_aplicar` y `hd_contar` no existen. Los scripts de vínculos y del webhook no se corrieron.
+- **Sincronización Legajos ← Empleados de Odoo**, activa (ver su sección abajo).
+
+## Qué se hizo en producción (10/10)
+
+1. **Migración aplicada** (`20261011000001_hoja_del_dia.sql`). Verificado: 15 tablas `hd_*` con RLS, funciones `hd_nivel`, `hd_aplicar`, `hd_contar`, 20 parámetros, 4 lugares, 6 personas "puede estar a cargo" (Conte, Miño Horacio, Ortega, Hepper, Sack, Pérez). Antes se probó dos veces dentro de `BEGIN … ROLLBACK`.
+2. **Vínculos aplicados**: 20 legajos ↔ `hr.employee` por nombre, 18 con celular traído de Odoo (sólo donde el legajo no tenía). Las 5 cuadrillas ↔ `x_aba_cuadrilla`; la **Cuadrilla 5 se creó** en Configuración de cuadrillas.
+3. **Limpieza de Legajos** (con el dueño). Los 28 legajos originales se cargaron a mano el 21/06, todos "operario" y con DNI `TMP-…`; nunca se cruzaron con Odoo.
+   - 3 nombres corregidos para que coincidan con Odoo y vinculados: Gongora Mendez Cesar Mercedes (#6), Gomez William Estanislao (#16), Omar Victor Hugo Ramon (#15).
+   - **Inactivos** López Carlos, Arrieta Cesar, Teodorovich Ivan y Polo Lucas: no existen en Empleados de Odoo, ni archivados. Se sacaron de los planteles base. Arrieta era el responsable de la Cuadrilla 1, que quedó **sin responsable**.
+   - **Iñaki Capurro** es el técnico de SyH: puesto `tecnico`, activo, sin empleado en Odoo, fuera de los planteles. No aparece para asignar a cuadrillas.
+4. **Deploy** (merge del PR #3). Probado desde afuera: `/planificacion/hoja` pide login, `/h/<token>` responde, el webhook de Telegram sólo acepta POST y el cron devuelve 401 sin clave.
+5. **Regla de Odoo creada**: "AndamiosOS sync empleados" (`base.automation` id 55). Probado: el webhook de producción contesta 202 con la clave y 401 sin ella.
+6. **Puesta al día de Legajos**: se crearon los 7 andamistas que faltaban, con DNI de Odoo: Della Corte, García Javier, Muñoz Leonardo, Vargas, Geloz, Sena Ayrton y Taboada. Legajos queda en **31 activos, 30 vinculados** con Odoo (el único sin vínculo es Capurro) y 4 inactivos. Los 15 administrativos de Odoo no llevan legajo, a propósito.
 
 ## Decisiones de diseño que no se leen en el código
 
@@ -26,7 +42,7 @@ producción.
 18. **Gestos atómicos (I4).** Cada gesto corre en `conGrabador`: si falla a mitad, lo que llegó a escribir se vuelve atrás en un bloque (`hd_aplicar`); si ni eso se puede, queda en el historial como "a medias" con su Deshacer y el error lo dice. Pasar a alguien de cuadrilla es un UPDATE de `hoja_id` (no borrar + insertar).
 19. **"Cerrar jornada" nunca reescribe (B1).** `POST /api/planificacion/partes` crea; si la asignación ya tiene parte, 409. Corregir es el PATCH con el id (`Ver parte` → Editar). La tarjeta sabe del parte (`ObraDia.parteId`).
 13. **Odoo**: una lectura del día son 4 llamadas (`fetchTableroDeFechas`: sólo las OTs de ese día y del anterior con hojas, con coordenadas y número de jornada) + la asistencia, en paralelo con Supabase. El link público y las mutaciones usan un caché de 45 s del tablero (los celulares consultan cada 30 s). El GET del escritorio, no.
-14. **Quién es chofer**: `personal.odoo_tarea = 'chofer'` (lo trae el script de Odoo); sin vínculo todavía, el puesto de Legajos. Hoy Legajos dice chofer para Ortega, que actúa de capataz: hasta correr el script, Ortega no aparece en "Sin asignar".
+14. **Quién es chofer**: `personal.odoo_tarea = 'chofer'` (lo trae la sincronización de Odoo); sin vínculo, el puesto de Legajos. Legajos dice chofer para Ortega, que actúa de capataz; como en Odoo es andamista (`odoo_tarea`), aparece en "Sin asignar" y puede estar a cargo.
 15. **Nombres**: el apellido con `nombrePropio()`; si dos lo comparten, con la inicial ("Miño H.", "Miño J."; también hay dos Valenzuela).
 16. **Módulo `hoja-dia` dentro de Planificación**: `puedeAbrir` ahora elige el módulo por la ruta MÁS LARGA (`moduloDeRuta`), si no `/planificacion/hoja` la abría cualquiera con Planificación.
 17. **Duraciones de la maqueta** (no las de la tabla de §6): busca 30 min y trae 30 + 60 de vuelta al depósito.
@@ -53,7 +69,9 @@ producción.
 
 Tests nuevos: `parte-existente.test.ts`, `cierre.test.ts`, `deshacer-regla.test.ts`, `reglas-publico.test.ts`, `archivo-seguro.test.ts`, y casos en `camiones`, `dias`, `vista-cuadrillas`, `mensajes`.
 
-## Orden exacto para salir a producción
+## Orden para salir a producción
+
+Pasos 1 a 3 y 6 a 8 **hechos el 10/10** (ver "Qué se hizo en producción"). Faltan el 4 y el 5 (Telegram) y los permisos del 6. Se deja el detalle por si hay que repetirlo en otro ambiente.
 
 1. **Aplicar la migración** (antes del deploy: el código depende de ella): `npx supabase db query --linked -f supabase/migrations/20261011000001_hoja_del_dia.sql`. Verificar: `select to_regclass('public.hd_hojas'), to_regproc('public.hd_aplicar'), to_regproc('public.hd_contar');`
 2. **Vínculos en simulacro**: `node --env-file=.env.local scripts/hoja-dia-vincular-cuadrillas.mjs` y `node --env-file=.env.local scripts/hoja-dia-vincular-personal.mjs` (sólo muestran). Revisar los cruces dudosos (dos Miño, dos Valenzuela).
@@ -82,7 +100,7 @@ Decisión del dueño (10/10): cuando se da de alta, se modifica o se da de baja 
 
 **Avisos**: tipo `personal_odoo`, sólo campanita, a **cada persona activa con Legajos en editar** (y admins) por `destinatario_id`. Un aviso por empleado y motivo, una sola vez (clave `personal_odoo:<empleado>:<motivo>:<usuario>`): el alta automática ("Legajos: alta desde Odoo — …", para revisar si puede estar a cargo y vincular Telegram), lo dudoso y lo que falló al escribir.
 
-**Cómo se activa** (en este orden):
+**Cómo se activa** (hecho el 10/10: regla id 55 en Odoo y 7 legajos creados; queda por si hay que repetirlo):
 1. Deploy (las rutas tienen que existir antes: si no, Odoo llama a un 404 dentro del guardado del empleado).
 2. `node --env-file=.env.local scripts/odoo-webhook-empleados.mjs` (simulacro: muestra lo que crearía) → con `--aplicar` lo crea en Odoo. Idempotente: si ya existe, lo deja activo con esos campos y esa URL.
 3. `node --env-file=.env.local --experimental-strip-types scripts/personal-sincronizar-odoo.mjs` (simulacro) → con `--aplicar`. Simulacro del 10/10: 23 al día, **7 a crear** (Della Corte, García Javier, Muñoz Leonardo, Vargas, Geloz, Sena Ayrton, Taboada; los 7 puesto operario, tarea andamista, con DNI de Odoo), 16 sin legajo a propósito (15 administrativos y Belizán, archivado), 0 dudosos.
@@ -91,12 +109,15 @@ Decisión del dueño (10/10): cuando se da de alta, se modifica o se da de baja 
 
 ## Lo que falta
 
-**Para usarlo**
-- [ ] Seguir "Orden exacto para salir a producción" (arriba). Sin `odoo_employee_id`: no hay puntero en "Cerrar jornada", no aparecen las ART de la asistencia y no hay celulares. Sin `odoo_cuadrilla_id`: no hay plantel base ni responsable para sugerir.
+**Para usarlo** (lo que queda del lado del dueño)
+- [x] Migración, vínculos, deploy, regla de Odoo y puesta al día de Legajos (10/10).
+- [ ] **Telegram**: crear el bot (@BotFather), cargar `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET` en Vercel (redeploy) y correr `node --env-file=.env.local scripts/telegram-webhook.mjs https://andamios-os.vercel.app`. Después, vincular a capataces y choferes (cada uno toca una vez su link; se copia desde Legajos). Mientras tanto la hoja funciona a mano (copiar mensaje / WhatsApp).
+- [ ] **Permisos**: "Hoja del día" en editar a Juan Agustín y Ezequiel; Juan Pablo en ver. Joaquín la ve por admin.
+- [ ] **Teléfonos** del coordinador (`hd_parametros.coordinador`) y del depósito (`deposito`). Sin ellos, "Llamar a Juan Agustín" aparece desactivado en el celular y no hay "Avisar al depósito".
 - [ ] **Dirección del Depósito A CONFIRMAR** (y lat/lng). Sin eso, "Cerca" no mide desde el depósito. También Galvanizados Sanz, la planta de VTV y el taller (dirección, horario, `cierra`, teléfono). Pendiente 18.
-- [ ] Teléfono del coordinador (`hd_parametros.coordinador`) y del depósito (`deposito`): sin ellos no hay "Llamar a Juan Agustín" ni "Avisar al depósito" a mano.
-- [ ] Crear el bot (@BotFather), cargar `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET` en Vercel y correr `scripts/telegram-webhook.mjs https://<dominio>`. Después, vincular a capataces y choferes (link de una vez).
-- [ ] Permisos: "Hoja del día" en editar a Juan Agustín, Ezequiel y Joaquín.
+- [ ] **Planteles**: la Cuadrilla 1 quedó sin responsable (era Arrieta) y la Cuadrilla 5 no tiene plantel. Cargarlos en Configuración de cuadrillas. No es urgente, porque el capataz se elige cada día, pero lo usan "Empezar con el plantel base" y la sugerencia de a cargo.
+- [ ] **Celulares en Odoo** de Vargas, Geloz, Sena Ayrton y Taboada (hoy vacíos). Al cargarlos en Odoo se copian solos a Legajos.
+- [ ] **Primer día de uso**: no hay "día anterior" con hojas, así que el primer día se arma con "Empezar con el plantel base" (o vacío). Desde el segundo, "Empezar como hoy".
 
 **Conocido y no hecho**
 - Foto del remito sin señal: no queda en cola (una foto no entra en el almacenamiento del navegador); el celular avisa que la saque de nuevo con señal.

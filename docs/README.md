@@ -27,6 +27,7 @@ Ante una contradicción entre un diseño y el código, manda el código; el `han
 | Habilitaciones | [modulo](./habilitaciones/modulo.md) · [handoff](./habilitaciones/handoff.md) · [rediseño 09/10](./habilitaciones/rediseno.md) · [inventario](./habilitaciones/inventario.md) · [errores](./habilitaciones/errores.md) · [recorrido](./habilitaciones/recorrido.md) | En producción |
 | Pañol | [modulo](./panol/modulo.md) · [handoff](./panol/handoff.md) | Fase 1 en producción |
 | Tablero de planificación | [spec](./tablero-planificacion/spec.md) · [handoff](./tablero-planificacion/handoff.md) | En producción |
+| Hoja del día (cuadrillas, camiones y despacho) | [modulo](./equipos-del-dia/modulo.md) · [handoff](./equipos-del-dia/handoff.md) · [implementación](./equipos-del-dia/implementacion.md) | En producción (falta Telegram) |
 | Informe de obra | [modulo](./informe-de-obra/modulo.md) | En producción |
 | Cómputo de materiales | [modulo](./computo-materiales/modulo.md) | En producción (spec de junio) |
 | Configuración de cuadrillas | [modulo](./cuadrillas/modulo.md) | En producción (spec de junio) |

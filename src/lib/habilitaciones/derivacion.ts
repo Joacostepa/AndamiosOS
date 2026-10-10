@@ -311,14 +311,15 @@ export function esperaDe(d: DatosEspera, hoy: string = hoyISO()): Espera | null 
   if (d.triage === "no_aplica" || d.habilitada) return null;
 
   const armar = (
-    pelota: Espera["pelota"], texto: string, desde: string | null, rojoDesde: number,
+    clave: Espera["clave"], texto: string, desde: string | null, rojoDesde: number,
   ): Espera => {
     const dias = desde ? Math.max(0, diasEntre(desde, hoy)) : null;
-    return { pelota, texto, desde, dias, rojo: dias !== null && dias >= rojoDesde };
+    const pelota = clave === "cliente_pide" || clave === "cliente_revisa" ? "cliente" : "nuestra";
+    return { clave, pelota, texto, desde, dias, rojo: dias !== null && dias >= rojoDesde };
   };
 
   if (d.triage === null) {
-    return armar("nuestra", "decidir si aplica", d.creadaEl, ROJO_DESDE.sinTriar);
+    return armar("triar", "decidir si aplica", d.creadaEl, ROJO_DESDE.sinTriar);
   }
 
   // Lo nuestro arranca en el triage, o en la última vez que la obra volvió a la cola:
@@ -332,11 +333,11 @@ export function esperaDe(d: DatosEspera, hoy: string = hoyISO()): Espera | null 
   const aprobados = de("aprobado");
 
   if (reqs.length === 0) {
-    return armar("nuestra", "cargar los requisitos", nuestraDesde, ROJO_DESDE.nuestra);
+    return armar("cargar", "cargar los requisitos", nuestraDesde, ROJO_DESDE.nuestra);
   }
   if (observados.length > 0) {
     return armar(
-      "nuestra",
+      "corregir",
       observados.length === 1 ? `corregir ${observados[0].nombre}` : `corregir ${observados.length} observados`,
       maxFecha(observados.map((r) => r.fecha_resolucion)),
       ROJO_DESDE.nuestra,
@@ -344,17 +345,17 @@ export function esperaDe(d: DatosEspera, hoy: string = hoyISO()): Espera | null 
   }
   if (aprobados.length === reqs.length) {
     return armar(
-      "nuestra", "habilitar: está todo aprobado",
+      "habilitar", "habilitar: está todo aprobado",
       maxFecha(aprobados.map((r) => r.fecha_resolucion)), ROJO_DESDE.nuestra,
     );
   }
   if (pendientes.length > 0) {
     // Se le preguntó qué pide y todavía no salió nada: la pelota sí es del cliente.
     if (d.fechaConsulta && enviados.length === 0 && aprobados.length === 0) {
-      return armar("cliente", "el cliente dice qué pide", d.fechaConsulta, ROJO_DESDE.clientePide);
+      return armar("cliente_pide", "el cliente dice qué pide", d.fechaConsulta, ROJO_DESDE.clientePide);
     }
     return armar(
-      "nuestra",
+      "mandar",
       pendientes.length === 1 ? `mandar ${pendientes[0].nombre}` : `mandar ${pendientes.length} de ${reqs.length}`,
       nuestraDesde,
       ROJO_DESDE.nuestra,
@@ -363,7 +364,7 @@ export function esperaDe(d: DatosEspera, hoy: string = hoyISO()): Espera | null 
   // Todo lo que no está aprobado está mandado: espera al cliente desde el papel más viejo
   // que sigue sin respuesta.
   return armar(
-    "cliente",
+    "cliente_revisa",
     enviados.length === 1 ? `el cliente revisa ${enviados[0].nombre}` : `el cliente revisa ${enviados.length} de ${reqs.length}`,
     minFecha(enviados.map((r) => r.fecha_envio)),
     ROJO_DESDE.clienteValida,
@@ -371,55 +372,91 @@ export function esperaDe(d: DatosEspera, hoy: string = hoyISO()): Espera | null 
 }
 
 // ─── Bandeja ────────────────────────────────────────────────────────────────
+//
+// REDISEÑO DEL 09/10 (docs/habilitaciones-rediseno.md): los grupos dicen DE QUIÉN ES LA
+// PELOTA, no en qué etapa de Odoo está la obra. Antes eran etapas ("Falta consultar…",
+// "Ya le mandamos todo…") y no se correspondían con el trabajo: una obra con todo aprobado
+// esperando que la habilitáramos aparecía como "falta que el cliente valide".
 
 /** Días de aviso antes del vencimiento. El módulo avisa, no renueva. */
 export const DIAS_AVISO_VENCIMIENTO = 30;
 
-// Los títulos de `esperando_cliente` y `validacion` decían de quién era la pelota ("falta
-// que el cliente valide") y no era cierto: la etapa `c` sólo dice que salió AL MENOS UN
-// papel, y ahí conviven obras con todo aprobado esperando que las habilitemos y obras con
-// papeles todavía sin mandar. Ahora el título dice lo que el grupo garantiza, y de quién
-// es la pelota lo dice cada fila (ver esperaDe).
-const TITULOS: Record<ClaveGrupo, string> = {
-  recien_llegadas: "Recién llegadas — definir si aplica",
-  critica: "Se arman en 3 días o menos y no están listas",
-  atrasada: "Fecha pasada y siguen sin habilitar",
-  esperando_cliente: "Todavía no salió ningún papel",
-  validacion: "Ya se mandaron papeles",
-  por_vencer: `Vencen en menos de ${DIAS_AVISO_VENCIMIENTO} días`,
+const TITULOS: Record<ClaveGrupo, { titulo: string; nota: string }> = {
+  urgentes: { titulo: "Urgentes: se arman en 3 días o menos", nota: "o la fecha ya pasó, y siguen sin habilitar" },
+  nuevas: { titulo: "Nuevas: ¿piden papeles?", nota: "Aplica crea la Nómina ART · No aplica la deja habilitada" },
+  para_hacer: { titulo: "Para hacer", nota: "la pelota es nuestra · en rojo desde el día siguiente" },
+  cliente: { titulo: "Esperando al cliente", nota: "en rojo después de una semana" },
+  permiso: { titulo: "Esperan el permiso", nota: "vuelven solas cuando sale el permiso, o 10 días antes de armar" },
+  por_vencer: { titulo: `Vencen en menos de ${DIAS_AVISO_VENCIMIENTO} días`, nota: "habilitadas con la documentación por vencer" },
 };
 
 /** Orden de prioridad. El primero que cumple se queda con la fila. */
-const ORDEN: ClaveGrupo[] = [
-  "recien_llegadas", "critica", "atrasada", "esperando_cliente", "validacion", "por_vencer",
-];
+const ORDEN: ClaveGrupo[] = ["urgentes", "nuevas", "para_hacer", "cliente", "permiso", "por_vencer"];
 
-const PELIGRO = new Set<ClaveGrupo>(["critica", "atrasada"]);
+const PELIGRO = new Set<ClaveGrupo>(["urgentes"]);
+/** Arrancan plegados: no hay nada que hacer con ellos hoy, pero tienen que estar a mano. */
+const PLEGADOS = new Set<ClaveGrupo>(["permiso"]);
 
 const RANGO_URGENCIA: Record<FilaBandeja["urgencia"], number> = { alta: 0, media: 1, baja: 2 };
 
 /**
- * A qué grupo va una fila, o null si no está en trámite.
- *
- * `esperando_cliente` y `validacion` son etapas de Odoo. `critica` y `atrasada` son
- * valores de la alerta, que llega acá YA CALCULADA CON EL DÍA DE HOY (ver alertaDe):
- * leída de Odoo podía quedar congelada en el valor del último write.
- *
- * Las etapas `a` y `b` van juntas: en las dos no salió ningún papel todavía, y la fila
- * dice si falta mandarlos o si se espera que el cliente diga qué pide.
+ * La fecha en que se arma: la primera jornada del tablero si está planificada, y si no la
+ * programada. Es la que cuenta para ordenar, para la columna "Se arma" y para la vuelta de
+ * las que esperan el permiso.
  */
-export function grupoDe(fila: FilaBandeja, hoy: string): ClaveGrupo | null {
-  if (fila.triage === "no_aplica" || fila.etapa === "f") return null;
-  if (fila.triage === null) return "recien_llegadas";
-  if (fila.alerta === "critica") return "critica";
-  if (fila.alerta === "atrasada") return "atrasada";
-  if (fila.etapa === "a" || fila.etapa === "b") return "esperando_cliente";
-  if (fila.etapa === "c") return "validacion";
-  if (fila.vencimiento && diasEntre(hoy, fila.vencimiento) <= DIAS_AVISO_VENCIMIENTO) {
-    return "por_vencer";
+export function fechaDeArmado(v: { primeraJornada: string | null; fechaProgramada: string | null }): string | null {
+  return v.primeraJornada ?? v.fechaProgramada;
+}
+
+/** Lo que grupoDe necesita de una obra. Lo cumplen la fila de la bandeja y la ficha. */
+export type DatosGrupo = Pick<
+  FilaBandeja,
+  | "triage" | "habilitadaEl" | "alerta" | "espera" | "vencimiento" | "modalidad" | "tramite"
+  | "tipo" | "primeraJornada" | "fechaProgramada"
+>;
+
+/**
+ * Si la obra está en "Esperan el permiso": el cliente pidió no armar sin el permiso emitido,
+ * todavía no salió, y falta más de 10 días para armar (o no tiene fecha).
+ *
+ * REEMPLAZA AL POSPONER "LLEVA PERMISO" A MANO (decisión de JS, 09/10): 12 de las 15
+ * pospuestas de ese día tenían ese motivo, escrito de cinco formas. Ahora vuelve sola —
+ * cuando la gestoría escribe "emitido" en Odoo, o 10 días antes de armar— y nadie tiene que
+ * acordarse de posponerla.
+ *
+ * Sólo `esperar_permiso`: con número de expediente o sin permiso, los papeles se mandan
+ * igual. Y sólo lo que arma: a un desarme el permiso no lo frena.
+ */
+export function esperaElPermiso(o: DatosGrupo, hoy: string = hoyISO()): boolean {
+  if (o.triage !== "aplica" || o.habilitadaEl) return false;
+  if (o.modalidad !== "esperar_permiso" || o.tramite === "emitido") return false;
+  if (!TIPOS_QUE_OCUPAN_VIA_PUBLICA.has(o.tipo)) return false;
+  const armado = fechaDeArmado(o);
+  return !armado || diasEntre(hoy, armado) > DIAS_ANTES_DE_LA_OBRA;
+}
+
+/** Cuándo vuelve a la cola una obra que espera el permiso, si no sale antes. */
+export function vueltaPorPermiso(o: Pick<DatosGrupo, "primeraJornada" | "fechaProgramada">): string | null {
+  const armado = fechaDeArmado(o);
+  return armado ? sumarDias(armado, -DIAS_ANTES_DE_LA_OBRA) : null;
+}
+
+/**
+ * A qué grupo va una obra, o null si no está en trámite.
+ *
+ * Urgente le gana a todo, incluso a "nueva": una obra que se arma pasado mañana sin triar
+ * es lo primero que hay que mirar. La alerta llega ya calculada con el día de hoy.
+ */
+export function grupoDe(o: DatosGrupo, hoy: string): ClaveGrupo | null {
+  if (o.triage === "no_aplica") return null;
+  if (o.habilitadaEl) {
+    return o.vencimiento && diasEntre(hoy, o.vencimiento) <= DIAS_AVISO_VENCIMIENTO ? "por_vencer" : null;
   }
-  // Habilitada y sin vencimiento cerca: no hay nada que hacer con ella.
-  return null;
+  if (o.alerta === "critica" || o.alerta === "atrasada") return "urgentes";
+  if (o.triage === null) return "nuevas";
+  if (esperaElPermiso(o, hoy)) return "permiso";
+  if (o.espera?.pelota === "cliente") return "cliente";
+  return "para_hacer";
 }
 
 /**
@@ -438,23 +475,23 @@ export function agruparBandeja(filas: FilaBandeja[], hoy: string = hoyISO()): Gr
 
   return ORDEN.map((clave) => ({
     clave,
-    titulo: TITULOS[clave],
+    titulo: TITULOS[clave].titulo,
+    nota: TITULOS[clave].nota,
     peligro: PELIGRO.has(clave),
+    plegado: PLEGADOS.has(clave),
     // Dentro de cada grupo, primero la prioridad de la OT —alta, media, baja—, después lo
-    // que se cae antes y, sin fecha, lo más viejo.
+    // que se arma antes y, sin fecha, lo que lleva más días esperando.
     //
-    // LA PRIORIDAD ORDENA, NO AGRUPA. Un grupo "Urgentes" arriba de todo sacaría a la obra
-    // del grupo que dice qué hay que hacer con ella —consultar, esperar validación—, que
-    // es la pregunta de esta bandeja. El tablero sí la agrupa porque ahí la pregunta es
-    // otra: qué se programa primero.
+    // LA PRIORIDAD ORDENA, NO AGRUPA. Un grupo "Prioridad alta" arriba de todo sacaría a la
+    // obra del grupo que dice qué hay que hacer con ella, que es la pregunta de esta bandeja.
     filas: porClave.get(clave)!.sort((a, b) => {
       const porUrgencia = RANGO_URGENCIA[a.urgencia] - RANGO_URGENCIA[b.urgencia];
       if (porUrgencia !== 0) return porUrgencia;
-      if (a.fechaProgramada && b.fechaProgramada) {
-        return a.fechaProgramada.localeCompare(b.fechaProgramada);
-      }
-      if (a.fechaProgramada) return -1;
-      if (b.fechaProgramada) return 1;
+      const fa = fechaDeArmado(a);
+      const fb = fechaDeArmado(b);
+      if (fa && fb && fa !== fb) return fa.localeCompare(fb);
+      if (fa && !fb) return -1;
+      if (fb && !fa) return 1;
       return (b.espera?.dias ?? 0) - (a.espera?.dias ?? 0);
     }),
   })).filter((g) => g.filas.length > 0);

@@ -4,45 +4,38 @@ import { use, useState } from "react";
 import Link from "next/link";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
-import {
-  AlarmClock, ArrowLeft, CircleCheck, CircleX, ExternalLink, HardHat, Loader2, TriangleAlert,
-  Undo2,
-} from "lucide-react";
-import { toast } from "sonner";
-import {
-  useHabilitacion, usePosponer, useRegistrarGestion, useTriage, useVencimiento,
-} from "@/hooks/use-habilitaciones";
-import { DialogoPosponer } from "@/components/habilitaciones/dialogo-posponer";
+import { ArrowLeft, ExternalLink, TriangleAlert } from "lucide-react";
+import { useHabilitacion, useVencimiento } from "@/hooks/use-habilitaciones";
 import { ChipTipoOt } from "@/components/habilitaciones/chip-tipo-ot";
 import { ChipUrgencia } from "@/components/habilitaciones/chip-urgencia";
-import { ChipPantalla } from "@/components/habilitaciones/chip-pantalla";
 import { FechasObra } from "@/components/habilitaciones/fechas-obra";
 import { DetalleTecnico } from "@/components/tablero/detalle-tecnico";
 import { ColumnaPermiso } from "@/components/habilitaciones/columna-permiso";
 import { ListadoRequisitos } from "@/components/habilitaciones/listado-requisitos";
 import { NotasObra } from "@/components/habilitaciones/notas-obra";
-import { Button } from "@/components/ui/button";
+import { TarjetaEstado } from "@/components/habilitaciones/tarjeta-estado";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/shared/empty-state";
-import { BloqueHabilitacion } from "@/components/habilitaciones/bloque-habilitacion";
 import { BotonAyuda } from "@/components/habilitaciones/boton-ayuda";
 import { BotonPlanificacion } from "@/components/habilitaciones/planificacion-contexto";
 import { useTour } from "@/hooks/use-tour";
 import { PASOS_FICHA, TOUR_FICHA } from "@/lib/habilitaciones/tour";
-import {
-  esperaDe, estadoDeHabilitacion, hoyISO, veredicto,
-} from "@/lib/habilitaciones/derivacion";
-import { ETAPA_LABEL, TIPO_GESTION_LABEL } from "@/lib/habilitaciones/tipos";
-import { AVISO, OK, PELIGRO, PELIGRO_SUAVE, PELIGRO_TEXTO } from "@/lib/tablero/colores";
+import { TIPO_GESTION_LABEL } from "@/lib/habilitaciones/tipos";
 import { partesTitulo, direccionDeObra } from "@/lib/tablero/titulo";
-import type { FichaHabilitacion, HabEtapa } from "@/lib/habilitaciones/tipos";
+import type { FichaHabilitacion } from "@/lib/habilitaciones/tipos";
 
-// Ficha de una habilitación.
+// Ficha de una habilitación (rediseño del 09/10, docs/habilitaciones-rediseno.md §4.3).
 //
-// LOS DOS TRÁMITES VAN EN COLUMNAS porque avanzan por separado y se reclaman a tres
-// interlocutores distintos: el cliente, el técnico y el gobierno. Mezclarlos en una fila
-// —como hacía la planilla— es lo que hacía imposible saber a quién había que apurar.
+// ARRIBA, UNA SOLA TARJETA DE ESTADO: qué sigue y su botón, cuándo se arma, qué hace el
+// tablero con ella (ver tarjeta-estado.tsx). Antes eran cinco bloques que decían lo mismo
+// con palabras distintas, y la decisión quedaba debajo de cuatro de contexto.
+//
+// DOS COLUMNAS. A la izquierda la de trabajo: los papeles —con a quién mandárselos arriba y
+// el vencimiento al pie— y las notas, justo debajo, porque ahí van los datos que piden los
+// papeles (7 de las últimas 12 notas eran razones sociales con CUIT para la cláusula). A la
+// derecha el contexto: cuándo se arma, qué se ejecuta, el permiso (sólo lectura) y el
+// historial.
 
 export default function FichaHabilitacionPage({
   params,
@@ -57,7 +50,7 @@ export default function FichaHabilitacionPage({
     return (
       <div className="space-y-4">
         <Skeleton className="h-8 w-64" />
-        <Skeleton className="h-20 w-full" />
+        <Skeleton className="h-32 w-full" />
         <Skeleton className="h-96 w-full" />
       </div>
     );
@@ -79,17 +72,10 @@ export default function FichaHabilitacionPage({
 function Ficha({ ficha, otId }: { ficha: FichaHabilitacion; otId: number }) {
   const partes = partesTitulo(ficha.titulo);
   const direccion = direccionDeObra(ficha);
-  const habilitada = !!ficha.habilitadaEl || ficha.triage === "no_aplica";
-  const v = veredicto(ficha.permiso, {
-    tipoOt: ficha.tipo,
-    habilitada,
-    listaParaHabilitar: estadoDeHabilitacion(ficha.requisitos).listo,
-    fechaProgramada: ficha.fechaProgramada,
-  });
-  const tono = TONO_VEREDICTO[v.tono];
   // La ficha ya está en pantalla cuando este componente se monta: el tour puede arrancar.
   // Es la continuación del de la bandeja, que termina invitando a abrir una obra.
   const tour = useTour(TOUR_FICHA, PASOS_FICHA, { listo: true });
+  const contacto = ficha.trabajo.syhObra;
 
   return (
     <div className="space-y-4">
@@ -105,30 +91,31 @@ function Ficha({ ficha, otId }: { ficha: FichaHabilitacion; otId: number }) {
           href={ficha.url}
           target="_blank"
           rel="noreferrer"
-          className="ml-auto flex items-center gap-1 text-[11px] text-muted-foreground hover:underline"
+          className="ml-auto flex items-center gap-1 text-[12px] text-muted-foreground hover:underline"
         >
           Ver la OT en Odoo
           <ExternalLink className="h-3 w-3" />
         </a>
       </div>
 
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          {/* El tipo al lado del título y no en la línea de abajo: entrar a una ficha
-              desde la bandeja no puede hacer perder de vista si esto es un armado o un
-              desarme. Es el mismo chip que la lista. */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-lg font-semibold">{direccion}</h1>
-            <ChipTipoOt tipo={ficha.tipo} />
+            <h1 className="text-xl font-bold">{direccion}</h1>
             <ChipUrgencia urgencia={ficha.urgencia} motivo={ficha.motivoUrgencia} />
-            <ChipPantalla trabajo={ficha.trabajo} />
+            {ficha.tipo !== "armado" && <ChipTipoOt tipo={ficha.tipo} />}
             {/* En la ficha el motivo va escrito: el title no se lee desde un celular. */}
             {ficha.urgencia !== "baja" && ficha.motivoUrgencia && (
               <span className="text-[12px] text-muted-foreground">{ficha.motivoUrgencia}</span>
             )}
           </div>
           <p className="text-[13px] text-muted-foreground">
-            {[partes.numero, partes.cliente].filter(Boolean).join(" · ")}
+            {[
+              ficha.tipo === "armado" ? "Armado" : null,
+              partes.numero ?? ficha.permiso.ventaNombre,
+              partes.cliente,
+              ficha.trabajo.tipoLabel,
+            ].filter(Boolean).join(" · ")}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -137,97 +124,65 @@ function Ficha({ ficha, otId }: { ficha: FichaHabilitacion; otId: number }) {
         </div>
       </div>
 
-      {/* EL VEREDICTO, ARRIBA DE TODO: responde lo único que le importa a Operaciones.
-          Se calcula cruzando los dos trámites y es lo que alimenta el candado. */}
-      {/* data-tour: el recorrido guiado se cuelga de este nodo (ver lib/habilitaciones/tour.ts) */}
-      <div
-        data-tour="veredicto"
-        className="flex items-start gap-3 rounded-md border px-3 py-2.5"
-        style={{ backgroundColor: tono.fondo, borderColor: tono.borde }}
-      >
-        {v.tono === "ok" ? (
-          <CircleCheck className="mt-0.5 h-4 w-4 shrink-0" style={{ color: tono.icono }} />
-        ) : v.tono === "aviso" ? (
-          <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" style={{ color: tono.icono }} />
-        ) : (
-          <CircleX className="mt-0.5 h-4 w-4 shrink-0" style={{ color: tono.icono }} />
-        )}
-        <div className="text-[13px]">
-          <p className="font-semibold">{v.titulo}</p>
-          <p className="text-muted-foreground">{v.detalle}</p>
-        </div>
-      </div>
+      <TarjetaEstado ficha={ficha} otId={otId} />
 
-      {/* QUÉ HAY QUE EJECUTAR, el mismo texto que ve Operaciones en el tablero. Qué papeles
-          pide el cliente depende de qué se va a hacer —no es lo mismo una torre de un día
-          que una fachada de seis meses—, y hasta ahora había que ir a buscarlo a Odoo.
-          Lleva el tipo de OT en el encabezado: armado y desarme de la misma obra comparten
-          el texto, y lo que distingue a una de otra es eso. */}
-      <DetalleTecnico
-        texto={ficha.detalleTecnico}
-        confirmadoEl={ficha.estructuraConfirmadaEl}
-        tipo={ficha.tipo}
-        clasificacion={ficha.trabajo.tipoLabel}
-      />
-
-      {/* CUÁNDO VA: las fechas acordadas en la OT y las jornadas del tablero. Qué tan
-          urgente es el trámite depende de esto más que de la fecha programada sola. */}
-      <FechasObra ficha={ficha} />
-
-      {/* EL TÉCNICO DE SyH DEL CLIENTE. Va acá arriba, pegado al veredicto, porque cambia
-          qué hay que mandar: no es un dato de la obra, es un papel más que el cliente
-          tiene que aprobar antes de dejar entrar a la cuadrilla. Abajo, en el listado,
-          aparece además como requisito propio, que es lo que lo hace perseguible. */}
-      {ficha.trabajo.syhPresencial === true && (
-        <div
-          className="flex items-start gap-2.5 rounded-md border-l-4 bg-muted/40 px-3 py-2.5"
-          style={{ borderLeftColor: AVISO.icono }}
-        >
-          <HardHat className="mt-0.5 h-4 w-4 shrink-0" style={{ color: AVISO.icono }} />
-          <div className="text-[13px]">
-            <p className="font-semibold">El cliente contrató técnico de Seguridad e Higiene</p>
-            <p className="text-muted-foreground">
-              Hay que enviarle la documentación del técnico para que lo aprueben a entrar a
-              la obra.
-              {ficha.trabajo.tipoLabel && ` · ${ficha.trabajo.tipoLabel}`}
-            </p>
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+        <div className="min-w-0 space-y-4">
+          <div data-tour="requisitos">
+            <ListadoRequisitos
+              otId={otId}
+              requisitos={ficha.requisitos}
+              contacto={
+                // A QUIÉN MANDARLE LOS PAPELES, pegado a los papeles. Sólo si hay algo
+                // cargado: las órdenes viejas no lo tienen y nunca lo van a tener.
+                contacto && ficha.triage === "aplica" && !ficha.habilitadaEl ? (
+                  <p
+                    data-tour="contacto-papeles"
+                    className="flex flex-wrap items-center gap-x-2 gap-y-0.5 border-b bg-muted/40 px-3 py-2 text-[13px]"
+                  >
+                    <span className="text-muted-foreground">Mandárselos a</span>
+                    <span className="font-medium">{contacto.nombre ?? "—"}</span>
+                    {contacto.celular && (
+                      <a href={`tel:${contacto.celular.replace(/[^+\d]/g, "")}`} className="underline underline-offset-2">
+                        {contacto.celular}
+                      </a>
+                    )}
+                    {contacto.email && (
+                      <a href={`mailto:${contacto.email}`} className="underline underline-offset-2">
+                        {contacto.email}
+                      </a>
+                    )}
+                  </p>
+                ) : null
+              }
+              pie={<Vencimiento ficha={ficha} otId={otId} />}
+            />
+          </div>
+          <div data-tour="notas">
+            <NotasObra otId={otId} notas={ficha.notas} />
           </div>
         </div>
-      )}
 
-      <BloqueHabilitacion ficha={ficha} otId={otId} />
-
-      <BarraPospuesta ficha={ficha} otId={otId} />
-
-      <BarraTriage ficha={ficha} otId={otId} />
-
-      {ficha.syncEstado === "error" && (
-        <p
-          className="rounded border px-3 py-2 text-[12px]"
-          style={{ backgroundColor: AVISO.fondo, borderColor: AVISO.borde }}
-        >
-          El estado no pudo actualizarse en Odoo: <code>{ficha.syncError}</code>. El tablero
-          puede estar mostrando un semáforo viejo — reintentá desde la bandeja.
-        </p>
-      )}
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <ColumnaDocumentacion ficha={ficha} otId={otId} />
-        <div data-tour="permiso">
-        <ColumnaPermiso permiso={ficha.permiso} urlVenta={ficha.urlVenta} />
-        </div>
-      </div>
-
-      <div data-tour="requisitos">
-        <ListadoRequisitos otId={otId} requisitos={ficha.requisitos} />
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div data-tour="notas">
-          <NotasObra otId={otId} notas={ficha.notas} />
-        </div>
-        <div data-tour="historial">
-          <Historial ficha={ficha} />
+        <div className="min-w-0 space-y-4">
+          <div data-tour="fechas-obra">
+            <FechasObra ficha={ficha} />
+          </div>
+          {/* QUÉ HAY QUE EJECUTAR, el mismo texto que ve Operaciones en el tablero: qué
+              papeles pide el cliente depende de qué se va a hacer. */}
+          <div data-tour="que-ejecutar">
+            <DetalleTecnico
+              texto={ficha.detalleTecnico}
+              confirmadoEl={ficha.estructuraConfirmadaEl}
+              tipo={ficha.tipo}
+              clasificacion={ficha.trabajo.tipoLabel}
+            />
+          </div>
+          <div data-tour="permiso">
+            <ColumnaPermiso permiso={ficha.permiso} urlVenta={ficha.urlVenta} />
+          </div>
+          <div data-tour="historial">
+            <Historial ficha={ficha} />
+          </div>
         </div>
       </div>
     </div>
@@ -235,313 +190,62 @@ function Ficha({ ficha, otId }: { ficha: FichaHabilitacion; otId: number }) {
 }
 
 /**
- * El estado de triage, y cómo deshacerlo.
+ * El vencimiento de la documentación, al pie de los papeles.
  *
- * Sin esto, "no aplica" era irreversible desde la UI: la obra salía de la bandeja y no
- * había forma de traerla de vuelta salvo tocando la base. Una acción por lote sobre
- * decenas de obras sin vuelta atrás es una trampa, no un atajo.
+ * No manda ningún aviso aparte: 30 días antes, la obra aparece en la bandeja en "Vencen en
+ * menos de 30 días". Antes decía "Odoo avisa solo al pasar la fecha", y no había tal aviso.
  */
-function BarraTriage({ ficha, otId }: { ficha: FichaHabilitacion; otId: number }) {
-  const triage = useTriage();
-
-  function decidir(decision: "aplica" | "no_aplica" | "pendiente", mensaje: string) {
-    triage.mutate(
-      { otIds: [otId], decision },
-      {
-        onSuccess: () => toast.success(mensaje),
-        onError: (e) => toast.error(e instanceof Error ? e.message : "No se pudo cambiar"),
-      },
-    );
-  }
-
-  if (ficha.triage === "no_aplica") {
-    return (
-      <div data-tour="barra-triage" className="flex items-center gap-3 rounded-md border px-3 py-2 text-[13px]">
-        <CircleX className="h-4 w-4 shrink-0 text-muted-foreground" />
-        <span className="flex-1 text-muted-foreground">
-          Marcada <strong>no aplica</strong>: no hay documentación que tramitar, así que la obra
-          quedó <strong>habilitada</strong> y en verde. Sus requisitos, notas e historial se conservan.
-        </span>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={triage.isPending}
-          onClick={() => decidir("pendiente", "De vuelta en la cola")}
-        >
-          {triage.isPending && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
-          Volver a la cola
-        </Button>
-      </div>
-    );
-  }
-
-  if (ficha.triage === null) {
-    return (
-      <div
-        data-tour="barra-triage"
-        className="flex items-center gap-3 rounded-md border px-3 py-2 text-[13px]"
-        style={{ backgroundColor: AVISO.fondo, borderColor: AVISO.borde }}
-      >
-        <TriangleAlert className="h-4 w-4 shrink-0" style={{ color: AVISO.icono }} />
-        <span className="flex-1">Recién llegada — falta definir si la habilitación aplica.</span>
-        <Button
-          size="sm"
-          disabled={triage.isPending}
-          onClick={() => decidir("aplica", "En gestión · se creó la Nómina ART")}
-        >
-          Aplica
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={triage.isPending}
-          onClick={() => decidir("no_aplica", "No aplica · la obra queda habilitada")}
-        >
-          No aplica
-        </Button>
-      </div>
-    );
-  }
-
-  // En gestión: la salida está, pero discreta — sacar de la cola una obra que ya se
-  // está trabajando no debería ser tan fácil como marcar un requisito.
-  return (
-    <div data-tour="barra-triage" className="flex items-center gap-3 px-1 text-[11px] text-muted-foreground">
-      <span className="flex-1">En gestión desde el triage.</span>
-      <button
-        className="underline hover:text-foreground"
-        disabled={triage.isPending}
-        onClick={() => decidir("no_aplica", "No aplica · la obra queda habilitada")}
-      >
-        Marcar que no aplica
-      </button>
-    </div>
-  );
-}
-
-/**
- * Posponer desde la ficha, o ver que está pospuesta y traerla de vuelta.
- *
- * Pospuesta, va en caja ámbar y arriba: quien entra a la ficha tiene que saber que esta
- * obra no está en la cola antes de ponerse a mandar papeles. Sin posponer, es una línea
- * discreta — la mayoría de las obras no la necesitan.
- */
-function BarraPospuesta({ ficha, otId }: { ficha: FichaHabilitacion; otId: number }) {
-  const [abierto, setAbierto] = useState(false);
-  const posponer = usePosponer();
-  if (ficha.triage === "no_aplica" || ficha.habilitadaEl) return null;
-
-  const hoy = hoyISO();
-  const obra = {
-    otId,
-    direccion: direccionDeObra(ficha),
-    fechaProgramada: ficha.fechaProgramada,
-    primeraJornada: ficha.jornadas.find((j) => j.fecha >= hoy)?.fecha ?? null,
-    pospuestaHasta: ficha.pospuestaHasta,
-  };
-  const dialogo = <DialogoPosponer obra={abierto ? obra : null} onCerrar={() => setAbierto(false)} />;
-
-  if (!ficha.pospuestaHasta) {
-    return (
-      <div className="flex items-center gap-2 px-1 text-[11px] text-muted-foreground">
-        <AlarmClock className="h-3.5 w-3.5 shrink-0" />
-        <span className="flex-1">¿Falta mucho para la obra? Posponela y vuelve sola a la cola.</span>
-        <button className="underline hover:text-foreground" onClick={() => setAbierto(true)}>
-          Posponer
-        </button>
-        {dialogo}
-      </div>
-    );
-  }
-
-  return (
-    <div
-      className="flex flex-wrap items-center gap-3 rounded-md border px-3 py-2.5 text-[13px]"
-      style={{ backgroundColor: AVISO.fondo, borderColor: AVISO.borde }}
-    >
-      <AlarmClock className="h-4 w-4 shrink-0" style={{ color: AVISO.icono }} />
-      <div className="min-w-0 flex-1">
-        <p className="font-semibold">
-          Pospuesta hasta el {format(parseISO(ficha.pospuestaHasta), "EEEE d 'de' MMMM", { locale: es })}
-        </p>
-        <p className="text-muted-foreground">
-          Vuelve sola a la cola, o antes si Operaciones la planifica.
-          {ficha.pospuestaPor && ` Pospuesta por ${ficha.pospuestaPor}.`}
-          {ficha.pospuestaMotivo && ` ${ficha.pospuestaMotivo}`}
-        </p>
-      </div>
-      <Button size="sm" variant="ghost" onClick={() => setAbierto(true)}>
-        Cambiar fecha
-      </Button>
-      <Button
-        size="sm"
-        variant="outline"
-        disabled={posponer.isPending}
-        onClick={() =>
-          posponer.mutate(
-            { otId, hasta: null },
-            {
-              onSuccess: () => toast.success("De vuelta en la cola"),
-              onError: (e) => toast.error(e instanceof Error ? e.message : "No se pudo reactivar"),
-            },
-          )
-        }
-      >
-        <Undo2 className="mr-1 h-3.5 w-3.5" />
-        Reactivar
-      </Button>
-      {dialogo}
-    </div>
-  );
-}
-
-/** El recuadro del veredicto en cada tono. Tokens del tema: en oscuro se leen igual. */
-const TONO_VEREDICTO = {
-  ok: { fondo: "var(--tb-verde-bg)", borde: "var(--tb-verde-borde)", icono: OK },
-  aviso: { fondo: AVISO.fondo, borde: AVISO.borde, icono: AVISO.icono },
-  bloqueo: { fondo: PELIGRO_SUAVE, borde: PELIGRO, icono: PELIGRO_TEXTO },
-} as const;
-
-/** Las 4 etapas del trámite documental, con su fecha. Las computa Odoo. */
-const PASOS: { etapa: HabEtapa; campo: keyof FichaHabilitacion }[] = [
-  { etapa: "a", campo: "fechaConsulta" },
-  { etapa: "b", campo: "fechaConsulta" },
-  { etapa: "c", campo: "fechaEnvio" },
-  { etapa: "d", campo: "fechaHabilitada" },
-];
-
-function ColumnaDocumentacion({ ficha, otId }: { ficha: FichaHabilitacion; otId: number }) {
-  const gestion = useRegistrarGestion(otId);
+function Vencimiento({ ficha, otId }: { ficha: FichaHabilitacion; otId: number }) {
   const vencimiento = useVencimiento(otId);
   const [fecha, setFecha] = useState(ficha.vencimiento ?? "");
-
-  const indiceActual = PASOS.findIndex((p) => p.etapa === ficha.etapa);
-  // Lo mismo que dice la fila de la bandeja, calculado acá con los requisitos que se ven:
-  // marcar uno parchea la ficha sin releerla, y la espera tiene que acompañar.
-  const espera = esperaDe({
-    triage: ficha.triage,
-    habilitada: !!ficha.habilitadaEl,
-    creadaEl: ficha.creadaEl,
-    triadaEl: ficha.triadaEl,
-    vueltaEl: ficha.vueltaEl,
-    fechaConsulta: ficha.fechaConsulta,
-    requisitos: ficha.requisitos,
-  });
-
   return (
-    <section className="space-y-3 rounded-md border p-3">
-      <header className="flex items-center gap-2">
-        <h3 className="text-[13px] font-semibold">Documentación del cliente</h3>
-        <span className="ml-auto text-right text-[11px] text-muted-foreground">
-          {espera ? (
-            <>
-              {espera.dias !== null && (
-                <>
-                  <span className={espera.rojo ? "font-semibold" : ""} style={espera.rojo ? { color: PELIGRO } : undefined}>
-                    {espera.dias} d
-                  </span>
-                  {" · "}
-                </>
-              )}
-              <span className={espera.pelota === "nuestra" ? "text-foreground" : ""}>{espera.texto}</span>
-            </>
-          ) : ficha.etapa ? (
-            ETAPA_LABEL[ficha.etapa]
-          ) : (
-            "sin estado"
-          )}
-        </span>
-      </header>
-
-      <ol className="space-y-1">
-        {PASOS.map((paso, i) => {
-          // "Del cliente — tiene que decir qué papeles pide" sólo pasó si alguien registró
-          // la consulta. Antes se pintaba cumplido en toda obra con un papel mandado, y
-          // casi ninguna tiene la consulta registrada.
-          const alcanzado =
-            indiceActual >= i && indiceActual !== -1 && (paso.etapa !== "b" || !!ficha.fechaConsulta);
-          const valor = ficha[paso.campo] as string | null;
-          return (
-            <li key={paso.etapa} className="flex items-center gap-2 text-[13px]">
-              <span
-                className="h-2 w-2 shrink-0 rounded-full"
-                style={{ backgroundColor: alcanzado ? OK : "var(--muted)" }}
-              />
-              <span className={alcanzado ? "" : "text-muted-foreground"}>
-                {ETAPA_LABEL[paso.etapa]}
-              </span>
-              <span className="ml-auto text-[11px] text-muted-foreground">
-                {alcanzado && valor
-                  ? format(parseISO(valor), "d MMM yyyy", { locale: es })
-                  : ""}
-              </span>
-            </li>
-          );
-        })}
-      </ol>
-
-      {/* El reclamo no abre ningún cliente de correo: registra la fecha, que es lo que
-          después permite demostrarle al cliente que se le reclamó tres veces. */}
-      <div className="flex items-center gap-2 border-t pt-3">
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={gestion.isPending}
-          onClick={() =>
-            gestion.mutate(
-              { tipo: "reclamo", detalle: `${ficha.reclamos + 1}º reclamo al cliente` },
-              { onSuccess: () => toast.success("Reclamo registrado") },
-            )
-          }
-        >
-          {gestion.isPending && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
-          Reclamar al cliente
-          {ficha.reclamos > 0 && ` · ${ficha.reclamos + 1}º reclamo`}
-        </Button>
-        <span className="text-[10px] text-muted-foreground">No manda mail: registra la fecha.</span>
-      </div>
-
-      {/* data-tour: el recorrido guiado se cuelga de este nodo (ver lib/habilitaciones/tour.ts) */}
-      <div data-tour="vencimiento" className="flex items-end gap-2 border-t pt-3">
-        <div className="flex-1">
-          <label htmlFor="venc" className="text-[11px] text-muted-foreground">
-            Vence el
-          </label>
-          <Input
-            id="venc"
-            type="date"
-            value={fecha}
-            onChange={(e) => setFecha(e.target.value)}
-            onBlur={() => {
-              if (fecha !== (ficha.vencimiento ?? "")) vencimiento.mutate(fecha || null);
-            }}
-            className="h-8 text-[13px]"
-          />
-        </div>
-        {/* No llega ningún aviso aparte: lo que pasa es que la obra aparece en la bandeja.
-            Antes decía "Odoo avisa solo al pasar la fecha", y no había tal aviso. */}
-        <p className="pb-2 text-[10px] text-muted-foreground">
-          30 días antes aparece en la bandeja, en &quot;Vencen en menos de 30 días&quot;.
-        </p>
-      </div>
-    </section>
+    <div
+      data-tour="vencimiento"
+      className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t px-3 py-2 text-[12px] text-muted-foreground"
+    >
+      <label htmlFor="venc">La documentación vence el</label>
+      <Input
+        id="venc"
+        type="date"
+        value={fecha}
+        onChange={(e) => setFecha(e.target.value)}
+        onBlur={() => {
+          if (fecha !== (ficha.vencimiento ?? "")) vencimiento.mutate(fecha || null);
+        }}
+        className="h-7 w-40 text-[12px]"
+      />
+      <span>· 30 días antes aparece en la bandeja</span>
+    </div>
   );
 }
+
+const VISIBLES = 5;
 
 /** Append-only y de sólo lectura: no hay forma de editar ni borrar desde acá. */
 function Historial({ ficha }: { ficha: FichaHabilitacion }) {
+  const [todo, setTodo] = useState(false);
+  const gestiones = todo ? ficha.gestiones : ficha.gestiones.slice(0, VISIBLES);
   return (
     <section className="rounded-md border">
-      <header className="border-b px-3 py-2">
+      <header className="flex items-center border-b px-3 py-2">
         <h3 className="text-[13px] font-semibold">Historial</h3>
+        {ficha.gestiones.length > VISIBLES && (
+          <button
+            type="button"
+            className="ml-auto text-[12px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+            onClick={() => setTodo((v) => !v)}
+          >
+            {todo ? "Ver menos" : `Ver todo (${ficha.gestiones.length})`}
+          </button>
+        )}
       </header>
-      <ul className="max-h-96 overflow-y-auto">
-        {ficha.gestiones.map((g) => (
+      <ul className={todo ? "max-h-96 overflow-y-auto" : undefined}>
+        {gestiones.map((g) => (
           <li key={g.id} className="border-b px-3 py-2 text-[13px] last:border-b-0">
             <div className="flex items-baseline gap-2">
               <span className="font-medium">{TIPO_GESTION_LABEL[g.tipo]}</span>
               <span className="ml-auto text-[11px] text-muted-foreground">
-                {format(parseISO(g.created_at), "d MMM yyyy HH:mm", { locale: es })}
+                {format(parseISO(g.created_at), "d MMM HH:mm", { locale: es })}
               </span>
             </div>
             {g.detalle && <p className="text-[12px] text-muted-foreground">{g.detalle}</p>}

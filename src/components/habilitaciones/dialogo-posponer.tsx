@@ -29,6 +29,11 @@ import type { FilaBandeja } from "@/lib/habilitaciones/tipos";
 // se quiere, y así posponer es un clic. Los atajos de 1 y 2 semanas son para las que no
 // tienen fecha, o para mirar antes.
 
+// Motivos rápidos. Hasta el 09/10 había cinco formas de escribir "lleva permiso"; ese motivo
+// ya no hace falta —las que esperan el permiso tienen su grupo y vuelven solas—, y los que
+// quedan se eligen de un toque. "Otro" deja escribir.
+const MOTIVOS = ["El cliente avisa cuándo", "Fecha a confirmar", "Falta más de un mes"];
+
 export type ObraAPosponer = {
   otId: number;
   direccion: string;
@@ -112,7 +117,10 @@ function Contenido({ obra, onCerrar }: { obra: ObraAPosponer; onCerrar: () => vo
       </DialogHeader>
 
       {!sePuede ? (
-        <p className="rounded-md border px-3 py-2 text-[13px]" style={{ backgroundColor: "var(--tb-aviso-bg)" }}>
+        <p
+          className="rounded-md border px-3 py-2 text-[13px]"
+          style={{ backgroundColor: "var(--tb-aviso-bg)", borderColor: "var(--tb-aviso-borde)" }}
+        >
           La obra va el {larga(obraVa!)}: está dentro de los {DIAS_ANTES_DE_LA_OBRA} días que hacen
           falta para la documentación, así que no se puede posponer.
         </p>
@@ -157,13 +165,28 @@ function Contenido({ obra, onCerrar }: { obra: ObraAPosponer; onCerrar: () => vo
             {obraVa && ` La obra va el ${format(parseISO(obraVa), "d MMM", { locale: es })}: no puede volver después del ${format(parseISO(tope!), "d MMM", { locale: es })}.`}
           </p>
 
-          <Input
-            value={motivo}
-            onChange={(e) => setMotivo(e.target.value)}
-            placeholder="Motivo (opcional) — ej: lleva permiso, falta más de un mes"
-            maxLength={500}
-            className="h-8 text-[13px]"
-          />
+          <div className="space-y-1.5">
+            <p className="text-[12px] font-medium">Motivo (opcional)</p>
+            <div className="flex flex-wrap gap-1.5">
+              {MOTIVOS.map((m) => (
+                <Button
+                  key={m}
+                  size="sm"
+                  variant={motivo === m ? "secondary" : "outline"}
+                  onClick={() => setMotivo(motivo === m ? "" : m)}
+                >
+                  {m}
+                </Button>
+              ))}
+            </div>
+            <Input
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+              placeholder="Otro motivo"
+              maxLength={500}
+              className="h-8 text-[13px]"
+            />
+          </div>
         </div>
       )}
 
@@ -174,7 +197,7 @@ function Contenido({ obra, onCerrar }: { obra: ObraAPosponer; onCerrar: () => vo
         {sePuede && (
           <Button onClick={confirmar} disabled={!fecha || posponer.isPending}>
             {posponer.isPending && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
-            Posponer
+            {fecha ? `Posponer hasta el ${format(parseISO(fecha), "EEE d MMM", { locale: es })}` : "Posponer"}
           </Button>
         )}
       </DialogFooter>

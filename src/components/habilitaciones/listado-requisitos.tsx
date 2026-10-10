@@ -57,7 +57,19 @@ const SIGUIENTE: Partial<Record<EstadoRequisito, string>> = {
 /** Lo que se pide confirmar antes de deshacer o borrar algo. */
 type Confirmacion = { titulo: string; descripcion: string; boton: string; accion: () => void };
 
-export function ListadoRequisitos({ otId, requisitos }: { otId: number; requisitos: Requisito[] }) {
+export function ListadoRequisitos({
+  otId,
+  requisitos,
+  contacto,
+  pie,
+}: {
+  otId: number;
+  requisitos: Requisito[];
+  /** A quién mandárselos: va pegado a los papeles, que es cuando hace falta. */
+  contacto?: React.ReactNode;
+  /** Lo que va al pie de la lista (el vencimiento de la documentación). */
+  pie?: React.ReactNode;
+}) {
   const cambiar = useCambiarRequisito(otId);
   const marcarTodos = useMarcarTodos(otId);
   const agregar = useAgregarRequisito(otId);
@@ -115,11 +127,13 @@ export function ListadoRequisitos({ otId, requisitos }: { otId: number; requisit
 
   return (
     <div className="rounded-md border">
-      <header className="flex items-center gap-3 border-b px-3 py-2">
-        <h3 className="text-[13px] font-semibold">
-          {requisitos.length} {requisitos.length === 1 ? "requisito" : "requisitos"} ·{" "}
-          {aprobados} {aprobados === 1 ? "aprobado" : "aprobados"}
-        </h3>
+      <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b px-3 py-2">
+        <h3 className="text-[13px] font-semibold">Papeles que pide el cliente</h3>
+        <span className="text-[12px] text-muted-foreground">
+          {requisitos.length === 0
+            ? "ninguno cargado"
+            : `${aprobados} de ${requisitos.length} ${requisitos.length === 1 ? "aprobado" : "aprobados"}`}
+        </span>
 
         {/* El paquete es un punto de partida, no una jaula: una vez aplicado, los
             requisitos se agregan y se quitan uno por uno. Cambiar de paquete no borra
@@ -156,6 +170,8 @@ export function ListadoRequisitos({ otId, requisitos }: { otId: number; requisit
           </Select>
         </div>
       </header>
+
+      {contacto}
 
       {/* MASIVO Y DE A UNO CONVIVEN: la oficina manda un mail con todos los papeles y el
           cliente contesta "está todo bien" —gestos únicos que registrar de a uno son
@@ -348,6 +364,8 @@ export function ListadoRequisitos({ otId, requisitos }: { otId: number; requisit
           Agregar
         </Button>
       </div>
+
+      {pie}
 
       <Dialog open={!!confirmando} onOpenChange={(abrir) => !abrir && setConfirmando(null)}>
         <DialogContent>

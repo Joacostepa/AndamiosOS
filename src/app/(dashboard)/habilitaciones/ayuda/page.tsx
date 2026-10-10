@@ -15,6 +15,9 @@ import { useRouter } from "next/navigation";
 //
 // Es también el material de capacitación: con gente rotando, hay que poder mandarle un
 // link a quien entra en lugar de sentarse a explicárselo de nuevo.
+//
+// Reescrita el 09/10 para el rediseño (grupos por de quién es la pelota, el botón del paso
+// en la fila, la ficha con una sola tarjeta de estado).
 
 function Seccion({ titulo, children }: { titulo: string; children: React.ReactNode }) {
   return (
@@ -68,218 +71,202 @@ export default function AyudaHabilitacionesPage() {
         <p>
           Antes de armar andamios en un edificio, el cliente casi siempre pide documentación:
           nómina de ART, cláusula de no repetición, seguro, capacitaciones. Este módulo lleva ese
-          trámite: a quién le falta qué, desde cuándo, y si la obra está en condiciones de armarse.
+          trámite: qué falta, de quién es el próximo paso, desde cuándo, y si la obra está en
+          condiciones de armarse.
         </p>
         <p>
           Las obras <Termino>entran solas</Termino> cuando Comercial crea la orden en Odoo. Acá no
-          se da de alta nada — tu primera acción siempre es el triage.
+          se da de alta nada.
         </p>
       </Seccion>
 
-      <Seccion titulo="El triage: aplica o no aplica">
+      <Seccion titulo="La bandeja: de quién es la pelota">
         <p>
-          Es la primera decisión de toda obra nueva y define si entra a la cola.
-        </p>
-        <p>
-          <Termino>No aplica</Termino> es una obra que no necesita tramitar documentación. No queda
-          pendiente de nada: se da por habilitada y pasa a verde. Es una de cada diez, más o menos.
-        </p>
-        <p>
-          <Termino>Aplica</Termino> la manda a la cola para pedirle los papeles al cliente, con la nómina
-          de ART ya cargada. Si la venta dice que llevamos técnico de Seguridad e Higiene, ese papel se
-          suma solo.
-        </p>
-        <p>
-          Se puede hacer de a varias con las casillas. Ojo: <Termino>sin ninguna tildada, los botones
-          actúan sobre todo el grupo</Termino>. Si te equivocaste, las descartadas quedan al pie de la
-          bandeja, en <Termino>No aplican</Termino>, y desde ahí se traen de vuelta.
-        </p>
-      </Seccion>
-
-      <Seccion titulo="Qué te dice cada fila, y de quién es la pelota">
-        <p>
-          A la derecha de cada obra dice <Termino>qué falta</Termino>, y de ahí sale de quién es el
-          próximo paso:
+          Arriba hay un resumen con cuántas obras hay en cada grupo; cada número te lleva a su
+          grupo. Una obra aparece en <Termino>un solo grupo</Termino>, el primero que le corresponda:
         </p>
         <ul className="ml-4 list-disc space-y-1.5">
           <li>
-            Si dice qué hacer —<em>mandar Nómina ART</em>, <em>corregir Capacitaciones</em>,{" "}
-            <em>habilitar: está todo aprobado</em>— la pelota es <Termino>tuya</Termino>.
+            <Termino>Urgentes</Termino> — se arman en 3 días o menos, o la fecha ya pasó, y siguen sin
+            habilitar. Le ganan a todo.
           </li>
           <li>
-            Si dice <em>el cliente revisa…</em> o <em>el cliente dice qué pide</em>, es{" "}
-            <Termino>del cliente</Termino>.
+            <Termino>Nuevas</Termino> — todavía nadie decidió si piden papeles.
+          </li>
+          <li>
+            <Termino>Para hacer</Termino> — la pelota es nuestra: mandar papeles, corregir uno
+            observado, o habilitar porque ya está todo aprobado.
+          </li>
+          <li>
+            <Termino>Esperando al cliente</Termino> — ya se le mandó todo y falta que apruebe.
+          </li>
+          <li>
+            <Termino>Esperan el permiso</Termino> — plegado. Ver más abajo.
+          </li>
+          <li>
+            <Termino>Vencen en menos de 30 días</Termino> — habilitadas con la documentación por
+            vencer.
           </li>
         </ul>
         <p>
-          Adelante van los <Termino>días</Termino> que lleva así. Se ponen en rojo cuando ya son
-          demasiados: al día siguiente si es tuyo, a la semana si es del cliente, a las dos semanas
-          si esperás que te diga qué pide. Si la obra estuvo pospuesta, lo tuyo empieza a contar el
-          día que volvió.
-        </p>
-        <p>
-          Los grupos de la bandeja dicen otra cosa: si ya salió algún papel (
-          <Termino>Ya se mandaron papeles</Termino>) o todavía no (
-          <Termino>Todavía no salió ningún papel</Termino>). Arriba de todo van los urgentes: las que
-          se arman en 3 días o menos, o cuya fecha ya pasó, sin estar habilitadas.
-        </p>
-        <p>
-          El botón <Termino>Ya le consulté al cliente</Termino> es para los clientes a los que primero
-          hay que preguntarles qué piden: mientras no salga ningún papel, la pelota queda del cliente.
-          Si mandás los papeles directamente, no hace falta.
+          Al pie quedan las <Termino>Pospuestas</Termino> y lo <Termino>Resuelto</Termino> (las
+          habilitadas y las que no aplican), plegados. El buscador encuentra cualquier obra activa y
+          abre lo plegado mientras buscás.
         </p>
       </Seccion>
 
-      <Seccion titulo="Los requisitos">
+      <Seccion titulo="Qué te dice cada fila">
+        <ul className="ml-4 list-disc space-y-1.5">
+          <li>
+            <Termino>El próximo paso</Termino> —<em>Mandar la Nómina ART</em>, <em>Falta que apruebe
+            3 de 8</em>, <em>Lista para habilitar</em>— y hace cuánto está así. Los días se ponen en
+            rojo cuando ya son demasiados: al día siguiente si el paso es tuyo, a la semana si espera
+            al cliente, a las dos semanas si esperás que te diga qué pide. Si la obra estuvo
+            pospuesta, lo tuyo empieza a contar el día que volvió.
+          </li>
+          <li>
+            <Termino>Cuándo se arma</Termino>: la primera jornada del tablero si ya está planificada,
+            o la fecha programada. En rojo si faltan 3 días o menos.
+          </li>
+          <li>
+            <Termino>El botón del paso</Termino>: <em>Marcar enviado</em>, <em>Aprobó</em>,{" "}
+            <em>Habilitar</em>. Lo que se resuelve en un clic se resuelve en la fila. Si te
+            equivocaste, el aviso trae <Termino>Deshacer</Termino>. Habilitar pregunta antes, porque
+            le avisa a Operaciones.
+          </li>
+          <li>
+            En <Termino>⋯</Termino>: posponer, marcar que no aplica, ver la OT en Odoo.
+          </li>
+        </ul>
         <p>
-          Cada papel que el cliente pide es un requisito, y se mueve de a un paso:
+          Los carteles aparecen sólo si cambian algo: prioridad, desarme o ampliación, SyH, papeles
+          observados, nota fijada.
         </p>
+      </Seccion>
+
+      <Seccion titulo="El triage: ¿pide papeles?">
+        <p>
+          Es la primera decisión de toda obra nueva. <Termino>Aplica</Termino> la manda a la cola con
+          la nómina de ART ya cargada; si llevamos técnico de Seguridad e Higiene, ese papel se suma
+          solo. <Termino>No aplica</Termino> es una obra que no necesita tramitar documentación: queda
+          habilitada en el acto. Es una de cada diez, más o menos.
+        </p>
+        <p>
+          Con las casillas de Nuevas resolvés varias juntas. Si te equivocaste, el aviso trae
+          Deshacer, y las que no aplican se traen de vuelta desde Resueltas.
+        </p>
+      </Seccion>
+
+      <Seccion titulo="Los papeles">
+        <p>Cada papel que el cliente pide es un requisito, y se mueve de a un paso:</p>
         <ul className="ml-4 list-disc space-y-1.5">
           <li><Termino>Pendiente</Termino> — todavía no se lo mandaste.</li>
           <li><Termino>Enviado</Termino> — salió, esperás que lo apruebe.</li>
-          <li><Termino>Observado</Termino> — lo rebotó. Pide el motivo obligatorio: sin él la fila se
-            ve en rojo y no dice qué corregir, que es justo lo que te obliga a volver a leer el mail.</li>
+          <li><Termino>Observado</Termino> — lo rebotó. Pide el motivo: sin él la fila no dice qué
+            corregir, que es justo lo que te obliga a volver a leer el mail.</li>
           <li><Termino>Aprobado</Termino> — listo.</li>
         </ul>
         <p>
-          Arriba de la lista están <Termino>marcar todo como enviado</Termino> y{" "}
-          <Termino>aprobar todo</Termino>, porque normalmente mandás un mail con todos los papeles y
-          el cliente contesta que está todo bien. Los botones de a uno siguen estando para cuando
-          efectivamente va de a uno. Lo observado queda afuera de las acciones masivas a propósito:
-          necesita que alguien lo mire.
+          Arriba de la lista están los botones para marcar o aprobar todos juntos. Lo observado queda
+          afuera a propósito: necesita que alguien lo mire. Deshacer una aprobación te pide
+          confirmación, y el tacho sólo saca papeles <Termino>pendientes</Termino>: uno mandado o
+          aprobado es trabajo hecho ante el cliente. Si subís un archivo con el mismo nombre que otro,
+          no lo pisa: se guardan los dos.
         </p>
         <p>
-          Deshacer una aprobación te pide confirmación, y el tacho sólo saca papeles{" "}
-          <Termino>pendientes</Termino>: uno mandado o aprobado es trabajo hecho ante el cliente.
-          Si subís un archivo con el mismo nombre que otro, no lo pisa: se guardan los dos.
+          Los <Termino>paquetes</Termino> crean los papeles de una: <Termino>Básico</Termino> (nómina
+          de ART), <Termino>+ No repetición</Termino> (suma la cláusula), <Termino>+ SVO</Termino> (el SVO
+          y el aviso de obra) y <Termino>Completo</Termino> (los ocho). Cambiar de paquete no borra lo
+          que ya mandaste ni lo que agregaste a mano.
+        </p>
+      </Seccion>
+
+      <Seccion titulo="Las que esperan el permiso">
+        <p>
+          Si el cliente pidió <Termino>no armar sin el permiso emitido</Termino>, mandar los papeles
+          ahora no sirve: se vencen antes de que entre la cuadrilla. Esas obras esperan plegadas en su
+          grupo y <Termino>vuelven solas</Termino> a la cola cuando la gestoría marca el permiso como
+          emitido, o 10 días antes de armar, lo que pase primero. Te llega un aviso. No hace falta
+          posponerlas.
         </p>
         <p>
-          Los <Termino>paquetes</Termino> son los combos ya armados: elegís uno del desplegable y te
-          crea todos los requisitos de una, en vez de cargarlos a mano.
-        </p>
-        <ul className="ml-4 list-disc space-y-1.5">
-          <li><Termino>Básico</Termino> — sólo la nómina de ART. Es el que se aplica solo al marcar &quot;aplica&quot;.</li>
-          <li><Termino>+ No repetición</Termino> — la nómina más la cláusula de no repetición.</li>
-          <li><Termino>+ SVO</Termino> — suma el SVO y el aviso de obra.</li>
-          <li><Termino>Completo</Termino> — los ocho, para los clientes más exigentes.</li>
-        </ul>
-        <p>
-          El paquete es un punto de partida, no una jaula: si cambiás a otro,{" "}
-          <Termino>no se borra</Termino> lo que ya mandaste ni lo que agregaste a mano. Y si el cliente
-          pide algo que no está en ningún combo, lo escribís abajo de la lista con el nombre que
-          quieras y pasa a ser un requisito más.
+          Las que se arman con número de expediente, o sin permiso, siguen el camino normal: los
+          papeles se mandan enseguida. Y a un desarme el permiso no lo frena.
         </p>
       </Seccion>
 
       <Seccion titulo="Posponer">
         <p>
-          Si falta mucho para la obra —pasa sobre todo con las que llevan permiso—, mandar la
-          documentación ahora no sirve: la nómina se vence antes de que entre la cuadrilla. El reloj
-          de cada fila la <Termino>pospone</Termino>: sale de la cola hasta la fecha que elijas y
-          queda al pie, en <Termino>Pospuestas</Termino>.
-        </p>
-        <p>
-          El calendario sugiere 10 días antes de la obra y no deja elegir después. La obra{" "}
-          <Termino>vuelve sola</Termino> en esa fecha, o antes si Operaciones la planifica para
-          dentro de menos de 10 días. Cada vez que Operaciones planifica una obra pospuesta te llega
-          un aviso a la campanita, con cuándo vuelve.
-        </p>
-        <p>
-          Desde Pospuestas o desde la ficha la podés <Termino>reactivar</Termino> cuando quieras, o
-          cambiarle la fecha. Todo queda en el historial.
+          Para cuando falta mucho para la obra por otro motivo. Sale de la cola hasta la fecha que
+          elijas y vuelve sola, o antes si Operaciones la planifica para dentro de menos de 10 días,
+          con un aviso a la campanita. El calendario no deja elegir después de 10 días antes de la
+          obra. Desde Pospuestas o desde la ficha la podés reactivar o cambiarle la fecha.
         </p>
       </Seccion>
 
-      <Seccion titulo="Habilitar">
+      <Seccion titulo="Habilitar y revertir">
         <p>
-          El botón verde se prende solo cuando <Termino>todos</Termino> los requisitos están
-          aprobados. Mientras falten, está apagado y te dice cuántos.
+          Con todos los papeles aprobados aparece <Termino>Habilitar</Termino>. No pasa solo: alguien
+          lo decide, y queda registrado quién y cuándo. Al habilitar,{" "}
+          <Termino>Operaciones recibe un aviso</Termino>: desde ese momento la obra se puede programar.
         </p>
         <p>
-          No pasa solo: alguien tiene que decidirlo, y queda registrado quién y cuándo. Al
-          habilitar, <Termino>Operaciones recibe un aviso</Termino>: desde ese momento la obra se
-          puede programar.
+          <Termino>Habilitar sin todos los papeles</Termino> (en el menú Más de la ficha) es para cuando
+          el cliente autoriza por teléfono y los papeles llegan después. Pide un motivo escrito. Existe
+          a propósito: lo que no se puede registrar se termina haciendo por afuera, sin rastro.
         </p>
         <p>
-          Si te apuraste, <Termino>Revertir</Termino> lo deshace y te pide el motivo, porque
-          Operaciones recibe un aviso urgente con ese texto. Si después la volvés a habilitar,
-          también les avisa. Las obras habilitadas salen de la cola, pero quedan al pie de la
-          bandeja, en <Termino>Habilitadas</Termino>, la más reciente primero, y desde ahí también
-          se revierten.
-        </p>
-        <p>
-          <Termino>Habilitar por excepción</Termino> es para cuando el cliente autoriza por teléfono
-          y los papeles llegan después. Pide un motivo escrito. Existe a propósito: un sistema que no
-          admite lo que pasa en la realidad termina esquivado por afuera, y ahí sí no queda registro
-          de nada.
+          <Termino>Revertir</Termino> pide el motivo, porque Operaciones recibe un aviso urgente con ese
+          texto. Si después la volvés a habilitar, también les avisa.
         </p>
       </Seccion>
 
       <Seccion titulo="El vencimiento">
         <p>
-          Muchas habilitaciones caducan: la nómina de ART vence, el seguro vence. Si la obra sigue
-          armada cuando eso pasa, estás sin cobertura y nadie se entera.
-        </p>
-        <p>
-          Por eso, en <Termino>Documentación del cliente</Termino> hay un campo{" "}
-          <Termino>Vence el</Termino>. Cargalo siempre que la documentación tenga fecha de corte.
-        </p>
-        <p>
-          Con la fecha cargada, 30 días antes la obra aparece en el grupo{" "}
-          <Termino>Vencen en menos de 30 días</Termino> de la bandeja, y el semáforo pasa a vencida
-          cuando llega el día. No llega ningún aviso aparte: es la bandeja la que te lo muestra, así
-          que sin fecha nadie se entera.
+          La nómina de ART vence, el seguro vence. Si la obra sigue armada cuando eso pasa, estamos
+          sin cobertura. Al pie de los papeles hay un campo <Termino>La documentación vence el</Termino>:
+          con la fecha cargada, 30 días antes la obra aparece en la bandeja. No llega ningún aviso
+          aparte, así que sin fecha nadie se entera.
         </p>
       </Seccion>
 
       <Seccion titulo="Las notas">
         <p>
-          Para lo que no entra en ningún campo: <em>&quot;el administrador atiende después de las 11&quot;</em>,{" "}
-          <em>&quot;la nómina la manda el contador, no el cliente&quot;</em>,{" "}
-          <em>&quot;pidieron todo junto y no de a uno&quot;</em>.
-        </p>
-        <p>
-          Es lo que hoy vive en tu cabeza o en un mail viejo, y que la próxima persona que agarre la
-          obra no tiene forma de saber. Con gente rotando, es lo que evita empezar de cero.
+          Para lo que no entra en ningún campo: las razones sociales y CUIT de la cláusula,{" "}
+          <em>&quot;el administrador atiende después de las 11&quot;</em>,{" "}
+          <em>&quot;la nómina la manda el contador&quot;</em>. Lo que hoy vive en tu cabeza o en un
+          mail viejo, y que la próxima persona que agarre la obra no tiene forma de saber.
         </p>
         <p>
           Es la conversación de los papeles. La de Operaciones con la obra va aparte, en el tablero,
           para que ninguna tape a la otra. El <Termino>chinche</Termino> deja la nota arriba y marca la
-          obra en la bandeja. Usalo para lo importante: si fijás todo, deja de destacar nada.
+          obra en la bandeja.
         </p>
       </Seccion>
 
-      <Seccion titulo="El permiso es otro trámite">
+      <Seccion titulo="El permiso municipal">
         <p>
           Va por separado de la documentación y es lo único que puede <Termino>frenar</Termino> el
-          armado desde el tablero.
+          armado desde el tablero:
         </p>
         <ul className="ml-4 list-disc space-y-1.5">
-          <li><Termino>Sin permiso</Termino> — el cliente asume. No frena nada.</li>
-          <li><Termino>Con expediente</Termino> — se arma amparado en un número de expediente. Si el
-            número no está cargado, al confirmar pide motivo escrito.</li>
-          <li><Termino>Esperar el permiso emitido</Termino> — el cliente pidió no armar hasta tenerlo.
-            Bloquea la confirmación.</li>
+          <li><Termino>Sin expediente ni permiso</Termino> — el cliente asume. No frena nada.</li>
+          <li><Termino>Con número de expediente</Termino> — si el número no está cargado, al confirmar
+            el tablero pide un motivo.</li>
+          <li><Termino>Con el permiso emitido</Termino> — el tablero no deja confirmar hasta que salga.</li>
         </ul>
         <p>
-          Si lleva permiso y con qué se arma lo contesta <Termino>Comercial al cotizar</Termino>, y es
-          obligatorio para confirmar la venta. El trámite y el número de expediente los actualiza la
-          gestoría de permisos. En la ficha se leen: si algo está mal,{" "}
-          <Termino>se corrige en la venta, en Odoo</Termino>.
-        </p>
-        <p>
-          Los frenos valen para los armados y las ampliaciones: a un desarme el permiso no lo frena,
-          porque desarmar es sacar la estructura de la calle.
+          Lo carga <Termino>Comercial al cotizar</Termino>, y el trámite y el número de expediente los
+          actualiza la gestoría de permisos. En la ficha se leen: si algo está mal,{" "}
+          <Termino>se corrige en la venta, en Odoo</Termino>. A los desarmes el permiso no los frena.
         </p>
       </Seccion>
 
       <Seccion titulo="Los botones sólo registran">
         <p>
           Vale para todo el módulo: <Termino>ninguno manda mails</Termino>. El correo lo mandás vos
-          por fuera y acá marcás que lo hiciste.
-        </p>
-        <p>
-          Lo único que sale solo es el aviso a Operaciones cuando habilitás o revertís.
+          por fuera y acá marcás que lo hiciste. Lo único que sale solo es el aviso a Operaciones
+          cuando habilitás o revertís.
         </p>
         <p>
           Lo que aporta el sistema es la <Termino>fecha</Termino>: poder demostrar qué papel mandaste y

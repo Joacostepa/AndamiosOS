@@ -88,6 +88,8 @@ export const TIPO_GESTION_LABEL: Record<TipoGestion, string> = {
 
 /** De quién es el próximo movimiento y desde cuándo. Lo calcula esperaDe (derivacion.ts). */
 export type Espera = {
+  /** Qué hay que hacer, como dato: decide el botón de la fila y su texto largo. */
+  clave: "triar" | "cargar" | "corregir" | "habilitar" | "mandar" | "cliente_pide" | "cliente_revisa";
   pelota: "nuestra" | "cliente";
   /** Qué falta, corto: "mandar Nómina ART", "el cliente revisa 3 de 8". */
   texto: string;
@@ -232,21 +234,34 @@ export type FilaBandeja = {
   syncEstado: EstadoSync;
   modalidad: ModalidadPermiso | null;
   tramite: TramiteEstado | null;
+  expedienteNro: string | null;
+  expedienteFecha: string | null;
   tecnicoNombre: string | null;
   requisitos: { total: number; aprobados: number; observados: number };
+  /**
+   * Cada requisito con su estado, para las acciones de la fila ("Marcar enviado", "Aprobar
+   * 3") y para deshacerlas: el aviso sabe qué papeles movió y a dónde volverlos.
+   */
+  reqs: { id: string; nombre: string; estado: EstadoRequisito }[];
+  /** Cuántas veces se le reclamó al cliente. El botón dice "2º reclamo". */
+  reclamos: number;
   notasFijadas: string[];
   url: string;
 };
 
+/** Los grupos de la bandeja: de quién es la pelota (ver grupoDe en derivacion.ts). */
 export type ClaveGrupo =
-  | "recien_llegadas" | "critica" | "atrasada"
-  | "esperando_cliente" | "validacion" | "por_vencer";
+  | "urgentes" | "nuevas" | "para_hacer" | "cliente" | "permiso" | "por_vencer";
 
 export type GrupoBandeja = {
   clave: ClaveGrupo;
   titulo: string;
+  /** La línea gris al lado del título: qué entra y cuándo se pone en rojo. */
+  nota: string;
   filas: FilaBandeja[];
   peligro: boolean;
+  /** Arranca plegado: no hay nada que hacer hoy, pero tiene que estar a mano. */
+  plegado: boolean;
 };
 
 export type Bandeja = {
@@ -323,6 +338,7 @@ export type FichaHabilitacion = {
   habilitadaEl: string | null;
   /** Sólo si se habilitó sin tener todo aprobado: la excepción, documentada. */
   habilitadaMotivo: string | null;
+  habilitadaPor: string | null;
   syncEstado: EstadoSync;
   syncError: string | null;
   permiso: Permiso;

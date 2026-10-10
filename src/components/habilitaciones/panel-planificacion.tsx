@@ -4,25 +4,22 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
-import { CalendarDays, Check, RefreshCw, TriangleAlert, X } from "lucide-react";
+import { CalendarDays, Check, RefreshCw, TriangleAlert } from "lucide-react";
 import { useTablero } from "@/hooks/use-tablero";
 import { useBandejaHabilitaciones } from "@/hooks/use-habilitaciones";
 import { armarAgenda, type TarjetaAgenda } from "@/lib/habilitaciones/agenda";
 import { hoyISO, sumarDias } from "@/lib/habilitaciones/derivacion";
 import { ChipTipoOt } from "@/components/habilitaciones/chip-tipo-ot";
 import { ChipUrgencia } from "@/components/habilitaciones/chip-urgencia";
-import { ChipPantalla } from "@/components/habilitaciones/chip-pantalla";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 
 // La planificación de las próximas dos semanas, para Habilitaciones. SÓLO LECTURA.
 //
-// DOS FORMAS, UN CONTENIDO. En pantalla ancha es una COLUMNA al costado que puede quedar
-// abierta mientras se trabaja la bandeja —hay quien la usa todo el día—; en pantalla
-// angosta o en el celular no hay ancho para dos columnas y se abre ENCIMA, como el panel
-// de la OT del tablero. Cuál se muestra y si queda abierta lo decide
-// planificacion-contexto.tsx; acá sólo se dibuja.
+// SE ABRE ENCIMA, como hoja, en todas las pantallas (rediseño del 09/10; ver
+// planificacion-contexto.tsx). Arranca mostrando SÓLO LO SIN HABILITAR: antes mostraba
+// todo —63 jornadas, 58 en verde— y lo que había que ver eran las 5 que no.
 //
 // NO SE MUEVE NADA DESDE ACÁ. Tocar una tarjeta abre la ficha de habilitación de esa obra,
 // no el tablero: planificar es de Operaciones, y un panel que permite arrastrar desde otra
@@ -71,30 +68,7 @@ function Rango() {
   );
 }
 
-/** Columna al costado, para pantalla ancha. Queda abierta mientras se trabaja. */
-export function PanelPlanificacionLateral({ onCerrar }: { onCerrar: () => void }) {
-  return (
-    <aside className="sticky top-0 flex max-h-[calc(100dvh-7rem)] w-[380px] shrink-0 flex-col self-start overflow-hidden rounded-md border bg-card">
-      <div className="flex items-start gap-2 border-b px-4 py-3">
-        <div className="min-w-0 flex-1">
-          <h2 className="flex items-center gap-2 text-base font-semibold">
-            <CalendarDays className="h-4 w-4" />
-            Planificación
-          </h2>
-          <Rango />
-        </div>
-        <Button variant="ghost" size="icon-sm" onClick={onCerrar} aria-label="Cerrar planificación">
-          <X className="h-4 w-4" />
-        </Button>
-      </div>
-      <div className="overflow-y-auto pt-3">
-        <Cuerpo fondo="bg-card" />
-      </div>
-    </aside>
-  );
-}
-
-/** Encima de la página, para pantalla angosta y celular. */
+/** El panel, encima de la página. */
 export function PanelPlanificacionHoja({
   abierto,
   onOpenChange,
@@ -129,15 +103,29 @@ function Cuerpo({ fondo }: { fondo: string }) {
   const ahora = useAhora(30_000);
   // En la bandeja ya está cargada (misma clave); en la ficha se pide acá.
   const { data: bandeja } = useBandejaHabilitaciones();
-  const [soloSinHabilitar, setSoloSinHabilitar] = useState(false);
+  const [soloSinHabilitar, setSoloSinHabilitar] = useState(true);
 
   const dias = useMemo(() => (data ? armarAgenda(data, bandeja) : []), [data, bandeja]);
   const todas = dias.flatMap((d) => d.tarjetas);
-  const sinHabilitar = todas.filter((t) => t.hab.clave !== "habilitada").length;
+  // Se cuentan OBRAS, no tarjetas: una obra de ocho jornadas es una sola obra que viene.
+  const obras = new Set(todas.map((t) => t.otId)).size;
+  const sinHabilitar = new Set(todas.filter((t) => t.hab.clave !== "habilitada").map((t) => t.otId)).size;
+  // Cuántos días tiene cada obra en el rango. Con "sin habilitar", cada obra aparece una
+  // sola vez —el primer día— con ese número: una obra de ocho días repetida ocho veces
+  // tapaba las otras, y la pregunta es qué obras faltan habilitar, no cuántas jornadas.
+  const diasPorOt = new Map<number, number>();
+  for (const t of todas) diasPorOt.set(t.otId, (diasPorOt.get(t.otId) ?? 0) + 1);
+  const yaMostradas = new Set<number>();
   const visibles = dias
     .map((d) => ({
       ...d,
-      tarjetas: soloSinHabilitar ? d.tarjetas.filter((t) => t.hab.clave !== "habilitada") : d.tarjetas,
+      tarjetas: soloSinHabilitar
+        ? d.tarjetas.filter((t) => {
+            if (t.hab.clave === "habilitada" || yaMostradas.has(t.otId)) return false;
+            yaMostradas.add(t.otId);
+            return true;
+          })
+        : d.tarjetas,
     }))
     .filter((d) => d.tarjetas.length > 0);
 
@@ -166,19 +154,19 @@ function Cuerpo({ fondo }: { fondo: string }) {
       {data && (
         <div className="flex flex-wrap items-center gap-2 text-[12px]">
           <span className="text-muted-foreground">
-            {todas.length} jornadas ·{" "}
+            {obras} {obras === 1 ? "obra" : "obras"} ·{" "}
             <span style={{ color: sinHabilitar > 0 ? HAB.sin_habilitar.color : undefined }}>
               {sinHabilitar} sin habilitar
             </span>
           </span>
           <Button
             size="sm"
-            variant={soloSinHabilitar ? "secondary" : "outline"}
+            variant="outline"
             className="ml-auto"
-            aria-pressed={soloSinHabilitar}
+            aria-pressed={!soloSinHabilitar}
             onClick={() => setSoloSinHabilitar((v) => !v)}
           >
-            Solo sin habilitar
+            {soloSinHabilitar ? "Ver todas" : "Sólo sin habilitar"}
           </Button>
         </div>
       )}
@@ -216,7 +204,7 @@ function Cuerpo({ fondo }: { fondo: string }) {
             <span className="ml-1.5 font-normal text-muted-foreground">{dia.tarjetas.length}</span>
           </h3>
           {dia.tarjetas.map((t) => (
-            <Tarjeta key={t.asignacionId} t={t} />
+            <Tarjeta key={t.asignacionId} t={t} dias={soloSinHabilitar ? (diasPorOt.get(t.otId) ?? 1) : 1} />
           ))}
         </section>
       ))}
@@ -224,7 +212,7 @@ function Cuerpo({ fondo }: { fondo: string }) {
   );
 }
 
-function Tarjeta({ t }: { t: TarjetaAgenda }) {
+function Tarjeta({ t, dias }: { t: TarjetaAgenda; dias: number }) {
   const hab = HAB[t.hab.clave];
   return (
     <Link
@@ -235,18 +223,27 @@ function Tarjeta({ t }: { t: TarjetaAgenda }) {
       style={{ borderStyle: t.estado === "tentativa" ? "dashed" : "solid" }}
     >
       <span className="flex min-w-0 items-center gap-1.5">
-        <ChipTipoOt tipo={t.tipo} />
-        <ChipUrgencia urgencia={t.urgencia} />
-        <ChipPantalla trabajo={t.fila?.trabajo} />
         <span className="truncate font-medium">{t.direccion}</span>
+        <ChipUrgencia urgencia={t.urgencia} />
+        {t.tipo !== "armado" && <ChipTipoOt tipo={t.tipo} />}
       </span>
       {/* El cliente en su propio renglón, debajo de la dirección: es a quién hay que
           pedirle los papeles, y en el renglón de la cuadrilla se cortaría. */}
       {t.cliente && (
         <span className="mt-0.5 block truncate text-[12px]">{t.cliente}</span>
       )}
+      {/* Lo mismo que dice la fila de la bandeja: qué falta, para no tener que ir a buscarlo. */}
+      {t.hab.clave === "sin_habilitar" && t.fila?.espera && (
+        <span className="mt-0.5 block truncate text-[12px] font-medium">
+          {t.fila.espera.texto.charAt(0).toUpperCase() + t.fila.espera.texto.slice(1)}
+        </span>
+      )}
       <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
-        <span>{t.cuadrilla ?? "Sin cuadrilla"}</span>
+        <span>
+          {t.cuadrilla ?? "Sin cuadrilla"}
+          {t.jornadas > 1 && ` · ${t.jornadas} jornadas`}
+          {dias > 1 && ` · ${dias} días en estas dos semanas`}
+        </span>
         <span>·</span>
         <span>{t.estado}</span>
         {t.cerrada && (

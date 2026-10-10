@@ -29,7 +29,7 @@ const base: DatosEspera = {
 test("sin triar: decidir si aplica, desde que entró, rojo a los 4 días", () => {
   const e = esperaDe({ ...base, triage: null, creadaEl: "2026-10-06" }, HOY);
   assert.deepEqual(e && { ...e }, {
-    pelota: "nuestra", texto: "decidir si aplica", desde: "2026-10-06", dias: 3, rojo: false,
+    clave: "triar", pelota: "nuestra", texto: "decidir si aplica", desde: "2026-10-06", dias: 3, rojo: false,
   });
   assert.equal(esperaDe({ ...base, triage: null, creadaEl: "2026-10-05" }, HOY)?.rojo, true);
 });
@@ -176,4 +176,62 @@ test("veredicto: una venta vieja sin modalidad no pide modalidad", () => {
     tipoOt: "armado", habilitada: true, listaParaHabilitar: false, fechaProgramada: null,
   }, HOY);
   assert.equal(v.tono, "ok");
+});
+
+// ─── Grupos de la bandeja (rediseño del 09/10) ──────────────────────────────
+
+import { esperaElPermiso, grupoDe, vueltaPorPermiso, type DatosGrupo } from "./derivacion.ts";
+
+const obra = (extra: Partial<DatosGrupo> = {}): DatosGrupo => ({
+  triage: "aplica",
+  habilitadaEl: null,
+  alerta: "proxima",
+  espera: esperaDe({ ...base, requisitos: [req("Nómina ART", "pendiente")] }, HOY),
+  vencimiento: null,
+  modalidad: "sin_permiso",
+  tramite: null,
+  tipo: "armado",
+  primeraJornada: null,
+  fechaProgramada: "2026-11-02",
+  ...extra,
+});
+
+test("grupos: urgente le gana a todo, incluso a una nueva", () => {
+  assert.equal(grupoDe(obra({ triage: null, alerta: "critica" }), HOY), "urgentes");
+  assert.equal(grupoDe(obra({ alerta: "atrasada" }), HOY), "urgentes");
+  assert.equal(grupoDe(obra({ triage: null }), HOY), "nuevas");
+});
+
+test("grupos: la pelota decide entre para hacer y esperando al cliente", () => {
+  assert.equal(grupoDe(obra(), HOY), "para_hacer");
+  const cliente = esperaDe({ ...base, requisitos: [req("Nómina ART", "enviado", "2026-10-05")] }, HOY);
+  assert.equal(grupoDe(obra({ espera: cliente }), HOY), "cliente");
+});
+
+test("esperan el permiso: sólo esperar_permiso, sin emitir, armado, a más de 10 días", () => {
+  const espera = obra({ modalidad: "esperar_permiso", tramite: "presentado" });
+  assert.equal(grupoDe(espera, HOY), "permiso");
+  assert.equal(esperaElPermiso({ ...espera, fechaProgramada: null }, HOY), true, "sin fecha espera");
+  // Salió el permiso: vuelve a la cola.
+  assert.equal(grupoDe({ ...espera, tramite: "emitido" }, HOY), "para_hacer");
+  // A 10 días o menos: vuelve aunque no haya salido.
+  assert.equal(grupoDe({ ...espera, fechaProgramada: "2026-10-19" }, HOY), "para_hacer");
+  assert.equal(grupoDe({ ...espera, fechaProgramada: "2026-10-20" }, HOY), "permiso");
+  // Con expediente o sin permiso, los papeles se mandan igual.
+  assert.equal(grupoDe({ ...espera, modalidad: "con_expediente" }, HOY), "para_hacer");
+  // A un desarme el permiso no lo frena.
+  assert.equal(grupoDe({ ...espera, tipo: "desarme" }, HOY), "para_hacer");
+  // La planificación manda sobre la fecha programada.
+  assert.equal(grupoDe({ ...espera, primeraJornada: "2026-10-15" }, HOY), "para_hacer");
+});
+
+test("vuelta por permiso: 10 días antes de armar", () => {
+  assert.equal(vueltaPorPermiso({ primeraJornada: null, fechaProgramada: "2026-11-02" }), "2026-10-23");
+  assert.equal(vueltaPorPermiso({ primeraJornada: null, fechaProgramada: null }), null);
+});
+
+test("grupos: habilitada sale de la cola, salvo que venza en 30 días", () => {
+  assert.equal(grupoDe(obra({ habilitadaEl: "2026-09-01" }), HOY), null);
+  assert.equal(grupoDe(obra({ habilitadaEl: "2026-09-01", vencimiento: "2026-10-30" }), HOY), "por_vencer");
+  assert.equal(grupoDe(obra({ triage: "no_aplica" }), HOY), null);
 });

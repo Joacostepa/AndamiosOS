@@ -33,7 +33,10 @@ type DB = SupabaseClient;
  */
 export type TipoAlerta =
   | "ot_nueva" | "ot_habilitada" | "ot_urgente" | "ot_deshabilitada"
-  /** Una obra pospuesta en Habilitaciones volvió a la bandeja, o Operaciones la planificó. */
+  /**
+   * Una obra pospuesta en Habilitaciones volvió a la bandeja, o Operaciones la planificó. Y
+   * desde el 09/10, una que esperaba el permiso: salió, o faltan 10 días para armar.
+   */
   | "hab_pospuesta"
   /**
    * Novedad de un expediente de TAD: observado, permiso emitido, archivado. Los crea el

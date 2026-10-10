@@ -13,6 +13,10 @@
 // a la ficha obligaría a persistir el índice del paso, re-montar el driver y esperar la
 // data del otro lado. La continuidad se resuelve con el último paso de la bandeja, que
 // invita a abrir una obra — y el tour de la ficha arranca solo la primera vez que se abre.
+//
+// v2 (09/10): reescrito para el rediseño —grupos por de quién es la pelota, el botón del
+// paso en la fila, la ficha con una sola tarjeta de estado—. Subir la versión hace que a
+// todos les aparezca de nuevo una vez. Diagnóstico y borrador en docs/habilitaciones-recorrido.md.
 
 export type PasoTour = {
   /** Valor del atributo data-tour del elemento a resaltar. Sin ancla, el paso se saltea. */
@@ -30,218 +34,237 @@ export type PasoTour = {
 };
 
 /** Clave de localStorage. Versionada: subirla vuelve a mostrar el tour a todos. */
-export const TOUR_BANDEJA = "hab:tour-bandeja:v1";
-export const TOUR_FICHA = "hab:tour-ficha:v1";
+export const TOUR_BANDEJA = "hab:tour-bandeja:v2";
+export const TOUR_FICHA = "hab:tour-ficha:v2";
 
 export const PASOS_BANDEJA: PasoTour[] = [
   {
     ancla: "bandeja-header",
-    titulo: "Esta es tu cola de trabajo",
+    titulo: "Tu cola, ordenada por lo que hay que hacer",
     texto:
-      "Las obras aparecen acá solas cuando Comercial crea la orden en Odoo: no se da de alta nada a mano. " +
-      "Y está ordenada por <b>qué hay que hacer</b>, no por obra — cada grupo es una acción distinta, así que " +
-      "empezás por el de arriba y bajás.",
-    lado: "bottom",
-  },
-  // Los dos del triage se cuelgan del encabezado si ese día no hay obras nuevas: es la
-  // primera decisión del módulo, y antes quien entraba un día sin recién llegadas no la
-  // aprendía nunca.
-  {
-    ancla: "grupo-recien-llegadas",
-    anclaAlternativa: "bandeja-header",
-    titulo: "Lo primero de todo: ¿aplica o no aplica?",
-    texto:
-      "Toda obra nueva cae primero en <b>Recién llegadas</b> y no se mueve hasta que decidas.<br><br>" +
-      "<b>Aplica</b> significa que el cliente pide documentación: la obra entra a la cola con la nómina de " +
-      "ART ya cargada. Si la venta dice que llevamos técnico de Seguridad e Higiene, ese papel se suma solo.",
+      "Las obras aparecen solas cuando existe la OT en Odoo: acá no se da de alta nada.<br><br>" +
+      "Los grupos dicen <b>de quién es la pelota</b>: lo urgente, lo nuevo, lo que tenés que hacer vos, lo que " +
+      "espera al cliente y lo que espera el permiso. Arriba, cuántas hay en cada uno: tocá un número y te lleva.",
     lado: "bottom",
   },
   {
-    ancla: "grupo-recien-llegadas",
-    anclaAlternativa: "bandeja-header",
-    titulo: "\"No aplica\" habilita la obra en el acto",
+    ancla: "grupo-urgentes",
+    titulo: "Lo urgente va primero",
     texto:
-      "Es para las obras donde <b>no hay que mandarle nada a nadie</b>: el cliente no pide papeles. La obra " +
-      "queda <b>habilitada</b> y en <b>verde</b> ahí mismo, lista para armar.<br><br>" +
-      "Ojo con los botones de ese grupo: <b>sin casillas tildadas actúan sobre todas</b>. Si querés decidir " +
-      "sólo algunas, tildalas primero. Si te equivocaste, se trae de vuelta desde <b>No aplican</b>, al pie.",
+      "Obras que se arman en 3 días o menos, o cuya fecha ya pasó, y siguen sin habilitar. Le gana a todo: " +
+      "una obra nueva que se arma pasado mañana está acá, no en Nuevas.<br><br>" +
+      "Una obra aparece en <b>un solo grupo</b>, el más urgente que le corresponda: así los números sirven " +
+      "para decidir por dónde empezar.",
+    lado: "bottom",
+  },
+  {
+    ancla: "grupo-nuevas",
+    anclaAlternativa: "bandeja-header",
+    titulo: "Lo primero de cada obra: ¿pide papeles?",
+    texto:
+      "Toda obra nueva cae en <b>Nuevas</b> y no se mueve hasta que decidas.<br><br>" +
+      "<b>Aplica</b>: el cliente pide documentación. La obra pasa a la cola con la nómina de ART cargada, y si " +
+      "llevamos técnico de Seguridad e Higiene, ese papel se suma solo.<br>" +
+      "<b>No aplica</b>: no hay que mandarle nada a nadie. Queda <b>habilitada</b> en el acto.<br><br>" +
+      "Con las casillas resolvés varias juntas. Si te equivocás, el aviso de abajo trae <b>Deshacer</b>.",
     lado: "bottom",
   },
   {
     ancla: "fila-obra",
     titulo: "Qué te dice cada fila",
     texto:
-      "A la derecha, <b>qué falta y de quién es el próximo paso</b>. Si dice qué hacer —\"mandar Nómina ART\", " +
-      "\"habilitar\"— es tuyo; si dice \"el cliente revisa…\", es del cliente.<br><br>" +
-      "Los <b>días</b> cuentan desde que está así y se ponen en rojo cuando ya son demasiados: al día " +
-      "siguiente si es tuyo, a la semana si es del cliente. Abajo, cuántos requisitos están aprobados " +
-      "sobre el total.",
+      "En el medio, <b>el próximo paso</b> y hace cuánto está así. Los días se ponen en rojo cuando ya son " +
+      "demasiados: al día siguiente si el paso es tuyo, a la semana si espera al cliente.<br><br>" +
+      "Después, <b>cuándo se arma</b>: la primera jornada del tablero si ya está planificada, o la fecha " +
+      "programada. En rojo si faltan 3 días o menos.<br><br>" +
+      "Los carteles aparecen sólo si cambian algo: prioridad, desarme, SyH, papeles observados o una nota fijada.",
     lado: "bottom",
   },
   {
-    ancla: "grupos",
-    titulo: "Los grupos en rojo son los urgentes",
+    ancla: "accion-fila",
+    titulo: "El botón hace el paso",
     texto:
-      "Obras que se arman en 3 días o menos, o cuya fecha ya pasó y siguen sin habilitar. Son las que mirás primero.<br><br>" +
-      "Una obra aparece en <b>un solo grupo</b>, el más urgente que le corresponda. Si estuviera en dos, los números " +
-      "dejarían de servirte para decidir por dónde empezar.",
+      "<b>Marcar enviado</b>, <b>Aprobó</b>, <b>Habilitar</b>: lo que se resuelve en un clic se resuelve en la " +
+      "fila, sin abrir la obra. Ninguno manda mails: el correo lo mandás vos, acá queda la fecha.<br><br>" +
+      "Si te equivocaste, el aviso trae <b>Deshacer</b>. Habilitar es la excepción: le avisa a Operaciones que " +
+      "ya puede programar, así que primero te pregunta.<br><br>" +
+      "En <b>⋯</b> está lo demás: posponer, marcar que no aplica, ver la OT en Odoo.",
+    lado: "left",
+  },
+  {
+    ancla: "grupo-cliente",
+    titulo: "Esperando al cliente",
+    texto:
+      "Ya se le mandó todo y falta que apruebe. Los días cuentan desde el papel más viejo que sigue sin " +
+      "respuesta.<br><br>" +
+      "Pasada la semana aparece <b>Reclamar</b>: no manda nada, registra la fecha. Es lo que después te deja " +
+      "decir \"te lo pedí tres veces desde el 4 de agosto\".",
+    lado: "bottom",
+  },
+  {
+    ancla: "grupo-permiso",
+    titulo: "Las que esperan el permiso vuelven solas",
+    texto:
+      "Si el cliente pidió no armar sin el permiso emitido, mandar los papeles ahora no sirve: se vencen antes " +
+      "de que entre la cuadrilla.<br><br>" +
+      "Esas obras esperan acá, plegadas, y <b>vuelven solas</b> cuando la gestoría marca el permiso como " +
+      "emitido, o 10 días antes de armar. Te llega un aviso. No hace falta posponerlas.",
     lado: "top",
   },
   {
-    ancla: "no-aplican",
-    titulo: "Las descartadas quedan al pie",
+    ancla: "buscador",
+    titulo: "Para encontrar una obra, escribí",
     texto:
-      "Plegadas y sin sumar al total: no hay nada que hacer con ellas. Pero si marcaste una de más, entrás acá y " +
-      "la traés de vuelta a la cola.",
+      "Busca en todas las obras activas, también las pospuestas y las resueltas, por dirección, cliente, OT " +
+      "o venta. Mientras buscás se abre todo lo plegado: si la obra está, la ves.",
+    lado: "bottom",
+  },
+  {
+    ancla: "pospuestas",
+    titulo: "Las pospuestas",
+    texto:
+      "Para cuando falta mucho para la obra por otro motivo que el permiso. Vuelven solas en la fecha que " +
+      "elegiste, o antes si Operaciones la planifica, y te llega un aviso. <b>Reactivar</b> la trae ya.",
     lado: "top",
   },
   {
-    ancla: "bandeja-header",
+    ancla: "resueltas",
+    titulo: "Lo resuelto queda al pie",
+    texto:
+      "Las habilitadas y las que no aplican. No hay nada que hacer con ellas, pero si te apuraste se corrige " +
+      "desde acá.<br><br>" +
+      "<b>Revertir</b> te pide el motivo, porque Operaciones recibe un aviso urgente con ese texto: quizás ya " +
+      "la planificaron.",
+    lado: "top",
+  },
+  {
+    ancla: "boton-planificacion",
+    titulo: "Lo que viene en dos semanas",
+    texto:
+      "Las jornadas que Operaciones ya puso en el tablero, empezando por las que no están habilitadas. Es " +
+      "<b>sólo lectura</b>: planificar es de Operaciones.",
+    lado: "bottom",
+  },
+  {
+    ancla: "boton-ayuda",
     titulo: "Ahora entrá a una obra",
     texto:
-      "Abrí cualquiera de la lista y el recorrido sigue adentro, que es donde se trabaja de verdad.<br><br>" +
-      "Cuando quieras volver a ver esto, o leer la guía escrita, está en <b>¿Cómo funciona?</b>, acá arriba.",
+      "Abrí cualquiera de la lista: el recorrido sigue adentro.<br><br>" +
+      "Cuando quieras volver a ver esto, o leer la guía escrita, está en <b>¿Cómo funciona?</b>.",
     lado: "bottom",
   },
 ];
 
 export const PASOS_FICHA: PasoTour[] = [
   {
-    ancla: "veredicto",
-    titulo: "La respuesta, arriba de todo",
+    ancla: "estado",
+    titulo: "Lo que sigue, arriba de todo",
     texto:
-      "Si esta obra se puede armar y qué le falta. Es lo que pregunta Operaciones cuando llama, así que está " +
-      "primero.<br><br>" +
-      "Dice lo mismo que el tablero: en <b>verde</b> está resuelta; en <b>ámbar</b> falta algo que avisa pero " +
-      "no frena —la documentación nunca frena—; en <b>rojo</b> el tablero no deja confirmar, porque el " +
-      "cliente pidió esperar el permiso emitido.",
+      "Qué hay que hacer con esta obra, con su botón; cuándo se arma; y qué hace el tablero con ella.<br><br>" +
+      "La documentación <b>nunca frena</b> al tablero: avisa. Lo único que frena un armado es el permiso, " +
+      "cuando el cliente pidió esperarlo emitido.",
+    lado: "bottom",
+  },
+  {
+    ancla: "barra-triage",
+    titulo: "Primero: ¿pide papeles?",
+    texto:
+      "<b>No aplica</b> es cuando no hay que mandarle documentación a nadie, y deja la obra <b>habilitada</b> " +
+      "en el acto. Si después resulta que sí pedía, se deshace.",
     lado: "bottom",
   },
   {
     ancla: "boton-habilitar",
     titulo: "Habilitar es una decisión tuya",
     texto:
-      "El botón se prende cuando <b>todos</b> los requisitos están aprobados. Mientras falten, te dice cuántos.<br><br>" +
-      "No pasa solo: alguien lo decide, y queda registrado <b>quién y cuándo</b>. Al apretarlo, Operaciones " +
-      "recibe un aviso: desde ese momento la obra se puede programar.",
-    lado: "bottom",
-  },
-  {
-    ancla: "boton-habilitar",
-    titulo: "Y si el cliente autoriza sin los papeles",
-    texto:
-      "Pasa: te autoriza por teléfono y la documentación llega el lunes. Para eso está <b>habilitar por excepción</b>, " +
-      "que te pide escribir el motivo.<br><br>" +
-      "Existe a propósito. Un sistema que no admite lo que pasa en la realidad termina esquivado por afuera, y ahí " +
-      "sí no queda registro de nada.",
+      "Con todos los papeles aprobados aparece este botón. No pasa solo: alguien lo decide y queda " +
+      "registrado <b>quién y cuándo</b>. Operaciones recibe el aviso de que ya puede programar.",
     lado: "bottom",
   },
   {
     ancla: "boton-revertir",
     titulo: "Revertir, si te apuraste",
     texto:
-      "Vuelve la obra a la cola sin habilitar. Te pide el <b>motivo</b> porque Operaciones recibe un aviso " +
-      "urgente con ese texto: quizás ya la planificaron confiando en la habilitación.<br><br>" +
-      "Las jornadas no se borran del tablero: qué hacer con ellas lo decide quien planifica. Si después la " +
-      "volvés a habilitar, también les avisa.",
+      "La obra vuelve a la cola sin habilitar. Te pide el <b>motivo</b> porque Operaciones recibe un aviso " +
+      "urgente con ese texto. Las jornadas no se borran del tablero: lo decide quien planifica.",
     lado: "bottom",
   },
   {
-    ancla: "boton-consulta",
-    titulo: "Cuando primero hay que preguntar qué pide",
+    ancla: "mas-acciones",
+    titulo: "Lo que no es el paso de hoy",
     texto:
-      "Algunos clientes no dicen qué documentación quieren hasta que les preguntás. Este botón deja " +
-      "registrado que ya preguntaste: mientras no salga ningún papel, la pelota es del cliente.<br><br>" +
-      "Si mandás los papeles directamente, no hace falta: marcar un requisito como enviado ya pasa la pelota.",
+      "<b>Habilitar sin todos los papeles</b>: el cliente autorizó por teléfono y la documentación llega el " +
+      "lunes. Te pide el motivo. Existe a propósito: lo que no se puede registrar se termina haciendo por " +
+      "afuera, sin rastro.<br><br>" +
+      "También: posponer, registrar un reclamo, registrar que le consultaste qué pide, marcar que no aplica.",
     lado: "left",
-  },
-  {
-    ancla: "barra-triage",
-    titulo: "Acá también decidís si aplica",
-    texto:
-      "Lo mismo que en la bandeja pero para esta obra sola, y con la vuelta atrás siempre a mano.<br><br>" +
-      "Acordate: <b>no aplica</b> es cuando no hay que mandarle documentación a nadie, y deja la obra " +
-      "<b>habilitada</b> en el acto. Los requisitos, las notas y el historial no se borran.",
-    lado: "bottom",
-  },
-  {
-    ancla: "vencimiento",
-    titulo: "El vencimiento — esto es lo que más te va a servir",
-    texto:
-      "Muchas habilitaciones caducan: la nómina de ART vence, el seguro vence. Si la obra sigue armada " +
-      "cuando eso pasa, estás sin cobertura.<br><br>" +
-      "Cargá acá la fecha y, 30 días antes, la obra aparece en la bandeja en <b>Vencen en menos de 30 días</b>. " +
-      "No llega ningún aviso aparte: es la bandeja la que te lo muestra, así que sin la fecha cargada nadie " +
-      "se entera.",
-    lado: "top",
-  },
-  {
-    ancla: "paquetes",
-    titulo: "Los combos: no cargues los papeles a mano",
-    texto:
-      "Cada cliente pide una lista distinta, pero se repiten. Por eso hay <b>paquetes</b> ya armados: elegís " +
-      "uno y te crea todos los requisitos de una.<br><br>" +
-      "<b>Básico</b> es sólo la nómina de ART. <b>+ No repetición</b> le suma la cláusula. <b>+ SVO</b> agrega " +
-      "el SVO y el aviso de obra. <b>Completo</b> son los ocho, para los clientes más exigentes.<br><br>" +
-      "El paquete es un punto de partida, no una jaula: podés cambiarlo después. Si cambiás a otro, " +
-      "<b>no se borra</b> lo que ya mandaste ni lo que agregaste a mano.",
-    lado: "bottom",
   },
   {
     ancla: "requisitos",
     titulo: "Los papeles, uno por uno",
     texto:
-      "Cada requisito va <b>pendiente → enviado → aprobado</b>. Si el cliente rebota alguno, lo marcás " +
-      "<b>observado</b> y te pide el motivo: sin eso la fila se ve en rojo y no dice qué corregir, que es " +
-      "justamente lo que te obliga a volver a leer el mail.<br><br>" +
-      "Arriba tenés <b>marcar todo</b> y <b>aprobar todo</b>, porque normalmente mandás un mail con todo junto. " +
-      "Los botones de a uno siguen estando para cuando va de a uno, y deshacer una aprobación te pide " +
-      "confirmación.",
+      "Cada papel va <b>pendiente → enviado → aprobado</b>. Si el cliente rebota uno, marcalo <b>observado</b> " +
+      "con el motivo: así la fila dice qué corregir sin volver a leer el mail.<br><br>" +
+      "Arriba están los botones para mover todos juntos. Deshacer una aprobación te pide confirmación, y " +
+      "todo queda en el historial.",
     lado: "top",
   },
   {
-    ancla: "agregar-requisito",
-    titulo: "Y si el cliente pide algo que no está en el combo",
+    ancla: "contacto-papeles",
+    titulo: "A quién mandárselos",
     texto:
-      "Lo escribís acá con el nombre que quieras y listo — pasa a ser un requisito más de esta obra, con " +
-      "los mismos estados y los mismos botones.<br><br>" +
-      "Sirve para los pedidos raros: un formulario propio del consorcio, una constancia puntual. Los del " +
-      "paquete que ese cliente no pida, sacalos con el tacho: se puede mientras estén pendientes.",
+      "La persona de la obra que valida la documentación, cargada en la venta. Tocás el teléfono y llamás.",
+    lado: "bottom",
+  },
+  {
+    ancla: "paquetes",
+    titulo: "Los combos",
+    texto:
+      "<b>Básico</b> es la nómina de ART. <b>+ No repetición</b> suma la cláusula. <b>+ SVO</b> agrega el SVO y " +
+      "el aviso de obra. <b>Completo</b> son los ocho.<br><br>" +
+      "Cambiar de paquete <b>no borra</b> lo que ya mandaste ni lo que agregaste a mano.",
+    lado: "bottom",
+  },
+  {
+    ancla: "agregar-requisito",
+    titulo: "Lo que no está en el combo",
+    texto:
+      "Un formulario propio del consorcio, una constancia puntual: lo escribís y pasa a ser un papel más. Los " +
+      "que el cliente no pide, sacalos con el tacho mientras estén pendientes.",
+    lado: "top",
+  },
+  {
+    ancla: "vencimiento",
+    titulo: "El vencimiento",
+    texto:
+      "La nómina vence, el seguro vence. Con la fecha cargada, 30 días antes la obra vuelve a aparecer en la " +
+      "bandeja. No llega ningún aviso aparte: sin la fecha, nadie se entera.",
     lado: "top",
   },
   {
     ancla: "notas",
-    titulo: "Las notas: lo que no entra en ningún campo",
+    titulo: "Las notas",
     texto:
-      "\"El administrador atiende después de las 11\", \"la nómina la manda el contador, no el cliente\", " +
-      "\"pidieron mandar todo junto y no de a uno\".<br><br>" +
-      "Todo eso que hoy vive en tu cabeza o en un mail viejo, y que la próxima persona que agarre la obra " +
-      "no tiene forma de saber.<br><br>" +
-      "Es la conversación de los <b>papeles</b>: la de Operaciones con la obra va aparte, en el tablero, para " +
-      "que ninguna tape a la otra. El <b>chinche</b> deja la nota arriba y marca la obra en la bandeja.",
+      "Lo que no entra en ningún campo: las razones sociales y CUIT de la cláusula, \"el administrador " +
+      "atiende después de las 11\".<br><br>" +
+      "Es la conversación de los papeles; la de Operaciones va aparte, en el tablero. El <b>chinche</b> deja " +
+      "la nota arriba y la marca en la bandeja.",
     lado: "top",
   },
   {
     ancla: "permiso",
-    titulo: "El permiso es otro trámite",
+    titulo: "El permiso se lee acá, se corrige en Odoo",
     texto:
-      "Va por separado de la documentación y es lo único que puede frenar un armado.<br><br>" +
-      "Si lleva permiso y con qué se arma lo contesta <b>Comercial al cotizar</b>, y el trámite lo actualiza la " +
-      "gestoría de permisos. Acá se lee: si algo está mal, se corrige en la venta, en Odoo.<br><br>" +
-      "Si el cliente pidió esperar el permiso emitido, el tablero no deja confirmar la jornada; si va con " +
-      "número de expediente y no está cargado, pide un motivo. A los desarmes no los frena.",
+      "Si lleva permiso y con qué se arma lo carga Comercial al cotizar; el trámite y el expediente los " +
+      "actualiza la gestoría. Si algo está mal, se corrige en la venta, en Odoo.",
     lado: "left",
   },
   {
     ancla: "historial",
-    titulo: "Los botones sólo registran",
+    titulo: "El historial no se borra",
     texto:
-      "Ninguno manda mails. El correo lo mandás vos por fuera y acá marcás que lo hiciste. Lo único que sale " +
-      "solo es el aviso a Operaciones cuando habilitás o revertís.<br><br>" +
-      "Lo que aporta el sistema es la <b>fecha</b>: poder demostrar qué papel mandaste y cuándo. Por eso todo " +
-      "queda en el historial —también lo que se deshace o se quita— y no se puede borrar: un error se corrige " +
-      "agregando, no tapando.<br><br>" +
-      "Si querés el detalle completo, está en <b>¿Cómo funciona?</b> arriba.",
-    lado: "top",
+      "Qué papel se mandó y cuándo, cada reclamo, lo que se deshizo o se quitó. No se puede editar: un error " +
+      "se corrige agregando, no tapando.",
+    lado: "left",
   },
 ];

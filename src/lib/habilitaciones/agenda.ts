@@ -30,6 +30,12 @@ export type TarjetaAgenda = {
   tipo: string;
   urgencia: UrgenciaOt;
   cuadrilla: string | null;
+  /**
+   * Cuántas jornadas tiene la obra ese día. Dos cuadrillas en la misma obra el mismo día son
+   * UNA tarjeta ("Cuadrilla 5 + Cuadrilla 2 · 2 jornadas"): la pregunta del panel es qué
+   * obras vienen, no cuántas filas tiene el tablero.
+   */
+  jornadas: number;
   estado: EstadoAsignacion;
   /** Ya tiene parte: la jornada se cerró. */
   cerrada: boolean;
@@ -92,12 +98,27 @@ export function armarAgenda(payload: TableroPayload, bandeja: Bandeja | undefine
       tipo: ot.tipo,
       urgencia: (ot.urgencia === "alta" || ot.urgencia === "media" ? ot.urgencia : "baja") as UrgenciaOt,
       cuadrilla: a.cuadrillaId ? (cuadrillas.get(a.cuadrillaId) ?? null) : null,
+      jornadas: 1,
       estado: a.estado,
       cerrada: a.parteId !== null,
       fila,
       hab: estadoHab(fila, ot.habSemaforo),
     };
-    porDia.set(a.fecha, [...(porDia.get(a.fecha) ?? []), { tarjeta, orden: a.ordenDia }]);
+    const delDia = porDia.get(a.fecha) ?? [];
+    const misma = delDia.find((x) => x.tarjeta.otId === a.otId);
+    if (misma) {
+      // La misma obra otra vez ese día: se suma a la tarjeta que ya estaba.
+      const t = misma.tarjeta;
+      t.jornadas += 1;
+      if (tarjeta.cuadrilla && tarjeta.cuadrilla !== t.cuadrilla) {
+        t.cuadrilla = t.cuadrilla ? `${t.cuadrilla} + ${tarjeta.cuadrilla}` : tarjeta.cuadrilla;
+      }
+      // Confirmada si alguna lo está; cerrada sólo si todas tienen parte.
+      if (tarjeta.estado === "confirmada") t.estado = "confirmada";
+      t.cerrada = t.cerrada && tarjeta.cerrada;
+      continue;
+    }
+    porDia.set(a.fecha, [...delDia, { tarjeta, orden: a.ordenDia }]);
   }
 
   return [...porDia.entries()]

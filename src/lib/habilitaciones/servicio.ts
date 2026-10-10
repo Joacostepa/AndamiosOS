@@ -21,8 +21,8 @@ import {
   TABLA as TABLA_COMENTARIOS, borrarComentario, comentar, fijarComentario,
 } from "@/lib/comentarios-ot";
 import {
-  agruparBandeja, alertaDe, DIAS_DEDUP_CONSULTA, derivarInputs, esperaDe, hoyISO, semaforoHoy,
-  sumarDias, vueltaDePospuesta, type DatosEspera,
+  agruparBandeja, alertaDe, DIAS_DEDUP_CONSULTA, derivarInputs, esperaDe, esperaElPermiso,
+  fechaDeArmado, hoyISO, semaforoHoy, vueltaDePospuesta, type DatosEspera,
 } from "./derivacion";
 import type {
   Bandeja, EstadoRequisito, FichaHabilitacion, FilaBandeja, Gestion, InputsHabilitacion,
@@ -38,6 +38,17 @@ type DB = SupabaseClient;
 export class OperacionInvalida extends Error {}
 
 const BUCKET = "habilitaciones";
+
+/**
+ * MODO SÓLO LECTURA, para probar en local contra la base de producción.
+ *
+ * Abrir la bandeja o una ficha ESCRIBE: siembra las OTs nuevas, el requisito de SyH, mueve
+ * las pospuestas y manda avisos a la campanita y a Slack. Es lo que tiene que pasar en
+ * producción, pero no desde una prueba local con código sin publicar: Agustina vería obras
+ * moverse y le llegarían avisos de algo que todavía no existe. Con HAB_SOLO_LECTURA=1 en el
+ * entorno del servidor de desarrollo la lectura calcula todo igual y no escribe nada.
+ */
+const soloLectura = () => process.env.HAB_SOLO_LECTURA === "1";
 
 /** "2026-10-09T14:03:00+00:00" → "2026-10-09". Las cabeceras guardan timestamps. */
 const dia = (ts: string | null | undefined) => (ts ? String(ts).slice(0, 10) : null);
@@ -99,7 +110,7 @@ async function cabecerasDe(
   );
 
   const faltantes = otIds.filter((id) => !mapa.has(id));
-  if (faltantes.length > 0) {
+  if (faltantes.length > 0 && !soloLectura()) {
     const { data: creadas, error: e2 } = await db
       .from("hab_ots")
       .upsert(faltantes.map((odoo_ot_id) => ({ odoo_ot_id })), { onConflict: "odoo_ot_id" })
@@ -159,15 +170,13 @@ export async function fetchBandeja(db: DB): Promise<Bandeja> {
   const hoy = hoyISO();
   const [otsOdoo, requisitos, notas, jornadas, vueltas] = await Promise.all([
     fetchOtsActivas(),
-    db.from("hab_requisitos").select("odoo_ot_id, estado, nombre, fecha_envio, fecha_resolucion"),
+    db.from("hab_requisitos").select("id, odoo_ot_id, estado, nombre, fecha_envio, fecha_resolucion, orden").order("orden"),
     db.from(TABLA_COMENTARIOS).select("odoo_ot_id, texto").eq("ambito", "habilitacion").eq("fijada", true),
     // Para las pospuestas: si Operaciones planificó la obra, la vuelta se adelanta.
     primerasJornadas(hoy),
-    // Cuándo volvió cada obra a la cola por última vez: lo nuestro empieza a contar de
-    // nuevo ahí (ver esperaDe). Sólo lo reciente — una vuelta de hace cuatro meses ya
-    // quedó atrás del triage o de otra vuelta.
-    db.from("hab_gestiones").select("odoo_ot_id, created_at")
-      .eq("tipo", "posposicion").gte("created_at", sumarDias(hoy, -120)),
+    // Cuándo volvió cada obra a la cola por última vez —lo nuestro empieza a contar de
+    // nuevo ahí (ver esperaDe)— y cuántos reclamos lleva, para el botón de la fila.
+    db.from("hab_gestiones").select("odoo_ot_id, tipo, created_at").in("tipo", ["posposicion", "reclamo"]),
   ]);
   if (requisitos.error) throw new Error(requisitos.error.message);
   if (notas.error) throw new Error(notas.error.message);
@@ -177,7 +186,7 @@ export async function fetchBandeja(db: DB): Promise<Bandeja> {
   const { mapa: cabeceras, nuevas } = await cabecerasDe(db, otIds);
 
   const conteo = new Map<number, { total: number; aprobados: number; observados: number }>();
-  const reqsPorOt = new Map<number, DatosEspera["requisitos"]>();
+  const reqsPorOt = new Map<number, (DatosEspera["requisitos"][number] & { id: string })[]>();
   for (const r of requisitos.data ?? []) {
     const c = conteo.get(r.odoo_ot_id) ?? { total: 0, aprobados: 0, observados: 0 };
     c.total++;
@@ -188,7 +197,12 @@ export async function fetchBandeja(db: DB): Promise<Bandeja> {
   }
 
   const vueltaEl = new Map<number, string>();
+  const reclamos = new Map<number, number>();
   for (const g of vueltas.data ?? []) {
+    if (g.tipo === "reclamo") {
+      reclamos.set(g.odoo_ot_id, (reclamos.get(g.odoo_ot_id) ?? 0) + 1);
+      continue;
+    }
     const d = dia(g.created_at)!;
     if (d > (vueltaEl.get(g.odoo_ot_id) ?? "")) vueltaEl.set(g.odoo_ot_id, d);
   }
@@ -233,9 +247,13 @@ export async function fetchBandeja(db: DB): Promise<Bandeja> {
       syncEstado: cab?.sync_estado ?? "pendiente",
       modalidad: permiso.modalidad,
       tramite: permiso.tramite,
+      expedienteNro: permiso.expedienteNro,
+      expedienteFecha: permiso.expedienteFecha,
       tecnicoNombre: permiso.tecnicoNombre,
       trabajo,
       requisitos: conteo.get(ot.id) ?? { total: 0, aprobados: 0, observados: 0 },
+      reqs: (reqsPorOt.get(ot.id) ?? []).map((r) => ({ id: r.id, nombre: r.nombre, estado: r.estado })),
+      reclamos: reclamos.get(ot.id) ?? 0,
       notasFijadas: fijadas.get(ot.id) ?? [],
       url: urlOdooOt(ot.id),
     };
@@ -244,7 +262,7 @@ export async function fetchBandeja(db: DB): Promise<Bandeja> {
   // El aviso de OT nueva. Va acá y no en cabecerasDe porque el título ("Armado · S01933
   // · Granz SRL") sale de Odoo y sólo está armado a esta altura. Si falla, crearAlertas
   // loguea y sigue: la bandeja no se cae por una notificación.
-  if (nuevas.length > 0) {
+  if (nuevas.length > 0 && !soloLectura()) {
     const porId = new Map(filas.map((f) => [f.otId, f]));
     await crearAlertas(
       db,
@@ -272,12 +290,14 @@ export async function fetchBandeja(db: DB): Promise<Bandeja> {
   const yaTieneSyh = new Set(
     (requisitos.data ?? []).filter((r) => r.nombre === REQUISITO_SYH).map((r) => r.odoo_ot_id),
   );
-  await sembrarRequisitoSyh(
-    db,
-    filas
-      .filter((f) => f.trabajo.syhPresencial === true && f.triage === "aplica" && !yaTieneSyh.has(f.otId))
-      .map((f) => f.otId),
-  );
+  if (!soloLectura()) {
+    await sembrarRequisitoSyh(
+      db,
+      filas
+        .filter((f) => f.trabajo.syhPresencial === true && f.triage === "aplica" && !yaTieneSyh.has(f.otId))
+        .map((f) => f.otId),
+    );
+  }
 
   // Antes de agrupar: puede devolver obras a la cola, y la que vuelve tiene que caer en su
   // grupo en esta misma lectura, no en la próxima.
@@ -301,6 +321,8 @@ export async function fetchBandeja(db: DB): Promise<Bandeja> {
       hoy,
     );
   }
+
+  if (!soloLectura()) await avisarPermisos(db, filas, hoy);
 
   const grupos = agruparBandeja(filas.filter((f) => !f.pospuestaHasta), hoy);
   return {
@@ -391,7 +413,7 @@ export async function fetchFicha(db: DB, otId: number): Promise<FichaHabilitacio
   // una OT que todavía nadie vio es raro pero posible, y sin esto esa OT no avisaría
   // NUNCA: la cabecera ya existiría, así que ni la bandeja ni el barrido la contarían
   // como nueva y el aviso se perdería en silencio.
-  if (cabeceras.nuevas.length > 0) {
+  if (cabeceras.nuevas.length > 0 && !soloLectura()) {
     await crearAlertas(db, [
       {
         tipo: "ot_nueva",
@@ -459,6 +481,7 @@ export async function fetchFicha(db: DB, otId: number): Promise<FichaHabilitacio
     triage: cab?.triage ?? null,
     habilitadaEl: cab?.habilitada_el ?? null,
     habilitadaMotivo: cab?.habilitada_motivo ?? null,
+    habilitadaPor: cab?.habilitador?.nombre ?? null,
     syncEstado: cab?.sync_estado ?? "pendiente",
     syncError: cab?.sync_error ?? null,
     permiso: enOdoo.permiso,
@@ -566,6 +589,14 @@ export async function reactivar(db: DB, otId: number, autorId: string | null): P
  * Las escrituras van condicionadas al valor leído: dos lecturas de la bandeja en paralelo
  * no dejan dos veces "volvió a la bandeja" en el historial. Los avisos ya son idempotentes
  * por clave.
+ *
+ * Y UNA CUARTA, desde el 09/10: la pospuesta "porque lleva permiso" que ya entra en
+ * "Esperan el permiso" deja de estar pospuesta. Ese grupo hace solo lo que el posponer
+ * hacía a mano —esperar y volver—, y además vuelve cuando el permiso sale. Así las que
+ * estaban pospuestas antes del cambio pasan solas, y las que se pospongan así después
+ * también. No avisa: no hay nada que hacer con ellas todavía.
+ *
+ * En modo sólo lectura calcula lo mismo sobre las filas, sin escribir ni avisar.
  */
 async function resolverPospuestas(
   db: DB,
@@ -582,6 +613,7 @@ async function resolverPospuestas(
     cambio: Record<string, unknown>,
     gestion: string | null,
   ) {
+    if (soloLectura()) return;
     escrituras.push(
       (async () => {
         const { data, error } = await db
@@ -599,11 +631,27 @@ async function resolverPospuestas(
     );
   }
 
+  const sinPosponer = {
+    pospuesta_hasta: null, pospuesta_motivo: null, pospuesta_por: null,
+    pospuesta_el: null, pospuesta_aviso: null,
+  };
+
   for (const f of filas) {
     const cab = cabeceras.get(f.otId);
     if (!cab?.pospuesta_hasta) continue;
 
     const guardada = cab.pospuesta_hasta;
+
+    if (/permis/i.test(cab.pospuesta_motivo ?? "") && esperaElPermiso(f, hoy)) {
+      f.pospuestaHasta = null;
+      escribir(
+        f.otId,
+        guardada,
+        sinPosponer,
+        "Pasa a «Esperan el permiso»: vuelve sola cuando sale el permiso, o 10 días antes de armar",
+      );
+      continue;
+    }
     const vuelta = vueltaDePospuesta({
       hasta: guardada,
       fechaProgramada: f.fechaProgramada,
@@ -619,15 +667,7 @@ async function resolverPospuestas(
 
     if (vuelta.fecha <= hoy) {
       f.pospuestaHasta = null;
-      escribir(
-        f.otId,
-        guardada,
-        {
-          pospuesta_hasta: null, pospuesta_motivo: null, pospuesta_por: null,
-          pospuesta_el: null, pospuesta_aviso: null,
-        },
-        `Volvió a la bandeja — ${razon}`,
-      );
+      escribir(f.otId, guardada, sinPosponer, `Volvió a la bandeja — ${razon}`);
       alertas.push({
         tipo: "hab_pospuesta",
         clave: claveDe("hab_pospuesta", f.otId, `vuelve:${guardada}`),
@@ -666,6 +706,52 @@ async function resolverPospuestas(
   }
 
   await Promise.all(escrituras);
+  if (!soloLectura()) await crearAlertas(db, alertas);
+}
+
+/**
+ * Los avisos de "Esperan el permiso": ese grupo arranca plegado, así que cuando una obra
+ * sale de ahí alguien tiene que enterarse. Igual que con las pospuestas que vuelven.
+ *
+ * Dos razones, una vez cada una (la clave lo garantiza):
+ *   · salió el permiso → la gestoría escribió "emitido" en Odoo; hay que mandar los papeles.
+ *   · faltan 10 días para armar y el permiso no salió → hay que mandarlos igual, para no
+ *     descubrir el faltante el día que la cuadrilla llega. Una vez por fecha de armado.
+ *
+ * Se calcula en cada lectura y no hace falta guardar nada: lo que está en el grupo hoy
+ * sale de los datos de hoy.
+ */
+async function avisarPermisos(db: DB, filas: FilaBandeja[], hoy: string): Promise<void> {
+  const alertas: NuevaAlerta[] = [];
+  for (const f of filas) {
+    if (f.pospuestaHasta || f.triage !== "aplica" || f.habilitadaEl) continue;
+    if (f.modalidad !== "esperar_permiso" || !["armado", "ampliacion"].includes(f.tipo)) continue;
+    const enlace = `/habilitaciones/${f.otId}`;
+    if (f.tramite === "emitido") {
+      alertas.push({
+        tipo: "hab_pospuesta",
+        clave: claveDe("hab_pospuesta", f.otId, "permiso-emitido"),
+        titulo: `Salió el permiso — ${f.titulo}`,
+        descripcion: "Se arma con el permiso emitido y ya salió: hay que mandar los papeles.",
+        prioridad: "alta",
+        enlace,
+      });
+      continue;
+    }
+    const armado = fechaDeArmado(f);
+    // Sólo hacia adelante: una fecha que ya pasó es una obra atrasada, y eso ya lo dice el
+    // grupo de urgentes.
+    if (armado && armado >= hoy && !esperaElPermiso(f, hoy)) {
+      alertas.push({
+        tipo: "hab_pospuesta",
+        clave: claveDe("hab_pospuesta", f.otId, `permiso-a-10-dias:${armado}`),
+        titulo: `Volvió a la bandeja — ${f.titulo}`,
+        descripcion: `Se arma el ${fechaCorta(armado)} y el permiso todavía no salió: hay que mandar los papeles igual.`,
+        prioridad: "media",
+        enlace,
+      });
+    }
+  }
   await crearAlertas(db, alertas);
 }
 
@@ -764,7 +850,7 @@ export async function triar(
     .in("odoo_ot_id", otIds);
   if (error) throw new Error(error.message);
 
-  if (decision === "aplica") await sembrarPaqueteDefault(db, otIds);
+  const sembradas = decision === "aplica" ? await sembrarPaqueteDefault(db, otIds) : new Set<number>();
 
   // Volver a la cola NO borra los requisitos, las notas ni el historial: si la obra ya
   // había pasado por "aplica", vuelve al estado en que estaba. Deshacer una decisión no
@@ -773,7 +859,8 @@ export async function triar(
     otIds.map((odoo_ot_id) => ({
       odoo_ot_id,
       tipo: "triage" as const,
-      detalle: DETALLE_TRIAGE[decision],
+      // "Aplica" en una obra que ya tenía requisitos no crea nada: no decirlo.
+      detalle: decision === "aplica" && !sembradas.has(odoo_ot_id) ? "Aplica" : DETALLE_TRIAGE[decision],
       autor_id: autorId,
     })),
   );
@@ -786,28 +873,28 @@ export async function triar(
  * Cubre el 82% de las obras: para esas, configurar los requisitos es un clic y el
  * listado de la ficha no se toca nunca. El listado es maquinaria para el 18% restante.
  */
-async function sembrarPaqueteDefault(db: DB, otIds: number[]): Promise<void> {
+async function sembrarPaqueteDefault(db: DB, otIds: number[]): Promise<Set<number>> {
   const { data: paquete } = await db
     .from("hab_paquetes").select("requisitos").eq("es_default", true).maybeSingle();
   const nombres: string[] = paquete?.requisitos ?? ["Nómina ART"];
-  if (nombres.length === 0) return;
+  if (nombres.length === 0) return new Set();
 
   const { data: yaTienen, error } = await db
     .from("hab_requisitos").select("odoo_ot_id").in("odoo_ot_id", otIds);
   if (error) throw new Error(error.message);
   const conRequisitos = new Set((yaTienen ?? []).map((r) => r.odoo_ot_id));
 
-  const nuevos = otIds
-    .filter((id) => !conRequisitos.has(id))
-    .flatMap((odoo_ot_id) =>
-      nombres.map((nombre, i) => ({
-        odoo_ot_id, nombre, origen: "paquete" as const, orden: i * 10,
-      })),
-    );
-  if (nuevos.length === 0) return;
+  const sinRequisitos = otIds.filter((id) => !conRequisitos.has(id));
+  const nuevos = sinRequisitos.flatMap((odoo_ot_id) =>
+    nombres.map((nombre, i) => ({
+      odoo_ot_id, nombre, origen: "paquete" as const, orden: i * 10,
+    })),
+  );
+  if (nuevos.length === 0) return new Set();
 
   const { error: e2 } = await db.from("hab_requisitos").insert(nuevos);
   if (e2) throw new Error(e2.message);
+  return new Set(sinRequisitos);
 }
 
 /** Reemplaza los requisitos de origen `paquete`, respetando los agregados a mano. */

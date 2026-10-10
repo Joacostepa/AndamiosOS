@@ -18,7 +18,7 @@ import {
 export function BotonAyuda({ onRecorrido }: { onRecorrido: () => void }) {
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger render={<Button variant="outline" size="sm" />}>
+      <DropdownMenuTrigger render={<Button variant="outline" size="sm" data-tour="boton-ayuda" />}>
         <CircleQuestionMark className="mr-1.5 h-3.5 w-3.5" />
         ¿Cómo funciona?
       </DropdownMenuTrigger>

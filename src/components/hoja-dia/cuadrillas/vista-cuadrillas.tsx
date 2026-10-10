@@ -16,7 +16,8 @@ import {
   bandeja, cap, cola, cuadrillasActivas, cuadrillasConObras, diaSemana, esPasado, filasCamiones, hojaDe, hojaDeCuadrilla,
   nombreDe, patente, pendientesEnvio, persona, choferDelCamion, cNombre, type Boton, type ItemBandeja, type ModoPrecarga,
 } from "@/lib/hoja-dia/estado";
-import { cuadrillaDeTecla } from "@/lib/hoja-dia/vista-cuadrillas";
+import { cambiosTablero, cuadrillaDeTecla } from "@/lib/hoja-dia/vista-cuadrillas";
+import type { DiaHoja } from "@/lib/hoja-dia/tipos";
 import {
   useAccionHoja, useAccionPedido, useAccionViaje, useAhora, useAvisosHojaDia, useDeshacer, useEnviar, useHojaDia, usePrecarga,
 } from "@/hooks/use-hoja-dia";
@@ -208,6 +209,16 @@ export function VistaCuadrillas() {
     setMenu(null);
   }
 
+  // "Cambió el tablero": si entre dos lecturas del mismo día se movieron obras (el aviso en
+  // vivo del tablero refresca el día), se dice qué cambió hasta que lo den por visto.
+  const [diaPrevio, setDiaPrevio] = useState<DiaHoja | null>(null);
+  const [tablero, setTablero] = useState<{ fecha: string; lista: string[] } | null>(null);
+  if (dia && dia !== diaPrevio) {
+    setDiaPrevio(dia);
+    const cs = diaPrevio && diaPrevio.fecha === dia.fecha ? cambiosTablero(diaPrevio, dia) : [];
+    if (cs.length) setTablero({ fecha: dia.fecha, lista: [...(tablero?.fecha === dia.fecha ? tablero.lista : []), ...cs].slice(-6) });
+  }
+
   if (q.isError && !dia) {
     return (
       <div className="grid justify-items-start gap-3 rounded-xl border border-dashed p-8">
@@ -332,6 +343,14 @@ export function VistaCuadrillas() {
       </AccionesHoja>
 
       {linea}
+      {tablero?.fecha === fecha && !pasado && (
+        <div role="status" className="flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-[10px] border border-hd-ambar/55 bg-hd-ambar-bg py-1.5 pr-1.5 pl-3.5 text-[13px]">
+          <span className="min-w-0 flex-[1_1_260px] leading-snug">
+            <b className="font-semibold">Cambió el tablero:</b> {tablero.lista.join(" · ")}. Las hojas que ya se mandaron quedan «Cambiada después de enviar».
+          </span>
+          <Button variant="outline" size="sm" onClick={() => setTablero(null)}>Entendido</Button>
+        </div>
+      )}
       {pasado && hayHojas && (
         <div className="rounded-[10px] border bg-hd-card2 py-1.5 pr-2.5 pl-3.5 text-[13px] text-muted-foreground">
           <b className="font-semibold text-foreground">{cap(diaSemana(fecha))} {Number(fecha.slice(8))}: sólo lectura.</b> Lo que pasó lo dicen los partes y la asistencia.

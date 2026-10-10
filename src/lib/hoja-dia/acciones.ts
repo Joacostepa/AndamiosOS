@@ -58,6 +58,8 @@ export const accionHojaSchema = z.discriminatedUnion("accion", [
   z.object({ accion: z.literal("lleva"), fecha, cuadrilla: c, hora }),
   z.object({ accion: z.literal("busca"), fecha, cuadrilla: c, hora: hora.nullable() }),
   z.object({ accion: z.literal("mueve"), fecha, cuadrilla: c, otId: z.number().int().positive(), hora }),
+  /** Lo que lleva el "lleva" (material que va con la cuadrilla): sale en la lista de carga. */
+  z.object({ accion: z.literal("carga_lleva"), fecha, cuadrilla: c, carga: z.string().trim().max(300).nullable() }),
   z.object({ accion: z.literal("nota"), fecha, cuadrilla: c, nota: z.string().trim().max(500).nullable() }),
   z.object({ accion: z.literal("instrucciones"), fecha, otId: z.number().int().positive(), cuadrilla: c.nullable().optional(), horaInicio: hora.nullable().optional(), hoy: z.string().trim().max(500).nullable().optional(), chips: z.array(z.string().max(80)).max(20).optional() }),
   z.object({ accion: z.literal("copiar_como_hoy"), fecha, cuadrilla: c }),
@@ -409,6 +411,14 @@ async function accionHojaCon(g: Grabador, db: DB, userId: string, a: AccionHoja)
         orden: toMin(a.hora)!, hora: a.hora, noAntesDe: null, duracionMin: null, vuelta: false, vueltaCarga: null, carga: null, cargaDeposito: null, okTodoElDia: false,
       }));
       return listo(userId, `Mueve a la ${C(a.cuadrilla)} a ${lugar(dia, { otId: a.otId, lugarId: null, texto: null }).n} a las ${normHora(a.hora)}`, g, { ...base, hojaId: String(hoja.id), accion: a.accion });
+    }
+    case "carga_lleva": {
+      const hoja = await filaHoja(db, f, a.cuadrilla);
+      const ll = hoja ? (await viajesDeHoja(db, String(hoja.id))).find((v) => v.tipo === "lleva" && v.estado === "planeado") : null;
+      if (!hoja || !ll) throw new Error(`La ${C(a.cuadrilla)} no tiene un «lleva» por hacer.`);
+      const carga = a.carga || null;
+      await g.actualizar("hd_viajes", String(ll.id), { carga });
+      return listo(userId, carga ? `${C(a.cuadrilla)}: el lleva carga ${lowFirst(carga)}` : `${C(a.cuadrilla)}: el lleva va sin carga`, g, { ...base, hojaId: String(hoja.id), viajeId: String(ll.id), accion: a.accion });
     }
     case "nota": {
       const hoja = await asegurarHoja(g, db, f, a.cuadrilla, dia);

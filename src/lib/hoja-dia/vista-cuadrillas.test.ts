@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  chipsDe, cuadrillaDeTecla, horasLlevaTrae, instruccionesDe, materialDe, opcionesChofer, opcionesHasta, quienesVan,
+  cambiosTablero, chipsDe, cuadrillaDeTecla, horasLlevaTrae, instruccionesDe, materialDe, opcionesChofer, opcionesHasta, quienesVan,
   rangoAusencia, resumenChofer, sugerenciasAgregar, textoChofer, textoMover, textoNoDisponible, textoVehiculo, ultimoViernes,
 } from "./vista-cuadrillas.ts";
 import { martesArmado, martesVacio, MEDINA_ART } from "./escenario.test-fixture.ts";
@@ -92,4 +92,15 @@ test("instrucciones: la nota va primero", () => {
   assert.equal(instruccionesDe(d, 3).n, 0);
   const conNota = { ...d, hojas: d.hojas.map((h) => (h.cuadrillaOdooId === 3 ? { ...h, nota: "Llevar arnés" } : h)) };
   assert.deepEqual(instruccionesDe(conNota, 3), { n: 1, lineas: [{ k: "Nota:", t: "Llevar arnés" }] });
+});
+
+test("Cambió el tablero: dice qué obra entró, salió, cambió de cuadrilla o de orden", () => {
+  const a = martesArmado();
+  const cuba = a.obras.find((o) => o.corto === "Cuba 1980")!;
+  const d = { ...a, obras: [...a.obras.filter((o) => o.otId !== cuba.otId && o.corto !== "Av. San Juan 2840"), { ...cuba, cuadrillaOdooId: 4 }] };
+  const cs = cambiosTablero(a, d);
+  assert.ok(cs.includes("Cuba 1980 pasó de la Cuadrilla 2 a la Cuadrilla 4"), cs.join(" | "));
+  assert.ok(cs.includes("salió Av. San Juan 2840 de la Cuadrilla 5"), cs.join(" | "));
+  assert.deepEqual(cambiosTablero(a, a), []);
+  assert.deepEqual(cambiosTablero(a, { ...d, fecha: "2026-10-14" }), []);
 });

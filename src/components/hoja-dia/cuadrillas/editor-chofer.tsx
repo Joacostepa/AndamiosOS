@@ -6,7 +6,7 @@
 // Cada cambio es un gesto con Deshacer; lo que pasa con el encuentro y los viajes lo
 // decide el servidor con las mismas funciones de estado.ts (planModo, planSoltarChofer).
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { encTxt, hojaDeCuadrilla, obrasCon } from "@/lib/hoja-dia/estado";
 import { MODOS, horasLlevaTrae, opcionesChofer, opcionesVehiculo } from "@/lib/hoja-dia/vista-cuadrillas";
 import { useAccionHoja, useAccionViaje } from "@/hooks/use-hoja-dia";
@@ -115,7 +115,7 @@ export function EditorChofer({ ctl, c }: { ctl: Control; c: number }) {
               Vuelven por su cuenta
             </label>
           </div>
-          {lt.carga && <p className="text-xs text-muted-foreground">Lleva: {lt.carga}</p>}
+          {lt.hayLleva && <CargaLleva key={lt.carga ?? ""} c={c} carga={lt.carga} onGuardar={(carga) => hoja.mutate({ accion: "carga_lleva", fecha, cuadrilla: c, carga })} />}
           {ob.length > 1 && (
             <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-[13px]">
               {lt.mueve.map((m) => (
@@ -148,6 +148,33 @@ export function EditorChofer({ ctl, c }: { ctl: Control; c: number }) {
         <Button size="sm" variant="outline" onClick={cerrar}>Listo</Button>
       </div>
     </div>
+  );
+}
+
+/** "Lleva: 20 tablones y 2 escaleras": lo que va en el camión con la cuadrilla (sale en la lista de carga). Se guarda al salir o con Enter. */
+function CargaLleva({ c, carga, onGuardar }: { c: number; carga: string | null; onGuardar: (carga: string | null) => void }) {
+  const [texto, setTexto] = useState(carga ?? "");
+  const guardar = () => {
+    const t = texto.trim();
+    if (t !== (carga ?? "")) onGuardar(t || null);
+  };
+  return (
+    <label className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+      <span>Lleva</span>
+      <input
+        id={`carga-${c}`}
+        value={texto}
+        maxLength={300}
+        placeholder="material que va con la cuadrilla (opcional)"
+        onChange={(e) => setTexto(e.target.value)}
+        onBlur={guardar}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") { e.preventDefault(); guardar(); }
+          else if (e.key === "Escape" && texto !== (carga ?? "")) { e.stopPropagation(); setTexto(carga ?? ""); }
+        }}
+        className="h-7 min-w-0 flex-[1_1_220px] rounded-md border border-input bg-card px-1.5 text-[13px] text-foreground outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 max-md:h-10 max-md:text-[15px]"
+      />
+    </label>
   );
 }
 

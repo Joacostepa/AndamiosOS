@@ -62,9 +62,9 @@ export function resumenChofer(dia: DiaHoja, c: number): { k: string; resto: Troz
 }
 
 /** Las horas que muestra el editor de "Lleva y trae": la del lleva, la del busca (null = vuelven solos) y los mueve. */
-export function horasLlevaTrae(dia: DiaHoja, c: number): { lleva: string; busca: string | null; carga: string | null; mueve: { v: Viaje; dir: string; hora: string }[] } {
+export function horasLlevaTrae(dia: DiaHoja, c: number): { lleva: string; busca: string | null; carga: string | null; hayLleva: boolean; mueve: { v: Viaje; dir: string; hora: string }[] } {
   const h = hojaDeCuadrilla(dia, c);
-  if (!h) return { lleva: "", busca: null, carga: null, mueve: [] };
+  if (!h) return { lleva: "", busca: null, carga: null, hayLleva: false, mueve: [] };
   const ll = deTipo(dia, h, "lleva");
   const bu = deTipo(dia, h, "busca");
   const mueve = viajesDeHoja(dia, h).filter((v) => v.tipo === "mueve").map((v) => ({ v, dir: lugar(dia, v.hacia).n, hora: horaDeViaje(dia, v).replace(/^~/, "") }));
@@ -72,6 +72,7 @@ export function horasLlevaTrae(dia: DiaHoja, c: number): { lleva: string; busca:
     lleva: (ll ? horaDeViaje(dia, ll) : normHora(h.encuentro.hora) ?? "").replace(/^~/, ""),
     busca: bu ? horaDeViaje(dia, bu).replace(/^~/, "") : null,
     carga: ll?.carga ?? null,
+    hayLleva: !!ll && ll.estado === "planeado",
     mueve,
   };
 }
@@ -295,3 +296,24 @@ export const MODOS: [ModoChofer, string][] = [["sin", "Sin chofer"], ["lleva_tra
 export const recibe = (dia: DiaHoja, c: number) => recibeDe(dia, c);
 /** Texto del encuentro (re-export para la vista). */
 export const encuentroTxt = (dia: DiaHoja, c: number) => encTxt(dia, c);
+
+/**
+ * "Cambió el tablero" (§11): qué obras entraron, salieron, cambiaron de cuadrilla o de
+ * orden entre dos lecturas del MISMO día. Lo usa el aviso de Cuadrillas cuando el tablero
+ * se mueve con la hoja abierta (el aviso en vivo refresca el día; esto dice qué cambió).
+ */
+export function cambiosTablero(antes: Pick<DiaHoja, "fecha" | "obras" | "cuadrillas">, despues: Pick<DiaHoja, "fecha" | "obras" | "cuadrillas">): string[] {
+  if (antes.fecha !== despues.fecha) return [];
+  const C = (c: number) => despues.cuadrillas.find((x) => x.odooId === c)?.nombre ?? antes.cuadrillas.find((x) => x.odooId === c)?.nombre ?? `Cuadrilla ${c}`;
+  const a = new Map(antes.obras.map((o) => [o.otId, o]));
+  const d = new Map(despues.obras.map((o) => [o.otId, o]));
+  const out: string[] = [];
+  for (const [id, o] of d) {
+    const x = a.get(id);
+    if (!x) out.push(`entró ${o.corto} a la ${C(o.cuadrillaOdooId)}`);
+    else if (x.cuadrillaOdooId !== o.cuadrillaOdooId) out.push(`${o.corto} pasó de la ${C(x.cuadrillaOdooId)} a la ${C(o.cuadrillaOdooId)}`);
+    else if (x.ordenDia !== o.ordenDia) out.push(`${o.corto} cambió de orden en la ${C(o.cuadrillaOdooId)}`);
+  }
+  for (const [id, x] of a) if (!d.has(id)) out.push(`salió ${x.corto} de la ${C(x.cuadrillaOdooId)}`);
+  return out;
+}

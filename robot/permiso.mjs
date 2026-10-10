@@ -6,7 +6,8 @@
 //     digital no queda en el texto, pero el GCBA genera el PDF al firmar: CreationDate del
 //     documento (p. ej. D:20260909163648-03'00' → 2026-09-09).
 //   - Vence: "hasta el día 24 de febrero de 2027, inclusive" o, en resoluciones más viejas,
-//     "hasta las 24 horas del día 30 de diciembre de 2026". Puede ser MENOR a lo pedido en
+//     "hasta las 24 horas del día 30 de diciembre de 2026". Desde el 18/09: "por el término de
+//     6 meses" desde la suscripción, sin fecha (se cuenta desde la firma). Puede ser MENOR a lo pedido en
 //     la carátula (se pidió 09/03/2027 en un caso y salió hasta 24/02/2027).
 import { extractText, getDocumentProxy } from "unpdf";
 
@@ -26,7 +27,18 @@ export async function parsearPermiso(buffer) {
   // "de 2027" o "del 2026": las dos formas aparecen en resoluciones reales.
   const h = plano.match(/hasta [^.;]{0,40}?(\d{1,2}) de ([a-záéíóú]+) del? (\d{4})/i);
   const mes = h ? MESES.indexOf(h[2].toLowerCase().replace("setiembre", "septiembre")) : -1;
-  const vence = h && mes >= 0 ? `${h[3]}-${p2(mes + 1)}-${p2(h[1])}` : null;
+  let vence = h && mes >= 0 ? `${h[3]}-${p2(mes + 1)}-${p2(h[1])}` : null;
+
+  // Las resoluciones desde el 18/09 no traen fecha de fin: "a partir de la suscripción de la
+  // presente y por el término de 6 meses". Se cuenta desde la firma (emitido_el). Ojo: el "hasta
+  // las 12:00 horas del día 30-06-2027" de esas resoluciones es el SEGURO, no el permiso.
+  const t = plano.match(/por el t[eé]rmino de (\d{1,3}) ?\(?[a-záéíóú]*\)? ?(meses|mes|d[ií]as)/i);
+  if (!vence && t && emitido_el) {
+    const d = new Date(`${emitido_el}T12:00:00Z`);
+    if (/^d/i.test(t[2])) d.setUTCDate(d.getUTCDate() + Number(t[1]));
+    else d.setUTCMonth(d.getUTCMonth() + Number(t[1]));
+    vence = d.toISOString().slice(0, 10);
+  }
 
   return { emitido_el, vence };
 }

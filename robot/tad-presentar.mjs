@@ -981,10 +981,15 @@ export async function frenarPresentacion({ db, tarea, log, avisar, e, transitori
   };
 
   const caido = "TAD tiene caído el servicio de documentos («No se pudo establecer comunicación con el servicio»): es una falla de TAD, no del borrador; no borrarlo. ";
-  const msg = `${e?.tad_caido && !e?.confirmado ? caido : ""}${e?.message ?? String(e)}`.slice(0, 700);
   const borrador = e?.borrador ?? p.continuar_borrador ?? null;
-  const resultado = { capturas: e?.capturas ?? [], borrador, borrador_borrado: e?.borrador_borrado ?? null, adjuntados: e?.adjuntados ?? 0, confirmado: !!e?.confirmado, tad_caido: !!e?.tad_caido };
-  const deTad = transitorio || e instanceof TadNoCarga || !!e?.tad_caido;
+  // Un borrador que TAD reabre sin mostrar sus documentos no se arregla reintentando: desde el 15/09
+  // funcionó 0 de 8 veces (S02437 y S02597, 09/10, se reintentaban 16 veces diciendo "no hace falta
+  // tocar nada"). Se frena y la ficha ofrece empezar de cero.
+  const noAbre = e instanceof TadNoCarga && /documentos del borrador/i.test(e?.message ?? "") && !!p.continuar_borrador;
+  const noAbreTexto = `TAD no muestra los documentos del borrador ${borrador}: reabrir un borrador no viene funcionando (0 de 8 desde el 15/09). Empezá de cero desde la ficha. `;
+  const msg = `${noAbre ? noAbreTexto : ""}${e?.tad_caido && !e?.confirmado ? caido : ""}${e?.message ?? String(e)}`.slice(0, 700);
+  const resultado = { capturas: e?.capturas ?? [], borrador, borrador_borrado: e?.borrador_borrado ?? null, adjuntados: e?.adjuntados ?? 0, confirmado: !!e?.confirmado, tad_caido: !!e?.tad_caido, borrador_no_abre: noAbre };
+  const deTad = !noAbre && (transitorio || e instanceof TadNoCarga || !!e?.tad_caido);
   const intento = (p.reintento ?? 0) + 1;
   log("!! TAD presentar", msg);
 
@@ -1012,7 +1017,7 @@ export async function frenarPresentacion({ db, tarea, log, avisar, e, transitori
   const cartel = e?.confirmado
     ? "Se tocó «Confirmar trámite»: revisar en TAD si salió el expediente antes de volver a pedirla. "
     : e?.adjuntados
-      ? `Quedaron ${e.adjuntados} adjuntos en el borrador ${borrador} (cada uno es un IF oficial): seguir desde ese borrador, no volver a presentar de cero. `
+      ? `Quedaron ${e.adjuntados} adjuntos en el borrador ${borrador} (cada uno es un IF oficial). Reabrir un borrador no viene funcionando: lo que anda es empezar de cero desde la ficha. `
       : "";
   await db.from("pvp_tareas").update({ estado: "error", reintentar_desde: null, error: `${agotado}${msg}`.slice(0, 700), terminada_at: ahora.toISOString(), resultado }).eq("id", tarea.id);
   if (!p.es_prueba) await db.from("pvp_tramites").update({ estado: "trabado", updated_at: ahora.toISOString() }).eq("id", tarea.tramite_id);

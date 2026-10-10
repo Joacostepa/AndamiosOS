@@ -241,6 +241,9 @@ async function bajarPermiso(page, numero) {
 }
 
 /** Fechas de un permiso que ya está en el bucket (los bajados antes de leerlas). No entra a TAD. */
+/** Permisos guardados que ya se releyeron desde el bucket en este arranque del robot. */
+const permisosReleidos = new Set();
+
 async function fechasDelBucket(exp) {
   const { data, error } = await db.storage.from(BUCKET).download(exp.permiso_path);
   if (error) throw new Error(`No se pudo leer el permiso guardado: ${error.message}`);
@@ -504,7 +507,10 @@ async function vincularPresentaciones(porNumero) {
     const candidatos = [...porNumero.values()].filter((e) =>
       !e.historico && e.solapa === "en_curso" && !tomados.has(e.id) && e.creado_tad >= desde && e.seccion && smp(e.seccion, e.manzana, e.parcela) === obra);
     if (candidatos.length > 1) {
-      avisos.push({ tipo: "permiso_robot", clave: `permiso_robot:tramite:${t.id}:presentado_varios`, titulo: `Elegir el expediente — ${t.direccion}`, descripcion: `Se presentó sin número y aparecieron ${candidatos.length} expedientes de esa parcela: ${candidatos.map((c) => `EX-${c.numero}`).join(", ")}. Vincularlo a mano.`, prioridad: "media", enlace: `/permisos-via-publica/tramites/${t.id}` });
+      // El link va a un expediente candidato y no al trámite: la venta se vincula desde la ficha
+      // del expediente, y al vincularla el trámite de esa venta se ata solo.
+      const venta = t.odoo_venta_nombre ? `la venta ${t.odoo_venta_nombre}` : "la venta";
+      avisos.push({ tipo: "permiso_robot", clave: `permiso_robot:tramite:${t.id}:presentado_varios`, titulo: `Elegir el expediente — ${t.direccion}`, descripcion: `Se presentó sin número y aparecieron ${candidatos.length} expedientes de esa parcela: ${candidatos.map((c) => `EX-${c.numero}`).join(", ")}. Abrí el que corresponda y vinculá ahí ${venta}: el trámite se ata solo.`, prioridad: "media", enlace: `/permisos-via-publica/${candidatos[0].id}` });
     }
     if (candidatos.length !== 1) continue;
 
@@ -641,7 +647,12 @@ async function revisar(page) {
   for (const exp of porNumero.values()) {
     if (exp.historico) continue;
     if (exp.permiso_path) {
-      if (!exp.permiso_emitido_el) await fechasDelBucket(exp).catch((e) => log("!! fechas del permiso", exp.numero, e.message));
+      // Sin fecha de firma o sin vencimiento (las resoluciones de "por el término de 6 meses" quedaron
+      // sin leer hasta el 09/10): se relee el PDF guardado una vez por arranque del robot.
+      if ((!exp.permiso_emitido_el || !exp.permiso_vence) && !permisosReleidos.has(exp.numero)) {
+        permisosReleidos.add(exp.numero);
+        await fechasDelBucket(exp).catch((e) => log("!! fechas del permiso", exp.numero, e.message));
+      }
       continue;
     }
     const emitido = exp.estado_tad === "TRAMITACION" || exp.solapa === "finalizado";

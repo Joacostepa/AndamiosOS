@@ -577,7 +577,8 @@ DECLARE
   v_intento pan_kiosco_intentos%ROWTYPE;
   v_disp    TEXT := COALESCE(NULLIF(BTRIM(p_dispositivo), ''), 'sin-dispositivo');
 BEGIN
-  IF v_nivel NOT IN ('kiosco', 'encargado') THEN
+  -- IS NULL primero: NULL NOT IN (…) da NULL y el IF no frenaría a quien no tiene el pañol.
+  IF v_nivel IS NULL OR v_nivel NOT IN ('kiosco', 'encargado') THEN
     RAISE EXCEPTION 'Este usuario no puede registrar movimientos del pañol.';
   END IF;
 
@@ -644,7 +645,8 @@ DECLARE
   v_nivel TEXT := pan_nivel();
   v_s     pan_sesiones%ROWTYPE;
 BEGIN
-  IF v_nivel NOT IN ('kiosco', 'encargado') THEN
+  -- IS NULL primero: NULL NOT IN (…) da NULL y el IF no frenaría a quien no tiene el pañol.
+  IF v_nivel IS NULL OR v_nivel NOT IN ('kiosco', 'encargado') THEN
     RAISE EXCEPTION 'Este usuario no puede registrar movimientos del pañol.';
   END IF;
 
@@ -979,7 +981,7 @@ DECLARE
   v_numero  TEXT;
   v_salida  JSONB := '[]'::jsonb;
 BEGIN
-  IF pan_nivel() <> 'encargado' THEN RAISE EXCEPTION 'SOLO_ENCARGADO'; END IF;
+  IF pan_nivel() IS DISTINCT FROM 'encargado' THEN RAISE EXCEPTION 'SOLO_ENCARGADO'; END IF;
   IF v_prefijo !~ '^[A-Z]{1,3}$' THEN RAISE EXCEPTION 'El prefijo son 1 a 3 letras.'; END IF;
   IF v_n < 1 OR v_n > 200 THEN RAISE EXCEPTION 'Entre 1 y 200 unidades.'; END IF;
 
@@ -1024,7 +1026,7 @@ RETURNS TEXT
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public
 AS $$
 BEGIN
-  IF pan_nivel() <> 'encargado' THEN RAISE EXCEPTION 'SOLO_ENCARGADO'; END IF;
+  IF pan_nivel() IS DISTINCT FROM 'encargado' THEN RAISE EXCEPTION 'SOLO_ENCARGADO'; END IF;
   IF p_reimprimir THEN
     UPDATE pan_codigos SET activo = false, anulado_at = now(), anulado_por = auth.uid()
     WHERE tipo = p_tipo AND entidad_id = p_entidad AND activo;
@@ -1042,7 +1044,7 @@ DECLARE
   v_pin TEXT;
   v_intentos INTEGER := 0;
 BEGIN
-  IF pan_nivel() <> 'encargado' THEN RAISE EXCEPTION 'SOLO_ENCARGADO'; END IF;
+  IF pan_nivel() IS DISTINCT FROM 'encargado' THEN RAISE EXCEPTION 'SOLO_ENCARGADO'; END IF;
   IF p_persona_tipo NOT IN ('persona', 'externa') THEN RAISE EXCEPTION 'Tipo de persona inválido.'; END IF;
   LOOP
     v_intentos := v_intentos + 1;
@@ -1284,6 +1286,21 @@ BEGIN
 END;
 $$;
 
+-- Las etiquetas que se descargaron: "Etiquetas › Sólo las nuevas" deja de ofrecerlas.
+CREATE OR REPLACE FUNCTION pan_marcar_impresos(p_codigos TEXT[])
+RETURNS INTEGER
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE v_n INTEGER;
+BEGIN
+  IF pan_nivel() IS DISTINCT FROM 'encargado' THEN RAISE EXCEPTION 'SOLO_ENCARGADO'; END IF;
+  UPDATE pan_codigos SET impreso_at = now()
+  WHERE codigo = ANY(p_codigos) AND activo AND impreso_at IS NULL;
+  GET DIAGNOSTICS v_n = ROW_COUNT;
+  RETURN v_n;
+END;
+$$;
+
 -- ============================================================
 -- RLS: se lee todo con acceso al pañol; se escribe por RPC.
 -- El catálogo lo editan los encargados; los parámetros, un admin.
@@ -1352,7 +1369,8 @@ BEGIN
     'pan_deshacer_vale(uuid)', 'pan_anular(uuid, text, text)', 'pan_alta_unidades(jsonb)',
     'pan_codigo(text, uuid, boolean)', 'pan_generar_pin(text, uuid)', 'pan_credenciales_estado()',
     'pan_conteo_abrir(uuid, text)', 'pan_conteo_cargar(uuid, jsonb, text)', 'pan_conteo_cerrar(uuid, text)',
-    'pan_conteo_resolver(uuid, boolean, text, text)', 'pan_resolver_codigo(text)', 'pan_subarbol(uuid)']
+    'pan_conteo_resolver(uuid, boolean, text, text)', 'pan_resolver_codigo(text)', 'pan_subarbol(uuid)',
+    'pan_marcar_impresos(text[])']
   LOOP
     EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC, anon', f);
     EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO authenticated', f);

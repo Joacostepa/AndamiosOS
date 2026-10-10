@@ -4,6 +4,20 @@ Gestión de los permisos y la documentación que hacen falta para poder armar un
 
 Reemplaza la planilla `Seguimiento de obras (DOCS TRACKER)`.
 
+> **Este es el diseño original (18/08) y quedó atrás en varias cosas.** La verdad es el
+> código. Lo que cambió después y no se lee acá:
+> - habilitar es una decisión explícita (migración `20260831000001`);
+> - la modalidad de permiso se carga al cotizar y el candado ya no se la pide a Operaciones;
+> - posponer, panel de planificación, SyH, revertir y los hilos de comentarios separados;
+> - **09/10**: los días, la urgencia y el semáforo vencido los calcula la app con el día de
+>   hoy (los `x_hab_*` de Odoo se congelan), cada fila dice qué falta y de quién es la
+>   pelota, y todo cambio de requisitos queda en el historial.
+>
+> Revisión y prueba del módulo del 09/10: `docs/habilitaciones-rediseno.md` (propuesta de
+> rediseño), `docs/habilitaciones-inventario.md` (cada acción y qué hace),
+> `docs/habilitaciones-errores.md` y `docs/habilitaciones-recorrido.md` (borrador del
+> recorrido guiado completo).
+
 ---
 
 ## Lo que este módulo REEMPLAZA

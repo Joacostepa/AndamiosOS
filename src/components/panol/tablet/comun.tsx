@@ -9,6 +9,7 @@ import Link from "next/link";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { Delete, ShieldAlert } from "lucide-react";
+import { toast } from "sonner";
 import { Escaner } from "@/components/panol/escaner";
 import { useKiosco } from "@/components/panol/kiosco/sesion";
 import { Chip, type TonoChip } from "@/components/permisos-via-publica/ui";
@@ -32,11 +33,13 @@ export function ChipGrande({ tono = "neutro", children }: { tono?: TonoChip; chi
 
 // ─── Encabezado ─────────────────────────────────────────────────────────────
 
-export function CabeceraTablet({ titulo, icono, quien, rol = "a cargo", children }: {
+export function CabeceraTablet({ titulo, icono, quien, rol = "a cargo", textoSalir = "Salir", children }: {
   titulo: string;
   icono: ReactNode;
   quien?: string | null;
   rol?: string;
+  /** En las pantallas que mantienen la sesión: "Terminar y salir", bien a la vista. */
+  textoSalir?: string;
   children?: ReactNode;
 }) {
   const { salir, identidad } = useKiosco();
@@ -58,7 +61,7 @@ export function CabeceraTablet({ titulo, icono, quien, rol = "a cargo", children
         {children}
         <Link href="/kiosco" className={BOTON_SECUNDARIO}>Kiosco</Link>
         {identidad && (
-          <button type="button" onClick={salir} className={BOTON_SECUNDARIO}>Salir</button>
+          <button type="button" onClick={salir} className={BOTON_SECUNDARIO}>{textoSalir}</button>
         )}
       </div>
     </header>
@@ -74,6 +77,23 @@ export function useEncargadoKiosco(): { identidad: Identidad | null; puede: bool
 }
 
 export function SinEncargado({ identidad }: { identidad: Identidad | null }) {
+  const { salir } = useKiosco();
+  // Encargado que entró con la credencial sola: lo de encargado pide el PIN (alguien pudo
+  // haber levantado su credencial).
+  if (identidad?.encargadoSinPin) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-5 px-6 py-16 text-center">
+        <ShieldAlert aria-hidden className="size-14 text-muted-foreground" />
+        <div>
+          <h1 className="text-3xl font-bold">Entrá con tu PIN para hacer esto</h1>
+          <p className="mx-auto mt-2 max-w-xl text-lg text-muted-foreground">
+            {identidad.nombre}: entraste con la credencial. Lo que hace alguien a cargo del pañol pide tu PIN.
+          </p>
+        </div>
+        <button type="button" onClick={salir} className={BOTON_PRIMARIO}>Entrar con mi PIN</button>
+      </div>
+    );
+  }
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-5 px-6 py-16 text-center">
       <ShieldAlert aria-hidden className="size-14 text-muted-foreground" />
@@ -88,6 +108,34 @@ export function SinEncargado({ identidad }: { identidad: Identidad | null }) {
       <Link href="/kiosco" className={BOTON_SECUNDARIO}>Ir al kiosco</Link>
     </div>
   );
+}
+
+/**
+ * Red de seguridad para las pantallas que mantienen la sesión (useMantenerSesion): si el
+ * encargado se va y deja la tablet, a los 10 minutos sin un toque, una tecla ni un escaneo
+ * se cierra igual. Lo cargado no se pierde (el conteo se retoma).
+ */
+export function useCorteSeguridad(minutos = 10) {
+  const { identidad, salir } = useKiosco();
+  useEffect(() => {
+    if (!identidad) return;
+    let ultimo = Date.now();
+    const marcar = () => {
+      ultimo = Date.now();
+    };
+    const eventos = ["pointerdown", "keydown", "panol:escaneo"] as const;
+    for (const e of eventos) window.addEventListener(e, marcar);
+    const reloj = window.setInterval(() => {
+      if (Date.now() - ultimo > minutos * 60_000) {
+        salir();
+        toast.message("Pasaron 10 minutos sin uso: se cerró la sesión. Lo cargado quedó guardado.");
+      }
+    }, 5_000);
+    return () => {
+      for (const e of eventos) window.removeEventListener(e, marcar);
+      window.clearInterval(reloj);
+    };
+  }, [identidad, salir, minutos]);
 }
 
 // ─── Lector de códigos ──────────────────────────────────────────────────────

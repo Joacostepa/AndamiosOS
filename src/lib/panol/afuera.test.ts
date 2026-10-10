@@ -75,15 +75,23 @@ test("la amoladora de Diego aparece una sola vez (no se suma su saldo)", () => {
   assert.equal(diego.granel.length, 0);
 });
 
-test("vencida sólo para préstamos a personas; la cuadrilla no tiene fecha", () => {
-  const g = agruparAfuera(fuentes(), HOY);
+test("vencida: préstamo a persona pasado, o cuadrilla con «vuelve hoy» que no volvió", () => {
+  const base = fuentes();
+  const f = { ...base, unidades: [...base.unidades, unidad("al-7", "amoladora", `c:${C}`)] }; // de la cuadrilla, sin fecha
+  const g = agruparAfuera(f, HOY);
   const diego = g.find((x) => x.lugar === `p:${P}`)!.maquinas[0];
   assert.equal(diego.vencida, true);
   assert.equal(diego.diasVencida, 4);
-  const cabo = g[0].maquinas.find((i) => i.numero === "CV-1")!;
-  assert.equal(cabo.vencida, false);
-  assert.equal(cabo.venceEl, null);
+  assert.equal(diego.vueltaDelDia, false);
+  const cabo = g[0].maquinas.find((i) => i.numero === "CV-1")!; // salió con "vuelve hoy" el 01/10
+  assert.equal(cabo.vencida, true);
+  assert.equal(cabo.vueltaDelDia, true);
   assert.equal(cabo.noUsar, true);
+  const al = g[0].maquinas.find((i) => i.numero === "AL-7")!;
+  assert.equal(al.vencida, false);
+  assert.equal(al.venceEl, null);
+  assert.equal(senalItem({ ...cabo, noUsar: false, diasVencida: 1 }, HOY, 15).texto, "No volvió hoy");
+  assert.equal(senalItem({ ...cabo, noUsar: false, vencida: false }, HOY, 15).texto, "Vuelve hoy");
 });
 
 test("un faltante queda con quien lo tenía; el del pañol y el granel, sin titular", () => {
@@ -102,12 +110,11 @@ test("filtros y cuentas", () => {
   assert.deepEqual(filtrarAfuera(g, "personas").map((x) => x.lugar), [`p:${P}`]);
   assert.deepEqual(filtrarAfuera(g, "cuadrillas").map((x) => x.lugar), [`c:${C}`]);
   const venc = filtrarAfuera(g, "vencidas");
-  assert.equal(venc.length, 1);
-  assert.equal(venc[0].maquinas[0].numero, "H-014");
+  assert.deepEqual(venc.map((x) => x.maquinas.map((i) => i.numero)), [["CV-1"], ["H-014"]]);
   const falt = filtrarAfuera(g, "faltantes");
   assert.deepEqual(falt.map((x) => x.maquinas.length + x.granel.length), [1, 2]);
   assert.deepEqual(filtrarAfuera(g, "todo", `c:${C}`).map((x) => x.lugar), [`c:${C}`]);
-  assert.deepEqual(contarAfuera(g), { items: 6, vencidas: 1, faltantes: 3, noUsar: 1 });
+  assert.deepEqual(contarAfuera(g), { items: 6, vencidas: 2, faltantes: 3, noUsar: 1 });
 });
 
 test("nombreDeLugar y la señal de cada fila", () => {

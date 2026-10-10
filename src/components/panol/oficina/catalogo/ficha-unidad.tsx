@@ -152,7 +152,21 @@ export function DialogoGestion({
   );
 }
 
-/** Qué gestiones tienen sentido en cada estado (la base igual valida). */
+/** Fecha de Buenos Aires (YYYY-MM-DD) de un instante: la misma cuenta que la bandeja. */
+const fechaBA = (iso: string) => hoyBA(new Date(iso));
+
+/** Desde qué fecha un faltante se puede pasar a pérdida (la misma regla que la bandeja). */
+export function perdidaDesde(u: Unidad, diasParametro: number): string {
+  const d = new Date(fechaBA(u.desde_at) + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + diasParametro);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Qué gestiones tienen sentido en cada estado (la base igual valida). A pérdida se pasa
+ * SÓLO desde faltante: lo que está afuera primero se marca faltante, y espera el plazo del
+ * parámetro (faltante_perdida_dias) para que alguien lo busque.
+ */
 export function gestionesPosibles(u: Unidad): MovGestion[] {
   const enPanol = u.lugar.startsWith("u:");
   const g: MovGestion[] = [];
@@ -160,7 +174,7 @@ export function gestionesPosibles(u: Unidad): MovGestion[] {
   if (u.lugar === "taller") g.push("taller_vuelta");
   if (enPanol) g.push("revision", "taller_envio");
   if (!["faltante", "perdida", "baja"].includes(u.estado)) g.push("faltante");
-  if (!["perdida", "baja"].includes(u.estado)) g.push("perdida");
+  if (u.estado === "faltante") g.push("perdida");
   if (u.estado !== "baja") g.push("baja");
   return g;
 }
@@ -189,7 +203,7 @@ export function TarjetaUnidad({
   const parametros = useParametrosPanol();
   const hoy = hoyBA();
   const na = noApta(articulo.seguridad_critica, u.proxima_inspeccion, hoy);
-  const dias = diasEntre(u.desde_at, hoy);
+  const dias = diasEntre(fechaBA(u.desde_at), hoy);
   const desde = dias <= 0 ? "desde hoy" : dias === 1 ? "desde ayer" : `desde hace ${dias} días`;
   const motivo = ultimo?.motivo;
 
@@ -235,7 +249,7 @@ export function TarjetaUnidad({
     case "faltante": {
       chip = <Chip tono="aviso">Faltante</Chip>;
       titulo = `Faltante ${desde}`;
-      const puede = faltantePuedePasarAPerdida(u.desde_at, hoy, parametros.data?.faltante_perdida_dias ?? 15);
+      const puede = faltantePuedePasarAPerdida(fechaBA(u.desde_at), hoy, parametros.data?.faltante_perdida_dias ?? 15);
       texto = [
         u.faltante_de ? `La tenía ${nombre(u.faltante_de)}.` : null,
         puede ? "Ya pasó el plazo: si no aparece, pasala a pérdida." : null,
@@ -291,15 +305,24 @@ const SECUNDARIAS: { g: MovGestion; texto: string }[] = [
 ];
 
 export function AccionesUnidad({ unidad, onGestion, principal }: { unidad: Unidad; onGestion: (g: Gestion) => void; principal: MovGestion | null }) {
+  const parametros = useParametrosPanol();
   const posibles = gestionesPosibles(unidad);
   const visibles = SECUNDARIAS.filter((s) => posibles.includes(s.g) && s.g !== principal);
+  const plazo = parametros.data?.faltante_perdida_dias ?? 15;
+  const perdidaOk = faltantePuedePasarAPerdida(fechaBA(unidad.desde_at), hoyBA(), plazo);
   if (visibles.length === 0) return null;
   return (
     <div className="flex flex-wrap items-center gap-2 text-[13px]">
       <span className="text-muted-foreground">Si no aparece, no anda o no tiene arreglo:</span>
-      {visibles.map((s) => (
-        <Button key={s.g} size="sm" variant="outline" onClick={() => onGestion({ movTipo: s.g } as Gestion)}>{s.texto}</Button>
-      ))}
+      {visibles.map((s) => {
+        const bloqueada = s.g === "perdida" && !perdidaOk;
+        return (
+          <span key={s.g} className="inline-flex items-center gap-1.5">
+            <Button size="sm" variant="outline" disabled={bloqueada} onClick={() => onGestion({ movTipo: s.g } as Gestion)}>{s.texto}</Button>
+            {bloqueada && <span className="text-[12px] text-muted-foreground">Se habilita el {fecha(perdidaDesde(unidad, plazo))}</span>}
+          </span>
+        );
+      })}
     </div>
   );
 }

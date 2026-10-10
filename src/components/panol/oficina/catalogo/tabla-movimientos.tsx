@@ -14,7 +14,8 @@ import { cuando } from "./formato";
 // El historial, de solo lectura (la ficha del artículo, la de la herramienta y Movimientos).
 // Cada fila dice cuándo, qué, cuánto, quién y para dónde; lo anulado queda tachado con su
 // marca y la anulación dice qué anula. "Anular" sólo para encargados, y nunca sobre una
-// anulación ni sobre algo ya anulado (la base también lo rechaza).
+// anulación, sobre algo ya anulado ni sobre un alta (una unidad dada de alta por error se da
+// de baja); la base también lo rechaza.
 //
 // LA CANTIDAD LLEVA SIGNO RESPECTO DEL PAÑOL: +100 entró a un estante, −20 salió de él. Lo
 // que va de afuera a afuera (pasó de mano, faltante → pérdida) va sin signo.
@@ -137,7 +138,7 @@ export function TablaMovimientos({
                 <td className="px-3 py-2 text-foreground/80">{donde(m)}</td>
                 {puedeAnular && (
                   <td className="px-3 py-1.5 text-right">
-                    {m.tipo !== "anulacion" && !anulado && (
+                    {m.tipo !== "anulacion" && m.tipo !== "alta" && !anulado && (
                       <Button
                         size="sm"
                         variant="ghost"

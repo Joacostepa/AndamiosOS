@@ -19,7 +19,7 @@ export type Elegido = { articulo: Articulo; varianteId: string | null; nombreTal
 /** "Precintos 300mm · talle 9". */
 export const nombreConTalle = (a: Pick<Articulo, "nombre">, talle: string | null) => (talle ? `${a.nombre} · talle ${talle}` : a.nombre);
 
-export function PasoCantidad({ datos, articulo, ubicacionId, pregunta, accion, onListo, onVolver, volverTexto = "Otro artículo", avisarNegativo = true, maximo }: {
+export function PasoCantidad({ datos, articulo, ubicacionId, pregunta, accion, onListo, onVolver, volverTexto = "Otro artículo", avisarNegativo = true, maximo, tieneTexto = "La cuadrilla tiene" }: {
   datos: DatosKiosco;
   articulo: Articulo;
   ubicacionId: string | null;
@@ -29,8 +29,10 @@ export function PasoCantidad({ datos, articulo, ubicacionId, pregunta, accion, o
   onVolver: () => void;
   volverTexto?: string;
   avisarNegativo?: boolean;
-  /** Vuelta de cuadrilla: no se devuelve más de lo que tiene. */
+  /** Vuelta de cuadrilla o devolución a granel: no se devuelve más de lo que tiene. */
   maximo?: number;
+  /** "La cuadrilla tiene", "Tenés": lo que precede al máximo. */
+  tieneTexto?: string;
 }) {
   const talles = articulo.tiene_talles ? datos.cat.variantes.filter((v) => v.articulo_id === articulo.id) : [];
   const [varianteId, setVarianteId] = useState<string | null>(null);
@@ -47,7 +49,7 @@ export function PasoCantidad({ datos, articulo, ubicacionId, pregunta, accion, o
         <h1 className="text-3xl font-bold leading-tight">{nombreConTalle(articulo, talle)}</h1>
         {lugar && <p className="mt-1 text-lg text-muted-foreground">{lugar}</p>}
         {maximo === undefined && <p className="mt-1 text-lg font-semibold">Quedan {numero(stock)} {articulo.unidad}</p>}
-        {maximo !== undefined && <p className="mt-1 text-lg font-semibold">La cuadrilla tiene {numero(maximo)} {articulo.unidad}</p>}
+        {maximo !== undefined && <p className="mt-1 text-lg font-semibold">{tieneTexto} {numero(maximo)} {articulo.unidad}</p>}
       </div>
 
       {talles.length > 0 && (

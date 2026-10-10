@@ -11,19 +11,20 @@
 import { useState } from "react";
 import { OctagonAlert, Wrench } from "lucide-react";
 import { Escaner } from "@/components/panol/escaner";
-import { deshacerVale } from "@/hooks/use-panol";
+import { deshacerVale, useInvalidarPanol } from "@/hooks/use-panol";
 import {
-  confirmarVale, descartarPendiente, guardarUltimaObra, resolverEscaneo, RechazoVale, subirFotoPanol, ultimaObra, useEnLinea,
+  confirmarVale, deshacerGuardado, guardarUltimaObra, resolverEscaneo, RechazoVale, subirFotoPanol, ultimaObra, useEnLinea,
   type DatosKiosco,
 } from "@/hooks/use-panol-kiosco";
 import {
-  alternativasAlDia, armarVale, esErrorDeRed, fechaCorta, fechaDeVuelta, motivoTexto, obrasPropuestas, rutaDeUbicacion,
+  alternativasAlDia, armarVale, articulosDeUbicacion, granelQueTiene, numero, ubicacionDeArticulo, esErrorDeRed, fechaCorta, fechaDeVuelta, motivoTexto, obrasPropuestas, rutaDeUbicacion,
   situacionUnidad, sumarDias, type LineaVale, type OpcionVuelta,
 } from "@/lib/panol/kiosco";
-import { ESTADO_UNIDAD, hoyBA, leerRechazo, lugarDePersona } from "@/lib/panol/estado";
+import { ESTADO_UNIDAD, hoyBA, leerRechazo, lugarDeCuadrilla, lugarDePersona } from "@/lib/panol/estado";
 import type { Articulo, EstadoUnidad, EstadoVuelta, Identidad, TipoVale, Unidad } from "@/lib/panol/tipos";
 import { useKiosco } from "./sesion";
 import { ListaObras, type Propuesta } from "./obra";
+import { nombreConTalle, PasoCantidad } from "./pasos";
 import { Aviso, BotonFoto, BotonPrimario, BotonVolver, Chips, Opcion, Pantalla, PantallaListo, Titulo, useAvisoEfimero } from "./ui";
 
 export const MOTIVOS: Record<"con_falla" | "incompleta", string[]> = {
@@ -38,7 +39,11 @@ type Paso =
   | { p: "devolucion"; unidadId: string; porOtro: string | null }
   | { p: "falla"; unidadId: string; tipo: "con_falla" | "incompleta"; porOtro: string | null }
   | { p: "bloqueada"; unidadId: string }
+  | { p: "granel"; opciones: Granel[]; elegida: Granel | null }
   | { p: "listo"; titulo: string; texto: string; detalle?: string; valeId: string | null; clientUuid: string; volverA: Paso };
+
+/** Lo a granel que tiene quien escanea (o su cuadrilla), listo para devolver. */
+type Granel = { articuloId: string; varianteId: string | null; lugar: string; cantidad: number; ubicacionId: string | null };
 
 export function FlujoHerramienta({ identidad, datos, unidadInicial, onInicio, onTerminar }: {
   identidad: Identidad;
@@ -48,6 +53,7 @@ export function FlujoHerramienta({ identidad, datos, unidadInicial, onInicio, on
   onTerminar: () => void;
 }) {
   const { dispositivo } = useKiosco();
+  const invalidar = useInvalidarPanol();
   const enLinea = useEnLinea();
   const hoy = hoyBA();
   const yo = lugarDePersona(identidad.personaTipo, identidad.personaId);
@@ -99,7 +105,17 @@ export function FlujoHerramienta({ identidad, datos, unidadInicial, onInicio, on
       const r = await resolverEscaneo(texto, datos);
       if (r.tipo === "unidad") ir(pasoDe(r.id));
       else if (r.tipo === "persona" || r.tipo === "externa") mostrar(`Esa es una credencial. Si no sos ${nombre}, tocá «No soy ${nombre}».`, "aviso");
-      else if (r.tipo === "ubicacion" || r.tipo === "articulo") mostrar("Eso es un cajón o un insumo: para eso usá «Retirar».", "aviso");
+      else if (r.tipo === "ubicacion" || r.tipo === "articulo") {
+        // Un cajón o un artículo a granel (martillos, llaves): si lo tiene él o su cuadrilla,
+        // es una devolución por cantidad; si no, es un retiro.
+        const ids = r.tipo === "articulo" ? [r.id] : articulosDeUbicacion(datos.cat, r.id, ["granel"]).map((a) => a.id);
+        const lugares = [yo, ...(identidad.cuadrillaId ? [lugarDeCuadrilla(identidad.cuadrillaId)] : [])];
+        const opciones: Granel[] = granelQueTiene(datos.cat, lugares, ids).map((g) => ({
+          ...g, ubicacionId: r.tipo === "ubicacion" ? ubicacionDeArticulo(datos.cat, g.articuloId, r.id) : null,
+        }));
+        if (opciones.length === 0) mostrar("Eso es un cajón o un insumo: para llevártelo usá «Retirar».", "aviso");
+        else setPaso({ p: "granel", opciones, elegida: opciones.length === 1 ? opciones[0] : null });
+      }
       else if (r.tipo === "anulado") mostrar("Esa etiqueta fue reemplazada por una nueva. Avisá a un encargado.", "aviso");
       else mostrar("No conozco ese código.", "aviso");
     } catch (e) {
@@ -116,9 +132,11 @@ export function FlujoHerramienta({ identidad, datos, unidadInicial, onInicio, on
     const vale = armarVale({ tipo, clientUuid, token: identidad.token, dispositivo, lineas: [{ ...linea, clave: "x" }], odooOtId: ot });
     try {
       const r = await confirmarVale(vale, { resumen: listo.texto, quien: identidad.nombre }, datos.nombreDeLugar);
+      if (r.estado === "ok") invalidar();
       setPaso({ p: "listo", ...listo, clientUuid, volverA, valeId: r.estado === "ok" ? r.valeId : null });
     } catch (e) {
-      if (e instanceof RechazoVale) {
+      if (e instanceof RechazoVale && !linea.unidadId) setError(e.rechazo.texto);
+      else if (e instanceof RechazoVale) {
         const unidadId = linea.unidadId!;
         // La base sabe algo que el catálogo en memoria no: se sigue desde lo que dijo.
         if (e.rechazo.codigo === "la_tiene") setPaso({ p: "laTiene", unidadId, lugar: e.rechazo.lugar });
@@ -144,13 +162,75 @@ export function FlujoHerramienta({ identidad, datos, unidadInicial, onInicio, on
         onDeshacer={async () => {
           try {
             if (listo.valeId) await deshacerVale(listo.valeId);
-            else descartarPendiente(listo.clientUuid);
+            else await deshacerGuardado(listo.clientUuid);
+            invalidar();
           } catch (e) {
             setError(leerRechazo(e instanceof Error ? e.message : String(e)).texto);
           }
           setPaso(listo.volverA);
         }}
       />
+    );
+  }
+
+  if (paso.p === "granel") {
+    const g = paso.elegida;
+    const a = g ? datos.cat.articulos.find((x) => x.id === g.articuloId) : undefined;
+    const de = (lugar: string) => (lugar === yo ? "lo tenés vos" : `lo tiene ${datos.nombreDeLugar(lugar)}`);
+    if (!g || !a) {
+      return (
+        <Pantalla>
+          <BotonVolver onClick={() => setPaso({ p: "escaneo" })}>Escanear otra</BotonVolver>
+          <Titulo sub="Tocá lo que devolvés.">¿Qué devolvés?</Titulo>
+          {paso.opciones.map((o) => {
+            const ao = datos.cat.articulos.find((x) => x.id === o.articuloId);
+            const talle = datos.cat.variantes.find((v) => v.id === o.varianteId)?.nombre ?? null;
+            return (
+              <Opcion
+                key={`${o.articuloId}-${o.varianteId}-${o.lugar}`}
+                titulo={ao ? nombreConTalle(ao, talle) : "Artículo"}
+                sub={`${numero(o.cantidad)} ${ao?.unidad ?? ""} · ${de(o.lugar)}`}
+                onClick={() => setPaso({ ...paso, elegida: o })}
+              />
+            );
+          })}
+        </Pantalla>
+      );
+    }
+    const talle = datos.cat.variantes.find((v) => v.id === g.varianteId)?.nombre ?? null;
+    return (
+      <>
+        <PasoCantidad
+          key={`${g.articuloId}-${g.lugar}`}
+          datos={datos}
+          articulo={{ ...a, tiene_talles: false }}
+          ubicacionId={g.ubicacionId}
+          pregunta="¿Cuántos devolvés?"
+          tieneTexto={g.lugar === yo ? "Tenés" : `Lo tiene ${datos.nombreDeLugar(g.lugar)}:`}
+          accion={procesando ? "Confirmando…" : enLinea ? "Devolver al pañol" : "Guardar · se confirma con señal"}
+          avisarNegativo={false}
+          maximo={g.cantidad}
+          volverTexto="Escanear otra"
+          onVolver={() => setPaso({ p: "escaneo" })}
+          onListo={(e) => {
+            if (procesando) return;
+            const nombreArt = nombreConTalle(a, talle);
+            void confirmar("devolucion", {
+              articuloId: a.id, varianteId: g.varianteId, unidadId: null, cantidad: e.cantidad, nombre: nombreArt, unidad: a.unidad,
+              desde: g.lugar, ubicacionId: g.ubicacionId,
+            }, null, {
+              titulo: `Gracias, ${nombre}.`,
+              texto: `${numero(e.cantidad)} ${a.unidad} de ${nombreArt} vuelven al pañol.`,
+              detalle: e.cantidad < g.cantidad ? `${g.lugar === yo ? "Te quedan" : "Le quedan a la cuadrilla"} ${numero(g.cantidad - e.cantidad)}.` : undefined,
+            }, paso);
+          }}
+        />
+        {error && (
+          <div className="mx-auto w-full max-w-xl px-4 pb-4">
+            <Aviso tono="bloqueo">{error}</Aviso>
+          </div>
+        )}
+      </>
     );
   }
 
@@ -298,7 +378,7 @@ export function FlujoHerramienta({ identidad, datos, unidadInicial, onInicio, on
   return (
     <Pantalla>
       <BotonVolver onClick={onInicio}>Otra cosa</BotonVolver>
-      <Titulo sub="Escaneá la herramienta que te llevás o que devolvés.">Herramienta</Titulo>
+      <Titulo sub="Escaneá la herramienta que te llevás o que devolvés. Lo a granel que tenés (martillos, llaves) se devuelve escaneando su cajón.">Herramienta</Titulo>
       {aviso && <Aviso tono={aviso.tono}>{aviso.texto}</Aviso>}
       <Escaner onCodigo={procesar} pausado={procesando} />
     </Pantalla>

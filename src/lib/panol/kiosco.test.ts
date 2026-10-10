@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import {
   afueraDeCuadrilla, alternativasAlDia, armarVale, botonCaja, cambiarCantidad, claveDe, cruzarCuadrillas,
-  decidirEscaneo, esErrorDeRed, esMaquina, fechaCorta, fechaDeVuelta, motivoTexto, normalizarCodigo,
+  decidirEscaneo, granelQueTiene, ubicacionDeArticulo, esErrorDeRed, esMaquina, fechaCorta, fechaDeVuelta, motivoTexto, normalizarCodigo,
   obrasDeRetiros, obrasPropuestas, proximoHabil, quedariaNegativo, quitarLinea, resolverLocal, rutaDeUbicacion,
   situacionUnidad, stockEnPanol, subarbol, sumarCaja, sumarLinea, type CatalogoKiosco, type LineaVale,
 } from "./kiosco.ts";
@@ -255,4 +255,29 @@ test("el .wasm del escáner está en /public con la versión instalada", () => {
   // El paso está documentado arriba de src/components/panol/escaner.tsx.
   const version = JSON.parse(readFileSync("node_modules/zxing-wasm/package.json", "utf8")).version as string;
   assert.ok(existsSync(`public/kiosco/zxing/${version}/zxing_reader.wasm`), `falta public/kiosco/zxing/${version}/zxing_reader.wasm`);
+});
+
+test("estante escaneado: el cajón propio, si no el de más saldo, si no nada", () => {
+  assert.equal(ubicacionDeArticulo(cat, "prec", E3), C12);
+  const c = { ...cat, articulos: cat.articulos.map((a) => (a.id === "prec" ? { ...a, ubicacion_id: VACIO } : a)),
+    saldos: [...cat.saldos, { articulo_id: "prec", variante_id: null, lugar: `u:${C07}`, cantidad: 10 }] };
+  assert.equal(ubicacionDeArticulo(c, "prec", E3), C12);
+  assert.equal(ubicacionDeArticulo(c, "mart", E3_2), E3_2);
+  assert.equal(ubicacionDeArticulo(cat, "torn", VACIO), null);
+  assert.deepEqual(decidirEscaneo({ tipo: "ubicacion", id: E3_2, codigo: "X" }, cat, "sobrante").ir, "lista");
+});
+
+test("granel que tiene una persona o su cuadrilla", () => {
+  assert.deepEqual(granelQueTiene(cat, [`p:${P}`, `c:${CUAD}`]), [{ articuloId: "mart", varianteId: null, lugar: `c:${CUAD}`, cantidad: 2 }]);
+  assert.deepEqual(granelQueTiene(cat, [`p:${P}`]), []);
+});
+
+test("una herramienta dada de baja no figura con la cuadrilla", () => {
+  const c = { ...cat, unidades: [uni("u1", "amol", "H-1", `c:${CUAD}`, { activo: false })] };
+  assert.deepEqual(afueraDeCuadrilla(c, CUAD).unidades, []);
+});
+
+test("devolución a granel lleva de quién vuelve", () => {
+  const v = armarVale({ tipo: "devolucion", clientUuid: "c", token: "t", dispositivo: "d", lineas: [{ clave: "x", articuloId: "mart", varianteId: null, unidadId: null, cantidad: 2, nombre: "", unidad: "u.", desde: `c:${CUAD}` }] });
+  assert.deepEqual(v.items, [{ articuloId: "mart", cantidad: 2, desde: `c:${CUAD}` }]);
 });

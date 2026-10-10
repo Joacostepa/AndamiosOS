@@ -29,7 +29,7 @@ import { leerRechazo } from "@/lib/panol/estado";
 import { cn } from "@/lib/utils";
 import { useMantenerSesion } from "@/components/panol/kiosco/sesion";
 import {
-  BOTON_OSCURO, BOTON_PRIMARIO, BOTON_SECUNDARIO, CabeceraTablet, ChipGrande, Lector, SinEncargado,
+  BOTON_OSCURO, BOTON_PRIMARIO, BOTON_SECUNDARIO, CabeceraTablet, ChipGrande, Lector, useCorteSeguridad, SinEncargado,
   TecladoNumerico, leerNumero, useEncargadoKiosco,
 } from "./comun";
 
@@ -62,6 +62,7 @@ function recordado(): { conteoId: string; ubicacionId: string } | null {
 export function PantallaConteo() {
   // Contar lleva su tiempo: entre ítem e ítem no se vuelve a "¿Quién sos?".
   useMantenerSesion();
+  useCorteSeguridad();
   const { identidad, puede, token } = useEncargadoKiosco();
   const { data: catalogo } = useCatalogoPanol();
   const [fase, setFase] = useState<Fase>({ f: "inicio" });
@@ -76,7 +77,7 @@ export function PantallaConteo() {
 
   return (
     <div className="flex min-h-dvh flex-col bg-background text-foreground">
-      <CabeceraTablet titulo="Conteo cíclico" icono={<ClipboardList />} quien={identidad && puede ? `Contando: ${identidad.nombre}` : null} />
+      <CabeceraTablet titulo="Conteo cíclico" textoSalir="Terminar y salir" icono={<ClipboardList />} quien={identidad && puede ? `Contando: ${identidad.nombre}` : null} />
       {!puede ? (
         <SinEncargado identidad={identidad} />
       ) : !catalogo ? (

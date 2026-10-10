@@ -33,6 +33,8 @@ export type LineaVale = {
   venceEl?: string | null;
   odooOtId?: number | null;
   sinAlta?: { descripcion: string; fotoPath?: string };
+  /** Devolución a granel: de quién vuelve ("p:…", "c:…"). */
+  desde?: string;
 };
 
 export function claveDe(l: Pick<LineaVale, "articuloId" | "varianteId" | "unidadId" | "sinAlta">): string {
@@ -91,6 +93,7 @@ export function itemsDeVale(lineas: readonly LineaVale[]): ItemVale[] {
     if (l.fotoPath) item.fotoPath = l.fotoPath;
     if (l.venceEl) item.venceEl = l.venceEl;
     if (l.odooOtId !== undefined && l.odooOtId !== null) item.odooOtId = l.odooOtId;
+    if (l.desde) item.desde = l.desde;
     return item;
   });
 }
@@ -255,7 +258,7 @@ export function decidirEscaneo(r: CodigoResuelto, cat: CatalogoKiosco, modo: Mod
     }
     case "ubicacion": {
       const arts = articulosDeUbicacion(cat, r.id, tipos);
-      if (arts.length === 1) return { ir: "cantidad", articuloId: arts[0].id, ubicacionId: r.id };
+      if (arts.length === 1) return { ir: "cantidad", articuloId: arts[0].id, ubicacionId: ubicacionDeArticulo(cat, arts[0].id, r.id) };
       if (arts.length === 0) {
         const hayHerramientas = articulosDeUbicacion(cat, r.id, ["herramienta"]).length > 0;
         return {
@@ -274,6 +277,40 @@ function avisoDeTipo(a: Articulo, modo: ModoEscaneo): string {
   if (modo === "sobrante") return `${a.nombre} no es un insumo: devolvelo como herramienta.`;
   if (modo === "vuelta") return `${a.nombre} es un insumo: lo que sobra va por «Devolver sobrante».`;
   return `${a.nombre} no se retira desde acá.`;
+}
+
+/**
+ * De qué cajón sale (o a cuál vuelve) un artículo elegido después de escanear un estante o
+ * una estantería. Mandar el estante tal cual descontaría de un lugar donde no hay saldo y
+ * dejaría el cajón real sin tocar. Por eso: el cajón propio del artículo si está adentro
+ * de lo escaneado; si no, el lugar de adentro con más saldo; si no, nada (la base usa el
+ * del artículo).
+ */
+export function ubicacionDeArticulo(cat: Pick<CatalogoKiosco, "ubicaciones" | "articulos" | "saldos">, articuloId: string, escaneada: string | null): string | null {
+  if (!escaneada) return null;
+  const ids = subarbol(cat.ubicaciones, escaneada);
+  const propia = cat.articulos.find((a) => a.id === articuloId)?.ubicacion_id;
+  if (propia && ids.has(propia)) return propia;
+  const porLugar = new Map<string, number>();
+  for (const s of cat.saldos) {
+    if (s.articulo_id !== articuloId || !s.lugar.startsWith("u:") || !ids.has(s.lugar.slice(2))) continue;
+    porLugar.set(s.lugar.slice(2), (porLugar.get(s.lugar.slice(2)) ?? 0) + Number(s.cantidad));
+  }
+  let mejor: string | null = null;
+  let max = 0;
+  for (const [id, n] of porLugar) if (n > max) [mejor, max] = [id, n];
+  return mejor;
+}
+
+/**
+ * Lo a granel (martillos, llaves) que tiene alguien: la persona o su cuadrilla. Sin esto
+ * un martillo prestado no tiene por dónde volver. Filtra por artículos si se pasan.
+ */
+export function granelQueTiene(cat: Pick<CatalogoKiosco, "saldos" | "articulos">, lugares: readonly string[], articuloIds?: readonly string[]): { articuloId: string; varianteId: string | null; lugar: string; cantidad: number }[] {
+  const granel = new Set(cat.articulos.filter((a) => a.tipo === "granel").map((a) => a.id));
+  return cat.saldos
+    .filter((s) => granel.has(s.articulo_id) && lugares.includes(s.lugar) && Number(s.cantidad) > 0 && (!articuloIds || articuloIds.includes(s.articulo_id)))
+    .map((s) => ({ articuloId: s.articulo_id, varianteId: s.variante_id, lugar: s.lugar, cantidad: Number(s.cantidad) }));
 }
 
 // ─── Stock ──────────────────────────────────────────────────────────────────
@@ -418,7 +455,7 @@ export function afueraDeCuadrilla(cat: Pick<CatalogoKiosco, "unidades" | "saldos
   const lugar = `c:${cuadrillaId}`;
   const granelIds = new Set(cat.articulos.filter((a) => a.tipo === "granel").map((a) => a.id));
   return {
-    unidades: cat.unidades.filter((u) => u.lugar === lugar).sort((a, b) => a.numero.localeCompare(b.numero, "es")),
+    unidades: cat.unidades.filter((u) => u.lugar === lugar && u.activo).sort((a, b) => a.numero.localeCompare(b.numero, "es")),
     granel: cat.saldos
       .filter((s) => s.lugar === lugar && s.cantidad > 0 && granelIds.has(s.articulo_id))
       .map((s) => ({ articuloId: s.articulo_id, varianteId: s.variante_id, cantidad: s.cantidad })),

@@ -94,15 +94,32 @@ test("préstamo vencido: a la persona, con la OT y el WhatsApp", () => {
   const [f] = seccion(b, "vencidas").filas;
   assert.equal(f.detalle, "Diego Ramírez · OT 4812 · Av. Corrientes 1847 · tenía que volver el 07/10");
   assert.equal(f.dias, 3);
+  assert.deepEqual(f.chip, { texto: "Préstamo vencido", tono: "aviso" });
   const wa = f.acciones[0];
   assert.ok(wa.tipo === "whatsapp" && wa.url?.startsWith("https://wa.me/5491155551234?text="));
 });
 
-test("lo que tiene una cuadrilla sin fecha no vence", () => {
+test("cuadrilla: sin fecha no vence; con 'vuelve hoy' que no volvió, sí, y avisa al capataz", () => {
   const b = armarBandeja(entrada({
-    unidades: [uni({ id: id(51), articulo_id: AMOLADORA, numero: "H-020", lugar: `c:${C5}`, estado: "afuera" })],
+    unidades: [
+      uni({ id: id(51), articulo_id: AMOLADORA, numero: "H-020", lugar: `c:${C5}`, estado: "afuera" }),
+      uni({ id: id(54), articulo_id: AMOLADORA, numero: "H-021", lugar: `c:${C5}`, estado: "afuera", vence_el: "2026-10-09", capataz_id: WALTER }),
+    ],
   }));
-  assert.equal(seccion(b, "vencidas").filas.length, 0);
+  const filas = seccion(b, "vencidas").filas;
+  assert.equal(filas.length, 1);
+  assert.deepEqual(filas[0].chip, { texto: "No volvió hoy", tono: "aviso" });
+  assert.match(filas[0].detalle, /^Cuadrilla 5 · capataz Walter Domínguez · tenía que volver en el día \(09\/10\)$/);
+  const wa = filas[0].acciones[0];
+  assert.ok(wa.tipo === "whatsapp" && wa.a === "Walter Domínguez" && decodeURIComponent(wa.url ?? "").includes("para volver en el día"));
+});
+
+test("sin alta: 'Dar de alta' lleva la descripción y el id", () => {
+  const b = armarBandeja(entrada({
+    sinAlta: [{ id: id(90), descripcion: "tarugos 10 mm", cantidad: 2, foto_path: null, quien_tipo: "persona", quien_id: DIEGO, odoo_ot_id: 4812, created_at: AHORA }],
+  }));
+  const link = seccion(b, "sin_alta").filas[0].acciones[0];
+  assert.ok(link.tipo === "link" && link.href === `/deposito/panol/stock?nuevo=tarugos%2010%20mm&sin_alta=${id(90)}`);
 });
 
 test("faltante: se habilita la pérdida cumplidos los días, y avisa recién ahí", () => {

@@ -57,7 +57,7 @@ function reglas(b: Bandeja, p: Partial<Record<ClaveParametro, number>>): Partial
     vencidas: {
       tipo: "panol_vencida",
       avisar: (f) => ((f.dias ?? 0) >= diasVencida ? { prioridad: "media" } : null),
-      titulo: (f) => `${f.titulo} ${f.codigo ?? ""} no volvió`.replace(/\s+/g, " "),
+      titulo: (f) => `${f.chip?.texto ?? "No volvió"} — ${f.titulo} ${f.codigo ?? ""}`.replace(/\s+/g, " ").trim(),
     },
     faltantes: {
       tipo: "panol_faltante",

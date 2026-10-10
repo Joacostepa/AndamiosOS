@@ -58,6 +58,15 @@ export function mensajePrestamoVencido(p: { nombre: string; herramienta: string;
   );
 }
 
+/** Lo que salió con una cuadrilla marcado "vuelve hoy" y no volvió: al capataz. */
+export function mensajeNoVolvio(p: { nombre: string; cuadrilla: string; herramienta: string; numero: string; dia: string; obra?: string | null }): string {
+  return (
+    `Hola ${primerNombre(p.nombre)}, te escribimos del pañol de Andamios Buenos Aires. ` +
+    `${p.herramienta} ${p.numero} salió el ${fechaCorta(p.dia)} con la ${p.cuadrilla}${p.obra ? ` (${p.obra})` : ""} para volver en el día, y no volvió. ` +
+    `¿La pueden traer o avisarnos dónde está? Gracias.`
+  );
+}
+
 export function mensajeFaltante(p: { nombre: string; cuadrilla?: string | null; cosas: string[] }): string {
   const lista = p.cosas.length === 1 ? p.cosas[0] : p.cosas.map((c) => `\n• ${c}`).join("");
   return (

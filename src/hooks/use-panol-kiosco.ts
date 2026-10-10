@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import {
-  BUCKET_PANOL, nombreCompleto, registrarVale, resolverCodigo, useCatalogoPanol, useInvalidarPanol, usePersonasPanol,
+  BUCKET_PANOL, deshacerVale, nombreCompleto, registrarVale, resolverCodigo, useCatalogoPanol, useInvalidarPanol, usePersonasPanol,
 } from "@/hooks/use-panol";
 import { esErrorDeRed, resolverLocal, type CatalogoKiosco, type CodigoLocal } from "@/lib/panol/kiosco";
 import { leerLugar, leerRechazo, type Rechazo } from "@/lib/panol/estado";
@@ -201,6 +201,10 @@ export function descartarPendiente(clientUuid: string) {
 }
 
 let vaciando = false;
+// Lo que el vaciado mandó (o está mandando) en esta pestaña: si alguien toca «Deshacer» en
+// la pantalla verde justo cuando volvió la señal, el vale ya no está en la lista pero sí en
+// la base, y hay que deshacerlo allá.
+const enviados = new Map<string, Promise<string | null>>();
 
 /** Manda lo guardado. Corre al volver la señal y cada 20 s mientras haya algo. */
 export function useVaciarPendientes() {
@@ -215,11 +219,14 @@ export function useVaciarPendientes() {
     let alguno = false;
     try {
       for (const p of leerPendientes().filter((x) => !x.rechazo)) {
+        const envio = registrarVale(p.vale).then((r) => r.valeId);
+        enviados.set(p.vale.clientUuid, envio.catch(() => null));
         try {
-          await registrarVale(p.vale);
+          await envio;
           descartarPendiente(p.vale.clientUuid);
           alguno = true;
         } catch (e) {
+          enviados.delete(p.vale.clientUuid);
           if (esErrorDeRed(e)) break;
           const r = leerRechazo(e instanceof Error ? e.message : String(e));
           escribirPendientes(leerPendientes().map((x) => (x.vale.clientUuid === p.vale.clientUuid ? { ...x, rechazo: r.texto } : x)));
@@ -237,6 +244,21 @@ export function useVaciarPendientes() {
     const reloj = window.setInterval(() => void vaciar(), 20_000);
     return () => window.clearInterval(reloj);
   }, [enLinea, hay, vaciar]);
+}
+
+/**
+ * «Deshacer» de un vale que quedó guardado sin señal: si todavía no salió, se saca de la
+ * lista; si el vaciado ya lo mandó (o lo está mandando), se deshace en la base.
+ */
+export async function deshacerGuardado(clientUuid: string): Promise<void> {
+  const envio = enviados.get(clientUuid);
+  if (!envio) {
+    descartarPendiente(clientUuid);
+    return;
+  }
+  const valeId = await envio;
+  descartarPendiente(clientUuid);
+  if (valeId) await deshacerVale(valeId);
 }
 
 export type Confirmado = { estado: "ok"; valeId: string } | { estado: "guardado" };

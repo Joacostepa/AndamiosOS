@@ -12,9 +12,9 @@ import type { DatosKiosco } from "@/hooks/use-panol-kiosco";
 import { useKiosco } from "./sesion";
 import { Aviso, BotonSecundario, Pantalla, Titulo } from "./ui";
 
-export function QuienSos({ datos }: { datos: DatosKiosco }) {
+export function QuienSos({ datos, modoInicial = "credencial" }: { datos: DatosKiosco; modoInicial?: "credencial" | "pin" }) {
   const { identificar } = useKiosco();
-  const [modo, setModo] = useState<"credencial" | "pin">("credencial");
+  const [modo, setModo] = useState<"credencial" | "pin">(modoInicial);
   const [pin, setPin] = useState("");
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState<string | null>(null);

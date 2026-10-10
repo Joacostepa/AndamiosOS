@@ -17,12 +17,12 @@ import { useMemo, useState } from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Escaner } from "@/components/panol/escaner";
-import { deshacerVale } from "@/hooks/use-panol";
+import { deshacerVale, useInvalidarPanol } from "@/hooks/use-panol";
 import {
-  confirmarVale, descartarPendiente, resolverEscaneo, RechazoVale, subirFotoPanol, useEnLinea, useSalidasDe, type DatosKiosco,
+  confirmarVale, deshacerGuardado, resolverEscaneo, RechazoVale, subirFotoPanol, useEnLinea, useSalidasDe, type DatosKiosco,
 } from "@/hooks/use-panol-kiosco";
 import {
-  actualizarLinea, afueraDeCuadrilla, armarVale, contar, decidirEscaneo, esErrorDeRed, esMaquina, motivoTexto, numero,
+  actualizarLinea, afueraDeCuadrilla, armarVale, ubicacionDeArticulo, contar, decidirEscaneo, esErrorDeRed, esMaquina, motivoTexto, numero,
   quitarLinea, situacionUnidad, sumarLinea, type LineaVale,
 } from "@/lib/panol/kiosco";
 import { ESTADO_UNIDAD, hoyBA, leerRechazo, lugarDeCuadrilla } from "@/lib/panol/estado";
@@ -54,6 +54,7 @@ export function FlujoCuadrilla({ identidad, datos, onInicio, onTerminar }: {
   onTerminar: () => void;
 }) {
   const { dispositivo } = useKiosco();
+  const invalidar = useInvalidarPanol();
   const enLinea = useEnLinea();
   const hoy = hoyBA();
   const nombre = identidad.nombre.split(" ")[0];
@@ -140,6 +141,7 @@ export function FlujoCuadrilla({ identidad, datos, onInicio, onTerminar }: {
     const vale = armarVale({ tipo, clientUuid, token: identidad.token, dispositivo, lineas: ls, cuadrillaId, odooOtId: tipo === "retiro" ? obra : otHoy });
     try {
       const r = await confirmarVale(vale, { resumen: listo.texto, quien: identidad.nombre }, datos.nombreDeLugar);
+      if (r.estado === "ok") invalidar();
       setPaso({ p: "listo", ...listo, clientUuid, volverA, valeId: r.estado === "ok" ? r.valeId : null });
     } catch (e) {
       setError(e instanceof RechazoVale ? e.rechazo.texto : String(e));
@@ -192,7 +194,8 @@ export function FlujoCuadrilla({ identidad, datos, onInicio, onTerminar }: {
             ? async () => {
                 try {
                   if (listo.valeId) await deshacerVale(listo.valeId);
-                  else descartarPendiente(listo.clientUuid!);
+                  else await deshacerGuardado(listo.clientUuid!);
+                  invalidar();
                 } catch (e) {
                   setError(leerRechazo(e instanceof Error ? e.message : String(e)).texto);
                 }
@@ -302,7 +305,7 @@ export function FlujoCuadrilla({ identidad, datos, onInicio, onTerminar }: {
         articulos={paso.articuloIds.map((id) => art(id)).filter((a): a is Articulo => !!a)}
         sinStock={modo === "vuelta"}
         onVolver={() => setPaso({ p: "escaneo" })}
-        onElegir={(a) => setPaso({ p: "cantidad", articuloId: a.id, ubicacionId: paso.ubicacionId })}
+        onElegir={(a) => setPaso({ p: "cantidad", articuloId: a.id, ubicacionId: ubicacionDeArticulo(datos.cat, a.id, paso.ubicacionId) })}
       />
     );
   }

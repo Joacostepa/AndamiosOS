@@ -24,7 +24,7 @@ import { fechaCorta, linkWhatsapp, mensajeFaltante, mensajeInspeccion } from "@/
 import { cn } from "@/lib/utils";
 import { useMantenerSesion } from "@/components/panol/kiosco/sesion";
 import {
-  BOTON_PRIMARIO, BOTON_SECUNDARIO, CabeceraTablet, ChipGrande, Lector, SinEncargado, useEncargadoKiosco,
+  BOTON_PRIMARIO, BOTON_SECUNDARIO, CabeceraTablet, ChipGrande, Lector, useCorteSeguridad, SinEncargado, useEncargadoKiosco,
 } from "./comun";
 
 type Fase = "lista" | "resumen" | "hecho";
@@ -32,6 +32,7 @@ type Fase = "lista" | "resumen" | "hecho";
 export function PantallaControlCuadrilla() {
   // Contar lleva su tiempo: entre ítem e ítem no se vuelve a "¿Quién sos?".
   useMantenerSesion();
+  useCorteSeguridad();
   const { identidad, puede, token } = useEncargadoKiosco();
   const afuera = useAfueraPanol();
   const [cuadrillaId, setCuadrillaId] = useState<string | null>(null);
@@ -45,7 +46,7 @@ export function PantallaControlCuadrilla() {
 
   return (
     <div className="flex min-h-dvh flex-col bg-background text-foreground">
-      <CabeceraTablet titulo="Control del equipo de cuadrilla" icono={<Users />} quien={identidad && puede ? `Controla: ${identidad.nombre}` : null} />
+      <CabeceraTablet titulo="Control del equipo de cuadrilla" textoSalir="Terminar y salir" icono={<Users />} quien={identidad && puede ? `Controla: ${identidad.nombre}` : null} />
       {!puede ? (
         <SinEncargado identidad={identidad} />
       ) : (

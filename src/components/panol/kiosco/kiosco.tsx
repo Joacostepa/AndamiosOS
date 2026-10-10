@@ -24,6 +24,10 @@ export function Kiosco() {
   const datos = useDatosKiosco();
   const enLinea = useEnLinea();
   const pendientes = usePendientes();
+  const [conPin, setConPin] = useState(false);
+  // "Entrar con PIN" vale para la próxima identificación nada más: el que venga después
+  // arranca con la credencial.
+  if (identidad && conPin) setConPin(false);
   useVaciarPendientes();
 
   return (
@@ -52,15 +56,15 @@ export function Kiosco() {
           <Aviso tono="bloqueo">No pude cargar el catálogo del pañol: {datos.error.message}. Revisá la señal y recargá la página.</Aviso>
         </Pantalla>
       ) : identidad ? (
-        <Sesion key={identidad.token} datos={datos} />
+        <Sesion key={identidad.token} datos={datos} onUsarPin={() => { setConPin(true); salir(); }} />
       ) : (
-        <QuienSos datos={datos} />
+        <QuienSos key={conPin ? "pin" : "credencial"} datos={datos} modoInicial={conPin ? "pin" : "credencial"} />
       )}
     </div>
   );
 }
 
-function Sesion({ datos }: { datos: ReturnType<typeof useDatosKiosco> }) {
+function Sesion({ datos, onUsarPin }: { datos: ReturnType<typeof useDatosKiosco>; onUsarPin: () => void }) {
   const { identidad, salir } = useKiosco();
   const [gesto, setGesto] = useState<Gesto | null>(null);
   const [unidadInicial, setUnidadInicial] = useState<string | null>(null);
@@ -86,7 +90,7 @@ function Sesion({ datos }: { datos: ReturnType<typeof useDatosKiosco> }) {
   }
   if (gesto === "herramienta") return <FlujoHerramienta unidadInicial={unidadInicial} {...comun} />;
   if (gesto === "cuadrilla") return <FlujoCuadrilla {...comun} />;
-  return <Inicio identidad={identidad} onElegir={setGesto} />;
+  return <Inicio identidad={identidad} onElegir={setGesto} onUsarPin={onUsarPin} />;
 }
 
 /** Vales guardados sin señal: cuántos esperan, y los que la base rechazó al reintentar. */

@@ -15,7 +15,7 @@ import { DialogoAltaArticulo } from "@/components/panol/oficina/catalogo/dialogo
 import { DialogoAltaUnidades } from "@/components/panol/oficina/catalogo/dialogo-alta-unidades";
 import { DialogoIngreso } from "@/components/panol/oficina/catalogo/dialogo-ingreso";
 import { rutaUbicacion, SelectorUbicacion } from "@/components/panol/oficina/catalogo/selector-ubicacion";
-import { useCatalogoPanol } from "@/hooks/use-panol";
+import { useCatalogoPanol, useInvalidarPanol } from "@/hooks/use-panol";
 import { formatoCantidad, resolverSinAlta, useSubarbol } from "@/hooks/use-panol-catalogo";
 import { bajoMinimo, existencias, sugeridoReponer } from "@/lib/panol/estado";
 import { TIPO_ARTICULO, type TipoArticulo } from "@/lib/panol/tipos";
@@ -56,6 +56,7 @@ function Stock() {
   const params = useSearchParams();
   const encargado = usePuedeEditar("panol");
   const { data, isLoading, error } = useCatalogoPanol();
+  const invalidar = useInvalidarPanol();
 
   const [busqueda, setBusqueda] = useState("");
   const [tipo, setTipo] = useState<FiltroTipo>("");
@@ -217,7 +218,9 @@ function Stock() {
             onCreado={(a) => {
               setAlta(false);
               const sinAlta = params.get("sin_alta");
-              if (sinAlta) resolverSinAlta(sinAlta, a.id).catch((e: unknown) => toast.error(`No se pudo marcar como resuelto en la bandeja: ${e instanceof Error ? e.message : e}`));
+              // Después de resolver hay que volver a invalidar: la del alta ya corrió y la
+              // bandeja seguiría mostrando el pendiente.
+              if (sinAlta) resolverSinAlta(sinAlta, a.id).then(invalidar, (e: unknown) => toast.error(`No se pudo marcar como resuelto en la bandeja: ${e instanceof Error ? e.message : e}`));
               if (a.tipo === "herramienta") {
                 setUnidadesDe(a.id);
                 if (params.has("nuevo")) limpiar("nuevo", "sin_alta");

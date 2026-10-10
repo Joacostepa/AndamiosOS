@@ -16,7 +16,7 @@ import type {
   Articulo, ClaveParametro, EstadoVuelta, PersonaTipo, Saldo, TipoMovimiento, Ubicacion, Unidad, Variante,
 } from "./tipos.ts";
 import {
-  fechaCorta, linkWhatsapp, mensajeFaltante, mensajeInspeccion, mensajePrestamoVencido,
+  fechaCorta, linkWhatsapp, mensajeFaltante, mensajeInspeccion, mensajeNoVolvio, mensajePrestamoVencido,
 } from "./whatsapp.ts";
 
 // ─── Entrada ────────────────────────────────────────────────────────────────
@@ -411,15 +411,24 @@ export function armarBandeja(e: EntradaBandeja): Bandeja {
       const n = diasEntre(venceEl, hoy);
       const herramienta = nombreArt(u.articulo_id);
       const obra = textoOt(u.odoo_ot_id, e.ots);
-      const accion = whatsapp("Avisar por WhatsApp", `vencida:${u.id}:${venceEl}`, contactoDe(u.lugar, u.capataz_id), (nombre) =>
-        mensajePrestamoVencido({ nombre, herramienta, numero: u.numero, venceEl, obra }));
+      // Dos casos con la misma regla: el préstamo a una persona, y lo que salió con una
+      // cuadrilla marcado "vuelve hoy" (vence_el = ese día) y no volvió. Lo segundo es del
+      // capataz: a él va el WhatsApp.
+      const deCuadrilla = u.lugar.startsWith("c:");
+      const contacto = contactoDe(u.lugar, u.capataz_id);
+      const accion = whatsapp("Avisar por WhatsApp", `vencida:${u.id}:${venceEl}`, contacto, (nombre) =>
+        deCuadrilla
+          ? mensajeNoVolvio({ nombre, cuadrilla: nombreLugar(u.lugar), herramienta, numero: u.numero, dia: venceEl, obra })
+          : mensajePrestamoVencido({ nombre, herramienta, numero: u.numero, venceEl, obra }));
       filas.push({
         id: `${u.id}:${venceEl}`,
         titulo: herramienta,
         codigo: `#${u.numero}`,
-        detalle: [nombreLugar(u.lugar), obra, `tenía que volver el ${fechaCorta(venceEl)}`].filter(Boolean).join(" · "),
+        detalle: (deCuadrilla
+          ? [nombreLugar(u.lugar), contacto ? `capataz ${contacto.nombre}` : null, obra, `tenía que volver en el día (${fechaCorta(venceEl)})`]
+          : [nombreLugar(u.lugar), obra, `tenía que volver el ${fechaCorta(venceEl)}`]).filter(Boolean).join(" · "),
         cuando: n === 1 ? "desde ayer" : `hace ${dias(n)}`,
-        chip: null,
+        chip: { texto: deCuadrilla ? "No volvió hoy" : "Préstamo vencido", tono: "aviso" },
         acciones: accion ? [accion] : [],
         dias: n,
       });
@@ -428,7 +437,7 @@ export function armarBandeja(e: EntradaBandeja): Bandeja {
     secciones.push({
       id: "vencidas",
       titulo: "Vencidas sin devolver",
-      ayuda: "Préstamos que pasaron la fecha de vuelta. El equipo que se queda con una cuadrilla no vence.",
+      ayuda: "Préstamos a personas que pasaron la fecha, y lo que salió con una cuadrilla para volver en el día y no volvió. El equipo que se queda con la cuadrilla no vence.",
       filas,
     });
   }
@@ -603,7 +612,7 @@ export function armarBandeja(e: EntradaBandeja): Bandeja {
     const filas: FilaBandeja[] = e.sinAlta.map((s) => {
       const quien = s.quien_id ? persona.get(`${s.quien_tipo === "externa" ? "x" : "p"}:${s.quien_id}`)?.nombre ?? null : null;
       const acciones: AccionBandeja[] = [
-        { tipo: "link", etiqueta: "Dar de alta", href: `/deposito/panol/stock?nuevo=${encodeURIComponent(s.descripcion)}` },
+        { tipo: "link", etiqueta: "Dar de alta", href: `/deposito/panol/stock?nuevo=${encodeURIComponent(s.descripcion)}&sin_alta=${s.id}` },
       ];
       if (e.yo.esEncargado) acciones.push({ tipo: "sin_alta_resuelto", sinAltaId: s.id, que: s.descripcion });
       return {

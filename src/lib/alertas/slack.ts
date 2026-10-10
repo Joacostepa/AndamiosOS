@@ -178,9 +178,9 @@ const ESTILO: Record<
     color: "#d97706",
     emoji: "⏰",
     rotulo: "Préstamo vencido",
-    plural: "préstamos vencidos",
+    plural: "préstamos vencidos o que no volvieron",
     destacado: false,
-    prefijos: [],
+    prefijos: ["Préstamo vencido"],
   },
   panol_faltante: {
     color: "#dc2626",

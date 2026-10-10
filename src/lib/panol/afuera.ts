@@ -6,9 +6,10 @@
 // dos veces mostraría cada amoladora repetida.
 //
 // LAS REGLAS QUE NO SON OBVIAS:
-//   - "Vencida" es sólo de préstamos a PERSONAS: lo de una cuadrilla no tiene fecha de vuelta
-//     (se queda con ella de obra en obra, docs §1). Aunque la base guarde un vence_el en un
-//     "vuelve hoy" de cuadrilla, acá no se marca.
+//   - "Vencida": un préstamo a una persona pasado su fecha, o lo que salió con una cuadrilla
+//     marcado "vuelve hoy" (la base le pone vence_el = ese día) y no volvió. Lo demás de una
+//     cuadrilla no tiene fecha: se queda con ella de obra en obra (docs §1). Misma regla que
+//     la bandeja.
 //   - Un faltante sigue apareciendo con quien lo tenía (`faltante_de`): es el capataz quien
 //     responde. Los faltantes a granel pierden el titular en el saldo (el lugar es sólo
 //     "faltante"), así que van a un grupo propio, igual que lo que faltó en un conteo.
@@ -47,8 +48,10 @@ export type ItemAfuera = {
   lugar: string;
   desdeAt: string | null;
   odooOtId: number | null;
-  /** Sólo préstamos a personas. */
+  /** Préstamos a personas, y lo de cuadrilla que salió con "vuelve hoy". */
   venceEl: string | null;
+  /** Cuadrilla con "vuelve hoy": la señal dice "No volvió hoy" y el aviso va al capataz. */
+  vueltaDelDia: boolean;
   vencida: boolean;
   diasVencida: number;
   noUsar: boolean;
@@ -167,8 +170,8 @@ export function agruparAfuera(f: FuentesAfuera, hoy: string): GrupoAfuera[] {
     // Un faltante va con quien lo tenía; si faltó del pañol (conteo), al grupo sin titular.
     const titular = faltante ? (u.faltante_de && conTitular(u.faltante_de) ? u.faltante_de : "faltante") : u.lugar;
     if (!faltante && !conTitular(u.lugar)) continue;
-    const esPersona = claseDeLugar(titular) === "persona";
-    const venceEl = esPersona && !faltante ? u.vence_el : null;
+    const clase = claseDeLugar(titular);
+    const venceEl = (clase === "persona" || clase === "cuadrilla") && !faltante ? u.vence_el : null;
     const vencida = prestamoVencido(venceEl, hoy);
     const item: ItemAfuera = {
       clave: `u:${u.id}`,
@@ -186,6 +189,7 @@ export function agruparAfuera(f: FuentesAfuera, hoy: string): GrupoAfuera[] {
       desdeAt: u.desde_at,
       odooOtId: u.odoo_ot_id,
       venceEl,
+      vueltaDelDia: clase === "cuadrilla" && venceEl !== null,
       vencida,
       diasVencida: vencida && venceEl ? diasEntre(venceEl, hoy) : 0,
       noUsar: noApta(a.seguridad_critica, u.proxima_inspeccion, hoy),
@@ -220,6 +224,7 @@ export function agruparAfuera(f: FuentesAfuera, hoy: string): GrupoAfuera[] {
       desdeAt: null,
       odooOtId: null,
       venceEl: null,
+      vueltaDelDia: false,
       vencida: false,
       diasVencida: 0,
       noUsar: false,
@@ -298,7 +303,11 @@ export function senalItem(i: ItemAfuera, hoy: string, perdidaDias: number):
           : `Faltante · ${i.diasFaltante} ${i.diasFaltante === 1 ? "día" : "días"}`,
     };
   }
+  if (i.vencida && i.vueltaDelDia) {
+    return { tono: "aviso", texto: i.diasVencida <= 1 ? "No volvió hoy" : `No volvió hoy · hace ${i.diasVencida} días` };
+  }
   if (i.vencida) return { tono: "aviso", texto: i.diasVencida === 1 ? "Venció ayer" : `Venció hace ${i.diasVencida} días` };
+  if (i.vueltaDelDia) return { tono: "neutro", texto: "Vuelve hoy" };
   if (i.venceEl) {
     const d = diasEntre(hoy, i.venceEl);
     return { tono: "neutro", texto: d === 0 ? "Vence hoy" : d === 1 ? "Vence mañana" : `Vence el ${i.venceEl.slice(8, 10)}/${i.venceEl.slice(5, 7)}` };

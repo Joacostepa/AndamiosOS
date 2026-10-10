@@ -183,8 +183,10 @@ function Grupo({ grupo: g, hoy, perdidaDias, tablet, boton, puedeActuar, onPasar
   const n = g.maquinas.length + g.granel.length;
   const fila = (i: ItemAfuera) => {
     const s = senalItem(i, hoy, perdidaDias);
-    const wa = i.vencida && g.clase === "persona" && i.venceEl
-      ? linkWhatsapp(g.telefono, mensajePrestamoVencido({ nombre: g.titulo, herramienta: i.nombre, numero: i.numero ?? "", venceEl: i.venceEl, obra: i.odooOtId ? `OT ${i.odooOtId}` : null }))
+    // Vencida: a la persona; lo de cuadrilla que no volvió en el día, al capataz.
+    const destinatario = g.clase === "persona" ? { nombre: g.titulo, telefono: g.telefono } : g.capataz;
+    const wa = i.vencida && i.venceEl && destinatario
+      ? linkWhatsapp(destinatario.telefono, mensajePrestamoVencido({ nombre: destinatario.nombre, herramienta: i.nombre, numero: i.numero ?? "", venceEl: i.venceEl, obra: i.odooOtId ? `OT ${i.odooOtId}` : null }))
       : null;
     return (
       <li key={i.clave} className={cn("flex items-center gap-3 border-t first:border-t-0", tablet ? "min-h-[72px] px-4 py-2" : "min-h-14 px-3 py-1.5")}>
@@ -204,7 +206,7 @@ function Grupo({ grupo: g, hoy, perdidaDias, tablet, boton, puedeActuar, onPasar
           <span className={cn("shrink-0 text-muted-foreground", tablet ? "text-[15px]" : "text-sm")}>Con la cuadrilla</span>
         )}
         {wa && (
-          <a href={wa} target="_blank" rel="noopener noreferrer" className={cn(boton, tablet && "w-14 px-0")} aria-label={`Avisarle a ${g.titulo} por WhatsApp`}>
+          <a href={wa} target="_blank" rel="noopener noreferrer" className={cn(boton, tablet && "w-14 px-0")} aria-label={`Avisarle a ${destinatario?.nombre ?? g.titulo} por WhatsApp`}>
             <MessageCircle aria-hidden className="size-4" />
           </a>
         )}
@@ -269,6 +271,8 @@ function HojaPasar({ item, grupo, grupos, personas, cuadrillas, firma, tablet, o
   const [q, setQ] = useState("");
   const [ot, setOt] = useState("");
   const [firmante, setFirmante] = useState<string>("");
+  // A otra persona, la herramienta sigue con la fecha de vuelta que tenía (se puede cambiar).
+  const [venceEl, setVenceEl] = useState(item.venceEl ?? "");
   const [enviando, setEnviando] = useState(false);
 
   // Oficina sin legajo vinculado: a nombre de quién queda el vale.
@@ -304,6 +308,10 @@ function HojaPasar({ item, grupo, grupos, personas, cuadrillas, firma, tablet, o
     const it: ItemVale = item.unidadId
       ? { articuloId: item.articuloId, unidadId: item.unidadId, hacia }
       : { articuloId: item.articuloId, varianteId: item.varianteId, cantidad, desde: item.lugar, hacia };
+    // Fecha de vuelta: a una persona, la elegida (por defecto la que tenía); a una cuadrilla,
+    // ninguna, salvo que hubiera salido con "vuelve hoy".
+    if (item.unidadId && /^(p|x):/.test(hacia) && venceEl) it.venceEl = venceEl;
+    if (item.unidadId && hacia.startsWith("c:") && item.vueltaDelDia) it.vuelveHoy = true;
     // A otra persona o cuadrilla sigue en la obra donde estaba; a una obra, en ésa.
     it.odooOtId = otDestino ?? item.odooOtId;
     const quien = firma.kiosco
@@ -390,6 +398,17 @@ function HojaPasar({ item, grupo, grupos, personas, cuadrillas, firma, tablet, o
               </button>
               {destino === "persona" && (
                 <>
+                  {item.unidadId && (
+                    <label className="flex items-center gap-3 text-base">
+                      <span className="flex-1">Vuelve el <span className="text-muted-foreground">(vacío: sin fecha)</span></span>
+                      <input
+                        type="date"
+                        value={venceEl}
+                        onChange={(e) => setVenceEl(e.target.value)}
+                        className={cn("rounded-lg border-2 border-input bg-card px-3 outline-none focus-visible:border-ring", tablet ? "h-14 text-lg" : "h-11 text-base")}
+                      />
+                    </label>
+                  )}
                   <label className="relative">
                     <span className="sr-only">Buscar persona</span>
                     <Search aria-hidden className="pointer-events-none absolute top-1/2 left-3.5 size-5 -translate-y-1/2 text-muted-foreground" />

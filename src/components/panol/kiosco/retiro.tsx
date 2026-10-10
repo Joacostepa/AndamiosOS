@@ -12,13 +12,13 @@
 import { useMemo, useState } from "react";
 import { PackageX, SearchX, X } from "lucide-react";
 import { Escaner } from "@/components/panol/escaner";
-import { deshacerVale } from "@/hooks/use-panol";
+import { deshacerVale, useInvalidarPanol } from "@/hooks/use-panol";
 import {
-  confirmarVale, descartarPendiente, guardarUltimaObra, resolverEscaneo, RechazoVale, ultimaObra, useEnLinea, useRetirosDe,
+  confirmarVale, deshacerGuardado, guardarUltimaObra, resolverEscaneo, RechazoVale, ultimaObra, useEnLinea, useRetirosDe,
   type DatosKiosco,
 } from "@/hooks/use-panol-kiosco";
 import {
-  armarVale, cambiarCantidad, contar, decidirEscaneo, esErrorDeRed, fechaCorta, numero, obrasDeRetiros, obrasPropuestas,
+  armarVale, ubicacionDeArticulo, cambiarCantidad, contar, decidirEscaneo, esErrorDeRed, fechaCorta, numero, obrasDeRetiros, obrasPropuestas,
   quitarLinea, sumarLinea, type LineaVale,
 } from "@/lib/panol/kiosco";
 import { leerRechazo } from "@/lib/panol/estado";
@@ -47,6 +47,7 @@ export function FlujoRetiro({ modo, identidad, datos, onInicio, onTerminar, onUn
   onUnidad: (unidadId: string) => void;
 }) {
   const { dispositivo } = useKiosco();
+  const invalidar = useInvalidarPanol();
   const enLinea = useEnLinea();
   const [paso, setPaso] = useState<Paso>({ p: "escaneo" });
   const [lineas, setLineas] = useState<LineaVale[]>([]);
@@ -122,10 +123,12 @@ export function FlujoRetiro({ modo, identidad, datos, onInicio, onTerminar, onUn
     setError(null);
     setProcesando(true);
     const clientUuid = crypto.randomUUID();
-    const vale = armarVale({ tipo, clientUuid, token: identidad.token, dispositivo, lineas: ls, odooOtId: ot });
+    // El sobrante va con la cuadrilla de quien lo trae: así el consumo por cuadrilla lo descuenta.
+    const vale = armarVale({ tipo, clientUuid, token: identidad.token, dispositivo, lineas: ls, odooOtId: ot, cuadrillaId: tipo === "sobrante" ? identidad.cuadrillaId : null });
     try {
       if (tipo === "retiro") guardarUltimaObra(identidad.personaTipo, identidad.personaId, ot);
       const r = await confirmarVale(vale, { resumen: textoListo.texto, quien: identidad.nombre }, datos.nombreDeLugar);
+      if (r.estado === "ok") invalidar();
       setPaso({
         p: "listo", ...textoListo, clientUuid, volverA,
         valeId: r.estado === "ok" ? r.valeId : null,
@@ -152,7 +155,8 @@ export function FlujoRetiro({ modo, identidad, datos, onInicio, onTerminar, onUn
         onDeshacer={async () => {
           try {
             if (listo.valeId) await deshacerVale(listo.valeId);
-            else descartarPendiente(listo.clientUuid);
+            else await deshacerGuardado(listo.clientUuid);
+            invalidar();
             setPaso(listo.volverA);
           } catch (e) {
             setError(leerRechazo(e instanceof Error ? e.message : String(e)).texto);
@@ -190,7 +194,7 @@ export function FlujoRetiro({ modo, identidad, datos, onInicio, onTerminar, onUn
         sub={paso.sub}
         articulos={arts}
         onVolver={() => setPaso({ p: "escaneo" })}
-        onElegir={(a) => setPaso({ p: "cantidad", articuloId: a.id, ubicacionId: paso.ubicacionId })}
+        onElegir={(a) => setPaso({ p: "cantidad", articuloId: a.id, ubicacionId: ubicacionDeArticulo(datos.cat, a.id, paso.ubicacionId) })}
       />
     );
   }

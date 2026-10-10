@@ -24,6 +24,7 @@ import {
 import { TIPO_AUSENCIA_TXT, TIPOS_VIAJE } from "./tipos";
 import { anotar, columnasPunto, conGrabador, grabador, leerDia, mapAusencia as mapAusenciaFila, mapViaje, nombreUsuario, type DB, type Grabador } from "./servicio";
 import { hoyBA } from "@/lib/panol/estado";
+import { sacarPedidoDeViaje } from "./camiones";
 
 export type Resultado = { ok: true; texto: string; historialId: string | null; [k: string]: unknown };
 type Fila = Record<string, unknown>;
@@ -66,7 +67,7 @@ export const accionHojaSchema = z.discriminatedUnion("accion", [
 export type AccionHoja = z.infer<typeof accionHojaSchema>;
 
 export const accionViajeSchema = z.discriminatedUnion("accion", [
-  z.object({ accion: z.literal("crear"), fecha, vehiculoId: id.nullable().optional(), fleteExterno: z.string().trim().max(80).nullable().optional(), tipo: tipoViaje, hacia: puntoSchema, desde: puntoSchema.nullable().optional(), hora: hora.nullable().optional(), noAntesDe: hora.nullable().optional(), carga: z.string().trim().max(300).nullable().optional(), duracionMin: z.number().int().positive().max(600).nullable().optional(), orden: z.number().nullable().optional() }),
+  z.object({ accion: z.literal("crear"), fecha, vehiculoId: id.nullable().optional(), fleteExterno: z.string().trim().max(80).nullable().optional(), pedidoId: id.nullable().optional(), tipo: tipoViaje, hacia: puntoSchema, desde: puntoSchema.nullable().optional(), hora: hora.nullable().optional(), noAntesDe: hora.nullable().optional(), carga: z.string().trim().max(300).nullable().optional(), duracionMin: z.number().int().positive().max(600).nullable().optional(), orden: z.number().nullable().optional() }),
   z.object({ accion: z.literal("poner_pedido"), pedidoId: id, vehiculoId: id, sobre: id.nullable().optional(), orden: z.number().nullable().optional() }),
   z.object({ accion: z.literal("mover"), viajeId: id, vehiculoId: id.nullable(), orden: z.number().nullable().optional(), hora: hora.nullable().optional() }),
   z.object({ accion: z.literal("hora"), viajeId: id, hora: hora.nullable(), noAntesDe: hora.nullable().optional() }),
@@ -496,24 +497,60 @@ export async function deshacerEstadoViaje(g: Grabador, viaje: Fila): Promise<boo
   return true;
 }
 
+/**
+ * Desata un pedido de su viaje (I5): si el viaje lleva otros pedidos, sigue con ellos y
+ * pierde esta carga; si era el único, se anula con el motivo (al chofer le llega "te saqué
+ * un viaje"). Un viaje ya hecho o con "No pude" no se toca. Devuelve el viaje tocado.
+ */
+async function sacarDeSuViaje(g: Grabador, pedido: Fila, motivo: string): Promise<{ viaje: Fila; anulado: boolean } | null> {
+  if (!pedido.viaje_id) return null;
+  const [v] = await g.leer("hd_viajes", { id: pedido.viaje_id });
+  if (!v || v.estado !== "planeado") return null;
+  const otros = (await g.leer("hd_pedidos", { viaje_id: pedido.viaje_id })).filter((x) => x.id !== pedido.id && x.estado !== "anulado");
+  const r = sacarPedidoDeViaje((v.carga as string | null) ?? null, String(pedido.que), otros.map((o) => ({ que: String(o.que) })));
+  if (r.anular) await g.actualizar("hd_viajes", String(v.id), { estado: "anulado", anulado_motivo: motivo });
+  else await g.actualizar("hd_viajes", String(v.id), { carga: r.carga });
+  return { viaje: v, anulado: r.anular };
+}
+
 export function accionViaje(db: DB, userId: string, a: AccionViaje): Promise<Resultado> {
   return conGrabador(db, userId, { fecha: "fecha" in a ? a.fecha : null, entidad: "viaje", accion: a.accion }, (g) => accionViajeCon(g, db, userId, a));
 }
 async function accionViajeCon(g: Grabador, db: DB, userId: string, a: AccionViaje): Promise<Resultado> {
   if (a.accion === "crear") {
     const dia = await leerDia(a.fecha, { cacheOdoo: true });
-    const veh = a.vehiculoId ?? null;
+    // I6: un flete de afuera PARA un pedido queda atado al pedido (en camino · flete de X),
+    // en el mismo gesto: nunca se anula el pedido ni queda la mitad hecha.
+    let ped: Fila | null = null;
+    if (a.pedidoId) {
+      if (!a.fleteExterno) throw new Error("Un pedido se pone en un camión con «Poner»; acá va el nombre del flete.");
+      ped = (await g.leer("hd_pedidos", { id: a.pedidoId }))[0] ?? null;
+      if (!ped || ped.estado === "anulado") throw new Error("Ese pedido ya no está.");
+      if (ped.estado === "hecho") throw new Error("Ese pedido ya está hecho.");
+      if (String(ped.fecha) !== a.fecha) throw new Error("Ese pedido es de otro día.");
+    }
+    const veh = a.pedidoId ? null : a.vehiculoId ?? null;
     const ahora = ahoraDe(a.fecha);
     const orden = a.orden ?? (a.hora ? toMin(a.hora)! : veh ? (calcVeh(dia, veh).at(-1)?.orden ?? 540) + 30 : toMin(a.noAntesDe) ?? 540);
+    // Con pedido, el destino y el tipo son los del pedido (no lo que mande la pantalla).
+    const pp = ped ? dia.pedidos.find((x) => x.id === ped!.id) ?? null : null;
+    const tipo = pp ? pp.tipo : a.tipo;
     const v = await g.insertar("hd_viajes", filaViaje(a.fecha, {
-      vehiculoId: veh, choferId: veh ? choferDelCamion(dia, veh) : null, fleteExterno: a.fleteExterno ?? null, tipo: a.tipo, hojaId: null,
-      cuadrillaOdooId: null, hacia: a.hacia as Punto, desde: (a.desde as Punto | null | undefined) ?? null, orden, hora: a.hora ?? null,
+      vehiculoId: veh, choferId: veh ? choferDelCamion(dia, veh) : null, fleteExterno: a.fleteExterno ?? null, tipo, hojaId: null,
+      cuadrillaOdooId: null, hacia: pp ? pp.hacia : (a.hacia as Punto), desde: pp ? pp.desde : (a.desde as Punto | null | undefined) ?? null, orden, hora: a.hora ?? null,
       noAntesDe: a.noAntesDe ?? (esHoy(ahora) && !a.hora ? hm(Math.round((ahora + 10) / 5) * 5) : null), duracionMin: a.duracionMin ?? null,
-      vuelta: a.tipo === "trae_material", vueltaCarga: null, carga: a.carga ?? null, cargaDeposito: null, okTodoElDia: false,
+      vuelta: tipo === "trae_material", vueltaCarga: null, carga: a.carga ?? pp?.que ?? null, cargaDeposito: null, okTodoElDia: false,
     }));
     const vv = mapViaje(v, a.fecha);
+    let avisarA: string | null = null;
+    if (ped) {
+      const antes = await sacarDeSuViaje(g, ped, `lo lleva un flete de afuera (${a.fleteExterno})`);
+      if (antes?.viaje.vehiculo_id) avisarA = (antes.viaje.chofer_id as string | null) ?? choferDelCamion(dia, String(antes.viaje.vehiculo_id));
+      await g.actualizar("hd_pedidos", String(ped.id), { viaje_id: v.id, estado: "en_camion", no_pudo_visto: true, esperando_hasta: null });
+    }
     const texto = a.fleteExterno ? `Flete de afuera: ${a.fleteExterno} · ${a.carga ?? lugar(dia, vv.hacia).n}${a.hora ? ` · ${normHora(a.hora)}` : ""}` : `${TIPOS_VIAJE[a.tipo].nombre} a ${lugar(dia, vv.hacia).n}${veh ? ` en el ${patente(dia, veh)} (${N(dia, choferDelCamion(dia, veh))})` : ""}`;
-    return listo(userId, texto, g, { fecha: a.fecha, entidad: "viaje", entidadId: String(v.id), viajeId: String(v.id), accion: "crear_viaje" });
+    const enviado = !!avisarA && dia.envios.some((e) => e.personaId === avisarA && e.enviadaMin != null && !e.anulado);
+    return listo(userId, ped ? `${texto} · el pedido queda en camino` : texto, g, { fecha: a.fecha, entidad: ped ? "pedido" : "viaje", entidadId: ped ? String(ped.id) : String(v.id), viajeId: String(v.id), pedidoId: ped ? String(ped.id) : null, accion: ped ? "flete_de_afuera" : "crear_viaje" }, { viajeId: String(v.id), avisarA: enviado ? avisarA : null });
   }
   if (a.accion === "poner_pedido") {
     const pr = await db.from("hd_pedidos").select("*").eq("id", a.pedidoId).maybeSingle();
@@ -712,23 +749,18 @@ async function accionPedidoCon(g: Grabador, db: DB, userId: string, a: AccionPed
       return listo(userId, `${donde}: ya está. Volvió a «Para hacer vos»`, g, base);
     case "pasar_a_manana": {
       const avisar: string[] = [];
-      if (p.viaje_id) {
-        const v = dia.viajes.find((x) => x.id === p.viaje_id);
-        if (v) {
-          // Anulado con motivo y no borrado: al chofer le llega "te saqué un viaje".
-          await g.actualizar("hd_viajes", v.id, { estado: "anulado", anulado_motivo: "pasa a mañana" });
-          const c0 = v.choferId ?? choferDelCamion(dia, v.vehiculoId);
-          if (c0) avisar.push(c0);
-        }
+      // I5: si el viaje lleva otros pedidos, sólo sale éste (el viaje sigue con los demás).
+      const sacado = await sacarDeSuViaje(g, p, "pasa a mañana");
+      if (sacado) {
+        const c0 = (sacado.viaje.chofer_id as string | null) ?? (sacado.viaje.vehiculo_id ? choferDelCamion(dia, String(sacado.viaje.vehiculo_id)) : null);
+        if (c0) avisar.push(c0);
       }
       await g.actualizar("hd_pedidos", a.pedidoId, { fecha: addDia(f, 1), viaje_id: null, estado: "sin_camion", orden_manual: -1, esperando_hasta: null, esperando_motivo: null });
-      return listo(userId, `${donde} pasa a mañana: queda primero del ${ddmm(addDia(f, 1))} con «viene de ayer»`, g, base, { avisarA: avisar });
+      const queda = sacado && !sacado.anulado ? ". El viaje sigue con los otros pedidos" : "";
+      return listo(userId, `${donde} pasa a mañana: queda primero del ${ddmm(addDia(f, 1))} con «viene de ayer»${queda}`, g, base, { avisarA: avisar });
     }
     case "anular": {
-      if (p.viaje_id) {
-        const otros = await g.leer("hd_pedidos", { viaje_id: p.viaje_id });
-        if (otros.length <= 1) await g.actualizar("hd_viajes", String(p.viaje_id), { estado: "anulado", anulado_motivo: a.motivo || "ya no hace falta" });
-      }
+      await sacarDeSuViaje(g, p, a.motivo || "ya no hace falta");
       await g.actualizar("hd_pedidos", a.pedidoId, { estado: "anulado", anulado_motivo: a.motivo || "Ya no hace falta", anulado_at: ts(), viaje_id: null });
       return listo(userId, `Pedido anulado (${lowFirst(a.motivo || "ya no hace falta")}). Queda en el historial`, g, base);
     }

@@ -135,6 +135,26 @@ export function pedidoDesdeCajon(texto: string, lugares: Pick<Lugar, "id" | "nom
   return { que: cap(que), hacia: mejor ? { otId: null, lugarId: mejor.l.id, texto: null } : null };
 }
 
+// ─── Sacar un pedido de su viaje (I5, I6) ───────────────────────────────────
+
+/**
+ * Qué le pasa al viaje cuando un pedido se va ("Pasar a mañana", anular el pedido, pasarlo
+ * a un flete de afuera): si el viaje lleva OTROS pedidos, sigue con ellos y su carga pierde
+ * la de éste (la parte "+ 6 tablones" que sumó `planPonerPedido`, o se rearma con lo de los
+ * demás); si era el único, se anula. Nunca se anula un viaje que lleva otra cosa.
+ */
+export function sacarPedidoDeViaje(carga: string | null, que: string, otros: { que: string }[]): { anular: true } | { anular: false; carga: string | null } {
+  if (!otros.length) return { anular: true };
+  const n = (x: string) => normalizar(x.replace(/\s*\(de lo desarmado\)\s*$/i, "").trim());
+  const partes = (carga ?? "").split(" + ").map((x) => x.trim()).filter(Boolean);
+  const i = partes.findIndex((x) => n(x) === n(que));
+  if (i >= 0 && partes.length > 1) {
+    const resto = partes.filter((_, j) => j !== i);
+    return { anular: false, carga: [cap(resto[0]), ...resto.slice(1)].join(" + ") };
+  }
+  return { anular: false, carga: otros.map((p, j) => (j ? lowFirst(p.que) : cap(p.que))).join(" + ") };
+}
+
 // ─── Después de avisarle al chofer ──────────────────────────────────────────
 
 /**

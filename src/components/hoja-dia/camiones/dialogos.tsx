@@ -138,7 +138,7 @@ function DlgTaller({ veh, cerrar }: { veh: string; cerrar: () => void }) {
 }
 
 function DlgFlete({ pedidoId, cerrar }: { pedidoId?: string; cerrar: () => void }) {
-  const { dia, fecha, ahora, hoy, viaje, pedido } = useCamiones();
+  const { dia, fecha, ahora, hoy, viaje } = useCamiones();
   const p = pedidoId ? dia.pedidos.find((x) => x.id === pedidoId) ?? null : null;
   const [quien, setQuien] = useState("");
   const [carga, setCarga] = useState(p ? `${p.que} · ${lugar(dia, p.hacia).n}` : "");
@@ -152,15 +152,13 @@ function DlgFlete({ pedidoId, cerrar }: { pedidoId?: string; cerrar: () => void 
     const hacia: Punto = p ? p.hacia : dep ? { otId: null, lugarId: dep.id, texto: null } : { otId: null, lugarId: null, texto: "Depósito" };
     const tipo: TipoViaje = p ? p.tipo : "otro";
     cerrar();
-    viaje({ accion: "crear", fecha, fleteExterno: nombre, tipo, hacia, hora: h, carga: carga.trim() || null }, () => {
-      // La base no ata un pedido a un flete: el pedido sale de la cola con el motivo.
-      if (p) pedido({ accion: "anular", pedidoId: p.id, motivo: `Lo lleva un flete de afuera (${nombre})` }, undefined, false);
-    });
+    // Con pedido, un solo gesto: el flete queda atado al pedido ("en camino · flete de X").
+    viaje({ accion: "crear", fecha, fleteExterno: nombre, tipo, hacia, hora: h, carga: carga.trim() || null, pedidoId: p?.id ?? null });
   };
   return (
     <>
       <DialogTitle>Flete de afuera</DialogTitle>
-      <DialogDescription>Un viaje que hace un tercero. No tiene link; sirve para que la cola no lo muestre «sin camión» y para que el parte lo tome como tercerizado.</DialogDescription>
+      <DialogDescription>Un viaje que hace un tercero. No tiene link; {p ? "el pedido queda «en camino · flete de …»" : "sirve para que la cola no lo muestre «sin camión»"} y el parte lo toma como tercerizado.</DialogDescription>
       <div className="grid gap-3">
         <div className="grid gap-1">
           <Label htmlFor="fl-q">Quién</Label>

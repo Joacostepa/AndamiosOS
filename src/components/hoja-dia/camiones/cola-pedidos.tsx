@@ -154,7 +154,7 @@ function Pedido({ it, grupo }: { it: ItemCola; grupo: "vos" | "esp" | "camino" |
     const e = ch ? dia.envios.find((x) => x.personaId === ch && !x.anulado) : null;
     return (
       <div id={`ped-${p.id}`} className="rounded-[9px] border bg-card px-2.5 py-1.5 text-[13px] text-muted-foreground">
-        {p.que} → {dest.corto} · lo lleva {nombreDe(dia, ch)} · {horaTxt(st.v)}
+        {p.que} → {dest.corto} · {st.v.fleteExterno ? `en camino · flete de ${st.v.fleteExterno}` : `lo lleva ${nombreDe(dia, ch)}`} · {horaTxt(st.v)}
         {e?.cambioMin != null ? ` · avisado ${hm(e.cambioMin)}` : ""}
         {e?.recibidaMin != null && e.cambioMin != null && e.recibidaMin >= e.cambioMin ? ` · visto ${hm(e.recibidaMin)}` : ""}
       </div>

@@ -2,8 +2,8 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { filasOrden, horaSoltada, mensajeSacarUnRato, ordenEnFila, pedidoDesdeCajon, pidioTxt, seguimientoAviso, urgenciaTxt, cuadrillaDeDestino } from "./camiones.ts";
-import { calcVeh, viajeCalc } from "./estado.ts";
+import { filasOrden, horaSoltada, mensajeSacarUnRato, ordenEnFila, pedidoDesdeCajon, pidioTxt, sacarPedidoDeViaje, seguimientoAviso, urgenciaTxt, cuadrillaDeDestino } from "./camiones.ts";
+import { calcVeh, cola, fletesDelDia, viajeCalc } from "./estado.ts";
 import type { DiaHoja } from "./tipos.ts";
 import { LUGARES, OT, enviarATodos, martesArmado, pedido, viaje } from "./escenario.test-fixture.ts";
 
@@ -79,4 +79,26 @@ test("mensajeSacarUnRato: al capataz de la cuadrilla que se queda sin la hidrogr
   const m = mensajeSacarUnRato(d, v)!;
   assert.equal(m.pid, "sack");
   assert.match(m.texto, /^Sack, Borda sale un rato con la hidrogrúa \(\d+:\d\d a \d+:\d\d\): lleva 1 escalera a Gurruchaga 1650\. Vuelve después\.$/);
+});
+
+test("I5: sacar un pedido de un viaje con otros pedidos no anula el viaje", () => {
+  assert.deepEqual(sacarPedidoDeViaje("20 tablones + 2 escaleras", "2 escaleras", [{ que: "20 tablones" }]), { anular: false, carga: "20 tablones" });
+  assert.deepEqual(sacarPedidoDeViaje("20 tablones + 2 escaleras", "20 tablones", [{ que: "2 escaleras" }]), { anular: false, carga: "2 escaleras" });
+  // Carga editada a mano: se rearma con lo que queda.
+  assert.deepEqual(sacarPedidoDeViaje("Material varios", "10 caños", [{ que: "1 escalera" }, { que: "Bases" }]), { anular: false, carga: "1 escalera + bases" });
+});
+
+test("I5: si era el único pedido, el viaje se anula", () => {
+  assert.deepEqual(sacarPedidoDeViaje("10 caños", "10 caños", []), { anular: true });
+});
+
+test("I6: un pedido atado a un flete de afuera queda en camino (no anulado, no sin camión)", () => {
+  const d = martesArmado();
+  d.viajes.push(viaje("v-flete", { tipo: "lleva_material", vehiculoId: null, choferId: null, fleteExterno: "Semi de Fernando", hacia: { otId: OT.cab, lugarId: null, texto: null }, carga: "Mekano", hora: "11:00", orden: 660 }));
+  d.pedidos.push(pedido("p-flete", { que: "Mekano", hacia: { otId: OT.cab, lugarId: null, texto: null }, viajeId: "v-flete", estado: "en_camion" }));
+  const c = cola(d, MAR_1020);
+  assert.ok(c.camino.some((x) => x.p.id === "p-flete" && x.st.k === "en" && x.st.v.fleteExterno === "Semi de Fernando"));
+  assert.ok(!c.vos.some((x) => x.p.id === "p-flete"));
+  // Y cuenta como flete tercerizado para el parte.
+  assert.ok(fletesDelDia(d, OT.cab).some((x) => x.tercerizado));
 });

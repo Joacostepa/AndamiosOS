@@ -66,7 +66,13 @@ export type TipoAlerta =
    * crea la lectura del día (src/lib/hoja-dia/servicio.ts). SÓLO CAMPANITA en la fase 1: el
    * "No pude" a #logistica-operativa es de la fase 2.
    */
-  | "hoja_dia";
+  | "hoja_dia"
+  /**
+   * Legajos ↔ empleados de Odoo (src/lib/personal/sync-odoo.ts): un legajo que se creó solo,
+   * o un empleado que no se pudo cruzar (dos legajos con el mismo nombre, sin régimen). Van
+   * a CADA persona con Legajos en editar (destinatarioId), no a un rol. SÓLO CAMPANITA.
+   */
+  | "personal_odoo";
 
 export type Prioridad = "baja" | "media" | "alta" | "critica";
 
@@ -79,8 +85,10 @@ export type NuevaAlerta = {
   prioridad?: Prioridad;
   /** Ruta interna de la app. El aviso tiene que llevar a algún lado. */
   enlace?: string | null;
-  /** null = todos. Por defecto van a operaciones. */
+  /** null = todos. Por defecto van a operaciones (salvo que vaya a una persona). */
   destinatarioRol?: Rol | null;
+  /** Una persona puntual (user_profiles.id). Con esto el rol por defecto pasa a null. */
+  destinatarioId?: string | null;
 };
 
 /**
@@ -114,7 +122,8 @@ export async function crearAlertas(db: DB, alertas: NuevaAlerta[]): Promise<numb
     descripcion: a.descripcion ?? null,
     prioridad: a.prioridad ?? "media",
     enlace: a.enlace ?? null,
-    destinatario_rol: a.destinatarioRol === undefined ? "operativo" : a.destinatarioRol,
+    destinatario_rol: a.destinatarioRol !== undefined ? a.destinatarioRol : a.destinatarioId ? null : "operativo",
+    destinatario_id: a.destinatarioId ?? null,
   }));
 
   // `clave` además de `id` porque con ignoreDuplicates el select devuelve SÓLO las filas

@@ -46,6 +46,9 @@ export async function updateSession(request: NextRequest) {
   // /api/permisos-via-publica/latido: el cron que avisa si el robot de TAD dejó de dar
   //   señales. Otra vez la ruta completa: la bandeja de permisos cuelga de esa misma rama y
   //   se lee con sesión. También lo protege CRON_SECRET.
+  // /api/cron/personal-odoo: el control diario de Legajos contra los empleados de Odoo. Ruta
+  //   completa y protegida por CRON_SECRET, como los otros crons. (El webhook de empleados
+  //   ya entra por /api/odoo/webhooks.)
   // /cotizador y /api/public: cotizador hogareño para clientes finales (sin cuenta).
   // /endosos: portal del productor de seguros (Segucom) para subir pólizas. Lo protege el
   //   token de la URL, que valida /api/public/endosos; la página sola no muestra nada.
@@ -73,6 +76,7 @@ export async function updateSession(request: NextRequest) {
     "/api/informes-obra/generar",
     "/api/alertas/barrido",
     "/api/permisos-via-publica/latido",
+    "/api/cron/personal-odoo",
     "/cotizador",
     "/api/public",
   ];

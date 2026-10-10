@@ -59,6 +59,8 @@ const DESTINOS: Record<TipoAlerta, Canal[]> = {
   // El pañol tiene su canal: ahí están los encargados, que no son un rol (ver panol/avisos.ts).
   // Hoja del día: sólo campanita en la fase 1 (ver servicio.ts).
   hoja_dia: [],
+  // Legajos desde Odoo: van a cada persona con Legajos en editar, no a un canal.
+  personal_odoo: [],
   panol_ajuste: ["panol"],
   panol_stock: ["panol"],
   panol_vencida: ["panol"],
@@ -231,6 +233,14 @@ const ESTILO: Record<
     plural: "avisos de la hoja del día",
     destacado: false,
     prefijos: [],
+  },
+  personal_odoo: {
+    color: "#64748b",
+    emoji: "🪪",
+    rotulo: "Legajos",
+    plural: "avisos de Legajos",
+    destacado: false,
+    prefijos: ["Legajos"],
   },
 };
 

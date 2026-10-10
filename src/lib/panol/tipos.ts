@@ -143,7 +143,10 @@ export type Identidad = {
   personaTipo: PersonaTipo;
   personaId: string;
   nombre: string;
+  /** Habilita lo de encargado. Sólo entrando con PIN: el código de la credencial está impreso. */
   esEncargado: boolean;
+  /** Es encargado pero entró con la credencial: ofrecerle "Entrá con tu PIN". */
+  encargadoSinPin: boolean;
   cuadrillaId: string | null;
 };
 

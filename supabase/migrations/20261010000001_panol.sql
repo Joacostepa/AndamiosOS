@@ -195,6 +195,9 @@ CREATE TABLE IF NOT EXISTS pan_sesiones (
   registrado_por  UUID NOT NULL,
   expira_at       TIMESTAMPTZ NOT NULL
 );
+-- Si esta sesión habilita lo de encargado. Sólo con PIN: el código de la credencial está
+-- impreso debajo del QR, así que solo no prueba quién es.
+ALTER TABLE pan_sesiones ADD COLUMN IF NOT EXISTS encargado BOOLEAN NOT NULL DEFAULT false;
 CREATE INDEX IF NOT EXISTS idx_pan_sesiones_expira ON pan_sesiones(expira_at);
 
 -- ========================
@@ -362,6 +365,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_pan_conteo_items_clave ON pan_conteo_items
 -- FUNCIONES
 -- ============================================================
 
+-- El día en Buenos Aires: un préstamo vence y una inspección caduca a la medianoche de
+-- acá, no a la de UTC (que son las 21 h). Es la misma cuenta que hoyBA() en estado.ts.
+CREATE OR REPLACE FUNCTION pan_hoy()
+RETURNS DATE
+LANGUAGE sql STABLE
+AS $$ SELECT (now() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date; $$;
+
 -- Quién llama: 'encargado' | 'kiosco' | 'ver' | NULL.
 CREATE OR REPLACE FUNCTION pan_nivel()
 RETURNS TEXT
@@ -370,7 +380,7 @@ AS $$
   SELECT CASE
     WHEN p.activo IS NOT TRUE THEN NULL
     WHEN p.rol = 'admin' OR p.permisos->>'panol' = 'editar' THEN 'encargado'
-    WHEN p.permisos->>'panol-kiosco' = 'editar' THEN 'kiosco'
+    WHEN p.permisos->>'panol-kiosco' IN ('ver', 'editar') THEN 'kiosco'
     WHEN p.permisos->>'panol' = 'ver' THEN 'ver'
   END
   FROM user_profiles p WHERE p.id = auth.uid();
@@ -576,6 +586,7 @@ DECLARE
   v_token   TEXT;
   v_intento pan_kiosco_intentos%ROWTYPE;
   v_disp    TEXT := COALESCE(NULLIF(BTRIM(p_dispositivo), ''), 'sin-dispositivo');
+  v_encargado BOOLEAN;
 BEGIN
   -- IS NULL primero: NULL NOT IN (…) da NULL y el IF no frenaría a quien no tiene el pañol.
   IF v_nivel IS NULL OR v_nivel NOT IN ('kiosco', 'encargado') THEN
@@ -617,17 +628,23 @@ BEGIN
   END IF;
   IF v_activo IS NOT TRUE THEN RAISE EXCEPTION 'PERSONA_INACTIVA'; END IF;
 
+  -- Encargado sólo si entró con PIN (ver pan_sesiones.encargado).
+  v_encargado := NULLIF(BTRIM(p_pin), '') IS NOT NULL AND NULLIF(BTRIM(p_codigo), '') IS NULL
+                 AND pan_persona_es_encargado(v_tipo, v_id);
+
   DELETE FROM pan_sesiones WHERE expira_at < now();
   v_token := encode(extensions.gen_random_bytes(18), 'hex');
-  INSERT INTO pan_sesiones (token, persona_tipo, persona_id, dispositivo, registrado_por, expira_at)
-  VALUES (v_token, v_tipo, v_id, v_disp, auth.uid(), now() + interval '15 minutes');
+  INSERT INTO pan_sesiones (token, persona_tipo, persona_id, dispositivo, registrado_por, expira_at, encargado)
+  VALUES (v_token, v_tipo, v_id, v_disp, auth.uid(), now() + interval '15 minutes', v_encargado);
 
   RETURN jsonb_build_object(
     'token', v_token,
     'personaTipo', v_tipo,
     'personaId', v_id,
     'nombre', pan_nombre_persona(v_tipo, v_id),
-    'esEncargado', pan_persona_es_encargado(v_tipo, v_id),
+    'esEncargado', v_encargado,
+    -- Es encargado pero entró con la credencial: el kiosco le ofrece "Entrá con tu PIN".
+    'encargadoSinPin', NOT v_encargado AND pan_persona_es_encargado(v_tipo, v_id),
     'cuadrillaId', CASE v_tipo
       WHEN 'persona' THEN (SELECT cuadrilla_id FROM cuadrilla_personal WHERE personal_id = v_id)
       ELSE (SELECT cuadrilla_id FROM pan_personas_externas WHERE id = v_id) END
@@ -657,7 +674,7 @@ BEGIN
     -- Cada uso la renueva: contar una estantería larga no puede cortar la sesión a mitad.
     UPDATE pan_sesiones SET expira_at = now() + interval '15 minutes' WHERE token = p_token;
     RETURN QUERY SELECT v_s.persona_tipo, v_s.persona_id,
-      v_nivel = 'encargado' OR pan_persona_es_encargado(v_s.persona_tipo, v_s.persona_id),
+      v_nivel = 'encargado' OR (v_s.encargado AND pan_persona_es_encargado(v_s.persona_tipo, v_s.persona_id)),
       v_nivel = 'kiosco';
     RETURN;
   END IF;
@@ -779,7 +796,7 @@ BEGIN
       IF v_uni.id IS NOT NULL THEN
         IF v_uni.lugar NOT LIKE 'u:%' THEN RAISE EXCEPTION 'LA_TIENE:%', v_uni.lugar; END IF;
         IF v_uni.estado <> 'disponible' THEN RAISE EXCEPTION 'NO_DISPONIBLE:%', v_uni.estado; END IF;
-        IF v_art.seguridad_critica AND v_uni.proxima_inspeccion < current_date THEN
+        IF v_art.seguridad_critica AND v_uni.proxima_inspeccion < pan_hoy() THEN
           RAISE EXCEPTION 'INSPECCION_VENCIDA:%', v_uni.numero;
         END IF;
         v_desde := v_uni.lugar;
@@ -813,7 +830,7 @@ BEGIN
       IF v_desde IS NULL OR v_desde !~ '^(p|x|c|o):' OR v_hacia !~ '^(p|x|c|o):' THEN
         RAISE EXCEPTION 'Sólo se pasa algo que está afuera, a otra persona, cuadrilla u obra.';
       END IF;
-      IF v_uni.id IS NOT NULL AND v_art.seguridad_critica AND v_uni.proxima_inspeccion < current_date THEN
+      IF v_uni.id IS NOT NULL AND v_art.seguridad_critica AND v_uni.proxima_inspeccion < pan_hoy() THEN
         RAISE EXCEPTION 'INSPECCION_VENCIDA:%', v_uni.numero;
       END IF;
 
@@ -864,7 +881,7 @@ BEGIN
       NULLIF(BTRIM(v_item->>'motivo'), ''), NULLIF(v_item->>'fotoPath', ''),
       CASE WHEN v_hacia ~ '^(p|x):' AND NOT COALESCE((v_item->>'vuelveHoy')::boolean, false)
            THEN NULLIF(v_item->>'venceEl', '')::date
-           WHEN v_hacia ~ '^(p|x|c):' AND COALESCE((v_item->>'vuelveHoy')::boolean, false) THEN current_date END,
+           WHEN v_hacia ~ '^(p|x|c):' AND COALESCE((v_item->>'vuelveHoy')::boolean, false) THEN pan_hoy() END,
       NULLIF(v_item->>'costoUnitario', '')::numeric,
       NULLIF(BTRIM(v_item->>'denuncia'), ''));
     v_n := v_n + 1;
@@ -888,6 +905,8 @@ AS $$
 DECLARE v_lugar TEXT;
 BEGIN
   IF p_mov.tipo = 'anulacion' THEN RAISE EXCEPTION 'Una anulación no se anula: cargá el movimiento de nuevo.'; END IF;
+  -- Anular un alta dejaría la unidad en el limbo ('alta'): lo que se cargó de más se da de baja.
+  IF p_mov.tipo = 'alta' THEN RAISE EXCEPTION 'Un alta no se anula: dala de baja con su motivo.'; END IF;
   IF EXISTS (SELECT 1 FROM pan_movimientos WHERE anula_a = p_mov.id) THEN RAISE EXCEPTION 'Ya está anulado.'; END IF;
   IF p_mov.unidad_id IS NOT NULL THEN
     SELECT lugar INTO v_lugar FROM pan_unidades WHERE id = p_mov.unidad_id FOR UPDATE;
@@ -1327,6 +1346,13 @@ BEGIN
   END LOOP;
 END
 $rls$;
+
+-- Los códigos de las credenciales los ve sólo un encargado: quien los lee puede escribirlos
+-- en "Escribir el código" y firmar por otro. El kiosco resuelve credenciales por RPC.
+DROP POLICY IF EXISTS "Pañol: leer" ON pan_codigos;
+CREATE POLICY "Pañol: leer" ON pan_codigos FOR SELECT TO authenticated
+  USING ((SELECT pan_nivel()) IS NOT NULL
+         AND (tipo NOT IN ('persona', 'externa') OR (SELECT pan_nivel()) = 'encargado'));
 
 -- Unidades: la ficha sí, el lugar y el estado no (son del historial).
 DROP POLICY IF EXISTS "Pañol: encargados editan la ficha" ON pan_unidades;

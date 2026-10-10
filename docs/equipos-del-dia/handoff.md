@@ -61,6 +61,33 @@ Tests nuevos: `parte-existente.test.ts`, `cierre.test.ts`, `deshacer-regla.test.
 4. **Variables de Telegram** en Vercel: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET` (bot creado con @BotFather). Cargar en `hd_parametros` el teléfono del coordinador y el del depósito (y `deposito.telegram_chat_id` si el depósito usa Telegram).
 5. **Webhook**: `node --env-file=.env.local scripts/telegram-webhook.mjs https://<dominio>`.
 6. **Deploy** de la rama (merge a main). Después: permisos "Hoja del día" (editar) a Juan Agustín, Ezequiel y Joaquín, y vincular Telegram de capataces y choferes.
+7. **Regla de Odoo para Legajos** (después del deploy, ver abajo): `node --env-file=.env.local scripts/odoo-webhook-empleados.mjs` (simulacro) y después con `--aplicar`.
+8. **Puesta al día de Legajos**: `node --env-file=.env.local --experimental-strip-types scripts/personal-sincronizar-odoo.mjs` (simulacro: hoy crea los 7 andamistas que faltan) y después con `--aplicar`.
+
+## Legajos ↔ Empleados de Odoo (sincronización automática)
+
+Decisión del dueño (10/10): cuando se da de alta, se modifica o se da de baja un empleado en Odoo (`hr.employee`), Legajos (`personal`) se actualiza solo. **Un solo sentido**: Odoo es el dueño de los datos de la persona; la app suma lo suyo (`puede_estar_a_cargo`, Telegram, planteles, pañol, `user_id`) y eso la sincronización no lo toca nunca. En Odoo no escribe nada.
+
+**La regla** (`src/lib/personal/sync-odoo.ts`, pura, con tests):
+- Cruce: por `odoo_employee_id`; si no, por DNI (`identification_id`, sólo dígitos) entre los legajos sin vínculo; si no, por nombre normalizado entre los legajos sin vínculo. Misma regla que `hoja-dia-vincular-personal.mjs` (que ya se aplicó y queda reemplazado por `personal-sincronizar-odoo.mjs`).
+- Con legajo: vincula y actualiza `activo` (archivado en Odoo → legajo inactivo), `odoo_tarea` y `telefono` **sólo si el legajo no tiene**. El `puesto` no se toca (Ortega es chofer en Legajos y andamista en Odoo, a propósito).
+- Sin legajo: se **crea** sólo si es **operario** y está activo. Operario = `x_regimen_liquidacion = "operarios"` (o, si el régimen está vacío, que tenga `x_tarea`). En Odoo el régimen separa limpio: los 31 de obra (30 activos y Belizán, archivado) tienen `operarios` + tarea (andamista/chofer/herrero); los 15 de oficina, `administrativos` y sin tarea. `employee_type` NO sirve (Geloz, Sena Ayrton, Taboada y Vargas son operarios cargados como "employee"). Al crear: apellido/nombre partidos de "APELLIDO, Nombres" (en mayúsculas como el resto), DNI de `identification_id` (si no hay, `TMP-NOMBRES-APELLIDO`), puesto `chofer` si la tarea es chofer y si no `operario`, `user_id` null.
+- Dudoso (no se toca, se avisa): dos legajos sin vínculo con el mismo nombre o DNI, un DNI o nombre que ya es del legajo de OTRO empleado, un empleado activo sin régimen ni tarea.
+- Nunca borra. Los legajos sin vínculo que no cruzan quedan como están (López, Arrieta, Teodorovich y Polo, de baja a mano; Capurro, técnico de SyH). Un legajo vinculado a un empleado que se **borró** de Odoo se desactiva.
+
+**Las tres entradas** (las tres con la misma regla):
+1. **Webhook** `POST /api/odoo/webhooks/empleados?secret=ODOO_SYNC_SECRET` — lo llama el automatismo de Odoo "AndamiosOS sync empleados" (`base.automation` on_create_or_write sobre `hr.employee` + `ir.actions.server` state=webhook que manda sólo el id; mismo mecanismo que clientes/obras/OTs). Dispara al crear y al cambiar `name`, `active`, `mobile_phone`, `work_phone`, `x_tarea`, `x_regimen_liquidacion`, `identification_id`. Contesta 202 al validar el secret y sincroniza en `after()` releyendo el empleado de Odoo. Idempotente (dos altas a la vez chocan con el UNIQUE de `odoo_employee_id`). Log en Vercel: `[webhook empleado N]`.
+2. **Control diario** `GET /api/cron/personal-odoo` (05:30 BA, `30 8 * * *` UTC en `vercel.json`, protegido por `CRON_SECRET`): todos los empleados, activos y archivados. Respaldo por si un webhook se perdió. Si Odoo no devuelve empleados, no toca nada.
+3. **Script** `scripts/personal-sincronizar-odoo.mjs`: la misma pasada a mano, simulacro por defecto.
+
+**Avisos**: tipo `personal_odoo`, sólo campanita, a **cada persona activa con Legajos en editar** (y admins) por `destinatario_id`. Un aviso por empleado y motivo, una sola vez (clave `personal_odoo:<empleado>:<motivo>:<usuario>`): el alta automática ("Legajos: alta desde Odoo — …", para revisar si puede estar a cargo y vincular Telegram), lo dudoso y lo que falló al escribir.
+
+**Cómo se activa** (en este orden):
+1. Deploy (las rutas tienen que existir antes: si no, Odoo llama a un 404 dentro del guardado del empleado).
+2. `node --env-file=.env.local scripts/odoo-webhook-empleados.mjs` (simulacro: muestra lo que crearía) → con `--aplicar` lo crea en Odoo. Idempotente: si ya existe, lo deja activo con esos campos y esa URL.
+3. `node --env-file=.env.local --experimental-strip-types scripts/personal-sincronizar-odoo.mjs` (simulacro) → con `--aplicar`. Simulacro del 10/10: 23 al día, **7 a crear** (Della Corte, García Javier, Muñoz Leonardo, Vargas, Geloz, Sena Ayrton, Taboada; los 7 puesto operario, tarea andamista, con DNI de Odoo), 16 sin legajo a propósito (15 administrativos y Belizán, archivado), 0 dudosos.
+
+**Cómo se apaga**: `node --env-file=.env.local scripts/odoo-webhook-empleados.mjs --desactivar --aplicar` (deja la regla archivada en Odoo; se vuelve a prender corriendo el script con `--aplicar`). Para apagar también el control diario, sacar la entrada `/api/cron/personal-odoo` de `vercel.json` (o borrar `CRON_SECRET`, que lo apaga junto con los otros crons). Lo que ya se creó en Legajos queda.
 
 ## Lo que falta
 
@@ -95,7 +122,13 @@ src/lib/hoja-dia/{estado,mensajes}.test.ts + escenario.test-fixture.ts (el marte
 src/lib/odoo/asignaciones.ts                 fetchTableroDeFechas
 src/lib/auth/acceso.ts, servidor.ts          módulo hoja-dia, APIS, moduloDeRuta, exigirModulo
 src/lib/supabase/proxy.ts                    /h/ y /api/telegram/webhook públicos
-src/lib/alertas/{servicio,slack}.ts          tipo hoja_dia (sólo campanita)
+src/lib/alertas/{servicio,slack}.ts          tipo hoja_dia (sólo campanita); personal_odoo y destinatarioId
+src/lib/personal/sync-odoo.ts (+ .test.ts)  Legajos ↔ hr.employee: la regla pura
+src/lib/personal/sync-odoo-servidor.ts       lee Odoo/Supabase, escribe personal, avisa
+src/app/api/odoo/webhooks/empleados          webhook de Odoo
+src/app/api/cron/personal-odoo               control diario (vercel.json)
+scripts/odoo-webhook-empleados.mjs           crea la regla en Odoo (simulacro por defecto)
+scripts/personal-sincronizar-odoo.mjs        puesta al día (simulacro por defecto)
 src/app/api/hoja-dia/**                      las APIs
 src/app/api/public/hoja/[token]/**           el link público y los archivos
 src/app/api/telegram/webhook/route.ts        el bot

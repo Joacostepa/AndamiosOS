@@ -10,6 +10,8 @@ import s from "./celular.module.css";
 // no se dibujan acá: "Abrir el PDF" lo abre con el visor del teléfono.
 
 export const esPdf = (a: ArchivoPublico) => a.mimetype === "application/pdf" || /\.pdf$/i.test(a.nombre);
+/** Lo que el servidor deja ver en el navegador (archivo-seguro.ts); el resto se descarga. */
+const esImagen = (a: ArchivoPublico) => /^image\/(jpeg|png|webp|gif)$/i.test(a.mimetype ?? "");
 
 export function Visor({ archivos, inicio, titulo, onCerrar }: { archivos: ArchivoPublico[]; inicio: number; titulo: string; onCerrar: () => void }) {
   const [i, setI] = useState(Math.max(0, Math.min(archivos.length - 1, inicio)));
@@ -67,11 +69,11 @@ export function Visor({ archivos, inicio, titulo, onCerrar }: { archivos: Archiv
         <button type="button" className={s.vb} onClick={onCerrar} data-autofoco>Cerrar</button>
       </div>
       <div ref={area} className={`${s.va} ${zoom ? s.zoom : ""}`} onPointerDown={onDown} onPointerUp={onUp} onPointerCancel={() => { toque.current = null; }}>
-        {a && esPdf(a) ? (
+        {a && (esPdf(a) || !esImagen(a)) ? (
           <div className={s.vpdf}>
-            <b aria-hidden>PDF</b>
+            <b aria-hidden>{esPdf(a) ? "PDF" : "Archivo"}</b>
             <span>{a.nombre}</span>
-            <a className={s.vb} href={a.url} target="_blank" rel="noreferrer">Abrir el PDF</a>
+            <a className={s.vb} href={a.url} target="_blank" rel="noreferrer">{esPdf(a) ? "Abrir el PDF" : "Descargar"}</a>
           </div>
         ) : a ? (
           // eslint-disable-next-line @next/next/no-img-element -- archivo de Odoo servido por la app, sin optimizar
@@ -80,7 +82,7 @@ export function Visor({ archivos, inicio, titulo, onCerrar }: { archivos: Archiv
       </div>
       <div className={s.vf2}>
         <button type="button" className={s.vb} onClick={() => ir(-1)} disabled={i === 0}>Anterior</button>
-        <button type="button" className={s.vb} onClick={() => acercar()} disabled={!a || esPdf(a)} aria-pressed={zoom}>{zoom ? "Alejar" : "Acercar"}</button>
+        <button type="button" className={s.vb} onClick={() => acercar()} disabled={!a || esPdf(a) || !esImagen(a)} aria-pressed={zoom}>{zoom ? "Alejar" : "Acercar"}</button>
         <button type="button" className={s.vb} onClick={() => ir(1)} disabled={i >= archivos.length - 1}>Siguiente</button>
       </div>
     </Capa>

@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { read } from "@/lib/odoo/client";
 import { archivoPermitido } from "@/lib/hoja-dia/publico";
+import { cabecerasArchivo } from "@/lib/hoja-dia/archivo-seguro";
 
 // GET /api/public/hoja/:token/archivo/:id — un plano o una foto de una OT de la hoja de ese
 // token, servido POR LA APP (§10): en Odoo sólo se ve con sesión de Odoo abierta, que en el
 // celular del capataz no hay. Verifica que el adjunto sea de una obra de esa hoja; si no, 404.
+// Sólo imágenes y PDF se muestran; el resto baja como archivo (cabecerasArchivo: nosniff,
+// CSP sandbox), porque sale del mismo origen que la app.
 
 export const dynamic = "force-dynamic";
 
@@ -16,11 +19,9 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ token: str
     if (!(await archivoPermitido(token, adjunto))) return NextResponse.json({ error: "El archivo no existe" }, { status: 404 });
     const [a] = await read<{ name: string | false; mimetype: string | false; datas: string | false }>("ir.attachment", [adjunto], ["name", "mimetype", "datas"]);
     if (!a?.datas) return NextResponse.json({ error: "El archivo está vacío" }, { status: 404 });
-    const nombre = (a.name || `archivo-${adjunto}`).replace(/[^\w.\- ]+/g, "_");
     return new NextResponse(Buffer.from(a.datas, "base64"), {
       headers: {
-        "Content-Type": a.mimetype || "application/octet-stream",
-        "Content-Disposition": `inline; filename="${nombre}"`,
+        ...cabecerasArchivo(a.mimetype || null, a.name || `archivo-${adjunto}`),
         // Privado: lo guarda el celular (sin señal se sigue viendo), no un CDN.
         "Cache-Control": "private, max-age=3600",
         "X-Robots-Tag": "noindex, nofollow",

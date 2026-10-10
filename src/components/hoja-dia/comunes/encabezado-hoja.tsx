@@ -23,7 +23,7 @@ export const diaCorto = (f: Fecha) => `${diaSemana(f).slice(0, 3)} ${Number(f.sl
 
 export function EncabezadoHoja() {
   const pathname = usePathname();
-  const { fecha, hoy, manana, anterior, siguiente, irA, hrefCon } = useDiaHoja();
+  const { fecha, hoy, manana, anterior, siguiente, irA, hrefCon, montado } = useDiaHoja();
   const refHueco = useRefHueco();
   const enCamiones = pathname.startsWith(RUTA_CAMIONES);
   const tabs: { f: Fecha; l: string }[] = [
@@ -44,7 +44,7 @@ export function EncabezadoHoja() {
         ].map((t) => (
           <Link
             key={t.href}
-            href={hrefCon(t.href)}
+            href={montado ? hrefCon(t.href) : t.href}
             aria-current={t.on ? "page" : undefined}
             className={cn(
               "rounded-md px-3 py-1 text-[13px] font-medium whitespace-nowrap text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50",
@@ -56,6 +56,9 @@ export function EncabezadoHoja() {
         ))}
       </nav>
 
+      {/* El día depende del reloj: se dibuja ya montado (si no, el del servidor y el del
+          navegador pueden no coincidir al hidratar). Mientras, el lugar queda reservado. */}
+      {!montado ? <div className="h-[30px] w-[260px]" aria-hidden /> : (
       <div className="inline-flex items-center gap-1" role="group" aria-label="Día">
         <BotonFlecha onClick={() => irA(anterior)} label="Día anterior">
           <ChevronLeft className="size-4" />
@@ -86,6 +89,7 @@ export function EncabezadoHoja() {
           <ChevronRight className="size-4" />
         </BotonFlecha>
       </div>
+      )}
 
       {/* El hueco de cada vista (resumen + botones). En el celular ocupa la fila entera. */}
       <div ref={refHueco} className="flex w-full min-w-0 flex-wrap items-center gap-2 md:w-auto md:flex-1" />

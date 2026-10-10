@@ -12,19 +12,14 @@ import {
   ETIQUETA_ESTADO_DOCUMENTO, NOMBRE_DOCUMENTO, cuitValido, formatoCuit, motivoDePoliza,
   type Documento, type EstadoDocumento, type Expediente, type Tramite,
 } from "@/lib/permisos-via-publica/tipos";
+import { Chip, type TonoChip } from "./ui";
+import { Dialogo } from "./dialogo";
 
-// Los documentos del trámite de un expediente. Hoy: el endoso de la póliza, que se le pide a
-// Segucom y vuelve por su portal. Después se suman la encomienda, el croquis y el informe
-// técnico, que genera la app.
+// La póliza de un expediente SIN trámite en la app (de antes del robot o presentado a mano): se le
+// pide el endoso a Segucom y vuelve por su portal. Los expedientes con trámite usan la ficha del
+// trámite. Colores en par claro/oscuro (rediseño 09/10).
 
-const COLOR: Record<EstadoDocumento, string> = {
-  falta: "bg-muted text-muted-foreground",
-  pedido: "bg-yellow-500/15 text-yellow-300",
-  cargado: "bg-blue-500/15 text-blue-300",
-  revisando: "bg-blue-500/15 text-blue-300",
-  ok: "bg-green-500/15 text-green-300",
-  observado: "bg-red-500/15 text-red-300",
-};
+const TONO: Record<EstadoDocumento, TonoChip> = { falta: "neutro", pedido: "marcha", cargado: "marcha", revisando: "marcha", ok: "listo", observado: "bloqueo" };
 
 const cuando = (iso: string) => format(parseISO(iso), "d/M HH:mm", { locale: es });
 
@@ -36,12 +31,12 @@ export function DocumentosTramite({ e, tramite, documentos }: Props) {
   const pidePoliza = motivoDePoliza(e.motivo_subsanacion);
 
   return (
-    <section className="space-y-3 rounded-md border p-3 text-[13px]">
+    <section className="space-y-3 rounded-md border bg-card p-3 text-[13px]">
       <header className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="font-semibold">Documentos del trámite</h3>
+        <h2 className="text-[14px] font-semibold">Póliza</h2>
         {tramite?.titular_nombre && (
           <span className="text-[12px] text-muted-foreground">
-            Titular del lote: {tramite.titular_nombre} · CUIT {formatoCuit(tramite.titular_cuit ?? "")}
+            Dueño del lote: {tramite.titular_nombre} · CUIT {formatoCuit(tramite.titular_cuit ?? "")}
           </span>
         )}
       </header>
@@ -64,7 +59,7 @@ function PedirEndoso({ e, tramite, destacado, onListo }: { e: Expediente; tramit
 
   return (
     <form
-      className={`space-y-2 rounded-md p-2 ${destacado ? "border border-yellow-500/40 bg-yellow-500/5" : ""}`}
+      className={`space-y-2 rounded-md p-2 ${destacado ? "bg-amber-500/10" : ""}`}
       onSubmit={(ev) => {
         ev.preventDefault();
         pedir.mutate(
@@ -82,13 +77,13 @@ function PedirEndoso({ e, tramite, destacado, onListo }: { e: Expediente; tramit
       <p className="font-medium">Endoso de la póliza</p>
       <p className="text-muted-foreground">
         {destacado
-          ? "El Gobierno observó la póliza. Cargá el dueño del lote y se le pide el endoso a Segucom."
-          : "Cargá el dueño del lote (va como coasegurado) y se le pide el endoso a Segucom."}{" "}
+          ? "El Gobierno observó la póliza. Cargá el dueño del lote y se le pide el endoso a Segucom (sale un mail)."
+          : "Cargá el dueño del lote (Segucom lo agrega como coasegurado) y se le pide el endoso (sale un mail)."}{" "}
         {e.cliente && <>El cliente de la venta es {e.cliente}, que puede no ser el dueño.</>}
       </p>
       <div className="flex flex-wrap items-end gap-2">
         <label className="grid gap-1">
-          <span className="text-[12px] text-muted-foreground">Titular del lote</span>
+          <span className="text-[12px] text-muted-foreground">Dueño del lote</span>
           <Input value={nombre} onChange={(ev) => setNombre(ev.target.value)} placeholder="Consorcio de Propietarios…" className="h-8 w-72" />
         </label>
         <label className="grid gap-1">
@@ -100,10 +95,10 @@ function PedirEndoso({ e, tramite, destacado, onListo }: { e: Expediente; tramit
           <Input type="date" value={hasta} onChange={(ev) => setHasta(ev.target.value)} className="h-8 w-40" />
         </label>
         <Button type="submit" size="sm" disabled={pedir.isPending || nombre.trim().length < 3 || !cuitOk}>
-          {pedir.isPending && <Loader2 className="size-4 animate-spin" />} Pedir endoso a Segucom
+          {pedir.isPending && <Loader2 className="size-4 animate-spin" />} Pedir el endoso a Segucom
         </Button>
       </div>
-      {cuit && !cuitOk && <p className="text-[12px] text-orange-400">El CUIT no es válido.</p>}
+      {cuit && !cuitOk && <p className="text-[12px] text-red-700 dark:text-red-300">Ese CUIT no es válido: revisá los números.</p>}
     </form>
   );
 }
@@ -114,15 +109,16 @@ function FilaDocumento({
   const subir = useSubirDocumento(expedienteId);
   const repedir = usePedirEndoso(expedienteId);
   const input = useRef<HTMLInputElement>(null);
+  const [confirmar, setConfirmar] = useState(false);
 
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium">{NOMBRE_DOCUMENTO[doc.clave] ?? doc.clave}</span>
-        <span className={`rounded px-1.5 py-0.5 text-[11px] ${COLOR[doc.estado]}`}>
-          {doc.estado === "revisando" && <Loader2 className="mr-1 inline size-3 animate-spin" />}
+        <Chip tono={TONO[doc.estado]}>
+          {doc.estado === "revisando" && <Loader2 aria-hidden className="size-3 animate-spin" />}
           {ETIQUETA_ESTADO_DOCUMENTO[doc.estado]}
-        </span>
+        </Chip>
         {doc.url && (
           <a href={doc.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[12px] underline-offset-2 hover:underline">
             {doc.archivo_nombre ?? "PDF"} <ExternalLink className="size-3" />
@@ -151,21 +147,11 @@ function FilaDocumento({
             {subir.isPending ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />} Subir PDF
           </Button>
           {tramite?.titular_cuit && doc.estado !== "pedido" && (
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={repedir.isPending}
-              onClick={() =>
-                repedir.mutate(
-                  { titularNombre: tramite.titular_nombre ?? "", titularCuit: tramite.titular_cuit ?? "", permisoHasta: tramite.permiso_hasta },
-                  { onSuccess: () => toast.success("Endoso pedido otra vez"), onError: (err) => toast.error(err instanceof Error ? err.message : "No se pudo pedir") },
-                )
-              }
-            >
-              Volver a pedir
+            <Button size="sm" variant="outline" disabled={repedir.isPending} onClick={() => setConfirmar(true)}>
+              Volver a pedir…
             </Button>
           )}
-          <Button size="sm" variant="ghost" onClick={onCambiarTitular}>Cambiar titular</Button>
+          <Button size="sm" variant="ghost" onClick={onCambiarTitular}>Cambiar dueño del lote</Button>
         </div>
       </div>
 
@@ -173,20 +159,37 @@ function FilaDocumento({
         {doc.pedido_at && <>Pedido el {cuando(doc.pedido_at)}. </>}
         {doc.aviso_enviado_at && <>Aviso a Segucom el {cuando(doc.aviso_enviado_at)}. </>}
         {doc.recordatorio_at && <>Recordatorio el {cuando(doc.recordatorio_at)}. </>}
-        {doc.subido_at && <>Subido por {doc.subido_por === "productor" ? "Segucom" : "ABA"} el {cuando(doc.subido_at)}. </>}
+        {doc.subido_at && <>Subido por {doc.subido_por === "productor" ? "Segucom" : "la oficina"} el {cuando(doc.subido_at)}. </>}
         {doc.estado === "pedido" && !doc.aviso_enviado_at && !doc.aviso_error && "El aviso a Segucom sale en unos segundos."}
       </p>
-      {doc.aviso_error && <p className="text-[12px] text-orange-400">No se pudo mandar el aviso a Segucom: {doc.aviso_error}</p>}
-      {doc.observacion && <p className={doc.estado === "observado" ? "text-red-300" : "text-orange-400"}>{doc.observacion}</p>}
+      {doc.aviso_error && <p className="text-[12px] text-amber-800 dark:text-amber-300">No se pudo mandar el aviso a Segucom: {doc.aviso_error}</p>}
+      {doc.observacion && <p className={doc.estado === "observado" ? "text-red-800 dark:text-red-200" : "text-amber-800 dark:text-amber-300"}>{doc.observacion}</p>}
+      {tramite && (
+        <Dialogo
+          open={confirmar}
+          onOpenChange={setConfirmar}
+          etiqueta={{ texto: "Sale un mail afuera", tono: "marcha" }}
+          titulo="¿Pedirle el endoso a Segucom otra vez?"
+          texto={`${doc.pedido_at ? `Ya se pidió el ${cuando(doc.pedido_at)}. ` : ""}Le llega un mail nuevo con el mismo dueño del lote: ${tramite.titular_nombre}.`}
+          confirmar="Pedir otra vez"
+          cargando={repedir.isPending}
+          onConfirmar={() =>
+            repedir.mutate(
+              { titularNombre: tramite.titular_nombre ?? "", titularCuit: tramite.titular_cuit ?? "", permisoHasta: tramite.permiso_hasta },
+              { onSuccess: () => { toast.success("Endoso pedido otra vez"); setConfirmar(false); }, onError: (err) => toast.error(err instanceof Error ? err.message : "No se pudo pedir") },
+            )
+          }
+        />
+      )}
 
       {doc.revision && doc.revision.chequeos.length > 0 && (
         <ul className="space-y-0.5">
           {doc.revision.chequeos.map((c) => (
             <li key={c.clave} className="flex items-start gap-1.5 text-[12px]">
               {c.ok ? (
-                <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-green-400" />
+                <CheckCircle2 aria-hidden className="mt-0.5 size-3.5 shrink-0 text-emerald-700 dark:text-emerald-400" />
               ) : c.bloquea ? (
-                <CircleAlert className="mt-0.5 size-3.5 shrink-0 text-red-400" />
+                <CircleAlert aria-hidden className="mt-0.5 size-3.5 shrink-0 text-red-700 dark:text-red-300" />
               ) : (
                 <CircleMinus className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
               )}

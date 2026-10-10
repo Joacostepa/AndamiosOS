@@ -4,8 +4,6 @@
 // EL DE TAD, tal cual lo lee el robot. Acá no se decide nada sobre el trámite; sólo cómo se
 // agrupa y cómo se nombra lo que dice el Gobierno.
 
-import type { Supervision } from "./supervision";
-import type { ClaveEtapa, EstadoEtapa, Quien } from "./seguimiento";
 
 export type Solapa = "en_curso" | "finalizado";
 
@@ -247,6 +245,7 @@ export type Documento = {
   aviso_enviado_at: string | null;
   aviso_error: string | null;
   recordatorio_at: string | null;
+  updated_at: string | null;
 };
 
 export const NOMBRE_DOCUMENTO: Record<string, string> = {
@@ -280,14 +279,53 @@ export function motivoArchivoGrande(clave: string, bytes: number): string {
   return `${pesa} Sacale una foto más liviana o escanealo en menor calidad.`;
 }
 
+/** Sin género: van al lado de «Reglamento», «DNI» o «Acta» (rediseño 09/10). */
 export const ETIQUETA_ESTADO_DOCUMENTO: Record<EstadoDocumento, string> = {
   falta: "Falta",
   pedido: "Pedido",
-  cargado: "Cargado",
-  revisando: "Revisando",
-  ok: "Lista",
-  observado: "Observada",
+  cargado: "Subido",
+  revisando: "En revisión",
+  ok: "OK",
+  observado: "A corregir",
 };
+
+/** Para la ficha: "Consorcio" al lado del nombre. El portal usa ETIQUETA_DUENO ("Un consorcio"). */
+export const TIPO_DUENO_CORTO: Record<TipoDueno, string> = {
+  consorcio: "Consorcio",
+  empresa: "Empresa",
+  persona: "Persona",
+};
+
+/**
+ * Por qué un nombre del dueño del lote no puede salir así a Segucom ni al CPAU, o null si está
+ * bien. Nace de Echeverría 2931 (S02672, 26/09): el cliente pegó el nombre del padrón y quedó
+ * `"CONSORCIO DE COPROPIETARIOS EDIFICIO CALLE ECHEVERRIA nú3 meros 2931/33/35, CAPITAL FEDERAL"`,
+ * con comillas y la codificación rota. Con esto el endoso automático se frena y espera a una
+ * persona.
+ */
+export function nombreSospechoso(nombre: string | null | undefined): string | null {
+  const n = (nombre ?? "").trim();
+  if (!n) return null;
+  if (/[\u0000-\u001f\u007f�]/.test(n) || /Ã[\u0080-¿]|Â[\u0080-¿]/.test(n)) return "tiene caracteres mal codificados";
+  if (/["“”«»]/.test(n)) return "tiene comillas";
+  // Una letra pegada a un número ("nú3 meros"): en un nombre no pasa. "2931/33/35" y "PJE 1681" sí.
+  if (/\p{L}\d/u.test(n)) return "tiene un número pegado a una letra";
+  return null;
+}
+
+/**
+ * Salió el permiso: TRAMITACIÓN (en este trámite es "permiso emitido") o una resolución RS-
+ * guardada. Guarda temporal sin resolución NO es permiso: el 09/10 S02128 y S02563 se archivaron
+ * así y el robot guardó como permiso nuestra nota de solicitud.
+ */
+export function tienePermiso(e: Pick<Expediente, "estado_tad" | "permiso_notificacion">): boolean {
+  return normalizarEstado(e.estado_tad) === "TRAMITACION" || /^RS-/i.test(e.permiso_notificacion ?? "");
+}
+
+/** El Gobierno lo archivó (Guarda temporal) sin que haya salido el permiso. */
+export function archivadoSinPermiso(e: Pick<Expediente, "estado_tad" | "solapa" | "permiso_notificacion">): boolean {
+  return e.solapa === "finalizado" && !tienePermiso(e);
+}
 
 export const formatoCuit = (c: string) => (c.length === 11 ? `${c.slice(0, 2)}-${c.slice(2, 10)}-${c.slice(10)}` : c);
 
@@ -326,6 +364,14 @@ export function estadoVinculo(
  */
 export const sinAltura = (direccion: string | null) => !!direccion && !/\d/.test(direccion);
 
+export const MODALIDAD: Record<string, string> = {
+  sin_permiso: "Se arma sin expediente ni permiso",
+  con_expediente: "Se arma con el expediente",
+  esperar_permiso: "Se arma con el permiso emitido",
+};
+
+export const TRAMITE_ODOO: Record<string, string> = { no_presentado: "No presentado", presentado: "Presentado", emitido: "Emitido" };
+
 /** La venta vinculada tal como está hoy en Odoo, para comparar antes de confirmar. */
 export type VentaOdoo = {
   id: number;
@@ -359,10 +405,6 @@ export type EstadoRobot = {
   equipo: string | null;
 };
 
-export type ClaveGrupo = "accion" | "gobierno" | "emitidos";
-
-export type GrupoExpedientes = { clave: ClaveGrupo; titulo: string; descripcion: string; filas: Expediente[] };
-
 /** Una venta con permiso que todavía no arrancó: lo que ofrece el botón "Iniciar trámite". */
 export type VentaParaIniciar = {
   ventaId: number;
@@ -376,34 +418,6 @@ export type VentaParaIniciar = {
   modalidad: string | null;
   /** Vendedor de la orden (nombre). */
   vendedor: string | null;
-};
-
-/** Un trámite abierto desde una venta que todavía no se presentó en TAD. */
-export type TramiteNuevo = Pick<
-  Tramite,
-  "id" | "direccion" | "odoo_venta_nombre" | "cliente_nombre" | "vendedor_nombre" | "vendedor_email" | "titular_nombre" | "titular_cargado_at" | "link_enviado_at" | "link_enviado_a" | "link_error" | "created_at" | "es_prueba"
-> & {
-  /** En qué está: la etapa actual que calcula etapasDe (seguimiento.ts), la misma que muestra Seguimiento. */
-  etapa: EtapaActual;
-};
-
-export type EtapaActual = {
-  clave: ClaveEtapa;
-  nombre: string;
-  estado: EstadoEtapa;
-  detalle: string | null;
-  /** Desde cuándo está en esta etapa (null si todavía no empezó). */
-  desde: string | null;
-  motivo: string | null;
-  /** Quiénes la tienen que mover (póliza y encomienda corren en paralelo). */
-  quienes: Quien[];
-  /**
-   * La tiene que mover alguien de ABA: un botón del modo supervisado, el robot frenado, algo
-   * observado o el link al cliente que no salió.
-   */
-  esperaAba: boolean;
-  /** Ya tiene expediente en TAD por la misma venta (presentado a mano). */
-  expediente: string | null;
 };
 
 /**
@@ -496,47 +510,6 @@ export type PresentacionFicha = {
   } | null;
 };
 
-export type FichaTramite = {
-  tramite: Tramite;
-  documentos: (Documento & { url: string | null })[];
-  encomienda: EncomiendaFicha | null;
-  presentacion: PresentacionFicha;
-  eventos: Evento[];
-  /** El link del portal, para copiarlo y mandarlo por WhatsApp. */
-  linkCliente: string | null;
-  /** Sólo en pruebas: la página "de Segucom" de prueba, para subir una póliza. */
-  linkProductorPrueba: string | null;
-};
-
-export type Bandeja = {
-  tramitesNuevos: TramiteNuevo[];
-  grupos: GrupoExpedientes[];
-  /** Expedientes que se siguen (sin el historial). */
-  total: number;
-  /** Finalizados anteriores al robot, del más nuevo al más viejo. */
-  historial: Expediente[];
-  /** Interruptores del modo supervisado. */
-  supervision: Supervision;
-  robot: EstadoRobot | null;
-  /** Hay una revisión pedida o corriendo. */
-  revisando: boolean;
-};
-
-export type FichaExpediente = {
-  expediente: Expediente;
-  eventos: Evento[];
-  /** URL firmada del permiso emitido, válida 10 minutos. */
-  permisoUrl: string | null;
-  /** URL firmada de la carátula que bajó el robot (trae el número de expediente), válida 10 minutos. */
-  caratulaUrl: string | null;
-  /** null si no hay venta vinculada o si Odoo no respondió (ver ventaError). */
-  venta: VentaOdoo | null;
-  ventaError: string | null;
-  tramite: Tramite | null;
-  /** Con URL firmada de 10 minutos para ver el PDF, si hay uno subido. */
-  documentos: (Documento & { url: string | null })[];
-};
-
 /** Sin tildes y en mayúsculas: TAD escribe "SUBSANACIÓN" y "SUBSANACION" en la misma lista. */
 export function normalizarEstado(estado: string): string {
   return estado.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().trim();
@@ -561,59 +534,41 @@ export function etiquetaEstado(estado: string): string {
  * que queda el expediente cuando el permiso YA salió. El instructivo lo aclara con
  * mayúsculas; acá se dice una vez y la pantalla no lo vuelve a confundir.
  */
-export function explicacionEstado(e: Pick<Expediente, "estado_tad" | "solapa" | "tarea_pendiente">): string {
+type EstadoParaNombrar = Pick<Expediente, "estado_tad" | "solapa" | "tarea_pendiente" | "permiso_notificacion">;
+
+export function explicacionEstado(e: EstadoParaNombrar): string {
   const n = normalizarEstado(e.estado_tad);
-  if (e.tarea_pendiente) return "El Gobierno observó algo y hay que corregirlo.";
+  if (e.tarea_pendiente) return "El Gobierno pidió cambios y hay que corregirlos.";
   // TAD deja el expediente en SUBSANACIÓN también DESPUÉS de que se subsanó, hasta que lo
   // vuelven a revisar. Lo que distingue "hay que corregir" de "ya se corrigió" es la tarea
   // pendiente, no el estado (medido 2026-09-14: 8 en subsanación, sólo 2 con tarea).
-  if (n === "SUBSANACION") return "Ya se subsanó. El Gobierno todavía no lo volvió a revisar.";
+  if (n === "SUBSANACION") return "Ya se corrigió. El Gobierno todavía no lo volvió a revisar.";
   if (n === "INICIACION") return "Presentado. El Gobierno todavía no lo revisó.";
-  if (n === "TRAMITACION") return "El permiso salió.";
-  if (e.solapa === "finalizado") return "Archivado por el Gobierno.";
+  if (tienePermiso(e)) return "El permiso salió.";
+  if (e.solapa === "finalizado") return "El Gobierno lo archivó sin resolución: no hay permiso.";
   return "Estado informado por TAD.";
 }
 
-export type ColorEstado = "red" | "yellow" | "green" | "gray" | "blue";
-
-export function colorEstado(e: Pick<Expediente, "estado_tad" | "solapa" | "tarea_pendiente">): ColorEstado {
+/** El nombre del estado para quien no conoce TAD. El de TAD va aparte, como dato. */
+export function nombreEstado(e: EstadoParaNombrar): string {
   const n = normalizarEstado(e.estado_tad);
-  if (e.tarea_pendiente) return "red";
-  if (n === "SUBSANACION") return "blue";
-  if (n === "INICIACION") return "yellow";
-  if (n === "TRAMITACION" || e.solapa === "finalizado") return "green";
-  return "gray";
+  if (e.tarea_pendiente) return "Hay que corregir";
+  if (n === "SUBSANACION") return "Corregido, en revisión";
+  if (n === "INICIACION") return "Presentado";
+  if (tienePermiso(e)) return "Permiso emitido";
+  if (e.solapa === "finalizado") return "Archivado sin permiso";
+  return etiquetaEstado(e.estado_tad);
 }
 
-export function grupoDe(e: Expediente): ClaveGrupo {
+/** Bloqueo (rojo), en marcha (azul), listo (verde) o neutro (gris): un color, un significado. */
+export type TonoEstado = "bloqueo" | "marcha" | "listo" | "neutro";
+
+export function tonoEstado(e: EstadoParaNombrar): TonoEstado {
   const n = normalizarEstado(e.estado_tad);
-  if (e.tarea_pendiente) return "accion";
-  if (n === "TRAMITACION" || e.solapa === "finalizado") return "emitidos";
-  return "gobierno";
-}
-
-const GRUPOS: Omit<GrupoExpedientes, "filas">[] = [
-  { clave: "accion", titulo: "Necesitan acción", descripcion: "Con tarea de subsanación en TAD: hay que corregir y volver a presentar." },
-  { clave: "gobierno", titulo: "Esperando al Gobierno", descripcion: "Presentados o ya subsanados, todavía sin revisar." },
-  { clave: "emitidos", titulo: "Permiso emitido", descripcion: "Salió el permiso o el expediente se archivó." },
-];
-
-/**
- * Agrupa por lo que hay que hacer. Dentro de cada grupo, el que lleva más tiempo en su
- * estado primero: en "Esperando al Gobierno" eso deja arriba a los trabados, y en
- * "Necesitan acción" a la observación más vieja.
- */
-export function agrupar(expedientes: Expediente[]): GrupoExpedientes[] {
-  return GRUPOS.map((g) => ({
-    ...g,
-    filas: expedientes
-      .filter((e) => grupoDe(e) === g.clave)
-      .sort((a, b) =>
-        g.clave === "emitidos"
-          ? b.estado_desde.localeCompare(a.estado_desde)
-          : a.estado_desde.localeCompare(b.estado_desde),
-      ),
-  }));
+  if (e.tarea_pendiente) return "bloqueo";
+  if (n === "SUBSANACION" || n === "INICIACION") return "marcha";
+  if (tienePermiso(e)) return "listo";
+  return "neutro";
 }
 
 /** Búsqueda sin mayúsculas ni tildes sobre varios campos: basta con que uno contenga lo buscado. */

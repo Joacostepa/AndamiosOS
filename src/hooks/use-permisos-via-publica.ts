@@ -1,9 +1,11 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Bandeja, FichaExpediente, FichaTramite, VentaParaIniciar } from "@/lib/permisos-via-publica/tipos";
+import type { VentaParaIniciar } from "@/lib/permisos-via-publica/tipos";
+import type { FichaPermiso, FichaSoloExpediente } from "@/lib/permisos-via-publica/ficha";
 import type { Supervision } from "@/lib/permisos-via-publica/supervision";
-import type { Seguimiento } from "@/lib/permisos-via-publica/seguimiento";
+import type { ListaPermisos } from "@/lib/permisos-via-publica/lista";
+import type { Descartes } from "@/lib/permisos-via-publica/config";
 
 async function pedir<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
@@ -15,13 +17,13 @@ async function pedir<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 /**
- * La bandeja se refresca sola: cada minuto normalmente, y cada 10 segundos mientras hay una
- * revisión pedida, para que el resultado de "Revisar ahora" aparezca sin recargar.
+ * La lista de permisos se refresca sola: cada minuto normalmente, y cada 10 segundos mientras hay
+ * una revisión pedida, para que el resultado de "Revisar TAD" aparezca sin recargar.
  */
-export function useBandejaPermisos() {
+export function useListaPermisos() {
   return useQuery({
     queryKey: ["permisos-via-publica"],
-    queryFn: () => pedir<Bandeja>("/api/permisos-via-publica"),
+    queryFn: () => pedir<ListaPermisos>("/api/permisos-via-publica"),
     staleTime: 30_000,
     refetchInterval: (q) => (q.state.data?.revisando ? 10_000 : 60_000),
     refetchIntervalInBackground: false,
@@ -29,21 +31,119 @@ export function useBandejaPermisos() {
   });
 }
 
-/** El seguimiento de todos los trámites: se refresca cada minuto. */
-export function useSeguimientoPermisos() {
+/** Dejar de seguir (o volver a seguir, con motivo null) una venta o un expediente. */
+export function useDescarte() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { tipo: "ventas" | "expedientes"; id: string; motivo: string | null }) =>
+      pedir<Descartes>("/api/permisos-via-publica/config/descartes", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["permisos-via-publica"] });
+      qc.invalidateQueries({ queryKey: ["permisos-ventas-para-iniciar"] });
+      qc.invalidateQueries({ queryKey: ["permiso-via-publica"] });
+      qc.invalidateQueries({ queryKey: ["tramite-permiso"] });
+    },
+  });
+}
+
+export type Gestores = { candidatos: { email: string; nombre: string; admin: boolean }[]; gestores: string[] };
+
+export function useGestores(habilitado: boolean) {
   return useQuery({
-    queryKey: ["permisos-seguimiento"],
-    queryFn: () => pedir<Seguimiento>("/api/permisos-via-publica/seguimiento"),
-    staleTime: 30_000,
-    refetchInterval: 60_000,
-    refetchOnWindowFocus: true,
+    queryKey: ["permisos-gestores"],
+    queryFn: () => pedir<Gestores>("/api/permisos-via-publica/config/gestores"),
+    enabled: habilitado,
+    staleTime: 60_000,
+  });
+}
+
+export function useGuardarGestores() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (emails: string[]) =>
+      pedir<{ gestores: string[] }>("/api/permisos-via-publica/config/gestores", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emails }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["permisos-gestores"] });
+      qc.invalidateQueries({ queryKey: ["permisos-via-publica"] });
+    },
+  });
+}
+
+/** Recordarle al cliente lo que falta: mail con el link, o anotar que se le avisó por WhatsApp. */
+export function useRecordatorioCliente(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (como: "mail" | "whatsapp") =>
+      pedir<{ enviado: boolean; motivo: string | null; para: string | null }>(`/api/permisos-via-publica/tramites/${id}/recordatorio`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ como }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tramite-permiso", id] });
+      qc.invalidateQueries({ queryKey: ["permisos-via-publica"] });
+    },
+  });
+}
+
+/** Corregir el nombre (y el CUIT) del dueño del lote y, si se pide, mandar el endoso. */
+export function useCorregirDueno(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { nombre: string; cuit: string; administradorNombre: string | null; administradorCuit: string | null; mandarEndoso: boolean }) =>
+      pedir<{ ok: true; endoso: boolean }>(`/api/permisos-via-publica/tramites/${id}/dueno`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tramite-permiso", id] });
+      qc.invalidateQueries({ queryKey: ["permisos-via-publica"] });
+    },
+  });
+}
+
+/** Subsanar: vuelve a pedirle al cliente documentos que el Gobierno observó, con el motivo. */
+export function useReabrirDocumentos(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { claves: string[]; motivo: string }) =>
+      pedir<{ ok: true; mail: { enviado: boolean; motivo: string | null } }>(`/api/permisos-via-publica/tramites/${id}/reabrir`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tramite-permiso", id] });
+      qc.invalidateQueries({ queryKey: ["permisos-via-publica"] });
+    },
+  });
+}
+
+/** "Ya los borré": los borradores descartados de TAD del trámite ya se borraron a mano. */
+export function useBorradoresBorrados(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => pedir<{ ok: true }>(`/api/permisos-via-publica/tramites/${id}/borradores`, { method: "POST" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tramite-permiso", id] });
+      qc.invalidateQueries({ queryKey: ["permisos-via-publica"] });
+    },
   });
 }
 
 export function useExpediente(id: string) {
   return useQuery({
     queryKey: ["permiso-via-publica", id],
-    queryFn: () => pedir<FichaExpediente>(`/api/permisos-via-publica/${id}`),
+    queryFn: () => pedir<FichaSoloExpediente>(`/api/permisos-via-publica/${id}`),
     staleTime: 30_000,
     // Mientras una póliza se revisa (~1 min) se consulta seguido, para que el resultado
     // aparezca sin recargar.
@@ -78,7 +178,10 @@ export function usePedirEndosoTramite(id: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => pedir<{ ok: true }>(`/api/permisos-via-publica/tramites/${id}/endoso`, { method: "POST" }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["tramite-permiso", id] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tramite-permiso", id] });
+      qc.invalidateQueries({ queryKey: ["permisos-via-publica"] });
+    },
   });
 }
 
@@ -92,7 +195,10 @@ export function useSubirCertificado(id: string) {
       for (const archivo of archivos) form.append("archivo", archivo);
       return pedir<{ ok: true; estado: string; observacion: string | null }>(`/api/permisos-via-publica/tramites/${id}/certificado`, { method: "POST", body: form });
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["tramite-permiso", id] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tramite-permiso", id] });
+      qc.invalidateQueries({ queryKey: ["permisos-via-publica"] });
+    },
   });
 }
 
@@ -129,7 +235,7 @@ export function useBorrarTramite(id: string) {
 export function useTramite(id: string) {
   return useQuery({
     queryKey: ["tramite-permiso", id],
-    queryFn: () => pedir<FichaTramite>(`/api/permisos-via-publica/tramites/${id}`),
+    queryFn: () => pedir<FichaPermiso>(`/api/permisos-via-publica/tramites/${id}`),
     staleTime: 30_000,
     // Seguido mientras se revisa un documento o el robot trabaja en la encomienda del CPAU.
     refetchInterval: (q) =>
@@ -149,11 +255,14 @@ export function usePresentacion(id: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => pedir<{ resultado: "pedida" | "ya_pedida"; programadaPara: string | null }>(`/api/permisos-via-publica/tramites/${id}/presentacion`, { method: "POST" }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["tramite-permiso", id] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tramite-permiso", id] });
+      qc.invalidateQueries({ queryKey: ["permisos-via-publica"] });
+    },
   });
 }
 
-export type AccionPresentacion = "descartar_borrador" | "probar_ahora" | "dejar_de_reintentar";
+export type AccionPresentacion = "descartar_borrador" | "probar_ahora" | "dejar_de_reintentar" | "empezar_de_cero";
 
 /**
  * Acciones sobre la presentación desde la ficha: dejar de seguir el borrador de TAD (ya borrado a
@@ -163,12 +272,15 @@ export function useAccionPresentacion(id: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (accion: AccionPresentacion) =>
-      pedir<{ borrador?: number; ok?: true }>(`/api/permisos-via-publica/tramites/${id}/presentacion`, {
+      pedir<{ borrador?: number; ok?: true; programadaPara?: string | null }>(`/api/permisos-via-publica/tramites/${id}/presentacion`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ accion }),
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["tramite-permiso", id] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tramite-permiso", id] });
+      qc.invalidateQueries({ queryKey: ["permisos-via-publica"] });
+    },
   });
 }
 
@@ -184,7 +296,10 @@ export function useEncomienda(id: string) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ accion }),
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["tramite-permiso", id] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tramite-permiso", id] });
+      qc.invalidateQueries({ queryKey: ["permisos-via-publica"] });
+    },
   });
 }
 
@@ -198,7 +313,10 @@ export function useGenerarDocumentos(id: string) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(medidas ?? {}),
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["tramite-permiso", id] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tramite-permiso", id] });
+      qc.invalidateQueries({ queryKey: ["permisos-via-publica"] });
+    },
   });
 }
 
@@ -206,7 +324,10 @@ export function useReenviarLink(id: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => pedir<{ ok: boolean }>(`/api/permisos-via-publica/tramites/${id}/link`, { method: "POST" }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["tramite-permiso", id] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tramite-permiso", id] });
+      qc.invalidateQueries({ queryKey: ["permisos-via-publica"] });
+    },
   });
 }
 
@@ -220,7 +341,10 @@ export function usePedirCorreccion(id: string) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ documentoId }),
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["tramite-permiso", id] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tramite-permiso", id] });
+      qc.invalidateQueries({ queryKey: ["permisos-via-publica"] });
+    },
   });
 }
 
@@ -246,7 +370,11 @@ export function useSubirDocumento(id: string) {
       form.append("archivo", archivo);
       return pedir<{ ok: true }>(`/api/permisos-via-publica/documentos/${documentoId}`, { method: "POST", body: form });
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["permiso-via-publica", id] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["permiso-via-publica", id] });
+      qc.invalidateQueries({ queryKey: ["tramite-permiso"] });
+      qc.invalidateQueries({ queryKey: ["permisos-via-publica"] });
+    },
   });
 }
 

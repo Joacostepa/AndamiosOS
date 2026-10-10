@@ -222,10 +222,29 @@ export async function descartarBorrador(db: SupabaseClient, tramiteId: string, u
 
   await registrarEvento(
     db, tramiteId, "presentacion_tad",
-    `Se descartó el borrador ${borrador} de TAD (se borra a mano en TAD): la próxima presentación arma un borrador nuevo y vuelve a adjuntar todo.`,
+    `Se descartó el borrador ${borrador} de TAD: queda en «Para limpiar en TAD» y la próxima presentación arma uno nuevo y vuelve a adjuntar todo.`,
     { tramite_id: tramiteId, borrador }, userId ? "persona" : "sistema",
   );
   return borrador;
+}
+
+/**
+ * "Empezar de cero" en UN paso (rediseño 09/10). Antes eran tres botones en tres estados
+ * distintos —Dejar de reintentar → Empezar de cero → Volver a presentar— y el segundo preguntaba
+ * "¿Ya borraste el borrador en TAD?", que nunca se hacía antes. Reabrir un borrador no viene
+ * funcionando (0 de 8 desde el 15/09), así que esto: corta el reintento que esté en la cola,
+ * descarta el borrador (queda en "Para limpiar en TAD") y pide una presentación nueva.
+ */
+export async function empezarDeCero(db: SupabaseClient, tramiteId: string, userId: string | null): Promise<{ borrador: number; resultado: "pedida" | "ya_pedida"; programadaPara: string | null }> {
+  const { data: tomada } = await db.from("pvp_tareas").select("id").eq("tipo", "tad_presentar").eq("tramite_id", tramiteId).eq("estado", "tomada").maybeSingle();
+  if (tomada) throw new FaltanDatos("El robot está presentando este trámite ahora: esperá a que termine.");
+  const { data: enCola } = await db.from("pvp_tareas").select("id, error").eq("tipo", "tad_presentar").eq("tramite_id", tramiteId).eq("estado", "pendiente");
+  for (const x of enCola ?? []) {
+    await db.from("pvp_tareas").update({ estado: "error", reintentar_desde: null, error: `Se empezó de cero desde la ficha. ${x.error ?? ""}`.trim(), terminada_at: new Date().toISOString() }).eq("id", x.id).eq("estado", "pendiente");
+  }
+  const borrador = await descartarBorrador(db, tramiteId, userId);
+  const pedida = await pedirPresentacion(db, tramiteId, { userId });
+  return { borrador, ...pedida };
 }
 
 export type AccionReintento = "probar_ahora" | "dejar_de_reintentar";

@@ -54,6 +54,14 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   try {
     const { data: previo } = await db.from("pvp_tramites").select("id").eq("expediente_id", id).maybeSingle();
     let tramiteId = previo?.id as string | undefined;
+    // Sin trámite atado pero con uno abierto de la misma venta: abrir otro duplicaba el trámite y le
+    // pedía a Segucom un segundo endoso (Acuña de Figueroa 1312, 09/10). Se ata desde la ficha.
+    if (!tramiteId && exp.odoo_venta_id) {
+      const { data: deLaVenta } = await db.from("pvp_tramites").select("id").eq("odoo_venta_id", exp.odoo_venta_id).eq("es_prueba", false).is("expediente_id", null).limit(1);
+      if (deLaVenta?.length) {
+        return NextResponse.json({ error: `La venta ${exp.odoo_venta_nombre ?? ""} ya tiene un trámite en la app: confirmá la venta para atar el expediente y pedí el endoso desde la ficha del trámite.`.replace("  ", " ") }, { status: 409 });
+      }
+    }
     if (tramiteId) {
       const { error } = await db.from("pvp_tramites").update(valores).eq("id", tramiteId);
       if (error) throw new Error(error.message);

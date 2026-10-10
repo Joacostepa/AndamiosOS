@@ -1,273 +1,170 @@
 "use client";
 
-import { use } from "react";
+import { use, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { format, parseISO } from "date-fns";
-import { es } from "date-fns/locale";
-import { ArrowLeft, CheckCircle2, CircleAlert, CircleMinus, Copy, ExternalLink, FlaskConical, Loader2, Send, Trash2, TriangleAlert } from "lucide-react";
+import { ArrowLeft, ExternalLink, FlaskConical, Trash2, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
-import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useBorrarTramite, usePedirCorreccion, usePedirEndosoTramite, useReenviarLink, useTramite } from "@/hooks/use-permisos-via-publica";
-import { GenerarDocumentos } from "@/components/permisos-via-publica/generar-documentos";
-import { EncomiendaCpau } from "@/components/permisos-via-publica/encomienda-cpau";
-import { PresentacionTad } from "@/components/permisos-via-publica/presentacion-tad";
-import {
-  ETIQUETA_DUENO, ETIQUETA_ESTADO_DOCUMENTO, NOMBRE_DOCUMENTO, formatoCuit,
-  type Documento, type EstadoDocumento,
-} from "@/lib/permisos-via-publica/tipos";
+import { useBorrarTramite, useTramite } from "@/hooks/use-permisos-via-publica";
+import { cuandoFue, haceCuanto } from "@/lib/permisos-via-publica/estado";
+import type { FichaPermiso } from "@/lib/permisos-via-publica/ficha";
+import { TIPO_DUENO_CORTO, direccionCorta } from "@/lib/permisos-via-publica/tipos";
+import { Chip } from "@/components/permisos-via-publica/ui";
+import { Dialogo } from "@/components/permisos-via-publica/dialogo";
+import { TarjetaEstado } from "@/components/permisos-via-publica/ficha/tarjeta-estado";
+import { Papeles } from "@/components/permisos-via-publica/ficha/papeles";
+import { Robot } from "@/components/permisos-via-publica/ficha/robot";
+import { Datos } from "@/components/permisos-via-publica/ficha/datos";
+import { Historial } from "@/components/permisos-via-publica/ficha/historial";
 
-// Ficha de un trámite nuevo, abierto desde la venta: el link del portal del cliente (para
-// copiar y mandar por WhatsApp), lo que cargó el cliente y la póliza. Cuando se presente en
-// TAD pasa a tener expediente y la ficha es la del expediente.
-
-const COLOR: Record<EstadoDocumento, string> = {
-  falta: "bg-muted text-muted-foreground",
-  pedido: "bg-yellow-500/15 text-yellow-300",
-  cargado: "bg-blue-500/15 text-blue-300",
-  revisando: "bg-blue-500/15 text-blue-300",
-  ok: "bg-green-500/15 text-green-300",
-  observado: "bg-red-500/15 text-red-300",
-};
-
-const cuando = (iso: string) => format(parseISO(iso), "d/M/yyyy HH:mm", { locale: es });
+// La ficha única de un permiso (rediseño 09/10, docs/permisos-rediseno.md § 4.3). De arriba a abajo:
+//   1. Encabezado: dónde, de quién, quién vendió y hace cuánto se abrió.
+//   2. Tarjeta de estado: qué etapa, qué falta, quién lo mueve y desde cuándo, con el único botón
+//      principal para lo que le toca a la oficina (la misma cuenta que la fila de la lista).
+//   3. Papeles al centro (los problemas primero) y, al costado, los datos: dueño, portal, venta,
+//      expediente, borradores para limpiar y el robot.
+//   4. Lo que hizo el robot (encomienda e intentos en TAD) y el historial unido.
+// Trámite y expediente son la misma ficha: la del expediente redirige acá cuando hay trámite.
 
 export default function FichaTramitePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const { data, isLoading, error } = useTramite(id);
-  const reenviar = useReenviarLink(id);
-  const borrar = useBorrarTramite(id);
-  const router = useRouter();
+  const { data, isLoading, error, dataUpdatedAt, refetch } = useTramite(id);
 
-  if (isLoading) return <Skeleton className="h-64 w-full" />;
+  if (isLoading) {
+    return (
+      <div className="mx-auto max-w-5xl space-y-4" aria-busy>
+        <Skeleton className="h-5 w-40" />
+        <Skeleton className="h-9 w-72" />
+        <Skeleton className="h-56 w-full" />
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+          <Skeleton className="h-80 w-full" />
+          <Skeleton className="h-80 w-full" />
+        </div>
+      </div>
+    );
+  }
   if (error || !data) {
-    return <EmptyState icon={TriangleAlert} title="No se pudo abrir el trámite" description={error instanceof Error ? error.message : undefined} />;
+    return (
+      <div className="mx-auto max-w-5xl space-y-4">
+        <Volver />
+        <EmptyState icon={TriangleAlert} title="No se pudo abrir el trámite" description={error instanceof Error ? error.message : "Probá recargar en un rato."}>
+          <Button variant="outline" size="sm" onClick={() => refetch()}>Reintentar</Button>
+        </EmptyState>
+      </div>
+    );
   }
 
-  const { tramite: t, documentos, eventos, linkCliente, linkProductorPrueba } = data;
-  const legajo = documentos.filter((d) => d.origen === "cliente");
-  const propios = documentos.filter((d) => d.origen !== "cliente");
+  const ahora = dataUpdatedAt;
+  const t = data.tramite;
+  const sup = data.supervision;
+  const pie = (
+    <span>
+      Qué sale solo: endoso {sup.endosoAutomatico ? "solo" : "con botón"} · encomienda {sup.encomiendaAutomatica ? "sola" : "con botón"} · presentación {sup.presentacionAutomatica ? "sola, de 19 a 7" : "con botón"}
+    </span>
+  );
 
   return (
-    <div className="space-y-5">
-      <Link href="/permisos-via-publica" className="inline-flex items-center gap-1 text-[13px] text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="size-4" /> Permisos de andamio
-      </Link>
-      <PageHeader
-        title={t.direccion}
-        description={`Trámite nuevo · ${[t.odoo_venta_nombre ?? "sin venta", t.cliente_nombre, t.vendedor_nombre ? `vendedor: ${t.vendedor_nombre}` : null].filter(Boolean).join(" · ")}`}
+    <div className="mx-auto max-w-5xl space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Volver />
+        {data.venta?.url && (
+          <a href={data.venta.url} target="_blank" rel="noreferrer" className="inline-flex h-8 items-center gap-1 rounded-md border bg-background px-2.5 text-[13px] font-medium hover:bg-muted max-sm:h-10">
+            Venta {data.venta.nombre} <ExternalLink aria-hidden className="size-3.5" />
+          </a>
+        )}
+      </div>
+
+      <Encabezado ficha={data} ahora={ahora} />
+      {t.es_prueba && <Prueba ficha={data} />}
+
+      <TarjetaEstado estado={data.estado} acciones={data.acciones} ahora={ahora} ficha={data} pie={pie} />
+
+      <div className="flex flex-wrap items-start gap-4">
+        <div className="min-w-0 flex-[999_1_34rem] space-y-4">
+          <Papeles ficha={data} ahora={ahora} />
+          <Robot ficha={data} ahora={ahora} />
+        </div>
+        <div className="min-w-0 flex-[1_1_18rem]">
+          <Datos ficha={data} ahora={ahora} />
+        </div>
+      </div>
+
+      <Historial eventos={data.eventos} ahora={ahora} />
+    </div>
+  );
+}
+
+function Volver() {
+  return (
+    <Link href="/permisos-via-publica" className="inline-flex items-center gap-1 rounded-sm text-[13px] text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring">
+      <ArrowLeft aria-hidden className="size-4" /> Permisos de andamio
+    </Link>
+  );
+}
+
+function Encabezado({ ficha, ahora }: { ficha: FichaPermiso; ahora: number }) {
+  const t = ficha.tramite;
+  const bajada = [
+    t.titular_nombre ?? t.cliente_nombre,
+    t.administrador_nombre ? `adm. ${t.administrador_nombre}` : null,
+    ficha.vendedora ? `Vendió: ${ficha.vendedora.corto}` : null,
+    `abierto el ${cuandoFue(t.created_at, ahora)} (${haceCuanto(t.created_at, ahora)})`,
+  ].filter(Boolean);
+  return (
+    <header className="space-y-1.5">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        <h1 className="break-words text-2xl font-bold tracking-tight text-balance sm:text-3xl">{direccionCorta(t.direccion)}</h1>
+        {t.odoo_venta_nombre && <span className="rounded-full border px-2 py-0.5 font-mono text-[12px] text-foreground/80">{t.odoo_venta_nombre}</span>}
+        {ficha.expediente && <span className="rounded-full border px-2 py-0.5 font-mono text-[12px] text-foreground/80">EX-{ficha.expediente.numero}</span>}
+        {t.tipo_dueno && <Chip sinIcono>{TIPO_DUENO_CORTO[t.tipo_dueno]}</Chip>}
+        {t.es_prueba && <Chip tono="prueba" sinIcono>Prueba</Chip>}
+      </div>
+      <p className="text-[14px] text-muted-foreground">{bajada.join(" · ")}</p>
+    </header>
+  );
+}
+
+/** El trámite de prueba: una línea, las instrucciones plegadas y "Borrar la prueba" con diálogo. */
+function Prueba({ ficha }: { ficha: FichaPermiso }) {
+  const borrar = useBorrarTramite(ficha.tramite.id);
+  const router = useRouter();
+  const [abierto, setAbierto] = useState(false);
+  return (
+    <section className="space-y-2 rounded-md bg-violet-500/10 px-3 py-2.5 text-[13px]">
+      <p className="flex flex-wrap items-center gap-2">
+        <FlaskConical aria-hidden className="size-4 text-violet-700 dark:text-violet-300" />
+        <span className="font-medium text-violet-800 dark:text-violet-200">Trámite de prueba:</span>
+        <span>los mails llegan a tu casilla, no se le escribe a nadie y nunca se presenta.</span>
+        <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setAbierto(true)}>
+          <Trash2 className="size-4" /> Borrar la prueba…
+        </Button>
+      </p>
+      <details>
+        <summary className="cursor-pointer text-[12px]">Ver instrucciones</summary>
+        <ol className="mt-1 list-decimal space-y-0.5 pl-5 text-[12px] text-foreground/80">
+          <li>Abrí el link del cliente y cargá un dueño con un CUIT válido, por ejemplo 30-71546290-3.</li>
+          <li>Te llega el mail «[PRUEBA] Endosos para pedir». Abrí la página de Segucom de prueba y subí una póliza.</li>
+          <li>A los segundos ves la revisión en esa página y acá.</li>
+        </ol>
+        {ficha.linkProductorPrueba && (
+          <a href={ficha.linkProductorPrueba} target="_blank" rel="noreferrer" className="mt-1 inline-flex items-center gap-1 text-[12px] underline-offset-2 hover:underline">
+            Página de Segucom (prueba) <ExternalLink aria-hidden className="size-3" />
+          </a>
+        )}
+      </details>
+      <Dialogo
+        open={abierto}
+        onOpenChange={setAbierto}
+        peligroso
+        titulo="¿Borrar este trámite de prueba?"
+        texto="Se borran el trámite, sus papeles, el historial y los archivos. No toca nada real."
+        confirmar="Borrar la prueba"
+        cargando={borrar.isPending}
+        onConfirmar={() => borrar.mutate(undefined, { onSuccess: () => { toast.success("Prueba borrada"); router.push("/permisos-via-publica"); }, onError: (e) => toast.error(e instanceof Error ? e.message : "No se pudo borrar") })}
       />
-
-      {t.es_prueba && (
-        <section className="space-y-2 rounded-md border border-purple-500/30 bg-purple-500/10 p-3 text-[13px]">
-          <p className="flex items-center gap-1.5 font-semibold text-purple-300">
-            <FlaskConical className="size-4" /> Trámite de prueba
-          </p>
-          <p className="text-muted-foreground">
-            Todos los mails llegan a tu casilla: el link &quot;del cliente&quot; y el pedido de endoso. No se le escribe a ningún
-            cliente ni a Segucom, y no salen avisos a Slack.
-          </p>
-          <ol className="list-decimal space-y-0.5 pl-5 text-muted-foreground">
-            <li>Abrí el link del cliente (abajo) y cargá un dueño con un CUIT válido, por ejemplo 30-71546290-3.</li>
-            <li>Te llega el mail &quot;[PRUEBA] Endosos para pedir&quot;. Abrí la página de Segucom de prueba y subí una póliza.</li>
-            <li>A los segundos ves la revisión en esa página y acá.</li>
-          </ol>
-          <div className="flex flex-wrap gap-2">
-            {linkProductorPrueba && (
-              <a href={linkProductorPrueba} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[12px] underline-offset-2 hover:underline">
-                Página de Segucom (prueba) <ExternalLink className="size-3" />
-              </a>
-            )}
-            <Button
-              size="sm"
-              variant="outline"
-              className="ml-auto"
-              disabled={borrar.isPending}
-              onClick={() =>
-                borrar.mutate(undefined, {
-                  onSuccess: () => {
-                    toast.success("Prueba borrada");
-                    router.push("/permisos-via-publica");
-                  },
-                  onError: (err) => toast.error(err instanceof Error ? err.message : "No se pudo borrar"),
-                })
-              }
-            >
-              {borrar.isPending ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />} Borrar la prueba
-            </Button>
-          </div>
-        </section>
-      )}
-
-      <section className="space-y-2 rounded-md border p-3 text-[13px]">
-        <h3 className="font-semibold">Portal del cliente</h3>
-        <p className="text-muted-foreground">
-          {t.cliente_nombre ?? "Cliente sin nombre"} · {t.cliente_email ?? "sin mail en Odoo"}
-          {t.link_enviado_at && <> · link enviado{t.link_enviado_a ? ` a ${t.link_enviado_a}` : ""} el {cuando(t.link_enviado_at)}</>}
-        </p>
-        <p className="text-[12px] text-muted-foreground">
-          Vendedor: {t.vendedor_nombre ? `${t.vendedor_nombre}${t.vendedor_email ? ` (${t.vendedor_email})` : " (sin mail en Odoo)"}` : "sin vendedor en la orden"} · recibe copia
-          de todos los mails y las respuestas.
-        </p>
-        {t.link_error && <p className="text-orange-400">{t.link_error}</p>}
-        {linkCliente && (
-          <div className="flex flex-wrap gap-2">
-            <Input readOnly value={linkCliente} className="h-8 min-w-0 flex-1 font-mono text-[12px]" onFocus={(ev) => ev.target.select()} />
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => navigator.clipboard.writeText(linkCliente).then(() => toast.success("Link copiado: pegalo en WhatsApp"))}
-            >
-              <Copy className="size-4" /> Copiar
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={reenviar.isPending}
-              onClick={() =>
-                reenviar.mutate(undefined, {
-                  onSuccess: (r) => (r.ok ? toast.success("Link reenviado por mail") : toast.error("No se pudo mandar: mirá el motivo en la ficha")),
-                  onError: (err) => toast.error(err instanceof Error ? err.message : "No se pudo reenviar"),
-                })
-              }
-            >
-              {reenviar.isPending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />} Reenviar por mail
-            </Button>
-          </div>
-        )}
-      </section>
-
-      <section className="space-y-2 rounded-md border p-3 text-[13px]">
-        <h3 className="font-semibold">Dueño del lote</h3>
-        {t.titular_cargado_at ? (
-          <p>
-            {t.titular_nombre} · CUIT {formatoCuit(t.titular_cuit ?? "")} · {t.tipo_dueno ? ETIQUETA_DUENO[t.tipo_dueno] : ""}
-            {t.es_inquilino ? " · quien contrata alquila" : ""}
-            {t.administrador_cuit && (
-              <span className="block">
-                Administrador (coasegurado): {t.administrador_nombre} · CUIT {formatoCuit(t.administrador_cuit)}
-              </span>
-            )}
-            <span className="block text-[12px] text-muted-foreground">Cargado por el cliente el {cuando(t.titular_cargado_at)}</span>
-          </p>
-        ) : null}
-        {t.titular_cargado_at ? (
-          <PedirEndoso tramiteId={t.id} poliza={documentos.find((d) => d.clave === "poliza_rc") ?? null} />
-        ) : (
-          <p className="text-muted-foreground">El cliente todavía no lo cargó.</p>
-        )}
-      </section>
-
-      <ListaDocumentos titulo={`Legajo del cliente · ${legajo.filter((d) => d.estado !== "falta").length} de ${legajo.length}`} documentos={legajo} tramiteId={t.id} />
-      <GenerarDocumentos tramiteId={t.id} conVenta={!!t.odoo_venta_id} />
-      <EncomiendaCpau tramiteId={t.id} encomienda={data.encomienda} esPrueba={t.es_prueba} />
-      <PresentacionTad tramiteId={t.id} presentacion={data.presentacion} esPrueba={t.es_prueba} expedienteId={t.expediente_id} />
-      {propios.length > 0 && <ListaDocumentos titulo="Documentos de ABA y del seguro" documentos={propios} />}
-
-      <section className="rounded-md border">
-        <header className="border-b px-3 py-2">
-          <h3 className="text-[13px] font-semibold">Historial</h3>
-        </header>
-        <ul className="max-h-[24rem] overflow-y-auto">
-          {eventos.map((ev) => (
-            <li key={ev.id} className="border-b px-3 py-2 text-[13px] last:border-b-0">
-              <span className="text-[12px] text-muted-foreground">{cuando(ev.created_at)}</span>
-              {ev.detalle && <p className="text-muted-foreground">{ev.detalle}</p>}
-            </li>
-          ))}
-        </ul>
-      </section>
-    </div>
-  );
-}
-
-/**
- * "Pedir endoso a Segucom": en modo supervisado es la única forma de que salga el pedido.
- * Se muestra mientras la póliza no está pedida ni lista; después permite volver a pedir.
- */
-function PedirEndoso({ tramiteId, poliza }: { tramiteId: string; poliza: Documento | null }) {
-  const pedirEndoso = usePedirEndosoTramite(tramiteId);
-  const estado = poliza?.estado ?? "falta";
-  const yaPedido = ["pedido", "revisando", "ok"].includes(estado);
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      <span className="text-[12px] text-muted-foreground">
-        Póliza: {poliza ? ETIQUETA_ESTADO_DOCUMENTO[poliza.estado] : "sin pedir"}
-        {poliza?.pedido_at && ` · pedida el ${cuando(poliza.pedido_at)}`}
-      </span>
-      <Button
-        size="sm"
-        variant={yaPedido ? "outline" : "default"}
-        disabled={pedirEndoso.isPending}
-        onClick={() => {
-          if (yaPedido && !window.confirm("El endoso ya se pidió. ¿Mandar el pedido a Segucom otra vez?")) return;
-          pedirEndoso.mutate(undefined, {
-            onSuccess: () => toast.success("Pedido de endoso enviado a Segucom"),
-            onError: (err) => toast.error(err instanceof Error ? err.message : "No se pudo pedir"),
-          });
-        }}
-      >
-        {pedirEndoso.isPending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
-        {yaPedido ? "Volver a pedir el endoso" : "Pedir endoso a Segucom"}
-      </Button>
-    </div>
-  );
-}
-
-/**
- * `tramiteId` sólo en el legajo del cliente: habilita "Pedir corrección" en lo observado. El mail
- * sale solo cuando la revisión observa; el botón lo reenvía (p. ej. con el mail corregido en Odoo).
- */
-function ListaDocumentos({ titulo, documentos, tramiteId }: { titulo: string; documentos: (Documento & { url: string | null })[]; tramiteId?: string }) {
-  const correccion = usePedirCorreccion(tramiteId ?? "");
-  return (
-    <section className="rounded-md border text-[13px]">
-      <header className="border-b px-3 py-2">
-        <h3 className="font-semibold">{titulo}</h3>
-      </header>
-      {documentos.length === 0 && <p className="px-3 py-3 text-[12px] text-muted-foreground">Nada todavía.</p>}
-      <ul>
-        {documentos.map((d) => (
-          <li key={d.id} className="space-y-1 border-b px-3 py-2 last:border-b-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <span>{NOMBRE_DOCUMENTO[d.clave] ?? d.clave}</span>
-              <span className={`rounded px-1.5 py-0.5 text-[11px] ${COLOR[d.estado]}`}>{ETIQUETA_ESTADO_DOCUMENTO[d.estado]}</span>
-              {tramiteId && d.estado === "observado" && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7"
-                  disabled={correccion.isPending}
-                  onClick={() =>
-                    correccion.mutate(d.id, {
-                      onSuccess: () => toast.success("Se le pidió la corrección al cliente por mail"),
-                      onError: (err) => toast.error(err instanceof Error ? err.message : "No se pudo mandar"),
-                    })
-                  }
-                >
-                  {correccion.isPending && correccion.variables === d.id ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />} Pedir corrección
-                </Button>
-              )}
-              {d.url && (
-                <a href={d.url} target="_blank" rel="noreferrer" className="ml-auto inline-flex items-center gap-1 text-[12px] hover:underline">
-                  {d.archivo_nombre ?? "Ver"} <ExternalLink className="size-3" />
-                </a>
-              )}
-            </div>
-            {d.observacion && <p className={d.estado === "observado" ? "text-red-300" : "text-orange-400"}>{d.observacion}</p>}
-            {d.revision?.chequeos.map((c) => (
-              <p key={c.clave} className="flex items-start gap-1.5 text-[12px]">
-                {c.ok ? <CheckCircle2 className="mt-0.5 size-3.5 text-green-400" /> : c.bloquea ? <CircleAlert className="mt-0.5 size-3.5 text-red-400" /> : <CircleMinus className="mt-0.5 size-3.5 text-muted-foreground" />}
-                {c.detalle}
-              </p>
-            ))}
-          </li>
-        ))}
-      </ul>
     </section>
   );
 }

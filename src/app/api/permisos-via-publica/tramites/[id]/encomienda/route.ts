@@ -4,13 +4,15 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { FaltanDatos } from "@/lib/permisos-via-publica/generacion";
 import { aprobarEncomienda, descartarEncomienda, pedirEncomienda, reanudarCierre } from "@/lib/permisos-via-publica/encomienda";
+import { rechazoIrreversible } from "@/lib/permisos-via-publica/guardia";
 
 // POST /api/permisos-via-publica/tramites/:id/encomienda — la encomienda del CPAU del trámite.
 //   { accion: "pedir" }      deja la tarea al robot: finaliza, firma, paga, carga y espera el certificado
 //   { accion: "reanudar" }   vuelve a la cola un cierre que se frenó, desde la etapa donde quedó
 //   { accion: "finalizar" }  (tareas viejas) una persona revisó el resumen: el robot toca Finalizar
 //   { accion: "descartar" }  tira la que espera aprobación, para volver a pedirla
-// El proxy exige nivel "editar". No espera al robot: la ficha se entera sola.
+// El proxy exige nivel "editar". Pedir, reanudar y finalizar no se deshacen (el robot paga): además,
+// gestores o admin. No espera al robot: la ficha se entera sola.
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +27,14 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const { data: auth } = await (await createClient()).auth.getUser();
   const userId = auth.user?.id ?? null;
   const db = createAdminClient();
+
+  if (parsed.data.accion !== "descartar") {
+    const { data: t } = await db.from("pvp_tramites").select("es_prueba").eq("id", id).maybeSingle();
+    if (!t?.es_prueba) {
+      const rechazo = await rechazoIrreversible();
+      if (rechazo) return rechazo;
+    }
+  }
 
   try {
     if (parsed.data.accion === "pedir") return NextResponse.json(await pedirEncomienda(db, id, { userId }));

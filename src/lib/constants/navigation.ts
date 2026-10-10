@@ -2,7 +2,7 @@ import {
   Building2, Users, Wrench, Package, Truck, UserCheck, Bell,
   Settings, FileText, ClipboardList, Calculator, Calendar, HardHat,
   PackagePlus, AlertTriangle, Search, Car, Hammer, MessageSquare,
-  MapPin, Fingerprint, Bot, Building, ListOrdered, ShieldCheck, FileBarChart, Landmark, SlidersHorizontal, ChartGantt,
+  MapPin, Fingerprint, Bot, Building, ListOrdered, ShieldCheck, FileBarChart, Landmark, SlidersHorizontal,
   type LucideIcon,
 } from "lucide-react";
 
@@ -39,7 +39,6 @@ export const navigation: NavGroup[] = [
     label: "Gestorias",
     items: [
       { title: "Permisos de andamio", href: "/permisos-via-publica", icon: Landmark },
-      { title: "Seguimiento de permisos", href: "/permisos-via-publica/seguimiento", icon: ChartGantt },
     ],
   },
   {

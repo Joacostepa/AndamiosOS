@@ -94,6 +94,11 @@ export function FirmarDocumentos({ token, portal, onListo }: { token: string; po
           <span className="text-gray-600">DNI de quien firma</span>
           <input value={dni} onChange={(ev) => setDni(ev.target.value)} inputMode="numeric" placeholder="30123456" className={campo} />
           {dni && !dniOk && <span className="text-red-700">Tienen que ser 7 u 8 números.</span>}
+          {/* Un DNI de 7 cifras existe, pero es lo que más se escribe mal: el Gobierno observó el
+              acta y la nota de Av. Corrientes 985 (06/10) por un DNI incompleto. Avisa, no frena. */}
+          {dniOk && dni.replace(/\D/g, "").length === 7 && (
+            <span className="text-amber-800">Tiene 7 números: fijate que no falte ninguno. Va así en el acta y en la nota.</span>
+          )}
         </label>
         <label className="grid gap-1 text-sm">
           <span className="text-gray-600">Firma en carácter de</span>

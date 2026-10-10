@@ -1,315 +1,172 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useEffect, useState } from "react";
 import Link from "next/link";
-import { format, formatDistanceToNowStrict, parseISO } from "date-fns";
-import { es } from "date-fns/locale";
-import { ArrowLeft, Download, ExternalLink, Loader2, TriangleAlert } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ArrowLeft, Loader2, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
-import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ChipEstado } from "@/components/permisos-via-publica/chip-estado";
+import { useExpediente, useVinculoVenta } from "@/hooks/use-permisos-via-publica";
+import { estadoVinculo, motivoDePoliza, sinAltura, direccionCorta } from "@/lib/permisos-via-publica/tipos";
+import type { FichaSoloExpediente } from "@/lib/permisos-via-publica/ficha";
+import type { AccionConPersona } from "@/lib/permisos-via-publica/lista";
+import { Aviso } from "@/components/permisos-via-publica/ui";
+import { Dialogo, DatosQueSalen } from "@/components/permisos-via-publica/dialogo";
+import { TarjetaEstado } from "@/components/permisos-via-publica/ficha/tarjeta-estado";
+import { DatosExpediente, Venta } from "@/components/permisos-via-publica/ficha/datos";
+import { Historial } from "@/components/permisos-via-publica/ficha/historial";
+import { DialogoDejarDeSeguir } from "@/components/permisos-via-publica/ficha/acciones";
 import { DocumentosTramite } from "@/components/permisos-via-publica/documentos-tramite";
-import { useExpediente, useVinculoVenta, type AccionVinculo } from "@/hooks/use-permisos-via-publica";
-import {
-  estadoVinculo, explicacionEstado, sinAltura,
-  type Evento, type Expediente, type TipoEvento, type VentaOdoo,
-} from "@/lib/permisos-via-publica/tipos";
+import { BOTON } from "@/components/permisos-via-publica/textos";
 
-// Ficha de un expediente de TAD: estado, qué pidió el Gobierno, el permiso si salió, la venta
-// de Odoo y todo lo que pasó, en orden. El estado es el de TAD y lo escribe el robot; lo
-// único que decide una persona acá es cuál es la venta.
+// Un expediente de TAD. UNA FICHA POR PERMISO (rediseño 09/10): si tiene trámite en la app, esta
+// página lleva a la del trámite. Si no (de antes del robot, o presentado a mano sin venta), el
+// mismo esqueleto: la tarjeta de estado, los datos del expediente y la venta, y el historial. Lo
+// único que decide una persona acá es cuál es la venta, y si un expediente viejo o archivado se
+// deja de seguir.
 
-const ETIQUETA_EVENTO: Record<TipoEvento, string> = {
-  alta: "Apareció en TAD",
-  cambio_estado: "Cambió el estado",
-  tarea_subsanacion: "El Gobierno pidió subsanar",
-  tarea_resuelta: "Se subsanó",
-  motivo: "Motivo de la observación",
-  permiso_descargado: "Permiso descargado",
-  vinculado_odoo: "Venta propuesta",
-  error_robot: "Error del robot",
-  caratula_leida: "Datos leídos de la carátula",
-  vinculo_confirmado: "Venta confirmada",
-  vinculo_descartado: "Venta descartada",
-  odoo_escrito: "Escrito en Odoo",
-  odoo_conflicto: "No se escribió en Odoo",
-  tramite_abierto: "Se abrió el trámite",
-  documento_pedido: "Documento pedido",
-  documento_subido: "Documento subido",
-  documento_revisado: "Revisión del documento",
-  aviso_productor: "Aviso a Segucom",
-  link_cliente: "Link al cliente",
-  titular_cargado: "El cliente cargó el dueño del lote",
-  encomienda_cpau: "Encomienda del CPAU",
-  presentacion_tad: "Presentación en TAD",
-};
-
-const TRAMITE: Record<string, string> = { no_presentado: "No presentado", presentado: "Presentado", emitido: "Emitido" };
-const MODALIDAD: Record<string, string> = {
-  sin_permiso: "Se arma sin expediente ni permiso",
-  con_expediente: "Se arma con el expediente",
-  esperar_permiso: "Se arma con el permiso emitido",
-};
-
-/** "2027-03-09" → "9/3/2027". Las fechas de la carátula son DATE, sin hora ni zona. */
-function dia(iso: string | null) {
-  if (!iso) return "—";
-  const [a, m, d] = iso.split("-");
-  return `${Number(d)}/${Number(m)}/${a}`;
-}
-
-function fecha(iso: string, patron = "d MMM yyyy HH:mm") {
-  return format(parseISO(iso), patron, { locale: es });
-}
-
-export default function FichaPermisoPage({ params }: { params: Promise<{ id: string }> }) {
+export default function FichaExpedientePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const { data, isLoading, error } = useExpediente(id);
+  const { data, isLoading, error, dataUpdatedAt } = useExpediente(id);
+  const router = useRouter();
+  const tramiteId = data?.tramiteId;
 
-  if (isLoading) {
+  useEffect(() => {
+    if (tramiteId) router.replace(`/permisos-via-publica/tramites/${tramiteId}`);
+  }, [tramiteId, router]);
+
+  if (isLoading || tramiteId) {
     return (
-      <div className="space-y-4">
-        <Skeleton className="h-10 w-80" />
-        <Skeleton className="h-64 w-full" />
+      <div className="mx-auto max-w-5xl space-y-4" aria-busy>
+        <Skeleton className="h-9 w-72" />
+        <Skeleton className="h-56 w-full" />
       </div>
     );
   }
   if (error || !data) {
-    return <EmptyState icon={TriangleAlert} title="No se pudo abrir el expediente" description={error instanceof Error ? error.message : undefined} />;
+    return (
+      <div className="mx-auto max-w-5xl space-y-4">
+        <Volver />
+        <EmptyState icon={TriangleAlert} title="No se pudo abrir el expediente" description={error instanceof Error ? error.message : "Probá recargar en un rato."} />
+      </div>
+    );
   }
 
-  const { expediente: e, eventos, permisoUrl, caratulaUrl, venta, ventaError, tramite, documentos } = data;
-
+  const ahora = dataUpdatedAt;
+  const e = data.expediente;
   return (
-    <div className="space-y-5">
-      <Link href="/permisos-via-publica" className="inline-flex items-center gap-1 text-[13px] text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="size-4" /> Permisos de andamio
-      </Link>
+    <div className="mx-auto max-w-5xl space-y-4">
+      <Volver />
+      <header className="space-y-1">
+        <h1 className="break-words text-2xl font-bold tracking-tight text-balance sm:text-3xl">{direccionCorta(e.direccion) || e.titular || `EX-${e.numero}`}</h1>
+        <p className="text-[14px] text-muted-foreground">
+          {[`EX-${e.numero}`, e.odoo_venta_nombre, e.cliente, e.historico ? "terminado antes del robot" : "sin trámite en la app"].filter(Boolean).join(" · ")}
+        </p>
+      </header>
 
-      <PageHeader
-        title={e.direccion ?? e.titular ?? `EX-${e.numero}`}
-        description={[e.expediente, e.odoo_venta_nombre, e.cliente].filter(Boolean).join(" · ")}
-      >
-        {/* La carátula la baja el robot al entrar al expediente: es el PDF con el número. */}
-        {caratulaUrl && (
-          <a href={caratulaUrl} target="_blank" rel="noreferrer" className={buttonVariants({ size: "sm", variant: "outline" })}>
-            <Download className="size-4" /> Descargar carátula
-          </a>
-        )}
-        {permisoUrl && (
-          // Button es de base-ui (no tiene asChild): un <a> con las mismas clases.
-          <a href={permisoUrl} target="_blank" rel="noreferrer" className={buttonVariants({ size: "sm" })}>
-            <Download className="size-4" /> Descargar permiso
-          </a>
-        )}
-      </PageHeader>
-
-      <section className="grid gap-3 rounded-md border p-3 text-[13px] sm:grid-cols-2">
-        <div className="space-y-1">
-          <ChipEstado expediente={e} />
-          <p className="text-muted-foreground">{explicacionEstado(e)}</p>
-          <p className="text-muted-foreground">
-            En este estado desde el {fecha(e.estado_desde, "d/M/yyyy")} (
-            {formatDistanceToNowStrict(parseISO(e.estado_desde), { locale: es })})
-          </p>
-        </div>
-        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-          <dt className="text-muted-foreground">Presentado</dt>
-          <dd>{dia(e.creado_tad)}</dd>
-          <dt className="text-muted-foreground">Ubicación</dt>
-          <dd>
-            {[e.barrio, e.comuna].filter(Boolean).join(" · ") || "—"}
-            {e.seccion && (
-              <span className="block text-[12px] text-muted-foreground">
-                Sección {e.seccion} · Manzana {e.manzana ?? "?"} · Parcela {e.parcela ?? "?"}
-              </span>
-            )}
-          </dd>
-          <dt className="text-muted-foreground">Permiso pedido</dt>
-          <dd>{e.pedido_desde || e.pedido_hasta ? `${dia(e.pedido_desde)} al ${dia(e.pedido_hasta)}` : "—"}</dd>
-          {e.permiso_emitido_el && (
-            <>
-              <dt className="text-muted-foreground">Permiso otorgado</dt>
-              <dd>
-                Notificado el {dia(e.permiso_emitido_el)} · vigente hasta {dia(e.permiso_vence)}
-              </dd>
-            </>
-          )}
-          <dt className="text-muted-foreground">Seguro</dt>
-          <dd>{e.seguro_compania ? `${e.seguro_compania} · vence ${dia(e.seguro_vence)}` : "—"}</dd>
-          <dt className="text-muted-foreground">Última lectura</dt>
-          <dd>{fecha(e.visto_ultimo_at)}</dd>
-          {e.caratula_error && (
-            <>
-              <dt className="text-muted-foreground">Carátula</dt>
-              <dd className="text-orange-400">No se pudo leer: {e.caratula_error}</dd>
-            </>
-          )}
-        </dl>
-      </section>
-
-      {e.motivo_subsanacion && (
-        <section className="rounded-md border border-red-500/30 bg-red-500/10 p-3 text-[13px]">
-          <h3 className="font-semibold text-red-300">Lo que pide el Gobierno</h3>
-          <p className="mt-1 whitespace-pre-line">{e.motivo_subsanacion}</p>
-          {e.motivo_leido_at && (
-            <p className="mt-1 text-[12px] text-muted-foreground">Leído de TAD el {fecha(e.motivo_leido_at)}</p>
-          )}
-        </section>
+      {data.tramiteDeLaVenta && (
+        <Aviso titulo="La venta tiene un trámite en la app">
+          Confirmá que este expediente es de la venta para que la ficha sea una sola.{" "}
+          <Link href={`/permisos-via-publica/tramites/${data.tramiteDeLaVenta.id}`} className="font-medium underline underline-offset-2">Abrir el trámite de {direccionCorta(data.tramiteDeLaVenta.direccion)}</Link>
+        </Aviso>
       )}
 
-      <DocumentosTramite e={e} tramite={tramite} documentos={documentos} />
+      <TarjetaEstado estado={data.estado} acciones={data.acciones} ahora={ahora} boton={(a, principal) => <BotonExpediente accion={a} ficha={data} principal={principal} />} />
 
-      <VentaDeOdoo e={e} venta={venta} ventaError={ventaError} />
+      <div className="flex flex-wrap items-start gap-4">
+        <div className="min-w-0 flex-[999_1_34rem] space-y-4">
+          {(data.tramite || motivoDePoliza(e.motivo_subsanacion)) && !data.tramiteDeLaVenta && (
+            <DocumentosTramite e={e} tramite={data.tramite} documentos={data.documentos} />
+          )}
+          <VincularVenta ficha={data} />
+        </div>
+        <aside className="min-w-0 flex-[1_1_18rem] space-y-3">
+          <DatosExpediente e={e} caratulaUrl={data.caratulaUrl} permisoUrl={data.permisoUrl} puedeEditar={data.yo.puedeEditar} ahora={ahora} />
+          <Venta venta={data.venta} ventaError={data.ventaError} nombre={e.odoo_venta_nombre} vendedora={null} />
+        </aside>
+      </div>
 
-      <Historial eventos={eventos} />
+      <Historial eventos={data.eventos} ahora={ahora} />
     </div>
   );
 }
 
-/**
- * Cuál es la venta del expediente. Del estado del vínculo depende que el robot escriba el
- * trámite en Odoo (y con eso, el candado del tablero): por eso una propuesta por dirección
- * se muestra al lado de lo que dice la carátula, para confirmarla mirando las dos.
- */
-function VentaDeOdoo({ e, venta, ventaError }: { e: Expediente; venta: VentaOdoo | null; ventaError: string | null }) {
-  const vinculo = useVinculoVenta(e.id);
-  const [numero, setNumero] = useState("");
-  const estado = estadoVinculo(e);
-
-  function hacer(body: AccionVinculo, ok: string) {
-    vinculo.mutate(body, {
-      onSuccess: () => {
-        toast.success(ok);
-        setNumero("");
-      },
-      onError: (err) => toast.error(err instanceof Error ? err.message : "No se pudo guardar"),
-    });
-  }
-
-  const marco =
-    estado === "propuesto" ? "border-yellow-500/40 bg-yellow-500/5" : estado === "sin_vincular" ? "border-dashed" : "";
-
+function Volver() {
   return (
-    <section className={`space-y-3 rounded-md border p-3 text-[13px] ${marco}`}>
-      <header className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="font-semibold">Venta de Odoo</h3>
-        <span className="text-[12px] text-muted-foreground">
-          {estado === "propuesto" && "Propuesta por dirección · falta confirmar"}
-          {estado === "confirmado" &&
-            (e.odoo_vinculo_por === "numero"
-              ? "Vinculada por número de expediente"
-              : `Confirmada${e.odoo_vinculo_confirmado_at ? ` el ${fecha(e.odoo_vinculo_confirmado_at, "d/M/yyyy")}` : ""}`)}
-          {estado === "sin_vincular" && "Sin vincular"}
-        </span>
-      </header>
-
-      {estado !== "sin_vincular" && (
-        <div className="grid gap-3 sm:grid-cols-2">
-          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-            <dt className="text-muted-foreground">Venta</dt>
-            <dd>
-              {venta?.url ? (
-                <a href={venta.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 underline-offset-2 hover:underline">
-                  {venta.nombre} <ExternalLink className="size-3" />
-                </a>
-              ) : (
-                e.odoo_venta_nombre
-              )}
-            </dd>
-            <dt className="text-muted-foreground">Cliente</dt>
-            <dd>{venta?.cliente ?? e.cliente ?? "—"}</dd>
-            <dt className="text-muted-foreground">Obra (Odoo)</dt>
-            <dd>{venta?.direccion ?? "—"}</dd>
-            <dt className="text-muted-foreground">Obra (TAD)</dt>
-            <dd>{e.direccion ?? "—"}</dd>
-            <dt className="text-muted-foreground">Fecha de venta</dt>
-            <dd>{dia(venta?.fecha ?? null)}</dd>
-          </dl>
-          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-            <dt className="text-muted-foreground">Modalidad</dt>
-            <dd>{venta?.modalidad ? MODALIDAD[venta.modalidad] ?? venta.modalidad : "—"}</dd>
-            <dt className="text-muted-foreground">Trámite</dt>
-            <dd>{venta?.tramite ? TRAMITE[venta.tramite] ?? venta.tramite : "—"}</dd>
-            <dt className="text-muted-foreground">Expediente</dt>
-            <dd className="break-all">{venta?.expedienteNro ?? "—"}</dd>
-            <dt className="text-muted-foreground">Permiso emitido</dt>
-            <dd>{dia(venta?.permisoFecha ?? null)}</dd>
-            {e.odoo_escrito_at && (
-              <>
-                <dt className="text-muted-foreground">Robot</dt>
-                <dd>Al día con TAD desde el {fecha(e.odoo_escrito_at)}</dd>
-              </>
-            )}
-          </dl>
-        </div>
-      )}
-
-      {ventaError && <p className="text-orange-400">No se pudo leer la venta en Odoo: {ventaError}</p>}
-      {e.odoo_error && <p className="text-orange-400">{e.odoo_error}</p>}
-
-      {estado === "propuesto" && (
-        <div className="flex flex-wrap items-center gap-2">
-          <p className="basis-full text-muted-foreground">
-            El robot la encontró por la dirección. Hasta que alguien la confirme no se escribe nada en Odoo; después
-            mantiene solo el trámite, el número de expediente y las fechas.
-          </p>
-          <Button size="sm" disabled={vinculo.isPending} onClick={() => hacer({ accion: "confirmar" }, "Venta confirmada: el robot la actualiza en unos segundos")}>
-            {vinculo.isPending && <Loader2 className="size-4 animate-spin" />} Es esta venta
-          </Button>
-          <Button size="sm" variant="outline" disabled={vinculo.isPending} onClick={() => hacer({ accion: "descartar" }, "Venta descartada")}>
-            No es esta
-          </Button>
-        </div>
-      )}
-
-      {estado !== "confirmado" && (
-        <form
-          className="flex flex-wrap items-center gap-2"
-          onSubmit={(ev) => {
-            ev.preventDefault();
-            if (numero.trim()) hacer({ accion: "vincular", venta: numero.trim() }, "Venta vinculada: el robot la actualiza en unos segundos");
-          }}
-        >
-          {estado === "sin_vincular" && (
-            <p className="basis-full text-muted-foreground">
-              {sinAltura(e.direccion)
-                ? "La carátula no trae altura (en TAD se escribió la calle sin elegirla del buscador), así que no se puede buscar la venta sola."
-                : "No hay en Odoo una venta confirmada con esta dirección anterior a la presentación."}
-            </p>
-          )}
-          <Input value={numero} onChange={(ev) => setNumero(ev.target.value)} placeholder="S02419" className="h-8 w-32" />
-          <Button type="submit" size="sm" variant="outline" disabled={vinculo.isPending || !numero.trim()}>
-            {estado === "propuesto" ? "Es otra venta" : "Vincular venta"}
-          </Button>
-        </form>
-      )}
-    </section>
+    <Link href="/permisos-via-publica" className="inline-flex items-center gap-1 rounded-sm text-[13px] text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring">
+      <ArrowLeft aria-hidden className="size-4" /> Permisos de andamio
+    </Link>
   );
 }
 
-function Historial({ eventos }: { eventos: Evento[] }) {
+function BotonExpediente({ accion, ficha, principal }: { accion: AccionConPersona; ficha: FichaSoloExpediente; principal: boolean }) {
+  const [abierto, setAbierto] = useState(false);
+  const vinculo = useVinculoVenta(ficha.expediente.id);
+  const e = ficha.expediente;
+  if (accion.clave === "subsanar") {
+    return <p className="text-[13px] text-muted-foreground">Sin trámite en la app: se corrige a mano en la tarea de TAD.</p>;
+  }
   return (
-    <section className="rounded-md border">
-      <header className="border-b px-3 py-2">
-        <h3 className="text-[13px] font-semibold">Historial</h3>
-      </header>
-      <ul className="max-h-[32rem] overflow-y-auto">
-        {eventos.map((ev) => (
-          <li key={ev.id} className="border-b px-3 py-2 text-[13px] last:border-b-0">
-            <div className="flex flex-wrap items-baseline gap-x-2">
-              <span className="font-medium">{ETIQUETA_EVENTO[ev.tipo] ?? ev.tipo}</span>
-              <span className="text-[12px] text-muted-foreground">{fecha(ev.created_at)}</span>
-            </div>
-            {ev.detalle && <p className="mt-0.5 whitespace-pre-line text-muted-foreground">{ev.detalle}</p>}
-          </li>
-        ))}
-        {eventos.length === 0 && <li className="px-3 py-3 text-[12px] text-muted-foreground">Sin movimientos registrados.</li>}
-      </ul>
+    <>
+      <Button size="sm" variant={principal ? "default" : "outline"} disabled={!ficha.yo.puedeEditar} onClick={() => setAbierto(true)} className="max-sm:h-10">
+        {BOTON[accion.clave]}…
+      </Button>
+      {abierto && (accion.clave === "ver_archivado" || accion.clave === "decidir_expediente") && (
+        <DialogoDejarDeSeguir expedienteId={e.id} archivado={accion.clave === "ver_archivado"} onCerrar={() => setAbierto(false)} />
+      )}
+      {accion.clave === "confirmar_venta" && (
+        <Dialogo
+          open={abierto}
+          onOpenChange={setAbierto}
+          etiqueta={{ texto: "Escribe en Odoo", tono: "marcha" }}
+          titulo={`¿EX-${e.numero} es de la venta ${ficha.venta?.nombre ?? e.odoo_venta_nombre ?? ""}?`}
+          texto="El robot la encontró por la dirección. Al confirmar, escribe el trámite en la venta de Odoo y, si la venta tiene un trámite en la app, lo ata a este expediente."
+          confirmar="Sí, es esta venta"
+          cargando={vinculo.isPending}
+          onConfirmar={() => vinculo.mutate({ accion: "confirmar" }, { onSuccess: () => { toast.success("Venta confirmada: el robot actualiza Odoo en unos segundos"); setAbierto(false); }, onError: (x) => toast.error(x instanceof Error ? x.message : "No se pudo") })}
+        >
+          <DatosQueSalen filas={[
+            { etiqueta: "Obra en TAD (carátula)", valor: e.direccion ?? "—" },
+            { etiqueta: "Obra en Odoo", valor: ficha.venta?.direccion ?? "—" },
+            { etiqueta: "Cliente de la venta", valor: ficha.venta?.cliente ?? e.cliente ?? "—" },
+          ]} />
+        </Dialogo>
+      )}
+    </>
+  );
+}
+
+/** Elegir la venta a mano: carátula sin altura, o la propuesta era otra venta. */
+function VincularVenta({ ficha }: { ficha: FichaSoloExpediente }) {
+  const e = ficha.expediente;
+  const vinculo = useVinculoVenta(e.id);
+  const [numero, setNumero] = useState("");
+  const estado = estadoVinculo(e);
+  if (estado === "confirmado" || e.historico || !ficha.yo.puedeEditar) return null;
+  return (
+    <section className="space-y-2 rounded-md border bg-card p-3 text-[13px]">
+      <h2 className="text-[14px] font-semibold">{estado === "propuesto" ? "¿Es otra venta?" : "Vincular la venta"}</h2>
+      {estado === "sin_vincular" && (
+        <p className="text-muted-foreground">
+          {sinAltura(e.direccion) ? "La carátula no trae altura (en TAD se escribió la calle sin elegirla del buscador), así que no se puede buscar la venta sola." : "No hay en Odoo una venta confirmada con esta dirección anterior a la presentación."}
+        </p>
+      )}
+      <form
+        className="flex flex-wrap items-center gap-2"
+        onSubmit={(ev) => {
+          ev.preventDefault();
+          if (numero.trim()) vinculo.mutate({ accion: "vincular", venta: numero.trim() }, { onSuccess: () => { toast.success("Venta vinculada: el robot la actualiza en unos segundos"); setNumero(""); }, onError: (x) => toast.error(x instanceof Error ? x.message : "No se pudo") });
+        }}
+      >
+        <label className="sr-only" htmlFor="venta-manual">Número de venta</label>
+        <Input id="venta-manual" value={numero} onChange={(ev) => setNumero(ev.target.value)} placeholder="S02419" className="h-9 w-32" />
+        <Button type="submit" size="sm" variant="outline" disabled={vinculo.isPending || !numero.trim()}>
+          {vinculo.isPending && <Loader2 className="size-4 animate-spin" />} Vincular
+        </Button>
+      </form>
     </section>
   );
 }

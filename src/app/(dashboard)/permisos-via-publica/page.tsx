@@ -1,362 +1,279 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
-import { formatDistanceToNowStrict, parseISO } from "date-fns";
-import { es } from "date-fns/locale";
-import { useRouter } from "next/navigation";
-import { ChartGantt, CheckCircle2, FlaskConical, Loader2, MoreHorizontal, RefreshCw, Search, TriangleAlert } from "lucide-react";
+import { ChevronRight, Loader2, RefreshCw, Search } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { ChipEstado } from "@/components/permisos-via-publica/chip-estado";
-import { ChipQuien } from "@/components/permisos-via-publica/chip-quien";
+import { Aviso, Chip } from "@/components/permisos-via-publica/ui";
+import { FilaPermisoView } from "@/components/permisos-via-publica/fila-permiso";
 import { VentasParaIniciar } from "@/components/permisos-via-publica/ventas-para-iniciar";
-import { ModoSupervisado } from "@/components/permisos-via-publica/modo-supervisado";
-import { Aviso, duracion, FILA_LINK, Seccion, SeccionPlegada } from "@/components/permisos-via-publica/bandeja";
-import { useBandejaPermisos, useCrearPrueba, useRevisarAhora, useVentasParaIniciar } from "@/hooks/use-permisos-via-publica";
-import { demoraEtapa } from "@/lib/permisos-via-publica/seguimiento";
-import {
-  coincide,
-  coincideTexto,
-  direccionCorta,
-  estadoVinculo,
-  mismoTexto,
-  type EstadoRobot,
-  type Expediente,
-  type TramiteNuevo,
-} from "@/lib/permisos-via-publica/tipos";
+import { Configuracion } from "@/components/permisos-via-publica/configuracion";
+import { ESPERANDO_A } from "@/components/permisos-via-publica/textos";
+import { useDescarte, useListaPermisos, useRevisarAhora, useVentasParaIniciar } from "@/hooks/use-permisos-via-publica";
+import { haceCuanto, type Quien } from "@/lib/permisos-via-publica/estado";
+import type { FilaPermiso, ListaPermisos } from "@/lib/permisos-via-publica/lista";
+import { coincideTexto, direccionCorta, type EstadoRobot } from "@/lib/permisos-via-publica/tipos";
 
-// Permisos vía pública — la bandeja de trabajo del día.
+// Permisos de andamio — UNA lista para todos los permisos (rediseño 09/10, docs/permisos-rediseno.md).
+// Reemplaza a la bandeja y a Seguimiento:
+//   1. Te toca: lo que espera a alguien de la oficina, con nombre y el botón. Incluye las ventas
+//      para iniciar y "perseguir al cliente" cuando pasa el umbral.
+//   2. Esperando a otros, agrupado por quién: cliente, Segucom, CPAU, robot.
+//   3. En el Gobierno, con días desde la presentación y la fecha estimada.
+//   Plegados: emitidos, archivados sin permiso, historial y pruebas.
+// Cada fila trae la línea de 7 etapas y en qué está (estado.ts): la misma cuenta que la ficha.
 //
-// ORDENADA POR URGENCIA, de arriba hacia abajo (rediseño 09/10):
-//   1. Necesitan acción: subsanaciones con tarea en TAD. Si no hay, una línea que lo dice.
-//   2. Esperan a ABA: trámites que no avanzan hasta que alguien de la oficina haga algo (un botón
-//      del modo supervisado, el robot frenado, algo observado, el link que no salió).
-//   3. Ventas para iniciar.
-//   4. En curso: lo tiene otro (cliente, Segucom, CPAU, robot).
-//   5. Esperando al Gobierno.
-//   Plegados: permiso emitido, historial y pruebas.
-// Cada trámite dice en qué etapa está, quién lo tiene y desde cuándo — lo mismo que Seguimiento
-// (etapasDe), que es la vista para mirar todo; esta es para trabajar.
-//
-// EL LATIDO DEL ROBOT VA ARRIBA Y A LA VISTA. Una lista sin novedades puede significar "no
-// cambió nada" o "el robot está apagado", y en pantalla se ven igual. Sin la hora de la
-// última revisión nadie puede distinguirlas.
+// EL LATIDO DEL ROBOT VA ARRIBA Y A LA VISTA: una lista sin novedades puede ser "no cambió nada"
+// o "el robot está apagado", y sin la hora de la última revisión no se distinguen.
 
-function hace(iso: string | null | undefined): string {
-  if (!iso) return "nunca";
-  return `hace ${formatDistanceToNowStrict(parseISO(iso), { locale: es })}`;
-}
+type Filtro = "mias" | "todas";
+const FILTRO_KEY = "permisos:filtro";
 
 /** Más de 3 horas sin una revisión buena es un robot caído o una Mac apagada. */
-function robotDormido(robot: EstadoRobot | null): boolean {
+function robotDormido(robot: EstadoRobot | null, ahora: number): boolean {
   if (!robot?.ultimo_ok_at) return true;
-  return Date.now() - parseISO(robot.ultimo_ok_at).getTime() > 3 * 3600_000;
+  return ahora - Date.parse(robot.ultimo_ok_at) > 3 * 3600_000;
 }
 
-const cuenta = (filtradas: number, total: number, busqueda: string) => (busqueda ? `${filtradas} de ${total}` : total);
+function esMia(f: FilaPermiso, yo: ListaPermisos["yo"]): boolean {
+  if (!yo.email) return false;
+  if (f.acciones.some((a) => (a.persona ? a.persona.email === yo.email : yo.esAdmin || yo.puedeIrreversible))) return true;
+  return f.vendedora?.email === yo.email || f.gestor?.email === yo.email;
+}
 
 export default function PermisosViaPublicaPage() {
-  const { data, isLoading, error, dataUpdatedAt } = useBandejaPermisos();
-  // "Ahora" es la hora de la última lectura: la bandeja se refresca cada minuto.
-  const ahora = dataUpdatedAt;
+  const { data, isLoading, error } = useListaPermisos();
   const ventasQuery = useVentasParaIniciar();
   const revisar = useRevisarAhora();
   const [busqueda, setBusqueda] = useState("");
-  const crearPrueba = useCrearPrueba();
-  const router = useRouter();
+  // El filtro elegido se recuerda en este navegador. Sin elección: "Mías" si hay algo mío. Se lee
+  // al montar: el servidor y la hidratación pintan el esqueleto, que no depende del filtro.
+  const [filtro, setFiltro] = useState<Filtro | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const guardado = window.localStorage.getItem(FILTRO_KEY);
+      return guardado === "mias" || guardado === "todas" ? guardado : null;
+    } catch {
+      return null; // sin almacenamiento: queda el de por defecto
+    }
+  });
+  const [vendedora, setVendedora] = useState("");
+
+  function elegirFiltro(f: Filtro) {
+    setFiltro(f);
+    try {
+      window.localStorage.setItem(FILTRO_KEY, f);
+    } catch {
+      /* sin almacenamiento */
+    }
+  }
+
+  const ahora = data ? Date.parse(data.generado) : 0;
+  const vendedoras = useMemo(
+    () => [...new Set((data?.filas ?? []).map((f) => f.vendedora?.nombre).filter((v): v is string => !!v))].sort(),
+    [data],
+  );
 
   if (isLoading) {
     return (
       <div className="space-y-5" aria-busy>
-        <div className="space-y-2">
-          <Skeleton className="h-9 w-64" />
-          <Skeleton className="h-5 w-96 max-w-full" />
-        </div>
-        <Skeleton className="h-9 w-full max-w-md" />
-        <Skeleton className="h-24 w-full" />
+        <Skeleton className="h-9 w-64" />
+        <Skeleton className="h-10 w-full max-w-md" />
         <Skeleton className="h-64 w-full" />
       </div>
     );
   }
-
   if (error || !data) {
     return (
       <div className="space-y-5">
-        <h1 className="text-3xl font-bold tracking-tight">Permisos de andamio</h1>
-        <Aviso tono="bloqueo" titulo="No se pudo leer la bandeja">
+        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Permisos de andamio</h1>
+        <Aviso tono="bloqueo" titulo="No se pudo leer la lista de permisos">
           {error instanceof Error ? error.message : "Error desconocido"}. Probá recargar la página en un rato.
         </Aviso>
       </div>
     );
   }
 
-  const robot = data.robot;
-  const dormido = robotDormido(robot);
-  const linkAlCliente = data.supervision.linkAlCliente;
+  const misAcciones = data.filas.some((f) => !f.esPrueba && f.estado.grupo === "te_toca" && esMia(f, data.yo));
+  const filtroActivo: Filtro = filtro ?? (misAcciones && !data.yo.esAdmin ? "mias" : "todas");
 
-  // --- Lo que hay, sin filtrar (para el resumen) y filtrado por la búsqueda (para las listas).
-  const grupo = (clave: string) => data.grupos.find((g) => g.clave === clave)?.filas ?? [];
-  const accionTodas = grupo("accion");
-  const gobiernoTodas = grupo("gobierno");
-  const emitidosTodas = grupo("emitidos");
-  const reales = data.tramitesNuevos.filter((t) => !t.es_prueba);
-  const abaTodas = reales.filter((t) => t.etapa.esperaAba);
-  const cursoTodas = reales.filter((t) => !t.etapa.esperaAba);
-  const pruebasTodas = data.tramitesNuevos.filter((t) => t.es_prueba);
+  const pasa = (f: FilaPermiso) =>
+    (filtroActivo === "todas" || esMia(f, data.yo)) &&
+    (!vendedora || f.vendedora?.nombre === vendedora) &&
+    coincideTexto([f.direccion, f.venta, f.cliente, f.dueno, f.expediente, f.vendedora?.nombre, f.gestor?.nombre], busqueda);
+  const visibles = data.filas.filter(pasa);
+  const de = (g: FilaPermiso["estado"]["grupo"]) => visibles.filter((f) => f.estado.grupo === g);
+  const teToca = de("te_toca");
+  const esperando = de("esperando");
+  const gobierno = de("gobierno").sort((a, b) => Date.parse(a.estado.desde ?? "") - Date.parse(b.estado.desde ?? ""));
+  const emitidos = de("emitido");
+  const archivados = de("archivado");
+  const pruebas = de("prueba");
+
   const ventasTodas = ventasQuery.data ?? [];
+  const ventas = ventasTodas.filter(
+    (v) => !data.descartes.ventas[String(v.ventaId)] &&
+      (!vendedora || v.vendedor === vendedora) &&
+      (filtroActivo === "todas" || data.yo.esAdmin || data.yo.puedeIrreversible) &&
+      coincideTexto([v.direccion, v.venta, v.cliente, v.email, v.vendedor], busqueda),
+  );
+  const ventasDescartadas = ventasTodas.filter((v) => data.descartes.ventas[String(v.ventaId)]);
+  const historial = busqueda ? data.historial.filter((e) => coincideTexto([e.direccion, e.titular, e.nombre, `EX-${e.numero}`, e.odoo_venta_nombre], busqueda)) : data.historial;
 
-  const deTramite = (t: TramiteNuevo) =>
-    coincideTexto([t.direccion, t.odoo_venta_nombre, t.cliente_nombre, t.vendedor_nombre, t.titular_nombre, t.etapa.expediente], busqueda);
-  const accion = accionTodas.filter((e) => coincide(e, busqueda));
-  const gobierno = gobiernoTodas.filter((e) => coincide(e, busqueda));
-  const emitidos = emitidosTodas.filter((e) => coincide(e, busqueda));
-  const historial = data.historial.filter((e) => coincide(e, busqueda));
-  const aba = abaTodas.filter(deTramite);
-  const curso = cursoTodas.filter(deTramite);
-  const pruebas = pruebasTodas.filter(deTramite);
-  // El buscador de la bandeja: dirección, número de orden, cliente, mail o vendedor.
-  const ventas = ventasTodas.filter((v) => coincideTexto([v.direccion, v.venta, v.cliente, v.email, v.vendedor], busqueda));
-
-  const encontrados = accion.length + aba.length + ventas.length + curso.length + gobierno.length + emitidos.length + historial.length + pruebas.length;
-  const sinResultados = !!busqueda && encontrados === 0;
+  const dormido = robotDormido(data.robot, ahora);
+  const totalTeToca = teToca.length + ventas.length;
+  const sinNada = visibles.length === 0 && ventas.length === 0 && historial.length === 0;
 
   function pedirRevision() {
     revisar.mutate(undefined, {
-      onSuccess: (r) =>
-        toast.success(r.yaPedida ? "Ya hay una revisión en curso" : "Revisión pedida: el robot la toma en unos segundos"),
+      onSuccess: (r) => toast.success(r.yaPedida ? "Ya hay una revisión en curso" : "Revisión pedida: el robot la toma en unos segundos"),
       onError: (e) => toast.error(e instanceof Error ? e.message : "No se pudo pedir la revisión"),
     });
   }
 
-  function probarCircuito() {
-    crearPrueba.mutate(undefined, {
-      onSuccess: (r) => {
-        toast.success(r.linkEnviado ? "Prueba creada: te llegó el link a tu mail" : "Prueba creada, pero el mail no salió: usá el link de la ficha");
-        router.push(`/permisos-via-publica/tramites/${r.tramiteId}`);
-      },
-      onError: (e) => toast.error(e instanceof Error ? e.message : "No se pudo crear la prueba"),
-    });
-  }
-
-  // --- Resumen: qué pide algo hoy, con links a cada sección.
-  const resumen: { n: number; texto: string; href: string; tono: "bloqueo" | "aba" | "neutro" }[] = [
-    { n: accionTodas.length, texto: accionTodas.length === 1 ? "necesita acción" : "necesitan acción", href: "#necesitan-accion", tono: "bloqueo" },
-    { n: abaTodas.length, texto: abaTodas.length === 1 ? "espera a ABA" : "esperan a ABA", href: "#esperan-a-aba", tono: "aba" },
-    { n: ventasTodas.length, texto: ventasTodas.length === 1 ? "venta por iniciar" : "ventas por iniciar", href: "#ventas-para-iniciar", tono: "neutro" },
+  const resumen: { n: number; texto: string; href: string; fuerte?: boolean }[] = [
+    { n: totalTeToca, texto: "te toca", href: "#te-toca", fuerte: true },
+    { n: esperando.length, texto: "esperando a otros", href: "#esperando" },
+    { n: gobierno.length, texto: "en el Gobierno", href: "#gobierno" },
+    { n: emitidos.length, texto: "emitidos", href: "#emitidos" },
   ];
-  const conAlgo = resumen.filter((r) => r.n > 0);
 
   return (
-    <div className="space-y-4">
-      <header className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
-        <div className="min-w-0">
-          <h1 className="text-3xl font-bold tracking-tight">Permisos de andamio</h1>
-          <p className="mt-1 text-[14px] text-muted-foreground">
-            {conAlgo.length === 0 ? (
-              <span className="inline-flex items-center gap-1 text-green-700 dark:text-green-300">
-                <CheckCircle2 aria-hidden className="size-4" /> Nada espera a ABA
-              </span>
-            ) : (
-              conAlgo.map((r, i) => (
-                <span key={r.href}>
-                  {i > 0 && " · "}
-                  <a
-                    href={r.href}
-                    className={cn(
-                      "rounded-sm underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-ring",
-                      r.tono === "bloqueo" && "font-semibold text-red-700 dark:text-red-300",
-                      r.tono === "aba" && "font-semibold text-amber-800 dark:text-amber-300",
-                      r.tono === "neutro" && "font-medium text-foreground",
-                    )}
-                  >
-                    {r.n} {r.texto}
-                  </a>
-                </span>
-              ))
-            )}
-            <span className="whitespace-nowrap">
-              {" — "}
-              {data.revisando ? "revisando TAD…" : `TAD revisado ${hace(robot?.ultimo_ok_at)}`}
+    <div className="mx-auto max-w-6xl space-y-4">
+      <header className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
+        <div className="min-w-0 space-y-1">
+          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Permisos de andamio</h1>
+          <p className="flex flex-wrap gap-x-3 gap-y-1 text-[13px] text-muted-foreground">
+            {resumen.map((r) => (
+              <a key={r.href} href={r.href} className={cn("rounded-sm underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-ring", r.fuerte && r.n > 0 && "font-semibold text-foreground")}>
+                {r.fuerte ? `Te toca: ${r.n}` : `${r.n} ${r.texto}`}
+              </a>
+            ))}
+            <span className="inline-flex items-center gap-1.5">
+              <span aria-hidden className={cn("size-2 rounded-full", dormido ? "bg-red-600 dark:bg-red-400" : "bg-emerald-600 dark:bg-emerald-400")} />
+              {data.revisando ? "Revisando TAD…" : `Robot: revisó TAD ${data.robot?.ultimo_ok_at ? haceCuanto(data.robot.ultimo_ok_at, ahora) : "nunca"}`}
             </span>
           </p>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <Button variant="outline" size="sm" nativeButton={false} render={<Link href="/permisos-via-publica/seguimiento" />}>
-            <ChartGantt className="size-4" /> Seguimiento
-          </Button>
-          <Button onClick={pedirRevision} disabled={data.revisando || revisar.isPending} variant="outline" size="sm">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button onClick={pedirRevision} disabled={data.revisando || revisar.isPending} variant="outline" size="sm" className="max-sm:h-10">
             {data.revisando || revisar.isPending ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
             {data.revisando ? "Revisando TAD…" : "Revisar TAD"}
           </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger render={<Button variant="outline" size="icon-sm" aria-label="Más acciones" />}>
-              {crearPrueba.isPending ? <Loader2 className="size-4 animate-spin" /> : <MoreHorizontal className="size-4" />}
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-60">
-              <DropdownMenuItem disabled={crearPrueba.isPending} onClick={probarCircuito}>
-                <FlaskConical className="size-4" />
-                <div>
-                  <p>Probar el circuito</p>
-                  <p className="text-[11.5px] text-muted-foreground">Crea un trámite de prueba; los mails llegan a tu casilla.</p>
-                </div>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <Configuracion lista={data} />
         </div>
       </header>
 
       {dormido && (
-        <Aviso tono="advertencia" titulo={`El robot no revisa TAD desde ${hace(robot?.ultimo_ok_at)}.`}>
-          {robot?.ultimo_error
-            ? `Último error (${hace(robot.ultimo_error_at)}): ${robot.ultimo_error}`
-            : "Corre en la computadora de oficina: si está apagada o dormida, no revisa."}
+        <Aviso titulo={data.robot?.ultimo_ok_at ? `El robot no revisa TAD ${haceCuanto(data.robot.ultimo_ok_at, ahora)}.` : "El robot todavía no revisó TAD."}>
+          {data.robot?.ultimo_error ? `Último error (${haceCuanto(data.robot.ultimo_error_at, ahora)}): ${data.robot.ultimo_error}` : "Corre en la Mac de la oficina: fijate que esté prendida."}
         </Aviso>
       )}
 
-      <div className="flex flex-wrap items-start gap-2">
-        <div className="relative min-w-0 flex-1 basis-64 sm:max-w-md">
-          <Search aria-hidden className="pointer-events-none absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
-          <Input
-            type="search"
-            value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
-            placeholder="Buscar por EX-, dirección, venta o cliente…"
-            aria-label="Buscar en la bandeja de permisos"
-            className="pl-8"
-          />
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="relative min-w-0 flex-1 basis-64 sm:max-w-md">
+          <Search aria-hidden className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input type="search" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar dirección, S0…, EX-… o cliente" aria-label="Buscar en los permisos" className="pl-8 max-sm:h-10" />
+        </label>
+        <div role="group" aria-label="Qué permisos ver" className="inline-flex overflow-hidden rounded-md border bg-background">
+          {(["mias", "todas"] as const).map((f) => (
+            <button
+              key={f}
+              type="button"
+              aria-pressed={filtroActivo === f}
+              onClick={() => elegirFiltro(f)}
+              className={cn("h-9 px-3 text-[13px] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring max-sm:h-10", filtroActivo === f ? "bg-foreground font-semibold text-background" : "hover:bg-muted", f === "todas" && "border-l")}
+            >
+              {f === "mias" ? "Mías" : "Todas"}
+            </button>
+          ))}
         </div>
-        <ModoSupervisado supervision={data.supervision} className="w-full sm:ml-auto sm:w-auto open:sm:w-full" />
+        <select value={vendedora} onChange={(e) => setVendedora(e.target.value)} aria-label="Filtrar por vendedora" className="h-9 rounded-md border bg-background px-2.5 text-[13px] max-sm:h-10">
+          <option value="">Todas las vendedoras</option>
+          {vendedoras.map((v) => <option key={v} value={v}>{v}</option>)}
+        </select>
       </div>
 
-      {sinResultados ? (
-        <EmptyState icon={Search} title={`Ningún resultado para «${busqueda}»`} description="Probá con el número de expediente (EX-…), la orden (S0…), la calle o el cliente.">
-          <Button variant="outline" size="sm" onClick={() => setBusqueda("")}>Borrar la búsqueda</Button>
+      {sinNada ? (
+        <EmptyState icon={Search} title={busqueda ? `Ningún resultado para «${busqueda}»` : "Nada para mostrar con este filtro"} description="Probá con el número de expediente (EX-…), la venta (S0…), la calle o el cliente, o con «Todas».">
+          <Button variant="outline" size="sm" onClick={() => { setBusqueda(""); setVendedora(""); elegirFiltro("todas"); }}>Ver todas</Button>
         </EmptyState>
       ) : (
         <>
-          {/* 1. Lo urgente: subsanaciones con tarea en TAD. */}
-          {accion.length > 0 ? (
-            <Seccion
-              id="necesitan-accion"
-              tono="bloqueo"
-              titulo="Necesitan acción"
-              cantidad={cuenta(accion.length, accionTodas.length, busqueda)}
-              bajada="El Gobierno observó algo: hay que corregir y volver a presentar en TAD."
-            >
-              <ul>{accion.map((e) => <FilaExpediente key={e.id} e={e} />)}</ul>
-            </Seccion>
-          ) : (
-            !busqueda && (
-              <p id="necesitan-accion" className="flex items-center gap-2 rounded-md border bg-card px-3 py-2 text-[13px]">
-                <CheckCircle2 aria-hidden className="size-4 shrink-0 text-green-700 dark:text-green-300" />
-                <span><span className="font-medium">Ninguna subsanación pendiente.</span> <span className="text-muted-foreground">Nada que corregir en TAD.</span></span>
-              </p>
-            )
+          <Bloque id="te-toca" titulo="Te toca" cantidad={totalTeToca} bajada="Lo que espera a alguien de la oficina. Lo que espera hace más, arriba.">
+            {teToca.length === 0 && ventas.length === 0 && !ventasQuery.isLoading && (
+              <p className="px-3 py-3 text-[13px] text-muted-foreground">Nada te espera ahora.</p>
+            )}
+            {teToca.length > 0 && <ul>{teToca.map((f) => <FilaPermisoView key={f.clave} f={f} ahora={ahora} />)}</ul>}
+            <VentasParaIniciar ventas={ventas} isLoading={ventasQuery.isLoading} error={ventasQuery.error} linkAlCliente={data.supervision.linkAlCliente} ahora={ahora} puedeEditar={data.yo.puedeEditar} />
+          </Bloque>
+
+          {esperando.length > 0 && (
+            <Bloque id="esperando" titulo="Esperando a otros" cantidad={esperando.length} bajada="No hay que hacer nada todavía.">
+              {(["Cliente", "Segucom", "CPAU", "Robot"] as const).map((q) => {
+                const filas = esperando.filter((f) => f.estado.loTiene === q);
+                if (!filas.length) return null;
+                return (
+                  <div key={q} className="border-t first:border-t-0">
+                    <p className="px-3 pt-2.5 text-[13px] font-semibold">{ESPERANDO_A[q].titulo} · {filas.length}</p>
+                    <p className="px-3 text-[12px] text-muted-foreground">{ESPERANDO_A[q].bajada}</p>
+                    <ul>{filas.map((f) => <FilaPermisoView key={f.clave} f={f} ahora={ahora} />)}</ul>
+                  </div>
+                );
+              })}
+              {esperando.filter((f) => !["Cliente", "Segucom", "CPAU", "Robot"].includes(f.estado.loTiene as Quien)).length > 0 && (
+                <ul className="border-t">{esperando.filter((f) => !["Cliente", "Segucom", "CPAU", "Robot"].includes(f.estado.loTiene as Quien)).map((f) => <FilaPermisoView key={f.clave} f={f} ahora={ahora} />)}</ul>
+              )}
+            </Bloque>
           )}
 
-          {/* 2. Trámites que esperan un movimiento de la oficina. */}
-          {aba.length > 0 && (
-            <Seccion
-              id="esperan-a-aba"
-              tono="aba"
-              titulo="Esperan a ABA"
-              cantidad={cuenta(aba.length, abaTodas.length, busqueda)}
-              bajada="No avanzan hasta que alguien de la oficina haga algo en la ficha. El más viejo, primero."
-            >
-              <ul>{aba.map((t) => <FilaTramite key={t.id} t={t} linkAlCliente={linkAlCliente} ahora={ahora} />)}</ul>
-            </Seccion>
+          {gobierno.length > 0 && (
+            <Bloque id="gobierno" titulo="En el Gobierno" cantidad={gobierno.length} bajada={`Días desde la presentación.${data.tipico.gcba != null ? ` Lo normal: el permiso sale a los ${Math.round(data.tipico.gcba)} días (según ${data.tipico.nEmitidos} permisos).` : ""}`}>
+              <ul>{gobierno.map((f) => <FilaPermisoView key={f.clave} f={f} ahora={ahora} />)}</ul>
+            </Bloque>
           )}
 
-          {/* 3. Ventas confirmadas sin trámite. */}
-          <VentasParaIniciar
-            ventas={ventas}
-            total={ventasTodas.length}
-            isLoading={ventasQuery.isLoading}
-            error={ventasQuery.error}
-            linkAlCliente={linkAlCliente}
-            busqueda={busqueda}
-            ahora={ahora}
-          />
-
-          {/* 4. En curso: lo tiene otro. */}
-          {curso.length > 0 && (
-            <Seccion
-              id="en-curso"
-              titulo="En curso"
-              cantidad={cuenta(curso.length, cursoTodas.length, busqueda)}
-              bajada="Sin presentar en TAD. Lo tiene el cliente, Segucom, el CPAU o el robot: mirá los que llevan días."
-            >
-              <ul>{curso.map((t) => <FilaTramite key={t.id} t={t} linkAlCliente={linkAlCliente} ahora={ahora} />)}</ul>
-            </Seccion>
+          {emitidos.length > 0 && (
+            <Plegado id="emitidos" titulo="Permiso emitido" cantidad={emitidos.length} bajada="Sólo con resolución RS-. El más nuevo, primero." abierto={!!busqueda}>
+              <ul>{emitidos.map((f) => <FilaPermisoView key={f.clave} f={f} ahora={ahora} />)}</ul>
+            </Plegado>
           )}
-
-          {/* 5. Presentados, esperando al Gobierno. */}
-          {data.total === 0 ? (
-            <Seccion titulo="Esperando al Gobierno" cantidad={0}>
-              <p className="px-3 py-3 text-[12.5px] text-muted-foreground">Todavía no hay expedientes: aparecen cuando el robot hace su primera revisión de TAD.</p>
-            </Seccion>
-          ) : (
-            (gobierno.length > 0 || !busqueda) && (
-              <Seccion
-                id="esperando-al-gobierno"
-                titulo="Esperando al Gobierno"
-                cantidad={cuenta(gobierno.length, gobiernoTodas.length, busqueda)}
-                bajada="Presentados o ya subsanados, todavía sin revisar. El que lleva más tiempo, primero."
-              >
-                {gobierno.length === 0 ? (
-                  <p className="px-3 py-3 text-[12.5px] text-muted-foreground">Ninguno esperando.</p>
-                ) : (
-                  <ul>{gobierno.map((e) => <FilaExpediente key={e.id} e={e} />)}</ul>
-                )}
-              </Seccion>
-            )
+          {archivados.length > 0 && (
+            <Plegado titulo="Archivados sin permiso" cantidad={archivados.length} bajada="Guarda temporal sin resolución, o que la oficina dejó de seguir." abierto={!!busqueda}>
+              <ArchivadosLista filas={archivados} ahora={ahora} puedeEditar={data.yo.puedeEditar} descartes={data.descartes} />
+            </Plegado>
           )}
-
-          {/* Plegados. */}
-          {emitidosTodas.length > 0 && (!busqueda || emitidos.length > 0) && (
-            <SeccionPlegada
-              titulo="Permiso emitido"
-              cantidad={cuenta(emitidos.length, emitidosTodas.length, busqueda)}
-              bajada="Salió el permiso o el expediente se archivó."
-              abierta={!!busqueda && emitidos.length > 0}
-            >
-              <ul>{emitidos.map((e) => <FilaExpediente key={e.id} e={e} />)}</ul>
-            </SeccionPlegada>
-          )}
-
-          {data.historial.length > 0 && (!busqueda || historial.length > 0) && (
-            <SeccionPlegada
-              titulo="Historial"
-              cantidad={cuenta(historial.length, data.historial.length, busqueda)}
-              bajada="Finalizados anteriores al robot. Sólo lo que muestra la lista de TAD: el robot no abre su detalle ni los sigue."
-              abierta={!!busqueda && historial.length > 0}
-            >
+          {historial.length > 0 && (
+            <Plegado titulo="Historial" cantidad={busqueda ? `${historial.length} de ${data.historial.length}` : historial.length} bajada="Terminados antes de que existiera el robot. Sólo se ve lo que muestra la lista de TAD." abierto={!!busqueda && historial.length > 0}>
               <ul>
                 {historial.slice(0, 200).map((e) => (
-                  <FilaExpediente key={e.id} e={e} historial />
+                  <li key={e.id} className="border-b last:border-b-0">
+                    <Link href={`/permisos-via-publica/${e.id}`} className="flex flex-wrap items-baseline gap-x-3 px-3 py-2 text-[13px] hover:bg-muted/40 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring">
+                      <span className="font-mono text-[12px] text-muted-foreground">EX-{e.numero}</span>
+                      <span className="font-medium">{direccionCorta(e.direccion) || e.titular || e.nombre || "Sin datos"}</span>
+                      {e.creado_tad && <span className="text-[12px] text-muted-foreground">Presentado el {e.creado_tad.split("-").reverse().join("/")}</span>}
+                      {e.permiso_path && <Chip tono="listo">Permiso guardado</Chip>}
+                    </Link>
+                  </li>
                 ))}
               </ul>
-              {historial.length > 200 && (
-                <p className="border-t px-3 py-2 text-[12px] text-muted-foreground">Se muestran 200: usá el buscador para encontrar uno.</p>
-              )}
-            </SeccionPlegada>
+              {historial.length > 200 && <p className="border-t px-3 py-2 text-[12px] text-muted-foreground">Se muestran 200: usá el buscador para encontrar uno.</p>}
+            </Plegado>
           )}
-
-          {pruebasTodas.length > 0 && (!busqueda || pruebas.length > 0) && (
-            <SeccionPlegada
-              titulo="Pruebas"
-              cantidad={cuenta(pruebas.length, pruebasTodas.length, busqueda)}
-              bajada="Trámites de «Probar el circuito»: los mails van a la casilla de la app y nunca se presentan."
-              abierta={!!busqueda && pruebas.length > 0}
-            >
-              <ul>{pruebas.map((t) => <FilaTramite key={t.id} t={t} linkAlCliente={linkAlCliente} ahora={ahora} />)}</ul>
-            </SeccionPlegada>
+          {pruebas.length > 0 && (
+            <Plegado titulo="Pruebas" cantidad={pruebas.length} bajada="Trámites de «Probar el circuito»: los mails van a la casilla de la app y nunca se presentan." abierto={!!busqueda}>
+              <ul>{pruebas.map((f) => <FilaPermisoView key={f.clave} f={f} ahora={ahora} />)}</ul>
+            </Plegado>
+          )}
+          {ventasDescartadas.length > 0 && (
+            <Plegado titulo="Ventas que no se tramitan acá" cantidad={ventasDescartadas.length} bajada="Se sacaron de «Ventas para iniciar» con un motivo.">
+              <VentasDescartadas ventas={ventasDescartadas} lista={data} />
+            </Plegado>
           )}
         </>
       )}
@@ -364,120 +281,83 @@ export default function PermisosViaPublicaPage() {
   );
 }
 
-/** Un trámite sin presentar: en qué etapa está, quién lo tiene y desde cuándo. */
-function FilaTramite({ t, linkAlCliente, ahora }: { t: TramiteNuevo; linkAlCliente: boolean; ahora: number }) {
-  const e = t.etapa;
-  const lenta = demoraEtapa(e, ahora);
-  const bloqueo = e.estado === "trabado";
-  const titulo = direccionCorta(t.direccion);
-  const cliente = !mismoTexto(t.cliente_nombre, t.direccion) ? t.cliente_nombre : null;
-  const vendedora = t.vendedor_nombre?.split(/\s+/)[0];
-  // A quién salió el link: en modo supervisado va a la vendedora, no al cliente (antes decía
-  // "Link enviado a am@…" y parecía que había ido a ABA).
-  const aVendedora = !!t.link_enviado_a && !!t.vendedor_email && t.link_enviado_a.trim().toLowerCase() === t.vendedor_email.trim().toLowerCase();
-  const mostrarLink = (e.clave === "legajo" || e.clave === "abierto") && !t.link_error;
+function Bloque({ id, titulo, cantidad, bajada, children }: { id: string; titulo: string; cantidad: number; bajada: string; children: React.ReactNode }) {
   return (
-    <li className="border-b last:border-b-0">
-      <Link href={`/permisos-via-publica/tramites/${t.id}`} className={cn(FILA_LINK, "grid gap-x-4 gap-y-1.5 sm:grid-cols-[minmax(0,1fr)_auto]")}>
-        <div className="min-w-0 space-y-0.5">
-          <p className="flex flex-wrap items-baseline gap-x-2">
-            <span className="text-[13.5px] font-medium">{titulo}</span>
-            {t.es_prueba && (
-              <span className="rounded bg-violet-500/10 px-1.5 py-0.5 text-[11px] font-medium text-violet-700 dark:text-violet-300">PRUEBA</span>
-            )}
-            {t.odoo_venta_nombre && <span className="font-mono text-[12px] text-muted-foreground">{t.odoo_venta_nombre}</span>}
-            {e.expediente && <span className="font-mono text-[12px] text-muted-foreground">{e.expediente}</span>}
-          </p>
-          {(cliente || vendedora) && (
-            <p className="truncate text-[12px] text-muted-foreground">
-              {[cliente, vendedora && `vendedora: ${vendedora}`].filter(Boolean).join(" · ")}
-            </p>
-          )}
-          <p className={cn("text-[12.5px]", bloqueo && "text-red-700 dark:text-red-300")}>
-            {bloqueo && <TriangleAlert aria-hidden className="mr-1 inline size-3.5 -translate-y-px" />}
-            <span className="font-medium">{e.nombre}</span>
-            {e.detalle && <span className={cn(!bloqueo && "text-muted-foreground")}> · {e.detalle}</span>}
-          </p>
-          {e.motivo && <p className="line-clamp-2 rounded bg-red-500/10 px-2 py-1 text-[12px] text-red-800 dark:text-red-200">{e.motivo}</p>}
-          {mostrarLink && (
-            <p className="text-[12px] text-muted-foreground">
-              {!t.link_enviado_at
-                ? "Mandando el link…"
-                : aVendedora || (!linkAlCliente && !t.link_enviado_a)
-                  ? `Link a ${vendedora ?? "la vendedora"} para que se lo pase al cliente`
-                  : `Link enviado al cliente${t.link_enviado_a ? ` (${t.link_enviado_a})` : ""}`}
-            </p>
-          )}
-        </div>
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 sm:flex-col sm:items-end sm:justify-start">
-          <div className="flex flex-wrap gap-1 sm:justify-end">
-            {e.quienes.map((q) => (
-              <ChipQuien key={q} quien={q} prefijo="Lo tiene: " />
-            ))}
-          </div>
-          {e.desde && (
-            <span
-              className={cn(
-                "text-[12px] tabular-nums text-muted-foreground",
-                lenta === "tarde" && "font-semibold text-amber-800 dark:text-amber-300",
-                lenta === "muy" && "font-semibold text-red-700 dark:text-red-300",
-              )}
-              title={`En «${e.nombre}» desde el ${new Date(e.desde).toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })}`}
-            >
-              {lenta && <TriangleAlert aria-hidden className="mr-1 inline size-3 -translate-y-px" />}
-              hace {duracion(e.desde, ahora)}
-            </span>
-          )}
-        </div>
-      </Link>
-    </li>
+    <section id={id} aria-labelledby={`${id}-titulo`} className="scroll-mt-4 overflow-hidden rounded-md border bg-card">
+      <header className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 border-b px-3 py-2.5">
+        <h2 id={`${id}-titulo`} className="text-[15px] font-bold">
+          {titulo} <span className="font-normal text-muted-foreground tabular-nums">· {cantidad}</span>
+        </h2>
+        <p className="text-[12px] text-muted-foreground">{bajada}</p>
+      </header>
+      {children}
+    </section>
   );
 }
 
-function FilaExpediente({ e, historial = false }: { e: Expediente; historial?: boolean }) {
-  const titulo = direccionCorta(e.direccion) || e.odoo_venta_nombre || e.titular || "Sin datos de la obra";
-  const vinculo = historial ? "confirmado" : estadoVinculo(e);
+function Plegado({ id, titulo, cantidad, bajada, abierto, children }: { id?: string; titulo: string; cantidad: React.ReactNode; bajada: string; abierto?: boolean; children: React.ReactNode }) {
   return (
-    <li className="border-b last:border-b-0">
-      <Link href={`/permisos-via-publica/${e.id}`} className={FILA_LINK}>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <span className="font-mono text-[12px] text-muted-foreground">EX-{e.numero}</span>
-          <span className="text-[13.5px] font-medium">{titulo}</span>
-          {/* Número de orden y cliente, para saber de quién es sin abrir la ficha. */}
-          {(e.odoo_venta_nombre || e.cliente) && (
-            <span className="text-[12px] text-muted-foreground">
-              {[e.odoo_venta_nombre !== titulo ? e.odoo_venta_nombre : null, mismoTexto(e.cliente, e.direccion) ? null : e.cliente].filter(Boolean).join(" · ")}
-            </span>
-          )}
-          {/* Hasta que alguien confirme la venta, el robot no escribe el trámite en Odoo. */}
-          {vinculo === "propuesto" && (
-            <span className="inline-flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-[11px] font-medium text-amber-800 dark:text-amber-300">
-              <TriangleAlert aria-hidden className="size-3" /> Venta sin confirmar
-            </span>
-          )}
-          {vinculo === "sin_vincular" && (
-            <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">Sin venta</span>
-          )}
-          <ChipEstado expediente={e} className="sm:ml-auto" />
-        </div>
-        <div className="mt-1 flex flex-wrap gap-x-3 text-[12px] text-muted-foreground">
-          {/* En el historial "desde hace" sería la hora en que se guardó, no un dato de TAD. */}
-          {!historial && <span>En este estado {hace(e.estado_desde).replace("hace ", "desde hace ")}</span>}
-          {e.creado_tad && <span>Presentado el {e.creado_tad.split("-").reverse().join("/")}</span>}
-          {historial && e.permiso_path && <span>Permiso guardado</span>}
-        </div>
-        {e.motivo_subsanacion && (
-          // Rojo sólo si todavía hay que corregir; ya subsanado queda como dato.
-          <p
-            className={cn(
-              "mt-1.5 line-clamp-2 rounded px-2 py-1 text-[12px]",
-              e.tarea_pendiente ? "bg-red-500/10 text-red-800 dark:text-red-200" : "bg-muted text-muted-foreground",
+    <details id={id} className="group scroll-mt-4 overflow-hidden rounded-md border bg-card" open={abierto}>
+      <summary className="flex cursor-pointer list-none items-start gap-2 px-3 py-2.5 hover:bg-muted/40 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring [&::-webkit-details-marker]:hidden">
+        <ChevronRight aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
+        <span className="min-w-0">
+          <span className="text-[14px] font-semibold">{titulo} <span className="font-normal text-muted-foreground tabular-nums">· {cantidad}</span></span>
+          <span className="block text-[12px] text-muted-foreground">{bajada}</span>
+        </span>
+      </summary>
+      <div className="border-t">{children}</div>
+    </details>
+  );
+}
+
+/** Los archivados, con "Volver a seguir" para los que la oficina dejó de seguir. */
+function ArchivadosLista({ filas, ahora, puedeEditar, descartes }: { filas: FilaPermiso[]; ahora: number; puedeEditar: boolean; descartes: ListaPermisos["descartes"] }) {
+  const descartar = useDescarte();
+  return (
+    <ul>
+      {filas.map((f) => {
+        const d = f.expedienteId ? descartes.expedientes[f.expedienteId] : undefined;
+        return (
+          <FilaPermisoView
+            key={f.clave}
+            f={f}
+            ahora={ahora}
+            extra={d && (
+              <p className="-mt-1 flex flex-wrap items-center gap-2 px-3 pb-2.5 text-[12px] text-muted-foreground">
+                Dejado de seguir: «{d.motivo}»{d.por ? ` (${d.por})` : ""}.
+                {puedeEditar && (
+                  <button type="button" className="font-medium text-foreground underline underline-offset-2" onClick={() => f.expedienteId && descartar.mutate({ tipo: "expedientes", id: f.expedienteId, motivo: null }, { onError: (e) => toast.error(e instanceof Error ? e.message : "No se pudo") })}>
+                    Volver a seguir
+                  </button>
+                )}
+              </p>
             )}
-          >
-            <span className="font-medium">{e.tarea_pendiente ? "Motivo:" : "Motivo (ya subsanado):"}</span> {e.motivo_subsanacion}
-          </p>
-        )}
-      </Link>
-    </li>
+          />
+        );
+      })}
+    </ul>
+  );
+}
+
+function VentasDescartadas({ ventas, lista }: { ventas: { ventaId: number; venta: string; direccion: string | null }[]; lista: ListaPermisos }) {
+  const descartar = useDescarte();
+  return (
+    <ul>
+      {ventas.map((v) => {
+        const d = lista.descartes.ventas[String(v.ventaId)];
+        return (
+          <li key={v.ventaId} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b px-3 py-2 text-[13px] last:border-b-0">
+            <span className="font-medium">{direccionCorta(v.direccion) || v.venta}</span>
+            <span className="font-mono text-[12px] text-muted-foreground">{v.venta}</span>
+            <span className="text-[12px] text-muted-foreground">«{d?.motivo}»{d?.por ? ` (${d.por})` : ""}</span>
+            {lista.yo.puedeEditar && (
+              <Button size="sm" variant="ghost" className="ml-auto" disabled={descartar.isPending} onClick={() => descartar.mutate({ tipo: "ventas", id: String(v.ventaId), motivo: null }, { onError: (e) => toast.error(e instanceof Error ? e.message : "No se pudo") })}>
+                Volver a mostrar
+              </Button>
+            )}
+          </li>
+        );
+      })}
+    </ul>
   );
 }

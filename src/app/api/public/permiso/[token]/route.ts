@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { tramiteDeToken } from "@/lib/permisos-via-publica/portal";
+import { anotarPortalVisto, tramiteDeToken } from "@/lib/permisos-via-publica/portal";
 import type { Documento, EstadoDocumento, TipoDueno } from "@/lib/permisos-via-publica/tipos";
 
 // GET /api/public/permiso/:token — lo que ve el cliente en su portal: la obra, el dueño que
@@ -30,6 +30,8 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ token: str
   const db = createAdminClient();
   const t = await tramiteDeToken(db, token);
   if (!t) return NextResponse.json({ error: "El link no es válido" }, { status: 404 });
+  // Que el cliente abrió el link: la ficha lo muestra y así se sabe si le llegó (rediseño 09/10).
+  if (!t.es_prueba) after(() => anotarPortalVisto(db, t.id));
 
   const { data } = await db.from("pvp_documentos")
     .select("id, clave, estado, archivo_nombre, observacion, archivo_path")

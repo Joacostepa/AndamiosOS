@@ -1,19 +1,20 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { armarBandeja } from "@/lib/permisos-via-publica/bandeja";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { armarLista } from "@/lib/permisos-via-publica/lista";
 
 // GET /api/permisos-via-publica
 //
-// La bandeja: expedientes de TAD agrupados por lo que hay que hacer, más el latido del
-// robot. Todo lo escribe el robot (robot/worker-tad.mjs); esta ruta sólo lee, con la
-// sesión del usuario.
-// Lo arma armarBandeja (lib/permisos-via-publica/bandeja.ts).
+// La lista "Permisos de andamio" (rediseño 09/10): una fila por permiso con su estado, quién lo
+// tiene y qué le toca a la oficina, más el latido del robot. Reemplaza a la bandeja y a
+// Seguimiento. Lee con la sesión del usuario; la service role sólo resuelve los nombres de la
+// gente de la oficina. Lo arma armarLista (lib/permisos-via-publica/lista.ts).
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    return NextResponse.json(await armarBandeja(await createClient()));
+    return NextResponse.json(await armarLista(await createClient(), createAdminClient()));
   } catch (e) {
     const msg = e instanceof Error ? e.message : String((e as { message?: string })?.message ?? e);
     return NextResponse.json({ error: msg }, { status: 500 });

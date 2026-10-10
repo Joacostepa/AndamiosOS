@@ -7,7 +7,8 @@ import { revisarDocumentoCliente, tipoDeArchivo } from "./revision-legajo";
 import { NoRevisable, avisarFallaDeCuenta, fallaDeCuenta, observacionSinRevisar } from "./falla-ia";
 import { leerSupervision } from "./supervision";
 import { avisarPasoPendiente, contactosDeTramite, copias, responderA, vendedorDeVenta } from "./gestion";
-import { NOMBRE_DOCUMENTO, legajoDe, type Tramite, type TipoDueno, type VentaParaIniciar } from "./tipos";
+import { NOMBRE_DOCUMENTO, legajoDe, nombreSospechoso, type Tramite, type TipoDueno, type VentaParaIniciar } from "./tipos";
+import { textoRecordatorio } from "./mensajes";
 
 // El portal del cliente: abrir el trámite cuando se confirma la venta, mandarle el link y
 // recibir quién es el dueño del lote y su legajo. Todo con service role, detrás del secret
@@ -346,9 +347,15 @@ export async function cargarTitular(
   await registrarEvento(db, tramiteId, "titular_cargado", `${datos.nombre} (CUIT ${datos.cuit})${conAdministrador}`, datos, "cliente");
 
   if (!t.titular_cargado_at || t.titular_cuit !== datos.cuit || (t.administrador_cuit ?? null) !== (administrador?.cuit ?? null)) {
-    // Modo supervisado: el pedido a Segucom lo hace una persona desde la ficha; se le avisa.
-    if ((await leerSupervision(db)).endosoAutomatico) await pedirEndoso(db, tramiteId, null);
-    else await avisarPasoPendiente(db, tramiteId, "endoso");
+    // El endoso sale solo al cargar el dueño (JS, 09/10), salvo que el nombre venga roto: así no
+    // puede llegarle a Segucom (Echeverría 2931, 26/09: comillas y "nú3 meros"). Con el endoso
+    // manual, o frenado por el nombre, se le avisa a quien gestiona.
+    const raro = nombreSospechoso(datos.nombre);
+    if ((await leerSupervision(db)).endosoAutomatico && !raro) await pedirEndoso(db, tramiteId, null);
+    else {
+      if (raro) await registrarEvento(db, tramiteId, "documento_pedido", `El endoso no salió solo: el nombre del dueño ${raro}. Hay que corregirlo y mandarlo desde la ficha.`, { nombre: datos.nombre }, "sistema");
+      await avisarPasoPendiente(db, tramiteId, "endoso");
+    }
   }
 }
 
@@ -571,5 +578,66 @@ export async function revisarDocumentoDelCliente(db: SupabaseClient, documentoId
     }).eq("id", documentoId);
     await registrarEvento(db, doc.tramite_id, "documento_revisado", `No se pudo revisar ${doc.clave}: ${falla ? `${falla.motivo}. ` : ""}${msg}`, { error: msg, falla: falla?.tipo ?? null }, "ia");
     if (falla && !tramite.es_prueba) await avisarFallaDeCuenta(db, falla);
+  }
+}
+
+/**
+ * Recordarle al cliente lo que falta (rediseño 09/10: "perseguir al cliente"). Por mail, con el
+ * link y el detalle de lo que falta y lo que hay que corregir, o anotando que se le avisó por
+ * WhatsApp. Las dos cosas cuentan como contacto: la lista deja de pedir que se lo persiga hasta el
+ * próximo umbral. Nunca tira.
+ */
+export async function recordarAlCliente(
+  db: SupabaseClient,
+  tramiteId: string,
+  opts: { como: "mail" | "whatsapp"; quien: string | null; origen?: string | null },
+): Promise<{ enviado: boolean; motivo: string | null; para: string | null }> {
+  try {
+    const { data: t } = await db.from("pvp_tramites")
+      .select("direccion, odoo_venta_nombre, cliente_nombre, cliente_email, token_cliente, es_prueba, titular_cargado_at")
+      .eq("id", tramiteId).single();
+    if (!t) return { enviado: false, motivo: "El trámite no existe.", para: null };
+    if (opts.como === "whatsapp") {
+      await registrarEvento(db, tramiteId, "link_cliente", `${opts.quien ?? "Alguien de la oficina"} le avisó al cliente por WhatsApp.`, { recordatorio: true, whatsapp: true }, "persona");
+      return { enviado: true, motivo: null, para: null };
+    }
+
+    const { data: docs } = await db.from("pvp_documentos").select("clave, estado, observacion").eq("tramite_id", tramiteId).eq("origen", "cliente");
+    const nombre = (c: string) => (NOMBRE_DOCUMENTO[c] ?? c).replace(/\s*\(.*\)$/, "");
+    const faltan = (docs ?? []).filter((d) => d.estado === "falta" || d.estado === "pedido").map((d) => ({ nombre: nombre(d.clave) }));
+    const aCorregir = (docs ?? []).filter((d) => d.estado === "observado").map((d) => ({ nombre: nombre(d.clave), motivo: d.observacion }));
+    const contactos = await contactosDeTramite(db, tramiteId);
+    const para = t.es_prueba ? process.env.PERMISOS_MAIL ?? null : t.cliente_email;
+    const url = linkCliente(t.token_cliente, opts.origen);
+    const problema = !url ? "No se sabe la URL de la app para armar el link (NEXT_PUBLIC_APP_URL)." : problemaDeMail(para);
+    if (problema) return { enviado: false, motivo: problema, para };
+
+    const texto = textoRecordatorio({ cliente: t.cliente_nombre, direccion: t.direccion, sinDueno: !t.titular_cargado_at, faltan, aCorregir, link: url });
+    await enviarMail({
+      para: para!.trim(),
+      cc: t.es_prueba ? [] : copias(contactos, para),
+      responderA: responderA(contactos),
+      asunto: `${t.es_prueba ? "[PRUEBA] " : ""}Permiso de andamio para ${t.direccion} — nos falta poco`,
+      texto: [...(t.es_prueba ? ["[PRUEBA] Este mail es lo que le llegaría al cliente.", ""] : []), texto, "", "Cualquier duda, respondé este mail.", "", "Saludos,", "Andamios Buenos Aires"].join("\n"),
+    });
+    await registrarEvento(db, tramiteId, "link_cliente", `Se le recordó a ${para} lo que falta.`, { recordatorio: true, para, cc: copias(contactos, para) }, "persona");
+    return { enviado: true, motivo: null, para };
+  } catch (e) {
+    const motivo = e instanceof Error ? e.message : String(e);
+    console.error("[portal] no se pudo recordar al cliente", tramiteId, motivo);
+    return { enviado: false, motivo, para: null };
+  }
+}
+
+/** El cliente abrió el portal: queda en el historial (una vez cada 6 horas) para saber que el link le llegó. Nunca tira. */
+export async function anotarPortalVisto(db: SupabaseClient, tramiteId: string): Promise<void> {
+  try {
+    const desde = new Date(Date.now() - 6 * 3_600_000).toISOString();
+    const { count } = await db.from("pvp_eventos").select("id", { count: "exact", head: true })
+      .eq("tramite_id", tramiteId).eq("tipo", "link_cliente").contains("datos", { visto: true }).gte("created_at", desde);
+    if (count) return;
+    await registrarEvento(db, tramiteId, "link_cliente", "El cliente abrió el portal.", { visto: true }, "cliente");
+  } catch (e) {
+    console.error("[portal] no se pudo anotar que el cliente abrió el portal", tramiteId, e instanceof Error ? e.message : e);
   }
 }

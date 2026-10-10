@@ -23,6 +23,12 @@ type ContextoKiosco = {
   salir: () => void;
   /** Cualquier toque: reinicia la cuenta de inactividad. */
   tocar: () => void;
+  /**
+   * Mientras esté en true no se vuelve a "¿Quién sos?" por inactividad. Para las tareas
+   * largas de un encargado (contar una estantería): entre ítem e ítem puede pasar un minuto
+   * sin tocar la pantalla. Quien lo prende lo apaga al terminar (o al desmontarse).
+   */
+  mantener: (activo: boolean) => void;
 };
 
 const Ctx = createContext<ContextoKiosco | null>(null);
@@ -33,9 +39,17 @@ export function KioscoProvider({ children }: { children: ReactNode }) {
   const { data: parametros } = useParametrosPanol();
   const inactividadMs = (parametros?.kiosco_inactividad_seg ?? 60) * 1000;
   const ultimoToque = useRef(0);
+  const mantenida = useRef(false);
 
-  const salir = useCallback(() => setIdentidad(null), []);
+  const salir = useCallback(() => {
+    mantenida.current = false;
+    setIdentidad(null);
+  }, []);
   const tocar = useCallback(() => {
+    ultimoToque.current = Date.now();
+  }, []);
+  const mantener = useCallback((activo: boolean) => {
+    mantenida.current = activo;
     ultimoToque.current = Date.now();
   }, []);
 
@@ -63,19 +77,22 @@ export function KioscoProvider({ children }: { children: ReactNode }) {
     };
     window.addEventListener("pointerdown", marcar);
     window.addEventListener("keydown", marcar);
+    // Un escaneo también es actividad: quien escanea una cuadrilla entera casi no toca la pantalla.
+    window.addEventListener("panol:escaneo", marcar);
     const reloj = window.setInterval(() => {
-      if (Date.now() - ultimoToque.current > inactividadMs) setIdentidad(null);
+      if (!mantenida.current && Date.now() - ultimoToque.current > inactividadMs) setIdentidad(null);
     }, 1000);
     return () => {
       window.removeEventListener("pointerdown", marcar);
       window.removeEventListener("keydown", marcar);
+      window.removeEventListener("panol:escaneo", marcar);
       window.clearInterval(reloj);
     };
   }, [identidad, inactividadMs]);
 
   const valor = useMemo(
-    () => ({ identidad, dispositivo, identificar, salir, tocar }),
-    [identidad, dispositivo, identificar, salir, tocar],
+    () => ({ identidad, dispositivo, identificar, salir, tocar, mantener }),
+    [identidad, dispositivo, identificar, salir, tocar, mantener],
   );
   return <Ctx.Provider value={valor}>{children}</Ctx.Provider>;
 }
@@ -84,4 +101,13 @@ export function useKiosco(): ContextoKiosco {
   const c = useContext(Ctx);
   if (!c) throw new Error("useKiosco fuera de <KioscoProvider>");
   return c;
+}
+
+/** Mientras la pantalla que lo usa esté montada, la sesión no se corta por inactividad. */
+export function useMantenerSesion() {
+  const { mantener } = useKiosco();
+  useEffect(() => {
+    mantener(true);
+    return () => mantener(false);
+  }, [mantener]);
 }

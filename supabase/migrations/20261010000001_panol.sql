@@ -639,7 +639,7 @@ $$;
 -- un encargado elige). Devuelve tipo, id y si es encargado.
 CREATE OR REPLACE FUNCTION pan_quien(p_token TEXT, p_quien JSONB)
 RETURNS TABLE (q_tipo TEXT, q_id UUID, q_encargado BOOLEAN, q_kiosco BOOLEAN)
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public
 AS $$
 DECLARE
   v_nivel TEXT := pan_nivel();
@@ -654,6 +654,8 @@ BEGIN
     SELECT * INTO v_s FROM pan_sesiones
     WHERE token = p_token AND registrado_por = auth.uid() AND expira_at > now();
     IF v_s.token IS NULL THEN RAISE EXCEPTION 'SESION_VENCIDA'; END IF;
+    -- Cada uso la renueva: contar una estantería larga no puede cortar la sesión a mitad.
+    UPDATE pan_sesiones SET expira_at = now() + interval '15 minutes' WHERE token = p_token;
     RETURN QUERY SELECT v_s.persona_tipo, v_s.persona_id,
       v_nivel = 'encargado' OR pan_persona_es_encargado(v_s.persona_tipo, v_s.persona_id),
       v_nivel = 'kiosco';

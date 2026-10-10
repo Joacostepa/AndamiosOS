@@ -31,6 +31,8 @@ import {
   ausenciaDe, type FilaAsistencia,
 } from "./estado";
 import { telegramConfigurado, usuarioDelBot } from "./telegram";
+import { ahoraItems, bandeja } from "./estado";
+import { crearAlertas, type NuevaAlerta } from "@/lib/alertas/servicio";
 
 export type DB = SupabaseClient;
 type Fila = Record<string, unknown>;
@@ -631,4 +633,37 @@ export async function precargaCierre(cuadrillaOdooId: number, fecha: Fecha, otId
 export async function nombreUsuario(userId: string): Promise<string> {
   const r = await createAdminClient().from("user_profiles").select("nombre").eq("id", userId).maybeSingle();
   return (r.data?.nombre as string | undefined)?.trim().split(/\s+/)[0] ?? "la oficina";
+}
+
+// ─── La campanita (§8: "sólo los rojos") ────────────────────────────────────
+
+/**
+ * Los rojos del día como alertas: lo que no se mandó a las 19, lo que no se abrió a las
+ * 6:30 y los rojos del despacho (un "No pude", nadie busca a una cuadrilla, frena la obra).
+ * Idempotente por clave (crearAlertas): se puede llamar en cada lectura del día.
+ */
+export function alertasDelDia(dia: DiaHoja, ahora: number): NuevaAlerta[] {
+  const enlace = `/planificacion/hoja?dia=${dia.fecha}`;
+  const b = bandeja(dia, ahora);
+  const rojos = [
+    ...b.vos.filter((x) => x.rojo && (x.k === "sinenv" || x.k.startsWith("chg-"))),
+    ...b.esp.filter((x) => x.rojo),
+  ].map((x) => ({ k: x.k, t: x.t }));
+  const despacho = ahora >= 0 && ahora < 1440 ? ahoraItems(dia, ahora).filter((x) => x.nivel === "rojo" && /^(np|fr|nadie)-/.test(x.k)).map((x) => ({ k: x.k, t: x.t })) : [];
+  return [...rojos, ...despacho].map((x) => ({
+    tipo: "hoja_dia" as const,
+    clave: `hoja_dia:${dia.fecha}:${x.k}`,
+    titulo: x.t,
+    prioridad: "alta" as const,
+    enlace: x.k.startsWith("np-") || x.k.startsWith("fr-") || x.k.startsWith("nadie-") ? `/planificacion/hoja/camiones?dia=${dia.fecha}` : enlace,
+  }));
+}
+
+/** Crea las alertas rojas del día. Nunca tira (crearAlertas tampoco). */
+export async function alertarDia(dia: DiaHoja): Promise<void> {
+  try {
+    await crearAlertas(createAdminClient(), alertasDelDia(dia, minutosDesde(dia.fecha, new Date())));
+  } catch (e) {
+    console.error("[hoja-dia] no se pudieron crear las alertas", e instanceof Error ? e.message : e);
+  }
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { AlertTriangle, Camera, Check, Loader2, Plus, Trash2, X } from "lucide-react";
@@ -24,6 +24,7 @@ import {
 import { useParte, useCerrarJornada, useEditarParte, useEmpleados } from "@/hooks/use-parte";
 import { SelectorCapataz } from "@/components/partes/selector-capataz";
 import { useDetalleOt } from "@/hooks/use-detalle-ot";
+import { usePrecargaCierre } from "@/hooks/use-hoja-dia";
 import { ComoQuedoArmado } from "@/components/partes/como-quedo-armado";
 import { CORAL, OK, OK_SOLIDO, PELIGRO, PELIGRO_SOLIDO } from "@/lib/tablero/colores";
 import { horasEfectivas } from "@/lib/tablero/horas";
@@ -161,6 +162,33 @@ export function FormularioCierre({
     setArmadoReal("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [abierto, parteCargado, parteId, fecha]);
+
+  // PRECARGA DESDE LA HOJA DEL DÍA (docs/equipos-del-dia/modulo.md §13): si la cuadrilla
+  // tuvo hoja ese día, el puntero es el que estuvo a cargo, la cantidad de personas los que
+  // fueron, el camión en obra si el chofer quedó todo el día, y los fletes los viajes del
+  // día a esta obra. Sólo al CREAR el parte, una vez por apertura, y todo editable: si el
+  // parte dice otra cosa, manda el parte. Sin hoja (`hayHoja: false`, o la consulta falla)
+  // el formulario queda exactamente como antes.
+  const { data: precarga } = usePrecargaCierre(
+    abierto && !parteId ? (bloque?.cuadrillaId ?? null) : null,
+    abierto && !parteId ? fecha : null,
+    ot?.id ?? null,
+  );
+  const precargaAplicada = useRef<string | null>(null);
+  useEffect(() => {
+    if (!abierto) { precargaAplicada.current = null; return; }
+    if (parteId || !precarga?.hayHoja) return;
+    const clave = `${asignacionId}-${fecha}`;
+    if (precargaAplicada.current === clave) return;
+    precargaAplicada.current = clave;
+    if (precarga.punteroEmployeeId) setPunteroId(String(precarga.punteroEmployeeId));
+    setCamionEnObra(precarga.camionEnObra);
+    setViajes(precarga.fletes.cantidad);
+    setTercerizado(precarga.fletes.tercerizado);
+    if (precarga.personas > 0) {
+      setManoObra([{ tarea: ot?.tipo === "desarme" ? "desarme" : "armado", personas: precarga.personas, horaDesde: JORNADA_DESDE, horaHasta: JORNADA_HASTA }]);
+    }
+  }, [abierto, parteId, precarga, asignacionId, fecha, ot?.tipo]);
 
   // REGLA VIGENTE: menos de una jornada → 1 viaje redondo; N jornadas → N+1. Se muestra
   // como sugerencia, no se impone.
@@ -527,7 +555,7 @@ export function FormularioCierre({
                       title="Viajes redondos"
                     />
                     <span className="text-xs text-muted-foreground">
-                      viajes redondos · sugerido {sugerenciaViajes}
+                      viajes redondos · sugerido {precarga?.hayHoja ? `${precarga.fletes.cantidad} · según la Hoja del día` : sugerenciaViajes}
                     </span>
                   </div>
                   {/* En el parte y no en la línea de flete: la línea no existe con cero

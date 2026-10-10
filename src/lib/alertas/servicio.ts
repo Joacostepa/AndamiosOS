@@ -59,7 +59,14 @@ export type TipoAlerta =
    * que ve el encargado (src/lib/panol/avisos.ts). Van a `deposito` y al canal del pañol.
    */
   | "panol_ajuste" | "panol_stock" | "panol_vencida" | "panol_faltante" | "panol_inspeccion"
-  | "panol_sin_alta" | "panol_resumen" | "panol_baja";
+  | "panol_sin_alta" | "panol_resumen" | "panol_baja"
+  /**
+   * Hoja del día (docs/equipos-del-dia/modulo.md §8 y §9): sólo los rojos (hojas sin mandar a
+   * las 19, sin abrir a las 6:30, un "No pude" del chofer, nadie busca a una cuadrilla). Los
+   * crea la lectura del día (src/lib/hoja-dia/servicio.ts). SÓLO CAMPANITA en la fase 1: el
+   * "No pude" a #logistica-operativa es de la fase 2.
+   */
+  | "hoja_dia";
 
 export type Prioridad = "baja" | "media" | "alta" | "critica";
 

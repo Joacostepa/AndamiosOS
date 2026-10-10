@@ -57,6 +57,8 @@ const DESTINOS: Record<TipoAlerta, Canal[]> = {
   // Del asistente comercial: sólo campanita, a propósito (ver servicio.ts).
   asistente_aviso: [],
   // El pañol tiene su canal: ahí están los encargados, que no son un rol (ver panol/avisos.ts).
+  // Hoja del día: sólo campanita en la fase 1 (ver servicio.ts).
+  hoja_dia: [],
   panol_ajuste: ["panol"],
   panol_stock: ["panol"],
   panol_vencida: ["panol"],
@@ -219,6 +221,14 @@ const ESTILO: Record<
     emoji: "👤",
     rotulo: "Baja con cosas a cargo",
     plural: "bajas con cosas a cargo",
+    destacado: false,
+    prefijos: [],
+  },
+  hoja_dia: {
+    color: "#dc2626",
+    emoji: "🚚",
+    rotulo: "Hoja del día",
+    plural: "avisos de la hoja del día",
     destacado: false,
     prefijos: [],
   },

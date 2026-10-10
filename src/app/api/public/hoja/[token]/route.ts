@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { z } from "zod";
-import { accionPublica, anotarVista, vistaPublica } from "@/lib/hoja-dia/publico";
+import { DemasiadosPedidos, accionPublica, anotarVista, vistaPublica } from "@/lib/hoja-dia/publico";
 
 // GET /api/public/hoja/:token — lo que ve el capataz o el chofer en su celular (§12), sin
 // usuario: la hoja de su cuadrilla o sus viajes de ese día, y nada más. Lo protege el token
@@ -24,6 +24,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ token: str
     if (link && vista.situacion !== "invalido") after(() => anotarVista(link));
     return NextResponse.json(vista, { status: vista.situacion === "invalido" ? 404 : 200, headers: NOINDEX });
   } catch (e) {
+    if (e instanceof DemasiadosPedidos) return NextResponse.json({ error: e.message }, { status: 429, headers: NOINDEX });
     console.error("[hoja-dia] link público", e instanceof Error ? e.message : e);
     return NextResponse.json({ error: "No se pudo cargar la hoja. Probá de nuevo en un rato." }, { status: 502, headers: NOINDEX });
   }

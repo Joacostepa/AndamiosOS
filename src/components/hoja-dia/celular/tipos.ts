@@ -25,8 +25,8 @@ export type AccionesCelular = {
   /** Sacar de la cola un toque que todavía no salió (el "Deshacer" sin señal). */
   quitarDeCola: (id: string) => void;
   /**
-   * La foto del remito. Si no viene (hoy no hay endpoint de subida, ver handoff.md), el botón
-   * abre la cámara igual y avisa que la foto se le manda al coordinador por Telegram.
+   * La foto del remito (POST /api/public/hoja/[token]/viaje/[id]/foto). Si no viene (la
+   * vista previa del escritorio), el botón avisa que se la mande al coordinador.
    */
   subirFoto?: (viajeId: string, archivo: File) => Promise<ResultadoToque>;
   reintentar?: () => void;

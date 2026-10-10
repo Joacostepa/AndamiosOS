@@ -20,6 +20,7 @@ import { TELEGRAM } from "./mensajes";
 import { codigoValido, situacionLink, tokenValido } from "./tokens";
 import { anotar, avisarPantallas, conGrabador, grabador, leerDia } from "./servicio";
 import { porQueNoPuedeMarcar, recibidoVigente } from "./reglas-publico";
+import { MAX_FOTO, tipoImagen } from "./archivo-seguro";
 import { deshacerEstadoViaje, marcarHecho, marcarNoPude } from "./acciones";
 import {
   contestarBoton, decodificar, editarBotones, editarMensaje, enviarMensaje, leerStart, tecladoMotivos, tecladoViaje, type Teclado,
@@ -58,6 +59,8 @@ export async function vistaPublica(token: string): Promise<{ vista: VistaPublica
     const coordinador = { nombre: co?.nombre ?? "la oficina", telefono: co?.telefono ?? null };
     return { vista: { situacion: "vencido", fecha, coordinador, texto: `Este link era de la hoja del ${diaSemana(fecha)} ${Number(fecha.slice(8))}. Pedile la nueva a ${coordinador.nombre}.` }, link: l };
   }
+  // Límite de lecturas (el celular consulta cada 30 s; esto frena a quien martille con un token).
+  await contar(String(l.id), "lectura");
   const dia = await leerDia(fecha, { cacheOdoo: true });
   const link: LinkVista = {
     rol: l.rol === "a_cargo" ? "a_cargo" : "chofer",
@@ -170,18 +173,44 @@ export async function marcarViajeDesdeChofer(l: Fila, viajeId: string, que: "hec
   return r.texto;
 }
 
-/** POST del link. Límite simple: 30 toques por minuto por token. */
-export async function accionPublica(token: string, a: AccionPublica, at?: string | null): Promise<{ ok: true; texto: string } | { ok: false; error: string; status: number }> {
+/** Demasiados pedidos de un mismo link en un minuto (la ruta contesta 429). */
+export class DemasiadosPedidos extends Error {
+  constructor() {
+    super("Demasiados pedidos seguidos: esperá un minuto.");
+    this.name = "DemasiadosPedidos";
+  }
+}
+const LIMITE = { toque: 30, lectura: 120 } as const;
+
+/** Suma un pedido al link (atómico, hd_contar) y tira DemasiadosPedidos si pasó el límite. */
+async function contar(linkId: string, tipo: "toque" | "lectura"): Promise<void> {
+  const r = await createAdminClient().rpc("hd_contar", { p_link: linkId, p_tipo: tipo });
+  if (r.error) { console.error("[hoja-dia] no se pudo contar el pedido", r.error.message); return; }
+  if (Number(r.data) > LIMITE[tipo]) throw new DemasiadosPedidos();
+}
+
+type Rechazo = { ok: false; error: string; status: number };
+
+/** El link para escribir (toque o foto): válido, vigente, y dentro del límite. */
+async function linkParaEscribir(token: string): Promise<Fila | Rechazo> {
   if (!tokenValido(token)) return { ok: false, error: "El link no es válido.", status: 404 };
   const adm = createAdminClient();
-  const r = await adm.from("hd_links").select("*").eq("token", token).maybeSingle();
-  const l = r.data;
+  const l = (await adm.from("hd_links").select("*").eq("token", token).maybeSingle()).data;
   if (!l || l.anulado_at) return { ok: false, error: "El link no es válido.", status: 404 };
   if (situacionLink({ fecha: String(l.fecha), expira_at: String(l.expira_at), anulado_at: null }) === "vencido") return { ok: false, error: "Este link ya venció.", status: 410 };
-  const ventana = l.pedidos_ventana ? Date.parse(String(l.pedidos_ventana)) : 0;
-  const n = Date.now() - ventana < 60_000 ? Number(l.pedidos_n ?? 0) + 1 : 1;
-  if (n > 30) return { ok: false, error: "Demasiados toques seguidos: esperá un minuto.", status: 429 };
-  await adm.from("hd_links").update(n === 1 ? { pedidos_ventana: ts(), pedidos_n: 1 } : { pedidos_n: n }).eq("id", l.id);
+  try {
+    await contar(String(l.id), "toque");
+  } catch (e) {
+    return { ok: false, error: (e as Error).message, status: 429 };
+  }
+  return l;
+}
+const esRechazo = (x: Fila | Rechazo): x is Rechazo => (x as Rechazo).ok === false;
+
+/** POST del link. Límite: 30 toques por minuto por token (hd_contar). */
+export async function accionPublica(token: string, a: AccionPublica, at?: string | null): Promise<{ ok: true; texto: string } | Rechazo> {
+  const l = await linkParaEscribir(token);
+  if (esRechazo(l)) return l;
   const cuando = instante(at);
   try {
     if (a.accion === "recibido" || a.accion === "entendido") {
@@ -196,6 +225,49 @@ export async function accionPublica(token: string, a: AccionPublica, at?: string
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e), status: 403 };
   }
+}
+
+/**
+ * La foto del remito (§12, el hueco de handoff.md): el chofer la saca después de "Hecho".
+ * Valida el token y que el viaje sea SUYO (porQueNoPuedeMarcar: de ese día, no anulado),
+ * mira que sea una imagen por los bytes y que no pase de MAX_FOTO, la guarda en el bucket
+ * privado `hoja-dia` (viajes/{fecha}/{viaje}/{hora}.{ext}) y anota la ruta en el viaje.
+ * La pantalla la ve con una URL firmada (fotoDelViaje). Una foto nueva reemplaza a la
+ * anterior en el viaje; la vieja queda en el bucket.
+ */
+export async function subirFotoRemito(token: string, viajeId: string, bytes: Uint8Array): Promise<{ ok: true; texto: string } | Rechazo> {
+  const l = await linkParaEscribir(token);
+  if (esRechazo(l)) return l;
+  if (bytes.length > MAX_FOTO) return { ok: false, error: "La foto es muy pesada (más de 4 MB).", status: 413 };
+  const tipo = tipoImagen(bytes);
+  if (!tipo) return { ok: false, error: "Eso no es una foto (JPG, PNG o WebP).", status: 415 };
+  let v: Fila;
+  try {
+    v = await viajeDelChofer(l, viajeId);
+  } catch (e) {
+    return { ok: false, error: (e as Error).message, status: 403 };
+  }
+  const adm = createAdminClient();
+  const fecha = String(l.fecha);
+  const path = `viajes/${fecha}/${viajeId}/${Date.now()}.${tipo.ext}`;
+  const up = await adm.storage.from("hoja-dia").upload(path, bytes, { contentType: tipo.mime, upsert: false });
+  if (up.error) return { ok: false, error: `No se pudo guardar la foto: ${up.error.message}`, status: 502 };
+  const nombre = await nombreDeLink(l);
+  const g = grabador(adm);
+  await g.actualizar("hd_viajes", String(v.id), { foto_path: path });
+  const texto = `${nombre}: foto del remito`;
+  await anotar(null, { fecha, entidad: "viaje", entidadId: viajeId, viajeId, accion: "foto_remito", texto, origen: "link", porTexto: nombre }, g.cambios);
+  await avisarPantallas(fecha, "subió la foto del remito", nombre);
+  return { ok: true, texto };
+}
+
+/** La foto del remito de un viaje, para el escritorio: URL firmada por 10 minutos (o null). */
+export async function fotoDelViaje(viajeId: string): Promise<string | null> {
+  const adm = createAdminClient();
+  const v = (await adm.from("hd_viajes").select("foto_path").eq("id", viajeId).maybeSingle()).data;
+  if (!v?.foto_path) return null;
+  const r = await adm.storage.from("hoja-dia").createSignedUrl(String(v.foto_path), 600);
+  return r.data?.signedUrl ?? null;
 }
 
 /** Saca el botón "Recibido" de los mensajes de Telegram de ese link cuando se confirmó por el link. */
@@ -216,12 +288,26 @@ async function marcarMensajesTelegram(linkId: string, texto: (min: number) => st
 
 // ═══════════════════════════ Archivos de la OT ════════════════════════════════
 
-/** ¿Este adjunto es de una OT de la hoja (o de los viajes) de este token? */
+/**
+ * ¿Este adjunto es de una OT de la hoja (o de los viajes) de este token? La lista de
+ * adjuntos permitidos por token se guarda 5 minutos: abrir 9 planos seguidos no arma la
+ * vista entera 9 veces (ni le pide 9 veces el tablero a Odoo). Cada pedido igual cuenta
+ * para el límite del link.
+ */
+const permitidosCache = new Map<string, { at: number; linkId: string; ids: Set<number> }>();
 export async function archivoPermitido(token: string, adjuntoId: number): Promise<boolean> {
-  const { vista } = await vistaPublica(token);
-  if (vista.situacion !== "ok") return false;
+  const hit = permitidosCache.get(token);
+  if (hit && Date.now() - hit.at < 5 * 60_000) {
+    await contar(hit.linkId, "lectura");
+    return hit.ids.has(adjuntoId);
+  }
+  const { vista, link } = await vistaPublica(token);
+  if (vista.situacion !== "ok" || !link) return false;
   const obras = vista.rol === "a_cargo" ? vista.obras : vista.todo?.obras ?? [];
-  return obras.some((o) => o.archivos.some((x) => x.id === adjuntoId));
+  const ids = new Set(obras.flatMap((o) => o.archivos.map((x) => x.id)));
+  if (permitidosCache.size > 500) permitidosCache.clear();
+  permitidosCache.set(token, { at: Date.now(), linkId: String(link.id), ids });
+  return ids.has(adjuntoId);
 }
 
 // ═══════════════════════════ Webhook de Telegram ══════════════════════════════

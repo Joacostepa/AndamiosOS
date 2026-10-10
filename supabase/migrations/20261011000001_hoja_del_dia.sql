@@ -490,13 +490,19 @@ CREATE TABLE IF NOT EXISTS hd_links (
   version           INTEGER NOT NULL DEFAULT 0,          -- sube con cada envío o aviso
   version_vista     INTEGER NOT NULL DEFAULT 0,
   version_recibida  INTEGER NOT NULL DEFAULT 0,
-  -- Pedidos públicos por token en el último minuto (límite simple de abuso).
+  -- Pedidos públicos por token en el último minuto (límite simple de abuso): los toques
+  -- (POST) y las lecturas (GET de la hoja y de los archivos) por separado. Los cuenta
+  -- hd_contar(), atómica.
   pedidos_ventana   TIMESTAMPTZ,
   pedidos_n         INTEGER NOT NULL DEFAULT 0,
+  lecturas_ventana  TIMESTAMPTZ,
+  lecturas_n        INTEGER NOT NULL DEFAULT 0,
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
   CHECK ((persona_id IS NULL) <> (externa_id IS NULL))
 );
 -- Un link vigente por persona y día (si cambia de rol, se anula y se crea otro).
+ALTER TABLE hd_links ADD COLUMN IF NOT EXISTS lecturas_ventana TIMESTAMPTZ;
+ALTER TABLE hd_links ADD COLUMN IF NOT EXISTS lecturas_n INTEGER NOT NULL DEFAULT 0;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_hd_links_persona ON hd_links(fecha, persona_id) WHERE persona_id IS NOT NULL AND anulado_at IS NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_hd_links_externa ON hd_links(fecha, externa_id) WHERE externa_id IS NOT NULL AND anulado_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_hd_links_fecha ON hd_links(fecha);
@@ -843,6 +849,32 @@ $$;
 REVOKE ALL ON FUNCTION hd_aplicar(jsonb) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION hd_aplicar(jsonb) TO authenticated, service_role;
 
+-- El límite de abuso del link público: suma uno en la ventana del último minuto y devuelve
+-- cuántos van, en UNA sentencia (dos pedidos a la vez no leen el mismo número). Sólo la
+-- usa el servidor (service role). p_tipo: 'toque' (POST) o 'lectura' (GET y archivos).
+CREATE OR REPLACE FUNCTION hd_contar(p_link UUID, p_tipo TEXT)
+RETURNS INTEGER
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = public
+AS $$
+DECLARE v_n INTEGER;
+BEGIN
+  IF p_tipo = 'toque' THEN
+    UPDATE hd_links SET
+      pedidos_n = CASE WHEN pedidos_ventana > now() - interval '1 minute' THEN pedidos_n + 1 ELSE 1 END,
+      pedidos_ventana = CASE WHEN pedidos_ventana > now() - interval '1 minute' THEN pedidos_ventana ELSE now() END
+    WHERE id = p_link RETURNING pedidos_n INTO v_n;
+  ELSE
+    UPDATE hd_links SET
+      lecturas_n = CASE WHEN lecturas_ventana > now() - interval '1 minute' THEN lecturas_n + 1 ELSE 1 END,
+      lecturas_ventana = CASE WHEN lecturas_ventana > now() - interval '1 minute' THEN lecturas_ventana ELSE now() END
+    WHERE id = p_link RETURNING lecturas_n INTO v_n;
+  END IF;
+  RETURN coalesce(v_n, 0);
+END;
+$$;
+REVOKE ALL ON FUNCTION hd_contar(uuid, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION hd_contar(uuid, text) TO service_role;
+
 -- ========================
 -- Fotos de remitos (fase 1, opcionales). Privado: se sirven firmadas por el servidor.
 -- Prefijo: viajes/{fecha}/{viaje_id}/{archivo}
@@ -850,6 +882,10 @@ GRANT EXECUTE ON FUNCTION hd_aplicar(jsonb) TO authenticated, service_role;
 INSERT INTO storage.buckets (id, name, public)
 VALUES ('hoja-dia', 'hoja-dia', false)
 ON CONFLICT (id) DO NOTHING;
+-- La foto del remito: sólo imágenes, hasta 5 MB (la sube el servidor después de validar el
+-- token del chofer: /api/public/hoja/[token]/viaje/[id]/foto).
+UPDATE storage.buckets SET file_size_limit = 5242880, allowed_mime_types = ARRAY['image/jpeg', 'image/png', 'image/webp']
+WHERE id = 'hoja-dia';
 
 DROP POLICY IF EXISTS "Hoja del día: leer fotos" ON storage.objects;
 CREATE POLICY "Hoja del día: leer fotos" ON storage.objects

@@ -358,7 +358,7 @@ function Chofer({
     setFoto(null);
     if (!f) return;
     if (!acciones?.subirFoto) {
-      mostrar({ msg: `Todavía no se puede guardar la foto acá. Mandásela a ${coord.nombre} por Telegram.` });
+      mostrar({ msg: `En la vista previa no se guarda la foto. El chofer la saca desde su link (o se la manda a ${coord.nombre}).` });
       return;
     }
     const r = await acciones.subirFoto(viajeId, f);

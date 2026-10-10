@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { read } from "@/lib/odoo/client";
-import { archivoPermitido } from "@/lib/hoja-dia/publico";
+import { DemasiadosPedidos, archivoPermitido } from "@/lib/hoja-dia/publico";
 import { cabecerasArchivo } from "@/lib/hoja-dia/archivo-seguro";
 
 // GET /api/public/hoja/:token/archivo/:id — un plano o una foto de una OT de la hoja de ese
@@ -28,6 +28,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ token: str
       },
     });
   } catch (e) {
+    if (e instanceof DemasiadosPedidos) return NextResponse.json({ error: e.message }, { status: 429 });
     console.error("[hoja-dia] archivo público", e instanceof Error ? e.message : e);
     return NextResponse.json({ error: "No se pudo traer el archivo" }, { status: 502 });
   }

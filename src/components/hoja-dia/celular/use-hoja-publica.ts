@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CoordinadorPublico, VistaPublica } from "@/lib/hoja-dia/vista";
 import { horaDe } from "./aplicar";
+import { comprimirFoto } from "@/lib/tablero/imagenes";
 import type { AccionesCelular, Conexion, Pendiente, ResultadoToque, Toque } from "./tipos";
 
 // El link /h/[token] en el teléfono: trae la hoja, la guarda para cuando no haya señal,
@@ -189,6 +190,32 @@ export function useHojaPublica(token: string): EstadoHojaPublica {
 
   const quitarDeCola = useCallback((id: string) => guardarCola(pendRef.current.filter((x) => x.id !== id)), [guardarCola]);
 
+  /**
+   * La foto del remito: se achica en el teléfono (JPEG ~1600 px) y se sube. No queda en
+   * cola sin señal (una foto no entra en el almacenamiento del navegador): se avisa.
+   */
+  const subirFoto = useCallback(async (viajeId: string, archivo: File): Promise<ResultadoToque> => {
+    if (!enLinea()) return { k: "error", error: "Sin señal: sacá la foto de nuevo cuando vuelva." };
+    try {
+      const c = await comprimirFoto(archivo);
+      const bin = Uint8Array.from(atob(c.base64), (ch) => ch.charCodeAt(0));
+      const fd = new FormData();
+      fd.append("foto", new Blob([bin], { type: "image/jpeg" }), "remito.jpg");
+      const ctl = new AbortController();
+      const t = setTimeout(() => ctl.abort(), 60_000);
+      try {
+        const res = await fetch(`/api/public/hoja/${encodeURIComponent(token)}/viaje/${encodeURIComponent(viajeId)}/foto`, { method: "POST", body: fd, signal: ctl.signal, cache: "no-store" });
+        if (res.ok) { void cargar(true); return { k: "ok" }; }
+        const b = (await res.json().catch(() => null)) as { error?: string } | null;
+        return { k: "error", error: b?.error ?? "No se pudo guardar la foto." };
+      } finally {
+        clearTimeout(t);
+      }
+    } catch {
+      return { k: "error", error: "No se pudo mandar la foto. Probá de nuevo." };
+    }
+  }, [token, cargar]);
+
   // Primera carga, cada 30 s a la vista, al volver a la app y al volver la señal.
   useEffect(() => {
     const alPrimerPlano = () => { if (document.visibilityState === "visible") { void vaciarCola(); void cargar(); } };
@@ -226,7 +253,7 @@ export function useHojaPublica(token: string): EstadoHojaPublica {
     error: !vista ? error : null,
     cargando: cargando && !vista,
     pendientes,
-    acciones: { tocar, quitarDeCola, reintentar: () => void cargar(true) },
+    acciones: { tocar, quitarDeCola, subirFoto, reintentar: () => void cargar(true) },
     coordinadorConocido,
   };
 }

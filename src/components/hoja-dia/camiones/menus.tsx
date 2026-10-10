@@ -7,6 +7,7 @@
 
 import { PRI } from "@/components/hoja-dia/comunes/boton-coral";
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
   calcVeh, choferDe, choferDelCamion, cortoV, dondeAnda, estadoEnvio, haciaDe, hCorta, hm, hm5, horaTxt, lowFirst, lugar,
@@ -96,6 +97,7 @@ function MenuViaje({ m, cerrar, dialogo, verComo }: { m: Extract<MenuAbierto, { 
           <b>Hecho {hm(v0.hechoMin ?? t)}</b>{v0.hechoPor && v0.hechoPor !== "chofer" ? ` · marcado por ${v0.hechoPor}` : ""}{v0.foto ? " · + foto del remito" : ""}
         </MenuTexto>
       )}
+      {v0.foto && <FotoRemito viajeId={m.id} />}
       {v0.estado === "no_pudo" && <MenuTexto><b>No pudo {hm(v0.hechoMin ?? t)}</b>: {lowFirst(v0.noPudoMotivo)}</MenuTexto>}
       {e && e.cambioMin != null && e.snap?.tipo === "chofer" && e.snap.viajes.some((x) => x.k === m.id) && !(e.snapPrimero?.tipo === "chofer" && e.snapPrimero.viajes.some((x) => x.k === m.id)) && (
         <MenuTexto>Avisado {hm(e.cambioMin)}{e.recibidaMin != null && e.recibidaMin >= e.cambioMin ? ` · visto ${hm(e.recibidaMin)}` : " · todavía no lo vio"}</MenuTexto>
@@ -123,6 +125,27 @@ function MenuViaje({ m, cerrar, dialogo, verComo }: { m: Extract<MenuAbierto, { 
         </>
       )}
     </MenuFlotante>
+  );
+}
+
+/** La foto del remito que sacó el chofer (bucket privado: URL firmada por 10 minutos). */
+function FotoRemito({ viajeId }: { viajeId: string }) {
+  const q = useQuery({
+    queryKey: ["hoja-dia", "foto", viajeId],
+    queryFn: async () => {
+      const r = await fetch(`/api/hoja-dia/foto?viajeId=${viajeId}`);
+      if (!r.ok) throw new Error(`Error ${r.status}`);
+      return ((await r.json()) as { url: string | null }).url;
+    },
+    staleTime: 5 * 60_000,
+  });
+  if (q.isLoading) return <MenuTexto>Cargando la foto del remito…</MenuTexto>;
+  if (!q.data) return <MenuTexto>No se pudo traer la foto del remito.</MenuTexto>;
+  return (
+    <a href={q.data} target="_blank" rel="noreferrer" className="mx-2 my-1 block overflow-hidden rounded-md border outline-none focus-visible:ring-3 focus-visible:ring-ring/50" title="Abrir la foto del remito">
+      {/* eslint-disable-next-line @next/next/no-img-element -- URL firmada de Supabase, sin optimizar */}
+      <img src={q.data} alt="Foto del remito" className="max-h-48 w-full object-cover" />
+    </a>
   );
 }
 

@@ -346,7 +346,6 @@ export type DetalleOt = {
   vendedor: string | null;
   /** Etapa del trámite de habilitación (a…f). Ver ETAPA_LABEL. */
   habEtapa: string | null;
-  habDias: number;
   /** "Tentativa — puede moverse" / "Confirmada — fecha firme", sobre la fecha comprometida. */
   fechaFirmeza: string | null;
   /** Rango ya ejecutado, calculado por Odoo: "11/02 al 25/07/2026 (6 jornadas)". */

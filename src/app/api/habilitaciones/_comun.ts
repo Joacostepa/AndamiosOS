@@ -7,7 +7,7 @@
 import { NextResponse, after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { OdooError } from "@/lib/odoo/client";
-import { sincronizarOt } from "@/lib/habilitaciones/servicio";
+import { OperacionInvalida, sincronizarOt } from "@/lib/habilitaciones/servicio";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
@@ -37,6 +37,9 @@ export function db(): Promise<SupabaseClient> {
 }
 
 export function errorResponse(e: unknown) {
+  // Lo que el servicio rechaza a propósito ("primero decidí si aplica") es un 400 con el
+  // mensaje para quien apretó el botón, no una falla de Odoo.
+  if (e instanceof OperacionInvalida) return invalido(e.message);
   const msg = e instanceof OdooError ? e.message : e instanceof Error ? e.message : String(e);
   return NextResponse.json({ error: msg }, { status: 502 });
 }

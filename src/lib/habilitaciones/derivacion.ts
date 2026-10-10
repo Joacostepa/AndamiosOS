@@ -26,8 +26,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type {
-  ClaveGrupo, FilaBandeja, GrupoBandeja, HabEstado, InputsHabilitacion,
-  Permiso, Requisito,
+  ClaveGrupo, Espera, EstadoRequisito, FilaBandeja, GrupoBandeja, HabAlerta, HabEstado,
+  HabSemaforo, InputsHabilitacion, Permiso, Requisito,
 } from "./tipos";
 
 /** Hoy en YYYY-MM-DD, hora local. No usar toISOString(): corre el día por UTC. */
@@ -202,17 +202,190 @@ export function preverDerivados(v: {
   return { etapa, semaforo };
 }
 
+// ─── Lo que depende de HOY ──────────────────────────────────────────────────
+//
+// x_hab_semaforo, x_hab_alerta y x_hab_dias son store=true en Odoo y sus computes usan
+// date.today(), pero sus depends son CAMPOS, no el día: se recalculan cuando alguien
+// escribe la OT y no cuando pasa el tiempo. Una obra sin habilitar que entra en la
+// ventana de 3 días sin que nadie la toque sigue diciendo `proxima`; un vencimiento que
+// pasa sin escrituras sigue en verde. x_hab_dias encima cuenta desde la fecha de consulta,
+// que casi nadie registra: medido el 09/10, 78 de 81 OTs activas decían 0.
+//
+// Decisión de JS (09/10): lo calcula la app, con la misma fórmula que Odoo pero con el
+// día de hoy. Odoo sigue guardando sus valores; la app ya no los lee para decidir nada.
+
+const OT_TERMINADA = new Set(["completada", "cancelada"]);
+
+/**
+ * El semáforo de Odoo, corregido por el día de hoy.
+ *
+ * Lo único del semáforo que depende del tiempo es `vencida`: rojo, amarillo y verde salen
+ * de x_hab_estado, que sí se escribe cada vez que cambia. Así que se respeta lo que dice
+ * Odoo y sólo se recalcula si una habilitada ya venció (o dejó de estarlo).
+ */
+export function semaforoHoy(v: {
+  semaforo: HabSemaforo | null;
+  vencimiento: string | null;
+  estadoOt: string;
+  hoy?: string;
+}): HabSemaforo {
+  const hoy = v.hoy ?? hoyISO();
+  const s = v.semaforo ?? "rojo";
+  if (s !== "verde" && s !== "vencida") return s;
+  return v.vencimiento && v.vencimiento < hoy && !OT_TERMINADA.has(v.estadoOt) ? "vencida" : "verde";
+}
+
+/**
+ * x_hab_alerta, calculada hoy. Es el compute de Odoo tal cual (leído de ir.model.fields
+ * el 09/10), con el día de hoy en vez del día del último write.
+ *
+ * Usa la fecha PROGRAMADA y no la primera jornada del tablero: planificar en el tablero ya
+ * actualiza x_fecha_programada, y así la bandeja, el tablero y la lista de órdenes cuentan
+ * lo mismo.
+ */
+export function alertaDe(v: {
+  semaforo: HabSemaforo;
+  fechaProgramada: string | null;
+  estadoOt: string;
+  hoy?: string;
+}): HabAlerta {
+  const hoy = v.hoy ?? hoyISO();
+  if (OT_TERMINADA.has(v.estadoOt)) return "ok";
+  if (v.semaforo === "vencida") return "vencida";
+  if (v.semaforo === "verde" || !v.fechaProgramada) return "ok";
+  const d = diasEntre(hoy, v.fechaProgramada);
+  return d < 0 ? "atrasada" : d <= 3 ? "critica" : "proxima";
+}
+
+/** Cómo se dice cada alerta en una línea. `ok` y `proxima` no se dicen: son lo normal. */
+export const ALERTA_LABEL: Partial<Record<HabAlerta, string>> = {
+  critica: "se arma en 3 días o menos",
+  atrasada: "la fecha programada ya pasó",
+  vencida: "la habilitación venció",
+};
+
+// ─── De quién es la pelota, y desde cuándo ─────────────────────────────────
+
+/**
+ * Desde cuántos días se pinta en rojo cada situación.
+ *
+ * Lo nuestro, desde el día siguiente: decisión de JS (09/10). Lo del cliente conserva los
+ * umbrales que ya tenía la bandeja (una semana para validar, dos para decir qué pide), y
+ * decidir si aplica también: 4 días.
+ */
+export const ROJO_DESDE = {
+  sinTriar: 4,
+  nuestra: 1,
+  clienteValida: 8,
+  clientePide: 15,
+} as const;
+
+export type DatosEspera = {
+  triage: "aplica" | "no_aplica" | null;
+  habilitada: boolean;
+  /** Cuándo entró la obra a la bandeja (hab_ots.created_at). */
+  creadaEl: string | null;
+  triadaEl: string | null;
+  /** La última vez que volvió de pospuesta o se reactivó: ahí arranca de nuevo lo nuestro. */
+  vueltaEl: string | null;
+  fechaConsulta: string | null;
+  requisitos: Pick<Requisito, "nombre" | "estado" | "fecha_envio" | "fecha_resolucion">[];
+};
+
+function maxFecha(fechas: (string | null)[]): string | null {
+  const v = fechas.filter((f): f is string => !!f).sort();
+  return v[v.length - 1] ?? null;
+}
+
+/**
+ * Lo que la fila dice a la derecha: qué falta, de quién es el próximo movimiento y
+ * cuántos días lleva así.
+ *
+ * REEMPLAZA AL "0 d · esperando a STEPANSKY". Ese texto salía de si la venta tenía la
+ * modalidad de permiso cargada —no de la documentación— y el número de x_hab_dias, que
+ * casi siempre es 0. Acá las dos cosas salen de los requisitos, que es donde está el
+ * trabajo: una obra con la nómina sin mandar espera por nosotros aunque Odoo diga que
+ * la pelota es del cliente.
+ */
+export function esperaDe(d: DatosEspera, hoy: string = hoyISO()): Espera | null {
+  if (d.triage === "no_aplica" || d.habilitada) return null;
+
+  const armar = (
+    pelota: Espera["pelota"], texto: string, desde: string | null, rojoDesde: number,
+  ): Espera => {
+    const dias = desde ? Math.max(0, diasEntre(desde, hoy)) : null;
+    return { pelota, texto, desde, dias, rojo: dias !== null && dias >= rojoDesde };
+  };
+
+  if (d.triage === null) {
+    return armar("nuestra", "decidir si aplica", d.creadaEl, ROJO_DESDE.sinTriar);
+  }
+
+  // Lo nuestro arranca en el triage, o en la última vez que la obra volvió a la cola:
+  // una obra que estuvo pospuesta un mes no vuelve con un mes de atraso en rojo.
+  const nuestraDesde = maxFecha([d.triadaEl, d.vueltaEl]);
+  const reqs = d.requisitos;
+  const de = (estado: EstadoRequisito) => reqs.filter((r) => r.estado === estado);
+  const observados = de("observado");
+  const pendientes = de("pendiente");
+  const enviados = de("enviado");
+  const aprobados = de("aprobado");
+
+  if (reqs.length === 0) {
+    return armar("nuestra", "cargar los requisitos", nuestraDesde, ROJO_DESDE.nuestra);
+  }
+  if (observados.length > 0) {
+    return armar(
+      "nuestra",
+      observados.length === 1 ? `corregir ${observados[0].nombre}` : `corregir ${observados.length} observados`,
+      maxFecha(observados.map((r) => r.fecha_resolucion)),
+      ROJO_DESDE.nuestra,
+    );
+  }
+  if (aprobados.length === reqs.length) {
+    return armar(
+      "nuestra", "habilitar: está todo aprobado",
+      maxFecha(aprobados.map((r) => r.fecha_resolucion)), ROJO_DESDE.nuestra,
+    );
+  }
+  if (pendientes.length > 0) {
+    // Se le preguntó qué pide y todavía no salió nada: la pelota sí es del cliente.
+    if (d.fechaConsulta && enviados.length === 0 && aprobados.length === 0) {
+      return armar("cliente", "el cliente dice qué pide", d.fechaConsulta, ROJO_DESDE.clientePide);
+    }
+    return armar(
+      "nuestra",
+      pendientes.length === 1 ? `mandar ${pendientes[0].nombre}` : `mandar ${pendientes.length} de ${reqs.length}`,
+      nuestraDesde,
+      ROJO_DESDE.nuestra,
+    );
+  }
+  // Todo lo que no está aprobado está mandado: espera al cliente desde el papel más viejo
+  // que sigue sin respuesta.
+  return armar(
+    "cliente",
+    enviados.length === 1 ? `el cliente revisa ${enviados[0].nombre}` : `el cliente revisa ${enviados.length} de ${reqs.length}`,
+    minFecha(enviados.map((r) => r.fecha_envio)),
+    ROJO_DESDE.clienteValida,
+  );
+}
+
 // ─── Bandeja ────────────────────────────────────────────────────────────────
 
 /** Días de aviso antes del vencimiento. El módulo avisa, no renueva. */
 export const DIAS_AVISO_VENCIMIENTO = 30;
 
+// Los títulos de `esperando_cliente` y `validacion` decían de quién era la pelota ("falta
+// que el cliente valide") y no era cierto: la etapa `c` sólo dice que salió AL MENOS UN
+// papel, y ahí conviven obras con todo aprobado esperando que las habilitemos y obras con
+// papeles todavía sin mandar. Ahora el título dice lo que el grupo garantiza, y de quién
+// es la pelota lo dice cada fila (ver esperaDe).
 const TITULOS: Record<ClaveGrupo, string> = {
   recien_llegadas: "Recién llegadas — definir si aplica",
   critica: "Se arman en 3 días o menos y no están listas",
   atrasada: "Fecha pasada y siguen sin habilitar",
-  esperando_cliente: "Falta consultar, o el cliente no dijo qué pide",
-  validacion: "Ya le mandamos todo — falta que el cliente valide",
+  esperando_cliente: "Todavía no salió ningún papel",
+  validacion: "Ya se mandaron papeles",
   por_vencer: `Vencen en menos de ${DIAS_AVISO_VENCIMIENTO} días`,
 };
 
@@ -228,13 +401,12 @@ const RANGO_URGENCIA: Record<FilaBandeja["urgencia"], number> = { alta: 0, media
 /**
  * A qué grupo va una fila, o null si no está en trámite.
  *
- * CUATRO DE LOS SEIS GRUPOS YA ESTÁN CALCULADOS EN ODOO y no se derivan acá: `critica`
- * y `atrasada` son valores de x_hab_alerta, y `esperando_cliente` / `validacion` son
- * etapas. Sólo el vencimiento se calcula, porque Odoo avisa cuando ya venció y lo que
- * hace falta es avisar antes.
+ * `esperando_cliente` y `validacion` son etapas de Odoo. `critica` y `atrasada` son
+ * valores de la alerta, que llega acá YA CALCULADA CON EL DÍA DE HOY (ver alertaDe):
+ * leída de Odoo podía quedar congelada en el valor del último write.
  *
- * Las etapas `a` y `b` van juntas: entre "falta consultar" y "esperando al cliente" la
- * acción de Agustina es la misma —mover al cliente— y la fila ya muestra en cuál está.
+ * Las etapas `a` y `b` van juntas: en las dos no salió ningún papel todavía, y la fila
+ * dice si falta mandarlos o si se espera que el cliente diga qué pide.
  */
 export function grupoDe(fila: FilaBandeja, hoy: string): ClaveGrupo | null {
   if (fila.triage === "no_aplica" || fila.etapa === "f") return null;
@@ -283,20 +455,10 @@ export function agruparBandeja(filas: FilaBandeja[], hoy: string = hoyISO()): Gr
       }
       if (a.fechaProgramada) return -1;
       if (b.fechaProgramada) return 1;
-      return b.dias - a.dias;
+      return (b.espera?.dias ?? 0) - (a.espera?.dias ?? 0);
     }),
   })).filter((g) => g.filas.length > 0);
 }
-
-/** Umbral de antigüedad por grupo: pasado eso, la fila muestra los días en rojo. */
-export const UMBRAL_DIAS: Record<ClaveGrupo, number> = {
-  recien_llegadas: 3,
-  critica: 0,
-  atrasada: 0,
-  esperando_cliente: 14,
-  validacion: 7,
-  por_vencer: 9999,
-};
 
 // ─── Posponer ───────────────────────────────────────────────────────────────
 
@@ -477,14 +639,31 @@ export function friccionDelTablero(
   return f && f.tipo === "pedir_modalidad" ? null : f;
 }
 
-/** Los dos trámites cruzados, en una línea, para el encabezado de la ficha. */
+/**
+ * Los dos trámites cruzados, en una línea, para el encabezado de la ficha.
+ *
+ * DICE LO MISMO QUE EL TABLERO, y por eso usa friccionDelTablero y no friccionAlConfirmar.
+ * Antes usaba la otra, que no mira el tipo de OT y todavía pedía la modalidad: a un desarme
+ * le decía "falta la modalidad de permiso" y a uno con "esperar permiso" le decía "no se
+ * puede armar", cuando el tablero lo deja confirmar sin preguntar nada.
+ *
+ * TRES TONOS Y NO DOS. "Se puede armar, con pendientes" iba en verde con tilde, igual que
+ * una obra resuelta: ahora lo que avisa sin frenar va en ámbar.
+ */
 export function veredicto(
   permiso: Parameters<typeof friccionAlConfirmar>[0],
-  opts: { etapa: string | null; fechaProgramada: string | null },
+  opts: {
+    tipoOt: string | null;
+    /** Habilitada a mano, o marcada "no aplica" (que también la deja habilitada). */
+    habilitada: boolean;
+    /** Todos los requisitos aprobados, pero nadie apretó "Habilitar obra" todavía. */
+    listaParaHabilitar: boolean;
+    fechaProgramada: string | null;
+  },
   hoy: string = hoyISO(),
-): { puedeArmar: boolean; titulo: string; detalle: string } {
-  const friccion = friccionAlConfirmar(permiso, hoy);
-  const habilitada = opts.etapa === "d";
+): { tono: "ok" | "aviso" | "bloqueo"; titulo: string; detalle: string } {
+  const friccion = friccionDelTablero(permiso, opts.tipoOt, hoy);
+  const verbo = opts.tipoOt === "desarme" ? "desarmar" : "armar";
 
   const cuando = opts.fechaProgramada
     ? diasEntre(hoy, opts.fechaProgramada) === 0
@@ -496,30 +675,35 @@ export function veredicto(
           : ` · la fecha pasó hace ${-diasEntre(hoy, opts.fechaProgramada)} días`
     : "";
 
-  const faltantes: string[] = [];
-  if (!habilitada) faltantes.push("la documentación del cliente");
-  if (friccion?.tipo === "bloqueo") faltantes.push("el permiso municipal");
-  if (friccion?.tipo === "pedir_modalidad") faltantes.push("la modalidad de permiso");
-  if (friccion?.tipo === "falta_expediente") faltantes.push("el número de expediente");
+  const papeles = opts.habilitada
+    ? null
+    : opts.listaParaHabilitar
+      ? "Los papeles están aprobados: falta habilitarla."
+      : "Falta la documentación del cliente.";
 
   if (friccion?.tipo === "bloqueo") {
     return {
-      puedeArmar: false,
-      titulo: `No se puede armar${cuando}`,
-      detalle: `Falta ${faltantes.join(" y ")}.`,
+      tono: "bloqueo",
+      titulo: `No se puede ${verbo}${cuando}`,
+      detalle: [`${friccion.motivo} El tablero no deja confirmar la jornada.`, papeles]
+        .filter(Boolean).join(" "),
     };
   }
-  if (faltantes.length > 0) {
-    return {
-      puedeArmar: true,
-      titulo: `Se puede armar, con pendientes${cuando}`,
-      detalle: `Falta ${faltantes.join(" y ")}. La documentación no bloquea: es advertencia.`,
-    };
+
+  const pendientes = [
+    friccion?.tipo === "falta_expediente"
+      ? "Se arma con número de expediente y no está cargado: al confirmar, el tablero pide un motivo."
+      : null,
+    papeles ? `${papeles} No frena: el tablero deja confirmar igual.` : null,
+  ].filter(Boolean);
+
+  if (pendientes.length > 0) {
+    return { tono: "aviso", titulo: `Se puede ${verbo}, con pendientes${cuando}`, detalle: pendientes.join(" ") };
   }
   return {
-    puedeArmar: true,
+    tono: "ok",
     titulo: `Habilitada${cuando}`,
-    detalle: "Documentación validada y permiso resuelto.",
+    detalle: "La documentación está resuelta y el permiso no frena.",
   };
 }
 

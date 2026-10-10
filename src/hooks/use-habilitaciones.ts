@@ -4,8 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { hoyISO, preverDerivados } from "@/lib/habilitaciones/derivacion";
 import type {
-  AdjuntoRequisito, Bandeja, EstadoRequisito, FichaHabilitacion, ModalidadPermiso,
-  Paquete, TipoGestion, TramiteEstado,
+  AdjuntoRequisito, Bandeja, EstadoRequisito, FichaHabilitacion, Paquete, TipoGestion,
 } from "@/lib/habilitaciones/tipos";
 import type { FriccionDeOt } from "@/app/api/habilitaciones/candado/route";
 
@@ -85,17 +84,17 @@ export function useTriage() {
  *
  * Es la misma ruta que el botón de la ficha —registra en el historial, avisa a
  * Operaciones y empuja a Odoo—; lo único distinto es que el otId viaja en la mutación,
- * porque desde la lista se revierte cualquiera.
+ * porque desde la lista se revierte cualquiera. El motivo es obligatorio: va en el aviso.
  */
 export function useRevertirHabilitacion() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (otId: number) =>
+    mutationFn: ({ otId, motivo }: { otId: number; motivo: string }) =>
       pedir(`/api/habilitaciones/${otId}/habilitacion`, {
         method: "POST",
-        body: JSON.stringify({ habilitar: false, faltan: 0 }),
+        body: JSON.stringify({ habilitar: false, faltan: 0, motivo }),
       }),
-    onSuccess: (_d, otId) => {
+    onSuccess: (_d, { otId }) => {
       qc.invalidateQueries({ queryKey: ["habilitaciones"] });
       qc.invalidateQueries({ queryKey: ["habilitacion", otId] });
     },
@@ -353,17 +352,53 @@ export function useAdjuntosDeOt(otId: number) {
   });
 }
 
-export function useSubirAdjunto(otId: number, requisitoId: string) {
+/**
+ * Deja asentado en el historial lo que pasó con un archivo. Subir y borrar van directo
+ * del browser a Storage, así que el registro lo pide la pantalla después. Si falla, el
+ * archivo ya se subió o se borró igual: se avisa en la consola y no se rompe el gesto.
+ */
+async function registrarArchivo(otId: number, detalle: string): Promise<RespuestaGestion | null> {
+  try {
+    return await pedir<RespuestaGestion>(`/api/habilitaciones/${otId}/gestiones`, {
+      method: "POST",
+      body: JSON.stringify({ tipo: "requisitos", detalle }),
+    });
+  } catch (e) {
+    console.error("[habilitaciones] no se pudo registrar el archivo en el historial", e);
+    return null;
+  }
+}
+
+/**
+ * Subir un archivo a un requisito.
+ *
+ * NO PISA: antes subía con `upsert`, y un archivo con el mismo nombre —"nomina.pdf" del
+ * mes siguiente— reemplazaba al anterior sin avisar. Ahora, si el nombre ya existe, el
+ * nuevo se guarda con la fecha y hora delante y conviven los dos.
+ */
+export function useSubirAdjunto(otId: number, requisitoId: string, nombreRequisito: string) {
   const supabase = createClient();
   const qc = useQueryClient();
+  const aplicar = useAplicar(otId);
   return useMutation({
     mutationFn: async (archivo: File) => {
-      const { error } = await supabase.storage
-        .from(BUCKET)
-        .upload(`${prefijo(otId, requisitoId)}/${archivo.name}`, archivo, { upsert: true });
+      const base = prefijo(otId, requisitoId);
+      let nombre = archivo.name;
+      let { error } = await supabase.storage.from(BUCKET).upload(`${base}/${nombre}`, archivo);
+      if (error && /exist|duplicate/i.test(error.message)) {
+        const sello = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "");
+        nombre = `${sello}-${archivo.name}`;
+        ({ error } = await supabase.storage.from(BUCKET).upload(`${base}/${nombre}`, archivo));
+      }
       if (error) throw error;
+      const res = await registrarArchivo(otId, `${nombreRequisito}: se subió el archivo ${nombre}`);
+      return { nombre, renombrado: nombre !== archivo.name, res };
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["hab-adjuntos", otId] }),
+    onSuccess: ({ res }) => {
+      qc.invalidateQueries({ queryKey: ["hab-adjuntos", otId] });
+      // Con la respuesta del registro se parchea el historial sin releer la ficha de Odoo.
+      if (res) aplicar(res);
+    },
   });
 }
 
@@ -371,12 +406,17 @@ export function useSubirAdjunto(otId: number, requisitoId: string) {
 export function useBorrarAdjunto(otId: number) {
   const supabase = createClient();
   const qc = useQueryClient();
+  const aplicar = useAplicar(otId);
   return useMutation({
-    mutationFn: async (path: string) => {
+    mutationFn: async ({ path, nombreRequisito }: { path: string; nombreRequisito: string }) => {
       const { error } = await supabase.storage.from(BUCKET).remove([path]);
       if (error) throw error;
+      return registrarArchivo(otId, `${nombreRequisito}: se borró el archivo ${path.split("/").pop()}`);
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["hab-adjuntos", otId] }),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["hab-adjuntos", otId] });
+      if (res) aplicar(res);
+    },
   });
 }
 
@@ -427,20 +467,6 @@ export function useRegistrarGestion(otId: number) {
   return useMutation({
     mutationFn: (v: { tipo: TipoGestion; detalle?: string | null }) =>
       pedir(`/api/habilitaciones/${otId}/gestiones`, { method: "POST", body: JSON.stringify(v) }),
-    onSuccess: aplicar,
-  });
-}
-
-export function useActualizarPermiso(otId: number) {
-  const aplicar = useAplicar(otId);
-  return useMutation({
-    mutationFn: (v: {
-      modalidad?: ModalidadPermiso | null;
-      tramite?: TramiteEstado | null;
-      expedienteNro?: string | null;
-      expedienteFecha?: string | null;
-      permisoFecha?: string | null;
-    }) => pedir(`/api/habilitaciones/${otId}/permiso`, { method: "PATCH", body: JSON.stringify(v) }),
     onSuccess: aplicar,
   });
 }

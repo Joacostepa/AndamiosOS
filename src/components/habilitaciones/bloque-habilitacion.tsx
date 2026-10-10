@@ -7,8 +7,12 @@ import { BadgeCheck, RotateCcw, Send } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
 import { useDeclararHabilitacion, useRegistrarConsulta } from "@/hooks/use-habilitaciones";
 import { estadoDeHabilitacion } from "@/lib/habilitaciones/derivacion";
+import { AVISO, OK_SOLIDO } from "@/lib/tablero/colores";
 import type { FichaHabilitacion } from "@/lib/habilitaciones/tipos";
 
 /**
@@ -29,8 +33,13 @@ export function BloqueHabilitacion({ ficha, otId }: { ficha: FichaHabilitacion; 
   const consulta = useRegistrarConsulta(otId);
   const [motivo, setMotivo] = useState("");
   const [abriendoExcepcion, setAbriendoExcepcion] = useState(false);
+  const [revirtiendo, setRevirtiendo] = useState(false);
+  const [motivoReversion, setMotivoReversion] = useState("");
 
-  if (ficha.triage === "no_aplica") return null;
+  // Sin triar tampoco: primero se decide si aplica (la barra de triage está justo abajo).
+  // Habilitar una recién llegada la dejaba verde en Odoo pero en "Recién llegadas" en la
+  // bandeja, y fuera de "Habilitadas". El servicio también lo rechaza.
+  if (ficha.triage !== "aplica") return null;
 
   const est = estadoDeHabilitacion(ficha.requisitos);
   const habilitada = !!ficha.habilitadaEl;
@@ -49,15 +58,33 @@ export function BloqueHabilitacion({ ficha, otId }: { ficha: FichaHabilitacion; 
     );
   }
 
+  function revertir() {
+    if (!motivoReversion.trim()) return;
+    declarar.mutate(
+      { habilitar: false, faltan: 0, motivo: motivoReversion.trim() },
+      {
+        onSuccess: () => {
+          toast.success("Se revirtió la habilitación · Operaciones recibió el aviso");
+          setRevirtiendo(false);
+          setMotivoReversion("");
+        },
+        onError: (e) => toast.error(e instanceof Error ? e.message : "No se pudo revertir"),
+      },
+    );
+  }
+
   // Ya habilitada: se muestra quién y cuándo, con la vuelta atrás a mano pero sin
   // protagonismo. Revertir tiene que ser posible y no tiene que ser lo primero que se ve.
+  //
+  // REVERTIR PIDE CONFIRMACIÓN Y MOTIVO, igual que desde la bandeja: antes acá era un clic
+  // suelto, y le manda a Operaciones un aviso crítico. El motivo viaja en ese aviso.
   if (habilitada) {
     return (
       <div
         className="flex flex-wrap items-center gap-3 rounded-md border px-3 py-2.5"
-        style={{ backgroundColor: "#EAF3DE", borderColor: "#B7D48E" }}
+        style={{ backgroundColor: "var(--tb-verde-bg)", borderColor: "var(--tb-verde-borde)" }}
       >
-        <BadgeCheck className="h-5 w-5 shrink-0" style={{ color: "#27500A" }} />
+        <BadgeCheck className="h-5 w-5 shrink-0" style={{ color: "var(--tb-verde-text)" }} />
         <div className="text-[13px]">
           <p className="font-semibold">
             Habilitada el {format(parseISO(ficha.habilitadaEl!), "d 'de' MMMM", { locale: es })}
@@ -70,17 +97,48 @@ export function BloqueHabilitacion({ ficha, otId }: { ficha: FichaHabilitacion; 
           size="sm"
           variant="ghost"
           className="ml-auto"
+          data-tour="boton-revertir"
           disabled={declarar.isPending}
-          onClick={() =>
-            declarar.mutate(
-              { habilitar: false, faltan: 0 },
-              { onSuccess: () => toast.success("Se revirtió la habilitación") },
-            )
-          }
+          onClick={() => setRevirtiendo(true)}
         >
           <RotateCcw className="mr-1 h-3.5 w-3.5" />
           Revertir
         </Button>
+
+        <Dialog open={revirtiendo} onOpenChange={(abrir) => !abrir && setRevirtiendo(false)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>¿Revertir la habilitación?</DialogTitle>
+              <DialogDescription>
+                La obra vuelve a la cola sin habilitar y Operaciones recibe un aviso urgente
+                con este motivo. Si ya tiene jornadas planificadas, siguen en el tablero. Los
+                requisitos y el historial no se tocan.
+              </DialogDescription>
+            </DialogHeader>
+            <label className="space-y-1.5 text-[12px] font-medium">
+              Motivo (lo lee Operaciones)
+              <Textarea
+                value={motivoReversion}
+                onChange={(e) => setMotivoReversion(e.target.value)}
+                placeholder="Ej: lleva permiso y todavía no salió"
+                rows={2}
+                autoFocus
+              />
+            </label>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setRevirtiendo(false)}>
+                Cancelar
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={revertir}
+                disabled={declarar.isPending || !motivoReversion.trim()}
+              >
+                Revertir y avisar
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     );
   }
@@ -123,7 +181,7 @@ export function BloqueHabilitacion({ ficha, otId }: { ficha: FichaHabilitacion; 
           data-tour="boton-habilitar"
           disabled={!est.listo || declarar.isPending}
           onClick={() => habilitar(null)}
-          style={est.listo ? { backgroundColor: "#27500A" } : undefined}
+          style={est.listo ? { backgroundColor: OK_SOLIDO, color: "white" } : undefined}
         >
           <BadgeCheck className="mr-2 h-4 w-4" />
           Habilitar obra
@@ -132,7 +190,7 @@ export function BloqueHabilitacion({ ficha, otId }: { ficha: FichaHabilitacion; 
         <div className="text-[13px]">
           {est.listo ? (
             <p className="text-muted-foreground">
-              Los {est.total} requisitos están aprobados.
+              {est.total === 1 ? "El requisito está aprobado." : `Los ${est.total} requisitos están aprobados.`}
             </p>
           ) : (
             <>
@@ -148,8 +206,10 @@ export function BloqueHabilitacion({ ficha, otId }: { ficha: FichaHabilitacion; 
           )}
         </div>
 
-        {/* La consulta al cliente es lo único que mueve la pelota de nuestro lado al suyo,
-            y ahora es un gesto propio en vez de un efecto del triage. */}
+        {/* Para los clientes que primero hay que preguntarles qué piden: registra que se
+            preguntó, y mientras no salga ningún papel la pelota queda del cliente. Si los
+            papeles se mandan directo no hace falta —marcar uno enviado ya pasa la pelota—,
+            y por eso casi no se usa (0 veces en los 30 días anteriores al 09/10). */}
         {!ficha.fechaConsulta && (
           <Button
             size="sm"
@@ -171,7 +231,10 @@ export function BloqueHabilitacion({ ficha, otId }: { ficha: FichaHabilitacion; 
       </div>
 
       {abriendoExcepcion && !est.listo && (
-        <div className="space-y-2 rounded-md border px-3 py-2.5" style={{ backgroundColor: "#FEF6E7" }}>
+        <div
+          className="space-y-2 rounded-md border px-3 py-2.5"
+          style={{ backgroundColor: AVISO.fondo, borderColor: AVISO.borde }}
+        >
           <p className="text-[12px]">
             {est.motivo} Habilitar igual queda registrado con tu nombre y este motivo.
           </p>

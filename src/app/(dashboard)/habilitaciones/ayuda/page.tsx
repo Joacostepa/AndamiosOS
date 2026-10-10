@@ -82,43 +82,51 @@ export default function AyudaHabilitacionesPage() {
         </p>
         <p>
           <Termino>No aplica</Termino> es una obra que no necesita tramitar documentación. No queda
-          pendiente de nada: se da por habilitada y pasa a verde. Es la mitad de los casos, así que
-          resolverlo rápido es lo que mantiene la bandeja limpia.
+          pendiente de nada: se da por habilitada y pasa a verde. Es una de cada diez, más o menos.
         </p>
         <p>
-          <Termino>Aplica</Termino> la manda a la cola para pedirle los papeles al cliente.
+          <Termino>Aplica</Termino> la manda a la cola para pedirle los papeles al cliente, con la nómina
+          de ART ya cargada. Si la venta dice que llevamos técnico de Seguridad e Higiene, ese papel se
+          suma solo.
         </p>
         <p>
-          Se puede hacer de a varias con las casillas. Si te equivocaste, las descartadas quedan al
-          pie de la bandeja, en <Termino>No aplican</Termino>, y desde ahí se traen de vuelta.
+          Se puede hacer de a varias con las casillas. Ojo: <Termino>sin ninguna tildada, los botones
+          actúan sobre todo el grupo</Termino>. Si te equivocaste, las descartadas quedan al pie de la
+          bandeja, en <Termino>No aplican</Termino>, y desde ahí se traen de vuelta.
         </p>
       </Seccion>
 
-      <Seccion titulo="Las cuatro etapas, y de quién es la pelota">
+      <Seccion titulo="Qué te dice cada fila, y de quién es la pelota">
         <p>
-          La etapa no describe un casillero: dice <Termino>quién tiene que mover</Termino>.
+          A la derecha de cada obra dice <Termino>qué falta</Termino>, y de ahí sale de quién es el
+          próximo paso:
         </p>
-        <ol className="ml-4 list-decimal space-y-1.5">
+        <ul className="ml-4 list-disc space-y-1.5">
           <li>
-            <Termino>Nuestra — falta consultarle al cliente qué pide.</Termino> La obra aplica pero
-            todavía no le preguntaste qué documentación exige. La pelota es tuya.
+            Si dice qué hacer —<em>mandar Nómina ART</em>, <em>corregir Capacitaciones</em>,{" "}
+            <em>habilitar: está todo aprobado</em>— la pelota es <Termino>tuya</Termino>.
           </li>
           <li>
-            <Termino>Del cliente — tiene que decir qué papeles pide.</Termino> Ya le preguntaste y
-            estás esperando la lista.
+            Si dice <em>el cliente revisa…</em> o <em>el cliente dice qué pide</em>, es{" "}
+            <Termino>del cliente</Termino>.
           </li>
-          <li>
-            <Termino>Del cliente — tiene que validar lo que le mandamos.</Termino> Le mandaste al
-            menos un papel y falta que los apruebe.
-          </li>
-          <li>
-            <Termino>Habilitada.</Termino> Resuelta.
-          </li>
-        </ol>
+        </ul>
         <p>
-          Se pasa de la 1 a la 2 con el botón <Termino>Ya le consulté al cliente</Termino>. Triar no
-          es consultar: decidir que la obra necesita papeles y haberle preguntado qué pide son dos
-          cosas distintas, y hasta que aprietes ese botón la pelota la tenés vos, porque es verdad.
+          Adelante van los <Termino>días</Termino> que lleva así. Se ponen en rojo cuando ya son
+          demasiados: al día siguiente si es tuyo, a la semana si es del cliente, a las dos semanas
+          si esperás que te diga qué pide. Si la obra estuvo pospuesta, lo tuyo empieza a contar el
+          día que volvió.
+        </p>
+        <p>
+          Los grupos de la bandeja dicen otra cosa: si ya salió algún papel (
+          <Termino>Ya se mandaron papeles</Termino>) o todavía no (
+          <Termino>Todavía no salió ningún papel</Termino>). Arriba de todo van los urgentes: las que
+          se arman en 3 días o menos, o cuya fecha ya pasó, sin estar habilitadas.
+        </p>
+        <p>
+          El botón <Termino>Ya le consulté al cliente</Termino> es para los clientes a los que primero
+          hay que preguntarles qué piden: mientras no salga ningún papel, la pelota queda del cliente.
+          Si mandás los papeles directamente, no hace falta.
         </p>
       </Seccion>
 
@@ -139,6 +147,11 @@ export default function AyudaHabilitacionesPage() {
           el cliente contesta que está todo bien. Los botones de a uno siguen estando para cuando
           efectivamente va de a uno. Lo observado queda afuera de las acciones masivas a propósito:
           necesita que alguien lo mire.
+        </p>
+        <p>
+          Deshacer una aprobación te pide confirmación, y el tacho sólo saca papeles{" "}
+          <Termino>pendientes</Termino>: uno mandado o aprobado es trabajo hecho ante el cliente.
+          Si subís un archivo con el mismo nombre que otro, no lo pisa: se guardan los dos.
         </p>
         <p>
           Los <Termino>paquetes</Termino> son los combos ya armados: elegís uno del desplegable y te
@@ -183,10 +196,16 @@ export default function AyudaHabilitacionesPage() {
           aprobados. Mientras falten, está apagado y te dice cuántos.
         </p>
         <p>
-          No pasa solo: alguien tiene que decidirlo, y queda registrado quién y cuándo. Si te
-          apuraste, <Termino>Revertir</Termino> lo deshace. Las obras habilitadas salen de la
-          cola, pero quedan al pie de la bandeja, en <Termino>Habilitadas</Termino>, la más
-          reciente primero, y desde ahí también se revierten.
+          No pasa solo: alguien tiene que decidirlo, y queda registrado quién y cuándo. Al
+          habilitar, <Termino>Operaciones recibe un aviso</Termino>: desde ese momento la obra se
+          puede programar.
+        </p>
+        <p>
+          Si te apuraste, <Termino>Revertir</Termino> lo deshace y te pide el motivo, porque
+          Operaciones recibe un aviso urgente con ese texto. Si después la volvés a habilitar,
+          también les avisa. Las obras habilitadas salen de la cola, pero quedan al pie de la
+          bandeja, en <Termino>Habilitadas</Termino>, la más reciente primero, y desde ahí también
+          se revierten.
         </p>
         <p>
           <Termino>Habilitar por excepción</Termino> es para cuando el cliente autoriza por teléfono
@@ -203,13 +222,13 @@ export default function AyudaHabilitacionesPage() {
         </p>
         <p>
           Por eso, en <Termino>Documentación del cliente</Termino> hay un campo{" "}
-          <Termino>Vence el</Termino>. Cargalo siempre que la documentación tenga fecha de corte: es{" "}
-          <Termino>el único aviso que te llega solo</Termino>, sin que tengas que acordarte de mirar.
+          <Termino>Vence el</Termino>. Cargalo siempre que la documentación tenga fecha de corte.
         </p>
         <p>
-          Con la fecha cargada, la obra aparece en el grupo{" "}
-          <Termino>Vencen en menos de 30 días</Termino> de la bandeja, y el semáforo cambia cuando ya
-          venció. Sin fecha, nadie te va a avisar nada.
+          Con la fecha cargada, 30 días antes la obra aparece en el grupo{" "}
+          <Termino>Vencen en menos de 30 días</Termino> de la bandeja, y el semáforo pasa a vencida
+          cuando llega el día. No llega ningún aviso aparte: es la bandeja la que te lo muestra, así
+          que sin fecha nadie se entera.
         </p>
       </Seccion>
 
@@ -224,9 +243,9 @@ export default function AyudaHabilitacionesPage() {
           obra no tiene forma de saber. Con gente rotando, es lo que evita empezar de cero.
         </p>
         <p>
-          El <Termino>chinche</Termino> la fija arriba y además la muestra en el tablero, para quien
-          planifica la obra. Usalo sólo para lo que alguien más necesita saber sí o sí — si fijás
-          todo, deja de destacar nada.
+          Es la conversación de los papeles. La de Operaciones con la obra va aparte, en el tablero,
+          para que ninguna tape a la otra. El <Termino>chinche</Termino> deja la nota arriba y marca la
+          obra en la bandeja. Usalo para lo importante: si fijás todo, deja de destacar nada.
         </p>
       </Seccion>
 
@@ -243,8 +262,14 @@ export default function AyudaHabilitacionesPage() {
             Bloquea la confirmación.</li>
         </ul>
         <p>
-          La modalidad <Termino>la define el técnico</Termino>, no vos. Si no está definida, el tablero
-          avisa al confirmar y registra el pedido al técnico.
+          Si lleva permiso y con qué se arma lo contesta <Termino>Comercial al cotizar</Termino>, y es
+          obligatorio para confirmar la venta. El trámite y el número de expediente los actualiza la
+          gestoría de permisos. En la ficha se leen: si algo está mal,{" "}
+          <Termino>se corrige en la venta, en Odoo</Termino>.
+        </p>
+        <p>
+          Los frenos valen para los armados y las ampliaciones: a un desarme el permiso no lo frena,
+          porque desarmar es sacar la estructura de la calle.
         </p>
       </Seccion>
 
@@ -254,8 +279,12 @@ export default function AyudaHabilitacionesPage() {
           por fuera y acá marcás que lo hiciste.
         </p>
         <p>
-          Lo que aporta el sistema es la <Termino>fecha</Termino>: poder demostrar que reclamaste tres
-          veces desde el 4 de agosto. Por eso el historial no se puede borrar — un error se corrige
+          Lo único que sale solo es el aviso a Operaciones cuando habilitás o revertís.
+        </p>
+        <p>
+          Lo que aporta el sistema es la <Termino>fecha</Termino>: poder demostrar qué papel mandaste y
+          cuándo, o que reclamaste tres veces desde el 4 de agosto. Por eso todo queda en el historial
+          —también lo que se deshace, se quita o se cambia— y no se puede borrar: un error se corrige
           agregando, no tapando.
         </p>
       </Seccion>

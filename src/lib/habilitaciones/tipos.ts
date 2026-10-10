@@ -30,22 +30,27 @@ export type HabSemaforo = "rojo" | "amarillo" | "verde" | "vencida";
 export type ModalidadPermiso = "sin_permiso" | "con_expediente" | "esperar_permiso";
 export type TramiteEstado = "no_presentado" | "presentado" | "emitido";
 
+// `requisitos` y `habilitacion` existen desde el 09/10 (migración 20261009000001). Antes
+// agregar o borrar un requisito no dejaba rastro, y habilitar o revertir se guardaba como
+// "Aprobación", mezclado con las aprobaciones de cada papel.
 export type TipoGestion =
   | "triage" | "consulta" | "reclamo" | "envio" | "aprobacion"
-  | "observacion" | "permiso" | "renovacion" | "excepcion" | "posposicion";
+  | "observacion" | "permiso" | "renovacion" | "excepcion" | "posposicion"
+  | "requisitos" | "habilitacion";
 
 /**
- * Las etapas dicen QUIÉN TIENE LA PELOTA, no en qué casillero está el registro.
+ * Las etapas dicen QUÉ PASÓ, no de quién es la pelota.
  *
- * La versión anterior confundía: la etapa `b` decía "esperando requisitos del cliente"
- * y la `c` "documentación enviada", con lo cual la palabra "requisito" significaba dos
- * cosas distintas según la etapa —la lista que el cliente pide, y el papel que le
- * mandamos— y no se entendía de quién era el próximo movimiento.
+ * Hasta el 09/10 decían de quién era ("Del cliente — tiene que validar lo que le
+ * mandamos"), y la etapa no alcanza para saberlo: la `c` sólo dice que salió AL MENOS UN
+ * papel, y ahí hay obras con todo aprobado esperando que las habilitemos y obras con la
+ * mitad sin mandar. De quién es la pelota lo dice ahora `esperaDe`, que mira los
+ * requisitos.
  */
 export const ETAPA_LABEL: Record<HabEtapa, string> = {
-  a: "Nuestra — falta consultarle al cliente qué pide",
-  b: "Del cliente — tiene que decir qué papeles pide",
-  c: "Del cliente — tiene que validar lo que le mandamos",
+  a: "En la cola, sin papeles mandados",
+  b: "Se le consultó al cliente qué pide",
+  c: "Se mandaron papeles",
   d: "Habilitada",
   e: "Vencida — hay que renovar",
   f: "No aplica",
@@ -77,6 +82,20 @@ export const TIPO_GESTION_LABEL: Record<TipoGestion, string> = {
   renovacion: "Renovación",
   excepcion: "Excepción",
   posposicion: "Posposición",
+  requisitos: "Requisitos",
+  habilitacion: "Habilitación",
+};
+
+/** De quién es el próximo movimiento y desde cuándo. Lo calcula esperaDe (derivacion.ts). */
+export type Espera = {
+  pelota: "nuestra" | "cliente";
+  /** Qué falta, corto: "mandar Nómina ART", "el cliente revisa 3 de 8". */
+  texto: string;
+  /** Desde cuándo está así. Null si no hay fecha de dónde sacarlo. */
+  desde: string | null;
+  dias: number | null;
+  /** Pasó el umbral de su situación: se pinta en rojo. */
+  rojo: boolean;
 };
 
 /** Lo que la app SÍ escribe en Odoo. Los otros cuatro x_hab_* son computados. */
@@ -198,10 +217,12 @@ export type FilaBandeja = {
   estadoOt: string;
   fechaProgramada: string | null;
   etapa: HabEtapa | null;
+  /** Calculada con el día de hoy (alertaDe), no leída de x_hab_alerta. */
   alerta: HabAlerta | null;
+  /** El de Odoo, corregido por el día de hoy (semaforoHoy). */
   semaforo: HabSemaforo | null;
-  /** x_hab_dias — computado en Odoo, antigüedad del trámite. */
-  dias: number;
+  /** Qué falta y desde cuándo. Null si no está en trámite. Reemplaza a x_hab_dias. */
+  espera: Espera | null;
   vencimiento: string | null;
   triage: "aplica" | "no_aplica" | null;
   /** Cuándo alguien la declaró habilitada. Null si no lo está (o si "no aplica"). */
@@ -284,7 +305,14 @@ export type FichaHabilitacion = {
   etapa: HabEtapa | null;
   semaforo: HabSemaforo | null;
   alerta: HabAlerta | null;
-  dias: number;
+  // Las tres fechas con las que la ficha calcula la espera (esperaDe) en pantalla. Se
+  // calcula allá y no acá porque marcar un requisito parchea la ficha sin volver a
+  // pedirla: una espera armada en el servidor quedaría vieja después de cada clic.
+  /** Cuándo entró la obra a la bandeja (hab_ots.created_at). */
+  creadaEl: string | null;
+  triadaEl: string | null;
+  /** La última vez que volvió de pospuesta o se reactivó. */
+  vueltaEl: string | null;
   fechaConsulta: string | null;
   fechaEnvio: string | null;
   fechaHabilitada: string | null;

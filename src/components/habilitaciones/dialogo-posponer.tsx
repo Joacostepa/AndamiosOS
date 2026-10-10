@@ -112,7 +112,7 @@ function Contenido({ obra, onCerrar }: { obra: ObraAPosponer; onCerrar: () => vo
       </DialogHeader>
 
       {!sePuede ? (
-        <p className="rounded-md border px-3 py-2 text-[13px]" style={{ backgroundColor: "#FEF6E7" }}>
+        <p className="rounded-md border px-3 py-2 text-[13px]" style={{ backgroundColor: "var(--tb-aviso-bg)" }}>
           La obra va el {larga(obraVa!)}: está dentro de los {DIAS_ANTES_DE_LA_OBRA} días que hacen
           falta para la documentación, así que no se puede posponer.
         </p>

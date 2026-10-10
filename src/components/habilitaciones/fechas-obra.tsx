@@ -39,15 +39,15 @@ function resumen(jornadas: JornadaHab[]): { texto: string; color: string; fondo:
   }
   const confirmadas = jornadas.filter((j) => j.estado === "confirmada").length;
   if (confirmadas === jornadas.length) {
-    return { texto: "Planificada · confirmada", color: "#27500A", fondo: "#EAF3DE" };
+    return { texto: "Planificada · confirmada", color: "var(--tb-verde-text)", fondo: "var(--tb-verde-bg)" };
   }
   if (confirmadas === 0) {
-    return { texto: "Planificada · tentativa", color: "#854F0B", fondo: "#FEF6E7" };
+    return { texto: "Planificada · tentativa", color: "var(--tb-aviso-text)", fondo: "var(--tb-aviso-bg)" };
   }
   return {
     texto: `Planificada · ${confirmadas} de ${jornadas.length} confirmadas`,
-    color: "#854F0B",
-    fondo: "#FEF6E7",
+    color: "var(--tb-aviso-text)",
+    fondo: "var(--tb-aviso-bg)",
   };
 }
 
@@ -126,13 +126,13 @@ export function FechasObra({ ficha }: { ficha: FichaHabilitacion }) {
                     </span>
                     {j.conParte ? (
                       <span className="flex shrink-0 items-center gap-0.5 text-muted-foreground">
-                        <Check className="h-3 w-3" style={{ color: "#639922" }} />
+                        <Check className="h-3 w-3" style={{ color: "var(--tb-ok)" }} />
                         con parte
                       </span>
                     ) : (
                       <span
                         className="shrink-0"
-                        style={{ color: j.estado === "confirmada" ? "#27500A" : "#854F0B" }}
+                        style={{ color: j.estado === "confirmada" ? "var(--tb-verde-text)" : "var(--tb-aviso-text)" }}
                       >
                         {j.estado}
                       </span>

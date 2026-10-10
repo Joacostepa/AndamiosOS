@@ -16,7 +16,8 @@ import { HistoriaOt } from "./historia-ot";
 import { ComentariosOt } from "./comentarios-ot";
 import { DetalleTecnico } from "./detalle-tecnico";
 import { ChipTipoOt } from "@/components/habilitaciones/chip-tipo-ot";
-import { ETAPA_LABEL, type HabEtapa } from "@/lib/habilitaciones/tipos";
+import { ETAPA_LABEL, type HabAlerta, type HabEtapa } from "@/lib/habilitaciones/tipos";
+import { ALERTA_LABEL } from "@/lib/habilitaciones/derivacion";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -868,8 +869,11 @@ export function PanelOt({
 
   const habExtra = [
     etapa ? sem.label : null,
-    ot.habAlerta && !/^ok$/i.test(ot.habAlerta.trim()) ? ot.habAlerta : null,
-    detalle && detalle.habDias > 0 ? `${detalle.habDias} días en trámite` : null,
+    // La alerta ya viene calculada con el día de hoy (alertaDe), y se dice en castellano:
+    // antes se mostraba el valor crudo de Odoo ("critica", "proxima"). Los días en trámite
+    // salían de x_hab_dias, que casi siempre es 0; ahora viven en Habilitaciones, que los
+    // calcula con los requisitos (Supabase), y el tablero sigue sin depender de Supabase.
+    ot.habAlerta ? (ALERTA_LABEL[ot.habAlerta as HabAlerta] ?? null) : null,
     ot.habVencimiento ? `vence el ${fecha(ot.habVencimiento)}` : null,
   ].filter(Boolean).join(" · ");
 

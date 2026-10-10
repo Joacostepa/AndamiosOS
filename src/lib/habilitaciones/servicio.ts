@@ -21,7 +21,8 @@ import {
   TABLA as TABLA_COMENTARIOS, borrarComentario, comentar, fijarComentario,
 } from "@/lib/comentarios-ot";
 import {
-  derivarInputs, hoyISO, agruparBandeja, DIAS_DEDUP_CONSULTA, vueltaDePospuesta,
+  agruparBandeja, alertaDe, DIAS_DEDUP_CONSULTA, derivarInputs, esperaDe, hoyISO, semaforoHoy,
+  sumarDias, vueltaDePospuesta, type DatosEspera,
 } from "./derivacion";
 import type {
   Bandeja, EstadoRequisito, FichaHabilitacion, FilaBandeja, Gestion, InputsHabilitacion,
@@ -30,8 +31,20 @@ import type {
 
 type DB = SupabaseClient;
 
+/**
+ * Lo que se pidió no se puede hacer así. Las rutas lo devuelven como 400 con el mensaje
+ * tal cual, porque está escrito para quien apretó el botón (ver errorResponse).
+ */
+export class OperacionInvalida extends Error {}
+
+const BUCKET = "habilitaciones";
+
+/** "2026-10-09T14:03:00+00:00" → "2026-10-09". Las cabeceras guardan timestamps. */
+const dia = (ts: string | null | undefined) => (ts ? String(ts).slice(0, 10) : null);
+
 type FilaHabOt = {
   odoo_ot_id: number;
+  created_at: string;
   triage: "aplica" | "no_aplica" | null;
   triage_fecha: string | null;
   hab_estado: string | null;
@@ -67,7 +80,7 @@ type FilaHabOt = {
 // El nombre de quien habilitó viaja embebido en la misma consulta: ir a buscarlo aparte
 // sería otra ida a Supabase, que es lo único que cuesta (ver fetchGestionDe).
 const COLUMNAS_CABECERA =
-  "odoo_ot_id, triage, triage_fecha, hab_estado, hab_fecha_consulta, hab_fecha_envio, hab_fecha, hab_vencimiento, habilitada_el, habilitada_motivo, habilitador:user_profiles!habilitada_por(nombre), pospuesta_hasta, pospuesta_motivo, pospuesta_aviso, pospusador:user_profiles!pospuesta_por(nombre), sync_estado, sync_error, sync_intentos";
+  "odoo_ot_id, created_at, triage, triage_fecha, hab_estado, hab_fecha_consulta, hab_fecha_envio, hab_fecha, hab_vencimiento, habilitada_el, habilitada_motivo, habilitador:user_profiles!habilitada_por(nombre), pospuesta_hasta, pospuesta_motivo, pospuesta_aviso, pospusador:user_profiles!pospuesta_por(nombre), sync_estado, sync_error, sync_intentos";
 
 async function cabecerasDe(
   db: DB,
@@ -143,26 +156,41 @@ export async function fetchBandeja(db: DB): Promise<Bandeja> {
   // total, y las notas fijadas son un puñado— así que traerlas enteras cuesta lo mismo
   // que traer un subconjunto: contra Supabase se paga por request (~300 ms fijos), no por
   // fila. Las filas de OTs que no están en la bandeja simplemente no se leen del mapa.
-  const [otsOdoo, requisitos, notas, jornadas] = await Promise.all([
+  const hoy = hoyISO();
+  const [otsOdoo, requisitos, notas, jornadas, vueltas] = await Promise.all([
     fetchOtsActivas(),
-    db.from("hab_requisitos").select("odoo_ot_id, estado, nombre"),
+    db.from("hab_requisitos").select("odoo_ot_id, estado, nombre, fecha_envio, fecha_resolucion"),
     db.from(TABLA_COMENTARIOS).select("odoo_ot_id, texto").eq("ambito", "habilitacion").eq("fijada", true),
     // Para las pospuestas: si Operaciones planificó la obra, la vuelta se adelanta.
-    primerasJornadas(hoyISO()),
+    primerasJornadas(hoy),
+    // Cuándo volvió cada obra a la cola por última vez: lo nuestro empieza a contar de
+    // nuevo ahí (ver esperaDe). Sólo lo reciente — una vuelta de hace cuatro meses ya
+    // quedó atrás del triage o de otra vuelta.
+    db.from("hab_gestiones").select("odoo_ot_id, created_at")
+      .eq("tipo", "posposicion").gte("created_at", sumarDias(hoy, -120)),
   ]);
   if (requisitos.error) throw new Error(requisitos.error.message);
   if (notas.error) throw new Error(notas.error.message);
+  if (vueltas.error) throw new Error(vueltas.error.message);
 
   const otIds = otsOdoo.map((o) => o.ot.id);
   const { mapa: cabeceras, nuevas } = await cabecerasDe(db, otIds);
 
   const conteo = new Map<number, { total: number; aprobados: number; observados: number }>();
+  const reqsPorOt = new Map<number, DatosEspera["requisitos"]>();
   for (const r of requisitos.data ?? []) {
     const c = conteo.get(r.odoo_ot_id) ?? { total: 0, aprobados: 0, observados: 0 };
     c.total++;
     if (r.estado === "aprobado") c.aprobados++;
     if (r.estado === "observado") c.observados++;
     conteo.set(r.odoo_ot_id, c);
+    reqsPorOt.set(r.odoo_ot_id, [...(reqsPorOt.get(r.odoo_ot_id) ?? []), r]);
+  }
+
+  const vueltaEl = new Map<number, string>();
+  for (const g of vueltas.data ?? []) {
+    const d = dia(g.created_at)!;
+    if (d > (vueltaEl.get(g.odoo_ot_id) ?? "")) vueltaEl.set(g.odoo_ot_id, d);
   }
 
   const fijadas = new Map<number, string[]>();
@@ -173,6 +201,9 @@ export async function fetchBandeja(db: DB): Promise<Bandeja> {
   const filas: FilaBandeja[] = otsOdoo.map(({ ot, permiso, trabajo }) => {
     const base = leerOt(ot);
     const cab = cabeceras.get(ot.id);
+    const semaforo = semaforoHoy({
+      semaforo: base.semaforo, vencimiento: base.vencimiento, estadoOt: base.estadoOt, hoy,
+    });
     return {
       otId: base.otId,
       titulo: base.titulo,
@@ -184,9 +215,11 @@ export async function fetchBandeja(db: DB): Promise<Bandeja> {
       estadoOt: base.estadoOt,
       fechaProgramada: base.fechaProgramada,
       etapa: base.etapa,
-      alerta: base.alerta,
-      semaforo: base.semaforo,
-      dias: base.dias,
+      // Calculadas hoy y no leídas de Odoo: ver "Lo que depende de HOY" en derivacion.ts.
+      alerta: alertaDe({ semaforo, fechaProgramada: base.fechaProgramada, estadoOt: base.estadoOt, hoy }),
+      semaforo,
+      // Se completa después de resolverPospuestas, que puede devolver obras a la cola.
+      espera: null,
       vencimiento: base.vencimiento,
       triage: cab?.triage ?? null,
       habilitadaEl: cab?.habilitada_el ?? null,
@@ -250,7 +283,26 @@ export async function fetchBandeja(db: DB): Promise<Bandeja> {
   // grupo en esta misma lectura, no en la próxima.
   await resolverPospuestas(db, filas, cabeceras);
 
-  const grupos = agruparBandeja(filas.filter((f) => !f.pospuestaHasta));
+  for (const f of filas) {
+    const cab = cabeceras.get(f.otId);
+    // La que volvió en esta misma lectura todavía no tiene su "Volvió a la bandeja" en lo
+    // que se leyó del historial: vuelve hoy.
+    const volvioRecien = !!cab?.pospuesta_hasta && !f.pospuestaHasta;
+    f.espera = esperaDe(
+      {
+        triage: f.triage,
+        habilitada: !!f.habilitadaEl,
+        creadaEl: dia(cab?.created_at),
+        triadaEl: dia(cab?.triage_fecha),
+        vueltaEl: volvioRecien ? hoy : (vueltaEl.get(f.otId) ?? null),
+        fechaConsulta: cab?.hab_fecha_consulta ?? null,
+        requisitos: reqsPorOt.get(f.otId) ?? [],
+      },
+      hoy,
+    );
+  }
+
+  const grupos = agruparBandeja(filas.filter((f) => !f.pospuestaHasta), hoy);
   return {
     grupos,
     total: grupos.reduce((n, g) => n + g.filas.length, 0),
@@ -361,6 +413,16 @@ export async function fetchFicha(db: DB, otId: number): Promise<FichaHabilitacio
   const vuelta = cab?.pospuesta_hasta
     ? vueltaDePospuesta({ hasta: cab.pospuesta_hasta, fechaProgramada: base.fechaProgramada, primeraJornada })
     : null;
+  const semaforo = semaforoHoy({
+    semaforo: base.semaforo, vencimiento: base.vencimiento, estadoOt: base.estadoOt, hoy,
+  });
+  // La última vez que volvió a la cola. Si ya le tocó volver pero la bandeja todavía no
+  // la despertó, volvió en la fecha que le tocaba.
+  const ultimaVuelta = gestion.gestiones
+    .filter((g) => g.tipo === "posposicion")
+    .map((g) => dia(g.created_at)!)
+    .sort()
+    .pop() ?? null;
 
   return {
     otId: base.otId,
@@ -384,9 +446,11 @@ export async function fetchFicha(db: DB, otId: number): Promise<FichaHabilitacio
     estadoOt: base.estadoOt,
     fechaProgramada: base.fechaProgramada,
     etapa: base.etapa,
-    semaforo: base.semaforo,
-    alerta: base.alerta,
-    dias: base.dias,
+    semaforo,
+    alerta: alertaDe({ semaforo, fechaProgramada: base.fechaProgramada, estadoOt: base.estadoOt, hoy }),
+    creadaEl: dia(cab?.created_at),
+    triadaEl: dia(cab?.triage_fecha),
+    vueltaEl: vuelta && vuelta.fecha <= hoy ? vuelta.fecha : ultimaVuelta,
     fechaConsulta: base.fechaConsulta,
     fechaEnvio: base.fechaEnvio,
     fechaHabilitada: base.fechaHabilitada,
@@ -417,7 +481,7 @@ function fechaCorta(fecha: string): string {
 }
 
 /** La posposición no se puede hacer tal como se pidió. La ruta lo devuelve como 400. */
-export class PosponerInvalido extends Error {}
+export class PosponerInvalido extends OperacionInvalida {}
 
 /**
  * Posponer una obra hasta una fecha.
@@ -747,9 +811,11 @@ async function sembrarPaqueteDefault(db: DB, otIds: number[]): Promise<void> {
 }
 
 /** Reemplaza los requisitos de origen `paquete`, respetando los agregados a mano. */
-export async function aplicarPaquete(db: DB, otId: number, paqueteId: string): Promise<void> {
+export async function aplicarPaquete(
+  db: DB, otId: number, paqueteId: string, autorId: string | null,
+): Promise<void> {
   const { data: paquete, error } = await db
-    .from("hab_paquetes").select("requisitos").eq("id", paqueteId).single();
+    .from("hab_paquetes").select("nombre, requisitos").eq("id", paqueteId).single();
   if (error) throw new Error(error.message);
 
   const { data: actuales } = await db
@@ -760,11 +826,10 @@ export async function aplicarPaquete(db: DB, otId: number, paqueteId: string): P
 
   // Se borran sólo los del paquete anterior que nadie tocó: uno ya enviado o aprobado es
   // trabajo hecho, y cambiar de paquete no puede borrar trabajo hecho.
-  const aBorrar = (actuales ?? [])
-    .filter((r) => r.origen === "paquete" && r.estado === "pendiente" && !nombres.includes(r.nombre))
-    .map((r) => r.id);
-  if (aBorrar.length > 0) {
-    await db.from("hab_requisitos").delete().in("id", aBorrar);
+  const quitados = (actuales ?? [])
+    .filter((r) => r.origen === "paquete" && r.estado === "pendiente" && !nombres.includes(r.nombre));
+  if (quitados.length > 0) {
+    await db.from("hab_requisitos").delete().in("id", quitados.map((r) => r.id));
   }
 
   const aCrear = nombres
@@ -774,6 +839,18 @@ export async function aplicarPaquete(db: DB, otId: number, paqueteId: string): P
     const { error: e2 } = await db.from("hab_requisitos").insert(aCrear);
     if (e2) throw new Error(e2.message);
   }
+
+  const cambios = [
+    aCrear.length > 0 ? `se agregó ${aCrear.map((r) => r.nombre).join(", ")}` : null,
+    quitados.length > 0 ? `se quitó ${quitados.map((r) => r.nombre).join(", ")}` : null,
+  ].filter(Boolean);
+  await registrarGestion(
+    db,
+    otId,
+    "requisitos",
+    `Paquete ${paquete?.nombre ?? ""}: ${cambios.length > 0 ? cambios.join("; ") : "no cambió nada"}`,
+    autorId,
+  );
 }
 
 export async function listarPaquetes(db: DB): Promise<Paquete[]> {
@@ -863,16 +940,33 @@ export async function registrarConsulta(db: DB, otId: number, autorId: string | 
 /**
  * Declarar la obra habilitada, o revertir esa declaración.
  *
- * `motivo` sólo se guarda cuando se habilita con requisitos sin aprobar: es la excepción
- * documentada, el mismo patrón que el candado usa para el expediente faltante. Existe
- * porque a veces el cliente autoriza por teléfono y los papeles llegan después, y un
- * sistema que no admite eso se termina esquivando.
+ * Al habilitar, `motivo` sólo se guarda cuando faltan requisitos por aprobar: es la
+ * excepción documentada, el mismo patrón que el candado usa para el expediente faltante.
+ * Existe porque a veces el cliente autoriza por teléfono y los papeles llegan después, y
+ * un sistema que no admite eso se termina esquivando.
+ *
+ * Al revertir, `motivo` es obligatorio (decisión de JS, 09/10): Operaciones recibe un
+ * aviso crítico, y un "se revirtió" sin porqué no le dice qué revisar. Corrientes 4285 se
+ * revirtió el 07/10 y nadie sabía por qué.
+ *
+ * NO SE HABILITA UNA OBRA SIN TRIAR. Quedaba verde en Odoo pero seguía en "Recién
+ * llegadas" y no aparecía en "Habilitadas", que filtra por triage. Primero se decide si
+ * aplica.
  */
 export async function declararHabilitacion(
   db: DB,
   otId: number,
   opts: { habilitar: boolean; motivo: string | null; autorId: string | null },
 ): Promise<void> {
+  if (opts.habilitar) {
+    const { data: cab, error: e0 } = await db
+      .from("hab_ots").select("triage").eq("odoo_ot_id", otId).maybeSingle();
+    if (e0) throw new Error(e0.message);
+    if (!cab?.triage) {
+      throw new OperacionInvalida("Primero decidí si la habilitación aplica: la obra todavía no se trió");
+    }
+  }
+
   const { error } = await db
     .from("hab_ots")
     .update(
@@ -891,17 +985,46 @@ export async function declararHabilitacion(
   await registrarGestion(
     db,
     otId,
-    "aprobacion",
+    "habilitacion",
     opts.habilitar
       ? opts.motivo
         ? `Habilitada por excepción — ${opts.motivo}`
         : "Habilitada con todos los requisitos aprobados"
-      : "Se revirtió la habilitación",
+      : `${PREFIJO_REVERSION}${opts.motivo ? ` — ${opts.motivo}` : ""}`,
     opts.autorId,
   );
 }
 
-export async function agregarRequisito(db: DB, otId: number, nombre: string): Promise<void> {
+/** Con esto empieza el detalle de toda reversión: es lo que cuenta cuántas hubo. */
+export const PREFIJO_REVERSION = "Se revirtió la habilitación";
+
+/**
+ * Cuántas veces se revirtió la habilitación de una obra. Los avisos a Operaciones llevan
+ * este número en la clave (ver la ruta de habilitación): sin él, la segunda reversión y la
+ * re-habilitación posterior no avisaban, porque la clave ya existía.
+ *
+ * Cuenta también las viejas, que se guardaban como "aprobacion".
+ */
+export async function contarReversiones(db: DB, otId: number): Promise<number> {
+  const { count, error } = await db
+    .from("hab_gestiones")
+    .select("id", { count: "exact", head: true })
+    .eq("odoo_ot_id", otId)
+    .in("tipo", ["habilitacion", "aprobacion"])
+    .like("detalle", `${PREFIJO_REVERSION}%`);
+  if (error) throw new Error(error.message);
+  return count ?? 0;
+}
+
+// ─── Requisitos: agregar, quitar, cambiar de paquete ────────────────────────
+//
+// TODO QUEDA EN EL HISTORIAL desde el 09/10. Antes agregar un requisito, borrarlo o
+// cambiar de paquete no dejaba rastro, y el módulo promete lo contrario: "un error se
+// corrige agregando, no tapando". Va como tipo `requisitos`.
+
+export async function agregarRequisito(
+  db: DB, otId: number, nombre: string, autorId: string | null,
+): Promise<void> {
   const { data } = await db
     .from("hab_requisitos").select("orden").eq("odoo_ot_id", otId)
     .order("orden", { ascending: false }).limit(1).maybeSingle();
@@ -909,15 +1032,51 @@ export async function agregarRequisito(db: DB, otId: number, nombre: string): Pr
     odoo_ot_id: otId, nombre, origen: "manual", orden: (data?.orden ?? 0) + 10,
   });
   if (error) throw new Error(error.message);
+  await registrarGestion(db, otId, "requisitos", `Se agregó: ${nombre}`, autorId);
 }
 
-export async function borrarRequisito(db: DB, requisitoId: string): Promise<number> {
+/**
+ * Sacar un requisito que el cliente no pide.
+ *
+ * SÓLO SI ESTÁ PENDIENTE. Uno enviado o aprobado es trabajo hecho ante el cliente —la misma
+ * regla que aplicarPaquete—, y antes se borraba con un clic, aprobados incluidos. Si de
+ * verdad hay que sacarlo, primero se vuelve a pendiente, y eso también queda registrado.
+ *
+ * Se llevan sus archivos: antes quedaban sueltos en Storage, colgando de un requisito que
+ * ya no existía y sin forma de verlos desde la app.
+ */
+export async function borrarRequisito(
+  db: DB, requisitoId: string, autorId: string | null,
+): Promise<number> {
   const { data, error: e0 } = await db
-    .from("hab_requisitos").select("odoo_ot_id").eq("id", requisitoId).single();
+    .from("hab_requisitos").select("odoo_ot_id, nombre, estado").eq("id", requisitoId).single();
   if (e0) throw new Error(e0.message);
+  if (data.estado !== "pendiente") {
+    throw new OperacionInvalida(
+      "Sólo se puede quitar un requisito pendiente. Si ya se mandó o se aprobó, primero volvelo a pendiente",
+    );
+  }
+  const otId = data.odoo_ot_id as number;
+
+  const prefijo = `habilitaciones/${otId}/${requisitoId}`;
+  const { data: archivos } = await db.storage.from(BUCKET).list(prefijo);
+  const nombres = (archivos ?? []).filter((f) => f.id !== null).map((f) => f.name);
+  if (nombres.length > 0) {
+    const { error: e1 } = await db.storage.from(BUCKET).remove(nombres.map((n) => `${prefijo}/${n}`));
+    if (e1) throw new Error(e1.message);
+  }
+
   const { error } = await db.from("hab_requisitos").delete().eq("id", requisitoId);
   if (error) throw new Error(error.message);
-  return data.odoo_ot_id as number;
+
+  await registrarGestion(
+    db,
+    otId,
+    "requisitos",
+    `Se quitó: ${data.nombre}${nombres.length > 0 ? ` (con ${nombres.length === 1 ? "su archivo" : `sus ${nombres.length} archivos`}: ${nombres.join(", ")})` : ""}`,
+    autorId,
+  );
+  return otId;
 }
 
 // ─── Notas ──────────────────────────────────────────────────────────────────

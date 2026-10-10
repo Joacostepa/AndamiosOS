@@ -24,7 +24,7 @@ export function ChipPantalla({ trabajo }: { trabajo: TrabajoOt | null | undefine
   return (
     <span
       className="inline-flex shrink-0 items-center rounded px-1.5 py-0.5 text-[11px] font-semibold"
-      style={{ backgroundColor: "#EEEDFE", color: "#3C3489" }}
+      style={{ backgroundColor: "var(--tb-violeta-bg)", color: "var(--tb-violeta-text)" }}
       title="Pantalla de protección: obra de baja complejidad, habilitación rápida"
     >
       Pantalla

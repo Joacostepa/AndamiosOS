@@ -4,13 +4,13 @@ import {
   agregarRequisito, aplicarPaquete, borrarRequisito,
   fetchGestionDe, marcarTodosLosRequisitos, moverRequisito,
 } from "@/lib/habilitaciones/servicio";
-import { db as conectar, errorResponse, invalido, parseOtId, sincronizarLuego } from "../../_comun";
+import { db as conectar, errorResponse, invalido, parseOtId, sesion, sincronizarLuego } from "../../_comun";
 
 // Requisitos de una OT.
 //
 //   POST   → agregar uno a mano, o aplicar un paquete entero
 //   PATCH  → cambiar el estado de uno (con motivo si es `observado`)
-//   DELETE → sacar el que el cliente no pide
+//   DELETE → sacar el que el cliente no pide (sólo si está pendiente; ver borrarRequisito)
 //
 // Cada cambio de estado resincroniza la OT: los cuatro inputs de Odoo se derivan de
 // estos registros. Va en after(), porque marcar un requisito tiene que ser instantáneo.
@@ -36,9 +36,11 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ otId: stri
   if (!parsed.success) return invalido(parsed.error.issues.map((i) => i.message).join(" · "));
 
   try {
-    const db = await conectar();
-    if ("paqueteId" in parsed.data) await aplicarPaquete(db, otId, parsed.data.paqueteId);
-    else await agregarRequisito(db, otId, parsed.data.nombre);
+    // Con sesión, no con `conectar()`: agregar y cambiar de paquete van al historial con
+    // autor, y ese registro lo escribe TypeScript, no una función de Postgres.
+    const { db, userId } = await sesion();
+    if ("paqueteId" in parsed.data) await aplicarPaquete(db, otId, parsed.data.paqueteId, userId);
+    else await agregarRequisito(db, otId, parsed.data.nombre, userId);
     sincronizarLuego(db, otId);
     return NextResponse.json({ ok: true, gestion: await fetchGestionDe(db, otId) });
   } catch (e) {
@@ -109,8 +111,8 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ otId: st
   if (!parsed.success) return invalido("Requisito inválido");
 
   try {
-    const db = await conectar();
-    await borrarRequisito(db, parsed.data.requisitoId);
+    const { db, userId } = await sesion();
+    await borrarRequisito(db, parsed.data.requisitoId, userId);
     sincronizarLuego(db, otId);
     return NextResponse.json({ ok: true, gestion: await fetchGestionDe(db, otId) });
   } catch (e) {

@@ -14,7 +14,9 @@ import {
   DialogoPosponer, obraDeFila, type ObraAPosponer,
 } from "@/components/habilitaciones/dialogo-posponer";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
+import { AVISO, PELIGRO_SUAVE } from "@/lib/tablero/colores";
 import { direccionDeObra } from "@/lib/tablero/titulo";
 import {
   useBandejaHabilitaciones, usePosponer, useReconciliar, useRevertirHabilitacion, useTriage,
@@ -177,9 +179,9 @@ export default function HabilitacionesPage() {
       {desincronizadas > 0 && (
         <div
           className="flex items-center gap-3 rounded-md border px-3 py-2 text-[13px]"
-          style={{ backgroundColor: "#FEF6E7", borderColor: "#F5C86B" }}
+          style={{ backgroundColor: AVISO.fondo, borderColor: AVISO.borde }}
         >
-          <TriangleAlert className="h-4 w-4 shrink-0" style={{ color: "#B54708" }} />
+          <TriangleAlert className="h-4 w-4 shrink-0" style={{ color: AVISO.icono }} />
           <span className="flex-1">
             {desincronizadas}{" "}
             {desincronizadas === 1
@@ -371,9 +373,9 @@ function Pospuestas({
  * esta lista la única forma de corregir un error era acordarse de qué obra fue y entrar
  * por la URL. La vuelta atrás tiene que estar a mano sin competir con la cola.
  *
- * REVERTIR PIDE CONFIRMACIÓN acá y no en la ficha: en la ficha uno está parado sobre esa
- * obra; en una lista el botón de al lado es otra, y revertir le manda a Operaciones un
- * aviso crítico que no se despacha solo.
+ * REVERTIR PIDE CONFIRMACIÓN Y MOTIVO, acá y en la ficha: le manda a Operaciones un aviso
+ * crítico que no se despacha solo, y el motivo viaja en ese aviso —un "se revirtió" sin
+ * porqué no le dice qué revisar—. Decisión de JS (09/10).
  */
 function Habilitadas({
   filas,
@@ -385,15 +387,17 @@ function Habilitadas({
   const [abiertoManual, setAbierto] = useState(false);
   const abierto = abiertoManual || abiertoForzado;
   const [aRevertir, setARevertir] = useState<FilaBandeja | null>(null);
+  const [motivo, setMotivo] = useState("");
   const revertir = useRevertirHabilitacion();
   if (filas.length === 0) return null;
 
   function confirmar() {
-    if (!aRevertir) return;
-    revertir.mutate(aRevertir.otId, {
+    if (!aRevertir || !motivo.trim()) return;
+    revertir.mutate({ otId: aRevertir.otId, motivo: motivo.trim() }, {
       onSuccess: () => {
-        toast.success("Se revirtió la habilitación · la obra vuelve a la cola");
+        toast.success("Se revirtió la habilitación · la obra vuelve a la cola y Operaciones recibió el aviso");
         setARevertir(null);
+        setMotivo("");
       },
       onError: (e) => toast.error(e instanceof Error ? e.message : "No se pudo revertir"),
     });
@@ -437,7 +441,7 @@ function Habilitadas({
                     f.habilitadaPor ? `por ${f.habilitadaPor}` : null,
                   ].filter(Boolean).join(" ")}
                   {f.habilitadaMotivo && (
-                    <span style={{ color: "#B54708" }}> · por excepción — {f.habilitadaMotivo}</span>
+                    <span style={{ color: AVISO.texto }}> · por excepción — {f.habilitadaMotivo}</span>
                   )}
                 </span>
               </Link>
@@ -466,15 +470,25 @@ function Habilitadas({
             <DialogTitle>¿Revertir la habilitación?</DialogTitle>
             <DialogDescription>
               {aRevertir && direccionDeObra(aRevertir)} vuelve a la cola sin habilitar y
-              Operaciones recibe un aviso. Si ya tiene jornadas planificadas, siguen en el
-              tablero. Los requisitos y el historial no se tocan.
+              Operaciones recibe un aviso urgente con este motivo. Si ya tiene jornadas
+              planificadas, siguen en el tablero. Los requisitos y el historial no se tocan.
             </DialogDescription>
           </DialogHeader>
+          <label className="space-y-1.5 text-[12px] font-medium">
+            Motivo (lo lee Operaciones)
+            <Textarea
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+              placeholder="Ej: lleva permiso y todavía no salió"
+              rows={2}
+              autoFocus
+            />
+          </label>
           <DialogFooter>
             <Button variant="outline" onClick={() => setARevertir(null)}>
               Cancelar
             </Button>
-            <Button onClick={confirmar} disabled={revertir.isPending}>
+            <Button variant="destructive" onClick={confirmar} disabled={revertir.isPending || !motivo.trim()}>
               {revertir.isPending && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
               Revertir
             </Button>
@@ -592,7 +606,7 @@ function Grupo({
     >
       <header
         className="flex items-center gap-3 border-b px-3 py-2"
-        style={grupo.peligro ? { backgroundColor: "#FDECEA" } : undefined}
+        style={grupo.peligro ? { backgroundColor: PELIGRO_SUAVE } : undefined}
       >
         <h2 className="text-[13px] font-semibold">{grupo.titulo}</h2>
         <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium">
@@ -634,7 +648,6 @@ function Grupo({
           <Fila
             key={fila.otId}
             fila={fila}
-            grupo={grupo.clave}
             seleccionable={esTriage}
             seleccionada={seleccion.has(fila.otId)}
             onSeleccionar={onSeleccionar}

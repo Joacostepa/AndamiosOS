@@ -34,9 +34,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 const DIAS = 14;
 
 const HAB = {
-  habilitada: { texto: "Habilitada", color: "#27500A", fondo: "#EAF3DE" },
-  pospuesta: { texto: "Pospuesta", color: "#854F0B", fondo: "#FEF6E7" },
-  sin_habilitar: { texto: "Sin habilitar", color: "#912018", fondo: "#FDECEA" },
+  habilitada: { texto: "Habilitada", color: "var(--tb-verde-text)", fondo: "var(--tb-verde-bg)" },
+  pospuesta: { texto: "Pospuesta", color: "var(--tb-aviso-text)", fondo: "var(--tb-aviso-bg)" },
+  sin_habilitar: { texto: "Sin habilitar", color: "var(--tb-peligro-text)", fondo: "var(--tb-peligro-suave)" },
 } as const;
 
 /** La hora actual, refrescada cada `cadaMs`, para que "hace 3 min" no se quede quieto. */
@@ -251,7 +251,7 @@ function Tarjeta({ t }: { t: TarjetaAgenda }) {
         <span>{t.estado}</span>
         {t.cerrada && (
           <span className="flex items-center gap-0.5">
-            <Check className="h-3 w-3" style={{ color: "#639922" }} />
+            <Check className="h-3 w-3" style={{ color: "var(--tb-ok)" }} />
             con parte
           </span>
         )}

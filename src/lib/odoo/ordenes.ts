@@ -24,6 +24,8 @@ import type {
 // lib/tablero (los demás son de tipos, que se borran al compilar), y así el módulo se
 // puede ejecutar en un script de prueba sin resolver el alias.
 import { parseDesvio } from "../tablero/tipos-orden";
+import { alertaDe, semaforoHoy } from "../habilitaciones/derivacion";
+import type { HabAlerta, HabSemaforo } from "../habilitaciones/tipos";
 
 type M2O = [number, string] | false;
 
@@ -48,10 +50,14 @@ const ACTIVAS = [["x_estado", "in", ["pendiente", "en_proceso"]]];
  * No hay chip de urgencia: x_urgencia vale `baja` en las 1003 OTs. El campo existe y
  * nadie lo usa, así que un filtro por urgencia devolvería siempre cero o todo.
  */
+//
+// `critica` y `proxima` traen las ACTIVAS y se filtran en memoria con la alerta calculada
+// hoy (ver habilitacionHoy): filtrar por x_hab_alerta en Odoo leía un valor guardado que no se
+// recalcula cuando pasa el día.
 export const DOMINIOS: Record<FiltroOrdenes, unknown[]> = {
   abiertas: ACTIVAS,
-  critica: [...ACTIVAS, ["x_hab_alerta", "=", "critica"]],
-  proxima: [...ACTIVAS, ["x_hab_alerta", "=", "proxima"]],
+  critica: ACTIVAS,
+  proxima: ACTIVAS,
   sin_fecha: [...ACTIVAS, ["x_grupo_prog", "=", "b_sin"]],
   en_curso: [...ACTIVAS, ["x_dias_obra", ">", 0]],
   cerradas: [["x_estado", "=", "completada"]],
@@ -59,7 +65,7 @@ export const DOMINIOS: Record<FiltroOrdenes, unknown[]> = {
 
 const CAMPOS = [
   "x_name", "x_estado", "x_tipo", "x_order_id", "x_fecha_programada", "x_fecha_firmeza",
-  "x_fecha_comprometida", "x_hab_semaforo", "x_hab_alerta", "x_grupo_prog",
+  "x_fecha_comprometida", "x_hab_semaforo", "x_hab_vencimiento", "x_grupo_prog",
   "x_cuadrilla_prevista_id", "x_jornadas_num", "x_personal_por_jornada", "x_dias_obra",
   "x_cant_docs", "x_es_adicional", "x_aprobada_comercial", "x_urgencia", "x_fecha_desde", "x_fecha_antes_de",
   "x_direccion_obra", "x_obra_referencia",
@@ -77,7 +83,7 @@ type FilaOt = {
   x_fecha_firmeza: string | false;
   x_fecha_comprometida: string | false;
   x_hab_semaforo: string | false;
-  x_hab_alerta: string | false;
+  x_hab_vencimiento: string | false;
   x_grupo_prog: string | false;
   x_cuadrilla_prevista_id: M2O;
   x_jornadas_num: number | false;
@@ -105,7 +111,28 @@ async function otActionId(): Promise<number | null> {
   return cachedActionId;
 }
 
+/**
+ * Semáforo y alerta de habilitación CALCULADOS HOY, con la fórmula de Odoo. Los de Odoo
+ * se guardan y no se recalculan cuando pasa el día: ver "Lo que depende de HOY" en
+ * lib/habilitaciones/derivacion.ts. Así la lista, el tablero y Habilitaciones coinciden.
+ */
+function habilitacionHoy(r: {
+  x_hab_semaforo: string | false;
+  x_hab_vencimiento: string | false;
+  x_fecha_programada: string | false;
+  x_estado: string | false;
+}): { semaforo: HabSemaforo; alerta: HabAlerta } {
+  const estadoOt = str(r.x_estado) ?? "pendiente";
+  const semaforo = semaforoHoy({
+    semaforo: (str(r.x_hab_semaforo) ?? "rojo") as HabSemaforo,
+    vencimiento: str(r.x_hab_vencimiento),
+    estadoOt,
+  });
+  return { semaforo, alerta: alertaDe({ semaforo, fechaProgramada: str(r.x_fecha_programada), estadoOt }) };
+}
+
 function mapOt(r: FilaOt, base: string, actionId: number | null): OrdenListado {
+  const hab = habilitacionHoy(r);
   const root = base.replace(/\/+$/, "");
   return {
     id: r.id,
@@ -120,8 +147,8 @@ function mapOt(r: FilaOt, base: string, actionId: number | null): OrdenListado {
     fechaDesde: str(r.x_fecha_desde),
     fechaAntesDe: str(r.x_fecha_antes_de),
     fechaFirmeza: str(r.x_fecha_firmeza),
-    habSemaforo: str(r.x_hab_semaforo) ?? "rojo",
-    habAlerta: str(r.x_hab_alerta),
+    habSemaforo: hab.semaforo,
+    habAlerta: hab.alerta,
     // El vacío se lee como `baja`, igual que en el tablero: Odoo deja el selection sin
     // valor en las OTs viejas y "sin marcar" y "baja" significan lo mismo.
     urgencia: (str(r.x_urgencia) as Urgencia | null) ?? "baja",
@@ -139,7 +166,10 @@ function mapOt(r: FilaOt, base: string, actionId: number | null): OrdenListado {
 
 /** Lo mínimo para contar los chips de las activas. Tres campos, sin nada más. */
 type FilaConteo = {
-  x_hab_alerta: string | false;
+  x_hab_semaforo: string | false;
+  x_hab_vencimiento: string | false;
+  x_fecha_programada: string | false;
+  x_estado: string | false;
   x_grupo_prog: string | false;
   x_dias_obra: number | false;
 };
@@ -179,7 +209,7 @@ export async function fetchOrdenes(filtro: FiltroOrdenes): Promise<ListadoOrdene
     searchRead<FilaConteo>(
       "x_aba_orden_trabajo",
       ACTIVAS,
-      ["x_hab_alerta", "x_grupo_prog", "x_dias_obra"],
+      ["x_hab_semaforo", "x_hab_vencimiento", "x_fecha_programada", "x_estado", "x_grupo_prog", "x_dias_obra"],
       { limit: 2000 },
     ),
     searchCount("x_aba_orden_trabajo", DOMINIOS.cerradas),
@@ -192,21 +222,28 @@ export async function fetchOrdenes(filtro: FiltroOrdenes): Promise<ListadoOrdene
   // acá: por eso están pegados y no repartidos por el archivo.
   const conteos: ConteosOrdenes = {
     abiertas: activas.length,
-    critica: activas.filter((o) => o.x_hab_alerta === "critica").length,
-    proxima: activas.filter((o) => o.x_hab_alerta === "proxima").length,
+    critica: activas.filter((o) => habilitacionHoy(o).alerta === "critica").length,
+    proxima: activas.filter((o) => habilitacionHoy(o).alerta === "proxima").length,
     sin_fecha: activas.filter((o) => o.x_grupo_prog === "b_sin").length,
     en_curso: activas.filter((o) => num(o.x_dias_obra) > 0).length,
     cerradas,
   };
 
-  return { ordenes: filas.map((f) => mapOt(f, base, actionId)), conteos };
+  const ordenes = filas.map((f) => mapOt(f, base, actionId));
+  return {
+    ordenes:
+      filtro === "critica" || filtro === "proxima"
+        ? ordenes.filter((o) => o.habAlerta === filtro)
+        : ordenes,
+    conteos,
+  };
 }
 
 const CAMPOS_FICHA = [
   ...CAMPOS,
   "x_desvio", "x_horas_hombre", "x_jornadas_hombre_estimadas",
   "x_costo_mano_obra", "x_costo_fletes", "x_costo_total",
-  "x_hab_etapa", "x_hab_vencimiento", "x_motivo_urgencia",
+  "x_hab_etapa", "x_motivo_urgencia",
   "x_contacto_obra", "x_tel_obra", "x_observaciones", "x_detalle_tecnico",
 ];
 

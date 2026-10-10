@@ -13,6 +13,8 @@
 
 import { searchRead, write, executeKw, read, authenticate } from "./client";
 import { CAMPOS_TRABAJO, leerTrabajo, type FilaTrabajo } from "./trabajo";
+import { alertaDe, semaforoHoy } from "@/lib/habilitaciones/derivacion";
+import type { HabSemaforo } from "@/lib/habilitaciones/tipos";
 import type {
   AsignacionTablero,
   CambioAsignacion,
@@ -192,6 +194,15 @@ function mapOt(row: OdooOtRow, base: string, actionId: number | null): OtTablero
   // vacío —el campo es nuevo y la mayoría de las OTs no lo tiene— cae a x_jornadas_num.
   const dur = Number(row.x_duracion_est);
   const jornadas = Number.isFinite(dur) && dur > 0 ? dur : num(row.x_jornadas_num) || 1;
+  // Semáforo y alerta CALCULADOS HOY, con la misma fórmula que Odoo: los de Odoo se
+  // guardan y no se recalculan cuando pasa el día (ver "Lo que depende de HOY" en
+  // lib/habilitaciones/derivacion.ts). Así el tablero dice lo mismo que la bandeja.
+  const estadoOt = str(row.x_estado) ?? "pendiente";
+  const habSemaforo = semaforoHoy({
+    semaforo: (str(row.x_hab_semaforo) ?? "rojo") as HabSemaforo,
+    vencimiento: str(row.x_hab_vencimiento),
+    estadoOt,
+  });
   return {
     id: row.id,
     titulo: str(row.x_name) ?? `OT #${row.id}`,
@@ -199,7 +210,7 @@ function mapOt(row: OdooOtRow, base: string, actionId: number | null): OtTablero
     referenciaObra: str(row.x_obra_referencia),
     detalleTecnico: str(row.x_detalle_tecnico),
     tipo: str(row.x_tipo) ?? "otro",
-    estado: str(row.x_estado) ?? "pendiente",
+    estado: estadoOt,
     urgencia: str(row.x_urgencia) ?? "baja",
     motivoUrgencia: str(row.x_motivo_urgencia),
     jornadas,
@@ -208,8 +219,8 @@ function mapOt(row: OdooOtRow, base: string, actionId: number | null): OtTablero
     sinEstimar: !str(row.x_duracion_est),
     personalPorJornada: num(row.x_personal_por_jornada),
     cuadrillaPrevistaId: m2oId(row.x_cuadrilla_prevista_id),
-    habSemaforo: str(row.x_hab_semaforo) ?? "rojo",
-    habAlerta: str(row.x_hab_alerta),
+    habSemaforo,
+    habAlerta: alertaDe({ semaforo: habSemaforo, fechaProgramada: str(row.x_fecha_programada), estadoOt }),
     habVencimiento: str(row.x_hab_vencimiento),
     tecnico: str(row.x_tecnico),
     contactoObra: str(row.x_contacto_obra),
@@ -393,7 +404,6 @@ export async function fetchDetalleOt(otId: number): Promise<DetalleOt> {
     x_order_id: M2O;
     x_detalle_tecnico: string | false;
     x_hab_etapa: string | false;
-    x_hab_dias: number | false;
     x_fecha_firmeza: string | false;
     x_periodo: string | false;
     x_desvio: string | false;
@@ -402,7 +412,7 @@ export async function fetchDetalleOt(otId: number): Promise<DetalleOt> {
     x_obra_referencia: string | false;
     x_ejecutado_real: string | false;
   }>("x_aba_orden_trabajo", [otId], [
-    "x_order_id", "x_detalle_tecnico", "x_hab_etapa", "x_hab_dias", "x_fecha_firmeza",
+    "x_order_id", "x_detalle_tecnico", "x_hab_etapa", "x_fecha_firmeza",
     "x_periodo", "x_desvio", "x_duracion_sugerida", "x_direccion_obra", "x_obra_referencia",
     "x_ejecutado_real",
   ]);
@@ -475,7 +485,6 @@ export async function fetchDetalleOt(otId: number): Promise<DetalleOt> {
     tecnicoNombre: m2oName(orden?.x_studio_tcnico),
     vendedor: m2oName(orden?.user_id),
     habEtapa: str(ot.x_hab_etapa),
-    habDias: num(ot.x_hab_dias),
     fechaFirmeza: str(ot.x_fecha_firmeza),
     periodo: str(ot.x_periodo),
     desvio: str(ot.x_desvio),

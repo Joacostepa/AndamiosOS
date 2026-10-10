@@ -278,10 +278,14 @@ export const AVISO = {
 
 // Semáforo de habilitación (x_hab_semaforo). Se ve como un punto en la esquina de la
 // tarjeta: advierte, no bloquea — las obras sin habilitar entran igual al tablero.
+//
+// Las etiquetas dicen lo que calcula Odoo (x_hab_semaforo): amarillo es `en_curso` y rojo
+// es "sin empezar". Hasta el 09/10 decían "próxima a vencer" y "crítica", que son otra
+// cosa — la urgencia por fecha es la alerta (ver alertaDe en lib/habilitaciones).
 export const SEMAFORO: Record<string, { color: string; label: string }> = {
   verde: { color: OK, label: "Habilitación al día" },
-  amarillo: { color: ALERTA, label: "Habilitación próxima a vencer" },
-  rojo: { color: PELIGRO, label: "Habilitación crítica" },
+  amarillo: { color: ALERTA, label: "Habilitación en curso" },
+  rojo: { color: PELIGRO, label: "Sin habilitar" },
   // Un paso más profundo que `rojo`, no otro color. En oscuro además se separa en hue:
   // dos rojos oscuros que sólo se diferenciaban por luminancia dejaban de distinguirse.
   vencida: { color: "var(--tb-vencida)", label: "Habilitación vencida" },

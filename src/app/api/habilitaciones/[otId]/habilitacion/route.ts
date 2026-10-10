@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { declararHabilitacion, fetchGestionDe } from "@/lib/habilitaciones/servicio";
+import {
+  contarReversiones, declararHabilitacion, fetchGestionDe,
+} from "@/lib/habilitaciones/servicio";
 import { fetchOt, leerOt } from "@/lib/odoo/habilitaciones";
 import { claveDe, crearAlertas } from "@/lib/alertas/servicio";
 import { errorResponse, invalido, parseOtId, sesion, sincronizarLuego } from "../../_comun";
@@ -12,9 +14,10 @@ import { errorResponse, invalido, parseOtId, sesion, sincronizarLuego } from "..
 // aprobar el último papel: el semáforo se ponía verde y la obra se destrababa en el
 // tablero sin que nadie se hiciera cargo, y sin que quedara registrado quién fue.
 //
-// El motivo es obligatorio SÓLO cuando se habilita con requisitos sin aprobar. Esa
-// excepción existe a propósito: a veces el cliente autoriza por teléfono y los papeles
-// llegan después, y un sistema que no admite eso se termina esquivando por afuera.
+// El motivo es obligatorio cuando se habilita con requisitos sin aprobar —esa excepción
+// existe a propósito: a veces el cliente autoriza por teléfono y los papeles llegan
+// después, y un sistema que no admite eso se termina esquivando por afuera— y SIEMPRE al
+// revertir, porque viaja en el aviso a Operaciones (decisión de JS, 09/10).
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +30,9 @@ const schema = z
   })
   .refine((v) => !v.habilitar || v.faltan === 0 || !!v.motivo?.trim(), {
     message: "Habilitar sin todos los requisitos aprobados necesita un motivo escrito",
+  })
+  .refine((v) => v.habilitar || !!v.motivo?.trim(), {
+    message: "Revertir la habilitación necesita un motivo: lo lee Operaciones",
   });
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ otId: string }> }) {
@@ -38,14 +44,13 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ otId: stri
 
   try {
     const { db, userId } = await sesion();
-    await declararHabilitacion(db, otId, {
-      habilitar: parsed.data.habilitar,
-      // Sin faltantes no hay excepción que documentar, aunque el cliente mande texto.
-      motivo: parsed.data.faltan > 0 ? (parsed.data.motivo?.trim() ?? null) : null,
-      autorId: userId,
-    });
+    const { habilitar, faltan } = parsed.data;
+    // Al habilitar sin faltantes no hay excepción que documentar, aunque el cliente mande
+    // texto. Al revertir el motivo va siempre.
+    const motivo = !habilitar || faltan > 0 ? (parsed.data.motivo?.trim() ?? null) : null;
+    await declararHabilitacion(db, otId, { habilitar, motivo, autorId: userId });
     sincronizarLuego(db, otId);
-    avisar(db, otId, parsed.data.habilitar, parsed.data.faltan > 0);
+    avisar(db, otId, { habilitada: habilitar, porExcepcion: habilitar && faltan > 0, motivo });
     return NextResponse.json({ ok: true, gestion: await fetchGestionDe(db, otId) });
   } catch (e) {
     return errorResponse(e);
@@ -74,22 +79,32 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ otId: stri
  * Corre DESPUÉS de responder, igual que el push a Odoo: necesita leer el título de la OT
  * —otro RPC— y nadie va a esperar por el texto de una notificación.
  *
- * Un aviso por tipo y por OT, para siempre (ver claveDe): la primera vuelta atrás de una
- * obra avisa, la segunda no. Es la regla de toda la campanita —cuenta novedades, no
- * transiciones— y el ida y vuelta completo ya queda en hab_gestiones.
+ * AVISA CADA VEZ, no una por obra para siempre. La clave lleva cuántas reversiones hubo
+ * (contarReversiones): antes era una por tipo y por OT, así que la segunda reversión no
+ * avisaba y —peor— volver a habilitar después de revertir tampoco. Operaciones se quedaba
+ * con "se revirtió, revisá las jornadas" como última noticia de una obra que ya se podía
+ * armar. Pasó con Corrientes 4285. Decisión de JS (09/10): que avise.
+ *
+ * La primera habilitación y la primera reversión conservan la clave de siempre, así las
+ * obras que ya avisaron antes de este cambio no vuelven a avisar.
  */
-function avisar(db: SupabaseClient, otId: number, habilitada: boolean, porExcepcion: boolean) {
+function avisar(
+  db: SupabaseClient,
+  otId: number,
+  v: { habilitada: boolean; porExcepcion: boolean; motivo: string | null },
+) {
   after(async () => {
     try {
-      const ot = await fetchOt(otId);
+      const [ot, reversiones] = await Promise.all([fetchOt(otId), contarReversiones(db, otId)]);
       const titulo = ot ? leerOt(ot.ot).titulo : `OT ${otId}`;
       await crearAlertas(db, [
-        habilitada
+        v.habilitada
           ? {
               tipo: "ot_habilitada",
-              clave: claveDe("ot_habilitada", otId),
-              titulo: `Habilitada — ${titulo}`,
-              descripcion: porExcepcion
+              // Habilitar después de N reversiones es la novedad N+1.
+              clave: claveDe("ot_habilitada", otId, reversiones > 0 ? `tras-${reversiones}` : undefined),
+              titulo: `${reversiones > 0 ? "Habilitada de nuevo" : "Habilitada"} — ${titulo}`,
+              descripcion: v.porExcepcion
                 ? "Habilitada por excepción, con requisitos sin aprobar. Ya se puede programar."
                 : "Ya se puede programar.",
               prioridad: "alta",
@@ -97,10 +112,11 @@ function avisar(db: SupabaseClient, otId: number, habilitada: boolean, porExcepc
             }
           : {
               tipo: "ot_deshabilitada",
-              clave: claveDe("ot_deshabilitada", otId),
+              // La reversión ya está en el historial, así que la primera cuenta 1.
+              clave: claveDe("ot_deshabilitada", otId, reversiones > 1 ? `${reversiones}` : undefined),
               titulo: `Se revirtió la habilitación — ${titulo}`,
               descripcion:
-                "La obra volvió a estar sin habilitar. Si ya tenía jornadas planificadas, siguen en el tablero: revisalas.",
+                `${v.motivo ? `Motivo: ${v.motivo}. ` : ""}La obra volvió a estar sin habilitar. Si ya tenía jornadas planificadas, siguen en el tablero: revisalas.`,
               prioridad: "critica",
               enlace: `/ordenes-trabajo/${otId}`,
             },

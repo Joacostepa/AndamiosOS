@@ -37,10 +37,6 @@ function m2oName(v: M2O | undefined): string | null {
 function str(v: string | false | null | undefined): string | null {
   return typeof v === "string" && v.trim() !== "" ? v : null;
 }
-function num(v: number | false | null | undefined): number {
-  return typeof v === "number" ? v : 0;
-}
-
 const OT = "x_aba_orden_trabajo";
 const VENTA = "sale.order";
 
@@ -53,8 +49,10 @@ const CAMPOS_OT = [
   // La prioridad de la OT. La decide una persona (desde Odoo o la ficha de OT de la app);
   // acá sólo se lee.
   "x_urgencia", "x_motivo_urgencia",
-  // Computados en Odoo — se LEEN, nunca se escriben.
-  "x_hab_etapa", "x_hab_semaforo", "x_hab_alerta", "x_hab_dias",
+  // Computados en Odoo — se LEEN, nunca se escriben. x_hab_alerta y el `vencida` del
+  // semáforo se recalculan en la app con el día de hoy (ver derivacion.ts), y x_hab_dias
+  // ya no se lee: contaba desde la consulta, que casi nadie registra.
+  "x_hab_etapa", "x_hab_semaforo", "x_hab_alerta",
   // Escribibles — son los inputs de los de arriba.
   "x_hab_estado", "x_hab_fecha_consulta", "x_hab_fecha_envio", "x_hab_fecha",
   "x_hab_vencimiento", "x_hab_obs", "x_hab_responsable_id",
@@ -83,7 +81,6 @@ export type FilaOtHab = {
   x_hab_etapa: string | false;
   x_hab_semaforo: string | false;
   x_hab_alerta: string | false;
-  x_hab_dias: number | false;
   x_hab_estado: string | false;
   x_hab_fecha_consulta: string | false;
   x_hab_fecha_envio: string | false;
@@ -270,27 +267,11 @@ export async function asignarResponsable(otId: number, uid: number): Promise<voi
   await write(OT, [otId], { x_hab_responsable_id: uid });
 }
 
-export type CambioPermiso = Partial<{
-  modalidad: ModalidadPermiso | null;
-  modalidadDefinida: string | null;
-  tramite: TramiteEstado | null;
-  expedienteNro: string | null;
-  expedienteFecha: string | null;
-  permisoFecha: string | null;
-}>;
-
-/** Escribe el permiso en la VENTA, así el armado y el desarme lo comparten. */
-export async function escribirPermiso(ventaId: number, cambio: CambioPermiso): Promise<void> {
-  const valores: Record<string, unknown> = {};
-  if ("modalidad" in cambio) valores.x_permiso_modalidad = cambio.modalidad ?? false;
-  if ("modalidadDefinida" in cambio) valores.x_permiso_definida = cambio.modalidadDefinida ?? false;
-  if ("tramite" in cambio) valores.x_tramite_estado = cambio.tramite ?? false;
-  if ("expedienteNro" in cambio) valores.x_expediente_nro = cambio.expedienteNro ?? false;
-  if ("expedienteFecha" in cambio) valores.x_expediente_fecha = cambio.expedienteFecha ?? false;
-  if ("permisoFecha" in cambio) valores.x_permiso_fecha = cambio.permisoFecha ?? false;
-  if (Object.keys(valores).length === 0) return;
-  await write(VENTA, [ventaId], valores);
-}
+// El permiso NO SE ESCRIBE desde la app (decisión de JS, 09/10): con qué se arma lo carga
+// Comercial al cotizar, el trámite y el expediente los escribe la gestoría de permisos, y si
+// algo está mal se corrige en la venta, en Odoo. Antes la ficha de Habilitaciones lo
+// editaba, y pasar de "esperar el permiso" a "sin permiso" le sacaba el freno al tablero
+// sin que quedara quién.
 
 /** El permiso de una OT junto con QUÉ HACE esa OT, que es lo que decide si el permiso aplica. */
 export type PermisoDeOt = { permiso: Permiso; tipoOt: string | null };
@@ -396,7 +377,6 @@ export function leerOt(ot: FilaOtHab) {
     etapa: str(ot.x_hab_etapa) as HabEtapa | null,
     semaforo: str(ot.x_hab_semaforo) as HabSemaforo | null,
     alerta: str(ot.x_hab_alerta) as HabAlerta | null,
-    dias: num(ot.x_hab_dias),
     habEstado: str(ot.x_hab_estado) as HabEstado | null,
     fechaConsulta: str(ot.x_hab_fecha_consulta),
     fechaEnvio: str(ot.x_hab_fecha_envio),

@@ -59,9 +59,9 @@ export function NotasObra({ otId, notas }: { otId: number; notas: Nota[] }) {
           <li
             key={n.id}
             className="flex items-start gap-2 border-b px-3 py-2 text-[13px] last:border-b-0"
-            style={n.fijada ? { backgroundColor: "#FEF6E7" } : undefined}
+            style={n.fijada ? { backgroundColor: "var(--tb-aviso-bg)" } : undefined}
           >
-            {n.fijada && <Pin className="mt-0.5 h-3.5 w-3.5 shrink-0" style={{ color: "#B54708" }} />}
+            {n.fijada && <Pin className="mt-0.5 h-3.5 w-3.5 shrink-0" style={{ color: "var(--tb-aviso-icono)" }} />}
             <span className="min-w-0 flex-1">
               <span className="block whitespace-pre-wrap">{n.texto}</span>
               <span className="mt-0.5 block text-[11px] text-muted-foreground">

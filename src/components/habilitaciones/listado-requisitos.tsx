@@ -17,7 +17,11 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
 import { diasEntre, hoyISO } from "@/lib/habilitaciones/derivacion";
+import { AVISO, OK, PELIGRO_SUAVE, PELIGRO_TEXTO } from "@/lib/tablero/colores";
 import type { AdjuntoRequisito, EstadoRequisito, Requisito } from "@/lib/habilitaciones/tipos";
 
 // Listado de requisitos. Es lo que hace usable una obra exigente.
@@ -35,18 +39,23 @@ const ICONO: Record<EstadoRequisito, typeof Check> = {
 };
 
 const COLOR: Record<EstadoRequisito, string> = {
-  aprobado: "#27500A",
-  observado: "#912018",
-  enviado: "#B54708",
+  aprobado: OK,
+  observado: PELIGRO_TEXTO,
+  enviado: AVISO.icono,
   pendiente: "var(--muted-foreground)",
 };
 
-const SIGUIENTE: Record<EstadoRequisito, string> = {
+// Sin botón para el aprobado: antes era "Volver a pendiente", en el mismo lugar donde un
+// segundo antes estaba "Aprobar", y deshacía la aprobación de un clic y sin rastro. Ahora
+// deshacer es un botón aparte, discreto, que pide confirmación y queda en el historial.
+const SIGUIENTE: Partial<Record<EstadoRequisito, string>> = {
   pendiente: "Marcar enviado",
   enviado: "Aprobar",
   observado: "Corregir y reenviar",
-  aprobado: "Volver a pendiente",
 };
+
+/** Lo que se pide confirmar antes de deshacer o borrar algo. */
+type Confirmacion = { titulo: string; descripcion: string; boton: string; accion: () => void };
 
 export function ListadoRequisitos({ otId, requisitos }: { otId: number; requisitos: Requisito[] }) {
   const cambiar = useCambiarRequisito(otId);
@@ -61,6 +70,7 @@ export function ListadoRequisitos({ otId, requisitos }: { otId: number; requisit
   const [nuevo, setNuevo] = useState("");
   const [observando, setObservando] = useState<string | null>(null);
   const [motivo, setMotivo] = useState("");
+  const [confirmando, setConfirmando] = useState<Confirmacion | null>(null);
 
   const aprobados = requisitos.filter((r) => r.estado === "aprobado").length;
   const observados = requisitos.filter((r) => r.estado === "observado").length;
@@ -78,16 +88,15 @@ export function ListadoRequisitos({ otId, requisitos }: { otId: number; requisit
     });
   }
 
-  function avanzar(r: Requisito) {
-    const destino: EstadoRequisito =
-      r.estado === "pendiente" ? "enviado"
-      : r.estado === "enviado" ? "aprobado"
-      : r.estado === "observado" ? "enviado"
-      : "pendiente";
+  function mover(r: Requisito, destino: EstadoRequisito) {
     cambiar.mutate(
       { requisitoId: r.id, estado: destino },
       { onError: (e) => toast.error(e instanceof Error ? e.message : "No se pudo actualizar") },
     );
+  }
+
+  function avanzar(r: Requisito) {
+    mover(r, r.estado === "enviado" ? "aprobado" : "enviado");
   }
 
   function observar(requisitoId: string) {
@@ -117,12 +126,20 @@ export function ListadoRequisitos({ otId, requisitos }: { otId: number; requisit
             los que ya se enviaron ni los agregados a mano. */}
         {/* data-tour: el recorrido guiado se cuelga de este nodo (ver lib/habilitaciones/tour.ts) */}
         <div className="ml-auto w-52" data-tour="paquetes">
+          {/* Controlado y siempre vacío: el desplegable es un gesto ("aplicar"), no un
+              estado. Sin esto, después de aplicar mostraba el id interno del paquete. Lo que
+              cambió se ve en la lista y en el historial. */}
           <Select
+            value={null}
             onValueChange={(paqueteId: string | null) => {
               if (!paqueteId) return;
+              const nombre = paquetes?.find((p) => p.id === paqueteId)?.nombre ?? "";
               agregar.mutate(
                 { paqueteId },
-                { onError: (e) => toast.error(e instanceof Error ? e.message : "No se pudo aplicar") },
+                {
+                  onSuccess: () => toast.success(`Paquete ${nombre} aplicado`),
+                  onError: (e) => toast.error(e instanceof Error ? e.message : "No se pudo aplicar"),
+                },
               );
             }}
           >
@@ -169,7 +186,9 @@ export function ListadoRequisitos({ otId, requisitos }: { otId: number; requisit
           )}
           {observados > 0 && (
             <span className="text-xs text-muted-foreground">
-              {observados} observado{observados === 1 ? "" : "s"} quedan afuera: hay que corregirlos.
+              {observados === 1
+                ? "1 observado queda afuera: hay que corregirlo."
+                : `${observados} observados quedan afuera: hay que corregirlos.`}
             </span>
           )}
         </div>
@@ -185,7 +204,7 @@ export function ListadoRequisitos({ otId, requisitos }: { otId: number; requisit
             <li
               key={r.id}
               className="border-b px-3 py-2 text-[13px] last:border-b-0"
-              style={r.estado === "observado" ? { backgroundColor: "#FDECEA" } : undefined}
+              style={r.estado === "observado" ? { backgroundColor: PELIGRO_SUAVE } : undefined}
             >
               <div className="flex items-center gap-2">
                 <Icono className="h-4 w-4 shrink-0" style={{ color: COLOR[r.estado] }} />
@@ -208,13 +227,34 @@ export function ListadoRequisitos({ otId, requisitos }: { otId: number; requisit
 
                 <Adjuntos
                   otId={otId}
-                  requisitoId={r.id}
+                  requisito={r}
                   adjuntos={adjuntosPorRequisito?.[r.id] ?? []}
+                  onConfirmar={setConfirmando}
                 />
 
-                <Button size="sm" variant="outline" onClick={() => avanzar(r)} disabled={cambiar.isPending}>
-                  {SIGUIENTE[r.estado]}
-                </Button>
+                {SIGUIENTE[r.estado] ? (
+                  <Button size="sm" variant="outline" onClick={() => avanzar(r)} disabled={cambiar.isPending}>
+                    {SIGUIENTE[r.estado]}
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-muted-foreground"
+                    disabled={cambiar.isPending}
+                    onClick={() =>
+                      setConfirmando({
+                        titulo: `¿Deshacer la aprobación de ${r.nombre}?`,
+                        descripcion:
+                          "Vuelve a pendiente, como si no se hubiera mandado. Queda registrado en el historial.",
+                        boton: "Deshacer",
+                        accion: () => mover(r, "pendiente"),
+                      })
+                    }
+                  >
+                    Deshacer
+                  </Button>
+                )}
 
                 {r.estado === "enviado" && (
                   <Button
@@ -227,24 +267,37 @@ export function ListadoRequisitos({ otId, requisitos }: { otId: number; requisit
                   </Button>
                 )}
 
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-7 w-7"
-                  onClick={() =>
-                    borrar.mutate(r.id, {
-                      onError: (e) => toast.error(e instanceof Error ? e.message : "No se pudo borrar"),
-                    })
-                  }
-                  title="El cliente no lo pide"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
+                {/* SÓLO LOS PENDIENTES SE QUITAN: uno mandado o aprobado es trabajo hecho ante
+                    el cliente, y antes se borraba con un clic, aprobados incluidos. Para
+                    sacar uno de esos, primero se deshace (y eso también queda registrado). */}
+                {r.estado === "pendiente" && (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7"
+                    onClick={() =>
+                      setConfirmando({
+                        titulo: `¿Quitar ${r.nombre}?`,
+                        descripcion:
+                          "Es para los papeles que este cliente no pide. Se borra con sus archivos y queda registrado en el historial.",
+                        boton: "Quitar",
+                        accion: () =>
+                          borrar.mutate(r.id, {
+                            onError: (e) => toast.error(e instanceof Error ? e.message : "No se pudo quitar"),
+                          }),
+                      })
+                    }
+                    title="El cliente no lo pide"
+                    aria-label={`Quitar ${r.nombre}`}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                )}
               </div>
 
               {/* EL MOTIVO SE VE SIN ABRIR NADA: es lo que evita volver a leer el mail. */}
               {r.estado === "observado" && r.motivo_obs && (
-                <p className="mt-1 pl-6 text-[12px]" style={{ color: "#912018" }}>
+                <p className="mt-1 pl-6 text-[12px]" style={{ color: PELIGRO_TEXTO }}>
                   {r.motivo_obs}
                 </p>
               )}
@@ -295,6 +348,29 @@ export function ListadoRequisitos({ otId, requisitos }: { otId: number; requisit
           Agregar
         </Button>
       </div>
+
+      <Dialog open={!!confirmando} onOpenChange={(abrir) => !abrir && setConfirmando(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{confirmando?.titulo}</DialogTitle>
+            <DialogDescription>{confirmando?.descripcion}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmando(null)}>
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                confirmando?.accion();
+                setConfirmando(null);
+              }}
+            >
+              {confirmando?.boton}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -306,15 +382,18 @@ export function ListadoRequisitos({ otId, requisitos }: { otId: number; requisit
  */
 function Adjuntos({
   otId,
-  requisitoId,
+  requisito,
   adjuntos,
+  onConfirmar,
 }: {
   otId: number;
-  requisitoId: string;
+  requisito: Requisito;
   /** Ya resueltos por la consulta única de la obra: acá no se pide nada a la red. */
   adjuntos: AdjuntoRequisito[];
+  /** Borrar un archivo se confirma con el diálogo del listado. */
+  onConfirmar: (c: Confirmacion) => void;
 }) {
-  const subir = useSubirAdjunto(otId, requisitoId);
+  const subir = useSubirAdjunto(otId, requisito.id, requisito.nombre);
   const borrar = useBorrarAdjunto(otId);
   const [abierto, setAbierto] = useState(false);
 
@@ -351,7 +430,19 @@ function Adjuntos({
                   size="icon"
                   variant="ghost"
                   className="h-6 w-6"
-                  onClick={() => borrar.mutate(a.path)}
+                  aria-label={`Borrar ${a.nombre}`}
+                  onClick={() =>
+                    onConfirmar({
+                      titulo: `¿Borrar ${a.nombre}?`,
+                      descripcion: `Se borra el archivo de ${requisito.nombre}. No se puede recuperar; queda registrado en el historial.`,
+                      boton: "Borrar",
+                      accion: () =>
+                        borrar.mutate(
+                          { path: a.path, nombreRequisito: requisito.nombre },
+                          { onError: (e) => toast.error(e instanceof Error ? e.message : "No se pudo borrar") },
+                        ),
+                    })
+                  }
                 >
                   <X className="h-3 w-3" />
                 </Button>
@@ -368,6 +459,9 @@ function Adjuntos({
               const archivo = e.target.files?.[0];
               if (!archivo) return;
               subir.mutate(archivo, {
+                // Ya había uno con ese nombre: no se pisa, se guarda al lado con la fecha.
+                onSuccess: (r) =>
+                  r.renombrado && toast.info(`Ya había un archivo con ese nombre: se guardó como ${r.nombre}`),
                 onError: (err) =>
                   toast.error(err instanceof Error ? err.message : "No se pudo subir"),
               });

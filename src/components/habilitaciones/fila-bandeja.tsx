@@ -9,25 +9,24 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ChipTipoOt } from "@/components/habilitaciones/chip-tipo-ot";
 import { ChipUrgencia } from "@/components/habilitaciones/chip-urgencia";
 import { ChipPantalla } from "@/components/habilitaciones/chip-pantalla";
-import { AVISO, semaforo } from "@/lib/tablero/colores";
+import { AVISO, PELIGRO, PELIGRO_SUAVE, PELIGRO_TEXTO, semaforo } from "@/lib/tablero/colores";
 import { partesTitulo, direccionDeObra } from "@/lib/tablero/titulo";
-import { UMBRAL_DIAS } from "@/lib/habilitaciones/derivacion";
 import { MODALIDAD_LABEL } from "@/lib/habilitaciones/tipos";
-import type { ClaveGrupo, FilaBandeja } from "@/lib/habilitaciones/tipos";
+import type { FilaBandeja } from "@/lib/habilitaciones/tipos";
 
 // Una fila de la bandeja: obra, contexto en una línea, antigüedad y la acción al lado.
 //
-// LA ANTIGÜEDAD SE MUESTRA SIEMPRE, y en rojo cuando pasa el umbral del grupo. Las 297
-// obras con una mediana de 399 días de espera existen porque ese número no se veía en
-// ningún lado — sólo aparecía calculándolo desde afuera de la planilla.
+// LA ANTIGÜEDAD SE MUESTRA SIEMPRE, y en rojo cuando pasa el umbral. Las 297 obras con
+// una mediana de 399 días de espera existen porque ese número no se veía en ningún lado.
 //
-// LA ESPERA INTERNA SE VE IGUAL QUE LA EXTERNA: "31 d · esperando a Jorge Riveros" al
-// lado de "14 d · esperando al cliente". Que el que no contesta sea de la casa no lo
-// hace menos bloqueante.
+// QUÉ FALTA Y DE QUIÉN ES LA PELOTA salen de los requisitos (esperaDe, en el servidor):
+// "3 d · mandar Nómina ART" es nuestro y se pone rojo al día siguiente; "9 d · el cliente
+// revisa 3 de 8" es del cliente y se pone rojo a la semana. Antes acá decía "0 d ·
+// esperando a STEPANSKY": el número era x_hab_dias, que casi siempre vale 0, y el nombre
+// salía de si la venta tenía la modalidad de permiso cargada.
 
 export function Fila({
   fila,
-  grupo,
   seleccionable,
   seleccionada,
   onSeleccionar,
@@ -35,7 +34,6 @@ export function Fila({
   anclaTour = false,
 }: {
   fila: FilaBandeja;
-  grupo: ClaveGrupo;
   seleccionable: boolean;
   seleccionada: boolean;
   onSeleccionar: (otId: number, valor: boolean) => void;
@@ -47,19 +45,17 @@ export function Fila({
   const partes = partesTitulo(fila.titulo);
   const direccion = direccionDeObra(fila);
   const sem = semaforo(fila.semaforo);
-  const vencidoElUmbral = fila.dias > UMBRAL_DIAS[grupo];
+  const espera = fila.espera;
 
+  // La modalidad sólo si está cargada. "Modalidad sin definir" salía en casi todas las
+  // obras viejas —y en los desarmes, que no la necesitan— y no le pedía nada a nadie.
   const contexto = [
     partes.cliente,
-    fila.modalidad ? MODALIDAD_LABEL[fila.modalidad] : "modalidad sin definir",
+    fila.modalidad ? MODALIDAD_LABEL[fila.modalidad] : null,
     fila.requisitos.total > 0
       ? `${fila.requisitos.aprobados}/${fila.requisitos.total} requisitos`
       : null,
   ].filter(Boolean).join(" · ");
-
-  const espera = fila.modalidad
-    ? "esperando al cliente"
-    : `esperando a ${fila.tecnicoNombre ?? "el técnico"}`;
 
   return (
     // data-tour: el recorrido guiado se cuelga de este nodo (ver lib/habilitaciones/tour.ts)
@@ -113,7 +109,7 @@ export function Fila({
       {fila.requisitos.observados > 0 && (
         <span
           className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium"
-          style={{ backgroundColor: "#FDECEA", color: "#912018" }}
+          style={{ backgroundColor: PELIGRO_SUAVE, color: PELIGRO_TEXTO }}
           title="Requisitos observados por el cliente"
         >
           <TriangleAlert className="h-3 w-3" />
@@ -124,17 +120,30 @@ export function Fila({
       {fila.notasFijadas.length > 0 && (
         <Pin
           className="h-3.5 w-3.5 shrink-0"
-          style={{ color: "#B54708" }}
+          style={{ color: AVISO.icono }}
           aria-label="Tiene notas fijadas"
         />
       )}
 
-      <span className="w-40 shrink-0 text-right text-[11px] text-muted-foreground">
-        <span className={vencidoElUmbral ? "font-semibold text-[#D92D20]" : ""}>
-          {fila.dias} d
-        </span>
-        {" · "}
-        {espera}
+      <span
+        className="w-56 shrink-0 truncate text-right text-[11px] text-muted-foreground"
+        title={espera ? `${espera.texto}${espera.desde ? ` · desde el ${format(parseISO(espera.desde), "d MMM", { locale: es })}` : ""}` : undefined}
+      >
+        {espera ? (
+          <>
+            {espera.dias !== null && (
+              <>
+                <span className={espera.rojo ? "font-semibold" : ""} style={espera.rojo ? { color: PELIGRO } : undefined}>
+                  {espera.dias} d
+                </span>
+                {" · "}
+              </>
+            )}
+            <span className={espera.pelota === "nuestra" ? "text-foreground" : ""}>{espera.texto}</span>
+          </>
+        ) : fila.vencimiento ? (
+          `vence el ${format(parseISO(fila.vencimiento), "d MMM", { locale: es })}`
+        ) : null}
       </span>
 
       <span className="w-20 shrink-0 text-right text-[12px]">

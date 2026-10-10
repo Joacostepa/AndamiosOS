@@ -14,10 +14,12 @@ import { errorResponse, invalido, parseOtId, sesion } from "../../_comun";
 
 export const dynamic = "force-dynamic";
 
+// `requisitos` la usan los adjuntos: suben y se borran directo del browser a Storage, así
+// que el registro en el historial lo pide la pantalla después.
 const schema = z.object({
   tipo: z.enum([
     "triage", "consulta", "reclamo", "envio", "aprobacion",
-    "observacion", "permiso", "renovacion", "excepcion",
+    "observacion", "permiso", "renovacion", "excepcion", "requisitos",
   ]),
   detalle: z.string().trim().max(1000).nullable().optional(),
 });

@@ -109,7 +109,7 @@ export async function confirmarRecibido(l: Fila, at: string, origen: "link" | "t
   const nombre = await nombreDeLink(l);
   const entendido = !!l.cambio_at;
   const texto = `${nombre}: ${entendido ? "entendido" : "recibido"} ${hm(minutosDesde(fecha, at))}`;
-  await anotar(adm, null, { fecha, entidad: "link", entidadId: String(l.id), accion: entendido ? "entendido" : "recibido", texto, origen, porTexto: nombre }, g.cambios);
+  await anotar(null, { fecha, entidad: "link", entidadId: String(l.id), accion: entendido ? "entendido" : "recibido", texto, origen, porTexto: nombre }, g.cambios);
   await avisarPantallas(fecha, entendido ? "entendió el cambio" : "tocó Recibido", nombre);
   return texto;
 }
@@ -154,7 +154,7 @@ export async function marcarViajeDesdeChofer(l: Fila, viajeId: string, que: "hec
     await deshacerEstadoViaje(g, v);
     texto = `${nombre} deshizo lo que marcó`;
   }
-  await anotar(adm, null, { fecha, entidad: "viaje", entidadId: viajeId, viajeId, accion: que, texto, origen, porTexto: nombre }, g.cambios);
+  await anotar(null, { fecha, entidad: "viaje", entidadId: viajeId, viajeId, accion: que, texto, origen, porTexto: nombre }, g.cambios);
   await avisarPantallas(fecha, que === "hecho" ? "marcó Hecho" : que === "no_pude" ? "marcó No pude" : "deshizo un viaje", nombre);
   return texto;
 }
@@ -261,7 +261,7 @@ export async function procesarUpdate(u: UpdateTelegram): Promise<void> {
     const nombre = nombreCorto(String(p.data?.apellido ?? ""));
     const r = await enviarMensaje(chat, TELEGRAM.vinculado(nombre));
     await adm.from("hd_telegram_mensajes").insert({ [c.data.persona_id ? "persona_id" : "externa_id"]: pid, chat_id: chat, message_id: r.ok ? r.result.message_id : null, tipo: "vinculado", texto: TELEGRAM.vinculado(nombre), ok: r.ok, error: r.ok ? null : r.error });
-    await anotar(adm, null, { fecha: null, entidad: "telegram", entidadId: pid, accion: "vinculado", texto: `${nombre} vinculó su Telegram`, origen: "telegram", porTexto: nombre });
+    await anotar(null, { fecha: null, entidad: "telegram", entidadId: pid, accion: "vinculado", texto: `${nombre} vinculó su Telegram`, origen: "telegram", porTexto: nombre });
     return;
   }
 

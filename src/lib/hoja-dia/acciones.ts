@@ -22,7 +22,7 @@ import {
   type CambioHoja, type PlanHoja, type ViajeNuevo, fechaPorDefecto,
 } from "./estado";
 import { TIPO_AUSENCIA_TXT, TIPOS_VIAJE } from "./tipos";
-import { anotar, columnasPunto, grabador, leerDia, mapAusencia as mapAusenciaFila, mapViaje, nombreUsuario, type DB, type Grabador } from "./servicio";
+import { anotar, columnasPunto, conGrabador, grabador, leerDia, mapAusencia as mapAusenciaFila, mapViaje, nombreUsuario, type DB, type Grabador } from "./servicio";
 import { hoyBA } from "@/lib/panol/estado";
 
 export type Resultado = { ok: true; texto: string; historialId: string | null; [k: string]: unknown };
@@ -229,8 +229,8 @@ async function escribirPlan(g: Grabador, db: DB, dia: DiaHoja, f: Fecha, p: Plan
   }
   for (const [i, pid] of p.gente.entries()) {
     const otro = await integranteDe(db, f, pid);
-    if (otro) await g.borrar("hd_integrantes", String(otro.id));
-    await g.insertar("hd_integrantes", { hoja_id: hoja.id, ...(await colPersona(pid)), a_cargo: pid === p.aCargoId, orden: i });
+    if (otro) await g.actualizar("hd_integrantes", String(otro.id), { hoja_id: hoja.id, a_cargo: pid === p.aCargoId, orden: i, nota: null });
+    else await g.insertar("hd_integrantes", { hoja_id: hoja.id, ...(await colPersona(pid)), a_cargo: pid === p.aCargoId, orden: i });
   }
   if (p.modo === "lleva_trae") {
     await sincronizarViajes(g, db, hoja, { modo: "lleva_trae", choferId: p.choferId, vehiculoId: p.vehiculoId, lleva: p.lleva, busca: p.busca ?? undefined }, dia);
@@ -242,28 +242,32 @@ async function escribirPlan(g: Grabador, db: DB, dia: DiaHoja, f: Fecha, p: Plan
   return hoja;
 }
 
-const listo = async (db: DB, userId: string, texto: string, g: Grabador, a: Omit<Parameters<typeof anotar>[2], "texto">, extra: Fila = {}): Promise<Resultado> => {
-  const historialId = g.cambios.length ? await anotar(db, userId, { ...a, texto }, g.cambios) : null;
+const listo = async (userId: string, texto: string, g: Grabador, a: Omit<Parameters<typeof anotar>[1], "texto">, extra: Fila = {}): Promise<Resultado> => {
+  const historialId = g.cambios.length ? await anotar(userId, { ...a, texto }, g.cambios) : null;
   return { ok: true, texto, historialId: historialId || null, ...extra };
 };
 
 // ═══════════════════════════ Precarga ═════════════════════════════════════════
 
-export async function precargar(db: DB, userId: string, f: Fecha, modo: "hoy" | "plantel" | "vacio"): Promise<Resultado> {
+export function precargar(db: DB, userId: string, f: Fecha, modo: "hoy" | "plantel" | "vacio"): Promise<Resultado> {
+  return conGrabador(db, userId, { fecha: f, entidad: "precarga", accion: `precarga_${modo}` }, (g) => precargarCon(g, db, userId, f, modo));
+}
+async function precargarCon(g: Grabador, db: DB, userId: string, f: Fecha, modo: "hoy" | "plantel" | "vacio"): Promise<Resultado> {
   const dia = await leerDia(f, { cacheOdoo: true });
   const plan = planPrecarga(dia, modo);
   if (!plan.hojas.length) throw new Error(dia.obras.length ? "Todas las cuadrillas con obras ya tienen hoja ese día." : "El tablero no tiene obras ese día.");
-  const g = grabador(db);
   for (const p of plan.hojas) await escribirPlan(g, db, dia, f, p, null);
   for (const cam of plan.camiones) await asegurarCamion(g, db, dia, f, cam.vehiculoId, cam.choferId);
   const texto = modo === "hoy" ? `Listo: ${plan.hojas.length} hojas copiadas del ${dia.anterior ? `${ddmm(dia.anterior.fecha)}` : "día anterior"}` : modo === "plantel" ? "Listo: hojas armadas con el plantel base" : "Listo: hojas vacías con las obras del tablero";
-  return listo(db, userId, texto, g, { fecha: f, entidad: "precarga", accion: `precarga_${modo}` }, { avisos: plan.avisos });
+  return listo(userId, texto, g, { fecha: f, entidad: "precarga", accion: `precarga_${modo}` }, { avisos: plan.avisos });
 }
 
 // ═══════════════════════════ Hojas ════════════════════════════════════════════
 
-export async function accionHoja(db: DB, userId: string, a: AccionHoja): Promise<Resultado> {
-  const g = grabador(db);
+export function accionHoja(db: DB, userId: string, a: AccionHoja): Promise<Resultado> {
+  return conGrabador(db, userId, { fecha: a.fecha, entidad: "hoja", accion: a.accion }, (g) => accionHojaCon(g, db, userId, a));
+}
+async function accionHojaCon(g: Grabador, db: DB, userId: string, a: AccionHoja): Promise<Resultado> {
   const f = a.fecha;
   // El día entero sólo cuando la regla lo necesita (nombres y planes): lee Odoo (con caché).
   const dia = await leerDia(f, { cacheOdoo: true });
@@ -273,7 +277,7 @@ export async function accionHoja(db: DB, userId: string, a: AccionHoja): Promise
   switch (a.accion) {
     case "crear_hoja": {
       const h = await asegurarHoja(g, db, f, a.cuadrilla, dia);
-      return listo(db, userId, `${C(a.cuadrilla)}: hoja nueva`, g, { ...base, entidadId: String(h.id), hojaId: String(h.id), accion: a.accion });
+      return listo(userId, `${C(a.cuadrilla)}: hoja nueva`, g, { ...base, entidadId: String(h.id), hojaId: String(h.id), accion: a.accion });
     }
     case "agregar": {
       const hoja = await asegurarHoja(g, db, f, a.cuadrilla, dia);
@@ -281,7 +285,8 @@ export async function accionHoja(db: DB, userId: string, a: AccionHoja): Promise
       if (actual && actual.hoja_id === hoja.id && !a.reemplaza) return { ok: true, texto: `${N(dia, a.personaId)} ya está en la ${C(a.cuadrilla)}`, historialId: null };
       const de = actual ? dia.hojas.find((h) => h.id === actual.hoja_id)?.cuadrillaOdooId ?? null : null;
       const eraCargo = !!actual?.a_cargo;
-      if (actual) await g.borrar("hd_integrantes", String(actual.id));
+      // Pasar de cuadrilla es UNA escritura (cambiar hoja_id), no borrar e insertar: si algo
+      // falla, la persona no queda fuera de las dos hojas (I4).
       let orden = (dia.hojas.find((h) => h.id === hoja.id)?.integrantes.length ?? 0) + 1;
       let reempCargo = false;
       if (a.reemplaza) {
@@ -292,49 +297,48 @@ export async function accionHoja(db: DB, userId: string, a: AccionHoja): Promise
         const prev = await db.from("hd_integrantes").select("id").eq("hoja_id", hoja.id).eq("a_cargo", true).maybeSingle();
         if (prev.data) await g.actualizar("hd_integrantes", String(prev.data.id), { a_cargo: false });
       }
-      await g.insertar("hd_integrantes", { hoja_id: hoja.id, ...(await colPersona(a.personaId)), a_cargo: !!a.aCargo, orden });
+      if (actual) await g.actualizar("hd_integrantes", String(actual.id), { hoja_id: hoja.id, a_cargo: !!a.aCargo, orden, nota: null });
+      else await g.insertar("hd_integrantes", { hoja_id: hoja.id, ...(await colPersona(a.personaId)), a_cargo: !!a.aCargo, orden });
       const texto = a.reemplaza
         ? `${N(dia, a.personaId)} reemplazó a ${N(dia, a.reemplaza)}${de != null && de !== a.cuadrilla ? ` (venía de ${laC(dia, de)})` : ""}.${reempCargo ? ` La ${C(a.cuadrilla)} quedó sin nadie a cargo` : ` ${N(dia, a.reemplaza)} quedó sin asignar`}`
         : `${N(dia, a.personaId)} pasó a la ${C(a.cuadrilla)}${de != null && de !== a.cuadrilla ? ` (estaba en ${laC(dia, de)}${eraCargo ? `, a cargo: ${laC(dia, de)} quedó sin nadie a cargo` : ""})` : ""}`;
-      return listo(db, userId, texto, g, { ...base, entidad: "integrante", entidadId: a.personaId, hojaId: String(hoja.id), accion: a.accion });
+      return listo(userId, texto, g, { ...base, entidad: "integrante", entidadId: a.personaId, hojaId: String(hoja.id), accion: a.accion });
     }
     case "sacar": {
       const actual = await integranteDe(db, f, a.personaId);
       if (!actual) return { ok: true, texto: `${N(dia, a.personaId)} no estaba en ninguna cuadrilla`, historialId: null };
       const c0 = dia.hojas.find((h) => h.id === actual.hoja_id)?.cuadrillaOdooId ?? 0;
       await g.borrar("hd_integrantes", String(actual.id));
-      return listo(db, userId, `${N(dia, a.personaId)} salió de la ${C(c0)} y quedó sin asignar${actual.a_cargo ? `. ${cap(laC(dia, c0))} quedó sin nadie a cargo` : ""}`, g, { ...base, entidad: "integrante", entidadId: a.personaId, hojaId: String(actual.hoja_id), accion: a.accion });
+      return listo(userId, `${N(dia, a.personaId)} salió de la ${C(c0)} y quedó sin asignar${actual.a_cargo ? `. ${cap(laC(dia, c0))} quedó sin nadie a cargo` : ""}`, g, { ...base, entidad: "integrante", entidadId: a.personaId, hojaId: String(actual.hoja_id), accion: a.accion });
     }
     case "a_cargo": {
       const hoja = await asegurarHoja(g, db, f, a.cuadrilla, dia);
       const prev = await db.from("hd_integrantes").select("*").eq("hoja_id", hoja.id).eq("a_cargo", true).maybeSingle();
       const ant = prev.data ? String(prev.data.persona_id ?? prev.data.externa_id) : null;
       if (prev.data) await g.actualizar("hd_integrantes", String(prev.data.id), { a_cargo: false });
-      if (!a.personaId) return listo(db, userId, `${N(dia, ant)} ya no está a cargo. La ${C(a.cuadrilla)} quedó sin nadie a cargo`, g, { ...base, hojaId: String(hoja.id), accion: a.accion });
+      if (!a.personaId) return listo(userId, `${N(dia, ant)} ya no está a cargo. La ${C(a.cuadrilla)} quedó sin nadie a cargo`, g, { ...base, hojaId: String(hoja.id), accion: a.accion });
       const actual = await integranteDe(db, f, a.personaId);
       if (actual && actual.hoja_id === hoja.id) await g.actualizar("hd_integrantes", String(actual.id), { a_cargo: true, orden: -1 });
-      else {
-        if (actual) await g.borrar("hd_integrantes", String(actual.id));
-        await g.insertar("hd_integrantes", { hoja_id: hoja.id, ...(await colPersona(a.personaId)), a_cargo: true, orden: -1 });
-      }
+      else if (actual) await g.actualizar("hd_integrantes", String(actual.id), { hoja_id: hoja.id, a_cargo: true, orden: -1, nota: null });
+      else await g.insertar("hd_integrantes", { hoja_id: hoja.id, ...(await colPersona(a.personaId)), a_cargo: true, orden: -1 });
       if (hoja.recibe_id || hoja.recibe_externa_id) await g.actualizar("hd_hojas", String(hoja.id), { recibe_id: null, recibe_externa_id: null });
       const envioAnt = ant && ant !== a.personaId ? dia.envios.find((e) => e.personaId === ant && e.enviadaMin != null && !e.anulado) : null;
       const texto = envioAnt
         ? `${N(dia, a.personaId)} queda a cargo de la ${C(a.cuadrilla)}. ${N(dia, ant)} deja de recibir la hoja: avisale`
         : `${N(dia, a.personaId)} queda a cargo de la ${C(a.cuadrilla)}${ant && ant !== a.personaId ? ` (antes ${N(dia, ant)})` : ""}`;
-      return listo(db, userId, texto, g, { ...base, hojaId: String(hoja.id), entidadId: a.personaId, accion: a.accion }, { avisarA: envioAnt ? ant : null });
+      return listo(userId, texto, g, { ...base, hojaId: String(hoja.id), entidadId: a.personaId, accion: a.accion }, { avisarA: envioAnt ? ant : null });
     }
     case "recibe": {
       const hoja = await asegurarHoja(g, db, f, a.cuadrilla, dia);
       const col = a.personaId ? await colPersona(a.personaId) : { persona_id: null, externa_id: null };
       await g.actualizar("hd_hojas", String(hoja.id), { recibe_id: col.persona_id, recibe_externa_id: col.externa_id });
-      return listo(db, userId, a.personaId ? `La hoja de la ${C(a.cuadrilla)} le llega a ${N(dia, a.personaId)}` : `La ${C(a.cuadrilla)} no tiene a quién mandarle la hoja`, g, { ...base, hojaId: String(hoja.id), accion: a.accion });
+      return listo(userId, a.personaId ? `La hoja de la ${C(a.cuadrilla)} le llega a ${N(dia, a.personaId)}` : `La ${C(a.cuadrilla)} no tiene a quién mandarle la hoja`, g, { ...base, hojaId: String(hoja.id), accion: a.accion });
     }
     case "nota_persona": {
       const actual = await integranteDe(db, f, a.personaId);
       if (!actual) throw new Error(`${N(dia, a.personaId)} no está en ninguna cuadrilla ese día.`);
       await g.actualizar("hd_integrantes", String(actual.id), { nota: a.nota });
-      return listo(db, userId, a.nota ? `${N(dia, a.personaId)}: ${a.nota}` : `Sin nota para ${N(dia, a.personaId)}`, g, { ...base, entidad: "integrante", entidadId: a.personaId, hojaId: String(actual.hoja_id), accion: a.accion });
+      return listo(userId, a.nota ? `${N(dia, a.personaId)}: ${a.nota}` : `Sin nota para ${N(dia, a.personaId)}`, g, { ...base, entidad: "integrante", entidadId: a.personaId, hojaId: String(actual.hoja_id), accion: a.accion });
     }
     case "modo": {
       const hoja = await asegurarHoja(g, db, f, a.cuadrilla, dia);
@@ -343,7 +347,7 @@ export async function accionHoja(db: DB, userId: string, a: AccionHoja): Promise
       await aplicarCambioHoja(g, db, hoja, cambio, d2);
       const L = { sin: "Sin chofer", lleva_trae: "Lleva y trae", todo_el_dia: "Todo el día" }[a.modo];
       const enc = cambio.encuentro ? ` · encuentro ${normHora(cambio.encuentro.hora)} en ${cambio.encuentro.lugar === "deposito" ? "el depósito" : "la obra"}` : "";
-      return listo(db, userId, `${C(a.cuadrilla)}: ${L}${a.modo !== "sin" && cambio.choferId ? ` con ${N(dia, cambio.choferId)}` : ""}${enc}`, g, { ...base, hojaId: String(hoja.id), accion: a.accion });
+      return listo(userId, `${C(a.cuadrilla)}: ${L}${a.modo !== "sin" && cambio.choferId ? ` con ${N(dia, cambio.choferId)}` : ""}${enc}`, g, { ...base, hojaId: String(hoja.id), accion: a.accion });
     }
     case "chofer": {
       const hoja = await asegurarHoja(g, db, f, a.cuadrilla, dia);
@@ -354,13 +358,13 @@ export async function accionHoja(db: DB, userId: string, a: AccionHoja): Promise
       const texto = a.choferId
         ? `${N(dia, a.choferId)} ${cambio.modo === "todo_el_dia" ? "queda todo el día con" : "lleva a"} la ${C(a.cuadrilla)}${cambio.vehiculoId ? ` (${vehiculoNombre(dia, cambio.vehiculoId)})` : ""}${h?.modo === "sin" ? ". El encuentro pasó al depósito" : ""}`
         : `La ${C(a.cuadrilla)} quedó sin chofer elegido`;
-      return listo(db, userId, texto, g, { ...base, hojaId: String(hoja.id), accion: a.accion });
+      return listo(userId, texto, g, { ...base, hojaId: String(hoja.id), accion: a.accion });
     }
     case "vehiculo": {
       const hoja = await asegurarHoja(g, db, f, a.cuadrilla, dia);
       await aplicarCambioHoja(g, db, hoja, { vehiculoId: a.vehiculoId }, dia);
       const venc = a.vehiculoId ? dia.vehiculos.find((v) => v.id === a.vehiculoId)?.vencimientos.find((x) => x.tipo === "vtv" && x.vence < f) : null;
-      return listo(db, userId, a.vehiculoId ? `${patente(dia, a.vehiculoId)} con la ${C(a.cuadrilla)}${venc ? ` · ojo: VTV vencida desde el ${ddmm(venc.vence)}` : ""}` : `La ${C(a.cuadrilla)} quedó sin vehículo`, g, { ...base, hojaId: String(hoja.id), accion: a.accion });
+      return listo(userId, a.vehiculoId ? `${patente(dia, a.vehiculoId)} con la ${C(a.cuadrilla)}${venc ? ` · ojo: VTV vencida desde el ${ddmm(venc.vence)}` : ""}` : `La ${C(a.cuadrilla)} quedó sin vehículo`, g, { ...base, hojaId: String(hoja.id), accion: a.accion });
     }
     case "encuentro": {
       const hoja = await asegurarHoja(g, db, f, a.cuadrilla, dia);
@@ -369,7 +373,7 @@ export async function accionHoja(db: DB, userId: string, a: AccionHoja): Promise
         const ll = (await viajesDeHoja(db, String(hoja.id))).find((v) => v.tipo === "lleva" && v.estado === "planeado");
         if (ll) await g.actualizar("hd_viajes", String(ll.id), { hora: a.hora, orden: toMin(a.hora) });
       }
-      return listo(db, userId, `${C(a.cuadrilla)}: encuentro ${normHora(a.hora)} en ${a.lugar === "deposito" ? "el depósito" : a.lugar === "obra" ? "la obra" : a.texto ?? "otro lugar"}`, g, { ...base, hojaId: String(hoja.id), accion: a.accion });
+      return listo(userId, `${C(a.cuadrilla)}: encuentro ${normHora(a.hora)} en ${a.lugar === "deposito" ? "el depósito" : a.lugar === "obra" ? "la obra" : a.texto ?? "otro lugar"}`, g, { ...base, hojaId: String(hoja.id), accion: a.accion });
     }
     case "lleva":
     case "busca": {
@@ -378,7 +382,7 @@ export async function accionHoja(db: DB, userId: string, a: AccionHoja): Promise
       const v = (await viajesDeHoja(db, String(hoja.id))).find((x) => x.tipo === a.accion);
       if (a.accion === "busca" && a.hora == null) {
         if (v) await g.borrar("hd_viajes", String(v.id));
-        return listo(db, userId, `La ${C(a.cuadrilla)} vuelve por su cuenta`, g, { ...base, hojaId: String(hoja.id), accion: "vuelven_solos" });
+        return listo(userId, `La ${C(a.cuadrilla)} vuelve por su cuenta`, g, { ...base, hojaId: String(hoja.id), accion: "vuelven_solos" });
       }
       const h = a.hora!;
       if (v) await g.actualizar("hd_viajes", String(v.id), { hora: h, orden: toMin(h) });
@@ -390,7 +394,7 @@ export async function accionHoja(db: DB, userId: string, a: AccionHoja): Promise
         }));
       }
       if (a.accion === "lleva" && hoja.encuentro_lugar === "deposito") await g.actualizar("hd_hojas", String(hoja.id), { encuentro_hora: h });
-      return listo(db, userId, `${a.accion === "lleva" ? "Lleva" : "Busca"} a la ${C(a.cuadrilla)} a las ${normHora(h)}`, g, { ...base, hojaId: String(hoja.id), accion: a.accion });
+      return listo(userId, `${a.accion === "lleva" ? "Lleva" : "Busca"} a la ${C(a.cuadrilla)} a las ${normHora(h)}`, g, { ...base, hojaId: String(hoja.id), accion: a.accion });
     }
     case "mueve": {
       const hoja = await filaHoja(db, f, a.cuadrilla);
@@ -403,12 +407,12 @@ export async function accionHoja(db: DB, userId: string, a: AccionHoja): Promise
         cuadrillaOdooId: a.cuadrilla, hacia: { otId: a.otId, lugarId: null, texto: null }, desde: desde ? { otId: desde.otId, lugarId: null, texto: null } : null,
         orden: toMin(a.hora)!, hora: a.hora, noAntesDe: null, duracionMin: null, vuelta: false, vueltaCarga: null, carga: null, cargaDeposito: null, okTodoElDia: false,
       }));
-      return listo(db, userId, `Mueve a la ${C(a.cuadrilla)} a ${lugar(dia, { otId: a.otId, lugarId: null, texto: null }).n} a las ${normHora(a.hora)}`, g, { ...base, hojaId: String(hoja.id), accion: a.accion });
+      return listo(userId, `Mueve a la ${C(a.cuadrilla)} a ${lugar(dia, { otId: a.otId, lugarId: null, texto: null }).n} a las ${normHora(a.hora)}`, g, { ...base, hojaId: String(hoja.id), accion: a.accion });
     }
     case "nota": {
       const hoja = await asegurarHoja(g, db, f, a.cuadrilla, dia);
       await g.actualizar("hd_hojas", String(hoja.id), { nota: a.nota });
-      return listo(db, userId, a.nota ? `${C(a.cuadrilla)}: nota para todos` : `${C(a.cuadrilla)}: sin nota`, g, { ...base, hojaId: String(hoja.id), accion: a.accion });
+      return listo(userId, a.nota ? `${C(a.cuadrilla)}: nota para todos` : `${C(a.cuadrilla)}: sin nota`, g, { ...base, hojaId: String(hoja.id), accion: a.accion });
     }
     case "instrucciones": {
       const r = await db.from("hd_instrucciones").select("*").eq("fecha", f).eq("odoo_ot_id", a.otId).maybeSingle();
@@ -418,28 +422,28 @@ export async function accionHoja(db: DB, userId: string, a: AccionHoja): Promise
       if (a.chips !== undefined) valores.chips = a.chips;
       if (r.data) await g.actualizar("hd_instrucciones", String(r.data.id), valores);
       else await g.insertar("hd_instrucciones", { fecha: f, odoo_ot_id: a.otId, ...valores });
-      return listo(db, userId, `Instrucciones de ${lugar(dia, { otId: a.otId, lugarId: null, texto: null }).n}`, g, { ...base, entidad: "instruccion", entidadId: String(a.otId), accion: a.accion });
+      return listo(userId, `Instrucciones de ${lugar(dia, { otId: a.otId, lugarId: null, texto: null }).n}`, g, { ...base, entidad: "instruccion", entidadId: String(a.otId), accion: a.accion });
     }
     case "copiar_como_hoy": {
       const plan = planCopiarComoHoy(dia, a.cuadrilla);
       if (!plan) return { ok: true, texto: `La ${C(a.cuadrilla)} no tuvo hoja el día anterior`, historialId: null };
       const existente = await filaHoja(db, f, a.cuadrilla);
       const h = await escribirPlan(g, db, dia, f, plan, existente);
-      return listo(db, userId, `${C(a.cuadrilla)} copiada del ${ddmm(plan.copiadaDe ?? "")}`, g, { ...base, hojaId: String(h.id), accion: a.accion });
+      return listo(userId, `${C(a.cuadrilla)} copiada del ${ddmm(plan.copiadaDe ?? "")}`, g, { ...base, hojaId: String(h.id), accion: a.accion });
     }
     case "pasar_chofer": {
       const hoja = await filaHoja(db, f, a.cuadrilla);
       const otra = await filaHoja(db, f, a.desde);
       if (!hoja || !otra) throw new Error("Falta una de las dos hojas.");
       await aplicarCambioHoja(g, db, otra, { modo: "sin", choferId: null, vehiculoId: null, encuentro: { lugar: "obra", texto: null, hora: dia.parametros.encuentroObra } }, dia);
-      return listo(db, userId, `${N(dia, hoja.chofer_id as string)} queda todo el día con ${laC(dia, a.cuadrilla)}. ${cap(laC(dia, a.desde))} quedó sin chofer (van por su cuenta, ${dia.parametros.encuentroObra} en la obra)`, g, { ...base, hojaId: String(hoja.id), accion: a.accion });
+      return listo(userId, `${N(dia, hoja.chofer_id as string)} queda todo el día con ${laC(dia, a.cuadrilla)}. ${cap(laC(dia, a.desde))} quedó sin chofer (van por su cuenta, ${dia.parametros.encuentroObra} en la obra)`, g, { ...base, hojaId: String(hoja.id), accion: a.accion });
     }
     case "liberar": {
       const hoja = await filaHoja(db, f, a.cuadrilla);
       if (!hoja) return { ok: true, texto: "No había hoja", historialId: null };
       const r = await db.from("hd_integrantes").select("id").eq("hoja_id", hoja.id);
       for (const i of r.data ?? []) await g.borrar("hd_integrantes", String(i.id));
-      return listo(db, userId, `La gente de la ${C(a.cuadrilla)} quedó sin asignar`, g, { ...base, hojaId: String(hoja.id), accion: a.accion });
+      return listo(userId, `La gente de la ${C(a.cuadrilla)} quedó sin asignar`, g, { ...base, hojaId: String(hoja.id), accion: a.accion });
     }
   }
 }
@@ -485,8 +489,10 @@ export async function deshacerEstadoViaje(g: Grabador, viaje: Fila): Promise<voi
   for (const p of ps) if (p.estado === "hecho") await g.actualizar("hd_pedidos", String(p.id), { estado: "en_camion" });
 }
 
-export async function accionViaje(db: DB, userId: string, a: AccionViaje): Promise<Resultado> {
-  const g = grabador(db);
+export function accionViaje(db: DB, userId: string, a: AccionViaje): Promise<Resultado> {
+  return conGrabador(db, userId, { fecha: "fecha" in a ? a.fecha : null, entidad: "viaje", accion: a.accion }, (g) => accionViajeCon(g, db, userId, a));
+}
+async function accionViajeCon(g: Grabador, db: DB, userId: string, a: AccionViaje): Promise<Resultado> {
   if (a.accion === "crear") {
     const dia = await leerDia(a.fecha, { cacheOdoo: true });
     const veh = a.vehiculoId ?? null;
@@ -500,7 +506,7 @@ export async function accionViaje(db: DB, userId: string, a: AccionViaje): Promi
     }));
     const vv = mapViaje(v, a.fecha);
     const texto = a.fleteExterno ? `Flete de afuera: ${a.fleteExterno} · ${a.carga ?? lugar(dia, vv.hacia).n}${a.hora ? ` · ${normHora(a.hora)}` : ""}` : `${TIPOS_VIAJE[a.tipo].nombre} a ${lugar(dia, vv.hacia).n}${veh ? ` en el ${patente(dia, veh)} (${N(dia, choferDelCamion(dia, veh))})` : ""}`;
-    return listo(db, userId, texto, g, { fecha: a.fecha, entidad: "viaje", entidadId: String(v.id), viajeId: String(v.id), accion: "crear_viaje" });
+    return listo(userId, texto, g, { fecha: a.fecha, entidad: "viaje", entidadId: String(v.id), viajeId: String(v.id), accion: "crear_viaje" });
   }
   if (a.accion === "poner_pedido") {
     const pr = await db.from("hd_pedidos").select("*").eq("id", a.pedidoId).maybeSingle();
@@ -525,7 +531,7 @@ export async function accionViaje(db: DB, userId: string, a: AccionViaje): Promi
       ? `Sumado al viaje a ${lugar(dia, ped.hacia).n} del ${patente(dia, a.vehiculoId)} (${N(dia, ch)})${vc ? `, ~${hm(vc.t)}` : ""}`
       : `Pedido${ped.pidioId ? ` de ${N(dia, ped.pidioId)}` : ""} en el ${patente(dia, a.vehiculoId)} (${N(dia, ch)})${vc ? `, ${vc.hora ? "" : "~"}${hm(Math.round(vc.t / 5) * 5)}` : ""}`;
     const enviado = dia.envios.some((e) => e.personaId === ch && e.enviadaMin != null && !e.anulado);
-    return listo(db, userId, texto, g, { fecha: f, entidad: "pedido", entidadId: a.pedidoId, pedidoId: a.pedidoId, viajeId, accion: a.accion }, {
+    return listo(userId, texto, g, { fecha: f, entidad: "pedido", entidadId: a.pedidoId, pedidoId: a.pedidoId, viajeId, accion: a.accion }, {
       viajeId, avisarA: enviado ? ch : null, avisarDeposito: !!(vc && esHoy(ahoraDe(f)) && vc.carga && ["lleva_material", "entre_depositos"].includes(vc.tipo) && /^l:|^dep$/.test(vc.desdeKey)),
     });
   }
@@ -538,7 +544,7 @@ export async function accionViaje(db: DB, userId: string, a: AccionViaje): Promi
       if (!cur) return { ok: true, texto: "No hay horas estimadas para correr", historialId: null };
       const desde = hm(Math.round((ahora + 10) / 5) * 5);
       await g.actualizar("hd_viajes", cur.id, { no_antes_de: desde });
-      return listo(db, userId, `${N(dia, choferDelCamion(dia, a.vehiculoId))}: las horas estimadas corren desde ahora (${desde})`, g, { fecha: a.fecha, entidad: "camion", entidadId: a.vehiculoId, accion: a.accion });
+      return listo(userId, `${N(dia, choferDelCamion(dia, a.vehiculoId))}: las horas estimadas corren desde ahora (${desde})`, g, { fecha: a.fecha, entidad: "camion", entidadId: a.vehiculoId, accion: a.accion });
     }
     const r = await db.from("hd_camiones_dia").select("*").eq("fecha", a.fecha).eq("vehiculo_id", a.vehiculoId).maybeSingle();
     if (r.data) await g.actualizar("hd_camiones_dia", String(r.data.id), { chofer_id: a.choferId, sin_chofer: a.choferId == null });
@@ -546,7 +552,7 @@ export async function accionViaje(db: DB, userId: string, a: AccionViaje): Promi
     // "Elegir otro chofer" pasa todos los viajes pendientes del camión de una vez (§5).
     const vs = await db.from("hd_viajes").select("id").eq("fecha", a.fecha).eq("vehiculo_id", a.vehiculoId).eq("estado", "planeado");
     for (const v of vs.data ?? []) await g.actualizar("hd_viajes", String(v.id), { chofer_id: a.choferId });
-    return listo(db, userId, a.choferId ? `El ${patente(dia, a.vehiculoId)} lo maneja ${N(dia, a.choferId)} (${(vs.data ?? []).length} viajes)` : `El ${patente(dia, a.vehiculoId)} queda sin chofer`, g, { fecha: a.fecha, entidad: "camion", entidadId: a.vehiculoId, accion: a.accion });
+    return listo(userId, a.choferId ? `El ${patente(dia, a.vehiculoId)} lo maneja ${N(dia, a.choferId)} (${(vs.data ?? []).length} viajes)` : `El ${patente(dia, a.vehiculoId)} queda sin chofer`, g, { fecha: a.fecha, entidad: "camion", entidadId: a.vehiculoId, accion: a.accion });
   }
 
   const v = await filaViajeDb(db, a.viajeId);
@@ -572,7 +578,7 @@ export async function accionViaje(db: DB, userId: string, a: AccionViaje): Promi
       const texto = antes !== a.vehiculoId
         ? a.vehiculoId ? `${corto} pasó al ${patente(dia, a.vehiculoId)} (${N(dia, chB)})${chA ? `. Sacaste un viaje a ${N(dia, chA)}` : ""}` : `${corto}: sin camión`
         : a.hora ? `${corto} pasa a las ${normHora(a.hora)}` : `${corto}: nuevo orden`;
-      return listo(db, userId, texto, g, base, { avisarA: [chA, chB].filter((x, i, arr) => x && arr.indexOf(x) === i && dia.envios.some((e) => e.personaId === x && e.enviadaMin != null && !e.anulado)) });
+      return listo(userId, texto, g, base, { avisarA: [chA, chB].filter((x, i, arr) => x && arr.indexOf(x) === i && dia.envios.some((e) => e.personaId === x && e.enviadaMin != null && !e.anulado)) });
     }
     case "hora": {
       const valores: Fila = {};
@@ -584,13 +590,13 @@ export async function accionViaje(db: DB, userId: string, a: AccionViaje): Promi
         const h = dia.hojas.find((x) => x.id === vv.hojaId);
         if (h?.encuentro.lugar === "deposito") await g.actualizar("hd_hojas", h.id, { encuentro_hora: a.hora });
       }
-      return listo(db, userId, a.hora ? `${corto}: hora fija ${normHora(a.hora)}` : a.noAntesDe ? `${corto}: no antes de las ${normHora(a.noAntesDe)}` : `${corto}: hora estimada (se calcula con el orden)`, g, base);
+      return listo(userId, a.hora ? `${corto}: hora fija ${normHora(a.hora)}` : a.noAntesDe ? `${corto}: no antes de las ${normHora(a.noAntesDe)}` : `${corto}: hora estimada (se calcula con el orden)`, g, base);
     }
     case "volver_a_cola": {
       if (vv.hojaId) {
         await g.actualizar("hd_viajes", a.viajeId, { vehiculo_id: null, chofer_id: null });
         const c0 = dia.hojas.find((h) => h.id === vv.hojaId)?.cuadrillaOdooId ?? 0;
-        return listo(db, userId, `Nadie ${vv.tipo} a la ${cNombre(dia, c0)} ${vv.tipo === "busca" ? "en" : "a"} ${lugar(dia, viajeCalc(dia, vv.id)?.haciaEf ?? vv.hacia).n}`, g, base);
+        return listo(userId, `Nadie ${vv.tipo} a la ${cNombre(dia, c0)} ${vv.tipo === "busca" ? "en" : "a"} ${lugar(dia, viajeCalc(dia, vv.id)?.haciaEf ?? vv.hacia).n}`, g, base);
       }
       const chA = ch(vv.vehiculoId);
       const ps = await g.leer("hd_pedidos", { viaje_id: a.viajeId });
@@ -600,39 +606,41 @@ export async function accionViaje(db: DB, userId: string, a: AccionViaje): Promi
         if (prev) await g.actualizar("hd_viajes", prev.id, { vuelta: true });
       }
       await g.borrar("hd_viajes", a.viajeId);
-      return listo(db, userId, `Volvió a la cola: ${vv.carga ?? lugar(dia, vv.hacia).n}${chA ? `. Se lo sacaste a ${N(dia, chA)}` : ""}`, g, base, { avisarA: chA && dia.envios.some((e) => e.personaId === chA && e.enviadaMin != null && !e.anulado) ? chA : null });
+      return listo(userId, `Volvió a la cola: ${vv.carga ?? lugar(dia, vv.hacia).n}${chA ? `. Se lo sacaste a ${N(dia, chA)}` : ""}`, g, base, { avisarA: chA && dia.envios.some((e) => e.personaId === chA && e.enviadaMin != null && !e.anulado) ? chA : null });
     }
     case "anular": {
       await g.actualizar("hd_viajes", a.viajeId, { estado: "anulado", anulado_motivo: a.motivo });
       const ps = await g.leer("hd_pedidos", { viaje_id: a.viajeId });
       for (const p of ps) await g.actualizar("hd_pedidos", String(p.id), { viaje_id: null, estado: "sin_camion" });
-      return listo(db, userId, `Viaje anulado: ${corto} (${lowFirst(a.motivo)})${ps.length ? ". El pedido volvió a la cola" : ""}`, g, base);
+      return listo(userId, `Viaje anulado: ${corto} (${lowFirst(a.motivo)})${ps.length ? ". El pedido volvió a la cola" : ""}`, g, base);
     }
     case "hecho": {
       const quien = await nombreUsuario(userId);
       const at = ts();
       await marcarHecho(g, v, quien, at);
-      return listo(db, userId, `Hecho ${hm(ahoraDe(f))} · marcado por ${quien}`, g, base);
+      return listo(userId, `Hecho ${hm(ahoraDe(f))} · marcado por ${quien}`, g, base);
     }
     case "no_pudo": {
       await marcarNoPude(g, v, a.motivo, ts());
-      return listo(db, userId, `${corto}: no se pudo (${lowFirst(a.motivo)}). El pedido volvió a la cola`, g, base);
+      return listo(userId, `${corto}: no se pudo (${lowFirst(a.motivo)}). El pedido volvió a la cola`, g, base);
     }
     case "deshacer_estado": {
       await deshacerEstadoViaje(g, v);
-      return listo(db, userId, `${corto}: vuelve a estar pendiente`, g, base);
+      return listo(userId, `${corto}: vuelve a estar pendiente`, g, base);
     }
     case "ok_todo_el_dia": {
       await g.actualizar("hd_viajes", a.viajeId, { ok_todo_el_dia: true });
-      return listo(db, userId, `${corto}: se saca un rato al chofer de su cuadrilla`, g, base);
+      return listo(userId, `${corto}: se saca un rato al chofer de su cuadrilla`, g, base);
     }
   }
 }
 
 // ═══════════════════════════ Pedidos ══════════════════════════════════════════
 
-export async function accionPedido(db: DB, userId: string, a: AccionPedido): Promise<Resultado> {
-  const g = grabador(db);
+export function accionPedido(db: DB, userId: string, a: AccionPedido): Promise<Resultado> {
+  return conGrabador(db, userId, { fecha: "fecha" in a ? a.fecha ?? null : null, entidad: "pedido", accion: a.accion }, (g) => accionPedidoCon(g, db, userId, a));
+}
+async function accionPedidoCon(g: Grabador, db: DB, userId: string, a: AccionPedido): Promise<Resultado> {
   if (a.accion === "crear") {
     const hoy = hoyBA();
     const fp = a.fecha ?? fechaPorDefecto(hoy, ahoraDe(hoy), (await leerDia(hoy, { cacheOdoo: true })).parametros);
@@ -652,7 +660,7 @@ export async function accionPedido(db: DB, userId: string, a: AccionPedido): Pro
       const k = await db.from("plan_cajon_pendientes").update({ hecho: true, hecho_at: ts() }).eq("id", a.cajonPendienteId);
       if (k.error) console.error("[hoja-dia] no se pudo tildar el pendiente del cajón", k.error.message);
     }
-    return listo(db, userId, `Pedido guardado: ${a.que} → ${lugar(dia, hacia).n}${pidio ? ` · pidió ${N(dia, pidio)}` : ""}`, g, { fecha: fp, entidad: "pedido", entidadId: String(p.id), pedidoId: String(p.id), accion: "crear_pedido" }, { pedidoId: String(p.id), fecha: fp });
+    return listo(userId, `Pedido guardado: ${a.que} → ${lugar(dia, hacia).n}${pidio ? ` · pidió ${N(dia, pidio)}` : ""}`, g, { fecha: fp, entidad: "pedido", entidadId: String(p.id), pedidoId: String(p.id), accion: "crear_pedido" }, { pedidoId: String(p.id), fecha: fp });
   }
   if (a.accion === "aceptar_sugerido" || a.accion === "descartar_sugerido") {
     const dia = await leerDia(a.fecha, { cacheOdoo: true });
@@ -664,7 +672,7 @@ export async function accionPedido(db: DB, userId: string, a: AccionPedido): Pro
       no_antes_de: s.noAntesDe, carga_deposito: s.cargaDeposito, canal: "sugerido", sugerido_regla: s.regla, sugerido_ot_id: s.otId,
       ...(a.accion === "descartar_sugerido" ? { estado: "anulado", anulado_motivo: "No hace falta", anulado_at: ts() } : {}),
     });
-    if (a.accion === "descartar_sugerido") return listo(db, userId, "Sugerido descartado: no vuelve a aparecer para esa obra y ese día", g, { fecha: a.fecha, entidad: "pedido", entidadId: String(p.id), pedidoId: String(p.id), accion: a.accion });
+    if (a.accion === "descartar_sugerido") return listo(userId, "Sugerido descartado: no vuelve a aparecer para esa obra y ese día", g, { fecha: a.fecha, entidad: "pedido", entidadId: String(p.id), pedidoId: String(p.id), accion: a.accion });
     let texto = `Aceptado: ${s.txt}`;
     if (s.enCamion) {
       const dia2 = await leerDia(a.fecha, { cacheOdoo: true });
@@ -676,7 +684,7 @@ export async function accionPedido(db: DB, userId: string, a: AccionPedido): Pro
         texto = `Aceptado en el ${patente(dia, s.enCamion)} (${N(dia, choferDelCamion(dia, s.enCamion))})${s.noAntesDe ? `, ~${normHora(s.noAntesDe)}` : ""}`;
       }
     }
-    return listo(db, userId, texto, g, { fecha: a.fecha, entidad: "pedido", entidadId: String(p.id), pedidoId: String(p.id), accion: a.accion }, { pedidoId: String(p.id) });
+    return listo(userId, texto, g, { fecha: a.fecha, entidad: "pedido", entidadId: String(p.id), pedidoId: String(p.id), accion: a.accion }, { pedidoId: String(p.id) });
   }
 
   const pr = await db.from("hd_pedidos").select("*").eq("id", a.pedidoId).maybeSingle();
@@ -690,11 +698,11 @@ export async function accionPedido(db: DB, userId: string, a: AccionPedido): Pro
     case "esperar": {
       const hasta = a.hasta ? instanteDe(f, toMin(a.hasta)!) : new Date(Date.now() + 3_600_000).toISOString();
       await g.actualizar("hd_pedidos", a.pedidoId, { estado: "esperando", esperando_motivo: a.motivo, esperando_hasta: hasta, no_pudo_visto: true });
-      return listo(db, userId, `Esperando: ${donde} · ${lowFirst(a.motivo)}${a.hasta ? ` · vuelve a «Para hacer vos» a las ${normHora(a.hasta)}` : ""}`, g, base);
+      return listo(userId, `Esperando: ${donde} · ${lowFirst(a.motivo)}${a.hasta ? ` · vuelve a «Para hacer vos» a las ${normHora(a.hasta)}` : ""}`, g, base);
     }
     case "ya_esta":
       await g.actualizar("hd_pedidos", a.pedidoId, { estado: p.viaje_id ? "en_camion" : "sin_camion", esperando_hasta: null });
-      return listo(db, userId, `${donde}: ya está. Volvió a «Para hacer vos»`, g, base);
+      return listo(userId, `${donde}: ya está. Volvió a «Para hacer vos»`, g, base);
     case "pasar_a_manana": {
       const avisar: string[] = [];
       if (p.viaje_id) {
@@ -707,7 +715,7 @@ export async function accionPedido(db: DB, userId: string, a: AccionPedido): Pro
         }
       }
       await g.actualizar("hd_pedidos", a.pedidoId, { fecha: addDia(f, 1), viaje_id: null, estado: "sin_camion", orden_manual: -1, esperando_hasta: null, esperando_motivo: null });
-      return listo(db, userId, `${donde} pasa a mañana: queda primero del ${ddmm(addDia(f, 1))} con «viene de ayer»`, g, base, { avisarA: avisar });
+      return listo(userId, `${donde} pasa a mañana: queda primero del ${ddmm(addDia(f, 1))} con «viene de ayer»`, g, base, { avisarA: avisar });
     }
     case "anular": {
       if (p.viaje_id) {
@@ -715,14 +723,14 @@ export async function accionPedido(db: DB, userId: string, a: AccionPedido): Pro
         if (otros.length <= 1) await g.actualizar("hd_viajes", String(p.viaje_id), { estado: "anulado", anulado_motivo: a.motivo || "ya no hace falta" });
       }
       await g.actualizar("hd_pedidos", a.pedidoId, { estado: "anulado", anulado_motivo: a.motivo || "Ya no hace falta", anulado_at: ts(), viaje_id: null });
-      return listo(db, userId, `Pedido anulado (${lowFirst(a.motivo || "ya no hace falta")}). Queda en el historial`, g, base);
+      return listo(userId, `Pedido anulado (${lowFirst(a.motivo || "ya no hace falta")}). Queda en el historial`, g, base);
     }
     case "orden_manual":
       await g.actualizar("hd_pedidos", a.pedidoId, { orden_manual: a.orden });
-      return listo(db, userId, a.orden == null ? "Vuelve al orden de la app" : "Orden a mano", g, base);
+      return listo(userId, a.orden == null ? "Vuelve al orden de la app" : "Orden a mano", g, base);
     case "visto":
       await g.actualizar("hd_pedidos", a.pedidoId, { no_pudo_visto: true });
-      return listo(db, userId, "Visto", g, base);
+      return listo(userId, "Visto", g, base);
   }
 }
 
@@ -745,8 +753,10 @@ async function sacarDeHojas(g: Grabador, db: DB, pid: string, desde: Fecha, hast
   return out;
 }
 
-export async function accionAusencia(db: DB, userId: string, a: AccionAusencia, fechaVista?: Fecha): Promise<Resultado> {
-  const g = grabador(db);
+export function accionAusencia(db: DB, userId: string, a: AccionAusencia, fechaVista?: Fecha): Promise<Resultado> {
+  return conGrabador(db, userId, { fecha: fechaVista ?? null, entidad: "ausencia", accion: a.accion }, (g) => accionAusenciaCon(g, db, userId, a, fechaVista));
+}
+async function accionAusenciaCon(g: Grabador, db: DB, userId: string, a: AccionAusencia, fechaVista?: Fecha): Promise<Resultado> {
   const dia = await leerDia(fechaVista ?? hoyBA(), { cacheOdoo: true });
   const base = { fecha: fechaVista ?? null, entidad: "ausencia" };
   switch (a.accion) {
@@ -766,7 +776,7 @@ export async function accionAusencia(db: DB, userId: string, a: AccionAusencia, 
         : f
           ? f.aCargo ? `${n} no viene (${TIPO_AUSENCIA_TXT[a.tipo]}): la ${cNombre(dia, f.c)} quedó sin nadie a cargo` : `${n} no viene (${TIPO_AUSENCIA_TXT[a.tipo]}, ${rango}). Salió de la ${cNombre(dia, f.c)}`
           : `${n} · ${TIPO_AUSENCIA_TXT[a.tipo]} ${rango}`;
-      return listo(db, userId, texto, g, { ...base, entidadId: String(fila.id), accion: "crear_ausencia" }, { ausenciaId: String(fila.id), afectadas: afect });
+      return listo(userId, texto, g, { ...base, entidadId: String(fila.id), accion: "crear_ausencia" }, { ausenciaId: String(fila.id), afectadas: afect });
     }
     case "editar": {
       const v: Fila = {};
@@ -776,7 +786,7 @@ export async function accionAusencia(db: DB, userId: string, a: AccionAusencia, 
       if (a.nota !== undefined) v.nota = a.nota;
       const fila = await g.actualizar("hd_ausencias", a.ausenciaId, v);
       const au = mapAusenciaFila(fila);
-      return listo(db, userId, `Ausencia de ${N(dia, au.personaId)}: ${ausTexto(au, true)}`, g, { ...base, entidadId: a.ausenciaId, accion: a.accion });
+      return listo(userId, `Ausencia de ${N(dia, au.personaId)}: ${ausTexto(au, true)}`, g, { ...base, entidadId: a.ausenciaId, accion: a.accion });
     }
     case "alta": {
       if (a.ausenciaId) {
@@ -785,18 +795,18 @@ export async function accionAusencia(db: DB, userId: string, a: AccionAusencia, 
         const al = altaDeAusencia({ desde: String(r.data.desde), hasta: (r.data.hasta as string) ?? null }, a.fecha);
         if ("anular" in al) await g.actualizar("hd_ausencias", a.ausenciaId, { anulada_at: ts(), anulada_por: userId });
         else await g.actualizar("hd_ausencias", a.ausenciaId, { hasta: al.hasta });
-        return listo(db, userId, `${N(dia, String(r.data.persona_id))} ya tiene el alta: vuelve el ${ddmm(a.fecha)}. Quedó sin asignar`, g, { ...base, entidadId: a.ausenciaId, accion: a.accion });
+        return listo(userId, `${N(dia, String(r.data.persona_id))} ya tiene el alta: vuelve el ${ddmm(a.fecha)}. Quedó sin asignar`, g, { ...base, entidadId: a.ausenciaId, accion: a.accion });
       }
       if (!a.personaId || !a.desde) throw new Error("Falta la persona.");
       // Una de la asistencia: se cierra guardándola, así deja de aparecer (y el pasado queda).
       const al = altaDeAusencia({ desde: a.desde, hasta: null }, a.fecha);
       if ("anular" in al) return { ok: true, texto: "No había nada que cerrar", historialId: null };
       const fila = await g.insertar("hd_ausencias", { persona_id: a.personaId, desde: a.desde, hasta: al.hasta, tipo: a.tipo ?? "art", origen: "asistencia", nota: "Cerrada con «Ya tiene el alta»" });
-      return listo(db, userId, `${N(dia, a.personaId)} ya tiene el alta: vuelve el ${ddmm(a.fecha)}. Quedó sin asignar`, g, { ...base, entidadId: String(fila.id), accion: a.accion });
+      return listo(userId, `${N(dia, a.personaId)} ya tiene el alta: vuelve el ${ddmm(a.fecha)}. Quedó sin asignar`, g, { ...base, entidadId: String(fila.id), accion: a.accion });
     }
     case "anular": {
       const fila = await g.actualizar("hd_ausencias", a.ausenciaId, { anulada_at: ts(), anulada_por: userId });
-      return listo(db, userId, `Ausencia de ${N(dia, String(fila.persona_id))} anulada (cargada por error)`, g, { ...base, entidadId: a.ausenciaId, accion: a.accion });
+      return listo(userId, `Ausencia de ${N(dia, String(fila.persona_id))} anulada (cargada por error)`, g, { ...base, entidadId: a.ausenciaId, accion: a.accion });
     }
   }
 }
@@ -813,17 +823,19 @@ export async function accionPersona(userId: string, a: z.infer<typeof accionPers
   else await g.actualizar(tabla, a.personaId, { puede_estar_a_cargo: a.valor });
   const nombre = r.data ? String(r.data.apellido) : "la persona";
   const texto = a.accion === "celular" ? `Guardado en Legajos: ${nombre} · ${a.telefono}` : `${nombre} ${a.valor ? "puede" : "ya no puede"} estar a cargo`;
-  const historialId = await anotar(adm, userId, { fecha: null, entidad: "persona", entidadId: a.personaId, accion: a.accion, texto }, g.cambios);
+  const historialId = await anotar(userId, { fecha: null, entidad: "persona", entidadId: a.personaId, accion: a.accion, texto }, g.cambios);
   return { ok: true, texto, historialId: historialId || null };
 }
 
-export async function accionLugar(db: DB, userId: string, a: z.infer<typeof accionLugarSchema>): Promise<Resultado> {
-  const g = grabador(db);
+export function accionLugar(db: DB, userId: string, a: z.infer<typeof accionLugarSchema>): Promise<Resultado> {
+  return conGrabador(db, userId, { fecha: null, entidad: "lugar", accion: `${a.accion}_lugar` }, (g) => accionLugarCon(g, db, userId, a));
+}
+async function accionLugarCon(g: Grabador, db: DB, userId: string, a: z.infer<typeof accionLugarSchema>): Promise<Resultado> {
   const { accion, ...resto } = a;
   const col: Fila = {};
   for (const [k, v] of Object.entries(resto)) if (k !== "lugarId" && v !== undefined) col[k] = v;
   const fila = accion === "crear" ? await g.insertar("hd_lugares", col) : await g.actualizar("hd_lugares", (a as { lugarId: string }).lugarId, col);
-  return listo(db, userId, `${accion === "crear" ? "Lugar nuevo" : "Lugar actualizado"}: ${fila.nombre}`, g, { fecha: null, entidad: "lugar", entidadId: String(fila.id), accion: `${accion}_lugar` });
+  return listo(userId, `${accion === "crear" ? "Lugar nuevo" : "Lugar actualizado"}: ${fila.nombre}`, g, { fecha: null, entidad: "lugar", entidadId: String(fila.id), accion: `${accion}_lugar` });
 }
 
 // Re-export para las rutas.

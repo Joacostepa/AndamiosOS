@@ -157,7 +157,7 @@ export async function enviar(db: DB, userId: string, fecha: Fecha, pid: string, 
   }
   const que = x.rol === "ex" ? "Avisado que ya no está a cargo" : primera ? "Hoja enviada" : "Cambio avisado";
   const textoH = `${que}: ${nombreDe(dia, pid)}${canal === "telegram" ? " (Telegram)" : " (a mano)"}`;
-  const historialId = await anotar(db, userId, { fecha, entidad: "link", entidadId: String(l.id), accion: primera ? "enviar" : "avisar", texto: textoH }, g.cambios);
+  const historialId = await anotar(userId, { fecha, entidad: "link", entidadId: String(l.id), accion: primera ? "enviar" : "avisar", texto: textoH }, g.cambios);
   return { ok: true, enviado: true, texto: textoH, historialId: historialId || null, messageId, mensaje: texto };
 }
 
@@ -193,7 +193,7 @@ export async function noHaceFalta(db: DB, userId: string, fecha: Fecha, pid: str
   const g = grabador(db);
   await g.actualizar("hd_links", e.id, { snap_ok: fotoDe(dia, pid), ok_at: ts() });
   const texto = `No se le avisa a ${nombreDe(dia, pid)}. Su hoja queda «sin avisar» en gris`;
-  return { ok: true, texto, historialId: (await anotar(db, userId, { fecha, entidad: "link", entidadId: e.id, accion: "no_hace_falta", texto }, g.cambios)) || null };
+  return { ok: true, texto, historialId: (await anotar(userId, { fecha, entidad: "link", entidadId: e.id, accion: "no_hace_falta", texto }, g.cambios)) || null };
 }
 
 /** "Reenviar" a quien no la abrió: el mismo mensaje de la hoja. */
@@ -215,7 +215,7 @@ export async function reenviar(db: DB, userId: string, fecha: Fecha, pid: string
   const g = grabador(db);
   await g.actualizar("hd_links", e.id, { reenviada_at: ts() });
   const texto = `Reenviada a ${nombreDe(dia, pid)}`;
-  return { ok: true, enviado: true, texto, historialId: (await anotar(db, userId, { fecha, entidad: "link", entidadId: e.id, accion: "reenviar", texto }, g.cambios)) || null };
+  return { ok: true, enviado: true, texto, historialId: (await anotar(userId, { fecha, entidad: "link", entidadId: e.id, accion: "reenviar", texto }, g.cambios)) || null };
 }
 
 /** "Anular link" (teléfono perdido, mensaje mandado a otro): el viejo deja de andar. */
@@ -226,7 +226,7 @@ export async function anularLink(db: DB, userId: string, fecha: Fecha, pid: stri
   const g = grabador(db);
   await g.actualizar("hd_links", e.id, { anulado_at: ts(), anulado_motivo: "Anulado desde el escritorio" });
   const texto = `Link de ${nombreDe(dia, pid)} anulado. Al abrirlo ve «El link no es válido». Mandale uno nuevo`;
-  return { ok: true, texto, historialId: (await anotar(db, userId, { fecha, entidad: "link", entidadId: e.id, accion: "anular_link", texto }, g.cambios)) || null };
+  return { ok: true, texto, historialId: (await anotar(userId, { fecha, entidad: "link", entidadId: e.id, accion: "anular_link", texto }, g.cambios)) || null };
 }
 
 /** Un aviso suelto: al operario que entra, al depósito, al capataz que pidió. Telegram si se puede; si no, wa.me. */
@@ -240,14 +240,14 @@ async function avisoSuelto(
     await createAdminClient().from("hd_telegram_mensajes").insert({ fecha, viaje_id: a.viajeId ?? null, ...(a.personaId ? { [a.externa ? "externa_id" : "persona_id"]: a.personaId } : {}), chat_id: a.chat, message_id: r.ok ? r.result.message_id : null, tipo: a.tipo, texto, ok: r.ok, error: r.ok ? null : r.error, enviado_por: userId });
     if (!r.ok) return { ok: true, enviado: false, texto: r.error, historialId: null, waLink: linkWhatsapp(a.celular, texto), mensaje: texto };
   }
-  const id = await anotar(db, userId, { fecha, ...anotacion });
+  const id = await anotar(userId, { fecha, ...anotacion });
   return { ok: true, enviado: canal === "telegram", texto: anotacion.texto, historialId: id || null, waLink: canal === "manual" ? linkWhatsapp(a.celular, texto) : null, mensaje: texto };
 }
 
 export async function avisarOperario(db: DB, userId: string, fecha: Fecha, pid: string, canal: CanalEnvio | "no_hace_falta"): Promise<Resultado> {
   const dia = await leerDia(fecha, { cacheOdoo: true });
   if (canal === "no_hace_falta") {
-    const id = await anotar(db, userId, { fecha, entidad: "persona", entidadId: pid, accion: "no_avisar_operario", texto: `No se le avisa a ${nombreDe(dia, pid)}` });
+    const id = await anotar(userId, { fecha, entidad: "persona", entidadId: pid, accion: "no_avisar_operario", texto: `No se le avisa a ${nombreDe(dia, pid)}` });
     return { ok: true, texto: `No se le avisa a ${nombreDe(dia, pid)}`, historialId: id || null };
   }
   const texto = mensajeOperario(dia, pid, minutosDesde(fecha, new Date()));
@@ -311,7 +311,7 @@ export async function linkDeVinculacion(userId: string, pid: string): Promise<{ 
   if (r.error) throw new Error(r.error.message);
   const link = linkVinculacion(bot, codigo);
   const texto = `Hola, te escribimos de Andamios Buenos Aires. Tocá este link para recibir tus hojas del día por Telegram: ${link}`;
-  await anotar(adm, userId, { fecha: null, entidad: "telegram", entidadId: pid, accion: "link_vinculacion", texto: "Link de vinculación de Telegram generado" });
+  await anotar(userId, { fecha: null, entidad: "telegram", entidadId: pid, accion: "link_vinculacion", texto: "Link de vinculación de Telegram generado" });
   return { link, waLink: linkWhatsapp((fila.telefono as string) ?? null, texto), texto };
 }
 
@@ -320,6 +320,6 @@ export async function desvincular(userId: string, pid: string): Promise<Resultad
   const v = { telegram_chat_id: null, telegram_usuario: null, telegram_vinculado_at: null };
   await adm.from("personal").update(v).eq("id", pid);
   await adm.from("pan_personas_externas").update(v).eq("id", pid);
-  const id = await anotar(adm, userId, { fecha: null, entidad: "telegram", entidadId: pid, accion: "desvincular", texto: "Telegram desvinculado" });
+  const id = await anotar(userId, { fecha: null, entidad: "telegram", entidadId: pid, accion: "desvincular", texto: "Telegram desvinculado" });
   return { ok: true, texto: "Telegram desvinculado: las hojas se le mandan a mano", historialId: id || null };
 }

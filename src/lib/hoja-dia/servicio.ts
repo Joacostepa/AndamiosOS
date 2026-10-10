@@ -33,6 +33,7 @@ import {
 import { telegramConfigurado, usuarioDelBot } from "./telegram";
 import { ahoraItems, bandeja } from "./estado";
 import { crearAlertas, type NuevaAlerta } from "@/lib/alertas/servicio";
+import { COLUMNAS_LEGAJO, esTablaHd, planDeshacer, validarHistorial, type CambioHistorial, type OpHd } from "./deshacer-regla";
 
 export type DB = SupabaseClient;
 type Fila = Record<string, unknown>;
@@ -444,7 +445,7 @@ export async function leerDia(fecha: Fecha, opts: { cacheOdoo?: boolean } = {}):
 // ─── Historial y Deshacer ───────────────────────────────────────────────────
 
 /** Una fila tocada: cómo estaba y cómo quedó. null = no existía / se borró. */
-export type Cambio = { tabla: string; id: string; antes: Fila | null; despues: Fila | null };
+export type Cambio = CambioHistorial;
 
 /**
  * Lleva la cuenta de lo que un gesto tocó, para el historial y el Deshacer. Cada escritura
@@ -495,7 +496,10 @@ export function traducirErrorDb(m: string): string {
   if (/idx_hd_integrantes_a_cargo/.test(m)) return "Esa cuadrilla ya tiene a alguien a cargo.";
   if (/hd_hojas_fecha_cuadrilla_odoo_id_key/.test(m)) return "Esa cuadrilla ya tiene hoja ese día.";
   if (/idx_hd_pedidos_sugerido/.test(m)) return "Ese sugerido ya se revisó.";
+  if (/idx_hd_links_(persona|externa)/.test(m)) return "Otra persona creó ese link recién. Probá de nuevo.";
+  if (/HD_CAMBIO/.test(m)) return "No se puede deshacer: eso cambió después. Hacelo a mano.";
   if (/row-level security/i.test(m)) return "No tenés permiso para hacer este cambio.";
+  if (/invalid input syntax for type time|date\/time field value out of range/i.test(m)) return "Hora inválida.";
   return m;
 }
 
@@ -512,9 +516,15 @@ export type Anotacion = {
   porTexto?: string | null;
 };
 
-/** Anota en el historial. Devuelve el id (lo que el Deshacer necesita). */
-export async function anotar(db: DB, userId: string | null, a: Anotacion, cambios: Cambio[] = []): Promise<string> {
-  const r = await db.from("hd_historial").insert({
+/**
+ * Anota en el historial. Devuelve el id (lo que el Deshacer necesita).
+ *
+ * SIEMPRE CON LA SERVICE ROLE (B2): en la base nadie puede insertar en hd_historial desde
+ * el navegador, porque de `cambios` sale lo que el Deshacer escribe. Lo anota sólo el
+ * servidor, después de que la ruta verificó el permiso; `por` es quien hizo el gesto.
+ */
+export async function anotar(userId: string | null, a: Anotacion, cambios: Cambio[] = []): Promise<string> {
+  const r = await createAdminClient().from("hd_historial").insert({
     fecha: a.fecha, entidad: a.entidad, entidad_id: a.entidadId ?? null, hoja_id: a.hojaId ?? null, viaje_id: a.viajeId ?? null,
     pedido_id: a.pedidoId ?? null, accion: a.accion, texto: a.texto, cambios, por: userId, por_texto: a.porTexto ?? null, origen: a.origen ?? "escritorio",
   }).select("id").single();
@@ -526,47 +536,94 @@ export async function anotar(db: DB, userId: string | null, a: Anotacion, cambio
   return String(r.data.id);
 }
 
-const sinMarcas = (f: Fila | null) => {
-  if (!f) return null;
-  const { updated_at: _u, ...resto } = f;
-  void _u;
-  return JSON.stringify(resto);
-};
+/**
+ * Aplica escrituras de tablas del módulo EN UNA TRANSACCIÓN (la función SQL hd_aplicar,
+ * SECURITY INVOKER: con la sesión que se le pase, la RLS decide). Cada una puede exigir
+ * cómo tiene que estar la fila antes; si una no se puede, no se aplica ninguna.
+ * Devuelve las filas tocadas (antes y después), para el historial.
+ */
+export async function aplicarEnBloque(db: DB, ops: OpHd[]): Promise<Cambio[]> {
+  if (!ops.length) return [];
+  for (const o of ops) if (!esTablaHd(o.tabla)) throw new Error("Ese cambio no se puede hacer desde acá.");
+  const r = await db.rpc("hd_aplicar", { p_ops: ops });
+  if (r.error) throw new Error(traducirErrorDb(r.error.message));
+  return (r.data ?? []) as Cambio[];
+}
+
+/**
+ * Corre un gesto con su grabador y, si falla a mitad (I4), DESHACE lo que llegó a escribir
+ * en un solo bloque (hd_aplicar). Si ni eso se puede, deja en el historial lo que quedó
+ * escrito —con su Deshacer— y lo dice en el error: nunca datos a medias sin rastro.
+ */
+export async function conGrabador<T>(db: DB, userId: string | null, a: Omit<Anotacion, "texto">, fn: (g: Grabador) => Promise<T>): Promise<T> {
+  const g = grabador(db);
+  try {
+    return await fn(g);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (!g.cambios.length) throw e;
+    try {
+      // Las filas quedaron como las dejó este gesto: el "después" de la última escritura de cada una.
+      const actuales = new Map(g.cambios.map((c) => [`${c.tabla}:${c.id}`, c.despues] as const));
+      await aplicarEnBloque(db, planDeshacer(g.cambios.filter((c) => esTablaHd(c.tabla)), actuales));
+    } catch (e2) {
+      console.error("[hoja-dia] no se pudo volver atrás un gesto a medias", e2 instanceof Error ? e2.message : e2);
+      await anotar(userId, { ...a, accion: `${a.accion}_a_medias`, texto: `Quedó a medias (${msg}). Se puede deshacer desde el historial.` }, g.cambios);
+      throw new Error(`${msg}. Quedó a medias: deshacelo desde el historial.`);
+    }
+    throw e;
+  }
+}
 
 /**
  * Deshace un gesto: vuelve cada fila a como estaba. Si alguna cambió después (otra persona,
  * el chofer desde su link), no toca nada y lo dice: deshacer encima de un cambio ajeno lo
  * pisaría sin que nadie se entere.
+ *
+ * B2: la fila de historial se lee con la service role pero se VALIDA (validarHistorial:
+ * sólo tablas del módulo, y de Legajos sólo el celular y "puede estar a cargo"); las filas
+ * del módulo se escriben con la SESIÓN de quien deshace (`db`), en una transacción, y sólo
+ * si siguen como las dejó el gesto (la comparación se repite adentro de la base). Legajos
+ * va con la service role (como el gesto original, que la ruta autorizó con Hoja del día en
+ * editar), sólo esas dos columnas.
  */
 export async function deshacer(db: DB, userId: string, historialId: string): Promise<{ texto: string; historialId: string }> {
-  const h = await db.from("hd_historial").select("*").eq("id", historialId).maybeSingle();
+  const adm = createAdminClient();
+  const h = await adm.from("hd_historial").select("*").eq("id", historialId).maybeSingle();
   if (h.error || !h.data) throw new Error("No encuentro ese cambio.");
   if (h.data.deshecho_at) throw new Error("Ese cambio ya se deshizo.");
-  const cambios = (h.data.cambios ?? []) as Cambio[];
-  if (!cambios.length) throw new Error("Ese cambio no se puede deshacer.");
-  // Primero se mira que todo siga como quedó.
+  const cambios = validarHistorial(h.data);
+
+  // Cómo están ahora (con la sesión: lo que el usuario no puede ver, no lo puede deshacer).
+  const actuales = new Map<string, Fila | null>();
   for (const c of cambios) {
-    const actual = await db.from(c.tabla).select("*").eq("id", c.id).maybeSingle();
-    const ahora = actual.data ?? null;
-    if (sinMarcas(ahora) !== sinMarcas(c.despues)) {
-      // La única diferencia tolerada: la fila ya estaba como "antes" (alguien lo hizo a mano).
-      if (sinMarcas(ahora) === sinMarcas(c.antes)) continue;
-      throw new Error("No se puede deshacer: eso cambió después. Hacelo a mano.");
+    const cli = esTablaHd(c.tabla) ? db : adm;
+    const r = await cli.from(c.tabla).select("*").eq("id", c.id).maybeSingle();
+    if (r.error) throw new Error(traducirErrorDb(r.error.message));
+    actuales.set(`${c.tabla}:${c.id}`, r.data ?? null);
+  }
+  const ops = planDeshacer(cambios, actuales);
+  // Legajos: sólo las columnas permitidas, y sólo si siguen como quedaron.
+  const legajo = cambios.filter((c) => !esTablaHd(c.tabla)).reverse();
+  for (const c of legajo) {
+    const ahora = actuales.get(`${c.tabla}:${c.id}`) ?? null;
+    if (!ahora) throw new Error("No se puede deshacer: esa persona ya no existe.");
+    for (const k of COLUMNAS_LEGAJO[c.tabla]) {
+      if (JSON.stringify(ahora[k]) !== JSON.stringify(c.despues![k]) && JSON.stringify(ahora[k]) !== JSON.stringify(c.antes![k])) {
+        throw new Error("No se puede deshacer: eso cambió después. Hacelo a mano.");
+      }
     }
   }
-  const g = grabador(db);
-  // En orden inverso: lo último que se tocó vuelve primero (un integrante antes que su hoja).
-  for (const c of [...cambios].reverse()) {
-    const actual = await db.from(c.tabla).select("id").eq("id", c.id).maybeSingle();
-    if (c.antes == null) { if (actual.data) await g.borrar(c.tabla, c.id); continue; }
-    const { id: _id, created_at: _c, updated_at: _u, ...valores } = c.antes;
-    void _id; void _c; void _u;
-    if (actual.data) await g.actualizar(c.tabla, c.id, valores);
-    else await g.insertar(c.tabla, { ...c.antes, updated_at: undefined });
+
+  const hechos = await aplicarEnBloque(db, ops);
+  const g = grabador(adm);
+  for (const c of legajo) {
+    const valores = Object.fromEntries(COLUMNAS_LEGAJO[c.tabla].map((k) => [k, c.antes![k] ?? null]));
+    await g.actualizar(c.tabla, c.id, valores);
   }
-  await db.from("hd_historial").update({ deshecho_at: new Date().toISOString(), deshecho_por: userId }).eq("id", historialId);
+  await adm.from("hd_historial").update({ deshecho_at: new Date().toISOString(), deshecho_por: userId }).eq("id", historialId);
   const texto = `Deshecho: ${h.data.texto}`;
-  const id = await anotar(db, userId, { fecha: h.data.fecha, entidad: h.data.entidad, entidadId: h.data.entidad_id, hojaId: h.data.hoja_id, viajeId: h.data.viaje_id, pedidoId: h.data.pedido_id, accion: "deshacer", texto }, g.cambios);
+  const id = await anotar(userId, { fecha: h.data.fecha, entidad: h.data.entidad, entidadId: h.data.entidad_id, hojaId: h.data.hoja_id, viajeId: h.data.viaje_id, pedidoId: h.data.pedido_id, accion: "deshacer", texto }, [...hechos, ...g.cambios]);
   return { texto, historialId: id };
 }
 

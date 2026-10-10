@@ -703,22 +703,25 @@ CREATE POLICY "Hoja del día: editar ausencias" ON hd_ausencias FOR UPDATE TO au
   WITH CHECK ((SELECT hd_puede_editar()) OR (SELECT hd_nivel('personal')) = 'editar');
 REVOKE DELETE ON hd_ausencias FROM authenticated;
 
--- Historial: lo lee quien ve el módulo; lo escribe cualquiera que pueda cambiar algo de
--- lo de arriba (la fila siempre es suya). Nadie lo edita ni lo borra (trigger).
+-- Historial: lo lee quien ve el módulo. LO ESCRIBE SÓLO EL SERVIDOR (service role), nunca
+-- el navegador: de `cambios` sale lo que el Deshacer vuelve a escribir, así que una fila
+-- insertada a mano sería una puerta para escribir otras tablas con la sesión de quien toca
+-- "Deshacer" (B2 de la revisión). El servidor la anota después de verificar el permiso de
+-- la ruta, y el Deshacer además valida las tablas (src/lib/hoja-dia/deshacer-regla.ts).
+-- Nadie la edita ni la borra (trigger); la marca de "deshecho" también la pone el servidor.
 ALTER TABLE hd_historial ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Hoja del día: leer historial" ON hd_historial;
 CREATE POLICY "Hoja del día: leer historial" ON hd_historial FOR SELECT TO authenticated
   USING ((SELECT hd_puede_ver()));
 DROP POLICY IF EXISTS "Hoja del día: anotar historial" ON hd_historial;
-CREATE POLICY "Hoja del día: anotar historial" ON hd_historial FOR INSERT TO authenticated
-  WITH CHECK (por = auth.uid() AND ((SELECT hd_puede_editar()) OR (SELECT hd_nivel('planificacion')) = 'editar'
-              OR (SELECT hd_nivel('panol')) = 'editar' OR (SELECT hd_nivel('personal')) = 'editar'));
 DROP POLICY IF EXISTS "Hoja del día: marcar deshecho" ON hd_historial;
-CREATE POLICY "Hoja del día: marcar deshecho" ON hd_historial FOR UPDATE TO authenticated
-  USING ((SELECT hd_puede_editar())) WITH CHECK ((SELECT hd_puede_editar()));
-REVOKE UPDATE ON hd_historial FROM authenticated;
-GRANT UPDATE (deshecho_at, deshecho_por) ON hd_historial TO authenticated;
-REVOKE DELETE ON hd_historial FROM authenticated;
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON hd_historial FROM anon, authenticated;
+
+-- Los links: el token es la llave del celular del capataz o del chofer (con él se marca
+-- "Hecho" por el chofer). Los lee sólo quien puede editar la hoja; la pantalla de sólo
+-- lectura los recibe del servidor sin el token.
+DROP POLICY IF EXISTS "Hoja del día: leer" ON hd_links;
+CREATE POLICY "Hoja del día: leer" ON hd_links FOR SELECT TO authenticated USING ((SELECT hd_puede_editar()));
 
 -- Parámetros: los cambia un admin, y sólo el valor.
 DROP POLICY IF EXISTS "Hoja del día: admin cambia parámetros" ON hd_parametros;
@@ -754,6 +757,91 @@ BEGIN
   END LOOP;
 END
 $fn$;
+
+-- ========================
+-- Escrituras en bloque (I4 y el Deshacer)
+-- ========================
+-- Aplica una lista de escrituras sobre tablas del módulo EN UNA TRANSACCIÓN: o todas o
+-- ninguna. La usan el Deshacer (vuelve las filas a como estaban) y el servidor cuando un
+-- gesto falla a mitad (deshace lo que llegó a escribir). Cada una puede exigir cómo está la
+-- fila ahora (`esperado`, sin updated_at; null = que no exista): si otra persona la cambió
+-- en el medio, no se aplica nada (HD_CAMBIO).
+--
+-- SECURITY INVOKER: corre con la sesión de quien llama y la RLS de cada tabla decide. Sólo
+-- tablas hd_* de la lista: no es una puerta a otras tablas.
+--
+-- p_ops: [{ op: "insertar" | "actualizar" | "borrar", tabla, id, valores?, esperado? }]
+-- Devuelve [{ tabla, id, antes, despues }] (para el historial).
+CREATE OR REPLACE FUNCTION hd_aplicar(p_ops JSONB)
+RETURNS JSONB
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = public
+AS $$
+DECLARE
+  v_op      JSONB;
+  v_tabla   TEXT;
+  v_id      UUID;
+  v_antes   JSONB;
+  v_despues JSONB;
+  v_valores JSONB;
+  v_cols    TEXT;
+  v_set     TEXT;
+  v_out     JSONB := '[]'::jsonb;
+BEGIN
+  IF jsonb_typeof(p_ops) IS DISTINCT FROM 'array' THEN
+    RAISE EXCEPTION 'hd_aplicar: se esperaba una lista';
+  END IF;
+  FOR v_op IN SELECT x FROM jsonb_array_elements(p_ops) AS t(x) LOOP
+    v_tabla := v_op->>'tabla';
+    IF v_tabla IS NULL OR v_tabla NOT IN ('hd_hojas', 'hd_integrantes', 'hd_camiones_dia', 'hd_viajes', 'hd_pedidos',
+                                          'hd_instrucciones', 'hd_ausencias', 'hd_links', 'hd_lugares') THEN
+      RAISE EXCEPTION 'hd_aplicar: tabla no permitida (%)', v_tabla;
+    END IF;
+    v_id := (v_op->>'id')::uuid;
+    EXECUTE format('SELECT to_jsonb(x) FROM %I x WHERE x.id = $1 FOR UPDATE', v_tabla) INTO v_antes USING v_id;
+
+    IF v_op ? 'esperado' THEN
+      IF jsonb_typeof(v_op->'esperado') = 'null' THEN
+        IF v_antes IS NOT NULL THEN RAISE EXCEPTION 'HD_CAMBIO: % % ya existe', v_tabla, v_id; END IF;
+      ELSIF v_antes IS NULL OR (v_antes - 'updated_at') IS DISTINCT FROM ((v_op->'esperado') - 'updated_at') THEN
+        RAISE EXCEPTION 'HD_CAMBIO: % % cambió', v_tabla, v_id;
+      END IF;
+    END IF;
+
+    CASE v_op->>'op'
+      WHEN 'borrar' THEN
+        IF v_antes IS NOT NULL THEN
+          EXECUTE format('DELETE FROM %I WHERE id = $1', v_tabla) USING v_id;
+        END IF;
+      WHEN 'insertar', 'actualizar' THEN
+        v_valores := (v_op->'valores') - 'updated_at';
+        IF v_op->>'op' = 'actualizar' THEN
+          v_valores := v_valores - 'id' - 'created_at';
+          IF v_antes IS NULL THEN RAISE EXCEPTION 'HD_CAMBIO: % % ya no existe', v_tabla, v_id; END IF;
+        ELSE
+          v_valores := jsonb_set(v_valores, '{id}', to_jsonb(v_id::text));
+        END IF;
+        SELECT string_agg(quote_ident(c.column_name), ', '), string_agg(format('%I = r.%I', c.column_name, c.column_name), ', ')
+          INTO v_cols, v_set
+          FROM information_schema.columns c
+         WHERE c.table_schema = 'public' AND c.table_name = v_tabla AND v_valores ? c.column_name;
+        IF v_cols IS NULL THEN RAISE EXCEPTION 'hd_aplicar: sin columnas para %', v_tabla; END IF;
+        IF v_op->>'op' = 'insertar' THEN
+          EXECUTE format('INSERT INTO %I (%s) SELECT %s FROM jsonb_populate_record(NULL::%I, $1) r', v_tabla, v_cols, v_cols, v_tabla) USING v_valores;
+        ELSE
+          EXECUTE format('UPDATE %I t SET %s FROM jsonb_populate_record(NULL::%I, $1) r WHERE t.id = $2', v_tabla, v_set, v_tabla) USING v_valores, v_id;
+        END IF;
+      ELSE
+        RAISE EXCEPTION 'hd_aplicar: operación desconocida (%)', v_op->>'op';
+    END CASE;
+
+    EXECUTE format('SELECT to_jsonb(x) FROM %I x WHERE x.id = $1', v_tabla) INTO v_despues USING v_id;
+    v_out := v_out || jsonb_build_array(jsonb_build_object('tabla', v_tabla, 'id', v_id, 'antes', v_antes, 'despues', v_despues));
+  END LOOP;
+  RETURN v_out;
+END;
+$$;
+REVOKE ALL ON FUNCTION hd_aplicar(jsonb) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION hd_aplicar(jsonb) TO authenticated, service_role;
 
 -- ========================
 -- Fotos de remitos (fase 1, opcionales). Privado: se sirven firmadas por el servidor.

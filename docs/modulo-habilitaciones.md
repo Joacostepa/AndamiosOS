@@ -11,9 +11,12 @@ Reemplaza la planilla `Seguimiento de obras (DOCS TRACKER)`.
 > - posponer, panel de planificación, SyH, revertir y los hilos de comentarios separados;
 > - **09/10**: los días, la urgencia y el semáforo vencido los calcula la app con el día de
 >   hoy (los `x_hab_*` de Odoo se congelan), cada fila dice qué falta y de quién es la
->   pelota, y todo cambio de requisitos queda en el historial.
+>   pelota, y todo cambio de requisitos queda en el historial;
+> - **09/10, rediseño**: la bandeja se agrupa por de quién es la pelota, "Esperan el permiso"
+>   reemplaza al posponer por permiso, la ficha tiene una sola tarjeta de estado, el permiso
+>   es de sólo lectura y el panel de planificación es una hoja encima.
 >
-> Revisión y prueba del módulo del 09/10: `docs/habilitaciones-rediseno.md` (propuesta de
+> **Estado y pendientes: `docs/handoff-habilitaciones.md`.** Revisión y prueba del módulo del 09/10: `docs/habilitaciones-rediseno.md` (propuesta de
 > rediseño), `docs/habilitaciones-inventario.md` (cada acción y qué hace),
 > `docs/habilitaciones-errores.md` y `docs/habilitaciones-recorrido.md` (borrador del
 > recorrido guiado completo).

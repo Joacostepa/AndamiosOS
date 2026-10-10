@@ -332,6 +332,84 @@ export async function fetchTablero(desde: string, hasta: string): Promise<Tabler
 }
 
 /**
+ * Lo que la Hoja del día necesita del tablero (docs/equipos-del-dia/modulo.md §2): las
+ * asignaciones de un rango corto de días y SÓLO las OTs que aparecen en ellas, con lo que
+ * la hoja muestra de cada una (dirección, tipo, contacto, coordenadas, qué jornada es).
+ *
+ * NO REUSA fetchTablero A PROPÓSITO: ése trae las ~52 OTs candidatas, los partes y el
+ * avance de todas, que la hoja no usa. Esto son 4 llamadas (cuadrillas y asignaciones en
+ * paralelo; después las OTs y sus jornadas en paralelo; al final las coordenadas de sus
+ * ventas), con los mismos campos y el mismo mapeo (mapOt/mapAsig) que el tablero, para que
+ * la hoja y el tablero digan lo mismo de la misma OT.
+ *
+ * `fechas`: las fechas de las que se quiere el tablero (el día de la hoja y el anterior con
+ * hojas). Se piden por rango [min, max] y se filtran acá: una sola consulta.
+ */
+export async function fetchTableroDeFechas(fechas: string[]): Promise<{
+  cuadrillas: { id: number; nombre: string; tercerizada: boolean }[];
+  asignaciones: AsignacionTablero[];
+  ots: (OtTablero & { ventaId: number | null; lat: number | null; lng: number | null; fechasJornadas: string[] })[];
+}> {
+  const lista = [...new Set(fechas.filter(Boolean))].sort();
+  if (!lista.length) return { cuadrillas: [], asignaciones: [], ots: [] };
+  const base = process.env.ODOO_URL ?? "";
+  await authenticate();
+  const [actionId, cuadrillasRaw, asigsRaw] = await Promise.all([
+    otActionId(),
+    searchRead<{ id: number; x_name: string | false; x_tercerizada: boolean }>(
+      "x_aba_cuadrilla", [["x_activa", "=", true]], ["id", "x_name", "x_tercerizada"], { order: "x_name" },
+    ),
+    searchRead<OdooAsigRow>(
+      "x_aba_asignacion",
+      [["x_fecha", ">=", lista[0]], ["x_fecha", "<=", lista[lista.length - 1]], ["x_ot_id", "!=", false]],
+      ASIG_FIELDS,
+      { order: "x_fecha, x_orden_dia, id" },
+    ),
+  ]);
+  const quiero = new Set(lista);
+  const asignaciones = asigsRaw.map(mapAsig).filter((a) => quiero.has(a.fecha));
+  const otIds = [...new Set(asignaciones.map((a) => a.otId).filter(Boolean))];
+  if (!otIds.length) {
+    return { cuadrillas: cuadrillasRaw.map((c) => ({ id: c.id, nombre: str(c.x_name) ?? `Cuadrilla #${c.id}`, tercerizada: c.x_tercerizada === true })), asignaciones, ots: [] };
+  }
+  // Las jornadas de esas OTs (sólo las fechas): de ahí sale "día 2 de 3", el primer día de un
+  // armado y el último de un desarme (los sugeridos de la noche anterior).
+  const [otsRaw, jornadasRaw] = await Promise.all([
+    read<OdooOtRow>("x_aba_orden_trabajo", otIds, OT_FIELDS),
+    searchRead<{ x_ot_id: M2O; x_fecha: string | false }>("x_aba_asignacion", [["x_ot_id", "in", otIds]], ["x_ot_id", "x_fecha"]),
+  ]);
+  const ventaIds = [...new Set(otsRaw.map((o) => m2oId(o.x_order_id)).filter((x): x is number => x != null))];
+  const coords = ventaIds.length
+    ? await read<{ id: number; x_obra_lat: number | false; x_obra_lng: number | false }>("sale.order", ventaIds, ["x_obra_lat", "x_obra_lng"])
+    : [];
+  const coordDe = new Map(coords.map((c) => [c.id, c]));
+  const jornadas = new Map<number, Set<string>>();
+  for (const j of jornadasRaw) {
+    const id = m2oId(j.x_ot_id);
+    const f = str(j.x_fecha);
+    if (id == null || !f) continue;
+    const set = jornadas.get(id) ?? new Set<string>();
+    set.add(f);
+    jornadas.set(id, set);
+  }
+  return {
+    cuadrillas: cuadrillasRaw.map((c) => ({ id: c.id, nombre: str(c.x_name) ?? `Cuadrilla #${c.id}`, tercerizada: c.x_tercerizada === true })),
+    asignaciones,
+    ots: otsRaw.map((o) => {
+      const ventaId = m2oId(o.x_order_id);
+      const c = ventaId != null ? coordDe.get(ventaId) : undefined;
+      return {
+        ...mapOt(o, base, actionId),
+        ventaId,
+        lat: typeof c?.x_obra_lat === "number" && c.x_obra_lat !== 0 ? c.x_obra_lat : null,
+        lng: typeof c?.x_obra_lng === "number" && c.x_obra_lng !== 0 ? c.x_obra_lng : null,
+        fechasJornadas: [...(jornadas.get(o.id) ?? [])].sort(),
+      };
+    }),
+  };
+}
+
+/**
  * Las fechas de todas las jornadas de una OT, sin límite de rango y sin repetir.
  *
  * La usa el buscador del tablero para una obra planificada fuera de las semanas cargadas:

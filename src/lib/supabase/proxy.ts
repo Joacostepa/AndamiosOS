@@ -54,7 +54,14 @@ export async function updateSession(request: NextRequest) {
   //   pública también la pantalla interna /permisos-via-publica.
   // /api/comercial/asistente/voz/llm: el "cerebro" del agente de voz; lo llama ElevenLabs
   //   (sin cookie). Lo protegen el secreto del agente y el token firmado de la sesión de voz.
+  // /h/: el link del capataz y del chofer (Hoja del día), protegido por el token de la URL
+  //   que valida /api/public/hoja. CON la barra final, como /permiso/: "/h" sola dejaría
+  //   pública cualquier ruta que empiece con h (/habilitaciones).
+  // /api/telegram/webhook: el bot de Telegram. Lo protege el secreto que Telegram manda en
+  //   X-Telegram-Bot-Api-Secret-Token (falla cerrado sin TELEGRAM_WEBHOOK_SECRET).
   const publicPaths = [
+    "/h/",
+    "/api/telegram/webhook",
     "/api/comercial/asistente/voz/llm",
     "/api/whatsapp/webhook",
     "/endosos",

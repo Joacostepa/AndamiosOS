@@ -44,6 +44,11 @@ const DEFINICION = [
   { id: "informes-obra", titulo: "Informes de obra", grupo: "Operaciones", rutas: ["/informes-obra"] },
   { id: "mapa-obras", titulo: "Mapa de obras", grupo: "Operaciones", rutas: ["/mapa-obras"], soloLectura: true },
   { id: "planificacion", titulo: "Planificación", grupo: "Operaciones", rutas: ["/planificacion"] },
+  // La Hoja del día (docs/equipos-del-dia/modulo.md): quiénes van, con qué chofer y qué hace
+  // cada camión. Vive ADENTRO de Planificación (/planificacion/hoja y /hoja/camiones) pero es
+  // un módulo aparte: se puede ver la hoja sin poder mover el tablero, y al revés. Gana la
+  // ruta más larga (ver moduloDeRuta), así /planificacion/hoja no la abre Planificación.
+  { id: "hoja-dia", titulo: "Hoja del día", grupo: "Operaciones", rutas: ["/planificacion/hoja"] },
   { id: "computos", titulo: "Cómputos", grupo: "Oficina técnica", rutas: ["/oficina-tecnica/computos"] },
   { id: "stock", titulo: "Stock", grupo: "Depósito y logística", rutas: ["/deposito/stock"] },
   { id: "catalogo", titulo: "Catálogo de piezas", grupo: "Depósito y logística", rutas: ["/deposito/catalogo"] },
@@ -122,6 +127,13 @@ const APIS: Record<string, readonly ModuloId[]> = {
   "/api/ai/computo": ["computos"],
   "/api/panol": ["panol"],
   "/api/panol/kiosco": ["panol-kiosco", "panol"],
+  // Hoja del día (§14 "Acceso"). Los pedidos también los crean quien planifica (desde el
+  // cajón) y el depósito, sin poder ponerlos en un camión (eso es /viajes, sólo hoja-dia);
+  // las ausencias, RRHH desde Personal. "Cerrar jornada" lee la precarga del parte.
+  "/api/hoja-dia": ["hoja-dia"],
+  "/api/hoja-dia/pedidos": ["hoja-dia", "planificacion", "panol"],
+  "/api/hoja-dia/ausencias": ["hoja-dia", "personal"],
+  "/api/hoja-dia/cierre": ["hoja-dia", "planificacion", "partes"],
 };
 const PREFIJOS_API = Object.keys(APIS).sort((a, b) => b.length - a.length);
 
@@ -215,8 +227,23 @@ export function puedeAbrir(acceso: Acceso | null | undefined, pathname: string):
   if (RUTAS_DE_ADMIN.some((r) => coincide(r, pathname))) return acceso.rol === "admin";
   if (RUTAS_DE_TODOS.some((r) => coincide(r, pathname))) return true;
   if (acceso.rol === "admin") return true;
-  const modulo = MODULOS.find((m) => m.rutas.some((r) => coincide(r, pathname)));
+  const modulo = moduloDeRuta(pathname);
   return !!modulo && nivelEn(acceso, modulo.id) !== null;
+}
+
+/**
+ * El módulo de una página: el de la ruta MÁS LARGA que coincide. /planificacion/hoja es de
+ * la Hoja del día aunque también empiece con /planificacion.
+ */
+export function moduloDeRuta(pathname: string): Modulo | null {
+  let mejor: Modulo | null = null;
+  let largo = -1;
+  for (const m of MODULOS) {
+    for (const r of m.rutas) {
+      if (coincide(r, pathname) && r.length > largo) { mejor = m; largo = r.length; }
+    }
+  }
+  return mejor;
 }
 
 /**

@@ -41,6 +41,11 @@
 ALTER TABLE personal ADD COLUMN IF NOT EXISTS odoo_employee_id BIGINT;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_personal_odoo_employee ON personal(odoo_employee_id) WHERE odoo_employee_id IS NOT NULL;
 
+-- La tarea de Odoo (hr.employee.x_tarea: andamista / chofer / herrero), sincronizada por el
+-- mismo script. Es la que dice quién maneja: en Legajos Ortega figura con puesto chofer y
+-- actúa de capataz; en Odoo los choferes son tres (Borda, Kiska, Nuñez).
+ALTER TABLE personal ADD COLUMN IF NOT EXISTS odoo_tarea TEXT;
+
 -- Quién puede estar a cargo de una cuadrilla. Es independiente del puesto: Ortega figura
 -- como chofer y actúa de capataz.
 ALTER TABLE personal ADD COLUMN IF NOT EXISTS puede_estar_a_cargo BOOLEAN NOT NULL DEFAULT false;

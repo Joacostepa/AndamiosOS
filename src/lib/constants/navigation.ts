@@ -29,7 +29,13 @@ export const navigation: NavGroup[] = [
       { title: "Habilitaciones", href: "/habilitaciones", icon: ShieldCheck },
       { title: "Informes de obra", href: "/informes-obra", icon: FileBarChart },
       { title: "Mapa de Obras", href: "/mapa-obras", icon: MapPin },
-      { title: "Planificacion", href: "/planificacion", icon: Calendar },
+      {
+        title: "Planificacion", href: "/planificacion", icon: Calendar,
+        subItems: [
+          { title: "Tablero", href: "/planificacion" },
+          { title: "Hoja del día", href: "/planificacion/hoja" },
+        ],
+      },
     ],
   },
   {
@@ -109,7 +115,10 @@ export function navegacionPara(acceso: Acceso | null): NavGroup[] {
       ...g,
       items: g.items
         .map((i) => (i.subItems ? { ...i, subItems: i.subItems.filter((s) => puedeAbrir(acceso, s.href)) } : i))
-        .filter((i) => puedeAbrir(acceso, i.href) && (!i.subItems || i.subItems.length > 0)),
+        // Un ítem con sub-ítems se muestra si queda alguno, aunque el padre no se pueda abrir
+        // (Hoja del día sin Planificación): entonces el ítem lleva al primero que sí.
+        .filter((i) => (i.subItems ? i.subItems.length > 0 : puedeAbrir(acceso, i.href)))
+        .map((i) => (i.subItems && !puedeAbrir(acceso, i.href) ? { ...i, href: i.subItems[0].href } : i)),
     }))
     .filter((g) => g.items.length > 0);
 }

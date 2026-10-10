@@ -4,7 +4,7 @@ import { randomInt } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
-import { ROLES, accesoDeFila, esAdmin, normalizarPermisos, type Acceso } from "@/lib/auth/acceso";
+import { ROLES, accesoDeFila, esAdmin, nivelEn, normalizarPermisos, type Acceso, type ModuloId, type Nivel } from "@/lib/auth/acceso";
 
 /** Quién hace el pedido y qué puede. null = sin sesión o sin perfil. */
 export async function accesoActual(): Promise<{ userId: string; acceso: Acceso } | null> {
@@ -32,6 +32,23 @@ export async function exigirAdmin(): Promise<{ userId: string } | NextResponse> 
     return NextResponse.json({ error: "Sólo un administrador puede administrar usuarios." }, { status: 403 });
   }
   return { userId: sesion.userId };
+}
+
+/**
+ * La segunda llave de las rutas que usan la service role en nombre de un módulo (la Hoja
+ * del día lee con la llave maestra porque cruza tablas de cuatro módulos). El proxy ya
+ * filtró por APIS, pero una ruta con la llave maestra no puede depender de una sola puerta.
+ * Alcanza con tener UNO de los módulos en el nivel pedido.
+ */
+export async function exigirModulo(modulos: readonly ModuloId[], nivel: Nivel): Promise<{ userId: string; acceso: Acceso } | NextResponse> {
+  const sesion = await accesoActual();
+  if (!sesion) return NextResponse.json({ error: "Tu sesión venció: volvé a iniciar sesión." }, { status: 401 });
+  const ok = modulos.some((m) => {
+    const tiene = nivelEn(sesion.acceso, m);
+    return tiene === "editar" || (tiene === "ver" && nivel === "ver");
+  });
+  if (!ok) return NextResponse.json({ error: nivel === "editar" ? "No tenés permiso para hacer cambios acá." : "No tenés acceso a esto." }, { status: 403 });
+  return sesion;
 }
 
 export const datosUsuarioSchema = z.object({

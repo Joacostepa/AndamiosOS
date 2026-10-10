@@ -136,6 +136,10 @@ export type ParteCargado = {
   fecha: string;
   cuadrillaId: number | null;
   punteroId: number | null;
+  /** El nombre del puntero en Odoo (para "Jornada cerrada · puntero Ortega"). */
+  punteroNombre?: string | null;
+  /** Cuándo se cargó (ISO, UTC). */
+  creadoAt?: string | null;
   camionEnObra: boolean;
   estado: EstadoParte;
   motivoNoEjec: string | null;

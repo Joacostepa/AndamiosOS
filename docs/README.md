@@ -50,4 +50,5 @@ Diseños de cosas que ya no existen. Se guardan como antecedente; no describen l
 | Materiales (`product.product`) | |
 
 - **Espejos read-only** desde Odoo: **clientes** y **catálogo de materiales** (sync por API + webhook automático en `on_create_or_write`).
+- **Legajos ← Empleados** (`hr.employee` → `personal`, desde el 10/10): webhook `/api/odoo/webhooks/empleados` + control diario `/api/cron/personal-odoo`. Crea el legajo de los operarios nuevos, actualiza teléfono/activo/tarea y nunca toca lo propio de la app. Ver [equipos-del-dia/handoff.md](./equipos-del-dia/handoff.md#legajos--empleados-de-odoo-sincronización-automática).
 - Integración server-side vía JSON-RPC en `src/lib/odoo/`; endpoints en `src/app/api/odoo/`.

@@ -59,7 +59,20 @@ export type TipoAlerta =
    * que ve el encargado (src/lib/panol/avisos.ts). Van a `deposito` y al canal del pañol.
    */
   | "panol_ajuste" | "panol_stock" | "panol_vencida" | "panol_faltante" | "panol_inspeccion"
-  | "panol_sin_alta" | "panol_resumen" | "panol_baja";
+  | "panol_sin_alta" | "panol_resumen" | "panol_baja"
+  /**
+   * Hoja del día (docs/equipos-del-dia/modulo.md §8 y §9): sólo los rojos (hojas sin mandar a
+   * las 19, sin abrir a las 6:30, un "No pude" del chofer, nadie busca a una cuadrilla). Los
+   * crea la lectura del día (src/lib/hoja-dia/servicio.ts). SÓLO CAMPANITA en la fase 1: el
+   * "No pude" a #logistica-operativa es de la fase 2.
+   */
+  | "hoja_dia"
+  /**
+   * Legajos ↔ empleados de Odoo (src/lib/personal/sync-odoo.ts): un legajo que se creó solo,
+   * o un empleado que no se pudo cruzar (dos legajos con el mismo nombre, sin régimen). Van
+   * a CADA persona con Legajos en editar (destinatarioId), no a un rol. SÓLO CAMPANITA.
+   */
+  | "personal_odoo";
 
 export type Prioridad = "baja" | "media" | "alta" | "critica";
 
@@ -72,8 +85,10 @@ export type NuevaAlerta = {
   prioridad?: Prioridad;
   /** Ruta interna de la app. El aviso tiene que llevar a algún lado. */
   enlace?: string | null;
-  /** null = todos. Por defecto van a operaciones. */
+  /** null = todos. Por defecto van a operaciones (salvo que vaya a una persona). */
   destinatarioRol?: Rol | null;
+  /** Una persona puntual (user_profiles.id). Con esto el rol por defecto pasa a null. */
+  destinatarioId?: string | null;
 };
 
 /**
@@ -107,7 +122,8 @@ export async function crearAlertas(db: DB, alertas: NuevaAlerta[]): Promise<numb
     descripcion: a.descripcion ?? null,
     prioridad: a.prioridad ?? "media",
     enlace: a.enlace ?? null,
-    destinatario_rol: a.destinatarioRol === undefined ? "operativo" : a.destinatarioRol,
+    destinatario_rol: a.destinatarioRol !== undefined ? a.destinatarioRol : a.destinatarioId ? null : "operativo",
+    destinatario_id: a.destinatarioId ?? null,
   }));
 
   // `clave` además de `id` porque con ignoreDuplicates el select devuelve SÓLO las filas

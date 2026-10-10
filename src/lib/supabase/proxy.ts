@@ -46,6 +46,9 @@ export async function updateSession(request: NextRequest) {
   // /api/permisos-via-publica/latido: el cron que avisa si el robot de TAD dejó de dar
   //   señales. Otra vez la ruta completa: la bandeja de permisos cuelga de esa misma rama y
   //   se lee con sesión. También lo protege CRON_SECRET.
+  // /api/cron/personal-odoo: el control diario de Legajos contra los empleados de Odoo. Ruta
+  //   completa y protegida por CRON_SECRET, como los otros crons. (El webhook de empleados
+  //   ya entra por /api/odoo/webhooks.)
   // /cotizador y /api/public: cotizador hogareño para clientes finales (sin cuenta).
   // /endosos: portal del productor de seguros (Segucom) para subir pólizas. Lo protege el
   //   token de la URL, que valida /api/public/endosos; la página sola no muestra nada.
@@ -54,7 +57,14 @@ export async function updateSession(request: NextRequest) {
   //   pública también la pantalla interna /permisos-via-publica.
   // /api/comercial/asistente/voz/llm: el "cerebro" del agente de voz; lo llama ElevenLabs
   //   (sin cookie). Lo protegen el secreto del agente y el token firmado de la sesión de voz.
+  // /h/: el link del capataz y del chofer (Hoja del día), protegido por el token de la URL
+  //   que valida /api/public/hoja. CON la barra final, como /permiso/: "/h" sola dejaría
+  //   pública cualquier ruta que empiece con h (/habilitaciones).
+  // /api/telegram/webhook: el bot de Telegram. Lo protege el secreto que Telegram manda en
+  //   X-Telegram-Bot-Api-Secret-Token (falla cerrado sin TELEGRAM_WEBHOOK_SECRET).
   const publicPaths = [
+    "/h/",
+    "/api/telegram/webhook",
     "/api/comercial/asistente/voz/llm",
     "/api/whatsapp/webhook",
     "/endosos",
@@ -66,6 +76,7 @@ export async function updateSession(request: NextRequest) {
     "/api/informes-obra/generar",
     "/api/alertas/barrido",
     "/api/permisos-via-publica/latido",
+    "/api/cron/personal-odoo",
     "/cotizador",
     "/api/public",
   ];

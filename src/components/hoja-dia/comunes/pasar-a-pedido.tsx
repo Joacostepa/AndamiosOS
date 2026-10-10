@@ -6,8 +6,9 @@
 // pueden corregir antes de guardar. El pedido aparece en la cola de Camiones de hoy (o de
 // mañana, después de las 15: la fecha la decide el servidor).
 //
-// Los lugares salen del día de la hoja; quien planifica sin permiso de "Hoja del día" no
-// puede leerlo, y entonces el dónde se escribe (queda como dirección).
+// Se muestra sólo a quien puede guardarlo (Planificación en editar; el servidor además
+// acepta Hoja del día o Pañol). Los lugares salen del día de la hoja: quien no tiene
+// "Hoja del día" no lo pide (sería un 403) y escribe el dónde (queda como dirección).
 
 import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -17,12 +18,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAccionPedido, useHojaDia } from "@/hooks/use-hoja-dia";
+import { useAcceso, usePuedeEditar } from "@/components/providers/acceso-provider";
+import { nivelEn } from "@/lib/auth/acceso";
 import { pedidoDesdeCajon } from "@/lib/hoja-dia/camiones";
 import { hoyBA } from "@/lib/panol/estado";
 import type { Punto } from "@/lib/hoja-dia/tipos";
 
 export function PasarAPedido({ id, texto }: { id: string; texto: string }) {
   const [abierto, setAbierto] = useState(false);
+  const puedePlan = usePuedeEditar("planificacion");
+  const puedeHoja = usePuedeEditar("hoja-dia");
+  const puede = puedePlan || puedeHoja;
+  if (!puede) return null;
   return (
     <Popover open={abierto} onOpenChange={setAbierto}>
       <PopoverTrigger
@@ -46,7 +53,8 @@ export function PasarAPedido({ id, texto }: { id: string; texto: string }) {
 
 function Formulario({ id, texto, cerrar }: { id: string; texto: string; cerrar: () => void }) {
   const qc = useQueryClient();
-  const dia = useHojaDia(hoyBA());
+  const veHoja = nivelEn(useAcceso(), "hoja-dia") != null;
+  const dia = useHojaDia(veHoja ? hoyBA() : null);
   const lugares = useMemo(() => (dia.data?.lugares ?? []).filter((l) => l.activo), [dia.data]);
   const ded = useMemo(() => pedidoDesdeCajon(texto, lugares), [texto, lugares]);
   const [que, setQue] = useState<string | null>(null);

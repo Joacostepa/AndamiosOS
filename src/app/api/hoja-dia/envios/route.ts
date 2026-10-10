@@ -6,8 +6,9 @@ import {
 import { conPermiso, fallo, fechaValida, invalidoZod, sesion } from "../_comun";
 
 // GET /api/hoja-dia/envios?fecha=… — la lista de envío ("Mandar las hojas del martes 13"):
-// una fila por persona que recibe algo, con su texto, su link, su wa.me y si se le puede
-// mandar por Telegram. Crea los links que falten (por eso pide editar).
+// una fila por persona que recibe algo, con su texto, su link (si ya tiene), su wa.me y si
+// se le puede mandar por Telegram. Sólo lee: los links se crean al mandar ("preparar" o
+// "enviar"). Pide editar porque trae los links.
 //
 // POST /api/hoja-dia/envios { accion, fecha, … }:
 //   preparar { personaId }                  → el texto y el wa.me de una persona

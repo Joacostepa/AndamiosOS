@@ -45,17 +45,35 @@ const esExterna = (dia: DiaHoja, pid: string) => !!dia.personas.find((p) => p.id
 const celularDe = (dia: DiaHoja, pid: string) => dia.personas.find((p) => p.id === pid)?.celular ?? null;
 
 /** El link vigente de la persona ese día; si no hay (o cambió de rol), uno nuevo. */
-export async function asegurarLink(db: DB, dia: DiaHoja, x: Destinatario): Promise<Fila> {
+/** El link vigente de la persona ese día que le sirve a su rol, o null (sin crear nada). */
+async function linkVigente(db: DB, dia: DiaHoja, x: Destinatario): Promise<Fila | null> {
   const pid = x.pid!;
   const col = esExterna(dia, pid) ? "externa_id" : "persona_id";
   const r = await db.from("hd_links").select("*").eq("fecha", dia.fecha).eq(col, pid).is("anulado_at", null).maybeSingle();
   const rol = x.rol === "chofer" ? "chofer" : "a_cargo";
   if (r.data && (x.rol === "ex" || (r.data.rol === rol && (rol === "chofer" || Number(r.data.cuadrilla_odoo_id) === x.c)))) return r.data;
+  return null;
+}
+
+export async function asegurarLink(db: DB, dia: DiaHoja, x: Destinatario): Promise<Fila> {
+  const ya = await linkVigente(db, dia, x);
+  if (ya) return ya;
+  const pid = x.pid!;
+  const col = esExterna(dia, pid) ? "externa_id" : "persona_id";
+  const rol = x.rol === "chofer" ? "chofer" : "a_cargo";
+  const r = await db.from("hd_links").select("id").eq("fecha", dia.fecha).eq(col, pid).is("anulado_at", null).maybeSingle();
   if (r.data) await db.from("hd_links").update({ anulado_at: ts(), anulado_motivo: "Cambió de rol" }).eq("id", r.data.id);
   const n = await db.from("hd_links").insert({
     token: nuevoToken(), fecha: dia.fecha, [col]: pid, rol, cuadrilla_odoo_id: x.rol === "cargo" ? x.c : null, expira_at: expiraDe(dia.fecha),
   }).select("*").single();
-  if (n.error) throw new Error(`No se pudo crear el link: ${n.error.message}`);
+  if (n.error) {
+    // Dos coordinadores mandando a la vez: el otro lo creó recién. Se usa ése.
+    if (/idx_hd_links_(persona|externa)/.test(n.error.message)) {
+      const otro = await linkVigente(db, dia, x);
+      if (otro) return otro;
+    }
+    throw new Error(`No se pudo crear el link: ${n.error.message}`);
+  }
   return n.data;
 }
 
@@ -79,27 +97,32 @@ function destinatarioDe(dia: DiaHoja, pid: string): Destinatario {
   return x;
 }
 
-/** Arma el mensaje y el link de una persona (crea el link si no tenía) sin mandar nada. */
-export async function preparar(db: DB, fecha: Fecha, pid: string, origen?: string | null, diaLeido?: DiaHoja): Promise<Preparado> {
+/**
+ * Arma el mensaje y el link de una persona sin mandar nada. Con `crear` (POST "preparar":
+ * se va a copiar o abrir en WhatsApp) crea el link si no tenía; sin `crear` (la lista, un
+ * GET) no escribe nada: si todavía no hay link, `link` y `waLink` vienen en null y el texto
+ * dice dónde va a ir el link.
+ */
+export async function preparar(db: DB, fecha: Fecha, pid: string, origen?: string | null, diaLeido?: DiaHoja, crear = true): Promise<Preparado> {
   const dia = diaLeido ?? (await leerDia(fecha));
   const x = destinatarioDe(dia, pid);
-  const l = await asegurarLink(db, dia, x);
-  const url = urlHoja(urlBase(origen), String(l.token));
+  const l = crear ? await asegurarLink(db, dia, x) : await linkVigente(db, dia, x);
+  const url = l ? urlHoja(urlBase(origen), String(l.token)) : "(el link se crea al mandarlo)";
   const ahora = minutosDesde(fecha, new Date());
   const texto = mensajeDe(dia, x, { canal: "whatsapp", link: url, ahora });
   const p = dia.personas.find((q) => q.id === pid);
   return {
     pid, rol: x.rol, fila: filaEnvio(dia, x), estado: estadoEnvio(dia, x).k, texto,
-    waLink: texto ? linkWhatsapp(celularDe(dia, pid), texto) : null, link: url,
+    waLink: texto && l ? linkWhatsapp(celularDe(dia, pid), texto) : null, link: l ? url : null,
     telegram: !!p?.telegram && telegramConfigurado(),
   };
 }
 
-/** La lista de envío entera ("Mandar las hojas del martes 13"). */
+/** La lista de envío entera ("Mandar las hojas del martes 13"). Sólo lee: no crea links (minor 7). */
 export async function prepararTodos(db: DB, fecha: Fecha, origen?: string | null): Promise<Preparado[]> {
-  const dia = await leerDia(fecha);
+  const dia = await leerDia(fecha, { cacheOdoo: true });
   const out: Preparado[] = [];
-  for (const x of destinatarios(dia)) if (x.pid) out.push(await preparar(db, fecha, x.pid, origen, dia));
+  for (const x of destinatarios(dia)) if (x.pid) out.push(await preparar(db, fecha, x.pid, origen, dia, false));
   return out;
 }
 
@@ -159,7 +182,9 @@ export async function enviar(db: DB, userId: string, fecha: Fecha, pid: string, 
   const que = x.rol === "ex" ? "Avisado que ya no está a cargo" : primera ? "Hoja enviada" : "Cambio avisado";
   const textoH = `${que}: ${nombreDe(dia, pid)}${canal === "telegram" ? " (Telegram)" : " (a mano)"}`;
   const historialId = await anotar(userId, { fecha, entidad: "link", entidadId: String(l.id), accion: primera ? "enviar" : "avisar", texto: textoH }, g.cambios);
-  return { ok: true, enviado: true, texto: textoH, historialId: historialId || null, messageId, mensaje: texto };
+  // Deshacer sólo lo mandado a mano (pudo no haberse mandado): lo que salió por Telegram
+  // ya llegó, y volverlo a "sin enviar" mentiría.
+  return { ok: true, enviado: true, texto: textoH, historialId: canal === "manual" ? historialId || null : null, messageId, mensaje: texto };
 }
 
 /** "Enviar a los capataces": todo lo pendiente por Telegram; lo que no se puede, a mano. */
@@ -216,7 +241,9 @@ export async function reenviar(db: DB, userId: string, fecha: Fecha, pid: string
   const g = grabador(db);
   await g.actualizar("hd_links", e.id, { reenviada_at: ts() });
   const texto = `Reenviada a ${nombreDe(dia, pid)}`;
-  return { ok: true, enviado: true, texto, historialId: (await anotar(userId, { fecha, entidad: "link", entidadId: e.id, accion: "reenviar", texto }, g.cambios)) || null };
+  const id = await anotar(userId, { fecha, entidad: "link", entidadId: e.id, accion: "reenviar", texto }, g.cambios);
+  // A mano: el texto con el link para abrirlo en WhatsApp. Por Telegram ya salió: sin Deshacer.
+  return { ok: true, enviado: true, texto, historialId: canal === "manual" ? id || null : null, mensaje: mensajeDe(dia, { ...x }, { canal: "whatsapp", link: url, ahora }) };
 }
 
 /** "Anular link" (teléfono perdido, mensaje mandado a otro): el viejo deja de andar. */
@@ -249,8 +276,8 @@ async function avisoSuelto(
 export async function avisarOperario(db: DB, userId: string, fecha: Fecha, pid: string, canal: CanalEnvio | "no_hace_falta"): Promise<Resultado> {
   const dia = await leerDia(fecha, { cacheOdoo: true });
   if (canal === "no_hace_falta") {
-    const id = await anotar(userId, { fecha, entidad: "persona", entidadId: pid, accion: "no_avisar_operario", texto: `No se le avisa a ${nombreDe(dia, pid)}` });
-    return { ok: true, texto: `No se le avisa a ${nombreDe(dia, pid)}`, historialId: id || null };
+    await anotar(userId, { fecha, entidad: "persona", entidadId: pid, accion: "no_avisar_operario", texto: `No se le avisa a ${nombreDe(dia, pid)}` });
+    return { ok: true, texto: `No se le avisa a ${nombreDe(dia, pid)}`, historialId: null };
   }
   const texto = mensajeOperario(dia, pid, minutosDesde(fecha, new Date()));
   if (!texto) throw new Error(`${nombreDe(dia, pid)} no está en ninguna cuadrilla ese día.`);

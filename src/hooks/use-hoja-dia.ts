@@ -144,13 +144,13 @@ export function useDeshacer(fecha: string | null) {
   });
 }
 
-/** La lista de envío (crea los links que falten). */
+/** La lista de envío (sólo lee: los links se crean al mandar). */
 export function useEnvios(fecha: string | null, abierta: boolean) {
   return useQuery({
     queryKey: [...CLAVE_HOJA, "envios", fecha],
     queryFn: () => pedir<{ filas: Preparado[] }>(`/api/hoja-dia/envios?fecha=${fecha}`),
     enabled: !!fecha && abierta,
-    staleTime: 0,
+    staleTime: 10_000,
   });
 }
 

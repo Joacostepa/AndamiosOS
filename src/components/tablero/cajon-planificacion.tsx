@@ -18,7 +18,7 @@ import {
   type NotaCajon,
   type Pendiente,
 } from "@/lib/tablero/tipos-cajon";
-import { PasarAPedido } from "@/components/hoja-dia/camiones/pasar-a-pedido";
+import { PasarAPedido } from "@/components/hoja-dia/comunes/pasar-a-pedido";
 
 // El cajón: el panel de abajo del tablero. Pendientes de quien planifica, y criterios
 // que no vencen.

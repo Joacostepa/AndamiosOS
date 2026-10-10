@@ -518,7 +518,8 @@ CREATE TABLE IF NOT EXISTS hd_telegram_codigos (
   externa_id  UUID REFERENCES pan_personas_externas(id) ON DELETE CASCADE,
   creado_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
   creado_por  UUID REFERENCES user_profiles(id) DEFAULT auth.uid(),
-  expira_at   TIMESTAMPTZ NOT NULL DEFAULT (now() + interval '30 days'),
+  -- Una semana: el link se manda una vez por WhatsApp; si no lo usó, se genera otro.
+  expira_at   TIMESTAMPTZ NOT NULL DEFAULT (now() + interval '7 days'),
   usado_at    TIMESTAMPTZ,
   chat_id     BIGINT,
   CHECK ((persona_id IS NULL) <> (externa_id IS NULL))

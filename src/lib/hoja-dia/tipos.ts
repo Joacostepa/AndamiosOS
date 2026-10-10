@@ -329,6 +329,7 @@ export type Ausencia = {
  */
 export type Envio = {
   id: string;
+  /** Sólo del lado del servidor: GET /api/hoja-dia lo manda vacío (es la llave del link). */
   token: string;
   fecha: Fecha;
   personaId: string;

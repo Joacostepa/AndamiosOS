@@ -22,7 +22,9 @@ export async function GET(req: NextRequest) {
     // Los rojos a la campanita, después de responder (no hacen esperar a la pantalla). Un
     // día pasado no alerta (alertasDelDia → diaAlertable).
     after(() => alertarDia(dia));
-    return NextResponse.json(dia);
+    // El token de cada link es la llave del celular del capataz o del chofer (con él se marca
+    // "Hecho"): no viaja a la pantalla. El link se arma en el servidor (envíos).
+    return NextResponse.json({ ...dia, envios: dia.envios.map((e) => ({ ...e, token: "" })) });
   } catch (e) {
     return fallo(e);
   }

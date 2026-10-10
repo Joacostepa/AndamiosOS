@@ -87,14 +87,40 @@ export function ListaEnvio({
       },
     );
 
-  const porWhatsapp = async (pid: string, p: Preparado | undefined, reenvio: boolean) => {
-    if (!p?.waLink) return;
-    window.open(p.waLink, "_blank", "noopener");
+  // A mano: el link se crea recién al mandarlo (la lista sólo lee). La pestaña de WhatsApp se
+  // abre al tocar (si no, el navegador la bloquea) y se completa cuando vuelve el mensaje.
+  const porWhatsapp = (pid: string, reenvio: boolean) => {
+    const cel = persona(dia, pid)?.celular;
+    if (!cel) return;
+    const w = window.open("about:blank", "_blank");
+    if (w) w.opener = null;
     setOcupado(pid);
     enviar.mutate(
       { accion: reenvio ? "reenviar" : "enviar", fecha, personaId: pid, canal: "manual" },
-      { onSettled: () => setOcupado(null), onSuccess: avisar },
+      {
+        onSettled: () => setOcupado(null),
+        onSuccess: (r) => {
+          const wa = r.mensaje ? linkWhatsapp(cel, r.mensaje) : null;
+          if (w && wa) w.location.href = wa;
+          else w?.close();
+          avisar(r);
+        },
+        onError: () => w?.close(),
+      },
     );
+  };
+  /** Copiar el mensaje: si todavía no hay link, se crea primero (POST preparar). */
+  const copiarMensaje = async (pid: string, p: Preparado | undefined) => {
+    let texto = p?.link ? p.texto : null;
+    if (!texto) {
+      try {
+        const r = (await enviar.mutateAsync({ accion: "preparar", fecha, personaId: pid })) as unknown as Preparado;
+        texto = r.texto;
+      } catch {
+        return;
+      }
+    }
+    if (texto) toast((await copiar(texto)) ? `Mensaje para ${nombreDe(dia, pid)} copiado` : "No se pudo copiar");
   };
   const porTelegramUno = (pid: string, reenvio: boolean) => {
     setOcupado(pid);
@@ -186,10 +212,10 @@ export function ListaEnvio({
                 </Button>
               ) : (
                 <>
-                  <Button size="sm" variant="outline" disabled={!p?.texto} onClick={async () => p?.texto && toast((await copiar(p.texto)) ? `Mensaje para ${nombre} copiado` : "No se pudo copiar")}>
+                  <Button size="sm" variant="outline" disabled={!p?.texto} onClick={() => copiarMensaje(pid, p)}>
                     Copiar mensaje
                   </Button>
-                  <Button size="sm" variant="outline" disabled={!p?.waLink || cargando} onClick={() => porWhatsapp(pid, p, false)}>
+                  <Button size="sm" variant="outline" disabled={!pr?.celular || !p?.texto || cargando} onClick={() => porWhatsapp(pid, false)}>
                     Abrir WhatsApp
                   </Button>
                 </>
@@ -201,7 +227,7 @@ export function ListaEnvio({
               )}
             </>
           ) : (
-            <Button size="sm" variant="ghost" disabled={cargando} onClick={() => (tg ? porTelegramUno(pid, true) : porWhatsapp(pid, p, true))}>
+            <Button size="sm" variant="ghost" disabled={cargando} onClick={() => (tg ? porTelegramUno(pid, true) : porWhatsapp(pid, true))}>
               Reenviar
             </Button>
           )}

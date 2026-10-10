@@ -33,7 +33,8 @@ type Fila = Record<string, unknown>;
 
 const fecha = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida");
 const id = z.string().uuid("Id inválido");
-const hora = z.string().regex(/^\d{1,2}:\d{2}(:\d{2})?$/, "Hora inválida");
+// 0:00 a 23:59 (con segundos opcionales): "25:99" no llega a la base como error crudo.
+const hora = z.string().regex(/^([01]?\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/, "Hora inválida");
 const c = z.number().int().positive();
 export const puntoSchema = z.object({
   otId: z.number().int().positive().nullable().default(null),

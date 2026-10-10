@@ -348,15 +348,16 @@ export async function procesarUpdate(u: UpdateTelegram): Promise<void> {
     const ya = await personaDeChat(chat);
     if (!codigo) { await enviarMensaje(chat, ya ? TELEGRAM.yaVinculado(nombreCorto(ya.apellido)) : TELEGRAM.sinCodigo(coordinador)); return; }
     if (!codigoValido(codigo)) { await enviarMensaje(chat, TELEGRAM.codigoInvalido(coordinador)); return; }
-    const c = await adm.from("hd_telegram_codigos").select("*").eq("codigo", codigo).maybeSingle();
-    if (!c.data || c.data.usado_at || Date.parse(String(c.data.expira_at)) < Date.now()) { await enviarMensaje(chat, TELEGRAM.codigoInvalido(coordinador)); return; }
+    // Se marca usado EN LA MISMA sentencia que lo valida: dos /start con el mismo código a la
+    // vez no vinculan dos chats.
+    const c = await adm.from("hd_telegram_codigos").update({ usado_at: ts(), chat_id: chat }).eq("codigo", codigo).is("usado_at", null).gt("expira_at", ts()).select("*").maybeSingle();
+    if (!c.data) { await enviarMensaje(chat, TELEGRAM.codigoInvalido(coordinador)); return; }
     const tabla = c.data.persona_id ? "personal" : "pan_personas_externas";
     const pid = String(c.data.persona_id ?? c.data.externa_id);
     // Un chat, una persona: si el chat estaba en otro legajo (un teléfono que cambió de mano), se suelta.
     await adm.from("personal").update({ telegram_chat_id: null, telegram_usuario: null, telegram_vinculado_at: null }).eq("telegram_chat_id", chat).neq("id", pid);
     await adm.from("pan_personas_externas").update({ telegram_chat_id: null, telegram_usuario: null, telegram_vinculado_at: null }).eq("telegram_chat_id", chat).neq("id", pid);
     const p = await adm.from(tabla).update({ telegram_chat_id: chat, telegram_usuario: u.message.from?.username ?? null, telegram_vinculado_at: ts() }).eq("id", pid).select("apellido").single();
-    await adm.from("hd_telegram_codigos").update({ usado_at: ts(), chat_id: chat }).eq("codigo", codigo);
     const nombre = nombreCorto(String(p.data?.apellido ?? ""));
     const r = await enviarMensaje(chat, TELEGRAM.vinculado(nombre));
     await adm.from("hd_telegram_mensajes").insert({ [c.data.persona_id ? "persona_id" : "externa_id"]: pid, chat_id: chat, message_id: r.ok ? r.result.message_id : null, tipo: "vinculado", texto: TELEGRAM.vinculado(nombre), ok: r.ok, error: r.ok ? null : r.error });

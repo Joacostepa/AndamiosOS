@@ -1,6 +1,6 @@
 # Módulo Hoja del día — propuesta
 
-Estado: propuesta v2 (10/10/2026). Incorpora las siete decisiones del dueño del 10/10 (§19): las cuatro de la v1 (chofer, capataz, link, ausencias) y las tres de la tarde (los camiones, el coordinador y el despacho en vivo). Nada construido. Maqueta (v2, cuadrillas + camiones y despacho): https://claude.ai/artifact/RLVbM2WyaRS9iGk3gR1PKb
+Estado: propuesta v2 (10/10/2026). Incorpora las siete decisiones del dueño del 10/10 (§19): las cuatro de la v1 (chofer, capataz, link, ausencias) y las tres de la tarde (los camiones, el coordinador y el despacho en vivo), más la octava (10/10, última hora): **el envío es por Telegram, no por WhatsApp** (§11). La base (datos, lógica, APIs y bot) está construida en la rama `feat/hoja-del-dia`; las pantallas no. Ver `implementacion.md` y `handoff.md`. Maqueta (v2, cuadrillas + camiones y despacho): https://claude.ai/artifact/RLVbM2WyaRS9iGk3gR1PKb
 
 > La carpeta se llama `equipos-del-dia` provisoriamente; el nombre que se propone es **Hoja del día** (ver §1). Si se aprueba, se renombra a `docs/hoja-del-dia/`.
 
@@ -578,7 +578,7 @@ Para recibir:
 | Estado | Qué significa | Cómo se ve en la tarjeta |
 |---|---|---|
 | **Borrador** | Se está armando. El capataz no ve nada. | "Borrador" en gris |
-| **Enviada** | Se abrió WhatsApp con el mensaje para el capataz. | "Enviada 18:42" |
+| **Enviada** | Telegram confirmó el envío (o, a mano, el coordinador marcó que lo mandó por WhatsApp). | "Enviada 18:42" |
 | **Abierta** | El capataz abrió el link (la app lo sabe sola, como el portal de Permisos). | "Abierta 20:15" |
 | **Recibida** | El capataz tocó "Recibido". | "Recibida 20:16" en verde |
 | **Cambiada después de enviar** | Algo cambió desde lo que se le mandó. | "Cambiada después de enviar" en ámbar, con el resumen |
@@ -587,38 +587,41 @@ Para recibir:
 - Cada envío guarda **una foto de lo enviado** (`hd_hojas.enviado`). "Cambiada" es la diferencia entre la hoja de ahora y esa foto. Por eso un cambio en el tablero (obra que entra o sale) también la marca.
 - **Los viajes de un chofer** tienen los mismos estados, como conjunto ("Tus viajes del martes"): Enviados / Abiertos / Recibidos / Cambiados. Cada viaje nuevo o cambiado durante el día queda "sin avisar" hasta que se avisa.
 
-### Fase 1: un toque por persona, con `wa.me`
+### Fase 1: por Telegram, con el camino manual de respaldo
 
-No hay plantillas de Meta aprobadas, así que la API no puede escribirle primero a nadie. Se usa lo mismo que el Pañol: **link `wa.me` con el mensaje ya escrito**, y la última palabra la tiene una persona.
+**Decisión del dueño (10/10, última hora): Telegram en vez de WhatsApp.** La empresa ya usa Telegram (las cuadrillas mandan las fotos de obra a un grupo) y un **bot de Telegram** puede escribirle primero a quien lo vinculó, sin plantillas de Meta ni número de empresa. Por eso **el envío automático pasa a la fase 1**. El `wa.me` del Pañol queda como camino manual para quien no vinculó Telegram o cuando Telegram falla.
+
+**Vincular a cada persona, una vez.** El bot no puede escribirle a nadie que no le haya escrito antes. Desde Legajos o desde la Hoja del día, "Vincular Telegram" arma un link `t.me/<bot>?start=<código>` (código de un solo uso, por persona) que se le manda **una sola vez** por WhatsApp o en persona. Al tocarlo, Telegram abre el chat con el bot, el bot guarda el chat en su legajo y le contesta "**Listo, Ortega. Acá te van a llegar tus hojas del día.**" En la lista de envío se ve quién está vinculado y quién no.
 
 "Enviar a los capataces" abre una hoja lateral con una fila por persona que recibe algo (capataces y choferes):
 
 ```
-Mandar las hojas del martes 13
-Conte · Cuadrilla 2 · 3 obras                          [Abrir WhatsApp]
-Ortega · Cuadrilla 3 · Rivadavia 6150                  [Abrir WhatsApp]
-Miño · Cuadrilla 5 · sin celular cargado               [Cargar celular]
-Kiska · chofer · 6 viajes                              [Abrir WhatsApp]
-Gómez · chofer · 2 viajes                              [Abrir WhatsApp]
+Mandar las hojas del martes 13                                       [Enviar todo por Telegram]
+Conte · Cuadrilla 2 · 3 obras            Telegram           Enviada 18:42 ✓
+Ortega · Cuadrilla 3 · Rivadavia 6150    Telegram           Recibida 20:16
+Miño · Cuadrilla 5 · sin celular         sin Telegram       [Cargar celular] [Vincular Telegram]
+Kiska · chofer · 6 viajes                Telegram           Enviada 18:43
+Gómez · chofer · 2 viajes                WhatsApp (a mano)  [Abrir WhatsApp]
 …
 ```
 
-- Cada **"Abrir WhatsApp"** abre WhatsApp Web/Desktop con el chat y el mensaje; Juan Agustín aprieta Enviar allá y vuelve. La fila pasa a "Enviada 18:42 · Deshacer" ("Deshacer" por si no lo mandó).
-- **El texto dice lo que el sistema hace**: la app no sabe si el mensaje salió, sólo que se abrió WhatsApp. Por eso "Enviada" se confirma de verdad recién con "Abierta".
-- **El mensaje** (corto, que se lea en la notificación):
+- **"Enviar todo por Telegram"** manda lo pendiente a los vinculados de una vez. La fila pasa a "Enviada" **sólo si Telegram confirmó el envío**. Si falla (bloqueó el bot, borró el chat), la fila lo dice en palabras y ofrece "Abrir WhatsApp" con el mismo texto.
+- **A mano** (sin Telegram): "Abrir WhatsApp" abre `wa.me` con el mensaje escrito; Juan Agustín aprieta Enviar allá y la fila pasa a "Enviada 18:42 · Deshacer" (la app no puede saber si lo mandó: por eso el Deshacer, y por eso "Abierta" es la confirmación de verdad).
+- **El mensaje de Telegram** es corto, se lee en la notificación, y trae dos botones: **"Ver la hoja"** (abre `/h/[token]`) y **"Recibido"** (un toque desde la notificación, sin abrir nada; el mensaje queda editado con "✓ Recibido 20:16"):
 
-> Hola Ortega, tu hoja del martes 13/10: Cuadrilla 3, a cargo vos. Encuentro 7:45 en el depósito, te lleva Kiska. Obra: Av. Rivadavia 6150. Mirá todo acá: https://andamios-os.vercel.app/h/7KQ2MX9P… Cuando la veas tocá "Recibido".
+> Hola Ortega, tu hoja del martes 13/10: Cuadrilla 3, a cargo vos. Encuentro 7:45 en el depósito, te lleva Kiska. Obra: Av. Rivadavia 6150. Cuando la veas tocá "Recibido".
 
-- Al chofer:
+- Al chofer, sus viajes, con los mismos dos botones ("Ver tus viajes" / "Recibido"):
 
-> Hola Kiska, tus viajes del martes 13/10: 7:00 lleva a la Cuadrilla 2 a Juramento 2145; 7:45 lleva a la Cuadrilla 3 a Rivadavia 6150; 10:00 busca la compra en Galvanizados Sanz; y 3 más. Mirá todo acá: https://…/h/… Cuando los veas tocá "Recibido".
+> Hola Kiska, tus viajes del martes 13/10: 7:00 lleva a la Cuadrilla 2 a Juramento 2145; 7:45 lleva a la Cuadrilla 3 a Rivadavia 6150; ~10:00 busca la compra en Galvanizados Sanz: 100 tablones; y 3 más. Cuando los veas tocá "Recibido".
 
-- **Pendiente**: desde qué número sale (ver §19).
+- Por WhatsApp (a mano) el texto es el mismo con el link escrito ("Mirá todo acá: https://…/h/…").
+- Pendiente 2 ("¿desde qué WhatsApp?") deja de importar para la hoja: sale del bot. El `wa.me` manual sale del WhatsApp de quien lo abre.
 
 ### Durante el día: avisar un viaje nuevo
 
 - Cada viaje que se pone, se saca o se cambia de orden en un camión con chofer ya avisado deja un **"Avisar a Kiska"** en el aviso, en la fila y en la línea "Ahora:" (§9).
-- Mensajes:
+- Por Telegram, un viaje nuevo llega con los botones **"Hecho"** y **"No pude"** (No pude abre los motivos rápidos como botones) además de "Entendido" y "Ver tus viajes": el chofer lo cierra sin abrir el link. Mensajes:
 
 > Gómez, viaje nuevo (10:23): después de cargar en Juramento 2145, llevá 6 tablones y 2 bases a Av. Cabildo 3260 (Conte, antes de las 13). Mirá tus viajes: https://…/h/… (el mismo link)
 
@@ -631,11 +634,10 @@ Gómez · chofer · 2 viajes                              [Abrir WhatsApp]
 
 > Depósito: a las 11:00 carga Kiska (AF 669 ZL): 1 escalera y 10 caños de 3 m para Gurruchaga 1650.
 
-### Fase 2: envío automático
+### Fase 2: lo que queda del envío automático
 
-- Con una **plantilla aprobada por Meta** ("hoja_del_dia": nombre, fecha, link; "viaje_nuevo": nombre, resumen, link), "Enviar a los capataces" manda todo de una, por `src/lib/whatsapp/api.ts`, y queda el estado de entrega de WhatsApp. Los viajes nuevos se avisan solos al ponerlos (con "Deshacer" de 10 segundos antes de salir).
-- **Envío programado** a la hora parámetro (19:00) de las hojas que estén listas, y un recordatorio a las 6:00 al que no la abrió.
-- El `wa.me` queda como plan B por fila.
+- Con Telegram, el envío ya es automático en la fase 1 (un botón manda todo). Queda para la fase 2: **envío programado** a la hora parámetro (19:00) de las hojas listas, **recordatorio a las 6:00** al que no la abrió, y **avisar solo** un viaje nuevo al ponerlo (con "Deshacer" de 10 segundos antes de salir).
+- La plantilla de Meta ya no hace falta para la hoja. El `wa.me` sigue como plan B por fila.
 
 ### Cambios después de enviar
 
@@ -647,7 +649,7 @@ Gómez · chofer · 2 viajes                              [Abrir WhatsApp]
 
 > Ortega · Cuadrilla 3 · "No va Ávila (enfermedad). Va Ramírez." [Abrir WhatsApp]
 
-- Mensaje de cambio:
+- Mensaje de cambio (por Telegram con el botón **"Entendido"**, que vale como un nuevo "Recibido"):
 
 > Ortega, cambió tu hoja de hoy (6:43): no va Ávila, va Ramírez. Mirá: https://…/h/… (el mismo link)
 
@@ -981,12 +983,12 @@ Si algún día el costeo necesita **personas por nombre** en Odoo, se agregan ca
 - **Viajes manuales de todos los tipos** (§6), con hora fija o estimada, carga, "desde = el anterior", fletes de afuera, y **lugares frecuentes**.
 - **Cola de pedidos**: "Nuevo pedido" en menos de 20 segundos, urgencia, esperar, pasar a mañana, anular; agrupada por de quién es la pelota; "Pasar a pedido" desde el cajón; **sugeridos** de armados que arrancan y desarmes que terminan.
 - **Vista Camiones**: filas por camión con línea de tiempo aproximada (y lista), "dónde anda" sin GPS, poner un pedido arrastrando o con las teclas 1–4, reordenar, pasar a otro camión, volver a la cola, marcar hecho por el chofer, avisos de §9, cerca / libre por distancia en línea recta, lista de carga con "Copiar para WhatsApp".
-- Envío con `wa.me` por persona; estados Enviada / Abierta / Recibida / Cambiada; "Avisar cambios" sólo a los afectados, con el qué cambió; "Avisar a Ramírez"; **"Avisar a Kiska"** por viaje nuevo; "Avisar al depósito".
+- **Envío por Telegram** (bot, con vinculación por persona) y `wa.me` como camino manual; estados Enviada / Abierta / Recibida / Cambiada; "Avisar cambios" sólo a los afectados, con el qué cambió; "Avisar a Ramírez"; **"Avisar a Kiska"** por viaje nuevo (con "Hecho" / "No pude" en el mismo mensaje); "Avisar al depósito".
 - **Celular** `/h/[token]`: el del capataz con "Recibido", "Entendido", "Llamar a Juan Agustín", planos servidos por la app, **"Para tu obra"**; el del chofer como **hoja de ruta** con "Ahora", **"Hecho"**, **"No pude"** con motivo, "Nuevo viaje" con "Entendido" y foto del remito opcional; los dos con la última copia sin señal.
 - Precarga de "Cerrar jornada": puntero, cantidad de personas, camión en obra y **fletes según los viajes hechos**.
 
 **Fase 2**
-- Plantilla de Meta: envío automático, programado, recordatorio de las 6:00, y **viaje nuevo avisado solo**.
+- Envío programado a las 19:00, recordatorio de las 6:00 y **viaje nuevo avisado solo** (el envío por Telegram ya está en la fase 1).
 - **"Pedir material o un viaje"** desde el celular del capataz (si el dueño lo aprueba).
 - "Avisar: falta alguien" desde el celular del capataz (si el dueño lo aprueba).
 - "No pude" y "Frena la obra" a `#logistica-operativa`.
@@ -1047,12 +1049,13 @@ Si algún día el costeo necesita **personas por nombre** en Odoo, se agregan ca
 **Del dueño (10/10/2026)**
 1. **Chofer: depende del día.** Lleva y trae, queda todo el día (puede ayudar como operario), o no hay chofer. Lo indica el planificador en cada caso.
 2. **Capataz: se elige cada día.** El plantel base y el responsable sirven de sugerencia; la decisión es diaria.
-3. **Celular del capataz: link por WhatsApp**, la noche anterior, sin contraseña, como `/permiso/[token]`. Sin usuario propio.
+3. **Celular del capataz: link sin contraseña**, la noche anterior, como `/permiso/[token]`. Sin usuario propio. (El canal pasó de WhatsApp a Telegram: decisión 8.)
 4. **Ausencias: las carga el planificador (o RRHH), con anticipación.** Las del día por teléfono, y el planificador las refleja. El capataz no carga ausencias. No se deducen de fichadas.
 5. **Los camiones también hacen viajes internos** (buscar compras a proveedores, mandados, etc.): **la hoja de ruta de los camiones se maneja en este módulo**, integrada con toda la operación.
 6. **Lo maneja el coordinador de la operación**, que es quien detecta las prioridades.
 7. **Se mandan camiones a medida que las obras piden material que no estaba previsto, por imprevistos y por compras**: hay que contemplar la planificación de la noche anterior **y** el despacho en vivo durante el día.
-- Siguen valiendo: el capataz no carga ausencias; capataz y chofer ven su día por link sin login; fase 1 con `wa.me`; advierte, no bloquea; un solo botón coral; rioplatense con voseo.
+8. **(10/10, última hora) Telegram en vez de WhatsApp.** La hoja y los viajes salen por un **bot de Telegram** (cada persona lo vincula una vez con un link `t.me/<bot>?start=<código>`), con botones "Ver la hoja" y "Recibido"; los cambios, sólo a los afectados, con "Entendido"; el viaje nuevo al chofer, con "Hecho" y "No pude". **Reemplaza a `wa.me` + plantilla de Meta y el envío automático pasa a la fase 1.** "Enviada" se marca sólo cuando Telegram confirmó. Quien no vinculó Telegram sigue por el camino manual (`wa.me`, como el Pañol).
+- Siguen valiendo: el capataz no carga ausencias; capataz y chofer ven su día por link sin login; advierte, no bloquea; un solo botón coral; rioplatense con voseo.
 
 **Propuestas en este documento (10/10/2026, a aprobar)**
 8. Nombre **Hoja del día**; en pantalla "quiénes van", "a cargo", "encuentro", "camión", "viaje", "pedido", "Hecho", "No pude".
@@ -1066,14 +1069,14 @@ Si algún día el costeo necesita **personas por nombre** en Odoo, se agregan ca
 16. **El chofer sólo marca "Hecho" y "No pude"** (con motivo de un toque); foto del remito opcional. Sin "Salí" ni "Llegué".
 17. **El capataz ve el estado de los pedidos de su obra** desde la fase 1 ("Para tu obra").
 18. **Ausencias previstas en Supabase; la asistencia de Odoo sigue siendo de Juan Pablo**; las ART se toman de la asistencia.
-19. **Envío fase 1 con `wa.me`**, también para los viajes nuevos; fase 2 con plantilla de Meta. Token por persona y día, vence a las 23:59 del día siguiente.
+19. ~~Envío fase 1 con `wa.me`; fase 2 con plantilla de Meta~~ → **Envío fase 1 por Telegram** (decisión 8), con `wa.me` como camino manual. Token por persona y día, vence a las 23:59 del día siguiente.
 20. **El chofer tiene su link; los operarios no** (fase 1).
 21. La hoja **precarga** el parte, **fletes incluidos**; manda el parte.
 22. **No se reutilizan `solicitudes_extra` ni `remitos`** (cuelgan de la tabla vieja `obras`); remitos desde los viajes en la fase 3.
 
 **Pendiente:**
 1. **¿"Hoja del día" como nombre?** Recomendación: sí (ver §1). Alternativa: "Cuadrillas del día" (pero ya no alcanza: ahora también están los camiones).
-2. **¿Desde qué WhatsApp salen las hojas y los viajes?** Recomendación: un número de ABA con WhatsApp Business abierto en la computadora de operaciones, no el celular personal de Juan Agustín (que capataces y choferes agenden un solo número, y que siga andando si Juan Agustín falta). Ese mismo número sirve después para la plantilla de Meta.
+2. ~~**¿Desde qué WhatsApp salen las hojas y los viajes?**~~ Resuelto por la decisión 8: salen del bot de Telegram. Queda: **¿quién crea el bot con @BotFather y con qué nombre?** (recomendación: "Andamios Buenos Aires · Hoja del día", creado con una cuenta de la empresa, no personal). Lo que sigue era la pregunta original: Recomendación: un número de ABA con WhatsApp Business abierto en la computadora de operaciones, no el celular personal de Juan Agustín (que capataces y choferes agenden un solo número, y que siga andando si Juan Agustín falta). Ese mismo número sirve después para la plantilla de Meta.
 3. **¿A qué hora tiene que estar mandada la hoja de mañana?** Recomendación: 19:00, y alarma a las 6:30 si alguien no la abrió.
 4. **¿Quién arma la hoja y despacha si Juan Agustín no está?** Recomendación: Ezequiel, con el mismo permiso; el "Llamar a…" del celular apunta al coordinador de guardia (parámetro).
 5. **¿El capataz puede avisar "falta alguien" desde el celular?** Recomendación: fase 1 sólo "Llamar a Juan Agustín"; fase 2 el botón de aviso, que no carga la ausencia.

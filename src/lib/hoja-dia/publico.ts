@@ -13,12 +13,9 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchDocumentosOt } from "@/lib/odoo/asignaciones";
 import { tipoOtLabel } from "@/lib/tablero/tipos";
-import type { DiaHoja, Fecha, Foto, ObraDia } from "./tipos";
-import {
-  aCargoDe, cNombre, choferDe, encTxt, envioDe, esHoy, frLargo, genteDe, hm, hm5, hojaDeCuadrilla, horaTxt, lugar, minutosDesde,
-  nombreDe, normHora, obrasCon, pedidosDeViaje, recibeDe, suspendida, textoViaje, todoDe, vehiculoNombre, viajesChofer, cap, lowFirst,
-  estadoPedido, fechaMensaje, diaSemana, ddmm, type ViajeCalc,
-} from "./estado";
+import type { Fecha, Foto } from "./tipos";
+import { esHoy, hm, minutosDesde, cap, lowFirst, diaSemana, ddmm } from "./estado";
+import { armarVista, otsConArchivos, type ArchivoPublico, type LinkVista, type VistaPublica } from "./vista";
 import { TELEGRAM } from "./mensajes";
 import { codigoValido, situacionLink, tokenValido } from "./tokens";
 import { anotar, avisarPantallas, grabador, leerDia } from "./servicio";
@@ -32,76 +29,10 @@ const ts = () => new Date().toISOString();
 
 // ═══════════════════════════ La vista del celular ═════════════════════════════
 
-export type ArchivoPublico = { id: number; nombre: string; mimetype: string; url: string };
-export type ObraPublica = {
-  otId: number;
-  n: number;
-  hora: string;
-  est: boolean;
-  direccion: string;
-  mapsUrl: string;
-  tipo: string;
-  tipoTxt: string;
-  /** "jornada completa · día 2 de 3" */
-  detalle: string;
-  hoy: string | null;
-  chips: string[];
-  queHacer: string | null;
-  observaciones: string | null;
-  contacto: string | null;
-  telefono: string | null;
-  archivos: ArchivoPublico[];
-  /** "Para tu obra": los viajes y pedidos de material de esa obra, con su estado. */
-  paraTuObra: string[];
-};
-export type GentePublica = { nombre: string; telefono: string | null; aCargo: boolean; nota: string | null; nuevo: boolean };
-export type ViajePublico = {
-  id: string;
-  i: number;
-  hora: string;
-  horaFija: boolean;
-  /** Cómo lo lee el chofer: "Llevá 6 tablones y 2 bases a Av. Cabildo 3260". */
-  texto: string;
-  desde: string | null;
-  hacia: string;
-  direccion: string | null;
-  mapsUrl: string | null;
-  carga: string | null;
-  pidio: string | null;
-  llamar: { nombre: string; telefono: string } | null;
-  estado: "planeado" | "hecho" | "no_pudo" | "anulado";
-  hechoHora: string | null;
-  motivo: string | null;
-  nuevo: boolean;
-  foto: boolean;
-};
-type Comun = {
-  fecha: Fecha;
-  /** "Martes 13/10" */
-  fechaTxt: string;
-  generadoAt: string;
-  persona: string;
-  /** Cambio sin confirmar ("Cambió a las 6:43: …") con su botón "Entendido". */
-  cambio: { hora: string; txt: string } | null;
-  recibido: { hora: string } | null;
-  version: number;
-  coordinador: { nombre: string; telefono: string | null };
-};
-export type VistaPublica =
-  | { situacion: "invalido" }
-  | { situacion: "vencido"; fecha: Fecha; texto: string }
-  | { situacion: "ya_no"; fecha: Fecha; texto: string; coordinador: { nombre: string; telefono: string | null } }
-  | (Comun & { situacion: "suspendida"; texto: string })
-  | (Comun & {
-      situacion: "ok"; rol: "a_cargo"; cuadrilla: string; aCargo: string | null; vos: boolean; nota: string | null; encuentro: string;
-      chofer: { modo: string; texto: string; nombre: string | null; telefono: string | null } | null;
-      obras: ObraPublica[]; gente: GentePublica[];
-    })
-  | (Comun & {
-      situacion: "ok"; rol: "chofer"; vehiculo: string | null;
-      todo: { cuadrilla: string; aCargo: string | null; encuentro: string; obras: ObraPublica[] } | null;
-      viajes: ViajePublico[]; ahoraId: string | null; motivosNoPude: string[];
-    });
+export type {
+  ArchivoPublico, CambioPublico, ChoferDeHoja, GentePublica, LineaObra, ObraPublica, TuPedido, ViajePublico, VistaCapataz, VistaChofer,
+  VistaPublica,
+} from "./vista";
 
 const archivosCache = new Map<number, { at: number; datos: Promise<ArchivoPublico[]> }>();
 function archivos(token: string, otId: number): Promise<ArchivoPublico[]> {
@@ -112,58 +43,7 @@ function archivos(token: string, otId: number): Promise<ArchivoPublico[]> {
   return datos.then((ds) => ds.map((d) => ({ ...d, url: `/api/public/hoja/${token}/archivo/${d.id}` })));
 }
 
-const maps = (dir: string | null) => (dir ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${dir}, Buenos Aires`)}` : null);
-const tel = (dia: DiaHoja, pid: string | null | undefined) => (pid ? dia.personas.find((p) => p.id === pid)?.celular ?? null : null);
-
-/** "Para tu obra" (§12). */
-function paraTuObra(dia: DiaHoja, otId: number, ahora: number): string[] {
-  const out: string[] = [];
-  const coord = dia.parametros.coordinador.nombre;
-  for (const p of dia.pedidos.filter((x) => x.fecha === dia.fecha && x.hacia.otId === otId && x.estado !== "anulado")) {
-    const st = estadoPedido(dia, p, ahora);
-    const tuyo = `${p.pidioId ? `Tu pedido de las ${hm(p.creadoMin)}` : "El pedido"} (${lowFirst(p.que)})`;
-    if (st.k === "hecho") out.push(`${tuyo}: entregado ${st.v.hechoMin != null ? hm(st.v.hechoMin) : ""}`.trim());
-    else if (st.k === "en") out.push(`${tuyo}: lo lleva ${nombreDe(dia, choferDe(dia, st.v))}, ${horaTxt(st.v)}`);
-    else if (p.ultimoNoPudo) out.push(`${tuyo}: no se pudo (${lowFirst(p.ultimoNoPudo.motivo)}). ${coord} ya sabe`);
-    else out.push(`${tuyo}: todavía sin camión`);
-  }
-  const conPedido = new Set(dia.pedidos.map((p) => p.viajeId).filter(Boolean));
-  for (const veh of new Set(dia.viajes.map((v) => v.vehiculoId).filter(Boolean) as string[])) {
-    for (const v of viajesChofer(dia, choferDe(dia, dia.viajes.find((x) => x.vehiculoId === veh)!) ?? "")) {
-      if (v.haciaEf.otId !== otId || conPedido.has(v.id) || (v.tipo !== "lleva_material" && v.tipo !== "trae_material")) continue;
-      const n = nombreDe(dia, choferDe(dia, v));
-      if (v.estado === "hecho") out.push(`${v.tipo === "lleva_material" ? "Material entregado" : "Lo desarmado salió"} ${v.hechoMin != null ? hm(v.hechoMin) : ""} · ${n}`.trim());
-      else if (v.tipo === "lleva_material") out.push(`Material: lo lleva ${n} ${horaTxt(v)}`);
-      else out.push(`A las ${horaTxt(v).replace("~", "~")} ${n} trae ${lowFirst(v.carga ?? "lo desarmado")} al depósito`);
-    }
-  }
-  return [...new Set(out)];
-}
-
-async function obrasPublicas(dia: DiaHoja, c: number, token: string, ahora: number): Promise<ObraPublica[]> {
-  const ob = obrasCon(dia, c);
-  return Promise.all(ob.map(async (x, i) => {
-    const o: ObraDia = x.o;
-    const ins = dia.instrucciones.find((y) => y.otId === o.otId);
-    const diaTxt = o.dia && o.totalDias && o.totalDias > 1 ? ` · día ${o.dia} de ${o.totalDias}` : "";
-    return {
-      otId: o.otId, n: i + 1, hora: `${x.est ? "~" : ""}${x.est ? hm5(x.t) : x.hora}`, est: x.est, direccion: o.direccion, mapsUrl: maps(o.direccion)!,
-      tipo: o.tipo, tipoTxt: tipoOtLabel(o.tipo), detalle: `${frLargo(o.fraccion)}${diaTxt}`, hoy: ins?.hoy ?? null, chips: ins?.chips ?? [],
-      queHacer: o.detalleTecnico, observaciones: o.observaciones, contacto: o.contactoObra, telefono: o.telObra,
-      archivos: o.cantArchivos ? await archivos(token, o.otId) : [], paraTuObra: paraTuObra(dia, o.otId, ahora),
-    };
-  }));
-}
-
-/** ¿Qué cambió desde lo último que confirmó? (la tarjeta ámbar de arriba). */
-function cambioPendiente(dia: DiaHoja, pid: string): Comun["cambio"] {
-  const e = envioDe(dia, pid);
-  if (!e || e.cambioMin == null || (e.recibidaMin != null && e.recibidaMin >= e.cambioMin)) return null;
-  const ds = (e.cambioDiffs ?? []).map((d) => d.t);
-  return { hora: hm(e.cambioMin), txt: ds.length ? `${ds.map(cap).join(". ")}.` : "Cambió tu hoja." };
-}
-
-/** Lo que ve quien abre el link. */
+/** Lo que ve quien abre el link. La vista la arma `armarVista` (vista.ts, pura y con tests). */
 export async function vistaPublica(token: string): Promise<{ vista: VistaPublica; link: Fila | null }> {
   if (!tokenValido(token)) return { vista: { situacion: "invalido" }, link: null };
   const adm = createAdminClient();
@@ -173,81 +53,23 @@ export async function vistaPublica(token: string): Promise<{ vista: VistaPublica
   const fecha = String(l.fecha);
   const sit = situacionLink({ fecha, expira_at: String(l.expira_at), anulado_at: (l.anulado_at as string) ?? null });
   if (sit === "vencido") {
-    const co = (await adm.from("hd_parametros").select("valor").eq("clave", "coordinador").maybeSingle()).data?.valor as { nombre?: string } | undefined;
-    return { vista: { situacion: "vencido", fecha, texto: `Este link era de la hoja del ${diaSemana(fecha)} ${Number(fecha.slice(8))}. Pedile la nueva a ${co?.nombre ?? "la oficina"}.` }, link: l };
+    const co = (await adm.from("hd_parametros").select("valor").eq("clave", "coordinador").maybeSingle()).data?.valor as { nombre?: string; telefono?: string | null } | undefined;
+    const coordinador = { nombre: co?.nombre ?? "la oficina", telefono: co?.telefono ?? null };
+    return { vista: { situacion: "vencido", fecha, coordinador, texto: `Este link era de la hoja del ${diaSemana(fecha)} ${Number(fecha.slice(8))}. Pedile la nueva a ${coordinador.nombre}.` }, link: l };
   }
   const dia = await leerDia(fecha, { cacheOdoo: true });
-  const coordinador = dia.parametros.coordinador;
-  const vencidoTxt = (t: string) => ({ situacion: "ya_no" as const, fecha, texto: t, coordinador });
-  const pid = String(l.persona_id ?? l.externa_id);
-  const ahora = minutosDesde(fecha, new Date());
-  const e = envioDe(dia, pid);
-  const comun: Comun = {
-    fecha, fechaTxt: cap(fechaMensaje(fecha)), generadoAt: dia.generadoAt, persona: nombreDe(dia, pid),
-    cambio: cambioPendiente(dia, pid), recibido: e?.recibidaMin != null ? { hora: hm(e.recibidaMin) } : null, version: Number(l.version ?? 0), coordinador,
+  const link: LinkVista = {
+    rol: l.rol === "a_cargo" ? "a_cargo" : "chofer",
+    personaId: String(l.persona_id ?? l.externa_id),
+    cuadrillaOdooId: l.cuadrilla_odoo_id != null ? Number(l.cuadrilla_odoo_id) : null,
+    anulado: !!l.anulado_at,
+    anuladoPorRol: !!l.anulado_at && /rol|a cargo/i.test(String(l.anulado_motivo ?? "")),
+    version: Number(l.version ?? 0),
   };
-
-  if (l.rol === "a_cargo") {
-    const c = Number(l.cuadrilla_odoo_id);
-    const h = hojaDeCuadrilla(dia, c);
-    const anuladoPorRol = !!l.anulado_at && /rol|a cargo/i.test(String(l.anulado_motivo ?? ""));
-    if (l.anulado_at && !anuladoPorRol) return { vista: { situacion: "invalido" }, link: l };
-    if (!h || recibeDe(dia, c) !== pid || anuladoPorRol) {
-      const otro = h ? recibeDe(dia, c) : null;
-      return { vista: vencidoTxt(`El ${diaSemana(fecha)} ${Number(fecha.slice(8))} la ${cNombre(dia, c)} la tiene ${otro ? nombreDe(dia, otro) : "otra persona"}. Si es un error, llamá a ${coordinador.nombre}.`), link: l };
-    }
-    const sus = suspendida(dia, c);
-    if (sus) return { vista: { ...comun, situacion: "suspendida", texto: `Suspendida · ${sus}. No hay que ir. Cualquier duda, llamá a ${coordinador.nombre}.` }, link: l };
-    const aCargo = aCargoDe(h);
-    const ll = dia.viajes.find((v) => v.hojaId === h.id && v.tipo === "lleva" && v.estado !== "anulado");
-    const bu = dia.viajes.find((v) => v.hojaId === h.id && v.tipo === "busca" && v.estado !== "anulado");
-    const chLleva = ll ? choferDe(dia, ll) : h.choferId;
-    const ultima = obrasCon(dia, c).at(-1)?.o.corto ?? "";
-    const chofer = h.modo === "sin" ? { modo: "sin", texto: "Van por su cuenta", nombre: null, telefono: null }
-      : h.modo === "todo_el_dia" ? { modo: "todo_el_dia", texto: `${nombreDe(dia, h.choferId)} queda todo el día${h.vehiculoId ? ` con el ${vehiculoNombre(dia, h.vehiculoId)}` : ""}`, nombre: nombreDe(dia, h.choferId), telefono: tel(dia, h.choferId) }
-      : { modo: "lleva_trae", texto: `Te lleva ${nombreDe(dia, chLleva) || "un chofer"}${h.vehiculoId ? ` · ${vehiculoNombre(dia, ll?.vehiculoId ?? h.vehiculoId)}` : ""}${bu ? `\nLos busca a las ${normHora(bu.hora)} en ${ultima}` : "\nVuelven por su cuenta"}`, nombre: nombreDe(dia, chLleva), telefono: tel(dia, chLleva) };
-    const primero = e?.snapRecibido?.tipo === "hoja" ? e.snapRecibido : e?.snapPrimero?.tipo === "hoja" ? e.snapPrimero : null;
-    const gente = genteDe(h).map((p) => ({ nombre: nombreDe(dia, p), telefono: tel(dia, p), aCargo: p === aCargo, nota: h.integrantes.find((i) => i.personaId === p)?.nota ?? null, nuevo: !!primero && !primero.gente.includes(p) && !!comun.cambio }));
-    if (h.modo === "todo_el_dia" && h.choferId) gente.push({ nombre: `${nombreDe(dia, h.choferId)} (chofer)`, telefono: tel(dia, h.choferId), aCargo: false, nota: null, nuevo: false });
-    return {
-      vista: {
-        ...comun, situacion: "ok", rol: "a_cargo", cuadrilla: cNombre(dia, c), aCargo: aCargo ? nombreDe(dia, aCargo) : null, vos: aCargo === pid,
-        nota: h.nota, encuentro: encTxt(dia, c), chofer, obras: await obrasPublicas(dia, c, token, ahora), gente,
-      },
-      link: l,
-    };
-  }
-
-  // Chofer.
-  if (l.anulado_at) return { vista: { situacion: "invalido" }, link: l };
-  const vs = viajesChofer(dia, pid);
-  const td = todoDe(dia, pid)[0] ?? null;
-  const visto = e?.snapRecibido?.tipo === "chofer" ? e.snapRecibido : null;
-  const vehId = vs[0]?.vehiculoId ?? (td != null ? hojaDeCuadrilla(dia, td)?.vehiculoId : null) ?? null;
-  const viajes: ViajePublico[] = vs.map((v: ViajeCalc) => {
-    const p = pedidosDeViaje(dia, v.id)[0] ?? null;
-    const destino = lugar(dia, v.haciaEf);
-    const c = v.cuadrillaOdooId;
-    const capataz = c != null ? recibeDe(dia, c) : null;
-    const llamarA = p?.pidioId ?? capataz;
-    const telL = llamarA ? tel(dia, llamarA) : destino.telefono;
-    return {
-      id: v.id, i: v.i, hora: horaTxt(v), horaFija: !!v.hora, texto: textoViaje(dia, v, true), desde: v.desde ? lugar(dia, v.desde).n : null,
-      hacia: destino.n, direccion: destino.dir, mapsUrl: maps(destino.dir ?? (destino.obra ? destino.n : null)), carga: v.carga,
-      pidio: p?.pidioId ? nombreDe(dia, p.pidioId) : null,
-      llamar: telL ? { nombre: llamarA ? nombreDe(dia, llamarA) : destino.n, telefono: telL } : null,
-      estado: v.estado, hechoHora: v.hechoMin != null ? hm(v.hechoMin) : null, motivo: v.noPudoMotivo,
-      nuevo: !!visto && !visto.viajes.some((x) => x.k === v.id), foto: v.foto,
-    };
-  });
-  return {
-    vista: {
-      ...comun, situacion: "ok", rol: "chofer", vehiculo: vehId ? vehiculoNombre(dia, vehId) : null,
-      todo: td != null ? { cuadrilla: cNombre(dia, td), aCargo: nombreDe(dia, aCargoDe(hojaDeCuadrilla(dia, td))) || null, encuentro: encTxt(dia, td), obras: await obrasPublicas(dia, td, token, ahora) } : null,
-      viajes, ahoraId: vs.find((v) => v.estado === "planeado")?.id ?? null, motivosNoPude: dia.parametros.motivosNoPude,
-    },
-    link: l,
-  };
+  const ots = otsConArchivos(dia, link);
+  const arch = new Map(await Promise.all(ots.map(async (ot) => [ot, await archivos(token, ot)] as const)));
+  const vista = armarVista(dia, link, minutosDesde(fecha, new Date()), { archivos: (ot) => arch.get(ot) ?? [], tipoTxt: tipoOtLabel });
+  return { vista, link: l };
 }
 
 /** Que abrió el link: "Abierta 20:15" en el escritorio. Nunca tira. */

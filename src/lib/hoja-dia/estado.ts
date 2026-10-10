@@ -336,7 +336,7 @@ function cortoCalle(dir: string): string {
   const s = dir.replace(/^(Av\.?|Avenida|Calle|Pje\.?|Pasaje)\s+/i, "").replace(/\s+\d+.*$/, "").trim();
   return s || dir;
 }
-function lugarDeKey(dia: DiaHoja, key: string): LugarInfo {
+export function lugarDeKey(dia: DiaHoja, key: string): LugarInfo {
   if (key === "dep") return { key, n: "Depósito", corto: "Depósito", dir: null, lat: null, lng: null, obra: false, tipo: "deposito", cierra: null, telefono: null, otId: null, lugarId: null };
   const [t, id] = [key.slice(0, 1), key.slice(2)];
   if (t === "o") return lugar(dia, { otId: Number(id), lugarId: null, texto: null });
@@ -550,7 +550,7 @@ export function haciaDe(dia: DiaHoja, v: Viaje): Punto {
   }
   return v.hacia;
 }
-const cuadrillaDeViaje = (dia: DiaHoja, v: Viaje): number | null =>
+export const cuadrillaDeViaje = (dia: DiaHoja, v: Viaje): number | null =>
   v.cuadrillaOdooId ?? (v.hojaId ? ctx(dia).hojaPorId.get(v.hojaId)?.cuadrillaOdooId ?? null : null);
 
 /**

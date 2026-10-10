@@ -177,6 +177,8 @@ export const TELEGRAM = {
   sinCodigo: (coordinador: string) => `Hola. Para recibir tus hojas del día, abrí el link que te mandó ${coordinador}.`,
   otroChat: "Ese botón no es para vos.",
   linkVencido: (coordinador: string) => `Ese mensaje es de una hoja vieja. Si tenés dudas, llamá a ${coordinador}.`,
+  versionVieja: "Esa hoja cambió, mirá la nueva.",
+  viajeAnulado: "Ese viaje lo sacó la oficina.",
   recibido: (t: Minutos) => `✓ Recibido ${hm(t)}`,
   entendido: (t: Minutos) => `✓ Entendido ${hm(t)}`,
   hecho: (t: Minutos) => `✓ Hecho ${hm(t)}`,

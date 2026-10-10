@@ -18,7 +18,8 @@ import { esHoy, hm, minutosDesde, cap, lowFirst, diaSemana, ddmm } from "./estad
 import { armarVista, otsConArchivos, type ArchivoPublico, type LinkVista, type VistaPublica } from "./vista";
 import { TELEGRAM } from "./mensajes";
 import { codigoValido, situacionLink, tokenValido } from "./tokens";
-import { anotar, avisarPantallas, grabador, leerDia } from "./servicio";
+import { anotar, avisarPantallas, conGrabador, grabador, leerDia } from "./servicio";
+import { porQueNoPuedeMarcar, recibidoVigente } from "./reglas-publico";
 import { deshacerEstadoViaje, marcarHecho, marcarNoPude } from "./acciones";
 import {
   contestarBoton, decodificar, editarBotones, editarMensaje, enviarMensaje, leerStart, tecladoMotivos, tecladoViaje, type Teclado,
@@ -89,7 +90,7 @@ export async function anotarVista(l: Fila): Promise<void> {
 // ═══════════════════════════ Lo que se toca en el celular ═════════════════════
 
 export type AccionPublica =
-  | { accion: "recibido" | "entendido" }
+  | { accion: "recibido" | "entendido"; version?: number | null }
   | { accion: "hecho" | "deshacer"; viajeId: string }
   | { accion: "no_pude"; viajeId: string; motivo: string };
 
@@ -121,42 +122,52 @@ async function nombreDeLink(l: Fila): Promise<string> {
   return r.data ? cap(String(r.data.apellido).toLowerCase()) : "El chofer";
 }
 
-/** El viaje, si es de este chofer y de este día. Si no, null (no se toca nada). */
-async function viajeDelChofer(l: Fila, viajeId: string): Promise<Fila | null> {
-  if (l.rol !== "chofer") return null;
+/** El viaje, si este chofer lo puede marcar (reglas-publico.ts). Si no, tira con el porqué. */
+async function viajeDelChofer(l: Fila, viajeId: string): Promise<Fila> {
   const adm = createAdminClient();
-  const v = await adm.from("hd_viajes").select("*").eq("id", viajeId).maybeSingle();
-  if (!v.data || v.data.fecha !== l.fecha) return null;
-  const pid = String(l.persona_id ?? l.externa_id);
-  if (v.data.chofer_id === pid) return v.data;
-  if (v.data.chofer_id) return null;
-  const cam = await adm.from("hd_camiones_dia").select("chofer_id, sin_chofer").eq("fecha", l.fecha).eq("vehiculo_id", v.data.vehiculo_id).maybeSingle();
-  const hab = await adm.from("vehiculos").select("chofer_habitual_id").eq("id", v.data.vehiculo_id).maybeSingle();
-  const ch = cam.data ? (cam.data.sin_chofer ? null : cam.data.chofer_id) : hab.data?.chofer_habitual_id;
-  return ch === pid ? v.data : null;
+  const v = (await adm.from("hd_viajes").select("*").eq("id", viajeId).maybeSingle()).data;
+  let delCamion: string | null = null;
+  if (v && !v.chofer_id && v.vehiculo_id) {
+    const cam = await adm.from("hd_camiones_dia").select("chofer_id, sin_chofer").eq("fecha", l.fecha).eq("vehiculo_id", v.vehiculo_id).maybeSingle();
+    const hab = await adm.from("vehiculos").select("chofer_habitual_id").eq("id", v.vehiculo_id).maybeSingle();
+    delCamion = (cam.data ? (cam.data.sin_chofer ? null : cam.data.chofer_id) : hab.data?.chofer_habitual_id) ?? null;
+  }
+  const no = porQueNoPuedeMarcar(
+    v ? { fecha: String(v.fecha), estado: String(v.estado), chofer_id: (v.chofer_id as string) ?? null, vehiculo_id: (v.vehiculo_id as string) ?? null } : null,
+    { fecha: String(l.fecha), rol: String(l.rol), personaId: String(l.persona_id ?? l.externa_id) },
+    delCamion,
+  );
+  if (no) throw new Error(no);
+  return v!;
 }
 
+/**
+ * Marca un viaje desde el link o Telegram. Si ya estaba así (un reintento del celular sin
+ * señal, un botón tocado dos veces), no anota nada ni avisa de nuevo.
+ */
 export async function marcarViajeDesdeChofer(l: Fila, viajeId: string, que: "hecho" | "no_pude" | "deshacer", motivo: string | null, at: string, origen: "link" | "telegram"): Promise<string> {
   const v = await viajeDelChofer(l, viajeId);
-  if (!v) throw new Error("Ese viaje no es tuyo.");
   const adm = createAdminClient();
-  const g = grabador(adm);
   const fecha = String(l.fecha);
   const nombre = await nombreDeLink(l);
   const hora = hm(minutosDesde(fecha, at));
-  let texto: string;
-  if (que === "hecho") { await marcarHecho(g, v, "chofer", at); texto = `${nombre}: hecho ${hora}`; }
-  else if (que === "no_pude") { await marcarNoPude(g, v, motivo ?? "Otro (te llamo)", at); texto = `${nombre} no pudo (${hora}): ${lowFirst(motivo ?? "")}`; }
-  else {
-    // El "Deshacer" de 10 segundos: sólo lo que marcó él, y hace poco.
-    if (v.hecho_por && v.hecho_por !== "chofer") throw new Error("Eso lo marcó la oficina.");
-    if (v.hecho_at && Date.now() - Date.parse(String(v.hecho_at)) > 15 * 60_000) throw new Error("Pasó mucho tiempo: llamá a la oficina.");
-    await deshacerEstadoViaje(g, v);
-    texto = `${nombre} deshizo lo que marcó`;
-  }
-  await anotar(null, { fecha, entidad: "viaje", entidadId: viajeId, viajeId, accion: que, texto, origen, porTexto: nombre }, g.cambios);
-  await avisarPantallas(fecha, que === "hecho" ? "marcó Hecho" : que === "no_pude" ? "marcó No pude" : "deshizo un viaje", nombre);
-  return texto;
+  const r = await conGrabador(adm, null, { fecha, entidad: "viaje", entidadId: viajeId, viajeId, accion: que, origen, porTexto: nombre }, async (g) => {
+    let texto: string;
+    let cambio: boolean;
+    if (que === "hecho") { cambio = await marcarHecho(g, v, "chofer", at); texto = `${nombre}: hecho ${hora}`; }
+    else if (que === "no_pude") { cambio = await marcarNoPude(g, v, motivo ?? "Otro (te llamo)", at); texto = `${nombre} no pudo (${hora}): ${lowFirst(motivo ?? "")}`; }
+    else {
+      // El "Deshacer" de 10 segundos: sólo lo que marcó él, y hace poco.
+      if (v.hecho_por && v.hecho_por !== "chofer") throw new Error("Eso lo marcó la oficina.");
+      if (v.hecho_at && Date.now() - Date.parse(String(v.hecho_at)) > 15 * 60_000) throw new Error("Pasó mucho tiempo: llamá a la oficina.");
+      cambio = await deshacerEstadoViaje(g, v);
+      texto = `${nombre} deshizo lo que marcó`;
+    }
+    if (cambio) await anotar(null, { fecha, entidad: "viaje", entidadId: viajeId, viajeId, accion: que, texto, origen, porTexto: nombre }, g.cambios);
+    return { texto, cambio };
+  });
+  if (r.cambio) await avisarPantallas(fecha, que === "hecho" ? "marcó Hecho" : que === "no_pude" ? "marcó No pude" : "deshizo un viaje", nombre);
+  return r.texto;
 }
 
 /** POST del link. Límite simple: 30 toques por minuto por token. */
@@ -174,6 +185,8 @@ export async function accionPublica(token: string, a: AccionPublica, at?: string
   const cuando = instante(at);
   try {
     if (a.accion === "recibido" || a.accion === "entendido") {
+      // I2: lo que confirma es la versión que tenía delante; si cambió después, que mire la nueva.
+      if (!recibidoVigente(a.version, Number(l.version ?? 0))) return { ok: false, error: TELEGRAM.versionVieja, status: 409 };
       const texto = await confirmarRecibido(l, cuando, "link");
       await marcarMensajesTelegram(String(l.id), (min) => (l.cambio_at ? TELEGRAM.entendido(min) : TELEGRAM.recibido(min)), String(l.fecha), cuando);
       return { ok: true, texto };
@@ -282,6 +295,12 @@ export async function procesarUpdate(u: UpdateTelegram): Promise<void> {
       const l = (await adm.from("hd_links").select("*").eq("id", cb.link).maybeSingle()).data;
       if (!l || String(l.persona_id ?? l.externa_id) !== quien.id) { await contestarBoton(q.id, TELEGRAM.otroChat); return; }
       if (l.anulado_at || situacionLink({ fecha: String(l.fecha), expira_at: String(l.expira_at), anulado_at: null }) === "vencido") { await contestarBoton(q.id, TELEGRAM.linkVencido(coordinador)); return; }
+      // I2: el botón de un mensaje viejo no confirma un cambio que la persona no vio.
+      if (!recibidoVigente(cb.version, Number(l.version ?? 0))) {
+        if (mid) await editarMensaje(chat, mid, `${textoMsj}\n\n${TELEGRAM.versionVieja}`, urlBotones);
+        await contestarBoton(q.id, TELEGRAM.versionVieja);
+        return;
+      }
       await confirmarRecibido(l, at, "telegram");
       const min = minutosDesde(String(l.fecha), at);
       const marca = cb.a === "entendido" ? TELEGRAM.entendido(min) : TELEGRAM.recibido(min);
@@ -290,10 +309,17 @@ export async function procesarUpdate(u: UpdateTelegram): Promise<void> {
       await contestarBoton(q.id, marca);
       return;
     }
-    const v = (await adm.from("hd_viajes").select("id, fecha").eq("id", cb.viaje).maybeSingle()).data;
+    const v = (await adm.from("hd_viajes").select("id, fecha, estado").eq("id", cb.viaje).maybeSingle()).data;
     if (!v) { await contestarBoton(q.id, "Ese viaje ya no existe."); return; }
     const l = (await adm.from("hd_links").select("*").eq("fecha", v.fecha).eq(quien.tabla === "personal" ? "persona_id" : "externa_id", quien.id).is("anulado_at", null).maybeSingle()).data;
     if (!l) { await contestarBoton(q.id, TELEGRAM.otroChat); return; }
+    if (situacionLink({ fecha: String(l.fecha), expira_at: String(l.expira_at), anulado_at: null }) === "vencido") { await contestarBoton(q.id, TELEGRAM.linkVencido(coordinador)); return; }
+    // I3: un viaje que la oficina sacó no se marca; el mensaje pierde sus botones.
+    if (v.estado === "anulado") {
+      if (mid) await editarMensaje(chat, mid, `${textoMsj}\n\n${TELEGRAM.viajeAnulado}`, urlBotones);
+      await contestarBoton(q.id, TELEGRAM.viajeAnulado);
+      return;
+    }
     const fecha = String(v.fecha);
     const motivos = ((await adm.from("hd_parametros").select("valor").eq("clave", "motivos_no_pude").maybeSingle()).data?.valor as string[] | undefined) ?? ["No estaba listo", "Estaba cerrado", "No había nadie para recibir", "No entra en el camión", "Problema con el camión", "Otro (te llamo)"];
     if (cb.a === "no_pude") { if (mid) await editarBotones(chat, mid, tecladoMotivos(cb.viaje, motivos)); await contestarBoton(q.id, TELEGRAM.elegiMotivo); return; }

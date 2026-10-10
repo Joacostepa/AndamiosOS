@@ -461,16 +461,19 @@ async function filaViajeDb(db: DB, viajeId: string): Promise<Fila> {
  * "Hecho": el viaje y sus pedidos. Lo usan el escritorio (marcado por el coordinador), el
  * link del chofer y el botón de Telegram. `at` es cuándo se tocó (sin señal, se manda después).
  */
-export async function marcarHecho(g: Grabador, viaje: Fila, por: string, at: string): Promise<void> {
-  if (viaje.estado === "hecho") return;
+export async function marcarHecho(g: Grabador, viaje: Fila, por: string, at: string): Promise<boolean> {
+  if (viaje.estado === "hecho") return false;
+  if (viaje.estado === "anulado") throw new Error("Ese viaje está anulado.");
   await g.actualizar("hd_viajes", String(viaje.id), { estado: "hecho", hecho_at: at, hecho_por: por, no_pudo_motivo: null });
   const ps = await g.leer("hd_pedidos", { viaje_id: viaje.id });
   for (const p of ps) if (p.estado !== "anulado") await g.actualizar("hd_pedidos", String(p.id), { estado: "hecho" });
+  return true;
 }
 
 /** "No pude": el pedido vuelve a la cola en rojo, con el motivo y la hora (§12). */
-export async function marcarNoPude(g: Grabador, viaje: Fila, motivo: string, at: string): Promise<void> {
-  if (viaje.estado === "no_pudo") return;
+export async function marcarNoPude(g: Grabador, viaje: Fila, motivo: string, at: string): Promise<boolean> {
+  if (viaje.estado === "no_pudo") return false;
+  if (viaje.estado === "anulado") throw new Error("Ese viaje está anulado.");
   await g.actualizar("hd_viajes", String(viaje.id), { estado: "no_pudo", hecho_at: at, no_pudo_motivo: motivo, ...(viaje.vuelta ? { vuelta: false } : {}) });
   const ps = await g.leer("hd_pedidos", { viaje_id: viaje.id });
   for (const p of ps) {
@@ -480,13 +483,17 @@ export async function marcarNoPude(g: Grabador, viaje: Fila, motivo: string, at:
       ultimo_no_pudo: { at, chofer_id: viaje.chofer_id, motivo, viaje_id: viaje.id, hacia: { otId: viaje.hacia_ot_id ?? null, lugarId: viaje.hacia_lugar_id ?? null, texto: viaje.hacia_texto ?? null } },
     });
   }
+  return true;
 }
 
 /** Vuelve un viaje a "planeado" (el Deshacer de 10 segundos del chofer). */
-export async function deshacerEstadoViaje(g: Grabador, viaje: Fila): Promise<void> {
+export async function deshacerEstadoViaje(g: Grabador, viaje: Fila): Promise<boolean> {
+  if (viaje.estado === "planeado") return false;
+  if (viaje.estado === "anulado") throw new Error("Ese viaje está anulado.");
   await g.actualizar("hd_viajes", String(viaje.id), { estado: "planeado", hecho_at: null, hecho_por: null, no_pudo_motivo: null });
   const ps = await g.leer("hd_pedidos", { viaje_id: viaje.id });
   for (const p of ps) if (p.estado === "hecho") await g.actualizar("hd_pedidos", String(p.id), { estado: "en_camion" });
+  return true;
 }
 
 export function accionViaje(db: DB, userId: string, a: AccionViaje): Promise<Resultado> {

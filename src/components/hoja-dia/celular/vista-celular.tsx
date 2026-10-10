@@ -81,7 +81,7 @@ export function VistaCelular({ vista: original, preview = false, acciones, pendi
         v={vista} preview={preview} interactivo={interactivo} conexion={conexion} cola={cola} toast={toastNode} onVisor={abrirVisor}
         tocar={async (accion) => {
           if (!acciones) return;
-          const r = await acciones.tocar({ accion });
+          const r = await acciones.tocar({ accion, version: vista.version });
           if (r.k === "ok") mostrar({ msg: `${accion === "entendido" ? "Entendido" : "Listo"}. ${vista.coordinador.nombre} ya lo ve.` });
           else if (r.k === "error") mostrar({ msg: r.error });
         }}
@@ -350,7 +350,7 @@ function Chofer({
     setHoja({ t: "nopudoOk", off: r.k === "cola" });
   };
   const recibir = async (accion: "recibido" | "entendido") => {
-    const r = await tocar({ accion });
+    const r = await tocar({ accion, version: v.version });
     if (r?.k === "ok") mostrar({ msg: `${accion === "entendido" ? "Entendido" : "Listo"}. ${coord.nombre} ya lo ve.` });
     else if (r?.k === "error") mostrar({ msg: r.error });
   };

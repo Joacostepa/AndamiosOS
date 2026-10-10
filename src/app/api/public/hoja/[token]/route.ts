@@ -8,7 +8,8 @@ import { accionPublica, anotarVista, vistaPublica } from "@/lib/hoja-dia/publico
 // Si el link no sirve, dice por qué ("Ya no estás a cargo", "Este link era de…") sin datos.
 // Abrirlo marca "Abierta" en el escritorio (después de responder).
 //
-// POST /api/public/hoja/:token { accion: "recibido" | "entendido" } — confirma la versión que vio.
+// POST /api/public/hoja/:token { accion: "recibido" | "entendido", version } — confirma la versión que vio
+//   (si la hoja cambió después de esa versión: 409, "Esa hoja cambió, mirá la nueva").
 // POST { accion: "hecho" | "deshacer", viajeId } y { accion: "no_pude", viajeId, motivo } — el chofer,
 //   sólo sobre SUS viajes. `at` (ISO, opcional): cuándo se tocó, si se mandó después sin señal.
 
@@ -29,7 +30,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ token: str
 }
 
 const schema = z.discriminatedUnion("accion", [
-  z.object({ accion: z.enum(["recibido", "entendido"]), at: z.string().datetime().nullable().optional() }),
+  z.object({ accion: z.enum(["recibido", "entendido"]), version: z.number().int().min(0).nullable().optional(), at: z.string().datetime().nullable().optional() }),
   z.object({ accion: z.enum(["hecho", "deshacer"]), viajeId: z.string().uuid(), at: z.string().datetime().nullable().optional() }),
   z.object({ accion: z.literal("no_pude"), viajeId: z.string().uuid(), motivo: z.string().trim().min(1).max(120), at: z.string().datetime().nullable().optional() }),
 ]);

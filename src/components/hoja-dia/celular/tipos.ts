@@ -6,7 +6,7 @@ export type { VistaPublica };
 
 /** Un toque: es el cuerpo del POST /api/public/hoja/[token] (sin `at`). */
 export type Toque =
-  | { accion: "recibido" | "entendido" }
+  | { accion: "recibido" | "entendido"; version?: number }
   | { accion: "hecho" | "deshacer"; viajeId: string }
   | { accion: "no_pude"; viajeId: string; motivo: string };
 

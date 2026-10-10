@@ -54,7 +54,7 @@ export const navigation: NavGroup[] = [
       { title: "Catalogo de Piezas", href: "/deposito/catalogo", icon: Wrench },
       { title: "Movimientos", href: "/deposito/movimientos", icon: ClipboardList },
       { title: "Remitos", href: "/logistica/remitos", icon: FileText },
-      { title: "Insumos", href: "/deposito/insumos", icon: Hammer },
+      { title: "Pañol", href: "/deposito/panol", icon: Hammer },
     ],
   },
   {

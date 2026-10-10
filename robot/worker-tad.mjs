@@ -217,13 +217,21 @@ async function bajarPermiso(page, numero) {
     await buscador.press("Enter");
     await page.waitForTimeout(6000);
   }
-  const fila = page.locator("tr:visible").filter({ hasText: digitos }).filter({ hasText: /PERMISO/i }).first();
+  // "PERMISO" a secas no alcanza: está en el nombre del trámite ("Solicitud de Permiso de Uso…"),
+  // así que lo trae cualquier notificación. El 09/10 S02128 y S02563 pasaron a Guarda temporal sin
+  // resolución y el robot guardó como permiso nuestra nota de solicitud (IF-…) y escribió
+  // "emitido" en Odoo. El permiso es la notificación "NOTIFICACION PERMISO.-" con una resolución RS-.
+  const fila = page.locator("tr:visible").filter({ hasText: digitos }).filter({ hasText: /NOTIFICACI[OÓ]N\s+PERMISO/i }).first();
   if (!(await fila.count())) return null;
   const [descarga] = await Promise.all([
     page.waitForEvent("download", { timeout: 30000 }),
     fila.getByText("file_download").click(),
   ]);
   const archivo = descarga.suggestedFilename();
+  if (!/^RS-/i.test(archivo)) {
+    log(`!! permiso EX-${numero}: la notificación trajo ${archivo}, que no es una resolución RS-: no se guarda`);
+    return null;
+  }
   const buffer = readFileSync(await descarga.path());
   const path = `${numero}/${archivo}`;
   const { error } = await db.storage.from(BUCKET).upload(path, buffer, { contentType: "application/pdf", upsert: true });

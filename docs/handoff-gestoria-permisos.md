@@ -5,8 +5,64 @@ Para retomar en una sesión nueva. El diseño completo y todo lo aprendido está
 quede 100 % automático** y el orden para seguir.
 
 Para arrancar: "Leé docs/handoff-gestoria-permisos.md y docs/modulo-gestoria-permisos.md y
-seguimos con lo que falta". **Empezar por § "09/10 a la noche", después § "09/10", § "06/10", § "02/10" y § "Estado al 26/09", seguir con
+seguimos con lo que falta". **Empezar por § "Rediseño implementado", después § "09/10 a la noche", § "09/10", § "06/10", § "02/10" y § "Estado al 26/09", seguir con
 § "17/09 — primera encomienda cerrada sola", § "Noche 16/09" y § "Estado 16/09 19:00".**
+
+---
+
+## Rediseño implementado (09/10, después de la revisión de UX)
+
+Se hizo todo `docs/permisos-rediseno.md` (§ 4 a § 7) salvo los avisos por persona. Resumen de lo
+que cambió y dónde vive:
+
+- **Un solo módulo.** "Seguimiento de permisos" ya no existe (redirige a la lista). La lista de
+  "Permisos de andamio" tiene **Te toca** (con nombre de persona por acción, ventas para iniciar
+  incluidas), **Esperando a otros** (cliente, Segucom, robot), **En el Gobierno**, y plegados
+  Emitidos, Archivados sin permiso, Historial, Pruebas y "Ventas que no se tramitan acá". Filtro
+  Mías/Todas (se recuerda en el navegador) y por vendedora.
+- **Una ficha por permiso.** La del expediente redirige a la del trámite cuando hay trámite. Arriba,
+  la tarjeta de estado: etapa, qué falta, quién lo mueve, desde cuándo, la estimación y el único
+  botón principal. Papeles con los problemas primero, el robot (encomienda e intentos en TAD), los
+  datos (dueño, portal, venta, expediente, borradores para limpiar, latido del robot) e historial
+  unido con filtros.
+- **El cálculo es uno solo:** `src/lib/permisos-via-publica/estado.ts` (etapas, quién, acciones,
+  estimado; 17 tests con casos reales). La lista (`lista.ts`) y la ficha (`ficha.ts`) lo usan igual.
+- **Acciones nuevas:** recordarle al cliente (mail o "le avisé por WhatsApp", con fecha), corregir el
+  dueño del lote desde la ficha, **reabrir acta y nota en el portal para subsanar** (mail al
+  cliente con el motivo del Gobierno), "Ya los borré" para los borradores de TAD descartados,
+  "No se tramita acá" en las ventas para iniciar, "Dejar de seguir" en expedientes viejos o
+  archivados, y **Empezar de cero** en un paso (frena, descarta el borrador y pide la presentación).
+- **Frenos:** armar la encomienda, presentar y empezar de cero sólo para administrador o para los
+  **gestores** elegidos en Configuración (lista vacía = cualquiera con permiso de editar). Todas con
+  diálogo que dice qué sale y a quién. El endoso automático **no sale si el nombre del dueño tiene
+  caracteres raros** (queda como "Corregir y mandar el endoso").
+- **Errores E1–E9 de la revisión:** todos corregidos salvo E1 en sí (el dato de Echeverría hay que
+  corregirlo desde la ficha, botón "Corregir y mandar el endoso"). El portal avisa (sin bloquear) un
+  DNI de 7 cifras. Pedir endoso en un expediente cuya venta ya tiene trámite da error en vez de
+  abrir otro. El aviso "Elegir el expediente" ahora lleva a un expediente candidato.
+- **Robot** (hay que reinstalarlo después de cada cambio): cuando el borrador no abre, no reintenta
+  y dice "Empezá de cero desde la ficha"; lee "por el término de 6 meses" y vuelve a leer del
+  bucket los permisos sin vencimiento (eran 16 de 25; probado contra los 25 PDF: lee todos).
+- **Sin migraciones:** descartes y gestores van en `pvp_config`; recordatorios y "el cliente abrió
+  el link" son eventos; "ya los borré" va en el resultado de la tarea.
+
+### Lo que tiene que hacer JS
+
+1. **Configuración → Qué sale solo → prender "Endoso a Segucom".** Hoy está apagado, por
+   eso Florida 868, Pueyrredón 1774 y Paraná 631 muestran "Pedir el endoso" para Tamara.
+2. **Configuración → Gestores:** elegir quiénes pueden armar la encomienda, presentar y empezar de cero.
+3. Echeverría 2931: "Corregir y mandar el endoso" y arreglar el nombre roto antes de que salga el endoso.
+4. Decidir los 3 expedientes viejos (S00153, Salcedo, S02259) y mirar en TAD los 6 archivados sin
+   permiso (Uruguay 1275, Córdoba 2914, Bolívar 548, Juramento 1733, Triunvirato 4528, Corrientes 2810).
+
+### Queda pendiente
+
+- **Avisos por persona** (§ 6, grande 6). La RLS de `alertas` ya filtra por `destinatario_id`, pero
+  los pasos pendientes son de "los gestores" (varios) y una alerta tiene un solo destinatario: hay
+  que decidir si va una por persona (clave por persona) o si alcanza con "Te toca → Mías". Se
+  postergó hasta tener los gestores elegidos.
+- **La tarea `tad_subsanar` del robot:** por ahora la corrección se sube a mano en TAD con los
+  papeles que el cliente vuelve a cargar.
 
 ---
 

@@ -30,14 +30,16 @@ Permisos: el proxy y cada ruta (segunda llave). `GET` pide "ver", el resto "edit
 | `/api/hoja-dia/ausencias` | POST | hoja-dia, personal | `AccionAusencia & { fechaVista? }` → `Resultado` |
 | `/api/hoja-dia/lugares` | POST | hoja-dia | `{ accion: "crear"\|"editar", … }` |
 | `/api/hoja-dia/personas` | POST | hoja-dia | `{ accion: "celular", personaId, telefono }` · `{ accion: "puede_estar_a_cargo", personaId, valor }` |
-| `/api/hoja-dia/envios?fecha=` | GET | hoja-dia (editar) | → `{ filas: Preparado[] }` (crea los links que falten) |
+| `/api/hoja-dia/envios?fecha=` | GET | hoja-dia (editar) | → `{ filas: Preparado[] }` (sólo lee: el link se crea al mandar; sin link, `link`/`waLink` en null) |
 | `/api/hoja-dia/envios` | POST | hoja-dia | ver §2.3 |
 | `/api/hoja-dia/telegram` | GET / POST | hoja-dia | estado del bot / `{ accion: "vincular"\|"desvincular", personaId }` |
 | `/api/hoja-dia/deshacer` | POST | hoja-dia | `{ historialId }` → `{ ok, texto, historialId }` (409-ish si algo cambió después: el error lo dice) |
 | `/api/hoja-dia/historial?fecha=&hojaId=\|viajeId=\|pedidoId=` | GET | hoja-dia | → `{ historial: […] }` (línea de tiempo) |
 | `/api/hoja-dia/cierre?cuadrilla=&fecha=&ot=` | GET | hoja-dia, planificacion, partes | → `PrecargaCierre` (ya conectado a "Cerrar jornada") |
 | `/api/public/hoja/[token]` | GET / POST | **público** (token) | → `VistaPublica` / `{ accion, viajeId?, motivo?, at? }` |
-| `/api/public/hoja/[token]/archivo/[id]` | GET | **público** (token) | el archivo (plano o foto de la OT), servido por la app |
+| `/api/public/hoja/[token]/archivo/[id]` | GET | **público** (token) | el archivo (plano o foto de la OT), servido por la app: imágenes y PDF en línea, el resto se descarga; nosniff + CSP |
+| `/api/public/hoja/[token]/viaje/[id]/foto` | POST (multipart `foto`) | **público** (token) | la foto del remito del chofer (sus viajes, imagen por bytes, ≤ 4 MB) |
+| `/api/hoja-dia/foto?viajeId=` | GET | hoja-dia | → `{ url }` firmada 10 min (bucket privado) |
 | `/api/telegram/webhook` | POST | **público** (secreto) | el bot (no lo llama la pantalla) |
 
 Los tipos (`AccionHoja`, `AccionViaje`, `AccionPedido`, `AccionAusencia`, `Resultado`) están en `src/lib/hoja-dia/acciones.ts` (esquemas zod con los campos exactos); `Preparado` y `EstadoTelegram` en `envios.ts`; `VistaPublica` en `publico.ts`; `PrecargaCierre` en `servicio.ts`. Se importan **sólo como tipo** (`import type`): esos módulos son del servidor.
@@ -58,6 +60,7 @@ Los tipos (`AccionHoja`, `AccionViaje`, `AccionPedido`, `AccionAusencia`, `Resul
 | `encuentro` | fecha, cuadrilla, lugar, hora, texto? | (en el depósito con lleva y trae, mueve el "lleva") |
 | `lleva` / `busca` | fecha, cuadrilla, hora (busca: null = "vuelven por su cuenta") | Cambiar hora (también mueve el encuentro si es en el depósito) |
 | `mueve` | fecha, cuadrilla, otId, hora | Viaje "Mueve" entre obras |
+| `carga_lleva` | fecha, cuadrilla, carga \| null | Lo que lleva el "lleva" (sale en la lista de carga) |
 | `nota` | fecha, cuadrilla, nota | Nota de toda la cuadrilla |
 | `instrucciones` | fecha, otId, cuadrilla?, horaInicio?, hoy?, chips? | "+ Instrucciones" (sigue a la obra si cambia de cuadrilla) |
 | `copiar_como_hoy` | fecha, cuadrilla | Menú ⋯ de la tarjeta |
@@ -66,7 +69,7 @@ Los tipos (`AccionHoja`, `AccionViaje`, `AccionPedido`, `AccionAusencia`, `Resul
 
 ### 2.2 `AccionViaje` y `AccionPedido`
 
-- Viajes: `crear` (también Taller/VTV con `tipo:"taller"` y fletes de afuera con `fleteExterno`), `poner_pedido` {pedidoId, vehiculoId, sobre?, orden?} (soltar entre dos fichas: `orden` = el promedio de los `orden` vecinos; sobre una ficha al mismo destino: `sobre` = id del viaje), `mover` {viajeId, vehiculoId \| null, orden?, hora?}, `hora` {viajeId, hora \| null, noAntesDe?} (fijar / cambiar / "estimada"), `volver_a_cola`, `anular` {motivo}, `hecho` (marcado por el coordinador), `no_pudo` {motivo}, `deshacer_estado`, `ok_todo_el_dia` ("Sacarlo un rato"), `correr_horas` {fecha, vehiculoId}, `chofer_del_camion` {fecha, vehiculoId, choferId} ("Elegir otro chofer" pasa todos los viajes pendientes), `vuelven_solos` {fecha, cuadrilla}.
+- Viajes: `crear` (también Taller/VTV con `tipo:"taller"` y fletes de afuera con `fleteExterno`; con `pedidoId` + `fleteExterno` el pedido queda atado al flete, "en camino · flete de X"), `poner_pedido` {pedidoId, vehiculoId, sobre?, orden?} (soltar entre dos fichas: `orden` = el promedio de los `orden` vecinos; sobre una ficha al mismo destino: `sobre` = id del viaje), `mover` {viajeId, vehiculoId \| null, orden?, hora?}, `hora` {viajeId, hora \| null, noAntesDe?} (fijar / cambiar / "estimada"), `volver_a_cola`, `anular` {motivo}, `hecho` (marcado por el coordinador), `no_pudo` {motivo}, `deshacer_estado`, `ok_todo_el_dia` ("Sacarlo un rato"), `correr_horas` {fecha, vehiculoId}, `chofer_del_camion` {fecha, vehiculoId, choferId} ("Elegir otro chofer" pasa todos los viajes pendientes), `vuelven_solos` {fecha, cuadrilla}.
 - Pedidos: `crear` {que, hacia, urgencia, horaLimite?, …; `tipo` y `pidioId` se deducen si no vienen: `tipoPorDestino`, `pidioPorDefecto`; `fecha` por defecto hoy hasta las 15 y mañana después; `cajonPendienteId` tilda el pendiente del cajón}, `aceptar_sugerido` / `descartar_sugerido` {fecha, key} (la `key` de `sugeridosDe`), `esperar` {motivo, hasta?}, `ya_esta`, `pasar_a_manana`, `anular` {motivo?}, `orden_manual` {orden \| null}, `visto` (el rojo del "No pude").
 - Las respuestas traen `avisarA` (id o lista de choferes que ya tenían su hoja y ahora tienen un cambio) y `avisarDeposito` (true si el viaje sale del depósito con carga hoy): son los botones del aviso ("Avisar a Gómez", "Avisar al depósito").
 
@@ -83,6 +86,7 @@ Los tipos (`AccionHoja`, `AccionViaje`, `AccionPedido`, `AccionAusencia`, `Resul
 | `avisar_operario` | fecha, personaId, canal \| `"no_hace_falta"` | "Avisar a Ramírez" |
 | `avisar_deposito` | fecha, viajeId, canal | |
 | `avisar_capataz` | fecha, pedidoId, canal | "Avisar a Conte" (su pedido va en tal camión) |
+| `avisar_mensaje` | fecha, tipo (`sacar_rato`\|`tarde`\|`vuelven_solos`\|`lista_carga`), viajeId?, cuadrilla?, canal `auto` | El servidor arma texto y destinatario; Telegram si hay vínculo, si no `waLink` |
 
 Telegram: `GET /api/hoja-dia/telegram` → `{ configurado, bot, vinculados: [{ personaId, usuario, desde }] }`. `POST { accion:"vincular", personaId }` → `{ link, waLink, texto }`: **el link de vinculación se copia o se manda una vez por WhatsApp** (`waLink`). `Persona.telegram` (en el día) dice si está vinculada.
 
@@ -158,7 +162,7 @@ Los problemas y avisos traen sus botones como datos (`{ l: "Usar Miño", a: "usa
 - `ok` + `rol: "a_cargo"`: `cuadrilla`, `aCargo`, `vos`, `nota`, `encuentro`, `chofer {modo, texto, nombre, telefono}`, `obras: ObraPublica[]` (hora, dirección, `mapsUrl`, tipo, detalle "jornada completa · día 2 de 3", `hoy`, `chips`, `queHacer`, `observaciones`, contacto, `archivos` con `url` propia, `paraTuObra`), `gente` (con `nuevo` para marcar "Ramírez · nuevo").
 - `ok` + `rol: "chofer"`: `vehiculo`, `todo` (si va todo el día: cuadrilla y obras), `viajes: ViajePublico[]` (`texto` ya en imperativo, `hora` con "~" si es estimada, `mapsUrl`, `llamar`, `estado`, `nuevo`), `ahoraId` (el de "Ahora"), `motivosNoPude`.
 - Comunes: `fechaTxt`, `generadoAt` (para "Sin conexión · lo que ves es de las 20:16"), `cambio {hora, txt}` (la tarjeta ámbar con "Entendido"), `recibido {hora}`, `coordinador {nombre, telefono}`.
-- `POST { accion: "recibido"|"entendido" }` · `{ accion: "hecho"|"deshacer", viajeId }` · `{ accion: "no_pude", viajeId, motivo }`, con `at` (ISO) si se tocó sin señal y se manda después. Límite: 30 por minuto por token.
+- `POST { accion: "recibido"|"entendido", version }` (si la versión es vieja: 409 "Esa hoja cambió, mirá la nueva") · `{ accion: "hecho"|"deshacer", viajeId }` · `{ accion: "no_pude", viajeId, motivo }`, con `at` (ISO) si se tocó sin señal y se manda después. Límite (hd_contar, atómico): 30 toques y 120 lecturas por minuto por token.
 - La página: layout propio, **tema claro**, `noindex`, sin sesión; refrescar cada 30 s y al volver; guardar la última respuesta en `localStorage` y reintentar los toques pendientes (§12 "Sin señal"). Abrirlo ya marca "Abierta" en el escritorio.
 
 ## 6. Dónde va cada cosa

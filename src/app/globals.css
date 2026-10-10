@@ -6,6 +6,16 @@
 
 @theme inline {
   --color-background: var(--background);
+  /* Hoja del día (ver el bloque «Hoja del día» de :root). */
+  --color-hd-boton: var(--hd-boton);
+  --color-hd-boton-hover: var(--hd-boton-hover);
+  --color-hd-card2: var(--hd-card2);
+  --color-hd-rojo: var(--hd-rojo);
+  --color-hd-rojo-bg: var(--hd-rojo-bg);
+  --color-hd-ambar: var(--hd-ambar);
+  --color-hd-ambar-bg: var(--hd-ambar-bg);
+  --color-hd-verde: var(--hd-verde);
+  --color-hd-ctx: var(--hd-ctx);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans);
   --font-mono: var(--font-geist-mono);
@@ -232,6 +242,21 @@
   --tb-suspendido-gris-sello: #5f6368;
   --tb-suspendido-gris-text: #5f6368;
   --tb-inactivo: #8a8880;
+  /* ── Hoja del día ──────────────────────────────────────────────────────────
+   * El coral de los BOTONES es más oscuro que --primary: blanco sobre oklch(0.62 0.16 42)
+   * da 3,9:1 (no pasa AA para texto); a 0.55 da 5,2:1. --primary sigue siendo el coral de
+   * marca (logo, foco, anillos); --hd-boton es sólo el fondo del único botón coral de cada
+   * pantalla de la hoja. Rojo/ámbar/verde: el estado de una tarjeta o un aviso, ≥4.5:1
+   * sobre la card en los dos temas. */
+  --hd-boton: oklch(0.55 0.16 42);
+  --hd-boton-hover: oklch(0.5 0.16 42);
+  --hd-card2: oklch(0.975 0 0);
+  --hd-rojo: oklch(0.52 0.2 28);
+  --hd-rojo-bg: oklch(0.96 0.03 28);
+  --hd-ambar: oklch(0.47 0.1 60);
+  --hd-ambar-bg: #faeeda;
+  --hd-verde: oklch(0.45 0.12 140);
+  --hd-ctx: oklch(0.55 0.16 42);
 }
 
 .dark {
@@ -381,6 +406,13 @@
   --tb-suspendido-gris-sello: #5f6368;
   --tb-suspendido-gris-text: #b5b7ba;
   --tb-inactivo: oklch(0.62 0 0);
+  --hd-card2: oklch(0.17 0 0);
+  --hd-rojo: oklch(0.72 0.17 28);
+  --hd-rojo-bg: oklch(0.27 0.06 28);
+  --hd-ambar: oklch(0.82 0.13 75);
+  --hd-ambar-bg: oklch(0.28 0.05 75);
+  --hd-verde: oklch(0.75 0.15 140);
+  --hd-ctx: oklch(0.72 0.15 42);
 }
 
 @layer base {

@@ -166,7 +166,7 @@ function Stock() {
       {filas.length === 0 ? (
         <EmptyState icon={Package} title={activos.length === 0 ? "Todavía no hay artículos" : "Nada con esos filtros"}
           description={activos.length === 0 ? "Empezá por dar de alta lo que más se retira." : "Probá sacar algún filtro."}>
-          {encargado && activos.length === 0 && <Button onClick={() => setAlta(true)}>Nuevo artículo</Button>}
+          {encargado && activos.length === 0 && <Button variant="outline" onClick={() => setAlta(true)}>Nuevo artículo</Button>}
         </EmptyState>
       ) : (
         <div className="overflow-x-auto rounded-md border bg-card">

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import {
-  anularLink, avisarCapatazPedido, avisarDeposito, avisarOperario, enviar, enviarTodos, noHaceFalta, preparar, prepararTodos, reenviar,
+  anularLink, avisarCapatazPedido, avisarDeposito, avisarMensaje, avisarOperario, enviar, enviarTodos, noHaceFalta, preparar, prepararTodos, reenviar,
 } from "@/lib/hoja-dia/envios";
 import { conPermiso, fallo, fechaValida, invalidoZod, sesion } from "../_comun";
 
@@ -20,6 +20,8 @@ import { conPermiso, fallo, fechaValida, invalidoZod, sesion } from "../_comun";
 //   avisar_operario { personaId, canal | "no_hace_falta" }
 //   avisar_deposito { viajeId, canal }
 //   avisar_capataz { pedidoId, canal }
+//   avisar_mensaje { tipo: sacar_rato | tarde | vuelven_solos | lista_carga, viajeId?, cuadrilla?, canal: auto }
+//                                           → por Telegram si está vinculado; si no, texto y wa.me
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +38,10 @@ const schema = z.discriminatedUnion("accion", [
   z.object({ accion: z.literal("avisar_operario"), fecha, personaId: id, canal: z.enum(["telegram", "manual", "no_hace_falta"]) }),
   z.object({ accion: z.literal("avisar_deposito"), fecha, viajeId: id, canal }),
   z.object({ accion: z.literal("avisar_capataz"), fecha, pedidoId: id, canal }),
+  z.object({
+    accion: z.literal("avisar_mensaje"), fecha, tipo: z.enum(["sacar_rato", "tarde", "vuelven_solos", "lista_carga"]),
+    viajeId: id.nullable().optional(), cuadrilla: z.number().int().positive().nullable().optional(), canal: z.enum(["telegram", "manual", "auto"]).default("auto"),
+  }),
 ]);
 
 export async function GET(req: NextRequest) {
@@ -70,6 +76,7 @@ export async function POST(req: NextRequest) {
       case "avisar_operario": return NextResponse.json(await avisarOperario(db, u, a.fecha, a.personaId, a.canal));
       case "avisar_deposito": return NextResponse.json(await avisarDeposito(db, u, a.fecha, a.viajeId, a.canal));
       case "avisar_capataz": return NextResponse.json(await avisarCapatazPedido(db, u, a.fecha, a.pedidoId, a.canal));
+      case "avisar_mensaje": return NextResponse.json(await avisarMensaje(db, u, a.fecha, { tipo: a.tipo, viajeId: a.viajeId, cuadrilla: a.cuadrilla }, a.canal));
     }
   } catch (e) {
     return fallo(e);

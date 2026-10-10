@@ -168,6 +168,22 @@ export function mensajeVuelvenSolos(dia: DiaHoja, c: number): string | null {
   return `${nombreDe(dia, r)}, hoy no los busca nadie: la ${cNombre(dia, c)} vuelve por su cuenta. Cualquier duda, llamá a ${coord(dia)}.`;
 }
 
+/**
+ * "Avisar tarde" (§9): al capataz de la cuadrilla que el chofer llega tarde a buscarlos (o
+ * a llevarlos). "Ortega, Kiska llega ~16:50 a buscarlos (no a las 16:30)…"
+ */
+export function mensajeTarde(dia: DiaHoja, v: ViajeCalc): { pid: string | null; texto: string } | null {
+  if (!v.conflicto) return null;
+  const c = v.cuadrillaOdooId ?? dia.hojas.find((h) => h.id === v.hojaId)?.cuadrillaOdooId ?? null;
+  if (c == null) return null;
+  const pid = recibeDe(dia, c);
+  const para = v.tipo === "busca" ? " a buscarlos" : v.tipo === "lleva" ? " a llevarlos" : "";
+  return {
+    pid,
+    texto: `${nombreDe(dia, pid) || "Hola"}, ${nombreDe(dia, choferDe(dia, v))} llega ~${hm5(v.conflicto.llega)}${para} (no a las ${normHora(v.hora)}). Esperalo en ${lugar(dia, v.haciaEf).n}; cualquier cosa, llamá a ${coord(dia)}.`,
+  };
+}
+
 // ─── Telegram: lo que contesta el bot ───────────────────────────────────────
 
 export const TELEGRAM = {

@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  mensajeCambioChofer, mensajeCambioHoja, mensajeDe, mensajeDeposito, mensajeHoja, mensajeOperario, mensajeViajes, filaEnvio, TELEGRAM,
+  mensajeCambioChofer, mensajeCambioHoja, mensajeDe, mensajeDeposito, mensajeHoja, mensajeOperario, mensajeTarde, mensajeViajes, filaEnvio, TELEGRAM,
 } from "./mensajes.ts";
 import { calcVeh, diferencias, fotoDe } from "./estado.ts";
 import { codificar, decodificar, leerStart, tecladoHoja, tecladoMotivos, tecladoViaje } from "./telegram.ts";
@@ -113,4 +113,14 @@ test("tokens: 32 caracteres sin ambiguos, vencen a las 23:59 del día siguiente"
   assert.equal(situacionLink({ fecha: "2026-10-13", expira_at: expiraDe("2026-10-13"), anulado_at: null }, new Date("2026-10-15T00:01:00-03:00")), "vencido");
   assert.equal(situacionLink({ fecha: "2026-10-13", expira_at: expiraDe("2026-10-13"), anulado_at: "2026-10-13T10:00:00Z" }), "anulado");
   assert.equal(urlHoja("https://a.b/", t), `https://a.b/h/${t}`);
+});
+
+test("Avisar tarde: un mensaje al capataz con la hora a la que llega el chofer", () => {
+  const d = martesArmado();
+  const bu = d.viajes.find((v) => v.id === "c3-busca") ?? d.viajes.find((v) => v.tipo === "busca" && v.cuadrillaOdooId === 3)!;
+  const v = { ...calcVeh(d, bu.vehiculoId!).find((x) => x.id === bu.id)!, conflicto: { llega: 16 * 60 + 50, prevId: null } };
+  const m = mensajeTarde(d, v)!;
+  assert.equal(m.pid, "ortega");
+  assert.match(m.texto, /^Ortega, .+ llega ~16:50 a buscarlos \(no a las 16:30\)\./);
+  assert.equal(mensajeTarde(d, { ...v, conflicto: null }), null);
 });

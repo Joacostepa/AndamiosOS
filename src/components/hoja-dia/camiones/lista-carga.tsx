@@ -11,7 +11,7 @@ import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetT
 import { fechaLarga, hm, hm5, listaCarga, nombreDe, patente, textoListaCarga, type FilaCarga } from "@/lib/hoja-dia/estado";
 import { useCamiones } from "./contexto";
 
-export function ListaCarga({ abierta, cerrar, avisarDeposito }: { abierta: boolean; cerrar: () => void; avisarDeposito: (texto: string) => void }) {
+export function ListaCarga({ abierta, cerrar, avisarDeposito }: { abierta: boolean; cerrar: () => void; avisarDeposito: () => void }) {
   const { dia, ahora } = useCamiones();
   const [copiado, setCopiado] = useState(false);
   const L = abierta ? listaCarga(dia, ahora) : { sale: [], recibir: [] };
@@ -66,7 +66,7 @@ export function ListaCarga({ abierta, cerrar, avisarDeposito }: { abierta: boole
         </div>
         <SheetFooter className="flex-row flex-wrap justify-end border-t">
           <Button variant="outline" onClick={copiar}>{copiado ? "Copiado" : "Copiar para WhatsApp/Telegram"}</Button>
-          <Button variant="outline" onClick={() => avisarDeposito(textoListaCarga(dia, ahora))}>Avisar al depósito</Button>
+          <Button variant="outline" onClick={avisarDeposito}>Avisar al depósito</Button>
           <Button variant="outline" onClick={cerrar}>Listo</Button>
         </SheetFooter>
       </SheetContent>

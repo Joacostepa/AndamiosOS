@@ -10,17 +10,14 @@
 //   N  Nuevo pedido · L  lista/línea de tiempo · 1–4  el camión sugerido · Esc  cancela.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { claveDia, useAhora, useAvisosHojaDia, useEnviar, useHojaDia } from "@/hooks/use-hoja-dia";
-import { camionesQueSirven, esHoy, esPasado, nombreDe, persona, recibeDe, todoVeh, viajeCalc, type Boton } from "@/lib/hoja-dia/estado";
-import { mensajeVuelvenSolos } from "@/lib/hoja-dia/mensajes";
-import { horaSoltada, mensajeSacarUnRato, ordenEnFila } from "@/lib/hoja-dia/camiones";
-import { linkWhatsapp } from "@/lib/panol/whatsapp";
+import { useAhora, useAvisosHojaDia, useEnviar, useHojaDia } from "@/hooks/use-hoja-dia";
+import { camionesQueSirven, esHoy, esPasado, nombreDe, persona, recibeDe, todoVeh, type Boton } from "@/lib/hoja-dia/estado";
+import { horaSoltada, ordenEnFila } from "@/lib/hoja-dia/camiones";
 import type { DiaHoja, Fecha } from "@/lib/hoja-dia/tipos";
 import { AccionesHoja } from "@/components/hoja-dia/comunes/acciones-hoja";
 import { BotonCoral } from "@/components/hoja-dia/comunes/boton-coral";
@@ -67,7 +64,6 @@ export function VistaCamiones() {
 }
 
 export function Pantalla({ dia, fecha, ahora, irA, cargando }: { dia: DiaHoja; fecha: Fecha; ahora: number; irA: (f: Fecha) => void; cargando?: boolean }) {
-  const qc = useQueryClient();
   const root = useRef<HTMLDivElement>(null);
   const [ancho, setAncho] = useState(1280);
   const [listaL, setListaL] = useState(false);
@@ -142,20 +138,12 @@ export function Pantalla({ dia, fecha, ahora, irA, cargando }: { dia: DiaHoja; f
     });
   }, [poner, dia, g, abrirDialogo, mostrar]);
 
-  const leerDia = useCallback(async () => {
-    await qc.refetchQueries({ queryKey: claveDia(fecha) });
-    return qc.getQueryData<DiaHoja>(claveDia(fecha)) ?? dia;
-  }, [qc, fecha, dia]);
-
-  /** "Sacarlo un rato y avisar a Sack": se pone igual, queda marcado y se arma el mensaje. */
+  /** "Sacarlo un rato y avisar a Sack": se pone igual, queda marcado y se avisa al capataz (Telegram o a mano). */
   const sacarUnRato = useCallback(async (viajeId: string) => {
-    g.viaje({ accion: "ok_todo_el_dia", viajeId }, async () => {
-      const d2 = await leerDia();
-      const v = viajeCalc(d2, viajeId);
-      const m = v ? mensajeSacarUnRato(d2, v) : null;
-      if (m) avisos.mensajeAMano(m.pid, `Avisar a ${nombreDe(d2, m.pid)}`, m.texto, "Al capataz de la cuadrilla que se queda un rato sin su camión.");
+    g.viaje({ accion: "ok_todo_el_dia", viajeId }, () => {
+      avisos.avisarMensaje("sacar_rato", { viajeId }, "Avisar al capataz", "Al capataz de la cuadrilla que se queda un rato sin su camión.");
     }, false);
-  }, [g, leerDia, avisos]);
+  }, [g, avisos]);
 
   const moverViaje = useCallback<Ctx["moverViaje"]>((viajeId, veh, m) => {
     const v = dia.viajes.find((x) => x.id === viajeId);
@@ -185,7 +173,6 @@ export function Pantalla({ dia, fecha, ahora, irA, cargando }: { dia: DiaHoja; f
   }, [enviar, fecha]);
 
   const boton = useCallback<Ctx["boton"]>((b: Boton, el) => {
-    const v = b.id ? dia.viajes.find((x) => x.id === b.id) : null;
     switch (b.a) {
       case "esperar":
         if (b.id) setMenu({ t: "ped", id: b.id, paso: "esperar", anchor: document.getElementById(`pm-${b.id}`) ?? el ?? document.body });
@@ -199,9 +186,8 @@ export function Pantalla({ dia, fecha, ahora, irA, cargando }: { dia: DiaHoja; f
         if (b.p) enviar.mutate({ accion: "reenviar", fecha, personaId: b.p, canal: persona(dia, b.p)?.telegram && dia.telegram.configurado ? "telegram" : "manual" }, { onSuccess: (r) => void toast(r.texto) });
         return;
       case "avisarTarde": {
-        const c = v ? v.cuadrillaOdooId ?? dia.hojas.find((h) => h.id === v.hojaId)?.cuadrillaOdooId ?? null : null;
-        const pid = c != null ? recibeDe(dia, c) : null;
-        if (pid) llamar(pid);
+        // Un mensaje al capataz (Telegram o a mano), no sólo llamarlo.
+        if (b.id) avisos.avisarMensaje("tarde", { viajeId: b.id }, "Avisar que llega tarde");
         return;
       }
       case "marcarHecho": if (b.id) g.viaje({ accion: "hecho", viajeId: b.id }); return;
@@ -219,9 +205,7 @@ export function Pantalla({ dia, fecha, ahora, irA, cargando }: { dia: DiaHoja; f
         if (b.c != null) {
           const c = b.c;
           g.viaje({ accion: "vuelven_solos", fecha, cuadrilla: c }, () => {
-            const pid = recibeDe(dia, c);
-            const txt = mensajeVuelvenSolos(dia, c);
-            if (pid && txt) avisos.mensajeAMano(pid, `Avisar a ${nombreDe(dia, pid)}`, txt);
+            if (recibeDe(dia, c)) avisos.avisarMensaje("vuelven_solos", { cuadrilla: c }, `Avisar a ${nombreDe(dia, recibeDe(dia, c))}`);
           });
         }
         return;
@@ -302,14 +286,8 @@ export function Pantalla({ dia, fecha, ahora, irA, cargando }: { dia: DiaHoja; f
     viaje: g.viaje, pedido: g.pedido, mostrar,
   }), [dia, fecha, ahora, hoy, pasado, angosta, listaL, poner, setPoner, ponerEn, boton, avisos.avisar, nuevoPedido, abrirDialogo, moverViaje, g, mostrar]);
 
-  const avisarDepositoLista = (texto: string) => {
-    const dep = dia.parametros.deposito;
-    avisos.abrirMensaje({
-      titulo: "Avisar al depósito", para: `${dep.nombre}${dep.telefono ? ` · ${dep.telefono}` : ""}`, texto,
-      waLink: linkWhatsapp(dep.telefono, texto),
-      nota: dep.telefono ? "La lista completa, para el que prepara la carga." : "Falta el teléfono del depósito en los parámetros: copiá el mensaje.",
-    });
-  };
+  // La lista de carga completa al depósito (Telegram si está en los parámetros; si no, a mano).
+  const avisarDepositoLista = () => avisos.avisarMensaje("lista_carga", {}, "Avisar al depósito", "La lista completa, para el que prepara la carga.");
 
   return (
     <CamionesCtx.Provider value={ctx}>

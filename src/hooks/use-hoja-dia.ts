@@ -160,13 +160,14 @@ export type AccionEnvio =
   | { accion: "enviar_todos"; fecha: string }
   | { accion: "avisar_operario"; fecha: string; personaId: string; canal: "telegram" | "manual" | "no_hace_falta" }
   | { accion: "avisar_deposito"; fecha: string; viajeId: string; canal: "telegram" | "manual" }
-  | { accion: "avisar_capataz"; fecha: string; pedidoId: string; canal: "telegram" | "manual" };
+  | { accion: "avisar_capataz"; fecha: string; pedidoId: string; canal: "telegram" | "manual" }
+  | { accion: "avisar_mensaje"; fecha: string; tipo: "sacar_rato" | "tarde" | "vuelven_solos" | "lista_carga"; viajeId?: string | null; cuadrilla?: number | null; canal?: "telegram" | "manual" | "auto" };
 
 /** Mandar y avisar. Si Telegram falla, el resultado trae `waLink` para el camino manual. */
 export function useEnviar(fecha: string | null) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: AccionEnvio) => post<Resultado & { enviado?: boolean; waLink?: string | null; mensaje?: string }>("/api/hoja-dia/envios", body),
+    mutationFn: (body: AccionEnvio) => post<Resultado & { enviado?: boolean; waLink?: string | null; mensaje?: string; para?: string; canal?: "telegram" | "manual" }>("/api/hoja-dia/envios", body),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: CLAVE_HOJA });
       if (fecha) avisarCambioHoja(fecha, "mandó hojas");

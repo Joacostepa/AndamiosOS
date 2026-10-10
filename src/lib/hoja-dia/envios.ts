@@ -17,9 +17,10 @@ import { linkWhatsapp } from "@/lib/panol/whatsapp";
 import { urlBase } from "@/lib/permisos-via-publica/endosos";
 import type { DiaHoja, Fecha, Foto } from "./tipos";
 import {
-  destinatarios, estadoEnvio, fotoDe, minutosDesde, envioDe, nombreDe, viajeCalc, pedidosDeViaje, type Destinatario,
+  destinatarios, estadoEnvio, fotoDe, minutosDesde, envioDe, nombreDe, viajeCalc, pedidosDeViaje, recibeDe, textoListaCarga, type Destinatario,
 } from "./estado";
-import { filaEnvio, mensajeCapatazPedido, mensajeDe, mensajeDeposito, mensajeOperario } from "./mensajes";
+import { filaEnvio, mensajeCapatazPedido, mensajeDe, mensajeDeposito, mensajeOperario, mensajeTarde, mensajeVuelvenSolos } from "./mensajes";
+import { mensajeSacarUnRato } from "./camiones";
 import { enviarMensaje, linkVinculacion, tecladoCambio, tecladoHoja, tecladoViaje, telegramConfigurado, usuarioDelBot, type Teclado } from "./telegram";
 import { expiraDe, nuevoCodigoTelegram, nuevoToken, urlHoja } from "./tokens";
 import { anotar, grabador, leerDia, type DB } from "./servicio";
@@ -240,8 +241,9 @@ async function avisoSuelto(
     await createAdminClient().from("hd_telegram_mensajes").insert({ fecha, viaje_id: a.viajeId ?? null, ...(a.personaId ? { [a.externa ? "externa_id" : "persona_id"]: a.personaId } : {}), chat_id: a.chat, message_id: r.ok ? r.result.message_id : null, tipo: a.tipo, texto, ok: r.ok, error: r.ok ? null : r.error, enviado_por: userId });
     if (!r.ok) return { ok: true, enviado: false, texto: r.error, historialId: null, waLink: linkWhatsapp(a.celular, texto), mensaje: texto };
   }
-  const id = await anotar(userId, { fecha, ...anotacion });
-  return { ok: true, enviado: canal === "telegram", texto: anotacion.texto, historialId: id || null, waLink: canal === "manual" ? linkWhatsapp(a.celular, texto) : null, mensaje: texto };
+  // Queda en el historial, pero sin Deshacer: un aviso no cambia ninguna fila.
+  await anotar(userId, { fecha, ...anotacion });
+  return { ok: true, enviado: canal === "telegram", texto: anotacion.texto, historialId: null, waLink: canal === "manual" ? linkWhatsapp(a.celular, texto) : null, mensaje: texto };
 }
 
 export async function avisarOperario(db: DB, userId: string, fecha: Fecha, pid: string, canal: CanalEnvio | "no_hace_falta"): Promise<Resultado> {
@@ -273,6 +275,53 @@ export async function avisarCapatazPedido(db: DB, userId: string, fecha: Fecha, 
   void pedidosDeViaje;
   return avisoSuelto(db, userId, fecha, mensajeCapatazPedido(dia, p, v)!, { chat: await chatDe(p.pidioId), celular: celularDe(dia, p.pidioId), personaId: p.pidioId, externa: esExterna(dia, p.pidioId), tipo: "otro" }, canal,
     { entidad: "pedido", entidadId: pedidoId, accion: "avisar_capataz", texto: `Avisado a ${nombreDe(dia, p.pidioId)}` });
+}
+
+/**
+ * Los avisos de la vista Camiones que antes eran sólo "a mano" (§9): "Sacarlo un rato y
+ * avisar a Sack", "Avisar tarde" al capataz, "Vuelven por su cuenta" y "Avisar al depósito"
+ * con la lista de carga completa. El texto y el destinatario los arma el servidor con las
+ * mismas funciones que la pantalla. `canal: "auto"`: por Telegram si la persona (o el
+ * depósito, parámetro `deposito.telegram_chat_id`) está vinculada y el bot configurado; si
+ * no, o si Telegram falla, vuelve el texto y el wa.me para mandarlo a mano.
+ */
+export type TipoAviso = "sacar_rato" | "tarde" | "vuelven_solos" | "lista_carga";
+export async function avisarMensaje(
+  db: DB, userId: string, fecha: Fecha, a: { tipo: TipoAviso; viajeId?: string | null; cuadrilla?: number | null }, canal: CanalEnvio | "auto",
+): Promise<Resultado> {
+  const dia = await leerDia(fecha, { cacheOdoo: true });
+  const ahora = minutosDesde(fecha, new Date());
+  let pid: string | null = null;
+  let texto: string | null = null;
+  let viajeId: string | null = a.viajeId ?? null;
+  if (a.tipo === "sacar_rato" || a.tipo === "tarde") {
+    const v = a.viajeId ? viajeCalc(dia, a.viajeId) : null;
+    if (!v) throw new Error("Ese viaje ya no existe.");
+    const m = a.tipo === "sacar_rato" ? mensajeSacarUnRato(dia, v) : mensajeTarde(dia, v);
+    if (!m) throw new Error(a.tipo === "tarde" ? "Ese viaje ya no llega tarde." : "Ese camión ya no está todo el día con una cuadrilla.");
+    pid = m.pid;
+    texto = m.texto;
+  } else if (a.tipo === "vuelven_solos") {
+    if (a.cuadrilla == null) throw new Error("Falta la cuadrilla.");
+    pid = recibeDe(dia, a.cuadrilla);
+    texto = mensajeVuelvenSolos(dia, a.cuadrilla);
+    viajeId = null;
+  } else {
+    texto = textoListaCarga(dia, ahora);
+    viajeId = null;
+  }
+  if (!texto) throw new Error("No hay nada para avisar.");
+  const dep = dia.parametros.deposito;
+  const aDeposito = a.tipo === "lista_carga";
+  if (!aDeposito && !pid) throw new Error("La cuadrilla no tiene a quién avisarle (nadie a cargo).");
+  const chat = aDeposito ? dep.telegramChatId : await chatDe(pid!);
+  const celular = aDeposito ? dep.telefono : celularDe(dia, pid!);
+  const elegido: CanalEnvio = canal === "auto" ? (chat && telegramConfigurado() ? "telegram" : "manual") : canal;
+  const quien = aDeposito ? "al depósito" : `a ${nombreDe(dia, pid)}`;
+  const accion = { sacar_rato: "avisar_sacar_rato", tarde: "avisar_tarde", vuelven_solos: "avisar_vuelven_solos", lista_carga: "avisar_deposito_lista" }[a.tipo];
+  const r = await avisoSuelto(db, userId, fecha, texto, { chat, celular, personaId: pid, externa: pid ? esExterna(dia, pid) : false, viajeId, tipo: aDeposito ? "deposito" : "otro" }, elegido,
+    { entidad: aDeposito ? "viaje" : "persona", entidadId: aDeposito ? (viajeId ?? "lista_carga") : pid!, accion, texto: `Avisado ${quien}${elegido === "telegram" ? " (Telegram)" : " (a mano)"}` });
+  return { ...r, para: aDeposito ? `${dep.nombre}${dep.telefono ? ` · ${dep.telefono}` : ""}` : `${nombreDe(dia, pid)}${celular ? ` · ${celular}` : " · sin celular cargado"}`, canal: elegido };
 }
 
 // ─── Vincular Telegram ──────────────────────────────────────────────────────

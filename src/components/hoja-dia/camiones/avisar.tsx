@@ -77,7 +77,7 @@ export function useAvisar(diaVista: DiaHoja | undefined, fecha: Fecha, ahoraVist
       const dia = ult.current.dia;
       if (!dia) return;
       const dep = dia.parametros.deposito;
-      const canal = dep.telegramChatId ? "telegram" : "manual";
+      const canal = dep.telegramChatId && dia.telegram.configurado ? "telegram" : "manual";
       enviar.mutate({ accion: "avisar_deposito", fecha, viajeId, canal }, {
         onSuccess: (raw) => {
           const r = raw as Respuesta;
@@ -163,6 +163,24 @@ export function useAvisar(diaVista: DiaHoja | undefined, fecha: Fecha, ahoraVist
     [fecha, enviar, siguientes],
   );
 
+  /**
+   * "Sacarlo un rato y avisar a Sack", "Avisar tarde", "Vuelven por su cuenta", la lista de
+   * carga al depósito: el servidor arma el texto y lo manda por Telegram si la persona (o el
+   * depósito) está vinculada; si no, o si Telegram falla, sale el respaldo a mano.
+   */
+  const avisarMensaje = useCallback(
+    (tipo: "sacar_rato" | "tarde" | "vuelven_solos" | "lista_carga", ref: { viajeId?: string | null; cuadrilla?: number | null }, titulo: string, nota?: string) => {
+      enviar.mutate({ accion: "avisar_mensaje", fecha, tipo, ...ref, canal: "auto" }, {
+        onSuccess: (raw) => {
+          const r = raw as Respuesta & { para?: string; canal?: "telegram" | "manual" };
+          if (r.canal === "telegram" && r.enviado) return void toast(r.texto);
+          setMsg({ titulo, para: r.para ?? "", texto: r.mensaje ?? "", waLink: r.waLink ?? null, error: r.canal === "telegram" ? r.texto : null, nota });
+        },
+      });
+    },
+    [fecha, enviar],
+  );
+
   /** Un mensaje armado en la pantalla, para mandar a mano (p. ej. "Sacarlo un rato y avisar a Sack"). */
   const mensajeAMano = useCallback(
     (pid: string | null, titulo: string, texto: string, nota?: string) => {
@@ -174,7 +192,7 @@ export function useAvisar(diaVista: DiaHoja | undefined, fecha: Fecha, ahoraVist
   );
 
   const dialogo = <DialogoMensaje m={msg} onClose={() => setMsg(null)} />;
-  return { avisar, avisarCapataz, avisarDeposito, mensajeAMano, abrirMensaje: setMsg, dialogo, ocupado: enviar.isPending };
+  return { avisar, avisarCapataz, avisarDeposito, avisarMensaje, mensajeAMano, abrirMensaje: setMsg, dialogo, ocupado: enviar.isPending };
 }
 
 function paraDe(dia: DiaHoja, pid: string) {

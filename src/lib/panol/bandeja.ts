@@ -1,4 +1,4 @@
-// La bandeja del pañol: "¿qué hago ahora?" (docs/modulo-panol.md §6.14).
+// La bandeja del pañol: "¿qué hago ahora?" (docs/panol/modulo.md §6.14).
 //
 // LÓGICA PURA. Recibe las filas crudas (catálogo, saldos, conteos, sin alta, vales, personas,
 // nombres de OT) y devuelve las secciones ya armadas, con el texto que se lee y lo que hace

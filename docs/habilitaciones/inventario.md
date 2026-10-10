@@ -9,7 +9,7 @@ Prueba del 09/10/2026 contra Supabase y Odoo de producción, con `npm run dev --
   - se contestó con un mock armado según lo que devuelve cada ruta (`scripts/harness.mjs`). Los mocks que devuelven `gestion` simulan el cambio sobre la ficha real, así la UI muestra lo que mostraría.
   - Hubo 44 requests cortados en las corridas válidas, más 9 de una primera corrida abortada.
 - **Log del dev server.** 228 requests: **todos GET**, ningún POST/PUT/PATCH/DELETE.
-- **Base antes y después.** Ninguna fila nueva atribuible a la prueba (ver `habilitaciones-errores.md` §D).
+- **Base antes y después.** Ninguna fila nueva atribuible a la prueba (ver `docs/habilitaciones/errores.md` §D).
 - **Datos inyectados.** Hoy no hay obras en "Recién llegadas" ni en grupos urgentes, ni desincronizadas. Para ver el triage por lote, los grupos rojos y el aviso amarillo se **modificó la respuesta del GET** de la bandeja en el navegador. No escribe nada. Se marca **[inyectado]**.
 - **Leyenda de la columna "Prueba":**
   - **En vivo**: se apretó en la app y el request quedó cortado (o es sólo lectura);
@@ -68,7 +68,7 @@ Los grupos son "Recién llegadas", "Se arman en 3 días", "Fecha pasada", "Falta
   - "N d · esperando a …";
   - la fecha programada;
   - el reloj para posponer.
-- **Lo que no anda.** Los días y el "esperando a" (`habilitaciones-errores.md` §1 y §2).
+- **Lo que no anda.** Los días y el "esperando a" (`docs/habilitaciones/errores.md` §1 y §2).
 - **Prueba.** En vivo.
 
 ### 1.4 Abrir la ficha desde la fila
@@ -203,7 +203,7 @@ Los grupos son "Recién llegadas", "Se arman en 3 días", "Fecha pasada", "Falta
 
 ### 2.3 Veredicto
 - **Qué es.** "Se puede armar / con pendientes / No se puede armar" más lo que falta. Se calcula en el cliente con `veredicto()`.
-- **Lo que no anda.** Ver `habilitaciones-errores.md` §4 (contraste) y §6 (contradice al tablero).
+- **Lo que no anda.** Ver `docs/habilitaciones/errores.md` §4 (contraste) y §6 (contradice al tablero).
 - **Prueba.** En vivo.
 
 ### 2.4 Contexto de la obra
@@ -235,7 +235,7 @@ Los grupos son "Recién llegadas", "Se arman en 3 días", "Fecha pasada", "Falta
 - **Qué valida el servidor.** `faltan>0` exige motivo; si no, contesta 400. El motivo puede tener hasta 1000 caracteres.
 - **Qué manda.** `{habilitar:true, faltan:3, motivo:"…"}`.
 - **En el servidor.** Lo mismo que el 2.6, con `habilitada_motivo` y el detalle "Habilitada por excepción — …". El aviso dice "por excepción".
-- **Ojo.** También aparece en obras **sin triar** (`habilitaciones-errores.md` §5).
+- **Ojo.** También aparece en obras **sin triar** (`docs/habilitaciones/errores.md` §5).
 - **Prueba.** En vivo: 1210 y 1235.
 
 ### 2.8 "Revertir" (en la ficha)
@@ -279,7 +279,7 @@ Los grupos son "Recién llegadas", "Se arman en 3 días", "Fecha pasada", "Falta
 
 ### 2.13 Etapas de la documentación
 - **Qué muestra.** La lista de las 4 etapas con fecha, más "etapa · N d" en el encabezado de la columna. Sólo lectura.
-- **Prueba.** En vivo (ver `habilitaciones-errores.md` §16).
+- **Prueba.** En vivo (ver `docs/habilitaciones/errores.md` §16).
 
 ### 2.14 "Reclamar al cliente"
 - **Qué muestra.** "Reclamar al cliente · Nº reclamo" y la aclaración "No manda mail: registra la fecha".
@@ -295,7 +295,7 @@ Los grupos son "Recién llegadas", "Se arman en 3 días", "Fecha pasada", "Falta
   - En `hab_ots`: `hab_vencimiento` y `sync_estado`.
   - Push a Odoo de `x_hab_vencimiento`.
   - No registra nada en el historial.
-- **Se deshace.** Sí, borrando la fecha. Pero ver `habilitaciones-errores.md` §B: puede no mandarse.
+- **Se deshace.** Sí, borrando la fecha. Pero ver `docs/habilitaciones/errores.md` §B: puede no mandarse.
 - **Prueba.** En vivo: cargar. Borrar no disparó request (explicado en errores).
 
 ### 2.16 Permiso: "¿Lleva permiso?"
@@ -308,7 +308,7 @@ Los grupos son "Recién llegadas", "Se arman en 3 días", "Fecha pasada", "Falta
 - **En el servidor.**
   - Exige que la OT tenga venta.
   - Escribe en la **venta de Odoo** de forma sincrónica, en el camino crítico: `x_permiso_modalidad`, y `x_permiso_definida` si es la primera vez.
-  - Va a `hab_gestiones` **sólo si se estaba definiendo** (`habilitaciones-errores.md` §8).
+  - Va a `hab_gestiones` **sólo si se estaba definiendo** (`docs/habilitaciones/errores.md` §8).
 - **Se deshace.** Sólo eligiendo otra. No se puede volver a "sin definir".
 - **Prueba.** En vivo: 1210 y 1204.
 
@@ -347,7 +347,7 @@ Los pasos son pendiente→enviado ("Marcar enviado"), enviado→aprobado ("Aprob
 - **Qué hace.** Abre un textarea.
 - **Qué valida.** Sin motivo: el cliente frena con el toast "Escribí por qué lo rebotaron" y el servidor contesta 400 "Un requisito observado necesita el motivo".
 - **Qué manda.** `{requisitoId, estado:"observado", motivo}`.
-- **Cómo se ve.** La fila queda roja con el motivo debajo. En oscuro no se lee (`habilitaciones-errores.md` §4).
+- **Cómo se ve.** La fila queda roja con el motivo debajo. En oscuro no se lee (`docs/habilitaciones/errores.md` §4).
 - **Prueba.** En vivo: 1210, sin motivo y con motivo.
 
 ### 2.23 Masivo: "Marcar N como enviados" y "Aprobar N enviados"
@@ -377,7 +377,7 @@ Los pasos son pendiente→enviado ("Marcar enviado"), enviado→aprobado ("Aprob
   - Crea los que faltan.
   - Respeta los manuales y los ya movidos.
   - Hace el push a Odoo. No registra historial.
-- **Ojo.** El desplegable queda mostrando el UUID (`habilitaciones-errores.md` §11).
+- **Ojo.** El desplegable queda mostrando el UUID (`docs/habilitaciones/errores.md` §11).
 - **Prueba.** En vivo: 1210, Completo.
 
 ### 2.27 Adjuntos: ver la lista
@@ -413,7 +413,7 @@ Los pasos son pendiente→enviado ("Marcar enviado"), enviado→aprobado ("Aprob
 ### 2.32 Notas: fijar y desfijar (chinche)
 - **Qué manda.** `PATCH …/notas {notaId, fijada}`.
 - **En el servidor.** Actualiza `ot_comentarios.fijada`. Cualquiera puede hacerlo.
-- **Qué efecto tiene.** La nota queda arriba en la ficha y la fila de la bandeja lleva un chinche. **No llega al tablero** (`habilitaciones-errores.md` §14).
+- **Qué efecto tiene.** La nota queda arriba en la ficha y la fila de la bandeja lleva un chinche. **No llega al tablero** (`docs/habilitaciones/errores.md` §14).
 - **Prueba.** En vivo.
 
 ### 2.33 Notas: borrar
@@ -471,10 +471,10 @@ Los pasos son pendiente→enviado ("Marcar enviado"), enviado→aprobado ("Aprob
 
 ### 4.2 Recorrido de la bandeja (`PASOS_BANDEJA`, 7 pasos)
 - **Cómo arranca.** Solo la primera vez, o desde el menú.
-- **Prueba.** En vivo: con datos reales se ven 4 de 7; con inyección, 7 de 7 (ver `habilitaciones-recorrido.md`).
+- **Prueba.** En vivo: con datos reales se ven 4 de 7; con inyección, 7 de 7 (ver `docs/habilitaciones/recorrido.md`).
 
 ### 4.3 Recorrido de la ficha (`PASOS_FICHA`, 12 pasos)
-- **Cómo arranca.** Solo la primera vez (en dev no arranca: `habilitaciones-errores.md` §15), o desde el menú.
+- **Cómo arranca.** Solo la primera vez (en dev no arranca: `docs/habilitaciones/errores.md` §15), o desde el menú.
 - **Prueba.** En vivo: 12/12 en 1210 y 1235; 9/12 en 233.
 
 ### 4.4 Página `/habilitaciones/ayuda`

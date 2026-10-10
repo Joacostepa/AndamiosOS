@@ -5,7 +5,7 @@ tramita ante el GCBA para sus clientes: legajo del cliente, documentos propios, 
 en el CPAU, presentación en TAD, seguimiento, subsanaciones, entrega del permiso y
 renovación.
 
-Estado: **diseño** (2026-09-14). Nada de esto está construido todavía.
+Estado: diseño del 2026-09-14. **Ya está construido y en producción**; el estado real, lo que cambió y lo que falta están en `docs/permisos/handoff.md`, y el rediseño del 09/10 en `docs/permisos/rediseno.md`.
 
 ---
 

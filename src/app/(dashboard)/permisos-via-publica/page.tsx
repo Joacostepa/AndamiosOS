@@ -19,7 +19,7 @@ import { haceCuanto, type Quien } from "@/lib/permisos-via-publica/estado";
 import type { FilaPermiso, ListaPermisos } from "@/lib/permisos-via-publica/lista";
 import { coincideTexto, direccionCorta, type EstadoRobot } from "@/lib/permisos-via-publica/tipos";
 
-// Permisos de andamio — UNA lista para todos los permisos (rediseño 09/10, docs/permisos-rediseno.md).
+// Permisos de andamio — UNA lista para todos los permisos (rediseño 09/10, docs/permisos/rediseno.md).
 // Reemplaza a la bandeja y a Seguimiento:
 //   1. Te toca: lo que espera a alguien de la oficina, con nombre y el botón. Incluye las ventas
 //      para iniciar y "perseguir al cliente" cuando pasa el umbral.

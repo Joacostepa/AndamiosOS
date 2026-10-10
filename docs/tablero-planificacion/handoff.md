@@ -1,9 +1,9 @@
 # Handoff — Tablero de planificación (actualizado 2026-10-09)
 
-Para retomar en una sesión nueva: "Leé docs/handoff-tablero-planificacion.md y seguimos con las
+Para retomar en una sesión nueva: "Leé docs/tablero-planificacion/handoff.md y seguimos con las
 mejoras del tablero". Acá van el estado, lo pendiente y las mejoras pedidas, la más nueva arriba.
-Los specs de junio (`modulo-planificacion.md`, `modulo-planificacion-mejoras-v2.md`) y el de agosto
-(`ABA-Tablero-Planificacion-SPEC.md`) son el diseño original: el código ya se apartó en varias
+Los specs de junio (`docs/archivo/planificacion-v1.md`, `docs/archivo/planificacion-v1-mejoras.md`) y el de agosto
+(`docs/tablero-planificacion/spec.md`) son el diseño original: el código ya se apartó en varias
 cosas, así que ante la duda manda el código y los comentarios largos que tiene cada archivo.
 
 ---

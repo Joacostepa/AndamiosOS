@@ -1,7 +1,9 @@
 # Módulo: Configuración de Cuadrillas
 > Instrucciones de UI/UX para Claude Code — Andamios Buenos Aires (ABA)
 > Stack: React + Node.js
-> Pasar junto con `modulo-planificacion.md` como contexto base.
+> Pasar junto con `docs/archivo/planificacion-v1.md` como contexto base.
+
+> **Ojo (10/10/2026):** la pantalla de configuración sigue en uso (`/configuracion/cuadrillas`), pero la "precarga en el panel de jornada" era del tablero viejo, que ya no existe (ver `docs/archivo/`). Ante la duda manda el código.
 
 ---
 

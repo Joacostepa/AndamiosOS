@@ -1,6 +1,6 @@
 # Habilitaciones: errores y contradicciones
 
-Prueba del 09/10/2026, entre las 19:56 y las 20:30, contra datos reales y con la escritura cortada en el navegador (ver `habilitaciones-inventario.md`).
+Prueba del 09/10/2026, entre las 19:56 y las 20:30, contra datos reales y con la escritura cortada en el navegador (ver `docs/habilitaciones/inventario.md`).
 El tema por defecto de la app es **oscuro** (`src/app/layout.tsx:49`, `defaultTheme="dark"`), así que la mayoría de los usuarios ve la pantalla como en las capturas `*-oscuro-*`.
 
 Orden: primero lo que confunde o rompe el trabajo diario, después lo cosmético.

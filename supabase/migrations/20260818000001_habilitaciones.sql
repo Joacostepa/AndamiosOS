@@ -1,7 +1,7 @@
 -- ============================================================
 -- AndamiosOS — Módulo Habilitaciones
 --
--- Reparto Odoo/Supabase (ver docs/modulo-habilitaciones.md): el ESTADO de la
+-- Reparto Odoo/Supabase (ver docs/habilitaciones/modulo.md): el ESTADO de la
 -- habilitación vive en Odoo (x_hab_*, que el tablero lee) y la GESTIÓN vive acá.
 -- El criterio es un dueño por dato: ¿alguien lo lee desde Odoo? Si no, va a Supabase.
 --

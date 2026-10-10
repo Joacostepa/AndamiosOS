@@ -13,7 +13,7 @@ import type { Articulo } from "@/lib/panol/tipos";
 import { SelectorUbicacion } from "./selector-ubicacion";
 import { fecha, numero } from "./formato";
 
-// Ingreso de compra (docs/modulo-panol.md §6.10). Se carga como llega: en la unidad de
+// Ingreso de compra (docs/panol/modulo.md §6.10). Se carga como llega: en la unidad de
 // COMPRA ("5 bolsas de 100", "$ 3.200 por bolsa") y acá se convierte a la de retiro, que es
 // en la que vive el stock. El costo viaja por unidad de retiro: es el que valoriza el
 // consumo (el trigger lo deja como ultimo_costo del artículo).

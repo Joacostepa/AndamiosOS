@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 // El diálogo de confirmación del módulo de permisos (reemplaza a los window.confirm, 09/10).
-// La forma (docs/permisos-rediseno.md § 4.4):
+// La forma (docs/permisos/rediseno.md § 4.4):
 //   - Título: pregunta con verbo y la obra.
 //   - Una o dos frases: qué pasa, a quién le llega, si se puede deshacer.
 //   - Si sale hacia afuera, qué se manda (children).

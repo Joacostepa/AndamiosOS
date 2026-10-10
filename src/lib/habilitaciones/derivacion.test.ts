@@ -1,6 +1,6 @@
 // Lo que la bandeja y la ficha dicen con el día de hoy: qué falta y de quién es la pelota,
 // la alerta y el veredicto. Los casos salen de la prueba del módulo del 09/10
-// (docs/habilitaciones-errores.md): el "0 d", el "esperando a STEPANSKY" y el veredicto que
+// (docs/habilitaciones/errores.md): el "0 d", el "esperando a STEPANSKY" y el veredicto que
 // le pedía permiso a un desarme.
 
 import { test } from "node:test";

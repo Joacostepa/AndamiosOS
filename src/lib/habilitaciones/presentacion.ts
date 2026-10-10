@@ -3,7 +3,7 @@
 // Lógica pura, sin React: sale de la espera (esperaDe) y de los datos de la obra, y se
 // prueba sin levantar nada. Las pantallas sólo eligen dónde va cada línea.
 //
-// LA FILA DICE TRES COSAS (rediseño del 09/10, docs/habilitaciones-rediseno.md §4.2): el
+// LA FILA DICE TRES COSAS (rediseño del 09/10, docs/habilitaciones/rediseno.md §4.2): el
 // próximo paso, hace cuánto espera y cuándo se arma. Y el botón de ese paso, en la misma
 // fila, para el 75% de las obras que tienen un solo papel.
 

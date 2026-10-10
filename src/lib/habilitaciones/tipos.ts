@@ -1,6 +1,6 @@
 // Tipos del módulo Habilitaciones — compartidos entre servidor y cliente.
 //
-// Ver docs/modulo-habilitaciones.md. Lo importante para leer este archivo:
+// Ver docs/habilitaciones/modulo.md. Lo importante para leer este archivo:
 // el ESTADO de la habilitación vive en Odoo y la GESTIÓN en Supabase.
 
 /** Estados de un requisito. `observado` es el que hoy no existe en ningún lado. */

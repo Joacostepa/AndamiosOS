@@ -19,7 +19,7 @@ import { normalizar, parcelaPorDireccion, type Parcela } from "./catastro";
 // que ser el dueño del lote (JS, 2026-09-15, con la primera venta real: S02465). Del aviso sólo
 // se controla que sea de la dirección de la obra.
 //
-// Ante la duda observa (docs/modulo-gestoria-permisos.md § 2): la IA nunca aprueba en
+// Ante la duda observa (docs/permisos/modulo.md § 2): la IA nunca aprueba en
 // silencio algo que no pudo leer.
 
 const MODELO = "claude-opus-5";

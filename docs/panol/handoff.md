@@ -1,6 +1,6 @@
 # Handoff — Pañol (fase 1)
 
-El diseño está en `docs/modulo-panol.md`. Esto es lo que no se lee en el código.
+El diseño está en `docs/panol/modulo.md`. Esto es lo que no se lee en el código.
 
 ## Estado (10/10/2026)
 

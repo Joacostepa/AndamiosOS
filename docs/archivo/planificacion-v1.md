@@ -1,3 +1,5 @@
+> **Archivado.** Describe el tablero de planificación de junio, que fue reemplazado por el Tablero de Planificación de Cuadrillas (`docs/tablero-planificacion/`) y cuyo código se borró en el commit `4450d55`. Se guarda sólo como antecedente.
+
 # Módulo: Planificación
 > Instrucciones de UI/UX para Claude Code — Andamios Buenos Aires (ABA)
 > Stack: React + Node.js · Integrado con Odoo vía API

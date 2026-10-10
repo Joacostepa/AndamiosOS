@@ -14,7 +14,7 @@
 -- POR QUÉ NO SE ENGANCHA TODAVÍA CON LA VENTA DE ODOO: en esta fase el trámite es el
 -- expediente tal como lo muestra TAD. La vinculación con la venta es por número de
 -- expediente (sale.order.x_expediente_nro) y la hace el robot cuando lo encuentra; el
--- trámite completo ligado a la venta es la fase siguiente (docs/modulo-gestoria-permisos.md).
+-- trámite completo ligado a la venta es la fase siguiente (docs/permisos/modulo.md).
 --
 -- QUIÉN ESCRIBE: el robot, con service role (saltea RLS). Los usuarios sólo leen y piden
 -- "revisar ahora", que es una fila en pvp_tareas. Nadie edita estados a mano: el estado es

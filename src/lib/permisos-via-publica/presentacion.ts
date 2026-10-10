@@ -15,7 +15,7 @@ import { HORARIO_DESDE, HORARIO_HASTA, proximoHorarioDePresentacion } from "./ho
 // confirma sin esperar a nadie. Los controles están en el robot (dirección contra catastro,
 // formulario guardado, cada adjunto verificado) y ante cualquier duda frena.
 //
-// Mapa de casilleros: docs/modulo-gestoria-permisos.md § "Presentación en TAD — mapeo".
+// Mapa de casilleros: docs/permisos/modulo.md § "Presentación en TAD — mapeo".
 
 type Casillero = {
   /** Comienzo del texto del casillero en TAD (se busca por prefijo). */

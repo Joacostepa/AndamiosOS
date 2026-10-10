@@ -4,7 +4,7 @@
 --
 -- QUÉ PROBLEMA RESUELVE: la encomienda profesional del CPAU (RETP) la carga Tamara a mano
 -- en retp.cpau.org con la cuenta de Hougassian. El asistente ya está mapeado entero
--- (docs/modulo-gestoria-permisos.md § Asistente "Nuevo RETP"): el robot de la Mac lo puede
+-- (docs/permisos/modulo.md § Asistente "Nuevo RETP"): el robot de la Mac lo puede
 -- completar solo con los datos del trámite.
 --
 -- SUPERVISADO: el robot completa todo y frena en la pantalla Confirmar. La tarea queda en

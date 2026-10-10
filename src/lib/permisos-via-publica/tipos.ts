@@ -1,6 +1,6 @@
 // Tipos y reglas de presentación de Permisos vía pública — compartidos por servidor y cliente.
 //
-// Ver docs/modulo-gestoria-permisos.md. Lo importante para leer este archivo: el estado es
+// Ver docs/permisos/modulo.md. Lo importante para leer este archivo: el estado es
 // EL DE TAD, tal cual lo lee el robot. Acá no se decide nada sobre el trámite; sólo cómo se
 // agrupa y cómo se nombra lo que dice el Gobierno.
 
@@ -81,7 +81,7 @@ type ItemLegajo = { clave: string; nombre: string };
 
 /**
  * Lo que el cliente tiene que subir según quién es el dueño del lote. Sale de los
- * instructivos de Tamara (docs/modulo-gestoria-permisos.md § 1).
+ * instructivos de Tamara (docs/permisos/modulo.md § 1).
  */
 export const LEGAJO: Record<TipoDueno, ItemLegajo[]> = {
   consorcio: [

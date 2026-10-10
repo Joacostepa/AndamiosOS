@@ -1,7 +1,7 @@
 -- ============================================================
 -- AndamiosOS — Módulo Pañol (fase 1)
 --
--- Diseño completo en docs/modulo-panol.md. Lo que hay que saber para leer esto:
+-- Diseño completo en docs/panol/modulo.md. Lo que hay que saber para leer esto:
 --
 -- 1. UN SOLO HISTORIAL, QUE SÓLO CRECE. `pan_movimientos` es la verdad; `pan_saldos` y el
 --    estado de cada herramienta numerada (`pan_unidades.lugar/estado`) los mantiene el

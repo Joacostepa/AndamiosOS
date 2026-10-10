@@ -1,6 +1,6 @@
 // En qué está un permiso, quién lo tiene que mover, desde cuándo y qué le toca a la oficina.
 //
-// UNA SOLA CUENTA PARA TODO EL MÓDULO (rediseño 09/10, docs/permisos-rediseno.md): la fila de la
+// UNA SOLA CUENTA PARA TODO EL MÓDULO (rediseño 09/10, docs/permisos/rediseno.md): la fila de la
 // lista y la tarjeta de estado de la ficha salen de acá. Antes la bandeja, Seguimiento y la
 // ficha contaban historias distintas del mismo trámite (de 7 que pedían algo, 5 cambiaban de
 // grupo o de color según la pantalla).

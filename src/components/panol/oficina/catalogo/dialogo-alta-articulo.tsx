@@ -16,7 +16,7 @@ import { numero, UNIDADES_RETIRO } from "./formato";
 
 // Alta de artículo (encargados; insert directo, la RLS lo permite sólo a ellos).
 //
-// Tres tipos y dos marcas, nada más (docs/modulo-panol.md §1):
+// Tres tipos y dos marcas, nada más (docs/panol/modulo.md §1):
 //   - "Seguridad crítica" sólo para herramientas con número: lo crítico se sigue unidad por
 //     unidad, porque la inspección es de cada arnés, no del artículo.
 //   - "Tiene talles" sólo para insumos (EPP: guantes, botines, ropa). Cada talle es una

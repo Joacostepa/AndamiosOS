@@ -25,7 +25,7 @@ import { TIPO_GESTION_LABEL } from "@/lib/habilitaciones/tipos";
 import { partesTitulo, direccionDeObra } from "@/lib/tablero/titulo";
 import type { FichaHabilitacion } from "@/lib/habilitaciones/tipos";
 
-// Ficha de una habilitación (rediseño del 09/10, docs/habilitaciones-rediseno.md §4.3).
+// Ficha de una habilitación (rediseño del 09/10, docs/habilitaciones/rediseno.md §4.3).
 //
 // ARRIBA, UNA SOLA TARJETA DE ESTADO: qué sigue y su botón, cuándo se arma, qué hace el
 // tablero con ella (ver tarjeta-estado.tsx). Antes eran cinco bloques que decían lo mismo

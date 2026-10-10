@@ -1,4 +1,4 @@
-// Qué avisos crea el pañol (docs/modulo-panol.md §7).
+// Qué avisos crea el pañol (docs/panol/modulo.md §7).
 //
 // SALEN DE LA BANDEJA, NO DE UNA CUENTA APARTE: el barrido diario arma la misma bandeja que
 // ve el encargado (bandeja.ts) y de ahí decide qué avisar. Así un aviso nunca dice algo que

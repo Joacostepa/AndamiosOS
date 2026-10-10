@@ -16,7 +16,7 @@
 //
 // v2 (09/10): reescrito para el rediseño —grupos por de quién es la pelota, el botón del
 // paso en la fila, la ficha con una sola tarjeta de estado—. Subir la versión hace que a
-// todos les aparezca de nuevo una vez. Diagnóstico y borrador en docs/habilitaciones-recorrido.md.
+// todos les aparezca de nuevo una vez. Diagnóstico y borrador en docs/habilitaciones/recorrido.md.
 
 export type PasoTour = {
   /** Valor del atributo data-tour del elemento a resaltar. Sin ancla, el paso se saltea. */

@@ -1,6 +1,6 @@
 # Módulo Pañol — propuesta
 
-Estado: propuesta v2 (10/10/2026). Incorpora la revisión de circuito completo y las decisiones del dueño. Nada de esto está construido todavía. Maqueta: https://claude.ai/artifact/JKriLmTTNgnWXNXrnRsCcM
+Estado: propuesta v2 (10/10/2026). Incorpora la revisión de circuito completo y las decisiones del dueño. **La fase 1 está en producción desde el 10/10** (ver `docs/panol/handoff.md`); la fase 2 (§12) sigue pendiente. Maqueta: https://claude.ai/artifact/JKriLmTTNgnWXNXrnRsCcM
 
 El pañol tiene que contestar cuatro preguntas:
 - **Qué insumo se llevó quién, y para qué obra.**

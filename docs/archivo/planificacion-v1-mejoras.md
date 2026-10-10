@@ -1,6 +1,8 @@
+> **Archivado.** Describe el tablero de planificación de junio, que fue reemplazado por el Tablero de Planificación de Cuadrillas (`docs/tablero-planificacion/`) y cuyo código se borró en el commit `4450d55`. Se guarda sólo como antecedente.
+
 # Módulo: Planificación — Mejoras v2
 > Adiciones al módulo de Planificación ya implementado.
-> Pasar junto con `modulo-planificacion.md` como contexto base.
+> Pasar junto con `docs/archivo/planificacion-v1.md` como contexto base.
 
 ---
 

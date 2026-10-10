@@ -373,7 +373,7 @@ export function esperaDe(d: DatosEspera, hoy: string = hoyISO()): Espera | null 
 
 // ─── Bandeja ────────────────────────────────────────────────────────────────
 //
-// REDISEÑO DEL 09/10 (docs/habilitaciones-rediseno.md): los grupos dicen DE QUIÉN ES LA
+// REDISEÑO DEL 09/10 (docs/habilitaciones/rediseno.md): los grupos dicen DE QUIÉN ES LA
 // PELOTA, no en qué etapa de Odoo está la obra. Antes eran etapas ("Falta consultar…",
 // "Ya le mandamos todo…") y no se correspondían con el trabajo: una obra con todo aprobado
 // esperando que la habilitáramos aparecía como "falta que el cliente valide".

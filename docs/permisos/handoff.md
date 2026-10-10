@@ -1,10 +1,10 @@
 # Handoff — Gestoría de permisos de andamio (actualizado 2026-10-09)
 
 Para retomar en una sesión nueva. El diseño completo y todo lo aprendido está en
-`docs/modulo-gestoria-permisos.md`; esto es el estado, **lo que falta para que el circuito
+`docs/permisos/modulo.md`; esto es el estado, **lo que falta para que el circuito
 quede 100 % automático** y el orden para seguir.
 
-Para arrancar: "Leé docs/handoff-gestoria-permisos.md y docs/modulo-gestoria-permisos.md y
+Para arrancar: "Leé docs/permisos/handoff.md y docs/permisos/modulo.md y
 seguimos con lo que falta". **Empezar por § "Rediseño implementado", después § "09/10 a la noche", § "09/10", § "06/10", § "02/10" y § "Estado al 26/09", seguir con
 § "17/09 — primera encomienda cerrada sola", § "Noche 16/09" y § "Estado 16/09 19:00".**
 
@@ -12,7 +12,7 @@ seguimos con lo que falta". **Empezar por § "Rediseño implementado", después 
 
 ## Rediseño implementado (09/10, después de la revisión de UX)
 
-Se hizo todo `docs/permisos-rediseno.md` (§ 4 a § 7) salvo los avisos por persona. Resumen de lo
+Se hizo todo `docs/permisos/rediseno.md` (§ 4 a § 7) salvo los avisos por persona. Resumen de lo
 que cambió y dónde vive:
 
 - **Un solo módulo.** "Seguimiento de permisos" ya no existe (redirige a la lista). La lista de
@@ -120,7 +120,7 @@ tomó. "Empezar de cero" otra vez y salió.
   - S02521 quedó atado a EX-2026-44242731 y en "presentado", para que no se presente sola otra vez.
 - **Robot:** ahora exige la notificación "NOTIFICACION PERMISO" con resolución `RS-` (`worker-tad.mjs`, `bajarPermiso`). Reinstalado a las 21:23 y verificado: la vuelta terminó OK y no tocó esas ventas.
 - **Ojo al reinstalar después de corregir datos:** una vuelta que ya arrancó tiene los expedientes viejos en memoria y al final sincroniza Odoo con ellos. Hay que frenar el robot, corregir y recién ahí reinstalar.
-- **Revisión de UX completa** del módulo, con tres revisores en paralelo: `docs/permisos-rediseno.md`, con diagnóstico, errores, propuesta y textos. Maqueta: https://claude.ai/artifact/1heoqTfpqPKBvfZy8M3enr.
+- **Revisión de UX completa** del módulo, con tres revisores en paralelo: `docs/permisos/rediseno.md`, con diagnóstico, errores, propuesta y textos. Maqueta: https://claude.ai/artifact/1heoqTfpqPKBvfZy8M3enr.
 - **Pendiente de personas:**
   - Avisarle a Agustina que Triunvirato no tiene permiso.
   - Ver en TAD por qué se archivaron esos dos expedientes.
@@ -135,7 +135,7 @@ tomó. "Empezar de cero" otra vez y salió.
    cero», o que el robot complete "Datos del Trámite" primero y vea si así aparecen los casilleros
    (sin probar; riesgo de tocar "Confirmar trámite" sin los documentos).
 3. Ver que el robot guarde la fecha del seguro cuando TAD no la registre (todavía no pasó).
-4. **Rediseño:** decidir lo de `docs/permisos-rediseno.md` § 7 y arrancar por los cambios chicos de § 6. El primero que conviene es el nombre roto del dueño del lote de Echeverría 2931 (E1), antes de pedir su endoso.
+4. **Rediseño:** decidir lo de `docs/permisos/rediseno.md` § 7 y arrancar por los cambios chicos de § 6. El primero que conviene es el nombre roto del dueño del lote de Echeverría 2931 (E1), antes de pedir su endoso.
 
 ---
 
@@ -1016,7 +1016,7 @@ Hoy es lo único que obliga a que una persona haga el trámite.
 - Todo en PDF; la póliza no puede pedir contraseña (las de La Mercantil con `/Encrypt` pasan).
 
 **Mapeado el 15/09 con borradores de prueba (decisión de JS), después borrados.** Todo en
-`docs/modulo-gestoria-permisos.md` § "Presentación en TAD — mapeo": borradores (llegar al
+`docs/permisos/modulo.md` § "Presentación en TAD — mapeo": borradores (llegar al
 paso 1 crea uno; la solapa carga en ~18 s y permite borrar), paso 2 con el radio Persona
 Física/Jurídica y los 12 casilleros, y el formulario "Datos del trámite" (iframe ZK, 53
 campos con su `name`, opciones de cada desplegable, fechas dd/mm/aaaa, y **cómo cargar la
@@ -1025,7 +1025,7 @@ carátula presentada de EX-2026-30158135. Lo único sin ver: "Guardar", los "Adj
 Resumen/Confirmar.
 
 **Construido el 15/09 — automática, sin aprobación (decisión de JS).** Ver
-`docs/modulo-gestoria-permisos.md` § "Presentación automática". Se dispara sola cuando el
+`docs/permisos/modulo.md` § "Presentación automática". Se dispara sola cuando el
 trámite está listo; hoy no llega ninguno porque falta el certificado de la encomienda (B).
 Lo único sin ver es la pantalla después de "Confirmar trámite": la muestra la primera real.
 Adjuntar crea un IF oficial en GDE aunque sea borrador: **no probar Adjuntar**.

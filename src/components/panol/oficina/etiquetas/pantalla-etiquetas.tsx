@@ -17,7 +17,7 @@ import {
 import { cn } from "@/lib/utils";
 import { VistaPrevia, type EtiquetaVista } from "./vista-previa";
 
-// Etiquetas QR (docs/modulo-panol.md §4). Cuatro preguntas, en el orden en que se piensan:
+// Etiquetas QR (docs/panol/modulo.md §4). Cuatro preguntas, en el orden en que se piensan:
 // qué (estantes, cajones, herramientas, credenciales), cuáles (las nuevas, todas o a mano),
 // de qué tamaño, y cómo entra en la hoja. A la derecha, la hoja tal como va a salir.
 //

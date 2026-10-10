@@ -51,7 +51,7 @@ const DEFINICION = [
   { id: "remitos", titulo: "Remitos", grupo: "Depósito y logística", rutas: ["/logistica/remitos"] },
   // `/p/<código>` es a donde lleva un QR escaneado con la cámara del celular.
   { id: "panol", titulo: "Pañol", grupo: "Depósito y logística", rutas: ["/deposito/panol", "/p"] },
-  // El dispositivo compartido del pañol (ver docs/modulo-panol.md §5): sólo registra
+  // El dispositivo compartido del pañol (ver docs/panol/modulo.md §5): sólo registra
   // movimientos, a nombre de quien se identifica. No es encargado ni ve la oficina.
   { id: "panol-kiosco", titulo: "Kiosco del pañol", grupo: "Depósito y logística", rutas: ["/kiosco"], incluidoEn: "panol" },
   { id: "partes", titulo: "Partes de obra", grupo: "Campo", rutas: ["/partes"] },

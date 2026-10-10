@@ -1,7 +1,7 @@
 -- ============================================================
 -- AndamiosOS — Habilitaciones: que el historial diga qué papel, y que no se escape nada
 --
--- Salió de la prueba del módulo del 09/10 (docs/habilitaciones-errores.md §9, §10, §12):
+-- Salió de la prueba del módulo del 09/10 (docs/habilitaciones/errores.md §9, §10, §12):
 --
 --   1. 162 entradas "Envío" y "Aprobación" sin detalle: hab_mover_requisito guardaba el
 --      MOTIVO (casi siempre vacío) y no el nombre del requisito. El módulo existe para

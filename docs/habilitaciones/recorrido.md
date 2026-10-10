@@ -31,8 +31,8 @@ Con los datos de hoy se ven **4 de 7** (`tour-bandeja-real-paso01..04`). Hoy no 
 - Se ve: sí.
 - Qué no es cierto, aunque es el paso más importante:
   - "La **etapa** dice de quién es el próximo movimiento": la fila no muestra la etapa.
-  - El "esperando al cliente / esperando a <técnico>" sale de la modalidad de permiso, no de la etapa (`habilitaciones-errores.md` §2).
-  - "Los **días** que lleva esperando, en rojo cuando son demasiados": siempre dicen 0 (`habilitaciones-errores.md` §1).
+  - El "esperando al cliente / esperando a <técnico>" sale de la modalidad de permiso, no de la etapa (`docs/habilitaciones/errores.md` §2).
+  - "Los **días** que lleva esperando, en rojo cuando son demasiados": siempre dicen 0 (`docs/habilitaciones/errores.md` §1).
 - Qué no explica:
   - el semáforo;
   - los chips Pantalla, SyH y de prioridad;
@@ -51,7 +51,7 @@ Con los datos de hoy se ven **4 de 7** (`tour-bandeja-real-paso01..04`). Hoy no 
 
 **Paso 7. `bandeja-header`, "Ahora entrá a una obra"**
 - Se ve: sí.
-- Qué no es cierto: "el recorrido sigue adentro". En dev el de la ficha no arranca solo (`habilitaciones-errores.md` §15).
+- Qué no es cierto: "el recorrido sigue adentro". En dev el de la ficha no arranca solo (`docs/habilitaciones/errores.md` §15).
 
 **Lo que ningún paso de la bandeja explica:**
 - el **buscador**, y que mientras buscás se abren solas las listas del pie;
@@ -67,9 +67,9 @@ Con los datos de hoy se ven **4 de 7** (`tour-bandeja-real-paso01..04`). Hoy no 
 En una obra en gestión se ven 12/12 (1210, 1235). En una **habilitada**, 9/12 (233): se saltean los dos de `boton-habilitar` y el de `boton-consulta`, y nada explica "Revertir". En una **no aplica** también se saltean, porque el bloque entero no se dibuja.
 
 **Paso 1. `veredicto`, "La respuesta, arriba de todo"**
-- En modo oscuro el título del veredicto no se lee (`habilitaciones-errores.md` §4): el paso resalta una caja ilegible.
+- En modo oscuro el título del veredicto no se lee (`docs/habilitaciones/errores.md` §4): el paso resalta una caja ilegible.
 - No aclara que "con pendientes" en verde quiere decir que la documentación avisa pero no frena.
-- El veredicto contradice al tablero en desarmes y en obras sin permiso (`habilitaciones-errores.md` §6).
+- El veredicto contradice al tablero en desarmes y en obras sin permiso (`docs/habilitaciones/errores.md` §6).
 
 **Pasos 2 y 3. `boton-habilitar`**
 - Correctos.
@@ -87,7 +87,7 @@ En una obra en gestión se ven 12/12 (1210, 1235). En una **habilitada**, 9/12 (
 **Paso 6. `vencimiento`**
 - Promete más de lo que hay:
   - "El sistema **te avisa solo**… es el único aviso que te llega sin que tengas que acordarte de mirar": no existe ningún aviso de vencimiento, ni campanita ni Slack. Sólo entra al grupo "Vencen en menos de 30 días" de la bandeja, que hay que mirar. Y avisos que sí llegan solos hay otros: OT nueva y pospuesta planificada.
-  - "El semáforo cambia cuando ya venció": depende de un campo calculado de Odoo que puede no recalcularse (`habilitaciones-errores.md` §C).
+  - "El semáforo cambia cuando ya venció": depende de un campo calculado de Odoo que puede no recalcularse (`docs/habilitaciones/errores.md` §C).
   - La caja dice "Odoo avisa solo al pasar la fecha".
 
 **Paso 7. `paquetes`**
@@ -95,13 +95,13 @@ En una obra en gestión se ven 12/12 (1210, 1235). En una **habilitada**, 9/12 (
 
 **Paso 8. `requisitos`**
 - Correcto.
-- No avisa que "Volver a pendiente" no queda en el historial (`habilitaciones-errores.md` §12).
+- No avisa que "Volver a pendiente" no queda en el historial (`docs/habilitaciones/errores.md` §12).
 
 **Paso 9. `agregar-requisito`**
 - "También podés borrar los del paquete…" es correcto, pero el borrado no pide confirmación ni deja rastro.
 
 **Paso 10. `notas`**
-- **No es cierto**: "Con el chinche… además aparece en el tablero para quien planifica la obra". Desde que se separaron los hilos, el tablero sólo muestra el de Operaciones (`habilitaciones-errores.md` §14).
+- **No es cierto**: "Con el chinche… además aparece en el tablero para quien planifica la obra". Desde que se separaron los hilos, el tablero sólo muestra el de Operaciones (`docs/habilitaciones/errores.md` §14).
 - No explica que son dos conversaciones separadas.
 
 **Paso 11. `permiso`**
@@ -113,7 +113,7 @@ En una obra en gestión se ven 12/12 (1210, 1235). En una **habilitada**, 9/12 (
 **Paso 12. `historial`**
 - "Ninguno manda mails" es cierto, pero habilitar y revertir **sí avisan** a Operaciones.
 - "No se puede borrar nada del historial" es cierto para `hab_gestiones`. Pero:
-  - los envíos y las aprobaciones no dicen qué papel (`habilitaciones-errores.md` §9);
+  - los envíos y las aprobaciones no dicen qué papel (`docs/habilitaciones/errores.md` §9);
   - borrar requisitos, adjuntos o una aprobación no queda en ningún lado.
 
 **Lo que ningún paso de la ficha explica:**
@@ -135,7 +135,7 @@ En una obra en gestión se ven 12/12 (1210, 1235). En una **habilitada**, 9/12 (
 - **El orden de la ficha salta.** Va de vencimiento a paquetes, después notas, después **permiso** (que está arriba, al lado de la documentación) y después historial: la pantalla sube y baja. El borrador de abajo sigue el orden visual.
 - **Si no hay obras nuevas, se pierden los pasos del triage.** Quien entra un día sin recién llegadas nunca aprende el triage, que es la primera decisión de todo el módulo. Una salida sería un campo `anclaAlternativa` en `PasoTour`: si no está `grupo-recien-llegadas`, el paso se cuelga de `bandeja-header`. Es un cambio en `use-tour.ts`, fuera de `tour.ts`.
 - **Hay que subir la versión de la clave** (`hab:tour-bandeja:v2`, `hab:tour-ficha:v2`), así los que ya vieron la v1 ven la nueva.
-- **En modo oscuro** los globos se ven bien, pero varios elementos que resaltan tienen el texto ilegible (veredicto, barra de recién llegada, pospuesta, permiso). Ver `habilitaciones-errores.md` §4.
+- **En modo oscuro** los globos se ven bien, pero varios elementos que resaltan tienen el texto ilegible (veredicto, barra de recién llegada, pospuesta, permiso). Ver `docs/habilitaciones/errores.md` §4.
 
 ---
 
@@ -144,7 +144,7 @@ En una obra en gestión se ven 12/12 (1210, 1235). En una **habilitada**, 9/12 (
 Criterio:
 - se mantiene la regla del encabezado de `tour.ts`, **por qué y no dónde hacer clic**;
 - todo lo que dicen es cierto con el código de hoy;
-- donde un paso depende de que se arregle algo de `habilitaciones-errores.md`, va un comentario `// OJO:`.
+- donde un paso depende de que se arregle algo de `docs/habilitaciones/errores.md`, va un comentario `// OJO:`.
 
 Siguen el orden visual de la pantalla, y los pasos sin ancla se saltean solos como hasta ahora.
 

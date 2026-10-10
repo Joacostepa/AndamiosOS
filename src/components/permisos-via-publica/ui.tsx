@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 import { ETAPAS, NOMBRE_ETAPA, type Etapa, type EstadoEtapa, type Tono } from "@/lib/permisos-via-publica/estado";
 
 // Piezas visuales del módulo de permisos (rediseño 09/10). UN COLOR, UN SIGNIFICADO, en par
-// claro/oscuro medido (docs/permisos-rediseno.md § 4.5):
+// claro/oscuro medido (docs/permisos/rediseno.md § 4.5):
 //   - bloqueo (rojo): frenado, hay que corregir.
 //   - aviso (ámbar): ojo, demora, dato raro.
 //   - marcha (azul): lo tiene otro, no hay que hacer nada.

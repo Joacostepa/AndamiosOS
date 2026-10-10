@@ -15,7 +15,7 @@ import type { Articulo } from "@/lib/panol/tipos";
 import { SelectorUbicacion } from "./selector-ubicacion";
 import { numero } from "./formato";
 
-// Alta de unidades de una herramienta con número (docs/modulo-panol.md §6.11). La base
+// Alta de unidades de una herramienta con número (docs/panol/modulo.md §6.11). La base
 // numera (H-054, H-055…, sin pisarse aunque dos den de alta a la vez), genera un QR por
 // unidad y las deja en su estante. Los códigos nuevos esperan en "Etiquetas › Solo las
 // nuevas": por eso el cierre de este diálogo es ese link, no un "Listo".

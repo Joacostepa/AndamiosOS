@@ -20,7 +20,7 @@ import { consumoPorSemana, lunesDe, promedioSemanal } from "@/lib/panol/consumo"
 import { hoyBA } from "@/lib/panol/estado";
 import { TIPO_ARTICULO } from "@/lib/panol/tipos";
 
-// Ficha de un artículo (docs/modulo-panol.md §1, artboard Oficina-Articulo).
+// Ficha de un artículo (docs/panol/modulo.md §1, artboard Oficina-Articulo).
 //
 // ARRIBA LA TARJETA DE ESTADO con UN botón coral: "Cargar ingreso de compra" (o "Dar de alta
 // unidades" si es una herramienta con número, que no entra por cantidad). Debajo, lo que se

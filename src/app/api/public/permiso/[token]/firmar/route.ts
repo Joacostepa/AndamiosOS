@@ -15,7 +15,7 @@ import { MINIMO_TINTA_FIRMA, clavesFirmables, type TipoDueno } from "@/lib/permi
 // y el hash de cada PDF. En papel se ve igual que la nota escaneada que se subía antes.
 //
 // El domicilio electrónico del acta es el de ABA (PERMISOS_MAIL): es donde llegan las
-// notificaciones legales del trámite (docs/modulo-gestoria-permisos.md § 5).
+// notificaciones legales del trámite (docs/permisos/modulo.md § 5).
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;

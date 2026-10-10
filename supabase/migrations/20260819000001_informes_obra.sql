@@ -1,7 +1,7 @@
 -- ============================================================
 -- AndamiosOS — Informe de Obra (cierre)
 --
--- Un informe congelado por obra cerrada. Ver docs/modulo-informe-de-obra.md.
+-- Un informe congelado por obra cerrada. Ver docs/informe-de-obra/modulo.md.
 --
 -- POR QUÉ CONGELADO Y NO CALCULADO AL VUELO: el valor hora se mueve —en el histórico va
 -- de $18.570 a $22.745—, así que recalcular el mismo informe dentro de un año daría otras

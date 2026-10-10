@@ -55,7 +55,7 @@ export type TipoAlerta =
    */
   | "asistente_aviso"
   /**
-   * Pañol (docs/modulo-panol.md §7). Los crea el barrido diario a partir de la misma bandeja
+   * Pañol (docs/panol/modulo.md §7). Los crea el barrido diario a partir de la misma bandeja
    * que ve el encargado (src/lib/panol/avisos.ts). Van a `deposito` y al canal del pañol.
    */
   | "panol_ajuste" | "panol_stock" | "panol_vencida" | "panol_faltante" | "panol_inspeccion"

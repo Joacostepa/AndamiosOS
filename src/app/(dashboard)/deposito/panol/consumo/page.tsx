@@ -12,7 +12,7 @@ import type { GrupoConsumo, PorConsumo } from "@/lib/panol/consumo";
 import { hoyBA } from "@/lib/panol/estado";
 import { cn } from "@/lib/utils";
 
-// Consumo: qué se llevó cada obra, cuadrilla o persona en un período (docs/modulo-panol.md
+// Consumo: qué se llevó cada obra, cuadrilla o persona en un período (docs/panol/modulo.md
 // §10, artboard Oficina-Consumo). NETO: retiros menos sobrantes devueltos (que descuentan de
 // la obra de la que vuelven), y lo anulado no cuenta. Valorizado con el último costo de
 // compra cargado en el pañol; los costos de Odoo son de la fase 3.

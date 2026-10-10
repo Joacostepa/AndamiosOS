@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { anularMovimiento, useInvalidarPanol } from "@/hooks/use-panol";
 import { leerRechazo } from "@/lib/panol/estado";
 
-// Lo irreversible pide motivo (docs/modulo-panol.md §3): anular, perder, dar de baja. El
+// Lo irreversible pide motivo (docs/panol/modulo.md §3): anular, perder, dar de baja. El
 // diálogo arranca con el foco en Cancelar cuando es peligroso, para que un Enter apurado no
 // anule nada, y no deja confirmar sin motivo.
 

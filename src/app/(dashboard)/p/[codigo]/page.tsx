@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { CodigoResuelto } from "@/lib/panol/tipos";
 
 // /p/<código>: lo que abre un QR del pañol escaneado con la cámara del celular
-// (docs/modulo-panol.md §4). El QR no dice nada por sí mismo: pan_resolver_codigo lo traduce
+// (docs/panol/modulo.md §4). El QR no dice nada por sí mismo: pan_resolver_codigo lo traduce
 // y de acá se salta a la pantalla que corresponde. Vive bajo el layout del dashboard, así
 // que pide login como el resto; el proxy lo deja pasar sólo con el módulo Pañol (/p está en
 // sus rutas, ver lib/auth/acceso.ts).

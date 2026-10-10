@@ -1,6 +1,6 @@
 // Tipos del módulo Informe de Obra — compartidos entre servidor y cliente.
 //
-// Ver docs/modulo-informe-de-obra.md.
+// Ver docs/informe-de-obra/modulo.md.
 //
 // Estas formas son las que se congelan en `informes_obra.datos` (jsonb). Cambiarlas no
 // migra lo ya guardado: los informes viejos conservan la forma que tenían al generarse,

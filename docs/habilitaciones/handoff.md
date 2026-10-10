@@ -1,15 +1,15 @@
 # Handoff — Habilitaciones (actualizado 2026-10-09, noche)
 
-Para retomar en una sesión nueva: "Leé docs/handoff-habilitaciones.md y seguimos". El diseño
-original es `docs/modulo-habilitaciones.md` (18/08, desactualizado: la verdad es el código). La
+Para retomar en una sesión nueva: "Leé docs/habilitaciones/handoff.md y seguimos". El diseño
+original es `docs/habilitaciones/modulo.md` (18/08, desactualizado: la verdad es el código). La
 revisión del 09/10 está en cuatro documentos:
 
 | Documento | Qué tiene |
 | --- | --- |
-| `docs/habilitaciones-rediseno.md` | Diagnóstico con datos y la propuesta por pantalla. Maqueta: https://claude.ai/artifact/5LdNNShsQpMyWnPdBr9fUe |
-| `docs/habilitaciones-inventario.md` | Las 79 acciones del módulo: qué piden, qué mandan, qué escriben en Supabase y Odoo |
-| `docs/habilitaciones-errores.md` | Lo que mostraba algo falso o se contradecía (casi todo arreglado, ver abajo) |
-| `docs/habilitaciones-recorrido.md` | Diagnóstico del recorrido viejo y el borrador que se usó para el v2 |
+| `docs/habilitaciones/rediseno.md` | Diagnóstico con datos y la propuesta por pantalla. Maqueta: https://claude.ai/artifact/5LdNNShsQpMyWnPdBr9fUe |
+| `docs/habilitaciones/inventario.md` | Las 79 acciones del módulo: qué piden, qué mandan, qué escriben en Supabase y Odoo |
+| `docs/habilitaciones/errores.md` | Lo que mostraba algo falso o se contradecía (casi todo arreglado, ver abajo) |
+| `docs/habilitaciones/recorrido.md` | Diagnóstico del recorrido viejo y el borrador que se usó para el v2 |
 
 Capturas del rediseño andando con los datos del 09/10: https://claude.ai/artifact/FHs9GTR9mrRnGrKR5GSNP1
 

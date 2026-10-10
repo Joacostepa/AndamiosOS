@@ -4,7 +4,7 @@
 
 Maqueta: https://claude.ai/artifact/5LdNNShsQpMyWnPdBr9fUe.
 
-> **Estado (09/10, noche): implementado y publicado** (commits `5a127aa` y `cf09851`), con las decisiones de JS de ese día: lo nuestro en rojo al día siguiente, la app calcula días y urgencia (G6 no se hizo), revertir con motivo, "Esperan el permiso" sólo para `esperar_permiso`, el permiso se corrige en Odoo. Pendientes en `docs/handoff-habilitaciones.md`.
+> **Estado (09/10, noche): implementado y publicado** (commits `5a127aa` y `cf09851`), con las decisiones de JS de ese día: lo nuestro en rojo al día siguiente, la app calcula días y urgencia (G6 no se hizo), revertir con motivo, "Esperan el permiso" sólo para `esperar_permiso`, el permiso se corrige en Odoo. Pendientes en `docs/habilitaciones/handoff.md`.
 
 ---
 

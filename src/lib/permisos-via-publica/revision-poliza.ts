@@ -14,7 +14,7 @@ import { formatoCuit, type ChequeoPoliza, type RevisionPoliza, type Tramite } fr
 // 20 páginas con cientos de coasegurados y cláusulas de no repetición. Transcribirlas corta
 // la respuesta; preguntar "¿figura este CUIT como coasegurado?" no.
 //
-// LO QUE CAUSÓ LAS SUBSANACIONES (ver docs/modulo-gestoria-permisos.md § Póliza): el GCBA
+// LO QUE CAUSÓ LAS SUBSANACIONES (ver docs/permisos/modulo.md § Póliza): el GCBA
 // pide el titular del lote como COASEGURADO y la cláusula de NO REPETICIÓN a favor del
 // GCBA. Son dos listas distintas con dos sujetos distintos, y se venían confundiendo.
 //

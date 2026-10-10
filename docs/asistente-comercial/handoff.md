@@ -1,11 +1,11 @@
 # Handoff — Asistente comercial (actualizado 2026-10-06)
 
 Para retomar en una sesión nueva. Cómo funciona el módulo, cómo se configura y cómo se prueba
-está en `docs/modulo-asistente-comercial.md`; esto es el estado, lo que falta y el orden para
+está en `docs/asistente-comercial/modulo.md`; esto es el estado, lo que falta y el orden para
 seguir. El plan original (aprobado el 26/09) está en
 `~/.claude/plans/buenas-ahora-quiero-que-flickering-haven.md`.
 
-Para arrancar: "Leé docs/handoff-asistente-comercial.md y docs/modulo-asistente-comercial.md y
+Para arrancar: "Leé docs/asistente-comercial/handoff.md y docs/asistente-comercial/modulo.md y
 seguimos con lo que falta". **Empezar por § "Lo primero en la sesión nueva".**
 
 ---

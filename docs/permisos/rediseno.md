@@ -4,7 +4,7 @@
 
 Maqueta: https://claude.ai/artifact/1heoqTfpqPKBvfZy8M3enr. Tiene la lista, la ficha de Echeverría 2931, Corrientes 985 y Escalada 2138, los tres diálogos y el celular de la vendedora (Doblas 141).
 
-> **Estado: implementado el 09/10** (ver `docs/handoff-gestoria-permisos.md` § "Rediseño implementado"). Todo § 4 a § 7 y los errores E2–E9. Quedan: los avisos por persona (§ 6, grande 6), la tarea `tad_subsanar` del robot, y E1 como dato (se corrige desde la ficha). Para que el endoso salga solo hay que prenderlo en Configuración.
+> **Estado: implementado el 09/10** (ver `docs/permisos/handoff.md` § "Rediseño implementado"). Todo § 4 a § 7 y los errores E2–E9. Quedan: los avisos por persona (§ 6, grande 6), la tarea `tad_subsanar` del robot, y E1 como dato (se corrige desde la ficha). Para que el endoso salga solo hay que prenderlo en Configuración.
 
 ---
 

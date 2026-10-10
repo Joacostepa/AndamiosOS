@@ -37,7 +37,7 @@ import type { ClaveGrupo, FilaBandeja, GrupoBandeja } from "@/lib/habilitaciones
 
 // Bandeja de Habilitaciones. Reemplaza a la planilla `Seguimiento de obras (DOCS TRACKER)`.
 //
-// REDISEÑO DEL 09/10 (docs/habilitaciones-rediseno.md): contesta "¿qué hago ahora, y con
+// REDISEÑO DEL 09/10 (docs/habilitaciones/rediseno.md): contesta "¿qué hago ahora, y con
 // cuál empiezo?". Los grupos dicen de quién es la pelota —urgentes, nuevas, para hacer,
 // esperando al cliente, esperan el permiso—, cada fila dice el próximo paso, hace cuánto
 // espera y cuándo se arma, y el botón de ese paso está en la misma fila.

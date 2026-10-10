@@ -1,5 +1,5 @@
 // Tipos del Pañol. Espejo de supabase/migrations/20261010000001_panol.sql; el diseño, en
-// docs/modulo-panol.md.
+// docs/panol/modulo.md.
 //
 // LO QUE HAY QUE TENER EN LA CABEZA: todo lo que se mueve es un movimiento de un LUGAR a
 // otro, y el lugar dice a la vez dónde está y quién lo tiene ("p:<id>" es "lo tiene esa

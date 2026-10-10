@@ -22,7 +22,7 @@ import { partesTitulo, direccionDeObra } from "@/lib/tablero/titulo";
 import { pasoDe, seArma, type Paso } from "@/lib/habilitaciones/presentacion";
 import type { ClaveGrupo, FilaBandeja } from "@/lib/habilitaciones/tipos";
 
-// Una fila de la bandeja (rediseño del 09/10, docs/habilitaciones-rediseno.md §4.2).
+// Una fila de la bandeja (rediseño del 09/10, docs/habilitaciones/rediseno.md §4.2).
 //
 // CUATRO COLUMNAS: la obra, el próximo paso con hace cuánto espera, cuándo se arma, y el
 // botón de ese paso. Lo que se resuelve en un clic se resuelve acá: el 75% de las obras

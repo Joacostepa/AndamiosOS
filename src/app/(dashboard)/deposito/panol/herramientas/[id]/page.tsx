@@ -22,7 +22,7 @@ import type { MovGestion } from "@/lib/panol/tipos";
 // "Resolver revisión", en el taller → "Volvió del taller", faltante → "Apareció"). Debajo,
 // las gestiones que piden motivo, los datos de ficha, el QR y el historial (sólo lectura).
 // Mantenimiento preventivo y correctivo con taller e inspecciones con checklist son de la
-// fase 2 (docs/modulo-panol.md §12): acá alcanza con la próxima fecha de inspección.
+// fase 2 (docs/panol/modulo.md §12): acá alcanza con la próxima fecha de inspección.
 
 const POR_PAGINA = 20;
 

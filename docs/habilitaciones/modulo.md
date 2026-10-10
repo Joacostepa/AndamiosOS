@@ -16,9 +16,9 @@ Reemplaza la planilla `Seguimiento de obras (DOCS TRACKER)`.
 >   reemplaza al posponer por permiso, la ficha tiene una sola tarjeta de estado, el permiso
 >   es de sólo lectura y el panel de planificación es una hoja encima.
 >
-> **Estado y pendientes: `docs/handoff-habilitaciones.md`.** Revisión y prueba del módulo del 09/10: `docs/habilitaciones-rediseno.md` (propuesta de
-> rediseño), `docs/habilitaciones-inventario.md` (cada acción y qué hace),
-> `docs/habilitaciones-errores.md` y `docs/habilitaciones-recorrido.md` (borrador del
+> **Estado y pendientes: `docs/habilitaciones/handoff.md`.** Revisión y prueba del módulo del 09/10: `docs/habilitaciones/rediseno.md` (propuesta de
+> rediseño), `docs/habilitaciones/inventario.md` (cada acción y qué hace),
+> `docs/habilitaciones/errores.md` y `docs/habilitaciones/recorrido.md` (borrador del
 > recorrido guiado completo).
 
 ---

@@ -29,7 +29,7 @@ import { AVISO, OK, OK_SOLIDO, PELIGRO, PELIGRO_SUAVE, PELIGRO_TEXTO } from "@/l
 import { direccionDeObra } from "@/lib/tablero/titulo";
 import type { ClaveGrupo, FichaHabilitacion } from "@/lib/habilitaciones/tipos";
 
-// La tarjeta de estado de la ficha (rediseño del 09/10, docs/habilitaciones-rediseno.md §4.3).
+// La tarjeta de estado de la ficha (rediseño del 09/10, docs/habilitaciones/rediseno.md §4.3).
 //
 // UNA SOLA TARJETA ARRIBA, en lugar de cinco bloques: el veredicto, el bloque de habilitar,
 // la barra de triage, la de posponer y la columna con las cuatro etapas de Odoo. Los cinco

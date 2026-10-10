@@ -20,7 +20,7 @@ import { Robot } from "@/components/permisos-via-publica/ficha/robot";
 import { Datos } from "@/components/permisos-via-publica/ficha/datos";
 import { Historial } from "@/components/permisos-via-publica/ficha/historial";
 
-// La ficha única de un permiso (rediseño 09/10, docs/permisos-rediseno.md § 4.3). De arriba a abajo:
+// La ficha única de un permiso (rediseño 09/10, docs/permisos/rediseno.md § 4.3). De arriba a abajo:
 //   1. Encabezado: dónde, de quién, quién vendió y hace cuánto se abrió.
 //   2. Tarjeta de estado: qué etapa, qué falta, quién lo mueve y desde cuándo, con el único botón
 //      principal para lo que le toca a la oficina (la misma cuenta que la fila de la lista).

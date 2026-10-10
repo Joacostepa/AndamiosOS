@@ -1751,6 +1751,48 @@ export function fletesDelDia(dia: DiaHoja, otId: number): { v: ViajeCalc; txt: s
   });
 }
 
+/**
+ * Las horas de la mano de obra que la hoja SUGIERE para el parte de una obra (§13, I8 de la
+ * revisión): desde el encuentro (si es la primera obra del día) o la hora estimada de la
+ * obra, hasta que arranca la siguiente obra de la cuadrilla, la hora del "busca" o el fin
+ * de la jornada (parámetro). Las parciales ("llega a las 10", "se retira a las 14")
+ * recortan su línea; los ausentes de todo el día no cuentan. El chofer de "todo el día"
+ * suma. Agrupado por horario: una línea por cada horario distinto.
+ *
+ * Es una SUGERENCIA para el formulario de "Cerrar jornada" (editable, marcada "según la
+ * Hoja del día"): lo que se factura lo confirma quien cierra el parte.
+ */
+export function horariosCierre(dia: DiaHoja, c: number, otId: number): { personas: number; desde: Hora; hasta: Hora }[] {
+  const h = hojaDeCuadrilla(dia, c);
+  if (!h) return [];
+  const obs = obrasCon(dia, c);
+  const i = obs.findIndex((x) => x.o.otId === otId);
+  if (i < 0) return [];
+  const fin = toMin(P(dia).finJornada) ?? 17 * 60;
+  const desde = i === 0 ? Math.min(toMin(h.encuentro.hora) ?? obs[0].t, obs[0].t) : obs[i].t;
+  let hasta: number | null = null;
+  if (i < obs.length - 1) hasta = obs[i + 1].t;
+  else if (h.modo === "lleva_trae") {
+    const bu = viajesVigentes(dia).find((v) => v.hojaId === h.id && v.tipo === "busca" && v.estado !== "anulado");
+    hasta = bu ? toMin(bu.hora) ?? viajeCalc(dia, bu.id)?.t ?? null : null;
+  }
+  if (hasta == null || hasta <= desde) hasta = fin > desde ? fin : desde + 60;
+  const gente = [...h.integrantes.map((x) => x.personaId), ...(h.modo === "todo_el_dia" && h.choferId ? [h.choferId] : [])];
+  const grupos = new Map<string, { personas: number; desde: Hora; hasta: Hora }>();
+  for (const pid of new Set(gente)) {
+    if (ausenciaDe(dia, pid)) continue;
+    const pa = parcialDe(dia, pid);
+    const d = Math.max(desde, toMin(pa?.horaDesde ?? null) ?? desde);
+    const a = Math.min(hasta, toMin(pa?.horaHasta ?? null) ?? hasta);
+    if (a <= d) continue;
+    const k = `${d}-${a}`;
+    const g = grupos.get(k) ?? { personas: 0, desde: hm(d), hasta: hm(a) };
+    g.personas++;
+    grupos.set(k, g);
+  }
+  return [...grupos.values()].sort((x, y) => y.personas - x.personas);
+}
+
 // ═══════════════════════════ Precarga (§8) ════════════════════════════════════
 
 export type ModoPrecarga = "hoy" | "plantel" | "vacio";

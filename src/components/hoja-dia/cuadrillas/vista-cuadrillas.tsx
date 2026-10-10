@@ -37,7 +37,7 @@ import { MenuTarjeta } from "./menu-tarjeta";
 import { HojaAusencias } from "./hoja-ausencias";
 import { HojaInstrucciones } from "./hoja-instrucciones";
 import { VerComo } from "./ver-como";
-import { CerrarJornada } from "./cerrar-jornada";
+import { CerrarJornada, type PedidoCierre } from "./cerrar-jornada";
 import { AvisoPrecarga, EstadoVacio } from "./estado-vacio";
 import { DialogoCelular, DialogoMover, DialogoObra, type Mover } from "./dialogos";
 import type { Arrastre, Control } from "./control";
@@ -85,7 +85,7 @@ export function VistaCuadrillas() {
   const [mover, setMover] = useState<Mover | null>(null);
   const [celular, setCelular] = useState<string | null>(null);
   const [obra, setObra] = useState<number | null>(null);
-  const [cierre, setCierre] = useState<number | null>(null);
+  const [cierre, setCierre] = useState<PedidoCierre | null>(null);
   const [avisos, setAvisos] = useState<{ fecha: string; modo: ModoPrecarga; lista: string[] } | null>(null);
   const [precargando, setPrecargando] = useState<ModoPrecarga | null>(null);
   const timerFlash = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -166,7 +166,7 @@ export function VistaCuadrillas() {
 
   // Teclado: G enfoca el buscador de Gente; con un nombre elegido, 1–5 lo manda a esa
   // cuadrilla (un chofer entra como chofer). No con un campo, un menú o una hoja abiertos.
-  const algoAbierto = !!(hojaLat || menu || mover || celular || obra != null || cierre != null);
+  const algoAbierto = !!(hojaLat || menu || mover || celular || obra != null || cierre);
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
       const t = ev.target as HTMLElement | null;
@@ -237,7 +237,7 @@ export function VistaCuadrillas() {
     abrirInstrucciones: (c) => setHojaLat({ t: "instr", c }),
     abrirEnvio: (p) => setHojaLat({ t: "envio", resaltar: p ?? null }),
     verComo: (c, p) => setHojaLat({ t: "ver", c, p }),
-    cerrarJornada: (c) => setCierre(c),
+    cerrarJornada: (c, otId) => setCierre({ c, otId: otId ?? null }),
     chEd, setChEd, editEnc, setEditEnc, arrastre, setArrastre, sel, setSel, flash,
   };
 
@@ -414,7 +414,7 @@ export function VistaCuadrillas() {
       />
       <DialogoCelular key={celular ?? "-"} dia={dia} pid={celular} onCerrar={() => setCelular(null)} />
       <DialogoObra dia={dia} otId={obra} onCerrar={() => setObra(null)} />
-      <CerrarJornada dia={dia} c={cierre} onCerrar={() => setCierre(null)} />
+      <CerrarJornada key={cierre ? `${cierre.c}-${cierre.otId ?? ""}` : "-"} dia={dia} pedido={cierre} onCerrar={() => setCierre(null)} />
     </div>
   );
 }

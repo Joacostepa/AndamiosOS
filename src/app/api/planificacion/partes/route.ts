@@ -2,13 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { cerrarJornada, editarParte, fetchParte } from "@/lib/odoo/partes";
 import { OdooError } from "@/lib/odoo/client";
+import { ParteYaCargadoError } from "@/lib/odoo/parte-existente";
 import { duracionTurno, MAX_HORAS_TURNO } from "@/lib/tablero/horas";
 
 // Cierre de jornada desde el tablero.
 //
 //   GET   ?parteId=123   → el parte con sus líneas (ver / editar)
-//   POST  { asignacionId, datos } → crea el parte y marca la jornada como cerrada
-//   PATCH { parteId, otId, datos } → reescribe un parte ya cargado
+//   POST  { asignacionId, datos } → crea el parte y marca la jornada como cerrada. Si la
+//                                   asignación YA tiene parte: 409 { error, parteId } (nunca
+//                                   lo reescribe ni lo duplica; corregirlo es el PATCH)
+//   PATCH { parteId, otId, datos } → reescribe un parte ya cargado (pedido explícito, con su id)
 //
 // REGLA DE NEGOCIO: la app nunca manda costos ni horas-hombre; los calcula Odoo con la
 // tarifa vigente a esa fecha. Odoo sigue siendo editable en paralelo: ante conflicto de
@@ -88,6 +91,9 @@ const datosSchema = z
   );
 
 function errorResponse(e: unknown) {
+  if (e instanceof ParteYaCargadoError) {
+    return NextResponse.json({ error: e.message, parteId: e.parteId }, { status: 409 });
+  }
   const msg = e instanceof OdooError ? e.message : e instanceof Error ? e.message : String(e);
   return NextResponse.json({ error: msg }, { status: 502 });
 }

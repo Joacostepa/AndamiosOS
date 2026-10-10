@@ -192,6 +192,12 @@ export type ObraDia = {
   /** Qué jornada de la obra es (2 de 3). null si no se pudo saber. */
   dia: number | null;
   totalDias: number | null;
+  /**
+   * El parte de Odoo de esta jornada (x_aba_asignacion.x_parte_id), si ya se cerró. "Cerrar
+   * jornada" NO se ofrece sobre una jornada con parte: se ofrece "Ver parte" (y editarlo es
+   * explícito, con su id). Ver B1 en handoff.md.
+   */
+  parteId: number | null;
 };
 
 // ─── Lo del módulo (Supabase) ────────────────────────────────────────────────

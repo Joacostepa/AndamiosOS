@@ -60,9 +60,13 @@ export function useCerrarJornada() {
     // contador de pendientes no bajaba. Se leía como que no había guardado nada — y al
     // volver a cargarla y guardar de nuevo se creaba un parte duplicado en Odoo.
     // La clave sin fecha alcanza las tres: el día, el badge del sidebar y los otros días.
-    onSuccess: () => {
+    //
+    // También si falla: un 409 ("esta jornada ya tiene parte") quiere decir que la pantalla
+    // estaba vieja, y la Hoja del día muestra "Jornada cerrada" sólo si vuelve a leer.
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ["jornadas"] });
       qc.invalidateQueries({ queryKey: ["tablero"] });
+      qc.invalidateQueries({ queryKey: ["hoja-dia"] });
     },
   });
 }
@@ -79,6 +83,7 @@ export function useEditarParte() {
       qc.invalidateQueries({ queryKey: ["parte", vars.parteId] });
       qc.invalidateQueries({ queryKey: ["jornadas"] });
       qc.invalidateQueries({ queryKey: ["tablero"] });
+      qc.invalidateQueries({ queryKey: ["hoja-dia"] });
     },
   });
 }

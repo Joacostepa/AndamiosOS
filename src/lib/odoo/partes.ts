@@ -35,6 +35,7 @@
 
 import { searchRead, create, write, executeKw, read } from "./client";
 import { DEJAN_ESTRUCTURA } from "@/lib/tablero/tipos-parte";
+import { exigirSinParte } from "./parte-existente";
 import type {
   DatosCierre,
   ParteCargado,
@@ -224,10 +225,11 @@ async function crearFotos(
 }
 
 /**
- * Cierra la jornada de una asignación.
+ * Cierra la jornada de una asignación: CREA su parte.
  *
- * Si ya existe un parte para esa OT y fecha —alguien pudo cargarlo desde Odoo— se
- * REUTILIZA en lugar de crear uno nuevo: dos partes del mismo día duplicarían costos.
+ * Si la asignación ya tiene parte vinculado tira ParteYaCargadoError (la ruta contesta
+ * 409): corregir un parte es editarParte (PATCH, con su id). Si existe otro parte de esa
+ * OT y fecha sin vincular, no se toca: se crea el nuevo y se avisa del posible duplicado.
  *
  * Devuelve el detalle paso por paso: si algo se corta a mitad, el usuario tiene que
  * saber qué quedó guardado y qué no.
@@ -266,59 +268,41 @@ export async function cerrarJornada(
 
   // ── 1) El parte ────────────────────────────────────────────────────────────
   //
-  // SOLO se reescribe el parte que YA está vinculado a esta asignación (reedición de un
-  // cierre propio). Nunca se adopta un parte preexistente.
+  // POST CREA, NUNCA REESCRIBE. Si la asignación ya tiene parte vinculado, se rechaza
+  // (ParteYaCargadoError → 409): reescribir es PATCH con el id del parte (editarParte), que
+  // pide quien lo está mirando. Antes este POST reescribía el parte vinculado con lo que
+  // hubiera en el formulario, y "Cerrar jornada" desde la Hoja del día (que no sabía del
+  // parte) lo pisaba con la precarga y borraba sus líneas. Ver parte-existente.ts.
   //
-  // Antes se "reutilizaba" cualquier parte de la misma OT y fecha sin vincular. Eso
-  // hacía que cerrar una jornada con fecha retroactiva se apropiara de un parte
-  // histórico —importado de la planilla— y le borrara las líneas para escribir las
-  // nuevas. Destruía datos en silencio. Un duplicado se ve y se borra; una jornada
-  // histórica pisada no se recupera.
+  // Tampoco se adopta un parte preexistente sin vincular (cargado desde /partes u Odoo):
+  // cerrar una jornada con fecha retroactiva se apropiaba de un parte histórico y le
+  // borraba las líneas. Un duplicado se ve y se borra; una jornada pisada no se recupera.
   const parteVinculado = m2oId(asignacion.x_parte_id);
+  exigirSinParte(parteVinculado);
 
-  let parteId: number;
-  const reutilizado = parteVinculado !== null;
-  // El aviso de duplicado no bloquea nada: se dispara junto con el resto y se lee al final.
-  let avisoDuplicados: Promise<number[]> = Promise.resolve([]);
-
-  // La cabecera y las líneas viajan en la MISMA llamada (ver comandosLineas). Al reeditar,
-  // el (5, 0, 0) que antepone borra las anteriores dentro de la misma transacción, así que
-  // ya no hace falta barrerlas antes ni cuidar el orden.
-  //
-  // Efecto secundario querido: si una línea es inválida, no se guarda nada. Antes el parte
-  // quedaba igual y la línea no, y un parte sin mano de obra son cero horas-hombre y cero
+  // La cabecera y las líneas viajan en la MISMA llamada (ver comandosLineas). Si una línea
+  // es inválida no se guarda nada: un parte sin mano de obra son cero horas-hombre y cero
   // costo — una obra que figura trabajada gratis. Es mejor que falle entero y se reintente.
   const lineas = cuentaLineas(datos);
+  const reutilizado = false;
+  const parteId = await create("x_aba_parte_diario", {
+    ...valoresParte({ ...datos, fecha }, otId),
+    ...comandosLineas(datos, fecha, false),
+  });
+  registrar("Parte diario", true, `#${parteId}`);
+  if (lineas > 0) registrar("Personal, fletes e incidencias", true, `${lineas} línea${lineas === 1 ? "" : "s"}`);
 
-  if (parteVinculado !== null) {
-    parteId = parteVinculado;
-    await write("x_aba_parte_diario", [parteId], {
-      ...valoresParte({ ...datos, fecha }, otId),
-      ...comandosLineas(datos, fecha, true),
-    });
-    registrar("Parte diario actualizado", true, `#${parteId}`);
-    if (lineas > 0) registrar("Líneas reemplazadas", true, `${lineas}`);
-  } else {
-    parteId = await create("x_aba_parte_diario", {
-      ...valoresParte({ ...datos, fecha }, otId),
-      ...comandosLineas(datos, fecha, false),
-    });
-    registrar("Parte diario", true, `#${parteId}`);
-    if (lineas > 0) registrar("Personal, fletes e incidencias", true, `${lineas} línea${lineas === 1 ? "" : "s"}`);
-
-    // Si ya había otro parte para esa OT y fecha, se avisa: puede ser un duplicado a
-    // resolver en Odoo, pero no se toca.
-    const idNuevo = parteId;
-    avisoDuplicados = searchRead<{ id: number }>(
-      "x_aba_parte_diario",
-      [["x_orden_trabajo_id", "=", otId], ["x_fecha", "=", fecha], ["id", "!=", idNuevo]],
-      ["id"],
-      { limit: 3 },
-    ).then(
-      (otros) => otros.map((o) => o.id),
-      () => [],
-    );
-  }
+  // Si ya había otro parte para esa OT y fecha, se avisa: puede ser un duplicado a
+  // resolver en Odoo, pero no se toca. El aviso no bloquea: se lee al final.
+  const avisoDuplicados: Promise<number[]> = searchRead<{ id: number }>(
+    "x_aba_parte_diario",
+    [["x_orden_trabajo_id", "=", otId], ["x_fecha", "=", fecha], ["id", "!=", parteId]],
+    ["id"],
+    { limit: 3 },
+  ).then(
+    (otros) => otros.map((o) => o.id),
+    () => [],
+  );
 
   // Desde acá los fallos NO tiran todo abajo: el parte ya existe y hay que decir
   // exactamente qué se guardó.
@@ -546,7 +530,7 @@ export async function fetchEmpleados(): Promise<{ id: number; nombre: string; es
 const CAMPOS_PARTE = [
   "x_orden_trabajo_id", "x_fecha", "x_cuadrilla_id", "x_estado", "x_motivo_no_ejec",
   "x_sector", "x_clima", "x_objetivo", "x_tareas", "x_bloqueos", "x_horas_hombre",
-  "x_costo_total", "x_cant_fotos", "x_puntero_id", "x_camion_en_obra",
+  "x_costo_total", "x_cant_fotos", "x_puntero_id", "x_camion_en_obra", "create_date",
 ];
 
 /**
@@ -606,6 +590,9 @@ export async function fetchPartes(parteIds: number[]): Promise<Map<number, Parte
       fecha: texto(parte.x_fecha) ?? "",
       cuadrillaId: m2oId(parte.x_cuadrilla_id as [number, string] | false),
       punteroId: m2oId(parte.x_puntero_id as [number, string] | false),
+      punteroNombre: Array.isArray(parte.x_puntero_id) ? String(parte.x_puntero_id[1]) : null,
+      // Odoo guarda en UTC sin zona ("2026-10-13 20:05:11").
+      creadoAt: texto(parte.create_date) ? `${String(parte.create_date).replace(" ", "T")}Z` : null,
       camionEnObra: parte.x_camion_en_obra === true,
       estado: parte.x_estado === "no_ejecutado" ? "no_ejecutado" : "ejecutado",
       motivoNoEjec: texto(parte.x_motivo_no_ejec),

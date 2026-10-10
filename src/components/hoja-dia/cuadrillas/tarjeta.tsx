@@ -17,6 +17,7 @@ import { BotonesDe } from "@/components/hoja-dia/comunes/linea-bandeja";
 import { AgregarPersona } from "./agregar-persona";
 import { EditorChofer, EditorEncuentro } from "./editor-chofer";
 import { TIPO_ARRASTRE, type Control } from "./control";
+import { JornadaCerrada } from "./cerrar-jornada";
 
 const TONO_ESTADO: Record<string, string> = {
   recibida: "font-semibold text-hd-verde",
@@ -63,6 +64,10 @@ export function Tarjeta({ ctl, c, indice }: { ctl: Control; c: number; indice: n
   const ins = instruccionesDe(dia, c);
   const resumen = resumenChofer(dia, c);
   const tarde = esHoy(ahora) && ahora >= 16 * 60;
+  // B1: las obras que ya tienen parte NO ofrecen "Cerrar jornada": muestran el parte.
+  const conParte = ob.filter((x) => x.o.parteId != null);
+  const sinParte = ob.filter((x) => x.o.parteId == null);
+  const ofrecerCierre = tarde && !pasado && sinParte.length > 0;
   const sus = suspendida(dia, c);
   const nombre = cNombre(dia, c);
   const color = colorCuadrilla(indice).borde;
@@ -296,10 +301,19 @@ export function Tarjeta({ ctl, c, indice }: { ctl: Control; c: number; indice: n
         )}
       </div>
 
-      {sus ? null : tarde && !pasado ? (
-        <div className="flex flex-wrap items-center gap-2.5 border-t px-3 pt-1.5 pb-2 text-[13px]">
-          <span className="min-w-0 flex-1 text-muted-foreground">Terminó la jornada.</span>
-          <Button size="sm" variant="outline" onClick={() => ctl.cerrarJornada(c)}>Cerrar jornada</Button>
+      {sus ? null : conParte.length > 0 || ofrecerCierre ? (
+        <div className="grid gap-1.5 border-t px-3 pt-1.5 pb-2 text-[13px]">
+          {conParte.map((x) => (
+            <JornadaCerrada key={x.o.otId} o={x.o} fecha={dia.fecha} conObra={ob.length > 1} onVer={() => ctl.cerrarJornada(c, x.o.otId)} />
+          ))}
+          {ofrecerCierre && (
+            <div className="flex flex-wrap items-center gap-2.5">
+              <span className="min-w-0 flex-1 text-muted-foreground">
+                Terminó la jornada{conParte.length > 0 ? ` en ${sinParte.map((x) => x.o.corto).join(", ")}` : ""}.
+              </span>
+              <Button size="sm" variant="outline" onClick={() => ctl.cerrarJornada(c)}>Cerrar jornada</Button>
+            </div>
+          )}
         </div>
       ) : st.k === "borrador" && !bloq.length && !pasado ? (
         <div className="border-t px-3 pt-1 pb-2 text-xs text-muted-foreground">

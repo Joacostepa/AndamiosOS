@@ -55,7 +55,7 @@ export const LUGARES: DiaHoja["lugares"] = [
 const obra = (otId: number, c: number, orden: number, direccion: string, tipo: string, fraccion: number, lat: number, lng: number, extra: Partial<ObraDia> = {}): ObraDia => ({
   otId, asignacionId: otId * 10 + orden, cuadrillaOdooId: c, ordenDia: orden, fraccion, estadoAsignacion: "confirmada",
   direccion, corto: direccion, titulo: direccion, tipo, personalPorJornada: 5, lat, lng, detalleTecnico: null,
-  observaciones: null, contactoObra: null, telObra: null, cantArchivos: 0, ventaId: null, dia: null, totalDias: null, ...extra,
+  observaciones: null, contactoObra: null, telObra: null, cantArchivos: 0, ventaId: null, dia: null, totalDias: null, parteId: null, ...extra,
 });
 
 export const OT = { lib: 2391, jur: 2405, cuba: 2398, cab: 2412, riv: 2377, gur: 2420, sj: 2364, mon: 2382, cdp: 2370, tha: 2386 };

@@ -164,30 +164,42 @@ export function FormularioCierre({
   }, [abierto, parteCargado, parteId, fecha]);
 
   // PRECARGA DESDE LA HOJA DEL DÍA (docs/equipos-del-dia/modulo.md §13): si la cuadrilla
-  // tuvo hoja ese día, el puntero es el que estuvo a cargo, la cantidad de personas los que
-  // fueron, el camión en obra si el chofer quedó todo el día, y los fletes los viajes del
-  // día a esta obra. Sólo al CREAR el parte, una vez por apertura, y todo editable: si el
-  // parte dice otra cosa, manda el parte. Sin hoja (`hayHoja: false`, o la consulta falla)
-  // el formulario queda exactamente como antes.
+  // tuvo hoja ese día, el puntero es el que estuvo a cargo, la mano de obra los que fueron
+  // con los horarios que salen de la hoja (encuentro, hora de la obra, la siguiente obra o
+  // el "busca"; ver horariosCierre), el camión en obra si el chofer quedó todo el día, y los
+  // fletes los viajes del día a esta obra. Sólo al CREAR el parte, una vez por apertura, y
+  // todo editable y marcado "según la Hoja del día": es una sugerencia, manda el parte.
+  //
+  // Si la hoja NO registró viajes a esta obra (cuadrilla sin chofer, camión fuera de la
+  // hoja), los fletes quedan con la regla de siempre: un 0 de la hoja no quiere decir que
+  // no hubo flete. Sin hoja (`hayHoja: false`, o la consulta falla) el formulario queda
+  // exactamente como antes.
   const { data: precarga } = usePrecargaCierre(
     abierto && !parteId ? (bloque?.cuadrillaId ?? null) : null,
     abierto && !parteId ? fecha : null,
     ot?.id ?? null,
   );
   const precargaAplicada = useRef<string | null>(null);
+  const [desdeHoja, setDesdeHoja] = useState<{ manoObra: boolean; fletes: boolean } | null>(null);
   useEffect(() => {
-    if (!abierto) { precargaAplicada.current = null; return; }
+    if (!abierto) { precargaAplicada.current = null; setDesdeHoja(null); return; }
     if (parteId || !precarga?.hayHoja) return;
     const clave = `${asignacionId}-${fecha}`;
     if (precargaAplicada.current === clave) return;
     precargaAplicada.current = clave;
     if (precarga.punteroEmployeeId) setPunteroId(String(precarga.punteroEmployeeId));
     setCamionEnObra(precarga.camionEnObra);
-    setViajes(precarga.fletes.cantidad);
-    setTercerizado(precarga.fletes.tercerizado);
-    if (precarga.personas > 0) {
-      setManoObra([{ tarea: ot?.tipo === "desarme" ? "desarme" : "armado", personas: precarga.personas, horaDesde: JORNADA_DESDE, horaHasta: JORNADA_HASTA }]);
+    const conFletes = precarga.fletes.cantidad > 0;
+    if (conFletes) {
+      setViajes(precarga.fletes.cantidad);
+      setTercerizado(precarga.fletes.tercerizado);
     }
+    const tarea = ot?.tipo === "desarme" ? "desarme" : "armado";
+    const lineas = (precarga.manoObra ?? [])
+      .map((l) => ({ tarea, personas: l.personas, horaDesde: horaADecimal(l.desde), horaHasta: horaADecimal(l.hasta) }))
+      .filter((l) => l.personas > 0 && l.horaHasta > l.horaDesde);
+    if (lineas.length) setManoObra(lineas);
+    setDesdeHoja({ manoObra: lineas.length > 0, fletes: conFletes });
   }, [abierto, parteId, precarga, asignacionId, fecha, ot?.tipo]);
 
   // REGLA VIGENTE: menos de una jornada → 1 viaje redondo; N jornadas → N+1. Se muestra
@@ -476,6 +488,11 @@ export function FormularioCierre({
                       {horasHombre > 0 ? `${horasHombre} horas-hombre` : "falta cargar"}
                     </span>
                   </div>
+                  {desdeHoja?.manoObra && !parteId && (
+                    <p className="text-xs text-muted-foreground">
+                      Sugerido según la Hoja del día (quiénes fueron y a qué hora estaban en la obra). Revisalo antes de cerrar: es lo que se factura.
+                    </p>
+                  )}
 
                   {manoObra.length > 0 && (
                     <div className="grid grid-cols-[minmax(100px,1fr)_68px_128px_128px_28px] gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
@@ -555,7 +572,7 @@ export function FormularioCierre({
                       title="Viajes redondos"
                     />
                     <span className="text-xs text-muted-foreground">
-                      viajes redondos · sugerido {precarga?.hayHoja ? `${precarga.fletes.cantidad} · según la Hoja del día` : sugerenciaViajes}
+                      viajes redondos · sugerido {desdeHoja?.fletes && precarga ? `${precarga.fletes.cantidad} · según la Hoja del día` : sugerenciaViajes}
                     </span>
                   </div>
                   {/* En el parte y no en la línea de flete: la línea no existe con cero

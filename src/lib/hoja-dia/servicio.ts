@@ -27,7 +27,7 @@ import type {
 } from "./tipos";
 import { PARAMETROS_POR_DEFECTO } from "./tipos";
 import {
-  addDia, ausenciasDeAsistencia, fletesDelDia, minutosDesde, nombresCortos, normHora, obrasDe, aCargoDe, hojaDeCuadrilla,
+  addDia, ausenciasDeAsistencia, fletesDelDia, horariosCierre, minutosDesde, nombresCortos, normHora, obrasDe, aCargoDe, hojaDeCuadrilla,
   ausenciaDe, type FilaAsistencia,
 } from "./estado";
 import { telegramConfigurado, usuarioDelBot } from "./telegram";
@@ -383,7 +383,7 @@ export async function leerDia(fecha: Fecha, opts: { cacheOdoo?: boolean } = {}):
         direccion: dir, corto: direccionCorta(dir), titulo: ot.titulo, tipo: ot.tipo, personalPorJornada: ot.personalPorJornada,
         lat: ot.lat, lng: ot.lng, detalleTecnico: ot.detalleTecnico, observaciones: ot.observaciones, contactoObra: ot.contactoObra,
         telObra: ot.telObra, cantArchivos: ot.cantDocs + ot.cantInstrucciones, ventaId: ot.ventaId,
-        dia: i >= 0 ? i + 1 : null, totalDias: ot.fechasJornadas.length || null,
+        dia: i >= 0 ? i + 1 : null, totalDias: ot.fechasJornadas.length || null, parteId: a.parteId ?? null,
       };
     });
 
@@ -598,7 +598,14 @@ export type PrecargaCierre = {
   /** Los que van, menos los que se cargaron como ausentes ese día. */
   personas: number;
   camionEnObra: boolean;
+  /**
+   * Los viajes del día a esta obra según la hoja. `cantidad: 0` quiere decir que la hoja NO
+   * registró viajes (cuadrilla sin chofer, camión fuera de la hoja): el formulario se queda
+   * con su regla de siempre y no pone 0.
+   */
   fletes: { cantidad: number; tercerizado: boolean; detalle: string[] };
+  /** La mano de obra sugerida, por horario (horariosCierre): salen de las obras, el encuentro y el busca. */
+  manoObra: { personas: number; desde: string; hasta: string }[];
 };
 
 /**
@@ -607,7 +614,7 @@ export type PrecargaCierre = {
  * no hay hoja, `hayHoja` es false y el formulario se comporta como siempre.
  */
 export async function precargaCierre(cuadrillaOdooId: number, fecha: Fecha, otId: number | null): Promise<PrecargaCierre> {
-  const vacia: PrecargaCierre = { hayHoja: false, punteroEmployeeId: null, punteroNombre: null, personas: 0, camionEnObra: false, fletes: { cantidad: 0, tercerizado: false, detalle: [] } };
+  const vacia: PrecargaCierre = { hayHoja: false, punteroEmployeeId: null, punteroNombre: null, personas: 0, camionEnObra: false, fletes: { cantidad: 0, tercerizado: false, detalle: [] }, manoObra: [] };
   const db = createAdminClient();
   const existe = await db.from("hd_hojas").select("id").eq("fecha", fecha).eq("cuadrilla_odoo_id", cuadrillaOdooId).maybeSingle();
   if (!existe.data) return vacia;
@@ -626,6 +633,7 @@ export async function precargaCierre(cuadrillaOdooId: number, fecha: Fecha, otId
     personas,
     camionEnObra: h.modo === "todo_el_dia",
     fletes: { cantidad: fl.length, tercerizado: fl.some((x) => x.tercerizado), detalle: fl.map((x) => x.txt) },
+    manoObra: ot != null ? horariosCierre(dia, cuadrillaOdooId, ot) : [],
   };
 }
 

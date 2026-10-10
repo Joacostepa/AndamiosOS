@@ -2,12 +2,22 @@
 
 El diseño está en `docs/modulo-panol.md`. Esto es lo que no se lee en el código.
 
-## Para ponerlo en marcha
-1. **Migración** `supabase/migrations/20261010000001_panol.sql`, a mano con `npx supabase db query --linked -f <archivo>`. **Nunca `db push`**: el historial remoto está vacío. La migración sólo agrega cosas (tablas `pan_*`, `personal.user_id`, el bucket `panol`) y es idempotente. Se probó dos veces seguidas y con un escenario completo dentro de `BEGIN … ROLLBACK` contra la base real.
-2. **Slack**: `SLACK_WEBHOOK_PANOL` en Vercel (canal #pañol). Sin esa variable, los avisos del pañol quedan sólo en la campanita (perfil Depósito y admins).
-3. **Usuario del kiosco**: en Configuración › Usuarios, crear un usuario con **sólo** "Kiosco del pañol" en "editar" y loguearlo en la tablet o el celular fijo. Ese usuario no es encargado, no ve la oficina y sólo registra movimientos a nombre de quien se identifica.
-4. **Encargados**: tienen "Pañol" en "editar". En Pañol › Configuración, un admin les vincula el legajo (`personal.user_id`): sin el legajo vinculado, en el kiosco no se les habilita lo de encargado.
-5. **Datos iniciales**: ubicaciones (Configuración), artículos (Stock › Nuevo artículo), unidades numeradas, credenciales y PIN. Después, imprimir las etiquetas.
+## Estado (10/10/2026)
+
+**En producción** desde el merge del PR #2.
+
+Hecho:
+- **Migración** `supabase/migrations/20261010000001_panol.sql`, aplicada a mano con `npx supabase db query --linked -f <archivo>`. **Nunca `db push`**: el historial remoto está vacío. Es idempotente: se puede volver a correr. Antes de aplicarla se probó dos veces seguidas y con un escenario completo dentro de `BEGIN … ROLLBACK`.
+- **Ubicaciones raíz**: "Pañol" y "Depósito". Las estanterías, estantes y cajones se agregan en Pañol › Configuración.
+- **Usuario del kiosco**: `kiosco.panol@andamiosbuenosaires.com.ar`, con **sólo** "Kiosco del pañol" en "editar" (perfil Campo, para que no le lleguen alertas de la campanita). No es encargado, no ve la oficina y sólo registra movimientos a nombre de quien se identifica. La contraseña la tiene Joaquín. Se loguea en la tablet o el celular fijo del pañol.
+- **Encargados**: Ezequiel Jabois Lesser y Juan Agustin Mansilla, con "Pañol" en "editar". Hacen lo de encargado (conteos, anulaciones, ingresos, aprobar ajustes) con su propio usuario.
+- **Slack**: no hay canal #pañol todavía. Los avisos van a **#logistica-operativa** (con `SLACK_WEBHOOK_LOGISTICA`). Si se crea el canal y se carga `SLACK_WEBHOOK_PANOL` en Vercel, pasan solos a #pañol (`webhookDe` en `src/lib/alertas/slack.ts`).
+
+Falta:
+1. **Cargar artículos y herramientas** (Stock › Nuevo artículo, y las unidades numeradas), generar credenciales y PIN, e imprimir las etiquetas.
+2. **Legajos de los encargados**: ni Ezequiel ni Juan Agustin están en Legajos (`personal`). Para que en el kiosco compartido puedan entrar como encargados con PIN, hay que cargarlos en Legajos (pide DNI) y que un admin les vincule el legajo en Pañol › Configuración › Encargados.
+3. **Probar con datos reales y con la cámara** en un equipo físico, Android y iPhone.
+4. **Equipo fijo del pañol**: se recomienda una tablet Android de 10" con funda y soporte. Mientras no la haya, sirve un celular.
 
 ## Reglas que importan
 - **El historial no se edita** (hay un trigger que lo frena, incluso con la service role). Los errores se corrigen con **anular**, que hace el movimiento inverso, enlazado al original. El stock (`pan_saldos`) y el lugar y estado de cada herramienta (`pan_unidades.lugar/estado`) los mantiene el trigger: no se escriben a mano.

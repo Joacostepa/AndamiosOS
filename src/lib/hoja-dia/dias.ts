@@ -54,3 +54,10 @@ export function diaPorDefecto(ahoraMs: number = Date.now(), corteMin = 15 * 60):
 export function esFecha(s: string | null | undefined): s is Fecha {
   return !!s && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(`${s}T12:00:00Z`)) && new Date(`${s}T12:00:00Z`).toISOString().slice(0, 10) === s;
 }
+
+/**
+ * ¿Los rojos de este día van a la campanita? (I7) `ahora` en minutos desde las 0:00 del día
+ * de la hoja. Sí mientras se puede hacer algo: desde tres días antes (el sábado ya se arma
+ * el lunes) hasta que termina. Un día pasado, no: mirarlo no crea alertas.
+ */
+export const diaAlertable = (ahora: number): boolean => ahora >= -3 * 1440 && ahora < 1440;

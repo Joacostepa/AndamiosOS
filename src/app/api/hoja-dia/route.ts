@@ -19,7 +19,8 @@ export async function GET(req: NextRequest) {
   if (!fechaValida(fecha)) return NextResponse.json({ error: "Falta la fecha (YYYY-MM-DD)" }, { status: 400 });
   try {
     const dia = await leerDia(fecha);
-    // Los rojos a la campanita, después de responder (no hacen esperar a la pantalla).
+    // Los rojos a la campanita, después de responder (no hacen esperar a la pantalla). Un
+    // día pasado no alerta (alertasDelDia → diaAlertable).
     after(() => alertarDia(dia));
     return NextResponse.json(dia);
   } catch (e) {

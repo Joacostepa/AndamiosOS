@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { diaHabil, diaPorDefecto, esFecha, hoyBA, mananaDe, minutosDeHoyBA } from "./dias.ts";
+import { diaAlertable, diaHabil, diaPorDefecto, esFecha, hoyBA, mananaDe, minutosDeHoyBA } from "./dias.ts";
 
 const en = (iso: string) => Date.parse(iso);
 
@@ -30,4 +30,13 @@ test("?dia= inválido no pasa", () => {
   assert.ok(!esFecha("2026-13-40"));
   assert.ok(!esFecha("mañana"));
   assert.ok(!esFecha(null));
+});
+
+test("I7: mirar un día pasado no crea alertas; hoy y los que vienen, sí", () => {
+  assert.equal(diaAlertable(1440 + 600), false); // ayer
+  assert.equal(diaAlertable(7 * 1440), false); // la semana pasada
+  assert.equal(diaAlertable(600), true); // hoy a las 10
+  assert.equal(diaAlertable(-300), true); // la tarde anterior
+  assert.equal(diaAlertable(-2 * 1440), true); // el lunes, mirado el sábado
+  assert.equal(diaAlertable(-10 * 1440), false);
 });

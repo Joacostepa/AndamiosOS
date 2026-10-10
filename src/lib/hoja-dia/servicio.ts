@@ -31,6 +31,7 @@ import {
   ausenciaDe, type FilaAsistencia,
 } from "./estado";
 import { telegramConfigurado, usuarioDelBot } from "./telegram";
+import { diaAlertable } from "./dias";
 import { ahoraItems, bandeja } from "./estado";
 import { crearAlertas, type NuevaAlerta } from "@/lib/alertas/servicio";
 import { COLUMNAS_LEGAJO, esTablaHd, planDeshacer, validarHistorial, type CambioHistorial, type OpHd } from "./deshacer-regla";
@@ -708,6 +709,9 @@ export async function nombreUsuario(userId: string): Promise<string> {
  * Idempotente por clave (crearAlertas): se puede llamar en cada lectura del día.
  */
 export function alertasDelDia(dia: DiaHoja, ahora: number): NuevaAlerta[] {
+  // I7: sólo el día que todavía se puede arreglar (desde los días anteriores hasta que
+  // termina). Mirar la hoja de la semana pasada no crea alertas.
+  if (!diaAlertable(ahora)) return [];
   const enlace = `/planificacion/hoja?dia=${dia.fecha}`;
   const b = bandeja(dia, ahora);
   const rojos = [
@@ -727,7 +731,9 @@ export function alertasDelDia(dia: DiaHoja, ahora: number): NuevaAlerta[] {
 /** Crea las alertas rojas del día. Nunca tira (crearAlertas tampoco). */
 export async function alertarDia(dia: DiaHoja): Promise<void> {
   try {
-    await crearAlertas(createAdminClient(), alertasDelDia(dia, minutosDesde(dia.fecha, new Date())));
+    const nuevas = alertasDelDia(dia, minutosDesde(dia.fecha, new Date()));
+    if (!nuevas.length) return;
+    await crearAlertas(createAdminClient(), nuevas);
   } catch (e) {
     console.error("[hoja-dia] no se pudieron crear las alertas", e instanceof Error ? e.message : e);
   }

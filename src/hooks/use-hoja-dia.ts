@@ -119,8 +119,12 @@ function useGesto<B>(url: string, fecha: string | null, opts: { aviso?: boolean 
 }
 
 export const useAccionHoja = (fecha: string | null) => useGesto<AccionHoja>("/api/hoja-dia", fecha);
-export const useAccionViaje = (fecha: string | null) => useGesto<AccionViaje>("/api/hoja-dia/viajes", fecha);
-export const useAccionPedido = (fecha: string | null) => useGesto<AccionPedido>("/api/hoja-dia/pedidos", fecha);
+/**
+ * `{ aviso: false }`: el gesto no muestra su toast (lo arma la pantalla, p. ej. con "Avisar a
+ * Gómez" al lado de "Deshacer"). Por defecto, el toast con Deshacer de siempre.
+ */
+export const useAccionViaje = (fecha: string | null, opts?: { aviso?: boolean }) => useGesto<AccionViaje>("/api/hoja-dia/viajes", fecha, opts);
+export const useAccionPedido = (fecha: string | null, opts?: { aviso?: boolean }) => useGesto<AccionPedido>("/api/hoja-dia/pedidos", fecha, opts);
 export const useAccionAusencia = (fecha: string | null) => useGesto<AccionAusencia & { fechaVista?: string }>("/api/hoja-dia/ausencias", fecha);
 export const usePrecarga = (fecha: string | null) => useGesto<{ fecha: string; modo: "hoy" | "plantel" | "vacio" }>("/api/hoja-dia/precarga", fecha, { aviso: false });
 export const useAccionPersona = (fecha: string | null) =>

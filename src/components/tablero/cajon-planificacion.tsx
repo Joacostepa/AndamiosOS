@@ -18,6 +18,7 @@ import {
   type NotaCajon,
   type Pendiente,
 } from "@/lib/tablero/tipos-cajon";
+import { PasarAPedido } from "@/components/hoja-dia/camiones/pasar-a-pedido";
 
 // El cajón: el panel de abajo del tablero. Pendientes de quien planifica, y criterios
 // que no vencen.
@@ -404,6 +405,8 @@ function ItemPendiente({ pendiente }: { pendiente: Pendiente }) {
         </span>
       </label>
 
+      {/* Hoja del día: el pendiente se vuelve un pedido para un camión y queda tildado. */}
+      {!pendiente.hecho && !provisorio && <PasarAPedido id={pendiente.id} texto={pendiente.texto} />}
       <button
         type="button"
         onClick={() => borrar.mutate(pendiente.id, { onError: avisar("borrar") })}

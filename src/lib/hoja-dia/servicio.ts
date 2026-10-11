@@ -37,7 +37,7 @@ import {
   ausenciaDe, deContratistas, persona, cantidadDe, contratistasDe, esPersonalDeObra, genteConChoferes, vehiculosDe, patente, type FilaAsistencia,
 } from "./estado";
 import { telegramConfigurado, usuarioDelBot } from "./telegram";
-import { precargarTiempos, tiemposDelDia } from "./rutas-servidor";
+import { tiemposDelDia } from "./rutas-servidor";
 import { diaAlertable } from "./dias";
 import { ahoraItems, bandeja } from "./estado";
 import { crearAlertas, type NuevaAlerta } from "@/lib/alertas/servicio";
@@ -455,15 +455,16 @@ const sinRechazo = <T>(p: PromiseLike<T>): Promise<T> => {
  * Dos vueltas: en la primera sale TODO lo que no depende del día anterior (y las hojas
  * anteriores, que dicen cuál es); en la segunda, lo del día anterior y el tablero de Odoo
  * (que pide las dos fechas). Con el tablero en caché, son dos idas a Supabase.
+ *
+ * `tiempos: "google"` (sólo el GET de la pantalla) le pide a Google los tiempos de manejo
+ * que falten; por defecto, sólo los ya guardados (rutas-servidor.ts, `soloCache`).
  */
-export async function leerDia(fecha: Fecha, opts: { cacheOdoo?: boolean; fresco?: boolean } = {}): Promise<DiaHoja> {
+export async function leerDia(fecha: Fecha, opts: { cacheOdoo?: boolean; fresco?: boolean; tiempos?: "google" | "cache" } = {}): Promise<DiaHoja> {
   const db = createAdminClient();
   const desde30 = addDia(fecha, -30);
 
   // Vuelta 1: todo en paralelo. El login de Odoo se calienta acá (con ODOO_UID no hace nada).
   void authenticate().catch(() => 0);
-  // Los tiempos de Google ya guardados (hd_tiempos) se traen a memoria mientras tanto.
-  void precargarTiempos();
   const previasP = sinRechazo(db.from("hd_hojas").select("*").gte("fecha", desde30).lt("fecha", fecha).order("fecha", { ascending: false }).limit(200));
   const asisP = asistencia(fecha, 3, opts.cacheOdoo ? null : opts.fresco ? 0 : 5 * 60_000);
   const sueltas = sinRechazo(Promise.all([
@@ -569,9 +570,11 @@ export async function leerDia(fecha: Fecha, opts: { cacheOdoo?: boolean; fresco?
     cajon: ok<Fila[]>(cajonR, "el cajón").map((c) => ({ id: String(c.id), texto: String(c.texto) })),
     telegram: { configurado: telegramConfigurado(), bot: null },
   };
-  // Los tiempos de manejo de Google (rutas-servidor.ts), junto con el bot: lo guardado sale
-  // al instante y lo que falta se espera como mucho 2,5 s. Sin ellos, las típicas.
-  const [bot, tiempos] = await Promise.all([botP, tiemposDelDia(dia)]);
+  // Los tiempos de manejo de Google (rutas-servidor.ts), junto con el bot: lo guardado
+  // (memoria y hd_tiempos) sale al instante. Sólo con `tiempos: "google"` (el GET de la
+  // pantalla) se le pide a Google lo que falta y se espera como mucho 2,5 s; los gestos, los
+  // envíos y el celular no esperan a nadie. Sin ellos, las típicas.
+  const [bot, tiempos] = await Promise.all([botP, tiemposDelDia(dia, { soloCache: opts.tiempos !== "google" })]);
   dia.telegram.bot = bot;
   if (Object.keys(tiempos).length) dia.tiempos = tiempos;
   return dia;

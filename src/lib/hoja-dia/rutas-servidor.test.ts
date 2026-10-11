@@ -3,7 +3,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { _reiniciarCache, cuerpoMatriz, errorGoogle, parsearMatriz, planDePedidos, tiemposDelDia } from "./rutas-servidor.ts";
+import { _reiniciarCache, cuerpoMatriz, errorGoogle, lotesDeLectura, parsearMatriz, planDePedidos, tiemposDelDia, type TramoGuardado } from "./rutas-servidor.ts";
 import { paresDelDia, type ParTramo } from "./rutas.ts";
 import { calcVeh } from "./estado.ts";
 import { OT, martesArmado } from "./escenario.test-fixture.ts";
@@ -99,7 +99,7 @@ test("tiemposDelDia: con Google contestando, los tramos del día; la segunda vez
   }) as typeof fetch;
   try {
     const d = martesArmado();
-    const t = await tiemposDelDia(d, 2000);
+    const t = await tiemposDelDia(d, { topeMs: 2000 });
     const pares = paresDelDia(martesArmado());
     assert.equal(Object.keys(t).length, pares.length, "todos los tramos del día");
     assert.deepEqual(t[`l:dep>o:${OT.jur}`], { min: 20, m: 7000, fuente: "google" });
@@ -109,7 +109,7 @@ test("tiemposDelDia: con Google contestando, los tramos del día; la segunda vez
     assert.equal(calcVeh({ ...d, tiempos: t }, "af669")[0].dur, 30);
     // Segunda lectura: todo del caché, sin llamar.
     const n = cuerpos.length;
-    assert.deepEqual(await tiemposDelDia(martesArmado(), 2000), t);
+    assert.deepEqual(await tiemposDelDia(martesArmado(), { topeMs: 2000 }), t);
     assert.equal(cuerpos.length, n);
   } finally {
     globalThis.fetch = prev.f;
@@ -125,17 +125,17 @@ test("tiemposDelDia: 403 SERVICE_DISABLED o Google colgado → {} sin tirar y si
   let llamadas = 0;
   globalThis.fetch = (async () => { llamadas++; return new Response(SERVICE_DISABLED, { status: 403 }); }) as typeof fetch;
   try {
-    assert.deepEqual(await tiemposDelDia(martesArmado(), 500), {});
+    assert.deepEqual(await tiemposDelDia(martesArmado(), { topeMs: 500 }), {});
     const n = llamadas;
     assert.ok(n > 0);
     // Apagado por un rato: la próxima lectura no vuelve a llamar.
-    assert.deepEqual(await tiemposDelDia(martesArmado(), 500), {});
+    assert.deepEqual(await tiemposDelDia(martesArmado(), { topeMs: 500 }), {});
     assert.equal(llamadas, n);
 
     _reiniciarCache();
     globalThis.fetch = (() => new Promise(() => {})) as typeof fetch;
     const t0 = Date.now();
-    assert.deepEqual(await tiemposDelDia(martesArmado(), 300), {});
+    assert.deepEqual(await tiemposDelDia(martesArmado(), { topeMs: 300 }), {});
     assert.ok(Date.now() - t0 < 1500, "no espera más que el tope");
   } finally {
     globalThis.fetch = prev.f;
@@ -143,4 +143,46 @@ test("tiemposDelDia: 403 SERVICE_DISABLED o Google colgado → {} sin tirar y si
     if (prev.g) process.env.GOOGLE_MAPS_API_KEY = prev.g; else delete process.env.GOOGLE_MAPS_API_KEY;
     _reiniciarCache();
   }
+});
+
+test("tiemposDelDia soloCache: nunca le pide a Google (los gestos, los envíos y el celular)", async () => {
+  _reiniciarCache();
+  const prev = { g: process.env.GOOGLE_MAPS_API_KEY, f: globalThis.fetch };
+  process.env.GOOGLE_MAPS_API_KEY = "clave-de-prueba";
+  let llamadas = 0;
+  globalThis.fetch = (async (_url: string, init: RequestInit) => {
+    llamadas++;
+    const b = JSON.parse(String(init.body));
+    const els = b.origins.flatMap((_: unknown, oi: number) => b.destinations.map((_d: unknown, di: number) => ({ originIndex: oi, destinationIndex: di, duration: "600s", distanceMeters: 3000, condition: "ROUTE_EXISTS" })));
+    return new Response(JSON.stringify(els), { status: 200 });
+  }) as typeof fetch;
+  try {
+    const t0 = Date.now();
+    assert.deepEqual(await tiemposDelDia(martesArmado(), { soloCache: true }), {}, "sin nada guardado, las típicas");
+    assert.equal(llamadas, 0);
+    assert.ok(Date.now() - t0 < 1000, "no espera");
+    // La pantalla los pide; después, los gestos los ven del caché sin llamar.
+    const t = await tiemposDelDia(martesArmado(), { topeMs: 2000 });
+    const n = llamadas;
+    assert.ok(n > 0 && Object.keys(t).length > 0);
+    assert.deepEqual(await tiemposDelDia(martesArmado(), { soloCache: true }), t);
+    assert.equal(llamadas, n);
+  } finally {
+    globalThis.fetch = prev.f;
+    if (prev.g) process.env.GOOGLE_MAPS_API_KEY = prev.g; else delete process.env.GOOGLE_MAPS_API_KEY;
+    _reiniciarCache();
+  }
+});
+
+test("lotesDeLectura: sólo los tramos del día, por franja, sin pasar el tope de filas de PostgREST", () => {
+  const t = (o: number, d: number, franja = 420): TramoGuardado => ({ origen: `o${o}`, destino: `d${d}`, franja, tipo: "habil" });
+  // Dos franjas: dos consultas, cada una con lo suyo.
+  const a = lotesDeLectura([t(1, 1), t(1, 2), t(2, 1, 480)]);
+  assert.deepEqual(a.map((l) => [l.franja, l.origenes, l.destinos]), [[420, ["o1"], ["d1", "d2"]], [480, ["o2"], ["d1"]]]);
+  // 60 tramos distintos en la misma franja: ningún lote pasa de 900 filas posibles, y están todos.
+  const muchos = Array.from({ length: 60 }, (_, i) => t(i, i));
+  const ls = lotesDeLectura(muchos);
+  assert.ok(ls.every((l) => l.origenes.length * l.destinos.length <= 900));
+  assert.equal(ls.reduce((s, l) => s + l.origenes.length, 0), 60);
+  assert.ok(lotesDeLectura(muchos, 100).every((l) => l.origenes.length * l.destinos.length <= 100));
 });

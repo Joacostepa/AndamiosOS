@@ -22,7 +22,8 @@ export async function GET(req: NextRequest) {
   const fecha = req.nextUrl.searchParams.get("fecha");
   if (!fechaValida(fecha)) return NextResponse.json({ error: "Falta la fecha (YYYY-MM-DD)" }, { status: 400 });
   try {
-    const dia = await leerDia(fecha, { fresco: req.nextUrl.searchParams.get("fresco") === "1" });
+    // La pantalla es la única que le pide a Google los tiempos que faltan (rutas-servidor.ts).
+    const dia = await leerDia(fecha, { fresco: req.nextUrl.searchParams.get("fresco") === "1", tiempos: "google" });
     // Los rojos a la campanita, después de responder (no hacen esperar a la pantalla). Un
     // día pasado no alerta (alertasDelDia → diaAlertable).
     after(() => alertarDia(dia));

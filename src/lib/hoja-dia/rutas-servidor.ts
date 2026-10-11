@@ -146,6 +146,20 @@ const buscados = new Map<string, number>();
 let sinTablaHasta = 0;
 let apagadoHasta = 0;
 
+/**
+ * Un aviso en el log de Vercel una vez por motivo (y por rato): sin él, un día que sale con
+ * las típicas no dice por qué (sin clave, lugares sin coordenadas, hd_tiempos que no se
+ * puede leer o escribir, la red). No dice nada de la clave.
+ */
+const avisados = new Map<string, number>();
+function avisarUnaVez(motivo: string, texto: string) {
+  const ahora = Date.now();
+  if (ahora - (avisados.get(motivo) ?? -Infinity) < APAGADO_MS) return;
+  if (avisados.size > 200) avisados.clear();
+  avisados.set(motivo, ahora);
+  console.warn(`[hoja-dia] tiempos de Google: ${texto}`);
+}
+
 const claveDe = (o: Coord, d: Coord, franja: number, tipo: TipoDia) => claveCache(coordClave(o.lat, o.lng), coordClave(d.lat, d.lng), franja, tipo);
 
 function anotar(clave: string, g: Guardado) {
@@ -197,7 +211,8 @@ async function leerGuardados(tramos: TramoGuardado[]): Promise<void> {
     const rs = await Promise.all(lotesDeLectura(tramos).map((l) =>
       db.from("hd_tiempos").select("origen, destino, franja, tipo_dia, minutos, metros, actualizado")
         .eq("franja", l.franja).eq("tipo_dia", l.tipo).in("origen", l.origenes).in("destino", l.destinos).gte("actualizado", desde)));
-    if (rs.some((r) => r.error)) { sinTablaHasta = Date.now() + RELEER_MS; return; }
+    const err = rs.find((r) => r.error)?.error;
+    if (err) { sinTablaHasta = Date.now() + RELEER_MS; avisarUnaVez("leer", `no se pudo leer hd_tiempos (${err.message}); van sin caché persistente por 10 min.`); return; }
     for (const r of rs) {
       for (const f of r.data ?? []) {
         anotar(claveCache(String(f.origen), String(f.destino), Number(f.franja), f.tipo_dia as TipoDia), {
@@ -211,8 +226,9 @@ async function leerGuardados(tramos: TramoGuardado[]): Promise<void> {
       if (!memoria.has(k)) buscados.set(k, ahora);
     }
     if (buscados.size > 20_000) buscados.clear();
-  } catch {
+  } catch (e) {
     sinTablaHasta = Date.now() + RELEER_MS;
+    avisarUnaVez("leer", `no se pudo leer hd_tiempos (${e instanceof Error ? e.message : String(e)}).`);
   }
 }
 
@@ -221,9 +237,10 @@ async function guardarEnBase(filas: { origen: string; destino: string; franja: n
   try {
     const { createAdminClient } = await import("@/lib/supabase/admin");
     const r = await createAdminClient().from("hd_tiempos").upsert(filas.map((f) => ({ ...f, actualizado: new Date().toISOString() })), { onConflict: "origen,destino,franja,tipo_dia" });
-    if (r.error) sinTablaHasta = Date.now() + RELEER_MS;
-  } catch {
+    if (r.error) { sinTablaHasta = Date.now() + RELEER_MS; avisarUnaVez("guardar", `no se pudo guardar en hd_tiempos (${r.error.message}): lo de Google queda sólo en memoria.`); }
+  } catch (e) {
     sinTablaHasta = Date.now() + RELEER_MS;
+    avisarUnaVez("guardar", `no se pudo guardar en hd_tiempos (${e instanceof Error ? e.message : String(e)}).`);
   }
 }
 
@@ -286,9 +303,14 @@ export async function tiemposDelDia(dia: DiaHoja, op: OpcionesTiempos = {}): Pro
   const topeMs = op.topeMs ?? TOPE_MS;
   try {
     const clave = claveGoogle();
-    if (!clave) return {};
+    if (!clave) {
+      if (!op.soloCache) avisarUnaVez("clave", "no hay GOOGLE_MAPS_API_KEY ni NEXT_PUBLIC_GOOGLE_MAPS_KEY: van las duraciones típicas.");
+      return {};
+    }
     // Sobre una copia: estado.ts guarda sus cuentas por objeto, y `dia` todavía no tiene los tiempos.
-    const pares = paresDelDia({ ...dia, tiempos: undefined });
+    const sinCoord = new Set<string>();
+    const pares = paresDelDia({ ...dia, tiempos: undefined }, sinCoord);
+    if (sinCoord.size && !op.soloCache) avisarUnaVez(`coord:${dia.fecha}:${[...sinCoord].sort().join("|")}`, `${dia.fecha}: sin coordenadas (van con la típica): ${[...sinCoord].slice(0, 8).join(" · ")}.`);
     if (!pares.length) return {};
     const inicio = Date.now();
 
@@ -318,8 +340,9 @@ export async function tiemposDelDia(dia: DiaHoja, op: OpcionesTiempos = {}): Pro
     const faltan = leer(out);
     if (op.soloCache || !faltan.length || Date.now() < apagadoHasta) return out;
 
-    const todo = Promise.all(planDePedidos(faltan, dia.fecha, Date.now()).map((p) => pedir(clave, p).catch(() => {
+    const todo = Promise.all(planDePedidos(faltan, dia.fecha, Date.now()).map((p) => pedir(clave, p).catch((e) => {
       // Red caída o abandono: la próxima lectura vuelve a probar.
+      avisarUnaVez("red", `el pedido a la Routes API no terminó (${e instanceof Error ? e.message : String(e)}); se vuelve a probar en la próxima lectura.`);
     })));
     void despues(todo);
     const resto = topeMs - (Date.now() - inicio);
@@ -344,4 +367,5 @@ export function _reiniciarCache() {
   buscados.clear();
   sinTablaHasta = 0;
   apagadoHasta = 0;
+  avisados.clear();
 }

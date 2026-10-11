@@ -5,7 +5,7 @@
 // No es un test: lo importan estado.test.ts y mensajes.test.ts. Los ids son legibles
 // ("kiska", "af669") a propósito: la lógica pura no sabe ni le importa que en la base sean uuid.
 
-import type { Ausencia, DiaHoja, Envio, Hoja, ObraDia, Pedido, Persona, Viaje } from "./tipos.ts";
+import type { Ausencia, DiaHoja, Envio, Hoja, ModoVehiculo, ObraDia, Pedido, Persona, VehiculoHoja, Viaje } from "./tipos.ts";
 import { PARAMETROS_POR_DEFECTO } from "./tipos.ts";
 import { planPrecarga, toMin, type PlanHoja, fotoDe } from "./estado.ts";
 
@@ -16,8 +16,9 @@ const pers = (id: string, nombre: string, extra: Partial<Persona> = {}): Persona
 
 export const PERSONAS: Persona[] = [
   pers("sack", "Sack", { puedeEstarACargo: true }),
-  pers("conte", "Conte", { puedeEstarACargo: true }),
-  pers("ortega", "Ortega", { puedeEstarACargo: true, puesto: "chofer" }),
+  // Conte y Ortega son andamistas que además manejan ("Puede manejar" en Legajos).
+  pers("conte", "Conte", { puedeEstarACargo: true, puedeManejar: true }),
+  pers("ortega", "Ortega", { puedeEstarACargo: true, puesto: "chofer", puedeManejar: true }),
   pers("hepper", "Hepper", { puedeEstarACargo: true }),
   pers("mino", "Miño", { puedeEstarACargo: true, celular: null }),
   pers("perez", "Pérez", { puedeEstarACargo: true }),
@@ -85,8 +86,12 @@ const OBRAS_LUNES: ObraDia[] = [
 ];
 
 let seq = 0;
+/** Un vehículo de una hoja. */
+export const fila = (id: string, modo: ModoVehiculo, choferId: string | null, vehiculoId: string | null, orden = 0): VehiculoHoja =>
+  ({ id, modo, choferId, vehiculoId, orden, tocadoMin: null });
+
 export const hoja = (c: number, gente: string[], aCargo: string | null, o: Partial<Hoja> = {}, fecha = "2026-10-13"): Hoja => ({
-  id: o.id ?? `h${fecha.slice(8)}-${c}`, fecha, cuadrillaOdooId: c, modo: "sin", choferId: null, vehiculoId: null, choferTocadoMin: null,
+  id: o.id ?? `h${fecha.slice(8)}-${c}`, fecha, cuadrillaOdooId: c, vehiculos: [],
   encuentro: { lugar: "obra", texto: null, hora: "8:00" }, nota: null, recibeId: null, origen: "manual", version: 1,
   integrantes: gente.map((p, i) => ({ id: `i${++seq}`, personaId: p, aCargo: p === aCargo, nota: null, orden: i })),
   contratistas: [], aCargoContratistaId: null,
@@ -94,9 +99,9 @@ export const hoja = (c: number, gente: string[], aCargo: string | null, o: Parti
 });
 
 export const viaje = (id: string, o: Partial<Viaje>): Viaje => ({
-  id, fecha: "2026-10-13", vehiculoId: null, choferId: null, fleteExterno: null, tipo: "otro", hojaId: null, cuadrillaOdooId: null,
+  id, fecha: "2026-10-13", vehiculoId: null, choferId: null, fleteExterno: null, tipo: "otro", hojaId: null, hojaVehiculoId: null, cuadrillaOdooId: null,
   hacia: { otId: null, lugarId: null, texto: null }, desde: null, orden: 0, hora: null, noAntesDe: null, duracionMin: null,
-  vuelta: false, vueltaCarga: null, carga: null, cargaDeposito: null, okTodoElDia: false, estado: "planeado", hechoMin: null,
+  vuelta: false, vueltaCarga: null, vueltaLlega: null, carga: null, cargaDeposito: null, okTodoElDia: false, estado: "planeado", hechoMin: null,
   hechoPor: null, noPudoMotivo: null, anuladoMotivo: null, foto: false, creadoMin: -400, version: 1, ...o,
 });
 
@@ -109,16 +114,16 @@ export const pedido = (id: string, o: Partial<Pedido>): Pedido => ({
 });
 
 const HOJAS_LUNES: Hoja[] = [
-  hoja(1, ["sack", "arrieta", "godoy", "sosa"], "sack", { modo: "todo_el_dia", choferId: "borda", vehiculoId: "ab831", encuentro: { lugar: "deposito", texto: null, hora: "7:00" } }, "2026-10-12"),
-  hoja(2, ["conte", "coronel", "benitez", "ledesma", "rios"], "conte", { modo: "lleva_trae", choferId: "nunez", vehiculoId: "ab799", encuentro: { lugar: "deposito", texto: null, hora: "7:00" } }, "2026-10-12"),
-  hoja(3, ["ortega", "avila", "cabrera", "acosta", "villalba"], "ortega", { modo: "lleva_trae", choferId: "kiska", vehiculoId: "af669", encuentro: { lugar: "deposito", texto: null, hora: "7:00" } }, "2026-10-12"),
+  hoja(1, ["sack", "arrieta", "godoy", "sosa"], "sack", { vehiculos: [fila("f12-1", "todo_el_dia", "borda", "ab831")], encuentro: { lugar: "deposito", texto: null, hora: "7:00" } }, "2026-10-12"),
+  hoja(2, ["conte", "coronel", "benitez", "ledesma", "rios"], "conte", { vehiculos: [fila("f12-2", "lleva_trae", "nunez", "ab799")], encuentro: { lugar: "deposito", texto: null, hora: "7:00" } }, "2026-10-12"),
+  hoja(3, ["ortega", "avila", "cabrera", "acosta", "villalba"], "ortega", { vehiculos: [fila("f12-3", "lleva_trae", "kiska", "af669")], encuentro: { lugar: "deposito", texto: null, hora: "7:00" } }, "2026-10-12"),
   hoja(4, ["hepper", "perez", "romero", "molina", "medina"], "hepper", {}, "2026-10-12"),
 ];
 const VIAJES_LUNES: Viaje[] = [
-  viaje("l2-lleva", { fecha: "2026-10-12", tipo: "lleva", hojaId: "h12-2", cuadrillaOdooId: 2, vehiculoId: "ab799", choferId: "nunez", hora: "7:00", orden: 420 }),
-  viaje("l2-busca", { fecha: "2026-10-12", tipo: "busca", hojaId: "h12-2", cuadrillaOdooId: 2, vehiculoId: "ab799", choferId: "nunez", hora: "17:00", orden: 1020 }),
-  viaje("l3-lleva", { fecha: "2026-10-12", tipo: "lleva", hojaId: "h12-3", cuadrillaOdooId: 3, vehiculoId: "af669", choferId: "kiska", hora: "7:00", orden: 420 }),
-  viaje("l3-busca", { fecha: "2026-10-12", tipo: "busca", hojaId: "h12-3", cuadrillaOdooId: 3, vehiculoId: "af669", choferId: "kiska", hora: "16:30", orden: 990 }),
+  viaje("l2-lleva", { fecha: "2026-10-12", tipo: "lleva", hojaId: "h12-2", hojaVehiculoId: "f12-2", cuadrillaOdooId: 2, vehiculoId: "ab799", choferId: "nunez", hora: "7:00", orden: 420 }),
+  viaje("l2-busca", { fecha: "2026-10-12", tipo: "busca", hojaId: "h12-2", hojaVehiculoId: "f12-2", cuadrillaOdooId: 2, vehiculoId: "ab799", choferId: "nunez", hora: "17:00", orden: 1020 }),
+  viaje("l3-lleva", { fecha: "2026-10-12", tipo: "lleva", hojaId: "h12-3", hojaVehiculoId: "f12-3", cuadrillaOdooId: 3, vehiculoId: "af669", choferId: "kiska", hora: "7:00", orden: 420 }),
+  viaje("l3-busca", { fecha: "2026-10-12", tipo: "busca", hojaId: "h12-3", hojaVehiculoId: "f12-3", cuadrillaOdooId: 3, vehiculoId: "af669", choferId: "kiska", hora: "16:30", orden: 990 }),
 ];
 
 export const MEDINA_ART: Ausencia = { id: null, personaId: "medina", desde: "2026-10-13", hasta: null, tipo: "art", horaDesde: null, horaHasta: null, nota: null, origen: "asistencia" };
@@ -148,21 +153,36 @@ export function martesVacio(): DiaHoja {
     operariosAvisados: [],
     parametros: PARAMETROS_POR_DEFECTO,
     anterior: { fecha: "2026-10-12", obras: OBRAS_LUNES, hojas: HOJAS_LUNES, viajes: VIAJES_LUNES, camiones: [] },
-    ultimasHojas: [{ fecha: "2026-10-09", hoja: hoja(5, ["mino", "valenzuela", "aguirre"], "mino", { modo: "todo_el_dia", choferId: "nunez", vehiculoId: "ab799", encuentro: { lugar: "deposito", texto: null, hora: "7:00" } }, "2026-10-09") }],
+    ultimasHojas: [{ fecha: "2026-10-09", hoja: hoja(5, ["mino", "valenzuela", "aguirre"], "mino", { vehiculos: [fila("f09-5", "todo_el_dia", "nunez", "ab799")], encuentro: { lugar: "deposito", texto: null, hora: "7:00" } }, "2026-10-09") }],
     cajon: [],
     telegram: { configurado: true, bot: "aba_hoja_bot" },
   };
 }
 
-/** Escribe un plan de precarga sobre el día, como lo haría servicio.ts. */
+/**
+ * Escribe un plan de precarga sobre el día, como lo haría acciones.ts (escribirPlan). Los
+ * vehículos se llaman `f13-<c>-<i>`; el lleva del primero de lleva y trae, `c<c>-lleva` (los
+ * otros, `c<c>-lleva-<i>`), y el busca, `c<c>-busca`.
+ */
 export function aplicarPlan(dia: DiaHoja, hojas: PlanHoja[]): DiaHoja {
-  const nuevas: Hoja[] = hojas.map((p) => hoja(p.cuadrillaOdooId, p.gente, p.aCargoId, { modo: p.modo, choferId: p.choferId, vehiculoId: p.vehiculoId, encuentro: p.encuentro, origen: p.origen }));
+  const fid = (c: number, i: number) => `f13-${c}-${i}`;
+  const nuevas: Hoja[] = hojas.map((p) => hoja(p.cuadrillaOdooId, p.gente, p.aCargoId, {
+    vehiculos: p.vehiculos.map((f, i) => fila(fid(p.cuadrillaOdooId, i), f.modo, f.choferId, f.vehiculoId, i)), encuentro: p.encuentro, origen: p.origen,
+  }));
   const viajes: Viaje[] = [];
   for (const p of hojas) {
-    if (p.modo !== "lleva_trae") continue;
-    const hid = `h13-${p.cuadrillaOdooId}`;
-    viajes.push(viaje(`c${p.cuadrillaOdooId}-lleva`, { tipo: "lleva", hojaId: hid, cuadrillaOdooId: p.cuadrillaOdooId, vehiculoId: p.vehiculoId, choferId: p.choferId, hora: p.lleva, orden: toMin(p.lleva) ?? 420 }));
-    if (p.busca) viajes.push(viaje(`c${p.cuadrillaOdooId}-busca`, { tipo: "busca", hojaId: hid, cuadrillaOdooId: p.cuadrillaOdooId, vehiculoId: p.vehiculoId, choferId: p.choferId, hora: p.busca, orden: toMin(p.busca) ?? 1020 }));
+    const c = p.cuadrillaOdooId;
+    const hid = `h13-${c}`;
+    let primero = true;
+    p.vehiculos.forEach((f, i) => {
+      if (f.modo !== "lleva_trae") return;
+      viajes.push(viaje(primero ? `c${c}-lleva` : `c${c}-lleva-${i}`, { tipo: "lleva", hojaId: hid, hojaVehiculoId: fid(c, i), cuadrillaOdooId: c, vehiculoId: f.vehiculoId, choferId: f.choferId, hora: f.lleva, orden: toMin(f.lleva) ?? 420, vuelta: f.vuelta, vueltaLlega: f.vueltaLlega }));
+      primero = false;
+    });
+    if (p.busca && p.vehiculos.some((f) => f.modo === "lleva_trae")) {
+      const con = "fila" in p.buscaCon ? { hojaVehiculoId: fid(c, p.buscaCon.fila), vehiculoId: p.vehiculos[p.buscaCon.fila]?.vehiculoId ?? null, choferId: p.vehiculos[p.buscaCon.fila]?.choferId ?? null } : { hojaVehiculoId: null, ...p.buscaCon };
+      viajes.push(viaje(`c${c}-busca`, { tipo: "busca", hojaId: hid, cuadrillaOdooId: c, ...con, hora: p.busca, orden: toMin(p.busca) ?? 1020 }));
+    }
   }
   return { ...dia, hojas: [...dia.hojas, ...nuevas], viajes: [...dia.viajes, ...viajes] };
 }

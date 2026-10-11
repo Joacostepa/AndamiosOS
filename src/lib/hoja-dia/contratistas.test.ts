@@ -30,7 +30,7 @@ const conK = (h: Hoja, kid: string, cantidad: number, aCargo = false): Hoja => (
 function martesConQuintana(): DiaHoja {
   const d = martesArmado();
   const hojas = d.hojas.map((h) => {
-    if (h.cuadrillaOdooId === 5) return conK({ ...h, modo: "sin" as const, choferId: null, vehiculoId: null, encuentro: { lugar: "obra" as const, texto: null, hora: "8:00" }, integrantes: [{ id: "i-ram", personaId: "ramirez", aCargo: false, nota: null, orden: 0 }] }, "quintana", 3, true);
+    if (h.cuadrillaOdooId === 5) return conK({ ...h, vehiculos: [], encuentro: { lugar: "obra" as const, texto: null, hora: "8:00" }, integrantes: [{ id: "i-ram", personaId: "ramirez", aCargo: false, nota: null, orden: 0 }] }, "quintana", 3, true);
     if (h.cuadrillaOdooId === 4) return conK(h, "quintana", 1);
     return h;
   });

@@ -16,9 +16,10 @@ import type { DiaHoja, Diferencia, Minutos } from "./tipos.ts";
 import {
   cNombre, cap, choferDe, encTxt, envioDe, esHoy, estadoEnvio, fechaMensaje, hCorta, hm, hm5, horaTxt, laC, lowFirst,
   lugar, nombreDe, normHora, obrasCon, patente, recibeDe, textoViaje, todoDe, vehiculoNombre, viajesChofer, yList,
-  cortoV, hojaDeCuadrilla, hojaDe, aCargoDe, suspendida, persona, genteDe, type Destinatario, type ViajeCalc,
+  cortoV, hojaDeCuadrilla, hojaDe, aCargoDe, suspendida, persona, genteDe, vehiculo, vehiculosDe, type Destinatario, type ViajeCalc,
 } from "./estado.ts";
 import { vanEnPalabras } from "./contratistas.ts";
+import { llevaDeFila } from "./vehiculos.ts";
 
 export type Canal = "telegram" | "whatsapp";
 type Opts = { canal: Canal; link: string | null; ahora: Minutos };
@@ -36,16 +37,31 @@ export function mensajeHoja(dia: DiaHoja, pid: string, c: number, o: Opts): stri
   const ob = obrasCon(dia, c);
   const aCargo = aCargoDe(h);
   const quien = aCargo === pid ? "a cargo vos" : `a cargo ${nombreDe(dia, aCargo) || "nadie todavía"}; la hoja te llega a vos`;
-  const chof = h.modo === "lleva_trae" ? `, te lleva ${nombreDe(dia, choferLleva(dia, c)) || "un chofer"}` : h.modo === "todo_el_dia" ? `, va ${nombreDe(dia, h.choferId)} todo el día` : ", van por su cuenta";
+  const chof = choferesEnPalabras(dia, c, pid);
   // Con gente de contratistas, quiénes van (el referente no sabe de memoria quién es de ABA).
   const van = h.contratistas?.length ? ` Van: ${vanEnPalabras(dia, c, genteDe(h))}.` : "";
   return `Hola ${nombreDe(dia, pid)}, tu hoja ${deHoy(dia, o.ahora)}: ${cNombre(dia, c)}, ${quien}. Encuentro ${encTxt(dia, c)}${chof}. ${ob.length > 1 ? "Obras" : "Obra"}: ${yList(ob.map((x) => x.o.corto))}.${van}${mirá(o)} Cuando la veas tocá "Recibido".`;
 }
-/** El chofer del "lleva" (puede no ser el de la cuadrilla si se lo pasó a otro camión). */
-function choferLleva(dia: DiaHoja, c: number): string | null {
-  const h = hojaDeCuadrilla(dia, c)!;
-  const ll = dia.viajes.find((v) => v.hojaId === h.id && v.tipo === "lleva" && v.estado !== "anulado");
-  return (ll ? choferDe(dia, ll) : null) ?? h.choferId;
+/**
+ * Los vehículos de la cuadrilla en palabras, para el mensaje: ", te lleva Kiska", ", va Borda
+ * todo el día con la hidrogrúa y te lleva Nuñez", ", van por su cuenta". Al que maneja él
+ * mismo (Conte a cargo y chofer): "manejás vos". `pid` = a quién se le escribe (null: a la
+ * cuadrilla, "los lleva").
+ */
+export function choferesEnPalabras(dia: DiaHoja, c: number, pid: string | null): string {
+  const h = hojaDeCuadrilla(dia, c);
+  const fs = vehiculosDe(h);
+  if (!h || !fs.length) return ", van por su cuenta";
+  const partes = fs.map((f) => {
+    const hidro = vehiculo(dia, f.vehiculoId)?.tipo === "hidrogrua" ? " con la hidrogrúa" : "";
+    if (f.modo === "todo_el_dia") return pid && f.choferId === pid ? `manejás vos todo el día${hidro}` : `va ${nombreDe(dia, f.choferId) || "un chofer"} todo el día${hidro}`;
+    // El chofer del "lleva" (puede no ser el del renglón si se lo pasó a otro camión en Camiones).
+    const ll = llevaDeFila(dia, h, f);
+    const ch = (ll ? choferDe(dia, ll) : null) ?? f.choferId;
+    if (pid && ch === pid) return "manejás vos";
+    return `${pid ? "te lleva" : "los lleva"} ${nombreDe(dia, ch) || "un chofer"}`;
+  });
+  return `, ${yList(partes)}`;
 }
 
 /** "Hola Kiska, tus viajes del martes 13/10: 7:00 lleva a la Cuadrilla 2 a Juramento 2145; …; y 3 más." */
@@ -58,7 +74,8 @@ export function mensajeViajes(dia: DiaHoja, ch: string, o: Opts): string {
     const h = hojaDeCuadrilla(dia, c)!;
     const ob = obrasCon(dia, c);
     const propios = vs.filter((v) => v.cuadrillaOdooId !== c || !v.hojaId);
-    return `Hola ${nombreDe(dia, ch)}, ${o.ahora >= 0 && o.ahora < 1440 ? "hoy" : `el ${fechaMensaje(dia.fecha)}`} vas todo el día con la ${cNombre(dia, c)} (${nombreDe(dia, aCargoDe(h)) || "sin nadie a cargo"}) con el ${vehiculoNombre(dia, h.vehiculoId)}. Encuentro ${encTxt(dia, c)}. ${ob.length > 1 ? "Obras" : "Obra"}: ${yList(ob.map((x) => x.o.corto))}.${propios.length ? ` Además: ${propios.map((v) => `${horaTxt(v)} ${lowFirst(textoViaje(dia, v))}`).join("; ")}.` : ""}${mirá(o)} Cuando la veas tocá "Recibido".`;
+    const veh = vehiculosDe(h).find((f) => f.modo === "todo_el_dia" && f.choferId === ch)?.vehiculoId ?? null;
+    return `Hola ${nombreDe(dia, ch)}, ${o.ahora >= 0 && o.ahora < 1440 ? "hoy" : `el ${fechaMensaje(dia.fecha)}`} vas todo el día con la ${cNombre(dia, c)} (${nombreDe(dia, aCargoDe(h)) || "sin nadie a cargo"})${veh ? ` con el ${vehiculoNombre(dia, veh)}` : ""}. Encuentro ${encTxt(dia, c)}. ${ob.length > 1 ? "Obras" : "Obra"}: ${yList(ob.map((x) => x.o.corto))}.${propios.length ? ` Además: ${propios.map((v) => `${horaTxt(v)} ${lowFirst(textoViaje(dia, v))}`).join("; ")}.` : ""}${mirá(o)} Cuando la veas tocá "Recibido".`;
   }
   const tx = vs.slice(0, 3).map((v) => `${horaTxt(v)} ${lowFirst(textoViaje(dia, v))}`).join("; ");
   const mas = vs.length > 3 ? `; y ${vs.length - 3} más` : "";
@@ -148,7 +165,7 @@ export function mensajeOperario(dia: DiaHoja, pid: string, ahora: Minutos): stri
   const c = hojaDe(dia, pid);
   if (c == null) return null;
   const h = hojaDeCuadrilla(dia, c)!;
-  const chof = h.modo === "lleva_trae" ? `, los lleva ${nombreDe(dia, choferLleva(dia, c))}` : h.modo === "todo_el_dia" ? `, va ${nombreDe(dia, h.choferId)} todo el día` : ", van por su cuenta";
+  const chof = choferesEnPalabras(dia, c, null);
   return `${nombreDe(dia, pid)}, ${esHoy(ahora) ? "hoy" : `el ${fechaMensaje(dia.fecha)}`} vas con la ${cNombre(dia, c)} (a cargo ${nombreDe(dia, aCargoDe(h)) || "todavía nadie"}). Encuentro ${encTxt(dia, c)}${chof}.`;
 }
 

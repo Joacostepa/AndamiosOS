@@ -176,7 +176,7 @@ export const useAccionPedido = (fecha: string | null, opts?: { aviso?: boolean }
 export const useAccionAusencia = (fecha: string | null) => useGesto<AccionAusencia & { fechaVista?: string }>("/api/hoja-dia/ausencias", fecha);
 export const usePrecarga = (fecha: string | null) => useGesto<{ fecha: string; modo: "hoy" | "plantel" | "vacio" }>("/api/hoja-dia/precarga", fecha, { aviso: false });
 export const useAccionPersona = (fecha: string | null) =>
-  useGesto<{ accion: "celular"; personaId: string; telefono: string } | { accion: "puede_estar_a_cargo"; personaId: string; valor: boolean }>("/api/hoja-dia/personas", fecha);
+  useGesto<{ accion: "celular"; personaId: string; telefono: string } | { accion: "puede_estar_a_cargo" | "puede_manejar"; personaId: string; valor: boolean }>("/api/hoja-dia/personas", fecha);
 export const useAccionLugar = (fecha: string | null) => useGesto<Record<string, unknown> & { accion: "crear" | "editar" }>("/api/hoja-dia/lugares", fecha);
 /** Alta, edición y baja de contratistas (la lista viene con el día). */
 export const useAccionContratista = (fecha: string | null) => useGesto<AccionContratista>("/api/hoja-dia/contratistas", fecha);

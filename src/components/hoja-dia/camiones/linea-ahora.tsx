@@ -10,7 +10,7 @@
 import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { ahoraItems, cap, diaSemana, fechaLarga, type Aviso } from "@/lib/hoja-dia/estado";
+import { ahoraItems, cap, diaSemana, fechaLarga, vehiculoDeChofer, type Aviso } from "@/lib/hoja-dia/estado";
 import { useCamiones } from "./contexto";
 import { Botones, LineaAviso } from "./botones";
 
@@ -36,7 +36,7 @@ export function LineaAhora() {
     else if (x.k.startsWith("nadie-")) mostrar("row-sin");
     else if (x.k === "sug") mostrar("cola");
     else if (x.ch) {
-      const veh = dia.camiones.find((c) => c.choferId === x.ch)?.vehiculoId;
+      const veh = vehiculoDeChofer(dia, x.ch);
       if (veh) mostrar(`row-${veh}`);
     }
   };

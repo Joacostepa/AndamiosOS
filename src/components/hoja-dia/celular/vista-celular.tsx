@@ -277,6 +277,13 @@ function Capataz({
                 {choferLleva.telefono && <Llamar nombre={choferLleva.nombre!} telefono={choferLleva.telefono} texto="Llamar" />}
               </div>
             )}
+            {/* Los otros choferes de la hoja (otro camión que los lleva, o el que los busca). */}
+            {choferLleva && (v.chofer?.otros ?? []).map((x, i) => (
+              <div key={`ch-${i}`} className={s.p}>
+                <span className={s.t}><b>{x.nombre}</b> <span className={cx(s.tag, s.cargo)}>chofer</span><small>{x.rol}</small></span>
+                {x.telefono && <Llamar nombre={x.nombre} telefono={x.telefono} texto="Llamar" />}
+              </div>
+            ))}
           </section>
           <div className={s.tfalta}>
             <p>¿Falta alguien, falta material o hay un problema?</p>

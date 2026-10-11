@@ -28,6 +28,8 @@ export type Personal = {
   created_at: string;
   /** Hoja del día: aparece primero en "Sin asignar" y en la sugerencia de a cargo. */
   puede_estar_a_cargo?: boolean | null;
+  /** Hoja del día: un armador que además maneja (se lo puede elegir de chofer). */
+  puede_manejar?: boolean | null;
   /** Hoja del día: la hoja le llega por Telegram (vinculado una vez). */
   telegram_chat_id?: number | null;
   telegram_usuario?: string | null;

@@ -573,7 +573,7 @@ export function FormularioCierre({
                       title="Viajes redondos"
                     />
                     <span className="text-xs text-muted-foreground">
-                      viajes redondos · sugerido {desdeHoja?.fletes && precarga ? `${precarga.fletes.cantidad} · según la Hoja del día` : sugerenciaViajes}
+                      viajes redondos · sugerido {desdeHoja?.fletes && precarga ? `${precarga.fletes.cantidad} · según la Hoja del día${(precarga.fletes.porVehiculo?.length ?? 0) > 1 ? ` (${precarga.fletes.porVehiculo!.map((x) => `${x.patente}: ${x.cantidad}`).join(" · ")})` : ""}` : sugerenciaViajes}
                     </span>
                   </div>
                   {/* En el parte y no en la línea de flete: la línea no existe con cero

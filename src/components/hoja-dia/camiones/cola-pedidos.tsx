@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/hoja-dia/comunes/kbd";
 import {
-  camionesQueSirven, cola, diaSemana, hm, horaTxt, lowFirst, lugar, nombreDe, patente, choferDe, choferDelCamion,
+  camionesQueSirven, cola, diaSemana, hm, horaTxt, lowFirst, lugar, nombreDe, patente, choferDe, choferDelCamion, filaTodoVeh,
   sugeridosDe, txtCerca, txtLibre, txtNadieLibre, esHoy, type ItemCola,
 } from "@/lib/hoja-dia/estado";
 import { TIPOS_VIAJE } from "@/lib/hoja-dia/tipos";
@@ -76,7 +76,7 @@ export function ColaPedidos() {
                 <div className="text-xs font-semibold text-muted-foreground">Sugerido · {s.regla === "arranca" ? "arranca un armado" : "termina un desarme"}</div>
                 <div className="leading-snug font-semibold">{s.txt}</div>
                 <div className="text-xs leading-snug text-muted-foreground">
-                  {s.enCamion ? `Ya va en el camión de ${nombreDe(dia, choferDelCamion(dia, s.enCamion))} (${patente(dia, s.enCamion)}) al terminar` : s.que}
+                  {s.enCamion ? `Ya va en el camión de ${nombreDe(dia, filaTodoVeh(dia, s.enCamion)?.choferId ?? choferDelCamion(dia, s.enCamion)) || "la cuadrilla"} (${patente(dia, s.enCamion)}) al terminar` : s.que}
                   {s.horaFija ? ` · ${s.horaFija}${s.cargaDeposito ? ` (carga ${s.cargaDeposito})` : ""}` : s.noAntesDe ? ` · ~${s.noAntesDe}` : ""}
                 </div>
                 {!pasado && (

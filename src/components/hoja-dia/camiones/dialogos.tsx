@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } f
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  aCargoDe, calcVeh, choferDelCamion, cNombre, cortoV, hm5, hojaDeCuadrilla, lugar, nombreDe, normHora, obrasCon, patente, vehiculo,
+  aCargoDe, calcVeh, choferDelCamion, filaTodoVeh, cNombre, cortoV, hm5, hojaDeCuadrilla, lugar, nombreDe, normHora, obrasCon, patente, vehiculo,
 } from "@/lib/hoja-dia/estado";
 import type { Punto, TipoViaje } from "@/lib/hoja-dia/tipos";
 import { Chips } from "@/components/hoja-dia/comunes/menu-flotante";
@@ -186,7 +186,7 @@ function DlgTodo({ d, cerrar, alSacarUnRato, alElegirOtro }: { d: Extract<Dlg, {
   const ob = obrasCon(dia, d.c)[0];
   return (
     <>
-      <DialogTitle>{nombreDe(dia, choferDelCamion(dia, d.veh))} está todo el día con la {cNombre(dia, d.c)}</DialogTitle>
+      <DialogTitle>{nombreDe(dia, filaTodoVeh(dia, d.veh)?.choferId ?? choferDelCamion(dia, d.veh)) || "El chofer"} está todo el día con la {cNombre(dia, d.c)}</DialogTitle>
       <DialogDescription>
         Si lo sacás, la {cNombre(dia, d.c).replace(/^Cuadrilla /, "")} se queda sin {V?.tipo === "hidrogrua" ? "hidrogrúa" : "camión"} un rato{ob ? ` (${ob.o.corto})` : ""}. La app no lo impide: decidís vos.
       </DialogDescription>

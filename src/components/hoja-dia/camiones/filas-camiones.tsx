@@ -1,8 +1,9 @@
 "use client";
 
-// Una fila por camión (§9): a la izquierda quién lo maneja, la patente y dónde anda en
-// palabras; a la derecha los viajes como fichas sobre una línea de tiempo aproximada de
-// 7 a 18 (el ancho es la duración típica, no la real). La línea coral es "ahora".
+// Una fila por camión (§9): a la izquierda quién lo maneja (si cambia en el día, cada tramo:
+// "Kiska → Gómez 14:00"), la patente y dónde anda en palabras; a la derecha los viajes como
+// fichas sobre una línea de tiempo aproximada de 7 a 18 (el ancho es la duración típica, no
+// la real). La línea coral es "ahora". Cada viaje tiene su chofer (decisión del dueño, 11/10).
 //
 // La misma información en LISTA (tecla L, o sola en pantallas angostas): la línea de tiempo
 // sirve para ver huecos; la lista, para leer. En el celular no se arrastra: todo con toques.
@@ -12,7 +13,7 @@ import { Check, MoreHorizontal, Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
-  avisosChofer, avisosVeh, calcVeh, camionesQueSirven, cap, choferDelCamion, cNombre, cortoV, cTag, dondeAnda, estadoEnvio,
+  avisosChofer, avisosVeh, calcVeh, camionesQueSirven, cap, choferDe, choferesDeFila, choferesTxt, cNombre, cortoV, cTag, dondeAnda, estadoEnvio,
   fletesDeAfuera, haciaDe, hm, hm5, horaTxt, kmTxt, lowFirst, lugar, nombreDe, obrasCon, sinCamionDe, textoViaje, toMin,
   todoVeh, vehiculo, viajeSinAvisar, type Aviso, type CamionesQueSirven, type ViajeCalc, hojaDeCuadrilla,
 } from "@/lib/hoja-dia/estado";
@@ -157,18 +158,20 @@ function Pista({ children }: { children: React.ReactNode }) {
 function Fila({ veh, q }: { veh: string; q: CamionesQueSirven | null }) {
   const ctx = useCamiones();
   const { dia, ahora, hoy, pasado, lista, angosta, abrirMenu, ponerEn, moverViaje } = ctx;
-  const ch = choferDelCamion(dia, veh);
   const V = vehiculo(dia, veh)!;
   const ts = calcVeh(dia, veh);
   const td = todoVeh(dia, veh);
-  const avs: Aviso[] = useMemo(() => [...avisosVeh(dia, veh, ahora), ...(ch ? avisosChofer(dia, ch, ahora) : [])], [dia, veh, ch, ahora]);
+  // Los choferes de la fila, en el orden del día (puede ser más de uno).
+  const chs = useMemo(() => [...new Set(choferesDeFila(dia, veh).map((x) => x.ch).filter((x): x is string => !!x))], [dia, veh]);
+  const quien = choferesTxt(dia, veh);
+  const avs: Aviso[] = useMemo(() => [...avisosVeh(dia, veh, ahora), ...chs.flatMap((x) => avisosChofer(dia, x, ahora))], [dia, veh, chs, ahora]);
   const conflictos = avs.filter((x) => x.nivel === "rojo").flatMap((x) => x.ids ?? []).filter((x): x is string => !!x);
   const sinAv = ts.filter((v) => viajeSinAvisar(dia, v)).map((v) => v.id);
   const cur0 = hoy ? ts.find((v) => v.estado === "planeado") : null;
   const cur = cur0 && cur0.t <= ahora + 60 ? cur0 : null;
   const da = dondeAnda(dia, veh, ahora);
-  const pend = ch ? estadoEnvio(dia, { pid: ch, rol: "chofer" }) : null;
-  const nCambios = pend?.k === "cambiada" ? pend.ds.length : 0;
+  // "Avisar a Kiska (2 cambios)": uno por chofer de la fila que tenga cambios sin avisar.
+  const porAvisar = chs.map((x) => ({ ch: x, st: estadoEnvio(dia, { pid: x, rol: "chofer" }) })).filter((x) => x.st.k === "cambiada").map((x) => ({ ch: x.ch, n: x.st.k === "cambiada" ? x.st.ds.length : 0 }));
   const verLista = lista || angosta;
 
   const k = q ? q.orden.findIndex((x) => x.veh === veh) : -1;
@@ -248,7 +251,7 @@ function Fila({ veh, q }: { veh: string; q: CamionesQueSirven | null }) {
     >
       <div className={cn("relative grid min-w-0 content-start gap-px py-1.5 pr-1.5 pl-3", !angosta && "border-r")}>
         <div className="flex flex-wrap items-baseline gap-x-1.5 pr-8 text-[13.5px] font-semibold">
-          {ch ? nombreDe(dia, ch) : "Sin chofer"}
+          {quien || "Sin chofer"}
           <span className="font-mono text-xs font-medium text-muted-foreground">{V.patente}</span>
           <span className="text-xs font-medium text-muted-foreground">{V.tipo === "hidrogrua" ? "hidrogrúa" : V.marca}</span>
         </div>
@@ -278,11 +281,13 @@ function Fila({ veh, q }: { veh: string; q: CamionesQueSirven | null }) {
             )}
           </>
         )}
-        {!q && !pasado && nCambios > 0 && ch && (
-          <div className="mt-0.5">
-            <Button type="button" variant="outline" size="xs" className="max-md:h-9 max-md:text-sm" onClick={() => ctx.avisar(ch)}>
-              Avisar a {nombreDe(dia, ch)}{nCambios > 1 ? ` (${nCambios} cambios)` : ""}
-            </Button>
+        {!q && !pasado && porAvisar.length > 0 && (
+          <div className="mt-0.5 flex flex-wrap gap-1">
+            {porAvisar.map((x) => (
+              <Button key={x.ch} type="button" variant="outline" size="xs" className="max-md:h-9 max-md:text-sm" onClick={() => ctx.avisar(x.ch)}>
+                Avisar a {nombreDe(dia, x.ch)}{x.n > 1 ? ` (${x.n} cambios)` : ""}
+              </Button>
+            ))}
           </div>
         )}
         {!q && !pasado && (
@@ -291,7 +296,7 @@ function Fila({ veh, q }: { veh: string; q: CamionesQueSirven | null }) {
             variant="ghost"
             size="icon-xs"
             className="absolute top-1 right-1 max-md:size-9"
-            aria-label={`Más opciones del camión de ${ch ? nombreDe(dia, ch) : V.patente}`}
+            aria-label={`Más opciones del camión ${V.patente}`}
             aria-haspopup="menu"
             id={`fm-${veh}`}
             onClick={(e) => abrirMenu({ t: "fila", veh, anchor: e.currentTarget })}
@@ -342,7 +347,8 @@ function Ficha({ v, cur, conflictos, sinAv }: { v: ViajeCalc; cur: ViajeCalc | n
   const l1 = angostaF ? (c != null && (v.tipo === "lleva" || v.tipo === "busca" || v.tipo === "mueve") ? cTag(dia, c) : v.tipo === "taller" ? cortoV(dia, v) : lugar(dia, v.haciaEf).corto) : cortoV(dia, v);
   const sin = sinAv.includes(v.id);
   const l2 = v.estado === "hecho" ? `✓ ${hm(v.hechoMin ?? v.t)}${v.hechoPor && v.hechoPor !== "chofer" ? ` (${iniciales(v.hechoPor)})` : ""}` : v.estado === "no_pudo" ? `no pudo ${hm(v.hechoMin ?? v.t)}` : `${horaTxt(v)}${sin && !angostaF ? " · sin avisar" : ""}`;
-  const tit = `${textoViaje(dia, v)} · ${v.estado === "hecho" ? `Hecho ${hm(v.hechoMin ?? v.t)}` : v.estado === "no_pudo" ? `No pudo: ${v.noPudoMotivo ?? ""}` : v.hora ? `a las ${v.hora}` : `estimada ${horaTxt(v)}`}`;
+  const chV = v.fleteExterno ? null : choferDe(dia, v);
+  const tit = `${textoViaje(dia, v)}${chV ? ` · ${nombreDe(dia, chV)}` : ""} · ${v.estado === "hecho" ? `Hecho ${hm(v.hechoMin ?? v.t)}` : v.estado === "no_pudo" ? `No pudo: ${v.noPudoMotivo ?? ""}` : v.hora ? `a las ${v.hora}` : `estimada ${horaTxt(v)}`}`;
   const arrastrable = v.estado === "planeado" && !v.fleteExterno && !pasado && !angosta;
   return (
     <>
@@ -377,7 +383,7 @@ function Ficha({ v, cur, conflictos, sinAv }: { v: ViajeCalc; cur: ViajeCalc | n
         <span className="overflow-hidden text-[11.5px] whitespace-nowrap tabular-nums opacity-85">{l2}</span>
       </button>
       {v.vuelta && !conVu && (
-        <span aria-hidden className="absolute top-5 z-[1] h-2 border-t-2 border-dotted border-muted-foreground" style={{ left: `${xp(v.finParada)}%`, width: `${wp(vuelta)}%` }}>
+        <span aria-hidden className="absolute top-5 z-[1] h-2 border-t-2 border-dotted border-muted-foreground" style={{ left: `${xp(v.finParada)}%`, width: `${wp(Math.max(10, v.fin - v.finParada))}%` }}>
           <span className="absolute top-1 right-0 text-[11px] whitespace-nowrap text-muted-foreground">→ depósito</span>
         </span>
       )}
@@ -393,7 +399,9 @@ function ListaViajes({ ts, cur, sinAv }: { ts: ViajeCalc[]; cur: ViajeCalc | nul
       {ts.map((v) => {
         const sin = sinAv.includes(v.id);
         const conCarga = v.carga && !["lleva_material", "trae_material", "compra", "taller"].includes(v.tipo);
-        const s = v.estado === "no_pudo" ? lowFirst(v.noPudoMotivo) : cur?.id === v.id ? "ahora" : sin ? "sin avisar" : v.vuelta ? `vuelve al depósito ~${hm5(v.finParada + 30)}` : "";
+        const s = v.estado === "no_pudo" ? lowFirst(v.noPudoMotivo) : cur?.id === v.id ? "ahora" : sin ? "sin avisar" : v.vuelta ? `vuelve al depósito ${v.vueltaLlega ? v.vueltaLlega : `~${hm5(v.fin)}`}` : "";
+        // Si el camión cambia de chofer en el día, cada viaje dice quién lo hace.
+        const chV = !v.fleteExterno && v.vehiculoId && choferesDeFila(dia, v.vehiculoId).length > 1 ? choferDe(dia, v) : null;
         return (
           <li key={v.id}>
             <button
@@ -413,6 +421,7 @@ function ListaViajes({ ts, cur, sinAv }: { ts: ViajeCalc[]; cur: ViajeCalc | nul
               <span className={cn(v.estado === "no_pudo" && "text-hd-rojo line-through")}>
                 {textoViaje(dia, v)}
                 {conCarga && <span className="text-xs text-muted-foreground"> · {v.carga}</span>}
+                {chV && <span className="text-xs text-muted-foreground"> · {nombreDe(dia, chV)}</span>}
               </span>
               <span className={cn("text-xs whitespace-nowrap text-muted-foreground max-md:col-start-3 max-md:whitespace-normal", sin && "font-semibold text-hd-ambar")}>{s}</span>
             </button>

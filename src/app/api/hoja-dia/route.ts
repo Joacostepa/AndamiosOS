@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse, after } from "next/server";
-import { alertarDia, leerDia } from "@/lib/hoja-dia/servicio";
+import { alertarDia, completarCoordenadas, leerDia } from "@/lib/hoja-dia/servicio";
 import { accionHoja, accionHojaSchema } from "@/lib/hoja-dia/acciones";
 import { conPermiso, fallo, fechaValida, invalidoZod, sesion } from "./_comun";
 
@@ -27,6 +27,9 @@ export async function GET(req: NextRequest) {
     // Los rojos a la campanita, después de responder (no hacen esperar a la pantalla). Un
     // día pasado no alerta (alertasDelDia → diaAlertable).
     after(() => alertarDia(dia));
+    // Las obras del día sin coordenadas se geocodifican en segundo plano y se escriben en
+    // Odoo: la próxima lectura ya tiene los tiempos de Google y los links de Maps.
+    after(() => completarCoordenadas(dia));
     // El token de cada link es la llave del celular del capataz o del chofer (con él se marca
     // "Hecho"): no viaja a la pantalla. El link se arma en el servidor (envíos).
     return NextResponse.json({ ...dia, envios: dia.envios.map((e) => ({ ...e, token: "" })) });

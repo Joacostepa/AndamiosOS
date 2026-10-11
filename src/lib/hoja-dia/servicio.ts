@@ -26,6 +26,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { authenticate, searchRead } from "@/lib/odoo/client";
 import { fetchTableroDeFechas } from "@/lib/odoo/asignaciones";
+import { geocodificarVentas } from "@/lib/odoo/geocodificar";
+import { elegirAlVuelo } from "@/lib/odoo/geocodificar-reglas";
 import { direccionCorta, direccionDeObra, nombrePropio } from "@/lib/tablero/titulo";
 import type {
   Ausencia, CamionDia, Contratista, Cuadrilla, DiaAnterior, DiaHoja, Envio, Fecha, Hoja, Lugar, ObraDia, Parametros, Pedido, Persona, Punto,
@@ -311,6 +313,39 @@ function tableroGuardado(fecha: Fecha, maxEdadMs: number): Promise<Tablero> | nu
     if (x.listo && Date.now() - x.at < maxEdadMs && clave.split(",").includes(fecha) && (!mejor || x.at > mejor.at)) mejor = x;
   }
   return mejor?.datos ?? null;
+}
+
+/** Que la próxima lectura de esa fecha vaya a Odoo (todas las lecturas guardadas que la incluyen). */
+function olvidarTablero(fecha: Fecha) {
+  for (const clave of [...cacheTablero.keys()]) if (clave.split(",").includes(fecha)) cacheTablero.delete(clave);
+}
+
+// ─── Coordenadas de las obras, en el momento ────────────────────────────────
+//
+// Las coordenadas de una obra son las de su venta en Odoo, y las pone el geocodificador
+// (src/lib/odoo/geocodificar.ts): el cron de las 7:30 cubre las de "Armado" y las del
+// tablero, pero una obra que se planifica hoy para mañana no espera al cron. Cuando el GET de
+// la pantalla encuentra obras del día sin coordenadas, las geocodifica después de responder
+// (`after` en la ruta) y escribe en Odoo; la próxima lectura ya las trae (se olvida el
+// tablero guardado de esa fecha) y con ellas salen los tiempos de Google y los links de Maps.
+// A lo sumo GEO_POR_LECTURA ventas por lectura y cada una no más de una vez cada 30 min por
+// instancia (en memoria): una dirección que Google no resuelve no se paga en cada refresco.
+
+const GEO_POR_LECTURA = 5;
+const intentosGeo = new Map<number, number>();
+
+/** Geocodifica las ventas de las obras del día que no tienen coordenadas. Nunca tira. */
+export async function completarCoordenadas(dia: DiaHoja): Promise<void> {
+  const ids = elegirAlVuelo(dia.obras, intentosGeo, Date.now(), GEO_POR_LECTURA);
+  if (!ids.length) return;
+  try {
+    const r = await geocodificarVentas(ids);
+    if (r.geocodificadas) olvidarTablero(dia.fecha);
+    const fallos = [...r.sinResultado.map((f) => `${f.venta} (sin resultado: ${f.consulta})`), ...r.fueraDeArgentina.map((f) => `${f.venta} (${f.motivo}: ${f.consulta})`)];
+    if (fallos.length) console.warn(`[hoja-dia] geocodificar ${dia.fecha}: ${r.geocodificadas} resueltas; sin punto: ${fallos.join(" · ")}. Corregir la dirección de obra o cargar lat/lng en Odoo.`);
+  } catch (e) {
+    console.warn(`[hoja-dia] geocodificar ${dia.fecha}: no se pudo (${e instanceof Error ? e.message : String(e)}); se vuelve a probar en 30 min.`);
+  }
 }
 
 type FilaAsis = { empleado: number; fecha: Fecha; estado: string; tipo: string | null };

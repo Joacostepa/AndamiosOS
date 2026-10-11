@@ -1,6 +1,10 @@
 // Poner coordenadas donde hay una dirección de obra escrita.
 //
-// SOLO server-side. Lo consume el cron de /api/operaciones/geocodificar.
+// SOLO server-side. Lo consumen el cron de /api/operaciones/geocodificar (`geocodificarObras`)
+// y la Hoja del día, que geocodifica en el momento las obras del día que no tienen
+// coordenadas (`geocodificarVentas`). Las reglas —qué ventas, qué consultas, qué punto vale—
+// viven en geocodificar-reglas.ts, sin Google ni Odoo, con tests; scripts/geocodificar-obras.mjs
+// usa las mismas.
 //
 // POR QUÉ NO ES UN CRON DE ODOO: el sandbox de Odoo Online no deja hacer llamadas HTTP
 // salientes desde una acción de servidor —lo mismo que frenó la automatización del CRM—, así
@@ -16,77 +20,29 @@
 // coincidir y se rehace sola. Puede correr todos los días sin gastar de más: en régimen sólo
 // toca las obras nuevas y las corregidas.
 
-import { searchRead, write } from "./client";
+import { read, searchRead, write } from "./client";
+import {
+  CAMPOS_VENTA,
+  MAX_CONSULTAS_POR_CORRIDA,
+  buscadorPlaces,
+  candidatas,
+  geocodificarFilas,
+  hoyAr,
+  type FilaVenta,
+  type ResultadoGeo,
+} from "./geocodificar-reglas";
 
-/** Argentina continental, con margen. */
-const CAJA_AR = { latMin: -56, latMax: -21, lngMin: -74, lngMax: -52 };
+export type { ResultadoGeo } from "./geocodificar-reglas";
 
-/**
- * Tope de consultas por corrida. Es una red contra un error nuestro —un cambio que haga que
- * todo se vea desactualizado y dispare 2000 consultas pagas de una— más que contra el uso
- * normal, que son unas pocas por día.
- */
-const MAX_POR_CORRIDA = 120;
+const odoo = { searchRead, read, write };
 
-export type ResultadoGeo = {
-  candidatas: number;
-  geocodificadas: number;
-  sinResultado: { venta: string; consulta: string }[];
-  fueraDeArgentina: { venta: string; consulta: string; lat: number; lng: number }[];
-  truncado: boolean;
-};
+/** La clave dura una hora en memoria: la Hoja del día no le pregunta a Odoo en cada lectura. */
+const VIDA_CLAVE_MS = 60 * 60_000;
+let claveGuardada: { valor: string; at: number } | null = null;
 
-type Fila = {
-  id: number;
-  name: string;
-  x_direccion_obra: string | false;
-  x_obra_ciudad: string | false;
-  x_obra_lat: number | false;
-  x_obra_lng: number | false;
-  x_obra_geo_dir: string | false;
-};
-
-/** La ciudad y el país acotan: sin ellos "Alsina 2028" es ambigua. */
-function consultaDe(f: Fila): string {
-  return [f.x_direccion_obra, f.x_obra_ciudad || "", "Argentina"]
-    .filter(Boolean)
-    .join(", ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-async function geocodificarTexto(texto: string, key: string) {
-  const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Goog-Api-Key": key,
-      "X-Goog-FieldMask": "places.location",
-    },
-    body: JSON.stringify({ textQuery: texto, regionCode: "AR", maxResultCount: 1 }),
-  });
-  const json = await res.json();
-  const loc = json?.places?.[0]?.location;
-  if (!loc) return null;
-  return { lat: loc.latitude as number, lng: loc.longitude as number };
-}
-
-/**
- * Geocodifica las obras que lo necesitan.
- *
- * ALCANCE: tipo de contrato "Obra " y estado **Armado**. Nada más.
- *
- * Se probó incluir también "Pendiente de Armado" —para que una obra recién armada apareciera
- * en el mapa sin esperar a la corrida siguiente— y se descartó: son 1163 registros, de los
- * cuales 1160 no tienen fecha de armado y CERO se arman en los próximos 30 días. Ese estado
- * es el valor por defecto de todo lo que nunca se actualizó, no una cola de trabajo. Habrían
- * sido 1165 consultas pagas y diez días de corridas para obras que en su mayoría no se van a
- * armar nunca.
- *
- * El precio de acotar así es un día de demora: la obra que se arma hoy entra al mapa mañana a
- * las 7:30. Para un mapa de estructuras paradas, aceptable.
- */
-export async function geocodificarObras(): Promise<ResultadoGeo> {
+/** La clave de Places: el parámetro de Odoo que usa el widget de direcciones. Tira si no hay. */
+async function clavePlaces(): Promise<string> {
+  if (claveGuardada && Date.now() - claveGuardada.at < VIDA_CLAVE_MS) return claveGuardada.valor;
   const [param] = await searchRead<{ value: string | false }>(
     "ir.config_parameter",
     [["key", "=", "google_address_autocomplete.google_places_api_key"]],
@@ -94,55 +50,50 @@ export async function geocodificarObras(): Promise<ResultadoGeo> {
   );
   const key = typeof param?.value === "string" ? param.value : "";
   if (!key) throw new Error("No hay API key de Google Places cargada en Odoo");
+  claveGuardada = { valor: key, at: Date.now() };
+  return key;
+}
 
-  const filas = await searchRead<Fila>(
-    "sale.order",
-    [
-      ["x_studio_tipo_de_contrato", "=", "Obra "],
-      ["x_studio_estado_de_obra", "=", "Armado"],
-      ["x_direccion_obra", "!=", false],
-    ],
-    ["name", "x_direccion_obra", "x_obra_ciudad", "x_obra_lat", "x_obra_lng", "x_obra_geo_dir"],
-    { limit: 3000 },
-  );
+/**
+ * Geocodifica las obras que lo necesitan.
+ *
+ * ALCANCE: dos grupos, sin repetir (la elección vive en geocodificar-reglas.ts, con tests).
+ *   1. Las ventas tipo de contrato "Obra " en estado **Armado**: el Mapa de Obras.
+ *   2. Las ventas de las OTs con jornadas en el tablero de planificación desde hace 7 días
+ *      hasta dentro de 45 (asignación → `x_ot_id` → `x_order_id`), en cualquier estado: la
+ *      Hoja del día arma con sus coordenadas los tiempos de manejo (Routes API) y los links
+ *      de Maps, y una obra que se planifica para armar todavía no está "Armado". Van primero,
+ *      la jornada más próxima adelante: si el tope corta, corta lo que menos apura.
+ *
+ * Se probó incluir también "Pendiente de Armado" —para que una obra recién armada apareciera
+ * en el mapa sin esperar a la corrida siguiente— y se descartó: son 1163 registros, de los
+ * cuales 1160 no tienen fecha de armado y CERO se arman en los próximos 30 días. Ese estado
+ * es el valor por defecto de todo lo que nunca se actualizó, no una cola de trabajo. El
+ * grupo 2 es la versión acotada de esa idea: lo que de verdad tiene fecha en el tablero
+ * (~70 ventas en octubre de 2026).
+ *
+ * CÓMO CONSULTA: la consulta de siempre y, si no hay resultado o el punto no sirve, hasta 5
+ * variantes (sin piso/dto/"02", la primera parte de una esquina, "X y Y", CABA si no hay
+ * ciudad). El punto tiene que caer en Argentina y, si la obra es en CABA, en el AMBA. Ver
+ * `consultasDe` y `validarPunto`. El tope es de consultas, no de ventas
+ * (MAX_CONSULTAS_POR_CORRIDA).
+ *
+ * Los fallos se devuelven; una venta que Google no resuelve se vuelve a probar en cada
+ * corrida (hasta que alguien corrija la dirección o cargue lat/lng a mano).
+ */
+export async function geocodificarObras(): Promise<ResultadoGeo> {
+  const key = await clavePlaces();
+  const { lista } = await candidatas(odoo, hoyAr());
+  return geocodificarFilas(lista, buscadorPlaces(key), odoo, MAX_CONSULTAS_POR_CORRIDA);
+}
 
-  const pendientes = filas.filter((f) => {
-    const tienePunto = Boolean(f.x_obra_lat && f.x_obra_lng);
-    const alDia = f.x_obra_geo_dir === f.x_direccion_obra;
-    return !(tienePunto && alDia);
-  });
-
-  const lote = pendientes.slice(0, MAX_POR_CORRIDA);
-  const out: ResultadoGeo = {
-    candidatas: pendientes.length,
-    geocodificadas: 0,
-    sinResultado: [],
-    fueraDeArgentina: [],
-    truncado: pendientes.length > lote.length,
-  };
-
-  for (const f of lote) {
-    const consulta = consultaDe(f);
-    const punto = await geocodificarTexto(consulta, key);
-    if (!punto) {
-      out.sinResultado.push({ venta: f.name, consulta });
-      continue;
-    }
-    const dentro =
-      punto.lat >= CAJA_AR.latMin && punto.lat <= CAJA_AR.latMax &&
-      punto.lng >= CAJA_AR.lngMin && punto.lng <= CAJA_AR.lngMax;
-    if (!dentro) {
-      // Google resuelve direcciones ambiguas en otro país —hay "Corrientes 1125" en
-      // varios— y un punto en México rompe el encuadre del mapa para todos los demás.
-      out.fueraDeArgentina.push({ venta: f.name, consulta, ...punto });
-      continue;
-    }
-    await write("sale.order", [f.id], {
-      x_obra_lat: punto.lat,
-      x_obra_lng: punto.lng,
-      x_obra_geo_dir: f.x_direccion_obra,
-    });
-    out.geocodificadas++;
-  }
-  return out;
+/**
+ * Geocodifica estas ventas (las que lo necesiten) y escribe en Odoo. La usa la Hoja del día
+ * para las obras del día sin coordenadas, en segundo plano. Tope: 5 consultas por venta.
+ */
+export async function geocodificarVentas(ventaIds: number[]): Promise<ResultadoGeo> {
+  const ids = [...new Set(ventaIds)];
+  const key = await clavePlaces();
+  const filas = ids.length ? await read<FilaVenta>("sale.order", ids, CAMPOS_VENTA) : [];
+  return geocodificarFilas(filas, buscadorPlaces(key), odoo, ids.length * 5);
 }

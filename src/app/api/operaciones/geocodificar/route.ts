@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { geocodificarObras } from "@/lib/odoo/geocodificar";
 import { OdooError } from "@/lib/odoo/client";
 
-// GET/POST /api/operaciones/geocodificar — el cron que mantiene el Mapa de Obras al día.
+// GET/POST /api/operaciones/geocodificar — el cron que mantiene el Mapa de Obras al día y
+// les pone coordenadas a las obras planificadas en el tablero (la Hoja del día las usa para
+// los tiempos de manejo y los links de Maps). Alcance y reglas en src/lib/odoo/geocodificar.ts.
 //
 // POR QUÉ EXISTE. Una obra entra al mapa cuando tiene coordenadas, y las coordenadas no
 // vienen con la dirección: hay que pedírselas a Google. Sin esto, cada obra nueva quedaría
@@ -19,8 +21,9 @@ import { OdooError } from "@/lib/odoo/client";
 // GET además de POST porque Vercel Cron dispara con GET.
 
 export const dynamic = "force-dynamic";
-// Cada obra es una consulta a Google de ~300 ms más un write a Odoo. En régimen son unas
-// pocas por día; el margen es para la primera corrida después de un alta grande.
+// Cada obra es una consulta a Google de ~300 ms (hasta 6 si la dirección es difícil; tope de
+// 300 por corrida) más un write a Odoo. En régimen son unas pocas por día; el margen es para
+// la primera corrida después de un alta grande.
 export const maxDuration = 300;
 
 function autorizado(req: NextRequest): boolean {

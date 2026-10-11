@@ -564,4 +564,15 @@ export type DiaHoja = {
   /** Pendientes del cajón del tablero que todavía no pasaron a pedido. */
   cajon: { id: string; texto: string }[];
   telegram: { configurado: boolean; bot: string | null };
+  /**
+   * Tiempos de manejo de Google (Routes API) de los tramos que se usan ese día, por
+   * `"desdeKey>haciaKey"` (las claves de `lugar()`: "o:123", "l:<uuid>"). Lo arma el
+   * servidor (rutas-servidor.ts); si no hay clave, la API falla o falta una coordenada, el
+   * tramo no está y estado.ts usa las duraciones típicas de siempre. Opcional: los días
+   * armados a mano (tests, el contexto de un gesto) no lo tienen.
+   */
+  tiempos?: Record<string, TiempoTramo>;
 };
+
+/** Un tramo de manejo: minutos y metros. `fuente` dice de dónde sale (el `title` del ícono). */
+export type TiempoTramo = { min: number; m: number | null; fuente: "google" | "tipica" };

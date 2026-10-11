@@ -23,6 +23,7 @@ import type {
   TipoLugar, TipoPedido, TipoViaje, Vehiculo, Viaje,
 } from "./tipos.ts";
 import { TIPOS_VIAJE, TIPO_AUSENCIA_TXT } from "./tipos.ts";
+import { durConTramo, huecoMinimo, llegadaCon, vueltaCon } from "./tiempos.ts";
 
 // ═══════════════════════════ Horas y fechas ═══════════════════════════════════
 
@@ -644,8 +645,11 @@ export function choferDe(dia: DiaHoja, v: Pick<Viaje, "vehiculoId" | "choferId" 
   return v.choferId ?? choferDelCamion(dia, v.vehiculoId);
 }
 
-function durDe(dia: DiaHoja, v: Viaje, desdeKey: string): number {
+/** Cuánto dura un viaje: la cargada a mano, la de Google con la parada (tiempos.ts) o la típica. */
+function durDe(dia: DiaHoja, v: Viaje, desdeKey: string, haciaKey = ""): number {
   if (v.duracionMin) return v.duracionMin;
+  const real = durConTramo(dia.tiempos, v.tipo, !!v.hora, desdeKey, haciaKey);
+  if (real != null) return real;
   if (v.tipo === "lleva_material" && desdeKey && !esDep(dia, desdeKey)) return 30;
   return P(dia).duracionViaje[v.tipo] ?? 60;
 }
@@ -668,13 +672,14 @@ export function calcVeh(dia: DiaHoja, veh: string): ViajeCalc[] {
       const haciaEf = haciaDe(dia, v);
       const haciaKey = keyDe(dia, haciaEf);
       const desdeKey = v.desde ? keyDe(dia, v.desde) : loc;
-      const dur = durDe(dia, v, desdeKey);
-      const vu = v.vuelta ? P(dia).minutosVueltaDeposito : 0;
+      const dur = durDe(dia, v, desdeKey, haciaKey);
+      const vu = v.vuelta ? vueltaCon(dia.tiempos, haciaKey, k.depKey) ?? P(dia).minutosVueltaDeposito : 0;
       const fija = !!v.hora;
       let t = fija ? toMin(v.hora)! : Math.max(cur ?? h0, toMin(v.noAntesDe) ?? 0);
       if (!fija && td && cur == null) t = Math.max(t, toMin(v.noAntesDe) ?? 16 * 60);
       const prev = out[out.length - 1];
-      const conflicto = fija && cur != null && cur > t && v.estado === "planeado" ? { llega: cur, prevId: prev?.id ?? null } : null;
+      const llega = cur == null ? null : llegadaCon(dia.tiempos, v.tipo, fija, desdeKey, haciaKey, cur);
+      const conflicto = fija && llega != null && llega > t && v.estado === "planeado" ? { llega, prevId: prev?.id ?? null } : null;
       let fin: number;
       if (v.estado === "hecho") fin = (v.hechoMin ?? t + dur) + vu;
       else if (v.estado === "no_pudo") fin = (v.hechoMin ?? t) + 30;
@@ -870,7 +875,7 @@ export function camionesQueSirven(dia: DiaHoja, ped: Pick<Pedido, "hacia" | "nec
     else if (hoy && last) { libreDesde = Math.max(now, last.fin); loc = last.vuelta || last.estado === "no_pudo" || last.tipo === "compra" ? k.depKey : last.haciaKey; }
     else { libreDesde = now; loc = k.depKey; }
     let next = ts.find((v) => v.estado === "planeado" && v !== cur && v.t >= libreDesde - 1);
-    while (next && next.t - libreDesde < P(dia).minutosEntreViajes) {
+    while (next && next.t - libreDesde < huecoMinimo(dia.tiempos, loc, next.haciaKey, P(dia).minutosEntreViajes)) {
       libreDesde = next.fin;
       loc = next.vuelta || next.tipo === "compra" ? k.depKey : next.haciaKey;
       const nx = next;

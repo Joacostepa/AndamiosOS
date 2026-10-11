@@ -5,8 +5,8 @@
 import type { Boton } from "@/lib/hoja-dia/estado";
 import type { DiaHoja } from "@/lib/hoja-dia/tipos";
 
-/** Lo que se está arrastrando (una persona del panel o de una tarjeta). */
-export type Arrastre = { pid: string; from: number | null; esChofer: boolean };
+/** Lo que se está arrastrando (una persona del panel o de una tarjeta, o un contratista del panel). */
+export type Arrastre = { pid: string; from: number | null; esChofer: boolean; contratista?: boolean };
 
 export type Control = {
   dia: DiaHoja;
@@ -20,6 +20,15 @@ export type Control = {
   /** Soltar un chofer en una tarjeta (pasa a Lleva y trae si iba sin chofer). */
   soltarChofer: (c: number, ch: string) => void;
   abrirMenuPersona: (c: number, pid: string, el: HTMLElement) => void;
+  /** Sumar (o restar) gente de un contratista a una cuadrilla: arrastrar suma 1. */
+  sumarContratista: (c: number, contratistaId: string, n: number) => void;
+  /** El menú de un contratista: en una tarjeta (`c`) o en el panel Gente (`c` null: "Agregar a…"). */
+  abrirMenuContratista: (c: number | null, contratistaId: string, el: HTMLElement) => void;
+  /** Las hojas laterales de contratistas: administrar (alta, edición, Telegram) y el resumen del mes. */
+  abrirContratistas: (contratistaId?: string | null) => void;
+  abrirResumenContratistas: () => void;
+  /** Puede editar la Hoja del día (administrar contratistas). */
+  editor: boolean;
   abrirMenuTarjeta: (c: number, el: HTMLElement) => void;
   abrirObra: (otId: number, el: HTMLElement) => void;
   abrirInstrucciones: (c: number) => void;

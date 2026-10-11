@@ -490,7 +490,8 @@ export function FormularioCierre({
                   </div>
                   {desdeHoja?.manoObra && !parteId && (
                     <p className="text-xs text-muted-foreground">
-                      Sugerido según la Hoja del día (quiénes fueron y a qué hora estaban en la obra). Revisalo antes de cerrar: es lo que se factura.
+                      Sugerido según la Hoja del día (quiénes fueron y a qué hora estaban en la obra
+                      {precarga?.contratistas ? `; incluye ${precarga.contratistas}, que cuentan como la nuestra` : ""}). Revisalo antes de cerrar: es lo que se factura.
                     </p>
                   )}
 

@@ -1,7 +1,7 @@
 "use client";
 
-// El panel Gente (genteHTML): sin asignar, no disponibles, choferes, vehículos y los ya
-// asignados plegados. Se arrastra un nombre a una tarjeta (sobre un nombre, lo reemplaza;
+// El panel Gente (genteHTML): sin asignar, contratistas, no disponibles, choferes,
+// vehículos y los ya asignados plegados. Se arrastra un nombre a una tarjeta (sobre un nombre, lo reemplaza;
 // un chofer entra como chofer), o se elige y se aprieta 1–5. G enfoca el buscador.
 
 import { useState } from "react";
@@ -10,6 +10,7 @@ import { noDisponibles, numeroDe, textoChofer, textoVehiculo } from "@/lib/hoja-
 import { cn } from "@/lib/utils";
 import { diaCorto } from "@/components/hoja-dia/comunes/encabezado-hoja";
 import { TIPO_ARRASTRE, type Control } from "./control";
+import { GrupoContratistas } from "./contratistas";
 
 function Grupo({ titulo, n, children }: { titulo: string; n: number; children: React.ReactNode }) {
   return (
@@ -103,6 +104,7 @@ export function PanelGente({ ctl }: { ctl: Control }) {
             <Pista>Todos tienen cuadrilla.</Pista>
           )}
         </Grupo>
+        <GrupoContratistas ctl={ctl} filtro={(nombre) => !q || normalizar(nombre).includes(q)} />
         <Grupo titulo="No disponibles" n={nd.length}>
           {nd.length ? (
             nd.map((x) => (

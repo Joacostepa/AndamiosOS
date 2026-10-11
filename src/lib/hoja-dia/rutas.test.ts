@@ -13,7 +13,7 @@ import { OT, martesArmado } from "./escenario.test-fixture.ts";
 const sinDeposito = (d: DiaHoja): DiaHoja => ({ ...d, lugares: d.lugares.map((l) => (l.tipo === "deposito" ? { ...l, direccion: null, lat: null, lng: null } : l)) });
 const params = (url: string) => new URL(url).searchParams;
 
-test("paresDelDia: los tramos de los camiones y de las cuadrillas, sin repetir", () => {
+test("paresDelDia: los tramos de los camiones y el manejo entre obras, sin repetir", () => {
   const ps = paresDelDia(martesArmado());
   const ks = ps.map((p) => `${p.desde}>${p.hacia}`);
   assert.equal(new Set(ks).size, ks.length, "sin repetidos");
@@ -21,10 +21,11 @@ test("paresDelDia: los tramos de los camiones y de las cuadrillas, sin repetir",
   assert.ok(ks.includes(`l:dep>o:${OT.jur}`));
   assert.ok(ks.includes(`o:${OT.jur}>o:${OT.riv}`));
   assert.ok(ks.includes(`o:${OT.jur}>l:dep`), "vuelta al depósito");
-  // Cuadrillas: de una obra a la siguiente (la 2: Juramento → Cuba → Cabildo) y la última al depósito.
+  // Cuadrillas: de una obra a la siguiente (la 2: Juramento → Cuba → Cabildo). La última →
+  // depósito no la usa ninguna cuenta: no se paga.
   assert.ok(ks.includes(`o:${OT.jur}>o:${OT.cuba}`));
   assert.ok(ks.includes(`o:${OT.cuba}>o:${OT.cab}`));
-  assert.ok(ks.includes(`o:${OT.cab}>l:dep`));
+  assert.ok(!ks.includes(`o:${OT.cab}>l:dep`));
   // La VTV a las 14 es hora de llegada: el tránsito se mira media hora antes.
   assert.equal(ps.find((p) => p.desde === "l:dep" && p.hacia === "l:vtv")?.salida, 14 * 60 - 30);
   // Cada uno con sus coordenadas.
@@ -46,8 +47,22 @@ test("paresDelDia: lo hecho no se pide (salvo su vuelta)", () => {
   const d0 = martesArmado();
   const d: DiaHoja = { ...d0, viajes: d0.viajes.map((v) => (v.id === "c2-lleva" ? { ...v, estado: "hecho", hechoMin: 455 } : v)) };
   const ks = paresDelDia(d).map((p) => `${p.desde}>${p.hacia}`);
-  // El lleva de la 2 está hecho; el depósito → Juramento igual aparece por la cuadrilla (ir a la primera obra).
-  assert.equal(ks.filter((k) => k === `l:dep>o:${OT.jur}`).length, 1);
+  // El lleva de la 2 (depósito → Juramento) está hecho y nadie más hace ese tramo.
+  assert.equal(ks.filter((k) => k === `l:dep>o:${OT.jur}`).length, 0);
+});
+
+test("paresDelDia: la vuelta al depósito con la llegada cargada no se pide (salvo que haya quedado vieja)", () => {
+  const d0 = martesArmado();
+  const con = (llega: string) => ({ ...d0, viajes: d0.viajes.map((v) => (v.id === "c2-lleva" ? { ...v, vuelta: true, vueltaLlega: llega } : v)) });
+  // Kiska deja a la 2 en Juramento (llega 7:30, se va 7:45) y vuelve.
+  const ks = (d: DiaHoja) => paresDelDia(d).filter((p) => p.desde === `o:${OT.jur}` && p.hacia === "l:dep").length;
+  assert.equal(ks(con("8:30")), 1, "la del trae de Juramento (Gómez) sigue");
+  const sinTrae = (d: DiaHoja): DiaHoja => ({ ...d, viajes: d.viajes.filter((v) => v.id !== "v-jur") });
+  assert.equal(ks(sinTrae(con("8:30"))), 0, "llega 8:30 cargada: no hace falta el tramo");
+  assert.equal(ks(sinTrae(con("6:30"))), 1, "una llegada vieja (antes de la parada) no vale: va la estimada");
+  // Y la llegada vieja no deja al camión libre antes de terminar: la parada más la vuelta.
+  const ll = calcVeh(sinTrae(con("6:30")), "af669").find((v) => v.id === "c2-lleva")!;
+  assert.equal(ll.fin, ll.finParada + d0.parametros.minutosVueltaDeposito);
 });
 
 test("puntoMaps / urlComoLlegar: coordenadas si hay, si no la dirección con Buenos Aires", () => {

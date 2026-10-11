@@ -735,12 +735,18 @@ export function calcVeh(dia: DiaHoja, veh: string): ViajeCalc[] {
 /**
  * Cuándo queda libre el camión después de la parada: si vuelve al depósito, a la hora de
  * llegada cargada ("vuelve al depósito ~8:45") o con la vuelta estimada `vu` (el manejo de
- * Google si lo hay, si no la típica); si no, al terminar.
+ * Google si lo hay, si no la típica); si no, al terminar. Una llegada cargada que quedó
+ * antes de terminar la parada (vieja: el lleva se corrió después) no vale: va la estimada.
  */
 function conVuelta(v: Viaje, finParada: number, vu: number): number {
   if (!v.vuelta) return finParada;
+  const llega = llegadaCargada(v, finParada);
+  return llega ?? finParada + vu;
+}
+/** La llegada al depósito cargada a mano, si todavía tiene sentido (no antes del fin de la parada). */
+export function llegadaCargada(v: Pick<Viaje, "vueltaLlega">, finParada: number): number | null {
   const llega = toMin(v.vueltaLlega);
-  return llega != null ? Math.max(finParada, llega) : finParada + vu;
+  return llega != null && llega >= finParada ? llega : null;
 }
 
 /** Los vehículos que tienen fila en Camiones: los que salen a la calle, o los que tienen viajes. */

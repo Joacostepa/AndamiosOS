@@ -13,7 +13,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
-import { encTxt, hojaDeCuadrilla, obrasCon, vehiculosDe, filaQueLleva, choferesElegibles, nombreDe, patente } from "@/lib/hoja-dia/estado";
+import { encTxt, hojaDeCuadrilla, obrasCon, vehiculosDe, filaQueLleva, choferesElegibles, choferSugerido, nombreDe, normHora, patente, toMin } from "@/lib/hoja-dia/estado";
 import { horasDeFila, horasLlevaTrae, opcionesChofer, opcionesVehiculo } from "@/lib/hoja-dia/vista-cuadrillas";
 import { quienBusca } from "@/lib/hoja-dia/vehiculos";
 import { esTemporal } from "@/lib/hoja-dia/optimista";
@@ -234,6 +234,12 @@ function EditorBusca({ ctl, c }: { ctl: Control; c: number }) {
   };
   const etiqueta = (f: VehiculoHoja) => `${nombreDe(dia, f.choferId) || "sin chofer"}${f.vehiculoId ? ` · ${patente(dia, f.vehiculoId)}` : ""}`;
   const veh = q.k === "otro" ? q.v.vehiculoId : null;
+  // Otro camión: lo hace el chofer de ese tramo de su fila. Se resuelve acá y se manda, así el
+  // servidor escribe el mismo chofer que se ve al instante.
+  const conCamion = (v: string | null) => {
+    const t = toMin(normHora(q.k !== "solos" ? q.v.hora : null) ?? dia.parametros.finJornada);
+    hoja.mutate({ accion: "busca_con", fecha, cuadrilla: c, vehiculoId: v, choferId: v ? choferSugerido(dia, v, t) : null });
+  };
   return (
     <section aria-label="El busca" className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1.5 border-t border-foreground/10 pt-1.5">
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
@@ -252,7 +258,7 @@ function EditorBusca({ ctl, c }: { ctl: Control; c: number }) {
       </div>
       {(q.k === "otro" || eligiendoOtro) && (
         <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
-          <select aria-label="Camión que los busca" className={SELECT} value={veh ?? ""} onChange={(e) => { setEligiendoOtro(false); hoja.mutate({ accion: "busca_con", fecha, cuadrilla: c, vehiculoId: e.target.value || null }); }}>
+          <select aria-label="Camión que los busca" className={SELECT} value={veh ?? ""} onChange={(e) => { setEligiendoOtro(false); conCamion(e.target.value || null); }}>
             <option value="">Elegir camión…</option>
             {dia.vehiculos.map((v) => <option key={v.id} value={v.id}>{v.patente}</option>)}
           </select>

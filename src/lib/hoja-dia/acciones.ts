@@ -22,7 +22,7 @@ import {
   type PlanHoja, type ViajeNuevo, fechaPorDefecto, contratista, esContratista, aCargoDeContratista, vehiculosDe, filaQueLleva,
   choferParaOrden, choferDe, choferSugerido,
 } from "./estado";
-import { NoSePuede, planVacio, planVehiculos, resumenLegado, type CambioVehiculos, type PlanVehiculos } from "./vehiculos";
+import { correrLlegada, NoSePuede, planVacio, planVehiculos, resumenLegado, type CambioVehiculos, type PlanVehiculos } from "./vehiculos";
 import { TIPO_AUSENCIA_TXT, TIPOS_VIAJE } from "./tipos";
 import {
   anotar, columnasPunto, conGrabador, conHojaNueva, grabador, leerContexto, leerDia, mapAusencia as mapAusenciaFila, mapViaje, nombreUsuario,
@@ -292,7 +292,14 @@ async function escribirPlan(g: Grabador, db: DB, dia: DiaHoja, f: Fecha, p: Plan
     const k = await db.from("hd_hoja_contratistas").select("id").eq("hoja_id", existente.id);
     for (const x of k.data ?? []) await g.borrar("hd_hoja_contratistas", String(x.id));
     const vh = await db.from("hd_hoja_vehiculos").select("id").eq("hoja_id", existente.id);
-    for (const x of vh.data ?? []) await g.borrar("hd_hoja_vehiculos", String(x.id));
+    const filasViejas = (vh.data ?? []).map((x) => String(x.id));
+    // Lo hecho y lo anulado que nombra esos renglones queda como historia, sin renglón: se
+    // suelta acá (con historial), no por la FK (ON DELETE SET NULL) por detrás del grabador.
+    if (filasViejas.length) {
+      const hist = await db.from("hd_viajes").select("id").in("hoja_vehiculo_id", filasViejas).neq("estado", "planeado");
+      for (const v of hist.data ?? []) await g.actualizar("hd_viajes", String(v.id), { hoja_vehiculo_id: null });
+    }
+    for (const id of filasViejas) await g.borrar("hd_hoja_vehiculos", id);
   }
   for (const [i, x] of p.contratistas.entries()) {
     await g.insertar("hd_hoja_contratistas", { hoja_id: hoja.id, contratista_id: x.contratistaId, cantidad: x.cantidad, nota: x.nota, orden: i });
@@ -350,7 +357,9 @@ const PARTES: { [K in AccionHoja["accion"]]?: PartesContexto | "todo" } = {
   lleva: { viajes: true, flota: true },
   vuelta: { viajes: true, flota: true },
   busca: { viajes: true, flota: true },
-  busca_con: { viajes: true, flota: true },
+  // Otro camión sin chofer elegido: el del tramo (choferSugerido), que mira quién está
+  // "todo el día" con otra (las obras), como el navegador.
+  busca_con: { viajes: true, flota: true, obras: true },
   carga_lleva: { viajes: true, flota: true },
   mueve: "todo",
   copiar_como_hoy: "todo",
@@ -891,7 +900,7 @@ async function accionViajeCon(g: Grabador, db: DB, userId: string, a: AccionViaj
       if (antes !== a.vehiculoId && vv.hojaId) await viajeDeHojaA(g, db, dia, vv, a.vehiculoId, chB);
       else if (antes !== a.vehiculoId) await g.actualizar("hd_viajes", a.viajeId, { vehiculo_id: a.vehiculoId, chofer_id: chB });
       const valores: Fila = {};
-      if (a.hora !== undefined && a.hora && vv.hora) { valores.hora = a.hora; valores.orden = toMin(a.hora); }
+      if (a.hora !== undefined && a.hora && vv.hora) { valores.hora = a.hora; valores.orden = toMin(a.hora); Object.assign(valores, llegadaCorrida(vv, a.hora)); }
       else if (a.orden != null) valores.orden = a.orden;
       if (Object.keys(valores).length) await g.actualizar("hd_viajes", a.viajeId, valores);
       if (vv.hojaId && vv.tipo === "lleva" && a.hora) {
@@ -906,7 +915,7 @@ async function accionViajeCon(g: Grabador, db: DB, userId: string, a: AccionViaj
     }
     case "hora": {
       const valores: Fila = {};
-      if (a.hora) { valores.hora = a.hora; valores.orden = toMin(a.hora); }
+      if (a.hora) { valores.hora = a.hora; valores.orden = toMin(a.hora); Object.assign(valores, llegadaCorrida(vv, a.hora)); }
       else { valores.hora = null; if (a.noAntesDe !== undefined) valores.no_antes_de = a.noAntesDe; }
       if (a.hora === null && vv.hora && a.noAntesDe === undefined) valores.no_antes_de = null;
       await g.actualizar("hd_viajes", a.viajeId, valores);
@@ -965,6 +974,16 @@ async function accionViajeCon(g: Grabador, db: DB, userId: string, a: AccionViaj
       return listo(userId, `${corto}: se saca un rato al chofer de su cuadrilla`, g, base);
     }
   }
+}
+
+/**
+ * Correr la hora de un viaje que vuelve al depósito con la llegada cargada a mano corre
+ * también la llegada (como el lleva desde la tarjeta: correrLlegada de vehiculos.ts).
+ */
+function llegadaCorrida(vv: Viaje, hora: string): Fila {
+  if (!vv.vuelta || !vv.vueltaLlega || !vv.hora) return {};
+  const llega = correrLlegada(vv.vueltaLlega, vv.hora, hora);
+  return llega !== vv.vueltaLlega ? { vuelta_llega: llega } : {};
 }
 
 /** ¿Es el lleva del que los lleva (el que va con el encuentro en el depósito)? */

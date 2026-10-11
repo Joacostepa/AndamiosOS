@@ -5,15 +5,17 @@
 // `paresDelDia`), el celular (vista.ts) y la pantalla de Camiones.
 //
 // QUÉ TRAMOS. Los que entran en una cuenta y nada más (cada uno es un "elemento" que se
-// paga): las paradas seguidas de cada camión y su vuelta al depósito (calcVeh), y por cada
-// cuadrilla que trabaja, depósito → primera obra, una obra → la siguiente y la última →
-// depósito. Sin repetir, y sólo si los dos puntos tienen coordenadas.
+// paga): las paradas seguidas de cada camión (calcVeh) y su vuelta al depósito cuando se
+// estima (con la llegada cargada a mano no hace falta), y por cada cuadrilla que trabaja,
+// una obra → la siguiente (el manejo entre obras de la tarjeta). Ir del depósito a la
+// primera obra ya es la parada del "lleva" del camión; volver de la última no lo usa nadie.
+// Sin repetir, y sólo si los dos puntos tienen coordenadas.
 //
 // Imports relativos y con extensión: este archivo corre en `node --test` sin Next.
 
 import type { DiaHoja, Minutos, TiempoTramo } from "./tipos.ts";
 import {
-  calcVeh, cuadrillasActivas, filasCamiones, hojaDeCuadrilla, lugarDeKey, obrasCon, toMin, viajesChofer, type ViajeCalc,
+  calcVeh, cuadrillasActivas, filasCamiones, llegadaCargada, lugarDeKey, obrasCon, viajesChofer, type ViajeCalc,
 } from "./estado.ts";
 import { claveTramo, esHoraDeLlegada, tramoGoogle } from "./tiempos.ts";
 import { urlComoLlegar, urlRecorrido, type PuntoMaps } from "./maps.ts";
@@ -56,24 +58,21 @@ export function paresDelDia(dia: DiaHoja): ParTramo[] {
   };
   const dep = depKeyDe(dia);
 
-  // Los camiones: cada parada desde la anterior y la vuelta al depósito. Lo hecho ya no
-  // cambia ninguna hora (cuenta la hora de "Hecho"), salvo su vuelta.
+  // Los camiones: cada parada desde la anterior y la vuelta al depósito (si no tiene la
+  // llegada cargada: conVuelta no la usa). Lo hecho ya no cambia ninguna hora (cuenta la
+  // hora de "Hecho"), salvo su vuelta.
   for (const veh of filasCamiones(dia)) {
     for (const v of calcVeh(dia, veh)) {
       if (v.estado === "planeado") sumar(v.desdeKey, v.haciaKey, esHoraDeLlegada(v.tipo, !!v.hora) ? v.t - MANEJO_SUPUESTO : v.t);
-      if (v.vuelta && v.estado !== "no_pudo") sumar(v.haciaKey, dep, v.finParada);
+      if (v.vuelta && v.estado !== "no_pudo" && llegadaCargada(v, v.finParada) == null) sumar(v.haciaKey, dep, v.finParada);
     }
   }
 
-  // Las cuadrillas: ir, pasar de una obra a otra y volver.
+  // Las cuadrillas: pasar de una obra a otra (la tarjeta muestra ese manejo).
   for (const c of cuadrillasActivas(dia)) {
     const ob = obrasCon(dia, c);
-    if (!ob.length) continue;
-    const h = hojaDeCuadrilla(dia, c);
     const k = (otId: number) => `o:${otId}`;
-    sumar(dep, k(ob[0].o.otId), toMin(h?.encuentro.hora) ?? toMin(dia.parametros.encuentroDeposito) ?? 420);
     for (let i = 1; i < ob.length; i++) sumar(k(ob[i - 1].o.otId), k(ob[i].o.otId), ob[i - 1].fin);
-    sumar(k(ob[ob.length - 1].o.otId), dep, ob[ob.length - 1].fin);
   }
   return [...out.values()];
 }

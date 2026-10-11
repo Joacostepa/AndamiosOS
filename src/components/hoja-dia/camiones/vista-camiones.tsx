@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { useAhora, useAvisosHojaDia, useEnviar, useHojaDia } from "@/hooks/use-hoja-dia";
 import { camionesQueSirven, esHoy, esPasado, nombreDe, persona, recibeDe, todoVeh, type Boton } from "@/lib/hoja-dia/estado";
 import { horaSoltada, ordenEnFila } from "@/lib/hoja-dia/camiones";
+import { depositoSinUbicar } from "@/lib/hoja-dia/rutas";
 import type { DiaHoja, Fecha } from "@/lib/hoja-dia/tipos";
 import { AccionesHoja } from "@/components/hoja-dia/comunes/acciones-hoja";
 import { BotonCoral } from "@/components/hoja-dia/comunes/boton-coral";
@@ -313,6 +314,11 @@ export function Pantalla({ dia, fecha, ahora, irA, cargando }: { dia: DiaHoja; f
 
       <div ref={root} className={cn("grid min-w-0 gap-3.5 transition-opacity", cargando && "opacity-60")} aria-busy={cargando || undefined}>
         <LineaAhora />
+        {!pasado && depositoSinUbicar(dia) && (
+          <p className="-mt-2 px-1 text-xs text-muted-foreground" title="El Depósito no tiene dirección ni coordenadas en los lugares de la hoja: los tramos que salen o vuelven ahí van con la duración típica, y «Cerca» no mide desde el depósito.">
+            Cargá la dirección del depósito para calcular tiempos reales.
+          </p>
+        )}
         <div className={cn("grid items-start gap-3.5", dosCol ? "grid-cols-[300px_minmax(0,1fr)]" : "grid-cols-1")}>
           <ColaPedidos />
           <FilasCamiones />

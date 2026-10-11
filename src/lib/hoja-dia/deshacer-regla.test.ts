@@ -1,5 +1,5 @@
-// B2: el Deshacer sólo escribe tablas del módulo (y de Legajos, sólo el celular y "puede
-// estar a cargo"); I4: deshacer un gesto a medias vuelve cada fila a como estaba.
+// B2: el Deshacer sólo escribe tablas del módulo (y de Legajos, sólo el celular, "puede
+// estar a cargo" y "puede manejar"); I4: deshacer un gesto a medias vuelve cada fila a como estaba.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -64,4 +64,13 @@ test("I4: una fila tocada dos veces por el mismo gesto vuelve en dos pasos encad
   ];
   const ops = planDeshacer(c, new Map([[`hd_hojas:${ID}`, { id: ID, modo: "todo_el_dia" }]]));
   assert.deepEqual(ops.map((o) => (o.op === "borrar" ? null : o.valores.modo)), ["lleva_trae", "sin"]);
+});
+
+test("11/10: 'Puede manejar' de Legajos y los vehículos de la hoja se deshacen; en externas no hay 'puede manejar'", () => {
+  const maneja = { entidad: "persona", cambios: [{ tabla: "personal", id: ID, antes: { id: ID, puede_manejar: false }, despues: { id: ID, puede_manejar: true } }] };
+  assert.equal(validarHistorial(maneja).length, 1);
+  const externa = { entidad: "persona", cambios: [{ tabla: "pan_personas_externas", id: ID, antes: { id: ID, puede_manejar: false }, despues: { id: ID, puede_manejar: true } }] };
+  assert.throws(() => validarHistorial(externa), /no se puede deshacer/);
+  const veh = { entidad: "hoja", cambios: [{ tabla: "hd_hoja_vehiculos", id: ID, antes: null, despues: { id: ID, modo: "lleva_trae" } }] };
+  assert.deepEqual(planDeshacer(validarHistorial(veh), new Map([[`hd_hoja_vehiculos:${ID}`, { id: ID, modo: "lleva_trae" }]])), [{ op: "borrar", tabla: "hd_hoja_vehiculos", id: ID, esperado: { id: ID, modo: "lleva_trae" } }]);
 });

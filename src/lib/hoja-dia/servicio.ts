@@ -34,9 +34,10 @@ import type {
 import { PARAMETROS_POR_DEFECTO } from "./tipos";
 import {
   addDia, ausenciasDeAsistencia, fletesDelDia, horariosCierre, minutosDesde, nombresCortos, normHora, obrasDe, aCargoDe, hojaDeCuadrilla,
-  ausenciaDe, deContratistas, persona, cantidadDe, contratistasDe, esPersonalDeObra, type FilaAsistencia,
+  ausenciaDe, deContratistas, persona, cantidadDe, contratistasDe, esPersonalDeObra, genteConChoferes, vehiculosDe, patente, type FilaAsistencia,
 } from "./estado";
 import { telegramConfigurado, usuarioDelBot } from "./telegram";
+import { tiemposDelDia } from "./rutas-servidor";
 import { diaAlertable } from "./dias";
 import { ahoraItems, bandeja } from "./estado";
 import { crearAlertas, type NuevaAlerta } from "@/lib/alertas/servicio";
@@ -63,15 +64,24 @@ export function columnasPunto(pre: "hacia" | "desde", p: Punto | null): Fila {
 
 // ─── Mapeos fila → tipo ─────────────────────────────────────────────────────
 
-export function mapHoja(f: Fila, integrantes: Fila[], fecha: Fecha, contratistas: Fila[] = []): Hoja {
+/** Un vehículo de una hoja (hd_hoja_vehiculos). */
+export function mapVehiculoHoja(v: Fila, fecha: Fecha): Hoja["vehiculos"][number] {
+  return {
+    id: String(v.id), vehiculoId: s(v.vehiculo_id), choferId: s(v.chofer_id), modo: (s(v.modo) ?? "lleva_trae") as Hoja["vehiculos"][number]["modo"],
+    orden: n(v.orden) ?? 0, tocadoMin: s(v.tocado_at) ? minutosDesde(fecha, String(v.tocado_at)) : null,
+  };
+}
+
+/**
+ * Una hoja con su gente, sus contratistas y sus vehículos. Las columnas viejas de hd_hojas
+ * (chofer_modo, chofer_id, vehiculo_id) son sólo un resumen del primer vehículo: no se leen.
+ */
+export function mapHoja(f: Fila, integrantes: Fila[], fecha: Fecha, contratistas: Fila[] = [], vehiculos: Fila[] = []): Hoja {
   return {
     id: String(f.id),
     fecha: String(f.fecha),
     cuadrillaOdooId: Number(f.cuadrilla_odoo_id),
-    modo: (s(f.chofer_modo) ?? "sin") as Hoja["modo"],
-    choferId: s(f.chofer_id),
-    vehiculoId: s(f.vehiculo_id),
-    choferTocadoMin: s(f.chofer_tocado_at) ? minutosDesde(fecha, String(f.chofer_tocado_at)) : null,
+    vehiculos: vehiculos.filter((v) => v.hoja_id === f.id).map((v) => mapVehiculoHoja(v, fecha)).sort((a, c) => a.orden - c.orden),
     encuentro: { lugar: (s(f.encuentro_lugar) ?? "obra") as Hoja["encuentro"]["lugar"], texto: s(f.encuentro_texto), hora: normHora(s(f.encuentro_hora)) ?? "8:00" },
     nota: s(f.nota),
     recibeId: s(f.recibe_id) ?? s(f.recibe_externa_id),
@@ -105,6 +115,7 @@ export function mapViaje(f: Fila, fecha: Fecha): Viaje {
     fleteExterno: s(f.flete_externo),
     tipo: String(f.tipo) as Viaje["tipo"],
     hojaId: s(f.hoja_id),
+    hojaVehiculoId: s(f.hoja_vehiculo_id),
     cuadrillaOdooId: n(f.cuadrilla_odoo_id),
     hacia: punto(f, "hacia") ?? PUNTO_VACIO,
     desde: punto(f, "desde"),
@@ -114,6 +125,7 @@ export function mapViaje(f: Fila, fecha: Fecha): Viaje {
     duracionMin: n(f.duracion_min),
     vuelta: b(f.vuelta),
     vueltaCarga: s(f.vuelta_carga),
+    vueltaLlega: normHora(s(f.vuelta_llega)),
     carga: s(f.carga),
     cargaDeposito: normHora(s(f.carga_deposito)),
     okTodoElDia: b(f.ok_todo_el_dia),
@@ -341,7 +353,7 @@ const numeroDe = (nombre: string) => {
   return m ? Number(m[1]) : null;
 };
 
-const COLUMNAS_PERSONAL = "id, nombre, apellido, puesto, telefono, activo, puede_estar_a_cargo, telegram_chat_id, odoo_employee_id, odoo_tarea";
+const COLUMNAS_PERSONAL = "id, nombre, apellido, puesto, telefono, activo, puede_estar_a_cargo, puede_manejar, telegram_chat_id, odoo_employee_id, odoo_tarea";
 const COLUMNAS_EXTERNAS = "id, nombre, apellido, empresa, telefono, activo, puede_estar_a_cargo, telegram_chat_id";
 const COLUMNAS_CONTRATISTAS = "id, nombre, referente, celular, telegram_chat_id, valor_jornada, nota, activo";
 
@@ -361,6 +373,8 @@ export function armarPersonas(personal: Fila[], externas: Fila[]): Persona[] {
       puedeEstarACargo: b(p.puede_estar_a_cargo),
       // Maneja quien Odoo dice que es chofer; sin vínculo con Odoo todavía, el puesto de Legajos.
       esChofer: s(p.odoo_tarea) ? p.odoo_tarea === "chofer" : p.puesto === "chofer",
+      // Y los armadores que además manejan ("Puede manejar" en Legajos: Conte, Ortega).
+      puedeManejar: b(p.puede_manejar),
       // Un técnico o un administrativo no se asigna a cuadrillas (Capurro, técnico de SyH).
       deObra: esPersonalDeObra(s(p.puesto), s(p.odoo_tarea)),
       telegram: p.telegram_chat_id != null, odooEmployeeId: n(p.odoo_employee_id), activo: p.activo !== false,
@@ -441,8 +455,11 @@ const sinRechazo = <T>(p: PromiseLike<T>): Promise<T> => {
  * Dos vueltas: en la primera sale TODO lo que no depende del día anterior (y las hojas
  * anteriores, que dicen cuál es); en la segunda, lo del día anterior y el tablero de Odoo
  * (que pide las dos fechas). Con el tablero en caché, son dos idas a Supabase.
+ *
+ * `tiempos: "google"` (sólo el GET de la pantalla) le pide a Google los tiempos de manejo
+ * que falten; por defecto, sólo los ya guardados (rutas-servidor.ts, `soloCache`).
  */
-export async function leerDia(fecha: Fecha, opts: { cacheOdoo?: boolean; fresco?: boolean } = {}): Promise<DiaHoja> {
+export async function leerDia(fecha: Fecha, opts: { cacheOdoo?: boolean; fresco?: boolean; tiempos?: "google" | "cache" } = {}): Promise<DiaHoja> {
   const db = createAdminClient();
   const desde30 = addDia(fecha, -30);
 
@@ -472,22 +489,24 @@ export async function leerDia(fecha: Fecha, opts: { cacheOdoo?: boolean; fresco?
     db.from("hd_historial").select("entidad_id, accion, at").eq("fecha", fecha).in("accion", ["avisar_operario", "no_avisar_operario"]),
     db.from("hd_contratistas").select(COLUMNAS_CONTRATISTAS).order("nombre"),
     db.from("hd_hoja_contratistas").select("*").eq("fecha", fecha),
+    db.from("hd_hoja_vehiculos").select("*").eq("fecha", fecha),
   ]));
 
   // Vuelta 2: el día anterior con hojas (Odoo necesita la fecha) y lo suyo.
   const filasPrevias = ok<Fila[]>(await previasP, "las hojas anteriores");
   const anteriorFecha = filasPrevias[0] ? String(filasPrevias[0].fecha) : null;
   const idsPrevias = filasPrevias.map((f) => f.id as string);
-  const [tab, intPrevR, viajesAntR, camionesAntR, hojaContrPrevR] = await Promise.all([
+  const [tab, intPrevR, viajesAntR, camionesAntR, hojaContrPrevR, hojaVehPrevR] = await Promise.all([
     tablero(anteriorFecha ? [anteriorFecha, fecha] : [fecha], opts.cacheOdoo ? 45_000 : opts.fresco ? 0 : 30_000),
     idsPrevias.length ? db.from("hd_integrantes").select("*").in("hoja_id", idsPrevias) : VACIO,
     anteriorFecha ? db.from("hd_viajes").select("*").eq("fecha", anteriorFecha) : VACIO,
     anteriorFecha ? db.from("hd_camiones_dia").select("*").eq("fecha", anteriorFecha) : VACIO,
     idsPrevias.length ? db.from("hd_hoja_contratistas").select("*").in("hoja_id", idsPrevias) : VACIO,
+    idsPrevias.length ? db.from("hd_hoja_vehiculos").select("*").in("hoja_id", idsPrevias) : VACIO,
   ]);
   const [
     hojasR, integR, personalR, externasR, vehiculosR, documentosR, cuadrillasR, plantelR, camionesR, lugaresR, viajesR, pedidosR, instrR,
-    ausR, linksR, paramsR, suspR, cajonR, operariosR, contratistasR, hojaContrR,
+    ausR, linksR, paramsR, suspR, cajonR, operariosR, contratistasR, hojaContrR, hojaVehR,
   ] = await sueltas;
   const asis = await asisP;
 
@@ -498,10 +517,12 @@ export async function leerDia(fecha: Fecha, opts: { cacheOdoo?: boolean; fresco?
 
   const integ = ok<Fila[]>(integR, "quiénes van");
   const hojaContr = ok<Fila[]>(hojaContrR, "los contratistas de las hojas");
-  const hojas = ok<Fila[]>(hojasR, "las hojas").map((h) => mapHoja(h, integ, fecha, hojaContr));
+  const hojaVeh = ok<Fila[]>(hojaVehR, "los vehículos de las hojas");
+  const hojas = ok<Fila[]>(hojasR, "las hojas").map((h) => mapHoja(h, integ, fecha, hojaContr, hojaVeh));
   const intPrev = ok<Fila[]>(intPrevR, "las hojas anteriores");
   const hojaContrPrev = ok<Fila[]>(hojaContrPrevR, "los contratistas de las hojas anteriores");
-  const hojasPrevias = filasPrevias.map((h) => mapHoja(h, intPrev, String(h.fecha), hojaContrPrev));
+  const hojaVehPrev = ok<Fila[]>(hojaVehPrevR, "los vehículos de las hojas anteriores");
+  const hojasPrevias = filasPrevias.map((h) => mapHoja(h, intPrev, String(h.fecha), hojaContrPrev, hojaVehPrev));
 
   let anterior: DiaAnterior | null = null;
   if (anteriorFecha) {
@@ -524,8 +545,8 @@ export async function leerDia(fecha: Fecha, opts: { cacheOdoo?: boolean; fresco?
   const operarios = new Map<string, string>();
   for (const f of ok<Fila[]>(operariosR, "el historial").sort((a, c) => String(a.at).localeCompare(String(c.at)))) operarios.set(String(f.entidad_id), String(f.accion));
 
-  const bot = telegramConfigurado() ? await usuarioDelBot().catch(() => null) : null;
-  return {
+  const botP = telegramConfigurado() ? usuarioDelBot().catch(() => null) : Promise.resolve(null);
+  const dia: DiaHoja = {
     fecha,
     generadoAt: new Date().toISOString(),
     cuadrillas,
@@ -547,8 +568,16 @@ export async function leerDia(fecha: Fecha, opts: { cacheOdoo?: boolean; fresco?
     anterior,
     ultimasHojas,
     cajon: ok<Fila[]>(cajonR, "el cajón").map((c) => ({ id: String(c.id), texto: String(c.texto) })),
-    telegram: { configurado: telegramConfigurado(), bot },
+    telegram: { configurado: telegramConfigurado(), bot: null },
   };
+  // Los tiempos de manejo de Google (rutas-servidor.ts), junto con el bot: lo guardado
+  // (memoria y hd_tiempos) sale al instante. Sólo con `tiempos: "google"` (el GET de la
+  // pantalla) se le pide a Google lo que falta y se espera como mucho 2,5 s; los gestos, los
+  // envíos y el celular no esperan a nadie. Sin ellos, las típicas.
+  const [bot, tiempos] = await Promise.all([botP, tiemposDelDia(dia, { soloCache: opts.tiempos !== "google" })]);
+  dia.telegram.bot = bot;
+  if (Object.keys(tiempos).length) dia.tiempos = tiempos;
+  return dia;
 }
 
 // ─── El contexto de un gesto (sin el día entero) ────────────────────────────
@@ -568,7 +597,7 @@ export type PartesContexto = {
 };
 
 /** Un `DiaHoja` parcial (lo que el gesto pidió; el resto vacío) y las filas crudas de las hojas. */
-export type ContextoGesto = { dia: DiaHoja; filas: { hojas: Fila[]; integrantes: Fila[]; hojaContr: Fila[] } };
+export type ContextoGesto = { dia: DiaHoja; filas: { hojas: Fila[]; integrantes: Fila[]; hojaContr: Fila[]; hojaVeh: Fila[] } };
 
 /**
  * Lo que un gesto de la hoja necesita para validar y escribir, en UNA vuelta a Supabase y
@@ -580,12 +609,13 @@ export type ContextoGesto = { dia: DiaHoja; filas: { hojas: Fila[]; integrantes:
 export async function leerContexto(fecha: Fecha, p: PartesContexto = {}): Promise<ContextoGesto> {
   const db = createAdminClient();
   const [
-    hojasR, integR, hojaContrR, personalR, externasR, contratistasR, paramsR, cuadSbR, plantelR,
-    vehR, docsR, camR, linksR, viajesR, suspR, previasR,
+    hojasR, integR, hojaContrR, hojaVehR, personalR, externasR, contratistasR, paramsR, cuadSbR, plantelR,
+    vehR, docsR, camR, linksR, viajesR, suspR, previasR, vehPreviasR,
   ] = await Promise.all([
     db.from("hd_hojas").select("*").eq("fecha", fecha),
     db.from("hd_integrantes").select("*").eq("fecha", fecha),
     db.from("hd_hoja_contratistas").select("*").eq("fecha", fecha),
+    db.from("hd_hoja_vehiculos").select("*").eq("fecha", fecha),
     db.from("personal").select(COLUMNAS_PERSONAL),
     db.from("pan_personas_externas").select(COLUMNAS_EXTERNAS),
     db.from("hd_contratistas").select(COLUMNAS_CONTRATISTAS).order("nombre"),
@@ -599,6 +629,8 @@ export async function leerContexto(fecha: Fecha, p: PartesContexto = {}): Promis
     p.viajes ? db.from("hd_viajes").select("*").eq("fecha", fecha) : VACIO,
     p.obras ? db.from("plan_suspensiones").select("cuadrilla_odoo_id, motivo").eq("fecha", fecha) : VACIO,
     p.anterior ? db.from("hd_hojas").select("*").gte("fecha", addDia(fecha, -30)).lt("fecha", fecha).order("fecha", { ascending: false }).limit(40) : VACIO,
+    // Los vehículos de esas hojas (el chofer y el camión de ayer que se proponen), en la misma vuelta.
+    p.anterior ? db.from("hd_hoja_vehiculos").select("*").gte("fecha", addDia(fecha, -30)).lt("fecha", fecha) : VACIO,
   ]);
   // El tablero: si el gesto lo necesita, con caché (casi siempre lo dejó el GET del día); si
   // no, sólo si ya está leído (para los nombres de las cuadrillas).
@@ -611,7 +643,10 @@ export async function leerContexto(fecha: Fecha, p: PartesContexto = {}): Promis
     })
     : await (tableroGuardado(fecha, VIDA_MAX) ?? Promise.resolve(null));
 
-  const filas = { hojas: ok<Fila[]>(hojasR, "las hojas"), integrantes: ok<Fila[]>(integR, "quiénes van"), hojaContr: ok<Fila[]>(hojaContrR, "los contratistas de las hojas") };
+  const filas = {
+    hojas: ok<Fila[]>(hojasR, "las hojas"), integrantes: ok<Fila[]>(integR, "quiénes van"), hojaContr: ok<Fila[]>(hojaContrR, "los contratistas de las hojas"),
+    hojaVeh: ok<Fila[]>(hojaVehR, "los vehículos de las hojas"),
+  };
   const vehiculos = armarVehiculos(ok<Fila[]>(vehR, "los vehículos"), ok<Fila[]>(docsR, "los documentos de la flota"));
   const previas = ok<Fila[]>(previasR, "las hojas anteriores");
   const anteriorFecha = previas[0] ? String(previas[0].fecha) : null;
@@ -621,7 +656,7 @@ export async function leerContexto(fecha: Fecha, p: PartesContexto = {}): Promis
     cuadrillas: armarCuadrillas(tab, ok<Fila[]>(cuadSbR, "las cuadrillas"), ok<Fila[]>(plantelR, "el plantel")),
     obras: tab ? obrasDeFecha(tab, fecha) : [],
     suspendidas: Object.fromEntries(ok<Fila[]>(suspR, "las suspensiones").map((x) => [Number(x.cuadrilla_odoo_id), String(x.motivo)])),
-    hojas: filas.hojas.map((h) => mapHoja(h, filas.integrantes, fecha, filas.hojaContr)),
+    hojas: filas.hojas.map((h) => mapHoja(h, filas.integrantes, fecha, filas.hojaContr, filas.hojaVeh)),
     personas: armarPersonas(ok<Fila[]>(personalR, "Legajos"), ok<Fila[]>(externasR, "las personas externas")),
     contratistas: ok<Fila[]>(contratistasR, "los contratistas").map(mapContratista),
     vehiculos,
@@ -635,7 +670,7 @@ export async function leerContexto(fecha: Fecha, p: PartesContexto = {}): Promis
     operariosAvisados: [],
     parametros: mapParametros(ok<Fila[]>(paramsR, "los parámetros")),
     anterior: anteriorFecha
-      ? { fecha: anteriorFecha, obras: [], hojas: previas.filter((h) => String(h.fecha) === anteriorFecha).map((h) => mapHoja(h, [], anteriorFecha)), viajes: [], camiones: [] }
+      ? { fecha: anteriorFecha, obras: [], hojas: previas.filter((h) => String(h.fecha) === anteriorFecha).map((h) => mapHoja(h, [], anteriorFecha, [], ok<Fila[]>(vehPreviasR, "los vehículos de las hojas anteriores"))), viajes: [], camiones: [] }
       : null,
     ultimasHojas: [],
     cajon: [],
@@ -736,6 +771,7 @@ export function traducirErrorDb(m: string): string {
   if (/idx_hd_links_contratista/.test(m)) return "Otra persona creó ese link recién. Probá de nuevo.";
   if (/hd_hoja_contratistas_contratista_id_fkey|violates foreign key constraint.*hd_hoja_contratistas/.test(m)) return "Ese contratista ya tiene jornadas cargadas: no se borra, se desactiva.";
   if (/hd_hoja_contratistas_cantidad_check/.test(m)) return "La cantidad va de 0 a 60.";
+  if (/idx_hd_hoja_vehiculos_vehiculo/.test(m)) return "Ese vehículo ya va en esa cuadrilla: elegí otro o cambiá el que está.";
   if (/HD_CAMBIO/.test(m)) return "No se puede deshacer: eso cambió después. Hacelo a mano.";
   if (/row-level security/i.test(m)) return "No tenés permiso para hacer este cambio.";
   if (/invalid input syntax for type time|date\/time field value out of range/i.test(m)) return "Hora inválida.";
@@ -899,9 +935,10 @@ export type PrecargaCierre = {
   /**
    * Los viajes del día a esta obra según la hoja. `cantidad: 0` quiere decir que la hoja NO
    * registró viajes (cuadrilla sin chofer, camión fuera de la hoja): el formulario se queda
-   * con su regla de siempre y no pone 0.
+   * con su regla de siempre y no pone 0. `porVehiculo`: cuántos hizo cada vehículo (una
+   * cuadrilla puede llevar varios: la hidrogrúa y el camión que los lleva y se va).
    */
-  fletes: { cantidad: number; tercerizado: boolean; detalle: string[] };
+  fletes: { cantidad: number; tercerizado: boolean; detalle: string[]; porVehiculo?: { patente: string; cantidad: number }[] };
   /** La mano de obra sugerida, por horario (horariosCierre): salen de las obras, el encuentro y el busca. */
   manoObra: { personas: number; desde: string; hasta: string }[];
 };
@@ -924,18 +961,21 @@ export async function precargaCierre(cuadrillaOdooId: number, fecha: Fecha, otId
   // hay puntero que precargar (decisión 5: el parte no cambia).
   const p = persona(dia, aCargo);
   // Decisión 5 del 10/10: la gente del contratista cuenta en la cantidad como la nuestra.
-  const personas = h.integrantes.filter((i) => !ausenciaDe(dia, i.personaId)).length + deContratistas(h) + (h.modo === "todo_el_dia" && h.choferId ? 1 : 0);
+  // Los choferes de todo el día suman; una persona a cargo y chofer (Conte) cuenta una vez.
+  const personas = genteConChoferes(h).filter((p) => !ausenciaDe(dia, p)).length + deContratistas(h);
   const ks = contratistasDe(h).filter((x) => x.cantidad > 0);
   const ot = otId ?? obrasDe(dia, cuadrillaOdooId)[0]?.otId ?? null;
   const fl = ot != null ? fletesDelDia(dia, ot) : [];
+  const porVehiculo = new Map<string, number>();
+  for (const x of fl) { const k = x.v.fleteExterno ?? patente(dia, x.v.vehiculoId); porVehiculo.set(k, (porVehiculo.get(k) ?? 0) + 1); }
   return {
     hayHoja: true,
     punteroEmployeeId: p?.odooEmployeeId ?? null,
     punteroNombre: p && !p.contratista ? p.nombreCompleto : null,
     personas,
     contratistas: ks.length ? ks.map((x) => cantidadDe(dia, x)).join(" y ") : null,
-    camionEnObra: h.modo === "todo_el_dia",
-    fletes: { cantidad: fl.length, tercerizado: fl.some((x) => x.tercerizado), detalle: fl.map((x) => x.txt) },
+    camionEnObra: vehiculosDe(h).some((f) => f.modo === "todo_el_dia"),
+    fletes: { cantidad: fl.length, tercerizado: fl.some((x) => x.tercerizado), detalle: fl.map((x) => x.txt), porVehiculo: [...porVehiculo].map(([p, cantidad]) => ({ patente: p, cantidad })) },
     manoObra: ot != null ? horariosCierre(dia, cuadrillaOdooId, ot) : [],
   };
 }

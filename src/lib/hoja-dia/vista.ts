@@ -18,9 +18,12 @@ import {
   aCargoDe, cNombre, cap, choferDe, cuadrillaDeViaje, diaSemana, encTxt, envioDe, estadoPedido, fechaMensaje, fmtFrases,
   frLargo, genteDe, hCorta, hm, hm5, hojaDeCuadrilla, horaTxt, lowFirst, lugar, lugarDeKey, nombreDe, normHora, obrasCon,
   pedidosDeViaje, recibeDe, suspendida, textoViaje, todoDe, vehiculo, vehiculoNombre, viajesCalc, viajesChofer,
-  persona, contratistasDe, aCargoContratista, vanDe, type ViajeCalc,
+  persona, contratistasDe, aCargoContratista, vanDe, vehiculosDe, genteConChoferes, conLlevaTrae, choferesTodoDe, type ViajeCalc,
 } from "./estado.ts";
 import { vanEnPalabras } from "./contratistas.ts";
+import { urlComoLlegar } from "./maps.ts";
+import { recorridoChofer } from "./rutas.ts";
+import { llevaDeFila, quienBusca } from "./vehiculos.ts";
 
 // ═══════════════════════════ Tipos (los usa la pantalla) ══════════════════════
 
@@ -145,6 +148,11 @@ export type ChoferDeHoja = {
   telefono: string | null;
   /** Para "Quiénes van": "los lleva y los busca", "los lleva", "todo el día". */
   rol: string;
+  /**
+   * Los otros choferes de la hoja (otro vehículo, o el que los busca si es otro), para
+   * "Quiénes van" con su "Llamar". Opcional: las vistas guardadas de antes no lo tienen.
+   */
+  otros?: { nombre: string; telefono: string | null; rol: string }[];
 };
 
 /** "Tu pedido de las 10:21 · 6 tablones y 2 bases para Cabildo: entregado 10:52" (el resumen de arriba). */
@@ -166,6 +174,8 @@ export type VistaChofer = Comun & {
     obras: ObraPublica[]; gente: { nombre: string; aCargo: boolean; pila?: string | null }[]; van: number;
   } | null;
   viajes: ViajePublico[]; ahoraId: string | null; motivosNoPude: string[];
+  /** "Ver el recorrido en Maps": todas sus paradas que faltan, en orden. Opcional (vistas viejas guardadas). */
+  recorridoUrl?: string | null;
 };
 export type VistaPublica =
   | { situacion: "invalido" }
@@ -196,6 +206,8 @@ export type OpcionesVista = {
 };
 
 export const mapsUrl = (dir: string | null) => (dir ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${dir}, Buenos Aires`)}` : null);
+/** "Cómo llegar" a una obra: al pin si tiene coordenadas, si no a la dirección. */
+const comoLlegarObra = (o: ObraDia) => urlComoLlegar({ lat: o.lat, lng: o.lng, dir: o.direccion }) ?? mapsUrl(o.direccion) ?? "";
 const telDe = (dia: DiaHoja, pid: string | null | undefined) => persona(dia, pid)?.celular ?? null;
 
 const TIPOS_REMITO: TipoViaje[] = ["compra", "lleva_material", "trae_material", "entre_depositos"];
@@ -282,7 +294,7 @@ function obrasPublicas(dia: DiaHoja, c: number, pid: string, ahora: number, op: 
     const ins = dia.instrucciones.find((y) => y.otId === o.otId);
     const diaTxt = o.dia && o.totalDias && o.totalDias > 1 ? ` · día ${o.dia} de ${o.totalDias}` : "";
     return {
-      otId: o.otId, n: i + 1, hora: `${x.est ? "~" : ""}${x.est ? hm5(x.t) : x.hora}`, est: x.est, direccion: o.direccion, mapsUrl: mapsUrl(o.direccion)!,
+      otId: o.otId, n: i + 1, hora: `${x.est ? "~" : ""}${x.est ? hm5(x.t) : x.hora}`, est: x.est, direccion: o.direccion, mapsUrl: comoLlegarObra(o),
       tipo: o.tipo, tipoTxt: op.tipoTxt ? op.tipoTxt(o.tipo) : cap(o.tipo), detalle: `${frLargo(o.fraccion)}${diaTxt}`,
       hoy: ins?.hoy ? ins.hoy.replace(/^Hoy:\s*/i, "") : null, chips: ins?.chips ?? [],
       queHacer: o.detalleTecnico, observaciones: o.observaciones, contacto: o.contactoObra, telefono: o.telObra,
@@ -297,38 +309,62 @@ export function otsConArchivos(dia: DiaHoja, link: LinkVista): number[] {
   return c == null ? [] : obrasCon(dia, c).filter((x) => x.o.cantArchivos > 0).map((x) => x.o.otId);
 }
 
-/** El chofer de la hoja del capataz, en palabras (maqueta capatazHTML: "Te lleva **Kiska** · Iveco AF 669 ZL"). */
-function choferDeHoja(dia: DiaHoja, c: number): ChoferDeHoja {
+/**
+ * Los choferes de la hoja del capataz, en palabras (maqueta capatazHTML: "Te lleva **Kiska** ·
+ * Iveco AF 669 ZL"). Una línea por vehículo ("Borda queda todo el día con la hidrogrúa (AB
+ * 831 LC)", "Te lleva Nuñez · Iveco AB 799 CA") y la del busca ("Los busca Gómez a las 17:00
+ * en …", "Todavía no hay quién los busque", "Vuelven por su cuenta").
+ */
+function choferDeHoja(dia: DiaHoja, c: number, pid: string): ChoferDeHoja {
   const h = hojaDeCuadrilla(dia, c)!;
   const coord = dia.parametros.coordinador.nombre;
-  if (h.modo === "sin") return { modo: "sin", texto: "Van por su cuenta", lineas: [[{ t: "Van por su cuenta" }]], nombre: null, telefono: null, rol: "" };
-  if (h.modo === "todo_el_dia") {
-    const n = nombreDe(dia, h.choferId) || "El chofer";
-    const V = vehiculo(dia, h.vehiculoId);
-    const resto = ` queda todo el día${V?.tipo === "hidrogrua" ? " con la hidrogrúa" : ""}${V ? ` (${V.patente})` : ""}`;
-    return { modo: "todo_el_dia", texto: `${n}${resto}`, lineas: [[{ t: n, b: true }, { t: resto }]], nombre: n, telefono: telDe(dia, h.choferId), rol: "todo el día" };
+  const fs = vehiculosDe(h);
+  if (!fs.length) return { modo: "sin", texto: "Van por su cuenta", lineas: [[{ t: "Van por su cuenta" }]], nombre: null, telefono: null, rol: "" };
+  const lineas: Trozo[][] = [];
+  const quienes: { ch: string | null; rol: string }[] = [];
+  for (const f of fs) {
+    if (f.modo === "todo_el_dia") {
+      const n = f.choferId === pid ? "Vos" : nombreDe(dia, f.choferId) || "El chofer";
+      const V = vehiculo(dia, f.vehiculoId);
+      const resto = ` ${f.choferId === pid ? "manejás" : "queda"} todo el día${V?.tipo === "hidrogrua" ? " con la hidrogrúa" : ""}${V ? ` (${V.patente})` : ""}`;
+      lineas.push([{ t: n, b: true }, { t: resto }]);
+      quienes.push({ ch: f.choferId, rol: "todo el día" });
+      continue;
+    }
+    const ll = llevaDeFila(dia, h, f);
+    const ch = (ll ? choferDe(dia, ll) : null) ?? f.choferId;
+    const veh = vehiculoNombre(dia, ll?.vehiculoId ?? f.vehiculoId);
+    const hora = fs.filter((x) => x.modo === "lleva_trae").length > 1 && ll ? normHora(ll.hora) : null;
+    lineas.push(ch === pid
+      ? [{ t: "Manejás vos" }, ...(veh ? [{ t: ` · ${veh}` }] : [])]
+      : [{ t: "Te lleva " }, { t: nombreDe(dia, ch) || "un chofer", b: true }, ...(veh ? [{ t: ` · ${veh}` }] : []), ...(hora ? [{ t: ` · ${hora}` }] : [])]);
+    quienes.push({ ch, rol: "los lleva" });
   }
-  const vs = dia.viajes.filter((v) => v.hojaId === h.id && v.estado !== "anulado");
-  const ll = vs.find((v) => v.tipo === "lleva");
-  const bu = vs.find((v) => v.tipo === "busca");
-  const chLleva = ll ? choferDe(dia, ll) : h.choferId;
-  const chBusca = bu ? choferDe(dia, bu) : null;
-  const n = nombreDe(dia, chLleva) || "un chofer";
-  const veh = vehiculoNombre(dia, ll?.vehiculoId ?? h.vehiculoId);
-  const ultima = obrasCon(dia, c).at(-1)?.o.corto ?? "la obra";
-  const l1: Trozo[] = [{ t: "Te lleva " }, { t: n, b: true }, ...(veh ? [{ t: ` · ${veh}` }] : [])];
-  let l2: Trozo[];
-  if (!bu) l2 = [{ t: "Vuelven por su cuenta" }];
-  else if (!bu.vehiculoId) l2 = [{ t: `Todavía no hay quién los busque: ${coord} te avisa` }];
-  else {
-    const otro = chBusca && chBusca !== chLleva ? [{ t: " " }, { t: nombreDe(dia, chBusca), b: true }] : [];
-    const hb = normHora(bu.hora);
-    l2 = [{ t: "Los busca" }, ...otro, ...(hb ? [{ t: " a las " }, { t: hb, b: true }] : []), { t: ` en ${ultima}` }];
+  if (conLlevaTrae(h)) {
+    const q = quienBusca(dia, h);
+    const ultima = obrasCon(dia, c).at(-1)?.o.corto ?? "la obra";
+    if (q.k === "solos") lineas.push([{ t: "Vuelven por su cuenta" }]);
+    else if (q.k === "definir") lineas.push([{ t: `Todavía no hay quién los busque: ${coord} te avisa` }]);
+    else {
+      const chB = choferDe(dia, q.v);
+      const yaLleva = quienes.find((x) => x.ch && x.ch === chB && x.rol === "los lleva");
+      const otro = chB && !yaLleva ? [{ t: " " }, { t: chB === pid ? "vos" : nombreDe(dia, chB), b: true }] : [];
+      const hb = normHora(q.v.hora);
+      lineas.push([{ t: "Los busca" }, ...otro, ...(hb ? [{ t: " a las " }, { t: hb, b: true }] : []), { t: ` en ${ultima}` }]);
+      if (yaLleva) yaLleva.rol = "los lleva y los busca";
+      else if (chB) quienes.push({ ch: chB, rol: "los busca" });
+    }
   }
   const plano = (l: Trozo[]) => l.map((x) => x.t).join("");
+  // El que se llama desde "Quiénes van": los de todo el día ya están en la gente (con "chofer").
+  const llaman = quienes.filter((x) => x.rol !== "todo el día" && x.ch && x.ch !== pid);
+  const pri = llaman[0] ?? null;
+  const fl = fs.find((f) => f.modo === "lleva_trae");
   return {
-    modo: "lleva_trae", texto: `${plano(l1)}\n${plano(l2)}`, lineas: [l1, l2], nombre: n, telefono: telDe(dia, chLleva),
-    rol: bu && chBusca === chLleva ? "los lleva y los busca" : "los lleva",
+    modo: fl ? "lleva_trae" : "todo_el_dia",
+    texto: lineas.map(plano).join("\n"), lineas,
+    nombre: pri?.ch ? nombreDe(dia, pri.ch) : null, telefono: telDe(dia, pri?.ch), rol: pri?.rol ?? "",
+    otros: llaman.slice(1).map((x) => ({ nombre: nombreDe(dia, x.ch), telefono: telDe(dia, x.ch), rol: x.rol })),
   };
 }
 
@@ -364,7 +400,7 @@ export function armarVista(dia: DiaHoja, link: LinkVista, ahora: number, op: Opc
     // "nuevo": los que no estaban en lo último que confirmó, mientras no toque "Entendido".
     const base = e?.snapRecibido?.tipo === "hoja" ? e.snapRecibido : e?.snapPrimero?.tipo === "hoja" ? e.snapPrimero : null;
     const gente: GentePublica[] = genteDe(h).map((p) => ({
-      nombre: nombreDe(dia, p), pila: persona(dia, p)?.pila ?? null, telefono: telDe(dia, p), aCargo: p === aCargo, chofer: false,
+      nombre: nombreDe(dia, p), pila: persona(dia, p)?.pila ?? null, telefono: telDe(dia, p), aCargo: p === aCargo, chofer: choferesTodoDe(h).includes(p),
       nota: h.integrantes.find((i) => i.personaId === p)?.nota ?? null, nuevo: !!base && !!comun.cambio && !base.gente.includes(p),
     }));
     // La gente de los contratistas: primero, como "3 de Quintana" (sin nombres), con el
@@ -375,12 +411,13 @@ export function armarVista(dia: DiaHoja, link: LinkVista, ahora: number, op: Opc
       nombre: nombreDe(dia, x.contratistaId), telefono: telDe(dia, x.contratistaId), aCargo: x.contratistaId === kCargo, chofer: false,
       nota: x.nota, nuevo: !!base && !!comun.cambio && !(x.contratistaId in kBase), cantidad: x.cantidad, contratista: true,
     })));
-    if (h.modo === "todo_el_dia" && h.choferId) gente.push({ nombre: nombreDe(dia, h.choferId), pila: persona(dia, h.choferId)?.pila ?? null, telefono: telDe(dia, h.choferId), aCargo: false, chofer: true, nota: null, nuevo: false });
-    const conChofer = [...genteDe(h), ...(h.modo === "todo_el_dia" && h.choferId ? [h.choferId] : [])];
+    // Los choferes de todo el día que no son de la gente (si lo son, ya están: cuentan una vez).
+    const conChofer = genteConChoferes(h);
+    for (const ch of conChofer.filter((x) => !genteDe(h).includes(x))) gente.push({ nombre: nombreDe(dia, ch), pila: persona(dia, ch)?.pila ?? null, telefono: telDe(dia, ch), aCargo: false, chofer: true, nota: null, nuevo: false });
     return {
       van: vanDe(dia, c), vanTxt: vanEnPalabras(dia, c, conChofer),
       ...comun, situacion: "ok", rol: "a_cargo", cuadrilla: cNombre(dia, c), aCargo: aCargo ? nombreDe(dia, aCargo) : null, vos: aCargo === pid,
-      nota: h.nota, encuentro: encTxt(dia, c), chofer: choferDeHoja(dia, c), obras: obrasPublicas(dia, c, pid, ahora, op), gente,
+      nota: h.nota, encuentro: encTxt(dia, c), chofer: choferDeHoja(dia, c, pid), obras: obrasPublicas(dia, c, pid, ahora, op), gente,
       tuPedido: tuPedido(dia, pid, ahora),
     };
   }
@@ -390,7 +427,8 @@ export function armarVista(dia: DiaHoja, link: LinkVista, ahora: number, op: Opc
   const vs = viajesChofer(dia, pid);
   const td = todoDe(dia, pid)[0] ?? null;
   const visto = e?.snapRecibido?.tipo === "chofer" ? e.snapRecibido : null;
-  const vehId = vs[0]?.vehiculoId ?? (td != null ? hojaDeCuadrilla(dia, td)?.vehiculoId : null) ?? null;
+  const vehTd = td != null ? vehiculosDe(hojaDeCuadrilla(dia, td)).find((f) => f.modo === "todo_el_dia" && f.choferId === pid)?.vehiculoId ?? null : null;
+  const vehId = vehTd ?? vs.find((v) => v.estado === "planeado")?.vehiculoId ?? vs[0]?.vehiculoId ?? null;
   const viajes: ViajePublico[] = vs.map((v: ViajeCalc) => {
     const p = pedidosDeViaje(dia, v.id)[0] ?? null;
     const destino = lugar(dia, v.haciaEf);
@@ -405,7 +443,7 @@ export function armarVista(dia: DiaHoja, link: LinkVista, ahora: number, op: Opc
     return {
       id: v.id, i: v.i, hora: horaTxt(v), horaFija: !!v.hora, tipo: v.tipo, texto: textoViaje(dia, v, true),
       desde: lugarDeKey(dia, v.desdeKey).n, hacia: destino.n, vuelta: v.vuelta, direccion: destino.dir,
-      mapsUrl: mapsUrl(destino.dir ?? (destino.obra ? destino.n : null)),
+      mapsUrl: urlComoLlegar({ lat: destino.lat, lng: destino.lng, dir: destino.dir ?? (destino.obra ? destino.n : null) }),
       carga: (v.tipo === "lleva" || v.tipo === "busca") && v.carga ? v.carga : null,
       pidio: p?.pidioId ? nombreDe(dia, p.pidioId) : null, antesDe: p?.horaLimite ? hCorta(normHora(p.horaLimite)) : null,
       llamar, estado: v.estado, hechoHora: v.hechoMin != null ? hm(v.hechoMin) : null, motivo: v.noPudoMotivo,
@@ -426,5 +464,6 @@ export function armarVista(dia: DiaHoja, link: LinkVista, ahora: number, op: Opc
       van: vanDe(dia, td),
     } : null,
     viajes, ahoraId: vs.find((v) => v.estado === "planeado")?.id ?? null, motivosNoPude: dia.parametros.motivosNoPude,
+    recorridoUrl: recorridoChofer(dia, pid),
   };
 }

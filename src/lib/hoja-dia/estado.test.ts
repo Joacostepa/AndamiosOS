@@ -9,12 +9,13 @@ import assert from "node:assert/strict";
 import {
   afectadosPorCambio, altaDeAusencia, ausenciasDeAsistencia, bandeja, calcVeh, camionesQueSirven, cola, dondeAnda,
   estadoHoja, fletesDelDia, fmtComa, fotoDe, hm, leerHora, minutosDesde, nombresCortos, ordenCola, planCopiarComoHoy,
-  planPonerPedido, planPrecarga, planSoltarChofer, problemas, sugerirACargo, sugeridosDe, textoViaje, viajesChofer,
+  planPonerPedido, planPrecarga, problemas, sugerirACargo, sugeridosDe, textoViaje, viajesChofer,
   avisosVeh, sinAsignar, estadoPedido, hoyManana, listaCarga, diferencias, ausenteEn, panelGente, tipoPorDestino,
   pidioPorDefecto,
 } from "./estado.ts";
 import type { DiaHoja, Viaje } from "./tipos.ts";
-import { OT, aplicarPlan, enviarATodos, martesArmado, martesPrecargado, martesVacio, pedido, viaje } from "./escenario.test-fixture.ts";
+import { OT, aplicarPlan, enviarATodos, fila, martesArmado, martesPrecargado, martesVacio, pedido, viaje } from "./escenario.test-fixture.ts";
+import { planVehiculos } from "./vehiculos.ts";
 
 const LUN_1730 = -390;
 const LUN_1830 = -330;
@@ -70,17 +71,18 @@ test("Empezar como hoy: copia el lunes, saca a los ausentes y lo dice", () => {
   const c5 = plan.hojas.find((h) => h.cuadrillaOdooId === 5)!;
   assert.deepEqual(c5.gente, ["mino", "valenzuela", "aguirre"]);
   assert.equal(c5.aCargoId, null);
-  assert.equal(c5.modo, "todo_el_dia");
+  assert.equal(c5.vehiculos[0].modo, "todo_el_dia");
   assert.ok(plan.avisos.some((a) => a.startsWith("La Cuadrilla 5 no trabajó el lunes")));
   // Nuñez va todo el día con la 5: a la 2 la lleva Kiska (y queda el choque de las 7:00).
   const c2 = plan.hojas.find((h) => h.cuadrillaOdooId === 2)!;
-  assert.equal(c2.choferId, "kiska");
-  assert.equal(c2.vehiculoId, "af669");
+  assert.equal(c2.vehiculos[0].choferId, "kiska");
+  assert.equal(c2.vehiculos[0].vehiculoId, "af669");
   assert.ok(plan.avisos.some((a) => a === "Nuñez va todo el día con la Cuadrilla 5: a la 2 la lleva Kiska."));
   // Copia las horas del lleva y el busca del lunes.
   const c3 = plan.hojas.find((h) => h.cuadrillaOdooId === 3)!;
-  assert.equal(c3.lleva, "7:00");
+  assert.equal(c3.vehiculos[0].lleva, "7:00");
   assert.equal(c3.busca, "16:30");
+  assert.deepEqual(c3.buscaCon, { fila: 0 });
 });
 
 test("Empezar como hoy: la gente sigue a la obra si cambió de cuadrilla", () => {
@@ -99,7 +101,7 @@ test("Empezar con el plantel base y vacío", () => {
   assert.equal(pl.hojas.find((h) => h.cuadrillaOdooId === 1)!.aCargoId, "sack");
   assert.ok(pl.avisos.some((a) => a.startsWith("La Cuadrilla 5 no está en Configuración")));
   const va = planPrecarga(d, "vacio");
-  assert.ok(va.hojas.every((h) => h.gente.length === 0 && h.modo === "sin"));
+  assert.ok(va.hojas.every((h) => h.gente.length === 0 && h.vehiculos.length === 0));
 });
 
 test("Copiar como hoy una sola tarjeta", () => {
@@ -169,21 +171,25 @@ test("sin asignar: primero los que pueden estar a cargo; los ausentes no", () =>
 
 test("chofer con 1–5: soltar un chofer en una cuadrilla sin chofer la pasa a lleva y trae", () => {
   const d = martesArmado();
-  const c = planSoltarChofer(d, 4, "kiska");
-  assert.equal(c.modo, "lleva_trae");
-  assert.equal(c.choferId, "kiska");
-  assert.equal(c.vehiculoId, "af669");
+  let n = 0;
+  const o = { nuevoId: (q: string) => `n-${q}-${++n}`, ahora: -300 };
+  const c = planVehiculos(d, 4, { k: "soltar", choferId: "kiska" }, o);
+  assert.equal(c.sumar.length, 1);
+  assert.equal(c.sumar[0].modo, "lleva_trae");
+  assert.equal(c.sumar[0].choferId, "kiska");
+  assert.equal(c.sumar[0].vehiculoId, "af669");
   assert.deepEqual(c.encuentro, { lugar: "deposito", texto: null, hora: "7:00" });
-  assert.equal(c.lleva, "7:00");
-  // En una que ya tiene modo, sólo cambia el chofer.
-  const c3 = planSoltarChofer(d, 3, "gomez");
-  assert.equal(c3.modo, "lleva_trae");
-  assert.equal(c3.vehiculoId, "ab497");
+  assert.deepEqual(c.viajes.crear.map((v) => [v.tipo, v.hora, v.hojaVehiculoId]), [["lleva", "7:00", c.sumar[0].id], ["busca", "17:00", c.sumar[0].id]]);
+  // En una que ya tiene vehículo, sólo cambia el chofer: el camión sigue siendo el mismo
+  // (chofer y vehículo son independientes).
+  const c3 = planVehiculos(d, 3, { k: "soltar", choferId: "gomez" }, o);
+  assert.deepEqual(c3.cambiar.map((x) => [x.valores.choferId, x.valores.vehiculoId]), [["gomez", undefined]]);
+  assert.equal(c3.filas[0].vehiculoId, "af669");
 });
 
 test("chofer todo el día en dos cuadrillas: el aviso fuerte va en la que se tocó último", () => {
   const d = martesArmado();
-  d.hojas = d.hojas.map((h) => (h.cuadrillaOdooId === 4 ? { ...h, modo: "todo_el_dia", choferId: "borda", vehiculoId: "ab831", choferTocadoMin: -300 } : h));
+  d.hojas = d.hojas.map((h) => (h.cuadrillaOdooId === 4 ? { ...h, vehiculos: [{ ...fila("f4", "todo_el_dia", "borda", "ab831"), tocadoMin: -300 }] } : h));
   const p4 = problemas(d, 4, LUN_1830).find((p) => p.k.startsWith("chdup"))!;
   assert.equal(p4.card, "Borda ya está todo el día con la 1");
   const p1 = problemas(d, 1, LUN_1830).find((p) => p.k.startsWith("chdup"))!;

@@ -21,11 +21,13 @@ export const TABLAS_HD = [
   "hd_hojas", "hd_integrantes", "hd_camiones_dia", "hd_viajes", "hd_pedidos", "hd_instrucciones", "hd_ausencias", "hd_links", "hd_lugares",
   // Contratistas (20261011000002): el alta y la edición, y cuántos van en cada hoja.
   "hd_contratistas", "hd_hoja_contratistas",
+  // Varios vehículos por hoja (20261012000001).
+  "hd_hoja_vehiculos",
 ] as const;
 
-/** Legajos: sólo estas columnas, sólo actualizar (lo escribe "Cargar celular" / "Puede estar a cargo"). */
+/** Legajos: sólo estas columnas, sólo actualizar (lo escribe "Cargar celular" / "Puede estar a cargo" / "Puede manejar"). */
 export const COLUMNAS_LEGAJO: Record<string, readonly string[]> = {
-  personal: ["telefono", "puede_estar_a_cargo"],
+  personal: ["telefono", "puede_estar_a_cargo", "puede_manejar"],
   pan_personas_externas: ["telefono", "puede_estar_a_cargo"],
 };
 

@@ -1,19 +1,25 @@
 "use client";
 
-// Los menús de Camiones: el de una ficha (Marcar hecho · Pasar a otro camión · Volver a la
-// cola · Cambiar hora · Fijar hora · Anular…), el de una fila (Avisar · Correr horas · VTV o
-// taller · Ver como · Llamar), el de un pedido (Poner en un camión · Esperar… · Pasar a
-// mañana · Ya no hace falta…) y el del cajón del tablero.
+// Los menús de Camiones: el de una ficha (Marcar hecho · Pasar a otro camión · Cambiar
+// chofer · Después vuelve al depósito · Volver a la cola · Cambiar hora · Fijar hora ·
+// Anular…), el de una fila (Avisar · Elegir otro chofer · Correr horas · VTV o taller · Ver
+// como · Llamar), el de un pedido (Poner en un camión · Esperar… · Pasar a mañana · Ya no
+// hace falta…) y el del cajón del tablero. Cada viaje tiene su chofer: un camión puede
+// cambiar de chofer en el día (decisión del dueño, 11/10).
 
 import { PRI } from "@/components/hoja-dia/comunes/boton-coral";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
-  calcVeh, choferDe, choferDelCamion, cortoV, dondeAnda, estadoEnvio, haciaDe, hCorta, hm, hm5, horaTxt, lowFirst, lugar,
-  nombreDe, normHora, patente, pedidosDeViaje, persona, textoViaje, toMin, vehiculoNombre, viajeCalc,
+  calcVeh, choferDe, choferesElegibles, choferesTxt, choferSugerido, cortoV, dondeAnda, estadoEnvio, filasCamiones, haciaDe, hCorta, hm, hm5,
+  horaTxt, lowFirst, lugar, nombreDe, normHora, patente, pedidosDeViaje, persona, textoViaje, toMin, vehiculo, vehiculoNombre, viajeCalc,
+  viajesChofer, cuadrillaDeViaje, ausenciaDe,
 } from "@/lib/hoja-dia/estado";
+import { useAccionHoja } from "@/hooks/use-hoja-dia";
 import { pedidoDesdeCajon, pidioTxt } from "@/lib/hoja-dia/camiones";
+import { comoLlegarViaje, recorridoCamion, tramoDe } from "@/lib/hoja-dia/rutas";
+import { TiempoTramo } from "@/components/hoja-dia/comunes/tiempo-tramo";
 import { TIPOS_VIAJE } from "@/lib/hoja-dia/tipos";
 import { Chips, ItemMenu, MenuCabeza, MenuFlotante, MenuSep, MenuTexto, noDevolverFoco } from "@/components/hoja-dia/comunes/menu-flotante";
 import { InputHora, horaDe } from "@/components/hoja-dia/comunes/campo-hora";
@@ -41,7 +47,8 @@ export function Menus({ m, cerrar, dialogo, verComo, llamar }: {
 
 function MenuViaje({ m, cerrar, dialogo, verComo }: { m: Extract<MenuAbierto, { t: "viaje" }>; cerrar: () => void; dialogo: (d: AbrirDialogo, volverA: HTMLElement) => void; verComo: (pid: string) => void }) {
   const { dia, ahora, pasado, viaje } = useCamiones();
-  const [paso, setPaso] = useState(m.paso);
+  const hoja = useAccionHoja(dia.fecha);
+  const [paso, setPaso] = useState<"pasar" | "chofer" | undefined>(m.paso);
   const v0 = dia.viajes.find((x) => x.id === m.id);
   if (!v0) return null;
   const vc = viajeCalc(dia, m.id);
@@ -55,20 +62,43 @@ function MenuViaje({ m, cerrar, dialogo, verComo }: { m: Extract<MenuAbierto, { 
   const planeado = v0.estado === "planeado";
   const hacer = (f: () => void) => () => { cerrar(); f(); };
   const hTxt = vc ? horaTxt(vc) : `${v0.hora ? "" : "~"}${hm5(t)}`;
+  const tramo = vc && planeado ? tramoDe(dia, vc) : null;
+  const maps = vc ? comoLlegarViaje(dia, vc) : null;
+  /** Los links a Maps se abren aparte (gratis, sin clave). */
+  const abrir = (url: string) => hacer(() => window.open(url, "_blank", "noopener,noreferrer"));
 
   if (paso === "pasar") {
-    const otros = dia.camiones.filter((c) => c.choferId && c.vehiculoId !== v0.vehiculoId).map((c) => c.vehiculoId);
+    // Los camiones que salen ese día, con quién lo haría a esa hora (el chofer de ese tramo).
+    const otros = filasCamiones(dia).filter((veh) => veh !== v0.vehiculoId && vehiculo(dia, veh)?.tipo !== "otro");
     return (
       <MenuFlotante anchor={m.anchor} onCerrar={cerrar} label="Pasar a otro camión" ancho={320}>
         <MenuCabeza titulo="Pasar a otro camión" sub={cortoV(dia, v0)} />
         {otros.map((veh) => (
           <ItemMenu key={veh} detalle={dondeAnda(dia, veh, ahora).t.slice(0, 34)} onClick={hacer(() => viaje({ accion: "mover", viajeId: m.id, vehiculoId: veh }))}>
-            {nombreDe(dia, choferDelCamion(dia, veh))} · <span className="font-mono text-xs">{patente(dia, veh)}</span>
+            {nombreDe(dia, choferSugerido(dia, veh, t)) || "Sin chofer"} · <span className="font-mono text-xs">{patente(dia, veh)}</span>
           </ItemMenu>
         ))}
       </MenuFlotante>
     );
   }
+  if (paso === "chofer") {
+    return (
+      <MenuFlotante anchor={m.anchor} onCerrar={cerrar} label="Cambiar chofer" ancho={320}>
+        <MenuCabeza titulo="¿Quién lo hace?" sub={`${cortoV(dia, v0)} · ${patente(dia, v0.vehiculoId)}`} />
+        {choferesElegibles(dia).map((x) => {
+          const a = ausenciaDe(dia, x);
+          const n = viajesChofer(dia, x).length;
+          return (
+            <ItemMenu key={x} disabled={x === ch} detalle={a ? "no viene" : x === ch ? "lo hace ahora" : n ? `${n} ${n === 1 ? "viaje" : "viajes"}` : "libre"} onClick={hacer(() => viaje({ accion: "chofer", viajeId: m.id, choferId: x }))}>
+              {nombreDe(dia, x)}
+            </ItemMenu>
+          );
+        })}
+      </MenuFlotante>
+    );
+  }
+  // El lleva de un vehículo de una hoja: "después vuelve al depósito" (queda libre desde ahí).
+  const cLleva = v0.tipo === "lleva" && v0.hojaId ? cuadrillaDeViaje(dia, v0) : null;
 
   const dur = v.dur;
   return (
@@ -80,6 +110,7 @@ function MenuViaje({ m, cerrar, dialogo, verComo }: { m: Extract<MenuAbierto, { 
       <MenuTexto>
         {v0.hora ? <>Hora fija <b>{normHora(v0.hora)}</b></> : <>Estimada <b>{hTxt}</b></>} · {TIPOS_VIAJE[v0.tipo].nombre}
         {dur ? ` · ${Math.floor(dur / 60)} h${dur % 60 ? ` ${dur % 60}` : ""}` : ""}
+        {tramo?.fuente === "google" && <> · <TiempoTramo t={tramo} /></>}
       </MenuTexto>
       {vc?.desdeKey && (
         <MenuTexto>
@@ -102,12 +133,27 @@ function MenuViaje({ m, cerrar, dialogo, verComo }: { m: Extract<MenuAbierto, { 
       {e && e.cambioMin != null && e.snap?.tipo === "chofer" && e.snap.viajes.some((x) => x.k === m.id) && !(e.snapPrimero?.tipo === "chofer" && e.snapPrimero.viajes.some((x) => x.k === m.id)) && (
         <MenuTexto>Avisado {hm(e.cambioMin)}{e.recibidaMin != null && e.recibidaMin >= e.cambioMin ? ` · visto ${hm(e.recibidaMin)}` : " · todavía no lo vio"}</MenuTexto>
       )}
+      {maps && (
+        <>
+          <MenuSep />
+          <ItemMenu detalle="Google Maps" onClick={abrir(maps)}>Cómo llegar</ItemMenu>
+        </>
+      )}
       {!pasado && (
         <>
           <MenuSep />
           {planeado && v0.vehiculoId && !flete && <ItemMenu detalle={`por ${nombreDe(dia, ch) || "el chofer"}`} onClick={hacer(() => viaje({ accion: "hecho", viajeId: m.id }))}>Marcar hecho</ItemMenu>}
           {!planeado && <ItemMenu onClick={hacer(() => viaje({ accion: "deshacer_estado", viajeId: m.id }))}>Volver a «por hacer»</ItemMenu>}
           {planeado && !flete && <ItemMenu detalle="›" onClick={() => setPaso("pasar")}>{v0.vehiculoId ? "Pasar a otro camión" : "Elegir chofer"}</ItemMenu>}
+          {planeado && !flete && v0.vehiculoId && <ItemMenu detalle="›" onClick={() => setPaso("chofer")}>Cambiar chofer</ItemMenu>}
+          {planeado && cLleva != null && (
+            <ItemMenu
+              detalle={v0.vuelta ? "se queda en la obra" : "queda libre para otros viajes"}
+              onClick={hacer(() => hoja.mutate({ accion: "vuelta", fecha: dia.fecha, cuadrilla: cLleva, filaId: v0.hojaVehiculoId, vuelve: !v0.vuelta }))}
+            >
+              {v0.vuelta ? "Ya no vuelve al depósito" : "Después vuelve al depósito"}
+            </ItemMenu>
+          )}
           {planeado && !flete && v0.vehiculoId && (der
             ? <ItemMenu detalle={`nadie ${v0.tipo === "busca" ? "los busca" : "los lleva"}`} onClick={hacer(() => viaje({ accion: "volver_a_cola", viajeId: m.id }))}>Sacar del camión</ItemMenu>
             : <ItemMenu onClick={hacer(() => viaje({ accion: "volver_a_cola", viajeId: m.id }))}>Volver a la cola</ItemMenu>)}
@@ -157,18 +203,35 @@ const keyAPunto = (key: string) => {
 function MenuFila({ m, cerrar, dialogo, verComo, llamar }: { m: Extract<MenuAbierto, { t: "fila" }>; cerrar: () => void; dialogo: (d: AbrirDialogo, volverA: HTMLElement) => void; verComo: (pid: string) => void; llamar: (pid: string | null) => void }) {
   const { dia, ahora, fecha, viaje, avisar } = useCamiones();
   const veh = m.veh;
-  const ch = choferDelCamion(dia, veh);
+  // El que lo maneja ahora (o el que lo agarra primero): un camión puede tener varios choferes en el día.
+  const ch = choferSugerido(dia, veh, ahora >= 0 && ahora < 1440 ? ahora : null);
   const st = ch ? estadoEnvio(dia, { pid: ch, rol: "chofer" }) : null;
   const N = nombreDe(dia, ch);
+  const [elegir, setElegir] = useState(false);
   const hacer = (f: () => void) => () => { cerrar(); f(); };
   const hayEstimadas = calcVeh(dia, veh).some((v) => v.estado === "planeado" && !v.hora);
+  if (elegir) {
+    return (
+      <MenuFlotante anchor={m.anchor} onCerrar={cerrar} label="Elegir otro chofer" ancho={300}>
+        <MenuCabeza titulo="Elegir otro chofer" sub={`Pasa todos los viajes pendientes del ${patente(dia, veh)}`} />
+        {choferesElegibles(dia).map((x) => (
+          <ItemMenu key={x} disabled={x === ch} detalle={ausenciaDe(dia, x) ? "no viene" : `${viajesChofer(dia, x).length} viajes`} onClick={hacer(() => viaje({ accion: "chofer_del_camion", fecha, vehiculoId: veh, choferId: x }))}>
+            {nombreDe(dia, x)}
+          </ItemMenu>
+        ))}
+      </MenuFlotante>
+    );
+  }
+  const recorrido = recorridoCamion(dia, veh);
   return (
     <MenuFlotante anchor={m.anchor} onCerrar={cerrar} label="Camión" ancho={290}>
-      <MenuCabeza titulo={`${N || "Sin chofer"} · ${vehiculoNombre(dia, veh)}`} sub={dondeAnda(dia, veh, ahora).t} />
+      <MenuCabeza titulo={`${choferesTxt(dia, veh) || "Sin chofer"} · ${vehiculoNombre(dia, veh)}`} sub={dondeAnda(dia, veh, ahora).t} />
       {ch && st?.k === "cambiada" && <ItemMenu detalle={`${st.ds.length} ${st.ds.length === 1 ? "cambio" : "cambios"}`} onClick={hacer(() => avisar(ch))}>Avisar a {N}</ItemMenu>}
+      <ItemMenu detalle="›" onClick={() => setElegir(true)}>Elegir otro chofer</ItemMenu>
       <ItemMenu detalle="las estimadas, desde ahora" disabled={!hayEstimadas} onClick={hacer(() => viaje({ accion: "correr_horas", fecha, vehiculoId: veh }))}>Correr horas</ItemMenu>
       <ItemMenu onClick={() => { noDevolverFoco(); cerrar(); dialogo({ t: "taller", veh }, m.anchor); }}>Agregar VTV o taller</ItemMenu>
       {ch && <ItemMenu onClick={hacer(() => verComo(ch))}>Ver como {N}</ItemMenu>}
+      {recorrido && <ItemMenu detalle="Google Maps" onClick={hacer(() => window.open(recorrido, "_blank", "noopener,noreferrer"))}>Ver el recorrido en Maps</ItemMenu>}
       {ch && <ItemMenu detalle={persona(dia, ch)?.celular ?? "sin celular"} disabled={!persona(dia, ch)?.celular} onClick={hacer(() => llamar(ch))}>Llamar a {N}</ItemMenu>}
     </MenuFlotante>
   );

@@ -31,7 +31,7 @@ Permisos: el proxy y cada ruta (segunda llave). `GET` pide "ver", el resto "edit
 | `/api/hoja-dia/lugares` | POST | hoja-dia | `{ accion: "crear"\|"editar", … }` |
 | `/api/hoja-dia/contratistas?mes=YYYY-MM` | GET | hoja-dia | → `ResumenMesContratistas` (`contratistas-servidor.ts`): por contratista, jornadas-persona, días, total estimado, detalle por día y prorrateo por obra; `sinTablero` si Odoo no contestó |
 | `/api/hoja-dia/contratistas` | POST | hoja-dia (editar) | `AccionContratista`: `{ accion: "crear", nombre, referente?, celular?, valorJornada?, nota? }` · `{ accion: "editar", contratistaId, …, activo? }` (baja = `activo: false`; no se borra) |
-| `/api/hoja-dia/personas` | POST | hoja-dia | `{ accion: "celular", personaId, telefono }` · `{ accion: "puede_estar_a_cargo", personaId, valor }` (con el id de un contratista, "celular" guarda el del referente en `hd_contratistas`) |
+| `/api/hoja-dia/personas` | POST | hoja-dia | `{ accion: "celular", personaId, telefono }` · `{ accion: "puede_estar_a_cargo", personaId, valor }` · `{ accion: "puede_manejar", personaId, valor }` (sólo Legajos) (con el id de un contratista, "celular" guarda el del referente en `hd_contratistas`) |
 | `/api/hoja-dia/envios?fecha=` | GET | hoja-dia (editar) | → `{ filas: Preparado[] }` (sólo lee: el link se crea al mandar; sin link, `link`/`waLink` en null) |
 | `/api/hoja-dia/envios` | POST | hoja-dia | ver §2.3 |
 | `/api/hoja-dia/telegram` | GET / POST | hoja-dia | estado del bot / `{ accion: "vincular"\|"desvincular", personaId }` |
@@ -56,17 +56,23 @@ Los tipos (`AccionHoja`, `AccionViaje`, `AccionPedido`, `AccionAusencia`, `Resul
 | `a_cargo` | fecha, cuadrilla, personaId \| null | "Poner a cargo" / "Usar" la sugerencia. Devuelve `avisarA` si el anterior ya tenía la hoja |
 | `recibe` | fecha, cuadrilla, personaId \| null | Mandar sin nadie a cargo |
 | `nota_persona` | fecha, personaId, nota | "va directo a la 2.ª obra" |
-| `modo` | fecha, cuadrilla, modo | El selector de tres (arma o borra los lleva/busca) |
-| `chofer` | fecha, cuadrilla, choferId | Elegir/soltar un chofer (si iba sin chofer, pasa a Lleva y trae con encuentro en el depósito) |
-| `vehiculo` | fecha, cuadrilla, vehiculoId | |
-| `encuentro` | fecha, cuadrilla, lugar, hora, texto? | (en el depósito con lleva y trae, mueve el "lleva") |
-| `lleva` / `busca` | fecha, cuadrilla, hora (busca: null = "vuelven por su cuenta") | Cambiar hora (también mueve el encuentro si es en el depósito) |
+| `modo` | fecha, cuadrilla, modo | El selector de tres sobre el PRIMER vehículo ("sin" saca todos; si no hay, suma uno) |
+| `chofer` | fecha, cuadrilla, choferId | Soltar un chofer (llena el renglón sin chofer, cambia el chofer si hay uno solo —el camión queda— o suma un renglón; sin vehículos, suma uno de Lleva y trae con encuentro en el depósito) |
+| `vehiculo` | fecha, cuadrilla, vehiculoId | El camión del primer vehículo |
+| `vehiculo_sumar` | fecha, cuadrilla, modo (`lleva_trae`/`todo_el_dia`), choferId?, vehiculoId? | "+ Otro vehículo" / "+ Lleva y trae" / "+ Todo el día" (sin nada, el primero propone el de ayer) |
+| `vehiculo_quitar` | fecha, cuadrilla, filaId | "Quitar" un vehículo (con su lleva; el busca que lo seguía queda a definir, o se va si nadie más los lleva) |
+| `vehiculo_cambiar` | fecha, cuadrilla, filaId, modo?, choferId?, vehiculoId? | El modo, el chofer o el camión de un vehículo (independientes: sólo se propone el otro si falta) |
+| `encuentro` | fecha, cuadrilla, lugar, hora, texto? | (en el depósito, mueve el "lleva" del que los lleva) |
+| `lleva` | fecha, cuadrilla, hora, filaId? | La hora del lleva de un vehículo (sin filaId, el que los lleva; ése mueve el encuentro) |
+| `vuelta` | fecha, cuadrilla, filaId?, vuelve, llega? | "Después vuelve al depósito" (llega null = la estimada) |
+| `busca` | fecha, cuadrilla, hora \| null | La hora del busca; null = "vuelven por su cuenta"; una hora sin busca lo crea con el que los lleva |
+| `busca_con` | fecha, cuadrilla, filaId? \| vehiculoId?, choferId? | Quién los busca: ese vehículo de la hoja (lo sigue), otro camión/chofer, o sin vehículo = a definir. Con otro camión, la pantalla manda el `choferId` que resolvió (`choferSugerido`): el servidor escribe el mismo que se vio al instante |
 | `mueve` | fecha, cuadrilla, otId, hora | Viaje "Mueve" entre obras |
-| `carga_lleva` | fecha, cuadrilla, carga \| null | Lo que lleva el "lleva" (sale en la lista de carga) |
+| `carga_lleva` | fecha, cuadrilla, carga \| null, filaId? | Lo que lleva el "lleva" (sale en la lista de carga) |
 | `nota` | fecha, cuadrilla, nota | Nota de toda la cuadrilla |
 | `instrucciones` | fecha, otId, cuadrilla?, horaInicio?, hoy?, chips? | "+ Instrucciones" (sigue a la obra si cambia de cuadrilla) |
 | `copiar_como_hoy` | fecha, cuadrilla | Menú ⋯ de la tarjeta |
-| `pasar_chofer` | fecha, cuadrilla, desde | "Sacarlo de la 1" (choque de todo el día) |
+| `pasar_chofer` | fecha, cuadrilla, desde, choferId? | "Sacarlo de la 1": saca de `desde` los vehículos de ese chofer |
 | `liberar` | fecha, cuadrilla | Hoja de una cuadrilla que se quedó sin obras (también saca a los contratistas) |
 | `contratista_sumar` | fecha, cuadrilla, contratistaId, n (±1…60, ≠ 0) | Arrastrar del panel (+1), el − / + del chip, "Agregar a la Cuadrilla N…" (+N), "+ Agregar". Crea la fila si no estaba; no baja de 0 ("¿cuántos?") |
 | `contratista_quitar` | fecha, cuadrilla, contratistaId | "Quitar de la Cuadrilla N" (si estaba a cargo, la hoja queda sin nadie a cargo) |
@@ -76,7 +82,7 @@ Los tipos (`AccionHoja`, `AccionViaje`, `AccionPedido`, `AccionAusencia`, `Resul
 
 ### 2.2 `AccionViaje` y `AccionPedido`
 
-- Viajes: `crear` (también Taller/VTV con `tipo:"taller"` y fletes de afuera con `fleteExterno`; con `pedidoId` + `fleteExterno` el pedido queda atado al flete, "en camino · flete de X"), `poner_pedido` {pedidoId, vehiculoId, sobre?, orden?} (soltar entre dos fichas: `orden` = el promedio de los `orden` vecinos; sobre una ficha al mismo destino: `sobre` = id del viaje), `mover` {viajeId, vehiculoId \| null, orden?, hora?}, `hora` {viajeId, hora \| null, noAntesDe?} (fijar / cambiar / "estimada"), `volver_a_cola`, `anular` {motivo}, `hecho` (marcado por el coordinador), `no_pudo` {motivo}, `deshacer_estado`, `ok_todo_el_dia` ("Sacarlo un rato"), `correr_horas` {fecha, vehiculoId}, `chofer_del_camion` {fecha, vehiculoId, choferId} ("Elegir otro chofer" pasa todos los viajes pendientes), `vuelven_solos` {fecha, cuadrilla}.
+- Viajes: `crear` (también Taller/VTV con `tipo:"taller"` y fletes de afuera con `fleteExterno`; con `pedidoId` + `fleteExterno` el pedido queda atado al flete, "en camino · flete de X"), `poner_pedido` {pedidoId, vehiculoId, sobre?, orden?} (soltar entre dos fichas: `orden` = el promedio de los `orden` vecinos; sobre una ficha al mismo destino: `sobre` = id del viaje), `mover` {viajeId, vehiculoId \| null, orden?, hora?}, `hora` {viajeId, hora \| null, noAntesDe?} (fijar / cambiar / "estimada"), `volver_a_cola`, `anular` {motivo}, `hecho` (marcado por el coordinador), `no_pudo` {motivo}, `deshacer_estado`, `ok_todo_el_dia` ("Sacarlo un rato"), `correr_horas` {fecha, vehiculoId}, `chofer_del_camion` {fecha, vehiculoId, choferId} ("Elegir otro chofer" pasa todos los viajes pendientes y los renglones de las hojas con ese camión), `chofer` {viajeId, choferId} (el chofer de UN viaje; el lleva de un vehículo de la hoja cambia el renglón, el busca/mueve se suelta), `vuelven_solos` {fecha, cuadrilla}.
 - Pedidos: `crear` {que, hacia, urgencia, horaLimite?, …; `tipo` y `pidioId` se deducen si no vienen: `tipoPorDestino`, `pidioPorDefecto`; `fecha` por defecto hoy hasta las 15 y mañana después; `cajonPendienteId` tilda el pendiente del cajón}, `aceptar_sugerido` / `descartar_sugerido` {fecha, key} (la `key` de `sugeridosDe`), `esperar` {motivo, hasta?}, `ya_esta`, `pasar_a_manana`, `anular` {motivo?}, `orden_manual` {orden \| null}, `visto` (el rojo del "No pude").
 - Las respuestas traen `avisarA` (id o lista de choferes que ya tenían su hoja y ahora tienen un cambio) y `avisarDeposito` (true si el viaje sale del depósito con carga hoy): son los botones del aviso ("Avisar a Gómez", "Avisar al depósito").
 
@@ -116,7 +122,7 @@ const historial = useHistorialHoja({ hojaId });
 usePrecargaCierre(cuadrillaOdooId, fecha, otId);    // ya usado por formulario-cierre.tsx
 ```
 
-Los gestos (`useGesto`) ya muestran el toast con "Deshacer" (9 s), avisan por el canal en vivo y refrescan el día **en segundo plano** (`refrescarHoja`: uno por ráfaga, nunca con un gesto en vuelo). Los errores salen como toast con el texto del servidor. **Los de las tarjetas (`useAccionHoja`) son optimistas** desde el 10/10 (noche): `optimista.ts` (puro, con tests) calcula el día nuevo con las reglas de estado.ts y se ve al instante; si el servidor rechaza, vuelve atrás. Viajes, pedidos, envíos y precarga esperan al servidor. Ver handoff.md, "Latencia".
+Los gestos (`useGesto`) ya muestran el toast con "Deshacer" (9 s), avisan por el canal en vivo y refrescan el día **en segundo plano** (`refrescarHoja`: uno por ráfaga, nunca con un gesto en vuelo). Los errores salen como toast con el texto del servidor. **Los de las tarjetas (`useAccionHoja`) son optimistas** desde el 10/10 (noche): `optimista.ts` (puro, con tests) calcula el día nuevo con las reglas de estado.ts (los vehículos y sus lleva/busca con `planVehiculos`, el mismo plan que escribe el servidor) y se ve al instante; si el servidor rechaza, vuelve atrás. Viajes, pedidos, envíos y precarga esperan al servidor. Ver handoff.md, "Latencia".
 
 ## 4. Qué función de `estado.ts` alimenta cada parte de la pantalla
 
@@ -128,9 +134,10 @@ Los gestos (`useGesto`) ya muestran el toast con "Deshacer" (9 s), avisan por el
 | Tarjeta | `cuadrillasConHoja`, `hojaDeCuadrilla`, `obrasCon(dia, c)` (hora de cada obra), `genteDe(h)`, `aCargoDe(h)`, `vanDe`, `prevista`, `encTxt`, `estadoHoja(dia, c, ahora)`, `problemas(dia, c, ahora)` (`card` + `bs`), `nuevosEnHoja(dia, c)` ("Avisar a Ramírez"), `suspendida(dia, c)` |
 | Sugerencia de a cargo | `sugerirACargo(dia, c)` → `{ pid, por }` ("Ortega (ayer en Rivadavia 6150)") |
 | Panel Gente | `panelGente(dia)` (sin asignar, no disponibles, asignados, choferes, vehículos); `sinAsignar`, `sugerirPersona`; buscar con `normalizar()` |
-| Selector de chofer | `planModo` / `planSoltarChofer` (lo que va a pasar; el servidor hace lo mismo), `vehiculoDeChofer`, `vencimientosTxt` |
+| Vehículos de la tarjeta | `vehiculos.ts`: `planVehiculos` (lo que va a pasar con un gesto; el servidor y el optimista hacen lo mismo. Un viaje sigue a su renglón sólo en lo que el gesto le cambió; una hoja sin renglones con un lleva del código viejo lo adopta como fila implícita; el mismo vehículo dos veces en una hoja es `NoSePuede`), `correrLlegada`, `llevaDeFila`, `quienBusca`, `resumenLegado`; vista-cuadrillas.ts: `resumenVehiculos`, `buscaTxt`, `horasDeFila`, `opcionesChofer(dia, c, filaId)`, `opcionesVehiculo(dia, c, filaId)` (`deshabilitada` = ya va en otro renglón de la hoja); estado.ts: `vehiculosDe`, `filaQueLleva`, `modoDe`, `choferesTodoDe`, `genteConChoferes`, `choferesElegibles`, `puedeManejar`, `vehiculoDeChofer`, `vencimientosTxt` |
 | Ausencias | `ausenciaDe`, `parcialDe`, `ausTexto(a, true, fecha)`; `Ausencia.id === null` ⇒ "según la asistencia" (botones "Cargar hasta cuándo" = `crear` con `origen:"asistencia"`, "Ya tiene el alta" = `alta` con `personaId`, `desde`, `tipo`) |
-| Vista Camiones: filas | `filasCamiones(dia)`, `calcVeh(dia, veh)` (`t`, `fin`, `dur`, `conflicto`, `i`), `cortoV`, `horaTxt`, `dondeAnda(dia, veh, ahora)` (encabezado, con `tono`), `camionesSinUsar(dia)`, `fletesDeAfuera(dia)`, `viajeSinAvisar(dia, v)` (ficha punteada) |
+| Vista Camiones: filas | `choferesTxt(dia, veh)` / `choferesDeFila` (quién lo maneja en cada tramo), `choferSugerido` / `choferParaOrden` (el chofer de un viaje nuevo), `crucesChofer` (el mismo chofer en dos camiones), `filasCamiones(dia)`, `calcVeh(dia, veh)` (`t`, `fin`, `dur`, `conflicto`, `i`), `cortoV`, `horaTxt`, `dondeAnda(dia, veh, ahora)` (encabezado, con `tono`), `camionesSinUsar(dia)`, `fletesDeAfuera(dia)`, `viajeSinAvisar(dia, v)` (ficha punteada) |
+| Tiempo de viaje y Maps (Camiones, tarjeta) | rutas.ts: `tramoDe(dia, v)` (Google o la típica, para "~35 min en auto"), `tramoEntre(dia, desdeKey, haciaKey)` (sólo Google), `comoLlegarViaje(dia, v)`, `recorridoCamion(dia, veh)`, `recorridoChofer(dia, ch)`, `depositoSinUbicar(dia)`; tiempos.ts: `tiempoTxt`, `tiempoTitulo`; el componente `comunes/tiempo-tramo.tsx` |
 | Línea "Ahora:" | `ahoraItems(dia, ahora)` |
 | Avisos de una fila | `avisosVeh(dia, veh, ahora)`, `avisosChofer(dia, ch, ahora)` |
 | Cola de pedidos | `cola(dia, ahora)` (`vos`, `esp`, `camino`, `hechos`), `estadoPedido`, `ordenCola`, `sugeridosDe(dia, ahora)`, `vieneDeAyer` |
@@ -172,6 +179,7 @@ Los problemas y avisos traen sus botones como datos (`{ l: "Usar Miño", a: "usa
 - `situacion`: `"invalido"` ("El link no es válido.") · `"vencido"` (`texto`) · `"ya_no"` (`texto`, `coordinador`) · `"suspendida"` (`texto`) · `"ok"`.
 - `ok` + `rol: "a_cargo"`: `cuadrilla`, `aCargo`, `vos`, `nota`, `encuentro`, `chofer {modo, texto, nombre, telefono}`, `obras: ObraPublica[]` (hora, dirección, `mapsUrl`, tipo, detalle "jornada completa · día 2 de 3", `hoy`, `chips`, `queHacer`, `observaciones`, contacto, `archivos` con `url` propia, `paraTuObra`), `gente` (con `nuevo` para marcar "Ramírez · nuevo").
 - `ok` + `rol: "chofer"`: `vehiculo`, `todo` (si va todo el día: cuadrilla y obras), `viajes: ViajePublico[]` (`texto` ya en imperativo, `hora` con "~" si es estimada, `mapsUrl`, `llamar`, `estado`, `nuevo`), `ahoraId` (el de "Ahora"), `motivosNoPude`.
+- `ok` + `rol: "chofer"` también trae `recorridoUrl` ("Ver el recorrido en Maps": sus paradas que faltan, en orden; opcional por las vistas guardadas). Los `mapsUrl` de obras y viajes son "Cómo llegar" (`https://www.google.com/maps/dir/?api=1&destination=…`, al pin si hay coordenadas; `maps.ts`).
 - Comunes: `fechaTxt`, `generadoAt` (para "Sin conexión · lo que ves es de las 20:16"), `cambio {hora, txt}` (la tarjeta ámbar con "Entendido"), `recibido {hora}`, `coordinador {nombre, telefono}`.
 - `POST { accion: "recibido"|"entendido", version }` (si la versión es vieja: 409 "Esa hoja cambió, mirá la nueva") · `{ accion: "hecho"|"deshacer", viajeId }` · `{ accion: "no_pude", viajeId, motivo }`, con `at` (ISO) si se tocó sin señal y se manda después. Límite (hd_contar, atómico): 30 toques y 120 lecturas por minuto por token.
 - La página: layout propio, **tema claro**, `noindex`, sin sesión; refrescar cada 30 s y al volver; guardar la última respuesta en `localStorage` y reintentar los toques pendientes (§12 "Sin señal"). Abrirlo ya marca "Abierta" en el escritorio.
@@ -195,6 +203,8 @@ src/components/hoja-dia/comunes/      lista de envío (Telegram / a mano), vincu
 
 ## 7. Estado de la base
 
+**Varios vehículos y chofer por viaje (11/10)**: `Hoja.vehiculos: VehiculoHoja[]` reemplaza a `modo/choferId/vehiculoId/choferTocadoMin` (`modoDe(h)` da el del primero). `Viaje.hojaVehiculoId` y `Viaje.vueltaLlega`. `Persona.puedeManejar`. `FotoHoja.vehs` (opcional: las fotos viejas se comparan con el primer vehículo y los demás de ahora son "va también"; los renglones se emparejan por vehículo + chofer + modo, no por id, así "Copiar como hoy" sobre una hoja enviada no marca cambios). `ChoferDeHoja.otros` (opcional). `PrecargaCierre.fletes.porVehiculo`. `PlanHoja.vehiculos` y `buscaCon`; `PlanPrecarga` ya no trae `camiones`. Migración `20261012000001_hoja_dia_vehiculos.sql`.
+
 **Contratistas (10/10, noche)**: el referente de un contratista se trata como una persona que recibe la hoja: `DiaHoja.contratistas` viaja aparte (no está en `personas`, así no aparece en "Sin asignar" ni en ausencias), y estado.ts lo agrega a su índice de personas (`Persona.contratista: true`, id = el del contratista, nombre = el del contratista). Por eso `nombreDe`, `persona`, `recibeDe`, `destinatarios`, los envíos y los mensajes no cambian. Del lado del servidor, `quien.ts` dice en qué tabla vive cada id (`personal` / `pan_personas_externas` / `hd_contratistas`) y en qué columna va en links, códigos y mensajes de Telegram. `Hoja.contratistas` (cantidades) y `Hoja.aCargoContratistaId`; `FotoHoja.contr` (opcional: las fotos viejas no lo tienen). `VistaCapataz.van` / `vanTxt` y `GentePublica.cantidad` / `contratista` (opcionales por las vistas guardadas en el celular).
 
 **Hecho**
@@ -217,5 +227,8 @@ src/components/hoja-dia/comunes/      lista de envío (Telegram / a mano), vincu
 **Variables de entorno nuevas** (opcionales: sin ellas el envío queda manual)
 
 - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET`.
+- `GOOGLE_MAPS_API_KEY` (sólo servidor; si falta se usa `NEXT_PUBLIC_GOOGLE_MAPS_KEY`): tiempos de manejo de la Routes API. Sin ella, o con la API apagada, las duraciones típicas.
+
+**Tiempos de Google (12/10, `feat/hoja-dia-google-maps`)**: `DiaHoja.tiempos?: Record<"desdeKey>haciaKey", { min, m, fuente }>` lo arma `leerDia` con `rutas-servidor.ts` (`tiemposDelDia`: caché en memoria + `hd_tiempos` leído sólo por los tramos del día, en lotes de hasta 900 filas; nunca tira) para los tramos de `paresDelDia` (rutas.ts: paradas de cada camión, su vuelta al depósito si no tiene la llegada cargada, y obra → obra de cada cuadrilla). **Sólo el GET de la pantalla** (`leerDia(f, { tiempos: "google" })`) le pide a Google lo que falta (tope 2,5 s); los gestos, los envíos y el link del celular usan lo guardado (`soloCache`, sin esperar a Google). `calcVeh` los usa por `durDe` (tiempos.ts: manejo + parada, llegada a una hora fija, vuelta real, hueco mínimo); sin tiempos, la cuenta de siempre. El contexto de un gesto (`leerContexto`) no los trae (no calcula horas); lo optimista conserva los del último GET y un tramo nuevo va con la típica hasta el refresco. Migración `20261012000002_hoja_dia_tiempos.sql` (el código tolera que no esté). Ver handoff.md, "Google Maps".
 
 **Falta** (además de las pantallas): ver `handoff.md`.

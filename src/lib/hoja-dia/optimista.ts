@@ -4,8 +4,9 @@
 // en segundo plano (y si el servidor dice que no, se vuelve atrás y se muestra el error).
 //
 // PURO (sin React ni servidor) y con tests (optimista.test.ts). Hace lo mismo que
-// acciones.ts con las MISMAS reglas de estado.ts (planModo, planSoltarChofer) y el cambio
-// mínimo al objeto: no crea textos ni avisos (eso lo dice el servidor en el toast).
+// acciones.ts con las MISMAS reglas (vehiculos.ts para los vehículos de la hoja y sus lleva /
+// busca: el servidor escribe el mismo plan) y el cambio mínimo al objeto: no crea textos ni
+// avisos (eso lo dice el servidor en el toast).
 //
 // Lo que no se puede adivinar bien (copiar como hoy, precarga, viajes de camión, pedidos)
 // devuelve null: ese gesto espera al servidor como antes.
@@ -14,8 +15,9 @@
 // servidor (uno o dos segundos). No hay que mandarlos al servidor (esTemporal).
 
 import type { AccionHoja } from "./acciones.ts";
-import type { DiaHoja, Hoja, Hora, ModoChofer, Viaje } from "./tipos.ts";
-import { choferDelCamion, contratista, minutosDesde, normHora, planModo, planSoltarChofer, toMin, type CambioHoja } from "./estado.ts";
+import type { DiaHoja, Hoja } from "./tipos.ts";
+import { contratista, minutosDesde, normHora } from "./estado.ts";
+import { planVehiculos, type CambioVehiculos } from "./vehiculos.ts";
 
 let n = 0;
 const tmp = (que: string) => `tmp-${que}-${Date.now().toString(36)}-${++n}`;
@@ -45,7 +47,7 @@ function aplicar(dia: DiaHoja, a: AccionHoja, o: Opciones): DiaHoja | null {
     const h = hojaDe(c);
     if (h) return h;
     const nueva: Hoja = {
-      id: tmp("hoja"), fecha: d.fecha, cuadrillaOdooId: c, modo: "sin", choferId: null, vehiculoId: null, choferTocadoMin: null,
+      id: tmp("hoja"), fecha: d.fecha, cuadrillaOdooId: c, vehiculos: [],
       encuentro: { lugar: "obra", texto: null, hora: normHora(d.parametros.encuentroObra) ?? d.parametros.encuentroObra }, nota: null, recibeId: null,
       origen: "manual", version: 1, integrantes: [], contratistas: [], aCargoContratistaId: null,
     };
@@ -135,66 +137,42 @@ function aplicar(dia: DiaHoja, a: AccionHoja, o: Opciones): DiaHoja | null {
       return d;
     }
 
-    case "modo": {
+    // Los vehículos y sus lleva / busca: el mismo plan que escribe el servidor (vehiculos.ts).
+    case "modo":
       asegurar(a.cuadrilla);
-      // La misma regla que el servidor (planModo), con el día que se ve.
-      aplicarCambio(d, a.cuadrilla, planModo(d, a.cuadrilla, a.modo), ahora);
-      return d;
-    }
-
-    case "chofer": {
+      return conPlan(d, a.cuadrilla, { k: "modo", modo: a.modo }, ahora);
+    case "chofer":
       asegurar(a.cuadrilla);
-      const cambio: CambioHoja = a.choferId ? planSoltarChofer(d, a.cuadrilla, a.choferId) : { choferId: null };
-      aplicarCambio(d, a.cuadrilla, cambio, ahora);
-      return d;
-    }
-
-    case "vehiculo": {
+      return conPlan(d, a.cuadrilla, a.choferId ? { k: "soltar", choferId: a.choferId } : { k: "chofer", choferId: null }, ahora);
+    case "vehiculo":
       asegurar(a.cuadrilla);
-      aplicarCambio(d, a.cuadrilla, { vehiculoId: a.vehiculoId }, ahora);
-      return d;
-    }
-
+      return conPlan(d, a.cuadrilla, { k: "vehiculo", vehiculoId: a.vehiculoId }, ahora);
+    case "vehiculo_sumar":
+      asegurar(a.cuadrilla);
+      return conPlan(d, a.cuadrilla, { k: "sumar", modo: a.modo, choferId: a.choferId, vehiculoId: a.vehiculoId }, ahora);
+    case "vehiculo_quitar":
+      return conPlan(d, a.cuadrilla, { k: "quitar", filaId: a.filaId }, ahora);
+    case "vehiculo_cambiar":
+      return conPlan(d, a.cuadrilla, { k: "cambiar", filaId: a.filaId, modo: a.modo, choferId: a.choferId, vehiculoId: a.vehiculoId }, ahora);
     case "pasar_chofer": {
       if (!hojaDe(a.cuadrilla) || !hojaDe(a.desde)) return null;
-      aplicarCambio(d, a.desde, { modo: "sin", choferId: null, vehiculoId: null, encuentro: { lugar: "obra", texto: null, hora: normHora(d.parametros.encuentroObra) ?? d.parametros.encuentroObra } }, ahora);
-      return d;
+      const enOtra = hojaDe(a.desde)!.vehiculos.map((x) => x.choferId);
+      const ch = a.choferId ?? hojaDe(a.cuadrilla)!.vehiculos.find((x) => x.modo === "todo_el_dia" && x.choferId && enOtra.includes(x.choferId))?.choferId;
+      return ch ? conPlan(d, a.desde, { k: "quitarChofer", choferId: ch }, ahora) : null;
     }
-
-    case "encuentro": {
-      const h = asegurar(a.cuadrilla);
-      const hora = normHora(a.hora) ?? a.hora;
-      h.encuentro = { lugar: a.lugar, hora, texto: a.lugar === "otro" ? a.texto ?? null : null };
-      if (h.modo === "lleva_trae" && a.lugar === "deposito") {
-        const ll = viajeDe(d, h, "lleva");
-        if (ll && ll.estado === "planeado") reemplazarViaje(d, { ...ll, hora, orden: toMin(hora) ?? ll.orden });
-      }
-      return d;
-    }
-
+    case "encuentro":
+      asegurar(a.cuadrilla);
+      return conPlan(d, a.cuadrilla, { k: "encuentro", lugar: a.lugar, hora: a.hora, texto: a.texto }, ahora);
     case "lleva":
-    case "busca": {
-      const h = hojaDe(a.cuadrilla);
-      if (!h) return null;
-      const v = viajeDe(d, h, a.accion);
-      if (a.accion === "busca" && a.hora == null) {
-        if (v) d.viajes = d.viajes.filter((x) => x.id !== v.id);
-        return d;
-      }
-      const hora = normHora(a.hora) ?? a.hora!;
-      if (v) reemplazarViaje(d, { ...v, hora, orden: toMin(hora) ?? v.orden });
-      else d.viajes.push(viajeNuevo(d, h, a.accion, hora, ahora));
-      if (a.accion === "lleva" && h.encuentro.lugar === "deposito") h.encuentro = { ...h.encuentro, hora };
-      return d;
-    }
-
-    case "carga_lleva": {
-      const h = hojaDe(a.cuadrilla);
-      const ll = h ? viajeDe(d, h, "lleva") : null;
-      if (!h || !ll || ll.estado !== "planeado") return null;
-      reemplazarViaje(d, { ...ll, carga: a.carga || null });
-      return d;
-    }
+      return conPlan(d, a.cuadrilla, { k: "lleva", filaId: a.filaId, hora: a.hora }, ahora);
+    case "vuelta":
+      return conPlan(d, a.cuadrilla, { k: "vuelta", filaId: a.filaId, vuelve: a.vuelve, llega: a.llega ?? null }, ahora);
+    case "busca":
+      return conPlan(d, a.cuadrilla, { k: "busca", hora: a.hora }, ahora);
+    case "busca_con":
+      return conPlan(d, a.cuadrilla, { k: "buscaCon", filaId: a.filaId, vehiculoId: a.vehiculoId, choferId: a.choferId }, ahora);
+    case "carga_lleva":
+      return conPlan(d, a.cuadrilla, { k: "carga", filaId: a.filaId, carga: a.carga }, ahora);
 
     case "instrucciones": {
       const prev = d.instrucciones.find((i) => i.otId === a.otId);
@@ -257,58 +235,32 @@ function aplicar(dia: DiaHoja, a: AccionHoja, o: Opciones): DiaHoja | null {
   return null;
 }
 
-// ─── El chofer de una tarjeta (lo mismo que aplicarCambioHoja + sincronizarViajes) ───
 
-const DE_CUADRILLA = new Set(["lleva", "busca", "mueve"]);
+// ─── Los vehículos de una tarjeta (el mismo plan que escribe acciones.ts) ───
 
-function viajeDe(d: DiaHoja, h: Hoja, tipo: "lleva" | "busca"): Viaje | null {
-  return d.viajes.find((v) => v.hojaId === h.id && v.tipo === tipo && v.estado !== "anulado") ?? null;
-}
-function reemplazarViaje(d: DiaHoja, v: Viaje) {
-  d.viajes = d.viajes.map((x) => (x.id === v.id ? v : x));
-}
-function viajeNuevo(d: DiaHoja, h: Hoja, tipo: "lleva" | "busca", hora: Hora, ahora: number, ch = h.choferId, veh = h.vehiculoId): Viaje {
-  return {
-    id: tmp("viaje"), fecha: d.fecha, vehiculoId: veh, choferId: ch, fleteExterno: null, tipo, hojaId: h.id, cuadrillaOdooId: h.cuadrillaOdooId,
-    hacia: { otId: null, lugarId: null, texto: null }, desde: null, orden: toMin(hora) ?? 420, hora, noAntesDe: null, duracionMin: null,
-    vuelta: false, vueltaCarga: null, carga: null, cargaDeposito: null, okTodoElDia: false, estado: "planeado", hechoMin: null, hechoPor: null,
-    noPudoMotivo: null, anuladoMotivo: null, foto: false, creadoMin: ahora, version: 1,
-  };
-}
-
-/** Un cambio de modo / chofer / vehículo / encuentro sobre la hoja de `c` y sus viajes. */
-function aplicarCambio(d: DiaHoja, c: number, cambio: CambioHoja, ahora: number) {
+/**
+ * Aplica sobre `d` el plan de vehiculos.ts: los vehículos como quedan, el encuentro y los
+ * viajes de la hoja (los nuevos con id provisorio). Si el plan no se puede (un busca sin
+ * nadie que los lleve, un vehículo que ya no está), null: el gesto espera al servidor, que
+ * lo dice en palabras.
+ */
+function conPlan(d: DiaHoja, c: number, cambio: CambioVehiculos, ahora: number): DiaHoja | null {
+  let plan;
+  try {
+    plan = planVehiculos(d, c, cambio, { nuevoId: (q) => tmp(q), ahora });
+  } catch {
+    return null;
+  }
   const i = d.hojas.findIndex((h) => h.cuadrillaOdooId === c);
-  if (i < 0) return;
-  const antes = d.hojas[i];
-  const h: Hoja = {
-    ...antes,
-    modo: cambio.modo ?? antes.modo,
-    choferId: cambio.choferId !== undefined ? cambio.choferId : antes.choferId,
-    vehiculoId: cambio.vehiculoId !== undefined ? cambio.vehiculoId : antes.vehiculoId,
-    encuentro: cambio.encuentro ? { ...cambio.encuentro, hora: normHora(cambio.encuentro.hora) ?? cambio.encuentro.hora } : antes.encuentro,
-    choferTocadoMin: cambio.choferId !== undefined || cambio.vehiculoId !== undefined || cambio.modo !== undefined ? ahora : antes.choferTocadoMin,
-  };
+  if (i < 0) return null;
+  const h: Hoja = { ...d.hojas[i], vehiculos: plan.filas };
+  if (plan.encuentro) h.encuentro = { ...plan.encuentro, hora: normHora(plan.encuentro.hora) ?? plan.encuentro.hora };
   d.hojas[i] = h;
-  const modo: ModoChofer = h.modo;
-  const propios = d.viajes.filter((v) => v.hojaId === h.id && v.estado !== "anulado");
-  if (modo !== "lleva_trae") {
-    const fuera = new Set(propios.filter((v) => v.estado === "planeado" && DE_CUADRILLA.has(v.tipo)).map((v) => v.id));
-    d.viajes = d.viajes.filter((v) => !fuera.has(v.id));
-    return;
-  }
-  const enc = cambio.encuentro?.hora ?? h.encuentro.hora ?? d.parametros.encuentroDeposito;
-  for (const tipo of ["lleva", "busca"] as const) {
-    const v = propios.find((x) => x.tipo === tipo);
-    const hora = normHora(tipo === "lleva" ? cambio.lleva ?? enc : cambio.busca ?? d.parametros.finJornada) ?? d.parametros.finJornada;
-    if (!v) d.viajes.push(viajeNuevo(d, h, tipo, hora, ahora));
-    else if (v.estado === "planeado" && (cambio.choferId !== undefined || cambio.vehiculoId !== undefined)) reemplazarViaje(d, { ...v, choferId: h.choferId, vehiculoId: h.vehiculoId });
-  }
-  // Si el vehículo no tiene chofer ese día, queda el de la cuadrilla (asegurarCamion).
-  if (h.vehiculoId && h.choferId && !choferDelCamion(d, h.vehiculoId)) {
-    const ya = d.camiones.some((x) => x.vehiculoId === h.vehiculoId);
-    d.camiones = ya
-      ? d.camiones.map((x) => (x.vehiculoId === h.vehiculoId ? { ...x, choferId: h.choferId } : x))
-      : [...d.camiones, { vehiculoId: h.vehiculoId, choferId: h.choferId, nota: null }];
-  }
+  const borrar = new Set(plan.viajes.borrar);
+  const cambios = new Map(plan.viajes.cambiar.map((x) => [x.id, x.valores]));
+  d.viajes = [
+    ...d.viajes.filter((v) => !borrar.has(v.id)).map((v) => (cambios.has(v.id) ? { ...v, ...cambios.get(v.id) } : v)),
+    ...plan.viajes.crear,
+  ];
+  return d;
 }

@@ -82,10 +82,10 @@ Operaciones › Planificación
 
 - **Todo cuelga de (cuadrilla, fecha)**: `cuadrilla_odoo_id` + `YYYY-MM-DD`. **Nunca** del id de `x_aba_asignacion`, que se borra y se recrea cada vez que se mueve o se corre una obra.
 - **Las obras de la hoja no se cargan: se leen del tablero**, en el orden del día (`x_orden_dia`). Si Juan Agustín mueve una obra en el tablero, la hoja cambia sola (ver §11, "cambios después de enviar").
-- **La gente, el capataz, el chofer y el vehículo son de la cuadrilla-día y valen para todas sus obras.** Es lo que pasa en el 70% de los casos (una sola obra) y en casi todo el 30% restante, que son 2 a 4 obras chicas (¼ o ½ jornada) que la cuadrilla hace una detrás de otra.
+- **La gente, el capataz y los vehículos (uno o varios, cada uno con su chofer y su modo: §4) son de la cuadrilla-día y valen para todas sus obras.** Es lo que pasa en el 70% de los casos (una sola obra) y en casi todo el 30% restante, que son 2 a 4 obras chicas (¼ o ½ jornada) que la cuadrilla hace una detrás de otra.
 - **Una persona va en una sola cuadrilla por día.** No hay "advertencia" para esto: si la ponés en otra, se mueve. La app pregunta "Ramírez está en la Cuadrilla 5. ¿Lo pasás a la 3?" → **"Pasarlo"**. Así nunca hay dos lugares a la vez para un operario.
 - **El chofer en "Lleva y trae" es la excepción**: no es de la cuadrilla, puede llevar a varias (ver §4).
-- **Los viajes cuelgan de (vehículo, fecha)**: cada vehículo tiene, cada día, un chofer y una lista ordenada de viajes (§6). Los viajes de una cuadrilla además apuntan a su hoja.
+- **Los viajes cuelgan de (vehículo, fecha)**: cada vehículo tiene, cada día, una lista ordenada de viajes (§6), **cada uno con su chofer** (11/10: un camión puede cambiar de chofer en el día). Los viajes de una cuadrilla además apuntan a su hoja y, el lleva, al vehículo de la hoja que los lleva.
 
 ### Casos que no son "una cuadrilla, una obra"
 
@@ -113,49 +113,67 @@ Decisión del dueño (10/10): **el planificador decide el capataz de cada cuadri
 - **"Empezar como hoy" copia también el capataz** (ver §8). La hoja es un borrador hasta que se manda: **mandarla es la decisión**. Antes de enviar, la lista de envío muestra a quién le llega cada hoja, que es el capataz que quedó.
 - **Sin capataz**: la tarjeta dice "**Sin nadie a cargo**" y figura en "Falta para mandar". Se puede mandar igual eligiendo **quién recibe la hoja** (cualquiera de los que van con celular cargado). Advierte, no bloquea.
 
-## 4. Chofer y vehículo de la cuadrilla: tres modos
+## 4. Chofer y vehículo de la cuadrilla: uno o varios vehículos, cada uno con su modo
 
-Decisión del dueño (10/10): **depende del día.** Cada hoja tiene un selector de tres opciones, siempre visible:
+Decisión del dueño (10/10): **depende del día.** Decisiones del dueño (11/10), que cambian lo de abajo:
 
-**[ Sin chofer ] [ Lleva y trae ] [ Todo el día ]**
+1. **Chofer y vehículo son independientes.** Un camión puede tener distintos choferes según el día y según el viaje: **el chofer de cada viaje manda** (`hd_viajes.chofer_id`). El chofer habitual del vehículo (`vehiculos.chofer_habitual_id`) y el "chofer del camión del día" (`hd_camiones_dia`) son **sólo la sugerencia** para precargar; nunca un problema. Se fue el aviso "El AB 831 LC lo maneja Borda el domingo".
+2. **Los únicos choques reales**: el mismo vehículo en dos lugares a la vez (horarios que se pisan, o "todo el día" con una cuadrilla y viajes de otra) y el mismo chofer en dos lugares a la vez (dos camiones con horarios que se pisan, "todo el día" con una y un viaje de otra, o integrante de una cuadrilla y chofer de otra).
+3. **Armadores que también manejan**: tilde **"Puede manejar"** en Legajos (`personal.puede_manejar`), junto a "Puede estar a cargo". Arranca en Conte y Ortega. Los elegibles como chofer son los choferes de Odoo (`odoo_tarea = 'chofer'`, o el puesto si no hay vínculo) más los que pueden manejar. Una misma persona puede ir **a cargo y ser el chofer de "Todo el día"** de su cuadrilla: cuenta **una vez** en "Quiénes van" ("Conte · a cargo · chofer") y no es "estar en dos lugares". La sincronización con Odoo no toca ese tilde.
+4. **Una cuadrilla puede llevar varios vehículos**, cada uno con su chofer y su modo (la hidrogrúa con Borda todo el día + otro camión que lleva gente y material y se va). **"Sin chofer" = ninguno.**
+5. **Lleva y trae se define sobre la marcha, desde la tarjeta** (ver abajo).
+
+Cada vehículo de la hoja (`hd_hoja_vehiculos`) tiene uno de dos modos:
 
 | Modo | Qué significa | Qué se carga | Cuenta en "quiénes van" |
 |---|---|---|---|
-| **Sin chofer** | Van por su cuenta a la obra. | Nada más. El encuentro pasa a "8:00 en la obra". | — |
-| **Lleva y trae** | Un chofer los lleva (y/o material), se va a hacer otros viajes y vuelve a buscarlos. No es de la cuadrilla. | Chofer, vehículo, **hora de "lleva"** y **hora de "busca"** (aproximadas). Se puede sacar "busca" ("vuelven por su cuenta"). | No |
-| **Todo el día** | El chofer queda con la cuadrilla, la mueve entre obras y puede ayudar como operario. | Chofer y vehículo. | **Sí**: Nuñez + 4 = "5 de 5 personas". |
+| **Lleva y trae** | Un chofer los lleva (y/o material) y se va a hacer otros viajes. No es de la cuadrilla. | Chofer, vehículo, **hora del "lleva"** y, si quiere, **"después vuelve al depósito"** con la hora estimada de llegada. | No |
+| **Todo el día** | El chofer queda con la cuadrilla, la mueve entre obras y puede ayudar como operario. | Chofer y vehículo. | **Sí**: Nuñez + 4 = "5 de 5 personas" (si ya es de la gente, no se cuenta dos veces). |
 
-- **Por defecto** se propone el chofer y el vehículo del día anterior de esa cuadrilla; si no hay, el **chofer habitual del vehículo** (`vehiculos.chofer_habitual_id`): Kiska con el Iveco AF 669 ZL, Borda con el Agrale de la hidrogrúa AB 831 LC, Nuñez con el Iveco AB 799 CA.
-- **La hidrogrúa** es un vehículo más (tipo "hidrogrúa"). Lo normal es Borda **todo el día** con una cuadrilla que la necesita. En el celular del capataz se lee "Borda queda todo el día con la hidrogrúa (Agrale AB 831 LC)".
+Sin vehículos: **Sin chofer**, van por su cuenta (el encuentro pasa a "8:00 en la obra").
+
+- **En la tarjeta**, cada vehículo es un renglón propio con su modo, chofer, patente y horas ("Todo el día · Borda · hidrogrúa AB 831 LC", "Lleva y trae · Gómez · AB 497 YY · 7:00 (vuelve al depósito 8:30)") y abajo quién los busca ("Los busca 17:00 (Conte · AB 799 CA)"). Con un solo vehículo, el busca va en su renglón ("· 7:45 → 16:30"). El editor (tocar los renglones) tiene, por vehículo: el modo, el chofer, el camión, la hora del lleva, "Después vuelve al depósito" + "Llega", la carga y "Quitar"; y **"+ Otro vehículo"**, "Van por su cuenta" y el bloque **"Los busca"**.
+- **Por defecto**: el primer vehículo que se suma propone el de esa cuadrilla el día anterior (el del mismo modo). Elegir un chofer en un renglón sin camión propone su vehículo (el que ya maneja ese día o su habitual); elegir un camión en un renglón sin chofer propone el habitual. **Si el renglón ya tiene el otro, no se toca.**
+- **La hidrogrúa** es un vehículo más (tipo "hidrogrúa"). Lo normal es Borda **todo el día** con una cuadrilla que la necesita. En el celular del capataz se lee "Borda queda todo el día con la hidrogrúa (AB 831 LC)", y si además otro camión los lleva, "Te lleva Gómez · Iveco AB 497 YY" en la línea de abajo.
+- El selector de tres de siempre (y soltar un chofer en la tarjeta, las teclas 1–5) actúa sobre el **primer** vehículo: soltar un chofer llena el renglón que no tiene chofer, cambia el chofer si hay uno solo (el camión queda), o suma un renglón.
 
 ### Lleva y trae: son viajes del camión
 
 El proyecto abandonó las franjas (`planificacion_viajes` se dropeó sin uso). Se vuelve a algo mínimo: **viajes con una hora aproximada**, no franjas. Y **son los mismos viajes de la vista Camiones** (§6): no hay dos listas.
 
-- Al elegir "Lleva y trae", la app arma sola los viajes de esa cuadrilla en la fila del camión elegido:
-  - **Lleva** a la hora del encuentro, del depósito a la primera obra (hora **fija**: la gente está esperando).
-  - **Busca** a la hora de fin de la última obra (17:00 por defecto, hora **fija**).
-  - Si hay varias obras lejos entre sí, Juan Agustín puede sumar **"Mueve"** (de una obra a la otra, con hora). Lo normal es que las obras chicas del mismo día estén cerca y no haga falta.
-- Cada viaje tiene una **carga** opcional: "lleva 20 tablones y 2 escaleras para Cabildo". Así entran los fletes que acompañan a la cuadrilla.
-- **Lo que en la v1 era el renglón "Además" del chofer desaparece**: los viajes sueltos ("Busca 100 tablones en Galvanizados Sanz, 10 h") son viajes como cualquier otro desde la fase 1, y casi siempre nacen de un pedido (§7).
-- Cambiar la hora de un "lleva" o un "busca" en la vista Camiones cambia la hoja de esa cuadrilla, y al revés. Si la hoja ya estaba enviada, queda "Cambiada después de enviar" con "Avisar a Ortega" (§11).
-- **Todo el día** también se ve en la vista Camiones: la fila del camión de Borda dice "Todo el día con la Cuadrilla 1 · Av. del Libertador 5980". Se le pueden poner viajes **de esa misma cuadrilla** ("16:00 trae lo desarmado de San Juan 2840 al depósito") sin aviso; cualquier otro viaje lo saca de la cuadrilla y avisa (§9).
+- Cada vehículo de "Lleva y trae" tiene su **lleva** (un viaje de su camión con `hoja_vehiculo_id`), del depósito a la primera obra, a la hora del encuentro (hora **fija**: la gente está esperando). El lleva del **primero** de lleva y trae va con el encuentro en el depósito: cambiar uno cambia el otro.
+- **"Después vuelve al depósito"** (`hd_viajes.vuelta` + `vuelta_llega`): el camión los deja (con el material) y vuelve; queda **libre desde la hora de llegada** (la cargada, o la estimada: la parada más `minutos_vuelta_deposito`). Camiones y "Poner en un camión" lo ven en el depósito desde ahí.
+- **El busca** es de la hoja, a la hora de fin de la última obra (17:00 por defecto, **fija**). Lo puede hacer:
+  - **el mismo vehículo** que los llevó (o cualquiera de la hoja): lo **sigue** si se le cambia el chofer o el camión;
+  - **otro camión u otro chofer** (queda suelto del renglón);
+  - **a definir**: sin camión todavía ("Nadie busca a la Cuadrilla 3", hasta que se elija);
+  - **nadie: vuelven solos** (no hay busca).
+  Se pasa de una a otra en cualquier momento del día, desde la tarjeta o desde Camiones. Se crea cuando la hoja pasa a tener alguien que los lleve; se va cuando ya no tiene.
+- Si hay varias obras lejos entre sí, Juan Agustín puede sumar **"Mueve"** (de una obra a la otra, con hora): lo hace el que los lleva.
+- Cada lleva tiene una **carga** opcional: "lleva 20 tablones y 2 escaleras para Cabildo". Así entran los fletes que acompañan a la cuadrilla.
+- **Lo que en la v1 era el renglón "Además" del chofer desaparece**: los viajes sueltos son viajes como cualquier otro desde la fase 1, y casi siempre nacen de un pedido (§7).
+- **Cada tramo se edita en línea desde el renglón de la tarjeta** (chofer, vehículo y hora del lleva, la vuelta al depósito, quién busca y a qué hora) sin ir a Camiones. Lo mismo se ve igual en Camiones: pasar el lleva a otro camión o cambiarle el chofer allá cambia el renglón de la tarjeta (son el mismo vehículo); pasar el busca o un mueve a otro camión los suelta del renglón. Si la hoja ya estaba enviada, queda "Cambiada después de enviar" con "Avisar a Ortega" (§11).
+- **Todo el día** también se ve en la vista Camiones: la fila del camión de Borda dice "Todo el día con la Cuadrilla 1 · Av. del Libertador 5980". Se le pueden poner viajes **de esa misma cuadrilla** sin aviso; cualquier otro viaje lo saca de la cuadrilla y avisa (§9).
+- **La fila de Camiones dice quién lo maneja en cada tramo** si cambia en el día ("Kiska → Nuñez 14:00"); en la lista, cada viaje dice su chofer. Menú de una ficha: **"Cambiar chofer"** (sólo ese viaje) y, en un lleva, **"Después vuelve al depósito"**. Menú de la fila: **"Elegir otro chofer"** (pasa los viajes pendientes del camión y sus renglones en las hojas: el chofer no vino).
 
 ### Cómo se evita que un chofer o un vehículo esté en dos lugares
 
 | Situación | Texto en la tarjeta | Botón |
 |---|---|---|
-| Un chofer **Todo el día** puesto en otra cuadrilla | "Borda está todo el día con la Cuadrilla 1" | "Pasarlo acá" / "Elegir otro" |
+| Un chofer **Todo el día** puesto en otra cuadrilla | "Borda está todo el día con la Cuadrilla 1" | "Sacarlo de la 1" (saca sólo sus vehículos de la otra) / "Elegir otro" |
 | Un vehículo **Todo el día** puesto en otra cuadrilla | "El AB 831 LC está todo el día con la Cuadrilla 1" | "Elegir otro" |
-| Un chofer **Lleva y trae** con dos viajes a menos de 45 min | "Kiska lleva a la Cuadrilla 2 y a la 3 a las 7:00" | "Cambiar hora" |
-| Un chofer **Todo el día** que además tiene viajes de Lleva y trae | "Nuñez está todo el día con la 5 y lleva a la 4 a las 7:00" | "Elegir otro" |
+| Un chofer **Lleva y trae** con dos viajes del mismo camión que no entran | "Kiska lleva a la Cuadrilla 2 y a la 3 a las 7:00" | "Cambiar hora" |
+| **El mismo chofer en dos camiones a la vez** | "Kiska no llega: lleva C2 Juramento (AF 669 ZL) termina ~7:45 y lleva C4 Gurruchaga (AB 497 YY) es a las 7:15" | "Elegir otro" / "Ver el camión" |
+| Un chofer **Todo el día** que además tiene viajes de otra cuadrilla (o el vehículo de todo el día con viajes de otra) | "Nuñez está todo el día con la 5 y lleva a la 4 a las 7:00" | "Elegir otro" |
+| Un chofer que es **integrante de otra cuadrilla** | "Conte está en la Cuadrilla 2 y maneja todo el día con la 4" | "Elegir otro" / "Ver la 2" |
 | Vehículo en taller o fuera de servicio (`vehiculos.estado`), o con un viaje de "Taller / VTV" a esa hora | "El AF 669 ZL está en la VTV de 14:00 a ~15:30" | "Elegir otro" |
 | Vehículo con VTV, seguro o CNRT vencidos (`documentos`) | "El AH 410 LD tiene la VTV vencida desde el 02/10" | — (advierte, no bloquea) |
 | Chofer ausente | "Kiska se retira a las 14 (trámite)" si es parcial; "Kiska no viene (vacaciones)" si es todo el día | "Elegir otro" |
 | Un viaje del camión hace llegar tarde al "busca" | "Kiska llegaría ~16:50 a buscar a la Cuadrilla 3 (16:30)" | "Ver el camión" (abre la vista Camiones en esa fila) |
+| ~~El vehículo lo maneja otro (su habitual o el del día)~~ | **No es un problema** (decisión del 11/10): chofer y vehículo son independientes | — |
 
 - **45 minutos** es un parámetro (el tiempo mínimo entre dos viajes de un mismo chofer cuando no hay duraciones). No se calculan distancias: es un aviso para que Juan Agustín mire, no un ruteo. En la vista Camiones el cruce se calcula con las duraciones típicas de §6.
-- **Una ausencia parcial** ("se retira a las 14") se cruza con los viajes: si Kiska tiene un "busca" a las 17:00, sale "Kiska se retira a las 14 y busca a la Cuadrilla 2 a las 17:00".
+- **Una ausencia parcial** ("se retira a las 14") se cruza con los viajes: si el que los busca a las 17:00 se retira a las 14, sale "Kiska se retira a las 14 y busca a la Cuadrilla 2 a las 17:00".
 
 ## 5. Ausencias
 
@@ -227,6 +245,14 @@ Decisión del dueño (10/10): **las carga el planificador (o RRHH) con anticipac
 - **Fija** cuando hay alguien esperando a esa hora: el lleva y el busca de una cuadrilla, un turno de VTV, un horario prometido al cliente. Se escribe "**10:45**".
 - **Estimada** en todo lo demás: la app la calcula con el orden y las duraciones típicas ("**~11:30**"). Así el coordinador no escribe horas: **ordena**.
 - Si una fija no se puede cumplir con lo que va antes, sale el aviso (§9).
+
+### Tiempos de manejo reales (Google Maps)
+
+Desde el 12/10 (rama `feat/hoja-dia-google-maps`), si la **Routes API** de Google está habilitada, las estimadas usan el **tiempo de manejo real con el tránsito de esa hora** en lugar de la duración típica:
+
+- **Qué tramos**: sólo los que entran en una cuenta: cada parada de un camión desde la anterior, su vuelta al depósito, y por cada cuadrilla depósito → primera obra, obra → obra y última obra → depósito. Hacen falta las coordenadas de los dos puntos (las obras las traen de Odoo; los lugares, de `hd_lugares`).
+- **Cómo entra en la duración**: duración típica = manejar + lo que se hace en la parada. Con el tramo real, **duración = manejo real + la parada** (lleva/busca/mueve 10 min, material/compra/entre depósitos/otro 30, taller 60). Si la hora es **fija y no es un "lleva"** (busca, turno de VTV, horario prometido), la hora es cuándo tiene que **estar**: el manejo va antes y el aviso de choque mira si llega manejando desde lo anterior ("Kiska llegaría ~16:40 a buscar a la Cuadrilla 3"). La vuelta al depósito también es la real. La duración cargada a mano en el viaje sigue mandando.
+- **Sin Google** (sin clave, la API apagada, sin coordenadas, o si tarda más de 2,5 s) todo es como antes: las duraciones típicas de la tabla. La pantalla nunca espera ni se rompe por esto.
 
 ### Varios pedidos, un viaje
 
@@ -355,8 +381,8 @@ Ruta: **`/planificacion/hoja`**. Es la vista para armar mañana. Desde el encabe
 - **Una tarjeta por cuadrilla con obras**, en el orden y el color del tablero. Cada tarjeta, de arriba abajo:
   1. **Encabezado**: "Cuadrilla 3" y el estado en texto ("Borrador", "Enviada 18:42", "Abierta 20:15", "Recibida 20:16", "Cambiada después de enviar").
   2. **Obras del tablero**, sólo lectura: número de orden, dirección corta (`direccionCorta()`), flecha y color del tipo, fracción y hora de inicio estimada. Un clic abre la ficha de la OT de siempre. Si una obra tiene pedidos o viajes de material ese día, una línea gris abajo: "Material: lo lleva Gómez 8:00".
-  3. **Quiénes van**: nombres con `nombrePropio()`; el que está a cargo primero con "a cargo"; el chofer de "Todo el día" al final con "chofer". A la derecha, "5 de 5" (la dotación prevista es el máximo `x_personal_por_jornada` de sus obras). "+ Agregar".
-  4. **Chofer**: el selector de tres modos y, según el modo, chofer, vehículo y horas.
+  3. **Quiénes van**: nombres con `nombrePropio()`; el que está a cargo primero con "a cargo"; los choferes de "Todo el día" al final con "chofer" (si el chofer ya es de la gente, como Conte a cargo y chofer, su nombre dice "a cargo · chofer" y cuenta una vez). A la derecha, "5 de 5" (la dotación prevista es el máximo `x_personal_por_jornada` de sus obras). "+ Agregar".
+  4. **Vehículos**: un renglón por vehículo (modo, chofer, patente, hora del lleva y si vuelve al depósito) y quién los busca; se tocan para editarlos en línea y "+ Otro vehículo" (§4).
   5. **Encuentro**: "7:00 en el depósito" (con chofer) o "8:00 en la obra" (sin chofer). Se cambia con un clic.
   6. **"+ Instrucciones"** (ver §10). Si hay, se ve el primer renglón.
   7. **El problema de la tarjeta, en una línea de texto** (si hay). Una señal por idea: nada de íconos sueltos.
@@ -470,6 +496,9 @@ Se deduce de los viajes y de los "Hecho" del chofer, y se dice en palabras en el
 | Terminó | "Terminó 17:20 · 6 viajes" |
 
 - No se toca `vehiculos.estado` (`en_ruta`): ese campo es para "en taller" y "fuera de servicio", que carga Vehículos.
+- **El tiempo de cada viaje** va al lado de su hora en la lista ("~35 min en auto") y en el `title` de la ficha, con un ícono chico: auto = Google Maps con el tránsito de esa hora; reloj = la duración típica (todavía sin el tiempo de Google para ese tramo). En la tarjeta de la cuadrilla, entre dos obras, el manejo de una a la otra (sólo si es de Google).
+- **Links a Google Maps** (gratis, sin clave): "Cómo llegar" en el menú de cada viaje (desde donde sale hasta su destino) y "Ver el recorrido en Maps" en el menú de la fila (todas las paradas que faltan, en orden).
+- Si el depósito no tiene dirección y coordenadas en los lugares, abajo de la línea "Ahora:" se lee, discreto, "Cargá la dirección del depósito para calcular tiempos reales" (los tramos que salen o vuelven ahí van con la típica, y "Cerca" no mide desde el depósito).
 - El coordinador puede **marcar "Hecho" por el chofer** (cuando lo llamó y le dijo que ya está): el viaje queda "Hecho 9:55 · marcado por Juan Agustín".
 
 ### Cómo se despacha
@@ -761,6 +790,7 @@ Hechos
 ```
 
 - **Arriba, el viaje de "Ahora"** (el primero sin hacer), grande: hora, de dónde a dónde, qué lleva o trae, quién lo pidió, "Cómo llegar" (Maps con el destino) y "Llamar a…" (al capataz de esa obra o al teléfono del lugar).
+- **"Ver el recorrido en Maps"** (arriba de la lista): abre Google Maps con todas sus paradas que faltan, en orden (desde donde sale la primera; si la última vuelve, hasta el depósito; hasta 9 paradas intermedias). Tocar un viaje de la lista lo abre con su **"Cómo llegar"** (y "Hecho este" si es hoy). Los links van al pin de la obra si tiene coordenadas, si no a la dirección. El mensaje de Telegram de sus viajes trae el mismo recorrido en un botón. El capataz tiene "Cómo llegar" en cada obra.
 - **"Hecho"** (coral, abajo): **un toque** y el siguiente sube a "Ahora". Aviso "Hecho 11:42 · Deshacer" por 10 segundos. Es lo único que el chofer tiene que hacer.
   - Si hizo otro antes del que dice "Ahora", toca ese viaje en "Después" y le aparece su propio "Hecho".
   - **Foto del remito** (opcional, sólo en "Busca compra" y en viajes de material): después de "Hecho" aparece "**Sacar foto del remito**" / "Sin foto" durante 30 segundos, y después queda como "+ foto" en el viaje hecho. Nunca es obligatoria.
@@ -845,16 +875,19 @@ Si algún día el costeo necesita **personas por nombre** en Odoo, se agregan ca
 
 - **`hd_hojas`** — una por cuadrilla y día.
   - `id` uuid, `fecha` date, `cuadrilla_odoo_id` bigint, **UNIQUE (fecha, cuadrilla_odoo_id)**.
-  - `chofer_modo` (`sin` / `lleva_trae` / `todo_el_dia`), `chofer_id` → personal (sólo en todo el día; en lleva y trae el chofer está en los viajes), `vehiculo_id` → vehiculos.
+  - `chofer_modo` (`sin` / `lleva_trae` / `todo_el_dia`), `chofer_id`, `vehiculo_id`: desde el 11/10 son sólo el **resumen del primer vehículo** (rollback). Los vehículos están en `hd_hoja_vehiculos`.
   - `encuentro_lugar` (`deposito` / `obra` / texto), `encuentro_hora` time.
   - `nota` (la de toda la cuadrilla).
   - `recibe_id` → personal o `recibe_externa_id` → pan_personas_externas (a quién se manda: por defecto, el que está a cargo).
   - `enviado` jsonb (foto de lo enviado), `enviada_at`, `enviada_por`, `version` int, `sin_avisar_ok_at` ("No hace falta avisar").
   - `updated_at`, `updated_by`.
+- **`hd_hoja_vehiculos`** (11/10, `20261012000001_hoja_dia_vehiculos.sql`) — los vehículos de una hoja.
+  - `id`, `hoja_id`, `fecha` (por trigger), `vehiculo_id` y `chofer_id` (null = falta elegirlo), `modo` (`lleva_trae` / `todo_el_dia`), `orden`, `tocado_at`. UNIQUE parcial (hoja, vehículo). Sin filas = sin chofer.
+  - `hd_viajes.hoja_vehiculo_id`: el lleva (y los mueve) de ese vehículo, y el busca si lo hace él. `hd_viajes.vuelta_llega`: con `vuelta`, la hora de llegada al depósito.
 - **`hd_integrantes`** — quiénes van.
   - `id`, `hoja_id`, `fecha` (repetida a propósito), `persona_id` → personal o `externa_id`, `a_cargo` bool, `es_chofer` bool, `nota` ("va directo a la 2.ª obra"), `orden`.
   - **UNIQUE (fecha, persona_id)**: una persona, una cuadrilla por día. **UNIQUE parcial (hoja_id) WHERE a_cargo**: uno a cargo por hoja.
-- **`hd_camiones_dia`** — el chofer de cada vehículo cada día (reemplaza al `hd_chofer_dia` de la v1, que era el renglón "Además").
+- **`hd_camiones_dia`** — el chofer SUGERIDO de cada vehículo cada día (reemplaza al `hd_chofer_dia` de la v1, que era el renglón "Además"). Desde el 11/10 sólo propone el chofer de un viaje nuevo en una fila sin viajes y lo escribe "Elegir otro chofer"; cada viaje tiene el suyo.
   - `fecha`, `vehiculo_id`, `chofer_id` → personal (null = sin chofer), `nota`; **UNIQUE (fecha, vehiculo_id)**. Por defecto, el chofer habitual. Lo copia "Empezar como hoy".
   - Los fletes de afuera no tienen fila acá: son viajes con `flete_externo`.
 - **`hd_viajes`** — **se generaliza**: todos los viajes de todos los camiones, de cuadrilla o no.
@@ -1046,6 +1079,12 @@ Si algún día el costeo necesita **personas por nombre** en Odoo, se agregan ca
 18. `estado.ts` tiene tests de: problemas de la hoja, cruce de viajes, precarga, sugerencia de a cargo, cambios desde lo enviado, afectados, horas estimadas, avisos del camión, dónde anda, orden de la cola, camiones que sirven, sugeridos y fletes del día.
 
 ## 19. Decisiones
+
+**Del dueño (11/10/2026), choferes y camiones** (detalle en §4)
+- **Chofer y vehículo son independientes**: el chofer de cada viaje manda; el habitual es sólo sugerencia, nunca un problema. Choques reales: el mismo vehículo o el mismo chofer en dos lugares a la vez.
+- **"Puede manejar"** en Legajos para armadores que manejan (Conte, Ortega): elegibles como chofer; a cargo y chofer de su cuadrilla cuenta una vez.
+- **Varios vehículos por hoja**, cada uno con su chofer y su modo.
+- **Lleva y trae sobre la marcha**: "después vuelve al depósito" con hora de llegada; el busca con el mismo, otro camión u otro chofer, a definir o vuelven solos, editable en línea desde la tarjeta e igual en Camiones y en los mensajes.
 
 **Del dueño (10/10/2026)**
 1. **Chofer: depende del día.** Lleva y trae, queda todo el día (puede ayudar como operario), o no hay chofer. Lo indica el planificador en cada caso.

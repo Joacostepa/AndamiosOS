@@ -277,6 +277,13 @@ function Capataz({
                 {choferLleva.telefono && <Llamar nombre={choferLleva.nombre!} telefono={choferLleva.telefono} texto="Llamar" />}
               </div>
             )}
+            {/* Los otros choferes de la hoja (otro camión que los lleva, o el que los busca). */}
+            {choferLleva && (v.chofer?.otros ?? []).map((x, i) => (
+              <div key={`ch-${i}`} className={s.p}>
+                <span className={s.t}><b>{x.nombre}</b> <span className={cx(s.tag, s.cargo)}>chofer</span><small>{x.rol}</small></span>
+                {x.telefono && <Llamar nombre={x.nombre} telefono={x.telefono} texto="Llamar" />}
+              </div>
+            ))}
           </section>
           <div className={s.tfalta}>
             <p>¿Falta alguien, falta material o hay un problema?</p>
@@ -387,10 +394,11 @@ function Chofer({
             <small>{x.estado === "no_pudo" ? (x.motivo ?? "").replace(/^./, (c) => c.toLowerCase()) : `${x.desde ?? "Depósito"} → ${x.hacia}`}{x.foto ? " · + foto" : ""}</small>
           </span>
         </button>
-        {puedeHecho && (
+        {/* Abierto: "Cómo llegar" a esa parada (siempre que falte) y "Hecho este" (hoy). */}
+        {abierto && x.estado === "planeado" && (puedeHecho || x.mapsUrl) && (
           <div className={s.vx}>
             {x.mapsUrl ? <a className={cx(s.tbtn, s.sub)} href={x.mapsUrl} target="_blank" rel="noreferrer">Cómo llegar</a> : <span />}
-            <button type="button" className={cx(s.tbtn, s.cor)} disabled={ocupado} onClick={() => hecho(x)}>Hecho este</button>
+            {puedeHecho ? <button type="button" className={cx(s.tbtn, s.cor)} disabled={ocupado} onClick={() => hecho(x)}>Hecho este</button> : <span />}
           </div>
         )}
       </div>
@@ -427,6 +435,11 @@ function Chofer({
         );
       })}
     </div>
+  );
+
+  // "Ver el recorrido en Maps": todas las paradas que faltan, en orden (Google Maps, gratis).
+  const recorrido = v.recorridoUrl && pend.length > 0 && (
+    <a className={cx(s.tbtn, s.sub, s.full)} href={v.recorridoUrl} target="_blank" rel="noreferrer">Ver el recorrido en Maps</a>
   );
 
   const td = v.todo;
@@ -470,6 +483,7 @@ function Chofer({
         {td.obras.map((o, i) => <Obra key={o.otId} o={o} abierta={i === 0} onVisor={onVisor} />)}
         {listaSinMandar}
         {vigentes.length > 0 && <div className={s.vlist}><h3>Tus viajes propios</h3>{vigentes.filter((x) => !enCola.has(x.id)).map(fila)}</div>}
+        {recorrido}
         <details className={s.tq}>
           <summary><h3>Quiénes van ({td.van})</h3> <span className={s.ver}>ver</span></summary>
           {td.gente.map((g, i) => (
@@ -485,6 +499,7 @@ function Chofer({
         {hoy && !pend.length && !sinMandar.length && (
           <div className={cx(s.tmsg, s.tmsgIn)}><h2>No tenés más viajes por ahora.</h2><p>Si te sale uno, te avisamos por acá.</p></div>
         )}
+        {recorrido}
         {despues.length > 0 && <div className={s.vlist}><h3>{hoy ? "Después" : "Tus viajes"}</h3>{despues.map(fila)}</div>}
         {listaSinMandar}
         {hechos.length > 0 && <div className={s.vlist}><h3>Hechos</h3>{hechos.map(fila)}</div>}

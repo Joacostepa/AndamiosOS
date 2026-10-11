@@ -29,6 +29,8 @@ export const MODOS_CHOFER: Record<ModoChofer, string> = {
   lleva_trae: "Lleva y trae",
   todo_el_dia: "Todo el día",
 };
+/** El modo de UN vehículo de la hoja ("Sin chofer" es no tener ninguno). */
+export type ModoVehiculo = Exclude<ModoChofer, "sin">;
 
 export type LugarEncuentro = "deposito" | "obra" | "otro";
 
@@ -118,6 +120,12 @@ export type Persona = {
   puedeEstarACargo: boolean;
   /** Puesto chofer en Legajos (o tarea chofer en Odoo). */
   esChofer: boolean;
+  /**
+   * "Puede manejar" de Legajos (personal.puede_manejar): un armador que además maneja
+   * (Conte, Ortega). Se lo puede elegir de chofer sin dejar de estar en "Sin asignar".
+   * Opcional: los días guardados en el celular (y los fixtures viejos) no lo tienen.
+   */
+  puedeManejar?: boolean;
   /** Tiene el chat de Telegram vinculado: la hoja le llega sola. */
   telegram: boolean;
   odooEmployeeId: number | null;
@@ -177,7 +185,11 @@ export type Vehiculo = {
   vencimientos: { tipo: "vtv" | "seguro_vehiculo" | "cnrt"; vence: Fecha }[];
 };
 
-/** El chofer de un vehículo ese día (con el habitual ya resuelto). */
+/**
+ * El chofer SUGERIDO de un vehículo ese día (hd_camiones_dia, o el habitual): el que se
+ * propone para un viaje nuevo en una fila sin viajes. No es una regla: cada viaje tiene su
+ * chofer (`Viaje.choferId`) y un camión puede cambiar de chofer en el día.
+ */
 export type CamionDia = { vehiculoId: string; choferId: string | null; nota: string | null };
 
 export type Lugar = {
@@ -253,15 +265,30 @@ export type Integrante = {
   orden: number;
 };
 
+/**
+ * Un vehículo de la hoja (hd_hoja_vehiculos), con su chofer y su modo. Una cuadrilla puede
+ * llevar varios (la hidrogrúa con Borda todo el día + otro camión que los lleva y se va);
+ * "Sin chofer" es no tener ninguno. Chofer y vehículo son independientes: el habitual del
+ * vehículo es sólo la sugerencia al elegirlo.
+ */
+export type VehiculoHoja = {
+  id: string;
+  /** null = falta elegirlo. */
+  vehiculoId: string | null;
+  /** null = falta elegirlo. */
+  choferId: string | null;
+  modo: ModoVehiculo;
+  orden: number;
+  /** Cuándo se tocó (para decidir qué tarjeta muestra el choque). */
+  tocadoMin: Minutos | null;
+};
+
 export type Hoja = {
   id: string;
   fecha: Fecha;
   cuadrillaOdooId: number;
-  modo: ModoChofer;
-  choferId: string | null;
-  vehiculoId: string | null;
-  /** Cuándo se tocó el chofer o el vehículo (para decidir qué tarjeta muestra el choque). */
-  choferTocadoMin: Minutos | null;
+  /** Los vehículos de la hoja, en su orden (vacío = van por su cuenta). */
+  vehiculos: VehiculoHoja[];
   encuentro: { lugar: LugarEncuentro; texto: string | null; hora: Hora };
   nota: string | null;
   /** Quién recibe la hoja si no hay nadie a cargo. */
@@ -283,10 +310,17 @@ export type Viaje = {
   fecha: Fecha;
   /** null + fleteExterno = flete de afuera; null sin flete = nadie lo hace. */
   vehiculoId: string | null;
+  /** El chofer de ESTE viaje (manda sobre el del camión: un camión cambia de chofer en el día). */
   choferId: string | null;
   fleteExterno: string | null;
   tipo: TipoViaje;
   hojaId: string | null;
+  /**
+   * El vehículo de la hoja del que es este viaje: su "lleva" y sus "mueve", y el "busca" si
+   * lo hace ese mismo vehículo (sigue a ese renglón si cambia el chofer o el camión). null =
+   * un busca con otro camión o "a definir", o un viaje suelto.
+   */
+  hojaVehiculoId: string | null;
   cuadrillaOdooId: number | null;
   hacia: Punto;
   /** null = donde terminó el anterior. */
@@ -296,8 +330,11 @@ export type Viaje = {
   hora: Hora | null;
   noAntesDe: Hora | null;
   duracionMin: number | null;
+  /** Después de la parada vuelve al depósito (el "trae", o el "lleva" que deja a la gente y se vuelve). */
   vuelta: boolean;
   vueltaCarga: string | null;
+  /** Con vuelta: a qué hora llega al depósito (cargada a mano). null = la estimada. */
+  vueltaLlega: Hora | null;
   carga: string | null;
   cargaDeposito: Hora | null;
   okTodoElDia: boolean;
@@ -409,9 +446,16 @@ export type FotoHoja = {
   obras: { id: number; dir: string; hora: Hora; est: boolean }[];
   gente: string[];
   aCargo: string | null;
+  /** El primer vehículo (las fotos viejas sólo tienen éste). */
   modo: ModoChofer;
   chofer: string | null;
   veh: string | null;
+  /**
+   * Todos los vehículos (id del renglón, modo, chofer, vehículo, hora de su lleva).
+   * Opcional: las fotos guardadas antes de los varios vehículos no lo tienen (se compara
+   * con el primero, como antes).
+   */
+  vehs?: { id: string; modo: ModoVehiculo; ch: string | null; veh: string | null; lleva: Hora | null }[];
   lleva: Hora | null;
   busca: Hora | null;
   llevaCh: string | null;
@@ -564,4 +608,15 @@ export type DiaHoja = {
   /** Pendientes del cajón del tablero que todavía no pasaron a pedido. */
   cajon: { id: string; texto: string }[];
   telegram: { configurado: boolean; bot: string | null };
+  /**
+   * Tiempos de manejo de Google (Routes API) de los tramos que se usan ese día, por
+   * `"desdeKey>haciaKey"` (las claves de `lugar()`: "o:123", "l:<uuid>"). Lo arma el
+   * servidor (rutas-servidor.ts); si no hay clave, la API falla o falta una coordenada, el
+   * tramo no está y estado.ts usa las duraciones típicas de siempre. Opcional: los días
+   * armados a mano (tests, el contexto de un gesto) no lo tienen.
+   */
+  tiempos?: Record<string, TiempoTramo>;
 };
+
+/** Un tramo de manejo: minutos y metros. `fuente` dice de dónde sale (el `title` del ícono). */
+export type TiempoTramo = { min: number; m: number | null; fuente: "google" | "tipica" };

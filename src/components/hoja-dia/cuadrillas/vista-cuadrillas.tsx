@@ -14,7 +14,7 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   bandeja, cap, cola, cuadrillasActivas, cuadrillasConObras, diaSemana, esPasado, filasCamiones, hojaDe, hojaDeCuadrilla,
-  nombreDe, patente, pendientesEnvio, persona, choferDelCamion, cNombre, type Boton, type ItemBandeja, type ModoPrecarga,
+  nombreDe, patente, pendientesEnvio, persona, choferesTxt, cNombre, type Boton, type ItemBandeja, type ModoPrecarga,
 } from "@/lib/hoja-dia/estado";
 import { cambiosTablero, cuadrillaDeTecla } from "@/lib/hoja-dia/vista-cuadrillas";
 import type { DiaHoja } from "@/lib/hoja-dia/tipos";
@@ -142,7 +142,7 @@ export function VistaCuadrillas() {
         case "agregar": if (c != null && b.p) agregar(c, b.p); return;
         case "focoAgregar": if (c != null) llamarAtencion(c, `ag-${c}`); return;
         case "chEd": if (c != null) { setChEd({ c, foco: b.foco }); llamarAtencion(c); } return;
-        case "pasarChofer": if (c != null && b.from != null) hoja.mutate({ accion: "pasar_chofer", fecha, cuadrilla: c, desde: b.from }); return;
+        case "pasarChofer": if (c != null && b.from != null) hoja.mutate({ accion: "pasar_chofer", fecha, cuadrilla: c, desde: b.from, choferId: b.p ?? null }); return;
         case "irA": if (c != null) llamarAtencion(c); else if (b.veh) irCamiones(`&veh=${b.veh}`); else setFaltaAbierta(true); return;
         case "verCamion": irCamiones(b.veh ? `&veh=${b.veh}` : ""); return;
         case "verViaje": irCamiones(b.id ? `&viaje=${b.id}` : ""); return;
@@ -417,7 +417,7 @@ export function VistaCuadrillas() {
           {filasCamiones(dia).filter((v) => v !== "flete").map((veh) => (
             <ItemMenu
               key={veh}
-              detalle={nombreDe(dia, choferDelCamion(dia, veh)) || "sin chofer"}
+              detalle={choferesTxt(dia, veh) || "sin chofer"}
               onClick={() => {
                 setMenu(null);
                 viaje.mutate({ accion: "mover", viajeId: menuCamion.viajeId, vehiculoId: veh });

@@ -4,9 +4,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { aplicarOptimista, esTemporal } from "./optimista.ts";
-import { aCargoDe, hojaDe, hojaDeCuadrilla, planModo, planSoltarChofer, sinAsignar, vanDe } from "./estado.ts";
+import { aCargoDe, hojaDe, hojaDeCuadrilla, modoDe, sinAsignar, vanDe, vehiculosDe } from "./estado.ts";
 import type { DiaHoja } from "./tipos.ts";
 import { martesArmado, martesPrecargado } from "./escenario.test-fixture.ts";
+import { planVehiculos } from "./vehiculos.ts";
 
 const F = "2026-10-13";
 const ok = (d: DiaHoja | null): DiaHoja => {
@@ -91,45 +92,108 @@ test("contratistas: sumar crea la fila, ± cambia la cantidad (0 a 60) y quitar 
   assert.equal(hojaDeCuadrilla(nota, 4)!.contratistas[0].nota, "traen su arnés");
 });
 
-test("modo: la misma regla que el servidor (planModo) y los viajes de lleva y trae", () => {
+test("modo: la misma regla que el servidor (vehiculos.ts) y los viajes de lleva y trae", () => {
   const d0 = martesArmado();
-  const h0 = hojaDeCuadrilla(d0, 4)!;
-  assert.equal(h0.modo, "sin");
-  const plan = planModo(d0, 4, "lleva_trae");
+  assert.equal(modoDe(hojaDeCuadrilla(d0, 4)), "sin");
+  const plan = planVehiculos(d0, 4, { k: "modo", modo: "lleva_trae" }, { nuevoId: (q) => q, ahora: -300 });
   const d = ok(aplicarOptimista(d0, { accion: "modo", fecha: F, cuadrilla: 4, modo: "lleva_trae" }, { ahora: -300 }));
   const h = hojaDeCuadrilla(d, 4)!;
-  assert.equal(h.modo, "lleva_trae");
-  assert.equal(h.choferId, plan.choferId);
-  assert.equal(h.vehiculoId, plan.vehiculoId);
+  assert.equal(modoDe(h), "lleva_trae");
+  assert.equal(h.vehiculos.length, 1);
+  assert.equal(h.vehiculos[0].choferId, plan.filas[0].choferId);
+  assert.equal(h.vehiculos[0].vehiculoId, plan.filas[0].vehiculoId);
+  assert.ok(esTemporal(h.vehiculos[0].id));
+  assert.equal(h.vehiculos[0].tocadoMin, -300);
   assert.equal(h.encuentro.lugar, "deposito");
-  assert.equal(h.choferTocadoMin, -300);
   const vs = viajesDe(d, 4);
   assert.deepEqual(vs.map((v) => v.tipo).sort(), ["busca", "lleva"]);
-  assert.equal(vs.find((v) => v.tipo === "lleva")!.hora, plan.lleva);
-  assert.equal(vs.find((v) => v.tipo === "busca")!.hora, plan.busca);
-  // Volver a "Sin chofer" borra los lleva / busca planeados y el encuentro pasa a la obra.
+  assert.ok(vs.every((v) => v.hojaVehiculoId === h.vehiculos[0].id), "los dos siguen al vehículo");
+  assert.equal(vs.find((v) => v.tipo === "lleva")!.hora, "7:00");
+  assert.equal(vs.find((v) => v.tipo === "busca")!.hora, "17:00");
+  // Volver a "Sin chofer" borra los vehículos y los lleva / busca planeados, y el encuentro pasa a la obra.
   const sin = ok(aplicarOptimista(d, { accion: "modo", fecha: F, cuadrilla: 4, modo: "sin" }));
+  assert.equal(hojaDeCuadrilla(sin, 4)!.vehiculos.length, 0);
   assert.equal(viajesDe(sin, 4).length, 0);
   assert.equal(hojaDeCuadrilla(sin, 4)!.encuentro.lugar, "obra");
   // Los viajes de las otras cuadrillas no se tocan.
   assert.equal(viajesDe(sin, 3).length, viajesDe(d0, 3).length);
 });
 
-test("soltar un chofer en una tarjeta sin chofer la pasa a Lleva y trae (planSoltarChofer)", () => {
+test("soltar un chofer en una tarjeta sin chofer la pasa a Lleva y trae; en una con vehículo, el camión no cambia", () => {
   const d0 = martesArmado();
-  const plan = planSoltarChofer(d0, 4, "gomez");
   const d = ok(aplicarOptimista(d0, { accion: "chofer", fecha: F, cuadrilla: 4, choferId: "gomez" }));
   const h = hojaDeCuadrilla(d, 4)!;
-  assert.equal(h.modo, plan.modo);
-  assert.equal(h.choferId, "gomez");
-  assert.equal(h.vehiculoId, plan.vehiculoId);
+  assert.equal(modoDe(h), "lleva_trae");
+  assert.equal(h.vehiculos[0].choferId, "gomez");
+  assert.equal(h.vehiculos[0].vehiculoId, "ab497", "propone su habitual porque no había vehículo");
   assert.ok(viajesDe(d, 4).every((v) => v.choferId === "gomez"));
-  // Cambiar el chofer de una que ya iba con lleva y trae arrastra sus viajes planeados.
+  // Cambiar el chofer de una que ya iba con lleva y trae arrastra sus viajes, y NO el vehículo
+  // (chofer y vehículo son independientes: Gómez maneja el AF 669 ZL de Kiska).
   const d3 = ok(aplicarOptimista(d0, { accion: "chofer", fecha: F, cuadrilla: 3, choferId: "gomez" }));
-  assert.ok(viajesDe(d3, 3).filter((v) => v.tipo === "lleva" || v.tipo === "busca").every((v) => v.choferId === "gomez"));
+  assert.equal(hojaDeCuadrilla(d3, 3)!.vehiculos[0].vehiculoId, "af669");
+  assert.ok(viajesDe(d3, 3).filter((v) => v.tipo === "lleva" || v.tipo === "busca").every((v) => v.choferId === "gomez" && v.vehiculoId === "af669"));
   const veh = ok(aplicarOptimista(d0, { accion: "vehiculo", fecha: F, cuadrilla: 3, vehiculoId: "ab497" }));
-  assert.equal(hojaDeCuadrilla(veh, 3)!.vehiculoId, "ab497");
+  assert.equal(hojaDeCuadrilla(veh, 3)!.vehiculos[0].vehiculoId, "ab497");
+  assert.equal(hojaDeCuadrilla(veh, 3)!.vehiculos[0].choferId, "kiska", "el chofer sigue siendo el mismo");
   assert.ok(viajesDe(veh, 3).filter((v) => v.tipo === "lleva").every((v) => v.vehiculoId === "ab497"));
+});
+
+test("dos vehículos con modos distintos: la hidrogrúa todo el día y otro camión que los lleva y se vuelve", () => {
+  const d0 = martesArmado();
+  const fila1 = hojaDeCuadrilla(d0, 1)!.vehiculos[0];
+  // + Otro vehículo en la 1 (Borda todo el día con la hidrogrúa): Gómez los lleva con el AB 497 YY.
+  const d = ok(aplicarOptimista(d0, { accion: "vehiculo_sumar", fecha: F, cuadrilla: 1, modo: "lleva_trae", choferId: "gomez", vehiculoId: "ab497" }));
+  const fs = vehiculosDe(hojaDeCuadrilla(d, 1));
+  assert.deepEqual(fs.map((f) => [f.modo, f.choferId, f.vehiculoId]), [["todo_el_dia", "borda", "ab831"], ["lleva_trae", "gomez", "ab497"]]);
+  assert.equal(fs[0].id, fila1.id);
+  const vs = viajesDe(d, 1);
+  assert.deepEqual(vs.map((v) => [v.tipo, v.vehiculoId, v.hojaVehiculoId === fs[1].id]).sort(), [["busca", "ab497", true], ["lleva", "ab497", true]]);
+  // Cuenta una vez a cada uno: la gente más Borda (Gómez los lleva y se va: no cuenta).
+  assert.equal(vanDe(d, 1), vanDe(d0, 1));
+  // El lleva de Gómez después vuelve al depósito: el camión queda libre desde ahí.
+  const ll = vs.find((v) => v.tipo === "lleva")!;
+  const dv = ok(aplicarOptimista(d, { accion: "vuelta", fecha: F, cuadrilla: 1, filaId: fs[1].id, vuelve: true, llega: "8:30" }));
+  const llv = dv.viajes.find((v) => v.id === ll.id)!;
+  assert.equal(llv.vuelta, true);
+  assert.equal(llv.vueltaLlega, "8:30");
+  // Quitar el camión que los lleva: se van su lleva y el busca; la hidrogrúa queda.
+  const q = ok(aplicarOptimista(dv, { accion: "vehiculo_quitar", fecha: F, cuadrilla: 1, filaId: fs[1].id }));
+  assert.deepEqual(vehiculosDe(hojaDeCuadrilla(q, 1)).map((f) => f.choferId), ["borda"]);
+  assert.equal(viajesDe(q, 1).length, 0);
+  assert.equal(hojaDeCuadrilla(q, 1)!.encuentro.lugar, "deposito", "con un vehículo el encuentro sigue en el depósito");
+});
+
+test("el busca: con otro camión, a definir, vuelven solos y de nuevo con el mismo", () => {
+  const d0 = martesArmado();
+  const f3 = hojaDeCuadrilla(d0, 3)!.vehiculos[0];
+  const bu = (d: DiaHoja) => viajesDe(d, 3).find((v) => v.tipo === "busca") ?? null;
+  // Los busca Gómez con el AB 497 YY (otro camión y otro chofer que los que los llevaron).
+  const otro = ok(aplicarOptimista(d0, { accion: "busca_con", fecha: F, cuadrilla: 3, vehiculoId: "ab497", choferId: "gomez" }));
+  assert.deepEqual([bu(otro)!.vehiculoId, bu(otro)!.choferId, bu(otro)!.hojaVehiculoId, bu(otro)!.hora], ["ab497", "gomez", null, "16:30"]);
+  // Cambiar el chofer del que los lleva ya no toca el busca (lo hace otro).
+  const ch = ok(aplicarOptimista(otro, { accion: "vehiculo_cambiar", fecha: F, cuadrilla: 3, filaId: f3.id, choferId: "nunez" }));
+  assert.equal(bu(ch)!.choferId, "gomez");
+  // A definir: sin camión todavía (la tarjeta dice "Nadie los busca").
+  const def = ok(aplicarOptimista(otro, { accion: "busca_con", fecha: F, cuadrilla: 3, vehiculoId: null }));
+  assert.deepEqual([bu(def)!.vehiculoId, bu(def)!.choferId], [null, null]);
+  // Vuelven solos, y otra vez "los busca": vuelve con el que los lleva, a la hora de fin.
+  const solos = ok(aplicarOptimista(def, { accion: "busca", fecha: F, cuadrilla: 3, hora: null }));
+  assert.equal(bu(solos), null);
+  const vuelve = ok(aplicarOptimista(solos, { accion: "busca", fecha: F, cuadrilla: 3, hora: "17:00" }));
+  assert.deepEqual([bu(vuelve)!.vehiculoId, bu(vuelve)!.choferId, bu(vuelve)!.hojaVehiculoId], ["af669", "kiska", f3.id]);
+  // Y de nuevo "el mismo" desde otro camión.
+  const mismo = ok(aplicarOptimista(otro, { accion: "busca_con", fecha: F, cuadrilla: 3, filaId: f3.id }));
+  assert.deepEqual([bu(mismo)!.vehiculoId, bu(mismo)!.hojaVehiculoId], ["af669", f3.id]);
+});
+
+test("sacarlo de la otra: pasar_chofer saca sólo los vehículos de ese chofer", () => {
+  const d0 = martesArmado();
+  // Borda también figura todo el día en la 4.
+  d0.hojas = d0.hojas.map((h) => (h.cuadrillaOdooId === 4 ? { ...h, vehiculos: [{ id: "f4", modo: "todo_el_dia" as const, choferId: "borda", vehiculoId: "ab831", orden: 0, tocadoMin: null }] } : h));
+  const d = ok(aplicarOptimista(d0, { accion: "pasar_chofer", fecha: F, cuadrilla: 1, desde: 4 }));
+  assert.equal(hojaDeCuadrilla(d, 4)!.vehiculos.length, 0);
+  assert.equal(hojaDeCuadrilla(d, 1)!.vehiculos.length, 1);
+  assert.equal(hojaDeCuadrilla(d, 4)!.encuentro.lugar, "obra");
 });
 
 test("horas, encuentro, notas e instrucciones", () => {
@@ -165,6 +229,8 @@ test("lo que no se adivina espera al servidor; otro día, tampoco", () => {
   assert.equal(aplicarOptimista(d0, { accion: "copiar_como_hoy", fecha: F, cuadrilla: 2 }), null);
   assert.equal(aplicarOptimista(d0, { accion: "mueve", fecha: F, cuadrilla: 2, otId: 2398, hora: "11:00" }), null);
   assert.equal(aplicarOptimista(d0, { accion: "sacar", fecha: "2026-10-14", personaId: "paz" }), null);
+  // Un busca en una cuadrilla sin nadie que la lleve: no se adivina (el servidor lo dice).
+  assert.equal(aplicarOptimista(d0, { accion: "busca", fecha: F, cuadrilla: 4, hora: "17:00" }), null);
 });
 
 test("el día que devuelve es un objeto nuevo: estado.ts no reusa índices del día a medio cambiar", () => {
@@ -172,6 +238,6 @@ test("el día que devuelve es un objeto nuevo: estado.ts no reusa índices del d
   hojaDeCuadrilla(d0, 4); // arma los índices del día original
   const d = ok(aplicarOptimista(d0, { accion: "modo", fecha: F, cuadrilla: 4, modo: "todo_el_dia" }));
   assert.notEqual(d, d0);
-  assert.equal(hojaDeCuadrilla(d, 4)!.modo, "todo_el_dia");
-  assert.equal(hojaDeCuadrilla(d0, 4)!.modo, "sin");
+  assert.equal(modoDe(hojaDeCuadrilla(d, 4)), "todo_el_dia");
+  assert.equal(modoDe(hojaDeCuadrilla(d0, 4)), "sin");
 });

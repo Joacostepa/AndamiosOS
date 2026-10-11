@@ -6,15 +6,17 @@
 // PURO (sin React ni servidor), como estado.ts, y con tests (vista-cuadrillas.test.ts).
 // Los textos son los de la maqueta aprobada (renderEsc / cardHTML / genteHTML / menuHTML).
 
-import type { Ausencia, DiaHoja, Fecha, Hoja, ModoChofer, Persona, Viaje } from "./tipos.ts";
+import type { Ausencia, DiaHoja, Fecha, Hoja, ModoChofer, ModoVehiculo, Persona, VehiculoHoja, Viaje } from "./tipos.ts";
 import { TIPO_AUSENCIA_TXT } from "./tipos.ts";
 import {
   addDia, aCargoDe, ausenciaDe, calcVeh, choferDe, cNombre, cuadrilla, cuadrillasActivas, ddmm, diaSemana, encTxt, esHoy,
-  genteDe, hm, hojaDe, hojaDeCuadrilla, horaTxt, laC, lugar, nombreDe, normalizar, normHora, nuevosEnHoja, obrasCon,
-  obrasDe, panelGente, parcialDe, patente, persona, prevista, recibeDe, todoDe, todoVeh, vanDe, vehiculo, viajeCalc,
-  viajesCalc, viajesChofer, choferDelCamion, vencimientosTxt, cuadrillasDeContratista, coincidePersona, nombreConPila, type ViajeCalc,
+  genteDe, hm, hm5, hojaDe, hojaDeCuadrilla, horaTxt, laC, lugar, nombreDe, normalizar, normHora, nuevosEnHoja, obrasCon,
+  obrasDe, parcialDe, patente, persona, prevista, recibeDe, todoDe, todoVeh, vanDe, vehiculo, viajeCalc,
+  viajesCalc, viajesChofer, vencimientosTxt, cuadrillasDeContratista, coincidePersona, nombreConPila, vehiculosDe, choferesTodoDe,
+  choferesElegibles, choferesTxt, filaQueLleva, type ViajeCalc,
 } from "./estado.ts";
 import { resumenContratistas } from "./contratistas.ts";
+import { llevaDeFila, quienBusca } from "./vehiculos.ts";
 
 const N = (dia: DiaHoja, id: string | null | undefined) => nombreDe(dia, id);
 
@@ -36,44 +38,109 @@ const horaDeViaje = (dia: DiaHoja, v: Viaje) => {
 /** Un pedazo de texto; `mono` para patentes. */
 export type Trozo = { t: string; mono?: boolean };
 
-/**
- * La línea del chofer de la tarjeta (resumenChofer de la maqueta):
- * "Sin chofer · van por su cuenta", "Todo el día · Borda · hidrogrúa AB 831 LC",
- * "Lleva y trae · Kiska · AF 669 ZL · 7:45 → 16:30".
- */
-export function resumenChofer(dia: DiaHoja, c: number): { k: string; resto: Trozo[] } {
-  const h = hojaDeCuadrilla(dia, c);
-  if (!h || h.modo === "sin") return { k: "Sin chofer", resto: [{ t: " · van por su cuenta" }] };
-  const vp: Trozo[] = h.vehiculoId ? [{ t: patente(dia, h.vehiculoId), mono: true }] : [{ t: "sin vehículo" }];
-  if (h.modo === "todo_el_dia") {
-    const hidro = h.vehiculoId && vehiculo(dia, h.vehiculoId)?.tipo === "hidrogrua" ? "hidrogrúa " : "";
-    return { k: "Todo el día", resto: [{ t: ` · ${h.choferId ? N(dia, h.choferId) : "sin chofer"} · ${hidro}` }, ...vp] };
-  }
-  const ll = deTipo(dia, h, "lleva");
-  const bu = deTipo(dia, h, "busca");
-  const llevaTxt = ll && !ll.vehiculoId && !ll.fleteExterno ? "nadie los lleva" : ll ? horaDeViaje(dia, ll) : normHora(h.encuentro.hora) ?? "";
-  let buscaTxt: string;
-  if (!bu) buscaTxt = "vuelven solos";
-  else if (!bu.vehiculoId && !bu.fleteExterno) buscaTxt = "nadie los busca";
-  else {
-    const ch = choferDe(dia, bu);
-    buscaTxt = ch && ch !== h.choferId ? `${horaDeViaje(dia, bu)} (${N(dia, ch)})` : horaDeViaje(dia, bu);
-  }
-  return { k: "Lleva y trae", resto: [{ t: ` · ${h.choferId ? N(dia, h.choferId) : "sin chofer"} · ` }, ...vp, { t: ` · ${llevaTxt} → ${buscaTxt}` }] };
+/** Un renglón de vehículo de la tarjeta: "Lleva y trae · Nuñez · AB 831 LC · 7:00 → 17:00". */
+export type RenglonVehiculo = { id: string; modo: ModoVehiculo; k: string; resto: Trozo[] };
+
+/** "7:00 (vuelve al depósito ~8:45)": la hora del lleva de un vehículo y si después vuelve. */
+function llevaTxt(dia: DiaHoja, h: Hoja, f: VehiculoHoja): string {
+  const ll = llevaDeFila(dia, h, f);
+  if (!ll) return normHora(h.encuentro.hora) ?? "";
+  if (!ll.vehiculoId && !ll.fleteExterno) return "nadie los lleva";
+  const vc = viajeCalc(dia, ll.id);
+  const llega = ll.vueltaLlega ? normHora(ll.vueltaLlega) : vc ? `~${hm5(vc.fin)}` : null;
+  return `${horaDeViaje(dia, ll)}${ll.vuelta ? ` (vuelve al depósito${llega ? ` ${llega}` : ""})` : ""}`;
 }
 
-/** Las horas que muestra el editor de "Lleva y trae": la del lleva, la del busca (null = vuelven solos) y los mueve. */
+/**
+ * Quién los busca, en palabras: "16:30", "16:30 (Gómez · AB 497 YY)", "17:00 · a definir",
+ * "vuelven solos". `conChofer`: nombrar al chofer aunque sea el mismo que los lleva.
+ */
+export function buscaTxt(dia: DiaHoja, h: Hoja, conChofer = false): string {
+  const q = quienBusca(dia, h);
+  if (q.k === "solos") return "vuelven solos";
+  const hora = horaDeViaje(dia, q.v);
+  if (q.k === "definir") return `${hora} · a definir`;
+  const ch = choferDe(dia, q.v);
+  const fl = filaQueLleva(h);
+  if (q.k === "fila") {
+    const mismo = q.fila.id === fl?.id && (!ch || ch === q.fila.choferId);
+    if (mismo && !conChofer) return hora;
+    return `${hora} (${N(dia, ch) || "sin chofer"}${vehiculosDe(h).length > 1 && q.fila.vehiculoId ? ` · ${patente(dia, q.fila.vehiculoId)}` : ""})`;
+  }
+  return `${hora} (${N(dia, ch) || "sin chofer"} · ${patente(dia, q.v.vehiculoId)})`;
+}
+
+/**
+ * Los renglones de vehículos de la tarjeta, uno por vehículo:
+ * "Todo el día · Borda · hidrogrúa AB 831 LC", "Lleva y trae · Kiska · AF 669 ZL · 7:45 → 16:30".
+ * Con un solo vehículo el busca va en su renglón ("→ 16:30", "→ vuelven solos"); con varios,
+ * va aparte (`busca`: "Los busca 17:00 (Gómez · AB 497 YY)"). Sin vehículos, `filas` vacío
+ * ("Sin chofer · van por su cuenta").
+ */
+export function resumenVehiculos(dia: DiaHoja, c: number): { filas: RenglonVehiculo[]; busca: Trozo[] | null } {
+  const h = hojaDeCuadrilla(dia, c);
+  const fs = vehiculosDe(h);
+  if (!h || !fs.length) return { filas: [], busca: null };
+  const unico = fs.length === 1;
+  const filas = fs.map((f): RenglonVehiculo => {
+    const vp: Trozo[] = f.vehiculoId ? [{ t: patente(dia, f.vehiculoId), mono: true }] : [{ t: "sin vehículo" }];
+    const quien = ` · ${f.choferId ? N(dia, f.choferId) : "sin chofer"} · `;
+    if (f.modo === "todo_el_dia") {
+      const hidro = f.vehiculoId && vehiculo(dia, f.vehiculoId)?.tipo === "hidrogrua" ? "hidrogrúa " : "";
+      return { id: f.id, modo: f.modo, k: "Todo el día", resto: [{ t: `${quien}${hidro}` }, ...vp] };
+    }
+    const cola = unico ? ` → ${buscaTxt(dia, h)}` : "";
+    return { id: f.id, modo: f.modo, k: "Lleva y trae", resto: [{ t: quien }, ...vp, { t: ` · ${llevaTxt(dia, h, f)}${cola}` }] };
+  });
+  let busca: Trozo[] | null = null;
+  if (!unico && fs.some((f) => f.modo === "lleva_trae")) {
+    const b = buscaTxt(dia, h, true);
+    busca = [{ t: b === "vuelven solos" ? "Vuelven solos" : `Los busca ${b}` }];
+  }
+  return { filas, busca };
+}
+
+/**
+ * La línea del chofer de la tarjeta (resumenChofer de la maqueta), la del primer vehículo:
+ * "Sin chofer · van por su cuenta", "Todo el día · Borda · hidrogrúa AB 831 LC",
+ * "Lleva y trae · Kiska · AF 669 ZL · 7:45 → 16:30". Ver resumenVehiculos para todos.
+ */
+export function resumenChofer(dia: DiaHoja, c: number): { k: string; resto: Trozo[] } {
+  const r = resumenVehiculos(dia, c).filas[0];
+  return r ? { k: r.k, resto: r.resto } : { k: "Sin chofer", resto: [{ t: " · van por su cuenta" }] };
+}
+
+/** Las horas del editor de un vehículo de "Lleva y trae": su lleva, si vuelve al depósito (y a qué hora llega) y la carga. */
+export function horasDeFila(dia: DiaHoja, c: number, filaId: string): { lleva: string; hayLleva: boolean; vuelta: boolean; llega: string; llegaEst: boolean; carga: string | null } {
+  const h = hojaDeCuadrilla(dia, c);
+  const f = vehiculosDe(h).find((x) => x.id === filaId);
+  if (!h || !f) return { lleva: "", hayLleva: false, vuelta: false, llega: "", llegaEst: true, carga: null };
+  const ll = llevaDeFila(dia, h, f);
+  const vc = ll ? viajeCalc(dia, ll.id) : null;
+  return {
+    lleva: (ll ? horaDeViaje(dia, ll) : normHora(h.encuentro.hora) ?? "").replace(/^~/, ""),
+    hayLleva: !!ll && ll.estado === "planeado",
+    vuelta: !!ll?.vuelta,
+    // Sin cargar a mano, la estimada: la parada más la vuelta típica.
+    llega: ll?.vueltaLlega ? normHora(ll.vueltaLlega)! : vc ? hm5(vc.vuelta ? vc.fin : vc.fin + dia.parametros.minutosVueltaDeposito) : "",
+    llegaEst: !ll?.vueltaLlega,
+    carga: ll?.carga ?? null,
+  };
+}
+
+/** Las horas que muestra el editor de "Lleva y trae": la del lleva (del que los lleva), la del busca (null = vuelven solos) y los mueve. */
 export function horasLlevaTrae(dia: DiaHoja, c: number): { lleva: string; busca: string | null; carga: string | null; hayLleva: boolean; mueve: { v: Viaje; dir: string; hora: string }[] } {
   const h = hojaDeCuadrilla(dia, c);
   if (!h) return { lleva: "", busca: null, carga: null, hayLleva: false, mueve: [] };
-  const ll = deTipo(dia, h, "lleva");
+  const fl = filaQueLleva(h);
+  const hf = fl ? horasDeFila(dia, c, fl.id) : null;
   const bu = deTipo(dia, h, "busca");
   const mueve = viajesDeHoja(dia, h).filter((v) => v.tipo === "mueve").map((v) => ({ v, dir: lugar(dia, v.hacia).n, hora: horaDeViaje(dia, v).replace(/^~/, "") }));
   return {
-    lleva: (ll ? horaDeViaje(dia, ll) : normHora(h.encuentro.hora) ?? "").replace(/^~/, ""),
+    lleva: hf?.lleva ?? normHora(h.encuentro.hora) ?? "",
     busca: bu ? horaDeViaje(dia, bu).replace(/^~/, "") : null,
-    carga: ll?.carga ?? null,
-    hayLleva: !!ll && ll.estado === "planeado",
+    carga: hf?.carga ?? null,
+    hayLleva: !!hf?.hayLleva,
     mueve,
   };
 }
@@ -110,7 +177,9 @@ export function chipsDe(dia: DiaHoja, c: number): Chip[] {
     const a = ausenciaDe(dia, pid);
     const base = baseDe(dia, pid);
     const nuevo = nuevos.includes(pid);
-    const tag = a ? "no viene" : pid === cargo ? "a cargo" : nuevo ? "nuevo" : base != null && base !== c ? `de ${laC(dia, base)}` : null;
+    // Va a cargo y además maneja todo el día (Conte): una sola persona, las dos marcas.
+    const maneja = choferesTodoDe(h).includes(pid);
+    const tag = a ? "no viene" : pid === cargo ? (maneja ? "a cargo · chofer" : "a cargo") : maneja ? "chofer" : nuevo ? "nuevo" : base != null && base !== c ? `de ${laC(dia, base)}` : null;
     return { pid, nombre: N(dia, pid), completo: persona(dia, pid)?.nombreCompleto || N(dia, pid), tag, aCargo: pid === cargo, ausente: !!a, nuevo };
   });
 }
@@ -119,45 +188,64 @@ export function chipsDe(dia: DiaHoja, c: number): Chip[] {
 export function quienesVan(dia: DiaHoja, c: number): { van: number; prevista: number; con: string | null; contratistas: string | null } {
   const h = hojaDeCuadrilla(dia, c);
   return {
-    van: vanDe(dia, c), prevista: prevista(dia, c), con: h && h.modo === "todo_el_dia" && h.choferId ? N(dia, h.choferId) : null,
+    van: vanDe(dia, c), prevista: prevista(dia, c),
+    // Los choferes de todo el día que no son de la gente (si lo son, ya están en los nombres).
+    con: h ? choferesTodoDe(h).filter((ch) => !genteDe(h).includes(ch)).map((ch) => N(dia, ch)).join(" y ") || null : null,
     contratistas: resumenContratistas(dia, c),
   };
 }
 
-export type Opcion = { value: string; label: string; aviso?: boolean };
+export type Opcion = { value: string; label: string; aviso?: boolean; /** No se puede elegir (el mismo vehículo ya va en otro renglón de la hoja). */ deshabilitada?: boolean };
 
-/** El selector de chofer (choferOpts): "Kiska · lleva a la 3 · 6 viajes", "Gómez · libre". */
-export function opcionesChofer(dia: DiaHoja, c: number): Opcion[] {
+/**
+ * El selector de chofer de un vehículo de la tarjeta (choferOpts): "Kiska · lleva a la 3 · 6
+ * viajes", "Gómez · libre", "Conte · está en la 2". Los choferes y los que pueden manejar.
+ */
+export function opcionesChofer(dia: DiaHoja, c: number, filaId?: string | null): Opcion[] {
   const h = hojaDeCuadrilla(dia, c);
-  const sel = h?.choferId ?? null;
-  return panelGente(dia).choferes.map(({ pid: ch }) => {
+  const fs = vehiculosDe(h);
+  const esta = filaId ? fs.find((f) => f.id === filaId) ?? null : fs[0] ?? null;
+  const sel = esta?.choferId ?? null;
+  return choferesElegibles(dia).map((ch) => {
     const td = todoDe(dia, ch).filter((x) => x !== c);
     const vs = viajesChofer(dia, ch).filter((v) => v.hojaId !== h?.id);
     const a = ausenciaDe(dia, ch);
     const pa = parcialDe(dia, ch);
+    const en = hojaDe(dia, ch);
     const cs = [...new Set(vs.map((v) => v.cuadrillaOdooId ?? (v.hojaId ? dia.hojas.find((x) => x.id === v.hojaId)?.cuadrillaOdooId ?? null : null)).filter((x): x is number => x != null))];
-    const s = sel === ch ? "con esta cuadrilla"
+    const otraFila = fs.some((f) => f !== esta && f.choferId === ch);
+    const s = sel === ch ? "con este vehículo"
       : a ? `no viene (${TIPO_AUSENCIA_TXT[a.tipo]})`
+      : otraFila ? "maneja otro vehículo de esta cuadrilla"
       : td.length ? `todo el día con ${laC(dia, td[0])}`
+      : en != null && en !== c ? `está en ${laC(dia, en)}`
       : cs.length ? `lleva a ${cs.map((x) => laC(dia, x)).join(" y ")}${vs.length > cs.length * 2 ? ` · ${vs.length} viajes` : ""}`
-      : vs.length ? `${vs.length} viajes` : "libre";
+      : vs.length ? `${vs.length} viajes`
+      : en === c ? "va en esta cuadrilla" : "libre";
     const par = pa ? ` · ${pa.horaHasta ? `se retira ${normHora(pa.horaHasta)}` : `llega ${normHora(pa.horaDesde)}`}` : "";
-    return { value: ch, label: `${N(dia, ch)} · ${s}${par}`, aviso: !!a || td.length > 0 };
+    return { value: ch, label: `${N(dia, ch)} · ${s}${par}`, aviso: !!a || td.length > 0 || (en != null && en !== c) };
   });
 }
 
 const TIPO_VEH: Record<string, string> = { camion: "camión", camioneta: "camioneta", hidrogrua: "hidrogrúa", utilitario: "utilitario", otro: "otro" };
 
-/** El selector de vehículo (vehOpts): "AF 669 ZL · camión · lo maneja Kiska". */
-export function opcionesVehiculo(dia: DiaHoja, c: number): Opcion[] {
+/**
+ * El selector de vehículo de un renglón (vehOpts): "AF 669 ZL · camión · 6 viajes", "· con la 1",
+ * "· libre". No dice "lo maneja Kiska": el chofer es de cada viaje (decisión del dueño, 11/10).
+ */
+export function opcionesVehiculo(dia: DiaHoja, c: number, filaId?: string | null): Opcion[] {
   const h = hojaDeCuadrilla(dia, c);
-  const sel = h?.vehiculoId ?? null;
+  const fs = vehiculosDe(h);
+  const esta = filaId ? fs.find((f) => f.id === filaId) ?? null : fs[0] ?? null;
+  const sel = esta?.vehiculoId ?? null;
   return dia.vehiculos.map((V) => {
-    const con = cuadrillasActivas(dia).filter((x) => x !== c && hojaDeCuadrilla(dia, x)!.vehiculoId === V.id && hojaDeCuadrilla(dia, x)!.modo !== "sin");
-    const ch = choferDelCamion(dia, V.id);
+    const con = cuadrillasActivas(dia).filter((x) => x !== c && vehiculosDe(hojaDeCuadrilla(dia, x)).some((f) => f.vehiculoId === V.id));
+    const otraFila = fs.some((f) => f !== esta && f.vehiculoId === V.id);
+    const n = calcVeh(dia, V.id).filter((v) => v.hojaId !== h?.id).length;
     const venc = vencimientosTxt(dia, V.id)[0];
-    const s = sel === V.id ? "con esta cuadrilla" : venc ? "VTV vencida" : con.length ? `con ${con.map((x) => laC(dia, x)).join(" y ")}` : ch ? `lo maneja ${N(dia, ch)}` : "sin chofer";
-    return { value: V.id, label: `${V.patente} · ${TIPO_VEH[V.tipo] ?? V.tipo} · ${s}`, aviso: !!venc };
+    const taller = V.estado === "en_taller" ? "en el taller" : V.estado === "fuera_servicio" ? "fuera de servicio" : null;
+    const s = sel === V.id ? "con esta cuadrilla" : otraFila ? "ya va en esta cuadrilla" : taller ?? (venc ? "VTV vencida" : con.length ? `con ${con.map((x) => laC(dia, x)).join(" y ")}` : n ? `${n} ${n === 1 ? "viaje" : "viajes"}` : "libre");
+    return { value: V.id, label: `${V.patente} · ${TIPO_VEH[V.tipo] ?? V.tipo} · ${s}`, aviso: !!venc || !!taller || otraFila, deshabilitada: otraFila };
   });
 }
 
@@ -249,8 +337,9 @@ export function textoVehiculo(dia: DiaHoja, vehId: string): { nombre: string; t:
   if (venc) return { nombre, t: `${tipo} · ${venc.replace(/^El .+? tiene (la |el )?/, "")}`, tono: "amb" };
   const td = todoVeh(dia, V.id);
   const n = calcVeh(dia, V.id).length;
-  const ch = choferDelCamion(dia, V.id);
-  const resto = td != null ? `todo el día con ${laC(dia, td)}` : n ? `${N(dia, ch) || "sin chofer"} · ${n} ${n === 1 ? "viaje" : "viajes"}` : ch ? `${N(dia, ch)} · sin viajes` : "sin chofer";
+  // Quién lo maneja en cada tramo ("Kiska → Nuñez 14:00"); sin viajes, el sugerido.
+  const quien = choferesTxt(dia, V.id);
+  const resto = td != null ? `todo el día con ${laC(dia, td)}` : n ? `${quien || "sin chofer"} · ${n} ${n === 1 ? "viaje" : "viajes"}` : quien ? `${quien} · sin viajes` : "sin chofer";
   return { nombre, t: `${tipo} · ${resto}`, tono: "" };
 }
 

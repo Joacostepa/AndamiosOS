@@ -15,7 +15,7 @@ import { URGENCIAS } from "./tipos.ts";
 import {
   aCargoDe, addDia, calcVeh, cap, choferDelCamion, cNombre, cuadrillaDeObra, ddmm, diaSemana, esHoy, estadoEnvio,
   hCorta, hm, hm5, hojaDe, hojaDeCuadrilla, lowFirst, normalizar, normHora, nombreDe, pedidosDeViaje, textoViaje,
-  todoVeh, toMin, vehiculo, viajeCalc, viajesVigentes, vieneDeAyer, type ViajeCalc,
+  todoVeh, toMin, vehiculo, viajeCalc, viajesVigentes, vieneDeAyer, filaTodoVeh, choferDe, type ViajeCalc,
 } from "./estado.ts";
 
 // ─── Las filas, en orden (§9) ───────────────────────────────────────────────
@@ -195,5 +195,6 @@ export function mensajeSacarUnRato(dia: DiaHoja, v: ViajeCalc): { pid: string | 
   const pid = aCargoDe(h) ?? h.recibeId;
   const V = vehiculo(dia, v.vehiculoId);
   const que = V?.tipo === "hidrogrua" ? "la hidrogrúa" : "el camión";
-  return { pid, texto: `${nombreDe(dia, pid)}, ${nombreDe(dia, choferDelCamion(dia, v.vehiculoId))} sale un rato con ${que} (${hm5(v.t)} a ${hm5(v.fin)}): ${lowFirst(textoViaje(dia, v))}. Vuelve después.` };
+  const ch = filaTodoVeh(dia, v.vehiculoId)?.choferId ?? choferDe(dia, v);
+  return { pid, texto: `${nombreDe(dia, pid)}, ${nombreDe(dia, ch) || "el chofer"} sale un rato con ${que} (${hm5(v.t)} a ${hm5(v.fin)}): ${lowFirst(textoViaje(dia, v))}. Vuelve después.` };
 }

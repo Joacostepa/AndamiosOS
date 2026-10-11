@@ -1,7 +1,8 @@
 "use client";
 
 // Lo de la Hoja del día en Legajos: "Puede estar a cargo" (la sugerencia de a cargo y el
-// orden de "Sin asignar") y el Telegram (vinculado o no, con "Copiar link para vincular").
+// orden de "Sin asignar"), "Puede manejar" (un armador que además maneja: se lo puede elegir
+// de chofer) y el Telegram (vinculado o no, con "Copiar link para vincular").
 // Sólo para quien edita la Hoja del día: las rutas lo piden.
 
 import { useQueryClient } from "@tanstack/react-query";
@@ -14,30 +15,49 @@ import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { BotonVincularTelegram } from "@/components/hoja-dia/comunes/vincular-telegram";
 
-async function marcarACargo(personaId: string, valor: boolean) {
-  const r = await fetch("/api/hoja-dia/personas", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ accion: "puede_estar_a_cargo", personaId, valor }) });
+async function marcar(accion: "puede_estar_a_cargo" | "puede_manejar", personaId: string, valor: boolean) {
+  const r = await fetch("/api/hoja-dia/personas", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ accion, personaId, valor }) });
   if (!r.ok) throw new Error(((await r.json().catch(() => null)) as { error?: string } | null)?.error ?? `Error ${r.status}`);
 }
 
-export function SwitchACargo({ persona }: { persona: Personal }) {
+/** Un tilde de la Hoja del día en Legajos (con historial y Deshacer del lado de la hoja). */
+function SwitchHoja({ persona, accion, valor, aria, si, no }: { persona: Personal; accion: "puede_estar_a_cargo" | "puede_manejar"; valor: boolean; aria: string; si: string; no: string }) {
   const qc = useQueryClient();
   const puede = usePuedeEditar("hoja-dia");
-  const valor = !!persona.puede_estar_a_cargo;
   return (
     <Switch
       checked={valor}
       disabled={!puede}
-      aria-label={`${persona.apellido} puede estar a cargo`}
+      aria-label={aria}
       onCheckedChange={async (v) => {
         try {
-          await marcarACargo(persona.id, v);
-          toast(v ? `${persona.apellido} puede estar a cargo` : `${persona.apellido} ya no aparece como «puede estar a cargo»`);
+          await marcar(accion, persona.id, v);
+          toast(v ? si : no);
           void qc.invalidateQueries({ queryKey: ["personal"] });
           void qc.invalidateQueries({ queryKey: ["hoja-dia"] });
         } catch (e) {
           toast.error(e instanceof Error ? e.message : String(e));
         }
       }}
+    />
+  );
+}
+
+export function SwitchACargo({ persona }: { persona: Personal }) {
+  return (
+    <SwitchHoja
+      persona={persona} accion="puede_estar_a_cargo" valor={!!persona.puede_estar_a_cargo} aria={`${persona.apellido} puede estar a cargo`}
+      si={`${persona.apellido} puede estar a cargo`} no={`${persona.apellido} ya no aparece como «puede estar a cargo»`}
+    />
+  );
+}
+
+/** "Puede manejar": se lo puede elegir de chofer en la Hoja del día (Conte, Ortega). */
+export function SwitchManejar({ persona }: { persona: Personal }) {
+  return (
+    <SwitchHoja
+      persona={persona} accion="puede_manejar" valor={!!persona.puede_manejar} aria={`${persona.apellido} puede manejar`}
+      si={`${persona.apellido} puede manejar: se lo puede elegir de chofer`} no={`${persona.apellido} ya no aparece para elegir de chofer`}
     />
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { use, useState } from "react";
-import { EstadoTelegram, SwitchACargo } from "@/components/personal/hoja-dia-legajo";
+import { EstadoTelegram, SwitchACargo, SwitchManejar } from "@/components/personal/hoja-dia-legajo";
 import {
   usePersonalById,
   useDocumentos,
@@ -181,6 +181,10 @@ export default function PersonalDetailPage({
                 <div className="flex items-center justify-between gap-3 text-sm">
                   <span className="text-muted-foreground">Puede estar a cargo</span>
                   <SwitchACargo persona={persona} />
+                </div>
+                <div className="flex items-center justify-between gap-3 text-sm">
+                  <span className="text-muted-foreground">Puede manejar</span>
+                  <SwitchManejar persona={persona} />
                 </div>
                 <div className="flex items-center justify-between gap-3 text-sm">
                   <span className="text-muted-foreground">Telegram (Hoja del día)</span>

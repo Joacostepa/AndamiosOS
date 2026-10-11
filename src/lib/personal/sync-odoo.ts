@@ -2,7 +2,7 @@
 //
 // DECISIÓN DEL DUEÑO (10/10): cada vez que se da de alta, se modifica o se da de baja un
 // empleado en Odoo, Legajos se actualiza solo. UN SOLO SENTIDO: Odoo es el dueño de los
-// datos de la persona; la app suma lo suyo (puede_estar_a_cargo, Telegram, planteles,
+// datos de la persona; la app suma lo suyo (puede_estar_a_cargo, puede_manejar, Telegram, planteles,
 // pañol) y eso no se toca nunca desde acá.
 //
 // La usan tres lugares, y por eso vive sola y sin imports (corre también desde un .mjs con
@@ -28,7 +28,7 @@
 // Y aparte (sólo en la pasada completa): un legajo vinculado a un empleado que ya no existe
 // en Odoo (borrado) se desactiva.
 //
-// NUNCA BORRA. NUNCA toca puede_estar_a_cargo, telegram_*, planteles ni user_id. Un legajo
+// NUNCA BORRA. NUNCA toca puede_estar_a_cargo, puede_manejar, telegram_*, planteles ni user_id. Un legajo
 // sin vínculo que no cruza queda como está (los dados de baja a mano, Capurro de SyH).
 
 /** Lo que se lee de hr.employee. Odoo devuelve `false` en los campos vacíos. */

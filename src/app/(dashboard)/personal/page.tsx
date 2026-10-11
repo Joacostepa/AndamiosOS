@@ -33,7 +33,7 @@ import { Plus, UserCheck, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useForm } from "react-hook-form";
 import Link from "next/link";
-import { EstadoTelegram, SwitchACargo } from "@/components/personal/hoja-dia-legajo";
+import { EstadoTelegram, SwitchACargo, SwitchManejar } from "@/components/personal/hoja-dia-legajo";
 
 const PUESTO_LABELS: Record<string, string> = {
   operario: "Operario",
@@ -82,6 +82,11 @@ const columns: ColumnDef<Personal>[] = [
     id: "a_cargo",
     header: "Puede estar a cargo",
     cell: ({ row }) => <SwitchACargo persona={row.original} />,
+  },
+  {
+    id: "maneja",
+    header: "Puede manejar",
+    cell: ({ row }) => <SwitchManejar persona={row.original} />,
   },
   {
     id: "telegram",

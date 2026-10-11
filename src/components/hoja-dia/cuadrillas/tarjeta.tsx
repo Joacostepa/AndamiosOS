@@ -1,15 +1,16 @@
 "use client";
 
 // La tarjeta de una cuadrilla (cardHTML de la maqueta), compacta: estado, problemas arriba
-// con su botón, las obras del tablero con su hora, quiénes van, el chofer en una línea
-// (que se abre en el editor de tres modos), el encuentro y las instrucciones.
+// con su botón, las obras del tablero con su hora, quiénes van, un renglón por vehículo (con
+// su modo, chofer, patente y horas; se abre en el editor) y quién los busca, el encuentro y
+// las instrucciones.
 
 import { useState } from "react";
 import { ArrowDown, ArrowUp, Circle, MoreHorizontal } from "lucide-react";
 import {
-  aCargoContratista, cNombre, estadoHoja, esHoy, frJ, hojaDeCuadrilla, nombreDe, obrasCon, problemas, recibeDe, suspendida,
+  aCargoContratista, cNombre, choferesTodoDe, estadoHoja, esHoy, frJ, genteDe, hojaDeCuadrilla, nombreDe, obrasCon, problemas, recibeDe, suspendida,
 } from "@/lib/hoja-dia/estado";
-import { chipsDe, instruccionesDe, materialDe, quienesVan, resumenChofer, encuentroTxt } from "@/lib/hoja-dia/vista-cuadrillas";
+import { chipsDe, instruccionesDe, materialDe, quienesVan, resumenVehiculos, encuentroTxt } from "@/lib/hoja-dia/vista-cuadrillas";
 import { colorCuadrilla } from "@/lib/tablero/colores";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -63,7 +64,7 @@ export function Tarjeta({ ctl, c, indice }: { ctl: Control; c: number; indice: n
   const qv = quienesVan(dia, c);
   const mat = materialDe(dia, c);
   const ins = instruccionesDe(dia, c);
-  const resumen = resumenChofer(dia, c);
+  const resumen = resumenVehiculos(dia, c);
   const tarde = esHoy(ahora) && ahora >= 16 * 60;
   // B1: las obras que ya tienen parte NO ofrecen "Cerrar jornada": muestran el parte.
   const conParte = ob.filter((x) => x.o.parteId != null);
@@ -236,12 +237,13 @@ export function Tarjeta({ ctl, c, indice }: { ctl: Control; c: number; indice: n
             </button>
           ))}
           {!kPrimero && <ChipsContratistas ctl={ctl} c={c} />}
-          {h.modo === "todo_el_dia" && h.choferId && (
-            <span title="Chofer todo el día" className="inline-flex min-h-6 items-baseline gap-[5px] rounded-md border border-dashed px-[7px] py-0.5 text-[13px] font-medium max-md:min-h-9 max-md:items-center max-md:text-[15px]">
-              {nombreDe(dia, h.choferId)}
+          {/* Los choferes de todo el día que no son de la gente (si lo son, su nombre ya dice "chofer"). */}
+          {choferesTodoDe(h).filter((ch) => !genteDe(h).includes(ch)).map((ch) => (
+            <span key={ch} title="Chofer todo el día" className="inline-flex min-h-6 items-baseline gap-[5px] rounded-md border border-dashed px-[7px] py-0.5 text-[13px] font-medium max-md:min-h-9 max-md:items-center max-md:text-[15px]">
+              {nombreDe(dia, ch)}
               <span className="text-[11.5px] text-muted-foreground">chofer</span>
             </span>
-          )}
+          ))}
           {!pasado && <AgregarPersona ctl={ctl} c={c} />}
         </div>
         {(h.integrantes.some((i) => i.nota) || h.contratistas.some((x) => x.nota)) && (
@@ -262,16 +264,28 @@ export function Tarjeta({ ctl, c, indice }: { ctl: Control; c: number; indice: n
         ) : (
           <button
             type="button"
+            data-vehiculos
             disabled={pasado}
             onClick={() => ctl.setChEd({ c })}
-            aria-label={`Chofer de la ${nombre}: cambiar`}
-            className="-mx-1 min-w-0 rounded-md px-1 py-0.5 text-left text-[13px] leading-snug outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 disabled:hover:bg-transparent max-md:py-1.5 max-md:text-sm"
+            aria-label={`Vehículos de la ${nombre}: cambiar`}
+            className="-mx-1 grid min-w-0 gap-0.5 rounded-md px-1 py-0.5 text-left text-[13px] leading-snug outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 disabled:hover:bg-transparent max-md:py-1.5 max-md:text-sm"
           >
-            <span className="text-muted-foreground">{resumen.k}</span>
-            {resumen.resto.map((t, i) => (
-              <span key={i} className={cn(t.mono && "font-mono text-xs tracking-tight")}>{t.t}</span>
-            ))}
-            {!pasado && <span className="ml-1 text-xs text-muted-foreground underline underline-offset-[3px]">cambiar</span>}
+            {resumen.filas.length ? (
+              resumen.filas.map((r) => (
+                <span key={r.id} className="min-w-0">
+                  <span className="text-muted-foreground">{r.k}</span>
+                  {r.resto.map((t, i) => (
+                    <span key={i} className={cn(t.mono && "font-mono text-xs tracking-tight")}>{t.t}</span>
+                  ))}
+                </span>
+              ))
+            ) : (
+              <span>
+                <span className="text-muted-foreground">Sin chofer</span> · van por su cuenta
+              </span>
+            )}
+            {resumen.busca && <span className="min-w-0 text-muted-foreground">{resumen.busca.map((t) => t.t).join("")}</span>}
+            {!pasado && <span className="text-xs text-muted-foreground underline underline-offset-[3px]">{resumen.filas.length ? "cambiar · + otro vehículo" : "elegir chofer"}</span>}
           </button>
         )}
         <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1 text-[13px]">

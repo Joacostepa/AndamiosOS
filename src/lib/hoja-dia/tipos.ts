@@ -180,15 +180,21 @@ export type Vehiculo = {
   modelo: string | null;
   tipo: TipoVehiculo;
   estado: EstadoVehiculo;
+  /**
+   * El habitual de Vehículos: SÓLO una sugerencia (va primero en los selectores de chofer, con
+   * "habitual"). Nunca se muestra ni cuenta como el que maneja, ni se autocompleta.
+   */
   choferHabitualId: string | null;
   /** Documentos de la flota con fecha de vencimiento (VTV, seguro, CNRT). */
   vencimientos: { tipo: "vtv" | "seguro_vehiculo" | "cnrt"; vence: Fecha }[];
 };
 
 /**
- * El chofer SUGERIDO de un vehículo ese día (hd_camiones_dia, o el habitual): el que se
- * propone para un viaje nuevo en una fila sin viajes. No es una regla: cada viaje tiene su
- * chofer (`Viaje.choferId`) y un camión puede cambiar de chofer en el día.
+ * El chofer del camión del día (`hd_camiones_dia`; null si no hay fila o dice "sin chofer").
+ * Es el último eslabón de "el que maneje ese camión" (`choferEnCamion`). NUNCA el habitual:
+ * el habitual (`Vehiculo.choferHabitualId`) sólo va primero en los selectores, con la marca
+ * "habitual" (decisión del dueño, 11/10 noche). Cada viaje tiene su chofer (`Viaje.choferId`)
+ * y un camión puede cambiar de chofer en el día.
  */
 export type CamionDia = { vehiculoId: string; choferId: string | null; nota: string | null };
 

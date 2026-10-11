@@ -13,7 +13,7 @@ import {
   genteDe, hm, hm5, hojaDe, hojaDeCuadrilla, horaTxt, laC, lugar, nombreDe, normalizar, normHora, nuevosEnHoja, obrasCon,
   obrasDe, parcialDe, patente, persona, prevista, recibeDe, todoDe, todoVeh, vanDe, vehiculo, viajeCalc,
   viajesCalc, viajesChofer, vencimientosTxt, cuadrillasDeContratista, coincidePersona, nombreConPila, vehiculosDe, choferesTodoDe,
-  choferesElegibles, choferesTxt, filaQueLleva, type ViajeCalc,
+  choferesParaVehiculo, choferesTxt, filaQueLleva, type ViajeCalc,
 } from "./estado.ts";
 import { resumenContratistas } from "./contratistas.ts";
 import { llevaDeFila, quienBusca } from "./vehiculos.ts";
@@ -145,7 +145,10 @@ export function horasLlevaTrae(dia: DiaHoja, c: number): { lleva: string; busca:
   };
 }
 
-/** "Material: Gómez trae ~10:15 (Juramento)" — los viajes de material a las obras de la cuadrilla. */
+/**
+ * "Material: Gómez trae ~10:15 (Juramento)" — los viajes de material a las obras de la
+ * cuadrilla. Uno que nadie maneja: "Material: sin chofer · 8:00" (nunca el habitual).
+ */
 export function materialDe(dia: DiaHoja, c: number): string | null {
   const ots = new Set(obrasDe(dia, c).map((o) => o.otId));
   const varias = ots.size > 1;
@@ -154,7 +157,9 @@ export function materialDe(dia: DiaHoja, c: number): string | null {
   return `Material: ${vs.map((v: ViajeCalc) => {
     const quien = v.fleteExterno ?? N(dia, choferDe(dia, v));
     const hora = v.estado === "hecho" && v.hechoMin != null ? `✓ ${hm(v.hechoMin)}` : horaTxt(v);
-    return `${quien} ${v.tipo === "trae_material" ? "trae" : "lleva"} ${hora}${varias ? ` (${lugar(dia, v.haciaEf).corto})` : ""}`;
+    const donde = varias ? ` (${lugar(dia, v.haciaEf).corto})` : "";
+    if (!quien) return `sin chofer · ${hora}${donde}`;
+    return `${quien} ${v.tipo === "trae_material" ? "trae" : "lleva"} ${hora}${donde}`;
   }).join(" · ")}`;
 }
 
@@ -199,14 +204,16 @@ export type Opcion = { value: string; label: string; aviso?: boolean; /** No se 
 
 /**
  * El selector de chofer de un vehículo de la tarjeta (choferOpts): "Kiska · lleva a la 3 · 6
- * viajes", "Gómez · libre", "Conte · está en la 2". Los choferes y los que pueden manejar.
+ * viajes", "Gómez · libre", "Conte · está en la 2". Los choferes y los que pueden manejar;
+ * el habitual del camión del renglón PRIMERO, con "habitual" ("Nuñez · habitual · libre"):
+ * es sólo la sugerencia, elegirlo es explícito (11/10 noche).
  */
 export function opcionesChofer(dia: DiaHoja, c: number, filaId?: string | null): Opcion[] {
   const h = hojaDeCuadrilla(dia, c);
   const fs = vehiculosDe(h);
   const esta = filaId ? fs.find((f) => f.id === filaId) ?? null : fs[0] ?? null;
   const sel = esta?.choferId ?? null;
-  return choferesElegibles(dia).map((ch) => {
+  return choferesParaVehiculo(dia, esta?.vehiculoId).map(({ id: ch, habitual }) => {
     const td = todoDe(dia, ch).filter((x) => x !== c);
     const vs = viajesChofer(dia, ch).filter((v) => v.hojaId !== h?.id);
     const a = ausenciaDe(dia, ch);
@@ -223,7 +230,7 @@ export function opcionesChofer(dia: DiaHoja, c: number, filaId?: string | null):
       : vs.length ? `${vs.length} viajes`
       : en === c ? "va en esta cuadrilla" : "libre";
     const par = pa ? ` · ${pa.horaHasta ? `se retira ${normHora(pa.horaHasta)}` : `llega ${normHora(pa.horaDesde)}`}` : "";
-    return { value: ch, label: `${N(dia, ch)} · ${s}${par}`, aviso: !!a || td.length > 0 || (en != null && en !== c) };
+    return { value: ch, label: `${N(dia, ch)} · ${habitual ? "habitual · " : ""}${s}${par}`, aviso: !!a || td.length > 0 || (en != null && en !== c) };
   });
 }
 
@@ -337,7 +344,7 @@ export function textoVehiculo(dia: DiaHoja, vehId: string): { nombre: string; t:
   if (venc) return { nombre, t: `${tipo} · ${venc.replace(/^El .+? tiene (la |el )?/, "")}`, tono: "amb" };
   const td = todoVeh(dia, V.id);
   const n = calcVeh(dia, V.id).length;
-  // Quién lo maneja en cada tramo ("Kiska → Nuñez 14:00"); sin viajes, el sugerido.
+  // Quién lo maneja en cada tramo ("Kiska → Nuñez 14:00"); sin viajes, el chofer del día (nunca el habitual).
   const quien = choferesTxt(dia, V.id);
   const resto = td != null ? `todo el día con ${laC(dia, td)}` : n ? `${quien || "sin chofer"} · ${n} ${n === 1 ? "viaje" : "viajes"}` : quien ? `${quien} · sin viajes` : "sin chofer";
   return { nombre, t: `${tipo} · ${resto}`, tono: "" };

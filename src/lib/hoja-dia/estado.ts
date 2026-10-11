@@ -622,9 +622,10 @@ export function filaTodoVeh(dia: DiaHoja, veh: string | null): VehiculoHoja | nu
   return c == null ? null : vehiculosDe(hojaDeCuadrilla(dia, c)).find((f) => f.modo === "todo_el_dia" && f.vehiculoId === veh) ?? null;
 }
 /**
- * El chofer SUGERIDO de un vehículo ese día (hd_camiones_dia o el habitual). Es sólo la
- * sugerencia para un viaje nuevo en una fila vacía: cada viaje tiene su chofer y un camión
- * puede cambiar de chofer en el día (decisión del dueño, 11/10). Nunca es un problema.
+ * El chofer del camión del día (`hd_camiones_dia`), o null. Es el último eslabón de "el que
+ * maneje ese camión" (`choferEnCamion`): cada viaje tiene su chofer y un camión puede cambiar
+ * de chofer en el día (decisión del dueño, 11/10). NUNCA el habitual del vehículo (11/10
+ * noche: "¿por qué sigue apareciendo Nuñez si no está asignado en ningún lado?").
  */
 export const choferDelCamion = (dia: DiaHoja, veh: string | null | undefined) => (veh ? ctx(dia).cam.get(veh) ?? null : null);
 
@@ -720,8 +721,10 @@ function filasConCamion(dia: DiaHoja, veh: string): { f: VehiculoHoja; orden: nu
  *    si hay varios renglones con choferes distintos, el del lleva de antes (o el primero);
  * 2. el chofer elegido del viaje anterior en la fila, si no el del siguiente (un camión
  *    sigue con su chofer hasta que se lo cambia);
- * 3. el sugerido del día (`hd_camiones_dia`, si no el habitual del vehículo).
- * `ref` es el orden del viaje (`por: "orden"`) o una hora (`por: "t"`, con las horas de
+ * 3. el chofer del camión del día (`hd_camiones_dia`);
+ * 4. nadie: el viaje queda "sin chofer" y es un problema para mandar (`viajesSinChofer`).
+ * El habitual del vehículo NO entra (decisión del dueño, 11/10 noche): sólo va primero en
+ * los selectores (`choferesParaVehiculo`). `ref` es el orden del viaje (`por: "orden"`) o una hora (`por: "t"`, con las horas de
  * calcVeh). Sólo miran los choferes guardados (nunca otro resuelto): no hay vueltas.
  */
 export function choferEnCamion(dia: DiaHoja, veh: string, ref: number, por: "orden" | "t" = "orden", excluir?: string): string | null {
@@ -854,7 +857,8 @@ export function choferesDeFila(dia: DiaHoja, veh: string): TramoChofer[] {
 
 /**
  * Quién lo maneja, en palabras: "Kiska", o si cambia en el día "Kiska → Nuñez 14:00"
- * (el encabezado de la fila de Camiones). Sin nada ese día, el sugerido; "" si no hay.
+ * (el encabezado de la fila de Camiones). Sin nada ese día, el chofer del camión del día
+ * (`hd_camiones_dia`); "" si no hay (nunca el habitual).
  */
 export function choferesTxt(dia: DiaHoja, veh: string): string {
   const tr = choferesDeFila(dia, veh);
@@ -864,7 +868,8 @@ export function choferesTxt(dia: DiaHoja, veh: string): string {
 
 /**
  * El chofer que tomaría un viaje nuevo en ese camión a esa hora (`choferEnCamion`): el del
- * renglón de la hoja, si no el del viaje anterior / siguiente, si no el sugerido del día.
+ * renglón de la hoja, si no el del viaje anterior / siguiente, si no el del camión del día;
+ * null si nadie (nunca el habitual).
  * Es lo que se MUESTRA ("Poner en el AB 799 CA · Conte"): el viaje nuevo se guarda sin
  * chofer y lo resuelve choferDe, que da lo mismo.
  */
@@ -1322,7 +1327,8 @@ export type Boton = {
    * okTodo · volverCola · llamar · marcarHecho · avisarChofer · abrirEnvio · reenviar · dlgCel ·
    * irCamiones · tablero · esperar · poner · pasarManana · fleteDe · liberar ·
    * sumarContratista (`p` = el contratista, `n` = cuántos sumar) · conLleva (`id` = el viaje de
-   * material, `con` = el lleva de la cuadrilla al que se suma).
+   * material, `con` = el lleva de la cuadrilla al que se suma o su renglón "Todo el día") ·
+   * choferViaje (`id` = el viaje: elegir quién lo maneja, con el habitual primero).
    */
   a: string;
   c?: number;
@@ -1332,7 +1338,7 @@ export type Boton = {
   veh?: string;
   from?: number;
   foco?: "lleva" | "busca";
-  /** El otro viaje del gesto (conLleva: el lleva al que se suma el material). */
+  /** El otro del gesto (conLleva: el lleva al que se suma el material, o el renglón "Todo el día"). */
   con?: string;
 };
 
@@ -1385,6 +1391,10 @@ export function avisosVeh(dia: DiaHoja, veh: string, ahora: Minutos): Aviso[] {
       } else {
         out.push({ k: `noentra-${v.id}`, nivel: "rojo", c, ids: [v.id, pv?.id ?? null], t: textoNoEntra(dia, veh, v, pv), bs: [{ l: "Ver el viaje", a: "verViaje", id: pv ? pv.id : v.id }, ...botonesConLleva(dia, v.id)] });
       }
+    }
+    // Nadie lo maneja (el habitual no cuenta): "El material para Ing. Huergo (8:00, AB 799 CA) no tiene chofer".
+    if (!ch && viajesSinChofer(dia).some((x) => x.id === v.id)) {
+      out.push({ k: `sinch-${v.id}`, nivel: "rojo", c, ids: [v.id], t: textoSinChofer(dia, v), bs: botonesSinChofer(dia, v) });
     }
     const L = lugar(dia, v.haciaEf);
     if (L.cierra != null && v.t + v.dur > L.cierra) {
@@ -1453,13 +1463,23 @@ export function textoNoEntra(dia: DiaHoja, veh: string, v: ViajeCalc, pv: ViajeC
 /** Cuánto después de la hora de un viaje de material puede llegar el lleva de la cuadrilla para llevarlo él ("cerca"). */
 const CERCA_MATERIAL_MIN = 60;
 
-export type LlevaParaMaterial = { lleva: ViajeCalc; c: number; ch: string | null; veh: string };
+/**
+ * Con quién puede ir el material: el `lleva` de una cuadrilla (lleva y trae) o el renglón
+ * "Todo el día" de una cuadrilla que va a esa obra (`lleva` null, `filaId` el renglón).
+ * `con` es lo que viaja en el botón y en el gesto: el id del lleva o el del renglón.
+ */
+export type LlevaParaMaterial = { lleva: ViajeCalc | null; filaId: string | null; con: string; c: number; ch: string | null; veh: string; t: number };
 
 /**
- * "Que lo lleve Conte con la Cuadrilla 1" (§6, "Varios pedidos, un viaje"): los "lleva" de
- * las cuadrillas (de cualquier renglón, pendientes y con camión) que van a la obra de este
- * viaje de material suelto y llegan antes o cerca de su hora. El material pasa a ese lleva
- * (su carga se suma a la del lleva) y el viaje de material se va (planConLleva).
+ * "Que lo lleve Conte con la Cuadrilla 1" (§6, "Varios pedidos, un viaje"): con quién puede
+ * ir este viaje de material suelto a la obra de una cuadrilla.
+ * - Los "lleva" de las cuadrillas (de cualquier renglón, pendientes y con camión) que van a
+ *   esa obra y llegan antes o cerca de su hora: el material pasa a ese lleva (su carga se
+ *   suma) y el viaje de material se va (planConLleva).
+ * - Los renglones "Todo el día" (con camión) de una cuadrilla que va a esa obra ese día y
+ *   arranca antes o cerca de la hora del material (11/10 noche: Conte todo el día con el
+ *   AB 831 LC y el material de Ing. Huergo en el AB 799 CA sin chofer): el viaje de material
+ *   pasa a ese camión, a la hora del encuentro, y lo hace el chofer del renglón.
  */
 export function llevasParaMaterial(dia: DiaHoja, viajeId: string): LlevaParaMaterial[] {
   const v = viajeCalc(dia, viajeId);
@@ -1469,44 +1489,113 @@ export function llevasParaMaterial(dia: DiaHoja, viajeId: string): LlevaParaMate
     if (x.tipo !== "lleva" || !x.hojaId || x.estado !== "planeado" || !x.vehiculoId || x.haciaEf.otId !== v.haciaEf.otId) continue;
     if (x.t + x.dur > v.t + CERCA_MATERIAL_MIN) continue;
     const c = cuadrillaDeViaje(dia, x);
-    if (c != null) out.push({ lleva: x, c, ch: choferDe(dia, x), veh: x.vehiculoId });
+    if (c != null) out.push({ lleva: x, filaId: x.hojaVehiculoId, con: x.id, c, ch: choferDe(dia, x), veh: x.vehiculoId, t: x.t });
+  }
+  for (const c of cuadrillasActivas(dia)) {
+    if (!obrasDe(dia, c).some((o) => o.otId === v.haciaEf.otId)) continue;
+    const h = hojaDeCuadrilla(dia, c)!;
+    const t = toMin(h.encuentro.hora);
+    if (t == null || t > v.t + CERCA_MATERIAL_MIN) continue;
+    for (const f of vehiculosDe(h)) {
+      if (f.modo !== "todo_el_dia" || !f.vehiculoId || f.vehiculoId === v.vehiculoId) continue;
+      out.push({ lleva: null, filaId: f.id, con: f.id, c, ch: f.choferId, veh: f.vehiculoId, t });
+    }
   }
   // Por hora, y a la misma hora en el orden de los renglones de la tarjeta.
-  const ordFila = (x: LlevaParaMaterial) => (x.lleva.hojaVehiculoId ? filaPorId(dia, x.lleva.hojaVehiculoId)?.orden : null) ?? 99;
-  return out.sort((a, b) => a.lleva.t - b.lleva.t || a.c - b.c || ordFila(a) - ordFila(b));
+  const ordFila = (x: LlevaParaMaterial) => (x.filaId ? filaPorId(dia, x.filaId)?.orden : null) ?? 99;
+  return out.sort((a, b) => a.t - b.t || a.c - b.c || ordFila(a) - ordFila(b));
 }
 
-/** El botón de cada lleva que puede llevar el material: "Que lo lleve Conte con la Cuadrilla 1" (con la patente si dos se llaman igual). */
+/** El botón de cada uno que puede llevar el material: "Que lo lleve Conte con la Cuadrilla 1" (con la patente si dos se llaman igual). */
 export function botonesConLleva(dia: DiaHoja, viajeId: string): Boton[] {
   const ls = llevasParaMaterial(dia, viajeId);
   const quien = (x: LlevaParaMaterial) => nombreDe(dia, x.ch) || `el ${patente(dia, x.veh)}`;
   return ls.map((x) => {
     const repetido = ls.filter((y) => quien(y) === quien(x)).length > 1;
-    return { l: `Que lo lleve ${quien(x)}${repetido ? ` (${patente(dia, x.veh)})` : ""} con la ${cNombre(dia, x.c)}`, a: "conLleva", id: viajeId, con: x.lleva.id };
+    return { l: `Que lo lleve ${quien(x)}${repetido ? ` (${patente(dia, x.veh)})` : ""} con la ${cNombre(dia, x.c)}`, a: "conLleva", id: viajeId, con: x.con };
   });
 }
 
+/** Lo que escribe "Que lo lleve … con la Cuadrilla N" (acciones.ts, con_lleva). */
+export type PlanConLleva = {
+  texto: string;
+  /** El chofer que tenía el material (resuelto) y el que lo lleva ahora: a quién avisar. */
+  chMaterial: string | null;
+  chLleva: string | null;
+} & (
+  /** Con un lleva: los pedidos pasan al lleva, su carga se suma y el material se va (con el último pedido, se anula). */
+  | { k: "lleva"; llevaId: string; carga: string; motivo: string }
+  /**
+   * Con un renglón "Todo el día": el MISMO viaje de material pasa a ese camión, sin chofer
+   * guardado (lo hace el del renglón, y lo sigue si se cambia), a la hora del encuentro y
+   * como viaje de esa cuadrilla (en su camión de todo el día no avisa). No se anula: así los
+   * pedidos, el historial y el link del chofer siguen apuntando a un solo viaje.
+   */
+  | { k: "todo"; filaId: string; vehiculoId: string; hora: Hora; orden: number; cuadrillaOdooId: number }
+);
+
 /**
- * Qué escribe "Que lo lleve … con la Cuadrilla N": la carga del lleva con la del material
- * sumada ("20 tablones + material del armado…"), el motivo con el que se va el viaje de
- * material (la regla de siempre al sacarle el último pedido: se anula) y el texto. Tira si
- * ese lleva ya no sirve para ese material.
+ * Qué escribe "Que lo lleve … con la Cuadrilla N". Con un lleva: la carga del lleva con la
+ * del material sumada ("20 tablones + material del armado…"), el motivo con el que se va el
+ * viaje de material (la regla de siempre al sacarle el último pedido: se anula) y el texto.
+ * Con un renglón "Todo el día": a qué camión, hora y cuadrilla pasa el material. Tira si ya
+ * no sirve para ese material.
  */
-export function planConLleva(dia: DiaHoja, viajeId: string, llevaId: string): { llevaId: string; carga: string; motivo: string; texto: string; chMaterial: string | null; chLleva: string | null } {
-  const x = llevasParaMaterial(dia, viajeId).find((y) => y.lleva.id === llevaId);
+export function planConLleva(dia: DiaHoja, viajeId: string, con: string): PlanConLleva {
+  const x = llevasParaMaterial(dia, viajeId).find((y) => y.con === con);
   const v = viajeCalc(dia, viajeId);
   if (!x || !v) throw new Error("Ese viaje ya no puede ir con esa cuadrilla (cambió la hora, la obra o el camión).");
+  const quien = nombreDe(dia, x.ch) || `el ${patente(dia, x.veh)}`;
+  const L = lugar(dia, v.haciaEf);
+  const base = { chMaterial: choferDe(dia, v), chLleva: x.ch };
+  if (!x.lleva) {
+    const hora = hm(x.t);
+    return {
+      ...base, k: "todo", filaId: x.filaId!, vehiculoId: x.veh, hora, orden: x.t, cuadrillaOdooId: x.c,
+      texto: `El material para ${L.corto} va con la ${cNombre(dia, x.c)}: lo lleva ${quien} (${patente(dia, x.veh)}), que va todo el día con ellos (${hora})`,
+    };
+  }
   const ps = pedidosDeViaje(dia, viajeId);
   const lo = v.carga || ps.map((p) => p.que).join(" + ") || "material";
   const carga = x.lleva.carga ? `${x.lleva.carga} + ${lowFirst(lo)}` : cap(lo);
-  const quien = nombreDe(dia, x.ch) || `el ${patente(dia, x.veh)}`;
-  const L = lugar(dia, v.haciaEf);
   return {
-    llevaId, carga, chMaterial: choferDe(dia, v), chLleva: x.ch,
+    ...base, k: "lleva", llevaId: x.lleva.id, carga,
     motivo: `va con la ${cNombre(dia, x.c)} (${quien})`,
     texto: `El material para ${L.corto} va con la ${cNombre(dia, x.c)}: lo lleva ${quien} (${patente(dia, x.veh)}) a las ${normHora(x.lleva.hora) ?? hm5(x.lleva.t)}`,
   };
 }
+
+/** "El material para Ing. Huergo", "La compra en Sanz", "El busca de la Cuadrilla 3": qué es un viaje, para empezar una línea. */
+export function queEsViaje(dia: DiaHoja, v: Viaje & { haciaEf?: Punto }): string {
+  const L = lugar(dia, v.haciaEf ?? haciaDe(dia, v));
+  const c = cuadrillaDeViaje(dia, v);
+  switch (v.tipo) {
+    case "lleva_material": return `El material para ${L.corto}`;
+    case "trae_material": return `Traer lo de ${L.corto}`;
+    case "compra": return `La compra en ${L.corto}`;
+    case "taller": return L.tipo === "vtv" ? "La VTV" : "El taller";
+    case "lleva": case "busca": case "mueve": return c != null ? `El ${v.tipo} de la ${cNombre(dia, c)}` : cap(cortoV(dia, v));
+    default: return cap(cortoV(dia, v));
+  }
+}
+
+/**
+ * Los viajes planeados con camión que NADIE maneja: sin chofer elegido y sin quién lo
+ * resuelva (renglón de la hoja, viaje anterior/siguiente con chofer, hd_camiones_dia). El
+ * habitual del vehículo no cuenta (11/10 noche), así que esto es un problema para mandar
+ * ("Falta para mandar"). Fuera los de un renglón sin chofer: ya dicen "Falta el chofer".
+ */
+export function viajesSinChofer(dia: DiaHoja): ViajeCalc[] {
+  return memo(dia, "sinChofer", () => viajesCalc(dia).filter((v) => {
+    if (v.estado !== "planeado" || !v.vehiculoId || v.fleteExterno || choferDe(dia, v)) return false;
+    const f = v.hojaVehiculoId ? filaPorId(dia, v.hojaVehiculoId) : null;
+    return !(f && !f.choferId);
+  }));
+}
+/** "El material para Ing. Huergo (8:00, AB 799 CA) no tiene chofer". */
+export const textoSinChofer = (dia: DiaHoja, v: ViajeCalc) => `${queEsViaje(dia, v)} (${horaTxt(v)}, ${patente(dia, v.vehiculoId)}) no tiene chofer`;
+/** "Elegir chofer" y, si es material para la obra de una cuadrilla, "Que lo lleve … con la Cuadrilla N". */
+export const botonesSinChofer = (dia: DiaHoja, v: ViajeCalc): Boton[] => [{ l: "Elegir chofer", a: "choferViaje", id: v.id }, ...botonesConLleva(dia, v.id)];
 
 /** "Kiska no llega: lleva C2 Juramento (AF 669 ZL) termina ~7:45 y lleva C3 Rivadavia (AB 497 YY) es a las 7:30". */
 export function textoCruceChofer(dia: DiaHoja, x: CruceChofer): string {
@@ -1732,6 +1821,12 @@ export function problemas(dia: DiaHoja, c: number, ahora: Minutos): Problema[] {
       const w = v.tipo === "lleva" ? "llevar" : "buscar";
       add({ k: `np-${v.id}`, t: `${N(choferDe(dia, v))} no pudo ${w} a la ${C}: ${lowFirst(v.noPudoMotivo)}`, card: `${N(choferDe(dia, v))} no pudo ${w === "llevar" ? "llevarlos" : "buscarlos"}: ${lowFirst(v.noPudoMotivo)}`, bs: [{ l: "Ver el camión", a: "verCamion", veh: v.vehiculoId ?? undefined }] });
     }
+  }
+  // Los viajes de esta cuadrilla (o a sus obras) que nadie maneja: el habitual del camión no
+  // cuenta como chofer (11/10 noche), así que hay que elegirlo (o mandarlo con la cuadrilla).
+  for (const v of viajesSinChofer(dia).filter((v) => cuadrillaDeViaje(dia, v) === c)) {
+    const t = textoSinChofer(dia, v);
+    add({ k: `sinch-${v.id}`, corto: `${C}: ${lowFirst(queEsViaje(dia, v))} sin chofer`, t, card: t, bs: botonesSinChofer(dia, v) });
   }
   // El mismo chofer en dos camiones a la vez, con un viaje de esta cuadrilla en el medio.
   for (const x of crucesChofer(dia)) {
@@ -1970,6 +2065,11 @@ export const fmtFrases = (ds: Diferencia[], motivos = true) => `${ds.map((x) => 
 export const envioDe = (dia: DiaHoja, pid: string | null | undefined) => (pid ? ctx(dia).envioPor.get(pid) ?? null : null);
 
 /** A quién le llega algo ese día: los capataces (o quien recibe), los choferes y los que dejaron de estar a cargo. */
+/** Un "ex" que era chofer (lo que se le mandó fue su hoja de ruta, no la de una cuadrilla). */
+const exChofer = (e: Envio | null | undefined) => e?.snap?.tipo === "chofer" || e?.rol === "chofer";
+/** ¿Esta persona tiene una hoja de ruta de chofer mandada y ya no maneja nada ese día? */
+export const esExChofer = (dia: DiaHoja, pid: string | null | undefined) => !!pid && exChofer(envioDe(dia, pid));
+
 export function destinatarios(dia: DiaHoja): Destinatario[] {
   return memo(dia, "destinatarios", () => {
     const out: Destinatario[] = [];
@@ -2092,7 +2192,14 @@ export function bandeja(dia: DiaHoja, ahora: Minutos): Bandeja {
       vos.push({ c, k: key, t: p.t, corto: p.corto, rojo: p.rojo, nivel: p.nivel, bs: p.bsFalta ?? p.bs });
     }
   }
-  const PRI = (k: string) => (/^cargo/.test(k) ? 0 : /^aus/.test(k) ? 1 : /^pocos/.test(k) ? 2 : /^ch|^veh|^choque|^nadie/.test(k) ? 3 : 4);
+  // Los viajes sin chofer que no son de ninguna tarjeta (una compra, la VTV, una obra sin hoja).
+  if (!esPasado(ahora)) {
+    const enTarjeta = (c: number | null) => c != null && act.includes(c) && !!hojaDeCuadrilla(dia, c) && !suspendida(dia, c);
+    for (const v of viajesSinChofer(dia).filter((v) => !enTarjeta(cuadrillaDeViaje(dia, v)))) {
+      vos.push({ k: `sinch-${v.id}`, t: textoSinChofer(dia, v), nivel: "bloq", rojo: alarmaEnvio(dia, ahora), bs: botonesSinChofer(dia, v) });
+    }
+  }
+  const PRI = (k: string) => (/^cargo/.test(k) ? 0 : /^aus/.test(k) ? 1 : /^pocos/.test(k) ? 2 : /^ch|^veh|^choque|^nadie|^sinch/.test(k) ? 3 : 4);
   vos.sort((a, b) => PRI(a.k) - PRI(b.k));
   // Hojas de cuadrillas que ya no tienen obras ese día, con gente adentro.
   for (const h of dia.hojas) {
@@ -2120,7 +2227,9 @@ export function bandeja(dia: DiaHoja, ahora: Minutos): Bandeja {
       const quien = x.rol === "chofer" ? `Los viajes de ${N} cambiaron después de enviar` : `${cNombre(dia, x.c)} cambió después de enviar`;
       vos.push({ k: `chg-${x.pid}`, nivel: "bloq", c: x.c, corto: x.rol === "chofer" ? `Viajes de ${N}: cambio sin avisar` : `${cNombre(dia, x.c)}: cambio sin avisar`, t: `${quien}: ${st.ds.map((z) => z.t).join(", ")}`, bs: [{ l: `Avisar a ${N}`, a: "abrirEnvio", p: x.pid! }] });
     }
-    if (st.k === "ex") vos.push({ k: `ex-${x.pid}`, nivel: "bloq", t: `${N} ya no está a cargo y tiene la hoja de la ${cNombre(dia, x.c)}`, bs: [{ l: `Avisar a ${N}`, a: "abrirEnvio", p: x.pid! }] });
+    // Un chofer al que se le mandó su hoja de ruta y ya no maneja nada (p. ej. le llegó un viaje
+    // por ser el habitual del camión, antes del 11/10 noche): que sepa que no tiene viajes.
+    if (st.k === "ex") vos.push({ k: `ex-${x.pid}`, nivel: "bloq", t: exChofer(st.e) ? `${N} ya no tiene viajes y tiene su hoja de ruta` : `${N} ya no está a cargo y tiene la hoja de la ${cNombre(dia, x.c)}`, bs: [{ l: `Avisar a ${N}`, a: "abrirEnvio", p: x.pid! }] });
     if (st.k === "ok" || st.k === "okSinAvisar") {
       const e = st.e;
       if (e.cambioMin != null && (e.recibidaMin == null || e.recibidaMin < e.cambioMin)) esp.push({ k: `nv-${x.pid}`, rojo: ahora - e.cambioMin > 15, t: `${N} no vio el cambio de las ${hm(e.cambioMin)}`, bs: [{ l: "Llamar", a: "llamar", p: x.pid! }] });
@@ -2153,7 +2262,7 @@ export function afectadosPorCambio(dia: DiaHoja): (Destinatario & { ds: Diferenc
   return destinatarios(dia).flatMap((x) => {
     const st = estadoEnvio(dia, x);
     if (st.k === "cambiada") return [{ ...x, ds: st.ds }];
-    if (st.k === "ex") return [{ ...x, ds: [{ t: "ya no estás a cargo" }] }];
+    if (st.k === "ex") return [{ ...x, ds: [{ t: exChofer(st.e) ? "ya no tenés viajes" : "ya no estás a cargo" }] }];
     return [];
   });
 }
@@ -2539,6 +2648,23 @@ function limpiarContratistas(dia: DiaHoja, h: PlanHoja, plan: PlanHoja[], avisos
 export function vehiculoDeChofer(dia: DiaHoja, ch: string): string | null {
   const hoy = viajesCalc(dia).find((v) => v.vehiculoId && choferDe(dia, v) === ch)?.vehiculoId;
   return hoy ?? dia.vehiculos.find((v) => v.choferHabitualId === ch)?.id ?? null;
+}
+
+/** El chofer habitual de un vehículo (Vehículos), si está activo. SÓLO para sugerirlo: nunca cuenta como el que maneja. */
+export function habitualDe(dia: DiaHoja, veh: string | null | undefined): string | null {
+  const h = veh ? vehiculo(dia, veh)?.choferHabitualId ?? null : null;
+  return h && persona(dia, h)?.activo !== false && persona(dia, h) ? h : null;
+}
+
+/**
+ * Los choferes para elegir en un vehículo (selectores de chofer: el viaje, el renglón, la
+ * fila de Camiones): el habitual PRIMERO, marcado `habitual`, y después los elegibles por
+ * nombre (decisión del dueño, 11/10 noche). Elegirlo es explícito: nunca se autocompleta.
+ */
+export function choferesParaVehiculo(dia: DiaHoja, veh: string | null | undefined): { id: string; habitual: boolean }[] {
+  const h = habitualDe(dia, veh);
+  const resto = choferesElegibles(dia).filter((x) => x !== h).map((id) => ({ id, habitual: false }));
+  return h ? [{ id: h, habitual: true }, ...resto] : resto;
 }
 
 /** ¿Puede manejar? Los choferes de Odoo (o puesto chofer sin vínculo) y los que tienen "Puede manejar" en Legajos. */

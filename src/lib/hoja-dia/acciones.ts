@@ -171,6 +171,8 @@ export type AccionContratista = z.input<typeof accionContratistaSchema>;
 const ahoraDe = (f: Fecha) => minutosDesde(f, new Date());
 const ts = () => new Date().toISOString();
 const N = (dia: DiaHoja, p: string | null | undefined) => nombreDe(dia, p) || "alguien";
+/** El chofer de un camión en el texto del gesto: "Conte" o "sin chofer" (el habitual no cuenta). */
+const NCh = (dia: DiaHoja, p: string | null | undefined) => nombreDe(dia, p) || "sin chofer";
 
 /** persona_id o externa_id, según de dónde sea la persona. Un contratista no es integrante: tira. */
 async function colPersona(pid: string): Promise<{ persona_id: string | null; externa_id: string | null }> {
@@ -824,7 +826,7 @@ async function accionViajeCon(g: Grabador, db: DB, userId: string, a: AccionViaj
     const pp = ped ? dia.pedidos.find((x) => x.id === ped!.id) ?? null : null;
     const tipo = pp ? pp.tipo : a.tipo;
     // Se guarda SIN chofer: lo hace el que maneje ese camión a esa hora (choferDe resuelve
-    // el renglón de la hoja, el viaje de antes o el sugerido del día). `chNuevo` es para el texto.
+    // el renglón de la hoja, el viaje de antes o el chofer del día; nunca el habitual). `chNuevo` es para el texto.
     const chNuevo = veh ? choferParaOrden(dia, veh, orden) : null;
     const v = await g.insertar("hd_viajes", filaViaje(a.fecha, {
       vehiculoId: veh, choferId: null, fleteExterno: a.fleteExterno ?? null, tipo, hojaId: null, hojaVehiculoId: null,
@@ -839,7 +841,7 @@ async function accionViajeCon(g: Grabador, db: DB, userId: string, a: AccionViaj
       if (antes?.viaje.vehiculo_id) avisarA = choferDe(dia, dia.viajes.find((x) => x.id === String(antes.viaje.id)) ?? mapViaje(antes.viaje, a.fecha));
       await g.actualizar("hd_pedidos", String(ped.id), { viaje_id: v.id, estado: "en_camion", no_pudo_visto: true, esperando_hasta: null });
     }
-    const texto = a.fleteExterno ? `Flete de afuera: ${a.fleteExterno} · ${a.carga ?? lugar(dia, vv.hacia).n}${a.hora ? ` · ${normHora(a.hora)}` : ""}` : `${TIPOS_VIAJE[a.tipo].nombre} a ${lugar(dia, vv.hacia).n}${veh ? ` en el ${patente(dia, veh)} (${N(dia, chNuevo)})` : ""}`;
+    const texto = a.fleteExterno ? `Flete de afuera: ${a.fleteExterno} · ${a.carga ?? lugar(dia, vv.hacia).n}${a.hora ? ` · ${normHora(a.hora)}` : ""}` : `${TIPOS_VIAJE[a.tipo].nombre} a ${lugar(dia, vv.hacia).n}${veh ? ` en el ${patente(dia, veh)} (${NCh(dia, chNuevo)})` : ""}`;
     const enviado = !!avisarA && dia.envios.some((e) => e.personaId === avisarA && e.enviadaMin != null && !e.anulado);
     return listo(userId, ped ? `${texto} · el pedido queda en camino` : texto, g, { fecha: a.fecha, entidad: ped ? "pedido" : "viaje", entidadId: ped ? String(ped.id) : String(v.id), viajeId: String(v.id), pedidoId: ped ? String(ped.id) : null, accion: ped ? "flete_de_afuera" : "crear_viaje" }, { viajeId: String(v.id), avisarA: enviado ? avisarA : null });
   }
@@ -863,8 +865,8 @@ async function accionViajeCon(g: Grabador, db: DB, userId: string, a: AccionViaj
     const vc = viajeCalc(dia2, viajeId);
     const ch = vc ? choferDe(dia2, vc) : choferParaOrden(dia, a.vehiculoId, "nuevo" in plan ? plan.nuevo.orden : 0);
     const texto = "sumarA" in plan
-      ? `Sumado al viaje a ${lugar(dia, ped.hacia).n} del ${patente(dia, a.vehiculoId)} (${N(dia, ch)})${vc ? `, ~${hm(vc.t)}` : ""}`
-      : `Pedido${ped.pidioId ? ` de ${N(dia, ped.pidioId)}` : ""} en el ${patente(dia, a.vehiculoId)} (${N(dia, ch)})${vc ? `, ${vc.hora ? "" : "~"}${hm(Math.round(vc.t / 5) * 5)}` : ""}`;
+      ? `Sumado al viaje a ${lugar(dia, ped.hacia).n} del ${patente(dia, a.vehiculoId)} (${NCh(dia, ch)})${vc ? `, ~${hm(vc.t)}` : ""}`
+      : `Pedido${ped.pidioId ? ` de ${N(dia, ped.pidioId)}` : ""} en el ${patente(dia, a.vehiculoId)} (${NCh(dia, ch)})${vc ? `, ${vc.hora ? "" : "~"}${hm(Math.round(vc.t / 5) * 5)}` : ""}`;
     const enviado = dia.envios.some((e) => e.personaId === ch && e.enviadaMin != null && !e.anulado);
     return listo(userId, texto, g, { fecha: f, entidad: "pedido", entidadId: a.pedidoId, pedidoId: a.pedidoId, viajeId, accion: a.accion }, {
       viajeId, avisarA: enviado ? ch : null, avisarDeposito: !!(vc && esHoy(ahoraDe(f)) && vc.carga && ["lleva_material", "entre_depositos"].includes(vc.tipo) && /^l:|^dep$/.test(vc.desdeKey)),
@@ -879,7 +881,7 @@ async function accionViajeCon(g: Grabador, db: DB, userId: string, a: AccionViaj
       if (!cur) return { ok: true, texto: "No hay horas estimadas para correr", historialId: null };
       const desde = hm(Math.round((ahora + 10) / 5) * 5);
       await g.actualizar("hd_viajes", cur.id, { no_antes_de: desde });
-      return listo(userId, `${N(dia, choferSugerido(dia, a.vehiculoId, ahora))}: las horas estimadas corren desde ahora (${desde})`, g, { fecha: a.fecha, entidad: "camion", entidadId: a.vehiculoId, accion: a.accion });
+      return listo(userId, `${nombreDe(dia, choferSugerido(dia, a.vehiculoId, ahora)) || `El ${patente(dia, a.vehiculoId)}`}: las horas estimadas corren desde ahora (${desde})`, g, { fecha: a.fecha, entidad: "camion", entidadId: a.vehiculoId, accion: a.accion });
     }
     const r = await db.from("hd_camiones_dia").select("*").eq("fecha", a.fecha).eq("vehiculo_id", a.vehiculoId).maybeSingle();
     if (r.data) await g.actualizar("hd_camiones_dia", String(r.data.id), { chofer_id: a.choferId, sin_chofer: a.choferId == null });
@@ -925,7 +927,7 @@ async function accionViajeCon(g: Grabador, db: DB, userId: string, a: AccionViaj
       }
       const chA = chV;
       const texto = antes !== a.vehiculoId
-        ? a.vehiculoId ? `${corto} pasó al ${patente(dia, a.vehiculoId)} (${N(dia, chB)})${chA ? `. Sacaste un viaje a ${N(dia, chA)}` : ""}` : `${corto}: sin camión`
+        ? a.vehiculoId ? `${corto} pasó al ${patente(dia, a.vehiculoId)} (${NCh(dia, chB)})${chA ? `. Sacaste un viaje a ${N(dia, chA)}` : ""}` : `${corto}: sin camión`
         : a.hora ? `${corto} pasa a las ${normHora(a.hora)}` : `${corto}: nuevo orden`;
       return listo(userId, texto, g, base, { avisarA: [chA, chB].filter((x, i, arr) => x && arr.indexOf(x) === i && dia.envios.some((e) => e.personaId === x && e.enviadaMin != null && !e.anulado)) });
     }
@@ -992,19 +994,32 @@ async function accionViajeCon(g: Grabador, db: DB, userId: string, a: AccionViaj
       // llega "te saqué un viaje").
       if (vv.estado !== "planeado") throw new Error("Ese viaje ya no está pendiente.");
       const plan = planConLleva(dia, a.viajeId, a.llevaId);
+      const avisar = [plan.chMaterial, plan.chLleva].filter((x, i, arr): x is string => !!x && arr.indexOf(x) === i && dia.envios.some((e) => e.personaId === x && e.enviadaMin != null && !e.anulado));
+      // Si el material se llevaba la vuelta al depósito de un "trae" de antes, se la devuelve (como "Volver a la cola").
+      const devolverVuelta = async () => {
+        if (!vv.vuelta || vv.desde?.otId == null) return;
+        const prev = dia.viajes.find((x) => x.vehiculoId === vv.vehiculoId && x.tipo === "trae_material" && x.hacia.otId === vv.desde!.otId && !x.vuelta && x.estado !== "anulado");
+        if (prev) await g.actualizar("hd_viajes", prev.id, { vuelta: true });
+      };
+      if (plan.k === "todo") {
+        // Con un renglón "Todo el día": el mismo viaje pasa a ese camión, SIN chofer guardado
+        // (lo hace el del renglón y lo sigue si se cambia), a la hora del encuentro y como
+        // viaje de la cuadrilla (en su camión de todo el día no avisa). Los pedidos no se tocan.
+        await devolverVuelta();
+        await g.actualizar("hd_viajes", a.viajeId, {
+          vehiculo_id: plan.vehiculoId, chofer_id: null, hora: plan.hora, orden: plan.orden, no_antes_de: null,
+          cuadrilla_odoo_id: plan.cuadrillaOdooId, vuelta: false, vuelta_llega: null, ...columnasPunto("desde", null),
+        });
+        return listo(userId, plan.texto, g, base, { avisarA: avisar });
+      }
       const ps = (await g.leer("hd_pedidos", { viaje_id: a.viajeId })).filter((p) => p.estado !== "anulado");
       for (const p of ps) {
         await sacarDeSuViaje(g, p, plan.motivo);
         await g.actualizar("hd_pedidos", String(p.id), { viaje_id: plan.llevaId, estado: "en_camion" });
       }
       if (!ps.length) await g.actualizar("hd_viajes", a.viajeId, { estado: "anulado", anulado_motivo: plan.motivo });
-      // Si el material se llevaba la vuelta al depósito de un "trae" de antes, se la devuelve (como "Volver a la cola").
-      if (vv.vuelta && vv.desde?.otId != null) {
-        const prev = dia.viajes.find((x) => x.vehiculoId === vv.vehiculoId && x.tipo === "trae_material" && x.hacia.otId === vv.desde!.otId && !x.vuelta && x.estado !== "anulado");
-        if (prev) await g.actualizar("hd_viajes", prev.id, { vuelta: true });
-      }
+      await devolverVuelta();
       await g.actualizar("hd_viajes", plan.llevaId, { carga: plan.carga });
-      const avisar = [plan.chMaterial, plan.chLleva].filter((x, i, arr): x is string => !!x && arr.indexOf(x) === i && dia.envios.some((e) => e.personaId === x && e.enviadaMin != null && !e.anulado));
       return listo(userId, plan.texto, g, base, { avisarA: avisar });
     }
     case "ok_todo_el_dia": {
@@ -1097,7 +1112,7 @@ async function accionPedidoCon(g: Grabador, db: DB, userId: string, a: AccionPed
         const v = await g.insertar("hd_viajes", filaViaje(a.fecha, plan.nuevo));
         await g.actualizar("hd_pedidos", String(p.id), { viaje_id: v.id, estado: "en_camion" });
         // Sin chofer guardado (planPonerPedido): el del camión a esa hora, que sigue a la hoja.
-        texto = `Aceptado en el ${patente(dia, s.enCamion)} (${N(dia, choferParaOrden(dia2, s.enCamion, plan.nuevo.orden))})${s.noAntesDe ? `, ~${normHora(s.noAntesDe)}` : ""}`;
+        texto = `Aceptado en el ${patente(dia, s.enCamion)} (${NCh(dia, choferParaOrden(dia2, s.enCamion, plan.nuevo.orden))})${s.noAntesDe ? `, ~${normHora(s.noAntesDe)}` : ""}`;
       }
     }
     return listo(userId, texto, g, { fecha: a.fecha, entidad: "pedido", entidadId: String(p.id), pedidoId: String(p.id), accion: a.accion }, { pedidoId: String(p.id) });

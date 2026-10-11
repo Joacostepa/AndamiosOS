@@ -17,7 +17,7 @@ import { linkWhatsapp } from "@/lib/panol/whatsapp";
 import { urlBase } from "@/lib/permisos-via-publica/endosos";
 import type { DiaHoja, Fecha, Foto } from "./tipos";
 import {
-  destinatarios, estadoEnvio, fotoDe, minutosDesde, envioDe, nombreDe, viajeCalc, pedidosDeViaje, recibeDe, textoListaCarga, persona, type Destinatario,
+  destinatarios, estadoEnvio, esExChofer, fotoDe, minutosDesde, envioDe, nombreDe, viajeCalc, pedidosDeViaje, recibeDe, textoListaCarga, persona, type Destinatario,
 } from "./estado";
 import { ORIGENES, chatDe, origenDe, origenEnDia } from "./quien";
 import { filaEnvio, mensajeCapatazPedido, mensajeDe, mensajeDeposito, mensajeOperario, mensajeTarde, mensajeVuelvenSolos } from "./mensajes";
@@ -166,7 +166,7 @@ export async function enviar(db: DB, userId: string, fecha: Fecha, pid: string, 
 
   const g = grabador(db);
   if (x.rol === "ex") {
-    await g.actualizar("hd_links", String(l.id), { anulado_at: ts(), anulado_motivo: "Ya no está a cargo (avisado)" });
+    await g.actualizar("hd_links", String(l.id), { anulado_at: ts(), anulado_motivo: esExChofer(dia, pid) ? "Ya no tiene viajes (avisado)" : "Ya no está a cargo (avisado)" });
   } else if (primera) {
     await g.actualizar("hd_links", String(l.id), {
       enviada_at: ts(), enviada_por: userId, enviada_canal: canal, snap: foto, snap_primero: foto, snap_recibido: null, snap_ok: null, ok_at: null,
@@ -175,7 +175,7 @@ export async function enviar(db: DB, userId: string, fecha: Fecha, pid: string, 
   } else {
     await g.actualizar("hd_links", String(l.id), { cambio_at: ts(), cambio_diffs: st.k === "cambiada" ? st.ds.map(({ v, ...d }) => { void v; return d; }) : null, snap: foto, snap_ok: null, ok_at: null, version });
   }
-  const que = x.rol === "ex" ? "Avisado que ya no está a cargo" : primera ? "Hoja enviada" : "Cambio avisado";
+  const que = x.rol === "ex" ? (esExChofer(dia, pid) ? "Avisado que ya no tiene viajes" : "Avisado que ya no está a cargo") : primera ? "Hoja enviada" : "Cambio avisado";
   const textoH = `${que}: ${nombreDe(dia, pid)}${canal === "telegram" ? " (Telegram)" : " (a mano)"}`;
   const historialId = await anotar(userId, { fecha, entidad: "link", entidadId: String(l.id), accion: primera ? "enviar" : "avisar", texto: textoH }, g.cambios);
   // Deshacer sólo lo mandado a mano (pudo no haberse mandado): lo que salió por Telegram

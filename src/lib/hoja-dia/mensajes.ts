@@ -14,7 +14,7 @@
 
 import type { DiaHoja, Diferencia, Minutos } from "./tipos.ts";
 import {
-  cNombre, cap, choferDe, encTxt, envioDe, esHoy, estadoEnvio, fechaMensaje, hCorta, hm, hm5, horaTxt, laC, lowFirst,
+  cNombre, cap, choferDe, encTxt, envioDe, esExChofer, esHoy, estadoEnvio, fechaMensaje, hCorta, hm, hm5, horaTxt, laC, lowFirst,
   lugar, nombreDe, normHora, obrasCon, patente, recibeDe, textoViaje, todoDe, vehiculoNombre, viajesChofer, yList,
   cortoV, hojaDeCuadrilla, hojaDe, aCargoDe, suspendida, persona, genteDe, vehiculo, vehiculosDe, type Destinatario, type ViajeCalc,
 } from "./estado.ts";
@@ -133,7 +133,7 @@ export function mensajeEx(dia: DiaHoja, pid: string, c: number | null | undefine
 export function mensajeDe(dia: DiaHoja, x: Destinatario, o: Opts): string | null {
   if (!x.pid) return null;
   const st = estadoEnvio(dia, x);
-  if (st.k === "ex") return mensajeEx(dia, x.pid, x.c);
+  if (st.k === "ex") return esExChofer(dia, x.pid) ? `${nombreDe(dia, x.pid)}, ya no tenés viajes el ${fechaMensaje(dia.fecha)}. Cualquier duda, llamá a ${coord(dia)}.` : mensajeEx(dia, x.pid, x.c);
   if (st.k === "cambiada") {
     return x.rol === "chofer" ? mensajeCambioChofer(dia, x.pid, st.ds, o) : mensajeCambioHoja(dia, x.pid, x.c!, st.ds, o);
   }
@@ -151,7 +151,7 @@ export function filaEnvio(dia: DiaHoja, x: Destinatario): string {
     const k = viajesChofer(dia, x.pid).length;
     return td != null ? `${n} · chofer · todo el día con ${laC(dia, td)}` : `${n} · chofer · ${k === 1 ? "1 viaje" : `${k} viajes`}`;
   }
-  if (x.rol === "ex") return `${n} · ya no está a cargo de la ${cNombre(dia, x.c)}`;
+  if (x.rol === "ex") return esExChofer(dia, x.pid) ? `${n} · chofer · ya no tiene viajes` : `${n} · ya no está a cargo de la ${cNombre(dia, x.c)}`;
   const ob = obrasCon(dia, x.c!);
   const p = persona(dia, x.pid);
   const sinCel = p && !p.celular && !p.telegram ? " · sin celular cargado" : "";

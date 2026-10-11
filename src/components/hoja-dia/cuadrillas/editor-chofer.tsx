@@ -13,7 +13,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
-import { encTxt, hojaDeCuadrilla, obrasCon, vehiculosDe, filaQueLleva, choferesElegibles, choferSugerido, nombreDe, normHora, patente, toMin } from "@/lib/hoja-dia/estado";
+import { encTxt, hojaDeCuadrilla, obrasCon, vehiculosDe, filaQueLleva, choferesParaVehiculo, choferSugerido, nombreDe, normHora, patente, toMin } from "@/lib/hoja-dia/estado";
 import { horasDeFila, horasLlevaTrae, opcionesChofer, opcionesVehiculo } from "@/lib/hoja-dia/vista-cuadrillas";
 import { quienBusca } from "@/lib/hoja-dia/vehiculos";
 import { esTemporal } from "@/lib/hoja-dia/optimista";
@@ -265,7 +265,7 @@ function EditorBusca({ ctl, c }: { ctl: Control; c: number }) {
           {q.k === "otro" && (
             <select aria-label="Chofer que los busca" className={SELECT} value={q.v.choferId ?? ""} onChange={(e) => hoja.mutate({ accion: "busca_con", fecha, cuadrilla: c, vehiculoId: veh, choferId: e.target.value || null })}>
               <option value="">Elegir chofer…</option>
-              {choferesElegibles(dia).map((ch) => <option key={ch} value={ch}>{nombreDe(dia, ch)}</option>)}
+              {choferesParaVehiculo(dia, veh).map(({ id: ch, habitual }) => <option key={ch} value={ch}>{nombreDe(dia, ch)}{habitual ? " · habitual" : ""}</option>)}
             </select>
           )}
         </div>

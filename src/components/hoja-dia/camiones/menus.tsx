@@ -13,7 +13,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
   calcVeh, choferDe, choferesElegibles, choferesTxt, choferSugerido, cortoV, dondeAnda, estadoEnvio, filasCamiones, haciaDe, hCorta, hm, hm5,
-  horaTxt, lowFirst, lugar, nombreDe, normHora, patente, pedidosDeViaje, persona, textoViaje, toMin, vehiculo, vehiculoNombre, viajeCalc,
+  horaTxt, lowFirst, lugar, botonesConLleva, nombreDe, normHora, patente, pedidosDeViaje, persona, textoViaje, toMin, vehiculo, vehiculoNombre, viajeCalc,
   viajesChofer, cuadrillaDeViaje, ausenciaDe,
 } from "@/lib/hoja-dia/estado";
 import { useAccionHoja } from "@/hooks/use-hoja-dia";
@@ -85,6 +85,12 @@ function MenuViaje({ m, cerrar, dialogo, verComo }: { m: Extract<MenuAbierto, { 
     return (
       <MenuFlotante anchor={m.anchor} onCerrar={cerrar} label="Cambiar chofer" ancho={320}>
         <MenuCabeza titulo="¿Quién lo hace?" sub={`${cortoV(dia, v0)} · ${patente(dia, v0.vehiculoId)}`} />
+        {/* Un viaje suelto con chofer elegido puede volver a "el que maneje el camión" (sigue a la hoja). */}
+        {v0.choferId && !der && v0.vehiculoId && (
+          <ItemMenu detalle={nombreDe(dia, choferDe(dia, { ...v0, choferId: null })) || "sin chofer"} onClick={hacer(() => viaje({ accion: "chofer", viajeId: m.id, choferId: null }))}>
+            El que maneje el {patente(dia, v0.vehiculoId)}
+          </ItemMenu>
+        )}
         {choferesElegibles(dia).map((x) => {
           const a = ausenciaDe(dia, x);
           const n = viajesChofer(dia, x).length;
@@ -146,6 +152,10 @@ function MenuViaje({ m, cerrar, dialogo, verComo }: { m: Extract<MenuAbierto, { 
           {!planeado && <ItemMenu onClick={hacer(() => viaje({ accion: "deshacer_estado", viajeId: m.id }))}>Volver a «por hacer»</ItemMenu>}
           {planeado && !flete && <ItemMenu detalle="›" onClick={() => setPaso("pasar")}>{v0.vehiculoId ? "Pasar a otro camión" : "Elegir chofer"}</ItemMenu>}
           {planeado && !flete && v0.vehiculoId && <ItemMenu detalle="›" onClick={() => setPaso("chofer")}>Cambiar chofer</ItemMenu>}
+          {/* El material para la obra de una cuadrilla que ya va con su lleva: que lo lleve él (§6, varios pedidos, un viaje). */}
+          {planeado && !der && botonesConLleva(dia, m.id).map((b) => (
+            <ItemMenu key={b.con} detalle="un viaje menos" onClick={hacer(() => viaje({ accion: "con_lleva", viajeId: m.id, llevaId: b.con! }))}>{b.l}</ItemMenu>
+          ))}
           {planeado && cLleva != null && (
             <ItemMenu
               detalle={v0.vuelta ? "se queda en la obra" : "queda libre para otros viajes"}

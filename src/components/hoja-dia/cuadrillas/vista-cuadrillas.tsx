@@ -153,6 +153,7 @@ export function VistaCuadrillas() {
         case "vuelvenSolos": if (c != null) viaje.mutate({ accion: "vuelven_solos", fecha, cuadrilla: c }); return;
         case "okTodo": if (b.id) viaje.mutate({ accion: "ok_todo_el_dia", viajeId: b.id }); return;
         case "volverCola": if (b.id) viaje.mutate({ accion: "volver_a_cola", viajeId: b.id }); return;
+        case "conLleva": if (b.id && b.con) viaje.mutate({ accion: "con_lleva", viajeId: b.id, llevaId: b.con }); return;
         case "marcarHecho": if (b.id) viaje.mutate({ accion: "hecho", viajeId: b.id }); return;
         case "pasarManana": if (b.id) pedido.mutate({ accion: "pasar_a_manana", pedidoId: b.id }); return;
         case "avisarChofer": case "abrirEnvio": case "avisarTarde": setHojaLat({ t: "envio", resaltar: b.p ?? null }); return;

@@ -195,11 +195,12 @@ export function Pantalla({ dia, fecha, ahora, irA, cargando }: { dia: DiaHoja; f
       case "okTodo": if (b.id) void sacarUnRato(b.id); return;
       case "volverCola": if (b.id) g.viaje({ accion: "volver_a_cola", viajeId: b.id }); return;
       case "conLleva": if (b.id && b.con) g.viaje({ accion: "con_lleva", viajeId: b.id, llevaId: b.con }); return;
-      case "verViaje": case "elegirChoferViaje": {
+      case "verViaje": case "elegirChoferViaje": case "choferViaje": {
         if (!b.id) return;
         const f = document.getElementById(`vf-${b.id}`);
         if (f) mostrar(`vf-${b.id}`);
-        setMenu({ t: "viaje", id: b.id, anchor: f && f.offsetParent ? f : el ?? document.body, paso: b.a === "elegirChoferViaje" ? "pasar" : undefined });
+        // "Elegir chofer" de un viaje que nadie maneja abre "¿Quién lo hace?" (el habitual primero).
+        setMenu({ t: "viaje", id: b.id, anchor: f && f.offsetParent ? f : el ?? document.body, paso: b.a === "elegirChoferViaje" ? "pasar" : b.a === "choferViaje" ? "chofer" : undefined });
         return;
       }
       case "verCamion": if (b.veh) mostrar(`row-${b.veh}`); return;

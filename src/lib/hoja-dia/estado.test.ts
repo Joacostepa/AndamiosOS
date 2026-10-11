@@ -244,8 +244,8 @@ test("10:20, el pedido de Conte: Gómez está cerca y Kiska libre; Borda y Nuñe
   assert.deepEqual(q.no.map((x) => x.t).sort(), [
     "Borda está todo el día con la 1 (hidrogrúa)",
     "Nuñez está todo el día con la 5",
-    "el AH 410 LD tiene la VTV vencida y no tiene chofer",
-    "la S10 no tiene chofer hoy",
+    "el Iveco AH 410 LD tiene la VTV vencida y no tiene chofer",
+    "la Chevrolet LNE 368 no tiene chofer hoy",
   ]);
   // Soltarlo en Gómez después de Juramento: hereda la vuelta y sale de Juramento.
   const plan = planPonerPedido({ ...d, pedidos: [...d.pedidos, ped] }, ped, "ab497", 620);

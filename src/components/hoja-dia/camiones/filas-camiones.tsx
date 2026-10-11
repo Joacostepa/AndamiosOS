@@ -1,7 +1,7 @@
 "use client";
 
 // Una fila por camión (§9): a la izquierda quién lo maneja (si cambia en el día, cada tramo:
-// "Kiska → Gómez 14:00"), la patente y dónde anda en palabras; a la derecha los viajes como
+// "Kiska → Gómez 14:00"), la marca y la patente y dónde anda en palabras; a la derecha los viajes como
 // fichas sobre una línea de tiempo aproximada de 7 a 18 (el ancho es la duración típica, no
 // la real). La línea coral es "ahora". Cada viaje tiene su chofer (decisión del dueño, 11/10).
 //
@@ -15,12 +15,13 @@ import { Button } from "@/components/ui/button";
 import {
   avisosChofer, avisosVeh, calcVeh, camionesQueSirven, cap, choferDe, choferesDeFila, choferesTxt, cNombre, cortoV, cTag, dondeAnda, estadoEnvio,
   fletesDeAfuera, haciaDe, hm, hm5, horaTxt, kmTxt, lowFirst, lugar, nombreDe, obrasCon, sinCamionDe, textoViaje, toMin,
-  todoVeh, vehiculo, viajeSinAvisar, type Aviso, type CamionesQueSirven, type ViajeCalc, hojaDeCuadrilla,
+  todoVeh, vehiculo, elVeh, viajeSinAvisar, viajesSinChofer, habitualDe, type Aviso, type CamionesQueSirven, type ViajeCalc, hojaDeCuadrilla,
 } from "@/lib/hoja-dia/estado";
 import { filasOrden, ordenEnFila } from "@/lib/hoja-dia/camiones";
 import { tramoDe } from "@/lib/hoja-dia/rutas";
 import { tiempoTxt } from "@/lib/hoja-dia/tiempos";
 import { TiempoTramo } from "@/components/hoja-dia/comunes/tiempo-tramo";
+import { VehiculoNombre } from "@/components/hoja-dia/comunes/vehiculo-nombre";
 import type { DiaHoja, Viaje } from "@/lib/hoja-dia/tipos";
 import { arrastre, TIPO_ARRASTRE, useCamiones } from "./contexto";
 import { LineaAviso } from "./botones";
@@ -113,8 +114,8 @@ export function FilasCamiones() {
         <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1 border-b px-3 py-2.5 text-[13px] text-muted-foreground">
           <b className="font-semibold text-foreground">Sin usar:</b>
           {f.sinUsar.map((s, i) => (
-            <span key={s.veh}>
-              <span className={cn(/^[A-Z]{1,3} ?\d{3} ?[A-Z]{0,3}$/.test(s.txt) && "font-mono text-[12px]")}>{s.txt}</span>
+            <span key={s.veh} title={s.habitual ? `habitual: ${nombreDe(dia, s.habitual)}` : undefined}>
+              <VehiculoNombre v={vehiculo(dia, s.veh)} mono="font-mono text-[12px]" />
               {s.nota && <span className={cn(s.amb && "text-hd-ambar")}> ({s.nota})</span>}
               {i < f.sinUsar.length - 1 && <span aria-hidden> ·</span>}
             </span>
@@ -166,7 +167,10 @@ function Fila({ veh, q }: { veh: string; q: CamionesQueSirven | null }) {
   const td = todoVeh(dia, veh);
   // Los choferes de la fila, en el orden del día (puede ser más de uno).
   const chs = useMemo(() => [...new Set(choferesDeFila(dia, veh).map((x) => x.ch).filter((x): x is string => !!x))], [dia, veh]);
-  const quien = choferesTxt(dia, veh);
+  const quien = cap(choferesTxt(dia, veh));
+  // Un viaje de la fila que nadie maneja (el habitual no cuenta): el nombre va en rojo.
+  const faltaCh = viajesSinChofer(dia).some((v) => v.vehiculoId === veh);
+  const hab = habitualDe(dia, veh);
   const avs: Aviso[] = useMemo(() => [...avisosVeh(dia, veh, ahora), ...chs.flatMap((x) => avisosChofer(dia, x, ahora))], [dia, veh, chs, ahora]);
   const conflictos = avs.filter((x) => x.nivel === "rojo").flatMap((x) => x.ids ?? []).filter((x): x is string => !!x);
   const sinAv = ts.filter((v) => viajeSinAvisar(dia, v)).map((v) => v.id);
@@ -253,10 +257,10 @@ function Fila({ veh, q }: { veh: string; q: CamionesQueSirven | null }) {
       )}
     >
       <div className={cn("relative grid min-w-0 content-start gap-px py-1.5 pr-1.5 pl-3", !angosta && "border-r")}>
-        <div className="flex flex-wrap items-baseline gap-x-1.5 pr-8 text-[13.5px] font-semibold">
-          {quien || "Sin chofer"}
-          <span className="font-mono text-xs font-medium text-muted-foreground">{V.patente}</span>
-          <span className="text-xs font-medium text-muted-foreground">{V.tipo === "hidrogrua" ? "hidrogrúa" : V.marca}</span>
+        <div className="flex flex-wrap items-baseline gap-x-1.5 pr-8 text-[13.5px] font-semibold" title={hab && !chs.includes(hab) ? `habitual: ${nombreDe(dia, hab)}` : undefined}>
+          <span className={cn(faltaCh && "text-hd-rojo")}>{quien || "Sin chofer"}</span>
+          {/* Por la marca, como lo conocen ("Iveco AB 497 YY"); la hidrogrúa lo dice ("Agrale hidrogrúa AB 831 LC"). */}
+          <VehiculoNombre v={V} largo className="text-xs font-medium text-muted-foreground" />
         </div>
         <div className={cn("line-clamp-3 text-xs leading-snug", TONO_DA[da.tono])}>{da.t}</div>
         {sug && (
@@ -299,7 +303,7 @@ function Fila({ veh, q }: { veh: string; q: CamionesQueSirven | null }) {
             variant="ghost"
             size="icon-xs"
             className="absolute top-1 right-1 max-md:size-9"
-            aria-label={`Más opciones del camión ${V.patente}`}
+            aria-label={`Más opciones ${elVeh(dia, veh, "del")}`}
             aria-haspopup="menu"
             id={`fm-${veh}`}
             onClick={(e) => abrirMenu({ t: "fila", veh, anchor: e.currentTarget })}
@@ -353,7 +357,7 @@ function Ficha({ v, cur, conflictos, sinAv }: { v: ViajeCalc; cur: ViajeCalc | n
   const l2 = v.estado === "hecho" ? `✓ ${hm(v.hechoMin ?? v.t)}${v.hechoPor && v.hechoPor !== "chofer" ? ` (${iniciales(v.hechoPor)})` : ""}` : v.estado === "no_pudo" ? `no pudo ${hm(v.hechoMin ?? v.t)}` : `${horaTxt(v)}${sin && !angostaF ? " · sin avisar" : ""}`;
   const chV = v.fleteExterno ? null : choferDe(dia, v);
   const tr = v.estado === "planeado" ? tramoDe(dia, v) : null;
-  const tit = `${textoViaje(dia, v)}${chV ? ` · ${nombreDe(dia, chV)}` : ""} · ${v.estado === "hecho" ? `Hecho ${hm(v.hechoMin ?? v.t)}` : v.estado === "no_pudo" ? `No pudo: ${v.noPudoMotivo ?? ""}` : v.hora ? `a las ${v.hora}` : `estimada ${horaTxt(v)}`}${tr ? ` · ${tiempoTxt(tr)}${tr.fuente === "google" ? " (Google Maps)" : " (típico)"}` : ""}`;
+  const tit = `${textoViaje(dia, v)}${chV ? ` · ${nombreDe(dia, chV)}` : v.vehiculoId && !v.fleteExterno ? " · sin chofer" : ""} · ${v.estado === "hecho" ? `Hecho ${hm(v.hechoMin ?? v.t)}` : v.estado === "no_pudo" ? `No pudo: ${v.noPudoMotivo ?? ""}` : v.hora ? `a las ${v.hora}` : `estimada ${horaTxt(v)}`}${tr ? ` · ${tiempoTxt(tr)}${tr.fuente === "google" ? " (Google Maps)" : " (típico)"}` : ""}`;
   const arrastrable = v.estado === "planeado" && !v.fleteExterno && !pasado && !angosta;
   return (
     <>

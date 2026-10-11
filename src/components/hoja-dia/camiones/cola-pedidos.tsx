@@ -11,11 +11,12 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/hoja-dia/comunes/kbd";
 import {
-  camionesQueSirven, cola, diaSemana, hm, horaTxt, lowFirst, lugar, nombreDe, patente, choferDe, choferDelCamion, filaTodoVeh,
+  camionesQueSirven, cap, cola, diaSemana, hm, horaTxt, lowFirst, lugar, nombreDe, vehTxt, vehiculo, articuloVeh, choferDe, choferDelCamion, filaTodoVeh,
   sugeridosDe, txtCerca, txtLibre, txtNadieLibre, esHoy, type ItemCola,
 } from "@/lib/hoja-dia/estado";
 import { TIPOS_VIAJE } from "@/lib/hoja-dia/tipos";
 import { cuadrillaDeDestino, pedidoDesdeCajon, pidioTxt, urgenciaTxt } from "@/lib/hoja-dia/camiones";
+import { VehiculoNombre } from "@/components/hoja-dia/comunes/vehiculo-nombre";
 import { arrastre, TIPO_ARRASTRE, useCamiones } from "./contexto";
 
 export function ColaPedidos() {
@@ -76,7 +77,7 @@ export function ColaPedidos() {
                 <div className="text-xs font-semibold text-muted-foreground">Sugerido · {s.regla === "arranca" ? "arranca un armado" : "termina un desarme"}</div>
                 <div className="leading-snug font-semibold">{s.txt}</div>
                 <div className="text-xs leading-snug text-muted-foreground">
-                  {s.enCamion ? `Ya va en el camión de ${nombreDe(dia, filaTodoVeh(dia, s.enCamion)?.choferId ?? choferDelCamion(dia, s.enCamion)) || "la cuadrilla"} (${patente(dia, s.enCamion)}) al terminar` : s.que}
+                  {s.enCamion ? `Ya va en el camión de ${nombreDe(dia, filaTodoVeh(dia, s.enCamion)?.choferId ?? choferDelCamion(dia, s.enCamion)) || "la cuadrilla"} (${vehTxt(dia, s.enCamion)}) al terminar` : s.que}
                   {s.horaFija ? ` · ${s.horaFija}${s.cargaDeposito ? ` (carga ${s.cargaDeposito})` : ""}` : s.noAntesDe ? ` · ~${s.noAntesDe}` : ""}
                 </div>
                 {!pasado && (
@@ -193,7 +194,7 @@ function Pedido({ it, grupo }: { it: ItemCola; grupo: "vos" | "esp" | "camino" |
   } else if (it.sinAvisar && st.k === "en") {
     ayuda = (
       <div className="text-xs text-muted-foreground">
-        En el <span className="font-mono">{patente(dia, st.v.vehiculoId)}</span> · {nombreDe(dia, it.sinAvisar)} todavía no sabe · {horaTxt(st.v)}
+        {cap(articuloVeh(dia, st.v.vehiculoId, "en el"))} <VehiculoNombre v={vehiculo(dia, st.v.vehiculoId)} mono="font-mono" /> · {nombreDe(dia, it.sinAvisar)} todavía no sabe · {horaTxt(st.v)}
       </div>
     );
     bs = <Button type="button" variant="outline" size="xs" className="max-md:h-9 max-md:text-sm" onClick={() => avisar(it.sinAvisar!)}>Avisar a {nombreDe(dia, it.sinAvisar)}</Button>;

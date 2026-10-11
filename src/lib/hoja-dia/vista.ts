@@ -17,7 +17,7 @@ import type { DiaHoja, Diferencia, Envio, Fecha, ObraDia, TipoViaje } from "./ti
 import {
   aCargoDe, cNombre, cap, choferDe, cuadrillaDeViaje, diaSemana, encTxt, envioDe, estadoPedido, fechaMensaje, fmtFrases,
   frLargo, genteDe, hCorta, hm, hm5, hojaDeCuadrilla, horaTxt, lowFirst, lugar, lugarDeKey, nombreDe, normHora, obrasCon,
-  pedidosDeViaje, recibeDe, suspendida, textoViaje, todoDe, vehiculo, vehiculoNombre, viajesCalc, viajesChofer,
+  pedidosDeViaje, recibeDe, suspendida, textoViaje, todoDe, vehiculo, vehiculoNombre, elVeh, viajesCalc, viajesChofer,
   persona, contratistasDe, aCargoContratista, vanDe, vehiculosDe, genteConChoferes, conLlevaTrae, choferesTodoDe, type ViajeCalc,
 } from "./estado.ts";
 import { vanEnPalabras } from "./contratistas.ts";
@@ -311,8 +311,8 @@ export function otsConArchivos(dia: DiaHoja, link: LinkVista): number[] {
 
 /**
  * Los choferes de la hoja del capataz, en palabras (maqueta capatazHTML: "Te lleva **Kiska** ·
- * Iveco AF 669 ZL"). Una línea por vehículo ("Borda queda todo el día con la hidrogrúa (AB
- * 831 LC)", "Te lleva Nuñez · Iveco AB 799 CA") y la del busca ("Los busca Gómez a las 17:00
+ * Iveco AF 669 ZL"). Una línea por vehículo ("Borda queda todo el día con el Agrale hidrogrúa
+ * AB 831 LC", "Te lleva Nuñez · Iveco AB 799 CA") y la del busca ("Los busca Gómez a las 17:00
  * en …", "Todavía no hay quién los busque", "Vuelven por su cuenta").
  */
 function choferDeHoja(dia: DiaHoja, c: number, pid: string): ChoferDeHoja {
@@ -326,7 +326,7 @@ function choferDeHoja(dia: DiaHoja, c: number, pid: string): ChoferDeHoja {
     if (f.modo === "todo_el_dia") {
       const n = f.choferId === pid ? "Vos" : nombreDe(dia, f.choferId) || "El chofer";
       const V = vehiculo(dia, f.vehiculoId);
-      const resto = ` ${f.choferId === pid ? "manejás" : "queda"} todo el día${V?.tipo === "hidrogrua" ? " con la hidrogrúa" : ""}${V ? ` (${V.patente})` : ""}`;
+      const resto = ` ${f.choferId === pid ? "manejás" : "queda"} todo el día${V ? ` ${elVeh(dia, f.vehiculoId, "con el", true)}` : ""}`;
       lineas.push([{ t: n, b: true }, { t: resto }]);
       quienes.push({ ch: f.choferId, rol: "todo el día" });
       continue;

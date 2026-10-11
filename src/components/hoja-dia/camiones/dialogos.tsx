@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } f
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  aCargoDe, calcVeh, choferDelCamion, filaTodoVeh, cNombre, cortoV, hm5, hojaDeCuadrilla, lugar, nombreDe, normHora, obrasCon, patente, vehiculo,
+  aCargoDe, calcVeh, choferDelCamion, filaTodoVeh, cNombre, cortoV, hm5, hojaDeCuadrilla, lugar, nombreDe, normHora, obrasCon, elVeh, vehiculo,
 } from "@/lib/hoja-dia/estado";
 import type { Punto, TipoViaje } from "@/lib/hoja-dia/tipos";
 import { Chips } from "@/components/hoja-dia/comunes/menu-flotante";
@@ -122,7 +122,7 @@ function DlgTaller({ veh, cerrar }: { veh: string; cerrar: () => void }) {
   };
   return (
     <>
-      <DialogTitle>VTV o taller del {patente(dia, veh)}</DialogTitle>
+      <DialogTitle>VTV o taller {elVeh(dia, veh, "del")}</DialogTitle>
       <DialogDescription>Ocupa el camión ese rato (~{Math.floor(dur / 60)} h{dur % 60 ? ` ${dur % 60}` : ""}).</DialogDescription>
       <div className="grid gap-1">
         <span className="text-xs font-medium text-muted-foreground">Qué</span>

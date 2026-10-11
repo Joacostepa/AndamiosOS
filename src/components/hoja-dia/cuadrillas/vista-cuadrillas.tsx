@@ -14,7 +14,7 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   bandeja, cap, cola, cuadrillasActivas, cuadrillasConObras, diaSemana, esPasado, filasCamiones, hojaDe, hojaDeCuadrilla,
-  nombreDe, patente, pendientesEnvio, persona, choferesTxt, cNombre, type Boton, type ItemBandeja, type ModoPrecarga,
+  nombreDe, vehiculo, vehTxt, pendientesEnvio, persona, choferesTxt, cNombre, choferesParaVehiculo, viajesChofer, ausenciaDe, type Boton, type ItemBandeja, type ModoPrecarga,
 } from "@/lib/hoja-dia/estado";
 import { cambiosTablero, cuadrillaDeTecla } from "@/lib/hoja-dia/vista-cuadrillas";
 import type { DiaHoja } from "@/lib/hoja-dia/tipos";
@@ -31,6 +31,7 @@ import { ListaEnvio } from "@/components/hoja-dia/comunes/lista-envio";
 import { Historial } from "@/components/hoja-dia/comunes/historial";
 import { ItemMenu, MenuFlotante } from "@/components/hoja-dia/comunes/menu-flotante";
 import { useDiaHoja } from "@/components/hoja-dia/comunes/use-dia-hoja";
+import { VehiculoNombre } from "@/components/hoja-dia/comunes/vehiculo-nombre";
 import { Tarjeta } from "./tarjeta";
 import { PanelGente } from "./panel-gente";
 import { MenuPersona } from "./menu-persona";
@@ -60,7 +61,9 @@ type Menu =
   | { t: "persona"; c: number; p: string; el: HTMLElement }
   | { t: "tarjeta"; c: number; el: HTMLElement }
   | { t: "contratista"; c: number | null; k: string; el: HTMLElement }
-  | { t: "camion"; viajeId: string; el: HTMLElement | null };
+  | { t: "camion"; viajeId: string; el: HTMLElement | null }
+  /** "Elegir chofer" de un viaje que nadie maneja: ¿quién lo hace? (el habitual primero). */
+  | { t: "chofer"; viajeId: string; el: HTMLElement | null };
 
 const RUTA_CAMIONES = "/planificacion/hoja/camiones";
 
@@ -150,6 +153,7 @@ export function VistaCuadrillas() {
         case "esperar": case "poner": case "fleteDe": irCamiones(b.id ? `&pedido=${b.id}&hacer=${b.a === "fleteDe" ? "flete" : b.a}` : ""); return;
         case "tablero": router.push(`/planificacion`); return;
         case "elegirChoferViaje": if (b.id) setMenu({ t: "camion", viajeId: b.id, el: document.activeElement as HTMLElement | null }); return;
+        case "choferViaje": if (b.id) setMenu({ t: "chofer", viajeId: b.id, el: document.activeElement as HTMLElement | null }); return;
         case "vuelvenSolos": if (c != null) viaje.mutate({ accion: "vuelven_solos", fecha, cuadrilla: c }); return;
         case "okTodo": if (b.id) viaje.mutate({ accion: "ok_todo_el_dia", viajeId: b.id }); return;
         case "volverCola": if (b.id) viaje.mutate({ accion: "volver_a_cola", viajeId: b.id }); return;
@@ -338,6 +342,8 @@ export function VistaCuadrillas() {
 
   const coral = pend.sinEnv ? "Enviar a los capataces" : pend.cambios ? `Avisar cambios (${pend.cambios})` : null;
   const menuCamion = menu?.t === "camion" ? menu : null;
+  const menuChofer = menu?.t === "chofer" ? menu : null;
+  const vChofer = menuChofer ? dia.viajes.find((v) => v.id === menuChofer.viajeId) ?? null : null;
 
   return (
     <div className="@container grid min-w-0 gap-2.5">
@@ -424,9 +430,31 @@ export function VistaCuadrillas() {
                 viaje.mutate({ accion: "mover", viajeId: menuCamion.viajeId, vehiculoId: veh });
               }}
             >
-              {patente(dia, veh) || veh}
+              {vehiculo(dia, veh) ? <VehiculoNombre v={vehiculo(dia, veh)} /> : veh}
             </ItemMenu>
           ))}
+        </MenuFlotante>
+      )}
+
+      {menuChofer && vChofer && (
+        <MenuFlotante abierto anchor={menuChofer.el} onCerrar={() => setMenu(null)} label="Elegir chofer" encabezado={<b className="font-semibold">¿Quién lo hace? · {vehTxt(dia, vChofer.vehiculoId)}</b>}>
+          {/* El habitual del camión primero, marcado: es sólo la sugerencia (nunca se pone solo). */}
+          {choferesParaVehiculo(dia, vChofer.vehiculoId).map(({ id: x, habitual }) => {
+            const n = viajesChofer(dia, x).length;
+            const det = ausenciaDe(dia, x) ? "no viene" : n ? `${n} ${n === 1 ? "viaje" : "viajes"}` : "libre";
+            return (
+              <ItemMenu
+                key={x}
+                detalle={habitual ? `habitual · ${det}` : det}
+                onClick={() => {
+                  setMenu(null);
+                  viaje.mutate({ accion: "chofer", viajeId: vChofer.id, choferId: x });
+                }}
+              >
+                {nombreDe(dia, x)}
+              </ItemMenu>
+            );
+          })}
         </MenuFlotante>
       )}
 

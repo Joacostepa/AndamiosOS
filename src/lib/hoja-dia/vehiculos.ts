@@ -9,7 +9,8 @@
 //
 // LAS DECISIONES DEL DUEÑO (11/10), en modulo.md §4:
 // - Chofer y vehículo son independientes. Elegir un chofer sólo PROPONE su vehículo si el
-//   renglón no tiene; elegir un vehículo sólo propone su chofer habitual si no tiene. Nunca
+//   renglón no tiene. Elegir un vehículo NO pone a su chofer habitual (11/10 noche: el
+//   habitual nunca cuenta como asignado; sólo va primero en el selector, "habitual"). Nunca
 //   se pisan.
 // - Una cuadrilla puede llevar varios vehículos, cada uno con su modo ("Lleva y trae" o
 //   "Todo el día"). "Sin chofer" es no tener ninguno.
@@ -25,7 +26,7 @@
 
 import type { DiaHoja, Hoja, Hora, LugarEncuentro, ModoChofer, ModoVehiculo, VehiculoHoja, Viaje } from "./tipos.ts";
 import {
-  ausenciaDe, choferDe, choferSugerido, encuentroPorModo, hm, hojaDeCuadrilla, normHora, patente, todoDe, toMin, vehiculo, vehiculoDeChofer, vehiculosDe,
+  ausenciaDe, choferDe, choferSugerido, encuentroPorModo, hm, hojaDeCuadrilla, normHora, cap, elVeh, todoDe, toMin, vehiculoDeChofer, vehiculosDe,
 } from "./estado.ts";
 
 /** Un gesto sobre los vehículos de una hoja (o sus lleva / busca). */
@@ -196,7 +197,7 @@ export function planVehiculos(dia: DiaHoja, c: number, cambio: CambioVehiculos, 
   };
   /** El mismo vehículo dos veces en una hoja no va (y la base tampoco lo deja: idx_hd_hoja_vehiculos_vehiculo). */
   const noRepetido = (veh: string | null | undefined, f?: VehiculoHoja) => {
-    if (veh && filas.some((x) => x !== f && x.vehiculoId === veh)) throw new NoSePuede(`El ${patente(dia, veh)} ya va en esta cuadrilla.`);
+    if (veh && filas.some((x) => x !== f && x.vehiculoId === veh)) throw new NoSePuede(`${cap(elVeh(dia, veh))} ya va en esta cuadrilla.`);
   };
   /**
    * Un viaje de un vehículo de la hoja sigue a su renglón SÓLO en lo que el gesto le cambió
@@ -216,14 +217,15 @@ export function planVehiculos(dia: DiaHoja, c: number, cambio: CambioVehiculos, 
   };
   /** Un chofer que no viene no se propone. */
   const disponible = (ch: string | null | undefined) => (ch && !ausenciaDe(dia, ch) ? ch : null);
-  /** Propone el vehículo del chofer o el chofer del vehículo, sólo si falta (chofer y vehículo son independientes). */
+  /**
+   * Propone el vehículo del chofer, sólo si falta (chofer y vehículo son independientes). Al
+   * revés no: un vehículo sin chofer queda sin chofer (el habitual no se autocompleta: es un
+   * problema "falta el chofer" con el habitual primero en el selector).
+   */
   const completar = (f: VehiculoHoja) => {
     if (f.choferId && !f.vehiculoId) {
       const v = vehiculoDeChofer(dia, f.choferId);
       if (v && !filas.some((x) => x !== f && x.vehiculoId === v)) f.vehiculoId = v;
-    } else if (f.vehiculoId && !f.choferId) {
-      const ch = disponible(vehiculo(dia, f.vehiculoId)?.choferHabitualId);
-      if (ch && !filas.some((x) => x !== f && x.choferId === ch)) f.choferId = ch;
     }
   };
   const sumar = (modo: ModoVehiculo, choferId?: string | null, vehiculoId?: string | null) => {

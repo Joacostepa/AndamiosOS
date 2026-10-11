@@ -10,7 +10,7 @@ import type { AccionPedido, AccionViaje, Resultado } from "@/lib/hoja-dia/accion
 import type { DiaHoja, Fecha, Minutos, Punto } from "@/lib/hoja-dia/tipos";
 
 export type MenuAbierto =
-  | { t: "viaje"; id: string; anchor: HTMLElement; paso?: "pasar" }
+  | { t: "viaje"; id: string; anchor: HTMLElement; paso?: "pasar" | "chofer" }
   | { t: "fila"; veh: string; anchor: HTMLElement }
   | { t: "ped"; id: string; anchor: HTMLElement; paso?: "esperar" | "anular" }
   | { t: "cajon"; anchor: HTMLElement };

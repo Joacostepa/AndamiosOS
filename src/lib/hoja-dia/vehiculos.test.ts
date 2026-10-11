@@ -50,7 +50,7 @@ test("el habitual distinto NO avisa: Nuñez con la hidrogrúa de Borda", () => {
   // El selector de vehículo no dice "lo maneja Kiska": dice qué hace el camión ese día.
   const ov = opcionesVehiculo(d, 2);
   assert.ok(ov.every((x) => !/lo maneja/.test(x.label)), ov.map((x) => x.label).join("\n"));
-  assert.match(ov.find((x) => x.value === "ab497")!.label, /^AB 497 YY · camión · 3 viajes$/);
+  assert.match(ov.find((x) => x.value === "ab497")!.label, /^Iveco AB 497 YY · camión · 3 viajes$/);
 });
 
 test("un camión con dos choferes en el día: cada viaje dice el suyo y la fila muestra los tramos", () => {
@@ -68,7 +68,7 @@ test("choque real de vehículo: la hidrogrúa todo el día con la 1 y lleva y tr
   let d = martesArmado();
   d = conFilas(d, 4, [fila("f4", "lleva_trae", "gomez", "ab831")]);
   const t = problemas(d, 4, LUN_1830).map((p) => p.t);
-  assert.ok(t.includes("El AB 831 LC está todo el día con la Cuadrilla 1"), t.join("\n"));
+  assert.ok(t.includes("El Agrale AB 831 LC está todo el día con la Cuadrilla 1"), t.join("\n"));
 });
 
 test("choque real de chofer: Kiska en dos camiones a la vez", () => {
@@ -79,7 +79,7 @@ test("choque real de chofer: Kiska en dos camiones a la vez", () => {
   const cr = crucesChofer(d);
   assert.ok(cr.some((x) => x.ch === "kiska" && x.b.id === "c4-lleva"), JSON.stringify(cr.map((x) => [x.a.id, x.b.id])));
   const t = problemas(d, 4, LUN_1830).map((p) => p.t);
-  assert.ok(t.some((x) => x.startsWith("Kiska no llega: lleva C2 Juramento (AF 669 ZL) termina ~7:45 y lleva C4 Gurruchaga (AB 497 YY) es a las 7:15")), t.join("\n"));
+  assert.ok(t.some((x) => x.startsWith("Kiska no llega: lleva C2 Juramento (Iveco AF 669 ZL) termina ~7:45 y lleva C4 Gurruchaga (Iveco AB 497 YY) es a las 7:15")), t.join("\n"));
   // Con otro chofer en el AB 497 YY, no hay choque.
   const d2 = { ...d, viajes: d.viajes.map((v) => (v.id === "c4-lleva" ? { ...v, choferId: "gomez" } : v)) };
   assert.ok(!crucesChofer(d2).some((x) => x.b.id === "c4-lleva"));
@@ -115,8 +115,8 @@ test("Conte a cargo de la 2 y su chofer todo el día: cuenta UNA vez y no está 
   assert.equal(chipsDe(d, 2)[0].tag, "a cargo · chofer");
   const ps = problemas(d, 2, LUN_1830);
   assert.ok(!ps.some((p) => p.k.startsWith("chint") || p.k.startsWith("chdup")), ps.map((p) => p.t).join("\n"));
-  // El mensaje: "manejás vos todo el día".
-  assert.match(mensajeHoja(d, "conte", 2, { canal: "telegram", link: null, ahora: LUN_1830 }), /a cargo vos\. Encuentro 7:00 en el depósito, manejás vos todo el día\./);
+  // El mensaje: "manejás vos todo el día con el Iveco AB 497 YY".
+  assert.match(mensajeHoja(d, "conte", 2, { canal: "telegram", link: null, ahora: LUN_1830 }), /a cargo vos\. Encuentro 7:00 en el depósito, manejás vos todo el día con el Iveco AB 497 YY\./);
   // A cargo de su hoja: le llega la hoja (no la de chofer aparte).
   assert.equal(destinatarios(d).filter((x) => x.pid === "conte").length, 1);
 });
@@ -135,16 +135,16 @@ test("dos vehículos con modos distintos: renglones, quiénes van, mensaje y fot
   const p = planVehiculos(d, 1, { k: "sumar", modo: "lleva_trae", choferId: "gomez", vehiculoId: "ab497" }, o());
   d = aplicar(d, 1, p);
   const r = resumenVehiculos(d, 1);
-  assert.deepEqual(r.filas.map(linea), ["Todo el día · Borda · hidrogrúa AB 831 LC", "Lleva y trae · Gómez · AB 497 YY · 7:00"]);
-  assert.equal(r.busca?.map((x) => x.t).join(""), "Los busca 17:00 (Gómez · AB 497 YY)");
+  assert.deepEqual(r.filas.map(linea), ["Todo el día · Borda · Agrale hidrogrúa AB 831 LC", "Lleva y trae · Gómez · Iveco AB 497 YY · 7:00"]);
+  assert.equal(r.busca?.map((x) => x.t).join(""), "Los busca 17:00 (Gómez · Iveco AB 497 YY)");
   assert.equal(vanDe(d, 1), 5, "Borda cuenta; Gómez los lleva y se va");
-  assert.equal(choferesEnPalabras(d, 1, "sack"), ", va Borda todo el día con la hidrogrúa y te lleva Gómez");
+  assert.equal(choferesEnPalabras(d, 1, "sack"), ", va Borda todo el día con el Agrale hidrogrúa AB 831 LC y te lleva Gómez");
   // La foto guarda los dos; sacar uno después de enviar se dice en palabras.
   const env = enviarATodos(d, -318, ["sack"]);
   const sinGomez = aplicar(env, 1, planVehiculos(env, 1, { k: "quitar", filaId: p.sumar[0].id }, o()));
   const e = sinGomez.envios.find((x) => x.personaId === "sack")!;
   const ds = diferencias(sinGomez, e.snap, fotoDe(sinGomez, "sack")).map((x) => x.t);
-  assert.ok(ds.includes("ya no va el AB 497 YY (Gómez)"), ds.join(" | "));
+  assert.ok(ds.includes("ya no va el Iveco AB 497 YY (Gómez)"), ds.join(" | "));
   assert.ok(ds.includes("vuelven por su cuenta") === false, "sin lleva y trae no hay busca que decir");
 });
 
@@ -153,10 +153,10 @@ test("el resumen legado de hd_hojas es el primer vehículo (rollback y migració
   assert.deepEqual(resumenLegado([fila("b", "lleva_trae", "gomez", "ab497", 1), fila("a", "todo_el_dia", "borda", "ab831", 0)]), { chofer_modo: "todo_el_dia", chofer_id: "borda", vehiculo_id: "ab831" });
 });
 
-test("elegir un vehículo propone su chofer sólo si falta; elegir un chofer propone su vehículo sólo si falta", () => {
+test("elegir un vehículo NO pone a su habitual; elegir un chofer propone su vehículo sólo si falta", () => {
   const d = martesArmado();
   const a = planVehiculos(d, 4, { k: "sumar", modo: "lleva_trae", vehiculoId: "ab799" }, o());
-  assert.equal(a.sumar[0].choferId, "nunez", "Nuñez es el habitual del AB 799 CA");
+  assert.equal(a.sumar[0].choferId, null, "Nuñez es el habitual del AB 799 CA, pero no se autocompleta (11/10 noche)");
   const b = planVehiculos(d, 3, { k: "cambiar", filaId: hojaDeCuadrilla(d, 3)!.vehiculos[0].id, vehiculoId: "ab799" }, o());
   assert.equal(b.filas[0].choferId, "kiska", "ya tenía chofer: no se pisa");
 });
@@ -170,7 +170,7 @@ test("el lleva que después vuelve al depósito libera el camión", () => {
   d = aplicar(d, 2, planVehiculos(d, 2, { k: "vuelta", filaId: f2.id, vuelve: true, llega: "8:15" }, o()));
   const ll = calcVeh(d, "af669").find((v) => v.id === "c2-lleva")!;
   assert.equal(ll.fin, 8 * 60 + 15);
-  assert.equal(linea(resumenVehiculos(d, 2).filas[0]), "Lleva y trae · Kiska · AF 669 ZL · 7:00 (vuelve al depósito 8:15) → 17:00");
+  assert.equal(linea(resumenVehiculos(d, 2).filas[0]), "Lleva y trae · Kiska · Iveco AF 669 ZL · 7:00 (vuelve al depósito 8:15) → 17:00");
   // Sin la hora cargada, la estimada (la parada más la vuelta típica).
   const est = aplicar(d, 2, planVehiculos(d, 2, { k: "vuelta", filaId: f2.id, vuelve: true, llega: null }, o()));
   assert.equal(calcVeh(est, "af669").find((v) => v.id === "c2-lleva")!.fin, 7 * 60 + 45 + 60);
@@ -189,7 +189,7 @@ test("busca con otro camión: lo dice la tarjeta, el capataz y el chofer que los
   let d = martesArmado();
   d = aplicar(d, 3, planVehiculos(d, 3, { k: "buscaCon", vehiculoId: "ab497", choferId: "gomez" }, o()));
   assert.equal(quienBusca(d, hojaDeCuadrilla(d, 3)!).k, "otro");
-  assert.equal(linea(resumenVehiculos(d, 3).filas[0]), "Lleva y trae · Kiska · AF 669 ZL · 7:45 → 16:30 (Gómez · AB 497 YY)");
+  assert.equal(linea(resumenVehiculos(d, 3).filas[0]), "Lleva y trae · Kiska · Iveco AF 669 ZL · 7:45 → 16:30 (Gómez · Iveco AB 497 YY)");
   assert.ok(viajesChofer(d, "gomez").some((v) => v.id === "c3-busca"));
   assert.ok(!viajesChofer(d, "kiska").some((v) => v.id === "c3-busca"));
 });
@@ -265,9 +265,9 @@ test("una hoja sin renglones con lleva y busca (del código de antes): un gesto 
 test("el mismo vehículo dos veces en una hoja no se puede (y el selector lo deshabilita)", () => {
   const d = martesArmado();
   const f2 = hojaDeCuadrilla(d, 2)!.vehiculos[0];
-  assert.throws(() => planVehiculos(d, 2, { k: "sumar", modo: "todo_el_dia", vehiculoId: "af669" }, o()), /AF 669 ZL ya va en esta cuadrilla/);
+  assert.throws(() => planVehiculos(d, 2, { k: "sumar", modo: "todo_el_dia", vehiculoId: "af669" }, o()), /El Iveco AF 669 ZL ya va en esta cuadrilla/);
   const d2 = aplicar(d, 2, planVehiculos(d, 2, { k: "sumar", modo: "todo_el_dia", vehiculoId: "ab497" }, o()));
-  assert.throws(() => planVehiculos(d2, 2, { k: "cambiar", filaId: f2.id, vehiculoId: "ab497" }, o()), /AB 497 YY ya va en esta cuadrilla/);
+  assert.throws(() => planVehiculos(d2, 2, { k: "cambiar", filaId: f2.id, vehiculoId: "ab497" }, o()), /El Iveco AB 497 YY ya va en esta cuadrilla/);
   // Elegir el mismo que ya tiene no es repetir.
   assert.doesNotThrow(() => planVehiculos(d2, 2, { k: "cambiar", filaId: f2.id, vehiculoId: "af669" }, o()));
   const op = opcionesVehiculo(d2, 2, f2.id).find((x) => x.value === "ab497")!;
@@ -338,5 +338,5 @@ test("diferencias: con una foto vieja (sin vehs), sumar un vehículo cuenta como
   delete vieja.vehs;
   const d = aplicar(d0, 1, planVehiculos(d0, 1, { k: "sumar", modo: "lleva_trae", choferId: "gomez", vehiculoId: "ab497" }, o()));
   const ds = diferencias(d, vieja as never, fotoDe(d, "sack")).map((x) => x.t);
-  assert.ok(ds.some((t) => /^va también el AB 497 YY/.test(t)), ds.join(" | "));
+  assert.ok(ds.some((t) => /^va también el Iveco AB 497 YY/.test(t)), ds.join(" | "));
 });

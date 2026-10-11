@@ -61,7 +61,7 @@ test("domingo 11/10, con el habitual guardado (datos de antes): el aviso nombra 
   const d = domingo("nunez");
   const av = avisosVeh(d, "ab799", AHORA).find((x) => x.k === "noentra-f43c6b07");
   assert.ok(av, avisosVeh(d, "ab799", AHORA).map((x) => x.t).join("\n"));
-  assert.equal(av.t, "El AB 799 CA no llega: lleva C1 Ing. Huergo (Conte) vuelve al depósito ~8:45 y el material para Ing. Huergo (Nuñez) es a las 8:00");
+  assert.equal(av.t, "El Iveco AB 799 CA no llega: lleva C1 Ing. Huergo (Conte) vuelve al depósito ~8:45 y el material para Ing. Huergo (Nuñez) es a las 8:00");
   // La tarjeta y la bandeja ya no arrancan con "Nuñez:" como si fuera el chofer de la fila.
   const ps = problemas(d, 1, AHORA);
   assert.ok(ps.some((p) => p.card === av.t), ps.map((p) => p.card).join("\n"));
@@ -77,7 +77,7 @@ test("domingo 11/10, sin chofer guardado: el material lo hace Conte (el del reng
   assert.ok(!viajesChofer(d, "nunez").length, "Nuñez no tiene nada ese día");
   assert.equal(materialDe(d, 1), "Material: Conte lleva 8:00");
   const av = avisosVeh(d, "ab799", AHORA).find((x) => x.k === "noentra-f43c6b07")!;
-  assert.equal(av.t, "El AB 799 CA no llega: lleva C1 Ing. Huergo (Conte) vuelve al depósito ~8:45 y el material para Ing. Huergo es a las 8:00");
+  assert.equal(av.t, "El Iveco AB 799 CA no llega: lleva C1 Ing. Huergo (Conte) vuelve al depósito ~8:45 y el material para Ing. Huergo es a las 8:00");
   assert.ok(!problemas(d, 1, AHORA).some((p) => /Nuñez/.test(p.t)));
 });
 
@@ -88,9 +88,12 @@ test("el chofer del renglón cambia: el viaje sin chofer guardado lo sigue solo 
   const cambios = new Map(p.viajes.cambiar.map((x) => [x.id, x.valores]));
   const d2: DiaHoja = { ...d, hojas: d.hojas.map((h) => ({ ...h, vehiculos: p.filas })), viajes: d.viajes.map((v) => ({ ...v, ...cambios.get(v.id) })) };
   assert.equal(choferDe(d2, d2.viajes.find((v) => v.id === "f43c6b07")), "ortega");
-  // Sin renglón ni otro viaje con chofer en el camión, el sugerido del día (hd_camiones_dia / habitual).
+  // Sin renglón ni otro viaje con chofer en el camión: el chofer del camión del día
+  // (hd_camiones_dia) si lo hay; si no, NADIE (el habitual, Nuñez, no cuenta: 11/10 noche).
   const solo: DiaHoja = { ...d, hojas: [], viajes: d.viajes.filter((v) => v.id === "f43c6b07") };
-  assert.equal(choferDe(solo, solo.viajes[0]), "nunez");
+  assert.equal(choferDe(solo, solo.viajes[0]), null);
+  const conDelDia: DiaHoja = { ...solo, camiones: solo.camiones.map((c) => (c.vehiculoId === "ab799" ? { ...c, choferId: "gomez" } : c)) };
+  assert.equal(choferDe(conDelDia, conDelDia.viajes[0]), "gomez");
   // Sin renglón pero con un viaje de antes con chofer elegido: el de ese viaje.
   const conAntes: DiaHoja = { ...solo, viajes: [...solo.viajes, viaje("antes", { fecha: F, tipo: "compra", vehiculoId: "ab799", choferId: "gomez", orden: 400, hacia: { otId: null, lugarId: "sanz", texto: null } })] };
   assert.equal(choferDe(conAntes, conAntes.viajes[0]), "gomez");
@@ -107,7 +110,7 @@ test("aceptar el sugerido / poner un pedido ya no guarda el chofer", () => {
 test("«Que lo lleve Conte con la Cuadrilla 1»: un botón por renglón, en el aviso y en la tarjeta", () => {
   const d = domingo(null);
   const ls = llevasParaMaterial(d, "f43c6b07");
-  assert.deepEqual(ls.map((x) => [x.lleva.id, x.ch]), [["c1-lleva", "conte"], ["c1-lleva-2", "borda"]]);
+  assert.deepEqual(ls.map((x) => [x.con, x.ch]), [["c1-lleva", "conte"], ["c1-lleva-2", "borda"]]);
   const bs = botonesConLleva(d, "f43c6b07");
   assert.deepEqual(bs.map((b) => b.l), ["Que lo lleve Conte con la Cuadrilla 1", "Que lo lleve Borda con la Cuadrilla 1"]);
   assert.deepEqual(bs.map((b) => [b.a, b.id, b.con]), [["conLleva", "f43c6b07", "c1-lleva"], ["conLleva", "f43c6b07", "c1-lleva-2"]]);
@@ -117,7 +120,7 @@ test("«Que lo lleve Conte con la Cuadrilla 1»: un botón por renglón, en el a
   assert.deepEqual(card.bs.map((b) => b.l), ["Ver el camión", "Que lo lleve Conte con la Cuadrilla 1", "Que lo lleve Borda con la Cuadrilla 1"]);
   // Un lleva que llega mucho después de la hora del material no sirve; uno de otra obra tampoco.
   const tarde: DiaHoja = { ...d, viajes: d.viajes.map((v) => (v.id === "c1-lleva-2" ? { ...v, hora: "10:00", orden: 600 } : v)) };
-  assert.deepEqual(llevasParaMaterial(tarde, "f43c6b07").map((x) => x.lleva.id), ["c1-lleva"]);
+  assert.deepEqual(llevasParaMaterial(tarde, "f43c6b07").map((x) => x.con), ["c1-lleva"]);
   // Un viaje de una cuadrilla (el lleva) o uno que no es de material no ofrece nada.
   assert.deepEqual(llevasParaMaterial(d, "c1-lleva"), []);
 });
@@ -125,13 +128,15 @@ test("«Que lo lleve Conte con la Cuadrilla 1»: un botón por renglón, en el a
 test("el gesto «Que lo lleve Conte…»: el pedido pasa al lleva, la carga se suma y el material se anula", () => {
   const d = domingo("nunez");
   const plan = planConLleva(d, "f43c6b07", "c1-lleva");
+  assert.ok(plan.k === "lleva");
   assert.equal(plan.carga, CARGA);
   assert.equal(plan.motivo, "va con la Cuadrilla 1 (Conte)");
-  assert.equal(plan.texto, "El material para Ing. Huergo va con la Cuadrilla 1: lo lleva Conte (AB 799 CA) a las 7:00");
+  assert.equal(plan.texto, "El material para Ing. Huergo va con la Cuadrilla 1: lo lleva Conte (Iveco AB 799 CA) a las 7:00");
   assert.equal(plan.chMaterial, "nunez");
   // Con el lleva que ya tenía carga: se suma ("Varios pedidos, un viaje").
   const conCarga: DiaHoja = { ...d, viajes: d.viajes.map((v) => (v.id === "c1-lleva-2" ? { ...v, carga: "20 tablones" } : v)) };
-  assert.equal(planConLleva(conCarga, "f43c6b07", "c1-lleva-2").carga, `20 tablones + ${CARGA.charAt(0).toLowerCase()}${CARGA.slice(1)}`);
+  const p2 = planConLleva(conCarga, "f43c6b07", "c1-lleva-2");
+  assert.equal(p2.k === "lleva" && p2.carga, `20 tablones + ${CARGA.charAt(0).toLowerCase()}${CARGA.slice(1)}`);
   // La regla de siempre: sin otros pedidos, el viaje de material se anula.
   assert.deepEqual(sacarPedidoDeViaje(CARGA, CARGA, []), { anular: true });
   // Como lo escribe el servidor (acciones.ts, con_lleva): el aviso se va y el pedido queda en el lleva.
@@ -160,7 +165,7 @@ test("la vuelta al depósito: ~8:45 con las típicas (7:00 + 45 + 60), con Googl
   // …pero el material de las 8:00 (hora de llegada) igual no entra: del depósito a la obra son
   // 24 min más. El aviso lo dice con el manejo, y "Que lo lleve Conte…" sigue siendo la salida.
   const av = avisosVeh(g, "ab799", AHORA).find((x) => x.k === "noentra-f43c6b07")!;
-  assert.equal(av.t, "El AB 799 CA no llega: lleva C1 Ing. Huergo (Conte) vuelve al depósito ~8:00 (llega a Ing. Huergo ~8:20) y el material para Ing. Huergo es a las 8:00");
+  assert.equal(av.t, "El Iveco AB 799 CA no llega: lleva C1 Ing. Huergo (Conte) vuelve al depósito ~8:00 (llega a Ing. Huergo ~8:20) y el material para Ing. Huergo es a las 8:00");
 });
 
 test("los tramos que se le piden a Google ese día: depósito → Ing. Huergo y la vuelta (con coordenadas en los dos)", () => {

@@ -133,7 +133,8 @@ async function viajeDelChofer(l: Fila, viajeId: string): Promise<Fila> {
   const adm = createAdminClient();
   const v = (await adm.from("hd_viajes").select("*").eq("id", viajeId).maybeSingle()).data;
   // Sin chofer guardado, el viaje es del que maneje ese camión a esa hora: el renglón de la
-  // hoja, el viaje de antes o el sugerido del día (choferDe, lo mismo que ve el celular).
+  // hoja, el viaje de antes o el chofer del camión del día (choferDe, lo mismo que ve el
+  // celular). Nunca el habitual: un chofer no puede marcar un viaje por ser el habitual.
   let delCamion: string | null = null;
   if (v && !v.chofer_id && v.vehiculo_id) {
     const dia = await leerDia(String(l.fecha), { cacheOdoo: true });

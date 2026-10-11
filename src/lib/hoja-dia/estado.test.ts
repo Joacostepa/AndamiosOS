@@ -65,7 +65,7 @@ test("Empezar como hoy: copia el lunes, saca a los ausentes y lo dice", () => {
   assert.equal(plan.hojas.length, 5);
   const c4 = plan.hojas.find((h) => h.cuadrillaOdooId === 4)!;
   assert.deepEqual(c4.gente, ["hepper", "perez", "romero", "molina"]);
-  assert.ok(plan.avisos.some((a) => a === "Medina no entra: ART desde el 13/10 (según la asistencia). La Cuadrilla 4 quedó con 4 de 5."), plan.avisos.join("\n"));
+  assert.ok(plan.avisos.some((a) => a === "Medina no entra: ART / accidente desde el 13/10 (según la asistencia). La Cuadrilla 4 quedó con 4 de 5."), plan.avisos.join("\n"));
   // La 5 no trabajó el lunes: toma su hoja del viernes, sin nadie a cargo.
   const c5 = plan.hojas.find((h) => h.cuadrillaOdooId === 5)!;
   assert.deepEqual(c5.gente, ["mino", "valenzuela", "aguirre"]);
@@ -446,7 +446,7 @@ test("ausencia parcial: se retira a las 14", () => {
 
 test("panel Gente: no disponibles, choferes y vehículos", () => {
   const p = panelGente(martesArmado());
-  assert.ok(p.noDisponibles.some((x) => x.txt === "Medina · ART desde el 13/10 · sin fecha de alta (según la asistencia)"));
+  assert.ok(p.noDisponibles.some((x) => x.txt === "Medina · ART / accidente desde el 13/10 · sin fecha de alta (según la asistencia)"));
   assert.ok(p.choferes.some((x) => x.txt === "Kiska · 6 viajes"));
   assert.ok(p.choferes.some((x) => x.txt === "Borda · todo el día con la 1"));
   assert.ok(p.vehiculos.some((x) => x.veh === "ah410" && x.problema === "la VTV vencida desde el 02/10"));

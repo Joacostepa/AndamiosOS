@@ -209,7 +209,8 @@ export function Tarjeta({ ctl, c, indice }: { ctl: Control; c: number; indice: n
               id={`nm-${c}-${x.pid}`}
               draggable={!pasado}
               aria-haspopup={pasado ? undefined : "menu"}
-              title={pasado ? undefined : "Arrastralo a otra cuadrilla o tocá para ver opciones"}
+              aria-label={`${x.completo}${x.tag ? `, ${x.tag}` : ""}`}
+              title={pasado ? x.completo : `${x.completo} · arrastralo a otra cuadrilla o tocá para ver opciones`}
               onClick={(e) => !pasado && ctl.abrirMenuPersona(c, x.pid, e.currentTarget)}
               onDragStart={(e) => {
                 e.dataTransfer.effectAllowed = "move";

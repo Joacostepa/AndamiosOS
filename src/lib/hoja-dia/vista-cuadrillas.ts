@@ -6,13 +6,13 @@
 // PURO (sin React ni servidor), como estado.ts, y con tests (vista-cuadrillas.test.ts).
 // Los textos son los de la maqueta aprobada (renderEsc / cardHTML / genteHTML / menuHTML).
 
-import type { Ausencia, DiaHoja, Fecha, Hoja, ModoChofer, Viaje } from "./tipos.ts";
+import type { Ausencia, DiaHoja, Fecha, Hoja, ModoChofer, Persona, Viaje } from "./tipos.ts";
 import { TIPO_AUSENCIA_TXT } from "./tipos.ts";
 import {
   addDia, aCargoDe, ausenciaDe, calcVeh, choferDe, cNombre, cuadrilla, cuadrillasActivas, ddmm, diaSemana, encTxt, esHoy,
   genteDe, hm, hojaDe, hojaDeCuadrilla, horaTxt, laC, lugar, nombreDe, normalizar, normHora, nuevosEnHoja, obrasCon,
   obrasDe, panelGente, parcialDe, patente, persona, prevista, recibeDe, todoDe, todoVeh, vanDe, vehiculo, viajeCalc,
-  viajesCalc, viajesChofer, choferDelCamion, vencimientosTxt, cuadrillasDeContratista, type ViajeCalc,
+  viajesCalc, viajesChofer, choferDelCamion, vencimientosTxt, cuadrillasDeContratista, coincidePersona, nombreConPila, type ViajeCalc,
 } from "./estado.ts";
 import { resumenContratistas } from "./contratistas.ts";
 
@@ -97,7 +97,8 @@ function baseDe(dia: DiaHoja, pid: string): number | null {
   return c ? c.odooId : null;
 }
 
-export type Chip = { pid: string; nombre: string; tag: string | null; aCargo: boolean; ausente: boolean; nuevo: boolean };
+/** `completo`: el nombre entero ("Fernando Nicolas Taboada"), para el title y el aria-label del chip. */
+export type Chip = { pid: string; nombre: string; completo: string; tag: string | null; aCargo: boolean; ausente: boolean; nuevo: boolean };
 
 /** Los nombres de la tarjeta, el que está a cargo primero, con su marca. */
 export function chipsDe(dia: DiaHoja, c: number): Chip[] {
@@ -110,7 +111,7 @@ export function chipsDe(dia: DiaHoja, c: number): Chip[] {
     const base = baseDe(dia, pid);
     const nuevo = nuevos.includes(pid);
     const tag = a ? "no viene" : pid === cargo ? "a cargo" : nuevo ? "nuevo" : base != null && base !== c ? `de ${laC(dia, base)}` : null;
-    return { pid, nombre: N(dia, pid), tag, aCargo: pid === cargo, ausente: !!a, nuevo };
+    return { pid, nombre: N(dia, pid), completo: persona(dia, pid)?.nombreCompleto || N(dia, pid), tag, aCargo: pid === cargo, ausente: !!a, nuevo };
   });
 }
 
@@ -166,17 +167,19 @@ export type Sugerencia = { pid: string; nombre: string; s: string; deshabilitada
 export function sugerenciasAgregar(dia: DiaHoja, c: number, q: string): Sugerencia[] {
   const n = normalizar(q.trim());
   if (!n) return [];
-  const rank = (pid: string, nom: string) =>
-    (hojaDe(dia, pid) === c ? 9 : ausenciaDe(dia, pid) ? 8 : hojaDe(dia, pid) != null ? 2 : 0) + (normalizar(nom).startsWith(n) ? 0 : 1);
+  // Empieza así el apellido o el nombre de pila: primero ("fer" → Taboada · Fernando).
+  const empieza = (p: Persona) => [p.nombre, p.pila ?? ""].some((x) => normalizar(x).startsWith(n));
+  const rank = (p: Persona) =>
+    (hojaDe(dia, p.id) === c ? 9 : ausenciaDe(dia, p.id) ? 8 : hojaDe(dia, p.id) != null ? 2 : 0) + (empieza(p) ? 0 : 1);
   return dia.personas
-    .filter((p) => p.activo && !p.esChofer && normalizar(p.nombre).includes(n))
-    .sort((a, b) => rank(a.id, a.nombre) - rank(b.id, b.nombre) || a.nombre.localeCompare(b.nombre, "es"))
+    .filter((p) => p.activo && !p.esChofer && p.deObra !== false && coincidePersona(p, q))
+    .sort((a, b) => rank(a) - rank(b) || a.nombre.localeCompare(b.nombre, "es"))
     .slice(0, 6)
     .map((p) => {
       const de = hojaDe(dia, p.id);
       const a = ausenciaDe(dia, p.id);
       const s = de === c ? "ya está acá" : a ? `no viene (${TIPO_AUSENCIA_TXT[a.tipo]})` : de != null ? `está en ${laC(dia, de)}` : "sin asignar";
-      return { pid: p.id, nombre: p.nombre, s, deshabilitada: de === c || !!a };
+      return { pid: p.id, nombre: nombreConPila(p), s, deshabilitada: de === c || !!a };
     })
     .concat(sugerenciasContratista(dia, c, n));
 }
@@ -216,12 +219,12 @@ export function textoNoDisponible(dia: DiaHoja, a: Ausencia): string {
 }
 
 /** Los que no vienen ese día (todo el día o parcial), para el panel. */
-export function noDisponibles(dia: DiaHoja): { pid: string; nombre: string; txt: string }[] {
+export function noDisponibles(dia: DiaHoja): { pid: string; nombre: string; pila: string | null; txt: string }[] {
   return dia.personas
-    .filter((p) => p.activo)
+    .filter((p) => p.activo && p.deObra !== false)
     .map((p) => ({ p, a: ausenciaDe(dia, p.id) ?? parcialDe(dia, p.id) }))
     .filter((x): x is { p: typeof x.p; a: Ausencia } => !!x.a)
-    .map(({ p, a }) => ({ pid: p.id, nombre: p.nombre, txt: textoNoDisponible(dia, a) }));
+    .map(({ p, a }) => ({ pid: p.id, nombre: p.nombre, pila: p.pila ?? null, txt: textoNoDisponible(dia, a) }));
 }
 
 /** La línea de un chofer en el panel (chofTxt): "6 viajes", "todo el día con la 1 · 1 viaje", "libre". */

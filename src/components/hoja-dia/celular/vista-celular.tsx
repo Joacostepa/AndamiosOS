@@ -262,6 +262,7 @@ function Capataz({
               <div key={i} className={s.p}>
                 <span className={s.t}>
                   <b>{g.contratista ? (g.cantidad ? `${g.cantidad} de ${g.nombre}` : `${g.nombre} (a confirmar cuántos)`) : g.nombre}</b>
+                  {!g.contratista && g.pila && <> · {g.pila}</>}
                   {g.aCargo && <> <span className={cx(s.tag, s.cargo)}>a cargo</span></>}
                   {g.chofer && <> <span className={cx(s.tag, s.cargo)}>chofer</span></>}
                   {g.nuevo && <> <span className={cx(s.tag, s.nuevo)}>nuevo</span></>}
@@ -472,7 +473,7 @@ function Chofer({
         <details className={s.tq}>
           <summary><h3>Quiénes van ({td.van})</h3> <span className={s.ver}>ver</span></summary>
           {td.gente.map((g, i) => (
-            <div key={i} className={s.p}><span className={s.t}><b>{g.nombre}</b>{g.aCargo && <> <span className={cx(s.tag, s.cargo)}>a cargo</span></>}</span></div>
+            <div key={i} className={s.p}><span className={s.t}><b>{g.nombre}</b>{g.pila && <> · {g.pila}</>}{g.aCargo && <> <span className={cx(s.tag, s.cargo)}>a cargo</span></>}</span></div>
           ))}
         </details>
       </>

@@ -78,7 +78,7 @@ export const TIPOS_AUSENCIA: [TipoAusencia, string][] = [
   ["enfermedad", "Enfermedad"],
   ["personal", "Personal"],
   ["vacaciones", "Vacaciones"],
-  ["art", "ART"],
+  ["art", "ART / accidente"],
   ["tramite", "Trámite"],
   ["suspendido", "Suspendido"],
   ["sin_aviso", "Sin aviso"],
@@ -87,7 +87,8 @@ export const TIPO_AUSENCIA_TXT: Record<TipoAusencia, string> = {
   enfermedad: "enfermedad",
   personal: "personal",
   vacaciones: "vacaciones",
-  art: "ART",
+  // En la asistencia de Odoo (x_parte_diario) figura como "accidente".
+  art: "ART / accidente",
   tramite: "trámite",
   suspendido: "suspendido",
   sin_aviso: "sin aviso",
@@ -128,6 +129,18 @@ export type Persona = {
    * envíos y los mensajes lo traten como a cualquiera que recibe la hoja.
    */
   contratista?: boolean;
+  /**
+   * El nombre de pila ("Fernando"), para que el panel Gente y "+ Agregar" digan
+   * "Taboada · Fernando" y se pueda buscar por nombre. Opcional: los días guardados en el
+   * celular (y los fixtures) no lo tienen.
+   */
+  pila?: string | null;
+  /**
+   * Es personal de obra (andamista, herrero, chofer; sin vínculo con Odoo, el puesto
+   * operario/capataz/chofer de Legajos). Un técnico o un administrativo NO aparece para
+   * asignar. Opcional: sin el dato, cuenta como de obra (como antes).
+   */
+  deObra?: boolean;
 };
 
 /**

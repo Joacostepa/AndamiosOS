@@ -1,6 +1,6 @@
 # Hoja del día — handoff
 
-Estado real al 10/10/2026 (noche): **en producción.** Arreglos de velocidad y nombres en la rama `fix/hoja-dia-velocidad-nombres` (ver "Latencia"; sin migraciones). Mergeado a `main` con el PR #3
+Estado real al 10/10/2026 (noche): **en producción.** Arreglos del 10/10 a la noche, ya en `main`: el domingo es un día más (PR #5) y velocidad + nombres de pila (ver "Latencia"; sin migraciones). Mergeado a `main` con el PR #3
 (`d736eca`) y los contratistas con el PR #4 (`7751ce7`), publicados en Vercel. Para retomar: "Leé docs/equipos-del-dia/handoff.md y
 seguimos con lo que falta".
 
@@ -54,7 +54,11 @@ Pasos 1 y 2 **hechos el 10/10** (migración aplicada y verificada, después merg
 - El prorrateo por obra del resumen usa el tablero de hoy para días pasados: si se mueve una obra de un día ya trabajado, cambia el reparto (no las jornadas).
 - Fase 2: documentación (ART/seguro), exportar el resumen y marcarlo pagado.
 
-## Latencia (10/10, noche — rama `fix/hoja-dia-velocidad-nombres`)
+## Domingo (10/10, noche — PR #5)
+
+El dueño trabaja algunos domingos. La hoja salteaba el domingo (el sábado, "Mañana" era el lunes; las flechas no pasaban). Ahora el domingo es un día más (`dias.ts`): el sábado, "Mañana" es el domingo, y el domingo abre en el domingo. Si el tablero no tiene obras ese día, la hoja dice "El tablero no tiene obras el domingo N". Las obras del domingo se ponen en el **tablero**: en la ficha de la obra, "Jornadas de la obra" › "Trabajar el domingo", o arrastrando a la columna del domingo si ya está activa.
+
+## Latencia (10/10, noche — en `main`)
 
 El dueño: "cada cambio tarda mucho". Medido contra la base real (sólo lectura, script fuera del repo, mediana de 5, desde Buenos Aires: ~280 ms por ida a Supabase):
 
@@ -171,6 +175,7 @@ Decisión del dueño (10/10): cuando se da de alta, se modifica o se da de baja 
 - [ ] **Planteles**: la Cuadrilla 1 quedó sin responsable (era Arrieta) y la Cuadrilla 5 no tiene plantel. Cargarlos en Configuración de cuadrillas. No es urgente, porque el capataz se elige cada día, pero lo usan "Empezar con el plantel base" y la sugerencia de a cargo.
 - [ ] **Celulares en Odoo** de Vargas, Geloz, Sena Ayrton y Taboada (hoy vacíos). Al cargarlos en Odoo se copian solos a Legajos.
 - [ ] **Contratistas**: darlos de alta (panel Gente › Contratistas › Administrar) con referente, celular y valor por jornada, y mandarle al referente su link para vincular Telegram.
+- [ ] **Probar en producción** los gestos rápidos (agregar, mover, poner a cargo, contratista ±): que al recargar la página quede lo mismo. Las escrituras reales no se pudieron probar contra la base desde acá.
 - [ ] **Primer día de uso**: no hay "día anterior" con hojas, así que el primer día se arma con "Empezar con el plantel base" (o vacío). Desde el segundo, "Empezar como hoy".
 
 **Conocido y no hecho**

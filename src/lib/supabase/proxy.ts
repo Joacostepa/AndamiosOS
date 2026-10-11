@@ -49,6 +49,9 @@ export async function updateSession(request: NextRequest) {
   // /api/cron/personal-odoo: el control diario de Legajos contra los empleados de Odoo. Ruta
   //   completa y protegida por CRON_SECRET, como los otros crons. (El webhook de empleados
   //   ya entra por /api/odoo/webhooks.)
+  // /api/operaciones/geocodificar: el cron que pone coordenadas a las obras (Mapa de Obras y
+  //   Hoja del día). Ruta completa y protegida por CRON_SECRET (falla cerrado). Hasta el 11/10
+  //   faltaba acá y el cron contestaba 401 todos los días sin llegar a la ruta.
   // /cotizador y /api/public: cotizador hogareño para clientes finales (sin cuenta).
   // /endosos: portal del productor de seguros (Segucom) para subir pólizas. Lo protege el
   //   token de la URL, que valida /api/public/endosos; la página sola no muestra nada.
@@ -77,6 +80,7 @@ export async function updateSession(request: NextRequest) {
     "/api/alertas/barrido",
     "/api/permisos-via-publica/latido",
     "/api/cron/personal-odoo",
+    "/api/operaciones/geocodificar",
     "/cotizador",
     "/api/public",
   ];

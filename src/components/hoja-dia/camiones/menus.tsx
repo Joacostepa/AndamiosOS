@@ -13,7 +13,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
   calcVeh, choferDe, choferesParaVehiculo, habitualDe, cap, choferesTxt, choferSugerido, cortoV, dondeAnda, estadoEnvio, filasCamiones, haciaDe, hCorta, hm, hm5,
-  horaTxt, lowFirst, lugar, botonesConLleva, nombreDe, normHora, patente, pedidosDeViaje, persona, textoViaje, toMin, vehiculo, vehiculoNombre, viajeCalc,
+  horaTxt, lowFirst, lugar, botonesConLleva, nombreDe, normHora, vehTxt, elVeh, pedidosDeViaje, persona, textoViaje, toMin, vehiculo, vehiculoNombre, viajeCalc,
   viajesChofer, cuadrillaDeViaje, ausenciaDe,
 } from "@/lib/hoja-dia/estado";
 import { useAccionHoja } from "@/hooks/use-hoja-dia";
@@ -23,6 +23,7 @@ import { TiempoTramo } from "@/components/hoja-dia/comunes/tiempo-tramo";
 import { TIPOS_VIAJE } from "@/lib/hoja-dia/tipos";
 import { Chips, ItemMenu, MenuCabeza, MenuFlotante, MenuSep, MenuTexto, noDevolverFoco } from "@/components/hoja-dia/comunes/menu-flotante";
 import { InputHora, horaDe } from "@/components/hoja-dia/comunes/campo-hora";
+import { VehiculoNombre } from "@/components/hoja-dia/comunes/vehiculo-nombre";
 import { useCamiones, type MenuAbierto } from "./contexto";
 
 export type AbrirDialogo =
@@ -75,7 +76,7 @@ function MenuViaje({ m, cerrar, dialogo, verComo }: { m: Extract<MenuAbierto, { 
         <MenuCabeza titulo="Pasar a otro camión" sub={cortoV(dia, v0)} />
         {otros.map((veh) => (
           <ItemMenu key={veh} detalle={dondeAnda(dia, veh, ahora).t.slice(0, 34)} onClick={hacer(() => viaje({ accion: "mover", viajeId: m.id, vehiculoId: veh }))}>
-            {nombreDe(dia, choferSugerido(dia, veh, t)) || "Sin chofer"} · <span className="font-mono text-xs">{patente(dia, veh)}</span>
+            {nombreDe(dia, choferSugerido(dia, veh, t)) || "Sin chofer"} · <VehiculoNombre v={vehiculo(dia, veh)} />
           </ItemMenu>
         ))}
       </MenuFlotante>
@@ -84,11 +85,11 @@ function MenuViaje({ m, cerrar, dialogo, verComo }: { m: Extract<MenuAbierto, { 
   if (paso === "chofer") {
     return (
       <MenuFlotante anchor={m.anchor} onCerrar={cerrar} label="Cambiar chofer" ancho={320}>
-        <MenuCabeza titulo="¿Quién lo hace?" sub={`${cortoV(dia, v0)} · ${patente(dia, v0.vehiculoId)}`} />
+        <MenuCabeza titulo="¿Quién lo hace?" sub={`${cortoV(dia, v0)} · ${vehTxt(dia, v0.vehiculoId)}`} />
         {/* Un viaje suelto con chofer elegido puede volver a "el que maneje el camión" (sigue a la hoja). */}
         {v0.choferId && !der && v0.vehiculoId && (
           <ItemMenu detalle={nombreDe(dia, choferDe(dia, { ...v0, choferId: null })) || "sin chofer"} onClick={hacer(() => viaje({ accion: "chofer", viajeId: m.id, choferId: null }))}>
-            El que maneje el {patente(dia, v0.vehiculoId)}
+            El que maneje {elVeh(dia, v0.vehiculoId)}
           </ItemMenu>
         )}
         {/* El habitual del camión va primero, marcado: es sólo la sugerencia (nunca se pone solo). */}
@@ -113,7 +114,7 @@ function MenuViaje({ m, cerrar, dialogo, verComo }: { m: Extract<MenuAbierto, { 
     <MenuFlotante anchor={m.anchor} onCerrar={cerrar} label="Viaje" ancho={330}>
       <MenuCabeza titulo={textoViaje(dia, v0)} />
       <MenuTexto>
-        {flete ? <>Flete de afuera: <b>{v0.fleteExterno}</b></> : v0.vehiculoId ? <>{ch ? <b>{nombreDe(dia, ch)}</b> : <b className="text-hd-rojo">Sin chofer</b>} · <span className="font-mono">{patente(dia, v0.vehiculoId)}</span></> : <b>Sin camión</b>}
+        {flete ? <>Flete de afuera: <b>{v0.fleteExterno}</b></> : v0.vehiculoId ? <>{ch ? <b>{nombreDe(dia, ch)}</b> : <b className="text-hd-rojo">Sin chofer</b>} · <VehiculoNombre v={vehiculo(dia, v0.vehiculoId)} mono="font-mono" /></> : <b>Sin camión</b>}
       </MenuTexto>
       <MenuTexto>
         {v0.hora ? <>Hora fija <b>{normHora(v0.hora)}</b></> : <>Estimada <b>{hTxt}</b></>} · {TIPOS_VIAJE[v0.tipo].nombre}
@@ -225,7 +226,7 @@ function MenuFila({ m, cerrar, dialogo, verComo, llamar }: { m: Extract<MenuAbie
   if (elegir) {
     return (
       <MenuFlotante anchor={m.anchor} onCerrar={cerrar} label={ch ? "Elegir otro chofer" : "Elegir chofer"} ancho={300}>
-        <MenuCabeza titulo={ch ? "Elegir otro chofer" : "Elegir chofer"} sub={`Pasa todos los viajes pendientes del ${patente(dia, veh)}`} />
+        <MenuCabeza titulo={ch ? "Elegir otro chofer" : "Elegir chofer"} sub={`Pasa todos los viajes pendientes ${elVeh(dia, veh, "del")}`} />
         {choferesParaVehiculo(dia, veh).map(({ id: x, habitual }) => {
           const det = ausenciaDe(dia, x) ? "no viene" : `${viajesChofer(dia, x).length} viajes`;
           return (

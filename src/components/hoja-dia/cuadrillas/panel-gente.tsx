@@ -5,10 +5,11 @@
 // un chofer entra como chofer), o se elige y se aprieta 1–5. G enfoca el buscador.
 
 import { useState } from "react";
-import { coincidePersona, hojaDe, nombreDe, normalizar, panelGente, persona, laC } from "@/lib/hoja-dia/estado";
+import { coincidePersona, coincideVehiculo, hojaDe, nombreDe, normalizar, panelGente, persona, laC } from "@/lib/hoja-dia/estado";
 import { noDisponibles, numeroDe, textoChofer, textoVehiculo } from "@/lib/hoja-dia/vista-cuadrillas";
 import { cn } from "@/lib/utils";
 import { diaCorto } from "@/components/hoja-dia/comunes/encabezado-hoja";
+import { VehiculoNombre } from "@/components/hoja-dia/comunes/vehiculo-nombre";
 import { TIPO_ARRASTRE, type Control } from "./control";
 import { GrupoContratistas } from "./contratistas";
 
@@ -41,6 +42,8 @@ export function PanelGente({ ctl }: { ctl: Control }) {
   const nd = noDisponibles(dia).filter((x) => pasa(x.pid));
   const ch = pg.choferes.filter((x) => pasa(x.pid));
   const asig = pg.asignados.filter((x) => !persona(dia, x.pid)?.esChofer && pasa(x.pid));
+  // Los vehículos también se buscan: por la marca ("iveco"), el tipo o la patente ("799").
+  const vs = q ? dia.vehiculos.filter((V) => coincideVehiculo(V, q)) : dia.vehiculos;
 
   const fila = ({ pid, s, tono, chico, esChofer }: { pid: string; s: React.ReactNode; tono?: string; chico?: boolean; esChofer?: boolean }) => {
     const elegido = ctl.sel === pid;
@@ -96,7 +99,7 @@ export function PanelGente({ ctl }: { ctl: Control }) {
             }
           }}
           placeholder="Buscar…"
-          aria-label="Buscar persona"
+          aria-label="Buscar persona o vehículo"
           className="h-[30px] w-full rounded-[7px] border border-input bg-card px-2.5 text-[13px] outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 max-md:h-10 max-md:text-[15px]"
         />
       </div>
@@ -136,12 +139,12 @@ export function PanelGente({ ctl }: { ctl: Control }) {
             return fila({ pid: x.pid, esChofer: true, s: t.t, tono: t.tono === "rojo" ? "text-hd-rojo" : t.tono === "amb" ? "text-hd-ambar" : undefined });
           })}
         </Grupo>
-        <Grupo titulo="Vehículos" n={dia.vehiculos.length}>
-          {dia.vehiculos.map((V) => {
+        <Grupo titulo="Vehículos" n={vs.length}>
+          {vs.map((V) => {
             const t = textoVehiculo(dia, V.id);
             return (
               <div key={V.id} className="flex items-baseline gap-2 px-1.5 py-[3px] text-[13px]">
-                <span className="font-mono text-xs tracking-tight whitespace-nowrap">{t.nombre}</span>
+                <VehiculoNombre v={V} className="whitespace-nowrap" />
                 <span className={cn("ml-auto text-right text-xs text-muted-foreground", t.tono === "amb" && "text-hd-ambar")}>{t.t}</span>
               </div>
             );

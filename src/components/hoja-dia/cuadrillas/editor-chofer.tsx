@@ -13,7 +13,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
-import { encTxt, hojaDeCuadrilla, obrasCon, vehiculosDe, filaQueLleva, choferesParaVehiculo, choferSugerido, nombreDe, normHora, patente, toMin } from "@/lib/hoja-dia/estado";
+import { encTxt, hojaDeCuadrilla, obrasCon, vehiculosDe, filaQueLleva, choferesParaVehiculo, choferSugerido, nombreDe, normHora, vehTxt, nombreVehiculo, lowFirst, toMin } from "@/lib/hoja-dia/estado";
 import { horasDeFila, horasLlevaTrae, opcionesChofer, opcionesVehiculo } from "@/lib/hoja-dia/vista-cuadrillas";
 import { quienBusca } from "@/lib/hoja-dia/vehiculos";
 import { esTemporal } from "@/lib/hoja-dia/optimista";
@@ -155,26 +155,26 @@ function RenglonVehiculo({ ctl, c, f, n, varias, principal }: { ctl: Control; c:
   // Un renglón recién sumado tiene id provisorio hasta que contesta el servidor (un segundo).
   const espera = esTemporal(f.id);
   const cambiar = (x: { modo?: ModoVehiculo; choferId?: string | null; vehiculoId?: string | null }) => hoja.mutate({ accion: "vehiculo_cambiar", fecha, cuadrilla: c, filaId: f.id, ...x });
-  const nombre = varias ? `Vehículo ${n}${f.vehiculoId ? ` (${patente(dia, f.vehiculoId)})` : ""}` : "Vehículo";
+  const nombre = varias ? `Vehículo ${n}${f.vehiculoId ? ` (${vehTxt(dia, f.vehiculoId)})` : ""}` : "Vehículo";
   return (
     <section aria-label={nombre} className={cn("grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1.5", varias && "rounded-md border border-foreground/10 bg-card/60 p-1.5")}>
       <div className="flex flex-wrap items-center gap-1.5">
-        <Segmentos label={`Modo del ${nombre.toLowerCase()}`} opciones={MODOS_V} valor={f.modo} disabled={espera} onElegir={(modo) => cambiar({ modo })} />
+        <Segmentos label={`Modo del ${lowFirst(nombre)}`} opciones={MODOS_V} valor={f.modo} disabled={espera} onElegir={(modo) => cambiar({ modo })} />
         <span className="flex-1" />
         {varias && (
-          <Button size="icon-sm" variant="ghost" disabled={espera} aria-label={`Quitar el ${nombre.toLowerCase()}`} title="Quitar este vehículo" className="text-muted-foreground max-md:size-10" onClick={() => hoja.mutate({ accion: "vehiculo_quitar", fecha, cuadrilla: c, filaId: f.id })}>
+          <Button size="icon-sm" variant="ghost" disabled={espera} aria-label={`Quitar el ${lowFirst(nombre)}`} title="Quitar este vehículo" className="text-muted-foreground max-md:size-10" onClick={() => hoja.mutate({ accion: "vehiculo_quitar", fecha, cuadrilla: c, filaId: f.id })}>
             <X />
           </Button>
         )}
       </div>
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
-        <select id={n === 1 ? `ch-${c}` : undefined} aria-label={`Chofer del ${nombre.toLowerCase()}`} className={SELECT} disabled={espera} value={f.choferId ?? ""} onChange={(e) => cambiar({ choferId: e.target.value || null })}>
+        <select id={n === 1 ? `ch-${c}` : undefined} aria-label={`Chofer del ${lowFirst(nombre)}`} className={SELECT} disabled={espera} value={f.choferId ?? ""} onChange={(e) => cambiar({ choferId: e.target.value || null })}>
           <option value="">Elegir chofer…</option>
           {opcionesChofer(dia, c, f.id).map((o) => (
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
         </select>
-        <select id={n === 1 ? `vh-${c}` : undefined} aria-label={`Camión del ${nombre.toLowerCase()}`} className={SELECT} disabled={espera} value={f.vehiculoId ?? ""} onChange={(e) => cambiar({ vehiculoId: e.target.value || null })}>
+        <select id={n === 1 ? `vh-${c}` : undefined} aria-label={`Camión del ${lowFirst(nombre)}`} className={SELECT} disabled={espera} value={f.vehiculoId ?? ""} onChange={(e) => cambiar({ vehiculoId: e.target.value || null })}>
           <option value="">Elegir vehículo…</option>
           {opcionesVehiculo(dia, c, f.id).map((o) => (
             <option key={o.value} value={o.value} disabled={o.deshabilitada}>{o.label}</option>
@@ -232,7 +232,7 @@ function EditorBusca({ ctl, c }: { ctl: Control; c: number }) {
     else if (v === "otro") setEligiendoOtro(true);
     else if (v.startsWith("fila:")) hoja.mutate({ accion: "busca_con", fecha, cuadrilla: c, filaId: v.slice(5) });
   };
-  const etiqueta = (f: VehiculoHoja) => `${nombreDe(dia, f.choferId) || "sin chofer"}${f.vehiculoId ? ` · ${patente(dia, f.vehiculoId)}` : ""}`;
+  const etiqueta = (f: VehiculoHoja) => `${nombreDe(dia, f.choferId) || "sin chofer"}${f.vehiculoId ? ` · ${vehTxt(dia, f.vehiculoId)}` : ""}`;
   const veh = q.k === "otro" ? q.v.vehiculoId : null;
   // Otro camión: lo hace el chofer de ese tramo de su fila. Se resuelve acá y se manda, así el
   // servidor escribe el mismo chofer que se ve al instante.
@@ -260,7 +260,7 @@ function EditorBusca({ ctl, c }: { ctl: Control; c: number }) {
         <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
           <select aria-label="Camión que los busca" className={SELECT} value={veh ?? ""} onChange={(e) => { setEligiendoOtro(false); conCamion(e.target.value || null); }}>
             <option value="">Elegir camión…</option>
-            {dia.vehiculos.map((v) => <option key={v.id} value={v.id}>{v.patente}</option>)}
+            {dia.vehiculos.map((v) => <option key={v.id} value={v.id}>{nombreVehiculo(v)}</option>)}
           </select>
           {q.k === "otro" && (
             <select aria-label="Chofer que los busca" className={SELECT} value={q.v.choferId ?? ""} onChange={(e) => hoja.mutate({ accion: "busca_con", fecha, cuadrilla: c, vehiculoId: veh, choferId: e.target.value || null })}>

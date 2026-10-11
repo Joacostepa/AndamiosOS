@@ -96,7 +96,7 @@ test("domingo 11/10: Nuñez no aparece en ningún texto (tarjeta, bandeja, Camio
 
 test("domingo 11/10: el problema «no tiene chofer» con «Elegir chofer» y «Que lo lleve Conte con la Cuadrilla 1»", () => {
   const d = domingo();
-  const txt = "El material para Ing. Huergo (8:00, AB 799 CA) no tiene chofer";
+  const txt = "El material para Ing. Huergo (8:00, Iveco AB 799 CA) no tiene chofer";
   // La tarjeta de la Cuadrilla 1: bloquea ("Falta para mandar").
   const p = problemas(d, 1, AHORA).find((x) => x.k === "sinch-f43c6b07");
   assert.ok(p, problemas(d, 1, AHORA).map((x) => x.t).join("\n"));
@@ -124,7 +124,7 @@ test("Camiones: las filas sin viajes ni renglón no existen por el habitual; «S
   const f = filasOrden(d);
   assert.deepEqual(f.conViajes, ["ab799"]);
   assert.deepEqual(f.todo, ["ab831"]);
-  assert.deepEqual(f.sinUsar.map((x) => [x.txt, x.nota]), [["AF 669 ZL", null], ["AB 497 YY", null], ["AH 410 LD", "VTV vencida desde el 02/10"], ["S10", null], ["moto", null]]);
+  assert.deepEqual(f.sinUsar.map((x) => [x.txt, x.nota]), [["Iveco AF 669 ZL", null], ["Iveco AB 497 YY", null], ["Iveco AH 410 LD", "VTV vencida desde el 02/10"], ["Chevrolet LNE 368", null], ["Moto A091SWF", null], ["Clark CYS47", null], ["SIN MATRICULA 10", null]]);
   // El habitual queda a mano para el tooltip en gris, nada más.
   assert.equal(f.sinUsar.find((x) => x.veh === "af669")?.habitual, "kiska");
   assert.equal(choferesTxt(d, "af669"), "");
@@ -160,7 +160,7 @@ test("«Que lo lleve Conte con la Cuadrilla 1» con un renglón «Todo el día»
   const plan = planConLleva(d, "f43c6b07", "f-831");
   assert.ok(plan.k === "todo");
   assert.deepEqual([plan.vehiculoId, plan.hora, plan.orden, plan.cuadrillaOdooId, plan.chMaterial, plan.chLleva], ["ab831", "7:00", 420, 1, null, "conte"]);
-  assert.equal(plan.texto, "El material para Ing. Huergo va con la Cuadrilla 1: lo lleva Conte (AB 831 LC), que va todo el día con ellos (7:00)");
+  assert.equal(plan.texto, "El material para Ing. Huergo va con la Cuadrilla 1: lo lleva Conte (Agrale AB 831 LC), que va todo el día con ellos (7:00)");
   // Como lo escribe acciones.ts (con_lleva): el mismo viaje, sin chofer guardado, en el camión de todo el día.
   const d2: DiaHoja = { ...d, viajes: d.viajes.map((v) => (v.id === "f43c6b07" ? { ...v, vehiculoId: plan.vehiculoId, choferId: null, hora: plan.hora, orden: plan.orden, cuadrillaOdooId: plan.cuadrillaOdooId } : v)) };
   const mat = d2.viajes[0];
@@ -181,16 +181,16 @@ test("«Que lo lleve Conte con la Cuadrilla 1» con un renglón «Todo el día»
   // Un renglón que arranca mucho después de la hora del material no sirve.
   const tarde: DiaHoja = { ...d, hojas: d.hojas.map((h) => ({ ...h, encuentro: { ...h.encuentro, hora: "10:00" } })) };
   assert.deepEqual(llevasParaMaterial(tarde, "f43c6b07"), []);
-  // Sin chofer en el renglón: "Que lo lleve el AB 831 LC con la Cuadrilla 1".
+  // Sin chofer en el renglón: "Que lo lleve el Agrale AB 831 LC con la Cuadrilla 1".
   const sinCh: DiaHoja = { ...d, hojas: d.hojas.map((h) => ({ ...h, vehiculos: h.vehiculos.map((f) => ({ ...f, choferId: null })) })) };
-  assert.deepEqual(botonesConLleva(sinCh, "f43c6b07").map((b) => b.l), ["Que lo lleve el AB 831 LC con la Cuadrilla 1"]);
+  assert.deepEqual(botonesConLleva(sinCh, "f43c6b07").map((b) => b.l), ["Que lo lleve el Agrale AB 831 LC con la Cuadrilla 1"]);
 });
 
 test("un viaje sin chofer que no es de ninguna tarjeta (una compra) igual está en «Falta para mandar»", () => {
   const d = domingo();
   const conCompra: DiaHoja = { ...d, viajes: [...d.viajes, viaje("compra", { fecha: F, tipo: "compra", vehiculoId: "ab497", hacia: { otId: null, lugarId: "sanz", texto: null }, hora: "10:00", orden: 600 })] };
   const it = bandeja(conCompra, AHORA).vos.find((x) => x.k === "sinch-compra");
-  assert.equal(it?.t, "La compra en Sanz (10:00, AB 497 YY) no tiene chofer");
+  assert.equal(it?.t, "La compra en Sanz (10:00, Iveco AB 497 YY) no tiene chofer");
   assert.deepEqual(it?.bs.map((b) => b.l), ["Elegir chofer"]);
 });
 

@@ -15,7 +15,7 @@ import { URGENCIAS } from "./tipos.ts";
 import {
   aCargoDe, addDia, calcVeh, cap, choferDelCamion, cNombre, cuadrillaDeObra, ddmm, diaSemana, esHoy, estadoEnvio,
   hCorta, hm, hm5, hojaDe, hojaDeCuadrilla, lowFirst, normalizar, normHora, nombreDe, pedidosDeViaje, textoViaje,
-  todoVeh, toMin, vehiculo, viajeCalc, habitualDe, viajesVigentes, vieneDeAyer, filaTodoVeh, choferDe, type ViajeCalc,
+  todoVeh, toMin, vehiculo, nombreVehiculo, elVeh, viajeCalc, habitualDe, viajesVigentes, vieneDeAyer, filaTodoVeh, choferDe, type ViajeCalc,
 } from "./estado.ts";
 
 // ─── Las filas, en orden (§9) ───────────────────────────────────────────────
@@ -41,13 +41,13 @@ export function filasOrden(dia: DiaHoja): { conViajes: string[]; todo: string[];
     const vtv = V.vencimientos.filter((x) => x.tipo === "vtv").sort((a, b) => (a.vence < b.vence ? 1 : -1))[0];
     const vencida = vtv && vtv.vence < dia.fecha ? vtv.vence : null;
     const habitual = habitualDe(dia, V.id);
-    if (V.tipo === "otro") {
-      const n = (V.modelo || V.marca || V.patente).toLowerCase();
-      sinUsar.push({ veh: V.id, txt: n, nota: ch ? nombreDe(dia, ch) : null, amb: false, habitual });
-    } else if (vencida) sinUsar.push({ veh: V.id, txt: V.patente, nota: `VTV vencida desde el ${ddmm(vencida)}`, amb: true, habitual });
-    else if (V.estado === "en_taller" || V.estado === "fuera_servicio") sinUsar.push({ veh: V.id, txt: V.patente, nota: V.estado === "en_taller" ? "en el taller" : "fuera de servicio", amb: true, habitual });
+    // Por la marca y la patente, como en todos lados ("Iveco AH 410 LD", "Clark CYS47").
+    const txt = nombreVehiculo(V);
+    if (V.tipo === "otro") sinUsar.push({ veh: V.id, txt, nota: ch ? nombreDe(dia, ch) : null, amb: false, habitual });
+    else if (vencida) sinUsar.push({ veh: V.id, txt, nota: `VTV vencida desde el ${ddmm(vencida)}`, amb: true, habitual });
+    else if (V.estado === "en_taller" || V.estado === "fuera_servicio") sinUsar.push({ veh: V.id, txt, nota: V.estado === "en_taller" ? "en el taller" : "fuera de servicio", amb: true, habitual });
     // Sin chofer del día: todos los de "Sin usar" lo están, así que no se dice.
-    else sinUsar.push({ veh: V.id, txt: V.tipo === "camioneta" && V.modelo ? V.modelo : V.patente, nota: null, amb: false, habitual });
+    else sinUsar.push({ veh: V.id, txt, nota: null, amb: false, habitual });
   }
   return { conViajes, todo, sinUsar };
 }
@@ -198,8 +198,8 @@ export function mensajeSacarUnRato(dia: DiaHoja, v: ViajeCalc): { pid: string | 
   if (td == null) return null;
   const h = hojaDeCuadrilla(dia, td)!;
   const pid = aCargoDe(h) ?? h.recibeId;
-  const V = vehiculo(dia, v.vehiculoId);
-  const que = V?.tipo === "hidrogrua" ? "la hidrogrúa" : "el camión";
+  // Con qué sale, por la marca: "con el Agrale hidrogrúa AB 831 LC".
+  const que = vehiculo(dia, v.vehiculoId) ? elVeh(dia, v.vehiculoId, "con el", true) : "con el camión";
   const ch = filaTodoVeh(dia, v.vehiculoId)?.choferId ?? choferDe(dia, v);
-  return { pid, texto: `${nombreDe(dia, pid)}, ${nombreDe(dia, ch) || "el chofer"} sale un rato con ${que} (${hm5(v.t)} a ${hm5(v.fin)}): ${lowFirst(textoViaje(dia, v))}. Vuelve después.` };
+  return { pid, texto: `${nombreDe(dia, pid)}, ${nombreDe(dia, ch) || "el chofer"} sale un rato ${que} (${hm5(v.t)} a ${hm5(v.fin)}): ${lowFirst(textoViaje(dia, v))}. Vuelve después.` };
 }

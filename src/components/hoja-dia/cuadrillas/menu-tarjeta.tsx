@@ -3,7 +3,7 @@
 // El menú ⋯ de una tarjeta: Copiar como hoy, Ver como…, Cerrar jornada, Instrucciones,
 // Ver el camión, Historial.
 
-import { cNombre, esHoy, fechaLarga, hojaDeCuadrilla, nombreDe, recibeDe, vehiculosDe } from "@/lib/hoja-dia/estado";
+import { cNombre, elVeh, esHoy, fechaLarga, hojaDeCuadrilla, nombreDe, recibeDe, vehiculosDe } from "@/lib/hoja-dia/estado";
 import { useAccionHoja } from "@/hooks/use-hoja-dia";
 import { ItemMenu, MenuFlotante } from "@/components/hoja-dia/comunes/menu-flotante";
 import type { Control } from "./control";
@@ -51,7 +51,7 @@ export function MenuTarjeta({
       <ItemMenu onClick={y(() => ctl.abrirInstrucciones(c))}>Instrucciones</ItemMenu>
       {vehiculosDe(h).filter((f) => f.vehiculoId).map((f) => (
         <ItemMenu key={f.id} detalle="en Camiones" onClick={y(() => ctl.boton({ l: "Ver el camión", a: "verCamion", veh: f.vehiculoId ?? undefined }))}>
-          {vehiculosDe(h).length > 1 ? `Ver el ${dia.vehiculos.find((v) => v.id === f.vehiculoId)?.patente ?? "camión"}` : "Ver el camión"}
+          {vehiculosDe(h).length > 1 ? `Ver ${elVeh(dia, f.vehiculoId)}` : "Ver el camión"}
         </ItemMenu>
       ))}
       <ItemMenu detalle="lo que se cambió" onClick={y(() => onHistorial(c))}>Historial</ItemMenu>

@@ -15,7 +15,7 @@
 import type { DiaHoja, Diferencia, Minutos } from "./tipos.ts";
 import {
   cNombre, cap, choferDe, encTxt, envioDe, esExChofer, esHoy, estadoEnvio, fechaMensaje, hCorta, hm, hm5, horaTxt, laC, lowFirst,
-  lugar, nombreDe, normHora, obrasCon, patente, recibeDe, textoViaje, todoDe, vehiculoNombre, viajesChofer, yList,
+  lugar, nombreDe, normHora, obrasCon, vehTxt, elVeh, recibeDe, textoViaje, todoDe, viajesChofer, yList,
   cortoV, hojaDeCuadrilla, hojaDe, aCargoDe, suspendida, persona, genteDe, vehiculo, vehiculosDe, type Destinatario, type ViajeCalc,
 } from "./estado.ts";
 import { vanEnPalabras } from "./contratistas.ts";
@@ -44,7 +44,7 @@ export function mensajeHoja(dia: DiaHoja, pid: string, c: number, o: Opts): stri
 }
 /**
  * Los vehículos de la cuadrilla en palabras, para el mensaje: ", te lleva Kiska", ", va Borda
- * todo el día con la hidrogrúa y te lleva Nuñez", ", van por su cuenta". Al que maneja él
+ * todo el día con el Agrale hidrogrúa AB 831 LC y te lleva Nuñez", ", van por su cuenta". Al que maneja él
  * mismo (Conte a cargo y chofer): "manejás vos". `pid` = a quién se le escribe (null: a la
  * cuadrilla, "los lleva").
  */
@@ -53,8 +53,9 @@ export function choferesEnPalabras(dia: DiaHoja, c: number, pid: string | null):
   const fs = vehiculosDe(h);
   if (!h || !fs.length) return ", van por su cuenta";
   const partes = fs.map((f) => {
-    const hidro = vehiculo(dia, f.vehiculoId)?.tipo === "hidrogrua" ? " con la hidrogrúa" : "";
-    if (f.modo === "todo_el_dia") return pid && f.choferId === pid ? `manejás vos todo el día${hidro}` : `va ${nombreDe(dia, f.choferId) || "un chofer"} todo el día${hidro}`;
+    // Todo el día, con qué vehículo (por la marca, como lo conocen): "con el Agrale hidrogrúa AB 831 LC".
+    const con = f.vehiculoId && vehiculo(dia, f.vehiculoId) ? ` ${elVeh(dia, f.vehiculoId, "con el", true)}` : "";
+    if (f.modo === "todo_el_dia") return pid && f.choferId === pid ? `manejás vos todo el día${con}` : `va ${nombreDe(dia, f.choferId) || "un chofer"} todo el día${con}`;
     // El chofer del "lleva" (puede no ser el del renglón si se lo pasó a otro camión en Camiones).
     const ll = llevaDeFila(dia, h, f);
     const ch = (ll ? choferDe(dia, ll) : null) ?? f.choferId;
@@ -75,7 +76,7 @@ export function mensajeViajes(dia: DiaHoja, ch: string, o: Opts): string {
     const ob = obrasCon(dia, c);
     const propios = vs.filter((v) => v.cuadrillaOdooId !== c || !v.hojaId);
     const veh = vehiculosDe(h).find((f) => f.modo === "todo_el_dia" && f.choferId === ch)?.vehiculoId ?? null;
-    return `Hola ${nombreDe(dia, ch)}, ${o.ahora >= 0 && o.ahora < 1440 ? "hoy" : `el ${fechaMensaje(dia.fecha)}`} vas todo el día con la ${cNombre(dia, c)} (${nombreDe(dia, aCargoDe(h)) || "sin nadie a cargo"})${veh ? ` con el ${vehiculoNombre(dia, veh)}` : ""}. Encuentro ${encTxt(dia, c)}. ${ob.length > 1 ? "Obras" : "Obra"}: ${yList(ob.map((x) => x.o.corto))}.${propios.length ? ` Además: ${propios.map((v) => `${horaTxt(v)} ${lowFirst(textoViaje(dia, v))}`).join("; ")}.` : ""}${mirá(o)} Cuando la veas tocá "Recibido".`;
+    return `Hola ${nombreDe(dia, ch)}, ${o.ahora >= 0 && o.ahora < 1440 ? "hoy" : `el ${fechaMensaje(dia.fecha)}`} vas todo el día con la ${cNombre(dia, c)} (${nombreDe(dia, aCargoDe(h)) || "sin nadie a cargo"})${veh ? ` ${elVeh(dia, veh, "con el", true)}` : ""}. Encuentro ${encTxt(dia, c)}. ${ob.length > 1 ? "Obras" : "Obra"}: ${yList(ob.map((x) => x.o.corto))}.${propios.length ? ` Además: ${propios.map((v) => `${horaTxt(v)} ${lowFirst(textoViaje(dia, v))}`).join("; ")}.` : ""}${mirá(o)} Cuando la veas tocá "Recibido".`;
   }
   const tx = vs.slice(0, 3).map((v) => `${horaTxt(v)} ${lowFirst(textoViaje(dia, v))}`).join("; ");
   const mas = vs.length > 3 ? `; y ${vs.length - 3} más` : "";
@@ -169,10 +170,10 @@ export function mensajeOperario(dia: DiaHoja, pid: string, ahora: Minutos): stri
   return `${nombreDe(dia, pid)}, ${esHoy(ahora) ? "hoy" : `el ${fechaMensaje(dia.fecha)}`} vas con la ${cNombre(dia, c)} (a cargo ${nombreDe(dia, aCargoDe(h)) || "todavía nadie"}). Encuentro ${encTxt(dia, c)}${chof}.`;
 }
 
-/** "Depósito: a las 11:00 carga Kiska (AF 669 ZL): 1 escalera y 10 caños de 3 m para Gurruchaga 1650." */
+/** "Depósito: a las 11:00 carga Kiska (Iveco AF 669 ZL): 1 escalera y 10 caños de 3 m para Gurruchaga 1650." */
 export function mensajeDeposito(dia: DiaHoja, v: ViajeCalc): string {
   const t = v.cargaDeposito ? normHora(v.cargaDeposito)! : hm5(v.t - 5);
-  return `Depósito: a las ${t} carga ${nombreDe(dia, choferDe(dia, v))} (${patente(dia, v.vehiculoId)}): ${lowFirst(v.carga)} para ${lugar(dia, v.haciaEf).n}.`;
+  return `Depósito: a las ${t} carga ${nombreDe(dia, choferDe(dia, v))} (${vehTxt(dia, v.vehiculoId)}): ${lowFirst(v.carga)} para ${lugar(dia, v.haciaEf).n}.`;
 }
 
 /** Al capataz que pidió: "Conte, lo que pediste para Cabildo (6 tablones y 2 bases) lo lleva Gómez, ~10:45." */

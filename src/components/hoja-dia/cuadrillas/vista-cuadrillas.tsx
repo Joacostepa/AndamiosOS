@@ -14,7 +14,7 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   bandeja, cap, cola, cuadrillasActivas, cuadrillasConObras, diaSemana, esPasado, filasCamiones, hojaDe, hojaDeCuadrilla,
-  nombreDe, patente, pendientesEnvio, persona, choferesTxt, cNombre, choferesParaVehiculo, viajesChofer, ausenciaDe, type Boton, type ItemBandeja, type ModoPrecarga,
+  nombreDe, vehiculo, vehTxt, pendientesEnvio, persona, choferesTxt, cNombre, choferesParaVehiculo, viajesChofer, ausenciaDe, type Boton, type ItemBandeja, type ModoPrecarga,
 } from "@/lib/hoja-dia/estado";
 import { cambiosTablero, cuadrillaDeTecla } from "@/lib/hoja-dia/vista-cuadrillas";
 import type { DiaHoja } from "@/lib/hoja-dia/tipos";
@@ -31,6 +31,7 @@ import { ListaEnvio } from "@/components/hoja-dia/comunes/lista-envio";
 import { Historial } from "@/components/hoja-dia/comunes/historial";
 import { ItemMenu, MenuFlotante } from "@/components/hoja-dia/comunes/menu-flotante";
 import { useDiaHoja } from "@/components/hoja-dia/comunes/use-dia-hoja";
+import { VehiculoNombre } from "@/components/hoja-dia/comunes/vehiculo-nombre";
 import { Tarjeta } from "./tarjeta";
 import { PanelGente } from "./panel-gente";
 import { MenuPersona } from "./menu-persona";
@@ -429,14 +430,14 @@ export function VistaCuadrillas() {
                 viaje.mutate({ accion: "mover", viajeId: menuCamion.viajeId, vehiculoId: veh });
               }}
             >
-              {patente(dia, veh) || veh}
+              {vehiculo(dia, veh) ? <VehiculoNombre v={vehiculo(dia, veh)} /> : veh}
             </ItemMenu>
           ))}
         </MenuFlotante>
       )}
 
       {menuChofer && vChofer && (
-        <MenuFlotante abierto anchor={menuChofer.el} onCerrar={() => setMenu(null)} label="Elegir chofer" encabezado={<b className="font-semibold">¿Quién lo hace? · {patente(dia, vChofer.vehiculoId)}</b>}>
+        <MenuFlotante abierto anchor={menuChofer.el} onCerrar={() => setMenu(null)} label="Elegir chofer" encabezado={<b className="font-semibold">¿Quién lo hace? · {vehTxt(dia, vChofer.vehiculoId)}</b>}>
           {/* El habitual del camión primero, marcado: es sólo la sugerencia (nunca se pone solo). */}
           {choferesParaVehiculo(dia, vChofer.vehiculoId).map(({ id: x, habitual }) => {
             const n = viajesChofer(dia, x).length;

@@ -26,7 +26,7 @@
 
 import type { DiaHoja, Hoja, Hora, LugarEncuentro, ModoChofer, ModoVehiculo, VehiculoHoja, Viaje } from "./tipos.ts";
 import {
-  ausenciaDe, choferDe, choferSugerido, encuentroPorModo, hm, hojaDeCuadrilla, normHora, patente, todoDe, toMin, vehiculoDeChofer, vehiculosDe,
+  ausenciaDe, choferDe, choferSugerido, encuentroPorModo, hm, hojaDeCuadrilla, normHora, cap, elVeh, todoDe, toMin, vehiculoDeChofer, vehiculosDe,
 } from "./estado.ts";
 
 /** Un gesto sobre los vehículos de una hoja (o sus lleva / busca). */
@@ -197,7 +197,7 @@ export function planVehiculos(dia: DiaHoja, c: number, cambio: CambioVehiculos, 
   };
   /** El mismo vehículo dos veces en una hoja no va (y la base tampoco lo deja: idx_hd_hoja_vehiculos_vehiculo). */
   const noRepetido = (veh: string | null | undefined, f?: VehiculoHoja) => {
-    if (veh && filas.some((x) => x !== f && x.vehiculoId === veh)) throw new NoSePuede(`El ${patente(dia, veh)} ya va en esta cuadrilla.`);
+    if (veh && filas.some((x) => x !== f && x.vehiculoId === veh)) throw new NoSePuede(`${cap(elVeh(dia, veh))} ya va en esta cuadrilla.`);
   };
   /**
    * Un viaje de un vehículo de la hoja sigue a su renglón SÓLO en lo que el gesto le cambió

@@ -4,6 +4,8 @@ Estado real al 10/10/2026 (noche): **en producción.** Arreglos del 10/10 a la n
 (`d736eca`) y los contratistas con el PR #4 (`7751ce7`), publicados en Vercel. Para retomar: "Leé docs/equipos-del-dia/handoff.md y
 seguimos con lo que falta".
 
+**Google Maps y tiempos de recorrido (12/10)**: en la rama `feat/hoja-dia-google-maps`, sin merge. Funciona igual que hoy hasta que se habilite la Routes API (ver "Google Maps y tiempos de recorrido").
+
 **Contratistas (10/10, noche)**: en producción. Migración `20261011000002_hoja_dia_contratistas.sql`
 aplicada y verificada (las dos tablas y los 2 CHECK) ANTES del merge del PR #4. Ver "Contratistas" abajo.
 
@@ -80,6 +82,38 @@ Riesgos conocidos:
 - Las filas nuevas tienen id provisorio (`tmp-…`) hasta el refresco: si en ese segundo se abre el historial de una tarjeta recién creada o se toca un viaje recién creado, el servidor contesta "Id inválido" (se reintenta un segundo después).
 - El caché de Odoo es por instancia del servidor: un cambio hecho a mano en Odoo (no desde el tablero de la app) tarda hasta 30 s en verse en la hoja; uno desde el tablero de la app llega con el aviso en vivo y se pide `fresco`.
 - Si hiciera falta bajar más el GET: se puede pasar a una sola vuelta trayendo las hojas anteriores con sus integrantes/contratistas/viajes embebidos (PostgREST), ~0,3 s menos desde Buenos Aires.
+
+## Google Maps y tiempos de recorrido (12/10 — rama `feat/hoja-dia-google-maps`, sin merge)
+
+El dueño: "¿se podría integrar Google Maps y tiempos de recorrido?". Las horas estimadas de los camiones salían de duraciones típicas fijas (`durDe`, `duracionViaje`, la vuelta de 60 min y el hueco de 45 entre viajes).
+
+**Qué hace**
+1. **Tiempos reales** con la Routes API (`computeRouteMatrix`, `DRIVE`, `TRAFFIC_AWARE`, `departureTime` = la mitad de la franja de media hora del tramo ese día en BA; si ya pasó, sin `departureTime`). Lo pide el servidor al leer el día (`rutas-servidor.ts` → `DiaHoja.tiempos`) y `estado.ts` lo usa en `durDe` cuando está (ver modulo.md §6, "Tiempos de manejo reales").
+2. **Sólo los tramos que se usan** (`paresDelDia`, rutas.ts): paradas seguidas de cada camión y su vuelta al depósito; por cuadrilla, depósito → primera obra, obra → obra y última → depósito. Sin repetir y sólo con coordenadas en los dos puntos. Un pedido por franja (Google acepta un `departureTime` por pedido): la matriz entera si son justo los tramos que faltan, si no uno por origen (nunca se paga un cruce que nadie usa).
+3. **Caché**: en memoria por instancia y en `hd_tiempos` (origen/destino redondeados a ~100 m, franja de 30 min, hábil/sábado/domingo, minutos, metros, `actualizado`; vale 14 días). El mismo tramo a la misma franja en otro martes no se vuelve a pagar.
+4. **Nunca rompe ni demora**: sin clave, con 403, sin la tabla o sin coordenadas, las típicas de siempre. La lectura espera a Google como mucho 2,5 s (en paralelo con el bot de Telegram); lo que llega tarde se guarda igual (`after`) y sirve para la próxima. Si Google contesta error, no se le pide nada por 10 min (un log `[hoja-dia] Routes API: 403 SERVICE_DISABLED…` en Vercel).
+5. **Pantallas**: "~35 min en auto" con ícono (auto = Google, reloj = típico; el porqué en el `title`) en la lista de Camiones, en el `title` de cada ficha y en el menú del viaje; en la tarjeta, el manejo entre dos obras (sólo Google). Links a Maps (gratis, sin clave, `https://www.google.com/maps/dir/?api=1…`, al pin o a la dirección): "Cómo llegar" en el menú del viaje, "Ver el recorrido en Maps" en el menú del camión, en el celular del chofer ("Ver el recorrido en Maps" con sus paradas que faltan y "Cómo llegar" por parada), "Cómo llegar" en las obras del capataz y un botón "Ver el recorrido en Maps" en el Telegram de los viajes del chofer. Si el depósito no tiene coordenadas, Camiones dice "Cargá la dirección del depósito para calcular tiempos reales".
+
+**Cómo entra en estado.ts** (para mergear con otros cambios de la cuenta): en `durDe` (`durConTramo` de tiempos.ts antes de la típica, recibe `haciaKey`), en `calcVeh` la vuelta (`vueltaCon`) y el `conflicto` (`llegadaCon`: con el tramo real, una fija que no es "lleva" mira si llega manejando), y en `camionesQueSirven` el hueco mínimo (`huecoMinimo`: el parámetro de 45 o el manejo hasta lo que sigue, lo que sea más). Las reglas están en `tiempos.ts` (puro, sin estado.ts).
+
+**Para producción (en este orden)**
+1. **Google Cloud, proyecto 261735489589** (el de la clave del mapa): APIs y servicios → Biblioteca → **"Routes API" → Habilitar** (hoy contesta 403 `SERVICE_DISABLED`). Tiene que tener facturación activa.
+2. **Una clave para el servidor**: Credenciales → Crear clave → restringirla a la API "Routes API", **sin** restricción de sitios web (la llama el servidor; Vercel no tiene IP fija). Cargarla en Vercel como `GOOGLE_MAPS_API_KEY` (Production y Preview) y redeploy. Sin ella se usa `NEXT_PUBLIC_GOOGLE_MAPS_KEY`, que si está restringida a sitios web va a contestar 403 desde el servidor: conviene la clave aparte. Poner un tope de cuota diaria (p. ej. 2.000 elementos/día) en Cuotas de la Routes API como red de seguridad.
+3. **Migración** (opcional para que ande; sin ella no hay caché persistente y cada instancia vuelve a pedir lo suyo): probar con `BEGIN; … ROLLBACK;` y aplicar `npx supabase db query --linked -f supabase/migrations/20261012000002_hoja_dia_tiempos.sql`. Verificar: `select to_regclass('public.hd_tiempos');`. Se puede aplicar antes o después del deploy. **No se aplicó.**
+4. Merge de la rama a `main`.
+5. **Dirección y coordenadas del Depósito** en `hd_lugares` (y de Sanz, la VTV y el taller): sin ellas los tramos que salen o vuelven al depósito van con la típica. Hoy no hay pantalla para editar lugares (está `POST /api/hoja-dia/lugares` con `accion: "editar"`), se carga con SQL: `update hd_lugares set direccion = '…', lat = …, lng = … where tipo = 'deposito';`.
+
+**Costo estimado.** La Routes API cobra por elemento (un origen × un destino); con tránsito (`TRAFFIC_AWARE`) es el SKU "Compute Route Matrix Pro", del orden de **USD 10 por 1.000 elementos** con **5.000 gratis por mes** (precios de Google desde marzo de 2025; confirmarlos en la consola). Un día como el martes 13 de la maqueta son ~19 tramos; con los cambios del día (viajes nuevos, horas que se corren de franja) **~30 a 60 elementos por día**, ~1.000 por mes de 22 días: entra en lo gratis. Fuera de lo gratis serían ~USD 0,30–0,60 por día. Los links a Maps no cuestan nada. Una lectura que encuentra todo en caché no llama a Google.
+
+**Cómo se probó**: tests (`tiempos.test.ts`, `rutas.test.ts`, `rutas-servidor.test.ts`: claves, franjas, salida, `durDe` con y sin tiempos, el choque con tramo real, pares, URLs, el parseo de una respuesta de ejemplo, 403 y Google colgado con `fetch` falso; nunca la API real), `npx tsc --noEmit`, `npx eslint`, `npm run build`, y Playwright con una ruta temporal (borrada): Camiones en línea de tiempo y en lista con tiempos de Google y típicos, el menú del viaje (abre Cómo llegar), el menú del camión, el aviso del depósito, la tarjeta, y el celular del chofer y del capataz a 390 px sin scroll horizontal. **No se probó contra Google** (la API está apagada) ni se escribió en la base.
+
+**Riesgos / pendiente**
+- Las duraciones de la parada (`PARADA_MIN` en tiempos.ts) son una primera estimación: ajustarlas con el uso (podrían pasar a `hd_parametros`).
+- El "lleva" que sigue a otro "lleva" (Kiska lleva la 2 y después la 3, las dos con encuentro en el depósito) toma como origen la obra anterior, como ya hacía la cuenta típica: el modelo no pone la vuelta al encuentro.
+- El caché por franja hace que correr un viaje de franja pida el tramo de nuevo (una vez); la primera lectura de un día nuevo puede salir con las típicas si Google tarda más de 2,5 s (la siguiente ya tiene los reales).
+- Con la clave del mapa (restringida a sitios web) el servidor recibe 403: hace falta la clave del paso 2.
+- Las direcciones sin coordenadas (obras de Odoo sin lat/lng) no tienen tiempo real; los links a Maps igual andan con la dirección en texto.
+- El recorrido de Maps en el navegador del celular sin la app acepta menos paradas intermedias que en la app.
 
 ## Decisiones de diseño que no se leen en el código
 
@@ -199,6 +233,10 @@ src/lib/hoja-dia/{tipos,estado,camiones,dias,mensajes,tokens,telegram,servicio,a
 src/lib/hoja-dia/{deshacer-regla,reglas-publico,archivo-seguro}.ts   reglas puras de la revisión (con tests)
 supabase/migrations/20261011000002_hoja_dia_contratistas.sql   contratistas (aplicada el 10/10)
 src/lib/hoja-dia/contratistas.ts (+ .test.ts)   contratistas: chips, panel, resumen del mes (puro)
+supabase/migrations/20261012000002_hoja_dia_tiempos.sql   hd_tiempos (caché de Google; no aplicada)
+src/lib/hoja-dia/{tiempos,rutas,maps}.ts (+ tests)   tiempos en la cuenta, tramos del día, links a Maps (puros)
+src/lib/hoja-dia/rutas-servidor.ts (+ test)  cliente de la Routes API y caché (servidor)
+src/components/hoja-dia/comunes/tiempo-tramo.tsx   "~35 min en auto" con ícono
 src/lib/hoja-dia/{quien,contratistas-servidor}.ts   de qué tabla es cada id; el resumen del mes (servidor)
 src/app/api/hoja-dia/contratistas            alta/edición (POST) y resumen del mes (GET ?mes=)
 src/components/hoja-dia/cuadrillas/{contratistas,hoja-contratistas,hoja-resumen-contratistas}.tsx

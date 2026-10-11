@@ -131,6 +131,7 @@ Los gestos (`useGesto`) ya muestran el toast con "Deshacer" (9 s), avisan por el
 | Selector de chofer | `planModo` / `planSoltarChofer` (lo que va a pasar; el servidor hace lo mismo), `vehiculoDeChofer`, `vencimientosTxt` |
 | Ausencias | `ausenciaDe`, `parcialDe`, `ausTexto(a, true, fecha)`; `Ausencia.id === null` ⇒ "según la asistencia" (botones "Cargar hasta cuándo" = `crear` con `origen:"asistencia"`, "Ya tiene el alta" = `alta` con `personaId`, `desde`, `tipo`) |
 | Vista Camiones: filas | `filasCamiones(dia)`, `calcVeh(dia, veh)` (`t`, `fin`, `dur`, `conflicto`, `i`), `cortoV`, `horaTxt`, `dondeAnda(dia, veh, ahora)` (encabezado, con `tono`), `camionesSinUsar(dia)`, `fletesDeAfuera(dia)`, `viajeSinAvisar(dia, v)` (ficha punteada) |
+| Tiempo de viaje y Maps (Camiones, tarjeta) | rutas.ts: `tramoDe(dia, v)` (Google o la típica, para "~35 min en auto"), `tramoEntre(dia, desdeKey, haciaKey)` (sólo Google), `comoLlegarViaje(dia, v)`, `recorridoCamion(dia, veh)`, `recorridoChofer(dia, ch)`, `depositoSinUbicar(dia)`; tiempos.ts: `tiempoTxt`, `tiempoTitulo`; el componente `comunes/tiempo-tramo.tsx` |
 | Línea "Ahora:" | `ahoraItems(dia, ahora)` |
 | Avisos de una fila | `avisosVeh(dia, veh, ahora)`, `avisosChofer(dia, ch, ahora)` |
 | Cola de pedidos | `cola(dia, ahora)` (`vos`, `esp`, `camino`, `hechos`), `estadoPedido`, `ordenCola`, `sugeridosDe(dia, ahora)`, `vieneDeAyer` |
@@ -172,6 +173,7 @@ Los problemas y avisos traen sus botones como datos (`{ l: "Usar Miño", a: "usa
 - `situacion`: `"invalido"` ("El link no es válido.") · `"vencido"` (`texto`) · `"ya_no"` (`texto`, `coordinador`) · `"suspendida"` (`texto`) · `"ok"`.
 - `ok` + `rol: "a_cargo"`: `cuadrilla`, `aCargo`, `vos`, `nota`, `encuentro`, `chofer {modo, texto, nombre, telefono}`, `obras: ObraPublica[]` (hora, dirección, `mapsUrl`, tipo, detalle "jornada completa · día 2 de 3", `hoy`, `chips`, `queHacer`, `observaciones`, contacto, `archivos` con `url` propia, `paraTuObra`), `gente` (con `nuevo` para marcar "Ramírez · nuevo").
 - `ok` + `rol: "chofer"`: `vehiculo`, `todo` (si va todo el día: cuadrilla y obras), `viajes: ViajePublico[]` (`texto` ya en imperativo, `hora` con "~" si es estimada, `mapsUrl`, `llamar`, `estado`, `nuevo`), `ahoraId` (el de "Ahora"), `motivosNoPude`.
+- `ok` + `rol: "chofer"` también trae `recorridoUrl` ("Ver el recorrido en Maps": sus paradas que faltan, en orden; opcional por las vistas guardadas). Los `mapsUrl` de obras y viajes son "Cómo llegar" (`https://www.google.com/maps/dir/?api=1&destination=…`, al pin si hay coordenadas; `maps.ts`).
 - Comunes: `fechaTxt`, `generadoAt` (para "Sin conexión · lo que ves es de las 20:16"), `cambio {hora, txt}` (la tarjeta ámbar con "Entendido"), `recibido {hora}`, `coordinador {nombre, telefono}`.
 - `POST { accion: "recibido"|"entendido", version }` (si la versión es vieja: 409 "Esa hoja cambió, mirá la nueva") · `{ accion: "hecho"|"deshacer", viajeId }` · `{ accion: "no_pude", viajeId, motivo }`, con `at` (ISO) si se tocó sin señal y se manda después. Límite (hd_contar, atómico): 30 toques y 120 lecturas por minuto por token.
 - La página: layout propio, **tema claro**, `noindex`, sin sesión; refrescar cada 30 s y al volver; guardar la última respuesta en `localStorage` y reintentar los toques pendientes (§12 "Sin señal"). Abrirlo ya marca "Abierta" en el escritorio.
@@ -217,5 +219,8 @@ src/components/hoja-dia/comunes/      lista de envío (Telegram / a mano), vincu
 **Variables de entorno nuevas** (opcionales: sin ellas el envío queda manual)
 
 - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET`.
+- `GOOGLE_MAPS_API_KEY` (sólo servidor; si falta se usa `NEXT_PUBLIC_GOOGLE_MAPS_KEY`): tiempos de manejo de la Routes API. Sin ella, o con la API apagada, las duraciones típicas.
+
+**Tiempos de Google (12/10, `feat/hoja-dia-google-maps`)**: `DiaHoja.tiempos?: Record<"desdeKey>haciaKey", { min, m, fuente }>` lo arma `leerDia` con `rutas-servidor.ts` (`tiemposDelDia`: caché en memoria + `hd_tiempos`, tope 2,5 s, nunca tira) para los tramos de `paresDelDia` (rutas.ts). `calcVeh` los usa por `durDe` (tiempos.ts: manejo + parada, llegada a una hora fija, vuelta real, hueco mínimo); sin tiempos, la cuenta de siempre. El contexto de un gesto (`leerContexto`) no los trae (no calcula horas); lo optimista conserva los del último GET y un tramo nuevo va con la típica hasta el refresco. Migración `20261012000002_hoja_dia_tiempos.sql` (el código tolera que no esté). Ver handoff.md, "Google Maps".
 
 **Falta** (además de las pantallas): ver `handoff.md`.

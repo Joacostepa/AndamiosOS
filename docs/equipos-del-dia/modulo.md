@@ -228,6 +228,14 @@ Decisión del dueño (10/10): **las carga el planificador (o RRHH) con anticipac
 - **Estimada** en todo lo demás: la app la calcula con el orden y las duraciones típicas ("**~11:30**"). Así el coordinador no escribe horas: **ordena**.
 - Si una fija no se puede cumplir con lo que va antes, sale el aviso (§9).
 
+### Tiempos de manejo reales (Google Maps)
+
+Desde el 12/10 (rama `feat/hoja-dia-google-maps`), si la **Routes API** de Google está habilitada, las estimadas usan el **tiempo de manejo real con el tránsito de esa hora** en lugar de la duración típica:
+
+- **Qué tramos**: sólo los que entran en una cuenta: cada parada de un camión desde la anterior, su vuelta al depósito, y por cada cuadrilla depósito → primera obra, obra → obra y última obra → depósito. Hacen falta las coordenadas de los dos puntos (las obras las traen de Odoo; los lugares, de `hd_lugares`).
+- **Cómo entra en la duración**: duración típica = manejar + lo que se hace en la parada. Con el tramo real, **duración = manejo real + la parada** (lleva/busca/mueve 10 min, material/compra/entre depósitos/otro 30, taller 60). Si la hora es **fija y no es un "lleva"** (busca, turno de VTV, horario prometido), la hora es cuándo tiene que **estar**: el manejo va antes y el aviso de choque mira si llega manejando desde lo anterior ("Kiska llegaría ~16:40 a buscar a la Cuadrilla 3"). La vuelta al depósito también es la real. La duración cargada a mano en el viaje sigue mandando.
+- **Sin Google** (sin clave, la API apagada, sin coordenadas, o si tarda más de 2,5 s) todo es como antes: las duraciones típicas de la tabla. La pantalla nunca espera ni se rompe por esto.
+
 ### Varios pedidos, un viaje
 
 - Dos pedidos al mismo lugar en la misma vuelta van en **un viaje** (soltar un pedido sobre un viaje que va al mismo destino lo suma: "Cabildo 3260 · 6 tablones y 2 bases + 1 escalera").
@@ -470,6 +478,9 @@ Se deduce de los viajes y de los "Hecho" del chofer, y se dice en palabras en el
 | Terminó | "Terminó 17:20 · 6 viajes" |
 
 - No se toca `vehiculos.estado` (`en_ruta`): ese campo es para "en taller" y "fuera de servicio", que carga Vehículos.
+- **El tiempo de cada viaje** va al lado de su hora en la lista ("~35 min en auto") y en el `title` de la ficha, con un ícono chico: auto = Google Maps con el tránsito de esa hora; reloj = la duración típica (todavía sin el tiempo de Google para ese tramo). En la tarjeta de la cuadrilla, entre dos obras, el manejo de una a la otra (sólo si es de Google).
+- **Links a Google Maps** (gratis, sin clave): "Cómo llegar" en el menú de cada viaje (desde donde sale hasta su destino) y "Ver el recorrido en Maps" en el menú de la fila (todas las paradas que faltan, en orden).
+- Si el depósito no tiene dirección y coordenadas en los lugares, abajo de la línea "Ahora:" se lee, discreto, "Cargá la dirección del depósito para calcular tiempos reales" (los tramos que salen o vuelven ahí van con la típica, y "Cerca" no mide desde el depósito).
 - El coordinador puede **marcar "Hecho" por el chofer** (cuando lo llamó y le dijo que ya está): el viaje queda "Hecho 9:55 · marcado por Juan Agustín".
 
 ### Cómo se despacha
@@ -761,6 +772,7 @@ Hechos
 ```
 
 - **Arriba, el viaje de "Ahora"** (el primero sin hacer), grande: hora, de dónde a dónde, qué lleva o trae, quién lo pidió, "Cómo llegar" (Maps con el destino) y "Llamar a…" (al capataz de esa obra o al teléfono del lugar).
+- **"Ver el recorrido en Maps"** (arriba de la lista): abre Google Maps con todas sus paradas que faltan, en orden (desde donde sale la primera; si la última vuelve, hasta el depósito; hasta 9 paradas intermedias). Tocar un viaje de la lista lo abre con su **"Cómo llegar"** (y "Hecho este" si es hoy). Los links van al pin de la obra si tiene coordenadas, si no a la dirección. El mensaje de Telegram de sus viajes trae el mismo recorrido en un botón. El capataz tiene "Cómo llegar" en cada obra.
 - **"Hecho"** (coral, abajo): **un toque** y el siguiente sube a "Ahora". Aviso "Hecho 11:42 · Deshacer" por 10 segundos. Es lo único que el chofer tiene que hacer.
   - Si hizo otro antes del que dice "Ahora", toca ese viaje en "Después" y le aparece su propio "Hecho".
   - **Foto del remito** (opcional, sólo en "Busca compra" y en viajes de material): después de "Hecho" aparece "**Sacar foto del remito**" / "Sin foto" durante 30 segundos, y después queda como "+ foto" en el viaje hecho. Nunca es obligatoria.

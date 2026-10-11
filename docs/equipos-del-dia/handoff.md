@@ -4,6 +4,10 @@ Estado real al 10/10/2026 (noche): **en producción.** Mergeado a `main` con el 
 (`d736eca`) y publicado en Vercel. Para retomar: "Leé docs/equipos-del-dia/handoff.md y
 seguimos con lo que falta".
 
+**Contratistas (10/10, noche)**: hecho en la rama `feat/hoja-dia-contratistas`, **sin mergear y con la
+migración nueva SIN APLICAR** (`20261011000002_hoja_dia_contratistas.sql`). Antes del deploy de esa rama
+hay que aplicarla: ver "Contratistas" abajo.
+
 Dónde está: Operaciones › Planificación › **Hoja del día** (`/planificacion/hoja`; Camiones en
 `/planificacion/hoja/camiones`), y la pestaña "Tablero · Hoja del día" arriba del tablero.
 El link del celular es `/h/<token>`. Módulo de permiso propio: `hoja-dia`.
@@ -24,6 +28,30 @@ El link del celular es `/h/<token>`. Módulo de permiso propio: `hoja-dia`.
 4. **Deploy** (merge del PR #3). Probado desde afuera: `/planificacion/hoja` pide login, `/h/<token>` responde, el webhook de Telegram sólo acepta POST y el cron devuelve 401 sin clave.
 5. **Regla de Odoo creada**: "AndamiosOS sync empleados" (`base.automation` id 55). Probado: el webhook de producción contesta 202 con la clave y 401 sin ella.
 6. **Puesta al día de Legajos**: se crearon los 7 andamistas que faltaban, con DNI de Odoo: Della Corte, García Javier, Muñoz Leonardo, Vargas, Geloz, Sena Ayrton y Taboada. Legajos queda en **31 activos, 30 vinculados** con Odoo (el único sin vínculo es Capurro) y 4 inactivos. Los 15 administrativos de Odoo no llevan legajo, a propósito.
+
+## Contratistas (10/10, noche) — rama `feat/hoja-dia-contratistas`
+
+Decisión del dueño: a veces se terceriza mano de obra con **contratistas** (varios, p. ej. Tomás Quintana). No son empleados (ni Legajos ni Odoo); sólo se sabe **cuántos** van; van **dentro de las cuadrillas del tablero** (solos o con gente nuestra); se les paga por persona y jornada; **el parte de Odoo no cambia** (cuentan en la cantidad como los nuestros); nada de documentación por ahora. La especificación está en `modulo.md` §20 y el contrato en `implementacion.md`.
+
+**Qué se hizo**
+- **Datos** (`20261011000002_hoja_dia_contratistas.sql`, idempotente, probada dos veces dentro de `BEGIN … ROLLBACK` contra la base linkeada y verificado después que las tablas no existen): `hd_contratistas`, `hd_hoja_contratistas` (cantidad por hoja, UNIQUE hoja+contratista, `fecha` por trigger), `hd_hojas.a_cargo_contratista_id` (UNIQUE parcial por fecha: a cargo de una hoja por día), `contratista_id` en `hd_links` / `hd_telegram_codigos` / `hd_telegram_mensajes` con el CHECK "exactamente uno" (`num_nonnulls`), RLS por `hd_nivel`, `hd_aplicar` con las dos tablas nuevas. Lista blanca del Deshacer (`deshacer-regla.ts`) y entidad `contratista` del historial.
+- **Lógica pura**: estado.ts (cuántos van, a cargo, problemas "Falta cuántos van de Quintana" y "dado de baja", sugerencia de a cargo, foto y diferencias "va Quintana con 4 / Quintana pasa de 4 a 3 / no va Quintana", precarga y "Copiar como hoy", mano de obra del cierre) + `contratistas.ts` (chips, panel, "3 de Quintana + Ramírez", resumen del mes con prorrateo por obra). Tests: `contratistas.test.ts` (11 casos).
+- **Servidor**: `quien.ts` (persona / externa / contratista para links, Telegram y mensajes), `contratistas-servidor.ts` (resumen del mes: Supabase + una pasada a Odoo para nombres de cuadrilla y fracciones), acciones `contratista_sumar` / `contratista_quitar` / `contratista_nota` / `a_cargo` con contratista, alta/edición en `/api/hoja-dia/contratistas`, el webhook de Telegram vincula contratistas, `precargaCierre` suma su gente.
+- **Pantallas**: chip "+3 de Quintana" con − / + y su menú en la tarjeta; grupo "Contratistas" en el panel Gente (arrastrar suma 1, tocar → "Agregar a la Cuadrilla N…" con cantidad; también en "+ Agregar"); hojas laterales "Contratistas" (administrar, con Hoja del día en editar) y "Contratistas · octubre" (resumen); el celular del referente muestra "Van 4 · 3 de Quintana + Ramírez"; "Cerrar jornada" aclara "incluye 3 de Quintana".
+- De paso: en la vista Cuadrillas, el diálogo "Celular de…" y "Cerrar jornada" tenían la misma `key` ("-") como hermanos (React avisaba "two children with the same key" y podía no desmontar bien una hoja lateral); ahora tienen claves distintas.
+
+**Cómo se probó**: tests (`node --no-warnings --experimental-strip-types --test "src/lib/**/*.test.ts"`), `npx tsc --noEmit`, `npx eslint` sobre lo cambiado, `npm run build`, y Playwright con el escenario del martes 13 (la 5 de Quintana con Ramírez, +1 de Quintana en la 4) servido por una ruta temporal (borrada) con las APIs interceptadas: chip y stepper, menú del chip, grupo del panel, "Agregar a la Cuadrilla 2" con 2, arrastrar al panel, "+ Agregar", alta en Administrar, resumen del mes, el celular del referente a 390 px y la tarjeta a 390 px sin scroll horizontal.
+
+**Para producción (en este orden)**
+1. **Aplicar la migración ANTES del deploy** (el código nuevo lee `hd_contratistas` y `hd_hoja_contratistas` al leer el día: sin ellas la Hoja del día no abre): `npx supabase db query --linked -f supabase/migrations/20261011000002_hoja_dia_contratistas.sql`. Verificar: `select to_regclass('public.hd_contratistas'), to_regclass('public.hd_hoja_contratistas'), (select count(*) from pg_constraint where conname in ('hd_links_un_destinatario','hd_telegram_codigos_un_destinatario'));` → las dos tablas y `2`.
+2. Merge de `feat/hoja-dia-contratistas` a `main` (deploy en Vercel).
+3. Dar de alta a los contratistas (Hoja del día › panel Gente › Contratistas › Administrar): nombre, referente, celular y, si se quiere el total del mes, el valor por persona y jornada. Si el referente va a recibir hojas, "Copiar link para vincular" (Telegram) una vez.
+
+**Lo que queda / conocido**
+- Si la hoja está a cargo de un contratista, "Cerrar jornada" no precarga **puntero** (no hay `hr.employee`): se elige a mano. El parte no cambia (decisión 5).
+- Un contratista está a cargo de **una sola hoja por día** (su link es uno por día). Si un día tiene dos cuadrillas suyas, la otra la recibe alguien nuestro o se manda a mano.
+- El prorrateo por obra del resumen usa el tablero de hoy para días pasados: si se mueve una obra de un día ya trabajado, cambia el reparto (no las jornadas).
+- Fase 2: documentación (ART/seguro), exportar el resumen y marcarlo pagado.
 
 ## Decisiones de diseño que no se leen en el código
 
@@ -138,6 +166,11 @@ Decisión del dueño (10/10): cuando se da de alta, se modifica o se da de baja 
 supabase/migrations/20261011000001_hoja_del_dia.sql
 src/lib/hoja-dia/{tipos,estado,camiones,dias,mensajes,tokens,telegram,servicio,acciones,envios,publico,avisos}.ts
 src/lib/hoja-dia/{deshacer-regla,reglas-publico,archivo-seguro}.ts   reglas puras de la revisión (con tests)
+supabase/migrations/20261011000002_hoja_dia_contratistas.sql   contratistas (SIN APLICAR al 10/10 noche)
+src/lib/hoja-dia/contratistas.ts (+ .test.ts)   contratistas: chips, panel, resumen del mes (puro)
+src/lib/hoja-dia/{quien,contratistas-servidor}.ts   de qué tabla es cada id; el resumen del mes (servidor)
+src/app/api/hoja-dia/contratistas            alta/edición (POST) y resumen del mes (GET ?mes=)
+src/components/hoja-dia/cuadrillas/{contratistas,hoja-contratistas,hoja-resumen-contratistas}.tsx
 src/lib/odoo/parte-existente.ts             B1: el POST de cierre no reescribe
 src/lib/hoja-dia/{estado,mensajes}.test.ts + escenario.test-fixture.ts (el martes 13 de la maqueta)
 src/lib/odoo/asignaciones.ts                 fetchTableroDeFechas

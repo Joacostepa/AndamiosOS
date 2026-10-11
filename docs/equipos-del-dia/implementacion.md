@@ -29,7 +29,9 @@ Permisos: el proxy y cada ruta (segunda llave). `GET` pide "ver", el resto "edit
 | `/api/hoja-dia/ausencias?desde=` | GET | hoja-dia, personal | → `{ ausencias: Ausencia[] }` (vigentes y próximas) |
 | `/api/hoja-dia/ausencias` | POST | hoja-dia, personal | `AccionAusencia & { fechaVista? }` → `Resultado` |
 | `/api/hoja-dia/lugares` | POST | hoja-dia | `{ accion: "crear"\|"editar", … }` |
-| `/api/hoja-dia/personas` | POST | hoja-dia | `{ accion: "celular", personaId, telefono }` · `{ accion: "puede_estar_a_cargo", personaId, valor }` |
+| `/api/hoja-dia/contratistas?mes=YYYY-MM` | GET | hoja-dia | → `ResumenMesContratistas` (`contratistas-servidor.ts`): por contratista, jornadas-persona, días, total estimado, detalle por día y prorrateo por obra; `sinTablero` si Odoo no contestó |
+| `/api/hoja-dia/contratistas` | POST | hoja-dia (editar) | `AccionContratista`: `{ accion: "crear", nombre, referente?, celular?, valorJornada?, nota? }` · `{ accion: "editar", contratistaId, …, activo? }` (baja = `activo: false`; no se borra) |
+| `/api/hoja-dia/personas` | POST | hoja-dia | `{ accion: "celular", personaId, telefono }` · `{ accion: "puede_estar_a_cargo", personaId, valor }` (con el id de un contratista, "celular" guarda el del referente en `hd_contratistas`) |
 | `/api/hoja-dia/envios?fecha=` | GET | hoja-dia (editar) | → `{ filas: Preparado[] }` (sólo lee: el link se crea al mandar; sin link, `link`/`waLink` en null) |
 | `/api/hoja-dia/envios` | POST | hoja-dia | ver §2.3 |
 | `/api/hoja-dia/telegram` | GET / POST | hoja-dia | estado del bot / `{ accion: "vincular"\|"desvincular", personaId }` |
@@ -65,7 +67,12 @@ Los tipos (`AccionHoja`, `AccionViaje`, `AccionPedido`, `AccionAusencia`, `Resul
 | `instrucciones` | fecha, otId, cuadrilla?, horaInicio?, hoy?, chips? | "+ Instrucciones" (sigue a la obra si cambia de cuadrilla) |
 | `copiar_como_hoy` | fecha, cuadrilla | Menú ⋯ de la tarjeta |
 | `pasar_chofer` | fecha, cuadrilla, desde | "Sacarlo de la 1" (choque de todo el día) |
-| `liberar` | fecha, cuadrilla | Hoja de una cuadrilla que se quedó sin obras |
+| `liberar` | fecha, cuadrilla | Hoja de una cuadrilla que se quedó sin obras (también saca a los contratistas) |
+| `contratista_sumar` | fecha, cuadrilla, contratistaId, n (±1…60, ≠ 0) | Arrastrar del panel (+1), el − / + del chip, "Agregar a la Cuadrilla N…" (+N), "+ Agregar". Crea la fila si no estaba; no baja de 0 ("¿cuántos?") |
+| `contratista_quitar` | fecha, cuadrilla, contratistaId | "Quitar de la Cuadrilla N" (si estaba a cargo, la hoja queda sin nadie a cargo) |
+| `contratista_nota` | fecha, cuadrilla, contratistaId, nota | "Nota" del chip ("traen su arnés") |
+
+**Contratistas y "a cargo"**: `a_cargo` acepta el id de un contratista (que tenga gente en esa hoja y no esté a cargo de otra ese día): escribe `hd_hojas.a_cargo_contratista_id` y saca el a cargo de los integrantes; poner a cargo a una persona (o `agregar` con `aCargo`) lo saca al contratista. `personaId: null` saca a los dos.
 
 ### 2.2 `AccionViaje` y `AccionPedido`
 
@@ -100,6 +107,8 @@ const hoja = useAccionHoja(fecha);    hoja.mutate({ accion: "agregar", fecha, cu
 const viaje = useAccionViaje(fecha);  const pedido = useAccionPedido(fecha);
 const aus = useAccionAusencia(fecha); const precarga = usePrecarga(fecha);   // precarga: el toast lo arma la pantalla con r.avisos
 const persona = useAccionPersona(fecha); const lugar = useAccionLugar(fecha);
+const contratista = useAccionContratista(fecha);    // alta / edición / baja
+const resumen = useResumenContratistas("2026-10"); // "Contratistas · octubre"
 const deshacer = useDeshacer(fecha);
 const envios = useEnvios(fecha, abierta);  const enviar = useEnviar(fecha);
 const tg = useTelegram(); const vincular = useVincularTelegram();
@@ -130,7 +139,8 @@ Los gestos (`useGesto`) ya muestran el toast con "Deshacer" (9 s), invalidan `["
 | Lista de carga | `listaCarga(dia, ahora)`, `textoListaCarga` ("Copiar para WhatsApp") |
 | Lista de envío | `destinatarios(dia)`, `estadoEnvio`, `afectadosPorCambio(dia)` + `mensajes.ts`: `mensajeDe`, `filaEnvio`, `estadoCorto`, `canalDe` (o directamente `useEnvios`) |
 | "Ver como Ortega" (vista previa) | La misma `VistaPublica` del link no se puede pedir sin token; usar `useEnvios`→`link` y abrirlo, o armar con `obrasCon`/`viajesChofer` |
-| Cerrar jornada | ya conectado (`fletesDelDia`, `PrecargaCierre`) |
+| Cerrar jornada | ya conectado (`fletesDelDia`, `PrecargaCierre`; `personas` y `horariosCierre` suman la gente de los contratistas, `contratistas` = "3 de Quintana" para el aviso) |
+| Contratistas (tarjeta, panel, resumen) | estado.ts: `contratistasDe`, `deContratistas`, `vanDe` (los suma), `aCargoDe` (persona ?? contratista), `aCargoIntegrante`, `aCargoContratista`, `cantidadDe`, `cuadrillasDeContratista`, `aCargoDeContratista`, `diferenciasContratistas`, `esContratista`, `contratista`. contratistas.ts: `chipsContratistas`, `resumenContratistas` ("3 de Quintana"), `vanEnPalabras` ("3 de Quintana + Ramírez"), `panelContratistas`, `destinosContratista`, `resumenMes`, `pesos`, `leerPesos`, `rangoMes`, `mesTexto` |
 
 ### Los botones (`Boton.a`)
 
@@ -153,6 +163,7 @@ Los problemas y avisos traen sus botones como datos (`{ l: "Usar Miño", a: "usa
 | `dlgCel` | diálogo "Cargar celular" → `personas {accion:"celular"}` |
 | `esperar` / `poner` / `pasarManana` / `fleteDe` | pedido `id`: diálogo Esperar…, modo "poner en un camión", `pedido {accion:"pasar_a_manana"}`, alta de flete de afuera |
 | `liberar` | `hoja {accion:"liberar", cuadrilla:c}` |
+| `sumarContratista` | `hoja {accion:"contratista_sumar", cuadrilla:c, contratistaId:p, n}` ("Poner 1" de "Falta cuántos van de Quintana") |
 
 ## 5. El link público (`/h/[token]`)
 
@@ -184,9 +195,12 @@ src/components/hoja-dia/comunes/      lista de envío (Telegram / a mano), vincu
 
 ## 7. Estado de la base
 
+**Contratistas (10/10, noche)**: el referente de un contratista se trata como una persona que recibe la hoja: `DiaHoja.contratistas` viaja aparte (no está en `personas`, así no aparece en "Sin asignar" ni en ausencias), y estado.ts lo agrega a su índice de personas (`Persona.contratista: true`, id = el del contratista, nombre = el del contratista). Por eso `nombreDe`, `persona`, `recibeDe`, `destinatarios`, los envíos y los mensajes no cambian. Del lado del servidor, `quien.ts` dice en qué tabla vive cada id (`personal` / `pan_personas_externas` / `hd_contratistas`) y en qué columna va en links, códigos y mensajes de Telegram. `Hoja.contratistas` (cantidades) y `Hoja.aCargoContratistaId`; `FotoHoja.contr` (opcional: las fotos viejas no lo tienen). `VistaCapataz.van` / `vanTxt` y `GentePublica.cantidad` / `contratista` (opcionales por las vistas guardadas en el celular).
+
 **Hecho**
 
-- Migración `supabase/migrations/20261011000001_hoja_del_dia.sql` (no aplicada): tablas `hd_*`, vínculos en `personal` (`odoo_employee_id`, `odoo_tarea`, `puede_estar_a_cargo`, `telegram_*`), `pan_personas_externas.telegram_*`, `cuadrillas.odoo_cuadrilla_id`, RLS por permiso, parámetros, lugares iniciales, a cargo iniciales, bucket `hoja-dia`.
+- Migración `supabase/migrations/20261011000002_hoja_dia_contratistas.sql` (**no aplicada**; ver handoff.md): `hd_contratistas`, `hd_hoja_contratistas`, `hd_hojas.a_cargo_contratista_id`, `contratista_id` en links y Telegram, `hd_aplicar` con las tablas nuevas.
+- Migración `supabase/migrations/20261011000001_hoja_del_dia.sql` (aplicada el 10/10): tablas `hd_*`, vínculos en `personal` (`odoo_employee_id`, `odoo_tarea`, `puede_estar_a_cargo`, `telegram_*`), `pan_personas_externas.telegram_*`, `cuadrillas.odoo_cuadrilla_id`, RLS por permiso, parámetros, lugares iniciales, a cargo iniciales, bucket `hoja-dia`.
 - `src/lib/hoja-dia/`: `tipos.ts`, `estado.ts` (pura, con tests), `mensajes.ts`, `tokens.ts`, `telegram.ts`, `servicio.ts` (lectura del día, historial y Deshacer, precarga del parte, campanita), `acciones.ts`, `envios.ts`, `publico.ts`, `avisos.ts` (en vivo, navegador).
 - `src/lib/odoo/asignaciones.ts`: `fetchTableroDeFechas`.
 - APIs de §2, webhook de Telegram, hooks, "Cerrar jornada" precargado, alertas `hoja_dia` (sólo campanita).

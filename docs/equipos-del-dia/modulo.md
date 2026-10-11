@@ -97,6 +97,7 @@ Operaciones › Planificación
 | **Cuadrilla sin obras ese día** ("CUADRILLA NO DISPONIBLE Y REPARTIDA EN 1 Y 2") | No tiene hoja. Su gente aparece en "Sin asignar" para repartirla. Si estaba en la precarga, sale con aviso "La Cuadrilla 5 no tiene obras el martes: Miño, Valenzuela y Aguirre quedaron sin asignar". |
 | **Cuadrilla suspendida** (lluvia, `plan_suspensiones`) | La hoja muestra "Suspendida · lluvia" y no se manda. Si ya se había mandado, aparece "Avisar a Conte que se suspende". Sus viajes de lleva y trae quedan "Anulado · la cuadrilla se suspendió" y el camión aparece libre. |
 | **Tercerizada** (`x_tercerizada`, ej. Quintana) | Tiene hoja con sus obras, instrucciones, chofer y vehículo de ABA si los usa. **No se carga su gente** (no está en Legajos). El "a cargo" puede ser una persona externa (`pan_personas_externas`) con celular, y se le manda el link igual. |
+| **Contratista dentro de una cuadrilla** (10/10 noche: "un día la Cuadrilla 4 es Quintana", o "+2 de Quintana" reforzando la nuestra) | Ver §20: se carga **cuántos** van del contratista (no quiénes) en la tarjeta de la cuadrilla del tablero; cuentan en "Quiénes van" y en el parte como la nuestra; la hoja puede quedar **a cargo del contratista** y la recibe su referente. |
 
 ## 3. El capataz se elige cada día
 
@@ -1055,6 +1056,13 @@ Si algún día el costeo necesita **personas por nombre** en Odoo, se agregan ca
 6. **Lo maneja el coordinador de la operación**, que es quien detecta las prioridades.
 7. **Se mandan camiones a medida que las obras piden material que no estaba previsto, por imprevistos y por compras**: hay que contemplar la planificación de la noche anterior **y** el despacho en vivo durante el día.
 8. **(10/10, última hora) Telegram en vez de WhatsApp.** La hoja y los viajes salen por un **bot de Telegram** (cada persona lo vincula una vez con un link `t.me/<bot>?start=<código>`), con botones "Ver la hoja" y "Recibido"; los cambios, sólo a los afectados, con "Entendido"; el viaje nuevo al chofer, con "Hecho" y "No pude". **Reemplaza a `wa.me` + plantilla de Meta y el envío automático pasa a la fase 1.** "Enviada" se marca sólo cuando Telegram confirmó. Quien no vinculó Telegram sigue por el camino manual (`wa.me`, como el Pañol).
+9. **(10/10, noche) Contratistas** (mano de obra tercerizada; ver §20):
+   1. A veces se terceriza mano de obra con **contratistas** (hay varios; p. ej. Tomás Quintana). **No se dan de alta como empleados**: ni Legajos ni Odoo.
+   2. **Sólo se sabe la cantidad** de personas del contratista, no los nombres.
+   3. El contratista va **dentro de las cuadrillas que ya están en el tablero** (un día la Cuadrilla 4 es Quintana), a veces con gente nuestra; también puede reforzar una cuadrilla nuestra. No se crea una cuadrilla aparte.
+   4. Se le paga **por persona y jornada**.
+   5. **El parte de Odoo no cambia**: la gente del contratista cuenta en la cantidad de personas como la nuestra y el costo se prorratea igual que siempre. Nada nuevo en Odoo.
+   6. **Nada de documentación** (ART, seguro) por ahora.
 - Siguen valiendo: el capataz no carga ausencias; capataz y chofer ven su día por link sin login; advierte, no bloquea; un solo botón coral; rioplatense con voseo.
 
 **Propuestas en este documento (10/10/2026, a aprobar)**
@@ -1087,7 +1095,7 @@ Si algún día el costeo necesita **personas por nombre** en Odoo, se agregan ca
 10. **¿El chofer de "Todo el día" cuenta como una de las 5 personas?** Recomendación: sí (puede ayudar como operario), y se ve "5 de 5 (con Nuñez)".
 11. **¿Los operarios reciben un mensaje?** Recomendación: no en fase 1; en fase 2, un mensaje corto sin link a los que tienen celular.
 12. **Horario y encuentro estándar**: ¿7:00 en el depósito con chofer y 8:00 en la obra sin chofer? (La asistencia muestra entrada a las 7:00 y los partes inicio a las 8:00.)
-13. **Tercerizadas**: ¿se les manda la hoja a su referente?
+13. ~~**Tercerizadas**: ¿se les manda la hoja a su referente?~~ Resuelto por la decisión 9 (10/10 noche): la hoja puede quedar a cargo del contratista y la recibe su referente, por Telegram o a mano, como un capataz (§20).
 14. **¿El coordinador de la operación es Juan Agustín**, el mismo que arma el tablero? Recomendación: sí, una sola persona con las dos vistas (es quien más usa el tablero: 520 movimientos en 4 semanas). Si es otra persona, la pantalla es la misma; cambia a quién llaman capataces y choferes (coordinador de guardia).
 15. **¿El capataz puede pedir material desde su link?** Es distinto de cargar ausencias: no decide, sólo pide. Recomendación: **fase 2**, después de 2 o 3 semanas de cola funcionando con pedidos cargados por el coordinador; entra como "Sin revisar" y no reemplaza al llamado cuando frena la obra. Desde la fase 1 el capataz ya ve el estado de lo que pidió.
 16. **¿Al chofer le alcanza con "Hecho" y "No pude"?** Recomendación: sí; "Llegué" sólo si después el coordinador lo extraña. ¿Hay algún chofer sin smartphone o que no vaya a usar el link? En ese caso el coordinador marca "Hecho" por él cuando lo llama.
@@ -1099,6 +1107,43 @@ Si algún día el costeo necesita **personas por nombre** en Odoo, se agregan ca
 22. **¿Quiénes son los choferes?** En Odoo hay 3 (Borda, Kiska, Nuñez), en `personal` 4 (más Ortega) y el AB 497 YY tiene de habitual a Gómez. Recomendación: revisar la lista una vez y marcar en Legajos quién puede manejar qué (camión, hidrogrúa).
 23. **¿Los fletes de afuera (el semi de Fernando) se cargan acá?** Recomendación: sí, como fila "Fletes de afuera", así el parte los toma como tercerizados.
 24. **¿Hasta qué hora un pedido de hoy sin camión pasa a mañana?** Recomendación: 15:00, con "Pasar a mañana" a un toque (nunca solo).
+
+## 20. Contratistas (mano de obra tercerizada)
+
+Decisiones del dueño del 10/10 a la noche (§19, decisión 9). Un **contratista** (Quintana, Benegas…) pone gente que **no es nuestra**: no está en Legajos ni en Odoo, y de esa gente **sólo se sabe cuántos son**. Va dentro de las cuadrillas del tablero; se le paga por persona y jornada.
+
+### Cómo se ve
+
+- **Tarjeta**: "Quiénes van **5 de 5** (3 de Quintana)". Al lado de los nombres, un chip **"+3 de Quintana"** con **−** y **+** (cada toque es un gesto con Deshacer). Tocando el nombre del chip: **Poner a cargo** (la hoja la recibe su referente), **Ver como Quintana** (si la recibe), **Nota** ("traen su arnés"), **Editar contratista**, **Quitar de la Cuadrilla N**. Si el contratista está a cargo, su chip va primero con "a cargo". En 0 el chip queda ámbar con "¿cuántos?" ("todavía no sé cuántos": no suma).
+- **Panel Gente**: grupo **"Contratistas"** (después de "Sin asignar"): cada uno con dónde está ese día ("en la 4 (1) · la 5 (3) a cargo" o "sin cuadrilla"). **Arrastrarlo a una tarjeta suma 1**; tocarlo abre **"¿Cuántos?" + "Agregar a la Cuadrilla N…"** (con "van 3 de 5 · ya van 2"). En **"+ Agregar"** de la tarjeta también aparece ("Quintana · contratista · +1").
+- **Administrar** (link del grupo, sólo con Hoja del día en editar): hoja lateral con alta, edición (nombre, **referente**, celular del referente, **valor por persona y jornada**, nota), **dar de baja / reactivar** (no se borra: el historial y el resumen lo siguen nombrando) y Telegram (**"Copiar link para vincular"** / "Desvincular", igual que una persona).
+- **Resumen del mes** (link del grupo, con Hoja del día en ver): "Contratistas · octubre", con ‹ › para cambiar de mes. Por contratista: **jornadas-persona** (la suma de las cantidades de cada día y cuadrilla; en dos cuadrillas el mismo día suma las dos), días, **total estimado** si tiene valor por jornada, "N días sin cantidad cargada" si quedó alguno en 0, y dos desplegables: **Por día** (día, cuadrilla, obras, cuántos) y **Por obra** (prorrateo por la fracción de cada obra del día: 2 personas en ½ + ½ jornada = 1 en cada obra). Pie: total del mes.
+- **Celular del referente** (`/h/<token>`): igual que el de un capataz: "A cargo: vos (Quintana)", "Van 4 · 3 de Quintana + Ramírez", y en "Quiénes van" la línea "3 de Quintana · a cargo" (con "Llamar" al referente para los demás). El mensaje (Telegram o WhatsApp) agrega "Van: 3 de Quintana + Ramírez." cuando hay contratistas.
+
+### Reglas
+
+- **Cuenta como la nuestra** (decisión 5): suma a "Quiénes van", a la dotación ("Falta 1 persona") y a la precarga del parte ("cantidad de personas" y la mano de obra sugerida, con todo el horario de la obra: no tienen ausencias ni parciales). El formulario de "Cerrar jornada" lo aclara ("incluye 3 de Quintana, que cuentan como la nuestra"). **Nada nuevo en Odoo.**
+- **A cargo**: una hoja la tiene a cargo **una persona nuestra o un contratista**, nunca los dos (al poner a uno se saca al otro). El contratista tiene que tener gente en esa hoja y está a cargo de **una sola hoja por día** (su link es uno por día, como el de cualquier capataz). Si la hoja está a cargo de un contratista, **"Cerrar jornada" no precarga puntero** (no hay `hr.employee`): se elige a mano, como siempre.
+- **Sugerencia de a cargo**: si nadie nuestro que vaya suele estar a cargo, se sugiere el contratista que más gente pone ("Usar Quintana · van 3 de Quintana"); el de ayer sólo si hoy tiene gente en esa hoja.
+- **Problemas**: "Falta cuántos van de Quintana" (bloquea, botón "Poner 1") y "Quintana está dado de baja como contratista" (aviso). Sin nadie a cargo y sin celular del referente, los de siempre ("Cargar celular" guarda el del referente en Contratistas).
+- **Empezar como hoy / Copiar como hoy**: copian los contratistas y su cantidad (y el a cargo, si no está ya a cargo de otra hoja ese día); los dados de baja no se copian y se avisa. Aviso: "Contratistas como el lunes: 4 de Quintana en la 4 (a cargo)…".
+- **Cambios después de enviar, en palabras**: "va Quintana con 4", "Quintana pasa de 4 a 3", "no va Quintana", "a cargo: Quintana". Las fotos de antes (sin contratistas) se leen como "ninguno".
+- **Pedidos**: un contratista no es "quien pidió" (no tiene legajo): si la obra está a cargo de él, el pedido queda sin "pidió" (o con el nombre como texto).
+- **Sin documentación** (decisión 6): no hay ART ni seguro del contratista en la app.
+
+### Datos (`20261011000002_hoja_dia_contratistas.sql`)
+
+- **`hd_contratistas`**: `nombre` (único sin mayúsculas), `referente`, `celular`, `telegram_chat_id` / `telegram_usuario` / `telegram_vinculado_at`, `valor_jornada` (opcional), `nota`, `activo`. No se reutiliza `pan_personas_externas` (una fila por persona con nombre y DNI, la que usa el Pañol): acá la unidad es el contratista y un número.
+- **`hd_hoja_contratistas`**: `hoja_id`, `fecha` (la pone el trigger con la de la hoja, para el resumen del mes), `contratista_id` (RESTRICT: con jornadas no se borra), `cantidad` 0–60, `nota`, `orden`. **UNIQUE (hoja, contratista)**: un contratista puede estar en varias cuadrillas el mismo día, una fila en cada una.
+- **`hd_hojas.a_cargo_contratista_id`** + UNIQUE parcial (fecha, contratista): a cargo de una hoja por día. Se eligió una columna en la hoja (y no generalizar `recibe_*` ni poner el contratista en `hd_integrantes`) para no tocar los UNIQUE y el CHECK de `hd_integrantes` (una persona, una cuadrilla por día) y porque "a cargo" del contratista no es una persona de la hoja.
+- **`hd_links`, `hd_telegram_codigos`, `hd_telegram_mensajes`**: columna `contratista_id`; el CHECK pasa a "exactamente uno de persona / externa / contratista" (`num_nonnulls(...) = 1`). UNIQUE del link vigente por (fecha, contratista).
+- RLS cerrada como el resto (`hd_nivel`: leer con ver, escribir con editar; borrar sólo lo necesita el Deshacer de un alta). `hd_aplicar` y la lista blanca del Deshacer (`deshacer-regla.ts`) incluyen las dos tablas nuevas; el historial anota la entidad `contratista`.
+
+### Fase 2 (anotado, no hecho)
+
+- Documentación del contratista (ART, seguro) con vencimientos, si el dueño lo pide.
+- Exportar el resumen del mes (planilla) y marcarlo "pagado".
+- El prorrateo por obra se calcula al pedir el resumen con el tablero de ese momento: si después se mueve una obra de un día pasado, el reparto cambia (las jornadas no).
 
 ---
 

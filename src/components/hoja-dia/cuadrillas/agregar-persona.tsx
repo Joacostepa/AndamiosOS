@@ -2,11 +2,12 @@
 
 // "+ Agregar" de la tarjeta: un combobox con autocompletar (sugHTML de la maqueta). Enter
 // agrega el primero (o el marcado con ↑ ↓); Escape limpia. Si la persona está en otra
-// cuadrilla, la vista pregunta "¿Lo pasás a la N?" antes de moverla.
+// cuadrilla, la vista pregunta "¿Lo pasás a la N?" antes de moverla. Un contratista suma 1
+// de su gente ("+1 de Quintana").
 
 import { useState } from "react";
 import { cNombre } from "@/lib/hoja-dia/estado";
-import { sugerenciasAgregar } from "@/lib/hoja-dia/vista-cuadrillas";
+import { sugerenciasAgregar, type Sugerencia } from "@/lib/hoja-dia/vista-cuadrillas";
 import { cn } from "@/lib/utils";
 import type { Control } from "./control";
 
@@ -19,10 +20,11 @@ export function AgregarPersona({ ctl, c }: { ctl: Control; c: number }) {
   const idLista = `ag-lista-${c}`;
   const marcado = habilitadas[Math.min(activo, habilitadas.length - 1)] ?? null;
 
-  const elegir = (pid: string) => {
+  const elegir = (x: Sugerencia) => {
     setQ("");
     setActivo(0);
-    ctl.agregar(c, pid);
+    if (x.contratista) ctl.sumarContratista(c, x.pid, 1);
+    else ctl.agregar(c, x.pid);
   };
 
   return (
@@ -49,7 +51,7 @@ export function AgregarPersona({ ctl, c }: { ctl: Control; c: number }) {
             setActivo((a) => (a + (e.key === "ArrowDown" ? 1 : -1) + habilitadas.length) % habilitadas.length);
           } else if (e.key === "Enter") {
             e.preventDefault();
-            if (marcado) elegir(marcado.pid);
+            if (marcado) elegir(marcado);
           } else if (e.key === "Escape" && q) {
             e.stopPropagation();
             setQ("");
@@ -78,7 +80,7 @@ export function AgregarPersona({ ctl, c }: { ctl: Control; c: number }) {
                 aria-selected={marcado?.pid === x.pid}
                 disabled={x.deshabilitada}
                 onMouseDown={(e) => e.preventDefault()}
-                onClick={() => elegir(x.pid)}
+                onClick={() => elegir(x)}
                 className={cn(
                   "flex justify-between gap-2.5 rounded-[5px] px-2 py-1.5 text-left text-[13px] hover:bg-muted disabled:cursor-default disabled:opacity-55 max-md:min-h-11 max-md:items-center max-md:text-[15px]",
                   marcado?.pid === x.pid && "bg-muted",

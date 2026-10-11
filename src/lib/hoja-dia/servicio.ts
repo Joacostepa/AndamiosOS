@@ -22,13 +22,13 @@ import { authenticate, searchRead } from "@/lib/odoo/client";
 import { fetchTableroDeFechas } from "@/lib/odoo/asignaciones";
 import { direccionCorta, direccionDeObra, nombrePropio } from "@/lib/tablero/titulo";
 import type {
-  Ausencia, CamionDia, Cuadrilla, DiaAnterior, DiaHoja, Envio, Fecha, Hoja, Lugar, ObraDia, Parametros, Pedido, Persona, Punto,
+  Ausencia, CamionDia, Contratista, Cuadrilla, DiaAnterior, DiaHoja, Envio, Fecha, Hoja, Lugar, ObraDia, Parametros, Pedido, Persona, Punto,
   Vehiculo, Viaje,
 } from "./tipos";
 import { PARAMETROS_POR_DEFECTO } from "./tipos";
 import {
   addDia, ausenciasDeAsistencia, fletesDelDia, horariosCierre, minutosDesde, nombresCortos, normHora, obrasDe, aCargoDe, hojaDeCuadrilla,
-  ausenciaDe, type FilaAsistencia,
+  ausenciaDe, deContratistas, persona, cantidadDe, contratistasDe, type FilaAsistencia,
 } from "./estado";
 import { telegramConfigurado, usuarioDelBot } from "./telegram";
 import { diaAlertable } from "./dias";
@@ -57,7 +57,7 @@ export function columnasPunto(pre: "hacia" | "desde", p: Punto | null): Fila {
 
 // ─── Mapeos fila → tipo ─────────────────────────────────────────────────────
 
-export function mapHoja(f: Fila, integrantes: Fila[], fecha: Fecha): Hoja {
+export function mapHoja(f: Fila, integrantes: Fila[], fecha: Fecha, contratistas: Fila[] = []): Hoja {
   return {
     id: String(f.id),
     fecha: String(f.fecha),
@@ -75,6 +75,18 @@ export function mapHoja(f: Fila, integrantes: Fila[], fecha: Fecha): Hoja {
       .filter((i) => i.hoja_id === f.id)
       .map((i) => ({ id: String(i.id), personaId: String(i.persona_id ?? i.externa_id), aCargo: b(i.a_cargo), nota: s(i.nota), orden: n(i.orden) ?? 0 }))
       .sort((a, c) => a.orden - c.orden),
+    contratistas: contratistas
+      .filter((k) => k.hoja_id === f.id)
+      .map((k) => ({ id: String(k.id), contratistaId: String(k.contratista_id), cantidad: n(k.cantidad) ?? 0, nota: s(k.nota), orden: n(k.orden) ?? 0 }))
+      .sort((a, c) => a.orden - c.orden),
+    aCargoContratistaId: s(f.a_cargo_contratista_id),
+  };
+}
+
+export function mapContratista(f: Fila): Contratista {
+  return {
+    id: String(f.id), nombre: String(f.nombre), referente: s(f.referente), celular: s(f.celular), telegram: f.telegram_chat_id != null,
+    valorJornada: n(f.valor_jornada), nota: s(f.nota), activo: f.activo !== false,
   };
 }
 
@@ -294,9 +306,12 @@ export async function leerDia(fecha: Fecha, opts: { cacheOdoo?: boolean } = {}):
   const anteriorFecha = filasPrevias[0] ? String(filasPrevias[0].fecha) : null;
 
   // Fase 2: todo en paralelo.
+  const idsPrevias = filasPrevias.map((f) => f.id as string);
+  const vacio = Promise.resolve({ data: [], error: null });
   const [
     tab, asis, hojasR, integR, intPrevR, personalR, externasR, vehiculosR, documentosR, cuadrillasR, plantelR, camionesR,
     lugaresR, viajesR, pedidosR, instrR, ausR, linksR, paramsR, suspR, cajonR, operariosR, viajesAntR, camionesAntR,
+    contratistasR, hojaContrR, hojaContrPrevR,
   ] = await Promise.all([
     tablero(anteriorFecha ? [anteriorFecha, fecha] : [fecha], !!opts.cacheOdoo),
     opts.cacheOdoo ? Promise.resolve([]) : asistencia(fecha, 3),
@@ -322,6 +337,9 @@ export async function leerDia(fecha: Fecha, opts: { cacheOdoo?: boolean } = {}):
     db.from("hd_historial").select("entidad_id, accion, at").eq("fecha", fecha).in("accion", ["avisar_operario", "no_avisar_operario"]),
     anteriorFecha ? db.from("hd_viajes").select("*").eq("fecha", anteriorFecha) : Promise.resolve({ data: [], error: null }),
     anteriorFecha ? db.from("hd_camiones_dia").select("*").eq("fecha", anteriorFecha) : Promise.resolve({ data: [], error: null }),
+    db.from("hd_contratistas").select("id, nombre, referente, celular, telegram_chat_id, valor_jornada, nota, activo").order("nombre"),
+    db.from("hd_hoja_contratistas").select("*").eq("fecha", fecha),
+    idsPrevias.length ? db.from("hd_hoja_contratistas").select("*").in("hoja_id", idsPrevias) : vacio,
   ]);
 
   const parametros = mapParametros(ok<Fila[]>(paramsR, "los parámetros"));
@@ -390,9 +408,11 @@ export async function leerDia(fecha: Fecha, opts: { cacheOdoo?: boolean } = {}):
     });
 
   const integ = ok<Fila[]>(integR, "quiénes van");
-  const hojas = ok<Fila[]>(hojasR, "las hojas").map((h) => mapHoja(h, integ, fecha));
+  const hojaContr = ok<Fila[]>(hojaContrR, "los contratistas de las hojas");
+  const hojas = ok<Fila[]>(hojasR, "las hojas").map((h) => mapHoja(h, integ, fecha, hojaContr));
   const intPrev = ok<Fila[]>(intPrevR, "las hojas anteriores");
-  const hojasPrevias = filasPrevias.map((h) => mapHoja(h, intPrev, String(h.fecha)));
+  const hojaContrPrev = ok<Fila[]>(hojaContrPrevR, "los contratistas de las hojas anteriores");
+  const hojasPrevias = filasPrevias.map((h) => mapHoja(h, intPrev, String(h.fecha), hojaContrPrev));
 
   let anterior: DiaAnterior | null = null;
   if (anteriorFecha) {
@@ -424,6 +444,7 @@ export async function leerDia(fecha: Fecha, opts: { cacheOdoo?: boolean } = {}):
     suspendidas: Object.fromEntries(ok<Fila[]>(suspR, "las suspensiones").map((x) => [Number(x.cuadrilla_odoo_id), String(x.motivo)])),
     hojas,
     personas,
+    contratistas: ok<Fila[]>(contratistasR, "los contratistas").map(mapContratista),
     vehiculos,
     camiones: camionesDe(ok<Fila[]>(camionesR, "los camiones")),
     lugares: ok<Fila[]>(lugaresR, "los lugares").map(mapLugar),
@@ -498,6 +519,13 @@ export function traducirErrorDb(m: string): string {
   if (/hd_hojas_fecha_cuadrilla_odoo_id_key/.test(m)) return "Esa cuadrilla ya tiene hoja ese día.";
   if (/idx_hd_pedidos_sugerido/.test(m)) return "Ese sugerido ya se revisó.";
   if (/idx_hd_links_(persona|externa)/.test(m)) return "Otra persona creó ese link recién. Probá de nuevo.";
+  if (/idx_hd_hojas_a_cargo_contratista/.test(m)) return "Ese contratista ya está a cargo de otra cuadrilla ese día (su referente recibe una sola hoja por día).";
+  if (/hd_hoja_contratistas_hoja_id_contratista_id_key/.test(m)) return "Ese contratista ya está en esa cuadrilla: cambiá la cantidad.";
+  if (/idx_hd_contratistas_nombre/.test(m)) return "Ya hay un contratista con ese nombre.";
+  if (/idx_hd_contratistas_telegram/.test(m)) return "Ese Telegram ya es de otro contratista.";
+  if (/idx_hd_links_contratista/.test(m)) return "Otra persona creó ese link recién. Probá de nuevo.";
+  if (/hd_hoja_contratistas_contratista_id_fkey|violates foreign key constraint.*hd_hoja_contratistas/.test(m)) return "Ese contratista ya tiene jornadas cargadas: no se borra, se desactiva.";
+  if (/hd_hoja_contratistas_cantidad_check/.test(m)) return "La cantidad va de 0 a 60.";
   if (/HD_CAMBIO/.test(m)) return "No se puede deshacer: eso cambió después. Hacelo a mano.";
   if (/row-level security/i.test(m)) return "No tenés permiso para hacer este cambio.";
   if (/invalid input syntax for type time|date\/time field value out of range/i.test(m)) return "Hora inválida.";
@@ -653,8 +681,10 @@ export type PrecargaCierre = {
   /** hr.employee del que estuvo a cargo (por personal.odoo_employee_id). */
   punteroEmployeeId: number | null;
   punteroNombre: string | null;
-  /** Los que van, menos los que se cargaron como ausentes ese día. */
+  /** Los que van, menos los que se cargaron como ausentes ese día, más la gente de los contratistas. */
   personas: number;
+  /** "3 de Quintana": la gente de contratistas incluida en `personas` (null si no hay). */
+  contratistas: string | null;
   camionEnObra: boolean;
   /**
    * Los viajes del día a esta obra según la hoja. `cantidad: 0` quiere decir que la hoja NO
@@ -672,7 +702,7 @@ export type PrecargaCierre = {
  * no hay hoja, `hayHoja` es false y el formulario se comporta como siempre.
  */
 export async function precargaCierre(cuadrillaOdooId: number, fecha: Fecha, otId: number | null): Promise<PrecargaCierre> {
-  const vacia: PrecargaCierre = { hayHoja: false, punteroEmployeeId: null, punteroNombre: null, personas: 0, camionEnObra: false, fletes: { cantidad: 0, tercerizado: false, detalle: [] }, manoObra: [] };
+  const vacia: PrecargaCierre = { hayHoja: false, punteroEmployeeId: null, punteroNombre: null, personas: 0, contratistas: null, camionEnObra: false, fletes: { cantidad: 0, tercerizado: false, detalle: [] }, manoObra: [] };
   const db = createAdminClient();
   const existe = await db.from("hd_hojas").select("id").eq("fecha", fecha).eq("cuadrilla_odoo_id", cuadrillaOdooId).maybeSingle();
   if (!existe.data) return vacia;
@@ -680,15 +710,20 @@ export async function precargaCierre(cuadrillaOdooId: number, fecha: Fecha, otId
   const h = hojaDeCuadrilla(dia, cuadrillaOdooId);
   if (!h) return vacia;
   const aCargo = aCargoDe(h);
-  const p = dia.personas.find((x) => x.id === aCargo) ?? null;
-  const personas = h.integrantes.filter((i) => !ausenciaDe(dia, i.personaId)).length + (h.modo === "todo_el_dia" && h.choferId ? 1 : 0);
+  // El puntero es un empleado (hr.employee): si la hoja está a cargo de un contratista, no
+  // hay puntero que precargar (decisión 5: el parte no cambia).
+  const p = persona(dia, aCargo);
+  // Decisión 5 del 10/10: la gente del contratista cuenta en la cantidad como la nuestra.
+  const personas = h.integrantes.filter((i) => !ausenciaDe(dia, i.personaId)).length + deContratistas(h) + (h.modo === "todo_el_dia" && h.choferId ? 1 : 0);
+  const ks = contratistasDe(h).filter((x) => x.cantidad > 0);
   const ot = otId ?? obrasDe(dia, cuadrillaOdooId)[0]?.otId ?? null;
   const fl = ot != null ? fletesDelDia(dia, ot) : [];
   return {
     hayHoja: true,
     punteroEmployeeId: p?.odooEmployeeId ?? null,
-    punteroNombre: p?.nombreCompleto ?? null,
+    punteroNombre: p && !p.contratista ? p.nombreCompleto : null,
     personas,
+    contratistas: ks.length ? ks.map((x) => cantidadDe(dia, x)).join(" y ") : null,
     camionEnObra: h.modo === "todo_el_dia",
     fletes: { cantidad: fl.length, tercerizado: fl.some((x) => x.tercerizado), detalle: fl.map((x) => x.txt) },
     manoObra: ot != null ? horariosCierre(dia, cuadrillaOdooId, ot) : [],

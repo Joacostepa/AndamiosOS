@@ -17,7 +17,8 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { DiaHoja } from "@/lib/hoja-dia/tipos";
-import type { AccionAusencia, AccionHoja, AccionPedido, AccionViaje, Resultado } from "@/lib/hoja-dia/acciones";
+import type { AccionAusencia, AccionContratista, AccionHoja, AccionPedido, AccionViaje, Resultado } from "@/lib/hoja-dia/acciones";
+import type { ResumenMesContratistas } from "@/lib/hoja-dia/contratistas-servidor";
 import type { Preparado, EstadoTelegram } from "@/lib/hoja-dia/envios";
 import type { PrecargaCierre } from "@/lib/hoja-dia/servicio";
 import { minutosDesde } from "@/lib/hoja-dia/estado";
@@ -130,6 +131,18 @@ export const usePrecarga = (fecha: string | null) => useGesto<{ fecha: string; m
 export const useAccionPersona = (fecha: string | null) =>
   useGesto<{ accion: "celular"; personaId: string; telefono: string } | { accion: "puede_estar_a_cargo"; personaId: string; valor: boolean }>("/api/hoja-dia/personas", fecha);
 export const useAccionLugar = (fecha: string | null) => useGesto<Record<string, unknown> & { accion: "crear" | "editar" }>("/api/hoja-dia/lugares", fecha);
+/** Alta, edición y baja de contratistas (la lista viene con el día). */
+export const useAccionContratista = (fecha: string | null) => useGesto<AccionContratista>("/api/hoja-dia/contratistas", fecha);
+
+/** El resumen del mes por contratista ("Contratistas · octubre"). `mes` en YYYY-MM. */
+export function useResumenContratistas(mes: string | null) {
+  return useQuery({
+    queryKey: [...CLAVE_HOJA, "contratistas", mes],
+    queryFn: () => pedir<ResumenMesContratistas>(`/api/hoja-dia/contratistas?mes=${mes}`),
+    enabled: !!mes,
+    staleTime: 60_000,
+  });
+}
 
 export function useDeshacer(fecha: string | null) {
   const qc = useQueryClient();

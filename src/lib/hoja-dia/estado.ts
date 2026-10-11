@@ -18,7 +18,7 @@
 // Imports relativos y con extensión: este archivo corre en `node --test` sin Next.
 
 import type {
-  Ausencia, CamionDia, Cuadrilla, DiaHoja, Diferencia, Envio, Foto, FotoChofer, FotoHoja, Fecha,
+  Ausencia, CamionDia, Contratista, Cuadrilla, DiaHoja, Diferencia, Envio, Foto, FotoChofer, FotoHoja, Fecha,
   Hoja, Hora, Lugar, LugarEncuentro, Minutos, ModoChofer, ObraDia, Parametros, Pedido, Persona, Punto,
   TipoLugar, TipoPedido, TipoViaje, Vehiculo, Viaje,
 } from "./tipos.ts";
@@ -161,6 +161,7 @@ export type LugarInfo = {
 type Ctx = {
   dia: DiaHoja;
   P: Map<string, Persona>;
+  K: Map<string, Contratista>;
   V: Map<string, Vehiculo>;
   L: Map<string, Lugar>;
   dep: Lugar | null;
@@ -204,9 +205,17 @@ function ctx(dia: DiaHoja): Ctx {
     const prev = envioPor.get(e.personaId);
     if (!prev || (prev.anulado && !e.anulado)) envioPor.set(e.personaId, e);
   }
+  // Los contratistas entran a P como "persona" (su referente): así nombreDe(), persona(),
+  // los envíos y los mensajes los tratan como a cualquiera que recibe una hoja. NO están en
+  // `dia.personas` (no van a "Sin asignar", ni a las ausencias, ni a "+ Agregar" como gente).
+  const contratistas = dia.contratistas ?? [];
   const c: Ctx = {
     dia,
-    P: new Map(dia.personas.map((p) => [p.id, p])),
+    P: new Map<string, Persona>([
+      ...dia.personas.map((p) => [p.id, p] as const),
+      ...contratistas.map((k) => [k.id, personaDeContratista(k)] as const),
+    ]),
+    K: new Map(contratistas.map((k) => [k.id, k])),
     V: new Map(dia.vehiculos.map((v) => [v.id, v])),
     L: new Map(dia.lugares.map((l) => [l.id, l])),
     dep,
@@ -226,6 +235,14 @@ function ctx(dia: DiaHoja): Ctx {
   return c;
 }
 
+/** El referente de un contratista como "persona" que recibe la hoja (ver tipos.ts, Persona.contratista). */
+export function personaDeContratista(k: Contratista): Persona {
+  return {
+    id: k.id, externa: true, contratista: true, nombre: k.nombre, nombreCompleto: k.referente ? `${k.referente} (${k.nombre})` : k.nombre,
+    puesto: "contratista", celular: k.celular, puedeEstarACargo: true, esChofer: false, telegram: k.telegram, odooEmployeeId: null, activo: k.activo,
+  };
+}
+
 function memo<T>(dia: DiaHoja, clave: string, f: () => T): T {
   const m = ctx(dia).memo;
   if (m.has(clave)) return m.get(clave) as T;
@@ -242,6 +259,9 @@ const P = (dia: DiaHoja) => ctx(dia).dia.parametros;
 export const nombreDe = (dia: DiaHoja, id: string | null | undefined) => (id ? ctx(dia).P.get(id)?.nombre ?? "" : "");
 export const persona = (dia: DiaHoja, id: string | null | undefined) => (id ? ctx(dia).P.get(id) ?? null : null);
 export const vehiculo = (dia: DiaHoja, id: string | null | undefined) => (id ? ctx(dia).V.get(id) ?? null : null);
+/** El contratista de ese id (o null si es una persona o no existe). */
+export const contratista = (dia: DiaHoja, id: string | null | undefined) => (id ? ctx(dia).K.get(id) ?? null : null);
+export const esContratista = (dia: DiaHoja, id: string | null | undefined) => !!contratista(dia, id);
 export const patente = (dia: DiaHoja, id: string | null | undefined) => vehiculo(dia, id)?.patente ?? "";
 /** "Iveco AF 669 ZL", "Agrale hidrogrúa AB 831 LC", "Chevrolet S10 LNE 368". */
 export function vehiculoNombre(dia: DiaHoja, id: string | null | undefined): string {
@@ -472,14 +492,37 @@ export function obrasCon(dia: DiaHoja, c: number): ObraConHora[] {
 export const sumaFr = (dia: DiaHoja, c: number) => obrasDe(dia, c).reduce((s, o) => s + o.fraccion, 0);
 /** La dotación prevista: el máximo de personal por jornada de sus obras. */
 export const prevista = (dia: DiaHoja, c: number) => Math.max(0, ...obrasDe(dia, c).map((o) => o.personalPorJornada || 0));
-/** Cuántos van: la gente más el chofer de "Todo el día" (que puede ayudar: Pendiente 10). */
+/** La gente de contratistas de una hoja (sólo cantidades), en su orden. */
+export const contratistasDe = (h: Hoja | null | undefined) => [...(h?.contratistas ?? [])].sort((a, b) => a.orden - b.orden);
+/** Cuántas personas de contratistas van en una hoja (la suma de las cantidades). */
+export const deContratistas = (h: Hoja | null | undefined) => (h?.contratistas ?? []).reduce((s, x) => s + x.cantidad, 0);
+/**
+ * Cuántos van: la gente, la de los contratistas (decisión 5 del 10/10: cuenta como la
+ * nuestra) y el chofer de "Todo el día" (que puede ayudar: Pendiente 10).
+ */
 export function vanDe(dia: DiaHoja, c: number): number {
   const h = hojaDeCuadrilla(dia, c);
   if (!h) return 0;
-  return h.integrantes.length + (h.modo === "todo_el_dia" && h.choferId ? 1 : 0);
+  return h.integrantes.length + deContratistas(h) + (h.modo === "todo_el_dia" && h.choferId ? 1 : 0);
 }
 export const genteDe = (h: Hoja) => [...h.integrantes].sort((a, b) => Number(b.aCargo) - Number(a.aCargo) || a.orden - b.orden).map((i) => i.personaId);
-export const aCargoDe = (h: Hoja | null | undefined) => h?.integrantes.find((i) => i.aCargo)?.personaId ?? null;
+/** El integrante (persona) a cargo, sin contar al contratista. */
+export const aCargoIntegrante = (h: Hoja | null | undefined) => h?.integrantes.find((i) => i.aCargo)?.personaId ?? null;
+/** El contratista a cargo, si está en la hoja. */
+export const aCargoContratista = (h: Hoja | null | undefined) =>
+  h?.aCargoContratistaId && (h.contratistas ?? []).some((x) => x.contratistaId === h.aCargoContratistaId) ? h.aCargoContratistaId : null;
+/** Quién está a cargo: una persona de la hoja o, si no hay, el contratista a cargo (su referente). */
+export const aCargoDe = (h: Hoja | null | undefined) => aCargoIntegrante(h) ?? aCargoContratista(h);
+/** "3 de Quintana", "Quintana (¿cuántos?)". */
+export const cantidadDe = (dia: DiaHoja, x: { contratistaId: string; cantidad: number }) =>
+  x.cantidad > 0 ? `${x.cantidad} de ${nombreDe(dia, x.contratistaId)}` : `${nombreDe(dia, x.contratistaId)} (¿cuántos?)`;
+/** En qué cuadrillas va un contratista ese día (puede ser más de una). */
+export function cuadrillasDeContratista(dia: DiaHoja, kid: string): { c: number; cantidad: number }[] {
+  return dia.hojas.flatMap((h) => (h.contratistas ?? []).filter((x) => x.contratistaId === kid).map((x) => ({ c: h.cuadrillaOdooId, cantidad: x.cantidad })));
+}
+/** La cuadrilla que un contratista tiene a cargo ese día (una por día). */
+export const aCargoDeContratista = (dia: DiaHoja, kid: string): number | null =>
+  dia.hojas.find((h) => aCargoContratista(h) === kid)?.cuadrillaOdooId ?? null;
 
 /** En qué cuadrilla está una persona ese día (cualquier hoja, aunque no tenga obras). */
 export function hojaDe(dia: DiaHoja, pid: string): number | null {
@@ -1055,11 +1098,13 @@ export type Boton = {
    * Qué hace (lo interpreta la pantalla): sacar · usarCargo · agregar · focoAgregar · chEd ·
    * pasarChofer · irA · elegirChoferViaje · vuelvenSolos · verCamion · verViaje · avisarTarde ·
    * okTodo · volverCola · llamar · marcarHecho · avisarChofer · abrirEnvio · reenviar · dlgCel ·
-   * irCamiones · tablero · esperar · poner · pasarManana · fleteDe · liberar.
+   * irCamiones · tablero · esperar · poner · pasarManana · fleteDe · liberar ·
+   * sumarContratista (`p` = el contratista, `n` = cuántos sumar).
    */
   a: string;
   c?: number;
   p?: string;
+  n?: number;
   id?: string;
   veh?: string;
   from?: number;
@@ -1205,8 +1250,11 @@ export function sugerirACargo(dia: DiaHoja, c: number): { pid: string; por: stri
   const resp = cuadrilla(dia, c)?.plantel?.responsableId;
   if (resp) cands.push({ pid: resp, por: "responsable en Configuración" });
   const saltos: string[] = [];
+  const hc = hojaDeCuadrilla(dia, c);
   for (const k of cands) {
     if (!persona(dia, k.pid)?.activo) continue;
+    // Un contratista sólo puede estar a cargo de una hoja en la que va su gente.
+    if (esContratista(dia, k.pid) && !(hc?.contratistas ?? []).some((x) => x.contratistaId === k.pid)) continue;
     if (ausenciaDe(dia, k.pid)) { saltos.push(`${nombreDe(dia, k.pid)} no viene`); continue; }
     const otra = cuadrillasActivas(dia).find((x) => x !== c && aCargoDe(hojaDeCuadrilla(dia, x)) === k.pid);
     if (otra != null) { saltos.push(`${nombreDe(dia, k.pid)} está a cargo de ${laC(dia, otra)}`); continue; }
@@ -1215,8 +1263,13 @@ export function sugerirACargo(dia: DiaHoja, c: number): { pid: string; por: stri
   const h = hojaDeCuadrilla(dia, c);
   const gente = h ? genteDe(h) : [];
   const disponibles = gente.filter((x) => !ausenciaDe(dia, x));
-  const p = disponibles.find((x) => persona(dia, x)?.puedeEstarACargo) ?? disponibles[0];
-  return p ? { pid: p, por: "de los que van" } : null;
+  const cargo = disponibles.find((x) => persona(dia, x)?.puedeEstarACargo);
+  if (cargo) return { pid: cargo, por: "de los que van" };
+  // Sin nadie nuestro que suela estar a cargo: el contratista que más gente pone (su
+  // referente recibe la hoja), si no está a cargo de otra.
+  const k = contratistasDe(h).filter((x) => x.cantidad > 0 && aCargoDeContratista(dia, x.contratistaId) == null).sort((a, b) => b.cantidad - a.cantidad)[0];
+  if (k) return { pid: k.contratistaId, por: `van ${cantidadDe(dia, k)}` };
+  return disponibles[0] ? { pid: disponibles[0], por: "de los que van" } : null;
 }
 
 /** Los que pueden ir y no están en ninguna hoja: primero los que pueden estar a cargo. */
@@ -1254,6 +1307,10 @@ export function problemas(dia: DiaHoja, c: number, ahora: Minutos): Problema[] {
   for (const p of genteDe(h)) {
     const a = ausenciaDe(dia, p);
     if (a) add({ k: `aus-${p}`, corto: `${N(p)} no viene (${cTag(dia, c)})`, t: `${N(p)} está en la ${C} y no viene (${TIPO_AUSENCIA_TXT[a.tipo]})`, card: `${N(p)} no viene (${ausTexto(a, true, dia.fecha)})`, bs: [{ l: "Sacarlo", a: "sacar", c, p }] });
+  }
+  for (const x of contratistasDe(h)) {
+    if (x.cantidad === 0) add({ k: `kcant-${x.contratistaId}`, corto: `${C}: ¿cuántos de ${N(x.contratistaId)}?`, t: `${C} · falta cuántos van de ${N(x.contratistaId)}`, card: `Falta cuántos van de ${N(x.contratistaId)}`, bs: [{ l: "Poner 1", a: "sumarContratista", c, p: x.contratistaId, n: 1 }] });
+    if (contratista(dia, x.contratistaId)?.activo === false) add({ k: `kbaja-${x.contratistaId}`, nivel: "aviso", t: `${N(x.contratistaId)} está dado de baja como contratista`, card: `${N(x.contratistaId)} está dado de baja como contratista` });
   }
   if (!recibeDe(dia, c)) {
     const s = sugerirACargo(dia, c);
@@ -1372,6 +1429,7 @@ export function fotoHoja(dia: DiaHoja, c: number): FotoHoja {
     nota: h.nota,
     notas,
     instr: JSON.stringify(obrasDe(dia, c).map((o) => ins[o.otId])),
+    contr: Object.fromEntries(contratistasDe(h).map((x) => [x.contratistaId, x.cantidad])),
   };
 }
 
@@ -1422,6 +1480,7 @@ export function diferencias(dia: DiaHoja, old: Foto | null, cur: Foto | null): D
       out.push({ t: `no va ${N(p)}`, motivo: a ? TIPO_AUSENCIA_TXT[a.tipo] : otra != null ? `pasó a la ${cNombre(dia, otra)}` : null });
     }
     for (const p of cur.gente.filter((p) => !old.gente.includes(p))) out.push({ t: `va ${N(p)}` });
+    out.push(...diferenciasContratistas(dia, old.contr ?? {}, cur.contr ?? {}));
     if (old.aCargo !== cur.aCargo && cur.aCargo) out.push({ t: `a cargo: ${N(cur.aCargo)}` });
     const oid = old.obras.map((o) => o.id), cid = cur.obras.map((o) => o.id);
     for (const o of old.obras.filter((o) => !cid.includes(o.id))) {
@@ -1472,6 +1531,21 @@ export function diferencias(dia: DiaHoja, old: Foto | null, cur: Foto | null): D
     if (old.todo.join() !== cur.todo.join()) out.push({ t: cur.todo.length ? `todo el día con la ${cNombre(dia, cur.todo[0])}` : "ya no vas todo el día con una cuadrilla" });
     for (const s of cur.sac.filter((s) => !old.sac.find((x) => x.k === s.k))) out.push({ t: s.txt, sac: true });
   } else out.push({ t: "cambió lo que tenés que hacer" });
+  return out;
+}
+/**
+ * Lo que cambió de la gente de los contratistas, en palabras: "va Quintana con 4",
+ * "no va Quintana", "Quintana pasa de 4 a 3". Las cantidades 0 ("todavía no sé cuántos")
+ * se dicen "va Quintana (a confirmar cuántos)".
+ */
+export function diferenciasContratistas(dia: DiaHoja, old: Record<string, number>, cur: Record<string, number>): Diferencia[] {
+  const out: Diferencia[] = [];
+  const N = (id: string) => nombreDe(dia, id) || "el contratista";
+  for (const k of Object.keys(old)) if (!(k in cur)) out.push({ t: `no va ${N(k)}` });
+  for (const [k, n] of Object.entries(cur)) {
+    if (!(k in old)) out.push({ t: n > 0 ? `va ${N(k)} con ${n}` : `va ${N(k)} (a confirmar cuántos)` });
+    else if (old[k] !== n) out.push({ t: n > 0 ? `${N(k)} pasa de ${old[k]} a ${n}` : `${N(k)}: a confirmar cuántos (eran ${old[k]})` });
+  }
   return out;
 }
 /** "No va Ávila, va Ramírez" */
@@ -1610,8 +1684,9 @@ export function bandeja(dia: DiaHoja, ahora: Minutos): Bandeja {
   vos.sort((a, b) => PRI(a.k) - PRI(b.k));
   // Hojas de cuadrillas que ya no tienen obras ese día, con gente adentro.
   for (const h of dia.hojas) {
-    if (obrasDe(dia, h.cuadrillaOdooId).length || !h.integrantes.length) continue;
-    vos.push({ k: `sinobras-${h.cuadrillaOdooId}`, c: h.cuadrillaOdooId, t: `La ${cNombre(dia, h.cuadrillaOdooId)} no tiene obras el ${diaSemana(dia.fecha)}: ${yList(genteDe(h).map((p) => nombreDe(dia, p)))} siguen en su hoja`, bs: [{ l: "Dejarlos sin asignar", a: "liberar", c: h.cuadrillaOdooId }] });
+    if (obrasDe(dia, h.cuadrillaOdooId).length || (!h.integrantes.length && !(h.contratistas ?? []).length)) continue;
+    const quienes = [...genteDe(h).map((p) => nombreDe(dia, p)), ...contratistasDe(h).map((x) => cantidadDe(dia, x))];
+    vos.push({ k: `sinobras-${h.cuadrillaOdooId}`, c: h.cuadrillaOdooId, t: `La ${cNombre(dia, h.cuadrillaOdooId)} no tiene obras el ${diaSemana(dia.fecha)}: ${yList(quienes)} siguen en su hoja`, bs: [{ l: "Dejarlos sin asignar", a: "liberar", c: h.cuadrillaOdooId }] });
   }
   if (ahora < 0) {
     const sg = sugeridosDe(dia, ahora);
@@ -1790,6 +1865,15 @@ export function horariosCierre(dia: DiaHoja, c: number, otId: number): { persona
     g.personas++;
     grupos.set(k, g);
   }
+  // La gente de los contratistas cuenta como la nuestra (decisión 5 del 10/10): todo el
+  // horario de la obra (no hay ausencias ni parciales: sólo se sabe cuántos son).
+  const deK = deContratistas(h);
+  if (deK > 0) {
+    const k = `${desde}-${hasta}`;
+    const g = grupos.get(k) ?? { personas: 0, desde: hm(desde), hasta: hm(hasta) };
+    g.personas += deK;
+    grupos.set(k, g);
+  }
   return [...grupos.values()].sort((x, y) => y.personas - x.personas);
 }
 
@@ -1803,8 +1887,13 @@ export type PlanHoja = {
   choferId: string | null;
   vehiculoId: string | null;
   encuentro: { lugar: LugarEncuentro; texto: string | null; hora: Hora };
+  /** La PERSONA a cargo (un integrante). */
   aCargoId: string | null;
   gente: string[];
+  /** La gente de contratistas (sólo cantidades): se copia como la nuestra. */
+  contratistas: { contratistaId: string; cantidad: number; nota: string | null }[];
+  /** El contratista a cargo (su referente recibe la hoja). Nunca junto con `aCargoId`. */
+  aCargoContratistaId: string | null;
   /** Hora del "lleva" (sólo lleva y trae). */
   lleva: Hora | null;
   /** Hora del "busca"; null = vuelven por su cuenta. */
@@ -1831,7 +1920,10 @@ function planDesde(dia: DiaHoja, h: Hoja, viajes: Viaje[] | null, fecha: Fecha, 
   return {
     cuadrillaOdooId: c, modo: h.modo, choferId: h.choferId, vehiculoId: h.vehiculoId,
     encuentro: { lugar: h.encuentro.lugar, texto: h.encuentro.texto, hora: normHora(h.encuentro.hora) ?? h.encuentro.hora },
-    aCargoId: conCargo ? aCargoDe(h) : null, gente: genteDe(h), lleva, busca, origen: "hoy", copiadaDe: fecha,
+    aCargoId: conCargo ? aCargoIntegrante(h) : null, gente: genteDe(h),
+    contratistas: contratistasDe(h).map((x) => ({ contratistaId: x.contratistaId, cantidad: x.cantidad, nota: x.nota })),
+    aCargoContratistaId: conCargo && !aCargoIntegrante(h) ? aCargoContratista(h) : null,
+    lleva, busca, origen: "hoy", copiadaDe: fecha,
   };
 }
 
@@ -1850,7 +1942,7 @@ export function planPrecarga(dia: DiaHoja, modo: ModoPrecarga): PlanPrecarga {
   const avisos: string[] = [];
   const hojas: PlanHoja[] = [];
   const usadasAnt = new Set<number>();
-  const vacia = (c: number): PlanHoja => ({ cuadrillaOdooId: c, modo: "sin", choferId: null, vehiculoId: null, encuentro: encuentroPorModo(dia, "sin"), aCargoId: null, gente: [], lleva: null, busca: null, origen: modo, copiadaDe: null });
+  const vacia = (c: number): PlanHoja => ({ cuadrillaOdooId: c, modo: "sin", choferId: null, vehiculoId: null, encuentro: encuentroPorModo(dia, "sin"), aCargoId: null, gente: [], contratistas: [], aCargoContratistaId: null, lleva: null, busca: null, origen: modo, copiadaDe: null });
   const conObras = cuadrillasConObras(dia).filter((c) => !hojaDeCuadrilla(dia, c));
   // La gente sigue a la obra: primero se resuelve de qué hoja de ayer copia cada cuadrilla.
   const fuente = new Map<number, number>();
@@ -1913,6 +2005,7 @@ export function planPrecarga(dia: DiaHoja, modo: ModoPrecarga): PlanPrecarga {
       return true;
     });
     if (h.aCargoId && !h.gente.includes(h.aCargoId)) h.aCargoId = null;
+    limpiarContratistas(dia, h, hojas, avisos);
     if (h.choferId && ausenciaDe(dia, h.choferId)) {
       avisos.push(`${nombreDe(dia, h.choferId)} no viene: la ${cNombre(dia, h.cuadrillaOdooId)} quedó sin chofer.`);
       h.choferId = null;
@@ -1930,11 +2023,15 @@ export function planPrecarga(dia: DiaHoja, modo: ModoPrecarga): PlanPrecarga {
   }
   const camiones: CamionDia[] = [];
   for (const h of hojas) if (h.vehiculoId && h.choferId && !camiones.find((x) => x.vehiculoId === h.vehiculoId)) camiones.push({ vehiculoId: h.vehiculoId, choferId: h.choferId, nota: null });
-  const vanPlan = (c: number) => { const h = hojas.find((x) => x.cuadrillaOdooId === c)!; return h.gente.length + (h.modo === "todo_el_dia" && h.choferId ? 1 : 0); };
+  const vanPlan = (c: number) => { const h = hojas.find((x) => x.cuadrillaOdooId === c)!; return h.gente.length + h.contratistas.reduce((s, x) => s + x.cantidad, 0) + (h.modo === "todo_el_dia" && h.choferId ? 1 : 0); };
   const ausFinal = ausAvisos.map((t) => t.replace(/__VAN_(\d+)__/, (_, c) => String(vanPlan(Number(c)))));
   avisos.unshift(...ausFinal);
   if (modo === "vacio") avisos.push(`Las ${hojas.length} hojas quedaron vacías, con las obras del tablero: sin gente, sin nadie a cargo y sin chofer.`);
   if (modo === "plantel") avisos.push("Con el plantel base no hay choferes ni encuentros: elegilos en cada tarjeta.");
+  const conK = hojas.filter((h) => h.contratistas.length);
+  if (conK.length) {
+    avisos.push(`Contratistas como el ${ant ? diaSemana(ant.fecha) : "día anterior"}: ${conK.map((h) => `${yList(h.contratistas.map((x) => cantidadDe(dia, x)))} en ${laC(dia, h.cuadrillaOdooId)}${h.aCargoContratistaId ? " (a cargo)" : ""}`).join("; ")}. Si cambia cuántos mandan, ajustalo en la tarjeta.`);
+  }
   if (modo === "hoy") {
     const n = hojas.filter((h) => h.modo === "lleva_trae" && h.choferId).reduce((s, h) => s + 1 + (h.busca ? 1 : 0), 0);
     avisos.push(`Se armaron ${n} viajes de lleva y trae en las filas de los camiones. Las instrucciones no se copian: son de cada obra y cada día.`);
@@ -1951,7 +2048,28 @@ export function planCopiarComoHoy(dia: DiaHoja, c: number): PlanHoja | null {
   plan.origen = "copia";
   plan.gente = plan.gente.filter((p) => !ausenciaDe(dia, p));
   if (plan.aCargoId && !plan.gente.includes(plan.aCargoId)) plan.aCargoId = null;
+  limpiarContratistas(dia, plan, [plan], [], c);
   return plan;
+}
+
+/**
+ * Los contratistas de un plan: afuera los dados de baja (con aviso), y el contratista a
+ * cargo sólo si va en esa hoja, si no hay una persona a cargo y si no está ya a cargo de
+ * otra hoja ese día (una por día). `propia`: la cuadrilla que se está reescribiendo (su
+ * hoja actual no cuenta como "otra").
+ */
+function limpiarContratistas(dia: DiaHoja, h: PlanHoja, plan: PlanHoja[], avisos: string[], propia?: number) {
+  h.contratistas = h.contratistas.filter((x) => {
+    const k = contratista(dia, x.contratistaId);
+    if (k && k.activo) return true;
+    avisos.push(`${nombreDe(dia, x.contratistaId) || "Un contratista"} está dado de baja: no se copió a la ${cNombre(dia, h.cuadrillaOdooId)}.`);
+    return false;
+  });
+  const kc = h.aCargoContratistaId;
+  if (!kc) return;
+  const enOtraHoy = dia.hojas.some((x) => x.cuadrillaOdooId !== propia && aCargoContratista(x) === kc);
+  const enOtraDelPlan = plan.some((x) => x !== h && x.aCargoContratistaId === kc);
+  if (h.aCargoId || !h.contratistas.some((x) => x.contratistaId === kc) || enOtraHoy || enOtraDelPlan) h.aCargoContratistaId = null;
 }
 
 // ═══════════════════════════ Chofer de una cuadrilla ══════════════════════════
@@ -2067,7 +2185,9 @@ export function tipoPorDestino(dia: DiaHoja, hacia: Punto, esParaTraer = false):
 export function pidioPorDefecto(dia: DiaHoja, hacia: Punto): string | null {
   if (hacia.otId == null) return null;
   const c = cuadrillaDeObra(dia, hacia.otId);
-  return c != null ? recibeDe(dia, c) : null;
+  const r = c != null ? recibeDe(dia, c) : null;
+  // Un contratista no tiene legajo: el pedido queda sin "pidió" (se puede escribir a mano).
+  return r && !esContratista(dia, r) ? r : null;
 }
 /** Para qué día va un pedido nuevo: hoy hasta la hora de corte, mañana después. */
 export function fechaPorDefecto(hoy: Fecha, ahoraDeHoy: Minutos, p: Parametros): Fecha {

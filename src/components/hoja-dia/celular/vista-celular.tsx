@@ -190,7 +190,9 @@ function Capataz({
 }) {
   const [enviando, setEnviando] = useState(false);
   const recCola = cola.find((p) => p.toque.accion === "recibido" || p.toque.accion === "entendido");
-  const nVan = v.gente.length;
+  // Con contratistas, "Van 5" no es la cantidad de nombres: la gente de un contratista va
+  // como "3 de Quintana" (sin nombres). Las vistas viejas guardadas no traen `van`.
+  const nVan = v.van ?? v.gente.reduce((s, g) => s + (g.cantidad ?? 1), 0);
   const primera = v.obras[0];
   const choferLleva = v.chofer?.modo === "lleva_trae" && v.chofer.nombre ? v.chofer : null;
   const boton = async (a: "recibido" | "entendido") => {
@@ -236,7 +238,12 @@ function Capataz({
               <span className={s.tk}>Van {nVan}</span>
               <span className={s.v}>
                 {v.gente.map((g, i) => (
-                  <span key={i}>{i > 0 && ", "}{g.nombre}{g.chofer && " (chofer)"}{g.nuevo && <> <span className={cx(s.tag, s.nuevo)}>nuevo</span></>}</span>
+                  <span key={i}>
+                    {i > 0 && (v.gente[i - 1].contratista ? " + " : ", ")}
+                    {g.contratista ? (g.cantidad ? `${g.cantidad} de ${g.nombre}` : g.nombre) : g.nombre}
+                    {g.chofer && " (chofer)"}
+                    {g.nuevo && <> <span className={cx(s.tag, s.nuevo)}>nuevo</span></>}
+                  </span>
                 ))}
               </span>
             </div>
@@ -254,7 +261,7 @@ function Capataz({
             {v.gente.map((g, i) => (
               <div key={i} className={s.p}>
                 <span className={s.t}>
-                  <b>{g.nombre}</b>
+                  <b>{g.contratista ? (g.cantidad ? `${g.cantidad} de ${g.nombre}` : `${g.nombre} (a confirmar cuántos)`) : g.nombre}</b>
                   {g.aCargo && <> <span className={cx(s.tag, s.cargo)}>a cargo</span></>}
                   {g.chofer && <> <span className={cx(s.tag, s.cargo)}>chofer</span></>}
                   {g.nuevo && <> <span className={cx(s.tag, s.nuevo)}>nuevo</span></>}

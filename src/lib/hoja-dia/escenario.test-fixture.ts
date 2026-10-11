@@ -33,6 +33,13 @@ export const PERSONAS: Persona[] = [
   pers("nunez", "Nuñez", { esChofer: true, puesto: "chofer" }),
 ];
 
+/** Los contratistas (mano de obra tercerizada): Quintana con referente y Telegram, Benegas sin celular. */
+export const CONTRATISTAS: DiaHoja["contratistas"] = [
+  { id: "quintana", nombre: "Quintana", referente: "Tomás Quintana", celular: "11 4444-1234", telegram: true, valorJornada: 30000, nota: null, activo: true },
+  { id: "benegas", nombre: "Benegas", referente: null, celular: null, telegram: false, valorJornada: null, nota: null, activo: true },
+  { id: "viejo", nombre: "Ferraro", referente: null, celular: null, telegram: false, valorJornada: null, nota: null, activo: false },
+];
+
 const veh = (id: string, patente: string, marca: string, tipo: DiaHoja["vehiculos"][number]["tipo"], hab: string | null, extra: Partial<DiaHoja["vehiculos"][number]> = {}) =>
   ({ id, patente, marca, modelo: null, tipo, estado: "disponible" as const, choferHabitualId: hab, vencimientos: [], ...extra });
 
@@ -82,6 +89,7 @@ export const hoja = (c: number, gente: string[], aCargo: string | null, o: Parti
   id: o.id ?? `h${fecha.slice(8)}-${c}`, fecha, cuadrillaOdooId: c, modo: "sin", choferId: null, vehiculoId: null, choferTocadoMin: null,
   encuentro: { lugar: "obra", texto: null, hora: "8:00" }, nota: null, recibeId: null, origen: "manual", version: 1,
   integrantes: gente.map((p, i) => ({ id: `i${++seq}`, personaId: p, aCargo: p === aCargo, nota: null, orden: i })),
+  contratistas: [], aCargoContratistaId: null,
   ...o,
 });
 
@@ -128,6 +136,7 @@ export function martesVacio(): DiaHoja {
     suspendidas: {},
     hojas: [],
     personas: PERSONAS,
+    contratistas: CONTRATISTAS,
     vehiculos: VEHICULOS,
     camiones: VEHICULOS.map((v) => ({ vehiculoId: v.id, choferId: v.choferHabitualId, nota: null })),
     lugares: LUGARES,

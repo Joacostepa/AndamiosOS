@@ -7,7 +7,7 @@
 import { useState } from "react";
 import { ArrowDown, ArrowUp, Circle, MoreHorizontal } from "lucide-react";
 import {
-  cNombre, estadoHoja, esHoy, frJ, hojaDeCuadrilla, nombreDe, obrasCon, problemas, recibeDe, suspendida,
+  aCargoContratista, cNombre, estadoHoja, esHoy, frJ, hojaDeCuadrilla, nombreDe, obrasCon, problemas, recibeDe, suspendida,
 } from "@/lib/hoja-dia/estado";
 import { chipsDe, instruccionesDe, materialDe, quienesVan, resumenChofer, encuentroTxt } from "@/lib/hoja-dia/vista-cuadrillas";
 import { colorCuadrilla } from "@/lib/tablero/colores";
@@ -18,6 +18,7 @@ import { AgregarPersona } from "./agregar-persona";
 import { EditorChofer, EditorEncuentro } from "./editor-chofer";
 import { TIPO_ARRASTRE, type Control } from "./control";
 import { JornadaCerrada } from "./cerrar-jornada";
+import { ChipsContratistas, NotasContratistas } from "./contratistas";
 
 const TONO_ESTADO: Record<string, string> = {
   recibida: "font-semibold text-hd-verde",
@@ -74,6 +75,8 @@ export function Tarjeta({ ctl, c, indice }: { ctl: Control; c: number; indice: n
   const [dropEn, setDropEn] = useState(false);
   const [dropNombre, setDropNombre] = useState<string | null>(null);
   const editando = ctl.chEd?.c === c && !pasado;
+  // El que está a cargo va primero: si es un contratista, su chip antes que los nombres.
+  const kPrimero = !!aCargoContratista(h);
 
   const soltar = (e: React.DragEvent, sobre: string | null) => {
     const a = ctl.arrastre;
@@ -83,7 +86,8 @@ export function Tarjeta({ ctl, c, indice }: { ctl: Control; c: number; indice: n
     e.preventDefault();
     e.stopPropagation();
     ctl.setArrastre(null);
-    if (a.esChofer) ctl.soltarChofer(c, a.pid);
+    if (a.contratista) ctl.sumarContratista(c, a.pid, 1);
+    else if (a.esChofer) ctl.soltarChofer(c, a.pid);
     else if (sobre && sobre !== a.pid) ctl.agregar(c, a.pid, { reemplaza: sobre });
     else if (a.from !== c) ctl.agregar(c, a.pid);
   };
@@ -95,7 +99,7 @@ export function Tarjeta({ ctl, c, indice }: { ctl: Control; c: number; indice: n
       onDragOver={(e) => {
         if (!ctl.arrastre || pasado || !e.dataTransfer.types.includes(TIPO_ARRASTRE)) return;
         e.preventDefault();
-        e.dataTransfer.dropEffect = "move";
+        e.dataTransfer.dropEffect = ctl.arrastre.contratista ? "copy" : "move";
         if (!dropEn) setDropEn(true);
       }}
       onDragLeave={(e) => {
@@ -195,8 +199,9 @@ export function Tarjeta({ ctl, c, indice }: { ctl: Control; c: number; indice: n
         <div className="flex flex-wrap items-center gap-1">
           <span className="mr-0.5 text-xs whitespace-nowrap text-muted-foreground tabular-nums">
             Quiénes van <b className="font-semibold text-foreground">{qv.van} de {qv.prevista}</b>
-            {qv.con && ` (con ${qv.con})`}
+            {(qv.contratistas || qv.con) && ` (${[qv.contratistas, qv.con && `con ${qv.con}`].filter(Boolean).join(", ")})`}
           </span>
+          {kPrimero && <ChipsContratistas ctl={ctl} c={c} />}
           {chips.map((x) => (
             <button
               key={x.pid}
@@ -213,7 +218,7 @@ export function Tarjeta({ ctl, c, indice }: { ctl: Control; c: number; indice: n
               }}
               onDragEnd={() => ctl.setArrastre(null)}
               onDragOver={() => {
-                if (ctl.arrastre && !ctl.arrastre.esChofer && ctl.arrastre.pid !== x.pid && dropNombre !== x.pid) setDropNombre(x.pid);
+                if (ctl.arrastre && !ctl.arrastre.esChofer && !ctl.arrastre.contratista && ctl.arrastre.pid !== x.pid && dropNombre !== x.pid) setDropNombre(x.pid);
               }}
               onDrop={(e) => soltar(e, x.pid)}
               className={cn(
@@ -229,6 +234,7 @@ export function Tarjeta({ ctl, c, indice }: { ctl: Control; c: number; indice: n
               )}
             </button>
           ))}
+          {!kPrimero && <ChipsContratistas ctl={ctl} c={c} />}
           {h.modo === "todo_el_dia" && h.choferId && (
             <span title="Chofer todo el día" className="inline-flex min-h-6 items-baseline gap-[5px] rounded-md border border-dashed px-[7px] py-0.5 text-[13px] font-medium max-md:min-h-9 max-md:items-center max-md:text-[15px]">
               {nombreDe(dia, h.choferId)}
@@ -237,13 +243,14 @@ export function Tarjeta({ ctl, c, indice }: { ctl: Control; c: number; indice: n
           )}
           {!pasado && <AgregarPersona ctl={ctl} c={c} />}
         </div>
-        {h.integrantes.some((i) => i.nota) && (
+        {(h.integrantes.some((i) => i.nota) || h.contratistas.some((x) => x.nota)) && (
           <div className="grid gap-px text-xs text-muted-foreground">
             {h.integrantes.filter((i) => i.nota).map((i) => (
               <div key={i.id}>
                 <b className="font-medium text-foreground">{nombreDe(dia, i.personaId)}</b> {i.nota}
               </div>
             ))}
+            <NotasContratistas ctl={ctl} c={c} />
           </div>
         )}
       </div>

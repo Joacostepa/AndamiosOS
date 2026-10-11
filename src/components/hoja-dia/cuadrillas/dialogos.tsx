@@ -6,7 +6,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import type { DiaHoja } from "@/lib/hoja-dia/tipos";
-import { cuadrillaDeObra, cNombre, nombreDe, obrasCon } from "@/lib/hoja-dia/estado";
+import { cuadrillaDeObra, cNombre, nombreDe, obrasCon, persona as personaDe } from "@/lib/hoja-dia/estado";
 import { textoMover } from "@/lib/hoja-dia/vista-cuadrillas";
 import { useAccionPersona } from "@/hooks/use-hoja-dia";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from "@/components/ui/dialog";
@@ -43,7 +43,9 @@ export function DialogoCelular({ dia, pid, onCerrar }: { dia: DiaHoja; pid: stri
     <Dialog open={!!pid} onOpenChange={(o) => !o && onCerrar()}>
       <DialogContent showCloseButton={false} className="sm:max-w-[440px]">
         <DialogTitle className="text-[17px] font-semibold">Celular de {nombreDe(dia, pid)}</DialogTitle>
-        <DialogDescription className="text-[13px]">Se guarda en Legajos. Es para los que todavía no lo tienen cargado.</DialogDescription>
+        <DialogDescription className="text-[13px]">
+          {personaDe(dia, pid)?.contratista ? "El del referente del contratista. Se guarda en Contratistas." : "Se guarda en Legajos. Es para los que todavía no lo tienen cargado."}
+        </DialogDescription>
         <form
           className="grid gap-3"
           onSubmit={(e) => {

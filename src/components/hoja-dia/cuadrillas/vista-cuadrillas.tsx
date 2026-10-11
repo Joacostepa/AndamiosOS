@@ -41,17 +41,25 @@ import { VerComo } from "./ver-como";
 import { CerrarJornada, type PedidoCierre } from "./cerrar-jornada";
 import { AvisoPrecarga, EstadoVacio } from "./estado-vacio";
 import { DialogoCelular, DialogoMover, DialogoObra, type Mover } from "./dialogos";
+import { MenuContratista } from "./contratistas";
+import { HojaContratistas } from "./hoja-contratistas";
+import { HojaResumenContratistas } from "./hoja-resumen-contratistas";
 import type { Arrastre, Control } from "./control";
+import { nivelEn } from "@/lib/auth/acceso";
+import { useAcceso } from "@/components/providers/acceso-provider";
 
 type Hoja =
   | { t: "envio"; resaltar?: string | null }
   | { t: "aus" }
   | { t: "instr"; c: number }
   | { t: "ver"; c: number; p: string }
-  | { t: "historial"; c: number };
+  | { t: "historial"; c: number }
+  | { t: "contratistas"; foco: string | null }
+  | { t: "resumen" };
 type Menu =
   | { t: "persona"; c: number; p: string; el: HTMLElement }
   | { t: "tarjeta"; c: number; el: HTMLElement }
+  | { t: "contratista"; c: number | null; k: string; el: HTMLElement }
   | { t: "camion"; viajeId: string; el: HTMLElement | null };
 
 const RUTA_CAMIONES = "/planificacion/hoja/camiones";
@@ -74,6 +82,7 @@ export function VistaCuadrillas() {
   const enviar = useEnviar(fecha);
   const deshacer = useDeshacer(fecha);
   const precarga = usePrecarga(fecha);
+  const editor = nivelEn(useAcceso(), "hoja-dia") === "editar";
 
   const [chEd, setChEd] = useState<Control["chEd"]>(null);
   const [editEnc, setEditEnc] = useState<number | null>(null);
@@ -116,6 +125,10 @@ export function VistaCuadrillas() {
     [dia, fecha, hoja],
   );
   const soltarChofer = useCallback((c: number, ch: string) => hoja.mutate({ accion: "chofer", fecha, cuadrilla: c, choferId: ch }), [fecha, hoja]);
+  const sumarContratista = useCallback(
+    (c: number, k: string, n: number) => hoja.mutate({ accion: "contratista_sumar", fecha, cuadrilla: c, contratistaId: k, n }),
+    [fecha, hoja],
+  );
 
   const irCamiones = useCallback((extra = "") => router.push(`${RUTA_CAMIONES}?dia=${fecha}${extra}`), [fecha, router]);
 
@@ -160,10 +173,11 @@ export function VistaCuadrillas() {
         }
         case "dlgCel": if (b.p) setCelular(b.p); return;
         case "liberar": if (c != null) hoja.mutate({ accion: "liberar", fecha, cuadrilla: c }); return;
+        case "sumarContratista": if (c != null && b.p) sumarContratista(c, b.p, b.n ?? 1); return;
         default: toast.error(`No sé hacer «${b.l}» desde acá`);
       }
     },
-    [agregar, deshacer, dia, enviar, fecha, hoja, irCamiones, llamarAtencion, pedido, router, viaje],
+    [agregar, deshacer, dia, enviar, fecha, hoja, irCamiones, llamarAtencion, pedido, router, sumarContratista, viaje],
   );
 
   // Teclado: G enfoca el buscador de Gente; con un nombre elegido, 1–5 lo manda a esa
@@ -245,6 +259,11 @@ export function VistaCuadrillas() {
     dia, ahora, pasado, boton, agregar, soltarChofer,
     abrirMenuPersona: (c, p, el) => setMenu({ t: "persona", c, p, el }),
     abrirMenuTarjeta: (c, el) => setMenu({ t: "tarjeta", c, el }),
+    sumarContratista,
+    abrirMenuContratista: (c, k, el) => setMenu({ t: "contratista", c, k, el }),
+    abrirContratistas: (k) => setHojaLat({ t: "contratistas", foco: k ?? null }),
+    abrirResumenContratistas: () => setHojaLat({ t: "resumen" }),
+    editor,
     abrirObra: (otId) => setObra(otId),
     abrirInstrucciones: (c) => setHojaLat({ t: "instr", c }),
     abrirEnvio: (p) => setHojaLat({ t: "envio", resaltar: p ?? null }),
@@ -391,6 +410,7 @@ export function VistaCuadrillas() {
       )}
 
       {menu?.t === "persona" && <MenuPersona key={`${menu.c}-${menu.p}`} ctl={ctl} c={menu.c} pid={menu.p} anchor={menu.el} onCerrar={() => setMenu(null)} />}
+      {menu?.t === "contratista" && <MenuContratista key={`k-${menu.c}-${menu.k}`} ctl={ctl} c={menu.c} kid={menu.k} anchor={menu.el} onCerrar={() => setMenu(null)} />}
       {menu?.t === "tarjeta" && <MenuTarjeta ctl={ctl} c={menu.c} anchor={menu.el} onCerrar={() => setMenu(null)} onHistorial={(c) => setHojaLat({ t: "historial", c })} />}
       {menuCamion && (
         <MenuFlotante abierto anchor={menuCamion.el} onCerrar={() => setMenu(null)} label="Elegir camión" encabezado={<b className="font-semibold">¿Quién lo hace?</b>}>
@@ -413,6 +433,8 @@ export function VistaCuadrillas() {
       <HojaAusencias abierta={hojaLat?.t === "aus"} onCerrar={() => setHojaLat(null)} dia={dia} />
       {hojaLat?.t === "instr" && <HojaInstrucciones abierta onCerrar={() => setHojaLat(null)} dia={dia} c={hojaLat.c} pasado={pasado} />}
       {hojaLat?.t === "ver" && <VerComo abierta onCerrar={() => setHojaLat(null)} dia={dia} ahora={ahora} pid={hojaLat.p} />}
+      {hojaLat?.t === "contratistas" && <HojaContratistas key={`contratistas-${hojaLat.foco ?? ""}`} abierta onCerrar={() => setHojaLat(null)} dia={dia} foco={hojaLat.foco} />}
+      {hojaLat?.t === "resumen" && <HojaResumenContratistas abierta onCerrar={() => setHojaLat(null)} mesInicial={fecha.slice(0, 7)} />}
       {hojaLat?.t === "historial" && (
         <Historial
           abierta
@@ -432,9 +454,9 @@ export function VistaCuadrillas() {
           hoja.mutate({ accion: "agregar", fecha, cuadrilla: m.c, personaId: m.pid, reemplaza: m.reemplaza });
         }}
       />
-      <DialogoCelular key={celular ?? "-"} dia={dia} pid={celular} onCerrar={() => setCelular(null)} />
+      <DialogoCelular key={`celular-${celular ?? ""}`} dia={dia} pid={celular} onCerrar={() => setCelular(null)} />
       <DialogoObra dia={dia} otId={obra} onCerrar={() => setObra(null)} />
-      <CerrarJornada key={cierre ? `${cierre.c}-${cierre.otId ?? ""}` : "-"} dia={dia} pedido={cierre} onCerrar={() => setCierre(null)} />
+      <CerrarJornada key={cierre ? `cierre-${cierre.c}-${cierre.otId ?? ""}` : "cierre"} dia={dia} pedido={cierre} onCerrar={() => setCierre(null)} />
     </div>
   );
 }

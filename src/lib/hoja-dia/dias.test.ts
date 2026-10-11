@@ -14,14 +14,16 @@ test("abre en hoy a la mañana y en mañana desde las 15", () => {
   assert.equal(diaPorDefecto(en("2026-10-13T18:00:00Z")), "2026-10-14"); // 15:00
 });
 
-test("el sábado a la tarde, mañana es el lunes; el domingo abre el lunes", () => {
-  assert.equal(diaPorDefecto(en("2026-10-17T19:00:00Z")), "2026-10-19");
-  assert.equal(diaPorDefecto(en("2026-10-18T12:00:00Z")), "2026-10-19");
-  assert.equal(mananaDe("2026-10-17"), "2026-10-19");
+test("el domingo es un día más: el sábado a la tarde, mañana es el domingo; el domingo abre el domingo", () => {
+  assert.equal(diaPorDefecto(en("2026-10-17T19:00:00Z")), "2026-10-18");
+  assert.equal(diaPorDefecto(en("2026-10-18T12:00:00Z")), "2026-10-18");
+  assert.equal(diaPorDefecto(en("2026-10-18T19:00:00Z")), "2026-10-19");
+  assert.equal(mananaDe("2026-10-17"), "2026-10-18");
 });
 
-test("las flechas saltan el domingo", () => {
-  assert.equal(diaHabil("2026-10-19", -1), "2026-10-17");
+test("las flechas pasan por el domingo", () => {
+  assert.equal(diaHabil("2026-10-19", -1), "2026-10-18");
+  assert.equal(diaHabil("2026-10-17", 1), "2026-10-18");
   assert.equal(diaHabil("2026-10-13", 1), "2026-10-14");
 });
 

@@ -2,9 +2,10 @@
 //
 // - "Hoy" es la fecha de Buenos Aires (UTC−3 todo el año, como el resto del módulo).
 // - Abre en "Hoy" a la mañana y en "Mañana" desde el corte (15:00 por defecto, el mismo
-//   `horaCorteManana` de los parámetros). El sábado, "Mañana" es el lunes: el domingo no
-//   se trabaja y no tiene hoja.
-// - Las flechas ‹ › saltan el domingo.
+//   `horaCorteManana` de los parámetros).
+// - El domingo es un día más (10/10, el dueño: "a veces trabajamos el domingo"). El tablero
+//   lo habilita cuando hay obras; la hoja no lo saltea: el sábado, "Mañana" es el domingo, y
+//   las flechas ‹ › pasan por él. Si ese domingo no hay obras, la hoja lo dice.
 
 import type { Fecha } from "./tipos";
 
@@ -29,24 +30,20 @@ function sumar(f: Fecha, n: number): Fecha {
   return t.toISOString().slice(0, 10);
 }
 
-/** El día hábil `n` lugares para adelante (o para atrás si n < 0), sin domingos. */
+/** El día `n` lugares para adelante (o para atrás si n < 0). Incluye el domingo. */
 export function diaHabil(fecha: Fecha, n: number): Fecha {
-  let f = fecha;
-  const paso = n < 0 ? -1 : 1;
-  for (let i = 0; i < Math.abs(n); i++) {
-    f = sumar(f, paso);
-    while (diaSem(f) === 0) f = sumar(f, paso);
-  }
-  return f;
+  return sumar(fecha, n);
 }
 
-/** "Mañana" vista desde `hoy` (el sábado, el lunes). */
+/** "Mañana" vista desde `hoy` (el sábado, el domingo). */
 export const mananaDe = (hoy: Fecha) => diaHabil(hoy, 1);
 
-/** El día con el que abre la hoja: hoy hasta el corte, mañana desde el corte (y el domingo, el lunes). */
+/** ¿Es domingo? (para avisar cuando el tablero no tiene obras ese día). */
+export const esDomingo = (f: Fecha) => diaSem(f) === 0;
+
+/** El día con el que abre la hoja: hoy hasta el corte, mañana desde el corte. */
 export function diaPorDefecto(ahoraMs: number = Date.now(), corteMin = 15 * 60): Fecha {
   const hoy = hoyBA(ahoraMs);
-  if (diaSem(hoy) === 0) return mananaDe(hoy);
   return minutosDeHoyBA(ahoraMs) >= corteMin ? mananaDe(hoy) : hoy;
 }
 

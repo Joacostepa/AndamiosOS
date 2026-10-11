@@ -36,7 +36,7 @@ test("los nombres: a cargo primero, y los que no vienen marcados", () => {
   const c3 = chipsDe(d, 3);
   assert.equal(c3[0].nombre, "Ortega");
   assert.equal(c3[0].tag, "a cargo");
-  assert.deepEqual(quienesVan(d, 1), { van: 5, prevista: 5, con: "Borda" });
+  assert.deepEqual(quienesVan(d, 1), { van: 5, prevista: 5, con: "Borda", contratistas: null });
   const conAus = { ...d, ausencias: [...d.ausencias, { ...MEDINA_ART, personaId: "avila", tipo: "enfermedad" as const, id: "a1", origen: "planificador" as const, hasta: "2026-10-13" }] };
   assert.equal(chipsDe(conAus, 3).find((x) => x.pid === "avila")?.tag, "no viene");
 });

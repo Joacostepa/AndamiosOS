@@ -17,8 +17,9 @@ import { linkWhatsapp } from "@/lib/panol/whatsapp";
 import { urlBase } from "@/lib/permisos-via-publica/endosos";
 import type { DiaHoja, Fecha, Foto } from "./tipos";
 import {
-  destinatarios, estadoEnvio, fotoDe, minutosDesde, envioDe, nombreDe, viajeCalc, pedidosDeViaje, recibeDe, textoListaCarga, type Destinatario,
+  destinatarios, estadoEnvio, fotoDe, minutosDesde, envioDe, nombreDe, viajeCalc, pedidosDeViaje, recibeDe, textoListaCarga, persona, type Destinatario,
 } from "./estado";
+import { ORIGENES, chatDe, origenDe, origenEnDia } from "./quien";
 import { filaEnvio, mensajeCapatazPedido, mensajeDe, mensajeDeposito, mensajeOperario, mensajeTarde, mensajeVuelvenSolos } from "./mensajes";
 import { mensajeSacarUnRato } from "./camiones";
 import { enviarMensaje, linkVinculacion, tecladoCambio, tecladoHoja, tecladoViaje, telegramConfigurado, usuarioDelBot, type Teclado } from "./telegram";
@@ -31,24 +32,16 @@ const ts = () => new Date().toISOString();
 
 export type CanalEnvio = "telegram" | "manual";
 
-/** El chat de Telegram de una persona (Legajos o externa). */
-async function chatDe(pid: string): Promise<number | null> {
-  const adm = createAdminClient();
-  const [a, b] = await Promise.all([
-    adm.from("personal").select("telegram_chat_id").eq("id", pid).maybeSingle(),
-    adm.from("pan_personas_externas").select("telegram_chat_id").eq("id", pid).maybeSingle(),
-  ]);
-  const v = a.data?.telegram_chat_id ?? b.data?.telegram_chat_id ?? null;
-  return v == null ? null : Number(v);
-}
-const esExterna = (dia: DiaHoja, pid: string) => !!dia.personas.find((p) => p.id === pid)?.externa;
-const celularDe = (dia: DiaHoja, pid: string) => dia.personas.find((p) => p.id === pid)?.celular ?? null;
+// Legajos, externa o el referente de un contratista: la columna de hd_links y de
+// hd_telegram_mensajes sale de quien.ts.
+const colDe = (dia: DiaHoja, pid: string) => origenEnDia(dia, pid).col;
+const celularDe = (dia: DiaHoja, pid: string) => persona(dia, pid)?.celular ?? null;
 
 /** El link vigente de la persona ese día; si no hay (o cambió de rol), uno nuevo. */
 /** El link vigente de la persona ese día que le sirve a su rol, o null (sin crear nada). */
 async function linkVigente(db: DB, dia: DiaHoja, x: Destinatario): Promise<Fila | null> {
   const pid = x.pid!;
-  const col = esExterna(dia, pid) ? "externa_id" : "persona_id";
+  const col = colDe(dia, pid);
   const r = await db.from("hd_links").select("*").eq("fecha", dia.fecha).eq(col, pid).is("anulado_at", null).maybeSingle();
   const rol = x.rol === "chofer" ? "chofer" : "a_cargo";
   if (r.data && (x.rol === "ex" || (r.data.rol === rol && (rol === "chofer" || Number(r.data.cuadrilla_odoo_id) === x.c)))) return r.data;
@@ -59,7 +52,7 @@ export async function asegurarLink(db: DB, dia: DiaHoja, x: Destinatario): Promi
   const ya = await linkVigente(db, dia, x);
   if (ya) return ya;
   const pid = x.pid!;
-  const col = esExterna(dia, pid) ? "externa_id" : "persona_id";
+  const col = colDe(dia, pid);
   const rol = x.rol === "chofer" ? "chofer" : "a_cargo";
   const r = await db.from("hd_links").select("id").eq("fecha", dia.fecha).eq(col, pid).is("anulado_at", null).maybeSingle();
   if (r.data) await db.from("hd_links").update({ anulado_at: ts(), anulado_motivo: "Cambió de rol" }).eq("id", r.data.id);
@@ -68,7 +61,7 @@ export async function asegurarLink(db: DB, dia: DiaHoja, x: Destinatario): Promi
   }).select("*").single();
   if (n.error) {
     // Dos coordinadores mandando a la vez: el otro lo creó recién. Se usa ése.
-    if (/idx_hd_links_(persona|externa)/.test(n.error.message)) {
+    if (/idx_hd_links_(persona|externa|contratista)/.test(n.error.message)) {
       const otro = await linkVigente(db, dia, x);
       if (otro) return otro;
     }
@@ -110,7 +103,7 @@ export async function preparar(db: DB, fecha: Fecha, pid: string, origen?: strin
   const url = l ? urlHoja(urlBase(origen), String(l.token)) : "(el link se crea al mandarlo)";
   const ahora = minutosDesde(fecha, new Date());
   const texto = mensajeDe(dia, x, { canal: "whatsapp", link: url, ahora });
-  const p = dia.personas.find((q) => q.id === pid);
+  const p = persona(dia, pid);
   return {
     pid, rol: x.rol, fila: filaEnvio(dia, x), estado: estadoEnvio(dia, x).k, texto,
     waLink: texto && l ? linkWhatsapp(celularDe(dia, pid), texto) : null, link: l ? url : null,
@@ -156,7 +149,7 @@ export async function enviar(db: DB, userId: string, fecha: Fecha, pid: string, 
       : tecladoCambio(url, String(l.id), version, chofer);
     const r = await enviarMensaje(chat, texto, teclado);
     await createAdminClient().from("hd_telegram_mensajes").insert({
-      fecha, link_id: l.id, viaje_id: unViajeNuevo, [esExterna(dia, pid) ? "externa_id" : "persona_id"]: pid, chat_id: chat,
+      fecha, link_id: l.id, viaje_id: unViajeNuevo, [colDe(dia, pid)]: pid, chat_id: chat,
       message_id: r.ok ? r.result.message_id : null, tipo: x.rol === "ex" ? "otro" : primera ? "hoja" : unViajeNuevo ? "viaje_nuevo" : "cambio",
       texto, botones: teclado, version, ok: r.ok, error: r.ok ? null : r.error, enviado_por: userId,
     });
@@ -197,7 +190,7 @@ export async function enviarTodos(db: DB, userId: string, fecha: Fecha, origen?:
     if (!x.pid) continue;
     const st = estadoEnvio(dia, x);
     if (!["sinenviar", "anulado", "cambiada", "ex"].includes(st.k)) continue;
-    const p = dia.personas.find((q) => q.id === x.pid);
+    const p = persona(dia, x.pid);
     if (p?.telegram && telegramConfigurado()) {
       try {
         const r = await enviar(db, userId, fecha, x.pid, "telegram", origen, dia);
@@ -235,7 +228,7 @@ export async function reenviar(db: DB, userId: string, fecha: Fecha, pid: string
     if (!chat) throw new Error(`${nombreDe(dia, pid)} no tiene Telegram vinculado.`);
     const texto = mensajeDe(dia, { ...x }, { canal: "telegram", link: url, ahora })!;
     const r = await enviarMensaje(chat, texto, tecladoHoja(url, e.id, e.version, x.rol === "chofer"));
-    await createAdminClient().from("hd_telegram_mensajes").insert({ fecha, link_id: e.id, [esExterna(dia, pid) ? "externa_id" : "persona_id"]: pid, chat_id: chat, message_id: r.ok ? r.result.message_id : null, tipo: "hoja", texto, version: e.version, ok: r.ok, error: r.ok ? null : r.error, enviado_por: userId });
+    await createAdminClient().from("hd_telegram_mensajes").insert({ fecha, link_id: e.id, [colDe(dia, pid)]: pid, chat_id: chat, message_id: r.ok ? r.result.message_id : null, tipo: "hoja", texto, version: e.version, ok: r.ok, error: r.ok ? null : r.error, enviado_por: userId });
     if (!r.ok) return { ok: true, enviado: false, texto: r.error, historialId: null };
   }
   const g = grabador(db);
@@ -259,13 +252,13 @@ export async function anularLink(db: DB, userId: string, fecha: Fecha, pid: stri
 
 /** Un aviso suelto: al operario que entra, al depósito, al capataz que pidió. Telegram si se puede; si no, wa.me. */
 async function avisoSuelto(
-  db: DB, userId: string, fecha: Fecha, texto: string, a: { chat: number | null; celular: string | null; personaId?: string | null; externa?: boolean; viajeId?: string | null; tipo: "operario" | "deposito" | "otro" },
+  db: DB, userId: string, fecha: Fecha, texto: string, a: { chat: number | null; celular: string | null; personaId?: string | null; col?: string; viajeId?: string | null; tipo: "operario" | "deposito" | "otro" },
   canal: CanalEnvio, anotacion: { entidad: string; entidadId: string; accion: string; texto: string },
 ): Promise<Resultado> {
   if (canal === "telegram") {
     if (!a.chat) throw new Error("No tiene Telegram vinculado: mandalo a mano.");
     const r = await enviarMensaje(a.chat, texto);
-    await createAdminClient().from("hd_telegram_mensajes").insert({ fecha, viaje_id: a.viajeId ?? null, ...(a.personaId ? { [a.externa ? "externa_id" : "persona_id"]: a.personaId } : {}), chat_id: a.chat, message_id: r.ok ? r.result.message_id : null, tipo: a.tipo, texto, ok: r.ok, error: r.ok ? null : r.error, enviado_por: userId });
+    await createAdminClient().from("hd_telegram_mensajes").insert({ fecha, viaje_id: a.viajeId ?? null, ...(a.personaId ? { [a.col ?? "persona_id"]: a.personaId } : {}), chat_id: a.chat, message_id: r.ok ? r.result.message_id : null, tipo: a.tipo, texto, ok: r.ok, error: r.ok ? null : r.error, enviado_por: userId });
     if (!r.ok) return { ok: true, enviado: false, texto: r.error, historialId: null, waLink: linkWhatsapp(a.celular, texto), mensaje: texto };
   }
   // Queda en el historial, pero sin Deshacer: un aviso no cambia ninguna fila.
@@ -281,7 +274,7 @@ export async function avisarOperario(db: DB, userId: string, fecha: Fecha, pid: 
   }
   const texto = mensajeOperario(dia, pid, minutosDesde(fecha, new Date()));
   if (!texto) throw new Error(`${nombreDe(dia, pid)} no está en ninguna cuadrilla ese día.`);
-  return avisoSuelto(db, userId, fecha, texto, { chat: await chatDe(pid), celular: celularDe(dia, pid), personaId: pid, externa: esExterna(dia, pid), tipo: "operario" }, canal,
+  return avisoSuelto(db, userId, fecha, texto, { chat: await chatDe(pid), celular: celularDe(dia, pid), personaId: pid, col: colDe(dia, pid), tipo: "operario" }, canal,
     { entidad: "persona", entidadId: pid, accion: "avisar_operario", texto: `Avisado a ${nombreDe(dia, pid)}` });
 }
 
@@ -300,7 +293,7 @@ export async function avisarCapatazPedido(db: DB, userId: string, fecha: Fecha, 
   const v = p?.viajeId ? viajeCalc(dia, p.viajeId) : null;
   if (!p || !v || !p.pidioId) throw new Error("Ese pedido no está en un camión o no lo pidió nadie de una cuadrilla.");
   void pedidosDeViaje;
-  return avisoSuelto(db, userId, fecha, mensajeCapatazPedido(dia, p, v)!, { chat: await chatDe(p.pidioId), celular: celularDe(dia, p.pidioId), personaId: p.pidioId, externa: esExterna(dia, p.pidioId), tipo: "otro" }, canal,
+  return avisoSuelto(db, userId, fecha, mensajeCapatazPedido(dia, p, v)!, { chat: await chatDe(p.pidioId), celular: celularDe(dia, p.pidioId), personaId: p.pidioId, col: colDe(dia, p.pidioId), tipo: "otro" }, canal,
     { entidad: "pedido", entidadId: pedidoId, accion: "avisar_capataz", texto: `Avisado a ${nombreDe(dia, p.pidioId)}` });
 }
 
@@ -346,7 +339,7 @@ export async function avisarMensaje(
   const elegido: CanalEnvio = canal === "auto" ? (chat && telegramConfigurado() ? "telegram" : "manual") : canal;
   const quien = aDeposito ? "al depósito" : `a ${nombreDe(dia, pid)}`;
   const accion = { sacar_rato: "avisar_sacar_rato", tarde: "avisar_tarde", vuelven_solos: "avisar_vuelven_solos", lista_carga: "avisar_deposito_lista" }[a.tipo];
-  const r = await avisoSuelto(db, userId, fecha, texto, { chat, celular, personaId: pid, externa: pid ? esExterna(dia, pid) : false, viajeId, tipo: aDeposito ? "deposito" : "otro" }, elegido,
+  const r = await avisoSuelto(db, userId, fecha, texto, { chat, celular, personaId: pid, col: pid ? colDe(dia, pid) : undefined, viajeId, tipo: aDeposito ? "deposito" : "otro" }, elegido,
     { entidad: aDeposito ? "viaje" : "persona", entidadId: aDeposito ? (viajeId ?? "lista_carga") : pid!, accion, texto: `Avisado ${quien}${elegido === "telegram" ? " (Telegram)" : " (a mano)"}` });
   return { ...r, para: aDeposito ? `${dep.nombre}${dep.telefono ? ` · ${dep.telefono}` : ""}` : `${nombreDe(dia, pid)}${celular ? ` · ${celular}` : " · sin celular cargado"}`, canal: elegido };
 }
@@ -357,14 +350,11 @@ export type EstadoTelegram = { configurado: boolean; bot: string | null; vincula
 
 export async function estadoTelegram(): Promise<EstadoTelegram> {
   const adm = createAdminClient();
-  const [a, b] = await Promise.all([
-    adm.from("personal").select("id, telegram_usuario, telegram_vinculado_at").not("telegram_chat_id", "is", null),
-    adm.from("pan_personas_externas").select("id, telegram_usuario, telegram_vinculado_at").not("telegram_chat_id", "is", null),
-  ]);
+  const rs = await Promise.all(ORIGENES.map((o) => adm.from(o.tabla).select("id, telegram_usuario, telegram_vinculado_at").not("telegram_chat_id", "is", null)));
   const bot = telegramConfigurado() ? await usuarioDelBot() : null;
   return {
     configurado: telegramConfigurado(), bot,
-    vinculados: [...(a.data ?? []), ...(b.data ?? [])].map((x) => ({ personaId: String(x.id), usuario: (x.telegram_usuario as string) ?? null, desde: (x.telegram_vinculado_at as string) ?? null })),
+    vinculados: rs.flatMap((r) => (r.data ?? []) as Fila[]).map((x) => ({ personaId: String(x.id), usuario: (x.telegram_usuario as string) ?? null, desde: (x.telegram_vinculado_at as string) ?? null })),
   };
 }
 
@@ -376,11 +366,10 @@ export async function linkDeVinculacion(userId: string, pid: string): Promise<{ 
   const bot = await usuarioDelBot();
   if (!bot) throw new Error("El bot de Telegram no está configurado (faltan TELEGRAM_BOT_TOKEN o TELEGRAM_BOT_USERNAME).");
   const adm = createAdminClient();
-  const p = await adm.from("personal").select("id, apellido, telefono").eq("id", pid).maybeSingle();
-  const x = p.data ? null : (await adm.from("pan_personas_externas").select("id, apellido, telefono").eq("id", pid).maybeSingle()).data;
-  const fila = p.data ?? x;
-  if (!fila) throw new Error("Esa persona no existe.");
-  const col = p.data ? "persona_id" : "externa_id";
+  const o = await origenDe(pid);
+  if (!o) throw new Error("Esa persona no existe.");
+  const fila = ((await adm.from(o.tabla).select(`id, ${o.tel}`).eq("id", pid).maybeSingle()).data ?? {}) as Fila;
+  const col = o.col;
   await adm.from("hd_telegram_codigos").update({ expira_at: ts() }).eq(col, pid).is("usado_at", null);
   const codigo = nuevoCodigoTelegram();
   const r = await adm.from("hd_telegram_codigos").insert({ codigo, [col]: pid, creado_por: userId });
@@ -388,14 +377,13 @@ export async function linkDeVinculacion(userId: string, pid: string): Promise<{ 
   const link = linkVinculacion(bot, codigo);
   const texto = `Hola, te escribimos de Andamios Buenos Aires. Tocá este link para recibir tus hojas del día por Telegram: ${link}`;
   await anotar(userId, { fecha: null, entidad: "telegram", entidadId: pid, accion: "link_vinculacion", texto: "Link de vinculación de Telegram generado" });
-  return { link, waLink: linkWhatsapp((fila.telefono as string) ?? null, texto), texto };
+  return { link, waLink: linkWhatsapp((fila[o.tel] as string) ?? null, texto), texto };
 }
 
 export async function desvincular(userId: string, pid: string): Promise<Resultado> {
   const adm = createAdminClient();
   const v = { telegram_chat_id: null, telegram_usuario: null, telegram_vinculado_at: null };
-  await adm.from("personal").update(v).eq("id", pid);
-  await adm.from("pan_personas_externas").update(v).eq("id", pid);
+  await Promise.all(ORIGENES.map((o) => adm.from(o.tabla).update(v).eq("id", pid)));
   const id = await anotar(userId, { fecha: null, entidad: "telegram", entidadId: pid, accion: "desvincular", texto: "Telegram desvinculado" });
   return { ok: true, texto: "Telegram desvinculado: las hojas se le mandan a mano", historialId: id || null };
 }

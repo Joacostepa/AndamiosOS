@@ -12,8 +12,9 @@ import {
   addDia, aCargoDe, ausenciaDe, calcVeh, choferDe, cNombre, cuadrilla, cuadrillasActivas, ddmm, diaSemana, encTxt, esHoy,
   genteDe, hm, hojaDe, hojaDeCuadrilla, horaTxt, laC, lugar, nombreDe, normalizar, normHora, nuevosEnHoja, obrasCon,
   obrasDe, panelGente, parcialDe, patente, persona, prevista, recibeDe, todoDe, todoVeh, vanDe, vehiculo, viajeCalc,
-  viajesCalc, viajesChofer, choferDelCamion, vencimientosTxt, type ViajeCalc,
+  viajesCalc, viajesChofer, choferDelCamion, vencimientosTxt, cuadrillasDeContratista, type ViajeCalc,
 } from "./estado.ts";
+import { resumenContratistas } from "./contratistas.ts";
 
 const N = (dia: DiaHoja, id: string | null | undefined) => nombreDe(dia, id);
 
@@ -113,10 +114,13 @@ export function chipsDe(dia: DiaHoja, c: number): Chip[] {
   });
 }
 
-/** "Quiénes van 5 de 5 (con Borda)". */
-export function quienesVan(dia: DiaHoja, c: number): { van: number; prevista: number; con: string | null } {
+/** "Quiénes van 5 de 5 (3 de Quintana, con Borda)". */
+export function quienesVan(dia: DiaHoja, c: number): { van: number; prevista: number; con: string | null; contratistas: string | null } {
   const h = hojaDeCuadrilla(dia, c);
-  return { van: vanDe(dia, c), prevista: prevista(dia, c), con: h && h.modo === "todo_el_dia" && h.choferId ? N(dia, h.choferId) : null };
+  return {
+    van: vanDe(dia, c), prevista: prevista(dia, c), con: h && h.modo === "todo_el_dia" && h.choferId ? N(dia, h.choferId) : null,
+    contratistas: resumenContratistas(dia, c),
+  };
 }
 
 export type Opcion = { value: string; label: string; aviso?: boolean };
@@ -156,7 +160,7 @@ export function opcionesVehiculo(dia: DiaHoja, c: number): Opcion[] {
   });
 }
 
-export type Sugerencia = { pid: string; nombre: string; s: string; deshabilitada: boolean };
+export type Sugerencia = { pid: string; nombre: string; s: string; deshabilitada: boolean; contratista?: boolean };
 
 /** El autocompletar de "+ Agregar" (sugHTML): hasta 6, primero los sin asignar que empiezan así. */
 export function sugerenciasAgregar(dia: DiaHoja, c: number, q: string): Sugerencia[] {
@@ -173,6 +177,18 @@ export function sugerenciasAgregar(dia: DiaHoja, c: number, q: string): Sugerenc
       const a = ausenciaDe(dia, p.id);
       const s = de === c ? "ya está acá" : a ? `no viene (${TIPO_AUSENCIA_TXT[a.tipo]})` : de != null ? `está en ${laC(dia, de)}` : "sin asignar";
       return { pid: p.id, nombre: p.nombre, s, deshabilitada: de === c || !!a };
+    })
+    .concat(sugerenciasContratista(dia, c, n));
+}
+
+/** Los contratistas activos que coinciden: elegirlos suma 1 de su gente a esa cuadrilla. */
+function sugerenciasContratista(dia: DiaHoja, c: number, n: string): Sugerencia[] {
+  return (dia.contratistas ?? [])
+    .filter((k) => k.activo && normalizar(k.nombre).includes(n))
+    .slice(0, 3)
+    .map((k) => {
+      const ya = cuadrillasDeContratista(dia, k.id).find((x) => x.c === c)?.cantidad ?? 0;
+      return { pid: k.id, nombre: k.nombre, s: ya ? `contratista · ya van ${ya} · +1` : "contratista · +1", deshabilitada: false, contratista: true };
     });
 }
 

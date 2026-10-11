@@ -16,8 +16,9 @@ import type { DiaHoja, Diferencia, Minutos } from "./tipos.ts";
 import {
   cNombre, cap, choferDe, encTxt, envioDe, esHoy, estadoEnvio, fechaMensaje, hCorta, hm, hm5, horaTxt, laC, lowFirst,
   lugar, nombreDe, normHora, obrasCon, patente, recibeDe, textoViaje, todoDe, vehiculoNombre, viajesChofer, yList,
-  cortoV, hojaDeCuadrilla, hojaDe, aCargoDe, suspendida, type Destinatario, type ViajeCalc,
+  cortoV, hojaDeCuadrilla, hojaDe, aCargoDe, suspendida, persona, genteDe, type Destinatario, type ViajeCalc,
 } from "./estado.ts";
+import { vanEnPalabras } from "./contratistas.ts";
 
 export type Canal = "telegram" | "whatsapp";
 type Opts = { canal: Canal; link: string | null; ahora: Minutos };
@@ -36,7 +37,9 @@ export function mensajeHoja(dia: DiaHoja, pid: string, c: number, o: Opts): stri
   const aCargo = aCargoDe(h);
   const quien = aCargo === pid ? "a cargo vos" : `a cargo ${nombreDe(dia, aCargo) || "nadie todavía"}; la hoja te llega a vos`;
   const chof = h.modo === "lleva_trae" ? `, te lleva ${nombreDe(dia, choferLleva(dia, c)) || "un chofer"}` : h.modo === "todo_el_dia" ? `, va ${nombreDe(dia, h.choferId)} todo el día` : ", van por su cuenta";
-  return `Hola ${nombreDe(dia, pid)}, tu hoja ${deHoy(dia, o.ahora)}: ${cNombre(dia, c)}, ${quien}. Encuentro ${encTxt(dia, c)}${chof}. ${ob.length > 1 ? "Obras" : "Obra"}: ${yList(ob.map((x) => x.o.corto))}.${mirá(o)} Cuando la veas tocá "Recibido".`;
+  // Con gente de contratistas, quiénes van (el referente no sabe de memoria quién es de ABA).
+  const van = h.contratistas?.length ? ` Van: ${vanEnPalabras(dia, c, genteDe(h))}.` : "";
+  return `Hola ${nombreDe(dia, pid)}, tu hoja ${deHoy(dia, o.ahora)}: ${cNombre(dia, c)}, ${quien}. Encuentro ${encTxt(dia, c)}${chof}. ${ob.length > 1 ? "Obras" : "Obra"}: ${yList(ob.map((x) => x.o.corto))}.${van}${mirá(o)} Cuando la veas tocá "Recibido".`;
 }
 /** El chofer del "lleva" (puede no ser el de la cuadrilla si se lo pasó a otro camión). */
 function choferLleva(dia: DiaHoja, c: number): string | null {
@@ -133,7 +136,7 @@ export function filaEnvio(dia: DiaHoja, x: Destinatario): string {
   }
   if (x.rol === "ex") return `${n} · ya no está a cargo de la ${cNombre(dia, x.c)}`;
   const ob = obrasCon(dia, x.c!);
-  const p = dia.personas.find((q) => q.id === x.pid);
+  const p = persona(dia, x.pid);
   const sinCel = p && !p.celular && !p.telegram ? " · sin celular cargado" : "";
   return `${n} · ${cNombre(dia, x.c)} · ${ob.length === 1 ? ob[0].o.corto : `${ob.length} obras`}${sinCel}`;
 }
@@ -212,7 +215,7 @@ export const TELEGRAM = {
 
 /** Para el panel: "Ortega · Telegram vinculado" / "sin Telegram: se manda a mano". */
 export function canalDe(dia: DiaHoja, pid: string): string {
-  const p = dia.personas.find((x) => x.id === pid);
+  const p = persona(dia, pid);
   if (!p) return "";
   if (p.telegram) return "Telegram";
   return p.celular ? "WhatsApp (a mano)" : "sin celular cargado";

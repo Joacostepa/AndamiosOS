@@ -121,7 +121,36 @@ export type Persona = {
   telegram: boolean;
   odooEmployeeId: number | null;
   activo: boolean;
+  /**
+   * El REFERENTE de un contratista (hd_contratistas), visto como persona para recibir la
+   * hoja: el id es el del contratista y el nombre, el del contratista ("Quintana"). No está
+   * en `DiaHoja.personas`: lo agrega estado.ts (ctx) para que nombreDe(), persona(), los
+   * envíos y los mensajes lo traten como a cualquiera que recibe la hoja.
+   */
+  contratista?: boolean;
 };
+
+/**
+ * Un contratista (mano de obra tercerizada, decisiones del dueño del 10/10 noche): no está
+ * en Legajos ni en Odoo; de su gente sólo se sabe la cantidad. Se le paga por persona y
+ * jornada.
+ */
+export type Contratista = {
+  id: string;
+  /** "Quintana": así se nombra en pantalla ("+3 de Quintana") y en los mensajes. */
+  nombre: string;
+  /** Quien recibe la hoja cuando el contratista está a cargo ("Tomás Quintana"). */
+  referente: string | null;
+  celular: string | null;
+  telegram: boolean;
+  /** Por persona y jornada, en pesos. null = no se cargó. */
+  valorJornada: number | null;
+  nota: string | null;
+  activo: boolean;
+};
+
+/** Cuántos van de un contratista en una hoja (0 = todavía no se sabe cuántos). */
+export type ContratistaEnHoja = { id: string; contratistaId: string; cantidad: number; nota: string | null; orden: number };
 
 export type Vehiculo = {
   id: string;
@@ -227,6 +256,10 @@ export type Hoja = {
   origen: string;
   version: number;
   integrantes: Integrante[];
+  /** La gente de contratistas que va en esta hoja (sólo cantidades). */
+  contratistas: ContratistaEnHoja[];
+  /** La hoja está a cargo de un contratista: su referente la recibe. */
+  aCargoContratistaId: string | null;
 };
 
 /** Destino u origen de un viaje o pedido: una obra, un lugar frecuente o texto. */
@@ -376,6 +409,11 @@ export type FotoHoja = {
   nota: string | null;
   notas: Record<string, string>;
   instr: string;
+  /**
+   * Cuántos van de cada contratista (id → cantidad). Opcional: las fotos guardadas antes de
+   * los contratistas no lo tienen (se lee como "ninguno").
+   */
+  contr?: Record<string, number>;
 };
 
 export type FotoViaje = {
@@ -492,6 +530,8 @@ export type DiaHoja = {
   suspendidas: Record<number, string>;
   hojas: Hoja[];
   personas: Persona[];
+  /** Todos los contratistas (activos y no: una hoja vieja puede nombrar a uno dado de baja). */
+  contratistas: Contratista[];
   vehiculos: Vehiculo[];
   camiones: CamionDia[];
   lugares: Lugar[];

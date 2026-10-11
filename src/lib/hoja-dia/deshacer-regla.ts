@@ -19,6 +19,8 @@ export type CambioHistorial = { tabla: string; id: string; antes: FilaJson | nul
 /** Las tablas del módulo que el Deshacer puede escribir (con la sesión: decide la RLS). */
 export const TABLAS_HD = [
   "hd_hojas", "hd_integrantes", "hd_camiones_dia", "hd_viajes", "hd_pedidos", "hd_instrucciones", "hd_ausencias", "hd_links", "hd_lugares",
+  // Contratistas (20261011000002): el alta y la edición, y cuántos van en cada hoja.
+  "hd_contratistas", "hd_hoja_contratistas",
 ] as const;
 
 /** Legajos: sólo estas columnas, sólo actualizar (lo escribe "Cargar celular" / "Puede estar a cargo"). */
@@ -29,7 +31,7 @@ export const COLUMNAS_LEGAJO: Record<string, readonly string[]> = {
 
 /** Las entidades que anota el módulo (la fila de historial tiene que ser de una de éstas). */
 export const ENTIDADES = [
-  "hoja", "integrante", "viaje", "pedido", "ausencia", "instruccion", "camion", "link", "telegram", "lugar", "precarga", "persona",
+  "hoja", "integrante", "viaje", "pedido", "ausencia", "instruccion", "camion", "link", "telegram", "lugar", "precarga", "persona", "contratista",
 ] as const;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

@@ -18,8 +18,9 @@ import {
   aCargoDe, cNombre, cap, choferDe, cuadrillaDeViaje, diaSemana, encTxt, envioDe, estadoPedido, fechaMensaje, fmtFrases,
   frLargo, genteDe, hCorta, hm, hm5, hojaDeCuadrilla, horaTxt, lowFirst, lugar, lugarDeKey, nombreDe, normHora, obrasCon,
   pedidosDeViaje, recibeDe, suspendida, textoViaje, todoDe, vehiculo, vehiculoNombre, viajesCalc, viajesChofer,
-  type ViajeCalc,
+  persona, contratistasDe, aCargoContratista, vanDe, type ViajeCalc,
 } from "./estado.ts";
+import { vanEnPalabras } from "./contratistas.ts";
 
 // ═══════════════════════════ Tipos (los usa la pantalla) ══════════════════════
 
@@ -65,6 +66,13 @@ export type GentePublica = {
   chofer: boolean;
   nota: string | null;
   nuevo: boolean;
+  /**
+   * Gente de un contratista: `nombre` es el del contratista y `cantidad`, cuántos van
+   * ("3 de Quintana"). Sin nombres: de su gente sólo se sabe la cantidad. El teléfono es el
+   * del referente. Opcional: las vistas guardadas en el celular de antes no lo tienen.
+   */
+  cantidad?: number;
+  contratista?: boolean;
 };
 
 export type ViajePublico = {
@@ -144,6 +152,10 @@ export type VistaCapataz = Comun & {
   situacion: "ok"; rol: "a_cargo"; cuadrilla: string; aCargo: string | null; vos: boolean; nota: string | null; encuentro: string;
   chofer: ChoferDeHoja | null;
   obras: ObraPublica[]; gente: GentePublica[]; tuPedido: TuPedido | null;
+  /** Cuántos van (la gente, la de los contratistas y el chofer de todo el día). Opcional por las vistas viejas guardadas. */
+  van?: number;
+  /** "3 de Quintana + Ramírez, Pérez". */
+  vanTxt?: string;
 };
 export type VistaChofer = Comun & {
   situacion: "ok"; rol: "chofer"; vehiculo: string | null;
@@ -182,7 +194,7 @@ export type OpcionesVista = {
 };
 
 export const mapsUrl = (dir: string | null) => (dir ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${dir}, Buenos Aires`)}` : null);
-const telDe = (dia: DiaHoja, pid: string | null | undefined) => (pid ? dia.personas.find((p) => p.id === pid)?.celular ?? null : null);
+const telDe = (dia: DiaHoja, pid: string | null | undefined) => persona(dia, pid)?.celular ?? null;
 
 const TIPOS_REMITO: TipoViaje[] = ["compra", "lleva_material", "trae_material", "entre_depositos"];
 /** ¿Después de "Hecho" se ofrece la foto del remito? (§12: compras y viajes de material). */
@@ -353,8 +365,18 @@ export function armarVista(dia: DiaHoja, link: LinkVista, ahora: number, op: Opc
       nombre: nombreDe(dia, p), telefono: telDe(dia, p), aCargo: p === aCargo, chofer: false,
       nota: h.integrantes.find((i) => i.personaId === p)?.nota ?? null, nuevo: !!base && !!comun.cambio && !base.gente.includes(p),
     }));
+    // La gente de los contratistas: primero, como "3 de Quintana" (sin nombres), con el
+    // teléfono del referente. "nuevo" si no estaba en lo último que confirmó.
+    const kCargo = aCargoContratista(h);
+    const kBase = base?.contr ?? {};
+    gente.unshift(...contratistasDe(h).map((x) => ({
+      nombre: nombreDe(dia, x.contratistaId), telefono: telDe(dia, x.contratistaId), aCargo: x.contratistaId === kCargo, chofer: false,
+      nota: x.nota, nuevo: !!base && !!comun.cambio && !(x.contratistaId in kBase), cantidad: x.cantidad, contratista: true,
+    })));
     if (h.modo === "todo_el_dia" && h.choferId) gente.push({ nombre: nombreDe(dia, h.choferId), telefono: telDe(dia, h.choferId), aCargo: false, chofer: true, nota: null, nuevo: false });
+    const conChofer = [...genteDe(h), ...(h.modo === "todo_el_dia" && h.choferId ? [h.choferId] : [])];
     return {
+      van: vanDe(dia, c), vanTxt: vanEnPalabras(dia, c, conChofer),
       ...comun, situacion: "ok", rol: "a_cargo", cuadrilla: cNombre(dia, c), aCargo: aCargo ? nombreDe(dia, aCargo) : null, vos: aCargo === pid,
       nota: h.nota, encuentro: encTxt(dia, c), chofer: choferDeHoja(dia, c), obras: obrasPublicas(dia, c, pid, ahora, op), gente,
       tuPedido: tuPedido(dia, pid, ahora),
@@ -394,8 +416,12 @@ export function armarVista(dia: DiaHoja, link: LinkVista, ahora: number, op: Opc
     ...comun, situacion: "ok", rol: "chofer", vehiculo: vehId ? vehiculoNombre(dia, vehId) : null,
     todo: td != null && hTd ? {
       cuadrilla: cNombre(dia, td), aCargo: nombreDe(dia, aCargoTd) || null, aCargoTel: telDe(dia, aCargoTd), encuentro: encTxt(dia, td), nota: hTd.nota,
-      obras: obrasPublicas(dia, td, pid, ahora, op), gente: genteDe(hTd).map((p) => ({ nombre: nombreDe(dia, p), aCargo: p === aCargoTd })),
-      van: hTd.integrantes.length + 1,
+      obras: obrasPublicas(dia, td, pid, ahora, op),
+      gente: [
+        ...contratistasDe(hTd).map((x) => ({ nombre: x.cantidad > 0 ? `${x.cantidad} de ${nombreDe(dia, x.contratistaId)}` : nombreDe(dia, x.contratistaId), aCargo: x.contratistaId === aCargoTd })),
+        ...genteDe(hTd).map((p) => ({ nombre: nombreDe(dia, p), aCargo: p === aCargoTd })),
+      ],
+      van: vanDe(dia, td),
     } : null,
     viajes, ahoraId: vs.find((v) => v.estado === "planeado")?.id ?? null, motivosNoPude: dia.parametros.motivosNoPude,
   };

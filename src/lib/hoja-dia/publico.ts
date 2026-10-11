@@ -21,6 +21,7 @@ import { codigoValido, situacionLink, tokenValido } from "./tokens";
 import { anotar, avisarPantallas, conGrabador, grabador, leerDia } from "./servicio";
 import { porQueNoPuedeMarcar, recibidoVigente } from "./reglas-publico";
 import { MAX_FOTO, tipoImagen } from "./archivo-seguro";
+import { idDeFila, origenDeFila, quienDeChat, soltarChat } from "./quien";
 import { deshacerEstadoViaje, marcarHecho, marcarNoPude } from "./acciones";
 import {
   contestarBoton, decodificar, editarBotones, editarMensaje, enviarMensaje, leerStart, tecladoMotivos, tecladoViaje, type Teclado,
@@ -64,7 +65,7 @@ export async function vistaPublica(token: string): Promise<{ vista: VistaPublica
   const dia = await leerDia(fecha, { cacheOdoo: true });
   const link: LinkVista = {
     rol: l.rol === "a_cargo" ? "a_cargo" : "chofer",
-    personaId: String(l.persona_id ?? l.externa_id),
+    personaId: idDeFila(l),
     cuadrillaOdooId: l.cuadrilla_odoo_id != null ? Number(l.cuadrilla_odoo_id) : null,
     anulado: !!l.anulado_at,
     anuladoPorRol: !!l.anulado_at && /rol|a cargo/i.test(String(l.anulado_motivo ?? "")),
@@ -120,9 +121,11 @@ export async function confirmarRecibido(l: Fila, at: string, origen: "link" | "t
 
 async function nombreDeLink(l: Fila): Promise<string> {
   const adm = createAdminClient();
-  const t = l.persona_id ? "personal" : "pan_personas_externas";
-  const r = await adm.from(t).select("apellido").eq("id", l.persona_id ?? l.externa_id).maybeSingle();
-  return r.data ? cap(String(r.data.apellido).toLowerCase()) : "El chofer";
+  const o = origenDeFila(l);
+  const r = await adm.from(o.tabla).select(o.nombre).eq("id", idDeFila(l)).maybeSingle();
+  const nombre = (r.data as Record<string, unknown> | null)?.[o.nombre];
+  // El contratista se nombra como está cargado ("Quintana"); las personas, del apellido.
+  return nombre ? (o.tabla === "hd_contratistas" ? String(nombre) : cap(String(nombre).toLowerCase())) : "El chofer";
 }
 
 /** El viaje, si este chofer lo puede marcar (reglas-publico.ts). Si no, tira con el porqué. */
@@ -137,7 +140,7 @@ async function viajeDelChofer(l: Fila, viajeId: string): Promise<Fila> {
   }
   const no = porQueNoPuedeMarcar(
     v ? { fecha: String(v.fecha), estado: String(v.estado), chofer_id: (v.chofer_id as string) ?? null, vehiculo_id: (v.vehiculo_id as string) ?? null } : null,
-    { fecha: String(l.fecha), rol: String(l.rol), personaId: String(l.persona_id ?? l.externa_id) },
+    { fecha: String(l.fecha), rol: String(l.rol), personaId: idDeFila(l) },
     delCamion,
   );
   if (no) throw new Error(no);
@@ -318,14 +321,10 @@ type UpdateTelegram = {
   callback_query?: { id: string; data?: string; from: { id: number; username?: string }; message?: { message_id: number; text?: string; chat: { id: number }; reply_markup?: { inline_keyboard: Teclado } } };
 };
 
-/** La persona de un chat de Telegram (Legajos o externa). */
-async function personaDeChat(chat: number): Promise<{ id: string; tabla: "personal" | "pan_personas_externas"; apellido: string } | null> {
-  const adm = createAdminClient();
-  for (const tabla of ["personal", "pan_personas_externas"] as const) {
-    const r = await adm.from(tabla).select("id, apellido").eq("telegram_chat_id", chat).maybeSingle();
-    if (r.data) return { id: String(r.data.id), tabla, apellido: String(r.data.apellido) };
-  }
-  return null;
+/** Quién es el dueño de un chat de Telegram (Legajos, externa o el referente de un contratista). */
+async function personaDeChat(chat: number): Promise<{ id: string; col: string; apellido: string; contratista: boolean } | null> {
+  const q = await quienDeChat(chat);
+  return q ? { id: q.id, col: q.origen.col, apellido: q.nombre, contratista: q.origen.tabla === "hd_contratistas" } : null;
 }
 const nombreCorto = (apellido: string) => cap(apellido.toLowerCase().replace(/(^|\s)\S/g, (x) => x.toUpperCase()).trim());
 
@@ -346,21 +345,21 @@ export async function procesarUpdate(u: UpdateTelegram): Promise<void> {
     const codigo = leerStart(u.message.text);
     if (codigo == null) return;
     const ya = await personaDeChat(chat);
-    if (!codigo) { await enviarMensaje(chat, ya ? TELEGRAM.yaVinculado(nombreCorto(ya.apellido)) : TELEGRAM.sinCodigo(coordinador)); return; }
+    if (!codigo) { await enviarMensaje(chat, ya ? TELEGRAM.yaVinculado(ya.contratista ? ya.apellido : nombreCorto(ya.apellido)) : TELEGRAM.sinCodigo(coordinador)); return; }
     if (!codigoValido(codigo)) { await enviarMensaje(chat, TELEGRAM.codigoInvalido(coordinador)); return; }
     // Se marca usado EN LA MISMA sentencia que lo valida: dos /start con el mismo código a la
     // vez no vinculan dos chats.
     const c = await adm.from("hd_telegram_codigos").update({ usado_at: ts(), chat_id: chat }).eq("codigo", codigo).is("usado_at", null).gt("expira_at", ts()).select("*").maybeSingle();
     if (!c.data) { await enviarMensaje(chat, TELEGRAM.codigoInvalido(coordinador)); return; }
-    const tabla = c.data.persona_id ? "personal" : "pan_personas_externas";
-    const pid = String(c.data.persona_id ?? c.data.externa_id);
+    const o = origenDeFila(c.data);
+    const pid = idDeFila(c.data);
     // Un chat, una persona: si el chat estaba en otro legajo (un teléfono que cambió de mano), se suelta.
-    await adm.from("personal").update({ telegram_chat_id: null, telegram_usuario: null, telegram_vinculado_at: null }).eq("telegram_chat_id", chat).neq("id", pid);
-    await adm.from("pan_personas_externas").update({ telegram_chat_id: null, telegram_usuario: null, telegram_vinculado_at: null }).eq("telegram_chat_id", chat).neq("id", pid);
-    const p = await adm.from(tabla).update({ telegram_chat_id: chat, telegram_usuario: u.message.from?.username ?? null, telegram_vinculado_at: ts() }).eq("id", pid).select("apellido").single();
-    const nombre = nombreCorto(String(p.data?.apellido ?? ""));
+    await soltarChat(chat, pid);
+    const p = await adm.from(o.tabla).update({ telegram_chat_id: chat, telegram_usuario: u.message.from?.username ?? null, telegram_vinculado_at: ts() }).eq("id", pid).select(o.nombre).single();
+    const crudo = String((p.data as Record<string, unknown> | null)?.[o.nombre] ?? "");
+    const nombre = o.tabla === "hd_contratistas" ? crudo : nombreCorto(crudo);
     const r = await enviarMensaje(chat, TELEGRAM.vinculado(nombre));
-    await adm.from("hd_telegram_mensajes").insert({ [c.data.persona_id ? "persona_id" : "externa_id"]: pid, chat_id: chat, message_id: r.ok ? r.result.message_id : null, tipo: "vinculado", texto: TELEGRAM.vinculado(nombre), ok: r.ok, error: r.ok ? null : r.error });
+    await adm.from("hd_telegram_mensajes").insert({ [o.col]: pid, chat_id: chat, message_id: r.ok ? r.result.message_id : null, tipo: "vinculado", texto: TELEGRAM.vinculado(nombre), ok: r.ok, error: r.ok ? null : r.error });
     await anotar(null, { fecha: null, entidad: "telegram", entidadId: pid, accion: "vinculado", texto: `${nombre} vinculó su Telegram`, origen: "telegram", porTexto: nombre });
     return;
   }
@@ -380,7 +379,7 @@ export async function procesarUpdate(u: UpdateTelegram): Promise<void> {
   try {
     if (cb.a === "recibido" || cb.a === "entendido") {
       const l = (await adm.from("hd_links").select("*").eq("id", cb.link).maybeSingle()).data;
-      if (!l || String(l.persona_id ?? l.externa_id) !== quien.id) { await contestarBoton(q.id, TELEGRAM.otroChat); return; }
+      if (!l || idDeFila(l) !== quien.id) { await contestarBoton(q.id, TELEGRAM.otroChat); return; }
       if (l.anulado_at || situacionLink({ fecha: String(l.fecha), expira_at: String(l.expira_at), anulado_at: null }) === "vencido") { await contestarBoton(q.id, TELEGRAM.linkVencido(coordinador)); return; }
       // I2: el botón de un mensaje viejo no confirma un cambio que la persona no vio.
       if (!recibidoVigente(cb.version, Number(l.version ?? 0))) {
@@ -398,7 +397,7 @@ export async function procesarUpdate(u: UpdateTelegram): Promise<void> {
     }
     const v = (await adm.from("hd_viajes").select("id, fecha, estado").eq("id", cb.viaje).maybeSingle()).data;
     if (!v) { await contestarBoton(q.id, "Ese viaje ya no existe."); return; }
-    const l = (await adm.from("hd_links").select("*").eq("fecha", v.fecha).eq(quien.tabla === "personal" ? "persona_id" : "externa_id", quien.id).is("anulado_at", null).maybeSingle()).data;
+    const l = (await adm.from("hd_links").select("*").eq("fecha", v.fecha).eq(quien.col, quien.id).is("anulado_at", null).maybeSingle()).data;
     if (!l) { await contestarBoton(q.id, TELEGRAM.otroChat); return; }
     if (situacionLink({ fecha: String(l.fecha), expira_at: String(l.expira_at), anulado_at: null }) === "vencido") { await contestarBoton(q.id, TELEGRAM.linkVencido(coordinador)); return; }
     // I3: un viaje que la oficina sacó no se marca; el mensaje pierde sus botones.

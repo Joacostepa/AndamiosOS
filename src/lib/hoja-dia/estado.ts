@@ -936,17 +936,59 @@ export type CruceChofer = { ch: string; a: ViajeCalc; b: ViajeCalc };
 /**
  * Los choques reales de chofer entre camiones (decisión del dueño, 11/10): el mismo chofer
  * con dos viajes en camiones distintos que se pisan. Dentro de un mismo camión ya los dice
- * calcVeh (una hora fija que lo anterior no deja cumplir).
+ * calcVeh (una hora fija que lo anterior no deja cumplir). Usar varios camiones en el día
+ * vale si los horarios no se pisan. Un par donde uno de los viajes ya choca con el "todo el
+ * día" del chofer (crucesTodoElDia) no se repite: ese aviso ya lo dice.
  */
 export function crucesChofer(dia: DiaHoja): CruceChofer[] {
   return memo(dia, "crucesCh", () => {
     const out: CruceChofer[] = [];
+    const enTodo = new Set(crucesTodoElDia(dia).map((x) => x.v.id));
     const choferes = new Set(viajesCalc(dia).map((v) => choferDe(dia, v)).filter((x): x is string => !!x));
     for (const ch of choferes) {
       const vs = viajesChofer(dia, ch).filter((v) => v.estado === "planeado");
       for (let i = 1; i < vs.length; i++) {
         const a = vs[i - 1], b = vs[i];
+        if (enTodo.has(a.id) || enTodo.has(b.id)) continue;
         if (a.vehiculoId !== b.vehiculoId && b.t < a.fin - 5) out.push({ ch, a, b });
+      }
+    }
+    return out;
+  });
+}
+
+/**
+ * Un choque de "todo el día": el chofer queda con una cuadrilla (`c`, renglón `filaId`, en
+ * el vehículo `veh`) y además tiene el viaje `v` en OTRO vehículo dentro de su jornada.
+ */
+export type CruceTodo = { ch: string; v: ViajeCalc; c: number; filaId: string; veh: string | null };
+
+/**
+ * Los choferes "todo el día" con un viaje en otro vehículo a una hora de su jornada (del
+ * encuentro al fin de la jornada), sea de otra cuadrilla o de la MISMA (domingo 11/10:
+ * Conte todo el día con el Agrale hidrogrúa AB 831 LC y el material de Ing. Huergo, la obra
+ * de su cuadrilla, a las 8:00 en el Iveco AB 799 CA, con Conte elegido a mano: no puede
+ * manejar los dos). Los viajes en el mismo vehículo de todo el día no son de acá (si son de
+ * otra cuadrilla, "Si lo sacás, la 1 se queda sin…"). Fuera de la jornada no choca. Si el
+ * renglón no tiene vehículo, sólo los viajes de otra cuadrilla (no se sabe con qué va).
+ * Un viaje sale una vez (con el primer renglón con el que choca).
+ */
+export function crucesTodoElDia(dia: DiaHoja): CruceTodo[] {
+  return memo(dia, "crucesTodo", () => {
+    const out: CruceTodo[] = [];
+    const fin = toMin(P(dia).finJornada) ?? 17 * 60;
+    for (const c of cuadrillasActivas(dia)) {
+      const h = hojaDeCuadrilla(dia, c)!;
+      const desde = toMin(h.encuentro.hora) ?? 7 * 60;
+      for (const f of vehiculosDe(h)) {
+        if (f.modo !== "todo_el_dia" || !f.choferId) continue;
+        for (const v of viajesChofer(dia, f.choferId)) {
+          if (v.estado !== "planeado" || v.okTodoElDia || v.vehiculoId === f.vehiculoId) continue;
+          if (!f.vehiculoId && cuadrillaDeViaje(dia, v) === c) continue;
+          if (v.t >= fin || v.fin <= desde) continue;
+          if (out.some((x) => x.v.id === v.id)) continue;
+          out.push({ ch: f.choferId, v, c, filaId: f.id, veh: f.vehiculoId });
+        }
       }
     }
     return out;
@@ -999,6 +1041,32 @@ function hayVueltaDespues(dia: DiaHoja, v: Viaje): boolean {
 
 export type DondeAnda = { t: string; tono: "" | "ok" | "amb" | "rojo"; libre?: boolean; sinNoticias?: boolean };
 
+/** "el viaje de las 8:00 a Ing. Huergo" (con "~" si la hora es estimada). */
+export const elViajeTxt = (dia: DiaHoja, v: ViajeCalc) => `el viaje de las ${horaTxt(v)} a ${lugar(dia, v.haciaEf).corto}`;
+
+/**
+ * Si un viaje pendiente tiene un choque rojo sin resolver, por qué, en pocas palabras
+ * ("Conte está todo el día con la Cuadrilla 1"); null si no. Mientras lo tenga, el viaje no
+ * es "sin noticias" (11/10: "dice sin noticias de Conte cuando ya estaba asignado todo el
+ * día"): se muestra sólo el choque.
+ */
+export function choqueDeViaje(dia: DiaHoja, v: ViajeCalc): string | null {
+  if (v.estado !== "planeado") return null;
+  const td = crucesTodoElDia(dia).find((x) => x.v.id === v.id);
+  if (td) return `${nombreDe(dia, td.ch)} está todo el día con la ${cNombre(dia, td.c)}`;
+  const cr = crucesChofer(dia).find((x) => x.b.id === v.id);
+  if (cr) return `${nombreDe(dia, cr.ch)} está ${elVeh(dia, cr.a.vehiculoId, "en el")} a esa hora`;
+  if (v.conflicto) return `${elVeh(dia, v.vehiculoId)} no llega a esa hora`;
+  if (viajesSinChofer(dia).some((x) => x.id === v.id)) return "no tiene chofer";
+  return null;
+}
+
+/**
+ * Dónde anda un camión, en palabras que se entiendan sin conocer el sistema (el encabezado
+ * de la fila de Camiones, §9): "En el depósito · sale a las 7:00", "Hizo Juramento 2145
+ * (7:35) · ahora va a Rivadavia 6150 (~8:15)", "El viaje de las 10:00 a Sanz no está
+ * marcado como hecho".
+ */
 export function dondeAnda(dia: DiaHoja, veh: string, ahora: Minutos): DondeAnda {
   const ts = calcVeh(dia, veh);
   const td = todoVeh(dia, veh);
@@ -1010,29 +1078,35 @@ export function dondeAnda(dia: DiaHoja, veh: string, ahora: Minutos): DondeAnda 
   const done = ts.filter((v) => v.estado === "hecho" || v.estado === "no_pudo");
   const last = done.length ? done.reduce((a, b) => ((a.hechoMin ?? a.t) > (b.hechoMin ?? b.t) ? a : b)) : null;
   const at = (v: ViajeCalc) => v.hechoMin ?? v.t;
+  const proximo = (v: ViajeCalc) => `próximo viaje: ${lowFirst(cortoV(dia, v))} ${horaTxt(v)}`;
   if (td) {
     const ob = obrasCon(dia, td)[0];
     const own = pend[0];
-    let t = `Con la ${cNombre(dia, td)} en ${ob ? ob.o.corto : "—"}`;
+    let t = `Todo el día con la ${cNombre(dia, td)} en ${ob ? ob.o.corto : "—"}`;
     if (hoy && own && own.t <= ahora) t = `${textoViaje(dia, own)} (${horaTxt(own)})`;
-    else if (own) t += ` · después ${lowFirst(cortoV(dia, own))} ${horaTxt(own)}`;
-    else if (hoy && last && ahora >= toMin(p.finJornada)!) t = `Terminó ${hm(at(last))} · con la ${cNombre(dia, td)}`;
+    else if (own) t += ` · ${proximo(own)}`;
+    else if (hoy && last && ahora >= toMin(p.finJornada)!) t = `Terminó a las ${hm(at(last))} · con la ${cNombre(dia, td)}`;
     return { t, tono: "" };
   }
   if (!ts.length) return { t: hoy ? "Sin viajes · en el depósito" : "Sin viajes", tono: "" };
   if (!hoy) {
     if (esPasado(ahora)) return { t: `${ts.length} viajes`, tono: "" };
-    return { t: `Sale ${horaTxt(ts[0])} del depósito · ${ts.length} viajes`, tono: "" };
+    return { t: `Sale del depósito a las ${horaTxt(ts[0])} · ${ts.length} viajes`, tono: "" };
   }
   if (!pend.length) {
     const np = done.filter((v) => v.estado === "no_pudo").length;
-    return { t: `Terminó ${hm(at(last!))} · ${done.length - np} viajes${np ? ` · ${np} no pudo` : ""}`, tono: "ok" };
+    const ok = done.length - np;
+    return { t: `Terminó a las ${hm(at(last!))} · ${ok} ${ok === 1 ? "viaje hecho" : "viajes hechos"}${np ? ` · ${np} no pudo` : ""}`, tono: "ok" };
   }
   const cur = pend[0];
   const curLug = lugar(dia, cur.haciaEf);
   if (cur.tipo === "taller" && cur.t <= ahora) return { t: `En ${curLug.tipo === "vtv" ? "la VTV" : "el taller"} hasta ~${hm5(cur.t + cur.dur)}`, tono: "" };
+  // Ya es la hora de un viaje con un choque rojo sin resolver: se dice el choque, no "sin noticias".
+  const choque = cur.t <= ahora ? choqueDeViaje(dia, cur) : null;
+  if (choque) return { t: `${cap(elViajeTxt(dia, cur))} sigue pendiente: ${choque}`, tono: "rojo" };
+  // Pasó la hora (más la duración y el margen del parámetro) y nadie lo marcó.
   if (ahora > cur.t + cur.dur + p.minutosSinNoticias && (!last || at(last) < cur.t)) {
-    return { t: `Sin noticias desde las ${hm(last ? at(last) : cur.t)} · tenía ${curLug.corto} a las ${hm5(cur.t)}`, tono: "amb", sinNoticias: true };
+    return { t: `${cap(elViajeTxt(dia, cur))} no está marcado como hecho${last ? ` · el anterior se marcó a las ${hm(at(last))}` : ""}`, tono: "amb", sinNoticias: true };
   }
   if (last && last.estado === "no_pudo" && ahora - at(last) <= 15) {
     return { t: `No pudo en ${lugar(dia, last.haciaEf).n} (${lowFirst(last.noPudoMotivo)}) · vuelve al depósito ~${hm(Math.ceil((at(last) + 30) / 5) * 5)}`, tono: "rojo" };
@@ -1041,12 +1115,12 @@ export function dondeAnda(dia: DiaHoja, veh: string, ahora: Minutos): DondeAnda 
     const enDep = !last || last.vuelta || last.estado === "no_pudo" || last.tipo === "compra";
     const llega = last ? last.fin : ahora;
     const donde = enDep ? (llega > ahora ? `en el depósito ~${hm5(llega)}` : "en el depósito") : `en ${lugar(dia, last!.haciaEf).n}`;
-    return { t: `Libre desde las ${hm(last ? at(last) : toMin(p.encuentroDeposito)!)} · ${donde} · después ${lowFirst(cortoV(dia, cur))} ${horaTxt(cur)}`, tono: "ok", libre: true };
+    return { t: `Libre desde las ${hm(last ? at(last) : toMin(p.encuentroDeposito)!)} · ${donde} · ${proximo(cur)}`, tono: "ok", libre: true };
   }
-  if (!done.length && cur.t > ahora) return { t: `En el depósito · sale ${horaTxt(cur)}`, tono: "" };
+  if (!done.length && cur.t > ahora) return { t: `En el depósito · sale a las ${horaTxt(cur)}`, tono: "" };
   const hizo = last ? `Hizo ${lugar(dia, last.haciaEf).n} (${hm(at(last))}) · ` : "";
   if (cur.tipo === "trae_material" && cur.t <= ahora) return { t: `${hizo}ahora cargando en ${curLug.n}`, tono: "" };
-  return { t: `${hizo}ahora hacia ${curLug.n} (${horaTxt(cur)})`, tono: "" };
+  return { t: `${hizo}ahora va a ${curLug.n} (${horaTxt(cur)})`, tono: "" };
 }
 
 // ─── Cerca y libre: ayuda para decidir, nunca decide (§7) ───────────────────
@@ -1376,7 +1450,9 @@ export type Boton = {
    * irCamiones · tablero · esperar · poner · pasarManana · fleteDe · liberar ·
    * sumarContratista (`p` = el contratista, `n` = cuántos sumar) · conLleva (`id` = el viaje de
    * material, `con` = el lleva de la cuadrilla al que se suma o su renglón "Todo el día") ·
-   * choferViaje (`id` = el viaje: elegir quién lo maneja, con el habitual primero).
+   * choferViaje (`id` = el viaje: elegir quién lo maneja, con el habitual primero) ·
+   * pasarA (`id` = el viaje, `veh` = el camión: mover, sin chofer guardado) · noSeHizo (`id`
+   * = el viaje que nadie marcó: cambiar la hora, volver a la cola o anular).
    */
   a: string;
   c?: number;
@@ -1453,11 +1529,10 @@ export function avisosVeh(dia: DiaHoja, veh: string, ahora: Minutos): Aviso[] {
       const hTd = hojaDeCuadrilla(dia, td)!;
       out.push({ k: `todo-${v.id}`, nivel: "amb", ids: [v.id], c: td, t: `${N(filaTodoVeh(dia, veh)?.choferId ?? ch)} está todo el día con la ${cNombre(dia, td)}. Si lo sacás, ${laC(dia, td)} se queda sin ${V.tipo === "hidrogrua" ? "hidrogrúa" : "camión"} de ${hm5(v.t)} a ${hm5(v.fin)}`, bs: [{ l: `Sacarlo un rato y avisar a ${N(aCargoDe(hTd))}`, a: "okTodo", id: v.id }, { l: "Volver a la cola", a: "volverCola", id: v.id }] });
     }
-    // El CHOFER está todo el día con una cuadrilla (en otro vehículo) y maneja este viaje.
-    const tdCh = ch ? todoDe(dia, ch).find((x) => x !== c && x !== td) : undefined;
-    if (ch && tdCh != null && !v.okTodoElDia) {
-      out.push({ k: `todoch-${v.id}`, nivel: "rojo", ids: [v.id], c: tdCh, t: `${N(ch)} está todo el día con la ${cNombre(dia, tdCh)} y este viaje (${lowFirst(cortoV(dia, v))}, ${horaTxt(v)}) también es suyo`, bs: [{ l: "Ver el viaje", a: "verViaje", id: v.id }, { l: "Volver a la cola", a: "volverCola", id: v.id }] });
-    }
+    // El CHOFER está todo el día con una cuadrilla en otro vehículo y este viaje cae en su
+    // jornada (aunque sea de la misma cuadrilla): no puede manejar los dos.
+    const xt = crucesTodoElDia(dia).find((x) => x.v.id === v.id);
+    if (xt) out.push({ k: `todoch-${v.id}`, nivel: "rojo", ids: [v.id], c: xt.c, ch: xt.ch, t: textoCruceTodo(dia, xt), bs: botonesCruceTodo(dia, xt) });
     for (const p of pedidosDeViaje(dia, v.id)) {
       if (p.necesita === "hidrogrua" && V.tipo !== "hidrogrua") out.push({ k: `hid-${v.id}`, nivel: "rojo", ids: [v.id], t: `El pedido necesita hidrogrúa y ${elVeh(dia, V.id)} es ${tipoVehTxt(V)}`, bs: [{ l: "Volver a la cola", a: "volverCola", id: v.id }] });
       if (p.horaLimite && v.t > toMin(p.horaLimite)!) out.push({ k: `hl-${v.id}`, nivel: "rojo", ids: [v.id], t: `Lo necesitan antes de las ${hCorta(normHora(p.horaLimite))} y llega ~${hm5(v.t)}`, bs: [{ l: "Ver el viaje", a: "verViaje", id: v.id }] });
@@ -1473,10 +1548,11 @@ export function avisosVeh(dia: DiaHoja, veh: string, ahora: Minutos): Aviso[] {
   }
   if (esHoy(ahora)) {
     const da = dondeAnda(dia, veh, ahora);
+    // Pasó la hora y nadie lo marcó (con un choque rojo no llega acá: dondeAnda dice el choque).
     if (da.sinNoticias) {
       const cur = ts.find((v) => v.estado === "planeado")!;
       const ch = choferDe(dia, cur);
-      out.push({ k: `sinnot-${veh}`, nivel: "amb", ids: [cur.id], t: `${N(ch)}: ${lowFirst(da.t)}`, bs: [{ l: `Llamar a ${N(ch)}`, a: "llamar", p: ch ?? undefined }, { l: "Marcar hecho", a: "marcarHecho", id: cur.id }] });
+      out.push({ k: `sinnot-${veh}`, nivel: "amb", ids: [cur.id], ch: ch ?? undefined, t: textoSinNoticias(dia, cur), bs: [{ l: "Marcar hecho", a: "marcarHecho", id: cur.id }, ...(ch ? [{ l: `Llamar a ${N(ch)}`, a: "llamar", p: ch }] : []), { l: "No se hizo", a: "noSeHizo", id: cur.id }] });
     }
   }
   if (ts.length) for (const [i, t] of vencimientosTxt(dia, veh).entries()) out.push({ k: `venc-${veh}-${i}`, nivel: "amb", ids: [], t, bs: [] });
@@ -1650,6 +1726,38 @@ export function textoCruceChofer(dia: DiaHoja, x: CruceChofer): string {
   return `${nombreDe(dia, x.ch)} no llega: ${lowFirst(cortoV(dia, x.a))} (${vehTxt(dia, x.a.vehiculoId)}) termina ~${hm5(x.a.fin)} y ${lowFirst(cortoV(dia, x.b))} (${vehTxt(dia, x.b.vehiculoId)}) es a las ${hm5(x.b.t)}`;
 }
 
+/**
+ * "Conte está todo el día con el Agrale hidrogrúa AB 831 LC (Cuadrilla 1) y tiene el material
+ * para Ing. Huergo a las 8:00 en el Iveco AB 799 CA". Sin vehículo en el renglón, "… está
+ * todo el día con la Cuadrilla 1 y tiene …".
+ */
+export function textoCruceTodo(dia: DiaHoja, x: CruceTodo): string {
+  const con = x.veh ? `${elVeh(dia, x.veh, "con el", true)} (${cNombre(dia, x.c)})` : `con la ${cNombre(dia, x.c)}`;
+  return `${nombreDe(dia, x.ch)} está todo el día ${con} y tiene ${lowFirst(queEsViaje(dia, x.v))} a las ${horaTxt(x.v)} ${elVeh(dia, x.v.vehiculoId, "en el", true)}`;
+}
+
+/**
+ * Los botones del choque de todo el día: si es material suelto para la obra de esa cuadrilla,
+ * "Que lo lleve en el Agrale AB 831 LC con la Cuadrilla 1" (el gesto con_lleva con el
+ * renglón: el viaje pasa a ese camión a la hora del encuentro); si es otro viaje suelto,
+ * "Pasarlo al Agrale AB 831 LC" (mover, sin chofer guardado: lo hace el del renglón, y si
+ * es de otra cosa sale "Si lo sacás, la 1 se queda sin…"); siempre "Elegir otro chofer".
+ */
+export function botonesCruceTodo(dia: DiaHoja, x: CruceTodo): Boton[] {
+  const bs: Boton[] = [];
+  const con = x.veh ? llevasParaMaterial(dia, x.v.id).find((y) => y.filaId === x.filaId && !y.lleva) : null;
+  if (con) bs.push({ l: `Que lo lleve en ${elVeh(dia, x.veh)} con la ${cNombre(dia, x.c)}`, a: "conLleva", id: x.v.id, con: con.con });
+  else if (x.veh && !x.v.hojaId) bs.push({ l: `Pasarlo ${elVeh(dia, x.veh, "al")}`, a: "pasarA", id: x.v.id, veh: x.veh });
+  bs.push({ l: "Elegir otro chofer", a: "choferViaje", id: x.v.id });
+  return bs;
+}
+
+/** "El viaje de las 8:00 a Ing. Huergo no está marcado como hecho (Conte)". */
+export const textoSinNoticias = (dia: DiaHoja, v: ViajeCalc) => {
+  const ch = choferDe(dia, v);
+  return `${cap(elViajeTxt(dia, v))} no está marcado como hecho${ch ? ` (${nombreDe(dia, ch)})` : ""}`;
+};
+
 /** Viaje sin avisar al chofer, o aviso que no vio. */
 export function avisosChofer(dia: DiaHoja, ch: string, ahora: Minutos): Aviso[] {
   const out: Aviso[] = [];
@@ -1818,8 +1926,9 @@ export function problemas(dia: DiaHoja, c: number, ahora: Minutos): Problema[] {
           if (tocada(dia, c, o) === c) add({ k: `chdup-${o}`, cruce: true, t: `${N(ch)} está todo el día con la ${cNombre(dia, o)} y con ${laC(dia, c)}`, card: `${N(ch)} ya está todo el día con ${laC(dia, o)}`, bs: [{ l: `Sacarlo de ${laC(dia, o)}`, a: "pasarChofer", c, from: o, p: ch }, { l: "Elegir otro", a: "chEd", c }] });
           else add({ k: `chdup-${c}`, cruce: true, t: `${N(ch)} está todo el día con la ${cNombre(dia, o)} y con ${laC(dia, c)}`, card: `${N(ch)} también figura todo el día en ${laC(dia, o)}`, bs: [{ l: `Ver ${laC(dia, o)}`, a: "irA", c: o }] });
         }
-        // Viajes de otras cuadrillas con este chofer o este vehículo.
-        for (const v of viajesVigentes(dia).filter((v) => v.estado === "planeado" && v.hojaId && v.hojaId !== h.id && (v.tipo === "lleva" || v.tipo === "busca") && !v.okTodoElDia && (choferDe(dia, v) === ch || (!!f.vehiculoId && v.vehiculoId === f.vehiculoId)))) {
+        // Viajes de otras cuadrillas con este vehículo. Los de este chofer en OTRO vehículo
+        // son el choque de todo el día (crucesTodoElDia, abajo): no se dicen dos veces.
+        for (const v of viajesVigentes(dia).filter((v) => v.estado === "planeado" && v.hojaId && v.hojaId !== h.id && (v.tipo === "lleva" || v.tipo === "busca") && !v.okTodoElDia && !!f.vehiculoId && v.vehiculoId === f.vehiculoId)) {
           const vc = cuadrillaDeViaje(dia, v)!;
           const quien = choferDe(dia, v) === ch ? N(ch) : elVeh(dia, f.vehiculoId);
           add({ k: `chmix-${v.id}`, t: `${cap(quien)} está todo el día con ${laC(dia, c)} y ${verboV(v)} a ${laC(dia, vc)} a las ${normHora(v.hora)}`, card: `${cap(quien)} también ${verboV(v)} a ${laC(dia, vc)} a las ${normHora(v.hora)}`, bs: [{ l: "Elegir otro", a: "chEd", c: vc }] });
@@ -1882,6 +1991,13 @@ export function problemas(dia: DiaHoja, c: number, ahora: Minutos): Problema[] {
     if (ca !== c && cb !== c) continue;
     const t = textoCruceChofer(dia, x);
     add({ k: `chch-${x.a.id}-${x.b.id}`, cruce: true, t, card: t, bs: [{ l: "Elegir otro", a: "chEd", c }, { l: "Ver el camión", a: "verCamion", veh: x.b.vehiculoId ?? undefined }] });
+  }
+  // El chofer de todo el día con un viaje en otro vehículo dentro de su jornada: en la
+  // tarjeta de su cuadrilla y en la del viaje (si es otra); en la bandeja, una vez.
+  for (const x of crucesTodoElDia(dia)) {
+    if (x.c !== c && cuadrillaDeViaje(dia, x.v) !== c) continue;
+    const t = textoCruceTodo(dia, x);
+    add({ k: `todoch-${x.v.id}`, cruce: true, t, card: t, bs: botonesCruceTodo(dia, x) });
   }
   const r = recibeDe(dia, c);
   const pr = persona(dia, r);
@@ -2247,7 +2363,7 @@ export function bandeja(dia: DiaHoja, ahora: Minutos): Bandeja {
       vos.push({ k: `sinch-${v.id}`, t: textoSinChofer(dia, v), nivel: "bloq", rojo: alarmaEnvio(dia, ahora), bs: botonesSinChofer(dia, v) });
     }
   }
-  const PRI = (k: string) => (/^cargo/.test(k) ? 0 : /^aus/.test(k) ? 1 : /^pocos/.test(k) ? 2 : /^ch|^veh|^choque|^nadie|^sinch/.test(k) ? 3 : 4);
+  const PRI = (k: string) => (/^cargo/.test(k) ? 0 : /^aus/.test(k) ? 1 : /^pocos/.test(k) ? 2 : /^ch|^veh|^choque|^nadie|^sinch|^todoch/.test(k) ? 3 : 4);
   vos.sort((a, b) => PRI(a.k) - PRI(b.k));
   // Hojas de cuadrillas que ya no tienen obras ese día, con gente adentro.
   for (const h of dia.hojas) {

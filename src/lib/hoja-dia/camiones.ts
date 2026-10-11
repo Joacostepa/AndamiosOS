@@ -16,6 +16,7 @@ import {
   aCargoDe, addDia, calcVeh, cap, choferDelCamion, cNombre, cuadrillaDeObra, ddmm, diaSemana, esHoy, estadoEnvio,
   hCorta, hm, hm5, hojaDe, hojaDeCuadrilla, lowFirst, normalizar, normHora, nombreDe, pedidosDeViaje, textoViaje,
   todoVeh, toMin, vehiculo, nombreVehiculo, elVeh, viajeCalc, habitualDe, viajesVigentes, vieneDeAyer, filaTodoVeh, choferDe, type ViajeCalc,
+  choferesDeFila, horaTxt, viajesChofer, yList,
 } from "./estado.ts";
 
 // ─── Las filas, en orden (§9) ───────────────────────────────────────────────
@@ -50,6 +51,33 @@ export function filasOrden(dia: DiaHoja): { conViajes: string[]; todo: string[];
     else sinUsar.push({ veh: V.id, txt, nota: null, amb: false, habitual });
   }
   return { conViajes, todo, sinUsar };
+}
+
+/** Un chofer de la fila que también aparece en otra: "también maneja el Iveco AB 799 CA a las 8:00". */
+export type TambienManeja = { ch: string; veh: string; t: string };
+
+/**
+ * El mismo chofer en más de una fila el mismo día (11/10: "sigue figurando Conte 2 veces…
+ * aparece como duplicado"). Las filas siguen siendo por camión; en la cabecera de cada una,
+ * una línea chica por cada otro camión que maneja ese chofer: "también maneja el Agrale
+ * hidrogrúa AB 831 LC (todo el día)" o "también maneja el Iveco AB 799 CA a las 8:00" (sus
+ * viajes en ese camión, en orden). Vacío si los choferes de la fila no manejan otro.
+ */
+export function tambienManeja(dia: DiaHoja, veh: string): TambienManeja[] {
+  const f = filasOrden(dia);
+  const filas = [...f.conViajes, ...f.todo].filter((x) => x !== veh);
+  const out: TambienManeja[] = [];
+  const chs = [...new Set(choferesDeFila(dia, veh).map((x) => x.ch).filter((x): x is string => !!x))];
+  for (const ch of chs) {
+    for (const otro of filas) {
+      if (!choferesDeFila(dia, otro).some((x) => x.ch === ch)) continue;
+      const todo = filaTodoVeh(dia, otro)?.choferId === ch;
+      const hs = viajesChofer(dia, ch).filter((v) => v.vehiculoId === otro).map((v) => horaTxt(v));
+      const cuando = todo ? " (todo el día)" : hs.length ? ` a las ${yList(hs)}` : "";
+      out.push({ ch, veh: otro, t: `también maneja ${elVeh(dia, otro, "el", true)}${cuando}` });
+    }
+  }
+  return out;
 }
 
 // ─── Cómo se dice un pedido en la cola (§7) ─────────────────────────────────

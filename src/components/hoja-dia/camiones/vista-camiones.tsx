@@ -195,6 +195,9 @@ export function Pantalla({ dia, fecha, ahora, irA, cargando }: { dia: DiaHoja; f
       case "okTodo": if (b.id) void sacarUnRato(b.id); return;
       case "volverCola": if (b.id) g.viaje({ accion: "volver_a_cola", viajeId: b.id }); return;
       case "conLleva": if (b.id && b.con) g.viaje({ accion: "con_lleva", viajeId: b.id, llevaId: b.con }); return;
+      // "Pasarlo al Agrale AB 831 LC": el viaje suelto pasa a ese camión sin chofer guardado.
+      case "pasarA": if (b.id && b.veh) g.viaje({ accion: "mover", viajeId: b.id, vehiculoId: b.veh }); return;
+      case "noSeHizo": if (b.id) abrirDialogo({ t: "noSeHizo", id: b.id }, el); return;
       case "verViaje": case "elegirChoferViaje": case "choferViaje": {
         if (!b.id) return;
         const f = document.getElementById(`vf-${b.id}`);

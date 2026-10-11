@@ -17,7 +17,7 @@ import {
   fletesDeAfuera, haciaDe, hm, hm5, horaTxt, kmTxt, lowFirst, lugar, nombreDe, obrasCon, sinCamionDe, textoViaje, toMin,
   todoVeh, vehiculo, elVeh, viajeSinAvisar, viajesSinChofer, habitualDe, type Aviso, type CamionesQueSirven, type ViajeCalc, hojaDeCuadrilla,
 } from "@/lib/hoja-dia/estado";
-import { filasOrden, ordenEnFila } from "@/lib/hoja-dia/camiones";
+import { filasOrden, ordenEnFila, tambienManeja } from "@/lib/hoja-dia/camiones";
 import { tramoDe } from "@/lib/hoja-dia/rutas";
 import { tiempoTxt } from "@/lib/hoja-dia/tiempos";
 import { TiempoTramo } from "@/components/hoja-dia/comunes/tiempo-tramo";
@@ -71,6 +71,8 @@ export function FilasCamiones() {
   const fletes = useMemo(() => fletesDeAfuera(dia), [dia]);
   const verLista = lista || angosta;
   const nowOn = hoy && ahora >= T0 && ahora <= T1;
+  // Los choferes bajo el mouse (su nombre en una fila): se resaltan todas sus filas.
+  const [resaltado, setResaltado] = useState<string[] | null>(null);
 
   return (
     <section
@@ -107,8 +109,8 @@ export function FilasCamiones() {
       </div>
 
       {sinCam.length > 0 && <FilaSinCamion viajes={sinCam} />}
-      {f.conViajes.map((veh) => <Fila key={veh} veh={veh} q={q} />)}
-      {f.todo.map((veh) => <Fila key={veh} veh={veh} q={q} />)}
+      {f.conViajes.map((veh) => <Fila key={veh} veh={veh} q={q} resaltado={resaltado} setResaltado={setResaltado} />)}
+      {f.todo.map((veh) => <Fila key={veh} veh={veh} q={q} resaltado={resaltado} setResaltado={setResaltado} />)}
 
       {f.sinUsar.length > 0 && (
         <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1 border-b px-3 py-2.5 text-[13px] text-muted-foreground">
@@ -159,7 +161,12 @@ function Pista({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Fila({ veh, q }: { veh: string; q: CamionesQueSirven | null }) {
+function Fila({ veh, q, resaltado, setResaltado }: {
+  veh: string;
+  q: CamionesQueSirven | null;
+  resaltado: string[] | null;
+  setResaltado: (chs: string[] | null) => void;
+}) {
   const ctx = useCamiones();
   const { dia, ahora, hoy, pasado, lista, angosta, abrirMenu, ponerEn, moverViaje } = ctx;
   const V = vehiculo(dia, veh)!;
@@ -168,6 +175,10 @@ function Fila({ veh, q }: { veh: string; q: CamionesQueSirven | null }) {
   // Los choferes de la fila, en el orden del día (puede ser más de uno).
   const chs = useMemo(() => [...new Set(choferesDeFila(dia, veh).map((x) => x.ch).filter((x): x is string => !!x))], [dia, veh]);
   const quien = cap(choferesTxt(dia, veh));
+  // El mismo chofer en otra fila: "también maneja el Agrale hidrogrúa AB 831 LC (todo el día)".
+  const tambien = useMemo(() => tambienManeja(dia, veh), [dia, veh]);
+  const resaltada = !!resaltado && tambien.length > 0 && chs.some((x) => resaltado.includes(x));
+  const conTambien = tambien.length > 0 ? chs.filter((x) => tambien.some((y) => y.ch === x)) : [];
   // Un viaje de la fila que nadie maneja (el habitual no cuenta): el nombre va en rojo.
   const faltaCh = viajesSinChofer(dia).some((v) => v.vehiculoId === veh);
   const hab = habitualDe(dia, veh);
@@ -254,14 +265,34 @@ function Fila({ veh, q }: { veh: string; q: CamionesQueSirven | null }) {
         verLista && !angosta && "grid-cols-[var(--namew)_minmax(0,1fr)]",
         q && (sug ? "bg-[color-mix(in_oklch,var(--hd-verde)_8%,transparent)]" : "[&>*:not(.r-av)]:opacity-50"),
         sobre && "shadow-[inset_0_0_0_2px_var(--primary)]",
+        resaltada && !sobre && "bg-[color-mix(in_oklch,var(--primary)_7%,transparent)] shadow-[inset_3px_0_0_var(--primary)]",
       )}
+      data-resaltada={resaltada || undefined}
     >
       <div className={cn("relative grid min-w-0 content-start gap-px py-1.5 pr-1.5 pl-3", !angosta && "border-r")}>
         <div className="flex flex-wrap items-baseline gap-x-1.5 pr-8 text-[13.5px] font-semibold" title={hab && !chs.includes(hab) ? `habitual: ${nombreDe(dia, hab)}` : undefined}>
-          <span className={cn(faltaCh && "text-hd-rojo")}>{quien || "Sin chofer"}</span>
+          {/* Con el mouse sobre el nombre de un chofer que está en otra fila, se resaltan sus filas. */}
+          <span
+            className={cn(faltaCh && "text-hd-rojo", conTambien.length > 0 && "cursor-default underline decoration-dotted decoration-muted-foreground/60 underline-offset-2")}
+            onMouseEnter={conTambien.length ? () => setResaltado(conTambien) : undefined}
+            onMouseLeave={conTambien.length ? () => setResaltado(null) : undefined}
+          >
+            {quien || "Sin chofer"}
+          </span>
           {/* Por la marca, como lo conocen ("Iveco AB 497 YY"); la hidrogrúa lo dice ("Agrale hidrogrúa AB 831 LC"). */}
           <VehiculoNombre v={V} largo className="text-xs font-medium text-muted-foreground" />
         </div>
+        {tambien.map((x) => (
+          <div
+            key={`${x.ch}-${x.veh}`}
+            data-tambien={x.ch}
+            className="text-[11.5px] leading-snug text-muted-foreground"
+            onMouseEnter={() => setResaltado([x.ch])}
+            onMouseLeave={() => setResaltado(null)}
+          >
+            {chs.length > 1 ? `${nombreDe(dia, x.ch)} ${x.t}` : x.t}
+          </div>
+        ))}
         <div className={cn("line-clamp-3 text-xs leading-snug", TONO_DA[da.tono])}>{da.t}</div>
         {sug && (
           <>

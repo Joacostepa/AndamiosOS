@@ -88,7 +88,7 @@ test("choque real de chofer: Kiska en dos camiones a la vez", () => {
 test("el chofer de todo el día que además maneja un viaje de otra cosa en otro camión", () => {
   const d = martesArmado();
   d.viajes.push(viaje("v-borda", { tipo: "lleva_material", vehiculoId: "ab497", choferId: "borda", hacia: { otId: OT.cab, lugarId: null, texto: null }, carga: "6 tablones", hora: "11:00", orden: 660 }));
-  assert.ok(avisosVeh(d, "ab497", LUN_1830).some((a) => a.k === "todoch-v-borda" && a.t.startsWith("Borda está todo el día con la Cuadrilla 1")));
+  assert.ok(avisosVeh(d, "ab497", LUN_1830).some((a) => a.k === "todoch-v-borda" && a.t === "Borda está todo el día con el Agrale hidrogrúa AB 831 LC (Cuadrilla 1) y tiene el material para Cabildo a las 11:00 en el Iveco AB 497 YY"));
 });
 
 // ─── 2. Armadores que también manejan ───────────────────────────────────────
@@ -179,7 +179,7 @@ test("el lleva que después vuelve al depósito libera el camión", () => {
   const q = camionesQueSirven(solo2, pedido("p", { hacia: { otId: OT.cab, lugarId: null, texto: null } }), 8 * 60 + 30);
   const k = q.si.find((x) => x.veh === "af669")!;
   assert.equal(k.loc, "l:dep");
-  assert.equal(dondeAnda({ ...solo2, viajes: solo2.viajes.map((v) => (v.id === "c2-lleva" ? { ...v, estado: "hecho" as const, hechoMin: 440 } : v)) }, "af669", 8 * 60 + 30).t, "Libre desde las 7:20 · en el depósito · después compra Sanz ~10:00");
+  assert.equal(dondeAnda({ ...solo2, viajes: solo2.viajes.map((v) => (v.id === "c2-lleva" ? { ...v, estado: "hecho" as const, hechoMin: 440 } : v)) }, "af669", 8 * 60 + 30).t, "Libre desde las 7:20 · en el depósito · próximo viaje: compra Sanz ~10:00");
   // Mover el lleva corre también la llegada al depósito.
   const corrido = aplicar(d, 2, planVehiculos(d, 2, { k: "lleva", filaId: f2.id, hora: "7:30" }, o()));
   assert.equal(corrido.viajes.find((v) => v.id === "c2-lleva")!.vueltaLlega, "8:45");

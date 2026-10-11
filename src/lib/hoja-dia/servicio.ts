@@ -37,6 +37,7 @@ import {
   ausenciaDe, deContratistas, persona, cantidadDe, contratistasDe, esPersonalDeObra, type FilaAsistencia,
 } from "./estado";
 import { telegramConfigurado, usuarioDelBot } from "./telegram";
+import { precargarTiempos, tiemposDelDia } from "./rutas-servidor";
 import { diaAlertable } from "./dias";
 import { ahoraItems, bandeja } from "./estado";
 import { crearAlertas, type NuevaAlerta } from "@/lib/alertas/servicio";
@@ -448,6 +449,8 @@ export async function leerDia(fecha: Fecha, opts: { cacheOdoo?: boolean; fresco?
 
   // Vuelta 1: todo en paralelo. El login de Odoo se calienta acá (con ODOO_UID no hace nada).
   void authenticate().catch(() => 0);
+  // Los tiempos de Google ya guardados (hd_tiempos) se traen a memoria mientras tanto.
+  void precargarTiempos();
   const previasP = sinRechazo(db.from("hd_hojas").select("*").gte("fecha", desde30).lt("fecha", fecha).order("fecha", { ascending: false }).limit(200));
   const asisP = asistencia(fecha, 3, opts.cacheOdoo ? null : opts.fresco ? 0 : 5 * 60_000);
   const sueltas = sinRechazo(Promise.all([
@@ -524,8 +527,8 @@ export async function leerDia(fecha: Fecha, opts: { cacheOdoo?: boolean; fresco?
   const operarios = new Map<string, string>();
   for (const f of ok<Fila[]>(operariosR, "el historial").sort((a, c) => String(a.at).localeCompare(String(c.at)))) operarios.set(String(f.entidad_id), String(f.accion));
 
-  const bot = telegramConfigurado() ? await usuarioDelBot().catch(() => null) : null;
-  return {
+  const botP = telegramConfigurado() ? usuarioDelBot().catch(() => null) : Promise.resolve(null);
+  const dia: DiaHoja = {
     fecha,
     generadoAt: new Date().toISOString(),
     cuadrillas,
@@ -547,8 +550,14 @@ export async function leerDia(fecha: Fecha, opts: { cacheOdoo?: boolean; fresco?
     anterior,
     ultimasHojas,
     cajon: ok<Fila[]>(cajonR, "el cajón").map((c) => ({ id: String(c.id), texto: String(c.texto) })),
-    telegram: { configurado: telegramConfigurado(), bot },
+    telegram: { configurado: telegramConfigurado(), bot: null },
   };
+  // Los tiempos de manejo de Google (rutas-servidor.ts), junto con el bot: lo guardado sale
+  // al instante y lo que falta se espera como mucho 2,5 s. Sin ellos, las típicas.
+  const [bot, tiempos] = await Promise.all([botP, tiemposDelDia(dia)]);
+  dia.telegram.bot = bot;
+  if (Object.keys(tiempos).length) dia.tiempos = tiempos;
+  return dia;
 }
 
 // ─── El contexto de un gesto (sin el día entero) ────────────────────────────

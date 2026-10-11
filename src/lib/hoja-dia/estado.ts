@@ -2295,7 +2295,10 @@ export function planPrecarga(dia: DiaHoja, modo: ModoPrecarga): PlanPrecarga {
     for (const f of h.vehiculos) {
       if (f.modo !== "lleva_trae" || !f.choferId || !tomados.has(f.choferId) || tomados.get(f.choferId) === h.cuadrillaOdooId) continue;
       const antCh = f.choferId;
-      const otro = hojas.flatMap((o) => o.vehiculos).find((o) => o.modo === "lleva_trae" && o.choferId && !tomados.has(o.choferId));
+      // Otro chofer de lleva y trae que esté libre, de OTRA hoja y con un vehículo que esta
+      // hoja no tenga ya (el mismo vehículo dos veces en una hoja no entra: idx_hd_hoja_vehiculos_vehiculo).
+      const otro = hojas.filter((o) => o !== h).flatMap((o) => o.vehiculos)
+        .find((o) => o.modo === "lleva_trae" && o.choferId && !tomados.has(o.choferId) && !h.vehiculos.some((x) => x !== f && x.vehiculoId && x.vehiculoId === o.vehiculoId));
       if (otro) { f.choferId = otro.choferId; f.vehiculoId = otro.vehiculoId; } else { f.choferId = null; f.vehiculoId = null; }
       avisos.push(`${nombreDe(dia, antCh)} va todo el día con la ${cNombre(dia, tomados.get(antCh)!)}: a ${laC(dia, h.cuadrillaOdooId)} la lleva ${f.choferId ? nombreDe(dia, f.choferId) : "nadie todavía"}.`);
     }

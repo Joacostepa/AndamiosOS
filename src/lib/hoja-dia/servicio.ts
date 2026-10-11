@@ -768,6 +768,7 @@ export function traducirErrorDb(m: string): string {
   if (/idx_hd_links_contratista/.test(m)) return "Otra persona creó ese link recién. Probá de nuevo.";
   if (/hd_hoja_contratistas_contratista_id_fkey|violates foreign key constraint.*hd_hoja_contratistas/.test(m)) return "Ese contratista ya tiene jornadas cargadas: no se borra, se desactiva.";
   if (/hd_hoja_contratistas_cantidad_check/.test(m)) return "La cantidad va de 0 a 60.";
+  if (/idx_hd_hoja_vehiculos_vehiculo/.test(m)) return "Ese vehículo ya va en esa cuadrilla: elegí otro o cambiá el que está.";
   if (/HD_CAMBIO/.test(m)) return "No se puede deshacer: eso cambió después. Hacelo a mano.";
   if (/row-level security/i.test(m)) return "No tenés permiso para hacer este cambio.";
   if (/invalid input syntax for type time|date\/time field value out of range/i.test(m)) return "Hora inválida.";

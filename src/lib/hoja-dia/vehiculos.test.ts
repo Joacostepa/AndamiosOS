@@ -11,11 +11,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   calcVeh, camionesQueSirven, choferesElegibles, choferesTxt, crucesChofer, dondeAnda, fotoDe, hojaDeCuadrilla, panelGente, problemas,
-  sinAsignar, vanDe, viajesChofer, diferencias, destinatarios, avisosVeh,
+  sinAsignar, vanDe, viajesChofer, diferencias, destinatarios, avisosVeh, planPrecarga,
 } from "./estado.ts";
 import type { DiaHoja, VehiculoHoja } from "./tipos.ts";
-import { enviarATodos, fila, martesArmado, pedido, viaje, OT } from "./escenario.test-fixture.ts";
-import { planVehiculos, quienBusca, resumenLegado } from "./vehiculos.ts";
+import { enviarATodos, fila, martesArmado, martesVacio, pedido, viaje, OT } from "./escenario.test-fixture.ts";
+import { correrLlegada, planVehiculos, quienBusca, resumenLegado } from "./vehiculos.ts";
 import { opcionesChofer, opcionesVehiculo, resumenVehiculos, chipsDe, quienesVan } from "./vista-cuadrillas.ts";
 import { choferesEnPalabras, mensajeHoja } from "./mensajes.ts";
 
@@ -217,4 +217,98 @@ test("pasar de todo el día a lleva y trae arma el lleva y el busca; al revés l
   d = aplicar(d, 1, p);
   const back = planVehiculos(d, 1, { k: "cambiar", filaId: f1.id, modo: "todo_el_dia" }, o());
   assert.equal(back.viajes.borrar.length, 2);
+});
+
+// ─── Correcciones de la revisión (12/10) ────────────────────────────────────
+
+test("un lleva de antes en otro camión (lo movieron en Camiones) no se lo lleva un gesto ajeno", () => {
+  // El código viejo dejaba el lleva en otro camión que el de la hoja; la migración lo ligó al
+  // renglón. Cambiar la hora del busca no le toca ni el camión ni el chofer.
+  const d0 = martesArmado();
+  const d = { ...d0, viajes: d0.viajes.map((v) => (v.id === "c2-lleva" ? { ...v, vehiculoId: "ab497", choferId: "gomez" } : v)) };
+  for (const cambio of [{ k: "busca", hora: "16:00" }, { k: "encuentro", lugar: "deposito", hora: "7:15" }, { k: "carga", carga: "tablones" }] as const) {
+    const p = planVehiculos(d, 2, cambio, o());
+    const ll = p.viajes.cambiar.find((x) => x.id === "c2-lleva")?.valores ?? {};
+    assert.equal(ll.vehiculoId, undefined, `${cambio.k}: no cambia el camión`);
+    assert.equal(ll.choferId, undefined, `${cambio.k}: no cambia el chofer`);
+  }
+  // Un gesto del renglón sí lo sigue, en lo que cambió: el chofer, no el camión.
+  const f2 = hojaDeCuadrilla(d, 2)!.vehiculos[0];
+  const p = planVehiculos(d, 2, { k: "cambiar", filaId: f2.id, choferId: "conte" }, o());
+  assert.deepEqual(p.viajes.cambiar.find((x) => x.id === "c2-lleva")?.valores, { choferId: "conte" });
+  const q = planVehiculos(d, 2, { k: "cambiar", filaId: f2.id, vehiculoId: "ah410" }, o());
+  assert.equal(q.viajes.cambiar.find((x) => x.id === "c2-lleva")?.valores.vehiculoId, "ah410");
+});
+
+test("una hoja sin renglones con lleva y busca (del código de antes): un gesto los adopta, no los borra", () => {
+  const d0 = martesArmado();
+  const d: DiaHoja = {
+    ...conFilas(d0, 2, []),
+    viajes: d0.viajes.map((v) => (v.hojaId === hojaDeCuadrilla(d0, 2)!.id ? { ...v, hojaVehiculoId: null } : v)),
+  };
+  const p = planVehiculos(d, 2, { k: "encuentro", lugar: "deposito", hora: "7:15" }, o());
+  assert.deepEqual(p.viajes.borrar, [], "no se borra nada");
+  assert.equal(p.sumar.length, 1, "la fila implícita se crea");
+  assert.deepEqual([p.sumar[0].vehiculoId, p.sumar[0].choferId, p.sumar[0].modo], ["af669", "kiska", "lleva_trae"]);
+  const id = p.sumar[0].id;
+  assert.equal(p.viajes.cambiar.find((x) => x.id === "c2-lleva")?.valores.hojaVehiculoId, id);
+  assert.equal(p.viajes.cambiar.find((x) => x.id === "c2-busca")?.valores.hojaVehiculoId, id);
+  assert.deepEqual(p.viajes.crear, [], "no arma otro lleva ni otro busca");
+  assert.equal(p.encuentro?.hora, "7:15");
+  // Con un busca solo (sin lleva), queda como estaba.
+  const soloBusca = { ...d, viajes: d.viajes.filter((v) => v.id !== "c2-lleva") };
+  assert.deepEqual(planVehiculos(soloBusca, 2, { k: "encuentro", lugar: "obra", hora: "8:00" }, o()).viajes.borrar, []);
+  // "Van por su cuenta" sí los borra.
+  assert.deepEqual(planVehiculos(d, 2, { k: "modo", modo: "sin" }, o()).viajes.borrar.sort(), ["c2-busca", "c2-lleva"]);
+});
+
+test("el mismo vehículo dos veces en una hoja no se puede (y el selector lo deshabilita)", () => {
+  const d = martesArmado();
+  const f2 = hojaDeCuadrilla(d, 2)!.vehiculos[0];
+  assert.throws(() => planVehiculos(d, 2, { k: "sumar", modo: "todo_el_dia", vehiculoId: "af669" }, o()), /AF 669 ZL ya va en esta cuadrilla/);
+  const d2 = aplicar(d, 2, planVehiculos(d, 2, { k: "sumar", modo: "todo_el_dia", vehiculoId: "ab497" }, o()));
+  assert.throws(() => planVehiculos(d2, 2, { k: "cambiar", filaId: f2.id, vehiculoId: "ab497" }, o()), /AB 497 YY ya va en esta cuadrilla/);
+  // Elegir el mismo que ya tiene no es repetir.
+  assert.doesNotThrow(() => planVehiculos(d2, 2, { k: "cambiar", filaId: f2.id, vehiculoId: "af669" }, o()));
+  const op = opcionesVehiculo(d2, 2, f2.id).find((x) => x.value === "ab497")!;
+  assert.equal(op.deshabilitada, true);
+  assert.equal(opcionesVehiculo(d2, 2, f2.id).find((x) => x.value === "af669")!.deshabilitada, false);
+});
+
+test("quitar un vehículo suelta con historial los viajes hechos y anulados que lo nombran", () => {
+  const d0 = martesArmado();
+  const d = conFilas(d0, 2, [...hojaDeCuadrilla(d0, 2)!.vehiculos, fila("f-otro", "lleva_trae", "gomez", "ab497", 1)]);
+  const ll = d.viajes.find((v) => v.id === "c2-lleva")!;
+  d.viajes = [
+    ...d.viajes,
+    { ...ll, id: "x-hecho", hojaVehiculoId: "f-otro", vehiculoId: "ab497", choferId: "gomez", estado: "hecho", hechoMin: 430 },
+    { ...ll, id: "x-anulado", hojaVehiculoId: "f-otro", vehiculoId: "ab497", choferId: "gomez", estado: "anulado", anuladoMotivo: "No hizo falta" },
+  ];
+  const p = planVehiculos(d, 2, { k: "quitar", filaId: "f-otro" }, o());
+  assert.deepEqual(p.quitar, ["f-otro"]);
+  assert.deepEqual(p.viajes.cambiar.find((x) => x.id === "x-hecho")?.valores, { hojaVehiculoId: null });
+  assert.deepEqual(p.viajes.cambiar.find((x) => x.id === "x-anulado")?.valores, { hojaVehiculoId: null });
+  assert.ok(!p.viajes.borrar.includes("x-hecho") && !p.viajes.borrar.includes("x-anulado"), "la historia no se borra");
+});
+
+test("correrLlegada: la llegada al depósito se corre lo mismo que el lleva", () => {
+  assert.equal(correrLlegada("9:15", "8:30", "9:00"), "9:45");
+  assert.equal(correrLlegada(null, "8:30", "9:00"), null);
+  assert.equal(correrLlegada("9:15", null, "9:00"), "9:15");
+  assert.equal(correrLlegada("9:15", "8:30", "8:30"), "9:15");
+});
+
+test("precarga: el reemplazo de un chofer que va todo el día con otra no repite un vehículo de la misma hoja", () => {
+  // Ayer la 2 iba con dos vehículos (Nuñez y Gómez); hoy Nuñez va todo el día con la 5. El
+  // reemplazo no puede ser el otro renglón de la misma hoja (AB 497 YY dos veces).
+  const d = martesVacio();
+  const ant = d.anterior!;
+  d.anterior = {
+    ...ant,
+    hojas: ant.hojas.map((h) => (h.cuadrillaOdooId === 2 ? { ...h, vehiculos: [fila("f12-2", "lleva_trae", "nunez", "ab799"), fila("f12-2b", "lleva_trae", "gomez", "ab497", 1)] } : h)),
+  };
+  for (const h of planPrecarga(d, "hoy").hojas) {
+    const vehs = h.vehiculos.map((f) => f.vehiculoId).filter(Boolean);
+    assert.equal(new Set(vehs).size, vehs.length, `la ${h.cuadrillaOdooId} sin vehículos repetidos: ${vehs.join(", ")}`);
+  }
 });

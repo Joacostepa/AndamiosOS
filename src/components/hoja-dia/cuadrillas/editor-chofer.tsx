@@ -177,7 +177,7 @@ function RenglonVehiculo({ ctl, c, f, n, varias, principal }: { ctl: Control; c:
         <select id={n === 1 ? `vh-${c}` : undefined} aria-label={`Camión del ${nombre.toLowerCase()}`} className={SELECT} disabled={espera} value={f.vehiculoId ?? ""} onChange={(e) => cambiar({ vehiculoId: e.target.value || null })}>
           <option value="">Elegir vehículo…</option>
           {opcionesVehiculo(dia, c, f.id).map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
+            <option key={o.value} value={o.value} disabled={o.deshabilitada}>{o.label}</option>
           ))}
         </select>
       </div>

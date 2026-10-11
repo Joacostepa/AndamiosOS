@@ -195,7 +195,7 @@ export function quienesVan(dia: DiaHoja, c: number): { van: number; prevista: nu
   };
 }
 
-export type Opcion = { value: string; label: string; aviso?: boolean };
+export type Opcion = { value: string; label: string; aviso?: boolean; /** No se puede elegir (el mismo vehículo ya va en otro renglón de la hoja). */ deshabilitada?: boolean };
 
 /**
  * El selector de chofer de un vehículo de la tarjeta (choferOpts): "Kiska · lleva a la 3 · 6
@@ -245,7 +245,7 @@ export function opcionesVehiculo(dia: DiaHoja, c: number, filaId?: string | null
     const venc = vencimientosTxt(dia, V.id)[0];
     const taller = V.estado === "en_taller" ? "en el taller" : V.estado === "fuera_servicio" ? "fuera de servicio" : null;
     const s = sel === V.id ? "con esta cuadrilla" : otraFila ? "ya va en esta cuadrilla" : taller ?? (venc ? "VTV vencida" : con.length ? `con ${con.map((x) => laC(dia, x)).join(" y ")}` : n ? `${n} ${n === 1 ? "viaje" : "viajes"}` : "libre");
-    return { value: V.id, label: `${V.patente} · ${TIPO_VEH[V.tipo] ?? V.tipo} · ${s}`, aviso: !!venc || !!taller || otraFila };
+    return { value: V.id, label: `${V.patente} · ${TIPO_VEH[V.tipo] ?? V.tipo} · ${s}`, aviso: !!venc || !!taller || otraFila, deshabilitada: otraFila };
   });
 }
 

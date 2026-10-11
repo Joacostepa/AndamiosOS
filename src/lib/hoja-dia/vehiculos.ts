@@ -25,7 +25,7 @@
 
 import type { DiaHoja, Hoja, Hora, LugarEncuentro, ModoChofer, ModoVehiculo, VehiculoHoja, Viaje } from "./tipos.ts";
 import {
-  ausenciaDe, choferSugerido, encuentroPorModo, hm, hojaDeCuadrilla, normHora, todoDe, toMin, vehiculo, vehiculoDeChofer, vehiculosDe,
+  ausenciaDe, choferDe, choferSugerido, encuentroPorModo, hm, hojaDeCuadrilla, normHora, patente, todoDe, toMin, vehiculo, vehiculoDeChofer, vehiculosDe,
 } from "./estado.ts";
 
 /** Un gesto sobre los vehículos de una hoja (o sus lleva / busca). */
@@ -119,6 +119,17 @@ export function quienBusca(dia: DiaHoja, h: Hoja): QuienBusca {
   return { k: "otro", v };
 }
 
+/**
+ * La hora de llegada al depósito cargada a mano, corrida lo mismo que se corrió la hora del
+ * lleva (8:30 → 9:00 corre "llega 9:15" a 9:45). Sin llegada cargada o sin las dos horas, la
+ * misma. La usan los gestos de la tarjeta (horaLleva) y los de Camiones (mover, hora).
+ */
+export function correrLlegada(llega: Hora | null, antes: Hora | null, ahora: Hora | null): Hora | null {
+  const a = toMin(antes), b = toMin(ahora), l = toMin(llega);
+  if (l == null || a == null || b == null || a === b) return llega;
+  return hm(l + b - a);
+}
+
 // ─── El plan ────────────────────────────────────────────────────────────────
 
 /**
@@ -134,9 +145,32 @@ export function planVehiculos(dia: DiaHoja, c: number, cambio: CambioVehiculos, 
   let filas: VehiculoHoja[] = orig.map((f) => ({ ...f }));
   let vs: Viaje[] = origV.map((v) => ({ ...v }));
   let enc = { ...h.encuentro };
-  const teniaQuienLleve = orig.some((f) => f.modo === "lleva_trae");
 
   const planeado = (v: Viaje) => v.estado === "planeado";
+  // Una hoja SIN vehículos pero con un "lleva" sin renglón: la armó el código de antes de los
+  // varios vehículos (entre la migración y el deploy) y su fila nunca llegó a
+  // hd_hoja_vehiculos. Su lleva dice qué vehículo era: se adopta como una fila implícita (el
+  // plan la crea) en vez de borrar sus viajes en silencio. Es lo mismo que hace
+  // scripts/sql/hoja-dia-vehiculos-reparar.sql: liga los planeados del mismo camión.
+  const fuente = orig.length ? undefined
+    : vs.find((v) => v.tipo === "lleva" && !v.hojaVehiculoId && planeado(v)) ?? vs.find((v) => v.tipo === "lleva" && !v.hojaVehiculoId);
+  const implicita: VehiculoHoja | null = fuente
+    ? { id: o.nuevoId("fila"), vehiculoId: fuente.vehiculoId, choferId: choferDe(dia, fuente), modo: "lleva_trae", orden: 0, tocadoMin: o.ahora }
+    : null;
+  if (implicita) {
+    filas = [implicita];
+    for (const v of vs) {
+      if (!planeado(v) || v.hojaVehiculoId || v.vehiculoId !== implicita.vehiculoId) continue;
+      if (v.tipo === "lleva" || v.tipo === "mueve") v.hojaVehiculoId = implicita.id;
+      else if (v.tipo === "busca" && v.vehiculoId && (!v.choferId || v.choferId === implicita.choferId)) v.hojaVehiculoId = implicita.id;
+    }
+  }
+  /** Lo que había, con la fila implícita: decide el encuentro y si el busca es nuevo. */
+  const antes = implicita ? [implicita] : orig;
+  const teniaQuienLleve = antes.some((f) => f.modo === "lleva_trae");
+  // Sin vehículos ni lleva, un busca o un mueve sueltos (también del código de antes) no se
+  // borran por un gesto ajeno: sólo "Van por su cuenta" / "Sin chofer" o "Vuelven solos".
+  const protegerSueltos = !orig.length && !implicita && cambio.k !== "modo";
   const queLleva = () => filas.find((f) => f.modo === "lleva_trae") ?? null;
   // El lleva de un vehículo; los de antes de los varios vehículos (sin renglón) son del que los lleva.
   const llevaDe = (f: VehiculoHoja) =>
@@ -156,10 +190,24 @@ export function planVehiculos(dia: DiaHoja, c: number, cambio: CambioVehiculos, 
   };
   /** La hora de un lleva: también corre la llegada al depósito (si estaba cargada a mano). */
   const horaLleva = (v: Viaje, hora: Hora) => {
-    const antes = toMin(v.hora), ahora = toMin(hora);
-    if (v.vueltaLlega && antes != null && ahora != null) v.vueltaLlega = hm(toMin(v.vueltaLlega)! + ahora - antes);
+    v.vueltaLlega = correrLlegada(v.vueltaLlega, v.hora, hora);
     v.hora = hora;
-    v.orden = ahora ?? v.orden;
+    v.orden = toMin(hora) ?? v.orden;
+  };
+  /** El mismo vehículo dos veces en una hoja no va (y la base tampoco lo deja: idx_hd_hoja_vehiculos_vehiculo). */
+  const noRepetido = (veh: string | null | undefined, f?: VehiculoHoja) => {
+    if (veh && filas.some((x) => x !== f && x.vehiculoId === veh)) throw new NoSePuede(`El ${patente(dia, veh)} ya va en esta cuadrilla.`);
+  };
+  /**
+   * Un viaje de un vehículo de la hoja sigue a su renglón SÓLO en lo que el gesto le cambió
+   * (el camión, el chofer, o los dos si el renglón es nuevo). Un gesto ajeno (la hora del
+   * busca, el encuentro, la carga) nunca le cambia el camión ni el chofer a un viaje: los
+   * viajes de antes pueden estar en otro camión (se movieron en Camiones).
+   */
+  const seguir = (v: Viaje, f: VehiculoHoja) => {
+    const a = antes.find((x) => x.id === f.id);
+    if (!a || a.vehiculoId !== f.vehiculoId) v.vehiculoId = f.vehiculoId;
+    if (!a || a.choferId !== f.choferId) v.choferId = f.choferId;
   };
   const fila = (id: string | null | undefined): VehiculoHoja => {
     const f = id ? filas.find((x) => x.id === id) : queLleva();
@@ -179,6 +227,7 @@ export function planVehiculos(dia: DiaHoja, c: number, cambio: CambioVehiculos, 
     }
   };
   const sumar = (modo: ModoVehiculo, choferId?: string | null, vehiculoId?: string | null) => {
+    noRepetido(vehiculoId);
     let ch = choferId ?? null, veh = vehiculoId ?? null;
     if (!ch && !veh && !filas.length) {
       // El primero: el de ayer de esta cuadrilla (el del mismo modo), si no va todo el día con otra.
@@ -192,6 +241,7 @@ export function planVehiculos(dia: DiaHoja, c: number, cambio: CambioVehiculos, 
     return f;
   };
   const cambiar = (f: VehiculoHoja, x: { modo?: ModoVehiculo; choferId?: string | null; vehiculoId?: string | null }) => {
+    noRepetido(x.vehiculoId, f);
     if (x.modo !== undefined) f.modo = x.modo;
     if (x.choferId !== undefined) f.choferId = x.choferId;
     if (x.vehiculoId !== undefined) f.vehiculoId = x.vehiculoId;
@@ -231,8 +281,8 @@ export function planVehiculos(dia: DiaHoja, c: number, cambio: CambioVehiculos, 
 
   // ── Los vehículos mandan: los viajes se acomodan a ellos ──
   filas = filas.sort((a, b) => a.orden - b.orden);
-  if (!orig.length && filas.length && enc.lugar === "obra") enc = encuentroPorModo(dia, filas[0].modo);
-  if (orig.length && !filas.length) enc = encuentroPorModo(dia, "sin");
+  if (!antes.length && filas.length && enc.lugar === "obra") enc = encuentroPorModo(dia, filas[0].modo);
+  if (antes.length && !filas.length) enc = encuentroPorModo(dia, "sin");
   const fl = queLleva();
   const ids = new Set(filas.map((f) => f.id));
   // El lleva viejo sin renglón pasa a ser del que los lleva. (Un "mueve" sin renglón es uno
@@ -247,18 +297,18 @@ export function planVehiculos(dia: DiaHoja, c: number, cambio: CambioVehiculos, 
     if (v.tipo !== "lleva" && v.tipo !== "mueve") continue;
     const f = v.hojaVehiculoId ? filas.find((x) => x.id === v.hojaVehiculoId) : null;
     // Sin su vehículo (o pasó a "Todo el día"): fuera. Los sueltos de antes, si nadie los lleva.
-    if ((v.hojaVehiculoId && (!f || f.modo !== "lleva_trae")) || (!v.hojaVehiculoId && !fl)) { borrar(v); continue; }
-    if (f && planeado(v)) { v.vehiculoId = f.vehiculoId; v.choferId = f.choferId; }
+    if ((v.hojaVehiculoId && (!f || f.modo !== "lleva_trae")) || (!v.hojaVehiculoId && !fl && !protegerSueltos)) { borrar(v); continue; }
+    if (f && planeado(v)) seguir(v, f);
   }
   // Cada vehículo de "Lleva y trae" tiene su lleva (a la hora del encuentro).
   for (const f of filas) if (f.modo === "lleva_trae" && !llevaDe(f)) nuevoViaje("lleva", f, normHora(enc.hora) ?? enc.hora);
   // El busca: se crea cuando la hoja pasa a tener quién la lleve; se va cuando ya no tiene.
   const bu = busca();
-  if (!fl) { if (bu) borrar(bu); }
+  if (!fl) { if (bu && !protegerSueltos) borrar(bu); }
   else if (!teniaQuienLleve && !bu) nuevoViaje("busca", fl, fin);
   else if (bu && planeado(bu) && bu.hojaVehiculoId) {
     const f = filas.find((x) => x.id === bu.hojaVehiculoId);
-    if (f && f.modo === "lleva_trae") { bu.vehiculoId = f.vehiculoId; bu.choferId = f.choferId; }
+    if (f && f.modo === "lleva_trae") seguir(bu, f);
     else if (!ids.has(bu.hojaVehiculoId) || (f && f.modo !== "lleva_trae")) { bu.hojaVehiculoId = null; bu.vehiculoId = null; bu.choferId = null; } // a definir
   }
 
@@ -338,12 +388,18 @@ export function planVehiculos(dia: DiaHoja, c: number, cambio: CambioVehiculos, 
     for (const k of CAMPOS_VIAJE) if (a[k] !== v[k]) (valores as Record<string, unknown>)[k] = v[k];
     if (Object.keys(valores).length) cambiarV.push({ id: v.id, valores });
   }
+  const quitar = orig.filter((x) => !filas.some((f) => f.id === x.id)).map((x) => x.id);
+  // Los anulados que nombran un vehículo que se va también se sueltan acá (con historial):
+  // si no, la FK (ON DELETE SET NULL) los cambiaría por detrás del grabador.
+  for (const v of dia.viajes) {
+    if (v.hojaId === h.id && v.estado === "anulado" && v.hojaVehiculoId && quitar.includes(v.hojaVehiculoId)) cambiarV.push({ id: v.id, valores: { hojaVehiculoId: null } });
+  }
   const encCambio = enc.lugar !== h.encuentro.lugar || (normHora(enc.hora) ?? enc.hora) !== (normHora(h.encuentro.hora) ?? h.encuentro.hora) || (enc.texto ?? null) !== (h.encuentro.texto ?? null);
   return {
     filas,
     sumar: filas.filter((f) => !orig.some((x) => x.id === f.id)),
     cambiar: cambiarF,
-    quitar: orig.filter((x) => !filas.some((f) => f.id === x.id)).map((x) => x.id),
+    quitar,
     encuentro: encCambio ? enc : null,
     viajes: {
       crear: vs.filter((v) => !origV.some((x) => x.id === v.id)),

@@ -259,7 +259,8 @@ Decisión del dueño (10/10): cuando se da de alta, se modifica o se da de baja 
 - [ ] **Telegram**: crear el bot (@BotFather), cargar `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET` en Vercel (redeploy) y correr `node --env-file=.env.local scripts/telegram-webhook.mjs https://andamios-os.vercel.app`. Después, vincular a capataces y choferes (cada uno toca una vez su link; se copia desde Legajos). Mientras tanto la hoja funciona a mano (copiar mensaje / WhatsApp).
 - [ ] **Permisos**: "Hoja del día" en editar a Juan Agustín y Ezequiel; Juan Pablo en ver. Joaquín la ve por admin.
 - [ ] **Teléfonos** del coordinador (`hd_parametros.coordinador`) y del depósito (`deposito`). Sin ellos, "Llamar a Juan Agustín" aparece desactivado en el celular y no hay "Avisar al depósito".
-- [ ] **Dirección del Depósito A CONFIRMAR** (y lat/lng). Sin eso, "Cerca" no mide desde el depósito. También Galvanizados Sanz, la planta de VTV y el taller (dirección, horario, `cierra`, teléfono). Pendiente 18.
+- [x] **Dirección del Depósito**: Cucha Cucha 2345, CABA (−34.6008744, −58.4613383, geocodificada con Google, precisión ROOFTOP), cargada en `hd_lugares` el 11/10.
+- [ ] Faltan Galvanizados Sanz, la planta de VTV y el taller (dirección, horario, `cierra`, teléfono). Pendiente 18.
 - [ ] **Planteles**: la Cuadrilla 1 quedó sin responsable (era Arrieta) y la Cuadrilla 5 no tiene plantel. Cargarlos en Configuración de cuadrillas. No es urgente, porque el capataz se elige cada día, pero lo usan "Empezar con el plantel base" y la sugerencia de a cargo.
 - [ ] **Celulares en Odoo** de Vargas, Geloz, Sena Ayrton y Taboada (hoy vacíos). Al cargarlos en Odoo se copian solos a Legajos.
 - [ ] **Contratistas**: darlos de alta (panel Gente › Contratistas › Administrar) con referente, celular y valor por jornada, y mandarle al referente su link para vincular Telegram.

@@ -156,7 +156,7 @@ El proyecto abandonó las franjas (`planificacion_viajes` se dropeó sin uso). S
 - Cada lleva tiene una **carga** opcional: "lleva 20 tablones y 2 escaleras para Cabildo". Así entran los fletes que acompañan a la cuadrilla.
 - **Lo que en la v1 era el renglón "Además" del chofer desaparece**: los viajes sueltos son viajes como cualquier otro desde la fase 1, y casi siempre nacen de un pedido (§7).
 - **Cada tramo se edita en línea desde el renglón de la tarjeta** (chofer, vehículo y hora del lleva, la vuelta al depósito, quién busca y a qué hora) sin ir a Camiones. Lo mismo se ve igual en Camiones: pasar el lleva a otro camión o cambiarle el chofer allá cambia el renglón de la tarjeta (son el mismo vehículo); pasar el busca o un mueve a otro camión los suelta del renglón. Si la hoja ya estaba enviada, queda "Cambiada después de enviar" con "Avisar a Ortega" (§11).
-- **Todo el día** también se ve en la vista Camiones: la fila del camión de Borda dice "Todo el día con la Cuadrilla 1 · Av. del Libertador 5980". Se le pueden poner viajes **de esa misma cuadrilla** sin aviso; cualquier otro viaje lo saca de la cuadrilla y avisa (§9).
+- **Todo el día** también se ve en la vista Camiones: la fila del camión de Borda dice "Todo el día con la Cuadrilla 1 · Av. del Libertador 5980". Se le pueden poner viajes **de esa misma cuadrilla** sin aviso; cualquier otro viaje lo saca de la cuadrilla y avisa (§9). Ojo: eso es para el camión de todo el día; si el chofer de todo el día tiene un viaje en OTRO camión dentro de su jornada, es un choque aunque sea de su cuadrilla (tabla de abajo).
 - **La fila de Camiones dice quién lo maneja en cada tramo** si cambia en el día ("Kiska → Nuñez 14:00"); en la lista, cada viaje dice su chofer. Menú de una ficha: **"Cambiar chofer"** (sólo ese viaje) y, en un lleva, **"Después vuelve al depósito"**. Menú de la fila: **"Elegir otro chofer"** (pasa los viajes pendientes del camión y sus renglones en las hojas: el chofer no vino).
 
 ### Cómo se evita que un chofer o un vehículo esté en dos lugares
@@ -169,7 +169,8 @@ El proyecto abandonó las franjas (`planificacion_viajes` se dropeó sin uso). S
 | Un viaje que **nadie maneja** (sin chofer elegido, sin renglón ni viaje vecino con chofer, sin chofer del día: el habitual no cuenta) | "El material para Ing. Huergo (8:00, Iveco AB 799 CA) no tiene chofer" (bloquea: "Falta para mandar") | "Elegir chofer" (el habitual primero); si es material para la obra de una cuadrilla, "Que lo lleve Conte con la Cuadrilla 1" |
 | Un viaje de hora fija que **no entra en su camión** | "El AB 799 CA no llega: lleva C1 Ing. Huergo (Conte) vuelve al depósito ~8:45 y el material para Ing. Huergo es a las 8:00" (el camión y el chofer de cada viaje; el del segundo sólo si es otro) | "Ver el camión"; si es material para la obra de una cuadrilla que ya va con su lleva, "Que lo lleve Conte con la Cuadrilla 1" (§6) |
 | **El mismo chofer en dos camiones a la vez** | "Kiska no llega: lleva C2 Juramento (AF 669 ZL) termina ~7:45 y lleva C4 Gurruchaga (AB 497 YY) es a las 7:15" | "Elegir otro" / "Ver el camión" |
-| Un chofer **Todo el día** que además tiene viajes de otra cuadrilla (o el vehículo de todo el día con viajes de otra) | "Nuñez está todo el día con la 5 y lleva a la 4 a las 7:00" | "Elegir otro" |
+| Un chofer **Todo el día** con un viaje en **otro vehículo** a una hora de su jornada (del encuentro al fin), **aunque sea de la misma cuadrilla u obra** (11/10: Conte todo el día con el Agrale y el material de Ing. Huergo en el Iveco con Conte elegido) | "Conte está todo el día con el Agrale hidrogrúa AB 831 LC (Cuadrilla 1) y tiene el material para Ing. Huergo a las 8:00 en el Iveco AB 799 CA" (rojo, bloquea; también en Camiones y "Ahora:") | Material suelto para la obra de esa cuadrilla: "Que lo lleve en el Agrale AB 831 LC con la Cuadrilla 1" (el viaje pasa al camión de todo el día); otro viaje suelto: "Pasarlo al Agrale AB 831 LC" (sin chofer guardado); siempre "Elegir otro chofer" |
+| El vehículo de todo el día con un lleva o busca de otra cuadrilla | "El Agrale AB 831 LC está todo el día con la 5 y lleva a la 4 a las 7:00" | "Elegir otro" |
 | Un chofer que es **integrante de otra cuadrilla** | "Conte está en la Cuadrilla 2 y maneja todo el día con la 4" | "Elegir otro" / "Ver la 2" |
 | Vehículo en taller o fuera de servicio (`vehiculos.estado`), o con un viaje de "Taller / VTV" a esa hora | "El AF 669 ZL está en la VTV de 14:00 a ~15:30" | "Elegir otro" |
 | Vehículo con VTV, seguro o CNRT vencidos (`documentos`) | "El AH 410 LD tiene la VTV vencida desde el 02/10" | — (advierte, no bloquea) |
@@ -177,6 +178,7 @@ El proyecto abandonó las franjas (`planificacion_viajes` se dropeó sin uso). S
 | Un viaje del camión hace llegar tarde al "busca" | "Kiska llegaría ~16:50 a buscar a la Cuadrilla 3 (16:30)" | "Ver el camión" (abre la vista Camiones en esa fila) |
 | ~~El vehículo lo maneja otro (su habitual o el del día)~~ | **No es un problema** (decisión del 11/10): chofer y vehículo son independientes | — |
 
+- **Usar varios camiones en el día vale** (11/10): a la mañana el Iveco y a la tarde el Agrale, sin todo el día y sin que los horarios se pisen, no avisa nada. Un mismo viaje no se avisa dos veces: si choca con el todo el día del chofer, no sale además como "el mismo chofer en dos camiones".
 - **45 minutos** es un parámetro (el tiempo mínimo entre dos viajes de un mismo chofer cuando no hay duraciones). No se calculan distancias: es un aviso para que Juan Agustín mire, no un ruteo. En la vista Camiones el cruce se calcula con las duraciones típicas de §6.
 - **Una ausencia parcial** ("se retira a las 14") se cruza con los viajes: si el que los busca a las 17:00 se retira a las 14, sale "Kiska se retira a las 14 y busca a la Cuadrilla 2 a las 17:00".
 
@@ -478,6 +480,7 @@ Ruta: **`/planificacion/hoja/camiones`**. Es la pantalla del coordinador de 7 a 
 - **A la izquierda, la cola de Pedidos** (§7), siempre abierta.
 - **A la derecha, una fila por camión** (vehículo con su chofer de ese día), en este orden: los que tienen viajes (o chofer del día cargado con "Elegir chofer"), los de "Todo el día", y al final "Sin usar" en una sola línea. **El habitual no hace fila ni se nombra** (11/10 noche): un camión sin viajes, sin renglón y sin chofer del día está "Sin usar" (sin "(sin chofer)", porque ninguno lo tiene), y el habitual va sólo en gris, en el tooltip ("habitual: Kiska") y en el menú de la fila ("Elegir chofer · habitual: Kiska").
   - **Encabezado de la fila**: "Kiska · Iveco AF 669 ZL" (patente en JetBrains Mono) y, a la derecha, **dónde anda** en palabras (ver abajo). Si un viaje de la fila no tiene chofer, "**Sin chofer**" en rojo y el aviso "… no tiene chofer" con "Elegir chofer".
+  - **El mismo chofer en más de una fila** (11/10: "sigue figurando Conte 2 veces… aparece como duplicado"): las filas siguen siendo por camión, y en la cabecera de cada una va una línea chica por cada otro camión que maneja ese día: "también maneja el Agrale hidrogrúa AB 831 LC (todo el día)" en la del Iveco, "también maneja el Iveco AB 799 CA a las 8:00" en la del Agrale (con el nombre adelante si la fila tiene más de un chofer). Con el mouse sobre su nombre (subrayado punteado) o sobre esa línea, se resaltan todas sus filas.
   - **Los viajes como fichas sobre una línea de tiempo aproximada** de 7 a 18. Cada ficha dice tipo corto y destino ("Lleva C2 Juramento", "Sanz", "VTV"). El ancho es la duración típica, no la real.
     - **Hecho**: gris con ✓ y la hora real ("✓ 7:35").
     - **El que está haciendo ahora** (el primero sin hacer): borde marcado.
@@ -494,14 +497,16 @@ Se deduce de los viajes y de los "Hecho" del chofer, y se dice en palabras en el
 
 | Situación | Texto |
 |---|---|
-| Antes del primer viaje | "En el depósito · sale 7:00" |
-| Hizo uno y tiene el siguiente | "Hizo Juramento 2145 (7:35) · ahora hacia Rivadavia 6150 (~8:15)" |
-| Pasó la hora estimada del que está haciendo y no marcó nada (más de 1 hora, parámetro) | "**Sin noticias desde las 9:40** · tenía Sanz a las 10:00" en ámbar |
+| Antes del primer viaje | "En el depósito · sale a las 7:00" |
+| Hizo uno y tiene el siguiente | "Hizo Juramento 2145 (7:35) · ahora va a Rivadavia 6150 (~8:15)" |
+| Pasó la hora del que está haciendo, más lo que dura, más 1 hora (parámetro), y nadie lo marcó | "**El viaje de las 10:00 a Sanz no está marcado como hecho**" en ámbar (si marcó el anterior: "· el anterior se marcó a las 9:40") |
+| Ya es la hora de un viaje con un **choque rojo sin resolver** (todo el día en otro camión, otro camión a la vez, no llega, sin chofer) | "**El viaje de las 8:00 a Ing. Huergo sigue pendiente: Conte está todo el día con la Cuadrilla 1**" en rojo (no "no está marcado": se ve sólo el choque) |
 | Marcó "No pude" | "No pudo en Galvanizados Sanz (no estaba listo) · vuelve al depósito" |
-| Sin más viajes | "**Libre** desde las 10:12 · en el depósito ~10:45" |
-| Todo el día | "Con la Cuadrilla 1 en Av. del Libertador 5980" |
+| Libre hasta el próximo | "**Libre** desde las 10:12 · en el depósito ~10:45 · próximo viaje: compra Sanz 14:00" |
+| Todo el día | "Todo el día con la Cuadrilla 1 en Av. del Libertador 5980" |
 | En taller o VTV | "En la VTV hasta ~15:30" |
-| Terminó | "Terminó 17:20 · 6 viajes" |
+| Terminó | "Terminó a las 17:20 · 6 viajes hechos" |
+| Otro día | "Sale del depósito a las 7:00 · 6 viajes" |
 
 - No se toca `vehiculos.estado` (`en_ruta`): ese campo es para "en taller" y "fuera de servicio", que carga Vehículos.
 - **El tiempo de cada viaje** va al lado de su hora en la lista ("~35 min en auto") y en el `title` de la ficha, con un ícono chico: auto = Google Maps con el tránsito de esa hora; reloj = la duración típica (todavía sin el tiempo de Google para ese tramo). En la tarjeta de la cuadrilla, entre dos obras, el manejo de una a la otra (sólo si es de Google).
@@ -552,7 +557,8 @@ Advierten, no bloquean. Salen en la fila del camión, en el pedido y en la líne
 | Lugar cerrado a esa hora (horario del lugar) | "Galvanizados Sanz atiende hasta las 16 y Kiska llega ~16:20" | "Ponerlo antes" |
 | Viaje sin avisar (más de 2 min) | "Gómez no sabe del viaje a Cabildo" | "Avisar a Gómez" |
 | Aviso no visto (más de 10 min) | "Gómez no abrió el viaje nuevo (10:23)" | "Llamar a Gómez" |
-| Sin noticias | "Kiska: sin noticias desde las 9:40 (tenía Sanz a las 10:00)" | "Llamar a Kiska" / "Marcar hecho" |
+| Nadie marcó un viaje (pasó la hora + lo que dura + 1 hora) y **no tiene un choque rojo** | "El viaje de las 10:00 a Sanz no está marcado como hecho (Kiska)" | "Marcar hecho" / "Llamar a Kiska" / "No se hizo" (elige: más tarde con otra hora, volver a la cola, o anular) |
+| **El chofer de todo el día con un viaje en otro camión** dentro de su jornada (misma cuadrilla o no) | "Conte está todo el día con el Agrale hidrogrúa AB 831 LC (Cuadrilla 1) y tiene el material para Ing. Huergo a las 8:00 en el Iveco AB 799 CA" (rojo; en la fila del viaje) | "Que lo lleve en el Agrale AB 831 LC con la Cuadrilla 1" o "Pasarlo al Agrale AB 831 LC" / "Elegir otro chofer" |
 | **El chofer marcó "No pude"** | "Kiska no pudo en Galvanizados Sanz: no estaba listo (10:12)" (rojo) | "Volver a la cola" / "Esperar…" / "Llamar a Kiska" |
 
 - Los rojos van también a la campanita del coordinador. El "No pude" además sale en `#logistica-operativa` (fase 2; en la fase 1 se ve en vivo en la pantalla).

@@ -220,9 +220,9 @@ test("la VTV a las 16:00 hace llegar tarde al busca de la 3", () => {
 test("dónde anda Kiska el martes a las 9:30, sin GPS", () => {
   const d = martesArmado();
   d.viajes = d.viajes.map((v) => (v.id === "c2-lleva" ? { ...v, estado: "hecho", hechoMin: 455 } : v.id === "c3-lleva" ? { ...v, estado: "hecho", hechoMin: 505 } : v));
-  assert.equal(dondeAnda(d, "af669", 510).t, "Libre desde las 8:25 · en Av. Rivadavia 6150 · después compra Sanz ~10:00");
-  assert.equal(dondeAnda(d, "af669", 570).t, "Hizo Av. Rivadavia 6150 (8:25) · ahora hacia Galvanizados Sanz (~10:00)");
-  assert.equal(dondeAnda(d, "ab831", 510).t, "Con la Cuadrilla 1 en Av. del Libertador 5980");
+  assert.equal(dondeAnda(d, "af669", 510).t, "Libre desde las 8:25 · en Av. Rivadavia 6150 · próximo viaje: compra Sanz ~10:00");
+  assert.equal(dondeAnda(d, "af669", 570).t, "Hizo Av. Rivadavia 6150 (8:25) · ahora va a Galvanizados Sanz (~10:00)");
+  assert.equal(dondeAnda(d, "ab831", 510).t, "Todo el día con la Cuadrilla 1 en Av. del Libertador 5980");
   // Sin noticias: pasó más de una hora de lo estimado y no marcó nada.
   const sn = dondeAnda(d, "af669", 12 * 60 + 30);
   assert.equal(sn.sinNoticias, true);

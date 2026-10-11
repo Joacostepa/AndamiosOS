@@ -1,7 +1,8 @@
 "use client";
 
 // Los diálogos chicos de Camiones: cambiar la hora de un viaje, anularlo con motivo, la VTV
-// o el taller de un camión, un flete de afuera y "X está todo el día con la Cuadrilla N".
+// o el taller de un camión, un flete de afuera, "X está todo el día con la Cuadrilla N" y
+// "No se hizo" (el viaje que nadie marcó).
 
 import { PRI } from "@/components/hoja-dia/comunes/boton-coral";
 import { useState } from "react";
@@ -10,7 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } f
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  aCargoDe, calcVeh, choferDelCamion, filaTodoVeh, cNombre, cortoV, hm5, hojaDeCuadrilla, lugar, nombreDe, normHora, obrasCon, elVeh, vehiculo,
+  aCargoDe, calcVeh, cap, choferDelCamion, filaTodoVeh, cNombre, cortoV, elViajeTxt, hm5, hojaDeCuadrilla, lugar, nombreDe, normHora, obrasCon, elVeh, vehiculo,
 } from "@/lib/hoja-dia/estado";
 import type { Punto, TipoViaje } from "@/lib/hoja-dia/tipos";
 import { Chips } from "@/components/hoja-dia/comunes/menu-flotante";
@@ -20,6 +21,7 @@ import { useCamiones } from "./contexto";
 export type Dlg =
   | { t: "hora"; id: string }
   | { t: "anular"; id: string }
+  | { t: "noSeHizo"; id: string }
   | { t: "taller"; veh: string }
   | { t: "flete"; pedidoId?: string }
   | { t: "todo"; veh: string; c: number; pedidoId: string; orden: number | null };
@@ -40,6 +42,7 @@ export function Dialogos({ d, cerrar, volverA, alSacarUnRato, alElegirOtro }: {
       >
         {d?.t === "hora" && <DlgHora id={d.id} cerrar={cerrar} />}
         {d?.t === "anular" && <DlgAnular id={d.id} cerrar={cerrar} />}
+        {d?.t === "noSeHizo" && <DlgNoSeHizo id={d.id} cerrar={cerrar} />}
         {d?.t === "taller" && <DlgTaller veh={d.veh} cerrar={cerrar} />}
         {d?.t === "flete" && <DlgFlete pedidoId={d.pedidoId} cerrar={cerrar} />}
         {d?.t === "todo" && <DlgTodo d={d} cerrar={cerrar} alSacarUnRato={alSacarUnRato} alElegirOtro={alElegirOtro} />}
@@ -86,7 +89,38 @@ function DlgHora({ id, cerrar }: { id: string; cerrar: () => void }) {
   );
 }
 
-const MOTIVOS_ANULAR = ["Ya no hace falta", "Lo resolvió el cliente", "Se suspendió la obra", "Otro"];
+/**
+ * "No se hizo" del aviso de seguimiento ("El viaje de las 8:00 a Ing. Huergo no está marcado
+ * como hecho"): el coordinador llamó y no se hizo. Se hace más tarde (cambiar la hora),
+ * vuelve a la cola para ponerlo en otro camión, o ya no hace falta (anular, con motivo).
+ */
+function DlgNoSeHizo({ id, cerrar }: { id: string; cerrar: () => void }) {
+  const { dia, viaje } = useCamiones();
+  const [paso, setPaso] = useState<"hora" | "anular" | null>(null);
+  const v = dia.viajes.find((x) => x.id === id);
+  const vc = v?.vehiculoId ? calcVeh(dia, v.vehiculoId).find((x) => x.id === id) : null;
+  if (!v) return null;
+  if (paso === "hora") return <DlgHora id={id} cerrar={cerrar} />;
+  if (paso === "anular") return <DlgAnular id={id} cerrar={cerrar} />;
+  return (
+    <>
+      <DialogTitle>No se hizo · {cortoV(dia, v)}</DialogTitle>
+      <DialogDescription>{vc ? `${cap(elViajeTxt(dia, vc))} no se hizo.` : "El viaje no se hizo."} ¿Qué hacemos?</DialogDescription>
+      <div className="grid gap-2">
+        <Button variant="outline" className="justify-start" onClick={() => setPaso("hora")}>Hacerlo más tarde (cambiar la hora)</Button>
+        <Button variant="outline" className="justify-start" onClick={() => { cerrar(); viaje({ accion: "volver_a_cola", viajeId: id }); }}>
+          {v.hojaId ? "Sacarlo del camión (elegir otro después)" : "Volver a la cola (ponerlo en otro camión)"}
+        </Button>
+        <Button variant="outline" className="justify-start text-hd-rojo" onClick={() => setPaso("anular")}>Ya no hace falta (anular)</Button>
+      </div>
+      <DialogFooter>
+        <Button variant="outline" onClick={cerrar}>Cancelar</Button>
+      </DialogFooter>
+    </>
+  );
+}
+
+const MOTIVOS_ANULAR =["Ya no hace falta", "Lo resolvió el cliente", "Se suspendió la obra", "Otro"];
 
 function DlgAnular({ id, cerrar }: { id: string; cerrar: () => void }) {
   const { viaje } = useCamiones();

@@ -1,6 +1,6 @@
 # Hoja del día — handoff
 
-Estado real al 10/10/2026 (noche): **en producción.** Mergeado a `main` con el PR #3
+Estado real al 10/10/2026 (noche): **en producción.** Arreglos del 10/10 a la noche, ya en `main`: el domingo es un día más (PR #5) y velocidad + nombres de pila (ver "Latencia"; sin migraciones). Mergeado a `main` con el PR #3
 (`d736eca`) y los contratistas con el PR #4 (`7751ce7`), publicados en Vercel. Para retomar: "Leé docs/equipos-del-dia/handoff.md y
 seguimos con lo que falta".
 
@@ -54,6 +54,33 @@ Pasos 1 y 2 **hechos el 10/10** (migración aplicada y verificada, después merg
 - El prorrateo por obra del resumen usa el tablero de hoy para días pasados: si se mueve una obra de un día ya trabajado, cambia el reparto (no las jornadas).
 - Fase 2: documentación (ART/seguro), exportar el resumen y marcarlo pagado.
 
+## Domingo (10/10, noche — PR #5)
+
+El dueño trabaja algunos domingos. La hoja salteaba el domingo (el sábado, "Mañana" era el lunes; las flechas no pasaban). Ahora el domingo es un día más (`dias.ts`): el sábado, "Mañana" es el domingo, y el domingo abre en el domingo. Si el tablero no tiene obras ese día, la hoja dice "El tablero no tiene obras el domingo N". Las obras del domingo se ponen en el **tablero**: en la ficha de la obra, "Jornadas de la obra" › "Trabajar el domingo", o arrastrando a la columna del domingo si ya está activa.
+
+## Latencia (10/10, noche — en `main`)
+
+El dueño: "cada cambio tarda mucho". Medido contra la base real (sólo lectura, script fuera del repo, mediana de 5, desde Buenos Aires: ~280 ms por ida a Supabase):
+
+| Qué | Antes | Ahora |
+|---|---|---|
+| GET del día (abrir / volver / refrescar) | ~1,3 s siempre (26 consultas + 6 a Odoo; picos de 2,9 s) | ~0,6 s con el tablero en caché; ~1,3 s en frío o con `fresco` |
+| Lo que lee el servidor en cada gesto | `leerDia` entero: ~0,6 s (26 consultas), ~1,3–3 s si el caché de Odoo de 45 s ya venció | `leerContexto`: ~0,3 s (8 consultas en una vuelta; 14 para modo/chofer), sin Odoo |
+| Escrituras de un gesto | cada UPDATE leía la fila antes (2 idas), cada DELETE también | UPDATE con la fila ya leída (1 ida), DELETE … RETURNING (1 ida) |
+| Después del gesto | el cliente pedía el día entero con Odoo (~1,3 s) antes de mostrar el cambio | el cambio se ve **al instante** (~30–75 ms medido con Playwright, con el POST demorado 1,5 s); el día se pide en segundo plano, uno por ráfaga |
+
+Qué cambió:
+1. **Optimista en el cliente** (`src/lib/hoja-dia/optimista.ts`, puro y con tests): agregar / sacar / pasar / reemplazar, a cargo (persona o contratista), recibe, contratista ± / quitar / nota, modo, chofer, vehículo, pasar chofer, encuentro, lleva / busca, carga del lleva, notas, instrucciones y liberar. Usa `planModo` / `planSoltarChofer` de estado.ts (la misma regla que el servidor) y el cambio mínimo al objeto. `useGesto` (`use-hoja-dia.ts`) lo aplica en `onMutate` (cancela la lectura en vuelo), y si el servidor dice que no vuelve atrás (si nadie lo tocó después) y muestra el error. El toast con Deshacer es el mismo. "Copiar como hoy", "Mueve", la precarga, viajes de camión, pedidos y envíos no se adivinan: esperan al servidor como antes.
+2. **Refresco en segundo plano** (`refrescarHoja`): un solo GET 0,5 s después del último gesto de una ráfaga, nunca con un gesto en vuelo (todas las mutaciones llevan `mutationKey ["hoja-dia","gesto"]`). Los avisos en vivo de otros pasan por el mismo refresco. El broadcast propio no vuelve (`self: false`).
+3. **El servidor no lee el día entero por gesto** (`leerContexto` en servicio.ts + `PARTES` en acciones.ts): hojas del día, su gente y sus contratistas, Legajos, externas, contratistas, parámetros y los nombres de las cuadrillas (del tablero ya leído o de Configuración de cuadrillas). Modo y chofer suman flota, el día anterior y las obras (Odoo con caché de 2 min, casi siempre ya lo dejó el GET); `a_cargo` suma los envíos; `vehiculo`, la flota. "Copiar como hoy" y "Mueve" siguen con el día entero (con caché). Las garantías no cambian: historial y Deshacer (el grabador guarda la fila de antes: la que ya leyó el gesto, la que dejó él mismo, o la que devuelve el DELETE), `conGrabador`/`hd_aplicar`, escrituras con la sesión (RLS), y "una persona en una cuadrilla por día" / "un a cargo por hoja" siguen siendo índices únicos de la base.
+4. **`leerDia`** en dos vueltas (todo lo independiente sale junto con las hojas anteriores) y con Odoo/asistencia en caché por fecha (decisión 13). Un gesto ahora ve la asistencia si ya estaba leída (antes no la veía nunca).
+
+Riesgos conocidos:
+- **Si lo adivinado y lo del servidor no coinciden** (p. ej. otro coordinador cambió la misma tarjeta, o una regla que el navegador no ve), se ve lo adivinado hasta el refresco (~0,5 s después de que contesta el servidor) y ahí queda lo del servidor. Si el servidor rechaza, se vuelve atrás y sale el error.
+- Las filas nuevas tienen id provisorio (`tmp-…`) hasta el refresco: si en ese segundo se abre el historial de una tarjeta recién creada o se toca un viaje recién creado, el servidor contesta "Id inválido" (se reintenta un segundo después).
+- El caché de Odoo es por instancia del servidor: un cambio hecho a mano en Odoo (no desde el tablero de la app) tarda hasta 30 s en verse en la hoja; uno desde el tablero de la app llega con el aviso en vivo y se pide `fresco`.
+- Si hiciera falta bajar más el GET: se puede pasar a una sola vuelta trayendo las hojas anteriores con sus integrantes/contratistas/viajes embebidos (PostgREST), ~0,3 s menos desde Buenos Aires.
+
 ## Decisiones de diseño que no se leen en el código
 
 1. **Telegram en vez de WhatsApp (decisión del dueño, 10/10 tarde).** El bot le escribe a quien lo vinculó una vez con `t.me/<bot>?start=<código>`. "Enviada" se marca SÓLO si Telegram contestó `ok`; si falla, la respuesta trae el `wa.me` con el mismo texto y no marca nada. Sin las variables de Telegram todo funciona a mano (como el Pañol).
@@ -70,9 +97,10 @@ Pasos 1 y 2 **hechos el 10/10** (migración aplicada y verificada, después merg
 12. **Lecturas con la service role, escrituras con la sesión.** La lectura del día cruza Legajos, flota, pañol y planificación: se hace con la service role después de verificar el permiso en la ruta (`exigirModulo`, segunda llave además del proxy). Las escrituras de `hd_*` van con la sesión del usuario (RLS). Legajos (celular), Telegram, el link público y las ausencias cargadas por RRHH sin Hoja del día van con la service role (después de validar token/secreto/permiso) y quedan en el historial.
 18. **Gestos atómicos (I4).** Cada gesto corre en `conGrabador`: si falla a mitad, lo que llegó a escribir se vuelve atrás en un bloque (`hd_aplicar`); si ni eso se puede, queda en el historial como "a medias" con su Deshacer y el error lo dice. Pasar a alguien de cuadrilla es un UPDATE de `hoja_id` (no borrar + insertar).
 19. **"Cerrar jornada" nunca reescribe (B1).** `POST /api/planificacion/partes` crea; si la asignación ya tiene parte, 409. Corregir es el PATCH con el id (`Ver parte` → Editar). La tarjeta sabe del parte (`ObraDia.parteId`).
-13. **Odoo**: una lectura del día son 4 llamadas (`fetchTableroDeFechas`: sólo las OTs de ese día y del anterior con hojas, con coordenadas y número de jornada) + la asistencia, en paralelo con Supabase. El link público y las mutaciones usan un caché de 45 s del tablero (los celulares consultan cada 30 s). El GET del escritorio, no.
+13. **Odoo**: una lectura del día son 4 a 6 llamadas encadenadas (`fetchTableroDeFechas`: sólo las OTs de ese día y del anterior con hojas, con coordenadas y número de jornada; ~1,3–3 s) + la asistencia, en paralelo con Supabase. Desde el 10/10 (noche) las dos salen de un **caché en memoria por fecha** (`servicio.ts`, "Odoo, con caché"): el GET del escritorio acepta 30 s el tablero y 5 min la asistencia; `GET /api/hoja-dia?…&fresco=1` va a Odoo (la pantalla lo pide cuando llega el aviso en vivo del **tablero**); el link público y los gestos, 45 s. Ver "Latencia".
 14. **Quién es chofer**: `personal.odoo_tarea = 'chofer'` (lo trae la sincronización de Odoo); sin vínculo, el puesto de Legajos. Legajos dice chofer para Ortega, que actúa de capataz; como en Odoo es andamista (`odoo_tarea`), aparece en "Sin asignar" y puede estar a cargo.
-15. **Nombres**: el apellido con `nombrePropio()`; si dos lo comparten, con la inicial ("Miño H.", "Miño J."; también hay dos Valenzuela).
+15. **Nombres**: el apellido con `nombrePropio()`; si dos lo comparten, con la inicial ("Miño H.", "Miño J."; también hay dos Valenzuela). Desde el 10/10 (noche) `Persona.pila` trae el nombre de pila: el panel Gente, "+ Agregar" y "Quiénes van" del celular dicen "Taboada · Fernando", y los buscadores buscan por nombre o apellido (`coincidePersona`: todas las palabras, sin tildes). Los chips de la tarjeta siguen cortos, con el nombre entero en el `title`/aria-label.
+20. **Quién se asigna**: `Persona.deObra` (`esPersonalDeObra`): la tarea de Odoo si hay (andamista, herrero, chofer), si no el puesto de Legajos (operario, capataz, chofer). Un técnico (Capurro) o un administrativo no aparece en "Sin asignar", "No disponibles" ni "+ Agregar". La ART de la asistencia (`x_tipo_ausencia = "accidente"`) se lee "ART / accidente".
 16. **Módulo `hoja-dia` dentro de Planificación**: `puedeAbrir` ahora elige el módulo por la ruta MÁS LARGA (`moduloDeRuta`), si no `/planificacion/hoja` la abría cualquiera con Planificación.
 17. **Duraciones de la maqueta** (no las de la tabla de §6): busca 30 min y trae 30 + 60 de vuelta al depósito.
 
@@ -147,6 +175,7 @@ Decisión del dueño (10/10): cuando se da de alta, se modifica o se da de baja 
 - [ ] **Planteles**: la Cuadrilla 1 quedó sin responsable (era Arrieta) y la Cuadrilla 5 no tiene plantel. Cargarlos en Configuración de cuadrillas. No es urgente, porque el capataz se elige cada día, pero lo usan "Empezar con el plantel base" y la sugerencia de a cargo.
 - [ ] **Celulares en Odoo** de Vargas, Geloz, Sena Ayrton y Taboada (hoy vacíos). Al cargarlos en Odoo se copian solos a Legajos.
 - [ ] **Contratistas**: darlos de alta (panel Gente › Contratistas › Administrar) con referente, celular y valor por jornada, y mandarle al referente su link para vincular Telegram.
+- [ ] **Probar en producción** los gestos rápidos (agregar, mover, poner a cargo, contratista ±): que al recargar la página quede lo mismo. Las escrituras reales no se pudieron probar contra la base desde acá.
 - [ ] **Primer día de uso**: no hay "día anterior" con hojas, así que el primer día se arma con "Empezar con el plantel base" (o vacío). Desde el segundo, "Empezar como hoy".
 
 **Conocido y no hecho**
@@ -154,7 +183,7 @@ Decisión del dueño (10/10): cuando se da de alta, se modifica o se da de baja 
 - El resumen "Hoja: 3 de 5 enviadas · 2 pedidos sin camión" en el encabezado de cada día del tablero (`implementacion.md` §6) no está (sería un GET del día por cada día visible).
 - Telegram: el motivo del "No pude" viaja por índice (`m:<viaje>:<i>`): si un admin reordena `motivos_no_pude` mientras hay mensajes abiertos, el botón viejo toma otro motivo. "Anular link" no desvincula el Telegram de la persona (el chat sigue siendo suyo; para eso está "Desvincular" en Legajos).
 - `personal.telegram_chat_id`/`telegram_usuario` los puede leer cualquier autenticado (la RLS de `personal` es `USING (true)` desde el esquema inicial; un REVOKE de columna no alcanza con el GRANT de tabla). Bajo riesgo.
-- Latencia: cada gesto lee el día entero antes de escribir (~24 consultas + Odoo con caché de 45 s). Con tres coordinadores anda; si se nota, es lo primero a optimizar.
+- Latencia: ver la sección "Latencia" (arreglado el 10/10, noche).
 - Las alertas se crean al LEER el día (ahora sólo de días que todavía se pueden arreglar). El barrido (`/api/alertas/barrido`) corre una vez por día a las 5 (BA): no sirve para las 19:00 ni las 6:30. Para que lleguen sin que nadie abra la hoja hace falta un cron propio (~19:05 y ~6:35 BA) que llame `alertarDia(leerDia(mañana/hoy))`; queda para cuando haya plan de Vercel con más crons.
 - El viaje "Taller / VTV" no ocupa el camión en la vista de Vehículos ni lee `mantenimientos` (fase 2).
 - `hd_hojas.version` no se incrementa (no se usa: las versiones que importan están en `hd_links`).

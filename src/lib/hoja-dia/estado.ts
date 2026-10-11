@@ -289,6 +289,32 @@ export function nombresCortos(gente: { id: string; apellido: string; nombre: str
   return out;
 }
 
+/**
+ * ¿Es personal de obra (se asigna a cuadrillas)? La tarea de Odoo manda (andamista,
+ * herrero, chofer); sin vínculo con Odoo, el puesto de Legajos (operario, capataz, chofer).
+ * Un técnico de SyH o un administrativo no aparece para asignar.
+ */
+export function esPersonalDeObra(puesto: string | null | undefined, odooTarea: string | null | undefined): boolean {
+  const t = normalizar(String(odooTarea ?? "").trim());
+  if (t) return ["andamista", "herrero", "chofer", "capataz", "operario", "ayudante"].includes(t);
+  return ["operario", "capataz", "chofer"].includes(normalizar(String(puesto ?? "").trim()));
+}
+
+/** "Taboada · Fernando": el nombre corto con el de pila (el panel Gente y "+ Agregar"). */
+export const nombreConPila = (p: Pick<Persona, "nombre" | "pila">) => (p.pila ? `${p.nombre} · ${p.pila}` : p.nombre);
+
+/**
+ * ¿La persona coincide con lo que se escribió en un buscador? Todas las palabras, sin
+ * tildes ni mayúsculas, en el apellido o en el nombre: "fer", "fernando", "taboada",
+ * "fer tab" encuentran a Taboada Fernando.
+ */
+export function coincidePersona(p: Pick<Persona, "nombre" | "nombreCompleto" | "pila">, q: string): boolean {
+  const palabras = normalizar(q).split(/\s+/).filter(Boolean);
+  if (!palabras.length) return true;
+  const donde = normalizar(`${p.nombre} ${p.pila ?? ""} ${p.nombreCompleto ?? ""}`).replace(/[.,]/g, " ");
+  return palabras.every((w) => donde.includes(w));
+}
+
 // ─── Cuadrillas ─────────────────────────────────────────────────────────────
 
 export const cuadrilla = (dia: DiaHoja, c: number) => ctx(dia).C.get(c) ?? null;
@@ -1276,7 +1302,7 @@ export function sugerirACargo(dia: DiaHoja, c: number): { pid: string; por: stri
 export function sinAsignar(dia: DiaHoja): string[] {
   return memo(dia, "sinAsignar", () =>
     dia.personas
-      .filter((p) => p.activo && !p.externa && !p.esChofer && !ausenciaDe(dia, p.id) && hojaDe(dia, p.id) == null)
+      .filter((p) => p.activo && !p.externa && !p.esChofer && p.deObra !== false && !ausenciaDe(dia, p.id) && hojaDe(dia, p.id) == null)
       .sort((a, b) => Number(b.puedeEstarACargo) - Number(a.puedeEstarACargo) || a.nombre.localeCompare(b.nombre, "es"))
       .map((p) => p.id));
 }

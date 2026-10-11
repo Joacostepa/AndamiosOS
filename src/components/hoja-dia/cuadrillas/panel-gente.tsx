@@ -5,7 +5,7 @@
 // un chofer entra como chofer), o se elige y se aprieta 1–5. G enfoca el buscador.
 
 import { useState } from "react";
-import { hojaDe, nombreDe, normalizar, panelGente, persona, laC } from "@/lib/hoja-dia/estado";
+import { coincidePersona, hojaDe, nombreDe, normalizar, panelGente, persona, laC } from "@/lib/hoja-dia/estado";
 import { noDisponibles, numeroDe, textoChofer, textoVehiculo } from "@/lib/hoja-dia/vista-cuadrillas";
 import { cn } from "@/lib/utils";
 import { diaCorto } from "@/components/hoja-dia/comunes/encabezado-hoja";
@@ -30,7 +30,12 @@ export function PanelGente({ ctl }: { ctl: Control }) {
   const [buscar, setBuscar] = useState("");
   const [asigAbierto, setAsigAbierto] = useState(false);
   const q = normalizar(buscar.trim());
-  const pasa = (pid: string) => !q || normalizar(nombreDe(dia, pid)).includes(q);
+  // Por apellido o por nombre ("fer", "taboada", "jonas"), todas las palabras, sin tildes.
+  const pasa = (pid: string) => {
+    if (!q) return true;
+    const p = persona(dia, pid);
+    return p ? coincidePersona(p, q) : normalizar(nombreDe(dia, pid)).includes(q);
+  };
   const pg = panelGente(dia);
   const sa = pg.sinAsignar.filter(pasa);
   const nd = noDisponibles(dia).filter((x) => pasa(x.pid));
@@ -44,6 +49,7 @@ export function PanelGente({ ctl }: { ctl: Control }) {
         key={pid}
         type="button"
         id={`pp-${pid}`}
+        title={persona(dia, pid)?.nombreCompleto || undefined}
         draggable={!pasado}
         aria-pressed={elegido}
         disabled={pasado}
@@ -60,7 +66,10 @@ export function PanelGente({ ctl }: { ctl: Control }) {
           elegido && "border-primary bg-accent",
         )}
       >
-        <span className="font-medium whitespace-nowrap">{nombreDe(dia, pid)}</span>
+        <span className="font-medium whitespace-nowrap">
+          {nombreDe(dia, pid)}
+          {!chico && persona(dia, pid)?.pila && <span className="font-normal text-muted-foreground"> · {persona(dia, pid)!.pila}</span>}
+        </span>
         <span className={cn("text-xs text-muted-foreground", !chico && "ml-auto text-right", tono)}>{s}</span>
       </button>
     );
@@ -109,7 +118,10 @@ export function PanelGente({ ctl }: { ctl: Control }) {
           {nd.length ? (
             nd.map((x) => (
               <div key={x.pid} className="flex items-baseline gap-2 px-1.5 py-1 text-[13px]">
-                <span className="font-medium whitespace-nowrap">{x.nombre}</span>
+                <span className="font-medium whitespace-nowrap">
+                  {x.nombre}
+                  {x.pila && <span className="font-normal text-muted-foreground"> · {x.pila}</span>}
+                </span>
                 <span className="ml-auto text-right text-xs text-hd-rojo">{x.txt}</span>
               </div>
             ))

@@ -73,6 +73,8 @@ export type GentePublica = {
    */
   cantidad?: number;
   contratista?: boolean;
+  /** El nombre de pila ("Fernando"): "Taboada · Fernando". Opcional (vistas viejas guardadas). */
+  pila?: string | null;
 };
 
 export type ViajePublico = {
@@ -161,7 +163,7 @@ export type VistaChofer = Comun & {
   situacion: "ok"; rol: "chofer"; vehiculo: string | null;
   todo: {
     cuadrilla: string; aCargo: string | null; aCargoTel: string | null; encuentro: string; nota: string | null;
-    obras: ObraPublica[]; gente: { nombre: string; aCargo: boolean }[]; van: number;
+    obras: ObraPublica[]; gente: { nombre: string; aCargo: boolean; pila?: string | null }[]; van: number;
   } | null;
   viajes: ViajePublico[]; ahoraId: string | null; motivosNoPude: string[];
 };
@@ -362,7 +364,7 @@ export function armarVista(dia: DiaHoja, link: LinkVista, ahora: number, op: Opc
     // "nuevo": los que no estaban en lo último que confirmó, mientras no toque "Entendido".
     const base = e?.snapRecibido?.tipo === "hoja" ? e.snapRecibido : e?.snapPrimero?.tipo === "hoja" ? e.snapPrimero : null;
     const gente: GentePublica[] = genteDe(h).map((p) => ({
-      nombre: nombreDe(dia, p), telefono: telDe(dia, p), aCargo: p === aCargo, chofer: false,
+      nombre: nombreDe(dia, p), pila: persona(dia, p)?.pila ?? null, telefono: telDe(dia, p), aCargo: p === aCargo, chofer: false,
       nota: h.integrantes.find((i) => i.personaId === p)?.nota ?? null, nuevo: !!base && !!comun.cambio && !base.gente.includes(p),
     }));
     // La gente de los contratistas: primero, como "3 de Quintana" (sin nombres), con el
@@ -373,7 +375,7 @@ export function armarVista(dia: DiaHoja, link: LinkVista, ahora: number, op: Opc
       nombre: nombreDe(dia, x.contratistaId), telefono: telDe(dia, x.contratistaId), aCargo: x.contratistaId === kCargo, chofer: false,
       nota: x.nota, nuevo: !!base && !!comun.cambio && !(x.contratistaId in kBase), cantidad: x.cantidad, contratista: true,
     })));
-    if (h.modo === "todo_el_dia" && h.choferId) gente.push({ nombre: nombreDe(dia, h.choferId), telefono: telDe(dia, h.choferId), aCargo: false, chofer: true, nota: null, nuevo: false });
+    if (h.modo === "todo_el_dia" && h.choferId) gente.push({ nombre: nombreDe(dia, h.choferId), pila: persona(dia, h.choferId)?.pila ?? null, telefono: telDe(dia, h.choferId), aCargo: false, chofer: true, nota: null, nuevo: false });
     const conChofer = [...genteDe(h), ...(h.modo === "todo_el_dia" && h.choferId ? [h.choferId] : [])];
     return {
       van: vanDe(dia, c), vanTxt: vanEnPalabras(dia, c, conChofer),
@@ -419,7 +421,7 @@ export function armarVista(dia: DiaHoja, link: LinkVista, ahora: number, op: Opc
       obras: obrasPublicas(dia, td, pid, ahora, op),
       gente: [
         ...contratistasDe(hTd).map((x) => ({ nombre: x.cantidad > 0 ? `${x.cantidad} de ${nombreDe(dia, x.contratistaId)}` : nombreDe(dia, x.contratistaId), aCargo: x.contratistaId === aCargoTd })),
-        ...genteDe(hTd).map((p) => ({ nombre: nombreDe(dia, p), aCargo: p === aCargoTd })),
+        ...genteDe(hTd).map((p) => ({ nombre: nombreDe(dia, p), pila: persona(dia, p)?.pila ?? null, aCargo: p === aCargoTd })),
       ],
       van: vanDe(dia, td),
     } : null,

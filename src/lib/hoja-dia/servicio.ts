@@ -11,10 +11,16 @@
 // Lo que el usuario no puede escribir por RLS (el celular en Legajos, Telegram) va con la
 // service role y queda igual en el historial.
 //
-// CUÁNTO SE LE PIDE A ODOO. Una lectura del día son cuatro llamadas (fetchTableroDeFechas)
-// más la asistencia, todas en paralelo con Supabase. El link público (/h/<token>) se
-// consulta cada 30 segundos desde cada celular: ahí el tablero sale de un caché de 45 s en
-// memoria (`cacheOdoo`), para no apretar a una Odoo Online que limita la concurrencia.
+// CUÁNTO SE LE PIDE A ODOO. Una lectura del día son cuatro a seis llamadas encadenadas
+// (fetchTableroDeFechas, ~2,5 s) más la asistencia, en paralelo con Supabase. Las dos salen
+// de un caché en memoria por fecha (ver "Odoo, con caché"): el GET del escritorio acepta
+// 30 s (5 min la asistencia) salvo `fresco`, el link público (cada 30 s desde cada
+// celular) y los gestos, 45 s. Así no se aprieta a una Odoo Online que limita la
+// concurrencia, y abrir o volver a un día tarda lo que tarda Supabase.
+//
+// LOS GESTOS NO LEEN EL DÍA ENTERO (10/10): leerContexto trae sólo lo que el gesto necesita
+// (una vuelta a Supabase, sin Odoo salvo el chofer). El día entero lo vuelve a pedir la
+// pantalla en segundo plano.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -28,7 +34,7 @@ import type {
 import { PARAMETROS_POR_DEFECTO } from "./tipos";
 import {
   addDia, ausenciasDeAsistencia, fletesDelDia, horariosCierre, minutosDesde, nombresCortos, normHora, obrasDe, aCargoDe, hojaDeCuadrilla,
-  ausenciaDe, deContratistas, persona, cantidadDe, contratistasDe, type FilaAsistencia,
+  ausenciaDe, deContratistas, persona, cantidadDe, contratistasDe, esPersonalDeObra, type FilaAsistencia,
 } from "./estado";
 import { telegramConfigurado, usuarioDelBot } from "./telegram";
 import { diaAlertable } from "./dias";
@@ -250,76 +256,205 @@ const ok = <T>(r: { data: T | null; error: { message: string } | null }, que: st
   return (r.data ?? []) as T;
 };
 
-// ─── El tablero (Odoo), con caché corto para el link público ────────────────
+// ─── Odoo, con caché en memoria por fecha ───────────────────────────────────
+//
+// El tablero (4 a 6 llamadas encadenadas, ~2,5 s) y la asistencia (~0,8 s) se guardan en
+// memoria por fecha. Cuánto vale lo guardado depende de quién pide:
+// - el GET del escritorio: 30 s el tablero y 5 min la asistencia; con `fresco` (lo pide la
+//   pantalla cuando llega el aviso en vivo del TABLERO: se movió una obra) va a Odoo;
+// - un gesto (`cacheOdoo`): 45 s el tablero; la asistencia, sólo si ya está guardada (un
+//   gesto no espera a la asistencia, como antes);
+// - el link público (cacheOdoo): igual que un gesto.
+// El caché es por instancia del servidor: dos instancias pueden tener lecturas distintas
+// por hasta esos segundos (lo mismo que dos pantallas abiertas).
 
 type Tablero = Awaited<ReturnType<typeof fetchTableroDeFechas>>;
-const cacheTablero = new Map<string, { at: number; datos: Promise<Tablero> }>();
-function tablero(fechas: Fecha[], cache: boolean): Promise<Tablero> {
-  const clave = [...new Set(fechas)].sort().join(",");
-  const hit = cacheTablero.get(clave);
-  if (cache && hit && Date.now() - hit.at < 45_000) return hit.datos;
-  const datos = fetchTableroDeFechas(fechas);
-  cacheTablero.set(clave, { at: Date.now(), datos });
-  datos.catch(() => cacheTablero.delete(clave));
+type GuardadoOdoo<T> = { at: number; datos: Promise<T>; listo: boolean };
+const cacheTablero = new Map<string, GuardadoOdoo<Tablero>>();
+const VIDA_MAX = 10 * 60_000;
+
+function guardar<K, T>(cache: Map<K, GuardadoOdoo<T>>, clave: K, datos: Promise<T>): Promise<T> {
+  const ahora = Date.now();
+  for (const [k, x] of cache) if (ahora - x.at > VIDA_MAX) cache.delete(k);
+  const g: GuardadoOdoo<T> = { at: ahora, datos, listo: false };
+  cache.set(clave, g);
+  datos.then(
+    () => { g.listo = true; },
+    () => { if (cache.get(clave) === g) cache.delete(clave); },
+  );
   return datos;
 }
 
-/** La asistencia de Juan Pablo (x_parte_diario) de los últimos días. Si falla, nada: es un extra. */
-async function asistencia(fecha: Fecha, dias: number): Promise<{ empleado: number; fecha: Fecha; estado: string; tipo: string | null }[]> {
+function tablero(fechas: Fecha[], maxEdadMs: number): Promise<Tablero> {
+  const clave = [...new Set(fechas)].sort().join(",");
+  const hit = cacheTablero.get(clave);
+  if (hit && Date.now() - hit.at < maxEdadMs) return hit.datos;
+  return guardar(cacheTablero, clave, fetchTableroDeFechas(fechas));
+}
+
+/** Un tablero ya leído (de cualquier lectura que incluya esa fecha), sin ir a Odoo. */
+function tableroGuardado(fecha: Fecha, maxEdadMs: number): Promise<Tablero> | null {
+  let mejor: GuardadoOdoo<Tablero> | null = null;
+  for (const [clave, x] of cacheTablero) {
+    if (x.listo && Date.now() - x.at < maxEdadMs && clave.split(",").includes(fecha) && (!mejor || x.at > mejor.at)) mejor = x;
+  }
+  return mejor?.datos ?? null;
+}
+
+type FilaAsis = { empleado: number; fecha: Fecha; estado: string; tipo: string | null };
+const cacheAsistencia = new Map<string, GuardadoOdoo<FilaAsis[]>>();
+
+/** La asistencia de Juan Pablo (x_parte_diario) de los últimos días. Tira si Odoo falla. */
+async function leerAsistencia(fecha: Fecha, dias: number): Promise<FilaAsis[]> {
+  const filas = await searchRead<{ x_empleado: [number, string] | false; x_fecha: string | false; x_estado: string | false; x_tipo_ausencia: string | false }>(
+    "x_parte_diario",
+    // Días hábiles: la ventana en días corridos tiene dos de más (el fin de semana).
+    [["x_fecha", ">=", addDia(fecha, -(dias + 2))], ["x_fecha", "<=", fecha]],
+    ["x_empleado", "x_fecha", "x_estado", "x_tipo_ausencia"],
+  );
+  return filas
+    .filter((f) => Array.isArray(f.x_empleado) && f.x_fecha)
+    .map((f) => ({ empleado: (f.x_empleado as [number, string])[0], fecha: String(f.x_fecha), estado: String(f.x_estado || ""), tipo: f.x_tipo_ausencia || null }));
+}
+
+/**
+ * La asistencia, con caché. `maxEdadMs` null: sólo si ya está guardada (no va a Odoo).
+ * Si falla, nada: es un extra (y no queda guardado el error).
+ */
+async function asistencia(fecha: Fecha, dias: number, maxEdadMs: number | null): Promise<FilaAsis[]> {
+  const clave = `${fecha}:${dias}`;
+  const hit = cacheAsistencia.get(clave);
   try {
-    const filas = await searchRead<{ x_empleado: [number, string] | false; x_fecha: string | false; x_estado: string | false; x_tipo_ausencia: string | false }>(
-      "x_parte_diario",
-      // Días hábiles: la ventana en días corridos tiene dos de más (el fin de semana).
-      [["x_fecha", ">=", addDia(fecha, -(dias + 2))], ["x_fecha", "<=", fecha]],
-      ["x_empleado", "x_fecha", "x_estado", "x_tipo_ausencia"],
-    );
-    return filas
-      .filter((f) => Array.isArray(f.x_empleado) && f.x_fecha)
-      .map((f) => ({ empleado: (f.x_empleado as [number, string])[0], fecha: String(f.x_fecha), estado: String(f.x_estado || ""), tipo: f.x_tipo_ausencia || null }));
+    if (hit && (maxEdadMs == null ? hit.listo : Date.now() - hit.at < maxEdadMs)) return await hit.datos;
+    if (maxEdadMs == null) return [];
+    return await guardar(cacheAsistencia, clave, leerAsistencia(fecha, dias));
   } catch (e) {
     console.error("[hoja-dia] no se pudo leer la asistencia de Odoo", e instanceof Error ? e.message : e);
     return [];
   }
 }
 
-// ─── El día entero ──────────────────────────────────────────────────────────
+// ─── Armado (compartido por el día entero y el contexto de un gesto) ────────
 
 const numeroDe = (nombre: string) => {
   const m = /(\d+)/.exec(nombre);
   return m ? Number(m[1]) : null;
 };
 
+const COLUMNAS_PERSONAL = "id, nombre, apellido, puesto, telefono, activo, puede_estar_a_cargo, telegram_chat_id, odoo_employee_id, odoo_tarea";
+const COLUMNAS_EXTERNAS = "id, nombre, apellido, empresa, telefono, activo, puede_estar_a_cargo, telegram_chat_id";
+const COLUMNAS_CONTRATISTAS = "id, nombre, referente, celular, telegram_chat_id, valor_jornada, nota, activo";
+
+/** El nombre de pila ("FERNANDO NICOLAS" → "Fernando"). */
+const pilaDe = (nombre: unknown) => (s(nombre) ? nombrePropio(String(nombre)).split(/\s+/)[0] || null : null);
+
+/** Legajos y externas, con nombres cortos que no se repiten ("Miño H.", "Miño J."). */
+export function armarPersonas(personal: Fila[], externas: Fila[]): Persona[] {
+  const cortos = nombresCortos(
+    [...personal, ...externas].map((p) => ({ id: String(p.id), apellido: String(p.apellido ?? ""), nombre: String(p.nombre ?? "") })),
+    (x) => nombrePropio(x),
+  );
+  return [
+    ...personal.map((p) => ({
+      id: String(p.id), externa: false, nombre: cortos.get(String(p.id)) ?? String(p.apellido),
+      nombreCompleto: nombrePropio(`${p.nombre} ${p.apellido}`), pila: pilaDe(p.nombre), puesto: s(p.puesto), celular: s(p.telefono),
+      puedeEstarACargo: b(p.puede_estar_a_cargo),
+      // Maneja quien Odoo dice que es chofer; sin vínculo con Odoo todavía, el puesto de Legajos.
+      esChofer: s(p.odoo_tarea) ? p.odoo_tarea === "chofer" : p.puesto === "chofer",
+      // Un técnico o un administrativo no se asigna a cuadrillas (Capurro, técnico de SyH).
+      deObra: esPersonalDeObra(s(p.puesto), s(p.odoo_tarea)),
+      telegram: p.telegram_chat_id != null, odooEmployeeId: n(p.odoo_employee_id), activo: p.activo !== false,
+    })),
+    ...externas.map((p) => ({
+      id: String(p.id), externa: true, nombre: cortos.get(String(p.id)) ?? String(p.apellido),
+      nombreCompleto: `${nombrePropio(`${p.nombre} ${p.apellido}`)} (${p.empresa})`, pila: pilaDe(p.nombre), puesto: "externo", celular: s(p.telefono),
+      puedeEstarACargo: b(p.puede_estar_a_cargo), esChofer: false, deObra: true, telegram: p.telegram_chat_id != null, odooEmployeeId: null, activo: p.activo !== false,
+    })),
+  ];
+}
+
+function armarVehiculos(filas: Fila[], docs: Fila[]): Vehiculo[] {
+  return filas.map((v) => ({
+    id: String(v.id), patente: String(v.patente), marca: s(v.marca), modelo: s(v.modelo), tipo: String(v.tipo) as Vehiculo["tipo"],
+    estado: String(v.estado) as Vehiculo["estado"], choferHabitualId: s(v.chofer_habitual_id),
+    vencimientos: docs.filter((d) => d.entidad_id === v.id && s(d.fecha_vencimiento)).map((d) => ({ tipo: d.tipo_documento as "vtv", vence: String(d.fecha_vencimiento) })),
+  }));
+}
+
+function camionesDe(vehiculos: Vehiculo[], filas: Fila[]): CamionDia[] {
+  return vehiculos.map((v) => {
+    const f = filas.find((c) => c.vehiculo_id === v.id);
+    return { vehiculoId: v.id, choferId: f ? (b(f.sin_chofer) ? null : s(f.chofer_id)) : v.choferHabitualId, nota: f ? s(f.nota) : null };
+  });
+}
+
+/** Las cuadrillas de Odoo (o, sin el tablero a mano, las vinculadas en Configuración), con el plantel base. */
+function armarCuadrillas(tab: Tablero | null, cuadSb: Fila[], plantel: Fila[]): Cuadrilla[] {
+  const base = tab
+    ? tab.cuadrillas
+    : cuadSb.filter((x) => n(x.odoo_cuadrilla_id) != null && x.activo !== false).map((x) => ({ id: Number(x.odoo_cuadrilla_id), nombre: String(x.nombre), tercerizada: false }));
+  return base.map((c) => {
+    const sb = cuadSb.find((x) => n(x.odoo_cuadrilla_id) === c.id);
+    const nombre = nombrePropio(c.nombre);
+    return {
+      odooId: c.id, nombre, numero: numeroDe(nombre), tercerizada: c.tercerizada,
+      plantel: sb ? { responsableId: s(sb.responsable_id), personaIds: plantel.filter((p) => p.cuadrilla_id === sb.id).map((p) => String(p.personal_id)) } : null,
+    };
+  });
+}
+
+/** Las obras del tablero de un día. */
+function obrasDeFecha(tab: Tablero, f: Fecha): ObraDia[] {
+  const otPor = new Map(tab.ots.map((o) => [o.id, o]));
+  return tab.asignaciones.filter((a) => a.fecha === f && a.cuadrillaId != null && otPor.has(a.otId)).map((a) => {
+    const ot = otPor.get(a.otId)!;
+    const dir = direccionDeObra(ot);
+    const i = ot.fechasJornadas.indexOf(f);
+    return {
+      otId: ot.id, asignacionId: a.id, cuadrillaOdooId: a.cuadrillaId!, ordenDia: a.ordenDia, fraccion: a.fraccion, estadoAsignacion: a.estado,
+      direccion: dir, corto: direccionCorta(dir), titulo: ot.titulo, tipo: ot.tipo, personalPorJornada: ot.personalPorJornada,
+      lat: ot.lat, lng: ot.lng, detalleTecnico: ot.detalleTecnico, observaciones: ot.observaciones, contactoObra: ot.contactoObra,
+      telObra: ot.telObra, cantArchivos: ot.cantDocs + ot.cantInstrucciones, ventaId: ot.ventaId,
+      dia: i >= 0 ? i + 1 : null, totalDias: ot.fechasJornadas.length || null, parteId: a.parteId ?? null,
+    };
+  });
+}
+
+const mapInstruccion = (i: Fila): DiaHoja["instrucciones"][number] => ({
+  otId: Number(i.odoo_ot_id), cuadrillaOdooId: n(i.cuadrilla_odoo_id), horaInicio: normHora(s(i.hora_inicio)), hoy: s(i.hoy), chips: (i.chips as string[]) ?? [],
+});
+
+const VACIO = Promise.resolve({ data: [] as Fila[], error: null });
+/** Un pedido a Supabase que no tira mientras otro termina: el error se mira al usarlo (`ok`). */
+const sinRechazo = <T>(p: PromiseLike<T>): Promise<T> => {
+  const x = Promise.resolve(p);
+  x.catch(() => {});
+  return x;
+};
+
+// ─── El día entero ──────────────────────────────────────────────────────────
+
 /**
  * Todo lo que la pantalla necesita de un día, en un objeto (ver tipos.ts, `DiaHoja`). Las
  * cuentas las hace estado.ts con esto.
+ *
+ * Dos vueltas: en la primera sale TODO lo que no depende del día anterior (y las hojas
+ * anteriores, que dicen cuál es); en la segunda, lo del día anterior y el tablero de Odoo
+ * (que pide las dos fechas). Con el tablero en caché, son dos idas a Supabase.
  */
-export async function leerDia(fecha: Fecha, opts: { cacheOdoo?: boolean } = {}): Promise<DiaHoja> {
+export async function leerDia(fecha: Fecha, opts: { cacheOdoo?: boolean; fresco?: boolean } = {}): Promise<DiaHoja> {
   const db = createAdminClient();
   const desde30 = addDia(fecha, -30);
 
-  // Fase 1: el día anterior con hojas (es un número que Odoo necesita) y el login de Odoo.
-  const [previas] = await Promise.all([
-    db.from("hd_hojas").select("*").gte("fecha", desde30).lt("fecha", fecha).order("fecha", { ascending: false }).limit(200),
-    authenticate().catch(() => 0),
-  ]);
-  const filasPrevias = ok<Fila[]>(previas, "las hojas anteriores");
-  const anteriorFecha = filasPrevias[0] ? String(filasPrevias[0].fecha) : null;
-
-  // Fase 2: todo en paralelo.
-  const idsPrevias = filasPrevias.map((f) => f.id as string);
-  const vacio = Promise.resolve({ data: [], error: null });
-  const [
-    tab, asis, hojasR, integR, intPrevR, personalR, externasR, vehiculosR, documentosR, cuadrillasR, plantelR, camionesR,
-    lugaresR, viajesR, pedidosR, instrR, ausR, linksR, paramsR, suspR, cajonR, operariosR, viajesAntR, camionesAntR,
-    contratistasR, hojaContrR, hojaContrPrevR,
-  ] = await Promise.all([
-    tablero(anteriorFecha ? [anteriorFecha, fecha] : [fecha], !!opts.cacheOdoo),
-    opts.cacheOdoo ? Promise.resolve([]) : asistencia(fecha, 3),
+  // Vuelta 1: todo en paralelo. El login de Odoo se calienta acá (con ODOO_UID no hace nada).
+  void authenticate().catch(() => 0);
+  const previasP = sinRechazo(db.from("hd_hojas").select("*").gte("fecha", desde30).lt("fecha", fecha).order("fecha", { ascending: false }).limit(200));
+  const asisP = asistencia(fecha, 3, opts.cacheOdoo ? null : opts.fresco ? 0 : 5 * 60_000);
+  const sueltas = sinRechazo(Promise.all([
     db.from("hd_hojas").select("*").eq("fecha", fecha),
     db.from("hd_integrantes").select("*").eq("fecha", fecha),
-    filasPrevias.length ? db.from("hd_integrantes").select("*").in("hoja_id", filasPrevias.map((f) => f.id as string)) : Promise.resolve({ data: [], error: null }),
-    db.from("personal").select("id, nombre, apellido, puesto, telefono, activo, puede_estar_a_cargo, telegram_chat_id, odoo_employee_id, odoo_tarea"),
-    db.from("pan_personas_externas").select("id, nombre, apellido, empresa, telefono, activo, puede_estar_a_cargo, telegram_chat_id"),
+    db.from("personal").select(COLUMNAS_PERSONAL),
+    db.from("pan_personas_externas").select(COLUMNAS_EXTERNAS),
     db.from("vehiculos").select("id, patente, marca, modelo, tipo, estado, chofer_habitual_id, activo").eq("activo", true),
     db.from("documentos").select("entidad_id, tipo_documento, fecha_vencimiento").eq("entidad_tipo", "vehiculo").in("tipo_documento", ["vtv", "seguro_vehiculo", "cnrt"]),
     db.from("cuadrillas").select("id, nombre, responsable_id, odoo_cuadrilla_id, activo"),
@@ -335,77 +470,31 @@ export async function leerDia(fecha: Fecha, opts: { cacheOdoo?: boolean } = {}):
     db.from("plan_suspensiones").select("cuadrilla_odoo_id, motivo").eq("fecha", fecha),
     db.from("plan_cajon_pendientes").select("id, texto").eq("hecho", false).order("posicion"),
     db.from("hd_historial").select("entidad_id, accion, at").eq("fecha", fecha).in("accion", ["avisar_operario", "no_avisar_operario"]),
-    anteriorFecha ? db.from("hd_viajes").select("*").eq("fecha", anteriorFecha) : Promise.resolve({ data: [], error: null }),
-    anteriorFecha ? db.from("hd_camiones_dia").select("*").eq("fecha", anteriorFecha) : Promise.resolve({ data: [], error: null }),
-    db.from("hd_contratistas").select("id, nombre, referente, celular, telegram_chat_id, valor_jornada, nota, activo").order("nombre"),
+    db.from("hd_contratistas").select(COLUMNAS_CONTRATISTAS).order("nombre"),
     db.from("hd_hoja_contratistas").select("*").eq("fecha", fecha),
-    idsPrevias.length ? db.from("hd_hoja_contratistas").select("*").in("hoja_id", idsPrevias) : vacio,
+  ]));
+
+  // Vuelta 2: el día anterior con hojas (Odoo necesita la fecha) y lo suyo.
+  const filasPrevias = ok<Fila[]>(await previasP, "las hojas anteriores");
+  const anteriorFecha = filasPrevias[0] ? String(filasPrevias[0].fecha) : null;
+  const idsPrevias = filasPrevias.map((f) => f.id as string);
+  const [tab, intPrevR, viajesAntR, camionesAntR, hojaContrPrevR] = await Promise.all([
+    tablero(anteriorFecha ? [anteriorFecha, fecha] : [fecha], opts.cacheOdoo ? 45_000 : opts.fresco ? 0 : 30_000),
+    idsPrevias.length ? db.from("hd_integrantes").select("*").in("hoja_id", idsPrevias) : VACIO,
+    anteriorFecha ? db.from("hd_viajes").select("*").eq("fecha", anteriorFecha) : VACIO,
+    anteriorFecha ? db.from("hd_camiones_dia").select("*").eq("fecha", anteriorFecha) : VACIO,
+    idsPrevias.length ? db.from("hd_hoja_contratistas").select("*").in("hoja_id", idsPrevias) : VACIO,
   ]);
+  const [
+    hojasR, integR, personalR, externasR, vehiculosR, documentosR, cuadrillasR, plantelR, camionesR, lugaresR, viajesR, pedidosR, instrR,
+    ausR, linksR, paramsR, suspR, cajonR, operariosR, contratistasR, hojaContrR,
+  ] = await sueltas;
+  const asis = await asisP;
 
   const parametros = mapParametros(ok<Fila[]>(paramsR, "los parámetros"));
-
-  // Personas: Legajos y externas, con nombres cortos que no se repiten.
-  const personal = ok<Fila[]>(personalR, "Legajos");
-  const externas = ok<Fila[]>(externasR, "las personas externas");
-  const cortos = nombresCortos(
-    [...personal, ...externas].map((p) => ({ id: String(p.id), apellido: String(p.apellido ?? ""), nombre: String(p.nombre ?? "") })),
-    (x) => nombrePropio(x),
-  );
-  const personas: Persona[] = [
-    ...personal.map((p) => ({
-      id: String(p.id), externa: false, nombre: cortos.get(String(p.id)) ?? String(p.apellido),
-      nombreCompleto: nombrePropio(`${p.nombre} ${p.apellido}`), puesto: s(p.puesto), celular: s(p.telefono),
-      puedeEstarACargo: b(p.puede_estar_a_cargo),
-      // Maneja quien Odoo dice que es chofer; sin vínculo con Odoo todavía, el puesto de Legajos.
-      esChofer: s(p.odoo_tarea) ? p.odoo_tarea === "chofer" : p.puesto === "chofer",
-      telegram: p.telegram_chat_id != null, odooEmployeeId: n(p.odoo_employee_id), activo: p.activo !== false,
-    })),
-    ...externas.map((p) => ({
-      id: String(p.id), externa: true, nombre: cortos.get(String(p.id)) ?? String(p.apellido),
-      nombreCompleto: `${nombrePropio(`${p.nombre} ${p.apellido}`)} (${p.empresa})`, puesto: "externo", celular: s(p.telefono),
-      puedeEstarACargo: b(p.puede_estar_a_cargo), esChofer: false, telegram: p.telegram_chat_id != null, odooEmployeeId: null, activo: p.activo !== false,
-    })),
-  ];
-
-  // Vehículos con sus vencimientos.
-  const docs = ok<Fila[]>(documentosR, "los documentos de la flota");
-  const vehiculos: Vehiculo[] = ok<Fila[]>(vehiculosR, "los vehículos").map((v) => ({
-    id: String(v.id), patente: String(v.patente), marca: s(v.marca), modelo: s(v.modelo), tipo: String(v.tipo) as Vehiculo["tipo"],
-    estado: String(v.estado) as Vehiculo["estado"], choferHabitualId: s(v.chofer_habitual_id),
-    vencimientos: docs.filter((d) => d.entidad_id === v.id && s(d.fecha_vencimiento)).map((d) => ({ tipo: d.tipo_documento as "vtv", vence: String(d.fecha_vencimiento) })),
-  }));
-  const camionesDe = (filas: Fila[]): CamionDia[] => vehiculos.map((v) => {
-    const f = filas.find((c) => c.vehiculo_id === v.id);
-    return { vehiculoId: v.id, choferId: f ? (b(f.sin_chofer) ? null : s(f.chofer_id)) : v.choferHabitualId, nota: f ? s(f.nota) : null };
-  });
-
-  // Cuadrillas de Odoo, con el plantel base de Configuración si están vinculadas.
-  const cuadSb = ok<Fila[]>(cuadrillasR, "las cuadrillas");
-  const plantel = ok<Fila[]>(plantelR, "el plantel");
-  const cuadrillas: Cuadrilla[] = tab.cuadrillas.map((c) => {
-    const sb = cuadSb.find((x) => n(x.odoo_cuadrilla_id) === c.id);
-    const nombre = nombrePropio(c.nombre);
-    return {
-      odooId: c.id, nombre, numero: numeroDe(nombre), tercerizada: c.tercerizada,
-      plantel: sb ? { responsableId: s(sb.responsable_id), personaIds: plantel.filter((p) => p.cuadrilla_id === sb.id).map((p) => String(p.personal_id)) } : null,
-    };
-  });
-
-  // Las obras del tablero de un día.
-  const otPor = new Map(tab.ots.map((o) => [o.id, o]));
-  const obrasDeFecha = (f: Fecha): ObraDia[] =>
-    tab.asignaciones.filter((a) => a.fecha === f && a.cuadrillaId != null && otPor.has(a.otId)).map((a) => {
-      const ot = otPor.get(a.otId)!;
-      const dir = direccionDeObra(ot);
-      const i = ot.fechasJornadas.indexOf(f);
-      return {
-        otId: ot.id, asignacionId: a.id, cuadrillaOdooId: a.cuadrillaId!, ordenDia: a.ordenDia, fraccion: a.fraccion, estadoAsignacion: a.estado,
-        direccion: dir, corto: direccionCorta(dir), titulo: ot.titulo, tipo: ot.tipo, personalPorJornada: ot.personalPorJornada,
-        lat: ot.lat, lng: ot.lng, detalleTecnico: ot.detalleTecnico, observaciones: ot.observaciones, contactoObra: ot.contactoObra,
-        telObra: ot.telObra, cantArchivos: ot.cantDocs + ot.cantInstrucciones, ventaId: ot.ventaId,
-        dia: i >= 0 ? i + 1 : null, totalDias: ot.fechasJornadas.length || null, parteId: a.parteId ?? null,
-      };
-    });
+  const personas = armarPersonas(ok<Fila[]>(personalR, "Legajos"), ok<Fila[]>(externasR, "las personas externas"));
+  const vehiculos = armarVehiculos(ok<Fila[]>(vehiculosR, "los vehículos"), ok<Fila[]>(documentosR, "los documentos de la flota"));
+  const cuadrillas = armarCuadrillas(tab, ok<Fila[]>(cuadrillasR, "las cuadrillas"), ok<Fila[]>(plantelR, "el plantel"));
 
   const integ = ok<Fila[]>(integR, "quiénes van");
   const hojaContr = ok<Fila[]>(hojaContrR, "los contratistas de las hojas");
@@ -418,10 +507,10 @@ export async function leerDia(fecha: Fecha, opts: { cacheOdoo?: boolean } = {}):
   if (anteriorFecha) {
     anterior = {
       fecha: anteriorFecha,
-      obras: obrasDeFecha(anteriorFecha),
+      obras: obrasDeFecha(tab, anteriorFecha),
       hojas: hojasPrevias.filter((h) => h.fecha === anteriorFecha),
       viajes: ok<Fila[]>(viajesAntR, "los viajes anteriores").map((v) => mapViaje(v, anteriorFecha)),
-      camiones: camionesDe(ok<Fila[]>(camionesAntR, "los camiones anteriores")),
+      camiones: camionesDe(vehiculos, ok<Fila[]>(camionesAntR, "los camiones anteriores")),
     };
   }
   const ultimasHojas: DiaHoja["ultimasHojas"] = [];
@@ -440,19 +529,17 @@ export async function leerDia(fecha: Fecha, opts: { cacheOdoo?: boolean } = {}):
     fecha,
     generadoAt: new Date().toISOString(),
     cuadrillas,
-    obras: obrasDeFecha(fecha),
+    obras: obrasDeFecha(tab, fecha),
     suspendidas: Object.fromEntries(ok<Fila[]>(suspR, "las suspensiones").map((x) => [Number(x.cuadrilla_odoo_id), String(x.motivo)])),
     hojas,
     personas,
     contratistas: ok<Fila[]>(contratistasR, "los contratistas").map(mapContratista),
     vehiculos,
-    camiones: camionesDe(ok<Fila[]>(camionesR, "los camiones")),
+    camiones: camionesDe(vehiculos, ok<Fila[]>(camionesR, "los camiones")),
     lugares: ok<Fila[]>(lugaresR, "los lugares").map(mapLugar),
     viajes: ok<Fila[]>(viajesR, "los viajes").map((v) => mapViaje(v, fecha)),
     pedidos: ok<Fila[]>(pedidosR, "los pedidos").map((p) => mapPedido(p, fecha)),
-    instrucciones: ok<Fila[]>(instrR, "las instrucciones").map((i) => ({
-      otId: Number(i.odoo_ot_id), cuadrillaOdooId: n(i.cuadrilla_odoo_id), horaInicio: normHora(s(i.hora_inicio)), hoy: s(i.hoy), chips: (i.chips as string[]) ?? [],
-    })),
+    instrucciones: ok<Fila[]>(instrR, "las instrucciones").map(mapInstruccion),
     ausencias: [...guardadas, ...ausenciasDeAsistencia(filasAsis, guardadas)],
     envios: ok<Fila[]>(linksR, "los envíos").map((l) => mapEnvio(l, fecha)),
     operariosAvisados: [...operarios].filter(([, a]) => a === "avisar_operario" || a === "no_avisar_operario").map(([p]) => p),
@@ -462,6 +549,105 @@ export async function leerDia(fecha: Fecha, opts: { cacheOdoo?: boolean } = {}):
     cajon: ok<Fila[]>(cajonR, "el cajón").map((c) => ({ id: String(c.id), texto: String(c.texto) })),
     telegram: { configurado: telegramConfigurado(), bot },
   };
+}
+
+// ─── El contexto de un gesto (sin el día entero) ────────────────────────────
+
+/** Lo que un gesto necesita además de lo básico (hojas, gente, contratistas, parámetros, nombres de cuadrilla). */
+export type PartesContexto = {
+  /** Las obras del tablero (todo el día con…, cuadrillas activas): Odoo con caché de 2 min. */
+  obras?: boolean;
+  /** Las hojas del último día con hojas (el chofer de ayer de esa cuadrilla). */
+  anterior?: boolean;
+  /** Los envíos del día ("deja de recibir la hoja: avisale"). */
+  envios?: boolean;
+  /** Vehículos, vencimientos y camiones del día. */
+  flota?: boolean;
+  /** Los viajes del día. */
+  viajes?: boolean;
+};
+
+/** Un `DiaHoja` parcial (lo que el gesto pidió; el resto vacío) y las filas crudas de las hojas. */
+export type ContextoGesto = { dia: DiaHoja; filas: { hojas: Fila[]; integrantes: Fila[]; hojaContr: Fila[] } };
+
+/**
+ * Lo que un gesto de la hoja necesita para validar y escribir, en UNA vuelta a Supabase y
+ * sin Odoo (salvo `obras`, y entonces con caché): las hojas del día con su gente y sus
+ * contratistas, Legajos y externas (nombres), contratistas, parámetros y las cuadrillas
+ * (de un tablero ya leído si hay, si no de Configuración de cuadrillas). Lo que no se pide
+ * queda vacío: las funciones de estado.ts que se usan con esto no lo miran.
+ */
+export async function leerContexto(fecha: Fecha, p: PartesContexto = {}): Promise<ContextoGesto> {
+  const db = createAdminClient();
+  const [
+    hojasR, integR, hojaContrR, personalR, externasR, contratistasR, paramsR, cuadSbR, plantelR,
+    vehR, docsR, camR, linksR, viajesR, suspR, previasR,
+  ] = await Promise.all([
+    db.from("hd_hojas").select("*").eq("fecha", fecha),
+    db.from("hd_integrantes").select("*").eq("fecha", fecha),
+    db.from("hd_hoja_contratistas").select("*").eq("fecha", fecha),
+    db.from("personal").select(COLUMNAS_PERSONAL),
+    db.from("pan_personas_externas").select(COLUMNAS_EXTERNAS),
+    db.from("hd_contratistas").select(COLUMNAS_CONTRATISTAS).order("nombre"),
+    db.from("hd_parametros").select("clave, valor"),
+    db.from("cuadrillas").select("id, nombre, responsable_id, odoo_cuadrilla_id, activo"),
+    p.obras ? db.from("cuadrilla_personal").select("cuadrilla_id, personal_id") : VACIO,
+    p.flota ? db.from("vehiculos").select("id, patente, marca, modelo, tipo, estado, chofer_habitual_id, activo").eq("activo", true) : VACIO,
+    p.flota ? db.from("documentos").select("entidad_id, tipo_documento, fecha_vencimiento").eq("entidad_tipo", "vehiculo").in("tipo_documento", ["vtv", "seguro_vehiculo", "cnrt"]) : VACIO,
+    p.flota ? db.from("hd_camiones_dia").select("*").eq("fecha", fecha) : VACIO,
+    p.envios ? db.from("hd_links").select("*").eq("fecha", fecha) : VACIO,
+    p.viajes ? db.from("hd_viajes").select("*").eq("fecha", fecha) : VACIO,
+    p.obras ? db.from("plan_suspensiones").select("cuadrilla_odoo_id, motivo").eq("fecha", fecha) : VACIO,
+    p.anterior ? db.from("hd_hojas").select("*").gte("fecha", addDia(fecha, -30)).lt("fecha", fecha).order("fecha", { ascending: false }).limit(40) : VACIO,
+  ]);
+  // El tablero: si el gesto lo necesita, con caché (casi siempre lo dejó el GET del día); si
+  // no, sólo si ya está leído (para los nombres de las cuadrillas).
+  // Si Odoo no contesta, el gesto sigue sin las obras (sólo se pierde el "ya está todo el
+  // día con otra cuadrilla" al proponer chofer): no se traba la hoja por Odoo.
+  const tab = p.obras
+    ? await (tableroGuardado(fecha, 120_000) ?? tablero([fecha], 120_000)).catch((e: unknown) => {
+      console.error("[hoja-dia] gesto sin el tablero de Odoo", e instanceof Error ? e.message : e);
+      return null;
+    })
+    : await (tableroGuardado(fecha, VIDA_MAX) ?? Promise.resolve(null));
+
+  const filas = { hojas: ok<Fila[]>(hojasR, "las hojas"), integrantes: ok<Fila[]>(integR, "quiénes van"), hojaContr: ok<Fila[]>(hojaContrR, "los contratistas de las hojas") };
+  const vehiculos = armarVehiculos(ok<Fila[]>(vehR, "los vehículos"), ok<Fila[]>(docsR, "los documentos de la flota"));
+  const previas = ok<Fila[]>(previasR, "las hojas anteriores");
+  const anteriorFecha = previas[0] ? String(previas[0].fecha) : null;
+  const dia: DiaHoja = {
+    fecha,
+    generadoAt: new Date().toISOString(),
+    cuadrillas: armarCuadrillas(tab, ok<Fila[]>(cuadSbR, "las cuadrillas"), ok<Fila[]>(plantelR, "el plantel")),
+    obras: tab ? obrasDeFecha(tab, fecha) : [],
+    suspendidas: Object.fromEntries(ok<Fila[]>(suspR, "las suspensiones").map((x) => [Number(x.cuadrilla_odoo_id), String(x.motivo)])),
+    hojas: filas.hojas.map((h) => mapHoja(h, filas.integrantes, fecha, filas.hojaContr)),
+    personas: armarPersonas(ok<Fila[]>(personalR, "Legajos"), ok<Fila[]>(externasR, "las personas externas")),
+    contratistas: ok<Fila[]>(contratistasR, "los contratistas").map(mapContratista),
+    vehiculos,
+    camiones: camionesDe(vehiculos, ok<Fila[]>(camR, "los camiones")),
+    lugares: [],
+    viajes: ok<Fila[]>(viajesR, "los viajes").map((v) => mapViaje(v, fecha)),
+    pedidos: [],
+    instrucciones: [],
+    ausencias: [],
+    envios: ok<Fila[]>(linksR, "los envíos").map((l) => mapEnvio(l, fecha)),
+    operariosAvisados: [],
+    parametros: mapParametros(ok<Fila[]>(paramsR, "los parámetros")),
+    anterior: anteriorFecha
+      ? { fecha: anteriorFecha, obras: [], hojas: previas.filter((h) => String(h.fecha) === anteriorFecha).map((h) => mapHoja(h, [], anteriorFecha)), viajes: [], camiones: [] }
+      : null,
+    ultimasHojas: [],
+    cajon: [],
+    telegram: { configurado: false, bot: null },
+  };
+  return { dia, filas };
+}
+
+/** El día con una hoja recién creada (para seguir calculando con estado.ts sin volver a leer). */
+export function conHojaNueva(dia: DiaHoja, fila: Fila): DiaHoja {
+  if (dia.hojas.some((h) => h.id === String(fila.id))) return dia;
+  return { ...dia, hojas: [...dia.hojas, mapHoja(fila, [], dia.fecha)] };
 }
 
 // ─── Historial y Deshacer ───────────────────────────────────────────────────
@@ -475,6 +661,24 @@ export type Cambio = CambioHistorial;
  */
 export function grabador(db: DB) {
   const cambios: Cambio[] = [];
+  /** Cómo quedó cada fila que este gesto ya escribió: no hace falta volver a leerla. */
+  const ultima = (tabla: string, id: string): Fila | undefined => {
+    for (let i = cambios.length - 1; i >= 0; i--) if (cambios[i].tabla === tabla && cambios[i].id === id) return cambios[i].despues ?? undefined;
+    return undefined;
+  };
+  /**
+   * La fila de antes: la que dejó este mismo gesto, o la que el gesto ya leyó en esta misma
+   * pasada (`conocida`, del contexto), o se lee. Si este gesto la borró, no existe.
+   */
+  const antesDe = async (tabla: string, id: string, conocida?: Fila | null): Promise<Fila | null> => {
+    const propia = ultima(tabla, id);
+    if (propia) return propia;
+    if (cambios.some((c) => c.tabla === tabla && c.id === id && c.despues == null)) return null;
+    if (conocida && String(conocida.id) === id) return conocida;
+    const r = await db.from(tabla).select("*").eq("id", id).maybeSingle();
+    if (r.error) throw new Error(r.error.message);
+    return r.data ?? null;
+  };
   return {
     cambios,
     async insertar(tabla: string, fila: Fila): Promise<Fila> {
@@ -483,13 +687,18 @@ export function grabador(db: DB) {
       cambios.push({ tabla, id: String(r.data.id), antes: null, despues: r.data });
       return r.data;
     },
-    async actualizar(tabla: string, id: string, valores: Fila): Promise<Fila> {
-      const antes = await db.from(tabla).select("*").eq("id", id).maybeSingle();
-      if (antes.error) throw new Error(antes.error.message);
-      if (!antes.data) throw new Error("Eso ya no existe: alguien lo cambió. Actualizá la pantalla.");
-      const r = await db.from(tabla).update(valores).eq("id", id).select("*").single();
+    /**
+     * `conocida`: la fila como el gesto la acaba de leer (ahorra una ida a la base). El
+     * UPDATE no depende de ella: si alguien la cambió en el medio, el historial guarda la
+     * de antes que conocía el gesto, igual que si la hubiera leído un instante antes.
+     */
+    async actualizar(tabla: string, id: string, valores: Fila, conocida?: Fila | null): Promise<Fila> {
+      const antes = await antesDe(tabla, id, conocida);
+      if (!antes) throw new Error("Eso ya no existe: alguien lo cambió. Actualizá la pantalla.");
+      const r = await db.from(tabla).update(valores).eq("id", id).select("*").maybeSingle();
       if (r.error) throw new Error(traducirErrorDb(r.error.message));
-      cambios.push({ tabla, id, antes: antes.data, despues: r.data });
+      if (!r.data) throw new Error("Eso ya no existe: alguien lo cambió. Actualizá la pantalla.");
+      cambios.push({ tabla, id, antes, despues: r.data });
       return r.data;
     },
     /** Lee filas por igualdad (no anota nada): para saber qué tocar después. */
@@ -501,12 +710,13 @@ export function grabador(db: DB) {
       return r.data ?? [];
     },
     async borrar(tabla: string, id: string): Promise<void> {
-      const antes = await db.from(tabla).select("*").eq("id", id).maybeSingle();
-      if (antes.error) throw new Error(antes.error.message);
-      if (!antes.data) return;
-      const r = await db.from(tabla).delete().eq("id", id);
+      if (cambios.some((c) => c.tabla === tabla && c.id === id && c.despues == null)) return;
+      // El DELETE devuelve lo borrado: es la fila de antes, sin leerla aparte. Si ya no
+      // estaba (otro la borró), no se anota nada.
+      const r = await db.from(tabla).delete().eq("id", id).select("*");
       if (r.error) throw new Error(traducirErrorDb(r.error.message));
-      cambios.push({ tabla, id, antes: antes.data, despues: null });
+      if (!r.data?.length) return;
+      cambios.push({ tabla, id, antes: r.data[0] as Fila, despues: null });
     },
   };
 }

@@ -48,7 +48,7 @@ test("+ Agregar sugiere primero los sin asignar y no deja agregar a los que no v
   assert.equal(s[0].s, "sin asignar");
   const m = sugerenciasAgregar(d, 3, "medi");
   assert.equal(m[0].deshabilitada, true);
-  assert.equal(m[0].s, "no viene (ART)");
+  assert.equal(m[0].s, "no viene (ART / accidente)");
   assert.deepEqual(sugerenciasAgregar(d, 3, "  "), []);
 });
 
@@ -75,7 +75,7 @@ test("No viene…: sólo hoy, hasta el viernes, 1 semana", () => {
 
 test("textos de ausencias", () => {
   const d = martesArmado();
-  assert.equal(textoNoDisponible(d, MEDINA_ART), "ART · sin fecha de alta (según la asistencia)");
+  assert.equal(textoNoDisponible(d, MEDINA_ART), "ART / accidente · sin fecha de alta (según la asistencia)");
   assert.equal(rangoAusencia({ ...MEDINA_ART, hasta: "2026-10-16" }), "del 13/10 al 16/10");
   assert.equal(rangoAusencia({ ...MEDINA_ART, horaHasta: "14:00" }), "se retira a las 14:00 · 13/10");
 });

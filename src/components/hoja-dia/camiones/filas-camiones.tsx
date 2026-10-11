@@ -17,6 +17,9 @@ import {
   todoVeh, vehiculo, viajeSinAvisar, type Aviso, type CamionesQueSirven, type ViajeCalc, hojaDeCuadrilla,
 } from "@/lib/hoja-dia/estado";
 import { filasOrden, ordenEnFila } from "@/lib/hoja-dia/camiones";
+import { tramoDe } from "@/lib/hoja-dia/rutas";
+import { tiempoTxt } from "@/lib/hoja-dia/tiempos";
+import { TiempoTramo } from "@/components/hoja-dia/comunes/tiempo-tramo";
 import type { DiaHoja, Viaje } from "@/lib/hoja-dia/tipos";
 import { arrastre, TIPO_ARRASTRE, useCamiones } from "./contexto";
 import { LineaAviso } from "./botones";
@@ -334,7 +337,8 @@ const cercaDonde = (dia: DiaHoja, key: string) => {
 
 function Ficha({ v, cur, conflictos, sinAv }: { v: ViajeCalc; cur: ViajeCalc | null; conflictos: string[]; sinAv: string[] }) {
   const { dia, pasado, angosta, abrirMenu } = useCamiones();
-  const vuelta = dia.parametros.minutosVueltaDeposito;
+  // La vuelta al depósito: la que usó la cuenta (la de Google si la hay, si no el parámetro).
+  const vuelta = v.vuelta && v.fin > v.finParada ? v.fin - v.finParada : dia.parametros.minutosVueltaDeposito;
   const conVu = v.tipo === "trae_material" && v.vuelta;
   const w = wp((v.estado === "hecho" ? Math.max(20, v.dur) : v.dur) + (conVu ? vuelta : 0));
   const angostaF = w * 8.3 < 72;
@@ -342,7 +346,8 @@ function Ficha({ v, cur, conflictos, sinAv }: { v: ViajeCalc; cur: ViajeCalc | n
   const l1 = angostaF ? (c != null && (v.tipo === "lleva" || v.tipo === "busca" || v.tipo === "mueve") ? cTag(dia, c) : v.tipo === "taller" ? cortoV(dia, v) : lugar(dia, v.haciaEf).corto) : cortoV(dia, v);
   const sin = sinAv.includes(v.id);
   const l2 = v.estado === "hecho" ? `✓ ${hm(v.hechoMin ?? v.t)}${v.hechoPor && v.hechoPor !== "chofer" ? ` (${iniciales(v.hechoPor)})` : ""}` : v.estado === "no_pudo" ? `no pudo ${hm(v.hechoMin ?? v.t)}` : `${horaTxt(v)}${sin && !angostaF ? " · sin avisar" : ""}`;
-  const tit = `${textoViaje(dia, v)} · ${v.estado === "hecho" ? `Hecho ${hm(v.hechoMin ?? v.t)}` : v.estado === "no_pudo" ? `No pudo: ${v.noPudoMotivo ?? ""}` : v.hora ? `a las ${v.hora}` : `estimada ${horaTxt(v)}`}`;
+  const tr = v.estado === "planeado" ? tramoDe(dia, v) : null;
+  const tit = `${textoViaje(dia, v)} · ${v.estado === "hecho" ? `Hecho ${hm(v.hechoMin ?? v.t)}` : v.estado === "no_pudo" ? `No pudo: ${v.noPudoMotivo ?? ""}` : v.hora ? `a las ${v.hora}` : `estimada ${horaTxt(v)}`}${tr ? ` · ${tiempoTxt(tr)}${tr.fuente === "google" ? " (Google Maps)" : " (típico)"}` : ""}`;
   const arrastrable = v.estado === "planeado" && !v.fleteExterno && !pasado && !angosta;
   return (
     <>
@@ -413,6 +418,7 @@ function ListaViajes({ ts, cur, sinAv }: { ts: ViajeCalc[]; cur: ViajeCalc | nul
               <span className={cn(v.estado === "no_pudo" && "text-hd-rojo line-through")}>
                 {textoViaje(dia, v)}
                 {conCarga && <span className="text-xs text-muted-foreground"> · {v.carga}</span>}
+                {v.estado === "planeado" && <TiempoTramo t={tramoDe(dia, v)} className="ml-1.5" />}
               </span>
               <span className={cn("text-xs whitespace-nowrap text-muted-foreground max-md:col-start-3 max-md:whitespace-normal", sin && "font-semibold text-hd-ambar")}>{s}</span>
             </button>

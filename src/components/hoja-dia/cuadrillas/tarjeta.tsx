@@ -19,6 +19,8 @@ import { EditorChofer, EditorEncuentro } from "./editor-chofer";
 import { TIPO_ARRASTRE, type Control } from "./control";
 import { JornadaCerrada } from "./cerrar-jornada";
 import { ChipsContratistas, NotasContratistas } from "./contratistas";
+import { tramoEntre } from "@/lib/hoja-dia/rutas";
+import { TiempoTramo } from "@/components/hoja-dia/comunes/tiempo-tramo";
 
 const TONO_ESTADO: Record<string, string> = {
   recibida: "font-semibold text-hd-verde",
@@ -184,6 +186,8 @@ export function Tarjeta({ ctl, c, indice }: { ctl: Control; c: number; indice: n
               {x.o.dia != null && x.o.totalDias != null && x.o.totalDias > 1 && (
                 <small className="text-xs font-normal whitespace-nowrap text-muted-foreground"> · día {x.o.dia} de {x.o.totalDias}</small>
               )}
+              {/* De la obra anterior a ésta, manejando (sólo con el tiempo de Google). */}
+              {i > 0 && <TiempoTramo t={tramoEntre(dia, `o:${ob[i - 1].o.otId}`, `o:${x.o.otId}`)} className="ml-1.5 align-middle" />}
             </span>
             <TipoObra tipo={x.o.tipo} fraccion={x.o.fraccion} />
             <span className={cn("text-right text-[13px] tabular-nums", x.est && "text-muted-foreground")}>

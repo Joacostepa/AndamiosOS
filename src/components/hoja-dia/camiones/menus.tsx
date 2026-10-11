@@ -14,6 +14,8 @@ import {
   nombreDe, normHora, patente, pedidosDeViaje, persona, textoViaje, toMin, vehiculoNombre, viajeCalc,
 } from "@/lib/hoja-dia/estado";
 import { pedidoDesdeCajon, pidioTxt } from "@/lib/hoja-dia/camiones";
+import { comoLlegarViaje, recorridoCamion, tramoDe } from "@/lib/hoja-dia/rutas";
+import { TiempoTramo } from "@/components/hoja-dia/comunes/tiempo-tramo";
 import { TIPOS_VIAJE } from "@/lib/hoja-dia/tipos";
 import { Chips, ItemMenu, MenuCabeza, MenuFlotante, MenuSep, MenuTexto, noDevolverFoco } from "@/components/hoja-dia/comunes/menu-flotante";
 import { InputHora, horaDe } from "@/components/hoja-dia/comunes/campo-hora";
@@ -55,6 +57,10 @@ function MenuViaje({ m, cerrar, dialogo, verComo }: { m: Extract<MenuAbierto, { 
   const planeado = v0.estado === "planeado";
   const hacer = (f: () => void) => () => { cerrar(); f(); };
   const hTxt = vc ? horaTxt(vc) : `${v0.hora ? "" : "~"}${hm5(t)}`;
+  const tramo = vc && planeado ? tramoDe(dia, vc) : null;
+  const maps = vc ? comoLlegarViaje(dia, vc) : null;
+  /** Los links a Maps se abren aparte (gratis, sin clave). */
+  const abrir = (url: string) => hacer(() => window.open(url, "_blank", "noopener,noreferrer"));
 
   if (paso === "pasar") {
     const otros = dia.camiones.filter((c) => c.choferId && c.vehiculoId !== v0.vehiculoId).map((c) => c.vehiculoId);
@@ -80,6 +86,7 @@ function MenuViaje({ m, cerrar, dialogo, verComo }: { m: Extract<MenuAbierto, { 
       <MenuTexto>
         {v0.hora ? <>Hora fija <b>{normHora(v0.hora)}</b></> : <>Estimada <b>{hTxt}</b></>} · {TIPOS_VIAJE[v0.tipo].nombre}
         {dur ? ` · ${Math.floor(dur / 60)} h${dur % 60 ? ` ${dur % 60}` : ""}` : ""}
+        {tramo?.fuente === "google" && <> · <TiempoTramo t={tramo} /></>}
       </MenuTexto>
       {vc?.desdeKey && (
         <MenuTexto>
@@ -101,6 +108,12 @@ function MenuViaje({ m, cerrar, dialogo, verComo }: { m: Extract<MenuAbierto, { 
       {v0.estado === "no_pudo" && <MenuTexto><b>No pudo {hm(v0.hechoMin ?? t)}</b>: {lowFirst(v0.noPudoMotivo)}</MenuTexto>}
       {e && e.cambioMin != null && e.snap?.tipo === "chofer" && e.snap.viajes.some((x) => x.k === m.id) && !(e.snapPrimero?.tipo === "chofer" && e.snapPrimero.viajes.some((x) => x.k === m.id)) && (
         <MenuTexto>Avisado {hm(e.cambioMin)}{e.recibidaMin != null && e.recibidaMin >= e.cambioMin ? ` · visto ${hm(e.recibidaMin)}` : " · todavía no lo vio"}</MenuTexto>
+      )}
+      {maps && (
+        <>
+          <MenuSep />
+          <ItemMenu detalle="Google Maps" onClick={abrir(maps)}>Cómo llegar</ItemMenu>
+        </>
       )}
       {!pasado && (
         <>
@@ -162,6 +175,7 @@ function MenuFila({ m, cerrar, dialogo, verComo, llamar }: { m: Extract<MenuAbie
   const N = nombreDe(dia, ch);
   const hacer = (f: () => void) => () => { cerrar(); f(); };
   const hayEstimadas = calcVeh(dia, veh).some((v) => v.estado === "planeado" && !v.hora);
+  const recorrido = recorridoCamion(dia, veh);
   return (
     <MenuFlotante anchor={m.anchor} onCerrar={cerrar} label="Camión" ancho={290}>
       <MenuCabeza titulo={`${N || "Sin chofer"} · ${vehiculoNombre(dia, veh)}`} sub={dondeAnda(dia, veh, ahora).t} />
@@ -169,6 +183,7 @@ function MenuFila({ m, cerrar, dialogo, verComo, llamar }: { m: Extract<MenuAbie
       <ItemMenu detalle="las estimadas, desde ahora" disabled={!hayEstimadas} onClick={hacer(() => viaje({ accion: "correr_horas", fecha, vehiculoId: veh }))}>Correr horas</ItemMenu>
       <ItemMenu onClick={() => { noDevolverFoco(); cerrar(); dialogo({ t: "taller", veh }, m.anchor); }}>Agregar VTV o taller</ItemMenu>
       {ch && <ItemMenu onClick={hacer(() => verComo(ch))}>Ver como {N}</ItemMenu>}
+      {recorrido && <ItemMenu detalle="Google Maps" onClick={hacer(() => window.open(recorrido, "_blank", "noopener,noreferrer"))}>Ver el recorrido en Maps</ItemMenu>}
       {ch && <ItemMenu detalle={persona(dia, ch)?.celular ?? "sin celular"} disabled={!persona(dia, ch)?.celular} onClick={hacer(() => llamar(ch))}>Llamar a {N}</ItemMenu>}
     </MenuFlotante>
   );

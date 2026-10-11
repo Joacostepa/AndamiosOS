@@ -26,8 +26,8 @@
 -- Se aplica a mano con `npx supabase db query --linked -f` (NUNCA db push), DESPUÉS de
 -- 20261011000002_hoja_dia_contratistas.sql y ANTES del deploy del código que la usa (el
 -- código nuevo lee hd_hoja_vehiculos al leer el día: sin ella la Hoja del día no abre).
--- Idempotente: se puede correr dos veces. Sin BEGIN/COMMIT propios (el probador la envuelve
--- en ROLLBACK).
+-- Idempotente: se puede correr dos veces, también después del deploy (ver el backfill). Sin
+-- BEGIN/COMMIT propios (el probador la envuelve en ROLLBACK).
 -- ============================================================
 
 -- ========================
@@ -124,35 +124,73 @@ ALTER TABLE hd_viajes ADD COLUMN IF NOT EXISTS vuelta_llega TIME;
 -- Backfill: el chofer y el vehículo que tenía cada hoja pasan a ser su primer vehículo
 -- ========================
 -- Sólo las hojas con chofer (lleva y trae o todo el día) que todavía no tienen ningún
--- vehículo: correrla otra vez no duplica (el código nuevo deja chofer_modo = 'sin' cuando
--- una hoja se queda sin vehículos).
-INSERT INTO hd_hoja_vehiculos (hoja_id, fecha, vehiculo_id, chofer_id, modo, orden, tocado_at, created_by, updated_by)
-SELECT h.id, h.fecha, h.vehiculo_id, h.chofer_id, h.chofer_modo, 0, h.chofer_tocado_at, h.updated_by, h.updated_by
-FROM hd_hojas h
-WHERE h.chofer_modo IN ('lleva_trae', 'todo_el_dia')
-  AND NOT EXISTS (SELECT 1 FROM hd_hoja_vehiculos x WHERE x.hoja_id = h.id);
-
--- Los "lleva" y "mueve" de esas hojas son de su (único) vehículo de lleva y trae.
-UPDATE hd_viajes v SET hoja_vehiculo_id = x.id
-FROM hd_hoja_vehiculos x
-WHERE v.hoja_id = x.hoja_id
-  AND x.modo = 'lleva_trae'
-  AND v.hoja_vehiculo_id IS NULL
-  AND v.tipo IN ('lleva', 'mueve')
-  AND (SELECT count(*) FROM hd_hoja_vehiculos y WHERE y.hoja_id = x.hoja_id AND y.modo = 'lleva_trae') = 1;
-
+-- vehículo. Es la MISMA sentencia que scripts/sql/hoja-dia-vehiculos-reparar.sql (la
+-- reparación después del deploy): si se cambia una, cambiar la otra.
+--
+-- De qué camión es la fila: el código viejo dejaba que el "lleva" estuviera en otro camión
+-- que hd_hojas.vehiculo_id (se movía en Camiones, o cambiaba el chofer del camión). Si la
+-- hoja tiene un lleva PLANEADO con camión, la fila sale de ese lleva (su camión y su chofer;
+-- sin chofer guardado, el que veía la pantalla: el de la hoja si es el mismo camión, el del
+-- camión ese día o el habitual). Si no, de las columnas de la hoja.
+--
+-- Qué viajes se ligan: SÓLO los de las filas que crea esta misma sentencia (la CTE
+-- `nuevas`), SÓLO planeados (lo hecho o anulado es historia) y SÓLO si van en el camión de la
+-- fila (lleva y mueve: el mismo camión; el busca: el mismo camión con el mismo chofer o sin
+-- chofer). Un viaje en otro camión queda suelto ("otro camión"), como lo muestra el código.
+--
+-- IDEMPOTENTE TAMBIÉN DESPUÉS DEL DEPLOY: el código nuevo deja chofer_modo = 'sin' cuando
+-- una hoja se queda sin vehículos (resumenLegado) y nunca deja una hoja con chofer sin
+-- filas, así que volver a correrla no crea filas ni vuelve a ligar viajes que el código
+-- soltó a propósito (el UPDATE sólo toca viajes de las filas recién creadas).
+WITH fuente AS (
+  SELECT h.id AS hoja_id, h.fecha, h.chofer_modo, h.chofer_tocado_at, h.updated_by,
+         CASE WHEN ll.vehiculo_id IS NOT NULL THEN ll.vehiculo_id ELSE h.vehiculo_id END AS vehiculo_id,
+         CASE WHEN ll.vehiculo_id IS NOT NULL THEN COALESCE(
+                ll.chofer_id,
+                CASE WHEN ll.vehiculo_id = h.vehiculo_id THEN h.chofer_id END,
+                (SELECT c.chofer_id FROM hd_camiones_dia c WHERE c.fecha = h.fecha AND c.vehiculo_id = ll.vehiculo_id AND c.sin_chofer IS NOT TRUE LIMIT 1),
+                (SELECT ve.chofer_habitual_id FROM vehiculos ve WHERE ve.id = ll.vehiculo_id))
+              ELSE h.chofer_id END AS chofer_id
+  FROM hd_hojas h
+  LEFT JOIN LATERAL (
+    SELECT v.vehiculo_id, v.chofer_id FROM hd_viajes v
+    WHERE v.hoja_id = h.id AND v.tipo = 'lleva' AND v.estado = 'planeado' AND v.vehiculo_id IS NOT NULL
+      AND h.chofer_modo = 'lleva_trae'
+    ORDER BY v.orden, v.id
+    LIMIT 1
+  ) ll ON true
+  WHERE h.chofer_modo IN ('lleva_trae', 'todo_el_dia')
+    AND NOT EXISTS (SELECT 1 FROM hd_hoja_vehiculos x WHERE x.hoja_id = h.id)
+),
+nuevas AS (
+  INSERT INTO hd_hoja_vehiculos (hoja_id, fecha, vehiculo_id, chofer_id, modo, orden, tocado_at, created_by, updated_by)
+  SELECT hoja_id, fecha, vehiculo_id, chofer_id, chofer_modo, 0, chofer_tocado_at, updated_by, updated_by FROM fuente
+  RETURNING id, hoja_id, vehiculo_id, chofer_id, modo
+),
+-- Los "lleva" y "mueve" planeados de esas hojas en el camión de la fila.
+ligados AS (
+  UPDATE hd_viajes v SET hoja_vehiculo_id = n.id
+  FROM nuevas n
+  WHERE v.hoja_id = n.hoja_id
+    AND n.modo = 'lleva_trae'
+    AND v.hoja_vehiculo_id IS NULL
+    AND v.estado = 'planeado'
+    AND v.tipo IN ('lleva', 'mueve')
+    AND v.vehiculo_id IS NOT DISTINCT FROM n.vehiculo_id
+  RETURNING v.id
+)
 -- El "busca" sigue al vehículo sólo si lo hace el mismo camión con el mismo chofer; si se
 -- había pasado a otro camión (o quedó sin camión), queda suelto: "otro camión" / "a definir".
-UPDATE hd_viajes v SET hoja_vehiculo_id = x.id
-FROM hd_hoja_vehiculos x
-WHERE v.hoja_id = x.hoja_id
-  AND x.modo = 'lleva_trae'
+UPDATE hd_viajes v SET hoja_vehiculo_id = n.id
+FROM nuevas n
+WHERE v.hoja_id = n.hoja_id
+  AND n.modo = 'lleva_trae'
   AND v.hoja_vehiculo_id IS NULL
+  AND v.estado = 'planeado'
   AND v.tipo = 'busca'
-  AND v.vehiculo_id IS NOT DISTINCT FROM x.vehiculo_id
   AND v.vehiculo_id IS NOT NULL
-  AND (v.chofer_id IS NULL OR v.chofer_id IS NOT DISTINCT FROM x.chofer_id)
-  AND (SELECT count(*) FROM hd_hoja_vehiculos y WHERE y.hoja_id = x.hoja_id AND y.modo = 'lleva_trae') = 1;
+  AND v.vehiculo_id = n.vehiculo_id
+  AND (v.chofer_id IS NULL OR v.chofer_id IS NOT DISTINCT FROM n.chofer_id);
 
 -- ========================
 -- RLS: cerrada por permiso, como el resto del módulo

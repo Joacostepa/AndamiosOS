@@ -14,7 +14,7 @@ test("filasOrden: con chofer, todo el día y sin usar (con la VTV vencida en ám
   const f = filasOrden(d);
   assert.deepEqual(f.conViajes, ["af669", "ab497"]);
   assert.deepEqual(f.todo, ["ab831", "ab799"]);
-  assert.deepEqual(f.sinUsar.map((x) => [x.txt, x.nota]), [["AH 410 LD", "VTV vencida desde el 02/10"], ["S10", "sin chofer"], ["moto", null]]);
+  assert.deepEqual(f.sinUsar.map((x) => [x.txt, x.nota]), [["Iveco AH 410 LD", "VTV vencida desde el 02/10"], ["Chevrolet LNE 368", "sin chofer"], ["Moto A091SWF", null], ["Clark CYS47", null], ["SIN MATRICULA 10", null]]);
   assert.equal(f.sinUsar[0].amb, true);
 });
 
@@ -78,7 +78,7 @@ test("mensajeSacarUnRato: al capataz de la cuadrilla que se queda sin la hidrogr
   const v = viajeCalc(d, "v-gur2")!;
   const m = mensajeSacarUnRato(d, v)!;
   assert.equal(m.pid, "sack");
-  assert.match(m.texto, /^Sack, Borda sale un rato con la hidrogrúa \(\d+:\d\d a \d+:\d\d\): lleva 1 escalera a Gurruchaga 1650\. Vuelve después\.$/);
+  assert.match(m.texto, /^Sack, Borda sale un rato con el Agrale hidrogrúa AB 831 LC \(\d+:\d\d a \d+:\d\d\): lleva 1 escalera a Gurruchaga 1650\. Vuelve después\.$/);
 });
 
 test("I5: sacar un pedido de un viaje con otros pedidos no anula el viaje", () => {

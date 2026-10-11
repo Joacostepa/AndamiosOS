@@ -64,7 +64,7 @@ test("viaje nuevo a Gómez: dónde cae en su recorrido y quién lo pidió", () =
 test("al depósito, al operario que entra y la fila de envío", () => {
   const d = martesArmado();
   const v = calcVeh(d, "ab497").find((x) => x.id === "v-gur")!;
-  assert.equal(mensajeDeposito(d, v), "Depósito: a las 7:30 carga Gómez (AB 497 YY): material del armado de Gurruchaga 1650 (según cómputo) para Gurruchaga 1650.");
+  assert.equal(mensajeDeposito(d, v), "Depósito: a las 7:30 carga Gómez (Iveco AB 497 YY): material del armado de Gurruchaga 1650 (según cómputo) para Gurruchaga 1650.");
   assert.equal(mensajeOperario(d, "paz", 400), "Paz, hoy vas con la Cuadrilla 4 (a cargo Hepper). Encuentro 8:00 en la obra, van por su cuenta.");
   assert.equal(filaEnvio(d, { pid: "mino", rol: "cargo", c: 5 }), "Miño · Cuadrilla 5 · Av. San Juan 2840 · sin celular cargado");
   assert.equal(filaEnvio(d, { pid: "kiska", rol: "chofer" }), "Kiska · chofer · 6 viajes");

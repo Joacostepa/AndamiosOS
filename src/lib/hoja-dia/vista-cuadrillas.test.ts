@@ -11,8 +11,8 @@ const linea = (r: ReturnType<typeof resumenChofer>) => r.k + r.resto.map((x) => 
 
 test("la línea del chofer dice el modo, el chofer, la patente y las horas", () => {
   const d = martesArmado();
-  assert.equal(linea(resumenChofer(d, 1)), "Todo el día · Borda · hidrogrúa AB 831 LC");
-  assert.equal(linea(resumenChofer(d, 3)), "Lleva y trae · Kiska · AF 669 ZL · 7:45 → 16:30");
+  assert.equal(linea(resumenChofer(d, 1)), "Todo el día · Borda · Agrale hidrogrúa AB 831 LC");
+  assert.equal(linea(resumenChofer(d, 3)), "Lleva y trae · Kiska · Iveco AF 669 ZL · 7:45 → 16:30");
   assert.equal(linea(resumenChofer(d, 4)), "Sin chofer · van por su cuenta");
   assert.equal(horasLlevaTrae(d, 3).lleva, "7:45");
   assert.equal(horasLlevaTrae(d, 3).busca, "16:30");

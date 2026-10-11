@@ -34,7 +34,7 @@ import type {
 import { PARAMETROS_POR_DEFECTO } from "./tipos";
 import {
   addDia, ausenciasDeAsistencia, fletesDelDia, horariosCierre, minutosDesde, nombresCortos, normHora, obrasDe, aCargoDe, hojaDeCuadrilla,
-  ausenciaDe, deContratistas, persona, cantidadDe, contratistasDe, esPersonalDeObra, genteConChoferes, vehiculosDe, patente, type FilaAsistencia,
+  ausenciaDe, deContratistas, persona, cantidadDe, contratistasDe, esPersonalDeObra, genteConChoferes, vehiculosDe, vehTxt, type FilaAsistencia,
 } from "./estado";
 import { telegramConfigurado, usuarioDelBot } from "./telegram";
 import { tiemposDelDia } from "./rutas-servidor";
@@ -936,9 +936,10 @@ export type PrecargaCierre = {
    * Los viajes del día a esta obra según la hoja. `cantidad: 0` quiere decir que la hoja NO
    * registró viajes (cuadrilla sin chofer, camión fuera de la hoja): el formulario se queda
    * con su regla de siempre y no pone 0. `porVehiculo`: cuántos hizo cada vehículo (una
-   * cuadrilla puede llevar varios: la hidrogrúa y el camión que los lleva y se va).
+   * cuadrilla puede llevar varios: la hidrogrúa y el camión que los lleva y se va), dicho
+   * por la marca y la patente ("Agrale AB 831 LC") o el flete de afuera.
    */
-  fletes: { cantidad: number; tercerizado: boolean; detalle: string[]; porVehiculo?: { patente: string; cantidad: number }[] };
+  fletes: { cantidad: number; tercerizado: boolean; detalle: string[]; porVehiculo?: { vehiculo: string; cantidad: number }[] };
   /** La mano de obra sugerida, por horario (horariosCierre): salen de las obras, el encuentro y el busca. */
   manoObra: { personas: number; desde: string; hasta: string }[];
 };
@@ -967,7 +968,7 @@ export async function precargaCierre(cuadrillaOdooId: number, fecha: Fecha, otId
   const ot = otId ?? obrasDe(dia, cuadrillaOdooId)[0]?.otId ?? null;
   const fl = ot != null ? fletesDelDia(dia, ot) : [];
   const porVehiculo = new Map<string, number>();
-  for (const x of fl) { const k = x.v.fleteExterno ?? patente(dia, x.v.vehiculoId); porVehiculo.set(k, (porVehiculo.get(k) ?? 0) + 1); }
+  for (const x of fl) { const k = x.v.fleteExterno ?? vehTxt(dia, x.v.vehiculoId); porVehiculo.set(k, (porVehiculo.get(k) ?? 0) + 1); }
   return {
     hayHoja: true,
     punteroEmployeeId: p?.odooEmployeeId ?? null,
@@ -975,7 +976,7 @@ export async function precargaCierre(cuadrillaOdooId: number, fecha: Fecha, otId
     personas,
     contratistas: ks.length ? ks.map((x) => cantidadDe(dia, x)).join(" y ") : null,
     camionEnObra: vehiculosDe(h).some((f) => f.modo === "todo_el_dia"),
-    fletes: { cantidad: fl.length, tercerizado: fl.some((x) => x.tercerizado), detalle: fl.map((x) => x.txt), porVehiculo: [...porVehiculo].map(([p, cantidad]) => ({ patente: p, cantidad })) },
+    fletes: { cantidad: fl.length, tercerizado: fl.some((x) => x.tercerizado), detalle: fl.map((x) => x.txt), porVehiculo: [...porVehiculo].map(([p, cantidad]) => ({ vehiculo: p, cantidad })) },
     manoObra: ot != null ? horariosCierre(dia, cuadrillaOdooId, ot) : [],
   };
 }

@@ -41,7 +41,7 @@ export const CONTRATISTAS: DiaHoja["contratistas"] = [
   { id: "viejo", nombre: "Ferraro", referente: null, celular: null, telegram: false, valorJornada: null, nota: null, activo: false },
 ];
 
-const veh = (id: string, patente: string, marca: string, tipo: DiaHoja["vehiculos"][number]["tipo"], hab: string | null, extra: Partial<DiaHoja["vehiculos"][number]> = {}) =>
+const veh = (id: string, patente: string, marca: string | null, tipo: DiaHoja["vehiculos"][number]["tipo"], hab: string | null, extra: Partial<DiaHoja["vehiculos"][number]> = {}) =>
   ({ id, patente, marca, modelo: null, tipo, estado: "disponible" as const, choferHabitualId: hab, vencimientos: [], ...extra });
 
 export const VEHICULOS: DiaHoja["vehiculos"] = [
@@ -52,6 +52,9 @@ export const VEHICULOS: DiaHoja["vehiculos"] = [
   veh("ah410", "AH 410 LD", "Iveco", "camion", null, { vencimientos: [{ tipo: "vtv", vence: "2026-10-02" }] }),
   veh("s10", "LNE 368", "Chevrolet", "camioneta", null, { modelo: "S10" }),
   veh("moto", "A091SWF", "Moto", "otro", null),
+  veh("clark", "CYS47", "Clark", "otro", null, { modelo: "Autoelevador" }),
+  // Sin marca (el otro autoelevador de la flota): se lo nombra por la patente sola.
+  veh("sinmat", "SIN MATRICULA 10", null, "otro", null),
 ];
 
 export const LUGARES: DiaHoja["lugares"] = [

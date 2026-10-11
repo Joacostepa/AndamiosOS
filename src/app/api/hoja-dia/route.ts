@@ -9,6 +9,10 @@ import { conPermiso, fallo, fechaValida, invalidoZod, sesion } from "./_comun";
 //
 // POST (o PATCH) /api/hoja-dia — un cambio de una hoja: { accion, fecha, … } (ver
 // accionHojaSchema). Devuelve { ok, texto, historialId } (historialId es el "Deshacer").
+//
+// Odoo (el tablero y la asistencia) sale de un caché en memoria por fecha (servicio.ts):
+// `&fresco=1` lo saltea. La pantalla lo pide cuando llega el aviso en vivo del TABLERO
+// (alguien movió una obra); para los demás refrescos alcanza con lo guardado.
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +22,7 @@ export async function GET(req: NextRequest) {
   const fecha = req.nextUrl.searchParams.get("fecha");
   if (!fechaValida(fecha)) return NextResponse.json({ error: "Falta la fecha (YYYY-MM-DD)" }, { status: 400 });
   try {
-    const dia = await leerDia(fecha);
+    const dia = await leerDia(fecha, { fresco: req.nextUrl.searchParams.get("fresco") === "1" });
     // Los rojos a la campanita, después de responder (no hacen esperar a la pantalla). Un
     // día pasado no alerta (alertasDelDia → diaAlertable).
     after(() => alertarDia(dia));

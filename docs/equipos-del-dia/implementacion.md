@@ -116,7 +116,7 @@ const historial = useHistorialHoja({ hojaId });
 usePrecargaCierre(cuadrillaOdooId, fecha, otId);    // ya usado por formulario-cierre.tsx
 ```
 
-Los gestos (`useGesto`) ya muestran el toast con "Deshacer" (9 s), invalidan `["hoja-dia"]` y avisan por el canal en vivo. Los errores salen como toast con el texto del servidor. **No son optimistas** a propósito (ver el comentario del hook); si una interacción necesita respuesta instantánea (arrastrar), la pantalla puede mover la ficha localmente hasta que llegue el día nuevo.
+Los gestos (`useGesto`) ya muestran el toast con "Deshacer" (9 s), avisan por el canal en vivo y refrescan el día **en segundo plano** (`refrescarHoja`: uno por ráfaga, nunca con un gesto en vuelo). Los errores salen como toast con el texto del servidor. **Los de las tarjetas (`useAccionHoja`) son optimistas** desde el 10/10 (noche): `optimista.ts` (puro, con tests) calcula el día nuevo con las reglas de estado.ts y se ve al instante; si el servidor rechaza, vuelve atrás. Viajes, pedidos, envíos y precarga esperan al servidor. Ver handoff.md, "Latencia".
 
 ## 4. Qué función de `estado.ts` alimenta cada parte de la pantalla
 

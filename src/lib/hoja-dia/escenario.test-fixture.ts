@@ -143,7 +143,8 @@ export function martesVacio(): DiaHoja {
     personas: PERSONAS,
     contratistas: CONTRATISTAS,
     vehiculos: VEHICULOS,
-    camiones: VEHICULOS.map((v) => ({ vehiculoId: v.id, choferId: v.choferHabitualId, nota: null })),
+    // Como lo arma servicio.ts sin filas en hd_camiones_dia: nadie (el habitual no cuenta).
+    camiones: VEHICULOS.map((v) => ({ vehiculoId: v.id, choferId: null, nota: null })),
     lugares: LUGARES,
     viajes: [],
     pedidos: [],

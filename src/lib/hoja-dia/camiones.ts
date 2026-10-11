@@ -15,17 +15,20 @@ import { URGENCIAS } from "./tipos.ts";
 import {
   aCargoDe, addDia, calcVeh, cap, choferDelCamion, cNombre, cuadrillaDeObra, ddmm, diaSemana, esHoy, estadoEnvio,
   hCorta, hm, hm5, hojaDe, hojaDeCuadrilla, lowFirst, normalizar, normHora, nombreDe, pedidosDeViaje, textoViaje,
-  todoVeh, toMin, vehiculo, viajeCalc, viajesVigentes, vieneDeAyer, filaTodoVeh, choferDe, type ViajeCalc,
+  todoVeh, toMin, vehiculo, viajeCalc, habitualDe, viajesVigentes, vieneDeAyer, filaTodoVeh, choferDe, type ViajeCalc,
 } from "./estado.ts";
 
 // ─── Las filas, en orden (§9) ───────────────────────────────────────────────
 
-export type SinUsar = { veh: string; txt: string; nota: string | null; amb: boolean };
+/** `habitual`: el chofer habitual, sólo para el tooltip en gris ("habitual: Kiska"); nunca como el que maneja. */
+export type SinUsar = { veh: string; txt: string; nota: string | null; amb: boolean; habitual: string | null };
 
 /**
- * Una fila por camión: los que tienen chofer (con o sin viajes), después los de "Todo el
- * día", y al final "Sin usar" en una línea (sin chofer, o lo que no es camión y no tiene
- * viajes: la moto, los autoelevadores).
+ * Una fila por camión: los que tienen viajes o chofer del día (`hd_camiones_dia`), después
+ * los de "Todo el día", y al final "Sin usar" en una línea (sin viajes ni chofer del día, o
+ * lo que no es camión y no tiene viajes: la moto, los autoelevadores). El habitual NO hace
+ * fila (11/10 noche: "Kiska AF 669 ZL" sin viajes parecía que Kiska lo manejaba): un camión
+ * sin nada ese día está sin usar, y el habitual sólo va en el tooltip.
  */
 export function filasOrden(dia: DiaHoja): { conViajes: string[]; todo: string[]; sinUsar: SinUsar[] } {
   const conViajes: string[] = [], todo: string[] = [], sinUsar: SinUsar[] = [];
@@ -37,12 +40,14 @@ export function filasOrden(dia: DiaHoja): { conViajes: string[]; todo: string[];
     if (conViaje.has(V.id)) { conViajes.push(V.id); continue; }
     const vtv = V.vencimientos.filter((x) => x.tipo === "vtv").sort((a, b) => (a.vence < b.vence ? 1 : -1))[0];
     const vencida = vtv && vtv.vence < dia.fecha ? vtv.vence : null;
+    const habitual = habitualDe(dia, V.id);
     if (V.tipo === "otro") {
       const n = (V.modelo || V.marca || V.patente).toLowerCase();
-      sinUsar.push({ veh: V.id, txt: n, nota: ch ? nombreDe(dia, ch) : null, amb: false });
-    } else if (vencida) sinUsar.push({ veh: V.id, txt: V.patente, nota: `VTV vencida desde el ${ddmm(vencida)}`, amb: true });
-    else if (V.estado === "en_taller" || V.estado === "fuera_servicio") sinUsar.push({ veh: V.id, txt: V.patente, nota: V.estado === "en_taller" ? "en el taller" : "fuera de servicio", amb: true });
-    else sinUsar.push({ veh: V.id, txt: V.tipo === "camioneta" && V.modelo ? V.modelo : V.patente, nota: "sin chofer", amb: false });
+      sinUsar.push({ veh: V.id, txt: n, nota: ch ? nombreDe(dia, ch) : null, amb: false, habitual });
+    } else if (vencida) sinUsar.push({ veh: V.id, txt: V.patente, nota: `VTV vencida desde el ${ddmm(vencida)}`, amb: true, habitual });
+    else if (V.estado === "en_taller" || V.estado === "fuera_servicio") sinUsar.push({ veh: V.id, txt: V.patente, nota: V.estado === "en_taller" ? "en el taller" : "fuera de servicio", amb: true, habitual });
+    // Sin chofer del día: todos los de "Sin usar" lo están, así que no se dice.
+    else sinUsar.push({ veh: V.id, txt: V.tipo === "camioneta" && V.modelo ? V.modelo : V.patente, nota: null, amb: false, habitual });
   }
   return { conViajes, todo, sinUsar };
 }

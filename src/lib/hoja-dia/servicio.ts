@@ -395,10 +395,15 @@ function armarVehiculos(filas: Fila[], docs: Fila[]): Vehiculo[] {
   }));
 }
 
+/**
+ * El chofer del camión del día: sólo lo cargado en `hd_camiones_dia`. El habitual del vehículo
+ * NO entra acá (decisión del dueño, 11/10 noche: "¿por qué sigue apareciendo Nuñez si no está
+ * asignado en ningún lado?"): es sólo la sugerencia de los selectores (`Vehiculo.choferHabitualId`).
+ */
 function camionesDe(vehiculos: Vehiculo[], filas: Fila[]): CamionDia[] {
   return vehiculos.map((v) => {
     const f = filas.find((c) => c.vehiculo_id === v.id);
-    return { vehiculoId: v.id, choferId: f ? (b(f.sin_chofer) ? null : s(f.chofer_id)) : v.choferHabitualId, nota: f ? s(f.nota) : null };
+    return { vehiculoId: v.id, choferId: f && !b(f.sin_chofer) ? s(f.chofer_id) : null, nota: f ? s(f.nota) : null };
   });
 }
 

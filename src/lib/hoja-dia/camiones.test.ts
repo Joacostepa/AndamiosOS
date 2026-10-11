@@ -14,7 +14,7 @@ test("filasOrden: con chofer, todo el día y sin usar (con la VTV vencida en ám
   const f = filasOrden(d);
   assert.deepEqual(f.conViajes, ["af669", "ab497"]);
   assert.deepEqual(f.todo, ["ab831", "ab799"]);
-  assert.deepEqual(f.sinUsar.map((x) => [x.txt, x.nota]), [["AH 410 LD", "VTV vencida desde el 02/10"], ["S10", "sin chofer"], ["moto", null]]);
+  assert.deepEqual(f.sinUsar.map((x) => [x.txt, x.nota]), [["AH 410 LD", "VTV vencida desde el 02/10"], ["S10", null], ["moto", null]]);
   assert.equal(f.sinUsar[0].amb, true);
 });
 

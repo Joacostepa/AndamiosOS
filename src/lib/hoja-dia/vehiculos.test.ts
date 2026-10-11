@@ -153,10 +153,10 @@ test("el resumen legado de hd_hojas es el primer vehículo (rollback y migració
   assert.deepEqual(resumenLegado([fila("b", "lleva_trae", "gomez", "ab497", 1), fila("a", "todo_el_dia", "borda", "ab831", 0)]), { chofer_modo: "todo_el_dia", chofer_id: "borda", vehiculo_id: "ab831" });
 });
 
-test("elegir un vehículo propone su chofer sólo si falta; elegir un chofer propone su vehículo sólo si falta", () => {
+test("elegir un vehículo NO pone a su habitual; elegir un chofer propone su vehículo sólo si falta", () => {
   const d = martesArmado();
   const a = planVehiculos(d, 4, { k: "sumar", modo: "lleva_trae", vehiculoId: "ab799" }, o());
-  assert.equal(a.sumar[0].choferId, "nunez", "Nuñez es el habitual del AB 799 CA");
+  assert.equal(a.sumar[0].choferId, null, "Nuñez es el habitual del AB 799 CA, pero no se autocompleta (11/10 noche)");
   const b = planVehiculos(d, 3, { k: "cambiar", filaId: hojaDeCuadrilla(d, 3)!.vehiculos[0].id, vehiculoId: "ab799" }, o());
   assert.equal(b.filas[0].choferId, "kiska", "ya tenía chofer: no se pisa");
 });

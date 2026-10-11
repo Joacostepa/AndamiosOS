@@ -136,6 +136,12 @@ export function decodificar(data: string | null | undefined): Callback | null {
 /** Telegram sólo acepta botones de URL con https (en local, sin dominio, no hay botón). */
 const conUrl = (texto: string, url: string | null): BotonTelegram[] => (url && url.startsWith("https://") ? [{ text: texto, url }] : []);
 
+/** Un botón de URL suelto ("Ver el recorrido en Maps" en los mensajes del chofer). Sin https, nada. */
+export const filaUrl = (texto: string, url: string | null): Teclado => {
+  const f = conUrl(texto, url);
+  return f.length ? [f] : [];
+};
+
 /** La hoja o los viajes, recién mandados: "Ver la hoja" y "Recibido". */
 export function tecladoHoja(url: string | null, linkId: string, version: number, chofer = false): Teclado {
   return [conUrl(chofer ? "Ver tus viajes" : "Ver la hoja", url), [{ text: "Recibido", callback_data: codificar({ a: "recibido", link: linkId, version }) }]].filter((f) => f.length);

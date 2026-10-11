@@ -22,7 +22,8 @@ import {
 import { ORIGENES, chatDe, origenDe, origenEnDia } from "./quien";
 import { filaEnvio, mensajeCapatazPedido, mensajeDe, mensajeDeposito, mensajeOperario, mensajeTarde, mensajeVuelvenSolos } from "./mensajes";
 import { mensajeSacarUnRato } from "./camiones";
-import { enviarMensaje, linkVinculacion, tecladoCambio, tecladoHoja, tecladoViaje, telegramConfigurado, usuarioDelBot, type Teclado } from "./telegram";
+import { enviarMensaje, filaUrl, linkVinculacion, tecladoCambio, tecladoHoja, tecladoViaje, telegramConfigurado, usuarioDelBot, type Teclado } from "./telegram";
+import { recorridoChofer } from "./rutas";
 import { expiraDe, nuevoCodigoTelegram, nuevoToken, urlHoja } from "./tokens";
 import { anotar, grabador, leerDia, type DB } from "./servicio";
 import type { Resultado } from "./acciones";
@@ -147,6 +148,8 @@ export async function enviar(db: DB, userId: string, fecha: Fecha, pid: string, 
     const teclado: Teclado = x.rol === "ex" ? [] : primera ? tecladoHoja(url, String(l.id), version, chofer)
       : unViajeNuevo ? [...tecladoViaje(url, unViajeNuevo).slice(0, 1), ...tecladoCambio(url, String(l.id), version, chofer)]
       : tecladoCambio(url, String(l.id), version, chofer);
+    // Al chofer, además, su recorrido del día en Google Maps (gratis, sin clave).
+    if (chofer) teclado.push(...filaUrl("Ver el recorrido en Maps", recorridoChofer(dia, pid)));
     const r = await enviarMensaje(chat, texto, teclado);
     await createAdminClient().from("hd_telegram_mensajes").insert({
       fecha, link_id: l.id, viaje_id: unViajeNuevo, [colDe(dia, pid)]: pid, chat_id: chat,

@@ -21,6 +21,8 @@ import {
   persona, contratistasDe, aCargoContratista, vanDe, type ViajeCalc,
 } from "./estado.ts";
 import { vanEnPalabras } from "./contratistas.ts";
+import { urlComoLlegar } from "./maps.ts";
+import { recorridoChofer } from "./rutas.ts";
 
 // ═══════════════════════════ Tipos (los usa la pantalla) ══════════════════════
 
@@ -166,6 +168,8 @@ export type VistaChofer = Comun & {
     obras: ObraPublica[]; gente: { nombre: string; aCargo: boolean; pila?: string | null }[]; van: number;
   } | null;
   viajes: ViajePublico[]; ahoraId: string | null; motivosNoPude: string[];
+  /** "Ver el recorrido en Maps": todas sus paradas que faltan, en orden. Opcional (vistas viejas guardadas). */
+  recorridoUrl?: string | null;
 };
 export type VistaPublica =
   | { situacion: "invalido" }
@@ -196,6 +200,8 @@ export type OpcionesVista = {
 };
 
 export const mapsUrl = (dir: string | null) => (dir ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${dir}, Buenos Aires`)}` : null);
+/** "Cómo llegar" a una obra: al pin si tiene coordenadas, si no a la dirección. */
+const comoLlegarObra = (o: ObraDia) => urlComoLlegar({ lat: o.lat, lng: o.lng, dir: o.direccion }) ?? mapsUrl(o.direccion) ?? "";
 const telDe = (dia: DiaHoja, pid: string | null | undefined) => persona(dia, pid)?.celular ?? null;
 
 const TIPOS_REMITO: TipoViaje[] = ["compra", "lleva_material", "trae_material", "entre_depositos"];
@@ -282,7 +288,7 @@ function obrasPublicas(dia: DiaHoja, c: number, pid: string, ahora: number, op: 
     const ins = dia.instrucciones.find((y) => y.otId === o.otId);
     const diaTxt = o.dia && o.totalDias && o.totalDias > 1 ? ` · día ${o.dia} de ${o.totalDias}` : "";
     return {
-      otId: o.otId, n: i + 1, hora: `${x.est ? "~" : ""}${x.est ? hm5(x.t) : x.hora}`, est: x.est, direccion: o.direccion, mapsUrl: mapsUrl(o.direccion)!,
+      otId: o.otId, n: i + 1, hora: `${x.est ? "~" : ""}${x.est ? hm5(x.t) : x.hora}`, est: x.est, direccion: o.direccion, mapsUrl: comoLlegarObra(o),
       tipo: o.tipo, tipoTxt: op.tipoTxt ? op.tipoTxt(o.tipo) : cap(o.tipo), detalle: `${frLargo(o.fraccion)}${diaTxt}`,
       hoy: ins?.hoy ? ins.hoy.replace(/^Hoy:\s*/i, "") : null, chips: ins?.chips ?? [],
       queHacer: o.detalleTecnico, observaciones: o.observaciones, contacto: o.contactoObra, telefono: o.telObra,
@@ -405,7 +411,7 @@ export function armarVista(dia: DiaHoja, link: LinkVista, ahora: number, op: Opc
     return {
       id: v.id, i: v.i, hora: horaTxt(v), horaFija: !!v.hora, tipo: v.tipo, texto: textoViaje(dia, v, true),
       desde: lugarDeKey(dia, v.desdeKey).n, hacia: destino.n, vuelta: v.vuelta, direccion: destino.dir,
-      mapsUrl: mapsUrl(destino.dir ?? (destino.obra ? destino.n : null)),
+      mapsUrl: urlComoLlegar({ lat: destino.lat, lng: destino.lng, dir: destino.dir ?? (destino.obra ? destino.n : null) }),
       carga: (v.tipo === "lleva" || v.tipo === "busca") && v.carga ? v.carga : null,
       pidio: p?.pidioId ? nombreDe(dia, p.pidioId) : null, antesDe: p?.horaLimite ? hCorta(normHora(p.horaLimite)) : null,
       llamar, estado: v.estado, hechoHora: v.hechoMin != null ? hm(v.hechoMin) : null, motivo: v.noPudoMotivo,
@@ -426,5 +432,6 @@ export function armarVista(dia: DiaHoja, link: LinkVista, ahora: number, op: Opc
       van: vanDe(dia, td),
     } : null,
     viajes, ahoraId: vs.find((v) => v.estado === "planeado")?.id ?? null, motivosNoPude: dia.parametros.motivosNoPude,
+    recorridoUrl: recorridoChofer(dia, pid),
   };
 }

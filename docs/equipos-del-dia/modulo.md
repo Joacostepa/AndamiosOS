@@ -133,7 +133,8 @@ Cada vehículo de la hoja (`hd_hoja_vehiculos`) tiene uno de dos modos:
 
 Sin vehículos: **Sin chofer**, van por su cuenta (el encuentro pasa a "8:00 en la obra").
 
-- **En la tarjeta**, cada vehículo es un renglón propio con su modo, chofer, patente y horas ("Todo el día · Borda · hidrogrúa AB 831 LC", "Lleva y trae · Gómez · AB 497 YY · 7:00 (vuelve al depósito 8:30)") y abajo quién los busca ("Los busca 17:00 (Conte · AB 799 CA)"). Con un solo vehículo, el busca va en su renglón ("· 7:45 → 16:30"). El editor (tocar los renglones) tiene, por vehículo: el modo, el chofer, el camión, la hora del lleva, "Después vuelve al depósito" + "Llega", la carga y "Quitar"; y **"+ Otro vehículo"**, "Van por su cuenta" y el bloque **"Los busca"**.
+- **Cómo se nombra un vehículo** (pedido del dueño, 11/10: "es como los identificamos"): **marca + patente** en todo lo que lee una persona ("Iveco AB 799 CA", "Agrale AB 831 LC"; hay cuatro Iveco, la marca sola no alcanza). Donde hay lugar (mensajes de Telegram y del celular, historial, cabecera del camión, renglón de todo el día, fila de Camiones) la hidrogrúa lo dice: "Agrale hidrogrúa AB 831 LC". Sin marca, la patente sola. En pantalla la marca va en texto normal y la patente en monoespaciada. Con su artículo: "el Iveco …", "la Chevrolet LNE 368" (camioneta), "la Moto …".
+- **En la tarjeta**, cada vehículo es un renglón propio con su modo, chofer, patente y horas ("Todo el día · Borda · Agrale hidrogrúa AB 831 LC", "Lleva y trae · Gómez · Iveco AB 497 YY · 7:00 (vuelve al depósito 8:30)") y abajo quién los busca ("Los busca 17:00 (Conte · Iveco AB 799 CA)"). Con un solo vehículo, el busca va en su renglón ("· 7:45 → 16:30"). El editor (tocar los renglones) tiene, por vehículo: el modo, el chofer, el camión, la hora del lleva, "Después vuelve al depósito" + "Llega", la carga y "Quitar"; y **"+ Otro vehículo"**, "Van por su cuenta" y el bloque **"Los busca"**.
 - **Por defecto**: el primer vehículo que se suma propone el de esa cuadrilla el día anterior (el del mismo modo). Elegir un chofer en un renglón sin camión propone su vehículo (el que ya maneja ese día o su habitual); elegir un camión en un renglón sin chofer propone el habitual. **Si el renglón ya tiene el otro, no se toca.**
 - **La hidrogrúa** es un vehículo más (tipo "hidrogrúa"). Lo normal es Borda **todo el día** con una cuadrilla que la necesita. En el celular del capataz se lee "Borda queda todo el día con la hidrogrúa (AB 831 LC)", y si además otro camión los lleva, "Te lleva Gómez · Iveco AB 497 YY" en la línea de abajo.
 - El selector de tres de siempre (y soltar un chofer en la tarjeta, las teclas 1–5) actúa sobre el **primer** vehículo: soltar un chofer llena el renglón que no tiene chofer, cambia el chofer si hay uno solo (el camión queda), o suma un renglón.
@@ -395,7 +396,7 @@ Ruta: **`/planificacion/hoja`**. Es la vista para armar mañana. Desde el encabe
   - **No disponibles**: ausentes con motivo y vuelta ("Medina · ART · sin fecha de alta").
   - **Ya asignados**: atenuados, con la cuadrilla ("Conte · 2").
   - **Choferes**: con lo que tienen ("Kiska · 6 viajes", "Borda · todo el día con la 1", "Nuñez · libre"). Un clic lleva a su fila en Camiones.
-  - **Vehículos**: patente en JetBrains Mono, tipo y estado ("AB 831 LC · hidrogrúa · con la 1", "AB 497 YY · camión · 2 viajes", "AH 410 LD · VTV vencida").
+  - **Vehículos**: marca y patente (la patente en JetBrains Mono), tipo y estado ("Agrale AB 831 LC · hidrogrúa · con la 1", "Iveco AB 497 YY · camión · 2 viajes", "Iveco AH 410 LD · VTV vencida"). El buscador de Gente también los encuentra (por marca, tipo, modelo o patente).
 
 ### Cómo se asigna (pocos toques)
 

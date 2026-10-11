@@ -10,6 +10,8 @@ seguimos con lo que falta".
 - **Falta probar a mano en producción**: sumar un vehículo, "vuelve al depósito", busca con otro camión / a definir / vuelven solos, Conte a cargo y chofer, y que no aparezca "lo maneja …"; recargar y ver que quede igual.
 - **Google**: la Routes API ya responde con la clave `NEXT_PUBLIC_GOOGLE_MAPS_KEY` (probado el 11/10: 12,7 km / 24 min). El código la usa si no hay `GOOGLE_MAPS_API_KEY`; confirmar que esté cargada en Vercel y restringirla a las APIs que se usan.
 
+**Vehículos con marca (11/10, rama `feat/hoja-dia-vehiculos-con-marca`, sin merge, sin migración)**: todo lo que se muestra dice marca + patente ("Iveco AB 799 CA"; "Agrale hidrogrúa AB 831 LC" donde hay lugar): tarjeta, bandeja, Camiones, menús, selectores, toasts/historial, Telegram, `/h/`, lista de carga y fletes del "Cerrar jornada" (`porVehiculo.vehiculo`). Helpers `nombreVehiculo`/`vehTxt`/`vehiculoNombre`/`elVeh`/`coincideVehiculo` en estado.ts y `<VehiculoNombre>` en comunes; `patente()` queda para claves. Ver modulo.md §4.
+
 **El chofer de los pedidos (11/10, rama `fix/hoja-dia-chofer-de-pedidos`, sin merge)**: arregla "me dice algo de Diego Nuñez que no lo puse en ningún lado" (Cuadrilla 1, domingo). Sin migración. Ver "El chofer de los pedidos" abajo. **Después del deploy** correr `scripts/sql/hoja-dia-chofer-sugerido-limpiar.sql` (mirar antes el SELECT del encabezado).
 
 **Contratistas (10/10, noche)**: en producción. Migración `20261011000002_hoja_dia_contratistas.sql`

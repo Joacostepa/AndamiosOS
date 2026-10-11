@@ -122,9 +122,8 @@ function Formulario({ pref, cerrar, alGuardar }: { pref: PrefPedido | null; cerr
 
   const fechaPedido = (): Fecha => {
     if (urg !== "manana") return fecha;
-    let f = addDia(fecha, 1);
-    if (diaSemana(f) === "domingo") f = addDia(f, 1);
-    return f;
+    // El domingo es un día más (igual que "Pasar a mañana" en el servidor).
+    return addDia(fecha, 1);
   };
 
   const guardar = (poner: boolean) => {

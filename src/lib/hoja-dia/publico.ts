@@ -14,7 +14,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchDocumentosOt } from "@/lib/odoo/asignaciones";
 import { tipoOtLabel } from "@/lib/tablero/tipos";
 import type { Fecha, Foto } from "./tipos";
-import { esHoy, hm, minutosDesde, cap, lowFirst, diaSemana, ddmm } from "./estado";
+import { choferDe, esHoy, hm, minutosDesde, cap, lowFirst, diaSemana, ddmm } from "./estado";
 import { armarVista, otsConArchivos, type ArchivoPublico, type LinkVista, type VistaPublica } from "./vista";
 import { TELEGRAM } from "./mensajes";
 import { codigoValido, situacionLink, tokenValido } from "./tokens";
@@ -132,11 +132,12 @@ async function nombreDeLink(l: Fila): Promise<string> {
 async function viajeDelChofer(l: Fila, viajeId: string): Promise<Fila> {
   const adm = createAdminClient();
   const v = (await adm.from("hd_viajes").select("*").eq("id", viajeId).maybeSingle()).data;
+  // Sin chofer guardado, el viaje es del que maneje ese camión a esa hora: el renglón de la
+  // hoja, el viaje de antes o el sugerido del día (choferDe, lo mismo que ve el celular).
   let delCamion: string | null = null;
   if (v && !v.chofer_id && v.vehiculo_id) {
-    const cam = await adm.from("hd_camiones_dia").select("chofer_id, sin_chofer").eq("fecha", l.fecha).eq("vehiculo_id", v.vehiculo_id).maybeSingle();
-    const hab = await adm.from("vehiculos").select("chofer_habitual_id").eq("id", v.vehiculo_id).maybeSingle();
-    delCamion = (cam.data ? (cam.data.sin_chofer ? null : cam.data.chofer_id) : hab.data?.chofer_habitual_id) ?? null;
+    const dia = await leerDia(String(l.fecha), { cacheOdoo: true });
+    delCamion = choferDe(dia, dia.viajes.find((x) => x.id === String(v.id)));
   }
   const no = porQueNoPuedeMarcar(
     v ? { fecha: String(v.fecha), estado: String(v.estado), chofer_id: (v.chofer_id as string) ?? null, vehiculo_id: (v.vehiculo_id as string) ?? null } : null,
@@ -161,7 +162,7 @@ export async function marcarViajeDesdeChofer(l: Fila, viajeId: string, que: "hec
     let texto: string;
     let cambio: boolean;
     if (que === "hecho") { cambio = await marcarHecho(g, v, "chofer", at); texto = `${nombre}: hecho ${hora}`; }
-    else if (que === "no_pude") { cambio = await marcarNoPude(g, v, motivo ?? "Otro (te llamo)", at); texto = `${nombre} no pudo (${hora}): ${lowFirst(motivo ?? "")}`; }
+    else if (que === "no_pude") { cambio = await marcarNoPude(g, v, motivo ?? "Otro (te llamo)", at, idDeFila(l)); texto = `${nombre} no pudo (${hora}): ${lowFirst(motivo ?? "")}`; }
     else {
       // El "Deshacer" de 10 segundos: sólo lo que marcó él, y hace poco.
       if (v.hecho_por && v.hecho_por !== "chofer") throw new Error("Eso lo marcó la oficina.");

@@ -16,8 +16,9 @@ export type LinkParaMarcar = { fecha: string; rol: string; personaId: string };
 
 /**
  * I3: si el chofer puede marcar "Hecho" / "No pude" / "Deshacer" en ese viaje. Devuelve
- * null si puede, o el porqué en palabras. Sólo SUS viajes (el chofer del viaje, o el del
- * camión ese día si el viaje no lo tiene) de ESE día, y nunca uno anulado: un botón viejo
+ * null si puede, o el porqué en palabras. Sólo SUS viajes (el chofer del viaje, o si no lo
+ * tiene guardado el que maneja ese camión a esa hora, `choferDe` de estado.ts) de ESE día,
+ * y nunca uno anulado: un botón viejo
  * de Telegram no puede revivir un viaje que la oficina sacó.
  */
 export function porQueNoPuedeMarcar(v: ViajeParaMarcar | null, l: LinkParaMarcar, choferDelCamion: string | null): string | null {

@@ -194,6 +194,7 @@ export function Pantalla({ dia, fecha, ahora, irA, cargando }: { dia: DiaHoja; f
       case "marcarHecho": if (b.id) g.viaje({ accion: "hecho", viajeId: b.id }); return;
       case "okTodo": if (b.id) void sacarUnRato(b.id); return;
       case "volverCola": if (b.id) g.viaje({ accion: "volver_a_cola", viajeId: b.id }); return;
+      case "conLleva": if (b.id && b.con) g.viaje({ accion: "con_lleva", viajeId: b.id, llevaId: b.con }); return;
       case "verViaje": case "elegirChoferViaje": {
         if (!b.id) return;
         const f = document.getElementById(`vf-${b.id}`);

@@ -44,8 +44,13 @@ export function depositoSinUbicar(dia: DiaHoja): boolean {
   return !dep || dep.lat == null || dep.lng == null;
 }
 
-/** Los tramos que se usan ese día, sin repetir (el primero que aparece manda la hora). */
-export function paresDelDia(dia: DiaHoja): ParTramo[] {
+/**
+ * Los tramos que se usan ese día, sin repetir (el primero que aparece manda la hora). En
+ * `sinCoordenadas` (si viene) quedan los lugares de los tramos que se descartan por no tener
+ * lat/lng ("Ing. Huergo 913", "Depósito"): el servidor lo anota en el log para saber por qué
+ * un día sale con las típicas.
+ */
+export function paresDelDia(dia: DiaHoja, sinCoordenadas?: Set<string>): ParTramo[] {
   const out = new Map<string, ParTramo>();
   const sumar = (desde: string, hacia: string, salida: Minutos) => {
     if (!desde || !hacia || desde === hacia) return;
@@ -53,7 +58,10 @@ export function paresDelDia(dia: DiaHoja): ParTramo[] {
     if (out.has(k)) return;
     const a = lugarDeKey(dia, desde);
     const b = lugarDeKey(dia, hacia);
-    if (a.lat == null || a.lng == null || b.lat == null || b.lng == null) return;
+    if (a.lat == null || a.lng == null || b.lat == null || b.lng == null) {
+      for (const x of [a, b]) if (x.lat == null || x.lng == null) sinCoordenadas?.add(x.n);
+      return;
+    }
     out.set(k, { desde, hacia, o: { lat: a.lat, lng: a.lng }, d: { lat: b.lat, lng: b.lng }, salida });
   };
   const dep = depKeyDe(dia);

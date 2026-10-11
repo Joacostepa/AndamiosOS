@@ -679,10 +679,65 @@ export function viajesVigentes(dia: DiaHoja): Viaje[] {
   });
 }
 
-/** El chofer que hace el viaje: el que se guardó al ponerlo o el del camión ese día. */
-export function choferDe(dia: DiaHoja, v: Pick<Viaje, "vehiculoId" | "choferId" | "fleteExterno"> | null | undefined): string | null {
+/**
+ * El chofer que hace el viaje. `choferId` sólo se guarda cuando alguien lo eligió a mano (o
+ * es un viaje de un renglón de la hoja, que tiene el suyo); null = "el que maneje ese camión
+ * a esa hora", que se resuelve acá (`choferEnCamion`). Así un viaje creado al aceptar un
+ * sugerido o al poner un pedido sigue solo al chofer que el dueño ponga en la hoja después
+ * (bug del 11/10: "Nuñez lleva 8:00" con Conte en el renglón del AB 799 CA).
+ */
+export function choferDe(
+  dia: DiaHoja,
+  v: (Pick<Viaje, "vehiculoId" | "choferId" | "fleteExterno"> & Partial<Pick<Viaje, "id" | "orden" | "hojaVehiculoId">>) | null | undefined,
+): string | null {
   if (!v || !v.vehiculoId || v.fleteExterno) return null;
-  return v.choferId ?? choferDelCamion(dia, v.vehiculoId);
+  if (v.choferId) return v.choferId;
+  const veh = v.vehiculoId;
+  const ref = v.orden ?? toMin(P(dia).encuentroDeposito) ?? 420;
+  return memo(dia, `ch:${v.id ?? ""}:${veh}:${ref}:${v.hojaVehiculoId ?? ""}`, () => {
+    const f = v.hojaVehiculoId ? filaPorId(dia, v.hojaVehiculoId) : null;
+    if (f?.choferId && f.vehiculoId === veh) return f.choferId;
+    return choferEnCamion(dia, veh, ref, "orden", v.id);
+  });
+}
+
+/** Un renglón de una hoja del día por su id. */
+const filaPorId = (dia: DiaHoja, id: string): VehiculoHoja | null =>
+  memo(dia, "filasPorId", () => new Map(dia.hojas.flatMap((h) => h.vehiculos.map((f) => [f.id, f] as const)))).get(id) ?? null;
+
+/** Los renglones con chofer de las hojas de ese día (cuadrillas que trabajan) con ese camión, y la hora (orden) de su lleva. */
+function filasConCamion(dia: DiaHoja, veh: string): { f: VehiculoHoja; orden: number | null }[] {
+  return memo(dia, `filasVeh:${veh}`, () => cuadrillasActivas(dia).flatMap((c) =>
+    vehiculosDe(hojaDeCuadrilla(dia, c)).filter((f) => f.vehiculoId === veh && f.choferId).map((f) => ({
+      f, orden: dia.viajes.find((v) => v.hojaVehiculoId === f.id && v.tipo === "lleva" && v.estado !== "anulado")?.orden ?? null,
+    }))));
+}
+
+/**
+ * Quién maneja un camión a esa altura del día, para un viaje sin chofer elegido a mano (o
+ * uno nuevo). En este orden (decisión del dueño, 11/10):
+ * 1. el renglón de la hoja con ese camión ese día (`hd_hoja_vehiculos`): "Todo el día" manda;
+ *    si hay varios renglones con choferes distintos, el del lleva de antes (o el primero);
+ * 2. el chofer elegido del viaje anterior en la fila, si no el del siguiente (un camión
+ *    sigue con su chofer hasta que se lo cambia);
+ * 3. el sugerido del día (`hd_camiones_dia`, si no el habitual del vehículo).
+ * `ref` es el orden del viaje (`por: "orden"`) o una hora (`por: "t"`, con las horas de
+ * calcVeh). Sólo miran los choferes guardados (nunca otro resuelto): no hay vueltas.
+ */
+export function choferEnCamion(dia: DiaHoja, veh: string, ref: number, por: "orden" | "t" = "orden", excluir?: string): string | null {
+  const fs = filasConCamion(dia, veh);
+  const todo = fs.find((x) => x.f.modo === "todo_el_dia");
+  if (todo) return todo.f.choferId;
+  if (fs.length) {
+    if (new Set(fs.map((x) => x.f.choferId)).size === 1) return fs[0].f.choferId;
+    const ord = [...fs].sort((a, b) => (a.orden ?? Infinity) - (b.orden ?? Infinity));
+    return (ord.filter((x) => x.orden != null && x.orden <= ref).pop() ?? ord[0]).f.choferId;
+  }
+  const pos = (v: ViajeCalc) => (por === "t" ? v.t : v.orden);
+  const vs = calcVeh(dia, veh).filter((v) => v.choferId && v.id !== excluir);
+  const prev = vs.filter((v) => pos(v) <= ref).sort((a, b) => pos(a) - pos(b)).pop();
+  const next = vs.filter((v) => pos(v) > ref).sort((a, b) => pos(a) - pos(b))[0];
+  return prev?.choferId ?? next?.choferId ?? choferDelCamion(dia, veh);
 }
 
 /** Cuánto dura un viaje: la cargada a mano, la de Google con la parada (tiempos.ts) o la típica. */
@@ -808,24 +863,18 @@ export function choferesTxt(dia: DiaHoja, veh: string): string {
 }
 
 /**
- * El chofer que tomaría un viaje nuevo en ese camión a esa altura del día: el del viaje
- * anterior en la fila (un camión sigue con su chofer hasta que se lo cambia), si no el del
- * siguiente, si no el de "Todo el día", si no el sugerido del día (hd_camiones_dia / habitual).
+ * El chofer que tomaría un viaje nuevo en ese camión a esa hora (`choferEnCamion`): el del
+ * renglón de la hoja, si no el del viaje anterior / siguiente, si no el sugerido del día.
+ * Es lo que se MUESTRA ("Poner en el AB 799 CA · Conte"): el viaje nuevo se guarda sin
+ * chofer y lo resuelve choferDe, que da lo mismo.
  */
 export function choferSugerido(dia: DiaHoja, veh: string, t?: number | null): string | null {
-  const ts = calcVeh(dia, veh).filter((v) => choferDe(dia, v));
-  const ref = t ?? toMin(P(dia).encuentroDeposito)!;
-  const prev = ts.filter((v) => v.t <= ref).pop();
-  const next = ts.find((v) => v.t > ref);
-  return (prev ? choferDe(dia, prev) : null) ?? (next ? choferDe(dia, next) : null) ?? filaTodoVeh(dia, veh)?.choferId ?? choferDelCamion(dia, veh);
+  return choferEnCamion(dia, veh, t ?? toMin(P(dia).encuentroDeposito)!, "t");
 }
 
-/** El chofer de un viaje que se suelta con este `orden` en la fila: el del viaje de antes, o el de después. */
+/** El chofer de un viaje que se suelta con este `orden` en la fila (lo que va a resolver choferDe). */
 export function choferParaOrden(dia: DiaHoja, veh: string, orden: number): string | null {
-  const ts = calcVeh(dia, veh).filter((v) => choferDe(dia, v));
-  const prev = ts.filter((v) => v.orden < orden).pop();
-  const next = ts.find((v) => v.orden >= orden);
-  return (prev ? choferDe(dia, prev) : null) ?? (next ? choferDe(dia, next) : null) ?? filaTodoVeh(dia, veh)?.choferId ?? choferDelCamion(dia, veh);
+  return choferEnCamion(dia, veh, orden, "orden");
 }
 
 /** Un choque de chofer: el mismo chofer en dos camiones a la vez (`b` empieza antes de que termine `a`). */
@@ -1228,8 +1277,9 @@ export function planPonerPedido(dia: DiaHoja, ped: Pedido, veh: string, ahora: M
   const hoy = esHoy(ahora);
   const nuevo: ViajeNuevo = {
     vehiculoId: veh,
-    // El chofer de ese tramo de la fila (el del viaje de antes): un camión cambia de chofer en el día.
-    choferId: choferParaOrden(dia, veh, orden),
+    // Sin chofer guardado: lo hace el que maneje ese camión a esa hora (choferDe). Si después
+    // el dueño pone otro chofer en el renglón de la hoja, el viaje lo sigue solo.
+    choferId: null,
     fleteExterno: null,
     tipo: ped.tipo,
     hojaId: null,
@@ -1271,7 +1321,8 @@ export type Boton = {
    * pasarChofer · irA · elegirChoferViaje · vuelvenSolos · verCamion · verViaje · avisarTarde ·
    * okTodo · volverCola · llamar · marcarHecho · avisarChofer · abrirEnvio · reenviar · dlgCel ·
    * irCamiones · tablero · esperar · poner · pasarManana · fleteDe · liberar ·
-   * sumarContratista (`p` = el contratista, `n` = cuántos sumar).
+   * sumarContratista (`p` = el contratista, `n` = cuántos sumar) · conLleva (`id` = el viaje de
+   * material, `con` = el lleva de la cuadrilla al que se suma).
    */
   a: string;
   c?: number;
@@ -1281,6 +1332,8 @@ export type Boton = {
   veh?: string;
   from?: number;
   foco?: "lleva" | "busca";
+  /** El otro viaje del gesto (conLleva: el lleva al que se suma el material). */
+  con?: string;
 };
 
 export type Aviso = {
@@ -1313,15 +1366,24 @@ export function avisosVeh(dia: DiaHoja, veh: string, ahora: Minutos): Aviso[] {
     if (v.conflicto) {
       const pv = v.conflicto.prevId ? ts.find((x) => x.id === v.conflicto!.prevId) ?? null : null;
       const pc = pv ? cuadrillaDeViaje(dia, pv) : null;
+      // Cada viaje se dice con SU camión y SU chofer (resuelto: el del renglón de la hoja si no
+      // tiene uno elegido): nunca "Nuñez: …" por un chofer que nadie puso en la fila.
+      const chPv = pv ? choferDe(dia, pv) : null;
+      const pat = patente(dia, veh);
       if (v.tipo === "busca" && c != null) {
         out.push({ k: `tarde-${v.id}`, nivel: "rojo", c, ids: [v.id, pv?.id ?? null], t: `${N(ch)} llegaría ~${hm5(v.conflicto.llega)} a buscar a la ${cNombre(dia, c)} (${normHora(v.hora)})`, bs: [{ l: "Ver el viaje", a: "verViaje", id: pv ? pv.id : v.id }, { l: `Avisar a ${N(recibeDe(dia, c))}`, a: "avisarTarde", id: v.id }] });
       } else if (pv && pv.tipo === "lleva" && v.tipo === "lleva" && normHora(pv.hora) === normHora(v.hora) && pc != null && c != null) {
-        out.push({ k: `choque-${pv.id}-${v.id}`, nivel: "rojo", cruce: [pc, c], ids: [pv.id, v.id], t: `${N(choferDe(dia, pv))} lleva a la ${cNombre(dia, pc)} y a ${laC(dia, c)} a las ${normHora(v.hora)}`, bs: [] });
+        const t = chPv === ch
+          ? `${N(chPv)} lleva a la ${cNombre(dia, pc)} y a ${laC(dia, c)} a las ${normHora(v.hora)}`
+          : `El ${pat} lleva a la ${cNombre(dia, pc)} (${N(chPv)}) y a ${laC(dia, c)} (${N(ch)}) a las ${normHora(v.hora)}`;
+        out.push({ k: `choque-${pv.id}-${v.id}`, nivel: "rojo", cruce: [pc, c], ids: [pv.id, v.id], t, bs: [] });
       } else if (pv && pc != null && c != null && pc !== c && (pv.tipo === "lleva" || pv.tipo === "busca") && (v.tipo === "lleva" || v.tipo === "busca")) {
-        out.push({ k: `choque-${pv.id}-${v.id}`, nivel: "rojo", cruce: [pc, c], ids: [pv.id, v.id], t: `${N(choferDe(dia, pv))} ${pv.tipo} a la ${cNombre(dia, pc)} a las ${normHora(pv.hora)} y ${v.tipo} a ${laC(dia, c)} a las ${normHora(v.hora)}: no llega`, bs: [] });
+        const t = chPv === ch
+          ? `${N(chPv)} ${pv.tipo} a la ${cNombre(dia, pc)} a las ${normHora(pv.hora)} y ${v.tipo} a ${laC(dia, c)} a las ${normHora(v.hora)}: no llega`
+          : `El ${pat} no llega: ${pv.tipo} a la ${cNombre(dia, pc)} (${N(chPv)}) a las ${normHora(pv.hora)} y ${v.tipo} a ${laC(dia, c)} (${N(ch)}) a las ${normHora(v.hora)}`;
+        out.push({ k: `choque-${pv.id}-${v.id}`, nivel: "rojo", cruce: [pc, c], ids: [pv.id, v.id], t, bs: [] });
       } else {
-        const queEs = v.tipo === "taller" ? (lugar(dia, v.haciaEf).tipo === "vtv" ? "la VTV" : "el taller") : lowFirst(cortoV(dia, v));
-        out.push({ k: `noentra-${v.id}`, nivel: "rojo", c, ids: [v.id, pv?.id ?? null], t: `${N(ch)}: ${pv ? `${lowFirst(cortoV(dia, pv))} termina ~${hm5(v.conflicto.llega)}` : "lo anterior termina tarde"} y ${queEs} es a las ${normHora(v.hora)}`, bs: [{ l: "Ver el viaje", a: "verViaje", id: pv ? pv.id : v.id }] });
+        out.push({ k: `noentra-${v.id}`, nivel: "rojo", c, ids: [v.id, pv?.id ?? null], t: textoNoEntra(dia, veh, v, pv), bs: [{ l: "Ver el viaje", a: "verViaje", id: pv ? pv.id : v.id }, ...botonesConLleva(dia, v.id)] });
       }
     }
     const L = lugar(dia, v.haciaEf);
@@ -1365,6 +1427,85 @@ export function avisosVeh(dia: DiaHoja, veh: string, ahora: Minutos): Aviso[] {
   }
   const seen = new Set<string>();
   return out.filter((x) => (seen.has(x.k) ? false : (seen.add(x.k), true))).map((x) => ({ ...x, veh }));
+}
+
+/**
+ * Un viaje de hora fija que no entra en su camión, con el camión y el chofer de cada viaje:
+ * "El AB 799 CA no llega: lleva C1 Ing. Huergo (Conte) vuelve al depósito ~8:45 y el
+ * material para Ing. Huergo es a las 8:00". El chofer del segundo se nombra sólo si es otro.
+ */
+export function textoNoEntra(dia: DiaHoja, veh: string, v: ViajeCalc, pv: ViajeCalc | null): string {
+  const N = (id: string | null) => nombreDe(dia, id) || "sin chofer";
+  const ch = choferDe(dia, v), chPv = pv ? choferDe(dia, pv) : null;
+  const L = lugar(dia, v.haciaEf);
+  const queEs = v.tipo === "taller" ? (L.tipo === "vtv" ? "la VTV" : "el taller")
+    : v.tipo === "lleva_material" ? `el material para ${L.corto}`
+    : v.tipo === "trae_material" ? `traer lo de ${L.corto}`
+    : v.tipo === "compra" ? `la compra en ${L.corto}`
+    : lowFirst(cortoV(dia, v));
+  const llega = v.conflicto?.llega ?? v.t;
+  const antes = pv
+    ? `${lowFirst(cortoV(dia, pv))} (${N(chPv)}) ${pv.vuelta && pv.estado !== "no_pudo" ? "vuelve al depósito" : "termina"} ~${hm5(pv.fin)}${llega > pv.fin + 2 ? ` (llega a ${L.corto} ~${hm5(llega)})` : ""}`
+    : `lo anterior termina ~${hm5(llega)}`;
+  return `El ${patente(dia, veh)} no llega: ${antes} y ${queEs}${ch && ch !== chPv ? ` (${N(ch)})` : ""} es a las ${normHora(v.hora)}`;
+}
+
+/** Cuánto después de la hora de un viaje de material puede llegar el lleva de la cuadrilla para llevarlo él ("cerca"). */
+const CERCA_MATERIAL_MIN = 60;
+
+export type LlevaParaMaterial = { lleva: ViajeCalc; c: number; ch: string | null; veh: string };
+
+/**
+ * "Que lo lleve Conte con la Cuadrilla 1" (§6, "Varios pedidos, un viaje"): los "lleva" de
+ * las cuadrillas (de cualquier renglón, pendientes y con camión) que van a la obra de este
+ * viaje de material suelto y llegan antes o cerca de su hora. El material pasa a ese lleva
+ * (su carga se suma a la del lleva) y el viaje de material se va (planConLleva).
+ */
+export function llevasParaMaterial(dia: DiaHoja, viajeId: string): LlevaParaMaterial[] {
+  const v = viajeCalc(dia, viajeId);
+  if (!v || v.tipo !== "lleva_material" || v.hojaId || v.estado !== "planeado" || v.fleteExterno || v.haciaEf.otId == null) return [];
+  const out: LlevaParaMaterial[] = [];
+  for (const x of viajesCalc(dia)) {
+    if (x.tipo !== "lleva" || !x.hojaId || x.estado !== "planeado" || !x.vehiculoId || x.haciaEf.otId !== v.haciaEf.otId) continue;
+    if (x.t + x.dur > v.t + CERCA_MATERIAL_MIN) continue;
+    const c = cuadrillaDeViaje(dia, x);
+    if (c != null) out.push({ lleva: x, c, ch: choferDe(dia, x), veh: x.vehiculoId });
+  }
+  // Por hora, y a la misma hora en el orden de los renglones de la tarjeta.
+  const ordFila = (x: LlevaParaMaterial) => (x.lleva.hojaVehiculoId ? filaPorId(dia, x.lleva.hojaVehiculoId)?.orden : null) ?? 99;
+  return out.sort((a, b) => a.lleva.t - b.lleva.t || a.c - b.c || ordFila(a) - ordFila(b));
+}
+
+/** El botón de cada lleva que puede llevar el material: "Que lo lleve Conte con la Cuadrilla 1" (con la patente si dos se llaman igual). */
+export function botonesConLleva(dia: DiaHoja, viajeId: string): Boton[] {
+  const ls = llevasParaMaterial(dia, viajeId);
+  const quien = (x: LlevaParaMaterial) => nombreDe(dia, x.ch) || `el ${patente(dia, x.veh)}`;
+  return ls.map((x) => {
+    const repetido = ls.filter((y) => quien(y) === quien(x)).length > 1;
+    return { l: `Que lo lleve ${quien(x)}${repetido ? ` (${patente(dia, x.veh)})` : ""} con la ${cNombre(dia, x.c)}`, a: "conLleva", id: viajeId, con: x.lleva.id };
+  });
+}
+
+/**
+ * Qué escribe "Que lo lleve … con la Cuadrilla N": la carga del lleva con la del material
+ * sumada ("20 tablones + material del armado…"), el motivo con el que se va el viaje de
+ * material (la regla de siempre al sacarle el último pedido: se anula) y el texto. Tira si
+ * ese lleva ya no sirve para ese material.
+ */
+export function planConLleva(dia: DiaHoja, viajeId: string, llevaId: string): { llevaId: string; carga: string; motivo: string; texto: string; chMaterial: string | null; chLleva: string | null } {
+  const x = llevasParaMaterial(dia, viajeId).find((y) => y.lleva.id === llevaId);
+  const v = viajeCalc(dia, viajeId);
+  if (!x || !v) throw new Error("Ese viaje ya no puede ir con esa cuadrilla (cambió la hora, la obra o el camión).");
+  const ps = pedidosDeViaje(dia, viajeId);
+  const lo = v.carga || ps.map((p) => p.que).join(" + ") || "material";
+  const carga = x.lleva.carga ? `${x.lleva.carga} + ${lowFirst(lo)}` : cap(lo);
+  const quien = nombreDe(dia, x.ch) || `el ${patente(dia, x.veh)}`;
+  const L = lugar(dia, v.haciaEf);
+  return {
+    llevaId, carga, chMaterial: choferDe(dia, v), chLleva: x.ch,
+    motivo: `va con la ${cNombre(dia, x.c)} (${quien})`,
+    texto: `El material para ${L.corto} va con la ${cNombre(dia, x.c)}: lo lleva ${quien} (${patente(dia, x.veh)}) a las ${normHora(x.lleva.hora) ?? hm5(x.lleva.t)}`,
+  };
 }
 
 /** "Kiska no llega: lleva C2 Juramento (AF 669 ZL) termina ~7:45 y lleva C3 Rivadavia (AB 497 YY) es a las 7:30". */
@@ -1583,7 +1724,7 @@ export function problemas(dia: DiaHoja, c: number, ahora: Minutos): Problema[] {
           const cc = tocada(dia, c, otra);
           add({ k: x.k, cruce: true, t: x.t, bsFalta: [{ l: "Cambiar hora", a: "chEd", c: cc, foco: "lleva" }], card: yo ? x.t : `${nombreDe(dia, vo ? choferDe(dia, vo) : null) || "El chofer"} también ${vo ? verboV(vo) : "lleva"} a ${laC(dia, otra)} a las ${vo ? normHora(vo.hora) : ""}`, bs: yo ? [{ l: "Cambiar hora", a: "chEd", c, foco: vy?.tipo === "busca" ? "busca" : "lleva" }] : [{ l: `Ver ${laC(dia, otra)}`, a: "irA", c: otra }] });
         } else if (x.c === c && (x.k.startsWith("tarde-") || x.k.startsWith("noentra-"))) {
-          add({ k: x.k, t: x.t, card: x.t, bs: [{ l: "Ver el camión", a: "verCamion", veh }] });
+          add({ k: x.k, t: x.t, card: x.t, bs: [{ l: "Ver el camión", a: "verCamion", veh }, ...x.bs.filter((b) => b.a === "conLleva")] });
         }
       }
     }

@@ -122,6 +122,7 @@ Decisión del dueño (10/10): **depende del día.** Decisiones del dueño (11/10
 3. **Armadores que también manejan**: tilde **"Puede manejar"** en Legajos (`personal.puede_manejar`), junto a "Puede estar a cargo". Arranca en Conte y Ortega. Los elegibles como chofer son los choferes de Odoo (`odoo_tarea = 'chofer'`, o el puesto si no hay vínculo) más los que pueden manejar. Una misma persona puede ir **a cargo y ser el chofer de "Todo el día"** de su cuadrilla: cuenta **una vez** en "Quiénes van" ("Conte · a cargo · chofer") y no es "estar en dos lugares". La sincronización con Odoo no toca ese tilde.
 4. **Una cuadrilla puede llevar varios vehículos**, cada uno con su chofer y su modo (la hidrogrúa con Borda todo el día + otro camión que lleva gente y material y se va). **"Sin chofer" = ninguno.**
 5. **Lleva y trae se define sobre la marcha, desde la tarjeta** (ver abajo).
+6. **El chofer de un viaje no se congela con una sugerencia** (bug del 11/10: "Nuñez lleva 8:00" con Conte en el renglón del AB 799 CA). Un viaje guarda su chofer sólo si alguien lo eligió a mano (o si es de un renglón de la hoja, que tiene el suyo). Los que nacen de aceptar un sugerido, "Poner en un camión", un pedido o "Nuevo viaje" quedan **sin chofer = el que maneje ese camión a esa hora**: primero el renglón de la hoja con ese camión ese día, después el viaje anterior o siguiente de la fila con chofer elegido, después el chofer del camión del día, después el habitual. Si el dueño pone o cambia el chofer de un renglón, esos viajes lo siguen solos. "Cambiar chofer" de un viaje suelto tiene "El que maneje el AB 799 CA" para volver a eso.
 
 Cada vehículo de la hoja (`hd_hoja_vehiculos`) tiene uno de dos modos:
 
@@ -163,6 +164,7 @@ El proyecto abandonó las franjas (`planificacion_viajes` se dropeó sin uso). S
 | Un chofer **Todo el día** puesto en otra cuadrilla | "Borda está todo el día con la Cuadrilla 1" | "Sacarlo de la 1" (saca sólo sus vehículos de la otra) / "Elegir otro" |
 | Un vehículo **Todo el día** puesto en otra cuadrilla | "El AB 831 LC está todo el día con la Cuadrilla 1" | "Elegir otro" |
 | Un chofer **Lleva y trae** con dos viajes del mismo camión que no entran | "Kiska lleva a la Cuadrilla 2 y a la 3 a las 7:00" | "Cambiar hora" |
+| Un viaje de hora fija que **no entra en su camión** | "El AB 799 CA no llega: lleva C1 Ing. Huergo (Conte) vuelve al depósito ~8:45 y el material para Ing. Huergo es a las 8:00" (el camión y el chofer de cada viaje; el del segundo sólo si es otro) | "Ver el camión"; si es material para la obra de una cuadrilla que ya va con su lleva, "Que lo lleve Conte con la Cuadrilla 1" (§6) |
 | **El mismo chofer en dos camiones a la vez** | "Kiska no llega: lleva C2 Juramento (AF 669 ZL) termina ~7:45 y lleva C4 Gurruchaga (AB 497 YY) es a las 7:15" | "Elegir otro" / "Ver el camión" |
 | Un chofer **Todo el día** que además tiene viajes de otra cuadrilla (o el vehículo de todo el día con viajes de otra) | "Nuñez está todo el día con la 5 y lleva a la 4 a las 7:00" | "Elegir otro" |
 | Un chofer que es **integrante de otra cuadrilla** | "Conte está en la Cuadrilla 2 y maneja todo el día con la 4" | "Elegir otro" / "Ver la 2" |
@@ -258,6 +260,7 @@ Desde el 12/10 (rama `feat/hoja-dia-google-maps`), si la **Routes API** de Googl
 
 - Dos pedidos al mismo lugar en la misma vuelta van en **un viaje** (soltar un pedido sobre un viaje que va al mismo destino lo suma: "Cabildo 3260 · 6 tablones y 2 bases + 1 escalera").
 - Un viaje "Hecho" deja **Hechos** todos sus pedidos.
+- **El material para la obra de una cuadrilla** (11/10): si un "Lleva material" suelto va a la obra donde una cuadrilla ya va con su lleva (de cualquier renglón) y ese lleva llega antes o hasta 1 h después de la hora del material, el aviso de "no entra" y el menú del viaje ofrecen **"Que lo lleve Conte con la Cuadrilla 1"** (uno por renglón). En un gesto, con Deshacer: el pedido pasa al lleva, su carga se suma a la del lleva ("20 tablones + material del armado…") y el viaje de material se anula con la regla de siempre al sacarle su último pedido. Si después la cuadrilla se queda sin ese lleva, el pedido vuelve a la cola.
 
 ### Fletes de afuera
 
@@ -349,6 +352,7 @@ Para mañana, la app propone pedidos a partir del tablero (en los partes, 131 de
 - **Primer día de un armado** → "Llevar el material a Gurruchaga 1650 (arranca el armado)". 
 - **Último día de un desarme** → "Traer lo desarmado de Juramento 2145 al depósito".
 - Si la cuadrilla de esa obra va **Todo el día** con un camión, el sugerido ya se propone en ese camión ("Nuñez trae lo de San Juan 2840 al terminar").
+- Aceptarlo en un camión **no fija el chofer**: lo hace el que maneje ese camión (§4, decisión 6).
 - **"Aceptar"** lo pasa a la cola como cualquier pedido; **"No hace falta"** lo descarta y no vuelve a aparecer para esa obra y ese día.
 - El qué lleva queda "**material del cómputo**" hasta que el depósito lo complete. No se calcula de ningún lado en la fase 1.
 
@@ -528,7 +532,7 @@ Advierten, no bloquean. Salen en la fila del camión, en el pedido y en la líne
 
 | Situación | Texto | Botón |
 |---|---|---|
-| Viajes que no entran en el tiempo (con las duraciones típicas) | "Kiska: Sanz termina ~11:00 y Gurruchaga es a las 10:45" | "Correr horas" / "Cambiar orden" |
+| Viajes que no entran en el tiempo (con las duraciones típicas o los tiempos de Google) | "El AF 669 ZL no llega: compra Sanz (Kiska) termina ~11:00 y el material para Gurruchaga es a las 10:45" (cada viaje con su chofer; con Google, "(llega a Gurruchaga ~11:20)") | "Ver el viaje"; con material para una obra de una cuadrilla, "Que lo lleve … con la Cuadrilla N" |
 | Llega tarde a algo con hora fija | "Kiska llegaría ~16:50 a buscar a la Cuadrilla 3 (16:30)" | "Pasar el viaje a otro" / "Avisar a Ortega" |
 | **Una cuadrilla queda sin que la busquen** (se sacó o se pasó el "busca") | "Nadie busca a la Cuadrilla 3 en Rivadavia 6150" | "Elegir chofer" / "Vuelven por su cuenta" (avisa a Ortega) |
 | Una cuadrilla queda sin que la lleven | "Nadie lleva a la Cuadrilla 2 a Juramento 2145 a las 7:00" | "Elegir chofer" |

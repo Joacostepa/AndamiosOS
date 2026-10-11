@@ -85,7 +85,7 @@ export function EditorChofer({ ctl, c }: { ctl: Control; c: number }) {
           cerrar();
         }
       }}
-      className="grid gap-2 rounded-lg border border-foreground/20 bg-hd-card2 p-2"
+      className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 rounded-lg border border-foreground/20 bg-hd-card2 p-2"
     >
       {!filas.length ? (
         <div className="grid gap-1.5">
@@ -157,7 +157,7 @@ function RenglonVehiculo({ ctl, c, f, n, varias, principal }: { ctl: Control; c:
   const cambiar = (x: { modo?: ModoVehiculo; choferId?: string | null; vehiculoId?: string | null }) => hoja.mutate({ accion: "vehiculo_cambiar", fecha, cuadrilla: c, filaId: f.id, ...x });
   const nombre = varias ? `Vehículo ${n}${f.vehiculoId ? ` (${patente(dia, f.vehiculoId)})` : ""}` : "Vehículo";
   return (
-    <section aria-label={nombre} className={cn("grid gap-1.5", varias && "rounded-md border border-foreground/10 bg-card/60 p-1.5")}>
+    <section aria-label={nombre} className={cn("grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1.5", varias && "rounded-md border border-foreground/10 bg-card/60 p-1.5")}>
       <div className="flex flex-wrap items-center gap-1.5">
         <Segmentos label={`Modo del ${nombre.toLowerCase()}`} opciones={MODOS_V} valor={f.modo} disabled={espera} onElegir={(modo) => cambiar({ modo })} />
         <span className="flex-1" />
@@ -235,7 +235,7 @@ function EditorBusca({ ctl, c }: { ctl: Control; c: number }) {
   const etiqueta = (f: VehiculoHoja) => `${nombreDe(dia, f.choferId) || "sin chofer"}${f.vehiculoId ? ` · ${patente(dia, f.vehiculoId)}` : ""}`;
   const veh = q.k === "otro" ? q.v.vehiculoId : null;
   return (
-    <section aria-label="Quién los busca" className="grid gap-1.5 border-t border-foreground/10 pt-1.5">
+    <section aria-label="El busca" className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1.5 border-t border-foreground/10 pt-1.5">
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
         <label className="inline-flex min-w-0 flex-[1_1_220px] items-center gap-1.5 text-xs text-muted-foreground">
           <span className="whitespace-nowrap">Los busca</span>

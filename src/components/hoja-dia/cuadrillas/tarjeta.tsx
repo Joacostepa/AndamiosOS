@@ -2,7 +2,7 @@
 
 // La tarjeta de una cuadrilla (cardHTML de la maqueta), compacta: estado, problemas arriba
 // con su botón, las obras del tablero con su hora, quiénes van, un renglón por vehículo (con
-// su modo, chofer, patente y horas; se abre en el editor) y quién los busca, el encuentro y
+// su modo, chofer, marca y patente y horas; se abre en el editor) y quién los busca, el encuentro y
 // las instrucciones.
 
 import { useState } from "react";

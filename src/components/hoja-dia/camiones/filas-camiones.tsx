@@ -1,7 +1,7 @@
 "use client";
 
 // Una fila por camión (§9): a la izquierda quién lo maneja (si cambia en el día, cada tramo:
-// "Kiska → Gómez 14:00"), la patente y dónde anda en palabras; a la derecha los viajes como
+// "Kiska → Gómez 14:00"), la marca y la patente y dónde anda en palabras; a la derecha los viajes como
 // fichas sobre una línea de tiempo aproximada de 7 a 18 (el ancho es la duración típica, no
 // la real). La línea coral es "ahora". Cada viaje tiene su chofer (decisión del dueño, 11/10).
 //
@@ -15,12 +15,13 @@ import { Button } from "@/components/ui/button";
 import {
   avisosChofer, avisosVeh, calcVeh, camionesQueSirven, cap, choferDe, choferesDeFila, choferesTxt, cNombre, cortoV, cTag, dondeAnda, estadoEnvio,
   fletesDeAfuera, haciaDe, hm, hm5, horaTxt, kmTxt, lowFirst, lugar, nombreDe, obrasCon, sinCamionDe, textoViaje, toMin,
-  todoVeh, vehiculo, viajeSinAvisar, type Aviso, type CamionesQueSirven, type ViajeCalc, hojaDeCuadrilla,
+  todoVeh, vehiculo, elVeh, viajeSinAvisar, type Aviso, type CamionesQueSirven, type ViajeCalc, hojaDeCuadrilla,
 } from "@/lib/hoja-dia/estado";
 import { filasOrden, ordenEnFila } from "@/lib/hoja-dia/camiones";
 import { tramoDe } from "@/lib/hoja-dia/rutas";
 import { tiempoTxt } from "@/lib/hoja-dia/tiempos";
 import { TiempoTramo } from "@/components/hoja-dia/comunes/tiempo-tramo";
+import { VehiculoNombre } from "@/components/hoja-dia/comunes/vehiculo-nombre";
 import type { DiaHoja, Viaje } from "@/lib/hoja-dia/tipos";
 import { arrastre, TIPO_ARRASTRE, useCamiones } from "./contexto";
 import { LineaAviso } from "./botones";
@@ -114,7 +115,7 @@ export function FilasCamiones() {
           <b className="font-semibold text-foreground">Sin usar:</b>
           {f.sinUsar.map((s, i) => (
             <span key={s.veh}>
-              <span className={cn(/^[A-Z]{1,3} ?\d{3} ?[A-Z]{0,3}$/.test(s.txt) && "font-mono text-[12px]")}>{s.txt}</span>
+              <VehiculoNombre v={vehiculo(dia, s.veh)} mono="font-mono text-[12px]" />
               {s.nota && <span className={cn(s.amb && "text-hd-ambar")}> ({s.nota})</span>}
               {i < f.sinUsar.length - 1 && <span aria-hidden> ·</span>}
             </span>
@@ -255,8 +256,8 @@ function Fila({ veh, q }: { veh: string; q: CamionesQueSirven | null }) {
       <div className={cn("relative grid min-w-0 content-start gap-px py-1.5 pr-1.5 pl-3", !angosta && "border-r")}>
         <div className="flex flex-wrap items-baseline gap-x-1.5 pr-8 text-[13.5px] font-semibold">
           {quien || "Sin chofer"}
-          <span className="font-mono text-xs font-medium text-muted-foreground">{V.patente}</span>
-          <span className="text-xs font-medium text-muted-foreground">{V.tipo === "hidrogrua" ? "hidrogrúa" : V.marca}</span>
+          {/* Por la marca, como lo conocen ("Iveco AB 497 YY"); la hidrogrúa lo dice ("Agrale hidrogrúa AB 831 LC"). */}
+          <VehiculoNombre v={V} largo className="text-xs font-medium text-muted-foreground" />
         </div>
         <div className={cn("line-clamp-3 text-xs leading-snug", TONO_DA[da.tono])}>{da.t}</div>
         {sug && (
@@ -299,7 +300,7 @@ function Fila({ veh, q }: { veh: string; q: CamionesQueSirven | null }) {
             variant="ghost"
             size="icon-xs"
             className="absolute top-1 right-1 max-md:size-9"
-            aria-label={`Más opciones del camión ${V.patente}`}
+            aria-label={`Más opciones ${elVeh(dia, veh, "del")}`}
             aria-haspopup="menu"
             id={`fm-${veh}`}
             onClick={(e) => abrirMenu({ t: "fila", veh, anchor: e.currentTarget })}

@@ -8,7 +8,8 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Caja, HojaLateral } from "@/components/hoja-dia/comunes/hoja-lateral";
-import { fechaLarga, hm, hm5, listaCarga, nombreDe, patente, textoListaCarga, type FilaCarga } from "@/lib/hoja-dia/estado";
+import { fechaLarga, hm, hm5, listaCarga, nombreDe, vehiculo, textoListaCarga, type FilaCarga } from "@/lib/hoja-dia/estado";
+import { VehiculoNombre } from "@/components/hoja-dia/comunes/vehiculo-nombre";
 import { useCamiones } from "./contexto";
 
 export function ListaCarga({ abierta, cerrar, avisarDeposito }: { abierta: boolean; cerrar: () => void; avisarDeposito: () => void }) {
@@ -32,7 +33,7 @@ export function ListaCarga({ abierta, cerrar, avisarDeposito }: { abierta: boole
             {filas.map((x) => (
               <tr key={`${x.viajeId}-${x.t}`} className="border-b align-top last:border-0">
                 <td className="w-14 py-1.5 pr-2 font-semibold whitespace-nowrap tabular-nums">{x.hecho ? "✓ " : ""}{est ? `~${hm5(x.t)}` : hm(x.t)}</td>
-                <td className="py-1.5 pr-2 whitespace-nowrap"><span className="font-mono text-xs">{patente(dia, x.veh)}</span> · {nombreDe(dia, x.ch)}</td>
+                <td className="py-1.5 pr-2 whitespace-nowrap"><VehiculoNombre v={vehiculo(dia, x.veh)} /> · {nombreDe(dia, x.ch)}</td>
                 <td className="py-1.5">
                   {x.txt}
                   {x.nuevo != null && <span className="ml-1 font-semibold whitespace-nowrap text-hd-ambar">nuevo {hm(x.nuevo)}</span>}

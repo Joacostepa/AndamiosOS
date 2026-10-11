@@ -312,3 +312,31 @@ test("precarga: el reemplazo de un chofer que va todo el día con otra no repite
     assert.equal(new Set(vehs).size, vehs.length, `la ${h.cuadrillaOdooId} sin vehículos repetidos: ${vehs.join(", ")}`);
   }
 });
+
+test("diferencias: los mismos vehículos con ids nuevos («Copiar como hoy» sobre una hoja enviada) no son un cambio", () => {
+  let d = martesArmado();
+  d = aplicar(d, 1, planVehiculos(d, 1, { k: "sumar", modo: "lleva_trae", choferId: "gomez", vehiculoId: "ab497" }, o()));
+  const env = enviarATodos(d, -318, ["sack"]);
+  const h = hojaDeCuadrilla(env, 1)!;
+  const nuevoId = new Map(h.vehiculos.map((f, i) => [f.id, `copia-${i}`]));
+  const copiada: DiaHoja = {
+    ...env,
+    hojas: env.hojas.map((x) => (x.id === h.id ? { ...x, vehiculos: x.vehiculos.map((f) => ({ ...f, id: nuevoId.get(f.id)! })) } : x)),
+    viajes: env.viajes.map((v) => (v.hojaVehiculoId && nuevoId.has(v.hojaVehiculoId) ? { ...v, id: `${v.id}-copia`, hojaVehiculoId: nuevoId.get(v.hojaVehiculoId)! } : v)),
+  };
+  const e = copiada.envios.find((x) => x.personaId === "sack")!;
+  assert.deepEqual(diferencias(copiada, e.snap, fotoDe(copiada, "sack")).map((x) => x.t), []);
+  // Cambiar el chofer de uno sí se dice (el mismo vehículo, otro chofer).
+  const otro: DiaHoja = { ...copiada, hojas: copiada.hojas.map((x) => (x.id === h.id ? { ...x, vehiculos: x.vehiculos.map((f) => (f.vehiculoId === "ab497" ? { ...f, choferId: "conte" } : f)) } : x)) };
+  assert.ok(diferencias(otro, e.snap, fotoDe(otro, "sack")).some((x) => /los lleva Conte/.test(x.t)));
+});
+
+test("diferencias: con una foto vieja (sin vehs), sumar un vehículo cuenta como cambio", () => {
+  const d0 = enviarATodos(martesArmado(), -318, ["sack"]);
+  const e = d0.envios.find((x) => x.personaId === "sack")!;
+  const vieja = { ...e.snap! } as Record<string, unknown>;
+  delete vieja.vehs;
+  const d = aplicar(d0, 1, planVehiculos(d0, 1, { k: "sumar", modo: "lleva_trae", choferId: "gomez", vehiculoId: "ab497" }, o()));
+  const ds = diferencias(d, vieja as never, fotoDe(d, "sack")).map((x) => x.t);
+  assert.ok(ds.some((t) => /^va también el AB 497 YY/.test(t)), ds.join(" | "));
+});

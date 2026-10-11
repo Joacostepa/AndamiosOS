@@ -1753,7 +1753,13 @@ export function diferencias(dia: DiaHoja, old: Foto | null, cur: Foto | null): D
 /**
  * Lo que cambió de los vehículos de una hoja, en palabras: "los lleva Kiska", "Borda queda
  * todo el día", "va también el AB 497 YY (Gómez, los lleva)", "ya no va el AF 669 ZL". Con
- * fotos viejas (sin `vehs`) se compara el primer vehículo, como antes.
+ * fotos viejas (sin `vehs`) se compara el primer vehículo, como antes, y los que se sumaron
+ * después son "va también".
+ *
+ * Los renglones se emparejan por lo que dicen (vehículo, chofer y modo), no por el id:
+ * "Copiar como hoy" sobre una hoja enviada vuelve a crear los mismos renglones con ids
+ * nuevos y eso no es un cambio. Primero los iguales, después el mismo id (se editó ese
+ * renglón), después el mismo vehículo o el mismo chofer; lo que sobra se fue o se sumó.
  */
 function diferenciasVehiculos(dia: DiaHoja, old: FotoHoja, cur: FotoHoja): Diferencia[] {
   const out: Diferencia[] = [];
@@ -1767,13 +1773,29 @@ function diferenciasVehiculos(dia: DiaHoja, old: FotoHoja, cur: FotoHoja): Difer
     else if (old.chofer !== cur.chofer && cur.modo !== "sin") out.push({ t: cur.modo === "todo_el_dia" ? `va ${N(cur.chofer)} todo el día` : `los lleva ${N(cur.chofer)}` });
     if (old.veh !== cur.veh && cur.modo !== "sin" && cur.veh) out.push({ t: `vehículo: ${vehiculoNombre(dia, cur.veh)}`, chico: true });
     if (cur.modo === "lleva_trae" && old.modo === "lleva_trae" && old.lleva !== cur.lleva && old.enc.hora === cur.enc.hora) out.push({ t: `los lleva a las ${cur.lleva}` });
+    // La foto vieja decía un vehículo (o ninguno): el primero ya se comparó arriba; los demás de ahora se sumaron.
+    if (!old.vehs && cur.vehs) for (const x of cur.vehs.slice(1)) out.push({ t: `va también ${V(x.veh)}: ${queHace(x)}` });
     return out;
   }
   if (old.vehs.length && !cur.vehs.length) return [{ t: "van sin chofer" }];
-  for (const o of old.vehs.filter((o) => !cur.vehs!.some((x) => x.id === o.id))) out.push({ t: `ya no va ${V(o.veh)}${o.ch ? ` (${N(o.ch)})` : ""}` });
-  for (const x of cur.vehs.filter((x) => !old.vehs!.some((o) => o.id === x.id))) out.push({ t: old.vehs.length ? `va también ${V(x.veh)}: ${queHace(x)}` : queHace(x) });
+  type R = (typeof cur.vehs)[number];
+  const libres = [...old.vehs];
+  const par = new Map<R, R>();
+  const emparejar = (igual: (o: R, x: R) => boolean) => {
+    for (const x of cur.vehs!) {
+      if (par.has(x)) continue;
+      const i = libres.findIndex((o) => igual(o, x));
+      if (i >= 0) par.set(x, libres.splice(i, 1)[0]);
+    }
+  };
+  emparejar((o, x) => o.veh === x.veh && o.ch === x.ch && o.modo === x.modo);
+  emparejar((o, x) => o.id === x.id);
+  emparejar((o, x) => !!x.veh && o.veh === x.veh);
+  emparejar((o, x) => !!x.ch && o.ch === x.ch);
+  for (const o of libres) out.push({ t: `ya no va ${V(o.veh)}${o.ch ? ` (${N(o.ch)})` : ""}` });
+  for (const x of cur.vehs.filter((x) => !par.has(x))) out.push({ t: old.vehs.length ? `va también ${V(x.veh)}: ${queHace(x)}` : queHace(x) });
   for (const x of cur.vehs) {
-    const o = old.vehs.find((y) => y.id === x.id);
+    const o = par.get(x);
     if (!o) continue;
     if (o.modo !== x.modo || o.ch !== x.ch) out.push({ t: queHace(x) });
     else if (x.modo === "lleva_trae" && o.lleva !== x.lleva && old.enc.hora === cur.enc.hora) out.push({ t: `los lleva a las ${x.lleva}${cur.vehs.length > 1 ? ` (${V(x.veh)})` : ""}` });

@@ -194,15 +194,10 @@ export function useChat(conversacionId: string | null, opciones: { onEvento?: (e
         break;
       case "continuar":
         return true;
-      default: {
-        // `progreso` ({ t: "progreso"; texto }) lo agrega el servidor: se lee sin depender de
-        // que el tipo ya lo tenga, y un evento que no se conoce se ignora.
-        const otro = e as { t: string; texto?: unknown };
-        if (otro.t === "progreso" && typeof otro.texto === "string") {
-          const texto = otro.texto;
-          setEnVivo((v) => ({ ...v, progreso: texto }));
-        }
-      }
+      case "progreso":
+        // Lo que el modelo dice que está haciendo (sólo algunos modelos lo mandan).
+        setEnVivo((v) => ({ ...v, progreso: e.texto }));
+        break;
     }
     return false;
   }, []);
@@ -275,7 +270,7 @@ export function useChat(conversacionId: string | null, opciones: { onEvento?: (e
   );
 
   const decidir = useCallback(
-    (accionId: string, decision: "confirmar" | "rechazar") => correr(`${BASE}/acciones/${accionId}`, { decision }, null),
+    (accionId: string, decision: "confirmar" | "rechazar" | "reintentar") => correr(`${BASE}/acciones/${accionId}`, { decision }, null),
     [correr],
   );
 

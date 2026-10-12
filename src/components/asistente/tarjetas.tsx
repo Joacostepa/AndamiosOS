@@ -43,7 +43,7 @@ export function TarjetaAccion({
   ejecutando = false,
 }: {
   accion: AccionVista;
-  onDecidir: (id: string, d: "confirmar" | "rechazar") => void;
+  onDecidir: (id: string, d: "confirmar" | "rechazar" | "reintentar") => void;
   ocupado: boolean;
   /** Se tocó Confirmar y el servidor la está ejecutando. */
   ejecutando?: boolean;
@@ -63,7 +63,7 @@ export function TarjetaAccion({
   const vencida = ahora !== null && new Date(accion.venceAt).getTime() < ahora;
   const fallo = accion.estado === "error" || accion.estado === "incierto";
   // `reintentable` lo marca el servidor cuando se puede volver a correr sin duplicar (puede no venir).
-  const reintentable = fallo && !!(accion as AccionVista & { reintentable?: boolean }).reintentable;
+  const reintentable = fallo && accion.reintentable;
   const color =
     accion.estado === "ok" ? "border-hd-verde/50 bg-hd-verde/5"
     : fallo ? "border-hd-rojo/50 bg-hd-rojo-bg"
@@ -114,7 +114,7 @@ export function TarjetaAccion({
         )}
         {fallo && accion.error && <p className="mt-2 text-hd-rojo">{accion.error}</p>}
         {reintentable && (
-          <Button variant="outline" className="mt-2.5 h-12 w-full text-[15px]" disabled={ocupado} onClick={() => onDecidir(accion.id, "confirmar")}>
+          <Button variant="outline" className="mt-2.5 h-12 w-full text-[15px]" disabled={ocupado} onClick={() => onDecidir(accion.id, "reintentar")}>
             {ocupado ? <Loader2 className="animate-spin" /> : <RotateCcw />} Reintentar
           </Button>
         )}

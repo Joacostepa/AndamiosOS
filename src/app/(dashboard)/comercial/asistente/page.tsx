@@ -108,8 +108,8 @@ function Asistente() {
     return [...abiertas, ...hecha].slice(0, 3);
   }, [chat.acciones, detalle.data?.acciones]);
   const [confirmando, setConfirmando] = useState<string | null>(null);
-  const decidir = (id: string, d: "confirmar" | "rechazar") => {
-    setConfirmando(d === "confirmar" ? id : null);
+  const decidir = (id: string, d: "confirmar" | "rechazar" | "reintentar") => {
+    setConfirmando(d === "rechazar" ? null : id);
     void chat.decidir(id, d).finally(() => setConfirmando(null));
   };
   const pdf = chat.pdfs[0] ?? detalle.data?.pdfs[0] ?? null;

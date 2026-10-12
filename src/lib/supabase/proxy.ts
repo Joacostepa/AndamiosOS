@@ -3,6 +3,12 @@ import { NextResponse, type NextRequest } from "next/server";
 import { accesoDeFila, inicioDe, motivoDeRechazoApi, puedeAbrir } from "@/lib/auth/acceso";
 
 export async function updateSession(request: NextRequest) {
+  // El arnés de pruebas del Pizarrón (e2e/hoja-dia, src/app/prueba): SÓLO en desarrollo
+  // (`next dev`), sin sesión ni Supabase. En producción (`next build` / Vercel) NODE_ENV es
+  // "production" y esto no existe: la página además contesta 404.
+  if (process.env.NODE_ENV !== "production" && request.nextUrl.pathname.startsWith("/prueba/")) {
+    return NextResponse.next({ request });
+  }
   let supabaseResponse = NextResponse.next({
     request,
   });

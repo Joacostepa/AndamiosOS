@@ -10,14 +10,18 @@
 // El Depósito (F2, cuadrilla 0) recibe gente (agregar con el 0, como una cuadrilla) pero no
 // camiones ni contratistas.
 //
+// Un pedido (F4) se suelta en un camión (`poner_pedido`: el servidor lo pone en el hueco de
+// menor desvío), en la franja de camiones de una cuadrilla (si tiene uno solo) o de vuelta en
+// el panel de pedidos (sale del camión: `volver_a_cola`). Si ya iba en otro camión, `mover`.
+//
 // Lo que NO se puede (soltar en una cuadrilla sin obra, un chofer que no maneja) vuelve como
 // `rechazo` con la frase para la pantalla; soltar donde ya estaba es `nada` (no se manda nada,
 // la ficha vuelve sin sacudirse). "No vienen" necesita el motivo: sin `tipo`, `pedirMotivo`.
 
-import type { AccionAusencia, AccionHoja, AccionViaje } from "./acciones.ts";
+import type { AccionAusencia, AccionHoja, AccionPedido, AccionViaje } from "./acciones.ts";
 import type { DiaHoja, Fecha, Minutos, TipoAusencia } from "./tipos.ts";
 import { esDeposito } from "./tipos.ts";
-import { ausenciaDe, cNombre, cuadrilla, hojaDe, hojaDeCuadrilla, nombreDe, persona, puedeManejar, vehTxt, vehiculosDe } from "./estado.ts";
+import { ausenciaDe, cNombre, cuadrilla, elVeh, hojaDe, hojaDeCuadrilla, nombreDe, persona, puedeManejar, vehiculo, vehTxt, vehiculosDe } from "./estado.ts";
 import { choferDeLibre, porQueNoAcepta } from "./pizarron.ts";
 
 /** Lo que se agarra. */
@@ -29,7 +33,9 @@ export type Origen =
   /** Un camión: un renglón de una hoja (`filaId`, `c`) o uno libre (`c` null). */
   | { k: "camion"; veh: string | null; filaId: string | null; c: number | null }
   /** Un contratista de la bandeja (arrastrarlo suma 1). */
-  | { k: "contratista"; kid: string };
+  | { k: "contratista"; kid: string }
+  /** Un pedido del panel (F4). */
+  | { k: "pedido"; id: string };
 
 /** Adónde se suelta. */
 export type Destino =
@@ -43,13 +49,16 @@ export type Destino =
   | { k: "columna"; c: number }
   | { k: "sin" }
   | { k: "libres" }
-  | { k: "no"; tipo?: TipoAusencia };
+  | { k: "no"; tipo?: TipoAusencia }
+  /** El panel de pedidos: un pedido soltado acá sale de su camión. */
+  | { k: "pedidos" };
 
 /** Una acción existente, con el hook que la manda (use-hoja-dia). */
 export type Gesto =
   | { k: "hoja"; a: AccionHoja }
   | { k: "viaje"; a: AccionViaje }
-  | { k: "ausencia"; a: AccionAusencia };
+  | { k: "ausencia"; a: AccionAusencia }
+  | { k: "pedido"; a: AccionPedido };
 
 export type Soltar =
   | { k: "gestos"; gestos: Gesto[] }
@@ -109,6 +118,7 @@ export function destinoDeTecla(dia: DiaHoja, tecla: string, cs: number[], o: Ori
     const c = cuadrillaDeNumero(dia, Number(tecla), cs);
     return c != null ? { k: "columna", c } : null;
   }
+  if (o.k === "pedido") return null;
   if (tecla === "d" || tecla === "D") return o.k === "persona" || o.k === "chofer" ? { k: "columna", c: 0 } : null;
   if (tecla === "b" || tecla === "B") return o.k === "camion" ? { k: "libres" } : { k: "sin" };
   return null;
@@ -130,6 +140,8 @@ export function soltar(dia: DiaHoja, o: Origen, d: Destino, ahora: Minutos): Sol
   if (ahora >= 1440) return rechazo("Es un día que ya pasó: sólo lectura");
 
   switch (o.k) {
+    case "pedido":
+      return soltarPedido(dia, o.id, d);
     case "contratista": {
       if (d.k !== "gente" && d.k !== "camiones" && !(d.k === "camion" && d.c != null)) return nada;
       if (noAcepta) return rechazo(noAcepta);
@@ -208,6 +220,36 @@ export function soltar(dia: DiaHoja, o: Origen, d: Destino, ahora: Minutos): Sol
   }
 }
 
+/** Un pedido soltado en un camión, en la franja de una cuadrilla o de vuelta en el panel. */
+function soltarPedido(dia: DiaHoja, id: string, d: Destino): Soltar {
+  const p = dia.pedidos.find((x) => x.id === id);
+  if (!p || p.estado === "anulado") return nada;
+  if (p.estado === "hecho") return rechazo("Ese pedido ya está hecho");
+  const v = p.viajeId ? dia.viajes.find((x) => x.id === p.viajeId && x.estado !== "anulado") ?? null : null;
+  if (v && v.estado !== "planeado") return rechazo("Ese viaje ya se hizo: no se mueve");
+  if (d.k === "pedidos") return v ? gestos(viajeG({ accion: "volver_a_cola", viajeId: v.id })) : nada;
+  let veh: string | null = null;
+  if (d.k === "camion") veh = d.veh;
+  else if (d.k === "camiones" || d.k === "gente") {
+    if (esDeposito(d.c)) return rechazo("Soltalo en un camión");
+    const vs = vehiculosDe(hojaDeCuadrilla(dia, d.c)).map((f) => f.vehiculoId).filter((x): x is string => !!x);
+    if (!vs.length) return rechazo(`${cap1(laN(dia, d.c))} no tiene camión: soltalo en uno`);
+    if (vs.length > 1) return rechazo(`${cap1(laN(dia, d.c))} tiene ${vs.length} camiones: soltalo en uno`);
+    veh = vs[0];
+  } else return nada;
+  if (!veh) return rechazo("A ese renglón le falta el camión");
+  const V = vehiculo(dia, veh);
+  if (p.necesita === "hidrogrua" && V?.tipo !== "hidrogrua") return rechazo(`Necesita hidrogrúa: ${elVeh(dia, veh)} no es`);
+  if (p.necesita === "camion" && V?.tipo === "camioneta") return rechazo(`No entra ${elVeh(dia, veh, "en el")}`);
+  if (v) {
+    if (v.vehiculoId === veh && !v.fleteExterno) return nada;
+    // Ya iba en otro camión (o en un flete): el viaje pasa entero (con los otros pedidos, si lleva).
+    return gestos(viajeG({ accion: "mover", viajeId: v.id, vehiculoId: veh }));
+  }
+  return gestos(viajeG({ accion: "poner_pedido", pedidoId: p.id, vehiculoId: veh }));
+}
+const cap1 = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
 const laN = (dia: DiaHoja, c: number) => {
   if (esDeposito(c)) return "el depósito";
   const n = cuadrilla(dia, c)?.numero;
@@ -218,5 +260,6 @@ const laN = (dia: DiaHoja, c: number) => {
 export function textoAyuda(dia: DiaHoja, o: Origen): string {
   if (o.k === "camion") return `Tocá adónde va ${o.veh ? `el ${vehTxt(dia, o.veh)}` : "el camión"}`;
   if (o.k === "contratista") return `Tocá la cuadrilla adonde va uno de ${nombreDe(dia, o.kid)}`;
+  if (o.k === "pedido") return `Tocá el camión que lleva «${dia.pedidos.find((x) => x.id === o.id)?.que ?? "el pedido"}»`;
   return `Tocá adónde va ${N(dia, o.pid)}`;
 }

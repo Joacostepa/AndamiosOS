@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { soltar, type Gesto, type Soltar } from "./gestos-pizarron.ts";
-import { aplicarOptimista, aplicarOptimistaAusencia, aplicarOptimistaViaje } from "./optimista.ts";
+import { aplicarOptimista, aplicarOptimistaAusencia, aplicarOptimistaPedido, aplicarOptimistaViaje } from "./optimista.ts";
 import { ausenciaDe, choferDe, hojaDe, hojaDeCuadrilla, vanDe, vehiculosDe } from "./estado.ts";
 import { pizarron } from "./pizarron.ts";
 import type { DiaHoja } from "./tipos.ts";
@@ -20,7 +20,7 @@ const gs = (r: Soltar): Gesto[] => {
 function aplicar(d: DiaHoja, g: Gesto[]): DiaHoja {
   let x = d;
   for (const y of g) {
-    const r = y.k === "hoja" ? aplicarOptimista(x, y.a, { ahora: T }) : y.k === "viaje" ? aplicarOptimistaViaje(x, y.a, { ahora: T }) : aplicarOptimistaAusencia(x, y.a);
+    const r = y.k === "hoja" ? aplicarOptimista(x, y.a, { ahora: T }) : y.k === "viaje" ? aplicarOptimistaViaje(x, y.a, { ahora: T }) : y.k === "pedido" ? aplicarOptimistaPedido(x, y.a, { ahora: T }) : aplicarOptimistaAusencia(x, y.a);
     assert.ok(r, `la acción ${JSON.stringify(y.a)} tiene que verse al instante`);
     x = r!;
   }

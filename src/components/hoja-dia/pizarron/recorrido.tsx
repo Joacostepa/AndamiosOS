@@ -20,17 +20,18 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Check, Clock, GripVertical, Lock, MapPin, Plus, Search, X } from "lucide-react";
+import { Check, Clock, GripVertical, Lock, MapPin, Package, Plus, X } from "lucide-react";
 import { ACCIONES_PARADA, type AccionParada, type DiaHoja, type Punto } from "@/lib/hoja-dia/tipos";
-import { cNombre, hm, tipoDeAccion, toMin, vehiculosDe, vehTxt } from "@/lib/hoja-dia/estado";
+import { cNombre, desvioTxt, hm, lugar, tipoDeAccion, toMin, vehiculosDe, vehTxt } from "@/lib/hoja-dia/estado";
 import {
-  accionPorDefecto, choferDelRecorrido, lugaresParaElegir, ordenAlFinal, paradasDe, resumenRecorrido, type Parada,
+  accionPorDefecto, choferDelRecorrido, ordenAlFinal, paradasDe, pedidosParaSumar, resumenRecorrido, type Parada,
 } from "@/lib/hoja-dia/recorrido";
 import type { Gesto } from "@/lib/hoja-dia/gestos-pizarron";
 import { cn } from "@/lib/utils";
 import { HojaLateral } from "@/components/hoja-dia/comunes/hoja-lateral";
 import { ItemMenu, MenuFlotante } from "@/components/hoja-dia/comunes/menu-flotante";
 import { Button } from "@/components/ui/button";
+import { ElegirLugar } from "./elegir-lugar";
 
 const HORAS = Array.from({ length: 27 }, (_, i) => 360 + i * 30).map((m) => hm(m));
 
@@ -41,9 +42,10 @@ type Menu =
   | { t: "accion"; p: ParadaViaje; el: HTMLElement }
   | null;
 
-export function Recorrido({ dia, veh, abierta, onCerrar, soloLectura, ejecutar }: {
+export function Recorrido({ dia, veh, ahora, abierta, onCerrar, soloLectura, ejecutar }: {
   dia: DiaHoja;
   veh: string | null;
+  ahora: number;
   abierta: boolean;
   onCerrar: () => void;
   soloLectura: boolean;
@@ -51,6 +53,8 @@ export function Recorrido({ dia, veh, abierta, onCerrar, soloLectura, ejecutar }
 }) {
   const [menu, setMenu] = useState<Menu>(null);
   const paradas = useMemo(() => (veh ? paradasDe(dia, veh) : []), [dia, veh]);
+  // F4: los pedidos sin camión que le quedan cerca (maqueta: "tocá para sumarlos donde menos se desvía").
+  const sugeridos = useMemo(() => (veh && !soloLectura ? pedidosParaSumar(dia, veh, ahora).slice(0, 4) : []), [dia, veh, ahora, soloLectura]);
   const sensores = useSensoresLista();
   if (!veh) return null;
   const fecha = dia.fecha;
@@ -135,6 +139,25 @@ export function Recorrido({ dia, veh, abierta, onCerrar, soloLectura, ejecutar }
         <div>
           <Button variant="outline" onClick={(e) => setMenu({ t: "lugar", id: "nueva", el: e.currentTarget })}><Plus /> Parada</Button>
         </div>
+      )}
+
+      {sugeridos.length > 0 && (
+        <section aria-label="Pedidos sin camión" className="grid gap-1.5 rounded-lg border bg-muted/40 p-2">
+          <span className="text-xs font-bold tracking-[.08em] text-muted-foreground uppercase">Pedidos sin camión · tocá para sumarlos donde menos se desvía</span>
+          {sugeridos.map(({ p, hueco }) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => ejecutar([{ k: "viaje", a: { accion: "poner_pedido", pedidoId: p.id, vehiculoId: veh } }])}
+              title={`Parada ${hueco.n} · ${hueco.viaTxt}`}
+              className="flex min-h-9 items-center gap-2 rounded-md border bg-card px-2 text-left text-[13px] hover:border-foreground"
+            >
+              <Package className="size-4 shrink-0 text-muted-foreground" />
+              <span className="min-w-0 flex-1 truncate"><b className="font-semibold">{p.que}</b> → {lugar(dia, p.hacia).n}</span>
+              <span className="shrink-0 font-mono text-xs font-semibold text-hd-verde">{desvioTxt(hueco.min)}</span>
+            </button>
+          ))}
+        </section>
       )}
 
       {menu?.t === "lugar" && (
@@ -322,36 +345,5 @@ function FilaParada({ p, n, soloLectura, onMenu, onNota, onQuitar }: {
         </button>
       ) : <span className="size-7" aria-hidden />}
     </li>
-  );
-}
-
-function ElegirLugar({ dia, anchor, onCerrar, onElegir }: { dia: DiaHoja; anchor: HTMLElement; onCerrar: () => void; onElegir: (p: Punto) => void }) {
-  const [q, setQ] = useState("");
-  const res = useMemo(() => lugaresParaElegir(dia, q), [dia, q]);
-  return (
-    <MenuFlotante anchor={anchor} onCerrar={onCerrar} label="Lugar de la parada" ancho={320} encabezado={<b className="font-semibold">¿Adónde va?</b>}>
-      <div className="flex items-center gap-1.5 px-1 pb-1">
-        <Search className="size-4 text-muted-foreground" />
-        <input
-          autoFocus
-          data-mi=""
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" && res[0]) { e.preventDefault(); onElegir(res[0].punto); } }}
-          placeholder="Obra, lugar o dirección"
-          aria-label="Buscar el lugar"
-          className="h-8 min-w-0 flex-1 rounded-md border border-input bg-card px-2 text-[13px]"
-        />
-      </div>
-      {res.map((x) => (
-        <ItemMenu key={x.key} detalle={x.grupo} onClick={() => onElegir(x.punto)}>
-          <span className="flex min-w-0 items-center gap-1.5">
-            {x.tag ? <span className="grid h-5 min-w-5 shrink-0 place-items-center rounded bg-muted px-1 font-mono text-[11px] font-bold">{x.tag}</span> : x.grupo === "texto" ? <MapPin className="size-4 shrink-0" /> : <span className="size-4 shrink-0" aria-hidden />}
-            <span className="min-w-0 truncate">{x.n}{x.sub && <small className="block truncate text-xs text-muted-foreground">{x.sub}</small>}</span>
-          </span>
-        </ItemMenu>
-      ))}
-      {!res.length && <div className="px-2 py-2 text-xs text-muted-foreground">No hay nada con «{q}». Escribí al menos 3 letras para usarlo como dirección.</div>}
-    </MenuFlotante>
   );
 }

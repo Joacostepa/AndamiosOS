@@ -70,8 +70,7 @@ import { Mandar } from "./mandar";
 import { PanelLateral } from "./pedidos";
 import { useFlip } from "./use-flip";
 import { Recorrido } from "./recorrido";
-
-const RUTA_CAMIONES = "/planificacion/hoja/camiones";
+import { MenuChoferViaje, MenuNoSeHizo, MenuPasarViaje } from "./menus-viaje";
 
 // ─── Sensores: los de dnd-kit, salvo que no arrancan desde un botón de adentro de la ficha ───
 
@@ -104,6 +103,7 @@ const detectar: CollisionDetection = (args) => {
 function claveFlip(o: Origen, d: Destino): string {
   if (o.k === "persona" || o.k === "chofer") return `p:${o.pid}`;
   if (o.k === "camion") return `t:${o.veh ?? ""}`;
+  if (o.k === "pedido") return `q:${o.id}`;
   return "c" in d ? `k:${d.c}:${o.kid}` : `kc:${o.kid}`;
 }
 
@@ -133,7 +133,7 @@ export function Pizarron() {
   const hojaM = useAccionHoja(fecha, { aviso: false });
   const viajeM = useAccionViaje(fecha, { aviso: false });
   const ausM = useAccionAusencia(fecha, { aviso: false });
-  const pedidoM = useAccionPedido(fecha);
+  const pedidoM = useAccionPedido(fecha, { aviso: false });
   const enviarM = useEnviar(fecha);
   const deshacerM = useDeshacer(fecha);
   const precarga = usePrecarga(fecha);
@@ -157,6 +157,7 @@ export function Pizarron() {
     | { t: "persona"; c: number; pid: string; el: HTMLElement }
     | { t: "kcol"; c: number; kid: string; el: HTMLElement }
     | { t: "encuentro"; c: number; el: HTMLElement }
+    | { t: "choferViaje" | "pasarViaje" | "noSeHizo"; id: string; el: HTMLElement }
     | null
   >(null);
   const [cuantos, setCuantos] = useState(1);
@@ -166,6 +167,8 @@ export function Pizarron() {
   // El recorrido de un camión (F3): la hoja lateral con sus paradas.
   const [recorridoVeh, setRecorridoVeh] = useState<string | null>(null);
   const [cierre, setCierre] = useState<PedidoCierre | null>(null);
+  // El pedido que nombra un aviso (F4): se resalta en el panel.
+  const [focoPedido, setFocoPedido] = useState<string | null>(null);
 
   const vista = useMemo(() => (dia ? pizarron(dia, ahora) : null), [dia, ahora]);
   const soloLectura = !editor || !!vista?.pasado;
@@ -213,7 +216,7 @@ export function Pizarron() {
   /** Manda las acciones de un gesto (todas a la vez: cada una se ve al instante) y avisa una vez. */
   const ejecutar = useCallback((gs: Gesto[]) => {
     const proms: Promise<Resultado>[] = gs.map((g) =>
-      g.k === "hoja" ? hojaM.mutateAsync(g.a) : g.k === "viaje" ? viajeM.mutateAsync(g.a) : ausM.mutateAsync({ ...g.a, fechaVista: fecha }));
+      g.k === "hoja" ? hojaM.mutateAsync(g.a) : g.k === "viaje" ? viajeM.mutateAsync(g.a) : g.k === "pedido" ? pedidoM.mutateAsync(g.a) : ausM.mutateAsync({ ...g.a, fechaVista: fecha }));
     void Promise.allSettled(proms).then((rs) => {
       const ok = rs.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
       if (!ok.length) return;
@@ -222,7 +225,7 @@ export function Pizarron() {
       if (ids.length) setPila((p) => [...p.slice(-29), g]);
       toast(ok.map((r) => r.texto).join(" · "), ids.length ? { duration: 9000, action: { label: "Deshacer", onClick: () => void deshacerGrupo(g) } } : undefined);
     });
-  }, [ausM, deshacerGrupo, fecha, hojaM, viajeM]);
+  }, [ausM, deshacerGrupo, fecha, hojaM, pedidoM, viajeM]);
 
   const hoja = useCallback((a: AccionHoja) => ejecutar([{ k: "hoja", a }]), [ejecutar]);
 
@@ -253,7 +256,11 @@ export function Pizarron() {
 
   // ─── Botones de los avisos (los mismos de la vista clásica) ───────────────
 
-  const irCamiones = useCallback((extra = "") => router.push(`${RUTA_CAMIONES}?dia=${fecha}${extra}`), [fecha, router]);
+  const verPedido = useCallback((id: string) => {
+    setFocoPedido(id);
+    document.querySelector(`[data-pedido="${CSS.escape(id)}"]`)?.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "nearest" });
+    setTimeout(() => setFocoPedido((x) => (x === id ? null : x)), 2200);
+  }, []);
   const pedirFoco = useCallback((c: number) => {
     setFoco(c);
     document.querySelector(`[data-col="${c}"]`)?.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "nearest", inline: "center" });
@@ -307,21 +314,28 @@ export function Pizarron() {
         });
         return;
       }
-      case "pasarManana": if (b.id) pedidoM.mutate({ accion: "pasar_a_manana", pedidoId: b.id }); return;
-      case "verCamion": irCamiones(b.veh ? `&veh=${b.veh}` : ""); return;
+      case "pasarManana": if (b.id) ejecutar([{ k: "pedido", a: { accion: "pasar_a_manana", pedidoId: b.id } }]); return;
+      case "verCamion": if (b.veh) setRecorridoVeh(b.veh); return;
       case "verViaje": {
-        // El viaje en el recorrido de su camión (si tiene); si no, en Camiones.
+        // El viaje en el recorrido de su camión (si tiene); si no, quién lo hace.
         const veh = b.id ? dia.viajes.find((v) => v.id === b.id)?.vehiculoId ?? null : null;
         if (veh) setRecorridoVeh(veh);
-        else irCamiones(b.id ? `&viaje=${b.id}` : "");
+        else if (b.id) setMenu({ t: "pasarViaje", id: b.id, el });
         return;
       }
-      case "choferViaje": case "elegirChoferViaje": case "noSeHizo": irCamiones(b.id ? `&viaje=${b.id}` : ""); return;
-      case "irCamiones": irCamiones(b.id ? `&pedido=${b.id}` : ""); return;
-      case "esperar": case "poner": case "fleteDe": irCamiones(b.id ? `&pedido=${b.id}&hacer=${b.a === "fleteDe" ? "flete" : b.a}` : ""); return;
+      case "choferViaje": {
+        // Con camión, el chofer de ese viaje; sin camión ("nadie lo lleva"), qué camión.
+        const v = b.id ? dia.viajes.find((x) => x.id === b.id) : null;
+        if (v) setMenu({ t: v.vehiculoId ? "choferViaje" : "pasarViaje", id: v.id, el });
+        return;
+      }
+      case "elegirChoferViaje": if (b.id) setMenu({ t: "pasarViaje", id: b.id, el }); return;
+      case "noSeHizo": if (b.id) setMenu({ t: "noSeHizo", id: b.id, el }); return;
+      // Los de un pedido: el pedido en el panel (ahí están "¿Quién pasa cerca?", Esperar y el flete).
+      case "irCamiones": case "esperar": case "poner": case "fleteDe": if (b.id) verPedido(b.id); return;
       default: toast.error(`No sé hacer «${b.l}» desde acá`);
     }
-  }, [deshacerM, dia, ejecutar, enviarM, fecha, hoja, irCamiones, pedidoM, pedirFoco, router, vista]);
+  }, [deshacerM, dia, ejecutar, enviarM, fecha, hoja, pedirFoco, router, verPedido, vista]);
 
   // ─── Teclado ──────────────────────────────────────────────────────────────
 
@@ -402,7 +416,8 @@ export function Pizarron() {
       resolver(s.origen, d);
       return true;
     },
-    teclear, arrastre, sobre, hoja, boton,
+    teclear, arrastre, sobre, hoja, boton, ejecutar, focoPedido,
+    soltarEn: (o, d) => { resolver(o, d); },
     menuChofer: (f, el) => setMenu({ t: "chofer", f, el }),
     menuContratista: (kid, el) => {
       setCuantos(1);
@@ -414,7 +429,7 @@ export function Pizarron() {
     menuContratistaCol: (c, kid, el) => setMenu({ t: "kcol", c, kid, el }),
     menuEncuentro: (c, el) => setMenu({ t: "encuentro", c, el }),
     cerrarJornada: (c, otId) => setCierre({ c, otId: otId ?? null }),
-    recorrido: (veh) => (veh ? setRecorridoVeh(veh) : irCamiones()),
+    recorrido: (veh) => setRecorridoVeh(veh),
     resaltar, foco,
   } : null;
 
@@ -462,6 +477,7 @@ export function Pizarron() {
     const o = arrastre.origen;
     if (o.k === "persona" || o.k === "chofer") return <Fantasma texto={nombreDe(dia, o.pid)} />;
     if (o.k === "contratista") return <Fantasma texto={`+1 de ${nombreDe(dia, o.kid)}`} />;
+    if (o.k === "pedido") return <Fantasma texto={dia.pedidos.find((x) => x.id === o.id)?.que ?? "Pedido"} />;
     const k = [...vista.camionesLibres, ...vista.columnas.flatMap((x) => x.camiones)].find((x) => `t:${x.k}` === arrastre.k);
     return <Fantasma camion color={k ? colorCamion(k.color) : undefined} texto={vehTxt(dia, o.veh) || "Camión"} />;
   })() : null;
@@ -658,8 +674,8 @@ export function Pizarron() {
               <ItemMenu key={o.otId} detalle="la OT" onClick={y(() => setObra(o.otId))}>{col.obras.length > 1 ? `Ver ${o.corto}` : "Ver la obra"}</ItemMenu>
             ))}
             {h && vehiculosDe(h).filter((x) => x.vehiculoId).map((x) => (
-              <ItemMenu key={x.id} detalle="en Camiones" onClick={y(() => irCamiones(`&veh=${x.vehiculoId}`))}>
-                {vehiculosDe(h).length > 1 ? `Ver ${elVeh(dia, x.vehiculoId)}` : "Ver el camión"}
+              <ItemMenu key={x.id} detalle="paradas" onClick={y(() => setRecorridoVeh(x.vehiculoId))}>
+                {vehiculosDe(h).length > 1 ? `Recorrido ${elVeh(dia, x.vehiculoId, "del")}` : "Recorrido del camión"}
               </ItemMenu>
             ))}
             {h && <ItemMenu detalle="lo que se cambió" onClick={y(() => setHojaLat({ t: "historial", c }))}>Historial</ItemMenu>}
@@ -697,6 +713,9 @@ export function Pizarron() {
           </MenuFlotante>
         );
       })()}
+      {menu?.t === "choferViaje" && <MenuChoferViaje dia={dia} ahora={ahora} id={menu.id} anchor={menu.el} onCerrar={() => setMenu(null)} viaje={(a) => ejecutar([{ k: "viaje", a }])} />}
+      {menu?.t === "pasarViaje" && <MenuPasarViaje dia={dia} ahora={ahora} id={menu.id} anchor={menu.el} onCerrar={() => setMenu(null)} viaje={(a) => ejecutar([{ k: "viaje", a }])} />}
+      {menu?.t === "noSeHizo" && <MenuNoSeHizo dia={dia} ahora={ahora} id={menu.id} anchor={menu.el} onCerrar={() => setMenu(null)} viaje={(a) => ejecutar([{ k: "viaje", a }])} />}
       {menu?.t === "persona" && <MenuPersona key={`${menu.c}-${menu.pid}`} ctl={ctlMenus} c={menu.c} pid={menu.pid} anchor={menu.el} onCerrar={() => setMenu(null)} />}
       {menu?.t === "kcol" && <MenuContratista key={`k-${menu.c}-${menu.kid}`} ctl={ctlMenus} c={menu.c} kid={menu.kid} anchor={menu.el} onCerrar={() => setMenu(null)} />}
 
@@ -728,7 +747,7 @@ export function Pizarron() {
       )}
       <DialogoCelular key={`celular-${celular ?? ""}`} dia={dia} pid={celular} onCerrar={() => setCelular(null)} />
       <DialogoObra dia={dia} otId={obra} onCerrar={() => setObra(null)} />
-      <Recorrido dia={dia} veh={recorridoVeh} abierta={!!recorridoVeh} onCerrar={() => setRecorridoVeh(null)} soloLectura={soloLectura} ejecutar={ejecutar} />
+      <Recorrido dia={dia} veh={recorridoVeh} ahora={ahora} abierta={!!recorridoVeh} onCerrar={() => setRecorridoVeh(null)} soloLectura={soloLectura} ejecutar={ejecutar} />
       <CerrarJornada key={cierre ? `cierre-${cierre.c}-${cierre.otId ?? ""}` : "cierre"} dia={dia} pedido={cierre} onCerrar={() => setCierre(null)} />
     </PizarronCtx.Provider>
   );

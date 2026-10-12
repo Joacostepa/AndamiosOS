@@ -279,7 +279,7 @@ export function FichaCamionUI({ f }: { f: FichaCamion }) {
   const destino: Destino = { k: "camion", veh: f.veh, filaId: f.filaId, c: f.c };
   const { ref, props, ctx, elegida, arrastrando, encima } = useComportamiento(id, origen, destino, destino);
   const a = ctx.arrastre?.origen;
-  const recibe = encima && a && (a.k === "persona" || (a.k === "chofer" && a.veh !== f.veh));
+  const recibe = encima && a && (a.k === "persona" || a.k === "pedido" || (a.k === "chofer" && a.veh !== f.veh));
   const color = colorCamion(f.color);
   return (
     <div
@@ -336,7 +336,7 @@ export function FichaCamionUI({ f }: { f: FichaCamion }) {
           data-no-drag=""
           onClick={(e) => {
             e.stopPropagation();
-            ctx.recorrido(f.veh);
+            if (f.veh) ctx.recorrido(f.veh);
           }}
           className="flex min-h-7 w-full items-center gap-1.5 rounded-[5px] border border-dashed border-foreground/25 bg-card px-1.5 text-left text-xs font-semibold hover:border-foreground"
         >

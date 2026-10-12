@@ -10,7 +10,7 @@ import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type { DiaHoja } from "@/lib/hoja-dia/tipos";
 import type { AccionHoja } from "@/lib/hoja-dia/acciones";
 import type { Boton } from "@/lib/hoja-dia/estado";
-import type { Destino, Origen } from "@/lib/hoja-dia/gestos-pizarron";
+import type { Destino, Gesto, Origen } from "@/lib/hoja-dia/gestos-pizarron";
 import type { FichaCamion, VistaPizarron } from "@/lib/hoja-dia/pizarron";
 
 export type Ctx = {
@@ -30,6 +30,12 @@ export type Ctx = {
   arrastre: { origen: Origen; k: string } | null;
   /** El destino que está debajo del arrastre. */
   sobre: Destino | null;
+  /** Manda acciones de siempre (un aviso con Deshacer para todas). */
+  ejecutar: (gs: Gesto[]) => void;
+  /** Soltar `o` en `d` sin arrastrar (un menú: "¿Quién pasa cerca?" → un camión). */
+  soltarEn: (o: Origen, d: Destino) => void;
+  /** El pedido que pidió atención (un aviso que lo nombra). */
+  focoPedido: string | null;
   /** Un gesto de la hoja suelto (la estrella, los ±, el horario del camión). */
   hoja: (a: AccionHoja, texto?: string) => void;
   /** El botón de un aviso (los de problemas(), mismos que la vista clásica). */
@@ -48,8 +54,8 @@ export type Ctx = {
   menuEncuentro: (c: number, el: HTMLElement) => void;
   /** "Cerrar jornada" (elige la obra sin parte) o, con otId, "Ver parte". */
   cerrarJornada: (c: number, otId?: number) => void;
-  /** Abre la vista Camiones en ese camión (el recorrido, hasta F3). */
-  recorrido: (veh: string | null) => void;
+  /** Abre el recorrido de ese camión (la hoja lateral). */
+  recorrido: (veh: string) => void;
   /** Avisos resaltados por el contador de la barra. */
   resaltar: boolean;
   /** La columna que pidió atención (tocar un pin del mapa, "irA"). */
@@ -64,7 +70,7 @@ export function usePizarron(): Ctx {
 }
 
 /** Prioridad de un destino cuando hay varios debajo del puntero: el más chico gana. */
-export const PRIORIDAD: Record<Destino["k"], number> = { camion: 4, gente: 2, camiones: 2, sin: 1, libres: 1, no: 1, columna: 0 };
+export const PRIORIDAD: Record<Destino["k"], number> = { camion: 4, gente: 2, camiones: 2, sin: 1, libres: 1, no: 1, pedidos: 1, columna: 0 };
 /** `gente` con `sobre` (encima de una ficha) le gana a la lista entera. */
 export const prioridadDe = (d: Destino) => PRIORIDAD[d.k] + (d.k === "gente" && d.sobre ? 1 : 0);
 

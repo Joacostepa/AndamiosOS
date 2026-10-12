@@ -1,5 +1,34 @@
 # Hoja del día — handoff
 
+## ESTADO AL 12/10/2026 (tarde) — leer primero
+
+**Para retomar:** "Leé docs/equipos-del-dia/handoff.md (esta sección) y docs/equipos-del-dia/rediseno-plan.md, y seguimos con el pizarrón".
+
+### 1. Todo lo anterior está EN PRODUCCIÓN (las notas "sin merge" de más abajo quedaron viejas)
+Mergeado a `main`, subido y publicado en Vercel el 11 y 12/10:
+- `bb1057b` choferes y camiones + Google Maps (migraciones `20261012000001_hoja_dia_vehiculos.sql` y `20261012000002_hoja_dia_tiempos.sql` aplicadas antes del merge).
+- `20f2476` el chofer de los pedidos (no se congela el habitual) + `scripts/sql/hoja-dia-chofer-sugerido-limpiar.sql` **ya corrido** (soltó 1 viaje: el material del domingo 11).
+- `3fba2c9` vehículos con marca + el chofer habitual nunca cuenta como asignado.
+- `b2cacb7` geocodificar obras planificadas + en el momento desde la hoja; `scripts/geocodificar-obras.mjs --aplicar` **ya corrido**: 83 ventas con coordenadas en Odoo.
+- `ea22e63` el cron `/api/operaciones/geocodificar` pasaba por el proxy sin estar en la lista pública → contestaba 401 todos los días. Arreglado.
+- `40ea94e` chofer de todo el día con un viaje en otro camión es un choque; seguimiento y "también maneja".
+- Datos cargados en producción: **dirección del depósito** en `hd_lugares` (Cucha Cucha 2345, −34.6008744, −58.4613383). Google Routes responde con `NEXT_PUBLIC_GOOGLE_MAPS_KEY` (está en Vercel; también `CRON_SECRET`). Faltan las variables de Telegram.
+
+### 2. Rediseño: Pizarrón del día + Obras en vivo 3D (aprobado por el dueño el 12/10)
+- **Plan**: `docs/equipos-del-dia/rediseno-plan.md` (fases F0–F8, modelo, migraciones, decisiones del dueño al final). **Especificación funcional**: las maquetas `docs/equipos-del-dia/maqueta/pizarron.html` y `maqueta/en-vivo-3d.html` (también publicadas juntas como Artifact privado del dueño: https://claude.ai/artifact/EV9WziQqiRFX1dS8udEBDR; el pizarrón es la página principal y el 3D `en-vivo.html`, comparten localStorage). Relevamientos en `maqueta/0*.md` y `propuesta.md`. Plan + maquetas en `main` (`d2d9a72`).
+- **Decisiones del dueño**: horas del recorrido aproximadas (candado = fija); refuerzos "desde una hora" (F8 entra); cuadrilla sin obra = columna grisada; 3D sin niveles (sólo armando/desarmando); confirman capataz y chofer; botón "Salí" del chofer sí. A un camión con recorrido se le suman pedidos/viajes sueltos como paradas (inserción por menor desvío + "¿Quién pasa cerca?").
+- **F0 + F1 HECHOS** en la rama `feat/pizarron-f0-f1` (worktree `.claude/worktrees/agent-a96623d511732f6ab`), 6 commits, **sin merge todavía** (el dueño dijo que sí al merge; falta hacerlo). Sin migración. 488 tests, tsc, eslint, build y 8 casos de `npm run test:e2e` en verde. Detalle en la sección siguiente ("Pizarrón · F0 y F1"). Al mergear, el pizarrón queda **oculto** (sólo por URL `/planificacion/hoja/pizarron?dia=`); escribe en las mismas tablas que la hoja clásica.
+- **Próximo**: mergear F0+F1 a main y subir; después **F2 Depósito como sector** (migración `20261013000001_hoja_dia_deposito.sql`: `hd_hojas.sector` con `cuadrilla_odoo_id = 0`, `hd_links.recibida_canal`, parámetro `pizarron`), luego F3 recorrido (migración `…_hoja_dia_recorridos.sql`), F4 pedidos, F5 repaso de la mañana, F6 3D, F8 refuerzos, F7 cambio y retiro de lo viejo.
+
+### 3. Cómo se trabaja en este repo (aprendido en estas sesiones)
+- **Hay otras sesiones de Claude trabajando en paralelo** en la carpeta principal del repo (el 12/10 estaba en la rama `docs/partes-rediseno`, rediseño de partes). **No cambiar de rama ni commitear en la carpeta principal**: trabajar en worktrees (`git worktree add … main`) y llevar a `main` con `git push . <rama>:main` (fast-forward) o un merge desde el worktree.
+- **Escrituras a producción**: el dueño las aprueba explícitamente ("aplicá la migración", "corré el script"). El clasificador del modo automático a veces igual las bloquea: no esquivarlo, pedirle al dueño que las corra o que apruebe.
+- **Push**: hay una regla de permiso exacta `Bash(git push origin main)`: el comando tiene que ir **solo** (sin `cd`, pipes ni `&&`).
+- **`npx supabase db query --linked` desde un worktree** no encuentra el link: usar `npx supabase --workdir /Users/joaquin/Desktop/Andamios-OS db query --linked …`.
+- **Vercel CLI** logueada (`js-2343`, proyecto `andamios-os`): `vercel logs --environment production --since 3d --query "<ruta>" --json` sirve para ver crons y errores (vincular en una carpeta del scratchpad, no en el repo).
+- Si un subagente se corta por el límite de uso, se retoma con SendMessage al mismo agente cuando se renueva (conserva el contexto).
+- Copias del Finder (`* 2.ts`) rompen `tsc`/build locales; no están en git.
+
 Estado real al 10/10/2026 (noche): **en producción.** Arreglos del 10/10 a la noche, ya en `main`: el domingo es un día más (PR #5) y velocidad + nombres de pila (ver "Latencia"; sin migraciones). Mergeado a `main` con el PR #3
 (`d736eca`) y los contratistas con el PR #4 (`7751ce7`), publicados en Vercel. Para retomar: "Leé docs/equipos-del-dia/handoff.md y
 seguimos con lo que falta".

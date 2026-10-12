@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { chromium, type Browser, type BrowserContextOptions, type Locator, type Page } from "playwright";
 import { levantarNext, type Next } from "./servidor-next.ts";
 import { MARTES, servirHojaDia, type Opciones, type Servidor } from "./servidor-falso.ts";
+import { martesConPedidos } from "../../src/lib/hoja-dia/escenario.test-fixture.ts";
 
 let next: Next;
 let browser: Browser;
@@ -256,6 +257,52 @@ describe("Pizarrón", { timeout: 120_000 }, () => {
       return !(a instanceof CSSTransition) && !(a instanceof CSSAnimation) && a.playState === "running" && t instanceof Element && !!t.closest("[data-flip]");
     }).length);
     assert.equal(anim, 0, "no hay animaciones de fichas");
+    await page.context().close();
+  });
+  test("Pedidos: arrastrar uno a un camión lo pone al instante (el servidor elige el hueco)", async () => {
+    const { page, srv } = await abrir({ escenario: martesConPedidos, alto: 1800 });
+    const ped = page.locator('[data-pedido="p-cra"]');
+    await ped.waitFor();
+    await arrastrarHasta(page, ped, page.locator('[data-camion="ab497"]').first(), true);
+    const ms = await medir(page, '[data-pedido="p-cra"][data-en-camion="ab497"]', "mouseup", () => page.mouse.up());
+    assert.ok(ms < 100, `tardó ${ms.toFixed(0)} ms`);
+    await page.waitForTimeout(1700);
+    const b = srv.posts.at(-1)!.body as { accion: string; pedidoId: string; vehiculoId: string; orden?: number };
+    assert.deepEqual({ a: b.accion, p: b.pedidoId, v: b.vehiculoId, orden: b.orden }, { a: "poner_pedido", p: "p-cra", v: "ab497", orden: undefined });
+    assert.match(await ped.innerText(), /AB 497 YY · Gómez/);
+    await captura(page, "pedido-en-camion");
+    await page.context().close();
+  });
+
+  test("Pedidos: ¿Quién pasa cerca? ordena por desvío y pone en el elegido", async () => {
+    const { page, srv } = await abrir({ escenario: martesConPedidos });
+    await page.locator('[data-pedido="p-cra"]').getByRole("button", { name: "¿Quién pasa cerca?" }).click();
+    const menu = page.getByRole("menu", { name: "Quién lo lleva" });
+    await menu.waitFor();
+    const items = await menu.getByRole("menuitem").allInnerTexts();
+    assert.match(items[0], /AF 669 ZL[\s\S]*Kiska · pasa por Juramento 2145[\s\S]*sin desvío/);
+    assert.match(items[1], /AB 497 YY[\s\S]*Gómez/);
+    await captura(page, "quien-pasa-cerca");
+    await menu.getByRole("menuitem").nth(1).click();
+    await page.waitForTimeout(1700);
+    const b = srv.posts.at(-1)!.body as { accion: string; vehiculoId: string };
+    assert.deepEqual([b.accion, b.vehiculoId], ["poner_pedido", "ab497"]);
+    await page.context().close();
+  });
+
+  test("Pedidos: + Pedido a otra dirección se ubica en el mapa y se guarda con coordenadas", async () => {
+    const { page, srv } = await abrir({ escenario: martesConPedidos });
+    await page.getByRole("button", { name: "Pedido", exact: true }).click();
+    await page.getByPlaceholder("Qué (ej. 6 bases regulables)").fill("4 puntales");
+    await page.getByRole("button", { name: "¿Adónde va?" }).click();
+    await page.getByLabel("Buscar el lugar").fill("Ciudad de la Paz 2410");
+    await page.getByRole("menuitem", { name: /Usar «Ciudad de la Paz 2410»[\s\S]*ubicada en el mapa/ }).click({ timeout: 5000 });
+    await page.getByRole("button", { name: "Agregar" }).click();
+    await page.locator('[data-pedido]').filter({ hasText: "4 puntales" }).waitFor({ timeout: 500 });
+    await page.waitForTimeout(1700);
+    const b = srv.posts.at(-1)!.body as { accion: string; que: string; hacia: { texto: string; lat: number; lng: number } };
+    assert.deepEqual({ a: b.accion, q: b.que, t: b.hacia.texto, lat: b.hacia.lat }, { a: "crear", q: "4 puntales", t: "Ciudad de la Paz 2410", lat: -34.5642 });
+    await captura(page, "pedido-nuevo");
     await page.context().close();
   });
 });

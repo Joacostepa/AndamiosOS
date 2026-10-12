@@ -2,7 +2,7 @@
 
 ## ESTADO AL 12/10/2026 (noche) — leer primero
 
-**Para retomar:** "Leé docs/equipos-del-dia/handoff.md (esta sección) y docs/equipos-del-dia/rediseno-plan.md, y seguimos con F4". Todo lo de abajo de esta sección es historia detallada (las notas "sin merge" de ahí quedaron viejas: está todo en producción).
+**Para retomar:** "Leé docs/equipos-del-dia/handoff.md (esta sección) y docs/equipos-del-dia/rediseno-plan.md, y seguimos con F5" (o F7: retirar Camiones, que F4 ya cubre). Todo lo de abajo de esta sección es historia detallada (las notas "sin merge" de ahí quedaron viejas: está todo en producción).
 
 ### 1. Qué hay en producción (todo en `main`, publicado en Vercel)
 
@@ -22,6 +22,7 @@
 | El pizarrón ES la Hoja del día | `f72f1f3` | — (se sacó el parámetro `pizarron`) | `/planificacion/hoja` abre el pizarrón; `/pizarron` y `/cuadrillas` redirigen. Se borró la vista Cuadrillas; al pizarrón pasaron el ⋯ de la columna (Copiar como hoy, Ver como, **Cerrar jornada**, Instrucciones, Ver la obra, Historial), encuentro, "Jornada cerrada · Ver parte", ⋯ de la persona, menú del contratista, Ausencias y Camiones en la barra, resumen del mes, "Cambió el tablero". |
 | F2 Depósito | `9be5a3a` | `20261013000001_hoja_dia_deposito.sql` | Columna **D · Depósito** al final (hoja con `cuadrilla_odoo_id = 0`, `sector = 'deposito'`): gente, encargado, no viene, encuentro 7:00; el encargado recibe su hoja; la precarga lo copia; fuera del parte de Odoo, alertas y "hojas sin enviar". Tecla D. |
 | F3 Recorrido | `9ac73d4` | `20261014000001_hoja_dia_recorridos.sql` | Hoja lateral **Recorrido** desde el camión: paradas = viajes, con lugar, hora aproximada o fija (candado), qué hace, nota, quitar, reordenar arrastrando, "+ Parada", atajos. Las horas aproximadas no avisan choques ni cuentan como cambio para el chofer. |
+| F4 Pedidos | rama `feat/hoja-dia-pedidos` (**sin merge**) | — (usa las columnas de F3) | Panel de pedidos editable (sugeridos, cola, avisos, "+ Pedido", ⋯), arrastrar un pedido a un camión → el servidor lo pone en el **hueco de menor desvío** (`mejorHueco`), **¿Quién pasa cerca?** por desvío, "otra dirección" **geocodificada** (`GET /api/hoja-dia/geocodificar`) con pin "P" en el mini-mapa (o tocando el mapa), "Pedidos sin camión · +X min" en el Recorrido, y los botones de avisos que iban a Camiones (elegir chofer de un viaje, nadie lo lleva, No se hizo, ver camión) resueltos en el pizarrón. |
 
 Detalle técnico de cada fase: `implementacion.md` §3.1 y las secciones "Historia · …" de abajo.
 
@@ -45,7 +46,7 @@ Detalle técnico de cada fase: `implementacion.md` §3.1 y las secciones "Histor
 - [ ] **Contratistas**: darlos de alta (Contratistas › + Contratista) con referente, celular y valor por jornada.
 
 **Del rediseño (código, en este orden)**
-- [ ] **F4 · Pedidos en el pizarrón** (próximo): panel de pedidos editable (hoy es de sólo lectura y lleva a Camiones), "otra dirección" con geocodificar (`GET /api/hoja-dia/geocodificar?dir=` reusando `geocodificar-reglas.ts`, con debounce y caché) y pin en el mini-mapa (`hd_viajes.hacia_lat/lng` y `hd_pedidos.hacia_lat/lng` ya existen), sumar un pedido al camión por menor desvío (`mejorHueco`, la misma regla en cliente y servidor; nunca antes de la parada en curso) y "¿Quién pasa cerca?". Con eso se puede retirar Camiones (los botones "Elegir chofer" de un viaje, "No se hizo", poner/esperar/flete de un pedido todavía llevan a Camiones).
+- [x] **F4 · Pedidos en el pizarrón** (12/10, rama `feat/hoja-dia-pedidos`, sin merge ni migración; 669 tests, 16 e2e, tsc, eslint, build). Detalle en `implementacion.md` §3.1 "Pedidos (F4)". **Falta**: merge a `main` y probar con datos reales (arrastrar un pedido, "¿Quién pasa cerca?", "+ Pedido" a una dirección escrita: que diga "ubicada en el mapa" —usa la clave de Places de Odoo, la misma del geocodificador de obras—). Ojo: el hueco de menor desvío también cambia dónde cae un pedido soltado en Camiones sin posición.
 - [ ] **F5 · Repaso de la mañana**: recorrer tarjeta por tarjeta, corregir en vivo, "Ya confirmó (por teléfono)" (`hd_links.recibida_canal` ya existe, sin usar), mandar sólo a los afectados.
 - [ ] **F6 · Obras en vivo 3D** + botón **"Salí"** del chofer (`hd_viajes.salio_at` ya existe, sin usar).
 - [ ] **F8 · Refuerzos "desde una hora"** (`hd_refuerzos`): "Refuerza la 3 desde las 11".

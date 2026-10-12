@@ -10,7 +10,7 @@
 import type { BrowserContext, Page, Route } from "playwright";
 import type { DiaHoja } from "../../src/lib/hoja-dia/tipos.ts";
 import { aplicarPlan, martesPrecargado, martesVacio } from "../../src/lib/hoja-dia/escenario.test-fixture.ts";
-import { aplicarOptimista, aplicarOptimistaAusencia, aplicarOptimistaViaje } from "../../src/lib/hoja-dia/optimista.ts";
+import { aplicarOptimista, aplicarOptimistaAusencia, aplicarOptimistaPedido, aplicarOptimistaViaje } from "../../src/lib/hoja-dia/optimista.ts";
 import { planPrecarga } from "../../src/lib/hoja-dia/estado.ts";
 
 export const MARTES = "2026-10-13";
@@ -45,6 +45,8 @@ export async function servirHojaDia(destino: Page | BrowserContext, o: Opciones 
       }
       if (camino === "/api/hoja-dia/envios") return responder(route, { filas: [] });
       if (camino === "/api/hoja-dia/ausencias") return responder(route, { ausencias: [] });
+      // "Otra dirección" (F4): cualquier dirección cae a 3 cuadras de Juramento.
+      if (camino === "/api/hoja-dia/geocodificar") return responder(route, { ok: true, lat: -34.5642, lng: -58.4593, consulta: url.searchParams.get("dir") });
       return responder(route, {});
     }
     const body = req.postDataJSON() as Record<string, unknown>;
@@ -57,6 +59,7 @@ export async function servirHojaDia(destino: Page | BrowserContext, o: Opciones 
     if (camino === "/api/hoja-dia") nuevo = aplicarOptimista(dia, body as never);
     else if (camino === "/api/hoja-dia/viajes") nuevo = body.accion === "crear" ? crearViaje(dia, body, id) : aplicarOptimistaViaje(dia, body as never);
     else if (camino === "/api/hoja-dia/ausencias") nuevo = aplicarOptimistaAusencia(dia, body as never);
+    else if (camino === "/api/hoja-dia/pedidos") nuevo = aplicarOptimistaPedido(dia, body as never);
     else if (camino === "/api/hoja-dia/precarga") nuevo = aplicarPlan(dia, planPrecarga(dia, body.modo as "hoy").hojas);
     else if (camino === "/api/hoja-dia/deshacer") {
       const h = historial.get(String(body.historialId));

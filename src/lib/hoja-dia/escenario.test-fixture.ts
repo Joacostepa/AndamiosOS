@@ -228,6 +228,22 @@ export function martesArmado(): DiaHoja {
   return { ...d, hojas, viajes, pedidos };
 }
 
+/**
+ * El martes armado con dos pedidos sin camión (F4): "6 bases regulables" a una dirección
+ * escrita y ubicada a 3 cuadras de Juramento (Cramer 2190), y "2 escaleras" a Cabildo.
+ */
+export function martesConPedidos(): DiaHoja {
+  const d = martesArmado();
+  return {
+    ...d,
+    pedidos: [
+      ...d.pedidos,
+      pedido("p-cra", { que: "6 bases regulables", hacia: { otId: null, lugarId: null, texto: "Cramer 2190", lat: -34.564, lng: -58.459 }, creadoMin: -200 }),
+      pedido("p-cab", { que: "2 escaleras", hacia: { otId: OT.cab, lugarId: null, texto: null }, creadoMin: -190 }),
+    ],
+  };
+}
+
 /** Marca enviado a todos los destinatarios (con la foto de ese momento). */
 export function enviarATodos(d: DiaHoja, min: number, pids: string[]): DiaHoja {
   const envios: Envio[] = pids.map((pid, i) => {

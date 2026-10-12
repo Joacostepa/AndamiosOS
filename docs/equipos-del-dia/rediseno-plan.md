@@ -77,7 +77,7 @@ Parámetro `pizarron`: `oculto` → nadie lo ve; `probar` → pestaña "Pizarró
 | F1 Pizarrón base | L | Columnas, fichas, bandeja, arrastre/tocar/teclas, camión en columna, chofer, contratistas, No vienen, avisos-insignia, días, Copiar, Mandar, Deshacer, qué se ejecuta, multi-obra | — |
 | F2 Depósito | M | Sector depósito, encargado, cercos, mensaje y link. **Hecho el 12/10** (rama `feat/hoja-dia-deposito`) | 1 |
 | F3 Recorrido | L | Editor de paradas, acciones, reordenar, optimista de viajes, celular y Telegram del chofer. **Hecho el 12/10** (rama `feat/hoja-dia-recorrido`; "Salí" queda para F6) | 2 |
-| F4 Pedidos | M | Panel, otra dirección + geocodificar + pin, inserción por desvío, quién pasa cerca | (2) |
+| F4 Pedidos | M | Panel, otra dirección + geocodificar + pin, inserción por desvío, quién pasa cerca. **Hecho el 12/10** (rama `feat/hoja-dia-pedidos`, sin migración) | (2) |
 | F5 Repaso de la mañana | M | Overlay tarjeta por tarjeta, corregir en vivo, para revisar, mandar a afectados | (1) |
 | F6 Obras en vivo 3D | L | "Salí", `en-vivo.ts`, escena Three portada | (2) |
 | F7 Cambio y retiro | S | `principal`, dos semanas de convivencia, borrar lo viejo, docs. **Cuadrillas: hecho el 12/10** (pedido del dueño: sin convivencia; el pizarrón es fijo, sin parámetro). Camiones queda hasta F3/F4 | — |

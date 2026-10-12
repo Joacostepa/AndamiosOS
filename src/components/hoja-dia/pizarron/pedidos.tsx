@@ -265,6 +265,7 @@ function FichaPedido({ p, avisos, ubicando, onLleva, onMas }: {
       {...listeners}
       data-flip={id}
       data-pedido={p.id}
+      data-en-camion={v?.vehiculoId ?? ""}
       onClick={(e) => {
         e.stopPropagation();
         if (ctx.soloLectura || hecho) return;
@@ -388,13 +389,13 @@ function MenuLleva({ p, m, onCerrar, onPaso }: { p: Pedido; m: Extract<Menu, { t
         <ItemMenu key={x.veh} disabled={v?.vehiculoId === x.veh} onClick={() => poner(x.veh)} detalle={x.min != null ? <span className={cn("font-mono font-semibold", i === 0 && !x.libre && "text-hd-verde")}>{desvioTxt(x.min)}</span> : undefined}>
           <span className="grid min-w-0">
             <b className="truncate font-semibold">{vehTxt(dia, x.veh)}{v?.vehiculoId === x.veh ? " · lo lleva" : ""}</b>
-            <small className="truncate text-xs text-muted-foreground">{x.linea}</small>
+            <small className="text-xs leading-snug text-muted-foreground">{x.linea}</small>
           </span>
         </ItemMenu>
       ))}
       {q.no.map((x) => (
         <ItemMenu key={x.veh} disabled detalle="no sirve">
-          <span className="grid min-w-0"><b className="truncate font-semibold">{vehTxt(dia, x.veh)}</b><small className="truncate text-xs text-muted-foreground">{x.t}</small></span>
+          <span className="grid min-w-0"><b className="truncate font-semibold">{vehTxt(dia, x.veh)}</b><small className="text-xs leading-snug text-muted-foreground">{x.t}</small></span>
         </ItemMenu>
       ))}
       {!esTexto(p.hacia) || lugar(dia, p.hacia).lat != null ? null : <MenuTexto>Sin ubicar en el mapa: no se puede medir el desvío.</MenuTexto>}

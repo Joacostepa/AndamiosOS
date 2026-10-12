@@ -30,7 +30,8 @@ type M2O = [number, string] | false;
 
 export type NuevoCliente = {
   razonSocial: string;
-  cuit: string;
+  /** null: se da de alta sin CUIT (JS, 12/10) y se completa en Odoo antes de facturar. */
+  cuit: string | null;
   email: string | null;
   telefono: string | null;
   domicilio: string | null;
@@ -60,12 +61,24 @@ export async function clientePorCuit(cuit: string): Promise<{ id: number; nombre
   return p ? { id: p.id, nombre: p.name } : null;
 }
 
-/** Alta de cliente con los defaults de ABA. Si el CUIT ya existe, devuelve ese y no crea. */
+/** Sin CUIT, la única forma de no duplicar: el mismo nombre exacto (sin mayúsculas). */
+export async function clientePorNombre(nombre: string): Promise<{ id: number; nombre: string } | null> {
+  const [p] = await executeKw<{ id: number; name: string }[]>(
+    "res.partner", "search_read", [[["name", "=ilike", nombre.trim()], ["parent_id", "=", false]]],
+    { fields: ["id", "name"], limit: 1, order: "is_company desc, customer_rank desc, id" }, LECTURA,
+  );
+  return p ? { id: p.id, nombre: p.name } : null;
+}
+
+/**
+ * Alta de cliente con los defaults de ABA. Si el CUIT ya existe, devuelve ese y no crea. Sin
+ * CUIT se busca por el nombre exacto y, si no está, se crea sin CUIT.
+ */
 export async function crearCliente(c: NuevoCliente): Promise<{ id: number; creado: boolean; contactoId: number | null }> {
-  const ya = await clientePorCuit(c.cuit);
+  const digitos = (c.cuit ?? "").replace(/\D/g, "");
+  const ya = digitos ? await clientePorCuit(digitos) : await clientePorNombre(c.razonSocial);
   if (ya) return { id: ya.id, creado: false, contactoId: null };
 
-  const digitos = c.cuit.replace(/\D/g, "");
   let responsabilidad: number | false = false;
   if (c.condicionIva) {
     const [r] = await executeKw<{ id: number }[]>(
@@ -75,10 +88,9 @@ export async function crearCliente(c: NuevoCliente): Promise<{ id: number; cread
   }
   const id = await executeKw<number>("res.partner", "create", [{
     name: c.razonSocial.trim(),
-    vat: digitos,
-    l10n_latam_identification_type_id: IDS_ODOO.identificacionCuit,
-    // Por el prefijo: 30/33/34 son personas jurídicas.
-    is_company: /^3[034]/.test(digitos),
+    ...(digitos ? { vat: digitos, l10n_latam_identification_type_id: IDS_ODOO.identificacionCuit } : {}),
+    // Por el prefijo: 30/33/34 son personas jurídicas. Sin CUIT, lo decide el tipo de razón social.
+    is_company: digitos ? /^3[034]/.test(digitos) : /\b(s\.?a\.?|s\.?r\.?l\.?|s\.?a\.?s\.?|sociedad|consorcio|asociaci[oó]n|fundaci[oó]n|club|colegio|cooperativa)\b/i.test(c.razonSocial),
     email: c.email ?? false,
     phone: c.telefono ?? false,
     street: c.domicilio ?? false,

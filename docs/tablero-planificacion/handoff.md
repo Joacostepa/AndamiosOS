@@ -6,6 +6,9 @@ Los specs de junio (`docs/archivo/planificacion-v1.md`, `docs/archivo/planificac
 (`docs/tablero-planificacion/spec.md`) son el diseño original: el código ya se apartó en varias
 cosas, así que ante la duda manda el código y los comentarios largos que tiene cada archivo.
 
+> **Partes de obra** (`/partes`) tiene su propio handoff desde el 12/10:
+> [docs/partes/handoff.md](../partes/handoff.md), con la auditoría, el rediseño y la maqueta.
+
 ---
 
 ## Pendiente ahora

@@ -411,7 +411,9 @@ No hacen falta plantillas: el asistente sólo contesta, siempre dentro de las 24
 **Un solo cerebro** (`src/lib/asistente/turno.ts`). Es un loop propio sobre la API de Mensajes
 de Anthropic en streaming:
 
-- modelo `claude-opus-5`, configurable en Parámetros;
+- modelo `claude-opus-5-5` para las conversaciones nuevas (desde el 12/10; antes `claude-opus-5`),
+  configurable en Parámetros. En Opus 5.5 el pensamiento queda atado a la conversación: el pedido
+  manda `block_binding: drop_block` para que un cambio de herramientas no dé error (`turno.ts`);
 - razonamiento adaptativo y esfuerzo desde Parámetros;
 - *fallback* del lado de Anthropic;
 - hasta 15 vueltas o 240 s por turno;

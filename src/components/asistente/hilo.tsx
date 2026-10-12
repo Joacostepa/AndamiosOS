@@ -5,6 +5,7 @@ import { Bot, CircleX, FileText, Globe, ImageIcon, Loader2, Wrench } from "lucid
 import { Markdown } from "@/components/shared/markdown";
 import type { ItemChat } from "@/lib/asistente/vista";
 import type { EnVivo } from "@/hooks/use-asistente";
+import { EstuvoMal } from "./estuvo-mal";
 
 // La conversación: burbujas del vendedor a la derecha, respuestas del asistente a la
 // izquierda (con markdown), y lo que el asistente está haciendo como chips chicos.
@@ -141,7 +142,7 @@ export function Hilo({ items, enVivo, respondiendo }: { items: ItemChat[]; enViv
         ) : it.rol === "sistema" ? (
           <p key={it.id} className="text-center text-[11px] text-muted-foreground">{it.texto}</p>
         ) : (
-          <BurbujaAsistente key={it.id} texto={it.texto} herramientas={it.herramientas} fuentes={it.fuentes} interrumpido={it.interrumpido} />
+          <div key={it.id}><BurbujaAsistente texto={it.texto} herramientas={it.herramientas} fuentes={it.fuentes} interrumpido={it.interrumpido} />{it.finDeTurno && <div className="pl-9"><EstuvoMal turnoId={it.finDeTurno} /></div>}</div>
         ),
       )}
       {respondiendo && enVivo.vendedor && <BurbujaVendedor texto={enVivo.vendedor.texto} adjuntos={enVivo.vendedor.adjuntos.map((a) => ({ tipo: a.tipo, nombre: a.nombre, vista: a.vista }))} />}

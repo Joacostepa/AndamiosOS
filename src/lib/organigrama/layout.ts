@@ -11,7 +11,14 @@
 //     clásico (bajada, bus horizontal, bajada a cada hijo). Árbol compacto, no puro: si un nodo
 //     tiene más de `filaMax` hijos, van en una GRILLA de `columnas` columnas (más si quedarían
 //     más de `filasMax` filas), con un tronco que baja por el hueco entre columnas y un bus por
-//     fila. La última fila incompleta va centrada. Profundidad arbitraria.
+//     fila. La última fila incompleta va centrada. Las subáreas van después de los puestos, en
+//     filas propias. Profundidad arbitraria.
+//
+// JERARQUÍA: cada clase de caja (Dirección, área, subárea, puesto) tiene su tamaño
+// (`tamanos`). Y cada área es un GRUPO (`grupos`): en el árbol, un recuadro que la encierra con
+// todo lo suyo (con `margenGrupo` de aire, reservado en el layout; las subáreas quedan
+// anidadas); en la lista, una franja de su color por la sangría. Los conectores que corren
+// dentro de un grupo llevan `grupo` (se pintan con el color del área).
 //
 // Los conectores en codo de las dos formas se dibujan con la MISMA estructura de comandos
 // (`rutaSvg`), así al cambiar de forma motion interpola cada conector del viejo al nuevo.
@@ -37,13 +44,35 @@ export type Geometria =
   | { modo: "lista"; desde: Punto; hasta: Punto; radio: number }
   | { modo: "arbol"; desde: Punto; hasta: Punto; bus: number; tronco: number; fila: number; radio: number };
 
-export type Arista = { de: string; a: string; geo: Geometria };
+export type Arista = {
+  de: string;
+  a: string;
+  geo: Geometria;
+  /** El área (recuadro de grupo) dentro de la que corre el conector: se pinta con su color. */
+  grupo?: string;
+};
 
 export type Limites = { minX: number; minY: number; maxX: number; maxY: number };
+
+/**
+ * Las cuatro clases de caja, de más a menos peso: la Dirección, un área (cuelga de la Dirección),
+ * una subárea (un área que cuelga de otra área o de un puesto) y un puesto. Cada una tiene su
+ * tamaño: la jerarquía se ve sin leer.
+ */
+export type ClaseCaja = "direccion" | "area" | "subarea" | "puesto";
+
+/**
+ * Árbol: el RECUADRO que encierra a un área y a todo lo que cuelga de ella (las subáreas quedan
+ * anidadas adentro). Lista: la FRANJA vertical del color del área que corre por la sangría,
+ * debajo de su tarjeta. `nivel` = cuántos grupos lo encierran (0 = un área de la Dirección).
+ */
+export type Grupo = { clave: string; caja: Caja; nivel: number; forma: FormaLayout };
 
 export type Layout = {
   cajas: Record<string, Caja>;
   aristas: Arista[];
+  /** Los grupos de las áreas, de afuera hacia adentro (los anidados después: quedan encima). */
+  grupos: Grupo[];
   limites: Limites;
   /** Profundidad de cada nodo visible (0 = raíz). */
   profundidad: Record<string, number>;
@@ -51,9 +80,11 @@ export type Layout = {
   ocultos: Record<string, number>;
 };
 
+export type Tamano = { w: number; h: number };
+
 export type OpcionesLayout = {
-  ancho: number;
-  alto: number;
+  /** El tamaño de cada clase de caja. */
+  tamanos: Record<ClaseCaja, Tamano>;
   /** Separación horizontal entre subárboles en abanico. */
   sepX: number;
   /** Separación vertical entre un padre en abanico y sus hijos. */
@@ -77,25 +108,39 @@ export type OpcionesLayout = {
   columnas: number;
   /** Árbol: si con `columnas` quedarían más filas que esto, se agregan columnas. */
   filasMax: number;
+  /** Árbol: el aire entre el recuadro de un área y lo que encierra. */
+  margenGrupo: number;
   colapsados?: ReadonlySet<string>;
 };
 
 export const OPCIONES_LAYOUT: OpcionesLayout = {
-  ancho: 224,
-  alto: 96,
+  tamanos: {
+    direccion: { w: 312, h: 132 },
+    area: { w: 264, h: 128 },
+    subarea: { w: 236, h: 116 },
+    puesto: { w: 208, h: 78 },
+  },
   sepX: 40,
   sepY: 72,
-  sepLista: 14,
+  sepLista: 12,
   sangria: 28,
   nivelesHorizontales: 1,
   forma: "lista",
-  sepXArbol: 20,
-  sepYArbol: 52,
-  sepFila: 36,
+  sepXArbol: 16,
+  sepYArbol: 44,
+  sepFila: 28,
   filaMax: 3,
   columnas: 2,
   filasMax: 4,
+  margenGrupo: 14,
 };
+
+/** La clase de caja de un nodo según su tipo y su padre: un área que no cuelga de la raíz es subárea. */
+export function claseCaja(n: Nodo, padre: Nodo | undefined): ClaseCaja {
+  if (n.tipo === "puesto") return "puesto";
+  if (n.tipo === "direccion" || !padre) return "direccion";
+  return padre.dependeDe === null || padre.tipo === "direccion" ? "area" : "subarea";
+}
 
 /** Cuántas columnas usa el árbol para `n` hijos (una sola fila si son pocos). */
 export function columnasArbol(n: number, op: Pick<OpcionesLayout, "filaMax" | "columnas" | "filasMax"> = OPCIONES_LAYOUT): number {
@@ -103,22 +148,29 @@ export function columnasArbol(n: number, op: Pick<OpcionesLayout, "filaMax" | "c
   return Math.min(n, Math.max(op.columnas, Math.ceil(n / Math.max(1, op.filasMax))));
 }
 
-/** Los hijos de un nodo en el árbol: filas, ancho de cada columna y alto de cada fila. */
-type Grilla = { filas: Nodo[][]; colW: number[]; filaH: number[]; w: number; h: number };
+/**
+ * Los hijos de un nodo en el árbol, por filas: primero los PUESTOS en grilla (columnas de ancho
+ * común) y después las SUBÁREAS en filas propias (cada recuadro con su ancho). Así un recuadro
+ * grande no ensancha una columna de puestos ni queda mezclado entre ellos.
+ */
+type FilaGrilla = { nodos: Nodo[]; anchos: number[]; w: number; h: number };
+type Grilla = { filas: FilaGrilla[]; w: number; h: number; colW: number[]; wPuestos: number };
 
 function hijosOrdenados(porPadre: Map<string, Nodo[]>, clave: string): Nodo[] {
   return porPadre.get(clave) ?? [];
 }
 
-/** Calcula cajas y conectores. Tolera ciclos y padres inexistentes (los trata como raíces). */
+const suma = (xs: number[]) => xs.reduce((s, x) => s + x, 0);
+
+/** Calcula cajas, conectores y grupos. Tolera ciclos y padres inexistentes (los trata como raíces). */
 export function calcularLayout(nodos: Nodo[], opciones: Partial<OpcionesLayout> = {}): Layout {
   const op = { ...OPCIONES_LAYOUT, ...opciones };
   const colapsados = op.colapsados ?? new Set<string>();
-  const claves = new Set(nodos.map((n) => n.clave));
+  const porClave = new Map(nodos.map((n) => [n.clave, n]));
   const porPadre = new Map<string, Nodo[]>();
   const raices: Nodo[] = [];
   for (const n of nodos) {
-    if (n.dependeDe && claves.has(n.dependeDe) && n.dependeDe !== n.clave) {
+    if (n.dependeDe && porClave.has(n.dependeDe) && n.dependeDe !== n.clave) {
       const l = porPadre.get(n.dependeDe) ?? [];
       l.push(n);
       porPadre.set(n.dependeDe, l);
@@ -127,7 +179,12 @@ export function calcularLayout(nodos: Nodo[], opciones: Partial<OpcionesLayout> 
   for (const l of porPadre.values()) l.sort((a, b) => a.orden - b.orden || a.clave.localeCompare(b.clave));
   raices.sort((a, b) => a.orden - b.orden || a.clave.localeCompare(b.clave));
 
-  const medidas = new Map<string, { w: number; h: number }>();
+  const tam = (n: Nodo, nivel: number): Tamano => op.tamanos[nivel === 0 ? "direccion" : claseCaja(n, porClave.get(n.dependeDe ?? ""))];
+  // Cada área (no la raíz) es un grupo; en el árbol, un recuadro con margen alrededor de lo suyo.
+  const esGrupo = (n: Nodo, nivel: number) => nivel > 0 && n.tipo !== "puesto";
+  const margen = (n: Nodo, nivel: number) => (op.forma === "arbol" && esGrupo(n, nivel) ? op.margenGrupo : 0);
+
+  const medidas = new Map<string, Tamano>();
   const grillas = new Map<string, Grilla>();
   const ocultos: Record<string, number> = {};
   const enCamino = new Set<string>();
@@ -148,41 +205,58 @@ export function calcularLayout(nodos: Nodo[], opciones: Partial<OpcionesLayout> 
     return hijosOrdenados(porPadre, clave).filter((h) => !enCamino.has(h.clave));
   };
 
-  const medir = (n: Nodo, nivel: number): { w: number; h: number } => {
+  // Medidas EXTERIORES (con el margen del recuadro, si es un grupo del árbol).
+  const medir = (n: Nodo, nivel: number): Tamano => {
     enCamino.add(n.clave);
     if (colapsados.has(n.clave)) {
       const debajo = contarDebajo(n.clave, new Set([n.clave]));
       if (debajo) ocultos[n.clave] = debajo;
     }
+    const t = tam(n, nivel);
     const hs = visibles(n.clave);
-    let m = { w: op.ancho, h: op.alto };
+    let m = { w: t.w, h: t.h };
     if (hs.length) {
-      const ms = hs.map((h) => medir(h, nivel + 1));
+      const ms = new Map(hs.map((h) => [h.clave, medir(h, nivel + 1)] as const));
+      const de = (h: Nodo) => ms.get(h.clave)!;
       if (nivel < op.nivelesHorizontales) {
-        const total = ms.reduce((s, x) => s + x.w, 0) + op.sepX * (ms.length - 1);
-        m = { w: Math.max(op.ancho, total), h: op.alto + op.sepY + Math.max(...ms.map((x) => x.h)) };
+        const total = suma(hs.map((h) => de(h).w)) + op.sepX * (hs.length - 1);
+        m = { w: Math.max(t.w, total), h: t.h + op.sepY + Math.max(...hs.map((h) => de(h).h)) };
       } else if (op.forma === "arbol") {
-        const cols = columnasArbol(hs.length, op);
-        const filas: Nodo[][] = [];
-        for (let i = 0; i < hs.length; i += cols) filas.push(hs.slice(i, i + cols));
-        const colW = Array.from({ length: cols }, (_, c) => Math.max(0, ...filas.map((f, r) => (f[c] ? ms[r * cols + c].w : 0))));
-        const filaH = filas.map((f, r) => Math.max(...f.map((_, c) => ms[r * cols + c].h)));
+        const puestos = hs.filter((h) => !esGrupo(h, nivel + 1));
+        const areas = hs.filter((h) => esGrupo(h, nivel + 1));
+        const cols = columnasArbol(puestos.length, op);
+        const trozos: Nodo[][] = [];
+        for (let i = 0; i < puestos.length; i += cols) trozos.push(puestos.slice(i, i + cols));
+        const colW = Array.from({ length: puestos.length ? cols : 0 }, (_, c) => Math.max(0, ...trozos.map((f) => (f[c] ? de(f[c]).w : 0))));
+        const filas: FilaGrilla[] = trozos.map((f) => {
+          const anchos = colW.slice(0, f.length);
+          return { nodos: f, anchos, w: suma(anchos) + op.sepXArbol * (f.length - 1), h: Math.max(...f.map((h) => de(h).h)) };
+        });
+        const colsAreas = columnasArbol(areas.length, op);
+        for (let i = 0; i < areas.length; i += colsAreas) {
+          const f = areas.slice(i, i + colsAreas);
+          const anchos = f.map((h) => de(h).w);
+          filas.push({ nodos: f, anchos, w: suma(anchos) + op.sepXArbol * (f.length - 1), h: Math.max(...f.map((h) => de(h).h)) });
+        }
+        const wPuestos = colW.length ? suma(colW) + op.sepXArbol * (colW.length - 1) : 0;
         const g: Grilla = {
           filas,
           colW,
-          filaH,
-          w: colW.reduce((s, x) => s + x, 0) + op.sepXArbol * (cols - 1),
-          h: filaH.reduce((s, x) => s + x, 0) + op.sepFila * (filas.length - 1),
+          wPuestos,
+          w: Math.max(wPuestos, ...filas.map((f) => f.w)),
+          h: suma(filas.map((f) => f.h)) + op.sepFila * (filas.length - 1),
         };
         grillas.set(n.clave, g);
-        m = { w: Math.max(op.ancho, g.w), h: op.alto + op.sepYArbol + g.h };
+        m = { w: Math.max(t.w, g.w), h: t.h + op.sepYArbol + g.h };
       } else {
         m = {
-          w: Math.max(op.ancho, op.sangria + Math.max(...ms.map((x) => x.w))),
-          h: op.alto + ms.reduce((s, x) => s + op.sepLista + x.h, 0),
+          w: Math.max(t.w, op.sangria + Math.max(...hs.map((h) => de(h).w))),
+          h: t.h + suma(hs.map((h) => op.sepLista + de(h).h)),
         };
       }
     }
+    const mg = margen(n, nivel);
+    m = { w: m.w + mg * 2, h: m.h + mg * 2 };
     medidas.set(n.clave, m);
     enCamino.delete(n.clave);
     return m;
@@ -191,78 +265,101 @@ export function calcularLayout(nodos: Nodo[], opciones: Partial<OpcionesLayout> 
   const cajas: Record<string, Caja> = {};
   const profundidad: Record<string, number> = {};
   const aristas: Arista[] = [];
+  const grupos: Grupo[] = [];
 
-  const ubicar = (n: Nodo, nivel: number, izq: number, arriba: number) => {
+  /** `grupo`: el área cuyo grupo encierra a `n` (los conectores de adentro llevan su color). */
+  const ubicar = (n: Nodo, nivel: number, izqExt: number, arribaExt: number, grupo: string | undefined, nivelGrupo: number) => {
     enCamino.add(n.clave);
-    const m = medidas.get(n.clave)!;
+    const mExt = medidas.get(n.clave)!;
+    const mg = margen(n, nivel);
+    const izq = izqExt + mg;
+    const arriba = arribaExt + mg;
+    const m = { w: mExt.w - mg * 2, h: mExt.h - mg * 2 };
+    const t = tam(n, nivel);
     const hs = visibles(n.clave).filter((h) => medidas.has(h.clave));
     const horizontal = nivel < op.nivelesHorizontales;
     const arbol = !horizontal && op.forma === "arbol";
-    const x = horizontal || arbol ? izq + (m.w - op.ancho) / 2 : izq;
-    cajas[n.clave] = { x, y: arriba, w: op.ancho, h: op.alto };
+    const x = horizontal || arbol ? izq + (m.w - t.w) / 2 : izq;
+    cajas[n.clave] = { x, y: arriba, w: t.w, h: t.h };
     profundidad[n.clave] = nivel;
+    const grupal = esGrupo(n, nivel);
+    const grupoHijos = grupal ? n.clave : grupo;
+    const nivelHijos = grupal ? nivelGrupo + 1 : nivelGrupo;
+    if (grupal) {
+      grupos.push(
+        op.forma === "arbol"
+          ? { clave: n.clave, caja: { x: izqExt, y: arribaExt, w: mExt.w, h: mExt.h }, nivel: nivelGrupo, forma: "arbol" }
+          : // Lista: la franja corre por la sangría, de la tarjeta hasta el último de abajo.
+            { clave: n.clave, caja: { x: x + op.sangria / 2 - 1.5, y: arriba + t.h, w: 3, h: Math.max(0, m.h - t.h) }, nivel: nivelGrupo, forma: "lista" },
+      );
+    }
+    const enGrupo = grupoHijos ? { grupo: grupoHijos } : {};
     if (horizontal) {
-      const total = hs.reduce((s, h) => s + medidas.get(h.clave)!.w, 0) + op.sepX * Math.max(0, hs.length - 1);
+      const total = suma(hs.map((h) => medidas.get(h.clave)!.w)) + op.sepX * Math.max(0, hs.length - 1);
       let cx = izq + (m.w - total) / 2;
-      const y = arriba + op.alto + op.sepY;
+      const y = arriba + t.h + op.sepY;
       for (const h of hs) {
         const mh = medidas.get(h.clave)!;
-        ubicar(h, nivel + 1, cx, y);
+        ubicar(h, nivel + 1, cx, y, grupoHijos, nivelHijos);
         const ch = cajas[h.clave];
         aristas.push({
           de: n.clave,
           a: h.clave,
-          geo: { modo: "rama", desde: { x: x + op.ancho / 2, y: arriba + op.alto }, hasta: { x: ch.x + ch.w / 2, y: ch.y } },
+          geo: { modo: "rama", desde: { x: x + t.w / 2, y: arriba + t.h }, hasta: { x: ch.x + ch.w / 2, y: ch.y } },
+          ...enGrupo,
         });
         cx += mh.w + op.sepX;
       }
     } else if (arbol) {
       const g = grillas.get(n.clave);
       if (g && hs.length) {
-        const cols = g.colW.length;
         const izqGrilla = izq + (m.w - g.w) / 2;
-        const desde = { x: x + op.ancho / 2, y: arriba + op.alto };
-        const bus = arriba + op.alto + op.sepYArbol / 2;
-        // El tronco baja por el hueco entre las columnas del medio: nunca cruza una caja.
+        const desde = { x: x + t.w / 2, y: arriba + t.h };
+        const bus = arriba + t.h + op.sepYArbol / 2;
+        // El tronco baja por el hueco entre las columnas del medio de los puestos: nunca cruza
+        // una caja. Sin grilla de varias columnas, baja por el centro.
+        const cols = g.colW.length;
         const medio = Math.max(1, Math.floor(cols / 2));
-        const tronco = izqGrilla + g.colW.slice(0, medio).reduce((s, w) => s + w, 0) + op.sepXArbol * (medio - 1) + op.sepXArbol / 2;
-        let y = arriba + op.alto + op.sepYArbol;
+        const izqPuestos = izqGrilla + (g.w - g.wPuestos) / 2;
+        const tronco = cols > 1 ? izqPuestos + suma(g.colW.slice(0, medio)) + op.sepXArbol * (medio - 1) + op.sepXArbol / 2 : desde.x;
+        let y = arriba + t.h + op.sepYArbol;
         g.filas.forEach((fila, r) => {
-          // La última fila, si queda incompleta, va centrada.
-          const anchoFila = g.colW.slice(0, fila.length).reduce((s, w) => s + w, 0) + op.sepXArbol * (fila.length - 1);
-          let cx = izqGrilla + (g.w - anchoFila) / 2;
+          // Cada fila va centrada (la última de puestos, si queda incompleta, también).
+          let cx = izqGrilla + (g.w - fila.w) / 2;
           const busFila = r === 0 ? bus : y - op.sepFila / 2;
-          fila.forEach((h, c) => {
+          fila.nodos.forEach((h, c) => {
             const mh = medidas.get(h.clave);
             if (mh) {
-              ubicar(h, nivel + 1, cx + (g.colW[c] - mh.w) / 2, y);
+              ubicar(h, nivel + 1, cx + (fila.anchos[c] - mh.w) / 2, y, grupoHijos, nivelHijos);
               const ch = cajas[h.clave];
               aristas.push({
                 de: n.clave,
                 a: h.clave,
                 geo: { modo: "arbol", desde, hasta: { x: ch.x + ch.w / 2, y: ch.y }, bus, tronco: r === 0 ? desde.x : tronco, fila: busFila, radio: 8 },
+                ...enGrupo,
               });
             }
-            cx += g.colW[c] + op.sepXArbol;
+            cx += fila.anchos[c] + op.sepXArbol;
           });
-          y += g.filaH[r] + op.sepFila;
+          y += fila.h + op.sepFila;
         });
       }
     } else {
-      let y = arriba + op.alto + op.sepLista;
+      let y = arriba + t.h + op.sepLista;
       for (const h of hs) {
         const mh = medidas.get(h.clave)!;
-        ubicar(h, nivel + 1, izq + op.sangria, y);
+        ubicar(h, nivel + 1, izq + op.sangria, y, grupoHijos, nivelHijos);
         const ch = cajas[h.clave];
         aristas.push({
           de: n.clave,
           a: h.clave,
           geo: {
             modo: "lista",
-            desde: { x: x + op.sangria / 2, y: arriba + op.alto },
+            desde: { x: x + op.sangria / 2, y: arriba + t.h },
             hasta: { x: ch.x, y: ch.y + ch.h / 2 },
             radio: Math.min(10, op.sangria / 2),
           },
+          ...enGrupo,
         });
         y += mh.h + op.sepLista;
       }
@@ -275,11 +372,20 @@ export function calcularLayout(nodos: Nodo[], opciones: Partial<OpcionesLayout> 
   const total = ms.reduce((s, x) => s + x.w, 0) + op.sepX * Math.max(0, ms.length - 1);
   let izq = -total / 2;
   raices.forEach((r, i) => {
-    ubicar(r, 0, izq, 0);
+    ubicar(r, 0, izq, 0, undefined, 0);
     izq += ms[i].w + op.sepX;
   });
 
-  return { cajas, aristas, limites: limitesDe(Object.values(cajas)), profundidad, ocultos };
+  // De afuera hacia adentro: los recuadros anidados se pintan (y reciben el puntero) encima.
+  grupos.sort((a, b) => a.nivel - b.nivel);
+  return {
+    cajas,
+    aristas,
+    grupos,
+    limites: limitesDe([...Object.values(cajas), ...grupos.map((g) => g.caja)]),
+    profundidad,
+    ocultos,
+  };
 }
 
 export function limitesDe(cajas: Caja[]): Limites {
@@ -580,6 +686,7 @@ export function desplazar(layout: Layout, dx: number, dy: number): Layout {
   return {
     ...layout,
     cajas,
+    grupos: layout.grupos.map((g) => ({ ...g, caja: { ...g.caja, x: g.caja.x + dx, y: g.caja.y + dy } })),
     aristas: layout.aristas.map((a) => ({
       ...a,
       geo:
@@ -596,7 +703,7 @@ export function desplazar(layout: Layout, dx: number, dy: number): Layout {
   };
 }
 
-/** Los límites del subárbol de `clave` (él y todo lo visible debajo). */
+/** Los límites del subárbol de `clave` (él, todo lo visible debajo y su recuadro, si es un área). */
 export function limitesDeRama(layout: Layout, nodos: Nodo[], clave: string): Limites {
   const debajo = new Set([clave]);
   let crecio = true;
@@ -609,5 +716,6 @@ export function limitesDeRama(layout: Layout, nodos: Nodo[], clave: string): Lim
       }
     }
   }
-  return limitesDe([...debajo].map((c) => layout.cajas[c]).filter(Boolean));
+  const grupo = layout.grupos.find((g) => g.clave === clave && g.forma === "arbol");
+  return limitesDe([...[...debajo].map((c) => layout.cajas[c]).filter(Boolean), ...(grupo ? [grupo.caja] : [])]);
 }

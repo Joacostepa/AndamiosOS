@@ -5,11 +5,13 @@
 // movimiento. Los nuevos nacen desde el padre; la cadena de mando del foco se resalta con un
 // trazo que se dibuja de abajo hacia arriba. La clave de cada conector es su hijo + su familia
 // (curva o codo): al pasar de Lista a Árbol el codo no se vuelve a montar, se transforma (lista y
-// árbol tienen la misma forma de `d`).
+// árbol tienen la misma forma de `d`). Los que corren dentro del grupo de un área (`grupo`) se
+// pintan con el color del área, más suaves: el recuadro ya dice a quién pertenecen.
 
 import { memo } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { familiaGeo, geometriaNaciente, rutaSvg, type Arista } from "@/lib/organigrama/layout";
+import type { ColorArea } from "@/lib/organigrama/tipos";
 import { RESORTE } from "./comun";
 
 function rutaNaciente(a: Arista): string {
@@ -21,12 +23,15 @@ function ConectoresBase({
   cadena,
   atenuar,
   fantasma,
+  colores,
 }: {
   aristas: Arista[];
   /** Claves de los hijos cuya arista hacia el padre es parte de la cadena de mando resaltada. */
   cadena: ReadonlySet<string>;
   atenuar: boolean;
   fantasma?: string;
+  /** El color de cada área: los conectores dentro de un grupo llevan el suyo. */
+  colores: Record<string, ColorArea>;
 }) {
   return (
     <svg aria-hidden className="pointer-events-none absolute top-0 left-0 overflow-visible" width={1} height={1}>
@@ -35,11 +40,13 @@ function ConectoresBase({
           const d = rutaSvg(a.geo);
           const enCadena = cadena.has(a.a);
           const esFantasma = a.a === fantasma;
+          const color = !esFantasma && a.grupo ? colores[a.grupo] : undefined;
           return (
             <motion.path
               key={`${a.a}:${familiaGeo(a.geo)}${esFantasma ? ":f" : ""}`}
               fill="none"
-              className={esFantasma ? "stroke-foreground/60" : "stroke-muted-foreground/45"}
+              className={esFantasma ? "stroke-foreground/60" : color ? undefined : "stroke-muted-foreground/45"}
+              style={color ? { stroke: `color-mix(in oklab, var(--tb-${color}-borde) 50%, transparent)` } : undefined}
               strokeWidth={esFantasma ? 2 : 1.5}
               strokeDasharray={esFantasma ? "5 5" : undefined}
               strokeLinecap="round"

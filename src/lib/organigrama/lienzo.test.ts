@@ -6,6 +6,7 @@ import { descendientes, estadoPuesto, nodoDe, ocupantesVigentes } from "./arbol.
 import { CIRCUITOS } from "./circuitos.ts";
 import { CUADRILLAS, HOY, NODOS_VIGENTES, OCUPANTES, PERSONAS } from "./datos-maqueta.ts";
 import {
+  cambiarRol,
   colorLibre,
   crearDesdeHerramienta,
   deshacer,
@@ -13,9 +14,12 @@ import {
   destinoValidoNodo,
   destinoValidoPersona,
   eliminarRama,
+  esBusquedaAbierta,
+  esCajaExterna,
   estadisticaRama,
   hayQuePreguntar,
   historialVacio,
+  nodoDeHerramienta,
   quitarOcupante,
   registrar,
   rehacer,
@@ -164,4 +168,33 @@ test("estadisticaRama: Operaciones cuenta sus 7 puestos y a las cuadrillas enter
   assert.equal(ops.vacantes, 2);
   const admin = estadisticaRama(DATOS, "admin");
   assert.deepEqual(admin, { puestos: 4, personas: 2, vacantes: 1 });
+});
+
+test("cambiarRol cambia o saca el subtítulo; si no cambia nada devuelve los mismos nodos", () => {
+  const con = cambiarRol(NODOS_VIGENTES, "stock", " Inventario ");
+  assert.equal(nodoDe(con, "stock")!.rol, "Inventario");
+  const sin = cambiarRol(con, "stock", "  ");
+  assert.equal(nodoDe(sin, "stock")!.rol, undefined);
+  assert.ok(!("rol" in nodoDe(sin, "stock")!));
+  assert.equal(cambiarRol(con, "stock", "Inventario"), con);
+  assert.equal(cambiarRol(con, "no-existe", "x"), con);
+});
+
+test("vacantes calmas: solo la búsqueda abierta (la herramienta «Vacante») pide el tratamiento fuerte", () => {
+  const vacante = nodoDeHerramienta(NODOS_VIGENTES, "vacante", "ops");
+  assert.ok(esBusquedaAbierta(vacante));
+  // Sin la nota interna (quien solo ve no la recibe), el rol «A cubrir» alcanza.
+  assert.ok(esBusquedaAbierta({ ...vacante, notaInterna: undefined }));
+  assert.ok(!esBusquedaAbierta(nodoDeHerramienta(NODOS_VIGENTES, "puesto", "ops")));
+  assert.ok(!esBusquedaAbierta(nodoDeHerramienta(NODOS_VIGENTES, "area", "dg")));
+  // Ningún puesto de la estructura base es una búsqueda abierta, aunque esté vacante.
+  assert.ok(NODOS_VIGENTES.every((n) => !esBusquedaAbierta(n)));
+});
+
+test("esCajaExterna: el título termina en «(externo)» o el rol arranca con «Externo»", () => {
+  const base = nodoDeHerramienta(NODOS_VIGENTES, "puesto", "ops");
+  assert.ok(esCajaExterna({ ...base, titulo: "Contador / estudio (externo)" }));
+  assert.ok(esCajaExterna({ ...base, rol: "Externo · lo coordina Administración" }));
+  assert.ok(!esCajaExterna(base));
+  assert.ok(!esCajaExterna({ ...base, tipo: "area", titulo: "Algo (externo)" }));
 });

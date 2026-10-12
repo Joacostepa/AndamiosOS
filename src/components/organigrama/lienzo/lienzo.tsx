@@ -13,7 +13,12 @@
 //   - cámara (camara.ts) con paneo, zoom hacia el cursor, pinch, vuelos y minimapa;
 //   - arrastre (arrastre.tsx) para herramientas, personas y puestos, con vista previa (las demás
 //     cajas hacen lugar) y rebote si no se puede;
-//   - modos didácticos (didactico.tsx): «Conocé ABA» y «Seguí el papel».
+//   - modos didácticos (didactico.tsx): «Conocé ABA» y «Seguí el papel»;
+//   - jerarquía: tarjetas de tamaño y estilo por clase (Dirección, área, subárea, puesto) y los
+//     GRUPOS de cada área (grupos.tsx): recuadros anidados en el árbol, franja en la lista;
+//   - vacantes calmas: el tratamiento fuerte solo para búsquedas abiertas o con «Resaltar
+//     vacantes» (contador de la barra, tecla V);
+//   - renombrar en línea: doble clic en el título o el rol, F2, o «Renombrar» en la ficha.
 //
 // ESTADO: el mismo proveedor que el mapa. La estructura va al BORRADOR (si el editor todavía no
 // estaba en el borrador, entra solo al primer cambio) y la ocupación es inmediata. Deshacer y
@@ -57,6 +62,7 @@ import { hoyBA } from "@/lib/organigrama/datos";
 import {
   areaLibre,
   calcularLayout,
+  claseCaja,
   desplazamientoAncla,
   desplazar,
   encuadrar,
@@ -72,12 +78,15 @@ import {
   type Punto,
 } from "@/lib/organigrama/layout";
 import {
+  cambiarRol,
   crearDesdeHerramienta,
   deshacer as deshacerH,
   destinoValidoHerramienta,
   destinoValidoNodo,
   destinoValidoPersona,
   eliminarRama,
+  esBusquedaAbierta,
+  esCajaExterna,
   estadisticaRama,
   hayQuePreguntar,
   historialVacio,
@@ -96,10 +105,23 @@ import { useOrg, type FotoOrg } from "../proveedor";
 import { CapaFantasma, ProveedorArrastre, useArrastre, type Carga, type Destino, type Manejador, type Resultado } from "./arrastre";
 import { BarraLienzo } from "./barra";
 import { useCamara, useGestosCamara } from "./camara";
-import { AccionesCtx, RESORTE, esCampoDeTexto, varsArea, type AccionesLienzo, type EstadoDestino, type PersonaEnNodo, type Salida, type VistaNodo } from "./comun";
+import {
+  AccionesCtx,
+  EVENTO_RENOMBRAR,
+  RESORTE,
+  esCampoDeTexto,
+  varsArea,
+  type AccionesLienzo,
+  type CampoEditable,
+  type EstadoDestino,
+  type PersonaEnNodo,
+  type Salida,
+  type VistaNodo,
+} from "./comun";
 import { Conectores } from "./conectores";
 import { DialogoTacho, DialogoUbicar } from "./dialogos-lienzo";
 import { Papelito, TarjetaPapel, TarjetaRecorrido, type PasoRecorrido } from "./didactico";
+import { Grupos } from "./grupos";
 import { CajaHerramientas } from "./herramientas";
 import { Banco } from "./banco";
 import { ControlesZoom, Minimapa } from "./navegacion";
@@ -182,6 +204,8 @@ function medirPaneles(raiz: HTMLElement | null): PanelFlotante[] {
 type Pregunta = { tipo: "ubicar"; persona: string; nodo: string; desdeOcupante?: string } | { tipo: "tacho"; clave: string } | null;
 type Seleccion = { tipo: "herramienta"; herramienta: Herramienta } | { tipo: "persona"; persona: string } | null;
 type EstadoPapel = { circuito: string; paso: number; desde: number | null; reproduciendo: boolean } | null;
+/** Edición en línea. `nuevo`: el nodo recién creado (su primer nombre no suma otro paso al historial). */
+type Edicion = { clave: string; campo: CampoEditable; nuevo: boolean } | null;
 
 export function Lienzo() {
   const manejador = useRef<Manejador | null>(null);
@@ -285,7 +309,8 @@ function Escena({ manejador }: { manejador: React.RefObject<Manejador | null> })
   // ── Estado del lienzo ────────────────────────────────────────────────────────
   const [colapsados, setColapsados] = useState<ReadonlySet<string>>(VACIO);
   const [hist, setHist] = useState(historialVacio<FotoOrg>);
-  const [editandoNombre, setEditandoNombre] = useState<string | null>(null);
+  const [edicion, setEdicion] = useState<Edicion>(null);
+  const [resaltarVacantes, setResaltarVacantes] = useState(false);
   const [pregunta, setPregunta] = useState<Pregunta>(null);
   const [seleccion, setSeleccion] = useState<Seleccion>(null);
   const [recorrido, setRecorrido] = useState<number | null>(null);
@@ -509,7 +534,7 @@ function Escena({ manejador }: { manejador: React.RefObject<Manejador | null> })
       });
       if (!ok) return;
       expandir(padre);
-      setEditandoNombre(clave);
+      setEdicion({ clave, campo: "titulo", nuevo: true });
     },
     [anclar, estructura, expandir],
   );
@@ -670,16 +695,26 @@ function Escena({ manejador }: { manejador: React.RefObject<Manejador | null> })
           return s;
         });
       },
-      renombrar: (clave, titulo) => {
-        const actual = nodoDe(estado.borrador ?? estado.vigente, clave);
-        if (!actual || actual.titulo === titulo.trim() || !titulo.trim()) return;
-        // Renombrar justo después de crear es parte del mismo paso: no suma al historial.
-        dispatch({ tipo: "estructura", nodos: renombrar(estado.borrador ?? estado.vigente, clave, titulo) });
+      editar: (clave, campo) => {
+        if (!puedeEditar || didactico) return;
+        setEdicion({ clave, campo, nuevo: false });
       },
-      terminarNombre: () => setEditandoNombre(null),
+      guardarEdicion: (clave, campo, valor) => {
+        const actuales = estado.borrador ?? estado.vigente;
+        const actual = nodoDe(actuales, clave);
+        if (!actual) return;
+        const v = valor.trim();
+        if (campo === "titulo" ? !v || v === actual.titulo : v === (actual.rol ?? "")) return;
+        const cambiar = (n: Nodo[]) => (campo === "titulo" ? renombrar(n, clave, v) : cambiarRol(n, clave, v));
+        // Nombrar lo que se acaba de crear es parte del mismo paso: no suma al historial.
+        if (edicion?.clave === clave && edicion.nuevo) dispatch({ tipo: "estructura", nodos: cambiar(actuales) });
+        // Renombrar algo que ya estaba es un cambio de estructura más: borrador (se abre solo) y deshacer.
+        else estructura(cambiar);
+      },
+      terminarEdicion: () => setEdicion(null),
       abrirPersona: (id) => irA(`persona=${encodeURIComponent(id)}`),
     }),
-    [aplicarSeleccion, expandir, irA, nodos, colapsados, estado.borrador, estado.vigente, dispatch],
+    [aplicarSeleccion, expandir, irA, nodos, colapsados, estado.borrador, estado.vigente, dispatch, estructura, edicion, puedeEditar, didactico],
   );
 
   useEffect(() => {
@@ -852,6 +887,20 @@ function Escena({ manejador }: { manejador: React.RefObject<Manejador | null> })
     // eslint-disable-next-line react-hooks/exhaustive-deps -- solo al cambiar la forma
   }, [formaEf, tam.w]);
 
+  // «Renombrar» desde la ficha (en el celular no hay doble clic ni F2): la ficha se cierra y la
+  // tarjeta queda editándose; si estaba dentro de algo colapsado, se abre.
+  useEffect(() => {
+    const h = (e: Event) => {
+      const clave = (e as CustomEvent<string>).detail;
+      if (!puedeEditar || didactico || !nodoDe(nodos, clave)) return;
+      const arriba = new Set(ancestros(nodos, clave).map((a) => a.clave));
+      setColapsados((prev) => ([...prev].some((c) => arriba.has(c)) ? new Set([...prev].filter((c) => !arriba.has(c))) : prev));
+      setEdicion({ clave, campo: "titulo", nuevo: false });
+    };
+    window.addEventListener(EVENTO_RENOMBRAR, h);
+    return () => window.removeEventListener(EVENTO_RENOMBRAR, h);
+  }, [puedeEditar, didactico, nodos]);
+
   // ── Teclado ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
@@ -876,6 +925,7 @@ function Escena({ manejador }: { manejador: React.RefObject<Manejador | null> })
       else if (e.key === "?") setAtajos(true);
       else if (tecla === "f") alternarCompleta();
       else if (tecla === "l" && !angosto && !didactico) cambiarForma(forma === "arbol" ? "lista" : "arbol");
+      else if (tecla === "v") setResaltarVacantes((r) => !r);
       else if (e.key === "ArrowRight" && recorrido !== null) irPasoRecorrido(recorrido + 1);
       else if (e.key === "ArrowLeft" && recorrido !== null) irPasoRecorrido(recorrido - 1);
       else if (e.key === "ArrowRight" && papel) irPasoPapel(papel.paso + 1);
@@ -919,6 +969,9 @@ function Escena({ manejador }: { manejador: React.RefObject<Manejador | null> })
         deCuadrillas: nodo.fuenteOcupantes === "cuadrillas",
         desde: padre ? { x: padre.x, y: padre.y } : { x: caja.x, y: caja.y },
         rama: nodo.tipo !== "puesto" ? estadisticaRama(datos, clave) : { puestos: 0, personas: personas.length, vacantes: 0 },
+        clase: claseCaja(nodo, nodoDe(nodos, nodo.dependeDe)),
+        busqueda: esBusquedaAbierta(nodo),
+        cajaExterna: esCajaExterna(nodo),
       });
     }
     return fuera;
@@ -978,17 +1031,22 @@ function Escena({ manejador }: { manejador: React.RefObject<Manejador | null> })
       destino: estadoDestino(c),
       arrastrada: arrastradas.has(c) && carga?.tipo === "nodo" && c === carga.clave,
       simple,
-      editandoNombre: editandoNombre === c,
+      editando: edicion?.clave === c ? edicion.campo : null,
       retraso: retrasos[c] ?? 0,
       puedeEditar: puedeEditar && !didactico,
       arbol: formaEf === "arbol",
+      resaltarVacantes,
     };
   }
+  const destinosGrupos: Record<string, EstadoDestino> = {};
+  for (const g of layout.grupos) destinosGrupos[g.clave] = estadoDestino(g.clave);
+  const gruposAtenuados = enfoque ? new Set(layout.grupos.filter((g) => !enfoque.has(g.clave)).map((g) => g.clave)) : null;
 
   const res = useMemo(() => calcularResumen(datos, hoyBA()), [datos]);
   const cargaPersonas = useMemo(() => cargaPorPersona(datos), [datos]);
   const coloresMini = useMemo(() => Object.fromEntries(vistas.map((v) => [v.nodo.clave, v.color])), [vistas]);
   const cajasMini = useMemo(() => Object.entries(base.cajas), [base]);
+  const gruposVisibles = useMemo(() => layout.grupos.filter((g) => g.clave !== FANTASMA), [layout]);
 
   // ── Fantasma bajo el puntero ─────────────────────────────────────────────────
   let fantasma: React.ReactNode = null;
@@ -1030,6 +1088,9 @@ function Escena({ manejador }: { manejador: React.RefObject<Manejador | null> })
           if (gesto.current.suprimirClick) return;
           const t = e.target as Element;
           if (t.closest("[data-nodo], [data-sin-pan]")) return;
+          // Con una herramienta o persona elegida (celular), tocar el recuadro de un área es tocar el área.
+          const grupo = t.closest<HTMLElement>("[data-grupo]")?.dataset.grupo;
+          if (seleccion && grupo && aplicarSeleccion(grupo)) return;
           if (seleccion) setSeleccion(null);
           else if (foco || personaFoco) irA("");
         }}
@@ -1040,7 +1101,8 @@ function Escena({ manejador }: { manejador: React.RefObject<Manejador | null> })
         <Fondo x={cam.x} y={cam.y} k={cam.k} />
 
         <motion.div className="absolute top-0 left-0" style={{ x: cam.x, y: cam.y, scale: cam.k, originX: 0, originY: 0 }}>
-          <Conectores aristas={layout.aristas} cadena={cadena} atenuar={!!enfoque} fantasma={FANTASMA} />
+          <Grupos grupos={gruposVisibles} colores={coloresMini} atenuados={gruposAtenuados} destinos={destinosGrupos} />
+          <Conectores aristas={layout.aristas} cadena={cadena} atenuar={!!enfoque} fantasma={FANTASMA} colores={coloresMini} />
           {rutaPapel && (
             <svg aria-hidden className="pointer-events-none absolute top-0 left-0 overflow-visible" width={1} height={1}>
               <motion.path
@@ -1112,6 +1174,8 @@ function Escena({ manejador }: { manejador: React.RefObject<Manejador | null> })
               ocupado={didactico}
               forma={formaEf}
               onForma={angosto ? undefined : cambiarForma}
+              resaltarVacantes={resaltarVacantes}
+              onResaltarVacantes={() => setResaltarVacantes((r) => !r)}
             />
 
             <div className="flex justify-center">
@@ -1143,7 +1207,7 @@ function Escena({ manejador }: { manejador: React.RefObject<Manejador | null> })
               </AnimatePresence>
 
               <div data-panel="derecha" className={cn("absolute right-0 flex flex-col items-end gap-2", angosto ? "top-0" : "bottom-0")}>
-                {!angosto && !didactico && <Minimapa cajas={cajasMini} colores={coloresMini} limites={base.limites} cam={cam} vista={tam} />}
+                {!angosto && !didactico && <Minimapa cajas={cajasMini} grupos={base.grupos} colores={coloresMini} limites={base.limites} cam={cam} vista={tam} />}
                 <ControlesZoom cam={cam} onEncuadrar={() => encuadrarTodo()} completa={completa} onPantallaCompleta={alternarCompleta} />
               </div>
 

@@ -26,6 +26,8 @@ Insumos:
   - para cada área: misión, «qué NO hace», KPIs y notas de diseño. Por ejemplo, «Depósito SEPARADO DE OPERACIONES a propósito».
 
   Es un **manual de funciones**, y está atado al circuito documental que la app ya usa (SOL, OPC, RS, FS, RDP, RDF, ICO).
+
+  > **Corrección (12/10/2026):** esto es falso. La app **no** usa ese circuito: las siete siglas solo existen en el organigrama, heredadas del original. En la base hay 0 remitos, 0 movimientos y 0 stock, y el material viaja como texto en la Hoja del día. Es una meta de control, no una práctica. Ver [estructura-v2.md](./estructura-v2.md) § 1 y § 7.
 - **El modelo mental es correcto.**
   - Hay tres niveles (Dirección → Área → Puesto) y un color por área.
   - Un puesto puede tener varias personas, como «Capataces / Cuadrillas» o «Choferes».

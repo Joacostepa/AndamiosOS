@@ -4,6 +4,7 @@ Quién hace qué en ABA: la estructura (Dirección, áreas y puestos), el manual
 
 - Propuesta de producto y arquitectura: [propuesta.md](./propuesta.md) (12/10/2026). Este documento dice qué quedó construido y con qué decisiones; ante una diferencia, manda este (y el código).
 - Estado real, lo que falta y cómo retomar: [handoff.md](./handoff.md).
+- Propuesta de estructura nueva (pyme familiar, circuito real), que se carga como borrador: [estructura-v2.md](./estructura-v2.md).
 - **En producción desde el 12/10/2026.**
 
 ---

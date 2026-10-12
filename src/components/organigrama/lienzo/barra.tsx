@@ -3,11 +3,12 @@
 // La barra de arriba del lienzo: contadores vivos (se mueven al vuelo con cada cambio),
 // deshacer/rehacer, el estado del borrador y el ÚNICO coral de la pantalla, «Publicar versión».
 // También arrancan acá los modos didácticos: «Conocé ABA» y «Seguí el papel», y está el selector
-// Lista / Árbol (en el celular no aparece: ahí siempre es lista).
+// Lista / Árbol (en el celular no aparece: ahí siempre es lista). El contador de vacantes es
+// también el interruptor «Resaltar vacantes» (tecla V): por defecto las vacantes se ven calmas.
 
 import { useEffect, useRef } from "react";
 import { animate, motion, useMotionValue, useReducedMotion, useTransform } from "motion/react";
-import { FileText, GraduationCap, Keyboard, ListTree, MoreHorizontal, Network, Redo2, Undo2 } from "lucide-react";
+import { FileText, GraduationCap, Highlighter, Keyboard, ListTree, MoreHorizontal, Network, Redo2, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { CIRCUITOS } from "@/lib/organigrama/circuitos";
@@ -44,20 +45,45 @@ export function Numero({ valor }: { valor: number }) {
   );
 }
 
-function Contador({ valor, de, titulo, tono }: { valor: number; de?: number; titulo: string; tono?: "aviso" }) {
+function Contador({ valor, de, titulo }: { valor: number; de?: number; titulo: string }) {
   return (
-    <div
-      className={cn(
-        "flex items-baseline gap-1 rounded-md px-2 py-1",
-        tono === "aviso" && valor > 0 ? "bg-amber-500/10 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300" : "bg-muted/60",
-      )}
-    >
+    <div className="flex items-baseline gap-1 rounded-md bg-muted/60 px-2 py-1">
       <span className="text-[15px] font-bold">
         <Numero valor={valor} />
         {de !== undefined && <span className="text-[12px] font-medium text-muted-foreground">/{de}</span>}
       </span>
       <span className="text-[11.5px] text-muted-foreground">{titulo}</span>
     </div>
+  );
+}
+
+/**
+ * «N vacantes» que además resalta todas las vacantes del lienzo al tocarlo. Discreto: el mismo
+ * contador, con un ícono de resaltador; activo, se rellena con el ámbar de aviso.
+ */
+function ContadorVacantes({ valor, activo, onAlternar }: { valor: number; activo: boolean; onAlternar: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={activo}
+      onClick={onAlternar}
+      title={activo ? "Dejar de resaltar las vacantes (V)" : "Resaltar vacantes (V)"}
+      className={cn(
+        "flex h-8 items-baseline gap-1 rounded-md px-2 py-1 outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:h-10",
+        activo
+          ? "bg-amber-500/20 text-amber-900 ring-1 ring-amber-500/60 dark:bg-amber-500/25 dark:text-amber-200"
+          : valor > 0
+            ? "bg-amber-500/10 text-amber-800 hover:bg-amber-500/15 dark:bg-amber-500/15 dark:text-amber-300"
+            : "bg-muted/60 hover:bg-muted",
+      )}
+    >
+      <span className="text-[15px] font-bold">
+        <Numero valor={valor} />
+      </span>
+      <span className="text-[11.5px] text-muted-foreground">{valor === 1 ? "vacante" : "vacantes"}</span>
+      <Highlighter aria-hidden className={cn("size-3.5 self-center", activo ? "opacity-100" : "opacity-60")} />
+      <span className="sr-only">{activo ? "(resaltadas)" : "(resaltar)"}</span>
+    </button>
   );
 }
 
@@ -115,6 +141,8 @@ export function BarraLienzo({
   ocupado,
   forma,
   onForma,
+  resaltarVacantes,
+  onResaltarVacantes,
 }: {
   resumen: Resumen;
   puedeEditar: boolean;
@@ -137,6 +165,8 @@ export function BarraLienzo({
   forma: FormaLayout;
   /** Sin esto (celular, siempre lista) no se muestra el selector Lista / Árbol. */
   onForma?: (f: FormaLayout) => void;
+  resaltarVacantes: boolean;
+  onResaltarVacantes: () => void;
 }) {
   return (
     <div
@@ -147,7 +177,7 @@ export function BarraLienzo({
       <div className="flex flex-wrap items-center gap-1" aria-live="polite">
         <Contador valor={resumen.puestos} titulo="puestos" />
         <Contador valor={resumen.conPuesto} de={resumen.activos} titulo="personas" />
-        <Contador valor={resumen.vacantes} titulo={resumen.vacantes === 1 ? "vacante" : "vacantes"} tono="aviso" />
+        <ContadorVacantes valor={resumen.vacantes} activo={resaltarVacantes} onAlternar={onResaltarVacantes} />
       </div>
       {onForma && !ocupado && <SelectorForma forma={forma} onForma={onForma} />}
 

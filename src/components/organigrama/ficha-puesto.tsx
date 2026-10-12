@@ -10,8 +10,8 @@
 // En el celular la caja de tareas va antes que la misión: es lo que se viene a buscar.
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { Link2, Pencil, UserPlus, X } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { Link2, Pencil, PencilLine, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
 import { Caja, HojaLateral } from "@/components/hoja-dia/comunes/hoja-lateral";
 import { Aviso } from "@/components/permisos-via-publica/ui";
@@ -34,6 +34,7 @@ import { ChipDocumento } from "./chip-documento";
 import { clasesArea } from "./colores-area";
 import { CuadrillasEnVivo } from "./cuadrillas-en-vivo";
 import { FilaOcupante, useEnlaces } from "./fila-ocupante";
+import { EVENTO_RENOMBRAR } from "./lienzo/comun";
 import { useOrg } from "./proveedor";
 
 function DelArea({ propio }: { propio: boolean }) {
@@ -60,8 +61,12 @@ function Cadena({ nodos }: { nodos: Nodo[] }) {
 export function FichaPuesto({ clave, onCerrar }: { clave: string; onCerrar: () => void }) {
   const { datos, puedeEditar, enBorrador, dispatch, abrir, usuario } = useOrg();
   const router = useRouter();
+  const pathname = usePathname();
   const enlaces = useEnlaces();
   const nodo = nodoDe(datos.nodos, clave);
+  // En el Lienzo, «Renombrar» cierra la ficha y deja la tarjeta editándose (en el celular no hay
+  // doble clic ni F2). Se avisa cuando la hoja ya se cerró, así no le saca el foco al campo.
+  const enLienzo = pathname.includes("lienzo");
 
   if (!nodo) {
     return (
@@ -101,6 +106,11 @@ export function FichaPuesto({ clave, onCerrar }: { clave: string; onCerrar: () =
     }
   };
 
+  const renombrar = () => {
+    onCerrar();
+    window.setTimeout(() => window.dispatchEvent(new CustomEvent(EVENTO_RENOMBRAR, { detail: clave })), 350);
+  };
+
   const editarFicha = () => {
     if (!enBorrador) dispatch({ tipo: "entrar", autor: usuario ? nombreCompleto(usuario) : "Editor" });
     abrir({ tipo: "editar", clave });
@@ -124,6 +134,11 @@ export function FichaPuesto({ clave, onCerrar }: { clave: string; onCerrar: () =
           <Button variant="outline" className="h-9 max-sm:h-10" onClick={copiarLink}>
             <Link2 aria-hidden /> Copiar link
           </Button>
+          {puedeEditar && enLienzo && (
+            <Button variant="outline" className="h-9 max-sm:h-10" onClick={renombrar}>
+              <PencilLine aria-hidden /> Renombrar
+            </Button>
+          )}
           {puedeEditar && (
             <Button variant="outline" className="h-9 max-md:hidden" onClick={editarFicha}>
               <Pencil aria-hidden /> Editar ficha

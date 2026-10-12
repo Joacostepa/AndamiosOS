@@ -7,7 +7,7 @@ import { memo, useEffect, useRef } from "react";
 import { motion, useMotionValue, useMotionValueEvent, useTransform } from "motion/react";
 import { Expand, Maximize, Minus, Plus, Shrink } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { Caja, Limites } from "@/lib/organigrama/layout";
+import type { Caja, Grupo, Limites } from "@/lib/organigrama/layout";
 import type { ColorArea } from "@/lib/organigrama/tipos";
 import type { ApiCamara } from "./camara";
 
@@ -57,12 +57,15 @@ const ALTO = 116;
 
 function MinimapaBase({
   cajas,
+  grupos,
   colores,
   limites,
   cam,
   vista,
 }: {
   cajas: [string, Caja][];
+  /** Los recuadros de las áreas (árbol): se ven como un tinte detrás de sus cajas. */
+  grupos: Grupo[];
   colores: Record<string, ColorArea>;
   limites: Limites;
   cam: ApiCamara;
@@ -123,6 +126,24 @@ function MinimapaBase({
         }}
         onPointerMove={(e) => e.buttons && llevar(e)}
       >
+        {grupos
+          .filter((g) => g.forma === "arbol")
+          .map((g) => {
+            const p = aMini(g.caja.x, g.caja.y);
+            return (
+              <motion.rect
+                key={`g:${g.clave}`}
+                initial={false}
+                animate={{ attrX: p.x, attrY: p.y }}
+                width={Math.max(2, g.caja.w * s)}
+                height={Math.max(2, g.caja.h * s)}
+                rx={3}
+                style={{ fill: `var(--tb-${colores[g.clave] ?? "gris"}-bg)`, stroke: `var(--tb-${colores[g.clave] ?? "gris"}-borde)` }}
+                strokeWidth={0.5}
+                strokeOpacity={0.5}
+              />
+            );
+          })}
         {cajas.map(([clave, c]) => {
           const p = aMini(c.x, c.y);
           return (

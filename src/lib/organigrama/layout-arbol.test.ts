@@ -7,6 +7,7 @@ import {
   OPCIONES_LAYOUT,
   areaLibre,
   calcularLayout,
+  claseCaja,
   columnasArbol,
   desplazamientoAncla,
   desplazar,
@@ -74,7 +75,7 @@ test("árbol: con muchos hijos, grilla de 2 columnas; la última fila incompleta
   assert.ok(Math.abs(centroX(l.cajas.vehiculos) - centroX(ops)) < 0.01);
   // Mucho más angosto que una fila de 7.
   const lim = limitesDeRama(l, NODOS_VIGENTES, "ops");
-  assert.ok(lim.maxX - lim.minX < 3 * OPCIONES_LAYOUT.ancho);
+  assert.ok(lim.maxX - lim.minX < 3 * OPCIONES_LAYOUT.tamanos.puesto.w);
 });
 
 test("columnasArbol: una fila hasta 3; después 2 columnas; más columnas si quedarían más de 4 filas", () => {
@@ -278,4 +279,115 @@ test("encuadrar dentro del área libre: la Dirección no queda debajo de la barr
   const abajo = pantalla(l.limites.maxX, l.limites.maxY);
   assert.ok(arriba.y >= area.y && arriba.x >= area.x);
   assert.ok(abajo.y <= area.y + area.h && abajo.x <= area.x + area.w);
+});
+
+// ── Jerarquía: tamaños por clase y grupos de área ─────────────────────────────
+
+const area = (clave: string, dependeDe: string, orden = 0): Nodo => ({ clave, dependeDe, tipo: "area", titulo: clave, color: "azul", tareas: [], noHace: [], kpis: [], orden });
+const adentro = (a: Caja, b: Caja) => a.x >= b.x && a.y >= b.y && a.x + a.w <= b.x + b.w && a.y + a.h <= b.y + b.h;
+/** Operaciones con una subárea Compras (y un puesto adentro): el caso del dueño. */
+const CON_COMPRAS = [...NODOS_VIGENTES, area("compras", "ops", 99), puesto("comprador", "compras")];
+
+test("claseCaja: Dirección, área (de la Dirección), subárea (de otra área) y puesto", () => {
+  const dg = NODOS_VIGENTES.find((n) => n.clave === "dg")!;
+  const ops = NODOS_VIGENTES.find((n) => n.clave === "ops")!;
+  assert.equal(claseCaja(dg, undefined), "direccion");
+  assert.equal(claseCaja(ops, dg), "area");
+  assert.equal(claseCaja(area("compras", "ops"), ops), "subarea");
+  assert.equal(claseCaja(puesto("p", "ops"), ops), "puesto");
+});
+
+test("jerarquía: cada clase tiene su tamaño, de mayor a menor, en las dos formas", () => {
+  const t = OPCIONES_LAYOUT.tamanos;
+  assert.ok(t.direccion.w > t.area.w && t.area.w > t.subarea.w && t.subarea.w > t.puesto.w);
+  assert.ok(t.direccion.h >= t.area.h && t.area.h > t.subarea.h && t.subarea.h > t.puesto.h);
+  for (const forma of ["lista", "arbol"] as const) {
+    const l = calcularLayout(CON_COMPRAS, { forma });
+    assert.deepEqual({ w: l.cajas.dg.w, h: l.cajas.dg.h }, t.direccion);
+    assert.deepEqual({ w: l.cajas.ops.w, h: l.cajas.ops.h }, t.area);
+    assert.deepEqual({ w: l.cajas.compras.w, h: l.cajas.compras.h }, t.subarea);
+    assert.deepEqual({ w: l.cajas.planif.w, h: l.cajas.planif.h }, t.puesto);
+    // Ninguna caja se pisa con otra.
+    const cajas = Object.entries(l.cajas);
+    for (let i = 0; i < cajas.length; i++)
+      for (let j = i + 1; j < cajas.length; j++) assert.ok(!se(cajas[i][1], cajas[j][1]), `${forma}: ${cajas[i][0]} pisa a ${cajas[j][0]}`);
+  }
+});
+
+test("árbol: cada área es un recuadro que encierra su tarjeta y todo lo de abajo; la subárea va anidada", () => {
+  const l = calcularLayout(CON_COMPRAS, ARBOL);
+  const g = Object.fromEntries(l.grupos.map((x) => [x.clave, x]));
+  // Un grupo por área (no la Dirección ni los puestos).
+  assert.deepEqual(Object.keys(g).sort(), ["admin", "compras", "deposito", "ops", "sistemas", "tec_com"]);
+  for (const x of l.grupos) {
+    assert.equal(x.forma, "arbol");
+    const debajo = (k: string): boolean => {
+      const p = CON_COMPRAS.find((n) => n.clave === k)?.dependeDe;
+      return !!p && (p === x.clave || debajo(p));
+    };
+    for (const n of CON_COMPRAS)
+      if (n.clave === x.clave || debajo(n.clave)) assert.ok(adentro(l.cajas[n.clave], x.caja), `${n.clave} se sale del recuadro de ${x.clave}`);
+    // Con aire: la tarjeta del área no toca el borde del recuadro.
+    assert.ok(l.cajas[x.clave].y - x.caja.y >= OPCIONES_LAYOUT.margenGrupo - 0.01);
+  }
+  assert.equal(g.compras.nivel, 1);
+  assert.equal(g.ops.nivel, 0);
+  assert.ok(adentro(g.compras.caja, g.ops.caja));
+  // Los anidados después (se pintan encima).
+  assert.ok(l.grupos.findIndex((x) => x.clave === "compras") > l.grupos.findIndex((x) => x.clave === "ops"));
+  // Los recuadros de las áreas hermanas no se tocan, ni tocan a la Dirección.
+  const top = l.grupos.filter((x) => x.nivel === 0);
+  for (let i = 0; i < top.length; i++) {
+    assert.ok(!se(top[i].caja, l.cajas.dg));
+    for (let j = i + 1; j < top.length; j++) assert.ok(!se(top[i].caja, top[j].caja), `${top[i].clave} toca a ${top[j].clave}`);
+  }
+  // Los límites incluyen los recuadros (el encuadre no los corta).
+  const minX = Math.min(...l.grupos.map((x) => x.caja.x));
+  assert.ok(l.limites.minX <= minX);
+});
+
+test("árbol: la subárea va después de los puestos, en una fila propia y centrada", () => {
+  const l = calcularLayout(CON_COMPRAS, ARBOL);
+  const puestosOps = ["planif", "supervision", "montajes", "taller", "logistica", "seguridad", "vehiculos"].map((c) => l.cajas[c]);
+  const ultimaFila = Math.max(...puestosOps.map((p) => p.y + p.h));
+  const g = l.grupos.find((x) => x.clave === "compras")!;
+  assert.ok(g.caja.y > ultimaFila);
+  assert.ok(Math.abs(g.caja.x + g.caja.w / 2 - centroX(l.cajas.ops)) < 0.01);
+  // Las columnas de puestos no se ensanchan por el recuadro: siguen teniendo el ancho de un puesto.
+  const xs = [...new Set(puestosOps.slice(0, 6).map((p) => p.x))];
+  assert.equal(xs.length, 2);
+  assert.equal(Math.abs(xs[1] - xs[0]), OPCIONES_LAYOUT.tamanos.puesto.w + OPCIONES_LAYOUT.sepXArbol);
+});
+
+test("conectores dentro de un área llevan el grupo (se pintan de su color); los de la Dirección, no", () => {
+  for (const forma of ["lista", "arbol"] as const) {
+    const l = calcularLayout(CON_COMPRAS, { forma });
+    assert.equal(l.aristas.find((a) => a.a === "ops")!.grupo, undefined);
+    assert.equal(l.aristas.find((a) => a.a === "planif")!.grupo, "ops");
+    assert.equal(l.aristas.find((a) => a.a === "compras")!.grupo, "ops");
+    assert.equal(l.aristas.find((a) => a.a === "comprador")!.grupo, "compras");
+  }
+});
+
+test("lista: el grupo es una franja fina por la sangría, debajo de la tarjeta hasta el último de abajo", () => {
+  const l = calcularLayout(CON_COMPRAS);
+  const g = l.grupos.find((x) => x.clave === "ops")!;
+  const ops = l.cajas.ops;
+  assert.equal(g.forma, "lista");
+  assert.ok(g.caja.w <= 4);
+  assert.ok(Math.abs(g.caja.x + g.caja.w / 2 - (ops.x + OPCIONES_LAYOUT.sangria / 2)) < 0.01);
+  assert.equal(g.caja.y, ops.y + ops.h);
+  assert.equal(g.caja.y + g.caja.h, Math.max(...["vehiculos", "comprador", "compras"].map((c) => l.cajas[c].y + l.cajas[c].h)));
+  // En la lista no hay margen de grupo: la sangría de siempre.
+  assert.equal(l.cajas.planif.x, ops.x + OPCIONES_LAYOUT.sangria);
+});
+
+test("desplazar y limitesDeRama acompañan a los recuadros", () => {
+  const l = calcularLayout(CON_COMPRAS, ARBOL);
+  const d = desplazar(l, 10, -5);
+  const a = l.grupos.find((x) => x.clave === "ops")!.caja;
+  const b = d.grupos.find((x) => x.clave === "ops")!.caja;
+  assert.deepEqual(b, { ...a, x: a.x + 10, y: a.y - 5 });
+  const lim = limitesDeRama(l, CON_COMPRAS, "ops");
+  assert.deepEqual(lim, { minX: a.x, minY: a.y, maxX: a.x + a.w, maxY: a.y + a.h });
 });

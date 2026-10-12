@@ -58,6 +58,37 @@ export function renombrar(nodos: Nodo[], clave: string, titulo: string): Nodo[] 
   return nodos.map((n) => (n.clave === clave ? { ...n, titulo: t } : n));
 }
 
+/** Cambia el rol (el subtítulo). Vacío lo saca. Si no cambia nada, devuelve los mismos nodos. */
+export function cambiarRol(nodos: Nodo[], clave: string, rol: string): Nodo[] {
+  const r = rol.trim();
+  const n = nodoDe(nodos, clave);
+  if (!n || (n.rol ?? "") === r) return nodos;
+  return nodos.map((x) => {
+    if (x.clave !== clave) return x;
+    const copia: Nodo = { ...x, rol: r };
+    if (!r) delete copia.rol;
+    return copia;
+  });
+}
+
+// ── Vacantes: calmas o «búsqueda abierta» ────────────────────────────────────
+//
+// Un puesto sin ocupante NO es una alarma: una estructura recién cargada está toda sin gente, y
+// pintar todo de naranja aplasta la jerarquía. La tarjeta de una vacante es neutra («Sin
+// asignar»), salvo que sea una BÚSQUEDA ABIERTA (lo que crea la herramienta «Vacante»: rol «A
+// cubrir» y nota interna «Búsqueda abierta») o que el usuario active «Resaltar vacantes».
+
+/** ¿Es un puesto marcado como búsqueda abierta? (El rol se ve también sin permiso de editor.) */
+export function esBusquedaAbierta(n: Nodo): boolean {
+  if (n.tipo !== "puesto") return false;
+  return n.rol?.trim().toLowerCase() === "a cubrir" || /b[uú]squeda abierta/i.test(n.notaInterna ?? "");
+}
+
+/** ¿La caja es de un externo (estructura v2: el título termina en «(externo)» o el rol arranca con «Externo»)? */
+export function esCajaExterna(n: Nodo): boolean {
+  return n.tipo === "puesto" && (/\(externo\)\s*$/i.test(n.titulo) || /^externo\b/i.test(n.rol?.trim() ?? ""));
+}
+
 // ── Mover y eliminar ─────────────────────────────────────────────────────────
 
 /** ¿`clave` se puede soltar sobre `destino`? No sobre sí mismo, sus descendientes ni su padre actual. */

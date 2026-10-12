@@ -9,6 +9,35 @@ Para retomar: "Leé docs/asistente-comercial/auditoria-2026-10-12.md y arrancamo
 
 ---
 
+## Estado al 12/10 a la noche: todo en producción
+
+- **En `main` y desplegado:**
+  - PR #7: Opus 5.5 y el costo corregido;
+  - PR #9: el bloque 1;
+  - PR #10: bloques 2 a 6 y el criterio v4.
+- **Parámetro:** `asistente_modelo` = `claude-opus-5-5`.
+- **Migraciones aplicadas y verificadas:**
+  - `20261012000004` (la tabla del feedback);
+  - `…05` (permisos de lectura);
+  - `…10` (criterio v4 vigente).
+- **Guiones de evaluación** (`scripts/eval-asistente.mts --todos`):
+  - los 18 casos costaron US$ 2,41 (se habían estimado US$ 12,5);
+  - después de corregir 3 guiones mal planteados (3, 7 y 13), pasan todos los chequeos obligatorios;
+  - quedan avisos menores que no bloquean;
+  - el caso 4 falló una vez porque el catastro de la Ciudad no respondió.
+- **e2e contra Odoo real:** ok (S02835 y S02836, borradas).
+- **Le queda a JS:**
+  - cerrar el registro abierto en Supabase Auth, si las altas las hace un admin;
+  - mirar en el celular la tarjeta «Mandar al cliente», la voz con mantener apretado y la barra de abajo;
+  - re-editar un presupuesto que tenga el PDF adjunto, para probar la lectura por `file_id`;
+  - medir el gasto real de la primera semana en Parámetros → Uso.
+- **Pendiente de código:**
+  - tramos de bandeja con su mínimo cada uno;
+  - varias parcelas en un englobe;
+  - que la charla se cree con el primer mensaje;
+  - el header general con el notch del iPhone.
+- **Decisiones que siguen abiertas:** el 3.4 (que el motor calcule las piezas; faltan las reglas), el 3.6 (modo rápido), el técnico al crear y la voz por teléfono.
+
 ## Veredicto
 
 - **No hace falta rediseñarlo.** Lo mejor del módulo queda igual:

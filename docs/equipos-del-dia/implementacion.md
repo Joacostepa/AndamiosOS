@@ -123,7 +123,15 @@ const historial = useHistorialHoja({ hojaId });
 usePrecargaCierre(cuadrillaOdooId, fecha, otId);    // ya usado por formulario-cierre.tsx
 ```
 
-Los gestos (`useGesto`) ya muestran el toast con "Deshacer" (9 s), avisan por el canal en vivo y refrescan el día **en segundo plano** (`refrescarHoja`: uno por ráfaga, nunca con un gesto en vuelo). Los errores salen como toast con el texto del servidor. **Los de las tarjetas (`useAccionHoja`) son optimistas** desde el 10/10 (noche): `optimista.ts` (puro, con tests) calcula el día nuevo con las reglas de estado.ts (los vehículos y sus lleva/busca con `planVehiculos`, el mismo plan que escribe el servidor) y se ve al instante; si el servidor rechaza, vuelve atrás. Viajes, pedidos, envíos y precarga esperan al servidor. Ver handoff.md, "Latencia".
+Los gestos (`useGesto`) ya muestran el toast con "Deshacer" (9 s), avisan por el canal en vivo y refrescan el día **en segundo plano** (`refrescarHoja`: uno por ráfaga, nunca con un gesto en vuelo). Los errores salen como toast con el texto del servidor. **Los de las tarjetas (`useAccionHoja`) son optimistas** desde el 10/10 (noche): `optimista.ts` (puro, con tests) calcula el día nuevo con las reglas de estado.ts (los vehículos y sus lleva/busca con `planVehiculos`, el mismo plan que escribe el servidor) y se ve al instante; si el servidor rechaza, vuelve atrás. Viajes, pedidos, envíos y precarga esperan al servidor. Ver handoff.md, "Latencia". Desde el Pizarrón (12/10) también son optimistas `chofer_del_camion` (`aplicarOptimistaViaje`; el resto de los viajes espera, TODO F3) y las ausencias crear / alta / anular (`aplicarOptimistaAusencia`). `useAccionHoja`, `useAccionViaje` y `useAccionAusencia` aceptan `{ aviso: false }` (el pizarrón junta las acciones de un gesto en un solo toast con un Deshacer para todas).
+
+### 3.1 El Pizarrón (`/planificacion/hoja/pizarron`, F0 + F1)
+
+- **Rutas**: Cuadrillas y Camiones están en el grupo `src/app/(dashboard)/planificacion/hoja/(clasica)/` (mismas URLs, mismo encabezado); `/planificacion/hoja/cuadrillas` es un alias de Cuadrillas; el pizarrón tiene su layout en `hoja/pizarron/`. `src/app/(dashboard)/planificacion/layout.tsx` lee una vez `hora_corte_manana` y `pizarron` (`leerParametrosPantalla`, con `cache`) y los baja por contexto (`ProveedorCorteHoja`, `ProveedorModoPizarron`).
+- **Parámetro** `hd_parametros.pizarron` = `oculto` | `probar` | `principal` (`modo-pizarron.ts`; sin la fila, `oculto`; no hay migración todavía). `probar`: pestaña "Pizarrón (nuevo)" para quien edita la Hoja del día. `principal`: `/planificacion/hoja` redirige al pizarrón (`?dia=` incluido) y el encabezado clásico apunta a `/cuadrillas`. El pizarrón abre por URL siempre (módulo `hoja-dia` por `moduloDeRuta`).
+- **Lógica pura**: `pizarron.ts` (`pizarron(dia, ahora)` → columnas, bandeja, avisos por columna = `problemas()` en frase corta + `bs[0]`, secuencia de obras con `comoLlega`, `estadoMandar`, colores fijos) y `gestos-pizarron.ts` (`soltar(dia, origen, destino, ahora)` → `{ gestos }` con acciones existentes | `rechazo` | `nada` | `pedirMotivo`). Tests: `pizarron.test.ts`, `gestos-pizarron.test.ts`.
+- **Componentes** (`src/components/hoja-dia/pizarron/`): `pizarron.tsx` (datos, DndContext, menús, Deshacer, teclas), `barra-dia.tsx`, `columna.tsx`, `fichas.tsx`, `bandeja.tsx`, `mandar.tsx`, `pedidos.tsx` (pedidos en lectura + mini-mapa), `mini-mapa.tsx` (MapLibre), `use-flip.ts`, `contexto.tsx`, `arnes-prueba.tsx` (sólo la página de prueba).
+- **Arnés**: `npm run test:e2e` (`e2e/hoja-dia/`): levanta `next dev` (o `E2E_URL=…`) y abre `/prueba/pizarron?dia=2026-10-13`, que existe SÓLO en desarrollo.
 
 ## 4. Qué función de `estado.ts` alimenta cada parte de la pantalla
 
@@ -189,8 +197,10 @@ Los problemas y avisos traen sus botones como datos (`{ l: "Usar Miño", a: "usa
 ## 6. Dónde va cada cosa
 
 ```
-src/app/(dashboard)/planificacion/hoja/page.tsx            ← vista Cuadrillas (?dia=)
-src/app/(dashboard)/planificacion/hoja/camiones/page.tsx   ← vista Camiones (?dia=)
+src/app/(dashboard)/planificacion/hoja/(clasica)/page.tsx            ← vista Cuadrillas (?dia=); con pizarron=principal redirige
+src/app/(dashboard)/planificacion/hoja/(clasica)/camiones/page.tsx   ← vista Camiones (?dia=)
+src/app/(dashboard)/planificacion/hoja/pizarron/page.tsx             ← el Pizarrón (?dia=)
+src/components/hoja-dia/pizarron/     el Pizarrón (ver §3.1)
 src/app/h/[token]/page.tsx (+ layout.tsx propio, tema claro)  ← el celular (ruta pública: "/h/" ya está en el proxy)
 src/components/hoja-dia/cuadrillas/   tarjeta, panel Gente, bandeja, selector de chofer, instrucciones, precarga, ausencias
 src/components/hoja-dia/camiones/     filas con línea de tiempo y lista, cola de pedidos, nuevo pedido, lista de carga

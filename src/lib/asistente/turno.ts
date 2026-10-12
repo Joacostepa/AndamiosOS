@@ -35,6 +35,14 @@ import type { Evento } from "./eventos";
 const MAX_VUELTAS = 15;
 const PRESUPUESTO_MS = 240_000;
 const BETAS: Anthropic.Beta.AnthropicBeta[] = ["server-side-fallback-2026-07-01"];
+/**
+ * Modelos que atan cada bloque de pensamiento a la conversación que lo produjo ("preserved
+ * thinking"): si cambian las herramientas o el system después del bloque, la API lo rechaza
+ * con un 400. Pasa con cada deploy que agrega o cambia una herramienta, con las charlas
+ * abiertas. Con `drop_block` la API descarta ese pensamiento viejo y sigue.
+ */
+const PENSAMIENTO_ATADO = new Set(["claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-1"]);
+const BETA_ATADO = "thinking-binding-controls-2026-08-01" as Anthropic.Beta.AnthropicBeta;
 type Esfuerzo = "low" | "medium" | "high" | "xhigh" | "max";
 const ESFUERZOS = new Set<string>(["low", "medium", "high", "xhigh", "max"]);
 
@@ -134,6 +142,8 @@ export async function* ejecutarTurno(p: {
     // mensajes una vez (al pasar del chat a la voz o al revés); dentro de la charla se recupera.
     const esfuerzoVoz = parametros.find((x) => x.clave === "asistente_esfuerzo_voz")?.texto?.trim();
     const esfuerzo = (canal === "voz" && esfuerzoVoz && ESFUERZOS.has(esfuerzoVoz) ? esfuerzoVoz : conv.esfuerzo) as Esfuerzo;
+    // Sólo en esos modelos: a las charlas de Opus 5 no les cambia el pedido (ni pierden el caché).
+    const atado = PENSAMIENTO_ATADO.has(conv.modelo);
 
     const ctx: ContextoHerramientas = {
       db, conversacion: conv, usuarioId: p.usuarioId, vendedor, borrador, tarifas, lista: listaCalculo, productos, odoo,
@@ -230,10 +240,12 @@ export async function* ejecutarTurno(p: {
           system: conv.system_snapshot,
           tools: definicionesParaApi(),
           messages: mensajes,
-          thinking: { type: "adaptive" },
+          thinking: atado
+            ? { type: "adaptive", block_binding: { prefix_mismatch_behavior: "drop_block" } }
+            : { type: "adaptive" },
           output_config: { effort: esfuerzo },
           cache_control: { type: "ephemeral" },
-          betas: BETAS,
+          betas: atado ? [...BETAS, BETA_ATADO] : BETAS,
           fallbacks: "default",
           metadata: { user_id: p.usuarioId },
         },
@@ -303,7 +315,7 @@ export async function* ejecutarTurno(p: {
       }
       if (pensando) yield { t: "pensando", on: false };
 
-      costo += costoUsd(mensaje.usage as unknown as Record<string, number>, mensaje.model);
+      costo += costoUsd(mensaje.usage as unknown as Record<string, unknown>, conv.modelo);
       const contenido = limpiarFallback(mensaje.content);
 
       if (mensaje.stop_reason === "refusal") {

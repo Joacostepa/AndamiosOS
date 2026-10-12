@@ -692,7 +692,8 @@ Gabriel y Jorge dejen anotado lo que no les sirvió. No contestó: queda como id
     3. mandar `user_message` y responder los `ping` con `pong`.
 
     Se hizo el 26/09; el script no quedó en el repo.
-- **Sonnet 5 hoy no anda.** El aviso de cada turno (vendedor, resumen del borrador, resultado
+- **Sonnet 5 hoy no anda** (Sonnet 5.5 y Opus 5.5 sí aceptan el aviso de sistema a mitad de charla;
+  ver `auditoria-2026-10-12.md`). El aviso de cada turno (vendedor, resumen del borrador, resultado
   del botón) va como mensaje `system` a mitad de la conversación, y Sonnet 5 no lo acepta: cada
   pedido daría error. Para usarlo hay que mandar ese aviso de otra forma, sin perder que el
   resultado del botón no se pueda fingir escribiendo. No cambiar `asistente_modelo` sin eso.

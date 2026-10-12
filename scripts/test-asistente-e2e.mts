@@ -26,7 +26,7 @@ const ok = (cond: unknown, que: string) => {
 const { data: yo } = await db.from("user_profiles").select("id").eq("email", "js@andamiosbuenosaires.com.ar").single();
 const sis = await construirSistema(db);
 const conv = await crearConversacion(db, {
-  usuario_id: yo!.id, canal: "web", modelo: "claude-opus-5", esfuerzo: "high", system_snapshot: sis.bloques, system_hash: sis.hash,
+  usuario_id: yo!.id, canal: "web", modelo: "claude-opus-5-5", esfuerzo: "medium", system_snapshot: sis.bloques, system_hash: sis.hash,
   criterio_version: sis.criterioVersion, parametros_version: sis.parametrosVersion, titulo: "[PRUEBA E2E] asistente",
 });
 

@@ -2,7 +2,7 @@
 
 ## Estado (12/10/2026)
 
-**En producción** desde el merge `8ba57b9` a `main` (rama `feat/organigrama`). La migración `20261012000003_organigrama.sql` la aplicó el dueño a mano desde su terminal y quedó verificada: versión 1 publicada con los 24 nodos y ningún ocupante.
+**En producción** desde el merge `8ba57b9` a `main` (rama `feat/organigrama`). El mismo 12/10 se sumaron la vista **Árbol** del Lienzo y la **estructura v2** (documento + script, todavía sin cargar en la base). La migración `20261012000003_organigrama.sql` la aplicó el dueño a mano desde su terminal y quedó verificada: versión 1 publicada con los 24 nodos y ningún ocupante.
 
 ### Hecho
 
@@ -16,15 +16,24 @@
 - Tests (`node:test`, 521 en verde al mergear): `datos.test.ts` (traducción base ↔ pantalla, diffs, `operacionesPara`, y que el JSON sembrado en la migración sea igual a `estructura-base.ts`), más `arbol`, `lienzo` y `layout`.
 - Antes de aplicarla, la migración se probó: en un Postgres local (PGlite) dos veces seguidas, con ciclos, versiones publicadas, RLS y un ciclo completo crear → asignar → deshacer → publicar; y contra la base real dentro de `BEGIN … ROLLBACK` (una sola pasada; ver «Cómo probar una migración nueva»).
 
-- **Lienzo: Lista / Árbol** (rama `feat/organigrama-arbol`, 12/10, sin mergear): selector en la barra (tecla `L`, recordado en `localStorage`, Árbol por defecto en escritorio, siempre Lista en el celular); layout Árbol compacto en `layout.ts` (`forma: "arbol"`, grilla de 2 columnas con más de 3 hijos) con tests en `layout-arbol.test.ts`; y el arreglo de los encuadres, que ahora miden los paneles flotantes (`data-panel` + `areaLibre`) y no dejan la Dirección debajo de la barra ni lo de abajo debajo del banco. Detalle en [modulo.md § 3](./modulo.md#3-pantallas). Solo código, sin migración.
+- **Lienzo: Lista / Árbol** (rama `feat/organigrama-arbol`, en `main` desde el 12/10): selector en la barra (tecla `L`, recordado en `localStorage`, Árbol por defecto en escritorio, siempre Lista en el celular); layout Árbol compacto en `layout.ts` (`forma: "arbol"`, grilla de 2 columnas con más de 3 hijos) con tests en `layout-arbol.test.ts`; y el arreglo de los encuadres, que ahora miden los paneles flotantes (`data-panel` + `areaLibre`) y no dejan la Dirección debajo de la barra ni lo de abajo debajo del banco. Detalle en [modulo.md § 3](./modulo.md#3-pantallas). Solo código, sin migración. Límite: en una notebook 1440×900 el árbol entero entra recién al ~33 % (43 % en pantalla completa), con las tarjetas resumidas; criterio de uso: **Árbol para ver la forma y presentar, Lista para trabajar**.
+- **Estructura v2** (rama `feat/organigrama-estructura-v2`, en `main` desde el 12/10): rediseño de la estructura para pyme familiar, basado en dos relevamientos del circuito real de ABA (sistema + base, y negocio + normativa). 27 funciones en 3 niveles, sin personas, con todas las fichas completas. Diseño, tabla de cambios contra la v1 y preguntas abiertas en [estructura-v2.md](./estructura-v2.md). Se carga como **borrador** con `supabase/scripts/organigrama-estructura-v2.sql` (ver «Falta»). **No está cargada.**
+- **Hallazgo del relevamiento**: las siglas SOL/OPC/RS/FS/RDP/RDF/ICO de la v1 (y de «Seguí el papel») **no existen en ABA**: venían del organigrama viejo; en la base no hay remitos ni movimientos de material. La v2 no las usa; [propuesta.md § 1](./propuesta.md) lleva la corrección.
 
 ### Falta
 
+0. **Estructura v2** — en este orden:
+   1. Contestar las preguntas abiertas de [estructura-v2.md](./estructura-v2.md) (quién firma memorias y certificados, régimen UOCRA/IERIC y quién liquida, asesor SyH externo, responsable de cada frente, si SyH puede frenar un armado…). Lo no contestado queda «[confirmar]» en las fichas.
+   2. Reescribir `src/lib/organigrama/circuitos.ts` con los 4 circuitos reales propuestos en [estructura-v2.md § 7](./estructura-v2.md) (consulta → obra armada, permiso de vía pública, parte del día, desarme y cierre). **Tiene que salir antes o junto con la publicación de la v2**: los circuitos actuales paran en `stock`, `despacho`, `devoluciones`, `control` y `cobr`, que la v2 elimina (el papel deja de viajar a esas cajas). Su test verifica que cada parada exista y tenga la tarea con ese documento.
+   3. Cargarla como borrador (corre como postgres; si ya hay un borrador aborta sin tocar nada): `npx supabase db query --linked -f supabase/scripts/organigrama-estructura-v2.sql`. Se probó en seco contra la base real el 12/10 (27 nodos, 15 claves reutilizadas, 12 nuevas, 9 que se liberan al publicar).
+   4. Revisarla en el Lienzo y publicarla (o descartarla) desde Versiones.
+   5. Si queda, actualizar `estructura-base.ts` a la v2 y regenerar el JSON de la migración (solo afecta a una base vacía).
 1. **Probar en el navegador con datos reales** (nadie lo vio todavía con la base de verdad): la lista de abajo.
 2. **Dar permisos** en Configuración › Usuarios: «ver» a todos los perfiles y «editar» a quien mantiene la estructura (el admin ya edita). Hasta entonces solo lo ve el admin.
 3. **Ubicar a la gente**: todo arranca vacante; se arrastra a cada persona desde el banco del Lienzo.
 4. **Cuenta duplicada**: hay dos usuarios activos «Joaquin Stepansky»; desactivar uno o aparece dos veces en el banco.
-5. Cargar las **misiones** de los 18 puestos (vacías a propósito, como en el original).
+5. Cargar las **misiones** de los 18 puestos de la v1 (vacías a propósito, como en el original). La v2 ya las trae.
+7. **Borrador perdido (a investigar)**: el 12/10 el dueño vio en el Lienzo «BORRADOR · 3 cambios», pero poco después la base no tenía ningún borrador. Si no lo descartó él, algún guardado falló sin que se viera; revisar la cola de `proveedor.tsx` (`operacionesPara` / el toast de error) reproduciendo crear borrador → 3 cambios → recargar.
 6. **App vieja `organigrama-aba`** (Firebase, proyecto `orgama-aba`): no tiene login, así que su Firestore probablemente está abierto con teléfonos y emails del equipo. Revisar las reglas o dar de baja el proyecto ahora que el módulo vive acá.
 
 ### Qué probar (primera vez con datos reales)
@@ -78,6 +87,7 @@
 2. Primera maqueta (rama `maqueta/organigrama`): Mapa por columnas, fichas, buscador, Personas, Para revisar, borrador/versiones, impresión A4 — [propuesta.md §§ 1–6](./propuesta.md).
 3. Devolución del dueño: «me gustó, pero me imaginaba algo súper animado, didáctico». Segunda propuesta: el **Lienzo vivo** ([propuesta.md § 7](./propuesta.md#7-propuesta-2-lienzo-vivo-organigramalienzo)). Le encantó y pasó a ser la entrada del módulo. **Criterio para cambios futuros: que siga siendo manipulable y animado, no solo para leer.**
 4. Integración a datos reales (rama `feat/organigrama`) con las decisiones de [modulo.md § 2](./modulo.md#2-decisiones-12102026), y merge a producción el 12/10.
+5. Pedido del dueño: que también se abra «tipo árbol» → vista Árbol como **opción** (no reemplazo), porque el árbol puro de ABA mide ~4.000 px de ancho. Y una revisión de la estructura «pensando que es una pyme familiar, no una corporación, y entendiendo el circuito de ABA» → [estructura-v2.md](./estructura-v2.md). Los relevamientos que la sustentan eran archivos de trabajo; sus conclusiones están en ese documento.
 
 ## Mantenimiento
 

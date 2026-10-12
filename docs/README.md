@@ -31,7 +31,7 @@ Ante una contradicción entre un diseño y el código, manda el código; el `han
 | Informe de obra | [modulo](./informe-de-obra/modulo.md) | En producción |
 | Cómputo de materiales | [modulo](./computo-materiales/modulo.md) | En producción (spec de junio) |
 | Configuración de cuadrillas | [modulo](./cuadrillas/modulo.md) | En producción (spec de junio) |
-| Organigrama (estructura, manual de funciones y Lienzo vivo) | [modulo](./organigrama/modulo.md) · [handoff](./organigrama/handoff.md) · [propuesta](./organigrama/propuesta.md) | En producción desde 12/10 |
+| Organigrama (estructura, manual de funciones y Lienzo vivo) | [modulo](./organigrama/modulo.md) · [handoff](./organigrama/handoff.md) · [propuesta](./organigrama/propuesta.md) · [estructura v2](./organigrama/estructura-v2.md) | En producción desde 12/10; estructura v2 propuesta, sin cargar |
 
 ### Archivo
 

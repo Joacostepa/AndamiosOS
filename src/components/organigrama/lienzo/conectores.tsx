@@ -3,15 +3,17 @@
 // Los conectores del lienzo: SVG en coordenadas del mundo, debajo de las tarjetas. Cada
 // conector interpola su `d` con el mismo spring que las cajas, así se redibuja acompañando el
 // movimiento. Los nuevos nacen desde el padre; la cadena de mando del foco se resalta con un
-// trazo que se dibuja de abajo hacia arriba.
+// trazo que se dibuja de abajo hacia arriba. La clave de cada conector es su hijo + su familia
+// (curva o codo): al pasar de Lista a Árbol el codo no se vuelve a montar, se transforma (lista y
+// árbol tienen la misma forma de `d`).
 
 import { memo } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { rutaSvg, type Arista } from "@/lib/organigrama/layout";
+import { familiaGeo, geometriaNaciente, rutaSvg, type Arista } from "@/lib/organigrama/layout";
 import { RESORTE } from "./comun";
 
 function rutaNaciente(a: Arista): string {
-  return rutaSvg({ ...a.geo, hasta: a.geo.desde } as Arista["geo"]);
+  return rutaSvg(geometriaNaciente(a.geo));
 }
 
 function ConectoresBase({
@@ -35,7 +37,7 @@ function ConectoresBase({
           const esFantasma = a.a === fantasma;
           return (
             <motion.path
-              key={`${a.a}:${a.geo.modo}${esFantasma ? ":f" : ""}`}
+              key={`${a.a}:${familiaGeo(a.geo)}${esFantasma ? ":f" : ""}`}
               fill="none"
               className={esFantasma ? "stroke-foreground/60" : "stroke-muted-foreground/45"}
               strokeWidth={esFantasma ? 2 : 1.5}

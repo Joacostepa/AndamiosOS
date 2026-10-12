@@ -2,16 +2,19 @@
 
 // La barra de arriba del lienzo: contadores vivos (se mueven al vuelo con cada cambio),
 // deshacer/rehacer, el estado del borrador y el ÚNICO coral de la pantalla, «Publicar versión».
-// También arrancan acá los modos didácticos: «Conocé ABA» y «Seguí el papel».
+// También arrancan acá los modos didácticos: «Conocé ABA» y «Seguí el papel», y está el selector
+// Lista / Árbol (en el celular no aparece: ahí siempre es lista).
 
 import { useEffect, useRef } from "react";
 import { animate, motion, useMotionValue, useReducedMotion, useTransform } from "motion/react";
-import { FileText, GraduationCap, Keyboard, MoreHorizontal, Redo2, Undo2 } from "lucide-react";
+import { FileText, GraduationCap, Keyboard, ListTree, MoreHorizontal, Network, Redo2, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { CIRCUITOS } from "@/lib/organigrama/circuitos";
+import type { FormaLayout } from "@/lib/organigrama/layout";
 import type { Resumen } from "@/lib/organigrama/lienzo";
 import { cn } from "@/lib/utils";
+import { RESORTE } from "./comun";
 
 /** Un número que cuenta hasta su valor nuevo y da un saltito cuando cambia. */
 export function Numero({ valor }: { valor: number }) {
@@ -58,6 +61,40 @@ function Contador({ valor, de, titulo, tono }: { valor: number; de?: number; tit
   );
 }
 
+const FORMAS: { forma: FormaLayout; titulo: string; ayuda: string; Icono: typeof ListTree }[] = [
+  { forma: "lista", titulo: "Lista", ayuda: "Los puestos de cada área en lista (L)", Icono: ListTree },
+  { forma: "arbol", titulo: "Árbol", ayuda: "Los puestos se abren debajo de su área (L)", Icono: Network },
+];
+
+/** Lista / Árbol: un control segmentado discreto (sin coral). La pastilla viaja con un spring. */
+function SelectorForma({ forma, onForma }: { forma: FormaLayout; onForma: (f: FormaLayout) => void }) {
+  return (
+    <div role="radiogroup" aria-label="Forma del organigrama" className="flex items-center rounded-md bg-muted/70 p-0.5">
+      {FORMAS.map(({ forma: f, titulo, ayuda, Icono }) => {
+        const activa = f === forma;
+        return (
+          <button
+            key={f}
+            type="button"
+            role="radio"
+            aria-checked={activa}
+            title={ayuda}
+            onClick={() => onForma(f)}
+            className={cn(
+              "relative inline-flex h-7 items-center gap-1.5 rounded px-2 text-[12px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              activa ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {activa && <motion.span layoutId="forma-lienzo" aria-hidden className="absolute inset-0 rounded bg-card shadow-sm ring-1 ring-border" transition={RESORTE} />}
+            <Icono aria-hidden className="relative size-3.5" />
+            <span className="relative">{titulo}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function BarraLienzo({
   resumen,
   puedeEditar,
@@ -76,6 +113,8 @@ export function BarraLienzo({
   onPapel,
   onAtajos,
   ocupado,
+  forma,
+  onForma,
 }: {
   resumen: Resumen;
   puedeEditar: boolean;
@@ -95,14 +134,22 @@ export function BarraLienzo({
   onAtajos: () => void;
   /** Un modo didáctico está activo: se esconden las acciones de edición. */
   ocupado: boolean;
+  forma: FormaLayout;
+  /** Sin esto (celular, siempre lista) no se muestra el selector Lista / Árbol. */
+  onForma?: (f: FormaLayout) => void;
 }) {
   return (
-    <div data-sin-pan className="pointer-events-auto flex flex-wrap items-center gap-1.5 rounded-lg border bg-card/95 p-1.5 shadow-lg backdrop-blur">
+    <div
+      data-sin-pan
+      data-panel="arriba"
+      className="pointer-events-auto flex flex-wrap items-center gap-1.5 rounded-lg border bg-card/95 p-1.5 shadow-lg backdrop-blur"
+    >
       <div className="flex flex-wrap items-center gap-1" aria-live="polite">
         <Contador valor={resumen.puestos} titulo="puestos" />
         <Contador valor={resumen.conPuesto} de={resumen.activos} titulo="personas" />
         <Contador valor={resumen.vacantes} titulo={resumen.vacantes === 1 ? "vacante" : "vacantes"} tono="aviso" />
       </div>
+      {onForma && !ocupado && <SelectorForma forma={forma} onForma={onForma} />}
 
       <div className="ml-auto flex flex-wrap items-center gap-1">
         {puedeEditar && !ocupado && (

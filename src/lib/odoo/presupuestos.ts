@@ -307,3 +307,31 @@ export async function enviarPropuesta(p: { ordenId: number; plantillaId: number;
   await notaInterna(p.ordenId, `<p>Propuesta enviada por mail a <b>${dest.email}</b> desde el Asistente Comercial.</p>`);
   return { mailId: typeof mailId === "number" ? mailId : null, para: dest.email };
 }
+
+/**
+ * ¿Ya salió un mail de esta orden desde `desde`? Se mira antes de reenviar uno que quedó en duda
+ * (un intento que se cortó a mitad de camino, o un error después de que Odoo lo mandó):
+ * mandarlo dos veces le llega dos veces al cliente.
+ *
+ * Lo que deja en Odoo (visto el 12/10 en las órdenes reales): la plantilla de la casa no se borra
+ * al enviar (`auto_delete` en false), así que queda un mail.mail en `sent` (o `outgoing`, en
+ * cola) con su mensaje `email_outgoing` en el chatter, y nuestra nota «Propuesta enviada por
+ * mail». Los `email` sueltos son respuestas del cliente: no cuentan.
+ */
+export async function mailYaEnviado(ordenId: number, desde: Date): Promise<{ enviado: boolean; cuando: string | null }> {
+  // Odoo guarda las fechas en UTC como «AAAA-MM-DD HH:MM:SS».
+  const fecha = new Date(desde.getTime() - 60_000).toISOString().slice(0, 19).replace("T", " ");
+  const base = [["model", "=", "sale.order"], ["res_id", "=", ordenId], ["create_date", ">=", fecha]];
+  const [mails, mensajes] = await Promise.all([
+    executeKw<{ create_date: string }[]>(
+      "mail.mail", "search_read", [[...base, ["state", "in", ["outgoing", "sent", "received"]]]], { fields: ["create_date"], limit: 1, order: "id desc" }, LECTURA,
+    ),
+    executeKw<{ create_date: string }[]>(
+      "mail.message", "search_read",
+      [[...base, "|", ["message_type", "=", "email_outgoing"], ["body", "ilike", "Propuesta enviada por mail"]]],
+      { fields: ["create_date"], limit: 1, order: "id desc" }, LECTURA,
+    ),
+  ]);
+  const hit = mails[0] ?? mensajes[0];
+  return { enviado: !!hit, cuando: hit?.create_date ?? null };
+}

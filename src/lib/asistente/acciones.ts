@@ -12,10 +12,14 @@
 //     mensaje del vendedor sea un sí claro (esConfirmacion).
 // El paso a "ejecutando" es un UPDATE condicionado: botón y voz a la vez ejecutan una vez; el
 // segundo recibe el resultado del primero.
+//
+// REINTENTO: una acción en error o incierta se vuelve a ejecutar con el botón Reintentar (la
+// misma acción, con sus pasos; ver reintento.ts). Queda un evento "reintento" en el historial.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { esConfirmacion, type Veredicto } from "./confirmacion";
-import { eventoAccion, type Accion } from "./datos";
+import { eventoAccion, leerAccion, leerBorrador, type Accion } from "./datos";
+import { esReintentable, motivoSinReintento } from "./reintento";
 import type { AccionVista } from "./eventos";
 
 const VIGENCIA_MIN = 30;
@@ -23,7 +27,7 @@ const VIGENCIA_MIN = 30;
 export function vistaAccion(a: Accion): AccionVista {
   return {
     id: a.id, numero: a.numero, tipo: a.tipo, estado: a.estado, nivel: a.nivel, resumen: a.resumen,
-    resultado: a.resultado, error: a.error, venceAt: a.vence_at,
+    resultado: a.resultado, error: a.error, venceAt: a.vence_at, reintentable: esReintentable(a),
   };
 }
 
@@ -110,6 +114,8 @@ export function verificarConfirmacion(
   if (a.estado === "ok") return { ok: false, motivo: "Esa acción ya se ejecutó." };
   if (a.estado !== "presentada") {
     const por: Record<string, string> = {
+      error: "Esa acción falló: se reintenta sólo con el botón Reintentar de la tarjeta (conserva lo que ya quedó hecho).",
+      incierto: "Esa acción quedó en duda: se reintenta sólo con el botón Reintentar de la tarjeta, que antes mira qué quedó en Odoo.",
       propuesta: "Todavía no se la mostraste al vendedor: primero leéle el resumen y esperá su respuesta.",
       vencida: "La acción venció (cambió el presupuesto o pasaron más de 30 minutos): proponela de nuevo.",
       reemplazada: "Esa acción fue reemplazada por otra más nueva.",
@@ -127,7 +133,7 @@ export function verificarConfirmacion(
   return esConfirmacion(ctx.textoVendedor ?? "", a.nivel);
 }
 
-export type ResultadoEjecucion = { ok: boolean; accion: Accion; yaEjecutada?: boolean };
+export type ResultadoEjecucion = { ok: boolean; accion: Accion; yaEjecutada?: boolean; motivo?: string };
 
 /**
  * Toma la acción para ejecutarla (UPDATE condicionado) y corre el ejecutor. Si otro ya la
@@ -139,34 +145,63 @@ export async function ejecutarAccion(
   via: "boton" | "texto" | "voz" | "whatsapp",
   quien: { usuarioId: string; texto: string | null },
   ejecutor: (a: Accion) => Promise<{ resultado: Record<string, unknown>; pasos?: Record<string, unknown> }>,
+  opciones: { reintento?: boolean } = {},
 ): Promise<ResultadoEjecucion> {
-  const { data: tomada } = await db
-    .from("asistente_acciones")
-    .update({
-      estado: "ejecutando",
-      confirmada_via: via,
-      confirmacion_texto: quien.texto,
-      confirmada_por: quien.usuarioId,
-      confirmada_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", accionId)
-    .in("estado", ["propuesta", "presentada"])
-    .gt("vence_at", new Date().toISOString())
-    .select("*")
-    .maybeSingle();
+  let tomada: Accion | null;
+  if (opciones.reintento) {
+    // La misma acción otra vez, sólo con el botón: conserva los pasos y suma el intento (el
+    // ejecutor del mail lo usa para mirar el chatter antes de mandar).
+    const actual = await leerAccion(db, accionId);
+    if (!actual) throw new Error("La acción no existe.");
+    const b = actual.borrador_id ? await leerBorrador(db, actual.borrador_id) : null;
+    const motivo = motivoSinReintento(actual, b);
+    if (motivo) return { ok: false, accion: actual, motivo };
+    const intentos = Number(actual.pasos?.intentos ?? 0) + 1;
+    const { data } = await db
+      .from("asistente_acciones")
+      .update({
+        estado: "ejecutando",
+        confirmada_via: via,
+        confirmada_por: quien.usuarioId,
+        pasos: { ...(actual.pasos ?? {}), intentos },
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", accionId)
+      .eq("estado", actual.estado)
+      .select("*")
+      .maybeSingle();
+    tomada = data as Accion | null;
+    if (tomada) await eventoAccion(db, accionId, "reintento", { via, intento: intentos, estadoAnterior: actual.estado, errorAnterior: actual.error });
+  } else {
+    const { data } = await db
+      .from("asistente_acciones")
+      .update({
+        estado: "ejecutando",
+        confirmada_via: via,
+        confirmacion_texto: quien.texto,
+        confirmada_por: quien.usuarioId,
+        confirmada_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", accionId)
+      .in("estado", ["propuesta", "presentada"])
+      .gt("vence_at", new Date().toISOString())
+      .select("*")
+      .maybeSingle();
+    tomada = data as Accion | null;
+  }
 
   if (!tomada) {
     const { data: actual } = await db.from("asistente_acciones").select("*").eq("id", accionId).single();
     return { ok: actual?.estado === "ok", accion: actual as Accion, yaEjecutada: true };
   }
-  await eventoAccion(db, accionId, "ejecutando", { via, texto: quien.texto });
+  await eventoAccion(db, accionId, "ejecutando", { via, texto: quien.texto, ...(opciones.reintento ? { reintento: true } : {}) });
 
   try {
-    const r = await ejecutor(tomada as Accion);
+    const r = await ejecutor(tomada);
     const { data } = await db
       .from("asistente_acciones")
-      .update({ estado: "ok", resultado: r.resultado, pasos: r.pasos ?? {}, updated_at: new Date().toISOString() })
+      .update({ estado: "ok", resultado: r.resultado, pasos: r.pasos ?? {}, error: null, updated_at: new Date().toISOString() })
       .eq("id", accionId)
       .select("*")
       .single();

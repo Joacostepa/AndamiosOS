@@ -2,16 +2,17 @@
 //
 // Cada paso queda anotado (pasos) y el borrador guarda el número de la orden apenas Odoo lo
 // asigna: si algo falla después, el próximo intento actualiza ESA orden en vez de crear otra.
+// Un reintento (el botón Reintentar de una acción en error o incierta) llega con los pasos del
+// intento anterior y saltea lo que ya quedó hecho.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { urlOdooVenta } from "@/lib/odoo/habilitaciones";
 import {
-  adjuntarPdf, cancelarOrden, crearCliente, enviarPropuesta, guardarOrden, notaInterna, vincularOportunidad,
+  adjuntarPdf, cancelarOrden, crearCliente, enviarPropuesta, guardarOrden, mailYaEnviado, notaInterna, vincularOportunidad,
   type DatosOrden, type NuevoCliente,
 } from "@/lib/odoo/presupuestos";
 import type { Tarifas } from "@/lib/cotizador/tipos";
 import { leerBorrador, type Accion } from "./datos";
-import { generarPdfDelBorrador } from "./pdf";
 import type { Evento } from "./eventos";
 
 export type PayloadGuardar = {
@@ -100,33 +101,48 @@ async function guardar(ctx: ContextoEjecucion, a: Accion, p: PayloadGuardar, pas
     avisos.push(`Odoo calculó un neto de $ ${Math.round(orden.neto).toLocaleString("es-AR")} y el presupuesto dice $ ${p.subtotalMotor.toLocaleString("es-AR")}: revisar las líneas en Odoo.`);
   }
 
-  // 4. Oportunidad del CRM (sin moverla de etapa).
-  try {
-    const op = await vincularOportunidad({
-      ordenId: orden.id, ordenNombre: orden.nombre, partnerId, cliente: p.clienteNombre, direccionObra: p.orden.direccionObra,
-      referencia: p.orden.referencia, neto: p.subtotalMotor, vendedorUserId: p.orden.vendedorUserId, tecnicoEmployeeId: p.orden.tecnicoEmployeeId,
-    });
-    pasos.oportunidadId = op.id;
-    await db.from("cotizacion_borradores").update({ odoo_oportunidad_id: op.id }).eq("id", b0.id);
-  } catch (e) {
-    avisos.push(`No se pudo vincular la oportunidad del CRM: ${e instanceof Error ? e.message : e}`);
-  }
-
-  // 5. Nota interna: quién lo pidió, cómo lo confirmó y por qué los precios son los que son.
-  if (!pasos.nota) {
-    const confirmacion = a.confirmada_via === "boton" ? "con el botón Confirmar" : `por ${a.confirmada_via}: «${esc(String((a as { confirmacion_texto?: string }).confirmacion_texto ?? ""))}»`;
-    await notaInterna(orden.id, `<p><b>${b0.odoo_venta_id ? "Editado" : "Armado"} desde el Asistente Comercial</b> a pedido de ${esc(ctx.vendedorNombre)}, confirmado ${confirmacion}.</p>${p.notaHtml}`);
-    pasos.nota = true;
-  }
-
-  // 6. PDF final con el número de Odoo, adjunto a la orden.
+  // 4 a 6, en paralelo (auditoría 12/10, 3.3: el botón tardaba ~13 s): con la orden creada,
+  // la oportunidad, la nota y el PDF no dependen uno del otro. Cada uno anota su paso al
+  // terminar, así un reintento saltea lo que ya quedó hecho aunque otro haya fallado.
   const b1 = await leerBorrador(db, b0.id);
-  const { vista, pdf, nombre } = await generarPdfDelBorrador(db, b1!, { tarifas: ctx.tarifas, vendedorEnPropuesta: ctx.vendedorEnPropuesta, usuarioId: ctx.usuarioId });
-  const adjuntoId = await adjuntarPdf(orden.id, nombre, pdf);
-  pasos.adjuntoId = adjuntoId;
-  pasos.pdfId = vista.id;
-  await db.from("cotizacion_pdfs").update({ odoo_adjunto_id: adjuntoId, odoo_venta_id: orden.id }).eq("id", vista.id);
-  ctx.emitir?.({ t: "pdf", pdf: vista });
+  const [, nota, pdfFinal] = await Promise.allSettled([
+    // 4. Oportunidad del CRM (sin moverla de etapa). Si falla, es un aviso: la orden ya está.
+    (async () => {
+      try {
+        const op = await vincularOportunidad({
+          ordenId: orden.id, ordenNombre: orden.nombre, partnerId, cliente: p.clienteNombre, direccionObra: p.orden.direccionObra,
+          referencia: p.orden.referencia, neto: p.subtotalMotor, vendedorUserId: p.orden.vendedorUserId, tecnicoEmployeeId: p.orden.tecnicoEmployeeId,
+        });
+        pasos.oportunidadId = op.id;
+        await db.from("cotizacion_borradores").update({ odoo_oportunidad_id: op.id }).eq("id", b0.id);
+      } catch (e) {
+        avisos.push(`No se pudo vincular la oportunidad del CRM: ${e instanceof Error ? e.message : e}`);
+      }
+    })(),
+    // 5. Nota interna: quién lo pidió, cómo lo confirmó y por qué los precios son los que son.
+    (async () => {
+      if (pasos.nota) return;
+      const confirmacion = a.confirmada_via === "boton" ? "con el botón Confirmar" : `por ${a.confirmada_via}: «${esc(String((a as { confirmacion_texto?: string }).confirmacion_texto ?? ""))}»`;
+      await notaInterna(orden.id, `<p><b>${b0.odoo_venta_id ? "Editado" : "Armado"} desde el Asistente Comercial</b> a pedido de ${esc(ctx.vendedorNombre)}, confirmado ${confirmacion}.</p>${p.notaHtml}`);
+      pasos.nota = true;
+    })(),
+    // 6. PDF final con el número de Odoo, adjunto a la orden. @react-pdf se carga recién acá.
+    (async () => {
+      const { generarPdfDelBorrador } = await import("./pdf");
+      const { vista, pdf, nombre } = await generarPdfDelBorrador(db, b1!, { tarifas: ctx.tarifas, vendedorEnPropuesta: ctx.vendedorEnPropuesta, usuarioId: ctx.usuarioId });
+      const adjuntoId = await adjuntarPdf(orden.id, nombre, pdf);
+      pasos.adjuntoId = adjuntoId;
+      pasos.pdfId = vista.id;
+      await db.from("cotizacion_pdfs").update({ odoo_adjunto_id: adjuntoId, odoo_venta_id: orden.id }).eq("id", vista.id);
+      ctx.emitir?.({ t: "pdf", pdf: vista });
+      return vista;
+    })(),
+  ]);
+  // La nota y el PDF son parte de guardar: si fallan, la acción queda en error con los pasos
+  // hechos y Reintentar completa lo que falta (la orden no se duplica).
+  if (nota.status === "rejected") throw nota.reason;
+  if (pdfFinal.status === "rejected") throw pdfFinal.reason;
+  const vista = pdfFinal.value;
 
   // 7. Re-emisión: la cotización vieja se cancela (criterio §9) y queda la referencia cruzada.
   if (p.cancelarVentaId && !pasos.cancelada) {
@@ -150,7 +166,7 @@ async function guardar(ctx: ContextoEjecucion, a: Accion, p: PayloadGuardar, pas
       avisos,
       // Para el modelo (la tarjeta no lo muestra). Va acá y no sólo en las instrucciones porque
       // éstas quedan congeladas en cada conversación: así vale también para las ya abiertas.
-      siguiente: "Sin preguntar, armá ya el mensaje para el cliente con mensaje_whatsapp: el vendedor lo quiere junto al PDF final. Después ofrecé mandarla por mail.",
+      siguiente: "Sin preguntar, armá ya el mensaje para el cliente con mensaje_whatsapp: el vendedor lo quiere junto al PDF final. Si no sabés a quién va (no hay un contacto con nombre), preguntalo antes de armarlo. Del mail, una línea al final («si querés, la mando por mail»), sin preguntar.",
     },
     pasos,
   };
@@ -158,16 +174,46 @@ async function guardar(ctx: ContextoEjecucion, a: Accion, p: PayloadGuardar, pas
 
 async function mandarMail(ctx: ContextoEjecucion, a: Accion, p: PayloadMail, pasos: Record<string, unknown>) {
   const db = ctx.db;
-  const { data: ultimo } = await db
-    .from("cotizacion_pdfs")
-    .select("id, odoo_adjunto_id, nombre")
-    .eq("borrador_id", p.borradorId)
-    .eq("tipo", "final")
-    .not("odoo_adjunto_id", "is", null)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const [{ data: ultimo }, { data: fallidas }] = await Promise.all([
+    db
+      .from("cotizacion_pdfs")
+      .select("id, odoo_adjunto_id, nombre")
+      .eq("borrador_id", p.borradorId)
+      .eq("tipo", "final")
+      .not("odoo_adjunto_id", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    // Otros intentos de mandar este mismo presupuesto que quedaron en error o en duda.
+    db
+      .from("asistente_acciones")
+      .select("created_at")
+      .eq("borrador_id", p.borradorId)
+      .eq("tipo", "enviar_mail")
+      .in("estado", ["error", "incierto"])
+      .neq("id", a.id),
+  ]);
   if (!ultimo?.odoo_adjunto_id) throw new Error("No hay un PDF final adjunto a la orden: guardá el presupuesto primero.");
+
+  // Si este intento viene de otro que se cortó, o hubo otro que falló, puede que el mail ya
+  // haya salido: se mira el chatter de la orden antes de mandarlo de nuevo.
+  const enDuda = Number(pasos.intentos ?? 0) > 0 || !!fallidas?.length;
+  if (enDuda) {
+    const desde = new Date(Math.min(Date.parse(a.created_at), ...(fallidas ?? []).map((f) => Date.parse(f.created_at))));
+    const ya = await mailYaEnviado(p.ordenId, desde);
+    if (ya.enviado) {
+      pasos.yaEnviado = ya.cuando;
+      await db.from("cotizacion_borradores").update({ estado: "enviado", updated_at: new Date().toISOString() }).eq("id", p.borradorId);
+      return {
+        resultado: {
+          enviadoA: p.para, venta: p.ordenNombre, pdf: ultimo.nombre, yaEstaba: true,
+          avisos: [`El mail ya había salido (Odoo lo registra el ${ya.cuando} UTC): no se mandó de nuevo.`],
+        },
+        pasos,
+      };
+    }
+  }
+
   const r = await enviarPropuesta({ ordenId: p.ordenId, plantillaId: p.plantillaId, adjuntoId: ultimo.odoo_adjunto_id, emailTo: p.emailTo });
   pasos.mailId = r.mailId;
   await db.from("cotizacion_borradores").update({ estado: "enviado", updated_at: new Date().toISOString() }).eq("id", p.borradorId);

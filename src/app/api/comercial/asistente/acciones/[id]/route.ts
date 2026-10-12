@@ -5,13 +5,14 @@ import { leerAccion } from "@/lib/asistente/datos";
 import { exigirModulo, invalido } from "../../../_comun";
 import { respuestaDeTurno } from "../../_stream";
 
-// POST /api/comercial/asistente/acciones/:id — el botón Confirmar / Descartar de la tarjeta.
-// Ejecuta (o descarta) y el asistente sigue la charla con el resultado, en SSE.
+// POST /api/comercial/asistente/acciones/:id — los botones Confirmar / Descartar / Reintentar de
+// la tarjeta. Ejecuta (o descarta, o reintenta una que quedó en error o en duda) y el asistente
+// sigue la charla con el resultado, en SSE.
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-const schema = z.object({ decision: z.enum(["confirmar", "rechazar"]) });
+const schema = z.object({ decision: z.enum(["confirmar", "rechazar", "reintentar"]) });
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;

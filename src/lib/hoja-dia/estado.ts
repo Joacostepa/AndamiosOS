@@ -1530,7 +1530,7 @@ export function mejorHueco(dia: DiaHoja, veh: string, punto: { lat: number | nul
 export type ViajeNuevo = Omit<Viaje, "id" | "fecha" | "estado" | "hechoMin" | "hechoPor" | "noPudoMotivo" | "anuladoMotivo" | "foto" | "creadoMin" | "version">;
 export type PlanPoner =
   | { sumarA: string; carga: string }
-  | { nuevo: ViajeNuevo; cederVueltaDe: string | null };
+  | { nuevo: ViajeNuevo; cederVueltaDe: string | null; /** El hueco de menor desvío, si se eligió por ahí (F4). */ hueco?: Hueco | null };
 
 /**
  * Poner un pedido en un camión: se vuelve un viaje, o se suma a uno que va al mismo lugar
@@ -1591,7 +1591,7 @@ export function planPonerPedido(dia: DiaHoja, ped: Pedido, veh: string, ahora: M
       if (nuevo.carga && !/de lo desarmado/.test(nuevo.carga) && prev.tipo === "trae_material") nuevo.carga = `${nuevo.carga} (de lo desarmado)`;
     }
   }
-  return { nuevo, cederVueltaDe };
+  return { nuevo, cederVueltaDe, hueco: ped.horaFija || ordenPedido != null ? null : hueco };
 }
 
 // ═══════════════════════════ Avisos del despacho (§9) ═════════════════════════

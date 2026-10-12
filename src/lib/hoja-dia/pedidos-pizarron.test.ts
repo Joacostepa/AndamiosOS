@@ -8,6 +8,7 @@ import type { DiaHoja, Punto } from "./tipos.ts";
 import { calcVeh, distanciaTxt, desvioTxt, lugar, lugarDeKey, mejorHueco, planPonerPedido } from "./estado.ts";
 import { pedidosParaSumar, quienPasaCerca } from "./recorrido.ts";
 import { paresDelDia, puntoDeKey } from "./rutas.ts";
+import { aplicarOptimistaPedido, aplicarOptimistaViaje } from "./optimista.ts";
 import { martesArmado, OT, pedido, viaje } from "./escenario.test-fixture.ts";
 
 // Una dirección a 3 cuadras de Juramento 2145 (la 2 desarma ahí; Gómez carga desde las 10:15).
@@ -112,4 +113,40 @@ test("Recorrido: los pedidos sin camión que se pueden sumar, con su desvío", (
   assert.deepEqual(ps.map((x) => x.p.id), ["p-cra", "p-lej"], "Cramer primero (menos desvío)");
   // Los que ya tienen camión o una hora fija no.
   assert.ok(!ps.some((x) => x.p.id === "p-gur"));
+});
+
+test("al instante: poner un pedido arma el mismo viaje que el servidor", () => {
+  const d = conPedido(martesArmado());
+  const n = aplicarOptimistaViaje(d, { accion: "poner_pedido", pedidoId: "p-cra", vehiculoId: "ab497" }, { ahora: MANANA });
+  assert.ok(n);
+  const p = n.pedidos.find((x) => x.id === "p-cra")!;
+  assert.equal(p.estado, "en_camion");
+  const v = n.viajes.find((x) => x.id === p.viajeId)!;
+  const plan = planPonerPedido(d, d.pedidos.find((x) => x.id === "p-cra")!, "ab497", MANANA);
+  assert.ok("nuevo" in plan);
+  assert.deepEqual([v.vehiculoId, v.orden, v.carga, v.hacia], ["ab497", plan.nuevo.orden, "6 bases regulables", CERCA_JUR]);
+  assert.equal(calcVeh(n, "ab497").findIndex((x) => x.id === v.id), 1, "segunda parada de Gómez");
+});
+
+test("al instante: crear, corregir, esperar y anular un pedido", () => {
+  const d = martesArmado();
+  const c = aplicarOptimistaPedido(d, { accion: "crear", fecha: d.fecha, que: "Puntales", hacia: CERCA_JUR, urgencia: "hoy", necesita: "cualquiera", canal: "telefono" }, { ahora: MANANA })!;
+  const nuevo = c.pedidos[c.pedidos.length - 1];
+  assert.deepEqual([nuevo.que, nuevo.estado, nuevo.hacia.lat], ["Puntales", "sin_camion", -34.564]);
+  const e = aplicarOptimistaPedido(c, { accion: "editar", pedidoId: nuevo.id, que: "8 puntales" })!;
+  assert.equal(e.pedidos.find((x) => x.id === nuevo.id)!.que, "8 puntales");
+  const w = aplicarOptimistaPedido(e, { accion: "esperar", pedidoId: nuevo.id, motivo: "Que confirme la obra", hasta: "11:00" })!;
+  assert.deepEqual([w.pedidos.find((x) => x.id === nuevo.id)!.estado, w.pedidos.find((x) => x.id === nuevo.id)!.esperandoHastaMin], ["esperando", 660]);
+  const an = aplicarOptimistaPedido(w, { accion: "anular", pedidoId: nuevo.id })!;
+  assert.equal(an.pedidos.find((x) => x.id === nuevo.id)!.estado, "anulado");
+  // En un camión, anular espera al servidor.
+  assert.equal(aplicarOptimistaPedido(d, { accion: "anular", pedidoId: "p-gur" }), null);
+});
+
+test("al instante: corregir el qué de un pedido en camión cambia la carga del viaje", () => {
+  const d = martesArmado();
+  const v0 = d.viajes.find((x) => x.id === "v-jur")!;
+  const d1: DiaHoja = { ...d, viajes: d.viajes.map((v) => (v.id === "v-jur" ? { ...v, carga: "Lo desarmado" } : v)) };
+  const n = aplicarOptimistaPedido(d1, { accion: "editar", pedidoId: "p-jur", que: "Lo desarmado y 4 tablones" })!;
+  assert.equal(n.viajes.find((x) => x.id === v0.id)!.carga, "Lo desarmado y 4 tablones");
 });

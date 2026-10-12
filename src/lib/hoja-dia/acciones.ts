@@ -18,7 +18,7 @@ import type { DiaHoja, Fecha, Hoja, Punto, VehiculoHoja, Viaje } from "./tipos";
 import {
   addDia, altaDeAusencia, aCargoDe, cNombre, diasEntre, esHoy, hm, laC, lowFirst, lugar, minutosDesde, nombreDe, normHora,
   planCopiarComoHoy, planConLleva, planPonerPedido, planPrecarga, pidioPorDefecto, sugeridosDe, tipoPorDestino,
-  toMin, viajeCalc, vehiculoNombre, vehTxt, elVeh, cortoV, hojaDeCuadrilla, calcVeh, instanteDe, ddmm, ausTexto,
+  toMin, viajeCalc, vehiculoNombre, vehTxt, elVeh, cortoV, hojaDeCuadrilla, calcVeh, instanteDe, ddmm, ausTexto, desvioTxt,
   type PlanHoja, type ViajeNuevo, fechaPorDefecto, contratista, esContratista, aCargoDeContratista, vehiculosDe, filaQueLleva,
   choferParaOrden, choferDe, choferSugerido, laCuadrilla, aLaC, deLaC, accionTxt,
 } from "./estado";
@@ -51,7 +51,7 @@ export const puntoSchema = z.object({
   texto: z.string().trim().max(200).nullable().default(null),
   // "Otra dirección" geocodificada (F4): las dos o ninguna, y en la Argentina.
   lat: z.number().min(-56).max(-21).nullable().optional(),
-  lng: z.number().min(-74).max(-53).nullable().optional(),
+  lng: z.number().min(-74).max(-52).nullable().optional(),
 }).refine((p) => p.otId != null || p.lugarId || p.texto, "Falta el destino")
   .refine((p) => (p.lat == null) === (p.lng == null), "Faltan las coordenadas");
 const tipoViaje = z.enum(["lleva", "busca", "mueve", "lleva_material", "trae_material", "compra", "entre_depositos", "taller", "otro"]);
@@ -137,6 +137,12 @@ export const accionPedidoSchema = z.discriminatedUnion("accion", [
   z.object({ accion: z.literal("aceptar_sugerido"), fecha, key: z.string().regex(/^(arranca|termina)-\d+$/) }),
   z.object({ accion: z.literal("descartar_sugerido"), fecha, key: z.string().regex(/^(arranca|termina)-\d+$/) }),
   z.object({ accion: z.literal("esperar"), pedidoId: id, motivo: z.string().trim().min(1).max(120), hasta: hora.nullable().optional() }),
+  // F4: corregir un pedido desde el pizarrón (qué, adónde, cuándo). Si ya está en un camión, el viaje lo sigue.
+  z.object({
+    accion: z.literal("editar"), pedidoId: id, que: z.string().trim().min(1, "Falta qué").max(300).optional(), hacia: puntoSchema.optional(),
+    urgencia: z.enum(["frena", "hora", "cliente", "hoy", "cuando_se_pueda"]).optional(), horaLimite: hora.nullable().optional(),
+    necesita: z.enum(["cualquiera", "camion", "hidrogrua"]).optional(), nota: z.string().trim().max(500).nullable().optional(),
+  }),
   z.object({ accion: z.literal("ya_esta"), pedidoId: id }),
   z.object({ accion: z.literal("pasar_a_manana"), pedidoId: id }),
   z.object({ accion: z.literal("anular"), pedidoId: id, motivo: z.string().trim().max(200).optional() }),
@@ -888,7 +894,10 @@ async function accionViajeCon(g: Grabador, db: DB, userId: string, a: AccionViaj
     const ch = vc ? choferDe(dia2, vc) : choferParaOrden(dia, a.vehiculoId, "nuevo" in plan ? plan.nuevo.orden : 0);
     const texto = "sumarA" in plan
       ? `Sumado al viaje a ${lugar(dia, ped.hacia).n} ${elVeh(dia, a.vehiculoId, "del")} (${NCh(dia, ch)})${vc ? `, ~${hm(vc.t)}` : ""}`
-      : `Pedido${ped.pidioId ? ` de ${N(dia, ped.pidioId)}` : ""} ${elVeh(dia, a.vehiculoId, "en el")} (${NCh(dia, ch)})${vc ? `, ${vc.hora ? "" : "~"}${hm(Math.round(vc.t / 5) * 5)}` : ""}`;
+      : plan.hueco
+        // F4: "Parada 2 del Iveco AB 497 YY (Gómez) · de paso entre Gurruchaga 1650 y Juramento 2145 (+5 min)".
+        ? `«${ped.que}» → parada ${plan.hueco.n} ${elVeh(dia, a.vehiculoId, "del")} (${NCh(dia, ch)}) · ${plan.hueco.viaTxt} (${desvioTxt(plan.hueco.min)})`
+        : `Pedido${ped.pidioId ? ` de ${N(dia, ped.pidioId)}` : ""} ${elVeh(dia, a.vehiculoId, "en el")} (${NCh(dia, ch)})${vc ? `, ${vc.hora ? "" : "~"}${hm(Math.round(vc.t / 5) * 5)}` : ""}`;
     const enviado = dia.envios.some((e) => e.personaId === ch && e.enviadaMin != null && !e.anulado);
     return listo(userId, texto, g, { fecha: f, entidad: "pedido", entidadId: a.pedidoId, pedidoId: a.pedidoId, viajeId, accion: a.accion }, {
       viajeId, avisarA: enviado ? ch : null, avisarDeposito: !!(vc && esHoy(ahoraDe(f)) && vc.carga && ["lleva_material", "entre_depositos"].includes(vc.tipo) && /^l:|^dep$/.test(vc.desdeKey)),
@@ -1191,6 +1200,32 @@ async function accionPedidoCon(g: Grabador, db: DB, userId: string, a: AccionPed
       const hasta = a.hasta ? instanteDe(f, toMin(a.hasta)!) : new Date(Date.now() + 3_600_000).toISOString();
       await g.actualizar("hd_pedidos", a.pedidoId, { estado: "esperando", esperando_motivo: a.motivo, esperando_hasta: hasta, no_pudo_visto: true });
       return listo(userId, `Esperando: ${donde} · ${lowFirst(a.motivo)}${a.hasta ? ` · vuelve a «Para hacer vos» a las ${normHora(a.hasta)}` : ""}`, g, base);
+    }
+    case "editar": {
+      if (p.estado === "anulado" || p.estado === "hecho") throw new Error("Ese pedido ya está cerrado.");
+      const valores: Fila = {};
+      const cambios: string[] = [];
+      if (a.que !== undefined && a.que !== p.que) { valores.que = a.que; cambios.push(`ahora es «${a.que}»`); }
+      if (a.hacia) { Object.assign(valores, columnasPunto("hacia", a.hacia as Punto)); cambios.push(`va a ${lugar(dia, a.hacia as Punto).n}`); }
+      if (a.urgencia !== undefined) valores.urgencia = a.urgencia;
+      if (a.horaLimite !== undefined) valores.hora_limite = a.horaLimite;
+      if (a.necesita !== undefined) valores.necesita = a.necesita;
+      if (a.nota !== undefined) valores.nota = a.nota;
+      if (!Object.keys(valores).length) return listo(userId, "Sin cambios", g, base);
+      // Ya en un camión: el viaje va adonde va el pedido y su carga dice lo nuevo (si era sólo de él).
+      if (p.viaje_id && (a.hacia || valores.que)) {
+        const [v] = await g.leer("hd_viajes", { id: p.viaje_id });
+        if (v && v.estado === "planeado") {
+          const otros = (await g.leer("hd_pedidos", { viaje_id: p.viaje_id })).filter((x) => x.id !== p.id && x.estado !== "anulado");
+          if (a.hacia && otros.length) throw new Error("Ese viaje lleva otros pedidos: para cambiarle el lugar, sacalo del camión primero.");
+          const vv: Fila = {};
+          if (a.hacia) Object.assign(vv, columnasPunto("hacia", a.hacia as Punto));
+          if (valores.que && !otros.length && (v.carga == null || v.carga === p.que)) vv.carga = valores.que;
+          if (Object.keys(vv).length) await g.actualizar("hd_viajes", String(v.id), vv, v);
+        }
+      }
+      await g.actualizar("hd_pedidos", a.pedidoId, valores, p);
+      return listo(userId, cambios.length ? `Pedido corregido: ${cambios.join(" · ")}` : "Pedido corregido", g, base);
     }
     case "ya_esta":
       await g.actualizar("hd_pedidos", a.pedidoId, { estado: p.viaje_id ? "en_camion" : "sin_camion", esperando_hasta: null });

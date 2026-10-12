@@ -27,7 +27,7 @@ import type { ResumenMesContratistas } from "@/lib/hoja-dia/contratistas-servido
 import type { Preparado, EstadoTelegram } from "@/lib/hoja-dia/envios";
 import type { PrecargaCierre } from "@/lib/hoja-dia/servicio";
 import { minutosDesde } from "@/lib/hoja-dia/estado";
-import { aplicarOptimista, aplicarOptimistaAusencia, aplicarOptimistaViaje } from "@/lib/hoja-dia/optimista";
+import { aplicarOptimista, aplicarOptimistaAusencia, aplicarOptimistaViaje, aplicarOptimistaPedido } from "@/lib/hoja-dia/optimista";
 import { avisarCambioHoja, conectarAvisosHoja, type AvisoHoja } from "@/lib/hoja-dia/avisos";
 import { conectarAvisos } from "@/lib/tablero/avisos";
 import { useUser } from "@/hooks/use-user";
@@ -175,7 +175,8 @@ export const useAccionHoja = (fecha: string | null, opts?: { aviso?: boolean }) 
  */
 export const useAccionViaje = (fecha: string | null, opts?: { aviso?: boolean }) =>
   useGesto<AccionViaje>("/api/hoja-dia/viajes", fecha, { ...opts, optimista: (dia, a) => aplicarOptimistaViaje(dia, a) });
-export const useAccionPedido = (fecha: string | null, opts?: { aviso?: boolean }) => useGesto<AccionPedido>("/api/hoja-dia/pedidos", fecha, opts);
+export const useAccionPedido = (fecha: string | null, opts?: { aviso?: boolean }) =>
+  useGesto<AccionPedido>("/api/hoja-dia/pedidos", fecha, { ...opts, optimista: (dia, a) => aplicarOptimistaPedido(dia, a) });
 export const useAccionAusencia = (fecha: string | null, opts?: { aviso?: boolean }) =>
   useGesto<AccionAusencia & { fechaVista?: string }>("/api/hoja-dia/ausencias", fecha, { ...opts, optimista: (dia, a) => aplicarOptimistaAusencia(dia, a) });
 export const usePrecarga = (fecha: string | null) => useGesto<{ fecha: string; modo: "hoy" | "plantel" | "vacio" }>("/api/hoja-dia/precarga", fecha, { aviso: false });
@@ -271,4 +272,30 @@ export function usePrecargaCierre(cuadrillaOdooId: number | null, fecha: string 
     staleTime: 60_000,
     retry: false,
   });
+}
+
+export type Geocodificado = { ok: true; lat: number; lng: number; consulta: string } | { ok: false; estado: string };
+const claveGeo = (dir: string) => dir.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+/**
+ * Las coordenadas de una "otra dirección" mientras se escribe (F4): espera 600 ms sin teclear
+ * y pregunta una vez por dirección (fuera de CLAVE_HOJA: el refresco del día no la vuelve a pedir).
+ * `buscando` mientras espera la pausa o la respuesta.
+ */
+export function useGeocodificar(dir: string) {
+  const [quieta, setQuieta] = useState(dir);
+  useEffect(() => {
+    const t = setTimeout(() => setQuieta(dir), 600);
+    return () => clearTimeout(t);
+  }, [dir]);
+  const k = claveGeo(quieta);
+  const q = useQuery({
+    queryKey: ["hd-geo", k],
+    queryFn: () => pedir<Geocodificado>(`/api/hoja-dia/geocodificar?dir=${encodeURIComponent(quieta.trim())}`),
+    enabled: k.length >= 6,
+    staleTime: Infinity,
+    gcTime: 30 * 60_000,
+    retry: false,
+  });
+  const esperando = claveGeo(dir) !== k;
+  return { geo: !esperando && k.length >= 6 ? q.data ?? null : null, buscando: (esperando && claveGeo(dir).length >= 6) || q.isFetching, error: q.error };
 }

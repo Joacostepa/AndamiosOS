@@ -14,10 +14,10 @@
 // Las filas nuevas llevan un id provisorio ("tmp-…"): duran hasta que llega el día del
 // servidor (uno o dos segundos). No hay que mandarlos al servidor (esTemporal).
 
-import type { AccionAusencia, AccionHoja, AccionViaje } from "./acciones.ts";
-import type { Ausencia, DiaHoja, Hoja, Viaje } from "./tipos.ts";
+import type { AccionAusencia, AccionHoja, AccionPedido, AccionViaje } from "./acciones.ts";
+import type { Ausencia, DiaHoja, Hoja, Pedido, Punto, Viaje } from "./tipos.ts";
 import { esDeposito } from "./tipos.ts";
-import { altaDeAusencia, contratista, minutosDesde, normHora, toMin } from "./estado.ts";
+import { altaDeAusencia, contratista, minutosDesde, normHora, planPonerPedido, tipoPorDestino, toMin } from "./estado.ts";
 import { planReordenar } from "./recorrido.ts";
 import { planVehiculos, type CambioVehiculos } from "./vehiculos.ts";
 
@@ -315,6 +315,29 @@ export function aplicarOptimistaViaje(dia: DiaHoja, a: AccionViaje, o: Opciones 
     }
     return { ...dia, viajes: dia.viajes.map((x) => (x.id === v.id ? n : x)) };
   }
+  // Poner un pedido en un camión (F4, arrastrarlo en el pizarrón): el mismo plan que el servidor
+  // (planPonerPedido: el hueco de menor desvío, o sumarlo a un viaje que va al mismo lugar).
+  if (a.accion === "poner_pedido") {
+    const ped = dia.pedidos.find((p) => p.id === a.pedidoId);
+    if (!ped || ped.fecha !== dia.fecha || ped.viajeId || ped.estado === "anulado" || ped.estado === "hecho") return null;
+    const ahora = o.ahora ?? minutosDesde(dia.fecha, Date.now());
+    const plan = planPonerPedido(dia, ped, a.vehiculoId, ahora, { sobre: a.sobre, orden: a.orden });
+    let viajes = dia.viajes;
+    let viajeId: string;
+    if ("sumarA" in plan) {
+      viajeId = plan.sumarA;
+      viajes = viajes.map((v) => (v.id === plan.sumarA ? { ...v, carga: plan.carga } : v));
+    } else {
+      viajeId = tmp("viaje");
+      if (plan.cederVueltaDe) viajes = viajes.map((v) => (v.id === plan.cederVueltaDe ? { ...v, vuelta: false } : v));
+      viajes = [...viajes, {
+        ...plan.nuevo, id: viajeId, fecha: dia.fecha, estado: "planeado", hechoMin: null, hechoPor: null, noPudoMotivo: null, anuladoMotivo: null,
+        foto: false, creadoMin: ahora, version: 1,
+      }];
+    }
+    const pedidos = dia.pedidos.map((p) => (p.id === ped.id ? { ...p, viajeId, estado: "en_camion" as const, noPudoVisto: true, esperandoHastaMin: null } : p));
+    return { ...dia, viajes, pedidos };
+  }
   if (a.accion !== "chofer_del_camion" || a.fecha !== dia.fecha) return null;
   const ahora = o.ahora ?? minutosDesde(dia.fecha, Date.now());
   const ch = a.choferId;
@@ -363,6 +386,73 @@ export function aplicarOptimistaAusencia(dia: DiaHoja, a: AccionAusencia): DiaHo
       return dia.ausencias.some((x) => x.id === a.ausenciaId) ? { ...dia, ausencias: dia.ausencias.filter((x) => x.id !== a.ausenciaId) } : null;
     case "editar":
       return null;
+  }
+  return null;
+}
+
+// ─── Pedidos (F4: el panel del pizarrón) ─────────────────────────────────────
+
+/**
+ * Los gestos de un pedido al instante, como acciones.ts: crear (con id provisorio), corregir,
+ * esperar, "ya está", pasar a mañana y anular. Pasar a mañana o anular uno que ya está en un
+ * camión espera al servidor (el viaje se anula o pierde una parte de la carga: la regla de
+ * `sacarPedidoDeViaje` vive en el servidor).
+ */
+export function aplicarOptimistaPedido(dia: DiaHoja, a: AccionPedido, o: Opciones = {}): DiaHoja | null {
+  const ahora = o.ahora ?? minutosDesde(dia.fecha, Date.now());
+  if (a.accion === "crear") {
+    if ((a.fecha ?? dia.fecha) !== dia.fecha) return null;
+    const hacia = a.hacia as Punto;
+    const nuevo: Pedido = {
+      id: tmp("pedido"), fecha: dia.fecha, fechaOriginal: dia.fecha, que: a.que, tipo: a.tipo ?? tipoPorDestino(dia, hacia, a.esParaTraer), hacia,
+      desde: (a.desde as Punto | null | undefined) ?? null, urgencia: a.urgencia, horaLimite: a.horaLimite ?? null, horaFija: a.horaFija ?? null,
+      noAntesDe: a.noAntesDe ?? null, duracionMin: null, cargaDeposito: null, necesita: a.necesita, pidioId: a.pidioId ?? null,
+      pidioTexto: a.pidioTexto ?? null, canal: a.canal, estado: "sin_camion", esperandoMotivo: null, esperandoHastaMin: null, viajeId: null,
+      ordenManual: null, cajonPendienteId: a.cajonPendienteId ?? null, sugeridoRegla: null, sugeridoOtId: null, ultimoNoPudo: null, noPudoVisto: true,
+      intentos: 0, nota: a.nota ?? null, creadoMin: ahora, anuladoMotivo: null,
+    };
+    return { ...dia, pedidos: [...dia.pedidos, nuevo] };
+  }
+  if (a.accion === "aceptar_sugerido" || a.accion === "descartar_sugerido") return null;
+  const p = dia.pedidos.find((x) => x.id === a.pedidoId);
+  if (!p) return null;
+  const con = (cambio: Partial<Pedido>, viajes = dia.viajes): DiaHoja => ({ ...dia, viajes, pedidos: dia.pedidos.map((x) => (x.id === p.id ? { ...x, ...cambio } : x)) });
+  switch (a.accion) {
+    case "esperar":
+      return con({ estado: "esperando", esperandoMotivo: a.motivo, esperandoHastaMin: a.hasta ? toMin(a.hasta) : ahora + 60, noPudoVisto: true });
+    case "ya_esta":
+      return con({ estado: p.viajeId ? "en_camion" : "sin_camion", esperandoHastaMin: null });
+    case "pasar_a_manana":
+      // Sale del día que se mira (pasa al siguiente).
+      return p.viajeId ? null : { ...dia, pedidos: dia.pedidos.filter((x) => x.id !== p.id) };
+    case "anular":
+      return p.viajeId ? null : con({ estado: "anulado", anuladoMotivo: a.motivo || "Ya no hace falta" });
+    case "orden_manual":
+      return con({ ordenManual: a.orden });
+    case "visto":
+      return con({ noPudoVisto: true });
+    case "editar": {
+      if (p.estado === "anulado" || p.estado === "hecho") return null;
+      const cambio: Partial<Pedido> = {};
+      if (a.que !== undefined) cambio.que = a.que;
+      if (a.hacia) cambio.hacia = a.hacia as Punto;
+      if (a.urgencia !== undefined) cambio.urgencia = a.urgencia;
+      if (a.horaLimite !== undefined) cambio.horaLimite = a.horaLimite;
+      if (a.necesita !== undefined) cambio.necesita = a.necesita;
+      if (a.nota !== undefined) cambio.nota = a.nota;
+      let viajes = dia.viajes;
+      const v = p.viajeId ? dia.viajes.find((x) => x.id === p.viajeId && x.estado === "planeado") : null;
+      if (v) {
+        const otros = dia.pedidos.some((x) => x.viajeId === v.id && x.id !== p.id && x.estado !== "anulado");
+        if (a.hacia && otros) return null; // el servidor dice que no
+        viajes = viajes.map((x) => (x.id !== v.id ? x : {
+          ...x,
+          ...(a.hacia ? { hacia: a.hacia as Punto } : {}),
+          ...(a.que && !otros && (x.carga == null || x.carga === p.que) ? { carga: a.que } : {}),
+        }));
+      }
+      return con(cambio, viajes);
+    }
   }
   return null;
 }

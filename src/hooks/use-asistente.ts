@@ -134,6 +134,8 @@ export type EnVivo = {
   texto: string;
   herramientas: { id: string; etiqueta: string; estado: "inicio" | "ok" | "error" }[];
   pensando: boolean;
+  /** El paso en curso según el servidor (evento `progreso`), si lo manda. */
+  progreso?: string | null;
   /** Pasó una herramienta desde el último texto: lo que sigue es otra tanda y va en otro párrafo. */
   corte?: boolean;
 };
@@ -162,6 +164,7 @@ export function useChat(conversacionId: string | null, opciones: { onEvento?: (e
           ...v,
           texto: v.texto + (v.corte && v.texto && !/\s$/.test(v.texto) ? "\n\n" : "") + e.d,
           pensando: false,
+          progreso: null,
           corte: false,
         }));
         break;
@@ -191,6 +194,10 @@ export function useChat(conversacionId: string | null, opciones: { onEvento?: (e
         break;
       case "continuar":
         return true;
+      case "progreso":
+        // Lo que el modelo dice que está haciendo (sólo algunos modelos lo mandan).
+        setEnVivo((v) => ({ ...v, progreso: e.texto }));
+        break;
     }
     return false;
   }, []);
@@ -263,7 +270,7 @@ export function useChat(conversacionId: string | null, opciones: { onEvento?: (e
   );
 
   const decidir = useCallback(
-    (accionId: string, decision: "confirmar" | "rechazar") => correr(`${BASE}/acciones/${accionId}`, { decision }, null),
+    (accionId: string, decision: "confirmar" | "rechazar" | "reintentar") => correr(`${BASE}/acciones/${accionId}`, { decision }, null),
     [correr],
   );
 

@@ -16,8 +16,10 @@ const jetbrainsMono = JetBrains_Mono({
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
+  // Se puede ampliar: en obra, al sol, hace falta. viewportFit "cover" para que los
+  // env(safe-area-inset-*) tengan valor; el teclado achica el layout (dvh) en vez de taparlo.
+  viewportFit: "cover",
+  interactiveWidget: "resizes-content",
   themeColor: "#f59e0b",
 };
 

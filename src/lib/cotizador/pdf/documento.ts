@@ -507,9 +507,17 @@ export function Propuesta(d: DatosPropuesta): ReactElement {
         ` el precio base del alquiler es de ${money(d.totales.subtotal)} + IVA por un período de ${d.periodoDias} (${enLetras(d.periodoDias)}) días corridos o fracción menor.`,
       ];
 
+  // Criterio §4.7 (y decisión de JS del 12/10): en cuotas, el ajuste por CAC va por cuota al
+  // momento del pago, dentro de la forma de pago, y sale el bullet de actualización mensual.
+  const enCuotas = !!d.planPagos?.filas.length;
+  const cacMensual = d.actualizacionCac && !enCuotas;
+  const formaPagoConCac = (texto: string) =>
+    d.actualizacionCac && enCuotas && !/\bCAC\b/.test(texto)
+      ? `${texto.replace(/\.?\s*$/, ".")} Cada cuota se ajusta al momento de su pago por la variación del Índice del Costo de la Construcción de la Cámara Argentina de la Construcción (CAC), tomando como base el último índice publicado a la fecha de aceptación de la oferta.`
+      : texto;
   const condiciones: ReactNode[][] = [
     canonBullet,
-    ...(d.actualizacionCac
+    ...(cacMensual
       ? [[
           h(Text, { key: "b", style: { fontWeight: 700 } }, "Actualización:"),
           " el canon se ajusta de forma automática y mensual aplicando la variación del Índice del Costo de la Construcción de la Cámara Argentina de la Construcción (CAC), tomando como base el último índice publicado a la fecha de aceptación de la oferta.",
@@ -517,7 +525,7 @@ export function Propuesta(d: DatosPropuesta): ReactElement {
       : []),
     [
       h(Text, { key: "b", style: { fontWeight: 700 } }, "Forma de pago:"),
-      ` ${d.formaPago?.trim() || (d.planPagos ? "según el siguiente detalle." : "50% de anticipo a la aceptación de la propuesta para iniciar la gestión y 50% restante a la finalización de las tareas de montaje, previo al inicio del uso de las estructuras.")}`,
+      ` ${formaPagoConCac(d.formaPago?.trim() || (d.planPagos ? "según el siguiente detalle." : "50% de anticipo a la aceptación de la propuesta para iniciar la gestión y 50% restante a la finalización de las tareas de montaje, previo al inicio del uso de las estructuras."))}`,
     ],
     [h(Text, { key: "b", style: { fontWeight: 700 } }, "Impuestos:"), " todos los valores expresados en esta oferta NO incluyen el IVA."],
     [
@@ -531,7 +539,7 @@ export function Propuesta(d: DatosPropuesta): ReactElement {
   ];
 
   // "Forma de pago" va después del canon y, si está, de la actualización.
-  const indiceFormaPago = d.actualizacionCac ? 2 : 1;
+  const indiceFormaPago = cacMensual ? 2 : 1;
 
   return h(
     Document,

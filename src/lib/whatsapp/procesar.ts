@@ -9,6 +9,9 @@
 // aparecen en la app y se pueden seguir desde ahí. La respuesta sale como mensajes: el texto con
 // el formato de WhatsApp, el PDF como documento, el mensaje para el cliente aparte (para
 // reenviarlo tal cual) y, si quedó algo para confirmar, botones Confirmar / Cancelar.
+//
+// LO REENVIADO NO CONFIRMA (tandas.ts): un audio del cliente reenviado diciendo «sí, dale» no es
+// el sí del vendedor. Entra marcado [reenviado] y, en esa tanda, ningún sí escrito confirma.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { accesoDeFila, nivelEn } from "@/lib/auth/acceso";
@@ -16,36 +19,30 @@ import { ejecutarTurno, type Adjunto, type EntradaTurno } from "@/lib/asistente/
 import { abrirConversacion } from "@/lib/asistente/nueva-conversacion";
 import { urlDePdf } from "@/lib/asistente/pdf";
 import { hayVoz, transcribir } from "@/lib/voz/elevenlabs";
-import { bajarMedio, enviarBotones, enviarDocumento, enviarTexto, marcarLeido, variantesTelefono } from "./api";
+import { bajarMedio, enviarBotones, enviarDocumento, enviarTexto, firmarInterno, marcarLeido, variantesTelefono } from "./api";
 import { aWhatsapp } from "./formato";
+import { armarTandas, conMarca, esReenviado, ordenar, textoDeTanda, type Entrante, type MensajeMeta, type Tanda } from "./tandas";
 
-/** Un mensaje tal cual lo manda Meta en el webhook (lo que se usa). */
-export type MensajeMeta = {
-  from: string;
-  id: string;
-  timestamp?: string;
-  type: string;
-  text?: { body?: string };
-  audio?: { id: string; mime_type?: string; voice?: boolean };
-  image?: { id: string; mime_type?: string; caption?: string };
-  document?: { id: string; mime_type?: string; filename?: string; caption?: string };
-  interactive?: { type: string; button_reply?: { id: string; title?: string } };
-  button?: { payload?: string; text?: string };
-  location?: { latitude: number; longitude: number; name?: string; address?: string };
-};
-
-type Entrante = { wamid: string; telefono: string; tipo: string; contenido: MensajeMeta; recibido_at: string; enviado_at: string | null };
+export type { MensajeMeta } from "./tandas";
 
 const TIPOS = new Set(["text", "audio", "image", "document", "interactive", "button", "location"]);
 /** Una charla de WhatsApp sigue viva mientras no pasen tantas horas sin mensajes. */
 const HORAS_VIGENCIA = 12;
 /** Lo que el modelo puede mirar: fotos y PDF. */
 const LEGIBLES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp", "application/pdf"]);
-const ORDEN_NUEVA = new Set(["nueva", "nuevo", "/nueva", "nueva conversacion", "empezar de nuevo", "de nuevo", "reiniciar", "arrancar de nuevo"]);
+/**
+ * Una función de Vercel no vive más de 300 s: un mensaje en `procesando` desde hace más de esto
+ * quedó de una función que murió. `procesado_at` se pone al tomarlo y se pisa al terminar.
+ */
+const PROCESANDO_VENCE_MS = 6 * 60_000;
+/** El candado del teléfono dura 330 s (whatsapp_tomar_turno); se renueva mientras se trabaja. */
+const CANDADO_MS = 330_000;
+const RENOVAR_CADA_MS = 60_000;
+const RETOMADO = "retomado: la función anterior se cortó";
+const COLUMNAS = "wamid, telefono, tipo, contenido, recibido_at, enviado_at";
 
 const espera = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const ahora = () => new Date().toISOString();
-const normalizar = (t: string) => t.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[¡!¿?.,;:]/g, "").replace(/\s+/g, " ").trim();
 
 /** Anota lo que llegó (una vez: Meta reintenta). Devuelve los teléfonos con algo nuevo. */
 export async function registrarEntrantes(db: SupabaseClient, mensajes: MensajeMeta[]): Promise<string[]> {
@@ -71,9 +68,21 @@ export async function registrarEntrantes(db: SupabaseClient, mensajes: MensajeMe
   return [...telefonos];
 }
 
-/** Atiende todo lo pendiente de un teléfono. Si otro lo está atendiendo, él lo va a ver al terminar. */
-export async function procesarTelefono(db: SupabaseClient, telefono: string): Promise<void> {
-  await espera(2500); // lo que se escribe cortado llega junto
+/**
+ * Atiende lo pendiente de un teléfono. Si otro lo está atendiendo, él lo va a ver al terminar.
+ *
+ * UNA TANDA POR INVOCACIÓN (con `origen`): un turno puede llevar hasta 240 s y la función vive
+ * 300; con varias tandas en fila (un «nueva», un mensaje, un botón) la segunda quedaba cortada a
+ * la mitad. Se atiende la primera, lo demás sigue `pendiente` y se le pide a una función nueva
+ * que siga (POST firmado a /api/whatsapp/webhook/seguir). Sin `origen` (los scripts de prueba)
+ * sigue en el mismo proceso, una tanda tras otra.
+ */
+export async function procesarTelefono(
+  db: SupabaseClient,
+  telefono: string,
+  opciones: { origen?: string | null; esperar?: boolean } = {},
+): Promise<void> {
+  if (opciones.esperar !== false) await espera(2500); // lo que se escribe cortado llega junto
   const tels = variantesTelefono(telefono);
   for (;;) {
     const { data: usuarioId, error } = await db.rpc("whatsapp_tomar_turno", { p_telefonos: tels });
@@ -83,20 +92,78 @@ export async function procesarTelefono(db: SupabaseClient, telefono: string): Pr
       if (!vendedor) await contestarDesconocido(db, telefono, tels);
       return;
     }
+    // Mientras se trabaja, el candado se corre: un turno largo no lo deja vencer a mitad de camino.
+    const renovar = setInterval(() => {
+      void db.from("comercial_vendedores").update({ whatsapp_ocupado_hasta: new Date(Date.now() + CANDADO_MS).toISOString() }).in("whatsapp", tels);
+    }, RENOVAR_CADA_MS);
     try {
-      const { data: lote } = await db
-        .from("whatsapp_entrantes")
-        .update({ estado: "procesando", usuario_id: usuarioId })
-        .in("telefono", tels)
-        .eq("estado", "pendiente")
-        .select("wamid, telefono, tipo, contenido, recibido_at, enviado_at");
-      const mensajes = ((lote ?? []) as Entrante[]).sort((a, b) => (a.enviado_at ?? a.recibido_at).localeCompare(b.enviado_at ?? b.recibido_at));
-      if (mensajes.length) await atender(db, usuarioId as string, telefono, mensajes);
+      await barrerProcesando(db, tels);
+      const { data: pendientes } = await db.from("whatsapp_entrantes").select(COLUMNAS).in("telefono", tels).eq("estado", "pendiente");
+      const [tanda] = armarTandas(ordenar((pendientes ?? []) as Entrante[]));
+      if (tanda) {
+        const { data: tomados } = await db
+          .from("whatsapp_entrantes")
+          .update({ estado: "procesando", usuario_id: usuarioId, procesado_at: ahora() })
+          .in("wamid", tanda.partes.map((m) => m.wamid))
+          .eq("estado", "pendiente")
+          .select("wamid");
+        const ids = new Set((tomados ?? []).map((t) => t.wamid as string));
+        tanda.partes = tanda.partes.filter((m) => ids.has(m.wamid));
+        if (tanda.partes.length) await atender(db, usuarioId as string, telefono, tanda);
+      }
     } finally {
+      clearInterval(renovar);
       await db.rpc("whatsapp_soltar_turno", { p_telefonos: tels });
     }
+    // Se cuenta DESPUÉS de soltar: lo que llegó mientras tanto encontró el turno tomado y se
+    // fue; si no se mirara acá, quedaría pendiente hasta el próximo mensaje.
     const { count } = await db.from("whatsapp_entrantes").select("wamid", { count: "exact", head: true }).in("telefono", tels).eq("estado", "pendiente");
     if (!count) return;
+    if (opciones.origen) {
+      await pedirQueSiga(opciones.origen, telefono);
+      return;
+    }
+  }
+}
+
+/**
+ * Lo que quedó en `procesando` de una función que murió vuelve a `pendiente`. Corre con el
+ * candado tomado: nadie más está atendiendo este teléfono. Una sola vez por mensaje: si ya se
+ * retomó y se volvió a cortar, queda en error (un audio que siempre hace caer la función no
+ * puede reintentarse para siempre).
+ */
+async function barrerProcesando(db: SupabaseClient, tels: string[]): Promise<void> {
+  const limite = new Date(Date.now() - PROCESANDO_VENCE_MS).toISOString();
+  const { data: viejos } = await db
+    .from("whatsapp_entrantes")
+    .select("wamid, error")
+    .in("telefono", tels)
+    .eq("estado", "procesando")
+    .or(`procesado_at.lt.${limite},and(procesado_at.is.null,recibido_at.lt.${limite})`);
+  for (const v of viejos ?? []) {
+    const yaRetomado = (v.error as string | null)?.startsWith("retomado");
+    await db
+      .from("whatsapp_entrantes")
+      .update(yaRetomado ? { estado: "error", error: "se cortó dos veces", procesado_at: ahora() } : { estado: "pendiente", error: RETOMADO })
+      .eq("wamid", v.wamid)
+      .eq("estado", "procesando");
+  }
+}
+
+/** Le pide a una función nueva que siga con este teléfono (la ruta contesta enseguida). */
+async function pedirQueSiga(origen: string, telefono: string): Promise<void> {
+  const cuerpo = JSON.stringify({ telefono });
+  try {
+    const res = await fetch(`${origen}/api/whatsapp/webhook/seguir`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-firma-interna": firmarInterno(cuerpo) },
+      body: cuerpo,
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) console.error("[whatsapp] seguir", res.status);
+  } catch (e) {
+    // Queda pendiente: lo retoma el próximo mensaje de ese teléfono.
+    console.error("[whatsapp] seguir", e);
   }
 }
 
@@ -117,7 +184,8 @@ async function contestarDesconocido(db: SupabaseClient, telefono: string, tels: 
   }
 }
 
-async function atender(db: SupabaseClient, usuarioId: string, telefono: string, mensajes: Entrante[]): Promise<void> {
+async function atender(db: SupabaseClient, usuarioId: string, telefono: string, tanda: Tanda): Promise<void> {
+  const mensajes = tanda.partes;
   const ultimo = mensajes.at(-1)!;
   await marcarLeido(ultimo.wamid);
   const marcar = (estado: string, extra: Record<string, unknown> = {}) =>
@@ -134,26 +202,22 @@ async function atender(db: SupabaseClient, usuarioId: string, telefono: string, 
   let convId: string | null = null;
   try {
     convId = await conversacionVigente(db, usuarioId);
-    for (const tanda of armarTandas(mensajes)) {
-      if (tanda.tipo === "nueva") {
-        convId = (await abrirConversacion(db, usuarioId, "whatsapp")).id;
-        await enviarTexto(telefono, "Listo, empezamos de cero. ¿Qué necesitás?");
-        continue;
-      }
-      if (tanda.tipo === "boton") {
-        // El botón es de la conversación donde se propuso la acción (puede no ser la vigente).
-        const { data: a } = await db.from("asistente_acciones").select("id, conversacion_id").eq("id", tanda.accionId).maybeSingle();
-        const { data: c } = a
-          ? await db.from("asistente_conversaciones").select("id, usuario_id").eq("id", a.conversacion_id).maybeSingle()
-          : { data: null };
-        if (!a || !c || c.usuario_id !== usuarioId) {
-          await enviarTexto(telefono, "Ese botón ya no corresponde a nada pendiente.");
-          continue;
-        }
+    if (tanda.tipo === "nueva") {
+      convId = (await abrirConversacion(db, usuarioId, "whatsapp")).id;
+      await enviarTexto(telefono, "Listo, empezamos de cero. ¿Qué necesitás?");
+    } else if (tanda.tipo === "boton") {
+      // El botón es de la conversación donde se propuso la acción (puede no ser la vigente).
+      const { data: a } = await db.from("asistente_acciones").select("id, conversacion_id").eq("id", tanda.accionId).maybeSingle();
+      const { data: c } = a
+        ? await db.from("asistente_conversaciones").select("id, usuario_id").eq("id", a.conversacion_id).maybeSingle()
+        : { data: null };
+      if (!a || !c || c.usuario_id !== usuarioId) {
+        await enviarTexto(telefono, "Ese botón ya no corresponde a nada pendiente.");
+      } else {
         convId = c.id as string;
         await correrTurno(db, convId, usuarioId, telefono, ultimo.wamid, { tipo: "boton", accionId: a.id, decision: tanda.decision, canal: "whatsapp" });
-        continue;
       }
+    } else {
       if (!convId) convId = (await abrirConversacion(db, usuarioId, "whatsapp")).id;
       const entrada = await armarMensaje(db, convId, tanda.partes);
       if (entrada) await correrTurno(db, convId, usuarioId, telefono, ultimo.wamid, entrada);
@@ -183,49 +247,24 @@ async function conversacionVigente(db: SupabaseClient, usuarioId: string): Promi
   return ultima && Date.now() - ultima.en < HORAS_VIGENCIA * 3_600_000 ? ultima.id : null;
 }
 
-type Tanda =
-  | { tipo: "nueva" }
-  | { tipo: "boton"; accionId: string; decision: "confirmar" | "rechazar" }
-  | { tipo: "mensaje"; partes: Entrante[] };
-
-/** En orden: cada botón y cada "nueva" son una tanda; lo demás seguido se junta en una. */
-function armarTandas(mensajes: Entrante[]): Tanda[] {
-  const tandas: Tanda[] = [];
-  for (const m of mensajes) {
-    const boton = m.contenido.interactive?.button_reply?.id ?? "";
-    const b = /^(confirmar|rechazar):([0-9a-f-]{36})$/.exec(boton);
-    if (b) {
-      tandas.push({ tipo: "boton", decision: b[1] as "confirmar" | "rechazar", accionId: b[2] });
-      continue;
-    }
-    if (m.tipo === "text" && ORDEN_NUEVA.has(normalizar(m.contenido.text?.body ?? ""))) {
-      tandas.push({ tipo: "nueva" });
-      continue;
-    }
-    const previa = tandas.at(-1);
-    if (previa?.tipo === "mensaje") previa.partes.push(m);
-    else tandas.push({ tipo: "mensaje", partes: [m] });
-  }
-  return tandas;
-}
-
-/** Texto, audios (transcriptos), fotos y PDF → la entrada del turno. */
+/** Texto, audios (transcriptos), fotos y PDF → la entrada del turno. Lo reenviado va marcado. */
 async function armarMensaje(db: SupabaseClient, convId: string, partes: Entrante[]): Promise<EntradaTurno | null> {
   const textos: string[] = [];
   const adjuntos: Adjunto[] = [];
+  const hayReenviado = partes.some((p) => esReenviado(p.contenido));
   for (const p of partes) {
     const m = p.contenido;
     try {
       if (m.type === "text" && m.text?.body?.trim()) {
-        textos.push(m.text.body.trim());
+        textos.push(conMarca(m, m.text.body.trim()));
       } else if (m.type === "audio" && m.audio?.id) {
         if (!hayVoz().transcripcion) {
-          textos.push("[Mandó un audio, pero la transcripción no está configurada: pedile que lo escriba.]");
+          textos.push(conMarca(m, "[Mandó un audio, pero la transcripción no está configurada: pedile que lo escriba.]"));
           continue;
         }
         const { datos, mime } = await bajarMedio(m.audio.id);
         const { texto } = await transcribir(datos, mime, `audio.${mime.includes("ogg") ? "ogg" : mime.split("/")[1] ?? "bin"}`);
-        textos.push(texto || "[Mandó un audio sin palabras que se entiendan.]");
+        textos.push(conMarca(m, texto || "[Mandó un audio sin palabras que se entiendan.]"));
       } else if ((m.type === "image" && m.image?.id) || (m.type === "document" && m.document?.id)) {
         const medio = m.image ?? m.document!;
         const nombre = m.document?.filename ?? `foto-${p.wamid.slice(-8).replace(/\W/g, "")}.jpg`;
@@ -241,21 +280,22 @@ async function armarMensaje(db: SupabaseClient, convId: string, partes: Entrante
             const { error } = await db.storage.from("comercial").upload(path, datos, { contentType: mime, upsert: true });
             if (error) throw new Error(`No se pudo guardar el adjunto: ${error.message}`);
             adjuntos.push({ path, tipo: mime, nombre });
+            if (esReenviado(m) && !medio.caption?.trim()) textos.push(conMarca(m, `(archivo «${nombre}»)`));
           }
         }
-        if (medio.caption?.trim()) textos.push(medio.caption.trim());
+        if (medio.caption?.trim()) textos.push(conMarca(m, medio.caption.trim()));
       } else if (m.type === "location" && m.location) {
         const l = m.location;
-        textos.push(`Ubicación compartida: ${[l.name, l.address].filter(Boolean).join(", ") || "sin nombre"} (lat ${l.latitude}, long ${l.longitude}).`);
+        textos.push(conMarca(m, `Ubicación compartida: ${[l.name, l.address].filter(Boolean).join(", ") || "sin nombre"} (lat ${l.latitude}, long ${l.longitude}).`));
       } else if (m.type === "button" && m.button?.text) {
-        textos.push(m.button.text);
+        textos.push(conMarca(m, m.button.text));
       }
     } catch (e) {
       textos.push(`[No pude abrir algo que mandó por WhatsApp: ${e instanceof Error ? e.message : e}]`);
     }
   }
   if (!textos.length && !adjuntos.length) return null;
-  return { tipo: "mensaje", texto: textos.join("\n\n") || "(mandó sólo adjuntos)", adjuntos, canal: "whatsapp" };
+  return { tipo: "mensaje", texto: textoDeTanda(textos, hayReenviado) || "(mandó sólo adjuntos)", adjuntos, canal: "whatsapp" };
 }
 
 /** Corre el turno y va mandando la respuesta por WhatsApp. */

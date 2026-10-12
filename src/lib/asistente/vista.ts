@@ -21,6 +21,8 @@ export type ItemChat = {
   canal: string | null;
   interrumpido: boolean;
   fecha: string;
+  /** En la última respuesta del asistente de cada turno: ese turno (para «esto estuvo mal»). */
+  finDeTurno?: string;
 };
 
 type Bloque = Record<string, unknown> & { type: string };
@@ -66,5 +68,13 @@ export function historialParaPantalla(filas: FilaMensaje[]): ItemChat[] {
       fecha: f.created_at,
     });
   }
+  // La marca «estuvo mal» va una vez por turno, debajo de su última respuesta.
+  const porId = new Map(items.map((it) => [it.id, it]));
+  const ultima = new Map<string, ItemChat>();
+  for (const f of filas) {
+    const it = f.turno_id && f.rol === "assistant" ? porId.get(f.id) : undefined;
+    if (it) ultima.set(f.turno_id!, it);
+  }
+  for (const [turno, it] of ultima) it.finDeTurno = turno;
   return items;
 }

@@ -233,6 +233,22 @@ está en `src/lib/asistente/edicion.ts`.
 **Tope de gasto:** `asistente_tope_diario_usd` (hoy US$ 30 por persona y por día). Se cambia en
 Parámetros.
 
+**«Esto estuvo mal»** (desde el 12/10; es el método de correcciones acordado el 26/09):
+- **Dónde:** un pulgar abajo (44 px) debajo de la última respuesta de cada turno. Abre una hoja
+  con el motivo y un texto opcional.
+- **Motivos:** cuentas o importes, inventó o supuso algo, tardó mucho, no entendió, otra cosa.
+- **Qué guarda:** `asistente_feedback` (migración `20261012000004`), atado al `turno_id` para ir
+  a mirar exactamente esa respuesta. Una marca por persona y por turno: marcar de nuevo la
+  reemplaza.
+- **Quién:** marca el dueño de la charla o un admin (`POST /api/comercial/asistente/feedback`).
+- **Dónde se ve:** en Parámetros → Uso.
+
+Piezas:
+- el componente es `src/components/asistente/estuvo-mal.tsx`;
+- el hilo lo pone donde `vista.ts` marcó `finDeTurno`;
+- los motivos están en `src/lib/asistente/feedback.ts` y en el CHECK de la tabla: si se agrega
+  uno, va en los dos lados.
+
 ---
 
 ## Parámetros de cotización (`/comercial/parametros`)
@@ -246,6 +262,16 @@ Parámetros.
 | Renders | La biblioteca de imágenes por tipo de sistema para la "representación gráfica" | Ídem |
 | Vendedores | El nombre que sale como "Vendedor asignado" y **el WhatsApp de cada uno** | El nombre, quien edita parámetros. **El WhatsApp, sólo un admin**: con ese número se le habla al asistente como esa persona |
 | Historial | Cada cambio de tarifa, con el valor anterior, quién, cuándo y por qué | — |
+| Uso | Por persona y por mes: pedidos al modelo, conversaciones, presupuestos guardados, US$, US$ por presupuesto, espera mediana por turno, % de turnos de más de 60 s y cuántos «estuvo mal». Arriba, el gasto de hoy de cada uno contra el tope diario; abajo, los últimos «estuvo mal» con el link a la charla | Sólo la ve un admin o quien edita parámetros (muestra lo que gasta cada uno). No se edita |
+
+**Uso** (`GET /api/comercial/parametros/uso?meses=6`): se calcula en el servidor, con
+`src/lib/asistente/uso.ts` (puro, con tests). Lee de a 1000 filas.
+- **US$:** `asistente_mensajes.uso` con `costoUsd` y el modelo **de la conversación**.
+- **Presupuestos:** las acciones `guardar_presupuesto` y `reemitir_presupuesto` que terminaron
+  ok.
+- **Espera de un turno:** de la primera a la última fila de ese `turno_id`. Sólo cuentan los
+  turnos con algún pedido al modelo.
+- **Mes y «hoy»:** de Buenos Aires, como el tope.
 
 Una conversación **congela** el prompt del sistema (criterio y tarifas) al crearse. Si una
 tarifa cambia en el medio, el asistente se entera por un aviso dentro de la charla y los
@@ -357,6 +383,27 @@ Cómo maneja las conversaciones:
   se fija si llegó algo más.
 - **Un número que no está cargado** en Vendedores recibe una vez por día un aviso de que el
   número es de uso interno, y nada más.
+- **Una tanda por función** (12/10). Una tanda es un botón, un «nueva» o varios mensajes
+  seguidos. Cada función de Vercel atiende una sola: un turno puede durar 240 s y la función
+  vive 300.
+  - Lo que queda sigue `pendiente`, y la función le pide a otra que siga
+    (`POST /api/whatsapp/webhook/seguir`, firmado con la clave de la app y un prefijo propio).
+  - Si ese pedido falla, lo retoma el próximo mensaje de ese teléfono.
+  - Mientras trabaja, el candado del teléfono se renueva cada minuto.
+- **Mensajes colgados** (12/10). Un mensaje en `procesando` desde hace más de 6 min quedó de
+  una función que murió.
+  - El siguiente que toma el turno de ese teléfono lo vuelve a `pendiente`, una sola vez: si se
+    vuelve a cortar, queda en `error`.
+  - **Ojo:** si la función murió a mitad del turno, ese mensaje entra dos veces en la charla.
+- **Lo reenviado no confirma** (12/10). Meta marca los mensajes reenviados
+  (`context.forwarded` o `frequently_forwarded`).
+  - Entran al texto con la marca [reenviado], y la tanda lleva un aviso al final para el modelo.
+  - Esa marca no es una palabra que acepte `esConfirmacion`. Por eso, en esa tanda ningún «sí»
+    escrito confirma nada: queda el botón o un mensaje propio después.
+  - Un «nueva» reenviado no reinicia la charla.
+  - Las piezas puras están en `src/lib/whatsapp/tandas.ts`, con tests.
+- **La «última foto»** para el render propio es la última subida (por fecha de Storage), no
+  por nombre: las de WhatsApp se llaman `wa-<wamid>-…` y no ordenan por hora.
 
 Cómo se protege: el webhook `/api/whatsapp/webhook` es público y valida la firma de Meta
 (HMAC con la clave de la app). Cada mensaje se anota una sola vez aunque Meta reintente. El
@@ -446,9 +493,17 @@ tiene caché de 1 h.
 - `asistente_conversaciones`, `asistente_mensajes`, `cotizacion_borradores` (+ `_cambios`),
   `asistente_acciones` (+ `_eventos`), `cotizacion_pdfs`, `comercial_vendedores`;
 - `whatsapp_entrantes`;
+- `asistente_feedback` (`20261012000004`);
 - bucket privado `comercial`.
 
 Los usuarios leen lo suyo (un admin, todo) y escribe sólo el servidor.
+
+**Quién lee qué con la sesión** (`20261012000005_asistente_rls.sql`, 12/10):
+- **Tarifas, historial, criterio, lista de alquiler, productos y renders:** quien tenga
+  `parametros-cotizacion` o `asistente-comercial`, o un admin (`cotizacion_puede_ver()`). Antes,
+  cualquier usuario con login.
+- **`comercial_vendedores`:** sólo un admin; la pantalla y el asistente leen con service role.
+- **`configuracion`:** todo menos las claves `afip_*`.
 
 **Permisos:** hay dos módulos, `asistente-comercial` y `parametros-cotizacion`, en el grupo
 Comercial. Para usar el chat hace falta el de edición. Las rutas con service role vuelven a
@@ -466,6 +521,7 @@ webhook de WhatsApp, y cada uno tiene su secreto o firma.
 | Voz en vivo (sin ElevenLabs) | `… scripts/test-asistente-voz.mts`: se hace pasar por ElevenLabs contra el endpoint | ~US$ 0,50 |
 | WhatsApp (sin Meta) | `… scripts/test-asistente-whatsapp.mts`: avisos firmados simulados y la API de Meta interceptada; la acción se cancela, no escribe en Odoo | ~US$ 1 |
 | PDF contra la skill | `node scripts/pdf-paridad.mjs` (necesita la skill descomprimida y PyMuPDF) | — |
+| Guiones de evaluación (Anexo B de la auditoría) | `… scripts/eval-asistente.mts --lista` (gratis: los casos y su costo); `--caso 3`, `--caso 1,4,S2` o `--todos`. Una charla «[PRUEBA EVAL n]» por caso, chequeos deterministas, no confirma nada en Odoo salvo con `--odoo` (ZZ PRUEBA, se borra). `--modelo` para comparar otro modelo | ~US$ 0,50–1,20 por caso; ~US$ 12,5 todos |
 | Migración nueva | `node --env-file=.env.local scripts/probar-migracion.mjs <archivo>` (la corre dos veces y hace ROLLBACK); después `scripts/apply-migration.mjs`. Nunca `supabase db push` | — |
 
 ---
@@ -481,8 +537,8 @@ webhook de WhatsApp, y cada uno tiene su secreto o firma.
   tokens. La definición de las dos herramientas suma ~6.400 tokens a cada pedido, que van al
   caché.
 
-  El uso de cada pedido queda en `asistente_mensajes.uso` (y el tope diario lo calcula
-  `gastoDelDia`), pero **la pantalla de uso por persona y por mes todavía no está hecha**.
+  El uso de cada pedido queda en `asistente_mensajes.uso`; el tope diario lo calcula
+  `gastoDelDia` y el uso por persona y por mes está en Parámetros → Uso.
 - **ElevenLabs**: la voz en vivo se cobra por minuto según el plan; transcribir, ~US$ 0,40 por
   hora de audio.
 - **WhatsApp**: responder dentro de las 24 h de un mensaje del vendedor no tiene costo de Meta.

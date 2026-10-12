@@ -31,6 +31,8 @@ export type ModoTarjeta = {
   /** Retraso de entrada (expandir en cascada). */
   retraso: number;
   puedeEditar: boolean;
+  /** Layout Árbol: los hijos cuelgan del centro, y ahí va el botón de colapsar (en lista, de la sangría). */
+  arbol: boolean;
 };
 
 const TIPO: Record<string, string> = { direccion: "Dirección", area: "Área", puesto: "Puesto" };
@@ -318,7 +320,8 @@ function TarjetaBase({ vista, modo }: { vista: VistaNodo; modo: ModoTarjeta }) {
           aria-expanded={!vista.ocultos}
           className={cn(
             "absolute -bottom-2.5 z-10 inline-flex h-5 min-w-5 items-center justify-center rounded-full border bg-card px-1 text-[10.5px] font-semibold text-muted-foreground shadow-sm hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
-            raiz ? "left-1/2 -translate-x-1/2" : "left-[14px] -translate-x-1/2",
+            "-translate-x-1/2 transition-[left] duration-300 motion-reduce:transition-none",
+            raiz || modo.arbol ? "left-1/2" : "left-[14px]",
           )}
         >
           {vista.ocultos ? `+${vista.ocultos}` : <Minus aria-hidden className="size-3" />}

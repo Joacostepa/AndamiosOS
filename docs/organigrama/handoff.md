@@ -16,6 +16,8 @@
 - Tests (`node:test`, 521 en verde al mergear): `datos.test.ts` (traducción base ↔ pantalla, diffs, `operacionesPara`, y que el JSON sembrado en la migración sea igual a `estructura-base.ts`), más `arbol`, `lienzo` y `layout`.
 - Antes de aplicarla, la migración se probó: en un Postgres local (PGlite) dos veces seguidas, con ciclos, versiones publicadas, RLS y un ciclo completo crear → asignar → deshacer → publicar; y contra la base real dentro de `BEGIN … ROLLBACK` (una sola pasada; ver «Cómo probar una migración nueva»).
 
+- **Lienzo: Lista / Árbol** (rama `feat/organigrama-arbol`, 12/10, sin mergear): selector en la barra (tecla `L`, recordado en `localStorage`, Árbol por defecto en escritorio, siempre Lista en el celular); layout Árbol compacto en `layout.ts` (`forma: "arbol"`, grilla de 2 columnas con más de 3 hijos) con tests en `layout-arbol.test.ts`; y el arreglo de los encuadres, que ahora miden los paneles flotantes (`data-panel` + `areaLibre`) y no dejan la Dirección debajo de la barra ni lo de abajo debajo del banco. Detalle en [modulo.md § 3](./modulo.md#3-pantallas). Solo código, sin migración.
+
 ### Falta
 
 1. **Probar en el navegador con datos reales** (nadie lo vio todavía con la base de verdad): la lista de abajo.
@@ -53,6 +55,7 @@
 - «Seguí el papel» usa las claves de la estructura base (`stock`, `montajes`, `cobr`…). Si se elimina uno de esos puestos, el papel no viaja a esa parada (el texto del paso se sigue leyendo).
 - `modalidad = 'compartido'` está permitida en la base pero la pantalla la lee como titular (compartir = dos titulares).
 - El historial de deshacer vive mientras el Lienzo está abierto.
+- **Árbol en la pantalla normal (no completa)**: con el banco abierto y la caja de herramientas, el árbol entero entra a ~33 % en una notebook de 1440×900 (zoom semántico: nombre + conteo). En pantalla completa, ~43 %. Es lo que da el ancho de 5 áreas con 2 columnas cada una; para leer las fichas, acercar o colapsar áreas.
 
 ## Cómo retomar
 

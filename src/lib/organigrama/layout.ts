@@ -2,11 +2,19 @@
 // pasa cada conector. Puro: sin DOM, sin React. Lo usa el lienzo para animar con springs (cada
 // cambio de estructura recalcula el layout y las cajas viajan de la posición vieja a la nueva).
 //
-// FORMA: árbol de arriba hacia abajo, pero híbrido, porque ABA es ancho y bajo:
+// DOS FORMAS (opción `forma`), las dos de arriba hacia abajo:
 //   - los primeros niveles (`nivelesHorizontales`, por defecto 1: la Dirección y sus áreas)
-//     se abren en abanico horizontal, con conectores curvos (bezier);
-//   - de ahí para abajo, los hijos van en LISTA vertical con sangría y un conector en codo
-//     redondeado. Así un área con 7 puestos es una columna y no una fila de 1.500 px.
+//     se abren siempre en abanico horizontal, con conectores curvos (bezier);
+//   - «lista»: de ahí para abajo, los hijos van en LISTA vertical con sangría y un conector en
+//     codo redondeado. Así un área con 7 puestos es una columna y no una fila de 1.500 px;
+//   - «arbol»: de ahí para abajo, los hijos se abren debajo del padre como en un organigrama
+//     clásico (bajada, bus horizontal, bajada a cada hijo). Árbol compacto, no puro: si un nodo
+//     tiene más de `filaMax` hijos, van en una GRILLA de `columnas` columnas (más si quedarían
+//     más de `filasMax` filas), con un tronco que baja por el hueco entre columnas y un bus por
+//     fila. La última fila incompleta va centrada. Profundidad arbitraria.
+//
+// Los conectores en codo de las dos formas se dibujan con la MISMA estructura de comandos
+// (`rutaSvg`), así al cambiar de forma motion interpola cada conector del viejo al nuevo.
 //
 // Las coordenadas son del «mundo»: la cámara del lienzo las transforma con translate+scale.
 
@@ -15,13 +23,19 @@ import type { Nodo } from "./tipos.ts";
 export type Punto = { x: number; y: number };
 export type Caja = { x: number; y: number; w: number; h: number };
 
+export type FormaLayout = "lista" | "arbol";
+
 /**
  * rama: de abajo-centro del padre a arriba-centro del hijo (bezier).
  * lista: baja por la sangría del padre y dobla hacia el borde izquierdo del hijo (codo).
+ * arbol: baja del padre hasta el `bus` (y), corre hasta el `tronco` (x), baja por el tronco
+ *   hasta el bus de su `fila` (y), corre hasta encima del hijo y baja a su borde de arriba. En la
+ *   primera fila, `tronco` = x del padre y `fila` = `bus` (esos tramos miden cero).
  */
 export type Geometria =
   | { modo: "rama"; desde: Punto; hasta: Punto }
-  | { modo: "lista"; desde: Punto; hasta: Punto; radio: number };
+  | { modo: "lista"; desde: Punto; hasta: Punto; radio: number }
+  | { modo: "arbol"; desde: Punto; hasta: Punto; bus: number; tronco: number; fila: number; radio: number };
 
 export type Arista = { de: string; a: string; geo: Geometria };
 
@@ -49,6 +63,20 @@ export type OpcionesLayout = {
   /** Sangría de cada nivel de lista. */
   sangria: number;
   nivelesHorizontales: number;
+  /** Debajo de los niveles en abanico: lista con sangría o árbol compacto. */
+  forma: FormaLayout;
+  /** Árbol: separación horizontal entre hermanos (y entre columnas de la grilla). */
+  sepXArbol: number;
+  /** Árbol: separación vertical entre un padre y su primera fila de hijos. */
+  sepYArbol: number;
+  /** Árbol: separación vertical entre filas de la grilla. */
+  sepFila: number;
+  /** Árbol: hasta cuántos hijos van en una sola fila. */
+  filaMax: number;
+  /** Árbol: columnas de la grilla cuando hay más de `filaMax` hijos. */
+  columnas: number;
+  /** Árbol: si con `columnas` quedarían más filas que esto, se agregan columnas. */
+  filasMax: number;
   colapsados?: ReadonlySet<string>;
 };
 
@@ -60,7 +88,23 @@ export const OPCIONES_LAYOUT: OpcionesLayout = {
   sepLista: 14,
   sangria: 28,
   nivelesHorizontales: 1,
+  forma: "lista",
+  sepXArbol: 20,
+  sepYArbol: 52,
+  sepFila: 36,
+  filaMax: 3,
+  columnas: 2,
+  filasMax: 4,
 };
+
+/** Cuántas columnas usa el árbol para `n` hijos (una sola fila si son pocos). */
+export function columnasArbol(n: number, op: Pick<OpcionesLayout, "filaMax" | "columnas" | "filasMax"> = OPCIONES_LAYOUT): number {
+  if (n <= op.filaMax) return Math.max(1, n);
+  return Math.min(n, Math.max(op.columnas, Math.ceil(n / Math.max(1, op.filasMax))));
+}
+
+/** Los hijos de un nodo en el árbol: filas, ancho de cada columna y alto de cada fila. */
+type Grilla = { filas: Nodo[][]; colW: number[]; filaH: number[]; w: number; h: number };
 
 function hijosOrdenados(porPadre: Map<string, Nodo[]>, clave: string): Nodo[] {
   return porPadre.get(clave) ?? [];
@@ -84,6 +128,7 @@ export function calcularLayout(nodos: Nodo[], opciones: Partial<OpcionesLayout> 
   raices.sort((a, b) => a.orden - b.orden || a.clave.localeCompare(b.clave));
 
   const medidas = new Map<string, { w: number; h: number }>();
+  const grillas = new Map<string, Grilla>();
   const ocultos: Record<string, number> = {};
   const enCamino = new Set<string>();
 
@@ -116,6 +161,21 @@ export function calcularLayout(nodos: Nodo[], opciones: Partial<OpcionesLayout> 
       if (nivel < op.nivelesHorizontales) {
         const total = ms.reduce((s, x) => s + x.w, 0) + op.sepX * (ms.length - 1);
         m = { w: Math.max(op.ancho, total), h: op.alto + op.sepY + Math.max(...ms.map((x) => x.h)) };
+      } else if (op.forma === "arbol") {
+        const cols = columnasArbol(hs.length, op);
+        const filas: Nodo[][] = [];
+        for (let i = 0; i < hs.length; i += cols) filas.push(hs.slice(i, i + cols));
+        const colW = Array.from({ length: cols }, (_, c) => Math.max(0, ...filas.map((f, r) => (f[c] ? ms[r * cols + c].w : 0))));
+        const filaH = filas.map((f, r) => Math.max(...f.map((_, c) => ms[r * cols + c].h)));
+        const g: Grilla = {
+          filas,
+          colW,
+          filaH,
+          w: colW.reduce((s, x) => s + x, 0) + op.sepXArbol * (cols - 1),
+          h: filaH.reduce((s, x) => s + x, 0) + op.sepFila * (filas.length - 1),
+        };
+        grillas.set(n.clave, g);
+        m = { w: Math.max(op.ancho, g.w), h: op.alto + op.sepYArbol + g.h };
       } else {
         m = {
           w: Math.max(op.ancho, op.sangria + Math.max(...ms.map((x) => x.w))),
@@ -137,7 +197,8 @@ export function calcularLayout(nodos: Nodo[], opciones: Partial<OpcionesLayout> 
     const m = medidas.get(n.clave)!;
     const hs = visibles(n.clave).filter((h) => medidas.has(h.clave));
     const horizontal = nivel < op.nivelesHorizontales;
-    const x = horizontal ? izq + (m.w - op.ancho) / 2 : izq;
+    const arbol = !horizontal && op.forma === "arbol";
+    const x = horizontal || arbol ? izq + (m.w - op.ancho) / 2 : izq;
     cajas[n.clave] = { x, y: arriba, w: op.ancho, h: op.alto };
     profundidad[n.clave] = nivel;
     if (horizontal) {
@@ -154,6 +215,38 @@ export function calcularLayout(nodos: Nodo[], opciones: Partial<OpcionesLayout> 
           geo: { modo: "rama", desde: { x: x + op.ancho / 2, y: arriba + op.alto }, hasta: { x: ch.x + ch.w / 2, y: ch.y } },
         });
         cx += mh.w + op.sepX;
+      }
+    } else if (arbol) {
+      const g = grillas.get(n.clave);
+      if (g && hs.length) {
+        const cols = g.colW.length;
+        const izqGrilla = izq + (m.w - g.w) / 2;
+        const desde = { x: x + op.ancho / 2, y: arriba + op.alto };
+        const bus = arriba + op.alto + op.sepYArbol / 2;
+        // El tronco baja por el hueco entre las columnas del medio: nunca cruza una caja.
+        const medio = Math.max(1, Math.floor(cols / 2));
+        const tronco = izqGrilla + g.colW.slice(0, medio).reduce((s, w) => s + w, 0) + op.sepXArbol * (medio - 1) + op.sepXArbol / 2;
+        let y = arriba + op.alto + op.sepYArbol;
+        g.filas.forEach((fila, r) => {
+          // La última fila, si queda incompleta, va centrada.
+          const anchoFila = g.colW.slice(0, fila.length).reduce((s, w) => s + w, 0) + op.sepXArbol * (fila.length - 1);
+          let cx = izqGrilla + (g.w - anchoFila) / 2;
+          const busFila = r === 0 ? bus : y - op.sepFila / 2;
+          fila.forEach((h, c) => {
+            const mh = medidas.get(h.clave);
+            if (mh) {
+              ubicar(h, nivel + 1, cx + (g.colW[c] - mh.w) / 2, y);
+              const ch = cajas[h.clave];
+              aristas.push({
+                de: n.clave,
+                a: h.clave,
+                geo: { modo: "arbol", desde, hasta: { x: ch.x + ch.w / 2, y: ch.y }, bus, tronco: r === 0 ? desde.x : tronco, fila: busFila, radio: 8 },
+              });
+            }
+            cx += g.colW[c] + op.sepXArbol;
+          });
+          y += g.filaH[r] + op.sepFila;
+        });
       }
     } else {
       let y = arriba + op.alto + op.sepLista;
@@ -201,9 +294,33 @@ export function limitesDe(cajas: Caja[]): Limites {
 
 const r1 = (n: number) => Math.round(n * 10) / 10;
 
+/** La familia de un conector: dos conectores de la misma familia se pueden interpolar. */
+export function familiaGeo(geo: Geometria): "rama" | "codo" {
+  return geo.modo === "rama" ? "rama" : "codo";
+}
+
 /**
- * El `d` del conector. SIEMPRE con la misma estructura de comandos para cada modo, así motion
- * puede interpolar un conector viejo con el nuevo (el conector «viaja» con la caja).
+ * Los SEIS vértices de un conector en codo (lista o árbol), del padre al hijo. Siempre seis
+ * (algunos repetidos), así lista y árbol comparten la forma del `d` y se pueden interpolar.
+ */
+export function verticesCodo(geo: Exclude<Geometria, { modo: "rama" }>): Punto[] {
+  const { desde: a, hasta: b } = geo;
+  if (geo.modo === "lista") return [a, a, a, { x: a.x, y: b.y }, b, b];
+  return [a, { x: a.x, y: geo.bus }, { x: geo.tronco, y: geo.bus }, { x: geo.tronco, y: geo.fila }, { x: b.x, y: geo.fila }, b];
+}
+
+/** La geometría de un conector recién nacido: todo concentrado en el padre (crece desde ahí). */
+export function geometriaNaciente(geo: Geometria): Geometria {
+  const a = geo.desde;
+  if (geo.modo === "arbol") return { ...geo, hasta: a, bus: a.y, tronco: a.x, fila: a.y };
+  return { ...geo, hasta: a };
+}
+
+/**
+ * El `d` del conector. SIEMPRE con la misma estructura de comandos para cada familia, así motion
+ * puede interpolar un conector viejo con el nuevo (el conector «viaja» con la caja, y al cambiar
+ * de lista a árbol se transforma). Codo: `M` + 4 × (`L` `Q`) + `L`; las esquinas se redondean
+ * con `radio` (sin pasarse de la mitad de un tramo que tiene otra esquina en la otra punta).
  */
 export function rutaSvg(geo: Geometria): string {
   const { desde: a, hasta: b } = geo;
@@ -211,8 +328,34 @@ export function rutaSvg(geo: Geometria): string {
     const ym = (a.y + b.y) / 2;
     return `M ${r1(a.x)} ${r1(a.y)} C ${r1(a.x)} ${r1(ym)} ${r1(b.x)} ${r1(ym)} ${r1(b.x)} ${r1(b.y)}`;
   }
-  const r = Math.max(0, Math.min(geo.radio, Math.abs(b.y - a.y), Math.abs(b.x - a.x)));
-  return `M ${r1(a.x)} ${r1(a.y)} L ${r1(a.x)} ${r1(b.y - r)} Q ${r1(a.x)} ${r1(b.y)} ${r1(a.x + r)} ${r1(b.y)} L ${r1(b.x)} ${r1(b.y)}`;
+  const v = verticesCodo(geo);
+  const largo = (i: number) => Math.hypot(v[i + 1].x - v[i].x, v[i + 1].y - v[i].y);
+  // Una esquina de verdad: los dos tramos miden algo y no siguen la misma dirección.
+  const esquina = (i: number) => {
+    if (i <= 0 || i >= v.length - 1) return false;
+    const l1 = largo(i - 1);
+    const l2 = largo(i);
+    if (l1 < 0.01 || l2 < 0.01) return false;
+    const cruz = (v[i].x - v[i - 1].x) * (v[i + 1].y - v[i].y) - (v[i].y - v[i - 1].y) * (v[i + 1].x - v[i].x);
+    return Math.abs(cruz) > 0.01 * l1 * l2;
+  };
+  let d = `M ${r1(v[0].x)} ${r1(v[0].y)}`;
+  for (let i = 1; i < v.length - 1; i++) {
+    const p = v[i];
+    let r = 0;
+    let uin = { x: 0, y: 0 };
+    let uout = { x: 0, y: 0 };
+    if (esquina(i)) {
+      const l1 = largo(i - 1);
+      const l2 = largo(i);
+      r = Math.min(geo.radio, esquina(i - 1) ? l1 / 2 : l1, esquina(i + 1) ? l2 / 2 : l2);
+      uin = { x: (p.x - v[i - 1].x) / l1, y: (p.y - v[i - 1].y) / l1 };
+      uout = { x: (v[i + 1].x - p.x) / l2, y: (v[i + 1].y - p.y) / l2 };
+    }
+    d += ` L ${r1(p.x - uin.x * r)} ${r1(p.y - uin.y * r)} Q ${r1(p.x)} ${r1(p.y)} ${r1(p.x + uout.x * r)} ${r1(p.y + uout.y * r)}`;
+  }
+  const z = v[v.length - 1];
+  return `${d} L ${r1(z.x)} ${r1(z.y)}`;
 }
 
 function bezier(p0: number, p1: number, p2: number, p3: number, t: number): number {
@@ -232,11 +375,13 @@ export function puntosDeArista(geo: Geometria, pasos = 8): Punto[] {
     }
     return fuera;
   }
-  // Codo: tramo vertical y tramo horizontal (la curvita del radio no se nota a esta escala).
-  const codo = { x: a.x, y: b.y };
+  // Codo (lista o árbol): por los tramos rectos (la curvita del radio no se nota a esta escala).
+  const v = verticesCodo(geo).filter((p, i, t) => i === 0 || Math.hypot(p.x - t[i - 1].x, p.y - t[i - 1].y) > 0.01);
+  if (v.length < 2) return [a, b];
   const mitad = Math.max(1, Math.floor(pasos / 2));
-  for (let i = 0; i <= mitad; i++) fuera.push({ x: a.x, y: a.y + ((codo.y - a.y) * i) / mitad });
-  for (let i = 1; i <= mitad; i++) fuera.push({ x: codo.x + ((b.x - codo.x) * i) / mitad, y: b.y });
+  fuera.push(v[0]);
+  for (let s = 1; s < v.length; s++)
+    for (let i = 1; i <= mitad; i++) fuera.push({ x: v[s - 1].x + ((v[s].x - v[s - 1].x) * i) / mitad, y: v[s - 1].y + ((v[s].y - v[s - 1].y) * i) / mitad });
   return fuera;
 }
 
@@ -319,6 +464,93 @@ export function encuadrar(
   return { k, x: area.x + area.w / 2 - cx * k, y: area.y + area.h / 2 - cy * k };
 }
 
+/** Un panel flotante sobre el lienzo, en coordenadas del lienzo, y el borde al que está pegado. */
+export type PanelFlotante = { lado: "arriba" | "abajo" | "izquierda" | "derecha"; x: number; y: number; w: number; h: number };
+
+export type Rect = { x: number; y: number; w: number; h: number };
+
+/**
+ * El rectángulo del lienzo que no tapa ningún panel flotante (la barra de arriba, el banco de
+ * abajo, la caja de herramientas, el minimapa y el zoom): lo que se encuadra tiene que caer acá.
+ *
+ * Sin `contenido`: cada panel corre el borde de su lado hasta su canto interior, más
+ * `separacion` (el rectángulo central). Si los paneles dejaran menos de `minimo` en un sentido,
+ * se achican los márgenes en proporción.
+ *
+ * Con `contenido` (el ancho y alto de lo que se va a encuadrar): se prueban todos los
+ * rectángulos libres de paneles —por ejemplo, todo el ancho entre la caja de herramientas y el
+ * minimapa, si lo que se encuadra es ancho y bajo— y se elige el que deja verlo más grande.
+ */
+export function areaLibre(
+  ancho: number,
+  alto: number,
+  paneles: PanelFlotante[],
+  separacion = 12,
+  minimo = 160,
+  contenido?: { w: number; h: number },
+  margen = 24,
+): Rect {
+  const central = areaCentral(ancho, alto, paneles, separacion, minimo);
+  if (!contenido) return central;
+  const visibles = paneles.filter((p) => p.w > 0 && p.h > 0);
+  const escala = (r: Rect) =>
+    Math.min((r.w - margen * 2) / Math.max(1, contenido.w), (r.h - margen * 2) / Math.max(1, contenido.h));
+  const izquierdas = [0, ...visibles.map((p) => p.x + p.w + separacion)].filter((x) => x >= 0 && x < ancho);
+  const derechas = [ancho, ...visibles.map((p) => p.x - separacion)].filter((x) => x > 0 && x <= ancho);
+  let mejor = central;
+  let kMejor = escala(central);
+  for (const l of izquierdas)
+    for (const r of derechas) {
+      if (r - l < minimo) continue;
+      // Los paneles que caen en esa franja vertical parten el alto en huecos.
+      const cortes = visibles
+        .filter((p) => p.x < r && p.x + p.w > l)
+        .map((p) => [p.y - separacion, p.y + p.h + separacion] as const)
+        .sort((a, b) => a[0] - b[0]);
+      let desde = 0;
+      const huecos: [number, number][] = [];
+      for (const [a, b] of cortes) {
+        if (a > desde) huecos.push([desde, a]);
+        desde = Math.max(desde, b);
+      }
+      if (desde < alto) huecos.push([desde, alto]);
+      for (const [t, b] of huecos) {
+        if (b - t < minimo) continue;
+        const rect = { x: l, y: t, w: r - l, h: b - t };
+        const k = escala(rect);
+        // Más grande gana; si da casi lo mismo, el de más superficie (queda más aire).
+        if (k > kMejor * 1.01 || (k > kMejor * 0.99 && rect.w * rect.h > mejor.w * mejor.h)) {
+          mejor = rect;
+          kMejor = Math.max(k, kMejor);
+        }
+      }
+    }
+  return mejor;
+}
+
+function areaCentral(ancho: number, alto: number, paneles: PanelFlotante[], separacion: number, minimo: number): Rect {
+  let arriba = 0;
+  let abajo = 0;
+  let izq = 0;
+  let der = 0;
+  for (const p of paneles) {
+    if (p.w <= 0 || p.h <= 0) continue;
+    if (p.lado === "arriba") arriba = Math.max(arriba, p.y + p.h + separacion);
+    else if (p.lado === "abajo") abajo = Math.max(abajo, alto - p.y + separacion);
+    else if (p.lado === "izquierda") izq = Math.max(izq, p.x + p.w + separacion);
+    else der = Math.max(der, ancho - p.x + separacion);
+  }
+  const ajustar = (a: number, b: number, total: number): [number, number] => {
+    const libre = total - a - b;
+    if (libre >= minimo || a + b <= 0) return [a, b];
+    const f = Math.max(0, total - minimo) / (a + b);
+    return [a * f, b * f];
+  };
+  [izq, der] = ajustar(izq, der, ancho);
+  [arriba, abajo] = ajustar(arriba, abajo, alto);
+  return { x: izq, y: arriba, w: Math.max(1, ancho - izq - der), h: Math.max(1, alto - arriba - abajo) };
+}
+
 /** Zoom por `factor` dejando quieto el punto de pantalla `foco` (rueda, pinch, botones). */
 export function zoomHacia(cam: Camara, factor: number, foco: Punto): Camara {
   const k = acotar(cam.k * factor, ZOOM_MIN, ZOOM_MAX);
@@ -348,7 +580,13 @@ export function desplazar(layout: Layout, dx: number, dy: number): Layout {
   return {
     ...layout,
     cajas,
-    aristas: layout.aristas.map((a) => ({ ...a, geo: { ...a.geo, desde: mov(a.geo.desde), hasta: mov(a.geo.hasta) } })),
+    aristas: layout.aristas.map((a) => ({
+      ...a,
+      geo:
+        a.geo.modo === "arbol"
+          ? { ...a.geo, desde: mov(a.geo.desde), hasta: mov(a.geo.hasta), bus: a.geo.bus + dy, tronco: a.geo.tronco + dx, fila: a.geo.fila + dy }
+          : { ...a.geo, desde: mov(a.geo.desde), hasta: mov(a.geo.hasta) },
+    })),
     limites: {
       minX: layout.limites.minX + dx,
       maxX: layout.limites.maxX + dx,

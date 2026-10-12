@@ -162,6 +162,7 @@ const ATAJOS: [string, string][] = [
   ["+ / −", "Acercar / alejar"],
   ["0", "Encuadrar todo"],
   ["F", "Pantalla completa"],
+  ["L", "Cambiar entre lista y árbol"],
   ["Rueda / pinch", "Zoom hacia el cursor"],
   ["Arrastrar el fondo", "Mover la vista"],
   ["← / →", "Paso anterior / siguiente (recorrido y papel)"],

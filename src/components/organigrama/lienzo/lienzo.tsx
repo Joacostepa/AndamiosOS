@@ -5,7 +5,11 @@
 //
 // Piezas:
 //   - layout puro (lib/organigrama/layout.ts) → cada cambio recalcula posiciones y las tarjetas
-//     y conectores viajan a su nuevo lugar;
+//     y conectores viajan a su nuevo lugar. Dos formas, «Lista» y «Árbol» (selector en la barra,
+//     recordado en localStorage; en el celular siempre lista): al cambiar, todo viaja a la forma
+//     nueva y después encuadra;
+//   - encuadres (todo, foco, recorrido, papel) dentro del área que NO tapan los paneles
+//     flotantes, medidos en el momento (`data-panel`, `areaLibre`);
 //   - cámara (camara.ts) con paneo, zoom hacia el cursor, pinch, vuelos y minimapa;
 //   - arrastre (arrastre.tsx) para herramientas, personas y puestos, con vista previa (las demás
 //     cajas hacen lugar) y rebote si no se puede;
@@ -16,7 +20,7 @@
 // rehacer guardan fotos de las dos cosas (acción «restaurar» del proveedor) y viven mientras el
 // lienzo esté abierto.
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   animate,
@@ -51,6 +55,7 @@ import {
 import { CIRCUITOS } from "@/lib/organigrama/circuitos";
 import { hoyBA } from "@/lib/organigrama/datos";
 import {
+  areaLibre,
   calcularLayout,
   desplazamientoAncla,
   desplazar,
@@ -60,7 +65,10 @@ import {
   rutaEntre,
   centrar,
   type Caja,
+  type FormaLayout,
   type Layout,
+  type Limites,
+  type PanelFlotante,
   type Punto,
 } from "@/lib/organigrama/layout";
 import {
@@ -102,6 +110,74 @@ const FANTASMA = "__fantasma__";
 const VACIO: ReadonlySet<string> = new Set();
 /** Por debajo de este zoom las tarjetas se simplifican (zoom semántico). */
 const ZOOM_SIMPLE = 0.5;
+/** Debajo de este ancho del lienzo (celular) se fuerza la lista y no se ofrece el árbol. */
+const ANCHO_ANGOSTO = 768;
+const CLAVE_FORMA = "organigrama.lienzo.forma";
+/** Lo que tarda el viaje de las cajas entre Lista y Árbol antes de encuadrar. */
+const ESPERA_ENCUADRE_FORMA = 520;
+
+// La forma elegida vive en localStorage, leída con useSyncExternalStore: sin desajuste de
+// hidratación si alguna vez se renderiza en el servidor (ahí vale «arbol») y sin parpadeo en el
+// navegador. localStorage puede no estar o tirar (modo privado, bloqueado): entonces la elección
+// vale en memoria mientras la página esté abierta.
+let formaEnMemoria: FormaLayout | null = null;
+const oyentesForma = new Set<() => void>();
+
+function leerForma(): FormaLayout {
+  if (formaEnMemoria) return formaEnMemoria;
+  try {
+    return window.localStorage.getItem(CLAVE_FORMA) === "lista" ? "lista" : "arbol";
+  } catch {
+    return "arbol";
+  }
+}
+
+function guardarForma(f: FormaLayout) {
+  formaEnMemoria = f;
+  try {
+    window.localStorage.setItem(CLAVE_FORMA, f);
+  } catch {
+    // Queda en memoria.
+  }
+  oyentesForma.forEach((o) => o());
+}
+
+function suscribirForma(cambio: () => void) {
+  // Otra pestaña la cambió: manda lo guardado.
+  const otraPestana = (e: StorageEvent) => {
+    if (e.key !== CLAVE_FORMA) return;
+    formaEnMemoria = null;
+    cambio();
+  };
+  oyentesForma.add(cambio);
+  window.addEventListener("storage", otraPestana);
+  return () => {
+    oyentesForma.delete(cambio);
+    window.removeEventListener("storage", otraPestana);
+  };
+}
+
+const sinSuscripcion = () => () => {};
+
+/**
+ * Los paneles flotantes (`data-panel="arriba|abajo|izquierda|derecha"`) en coordenadas del
+ * lienzo. Con offsets (no getBoundingClientRect): las animaciones de entrada (transform) no
+ * corren la medida.
+ */
+function medirPaneles(raiz: HTMLElement | null): PanelFlotante[] {
+  if (!raiz) return [];
+  return [...raiz.querySelectorAll<HTMLElement>("[data-panel]")].map((el) => {
+    let x = 0;
+    let y = 0;
+    let n: HTMLElement | null = el;
+    while (n && n !== raiz) {
+      x += n.offsetLeft;
+      y += n.offsetTop;
+      n = n.offsetParent as HTMLElement | null;
+    }
+    return { lado: el.dataset.panel as PanelFlotante["lado"], x, y, w: el.offsetWidth, h: el.offsetHeight };
+  });
+}
 
 type Pregunta = { tipo: "ubicar"; persona: string; nodo: string; desdeOcupante?: string } | { tipo: "tacho"; clave: string } | null;
 type Seleccion = { tipo: "herramienta"; herramienta: Herramienta } | { tipo: "persona"; persona: string } | null;
@@ -197,6 +273,15 @@ function Escena({ manejador }: { manejador: React.RefObject<Manejador | null> })
   const [simple, setSimple] = useState(false);
   useMotionValueEvent(cam.k, "change", (k) => setSimple(k < ZOOM_SIMPLE));
 
+  // ── Forma: Lista / Árbol ─────────────────────────────────────────────────────
+  // En el celular, siempre lista (y no se ofrece el selector); hasta medir el lienzo, se adivina
+  // por el ancho de la ventana.
+  const forma = useSyncExternalStore<FormaLayout>(suscribirForma, leerForma, () => "arbol");
+  const angostoInicial = useSyncExternalStore(sinSuscripcion, () => window.innerWidth < ANCHO_ANGOSTO, () => false);
+  const angosto = tam.w ? tam.w < ANCHO_ANGOSTO : angostoInicial;
+  const formaEf: FormaLayout = angosto ? "lista" : forma;
+  const cambiarForma = guardarForma;
+
   // ── Estado del lienzo ────────────────────────────────────────────────────────
   const [colapsados, setColapsados] = useState<ReadonlySet<string>>(VACIO);
   const [hist, setHist] = useState(historialVacio<FotoOrg>);
@@ -239,7 +324,7 @@ function Escena({ manejador }: { manejador: React.RefObject<Manejador | null> })
   const colapsadosEf = didactico ? VACIO : colapsados;
 
   // ── Layout (con vista previa del lugar donde caería lo que se arrastra) ──────
-  const base = useMemo(() => calcularLayout(nodos, { colapsados: colapsadosEf }), [nodos, colapsadosEf]);
+  const base = useMemo(() => calcularLayout(nodos, { colapsados: colapsadosEf, forma: formaEf }), [nodos, colapsadosEf, formaEf]);
 
   const validar = useCallback(
     (c: Carga, d: Destino): boolean => {
@@ -269,10 +354,10 @@ function Escena({ manejador }: { manejador: React.RefObject<Manejador | null> })
     if (!nodoFantasma?.dependeDe) return base;
     const col = new Set(colapsadosEf);
     col.delete(nodoFantasma.dependeDe);
-    const con = calcularLayout([...nodos, nodoFantasma], { colapsados: col });
+    const con = calcularLayout([...nodos, nodoFantasma], { colapsados: col, forma: formaEf });
     const d = desplazamientoAncla(base, con, nodoFantasma.dependeDe);
     return desplazar(con, d.x, d.y);
-  }, [base, nodoFantasma, nodos, colapsadosEf]);
+  }, [base, nodoFantasma, nodos, colapsadosEf, formaEf]);
 
   const layoutRef = useRef(layout);
   useLayoutEffect(() => {
@@ -295,22 +380,30 @@ function Escena({ manejador }: { manejador: React.RefObject<Manejador | null> })
     cam.ir({ k: c.k, x: c.x + dx * c.k, y: c.y + dy * c.k }, { suave: false });
   }, [base, cam]);
 
-  // ── Áreas útiles de la pantalla (lo que no tapan los paneles) ────────────────
-  const angosto = tam.w < 768;
-  const areaUtil = useCallback(() => {
-    const izq = puedeEditar && !angosto ? 180 : 8;
-    const der = angosto ? 56 : 214;
-    const arriba = angosto ? 112 : 64;
-    const abajo = angosto ? 120 : 132;
-    return { x: izq, y: arriba, w: Math.max(160, tam.w - izq - der), h: Math.max(160, tam.h - arriba - abajo) };
-  }, [puedeEditar, angosto, tam.w, tam.h]);
-  const areaDidactica = useCallback(() => {
-    if (!angosto) return { x: 404, y: 64, w: Math.max(200, tam.w - 404 - 64), h: Math.max(200, tam.h - 72) };
-    return { x: 8, y: 112, w: tam.w - 16, h: Math.max(140, tam.h - 112 - 330) };
-  }, [angosto, tam.w, tam.h]);
+  // ── Área útil de la pantalla (lo que no tapan los paneles) ───────────────────
+  // Se MIDE en el momento de encuadrar: la barra de arriba (que en angosto ocupa dos filas), el
+  // banco de abajo (abierto o cerrado), la caja de herramientas, el minimapa y el zoom, y en los
+  // modos didácticos la tarjeta del recorrido o del papel. Con `lim` (lo que se va a encuadrar)
+  // elige, entre los huecos que dejan los paneles, el que lo muestra más grande. `extra` suma
+  // paneles que no están en el lienzo (la hoja lateral del foco).
+  const areaUtil = useCallback(
+    (lim?: Limites, extra: PanelFlotante[] = []) =>
+      areaLibre(
+        tam.w,
+        tam.h,
+        [...medirPaneles(contRef.current), ...extra],
+        12,
+        160,
+        lim ? { w: lim.maxX - lim.minX, h: lim.maxY - lim.minY } : undefined,
+      ),
+    [tam.w, tam.h],
+  );
 
   const encuadrarTodo = useCallback(
-    (animar = true) => cam.ir(encuadrar(layoutRef.current.limites, areaUtil(), 24, 1), { animar }),
+    (animar = true) => {
+      const lim = layoutRef.current.limites;
+      cam.ir(encuadrar(lim, areaUtil(lim), 24, 1), { animar });
+    },
     [cam, areaUtil],
   );
 
@@ -320,8 +413,9 @@ function Escena({ manejador }: { manejador: React.RefObject<Manejador | null> })
   useEffect(() => {
     if (encuadrado.current || !tam.w) return;
     encuadrado.current = true;
-    const area = areaUtil();
     const lim = layoutRef.current.limites;
+    // En el celular arranca legible y alineado arriba: se usa el hueco central, no el más grande.
+    const area = areaUtil(angosto ? undefined : lim);
     const todo = encuadrar(lim, area, 24, 1);
     const k = angosto ? Math.max(todo.k, 0.55) : Math.max(todo.k, Math.min(0.62, area.w / Math.max(1, lim.maxX - lim.minX)));
     if (k === todo.k) return cam.ir(todo, { animar: false });
@@ -607,10 +701,12 @@ function Escena({ manejador }: { manejador: React.RefObject<Manejador | null> })
       cam.ir(centrar(centroDe(principal), { x: tam.w / 2, y: tam.h * 0.4 }, Math.max(cam.k.get(), 0.8)));
       return;
     }
-    const area = { x: 8, y: 64, w: visible - 16, h: tam.h - 64 - 150 };
+    // La hoja cuenta como un panel más a la derecha, además de la barra, el banco y la caja.
+    const hoja: PanelFlotante[] = visible < r.width ? [{ lado: "derecha", x: visible, y: 0, w: r.width - visible, h: tam.h }] : [];
+    const area = areaUtil(limitesDe(cajas), hoja);
     const cad = encuadrar(limitesDe(cajas), area, 24, 1);
     if (cad.k >= 0.45) cam.ir(cad);
-    else cam.ir(centrar(centroDe(principal), { x: visible / 2, y: Math.min(tam.h * 0.42, 280) }, 0.85));
+    else cam.ir(centrar(centroDe(principal), { x: area.x + area.w / 2, y: area.y + Math.min(area.h * 0.42, 220) }, 0.85));
     // Solo cuando cambia el foco (no en cada cambio de layout).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [foco, personaFoco]);
@@ -630,8 +726,8 @@ function Escena({ manejador }: { manejador: React.RefObject<Manejador | null> })
     if (!p) return;
     const l = layoutRef.current;
     const lim = p.tipo === "area" ? limitesDeRama(l, nodos, p.nodo.clave) : l.limites;
-    cam.ir(encuadrar(lim, areaDidactica(), 30, p.tipo === "area" ? 1.05 : 1));
-  }, [recorrido, pasosRecorrido, nodos, cam, areaDidactica]);
+    cam.ir(encuadrar(lim, areaUtil(lim), 30, p.tipo === "area" ? 1.05 : 1));
+  }, [recorrido, pasosRecorrido, nodos, cam, areaUtil]);
 
   // ── Seguí el papel ───────────────────────────────────────────────────────────
   const circuito = papel ? CIRCUITOS.find((c) => c.id === papel.circuito) : undefined;
@@ -671,7 +767,7 @@ function Escena({ manejador }: { manejador: React.RefObject<Manejador | null> })
     const ruta = rutaPapel ?? [destinoP];
     const claves = [parada.nodo, papel.desde !== null ? circuito.paradas[papel.desde].nodo : parada.nodo];
     const lim = limitesDe([...claves.map((k) => l.cajas[k]).filter(Boolean), ...ruta.map((p) => ({ x: p.x - 20, y: p.y - 20, w: 40, h: 40 }))]);
-    cam.ir(encuadrar(lim, areaDidactica(), 50, 1.05));
+    cam.ir(encuadrar(lim, areaUtil(lim), 50, 1.05));
     if (reducido || ruta.length < 2) {
       papelX.set(destinoP.x);
       papelY.set(destinoP.y);
@@ -686,7 +782,7 @@ function Escena({ manejador }: { manejador: React.RefObject<Manejador | null> })
       b.stop();
       c.stop();
     };
-  }, [papel, circuito, rutaPapel, duracionRuta, esquina, cam, areaDidactica, reducido, papelX, papelY, rotPapel]);
+  }, [papel, circuito, rutaPapel, duracionRuta, esquina, cam, areaUtil, reducido, papelX, papelY, rotPapel]);
 
   const irPasoPapel = useCallback(
     (i: number) =>
@@ -743,6 +839,19 @@ function Escena({ manejador }: { manejador: React.RefObject<Manejador | null> })
     // eslint-disable-next-line react-hooks/exhaustive-deps -- solo al cambiar el modo
   }, [completa]);
 
+  // Al cambiar entre Lista y Árbol, las cajas y los conectores viajan con su spring a la forma
+  // nueva (se ve la transformación) y, cuando llegan, la cámara encuadra.
+  const formaVista = useRef<FormaLayout | null>(null);
+  useEffect(() => {
+    if (!tam.w) return;
+    const antes = formaVista.current;
+    formaVista.current = formaEf;
+    if (!antes || antes === formaEf || didactico) return;
+    const t = window.setTimeout(() => encuadrarTodo(), reducido ? 0 : ESPERA_ENCUADRE_FORMA);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo al cambiar la forma
+  }, [formaEf, tam.w]);
+
   // ── Teclado ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
@@ -766,6 +875,7 @@ function Escena({ manejador }: { manejador: React.RefObject<Manejador | null> })
       else if (e.key === "0") encuadrarTodo();
       else if (e.key === "?") setAtajos(true);
       else if (tecla === "f") alternarCompleta();
+      else if (tecla === "l" && !angosto && !didactico) cambiarForma(forma === "arbol" ? "lista" : "arbol");
       else if (e.key === "ArrowRight" && recorrido !== null) irPasoRecorrido(recorrido + 1);
       else if (e.key === "ArrowLeft" && recorrido !== null) irPasoRecorrido(recorrido - 1);
       else if (e.key === "ArrowRight" && papel) irPasoPapel(papel.paso + 1);
@@ -780,7 +890,7 @@ function Escena({ manejador }: { manejador: React.RefObject<Manejador | null> })
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, [puedeEditar, didactico, rehacer, deshacer, cam, encuadrarTodo, recorrido, irPasoRecorrido, papel, irPasoPapel, salirDidactico, seleccion, completa, alternarCompleta]);
+  }, [puedeEditar, didactico, rehacer, deshacer, cam, encuadrarTodo, recorrido, irPasoRecorrido, papel, irPasoPapel, salirDidactico, seleccion, completa, alternarCompleta, angosto, forma, cambiarForma]);
 
   // ── Vistas y modos de cada tarjeta ───────────────────────────────────────────
   const marcas = useMemo(() => (enBorrador ? marcasDeCambio(cambios) : new Map()), [enBorrador, cambios]);
@@ -871,6 +981,7 @@ function Escena({ manejador }: { manejador: React.RefObject<Manejador | null> })
       editandoNombre: editandoNombre === c,
       retraso: retrasos[c] ?? 0,
       puedeEditar: puedeEditar && !didactico,
+      arbol: formaEf === "arbol",
     };
   }
 
@@ -999,6 +1110,8 @@ function Escena({ manejador }: { manejador: React.RefObject<Manejador | null> })
               onPapel={empezarPapel}
               onAtajos={() => setAtajos(true)}
               ocupado={didactico}
+              forma={formaEf}
+              onForma={angosto ? undefined : cambiarForma}
             />
 
             <div className="flex justify-center">
@@ -1020,7 +1133,7 @@ function Escena({ manejador }: { manejador: React.RefObject<Manejador | null> })
             <div className="relative min-h-0 flex-1">
               <AnimatePresence>
                 {puedeEditar && !didactico && (
-                  <div key="caja" className="absolute top-0 left-0">
+                  <div key="caja" data-panel="izquierda" className="absolute top-0 left-0">
                     <CajaHerramientas
                       seleccionada={seleccion?.tipo === "herramienta" ? seleccion.herramienta : null}
                       onTocar={(h) => setSeleccion((s) => (s?.tipo === "herramienta" && s.herramienta === h ? null : { tipo: "herramienta", herramienta: h }))}
@@ -1029,19 +1142,19 @@ function Escena({ manejador }: { manejador: React.RefObject<Manejador | null> })
                 )}
               </AnimatePresence>
 
-              <div className={cn("absolute right-0 flex flex-col items-end gap-2", angosto ? "top-0" : "bottom-0")}>
+              <div data-panel="derecha" className={cn("absolute right-0 flex flex-col items-end gap-2", angosto ? "top-0" : "bottom-0")}>
                 {!angosto && !didactico && <Minimapa cajas={cajasMini} colores={coloresMini} limites={base.limites} cam={cam} vista={tam} />}
                 <ControlesZoom cam={cam} onEncuadrar={() => encuadrarTodo()} completa={completa} onPantallaCompleta={alternarCompleta} />
               </div>
 
               <AnimatePresence>
                 {recorrido !== null && (
-                  <div key="rec" className="absolute bottom-0 left-0 max-sm:right-0">
+                  <div key="rec" data-panel={angosto ? "abajo" : "izquierda"} className="absolute bottom-0 left-0 max-sm:right-0">
                     <TarjetaRecorrido pasos={pasosRecorrido} paso={recorrido} datos={datos} resumen={res} onIr={irPasoRecorrido} onSalir={salirDidactico} />
                   </div>
                 )}
                 {papel && circuito && (
-                  <div key="papel" className="absolute bottom-0 left-0 max-sm:right-0">
+                  <div key="papel" data-panel={angosto ? "abajo" : "izquierda"} className="absolute bottom-0 left-0 max-sm:right-0">
                     <TarjetaPapel
                       circuito={circuito}
                       paso={papel.paso}
@@ -1066,7 +1179,7 @@ function Escena({ manejador }: { manejador: React.RefObject<Manejador | null> })
             </div>
 
             {!didactico && (
-              <div className={cn("absolute inset-x-0 bottom-0 flex justify-center", !angosto && "pr-[200px] pl-[180px]")}>
+              <div data-panel="abajo" className={cn("absolute inset-x-0 bottom-0 flex justify-center", !angosto && "pr-[200px] pl-[180px]")}>
                 <AnimatePresence mode="popLayout">
                   {carga?.tipo === "nodo" ? (
                     <Tacho key="tacho" ref={tachoRef} encima={destino?.tipo === "tacho"} />

@@ -261,9 +261,11 @@ const CASOS: DefCaso[] = [
       const t = await c.turno("no, esperá, cambiá la altura a 6 m");
       const acc = await c.acciones();
       c.debe(!acc.some((x) => x.estado === "ok" || x.estado === "ejecutando"), "no confirma nada");
-      c.debe(llamoOk(t, "cotizar_bandeja", "actualizar_borrador"), "recotiza (cotizar_bandeja o actualizar_borrador)");
+      // La tarifa de 6 m es un rango (criterio §3.1): preguntar el precio antes de recotizar es correcto.
+      const recotizo = llamoOk(t, "cotizar_bandeja", "actualizar_borrador");
+      c.debe(recotizo || (pregunta(t) && /precio|rango|\$/i.test(t.texto)), "recotiza, o pregunta el precio de 6 m (es un rango)");
       const b = await c.borrador();
-      c.debe(Number(b?.datos?.calculos?.bandeja?.altura) === 6, `la bandeja quedó a 6 m (${b?.datos?.calculos?.bandeja?.altura})`);
+      if (recotizo) c.debe(Number(b?.datos?.calculos?.bandeja?.altura) === 6, `la bandeja quedó a 6 m (${b?.datos?.calculos?.bandeja?.altura})`);
       c.ojala(acc.some((x) => x.tipo === "guardar_presupuesto" && x.estado === "presentada") || pregunta(t),
         "vuelve a proponer guardar, o pregunta lo que falta para 6 m (precio o memoria de cálculo)");
     },
@@ -309,7 +311,8 @@ const CASOS: DefCaso[] = [
   {
     id: "7", titulo: "Jornadas y render (S02748)", estimadoUsd: 0.5,
     correr: async (c) => {
-      const t = await c.turno("Pantalla de 10,38 m, altura estándar, en Solís 333, CABA. Cliente Consorcio Solís 333.");
+      const t = await c.turno(// Una dirección real ya cotizada (Solís 333 = S02748) hace que frene por duplicado, que es correcto.
+        "Pantalla de 10,38 m, altura estándar, en Calle Falsa 456, Lomas de Zamora (frente 10,38 m, lo dio el cliente). Cliente Consorcio Calle Falsa 456.");
       const b = await c.borrador();
       c.debe(b?.datos?.jornadas?.armado == null, "no puso jornadas que nadie dijo");
       c.debe(/jornada/i.test(t.texto), "pregunta las jornadas");
@@ -389,7 +392,8 @@ const CASOS: DefCaso[] = [
     id: "13", titulo: "Plan de pagos (S02796)", estimadoUsd: 0.9,
     correr: async (c) => {
       await c.turno(`${BANDEJA_LISTA} No propongas guardar todavía: falta la forma de pago.`);
-      const t = await c.turno("Forma de pago: el 9/10 la ingeniería + 50 % de la mano de obra; los cánones 50/50 el 15/10 y el 2/11; el resto de la mano de obra el 15/11; todo con e-cheq.");
+      const t = await c.turno(// La bandeja es todo incluido: no hay ingeniería ni mano de obra aparte para repartir.
+        "Forma de pago en dos e-cheq: 50 % del total el 20/10 y el otro 50 % el 15/11.");
       const b = await c.borrador();
       c.debe(llamoOk(t, "plan_de_pagos"), "usa plan_de_pagos");
       c.debe(!/\$\s?\d/.test(String(b?.datos?.condiciones?.formaPago ?? "")), "formaPago sin montos escritos a mano");

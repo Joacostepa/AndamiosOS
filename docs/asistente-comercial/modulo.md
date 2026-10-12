@@ -324,6 +324,10 @@ importes siempre se recalculan con la tarifa vigente.
 
 ## Voz
 
+> **12/10: la voz en vivo está apagada** (sin `ELEVENLABS_AGENT_ID` en Vercel): no se usaba y
+> en obra andaba mal. Queda el dictado (punto 1). Cómo volver a prenderla: handoff, § "Estado
+> al 12/10".
+
 Dos cosas distintas, las dos con ElevenLabs:
 
 1. **Audios** (micrófono de la pantalla o audio reenviado): se transcriben con Scribe v2 en

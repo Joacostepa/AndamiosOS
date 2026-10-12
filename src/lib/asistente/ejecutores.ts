@@ -19,7 +19,7 @@ export type PayloadGuardar = {
   crearCliente: NuevoCliente | null;
   partnerId: number | null;
   clienteNombre: string;
-  orden: Omit<DatosOrden, "partnerId" | "asistenteRef">;
+  orden: Omit<DatosOrden, "partnerId" | "asistenteRef" | "refAnterior">;
   subtotalMotor: number;
   cancelarVentaId: number | null;
   cancelarVentaNombre: string | null;
@@ -68,6 +68,10 @@ async function guardar(ctx: ContextoEjecucion, a: Accion, p: PayloadGuardar, pas
   const db = ctx.db;
   const b0 = await leerBorrador(db, p.borradorId);
   if (!b0) throw new Error("El borrador ya no existe.");
+  // La orden se abrió para editar en otra conversación: guardar ésta pisaría esos cambios.
+  if (b0.estado === "descartado") {
+    throw new Error(`La ${b0.odoo_venta_nombre ?? "orden"} se siguió editando en otra conversación: no se guardó nada.`);
+  }
 
   // 1. Cliente (si es nuevo). Si el CUIT ya estaba en Odoo, se usa ese y no se crea otro.
   let partnerId = (pasos.partnerId as number | undefined) ?? p.partnerId;
@@ -82,7 +86,7 @@ async function guardar(ctx: ContextoEjecucion, a: Accion, p: PayloadGuardar, pas
   }
 
   // 2. La orden (crear o actualizar la del borrador). El número lo asigna Odoo.
-  const orden = await guardarOrden({ ...p.orden, partnerId, asistenteRef: a.id }, b0.odoo_venta_id);
+  const orden = await guardarOrden({ ...p.orden, partnerId, asistenteRef: b0.id, refAnterior: a.id }, b0.odoo_venta_id);
   pasos.ordenId = orden.id;
   pasos.ordenNombre = orden.nombre;
   await db.from("cotizacion_borradores")

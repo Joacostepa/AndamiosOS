@@ -188,6 +188,24 @@ export async function ejecutarAccion(
   }
 }
 
+/**
+ * Una acción que quedó "ejecutando" más de 6 minutos se cortó a mitad de camino (Vercel corta
+ * las funciones a los 300 s y ahí no corre nada más): pasa a "incierto", que en la tarjeta dice
+ * que hay que revisar Odoo. Si no, quedaba "en curso…" para siempre. Volver a guardar es
+ * seguro: la orden se busca por la marca del borrador y se actualiza, no se duplica.
+ */
+export async function destrabarAcciones(db: SupabaseClient, conversacionId: string): Promise<void> {
+  const limite = new Date(Date.now() - 6 * 60_000).toISOString();
+  const { data } = await db
+    .from("asistente_acciones")
+    .update({ estado: "incierto", error: "Se cortó mientras se ejecutaba: revisar en Odoo qué quedó.", updated_at: new Date().toISOString() })
+    .eq("conversacion_id", conversacionId)
+    .eq("estado", "ejecutando")
+    .lt("updated_at", limite)
+    .select("id");
+  for (const a of data ?? []) await eventoAccion(db, a.id, "incierto", { motivo: "quedó ejecutando más de 6 minutos" });
+}
+
 export async function rechazarAccion(db: SupabaseClient, accionId: string, conversacionId: string): Promise<Accion | null> {
   const { data } = await db
     .from("asistente_acciones")

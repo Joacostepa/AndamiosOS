@@ -31,7 +31,8 @@ export function Compositor({
 }: {
   conversacionId: string;
   respondiendo: boolean;
-  onEnviar: (texto: string, adjuntos: Adjunto[]) => void;
+  /** `false` si el mensaje no llegó a arrancar: el texto vuelve al cuadro. */
+  onEnviar: (texto: string, adjuntos: Adjunto[]) => void | Promise<boolean>;
   /** Sin onParar el turno no lo sigue esta pantalla (se recargó a mitad): no hay qué cortar. */
   onParar?: () => void;
   transcripcionDisponible: boolean;
@@ -140,7 +141,14 @@ export function Compositor({
   function enviar() {
     const t = texto.trim();
     if ((!t && !adjuntos.length) || respondiendo || subiendo) return;
-    onEnviar(t, adjuntos);
+    const enviados = adjuntos;
+    // Si no llegó (sin señal en obra, el tope del día, un turno en curso), lo escrito vuelve al
+    // cuadro en vez de perderse; el error lo muestra la pantalla.
+    void Promise.resolve(onEnviar(t, enviados)).then((llego) => {
+      if (llego !== false) return;
+      setTexto((ahora) => ahora || t);
+      setAdjuntos((ahora) => (ahora.length ? ahora : enviados));
+    });
     setTexto("");
     setAdjuntos([]);
   }

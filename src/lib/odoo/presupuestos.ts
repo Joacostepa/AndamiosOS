@@ -13,8 +13,11 @@
 //   · la oportunidad del CRM se busca y se vincula; si hay que crearla, en la etapa default:
 //     nunca se mueve de etapa ni se le crean actividades (lo maneja cada vendedor).
 //
-// IDEMPOTENCIA: la orden lleva x_asistente_ref = id de la acción. Antes de crear se busca por
-// esa marca: un reintento sigue desde donde quedó en vez de duplicar.
+// IDEMPOTENCIA: la orden lleva x_asistente_ref = id del BORRADOR (un borrador crea a lo sumo
+// una orden). Antes de crear se busca por esa marca: si un intento anterior la creó y no llegó
+// a anotarla (Odoo tardó más de 45 s y el guardado quedó "incierto"), el intento nuevo —que es
+// otra acción— la encuentra y la actualiza en vez de crear otra. Hasta el 12/10 la marca era el
+// id de la acción, que cambia en cada intento: por eso también se busca por la marca vieja.
 
 import { executeKw, type OpcionesRpc } from "@/lib/odoo/client";
 
@@ -120,6 +123,8 @@ export type DatosOrden = {
   impuestoIvaId: number;
   terminoPagoId: number;
   asistenteRef: string;
+  /** La marca con la que se guardaban antes (id de la acción): sólo para buscar. */
+  refAnterior?: string;
   /** YYYY-MM-DD: hasta cuándo vale la oferta (la misma fecha que dice el PDF). */
   validez?: string | null;
 };
@@ -151,9 +156,11 @@ function valoresOrden(d: DatosOrden, reemplazarLineas: boolean): Record<string, 
   };
 }
 
-export async function ordenPorRef(ref: string): Promise<{ id: number; name: string; state: string } | null> {
+export async function ordenPorRef(...refs: (string | undefined)[]): Promise<{ id: number; name: string; state: string } | null> {
+  const marcas = refs.filter((r): r is string => !!r);
+  if (!marcas.length) return null;
   const [o] = await executeKw<{ id: number; name: string; state: string }[]>(
-    "sale.order", "search_read", [[["x_asistente_ref", "=", ref]]], { fields: ["id", "name", "state"], limit: 1 }, LECTURA,
+    "sale.order", "search_read", [[["x_asistente_ref", "in", marcas]]], { fields: ["id", "name", "state"], limit: 1, order: "id desc" }, LECTURA,
   );
   return o ?? null;
 }
@@ -173,9 +180,14 @@ export async function guardarOrden(d: DatosOrden, ordenId: number | null): Promi
     }
     await executeKw("sale.order", "write", [[id], valoresOrden(d, true)], {}, ESCRITURA);
   } else {
-    const ya = await ordenPorRef(d.asistenteRef);
+    const ya = await ordenPorRef(d.asistenteRef, d.refAnterior);
     if (ya) {
+      // La creó un intento anterior: se le escriben los datos de ahora (el borrador pudo cambiar).
+      if (ya.state !== "draft" && ya.state !== "sent") {
+        throw new Error(`La ${ya.name} ya existe y está confirmada o cancelada en Odoo: no se modifica.`);
+      }
       id = ya.id;
+      await executeKw("sale.order", "write", [[id], valoresOrden(d, true)], {}, ESCRITURA);
     } else {
       id = await executeKw<number>("sale.order", "create", [valoresOrden(d, false)], {}, ESCRITURA);
       creada = true;

@@ -32,7 +32,7 @@ import {
   type DatosBorrador, type OpcionalEstandar, type ResultadoBorrador,
 } from "./borrador";
 import { consultarLote, type ConsultaLote, type Lote } from "@/lib/catastro/caba";
-import { crearBorrador, esAdminUsuario, guardarBorrador, leerAccionPorNumero, type Borrador, type Conversacion, type Vendedor } from "./datos";
+import { crearBorrador, esAdminUsuario, guardarBorrador, leerAccionPorNumero, vencerAccionesDescartadas, type Borrador, type Conversacion, type Vendedor } from "./datos";
 import { compararLineas, comparablesDeOdoo, comparablesDelMotor, lineasDesdeOdoo, productoDeLinea, puedeEditar, textoCambios } from "./edicion";
 import { proponerAccion, rechazarAccion, verificarConfirmacion, ejecutarAccion, vistaAccion } from "./acciones";
 import { crearEjecutor, type PayloadGuardar, type PayloadMail } from "./ejecutores";
@@ -870,7 +870,10 @@ const HERRAMIENTAS = [
       const extra = { odoo_venta_id: v.id, odoo_venta_nombre: v.numero, odoo_oportunidad_id: v.oportunidad?.id ?? null, estado: "en_odoo" as const };
       await ctx.db.from("cotizacion_borradores").update({ resultado, ...extra }).eq("id", nuevo.id);
       // Una sola edición viva por orden: si se vuelve a una charla vieja, no pisa ésta.
-      await ctx.db.from("cotizacion_borradores").update({ estado: "descartado" }).eq("odoo_venta_id", v.id).neq("id", nuevo.id);
+      const { data: viejos } = await ctx.db.from("cotizacion_borradores").update({ estado: "descartado" })
+        .eq("odoo_venta_id", v.id).neq("id", nuevo.id).select("id");
+      // Y lo que esos borradores tenían propuesto vence: un Confirmar viejo no puede pisar la orden.
+      for (const viejo of viejos ?? []) await vencerAccionesDescartadas(ctx.db, viejo.id);
       await ctx.db.from("asistente_conversaciones").update({ borrador_id: nuevo.id }).eq("id", ctx.conversacion.id);
       ctx.borrador = { ...nuevo, ...extra, resultado };
       ctx.emitir({ t: "borrador", borrador: vistaBorrador(ctx.borrador) });

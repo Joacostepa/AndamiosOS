@@ -1,16 +1,28 @@
 "use client"
 
+import { useSyncExternalStore } from "react"
 import { useTheme } from "next-themes"
 import { Toaster as Sonner, type ToasterProps } from "sonner"
 import { CircleCheckIcon, InfoIcon, TriangleAlertIcon, OctagonXIcon, Loader2Icon } from "lucide-react"
 
+// En el celular los avisos van arriba: abajo tapaban el cuadro de escribir y la barra del
+// presupuesto, justo donde está el pulgar.
+const CELULAR = "(max-width: 767px)"
+const suscribir = (aviso: () => void) => {
+  const mq = window.matchMedia(CELULAR)
+  mq.addEventListener("change", aviso)
+  return () => mq.removeEventListener("change", aviso)
+}
+
 const Toaster = ({ ...props }: ToasterProps) => {
   const { theme = "system" } = useTheme()
+  const celular = useSyncExternalStore(suscribir, () => window.matchMedia(CELULAR).matches, () => false)
 
   return (
     <Sonner
       theme={theme as ToasterProps["theme"]}
       className="toaster group"
+      position={celular ? "top-center" : "bottom-right"}
       icons={{
         success: (
           <CircleCheckIcon className="size-4" />

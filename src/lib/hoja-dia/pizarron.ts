@@ -13,7 +13,7 @@
 // chofer del día (hd_camiones_dia) o el que resuelven sus viajes.
 
 import type { Ausencia, DiaHoja, Minutos, ModoVehiculo, ObraDia, TipoAusencia, Vehiculo, VehiculoHoja } from "./tipos.ts";
-import { TIPO_AUSENCIA_TXT } from "./tipos.ts";
+import { DEPOSITO, TIPO_AUSENCIA_TXT, esDeposito } from "./tipos.ts";
 import {
   aCargoDe, ausenciaDe, calcVeh, cap, choferDe, choferDelCamion, choferesDelDia, choferesTodoDe, cNombre, contratistasDe, cuadrilla,
   esPasado, genteDe, hm, hm5, pendientesEnvio, hojaDe, hojaDeCuadrilla, marcaVehiculo, nombreDe, nombreVehiculo, obrasCon, obrasDe, persona, prevista,
@@ -109,6 +109,10 @@ export type AvisoColumna = {
 
 export type Columna = {
   c: number;
+  /** La columna del Depósito (F2): siempre está, al final; recibe gente, no camiones ni contratistas. */
+  deposito: boolean;
+  /** La dirección del depósito (hd_lugares), para el encabezado de su columna. */
+  direccion: string | null;
   numero: number | null;
   /** "1", "2"… (o la inicial si no tiene número). */
   rotulo: string;
@@ -150,8 +154,11 @@ export type VistaPizarron = {
 
 // ─── Colores ────────────────────────────────────────────────────────────────
 
+/** El color del Depósito: uno de la paleta que no usa ninguna de las cinco cuadrillas. */
+export const COLOR_DEPOSITO = 7;
 /** El color de una cuadrilla: por su número (Cuadrilla 1 → 0), así no cambia de un día a otro. */
 export function colorDeCuadrilla(dia: DiaHoja, c: number, i: number): number {
+  if (esDeposito(c)) return COLOR_DEPOSITO;
   const n = cuadrilla(dia, c)?.numero;
   return n != null ? n - 1 : i;
 }
@@ -164,15 +171,16 @@ export function colorDeCamion(patente: string): number {
 
 // ─── Columnas ───────────────────────────────────────────────────────────────
 
-/** Las cuadrillas del pizarrón: las nuestras (con o sin obra) y cualquiera con obras u hoja ese día. */
+/** Las cuadrillas del pizarrón: las nuestras (con o sin obra), cualquiera con obras u hoja ese día y, al final, el Depósito (siempre). */
 export function cuadrillasDelPizarron(dia: DiaHoja): number[] {
   const ids = new Set<number>([
     ...dia.cuadrillas.filter((x) => !x.tercerizada).map((x) => x.odooId),
     ...dia.obras.map((o) => o.cuadrillaOdooId),
     ...dia.hojas.map((h) => h.cuadrillaOdooId),
   ]);
+  ids.delete(DEPOSITO);
   const num = (c: number) => cuadrilla(dia, c)?.numero ?? 999;
-  return [...ids].sort((a, b) => num(a) - num(b) || a - b);
+  return [...[...ids].sort((a, b) => num(a) - num(b) || a - b), DEPOSITO];
 }
 
 /** ¿Se le puede soltar algo a la cuadrilla? null = sí; si no, por qué. */
@@ -180,6 +188,8 @@ export function porQueNoAcepta(dia: DiaHoja, c: number, ahora: Minutos): string 
   const n = cuadrilla(dia, c)?.numero;
   const la = n != null ? `La ${n}` : `La ${cNombre(dia, c)}`;
   if (esPasado(ahora)) return "Es un día que ya pasó: sólo lectura";
+  // El depósito no tiene obras del tablero: recibe gente siempre (camiones y contratistas los rechaza el gesto).
+  if (esDeposito(c)) return null;
   if (!obrasDe(dia, c).length) return `${la} no tiene obra en el tablero`;
   const sus = suspendida(dia, c);
   if (sus) return `${la} está suspendida (${sus})`;
@@ -358,10 +368,13 @@ export function pizarron(dia: DiaHoja, ahora: Minutos): VistaPizarron {
     const todo = choferesTodoDe(h);
     const motivo = porQueNoAcepta(dia, c, ahora);
     const conObra = obrasDe(dia, c).length > 0;
+    const dep = esDeposito(c);
     return {
       c,
+      deposito: dep,
+      direccion: dep ? dia.lugares.find((l) => l.tipo === "deposito" && l.activo)?.direccion ?? null : null,
       numero: n,
-      rotulo: n != null ? String(n) : cNombre(dia, c).slice(0, 1).toUpperCase(),
+      rotulo: dep ? "D" : n != null ? String(n) : cNombre(dia, c).slice(0, 1).toUpperCase(),
       nombre: cNombre(dia, c),
       color: colorDeCuadrilla(dia, c, i),
       conObra,
@@ -375,7 +388,7 @@ export function pizarron(dia: DiaHoja, ahora: Minutos): VistaPizarron {
       gente: h ? genteDe(h).map((pid) => ficha(dia, pid, { aCargo: pid === cargo, chofer: todo.includes(pid), ausente: !!ausenciaDe(dia, pid) })) : [],
       contratistas: contratistasDe(h).map((x) => ({ kid: x.contratistaId, nombre: nombreDe(dia, x.contratistaId), cantidad: x.cantidad, aCargo: cargo === x.contratistaId })),
       camiones: h ? vehiculosDe(h).map((f) => fichaDeFila(dia, c, f)) : [],
-      avisos: conObra ? avisosDeColumna(dia, c, ahora) : [],
+      avisos: conObra || dep ? avisosDeColumna(dia, c, ahora) : [],
     };
   });
   const enHojas = new Set(dia.hojas.filter((h) => obrasDe(dia, h.cuadrillaOdooId).length).flatMap((h) => h.vehiculos.map((f) => f.vehiculoId)).filter(Boolean) as string[]);

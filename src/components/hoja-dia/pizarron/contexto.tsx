@@ -24,7 +24,7 @@ export type Ctx = {
   elegir: (origen: Origen, k: string) => void;
   /** Tocar un destino con una ficha elegida. Devuelve true si lo usó (si no, el toque sigue de largo). */
   tocar: (d: Destino) => boolean;
-  /** Teclas sobre una ficha con foco: 1–5 a esa cuadrilla, B a "Sin asignar". */
+  /** Teclas sobre una ficha con foco: 1–5 a esa cuadrilla, D al depósito, B a "Sin asignar". */
   teclear: (origen: Origen, k: string, e: React.KeyboardEvent) => void;
   /** Lo que se está arrastrando (para resaltar destinos y el hueco). */
   arrastre: { origen: Origen; k: string } | null;

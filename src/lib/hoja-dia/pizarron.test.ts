@@ -27,10 +27,12 @@ function dondeAparece(d: DiaHoja, pid: string): string[] {
   return out;
 }
 
-test("columnas: las cinco cuadrillas en orden, con su obra, su gente, '4 de 5' y su color por número", () => {
+test("columnas: las cinco cuadrillas en orden, con su obra, su gente, '4 de 5' y su color por número; el depósito al final", () => {
   const d = martesArmado();
   const v = pizarron(d, LUNES_1830);
-  assert.deepEqual(v.columnas.map((c) => c.numero), [1, 2, 3, 4, 5]);
+  assert.deepEqual(v.columnas.map((c) => c.numero), [1, 2, 3, 4, 5, null]);
+  const dep = v.columnas.at(-1)!;
+  assert.deepEqual({ c: dep.c, deposito: dep.deposito, rotulo: dep.rotulo, acepta: dep.acepta, conObra: dep.conObra }, { c: 0, deposito: true, rotulo: "D", acepta: true, conObra: false });
   const c1 = v.columnas[0];
   assert.equal(c1.color, 0);
   assert.equal(c1.obras[0].corto, "Av. del Libertador 5980");

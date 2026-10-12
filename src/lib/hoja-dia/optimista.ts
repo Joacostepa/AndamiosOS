@@ -16,6 +16,7 @@
 
 import type { AccionAusencia, AccionHoja, AccionViaje } from "./acciones.ts";
 import type { Ausencia, DiaHoja, Hoja } from "./tipos.ts";
+import { esDeposito } from "./tipos.ts";
 import { altaDeAusencia, contratista, minutosDesde, normHora } from "./estado.ts";
 import { planVehiculos, type CambioVehiculos } from "./vehiculos.ts";
 
@@ -48,7 +49,11 @@ function aplicar(dia: DiaHoja, a: AccionHoja, o: Opciones): DiaHoja | null {
     if (h) return h;
     const nueva: Hoja = {
       id: tmp("hoja"), fecha: d.fecha, cuadrillaOdooId: c, vehiculos: [],
-      encuentro: { lugar: "obra", texto: null, hora: normHora(d.parametros.encuentroObra) ?? d.parametros.encuentroObra }, nota: null, recibeId: null,
+      // El depósito (F2) se encuentra en el depósito, a la hora de siempre (como acciones.ts).
+      encuentro: esDeposito(c)
+        ? { lugar: "deposito", texto: null, hora: normHora(d.parametros.encuentroDeposito) ?? d.parametros.encuentroDeposito }
+        : { lugar: "obra", texto: null, hora: normHora(d.parametros.encuentroObra) ?? d.parametros.encuentroObra },
+      nota: null, recibeId: null,
       origen: "manual", version: 1, integrantes: [], contratistas: [], aCargoContratistaId: null,
     };
     d.hojas.push(nueva);

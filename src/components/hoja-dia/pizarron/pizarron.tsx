@@ -11,7 +11,7 @@
 //
 // Tres maneras de mover una ficha: arrastrarla (dnd-kit: mouse, dedo con 200 ms de espera,
 // teclado con Espacio + flechas), tocarla y tocar el destino (barra de ayuda, Esc cancela),
-// o con foco apretar 1–5 (esa cuadrilla) o B ("Sin asignar" / "Camiones libres").
+// o con foco apretar 1–5 (esa cuadrilla), D (el depósito) o B ("Sin asignar" / "Camiones libres").
 //
 // Lo de cada cuadrilla que no es mover fichas (Copiar como hoy, Ver como, Cerrar jornada,
 // Instrucciones, Encuentro, Historial) va en el ⋯ de la columna; lo de una persona (Pasar a,
@@ -32,9 +32,10 @@ import {
   type Boton,
 } from "@/lib/hoja-dia/estado";
 import { cambiosTablero } from "@/lib/hoja-dia/vista-cuadrillas";
+import { esDeposito } from "@/lib/hoja-dia/tipos";
 import type { DiaHoja } from "@/lib/hoja-dia/tipos";
 import { TIPOS_AUSENCIA, type TipoAusencia } from "@/lib/hoja-dia/tipos";
-import { cuadrillaDeNumero, soltar, textoAyuda, type Destino, type Gesto, type Origen } from "@/lib/hoja-dia/gestos-pizarron";
+import { destinoDeTecla, soltar, textoAyuda, type Destino, type Gesto, type Origen } from "@/lib/hoja-dia/gestos-pizarron";
 import { estadoMandar, pizarron, type FichaCamion } from "@/lib/hoja-dia/pizarron";
 import { nivelEn } from "@/lib/auth/acceso";
 import { useAcceso } from "@/components/providers/acceso-provider";
@@ -315,11 +316,7 @@ export function Pizarron() {
 
   const teclear = useCallback((o: Origen, k: string, e: React.KeyboardEvent) => {
     if (!dia || !vista || soloLectura || arrastre || e.metaKey || e.ctrlKey || e.altKey) return;
-    let d: Destino | null = null;
-    if (/^[1-9]$/.test(e.key)) {
-      const c = cuadrillaDeNumero(dia, Number(e.key), vista.columnas.map((x) => x.c));
-      if (c != null) d = { k: "columna", c };
-    } else if (e.key === "b" || e.key === "B") d = o.k === "camion" ? { k: "libres" } : { k: "sin" };
+    const d = destinoDeTecla(dia, e.key, vista.columnas.map((x) => x.c), o);
     if (!d) return;
     e.preventDefault();
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -603,7 +600,7 @@ export function Pizarron() {
           </div>
           <div className="px-1.5 pt-2 pb-1 text-[11px] font-bold tracking-[.08em] text-muted-foreground uppercase">¿Para qué cuadrilla?</div>
           <div className="flex flex-wrap gap-1 px-1 pb-1">
-            {vista.columnas.filter((x) => x.acepta).map((x) => (
+            {vista.columnas.filter((x) => x.acepta && !x.deposito).map((x) => (
               <button
                 key={x.c}
                 type="button"
@@ -644,7 +641,7 @@ export function Pizarron() {
               <ItemMenu detalle="del día anterior" onClick={y(() => hoja({ accion: "copiar_como_hoy", fecha, cuadrilla: c }))}>Copiar como hoy</ItemMenu>
             )}
             {r && <ItemMenu onClick={y(() => setHojaLat({ t: "ver", c, p: r }))}>Ver como {nombreDe(dia, r)}</ItemMenu>}
-            {h && esHoy(ahora) && !vista.pasado && <ItemMenu onClick={y(() => setCierre({ c, otId: null }))}>Cerrar jornada</ItemMenu>}
+            {h && !esDeposito(c) && esHoy(ahora) && !vista.pasado && <ItemMenu onClick={y(() => setCierre({ c, otId: null }))}>Cerrar jornada</ItemMenu>}
             {col?.conObra && <ItemMenu onClick={y(() => setHojaLat({ t: "instr", c }))}>Instrucciones</ItemMenu>}
             {col?.obras.map((o) => (
               <ItemMenu key={o.otId} detalle="la OT" onClick={y(() => setObra(o.otId))}>{col.obras.length > 1 ? `Ver ${o.corto}` : "Ver la obra"}</ItemMenu>
@@ -682,7 +679,7 @@ export function Pizarron() {
                 }}
               >
                 <option value="deposito">en el depósito</option>
-                <option value="obra">en la obra</option>
+                {!esDeposito(c) && <option value="obra">en la obra</option>}
                 {lugar === "otro" && <option value="otro">{h.encuentro.texto ?? "otro lugar"}</option>}
               </select>
             </div>

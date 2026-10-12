@@ -224,7 +224,19 @@ export type Cuadrilla = {
   tercerizada: boolean;
   /** El plantel base de Configuración de cuadrillas, si está vinculada. */
   plantel: { responsableId: string | null; personaIds: string[] } | null;
+  /** El Depósito (sector, no cuadrilla de Odoo): ver DEPOSITO. */
+  deposito?: boolean;
 };
+
+/**
+ * EL DEPÓSITO (rediseño F2): un sector siempre presente, con su gente y su encargado (el "a
+ * cargo"), que se guarda como una hoja más con `cuadrilla_odoo_id = 0` (hd_hojas.sector =
+ * 'deposito'; en Odoo no hay cuadrilla 0). Nunca va al parte de Odoo, ni a las alertas del
+ * tablero, ni lleva camiones, viajes ni contratistas.
+ */
+export const DEPOSITO = 0;
+export const CUADRILLA_DEPOSITO: Cuadrilla = { odooId: DEPOSITO, nombre: "Depósito", numero: null, tercerizada: false, plantel: null, deposito: true };
+export const esDeposito = (c: number | null | undefined) => c === DEPOSITO;
 
 /** Una obra del tablero ese día, con lo que la hoja muestra de su OT. */
 export type ObraDia = {

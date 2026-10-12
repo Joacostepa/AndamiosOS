@@ -35,7 +35,7 @@ const BASE =
   "relative flex min-h-9 cursor-grab touch-manipulation items-center gap-1.5 rounded-md border border-foreground/25 bg-card px-2 text-left shadow-xs outline-none transition-[border-color,box-shadow,background-color] select-none [-webkit-touch-callout:none] hover:border-foreground focus-visible:ring-3 focus-visible:ring-ring/50";
 const ELEGIDA = "outline-[2.5px] outline-offset-1 outline-primary outline shadow-lg";
 
-/** Une el onKeyDown propio (teclas 1–5 / B, Enter = tocar) con el del sensor de teclado. */
+/** Une el onKeyDown propio (teclas 1–5 / D / B, Enter = tocar) con el del sensor de teclado. */
 function teclas(propio: (e: ReactKeyboardEvent) => void, deDnd: ((e: ReactKeyboardEvent) => void) | undefined) {
   return (e: ReactKeyboardEvent) => {
     propio(e);

@@ -7,12 +7,16 @@
 // instante con optimista.ts (agregar, sacar, vehículos, contratistas, chofer del camión,
 // ausencias) y después confirma el servidor con su texto de siempre.
 //
+// El Depósito (F2, cuadrilla 0) recibe gente (agregar con el 0, como una cuadrilla) pero no
+// camiones ni contratistas.
+//
 // Lo que NO se puede (soltar en una cuadrilla sin obra, un chofer que no maneja) vuelve como
 // `rechazo` con la frase para la pantalla; soltar donde ya estaba es `nada` (no se manda nada,
 // la ficha vuelve sin sacudirse). "No vienen" necesita el motivo: sin `tipo`, `pedirMotivo`.
 
 import type { AccionAusencia, AccionHoja, AccionViaje } from "./acciones.ts";
 import type { DiaHoja, Fecha, Minutos, TipoAusencia } from "./tipos.ts";
+import { esDeposito } from "./tipos.ts";
 import { ausenciaDe, cNombre, cuadrilla, hojaDe, hojaDeCuadrilla, nombreDe, persona, puedeManejar, vehTxt, vehiculosDe } from "./estado.ts";
 import { choferDeLibre, porQueNoAcepta } from "./pizarron.ts";
 
@@ -97,6 +101,20 @@ function choferActual(dia: DiaHoja, d: Extract<Destino, { k: "camion" }>): strin
 export const cuadrillaDeNumero = (dia: DiaHoja, n: number, cs: number[]) => cs.find((c) => cuadrilla(dia, c)?.numero === n) ?? null;
 
 /**
+ * Adónde manda una tecla a la ficha con foco: 1–9 a esa cuadrilla, D al depósito (la gente;
+ * un camión no) y B a "Sin asignar" / "Camiones libres". null = la tecla no hace nada.
+ */
+export function destinoDeTecla(dia: DiaHoja, tecla: string, cs: number[], o: Origen): Destino | null {
+  if (/^[1-9]$/.test(tecla)) {
+    const c = cuadrillaDeNumero(dia, Number(tecla), cs);
+    return c != null ? { k: "columna", c } : null;
+  }
+  if (tecla === "d" || tecla === "D") return o.k === "persona" || o.k === "chofer" ? { k: "columna", c: 0 } : null;
+  if (tecla === "b" || tecla === "B") return o.k === "camion" ? { k: "libres" } : { k: "sin" };
+  return null;
+}
+
+/**
  * Qué acciones manda soltar `o` en `d`. `ahora` decide si el día ya pasó (sólo lectura) y las
  * columnas que no aceptan (sin obra, suspendida).
  */
@@ -115,6 +133,7 @@ export function soltar(dia: DiaHoja, o: Origen, d: Destino, ahora: Minutos): Sol
     case "contratista": {
       if (d.k !== "gente" && d.k !== "camiones" && !(d.k === "camion" && d.c != null)) return nada;
       if (noAcepta) return rechazo(noAcepta);
+      if (esDeposito(cDe)) return rechazo("El depósito no lleva contratistas: van con una cuadrilla");
       return gestos(hojaG({ accion: "contratista_sumar", fecha: f, cuadrilla: cDe!, contratistaId: o.kid, n: 1 }));
     }
 
@@ -127,6 +146,7 @@ export function soltar(dia: DiaHoja, o: Origen, d: Destino, ahora: Minutos): Sol
         return nada;
       }
       if (noAcepta) return rechazo(noAcepta);
+      if (esDeposito(destino)) return rechazo("El depósito no lleva camiones: dejalo en «Camiones libres»");
       if (o.c === destino) return nada;
       if (o.veh && vehiculosDe(hojaDeCuadrilla(dia, destino)).some((x) => x.vehiculoId === o.veh)) {
         return rechazo(`${vehTxt(dia, o.veh) || "Ese camión"} ya está con ${laN(dia, destino)}`);
@@ -189,6 +209,7 @@ export function soltar(dia: DiaHoja, o: Origen, d: Destino, ahora: Minutos): Sol
 }
 
 const laN = (dia: DiaHoja, c: number) => {
+  if (esDeposito(c)) return "el depósito";
   const n = cuadrilla(dia, c)?.numero;
   return n != null ? `la ${n}` : `la ${cNombre(dia, c)}`;
 };

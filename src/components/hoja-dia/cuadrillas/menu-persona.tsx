@@ -8,7 +8,7 @@ import {
   aCargoDe, addDia, cNombre, cuadrillasActivas, hojaDeCuadrilla, nombreDe, persona, prevista, recibeDe, vanDe,
 } from "@/lib/hoja-dia/estado";
 import { encabezadoPersona, opcionesHasta } from "@/lib/hoja-dia/vista-cuadrillas";
-import { TIPOS_AUSENCIA, type TipoAusencia } from "@/lib/hoja-dia/tipos";
+import { DEPOSITO, TIPOS_AUSENCIA, esDeposito, type TipoAusencia } from "@/lib/hoja-dia/tipos";
 import { useAccionAusencia, useAccionHoja } from "@/hooks/use-hoja-dia";
 import { Button } from "@/components/ui/button";
 import { ChipOpcion, ItemMenu, MenuFlotante } from "@/components/hoja-dia/comunes/menu-flotante";
@@ -83,6 +83,12 @@ export function MenuPersona({ ctl, c, pid, anchor, onCerrar }: { ctl: CtlMenus; 
               {cNombre(dia, x)}
             </ItemMenu>
           ))}
+          {/* El depósito (F2), siempre (salvo que ya esté ahí). */}
+          {!esDeposito(c) && (
+            <ItemMenu detalle={`${vanDe(dia, DEPOSITO)} ${vanDe(dia, DEPOSITO) === 1 ? "persona" : "personas"}`} onClick={() => { hoja.mutate({ accion: "agregar", fecha, cuadrilla: DEPOSITO, personaId: pid }); hecho(); }}>
+              Depósito
+            </ItemMenu>
+          )}
         </>
       )}
 

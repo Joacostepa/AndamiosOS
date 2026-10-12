@@ -6,6 +6,8 @@
 // contratistas y la franja de camiones. Una cuadrilla sin obra queda grisada y no recibe.
 // El ⋯ abre lo de la cuadrilla (Copiar como hoy, Ver como, Cerrar jornada, Instrucciones,
 // Historial); abajo de las obras, el encuentro y, a la tarde de hoy, cerrar la jornada.
+// El Depósito (F2) es una columna más, al final: "D", su dirección, "N personas" y su
+// encuentro; sin obras, sin cupo y sin franja de camiones.
 
 import { useState } from "react";
 import { ArrowDown, Lock, MoreHorizontal, StickyNote, TriangleAlert } from "lucide-react";
@@ -94,11 +96,11 @@ export function ColumnaUI({ col }: { col: Columna }) {
     <article
       ref={refCol}
       data-col={col.c}
-      aria-label={`${col.nombre}${col.conObra ? "" : ", sin obra en el tablero"}`}
+      aria-label={`${col.nombre}${col.conObra || col.deposito ? "" : ", sin obra en el tablero"}`}
       onClick={(e) => tocar(e, { k: "columna", c: col.c })}
       className={cn(
         "@container/col relative flex min-w-0 flex-col rounded-lg border bg-card shadow-xs transition-[opacity,box-shadow]",
-        !col.conObra && "opacity-60",
+        !col.conObra && !col.deposito && "opacity-60",
         destacada && "cursor-copy ring-2 ring-primary/60",
         (sobreCol || (huecoGente || huecoCamion)) && col.acepta && "ring-[2.5px] ring-primary",
         a && !col.acepta && sobreCol && "ring-2 ring-hd-rojo/60",
@@ -107,14 +109,14 @@ export function ColumnaUI({ col }: { col: Columna }) {
       )}
       style={ctx.foco === col.c ? ({ ["--tw-ring-color" as string]: color } as React.CSSProperties) : undefined}
     >
-      <span aria-hidden className="absolute -inset-x-px -top-px h-[5px] rounded-t-lg" style={{ background: col.conObra ? color : "var(--muted-foreground)" }} />
+      <span aria-hidden className="absolute -inset-x-px -top-px h-[5px] rounded-t-lg" style={{ background: col.conObra || col.deposito ? color : "var(--muted-foreground)" }} />
       <header className="flex flex-col gap-2 border-b border-dashed px-2.5 pt-3.5 pb-2">
         <div className="flex items-end gap-2">
-          <span aria-hidden className="min-w-[22px] text-[34px] leading-[.85] font-extrabold tracking-tight" style={{ color: col.conObra ? color : undefined }}>{col.rotulo}</span>
+          <span aria-hidden className="min-w-[22px] text-[34px] leading-[.85] font-extrabold tracking-tight" style={{ color: col.conObra || col.deposito ? color : undefined }}>{col.rotulo}</span>
           <div className="min-w-0 flex-1 pb-0.5">
             <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] leading-none font-bold tracking-[.09em] text-muted-foreground uppercase">
               {/* En una columna angosta no entra con el "4 de 5" y el ⋯: el número grande ya lo dice. */}
-              <span className="@max-[214px]/col:sr-only">Cuadrilla</span>
+              <span className="@max-[214px]/col:sr-only">{col.deposito ? "Depósito" : "Cuadrilla"}</span>
               {multi && <span className="rounded-full px-1.5 py-0.5 text-[10.5px] font-bold tracking-normal normal-case text-white" style={{ background: color }}>{col.obras.length} obras</span>}
             </div>
           </div>
@@ -124,7 +126,12 @@ export function ColumnaUI({ col }: { col: Columna }) {
               <b className={cn("font-mono text-[15px] font-bold text-foreground", corto && "text-hd-ambar")}>{col.van}</b> de {col.prevista}
             </span>
           )}
-          {(col.conObra || h) && (
+          {col.deposito && (
+            <span className="pt-0.5 text-xs font-semibold whitespace-nowrap text-muted-foreground" aria-label={`${col.gente.length} en el depósito`}>
+              <b className="font-mono text-[15px] font-bold text-foreground">{col.gente.length}</b> {col.gente.length === 1 ? "persona" : "personas"}
+            </span>
+          )}
+          {(col.conObra || col.deposito || h) && (
             <button
               type="button"
               data-no-drag=""
@@ -140,7 +147,9 @@ export function ColumnaUI({ col }: { col: Columna }) {
             </button>
           )}
         </div>
-        {!col.conObra ? (
+        {col.deposito ? (
+          col.direccion && <p className="text-[13px] leading-tight font-semibold [overflow-wrap:anywhere]">{col.direccion}</p>
+        ) : !col.conObra ? (
           <p className="text-[13px] font-semibold text-muted-foreground">Sin obra en el tablero</p>
         ) : col.suspendida ? (
           <p className="text-[13px] font-semibold text-hd-ambar">Suspendida · {col.suspendida}</p>
@@ -159,7 +168,7 @@ export function ColumnaUI({ col }: { col: Columna }) {
             ))}
           </div>
         )}
-        {col.conObra && h && (
+        {(col.conObra || col.deposito) && h && (
           <div className="flex flex-wrap items-baseline gap-x-1.5 text-xs text-muted-foreground">
             Encuentro
             <button
@@ -246,7 +255,7 @@ export function ColumnaUI({ col }: { col: Columna }) {
           {col.contratistas.map((k) => <FichaContratistaColumna key={k.kid} f={k} c={col.c} />)}
         </div>
       )}
-      <div
+      {!col.deposito && <div
         ref={refCam}
         data-zona="camiones"
         onClick={(e) => tocar(e, { k: "camiones", c: col.c })}
@@ -257,7 +266,7 @@ export function ColumnaUI({ col }: { col: Columna }) {
         {!col.camiones.length && !huecoCamion && (
           <div className="rounded-md border-[1.5px] border-dashed px-2 py-2 text-center text-xs text-muted-foreground">Sin camión · van por su cuenta</div>
         )}
-      </div>
+      </div>}
     </article>
   );
 }

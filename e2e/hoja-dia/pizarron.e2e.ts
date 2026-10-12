@@ -184,6 +184,22 @@ describe("Pizarrón", { timeout: 120_000 }, () => {
     await page.context().close();
   });
 
+  test("Depósito: columna D al final; con la tecla D la persona entra al instante", async () => {
+    const { page, srv } = await abrir();
+    const dep = page.locator('[data-col="0"]');
+    await dep.scrollIntoViewIfNeeded();
+    assert.match(await dep.innerText(), /depósito/i);
+    assert.equal(await dep.locator('[data-zona="camiones"]').count(), 0, "el depósito no tiene franja de camiones");
+    await page.locator('[data-caja="sin"] [data-flip="p:paz"]').focus();
+    const ms = await medir(page, '[data-col="0"] [data-flip="p:paz"]', "keydown", () => page.keyboard.press("d"));
+    assert.ok(ms < 100, `tardó ${ms.toFixed(0)} ms`);
+    await page.waitForTimeout(1700);
+    const ag = srv.posts.at(-1)!.body as { accion: string; cuadrilla: number };
+    assert.deepEqual({ accion: ag.accion, c: ag.cuadrilla }, { accion: "agregar", c: 0 });
+    await captura(page, "deposito");
+    await page.context().close();
+  });
+
   test("390 px: sin scroll horizontal del body, y tocar-tocar anda", async () => {
     const { page } = await abrir({ ancho: 390, alto: 844 });
     await sinScrollHorizontal(page);

@@ -22,7 +22,8 @@ import type {
   Hoja, Hora, Lugar, LugarEncuentro, Minutos, ModoChofer, ModoVehiculo, ObraDia, Parametros, Pedido, Persona, Punto,
   TipoLugar, TipoPedido, TipoViaje, Vehiculo, VehiculoHoja, Viaje,
 } from "./tipos.ts";
-import { TIPOS_VIAJE, TIPO_AUSENCIA_TXT } from "./tipos.ts";
+import { CUADRILLA_DEPOSITO, DEPOSITO, TIPOS_VIAJE, TIPO_AUSENCIA_TXT, esDeposito } from "./tipos.ts";
+export { DEPOSITO, esDeposito } from "./tipos.ts";
 import { durConTramo, huecoMinimo, llegadaCon, vueltaCon } from "./tiempos.ts";
 
 // ═══════════════════════════ Horas y fechas ═══════════════════════════════════
@@ -221,7 +222,8 @@ function ctx(dia: DiaHoja): Ctx {
     L: new Map(dia.lugares.map((l) => [l.id, l])),
     dep,
     depKey: dep ? `l:${dep.id}` : "dep",
-    C: new Map(dia.cuadrillas.map((x) => [x.odooId, x])),
+    // El depósito siempre (también en los días armados a mano, los tests y los guardados en el celular).
+    C: new Map([[DEPOSITO, CUADRILLA_DEPOSITO] as const, ...dia.cuadrillas.map((x) => [x.odooId, x] as const)]),
     obrasPor,
     obraPorOt: new Map(dia.obras.map((o) => [o.otId, o])),
     hojaPor: new Map(dia.hojas.map((h) => [h.cuadrillaOdooId, h])),
@@ -371,13 +373,21 @@ const numeroDe = (dia: DiaHoja, c: number) => cuadrilla(dia, c)?.numero ?? null;
 /** "Cuadrilla 3" */
 export const cNombre = (dia: DiaHoja, c: number | null | undefined) =>
   c == null ? "" : cuadrilla(dia, c)?.nombre ?? `Cuadrilla ${c}`;
-/** "la 3" (o "la Quintana" si no tiene número). */
+/** "la 3" (o "la Quintana" si no tiene número; "el depósito"). */
 export const laC = (dia: DiaHoja, c: number) => {
+  if (esDeposito(c)) return "el depósito";
   const n = numeroDe(dia, c);
   return n != null ? `la ${n}` : `la ${cNombre(dia, c)}`;
 };
-/** "C3" */
+/** "la Cuadrilla 3" / "el depósito": para armar frases ("pasó a la Cuadrilla 3"). */
+export const laCuadrilla = (dia: DiaHoja, c: number | null | undefined) => (esDeposito(c) ? "el depósito" : `la ${cNombre(dia, c)}`);
+/** "a la Cuadrilla 3" / "al depósito". */
+export const aLaC = (dia: DiaHoja, c: number | null | undefined) => (esDeposito(c) ? "al depósito" : `a la ${cNombre(dia, c)}`);
+/** "de la Cuadrilla 3" / "del depósito". */
+export const deLaC = (dia: DiaHoja, c: number | null | undefined) => (esDeposito(c) ? "del depósito" : `de la ${cNombre(dia, c)}`);
+/** "C3" ("D" el depósito) */
 export const cTag = (dia: DiaHoja, c: number) => {
+  if (esDeposito(c)) return "D";
   const n = numeroDe(dia, c);
   return n != null ? `C${n}` : cNombre(dia, c);
 };
@@ -1833,7 +1843,7 @@ export function sugerirACargo(dia: DiaHoja, c: number): { pid: string; por: stri
     // Un contratista sólo puede estar a cargo de una hoja en la que va su gente.
     if (esContratista(dia, k.pid) && !(hc?.contratistas ?? []).some((x) => x.contratistaId === k.pid)) continue;
     if (ausenciaDe(dia, k.pid)) { saltos.push(`${nombreDe(dia, k.pid)} no viene`); continue; }
-    const otra = cuadrillasActivas(dia).find((x) => x !== c && aCargoDe(hojaDeCuadrilla(dia, x)) === k.pid);
+    const otra = [...cuadrillasActivas(dia), DEPOSITO].find((x) => x !== c && aCargoDe(hojaDeCuadrilla(dia, x)) === k.pid);
     if (otra != null) { saltos.push(`${nombreDe(dia, k.pid)} está a cargo de ${laC(dia, otra)}`); continue; }
     return { pid: k.pid, por: saltos.length ? saltos[0] : k.por };
   }
@@ -1881,6 +1891,26 @@ export function problemas(dia: DiaHoja, c: number, ahora: Minutos): Problema[] {
   const add = (o: Omit<Problema, "nivel" | "rojo" | "bs"> & { nivel?: Problema["nivel"]; bs?: Boton[] }) =>
     out.push({ nivel: "bloq", bs: [], rojo: false, ...o });
 
+  // El depósito (F2): sin obras, camiones ni cupo. Sólo lo de su gente; que no tenga
+  // encargado es un aviso (no frena el envío de las cuadrillas).
+  if (esDeposito(c)) {
+    for (const p of genteDe(h)) {
+      const a = ausenciaDe(dia, p);
+      if (a) add({ k: `aus-${p}`, corto: `${N(p)} no viene (D)`, t: `${N(p)} está en el depósito y no viene (${TIPO_AUSENCIA_TXT[a.tipo]})`, card: `${N(p)} no viene (${ausTexto(a, true, dia.fecha)})`, bs: [{ l: "Sacarlo", a: "sacar", c, p }] });
+    }
+    if (h.integrantes.length && !recibeDe(dia, c)) {
+      const s = sugerirACargo(dia, c);
+      add({ k: "cargo", nivel: "aviso", corto: "Depósito sin encargado", t: `El depósito quedó sin encargado${s ? ` · Sugerido: ${N(s.pid)} (${s.por})` : ""}`, card: `Sin encargado${s ? `. Sugerido: ${N(s.pid)} (${s.por})` : ""}`, bs: s ? [{ l: `Usar ${N(s.pid)}`, a: "usarCargo", c, p: s.pid }] : [] });
+    }
+    const r = recibeDe(dia, c);
+    const pr = persona(dia, r);
+    if (r && pr && !pr.celular && !pr.telegram) {
+      add({ k: `cel-${r}`, nivel: "aviso", corto: `${N(r)} sin celular`, t: `${N(r)} no tiene celular cargado`, card: `${N(r)} no tiene celular cargado: no le puede llegar la hoja`, bs: [{ l: "Cargar celular", a: "dlgCel", p: r }] });
+    }
+    for (const p of out) p.rojo = p.nivel === "bloq" && rojo;
+    return out;
+  }
+
   for (const p of genteDe(h)) {
     const a = ausenciaDe(dia, p);
     if (a) add({ k: `aus-${p}`, corto: `${N(p)} no viene (${cTag(dia, c)})`, t: `${N(p)} está en la ${C} y no viene (${TIPO_AUSENCIA_TXT[a.tipo]})`, card: `${N(p)} no viene (${ausTexto(a, true, dia.fecha)})`, bs: [{ l: "Sacarlo", a: "sacar", c, p }] });
@@ -1917,9 +1947,10 @@ export function problemas(dia: DiaHoja, c: number, ahora: Minutos): Problema[] {
       const a = ausenciaDe(dia, ch);
       if (a) add({ k: `chaus-${f.id}`, t: `${N(ch)} no viene (${TIPO_AUSENCIA_TXT[a.tipo]}): la ${C} quedó sin chofer${f.modo === "lleva_trae" ? " para llevarlos" : ""}`, card: `${N(ch)} no viene (${TIPO_AUSENCIA_TXT[a.tipo]})`, bs: [{ l: "Elegir otro", a: "chEd", c }] });
       // Está en OTRA cuadrilla como integrante (en la suya puede ir a cargo y manejar: cuenta una vez).
+      // Del depósito sí puede llevarlos y traerlos (sale y vuelve al depósito); todo el día, no.
       const en = hojaDe(dia, ch);
-      if (en != null && en !== c) {
-        add({ k: `chint-${f.id}`, t: `${N(ch)} está en la ${cNombre(dia, en)} y ${f.modo === "todo_el_dia" ? `maneja todo el día con ${laC(dia, c)}` : `lleva a ${laC(dia, c)}`}`, card: `${N(ch)} está en la ${cNombre(dia, en)}`, bs: [{ l: "Elegir otro", a: "chEd", c }, { l: `Ver ${laC(dia, en)}`, a: "irA", c: en }] });
+      if (en != null && en !== c && !(esDeposito(en) && f.modo === "lleva_trae")) {
+        add({ k: `chint-${f.id}`, t: `${N(ch)} está en ${laCuadrilla(dia, en)} y ${f.modo === "todo_el_dia" ? `maneja todo el día con ${laC(dia, c)}` : `lleva a ${laC(dia, c)}`}`, card: `${N(ch)} está en ${laCuadrilla(dia, en)}`, bs: [{ l: "Elegir otro", a: "chEd", c }, { l: `Ver ${laC(dia, en)}`, a: "irA", c: en }] });
       }
       if (f.modo === "todo_el_dia") {
         for (const o of todoDe(dia, ch).filter((x) => x !== c)) {
@@ -2075,6 +2106,8 @@ export type Destinatario = { pid: string | null; rol: "cargo" | "chofer" | "ex";
 
 export function rolDe(dia: DiaHoja, pid: string): Destinatario | null {
   for (const c of cuadrillasConHoja(dia)) if (recibeDe(dia, c) === pid) return { pid, rol: "cargo", c };
+  // El encargado del depósito recibe su hoja como un capataz (F2).
+  if (recibeDe(dia, DEPOSITO) === pid) return { pid, rol: "cargo", c: DEPOSITO };
   if (viajesChofer(dia, pid).length || todoDe(dia, pid).length) return { pid, rol: "chofer" };
   return null;
 }
@@ -2095,7 +2128,7 @@ export function diferencias(dia: DiaHoja, old: Foto | null, cur: Foto | null): D
     for (const p of old.gente.filter((p) => !cur.gente.includes(p))) {
       const a = ausenciaDe(dia, p);
       const otra = hojaDe(dia, p);
-      out.push({ t: `no va ${N(p)}`, motivo: a ? TIPO_AUSENCIA_TXT[a.tipo] : otra != null ? `pasó a la ${cNombre(dia, otra)}` : null });
+      out.push({ t: `no va ${N(p)}`, motivo: a ? TIPO_AUSENCIA_TXT[a.tipo] : otra != null ? `pasó ${aLaC(dia, otra)}` : null });
     }
     for (const p of cur.gente.filter((p) => !old.gente.includes(p))) out.push({ t: `va ${N(p)}` });
     out.push(...diferenciasContratistas(dia, old.contr ?? {}, cur.contr ?? {}));
@@ -2243,6 +2276,10 @@ export function destinatarios(dia: DiaHoja): Destinatario[] {
       if (suspendida(dia, c) && !(r && envioDe(dia, r)?.enviadaMin != null)) continue;
       out.push({ pid: r, rol: "cargo", c });
     }
+    // El encargado del depósito (F2), si hay. Sin encargado no hay a quién mandarle: no cuenta
+    // como "sin enviar" (el depósito no frena nada).
+    const enc = recibeDe(dia, DEPOSITO);
+    if (enc && !out.find((x) => x.pid === enc)) out.push({ pid: enc, rol: "cargo", c: DEPOSITO });
     const choferes = new Set<string>();
     for (const v of viajesCalc(dia)) { const ch = choferDe(dia, v); if (ch) choferes.add(ch); }
     for (const c of cuadrillasActivas(dia)) for (const ch of choferesTodoDe(hojaDeCuadrilla(dia, c))) choferes.add(ch);
@@ -2367,7 +2404,7 @@ export function bandeja(dia: DiaHoja, ahora: Minutos): Bandeja {
   vos.sort((a, b) => PRI(a.k) - PRI(b.k));
   // Hojas de cuadrillas que ya no tienen obras ese día, con gente adentro.
   for (const h of dia.hojas) {
-    if (obrasDe(dia, h.cuadrillaOdooId).length || (!h.integrantes.length && !(h.contratistas ?? []).length)) continue;
+    if (esDeposito(h.cuadrillaOdooId) || obrasDe(dia, h.cuadrillaOdooId).length || (!h.integrantes.length && !(h.contratistas ?? []).length)) continue;
     const quienes = [...genteDe(h).map((p) => nombreDe(dia, p)), ...contratistasDe(h).map((x) => cantidadDe(dia, x))];
     vos.push({ k: `sinobras-${h.cuadrillaOdooId}`, c: h.cuadrillaOdooId, t: `La ${cNombre(dia, h.cuadrillaOdooId)} no tiene obras el ${diaSemana(dia.fecha)}: ${yList(quienes)} siguen en su hoja`, bs: [{ l: "Dejarlos sin asignar", a: "liberar", c: h.cuadrillaOdooId }] });
   }
@@ -2385,7 +2422,8 @@ export function bandeja(dia: DiaHoja, ahora: Minutos): Bandeja {
   for (const x of ds) {
     const st = estadoEnvio(dia, x);
     const N = nombreDe(dia, x.pid);
-    if (st.k === "sinenviar" || st.k === "sinrecibe" || st.k === "anulado") sinEnv++;
+    // El depósito no frena nada (F2): su hoja no cuenta en "N hojas sin enviar" (Mandar sí la incluye).
+    if ((st.k === "sinenviar" || st.k === "sinrecibe" || st.k === "anulado") && !esDeposito(x.c)) sinEnv++;
     else if (x.rol === "cargo") enviadas++;
     if (st.k === "cambiada") {
       const quien = x.rol === "chofer" ? `Los viajes de ${N} cambiaron después de enviar` : `${cNombre(dia, x.c)} cambió después de enviar`;
@@ -2393,14 +2431,14 @@ export function bandeja(dia: DiaHoja, ahora: Minutos): Bandeja {
     }
     // Un chofer al que se le mandó su hoja de ruta y ya no maneja nada (p. ej. le llegó un viaje
     // por ser el habitual del camión, antes del 11/10 noche): que sepa que no tiene viajes.
-    if (st.k === "ex") vos.push({ k: `ex-${x.pid}`, nivel: "bloq", t: exChofer(st.e) ? `${N} ya no tiene viajes y tiene su hoja de ruta` : `${N} ya no está a cargo y tiene la hoja de la ${cNombre(dia, x.c)}`, bs: [{ l: `Avisar a ${N}`, a: "abrirEnvio", p: x.pid! }] });
+    if (st.k === "ex") vos.push({ k: `ex-${x.pid}`, nivel: "bloq", t: exChofer(st.e) ? `${N} ya no tiene viajes y tiene su hoja de ruta` : `${N} ya no está a cargo y tiene la hoja ${deLaC(dia, x.c)}`, bs: [{ l: `Avisar a ${N}`, a: "abrirEnvio", p: x.pid! }] });
     if (st.k === "ok" || st.k === "okSinAvisar") {
       const e = st.e;
-      if (e.cambioMin != null && (e.recibidaMin == null || e.recibidaMin < e.cambioMin)) esp.push({ k: `nv-${x.pid}`, rojo: ahora - e.cambioMin > 15, t: `${N} no vio el cambio de las ${hm(e.cambioMin)}`, bs: [{ l: "Llamar", a: "llamar", p: x.pid! }] });
+      if (e.cambioMin != null && (e.recibidaMin == null || e.recibidaMin < e.cambioMin)) esp.push({ k: `nv-${x.pid}`, c: x.c, rojo: ahora - e.cambioMin > 15, t: `${N} no vio el cambio de las ${hm(e.cambioMin)}`, bs: [{ l: "Llamar", a: "llamar", p: x.pid! }] });
       else if (e.abiertaMin == null) {
-        if (rojoAbrir) esp.push({ k: `na-${x.pid}`, rojo: true, t: `${N} no la abrió · enviada ${hm(e.enviadaMin!)}${e.reenviadaMin != null ? ` · reenviada ${hm(e.reenviadaMin)}` : ""}`, bs: [{ l: "Reenviar", a: "reenviar", p: x.pid! }, { l: "Llamar", a: "llamar", p: x.pid! }] });
+        if (rojoAbrir) esp.push({ k: `na-${x.pid}`, c: x.c, rojo: true, t: `${N} no la abrió · enviada ${hm(e.enviadaMin!)}${e.reenviadaMin != null ? ` · reenviada ${hm(e.reenviadaMin)}` : ""}`, bs: [{ l: "Reenviar", a: "reenviar", p: x.pid! }, { l: "Llamar", a: "llamar", p: x.pid! }] });
         else sinAbrir.push(x.pid!);
-      } else if (e.recibidaMin == null) esp.push({ k: `nr-${x.pid}`, gris: true, t: `${N} la abrió a las ${hm(e.abiertaMin)} y no tocó Recibido`, bs: [{ l: "Llamar", a: "llamar", p: x.pid! }] });
+      } else if (e.recibidaMin == null) esp.push({ k: `nr-${x.pid}`, c: x.c, gris: true, t: `${N} la abrió a las ${hm(e.abiertaMin)} y no tocó Recibido`, bs: [{ l: "Llamar", a: "llamar", p: x.pid! }] });
       else listas.push({ t: `${N} · ${e.cambioMin != null ? "entendido" : "recibida"} ${hm(e.recibidaMin)}` });
     }
   }
@@ -2525,6 +2563,7 @@ export function fletesDelDia(dia: DiaHoja, otId: number): { v: ViajeCalc; txt: s
  * Hoja del día"): lo que se factura lo confirma quien cierra el parte.
  */
 export function horariosCierre(dia: DiaHoja, c: number, otId: number): { personas: number; desde: Hora; hasta: Hora }[] {
+  if (esDeposito(c)) return [];
   const h = hojaDeCuadrilla(dia, c);
   if (!h) return [];
   const obs = obrasCon(dia, c);
@@ -2680,7 +2719,7 @@ export function planPrecarga(dia: DiaHoja, modo: ModoPrecarga): PlanPrecarga {
   if (modo === "hoy" && ant) {
     for (const h of ant.hojas) {
       const c = h.cuadrillaOdooId;
-      if (!obrasDe(dia, c).length && h.integrantes.length && ![...fuente.values()].includes(c)) {
+      if (!esDeposito(c) && !obrasDe(dia, c).length && h.integrantes.length && ![...fuente.values()].includes(c)) {
         avisos.push(`La ${cNombre(dia, c)} no tiene obras el ${diaSemana(dia.fecha)}: ${yList(genteDe(h).map((p) => nombreDe(dia, p)))} quedaron sin asignar.`);
       }
     }
@@ -2706,6 +2745,18 @@ export function planPrecarga(dia: DiaHoja, modo: ModoPrecarga): PlanPrecarga {
     }
     hojas.push(ph);
   }
+  // El depósito (F2): como el día anterior (o su última hoja), DESPUÉS de las cuadrillas, así
+  // una persona que estaba en las dos va a la cuadrilla. Sin camiones ni contratistas. Con el
+  // plantel o vacío no se crea: la columna está igual y se arma arrastrando.
+  if (modo === "hoy" && !hojaDeCuadrilla(dia, DEPOSITO)) {
+    const hAnt = ant?.hojas.find((h) => esDeposito(h.cuadrillaOdooId));
+    const ult = hAnt ? null : dia.ultimasHojas.find((u) => esDeposito(u.hoja.cuadrillaOdooId));
+    const base = hAnt ?? ult?.hoja ?? null;
+    if (base && base.integrantes.length) {
+      const ph = planDesde(dia, base, null, hAnt ? ant!.fecha : ult!.fecha, true, DEPOSITO);
+      hojas.push({ ...ph, vehiculos: [], contratistas: [], aCargoContratistaId: null, busca: null, buscaCon: { fila: 0 } });
+    }
+  }
   // Ausentes afuera, y una persona en una sola hoja.
   const usados = new Set<string>(dia.hojas.flatMap((h) => h.integrantes.map((i) => i.personaId)));
   const ausAvisos: string[] = [];
@@ -2714,7 +2765,8 @@ export function planPrecarga(dia: DiaHoja, modo: ModoPrecarga): PlanPrecarga {
       const a = ausenciaDe(dia, p);
       if (a) {
         if (h.aCargoId === p) h.aCargoId = null;
-        ausAvisos.push(`${nombreDe(dia, p)} no entra: ${ausTexto(a, false)}${a.hasta ? ` hasta el ${ddmm(a.hasta)}` : ""}${a.origen === "asistencia" ? " (según la asistencia)" : ""}. La ${cNombre(dia, h.cuadrillaOdooId)} quedó con __VAN_${h.cuadrillaOdooId}__ de ${prevista(dia, h.cuadrillaOdooId)}.`);
+        const quedo = esDeposito(h.cuadrillaOdooId) ? "No va al depósito." : `La ${cNombre(dia, h.cuadrillaOdooId)} quedó con __VAN_${h.cuadrillaOdooId}__ de ${prevista(dia, h.cuadrillaOdooId)}.`;
+        ausAvisos.push(`${nombreDe(dia, p)} no entra: ${ausTexto(a, false)}${a.hasta ? ` hasta el ${ddmm(a.hasta)}` : ""}${a.origen === "asistencia" ? " (según la asistencia)" : ""}. ${quedo}`);
         return false;
       }
       if (usados.has(p) || !persona(dia, p)?.activo) { if (h.aCargoId === p) h.aCargoId = null; return false; }
@@ -2755,7 +2807,7 @@ export function planPrecarga(dia: DiaHoja, modo: ModoPrecarga): PlanPrecarga {
   };
   const ausFinal = ausAvisos.map((t) => t.replace(/__VAN_(\d+)__/, (_, c) => String(vanPlan(Number(c)))));
   avisos.unshift(...ausFinal);
-  if (modo === "vacio") avisos.push(`Las ${hojas.length} hojas quedaron vacías, con las obras del tablero: sin gente, sin nadie a cargo y sin chofer.`);
+  if (modo === "vacio") avisos.push(`Las ${hojas.filter((h) => !esDeposito(h.cuadrillaOdooId)).length} hojas quedaron vacías, con las obras del tablero: sin gente, sin nadie a cargo y sin chofer.`);
   if (modo === "plantel") avisos.push("Con el plantel base no hay choferes ni encuentros: elegilos en cada tarjeta.");
   const conK = hojas.filter((h) => h.contratistas.length);
   if (conK.length) {
@@ -2775,6 +2827,7 @@ export function planCopiarComoHoy(dia: DiaHoja, c: number): PlanHoja | null {
   if (!ant || !h) return null;
   const plan = planDesde(dia, h, ant.viajes, ant.fecha, true, c);
   plan.origen = "copia";
+  if (esDeposito(c)) Object.assign(plan, { vehiculos: [], contratistas: [], aCargoContratistaId: null, busca: null, buscaCon: { fila: 0 } });
   plan.gente = plan.gente.filter((p) => !ausenciaDe(dia, p));
   if (plan.aCargoId && !plan.gente.includes(plan.aCargoId)) plan.aCargoId = null;
   for (const f of plan.vehiculos) if (f.choferId && ausenciaDe(dia, f.choferId)) f.choferId = null;

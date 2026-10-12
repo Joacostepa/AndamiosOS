@@ -27,6 +27,12 @@ El dueño: "el formato viejo hay que sacarlo". Sin convivencia ni parámetro:
 - **Camiones sigue** (`/planificacion/hoja/camiones`, pestaña en la barra): viajes, pedidos y despacho viven ahí hasta F3/F4.
 - Probado: 564 tests, tsc, eslint, build y 11 casos de `npm run test:e2e` (3 nuevos: ⋯ de la columna + encuentro, ⋯ de la persona, Ausencias/Camiones). **No probado contra la base real**: es la primera vez que el pizarrón se usa con datos de producción.
 
+### 2 ter. F2 · Depósito como sector (12/10, noche) — rama `feat/hoja-dia-deposito`
+- Columna **"D · Depósito"** fija al final del pizarrón: gente, ★ encargado, "no viene", encuentro (7:00 en el depósito, de `encuentro_deposito`), notas, ⋯ (Copiar como hoy, Ver como, Historial). Sin obras, sin cupo, sin camiones ni contratistas. Ver `implementacion.md` §3.1 "Depósito (F2)".
+- Decisiones tomadas por defecto (cambiables): del depósito se puede **llevar y traer** a una cuadrilla sin choque (todo el día, sí avisa); el depósito **no lleva contratistas**; sin encargado es un **aviso** (no frena Mandar).
+- **Migración** `supabase/migrations/20261013000001_hoja_dia_deposito.sql` (`hd_hojas.sector` + 2 CHECK, `hd_links.recibida_canal` para F5). Probada contra la base el 12/10 dos veces dentro de BEGIN … ROLLBACK (acepta el 0 como depósito, rechaza la 3 como depósito y el 0 como cuadrilla; verificado que no quedó nada). **Aplicarla ANTES del deploy**: el código nuevo escribe `sector` al crear la hoja del depósito. Verificar: `select count(*) from information_schema.columns where table_name='hd_hojas' and column_name='sector';` → 1.
+- Probado: 597 tests (nuevo `deposito.test.ts`, 9 casos), tsc, eslint, build y 12 casos de `npm run test:e2e` (nuevo: columna D y tecla D). No probado con datos reales.
+
 ### 3. Cómo se trabaja en este repo (aprendido en estas sesiones)
 - **Hay otras sesiones de Claude trabajando en paralelo** en la carpeta principal del repo (el 12/10 estaba en la rama `docs/partes-rediseno`, rediseño de partes). **No cambiar de rama ni commitear en la carpeta principal**: trabajar en worktrees (`git worktree add … main`) y llevar a `main` con `git push . <rama>:main` (fast-forward) o un merge desde el worktree.
 - **Escrituras a producción**: el dueño las aprueba explícitamente ("aplicá la migración", "corré el script"). El clasificador del modo automático a veces igual las bloquea: no esquivarlo, pedirle al dueño que las corra o que apruebe.

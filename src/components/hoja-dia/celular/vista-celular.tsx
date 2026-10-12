@@ -194,6 +194,9 @@ function Capataz({
   // como "3 de Quintana" (sin nombres). Las vistas viejas guardadas no traen `van`.
   const nVan = v.van ?? v.gente.reduce((s, g) => s + (g.cantidad ?? 1), 0);
   const primera = v.obras[0];
+  // La hoja del Depósito (F2): encargado, la dirección, "Quiénes están" (sin obras ni chofer).
+  const dep = v.deposito ?? null;
+  const van = dep ? "Están" : "Van";
   const choferLleva = v.chofer?.modo === "lleva_trae" && v.chofer.nombre ? v.chofer : null;
   const boton = async (a: "recibido" | "entendido") => {
     if (enviando) return;
@@ -216,7 +219,7 @@ function Capataz({
         <div className={s.telIn}>
           <header className={s.top}>
             <span className={s.d}>{v.fechaTxt} · {v.cuadrilla}</span>
-            <h1 className={s.h}>A cargo: {v.vos ? `vos (${v.persona})` : `${v.aCargo ?? "nadie"} · la hoja te llega a vos`}</h1>
+            <h1 className={s.h}>{dep ? "Encargado" : "A cargo"}: {v.vos ? `vos (${v.persona})` : `${v.aCargo ?? "nadie"} · la hoja te llega a vos`}</h1>
           </header>
           {v.cambio && (
             <div className={s.chg} role="alert">
@@ -226,6 +229,7 @@ function Capataz({
           )}
           <div className={s.res}>
             <div className={s.r}><span className={s.tk}>Encuentro</span><span className={s.big}>{v.encuentro}</span></div>
+            {dep?.direccion && <div className={s.v}>{dep.direccion}</div>}
             {v.chofer?.lineas.map((l, i) => <div key={i} className={s.v}><Trozos l={l} /></div>)}
             <hr />
             {primera && (
@@ -235,7 +239,7 @@ function Capataz({
               </div>
             )}
             <div className={s.r}>
-              <span className={s.tk}>Van {nVan}</span>
+              <span className={s.tk}>{van} {nVan}</span>
               <span className={s.v}>
                 {v.gente.map((g, i) => (
                   <span key={i}>
@@ -257,13 +261,13 @@ function Capataz({
           {v.nota && <div className={s.tnota}>{v.nota}</div>}
           {v.obras.map((o, i) => <Obra key={o.otId} o={o} abierta={i === 0} onVisor={onVisor} />)}
           <section className={s.tq} aria-labelledby="hd-quienes">
-            <h3 id="hd-quienes">Quiénes van ({nVan})</h3>
+            <h3 id="hd-quienes">{dep ? "Quiénes están" : "Quiénes van"} ({nVan})</h3>
             {v.gente.map((g, i) => (
               <div key={i} className={s.p}>
                 <span className={s.t}>
                   <b>{g.contratista ? (g.cantidad ? `${g.cantidad} de ${g.nombre}` : `${g.nombre} (a confirmar cuántos)`) : g.nombre}</b>
                   {!g.contratista && g.pila && <> · {g.pila}</>}
-                  {g.aCargo && <> <span className={cx(s.tag, s.cargo)}>a cargo</span></>}
+                  {g.aCargo && <> <span className={cx(s.tag, s.cargo)}>{dep ? "encargado" : "a cargo"}</span></>}
                   {g.chofer && <> <span className={cx(s.tag, s.cargo)}>chofer</span></>}
                   {g.nuevo && <> <span className={cx(s.tag, s.nuevo)}>nuevo</span></>}
                   {g.nota && <small>{g.nota}</small>}

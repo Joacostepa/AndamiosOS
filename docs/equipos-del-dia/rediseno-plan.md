@@ -75,7 +75,7 @@ Parámetro `pizarron`: `oculto` → nadie lo ve; `probar` → pestaña "Pizarró
 |---|---|---|---|
 | F0 Andamiaje | S | Grupo `(clasica)`, ruta pizarrón vacía, parámetro, pestaña condicional, arnés Playwright permanente en `e2e/` | (parámetro) |
 | F1 Pizarrón base | L | Columnas, fichas, bandeja, arrastre/tocar/teclas, camión en columna, chofer, contratistas, No vienen, avisos-insignia, días, Copiar, Mandar, Deshacer, qué se ejecuta, multi-obra | — |
-| F2 Depósito | M | Sector depósito, encargado, cercos, mensaje y link | 1 |
+| F2 Depósito | M | Sector depósito, encargado, cercos, mensaje y link. **Hecho el 12/10** (rama `feat/hoja-dia-deposito`) | 1 |
 | F3 Recorrido | L | Editor de paradas, acciones, reordenar, optimista de viajes, celular y Telegram del chofer | 2 |
 | F4 Pedidos | M | Panel, otra dirección + geocodificar + pin, inserción por desvío, quién pasa cerca | (2) |
 | F5 Repaso de la mañana | M | Overlay tarjeta por tarjeta, corregir en vivo, para revisar, mandar a afectados | (1) |

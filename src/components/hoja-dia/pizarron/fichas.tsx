@@ -3,13 +3,14 @@
 // Las fichas del Pizarrón (maqueta: personChip, truckChip, ctChips): persona (apellido, ★ a
 // cargo tocable, volante si maneja), camión (marca + patente, color fijo, chofer arrastrable
 // adentro, horario editable en el lugar, "Recorrido") y contratista ("+3 de Quintana" con − / +).
+// En una columna, el ⋯ de la persona y el nombre del contratista abren su menú.
 //
 // Toda ficha se arrastra (dnd-kit: mouse, dedo con 200 ms de espera, teclado con Espacio) y
 // se elige con un toque (después se toca el destino). Con foco, 1–5 la manda a esa cuadrilla y
 // B a "Sin asignar". Los botones de adentro (`data-no-drag`) no arrancan un arrastre.
 
 import { useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { Clock, Minus, Plus, Route, Star, Truck } from "lucide-react";
+import { Clock, Minus, MoreVertical, Plus, Route, Star, Truck } from "lucide-react";
 import type { Destino, Origen } from "@/lib/hoja-dia/gestos-pizarron";
 import type { FichaCamion, FichaContratista, FichaPersona } from "@/lib/hoja-dia/pizarron";
 import { colorCuadrilla } from "@/lib/tablero/colores";
@@ -134,6 +135,22 @@ export function FichaPersonaUI({ f, c, donde, motivo, ausenciaId }: {
         </button>
       )}
       {f.maneja && <span title="Maneja" className="text-muted-foreground"><IconoVolante /></span>}
+      {donde === "col" && c != null && !ctx.soloLectura && (
+        <button
+          type="button"
+          data-no-drag=""
+          onClick={(e) => {
+            e.stopPropagation();
+            ctx.menuPersona(c, f.pid, e.currentTarget);
+          }}
+          aria-label={`Opciones de ${f.nombre}`}
+          aria-haspopup="menu"
+          title="Pasar a…, No viene…, Nota, Sacar"
+          className="-mr-1.5 grid h-[26px] w-5 shrink-0 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          <MoreVertical className="size-3.5" />
+        </button>
+      )}
     </div>
   );
 }
@@ -346,9 +363,20 @@ export function FichaContratistaColumna({ f, c }: { f: FichaContratista; c: numb
   return (
     <div data-flip={`k:${c}:${f.kid}`} aria-label={`${f.cantidad} de ${f.nombre}, contratista`} className="flex min-h-9 items-center gap-1 rounded-md border-[1.5px] border-dashed border-foreground/25 bg-muted px-[3px] py-0.5">
       <button type="button" data-no-drag="" disabled={ctx.soloLectura} onClick={paso(-1)} aria-label={`Uno menos de ${f.nombre}`} className={boton}><Minus className="size-3.5" /></button>
-      <span className="min-w-0 flex-1 text-center text-[13px] leading-tight font-semibold" title="Contratista">
+      <button
+        type="button"
+        data-no-drag=""
+        disabled={ctx.soloLectura}
+        onClick={(e) => {
+          e.stopPropagation();
+          ctx.menuContratistaCol(c, f.kid, e.currentTarget);
+        }}
+        aria-haspopup="menu"
+        title="Contratista · a cargo, nota, quitar"
+        className="min-w-0 flex-1 rounded text-center text-[13px] leading-tight font-semibold hover:underline disabled:no-underline"
+      >
         <b className="font-mono text-[15px]">+{f.cantidad}</b> de {f.nombre}{f.aCargo ? " · a cargo" : ""}
-      </span>
+      </button>
       <button type="button" data-no-drag="" disabled={ctx.soloLectura} onClick={paso(1)} aria-label={`Uno más de ${f.nombre}`} className={boton}><Plus className="size-3.5" /></button>
     </div>
   );

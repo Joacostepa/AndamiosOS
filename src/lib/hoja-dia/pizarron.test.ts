@@ -9,7 +9,6 @@ import { problemas, vanDe } from "./estado.ts";
 import type { DiaHoja } from "./tipos.ts";
 import { martesArmado, martesPrecargado, martesVacio, fila, OT, viaje, enviarATodos } from "./escenario.test-fixture.ts";
 import { destinatarios } from "./estado.ts";
-import { modoPizarron } from "./modo-pizarron.ts";
 import { moduloDeRuta } from "../auth/acceso.ts";
 
 const LUNES_1830 = -330; // el lunes 12 a las 18:30, en minutos del martes
@@ -166,12 +165,9 @@ test("el color de un camión es fijo por patente", () => {
   assert.ok(colorDeCamion("AF 669 ZL") >= 0 && colorDeCamion("AF 669 ZL") < 8);
 });
 
-test("parámetro pizarron: oculto por defecto; la ruta es del módulo hoja-dia", () => {
-  assert.equal(modoPizarron(undefined), "oculto");
-  assert.equal(modoPizarron(null), "oculto");
-  assert.equal(modoPizarron("probar"), "probar");
-  assert.equal(modoPizarron('"principal"'), "principal");
-  assert.equal(modoPizarron("cualquiera"), "oculto");
+test("las rutas de la Hoja del día son del módulo hoja-dia", () => {
+  assert.equal(moduloDeRuta("/planificacion/hoja")?.id, "hoja-dia");
+  assert.equal(moduloDeRuta("/planificacion/hoja/camiones")?.id, "hoja-dia");
   assert.equal(moduloDeRuta("/planificacion/hoja/pizarron")?.id, "hoja-dia");
   assert.equal(moduloDeRuta("/planificacion/hoja/cuadrillas")?.id, "hoja-dia");
   assert.equal(moduloDeRuta("/planificacion")?.id, "planificacion");

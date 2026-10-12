@@ -1,13 +1,9 @@
-import { Suspense } from "react";
-import { Pizarron } from "@/components/hoja-dia/pizarron/pizarron";
+import { redirect } from "next/navigation";
 
-// El Pizarrón del día. El día viene en `?dia=` y lo lee el cliente (useDiaHoja): por eso el
-// Suspense.
+// El Pizarrón estuvo un tiempo en /planificacion/hoja/pizarron (mientras convivía con la vista
+// Cuadrillas). Ahora ES la Hoja del día: los links viejos llevan a /planificacion/hoja con el día.
 
-export default function PizarronPage() {
-  return (
-    <Suspense fallback={<div className="h-96 animate-pulse rounded-xl bg-muted" aria-busy />}>
-      <Pizarron />
-    </Suspense>
-  );
+export default async function PizarronViejoPage({ searchParams }: { searchParams: Promise<{ dia?: string | string[] }> }) {
+  const dia = (await searchParams).dia;
+  redirect(typeof dia === "string" && /^\d{4}-\d{2}-\d{2}$/.test(dia) ? `/planificacion/hoja?dia=${dia}` : "/planificacion/hoja");
 }

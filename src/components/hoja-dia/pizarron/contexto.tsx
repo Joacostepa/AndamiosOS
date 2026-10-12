@@ -38,7 +38,17 @@ export type Ctx = {
   menuChofer: (f: FichaCamion, el: HTMLElement) => void;
   menuContratista: (kid: string, el: HTMLElement) => void;
   menuMotivo: (pid: string, el: HTMLElement, ausenciaId: string | null) => void;
-  /** Abre la vista Camiones clásica en ese camión (el recorrido, hasta F3). */
+  /** El menú ⋯ de una columna (Copiar como hoy, Ver como, Cerrar jornada, Instrucciones, Historial…). */
+  menuColumna: (c: number, el: HTMLElement) => void;
+  /** El menú de una persona de una columna (a cargo, Pasar a…, No viene…, Nota, Sacar). */
+  menuPersona: (c: number, pid: string, el: HTMLElement) => void;
+  /** El menú de un contratista de una columna (a cargo, Nota, Quitar). */
+  menuContratistaCol: (c: number, kid: string, el: HTMLElement) => void;
+  /** Hora y lugar del encuentro de la cuadrilla. */
+  menuEncuentro: (c: number, el: HTMLElement) => void;
+  /** "Cerrar jornada" (elige la obra sin parte) o, con otId, "Ver parte". */
+  cerrarJornada: (c: number, otId?: number) => void;
+  /** Abre la vista Camiones en ese camión (el recorrido, hasta F3). */
   recorrido: (veh: string | null) => void;
   /** Avisos resaltados por el contador de la barra. */
   resaltar: boolean;

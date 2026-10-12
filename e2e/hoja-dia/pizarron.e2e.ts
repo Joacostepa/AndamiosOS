@@ -139,12 +139,48 @@ describe("Pizarrón", { timeout: 120_000 }, () => {
 
   test("No vienen: pide el motivo y queda ahí", async () => {
     const { page, srv } = await abrir();
+    // La bandeja va abajo de las columnas: primero a la vista (con las dos cajas adentro).
+    await page.locator('[data-caja="no"]').scrollIntoViewIfNeeded();
     await arrastrarHasta(page, page.locator('[data-caja="sin"] [data-flip="p:paz"]'), page.locator('[data-caja="no"]'));
     await page.mouse.up();
     await page.getByRole("menuitem", { name: "Enfermedad" }).click();
     await page.locator('[data-caja="no"] [data-flip="p:paz"]').waitFor({ timeout: 500 });
     await page.waitForTimeout(1700);
     assert.equal(srv.posts.at(-1)!.url, "/api/hoja-dia/ausencias");
+    await page.context().close();
+  });
+
+  test("⋯ de la columna: lo de la cuadrilla; el encuentro se cambia en el lugar", async () => {
+    const { page, srv } = await abrir();
+    await page.locator('[data-col="1"] [aria-label^="Más opciones de la"]').click();
+    for (const item of ["Copiar como hoy", "Instrucciones", "Historial"]) await page.getByRole("menuitem", { name: item }).waitFor();
+    await captura(page, "menu-columna");
+    await page.keyboard.press("Escape");
+    await page.locator('[data-col="1"] header').getByText(/en la obra|en el depósito/).click();
+    await page.getByLabel("Lugar del encuentro").selectOption("deposito");
+    await page.waitForTimeout(1700);
+    const enc = srv.posts.find((x) => (x.body as { accion: string }).accion === "encuentro")?.body as { cuadrilla: number; lugar: string } | undefined;
+    assert.deepEqual(enc && { c: enc.cuadrilla, lugar: enc.lugar }, { c: 1, lugar: "deposito" });
+    await page.context().close();
+  });
+
+  test("⋯ de una persona: Pasar a otra cuadrilla", async () => {
+    const { page, srv } = await abrir();
+    await page.locator('[data-col="1"] [data-zona="gente"] [aria-label^="Opciones de"]').first().click();
+    await page.getByRole("menuitem", { name: "Pasar a…" }).click();
+    await page.getByRole("menuitem", { name: /Cuadrilla 2/ }).click();
+    await page.waitForTimeout(1700);
+    const ag = srv.posts.at(-1)!.body as { accion: string; cuadrilla: number };
+    assert.deepEqual({ accion: ag.accion, c: ag.cuadrilla }, { accion: "agregar", c: 2 });
+    await page.context().close();
+  });
+
+  test("Ausencias y Camiones están en la barra", async () => {
+    const { page } = await abrir();
+    assert.match((await page.getByTitle(/el despacho del día/).getAttribute("href")) ?? "", /^\/planificacion\/hoja\/camiones\?dia=2026-10-13$/);
+    await page.getByRole("button", { name: /Ausencias/ }).click();
+    await page.getByRole("dialog").waitFor();
+    await captura(page, "ausencias");
     await page.context().close();
   });
 

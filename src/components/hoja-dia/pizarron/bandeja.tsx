@@ -53,7 +53,7 @@ const Vacio = ({ children }: { children: React.ReactNode }) => (
   <div className="w-full rounded-md border-[1.5px] border-dashed px-2 py-2 text-center text-xs text-muted-foreground">{children}</div>
 );
 
-export function Bandeja({ onNuevoContratista }: { onNuevoContratista: () => void }) {
+export function Bandeja({ onNuevoContratista, onResumenContratistas }: { onNuevoContratista: () => void; onResumenContratistas: () => void }) {
   const ctx = usePizarron();
   const v = ctx.vista;
   return (
@@ -69,11 +69,18 @@ export function Bandeja({ onNuevoContratista }: { onNuevoContratista: () => void
         n={v.contratistas.length}
         destino={null}
         id="caja:contratistas"
-        extra={!ctx.soloLectura && (
-          <div>
-            <button type="button" onClick={onNuevoContratista} className="inline-flex h-[30px] items-center gap-1 rounded-md border border-foreground/30 bg-card px-2.5 text-[12.5px] font-semibold hover:bg-muted">
-              <Plus className="size-3.5" /> Contratista
-            </button>
+        extra={(
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            {!ctx.soloLectura && (
+              <button type="button" onClick={onNuevoContratista} className="inline-flex h-[30px] items-center gap-1 rounded-md border border-foreground/30 bg-card px-2.5 text-[12.5px] font-semibold hover:bg-muted">
+                <Plus className="size-3.5" /> Contratista
+              </button>
+            )}
+            {v.contratistas.length > 0 && (
+              <button type="button" onClick={onResumenContratistas} className="text-[12.5px] text-muted-foreground underline underline-offset-[3px] hover:text-foreground">
+                Resumen del mes
+              </button>
+            )}
           </div>
         )}
       >

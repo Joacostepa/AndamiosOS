@@ -12,6 +12,10 @@
 // Tres maneras de mover una ficha: arrastrarla (dnd-kit: mouse, dedo con 200 ms de espera,
 // teclado con Espacio + flechas), tocarla y tocar el destino (barra de ayuda, Esc cancela),
 // o con foco apretar 1–5 (esa cuadrilla) o B ("Sin asignar" / "Camiones libres").
+//
+// Lo de cada cuadrilla que no es mover fichas (Copiar como hoy, Ver como, Cerrar jornada,
+// Instrucciones, Encuentro, Historial) va en el ⋯ de la columna; lo de una persona (Pasar a,
+// No viene…, Nota) en su ⋯. Ausencias y Camiones están en la barra.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -23,14 +27,19 @@ import {
 import { Copy, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import type { AccionHoja, Resultado } from "@/lib/hoja-dia/acciones";
-import { ausenciaDe, cap, choferesParaVehiculo, diaSemana, hojaDe, nombreDe, persona, vehTxt, type Boton } from "@/lib/hoja-dia/estado";
+import {
+  ausenciaDe, cap, choferesParaVehiculo, cNombre, diaSemana, elVeh, esHoy, fechaLarga, hojaDe, hojaDeCuadrilla, nombreDe, persona, recibeDe, vehiculosDe, vehTxt,
+  type Boton,
+} from "@/lib/hoja-dia/estado";
+import { cambiosTablero } from "@/lib/hoja-dia/vista-cuadrillas";
+import type { DiaHoja } from "@/lib/hoja-dia/tipos";
 import { TIPOS_AUSENCIA, type TipoAusencia } from "@/lib/hoja-dia/tipos";
 import { cuadrillaDeNumero, soltar, textoAyuda, type Destino, type Gesto, type Origen } from "@/lib/hoja-dia/gestos-pizarron";
 import { estadoMandar, pizarron, type FichaCamion } from "@/lib/hoja-dia/pizarron";
 import { nivelEn } from "@/lib/auth/acceso";
 import { useAcceso } from "@/components/providers/acceso-provider";
 import {
-  useAccionAusencia, useAccionHoja, useAccionViaje, useAhora, useAvisosHojaDia, useDeshacer, useHojaDia, usePrecarga,
+  useAccionAusencia, useAccionHoja, useAccionPedido, useAccionViaje, useAhora, useAvisosHojaDia, useDeshacer, useEnviar, useHojaDia, usePrecarga,
 } from "@/hooks/use-hoja-dia";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -38,8 +47,18 @@ import { MenuFlotante, ItemMenu, MenuCabeza } from "@/components/hoja-dia/comune
 import { ListaEnvio } from "@/components/hoja-dia/comunes/lista-envio";
 import { useDiaHoja } from "@/components/hoja-dia/comunes/use-dia-hoja";
 import { diaCorto } from "@/components/hoja-dia/comunes/encabezado-hoja";
-import { DialogoCelular } from "@/components/hoja-dia/cuadrillas/dialogos";
+import { Historial } from "@/components/hoja-dia/comunes/historial";
+import { CampoHora } from "@/components/hoja-dia/comunes/campo-hora";
+import { DialogoCelular, DialogoObra } from "@/components/hoja-dia/cuadrillas/dialogos";
 import { HojaContratistas } from "@/components/hoja-dia/cuadrillas/hoja-contratistas";
+import { HojaResumenContratistas } from "@/components/hoja-dia/cuadrillas/hoja-resumen-contratistas";
+import { HojaAusencias } from "@/components/hoja-dia/cuadrillas/hoja-ausencias";
+import { HojaInstrucciones } from "@/components/hoja-dia/cuadrillas/hoja-instrucciones";
+import { VerComo } from "@/components/hoja-dia/cuadrillas/ver-como";
+import { CerrarJornada, type PedidoCierre } from "@/components/hoja-dia/cuadrillas/cerrar-jornada";
+import { MenuPersona } from "@/components/hoja-dia/cuadrillas/menu-persona";
+import { MenuContratista } from "@/components/hoja-dia/cuadrillas/contratistas";
+import type { CtlMenus } from "@/components/hoja-dia/cuadrillas/control";
 import { colorCuadrilla } from "@/lib/tablero/colores";
 import { PizarronCtx, prioridadDe, type Ctx } from "./contexto";
 import { BarraDia } from "./barra-dia";
@@ -88,6 +107,16 @@ function claveFlip(o: Origen, d: Destino): string {
 
 type Rect = { left: number; top: number };
 type Grupo = { fecha: string; ids: string[] };
+/** Las hojas laterales (paneles) que abre el pizarrón. */
+type HojaLat =
+  | { t: "mandar" }
+  | { t: "envio"; resaltar?: string | null }
+  | { t: "contratistas"; foco?: string | null }
+  | { t: "resumen" }
+  | { t: "aus" }
+  | { t: "instr"; c: number }
+  | { t: "ver"; c: number; p: string }
+  | { t: "historial"; c: number };
 
 export function Pizarron() {
   const router = useRouter();
@@ -102,6 +131,8 @@ export function Pizarron() {
   const hojaM = useAccionHoja(fecha, { aviso: false });
   const viajeM = useAccionViaje(fecha, { aviso: false });
   const ausM = useAccionAusencia(fecha, { aviso: false });
+  const pedidoM = useAccionPedido(fecha);
+  const enviarM = useEnviar(fecha);
   const deshacerM = useDeshacer(fecha);
   const precarga = usePrecarga(fecha);
 
@@ -120,11 +151,17 @@ export function Pizarron() {
     | { t: "cambiarMotivo"; pid: string; ausenciaId: string; el: HTMLElement }
     | { t: "chofer"; f: FichaCamion; el: HTMLElement }
     | { t: "contratista"; kid: string; el: HTMLElement }
+    | { t: "columna"; c: number; el: HTMLElement }
+    | { t: "persona"; c: number; pid: string; el: HTMLElement }
+    | { t: "kcol"; c: number; kid: string; el: HTMLElement }
+    | { t: "encuentro"; c: number; el: HTMLElement }
     | null
   >(null);
   const [cuantos, setCuantos] = useState(1);
-  const [hojaLat, setHojaLat] = useState<"mandar" | "envio" | "contratistas" | null>(null);
+  const [hojaLat, setHojaLat] = useState<HojaLat | null>(null);
   const [celular, setCelular] = useState<string | null>(null);
+  const [obra, setObra] = useState<number | null>(null);
+  const [cierre, setCierre] = useState<PedidoCierre | null>(null);
 
   const vista = useMemo(() => (dia ? pizarron(dia, ahora) : null), [dia, ahora]);
   const soloLectura = !editor || !!vista?.pasado;
@@ -135,6 +172,17 @@ export function Pizarron() {
     setFechaVista(fecha);
     setSel(null);
     setMenu(null);
+    setHojaLat(null);
+  }
+
+  // "Cambió el tablero": si entre dos lecturas del mismo día se movieron obras (el aviso en
+  // vivo del tablero refresca el día), se dice qué cambió hasta que lo den por visto.
+  const [diaPrevio, setDiaPrevio] = useState<DiaHoja | null>(null);
+  const [cambioTablero, setCambioTablero] = useState<{ fecha: string; lista: string[] } | null>(null);
+  if (dia && dia !== diaPrevio) {
+    setDiaPrevio(dia);
+    const cs = diaPrevio && diaPrevio.fecha === dia.fecha ? cambiosTablero(diaPrevio, dia) : [];
+    if (cs.length) setCambioTablero({ fecha: dia.fecha, lista: [...(cambioTablero?.fecha === dia.fecha ? cambioTablero.lista : []), ...cs].slice(-6) });
   }
   const fechaAntes = useRef(fecha);
   useEffect(() => {
@@ -245,14 +293,23 @@ export function Pizarron() {
         else toast.error(`${nombreDe(dia, b.p) || "Esa persona"} no tiene celular cargado`);
         return;
       }
-      case "avisarChofer": case "abrirEnvio": case "avisarTarde": case "reenviar": setHojaLat("envio"); return;
+      case "avisarChofer": case "abrirEnvio": case "avisarTarde": setHojaLat({ t: "envio", resaltar: b.p ?? null }); return;
+      case "reenviar": {
+        if (!b.p) return;
+        if (!persona(dia, b.p)?.telegram || !dia.telegram.configurado) { setHojaLat({ t: "envio", resaltar: b.p }); return; }
+        enviarM.mutate({ accion: "reenviar", fecha: f, personaId: b.p, canal: "telegram" }, {
+          onSuccess: (r) => toast(r.texto, r.historialId ? { duration: 9000, action: { label: "Deshacer", onClick: () => deshacerM.mutate(r.historialId!) } } : undefined),
+        });
+        return;
+      }
+      case "pasarManana": if (b.id) pedidoM.mutate({ accion: "pasar_a_manana", pedidoId: b.id }); return;
       case "verCamion": irCamiones(b.veh ? `&veh=${b.veh}` : ""); return;
       case "verViaje": case "choferViaje": case "elegirChoferViaje": case "noSeHizo": irCamiones(b.id ? `&viaje=${b.id}` : ""); return;
       case "irCamiones": irCamiones(b.id ? `&pedido=${b.id}` : ""); return;
       case "esperar": case "poner": case "fleteDe": irCamiones(b.id ? `&pedido=${b.id}&hacer=${b.a === "fleteDe" ? "flete" : b.a}` : ""); return;
-      default: toast(`«${b.l}» se hace desde la vista Cuadrillas por ahora`);
+      default: toast.error(`No sé hacer «${b.l}» desde acá`);
     }
-  }, [dia, ejecutar, fecha, hoja, irCamiones, pedirFoco, router, vista]);
+  }, [deshacerM, dia, ejecutar, enviarM, fecha, hoja, irCamiones, pedidoM, pedirFoco, router, vista]);
 
   // ─── Teclado ──────────────────────────────────────────────────────────────
 
@@ -344,6 +401,11 @@ export function Pizarron() {
       setMenu({ t: "contratista", kid, el });
     },
     menuMotivo: (pid, el, ausenciaId) => ausenciaId && setMenu({ t: "cambiarMotivo", pid, ausenciaId, el }),
+    menuColumna: (c, el) => setMenu({ t: "columna", c, el }),
+    menuPersona: (c, pid, el) => setMenu({ t: "persona", c, pid, el }),
+    menuContratistaCol: (c, kid, el) => setMenu({ t: "kcol", c, kid, el }),
+    menuEncuentro: (c, el) => setMenu({ t: "encuentro", c, el }),
+    cerrarJornada: (c, otId) => setCierre({ c, otId: otId ?? null }),
     recorrido: (veh) => irCamiones(veh ? `&veh=${veh}` : ""),
     resaltar, foco,
   } : null;
@@ -396,6 +458,12 @@ export function Pizarron() {
     return <Fantasma camion color={k ? colorCamion(k.color) : undefined} texto={vehTxt(dia, o.veh) || "Camión"} />;
   })() : null;
   const menuChofer = menu?.t === "chofer" ? menu : null;
+  const ctlMenus: CtlMenus = {
+    dia, ahora, editor,
+    sumarContratista: (c, kid, n) => hoja({ accion: "contratista_sumar", fecha, cuadrilla: c, contratistaId: kid, n }),
+    abrirContratistas: (kid) => setHojaLat({ t: "contratistas", foco: kid ?? null }),
+    verComo: (c, p) => setHojaLat({ t: "ver", c, p }),
+  };
 
   return (
     <PizarronCtx.Provider value={ctx}>
@@ -406,8 +474,17 @@ export function Pizarron() {
             avisos={vista.avisos} vacio={vista.vacio} onResaltar={resaltarAvisos}
             puedeDeshacer={pila.some((g) => g.fecha === fecha)} onDeshacer={deshacerUltimo}
             copiarDe={copiarDe} onCopiar={() => copiar("hoy")} copiando={precarga.isPending}
-            mandar={estadoMandar(dia)} onMandar={() => setHojaLat("mandar")} soloLectura={soloLectura}
+            mandar={estadoMandar(dia)} onMandar={() => setHojaLat({ t: "mandar" })} soloLectura={soloLectura}
+            onAusencias={() => setHojaLat({ t: "aus" })}
           />
+          {cambioTablero?.fecha === fecha && !vista.pasado && (
+            <div role="status" className="flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-lg border border-hd-ambar/55 bg-hd-ambar-bg py-1.5 pr-1.5 pl-3.5 text-[13px]">
+              <span className="min-w-0 flex-[1_1_260px] leading-snug">
+                <b className="font-semibold">Cambió el tablero:</b> {cambioTablero.lista.join(" · ")}. Las hojas que ya se mandaron quedan «Cambiada después de enviar».
+              </span>
+              <Button variant="outline" size="sm" onClick={() => setCambioTablero(null)}>Entendido</Button>
+            </div>
+          )}
           {vista.pasado && (
             <div className="rounded-lg border bg-hd-card2 px-3.5 py-1.5 text-[13px] text-muted-foreground">
               <b className="font-semibold text-foreground">{cap(diaSemana(fecha))} {Number(fecha.slice(8))}: sólo lectura.</b> Lo que pasó lo dicen los partes y la asistencia.
@@ -432,7 +509,7 @@ export function Pizarron() {
                   {vista.columnas.map((col) => <ColumnaUI key={col.c} col={col} />)}
                 </div>
               </div>
-              <Bandeja onNuevoContratista={() => setHojaLat("contratistas")} />
+              <Bandeja onNuevoContratista={() => setHojaLat({ t: "contratistas" })} onResumenContratistas={() => setHojaLat({ t: "resumen" })} />
             </section>
             <PanelLateral dia={dia} vista={vista} rotulo={rotulo} onFoco={pedirFoco} />
           </div>
@@ -547,8 +624,76 @@ export function Pizarron() {
         </MenuFlotante>
       )}
 
+      {menu?.t === "columna" && (() => {
+        const c = menu.c;
+        const h = hojaDeCuadrilla(dia, c);
+        const r = recibeDe(dia, c);
+        const y = (fn: () => void) => () => {
+          setMenu(null);
+          fn();
+        };
+        const col = vista.columnas.find((x) => x.c === c);
+        return (
+          <MenuFlotante
+            anchor={menu.el}
+            onCerrar={() => setMenu(null)}
+            label={cNombre(dia, c)}
+            encabezado={<><b className="font-semibold">{cNombre(dia, c)}</b><div className="text-xs text-muted-foreground">{fechaLarga(fecha)}</div></>}
+          >
+            {h && !soloLectura && (
+              <ItemMenu detalle="del día anterior" onClick={y(() => hoja({ accion: "copiar_como_hoy", fecha, cuadrilla: c }))}>Copiar como hoy</ItemMenu>
+            )}
+            {r && <ItemMenu onClick={y(() => setHojaLat({ t: "ver", c, p: r }))}>Ver como {nombreDe(dia, r)}</ItemMenu>}
+            {h && esHoy(ahora) && !vista.pasado && <ItemMenu onClick={y(() => setCierre({ c, otId: null }))}>Cerrar jornada</ItemMenu>}
+            {col?.conObra && <ItemMenu onClick={y(() => setHojaLat({ t: "instr", c }))}>Instrucciones</ItemMenu>}
+            {col?.obras.map((o) => (
+              <ItemMenu key={o.otId} detalle="la OT" onClick={y(() => setObra(o.otId))}>{col.obras.length > 1 ? `Ver ${o.corto}` : "Ver la obra"}</ItemMenu>
+            ))}
+            {h && vehiculosDe(h).filter((x) => x.vehiculoId).map((x) => (
+              <ItemMenu key={x.id} detalle="en Camiones" onClick={y(() => irCamiones(`&veh=${x.vehiculoId}`))}>
+                {vehiculosDe(h).length > 1 ? `Ver ${elVeh(dia, x.vehiculoId)}` : "Ver el camión"}
+              </ItemMenu>
+            ))}
+            {h && <ItemMenu detalle="lo que se cambió" onClick={y(() => setHojaLat({ t: "historial", c }))}>Historial</ItemMenu>}
+          </MenuFlotante>
+        );
+      })()}
+      {menu?.t === "encuentro" && (() => {
+        const c = menu.c;
+        const h = hojaDeCuadrilla(dia, c);
+        if (!h) return null;
+        const lugar = h.encuentro.lugar;
+        return (
+          <MenuFlotante anchor={menu.el} onCerrar={() => setMenu(null)} label="Encuentro" ancho={280} encabezado={<b className="font-semibold">Encuentro · {cNombre(dia, c)}</b>}>
+            <div className="flex flex-wrap items-center gap-1.5 p-1">
+              <CampoHora
+                ocultarLabel
+                label="Hora del encuentro"
+                valor={h.encuentro.hora}
+                onCambiar={(hora) => hoja({ accion: "encuentro", fecha, cuadrilla: c, lugar, hora, texto: h.encuentro.texto })}
+              />
+              <select
+                aria-label="Lugar del encuentro"
+                value={lugar}
+                className="h-7 rounded-md border border-input bg-card px-1.5 text-[13px] max-md:h-10 max-md:text-[15px]"
+                onChange={(e) => {
+                  const l = e.target.value as "deposito" | "obra" | "otro";
+                  hoja({ accion: "encuentro", fecha, cuadrilla: c, lugar: l, hora: h.encuentro.hora, texto: l === "otro" ? h.encuentro.texto : null });
+                }}
+              >
+                <option value="deposito">en el depósito</option>
+                <option value="obra">en la obra</option>
+                {lugar === "otro" && <option value="otro">{h.encuentro.texto ?? "otro lugar"}</option>}
+              </select>
+            </div>
+          </MenuFlotante>
+        );
+      })()}
+      {menu?.t === "persona" && <MenuPersona key={`${menu.c}-${menu.pid}`} ctl={ctlMenus} c={menu.c} pid={menu.pid} anchor={menu.el} onCerrar={() => setMenu(null)} />}
+      {menu?.t === "kcol" && <MenuContratista key={`k-${menu.c}-${menu.kid}`} ctl={ctlMenus} c={menu.c} kid={menu.kid} anchor={menu.el} onCerrar={() => setMenu(null)} />}
+
       <Mandar
-        abierta={hojaLat === "mandar"}
+        abierta={hojaLat?.t === "mandar"}
         onCerrar={() => setHojaLat(null)}
         dia={dia}
         avisos={vista.avisos}
@@ -556,11 +701,26 @@ export function Pizarron() {
           setHojaLat(null);
           resaltarAvisos();
         }}
-        onUnoPorUno={() => setHojaLat("envio")}
+        onUnoPorUno={() => setHojaLat({ t: "envio" })}
       />
-      <ListaEnvio abierta={hojaLat === "envio"} onCerrar={() => setHojaLat(null)} dia={dia} ahora={ahora} onCargarCelular={setCelular} />
-      {hojaLat === "contratistas" && <HojaContratistas abierta onCerrar={() => setHojaLat(null)} dia={dia} foco={null} />}
+      <ListaEnvio abierta={hojaLat?.t === "envio"} onCerrar={() => setHojaLat(null)} dia={dia} ahora={ahora} resaltar={hojaLat?.t === "envio" ? hojaLat.resaltar : null} onCargarCelular={setCelular} />
+      {hojaLat?.t === "contratistas" && <HojaContratistas key={`contratistas-${hojaLat.foco ?? ""}`} abierta onCerrar={() => setHojaLat(null)} dia={dia} foco={hojaLat.foco ?? null} />}
+      {hojaLat?.t === "resumen" && <HojaResumenContratistas abierta onCerrar={() => setHojaLat(null)} mesInicial={fecha.slice(0, 7)} />}
+      <HojaAusencias abierta={hojaLat?.t === "aus"} onCerrar={() => setHojaLat(null)} dia={dia} />
+      {hojaLat?.t === "instr" && <HojaInstrucciones abierta onCerrar={() => setHojaLat(null)} dia={dia} c={hojaLat.c} pasado={vista.pasado} />}
+      {hojaLat?.t === "ver" && <VerComo abierta onCerrar={() => setHojaLat(null)} dia={dia} ahora={ahora} pid={hojaLat.p} />}
+      {hojaLat?.t === "historial" && (
+        <Historial
+          abierta
+          onCerrar={() => setHojaLat(null)}
+          titulo={`Historial · ${cNombre(dia, hojaLat.c)}`}
+          fecha={fecha}
+          filtro={hojaDeCuadrilla(dia, hojaLat.c) ? { hojaId: hojaDeCuadrilla(dia, hojaLat.c)!.id } : null}
+        />
+      )}
       <DialogoCelular key={`celular-${celular ?? ""}`} dia={dia} pid={celular} onCerrar={() => setCelular(null)} />
+      <DialogoObra dia={dia} otId={obra} onCerrar={() => setObra(null)} />
+      <CerrarJornada key={cierre ? `cierre-${cierre.c}-${cierre.otId ?? ""}` : "cierre"} dia={dia} pedido={cierre} onCerrar={() => setCierre(null)} />
     </PizarronCtx.Provider>
   );
 }

@@ -3,9 +3,11 @@
 // La barra de arriba del Pizarrón (maqueta: drawTop): el día con ‹ › y los chips
 // Hoy / Mañana / pasado, la etiqueta "Hoy · en curso" / "Mañana · se está armando", el
 // contador de avisos (tocarlo resalta las columnas que tienen), Deshacer, "Copiar del día
-// anterior" y "Mandar a los capataces y choferes".
+// anterior", Ausencias, Camiones (el despacho y los pedidos) y "Mandar a los capataces y
+// choferes".
 
-import { Check, ChevronLeft, ChevronRight, Copy, Send, Undo2 } from "lucide-react";
+import Link from "next/link";
+import { CalendarX2, Check, ChevronLeft, ChevronRight, Copy, Send, Truck, Undo2 } from "lucide-react";
 import { cap, diaSemana } from "@/lib/hoja-dia/estado";
 import { diaHabil } from "@/lib/hoja-dia/dias";
 import type { Fecha } from "@/lib/hoja-dia/tipos";
@@ -33,6 +35,7 @@ export function BarraDia(p: {
   copiando: boolean;
   mandar: EstadoMandar;
   onMandar: () => void;
+  onAusencias: () => void;
   soloLectura: boolean;
 }) {
   const { fecha, hoy, manana } = p;
@@ -111,6 +114,14 @@ export function BarraDia(p: {
             )}
           </button>
         )}
+        <Link href={`/planificacion/hoja/camiones?dia=${fecha}`} className={btn} title="Camiones: el despacho del día, los viajes y los pedidos">
+          <Truck className="size-4" />
+          <span className="hidden lg:inline">Camiones</span>
+        </Link>
+        <button type="button" className={btn} onClick={p.onAusencias} title="Ausencias: quién no viene y hasta cuándo">
+          <CalendarX2 className="size-4" />
+          <span className="hidden lg:inline">Ausencias</span>
+        </button>
         <button type="button" className={btn} disabled={!p.puedeDeshacer || p.soloLectura} onClick={p.onDeshacer} title="Deshacer (Ctrl+Z)" aria-label="Deshacer">
           <Undo2 className="size-4" />
         </button>

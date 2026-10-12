@@ -80,7 +80,7 @@ Parámetro `pizarron`: `oculto` → nadie lo ve; `probar` → pestaña "Pizarró
 | F4 Pedidos | M | Panel, otra dirección + geocodificar + pin, inserción por desvío, quién pasa cerca | (2) |
 | F5 Repaso de la mañana | M | Overlay tarjeta por tarjeta, corregir en vivo, para revisar, mandar a afectados | (1) |
 | F6 Obras en vivo 3D | L | "Salí", `en-vivo.ts`, escena Three portada | (2) |
-| F7 Cambio y retiro | S | `principal`, dos semanas de convivencia, borrar lo viejo, docs | — |
+| F7 Cambio y retiro | S | `principal`, dos semanas de convivencia, borrar lo viejo, docs. **Cuadrillas: hecho el 12/10** (pedido del dueño: sin convivencia; el pizarrón es fijo, sin parámetro). Camiones queda hasta F3/F4 | — |
 | F8 Refuerzos con hora (opcional) | M | `hd_refuerzos` | 3 |
 
 Cada fase: tests node de la lógica pura, Playwright con APIs interceptadas (1366 y 390 px, `prefers-reduced-motion`), `tsc`, `eslint`, `build`; migraciones en BEGIN/ROLLBACK antes de aplicar; aplicar antes del deploy.

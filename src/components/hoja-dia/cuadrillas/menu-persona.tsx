@@ -1,7 +1,7 @@
 "use client";
 
-// El menú de un nombre de la tarjeta (menuHTML de la maqueta): Poner a cargo, Ver como…,
-// Pasar a…, No viene… (motivo y hasta cuándo), Nota y Sacar.
+// El menú de una persona de una columna del Pizarrón (menuHTML de la maqueta): Poner a
+// cargo, Ver como…, Pasar a…, No viene… (motivo y hasta cuándo), Nota y Sacar.
 
 import { useState } from "react";
 import {
@@ -12,12 +12,12 @@ import { TIPOS_AUSENCIA, type TipoAusencia } from "@/lib/hoja-dia/tipos";
 import { useAccionAusencia, useAccionHoja } from "@/hooks/use-hoja-dia";
 import { Button } from "@/components/ui/button";
 import { ChipOpcion, ItemMenu, MenuFlotante } from "@/components/hoja-dia/comunes/menu-flotante";
-import type { Control } from "./control";
+import type { CtlMenus } from "./control";
 import { PRI } from "@/components/hoja-dia/comunes/boton-coral";
 
 type Paso = null | "pasar" | "noviene" | "nota";
 
-export function MenuPersona({ ctl, c, pid, anchor, onCerrar }: { ctl: Control; c: number; pid: string; anchor: HTMLElement | null; onCerrar: () => void }) {
+export function MenuPersona({ ctl, c, pid, anchor, onCerrar }: { ctl: CtlMenus; c: number; pid: string; anchor: HTMLElement | null; onCerrar: () => void }) {
   const { dia, ahora } = ctl;
   const fecha = dia.fecha;
   const hoja = useAccionHoja(fecha);

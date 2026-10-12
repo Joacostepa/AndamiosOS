@@ -4,13 +4,18 @@
 // "4 de 5", la obra (o la secuencia de obras con hora y cómo llegan) de solo lectura con qué
 // se ejecuta e instrucciones, los avisos como insignias con su botón, la gente, los
 // contratistas y la franja de camiones. Una cuadrilla sin obra queda grisada y no recibe.
+// El ⋯ abre lo de la cuadrilla (Copiar como hoy, Ver como, Cerrar jornada, Instrucciones,
+// Historial); abajo de las obras, el encuentro y, a la tarde de hoy, cerrar la jornada.
 
 import { useState } from "react";
-import { ArrowDown, Lock, StickyNote, TriangleAlert } from "lucide-react";
+import { ArrowDown, Lock, MoreHorizontal, StickyNote, TriangleAlert } from "lucide-react";
+import { esHoy, hojaDeCuadrilla, nombreDe, obrasDe } from "@/lib/hoja-dia/estado";
+import { encuentroTxt } from "@/lib/hoja-dia/vista-cuadrillas";
 import type { Columna, ObraColumna } from "@/lib/hoja-dia/pizarron";
 import { colorCuadrilla } from "@/lib/tablero/colores";
 import { cn } from "@/lib/utils";
 import { MenuFlotante, MenuTexto } from "@/components/hoja-dia/comunes/menu-flotante";
+import { JornadaCerrada } from "@/components/hoja-dia/cuadrillas/cerrar-jornada";
 import { mismoDestino, usePizarron, useZona } from "./contexto";
 import { FichaCamionUI, FichaContratistaColumna, FichaPersonaUI } from "./fichas";
 
@@ -75,6 +80,16 @@ export function ColumnaUI({ col }: { col: Columna }) {
     ctx.tocar(d);
   };
   const corto = col.conObra && col.van < col.prevista;
+  const h = hojaDeCuadrilla(ctx.dia, col.c);
+  // B1: las obras que ya tienen parte NO ofrecen "Cerrar jornada": muestran el parte.
+  const obras = obrasDe(ctx.dia, col.c);
+  const conParte = obras.filter((o) => o.parteId != null);
+  const sinParte = obras.filter((o) => o.parteId == null);
+  const ofrecerCierre = esHoy(ctx.ahora) && ctx.ahora >= 16 * 60 && !ctx.vista.pasado && !col.suspendida && sinParte.length > 0 && !!h;
+  const notas = [
+    ...(h?.integrantes.filter((i) => i.nota).map((i) => ({ k: i.id, quien: nombreDe(ctx.dia, i.personaId), t: i.nota! })) ?? []),
+    ...(h?.contratistas.filter((x) => x.nota).map((x) => ({ k: x.id, quien: nombreDe(ctx.dia, x.contratistaId), t: x.nota! })) ?? []),
+  ];
   return (
     <article
       ref={refCol}
@@ -82,7 +97,7 @@ export function ColumnaUI({ col }: { col: Columna }) {
       aria-label={`${col.nombre}${col.conObra ? "" : ", sin obra en el tablero"}`}
       onClick={(e) => tocar(e, { k: "columna", c: col.c })}
       className={cn(
-        "relative flex min-w-0 flex-col rounded-lg border bg-card shadow-xs transition-[opacity,box-shadow]",
+        "@container/col relative flex min-w-0 flex-col rounded-lg border bg-card shadow-xs transition-[opacity,box-shadow]",
         !col.conObra && "opacity-60",
         destacada && "cursor-copy ring-2 ring-primary/60",
         (sobreCol || (huecoGente || huecoCamion)) && col.acepta && "ring-[2.5px] ring-primary",
@@ -98,7 +113,8 @@ export function ColumnaUI({ col }: { col: Columna }) {
           <span aria-hidden className="min-w-[22px] text-[34px] leading-[.85] font-extrabold tracking-tight" style={{ color: col.conObra ? color : undefined }}>{col.rotulo}</span>
           <div className="min-w-0 flex-1 pb-0.5">
             <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] leading-none font-bold tracking-[.09em] text-muted-foreground uppercase">
-              Cuadrilla
+              {/* En una columna angosta no entra con el "4 de 5" y el ⋯: el número grande ya lo dice. */}
+              <span className="@max-[214px]/col:sr-only">Cuadrilla</span>
               {multi && <span className="rounded-full px-1.5 py-0.5 text-[10.5px] font-bold tracking-normal normal-case text-white" style={{ background: color }}>{col.obras.length} obras</span>}
             </div>
           </div>
@@ -107,6 +123,21 @@ export function ColumnaUI({ col }: { col: Columna }) {
               {corto && <TriangleAlert className="size-3.5" />}
               <b className={cn("font-mono text-[15px] font-bold text-foreground", corto && "text-hd-ambar")}>{col.van}</b> de {col.prevista}
             </span>
+          )}
+          {(col.conObra || h) && (
+            <button
+              type="button"
+              data-no-drag=""
+              aria-label={`Más opciones de la ${col.nombre}`}
+              aria-haspopup="menu"
+              onClick={(e) => {
+                e.stopPropagation();
+                ctx.menuColumna(col.c, e.currentTarget);
+              }}
+              className="-mr-1 grid size-7 shrink-0 place-items-center self-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              <MoreHorizontal className="size-4" />
+            </button>
           )}
         </div>
         {!col.conObra ? (
@@ -126,6 +157,39 @@ export function ColumnaUI({ col }: { col: Columna }) {
                 <Obra o={o} multi={multi} color={color} />
               </div>
             ))}
+          </div>
+        )}
+        {col.conObra && h && (
+          <div className="flex flex-wrap items-baseline gap-x-1.5 text-xs text-muted-foreground">
+            Encuentro
+            <button
+              type="button"
+              data-no-drag=""
+              disabled={ctx.soloLectura}
+              onClick={(e) => {
+                e.stopPropagation();
+                ctx.menuEncuentro(col.c, e.currentTarget);
+              }}
+              className="text-left font-semibold text-foreground underline decoration-foreground/25 underline-offset-[3px] hover:decoration-current disabled:no-underline"
+            >
+              {encuentroTxt(ctx.dia, col.c)}
+            </button>
+          </div>
+        )}
+        {(conParte.length > 0 || ofrecerCierre) && (
+          <div className="grid gap-1.5 text-xs" data-no-drag="" onClick={(e) => e.stopPropagation()}>
+            {conParte.map((o) => (
+              <JornadaCerrada key={o.otId} o={o} fecha={ctx.dia.fecha} conObra={obras.length > 1} onVer={() => ctx.cerrarJornada(col.c, o.otId)} />
+            ))}
+            {ofrecerCierre && (
+              <button
+                type="button"
+                onClick={() => ctx.cerrarJornada(col.c)}
+                className="rounded-md border-[1.5px] border-foreground/30 bg-card px-2 py-1.5 text-[12.5px] font-bold hover:bg-muted"
+              >
+                Cerrar jornada{conParte.length > 0 ? ` · ${sinParte.map((o) => o.corto).join(", ")}` : ""}
+              </button>
+            )}
           </div>
         )}
         {col.avisos.map((x) => (
@@ -165,6 +229,11 @@ export function ColumnaUI({ col }: { col: Columna }) {
         className="flex min-h-11 flex-1 flex-col gap-1.5 p-2"
       >
         {col.gente.map((g) => <FichaPersonaUI key={g.pid} f={g} c={col.c} donde="col" />)}
+        {notas.length > 0 && (
+          <div className="grid gap-px px-0.5 text-[11.5px] leading-snug text-muted-foreground">
+            {notas.map((n) => <div key={n.k}><b className="font-semibold text-foreground">{n.quien}</b> {n.t}</div>)}
+          </div>
+        )}
         {huecoGente && <div aria-hidden className="h-9 shrink-0 rounded-md border-2 border-dashed border-primary bg-primary/10 opacity-80" />}
         {!col.gente.length && !huecoGente && (
           <div className="rounded-md border-[1.5px] border-dashed px-2 py-2 text-center text-xs text-muted-foreground">

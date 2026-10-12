@@ -44,6 +44,7 @@ export async function servirHojaDia(destino: Page | BrowserContext, o: Opciones 
         return responder(route, dias.get(f));
       }
       if (camino === "/api/hoja-dia/envios") return responder(route, { filas: [] });
+      if (camino === "/api/hoja-dia/ausencias") return responder(route, { ausencias: [] });
       return responder(route, {});
     }
     const body = req.postDataJSON() as Record<string, unknown>;

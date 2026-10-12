@@ -1,56 +1,102 @@
 # Hoja del día — handoff
 
-## ESTADO AL 12/10/2026 (tarde) — leer primero
+## ESTADO AL 12/10/2026 (noche) — leer primero
 
-**Para retomar:** "Leé docs/equipos-del-dia/handoff.md (esta sección) y docs/equipos-del-dia/rediseno-plan.md, y seguimos con el pizarrón".
+**Para retomar:** "Leé docs/equipos-del-dia/handoff.md (esta sección) y docs/equipos-del-dia/rediseno-plan.md, y seguimos con F4". Todo lo de abajo de esta sección es historia detallada (las notas "sin merge" de ahí quedaron viejas: está todo en producción).
 
-### 1. Todo lo anterior está EN PRODUCCIÓN (las notas "sin merge" de más abajo quedaron viejas)
-Mergeado a `main`, subido y publicado en Vercel el 11 y 12/10:
-- `bb1057b` choferes y camiones + Google Maps (migraciones `20261012000001_hoja_dia_vehiculos.sql` y `20261012000002_hoja_dia_tiempos.sql` aplicadas antes del merge).
-- `20f2476` el chofer de los pedidos (no se congela el habitual) + `scripts/sql/hoja-dia-chofer-sugerido-limpiar.sql` **ya corrido** (soltó 1 viaje: el material del domingo 11).
-- `3fba2c9` vehículos con marca + el chofer habitual nunca cuenta como asignado.
-- `b2cacb7` geocodificar obras planificadas + en el momento desde la hoja; `scripts/geocodificar-obras.mjs --aplicar` **ya corrido**: 83 ventas con coordenadas en Odoo.
-- `ea22e63` el cron `/api/operaciones/geocodificar` pasaba por el proxy sin estar en la lista pública → contestaba 401 todos los días. Arreglado.
-- `40ea94e` chofer de todo el día con un viaje en otro camión es un choque; seguimiento y "también maneja".
-- Datos cargados en producción: **dirección del depósito** en `hd_lugares` (Cucha Cucha 2345, −34.6008744, −58.4613383). Google Routes responde con `NEXT_PUBLIC_GOOGLE_MAPS_KEY` (está en Vercel; también `CRON_SECRET`). Faltan las variables de Telegram.
+### 1. Qué hay en producción (todo en `main`, publicado en Vercel)
 
-### 2. Rediseño: Pizarrón del día + Obras en vivo 3D (aprobado por el dueño el 12/10)
-- **Plan**: `docs/equipos-del-dia/rediseno-plan.md` (fases F0–F8, modelo, migraciones, decisiones del dueño al final). **Especificación funcional**: las maquetas `docs/equipos-del-dia/maqueta/pizarron.html` y `maqueta/en-vivo-3d.html` (también publicadas juntas como Artifact privado del dueño: https://claude.ai/artifact/EV9WziQqiRFX1dS8udEBDR; el pizarrón es la página principal y el 3D `en-vivo.html`, comparten localStorage). Relevamientos en `maqueta/0*.md` y `propuesta.md`. Plan + maquetas en `main` (`d2d9a72`).
-- **Decisiones del dueño**: horas del recorrido aproximadas (candado = fija); refuerzos "desde una hora" (F8 entra); cuadrilla sin obra = columna grisada; 3D sin niveles (sólo armando/desarmando); confirman capataz y chofer; botón "Salí" del chofer sí. A un camión con recorrido se le suman pedidos/viajes sueltos como paradas (inserción por menor desvío + "¿Quién pasa cerca?").
-- **F0 + F1 HECHOS** en la rama `feat/pizarron-f0-f1` (worktree `.claude/worktrees/agent-a96623d511732f6ab`), 6 commits, **sin merge todavía** (el dueño dijo que sí al merge; falta hacerlo). Sin migración. 488 tests, tsc, eslint, build y 8 casos de `npm run test:e2e` en verde. Detalle en la sección siguiente ("Pizarrón · F0 y F1"). Al mergear, el pizarrón queda **oculto** (sólo por URL `/planificacion/hoja/pizarron?dia=`); escribe en las mismas tablas que la hoja clásica.
-- **Próximo**: mergear F0+F1 a main y subir; después **F2 Depósito como sector** (migración `20261013000001_hoja_dia_deposito.sql`: `hd_hojas.sector` con `cuadrilla_odoo_id = 0`, `hd_links.recibida_canal`, parámetro `pizarron`), luego F3 recorrido (migración `…_hoja_dia_recorridos.sql`), F4 pedidos, F5 repaso de la mañana, F6 3D, F8 refuerzos, F7 cambio y retiro de lo viejo.
+**Hasta el 12/10 a la tarde**
+- `bb1057b` choferes y camiones + Google Maps (migraciones `20261012000001_hoja_dia_vehiculos.sql` y `20261012000002_hoja_dia_tiempos.sql`).
+- `20f2476` el chofer de los pedidos + `scripts/sql/hoja-dia-chofer-sugerido-limpiar.sql` ya corrido.
+- `3fba2c9` vehículos con marca; el chofer habitual nunca cuenta como asignado.
+- `b2cacb7` geocodificar obras planificadas (`scripts/geocodificar-obras.mjs --aplicar` ya corrido: 83 ventas con coordenadas). `ea22e63` el cron de geocodificar pasaba sin sesión (401).
+- `40ea94e` chofer de todo el día con un viaje en otro camión es un choque.
+- Dirección del depósito en `hd_lugares` (Cucha Cucha 2345, −34.6008744, −58.4613383).
 
-### 2 bis. El pizarrón ES la Hoja del día (12/10, noche) — rama `feat/pizarron-principal`
-El dueño: "el formato viejo hay que sacarlo". Sin convivencia ni parámetro:
-- `/planificacion/hoja` abre el pizarrón; `/planificacion/hoja/pizarron` y `/cuadrillas` redirigen ahí. Se sacó `hd_parametros.pizarron` del código (no hace falta ninguna escritura en la base). Se borró la vista Cuadrillas (`vista-cuadrillas`, `tarjeta`, `panel-gente`, `editor-chofer`, `menu-tarjeta`, `agregar-persona`, `estado-vacio`).
-- Lo que sólo hacía Cuadrillas pasó al pizarrón (ver `implementacion.md` §3.1): ⋯ de la columna (Copiar como hoy, Ver como, **Cerrar jornada**, Instrucciones, Ver la obra, Historial), encuentro editable, "Jornada cerrada · Ver parte", ⋯ de la persona (Pasar a…, No viene… con hasta cuándo, Nota, Sacar), menú del contratista, Ausencias y Camiones en la barra, resumen del mes, "Cambió el tablero", Pasar a mañana y Reenviar.
-- **Camiones sigue** (`/planificacion/hoja/camiones`, pestaña en la barra): viajes, pedidos y despacho viven ahí hasta F3/F4.
-- Probado: 564 tests, tsc, eslint, build y 11 casos de `npm run test:e2e` (3 nuevos: ⋯ de la columna + encuentro, ⋯ de la persona, Ausencias/Camiones). **No probado contra la base real**: es la primera vez que el pizarrón se usa con datos de producción.
+**Rediseño "Pizarrón del día" (aprobado el 12/10; plan en `rediseno-plan.md`, especificación en `maqueta/pizarron.html` y `maqueta/en-vivo-3d.html`, también Artifact https://claude.ai/artifact/EV9WziQqiRFX1dS8udEBDR)**
 
-### 2 ter. F2 · Depósito como sector (12/10, noche) — rama `feat/hoja-dia-deposito`
-- Columna **"D · Depósito"** fija al final del pizarrón: gente, ★ encargado, "no viene", encuentro (7:00 en el depósito, de `encuentro_deposito`), notas, ⋯ (Copiar como hoy, Ver como, Historial). Sin obras, sin cupo, sin camiones ni contratistas. Ver `implementacion.md` §3.1 "Depósito (F2)".
-- Decisiones tomadas por defecto (cambiables): del depósito se puede **llevar y traer** a una cuadrilla sin choque (todo el día, sí avisa); el depósito **no lleva contratistas**; sin encargado es un **aviso** (no frena Mandar).
-- **Migración** `supabase/migrations/20261013000001_hoja_dia_deposito.sql` (`hd_hojas.sector` + 2 CHECK, `hd_links.recibida_canal` para F5). Probada contra la base el 12/10 dos veces dentro de BEGIN … ROLLBACK (acepta el 0 como depósito, rechaza la 3 como depósito y el 0 como cuadrilla; verificado que no quedó nada). **Aplicarla ANTES del deploy**: el código nuevo escribe `sector` al crear la hoja del depósito. Verificar: `select count(*) from information_schema.columns where table_name='hd_hojas' and column_name='sector';` → 1.
-- Probado: 597 tests (nuevo `deposito.test.ts`, 9 casos), tsc, eslint, build y 12 casos de `npm run test:e2e` (nuevo: columna D y tecla D). No probado con datos reales.
+| Fase | Commit | Migración (aplicada) | Qué quedó |
+|---|---|---|---|
+| F0 + F1 | `d8ac962` | — | Pizarrón: columnas por cuadrilla, fichas arrastrables (persona, camión, contratista), bandeja (Sin asignar, Contratistas, Camiones libres, No vienen), avisos-insignia, Copiar, Mandar, Deshacer, mini-mapa. Arnés `npm run test:e2e`. |
+| El pizarrón ES la Hoja del día | `f72f1f3` | — (se sacó el parámetro `pizarron`) | `/planificacion/hoja` abre el pizarrón; `/pizarron` y `/cuadrillas` redirigen. Se borró la vista Cuadrillas; al pizarrón pasaron el ⋯ de la columna (Copiar como hoy, Ver como, **Cerrar jornada**, Instrucciones, Ver la obra, Historial), encuentro, "Jornada cerrada · Ver parte", ⋯ de la persona, menú del contratista, Ausencias y Camiones en la barra, resumen del mes, "Cambió el tablero". |
+| F2 Depósito | `9be5a3a` | `20261013000001_hoja_dia_deposito.sql` | Columna **D · Depósito** al final (hoja con `cuadrilla_odoo_id = 0`, `sector = 'deposito'`): gente, encargado, no viene, encuentro 7:00; el encargado recibe su hoja; la precarga lo copia; fuera del parte de Odoo, alertas y "hojas sin enviar". Tecla D. |
+| F3 Recorrido | `9ac73d4` | `20261014000001_hoja_dia_recorridos.sql` | Hoja lateral **Recorrido** desde el camión: paradas = viajes, con lugar, hora aproximada o fija (candado), qué hace, nota, quitar, reordenar arrastrando, "+ Parada", atajos. Las horas aproximadas no avisan choques ni cuentan como cambio para el chofer. |
 
-### 2 quater. F3 · El recorrido del camión (12/10, noche) — rama `feat/hoja-dia-recorrido`
-- En el pizarrón, "Recorrido" del camión abre la hoja **Recorrido · Iveco AF 669 ZL**: paradas en orden (salida y vuelta al depósito en gris), cada una con lugar, hora (aproximada por defecto; el candado la fija y ahí sí avisa si no llega), qué hace (deja material, carga, descarga, compra, espera), nota y quitar; se reordenan arrastrando el agarre (o Espacio + flechas); "+ Parada" pregunta adónde va (depósito, obras del día, lugares u otra dirección escrita); atajos Todo el día / Lleva y busca (el modo del renglón). Ver `implementacion.md` §3.1 "Recorrido (F3)".
-- **Migración** `supabase/migrations/20261014000001_hoja_dia_recorridos.sql`, probada el 12/10 contra la base dos veces dentro de BEGIN … ROLLBACK (7 columnas en `hd_viajes`, 4 en `hd_pedidos`, 3 CHECK; rechaza una acción inválida y una coordenada sin su par; los viajes existentes quedan con la hora fija). **Aplicarla ANTES del deploy.**
-- Lo que no entra en F3: la "otra dirección" no se geocodifica todavía (F4: pin y tiempos); "Salí" del chofer (F6); los pedidos sueltos se siguen poniendo desde Camiones (F4).
-- Probado: 604 tests (nuevo `recorrido.test.ts`), tsc, eslint, build y 13 casos de `npm run test:e2e` (nuevo: abrir el recorrido y sumar una parada en Sanz). No probado con datos reales.
+Detalle técnico de cada fase: `implementacion.md` §3.1 y las secciones "Historia · …" de abajo.
 
-### 3. Cómo se trabaja en este repo (aprendido en estas sesiones)
+### 2. Decisiones del dueño
+
+- 12/10: horas del recorrido aproximadas (candado = fija); refuerzos "desde una hora" (F8 entra); cuadrilla sin obra = columna grisada; 3D sin niveles; confirman capataz y chofer; botón "Salí" del chofer; pedidos sueltos se suman al recorrido por menor desvío + "¿Quién pasa cerca?".
+- 12/10 noche: **"el formato viejo hay que sacarlo"**: sin convivencia; Cuadrillas se retiró. Camiones queda hasta que el pizarrón tenga pedidos (F4).
+- 12/10 noche, **tomadas por defecto en F2 (a confirmar con el dueño)**: alguien del depósito puede llevar y traer a una cuadrilla sin que sea choque (todo el día con una, sí avisa); el depósito no lleva contratistas; sin encargado es un aviso, no frena Mandar.
+
+### 3. Lo que quedó pendiente
+
+**Del lado del dueño (no es código)**
+- [ ] **Probar con datos reales** lo nuevo (nada se probó contra la base desde acá, sólo con el arnés): armar una cuadrilla en el pizarrón, mover gente, ★ a cargo, encuentro, recargar y ver que quede igual; **Cerrar jornada** a la tarde; la columna **D** (arrastrar, encargado, que el encargado aparezca en Mandar); el **Recorrido** (sumar una parada, cambiar qué hace y la hora, reordenar, recargar).
+- [ ] **Confirmar las tres decisiones por defecto de F2** (arriba).
+- [ ] **Telegram**: crear el bot (@BotFather), cargar `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET` en Vercel (redeploy) y correr `node --env-file=.env.local scripts/telegram-webhook.mjs https://andamios-os.vercel.app`; después vincular capataces, choferes y el encargado del depósito. Mientras tanto se manda a mano (copiar / WhatsApp).
+- [ ] **Permisos** "Hoja del día": editar a Juan Agustín y Ezequiel; Juan Pablo en ver.
+- [ ] **Teléfonos** del coordinador (`hd_parametros.coordinador`) y del depósito (`deposito`).
+- [ ] **Lugares**: dirección, horario, `cierra` y teléfono de Galvanizados Sanz, la VTV y el taller (sin pantalla: SQL o `POST /api/hoja-dia/lugares`).
+- [ ] **Planteles**: la Cuadrilla 1 sin responsable, la 5 sin plantel (Configuración de cuadrillas).
+- [ ] **Celulares en Odoo** de Vargas, Geloz, Sena Ayrton y Taboada.
+- [ ] **Contratistas**: darlos de alta (Contratistas › + Contratista) con referente, celular y valor por jornada.
+
+**Del rediseño (código, en este orden)**
+- [ ] **F4 · Pedidos en el pizarrón** (próximo): panel de pedidos editable (hoy es de sólo lectura y lleva a Camiones), "otra dirección" con geocodificar (`GET /api/hoja-dia/geocodificar?dir=` reusando `geocodificar-reglas.ts`, con debounce y caché) y pin en el mini-mapa (`hd_viajes.hacia_lat/lng` y `hd_pedidos.hacia_lat/lng` ya existen), sumar un pedido al camión por menor desvío (`mejorHueco`, la misma regla en cliente y servidor; nunca antes de la parada en curso) y "¿Quién pasa cerca?". Con eso se puede retirar Camiones (los botones "Elegir chofer" de un viaje, "No se hizo", poner/esperar/flete de un pedido todavía llevan a Camiones).
+- [ ] **F5 · Repaso de la mañana**: recorrer tarjeta por tarjeta, corregir en vivo, "Ya confirmó (por teléfono)" (`hd_links.recibida_canal` ya existe, sin usar), mandar sólo a los afectados.
+- [ ] **F6 · Obras en vivo 3D** + botón **"Salí"** del chofer (`hd_viajes.salio_at` ya existe, sin usar).
+- [ ] **F8 · Refuerzos "desde una hora"** (`hd_refuerzos`): "Refuerza la 3 desde las 11".
+- [ ] **F7 · Retiro de lo viejo**: Camiones y `camiones.ts` cuando F4 cubra todo; docs.
+
+**Conocido del pizarrón (no hecho)**
+- Un gesto de dos acciones (pasar un camión de una cuadrilla a otra = quitar + sumar) son dos POST; si uno falla, el otro queda.
+- Desde "Camiones libres" el camión entra "Todo el día" (se cambia en la ficha o en el Recorrido).
+- Crear una parada y mover un viaje a otro camión esperan al servidor (no son optimistas).
+- La "otra dirección" de una parada se guarda como texto: sin coordenadas no tiene tiempo de Google ni pin (F4).
+- "+ Parada" pone la parada al final; para otro lugar, arrastrarla.
+- En el Recorrido, los menús de los lleva/busca muestran la hora con candado (son fijas, como siempre).
+- El "día anterior" de la precarga es el último con hojas de cuadrillas (un día con sólo el depósito no cuenta).
+
+**Limpieza**
+- Hay ~18 worktrees en `.claude/worktrees/` de estas sesiones (ramas ya mergeadas). Se pueden borrar con `git worktree remove <carpeta>` (no tocar los `locked` del organigrama ni los de otras sesiones activas).
+
+### 4. Cómo se trabaja en este repo (aprendido en estas sesiones)
 - **Hay otras sesiones de Claude trabajando en paralelo** en la carpeta principal del repo (el 12/10 estaba en la rama `docs/partes-rediseno`, rediseño de partes). **No cambiar de rama ni commitear en la carpeta principal**: trabajar en worktrees (`git worktree add … main`) y llevar a `main` con `git push . <rama>:main` (fast-forward) o un merge desde el worktree.
 - **Escrituras a producción**: el dueño las aprueba explícitamente ("aplicá la migración", "corré el script"). El clasificador del modo automático a veces igual las bloquea: no esquivarlo, pedirle al dueño que las corra o que apruebe.
 - **Push**: hay una regla de permiso exacta `Bash(git push origin main)`: el comando tiene que ir **solo** (sin `cd`, pipes ni `&&`).
 - **`npx supabase db query --linked` desde un worktree** no encuentra el link: usar `npx supabase --workdir /Users/joaquin/Desktop/Andamios-OS db query --linked …`.
 - **Vercel CLI** logueada (`js-2343`, proyecto `andamios-os`): `vercel logs --environment production --since 3d --query "<ruta>" --json` sirve para ver crons y errores (vincular en una carpeta del scratchpad, no en el repo).
 - Si un subagente se corta por el límite de uso, se retoma con SendMessage al mismo agente cuando se renueva (conserva el contexto).
-- Copias del Finder (`* 2.ts`) rompen `tsc`/build locales; no están en git.
+- Copias del Finder (`* 2.ts`, `* 2.sql`) rompen `tsc`/build locales; no están en git. Aparecen solas en los worktrees: si son idénticas al original (`cmp`), se borran.
+- **Migraciones de una fase**: probarlas contra la base con la CLI dentro de `BEGIN; <migración> x2; DO $$ … RAISE EXCEPTION 'RESULTADO %' …; ROLLBACK;` (la excepción muestra lo verificado y aborta), confirmar que no quedó nada, y aplicarlas **antes** del push a `main` (el código nuevo escribe las columnas nuevas). En la CLI usar la ruta **absoluta** del archivo con `--workdir`.
+- **Un subagente Plan** para relevar los puntos de cambio de una fase (archivo:línea) antes de codificar ahorra mucho contexto; después se implementa a mano.
+- Antes del push, `git fetch` + `git rebase origin/main`: otras sesiones (asistente, organigrama) suben a `main` en paralelo; después del rebase, `tsc` y los tests otra vez.
 
 Estado real al 10/10/2026 (noche): **en producción.** Arreglos del 10/10 a la noche, ya en `main`: el domingo es un día más (PR #5) y velocidad + nombres de pila (ver "Latencia"; sin migraciones). Mergeado a `main` con el PR #3
 (`d736eca`) y los contratistas con el PR #4 (`7751ce7`), publicados en Vercel. Para retomar: "Leé docs/equipos-del-dia/handoff.md y
 seguimos con lo que falta".
+
+## Historia · El pizarrón ES la Hoja del día (12/10, noche) — rama `feat/pizarron-principal`
+El dueño: "el formato viejo hay que sacarlo". Sin convivencia ni parámetro:
+- `/planificacion/hoja` abre el pizarrón; `/planificacion/hoja/pizarron` y `/cuadrillas` redirigen ahí. Se sacó `hd_parametros.pizarron` del código (no hace falta ninguna escritura en la base). Se borró la vista Cuadrillas (`vista-cuadrillas`, `tarjeta`, `panel-gente`, `editor-chofer`, `menu-tarjeta`, `agregar-persona`, `estado-vacio`).
+- Lo que sólo hacía Cuadrillas pasó al pizarrón (ver `implementacion.md` §3.1): ⋯ de la columna (Copiar como hoy, Ver como, **Cerrar jornada**, Instrucciones, Ver la obra, Historial), encuentro editable, "Jornada cerrada · Ver parte", ⋯ de la persona (Pasar a…, No viene… con hasta cuándo, Nota, Sacar), menú del contratista, Ausencias y Camiones en la barra, resumen del mes, "Cambió el tablero", Pasar a mañana y Reenviar.
+- **Camiones sigue** (`/planificacion/hoja/camiones`, pestaña en la barra): viajes, pedidos y despacho viven ahí hasta F3/F4.
+- Probado: 564 tests, tsc, eslint, build y 11 casos de `npm run test:e2e` (3 nuevos: ⋯ de la columna + encuentro, ⋯ de la persona, Ausencias/Camiones). **No probado contra la base real**: es la primera vez que el pizarrón se usa con datos de producción.
+
+## Historia · F2 Depósito como sector (12/10, noche) — rama `feat/hoja-dia-deposito`
+- Columna **"D · Depósito"** fija al final del pizarrón: gente, ★ encargado, "no viene", encuentro (7:00 en el depósito, de `encuentro_deposito`), notas, ⋯ (Copiar como hoy, Ver como, Historial). Sin obras, sin cupo, sin camiones ni contratistas. Ver `implementacion.md` §3.1 "Depósito (F2)".
+- Decisiones tomadas por defecto (cambiables): del depósito se puede **llevar y traer** a una cuadrilla sin choque (todo el día, sí avisa); el depósito **no lleva contratistas**; sin encargado es un **aviso** (no frena Mandar).
+- **Migración** `supabase/migrations/20261013000001_hoja_dia_deposito.sql` (`hd_hojas.sector` + 2 CHECK, `hd_links.recibida_canal` para F5). Probada contra la base el 12/10 dos veces dentro de BEGIN … ROLLBACK (acepta el 0 como depósito, rechaza la 3 como depósito y el 0 como cuadrilla; verificado que no quedó nada). **Aplicarla ANTES del deploy**: el código nuevo escribe `sector` al crear la hoja del depósito. Verificar: `select count(*) from information_schema.columns where table_name='hd_hojas' and column_name='sector';` → 1.
+- Probado: 597 tests (nuevo `deposito.test.ts`, 9 casos), tsc, eslint, build y 12 casos de `npm run test:e2e` (nuevo: columna D y tecla D). No probado con datos reales.
+
+## Historia · F3 El recorrido del camión (12/10, noche) — rama `feat/hoja-dia-recorrido`
+- En el pizarrón, "Recorrido" del camión abre la hoja **Recorrido · Iveco AF 669 ZL**: paradas en orden (salida y vuelta al depósito en gris), cada una con lugar, hora (aproximada por defecto; el candado la fija y ahí sí avisa si no llega), qué hace (deja material, carga, descarga, compra, espera), nota y quitar; se reordenan arrastrando el agarre (o Espacio + flechas); "+ Parada" pregunta adónde va (depósito, obras del día, lugares u otra dirección escrita); atajos Todo el día / Lleva y busca (el modo del renglón). Ver `implementacion.md` §3.1 "Recorrido (F3)".
+- **Migración** `supabase/migrations/20261014000001_hoja_dia_recorridos.sql`, probada el 12/10 contra la base dos veces dentro de BEGIN … ROLLBACK (7 columnas en `hd_viajes`, 4 en `hd_pedidos`, 3 CHECK; rechaza una acción inválida y una coordenada sin su par; los viajes existentes quedan con la hora fija). **Aplicarla ANTES del deploy.**
+- Lo que no entra en F3: la "otra dirección" no se geocodifica todavía (F4: pin y tiempos); "Salí" del chofer (F6); los pedidos sueltos se siguen poniendo desde Camiones (F4).
+- Probado: 604 tests (nuevo `recorrido.test.ts`), tsc, eslint, build y 13 casos de `npm run test:e2e` (nuevo: abrir el recorrido y sumar una parada en Sanz). No probado con datos reales.
 
 ## Pizarrón · F0 y F1 (12/10, rama `feat/pizarron-f0-f1`, sin merge, sin migración)
 

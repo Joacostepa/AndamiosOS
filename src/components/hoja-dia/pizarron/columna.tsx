@@ -97,9 +97,9 @@ export function ColumnaUI({ col }: { col: Columna }) {
         <div className="flex items-end gap-2">
           <span aria-hidden className="min-w-[22px] text-[34px] leading-[.85] font-extrabold tracking-tight" style={{ color: col.conObra ? color : undefined }}>{col.rotulo}</span>
           <div className="min-w-0 flex-1 pb-0.5">
-            <div className="text-[11px] leading-none font-bold tracking-[.09em] text-muted-foreground uppercase">
+            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] leading-none font-bold tracking-[.09em] text-muted-foreground uppercase">
               Cuadrilla
-              {multi && <span className="ml-1.5 rounded-full px-1.5 py-0.5 align-[1px] text-[10.5px] font-bold tracking-normal normal-case text-white" style={{ background: color }}>{col.obras.length} obras</span>}
+              {multi && <span className="rounded-full px-1.5 py-0.5 text-[10.5px] font-bold tracking-normal normal-case text-white" style={{ background: color }}>{col.obras.length} obras</span>}
             </div>
           </div>
           {col.conObra && (

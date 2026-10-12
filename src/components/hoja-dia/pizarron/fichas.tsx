@@ -115,7 +115,7 @@ export function FichaPersonaUI({ f, c, donde, motivo, ausenciaId }: {
           <Star className={cn("size-4", f.aCargo && "fill-current")} />
         </button>
       )}
-      <span className={cn("min-w-0 flex-1 truncate text-sm font-semibold", (donde === "no" || f.ausente) && "text-muted-foreground line-through decoration-muted-foreground")}>{f.nombre}</span>
+      <span className={cn("text-sm font-semibold", donde === "col" ? "min-w-0 flex-1 truncate" : "whitespace-nowrap", (donde === "no" || f.ausente) && "text-muted-foreground line-through decoration-muted-foreground")}>{f.nombre}</span>
       {reemplaza && <span className="text-[11px] font-semibold text-primary">reemplaza</span>}
       {f.chofer && <span className="text-[11px] text-muted-foreground">chofer</span>}
       {motivo && (
@@ -274,7 +274,7 @@ export function FichaCamionUI({ f }: { f: FichaCamion }) {
       className={cn(
         BASE,
         "flex-col items-stretch gap-1.5 overflow-hidden py-2 pr-2 pl-3",
-        f.c == null && "w-full sm:w-[212px]",
+        f.c == null && "w-[calc(50%-3px)] min-w-[150px] gap-1 py-1.5 sm:w-[190px]",
         elegida && ELEGIDA,
         arrastrando && "opacity-30",
         (recibe || (ctx.sel && ctx.sel.k !== id && mismoDestino(ctx.sobre, destino))) && "border-primary bg-primary/10",
@@ -300,7 +300,11 @@ export function FichaCamionUI({ f }: { f: FichaCamion }) {
             if (ctx.sel && ctx.tocar(destino)) return;
             ctx.menuChofer(f, e.currentTarget);
           }}
-          className="flex min-h-[30px] w-full items-center justify-center gap-1 rounded-[5px] border-[1.5px] border-dashed border-hd-ambar bg-hd-ambar-bg text-[12.5px] font-bold text-hd-ambar disabled:opacity-60"
+          className={cn(
+            "flex min-h-[30px] w-full items-center justify-center gap-1 rounded-[5px] border-[1.5px] border-dashed text-[12.5px] font-bold disabled:opacity-60",
+            // En una cuadrilla, un camión sin chofer es un problema; libre, no.
+            f.c != null ? "border-hd-ambar bg-hd-ambar-bg text-hd-ambar" : "min-h-7 border-foreground/25 text-muted-foreground hover:border-foreground",
+          )}
         >
           <Plus className="size-3.5" /> Chofer
         </button>
@@ -309,7 +313,7 @@ export function FichaCamionUI({ f }: { f: FichaCamion }) {
       {f.c == null && (f.viajes > 0 || f.estado) && (
         <span className="text-xs text-muted-foreground">{[f.viajes ? `${f.viajes} ${f.viajes === 1 ? "viaje" : "viajes"}` : null, f.estado].filter(Boolean).join(" · ")}</span>
       )}
-      {f.veh && (
+      {f.veh && (f.c != null || f.viajes > 0) && (
         <button
           type="button"
           data-no-drag=""

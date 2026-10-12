@@ -414,7 +414,7 @@ export function Pizarron() {
             </div>
           )}
           <div className="grid items-start gap-3.5 @min-[1100px]:grid-cols-[minmax(0,1fr)_300px]">
-            <section ref={tablero} aria-label="Pizarrón" className="flex min-w-0 flex-col gap-3">
+            <section ref={tablero} aria-label="Pizarrón" className="@container flex min-w-0 flex-col gap-3">
               {vista.vacio && !soloLectura && (
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-2.5 rounded-lg border-[1.5px] border-dashed border-foreground/30 bg-card px-4 py-4">
                   <div className="min-w-[200px] flex-1">

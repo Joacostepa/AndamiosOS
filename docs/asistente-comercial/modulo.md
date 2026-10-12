@@ -44,20 +44,43 @@ WhatsApp espera la cuenta de Meta (§ WhatsApp).
   - Las que tienen mensajes no se borran: son el respaldo de lo que se guardó en Odoo, y de
     ahí sale el gasto del día (borrarlas reiniciaría el tope).
   - Si se escribe en una archivada, vuelve sola a la lista.
-- **El presupuesto en construcción** está a la derecha (en el celular, en el botón con el
-  importe). Muestra las líneas, los totales, la renovación, lo que falta y los avisos.
+- **El presupuesto en construcción** está a la derecha. En el celular (y debajo de `xl`) va en
+  una barra abajo, encima del cuadro de escribir, con:
+  - el total con IVA («c/IVA»);
+  - «Editando S0…» si ya está en Odoo;
+  - «Listo para guardar» o «Faltan N: …».
+
+  Se toca y abre la hoja desde abajo. Muestra las líneas, los totales, la renovación, lo que
+  falta y los avisos.
+- **Arranque:** «+ Nueva» en el header del celular. Sin charla abierta se ven las sugerencias y
+  las 5 recientes. Las sugerencias **llenan el cuadro** y no se mandan solas («Editar el S0…»,
+  «Plan de pagos»…).
+- **Mientras piensa:** una caja con el paso en curso en grande, el tiempo y los pasos hechos
+  con tilde y en pasado. A los 20 s avisa que suele tardar ~30 s; a los 45, que se puede salir
+  porque queda guardado. En la charla, más de 3 pasos se agrupan («7 pasos»). Hay un separador
+  por día.
 - Compositor:
   - texto;
   - clip para fotos, planos en PDF o un audio reenviado;
   - una captura de pantalla se pega con Ctrl/Cmd+V, con el foco en el cuadro o en cualquier
     parte del chat. Si lo copiado trae texto (celdas de Excel, un párrafo de Word), se pega el
     texto y no la imagen;
-  - micrófono para grabar un audio que se transcribe (queda en el cuadro para revisarlo);
-  - con el cuadro vacío, el botón de la derecha es **Hablar** (voz en vivo).
+  - **un solo botón de voz**: un toque graba un audio que se transcribe (queda en el cuadro
+    para revisarlo); mantenerlo apretado medio segundo y soltar abre la **voz en vivo**;
+  - en la voz en vivo del celular, por defecto se **mantiene apretado para hablar**: el botón
+    grande, y soltar deja el micrófono mudo. Así no se cuelan las voces de la obra. «Modo
+    abierto» es de ida y vuelta. La pantalla no se apaga mientras dura la sesión;
+  - todo lo que se toca mide 44–48 px, y la pantalla se puede ampliar.
 - Tarjetas:
-  - la acción a confirmar, con los botones Confirmar y Cancelar;
-  - el PDF, para verlo, descargarlo o compartirlo directo a WhatsApp desde el celular;
-  - el mensaje para el cliente, listo para copiar. Sale solo con el PDF final, sin que el
+  - la acción a confirmar: Confirmar a todo el ancho y «Mejor no (descartar)». Queda a la
+    vista mientras se guarda. Si falló y el servidor la marca reintentable, aparece
+    «Reintentar»;
+  - **«Mandar al cliente»**: el PDF final y el mensaje juntos. El botón grande copia el texto y
+    abre el menú de compartir con el PDF; en la compu abre WhatsApp con el mensaje. Además
+    están «Ver PDF» y «Copiar mensaje». Si el PDF no se pudo preparar se dice por qué y se
+    puede reintentar;
+  - la vista previa del PDF sola, para verla, descargarla o compartirla;
+  - el mensaje para el cliente. Sale solo con el PDF final, sin que el
     vendedor lo pida: saluda por el nombre de pila, nombra la obra y, si es una re-emisión,
     dice "la propuesta actualizada". El nombre lo elige el asistente, porque en Odoo los
     particulares están cargados de las dos maneras ("NAVALLES VERONICA", "Diego Izzo").

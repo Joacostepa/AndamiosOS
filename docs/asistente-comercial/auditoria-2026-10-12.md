@@ -195,6 +195,58 @@ Anexo A:
 
 Los bocetos están en el Anexo C.
 
+**Estado (12/10, rama `feat/asistente-pantalla`, sin mergear):**
+
+- **5.1 hecho.** Todo lo tocable del asistente mide 44–48 px (tarjetas, compositor, ⋯ y X de
+  la lista, sugerencias, «+ Nueva», cerrar la hoja). Confirmar ocupa todo el ancho, 48 px,
+  con el coral `--hd-boton`. Medido con Playwright a 390 px: nada por debajo de 44.
+- **5.2 hecho.** Barra abajo, encima del compositor, debajo de `xl`: «Editando S0… · $ total
+  c/IVA» y «Listo para guardar» o «Faltan 3: mail, CUIT, jornadas». Abre la hoja desde abajo.
+  El header ya no muestra el neto. En escritorio sigue el panel de la derecha.
+- **5.3 hecho.** Tarjeta «Mandar al cliente» (`TarjetaMandar`): con el PDF final y su mensaje.
+  El botón grande copia el texto y abre el menú de compartir con el PDF y el texto. Sin menú
+  de compartir, abre wa.me con `telefonoWhatsapp`. Abajo, «Ver PDF» y «Copiar mensaje».
+  Si la descarga previa falla se dice por qué: sin conexión, enlace vencido o sesión vencida
+  (llega HTML). Se puede reintentar.
+- **5.4 a medias.** La tarjeta sigue a la vista mientras se guarda («Guardando en Odoo…»).
+  También hay «Reintentar» si `accion.reintentable`, y `aria-live` en el resultado. Se sacó
+  «v12» del panel. Lo demás de la jerga es del servidor.
+- **5.5 a medias.** Hecho:
+  - «+ Nueva» en el header del celular;
+  - las sugerencias llenan el cuadro: sin S02441 y con «Editar el S0…» y «Plan de pagos»;
+  - sin charla abierta se ven las 5 recientes.
+
+  **Falta** que la charla se cree con el primer mensaje: el hook y la subida de adjuntos
+  necesitan el id antes. Hoy, tocar una sugerencia sin charla crea la charla y deja el texto
+  en el cuadro.
+- **5.6 hecho.**
+  - viewport sin `maximumScale`/`userScalable`, con `viewportFit: "cover"` e
+    `interactiveWidget: "resizes-content"`;
+  - nada en 11 px;
+  - burbuja del vendedor y verdes, ámbar y rojos con `--hd-*`;
+  - `aria-live` en la respuesta en vivo, en el paso en curso y en el resultado;
+  - «Cerrar» en la hoja;
+  - separadores de día;
+  - «Editando S0…» en el header del celular y en el panel.
+
+  Toasts arriba en el celular (`sonner.tsx`).
+  **Ojo:** el header general de la app (`layout/header.tsx`) no suma `safe-area-inset-top`.
+  Con `viewportFit: "cover"` en la PWA del iPhone puede quedar debajo del notch: revisar.
+- **5.7 hecho, sin probar en un teléfono.**
+  - En el celular, por defecto, se mantiene apretado para hablar: botón de 88 px, el
+    micrófono mudo con `isMuted` controlado del `ConversationProvider`, que llama a
+    `setMicMuted`. «Modo abierto» es el de siempre.
+  - Wake Lock mientras dura la sesión.
+  - Un solo botón de voz en el compositor: un toque graba un audio; mantenerlo medio segundo
+    y soltar abre la voz en vivo. Arranca al soltar, porque el toque que habilita el audio en
+    el celular es el `pointerup`.
+- **3.2, la parte de pantalla, hecha.**
+  - Una caja con el paso en curso en grande y el contador.
+  - Los pasos hechos van con tilde y en pasado: `enPasado`, «Generé el PDF».
+  - A los 20 s dice «Suele tardar unos 30 segundos»; a los 45, «Podés salir».
+  - Más de 3 pasos se agrupan («7 pasos», se abre al tocar).
+  - El evento `progreso` se lee si llega.
+
 ---
 
 ## Bloque 6: antes de dar de alta a Gabriel y Jorge

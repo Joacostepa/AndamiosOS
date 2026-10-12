@@ -14,8 +14,12 @@ import type { Fecha } from "@/lib/hoja-dia/tipos";
 import { useRefHueco } from "./acciones-hoja";
 import { PestanasPlanificacion } from "./pestanas-planificacion";
 import { useDiaHoja } from "./use-dia-hoja";
+import { useModoPizarron } from "./modo-pizarron";
 
+// Con el Pizarrón como pantalla principal, /planificacion/hoja lleva al pizarrón y la vista
+// Cuadrillas queda en /planificacion/hoja/cuadrillas.
 const RUTA_CUADRILLAS = "/planificacion/hoja";
+const RUTA_CUADRILLAS_CLASICA = "/planificacion/hoja/cuadrillas";
 const RUTA_CAMIONES = "/planificacion/hoja/camiones";
 
 /** "mar 13" */
@@ -25,6 +29,7 @@ export function EncabezadoHoja() {
   const pathname = usePathname();
   const { fecha, hoy, manana, anterior, siguiente, irA, hrefCon, montado } = useDiaHoja();
   const refHueco = useRefHueco();
+  const rutaCuadrillas = useModoPizarron() === "principal" ? RUTA_CUADRILLAS_CLASICA : RUTA_CUADRILLAS;
   const enCamiones = pathname.startsWith(RUTA_CAMIONES);
   const tabs: { f: Fecha; l: string }[] = [
     { f: hoy, l: "Hoy" },
@@ -39,7 +44,7 @@ export function EncabezadoHoja() {
 
       <nav aria-label="Vista" className="inline-flex gap-0.5 rounded-lg bg-muted p-[3px]">
         {[
-          { href: RUTA_CUADRILLAS, l: "Cuadrillas", on: !enCamiones },
+          { href: rutaCuadrillas, l: "Cuadrillas", on: !enCamiones },
           { href: RUTA_CAMIONES, l: "Camiones", on: enCamiones },
         ].map((t) => (
           <Link

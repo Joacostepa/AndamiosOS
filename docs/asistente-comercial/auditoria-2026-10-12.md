@@ -323,6 +323,26 @@ Los bocetos están en el Anexo C.
 
 ## Bloque 6: antes de dar de alta a Gabriel y Jorge
 
+**Estado al 12/10 (rama `feat/asistente-uso-seguridad`, sin mergear):**
+- **Hechos en código:** pestaña Uso, botón «esto estuvo mal», RLS, los tres de WhatsApp, los
+  guiones (`scripts/eval-asistente.mts`, sin correr) y parte de los tests sin costo.
+- **Migraciones, sin aplicar** (ensayadas en un Postgres local con un esqueleto de las tablas,
+  no con `probar-migracion.mjs`: el `.env.local` no tiene `SUPABASE_DB_URL`):
+  1. `20261012000004_asistente_feedback.sql`, antes del deploy (sin ella, el botón da error y
+     Uso muestra «—»);
+  2. `20261012000005_asistente_rls.sql`, en cualquier momento: no depende del código.
+- **Guiones:** 15 + los 3 de seguridad, uno por conversación «[PRUEBA EVAL n]». Chequeos
+  deterministas (✗ falla, ~ aviso). No confirman nada en Odoo salvo con `--odoo`. ~US$ 12,5
+  todos; `--lista` muestra el costo de cada uno sin gastar.
+- **Tests sin costo hechos:** `costoUsd` (ya estaba), el resumen de Uso, firmar y verificar la
+  sesión de voz, `aplicarCambios`/`normalizarBorrador`, las tandas de WhatsApp (reenviados,
+  teléfonos) y el orden de las fotos.
+- **Tests que faltan:** `verificarConfirmacion` (acciones.ts importa `./datos`, que no se puede
+  cargar con `node --test` sin sacarla a un archivo puro), la máquina de estados de
+  `ejecutarAccion`, `ejecutores.guardar` con un Odoo falso y `ejecutarTurno` con Anthropic falso.
+- **Falta, fuera del código:** cerrar el registro de usuarios en Supabase Auth (Authentication
+  → Sign In / Providers → «Allow new users to sign up»).
+
 - **Los 15 guiones de evaluación**, sacados de charlas reales (lista completa en el
   Anexo B): doble confirmación, «avanza», «no, esperá», dirección con texto, puerta no
   oficial, esquina, jornadas y render, cuadrilla supuesta, «desglosado», CUIT de 10 dígitos,
@@ -345,13 +365,15 @@ Los bocetos están en el Anexo C.
 - **Proyección:** con 3 a 4 usuarios, el gasto se multiplica por 3–4. Con los bloques 2 y 3:
   ~US$ 170–240 por mes; sin ellos, ~US$ 300–400.
 
-**WhatsApp, antes de habilitarlo:**
+**WhatsApp, antes de habilitarlo** (los tres, hechos el 12/10; detalle en `modulo.md`, § WhatsApp):
 - un audio o un texto reenviado del cliente cuenta hoy como el «sí» del vendedor
-  (`procesar.ts:233-243`);
+  (`procesar.ts:233-243`). **Hecho:** entra marcado [reenviado] y en esa tanda ningún sí escrito
+  confirma;
 - todo el procesamiento corre en una sola función de 300 s, y los mensajes en `procesando` no se
-  retoman;
+  retoman. **Hecho:** una tanda por función, el resto la sigue otra; barrido de `procesando` de
+  más de 6 min; el candado del teléfono se renueva;
 - `renders.ts:22-25` ordena por nombre, así que «la última foto» de WhatsApp puede ser
-  cualquiera.
+  cualquiera. **Hecho:** por fecha de subida.
 
 ---
 

@@ -8,6 +8,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { accesoDeFila, nivelEn } from "@/lib/auth/acceso";
 import type { TipoRender } from "@/lib/parametros-cotizacion/tipos";
+import { ordenarPorSubida } from "./fotos-chat";
 
 const BUCKET = "comercial";
 const IMAGEN = /\.(jpe?g|png|webp|gif)$/i;
@@ -19,10 +20,10 @@ export type FotoDelChat = { path: string; nombre: string; subida: string | null 
 /** La foto número `desdeElFinal` contando desde la última (1 = la última) de la conversación. */
 export async function fotoDelChat(db: SupabaseClient, conversacionId: string, desdeElFinal: number): Promise<FotoDelChat | { error: string }> {
   const carpeta = `adjuntos/${conversacionId}`;
-  const { data, error } = await db.storage.from(BUCKET).list(carpeta, { limit: 200, sortBy: { column: "name", order: "desc" } });
+  const { data, error } = await db.storage.from(BUCKET).list(carpeta, { limit: 200, sortBy: { column: "created_at", order: "desc" } });
   if (error) return { error: `No se pudieron leer las fotos del chat: ${error.message}` };
-  // El nombre empieza con Date.now(): ordenado por nombre es ordenado por hora.
-  const fotos = (data ?? []).filter((f) => IMAGEN.test(f.name));
+  // Por fecha de subida: las de WhatsApp (wa-<wamid>-…) no ordenan por nombre.
+  const fotos = ordenarPorSubida((data ?? []).filter((f) => IMAGEN.test(f.name)));
   if (!fotos.length) return { error: "No hay fotos en esta conversación: pedile al vendedor que mande el render por el chat (con el clip o pegándolo)." };
   const f = fotos[desdeElFinal - 1];
   if (!f) return { error: `En esta conversación hay ${fotos.length} foto${fotos.length === 1 ? "" : "s"}: no hay una número ${desdeElFinal} contando desde la última.` };

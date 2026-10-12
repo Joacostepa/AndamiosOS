@@ -55,10 +55,13 @@ export async function POST(req: NextRequest) {
   }
 
   if (telefonos.size) {
+    // Una tanda por teléfono en esta función (en paralelo: cada una puede llevar un turno
+    // entero); lo que sobre lo sigue otra, por /api/whatsapp/webhook/seguir.
+    const origen = req.nextUrl.origin;
     after(async () => {
-      for (const t of telefonos) {
-        await procesarTelefono(db, t).catch((e) => console.error("[whatsapp] procesar", t, e));
-      }
+      await Promise.all(
+        [...telefonos].map((t) => procesarTelefono(db, t, { origen }).catch((e) => console.error("[whatsapp] procesar", t, e))),
+      );
     });
   }
   return NextResponse.json({ ok: true });

@@ -14,6 +14,7 @@ import { ProductosOdoo } from "@/components/parametros-cotizacion/productos-odoo
 import { Renders } from "@/components/parametros-cotizacion/renders";
 import { Historial } from "@/components/parametros-cotizacion/historial";
 import { Vendedores } from "@/components/parametros-cotizacion/vendedores";
+import { Uso } from "@/components/parametros-cotizacion/uso";
 
 // Parámetros de cotización — todo lo que el asistente comercial usa para cotizar.
 //
@@ -79,6 +80,8 @@ export default function ParametrosCotizacionPage() {
           <TabsTrigger value="renders">Renders</TabsTrigger>
           <TabsTrigger value="vendedores">Vendedores</TabsTrigger>
           <TabsTrigger value="historial">Historial</TabsTrigger>
+          {/* Lo que gasta cada uno: sólo admin o quien edita (la ruta también lo exige). */}
+          {puedeEditar && <TabsTrigger value="uso">Uso</TabsTrigger>}
         </TabsList>
         <TabsContent value="tarifas" className="pt-2">
           <Tarifas parametros={data.parametros} puedeEditar={puedeEditar} />
@@ -101,6 +104,11 @@ export default function ParametrosCotizacionPage() {
         <TabsContent value="historial" className="pt-2">
           <Historial parametros={data.parametros} />
         </TabsContent>
+        {puedeEditar && (
+          <TabsContent value="uso" className="pt-2">
+            <Uso />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );

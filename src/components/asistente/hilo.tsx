@@ -8,6 +8,7 @@ import { Markdown } from "@/components/shared/markdown";
 import type { ItemChat } from "@/lib/asistente/vista";
 import type { EnVivo } from "@/hooks/use-asistente";
 import { Pasos, Progreso } from "./progreso";
+import { EstuvoMal } from "./estuvo-mal";
 
 // La conversación: burbujas del vendedor a la derecha, respuestas del asistente a la
 // izquierda (con markdown), lo que hizo en pasado (agrupado si son muchos pasos) y, mientras
@@ -154,7 +155,10 @@ export function Hilo({ items, enVivo, respondiendo }: { items: ItemChat[]; enViv
             ) : it.rol === "sistema" ? (
               <p className="text-center text-[13px] text-muted-foreground">{it.texto}</p>
             ) : (
-              <BurbujaAsistente texto={it.texto} herramientas={it.herramientas} fuentes={it.fuentes} interrumpido={it.interrumpido} />
+              <div>
+                <BurbujaAsistente texto={it.texto} herramientas={it.herramientas} fuentes={it.fuentes} interrumpido={it.interrumpido} />
+                {it.finDeTurno && <div className="pl-9"><EstuvoMal turnoId={it.finDeTurno} /></div>}
+              </div>
             )}
           </Fragment>
         );

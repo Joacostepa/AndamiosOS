@@ -12,6 +12,7 @@ import type {
   VersionCriterio,
 } from "@/lib/parametros-cotizacion/tipos";
 import type { ListaInterpretada } from "@/lib/parametros-cotizacion/lista-alquiler";
+import type { RespuestaUso } from "@/lib/asistente/uso";
 
 // Parámetros de cotización. Todo va contra /api/comercial/parametros: las escrituras las
 // hacen funciones de la base que chequean el permiso y dejan el historial, así que acá no
@@ -269,5 +270,16 @@ export function useActualizarVendedor() {
   return useMutation<{ ok: true }, Error, { usuarioId: string; nombreEnPropuesta?: string | null; whatsapp?: string | null }>({
     mutationFn: (cambio) => pedir(`${BASE}/vendedores`, { method: "PATCH", body: JSON.stringify(cambio) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["parametros-cotizacion-vendedores"] }),
+  });
+}
+
+// ── Uso del asistente (sólo admin o quien edita parámetros: lo exige la ruta) ──────────────
+
+export function useUsoAsistente(meses: number, habilitado: boolean) {
+  return useQuery({
+    queryKey: ["parametros-cotizacion-uso", meses],
+    queryFn: () => pedir<RespuestaUso>(`${BASE}/uso?meses=${meses}`),
+    enabled: habilitado,
+    staleTime: 60 * 1000,
   });
 }

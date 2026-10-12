@@ -53,7 +53,12 @@ desde el 29/09 y en obra andaba mal.
 - **Para volver a prenderla:** cargar `ELEVENLABS_AGENT_ID` = `agent_6901m3exw16xeykr468230jm6t73`
   en Vercel (Production) y redesplegar. El agente sigue configurado en ElevenLabs.
 - **Pendiente:**
-  - JS puede bajar el plan de ElevenLabs a uno que alcance para la transcripción;
+  - **Plan de ElevenLabs: JS canceló el Creator (US$ 22 por mes) el 12/10.** Sigue activo hasta
+    el **26/10** y después la cuenta pasa al plan gratuito, sin cerrarla, así que la clave sigue.
+    En el último mes se usaron ~6.400 de 131.000 créditos, con las pruebas de voz incluidas.
+    **Después del 26/10, verificar que el dictado siga transcribiendo.** No está confirmado que el
+    plan gratuito permita la transcripción por API. Si da error, hay dos caminos: ocultar el
+    micrófono (sin la clave, `hayVoz()` lo apaga) o contratar el plan más barato que lo cubra;
   - el código de la voz en vivo (`modo-voz.tsx`, `/api/comercial/asistente/voz/llm`, el
     agente) quedó sin uso; se puede borrar más adelante, junto con `ELEVENLABS_LLM_SECRETO`.
 
@@ -464,6 +469,8 @@ nuestra base):
 
 ## Lo primero en la sesión nueva
 
+0. **Si ya pasó el 26/10: ¿el dictado sigue andando?** (ver § "Estado al 12/10", plan de
+   ElevenLabs).
 1. **Preguntarle a JS cómo anduvo con Opus 5.5** y mirar Parámetros → Uso: el gasto por
    presupuesto contra los ~US$ 1,66 de antes, y la espera.
 2. **La lectura del PDF por `file_id`** (`leer_pdf_propuesta`) no se probó con una charla real.

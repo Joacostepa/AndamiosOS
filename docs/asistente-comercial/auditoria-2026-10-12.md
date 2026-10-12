@@ -28,7 +28,8 @@ Para retomar: "Leé docs/asistente-comercial/auditoria-2026-10-12.md y arrancamo
 - **e2e contra Odoo real:** ok (S02835 y S02836, borradas).
 - **Le queda a JS:**
   - cerrar el registro abierto en Supabase Auth, si las altas las hace un admin;
-  - mirar en el celular la tarjeta «Mandar al cliente», la voz con mantener apretado y la barra de abajo;
+  - mirar en el celular la tarjeta «Mandar al cliente» y la barra de abajo (la voz en vivo se
+    apagó el 12/10: ver el handoff);
   - re-editar un presupuesto que tenga el PDF adjunto, para probar la lectura por `file_id`;
   - medir el gasto real de la primera semana en Parámetros → Uso.
 - **Pendiente de código:**

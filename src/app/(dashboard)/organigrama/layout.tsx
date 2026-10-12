@@ -1,11 +1,11 @@
 "use client";
 
-// Organigrama — MAQUETA NAVEGABLE (docs/organigrama/propuesta.md § 6). Datos locales en
-// memoria: sin Supabase, sin migraciones y sin API. Lo que se hace acá se pierde al recargar.
+// Organigrama (docs/organigrama/modulo.md). Los datos viven en Supabase (tablas org_*) y los
+// trae el proveedor; lo que se cambia acá se ve al instante y se guarda en segundo plano.
 //
 // Mismo esqueleto que el pañol: migas, h1, acciones y pestañas como links (una ruta por
-// pestaña). El layout no se vuelve a montar al cambiar de pestaña, así que el estado de la
-// maqueta (borrador, asignaciones, «Ver como») sobrevive a la navegación.
+// pestaña). El layout no se vuelve a montar al cambiar de pestaña, así que el estado (borrador
+// abierto, búsqueda, historial de guardado) sobrevive a la navegación.
 //
 // UN SOLO CORAL POR PANTALLA: en el mapa, «Imprimir» y «Editar estructura» son outline; el
 // coral aparece en la barra del borrador («Publicar versión») o en la ficha de una vacante.
@@ -15,12 +15,12 @@ import { usePathname } from "next/navigation";
 import { Suspense } from "react";
 import { Pencil, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { BannerMaqueta } from "@/components/organigrama/banner-maqueta";
 import { DialogosOrganigrama } from "@/components/organigrama/dialogos";
+import { EstadoCarga } from "@/components/organigrama/estados";
 import { HojasOrganigrama } from "@/components/organigrama/hojas";
 import { ProveedorOrganigrama, useOrg } from "@/components/organigrama/proveedor";
 import { nombreCompleto, pendientes } from "@/lib/organigrama/arbol";
-import { HOY } from "@/lib/organigrama/datos-maqueta";
+import { hoyBA } from "@/lib/organigrama/datos";
 import { cn } from "@/lib/utils";
 
 const MAPA = "/organigrama";
@@ -32,10 +32,12 @@ function activa(href: string, pathname: string): boolean {
 
 function Marco({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { puedeEditar, enBorrador, dispatch, usuario, datosVigentes } = useOrg();
+  const { puedeEditar, enBorrador, dispatch, usuario, datosVigentes, carga, guardando } = useOrg();
   const enImprimir = pathname.startsWith("/organigrama/imprimir");
   const enMapa = pathname === MAPA;
-  const revisar = puedeEditar ? pendientes(datosVigentes, HOY).accionables : 0;
+  const listo = carga === "listo";
+  const revisar = puedeEditar && listo ? pendientes(datosVigentes, hoyBA()).accionables : 0;
+  const forma = pathname.startsWith(LIENZO) ? "lienzo" : pathname.startsWith("/organigrama/personas") ? "lista" : "mapa";
 
   const pestanas = [
     { href: LIENZO, titulo: "Lienzo" },
@@ -51,10 +53,6 @@ function Marco({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="mx-auto max-w-7xl space-y-4">
-      <div className="print:hidden">
-        <BannerMaqueta />
-      </div>
-
       <header className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3 print:hidden">
         <div className="min-w-0">
           <p className="text-[12.5px] text-muted-foreground">
@@ -62,7 +60,10 @@ function Marco({ children }: { children: React.ReactNode }) {
           </p>
           <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Organigrama</h1>
         </div>
-        {enMapa && (
+        <p role="status" className="ml-auto text-[12.5px] text-muted-foreground empty:hidden max-sm:order-last">
+          {guardando ? "Guardando…" : ""}
+        </p>
+        {enMapa && listo && (
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" className="h-9 max-sm:h-10" nativeButton={false} render={<Link href="/organigrama/imprimir" />}>
               <Printer aria-hidden /> Imprimir
@@ -104,7 +105,7 @@ function Marco({ children }: { children: React.ReactNode }) {
         </nav>
       )}
 
-      {children}
+      {listo ? children : <EstadoCarga forma={forma} />}
 
       <Suspense fallback={null}>
         <HojasOrganigrama />

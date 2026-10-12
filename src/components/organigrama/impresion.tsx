@@ -18,7 +18,7 @@ import Link from "next/link";
 import { Aviso } from "@/components/permisos-via-publica/ui";
 import { Button } from "@/components/ui/button";
 import { ancestros, areaDe, estadoPuesto, fechaCorta, hijos, nombreCompleto, puestosDeArea, raiz } from "@/lib/organigrama/arbol";
-import { HOY } from "@/lib/organigrama/datos-maqueta";
+import { hoyBA } from "@/lib/organigrama/datos";
 import type { Nodo } from "@/lib/organigrama/tipos";
 import { cn } from "@/lib/utils";
 import { clasesArea } from "./colores-area";
@@ -229,7 +229,7 @@ export function Impresion() {
             <p className="text-[13px] font-bold tracking-wide">
               ANDAMIOS BUENOS AIRES · Organigrama · versión {version?.numero ?? "—"} · {version ? fechaCorta(version.fecha, true) : ""}
             </p>
-            <p className="text-[10px] text-muted-foreground">Impreso el {fechaCorta(HOY, true)}</p>
+            <p className="text-[10px] text-muted-foreground">Impreso el {fechaCorta(hoyBA(), true)}</p>
           </header>
 
           <div className="mx-auto mb-2 w-fit rounded-sm border border-t-4 px-4 py-1.5 text-center">

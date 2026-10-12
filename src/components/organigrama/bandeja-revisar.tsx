@@ -11,7 +11,7 @@ import { Seccion } from "@/components/permisos-via-publica/ui";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
 import { areaDe, fechaCorta, nombreCompleto, pendientes } from "@/lib/organigrama/arbol";
-import { HOY } from "@/lib/organigrama/datos-maqueta";
+import { hoyBA } from "@/lib/organigrama/datos";
 import { useOrg } from "./proveedor";
 
 function Pastilla({ n }: { n: number }) {
@@ -24,7 +24,7 @@ const BOTON = "h-9 max-sm:h-10";
 export function BandejaRevisar() {
   const { datosVigentes: datos, quitar, abrir, dispatch, usuario } = useOrg();
   const router = useRouter();
-  const p = pendientes(datos, HOY);
+  const p = pendientes(datos, hoyBA());
   const area = (clave: string) => areaDe(datos.nodos, clave)?.titulo;
   const ver = (clave: string) => `/organigrama/revisar?puesto=${encodeURIComponent(clave)}`;
   const hay = p.bajas.length + p.vacantes.length + p.sobrecarga.length + p.interinos.length + p.sinPuesto.length;
@@ -118,7 +118,7 @@ export function BandejaRevisar() {
                 variant="outline"
                 className={BOTON}
                 nativeButton={false}
-                render={<Link href={`/organigrama/revisar?persona=${s.persona.id}`} scroll={false} />}
+                render={<Link href={`/organigrama/revisar?persona=${encodeURIComponent(s.persona.id)}`} scroll={false} />}
               >
                 Ver
               </Button>

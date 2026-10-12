@@ -19,7 +19,7 @@ import {
   puestosDePersona,
   telefonoInternacional,
 } from "@/lib/organigrama/arbol";
-import { HOY } from "@/lib/organigrama/datos-maqueta";
+import { hoyBA } from "@/lib/organigrama/datos";
 import type { Nodo, Ocupante, Persona } from "@/lib/organigrama/tipos";
 import { cn } from "@/lib/utils";
 import { useOrg } from "./proveedor";
@@ -136,7 +136,7 @@ export function FilaOcupante({ ocupante, nodo }: { ocupante: Ocupante; nodo: Nod
           {baja && <Chip tono="bloqueo">Dado de baja en Legajos{persona.bajaEl ? ` el ${fechaCorta(persona.bajaEl)}` : ""}</Chip>}
           {ocupante.modalidad === "interino" && (
             <Chip tono="neutro">
-              Interino desde {fechaCorta(ocupante.desde)} · {diasEntre(ocupante.desde, HOY)} días
+              Interino desde {fechaCorta(ocupante.desde)} · {diasEntre(ocupante.desde, hoyBA())} días
             </Chip>
           )}
           {persona.origen === "externo" && <Chip tono="neutro">Externo{persona.empresa ? ` · ${persona.empresa}` : ""}</Chip>}

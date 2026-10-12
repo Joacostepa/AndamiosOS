@@ -1,15 +1,14 @@
 "use client";
 
 // Mapa (pestaña 1): el buscador «¿A quién le pregunto?» arriba, filtros y el mapa por columnas.
-// ?puesto= y ?persona= abren la hoja lateral (las pinta el layout); ?demo=cargando|vacio|error
-// muestra los estados de demo. Usa useSearchParams: va dentro de <Suspense> (Next 16).
+// ?puesto= y ?persona= abren la hoja lateral (las pinta el layout). Cargando, error y vacío los
+// resuelve el layout con los datos reales.
 
 import { Suspense, useState } from "react";
-import { useSearchParams } from "next/navigation";
 import { Chip } from "@/components/permisos-via-publica/ui";
 import { BarraBorrador } from "@/components/organigrama/barra-borrador";
 import { CampoBusqueda, ResultadosBusqueda } from "@/components/organigrama/buscador";
-import { EsqueletoMapa, EstadoDemo, leerDemo } from "@/components/organigrama/estados-demo";
+import { EsqueletoMapa } from "@/components/organigrama/estados";
 import { FiltrosMapa } from "@/components/organigrama/filtros-mapa";
 import { Mapa } from "@/components/organigrama/mapa";
 import { useOrg } from "@/components/organigrama/proveedor";
@@ -18,8 +17,6 @@ import { TuLugar } from "@/components/organigrama/tu-lugar";
 import { areaDe, fechaCorta, puestosDePersona } from "@/lib/organigrama/arbol";
 
 function VistaMapa() {
-  const params = useSearchParams();
-  const demo = leerDemo(params.get("demo"));
   const { datos, enBorrador, puedeEditar, busqueda, version, estado, cambios, usuario } = useOrg();
   const [filtro, setFiltro] = useState<Filtro>("todo");
 
@@ -37,8 +34,6 @@ function VistaMapa() {
 
       {busqueda.trim() ? (
         <ResultadosBusqueda />
-      ) : demo ? (
-        <EstadoDemo demo={demo} puedeEditar={puedeEditar} />
       ) : (
         <>
           <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">

@@ -9,6 +9,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { ChevronDown, ChevronUp, Search, Users } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { iniciales, nombreCompleto, normalizar } from "@/lib/organigrama/arbol";
+import { seUbicaAMano } from "@/lib/organigrama/lienzo";
 import type { Persona } from "@/lib/organigrama/tipos";
 import { cn } from "@/lib/utils";
 import { useArrastre, useFuenteArrastre } from "./arrastre";
@@ -26,7 +27,8 @@ function Ficha({
   seleccionada: boolean;
   onTocar: (id: string) => void;
 }) {
-  const fuente = useFuenteArrastre(() => ({ tipo: "persona", persona: p.id }), !puedeEditar || !p.activo);
+  // Los externos de una cuadrilla tercerizada (e:) están en el plantel en vivo: no se ubican a mano.
+  const fuente = useFuenteArrastre(() => ({ tipo: "persona", persona: p.id }), !puedeEditar || !p.activo || !seUbicaAMano(p.id));
   const { gesto, carga } = useArrastre();
   const agarrada = carga?.tipo === "persona" && carga.persona === p.id && !carga.desdeOcupante;
   return (

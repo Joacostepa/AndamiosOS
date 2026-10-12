@@ -1,4 +1,4 @@
-// Tipos del organigrama (maqueta, docs/organigrama/propuesta.md § 6.4).
+// Tipos del organigrama (docs/organigrama/modulo.md; la traducción desde la base está en datos.ts).
 //
 // La ESTRUCTURA (nodos, jerarquía y manual de funciones) es versionada y se publica; la
 // OCUPACIÓN (quién está en qué puesto) es inmediata y no pasa por el borrador. Por eso son
@@ -38,6 +38,7 @@ export type Nodo = {
 export type OrigenPersona = "legajo" | "usuario" | "externo";
 
 export type Persona = {
+  /** Con prefijo de origen: p:<legajo> · u:<usuario> · e:<externo de cuadrilla> · x:<nombre libre> (ver datos.ts). */
   id: string;
   nombre: string;
   apellido: string;
@@ -91,5 +92,3 @@ export type DatosOrg = {
   cuadrillas: Cuadrilla[];
 };
 
-/** «Ver como» de la maqueta: reemplaza al permiso real mientras no hay base. */
-export type VerComo = "direccion" | "administracion" | "encargado" | "capataz";

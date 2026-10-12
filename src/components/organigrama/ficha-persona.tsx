@@ -9,6 +9,7 @@ import Link from "next/link";
 import { ArrowUpRight, MessageCircle } from "lucide-react";
 import { Caja, HojaLateral } from "@/components/hoja-dia/comunes/hoja-lateral";
 import { Aviso, Chip } from "@/components/permisos-via-publica/ui";
+import { useAcceso } from "@/components/providers/acceso-provider";
 import { Button } from "@/components/ui/button";
 import {
   areaDe,
@@ -22,6 +23,8 @@ import {
   telefonoInternacional,
   UMBRAL_SOBRECARGA,
 } from "@/lib/organigrama/arbol";
+import { nivelEn } from "@/lib/auth/acceso";
+import { origenDeId } from "@/lib/organigrama/datos";
 import type { Persona } from "@/lib/organigrama/tipos";
 import { cn } from "@/lib/utils";
 import { clasesArea } from "./colores-area";
@@ -50,6 +53,7 @@ function ListaPersonas({ personas }: { personas: Persona[] }) {
 export function FichaPersona({ id, onCerrar }: { id: string; onCerrar: () => void }) {
   const { datos, puedeEditar, abrir } = useOrg();
   const enlaces = useEnlaces();
+  const verLegajos = nivelEn(useAcceso(), "personal") !== null;
   const persona = personaDe(datos.personas, id);
 
   if (!persona) {
@@ -89,6 +93,9 @@ export function FichaPersona({ id, onCerrar }: { id: string; onCerrar: () => voi
     }
   }
   const primeraArea = puestos[0] ? areaDe(datos.nodos, puestos[0].nodo.clave) : undefined;
+  // «Ver legajo» solo para quien tiene Legajos (respeta su permiso: DNI, domicilio…).
+  const origen = origenDeId(persona.id);
+  const legajo = verLegajos && origen?.origen === "p" ? origen.valor : null;
   const carga = claves.size;
 
   return (
@@ -103,8 +110,8 @@ export function FichaPersona({ id, onCerrar }: { id: string; onCerrar: () => voi
       }
       sub={[ORIGEN[persona.origen], persona.empresa, primeraArea?.titulo].filter(Boolean).join(" · ")}
       pie={
-        puedeEditar && persona.origen === "legajo" ? (
-          <Button variant="outline" className="h-9 max-sm:h-10" nativeButton={false} render={<Link href="/personal" />}>
+        legajo ? (
+          <Button variant="outline" className="h-9 max-sm:h-10" nativeButton={false} render={<Link href={`/personal/${legajo}`} />}>
             Ver legajo <ArrowUpRight aria-hidden />
           </Button>
         ) : undefined

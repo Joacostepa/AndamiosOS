@@ -1,6 +1,6 @@
 "use client";
 
-// Para revisar (pestaña 3, solo editores). En la maqueta el permiso es el «Ver como»: un lector
+// Para revisar (pestaña 3, solo editores: admin o módulo «organigrama» en «editar»). Un lector
 // que entra por URL directa ve el estado «sin permiso».
 
 import Link from "next/link";

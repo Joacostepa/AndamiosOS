@@ -49,7 +49,7 @@ import {
   raiz,
 } from "@/lib/organigrama/arbol";
 import { CIRCUITOS } from "@/lib/organigrama/circuitos";
-import { HOY } from "@/lib/organigrama/datos-maqueta";
+import { hoyBA } from "@/lib/organigrama/datos";
 import {
   calcularLayout,
   desplazamientoAncla,
@@ -423,7 +423,7 @@ function Escena({ manejador }: { manejador: React.RefObject<Manejador | null> })
   const hacerUbicar = useCallback(
     (persona: string, nodo: string, modo: "reemplazar" | "compartir" | "interino", desdeOcupante?: string) => {
       const eraVacante = estadoPuesto(datos, nodo).vacante;
-      ocupacion((o) => ubicarPersona(o, { nodo, persona, modo, desdeOcupante, id: `o-${Date.now()}`, hoy: HOY }));
+      ocupacion((o) => ubicarPersona(o, { nodo, persona, modo, desdeOcupante, id: crypto.randomUUID(), hoy: hoyBA() }));
       if (eraVacante && modo !== "interino") celebrar(nodo);
       const p = personaDe(datos.personas, persona);
       const n = nodoDe(nodos, nodo);
@@ -514,7 +514,7 @@ function Escena({ manejador }: { manejador: React.RefObject<Manejador | null> })
       if (c.desdeOcupante && (!d || d.tipo === "banco")) {
         const p = personaDe(datos.personas, c.persona);
         const n = nodoDe(nodos, c.desdeNodo);
-        ocupacion((o) => quitarOcupante(o, c.desdeOcupante!, HOY));
+        ocupacion((o) => quitarOcupante(o, c.desdeOcupante!, hoyBA()));
         toast(`${p ? nombreCompleto(p) : "La persona"} dejó ${n?.titulo ?? "el puesto"}`, { action: accionDeshacer });
         const b = document.querySelector('[data-destino="banco"]')?.getBoundingClientRect();
         return b ? { tipo: "volar", a: { x: b.left + b.width / 2, y: b.top + 24 } } : { tipo: "ok" };
@@ -874,7 +874,7 @@ function Escena({ manejador }: { manejador: React.RefObject<Manejador | null> })
     };
   }
 
-  const res = useMemo(() => calcularResumen(datos, HOY), [datos]);
+  const res = useMemo(() => calcularResumen(datos, hoyBA()), [datos]);
   const cargaPersonas = useMemo(() => cargaPorPersona(datos), [datos]);
   const coloresMini = useMemo(() => Object.fromEntries(vistas.map((v) => [v.nodo.clave, v.color])), [vistas]);
   const cajasMini = useMemo(() => Object.entries(base.cajas), [base]);

@@ -1,9 +1,9 @@
 // Lógica pura del organigrama: el árbol, quién ocupa qué, qué hay para revisar, la búsqueda
-// «¿A quién le pregunto?» y el diff entre versiones. Sin red ni React: la usan la maqueta y,
-// más adelante, la API real (docs/organigrama/propuesta.md § 4 y § 6).
+// «¿A quién le pregunto?» y el diff entre versiones. Sin red ni React: la usan las pantallas y
+// los tests (docs/organigrama/modulo.md).
 //
 // DECISIÓN: la integridad del árbol se chequea acá ANTES de llegar a la base (creaCiclo), para
-// deshabilitar opciones en «Mover a…». En la versión real la garantiza además un trigger.
+// deshabilitar opciones en «Mover a…». En la base la garantiza además un trigger.
 
 import type {
   Cambio,

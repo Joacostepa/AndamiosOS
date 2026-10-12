@@ -1,20 +1,15 @@
 "use client";
 
-// Estados de demo de la maqueta (?demo=cargando | vacio | error), para revisar cómo se ven sin
-// tener que romper nada. Misma forma que el contenido real.
+// Estados del organigrama que salen de los datos reales: cargando (esqueletos con la misma
+// forma que el contenido), error y vacío.
 
-import Link from "next/link";
+import { useState } from "react";
 import { Network } from "lucide-react";
 import { Aviso } from "@/components/permisos-via-publica/ui";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-
-export type Demo = "cargando" | "vacio" | "error";
-
-export function leerDemo(valor: string | null): Demo | null {
-  return valor === "cargando" || valor === "vacio" || valor === "error" ? valor : null;
-}
+import { useOrg } from "./proveedor";
 
 /** 1 tarjeta arriba y 5 columnas de 3 rectángulos (celular: 6 filas). */
 export function EsqueletoMapa() {
@@ -58,12 +53,29 @@ export function EsqueletoLista() {
   );
 }
 
-export function EstadoDemo({ demo, puedeEditar, lista = false }: { demo: Demo; puedeEditar: boolean; lista?: boolean }) {
-  if (demo === "cargando") return lista ? <EsqueletoLista /> : <EsqueletoMapa />;
-  if (demo === "error") {
+/** El lienzo mientras carga: la misma caja, latiendo. */
+export function EsqueletoLienzo() {
+  return <div aria-busy="true" aria-label="Cargando el organigrama" className="h-[calc(100dvh-16.5rem)] min-h-[540px] animate-pulse rounded-xl border bg-card" />;
+}
+
+export type FormaEstado = "mapa" | "lista" | "lienzo";
+
+/**
+ * Lo que se ve mientras el organigrama no está listo: cargando (esqueleto con la forma de la
+ * pantalla), error (con el mensaje del servidor y «Reintentar») o vacío (no hay ninguna versión
+ * publicada; un editor la puede sembrar con la estructura base).
+ */
+export function EstadoCarga({ forma }: { forma: FormaEstado }) {
+  const { carga, errorCarga, reintentar, puedeEditar, sembrar } = useOrg();
+  const [sembrando, setSembrando] = useState(false);
+  if (carga === "cargando") return forma === "lista" ? <EsqueletoLista /> : forma === "lienzo" ? <EsqueletoLienzo /> : <EsqueletoMapa />;
+  if (carga === "error") {
     return (
       <Aviso tono="bloqueo" titulo="No pudimos cargar el organigrama. Probá recargar.">
-        El servidor contestó: «tiempo de espera agotado» (ejemplo).
+        <span className="block">{errorCarga ? `El servidor contestó: «${errorCarga}»` : null}</span>
+        <Button variant="outline" className="mt-2 h-9 max-sm:h-10" onClick={reintentar}>
+          Reintentar
+        </Button>
       </Aviso>
     );
   }
@@ -75,8 +87,16 @@ export function EstadoDemo({ demo, puedeEditar, lista = false }: { demo: Demo; p
         description={puedeEditar ? "Podés arrancar desde la estructura base de ABA y ajustarla en el borrador." : "Cuando Dirección lo publique, lo vas a ver acá."}
       >
         {puedeEditar && (
-          <Button className="h-9 max-sm:h-10" nativeButton={false} render={<Link href="/organigrama" />}>
-            Empezar desde la estructura base
+          <Button
+            className="h-9 max-sm:h-10"
+            disabled={sembrando}
+            onClick={async () => {
+              setSembrando(true);
+              await sembrar();
+              setSembrando(false);
+            }}
+          >
+            {sembrando ? "Cargando…" : "Empezar desde la estructura base"}
           </Button>
         )}
       </EmptyState>

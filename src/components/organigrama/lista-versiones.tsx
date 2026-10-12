@@ -9,13 +9,13 @@ import { History } from "lucide-react";
 import { Chip } from "@/components/permisos-via-publica/ui";
 import { Button } from "@/components/ui/button";
 import { diasEntre, fechaCorta, nombreCompleto } from "@/lib/organigrama/arbol";
-import { HOY } from "@/lib/organigrama/datos-maqueta";
+import { hoyBA } from "@/lib/organigrama/datos";
 import type { Version } from "@/lib/organigrama/tipos";
 import { DialogoCambios } from "./dialogo-publicar";
 import { useOrg } from "./proveedor";
 
 function hace(fecha: string): string {
-  const d = diasEntre(fecha, HOY);
+  const d = diasEntre(fecha, hoyBA());
   return d <= 0 ? "hoy" : d === 1 ? "ayer" : `hace ${d} días`;
 }
 

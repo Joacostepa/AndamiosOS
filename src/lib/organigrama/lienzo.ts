@@ -85,9 +85,17 @@ export function aceptaPersonas(nodos: Nodo[], clave: string): boolean {
   return !!n && n.fuenteOcupantes !== "cuadrillas";
 }
 
+/**
+ * ¿Se la puede ubicar en un puesto a mano? Todos menos el plantel externo de una cuadrilla
+ * tercerizada (id «e:…»): ese sale en vivo de Configuración › Cuadrillas.
+ */
+export function seUbicaAMano(persona: string): boolean {
+  return !persona.startsWith("e:");
+}
+
 /** ¿Soltar a `persona` en `destino` cambia algo? (No, si ya está ahí.) */
 export function destinoValidoPersona(datos: DatosOrg, persona: string, destino: string): boolean {
-  if (!aceptaPersonas(datos.nodos, destino)) return false;
+  if (!seUbicaAMano(persona) || !aceptaPersonas(datos.nodos, destino)) return false;
   return !ocupantesVigentes(datos, destino).some((o) => o.persona === persona);
 }
 

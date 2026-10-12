@@ -1,7 +1,7 @@
 "use client";
 
-// «Tu lugar»: tu puesto, tu cuadrilla y a quién reportás, con el botón de llamar. En la app
-// real sale del legajo vinculado al usuario (personal.user_id); en la maqueta, del «Ver como».
+// «Tu lugar»: tu puesto, tu cuadrilla y a quién reportás, con el botón de llamar. Sale del
+// legajo vinculado al usuario (personal.user_id) o, si es de oficina, de su usuario.
 // Solo para lectores: los editores vienen a otra cosa.
 
 import Link from "next/link";

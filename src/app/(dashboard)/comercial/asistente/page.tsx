@@ -76,13 +76,25 @@ function Asistente() {
     });
 
   const borrador = chat.borrador ?? detalle.data?.borrador ?? null;
+  // Manda lo guardado: la copia en vivo no se entera cuando el servidor vence una acción porque
+  // el borrador cambió, y así quedaban tarjetas viejas con Confirmar (05/10: 3 seguidas). Al
+  // terminar el turno la pantalla relee la conversación, así que lo guardado está al día.
   const acciones = useMemo(() => {
-    const vivas = new Map(chat.acciones.map((a) => [a.id, a]));
-    const guardadas = (detalle.data?.acciones ?? []).filter((a) => !vivas.has(a.id));
-    return [...chat.acciones, ...guardadas]
-      .filter((a) => ["propuesta", "presentada", "ejecutando"].includes(a.estado) || chat.acciones.some((x) => x.id === a.id))
-      .slice(0, 3);
+    const porId = new Map(chat.acciones.map((a) => [a.id, a]));
+    for (const a of detalle.data?.acciones ?? []) porId.set(a.id, a);
+    const todas = [...porId.values()].sort((a, b) => b.numero - a.numero);
+    const abiertas = todas.filter((a) => ["propuesta", "presentada", "ejecutando"].includes(a.estado));
+    // Lo último que se hizo (Quedó como S0…) sigue a la vista, también al recargar, hasta que
+    // se propone otra cosa.
+    const ultima = todas[0];
+    const hecha = ultima && ["ok", "error", "incierto"].includes(ultima.estado) ? [ultima] : [];
+    return [...abiertas, ...hecha].slice(0, 3);
   }, [chat.acciones, detalle.data?.acciones]);
+  const [confirmando, setConfirmando] = useState<string | null>(null);
+  const decidir = (id: string, d: "confirmar" | "rechazar") => {
+    setConfirmando(d === "confirmar" ? id : null);
+    void chat.decidir(id, d).finally(() => setConfirmando(null));
+  };
   const pdf = chat.pdfs[0] ?? detalle.data?.pdfs[0] ?? null;
   const whatsapp = chat.whatsapp ?? detalle.data?.whatsapp ?? null;
   const subtotal = borrador?.resultado?.totales.subtotal ?? 0;
@@ -166,9 +178,15 @@ function Asistente() {
                   </div>
                 )}
                 <Hilo items={detalle.data?.items ?? []} enVivo={chat.enVivo} respondiendo={ocupado} />
+                {/* Mientras se ejecuta lo confirmado, su tarjeta sigue a la vista (antes desaparecía). */}
+                {ocupado && confirmando && acciones.some((a) => a.id === confirmando) && (
+                  <div className="space-y-2 pl-9">
+                    <TarjetaAccion accion={acciones.find((a) => a.id === confirmando)!} onDecidir={decidir} ocupado ejecutando />
+                  </div>
+                )}
                 {!ocupado && (
                   <div className="space-y-2 pl-9">
-                    {acciones.map((a) => <TarjetaAccion key={a.id} accion={a} onDecidir={chat.decidir} ocupado={chat.respondiendo} />)}
+                    {acciones.map((a) => <TarjetaAccion key={a.id} accion={a} onDecidir={decidir} ocupado={chat.respondiendo} />)}
                     {pdf && <TarjetaPdf pdf={pdf} />}
                     {whatsapp && <TarjetaWhatsapp texto={whatsapp} telefono={borrador?.datos.cliente.celular} />}
                   </div>

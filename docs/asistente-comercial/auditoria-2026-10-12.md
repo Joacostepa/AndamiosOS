@@ -41,6 +41,19 @@ Para retomar: "Leé docs/asistente-comercial/auditoria-2026-10-12.md y arrancamo
 
 ## Bloque 1: bugs (1 a 2 días, primero)
 
+**Estado al 12/10 (rama `fix/asistente-bloque1`):**
+- **Hechos:** 1.1, 1.2, 1.4, 1.5, 1.6, 1.7 y 1.8.
+- **1.3, a medias:** la marca contra duplicados es el borrador, se busca también la marca
+  vieja, y un reintento actualiza la orden que encuentra; las acciones colgadas en
+  `ejecutando` pasan a `incierto` al empezar el turno siguiente. **Falta** lo del mail
+  (mirar en el chatter si ya salió antes de reenviar) y reintentar la misma acción desde la
+  tarjeta.
+- **1.1:** se confirmó con `count_tokens` que la API devuelve 400. Las charlas que ya estén
+  rotas se curan solas en el turno siguiente.
+- **1.4:** no sigue sola («continuar»): avisa y termina el turno. El «continuar» automático
+  ahora tiene un tope de 2 seguidas.
+
+
 | # | Qué | Por qué importa | Dónde |
 | --- | --- | --- | --- |
 | 1.1 | **Charla rota después de un error.** Si el turno falla antes de que conteste el modelo (Anthropic 5xx, se acaba el crédito, "Parar" mientras piensa, Vercel lo corta), la base queda con `humano → system` y ninguna fila del asistente. Por la regla de la API, el turno siguiente daría 400 **para siempre** en esa charla | Si se acaba el crédito, se rompen todas las charlas usadas en ese rato. **Es probable, falta confirmarlo:** contar las filas `rol='system'` que no tienen una del asistente después (SELECT, gratis) | `turno.ts:200-209`, `:291-300`, `:368-377`. Arreglo: en toda salida, si la última fila no es del asistente, guardar «(respuesta interrumpida)». Agregar un `validarHistoria()` puro, con tests |

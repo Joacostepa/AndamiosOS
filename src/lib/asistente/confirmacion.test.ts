@@ -24,3 +24,16 @@ test("para mandar un mail hace falta el verbo", () => {
   assert.equal(esConfirmacion("Sí, envialo al cliente", "explicita").ok, true);
   assert.equal(esConfirmacion("sí, confirmo el envío", "explicita").ok, true);
 });
+
+test("confirma los sí que JS escribe de verdad", () => {
+  for (const t of ["si dale avanza gracias", "Avanzá", "dale, seguí", "metele nomás", "sí, guardarlo", "avancemos", "va, dale"]) {
+    assert.equal(esConfirmacion(t).ok, true, t);
+  }
+});
+
+test("no confirma un no con palabras de sí, ni un avanzá con cambios", () => {
+  for (const t of ["¡qué va!", "que va, esperá", "ni ahí, dale que no", "para nada", "avanzá pero sin la concertina",
+    "seguí con la altura de seis metros", "Dale, avanza con todo, pero no hace falta que guardes el render"]) {
+    assert.equal(esConfirmacion(t).ok, false, t);
+  }
+});

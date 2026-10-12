@@ -5,6 +5,7 @@ import { Check, CircleAlert, Copy, Download, ExternalLink, FileText, Loader2, Me
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import type { AccionVista, PdfVista } from "@/lib/asistente/eventos";
+import { telefonoWhatsapp } from "@/lib/panol/whatsapp";
 
 // Tarjetas que aparecen en el chat: la acción a confirmar, el PDF y el mensaje de WhatsApp.
 
@@ -15,14 +16,30 @@ const NOMBRE_ACCION: Record<string, string> = {
   crear_cliente: "Dar de alta el cliente",
 };
 
+/** Cómo se dice cada estado (en la base son palabras técnicas: «presentada», «incierto»). */
+const ESTADO: Record<string, string> = {
+  propuesta: "para confirmar",
+  presentada: "para confirmar",
+  ejecutando: "en curso…",
+  ok: "hecho",
+  error: "no se pudo",
+  incierto: "sin confirmar si se hizo: revisar en Odoo",
+  rechazada: "descartada",
+  vencida: "vencida",
+  reemplazada: "reemplazada",
+};
+
 export function TarjetaAccion({
   accion,
   onDecidir,
   ocupado,
+  ejecutando = false,
 }: {
   accion: AccionVista;
   onDecidir: (id: string, d: "confirmar" | "rechazar") => void;
   ocupado: boolean;
+  /** Se tocó Confirmar y el servidor la está ejecutando. */
+  ejecutando?: boolean;
 }) {
   const abierta = accion.estado === "propuesta" || accion.estado === "presentada";
   // El reloj vive en estado (no Date.now() en el render): se actualiza cada 30 s.
@@ -48,16 +65,15 @@ export function TarjetaAccion({
     <div className={`rounded-lg border p-3 text-[13px] ${color}`}>
       <div className="mb-1.5 flex items-center gap-2">
         <span className="font-medium">{NOMBRE_ACCION[accion.tipo] ?? accion.tipo}</span>
-        <span className="text-[11px] text-muted-foreground">acción {accion.numero}</span>
-        <span className="ml-auto text-[11px] text-muted-foreground">
-          {accion.estado === "ok" ? "hecho" : accion.estado === "ejecutando" ? "en curso…" : vencida && abierta ? "vencida" : accion.estado}
+        <span className="ml-auto text-[12px] text-muted-foreground">
+          {ejecutando ? "en curso…" : vencida && abierta ? "vencida" : ESTADO[accion.estado] ?? accion.estado}
         </span>
       </div>
       <p className="whitespace-pre-line text-muted-foreground">{accion.resumen}</p>
       {abierta && !vencida && (
         <div className="mt-2.5 flex gap-2">
           <Button size="sm" disabled={ocupado} onClick={() => onDecidir(accion.id, "confirmar")}>
-            {ocupado ? <Loader2 className="animate-spin" /> : <Check />} Confirmar
+            {ocupado ? <Loader2 className="animate-spin" /> : <Check />} {ejecutando ? (accion.tipo === "enviar_mail" ? "Mandando…" : "Guardando…") : "Confirmar"}
           </Button>
           <Button size="sm" variant="outline" disabled={ocupado} onClick={() => onDecidir(accion.id, "rechazar")}>
             <X /> Descartar
@@ -145,14 +161,16 @@ export function TarjetaPdf({ pdf }: { pdf: PdfVista }) {
 }
 
 export function TarjetaWhatsapp({ texto, telefono }: { texto: string; telefono?: string | null }) {
-  const numero = (telefono ?? "").replace(/\D/g, "");
+  // wa.me quiere 549 + característica + número: «1149352126» solo abre un número de EE. UU.
+  // Sin un celular que se entienda, WhatsApp pregunta a quién mandarlo.
+  const numero = telefonoWhatsapp(telefono) ?? "";
   const enlace = `https://wa.me/${numero}?text=${encodeURIComponent(texto)}`;
   return (
     <div className="rounded-lg border border-emerald-600/30 bg-emerald-600/5 p-3 text-[13px]">
       <p className="mb-1.5 flex items-center gap-1.5 font-medium"><MessageCircle className="size-4 text-emerald-500" /> Mensaje para el cliente</p>
       <p className="whitespace-pre-line text-muted-foreground">{texto}</p>
       <div className="mt-2 flex gap-2">
-        <Button size="sm" variant="outline" onClick={() => navigator.clipboard.writeText(texto).then(() => toast.success("Copiado"))}>
+        <Button size="sm" variant="outline" onClick={() => navigator.clipboard.writeText(texto).then(() => toast.success("Copiado"), () => toast.error("No se pudo copiar: seleccioná el texto a mano"))}>
           <Copy /> Copiar
         </Button>
         <Button size="sm" variant="outline" render={<a href={enlace} target="_blank" rel="noreferrer" />}>

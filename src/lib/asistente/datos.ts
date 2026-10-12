@@ -317,6 +317,17 @@ async function vencerAccionesDelBorrador(db: Db, borradorId: string, versionActu
   for (const a of data ?? []) await eventoAccion(db, a.id, "vencida", { motivo: "el borrador cambió" });
 }
 
+/** Las acciones abiertas de un borrador que quedó descartado (la orden se editó en otra charla). */
+export async function vencerAccionesDescartadas(db: Db, borradorId: string) {
+  const { data } = await db
+    .from("asistente_acciones")
+    .update({ estado: "vencida", updated_at: new Date().toISOString() })
+    .eq("borrador_id", borradorId)
+    .in("estado", ["propuesta", "presentada"])
+    .select("id");
+  for (const a of data ?? []) await eventoAccion(db, a.id, "vencida", { motivo: "la orden se abrió para editar en otra conversación" });
+}
+
 export async function accionesAbiertas(db: Db, conversacionId: string): Promise<Accion[]> {
   const { data, error } = await db.from("asistente_acciones").select("*").eq("conversacion_id", conversacionId).in("estado", ["propuesta", "presentada"]);
   if (error) falla("No se pudieron leer las acciones", error);

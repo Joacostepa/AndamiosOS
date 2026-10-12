@@ -23,17 +23,27 @@ import {
   leerAccion, type FilaMensaje, type NuevoMensaje,
 } from "./datos";
 import { contextoDelTurno } from "./prompt";
+import { cierreFaltante } from "./historia";
 import { notaDeContinuacion } from "@/lib/voz/continuacion";
 import {
   definicionesParaApi, ejecutarHerramienta, etiquetaDe, resumenCortoBorrador, vistaBorrador, type ContextoHerramientas,
 } from "./herramientas";
 import { HERRAMIENTAS_OCULTAS, resultadoWebConError } from "./respuesta";
-import { ejecutarAccion, presentarAcciones, rechazarAccion, vencerAccionesDelTurno, vistaAccion } from "./acciones";
+import { destrabarAcciones, ejecutarAccion, presentarAcciones, rechazarAccion, vencerAccionesDelTurno, vistaAccion } from "./acciones";
 import { crearEjecutor } from "./ejecutores";
 import type { Evento } from "./eventos";
 
 const MAX_VUELTAS = 15;
 const PRESUPUESTO_MS = 240_000;
+/**
+ * Plazo duro: las rutas tienen 300 s y Vercel corta sin aviso (sin `finally`: el candado queda
+ * tomado y una acción puede quedar "ejecutando"). El presupuesto de arriba sólo se mira al
+ * empezar cada vuelta, y una vuelta sola llegó a tardar 189 s, así que el pedido al modelo se
+ * corta acá y queda margen para guardar y soltar el candado.
+ */
+const LIMITE_MS = 265_000;
+/** Guardar en Odoo llegó a tardar 24 s (más el PDF): no se arranca si queda menos que esto. */
+const MARGEN_ESCRITURA_MS = 90_000;
 const BETAS: Anthropic.Beta.AnthropicBeta[] = ["server-side-fallback-2026-07-01"];
 /**
  * Modelos que atan cada bloque de pensamiento a la conversación que lo produjo ("preserved
@@ -102,6 +112,7 @@ export async function* ejecutarTurno(p: {
 
   const turnoId = randomUUID();
   const inicio = Date.now();
+  await destrabarAcciones(db, conv.id);
   yield { t: "inicio", turnoId };
 
   try {
@@ -135,6 +146,18 @@ export async function* ejecutarTurno(p: {
     let seq = (historia.at(-1)?.seq ?? 0) + 1;
     const mensajes = paraApi(historia);
     const turnoAnteriorId = [...historia].reverse().find((m) => m.rol === "assistant")?.turno_id ?? null;
+    // Si el turno anterior se cortó antes de que el modelo contestara, la historia terminó en el
+    // aviso de sistema y la API rechazaría lo que sigue: se cierra con una fila del asistente.
+    // En "continuar" no: ahí lo último tiene que ser el aviso o el vendedor (no hay prefill).
+    const cierre = p.entrada.tipo === "continuar" ? null : cierreFaltante(historia);
+    if (cierre) {
+      const fila: NuevoMensaje = {
+        rol: "assistant", tipo: "asistente", contenido: [{ type: "text", text: cierre.texto }], texto: cierre.texto, canal: null,
+        turno_id: cierre.turno_id, uso: null, modelo_servido: conv.modelo, interrumpido: true,
+      };
+      seq = await agregarMensajes(db, conv.id, seq, [fila]);
+      mensajes.push({ role: "assistant", content: fila.contenido } as Anthropic.Beta.BetaMessageParam);
+    }
     let textoVendedor: string | null = null;
     const canal = p.entrada.canal;
     // En voz la espera hasta la primera palabra se nota mucho más que en el chat: se usa el
@@ -233,6 +256,7 @@ export async function* ejecutarTurno(p: {
         break;
       }
 
+      const plazo = AbortSignal.timeout(Math.max(1_000, LIMITE_MS - (Date.now() - inicio)));
       const stream = cliente.beta.messages.stream(
         {
           model: conv.modelo,
@@ -249,7 +273,7 @@ export async function* ejecutarTurno(p: {
           fallbacks: "default",
           metadata: { user_id: p.usuarioId },
         },
-        { signal: p.signal },
+        { signal: p.signal ? AbortSignal.any([p.signal, plazo]) : plazo },
       );
 
       let mensaje: Anthropic.Beta.BetaMessage;
@@ -311,6 +335,19 @@ export async function* ejecutarTurno(p: {
           await vencerAccionesDelTurno(db, conv.id, turnoId);
           return;
         }
+        if (plazo.aborted) {
+          // Se pasó del plazo: se guarda lo que alcanzó a escribir y el turno termina limpio.
+          // No se sigue solo ("continuar"): la historia terminaría en el asistente.
+          if (textoParcial.trim()) {
+            seq = await agregarMensajes(db, conv.id, seq, [{
+              rol: "assistant", tipo: "asistente", contenido: [{ type: "text", text: textoParcial }], texto: textoParcial, canal: null,
+              turno_id: turnoId, uso: null, modelo_servido: conv.modelo, interrumpido: true,
+            }]);
+          }
+          yield { t: "aviso", nivel: "advertencia", texto: "La respuesta tardó demasiado y se cortó. Pedímelo de nuevo, si podés en partes." };
+          stop = "plazo";
+          break;
+        }
         throw e;
       }
       if (pensando) yield { t: "pensando", on: false };
@@ -357,7 +394,9 @@ export async function* ejecutarTurno(p: {
       for (const u of usos) {
         let r;
         try {
-          r = await ejecutarHerramienta(u.name, u.input, ctx, u.id);
+          r = u.name === "confirmar_accion" && Date.now() - inicio > LIMITE_MS - MARGEN_ESCRITURA_MS
+            ? { contenido: "Este turno ya lleva mucho tiempo y guardar puede tardar: no se ejecutó nada. Pedile al vendedor que toque Confirmar en la tarjeta.", esError: true }
+            : await ejecutarHerramienta(u.name, u.input, ctx, u.id);
         } catch (e) {
           const falla = e instanceof Error ? e.message : String(e);
           r = { contenido: `Falló: ${falla}`, esError: true };

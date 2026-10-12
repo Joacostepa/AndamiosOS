@@ -196,8 +196,10 @@ export function useChat(conversacionId: string | null, opciones: { onEvento?: (e
   }, []);
 
   const correr = useCallback(
-    async (url: string, cuerpo: unknown, vendedor: EnVivo["vendedor"]) => {
-      if (!conversacionId) return;
+    /** Devuelve si el turno llegó a arrancar (si no, quien lo mandó recupera su texto). */
+    async (url: string, cuerpo: unknown, vendedor: EnVivo["vendedor"], seguidas = 0): Promise<boolean> => {
+      if (!conversacionId) return false;
+      let llego = false;
       setError(null);
       setRespondiendo(true);
       setEnVivo({ ...VACIO, vendedor });
@@ -228,7 +230,9 @@ export function useChat(conversacionId: string | null, opciones: { onEvento?: (e
             const linea = parte.split("\n").find((l) => l.startsWith("data: "));
             if (!linea) continue;
             try {
-              if (procesar(JSON.parse(linea.slice(6)) as Evento)) seguir = true;
+              const ev = JSON.parse(linea.slice(6)) as Evento;
+              if (ev.t !== "inicio" && ev.t !== "error") llego = true;
+              if (procesar(ev)) seguir = true;
             } catch {
               // una línea rota no corta el resto
             }
@@ -243,8 +247,11 @@ export function useChat(conversacionId: string | null, opciones: { onEvento?: (e
         setEnVivo(VACIO);
         setRespondiendo(false);
       }
-      // El turno se cortó por tiempo en medio de muchas herramientas: sigue solo.
-      if (seguir) await correr(`${BASE}/chat`, { conversacionId, continuar: true }, null);
+      // El turno se cortó por tiempo en medio de muchas herramientas: sigue solo, hasta dos
+      // veces seguidas (cada vuelta cuesta; sin tope, sólo lo frenaba el gasto del día).
+      if (seguir && seguidas < 2) await correr(`${BASE}/chat`, { conversacionId, continuar: true }, null, seguidas + 1);
+      else if (seguir) setError("Se cortó por tiempo varias veces seguidas. Escribí «seguí» para que continúe.");
+      return llego;
     },
     [conversacionId, procesar, qc],
   );

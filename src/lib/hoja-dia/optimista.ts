@@ -15,9 +15,10 @@
 // servidor (uno o dos segundos). No hay que mandarlos al servidor (esTemporal).
 
 import type { AccionAusencia, AccionHoja, AccionViaje } from "./acciones.ts";
-import type { Ausencia, DiaHoja, Hoja } from "./tipos.ts";
+import type { Ausencia, DiaHoja, Hoja, Viaje } from "./tipos.ts";
 import { esDeposito } from "./tipos.ts";
-import { altaDeAusencia, contratista, minutosDesde, normHora } from "./estado.ts";
+import { altaDeAusencia, contratista, minutosDesde, normHora, toMin } from "./estado.ts";
+import { planReordenar } from "./recorrido.ts";
 import { planVehiculos, type CambioVehiculos } from "./vehiculos.ts";
 
 let n = 0;
@@ -279,9 +280,41 @@ function conPlan(d: DiaHoja, c: number, cambio: CambioVehiculos, ahora: number):
  * sacarlo). Lo mismo que acciones.ts: el chofer del día (hd_camiones_dia), los viajes
  * planeados del camión que tenían OTRO chofer elegido y los renglones de las hojas con ese
  * camión. Los viajes sin chofer guardado no se tocan: lo siguen solos (choferDe). El resto
- * de los gestos de viajes espera al servidor (TODO: optimista-viajes.ts en F3).
+ * del recorrido (F3): reordenar, editar una parada, su hora y anularla. El resto de los gestos
+ * de viajes (crear, mover a otro camión, volver a la cola) espera al servidor.
  */
 export function aplicarOptimistaViaje(dia: DiaHoja, a: AccionViaje, o: Opciones = {}): DiaHoja | null {
+  // El recorrido (F3): editar, reordenar, la hora y anular una parada, igual que acciones.ts.
+  if (a.accion === "reordenar") {
+    if (a.fecha !== dia.fecha) return null;
+    const plan = planReordenar(dia, a.vehiculoId, a.ids);
+    if (!plan) return null;
+    const por = new Map(plan.map((x) => [x.id, x.orden]));
+    return { ...dia, viajes: dia.viajes.map((v) => (por.has(v.id) ? { ...v, orden: por.get(v.id)! } : v)) };
+  }
+  if (a.accion === "parada_editar" || a.accion === "hora" || a.accion === "anular") {
+    const v = dia.viajes.find((x) => x.id === a.viajeId);
+    if (!v || v.estado !== "planeado") return null;
+    let n: Viaje = { ...v };
+    if (a.accion === "anular") {
+      n = { ...n, estado: "anulado", anuladoMotivo: a.motivo };
+      const pedidos = dia.pedidos.map((p) => (p.viajeId === v.id && p.estado !== "anulado" ? { ...p, viajeId: null, estado: "sin_camion" as const } : p));
+      return { ...dia, viajes: dia.viajes.map((x) => (x.id === v.id ? n : x)), pedidos };
+    }
+    if (a.accion === "hora") {
+      n = a.hora ? { ...n, hora: a.hora, orden: toMin(a.hora) ?? n.orden } : { ...n, hora: null, noAntesDe: a.noAntesDe !== undefined ? a.noAntesDe : v.hora ? null : n.noAntesDe };
+    } else {
+      if (a.hacia) n = { ...n, hacia: a.hacia, haciaLat: null, haciaLng: null };
+      if (a.queHace !== undefined) n = { ...n, accion: a.queHace };
+      if (a.carga !== undefined) n = { ...n, carga: a.carga };
+      if (a.horaAprox !== undefined) n = { ...n, horaAprox: a.horaAprox };
+      if (a.hora !== undefined) {
+        const aprox = a.horaAprox ?? v.horaAprox ?? false;
+        n = { ...n, hora: a.hora, ...(a.hora && !aprox ? { orden: toMin(a.hora) ?? n.orden } : {}), ...(a.hora === null ? { noAntesDe: null } : {}) };
+      }
+    }
+    return { ...dia, viajes: dia.viajes.map((x) => (x.id === v.id ? n : x)) };
+  }
   if (a.accion !== "chofer_del_camion" || a.fecha !== dia.fecha) return null;
   const ahora = o.ahora ?? minutosDesde(dia.fecha, Date.now());
   const ch = a.choferId;

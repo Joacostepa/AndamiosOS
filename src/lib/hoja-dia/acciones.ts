@@ -20,9 +20,10 @@ import {
   planCopiarComoHoy, planConLleva, planPonerPedido, planPrecarga, pidioPorDefecto, sugeridosDe, tipoPorDestino,
   toMin, viajeCalc, vehiculoNombre, vehTxt, elVeh, cortoV, hojaDeCuadrilla, calcVeh, instanteDe, ddmm, ausTexto,
   type PlanHoja, type ViajeNuevo, fechaPorDefecto, contratista, esContratista, aCargoDeContratista, vehiculosDe, filaQueLleva,
-  choferParaOrden, choferDe, choferSugerido, laCuadrilla, aLaC, deLaC,
+  choferParaOrden, choferDe, choferSugerido, laCuadrilla, aLaC, deLaC, accionTxt,
 } from "./estado";
 import { correrLlegada, NoSePuede, planVacio, planVehiculos, resumenLegado, type CambioVehiculos, type PlanVehiculos } from "./vehiculos";
+import { esDeCuadrilla, planReordenar } from "./recorrido";
 import { TIPO_AUSENCIA_TXT, TIPOS_VIAJE, esDeposito } from "./tipos";
 import {
   anotar, columnasPunto, conGrabador, conHojaNueva, grabador, leerContexto, leerDia, mapAusencia as mapAusenciaFila, mapViaje, nombreUsuario,
@@ -51,6 +52,7 @@ export const puntoSchema = z.object({
 }).refine((p) => p.otId != null || p.lugarId || p.texto, "Falta el destino");
 const tipoViaje = z.enum(["lleva", "busca", "mueve", "lleva_material", "trae_material", "compra", "entre_depositos", "taller", "otro"]);
 const tipoPedido = z.enum(["lleva_material", "trae_material", "compra", "entre_depositos", "taller", "otro"]);
+const accionParada = z.enum(["lleva_gente", "deja_material", "carga", "descarga", "busca_gente", "compra", "espera"]);
 const tipoAusencia = z.enum(["enfermedad", "art", "personal", "vacaciones", "tramite", "suspendido", "sin_aviso"]);
 
 export const accionHojaSchema = z.discriminatedUnion("accion", [
@@ -96,7 +98,11 @@ export const accionHojaSchema = z.discriminatedUnion("accion", [
 export type AccionHoja = z.infer<typeof accionHojaSchema>;
 
 export const accionViajeSchema = z.discriminatedUnion("accion", [
-  z.object({ accion: z.literal("crear"), fecha, vehiculoId: id.nullable().optional(), fleteExterno: z.string().trim().max(80).nullable().optional(), pedidoId: id.nullable().optional(), tipo: tipoViaje, hacia: puntoSchema, desde: puntoSchema.nullable().optional(), hora: hora.nullable().optional(), noAntesDe: hora.nullable().optional(), carga: z.string().trim().max(300).nullable().optional(), duracionMin: z.number().int().positive().max(600).nullable().optional(), orden: z.number().nullable().optional() }),
+  z.object({ accion: z.literal("crear"), fecha, vehiculoId: id.nullable().optional(), fleteExterno: z.string().trim().max(80).nullable().optional(), pedidoId: id.nullable().optional(), tipo: tipoViaje, hacia: puntoSchema, desde: puntoSchema.nullable().optional(), hora: hora.nullable().optional(), noAntesDe: hora.nullable().optional(), carga: z.string().trim().max(300).nullable().optional(), duracionMin: z.number().int().positive().max(600).nullable().optional(), orden: z.number().nullable().optional(), queHace: accionParada.nullable().optional(), horaAprox: z.boolean().optional() }),
+  // El recorrido del pizarrón (F3): cambiar una parada (lugar, qué hace, nota, hora y si es
+  // aproximada) en un gesto, y dejar las paradas del camión en otro orden.
+  z.object({ accion: z.literal("parada_editar"), viajeId: id, hacia: puntoSchema.optional(), queHace: accionParada.nullable().optional(), carga: z.string().trim().max(300).nullable().optional(), hora: hora.nullable().optional(), horaAprox: z.boolean().optional() }),
+  z.object({ accion: z.literal("reordenar"), fecha, vehiculoId: id, ids: z.array(id).min(1).max(60) }),
   z.object({ accion: z.literal("poner_pedido"), pedidoId: id, vehiculoId: id, sobre: id.nullable().optional(), orden: z.number().nullable().optional() }),
   z.object({ accion: z.literal("mover"), viajeId: id, vehiculoId: id.nullable(), orden: z.number().nullable().optional(), hora: hora.nullable().optional() }),
   z.object({ accion: z.literal("hora"), viajeId: id, hora: hora.nullable(), noAntesDe: hora.nullable().optional() }),
@@ -216,6 +222,9 @@ function filaViaje(f: Fecha, v: ViajeNuevo): Fila {
     hoja_vehiculo_id: v.hojaVehiculoId, cuadrilla_odoo_id: v.cuadrillaOdooId, ...columnasPunto("hacia", v.hacia), ...columnasPunto("desde", v.desde), orden: v.orden,
     hora: v.hora, no_antes_de: v.noAntesDe, duracion_min: v.duracionMin, vuelta: v.vuelta, vuelta_carga: v.vueltaCarga, vuelta_llega: v.vueltaLlega, carga: v.carga,
     carga_deposito: v.cargaDeposito, ok_todo_el_dia: v.okTodoElDia,
+    // El recorrido (F3): sólo si el viaje los trae (los planes viejos no).
+    ...(v.accion !== undefined ? { accion: v.accion } : {}),
+    ...(v.horaAprox !== undefined ? { hora_aprox: v.horaAprox } : {}),
   };
 }
 
@@ -841,6 +850,7 @@ async function accionViajeCon(g: Grabador, db: DB, userId: string, a: AccionViaj
       cuadrillaOdooId: null, hacia: pp ? pp.hacia : (a.hacia as Punto), desde: pp ? pp.desde : (a.desde as Punto | null | undefined) ?? null, orden, hora: a.hora ?? null,
       noAntesDe: a.noAntesDe ?? (esHoy(ahora) && !a.hora ? hm(Math.round((ahora + 10) / 5) * 5) : null), duracionMin: a.duracionMin ?? null,
       vuelta: tipo === "trae_material", vueltaCarga: null, vueltaLlega: null, carga: a.carga ?? pp?.que ?? null, cargaDeposito: null, okTodoElDia: false,
+      ...(a.queHace !== undefined ? { accion: a.queHace } : {}), ...(a.horaAprox !== undefined ? { horaAprox: a.horaAprox && !!a.hora } : {}),
     }));
     const vv = mapViaje(v, a.fecha);
     let avisarA: string | null = null;
@@ -905,6 +915,16 @@ async function accionViajeCon(g: Grabador, db: DB, userId: string, a: AccionViaj
     return listo(userId, a.choferId ? `${cap(elVeh(dia, a.vehiculoId))} lo maneja ${N(dia, a.choferId)} (${(vs.data ?? []).length} viajes)` : `${cap(elVeh(dia, a.vehiculoId))} queda sin chofer`, g, { fecha: a.fecha, entidad: "camion", entidadId: a.vehiculoId, accion: a.accion });
   }
 
+  if (a.accion === "reordenar") {
+    const dia = await leerDia(a.fecha, { cacheOdoo: true });
+    const plan = planReordenar(dia, a.vehiculoId, a.ids);
+    if (!plan) throw new Error("El recorrido cambió mientras lo ordenabas: mirá cómo quedó y probá de nuevo.");
+    if (!plan.length) return { ok: true, texto: "El recorrido ya estaba en ese orden", historialId: null };
+    for (const x of plan) await g.actualizar("hd_viajes", x.id, { orden: x.orden });
+    const ch = choferSugerido(dia, a.vehiculoId, ahoraDe(a.fecha));
+    return listo(userId, `Recorrido ${elVeh(dia, a.vehiculoId, "del")} reordenado`, g, { fecha: a.fecha, entidad: "camion", entidadId: a.vehiculoId, accion: a.accion }, { avisarA: ch && dia.envios.some((e) => e.personaId === ch && e.enviadaMin != null && !e.anulado) ? ch : null });
+  }
+
   const v = await filaViajeDb(db, a.viajeId);
   const f = String(v.fecha);
   const dia = await leerDia(f, { cacheOdoo: true });
@@ -915,6 +935,35 @@ async function accionViajeCon(g: Grabador, db: DB, userId: string, a: AccionViaj
   const chV = choferDe(dia, vv);
 
   switch (a.accion) {
+    case "parada_editar": {
+      if (vv.estado !== "planeado") throw new Error("Esa parada ya no está pendiente.");
+      const deC = esDeCuadrilla(vv);
+      // Un lleva/busca/mueve de una cuadrilla va a la obra del tablero y lleva o busca gente:
+      // el lugar y qué hace no se cambian acá (la hora sí, por el camino de siempre).
+      if (deC && (a.hacia || a.queHace !== undefined)) throw new Error("Esa parada es de la cuadrilla: el lugar lo pone el tablero.");
+      const valores: Fila = {};
+      const cambios: string[] = [];
+      if (a.hacia) { Object.assign(valores, columnasPunto("hacia", a.hacia as Punto), { hacia_lat: null, hacia_lng: null }); cambios.push(`va a ${lugar(dia, a.hacia as Punto).n}`); }
+      if (a.queHace !== undefined) { valores.accion = a.queHace; if (a.queHace) cambios.push(lowFirst(accionTxt(a.queHace))); }
+      if (a.carga !== undefined) { valores.carga = a.carga; cambios.push(a.carga ? `«${a.carga}»` : "sin nota"); }
+      if (a.hora !== undefined) {
+        valores.hora = a.hora;
+        // Una hora fija nueva (candado) ordena por la hora, como en Camiones; una aproximada no mueve la parada.
+        const aprox = a.horaAprox ?? vv.horaAprox ?? false;
+        if (a.hora && !aprox) { valores.orden = toMin(a.hora); Object.assign(valores, llegadaCorrida(vv, a.hora)); }
+        if (a.hora === null) valores.no_antes_de = null;
+        cambios.push(a.hora ? `${aprox ? "~" : ""}${normHora(a.hora)}` : "sin hora");
+      }
+      if (a.horaAprox !== undefined) { valores.hora_aprox = a.horaAprox; if (a.hora === undefined) cambios.push(a.horaAprox ? "hora aproximada" : "hora fija"); }
+      if (!Object.keys(valores).length) return { ok: true, texto: "Sin cambios", historialId: null };
+      await g.actualizar("hd_viajes", a.viajeId, valores);
+      if (deC && vv.tipo === "lleva" && a.hora) {
+        const h = dia.hojas.find((x) => x.id === vv.hojaId);
+        if (h?.encuentro.lugar === "deposito" && esLlevaPrincipal(h, vv)) await g.actualizar("hd_hojas", h.id, { encuentro_hora: a.hora });
+      }
+      const enviado = !!chV && dia.envios.some((e) => e.personaId === chV && e.enviadaMin != null && !e.anulado);
+      return listo(userId, `${corto}: ${cambios.join(" · ")}`, g, base, { avisarA: enviado ? chV : null });
+    }
     case "mover": {
       const antes = vv.vehiculoId;
       const orden = a.hora && vv.hora ? toMin(a.hora)! : a.orden ?? vv.orden;

@@ -55,6 +55,21 @@ export const TIPOS_VIAJE: Record<TipoViaje, { nombre: string; corto: string }> =
 
 export type EstadoViaje = "planeado" | "hecho" | "no_pudo" | "anulado";
 
+/**
+ * Qué hace el camión en una parada de su recorrido (hd_viajes.accion, rediseño F3). null = la
+ * de siempre según el tipo (accionDe, estado.ts).
+ */
+export type AccionParada = "lleva_gente" | "deja_material" | "carga" | "descarga" | "busca_gente" | "compra" | "espera";
+export const ACCIONES_PARADA: [AccionParada, string][] = [
+  ["lleva_gente", "Lleva gente"],
+  ["deja_material", "Deja material"],
+  ["carga", "Carga"],
+  ["descarga", "Descarga"],
+  ["busca_gente", "Busca gente"],
+  ["compra", "Compra"],
+  ["espera", "Espera"],
+];
+
 export type TipoPedido = "lleva_material" | "trae_material" | "compra" | "entre_depositos" | "taller" | "otro";
 
 export type Urgencia = "frena" | "hora" | "cliente" | "hoy" | "cuando_se_pueda";
@@ -364,6 +379,17 @@ export type Viaje = {
   foto: boolean;
   creadoMin: Minutos;
   version: number;
+  /**
+   * Rediseño F3 (el recorrido). Opcionales: los días guardados en el celular y los armados a
+   * mano (tests) no los traen. `accion` null/ausente = la del tipo; `horaAprox` = la hora es
+   * una pista (no avisa choques; el candado la vuelve fija); coordenadas de "otra dirección";
+   * `salioMin` = tocó "Salí" (F6).
+   */
+  accion?: AccionParada | null;
+  horaAprox?: boolean;
+  haciaLat?: number | null;
+  haciaLng?: number | null;
+  salioMin?: Minutos | null;
 };
 
 export type Pedido = {

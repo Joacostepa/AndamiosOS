@@ -55,7 +55,7 @@ export async function servirHojaDia(destino: Page | BrowserContext, o: Opciones 
     const id = `h-${++n}`;
     let nuevo: DiaHoja | null = null;
     if (camino === "/api/hoja-dia") nuevo = aplicarOptimista(dia, body as never);
-    else if (camino === "/api/hoja-dia/viajes") nuevo = aplicarOptimistaViaje(dia, body as never);
+    else if (camino === "/api/hoja-dia/viajes") nuevo = body.accion === "crear" ? crearViaje(dia, body, id) : aplicarOptimistaViaje(dia, body as never);
     else if (camino === "/api/hoja-dia/ausencias") nuevo = aplicarOptimistaAusencia(dia, body as never);
     else if (camino === "/api/hoja-dia/precarga") nuevo = aplicarPlan(dia, planPrecarga(dia, body.modo as "hoy").hojas);
     else if (camino === "/api/hoja-dia/deshacer") {
@@ -72,4 +72,16 @@ export async function servirHojaDia(destino: Page | BrowserContext, o: Opciones 
     return responder(route, { ok: true, texto: `Listo: ${String(body.accion ?? "precarga")}`, historialId: nuevo ? id : null, avisos: [] });
   });
   return { dias, posts };
+}
+
+/** "+ Parada" del recorrido (crear): el viaje nuevo, como lo dejaría acciones.ts (sin chofer, planeado). */
+function crearViaje(dia: DiaHoja, b: Record<string, unknown>, id: string): DiaHoja {
+  const v: DiaHoja["viajes"][number] = {
+    id: `v-${id}`, fecha: dia.fecha, vehiculoId: (b.vehiculoId as string) ?? null, choferId: null, fleteExterno: null, tipo: b.tipo as DiaHoja["viajes"][number]["tipo"],
+    hojaId: null, hojaVehiculoId: null, cuadrillaOdooId: null, hacia: b.hacia as DiaHoja["viajes"][number]["hacia"], desde: null, orden: Number(b.orden ?? 999),
+    hora: (b.hora as string) ?? null, noAntesDe: null, duracionMin: null, vuelta: b.tipo === "trae_material", vueltaCarga: null, vueltaLlega: null, carga: (b.carga as string) ?? null,
+    cargaDeposito: null, okTodoElDia: false, estado: "planeado", hechoMin: null, hechoPor: null, noPudoMotivo: null, anuladoMotivo: null, foto: false, creadoMin: 0, version: 1,
+    accion: (b.queHace as DiaHoja["viajes"][number]["accion"]) ?? null, horaAprox: !!b.horaAprox,
+  };
+  return { ...dia, viajes: [...dia.viajes, v] };
 }

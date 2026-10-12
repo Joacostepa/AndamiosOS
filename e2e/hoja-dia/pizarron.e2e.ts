@@ -200,6 +200,25 @@ describe("Pizarrón", { timeout: 120_000 }, () => {
     await page.context().close();
   });
 
+  test("Recorrido: se abre desde el camión, muestra las paradas y suma una en Sanz", async () => {
+    const { page, srv } = await abrir();
+    await page.locator('[data-col="2"] [data-camion="af669"]').getByRole("button", { name: /Recorrido/ }).click();
+    const hoja = page.getByRole("dialog", { name: /Recorrido · Iveco AF 669 ZL/ });
+    await hoja.waitFor();
+    assert.ok(await hoja.locator("[data-parada]").count() >= 2, "las paradas del camión");
+    assert.match(await hoja.innerText(), /Lleva gente/);
+    await captura(page, "recorrido");
+    await hoja.getByRole("button", { name: "Parada", exact: true }).click();
+    await page.getByLabel("Buscar el lugar").fill("sanz");
+    await page.getByLabel("Buscar el lugar").press("Enter");
+    await page.waitForTimeout(1700);
+    const c = srv.posts.at(-1)!.body as { accion: string; tipo: string; queHace: string; horaAprox: boolean; vehiculoId: string };
+    assert.deepEqual({ accion: c.accion, tipo: c.tipo, queHace: c.queHace, aprox: c.horaAprox, veh: c.vehiculoId }, { accion: "crear", tipo: "compra", queHace: "compra", aprox: true, veh: "af669" });
+    await hoja.locator("[data-parada]").filter({ hasText: "Galvanizados Sanz" }).waitFor();
+    await captura(page, "recorrido-sanz");
+    await page.context().close();
+  });
+
   test("390 px: sin scroll horizontal del body, y tocar-tocar anda", async () => {
     const { page } = await abrir({ ancho: 390, alto: 844 });
     await sinScrollHorizontal(page);

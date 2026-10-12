@@ -20,9 +20,9 @@
 import type {
   Ausencia, Contratista, Cuadrilla, DiaHoja, Diferencia, Envio, Foto, FotoChofer, FotoHoja, Fecha,
   Hoja, Hora, Lugar, LugarEncuentro, Minutos, ModoChofer, ModoVehiculo, ObraDia, Parametros, Pedido, Persona, Punto,
-  TipoLugar, TipoPedido, TipoViaje, Vehiculo, VehiculoHoja, Viaje,
+  TipoLugar, TipoPedido, TipoViaje, Vehiculo, VehiculoHoja, Viaje, AccionParada,
 } from "./tipos.ts";
-import { CUADRILLA_DEPOSITO, DEPOSITO, TIPOS_VIAJE, TIPO_AUSENCIA_TXT, esDeposito } from "./tipos.ts";
+import { ACCIONES_PARADA, CUADRILLA_DEPOSITO, DEPOSITO, TIPOS_VIAJE, TIPO_AUSENCIA_TXT, esDeposito } from "./tipos.ts";
 export { DEPOSITO, esDeposito } from "./tipos.ts";
 import { durConTramo, huecoMinimo, llegadaCon, vueltaCon } from "./tiempos.ts";
 
@@ -835,7 +835,11 @@ export function calcVeh(dia: DiaHoja, veh: string): ViajeCalc[] {
       if (!fija && td && cur == null) t = Math.max(t, toMin(v.noAntesDe) ?? 16 * 60);
       const prev = out[out.length - 1];
       const llega = cur == null ? null : llegadaCon(dia.tiempos, v.tipo, fija, desdeKey, haciaKey, cur);
-      const conflicto = fija && llega != null && llega > t && v.estado === "planeado" ? { llega, prevId: prev?.id ?? null } : null;
+      // Una hora APROXIMADA (decisión 1 del 12/10, F3) es una pista: no avisa choques, y si el
+      // camión no llega a esa hora, la parada se corre a cuando llega (las de después no van para atrás).
+      const aprox = fija && !!v.horaAprox;
+      if (aprox && llega != null && llega > t && v.estado === "planeado") t = llega;
+      const conflicto = fija && !aprox && llega != null && llega > t && v.estado === "planeado" ? { llega, prevId: prev?.id ?? null } : null;
       let fin: number;
       if (v.estado === "hecho") fin = conVuelta(v, v.hechoMin ?? t + dur, vu);
       else if (v.estado === "no_pudo") fin = (v.hechoMin ?? t) + 30;
@@ -1017,13 +1021,50 @@ export function cortoV(dia: DiaHoja, v: Viaje): string {
   if (v.fleteExterno) return v.fleteExterno;
   return `${TIPOS_VIAJE[v.tipo].corto}${cuadTag(dia, v)} ${h.corto}`;
 }
-/** "7:00" si es fija, "~10:45" si es estimada. */
-export const horaTxt = (v: ViajeCalc) => `${v.hora ? "" : "~"}${hm5(v.t)}`;
+/** "7:00" si es fija, "~10:45" si es estimada o aproximada. */
+export const horaTxt = (v: ViajeCalc) => `${horaFija(v) ? "" : "~"}${hm5(v.t)}`;
+/** La hora es fija (con candado): alguien espera a esa hora. Una aproximada es sólo una pista. */
+export const horaFija = (v: Pick<Viaje, "hora" | "horaAprox">) => !!v.hora && !v.horaAprox;
+
+// ─── Qué hace en cada parada (el recorrido, F3) ─────────────────────────────
+
+/** La acción de una parada: la elegida, o la de siempre según el tipo del viaje. */
+export function accionDe(v: Pick<Viaje, "tipo" | "accion">): AccionParada {
+  if (v.accion) return v.accion;
+  switch (v.tipo) {
+    case "lleva": case "mueve": return "lleva_gente";
+    case "busca": return "busca_gente";
+    case "lleva_material": case "entre_depositos": return "deja_material";
+    case "trae_material": return "carga";
+    case "compra": return "compra";
+    default: return "espera";
+  }
+}
+/** El tipo de viaje para una parada nueva según lo que hace y adónde va (las de gente salen de la hoja, no de acá). */
+export function tipoDeAccion(dia: DiaHoja, a: AccionParada, hacia: Punto): TipoViaje {
+  const L = lugar(dia, hacia);
+  if (a === "carga") return L.tipo === "deposito" ? "entre_depositos" : "trae_material";
+  if (a === "compra") return "compra";
+  if (a === "deja_material" || a === "descarga") return L.tipo === "deposito" ? "entre_depositos" : "lleva_material";
+  if (a === "espera") return L.tipo === "taller" || L.tipo === "vtv" ? "taller" : "otro";
+  return "otro";
+}
+export const accionTxt = (a: AccionParada) => ACCIONES_PARADA.find((x) => x[0] === a)?.[1] ?? a;
 
 /** Cómo lo lee el chofer: "Lleva a la Cuadrilla 2 a Juramento 2145". Con `imper`, "Llevá…". */
 export function textoViaje(dia: DiaHoja, v: Viaje & { desdeKey?: string }, imper = false): string {
   const dest = lugar(dia, haciaDe(dia, v)).n;
   const c = cuadrillaDeViaje(dia, v);
+  // Una parada con la acción elegida en el recorrido (F3): lo que hace ahí, con su nota.
+  if (v.accion && v.tipo !== "lleva" && v.tipo !== "busca" && v.tipo !== "mueve") {
+    const nota = v.carga ? lowFirst(v.carga) : null;
+    const V = imper
+      ? { deja_material: "Dejá", descarga: "Descargá", carga: "Cargá", compra: "Buscá la compra", espera: "Esperá", lleva_gente: "Llevá gente", busca_gente: "Buscá gente" }
+      : { deja_material: "Deja", descarga: "Descarga", carga: "Carga", compra: "Busca la compra", espera: "Espera", lleva_gente: "Lleva gente", busca_gente: "Busca gente" };
+    const que = v.accion === "deja_material" || v.accion === "descarga" || v.accion === "carga" ? ` ${nota ?? "material"}` : "";
+    const resto = v.accion === "deja_material" || v.accion === "descarga" || v.accion === "carga" ? "" : nota ? `: ${nota}` : "";
+    return `${V[v.accion]}${que} en ${dest}${resto}`;
+  }
   const T = imper
     ? { lleva: "Llevá", busca: "Buscá", mueve: "Mové", trae: "Traé", compra: "Buscá", carga: "Cargá" }
     : { lleva: "Lleva", busca: "Busca", mueve: "Mueve", trae: "Trae", compra: "Busca", carga: "Carga" };
@@ -1038,7 +1079,7 @@ export function textoViaje(dia: DiaHoja, v: Viaje & { desdeKey?: string }, imper
         : `${T.trae} ${v.carga ? lowFirst(v.carga) : "lo desarmado"} de ${dest} al depósito`;
     case "compra": return `${T.compra} la compra en ${dest}${v.carga ? `: ${lowFirst(v.carga)}` : ""}`;
     case "entre_depositos": return `${T.lleva} ${lowFirst(v.carga || "material")} del depósito a ${dest}`;
-    case "taller": return `${v.carga || "VTV"} ${elVeh(dia, v.vehiculoId, "del")}${v.hora ? " (turno)" : ""}`;
+    case "taller": return `${v.carga || "VTV"} ${elVeh(dia, v.vehiculoId, "del")}${horaFija(v) ? " (turno)" : ""}`;
     default: return v.carga || "Otro viaje";
   }
 }
@@ -1300,7 +1341,7 @@ export function viajeSinAvisar(dia: DiaHoja, v: ViajeCalc): boolean {
   if (!avisoChoferPend(dia, ch)) return false;
   const snap = e.snap?.tipo === "chofer" ? e.snap : null;
   const o = snap?.viajes.find((x) => x.k === v.id);
-  return !o || (!!v.hora && o.hora !== normHora(v.hora));
+  return !o || (horaFija(v) && o.hora !== normHora(v.hora));
 }
 
 export type ItemCola = { p: Pedido; st: EstadoPedido; sinAvisar?: string; noVisto?: string };
@@ -2089,7 +2130,8 @@ export function fotoChofer(dia: DiaHoja, ch: string): FotoChofer {
       const p = pedidosDeViaje(dia, v.id)[0] ?? null;
       return {
         k: v.id, tipo: v.tipo, c: cuadrillaDeViaje(dia, v), hacia: lugar(dia, v.haciaEf).n, desde: v.desde ? lugar(dia, v.desde).n : null,
-        hora: normHora(v.hora), carga: v.carga ?? "", veh: v.vehiculoId,
+        // Una hora aproximada es una pista: si se corre, no es un cambio para avisarle (F3).
+        hora: horaFija(v) ? normHora(v.hora) : null, carga: v.carga ?? "", veh: v.vehiculoId,
         pidio: p ? { pid: p.pidioId, hl: normHora(p.horaLimite) } : null,
       };
     }),

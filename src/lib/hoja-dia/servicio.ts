@@ -139,6 +139,11 @@ export function mapViaje(f: Fila, fecha: Fecha): Viaje {
     foto: !!s(f.foto_path),
     creadoMin: minutosDesde(fecha, String(f.created_at)),
     version: n(f.version) ?? 1,
+    accion: (s(f.accion) as Viaje["accion"]) ?? null,
+    horaAprox: b(f.hora_aprox),
+    haciaLat: n(f.hacia_lat),
+    haciaLng: n(f.hacia_lng),
+    salioMin: s(f.salio_at) ? minutosDesde(fecha, String(f.salio_at)) : null,
   };
 }
 

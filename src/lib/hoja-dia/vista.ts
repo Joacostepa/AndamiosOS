@@ -18,7 +18,7 @@ import {
   aCargoDe, cNombre, cap, choferDe, cuadrillaDeViaje, diaSemana, encTxt, envioDe, estadoPedido, fechaMensaje, fmtFrases,
   frLargo, genteDe, hCorta, hm, hm5, hojaDeCuadrilla, horaTxt, lowFirst, lugar, lugarDeKey, nombreDe, normHora, obrasCon,
   pedidosDeViaje, recibeDe, suspendida, textoViaje, todoDe, vehiculo, vehiculoNombre, elVeh, viajesCalc, viajesChofer,
-  persona, contratistasDe, aCargoContratista, vanDe, vehiculosDe, genteConChoferes, conLlevaTrae, choferesTodoDe, laCuadrilla, esDeposito, type ViajeCalc,
+  persona, contratistasDe, aCargoContratista, vanDe, vehiculosDe, genteConChoferes, conLlevaTrae, choferesTodoDe, laCuadrilla, esDeposito, horaFija, type ViajeCalc,
 } from "./estado.ts";
 import { vanEnPalabras } from "./contratistas.ts";
 import { urlComoLlegar } from "./maps.ts";
@@ -444,7 +444,7 @@ export function armarVista(dia: DiaHoja, link: LinkVista, ahora: number, op: Opc
       : destino.obra && destino.otId != null ? (() => { const o = dia.obras.find((x) => x.otId === destino.otId); return o?.telObra ? { nombre: (o.contactoObra ?? "la obra").split(" (")[0], telefono: o.telObra } : null; })()
       : null;
     return {
-      id: v.id, i: v.i, hora: horaTxt(v), horaFija: !!v.hora, tipo: v.tipo, texto: textoViaje(dia, v, true),
+      id: v.id, i: v.i, hora: horaTxt(v), horaFija: horaFija(v), tipo: v.tipo, texto: textoViaje(dia, v, true),
       desde: lugarDeKey(dia, v.desdeKey).n, hacia: destino.n, vuelta: v.vuelta, direccion: destino.dir,
       mapsUrl: urlComoLlegar({ lat: destino.lat, lng: destino.lng, dir: destino.dir ?? (destino.obra ? destino.n : null) }),
       carga: (v.tipo === "lleva" || v.tipo === "busca") && v.carga ? v.carga : null,

@@ -76,9 +76,21 @@ El vendedor confirma de una de dos maneras:
 
 Cualquier cambio en el presupuesto vence la acción y hay que volver a proponerla.
 
+**Si guardar o mandar el mail falla o queda en duda** (Odoo tardó y no se sabe qué quedó), la
+tarjeta ofrece **Reintentar** (desde el 12/10). Reintenta la MISMA acción, sólo con el botón:
+- dentro de las 24 h y si el presupuesto no cambió desde que se propuso;
+- lo que ya quedó hecho no se repite: la orden se busca por la marca del borrador y se
+  actualiza, el cliente creado y la nota no se vuelven a hacer;
+- el mail, antes de mandarse de nuevo, se busca en el chatter de la orden: si ya salió, no se
+  reenvía y se avisa.
+
 **Qué escribe en Odoo** (sólo después de confirmado):
 
-- da de alta el cliente (por CUIT, sin duplicar);
+- da de alta el cliente (por CUIT, sin duplicar). **Sin CUIT también se puede guardar**
+  (JS, 12/10): el cliente se da de alta sin CUIT, buscando antes uno con el mismo nombre exacto;
+  el resumen y la nota interna lo avisan, y queda para completarlo en Odoo antes de facturar. Un
+  CUIT cargado que no valida sigue trabando: se corrige o se borra. Si tiene 10 dígitos, el
+  asistente propone el 0 que falta (20-8632598-6 → 20-08632598-6) para confirmarlo con el cliente;
 - crea o actualiza la orden en **borrador**: nunca la confirma y nunca crea productos;
 - a la orden va **sólo la base**. Los opcionales y los adicionales quedan en el PDF y en la
   nota interna, y si el cliente acepta uno se agrega en ese momento. Odoo 19 suma al total
@@ -126,6 +138,10 @@ bandeja y estructura en fachada se verifica contra el catastro de la Ciudad con
   pregunta si van los dos frentes y lo anota en `decisiones.esquina`.
 - **Cuando los metros no cierran,** el motor avisa sin bloquear: la bandeja puede tomar lotes
   vecinos o cubrir un tramo (Arengreen 655: 24 m.l. contra lotes de 5,63 y 8 m).
+- **La dirección:** sólo calle y altura. Si el catastro no la reconoce, la herramienta prueba
+  sola una versión más limpia (corta en « - », «(» o «,», saca el barrio y «CABA», y después
+  «Av.», «Dr.») y deja esa como dirección del borrador (`src/lib/catastro/direccion.ts`). El
+  asistente también le puede pasar la dirección directo.
 - **Otros casos:**
   - fuera de CABA el frente lo da el cliente y no bloquea;
   - si el catastro no tiene la medida o no responde, el vendedor la declara con su origen
@@ -156,7 +172,7 @@ con `usar_foto_como_render` (`src/lib/asistente/renders.ts`).
 busca en internet y lee páginas con las herramientas del servidor de Anthropic (`web_search` y
 `web_fetch`), en `HERRAMIENTAS_WEB` (`src/lib/asistente/herramientas.ts`).
 
-- **Límites:** hasta 5 búsquedas y 3 páginas por respuesta, búsquedas desde Buenos Aires, y
+- **Límites:** hasta 3 búsquedas (5 hasta el 12/10: un turno llegó a costar US$ 1) y 3 páginas por respuesta, búsquedas desde Buenos Aires, y
   cada página se corta en 15.000 tokens.
 - **Reglas** (instrucciones, § Internet):
   - es para lo que no está en Odoo ni en el criterio: índices (CAC, IPC, costo de la
@@ -169,8 +185,9 @@ busca en internet y lee páginas con las herramientas del servidor de Anthropic 
 - **En pantalla:** la búsqueda se ve como las otras herramientas ("Buscando en internet: CAC
   agosto 2026") y las páginas citadas quedan como **Fuentes** debajo de la respuesta.
 - **Conversaciones de antes del 28/09:** tienen las herramientas, pero sus instrucciones
-  congeladas no dicen nada de internet. El aviso de cada turno se lo cuenta
-  (`avisarInternet` en `contextoDelTurno`).
+  congeladas no dicen nada de internet. El aviso de cada turno se lo cuenta. Desde el 12/10 vale
+  para toda herramienta nueva (`novedadesParaCharla`, `src/lib/asistente/novedades.ts`): las que
+  el prompt congelado de la charla no nombra se le cuentan en una línea cada una.
 
 **Plan de pagos** (Joaquín, 06/10: "un detalle de los e-cheq de cómo tiene que abonar"). La
 forma de pago en cuotas sale como tabla en el PDF, debajo de "Forma de pago": fecha (con el día
@@ -196,6 +213,9 @@ asistente la arma con `plan_de_pagos`.
   en la nota interna de la orden. A la orden de Odoo no le cambia nada.
 - **Sin "con IVA":** si `condiciones.mostrarTotalConIva` es `false`, la tabla sale sólo con el
   neto.
+- **Ajuste por CAC** (criterio §4.7; JS, 12/10): con cuotas, va por cuota al momento del pago,
+  escrito dentro de "Forma de pago", y sale el bullet de actualización mensual. «Importes fijos»
+  sólo si el vendedor lo pide (`condiciones.actualizacionCac` en `false`).
 
 **Editar un presupuesto que ya está en Odoo** (Joaquín, 06/10). Con `editar_presupuesto` el
 asistente abre una orden y la cambia con el mismo número. Re-emitir (número nuevo y la vieja
@@ -417,7 +437,17 @@ de Anthropic en streaming:
 - razonamiento adaptativo y esfuerzo desde Parámetros;
 - *fallback* del lado de Anthropic;
 - hasta 15 vueltas o 240 s por turno;
-- un turno a la vez por conversación.
+- un turno a la vez por conversación;
+- las herramientas de sólo lectura que el modelo pide juntas corren a la vez (`tandas.ts`); las
+  que tocan el borrador o las acciones, de a una y en orden;
+- en Opus 5.5, Sonnet 5.5 y Fable 5.1, las notas que el modelo escribe entre herramientas
+  llegan a la pantalla como evento `progreso` (`thinking.display: "updates"`). En voz no se
+  dicen.
+
+**Lo que vuelve al modelo después de un cambio** (12/10): qué renglones entraron, salieron o
+cambiaron, los totales y lo que falta (`resumen.ts`), no el borrador entero. Los cambios van
+juntos: sacar varios renglones, agregar varios a mano y reordenar (`ordenar_lineas`) son una
+llamada cada uno.
 
 Cada canal sólo cambia cómo entra el texto y cómo sale.
 

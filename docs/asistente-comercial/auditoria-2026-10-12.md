@@ -53,6 +53,18 @@ Para retomar: "Leé docs/asistente-comercial/auditoria-2026-10-12.md y arrancamo
 - **1.4:** no sigue sola («continuar»): avisa y termina el turno. El «continuar» automático
   ahora tiene un tope de 2 seguidas.
 
+**Estado al 12/10 a la noche (rama `feat/asistente-turno-herramientas`, sin merge):**
+- **1.3, completo del lado del servidor:**
+  - **Reintentar la misma acción:** `POST /acciones/:id` con `{ decision: "reintentar" }`. Sólo
+    con el botón, sólo en `error` o `incierto`, sólo guardar, re-emitir o el mail, dentro de las
+    24 h y si el presupuesto no cambió ni se descartó (`reintento.ts`, 4 tests). Conserva los
+    `pasos`, suma `pasos.intentos` y deja el evento `reintento`. `AccionVista.reintentable` le
+    dice a la tarjeta cuándo mostrar el botón; **el botón lo hace el frente de la pantalla**.
+  - **Mail:** si el intento viene de otro, o hay otro `enviar_mail` del mismo borrador en error
+    o incierto, antes de mandar se mira el chatter de la orden (`mailYaEnviado`: `mail.mail` en
+    `sent`/`outgoing` o mensaje `email_outgoing`, o nuestra nota «Propuesta enviada por mail»).
+    Si ya salió, no se reenvía y vuelve ok con aviso. Probado SÓLO LECTURA contra la S02404.
+
 
 | # | Qué | Por qué importa | Dónde |
 | --- | --- | --- | --- |
@@ -83,6 +95,18 @@ sólo el 5 %**, así que bajar el esfuerzo no ahorra plata. El 55 % del gasto es
 | 2.6 | **Las herramientas del borrador devuelven el borrador entero en cada llamada** (`actualizar_borrador` ×132, hasta 4,3 k caracteres) | −4 a 6 % de la historia | Que devuelvan lo que cambió y los faltantes. Es más seguro que la edición de contexto |
 | 2.7 | **Operativo:** hacer los deploys que cambian herramientas fuera del horario de uso. Cada uno rompe el caché de todas las charlas abiertas | US$ 2–5 por mes | — |
 
+**Estado al 12/10 (rama `feat/asistente-turno-herramientas`):**
+- **2.2:** ya estaba.
+- **2.4, hecho:** el PDF se sube a la Files API y vuelve por `file_id` (como los adjuntos del
+  chat). Se eligió sobre sacar el texto porque no suma dependencias y el modelo sigue viendo
+  tablas y formato. **No se pudo validar gratis:** `count_tokens` no acepta archivos. Probarlo en
+  una charla real antes de nada (ver «Qué probar»).
+- **2.5, hecho:** `max_uses` 3.
+- **2.6, hecho:** las herramientas que cambian el borrador devuelven `cambiosParaModelo`
+  (`resumen.ts`, 4 tests): qué renglones entran, salen o cambian (con id y cálculo), los datos
+  del encabezado que cambiaron, totales, renovación, faltantes, avisos y pendientes. `ver_borrador`,
+  `nuevo_borrador` y `editar_presupuesto` siguen devolviendo el borrador entero.
+
 **No hacer** (lo midieron los dos agentes):
 - TTL de 1 h para los mensajes: +4,4 %. El del system se queda en 1 h.
 - Tool search o `defer_loading` para las 36 herramientas.
@@ -109,6 +133,27 @@ más complejos. La calidad no empeoró: verifica el frente 12 de 17 veces, contr
 | 3.6 | **Modo rápido** (`speed: "fast"`), con una llave en Parámetros | Hasta 2,5× más rápido: p50 de ~26 a ~13 s | **Cuesta el doble por token.** Lo decide JS. Primero medir Opus 5.5 en `medium` |
 
 ---
+
+**Estado al 12/10 (rama `feat/asistente-turno-herramientas`):**
+- **3.1, hecho:** `quitar_del_presupuesto` con `ids` (sigue aceptando `id`),
+  `agregar_linea_manual` con `lineas`, y `ordenar_lineas` nueva, al final de la lista. El orden
+  queda en `datos.ordenLineas` (en `borradorVacio()`) y lo aplica el motor; los importes no
+  cambian. Línea nueva en las instrucciones para hacer los cambios juntos.
+- **3.2, la parte del servidor:** en Opus 5.5, Sonnet 5.5 y Fable 5.1 el pedido lleva
+  `thinking.display: "updates"` (beta `thinking-display-updates-2026-08-18`, verificada en la
+  skill y con `count_tokens`). Las notas entre herramientas salen como evento
+  `{ t: "progreso", texto }`. Cambiar `display` hace perder el caché de los mensajes una vez a
+  las charlas abiertas de esos modelos (el mismo deploy ya lo pierde por las herramientas
+  nuevas). Opus 5 no cambia. Voz y WhatsApp ignoran el evento. **Mostrarlo es del frente de la
+  pantalla.**
+- **3.3, hecho:** oportunidad, nota y PDF en paralelo (`Promise.allSettled`). Cada uno anota su
+  paso al terminar; si la nota o el PDF fallan, la acción queda en error y Reintentar completa
+  lo que falta.
+- **3.5, hecho:** la conversación llega leída desde la ruta del chat; borrador y cambios de
+  Parámetros dentro del `Promise.all`; adjuntos en paralelo; herramientas de sólo lectura de una
+  vuelta en paralelo (`tandas.ts`, 3 tests), las demás en serie y en orden; `import("./pdf")`
+  diferido en herramientas y ejecutores (WhatsApp lo sigue importando: no era de este frente).
+- **3.4 y 3.6:** no se tocaron (esperan a JS).
 
 ## Bloque 4: comportamiento (medio día; textos ya redactados)
 
@@ -151,13 +196,40 @@ Anexo A:
 - que `validarCuit` proponga el 0 que falta (traba 1);
 - tramos de bandeja con su mínimo cada uno.
 
+**Estado al 12/10 (rama `feat/asistente-turno-herramientas`):**
+- **Instrucciones:** los 7 cambios del Anexo A, con el 5c (CAC por cuota: decisión 7 de JS,
+  12/10), más la línea de 3.1. Rigen para las conversaciones nuevas.
+- **Descripciones:** `verificar_frente_lote`, `cotizar_fachada`, `guardar_presupuesto_odoo` y
+  `plan_de_pagos` (CAC por cuota por defecto). El `siguiente` del ejecutor ya no ofrece el mail:
+  pide preguntar a quién va el mensaje si no hay contacto y deja el mail en una línea.
+- **A código, hecho:**
+  - `verificar_frente_lote` acepta `direccion` y prueba variantes (`catastro/direccion.ts`, 2
+    tests): tal cual, cortada en « - », «(», «,» y sin barrio ni «CABA», y sin «Av.»/«Dr.». La
+    que encuentra queda como dirección del borrador;
+  - `JSON.parse` de una entrada que llega como texto (`entrada.ts`), para todas las
+    herramientas y sólo si la validación falla;
+  - `avisarInternet` pasa a `novedadesParaCharla` (`novedades.ts`, 3 tests): las herramientas
+    que el prompt congelado de la charla no nombra se cuentan en el aviso del turno. No hizo
+    falta migración ni fechas: verificado con las 43 charlas reales;
+  - el resumen de guardar lista los renglones de la base, cortos;
+  - avisos que no bloquean: `sin_contacto` y `sin_cuit`;
+  - `validarCuit` propone el 0 que falta (traba 1; 4 tests): 20-8632598-6 → 20-08632598-6;
+  - **guardar sin CUIT (traba 2, decisión de JS del 12/10):** sin CUIT se guarda con aviso, el
+    cliente se da de alta sin CUIT buscando antes por nombre exacto, la nota dice «Falta el
+    CUIT» y el resumen lo avisa. Un CUIT inválido sigue bloqueando (4 tests en
+    `cliente.test.ts`);
+  - PDF: con cuotas, el ajuste por CAC va dentro de la forma de pago y sale el bullet de
+    actualización mensual (criterio §4.7).
+- **No se hizo:** tramos de bandeja con su mínimo cada uno y varias parcelas para un englobe.
+  Tocan el motor de la bandeja y el modelo del lote; no daban para hacerlos limpios hoy.
+
 **Estado de las 7 trabas del handoff:**
 
 | Traba | Estado |
 | --- | --- |
 | 6 y 7 | Resueltas |
-| 1, 3 y 4 | Siguen sin arreglo en el código |
-| 2 y 5 | Esperan decisión de JS |
+| 1, 2, 3 y 4 | Resueltas en la rama `feat/asistente-turno-herramientas` (la 4, por instrucciones) |
+| 5 | Espera decisión de JS |
 
 ---
 

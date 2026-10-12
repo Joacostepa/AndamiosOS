@@ -2,6 +2,8 @@
 
 Rediseño del organigrama interactivo («organigrama-aba») para sumarlo como módulo de Andamios-OS. Propuesta de producto y arquitectura (12/10/2026).
 
+> **Documento histórico.** Es la propuesta con la que se diseñó el módulo; lo construido y sus decisiones finales están en [modulo.md](./modulo.md) y el estado en [handoff.md](./handoff.md). Ante una diferencia, mandan esos dos y el código. La § 6 (especificación de la maqueta con datos inventados) y la § 4.6 (decisión abierta Odoo vs app, ya resuelta) quedaron superadas. Los informes citados abajo eran archivos de trabajo y no están en el repo.
+
 Insumos:
 - `informe-organigrama.md`: el análisis de la app original.
 - `informe-andamios-os.md`: cómo está hecha Andamios-OS.

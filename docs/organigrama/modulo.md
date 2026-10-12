@@ -3,7 +3,8 @@
 Quién hace qué en ABA: la estructura (Dirección, áreas y puestos), el manual de funciones de cada puesto (misión, tareas con los documentos que toca, «qué NO hace», KPIs) y quién ocupa cada lugar. Ruta `/organigrama` (el menú entra por el Lienzo, `/organigrama/lienzo`).
 
 - Propuesta de producto y arquitectura: [propuesta.md](./propuesta.md) (12/10/2026). Este documento dice qué quedó construido y con qué decisiones; ante una diferencia, manda este (y el código).
-- Estado real y lo que falta: [handoff.md](./handoff.md).
+- Estado real, lo que falta y cómo retomar: [handoff.md](./handoff.md).
+- **En producción desde el 12/10/2026.**
 
 ---
 
@@ -34,7 +35,7 @@ Quién hace qué en ABA: la estructura (Dirección, áreas y puestos), el manual
 
 Pestañas como links (mismo esqueleto que el pañol): **Lienzo · Mapa · Personas** para todos; **Para revisar (N) · Versiones** solo para editores. Imprimir se abre desde el Mapa.
 
-- **Lienzo** (`/organigrama/lienzo`, propuesta § 7): el árbol animado. Se arrastran puestos (con su rama), vacantes y áreas nuevas desde la caja de herramientas, personas desde el banco, el tacho para eliminar, deshacer/rehacer (⌘Z / ⇧⌘Z), «Conocé ABA» y «Seguí el papel». El primer cambio de estructura abre el borrador solo.
+- **Lienzo** (`/organigrama/lienzo`, propuesta § 7): el árbol animado. Se arrastran puestos (con su rama), vacantes y áreas nuevas desde la caja de herramientas, personas desde el banco, el tacho para eliminar, deshacer/rehacer (⌘Z / ⇧⌘Z), «Conocé ABA», «Seguí el papel» y pantalla completa (`F`). Atajos con `?`. El primer cambio de estructura abre el borrador solo.
 - **Mapa** (`/organigrama`): columnas por área en desktop, áreas desplegables en el celular, buscador «¿A quién le pregunto?», filtros (vacantes, interinos, bajas), «Tu lugar» para quien tiene puesto, y el modo borrador con el menú ⋯ (editar ficha, agregar, mover, subir/bajar, eliminar).
 - **Fichas** (hojas laterales `?puesto=` y `?persona=`): quién ocupa, reporta a / le reportan, misión, tareas con documentos, «qué NO hace», KPIs, nota de diseño, nota interna (editores), cuadrillas en vivo. La de persona muestra solo contacto laboral; «Ver legajo» solo con permiso de Legajos.
 - **Personas**: todas (legajos activos, usuarios activos, externos), con carga por persona y filtros.

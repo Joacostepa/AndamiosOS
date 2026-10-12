@@ -54,14 +54,20 @@ const s = (v: unknown): string | null => (typeof v === "string" && v.trim() !== 
 const n = (v: unknown): number | null => (v == null || v === "" ? null : Number.isFinite(Number(v)) ? Number(v) : null);
 const b = (v: unknown) => v === true;
 const punto = (f: Fila, pre: "hacia" | "desde"): Punto | null => {
-  const p = { otId: n(f[`${pre}_ot_id`]), lugarId: s(f[`${pre}_lugar_id`]), texto: s(f[`${pre}_texto`]) };
-  return p.otId == null && !p.lugarId && !p.texto ? null : p;
+  const p: Punto = { otId: n(f[`${pre}_ot_id`]), lugarId: s(f[`${pre}_lugar_id`]), texto: s(f[`${pre}_texto`]) };
+  if (p.otId == null && !p.lugarId && !p.texto) return null;
+  const lat = n(f[`${pre}_lat`]), lng = n(f[`${pre}_lng`]);
+  return lat != null && lng != null ? { ...p, lat, lng } : p;
 };
 const PUNTO_VACIO: Punto = { otId: null, lugarId: null, texto: null };
 
-/** Columnas de un Punto para insertar/actualizar. */
+/** Columnas de un Punto para insertar/actualizar (las coordenadas, sólo de una "otra dirección" y de a pares). */
 export function columnasPunto(pre: "hacia" | "desde", p: Punto | null): Fila {
-  return { [`${pre}_ot_id`]: p?.otId ?? null, [`${pre}_lugar_id`]: p?.lugarId ?? null, [`${pre}_texto`]: p?.texto ?? null };
+  const geo = p?.texto && p.otId == null && !p.lugarId && p.lat != null && p.lng != null;
+  return {
+    [`${pre}_ot_id`]: p?.otId ?? null, [`${pre}_lugar_id`]: p?.lugarId ?? null, [`${pre}_texto`]: p?.texto ?? null,
+    [`${pre}_lat`]: geo ? p.lat : null, [`${pre}_lng`]: geo ? p.lng : null,
+  };
 }
 
 // ─── Mapeos fila → tipo ─────────────────────────────────────────────────────
@@ -141,8 +147,6 @@ export function mapViaje(f: Fila, fecha: Fecha): Viaje {
     version: n(f.version) ?? 1,
     accion: (s(f.accion) as Viaje["accion"]) ?? null,
     horaAprox: b(f.hora_aprox),
-    haciaLat: n(f.hacia_lat),
-    haciaLng: n(f.hacia_lng),
     salioMin: s(f.salio_at) ? minutosDesde(fecha, String(f.salio_at)) : null,
   };
 }

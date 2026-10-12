@@ -177,6 +177,8 @@ type Ctx = {
   instr: Map<number, DiaHoja["instrucciones"][number]>;
   pedidosPorViaje: Map<string, Pedido[]>;
   envioPor: Map<string, Envio>;
+  /** "t:<texto normalizado>" → la dirección escrita y sus coordenadas (de los viajes y pedidos del día). */
+  textos: Map<string, { texto: string; lat: number | null; lng: number | null }>;
   memo: Map<string, unknown>;
 };
 
@@ -207,6 +209,16 @@ function ctx(dia: DiaHoja): Ctx {
     const prev = envioPor.get(e.personaId);
     if (!prev || (prev.anulado && !e.anulado)) envioPor.set(e.personaId, e);
   }
+  // "Otra dirección": el texto y, si alguna fila del día lo tiene, sus coordenadas (gana la primera con coordenadas).
+  const textos = new Map<string, { texto: string; lat: number | null; lng: number | null }>();
+  const anotarTexto = (p: Punto | null | undefined) => {
+    if (!p?.texto || p.otId != null || p.lugarId) return;
+    const k = `t:${normalizar(p.texto)}`;
+    const prev = textos.get(k);
+    if (!prev || (prev.lat == null && p.lat != null && p.lng != null)) textos.set(k, { texto: p.texto, lat: p.lat ?? null, lng: p.lng ?? null });
+  };
+  for (const v of dia.viajes) { anotarTexto(v.hacia); anotarTexto(v.desde); }
+  for (const p of dia.pedidos) { anotarTexto(p.hacia); anotarTexto(p.desde); }
   // Los contratistas entran a P como "persona" (su referente): así nombreDe(), persona(),
   // los envíos y los mensajes los tratan como a cualquiera que recibe una hoja. NO están en
   // `dia.personas` (no van a "Sin asignar", ni a las ausencias, ni a "+ Agregar" como gente).
@@ -232,6 +244,7 @@ function ctx(dia: DiaHoja): Ctx {
     instr: new Map(dia.instrucciones.map((i) => [i.otId, i])),
     pedidosPorViaje,
     envioPor,
+    textos,
     memo: new Map(),
   };
   CACHE.set(dia, c);
@@ -433,7 +446,11 @@ export function lugar(dia: DiaHoja, p: Punto | null | undefined): LugarInfo {
     const l = k.L.get(p.lugarId);
     if (l) return { ...vacio, key: `l:${l.id}`, n: l.nombre, corto: l.corto ?? l.nombre, dir: l.direccion, lat: l.lat, lng: l.lng, tipo: l.tipo, cierra: toMin(l.cierra), telefono: l.telefono, lugarId: l.id };
   }
-  if (p.texto) return { ...vacio, key: `t:${normalizar(p.texto)}`, n: p.texto, corto: p.texto };
+  if (p.texto) {
+    const key = `t:${normalizar(p.texto)}`;
+    const t = p.lat != null && p.lng != null ? { lat: p.lat, lng: p.lng } : k.textos.get(key);
+    return { ...vacio, key, n: p.texto, corto: p.texto, lat: t?.lat ?? null, lng: t?.lng ?? null };
+  }
   return vacio;
 }
 /** "Av. Rivadavia 6150" → "Rivadavia" (la ficha del camión: "Lleva C2 Juramento"). */
@@ -446,7 +463,8 @@ export function lugarDeKey(dia: DiaHoja, key: string): LugarInfo {
   const [t, id] = [key.slice(0, 1), key.slice(2)];
   if (t === "o") return lugar(dia, { otId: Number(id), lugarId: null, texto: null });
   if (t === "l") return lugar(dia, { otId: null, lugarId: id, texto: null });
-  return lugar(dia, { otId: null, lugarId: null, texto: id });
+  const tx = ctx(dia).textos.get(key);
+  return lugar(dia, { otId: null, lugarId: null, texto: tx?.texto ?? id, lat: tx?.lat ?? null, lng: tx?.lng ?? null });
 }
 const keyDe = (dia: DiaHoja, p: Punto | null | undefined) => lugar(dia, p).key;
 /** "el depósito", "la planta de VTV", "el taller", o el nombre. */
@@ -1418,14 +1436,95 @@ export function sugeridosDe(dia: DiaHoja, ahora: Minutos): Sugerido[] {
 /** Dónde soltarlo por defecto en la fila: después de lo hecho (hoy) o cerca de su hora. */
 export function posicionAuto(dia: DiaHoja, veh: string, ped: Pick<Pedido, "horaFija" | "noAntesDe" | "horaLimite">, ahora: Minutos): { orden: number; prevId: string | null } {
   const ts = calcVeh(dia, veh);
-  let i = -1;
-  if (esHoy(ahora)) ts.forEach((v, k) => { if (v.estado !== "planeado" || v.t <= ahora) i = k; });
-  else {
+  let i = ultimoFijo(dia, ts, ahora);
+  if (!esHoy(ahora)) {
     const target = toMin(ped.horaFija) ?? toMin(ped.noAntesDe) ?? (toMin(ped.horaLimite) != null ? toMin(ped.horaLimite)! - 90 : 9 * 60);
     ts.forEach((v, k) => { if (v.t <= target) i = k; });
   }
   const a = ts[i], b = ts[i + 1];
   return { orden: a ? (b ? (a.orden + b.orden) / 2 : a.orden + 30) : b ? b.orden - 30 : 9 * 60, prevId: a?.id ?? null };
+}
+
+// ─── El hueco de menor desvío (rediseño F4; maqueta: bestSlot / planPed / nearList) ──────
+
+/** Dónde queda el camión después de un viaje: el depósito si vuelve (o no pudo, o fue a comprar), si no el destino. */
+const locDespues = (dia: DiaHoja, v: ViajeCalc) => (v.vuelta || v.estado === "no_pudo" || v.tipo === "compra" ? ctx(dia).depKey : v.haciaKey);
+/** El índice del último viaje que ya no se puede correr: hoy, el hecho o el de hora pasada. -1 = ninguno. */
+function ultimoFijo(dia: DiaHoja, ts: ViajeCalc[], ahora: Minutos): number {
+  let i = -1;
+  if (esHoy(ahora)) ts.forEach((v, k) => { if (v.estado !== "planeado" || v.t <= ahora) i = k; });
+  return i;
+}
+
+export type Hueco = {
+  /** El `orden` del viaje nuevo (punto medio entre los vecinos). */
+  orden: number;
+  /** La posición de la parada nueva (1, 2, 3…). */
+  n: number;
+  prevId: string | null;
+  nextId: string | null;
+  /** Lo que alarga el recorrido, en km en línea recta, y en minutos (3 min por km, de a 5). */
+  extraKm: number;
+  min: number;
+  /** Por dónde pasa: el vecino más cerca (mejor una obra o un lugar que el depósito), y a cuánto. */
+  viaKey: string;
+  viaHora: string | null;
+  dKm: number;
+  /** "de paso entre Juramento y Sanz", "después de Cabildo", "sale del depósito y vuelve". */
+  viaTxt: string;
+};
+
+/** El desvío en minutos: 3 por km extra, redondeado a 5 (el de la maqueta). */
+export const desvioMin = (k: number) => Math.round((k * 3) / 5) * 5;
+export const desvioTxt = (m: number) => (m ? `+${m} min` : "sin desvío");
+/** "3 cuadras", "1,4 km", "12 km". */
+export function distanciaTxt(k: number): string {
+  if (k < 1) { const c = Math.max(1, Math.round(k * 10)); return `${c} ${c === 1 ? "cuadra" : "cuadras"}`; }
+  return `${(k < 10 ? k.toFixed(1) : String(Math.round(k))).replace(".", ",")} km`;
+}
+
+/**
+ * El hueco del recorrido de un camión donde un lugar alarga menos el viaje: entre cada par de
+ * paradas seguidas (y del depósito al principio y al final), A→P + P→B − A→B en línea recta.
+ * Hoy, nunca antes de la parada en curso (la última hecha o con la hora ya pasada). null si el
+ * camión no tiene viajes, si el punto no tiene coordenadas o si ningún hueco tiene las de sus
+ * dos vecinos (el depósito sin dirección cuenta como sin coordenadas). La usan el pizarrón
+ * (para mostrar "+10 min") y el servidor al poner un pedido (`planPonerPedido`): es la misma.
+ */
+export function mejorHueco(dia: DiaHoja, veh: string, punto: { lat: number | null; lng: number | null }, ahora: Minutos): Hueco | null {
+  if (punto.lat == null || punto.lng == null) return null;
+  const ts = calcVeh(dia, veh);
+  if (!ts.length) return null;
+  const k = ctx(dia);
+  const dep = lugarDeKey(dia, k.depKey);
+  const lo = ultimoFijo(dia, ts, ahora) + 1;
+  const coord = (key: string) => (key === k.depKey ? dep : lugarDeKey(dia, key));
+  let best: { j: number; add: number } | null = null;
+  for (let j = lo; j <= ts.length; j++) {
+    const a = coord(j > 0 ? locDespues(dia, ts[j - 1]) : k.depKey);
+    const b = coord(j < ts.length ? ts[j].haciaKey : k.depKey);
+    const ap = km(a, punto), pb = km(punto, b), ab = km(a, b);
+    if (ap == null || pb == null || ab == null) continue;
+    const add = Math.max(0, ap + pb - ab);
+    if (!best || add < best.add - 1e-9) best = { j, add };
+  }
+  if (!best) return null;
+  const A = ts[best.j - 1] ?? null, B = ts[best.j] ?? null;
+  const orden = A ? (B ? (A.orden + B.orden) / 2 : A.orden + 30) : B ? B.orden - 30 : 9 * 60;
+  // Por dónde pasa: el vecino más cerca, mejor una obra o un lugar que el depósito.
+  const vecinos = [A ? { key: locDespues(dia, A), v: A } : null, B ? { key: B.haciaKey, v: B } : null]
+    .filter((x): x is { key: string; v: ViajeCalc } => !!x);
+  const noDep = vecinos.filter((x) => !esDep(dia, x.key));
+  const cand = (noDep.length ? noDep : vecinos).map((x) => ({ ...x, d: km(coord(x.key), punto) ?? Infinity })).sort((x, y) => x.d - y.d)[0];
+  const nom = (key: string) => (esDep(dia, key) ? "el depósito" : lugarDeKey(dia, key).n);
+  const aKey = A ? locDespues(dia, A) : k.depKey, bKey = B ? B.haciaKey : k.depKey;
+  const viaTxt = A && B
+    ? (aKey === bKey ? (esDep(dia, aKey) ? "sale del depósito y vuelve" : `en ${nom(aKey)}`) : `de paso entre ${nom(aKey)} y ${nom(bKey)}`)
+    : A ? `después de ${nom(aKey)}` : B ? `antes de ${nom(bKey)}` : "";
+  return {
+    orden, n: best.j + 1, prevId: A?.id ?? null, nextId: B?.id ?? null, extraKm: best.add, min: desvioMin(best.add),
+    viaKey: cand?.key ?? k.depKey, viaHora: cand ? horaTxt(cand.v) : null, dKm: cand?.d ?? km(dep, punto) ?? 0, viaTxt,
+  };
 }
 
 export type ViajeNuevo = Omit<Viaje, "id" | "fecha" | "estado" | "hechoMin" | "hechoPor" | "noPudoMotivo" | "anuladoMotivo" | "foto" | "creadoMin" | "version">;
@@ -1449,8 +1548,14 @@ export function planPonerPedido(dia: DiaHoja, ped: Pedido, veh: string, ahora: M
   const ts = calcVeh(dia, veh);
   let orden: number;
   let prev: ViajeCalc | null;
+  // Hoy, un orden pedido antes de la parada en curso no vale (el servidor lo corrige): va el automático.
+  const fijo = ts[ultimoFijo(dia, ts, ahora)];
+  const ordenPedido = o.orden != null && !(fijo && o.orden <= fijo.orden) ? o.orden : null;
+  // Sin hora ni lugar pedido: el hueco de menor desvío (F4), si el destino y los vecinos tienen coordenadas.
+  const hueco = !ped.horaFija && ordenPedido == null && !ped.noAntesDe && !ped.horaLimite ? mejorHueco(dia, veh, lugar(dia, ped.hacia), ahora) : null;
   if (ped.horaFija) { orden = toMin(ped.horaFija)!; prev = ts.filter((v) => v.orden < orden).pop() ?? null; }
-  else if (o.orden != null) { orden = o.orden; prev = ts.filter((v) => v.orden < orden).pop() ?? null; }
+  else if (ordenPedido != null) { orden = ordenPedido; prev = ts.filter((v) => v.orden < orden).pop() ?? null; }
+  else if (hueco) { orden = hueco.orden; prev = hueco.prevId ? ts.find((v) => v.id === hueco.prevId) ?? null : null; }
   else { const pa = posicionAuto(dia, veh, ped, ahora); orden = pa.orden; prev = pa.prevId ? ts.find((v) => v.id === pa.prevId) ?? null : null; }
   const hoy = esHoy(ahora);
   const nuevo: ViajeNuevo = {

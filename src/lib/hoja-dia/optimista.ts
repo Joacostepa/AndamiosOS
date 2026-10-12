@@ -304,7 +304,7 @@ export function aplicarOptimistaViaje(dia: DiaHoja, a: AccionViaje, o: Opciones 
     if (a.accion === "hora") {
       n = a.hora ? { ...n, hora: a.hora, orden: toMin(a.hora) ?? n.orden } : { ...n, hora: null, noAntesDe: a.noAntesDe !== undefined ? a.noAntesDe : v.hora ? null : n.noAntesDe };
     } else {
-      if (a.hacia) n = { ...n, hacia: a.hacia, haciaLat: null, haciaLng: null };
+      if (a.hacia) n = { ...n, hacia: a.hacia };
       if (a.queHace !== undefined) n = { ...n, accion: a.queHace };
       if (a.carga !== undefined) n = { ...n, carga: a.carga };
       if (a.horaAprox !== undefined) n = { ...n, horaAprox: a.horaAprox };

@@ -7,10 +7,11 @@
 // cuadrilla (lleva, busca, mueve) sigue siendo de la hoja: en el recorrido se ven y se
 // reordenan, pero su destino lo pone el tablero y su hora la tarjeta (`editable`).
 
-import type { AccionParada, DiaHoja, Minutos, Punto, TipoViaje, Viaje } from "./tipos.ts";
+import type { AccionParada, DiaHoja, Minutos, Pedido, Punto, TipoViaje, Viaje } from "./tipos.ts";
 import {
-  accionDe, accionTxt, calcVeh, cNombre, choferDe, cuadrillaDeViaje, horaFija, horaTxt, hm5, lugar, lugarDeKey, nombreDe, normHora, normalizar,
-  type ViajeCalc,
+  accionDe, accionTxt, calcVeh, camionesQueSirven, cNombre, choferDe, cuadrillaDeViaje, desvioMin, distanciaTxt, horaFija, horaTxt, hm5, km, lugar,
+  lugarDeKey, mejorHueco, nombreDe, normHora, normalizar,
+  type Hueco, type ViajeCalc,
 } from "./estado.ts";
 
 /** Lo que el editor puede cambiar de una parada. */
@@ -174,4 +175,64 @@ export function accionPorDefecto(dia: DiaHoja, hacia: Punto, haySalida: boolean)
   if (L.tipo === "proveedor") return "compra";
   if (L.tipo === "taller" || L.tipo === "vtv") return "espera";
   return "deja_material";
+}
+
+// ─── ¿Quién pasa cerca? (F4; maqueta: nearList / nearMenu) ───────────────────
+
+export type PasaCerca = {
+  veh: string;
+  /** Quién lo tomaría (el chofer a esa altura del día). */
+  ch: string;
+  /** Sin recorrido: sale del depósito sólo para esto (van al final). */
+  libre: boolean;
+  /** El hueco de menor desvío (null si es libre o no se pudo medir). */
+  hueco: Hueco | null;
+  extraKm: number | null;
+  min: number | null;
+  /** "Kiska · pasa por Juramento a las ~10:45 · a 6 cuadras", "Gómez · libre · sale del depósito". */
+  linea: string;
+  paradas: number;
+};
+
+/**
+ * Los camiones que pueden llevar un pedido, del que menos se desvía al que más; los libres
+ * (sin recorrido) al final y los que no se pueden medir (sin coordenadas) después. Los que no
+ * sirven (sin chofer, todo el día con una cuadrilla, no es hidrogrúa, en el taller) van en
+ * `no`, con el porqué, como en "Cerca y libre". Ayuda a decidir, no decide.
+ */
+export function quienPasaCerca(dia: DiaHoja, ped: Pick<Pedido, "hacia" | "necesita">, ahora: Minutos): { si: PasaCerca[]; no: { veh: string; t: string }[]; donde: string } {
+  const q = camionesQueSirven(dia, ped, ahora);
+  const P = lugar(dia, ped.hacia);
+  const dep = dia.lugares.find((l) => l.tipo === "deposito" && l.activo) ?? null;
+  const si = q.si.map((x): PasaCerca => {
+    const paradas = calcVeh(dia, x.veh).length;
+    const nom = nombreDe(dia, x.ch);
+    if (!paradas) {
+      const k = km(dep, P);
+      return { veh: x.veh, ch: x.ch, libre: true, hueco: null, extraKm: k != null ? 2 * k : null, min: k != null ? desvioMin(2 * k) : null, linea: `${nom} · libre · sale del depósito`, paradas };
+    }
+    const h = mejorHueco(dia, x.veh, P, ahora);
+    if (!h) return { veh: x.veh, ch: x.ch, libre: false, hueco: null, extraKm: null, min: null, linea: `${nom} · ${paradas} ${paradas === 1 ? "parada" : "paradas"} · sin ubicar en el mapa`, paradas };
+    const via = lugarDeKey(dia, h.viaKey);
+    const pasa = via.tipo === "deposito" ? "sale del depósito" : `pasa por ${via.n}${h.viaHora ? ` a las ${h.viaHora}` : ""}`;
+    return { veh: x.veh, ch: x.ch, libre: false, hueco: h, extraKm: h.extraKm, min: h.min, linea: `${nom} · ${pasa} · a ${distanciaTxt(h.dKm)}${paradas >= 4 ? ` · ${paradas} paradas` : ""}`, paradas };
+  });
+  const rango = (x: PasaCerca) => (x.min == null ? 2 : x.libre ? 1 : 0);
+  si.sort((a, b) => rango(a) - rango(b) || (a.extraKm ?? 0) - (b.extraKm ?? 0));
+  return { si, no: q.no.map((x) => ({ veh: x.veh, t: x.t })), donde: P.n };
+}
+
+/**
+ * Los pedidos del día sin camión que se pueden sumar al recorrido de un camión, del que menos
+ * lo desvía al que más (el bloque "Pedidos sin camión" del Recorrido). Sólo los que tienen
+ * dónde medirse; sin hora fija (esos van a su hora).
+ */
+export function pedidosParaSumar(dia: DiaHoja, veh: string, ahora: Minutos): { p: Pedido; hueco: Hueco }[] {
+  return dia.pedidos
+    .filter((p) => p.fecha === dia.fecha && (p.estado === "sin_camion" || p.estado === "esperando") && !p.viajeId && !p.horaFija)
+    .flatMap((p) => {
+      const h = mejorHueco(dia, veh, lugar(dia, p.hacia), ahora);
+      return h ? [{ p, hueco: h }] : [];
+    })
+    .sort((a, b) => a.hueco.extraKm - b.hueco.extraKm);
 }

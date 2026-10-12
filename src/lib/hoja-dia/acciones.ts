@@ -49,7 +49,11 @@ export const puntoSchema = z.object({
   otId: z.number().int().positive().nullable().default(null),
   lugarId: id.nullable().default(null),
   texto: z.string().trim().max(200).nullable().default(null),
-}).refine((p) => p.otId != null || p.lugarId || p.texto, "Falta el destino");
+  // "Otra dirección" geocodificada (F4): las dos o ninguna, y en la Argentina.
+  lat: z.number().min(-56).max(-21).nullable().optional(),
+  lng: z.number().min(-74).max(-53).nullable().optional(),
+}).refine((p) => p.otId != null || p.lugarId || p.texto, "Falta el destino")
+  .refine((p) => (p.lat == null) === (p.lng == null), "Faltan las coordenadas");
 const tipoViaje = z.enum(["lleva", "busca", "mueve", "lleva_material", "trae_material", "compra", "entre_depositos", "taller", "otro"]);
 const tipoPedido = z.enum(["lleva_material", "trae_material", "compra", "entre_depositos", "taller", "otro"]);
 const accionParada = z.enum(["lleva_gente", "deja_material", "carga", "descarga", "busca_gente", "compra", "espera"]);
@@ -943,7 +947,7 @@ async function accionViajeCon(g: Grabador, db: DB, userId: string, a: AccionViaj
       if (deC && (a.hacia || a.queHace !== undefined)) throw new Error("Esa parada es de la cuadrilla: el lugar lo pone el tablero.");
       const valores: Fila = {};
       const cambios: string[] = [];
-      if (a.hacia) { Object.assign(valores, columnasPunto("hacia", a.hacia as Punto), { hacia_lat: null, hacia_lng: null }); cambios.push(`va a ${lugar(dia, a.hacia as Punto).n}`); }
+      if (a.hacia) { Object.assign(valores, columnasPunto("hacia", a.hacia as Punto)); cambios.push(`va a ${lugar(dia, a.hacia as Punto).n}`); }
       if (a.queHace !== undefined) { valores.accion = a.queHace; if (a.queHace) cambios.push(lowFirst(accionTxt(a.queHace))); }
       if (a.carga !== undefined) { valores.carga = a.carga; cambios.push(a.carga ? `«${a.carga}»` : "sin nota"); }
       if (a.hora !== undefined) {

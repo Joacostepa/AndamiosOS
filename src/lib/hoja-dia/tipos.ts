@@ -335,8 +335,11 @@ export type Hoja = {
   aCargoContratistaId: string | null;
 };
 
-/** Destino u origen de un viaje o pedido: una obra, un lugar frecuente o texto. */
-export type Punto = { otId: number | null; lugarId: string | null; texto: string | null };
+/**
+ * Destino u origen de un viaje o pedido: una obra, un lugar frecuente o texto. Con texto
+ * ("otra dirección"), `lat/lng` geocodificadas (F4; siempre las dos o ninguna).
+ */
+export type Punto = { otId: number | null; lugarId: string | null; texto: string | null; lat?: number | null; lng?: number | null };
 
 export type Viaje = {
   id: string;
@@ -382,13 +385,11 @@ export type Viaje = {
   /**
    * Rediseño F3 (el recorrido). Opcionales: los días guardados en el celular y los armados a
    * mano (tests) no los traen. `accion` null/ausente = la del tipo; `horaAprox` = la hora es
-   * una pista (no avisa choques; el candado la vuelve fija); coordenadas de "otra dirección";
-   * `salioMin` = tocó "Salí" (F6).
+   * una pista (no avisa choques; el candado la vuelve fija); `salioMin` = tocó "Salí" (F6).
+   * Las coordenadas de "otra dirección" van en `hacia.lat/lng`.
    */
   accion?: AccionParada | null;
   horaAprox?: boolean;
-  haciaLat?: number | null;
-  haciaLng?: number | null;
   salioMin?: Minutos | null;
 };
 

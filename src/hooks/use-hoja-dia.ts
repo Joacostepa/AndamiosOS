@@ -5,7 +5,8 @@
 // en el navegador con el `DiaHoja` que devuelve el GET y la hora (`useAhora`).
 //
 // LOS GESTOS DE LAS TARJETAS SON OPTIMISTAS (10/10, "tarda mucho"): agregar, sacar, pasar,
-// a cargo, contratistas, chofer, modo, vehículo, horas, encuentro, notas e instrucciones se
+// a cargo, contratistas, chofer, modo, vehículo, horas, encuentro, notas e instrucciones (y,
+// desde el Pizarrón, el chofer del camión y las ausencias) se
 // ven AL INSTANTE (optimista.ts, con las mismas reglas de estado.ts) y el servidor confirma
 // con el toast de siempre ("Ramírez pasó a la 3" + Deshacer). Si el servidor dice que no,
 // la tarjeta vuelve a como estaba y sale el error. Después de confirmar, el día se vuelve a
@@ -26,7 +27,7 @@ import type { ResumenMesContratistas } from "@/lib/hoja-dia/contratistas-servido
 import type { Preparado, EstadoTelegram } from "@/lib/hoja-dia/envios";
 import type { PrecargaCierre } from "@/lib/hoja-dia/servicio";
 import { minutosDesde } from "@/lib/hoja-dia/estado";
-import { aplicarOptimista } from "@/lib/hoja-dia/optimista";
+import { aplicarOptimista, aplicarOptimistaAusencia, aplicarOptimistaViaje } from "@/lib/hoja-dia/optimista";
 import { avisarCambioHoja, conectarAvisosHoja, type AvisoHoja } from "@/lib/hoja-dia/avisos";
 import { conectarAvisos } from "@/lib/tablero/avisos";
 import { useUser } from "@/hooks/use-user";
@@ -171,9 +172,11 @@ export const useAccionHoja = (fecha: string | null) => useGesto<AccionHoja>("/ap
  * `{ aviso: false }`: el gesto no muestra su toast (lo arma la pantalla, p. ej. con "Avisar a
  * Gómez" al lado de "Deshacer"). Por defecto, el toast con Deshacer de siempre.
  */
-export const useAccionViaje = (fecha: string | null, opts?: { aviso?: boolean }) => useGesto<AccionViaje>("/api/hoja-dia/viajes", fecha, opts);
+export const useAccionViaje = (fecha: string | null, opts?: { aviso?: boolean }) =>
+  useGesto<AccionViaje>("/api/hoja-dia/viajes", fecha, { ...opts, optimista: (dia, a) => aplicarOptimistaViaje(dia, a) });
 export const useAccionPedido = (fecha: string | null, opts?: { aviso?: boolean }) => useGesto<AccionPedido>("/api/hoja-dia/pedidos", fecha, opts);
-export const useAccionAusencia = (fecha: string | null) => useGesto<AccionAusencia & { fechaVista?: string }>("/api/hoja-dia/ausencias", fecha);
+export const useAccionAusencia = (fecha: string | null) =>
+  useGesto<AccionAusencia & { fechaVista?: string }>("/api/hoja-dia/ausencias", fecha, { optimista: (dia, a) => aplicarOptimistaAusencia(dia, a) });
 export const usePrecarga = (fecha: string | null) => useGesto<{ fecha: string; modo: "hoy" | "plantel" | "vacio" }>("/api/hoja-dia/precarga", fecha, { aviso: false });
 export const useAccionPersona = (fecha: string | null) =>
   useGesto<{ accion: "celular"; personaId: string; telefono: string } | { accion: "puede_estar_a_cargo" | "puede_manejar"; personaId: string; valor: boolean }>("/api/hoja-dia/personas", fecha);

@@ -14,9 +14,9 @@
 // Las filas nuevas llevan un id provisorio ("tmp-…"): duran hasta que llega el día del
 // servidor (uno o dos segundos). No hay que mandarlos al servidor (esTemporal).
 
-import type { AccionHoja } from "./acciones.ts";
-import type { DiaHoja, Hoja } from "./tipos.ts";
-import { contratista, minutosDesde, normHora } from "./estado.ts";
+import type { AccionAusencia, AccionHoja, AccionViaje } from "./acciones.ts";
+import type { Ausencia, DiaHoja, Hoja } from "./tipos.ts";
+import { altaDeAusencia, contratista, minutosDesde, normHora } from "./estado.ts";
 import { planVehiculos, type CambioVehiculos } from "./vehiculos.ts";
 
 let n = 0;
@@ -263,4 +263,68 @@ function conPlan(d: DiaHoja, c: number, cambio: CambioVehiculos, ahora: number):
     ...plan.viajes.crear,
   ];
   return d;
+}
+
+
+// ─── Camiones y ausencias (los gestos del Pizarrón que no son de una tarjeta) ───
+
+/**
+ * Los gestos de camiones que se adivinan: por ahora sólo "el chofer del camión"
+ * (`chofer_del_camion`, lo que hace el Pizarrón al soltar a alguien en un camión libre o
+ * sacarlo). Lo mismo que acciones.ts: el chofer del día (hd_camiones_dia), los viajes
+ * planeados del camión que tenían OTRO chofer elegido y los renglones de las hojas con ese
+ * camión. Los viajes sin chofer guardado no se tocan: lo siguen solos (choferDe). El resto
+ * de los gestos de viajes espera al servidor (TODO: optimista-viajes.ts en F3).
+ */
+export function aplicarOptimistaViaje(dia: DiaHoja, a: AccionViaje, o: Opciones = {}): DiaHoja | null {
+  if (a.accion !== "chofer_del_camion" || a.fecha !== dia.fecha) return null;
+  const ahora = o.ahora ?? minutosDesde(dia.fecha, Date.now());
+  const ch = a.choferId;
+  const hay = dia.camiones.some((x) => x.vehiculoId === a.vehiculoId);
+  const camiones = hay
+    ? dia.camiones.map((x) => (x.vehiculoId === a.vehiculoId ? { ...x, choferId: ch } : x))
+    : [...dia.camiones, { vehiculoId: a.vehiculoId, choferId: ch, nota: null }];
+  const viajes = dia.viajes.map((v) => (v.vehiculoId === a.vehiculoId && v.estado === "planeado" && v.choferId && v.choferId !== ch ? { ...v, choferId: ch } : v));
+  const hojas = dia.hojas.map((h) => (h.vehiculos.some((f) => f.vehiculoId === a.vehiculoId && f.choferId !== ch)
+    ? { ...h, vehiculos: h.vehiculos.map((f) => (f.vehiculoId === a.vehiculoId && f.choferId !== ch ? { ...f, choferId: ch, tocadoMin: ahora } : f)) }
+    : h));
+  return { ...dia, camiones, viajes, hojas };
+}
+
+/**
+ * Las ausencias al instante (el Pizarrón: soltar en "No vienen" y sacar de ahí). Como
+ * acciones.ts: crear una de todo el día saca a la persona de su hoja si el día que se mira
+ * está en el rango; "Ya tiene el alta" la cierra el día anterior (o la anula si empezaba ese
+ * día); anular la borra. Editar espera al servidor.
+ */
+export function aplicarOptimistaAusencia(dia: DiaHoja, a: AccionAusencia): DiaHoja | null {
+  switch (a.accion) {
+    case "crear": {
+      const nueva: Ausencia = {
+        id: tmp("aus"), personaId: a.personaId, desde: a.desde, hasta: a.hasta, tipo: a.tipo, horaDesde: a.horaDesde ?? null,
+        horaHasta: a.horaHasta ?? null, nota: a.nota ?? null, origen: a.origen ?? "planificador",
+      };
+      const parcial = !!(a.horaDesde || a.horaHasta);
+      const cubre = a.desde <= dia.fecha && (!a.hasta || a.hasta >= dia.fecha);
+      const hojas = parcial || !cubre ? dia.hojas : dia.hojas.map((h) => (h.integrantes.some((i) => i.personaId === a.personaId)
+        ? { ...h, integrantes: h.integrantes.filter((i) => i.personaId !== a.personaId) }
+        : h));
+      return { ...dia, ausencias: [...dia.ausencias, nueva], hojas };
+    }
+    case "alta": {
+      const vieja = a.ausenciaId
+        ? dia.ausencias.find((x) => x.id === a.ausenciaId)
+        : dia.ausencias.find((x) => x.id == null && x.personaId === a.personaId && x.desde === a.desde);
+      if (!vieja) return null;
+      const al = altaDeAusencia(vieja, a.fecha);
+      const resto = dia.ausencias.filter((x) => x !== vieja);
+      if ("anular" in al) return { ...dia, ausencias: resto };
+      return { ...dia, ausencias: [...resto, { ...vieja, id: vieja.id ?? tmp("aus"), hasta: al.hasta }] };
+    }
+    case "anular":
+      return dia.ausencias.some((x) => x.id === a.ausenciaId) ? { ...dia, ausencias: dia.ausencias.filter((x) => x.id !== a.ausenciaId) } : null;
+    case "editar":
+      return null;
+  }
+  return null;
 }

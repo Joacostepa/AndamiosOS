@@ -4,10 +4,11 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { pizarron, sinAsignarPizarron, comoLlega, fraseCorta, colorDeCamion, cuadrillasDelPizarron, porQueNoAcepta } from "./pizarron.ts";
+import { estadoMandar, pizarron, sinAsignarPizarron, comoLlega, fraseCorta, colorDeCamion, cuadrillasDelPizarron, porQueNoAcepta } from "./pizarron.ts";
 import { problemas, vanDe } from "./estado.ts";
 import type { DiaHoja } from "./tipos.ts";
-import { martesArmado, martesPrecargado, martesVacio, fila, OT, viaje } from "./escenario.test-fixture.ts";
+import { martesArmado, martesPrecargado, martesVacio, fila, OT, viaje, enviarATodos } from "./escenario.test-fixture.ts";
+import { destinatarios } from "./estado.ts";
 import { modoPizarron } from "./modo-pizarron.ts";
 import { moduloDeRuta } from "../auth/acceso.ts";
 
@@ -174,4 +175,15 @@ test("parámetro pizarron: oculto por defecto; la ruta es del módulo hoja-dia",
   assert.equal(moduloDeRuta("/planificacion/hoja/pizarron")?.id, "hoja-dia");
   assert.equal(moduloDeRuta("/planificacion/hoja/cuadrillas")?.id, "hoja-dia");
   assert.equal(moduloDeRuta("/planificacion")?.id, "planificacion");
+});
+
+test("Mandar: sin enviar, enviado y con cambios después de enviar", () => {
+  const d = martesArmado();
+  assert.deepEqual(estadoMandar(d), { texto: "Mandar a los capataces y choferes", hecho: false });
+  const pids = destinatarios(d).map((x) => x.pid).filter((x): x is string => !!x);
+  const env = enviarATodos(d, -320, pids);
+  assert.equal(estadoMandar(env).hecho, true);
+  assert.match(estadoMandar(env).texto, /^Mandado 18:/);
+  const cambio: DiaHoja = { ...env, hojas: env.hojas.map((h) => (h.cuadrillaOdooId === 4 ? { ...h, integrantes: h.integrantes.filter((i) => i.personaId !== "paz") } : h)) };
+  assert.deepEqual(estadoMandar(cambio), { texto: "Mandar cambios", hecho: false });
 });

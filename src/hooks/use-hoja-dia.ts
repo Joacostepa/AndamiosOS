@@ -167,7 +167,8 @@ function useGesto<B>(url: string, fecha: string | null, opts: { aviso?: boolean;
   });
 }
 
-export const useAccionHoja = (fecha: string | null) => useGesto<AccionHoja>("/api/hoja-dia", fecha, { optimista: (dia, a) => aplicarOptimista(dia, a) });
+export const useAccionHoja = (fecha: string | null, opts?: { aviso?: boolean }) =>
+  useGesto<AccionHoja>("/api/hoja-dia", fecha, { ...opts, optimista: (dia, a) => aplicarOptimista(dia, a) });
 /**
  * `{ aviso: false }`: el gesto no muestra su toast (lo arma la pantalla, p. ej. con "Avisar a
  * Gómez" al lado de "Deshacer"). Por defecto, el toast con Deshacer de siempre.
@@ -175,8 +176,8 @@ export const useAccionHoja = (fecha: string | null) => useGesto<AccionHoja>("/ap
 export const useAccionViaje = (fecha: string | null, opts?: { aviso?: boolean }) =>
   useGesto<AccionViaje>("/api/hoja-dia/viajes", fecha, { ...opts, optimista: (dia, a) => aplicarOptimistaViaje(dia, a) });
 export const useAccionPedido = (fecha: string | null, opts?: { aviso?: boolean }) => useGesto<AccionPedido>("/api/hoja-dia/pedidos", fecha, opts);
-export const useAccionAusencia = (fecha: string | null) =>
-  useGesto<AccionAusencia & { fechaVista?: string }>("/api/hoja-dia/ausencias", fecha, { optimista: (dia, a) => aplicarOptimistaAusencia(dia, a) });
+export const useAccionAusencia = (fecha: string | null, opts?: { aviso?: boolean }) =>
+  useGesto<AccionAusencia & { fechaVista?: string }>("/api/hoja-dia/ausencias", fecha, { ...opts, optimista: (dia, a) => aplicarOptimistaAusencia(dia, a) });
 export const usePrecarga = (fecha: string | null) => useGesto<{ fecha: string; modo: "hoy" | "plantel" | "vacio" }>("/api/hoja-dia/precarga", fecha, { aviso: false });
 export const useAccionPersona = (fecha: string | null) =>
   useGesto<{ accion: "celular"; personaId: string; telefono: string } | { accion: "puede_estar_a_cargo" | "puede_manejar"; personaId: string; valor: boolean }>("/api/hoja-dia/personas", fecha);

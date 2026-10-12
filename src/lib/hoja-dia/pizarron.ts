@@ -16,7 +16,7 @@ import type { Ausencia, DiaHoja, Minutos, ModoVehiculo, ObraDia, TipoAusencia, V
 import { TIPO_AUSENCIA_TXT } from "./tipos.ts";
 import {
   aCargoDe, ausenciaDe, calcVeh, cap, choferDe, choferDelCamion, choferesDelDia, choferesTodoDe, cNombre, contratistasDe, cuadrilla,
-  esPasado, genteDe, hm5, hojaDe, hojaDeCuadrilla, marcaVehiculo, nombreDe, nombreVehiculo, obrasCon, obrasDe, persona, prevista,
+  esPasado, genteDe, hm, hm5, pendientesEnvio, hojaDe, hojaDeCuadrilla, marcaVehiculo, nombreDe, nombreVehiculo, obrasCon, obrasDe, persona, prevista,
   problemas, puedeManejar, sinAsignar, suspendida, todoDe, vanDe, vehiculo, vehiculosDe, vehTxt, viajesVigentes, type Boton, type Problema,
 } from "./estado.ts";
 import { horasDeFila, horasLlevaTrae } from "./vista-cuadrillas.ts";
@@ -399,3 +399,17 @@ export function pizarron(dia: DiaHoja, ahora: Minutos): VistaPizarron {
 
 /** "4 de 5" de la columna y si le falta gente. */
 export const cuentaColumna = (x: Pick<Columna, "van" | "prevista">) => ({ texto: `${x.van} de ${x.prevista}`, corto: x.van < x.prevista });
+
+/**
+ * El botón "Mandar" de la barra: "Mandar a los capataces y choferes" (nada enviado), "Mandar
+ * cambios" (algo cambió después de mandar o falta alguien) o "Mandado 18:42" (todo al día).
+ * Las cuentas son las de la lista de envío (pendientesEnvio, estado.ts).
+ */
+export function estadoMandar(dia: DiaHoja): { texto: string; hecho: boolean } {
+  const vigentes = dia.envios.filter((e) => !e.anulado && e.enviadaMin != null);
+  if (!vigentes.length) return { texto: "Mandar a los capataces y choferes", hecho: false };
+  const p = pendientesEnvio(dia);
+  if (p.sinEnv || p.cambios) return { texto: "Mandar cambios", hecho: false };
+  const ultimo = Math.max(...vigentes.map((e) => Math.max(e.enviadaMin!, e.cambioMin ?? -1e9, e.reenviadaMin ?? -1e9)));
+  return { texto: `Mandado ${hm(ultimo)}`, hecho: true };
+}

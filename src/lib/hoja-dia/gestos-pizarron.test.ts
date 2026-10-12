@@ -8,7 +8,7 @@ import { aplicarOptimista, aplicarOptimistaAusencia, aplicarOptimistaViaje } fro
 import { ausenciaDe, choferDe, hojaDe, hojaDeCuadrilla, vanDe, vehiculosDe } from "./estado.ts";
 import { pizarron } from "./pizarron.ts";
 import type { DiaHoja } from "./tipos.ts";
-import { martesArmado, martesPrecargado, martesVacio, viaje, OT } from "./escenario.test-fixture.ts";
+import { martesPrecargado, martesVacio, viaje, OT } from "./escenario.test-fixture.ts";
 
 const F = "2026-10-13";
 const T = -330; // lunes 18:30

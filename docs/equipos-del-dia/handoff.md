@@ -22,7 +22,7 @@
 | El pizarrón ES la Hoja del día | `f72f1f3` | — (se sacó el parámetro `pizarron`) | `/planificacion/hoja` abre el pizarrón; `/pizarron` y `/cuadrillas` redirigen. Se borró la vista Cuadrillas; al pizarrón pasaron el ⋯ de la columna (Copiar como hoy, Ver como, **Cerrar jornada**, Instrucciones, Ver la obra, Historial), encuentro, "Jornada cerrada · Ver parte", ⋯ de la persona, menú del contratista, Ausencias y Camiones en la barra, resumen del mes, "Cambió el tablero". |
 | F2 Depósito | `9be5a3a` | `20261013000001_hoja_dia_deposito.sql` | Columna **D · Depósito** al final (hoja con `cuadrilla_odoo_id = 0`, `sector = 'deposito'`): gente, encargado, no viene, encuentro 7:00; el encargado recibe su hoja; la precarga lo copia; fuera del parte de Odoo, alertas y "hojas sin enviar". Tecla D. |
 | F3 Recorrido | `9ac73d4` | `20261014000001_hoja_dia_recorridos.sql` | Hoja lateral **Recorrido** desde el camión: paradas = viajes, con lugar, hora aproximada o fija (candado), qué hace, nota, quitar, reordenar arrastrando, "+ Parada", atajos. Las horas aproximadas no avisan choques ni cuentan como cambio para el chofer. |
-| F4 Pedidos | rama `feat/hoja-dia-pedidos` (**sin merge**) | — (usa las columnas de F3) | Panel de pedidos editable (sugeridos, cola, avisos, "+ Pedido", ⋯), arrastrar un pedido a un camión → el servidor lo pone en el **hueco de menor desvío** (`mejorHueco`), **¿Quién pasa cerca?** por desvío, "otra dirección" **geocodificada** (`GET /api/hoja-dia/geocodificar`) con pin "P" en el mini-mapa (o tocando el mapa), "Pedidos sin camión · +X min" en el Recorrido, y los botones de avisos que iban a Camiones (elegir chofer de un viaje, nadie lo lleva, No se hizo, ver camión) resueltos en el pizarrón. |
+| F4 Pedidos | rama `feat/hoja-dia-pedidos` (en `main` el 12/10) | — (usa las columnas de F3) | Panel de pedidos editable (sugeridos, cola, avisos, "+ Pedido", ⋯), arrastrar un pedido a un camión → el servidor lo pone en el **hueco de menor desvío** (`mejorHueco`), **¿Quién pasa cerca?** por desvío, "otra dirección" **geocodificada** (`GET /api/hoja-dia/geocodificar`) con pin "P" en el mini-mapa (o tocando el mapa), "Pedidos sin camión · +X min" en el Recorrido, y los botones de avisos que iban a Camiones (elegir chofer de un viaje, nadie lo lleva, No se hizo, ver camión) resueltos en el pizarrón. |
 
 Detalle técnico de cada fase: `implementacion.md` §3.1 y las secciones "Historia · …" de abajo.
 
@@ -35,6 +35,7 @@ Detalle técnico de cada fase: `implementacion.md` §3.1 y las secciones "Histor
 ### 3. Lo que quedó pendiente
 
 **Del lado del dueño (no es código)**
+- [ ] **Probar F4 con datos reales**: arrastrar un pedido a un camión (que diga "parada N … (+X min)"), "¿Quién pasa cerca?", "+ Pedido" a una dirección escrita ("ubicada en el mapa" y el pin "P"), y un aviso de viaje ("Elegir chofer", "No se hizo") sin ir a Camiones. Recargar y ver que quede igual.
 - [ ] **Probar con datos reales** lo nuevo (nada se probó contra la base desde acá, sólo con el arnés): armar una cuadrilla en el pizarrón, mover gente, ★ a cargo, encuentro, recargar y ver que quede igual; **Cerrar jornada** a la tarde; la columna **D** (arrastrar, encargado, que el encargado aparezca en Mandar); el **Recorrido** (sumar una parada, cambiar qué hace y la hora, reordenar, recargar).
 - [ ] **Confirmar las tres decisiones por defecto de F2** (arriba).
 - [ ] **Telegram**: crear el bot (@BotFather), cargar `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET` en Vercel (redeploy) y correr `node --env-file=.env.local scripts/telegram-webhook.mjs https://andamios-os.vercel.app`; después vincular capataces, choferes y el encargado del depósito. Mientras tanto se manda a mano (copiar / WhatsApp).
@@ -46,17 +47,17 @@ Detalle técnico de cada fase: `implementacion.md` §3.1 y las secciones "Histor
 - [ ] **Contratistas**: darlos de alta (Contratistas › + Contratista) con referente, celular y valor por jornada.
 
 **Del rediseño (código, en este orden)**
-- [x] **F4 · Pedidos en el pizarrón** (12/10, rama `feat/hoja-dia-pedidos`, sin merge ni migración; 669 tests, 16 e2e, tsc, eslint, build). Detalle en `implementacion.md` §3.1 "Pedidos (F4)". **Falta**: merge a `main` y probar con datos reales (arrastrar un pedido, "¿Quién pasa cerca?", "+ Pedido" a una dirección escrita: que diga "ubicada en el mapa" —usa la clave de Places de Odoo, la misma del geocodificador de obras—). Ojo: el hueco de menor desvío también cambia dónde cae un pedido soltado en Camiones sin posición.
+- [x] **F4 · Pedidos en el pizarrón** (12/10, rama `feat/hoja-dia-pedidos`, **en producción**: push a `main` el 12/10 a la noche, sin migración; 669 tests, 16 e2e, tsc, eslint, build). Detalle en `implementacion.md` §3.1 "Pedidos (F4)". **Falta**: probar con datos reales (arrastrar un pedido, "¿Quién pasa cerca?", "+ Pedido" a una dirección escrita: que diga "ubicada en el mapa" —usa la clave de Places de Odoo, la misma del geocodificador de obras—). Ojo: el hueco de menor desvío también cambia dónde cae un pedido soltado en Camiones sin posición.
 - [ ] **F5 · Repaso de la mañana**: recorrer tarjeta por tarjeta, corregir en vivo, "Ya confirmó (por teléfono)" (`hd_links.recibida_canal` ya existe, sin usar), mandar sólo a los afectados.
 - [ ] **F6 · Obras en vivo 3D** + botón **"Salí"** del chofer (`hd_viajes.salio_at` ya existe, sin usar).
 - [ ] **F8 · Refuerzos "desde una hora"** (`hd_refuerzos`): "Refuerza la 3 desde las 11".
-- [ ] **F7 · Retiro de lo viejo**: Camiones y `camiones.ts` cuando F4 cubra todo; docs.
+- [ ] **F7 · Retiro de lo viejo**: Camiones y `camiones.ts` (se puede ya: F4 cubre pedidos, viajes y avisos; hoy al pizarrón sólo lo une la pestaña "Camiones" de la barra); docs.
 
 **Conocido del pizarrón (no hecho)**
 - Un gesto de dos acciones (pasar un camión de una cuadrilla a otra = quitar + sumar) son dos POST; si uno falla, el otro queda.
 - Desde "Camiones libres" el camión entra "Todo el día" (se cambia en la ficha o en el Recorrido).
 - Crear una parada y mover un viaje a otro camión esperan al servidor (no son optimistas).
-- La "otra dirección" de una parada se guarda como texto: sin coordenadas no tiene tiempo de Google ni pin (F4).
+- La "otra dirección" que Google no encuentra queda como texto (sin tiempo de Google ni desvío) hasta que se la ubica tocando el mapa (sólo pedidos; una parada del Recorrido no tiene "tocar el mapa").
 - "+ Parada" pone la parada al final; para otro lugar, arrastrarla.
 - En el Recorrido, los menús de los lleva/busca muestran la hora con candado (son fijas, como siempre).
 - El "día anterior" de la precarga es el último con hojas de cuadrillas (un día con sólo el depósito no cuenta).

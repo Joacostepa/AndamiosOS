@@ -1,0 +1,693 @@
+<title>Ciudad Armada</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Semi+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>/*MLCSS*/</style>
+<style>
+/* Layout: mapa real a todo el ancho arriba (paneles de vidrio oscuro fijos), propuesta en columna de lectura abajo. */
+:root{
+  --bg:#E6EBEF; --surface:#FBFCFD; --sunk:#DCE3E8; --line:#C7D0D7;
+  --ink:#111A22; --muted:#52606B; --faint:#7C8892;
+  --accent:#D4470F; --accent-soft:#FBE2D4;
+  --ok:#1F9D6B; --warn:#B07C08; --bad:#C63A4C;
+  --font-d:"Barlow Semi Condensed","Arial Narrow",Arial,sans-serif;
+  --font-b:"Barlow","Segoe UI",Roboto,Arial,sans-serif;
+  --font-m:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  --n-ink:#E4EAEE; --n-muted:#9AA8B3; --n-faint:#6F7D88; --n-glass:rgba(14,20,26,.88); --n-line:rgba(154,168,179,.22);
+  --n-accent:#FF7536;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0B1116; --surface:#141C22; --sunk:#1C262E; --line:#2D3A44;
+  --ink:#E4EAEE; --muted:#9AA8B3; --faint:#74828D;
+  --accent:#FF7536; --accent-soft:#3A2015;
+  --ok:#5FC98A; --warn:#F2BA48; --bad:#FF7A6E;
+  color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --bg:#0B1116; --surface:#141C22; --sunk:#1C262E; --line:#2D3A44;
+  --ink:#E4EAEE; --muted:#9AA8B3; --faint:#74828D;
+  --accent:#FF7536; --accent-soft:#3A2015;
+  --ok:#5FC98A; --warn:#F2BA48; --bad:#FF7A6E;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font:16px/1.55 var(--font-b);-webkit-font-smoothing:antialiased;padding-inline:16px;padding-block:0 64px}
+button,input{font:inherit;color:inherit}
+.mono{font-family:var(--font-m)}
+.cap{font:600 11px/1.2 var(--font-d);letter-spacing:.09em;text-transform:uppercase}
+
+.head{max-width:1360px;margin:0 auto;padding-block:28px 18px;display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px 32px}
+.head .cap{color:var(--accent)}
+.head h1{font:700 clamp(40px,6vw,68px)/.95 var(--font-d);letter-spacing:-.01em;margin:.15em 0 0;text-wrap:balance}
+.head p{margin:0;max-width:58ch;color:var(--muted)}
+
+/* ---------- mapa ---------- */
+.demo{position:relative;max-width:1360px;margin:0 auto;height:clamp(620px,86vh,920px);border-radius:14px;overflow:hidden;background:#0B1116;color:var(--n-ink);font-size:14px;line-height:1.35;box-shadow:0 2px 4px rgba(0,0,0,.2),0 20px 50px rgba(0,0,0,.28);isolation:isolate}
+#map{position:absolute;inset:0}
+.demo .maplibregl-ctrl-attrib{font-size:10px}
+.glass{background:var(--n-glass);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid var(--n-line);border-radius:10px}
+.hud{position:absolute;z-index:3}
+.demo .cap{color:var(--n-muted)}
+.loading{position:absolute;inset:0;display:grid;place-items:center;z-index:2;font:500 12px var(--font-m);color:var(--n-muted);pointer-events:none}
+
+.tl{top:14px;left:14px;padding:12px 14px;width:min(360px,calc(100% - 28px))}
+.brand{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.brand b{font:700 20px/1 var(--font-d)}
+.real{font:500 10px/1 var(--font-m);color:#5FC98A;border:1px solid rgba(95,201,138,.4);padding:3px 6px;border-radius:99px;white-space:nowrap}
+.kpis{display:grid;grid-template-columns:repeat(4,auto);justify-content:space-between;gap:4px 10px;margin-top:10px}
+.kpi .v{font:600 22px/1 var(--font-d);font-variant-numeric:tabular-nums;display:block}
+.kpi .l{font:500 10.5px/1.2 var(--font-b);color:var(--n-muted);display:block;max-width:12ch}
+.when{margin-top:8px;font:500 11px/1.3 var(--font-m);color:var(--n-faint)}
+
+.tc{top:14px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:8px;width:max-content;max-width:calc(100% - 820px)}
+.seg{display:flex;padding:3px;gap:2px}
+.seg button{border:0;background:transparent;padding:7px 14px;border-radius:7px;font:600 13px/1 var(--font-d);letter-spacing:.04em;text-transform:uppercase;color:var(--n-muted);cursor:pointer;white-space:nowrap}
+.seg button[aria-pressed="true"]{background:var(--n-accent);color:#1A0A02}
+.legend{display:flex;flex-wrap:wrap;justify-content:center;gap:5px}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--n-line);background:var(--n-glass);color:var(--n-ink);padding:4px 9px;border-radius:99px;font:500 12px/1.1 var(--font-b);cursor:pointer;white-space:nowrap}
+.chip i{width:9px;height:9px;border-radius:50%;flex:none}
+.chip .n{font-family:var(--font-m);font-size:11px;color:var(--n-muted)}
+.chip[aria-pressed="false"]{opacity:.38}
+.chip[aria-pressed="false"] i{background:transparent!important;box-shadow:inset 0 0 0 1.5px var(--n-faint)}
+:is(.seg button,.vbtn,.chip,.row,.act,.search input):focus-visible{outline:2px solid var(--n-accent);outline-offset:2px}
+
+.tr{top:14px;right:14px;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;max-width:420px}
+.vbtn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--n-line);background:var(--n-glass);color:var(--n-ink);padding:8px 11px;border-radius:9px;font:600 12.5px/1 var(--font-d);letter-spacing:.04em;text-transform:uppercase;cursor:pointer;white-space:nowrap}
+.vbtn:hover,.chip:hover{border-color:var(--n-muted)}
+.vbtn.on{border-color:var(--n-accent);color:var(--n-accent)}
+
+.side{left:14px;top:176px;bottom:14px;width:min(360px,calc(100% - 28px));display:flex;flex-direction:column;overflow:hidden}
+.demo.hist .side{bottom:96px}
+.search{padding:10px 10px 6px}
+.search input{width:100%;background:rgba(255,255,255,.06);border:1px solid var(--n-line);border-radius:8px;padding:8px 10px;color:var(--n-ink)}
+.search input::placeholder{color:var(--n-faint)}
+.scroll{overflow:auto;padding:0 8px 10px;flex:1;min-height:0}
+.grp{margin:10px 4px 6px;display:flex;justify-content:space-between;align-items:baseline}
+.grp span:last-child{font:500 11px var(--font-m);color:var(--n-faint)}
+.row{width:100%;text-align:left;border:1px solid transparent;background:transparent;border-radius:8px;padding:7px 9px;cursor:pointer;display:grid;grid-template-columns:8px minmax(0,1fr);gap:2px 9px}
+.row:hover,.row.sel{border-color:var(--n-line);background:rgba(255,255,255,.06)}
+.row.dec{background:rgba(255,255,255,.035);margin-bottom:3px}
+.row .dot{width:8px;height:8px;border-radius:50%;margin-top:6px;grid-row:span 3}
+.row .d{font:600 14.5px/1.2 var(--font-d);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .w{font-size:12.5px;color:var(--n-muted)}
+.row .vb{font:600 11px/1.2 var(--font-d);letter-spacing:.06em;text-transform:uppercase;color:var(--n-accent)}
+.tag{display:inline-block;font:500 10px/1 var(--font-m);padding:2px 5px;border-radius:4px;border:1px solid var(--n-line);color:var(--n-muted);margin-left:4px;vertical-align:1px}
+.tag.warn{color:#F2BA48;border-color:rgba(242,186,72,.4)}
+
+.ficha{right:14px;top:62px;width:min(380px,calc(100% - 28px));max-height:calc(100% - 80px);overflow:auto}
+.demo.hist .ficha{max-height:calc(100% - 170px)}
+.fb{padding:14px;display:flex;flex-direction:column;gap:12px}
+.fh{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.fb h2{margin:0;font:700 23px/1.05 var(--font-d)}
+.fb .sub{color:var(--n-muted);font-size:13px;margin-top:4px}
+.x{flex:none;width:30px;height:30px;border-radius:50%;border:1px solid var(--n-line);background:transparent;color:var(--n-ink);cursor:pointer;font-size:17px;line-height:1}
+.state{display:inline-flex;align-items:center;gap:6px;font:600 12px/1 var(--font-d);letter-spacing:.05em;text-transform:uppercase;padding:5px 9px;border-radius:99px;align-self:flex-start}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:9px 12px}
+.grid2 div{display:flex;flex-direction:column;gap:1px;min-width:0}
+.grid2 .l{font-size:11.5px;color:var(--n-muted)}
+.grid2 .v{font:600 16px/1.15 var(--font-d);font-variant-numeric:tabular-nums}
+.grid2 .v.warn{color:#F2BA48}
+.box{font-size:13px;line-height:1.45;background:rgba(255,255,255,.045);border-radius:8px;padding:9px 11px;white-space:pre-line;overflow-wrap:anywhere}
+.box .k{display:block;font:500 10.5px/1.4 var(--font-m);color:var(--n-muted);white-space:normal;margin-bottom:3px}
+.box.warn{background:rgba(242,186,72,.09)}
+.thumbs{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-top:6px}
+.thumbs span{aspect-ratio:1;border-radius:6px;background:repeating-linear-gradient(135deg,rgba(255,255,255,.07) 0 6px,rgba(255,255,255,.03) 6px 12px);display:grid;place-items:center;color:var(--n-muted);font:600 13px var(--font-d)}
+.thumbs svg{width:18px;height:18px;opacity:.6}
+.acts{display:flex;flex-wrap:wrap;gap:6px}
+.act{border:1px solid var(--n-line);background:transparent;color:var(--n-ink);border-radius:8px;padding:8px 11px;font:600 12.5px/1 var(--font-d);letter-spacing:.04em;text-transform:uppercase;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center}
+.act.pri{background:var(--n-accent);border-color:var(--n-accent);color:#1A0A02}
+
+.timeline{left:14px;right:14px;bottom:14px;padding:8px 12px 8px 8px;display:none;align-items:center;gap:12px}
+.demo.hist .timeline{display:flex}
+.play{flex:none;width:36px;height:36px;border-radius:50%;border:1px solid var(--n-line);background:transparent;color:var(--n-ink);cursor:pointer;display:grid;place-items:center}
+.play svg{width:14px;height:14px}
+.track{position:relative;flex:1;height:56px;min-width:0}
+.track svg{position:absolute;left:0;top:0;width:100%;height:30px}
+.track input{position:absolute;left:0;right:0;top:24px;width:100%;margin:0;accent-color:var(--n-accent);height:16px}
+.months{position:absolute;left:0;right:0;top:42px;display:flex;justify-content:space-between;font:500 9.5px var(--font-m);color:var(--n-faint);pointer-events:none}
+.tlab{flex:none;width:190px;text-align:right}
+.tlab b{display:block;font:600 16px/1.1 var(--font-d)}
+.tlab span{font-size:12px;color:var(--n-muted)}
+
+.tvcard{position:absolute;z-index:5;left:28px;bottom:40px;max-width:min(700px,calc(100% - 56px));padding:18px 22px}
+.tvcard .cap{color:var(--n-accent)}
+.tvcard h2{margin:.2em 0 .1em;font:700 clamp(28px,4vw,48px)/1 var(--font-d)}
+.tvcard p{margin:0;font-size:clamp(15px,1.6vw,20px);color:var(--n-muted)}
+.demo.tv .side,.demo.tv .ficha,.demo.tv .tc,.demo.tv .timeline{display:none!important}
+.toast{position:absolute;z-index:6;left:50%;bottom:30px;transform:translateX(-50%);background:#F4F6F8;color:#111A22;padding:9px 14px;border-radius:8px;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.4);max-width:calc(100% - 32px)}
+.sideToggle{display:none}
+
+@media (max-width:1280px){.tc{max-width:calc(100% - 28px);top:auto;bottom:14px}.demo.hist .tc{bottom:96px}.tc .legend{display:none}.side{bottom:70px}.demo.hist .side{bottom:160px}}
+@media (max-width:760px){
+  .kpi .v{font-size:18px}
+  .tr{top:auto;bottom:62px;right:14px}.demo.hist .tr{bottom:146px}
+  .side{display:none;top:150px}.demo.sideopen .side{display:flex}
+  .sideToggle{display:inline-flex}
+  .ficha{top:auto;bottom:60px;max-height:60%}
+  .tlab{width:110px}.tlab b{font-size:13px}
+  .seg button{padding:7px 9px;font-size:12px}
+}
+
+/* ---------- propuesta ---------- */
+.doc{max-width:1360px;margin:0 auto;padding-top:44px;display:grid;grid-template-columns:minmax(0,1fr);gap:56px}
+.sec{display:grid;grid-template-columns:230px minmax(0,1fr);gap:16px 40px}
+.sec>header .cap{color:var(--accent)}
+.sec>header h2{margin:.25em 0 0;font:700 30px/1.05 var(--font-d);text-wrap:balance}
+.body{max-width:780px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.body p{margin:0}
+.body h3{margin:8px 0 0;font:700 19px/1.2 var(--font-d)}
+.body ul{margin:0;padding-left:1.1em;display:flex;flex-direction:column;gap:6px}
+.lead{font-size:19px;line-height:1.5}
+.qa{display:flex;flex-direction:column;gap:12px}
+.qa div{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.qa b{display:block;font:700 18px/1.2 var(--font-d);margin-bottom:4px}
+.qa p{color:var(--muted)}
+.qa p+p{margin-top:8px}
+.tw{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:14.5px;min-width:560px}
+th,td{text-align:left;vertical-align:top;padding:9px 12px;border-bottom:1px solid var(--line)}
+th{font:600 11.5px/1.2 var(--font-d);letter-spacing:.07em;text-transform:uppercase;color:var(--muted);background:var(--sunk)}
+tr:last-child td{border-bottom:0}
+td b{font-family:var(--font-d);font-size:15.5px}
+td.n{font-variant-numeric:tabular-nums;font-family:var(--font-d);font-size:17px;font-weight:600;white-space:nowrap}
+.phases{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
+.ph{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+.ph .k{display:flex;justify-content:space-between;align-items:baseline}
+.ph .k b{font:700 26px/1 var(--font-d);color:var(--accent)}
+.ph .k span{font:500 12px var(--font-m);color:var(--muted)}
+.ph h4{margin:0;font:700 17px/1.15 var(--font-d)}
+.ph ul{font-size:14px;color:var(--muted);gap:4px}
+.qs{counter-reset:q;list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:10px}
+.qs li{counter-increment:q;display:grid;grid-template-columns:28px 1fr;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.qs li::before{content:counter(q);font:700 18px/1.3 var(--font-d);color:var(--accent)}
+.qs b{font-family:var(--font-d);font-size:16px}
+.qs span{display:block;color:var(--muted);font-size:14.5px}
+code{font:500 13px var(--font-m);background:var(--sunk);padding:1px 5px;border-radius:4px}
+@media (max-width:860px){.sec{grid-template-columns:minmax(0,1fr)}}
+</style>
+
+<header class="head">
+  <div>
+    <div class="cap">Andamios OS · Mapa de obras · propuesta v2 · 12/10/2026</div>
+    <h1>Ciudad Armada</h1>
+  </div>
+  <p>El mapa real de Buenos Aires con tus obras reales de Odoo: las armadas, las pendientes de desarme y el histórico de las desarmadas. Acercate a una obra para ver la estructura parada sobre su calle.</p>
+</header>
+
+<section class="demo" id="demo" aria-label="Mapa 3D de obras sobre Buenos Aires">
+  <div id="map"></div>
+  <div class="loading" id="loading">Cargando el mapa de Buenos Aires…</div>
+
+  <div class="hud tl glass">
+    <div class="brand"><b>Ciudad Armada</b><span class="real">datos reales de Odoo · 12/10</span></div>
+    <div class="kpis" id="kpis"></div>
+    <div class="when" id="when"></div>
+  </div>
+
+  <div class="hud tc">
+    <div class="seg glass" role="group" aria-label="Vista">
+      <button data-mode="calle" aria-pressed="true">En la calle</button>
+      <button data-mode="hist" aria-pressed="false">Histórico</button>
+    </div>
+    <div class="legend" id="legend"></div>
+  </div>
+
+  <div class="hud tr">
+    <button class="vbtn sideToggle" id="bSide">Lista</button>
+    <button class="vbtn" id="bTheme">Día</button>
+    <button class="vbtn" id="bPitch">2D</button>
+    <button class="vbtn" id="bHome">General</button>
+    <button class="vbtn" id="bTv">Modo TV</button>
+  </div>
+
+  <aside class="hud side glass" aria-label="Lista de obras">
+    <div class="search"><input id="q" type="search" placeholder="Buscar calle o dirección…" aria-label="Buscar calle o dirección" autocomplete="off"></div>
+    <div class="scroll" id="list"></div>
+  </aside>
+
+  <aside class="hud ficha glass" id="ficha" hidden aria-live="polite"></aside>
+
+  <div class="hud timeline glass">
+    <button class="play" id="bPlay" aria-label="Reproducir"><svg viewBox="0 0 16 16" fill="currentColor" id="playIco"><path d="M4 2.5v11l9-5.5z"/></svg></button>
+    <div class="track">
+      <svg id="spark" viewBox="0 0 1000 30" preserveAspectRatio="none" aria-hidden="true"></svg>
+      <div class="months" id="months"></div>
+      <input type="range" id="tRange" min="0" max="100" step="1" value="50" aria-label="Fecha">
+    </div>
+    <div class="tlab"><b id="tLab"></b><span id="tSub"></span></div>
+  </div>
+
+  <div class="tvcard glass" id="tvcard" hidden></div>
+  <div class="toast" id="toast" hidden></div>
+</section>
+
+<main class="doc">
+
+  <section class="sec">
+    <header><div class="cap">Tus preguntas</div><h2>Respuestas cortas</h2></header>
+    <div class="body">
+      <div class="qa">
+        <div><b>¿El mapa es real o inventado?</b>
+          <p>Ahora es real. Las calles, los nombres, las alturas, los barrios y el río salen de OpenStreetMap, el mismo mapa que usa hoy el módulo. Las obras son las tuyas, leídas de Odoo el 12/10: dirección, fechas, estado y lo que está armado. La versión anterior era una ciudad inventada para mostrar la idea; quedó descartada.</p>
+          <p>Al acercarte a una obra se ve la estructura sobre su calle. La fachada se calculó buscando la calle de la dirección en el mapa: coincidió en 103 de las 116 obras ubicadas.</p></div>
+        <div><b>Plata y Comercial</b>
+          <p>Fuera. No hay lentes de plata ni de comercial. El mapa muestra dos cosas: lo que está en la calle hoy y lo que ya se desarmó.</p></div>
+        <div><b>Pendientes de desarme</b>
+          <p>Están, en violeta, con un pulso para que se vean. Son 11 en Odoo. 7 tienen ubicación y aparecen en el mapa; las otras 4 figuran en la lista como "sin ubicación" hasta que se ubiquen.</p></div>
+        <div><b>Histórico de lo desarmado</b>
+          <p>La vista Histórico lista las 371 obras desarmadas por mes de desarme y tiene una línea de tiempo: movés la fecha y el mapa muestra qué había armado ese día. El problema es que solo 29 desarmadas tienen ubicación, porque el proceso que ubica direcciones solo trabaja con las armadas. Para que el histórico se vea completo en el mapa hay que ubicar las 342 que faltan una sola vez: unas 342 consultas a Google, del orden de US$10.</p></div>
+        <div><b>¿Para qué servirían las fotos 3D de Google?</b>
+          <p>Son edificios reconstruidos con fotos aéreas, como en Google Earth: cada fachada con sus balcones, la ochava, los árboles y los vecinos tal como son. El mapa de arriba muestra volúmenes grises, y en buena parte de la ciudad ni eso, porque OpenStreetMap tiene pocos edificios cargados en el AMBA.</p>
+          <p>Te servirían para reconocer la obra sin ir, para que el chofer vea por dónde entrar el camión, para que la oficina técnica mire la fachada antes de visitar y para que la TV de la oficina se vea espectacular. No muestran el andamio de verdad (son fotos de otra fecha) y cuestan unos US$7–15 por mes. Mientras tanto, cada ficha tiene un botón que abre Street View en esa dirección, sin costo.</p></div>
+        <div><b>TV en la oficina</b>
+          <p>Entonces el modo TV pasa a la primera fase. Recorre solo las obras que piden algo (pendientes de desarme, fin estimado vencido) con un titular grande y cierra con la vista de toda la ciudad. Hace falta una compu con placa de video conectada a la tele; un stick de TV no alcanza.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec">
+    <header><div class="cap">Lo que dicen tus datos</div><h2>Qué encontramos al cargar las obras reales</h2></header>
+    <div class="body">
+      <div class="tw"><table>
+        <thead><tr><th>Dato</th><th>Cuántas</th><th>Qué significa</th></tr></thead>
+        <tbody>
+          <tr><td><b>Armadas</b></td><td class="n">81</td><td>Todas con ubicación en el mapa.</td></tr>
+          <tr><td><b>Pendientes de desarme</b></td><td class="n">11</td><td>7 con ubicación. El mapa actual no muestra ninguna.</td></tr>
+          <tr><td><b>Desarmadas</b></td><td class="n">371</td><td>Solo 29 con ubicación. 288 tienen fecha de desarme.</td></tr>
+          <tr><td><b>Altura cargada</b> (<code>x_permiso_altura</code>)</td><td class="n">0</td><td>Ninguna obra tiene el alto cargado. Las medidas de la maqueta salen del texto de "lo que hay armado hoy" ("Pantalla 9m x 1,25m x 2,50m H"); si no hay texto, se estiman y la ficha lo dice.</td></tr>
+          <tr><td><b>Fecha de armado 24/03/2026</b></td><td class="n" id="nImp">—</td><td>Es la fecha de la importación, no la del armado real. Esas obras aparecen en rosa como "desde la importación", porque sus días armada no son confiables.</td></tr>
+          <tr><td><b>Ubicación equivocada</b></td><td class="n">1</td><td>"Bolívar 1887 esq. Martín García" (San Telmo) quedó ubicada cerca de la ciudad de Bolívar, a unos 300 km. Hace falta validar que las direcciones de CABA caigan en CABA.</td></tr>
+          <tr><td><b>Son pantallas de protección</b></td><td class="n" id="nPan">—</td><td>La mayoría de lo que está en la calle son pantallas de 2,5 a 4 m de alto, no fachadas completas. El 3D tiene que dibujar bien las pantallas, no solo andamios altos.</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+  </section>
+
+  <section class="sec">
+    <header><div class="cap">Cómo funciona</div><h2>Dos vistas, una ciudad</h2></header>
+    <div class="body">
+      <ul>
+        <li><b>En la calle.</b> Armadas y pendientes de desarme. El color es la antigüedad (verde hasta 30 días, ámbar hasta 90, rojo más de 90) y las pendientes de desarme van en violeta. Desde lejos, cada obra es una columna: cuanto más alta, más días lleva armada. De cerca aparecen los parantes, los niveles, las plataformas y la pantalla sobre la vereda.</li>
+        <li><b>Histórico.</b> Las desarmadas, agrupadas por mes, con buscador. La línea de tiempo muestra cuántas obras había en la calle cada semana desde marzo, y el mapa muestra cuáles eran.</li>
+        <li><b>Buscador por calle.</b> Escribís "Guido" o "Corrientes" y quedan solo las obras de esa calle, en la lista y en el mapa.</li>
+        <li><b>Para decidir.</b> Arriba de la lista: pendientes de desarme sin fecha programada, fin estimado vencido, ubicación dudosa y obras donde no sabemos qué hay armado.</li>
+        <li><b>Modo TV.</b> Pantalla completa, recorrido automático y titulares grandes.</li>
+        <li><b>Día y noche.</b> La noche es para la TV; el día, para trabajar en la compu.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="sec">
+    <header><div class="cap">Fases</div><h2>Plan revisado</h2></header>
+    <div class="body" style="max-width:none">
+      <div class="phases">
+        <div class="ph"><div class="k"><b>F0</b><span>3–4 días</span></div><h4>Datos confiables</h4><ul>
+          <li>Sumar "Pendiente de desarme" al mapa actual</li><li>"Qué está armado" desde <code>x_estructura_actual</code></li><li>Ubicar las 342 desarmadas y las 4 pendientes sin ubicación</li><li>Validar que CABA caiga en CABA (caso Bolívar)</li><li>Marcar las fechas de la importación</li><li>Arreglar el modo oscuro, los clics duplicados y los topes que cortan sin avisar</li></ul></div>
+        <div class="ph"><div class="k"><b>F1</b><span>1–1,5 semanas</span></div><h4>Ciudad Armada</h4><ul>
+          <li>Lo que ves arriba, dentro de Andamios OS, con datos en vivo</li><li>Vistas En la calle e Histórico, buscador por calle</li><li>Estructura 3D por tipo: pantalla, andamio de fachada, torre</li><li>Corregir el giro de la fachada a mano y guardarlo</li><li>Modo TV para la tele de la oficina</li></ul></div>
+        <div class="ph"><div class="k"><b>F2</b><span>1 semana</span></div><h4>Medidas y fotos</h4><ul>
+          <li>Que el capataz cargue largo × ancho × alto al cerrar el parte (campos, no texto)</li><li>Fotos de Telegram en vivo en la ficha</li><li>Asignar los 848 álbumes que quedaron sueltos</li></ul></div>
+        <div class="ph"><div class="k"><b>F3</b><span>1,5 semanas</span></div><h4>Hoy en vivo</h4><ul>
+          <li>Camiones y cuadrillas del día sobre el mismo mapa (absorbe "Obras en vivo 3D" del Pizarrón)</li><li>Modo foto con Google 3D, si pasa la prueba en 10 obras</li></ul></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec">
+    <header><div class="cap">Para decidir</div><h2>Lo que necesito que definas</h2></header>
+    <div class="body">
+      <ol class="qs">
+        <li><div><b>¿Ubicamos las 342 desarmadas?</b><span>Es una sola vez, unos US$10 de Google, y escribe la ubicación en Odoo. Sin esto el histórico se ve con 29 obras.</span></div></li>
+        <li><div><b>¿Probamos Google 3D en 10 obras?</b><span>Necesita una cuenta de facturación y una clave nueva restringida a nuestro dominio. Si convence, unos US$7–15 por mes.</span></div></li>
+        <li><div><b>¿Qué tele y qué compu van al modo TV?</b><span>Para dejarla prendida todo el día con la noche y el recorrido automático.</span></div></li>
+        <li><div><b>¿Arrancamos por F0?</b><span>Arregla el mapa actual en 3 a 4 días, aunque el 3D venga después.</span></div></li>
+      </ol>
+    </div>
+  </section>
+</main>
+
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script>
+(function(){
+"use strict";
+const demo=document.getElementById('demo');
+if(!window.maplibregl){document.getElementById('loading').textContent='No se pudo cargar el motor del mapa. Recargá la página.';return;}
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const DATA=__OBRAS__;
+const IDX=__INDEX__;
+const HOY='2026-10-12', IMPORT='2026-03-24';
+
+/* ---------- paquetes de tiles y tipografías ---------- */
+const packs={};
+const b64=s=>{const bin=atob(s.replace(/\s+/g,''));const u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);return u.buffer};
+const getPack=n=>packs[n]||(packs[n]=fetch(new URL('data/'+n+'.txt',location.href)).then(r=>{if(!r.ok)throw new Error('pack '+n);return r.text()}).then(b64));
+const gunzip=async u8=>{if(!('DecompressionStream' in window))throw new Error('sin gzip');return new Response(new Blob([u8]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer()};
+const EMPTY=new ArrayBuffer(0);
+maplibregl.addProtocol('pack',async(params)=>{
+  const p=params.url.replace('pack://','').split('/');
+  if(p[0]==='t'){const k=p[1]+'_'+p[2]+'_'+p[3];const e=IDX.t[k];if(!e)return{data:new ArrayBuffer(0)};
+    const buf=await getPack(e[0]);return{data:await gunzip(new Uint8Array(buf,e[1],e[2]))};}
+  if(p[0]==='f'){const k=decodeURIComponent(p[1]).replace(/ /g,'_')+'__'+p[2].replace('.pbf','');const e=IDX.f[k];if(!e)return{data:new ArrayBuffer(0)};
+    const buf=await getPack('fonts');return{data:buf.slice(e[0],e[0]+e[1])};}
+  return{data:new ArrayBuffer(0)};
+});
+
+/* ---------- obras ---------- */
+const dias=(a,b=HOY)=>Math.round((Date.parse(b)-Date.parse(a))/864e5);
+const fmtF=s=>s?s.slice(8,10)+'/'+s.slice(5,7)+'/'+s.slice(0,4):'—';
+const fmtN=n=>Math.round(n).toLocaleString('es-AR');
+const fmtM=n=>(Math.round(n*100)/100).toLocaleString('es-AR');
+const ABR=[[/\b(avenida|avda\.?|av\.?)(?=\s)/gi,'Av.'],[/\b(ingenierio|ingeniero|ing\.?)(?=\s)/gi,'Ing.'],[/\b(general|gral\.?)(?=\s)/gi,'Gral.'],[/\b(presidente|pres\.?)(?=\s)/gi,'Pres.'],[/\bdoctor(?=\s)/gi,'Dr.'],[/\b(pasaje|pje\.?)(?=\s)/gi,'Pje.']];
+const NOISE=/\b(c\.?\s?a\.?\s?b\.?\s?a\.?|capital federal|p[rcv]{1,2}[a-z]*\.?\s*(de\s*)?(bs\.?\s*as\.?|buenos aires)|bs\.?\s*as\.?)(?=\s|$|,|\.)/gi;
+function corta(d){
+  const parts=(d||'').replace(/\([^)]*\)/g,' ').split(/,\s+| - | – /).map(x=>x.replace(/\s+/g,' ').replace(/[.\s]+$/,'').trim()).filter(Boolean);
+  if(!parts.length)return 'Sin dirección';
+  let a=parts.find(x=>/\d/.test(x))||parts[0];const k=parts.indexOf(a);
+  if(a.length<8&&parts[k+1])a+=', '+parts[k+1];
+  const esq=parts.find(x=>/^esq/i.test(x));if(esq&&!/\d/.test(a))a+=' '+esq.replace(/^esq(uina)?\.?\s*/i,'esq. ');
+  a=a.replace(NOISE,' ').replace(/\s+/g,' ').trim();
+  if(a===a.toUpperCase())a=a.toLowerCase().replace(/(^|[\s.\/])([a-záéíóúüñ])/g,(m,p,c)=>p+c.toUpperCase());
+  ABR.forEach(([r,v])=>{a=a.replace(r,v)});
+  return a.replace(/\.\./g,'.').replace(/\s+/g,' ').trim()||'Sin dirección';
+}
+const norm=s=>(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
+const TIPO={pantalla_proteccion:'Pantalla de protección',estructura_pantalla:'Estructura + pantalla',estructura_sin_pantalla:'Estructura sin pantalla',torre:'Torre',plataforma:'Plataforma',sercha:'Sercha',apuntalamiento_vertical:'Apuntalamiento'};
+DATA.forEach(o=>{
+  o.loc=!!(o.lat&&!o.lejos);
+  o.pt=o.f||(o.lat?[o.lng,o.lat]:null);
+  o.d=o.fa?dias(o.fa):null; o.dud=o.fa===IMPORT; o.sinAlt=!!o.dir&&!/\d/.test(o.dir)&&!/esq/i.test(o.dir);
+  o.vencida=o.e!=='D'&&o.fe&&o.fe<HOY;
+  o.s=norm(o.dir+' '+(o.ref||'')+' '+(o.calleOsm||'')+' '+o.v);
+});
+document.getElementById('nImp').textContent=DATA.filter(o=>o.e!=='D'&&o.dud).length+' de '+DATA.filter(o=>o.e!=='D').length;
+document.getElementById('nPan').textContent=DATA.filter(o=>o.e!=='D'&&o.tipo==='pantalla_proteccion').length+' de '+DATA.filter(o=>o.e!=='D').length;
+
+const COL={n:'#2FBF84',m:'#E5A92A',v:'#F0546A',imp:'#D08AA8',sf:'#9AA3AD',pend:'#A98BFF',sigue:'#5FB3D9',fue:'#A7B0BA'};
+const CATS={
+  calle:[['n','≤ 30 días'],['m','31–90 días'],['v','Más de 90 días'],['imp','Desde la importación (24/03)'],['sf','Sin fecha'],['pend','Pendiente de desarme']],
+  hist:[['sigue','Hoy sigue en la calle'],['fue','Ya se desarmó']]
+};
+function catCalle(o){if(o.e==='P')return'pend';if(!o.fa)return'sf';if(o.dud)return'imp';return o.d<=30?'n':o.d<=90?'m':'v'}
+
+let mode='calle', T=null, query='', sel=null, dark=true;
+const hidden={calle:new Set(),hist:new Set()};
+
+/* timeline: semanas desde la importación */
+const WEEKS=[];{let t=Date.parse(IMPORT);const end=Date.parse(HOY);while(t<=end){WEEKS.push(new Date(t).toISOString().slice(0,10));t+=7*864e5}if(WEEKS[WEEKS.length-1]!==HOY)WEEKS.push(HOY);}
+const presentAt=(o,t)=>o.fa&&o.fa<=t&&(o.e==='D'?(o.fd&&o.fd>t):true);
+T=WEEKS[Math.floor(WEEKS.length*.55)];
+
+function visibles(){
+  const q=norm(query.trim());
+  return DATA.filter(o=>{
+    if(q&&!o.s.includes(q))return false;
+    if(mode==='calle'){if(o.e==='D')return false;o.cat=catCalle(o);}
+    else{if(!presentAt(o,T))return false;o.cat=o.e==='D'?'fue':'sigue';}
+    return !hidden[mode].has(o.cat);
+  });
+}
+
+/* ---------- geometría: estructura sobre la vereda ---------- */
+function geom(o,c){
+  const out=[];const lat0=o.pt[1];const kx=1/(111320*Math.cos(lat0*Math.PI/180)),ky=1/110574;
+  const n=o.n||[0,1];const u=[-n[1],n[0]];const w=[-n[0],-n[1]];
+  const P=(s,d)=>[o.pt[0]+(u[0]*s+w[0]*d)*kx,o.pt[1]+(u[1]*s+w[1]*d)*ky];
+  const R=(s0,s1,d0,d1)=>[[P(s0,d0),P(s1,d0),P(s1,d1),P(s0,d1),P(s0,d0)]];
+  const add=(poly,b,t,part,col)=>out.push({type:'Feature',properties:{id:o.id,part,c:col||c,b,t},geometry:{type:'Polygon',coordinates:poly}});
+  const L=o.largo,H=o.alto,D=Math.max(.9,o.prof),pt=.13,lt=.09;
+  const nb=Math.max(1,Math.round(L/2.57)),bw=L/nb;
+  const lev=[];for(let y=2;y<H-.4;y+=2)lev.push(y);lev.push(H);
+  const d0=.25,d1=D;
+  for(let i=0;i<=nb;i++){const s=-L/2+i*bw;
+    for(const d of[d0,d1])add(R(s-pt,s+pt,d-pt,d+pt),0,H+(d===d1?1:0),'p');
+    for(const y of lev)add(R(s-lt,s+lt,d0,d1),y-.12,y,'p');}
+  for(const y of lev){
+    for(const d of[d0,d1])add(R(-L/2,L/2,d-lt,d+lt),y-.12,y,'p');
+    add(R(-L/2,L/2,d0+.06,d1-.06),y-.07,y-.01,'p',dark?'#8A6E48':'#B08A58');
+    add(R(-L/2,L/2,d1-lt,d1+lt),y+.95,y+1.05,'p');
+  }
+  for(let i=0;i<nb;i+=2){const s=-L/2+i*bw;const steps=6;let y0=0;for(const y of[0,...lev].slice(0,-1)){const yn=lev.find(v=>v>y)||H;
+      for(let k=0;k<steps;k++){const a=s+bw*k/steps,b=s+bw*(k+1)/steps;add(R(a,b,d1+.12,d1+.2),y+(yn-y)*k/steps,y+(yn-y)*(k+1)/steps,'p');}}}
+  add(R(-L/2,L/2,d1+.24,d1+.3),0,H+1,'n');
+  if(o.bh==null){const bh=Math.max(H+7,12);add(R(-L/2-3,L/2+3,-16,-.05),0,bh,'b',dark?'#2E3A44':'#D5DADF');}
+  return out;
+}
+function square(o,size,h,c){const lat0=o.pt[1];const kx=1/(111320*Math.cos(lat0*Math.PI/180)),ky=1/110574,s=size/2;const[x,y]=o.pt;
+  return{type:'Feature',properties:{id:o.id,c,h},geometry:{type:'Polygon',coordinates:[[[x-s*kx,y-s*ky],[x+s*kx,y-s*ky],[x+s*kx,y+s*ky],[x-s*kx,y+s*ky],[x-s*kx,y-s*ky]]]}}}
+
+/* ---------- estilo del mapa ---------- */
+const PAL={
+  bg:['#E7EAE6','#0B1116'],park:['#D6E5D3','#0F1F19'],water:['#B9D3E0','#0C2433'],
+  minor:['#FFFFFF','#202B33'],mid:['#FFFFFF','#2E3B46'],major:['#F7DBA8','#7A5B2E'],motor:['#F1BE72','#B98134'],rail:['#C3C9CE','#28323A'],
+  bld:['#D3D8DC','#1F2930'],road_t:['#4E5A66','#8D9AA5'],halo:['#FFFFFF','#0B1116'],place:['#6F7D88','#71808C'],hn:['#8A95A0','#4F5D68'],
+  lbl:['#111A22','#F2F5F7'],sub:['#52606B','#9AA8B3'],dotStroke:['#FFFFFF','#0B1116']
+};
+const pc=k=>PAL[k][dark?1:0];
+const W=(a,b)=>['interpolate',['exponential',1.6],['zoom'],10,a,18,b];
+function style(){return{version:8,
+  glyphs:'pack://f/{fontstack}/{range}.pbf',
+  sources:{omt:{type:'vector',tiles:['pack://t/{z}/{x}/{y}'],minzoom:0,maxzoom:14,attribution:'© OpenStreetMap · OpenFreeMap'}},
+  layers:[
+   {id:'bg',type:'background',paint:{'background-color':pc('bg')}},
+   {id:'park',type:'fill',source:'omt','source-layer':'park',paint:{'fill-color':pc('park')}},
+   {id:'lc',type:'fill',source:'omt','source-layer':'landcover',filter:['in',['get','class'],['literal',['grass','wood']]],paint:{'fill-color':pc('park'),'fill-opacity':.7}},
+   {id:'water',type:'fill',source:'omt','source-layer':'water',paint:{'fill-color':pc('water')}},
+   {id:'waterway',type:'line',source:'omt','source-layer':'waterway',paint:{'line-color':pc('water'),'line-width':1.2}},
+   {id:'rail',type:'line',source:'omt','source-layer':'transportation',filter:['==',['get','class'],'rail'],paint:{'line-color':pc('rail'),'line-width':W(.6,2),'line-dasharray':[3,2]}},
+   {id:'r-minor',type:'line',source:'omt','source-layer':'transportation',minzoom:12,filter:['in',['get','class'],['literal',['minor','service']]],layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':pc('minor'),'line-width':W(.4,11)}},
+   {id:'r-mid',type:'line',source:'omt','source-layer':'transportation',filter:['in',['get','class'],['literal',['tertiary','secondary']]],layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':pc('mid'),'line-width':W(.8,15)}},
+   {id:'r-major',type:'line',source:'omt','source-layer':'transportation',filter:['in',['get','class'],['literal',['primary','trunk']]],layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':pc('major'),'line-width':W(1.2,20)}},
+   {id:'r-motor',type:'line',source:'omt','source-layer':'transportation',filter:['==',['get','class'],'motorway'],layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':pc('motor'),'line-width':W(1.4,22)}},
+   {id:'bld',type:'fill-extrusion',source:'omt','source-layer':'building',minzoom:13.5,paint:{'fill-extrusion-color':pc('bld'),'fill-extrusion-height':['coalesce',['get','render_height'],6],'fill-extrusion-base':['coalesce',['get','render_min_height'],0],'fill-extrusion-opacity':['interpolate',['linear'],['zoom'],16.5,.92,18,.16]}},
+   {id:'r-name',type:'symbol',source:'omt','source-layer':'transportation_name',minzoom:13,layout:{'symbol-placement':'line','text-field':['get','name'],'text-font':['Noto Sans Regular'],'text-size':['interpolate',['linear'],['zoom'],13,10.5,18,14],'text-max-angle':30},paint:{'text-color':pc('road_t'),'text-halo-color':pc('halo'),'text-halo-width':1.4}},
+   {id:'hn',type:'symbol',source:'omt','source-layer':'housenumber',minzoom:17.2,layout:{'text-field':['get','housenumber'],'text-font':['Noto Sans Regular'],'text-size':10.5},paint:{'text-color':pc('hn'),'text-halo-color':pc('halo'),'text-halo-width':1}},
+   {id:'place-b',type:'symbol',source:'omt','source-layer':'place',minzoom:11,maxzoom:15.5,filter:['in',['get','class'],['literal',['suburb','neighbourhood','quarter']]],layout:{'text-field':['upcase',['get','name']],'text-font':['Noto Sans Bold'],'text-size':['interpolate',['linear'],['zoom'],11,10,15,13],'text-letter-spacing':.14,'text-max-width':8},paint:{'text-color':pc('place'),'text-halo-color':pc('halo'),'text-halo-width':1.2}},
+   {id:'place-c',type:'symbol',source:'omt','source-layer':'place',maxzoom:12.5,filter:['in',['get','class'],['literal',['city','town']]],layout:{'text-field':['get','name'],'text-font':['Noto Sans Bold'],'text-size':['interpolate',['linear'],['zoom'],8,11,12,15]},paint:{'text-color':pc('road_t'),'text-halo-color':pc('halo'),'text-halo-width':1.4}}
+  ]}}
+
+const map=new maplibregl.Map({container:'map',style:style(),center:[-58.44,-34.605],zoom:10.3,pitch:0,bearing:0,maxZoom:20.5,minZoom:8,attributionControl:{compact:true},maxPitch:75,antialias:true});
+map.on('error',e=>{if(e&&e.error)console.warn(e.error.message)});
+const FC=f=>({type:'FeatureCollection',features:f});
+function addObraLayers(){
+  addPills();
+  map.addSource('ob-sc',{type:'geojson',data:FC([])});
+  map.addSource('ob-beam',{type:'geojson',data:FC([])});
+  map.addSource('ob-pt',{type:'geojson',data:FC([])});
+  map.addLayer({id:'beam',type:'fill-extrusion',source:'ob-beam',maxzoom:16,paint:{'fill-extrusion-color':['get','c'],'fill-extrusion-opacity':['interpolate',['linear'],['zoom'],10,.9,15,.75,16,0],
+    'fill-extrusion-height':['interpolate',['linear'],['zoom'],9,['*',['get','h'],3],12,['*',['get','h'],1.2],14.5,['*',['get','h'],.35],15.6,0],'fill-extrusion-base':0}});
+  map.addLayer({id:'sc-b',type:'fill-extrusion',source:'ob-sc',minzoom:15,filter:['==',['get','part'],'b'],paint:{'fill-extrusion-color':['get','c'],'fill-extrusion-height':['get','t'],'fill-extrusion-base':['get','b'],'fill-extrusion-opacity':['interpolate',['linear'],['zoom'],16.5,.9,18,.16]}});
+  map.addLayer({id:'sc-p',type:'fill-extrusion',source:'ob-sc',minzoom:15,filter:['==',['get','part'],'p'],paint:{'fill-extrusion-color':['get','c'],'fill-extrusion-height':['get','t'],'fill-extrusion-base':['get','b'],'fill-extrusion-opacity':1,'fill-extrusion-vertical-gradient':false}});
+  map.addLayer({id:'sc-n',type:'fill-extrusion',source:'ob-sc',minzoom:15,filter:['==',['get','part'],'n'],paint:{'fill-extrusion-color':['get','c'],'fill-extrusion-height':['get','t'],'fill-extrusion-base':['get','b'],'fill-extrusion-opacity':.32}});
+  map.addLayer({id:'halo',type:'circle',source:'ob-pt',filter:['==',['get','cat'],'pend'],paint:{'circle-color':'rgba(0,0,0,0)','circle-stroke-color':COL.pend,'circle-stroke-width':2,'circle-radius':10,'circle-stroke-opacity':.6,'circle-pitch-alignment':'map'}});
+  map.addLayer({id:'dot',type:'circle',source:'ob-pt',paint:{'circle-color':['get','c'],'circle-radius':['interpolate',['linear'],['zoom'],9,3,13,5.5,16,7,19,9],'circle-stroke-color':pc('dotStroke'),'circle-stroke-width':1.5,'circle-pitch-alignment':'map','circle-opacity':['interpolate',['linear'],['zoom'],16,1,17.2,0],'circle-stroke-opacity':['interpolate',['linear'],['zoom'],16,1,17.2,0]}});
+  map.addLayer({id:'lbl',type:'symbol',source:'ob-pt',minzoom:13.6,layout:lblLayout(false),paint:{'text-color':pc('lbl')}});
+  map.addLayer({id:'lbl-sel',type:'symbol',source:'ob-pt',filter:['==',['get','id'],-1],layout:lblLayout(true),paint:{'text-color':pc('lbl')}});
+}
+function pill(name,fill,stroke,w){const r=2,W=48*r,H=32*r,cv=document.createElement('canvas');cv.width=W;cv.height=H;const x=cv.getContext('2d');
+  const i=w*r/2+1,rad=9*r,x0=i,y0=i,x1=W-i,y1=H-i;x.beginPath();x.moveTo(x0+rad,y0);x.arcTo(x1,y0,x1,y1,rad);x.arcTo(x1,y1,x0,y1,rad);x.arcTo(x0,y1,x0,y0,rad);x.arcTo(x0,y0,x1,y0,rad);x.closePath();
+  x.fillStyle=fill;x.fill();x.lineWidth=w*r;x.strokeStyle=stroke;x.stroke();
+  if(map.hasImage(name))map.removeImage(name);
+  map.addImage(name,x.getImageData(0,0,W,H),{pixelRatio:r,stretchX:[[12*r,36*r]],stretchY:[[12*r,20*r]],content:[9*r,7*r,39*r,25*r]});}
+function addPills(){pill('pill-n','rgba(12,18,24,.92)','rgba(160,175,186,.38)',1);pill('pill-d','rgba(255,255,255,.96)','rgba(17,26,34,.2)',1);
+  pill('pill-sn','rgba(12,18,24,.96)','rgba(255,255,255,.92)',1.6);pill('pill-sd','rgba(255,255,255,1)','rgba(17,26,34,.85)',1.6);}
+function lblLayout(selected){return{
+  'text-field':['format','• ',{'text-color':['get','c'],'font-scale':1.35},['get','lab'],{},'\n',{},['get','sub'],{'font-scale':.84,'text-font':['literal',['Noto Sans Regular']],'text-color':pc('sub')}],
+  'text-font':['Noto Sans Bold'],'text-size':selected?14:12.5,'text-max-width':22,'text-line-height':1.3,'text-justify':'left',
+  'icon-image':selected?(dark?'pill-sn':'pill-sd'):(dark?'pill-n':'pill-d'),'icon-text-fit':'both','icon-text-fit-padding':[5,10,5,9],
+  'text-anchor':'bottom','text-offset':['interpolate',['linear'],['zoom'],15,['literal',[0,-1.2]],19,['literal',[0,selected?-7.5:-6.5]]],
+  'text-allow-overlap':selected,'text-ignore-placement':selected,'icon-allow-overlap':selected,'icon-ignore-placement':selected}}
+function themeObras(){map.setPaintProperty('dot','circle-stroke-color',pc('dotStroke'));[['lbl',false],['lbl-sel',true]].forEach(([l,sl])=>{map.setPaintProperty(l,'text-color',pc('lbl'));const L=lblLayout(sl);['text-field','icon-image'].forEach(k=>map.setLayoutProperty(l,k,L[k]))});}
+
+/* ---------- refrescar ---------- */
+let VIS=[];
+function refresh(){
+  VIS=visibles();
+  const sc=[],beam=[],pts=[];
+  VIS.forEach(o=>{if(!o.loc||!o.pt)return;const c=COL[o.cat];
+    const h=o.cat==='pend'?420:o.cat==='fue'?90:Math.min(900,60+(o.d||40)*3.2);
+    beam.push(square(o,70,h,c));
+    sc.push(...geom(o,c));
+    pts.push({type:'Feature',properties:{id:o.id,c,cat:o.cat,lab:corta(o.dir),sub:(o.e==='D'?'desarmada '+fmtF(o.fd):o.cat==='pend'?'pendiente de desarme':o.d!=null?o.d+' días armada'+(o.dud?' (desde la importación)':''):'sin fecha')+(o.tipo==='pantalla_proteccion'?' · pantalla':'')+(o.sinAlt?' · sin altura':'')},geometry:{type:'Point',coordinates:o.pt}});
+  });
+  if(map.getSource('ob-sc')){map.getSource('ob-sc').setData(FC(sc));map.getSource('ob-beam').setData(FC(beam));map.getSource('ob-pt').setData(FC(pts));}
+  renderKpis();renderLegend();renderList();
+  if(map.getLayer('lbl-sel')){map.setFilter('lbl-sel',['==',['get','id'],sel?sel.id:-1]);map.setFilter('lbl',['!=',['get','id'],sel?sel.id:-1]);}
+}
+function renderKpis(){
+  const k=document.getElementById('kpis'),w=document.getElementById('when');
+  if(mode==='calle'){const all=DATA.filter(o=>o.e!=='D');const A=all.filter(o=>o.e==='A'),P=all.filter(o=>o.e==='P');
+    const ml=all.reduce((s,o)=>s+o.largo,0),ven=all.filter(o=>o.vencida).length,sin=all.filter(o=>!o.loc).length;
+    k.innerHTML=kp(A.length,'armadas')+kp(P.length,'pendientes de desarme')+kp('~'+fmtN(ml),'metros lineales')+kp(ven,'fin estimado vencido');
+    w.textContent=`Hoy · 12/10/2026 · ${sin} sin ubicación en el mapa (ver lista)`;}
+  else{const D=DATA.filter(o=>o.e==='D');const conF=D.filter(o=>o.fd&&o.fa&&!o.dud);const prom=conF.length?conF.reduce((s,o)=>s+dias(o.fa,o.fd),0)/conF.length:0;
+    const en=DATA.filter(o=>presentAt(o,T));
+    k.innerHTML=kp(D.length,'desarmadas')+kp(D.filter(o=>o.loc).length,'con ubicación')+kp(Math.round(prom),'días promedio armadas')+kp(en.length,'en la calle ese día');
+    w.textContent=`Viendo el ${fmtF(T)} · ${en.filter(o=>o.loc).length} de ${en.length} se ven en el mapa`;}
+}
+const kp=(v,l)=>`<div class="kpi"><span class="v">${v}</span><span class="l">${l}</span></div>`;
+function renderLegend(){
+  const el=document.getElementById('legend');el.innerHTML='';
+  const base=mode==='calle'?DATA.filter(o=>o.e!=='D').map(o=>catCalle(o)):DATA.filter(o=>presentAt(o,T)).map(o=>o.e==='D'?'fue':'sigue');
+  CATS[mode].forEach(([k,lab])=>{const n=base.filter(c=>c===k).length;if(!n&&k==='sf')return;
+    const b=document.createElement('button');b.className='chip';b.setAttribute('aria-pressed',String(!hidden[mode].has(k)));
+    b.innerHTML=`<i style="background:${COL[k]}"></i>${lab} <span class="n">${n}</span>`;
+    b.onclick=()=>{hidden[mode].has(k)?hidden[mode].delete(k):hidden[mode].add(k);refresh()};el.appendChild(b);});
+}
+
+/* ---------- para decidir y lista ---------- */
+function decisiones(){
+  const r=[];DATA.filter(o=>o.e!=='D').forEach(o=>{
+    if(o.e==='P')r.push({o,k:'p',s:o.desProg?50:90,w:o.desProg?`Pendiente de desarme · programado ${fmtF(o.desProg)}`:'Pendiente de desarme · sin fecha programada',v:o.desProg?'Ver en el tablero':'Programar desarme'});
+    else if(o.sinAlt)r.push({o,k:'l',s:80,w:'La dirección no tiene calle y número: el punto es el centro de la localidad',v:'Completar dirección'});
+    else if(o.lejos)r.push({o,k:'l',s:85,w:'La ubicación cayó a unos 300 km de CABA',v:'Corregir dirección'});
+    else if(o.vencida)r.push({o,k:'f',s:40+dias(o.fe)/10,w:`Pasó el fin estimado hace ${dias(o.fe)} días`,v:'Confirmar con el cliente'});
+    else if(!o.txt)r.push({o,k:'t',s:20,w:'No sabemos qué hay armado',v:'Pedir lo armado al capataz'});
+  });
+  r.sort((a,b)=>b.s-a.s);const by={};r.forEach(d=>(by[d.k]=by[d.k]||[]).push(d));const qs=Object.values(by),res=[];
+  while(res.length<6&&qs.some(q=>q.length))qs.forEach(q=>{if(q.length&&res.length<6)res.push(q.shift())});return res;
+}
+const DEC=decisiones();
+const listEl=document.getElementById('list');
+function rowHtml(o,dot,line,extra){return `<button class="row${extra?' dec':''}${sel===o?' sel':''}" data-id="${o.id}"><span class="dot" style="background:${dot}"></span><span class="d">${esc(corta(o.dir))}</span><span class="w">${line}</span>${extra?`<span class="vb">${extra} →</span>`:''}</button>`}
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function lineCalle(o){const parts=[];if(o.e==='P')parts.push('pendiente de desarme');else if(o.d!=null)parts.push(o.d+' días'+(o.dud?' (importación)':''));parts.push(o.tipo==='pantalla_proteccion'?`pantalla ${fmtM(o.largo)} m`:`${fmtM(o.largo)} m`);let s=parts.join(' · ');if(o.fp)s+=` <span class="tag">${o.fp.n} fotos</span>`;if(!o.loc)s+=' <span class="tag warn">sin ubicación</span>';else if(o.vencida)s+=' <span class="tag warn">fin vencido</span>';return s}
+function renderList(){
+  const q=query.trim();let h='';
+  if(mode==='calle'){
+    if(!q){h+=`<div class="grp cap"><span>Para decidir</span><span>${DEC.length}</span></div>`;DEC.forEach(d=>{h+=rowHtml(d.o,COL[catCalle(d.o)],esc(d.w),d.v)});}
+    const all=DATA.filter(o=>o.e!=='D'&&(!q||o.s.includes(norm(q)))).sort((a,b)=>(b.e==='P')-(a.e==='P')||(b.d||0)-(a.d||0));
+    h+=`<div class="grp cap"><span>${q?'Resultados':'Todas en la calle'}</span><span>${all.length}</span></div>`;
+    all.forEach(o=>{h+=rowHtml(o,COL[catCalle(o)],lineCalle(o))});
+    if(!all.length)h+=`<div class="w" style="padding:8px 10px;color:var(--n-muted)">No hay obras en la calle con "${esc(q)}".</div>`;
+  }else{
+    const D=DATA.filter(o=>o.e==='D'&&(!q||o.s.includes(norm(q)))).sort((a,b)=>(b.fd||'').localeCompare(a.fd||''));
+    h+=`<div class="grp cap"><span>Desarmadas</span><span>${D.length}</span></div>`;
+    let cur=null;const MES=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+    D.forEach(o=>{const m=o.fd?MES[+o.fd.slice(5,7)-1]+' '+o.fd.slice(0,4):'Sin fecha de desarme';if(m!==cur){cur=m;h+=`<div class="grp cap"><span>${m}</span><span></span></div>`}
+      const line=(o.fa&&o.fd?`${fmtF(o.fa).slice(0,5)} → ${fmtF(o.fd).slice(0,5)} · ${dias(o.fa,o.fd)} días`:o.fd?`desarmada ${fmtF(o.fd)}`:'sin fechas')+(o.loc?'':' <span class="tag">sin ubicación</span>');
+      h+=rowHtml(o,o.loc?COL.fue:'transparent',line)});
+    if(!D.length)h+=`<div class="w" style="padding:8px 10px;color:var(--n-muted)">No hay desarmadas con "${esc(q)}".</div>`;
+  }
+  listEl.innerHTML=h;
+}
+listEl.addEventListener('click',e=>{const b=e.target.closest('.row');if(!b)return;const o=DATA.find(x=>x.id===+b.dataset.id);if(o)select(o,true)});
+let qT;document.getElementById('q').addEventListener('input',e=>{clearTimeout(qT);qT=setTimeout(()=>{query=e.target.value;refresh();fitVis()},160)});
+function fitVis(){if(!query.trim())return;const pts=VIS.filter(o=>o.loc&&o.pt).map(o=>o.pt);if(!pts.length)return;
+  if(pts.length===1){map.easeTo({center:pts[0],zoom:16.5,pitch:55,duration:reduce?0:1200});return}
+  const b=new maplibregl.LngLatBounds(pts[0],pts[0]);pts.forEach(p=>b.extend(p));map.fitBounds(b,{padding:{top:180,bottom:80,left:400,right:80},maxZoom:16,pitch:45,duration:reduce?0:1200});}
+
+/* ---------- ficha ---------- */
+const ficha=document.getElementById('ficha');
+function select(o,fly){
+  sel=o;
+  if(mode==='hist'&&o.loc&&!presentAt(o,T)&&o.fa&&o.fd){const mid=new Date((Date.parse(o.fa)+Date.parse(o.fd))/2).toISOString().slice(0,10);let i=WEEKS.findIndex(w=>w>=mid);setT(i<0?WEEKS.length-1:i);}
+  if(mode==='calle'&&o.e==='D'){setMode('hist');}
+  renderFicha(o);refresh();
+  if(fly&&o.loc&&o.pt)focus(o);
+  if(innerWidth<760)demo.classList.remove('sideopen');
+}
+function focus(o,dur){const n=o.n||[0,1];const br=Math.atan2(n[0],n[1])*180/Math.PI+28;
+  const z=o.alto>10?18.6:o.alto>5?19.3:19.8;
+  map.flyTo({center:o.pt,zoom:z,pitch:64,bearing:br,duration:reduce?0:(dur||3200),essential:true,padding:innerWidth>900?{left:200,right:220,top:0,bottom:0}:undefined});}
+function closeFicha(){sel=null;ficha.hidden=true;if(map.getLayer('lbl-sel'))map.setFilter('lbl-sel',['==',['get','id'],-1]);listEl.querySelectorAll('.row.sel').forEach(r=>r.classList.remove('sel'))}
+const CAM='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>';
+function fotosHtml(o){
+  if(!o.fp)return `<div class="box"><span class="k">FOTOS DE LOS PARTES</span>Todavía no hay fotos de partes para esta obra.${o.e!=='D'?' Se suman solas cuando el capataz cierre el próximo parte con fotos.':''}</div>`;
+  const n=o.fp.n,t=Math.min(4,n);let th='';for(let i=0;i<t;i++)th+=`<span>${i===3&&n>4?'+'+(n-3):CAM}</span>`;
+  return `<div class="box"><span class="k">FOTOS DE LOS PARTES · ${n} foto${n>1?'s':''} en ${o.fp.p} parte${o.fp.p>1?'s':''} · última ${fmtF(o.fp.u)}</span><div class="thumbs">${th}</div><span class="k" style="margin:6px 0 0">En Andamios OS acá se ven las fotos reales y se abren a pantalla completa. En esta maqueta no se cargan para no subir fotos de obra a la página.</span></div>`;
+}
+function renderFicha(o){
+  const cat=o.e==='D'?'fue':catCalle(o);const c=COL[cat];
+  const st=o.e==='D'?'Desarmada':o.e==='P'?'Pendiente de desarme':o.d!=null?o.d+' días armada':'Sin fecha de armado';
+  const gm=o.lat?`https://www.google.com/maps/search/?api=1&query=${o.lat},${o.lng}`:null;
+  const sv=o.lat?`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${o.lat},${o.lng}`:null;
+  const med=`${fmtM(o.largo)} × ${fmtM(o.prof)} × ${fmtM(o.alto)} m`;
+  ficha.innerHTML=`<div class="fb">
+    <div class="fh"><div><h2>${esc(corta(o.dir))}</h2><div class="sub">${esc(o.dir)}${o.ref?' · '+esc(o.ref):''} · <span class="mono">${o.v}</span></div></div><button class="x" id="fx" aria-label="Cerrar ficha">×</button></div>
+    <span class="state" style="background:${c}26;color:${c}">● ${st}</span>
+    <div class="grid2">
+      <div><span class="l">Armada el</span><span class="v">${fmtF(o.fa)}</span></div>
+      ${o.e==='D'?`<div><span class="l">Desarmada el</span><span class="v">${fmtF(o.fd)}</span></div>`:o.e==='P'?`<div><span class="l">Desarme programado</span><span class="v ${o.desProg?'':'warn'}">${o.desProg?fmtF(o.desProg):'sin fecha'}</span></div>`:`<div><span class="l">Fin estimado</span><span class="v ${o.vencida?'warn':''}">${o.fe?(o.vencida?'pasó hace '+dias(o.fe)+' d':fmtF(o.fe)):'—'}</span></div>`}
+      <div><span class="l">Tipo</span><span class="v">${TIPO[o.tipo]||'Sin tipo cargado'}</span></div>
+      <div><span class="l">Largo × ancho × alto${o.est?' (estimado)':''}</span><span class="v ${o.est?'warn':''}">${med}</span></div>
+      ${o.e==='D'&&o.fa&&o.fd?`<div><span class="l">Estuvo armada</span><span class="v">${dias(o.fa,o.fd)} días</span></div>`:''}
+      ${o.calleOsm?`<div><span class="l">Calle en el mapa</span><span class="v">${esc(o.calleOsm)}</span></div>`:''}
+    </div>
+    ${o.dud?'<div class="box warn"><span class="k">FECHA DUDOSA</span>El 24/03/2026 es la fecha de la importación. Los días reales pueden ser más.</div>':''}
+    ${o.sinAlt?'<div class="box warn"><span class="k">DIRECCIÓN SIN ALTURA</span>En Odoo la dirección no tiene calle y número, así que el punto cae en el centro de la localidad y no en la obra. Hay que completarla.</div>':''}
+    ${o.lejos?'<div class="box warn"><span class="k">UBICACIÓN EQUIVOCADA</span>Google ubicó esta dirección a unos 300 km de CABA. No se dibuja en el mapa hasta corregirla.</div>':''}
+    ${!o.loc&&!o.lejos?'<div class="box warn"><span class="k">SIN UBICACIÓN</span>Esta obra no tiene coordenadas en Odoo. Se ubica en la fase F0.</div>':''}
+    ${fotosHtml(o)}
+    <div class="box"><span class="k">QUÉ ESTÁ ARMADO · ${o.txt?(o.txtReal?'confirmado en obra'+(o.txtF?' el '+fmtF(o.txtF):''):'según la OT de armado (previsto)'):'sin dato'}</span>${o.txt?esc(o.txt):'Nadie cargó todavía qué quedó armado en esta obra.'}</div>
+    <div class="acts">
+      ${o.e==='P'&&!o.desProg?'<button class="act pri" data-a="desarme">Programar desarme</button>':''}
+      ${sv?`<a class="act" href="${sv}" target="_blank" rel="noopener">Street View</a><a class="act" href="${gm}" target="_blank" rel="noopener">Google Maps</a>`:''}
+      ${o.loc?'<button class="act" data-a="fly">Ir a la obra</button>':''}
+    </div></div>`;
+  ficha.hidden=false;
+  document.getElementById('fx').onclick=closeFicha;
+  ficha.querySelectorAll('button.act').forEach(b=>b.onclick=()=>{if(b.dataset.a==='fly')focus(o);else toast('En la versión dentro de Andamios OS esto abre el Tablero con el desarme de '+corta(o.dir)+' ya cargado.')});
+}
+let toastT;function toast(m){const t=document.getElementById('toast');t.textContent=m;t.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>t.hidden=true,3600)}
+
+/* ---------- modos ---------- */
+function setMode(m){mode=m;demo.classList.toggle('hist',m==='hist');document.querySelectorAll('.seg button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.mode===m)));
+  document.getElementById('q').placeholder=m==='calle'?'Buscar calle o dirección…':'Buscar una obra desarmada…';stopPlay();}
+document.querySelectorAll('.seg button').forEach(b=>b.onclick=()=>{setMode(b.dataset.mode);closeFicha();refresh();});
+
+/* ---------- línea de tiempo ---------- */
+const range=document.getElementById('tRange');range.max=WEEKS.length-1;
+const counts=WEEKS.map(w=>DATA.filter(o=>presentAt(o,w)).length);
+{const mx=Math.max(...counts)*1.1;const pts=counts.map((v,i)=>[i/(counts.length-1)*1000,30-v/mx*28]);const d='M'+pts.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join('L');
+ document.getElementById('spark').innerHTML=`<path d="${d}L1000,30L0,30Z" fill="rgba(255,117,54,.16)"/><path d="${d}" fill="none" stroke="#FF7536" stroke-width="1.6" vector-effect="non-scaling-stroke"/>`;
+ const MS=['','ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];const seen=new Set();let m='';
+ WEEKS.forEach(w=>{const k=w.slice(5,7);if(!seen.has(k)){seen.add(k);m+=`<span>${MS[+k]}</span>`}});document.getElementById('months').innerHTML=m;}
+function setT(i){i=Math.max(0,Math.min(WEEKS.length-1,i));T=WEEKS[i];range.value=i;
+  document.getElementById('tLab').textContent=fmtF(T);document.getElementById('tSub').textContent=counts[i]+' obras en la calle';}
+range.addEventListener('input',()=>{stopPlay();setT(+range.value);refresh()});
+let playing=null;const playIco=document.getElementById('playIco');
+function stopPlay(){if(playing){clearInterval(playing);playing=null}playIco.innerHTML='<path d="M4 2.5v11l9-5.5z"/>'}
+document.getElementById('bPlay').onclick=()=>{if(playing){stopPlay();return}let i=+range.value;if(i>=WEEKS.length-1)i=0;setT(i);refresh();
+  playIco.innerHTML='<path d="M4 2.5h3v11H4zM9 2.5h3v11H9z"/>';playing=setInterval(()=>{i++;if(i>=WEEKS.length){stopPlay();return}setT(i);refresh()},reduce?1200:650)};
+setT(WEEKS.indexOf(T));
+
+/* ---------- cámara y botones ---------- */
+const HOME={center:[-58.452,-34.612],zoom:11.55,pitch:52,bearing:-17};
+const goHome=d=>map.flyTo({...HOME,duration:reduce?0:(d||2600),essential:true});
+document.getElementById('bHome').onclick=()=>{closeFicha();goHome()};
+let flat=false;document.getElementById('bPitch').onclick=e=>{flat=!flat;e.currentTarget.textContent=flat?'3D':'2D';e.currentTarget.classList.toggle('on',flat);map.easeTo({pitch:flat?0:58,bearing:flat?0:map.getBearing(),duration:reduce?0:900})};
+document.getElementById('bSide').onclick=()=>demo.classList.toggle('sideopen');
+document.getElementById('bTheme').onclick=e=>{dark=!dark;e.currentTarget.textContent=dark?'Día':'Noche';demo.style.background=pc('bg');
+  const s=style();s.layers.forEach(l=>{if(!map.getLayer(l.id))return;Object.entries(l.paint||{}).forEach(([k,v])=>map.setPaintProperty(l.id,k,v))});themeObras();refresh();};
+
+/* ---------- modo TV ---------- */
+const tvBtn=document.getElementById('bTv'),tvcard=document.getElementById('tvcard');let tv=null;
+function tvItems(){const d=DEC.filter(x=>x.o.loc).map(x=>({o:x.o,w:x.w}));
+  const old=DATA.filter(o=>o.e==='A'&&o.loc&&!o.dud&&o.d!=null).sort((a,b)=>b.d-a.d).slice(0,3).map(o=>({o,w:o.d+' días armada'}));return[...d,...old].slice(0,7)}
+function tvStep(){if(!tv)return;tv.i++;const items=tvItems();
+  if(tv.i>=items.length){tv.i=-1;sel=null;refresh();goHome(4000);const A=DATA.filter(o=>o.e==='A').length,P=DATA.filter(o=>o.e==='P').length;
+    tvcard.innerHTML=`<div class="cap">Hoy en la calle</div><h2>${A} obras armadas · ${P} pendientes de desarme</h2><p>~${fmtN(DATA.filter(o=>o.e!=='D').reduce((s,o)=>s+o.largo,0))} metros lineales de estructura en Buenos Aires</p>`;tvcard.hidden=false;tv.t=setTimeout(tvStep,9000);return}
+  const it=items[tv.i];sel=it.o;refresh();focus(it.o,5000);
+  tvcard.innerHTML=`<div class="cap">${tv.i+1} de ${items.length} · ${it.o.e==='P'?'pendiente de desarme':'para revisar'}</div><h2>${esc(corta(it.o.dir))}</h2><p>${esc(it.w)}${it.o.tipo?' · '+TIPO[it.o.tipo]:''}</p>`;tvcard.hidden=false;tv.t=setTimeout(tvStep,11000);}
+function startTv(){closeFicha();setMode('calle');query='';document.getElementById('q').value='';if(!dark)document.getElementById('bTheme').click();refresh();demo.classList.add('tv');tvBtn.classList.add('on');
+  try{demo.requestFullscreen&&demo.requestFullscreen().catch(()=>{})}catch(e){}tv={i:-1};tvStep();}
+function stopTv(){if(!tv)return;clearTimeout(tv.t);tv=null;demo.classList.remove('tv');tvBtn.classList.remove('on');tvcard.hidden=true;sel=null;refresh();try{document.fullscreenElement&&document.exitFullscreen()}catch(e){}}
+tvBtn.onclick=()=>tv?stopTv():startTv();
+addEventListener('keydown',e=>{if(e.key==='Escape'){stopTv();closeFicha()}});
+
+/* ---------- interacción con el mapa ---------- */
+const PICK=['sc-p','sc-n','sc-b','beam','dot'];
+map.on('load',()=>{
+  addObraLayers();map.moveLayer('sc-b','halo');map.moveLayer('bld','halo');refresh();
+  document.getElementById('loading').hidden=true;
+  setTimeout(()=>goHome(reduce?0:4200),reduce?0:500);
+  let ph=0;(function pulse(){if(!reduce&&map.getLayer('halo')){ph=(ph+.012)%1;map.setPaintProperty('halo','circle-radius',8+ph*22);map.setPaintProperty('halo','circle-stroke-opacity',.8*(1-ph));}requestAnimationFrame(pulse)})();
+  map.on('click',e=>{const f=map.queryRenderedFeatures([[e.point.x-4,e.point.y-4],[e.point.x+4,e.point.y+4]],{layers:PICK.filter(l=>map.getLayer(l))});
+    if(f.length){const o=DATA.find(x=>x.id===f[0].properties.id);if(o){stopTv();select(o,true);return}}closeFicha();});
+  map.on('mousemove',e=>{const f=map.queryRenderedFeatures(e.point,{layers:PICK.filter(l=>map.getLayer(l))});map.getCanvas().style.cursor=f.length?'pointer':''});
+  map.on('dragstart',stopTv);
+});
+map.addControl(new maplibregl.NavigationControl({visualizePitch:true}),'bottom-right');
+renderKpis();renderLegend();renderList();
+})();
+</script>

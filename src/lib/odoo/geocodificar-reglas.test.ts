@@ -130,12 +130,49 @@ test("necesitaGeo: idempotente por x_obra_geo_dir", () => {
   assert.equal(necesitaGeo(fila(1, { x_direccion_obra: false })), false);
 });
 
+// S01163: se geocodificó antes de que existiera la validación y quedó en la ciudad de Bolívar.
+const BOLIVAR_CIUDAD: Punto = { lat: -36.2280338, lng: -61.1123068 };
+const SAN_TELMO: Punto = { lat: -34.6297, lng: -58.3846 };
+const S01163 = "Bolívar 1887 esq. Martin García";
+
+test("necesitaGeo: un punto que hoy se rechazaría se vuelve a geocodificar (forzar una mal ubicada)", () => {
+  const mal = fila(1163, { x_direccion_obra: S01163, x_obra_ciudad: false, x_obra_lat: BOLIVAR_CIUDAD.lat, x_obra_lng: BOLIVAR_CIUDAD.lng, x_obra_geo_dir: S01163 });
+  assert.equal(necesitaGeo(mal), true);
+  assert.equal(necesitaGeo({ ...mal, x_obra_lat: SAN_TELMO.lat, x_obra_lng: SAN_TELMO.lng }), false);
+  // Con una ciudad de otra provincia cargada, el punto lejos vale y no se rehace en cada corrida.
+  assert.equal(necesitaGeo({ ...mal, x_obra_ciudad: "Bolívar" }), false);
+});
+
+test("Bolívar 1887 esq. Martin García: sin localidad, fuera del AMBA se reintenta con CABA y si no, se descarta", async () => {
+  const consultas = consultasDe(S01163, false);
+  assert.equal(consultas[0], "Bolívar 1887 esq. Martin García, Ciudad Autónoma de Buenos Aires, Argentina");
+  assert.ok(consultas.includes("Bolívar 1887, Ciudad Autónoma de Buenos Aires, Argentina"));
+  // Google ignora la ciudad en la primera y devuelve la ciudad de Bolívar; con la altura sola y CABA, San Telmo.
+  const r = await resolverDireccion(S01163, false, async (t) => (t.startsWith("Bolívar 1887, Ciudad") ? SAN_TELMO : BOLIVAR_CIUDAD));
+  assert.equal(r.estado, "ok");
+  assert.deepEqual(r.estado === "ok" && r.punto, SAN_TELMO);
+  // Si todas caen afuera, no se acepta ninguna: el fallo se informa y no se escribe.
+  const malo = await resolverDireccion(S01163, false, async () => BOLIVAR_CIUDAD);
+  assert.equal(malo.estado, "fuera_del_amba");
+  assert.equal(malo.consultas, consultas.length);
+});
+
 test("elegir: primero el tablero (la próxima jornada), después lo pasado, después Armado; sin repetir", () => {
   const hoy = "2026-10-11";
   const fechaDe = new Map([[1, "2026-10-20"], [2, "2026-10-11"], [3, "2026-10-05"], [4, "2026-10-12"], [7, "2026-10-08"]]);
-  const plan = [fila(1), fila(2), fila(3), fila(4, { x_obra_lat: -34, x_obra_lng: -58, x_obra_geo_dir: "Calle 4 100" }), fila(7)];
-  const armado = [fila(5), fila(2), fila(6, { x_obra_lat: -34, x_obra_lng: -58, x_obra_geo_dir: "Calle 6 100" })];
+  const plan = [fila(1), fila(2), fila(3), fila(4, { x_obra_lat: -34.6, x_obra_lng: -58.4, x_obra_geo_dir: "Calle 4 100" }), fila(7)];
+  const armado = [fila(5), fila(2), fila(6, { x_obra_lat: -34.6, x_obra_lng: -58.4, x_obra_geo_dir: "Calle 6 100" })];
   assert.deepEqual(elegirVentas(armado, plan, fechaDe, hoy).map((f) => f.id), [2, 1, 7, 3, 5]);
+});
+
+test("elegir: después del tablero, armadas, pendientes y desarmadas; la más reciente primero", () => {
+  const hoy = "2026-10-12";
+  const des = (id: number, f: string) => fila(id, { x_studio_estado_de_obra: "Desarmado", x_fecha_desmontaje: f, x_fecha_armado: "2026-01-01 12:00:00" });
+  const arm = (id: number, f: string | false) => fila(id, { x_studio_estado_de_obra: "Armado", x_fecha_armado: f });
+  const pen = (id: number) => fila(id, { x_studio_estado_de_obra: "Pendiente de Desarme", x_fecha_armado: "2026-05-01 12:00:00" });
+  const delMapa = [des(10, "2026-04-01 12:00:00"), pen(11), arm(12, "2026-03-24 03:00:00"), des(13, "2026-09-30 12:00:00"), arm(14, "2026-10-01 12:00:00"), arm(15, false)];
+  const plan = [fila(20)];
+  assert.deepEqual(elegirVentas(delMapa, plan, new Map([[20, "2026-10-13"]]), hoy).map((f) => f.id), [20, 14, 12, 15, 11, 13, 10]);
 });
 
 test("masUrgente: la próxima de hoy en adelante; si no, la pasada más reciente", () => {
@@ -167,20 +204,48 @@ test("geocodificarFilas: escribe la dirección (no la variante), respeta el tope
     fila(2385, { x_direccion_obra: "Ing. Huergo 913 esq. Estados Unidos 02" }),
     fila(7, { x_direccion_obra: "Nada 1", x_obra_ciudad: "Avellaneda" }),
     fila(8, { x_direccion_obra: "Lejos 1", x_obra_ciudad: "Avellaneda" }),
-    fila(9, { x_obra_lat: -34, x_obra_lng: -58, x_obra_geo_dir: "Calle 9 100" }),
+    fila(9, { x_obra_lat: -34.6, x_obra_lng: -58.4, x_obra_geo_dir: "Calle 9 100" }),
   ];
   const buscar = async (t: string) => (t.startsWith("Ing. Huergo 913,") ? HUERGO : t.startsWith("Lejos") ? { lat: 40, lng: -3 } : null);
   const r = await geocodificarFilas(filas, buscar, odoo);
   assert.equal(r.candidatas, 3);
   assert.equal(r.geocodificadas, 1);
-  assert.deepEqual(escritos, [{ ids: [2385], v: { x_obra_lat: HUERGO.lat, x_obra_lng: HUERGO.lng, x_obra_geo_dir: "Ing. Huergo 913 esq. Estados Unidos 02" } }]);
+  // Los fallos (probadas todas las variantes) quedan marcados, sin tocar lat/lng.
+  assert.deepEqual(escritos, [
+    { ids: [2385], v: { x_obra_lat: HUERGO.lat, x_obra_lng: HUERGO.lng, x_obra_geo_dir: "Ing. Huergo 913 esq. Estados Unidos 02" } },
+    { ids: [7], v: { x_obra_geo_dir: "SIN PUNTO: Nada 1" } },
+    { ids: [8], v: { x_obra_geo_dir: "SIN PUNTO: Lejos 1" } },
+  ]);
   assert.deepEqual(r.sinResultado.map((x) => x.venta), ["S07"]);
   assert.deepEqual(r.fueraDeArgentina.map((x) => [x.venta, x.motivo]), [["S08", "fuera_de_argentina"]]);
   assert.equal(r.truncado, false);
 
+  escritos.length = 0;
   const corta = await geocodificarFilas(filas, async () => null, odoo, 2);
   assert.equal(corta.truncado, true);
   assert.equal(corta.consultas, 2);
+  // Cortada por el cupo: le quedan variantes sin probar, no se marca.
+  assert.deepEqual(escritos, []);
+});
+
+test("necesitaGeo: una dirección marcada SIN PUNTO no se vuelve a consultar hasta que la corrijan", async () => {
+  // El loop de costo: una venta imposible (o un punto viejo que Google sigue mandando fuera del
+  // AMBA) se re-consultaba con todas sus variantes en cada corrida del cron.
+  const consultas: string[] = [];
+  const odoo = { write: async (_m: string, _ids: number[], v: Record<string, unknown>) => { Object.assign(mal, v); } };
+  const mal: FilaVenta = fila(1163, { x_direccion_obra: S01163, x_obra_ciudad: false, x_obra_lat: BOLIVAR_CIUDAD.lat, x_obra_lng: BOLIVAR_CIUDAD.lng, x_obra_geo_dir: S01163 });
+  const buscar = async (t: string) => { consultas.push(t); return BOLIVAR_CIUDAD; };
+  await geocodificarFilas([mal], buscar, odoo);
+  assert.equal(mal.x_obra_geo_dir, "SIN PUNTO: " + S01163);
+  assert.equal(mal.x_obra_lat, BOLIVAR_CIUDAD.lat); // el punto viejo no se borra
+  const antes = consultas.length;
+  const otra = await geocodificarFilas([mal], buscar, odoo);
+  assert.equal(otra.consultas, 0);
+  assert.equal(consultas.length, antes);
+  // Le corrigen la dirección: vuelve a entrar.
+  assert.equal(necesitaGeo({ ...mal, x_direccion_obra: "Bolívar 1887, CABA" }), true);
+  // Sin punto y marcada (desarmada vieja que Google no encuentra): tampoco.
+  assert.equal(necesitaGeo(fila(9, { x_direccion_obra: "Nada 1", x_obra_geo_dir: "SIN PUNTO: Nada 1" })), false);
 });
 
 test("candidatas: Armado + las ventas de las OTs del tablero (asignación → OT → venta)", async () => {
@@ -203,6 +268,8 @@ test("candidatas: Armado + las ventas de las OTs del tablero (asignación → OT
   };
   const c = await candidatas(odoo, "2026-10-11");
   assert.deepEqual(c.lista.map((f) => f.id), [2385, 5]);
+  const ventas = llamadas.find((l) => l[0] === "sale.order")!;
+  assert.deepEqual((ventas[1] as unknown[])[1], ["x_studio_estado_de_obra", "in", ["Armado", "Pendiente de Desarme", "Desarmado"]]);
   assert.equal(c.fechaDe.get(2385), "2026-10-11");
   const asig = llamadas.find((l) => l[0] === "x_aba_asignacion")!;
   assert.deepEqual(asig[1], [["x_fecha", ">=", "2026-10-04"], ["x_fecha", "<=", "2026-11-25"], ["x_ot_id", "!=", false]]);

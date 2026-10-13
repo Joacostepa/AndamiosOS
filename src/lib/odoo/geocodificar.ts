@@ -83,12 +83,17 @@ export async function geocodificarDireccion(dir: string): Promise<Resolucion> {
  * Geocodifica las obras que lo necesitan.
  *
  * ALCANCE: dos grupos, sin repetir (la elección vive en geocodificar-reglas.ts, con tests).
- *   1. Las ventas tipo de contrato "Obra " en estado **Armado**: el Mapa de Obras.
+ *   1. Las ventas tipo de contrato "Obra " en **Armado, Pendiente de Desarme y Desarmado**:
+ *      el Mapa de Obras (Ciudad Armada) y su histórico. Dentro del grupo, armadas, después
+ *      pendientes, después desarmadas, y en cada estado la más reciente primero.
  *   2. Las ventas de las OTs con jornadas en el tablero de planificación desde hace 7 días
  *      hasta dentro de 45 (asignación → `x_ot_id` → `x_order_id`), en cualquier estado: la
  *      Hoja del día arma con sus coordenadas los tiempos de manejo (Routes API) y los links
  *      de Maps, y una obra que se planifica para armar todavía no está "Armado". Van primero,
  *      la jornada más próxima adelante: si el tope corta, corta lo que menos apura.
+ *
+ * UNA VENTA MAL UBICADA SE REHACE SOLA: si el punto guardado no pasaría hoy la validación
+ * (ej. una dirección de CABA ubicada a 300 km), cuenta como pendiente (`necesitaGeo`).
  *
  * Se probó incluir también "Pendiente de Armado" —para que una obra recién armada apareciera
  * en el mapa sin esperar a la corrida siguiente— y se descartó: son 1163 registros, de los
@@ -103,8 +108,10 @@ export async function geocodificarDireccion(dir: string): Promise<Resolucion> {
  * `consultasDe` y `validarPunto`. El tope es de consultas, no de ventas
  * (MAX_CONSULTAS_POR_CORRIDA).
  *
- * Los fallos se devuelven; una venta que Google no resuelve se vuelve a probar en cada
- * corrida (hasta que alguien corrija la dirección o cargue lat/lng a mano).
+ * Los fallos se devuelven UNA vez: una venta que Google no resuelve con ninguna variante queda
+ * marcada (`x_obra_geo_dir = "SIN PUNTO: " + dirección`, ver `necesitaGeo`) y no se vuelve a
+ * consultar hasta que alguien corrija la dirección. Antes se re-probaba en cada corrida, y con
+ * el histórico de desarmadas eso eran consultas pagas todos los días a las mismas ventas.
  */
 export async function geocodificarObras(): Promise<ResultadoGeo> {
   const key = await clavePlaces();

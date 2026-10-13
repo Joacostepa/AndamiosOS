@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Maximize2, Minimize2 } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import type { FotoObra } from "@/lib/odoo/mapa-obras";
+import type { FotoObra } from "@/lib/mapa-obras/tipos";
 
 // Visor de las fotos de una obra.
 //
@@ -62,7 +62,9 @@ export function VisorFotos({
 
   const foto = fotos[i];
   if (!foto) return null;
-  const pie = [foto.descripcion, foto.fecha].filter(Boolean).join(" · ");
+  const pie = [foto.descripcion, foto.fecha, foto.origen === "telegram" ? "Telegram" : null]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <Dialog open onOpenChange={(abierto) => !abierto && onCerrar()}>

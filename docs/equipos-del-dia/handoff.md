@@ -40,7 +40,7 @@ Detalle técnico de cada fase: `implementacion.md` §3.1 y las secciones "Histor
 ### 3. Lo que quedó pendiente
 
 **Del lado del dueño (no es código)**
-- [ ] **Un Iveco de más**: Flota y Odoo (`fleet.vehicle`) tienen 4 Iveco activos y el dueño dice que son 3. No recuerda cuál sobra; los candidatos son **AF 669 ZL** (Odoo: 43.700 km, 19 services) y **AH410LD** (1.900 km, 6 services), los dos con Kiska de chofer. Cuando diga cuál: desactivarlo en Odoo y en Flota (`vehiculos.activo = false`, no borrar).
+- [ ] **Un Iveco de más** (el dueño lo averigua el 13/10): Flota y Odoo (`fleet.vehicle`) tienen 4 Iveco activos y el dueño dice que son 3. No recuerda cuál sobra; los candidatos son **AF 669 ZL** (Odoo: 43.700 km, 19 services) y **AH410LD** (1.900 km, 6 services), los dos con Kiska de chofer. Cuando diga cuál: desactivarlo en Odoo y en Flota (`vehiculos.activo = false`, no borrar).
 - [ ] **Probar F4 con datos reales**: arrastrar un pedido a un camión (que diga "parada N … (+X min)"), "¿Quién pasa cerca?", "+ Pedido" a una dirección escrita ("ubicada en el mapa" y el pin "P"), y un aviso de viaje ("Elegir chofer", "No se hizo") sin ir a Camiones. Recargar y ver que quede igual.
 - [ ] **Probar con datos reales** lo nuevo (nada se probó contra la base desde acá, sólo con el arnés): armar una cuadrilla en el pizarrón, mover gente, ★ a cargo, encuentro, recargar y ver que quede igual; **Cerrar jornada** a la tarde; la columna **D** (arrastrar, encargado, que el encargado aparezca en Mandar); el **Recorrido** (sumar una parada, cambiar qué hace y la hora, reordenar, recargar).
 - [ ] **Confirmar las tres decisiones por defecto de F2** (arriba).

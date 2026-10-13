@@ -479,7 +479,7 @@ export function Pizarron() {
     if (o.k === "contratista") return <Fantasma texto={`+1 de ${nombreDe(dia, o.kid)}`} />;
     if (o.k === "pedido") return <Fantasma texto={dia.pedidos.find((x) => x.id === o.id)?.que ?? "Pedido"} />;
     const k = [...vista.camionesLibres, ...vista.columnas.flatMap((x) => x.camiones)].find((x) => `t:${x.k}` === arrastre.k);
-    return <Fantasma camion color={k ? colorCamion(k.color) : undefined} texto={vehTxt(dia, o.veh) || "Camión"} />;
+    return <Fantasma camion forma={k?.forma} color={k ? colorCamion(k.color) : undefined} texto={vehTxt(dia, o.veh) || "Camión"} />;
   })() : null;
   const menuChofer = menu?.t === "chofer" ? menu : null;
   const ctlMenus: CtlMenus = {

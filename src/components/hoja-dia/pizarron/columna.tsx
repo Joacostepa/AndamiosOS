@@ -21,6 +21,31 @@ import { JornadaCerrada } from "@/components/hoja-dia/cuadrillas/cerrar-jornada"
 import { mismoDestino, usePizarron, useZona } from "./contexto";
 import { FichaCamionUI, FichaContratistaColumna, FichaPersonaUI } from "./fichas";
 
+/**
+ * "Qué hay que ejecutar" de la OT (el mismo campo que muestra la OT y el tablero). Cuando
+ * Comercial pegó la propuesta entera son 600+ caracteres: en la columna van 2 renglones y
+ * el resto al tocar (pedido del dueño, 12/10: "eso es un choclo").
+ */
+function QueEjecutar({ texto }: { texto: string }) {
+  const [abierto, setAbierto] = useState(false);
+  const largo = texto.length > 90;
+  return (
+    <span className="block">
+      <span className={cn("block whitespace-pre-line", !abierto && largo && "line-clamp-2")} title={!abierto && largo ? texto : undefined}>{texto}</span>
+      {largo && (
+        <button
+          type="button"
+          data-no-drag=""
+          onClick={(e) => { e.stopPropagation(); setAbierto(!abierto); }}
+          className="font-semibold text-foreground underline decoration-foreground/30 underline-offset-2"
+        >
+          {abierto ? "ver menos" : "ver todo"}
+        </button>
+      )}
+    </span>
+  );
+}
+
 function Obra({ o, multi, color }: { o: ObraColumna; multi: boolean; color: string }) {
   const [nota, setNota] = useState<HTMLElement | null>(null);
   return (
@@ -33,7 +58,7 @@ function Obra({ o, multi, color }: { o: ObraColumna; multi: boolean; color: stri
         </div>
         <div className="mt-0.5 text-xs leading-snug text-muted-foreground">
           <b className="font-bold text-foreground">{o.tipo}</b>
-          {o.detalle && <> · {o.detalle}</>}
+          {o.detalle && <QueEjecutar texto={o.detalle} />}
           {o.jornada && <> <span className="rounded-[3px] border bg-muted px-1 font-semibold whitespace-nowrap text-foreground">{o.jornada}</span></>}
           {o.hasta && <> · hasta ~{o.hasta}</>}
           {o.notas.length > 0 && (

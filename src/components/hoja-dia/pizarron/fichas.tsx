@@ -10,9 +10,10 @@
 // B a "Sin asignar". Los botones de adentro (`data-no-drag`) no arrancan un arrastre.
 
 import { useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { Clock, Minus, MoreVertical, Plus, Route, Star, Truck } from "lucide-react";
+import { Clock, Minus, MoreVertical, Plus, Route, Star } from "lucide-react";
+import { IconoVehiculo } from "./icono-vehiculo";
 import type { Destino, Origen } from "@/lib/hoja-dia/gestos-pizarron";
-import type { FichaCamion, FichaContratista, FichaPersona } from "@/lib/hoja-dia/pizarron";
+import type { FichaCamion, FichaContratista, FichaPersona, FormaVehiculo } from "@/lib/hoja-dia/pizarron";
 import { colorCuadrilla } from "@/lib/tablero/colores";
 import { cn } from "@/lib/utils";
 import { MenuFlotante } from "@/components/hoja-dia/comunes/menu-flotante";
@@ -299,7 +300,7 @@ export function FichaCamionUI({ f }: { f: FichaCamion }) {
     >
       <span aria-hidden className="absolute inset-y-0 left-0 w-[5px]" style={{ background: color }} />
       <div className="flex min-w-0 items-center gap-1.5">
-        <Truck className="size-[18px] shrink-0" style={{ color }} />
+        <IconoVehiculo forma={f.forma} style={{ color }} />
         {f.veh ? (
           <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
             {f.marca && <span className="text-[13px] font-bold">{f.marca}</span>}
@@ -418,10 +419,10 @@ export function FichaContratistaBandeja({ kid, nombre, puestos }: { kid: string;
 }
 
 /** El fantasma del arrastre (DragOverlay): una ficha "levantada". */
-export function Fantasma({ texto, camion, color }: { texto: string; camion?: boolean; color?: string }) {
+export function Fantasma({ texto, camion, color, forma = "camion" }: { texto: string; camion?: boolean; color?: string; forma?: FormaVehiculo }) {
   return (
     <div className="pointer-events-none flex min-h-9 scale-105 -rotate-[1.5deg] cursor-grabbing items-center gap-1.5 rounded-md border border-foreground/40 bg-card px-2.5 text-sm font-semibold shadow-2xl motion-reduce:scale-100 motion-reduce:rotate-0">
-      {camion && <Truck className="size-4" style={{ color }} />}
+      {camion && <IconoVehiculo forma={forma} className="h-4" style={{ color }} />}
       {texto}
     </div>
   );

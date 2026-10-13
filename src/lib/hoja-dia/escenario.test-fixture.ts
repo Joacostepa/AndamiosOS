@@ -54,7 +54,7 @@ export const VEHICULOS: DiaHoja["vehiculos"] = [
   veh("moto", "A091SWF", "Moto", "otro", null),
   veh("clark", "CYS47", "Clark", "otro", null, { modelo: "Autoelevador" }),
   // Sin marca (el otro autoelevador de la flota): se lo nombra por la patente sola.
-  veh("sinmat", "SIN MATRICULA 10", null, "otro", null),
+  veh("sinmat", "SIN MATRICULA 10", null, "otro", null, { modelo: "Autoelevador" }),
 ];
 
 export const LUGARES: DiaHoja["lugares"] = [

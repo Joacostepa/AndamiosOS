@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { chromium, type Browser, type BrowserContextOptions, type Locator, type Page } from "playwright";
 import { levantarNext, type Next } from "./servidor-next.ts";
 import { MARTES, servirHojaDia, type Opciones, type Servidor } from "./servidor-falso.ts";
-import { martesConPedidos } from "../../src/lib/hoja-dia/escenario.test-fixture.ts";
+import { martesConPedidos, martesPrecargado } from "../../src/lib/hoja-dia/escenario.test-fixture.ts";
 
 let next: Next;
 let browser: Browser;
@@ -303,6 +303,22 @@ describe("Pizarrón", { timeout: 120_000 }, () => {
     const b = srv.posts.at(-1)!.body as { accion: string; que: string; hacia: { texto: string; lat: number; lng: number } };
     assert.deepEqual({ a: b.accion, q: b.que, t: b.hacia.texto, lat: b.hacia.lat }, { a: "crear", q: "4 puntales", t: "Ciudad de la Paz 2410", lat: -34.5642 });
     await captura(page, "pedido-nuevo");
+    await page.context().close();
+  });
+  test("Qué hay que ejecutar: 2 renglones y «ver todo»; camiones con su dibujo, sin Clark ni moto", async () => {
+    const LARGO = "Descripción de la Estructura a Montar. La estructura se diseñará y montará utilizando el Sistema de Andamio Pre-Armado (bastidores/marcos certificados), una solución más económica que el andamio tubular. Dimensiones generales: 11,70 m de ancho por 12,00 m de altura. Plataforma de trabajo: una única fila doble de tablones.";
+    const escenario = () => { const d = martesPrecargado(); return { ...d, obras: d.obras.map((o, i) => (i === 0 ? { ...o, detalleTecnico: LARGO } : o)) }; };
+    const { page } = await abrir({ escenario, alto: 1800 });
+    const col = page.locator('[data-col="1"]');
+    const alto = await col.getByText(/Descripción de la Estructura/).evaluate((el) => el.getBoundingClientRect().height);
+    assert.ok(alto < 40, `dos renglones, no un choclo: ${alto}px`);
+    await col.getByRole("button", { name: "ver todo" }).click();
+    const abierto = await col.getByText(/Descripción de la Estructura/).evaluate((el) => el.getBoundingClientRect().height);
+    assert.ok(abierto > alto * 2, "al tocar se lee entero");
+    const libres = await page.locator('[data-caja="libres"]').innerText();
+    assert.ok(!/Clark|Moto|SIN MATRICULA/.test(libres), libres);
+    assert.ok(await page.locator('[data-caja="libres"] svg[aria-label="Pickup doble cabina"]').count() === 1, "la S10 es pickup");
+    await captura(page, "vehiculos-y-detalle");
     await page.context().close();
   });
 });

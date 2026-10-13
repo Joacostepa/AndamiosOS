@@ -4,7 +4,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { estadoMandar, pizarron, sinAsignarPizarron, comoLlega, fraseCorta, colorDeCamion, cuadrillasDelPizarron, porQueNoAcepta } from "./pizarron.ts";
+import { estadoMandar, pizarron, sinAsignarPizarron, comoLlega, fraseCorta, colorDeCamion, cuadrillasDelPizarron, porQueNoAcepta, formaVehiculo } from "./pizarron.ts";
 import { problemas, vanDe } from "./estado.ts";
 import type { DiaHoja } from "./tipos.ts";
 import { martesArmado, martesPrecargado, martesVacio, fila, OT, viaje, enviarATodos } from "./escenario.test-fixture.ts";
@@ -184,4 +184,13 @@ test("Mandar: sin enviar, enviado y con cambios después de enviar", () => {
   assert.match(estadoMandar(env).texto, /^Mandado 18:/);
   const cambio: DiaHoja = { ...env, hojas: env.hojas.map((h) => (h.cuadrillaOdooId === 4 ? { ...h, integrantes: h.integrantes.filter((i) => i.personaId !== "paz") } : h)) };
   assert.deepEqual(estadoMandar(cambio), { texto: "Mandar cambios", hecho: false });
+});
+
+test("Camiones libres: sin autoelevadores ni moto; cada vehículo con su dibujo", () => {
+  const v = pizarron(martesPrecargado(), -300);
+  const libres = v.camionesLibres.map((k) => k.veh);
+  for (const x of ["clark", "sinmat", "moto"]) assert.ok(!libres.includes(x), `${x} no va en Camiones libres`);
+  const forma = (id: string) => formaVehiculo(martesPrecargado().vehiculos.find((x) => x.id === id));
+  assert.deepEqual(["ab831", "ab497", "s10", "moto", "clark", "sinmat"].map(forma), ["hidrogrua", "camion", "pickup", "moto", "autoelevador", "autoelevador"]);
+  assert.ok(v.camionesLibres.every((k) => k.forma === "camion" || k.forma === "hidrogrua" || k.forma === "pickup"));
 });

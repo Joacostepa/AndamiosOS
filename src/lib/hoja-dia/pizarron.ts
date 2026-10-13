@@ -39,6 +39,23 @@ export type FichaPersona = {
 };
 
 /** Un camión: el renglón de una hoja (`filaId`) o un camión libre (`c` null). */
+/**
+ * Cómo se dibuja cada vehículo (pedido del dueño, 12/10: "que los íconos sean reales"): el
+ * Agrale es cabina simple con caja y hidrogrúa; los Iveco, doble cabina con caja (siempre
+ * abierta); la S10, pickup doble cabina; la moto, moto; los Clark, autoelevadores.
+ */
+export type FormaVehiculo = "hidrogrua" | "camion" | "pickup" | "moto" | "autoelevador" | "otro";
+export function formaVehiculo(V: Pick<Vehiculo, "tipo" | "marca" | "modelo"> | null | undefined): FormaVehiculo {
+  if (!V) return "camion";
+  const txt = `${V.marca ?? ""} ${V.modelo ?? ""}`.toLowerCase();
+  if (V.tipo === "hidrogrua") return "hidrogrua";
+  if (V.tipo === "camion") return "camion";
+  if (V.tipo === "camioneta") return "pickup";
+  if (/autoelev|clark/.test(txt)) return "autoelevador";
+  if (/moto/.test(txt)) return "moto";
+  return "otro";
+}
+
 export type FichaCamion = {
   /** Clave estable para React y la animación: el renglón o el vehículo. */
   k: string;
@@ -51,6 +68,8 @@ export type FichaCamion = {
   nombre: string;
   /** Índice de color fijo por camión (paleta del tablero). */
   color: number;
+  /** El dibujo del vehículo (formaVehiculo). */
+  forma: FormaVehiculo;
   choferId: string | null;
   /**
    * De dónde sale el chofer que se muestra: el renglón de la hoja, el chofer del día
@@ -276,6 +295,7 @@ function fichaDeFila(dia: DiaHoja, c: number, f: VehiculoHoja): FichaCamion {
     patente: V?.patente ?? "",
     nombre: V ? nombreVehiculo(V) : "",
     color: V ? colorDeCamion(V.patente) : 7,
+    forma: formaVehiculo(V),
     choferId: ch,
     choferDe: ch ? "fila" : null,
     // Un chofer de "lleva y trae" puede llevar a dos cuadrillas (Kiska lleva la 2 y la 3): no
@@ -308,7 +328,7 @@ function fichaLibre(dia: DiaHoja, V: Vehiculo): FichaCamion {
   const { ch, de } = choferDeLibre(dia, V.id);
   return {
     k: `veh:${V.id}`, veh: V.id, filaId: null, c: null, marca: marcaVehiculo(V), patente: V.patente, nombre: nombreVehiculo(V),
-    color: colorDeCamion(V.patente), choferId: ch, choferDe: de, choque: false, modo: null, lleva: null, busca: null,
+    color: colorDeCamion(V.patente), forma: formaVehiculo(V), choferId: ch, choferDe: de, choque: false, modo: null, lleva: null, busca: null,
     viajes: calcVeh(dia, V.id).length, estado: estadoVeh(V),
   };
 }
@@ -392,10 +412,11 @@ export function pizarron(dia: DiaHoja, ahora: Minutos): VistaPizarron {
     };
   });
   const enHojas = new Set(dia.hojas.filter((h) => obrasDe(dia, h.cuadrillaOdooId).length).flatMap((h) => h.vehiculos.map((f) => f.vehiculoId)).filter(Boolean) as string[]);
-  const orden = (V: Vehiculo) => (V.tipo === "otro" ? 1 : 0);
+  // Los autoelevadores y la moto no salen a la calle con una cuadrilla (decisión del dueño,
+  // 12/10): no van en "Camiones libres". Si alguno tiene un viaje cargado, sí (para verlo).
   const camionesLibres = dia.vehiculos
-    .filter((V) => !enHojas.has(V.id))
-    .sort((a, b) => orden(a) - orden(b) || nombreVehiculo(a).localeCompare(nombreVehiculo(b), "es"))
+    .filter((V) => !enHojas.has(V.id) && (V.tipo !== "otro" || calcVeh(dia, V.id).length > 0))
+    .sort((a, b) => nombreVehiculo(a).localeCompare(nombreVehiculo(b), "es"))
     .map((V) => fichaLibre(dia, V));
   const puestos = (kid: string) => dia.hojas.reduce((s, h) => s + h.contratistas.filter((x) => x.contratistaId === kid).reduce((t, x) => t + x.cantidad, 0), 0);
   return {

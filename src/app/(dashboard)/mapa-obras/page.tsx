@@ -1,384 +1,418 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import dynamic from "next/dynamic";
 import { useQuery } from "@tanstack/react-query";
-import { ExternalLink, MapPin, Search, TriangleAlert, X } from "lucide-react";
-import { VisorFotos } from "@/components/mapa-obras/visor-fotos";
-import { PageHeader } from "@/components/shared/page-header";
-import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { normalizar } from "@/lib/tablero/titulo";
+import type {
+  CategoriaMapa, CiudadArmadaMapaApi, ObraMapa, ObraParaMapa, RespuestaMapaObras,
+} from "@/lib/mapa-obras/tipos";
 import {
-  antiguedadDe, contarPorTramo, textoDias, tramoDe, TRAMOS,
-  type ObraEnMapa, type TramoAntiguedad,
-} from "@/lib/mapa-obras/antiguedad";
+  categoriaDe, coincide, conteoCategorias, curvaDe, decisiones as calcularDecisiones, fechaBA,
+  itemsTv, kpis, presenteEn, semanaParaVer, subtituloDe, tieneUbicacion, type Vista,
+} from "@/lib/mapa-obras/categorias";
+import { PanelKpis } from "@/components/mapa-obras/panel/kpis";
+import { Leyenda, SelectorVista } from "@/components/mapa-obras/panel/vista-leyenda";
+import { BarraBotones } from "@/components/mapa-obras/panel/barra-botones";
+import { ListaObras } from "@/components/mapa-obras/panel/lista-obras";
+import { FichaObra } from "@/components/mapa-obras/panel/ficha-obra";
+import { LineaTiempo } from "@/components/mapa-obras/panel/linea-tiempo";
+import { TarjetaTv, useModoTv } from "@/components/mapa-obras/panel/modo-tv";
+import { vidrio } from "@/components/mapa-obras/panel/estilos";
 
-// Mapa de Obras: dónde está, hoy, todo lo que tenemos armado.
+// Ciudad Armada: el mapa 3D real de Buenos Aires con lo que tenemos en la calle, las
+// pendientes de desarme y el histórico de lo desarmado.
 //
-// LA PREGUNTA QUE CONTESTA no es "dónde queda esta obra" —eso ya está en la ficha— sino
-// "qué tenemos parado en la calle y desde cuándo". Una obra armada hace 160 días es una
-// renta excelente o una estructura que nadie se acordó de bajar, y hasta esta pantalla no
-// había forma de distinguirlas sin abrir las ventas de a una.
+// Especificación: docs/mapa-obras/ciudad-armada.md y la maqueta aprobada
+// (docs/mapa-obras/maqueta/ciudad-armada.html). La página decide QUÉ se ve (vista, búsqueda,
+// leyenda, fecha del histórico, modo TV) y el mapa sólo pinta lo que recibe.
 //
-// Por eso el color es la ANTIGÜEDAD y no el tipo de trabajo: el tipo ya se ve en el tablero.
+// El mapa ocupa todo el alto disponible y los paneles flotan encima en vidrio oscuro. El
+// contenedor de los paneles lleva `dark` para que Input y Button tomen los tokens oscuros
+// aunque la app esté en claro.
 
-const MapaObras = dynamic(
-  () => import("@/components/mapa-obras/mapa-obras").then((m) => m.MapaObras),
-  {
-    ssr: false,
-    loading: () => <Skeleton className="h-full w-full rounded-lg" />,
-  },
-);
+const CiudadArmadaMapa = dynamic(() => import("@/components/mapa-obras/ciudad/ciudad-armada-mapa"), {
+  ssr: false,
+  loading: () => (
+    <div className="absolute inset-0 grid place-items-center font-mono text-xs text-[#9AA8B3]">
+      Cargando el mapa de Buenos Aires…
+    </div>
+  ),
+});
+
+/** Fondo del contenedor mientras carga el mapa, del color del mapa. */
+const FONDO = { noche: "#0B1116", dia: "#E7EAE6" } as const;
+
+type Ocultas = Record<Vista, Set<CategoriaMapa>>;
+
+function useMedia(query: string, enServidor = false): boolean {
+  return useSyncExternalStore(
+    (cb) => {
+      const m = window.matchMedia(query);
+      m.addEventListener("change", cb);
+      return () => m.removeEventListener("change", cb);
+    },
+    () => window.matchMedia(query).matches,
+    () => enServidor,
+  );
+}
+
+/** Después de que React aplique el estado y el mapa reciba las obras nuevas. */
+const despues = (f: () => void) => setTimeout(f, 0);
 
 export default function MapaObrasPage() {
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["mapa-obras"],
     queryFn: async () => {
       const res = await fetch("/api/operaciones/mapa-obras");
-      if (!res.ok) throw new Error((await res.json()).error ?? "No se pudo leer el mapa");
-      return (await res.json()) as { obras: ObraEnMapa[] };
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "No se pudo leer el mapa");
+      return (await res.json()) as RespuestaMapaObras;
     },
     staleTime: 5 * 60 * 1000,
+    // Las fotos de Telegram vienen con URLs firmadas que vencen a la hora (fotos-telegram.ts)
+    // y la TV de la oficina queda abierta todo el día sin foco, así que sin esto mostraba los
+    // datos de cuando se abrió y miniaturas rotas. Media hora: antes de que venzan las URLs.
+    refetchInterval: 30 * 60 * 1000,
   });
 
-  const [tramos, setTramos] = useState<Set<TramoAntiguedad>>(new Set());
+  // Mientras el servidor no devuelva el formato nuevo (con `curva`), no se pinta nada: las
+  // obras del formato viejo no traen estado, medidas ni ubicación y romperían los paneles.
+  const formatoNuevo = !!data && Array.isArray(data.obras) && Array.isArray(data.curva);
+  const obras: ObraMapa[] = useMemo(() => (formatoNuevo ? data!.obras : []), [formatoNuevo, data]);
+  const generado = data?.generado ?? null;
+  const hoy = useMemo(() => (generado ? fechaBA(new Date(generado)) : fechaBA()), [generado]);
+  const curva = useMemo(() => curvaDe(obras, formatoNuevo ? data!.curva : [], hoy), [obras, formatoNuevo, data, hoy]);
+
+  // ---- estado de la pantalla ----
+  const [vista, setVista] = useState<Vista>("calle");
+  const [ocultas, setOcultas] = useState<Ocultas>(() => ({ calle: new Set(), historico: new Set() }));
   const [busqueda, setBusqueda] = useState("");
+  const [consulta, setConsulta] = useState(""); // la búsqueda con 160 ms de respiro
   const [seleccionada, setSeleccionada] = useState<number | null>(null);
+  const [tema, setTema] = useState<"noche" | "dia">("noche");
+  const [plano, setPlano] = useState(false);
+  const [indiceElegido, setIndice] = useState<number | null>(null);
+  const [reproduciendo, setReproduciendo] = useState(false);
+  const [listaAbierta, setListaAbierta] = useState(false);
 
-  const todas = useMemo(() => data?.obras ?? [], [data]);
-  const conteos = useMemo(() => contarPorTramo(todas), [todas]);
-  const obraSeleccionada = todas.find((o) => o.ventaId === seleccionada) ?? null;
+  const escritorio = useMedia("(min-width: 1024px)", true);
+  const reducirMovimiento = useMedia("(prefers-reduced-motion: reduce)");
 
-  const visibles = useMemo(() => {
-    const q = normalizar(busqueda.trim());
-    return todas
-      .filter((o) => tramos.size === 0 || tramos.has(tramoDe(o.diasArmado)))
-      .filter((o) =>
-        !q || normalizar(`${o.direccion} ${o.referencia ?? ""} ${o.cliente ?? ""} ${o.venta}`).includes(q),
-      )
-      // Las más viejas arriba: son las que reclaman una decisión.
-      .sort((a, b) => (b.diasArmado ?? -1) - (a.diasArmado ?? -1));
-  }, [todas, tramos, busqueda]);
+  const contenedor = useRef<HTMLDivElement>(null);
+  const api = useRef<CiudadArmadaMapaApi | null>(null);
 
-  function alternarTramo(t: TramoAntiguedad) {
-    setTramos((prev) => {
-      const s = new Set(prev);
-      if (s.has(t)) s.delete(t);
-      else s.add(t);
-      return s;
-    });
-  }
+  // El histórico arranca seis semanas atrás: en la semana de hoy, por definición, no hay
+  // ninguna desarmada en la calle y el mapa se ve igual que "En la calle".
+  const indice = Math.min(indiceElegido ?? Math.max(0, curva.length - 7), Math.max(0, curva.length - 1));
+  const fechaHist = curva[indice]?.fecha ?? hoy;
+  const hist = vista === "historico";
 
-  return (
-    <div className="flex h-[calc(100vh-6rem)] flex-col gap-4">
-      <PageHeader
-        title="Mapa de Obras"
-        description={
-          isLoading ? "Cargando…" : `${todas.length} obras armadas hoy`
+  // ---- derivados ----
+  const decisiones = useMemo(() => calcularDecisiones(obras, hoy), [obras, hoy]);
+  const tvItems = useMemo(() => itemsTv(obras, decisiones), [obras, decisiones]);
+  const kpisCalle = useMemo(() => (formatoNuevo ? kpis(obras, "calle") : null), [obras, formatoNuevo]);
+  const kpisVista = useMemo(
+    () => (!formatoNuevo ? null : hist ? kpis(obras, "historico", fechaHist) : kpisCalle),
+    [formatoNuevo, hist, obras, fechaHist, kpisCalle],
+  );
+  const conteos = useMemo(() => conteoCategorias(obras, vista, fechaHist), [obras, vista, fechaHist]);
+
+  const filtrarParaMapa = useCallback(
+    (q: string): ObraParaMapa[] =>
+      obras
+        .filter((o) => (vista === "calle" ? o.estado !== "desarmada" : presenteEn(o, fechaHist)))
+        .filter((o) => tieneUbicacion(o) && coincide(o, q))
+        .map((o) => ({ obra: o, categoria: categoriaDe(o, vista, fechaHist), subtitulo: subtituloDe(o) }))
+        .filter((x) => !ocultas[vista].has(x.categoria)),
+    [obras, vista, fechaHist, ocultas],
+  );
+  const obrasMapa = useMemo(() => filtrarParaMapa(consulta), [filtrarParaMapa, consulta]);
+  const obraSel = useMemo(() => obras.find((o) => o.ventaId === seleccionada) ?? null, [obras, seleccionada]);
+
+  // ---- modo TV ----
+  const alEmpezarTv = useCallback(() => {
+    setSeleccionada(null);
+    setVista("calle");
+    setBusqueda("");
+    setConsulta("");
+    setListaAbierta(false);
+    setReproduciendo(false);
+    // Sin filtros de la leyenda: si no, la TV anuncia una obra oculta y la cámara no vuela.
+    setOcultas({ calle: new Set(), historico: new Set() });
+  }, []);
+  const tv = useModoTv({
+    contenedor,
+    api,
+    items: tvItems,
+    reducirMovimiento,
+    alEmpezar: alEmpezarTv,
+    alSeleccionar: setSeleccionada,
+  });
+  const temaMapa = tv.activo ? "noche" : tema;
+
+  // ---- búsqueda: filtra lista y mapa, y encuadra ----
+  const filtrarRef = useRef(filtrarParaMapa);
+  useEffect(() => {
+    filtrarRef.current = filtrarParaMapa;
+  });
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setConsulta(busqueda);
+      if (!busqueda.trim()) return;
+      const ids = filtrarRef.current(busqueda).map((x) => x.obra.ventaId);
+      if (ids.length) despues(() => api.current?.encuadrar(ids));
+    }, 160);
+    return () => clearTimeout(t);
+  }, [busqueda]);
+
+  // ---- play de la línea de tiempo ----
+  const indiceRef = useRef(indice);
+  useEffect(() => {
+    indiceRef.current = indice;
+  });
+  useEffect(() => {
+    if (!reproduciendo) return;
+    const id = setInterval(() => {
+      const i = indiceRef.current + 1;
+      if (i >= curva.length) {
+        setReproduciendo(false);
+        return;
+      }
+      setIndice(i);
+    }, reducirMovimiento ? 1200 : 650);
+    return () => clearInterval(id);
+  }, [reproduciendo, curva.length, reducirMovimiento]);
+
+  // ---- acciones ----
+  const cambiarVista = useCallback((v: Vista) => {
+    setVista(v);
+    setSeleccionada(null);
+    setReproduciendo(false);
+    // Sin filtros de la leyenda: si no, la TV anuncia una obra oculta y la cámara no vuela.
+    setOcultas({ calle: new Set(), historico: new Set() });
+  }, []);
+
+  const elegir = useCallback(
+    (o: ObraMapa) => {
+      if (tv.activo) tv.salir();
+      if (vista === "calle" && o.estado === "desarmada") setVista("historico");
+      const enHist = vista === "historico" || o.estado === "desarmada";
+      if (enHist && tieneUbicacion(o) && !presenteEn(o, fechaHist)) {
+        const i = semanaParaVer(o, curva.map((p) => p.fecha));
+        if (i != null) {
+          setIndice(i);
+          setReproduciendo(false);
         }
-      >
-        <div className="relative w-64">
-          <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
-            placeholder="Dirección, referencia o cliente…"
-            className="pl-8"
-          />
-        </div>
-      </PageHeader>
+      }
+      setSeleccionada(o.ventaId);
+      if (tieneUbicacion(o)) despues(() => api.current?.volarA(o.ventaId, reducirMovimiento ? 0 : undefined));
+      setListaAbierta(false);
+    },
+    [tv, vista, fechaHist, curva, reducirMovimiento],
+  );
 
-      {/* Leyenda y filtro son LO MISMO: cada tramo dice cuántas hay y filtra al tocarlo.
-          Dos controles separados para la misma escala se desincronizan solos. */}
-      <div className="flex flex-wrap items-center gap-2">
-        {(Object.keys(TRAMOS) as TramoAntiguedad[]).map((t) => {
-          const activo = tramos.has(t);
-          return (
-            <button
-              key={t}
-              type="button"
-              onClick={() => alternarTramo(t)}
+  const alSeleccionarEnMapa = useCallback(
+    (id: number | null) => {
+      setSeleccionada(id);
+      if (id != null) api.current?.volarA(id, reducirMovimiento ? 0 : undefined);
+    },
+    [reducirMovimiento],
+  );
+
+  const irALaObra = useCallback(
+    (o: ObraMapa) => api.current?.volarA(o.ventaId, reducirMovimiento ? 0 : undefined),
+    [reducirMovimiento],
+  );
+
+  const alternarCategoria = useCallback(
+    (c: CategoriaMapa) =>
+      setOcultas((prev) => {
+        const s = new Set(prev[vista]);
+        if (s.has(c)) s.delete(c);
+        else s.add(c);
+        return { ...prev, [vista]: s };
+      }),
+    [vista],
+  );
+
+  // Esc: sale del modo TV o cierra la ficha (si no hay un diálogo abierto, como el visor).
+  const salirTv = tv.salir;
+  const tvActivo = tv.activo;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (tvActivo) salirTv();
+      else if (!document.querySelector('[role="dialog"]')) setSeleccionada(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [tvActivo, salirTv]);
+
+  // ---- margen de los paneles para la cámara ----
+  const margen = useMemo(() => {
+    if (tv.activo) return { top: 40, right: 40, bottom: 200, left: 40 };
+    if (!escritorio) return { top: 140, right: 0, bottom: obraSel ? 320 : 110, left: 0 };
+    return { top: 70, left: 384, right: obraSel ? 404 : 12, bottom: hist ? 92 : 12 };
+  }, [tv.activo, escritorio, obraSel, hist]);
+
+  const errorTexto = isError
+    ? error instanceof Error
+      ? error.message
+      : "No se pudo leer el mapa"
+    : data && !formatoNuevo
+      ? "El servidor todavía devuelve el formato anterior del mapa."
+      : null;
+
+  return (
+    <div
+      ref={contenedor}
+      className="relative isolate h-[calc(100vh-6rem)] overflow-hidden rounded-xl border shadow-sm"
+      style={{ background: FONDO[temaMapa] }}
+    >
+      <CiudadArmadaMapa
+        ref={api}
+        obras={obrasMapa}
+        seleccionada={seleccionada}
+        onSeleccionar={alSeleccionarEnMapa}
+        tema={temaMapa}
+        plano={plano}
+        margen={margen}
+      />
+
+      {/* Los paneles. pointer-events-none en el contenedor para que el mapa siga
+          respondiendo entre panel y panel. */}
+      <div className="dark pointer-events-none absolute inset-0 z-[3] text-foreground [&>*]:pointer-events-auto">
+        {!tv.activo && (
+          <>
+            {/* Izquierda: contadores y lista. */}
+            <div
               className={cn(
-                "flex items-center gap-2 rounded-full border px-3 py-1 text-xs transition-colors",
-                activo ? "border-foreground/40 bg-muted" : "hover:border-foreground/25",
-                conteos[t] === 0 && "opacity-40",
+                "absolute left-3 top-3 flex w-[min(360px,calc(100%-24px))] flex-col gap-2 max-lg:right-3 max-lg:w-auto",
+                "lg:bottom-3",
+                hist && "lg:bottom-[92px]",
+                // Celular: la lista es una hoja que se abre con el botón.
+                listaAbierta && (hist ? "max-lg:bottom-[150px]" : "max-lg:bottom-[110px]"),
+                "pointer-events-none! [&>*]:pointer-events-auto",
               )}
-              aria-pressed={activo}
             >
-              <span
-                className="h-2.5 w-2.5 rounded-full"
-                style={{ backgroundColor: TRAMOS[t].color }}
-                aria-hidden
+              <PanelKpis
+                datos={kpisVista}
+                hoy={hoy}
+                fecha={fechaHist}
+                generado={generado}
+                cargando={isLoading}
               />
-              {TRAMOS[t].label}
-              <span className="font-semibold tabular-nums">{conteos[t]}</span>
-            </button>
-          );
-        })}
-        {tramos.size > 0 && (
-          <button
-            type="button"
-            onClick={() => setTramos(new Set())}
-            className="text-xs text-muted-foreground underline-offset-2 hover:underline"
-          >
-            ver todas
-          </button>
-        )}
-      </div>
-
-      {isError ? (
-        <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed">
-          <p className="text-sm text-muted-foreground">
-            {error instanceof Error ? error.message : "No se pudo leer el mapa"}
-          </p>
-        </div>
-      ) : (
-        <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[22rem_1fr]">
-          <ListaObras
-            obras={visibles}
-            total={todas.length}
-            cargando={isLoading}
-            seleccionada={seleccionada}
-            onSeleccionar={setSeleccionada}
-          />
-          <div className="relative min-h-[24rem] overflow-hidden rounded-lg border">
-            {isLoading ? (
-              <Skeleton className="h-full w-full" />
-            ) : (
-              <MapaObras
-                obras={visibles}
+              <ListaObras
+                vista={vista}
+                obras={obras}
+                decisiones={decisiones}
+                busqueda={busqueda}
+                onBusqueda={setBusqueda}
                 seleccionada={seleccionada}
-                onSeleccionar={setSeleccionada}
+                onElegir={elegir}
+                className={cn("flex-1", !listaAbierta && "max-lg:hidden", obraSel && "max-lg:hidden")}
               />
-            )}
-            {/* La ficha va FLOTANDO sobre el mapa y no en un popup anclado al punto: el
-                texto de qué hay armado son varias líneas y un globo de ese tamaño pegado
-                al marcador tapa media ciudad y se mueve con el mapa. */}
-            {obraSeleccionada && (
-              <FichaObra obra={obraSeleccionada} onCerrar={() => setSeleccionada(null)} />
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+            </div>
 
-function ListaObras({
-  obras,
-  total,
-  cargando,
-  seleccionada,
-  onSeleccionar,
-}: {
-  obras: ObraEnMapa[];
-  total: number;
-  cargando: boolean;
-  seleccionada: number | null;
-  onSeleccionar: (id: number | null) => void;
-}) {
-  if (cargando) {
-    return (
-      <div className="space-y-2 overflow-hidden rounded-lg border p-2">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <Skeleton key={i} className="h-14 w-full" />
-        ))}
-      </div>
-    );
-  }
-  if (obras.length === 0) {
-    return (
-      <div className="flex items-center justify-center rounded-lg border border-dashed p-6 text-center">
-        <p className="text-sm text-muted-foreground">
-          {total === 0
-            ? "No hay obras armadas con dirección geocodificada."
-            : "Ninguna obra coincide con el filtro."}
-        </p>
-      </div>
-    );
-  }
-  return (
-    <div className="min-h-0 overflow-y-auto rounded-lg border">
-      <ul className="divide-y">
-        {obras.map((o) => {
-          const a = antiguedadDe(o.diasArmado);
-          const activa = o.ventaId === seleccionada;
-          return (
-            <li key={o.ventaId}>
-              <button
-                type="button"
-                onClick={() => onSeleccionar(activa ? null : o.ventaId)}
-                className={cn(
-                  "flex w-full items-start gap-2 px-3 py-2 text-left transition-colors",
-                  activa ? "bg-muted" : "hover:bg-muted/50",
-                )}
-              >
-                <span
-                  className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full"
-                  style={{ backgroundColor: a.color }}
-                  aria-hidden
-                />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[13px] font-medium">{o.direccion}</span>
-                  {o.referencia && (
-                    <span className="block truncate text-[11px] font-medium text-muted-foreground">
-                      {o.referencia}
-                    </span>
-                  )}
-                  <span className="block truncate text-[11px] text-muted-foreground">
-                    {o.cliente ?? "—"}
-                  </span>
-                  <span className="mt-0.5 flex items-center gap-1.5 text-[11px]">
-                    <span style={{ color: a.color }} className="font-semibold">
-                      {textoDias(o.diasArmado)}
-                    </span>
-                    {o.vencida && (
-                      <span
-                        className="flex items-center gap-0.5 text-[10px] font-semibold"
-                        style={{ color: TRAMOS.larga.color }}
-                        title={`Fin de obra estimado: ${o.finEstimado}`}
-                      >
-                        <TriangleAlert className="h-3 w-3" />
-                        pasó el fin estimado
-                      </span>
-                    )}
-                  </span>
-                </span>
-                {activa && (
-                  <a
-                    href={o.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                    className="shrink-0 text-muted-foreground hover:text-foreground"
-                    aria-label={`Abrir ${o.venta} en Odoo`}
-                    title={`Abrir ${o.venta} en Odoo`}
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                  </a>
-                )}
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-      <p className="flex items-center gap-1 border-t px-3 py-2 text-[11px] text-muted-foreground">
-        <MapPin className="h-3 w-3" />
-        {obras.length === total ? `${total} obras` : `${obras.length} de ${total}`}
-      </p>
-    </div>
-  );
-}
-
-/**
- * Qué hay parado en esa obra. Es la razón de ser del clic: la dirección ya se lee en la
- * lista, lo que no estaba en ningún lado es QUÉ estructura hay levantada ahí.
- */
-function FichaObra({ obra, onCerrar }: { obra: ObraEnMapa; onCerrar: () => void }) {
-  const a = antiguedadDe(obra.diasArmado);
-  // Desde qué foto se abrió el visor. null = cerrado. Se guarda el índice y no un booleano
-  // porque el visor tiene que arrancar en la miniatura que se tocó, no siempre en la primera.
-  const [visorDesde, setVisorDesde] = useState<number | null>(null);
-  return (
-    <div className="absolute bottom-3 left-3 right-3 max-h-[55%] overflow-y-auto rounded-lg border bg-background/95 p-3 shadow-lg backdrop-blur sm:right-auto sm:w-96">
-      <div className="flex items-start gap-2">
-        <span
-          className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full"
-          style={{ backgroundColor: a.color }}
-          aria-hidden
-        />
-        <div className="min-w-0 flex-1">
-          <p className="text-[13px] font-semibold leading-tight">{obra.direccion}</p>
-          {obra.referencia && (
-            <p className="text-[12px] font-medium text-muted-foreground">{obra.referencia}</p>
-          )}
-          <p className="truncate text-[11px] text-muted-foreground">{obra.cliente ?? "—"}</p>
-        </div>
-        <a
-          href={obra.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="shrink-0 text-muted-foreground hover:text-foreground"
-          title={`Abrir ${obra.venta} en Odoo`}
-        >
-          <ExternalLink className="h-4 w-4" />
-        </a>
-        <button
-          type="button"
-          onClick={onCerrar}
-          className="shrink-0 text-muted-foreground hover:text-foreground"
-          aria-label="Cerrar"
-        >
-          <X className="h-4 w-4" />
-        </button>
-      </div>
-
-      <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
-        <span className="font-semibold" style={{ color: a.color }}>{textoDias(obra.diasArmado)}</span>
-        {obra.vencida && (
-          <span className="flex items-center gap-0.5 font-semibold" style={{ color: TRAMOS.larga.color }}>
-            <TriangleAlert className="h-3 w-3" />
-            pasó el fin estimado {obra.finEstimado}
-          </span>
-        )}
-      </p>
-
-      {/* Las fotos van ARRIBA del texto: se entiende más rápido una imagen de la fachada
-          que tres renglones de descripción técnica. Sólo 15 de 83 obras tienen; el resto
-          de las fotos vive en el grupo de Telegram y todavía no entra por acá. */}
-      {obra.fotos.length > 0 && (
-        <div className="mt-2 flex gap-1.5 overflow-x-auto border-t pt-2">
-          {obra.fotos.map((f, idx) => (
-            <button
-              key={f.id}
-              type="button"
-              onClick={() => setVisorDesde(idx)}
-              className="group relative shrink-0 overflow-hidden rounded border"
-              title={[f.descripcion, f.fecha].filter(Boolean).join(" · ") || "Foto de la obra"}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={f.url}
-                alt={f.descripcion ?? "Foto de la obra"}
-                loading="lazy"
-                className="h-20 w-28 bg-muted object-cover transition-transform group-hover:scale-105"
-              />
-              {f.fecha && (
-                <span className="absolute bottom-0 right-0 bg-black/60 px-1 text-[9px] text-white">
-                  {f.fecha}
-                </span>
+            {/* Centro: vista y leyenda (la leyenda sólo en pantallas anchas). */}
+            <div
+              className={cn(
+                "absolute left-1/2 flex -translate-x-1/2 flex-col items-center gap-2",
+                "lg:top-3 lg:w-max lg:max-w-[calc(100%-820px)]",
+                hist ? "max-lg:bottom-[92px]" : "max-lg:bottom-3",
+                "pointer-events-none! [&>*]:pointer-events-auto",
               )}
-            </button>
-          ))}
-        </div>
-      )}
+            >
+              <SelectorVista vista={vista} onCambiar={cambiarVista} />
+              <Leyenda
+                vista={vista}
+                conteos={conteos}
+                ocultas={ocultas[vista]}
+                onAlternar={alternarCategoria}
+                className="max-xl:hidden"
+              />
+            </div>
 
-      <div className="mt-2 border-t pt-2">
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-          Qué está armado
-          {/* No es lo mismo lo que se planificó que lo que la cuadrilla dejó parado. Cuando
-              existe el as-built manda, y conviene que se note cuál de los dos se está leyendo. */}
-          {obra.queEstaArmado && (
-            <span className="ml-1 font-normal normal-case">
-              {obra.esAsBuilt ? "· como quedó en obra" : "· según lo previsto"}
-            </span>
+            {obraSel && (
+              <FichaObra
+                key={obraSel.ventaId}
+                obra={obraSel}
+                hoy={hoy}
+                onCerrar={() => setSeleccionada(null)}
+                onIrALaObra={irALaObra}
+                className={cn(
+                  "absolute right-3 top-[60px] w-[min(380px,calc(100%-24px))]",
+                  hist ? "max-h-[calc(100%-160px)]" : "max-h-[calc(100%-72px)]",
+                  "max-lg:inset-x-3 max-lg:bottom-3 max-lg:top-auto max-lg:z-10 max-lg:w-auto max-lg:max-h-[60%]",
+                )}
+              />
+            )}
+
+            {hist && (
+              <LineaTiempo
+                curva={curva}
+                indice={indice}
+                onIndice={(i) => {
+                  setReproduciendo(false);
+                  setIndice(i);
+                }}
+                reproduciendo={reproduciendo}
+                onReproducir={() => {
+                  if (reproduciendo) return setReproduciendo(false);
+                  if (indice >= curva.length - 1) setIndice(0);
+                  setReproduciendo(true);
+                }}
+                className="absolute inset-x-3 bottom-3"
+              />
+            )}
+
+            {errorTexto && (
+              <div className={cn(vidrio, "absolute left-1/2 top-1/2 max-w-sm -translate-x-1/2 -translate-y-1/2 px-4 py-3 text-center text-sm")}>
+                {errorTexto}
+              </div>
+            )}
+          </>
+        )}
+
+        {tv.activo && tv.paso != null && (
+          <TarjetaTv
+            paso={tv.paso}
+            items={tvItems}
+            resumen={kpisCalle}
+            className="absolute bottom-10 left-7"
+          />
+        )}
+
+        {/* En modo TV, tocar el mapa sale: una capa transparente toma el toque antes que el
+            mapa (que si no, empezaría a arrastrarse). */}
+        {tv.activo && (
+          <div aria-hidden className="absolute inset-0 cursor-pointer" onPointerDown={() => tv.salir()} />
+        )}
+
+        <BarraBotones
+          tema={temaMapa}
+          plano={plano}
+          tv={tv.activo}
+          listaAbierta={listaAbierta}
+          onTema={() => setTema((t) => (t === "noche" ? "dia" : "noche"))}
+          onPlano={() => setPlano((p) => !p)}
+          onGeneral={() => {
+            setSeleccionada(null);
+            api.current?.irAGeneral(reducirMovimiento ? 0 : undefined);
+          }}
+          onTv={() => (tv.activo ? tv.salir() : tv.empezar())}
+          onLista={() => {
+            setListaAbierta((a) => !a);
+            setSeleccionada(null);
+          }}
+          className={cn(
+            "absolute right-3 top-3 max-w-[420px]",
+            !tv.activo && (hist ? "max-lg:bottom-[150px]" : "max-lg:bottom-[60px]"),
+            !tv.activo && "max-lg:top-auto",
           )}
-        </p>
-        <p className="mt-1 whitespace-pre-line text-[12px] leading-snug">
-          {obra.queEstaArmado ?? "Sin detalle cargado en la OT de armado."}
-        </p>
-      </div>
-
-      {visorDesde !== null && (
-        <VisorFotos
-          fotos={obra.fotos}
-          indiceInicial={visorDesde}
-          titulo={obra.direccion}
-          onCerrar={() => setVisorDesde(null)}
         />
-      )}
+
+      </div>
     </div>
   );
 }

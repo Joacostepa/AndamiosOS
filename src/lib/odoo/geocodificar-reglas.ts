@@ -47,9 +47,28 @@ export type FilaVenta = {
   x_obra_lat: number | false;
   x_obra_lng: number | false;
   x_obra_geo_dir: string | false;
+  /** Para ordenar el cupo (armadas antes que desarmadas). Opcionales: los tests no los cargan. */
+  x_studio_estado_de_obra?: string | false;
+  x_fecha_armado?: string | false;
+  x_fecha_desmontaje?: string | false;
 };
 
-export const CAMPOS_VENTA = ["name", "x_direccion_obra", "x_obra_ciudad", "x_obra_lat", "x_obra_lng", "x_obra_geo_dir"];
+export const CAMPOS_VENTA = [
+  "name", "x_direccion_obra", "x_obra_ciudad", "x_obra_lat", "x_obra_lng", "x_obra_geo_dir",
+  "x_studio_estado_de_obra", "x_fecha_armado", "x_fecha_desmontaje",
+];
+
+/**
+ * Los estados de obra que van al Mapa de Obras (Ciudad Armada), en el orden en que se
+ * reparten las consultas: lo que está en la calle antes que el histórico.
+ */
+export const ESTADOS_MAPA = ["Armado", "Pendiente de Desarme", "Desarmado"] as const;
+
+/**
+ * Prefijo de `x_obra_geo_dir` cuando la dirección se probó entera y Google no dio un punto
+ * válido: "ya se pagó, no repetir hasta que cambie la dirección". Ver `necesitaGeo`.
+ */
+export const SIN_PUNTO = "SIN PUNTO: ";
 
 const sinTilde = (x: string) => x.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 const espacios = (x: string) => x.replace(/\s+/g, " ").trim();
@@ -219,11 +238,30 @@ export async function resolverDireccion(
 /**
  * ¿Hay que geocodificarla? Tiene dirección y no tiene punto, o lo tiene pero contra otro
  * texto (le corrigieron la dirección). `x_obra_geo_dir` es lo que hace idempotente todo.
+ *
+ * Y TAMBIÉN si el punto que tiene hoy no pasaría `validarPunto`: es la forma de forzar que se
+ * rehaga una venta mal ubicada sin tocar nada a mano. El caso real: "Bolívar 1887 esq. Martin
+ * García" (San Telmo) se geocodificó antes de que existiera la validación y quedó en la
+ * ciudad de Bolívar, a 300 km; con esta regla la próxima corrida la vuelve a consultar con
+ * CABA. Se usa la MISMA validación que acepta el punto (y no la caja del mapa): si fuera otra,
+ * un punto aceptado podría seguir pareciendo "malo" y se re-consultaría en cada corrida.
+ * Mientras Google no dé uno bueno, el punto viejo queda como está (no se borra): el mapa lo
+ * marca "lejos" y pide corregir la dirección.
+ *
+ * UNA DIRECCIÓN QUE YA FALLÓ NO SE VUELVE A PAGAR: si se probaron todas las variantes y
+ * ninguna dio un punto válido, `geocodificarFilas` guarda `x_obra_geo_dir = SIN_PUNTO +
+ * dirección` (sin tocar lat/lng). Sin esa marca, cada venta imposible —una desarmada vieja
+ * con una dirección que Google no encuentra, o la regla de arriba sobre un punto que Google
+ * sigue mandando fuera del AMBA— gastaba hasta 6 consultas TODOS los días, y con el
+ * histórico adentro (~340 desarmadas) se comían el cupo de 300 y las demás no avanzaban.
+ * Se vuelve a probar sola cuando le corrigen la dirección (deja de coincidir).
  */
 export function necesitaGeo(f: FilaVenta): boolean {
   if (typeof f.x_direccion_obra !== "string" || !f.x_direccion_obra.trim()) return false;
+  if (f.x_obra_geo_dir === SIN_PUNTO + f.x_direccion_obra) return false;
   const tienePunto = Boolean(f.x_obra_lat && f.x_obra_lng);
-  return !(tienePunto && f.x_obra_geo_dir === f.x_direccion_obra);
+  if (!tienePunto || f.x_obra_geo_dir !== f.x_direccion_obra) return true;
+  return validarPunto({ lat: f.x_obra_lat as number, lng: f.x_obra_lng as number }, f.x_obra_ciudad) !== "ok";
 }
 
 /** "2026-10-11" + n días. */
@@ -248,22 +286,41 @@ export function masUrgente(actual: string | undefined, nueva: string, hoy: strin
   return actual >= hoy || actual >= nueva ? actual : nueva;
 }
 
+/** Rango de un estado de obra en el reparto del cupo: Armado 0, Pendiente 1, Desarmado 2. */
+function rangoEstado(f: FilaVenta): number {
+  const i = (ESTADOS_MAPA as readonly string[]).indexOf(typeof f.x_studio_estado_de_obra === "string" ? f.x_studio_estado_de_obra : "");
+  return i < 0 ? 0 : i;
+}
+
+/**
+ * La fecha que dice qué tan reciente es una obra del mapa: el desarme para las desarmadas
+ * (una desmontada la semana pasada importa más que una de marzo en el histórico), el armado
+ * para el resto. Formato de Odoo, así que se compara como texto.
+ */
+function fechaReciente(f: FilaVenta): string {
+  const d = rangoEstado(f) === 2 ? f.x_fecha_desmontaje : f.x_fecha_armado;
+  return typeof d === "string" ? d : "";
+}
+
 /**
  * Las ventas a geocodificar, sin repetir y en orden de urgencia: primero las del tablero
  * (de hoy en adelante, la más próxima primero; después las de los últimos días, la más
- * reciente primero), después las
- * de "Armado" (el mapa, que puede esperar). Si el cupo no alcanza, lo que queda afuera es lo
- * que menos apura. `fechaDe` es la primera jornada de cada venta en la ventana del tablero.
+ * reciente primero), después las del mapa: armadas, pendientes de desarme y desarmadas, y
+ * dentro de cada estado la más reciente primero. Si el cupo no alcanza, lo que queda afuera
+ * es lo que menos apura —el histórico viejo— y entra en la corrida siguiente.
+ * `fechaDe` es la primera jornada de cada venta en la ventana del tablero.
  */
-export function elegirVentas(armado: FilaVenta[], planificadas: FilaVenta[], fechaDe: Map<number, string>, hoy: string): FilaVenta[] {
+export function elegirVentas(delMapa: FilaVenta[], planificadas: FilaVenta[], fechaDe: Map<number, string>, hoy: string): FilaVenta[] {
   const orden = (a: FilaVenta, b: FilaVenta) => {
     const fa = fechaDe.get(a.id) ?? "", fb = fechaDe.get(b.id) ?? "";
     if ((fa >= hoy) !== (fb >= hoy)) return fa >= hoy ? -1 : 1;
     return (fa >= hoy ? fa.localeCompare(fb) : fb.localeCompare(fa)) || a.id - b.id;
   };
+  const ordenMapa = (a: FilaVenta, b: FilaVenta) =>
+    rangoEstado(a) - rangoEstado(b) || fechaReciente(b).localeCompare(fechaReciente(a)) || b.id - a.id;
   const plan = planificadas.filter(necesitaGeo).sort(orden);
   const vistos = new Set(plan.map((f) => f.id));
-  return [...plan, ...armado.filter((f) => necesitaGeo(f) && !vistos.has(f.id))];
+  return [...plan, ...delMapa.filter((f) => necesitaGeo(f) && !vistos.has(f.id)).sort(ordenMapa)];
 }
 
 /**
@@ -303,19 +360,25 @@ export type Odoo = {
 };
 
 /**
- * Las candidatas: las ventas tipo "Obra " en **Armado** (el Mapa de Obras) más las ventas de
- * las OTs con jornadas en el tablero entre VENTANA_TABLERO.diasAtras y diasAdelante (la Hoja
- * del día y sus tiempos de manejo). Asignación → OT (`x_ot_id`) → venta (`x_order_id`).
+ * Las candidatas: las ventas tipo "Obra " en Armado, Pendiente de Desarme y Desarmado (el
+ * Mapa de Obras y su histórico) más las ventas de las OTs con jornadas en el tablero entre
+ * VENTANA_TABLERO.diasAtras y diasAdelante (la Hoja del día y sus tiempos de manejo).
+ * Asignación → OT (`x_ot_id`) → venta (`x_order_id`).
+ *
+ * Las desarmadas entran porque el histórico de Ciudad Armada las dibuja y de 371 sólo 29
+ * tenían punto (12/10/2026). Son ~340 consultas de una vez, más que el tope: se completan
+ * solas en dos o tres corridas, y en régimen no suman nada (una obra se geocodifica cuando
+ * está armada y conserva el punto al desarmarse).
  */
-export async function candidatas(odoo: Odoo, hoy: string): Promise<{ lista: FilaVenta[]; fechaDe: Map<number, string>; armado: number; planificadas: number }> {
+export async function candidatas(odoo: Odoo, hoy: string): Promise<{ lista: FilaVenta[]; fechaDe: Map<number, string>; armado: number; delMapa: number; planificadas: number }> {
   const desde = sumarDias(hoy, -VENTANA_TABLERO.diasAtras);
   const hasta = sumarDias(hoy, VENTANA_TABLERO.diasAdelante);
-  const [armado, asigs] = await Promise.all([
+  const [delMapa, asigs] = await Promise.all([
     odoo.searchRead<FilaVenta>(
       "sale.order",
-      [["x_studio_tipo_de_contrato", "=", "Obra "], ["x_studio_estado_de_obra", "=", "Armado"], ["x_direccion_obra", "!=", false]],
+      [["x_studio_tipo_de_contrato", "=", "Obra "], ["x_studio_estado_de_obra", "in", [...ESTADOS_MAPA]], ["x_direccion_obra", "!=", false]],
       CAMPOS_VENTA,
-      { limit: 3000 },
+      { limit: 5000 },
     ),
     odoo.searchRead<{ x_ot_id: M2O; x_fecha: string | false }>(
       "x_aba_asignacion",
@@ -338,7 +401,13 @@ export async function candidatas(odoo: Odoo, hoy: string): Promise<{ lista: Fila
   const planificadas = fechaDe.size
     ? (await odoo.read<FilaVenta>("sale.order", [...fechaDe.keys()], CAMPOS_VENTA)).filter((f) => typeof f.x_direccion_obra === "string" && f.x_direccion_obra.trim())
     : [];
-  return { lista: elegirVentas(armado, planificadas, fechaDe, hoy), fechaDe, armado: armado.length, planificadas: planificadas.length };
+  return {
+    lista: elegirVentas(delMapa, planificadas, fechaDe, hoy),
+    fechaDe,
+    armado: delMapa.filter((f) => rangoEstado(f) === 0).length,
+    delMapa: delMapa.length,
+    planificadas: planificadas.length,
+  };
 }
 
 export type Fallo = { venta: string; consulta: string; probadas: string[] };
@@ -373,10 +442,17 @@ export async function geocodificarFilas(filas: FilaVenta[], buscar: Buscar, odoo
       await odoo.write("sale.order", [f.id], { x_obra_lat: r.punto.lat, x_obra_lng: r.punto.lng, x_obra_geo_dir: dir });
       out.geocodificadas++;
       out.resueltas.push({ venta: f.name, consulta: r.consulta, ...r.punto });
-    } else if (r.estado === "sin_resultado") {
-      out.sinResultado.push({ venta: f.name, consulta: r.probadas[0] ?? "", probadas: r.probadas });
     } else {
-      out.fueraDeArgentina.push({ venta: f.name, consulta: r.consulta, probadas: r.probadas, lat: r.punto.lat, lng: r.punto.lng, motivo: r.estado });
+      if (r.estado === "sin_resultado") {
+        out.sinResultado.push({ venta: f.name, consulta: r.probadas[0] ?? "", probadas: r.probadas });
+      } else {
+        out.fueraDeArgentina.push({ venta: f.name, consulta: r.consulta, probadas: r.probadas, lat: r.punto.lat, lng: r.punto.lng, motivo: r.estado });
+      }
+      // Se marca sólo si se probaron TODAS las variantes: una venta cortada por el cupo
+      // todavía tiene consultas sin probar y vuelve a entrar en la corrida siguiente.
+      if (r.consultas >= consultasDe(dir, f.x_obra_ciudad).length) {
+        await odoo.write("sale.order", [f.id], { x_obra_geo_dir: SIN_PUNTO + dir });
+      }
     }
   }
   return out;

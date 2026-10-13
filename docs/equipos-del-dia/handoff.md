@@ -26,6 +26,11 @@
 
 Detalle técnico de cada fase: `implementacion.md` §3.1 y las secciones "Historia · …" de abajo.
 
+**Ajustes del 12/10 a la noche (rama `fix/pizarron-vehiculos-detalle`, en `main`, sin migración)**
+- **Íconos reales de cada vehículo** (`pizarron/icono-vehiculo.tsx`, `formaVehiculo` en pizarron.ts, `FichaCamion.forma`): Iveco = doble cabina con caja abierta (barandas); Agrale = cabina simple, caja e hidrogrúa plegada; S10 = pickup doble cabina; moto; Clark = autoelevador. Sale de `vehiculos.tipo` (+ marca/modelo para "otro").
+- **Autoelevadores y moto fuera de «Camiones libres»** (decisión del dueño): sólo aparecen si tienen un viaje cargado.
+- **«Qué hay que ejecutar» en 2 renglones + «ver todo»** en la columna. Es el mismo campo de la OT (`x_detalle_tecnico`, que toma `x_detalle_manual` cuando Comercial lo escribe); en algunas OT Comercial pegó la propuesta entera ("un choclo"): para que diga algo corto, corregirlo en Odoo («Qué hay que ejecutar (lo escribe Comercial)»).
+
 ### 2. Decisiones del dueño
 
 - 12/10: horas del recorrido aproximadas (candado = fija); refuerzos "desde una hora" (F8 entra); cuadrilla sin obra = columna grisada; 3D sin niveles; confirman capataz y chofer; botón "Salí" del chofer; pedidos sueltos se suman al recorrido por menor desvío + "¿Quién pasa cerca?".
@@ -35,6 +40,7 @@ Detalle técnico de cada fase: `implementacion.md` §3.1 y las secciones "Histor
 ### 3. Lo que quedó pendiente
 
 **Del lado del dueño (no es código)**
+- [ ] **Un Iveco de más**: Flota y Odoo (`fleet.vehicle`) tienen 4 Iveco activos y el dueño dice que son 3. No recuerda cuál sobra; los candidatos son **AF 669 ZL** (Odoo: 43.700 km, 19 services) y **AH410LD** (1.900 km, 6 services), los dos con Kiska de chofer. Cuando diga cuál: desactivarlo en Odoo y en Flota (`vehiculos.activo = false`, no borrar).
 - [ ] **Probar F4 con datos reales**: arrastrar un pedido a un camión (que diga "parada N … (+X min)"), "¿Quién pasa cerca?", "+ Pedido" a una dirección escrita ("ubicada en el mapa" y el pin "P"), y un aviso de viaje ("Elegir chofer", "No se hizo") sin ir a Camiones. Recargar y ver que quede igual.
 - [ ] **Probar con datos reales** lo nuevo (nada se probó contra la base desde acá, sólo con el arnés): armar una cuadrilla en el pizarrón, mover gente, ★ a cargo, encuentro, recargar y ver que quede igual; **Cerrar jornada** a la tarde; la columna **D** (arrastrar, encargado, que el encargado aparezca en Mandar); el **Recorrido** (sumar una parada, cambiar qué hace y la hora, reordenar, recargar).
 - [ ] **Confirmar las tres decisiones por defecto de F2** (arriba).

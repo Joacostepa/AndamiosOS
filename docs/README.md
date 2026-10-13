@@ -28,6 +28,7 @@ Ante una contradicción entre un diseño y el código, manda el código; el `han
 | Pañol | [modulo](./panol/modulo.md) · [handoff](./panol/handoff.md) | Fase 1 en producción |
 | Tablero de planificación | [spec](./tablero-planificacion/spec.md) · [handoff](./tablero-planificacion/handoff.md) | En producción |
 | Hoja del día (cuadrillas, camiones y despacho) | [modulo](./equipos-del-dia/modulo.md) · [handoff](./equipos-del-dia/handoff.md) · [implementación](./equipos-del-dia/implementacion.md) | En producción (falta Telegram) |
+| Mapa de obras (Ciudad Armada, 3D) | [diseño](./mapa-obras/ciudad-armada.md) · [handoff](./mapa-obras/handoff.md) · [maqueta](./mapa-obras/maqueta/ciudad-armada.html) | En producción desde 12/10 |
 | Informe de obra | [modulo](./informe-de-obra/modulo.md) | En producción |
 | Cómputo de materiales | [modulo](./computo-materiales/modulo.md) | En producción (spec de junio) |
 | Configuración de cuadrillas | [modulo](./cuadrillas/modulo.md) | En producción (spec de junio) |

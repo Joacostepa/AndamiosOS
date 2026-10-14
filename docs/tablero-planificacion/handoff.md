@@ -54,8 +54,8 @@ variantes (casco amarillo de obra, chip naranja lleno, casco rojo) JS eligió la
 casco va **relleno en amarillo de seguridad con contorno oscuro**, como uno de verdad
 (`CascoSyh` en `casco-syh.tsx`, tokens `--tb-casco` y `--tb-casco-borde`, `CASCO` en
 `colores.ts`). No es ámbar ni rojo a propósito: el ámbar ya es habilitación en curso, urgencia
-media y obra empezada, y el rojo es "algo salió mal". Es el mismo en la grilla (3,5px más
-grande que el pin), la bandeja, la ficha y el "N con SyH" del encabezado, que sigue en rojo.
+media y obra empezada, y el rojo es "algo salió mal". Es el mismo en la grilla (14px, un poco más
+grande que el pin de 12px), la bandeja, la ficha y el "N con SyH" del encabezado, que sigue en rojo.
 En `npm run contraste` entraron sus pares: en claro lo separa del fondo el contorno y en
 oscuro el relleno, así que el script ahora acepta un 4.º elemento que limita un par a un tema.
 

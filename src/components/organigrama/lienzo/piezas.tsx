@@ -165,6 +165,7 @@ const ATAJOS: [string, string][] = [
   ["L", "Cambiar entre lista y árbol"],
   ["V", "Resaltar vacantes"],
   ["Doble clic / F2", "Renombrar (sobre el título o con la tarjeta enfocada)"],
+  ["Supr / ⌫", "Eliminar la tarjeta enfocada (va al borrador, con deshacer)"],
   ["Rueda / pinch", "Zoom hacia el cursor"],
   ["Arrastrar el fondo", "Mover la vista"],
   ["← / →", "Paso anterior / siguiente (recorrido y papel)"],

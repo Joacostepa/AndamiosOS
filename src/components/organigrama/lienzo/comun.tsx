@@ -10,6 +10,9 @@ import type { ColorArea, Modalidad, Nodo, Persona, TipoCambio } from "@/lib/orga
 /** La ficha pide renombrar un nodo en el lienzo (el botón «Renombrar», pensado para el celular). */
 export const EVENTO_RENOMBRAR = "organigrama:renombrar";
 
+/** La ficha pide eliminar un nodo en el lienzo: el mismo camino que soltarlo en el tacho. */
+export const EVENTO_ELIMINAR = "organigrama:eliminar";
+
 /** El spring de las cajas y los conectores: rápido, sin rebote exagerado. */
 export const RESORTE = { type: "spring" as const, stiffness: 240, damping: 28, mass: 0.9 };
 
@@ -54,6 +57,8 @@ export type AccionesLienzo = {
   /** Guarda lo editado (va al borrador, con deshacer). */
   guardarEdicion: (clave: string, campo: CampoEditable, valor: string) => void;
   terminarEdicion: () => void;
+  /** Elimina el nodo como si lo soltaran en el tacho (Supr con la tarjeta enfocada; solo editores). */
+  eliminar: (clave: string) => void;
   abrirPersona: (id: string) => void;
 };
 

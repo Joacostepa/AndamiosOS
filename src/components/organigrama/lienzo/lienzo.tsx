@@ -107,6 +107,7 @@ import { BarraLienzo } from "./barra";
 import { useCamara, useGestosCamara } from "./camara";
 import {
   AccionesCtx,
+  EVENTO_ELIMINAR,
   EVENTO_RENOMBRAR,
   RESORTE,
   esCampoDeTexto,
@@ -712,10 +713,25 @@ function Escena({ manejador }: { manejador: React.RefObject<Manejador | null> })
         else estructura(cambiar);
       },
       terminarEdicion: () => setEdicion(null),
+      eliminar: (clave) => {
+        // La Dirección no se elimina (tampoco se puede soltar en el tacho).
+        if (!puedeEditar || didactico || !nodoDe(nodos, clave)?.dependeDe) return;
+        // Sin arrastre no hay tacho: la tarjeta se va desde donde está.
+        puntoTacho.current = null;
+        pedirEliminar(clave);
+      },
       abrirPersona: (id) => irA(`persona=${encodeURIComponent(id)}`),
     }),
-    [aplicarSeleccion, expandir, irA, nodos, colapsados, estado.borrador, estado.vigente, dispatch, estructura, edicion, puedeEditar, didactico],
+    [aplicarSeleccion, expandir, irA, nodos, colapsados, estado.borrador, estado.vigente, dispatch, estructura, edicion, puedeEditar, didactico, pedirEliminar],
   );
+
+  // «Eliminar» desde la ficha: la ficha se cierra y sigue como si soltaran la tarjeta en el tacho
+  // (con la pregunta de qué hacer con lo de abajo, la animación y el deshacer del toast).
+  useEffect(() => {
+    const h = (e: Event) => acciones.eliminar((e as CustomEvent<string>).detail);
+    window.addEventListener(EVENTO_ELIMINAR, h);
+    return () => window.removeEventListener(EVENTO_ELIMINAR, h);
+  }, [acciones]);
 
   useEffect(() => {
     if ((!foco && !personaFoco) || didactico || !tam.w) return;

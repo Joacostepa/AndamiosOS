@@ -11,7 +11,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Link2, Pencil, PencilLine, UserPlus, X } from "lucide-react";
+import { Link2, Pencil, PencilLine, Trash2, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
 import { Caja, HojaLateral } from "@/components/hoja-dia/comunes/hoja-lateral";
 import { Aviso } from "@/components/permisos-via-publica/ui";
@@ -34,7 +34,7 @@ import { ChipDocumento } from "./chip-documento";
 import { clasesArea } from "./colores-area";
 import { CuadrillasEnVivo } from "./cuadrillas-en-vivo";
 import { FilaOcupante, useEnlaces } from "./fila-ocupante";
-import { EVENTO_RENOMBRAR } from "./lienzo/comun";
+import { EVENTO_ELIMINAR, EVENTO_RENOMBRAR } from "./lienzo/comun";
 import { useOrg } from "./proveedor";
 
 function DelArea({ propio }: { propio: boolean }) {
@@ -111,6 +111,18 @@ export function FichaPuesto({ clave, onCerrar }: { clave: string; onCerrar: () =
     window.setTimeout(() => window.dispatchEvent(new CustomEvent(EVENTO_RENOMBRAR, { detail: clave })), 350);
   };
 
+  // En el Lienzo sigue el mismo camino que el tacho (animación y deshacer); en el Mapa, el diálogo.
+  const eliminarNodo = () => {
+    if (enLienzo) {
+      onCerrar();
+      window.setTimeout(() => window.dispatchEvent(new CustomEvent(EVENTO_ELIMINAR, { detail: clave })), 350);
+      return;
+    }
+    if (!enBorrador) dispatch({ tipo: "entrar", autor: usuario ? nombreCompleto(usuario) : "Editor" });
+    abrir({ tipo: "eliminar", clave });
+    router.push(enlaces.cerrar, { scroll: false });
+  };
+
   const editarFicha = () => {
     if (!enBorrador) dispatch({ tipo: "entrar", autor: usuario ? nombreCompleto(usuario) : "Editor" });
     abrir({ tipo: "editar", clave });
@@ -151,6 +163,15 @@ export function FichaPuesto({ clave, onCerrar }: { clave: string; onCerrar: () =
               onClick={() => abrir({ tipo: "asignar", nodo: clave })}
             >
               <UserPlus aria-hidden /> Asignar persona
+            </Button>
+          )}
+          {puedeEditar && nodo.dependeDe && (
+            <Button
+              variant="outline"
+              className="h-9 text-destructive hover:text-destructive max-sm:h-10"
+              onClick={eliminarNodo}
+            >
+              <Trash2 aria-hidden /> Eliminar
             </Button>
           )}
         </>

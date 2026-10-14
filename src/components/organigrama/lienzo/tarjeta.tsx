@@ -491,12 +491,17 @@ function TarjetaBase({ vista, modo }: { vista: VistaNodo; modo: ModoTarjeta }) {
             espera.current = window.setTimeout(() => acciones.alClic(nodo.clave), ESPERA_DOBLE_CLIC);
           }}
           onKeyDown={(e) => {
-            if (e.key !== "F2" || !modo.puedeEditar || modo.editando) return;
-            e.preventDefault();
-            acciones.editar(nodo.clave, "titulo");
+            if (!modo.puedeEditar || modo.editando) return;
+            if (e.key === "F2") {
+              e.preventDefault();
+              acciones.editar(nodo.clave, "titulo");
+            } else if ((e.key === "Delete" || e.key === "Backspace") && nodo.dependeDe) {
+              e.preventDefault();
+              acciones.eliminar(nodo.clave);
+            }
           }}
-          aria-keyshortcuts={modo.puedeEditar ? "F2" : undefined}
-          aria-label={`${nodo.titulo}${sinTitular && !estado.interino ? (vista.cajaExterna ? ", sin cargar" : clase === "puesto" ? ", sin asignar" : ", sin responsable") : ""}${urgente ? ", vacante" : ""}. Ver ficha${modo.puedeEditar ? ". F2 para renombrar" : ""}`}
+          aria-keyshortcuts={modo.puedeEditar ? (nodo.dependeDe ? "F2 Delete" : "F2") : undefined}
+          aria-label={`${nodo.titulo}${sinTitular && !estado.interino ? (vista.cajaExterna ? ", sin cargar" : clase === "puesto" ? ", sin asignar" : ", sin responsable") : ""}${urgente ? ", vacante" : ""}. Ver ficha${modo.puedeEditar ? `. F2 para renombrar${nodo.dependeDe ? ", Suprimir para eliminar" : ""}` : ""}`}
           className={cn(
             "absolute inset-0 z-0 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
             clase === "puesto" ? "rounded-lg" : "rounded-xl",

@@ -261,6 +261,16 @@ const TRAZO = [
   ["semáforo rojo", "var(--tb-peligro)", "var(--card)"],
   ["semáforo vencida", "var(--tb-vencida)", "var(--card)"],
   ["candado", "var(--tb-candado)", "var(--card)"],
+  // El casco de SyH. El 4.º elemento limita el par a un tema: en claro lo separa del fondo
+  // el CONTORNO oscuro, en oscuro el RELLENO amarillo. Los fondos son la tarjeta vacía y
+  // los dos tipos de obra, que es donde se dibuja.
+  ["casco: contorno sobre tarjeta", "var(--tb-casco-borde)", "var(--card)", "CLARO"],
+  ["casco: contorno sobre armado", "var(--tb-casco-borde)", "var(--tb-azul-bg)", "CLARO"],
+  ["casco: contorno sobre desarme", "var(--tb-casco-borde)", "var(--tb-ambar-bg)", "CLARO"],
+  ["casco: relleno sobre tarjeta", "var(--tb-casco)", "var(--card)", "OSCURO"],
+  ["casco: relleno sobre armado", "var(--tb-casco)", "var(--tb-azul-bg)", "OSCURO"],
+  ["casco: relleno sobre desarme", "var(--tb-casco)", "var(--tb-ambar-bg)", "OSCURO"],
+  ["casco: contorno contra relleno", "var(--tb-casco-borde)", "var(--tb-casco)"],
   ["ícono de aviso", "var(--tb-aviso-icono)", "var(--tb-aviso-bg)"],
   ["franja de nota", "var(--tb-nota-bg)", "var(--card)"],
   ["relleno de ocupación", "var(--tb-riel-relleno)", "var(--tb-riel)"],
@@ -375,7 +385,8 @@ function chequear(tema, mapa) {
     const r = contraste(frente, color(fondo, mapa), mapa);
     linea(r >= 4.5, nombre, r, ":1", "≥ 4.50");
   }
-  for (const [nombre, frente, fondo] of TRAZO) {
+  for (const [nombre, frente, fondo, soloTema] of TRAZO) {
+    if (soloTema && soloTema !== tema) continue;
     const r = contraste(frente, color(fondo, mapa), mapa);
     linea(r >= 3, nombre, r, ":1", "≥ 3.00");
   }

@@ -5,7 +5,7 @@ import { differenceInCalendarDays, format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import {
   AlertTriangle, CalendarPlus, Check, ChevronDown, ChevronLeft, ChevronRight, CircleCheck,
-  CircleDashed, ClipboardCheck, Construction, ExternalLink, Fence, FileText, HardHat, LocateFixed,
+  CircleDashed, ClipboardCheck, Construction, ExternalLink, Fence, FileText, LocateFixed,
   MapPin, MoreHorizontal, Phone, Pin, PinOff, Plus, CalendarRange, Trash2, X,
 } from "lucide-react";
 import { useRef, useState } from "react";
@@ -13,6 +13,7 @@ import { useDetalleOt } from "@/hooks/use-detalle-ot";
 import { useAgregarContactoObra, useBorrarContactoObra } from "@/hooks/use-contactos-obra";
 import { Input } from "@/components/ui/input";
 import { HistoriaOt } from "./historia-ot";
+import { CascoSyh } from "./casco-syh";
 import { ComentariosOt } from "./comentarios-ot";
 import { DetalleTecnico } from "./detalle-tecnico";
 import { ChipTipoOt } from "@/components/habilitaciones/chip-tipo-ot";
@@ -112,7 +113,7 @@ function QueNecesita({ trabajo }: { trabajo: TrabajoOt | undefined }) {
 
       {syh && (
         <div className="flex gap-2 text-sm">
-          <HardHat className="mt-0.5 h-4 w-4 shrink-0" style={{ color: ALERTA }} />
+          <CascoSyh className="mt-0.5 h-4 w-4" />
           <p className="leading-snug">
             <span className="font-medium">El cliente contrató técnico de SyH.</span>
           </p>

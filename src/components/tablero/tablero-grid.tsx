@@ -4,7 +4,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import type { MouseEvent as MouseEventReact, PointerEvent as PointerEventReact } from "react";
 import { format, isSameDay, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
-import { HardHat, MousePointerClick, StickyNote } from "lucide-react";
+import { MousePointerClick, StickyNote } from "lucide-react";
+import { CascoSyh } from "./casco-syh";
 import { CeldaDia } from "./celda-dia";
 import { TarjetaAsignacion } from "./tarjeta-asignacion";
 import { PopoverNotasDia } from "./notas-jornada";
@@ -706,7 +707,7 @@ export function TableroGrid({
                                 .map((o) => `· ${direccionCorta(direccionDeObra(o))}`)
                                 .join("\n")}`}
                             >
-                              · <HardHat className="h-3 w-3" aria-hidden />
+                              · <CascoSyh className="h-3 w-3" />
                               {r.conSyh.length} con SyH
                             </span>
                           )}

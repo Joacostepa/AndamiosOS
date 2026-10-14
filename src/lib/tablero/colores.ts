@@ -234,6 +234,16 @@ export const PELIGRO_SUAVE = "var(--tb-peligro-suave)";
 export const PELIGRO_TEXTO = "var(--tb-peligro-text)";
 /** Candado: el cliente pidió esperar el permiso. Advierte, no bloquea. */
 export const CANDADO = "var(--tb-candado)";
+/**
+ * Casco de "lleva técnico de SyH" (13/10): relleno amarillo de seguridad y contorno oscuro.
+ *
+ * UN COLOR PROPIO Y NO ÁMBAR NI ROJO: el ámbar ya es habilitación en curso, urgencia media
+ * y obra empezada, y el rojo es "algo salió mal". El casco tiene que saltar a la vista
+ * (Planificación lo pidió "como una alerta") sin decir ninguna de esas cosas: lo que dice
+ * lo dicen la forma y el amarillo juntos. El contorno oscuro es lo que lo separa de
+ * cualquier fondo de tarjeta, incluido el ámbar del desarme.
+ */
+export const CASCO = { relleno: "var(--tb-casco)", contorno: "var(--tb-casco-borde)" } as const;
 /** Gris de "todavía no": historial sin confirmar. */
 export const INACTIVO = "var(--tb-inactivo)";
 

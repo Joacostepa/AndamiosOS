@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
-import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, CalendarRange, Circle, Check, CircleCheck, CircleDashed, ClipboardCheck, HardHat, Lock, MessageSquare, MoreVertical, Pencil, Pin, PinOff, Trash2, Wrench } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, CalendarRange, Circle, Check, CircleCheck, CircleDashed, ClipboardCheck, Lock, MessageSquare, MoreVertical, Pencil, Pin, PinOff, Trash2, Wrench } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -13,6 +13,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { CascoSyh } from "./casco-syh";
 import { FRACCIONES, fraccionLabel, type FraccionStr } from "@/lib/tablero/fracciones";
 import {
   colorTipo,
@@ -334,13 +335,19 @@ export function ContenidoTarjeta({
           </span>
         )}
         {/* Lleva técnico de Seguridad e Higiene NUESTRO (x_syh_presencial en la venta).
-            Pedido de Planificación (13/10): se enteraban recién al abrir la ficha. Es un
-            GLIFO en el color del texto, como el pin: el casco ya es el de "Qué necesita
-            esta jornada" en la ficha, así que se lee igual en los dos lados. Si caen
-            varias el mismo día, lo avisa además el encabezado del día. */}
+            Pedido de Planificación (13/10): se enteraban recién al abrir la ficha. El 14/10
+            pidieron que se vea "como una alerta": va en AMARILLO DE SEGURIDAD con contorno
+            oscuro (CascoSyh), un color propio que no es el ámbar ni el rojo de esta tarjeta.
+            Es el mismo casco de la bandeja, la ficha y el encabezado del día, que además
+            avisa si caen varias el mismo día. */}
         {ot?.syh && (
-          <span className="flex shrink-0 self-center" title="Lleva técnico de Seguridad e Higiene">
-            <HardHat className="h-3 w-3" style={{ color: colorTexto }} aria-label="Lleva técnico de Seguridad e Higiene" />
+          <span
+            className="flex shrink-0 self-center"
+            title="Lleva técnico de Seguridad e Higiene"
+            role="img"
+            aria-label="Lleva técnico de Seguridad e Higiene"
+          >
+            <CascoSyh />
           </span>
         )}
         {/* Hay algo hablado con el cliente sobre esta obra.

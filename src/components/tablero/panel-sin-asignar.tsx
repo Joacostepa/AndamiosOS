@@ -9,7 +9,6 @@ import {
   ArrowUp,
   ChevronDown,
   ChevronRight,
-  HardHat,
   MoreHorizontal,
   PanelRightClose,
   PanelRightOpen,
@@ -50,6 +49,7 @@ import {
 import { partesTitulo, normalizar, direccionDeObra, nombrePropio } from "@/lib/tablero/titulo";
 import { piso } from "@/lib/tablero/ventana";
 import type { OtTablero } from "@/lib/tablero/tipos";
+import { CascoSyh } from "./casco-syh";
 import { tituloResumen, type ResumenEnTarjeta } from "@/lib/tablero/tipos-comentario";
 
 // Panel lateral de obras sin asignar. Es una COLUMNA y no una franja horizontal
@@ -420,8 +420,13 @@ function TarjetaOt({
         {/* Lleva técnico de SyH nuestro: el mismo casco de la grilla y de la ficha. En la
             bandeja es donde más sirve, antes de elegir el día. */}
         {ot.syh && (
-          <span className="mt-0.5 flex shrink-0" title="Lleva técnico de Seguridad e Higiene">
-            <HardHat className="h-3.5 w-3.5 text-foreground/75" aria-label="Lleva técnico de Seguridad e Higiene" />
+          <span
+            className="mt-0.5 flex shrink-0"
+            title="Lleva técnico de Seguridad e Higiene"
+            role="img"
+            aria-label="Lleva técnico de Seguridad e Higiene"
+          >
+            <CascoSyh className="h-4 w-4" />
           </span>
         )}
         {/* Hay algo hablado con el cliente sobre esta obra. En la bandeja es donde más

@@ -218,6 +218,10 @@
   /* Habilitación vencida: un paso más profundo que `peligro`, no otro color. */
   --tb-vencida: #7a271a;
   --tb-candado: #912018;
+  /* El casco de SyH: amarillo de seguridad con contorno oscuro, como un casco de verdad.
+     El contorno es el que lo separa de un fondo claro; en oscuro lo hace el relleno. */
+  --tb-casco: #facc15;
+  --tb-casco-borde: #713f12;
   --tb-aviso-bg: #fef6e7;
   --tb-aviso-borde: #f5d9a0;
   --tb-aviso-text: #7a4405;
@@ -387,6 +391,8 @@
   --tb-peligro-text: oklch(0.86 0.08 28);
   --tb-vencida: oklch(0.54 0.16 25);
   --tb-candado: oklch(0.75 0.13 32);
+  --tb-casco: #facc15;
+  --tb-casco-borde: #1c1917;
   --tb-aviso-bg: oklch(0.25 0.035 70);
   --tb-aviso-borde: oklch(0.35 0.05 70);
   --tb-aviso-text: oklch(0.87 0.07 75);

@@ -1,4 +1,4 @@
-# Handoff — Tablero de planificación (actualizado 2026-10-13)
+# Handoff — Tablero de planificación (actualizado 2026-10-14)
 
 Para retomar en una sesión nueva: "Leé docs/tablero-planificacion/handoff.md y seguimos con las
 mejoras del tablero". Acá van el estado, lo pendiente y las mejoras pedidas, la más nueva arriba.
@@ -22,8 +22,9 @@ cosas, así que ante la duda manda el código y los comentarios largos que tiene
 3. **Probar en el tablero publicado la tarjeta y el encabezado nuevos de la grilla** (09/10):
    sobre todo que "libre X j" y "N pasadas" cierren con lo que se ve, y la dirección pegada al
    scrollear un bloque largo.
-4. **Ver el casco de SyH en el tablero publicado** (13/10, ver abajo): que aparezca en las
-   tarjetas de las obras con técnico y el "N con SyH" en un día con dos.
+4. **Ver el casco de SyH en el tablero publicado** (13–14/10, ver abajo): que aparezca en
+   amarillo en las tarjetas de las obras con técnico (grilla y bandeja, claro y oscuro) y el
+   "N con SyH" en un día con dos.
 5. **Lo que dejó la auditoría del 08/10** (detalle abajo, en "Auditoría UX y técnica"). Lo más
    urgente: el candado que falla abierto para Depósito y Campo, y la RLS abierta.
 
@@ -47,6 +48,16 @@ NOSOTROS ponemos el técnico; no confundir con `x_hab_syh_*`, el contacto de SyH
   el mismo día, contando todas las cuadrillas (también las filtradas). El tooltip lista las
   direcciones. Con una sola no dice nada.
 - Se validó con `tsc`, `eslint` y la consulta contra Odoo; falta verlo en el publicado.
+
+**14/10, el casco en amarillo (JS: "de un color fuerte, como si fuera una alerta"):** de tres
+variantes (casco amarillo de obra, chip naranja lleno, casco rojo) JS eligió la primera. El
+casco va **relleno en amarillo de seguridad con contorno oscuro**, como uno de verdad
+(`CascoSyh` en `casco-syh.tsx`, tokens `--tb-casco` y `--tb-casco-borde`, `CASCO` en
+`colores.ts`). No es ámbar ni rojo a propósito: el ámbar ya es habilitación en curso, urgencia
+media y obra empezada, y el rojo es "algo salió mal". Es el mismo en la grilla (3,5px más
+grande que el pin), la bandeja, la ficha y el "N con SyH" del encabezado, que sigue en rojo.
+En `npm run contraste` entraron sus pares: en claro lo separa del fondo el contorno y en
+oscuro el relleno, así que el script ahora acepta un 4.º elemento que limita un par a un tema.
 
 **Para decidir:** si hay más de un técnico, el umbral de "varias" debería ser la cantidad de
 técnicos y no 1. Hoy está fijo en `r.conSyh.length > 1` (`tablero-grid.tsx`).

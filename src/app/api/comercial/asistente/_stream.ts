@@ -7,9 +7,8 @@
 import { ejecutarTurno, type EntradaTurno } from "@/lib/asistente/turno";
 import { sse } from "@/lib/asistente/eventos";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Conversacion } from "@/lib/asistente/datos";
 
-export function respuestaDeTurno(req: Request, p: { db: SupabaseClient; conversacionId: string; usuarioId: string; entrada: EntradaTurno; conversacion?: Conversacion }): Response {
+export function respuestaDeTurno(req: Request, p: { db: SupabaseClient; conversacionId: string; usuarioId: string; entrada: EntradaTurno }): Response {
   const codificador = new TextEncoder();
   const corte = new AbortController();
   req.signal.addEventListener("abort", () => corte.abort());

@@ -28,23 +28,16 @@ export function firmaValida(cuerpo: Buffer, encabezado: string | null): boolean 
 }
 
 /**
- * El pedido de una función a otra para que siga con un teléfono (procesar.ts, una tanda por
- * invocación). Misma clave que Meta, pero con un prefijo: un aviso de Meta reenviado a la ruta
- * de seguir no vale, ni al revés.
+ * Argentina: WhatsApp informa los celulares como 549 + área + número, pero alguien lo puede
+ * haber cargado sin el 9. Se busca de las dos maneras.
  */
-const PREFIJO_INTERNO = "seguir:";
-export function firmarInterno(cuerpo: string): string {
-  return "sha256=" + createHmac("sha256", process.env.WHATSAPP_APP_SECRET ?? "").update(PREFIJO_INTERNO + cuerpo).digest("hex");
+export function variantesTelefono(tel: string): string[] {
+  const d = tel.replace(/\D/g, "");
+  const v = new Set([d]);
+  if (d.startsWith("549")) v.add(`54${d.slice(3)}`);
+  else if (d.startsWith("54")) v.add(`549${d.slice(2)}`);
+  return [...v];
 }
-export function firmaInternaValida(cuerpo: string, encabezado: string | null): boolean {
-  if (!process.env.WHATSAPP_APP_SECRET || !encabezado?.startsWith("sha256=")) return false;
-  const recibida = Buffer.from(encabezado.slice(7), "hex");
-  const esperada = Buffer.from(firmarInterno(cuerpo).slice(7), "hex");
-  return recibida.length === esperada.length && timingSafeEqual(recibida, esperada);
-}
-
-// Está en tandas.ts (puro, con tests); se re-exporta para no cambiar a quien lo importa de acá.
-export { variantesTelefono } from "./tandas";
 
 const recortar = (t: string, n: number) => (t.length > n ? `${t.slice(0, n - 1)}…` : t);
 

@@ -1,25 +1,102 @@
 "use client";
 
-// El menú de un contratista (decisiones del dueño del 10/10, noche: de su gente sólo se sabe
-// la cantidad, y van dentro de las cuadrillas del tablero). En una columna del Pizarrón:
-// Poner a cargo (su referente recibe la hoja), Ver como…, Nota, Editar y Quitar; sin
-// cuadrilla: "Agregar a la Cuadrilla N…" con la cantidad.
+// Los contratistas en la vista Cuadrillas (decisiones del dueño del 10/10, noche): de su
+// gente sólo se sabe la cantidad, y van dentro de las cuadrillas del tablero.
+//
+// - En la tarjeta, un chip "+3 de Quintana" con − / + (cada toque es un gesto con Deshacer);
+//   tocando el nombre, su menú: Poner a cargo (su referente recibe la hoja), Nota, Quitar.
+// - En el panel Gente, el grupo "Contratistas": arrastrar uno a una tarjeta suma 1; tocarlo
+//   abre "Agregar a la Cuadrilla N…" con la cantidad.
 //
 // Los textos y las cuentas salen de src/lib/hoja-dia/contratistas.ts y estado.ts.
 
 import { useState } from "react";
 import { Minus, Plus } from "lucide-react";
 import { aCargoDe, cNombre, contratista, contratistasDe, hojaDeCuadrilla, recibeDe } from "@/lib/hoja-dia/estado";
-import { destinosContratista } from "@/lib/hoja-dia/contratistas";
+import { chipsContratistas, destinosContratista, panelContratistas } from "@/lib/hoja-dia/contratistas";
 import { useAccionHoja } from "@/hooks/use-hoja-dia";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { ItemMenu, MenuFlotante, MenuSep, MenuTexto } from "@/components/hoja-dia/comunes/menu-flotante";
-import type { CtlMenus } from "./control";
+import { TIPO_ARRASTRE, type Control } from "./control";
+
+// ═══════════════════════════ La tarjeta ═══════════════════════════════════════
+
+/** Los chips "+3 de Quintana" de una tarjeta, con su − / +. */
+export function ChipsContratistas({ ctl, c }: { ctl: Control; c: number }) {
+  const { dia, pasado } = ctl;
+  return (
+    <>
+      {chipsContratistas(dia, c).map((x) => (
+        <span
+          key={x.contratistaId}
+          className={cn(
+            "inline-flex min-h-6 items-stretch overflow-hidden rounded-md border border-dashed border-foreground/30 bg-card text-[13px] font-medium max-md:min-h-9 max-md:text-[15px]",
+            x.aCargo && "border-solid border-foreground/20 bg-accent",
+            x.cantidad === 0 && "border-hd-ambar/70 bg-hd-ambar-bg",
+          )}
+        >
+          <button
+            type="button"
+            id={`kc-${c}-${x.contratistaId}`}
+            disabled={pasado}
+            aria-haspopup={pasado ? undefined : "menu"}
+            title={pasado ? undefined : `Opciones de ${x.nombre}`}
+            onClick={(e) => ctl.abrirMenuContratista(c, x.contratistaId, e.currentTarget)}
+            className="inline-flex items-baseline gap-[5px] px-[7px] py-0.5 outline-none hover:bg-muted focus-visible:bg-muted disabled:hover:bg-transparent max-md:items-center max-md:px-2.5"
+          >
+            <span className="tabular-nums">{x.texto}</span>
+            {x.tag && <span className={cn("text-[11.5px] font-medium text-muted-foreground", x.aCargo && "text-foreground", x.cantidad === 0 && "text-hd-ambar")}>{x.tag}</span>}
+          </button>
+          {!pasado && (
+            <>
+              <button
+                type="button"
+                aria-label={x.cantidad > 0 ? `Uno menos de ${x.nombre} (van ${x.cantidad})` : `${x.nombre}: ya está en 0`}
+                disabled={x.cantidad === 0}
+                onClick={() => ctl.sumarContratista(c, x.contratistaId, -1)}
+                className="grid w-6 place-items-center border-l border-dashed border-foreground/20 text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:bg-muted disabled:opacity-40 max-md:w-9"
+              >
+                <Minus className="size-3 max-md:size-4" />
+              </button>
+              <button
+                type="button"
+                aria-label={`Uno más de ${x.nombre} (van ${x.cantidad})`}
+                disabled={x.cantidad >= 60}
+                onClick={() => ctl.sumarContratista(c, x.contratistaId, 1)}
+                className="grid w-6 place-items-center border-l border-dashed border-foreground/20 text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:bg-muted disabled:opacity-40 max-md:w-9"
+              >
+                <Plus className="size-3 max-md:size-4" />
+              </button>
+            </>
+          )}
+        </span>
+      ))}
+    </>
+  );
+}
+
+/** Las notas de los contratistas de la tarjeta ("Quintana: traen su arnés"). */
+export function NotasContratistas({ ctl, c }: { ctl: Control; c: number }) {
+  const xs = chipsContratistas(ctl.dia, c).filter((x) => x.nota);
+  if (!xs.length) return null;
+  return (
+    <>
+      {xs.map((x) => (
+        <div key={x.contratistaId}>
+          <b className="font-medium text-foreground">{x.nombre}</b> {x.nota}
+        </div>
+      ))}
+    </>
+  );
+}
+
+// ═══════════════════════════ Los menús ════════════════════════════════════════
 
 /** El menú de un contratista: en una tarjeta (Poner a cargo, Nota, Quitar) o en el panel ("Agregar a…"). */
 export function MenuContratista({
   ctl, c, kid, anchor, onCerrar,
-}: { ctl: CtlMenus; c: number | null; kid: string; anchor: HTMLElement | null; onCerrar: () => void }) {
+}: { ctl: Control; c: number | null; kid: string; anchor: HTMLElement | null; onCerrar: () => void }) {
   const { dia } = ctl;
   const fecha = dia.fecha;
   const hoja = useAccionHoja(fecha);
@@ -142,5 +219,61 @@ export function MenuContratista({
         </form>
       )}
     </MenuFlotante>
+  );
+}
+
+// ═══════════════════════════ El panel Gente ═══════════════════════════════════
+
+/** El grupo "Contratistas" del panel Gente. */
+export function GrupoContratistas({ ctl, filtro }: { ctl: Control; filtro: (nombre: string) => boolean }) {
+  const { dia, pasado } = ctl;
+  const todas = panelContratistas(dia);
+  const lineas = todas.filter((x) => filtro(x.nombre));
+  if (!todas.length && !ctl.editor) return null;
+  return (
+    <div className="pt-2">
+      <h3 className="mx-1 mb-0.5 flex justify-between text-[11px] font-semibold tracking-[.07em] text-muted-foreground uppercase">
+        <span>Contratistas</span>
+        <span>{todas.length}</span>
+      </h3>
+      <p className="mx-1 mb-1 flex flex-wrap gap-x-3 text-xs">
+        <button type="button" onClick={ctl.abrirResumenContratistas} className="text-muted-foreground underline underline-offset-[3px] outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50">
+          Resumen del mes
+        </button>
+        {ctl.editor && (
+          <button type="button" onClick={() => ctl.abrirContratistas()} className="text-muted-foreground underline underline-offset-[3px] outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50">
+            Administrar
+          </button>
+        )}
+      </p>
+      {!todas.length ? (
+        <p className="mx-1 mb-1 text-xs text-muted-foreground">Ninguno cargado. Con «Administrar» se da de alta uno (no va a Legajos ni a Odoo).</p>
+      ) : (
+        <>
+          {!pasado && <p className="mx-1 mb-1 text-xs text-muted-foreground">Arrastralo a una cuadrilla (suma 1) o tocalo para elegir cuántos.</p>}
+          {lineas.map((x) => (
+            <button
+              key={x.id}
+              type="button"
+              id={`pk-${x.id}`}
+              draggable={!pasado}
+              disabled={pasado}
+              aria-haspopup="menu"
+              onClick={(e) => ctl.abrirMenuContratista(null, x.id, e.currentTarget)}
+              onDragStart={(e) => {
+                e.dataTransfer.effectAllowed = "copy";
+                e.dataTransfer.setData(TIPO_ARRASTRE, x.id);
+                ctl.setArrastre({ pid: x.id, from: null, esChofer: false, contratista: true });
+              }}
+              onDragEnd={() => ctl.setArrastre(null)}
+              className="flex w-full cursor-grab items-baseline gap-2 rounded-[7px] border border-transparent px-1.5 py-1 text-left text-[13px] outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-default max-md:min-h-11 max-md:items-center max-md:text-[15px]"
+            >
+              <span className="font-medium whitespace-nowrap">{x.nombre}</span>
+              <span className={cn("ml-auto text-right text-xs text-muted-foreground", x.enUso && "text-foreground")}>{x.t}</span>
+            </button>
+          ))}
+        </>
+      )}
+    </div>
   );
 }

@@ -1,0 +1,607 @@
+<title>Pedido de presupuesto</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: el celular del cliente a la izquierda, la vista del vendedor a la derecha; en el teléfono se apilan. Paleta del sistema de Andamios-OS (naranja hue 42). */
+:root {
+  --bg: oklch(0.975 0.004 60);
+  --surface: oklch(1 0 0);
+  --surface-2: oklch(0.955 0.008 60);
+  --ink: oklch(0.2 0.01 50);
+  --muted: oklch(0.5 0.012 50);
+  --line: oklch(0.89 0.008 60);
+  --accent: oklch(0.62 0.16 42);
+  --accent-soft: oklch(0.95 0.035 50);
+  --accent-ink: oklch(0.45 0.13 42);
+  --on-accent: oklch(0.99 0 0);
+  --ok: oklch(0.55 0.13 150);
+  --ok-soft: oklch(0.95 0.04 150);
+  --warn: oklch(0.58 0.13 75);
+  --warn-soft: oklch(0.96 0.05 85);
+  --bad: oklch(0.55 0.18 25);
+  --wa: oklch(0.62 0.15 152);
+  --phone: oklch(0.22 0.01 50);
+  --map-a: oklch(0.93 0.01 100);
+  --map-b: oklch(0.99 0 0);
+  --font-body: "DM Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: oklch(0.17 0.006 50); --surface: oklch(0.215 0.007 50); --surface-2: oklch(0.255 0.008 50);
+  --ink: oklch(0.93 0.005 60); --muted: oklch(0.68 0.01 60); --line: oklch(0.32 0.008 50);
+  --accent: oklch(0.68 0.15 45); --accent-soft: oklch(0.3 0.05 45); --accent-ink: oklch(0.8 0.11 50); --on-accent: oklch(0.16 0.01 50);
+  --ok: oklch(0.72 0.13 150); --ok-soft: oklch(0.29 0.04 150); --warn: oklch(0.78 0.12 80); --warn-soft: oklch(0.3 0.05 80);
+  --bad: oklch(0.7 0.15 25); --wa: oklch(0.7 0.14 152); --phone: oklch(0.08 0 0); --map-a: oklch(0.27 0.008 100); --map-b: oklch(0.33 0.006 100);
+  color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: oklch(0.17 0.006 50); --surface: oklch(0.215 0.007 50); --surface-2: oklch(0.255 0.008 50);
+  --ink: oklch(0.93 0.005 60); --muted: oklch(0.68 0.01 60); --line: oklch(0.32 0.008 50);
+  --accent: oklch(0.68 0.15 45); --accent-soft: oklch(0.3 0.05 45); --accent-ink: oklch(0.8 0.11 50); --on-accent: oklch(0.16 0.01 50);
+  --ok: oklch(0.72 0.13 150); --ok-soft: oklch(0.29 0.04 150); --warn: oklch(0.78 0.12 80); --warn-soft: oklch(0.3 0.05 80);
+  --bad: oklch(0.7 0.15 25); --wa: oklch(0.7 0.14 152); --phone: oklch(0.08 0 0); --map-a: oklch(0.27 0.008 100); --map-b: oklch(0.33 0.006 100);
+  color-scheme: dark; }
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.5; }
+.wrap { max-width: 1180px; margin: 0 auto; padding-inline: 20px; padding-block: 28px 64px; }
+h1, h2, h3 { text-wrap: balance; margin: 0; }
+button { font: inherit; color: inherit; cursor: pointer; }
+input, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* Encabezado */
+.top { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 16px 32px; margin-bottom: 24px; }
+.eyebrow { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent-ink); font-weight: 600; }
+.top h1 { font-size: clamp(26px, 4vw, 36px); font-weight: 700; letter-spacing: -.02em; line-height: 1.1; margin-top: 6px; }
+.top p { color: var(--muted); margin: 8px 0 0; max-width: 60ch; }
+.seg { display: inline-flex; background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px; padding: 3px; }
+.seg button { border: 0; background: none; padding: 8px 16px; border-radius: 999px; font-weight: 600; font-size: 14px; color: var(--muted); }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px oklch(0 0 0 / .12); }
+
+.stage { display: grid; grid-template-columns: 384px minmax(0, 1fr); gap: 36px; align-items: start; }
+@media (max-width: 900px) { .stage { grid-template-columns: minmax(0, 1fr); } .phone { margin-inline: auto; } }
+.col-label { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin-bottom: 10px; display: flex; gap: 8px; align-items: center; }
+.col-label .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+
+/* Celular */
+.phone { width: 100%; max-width: 384px; background: var(--phone); border-radius: 44px; padding: 12px; box-shadow: 0 24px 60px -24px oklch(0.2 0.02 50 / .45); }
+.screen { background: var(--surface); border-radius: 33px; overflow: hidden; height: 720px; display: flex; flex-direction: column; }
+.urlbar { padding: 14px 18px 10px; border-bottom: 1px solid var(--line); background: var(--surface-2); }
+.urlbar .u { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app { flex: 1; overflow-y: auto; padding: 18px 18px 24px; display: flex; flex-direction: column; gap: 18px; scroll-behavior: smooth; }
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand .mark { width: 30px; height: 30px; border-radius: 8px; background: var(--accent); display: grid; place-items: center; }
+.brand b { font-size: 14px; line-height: 1.15; display: block; }
+.brand small { color: var(--muted); font-size: 12px; }
+.steps { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.steps i { height: 4px; border-radius: 4px; background: var(--line); }
+.steps i.on { background: var(--accent); }
+.steps-t { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-top: 6px; }
+.app h2 { font-size: 22px; font-weight: 700; letter-spacing: -.01em; line-height: 1.2; }
+.lead { color: var(--muted); margin: -10px 0 0; font-size: 14px; }
+.field { display: flex; flex-direction: column; gap: 6px; position: relative; }
+.field > label, .q { font-weight: 600; font-size: 14px; }
+.opt { color: var(--muted); font-weight: 400; }
+.inp { width: 100%; border: 1.5px solid var(--line); background: var(--surface); border-radius: 12px; padding: 12px 14px; font-size: 16px; min-height: 48px; }
+.inp:focus { border-color: var(--accent); outline: none; }
+.inp.err { border-color: var(--bad); }
+textarea.inp { resize: vertical; min-height: 72px; }
+.help { font-size: 12.5px; color: var(--muted); }
+.msg { font-size: 13px; display: flex; gap: 6px; align-items: flex-start; }
+.msg.ok { color: var(--ok); } .msg.bad { color: var(--bad); } .msg.warn { color: var(--warn); }
+.sugs { position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 28px -12px oklch(0 0 0 / .3); z-index: 5; overflow: hidden; }
+.sugs button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.sugs button:last-child { border-bottom: 0; }
+.sugs button:hover, .sugs button:focus-visible { background: var(--surface-2); }
+.sugs b { font-weight: 600; font-size: 14px; display: block; }
+.sugs span { font-size: 12.5px; color: var(--muted); }
+.sugs .g { font-size: 11px; color: var(--muted); padding: 6px 14px; text-align: right; background: var(--surface-2); }
+.mapbox { border-radius: 14px; overflow: hidden; border: 1px solid var(--line); }
+.mapbox svg { display: block; width: 100%; height: auto; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font-size: 12.5px; padding: 4px 10px; border-radius: 999px; background: var(--surface-2); color: var(--ink); border: 1px solid var(--line); }
+.chip.ok { background: var(--ok-soft); color: var(--ok); border-color: transparent; font-weight: 600; }
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tile { border: 1.5px solid var(--line); background: var(--surface); border-radius: 14px; padding: 12px 10px; text-align: left; display: flex; flex-direction: column; gap: 6px; min-height: 92px; }
+.tile svg { width: 34px; height: 34px; }
+.tile b { font-size: 13.5px; line-height: 1.2; font-weight: 600; }
+.tile small { font-size: 11.5px; color: var(--muted); line-height: 1.25; }
+.tile[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.tile.wide { grid-column: 1 / -1; min-height: 0; flex-direction: row; align-items: center; gap: 10px; }
+.pills { display: flex; flex-wrap: wrap; gap: 8px; }
+.pill { border: 1.5px solid var(--line); background: var(--surface); border-radius: 999px; padding: 10px 16px; font-weight: 500; font-size: 14px; min-height: 44px; }
+.pill[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; }
+.note { background: var(--surface-2); border-radius: 12px; padding: 12px 14px; font-size: 13.5px; display: flex; flex-direction: column; gap: 10px; }
+.stepper { display: inline-flex; align-items: center; border: 1.5px solid var(--line); border-radius: 12px; overflow: hidden; }
+.stepper button { width: 46px; height: 46px; border: 0; background: var(--surface-2); font-size: 20px; }
+.stepper span { min-width: 92px; text-align: center; font-weight: 600; }
+.photos { display: flex; gap: 8px; flex-wrap: wrap; }
+.ph { width: 74px; height: 74px; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); background: var(--surface-2); }
+.ph img, .ph svg { width: 100%; height: 100%; object-fit: cover; display: block; }
+.addph { width: 74px; height: 74px; border-radius: 12px; border: 1.5px dashed var(--line); display: grid; place-items: center; text-align: center; font-size: 11.5px; color: var(--muted); background: none; padding: 4px; }
+.addph input { display: none; }
+.linkbtn { border: 0; background: none; color: var(--accent-ink); font-weight: 600; font-size: 13px; padding: 0; text-decoration: underline; text-underline-offset: 3px; }
+.cta { position: sticky; bottom: -24px; margin: 0 -18px -24px; padding: 12px 18px 18px; background: linear-gradient(to bottom, transparent, var(--surface) 30%); display: flex; flex-direction: column; gap: 8px; }
+.btn { border: 0; border-radius: 14px; min-height: 52px; padding: 12px 18px; font-weight: 700; font-size: 16px; background: var(--accent); color: var(--on-accent); width: 100%; }
+.btn.ghost { background: var(--surface-2); color: var(--ink); font-weight: 600; min-height: 44px; font-size: 14px; }
+.btn.wa { background: var(--wa); color: oklch(0.99 0 0); display: flex; align-items: center; justify-content: center; gap: 8px; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.check { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; color: var(--muted); }
+.check input { width: 20px; height: 20px; margin-top: 1px; accent-color: var(--accent); flex: none; }
+.hello { border: 1.5px solid var(--ok); background: var(--ok-soft); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+.hello b { font-size: 15px; }
+.hello dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 13px; }
+.hello dt { color: var(--muted); } .hello dd { margin: 0; }
+.shimmer { background: linear-gradient(90deg, var(--surface) 0%, var(--accent-soft) 50%, var(--surface) 100%); background-size: 200% 100%; animation: sh 1s linear infinite; }
+@keyframes sh { to { background-position: -200% 0; } }
+.done { align-items: center; text-align: center; }
+.bigok { width: 72px; height: 72px; border-radius: 50%; background: var(--ok-soft); display: grid; place-items: center; margin: 12px auto 0; }
+.ticket { font-family: var(--font-mono); font-size: 13px; background: var(--surface-2); border-radius: 999px; padding: 4px 12px; display: inline-block; }
+.summary { width: 100%; text-align: left; border: 1px solid var(--line); border-radius: 14px; padding: 4px 14px; }
+.summary div { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 13.5px; }
+.summary div:last-child { border-bottom: 0; }
+.summary span { color: var(--muted); flex: none; }
+.summary b { font-weight: 600; text-align: right; min-width: 0; overflow-wrap: anywhere; }
+.bubble { align-self: stretch; text-align: left; background: oklch(0.94 0.05 150); color: oklch(0.2 0.02 150); border-radius: 14px 14px 4px 14px; padding: 10px 12px; font-size: 13.5px; }
+.spin { width: 44px; height: 44px; border-radius: 50%; border: 4px solid var(--line); border-top-color: var(--accent); animation: rot .8s linear infinite; margin: 80px auto 0; }
+@keyframes rot { to { transform: rotate(360deg); } }
+
+/* Formulario viejo */
+.old .inp { border-radius: 4px; min-height: 38px; padding: 7px 10px; font-size: 14px; }
+.old label { font-size: 13px; font-weight: 500; }
+.oldbtn { background: oklch(0.45 0.09 260); color: oklch(0.99 0 0); border: 0; border-radius: 4px; padding: 9px 16px; font-weight: 500; align-self: flex-start; }
+.modal-bg { position: absolute; inset: 0; background: oklch(0 0 0 / .5); display: flex; align-items: center; padding: 16px; z-index: 9; }
+.modal { background: var(--surface); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 10px; font-size: 13.5px; }
+.modal textarea { font-family: var(--font-mono); font-size: 11px; min-height: 150px; }
+.screen-rel { position: relative; }
+
+/* Vendedor */
+.panel { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 18px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.card h3 { font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.src { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.status { font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: var(--surface-2); color: var(--muted); margin-left: auto; }
+.status.live { background: var(--accent-soft); color: var(--accent-ink); }
+.status.ok { background: var(--ok-soft); color: var(--ok); }
+.status.warn { background: var(--warn-soft); color: var(--warn); }
+.status.bad { background: oklch(0.95 0.04 25); color: var(--bad); }
+.leadtitle { font-size: 19px; font-weight: 700; letter-spacing: -.01em; line-height: 1.25; overflow-wrap: anywhere; }
+.leadtitle.empty { color: var(--muted); font-weight: 500; }
+.kv { display: grid; grid-template-columns: minmax(110px, auto) minmax(0, 1fr); gap: 0; border-top: 1px solid var(--line); }
+.kv > div { display: contents; }
+.kv dt, .kv dd { padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 13.5px; margin: 0; }
+.kv dt { color: var(--muted); padding-right: 14px; display: flex; gap: 6px; align-items: center; }
+.kv dd { overflow-wrap: anywhere; }
+.kv dd.na { color: var(--muted); }
+.tick { width: 16px; height: 16px; border-radius: 50%; display: inline-grid; place-items: center; flex: none; background: var(--line); }
+.tick.on { background: var(--ok); }
+.tick svg { width: 10px; height: 10px; }
+.feed { display: flex; flex-direction: column; gap: 10px; }
+.ev { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 12px; align-items: start; animation: in .35s ease both; }
+@keyframes in { from { opacity: .2; transform: translateY(6px); } }
+.ev .ic { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: var(--surface-2); font-size: 12px; font-weight: 700; color: var(--muted); }
+.ev .ic.slack { background: oklch(0.93 0.04 320); color: oklch(0.4 0.12 320); }
+.ev .ic.odoo { background: oklch(0.93 0.04 330); color: oklch(0.42 0.1 330); }
+.ev .ic.chk { background: var(--warn-soft); color: var(--warn); }
+.ev .ic.chk.ok { background: var(--ok-soft); color: var(--ok); }
+.ev .body { font-size: 13.5px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.ev .body b { font-size: 14px; }
+.ev .meta { font-size: 12px; color: var(--muted); }
+.slackmsg { background: var(--surface-2); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.sbtns { display: flex; gap: 8px; flex-wrap: wrap; }
+.sbtn { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 6px 12px; font-size: 13px; font-weight: 600; }
+.sbtn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.empty { color: var(--muted); font-size: 14px; border: 1.5px dashed var(--line); border-radius: 14px; padding: 18px; text-align: center; }
+.chat { display: flex; flex-direction: column; gap: 10px; }
+.ai { background: var(--surface-2); border-radius: 14px 14px 14px 4px; padding: 12px 14px; font-size: 14px; max-width: 62ch; }
+.ai p { margin: 0 0 6px; } .ai p:last-child { margin: 0; }
+.checklist { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; }
+.ci { display: flex; gap: 8px; align-items: flex-start; font-size: 13.5px; padding: 10px 12px; border-radius: 12px; background: var(--ok-soft); }
+.ci.todo { background: var(--warn-soft); }
+.ci small { display: block; color: var(--muted); font-size: 12px; }
+.vs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 560px) { .vs { grid-template-columns: 1fr; } }
+.vs > div { border-radius: 12px; padding: 12px 14px; font-size: 13.5px; background: var(--surface-2); }
+.vs b { display: block; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; margin-bottom: 4px; color: var(--muted); }
+.vs .big { font-size: 26px; font-weight: 700; font-family: var(--font-mono); color: var(--ink); display: block; line-height: 1.1; }
+.oldlead { display: flex; flex-direction: column; gap: 6px; }
+.oldlead div { display: flex; justify-content: space-between; gap: 10px; border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; font-size: 13px; }
+.oldlead span { color: var(--muted); }
+.raw { font-family: var(--font-mono); font-size: 12px; background: var(--surface-2); border-radius: 10px; padding: 10px 12px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <div class="eyebrow">Maqueta interactiva · datos de ejemplo</div>
+      <h1>Pedido de presupuesto</h1>
+      <p>Completá el formulario en el celular como si fueras el cliente. A la derecha ves lo que le va llegando al vendedor.</p>
+    </div>
+    <div class="seg" role="group" aria-label="Qué mostrar">
+      <button id="m-new" aria-pressed="true">Propuesta</button>
+      <button id="m-old" aria-pressed="false">Cómo es hoy</button>
+    </div>
+  </header>
+
+  <div class="stage">
+    <section>
+      <div class="col-label"><span class="dot"></span>Lo que ve el cliente</div>
+      <div class="phone">
+        <div class="screen screen-rel">
+          <div class="urlbar"><div class="u" id="url">andamiosbuenosaires.com.ar/presupuesto</div></div>
+          <div class="app" id="app"></div>
+        </div>
+      </div>
+    </section>
+    <section class="panel" id="panel" aria-live="polite"></section>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = (s, r = document) => r.querySelector(s);
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const tickSvg = '<svg viewBox="0 0 10 10"><path d="M2 5.2 4.2 7.3 8 3" fill="none" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+  // Direcciones de ejemplo: las de CABA traen catastro.
+  const DIRS = [
+    { id: "cabildo", calle: "Av. Cabildo 2450", zona: "Belgrano, CABA", caba: true, frente: "8,66", pisos: 9, conflicto: { op: "S00398", hace: "hace 4 meses", vend: "Jorge", estado: "Perdida" } },
+    { id: "santafe", calle: "Av. Santa Fe 3120", zona: "Palermo, CABA", caba: true, frente: "12,10", pisos: 12, conflicto: null },
+    { id: "rivadavia", calle: "Av. Rivadavia 6800", zona: "Flores, CABA", caba: true, frente: "9,52", pisos: 6, conflicto: null },
+    { id: "belgrano", calle: "Belgrano 450", zona: "San Isidro, Buenos Aires", caba: false, conflicto: null },
+    { id: "mitre", calle: "Av. Mitre 1820", zona: "Avellaneda, Buenos Aires", caba: false, conflicto: null },
+  ];
+  const TIPOS = [
+    { id: "fachada", t: "Andamio de fachada", s: "Para pintar o arreglar el frente", ic: '<rect x="6" y="4" width="22" height="26" rx="1" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M6 11h22M6 18h22M6 25h22M13 4v26M21 4v26" stroke="currentColor" stroke-width="1.2"/>' },
+    { id: "bandeja", t: "Bandeja de protección", s: "Para proteger la vereda", ic: '<path d="M6 30V6h10v24" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M16 14l12-4" stroke="currentColor" stroke-width="2"/><path d="M16 14v3l12-4v-3" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M4 30h28" stroke="currentColor" stroke-width="1.4"/>' },
+    { id: "alquiler", t: "Alquiler sin montaje", s: "Lo arman ustedes", ic: '<path d="M6 28h22M9 28V12h16v16M9 20h16M9 12l16 8M25 12 9 20" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="11" cy="31" r="1.6" fill="currentColor"/><circle cx="23" cy="31" r="1.6" fill="currentColor"/>' },
+    { id: "evento", t: "Evento", s: "Escenario, torre, tribuna", ic: '<path d="M5 26h24M8 26V16h18v10M8 16l9-8 9 8" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M13 21h8" stroke="currentColor" stroke-width="1.5"/>' },
+  ];
+  const TIPO_NOSE = { id: "nose", t: "No sé, asesórenme", s: "", ic: '<circle cx="17" cy="17" r="12" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M13.5 13.5a3.5 3.5 0 1 1 5 3.2c-1 .5-1.5 1.2-1.5 2.3v1" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="17" cy="24" r="1.2" fill="currentColor"/>' };
+  const CUANDO = ["Lo antes posible", "Este mes", "Más adelante"];
+  const EXISTE = { cuit: "30712345671", razon: "Consorcio de Propietarios Av. Cabildo 2450", contacto: "Marta Giménez", celular: "11 5555-0142", email: "administracion@cabildo2450.com.ar", domicilio: "Av. Cabildo 2450, CABA", vendedor: "Gabriel" };
+  const ARCA = { "30709876542": { razon: "Constructora Del Plata S.R.L.", domicilio: "Av. Corrientes 1680 piso 4, CABA", iva: "Responsable inscripto" } };
+
+  const fresh = () => ({
+    mode: "new", screen: 1, sending: false,
+    dir: null, dirText: "", sugOpen: false, tipo: null, alturaModo: null, pisos: 3, cuando: null, fotos: [], comentario: "",
+    quien: null, cuit: "", existe: false, existeOk: null, razon: "", contacto: "", celular: "", email: "", domicilio: "", arca: null, acepto: false,
+    errs1: false, errs2: false, tomado: null, presupuestar: false, oldModal: false,
+  });
+  let S = fresh();
+
+  // CUIT: dígito verificador real (pesos 5,4,3,2,7,6,5,4,3,2).
+  const PESOS = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2];
+  function dv(diez) { const s = PESOS.reduce((a, p, i) => a + p * +diez[i], 0); const r = 11 - (s % 11); return r === 11 ? 0 : r === 10 ? null : r; }
+  function fmtCuit(d) { return d.length === 11 ? `${d.slice(0, 2)}-${d.slice(2, 10)}-${d.slice(10)}` : d; }
+  function cuitEstado(raw) {
+    const d = raw.replace(/\D/g, "");
+    if (!d) return { k: "vacio" };
+    if (d.length < 11) return { k: "corto", d, n: d.length };
+    if (d.length > 11) return { k: "largo", d };
+    const pref = d.slice(0, 2);
+    if (!["20", "23", "24", "27", "30", "33", "34"].includes(pref)) return { k: "prefijo", d };
+    const v = dv(d.slice(0, 10));
+    if (v === null || v !== +d[10]) return { k: "dv", d, prop: v === null ? null : d.slice(0, 10) + v };
+    return { k: "ok", d, juridica: ["30", "33", "34"].includes(pref) };
+  }
+
+  const tipoDe = (id) => [...TIPOS, TIPO_NOSE].find((t) => t.id === id);
+  function alturaTxt() {
+    if (!S.dir) return null;
+    if (S.dir.caba && S.alturaModo === "toda") return `Toda la fachada (PB + ${S.dir.pisos})`;
+    if (S.alturaModo === "parte") return `${S.pisos} ${S.pisos === 1 ? "piso" : "pisos"}`;
+    return null;
+  }
+  const nombreCliente = () => (S.existe && S.existeOk !== false ? EXISTE.razon : S.razon.trim() || null);
+
+  // ---------- Celular ----------
+  function renderApp() {
+    const app = $("#app");
+    $("#url").textContent = S.mode === "old" ? "emprendimientos-y-estructuras-sa.odoo.com/es_AR/alta-de-cliente" : "andamiosbuenosaires.com.ar/presupuesto";
+    if (S.mode === "old") return renderOld(app);
+    if (S.sending) { app.innerHTML = '<div class="spin" aria-label="Enviando"></div><p style="text-align:center;color:var(--muted)">Enviando tu pedido…</p>'; return; }
+    const head = `<div class="brand"><div class="mark"><svg width="18" height="18" viewBox="0 0 18 18"><path d="M3 16V2M15 16V2M3 6h12M3 11h12M3 6l12 5" stroke="white" stroke-width="1.8" fill="none"/></svg></div><div><b>Andamios Buenos Aires</b><small>Pedido de presupuesto</small></div></div>`;
+    const prog = S.screen < 3 ? `<div><div class="steps"><i class="on"></i><i class="${S.screen >= 2 ? "on" : ""}"></i></div><div class="steps-t"><span>1 · Tu obra</span><span>2 · Tus datos</span></div></div>` : "";
+    app.innerHTML = head + prog + (S.screen === 1 ? scr1() : S.screen === 2 ? scr2() : scr3());
+    bindApp();
+  }
+
+  function mapSvg(d) {
+    return `<div class="mapbox"><svg viewBox="0 0 340 130" role="img" aria-label="Mapa con la ubicación de ${esc(d.calle)}">
+      <rect width="340" height="130" fill="var(--map-a)"/>
+      ${[0, 1, 2, 3, 4].map((i) => `<rect x="${10 + i * 68}" y="8" width="56" height="44" rx="3" fill="var(--map-b)"/><rect x="${10 + i * 68}" y="78" width="56" height="44" rx="3" fill="var(--map-b)"/>`).join("")}
+      <rect x="0" y="56" width="340" height="18" fill="var(--surface)"/>
+      <text x="12" y="69" font-size="10" fill="var(--muted)" font-family="DM Sans, sans-serif">${esc(d.calle.replace(/\s\d+$/, ""))}</text>
+      <g transform="translate(170 52)"><path d="M0 0c-8-10-12-15-12-21a12 12 0 0 1 24 0c0 6-4 11-12 21z" fill="var(--accent)"/><circle cx="0" cy="-21" r="4.5" fill="var(--surface)"/></g>
+    </svg></div>`;
+  }
+
+  function scr1() {
+    const d = S.dir;
+    const sugs = S.sugOpen ? (() => {
+      const q = S.dirText.trim().toLowerCase();
+      const list = DIRS.filter((x) => !q || (x.calle + " " + x.zona).toLowerCase().includes(q)).slice(0, 4);
+      const rows = list.map((x) => `<button type="button" data-dir="${x.id}"><b>${esc(x.calle)}</b><span>${esc(x.zona)}</span></button>`).join("");
+      return `<div class="sugs">${rows || `<button type="button" disabled><b>Sin resultados de ejemplo</b><span>Probá con «Cabildo», «Santa Fe» o «San Isidro»</span></button>`}<div class="g">Autocompletado de Google</div></div>`;
+    })() : "";
+    let altura = "";
+    if (d) {
+      if (d.caba) {
+        altura = `<div class="field"><span class="q">¿Qué altura hay que cubrir?</span>
+          <div class="note"><span>Según el catastro, el edificio tiene <b>planta baja + ${d.pisos} pisos</b>.</span>
+          <div class="pills"><button type="button" class="pill" data-alt="toda" aria-pressed="${S.alturaModo === "toda"}">Toda la fachada</button><button type="button" class="pill" data-alt="parte" aria-pressed="${S.alturaModo === "parte"}">Solo una parte</button></div>
+          ${S.alturaModo === "parte" ? stepper() : ""}</div></div>`;
+      } else {
+        altura = `<div class="field"><span class="q">¿Hasta qué altura? <span class="opt">aproximado</span></span>${stepper()}</div>`;
+      }
+    }
+    const err = S.errs1 ? `<div class="msg bad">${!d ? "Elegí la dirección de la obra de la lista." : "Contanos qué necesitás."}</div>` : "";
+    return `
+      <h2>Contanos de tu obra</h2>
+      <p class="lead">Con esto ya podemos empezar a cotizar.</p>
+      <div class="field">
+        <label for="dir">¿Dónde es la obra?</label>
+        <input class="inp ${S.errs1 && !d ? "err" : ""}" id="dir" autocomplete="off" placeholder="Calle y número" value="${esc(d ? d.calle : S.dirText)}">
+        ${sugs}
+      </div>
+      ${d ? `${mapSvg(d)}<div class="chips"><span class="chip">${esc(d.zona)}</span>${d.caba ? `<span class="chip ok">Catastro: frente ${d.frente} m</span>` : `<span class="chip">Fuera de CABA: sin catastro</span>`}<button type="button" class="linkbtn" id="dir-clear">Cambiar</button></div>` : ""}
+      <div class="field"><span class="q">¿Qué necesitás?</span>
+        <div class="tiles">${TIPOS.map((t) => `<button type="button" class="tile" data-tipo="${t.id}" aria-pressed="${S.tipo === t.id}"><svg viewBox="0 0 34 34" style="color:var(--accent-ink)">${t.ic}</svg><b>${t.t}</b><small>${t.s}</small></button>`).join("")}
+        <button type="button" class="tile wide" data-tipo="nose" aria-pressed="${S.tipo === "nose"}"><svg viewBox="0 0 34 34" style="color:var(--accent-ink);width:26px;height:26px">${TIPO_NOSE.ic}</svg><b>${TIPO_NOSE.t}</b></button></div>
+      </div>
+      ${altura}
+      <div class="field"><span class="q">¿Para cuándo?</span><div class="pills">${CUANDO.map((c) => `<button type="button" class="pill" data-cuando="${c}" aria-pressed="${S.cuando === c}">${c}</button>`).join("")}</div></div>
+      <div class="field"><span class="q">Fotos de la fachada <span class="opt">opcional</span></span>
+        <div class="photos">${S.fotos.map((f) => `<div class="ph">${f}</div>`).join("")}
+          <label class="addph" for="foto">Sacar o subir foto<input type="file" id="foto" accept="image/*"></label></div>
+        <button type="button" class="linkbtn" id="foto-ej" style="align-self:flex-start">Usar una foto de ejemplo</button>
+      </div>
+      <div class="field"><label for="com">¿Algo más? <span class="opt">opcional</span></label><textarea class="inp" id="com" placeholder="Ej.: hay que trabajar el 3.º y 4.º piso, la vereda es angosta">${esc(S.comentario)}</textarea></div>
+      <div class="cta">${err}<button class="btn" id="next1">Seguir</button><button type="button" class="linkbtn" id="ej1" style="align-self:center">Completar con un ejemplo</button></div>`;
+  }
+  const stepper = () => `<div class="stepper" role="group" aria-label="Pisos"><button type="button" id="p-menos" aria-label="Menos">−</button><span class="mono">${S.pisos} ${S.pisos === 1 ? "piso" : "pisos"}</span><button type="button" id="p-mas" aria-label="Más">+</button></div>`;
+
+  function scr2() {
+    const e = cuitEstado(S.cuit);
+    let cm = "";
+    if (e.k === "ok") cm = `<div class="msg ok">CUIT válido · ${e.juridica ? "persona jurídica" : "persona humana"}</div>`;
+    else if (e.k === "dv") cm = `<div class="msg bad">El último número no coincide.${e.prop ? ` ¿Quisiste decir <button type="button" class="linkbtn" id="cuit-fix">${fmtCuit(e.prop)}</button>?` : " Revisalo en tu constancia."}</div>`;
+    else if (e.k === "corto") cm = e.n === 10 ? `<div class="msg warn">Tiene 10 números y son 11. Fijate si falta alguno.</div>` : "";
+    else if (e.k === "largo") cm = `<div class="msg bad">Tiene más de 11 números.</div>`;
+    else if (e.k === "prefijo") cm = `<div class="msg bad">Los CUIT empiezan con 20, 23, 24, 27, 30, 33 o 34.</div>`;
+    const emp = S.quien === "empresa";
+    const cuitOblig = emp;
+    let body = "";
+    if (S.quien) {
+      body += `<div class="field"><label for="cuit">CUIT ${cuitOblig ? "" : '<span class="opt">opcional</span>'}</label>
+        <input class="inp ${S.errs2 && cuitOblig && e.k !== "ok" ? "err" : ""}" id="cuit" inputmode="numeric" placeholder="30-12345678-9" value="${esc(S.cuit)}">${cm}
+        <span class="help">Para probar: <button type="button" class="linkbtn" data-cuit="30712345671">30-71234567-1</button> ya es cliente · <button type="button" class="linkbtn" data-cuit="30712345670">30-71234567-0</button> tiene un error de tipeo${emp ? ` · <button type="button" class="linkbtn" data-cuit="30709876542">30-70987654-3</button> se completa desde ARCA` : ""}</span></div>`;
+      if (S.existe && S.existeOk !== false) {
+        body += `<div class="hello"><b>¡Hola de nuevo!</b><dl><dt>Cliente</dt><dd>${esc(EXISTE.razon)}</dd><dt>Contacto</dt><dd>${esc(EXISTE.contacto)}</dd><dt>Celular</dt><dd class="mono">${esc(EXISTE.celular)}</dd><dt>Mail</dt><dd>${esc(EXISTE.email)}</dd></dl>
+          ${S.existeOk === true ? `<div class="msg ok">Perfecto, usamos estos datos.</div>` : `<span>¿Siguen siendo estos datos?</span><div class="pills"><button type="button" class="pill" id="ex-si">Sí, son estos</button><button type="button" class="pill" id="ex-no">Cambió algo</button></div>`}</div>`;
+      } else {
+        const arcaOn = S.arca === "cargando";
+        const f = (id, label, val, ph, extra = "") => `<div class="field"><label for="${id}">${label}</label><input class="inp ${arcaOn && (id === "razon" || id === "domicilio") ? "shimmer" : ""} ${S.errs2 && !val.trim() ? "err" : ""}" id="${id}" value="${esc(val)}" placeholder="${ph}" ${extra}></div>`;
+        if (S.arca === "ok") body += `<div class="msg ok">Razón social y domicilio fiscal completados desde ARCA (etapa 3).</div>`;
+        body += emp
+          ? f("razon", "Razón social", S.razon, "Ej.: Consorcio Av. Cabildo 2450") + f("domicilio", "Domicilio fiscal", S.domicilio, "Calle, número y localidad") + f("contacto", "Tu nombre", S.contacto, "Nombre y apellido")
+          : f("razon", "Nombre y apellido", S.razon, "Ej.: Marta Giménez") + f("domicilio", "Tu domicilio", S.domicilio, "Calle, número y localidad");
+        body += f("celular", "Celular", S.celular, "11 1234-5678", 'inputmode="tel"') + f("email", "Mail", S.email, "nombre@mail.com", 'inputmode="email"');
+      }
+      body += `<label class="check"><input type="checkbox" id="acepto" ${S.acepto ? "checked" : ""}><span>Acepto que Andamios Buenos Aires use estos datos para prepararme el presupuesto. <span class="linkbtn" style="font-size:13px">Aviso de privacidad</span></span></label>`;
+    }
+    const err = S.errs2 ? `<div class="msg bad">${!S.quien ? "Elegí quién pide el presupuesto." : faltan2().join(" · ")}</div>` : "";
+    return `
+      <h2>¿A nombre de quién va?</h2>
+      <p class="lead">Así te mandamos el presupuesto y te contactamos.</p>
+      <div class="field"><span class="q">¿Quién pide el presupuesto?</span><div class="pills">
+        <button type="button" class="pill" data-quien="particular" aria-pressed="${S.quien === "particular"}">Particular</button>
+        <button type="button" class="pill" data-quien="empresa" aria-pressed="${S.quien === "empresa"}">Empresa, consorcio o constructora</button></div></div>
+      ${body}
+      <div class="cta">${err}<button class="btn" id="send">Pedir presupuesto</button><div style="display:flex;justify-content:space-between"><button type="button" class="linkbtn" id="back">Volver</button><button type="button" class="linkbtn" id="ej2">Completar con un ejemplo</button></div></div>`;
+  }
+  function faltan2() {
+    const out = [];
+    const e = cuitEstado(S.cuit);
+    if (S.quien === "empresa" && e.k !== "ok") out.push("Revisá el CUIT");
+    if (S.quien === "particular" && e.k !== "vacio" && e.k !== "ok") out.push("Revisá el CUIT o borralo");
+    if (S.existe && S.existeOk === null) out.push("Confirmá tus datos");
+    if (!(S.existe && S.existeOk !== false)) {
+      if (!S.razon.trim()) out.push(S.quien === "empresa" ? "Falta la razón social" : "Falta tu nombre");
+      if (!S.domicilio.trim()) out.push("Falta el domicilio");
+      if (S.quien === "empresa" && !S.contacto.trim()) out.push("Falta tu nombre");
+      if (S.celular.replace(/\D/g, "").length < 8) out.push("Revisá el celular");
+      if (!/^\S+@\S+\.\S+$/.test(S.email)) out.push("Revisá el mail");
+    }
+    if (!S.acepto) out.push("Falta aceptar el aviso");
+    return out;
+  }
+
+  function scr3() {
+    const t = tipoDe(S.tipo);
+    const nombre = S.existe && S.existeOk !== false ? EXISTE.contacto.split(" ")[0] : (S.quien === "empresa" ? S.contacto : S.razon).trim().split(" ")[0];
+    const mail = S.existe && S.existeOk !== false ? EXISTE.email : S.email;
+    const waTxt = `Hola, soy ${nombre}. Mandé el pedido #P-0142 para ${S.dir.calle}.`;
+    return `<div class="app done" style="padding:0;gap:14px;overflow:visible">
+      <div class="bigok"><svg width="34" height="34" viewBox="0 0 34 34"><path d="M8 17.5 14.5 24 26 11" fill="none" stroke="var(--ok)" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <h2>Recibimos tu pedido</h2>
+      <span class="ticket">Pedido #P-0142</span>
+      <p class="lead" style="margin:0">Un vendedor te escribe por WhatsApp con el presupuesto. Te mandamos una copia a <b>${esc(mail)}</b>.</p>
+      <div class="summary"><div><span>Obra</span><b>${esc(S.dir.calle)}</b></div><div><span>Trabajo</span><b>${esc(t.t)}</b></div>${alturaTxt() ? `<div><span>Altura</span><b>${esc(alturaTxt())}</b></div>` : ""}<div><span>Para cuándo</span><b>${esc(S.cuando || "Sin fecha")}</b></div><div><span>A nombre de</span><b>${esc(nombreCliente())}</b></div></div>
+      <button class="btn wa" id="wa"><svg width="20" height="20" viewBox="0 0 20 20"><path d="M10 2a8 8 0 0 0-6.9 12l-1 3.8 3.9-1A8 8 0 1 0 10 2z" fill="none" stroke="white" stroke-width="1.6"/></svg>Avisar por WhatsApp</button>
+      ${S.waShown ? `<div class="bubble">${esc(waTxt)}<div class="help" style="color:oklch(0.4 0.03 150);margin-top:4px">Se abriría WhatsApp con este mensaje listo. Solo lleva el número de pedido: los datos ya están cargados.</div></div>` : ""}
+      <button class="btn ghost" id="again">Probar de nuevo</button>
+    </div>`;
+  }
+
+  function renderOld(app) {
+    app.innerHTML = `<div class="old" style="display:flex;flex-direction:column;gap:12px">
+      <h2 style="font-size:20px">Alta de cliente</h2>
+      <p class="lead" style="margin:0">Dejanos tus datos y los de la obra y te preparamos el presupuesto a la brevedad.</p>
+      ${["Razon Social *", "Nombre de contacto *", "Celular *", "Correo electronico *", "CUIT *", "Domicilio particular *", "Direccion de la obra (calle y numero) *"].map((l, i) => `<div class="field"><label for="o${i}">${l}</label><input class="inp" id="o${i}" placeholder="${i === 4 ? "30-12345678-9" : i === 6 ? "Ej: Av. Cabildo 1234" : ""}"></div>`).join("")}
+      <div class="field"><label for="o7">Como nos conociste *</label><select class="inp" id="o7"><option>Ya soy cliente</option><option>Busqueda en Google / internet</option><option>Recomendacion</option><option>Otro</option></select></div>
+      <div class="field"><label for="o8">Contanos que necesitas (opcional)</label><textarea class="inp" id="o8" rows="3"></textarea></div>
+      <button class="oldbtn" id="oldsend">Enviar datos</button></div>
+      ${S.oldModal ? `<div class="modal-bg"><div class="modal"><b>Un ultimo paso para agilizar tu presupuesto</b><span>Recibimos tus datos. Para que podamos avanzar mas rapido, copia la informacion de abajo y pegala en nuestra conversacion de WhatsApp.</span><textarea class="inp" readonly>*ALTA DE CLIENTE - Andamios Buenos Aires*\nRazon Social: …\nNombre de contacto: …\nCelular: …\nCorreo: …\nCUIT: …\nDomicilio particular: …\nDireccion de la obra: …</textarea><button class="oldbtn">Copiar datos</button><span class="help">No hay botón para abrir WhatsApp. Además «Recibimos tus datos» aparece antes de que Odoo confirme que llegó.</span><button class="linkbtn" id="oldclose" style="align-self:flex-start">Cerrar</button></div></div>` : ""}`;
+    $("#oldsend").onclick = () => { S.oldModal = true; render(); };
+    const c = $("#oldclose"); if (c) c.onclick = () => { S.oldModal = false; render(); };
+  }
+
+  function sampleFacade() {
+    return `<svg viewBox="0 0 74 74"><rect width="74" height="74" fill="oklch(0.85 0.03 230)"/><rect x="14" y="10" width="46" height="64" fill="oklch(0.8 0.02 60)"/>${[0, 1, 2, 3, 4].map((r) => [0, 1, 2].map((c) => `<rect x="${19 + c * 14}" y="${14 + r * 11}" width="8" height="7" fill="oklch(0.55 0.03 240)"/>`).join("")).join("")}<rect x="0" y="68" width="74" height="6" fill="oklch(0.6 0.01 60)"/></svg>`;
+  }
+
+  function bindApp() {
+    if (S.screen === 1) {
+      const dir = $("#dir");
+      dir.onfocus = () => { if (!S.dir) { S.sugOpen = true; renderKeep("dir"); } };
+      dir.oninput = (ev) => { S.dir = null; S.alturaModo = null; S.dirText = ev.target.value; S.sugOpen = true; renderKeep("dir"); };
+      document.querySelectorAll("[data-dir]").forEach((b) => (b.onmousedown = (ev) => { ev.preventDefault(); S.dir = DIRS.find((x) => x.id === b.dataset.dir); S.sugOpen = false; S.alturaModo = null; render(); }));
+      dir.onblur = () => setTimeout(() => { if (S.sugOpen) { S.sugOpen = false; render(); } }, 150);
+      const cl = $("#dir-clear"); if (cl) cl.onclick = () => { S.dir = null; S.dirText = ""; S.alturaModo = null; render(); setTimeout(() => $("#dir")?.focus(), 0); };
+      document.querySelectorAll("[data-tipo]").forEach((b) => (b.onclick = () => { S.tipo = b.dataset.tipo; render(); }));
+      document.querySelectorAll("[data-alt]").forEach((b) => (b.onclick = () => { S.alturaModo = b.dataset.alt; if (b.dataset.alt === "parte") S.pisos = Math.min(S.pisos, S.dir.pisos); render(); }));
+      document.querySelectorAll("[data-cuando]").forEach((b) => (b.onclick = () => { S.cuando = b.dataset.cuando; render(); }));
+      const pm = $("#p-menos"), pp = $("#p-mas");
+      if (pm) pm.onclick = () => { S.pisos = Math.max(1, S.pisos - 1); if (!S.dir.caba) S.alturaModo = "parte"; render(); };
+      if (pp) pp.onclick = () => { S.pisos = Math.min(S.dir.caba ? S.dir.pisos : 30, S.pisos + 1); if (!S.dir.caba) S.alturaModo = "parte"; render(); };
+      $("#foto").onchange = (ev) => { const f = ev.target.files[0]; if (!f) return; const r = new FileReader(); r.onload = () => { S.fotos.push(`<img alt="Foto subida" src="${r.result}">`); render(); }; r.readAsDataURL(f); };
+      $("#foto-ej").onclick = () => { S.fotos.push(sampleFacade()); render(); };
+      $("#com").oninput = (ev) => { S.comentario = ev.target.value; };
+      $("#next1").onclick = () => { if (!S.dir || !S.tipo) { S.errs1 = true; render(); return; } S.errs1 = false; S.screen = 2; render(); $("#app").scrollTop = 0; };
+      $("#ej1").onclick = () => { S.dir = DIRS[0]; S.tipo = "fachada"; S.alturaModo = "toda"; S.cuando = "Este mes"; if (!S.fotos.length) S.fotos.push(sampleFacade()); S.comentario = "La vereda es angosta y hay una parada de colectivo."; S.errs1 = false; render(); };
+    } else if (S.screen === 2) {
+      document.querySelectorAll("[data-quien]").forEach((b) => (b.onclick = () => { S.quien = b.dataset.quien; render(); }));
+      const cuit = $("#cuit");
+      if (cuit) cuit.oninput = (ev) => { setCuit(ev.target.value, true); };
+      document.querySelectorAll("[data-cuit]").forEach((b) => (b.onclick = () => setCuit(fmtCuit(b.dataset.cuit))));
+      const fx = $("#cuit-fix"); if (fx) fx.onclick = () => setCuit(fx.textContent);
+      ["razon", "contacto", "celular", "email", "domicilio"].forEach((k) => { const el = $("#" + k); if (el) el.oninput = (ev) => { S[k] = ev.target.value; renderPanel(); }; });
+      const ac = $("#acepto"); if (ac) ac.onchange = (ev) => { S.acepto = ev.target.checked; if (S.errs2) render(); };
+      const si = $("#ex-si"), no = $("#ex-no");
+      if (si) si.onclick = () => { S.existeOk = true; render(); };
+      if (no) no.onclick = () => { S.existeOk = false; Object.assign(S, { razon: EXISTE.razon, contacto: EXISTE.contacto, celular: EXISTE.celular, email: EXISTE.email, domicilio: EXISTE.domicilio }); render(); };
+      $("#back").onclick = () => { S.screen = 1; render(); $("#app").scrollTop = 0; };
+      $("#ej2").onclick = () => { S.quien = "empresa"; setCuit("30-71234567-1"); S.existeOk = true; S.acepto = true; S.errs2 = false; render(); };
+      $("#send").onclick = () => {
+        if (!S.quien || faltan2().length) { S.errs2 = true; render(); return; }
+        S.errs2 = false; S.sending = true; render();
+        setTimeout(() => { S.sending = false; S.screen = 3; render(); $("#app").scrollTop = 0; }, 1100);
+      };
+    } else {
+      $("#wa").onclick = () => { S.waShown = true; render(); };
+      $("#again").onclick = () => { S = fresh(); render(); };
+    }
+  }
+
+  function setCuit(v, keepFocus) {
+    S.cuit = v;
+    const e = cuitEstado(v);
+    const wasEx = S.existe;
+    S.existe = e.k === "ok" && e.d === EXISTE.cuit;
+    if (!S.existe) S.existeOk = null;
+    if (e.k === "ok" && ARCA[e.d] && S.quien === "empresa" && S.arca !== "ok") {
+      S.arca = "cargando";
+      setTimeout(() => { if (cuitEstado(S.cuit).d === e.d) { S.razon = ARCA[e.d].razon; S.domicilio = ARCA[e.d].domicilio; S.arca = "ok"; render(); } }, 900);
+    } else if (!(e.k === "ok" && ARCA[e.d])) S.arca = null;
+    if (keepFocus && !(S.existe !== wasEx)) renderKeep("cuit"); else render();
+  }
+
+  // Re-render manteniendo el foco y el cursor en un input.
+  function renderKeep(id) {
+    const el = $("#" + id); const pos = el ? el.selectionStart : null;
+    render();
+    const n = $("#" + id); if (n) { n.focus(); if (pos != null) try { n.setSelectionRange(pos, pos); } catch (_) {} }
+  }
+
+  // ---------- Vendedor ----------
+  function renderPanel() {
+    const p = $("#panel");
+    if (S.mode === "old") return renderPanelOld(p);
+    const t = S.tipo ? tipoDe(S.tipo) : null;
+    const enviado = S.screen === 3;
+    const cliente = nombreCliente();
+    const titulo = [S.dir?.calle, t?.t.replace("Andamio de f", "F").replace("No sé, asesórenme", "A definir"), cliente].filter(Boolean).join(" · ");
+    const e = cuitEstado(S.cuit);
+    const ex = S.existe && S.existeOk !== false;
+    const row = (k, v, done) => `<div><dt><span class="tick ${done ? "on" : ""}">${done ? tickSvg : ""}</span>${k}</dt><dd class="${v ? "" : "na"}">${v ? esc(v) : "—"}</dd></div>`;
+    const conflicto = S.dir?.conflicto;
+    let html = `
+      <div class="col-label"><span class="dot"></span>Lo que ve el vendedor</div>
+      <div class="card">
+        <h3><span class="src">Pedido #P-0142</span><span class="status ${enviado ? "ok" : S.dir || S.tipo ? "live" : ""}">${enviado ? "Recibido · 21:47" : S.dir || S.tipo ? "El cliente está completando…" : "Esperando al cliente"}</span></h3>
+        <div class="leadtitle ${titulo ? "" : "empty"}">${titulo ? esc(titulo) : "El título del lead se arma solo con la obra, el trabajo y el cliente"}</div>
+        <dl class="kv">
+          ${row("Obra", S.dir ? `${S.dir.calle}, ${S.dir.zona}` : null, !!S.dir)}
+          ${row("Catastro", S.dir ? (S.dir.caba ? `Frente ${S.dir.frente} m · PB + ${S.dir.pisos}` : "Fuera de CABA") : null, !!S.dir?.caba)}
+          ${row("Trabajo", t?.t, !!t)}
+          ${row("Altura", alturaTxt(), !!alturaTxt())}
+          ${row("Para cuándo", S.cuando, !!S.cuando)}
+          ${row("Fotos", S.fotos.length ? `${S.fotos.length} adjunta${S.fotos.length > 1 ? "s" : ""}` : null, S.fotos.length > 0)}
+          ${row("Cliente", cliente ? cliente + (ex ? " (ya es cliente)" : "") : null, !!cliente)}
+          ${row("CUIT", e.k === "ok" ? fmtCuit(e.d) + " ✓ verificado" : null, e.k === "ok")}
+          ${row("Contacto", ex ? `${EXISTE.contacto} · ${EXISTE.celular}` : [S.quien === "empresa" ? S.contacto : S.razon, S.celular].filter((x) => x && x.trim()).join(" · ") || null, ex || (!!S.celular.trim() && !!(S.quien === "empresa" ? S.contacto : S.razon).trim()))}
+        </dl>
+      </div>`;
+    if (!enviado) {
+      html += `<div class="empty">Cuando el cliente aprieta «Pedir presupuesto», acá aparecen el aviso, el lead en Odoo y el chequeo de canal.</div>`;
+      html += compare();
+      p.innerHTML = html; return;
+    }
+    const asignado = S.tomado || (ex ? EXISTE.vendedor : null);
+    html += `<div class="card"><h3>Qué pasó solo al recibirlo</h3><div class="feed">
+      <div class="ev"><div class="ic slack">#</div><div class="body"><b>Aviso en #comercial</b>
+        <div class="slackmsg"><span><b>Nuevo pedido #P-0142</b> · ${esc(S.dir.calle)} · ${esc(t.t)} · ${esc(cliente)}</span>
+        ${asignado ? `<span class="meta">${ex && !S.tomado ? `Es cliente de ${asignado}: le llegó directo a él.` : `Lo tomó ${asignado}.`}</span>` : `<div class="sbtns"><button class="sbtn primary" data-toma="Gabriel">Lo tomo (Gabriel)</button><button class="sbtn" data-toma="Jorge">Lo tomo (Jorge)</button></div>`}</div></div></div>
+      <div class="ev"><div class="ic odoo">O</div><div class="body"><b>Lead en Odoo</b><span>«${esc(titulo)}»</span><span class="meta">${ex ? "Vinculado al cliente existente, sin duplicar" : "El cliente se crea en Odoo cuando se guarda el presupuesto"} · Origen: web · Fotos adjuntas</span></div></div>
+      <div class="ev"><div class="ic chk ${conflicto ? "" : "ok"}">${conflicto ? "!" : "✓"}</div><div class="body"><b>Chequeo de canal</b>${conflicto ? `<span>Esta dirección tiene la oportunidad <span class="mono">${conflicto.op}</span> de ${conflicto.hace} (${conflicto.vend}, ${conflicto.estado}).</span><span class="meta">Avisa antes de cotizar para no pisarse con otro vendedor.</span>` : `<span>Sin cotizaciones en esa dirección en el último año.</span>`}</div></div>
+    </div></div>`;
+    html += `<div class="card"><h3>Presupuestar con el asistente</h3>`;
+    if (!S.presupuestar) {
+      html += `<p style="margin:0;color:var(--muted)">Un botón abre el asistente comercial con todo esto ya cargado.</p><button class="btn" id="presu" style="max-width:320px">Presupuestar</button>`;
+    } else {
+      const alt = alturaTxt();
+      html += `<div class="chat"><div class="ai"><p>Tengo el pedido <b>#P-0142</b>: ${esc(t.t.toLowerCase())} en ${esc(S.dir.calle)}${S.dir.caba ? `, frente de ${S.dir.frente} m según catastro, PB + ${S.dir.pisos}` : ""}. A nombre de ${esc(cliente)}${ex ? ", que ya es cliente" : ""}.${S.comentario ? ` El cliente aclara: «${esc(S.comentario)}»` : ""}</p>
+        ${conflicto ? `<p>Ojo: ${conflicto.vend} cotizó esta dirección ${conflicto.hace} (${conflicto.op}, ${conflicto.estado.toLowerCase()}).</p>` : ""}
+        <p>Los datos del cliente ya están completos. ¿Qué modelo cotizamos y cuántos metros de frente se cubren?</p></div>
+        <div class="checklist">
+          <div class="ci"><span class="tick on">${tickSvg}</span><span>Cliente<small>${ex ? "Existente en Odoo" : "Los 5 datos para darlo de alta"}</small></span></div>
+          <div class="ci"><span class="tick on">${tickSvg}</span><span>Obra y lote<small>${S.dir.caba ? "Catastro verificado" : "Geocodificada"}</small></span></div>
+          <div class="ci"><span class="tick on">${tickSvg}</span><span>Trabajo a ejecutar<small>${esc(t.t)}${alt ? " · " + esc(alt) : ""}</small></span></div>
+          <div class="ci todo"><span class="tick"></span><span>Falta lo técnico<small>Modelo, medidas, jornadas</small></span></div>
+        </div></div>`;
+    }
+    html += `</div>` + compare();
+    p.innerHTML = html;
+    document.querySelectorAll("[data-toma]").forEach((b) => (b.onclick = () => { S.tomado = b.dataset.toma; renderPanel(); }));
+    const pr = $("#presu"); if (pr) pr.onclick = () => { S.presupuestar = true; renderPanel(); };
+  }
+
+  function compare() {
+    return `<div class="card"><h3>Para el vendedor</h3><div class="vs">
+      <div><b>Hoy</b><span class="big">6 datos</span>retipeados a mano en el asistente, y una llamada para preguntar qué necesita y qué altura tiene.</div>
+      <div><b>Con la propuesta</b><span class="big">0 datos</span>Llega el borrador armado: solo queda decidir lo técnico.</div></div></div>`;
+  }
+
+  function renderPanelOld(p) {
+    p.innerHTML = `<div class="col-label"><span class="dot" style="background:var(--muted)"></span>Lo que ve el vendedor hoy</div>
+      <div class="card"><h3>Pipeline del CRM en Odoo</h3><div class="oldlead">
+        <div><b>Solicitud de presupuesto (web)</b><span>hoy</span></div><div><b>Solicitud de presupuesto (web)</b><span>ayer</span></div><div><b>Solicitud de presupuesto (web)</b><span>ayer</span></div><div><b>Solicitud de presupuesto (web)</b><span>lun</span></div></div>
+        <span class="help">Todos se llaman igual. Si un cliente lo manda dos veces, aparecen dos leads.</span></div>
+      <div class="card"><h3>Lo que trae cada uno</h3><div class="raw">CUIT: 30-7123456-71   ← texto libre, sin verificar
+Domicilio particular: Av. Cabildo 2450   ← es un consorcio
+Direccion de la obra: cabildo 2450   ← ¿CABA? ¿qué localidad?
+Como nos conociste: Ya soy cliente   ← pero crea un lead nuevo</div>
+        <span class="help">Falta lo que hace falta para cotizar: qué trabajo es, la altura, para cuándo, fotos.</span></div>
+      <div class="card"><h3>Y por WhatsApp</h3><p style="margin:0;color:var(--muted)">Llega pegado el mismo texto, sin nada que lo una al lead. El vendedor lo vuelve a tipear en el asistente y llama para preguntar el resto.</p></div>`;
+  }
+
+  function render() { renderApp(); renderPanel(); }
+  $("#m-new").onclick = () => { S.mode = "new"; $("#m-new").setAttribute("aria-pressed", "true"); $("#m-old").setAttribute("aria-pressed", "false"); render(); };
+  $("#m-old").onclick = () => { S.mode = "old"; S.oldModal = false; $("#m-old").setAttribute("aria-pressed", "true"); $("#m-new").setAttribute("aria-pressed", "false"); render(); };
+  render();
+})();
+</script>

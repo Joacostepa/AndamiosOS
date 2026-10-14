@@ -13,11 +13,10 @@
 // Lógica pura: usa estado.ts para las cuentas; sin red.
 
 import type { DiaHoja, Diferencia, Minutos } from "./tipos.ts";
-import { esDeposito } from "./tipos.ts";
 import {
   cNombre, cap, choferDe, encTxt, envioDe, esExChofer, esHoy, estadoEnvio, fechaMensaje, hCorta, hm, hm5, horaTxt, laC, lowFirst,
   lugar, nombreDe, normHora, obrasCon, vehTxt, elVeh, recibeDe, textoViaje, todoDe, viajesChofer, yList,
-  cortoV, hojaDeCuadrilla, hojaDe, aCargoDe, suspendida, persona, genteDe, vehiculo, vehiculosDe, deLaC, type Destinatario, type ViajeCalc,
+  cortoV, hojaDeCuadrilla, hojaDe, aCargoDe, suspendida, persona, genteDe, vehiculo, vehiculosDe, type Destinatario, type ViajeCalc,
 } from "./estado.ts";
 import { vanEnPalabras } from "./contratistas.ts";
 import { llevaDeFila } from "./vehiculos.ts";
@@ -35,14 +34,6 @@ const deHoy = (dia: DiaHoja, ahora: Minutos) => (esHoy(ahora) ? "de hoy" : `del 
 /** "Hola Ortega, tu hoja del martes 13/10: Cuadrilla 3, a cargo vos. Encuentro 7:45 en el depósito, te lleva Kiska. Obra: Av. Rivadavia 6150." */
 export function mensajeHoja(dia: DiaHoja, pid: string, c: number, o: Opts): string {
   const h = hojaDeCuadrilla(dia, c)!;
-  // El depósito (F2): sin obras ni camiones; quiénes están y dónde se encuentran.
-  if (esDeposito(c)) {
-    const aC = aCargoDe(h);
-    const quien = aC === pid ? "encargado vos" : `encargado ${nombreDe(dia, aC) || "nadie todavía"}; la hoja te llega a vos`;
-    const dir = dia.lugares.find((l) => l.tipo === "deposito" && l.activo)?.direccion;
-    const otros = genteDe(h).filter((x) => x !== pid).map((x) => nombreDe(dia, x));
-    return `Hola ${nombreDe(dia, pid)}, tu hoja ${deHoy(dia, o.ahora)}: Depósito, ${quien}. Encuentro ${encTxt(dia, c)}${dir ? ` (${dir})` : ""}.${otros.length ? ` Están: ${yList(otros)}.` : ""}${mirá(o)} Cuando la veas tocá "Recibido".`;
-  }
   const ob = obrasCon(dia, c);
   const aCargo = aCargoDe(h);
   const quien = aCargo === pid ? "a cargo vos" : `a cargo ${nombreDe(dia, aCargo) || "nadie todavía"}; la hoja te llega a vos`;
@@ -132,7 +123,7 @@ export function mensajeCambioHoja(dia: DiaHoja, pid: string, c: number, ds: Dife
 /** "Ortega, ya no estás a cargo de la Cuadrilla 3 el martes 13/10. La tiene Hepper." */
 export function mensajeEx(dia: DiaHoja, pid: string, c: number | null | undefined): string {
   const nuevo = c != null ? recibeDe(dia, c) : null;
-  return `${nombreDe(dia, pid)}, ya no estás a cargo ${deLaC(dia, c)} el ${fechaMensaje(dia.fecha)}.${nuevo ? ` La tiene ${nombreDe(dia, nuevo)}.` : ""} Cualquier duda, llamá a ${coord(dia)}.`;
+  return `${nombreDe(dia, pid)}, ya no estás a cargo de la ${cNombre(dia, c)} el ${fechaMensaje(dia.fecha)}.${nuevo ? ` La tiene ${nombreDe(dia, nuevo)}.` : ""} Cualquier duda, llamá a ${coord(dia)}.`;
 }
 
 /**
@@ -161,14 +152,10 @@ export function filaEnvio(dia: DiaHoja, x: Destinatario): string {
     const k = viajesChofer(dia, x.pid).length;
     return td != null ? `${n} · chofer · todo el día con ${laC(dia, td)}` : `${n} · chofer · ${k === 1 ? "1 viaje" : `${k} viajes`}`;
   }
-  if (x.rol === "ex") return esExChofer(dia, x.pid) ? `${n} · chofer · ya no tiene viajes` : `${n} · ya no está a cargo ${deLaC(dia, x.c)}`;
+  if (x.rol === "ex") return esExChofer(dia, x.pid) ? `${n} · chofer · ya no tiene viajes` : `${n} · ya no está a cargo de la ${cNombre(dia, x.c)}`;
   const ob = obrasCon(dia, x.c!);
   const p = persona(dia, x.pid);
   const sinCel = p && !p.celular && !p.telegram ? " · sin celular cargado" : "";
-  if (esDeposito(x.c)) {
-    const k = hojaDeCuadrilla(dia, x.c!)?.integrantes.length ?? 0;
-    return `${n} · Depósito · ${k === 1 ? "1 persona" : `${k} personas`}${sinCel}`;
-  }
   return `${n} · ${cNombre(dia, x.c)} · ${ob.length === 1 ? ob[0].o.corto : `${ob.length} obras`}${sinCel}`;
 }
 
@@ -180,7 +167,6 @@ export function mensajeOperario(dia: DiaHoja, pid: string, ahora: Minutos): stri
   if (c == null) return null;
   const h = hojaDeCuadrilla(dia, c)!;
   const chof = choferesEnPalabras(dia, c, null);
-  if (esDeposito(c)) return `${nombreDe(dia, pid)}, ${esHoy(ahora) ? "hoy" : `el ${fechaMensaje(dia.fecha)}`} estás en el depósito (encargado ${nombreDe(dia, aCargoDe(h)) || "todavía nadie"}). Encuentro ${encTxt(dia, c)}.`;
   return `${nombreDe(dia, pid)}, ${esHoy(ahora) ? "hoy" : `el ${fechaMensaje(dia.fecha)}`} vas con la ${cNombre(dia, c)} (a cargo ${nombreDe(dia, aCargoDe(h)) || "todavía nadie"}). Encuentro ${encTxt(dia, c)}${chof}.`;
 }
 

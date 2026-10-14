@@ -90,11 +90,6 @@ export type DatosBorrador = {
    * aparecer solos. Vuelven si se agregan a mano con agregar_complementario.
    */
   opcionalesDescartados: OpcionalEstandar[];
-  /**
-   * El orden de los renglones que pidió el vendedor (ordenar_lineas), por id. null: el del
-   * motor. Los que no están en la lista van después, en el orden del motor.
-   */
-  ordenLineas: string[] | null;
 };
 
 /** Los que el borrador agrega solo en toda bandeja y fachada (ver opcionalesEstandar). */
@@ -124,7 +119,6 @@ export function borradorVacio(): DatosBorrador {
     perfilComercial: {},
     notasInternas: null,
     opcionalesDescartados: [],
-    ordenLineas: null,
   };
 }
 
@@ -224,26 +218,6 @@ function avisoMemoria(d: DatosBorrador, lineas: Linea[]): Aviso[] {
   if (!ing) return [{ nivel: "advertencia", codigo: "memoria_obligatoria", texto: `Estructura de ${h} m sin memoria de cálculo: ${ley}. Si no se cobra, que quede claro por qué.` }];
   if (ing.seccion !== "base") return [{ nivel: "advertencia", codigo: "memoria_obligatoria", texto: `Estructura de ${h} m con la memoria de cálculo como ${ing.seccion}: ${ley}, así que corresponde en la base.` }];
   return [{ nivel: "info", codigo: "memoria_obligatoria", texto: `Estructura de ${h} m: ${ley}, por eso va en la base y no como opcional.` }];
-}
-
-/**
- * Lo del cliente que no bloquea guardar:
- * - sin CUIT (JS, 12/10: se permite guardar; antes trababa presupuestos como el de Scarvaci). El
- *   cliente se da de alta sin CUIT y queda para completarlo en Odoo antes de facturar. Un CUIT
- *   cargado que NO valida sigue bloqueando (faltantesParaEmitir): hay que corregirlo o borrarlo;
- * - sin contacto con nombre: el mensaje para el cliente saldría «Hola, ¿cómo estás?» a un
- *   consorcio o una empresa. Que el asistente pregunte a quién va.
- */
-export function avisosCliente(d: DatosBorrador): Aviso[] {
-  const c = d.cliente;
-  const avisos: Aviso[] = [];
-  if (c.esNuevo && !c.partnerId && !c.cuit?.trim()) {
-    avisos.push({ nivel: "advertencia", codigo: "sin_cuit", texto: "Sin CUIT: se puede guardar, pero hay que completarlo en Odoo antes de facturar." });
-  }
-  if (c.razonSocial?.trim() && !c.contacto?.trim()) {
-    avisos.push({ nivel: "advertencia", codigo: "sin_contacto", texto: "Sin contacto con nombre para el mensaje: preguntá a quién va dirigido." });
-  }
-  return avisos;
 }
 
 const suma = (xs: number[]) => Math.round(xs.reduce((a, b) => a + b, 0) * 100) / 100;
@@ -346,8 +320,6 @@ export function recalcular(d: DatosBorrador, ctx: ContextoCalculo): ResultadoBor
     lineas.push(l);
   }
 
-  if (d.ordenLineas?.length) lineas.splice(0, lineas.length, ...ordenarLineas(lineas, d.ordenLineas));
-
   const renovacionPct =
     d.renovacionPct ??
     parciales.find((p) => p.grupo === "fachada")?.r.renovacionPct ??
@@ -358,7 +330,7 @@ export function recalcular(d: DatosBorrador, ctx: ContextoCalculo): ResultadoBor
   const totales = calcularTotales(lineas, { ivaPct: t.ivaPct, renovacionPct });
   const planPagos = d.planPagos?.cuotas.length ? calcularPlanPagos(d.planPagos, lineas, { ivaPct: t.ivaPct, totalConIva: totales.total, hoy: ctx.hoy }) : null;
   const avisos = [
-    ...parciales.flatMap((p) => p.r.avisos), ...avisoMemoria(d, lineas), ...chequeoLote(d).avisos, ...avisosCliente(d), ...(lineas.length ? chequear(lineas, totales, t) : []),
+    ...parciales.flatMap((p) => p.r.avisos), ...avisoMemoria(d, lineas), ...chequeoLote(d).avisos, ...(lineas.length ? chequear(lineas, totales, t) : []),
     ...(planPagos?.avisos ?? []),
   ];
   const pendientes = parciales.flatMap((p) => p.r.pendientes);
@@ -375,29 +347,15 @@ export function recalcular(d: DatosBorrador, ctx: ContextoCalculo): ResultadoBor
   };
 }
 
-/**
- * Los renglones en el orden que pidió el vendedor: primero los de la lista, en ese orden; los
- * demás después, en el orden del motor. Un id que ya no existe se ignora.
- */
-export function ordenarLineas<L extends { id: string }>(lineas: L[], orden: string[]): L[] {
-  const pos = new Map(orden.map((id, i) => [id, i]));
-  const listadas = lineas.filter((l) => pos.has(l.id)).sort((a, b) => pos.get(a.id)! - pos.get(b.id)!);
-  return [...listadas, ...lineas.filter((l) => !pos.has(l.id))];
-}
-
 /** El checklist del criterio (§5) aplicado: lo que tiene que estar antes de guardar en Odoo. */
 export function faltantesParaEmitir(d: DatosBorrador, r: { lineas: Linea[]; avisos: Aviso[]; pendientes: Pendiente[]; planPagos?: PlanCalculado | null }): Faltante[] {
   const f: Faltante[] = [];
   const c = d.cliente;
   if (!c.partnerId && !c.esNuevo) f.push({ codigo: "cliente", texto: "Falta el cliente: buscarlo en Odoo (\"ya soy cliente\" no alcanza) o marcarlo como nuevo." });
   if (c.esNuevo) {
-    // Sin CUIT se puede guardar (avisosCliente); uno cargado que no valida, no.
-    const faltan = (["razonSocial", "contacto", "celular", "email", "domicilio"] as const).filter((k) => !c[k]?.trim());
+    const faltan = (["razonSocial", "contacto", "celular", "email", "cuit", "domicilio"] as const).filter((k) => !c[k]?.trim());
     if (faltan.length) f.push({ codigo: "cliente_nuevo", texto: `Para dar de alta al cliente faltan: ${faltan.join(", ")}.` });
-    const cuit = c.cuit?.trim() ? validarCuit(c.cuit) : null;
-    if (cuit && !cuit.valido) {
-      f.push({ codigo: "cuit", texto: `El CUIT ${c.cuit} no valida: ${cuit.motivo} Corregilo o borralo (sin CUIT se puede guardar, con aviso).` });
-    }
+    if (c.cuit && !validarCuit(c.cuit).valido) f.push({ codigo: "cuit", texto: `El CUIT ${c.cuit} no valida: confirmalo contra la constancia antes de cargarlo.` });
   }
   if (!d.obra.direccion?.trim()) f.push({ codigo: "obra", texto: "Falta la dirección de la obra." });
   else {

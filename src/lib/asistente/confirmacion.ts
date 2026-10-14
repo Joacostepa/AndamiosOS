@@ -18,13 +18,7 @@ const AFIRMATIVAS = new Set([
   "hacelo", "hacela", "adelante", "listo", "perfecto", "correcto", "exacto", "afirmativo", "obvio", "claro",
   "mandalo", "mandala", "mandalos", "envialo", "enviala", "guardalo", "guardala", "cargalo", "cargala", "subilo", "subila",
   "genial", "joya", "barbaro", "excelente", "buenisimo", "seguro", "procede", "procede", "va",
-  // Del uso real: «si dale avanza gracias» no contaba (27/09).
-  "avanza", "avanzalo", "avanzala", "avancemos", "segui", "seguile", "metele", "mandale", "guardarlo", "guardarla",
-  "cargarlo", "cargarla",
 ]);
-
-/** Frases que llevan una palabra afirmativa pero dicen que no («¡qué va!» = no). */
-const NEGACIONES = /\b(que va|ni ahi|para nada|ni loco|ni en pedo)\b/;
 
 /** "de una" y "está bien" son afirmaciones de dos palabras. */
 const AFIRMATIVAS_DOBLES = ["de una", "esta bien", "todo bien", "me parece bien", "de acuerdo"];
@@ -60,7 +54,6 @@ export function esConfirmacion(texto: string, nivel: NivelConfirmacion = "simple
   if (/\d|%|\$/.test(crudo)) return { ok: false, motivo: "Trae números: parece un cambio, no una confirmación." };
 
   const t = normalizar(crudo);
-  if (NEGACIONES.test(t)) return { ok: false, motivo: "Dice que no." };
   const palabras = t.split(" ").filter(Boolean);
   if (palabras.length > 12) return { ok: false, motivo: "Es demasiado largo para ser un sí: puede traer un cambio." };
 

@@ -28,9 +28,7 @@ import {
   candidatas,
   geocodificarFilas,
   hoyAr,
-  resolverDireccion,
   type FilaVenta,
-  type Resolucion,
   type ResultadoGeo,
 } from "./geocodificar-reglas";
 
@@ -54,29 +52,6 @@ async function clavePlaces(): Promise<string> {
   if (!key) throw new Error("No hay API key de Google Places cargada en Odoo");
   claveGuardada = { valor: key, at: Date.now() };
   return key;
-}
-
-// ─── Una dirección suelta (la "otra dirección" de un pedido o una parada, F4) ─
-
-const VIDA_DIRECCION_MS = 24 * 60 * 60_000;
-const MAX_DIRECCIONES = 500;
-const direcciones = new Map<string, { r: Resolucion; at: number }>();
-const claveDir = (dir: string) => dir.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
-
-/**
- * Las coordenadas de una dirección escrita a mano ("Thames 1820", "Cramer 2190 piso 3"), con
- * las mismas variantes y el mismo control (en la Argentina; sin ciudad = CABA, a menos de 70 km
- * del Obelisco) que las obras. Hasta 3 consultas a Places. En memoria por instancia 24 h: el
- * pizarrón pregunta mientras se escribe (con pausa) y la misma dirección no se vuelve a pagar.
- */
-export async function geocodificarDireccion(dir: string): Promise<Resolucion> {
-  const k = claveDir(dir);
-  const hit = direcciones.get(k);
-  if (hit && Date.now() - hit.at < VIDA_DIRECCION_MS) return hit.r;
-  const r = await resolverDireccion(dir, null, buscadorPlaces(await clavePlaces()), 3);
-  if (direcciones.size >= MAX_DIRECCIONES) direcciones.delete(direcciones.keys().next().value!);
-  direcciones.set(k, { r, at: Date.now() });
-  return r;
 }
 
 /**

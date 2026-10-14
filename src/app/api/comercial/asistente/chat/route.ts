@@ -45,6 +45,5 @@ export async function POST(req: NextRequest) {
     : { tipo: "mensaje" as const, texto: b.texto, adjuntos: (b.adjuntos ?? []).filter((a) => a.path.startsWith(`adjuntos/${conv.id}/`)), canal: b.canal ?? "web" };
   if (entrada.tipo === "mensaje" && !entrada.texto.trim() && !entrada.adjuntos.length) return invalido("El mensaje está vacío.");
 
-  // La conversación ya está leída: el turno no la vuelve a leer.
-  return respuestaDeTurno(req, { db, conversacionId: conv.id, usuarioId: quien.userId, entrada, conversacion: conv });
+  return respuestaDeTurno(req, { db, conversacionId: conv.id, usuarioId: quien.userId, entrada });
 }

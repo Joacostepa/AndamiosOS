@@ -20,51 +20,21 @@ import { tarifasDesdeParametros } from "@/lib/cotizador/tarifas";
 import { recalcular } from "./borrador";
 import {
   agregarMensajes, costoUsd, gastoDelDia, leerBorrador, leerConversacion, leerMensajes, soltarTurno, tomarTurno, vendedorDe,
-  leerAccion, type Conversacion, type FilaMensaje, type NuevoMensaje,
+  leerAccion, type FilaMensaje, type NuevoMensaje,
 } from "./datos";
-import { cambiosDeParametros, contextoDelTurno } from "./prompt";
-import { novedadesParaCharla } from "./novedades";
-import { tandasDeHerramientas } from "./tandas";
-import { cierreFaltante } from "./historia";
+import { contextoDelTurno } from "./prompt";
 import { notaDeContinuacion } from "@/lib/voz/continuacion";
 import {
   definicionesParaApi, ejecutarHerramienta, etiquetaDe, resumenCortoBorrador, vistaBorrador, type ContextoHerramientas,
-  type ResultadoHerramienta,
 } from "./herramientas";
 import { HERRAMIENTAS_OCULTAS, resultadoWebConError } from "./respuesta";
-import { destrabarAcciones, ejecutarAccion, presentarAcciones, rechazarAccion, vencerAccionesDelTurno, vistaAccion } from "./acciones";
+import { ejecutarAccion, presentarAcciones, rechazarAccion, vencerAccionesDelTurno, vistaAccion } from "./acciones";
 import { crearEjecutor } from "./ejecutores";
 import type { Evento } from "./eventos";
 
 const MAX_VUELTAS = 15;
 const PRESUPUESTO_MS = 240_000;
-/**
- * Plazo duro: las rutas tienen 300 s y Vercel corta sin aviso (sin `finally`: el candado queda
- * tomado y una acción puede quedar "ejecutando"). El presupuesto de arriba sólo se mira al
- * empezar cada vuelta, y una vuelta sola llegó a tardar 189 s, así que el pedido al modelo se
- * corta acá y queda margen para guardar y soltar el candado.
- */
-const LIMITE_MS = 265_000;
-/** Guardar en Odoo llegó a tardar 24 s (más el PDF): no se arranca si queda menos que esto. */
-const MARGEN_ESCRITURA_MS = 90_000;
 const BETAS: Anthropic.Beta.AnthropicBeta[] = ["server-side-fallback-2026-07-01"];
-/**
- * Modelos que atan cada bloque de pensamiento a la conversación que lo produjo ("preserved
- * thinking"): si cambian las herramientas o el system después del bloque, la API lo rechaza
- * con un 400. Pasa con cada deploy que agrega o cambia una herramienta, con las charlas
- * abiertas. Con `drop_block` la API descarta ese pensamiento viejo y sigue.
- */
-const PENSAMIENTO_ATADO = new Set(["claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-1"]);
-const BETA_ATADO = "thinking-binding-controls-2026-08-01" as Anthropic.Beta.AnthropicBeta;
-/**
- * En esos mismos modelos, las notas que el modelo escribe entre herramientas («ya tengo el
- * frente, ahora calculo la bandeja») vuelven como bloques de pensamiento, vacíos por defecto.
- * Con `display: "updates"` (beta) vuelven con texto y el razonamiento sigue oculto: es lo que la
- * pantalla muestra como progreso mientras espera (evento `progreso`). Cambiar `display` cambia
- * el pedido, así que las charlas abiertas de estos modelos pierden el caché de los mensajes una
- * vez (el mismo deploy ya lo pierde por las herramientas nuevas); después queda fijo.
- */
-const BETA_PROGRESO = "thinking-display-updates-2026-08-18" as Anthropic.Beta.AnthropicBeta;
 type Esfuerzo = "low" | "medium" | "high" | "xhigh" | "max";
 const ESFUERZOS = new Set<string>(["low", "medium", "high", "xhigh", "max"]);
 
@@ -72,8 +42,7 @@ export type Adjunto = { path: string; tipo: string; nombre: string };
 
 export type EntradaTurno =
   | { tipo: "mensaje"; texto: string; adjuntos: Adjunto[]; canal: "web" | "voz" | "whatsapp" }
-  // "reintentar": la misma acción que quedó en error o incierta (botón Reintentar de la tarjeta).
-  | { tipo: "boton"; accionId: string; decision: "confirmar" | "rechazar" | "reintentar"; canal: "web" | "whatsapp" }
+  | { tipo: "boton"; accionId: string; decision: "confirmar" | "rechazar"; canal: "web" | "whatsapp" }
   | { tipo: "continuar"; canal: "web" | "voz" | "whatsapp" };
 
 type Bloque = Anthropic.Beta.BetaContentBlock;
@@ -91,18 +60,17 @@ function limpiarFallback(contenido: Bloque[]): Bloque[] {
 }
 
 async function subirAdjuntos(db: SupabaseClient, cliente: Anthropic, adjuntos: Adjunto[]): Promise<Anthropic.Beta.BetaContentBlockParam[]> {
-  // Todos a la vez (varias fotos de una obra tardaban una tras otra); el orden se mantiene.
-  const bloques = await Promise.all(adjuntos.map(async (a): Promise<Anthropic.Beta.BetaContentBlockParam | null> => {
+  const bloques: Anthropic.Beta.BetaContentBlockParam[] = [];
+  for (const a of adjuntos) {
     const { data, error } = await db.storage.from("comercial").download(a.path);
-    if (error || !data) return null;
+    if (error || !data) continue;
     const buf = Buffer.from(await data.arrayBuffer());
     // Files API: la historia guarda el file_id y no el archivo; una URL firmada vencería.
     const subido = await cliente.files.upload({ file: await toFile(buf, a.nombre, { type: a.tipo }) });
-    if (a.tipo === "application/pdf") return { type: "document", source: { type: "file", file_id: subido.id }, title: a.nombre };
-    if (a.tipo.startsWith("image/")) return { type: "image", source: { type: "file", file_id: subido.id } };
-    return null;
-  }));
-  return bloques.filter((b): b is Anthropic.Beta.BetaContentBlockParam => b !== null);
+    if (a.tipo === "application/pdf") bloques.push({ type: "document", source: { type: "file", file_id: subido.id }, title: a.nombre });
+    else if (a.tipo.startsWith("image/")) bloques.push({ type: "image", source: { type: "file", file_id: subido.id } });
+  }
+  return bloques;
 }
 
 /**
@@ -115,11 +83,9 @@ export async function* ejecutarTurno(p: {
   usuarioId: string;
   entrada: EntradaTurno;
   signal?: AbortSignal;
-  /** Si la ruta ya la leyó (chat), no se lee de nuevo. */
-  conversacion?: Conversacion;
 }): AsyncGenerator<Evento> {
   const { db } = p;
-  const conv = p.conversacion?.id === p.conversacionId ? p.conversacion : await leerConversacion(db, p.conversacionId);
+  const conv = await leerConversacion(db, p.conversacionId);
   if (!conv) return yield { t: "error", codigo: "interno", mensaje: "La conversación no existe." };
 
   if (!(await tomarTurno(db, conv.id))) {
@@ -128,16 +94,12 @@ export async function* ejecutarTurno(p: {
 
   const turnoId = randomUUID();
   const inicio = Date.now();
-  await destrabarAcciones(db, conv.id);
   yield { t: "inicio", turnoId };
 
   try {
     // ── Contexto ──────────────────────────────────────────────────────────────────
-    // Todo lo que no depende de otra cosa, junto: el borrador y los cambios de Parámetros también.
-    const [parametros, productos, lista, vendedor, historia, gasto, borradorLeido, cambiosParametros] = await Promise.all([
+    const [parametros, productos, lista, vendedor, historia, gasto] = await Promise.all([
       leerParametros(db), leerProductos(db), leerListaVigente(db), vendedorDe(db, p.usuarioId), leerMensajes(db, conv.id), gastoDelDia(db, p.usuarioId),
-      conv.borrador_id ? leerBorrador(db, conv.borrador_id) : Promise.resolve(null),
-      p.entrada.tipo === "continuar" ? Promise.resolve([]) : cambiosDeParametros(db, conv.parametros_version),
     ]);
     const tope = parametros.find((x) => x.clave === "asistente_tope_diario_usd")?.valor ?? null;
     if (tope !== null && gasto >= tope && p.entrada.tipo !== "boton") {
@@ -153,7 +115,7 @@ export async function* ejecutarTurno(p: {
     const listaCalculo = lista ? { id: lista.lista.id, piezas: lista.piezas } : null;
     const hoy = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Argentina/Buenos_Aires" });
 
-    let borrador = borradorLeido;
+    let borrador = conv.borrador_id ? await leerBorrador(db, conv.borrador_id) : null;
     if (!borrador) throw new Error("La conversación no tiene borrador.");
     if (!borrador.resultado) {
       const resultado = recalcular(borrador.datos, { tarifas, lista: listaCalculo, hoy });
@@ -165,18 +127,6 @@ export async function* ejecutarTurno(p: {
     let seq = (historia.at(-1)?.seq ?? 0) + 1;
     const mensajes = paraApi(historia);
     const turnoAnteriorId = [...historia].reverse().find((m) => m.rol === "assistant")?.turno_id ?? null;
-    // Si el turno anterior se cortó antes de que el modelo contestara, la historia terminó en el
-    // aviso de sistema y la API rechazaría lo que sigue: se cierra con una fila del asistente.
-    // En "continuar" no: ahí lo último tiene que ser el aviso o el vendedor (no hay prefill).
-    const cierre = p.entrada.tipo === "continuar" ? null : cierreFaltante(historia);
-    if (cierre) {
-      const fila: NuevoMensaje = {
-        rol: "assistant", tipo: "asistente", contenido: [{ type: "text", text: cierre.texto }], texto: cierre.texto, canal: null,
-        turno_id: cierre.turno_id, uso: null, modelo_servido: conv.modelo, interrumpido: true,
-      };
-      seq = await agregarMensajes(db, conv.id, seq, [fila]);
-      mensajes.push({ role: "assistant", content: fila.contenido } as Anthropic.Beta.BetaMessageParam);
-    }
     let textoVendedor: string | null = null;
     const canal = p.entrada.canal;
     // En voz la espera hasta la primera palabra se nota mucho más que en el chat: se usa el
@@ -184,10 +134,6 @@ export async function* ejecutarTurno(p: {
     // mensajes una vez (al pasar del chat a la voz o al revés); dentro de la charla se recupera.
     const esfuerzoVoz = parametros.find((x) => x.clave === "asistente_esfuerzo_voz")?.texto?.trim();
     const esfuerzo = (canal === "voz" && esfuerzoVoz && ESFUERZOS.has(esfuerzoVoz) ? esfuerzoVoz : conv.esfuerzo) as Esfuerzo;
-    // Sólo en esos modelos: a las charlas de Opus 5 no les cambia el pedido (ni pierden el caché).
-    const atado = PENSAMIENTO_ATADO.has(conv.modelo);
-    // Fuera de esos modelos no se cambia nada del pedido (Opus 5 no tiene "updates").
-    const betas = atado ? [...BETAS, BETA_ATADO, BETA_PROGRESO] : BETAS;
 
     const ctx: ContextoHerramientas = {
       db, conversacion: conv, usuarioId: p.usuarioId, vendedor, borrador, tarifas, lista: listaCalculo, productos, odoo,
@@ -224,7 +170,6 @@ export async function* ejecutarTurno(p: {
       if (!a || a.conversacion_id !== conv.id) throw new Error("Esa acción no es de esta conversación.");
       let texto: string;
       let resultado: unknown;
-      const reintento = p.entrada.decision === "reintentar";
       if (p.entrada.decision === "rechazar") {
         const r = await rechazarAccion(db, a.id, conv.id);
         yield { t: "accion", accion: vistaAccion(r ?? a) };
@@ -232,17 +177,13 @@ export async function* ejecutarTurno(p: {
         resultado = { rechazada: !!r };
       } else {
         const ejecutor = crearEjecutor({ db, tarifas, usuarioId: p.usuarioId, vendedorEnPropuesta: vendedor.nombreEnPropuesta, vendedorNombre: vendedor.nombre, emitir: (e) => pendientes.push(e) });
-        const etiqueta = reintento ? "Reintentando" : "Ejecutando lo confirmado";
-        yield { t: "herramienta", id: a.id, nombre: "confirmar_accion", etiqueta, estado: "inicio" };
-        const r = await ejecutarAccion(db, a.id, "boton", { usuarioId: p.usuarioId, texto: null }, ejecutor, { reintento });
+        yield { t: "herramienta", id: a.id, nombre: "confirmar_accion", etiqueta: "Ejecutando lo confirmado", estado: "inicio" };
+        const r = await ejecutarAccion(db, a.id, "boton", { usuarioId: p.usuarioId, texto: null }, ejecutor);
         while (pendientes.length) yield pendientes.shift()!;
-        yield { t: "herramienta", id: a.id, nombre: "confirmar_accion", etiqueta, estado: r.ok ? "ok" : "error", ...(r.motivo ? { resumen: r.motivo } : {}) };
+        yield { t: "herramienta", id: a.id, nombre: "confirmar_accion", etiqueta: "Ejecutando lo confirmado", estado: r.ok ? "ok" : "error" };
         yield { t: "accion", accion: vistaAccion(r.accion) };
-        texto = `[Botón] ${reintento ? "Reintenté" : "Confirmé"} la acción ${a.numero}.`;
-        resultado = {
-          ejecutada: r.ok, estado: r.accion.estado, resultado: r.accion.resultado, error: r.accion.error, yaEstaba: r.yaEjecutada ?? false,
-          ...(r.motivo ? { noSeReintento: r.motivo } : {}),
-        };
+        texto = `[Botón] Confirmé la acción ${a.numero}.`;
+        resultado = { ejecutada: r.ok, estado: r.accion.estado, resultado: r.accion.resultado, error: r.accion.error, yaEstaba: r.yaEjecutada ?? false };
         const b = await leerBorrador(db, borrador.id);
         if (b) {
           ctx.borrador = b;
@@ -252,16 +193,15 @@ export async function* ejecutarTurno(p: {
       nuevos.push({ rol: "user", tipo: "boton", contenido: [...reparacion, { type: "text", text: texto }], texto, canal, turno_id: turnoId, uso: null, modelo_servido: null });
       // El resultado va en el aviso de sistema (abajo): el vendedor no lo puede escribir, así
       // que no se puede fingir una confirmación tipeando "[Botón] Confirmé…".
-      const como = { rechazar: "rechazada", confirmar: "confirmada", reintentar: "reintentada" }[p.entrada.decision];
-      resultadoBoton = `Resultado de la acción ${a.numero} (${como} con el botón): ${JSON.stringify(resultado)}`;
+      resultadoBoton = `Resultado de la acción ${a.numero} (${p.entrada.decision === "rechazar" ? "rechazada" : "confirmada"} con el botón): ${JSON.stringify(resultado)}`;
     }
     ctx.textoVendedor = textoVendedor;
 
     if (p.entrada.tipo !== "continuar") {
-      const contexto = contextoDelTurno({
-        vendedor, canal, resumenBorrador: resumenCortoBorrador(ctx.borrador), cambiosParametros,
-        // Las instrucciones se congelan por conversación: lo que se agregó después se cuenta acá.
-        novedades: novedadesParaCharla(conv.system_snapshot),
+      const contexto = await contextoDelTurno(db, {
+        vendedor, canal, parametrosVersion: conv.parametros_version, resumenBorrador: resumenCortoBorrador(ctx.borrador),
+        // Las instrucciones se congelan por conversación: las de antes del 28/09 no dicen nada de internet.
+        avisarInternet: !JSON.stringify(conv.system_snapshot).includes("## Internet"),
       });
       // Un solo aviso de sistema por turno, justo después del vendedor (así lo pide la API).
       const aviso = [resultadoBoton, notaVoz, contexto].filter(Boolean).join("\n\n");
@@ -283,7 +223,6 @@ export async function* ejecutarTurno(p: {
         break;
       }
 
-      const plazo = AbortSignal.timeout(Math.max(1_000, LIMITE_MS - (Date.now() - inicio)));
       const stream = cliente.beta.messages.stream(
         {
           model: conv.modelo,
@@ -291,16 +230,14 @@ export async function* ejecutarTurno(p: {
           system: conv.system_snapshot,
           tools: definicionesParaApi(),
           messages: mensajes,
-          thinking: atado
-            ? { type: "adaptive", display: "updates", block_binding: { prefix_mismatch_behavior: "drop_block" } }
-            : { type: "adaptive" },
+          thinking: { type: "adaptive" },
           output_config: { effort: esfuerzo },
           cache_control: { type: "ephemeral" },
-          betas,
+          betas: BETAS,
           fallbacks: "default",
           metadata: { user_id: p.usuarioId },
         },
-        { signal: p.signal ? AbortSignal.any([p.signal, plazo]) : plazo },
+        { signal: p.signal },
       );
 
       let mensaje: Anthropic.Beta.BetaMessage;
@@ -310,18 +247,13 @@ export async function* ejecutarTurno(p: {
       // cerrarse el bloque ya se sabe qué buscó y la etiqueta lo dice.
       const web = new Map<number, { id: string; nombre: string; json: string }>();
       const etiquetasWeb = new Map<string, { nombre: string; etiqueta: string }>();
-      // Bloques de pensamiento abiertos, por índice: con "updates", el texto es el progreso.
-      const notas = new Map<number, string>();
       try {
         for await (const ev of stream) {
           if (ev.type === "content_block_start") {
             const b = ev.content_block;
-            if (b.type === "thinking") {
-              if (atado) notas.set(ev.index, "");
-              if (!pensando) {
-                pensando = true;
-                yield { t: "pensando", on: true };
-              }
+            if (b.type === "thinking" && !pensando) {
+              pensando = true;
+              yield { t: "pensando", on: true };
             } else if (b.type === "tool_use") {
               yield { t: "herramienta", id: b.id, nombre: b.name, etiqueta: etiquetaDe(b.name), estado: "inicio" };
             } else if (b.type === "server_tool_use" && !HERRAMIENTAS_OCULTAS.has(b.name)) {
@@ -332,14 +264,6 @@ export async function* ejecutarTurno(p: {
               const { nombre, etiqueta } = etiquetasWeb.get(b.tool_use_id)!;
               yield { t: "herramienta", id: b.tool_use_id, nombre, etiqueta, estado: resultadoWebConError(b) ? "error" : "ok" };
             }
-          } else if (ev.type === "content_block_delta" && ev.delta.type === "thinking_delta" && notas.has(ev.index)) {
-            notas.set(ev.index, notas.get(ev.index)! + ev.delta.thinking);
-          } else if (ev.type === "content_block_stop" && notas.has(ev.index)) {
-            // Una nota entre herramientas: se manda entera al cerrarse (una o dos oraciones). Un
-            // bloque vacío es razonamiento oculto: no se muestra nada.
-            const texto = notas.get(ev.index)!.trim();
-            notas.delete(ev.index);
-            if (texto) yield { t: "progreso", texto };
           } else if (ev.type === "content_block_delta" && ev.delta.type === "input_json_delta" && web.has(ev.index)) {
             web.get(ev.index)!.json += ev.delta.partial_json;
           } else if (ev.type === "content_block_stop" && web.has(ev.index)) {
@@ -375,24 +299,11 @@ export async function* ejecutarTurno(p: {
           await vencerAccionesDelTurno(db, conv.id, turnoId);
           return;
         }
-        if (plazo.aborted) {
-          // Se pasó del plazo: se guarda lo que alcanzó a escribir y el turno termina limpio.
-          // No se sigue solo ("continuar"): la historia terminaría en el asistente.
-          if (textoParcial.trim()) {
-            seq = await agregarMensajes(db, conv.id, seq, [{
-              rol: "assistant", tipo: "asistente", contenido: [{ type: "text", text: textoParcial }], texto: textoParcial, canal: null,
-              turno_id: turnoId, uso: null, modelo_servido: conv.modelo, interrumpido: true,
-            }]);
-          }
-          yield { t: "aviso", nivel: "advertencia", texto: "La respuesta tardó demasiado y se cortó. Pedímelo de nuevo, si podés en partes." };
-          stop = "plazo";
-          break;
-        }
         throw e;
       }
       if (pensando) yield { t: "pensando", on: false };
 
-      costo += costoUsd(mensaje.usage as unknown as Record<string, unknown>, conv.modelo);
+      costo += costoUsd(mensaje.usage as unknown as Record<string, number>, mensaje.model);
       const contenido = limpiarFallback(mensaje.content);
 
       if (mensaje.stop_reason === "refusal") {
@@ -429,31 +340,22 @@ export async function* ejecutarTurno(p: {
         break;
       }
 
-      // Herramientas: todas las de esta vuelta, sus resultados en UN mensaje y en el mismo orden.
-      // Las de sólo lectura seguidas corren a la vez (tres búsquedas en Odoo no se esperan una a
-      // la otra); las que tocan el borrador o las acciones, de a una y en orden.
-      const correr = async (u: Anthropic.Beta.BetaToolUseBlock): Promise<ResultadoHerramienta> => {
+      // Herramientas: todas las de esta vuelta, sus resultados en UN mensaje.
+      const resultados: Anthropic.Beta.BetaToolResultBlockParam[] = [];
+      for (const u of usos) {
+        let r;
         try {
-          return u.name === "confirmar_accion" && Date.now() - inicio > LIMITE_MS - MARGEN_ESCRITURA_MS
-            ? { contenido: "Este turno ya lleva mucho tiempo y guardar puede tardar: no se ejecutó nada. Pedile al vendedor que toque Confirmar en la tarjeta.", esError: true }
-            : await ejecutarHerramienta(u.name, u.input, ctx, u.id);
+          r = await ejecutarHerramienta(u.name, u.input, ctx, u.id);
         } catch (e) {
           const falla = e instanceof Error ? e.message : String(e);
-          return { contenido: `Falló: ${falla}`, esError: true };
+          r = { contenido: `Falló: ${falla}`, esError: true };
         }
-      };
-      const resultados: Anthropic.Beta.BetaToolResultBlockParam[] = [];
-      for (const tanda of tandasDeHerramientas(usos)) {
-        const rs = await Promise.all(tanda.map(correr));
         while (pendientes.length) yield pendientes.shift()!;
-        for (const [k, u] of tanda.entries()) {
-          const r = rs[k];
-          resultados.push({ type: "tool_result", tool_use_id: u.id, content: r.contenido, ...(r.esError ? { is_error: true } : {}) });
-          yield {
-            t: "herramienta", id: u.id, nombre: u.name, etiqueta: etiquetaDe(u.name), estado: r.esError ? "error" : "ok",
-            resumen: typeof r.contenido === "string" && r.esError ? r.contenido.slice(0, 200) : undefined,
-          };
-        }
+        resultados.push({ type: "tool_result", tool_use_id: u.id, content: r.contenido, ...(r.esError ? { is_error: true } : {}) });
+        yield {
+          t: "herramienta", id: u.id, nombre: u.name, etiqueta: etiquetaDe(u.name), estado: r.esError ? "error" : "ok",
+          resumen: typeof r.contenido === "string" && r.esError ? r.contenido.slice(0, 200) : undefined,
+        };
       }
       const filaResultados: NuevoMensaje = { rol: "user", tipo: "resultados", contenido: resultados, texto: null, canal: null, turno_id: turnoId, uso: null, modelo_servido: null };
       // Juntos o nada: el pedido de herramientas y sus resultados.

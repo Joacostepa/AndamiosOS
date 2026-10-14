@@ -42,90 +42,19 @@ async function pedirSesion(conversacionId: string): Promise<{ conversationToken:
 /**
  * Envuelve al compositor: mientras no hay sesión muestra `children(hablar)`; con la sesión
  * abierta, el panel de voz en su lugar. Una sesión por conversación (cambiar de charla la corta).
- *
- * En el celular arranca en "mantener apretado para hablar": el micrófono está mudo y se abre
- * sólo mientras se aprieta el botón grande. En obra hay ruido y gente hablando al lado (26/09:
- * voces de fondo tomadas como del vendedor). "Modo abierto" es el de siempre, de ida y vuelta.
- * El mudo lo maneja el provider (isMuted controlado → conversation.setMicMuted).
  */
 export function ModoVoz({ conversacionId, children }: { conversacionId: string; children: (hablar: () => void) => ReactNode }) {
-  const [abierto, setAbierto] = useState(() => !(typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches));
-  const [apretado, setApretado] = useState(false);
-  const [silenciado, setSilenciado] = useState(false);
-  const mudo = abierto ? silenciado : !apretado;
   return (
-    <ConversationProvider key={conversacionId} isMuted={mudo}>
-      <Sesion
-        conversacionId={conversacionId}
-        abierto={abierto}
-        onAbierto={(a) => {
-          setAbierto(a);
-          setApretado(false);
-          setSilenciado(false);
-        }}
-        apretado={apretado}
-        onApretado={setApretado}
-        silenciado={silenciado}
-        onSilenciado={setSilenciado}
-      >
-        {children}
-      </Sesion>
+    <ConversationProvider key={conversacionId}>
+      <Sesion conversacionId={conversacionId}>{children}</Sesion>
     </ConversationProvider>
   );
 }
 
-/** Que la pantalla no se apague mientras se habla (sin esto, a los 30 s se cortaba el audio). */
-function usePantallaPrendida(activa: boolean) {
-  useEffect(() => {
-    if (!activa || typeof navigator === "undefined" || !("wakeLock" in navigator)) return;
-    let candado: WakeLockSentinel | null = null;
-    let vivo = true;
-    const pedir = async () => {
-      try {
-        const c = await navigator.wakeLock.request("screen");
-        if (vivo) candado = c;
-        else void c.release().catch(() => {});
-      } catch {
-        // sin batería, sin permiso o pestaña en segundo plano: se sigue sin el candado
-      }
-    };
-    void pedir();
-    // El navegador lo suelta solo al cambiar de app: al volver se pide de nuevo.
-    const alVolver = () => {
-      if (document.visibilityState === "visible") void pedir();
-    };
-    document.addEventListener("visibilitychange", alVolver);
-    return () => {
-      vivo = false;
-      document.removeEventListener("visibilitychange", alVolver);
-      void candado?.release().catch(() => {});
-    };
-  }, [activa]);
-}
-
-function Sesion({
-  conversacionId,
-  children,
-  abierto,
-  onAbierto,
-  apretado,
-  onApretado,
-  silenciado,
-  onSilenciado,
-}: {
-  conversacionId: string;
-  children: (hablar: () => void) => ReactNode;
-  abierto: boolean;
-  onAbierto: (a: boolean) => void;
-  apretado: boolean;
-  onApretado: (a: boolean) => void;
-  silenciado: boolean;
-  onSilenciado: (s: boolean) => void;
-}) {
+function Sesion({ conversacionId, children }: { conversacionId: string; children: (hablar: () => void) => ReactNode }) {
   const qc = useQueryClient();
   const [arrancando, setArrancando] = useState(false);
   const [pensando, setPensando] = useState(false);
-  const [escuchado, setEscuchado] = useState<string | null>(null);
 
   const refrescar = useCallback(() => {
     qc.invalidateQueries({ queryKey: ["asistente-conversacion", conversacionId] });
@@ -133,9 +62,8 @@ function Sesion({
 
   const voz = useConversation({
     // "user" = terminó de hablar el vendedor (empieza a pensar); "agent" = lo que dijo el asistente.
-    onMessage: ({ role, message }) => {
+    onMessage: ({ role }) => {
       setPensando(role === "user");
-      if (role === "user") setEscuchado(message);
       refrescar();
     },
     onModeChange: ({ mode }) => {
@@ -145,8 +73,6 @@ function Sesion({
     onError: (mensaje) => toast.error(`Voz: ${mensaje}`),
     onDisconnect: (d) => {
       setPensando(false);
-      setEscuchado(null);
-      onApretado(false);
       if (d.reason === "error") toast.error(`Se cortó la voz: ${d.message}`);
       refrescar();
       qc.invalidateQueries({ queryKey: ["asistente-conversaciones"] });
@@ -159,8 +85,6 @@ function Sesion({
     const t = setInterval(refrescar, 3000);
     return () => clearInterval(t);
   }, [pensando, refrescar]);
-
-  usePantallaPrendida(voz.status === "connected" || voz.status === "connecting");
 
   const { startSession } = voz;
   const hablar = useCallback(async () => {
@@ -183,86 +107,30 @@ function Sesion({
   const activa = arrancando || voz.status === "connecting" || voz.status === "connected";
   if (!activa) return <>{children(() => void hablar())}</>;
 
-  const conectada = voz.status === "connected";
-  const estado: Estado = !conectada ? "conectando" : voz.isSpeaking ? "hablando" : pensando ? "pensando" : "escuchando";
-  const titulo =
-    estado !== "escuchando" ? TEXTO[estado]
-    : abierto ? (silenciado ? "Micrófono apagado" : TEXTO.escuchando)
-    : apretado ? "Te escucho: soltá cuando termines"
-    : "Mantené apretado para hablar";
-
-  const soltar = () => onApretado(false);
+  const estado: Estado = voz.status !== "connected" ? "conectando" : voz.isSpeaking ? "hablando" : pensando ? "pensando" : "escuchando";
 
   return (
-    <div className="border-t border-border bg-background px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
-      <div className="mx-auto max-w-xl space-y-3">
-        <div className="flex items-center gap-3">
-          <Indicador estado={estado} volumen={estado === "hablando" ? voz.getOutputVolume : voz.getInputVolume} silenciado={voz.isMuted} />
-          <div className="min-w-0 flex-1" aria-live="polite">
-            <p className="text-[16px] font-medium">{titulo}</p>
-            <p className="line-clamp-2 text-[13px] leading-snug text-muted-foreground">
-              {escuchado ? `«${escuchado}»` : "Se lo puede interrumpir. Para confirmar algo, decí «sí, dale» o tocá Confirmar en la tarjeta."}
-            </p>
-          </div>
+    <div className="border-t border-border bg-background px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+      <div className="mx-auto flex max-w-xl items-center gap-4">
+        <Indicador estado={estado} volumen={estado === "hablando" ? voz.getOutputVolume : voz.getInputVolume} silenciado={voz.isMuted} />
+        <div className="min-w-0 flex-1">
+          <p className="text-[15px] font-medium">{voz.isMuted && estado === "escuchando" ? "Micrófono apagado" : TEXTO[estado]}</p>
+          <p className="text-[12px] leading-snug text-muted-foreground">
+            Se lo puede interrumpir. Para confirmar algo, decí «sí, dale» o tocá Confirmar en la tarjeta.
+          </p>
         </div>
-
-        {!abierto && (
-          <div className="flex justify-center">
-            <button
-              type="button"
-              disabled={!conectada}
-              onPointerDown={(e) => {
-                e.currentTarget.setPointerCapture(e.pointerId);
-                onApretado(true);
-                navigator.vibrate?.(10);
-              }}
-              onPointerUp={soltar}
-              onPointerCancel={soltar}
-              onLostPointerCapture={soltar}
-              onKeyDown={(e) => {
-                if ((e.key === " " || e.key === "Enter") && !e.repeat) {
-                  e.preventDefault();
-                  onApretado(true);
-                }
-              }}
-              onKeyUp={(e) => {
-                if (e.key === " " || e.key === "Enter") soltar();
-              }}
-              onBlur={soltar}
-              onContextMenu={(e) => e.preventDefault()}
-              aria-pressed={apretado}
-              aria-label="Mantené apretado para hablar"
-              className={cn(
-                "flex size-22 touch-none flex-col items-center justify-center gap-0.5 rounded-full border-2 text-[12px] leading-tight font-bold tracking-wide uppercase select-none [-webkit-touch-callout:none] transition-transform disabled:opacity-50",
-                apretado ? "scale-105 border-transparent bg-hd-boton text-white shadow-lg" : "border-hd-boton bg-background text-foreground",
-              )}
-            >
-              <Mic className="size-7" />
-              <span>{apretado ? "Hablá" : "Mantené"}</span>
-              {!apretado && <span>apretado</span>}
-            </button>
-          </div>
-        )}
-
-        <div className="flex gap-2">
-          <Button variant="outline" className="h-12 flex-1 text-[15px]" onClick={() => onAbierto(!abierto)}>
-            {abierto ? "Mantener para hablar" : "Modo abierto"}
-          </Button>
-          {abierto && (
-            <Button
-              variant="outline"
-              className="h-12 px-3.5 text-[15px]"
-              onClick={() => onSilenciado(!silenciado)}
-              disabled={!conectada}
-              aria-pressed={silenciado}
-            >
-              {silenciado ? <MicOff /> : <Mic />} {silenciado ? "Activar" : "Silenciar"}
-            </Button>
-          )}
-          <Button variant="destructive" className="h-12 px-4 text-[15px]" onClick={() => voz.endSession()}>
-            <PhoneOff /> Cortar
-          </Button>
-        </div>
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() => voz.setMuted(!voz.isMuted)}
+          disabled={voz.status !== "connected"}
+          aria-label={voz.isMuted ? "Prender el micrófono" : "Apagar el micrófono"}
+        >
+          {voz.isMuted ? <MicOff /> : <Mic />}
+        </Button>
+        <Button variant="destructive" size="icon" onClick={() => voz.endSession()} aria-label="Cortar">
+          <PhoneOff />
+        </Button>
       </div>
     </div>
   );

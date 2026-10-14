@@ -10,7 +10,6 @@ import { read, searchRead } from "@/lib/odoo/client";
 import { parseFraccion } from "@/lib/odoo/asignaciones";
 import { direccionCorta, direccionDeObra, nombrePropio } from "@/lib/tablero/titulo";
 import { mapContratista } from "./servicio";
-import { esDeposito } from "./tipos";
 import { rangoMes, resumenMes, type JornadaContratista, type ResumenContratista } from "./contratistas";
 
 type M2O = [number, string] | false;
@@ -42,8 +41,7 @@ export async function resumenContratistasMes(mes: string): Promise<ResumenMesCon
   });
 
   // El tablero de esos días y esas cuadrillas (nombres y fracciones para el prorrateo).
-  // El depósito (0, F2) no es una cuadrilla de Odoo: nunca va en la consulta.
-  const cuadrillas = [...new Set(filas.map((f) => f.c))].filter((c) => !esDeposito(c));
+  const cuadrillas = [...new Set(filas.map((f) => f.c))];
   const nombres = new Map<number, string>();
   const obras = new Map<string, { otId: number; nombre: string; fraccion: number }[]>();
   let sinTablero = false;

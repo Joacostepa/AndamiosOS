@@ -18,7 +18,7 @@ import {
   aCargoDe, cNombre, cap, choferDe, cuadrillaDeViaje, diaSemana, encTxt, envioDe, estadoPedido, fechaMensaje, fmtFrases,
   frLargo, genteDe, hCorta, hm, hm5, hojaDeCuadrilla, horaTxt, lowFirst, lugar, lugarDeKey, nombreDe, normHora, obrasCon,
   pedidosDeViaje, recibeDe, suspendida, textoViaje, todoDe, vehiculo, vehiculoNombre, elVeh, viajesCalc, viajesChofer,
-  persona, contratistasDe, aCargoContratista, vanDe, vehiculosDe, genteConChoferes, conLlevaTrae, choferesTodoDe, laCuadrilla, esDeposito, horaFija, type ViajeCalc,
+  persona, contratistasDe, aCargoContratista, vanDe, vehiculosDe, genteConChoferes, conLlevaTrae, choferesTodoDe, type ViajeCalc,
 } from "./estado.ts";
 import { vanEnPalabras } from "./contratistas.ts";
 import { urlComoLlegar } from "./maps.ts";
@@ -166,8 +166,6 @@ export type VistaCapataz = Comun & {
   van?: number;
   /** "3 de Quintana + Ramírez, Pérez". */
   vanTxt?: string;
-  /** La hoja del Depósito (F2): sin obras ni chofer; la dirección del depósito. Opcional por las vistas viejas guardadas. */
-  deposito?: { direccion: string | null } | null;
 };
 export type VistaChofer = Comun & {
   situacion: "ok"; rol: "chofer"; vehiculo: string | null;
@@ -394,7 +392,7 @@ export function armarVista(dia: DiaHoja, link: LinkVista, ahora: number, op: Opc
     const h = c != null ? hojaDeCuadrilla(dia, c) : null;
     if (c == null || !h || recibeDe(dia, c) !== pid || link.anuladoPorRol) {
       const otro = h && c != null ? recibeDe(dia, c) : null;
-      return { situacion: "ya_no", fecha, coordinador, texto: `El ${diaNum} ${laCuadrilla(dia, c)} la tiene ${otro ? nombreDe(dia, otro) : "otra persona"}. Si es un error, llamá a ${coordinador.nombre}.` };
+      return { situacion: "ya_no", fecha, coordinador, texto: `El ${diaNum} la ${cNombre(dia, c)} la tiene ${otro ? nombreDe(dia, otro) : "otra persona"}. Si es un error, llamá a ${coordinador.nombre}.` };
     }
     const sus = suspendida(dia, c);
     if (sus) return { ...comun, situacion: "suspendida", cuadrilla: cNombre(dia, c), texto: `Suspendida · ${sus}. No hay que ir. Cualquier duda, llamá a ${coordinador.nombre}.` };
@@ -419,9 +417,8 @@ export function armarVista(dia: DiaHoja, link: LinkVista, ahora: number, op: Opc
     return {
       van: vanDe(dia, c), vanTxt: vanEnPalabras(dia, c, conChofer),
       ...comun, situacion: "ok", rol: "a_cargo", cuadrilla: cNombre(dia, c), aCargo: aCargo ? nombreDe(dia, aCargo) : null, vos: aCargo === pid,
-      nota: h.nota, encuentro: encTxt(dia, c), chofer: esDeposito(c) ? null : choferDeHoja(dia, c, pid), obras: esDeposito(c) ? [] : obrasPublicas(dia, c, pid, ahora, op), gente,
+      nota: h.nota, encuentro: encTxt(dia, c), chofer: choferDeHoja(dia, c, pid), obras: obrasPublicas(dia, c, pid, ahora, op), gente,
       tuPedido: tuPedido(dia, pid, ahora),
-      deposito: esDeposito(c) ? { direccion: dia.lugares.find((l) => l.tipo === "deposito" && l.activo)?.direccion ?? null } : null,
     };
   }
 
@@ -444,7 +441,7 @@ export function armarVista(dia: DiaHoja, link: LinkVista, ahora: number, op: Opc
       : destino.obra && destino.otId != null ? (() => { const o = dia.obras.find((x) => x.otId === destino.otId); return o?.telObra ? { nombre: (o.contactoObra ?? "la obra").split(" (")[0], telefono: o.telObra } : null; })()
       : null;
     return {
-      id: v.id, i: v.i, hora: horaTxt(v), horaFija: horaFija(v), tipo: v.tipo, texto: textoViaje(dia, v, true),
+      id: v.id, i: v.i, hora: horaTxt(v), horaFija: !!v.hora, tipo: v.tipo, texto: textoViaje(dia, v, true),
       desde: lugarDeKey(dia, v.desdeKey).n, hacia: destino.n, vuelta: v.vuelta, direccion: destino.dir,
       mapsUrl: urlComoLlegar({ lat: destino.lat, lng: destino.lng, dir: destino.dir ?? (destino.obra ? destino.n : null) }),
       carga: (v.tipo === "lleva" || v.tipo === "busca") && v.carga ? v.carga : null,

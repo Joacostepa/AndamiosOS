@@ -15,8 +15,8 @@ export async function abrirConversacion(db: SupabaseClient, usuarioId: string, c
   return crearConversacion(db, {
     usuario_id: usuarioId,
     canal,
-    modelo: texto("asistente_modelo") ?? "claude-opus-5-5",
-    esfuerzo: esfuerzo && ESFUERZOS.has(esfuerzo) ? esfuerzo : "medium",
+    modelo: texto("asistente_modelo") ?? "claude-opus-5",
+    esfuerzo: esfuerzo && ESFUERZOS.has(esfuerzo) ? esfuerzo : "high",
     system_snapshot: sistema.bloques,
     system_hash: sistema.hash,
     criterio_version: sistema.criterioVersion,

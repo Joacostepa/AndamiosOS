@@ -20,10 +20,9 @@
 import type {
   Ausencia, Contratista, Cuadrilla, DiaHoja, Diferencia, Envio, Foto, FotoChofer, FotoHoja, Fecha,
   Hoja, Hora, Lugar, LugarEncuentro, Minutos, ModoChofer, ModoVehiculo, ObraDia, Parametros, Pedido, Persona, Punto,
-  TipoLugar, TipoPedido, TipoViaje, Vehiculo, VehiculoHoja, Viaje, AccionParada,
+  TipoLugar, TipoPedido, TipoViaje, Vehiculo, VehiculoHoja, Viaje,
 } from "./tipos.ts";
-import { ACCIONES_PARADA, CUADRILLA_DEPOSITO, DEPOSITO, TIPOS_VIAJE, TIPO_AUSENCIA_TXT, esDeposito } from "./tipos.ts";
-export { DEPOSITO, esDeposito } from "./tipos.ts";
+import { TIPOS_VIAJE, TIPO_AUSENCIA_TXT } from "./tipos.ts";
 import { durConTramo, huecoMinimo, llegadaCon, vueltaCon } from "./tiempos.ts";
 
 // ═══════════════════════════ Horas y fechas ═══════════════════════════════════
@@ -177,8 +176,6 @@ type Ctx = {
   instr: Map<number, DiaHoja["instrucciones"][number]>;
   pedidosPorViaje: Map<string, Pedido[]>;
   envioPor: Map<string, Envio>;
-  /** "t:<texto normalizado>" → la dirección escrita y sus coordenadas (de los viajes y pedidos del día). */
-  textos: Map<string, { texto: string; lat: number | null; lng: number | null }>;
   memo: Map<string, unknown>;
 };
 
@@ -209,16 +206,6 @@ function ctx(dia: DiaHoja): Ctx {
     const prev = envioPor.get(e.personaId);
     if (!prev || (prev.anulado && !e.anulado)) envioPor.set(e.personaId, e);
   }
-  // "Otra dirección": el texto y, si alguna fila del día lo tiene, sus coordenadas (gana la primera con coordenadas).
-  const textos = new Map<string, { texto: string; lat: number | null; lng: number | null }>();
-  const anotarTexto = (p: Punto | null | undefined) => {
-    if (!p?.texto || p.otId != null || p.lugarId) return;
-    const k = `t:${normalizar(p.texto)}`;
-    const prev = textos.get(k);
-    if (!prev || (prev.lat == null && p.lat != null && p.lng != null)) textos.set(k, { texto: p.texto, lat: p.lat ?? null, lng: p.lng ?? null });
-  };
-  for (const v of dia.viajes) { anotarTexto(v.hacia); anotarTexto(v.desde); }
-  for (const p of dia.pedidos) { anotarTexto(p.hacia); anotarTexto(p.desde); }
   // Los contratistas entran a P como "persona" (su referente): así nombreDe(), persona(),
   // los envíos y los mensajes los tratan como a cualquiera que recibe una hoja. NO están en
   // `dia.personas` (no van a "Sin asignar", ni a las ausencias, ni a "+ Agregar" como gente).
@@ -234,8 +221,7 @@ function ctx(dia: DiaHoja): Ctx {
     L: new Map(dia.lugares.map((l) => [l.id, l])),
     dep,
     depKey: dep ? `l:${dep.id}` : "dep",
-    // El depósito siempre (también en los días armados a mano, los tests y los guardados en el celular).
-    C: new Map([[DEPOSITO, CUADRILLA_DEPOSITO] as const, ...dia.cuadrillas.map((x) => [x.odooId, x] as const)]),
+    C: new Map(dia.cuadrillas.map((x) => [x.odooId, x])),
     obrasPor,
     obraPorOt: new Map(dia.obras.map((o) => [o.otId, o])),
     hojaPor: new Map(dia.hojas.map((h) => [h.cuadrillaOdooId, h])),
@@ -244,7 +230,6 @@ function ctx(dia: DiaHoja): Ctx {
     instr: new Map(dia.instrucciones.map((i) => [i.otId, i])),
     pedidosPorViaje,
     envioPor,
-    textos,
     memo: new Map(),
   };
   CACHE.set(dia, c);
@@ -386,21 +371,13 @@ const numeroDe = (dia: DiaHoja, c: number) => cuadrilla(dia, c)?.numero ?? null;
 /** "Cuadrilla 3" */
 export const cNombre = (dia: DiaHoja, c: number | null | undefined) =>
   c == null ? "" : cuadrilla(dia, c)?.nombre ?? `Cuadrilla ${c}`;
-/** "la 3" (o "la Quintana" si no tiene número; "el depósito"). */
+/** "la 3" (o "la Quintana" si no tiene número). */
 export const laC = (dia: DiaHoja, c: number) => {
-  if (esDeposito(c)) return "el depósito";
   const n = numeroDe(dia, c);
   return n != null ? `la ${n}` : `la ${cNombre(dia, c)}`;
 };
-/** "la Cuadrilla 3" / "el depósito": para armar frases ("pasó a la Cuadrilla 3"). */
-export const laCuadrilla = (dia: DiaHoja, c: number | null | undefined) => (esDeposito(c) ? "el depósito" : `la ${cNombre(dia, c)}`);
-/** "a la Cuadrilla 3" / "al depósito". */
-export const aLaC = (dia: DiaHoja, c: number | null | undefined) => (esDeposito(c) ? "al depósito" : `a la ${cNombre(dia, c)}`);
-/** "de la Cuadrilla 3" / "del depósito". */
-export const deLaC = (dia: DiaHoja, c: number | null | undefined) => (esDeposito(c) ? "del depósito" : `de la ${cNombre(dia, c)}`);
-/** "C3" ("D" el depósito) */
+/** "C3" */
 export const cTag = (dia: DiaHoja, c: number) => {
-  if (esDeposito(c)) return "D";
   const n = numeroDe(dia, c);
   return n != null ? `C${n}` : cNombre(dia, c);
 };
@@ -446,11 +423,7 @@ export function lugar(dia: DiaHoja, p: Punto | null | undefined): LugarInfo {
     const l = k.L.get(p.lugarId);
     if (l) return { ...vacio, key: `l:${l.id}`, n: l.nombre, corto: l.corto ?? l.nombre, dir: l.direccion, lat: l.lat, lng: l.lng, tipo: l.tipo, cierra: toMin(l.cierra), telefono: l.telefono, lugarId: l.id };
   }
-  if (p.texto) {
-    const key = `t:${normalizar(p.texto)}`;
-    const t = p.lat != null && p.lng != null ? { lat: p.lat, lng: p.lng } : k.textos.get(key);
-    return { ...vacio, key, n: p.texto, corto: p.texto, lat: t?.lat ?? null, lng: t?.lng ?? null };
-  }
+  if (p.texto) return { ...vacio, key: `t:${normalizar(p.texto)}`, n: p.texto, corto: p.texto };
   return vacio;
 }
 /** "Av. Rivadavia 6150" → "Rivadavia" (la ficha del camión: "Lleva C2 Juramento"). */
@@ -463,8 +436,7 @@ export function lugarDeKey(dia: DiaHoja, key: string): LugarInfo {
   const [t, id] = [key.slice(0, 1), key.slice(2)];
   if (t === "o") return lugar(dia, { otId: Number(id), lugarId: null, texto: null });
   if (t === "l") return lugar(dia, { otId: null, lugarId: id, texto: null });
-  const tx = ctx(dia).textos.get(key);
-  return lugar(dia, { otId: null, lugarId: null, texto: tx?.texto ?? id, lat: tx?.lat ?? null, lng: tx?.lng ?? null });
+  return lugar(dia, { otId: null, lugarId: null, texto: id });
 }
 const keyDe = (dia: DiaHoja, p: Punto | null | undefined) => lugar(dia, p).key;
 /** "el depósito", "la planta de VTV", "el taller", o el nombre. */
@@ -853,11 +825,7 @@ export function calcVeh(dia: DiaHoja, veh: string): ViajeCalc[] {
       if (!fija && td && cur == null) t = Math.max(t, toMin(v.noAntesDe) ?? 16 * 60);
       const prev = out[out.length - 1];
       const llega = cur == null ? null : llegadaCon(dia.tiempos, v.tipo, fija, desdeKey, haciaKey, cur);
-      // Una hora APROXIMADA (decisión 1 del 12/10, F3) es una pista: no avisa choques, y si el
-      // camión no llega a esa hora, la parada se corre a cuando llega (las de después no van para atrás).
-      const aprox = fija && !!v.horaAprox;
-      if (aprox && llega != null && llega > t && v.estado === "planeado") t = llega;
-      const conflicto = fija && !aprox && llega != null && llega > t && v.estado === "planeado" ? { llega, prevId: prev?.id ?? null } : null;
+      const conflicto = fija && llega != null && llega > t && v.estado === "planeado" ? { llega, prevId: prev?.id ?? null } : null;
       let fin: number;
       if (v.estado === "hecho") fin = conVuelta(v, v.hechoMin ?? t + dur, vu);
       else if (v.estado === "no_pudo") fin = (v.hechoMin ?? t) + 30;
@@ -1039,50 +1007,13 @@ export function cortoV(dia: DiaHoja, v: Viaje): string {
   if (v.fleteExterno) return v.fleteExterno;
   return `${TIPOS_VIAJE[v.tipo].corto}${cuadTag(dia, v)} ${h.corto}`;
 }
-/** "7:00" si es fija, "~10:45" si es estimada o aproximada. */
-export const horaTxt = (v: ViajeCalc) => `${horaFija(v) ? "" : "~"}${hm5(v.t)}`;
-/** La hora es fija (con candado): alguien espera a esa hora. Una aproximada es sólo una pista. */
-export const horaFija = (v: Pick<Viaje, "hora" | "horaAprox">) => !!v.hora && !v.horaAprox;
-
-// ─── Qué hace en cada parada (el recorrido, F3) ─────────────────────────────
-
-/** La acción de una parada: la elegida, o la de siempre según el tipo del viaje. */
-export function accionDe(v: Pick<Viaje, "tipo" | "accion">): AccionParada {
-  if (v.accion) return v.accion;
-  switch (v.tipo) {
-    case "lleva": case "mueve": return "lleva_gente";
-    case "busca": return "busca_gente";
-    case "lleva_material": case "entre_depositos": return "deja_material";
-    case "trae_material": return "carga";
-    case "compra": return "compra";
-    default: return "espera";
-  }
-}
-/** El tipo de viaje para una parada nueva según lo que hace y adónde va (las de gente salen de la hoja, no de acá). */
-export function tipoDeAccion(dia: DiaHoja, a: AccionParada, hacia: Punto): TipoViaje {
-  const L = lugar(dia, hacia);
-  if (a === "carga") return L.tipo === "deposito" ? "entre_depositos" : "trae_material";
-  if (a === "compra") return "compra";
-  if (a === "deja_material" || a === "descarga") return L.tipo === "deposito" ? "entre_depositos" : "lleva_material";
-  if (a === "espera") return L.tipo === "taller" || L.tipo === "vtv" ? "taller" : "otro";
-  return "otro";
-}
-export const accionTxt = (a: AccionParada) => ACCIONES_PARADA.find((x) => x[0] === a)?.[1] ?? a;
+/** "7:00" si es fija, "~10:45" si es estimada. */
+export const horaTxt = (v: ViajeCalc) => `${v.hora ? "" : "~"}${hm5(v.t)}`;
 
 /** Cómo lo lee el chofer: "Lleva a la Cuadrilla 2 a Juramento 2145". Con `imper`, "Llevá…". */
 export function textoViaje(dia: DiaHoja, v: Viaje & { desdeKey?: string }, imper = false): string {
   const dest = lugar(dia, haciaDe(dia, v)).n;
   const c = cuadrillaDeViaje(dia, v);
-  // Una parada con la acción elegida en el recorrido (F3): lo que hace ahí, con su nota.
-  if (v.accion && v.tipo !== "lleva" && v.tipo !== "busca" && v.tipo !== "mueve") {
-    const nota = v.carga ? lowFirst(v.carga) : null;
-    const V = imper
-      ? { deja_material: "Dejá", descarga: "Descargá", carga: "Cargá", compra: "Buscá la compra", espera: "Esperá", lleva_gente: "Llevá gente", busca_gente: "Buscá gente" }
-      : { deja_material: "Deja", descarga: "Descarga", carga: "Carga", compra: "Busca la compra", espera: "Espera", lleva_gente: "Lleva gente", busca_gente: "Busca gente" };
-    const que = v.accion === "deja_material" || v.accion === "descarga" || v.accion === "carga" ? ` ${nota ?? "material"}` : "";
-    const resto = v.accion === "deja_material" || v.accion === "descarga" || v.accion === "carga" ? "" : nota ? `: ${nota}` : "";
-    return `${V[v.accion]}${que} en ${dest}${resto}`;
-  }
   const T = imper
     ? { lleva: "Llevá", busca: "Buscá", mueve: "Mové", trae: "Traé", compra: "Buscá", carga: "Cargá" }
     : { lleva: "Lleva", busca: "Busca", mueve: "Mueve", trae: "Trae", compra: "Busca", carga: "Carga" };
@@ -1097,7 +1028,7 @@ export function textoViaje(dia: DiaHoja, v: Viaje & { desdeKey?: string }, imper
         : `${T.trae} ${v.carga ? lowFirst(v.carga) : "lo desarmado"} de ${dest} al depósito`;
     case "compra": return `${T.compra} la compra en ${dest}${v.carga ? `: ${lowFirst(v.carga)}` : ""}`;
     case "entre_depositos": return `${T.lleva} ${lowFirst(v.carga || "material")} del depósito a ${dest}`;
-    case "taller": return `${v.carga || "VTV"} ${elVeh(dia, v.vehiculoId, "del")}${horaFija(v) ? " (turno)" : ""}`;
+    case "taller": return `${v.carga || "VTV"} ${elVeh(dia, v.vehiculoId, "del")}${v.hora ? " (turno)" : ""}`;
     default: return v.carga || "Otro viaje";
   }
 }
@@ -1359,7 +1290,7 @@ export function viajeSinAvisar(dia: DiaHoja, v: ViajeCalc): boolean {
   if (!avisoChoferPend(dia, ch)) return false;
   const snap = e.snap?.tipo === "chofer" ? e.snap : null;
   const o = snap?.viajes.find((x) => x.k === v.id);
-  return !o || (horaFija(v) && o.hora !== normHora(v.hora));
+  return !o || (!!v.hora && o.hora !== normHora(v.hora));
 }
 
 export type ItemCola = { p: Pedido; st: EstadoPedido; sinAvisar?: string; noVisto?: string };
@@ -1436,8 +1367,9 @@ export function sugeridosDe(dia: DiaHoja, ahora: Minutos): Sugerido[] {
 /** Dónde soltarlo por defecto en la fila: después de lo hecho (hoy) o cerca de su hora. */
 export function posicionAuto(dia: DiaHoja, veh: string, ped: Pick<Pedido, "horaFija" | "noAntesDe" | "horaLimite">, ahora: Minutos): { orden: number; prevId: string | null } {
   const ts = calcVeh(dia, veh);
-  let i = ultimoFijo(dia, ts, ahora);
-  if (!esHoy(ahora)) {
+  let i = -1;
+  if (esHoy(ahora)) ts.forEach((v, k) => { if (v.estado !== "planeado" || v.t <= ahora) i = k; });
+  else {
     const target = toMin(ped.horaFija) ?? toMin(ped.noAntesDe) ?? (toMin(ped.horaLimite) != null ? toMin(ped.horaLimite)! - 90 : 9 * 60);
     ts.forEach((v, k) => { if (v.t <= target) i = k; });
   }
@@ -1445,92 +1377,10 @@ export function posicionAuto(dia: DiaHoja, veh: string, ped: Pick<Pedido, "horaF
   return { orden: a ? (b ? (a.orden + b.orden) / 2 : a.orden + 30) : b ? b.orden - 30 : 9 * 60, prevId: a?.id ?? null };
 }
 
-// ─── El hueco de menor desvío (rediseño F4; maqueta: bestSlot / planPed / nearList) ──────
-
-/** Dónde queda el camión después de un viaje: el depósito si vuelve (o no pudo, o fue a comprar), si no el destino. */
-const locDespues = (dia: DiaHoja, v: ViajeCalc) => (v.vuelta || v.estado === "no_pudo" || v.tipo === "compra" ? ctx(dia).depKey : v.haciaKey);
-/** El índice del último viaje que ya no se puede correr: hoy, el hecho o el de hora pasada. -1 = ninguno. */
-function ultimoFijo(dia: DiaHoja, ts: ViajeCalc[], ahora: Minutos): number {
-  let i = -1;
-  if (esHoy(ahora)) ts.forEach((v, k) => { if (v.estado !== "planeado" || v.t <= ahora) i = k; });
-  return i;
-}
-
-export type Hueco = {
-  /** El `orden` del viaje nuevo (punto medio entre los vecinos). */
-  orden: number;
-  /** La posición de la parada nueva (1, 2, 3…). */
-  n: number;
-  prevId: string | null;
-  nextId: string | null;
-  /** Lo que alarga el recorrido, en km en línea recta, y en minutos (3 min por km, de a 5). */
-  extraKm: number;
-  min: number;
-  /** Por dónde pasa: el vecino más cerca (mejor una obra o un lugar que el depósito), y a cuánto. */
-  viaKey: string;
-  viaHora: string | null;
-  dKm: number;
-  /** "de paso entre Juramento y Sanz", "después de Cabildo", "sale del depósito y vuelve". */
-  viaTxt: string;
-};
-
-/** El desvío en minutos: 3 por km extra, redondeado a 5 (el de la maqueta). */
-export const desvioMin = (k: number) => Math.round((k * 3) / 5) * 5;
-export const desvioTxt = (m: number) => (m ? `+${m} min` : "sin desvío");
-/** "3 cuadras", "1,4 km", "12 km". */
-export function distanciaTxt(k: number): string {
-  if (k < 1) { const c = Math.max(1, Math.round(k * 10)); return `${c} ${c === 1 ? "cuadra" : "cuadras"}`; }
-  return `${(k < 10 ? k.toFixed(1) : String(Math.round(k))).replace(".", ",")} km`;
-}
-
-/**
- * El hueco del recorrido de un camión donde un lugar alarga menos el viaje: entre cada par de
- * paradas seguidas (y del depósito al principio y al final), A→P + P→B − A→B en línea recta.
- * Hoy, nunca antes de la parada en curso (la última hecha o con la hora ya pasada). null si el
- * camión no tiene viajes, si el punto no tiene coordenadas o si ningún hueco tiene las de sus
- * dos vecinos (el depósito sin dirección cuenta como sin coordenadas). La usan el pizarrón
- * (para mostrar "+10 min") y el servidor al poner un pedido (`planPonerPedido`): es la misma.
- */
-export function mejorHueco(dia: DiaHoja, veh: string, punto: { lat: number | null; lng: number | null }, ahora: Minutos): Hueco | null {
-  if (punto.lat == null || punto.lng == null) return null;
-  const ts = calcVeh(dia, veh);
-  if (!ts.length) return null;
-  const k = ctx(dia);
-  const dep = lugarDeKey(dia, k.depKey);
-  const lo = ultimoFijo(dia, ts, ahora) + 1;
-  const coord = (key: string) => (key === k.depKey ? dep : lugarDeKey(dia, key));
-  let best: { j: number; add: number } | null = null;
-  for (let j = lo; j <= ts.length; j++) {
-    const a = coord(j > 0 ? locDespues(dia, ts[j - 1]) : k.depKey);
-    const b = coord(j < ts.length ? ts[j].haciaKey : k.depKey);
-    const ap = km(a, punto), pb = km(punto, b), ab = km(a, b);
-    if (ap == null || pb == null || ab == null) continue;
-    const add = Math.max(0, ap + pb - ab);
-    if (!best || add < best.add - 1e-9) best = { j, add };
-  }
-  if (!best) return null;
-  const A = ts[best.j - 1] ?? null, B = ts[best.j] ?? null;
-  const orden = A ? (B ? (A.orden + B.orden) / 2 : A.orden + 30) : B ? B.orden - 30 : 9 * 60;
-  // Por dónde pasa: el vecino más cerca, mejor una obra o un lugar que el depósito.
-  const vecinos = [A ? { key: locDespues(dia, A), v: A } : null, B ? { key: B.haciaKey, v: B } : null]
-    .filter((x): x is { key: string; v: ViajeCalc } => !!x);
-  const noDep = vecinos.filter((x) => !esDep(dia, x.key));
-  const cand = (noDep.length ? noDep : vecinos).map((x) => ({ ...x, d: km(coord(x.key), punto) ?? Infinity })).sort((x, y) => x.d - y.d)[0];
-  const nom = (key: string) => (esDep(dia, key) ? "el depósito" : lugarDeKey(dia, key).n);
-  const aKey = A ? locDespues(dia, A) : k.depKey, bKey = B ? B.haciaKey : k.depKey;
-  const viaTxt = A && B
-    ? (aKey === bKey ? (esDep(dia, aKey) ? "sale del depósito y vuelve" : `en ${nom(aKey)}`) : `de paso entre ${nom(aKey)} y ${nom(bKey)}`)
-    : A ? `después de ${nom(aKey)}` : B ? `antes de ${nom(bKey)}` : "";
-  return {
-    orden, n: best.j + 1, prevId: A?.id ?? null, nextId: B?.id ?? null, extraKm: best.add, min: desvioMin(best.add),
-    viaKey: cand?.key ?? k.depKey, viaHora: cand ? horaTxt(cand.v) : null, dKm: cand?.d ?? km(dep, punto) ?? 0, viaTxt,
-  };
-}
-
 export type ViajeNuevo = Omit<Viaje, "id" | "fecha" | "estado" | "hechoMin" | "hechoPor" | "noPudoMotivo" | "anuladoMotivo" | "foto" | "creadoMin" | "version">;
 export type PlanPoner =
   | { sumarA: string; carga: string }
-  | { nuevo: ViajeNuevo; cederVueltaDe: string | null; /** El hueco de menor desvío, si se eligió por ahí (F4). */ hueco?: Hueco | null };
+  | { nuevo: ViajeNuevo; cederVueltaDe: string | null };
 
 /**
  * Poner un pedido en un camión: se vuelve un viaje, o se suma a uno que va al mismo lugar
@@ -1548,14 +1398,8 @@ export function planPonerPedido(dia: DiaHoja, ped: Pedido, veh: string, ahora: M
   const ts = calcVeh(dia, veh);
   let orden: number;
   let prev: ViajeCalc | null;
-  // Hoy, un orden pedido antes de la parada en curso no vale (el servidor lo corrige): va el automático.
-  const fijo = ts[ultimoFijo(dia, ts, ahora)];
-  const ordenPedido = o.orden != null && !(fijo && o.orden <= fijo.orden) ? o.orden : null;
-  // Sin hora ni lugar pedido: el hueco de menor desvío (F4), si el destino y los vecinos tienen coordenadas.
-  const hueco = !ped.horaFija && ordenPedido == null && !ped.noAntesDe && !ped.horaLimite ? mejorHueco(dia, veh, lugar(dia, ped.hacia), ahora) : null;
   if (ped.horaFija) { orden = toMin(ped.horaFija)!; prev = ts.filter((v) => v.orden < orden).pop() ?? null; }
-  else if (ordenPedido != null) { orden = ordenPedido; prev = ts.filter((v) => v.orden < orden).pop() ?? null; }
-  else if (hueco) { orden = hueco.orden; prev = hueco.prevId ? ts.find((v) => v.id === hueco.prevId) ?? null : null; }
+  else if (o.orden != null) { orden = o.orden; prev = ts.filter((v) => v.orden < orden).pop() ?? null; }
   else { const pa = posicionAuto(dia, veh, ped, ahora); orden = pa.orden; prev = pa.prevId ? ts.find((v) => v.id === pa.prevId) ?? null : null; }
   const hoy = esHoy(ahora);
   const nuevo: ViajeNuevo = {
@@ -1591,7 +1435,7 @@ export function planPonerPedido(dia: DiaHoja, ped: Pedido, veh: string, ahora: M
       if (nuevo.carga && !/de lo desarmado/.test(nuevo.carga) && prev.tipo === "trae_material") nuevo.carga = `${nuevo.carga} (de lo desarmado)`;
     }
   }
-  return { nuevo, cederVueltaDe, hueco: ped.horaFija || ordenPedido != null ? null : hueco };
+  return { nuevo, cederVueltaDe };
 }
 
 // ═══════════════════════════ Avisos del despacho (§9) ═════════════════════════
@@ -1989,7 +1833,7 @@ export function sugerirACargo(dia: DiaHoja, c: number): { pid: string; por: stri
     // Un contratista sólo puede estar a cargo de una hoja en la que va su gente.
     if (esContratista(dia, k.pid) && !(hc?.contratistas ?? []).some((x) => x.contratistaId === k.pid)) continue;
     if (ausenciaDe(dia, k.pid)) { saltos.push(`${nombreDe(dia, k.pid)} no viene`); continue; }
-    const otra = [...cuadrillasActivas(dia), DEPOSITO].find((x) => x !== c && aCargoDe(hojaDeCuadrilla(dia, x)) === k.pid);
+    const otra = cuadrillasActivas(dia).find((x) => x !== c && aCargoDe(hojaDeCuadrilla(dia, x)) === k.pid);
     if (otra != null) { saltos.push(`${nombreDe(dia, k.pid)} está a cargo de ${laC(dia, otra)}`); continue; }
     return { pid: k.pid, por: saltos.length ? saltos[0] : k.por };
   }
@@ -2037,26 +1881,6 @@ export function problemas(dia: DiaHoja, c: number, ahora: Minutos): Problema[] {
   const add = (o: Omit<Problema, "nivel" | "rojo" | "bs"> & { nivel?: Problema["nivel"]; bs?: Boton[] }) =>
     out.push({ nivel: "bloq", bs: [], rojo: false, ...o });
 
-  // El depósito (F2): sin obras, camiones ni cupo. Sólo lo de su gente; que no tenga
-  // encargado es un aviso (no frena el envío de las cuadrillas).
-  if (esDeposito(c)) {
-    for (const p of genteDe(h)) {
-      const a = ausenciaDe(dia, p);
-      if (a) add({ k: `aus-${p}`, corto: `${N(p)} no viene (D)`, t: `${N(p)} está en el depósito y no viene (${TIPO_AUSENCIA_TXT[a.tipo]})`, card: `${N(p)} no viene (${ausTexto(a, true, dia.fecha)})`, bs: [{ l: "Sacarlo", a: "sacar", c, p }] });
-    }
-    if (h.integrantes.length && !recibeDe(dia, c)) {
-      const s = sugerirACargo(dia, c);
-      add({ k: "cargo", nivel: "aviso", corto: "Depósito sin encargado", t: `El depósito quedó sin encargado${s ? ` · Sugerido: ${N(s.pid)} (${s.por})` : ""}`, card: `Sin encargado${s ? `. Sugerido: ${N(s.pid)} (${s.por})` : ""}`, bs: s ? [{ l: `Usar ${N(s.pid)}`, a: "usarCargo", c, p: s.pid }] : [] });
-    }
-    const r = recibeDe(dia, c);
-    const pr = persona(dia, r);
-    if (r && pr && !pr.celular && !pr.telegram) {
-      add({ k: `cel-${r}`, nivel: "aviso", corto: `${N(r)} sin celular`, t: `${N(r)} no tiene celular cargado`, card: `${N(r)} no tiene celular cargado: no le puede llegar la hoja`, bs: [{ l: "Cargar celular", a: "dlgCel", p: r }] });
-    }
-    for (const p of out) p.rojo = p.nivel === "bloq" && rojo;
-    return out;
-  }
-
   for (const p of genteDe(h)) {
     const a = ausenciaDe(dia, p);
     if (a) add({ k: `aus-${p}`, corto: `${N(p)} no viene (${cTag(dia, c)})`, t: `${N(p)} está en la ${C} y no viene (${TIPO_AUSENCIA_TXT[a.tipo]})`, card: `${N(p)} no viene (${ausTexto(a, true, dia.fecha)})`, bs: [{ l: "Sacarlo", a: "sacar", c, p }] });
@@ -2093,10 +1917,9 @@ export function problemas(dia: DiaHoja, c: number, ahora: Minutos): Problema[] {
       const a = ausenciaDe(dia, ch);
       if (a) add({ k: `chaus-${f.id}`, t: `${N(ch)} no viene (${TIPO_AUSENCIA_TXT[a.tipo]}): la ${C} quedó sin chofer${f.modo === "lleva_trae" ? " para llevarlos" : ""}`, card: `${N(ch)} no viene (${TIPO_AUSENCIA_TXT[a.tipo]})`, bs: [{ l: "Elegir otro", a: "chEd", c }] });
       // Está en OTRA cuadrilla como integrante (en la suya puede ir a cargo y manejar: cuenta una vez).
-      // Del depósito sí puede llevarlos y traerlos (sale y vuelve al depósito); todo el día, no.
       const en = hojaDe(dia, ch);
-      if (en != null && en !== c && !(esDeposito(en) && f.modo === "lleva_trae")) {
-        add({ k: `chint-${f.id}`, t: `${N(ch)} está en ${laCuadrilla(dia, en)} y ${f.modo === "todo_el_dia" ? `maneja todo el día con ${laC(dia, c)}` : `lleva a ${laC(dia, c)}`}`, card: `${N(ch)} está en ${laCuadrilla(dia, en)}`, bs: [{ l: "Elegir otro", a: "chEd", c }, { l: `Ver ${laC(dia, en)}`, a: "irA", c: en }] });
+      if (en != null && en !== c) {
+        add({ k: `chint-${f.id}`, t: `${N(ch)} está en la ${cNombre(dia, en)} y ${f.modo === "todo_el_dia" ? `maneja todo el día con ${laC(dia, c)}` : `lleva a ${laC(dia, c)}`}`, card: `${N(ch)} está en la ${cNombre(dia, en)}`, bs: [{ l: "Elegir otro", a: "chEd", c }, { l: `Ver ${laC(dia, en)}`, a: "irA", c: en }] });
       }
       if (f.modo === "todo_el_dia") {
         for (const o of todoDe(dia, ch).filter((x) => x !== c)) {
@@ -2235,8 +2058,7 @@ export function fotoChofer(dia: DiaHoja, ch: string): FotoChofer {
       const p = pedidosDeViaje(dia, v.id)[0] ?? null;
       return {
         k: v.id, tipo: v.tipo, c: cuadrillaDeViaje(dia, v), hacia: lugar(dia, v.haciaEf).n, desde: v.desde ? lugar(dia, v.desde).n : null,
-        // Una hora aproximada es una pista: si se corre, no es un cambio para avisarle (F3).
-        hora: horaFija(v) ? normHora(v.hora) : null, carga: v.carga ?? "", veh: v.vehiculoId,
+        hora: normHora(v.hora), carga: v.carga ?? "", veh: v.vehiculoId,
         pidio: p ? { pid: p.pidioId, hl: normHora(p.horaLimite) } : null,
       };
     }),
@@ -2253,8 +2075,6 @@ export type Destinatario = { pid: string | null; rol: "cargo" | "chofer" | "ex";
 
 export function rolDe(dia: DiaHoja, pid: string): Destinatario | null {
   for (const c of cuadrillasConHoja(dia)) if (recibeDe(dia, c) === pid) return { pid, rol: "cargo", c };
-  // El encargado del depósito recibe su hoja como un capataz (F2).
-  if (recibeDe(dia, DEPOSITO) === pid) return { pid, rol: "cargo", c: DEPOSITO };
   if (viajesChofer(dia, pid).length || todoDe(dia, pid).length) return { pid, rol: "chofer" };
   return null;
 }
@@ -2275,7 +2095,7 @@ export function diferencias(dia: DiaHoja, old: Foto | null, cur: Foto | null): D
     for (const p of old.gente.filter((p) => !cur.gente.includes(p))) {
       const a = ausenciaDe(dia, p);
       const otra = hojaDe(dia, p);
-      out.push({ t: `no va ${N(p)}`, motivo: a ? TIPO_AUSENCIA_TXT[a.tipo] : otra != null ? `pasó ${aLaC(dia, otra)}` : null });
+      out.push({ t: `no va ${N(p)}`, motivo: a ? TIPO_AUSENCIA_TXT[a.tipo] : otra != null ? `pasó a la ${cNombre(dia, otra)}` : null });
     }
     for (const p of cur.gente.filter((p) => !old.gente.includes(p))) out.push({ t: `va ${N(p)}` });
     out.push(...diferenciasContratistas(dia, old.contr ?? {}, cur.contr ?? {}));
@@ -2423,10 +2243,6 @@ export function destinatarios(dia: DiaHoja): Destinatario[] {
       if (suspendida(dia, c) && !(r && envioDe(dia, r)?.enviadaMin != null)) continue;
       out.push({ pid: r, rol: "cargo", c });
     }
-    // El encargado del depósito (F2), si hay. Sin encargado no hay a quién mandarle: no cuenta
-    // como "sin enviar" (el depósito no frena nada).
-    const enc = recibeDe(dia, DEPOSITO);
-    if (enc && !out.find((x) => x.pid === enc)) out.push({ pid: enc, rol: "cargo", c: DEPOSITO });
     const choferes = new Set<string>();
     for (const v of viajesCalc(dia)) { const ch = choferDe(dia, v); if (ch) choferes.add(ch); }
     for (const c of cuadrillasActivas(dia)) for (const ch of choferesTodoDe(hojaDeCuadrilla(dia, c))) choferes.add(ch);
@@ -2551,7 +2367,7 @@ export function bandeja(dia: DiaHoja, ahora: Minutos): Bandeja {
   vos.sort((a, b) => PRI(a.k) - PRI(b.k));
   // Hojas de cuadrillas que ya no tienen obras ese día, con gente adentro.
   for (const h of dia.hojas) {
-    if (esDeposito(h.cuadrillaOdooId) || obrasDe(dia, h.cuadrillaOdooId).length || (!h.integrantes.length && !(h.contratistas ?? []).length)) continue;
+    if (obrasDe(dia, h.cuadrillaOdooId).length || (!h.integrantes.length && !(h.contratistas ?? []).length)) continue;
     const quienes = [...genteDe(h).map((p) => nombreDe(dia, p)), ...contratistasDe(h).map((x) => cantidadDe(dia, x))];
     vos.push({ k: `sinobras-${h.cuadrillaOdooId}`, c: h.cuadrillaOdooId, t: `La ${cNombre(dia, h.cuadrillaOdooId)} no tiene obras el ${diaSemana(dia.fecha)}: ${yList(quienes)} siguen en su hoja`, bs: [{ l: "Dejarlos sin asignar", a: "liberar", c: h.cuadrillaOdooId }] });
   }
@@ -2569,8 +2385,7 @@ export function bandeja(dia: DiaHoja, ahora: Minutos): Bandeja {
   for (const x of ds) {
     const st = estadoEnvio(dia, x);
     const N = nombreDe(dia, x.pid);
-    // El depósito no frena nada (F2): su hoja no cuenta en "N hojas sin enviar" (Mandar sí la incluye).
-    if ((st.k === "sinenviar" || st.k === "sinrecibe" || st.k === "anulado") && !esDeposito(x.c)) sinEnv++;
+    if (st.k === "sinenviar" || st.k === "sinrecibe" || st.k === "anulado") sinEnv++;
     else if (x.rol === "cargo") enviadas++;
     if (st.k === "cambiada") {
       const quien = x.rol === "chofer" ? `Los viajes de ${N} cambiaron después de enviar` : `${cNombre(dia, x.c)} cambió después de enviar`;
@@ -2578,14 +2393,14 @@ export function bandeja(dia: DiaHoja, ahora: Minutos): Bandeja {
     }
     // Un chofer al que se le mandó su hoja de ruta y ya no maneja nada (p. ej. le llegó un viaje
     // por ser el habitual del camión, antes del 11/10 noche): que sepa que no tiene viajes.
-    if (st.k === "ex") vos.push({ k: `ex-${x.pid}`, nivel: "bloq", t: exChofer(st.e) ? `${N} ya no tiene viajes y tiene su hoja de ruta` : `${N} ya no está a cargo y tiene la hoja ${deLaC(dia, x.c)}`, bs: [{ l: `Avisar a ${N}`, a: "abrirEnvio", p: x.pid! }] });
+    if (st.k === "ex") vos.push({ k: `ex-${x.pid}`, nivel: "bloq", t: exChofer(st.e) ? `${N} ya no tiene viajes y tiene su hoja de ruta` : `${N} ya no está a cargo y tiene la hoja de la ${cNombre(dia, x.c)}`, bs: [{ l: `Avisar a ${N}`, a: "abrirEnvio", p: x.pid! }] });
     if (st.k === "ok" || st.k === "okSinAvisar") {
       const e = st.e;
-      if (e.cambioMin != null && (e.recibidaMin == null || e.recibidaMin < e.cambioMin)) esp.push({ k: `nv-${x.pid}`, c: x.c, rojo: ahora - e.cambioMin > 15, t: `${N} no vio el cambio de las ${hm(e.cambioMin)}`, bs: [{ l: "Llamar", a: "llamar", p: x.pid! }] });
+      if (e.cambioMin != null && (e.recibidaMin == null || e.recibidaMin < e.cambioMin)) esp.push({ k: `nv-${x.pid}`, rojo: ahora - e.cambioMin > 15, t: `${N} no vio el cambio de las ${hm(e.cambioMin)}`, bs: [{ l: "Llamar", a: "llamar", p: x.pid! }] });
       else if (e.abiertaMin == null) {
-        if (rojoAbrir) esp.push({ k: `na-${x.pid}`, c: x.c, rojo: true, t: `${N} no la abrió · enviada ${hm(e.enviadaMin!)}${e.reenviadaMin != null ? ` · reenviada ${hm(e.reenviadaMin)}` : ""}`, bs: [{ l: "Reenviar", a: "reenviar", p: x.pid! }, { l: "Llamar", a: "llamar", p: x.pid! }] });
+        if (rojoAbrir) esp.push({ k: `na-${x.pid}`, rojo: true, t: `${N} no la abrió · enviada ${hm(e.enviadaMin!)}${e.reenviadaMin != null ? ` · reenviada ${hm(e.reenviadaMin)}` : ""}`, bs: [{ l: "Reenviar", a: "reenviar", p: x.pid! }, { l: "Llamar", a: "llamar", p: x.pid! }] });
         else sinAbrir.push(x.pid!);
-      } else if (e.recibidaMin == null) esp.push({ k: `nr-${x.pid}`, c: x.c, gris: true, t: `${N} la abrió a las ${hm(e.abiertaMin)} y no tocó Recibido`, bs: [{ l: "Llamar", a: "llamar", p: x.pid! }] });
+      } else if (e.recibidaMin == null) esp.push({ k: `nr-${x.pid}`, gris: true, t: `${N} la abrió a las ${hm(e.abiertaMin)} y no tocó Recibido`, bs: [{ l: "Llamar", a: "llamar", p: x.pid! }] });
       else listas.push({ t: `${N} · ${e.cambioMin != null ? "entendido" : "recibida"} ${hm(e.recibidaMin)}` });
     }
   }
@@ -2710,7 +2525,6 @@ export function fletesDelDia(dia: DiaHoja, otId: number): { v: ViajeCalc; txt: s
  * Hoja del día"): lo que se factura lo confirma quien cierra el parte.
  */
 export function horariosCierre(dia: DiaHoja, c: number, otId: number): { personas: number; desde: Hora; hasta: Hora }[] {
-  if (esDeposito(c)) return [];
   const h = hojaDeCuadrilla(dia, c);
   if (!h) return [];
   const obs = obrasCon(dia, c);
@@ -2866,7 +2680,7 @@ export function planPrecarga(dia: DiaHoja, modo: ModoPrecarga): PlanPrecarga {
   if (modo === "hoy" && ant) {
     for (const h of ant.hojas) {
       const c = h.cuadrillaOdooId;
-      if (!esDeposito(c) && !obrasDe(dia, c).length && h.integrantes.length && ![...fuente.values()].includes(c)) {
+      if (!obrasDe(dia, c).length && h.integrantes.length && ![...fuente.values()].includes(c)) {
         avisos.push(`La ${cNombre(dia, c)} no tiene obras el ${diaSemana(dia.fecha)}: ${yList(genteDe(h).map((p) => nombreDe(dia, p)))} quedaron sin asignar.`);
       }
     }
@@ -2892,18 +2706,6 @@ export function planPrecarga(dia: DiaHoja, modo: ModoPrecarga): PlanPrecarga {
     }
     hojas.push(ph);
   }
-  // El depósito (F2): como el día anterior (o su última hoja), DESPUÉS de las cuadrillas, así
-  // una persona que estaba en las dos va a la cuadrilla. Sin camiones ni contratistas. Con el
-  // plantel o vacío no se crea: la columna está igual y se arma arrastrando.
-  if (modo === "hoy" && !hojaDeCuadrilla(dia, DEPOSITO)) {
-    const hAnt = ant?.hojas.find((h) => esDeposito(h.cuadrillaOdooId));
-    const ult = hAnt ? null : dia.ultimasHojas.find((u) => esDeposito(u.hoja.cuadrillaOdooId));
-    const base = hAnt ?? ult?.hoja ?? null;
-    if (base && base.integrantes.length) {
-      const ph = planDesde(dia, base, null, hAnt ? ant!.fecha : ult!.fecha, true, DEPOSITO);
-      hojas.push({ ...ph, vehiculos: [], contratistas: [], aCargoContratistaId: null, busca: null, buscaCon: { fila: 0 } });
-    }
-  }
   // Ausentes afuera, y una persona en una sola hoja.
   const usados = new Set<string>(dia.hojas.flatMap((h) => h.integrantes.map((i) => i.personaId)));
   const ausAvisos: string[] = [];
@@ -2912,8 +2714,7 @@ export function planPrecarga(dia: DiaHoja, modo: ModoPrecarga): PlanPrecarga {
       const a = ausenciaDe(dia, p);
       if (a) {
         if (h.aCargoId === p) h.aCargoId = null;
-        const quedo = esDeposito(h.cuadrillaOdooId) ? "No va al depósito." : `La ${cNombre(dia, h.cuadrillaOdooId)} quedó con __VAN_${h.cuadrillaOdooId}__ de ${prevista(dia, h.cuadrillaOdooId)}.`;
-        ausAvisos.push(`${nombreDe(dia, p)} no entra: ${ausTexto(a, false)}${a.hasta ? ` hasta el ${ddmm(a.hasta)}` : ""}${a.origen === "asistencia" ? " (según la asistencia)" : ""}. ${quedo}`);
+        ausAvisos.push(`${nombreDe(dia, p)} no entra: ${ausTexto(a, false)}${a.hasta ? ` hasta el ${ddmm(a.hasta)}` : ""}${a.origen === "asistencia" ? " (según la asistencia)" : ""}. La ${cNombre(dia, h.cuadrillaOdooId)} quedó con __VAN_${h.cuadrillaOdooId}__ de ${prevista(dia, h.cuadrillaOdooId)}.`);
         return false;
       }
       if (usados.has(p) || !persona(dia, p)?.activo) { if (h.aCargoId === p) h.aCargoId = null; return false; }
@@ -2954,7 +2755,7 @@ export function planPrecarga(dia: DiaHoja, modo: ModoPrecarga): PlanPrecarga {
   };
   const ausFinal = ausAvisos.map((t) => t.replace(/__VAN_(\d+)__/, (_, c) => String(vanPlan(Number(c)))));
   avisos.unshift(...ausFinal);
-  if (modo === "vacio") avisos.push(`Las ${hojas.filter((h) => !esDeposito(h.cuadrillaOdooId)).length} hojas quedaron vacías, con las obras del tablero: sin gente, sin nadie a cargo y sin chofer.`);
+  if (modo === "vacio") avisos.push(`Las ${hojas.length} hojas quedaron vacías, con las obras del tablero: sin gente, sin nadie a cargo y sin chofer.`);
   if (modo === "plantel") avisos.push("Con el plantel base no hay choferes ni encuentros: elegilos en cada tarjeta.");
   const conK = hojas.filter((h) => h.contratistas.length);
   if (conK.length) {
@@ -2974,7 +2775,6 @@ export function planCopiarComoHoy(dia: DiaHoja, c: number): PlanHoja | null {
   if (!ant || !h) return null;
   const plan = planDesde(dia, h, ant.viajes, ant.fecha, true, c);
   plan.origen = "copia";
-  if (esDeposito(c)) Object.assign(plan, { vehiculos: [], contratistas: [], aCargoContratistaId: null, busca: null, buscaCon: { fila: 0 } });
   plan.gente = plan.gente.filter((p) => !ausenciaDe(dia, p));
   if (plan.aCargoId && !plan.gente.includes(plan.aCargoId)) plan.aCargoId = null;
   for (const f of plan.vehiculos) if (f.choferId && ausenciaDe(dia, f.choferId)) f.choferId = null;

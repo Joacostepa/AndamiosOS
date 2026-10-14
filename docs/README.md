@@ -29,10 +29,11 @@ Ante una contradicción entre un diseño y el código, manda el código; el `han
 | Tablero de planificación | [spec](./tablero-planificacion/spec.md) · [handoff](./tablero-planificacion/handoff.md) | En producción |
 | Hoja del día (cuadrillas, camiones y despacho) | [modulo](./equipos-del-dia/modulo.md) · [handoff](./equipos-del-dia/handoff.md) · [implementación](./equipos-del-dia/implementacion.md) | En producción (falta Telegram) |
 | Mapa de obras (Ciudad Armada, 3D) | [diseño](./mapa-obras/ciudad-armada.md) · [handoff](./mapa-obras/handoff.md) · [maqueta](./mapa-obras/maqueta/ciudad-armada.html) | En producción desde 12/10 |
+| Partes de obra | [handoff](./partes/handoff.md) · [resumen](./partes/resumen.md) · [rediseño 10/10](./partes/rediseno.md) · [parte del capataz 11/10](./partes/parte-capataz.md) · [maqueta](./partes/maqueta.html) | En producción (rediseño en diseño) |
+| Pedido de presupuesto y agente de WhatsApp para clientes | [handoff](./clientes/handoff.md) · [propuesta 12/10](./clientes/pedido-presupuesto-propuesta.md) · [maqueta](./clientes/maqueta.html) | Propuesta, sin código |
 | Informe de obra | [modulo](./informe-de-obra/modulo.md) | En producción |
 | Cómputo de materiales | [modulo](./computo-materiales/modulo.md) | En producción (spec de junio) |
 | Configuración de cuadrillas | [modulo](./cuadrillas/modulo.md) | En producción (spec de junio) |
-| Organigrama (estructura, manual de funciones y Lienzo vivo) | [modulo](./organigrama/modulo.md) · [handoff](./organigrama/handoff.md) · [propuesta](./organigrama/propuesta.md) · [estructura v2](./organigrama/estructura-v2.md) | En producción desde 12/10; estructura v2 cargada como borrador, sin publicar |
 
 ### Archivo
 

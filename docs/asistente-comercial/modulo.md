@@ -44,43 +44,20 @@ WhatsApp espera la cuenta de Meta (§ WhatsApp).
   - Las que tienen mensajes no se borran: son el respaldo de lo que se guardó en Odoo, y de
     ahí sale el gasto del día (borrarlas reiniciaría el tope).
   - Si se escribe en una archivada, vuelve sola a la lista.
-- **El presupuesto en construcción** está a la derecha. En el celular (y debajo de `xl`) va en
-  una barra abajo, encima del cuadro de escribir, con:
-  - el total con IVA («c/IVA»);
-  - «Editando S0…» si ya está en Odoo;
-  - «Listo para guardar» o «Faltan N: …».
-
-  Se toca y abre la hoja desde abajo. Muestra las líneas, los totales, la renovación, lo que
-  falta y los avisos.
-- **Arranque:** «+ Nueva» en el header del celular. Sin charla abierta se ven las sugerencias y
-  las 5 recientes. Las sugerencias **llenan el cuadro** y no se mandan solas («Editar el S0…»,
-  «Plan de pagos»…).
-- **Mientras piensa:** una caja con el paso en curso en grande, el tiempo y los pasos hechos
-  con tilde y en pasado. A los 20 s avisa que suele tardar ~30 s; a los 45, que se puede salir
-  porque queda guardado. En la charla, más de 3 pasos se agrupan («7 pasos»). Hay un separador
-  por día.
+- **El presupuesto en construcción** está a la derecha (en el celular, en el botón con el
+  importe). Muestra las líneas, los totales, la renovación, lo que falta y los avisos.
 - Compositor:
   - texto;
   - clip para fotos, planos en PDF o un audio reenviado;
   - una captura de pantalla se pega con Ctrl/Cmd+V, con el foco en el cuadro o en cualquier
     parte del chat. Si lo copiado trae texto (celdas de Excel, un párrafo de Word), se pega el
     texto y no la imagen;
-  - **un solo botón de voz**: un toque graba un audio que se transcribe (queda en el cuadro
-    para revisarlo); mantenerlo apretado medio segundo y soltar abre la **voz en vivo**;
-  - en la voz en vivo del celular, por defecto se **mantiene apretado para hablar**: el botón
-    grande, y soltar deja el micrófono mudo. Así no se cuelan las voces de la obra. «Modo
-    abierto» es de ida y vuelta. La pantalla no se apaga mientras dura la sesión;
-  - todo lo que se toca mide 44–48 px, y la pantalla se puede ampliar.
+  - micrófono para grabar un audio que se transcribe (queda en el cuadro para revisarlo);
+  - con el cuadro vacío, el botón de la derecha es **Hablar** (voz en vivo).
 - Tarjetas:
-  - la acción a confirmar: Confirmar a todo el ancho y «Mejor no (descartar)». Queda a la
-    vista mientras se guarda. Si falló y el servidor la marca reintentable, aparece
-    «Reintentar»;
-  - **«Mandar al cliente»**: el PDF final y el mensaje juntos. El botón grande copia el texto y
-    abre el menú de compartir con el PDF; en la compu abre WhatsApp con el mensaje. Además
-    están «Ver PDF» y «Copiar mensaje». Si el PDF no se pudo preparar se dice por qué y se
-    puede reintentar;
-  - la vista previa del PDF sola, para verla, descargarla o compartirla;
-  - el mensaje para el cliente. Sale solo con el PDF final, sin que el
+  - la acción a confirmar, con los botones Confirmar y Cancelar;
+  - el PDF, para verlo, descargarlo o compartirlo directo a WhatsApp desde el celular;
+  - el mensaje para el cliente, listo para copiar. Sale solo con el PDF final, sin que el
     vendedor lo pida: saluda por el nombre de pila, nombra la obra y, si es una re-emisión,
     dice "la propuesta actualizada". El nombre lo elige el asistente, porque en Odoo los
     particulares están cargados de las dos maneras ("NAVALLES VERONICA", "Diego Izzo").
@@ -99,21 +76,9 @@ El vendedor confirma de una de dos maneras:
 
 Cualquier cambio en el presupuesto vence la acción y hay que volver a proponerla.
 
-**Si guardar o mandar el mail falla o queda en duda** (Odoo tardó y no se sabe qué quedó), la
-tarjeta ofrece **Reintentar** (desde el 12/10). Reintenta la MISMA acción, sólo con el botón:
-- dentro de las 24 h y si el presupuesto no cambió desde que se propuso;
-- lo que ya quedó hecho no se repite: la orden se busca por la marca del borrador y se
-  actualiza, el cliente creado y la nota no se vuelven a hacer;
-- el mail, antes de mandarse de nuevo, se busca en el chatter de la orden: si ya salió, no se
-  reenvía y se avisa.
-
 **Qué escribe en Odoo** (sólo después de confirmado):
 
-- da de alta el cliente (por CUIT, sin duplicar). **Sin CUIT también se puede guardar**
-  (JS, 12/10): el cliente se da de alta sin CUIT, buscando antes uno con el mismo nombre exacto;
-  el resumen y la nota interna lo avisan, y queda para completarlo en Odoo antes de facturar. Un
-  CUIT cargado que no valida sigue trabando: se corrige o se borra. Si tiene 10 dígitos, el
-  asistente propone el 0 que falta (20-8632598-6 → 20-08632598-6) para confirmarlo con el cliente;
+- da de alta el cliente (por CUIT, sin duplicar);
 - crea o actualiza la orden en **borrador**: nunca la confirma y nunca crea productos;
 - a la orden va **sólo la base**. Los opcionales y los adicionales quedan en el PDF y en la
   nota interna, y si el cliente acepta uno se agrega en ese momento. Odoo 19 suma al total
@@ -161,10 +126,6 @@ bandeja y estructura en fachada se verifica contra el catastro de la Ciudad con
   pregunta si van los dos frentes y lo anota en `decisiones.esquina`.
 - **Cuando los metros no cierran,** el motor avisa sin bloquear: la bandeja puede tomar lotes
   vecinos o cubrir un tramo (Arengreen 655: 24 m.l. contra lotes de 5,63 y 8 m).
-- **La dirección:** sólo calle y altura. Si el catastro no la reconoce, la herramienta prueba
-  sola una versión más limpia (corta en « - », «(» o «,», saca el barrio y «CABA», y después
-  «Av.», «Dr.») y deja esa como dirección del borrador (`src/lib/catastro/direccion.ts`). El
-  asistente también le puede pasar la dirección directo.
 - **Otros casos:**
   - fuera de CABA el frente lo da el cliente y no bloquea;
   - si el catastro no tiene la medida o no responde, el vendedor la declara con su origen
@@ -195,7 +156,7 @@ con `usar_foto_como_render` (`src/lib/asistente/renders.ts`).
 busca en internet y lee páginas con las herramientas del servidor de Anthropic (`web_search` y
 `web_fetch`), en `HERRAMIENTAS_WEB` (`src/lib/asistente/herramientas.ts`).
 
-- **Límites:** hasta 3 búsquedas (5 hasta el 12/10: un turno llegó a costar US$ 1) y 3 páginas por respuesta, búsquedas desde Buenos Aires, y
+- **Límites:** hasta 5 búsquedas y 3 páginas por respuesta, búsquedas desde Buenos Aires, y
   cada página se corta en 15.000 tokens.
 - **Reglas** (instrucciones, § Internet):
   - es para lo que no está en Odoo ni en el criterio: índices (CAC, IPC, costo de la
@@ -208,9 +169,8 @@ busca en internet y lee páginas con las herramientas del servidor de Anthropic 
 - **En pantalla:** la búsqueda se ve como las otras herramientas ("Buscando en internet: CAC
   agosto 2026") y las páginas citadas quedan como **Fuentes** debajo de la respuesta.
 - **Conversaciones de antes del 28/09:** tienen las herramientas, pero sus instrucciones
-  congeladas no dicen nada de internet. El aviso de cada turno se lo cuenta. Desde el 12/10 vale
-  para toda herramienta nueva (`novedadesParaCharla`, `src/lib/asistente/novedades.ts`): las que
-  el prompt congelado de la charla no nombra se le cuentan en una línea cada una.
+  congeladas no dicen nada de internet. El aviso de cada turno se lo cuenta
+  (`avisarInternet` en `contextoDelTurno`).
 
 **Plan de pagos** (Joaquín, 06/10: "un detalle de los e-cheq de cómo tiene que abonar"). La
 forma de pago en cuotas sale como tabla en el PDF, debajo de "Forma de pago": fecha (con el día
@@ -236,9 +196,6 @@ asistente la arma con `plan_de_pagos`.
   en la nota interna de la orden. A la orden de Odoo no le cambia nada.
 - **Sin "con IVA":** si `condiciones.mostrarTotalConIva` es `false`, la tabla sale sólo con el
   neto.
-- **Ajuste por CAC** (criterio §4.7; JS, 12/10): con cuotas, va por cuota al momento del pago,
-  escrito dentro de "Forma de pago", y sale el bullet de actualización mensual. «Importes fijos»
-  sólo si el vendedor lo pide (`condiciones.actualizacionCac` en `false`).
 
 **Editar un presupuesto que ya está en Odoo** (Joaquín, 06/10). Con `editar_presupuesto` el
 asistente abre una orden y la cambia con el mismo número. Re-emitir (número nuevo y la vieja
@@ -276,22 +233,6 @@ está en `src/lib/asistente/edicion.ts`.
 **Tope de gasto:** `asistente_tope_diario_usd` (hoy US$ 30 por persona y por día). Se cambia en
 Parámetros.
 
-**«Esto estuvo mal»** (desde el 12/10; es el método de correcciones acordado el 26/09):
-- **Dónde:** un pulgar abajo (44 px) debajo de la última respuesta de cada turno. Abre una hoja
-  con el motivo y un texto opcional.
-- **Motivos:** cuentas o importes, inventó o supuso algo, tardó mucho, no entendió, otra cosa.
-- **Qué guarda:** `asistente_feedback` (migración `20261012000004`), atado al `turno_id` para ir
-  a mirar exactamente esa respuesta. Una marca por persona y por turno: marcar de nuevo la
-  reemplaza.
-- **Quién:** marca el dueño de la charla o un admin (`POST /api/comercial/asistente/feedback`).
-- **Dónde se ve:** en Parámetros → Uso.
-
-Piezas:
-- el componente es `src/components/asistente/estuvo-mal.tsx`;
-- el hilo lo pone donde `vista.ts` marcó `finDeTurno`;
-- los motivos están en `src/lib/asistente/feedback.ts` y en el CHECK de la tabla: si se agrega
-  uno, va en los dos lados.
-
 ---
 
 ## Parámetros de cotización (`/comercial/parametros`)
@@ -305,16 +246,6 @@ Piezas:
 | Renders | La biblioteca de imágenes por tipo de sistema para la "representación gráfica" | Ídem |
 | Vendedores | El nombre que sale como "Vendedor asignado" y **el WhatsApp de cada uno** | El nombre, quien edita parámetros. **El WhatsApp, sólo un admin**: con ese número se le habla al asistente como esa persona |
 | Historial | Cada cambio de tarifa, con el valor anterior, quién, cuándo y por qué | — |
-| Uso | Por persona y por mes: pedidos al modelo, conversaciones, presupuestos guardados, US$, US$ por presupuesto, espera mediana por turno, % de turnos de más de 60 s y cuántos «estuvo mal». Arriba, el gasto de hoy de cada uno contra el tope diario; abajo, los últimos «estuvo mal» con el link a la charla | Sólo la ve un admin o quien edita parámetros (muestra lo que gasta cada uno). No se edita |
-
-**Uso** (`GET /api/comercial/parametros/uso?meses=6`): se calcula en el servidor, con
-`src/lib/asistente/uso.ts` (puro, con tests). Lee de a 1000 filas.
-- **US$:** `asistente_mensajes.uso` con `costoUsd` y el modelo **de la conversación**.
-- **Presupuestos:** las acciones `guardar_presupuesto` y `reemitir_presupuesto` que terminaron
-  ok.
-- **Espera de un turno:** de la primera a la última fila de ese `turno_id`. Sólo cuentan los
-  turnos con algún pedido al modelo.
-- **Mes y «hoy»:** de Buenos Aires, como el tope.
 
 Una conversación **congela** el prompt del sistema (criterio y tarifas) al crearse. Si una
 tarifa cambia en el medio, el asistente se entera por un aviso dentro de la charla y los
@@ -323,10 +254,6 @@ importes siempre se recalculan con la tarifa vigente.
 ---
 
 ## Voz
-
-> **12/10: la voz en vivo está apagada** (sin `ELEVENLABS_AGENT_ID` en Vercel): no se usaba y
-> en obra andaba mal. Queda el dictado (punto 1). Cómo volver a prenderla: handoff, § "Estado
-> al 12/10".
 
 Dos cosas distintas, las dos con ElevenLabs:
 
@@ -430,27 +357,6 @@ Cómo maneja las conversaciones:
   se fija si llegó algo más.
 - **Un número que no está cargado** en Vendedores recibe una vez por día un aviso de que el
   número es de uso interno, y nada más.
-- **Una tanda por función** (12/10). Una tanda es un botón, un «nueva» o varios mensajes
-  seguidos. Cada función de Vercel atiende una sola: un turno puede durar 240 s y la función
-  vive 300.
-  - Lo que queda sigue `pendiente`, y la función le pide a otra que siga
-    (`POST /api/whatsapp/webhook/seguir`, firmado con la clave de la app y un prefijo propio).
-  - Si ese pedido falla, lo retoma el próximo mensaje de ese teléfono.
-  - Mientras trabaja, el candado del teléfono se renueva cada minuto.
-- **Mensajes colgados** (12/10). Un mensaje en `procesando` desde hace más de 6 min quedó de
-  una función que murió.
-  - El siguiente que toma el turno de ese teléfono lo vuelve a `pendiente`, una sola vez: si se
-    vuelve a cortar, queda en `error`.
-  - **Ojo:** si la función murió a mitad del turno, ese mensaje entra dos veces en la charla.
-- **Lo reenviado no confirma** (12/10). Meta marca los mensajes reenviados
-  (`context.forwarded` o `frequently_forwarded`).
-  - Entran al texto con la marca [reenviado], y la tanda lleva un aviso al final para el modelo.
-  - Esa marca no es una palabra que acepte `esConfirmacion`. Por eso, en esa tanda ningún «sí»
-    escrito confirma nada: queda el botón o un mensaje propio después.
-  - Un «nueva» reenviado no reinicia la charla.
-  - Las piezas puras están en `src/lib/whatsapp/tandas.ts`, con tests.
-- **La «última foto»** para el render propio es la última subida (por fecha de Storage), no
-  por nombre: las de WhatsApp se llaman `wa-<wamid>-…` y no ordenan por hora.
 
 Cómo se protege: el webhook `/api/whatsapp/webhook` es público y valida la firma de Meta
 (HMAC con la clave de la app). Cada mensaje se anota una sola vez aunque Meta reintente. El
@@ -505,23 +411,11 @@ No hacen falta plantillas: el asistente sólo contesta, siempre dentro de las 24
 **Un solo cerebro** (`src/lib/asistente/turno.ts`). Es un loop propio sobre la API de Mensajes
 de Anthropic en streaming:
 
-- modelo `claude-opus-5-5` para las conversaciones nuevas (desde el 12/10; antes `claude-opus-5`),
-  configurable en Parámetros. En Opus 5.5 el pensamiento queda atado a la conversación: el pedido
-  manda `block_binding: drop_block` para que un cambio de herramientas no dé error (`turno.ts`);
+- modelo `claude-opus-5`, configurable en Parámetros;
 - razonamiento adaptativo y esfuerzo desde Parámetros;
 - *fallback* del lado de Anthropic;
 - hasta 15 vueltas o 240 s por turno;
-- un turno a la vez por conversación;
-- las herramientas de sólo lectura que el modelo pide juntas corren a la vez (`tandas.ts`); las
-  que tocan el borrador o las acciones, de a una y en orden;
-- en Opus 5.5, Sonnet 5.5 y Fable 5.1, las notas que el modelo escribe entre herramientas
-  llegan a la pantalla como evento `progreso` (`thinking.display: "updates"`). En voz no se
-  dicen.
-
-**Lo que vuelve al modelo después de un cambio** (12/10): qué renglones entraron, salieron o
-cambiaron, los totales y lo que falta (`resumen.ts`), no el borrador entero. Los cambios van
-juntos: sacar varios renglones, agregar varios a mano y reordenar (`ordenar_lineas`) son una
-llamada cada uno.
+- un turno a la vez por conversación.
 
 Cada canal sólo cambia cómo entra el texto y cómo sale.
 
@@ -550,17 +444,9 @@ tiene caché de 1 h.
 - `asistente_conversaciones`, `asistente_mensajes`, `cotizacion_borradores` (+ `_cambios`),
   `asistente_acciones` (+ `_eventos`), `cotizacion_pdfs`, `comercial_vendedores`;
 - `whatsapp_entrantes`;
-- `asistente_feedback` (`20261012000004`);
 - bucket privado `comercial`.
 
 Los usuarios leen lo suyo (un admin, todo) y escribe sólo el servidor.
-
-**Quién lee qué con la sesión** (`20261012000005_asistente_rls.sql`, 12/10):
-- **Tarifas, historial, criterio, lista de alquiler, productos y renders:** quien tenga
-  `parametros-cotizacion` o `asistente-comercial`, o un admin (`cotizacion_puede_ver()`). Antes,
-  cualquier usuario con login.
-- **`comercial_vendedores`:** sólo un admin; la pantalla y el asistente leen con service role.
-- **`configuracion`:** todo menos las claves `afip_*`.
 
 **Permisos:** hay dos módulos, `asistente-comercial` y `parametros-cotizacion`, en el grupo
 Comercial. Para usar el chat hace falta el de edición. Las rutas con service role vuelven a
@@ -578,7 +464,6 @@ webhook de WhatsApp, y cada uno tiene su secreto o firma.
 | Voz en vivo (sin ElevenLabs) | `… scripts/test-asistente-voz.mts`: se hace pasar por ElevenLabs contra el endpoint | ~US$ 0,50 |
 | WhatsApp (sin Meta) | `… scripts/test-asistente-whatsapp.mts`: avisos firmados simulados y la API de Meta interceptada; la acción se cancela, no escribe en Odoo | ~US$ 1 |
 | PDF contra la skill | `node scripts/pdf-paridad.mjs` (necesita la skill descomprimida y PyMuPDF) | — |
-| Guiones de evaluación (Anexo B de la auditoría) | `… scripts/eval-asistente.mts --lista` (gratis: los casos y su costo); `--caso 3`, `--caso 1,4,S2` o `--todos`. Una charla «[PRUEBA EVAL n]» por caso, chequeos deterministas, no confirma nada en Odoo salvo con `--odoo` (ZZ PRUEBA, se borra). `--modelo` para comparar otro modelo | ~US$ 0,50–1,20 por caso; ~US$ 12,5 todos |
 | Migración nueva | `node --env-file=.env.local scripts/probar-migracion.mjs <archivo>` (la corre dos veces y hace ROLLBACK); después `scripts/apply-migration.mjs`. Nunca `supabase db push` | — |
 
 ---
@@ -594,8 +479,8 @@ webhook de WhatsApp, y cada uno tiene su secreto o firma.
   tokens. La definición de las dos herramientas suma ~6.400 tokens a cada pedido, que van al
   caché.
 
-  El uso de cada pedido queda en `asistente_mensajes.uso`; el tope diario lo calcula
-  `gastoDelDia` y el uso por persona y por mes está en Parámetros → Uso.
+  El uso de cada pedido queda en `asistente_mensajes.uso` (y el tope diario lo calcula
+  `gastoDelDia`), pero **la pantalla de uso por persona y por mes todavía no está hecha**.
 - **ElevenLabs**: la voz en vivo se cobra por minuto según el plan; transcribir, ~US$ 0,40 por
   hora de audio.
 - **WhatsApp**: responder dentro de las 24 h de un mensaje del vendedor no tiene costo de Meta.

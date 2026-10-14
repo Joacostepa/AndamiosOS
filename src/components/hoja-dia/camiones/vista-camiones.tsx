@@ -218,7 +218,7 @@ export function Pantalla({ dia, fecha, ahora, irA, cargando }: { dia: DiaHoja; f
       case "irCamiones": return;
       case "tablero": window.location.href = "/planificacion"; return;
       default:
-        // Lo de la hoja de una cuadrilla (sacar, poner a cargo, chofer…) se hace en el Pizarrón.
+        // Lo de la hoja de una cuadrilla (sacar, poner a cargo, chofer…) se hace en Cuadrillas.
         window.location.href = `/planificacion/hoja?dia=${fecha}`;
     }
   }, [dia, fecha, g, avisos, enviar, llamar, mostrar, abrirDialogo, setPoner, sacarUnRato]);

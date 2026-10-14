@@ -293,6 +293,18 @@ export type OtTablero = {
    * la obra entera. Ver src/lib/tablero/ventana.ts.
    */
   fechaAntesDe: string | null;
+  /**
+   * NOSOTROS ponemos un técnico de Seguridad e Higiene en esta obra (`x_syh_presencial` =
+   * "si" en la venta; es lo mismo que `TrabajoOt.syhPresencial`, que viaja sólo en la ficha).
+   *
+   * VIAJA CON EL TABLERO porque Planificación lo tiene que ver sin abrir la obra: la tarjeta
+   * lleva un casco y el encabezado del día avisa cuando caen varias el mismo día (el técnico
+   * es uno y no puede estar en dos obras). Al 13/10/2026 son 14 OTs, así que la consulta
+   * que lo trae es de ids y no pesa.
+   *
+   * false también cuando nadie contestó: para la grilla "no sabemos" y "no" se ven igual.
+   */
+  syh: boolean;
   url: string;
 };
 

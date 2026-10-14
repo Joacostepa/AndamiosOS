@@ -9,6 +9,7 @@ import {
   ArrowUp,
   ChevronDown,
   ChevronRight,
+  HardHat,
   MoreHorizontal,
   PanelRightClose,
   PanelRightOpen,
@@ -416,6 +417,13 @@ function TarjetaOt({
       <div className="flex items-start gap-1.5">
         <IconoTipo className="mt-0.5 h-3.5 w-3.5 shrink-0" style={{ color: tipo.text }} aria-hidden />
         <p className="min-w-0 flex-1 text-sm font-medium leading-snug text-foreground">{direccion}</p>
+        {/* Lleva técnico de SyH nuestro: el mismo casco de la grilla y de la ficha. En la
+            bandeja es donde más sirve, antes de elegir el día. */}
+        {ot.syh && (
+          <span className="mt-0.5 flex shrink-0" title="Lleva técnico de Seguridad e Higiene">
+            <HardHat className="h-3.5 w-3.5 text-foreground/75" aria-label="Lleva técnico de Seguridad e Higiene" />
+          </span>
+        )}
         {/* Hay algo hablado con el cliente sobre esta obra. En la bandeja es donde más
             pesa: acá se decide en qué día va. El mismo chip de la grilla. */}
         {comentarios && (

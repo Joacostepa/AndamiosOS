@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import type { MouseEvent as MouseEventReact, PointerEvent as PointerEventReact } from "react";
 import { format, isSameDay, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
-import { MousePointerClick, StickyNote } from "lucide-react";
+import { HardHat, MousePointerClick, StickyNote } from "lucide-react";
 import { CeldaDia } from "./celda-dia";
 import { TarjetaAsignacion } from "./tarjeta-asignacion";
 import { PopoverNotasDia } from "./notas-jornada";
@@ -24,7 +24,7 @@ import {
 import { ocupacionCelda, capacidadDelRango, redondearFraccion } from "@/lib/tablero/fracciones";
 import type { FraccionStr } from "@/lib/tablero/fracciones";
 import { notasDe, notasDeCuadrilla } from "@/lib/tablero/tipos-nota";
-import { nombrePropio } from "@/lib/tablero/titulo";
+import { direccionCorta, direccionDeObra, nombrePropio } from "@/lib/tablero/titulo";
 import type { Bloque } from "@/lib/tablero/bloques";
 import type { NotaJornada } from "@/lib/tablero/tipos-nota";
 import { claveSuspension, type SuspensionDia } from "@/lib/tablero/tipos-suspension";
@@ -523,7 +523,12 @@ export function TableroGrid({
         libre += Math.max(0, 1 - total);
         if (total > 1) pasadas++;
       }
-      return [f, { libre: redondearFraccion(libre), pasadas }] as const;
+      // OBRAS CON TÉCNICO DE SyH ese día, de TODAS las cuadrillas y no sólo las visibles: el
+      // técnico es uno solo, así que el choque existe aunque una fila esté filtrada.
+      const conSyh = [
+        ...new Set(asignaciones.filter((a) => a.fecha === f && ots.get(a.otId)?.syh).map((a) => a.otId)),
+      ].map((id) => ots.get(id)!);
+      return [f, { libre: redondearFraccion(libre), pasadas, conSyh }] as const;
     }),
   );
 
@@ -687,6 +692,22 @@ export function TableroGrid({
                           {r.pasadas > 0 && (
                             <span className="font-medium" style={{ color: PELIGRO_TEXTO }}>
                               · {r.pasadas} pasada{r.pasadas === 1 ? "" : "s"}
+                            </span>
+                          )}
+                          {/* VARIAS OBRAS CON TÉCNICO DE SyH EL MISMO DÍA (pedido de
+                              Planificación, 13/10). Con una sola no dice nada: el casco de
+                              la tarjeta alcanza, y un aviso que sale siempre deja de leerse.
+                              El tooltip dice cuáles, para no tener que buscar los cascos. */}
+                          {r.conSyh.length > 1 && (
+                            <span
+                              className="flex items-center gap-0.5 font-medium"
+                              style={{ color: PELIGRO_TEXTO }}
+                              title={`Obras con técnico de Seguridad e Higiene este día:\n${r.conSyh
+                                .map((o) => `· ${direccionCorta(direccionDeObra(o))}`)
+                                .join("\n")}`}
+                            >
+                              · <HardHat className="h-3 w-3" aria-hidden />
+                              {r.conSyh.length} con SyH
                             </span>
                           )}
                         </>

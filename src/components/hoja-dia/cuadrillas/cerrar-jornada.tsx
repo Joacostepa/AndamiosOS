@@ -36,7 +36,7 @@ function otDe(o: ObraDia): OtTablero {
     estado: "", urgencia: "", motivoUrgencia: null, jornadas: o.totalDias ?? 1, sinEstimar: false, personalPorJornada: o.personalPorJornada,
     cuadrillaPrevistaId: o.cuadrillaOdooId, habSemaforo: "", habAlerta: null, habVencimiento: null, tecnico: null, contactoObra: o.contactoObra,
     telObra: o.telObra, observaciones: o.observaciones, diasObra: o.totalDias ?? 1, horasHombre: 0, cantDocs: o.cantArchivos, docIds: [],
-    cantInstrucciones: 0, ordenVenta: null, fechaProgramada: null, fechaComprometida: null, fechaDesde: null, fechaAntesDe: null, url: "",
+    cantInstrucciones: 0, ordenVenta: null, fechaProgramada: null, fechaComprometida: null, fechaDesde: null, fechaAntesDe: null, syh: false, url: "",
   };
 }
 

@@ -1,4 +1,4 @@
-# Handoff — Tablero de planificación (actualizado 2026-10-09)
+# Handoff — Tablero de planificación (actualizado 2026-10-13)
 
 Para retomar en una sesión nueva: "Leé docs/tablero-planificacion/handoff.md y seguimos con las
 mejoras del tablero". Acá van el estado, lo pendiente y las mejoras pedidas, la más nueva arriba.
@@ -19,8 +19,34 @@ cosas, así que ante la duda manda el código y los comentarios largos que tiene
 3. **Probar en el tablero publicado la tarjeta y el encabezado nuevos de la grilla** (09/10):
    sobre todo que "libre X j" y "N pasadas" cierren con lo que se ve, y la dirección pegada al
    scrollear un bloque largo.
-4. **Lo que dejó la auditoría del 08/10** (detalle abajo, en "Auditoría UX y técnica"). Lo más
+4. **Ver el casco de SyH en el tablero publicado** (13/10, ver abajo): que aparezca en las
+   tarjetas de las obras con técnico y el "N con SyH" en un día con dos.
+5. **Lo que dejó la auditoría del 08/10** (detalle abajo, en "Auditoría UX y técnica"). Lo más
    urgente: el candado que falla abierto para Depósito y Campo, y la RLS abierta.
+
+---
+
+## 13/10 — el técnico de SyH, visible en el tablero
+
+**Pedido (JS, 13/10):** Planificación se enteraba de que una obra lleva técnico de Seguridad e
+Higiene recién al abrir la ficha. El dato ya existía (`x_syh_presencial` en la venta = "si":
+NOSOTROS ponemos el técnico; no confundir con `x_hab_syh_*`, el contacto de SyH del cliente).
+
+**Cómo quedó:**
+- **`OtTablero.syh`** viaja con el tablero. En `fetchTablero` es una consulta más en el lote
+  paralelo, sólo ids: `x_aba_orden_trabajo` con `x_order_id.x_syh_presencial = si` (14 OTs al
+  13/10). En `fetchTableroDeFechas` sale de la lectura de la venta que ya se hacía por las
+  coordenadas.
+- **Casco (`HardHat`)** en la tarjeta de la grilla (junto al pin, en el color del texto) y en la
+  de la bandeja (junto a la dirección). Es el mismo ícono de "Qué necesita esta jornada" en la
+  ficha.
+- **Encabezado del día:** "· 🪖 N con SyH" en rojo cuando caen **dos o más** obras con técnico
+  el mismo día, contando todas las cuadrillas (también las filtradas). El tooltip lista las
+  direcciones. Con una sola no dice nada.
+- Se validó con `tsc`, `eslint` y la consulta contra Odoo; falta verlo en el publicado.
+
+**Para decidir:** si hay más de un técnico, el umbral de "varias" debería ser la cantidad de
+técnicos y no 1. Hoy está fijo en `r.conSyh.length > 1` (`tablero-grid.tsx`).
 
 ---
 
@@ -289,7 +315,7 @@ el motivo.
 
 - **Página:** `src/app/(dashboard)/planificacion/page.tsx` → `TableroBoard`
   (`src/components/tablero/tablero-board.tsx`, el que orquesta: datos, diálogos, deshacer).
-- **Grilla:** `tablero-grid.tsx` (encabezado de días con feriados, clima y notas; una fila por
+- **Grilla:** `tablero-grid.tsx` (encabezado de días con feriados, clima, notas y obras con SyH; una fila por
   cuadrilla), `celda-dia.tsx` (fondo droppable, riel de ocupación, nota de la cuadrilla, tapa
   de suspendido), `tarjeta-asignacion.tsx` (la obra en el día).
 - **Ficha de la OT:** `panel-ot.tsx` (Sheet a la derecha, la misma desde la bandeja y desde la

@@ -189,7 +189,7 @@ const DOMINIO_OTS_CANDIDATAS = [
   ["x_order_id.x_studio_tipo_de_contrato", "=", "Obra "],
 ];
 
-function mapOt(row: OdooOtRow, base: string, actionId: number | null): OtTablero {
+function mapOt(row: OdooOtRow, base: string, actionId: number | null, conSyh: ReadonlySet<number>): OtTablero {
   // x_duracion_est es el dato fino (0.10…15) y manda cuando está cargado; si viene
   // vacío —el campo es nuevo y la mayoría de las OTs no lo tiene— cae a x_jornadas_num.
   const dur = Number(row.x_duracion_est);
@@ -236,6 +236,7 @@ function mapOt(row: OdooOtRow, base: string, actionId: number | null): OtTablero
     fechaComprometida: str(row.x_fecha_comprometida),
     fechaDesde: str(row.x_fecha_desde),
     fechaAntesDe: str(row.x_fecha_antes_de),
+    syh: conSyh.has(row.id),
     url: urlOt(base, actionId, row.id),
   };
 }
@@ -266,7 +267,7 @@ export async function fetchTablero(desde: string, hasta: string): Promise<Tabler
   // otActionId va ADENTRO del lote, no antes. Es cacheado a nivel módulo, pero en un
   // lambda frío se pedía igual y en serie: un round trip entero de espera para armar una
   // URL que no depende de nada. Es el mismo arreglo que en fetchOrdenes.
-  const [actionId, cuadrillasRaw, asigsRaw, otsCandidatas, partesRaw, gruposAsignadas, gruposCerradas] = await Promise.all([
+  const [actionId, cuadrillasRaw, asigsRaw, otsCandidatas, partesRaw, otsConSyh, gruposAsignadas, gruposCerradas] = await Promise.all([
     otActionId(),
     searchRead<{ id: number; x_name: string | false; x_tercerizada: boolean }>(
       "x_aba_cuadrilla",
@@ -287,6 +288,10 @@ export async function fetchTablero(desde: string, hasta: string): Promise<Tabler
       [["x_fecha", ">=", desde], ["x_fecha", "<=", hasta]],
       ["x_orden_trabajo_id", "x_fecha", "x_cuadrilla_id", "x_estado", "x_motivo_no_ejec"],
     ),
+    // Las OTs que llevan técnico de SyH nuestro. El campo vive en la VENTA y search_read no
+    // trae campos de un many2one, así que va como dominio sobre la OT: sólo ids, sin
+    // restringir a candidatas para cubrir también las completadas que siguen en la grilla.
+    searchRead<{ id: number }>("x_aba_orden_trabajo", [["x_order_id.x_syh_presencial", "=", "si"]], ["id"]),
     // Avance por OT, sin traer todas las asignaciones históricas: cuántas jornadas
     // tiene tomadas y cuántas ya se hicieron. Con eso la bandeja sabe si a una obra le
     // quedan jornadas por planificar aunque parte de ella ya se haya ejecutado.
@@ -300,6 +305,7 @@ export async function fetchTablero(desde: string, hasta: string): Promise<Tabler
   const candidatasIds = new Set(otsCandidatas.map((o) => o.id));
   const faltantes = [...new Set(asignaciones.map((a) => a.otId))].filter((id) => id && !candidatasIds.has(id));
   const otsExtra = faltantes.length ? await read<OdooOtRow>("x_aba_orden_trabajo", faltantes, OT_FIELDS) : [];
+  const conSyh = new Set(otsConSyh.map((o) => o.id));
 
   return {
     cuadrillas: cuadrillasRaw.map((c) => ({
@@ -308,7 +314,7 @@ export async function fetchTablero(desde: string, hasta: string): Promise<Tabler
       tercerizada: c.x_tercerizada === true,
     })),
     asignaciones,
-    ots: [...otsCandidatas, ...otsExtra].map((o) => mapOt(o, base, actionId)),
+    ots: [...otsCandidatas, ...otsExtra].map((o) => mapOt(o, base, actionId, conSyh)),
     partes: partesRaw.map((p) => ({
       id: p.id,
       otId: m2oId(p.x_orden_trabajo_id) ?? 0,
@@ -380,9 +386,15 @@ export async function fetchTableroDeFechas(fechas: string[]): Promise<{
   ]);
   const ventaIds = [...new Set(otsRaw.map((o) => m2oId(o.x_order_id)).filter((x): x is number => x != null))];
   const coords = ventaIds.length
-    ? await read<{ id: number; x_obra_lat: number | false; x_obra_lng: number | false }>("sale.order", ventaIds, ["x_obra_lat", "x_obra_lng"])
+    ? await read<{ id: number; x_obra_lat: number | false; x_obra_lng: number | false; x_syh_presencial: string | false }>(
+        "sale.order", ventaIds, ["x_obra_lat", "x_obra_lng", "x_syh_presencial"],
+      )
     : [];
   const coordDe = new Map(coords.map((c) => [c.id, c]));
+  // SyH sale de la misma lectura de la venta que ya se hacía por las coordenadas.
+  const conSyh = new Set(
+    otsRaw.filter((o) => { const v = m2oId(o.x_order_id); return v != null && coordDe.get(v)?.x_syh_presencial === "si"; }).map((o) => o.id),
+  );
   const jornadas = new Map<number, Set<string>>();
   for (const j of jornadasRaw) {
     const id = m2oId(j.x_ot_id);
@@ -399,7 +411,7 @@ export async function fetchTableroDeFechas(fechas: string[]): Promise<{
       const ventaId = m2oId(o.x_order_id);
       const c = ventaId != null ? coordDe.get(ventaId) : undefined;
       return {
-        ...mapOt(o, base, actionId),
+        ...mapOt(o, base, actionId, conSyh),
         ventaId,
         lat: typeof c?.x_obra_lat === "number" && c.x_obra_lat !== 0 ? c.x_obra_lat : null,
         lng: typeof c?.x_obra_lng === "number" && c.x_obra_lng !== 0 ? c.x_obra_lng : null,

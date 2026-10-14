@@ -80,10 +80,10 @@ import type { ContactoObra, DocumentoOt, OtTablero, TrabajoOt } from "@/lib/tabl
  * hay que preparar antes de salir. La barra ámbar la distingue de la coral del detalle
  * técnico y de las notas fijadas, que son ámbar enteras.
  *
- * NO VA EN LA TARJETA del tablero: la primera línea ya lleva tipo, parte, candado,
- * dirección, fracción y urgencia, y por debajo de 38px se queda sin el segundo renglón.
- * Meter dos íconos más ahí le come ancho a la dirección, que es lo último que este diseño
- * sacrifica. Tampoco va en el parte: el parte se completa DESPUÉS de la jornada, o sea
+ * EL ALAMBRE NO VA EN LA TARJETA del tablero: cada ícono le come ancho a la dirección, que
+ * es lo último que este diseño sacrifica. EL TÉCNICO DE SyH SÍ, desde el 13/10 (lo pidió
+ * Planificación): un casco junto al pin, y el encabezado del día avisa si caen varias el
+ * mismo día. Ninguno de los dos va en el parte: el parte se completa DESPUÉS de la jornada, o sea
  * cuando ya no sirve para cargar el camión.
  */
 function QueNecesita({ trabajo }: { trabajo: TrabajoOt | undefined }) {

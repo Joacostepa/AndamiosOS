@@ -1,8 +1,14 @@
-# Handoff — Partes de obra (actualizado 2026-10-12)
+# Handoff — Partes de obra (actualizado 2026-10-14)
 
 Para retomar en una sesión nueva: "Leé docs/partes/handoff.md y seguimos con el rediseño de partes".
 Acá va el estado, lo decidido y lo que falta. El código de hoy no cambió: todo lo de abajo es
 diseño y maqueta.
+
+> **Dónde está (14/10):** estos docs están en `main`. La rama `docs/partes-rediseno` ya se mergeó
+> y se borró en local; no hay código del rediseño en ninguna rama. **Para arrancar el código, abrir
+> una rama nueva desde `main` actualizado** (p. ej. `feat/partes-fase0`), no revivir la vieja: le
+> falta todo el código que entró a `main` después del 12/10. Al 14/10 las rutas del "Mapa del
+> módulo" de abajo siguen vigentes y nadie tocó `/partes` desde la auditoría.
 
 | Documento | Qué es |
 | --- | --- |

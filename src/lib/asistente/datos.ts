@@ -9,6 +9,7 @@ import { accesoDeFila, esAdmin } from "@/lib/auth/acceso";
 import { normalizarBorrador, type DatosBorrador, type ResultadoBorrador } from "./borrador";
 import { recortarFragmento, type Tramo } from "./busqueda";
 import { prolijo } from "./mensaje-cliente";
+import { costoUsd } from "./costo";
 
 type Db = SupabaseClient;
 
@@ -316,6 +317,17 @@ async function vencerAccionesDelBorrador(db: Db, borradorId: string, versionActu
   for (const a of data ?? []) await eventoAccion(db, a.id, "vencida", { motivo: "el borrador cambió" });
 }
 
+/** Las acciones abiertas de un borrador que quedó descartado (la orden se editó en otra charla). */
+export async function vencerAccionesDescartadas(db: Db, borradorId: string) {
+  const { data } = await db
+    .from("asistente_acciones")
+    .update({ estado: "vencida", updated_at: new Date().toISOString() })
+    .eq("borrador_id", borradorId)
+    .in("estado", ["propuesta", "presentada"])
+    .select("id");
+  for (const a of data ?? []) await eventoAccion(db, a.id, "vencida", { motivo: "la orden se abrió para editar en otra conversación" });
+}
+
 export async function accionesAbiertas(db: Db, conversacionId: string): Promise<Accion[]> {
   const { data, error } = await db.from("asistente_acciones").select("*").eq("conversacion_id", conversacionId).in("estado", ["propuesta", "presentada"]);
   if (error) falla("No se pudieron leer las acciones", error);
@@ -336,41 +348,23 @@ export async function leerAccionPorNumero(db: Db, conversacionId: string, numero
 
 // ── Uso y tope diario ───────────────────────────────────────────────────────────────────
 
-/**
- * US$ por millón de tokens (entrada, salida). Escritura de caché de 1 h = 2x; lectura = 0,1x.
- * Cada búsqueda en internet suma US$ 0,01 (US$ 10 las mil); lo que lee entra como tokens.
- */
-const PRECIOS: Record<string, { entrada: number; salida: number }> = {
-  "claude-opus-5": { entrada: 5, salida: 25 },
-  "claude-opus-5-5": { entrada: 4, salida: 20 },
-  "claude-fable-5-1": { entrada: 10, salida: 50 },
-  "claude-opus-4-8": { entrada: 5, salida: 25 },
-  "claude-sonnet-5": { entrada: 2, salida: 10 },
-};
-
-export function costoUsd(uso: Record<string, number> | null | undefined, modelo: string | null | undefined): number {
-  if (!uso) return 0;
-  const p = PRECIOS[modelo ?? ""] ?? PRECIOS["claude-opus-5"];
-  const m = 1_000_000;
-  return (
-    ((uso.input_tokens ?? 0) * p.entrada) / m +
-    ((uso.cache_creation_input_tokens ?? 0) * p.entrada * 2) / m +
-    ((uso.cache_read_input_tokens ?? 0) * p.entrada * 0.1) / m +
-    ((uso.output_tokens ?? 0) * p.salida) / m +
-    ((uso as { server_tool_use?: { web_search_requests?: number } }).server_tool_use?.web_search_requests ?? 0) * 0.01
-  );
-}
+export { costoUsd };
 
 export async function gastoDelDia(db: Db, usuarioId: string): Promise<number> {
   const desde = new Date(new Date().toLocaleDateString("sv-SE", { timeZone: "America/Argentina/Buenos_Aires" }) + "T03:00:00Z").toISOString();
   const { data, error } = await db
     .from("asistente_mensajes")
-    .select("uso, modelo_servido, conversacion:asistente_conversaciones!inner(usuario_id)")
+    .select("uso, conversacion:asistente_conversaciones!inner(usuario_id, modelo)")
     .eq("conversacion.usuario_id", usuarioId)
     .gte("created_at", desde)
     .not("uso", "is", null);
   if (error) return 0;
-  return (data ?? []).reduce((a, m) => a + costoUsd(m.uso as Record<string, number>, m.modelo_servido as string), 0);
+  // El precio es el del modelo de la conversación: con un respaldo, `modelo_servido` es el del
+  // respaldo, y `costoUsd` ya suma cada intento a su precio.
+  return (data ?? []).reduce((a, m) => {
+    const conv = m.conversacion as unknown as { modelo: string } | { modelo: string }[];
+    return a + costoUsd(m.uso as Record<string, unknown>, Array.isArray(conv) ? conv[0]?.modelo : conv.modelo);
+  }, 0);
 }
 
 // ── Vendedores: quién es quién en Odoo ──────────────────────────────────────────────────

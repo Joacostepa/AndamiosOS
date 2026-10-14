@@ -54,7 +54,7 @@ export const VEHICULOS: DiaHoja["vehiculos"] = [
   veh("moto", "A091SWF", "Moto", "otro", null),
   veh("clark", "CYS47", "Clark", "otro", null, { modelo: "Autoelevador" }),
   // Sin marca (el otro autoelevador de la flota): se lo nombra por la patente sola.
-  veh("sinmat", "SIN MATRICULA 10", null, "otro", null),
+  veh("sinmat", "SIN MATRICULA 10", null, "otro", null, { modelo: "Autoelevador" }),
 ];
 
 export const LUGARES: DiaHoja["lugares"] = [
@@ -226,6 +226,22 @@ export function martesArmado(): DiaHoja {
     pedido("p-sanz", { que: "100 tablones", tipo: "compra", hacia: { otId: null, lugarId: "sanz", texto: null }, viajeId: "v-sanz", estado: "en_camion", canal: "cajon", creadoMin: -390 }),
   ];
   return { ...d, hojas, viajes, pedidos };
+}
+
+/**
+ * El martes armado con dos pedidos sin camión (F4): "6 bases regulables" a una dirección
+ * escrita y ubicada a 3 cuadras de Juramento (Cramer 2190), y "2 escaleras" a Cabildo.
+ */
+export function martesConPedidos(): DiaHoja {
+  const d = martesArmado();
+  return {
+    ...d,
+    pedidos: [
+      ...d.pedidos,
+      pedido("p-cra", { que: "6 bases regulables", hacia: { otId: null, lugarId: null, texto: "Cramer 2190", lat: -34.564, lng: -58.459 }, creadoMin: -200 }),
+      pedido("p-cab", { que: "2 escaleras", hacia: { otId: OT.cab, lugarId: null, texto: null }, creadoMin: -190 }),
+    ],
+  };
 }
 
 /** Marca enviado a todos los destinatarios (con la foto de ese momento). */

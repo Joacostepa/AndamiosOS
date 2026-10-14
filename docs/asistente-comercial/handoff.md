@@ -1,4 +1,4 @@
-# Handoff — Asistente comercial (actualizado 2026-10-06)
+# Handoff — Asistente comercial (actualizado 2026-10-12)
 
 Para retomar en una sesión nueva. Cómo funciona el módulo, cómo se configura y cómo se prueba
 está en `docs/asistente-comercial/modulo.md`; esto es el estado, lo que falta y el orden para
@@ -6,11 +6,69 @@ seguir. El plan original (aprobado el 26/09) está en
 `~/.claude/plans/buenas-ahora-quiero-que-flickering-haven.md`.
 
 Para arrancar: "Leé docs/asistente-comercial/handoff.md y docs/asistente-comercial/modulo.md y
-seguimos con lo que falta". **Empezar por § "Lo primero en la sesión nueva".**
+seguimos con lo que falta". **Empezar por § "Estado al 12/10" y § "Lo primero en la sesión
+nueva".** El detalle de lo hecho el 12/10 está en `docs/asistente-comercial/auditoria-2026-10-12.md`.
 
 ---
 
-## Estado al 06/10
+## Estado al 12/10
+
+El 12/10 se hizo una auditoría con 6 agentes (arquitectura, tokens, rapidez, UX, comportamiento
+y API) y se ejecutó entera. El plan, los datos y el estado de cada ítem están en
+`auditoria-2026-10-12.md`, con el resumen final al principio.
+
+**En producción:**
+
+| Qué | Dónde |
+| --- | --- |
+| Opus 5.5 para las conversaciones nuevas (`asistente_modelo` = `claude-opus-5-5`, esfuerzo `medium`) | PR #7 |
+| `costoUsd` corregido. Antes contaba ~10 % de más: cobraba a 2x el caché de 5 min y no tenía la lectura de 5.5 | PR #7 (`costo.ts`) |
+| Guarda `block_binding: drop_block` para los modelos con el pensamiento atado a la conversación | PR #7 (`turno.ts`) |
+| Bloque 1 de bugs. Se arreglaron: charla rota después de un corte, tarjetas vencidas con Confirmar, duplicados en Odoo (`x_asistente_ref` = borrador), plazo duro de 265 s, WhatsApp con 549, «avanza» y texto que vuelve al cuadro | PR #9 |
+| Bloques 2 a 6. Los grupos: costo, rapidez, instrucciones, pantalla del celular, pestaña Uso, «esto estuvo mal», RLS, WhatsApp y tests | PR #10 |
+| Criterio v4. Cambios: §3 sin casos de la época, §9 editar antes que re-emitir, «desglosado» = D | migración `20261012000010` |
+| Guiones de evaluación (`scripts/eval-asistente.mts`) | PR #10 y #11 |
+
+- **Migraciones aplicadas el 12/10 y verificadas:** `20261012000004` (feedback), `…05` (RLS) y
+  `…10` (criterio v4). Se aplicaron con
+  `npx supabase db query --linked --workdir <repo> -f <ruta absoluta>`. No hay
+  `SUPABASE_DB_URL`, así que `apply-migration.mjs` y `probar-migracion.mjs` no corren.
+- **Decisiones de JS del 12/10:**
+  - con cuotas, el ajuste CAC va por cuota por defecto;
+  - se puede guardar sin CUIT, con aviso (un CUIT inválido sigue bloqueando);
+  - §3 y §9 del criterio, como quedaron en la v4;
+  - **la voz en vivo se apagó** (ver abajo).
+- **Probado:**
+  - e2e contra Odoo real dos veces (S02835 y S02836, borradas);
+  - los 18 guiones pasan los chequeos obligatorios, por US$ 2,79 en total;
+  - 641 tests.
+
+**Voz en vivo: apagada desde el 12/10.** JS: «gasta plata y no se va a usar». Nadie la usaba
+desde el 29/09 y en obra andaba mal.
+- **Cómo se apagó:** se borró `ELEVENLABS_AGENT_ID` de Vercel (Production) y se redesplegó.
+  Sin esa variable desaparece el botón Hablar (`hayVoz()` en `src/lib/voz/elevenlabs.ts`), y el
+  botón de voz del compositor sólo graba.
+- **El dictado sigue:** grabar un audio que se transcribe con Scribe usa sólo
+  `ELEVENLABS_API_KEY`. Es lo que sirve en obra y cuesta ~US$ 0,40 por hora de audio.
+- **Para volver a prenderla:** cargar `ELEVENLABS_AGENT_ID` = `agent_6901m3exw16xeykr468230jm6t73`
+  en Vercel (Production) y redesplegar. El agente sigue configurado en ElevenLabs.
+- **Pendiente:**
+  - **Plan de ElevenLabs: JS canceló el Creator (US$ 22 por mes) el 12/10.** Sigue activo hasta
+    el **26/10** y después la cuenta pasa al plan gratuito, sin cerrarla, así que la clave sigue.
+    En el último mes se usaron ~6.400 de 131.000 créditos, con las pruebas de voz incluidas.
+    **Después del 26/10, verificar que el dictado siga transcribiendo.** No está confirmado que el
+    plan gratuito permita la transcripción por API. Si da error, hay dos caminos: ocultar el
+    micrófono (sin la clave, `hayVoz()` lo apaga) o contratar el plan más barato que lo cubra;
+  - el código de la voz en vivo (`modo-voz.tsx`, `/api/comercial/asistente/voz/llm`, el
+    agente) quedó sin uso; se puede borrar más adelante, junto con `ELEVENLABS_LLM_SECRETO`.
+
+**Usuarios:** sigue usándolo sólo JS. Gabriel y Jorge todavía no tienen usuario.
+
+## Historia: estado al 06/10
+
+Lo que sigue es el estado anterior al 12/10. Varias cosas de «Lo que falta» ya están hechas:
+la pantalla de uso, los guiones, las trabas 1, 3 y 4, y el criterio §9. El estado vigente es el
+de arriba.
 
 En producción: `https://andamios-os.vercel.app/comercial/asistente` y `/comercial/parametros`.
 
@@ -411,26 +469,24 @@ nuestra base):
 
 ## Lo primero en la sesión nueva
 
-1. **Preguntarle a JS si probó el plan de pagos** con un presupuesto real (§ "Lo que se hizo
-   el 06/10"). Si algo salió mal, leer la charla en `asistente_mensajes`: lo que mandó el
-   modelo está en el `tool_use` de `plan_de_pagos` y el cálculo, en `resultado.planPagos`
-   del borrador.
-2. **Probar editar un presupuesto** con una orden real en presupuesto: abrirla, cambiar algo,
-   guardar, y verificar en Odoo el número, las líneas, el vendedor y el técnico, y la vigencia.
-3. **Preguntarle a JS si probó internet** en una conversación (por ejemplo, el CAC para la
-   tribuna).
-   - Si falló, buscar la charla en `asistente_mensajes` y mirar los logs de Vercel de
+0. **Si ya pasó el 26/10: ¿el dictado sigue andando?** (ver § "Estado al 12/10", plan de
+   ElevenLabs).
+1. **Preguntarle a JS cómo anduvo con Opus 5.5** y mirar Parámetros → Uso: el gasto por
+   presupuesto contra los ~US$ 1,66 de antes, y la espera.
+2. **La lectura del PDF por `file_id`** (`leer_pdf_propuesta`) no se probó con una charla real.
+   - Preguntar si JS re-editó una orden con la propuesta adjunta.
+   - Si una charla dio error después de leer un PDF, mirar los logs de Vercel de
      `/api/comercial/asistente/chat`.
-   - Lo más nuevo y sin probar: `pause_turn` y el texto partido por las fuentes (§ Reglas,
-     Internet).
-4. **Medir `medium`** con la consulta de § "De código", sobre las conversaciones creadas desde
-   el 28/09 a las 20:15. Comparar con la base de `high` y mirar también la calidad.
-5. **Repasar con JS las trabas de sus charlas que quedaron sin resolver** (§ "De código",
-   "Trabas vistas en las charlas"). Dos las tiene que decidir él.
-6. **Si JS trae correcciones**, seguir § "Cómo se va a ir mejorando".
-7. **La pantalla nunca la probó Claude:** no tiene login, y no hay que crear usuarios ni entrar
-   como otro. Los cambios de pantalla del 28/09 se probaron con la página real y el servidor
-   simulado. El panel del plan de pagos (06/10) no se vio en pantalla; el PDF sí.
+3. **Leer los «esto estuvo mal»** de la pestaña Uso y seguir § "Cómo se va a ir mejorando".
+   Cada uno tiene el `turno_id` de la charla.
+4. **Antes de darles el alta a Gabriel y Jorge:**
+   - rol comercial, no admin;
+   - `asistente-comercial` (editar) y `planificacion` (ver);
+   - confirmar que el registro abierto de Supabase Auth esté cerrado.
+5. **Después de cada cambio de instrucciones o de herramientas, correr los guiones:**
+   `npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/eval-asistente.mts --todos`
+   (~US$ 2,5).
+6. **Si JS pasa las reglas de piezas de torres o etapas:** el motor de la 3.4 de la auditoría.
 
 ---
 
@@ -692,7 +748,8 @@ Gabriel y Jorge dejen anotado lo que no les sirvió. No contestó: queda como id
     3. mandar `user_message` y responder los `ping` con `pong`.
 
     Se hizo el 26/09; el script no quedó en el repo.
-- **Sonnet 5 hoy no anda.** El aviso de cada turno (vendedor, resumen del borrador, resultado
+- **Sonnet 5 hoy no anda** (Sonnet 5.5 y Opus 5.5 sí aceptan el aviso de sistema a mitad de charla;
+  ver `auditoria-2026-10-12.md`). El aviso de cada turno (vendedor, resumen del borrador, resultado
   del botón) va como mensaje `system` a mitad de la conversación, y Sonnet 5 no lo acepta: cada
   pedido daría error. Para usarlo hay que mandar ese aviso de otra forma, sin perder que el
   resultado del botón no se pueda fingir escribiendo. No cambiar `asistente_modelo` sin eso.

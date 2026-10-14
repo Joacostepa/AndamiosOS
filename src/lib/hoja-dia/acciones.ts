@@ -18,12 +18,13 @@ import type { DiaHoja, Fecha, Hoja, Punto, VehiculoHoja, Viaje } from "./tipos";
 import {
   addDia, altaDeAusencia, aCargoDe, cNombre, diasEntre, esHoy, hm, laC, lowFirst, lugar, minutosDesde, nombreDe, normHora,
   planCopiarComoHoy, planConLleva, planPonerPedido, planPrecarga, pidioPorDefecto, sugeridosDe, tipoPorDestino,
-  toMin, viajeCalc, vehiculoNombre, vehTxt, elVeh, cortoV, hojaDeCuadrilla, calcVeh, instanteDe, ddmm, ausTexto,
+  toMin, viajeCalc, vehiculoNombre, vehTxt, elVeh, cortoV, hojaDeCuadrilla, calcVeh, instanteDe, ddmm, ausTexto, desvioTxt,
   type PlanHoja, type ViajeNuevo, fechaPorDefecto, contratista, esContratista, aCargoDeContratista, vehiculosDe, filaQueLleva,
-  choferParaOrden, choferDe, choferSugerido,
+  choferParaOrden, choferDe, choferSugerido, laCuadrilla, aLaC, deLaC, accionTxt,
 } from "./estado";
 import { correrLlegada, NoSePuede, planVacio, planVehiculos, resumenLegado, type CambioVehiculos, type PlanVehiculos } from "./vehiculos";
-import { TIPO_AUSENCIA_TXT, TIPOS_VIAJE } from "./tipos";
+import { esDeCuadrilla, planReordenar } from "./recorrido";
+import { TIPO_AUSENCIA_TXT, TIPOS_VIAJE, esDeposito } from "./tipos";
 import {
   anotar, columnasPunto, conGrabador, conHojaNueva, grabador, leerContexto, leerDia, mapAusencia as mapAusenciaFila, mapViaje, nombreUsuario,
   type ContextoGesto, type DB, type Grabador, type PartesContexto,
@@ -41,21 +42,29 @@ const id = z.string().uuid("Id inválido");
 // 0:00 a 23:59 (con segundos opcionales): "25:99" no llega a la base como error crudo.
 const hora = z.string().regex(/^([01]?\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/, "Hora inválida");
 const c = z.number().int().positive();
+// Una cuadrilla o el depósito (0, F2): sólo en lo que el depósito puede tener (gente, a cargo,
+// encuentro, nota, copiar, liberar). Camiones, viajes, contratistas e instrucciones, nunca.
+const cS = z.number().int().nonnegative();
 export const puntoSchema = z.object({
   otId: z.number().int().positive().nullable().default(null),
   lugarId: id.nullable().default(null),
   texto: z.string().trim().max(200).nullable().default(null),
-}).refine((p) => p.otId != null || p.lugarId || p.texto, "Falta el destino");
+  // "Otra dirección" geocodificada (F4): las dos o ninguna, y en la Argentina.
+  lat: z.number().min(-56).max(-21).nullable().optional(),
+  lng: z.number().min(-74).max(-52).nullable().optional(),
+}).refine((p) => p.otId != null || p.lugarId || p.texto, "Falta el destino")
+  .refine((p) => (p.lat == null) === (p.lng == null), "Faltan las coordenadas");
 const tipoViaje = z.enum(["lleva", "busca", "mueve", "lleva_material", "trae_material", "compra", "entre_depositos", "taller", "otro"]);
 const tipoPedido = z.enum(["lleva_material", "trae_material", "compra", "entre_depositos", "taller", "otro"]);
+const accionParada = z.enum(["lleva_gente", "deja_material", "carga", "descarga", "busca_gente", "compra", "espera"]);
 const tipoAusencia = z.enum(["enfermedad", "art", "personal", "vacaciones", "tramite", "suspendido", "sin_aviso"]);
 
 export const accionHojaSchema = z.discriminatedUnion("accion", [
-  z.object({ accion: z.literal("crear_hoja"), fecha, cuadrilla: c }),
-  z.object({ accion: z.literal("agregar"), fecha, cuadrilla: c, personaId: id, reemplaza: id.nullable().optional(), aCargo: z.boolean().optional() }),
+  z.object({ accion: z.literal("crear_hoja"), fecha, cuadrilla: cS }),
+  z.object({ accion: z.literal("agregar"), fecha, cuadrilla: cS, personaId: id, reemplaza: id.nullable().optional(), aCargo: z.boolean().optional() }),
   z.object({ accion: z.literal("sacar"), fecha, personaId: id }),
-  z.object({ accion: z.literal("a_cargo"), fecha, cuadrilla: c, personaId: id.nullable() }),
-  z.object({ accion: z.literal("recibe"), fecha, cuadrilla: c, personaId: id.nullable() }),
+  z.object({ accion: z.literal("a_cargo"), fecha, cuadrilla: cS, personaId: id.nullable() }),
+  z.object({ accion: z.literal("recibe"), fecha, cuadrilla: cS, personaId: id.nullable() }),
   z.object({ accion: z.literal("nota_persona"), fecha, personaId: id, nota: z.string().trim().max(200).nullable() }),
   // El selector de tres y el chofer / vehículo del PRIMER vehículo (soltar un chofer en la
   // tarjeta, las teclas 1–5, los botones de los problemas). Ver vehiculos.ts.
@@ -66,7 +75,7 @@ export const accionHojaSchema = z.discriminatedUnion("accion", [
   z.object({ accion: z.literal("vehiculo_sumar"), fecha, cuadrilla: c, modo: z.enum(["lleva_trae", "todo_el_dia"]), choferId: id.nullable().optional(), vehiculoId: id.nullable().optional() }),
   z.object({ accion: z.literal("vehiculo_quitar"), fecha, cuadrilla: c, filaId: id }),
   z.object({ accion: z.literal("vehiculo_cambiar"), fecha, cuadrilla: c, filaId: id, modo: z.enum(["lleva_trae", "todo_el_dia"]).optional(), choferId: id.nullable().optional(), vehiculoId: id.nullable().optional() }),
-  z.object({ accion: z.literal("encuentro"), fecha, cuadrilla: c, lugar: z.enum(["deposito", "obra", "otro"]), hora, texto: z.string().trim().max(120).nullable().optional() }),
+  z.object({ accion: z.literal("encuentro"), fecha, cuadrilla: cS, lugar: z.enum(["deposito", "obra", "otro"]), hora, texto: z.string().trim().max(120).nullable().optional() }),
   /** La hora del lleva de un vehículo (sin `filaId`: el que los lleva). */
   z.object({ accion: z.literal("lleva"), fecha, cuadrilla: c, hora, filaId: id.nullable().optional() }),
   /** "Después vuelve al depósito" en el lleva de un vehículo, con la hora de llegada (null = la estimada). */
@@ -77,12 +86,12 @@ export const accionHojaSchema = z.discriminatedUnion("accion", [
   z.object({ accion: z.literal("mueve"), fecha, cuadrilla: c, otId: z.number().int().positive(), hora }),
   /** Lo que lleva el "lleva" (material que va con la cuadrilla): sale en la lista de carga. */
   z.object({ accion: z.literal("carga_lleva"), fecha, cuadrilla: c, carga: z.string().trim().max(300).nullable(), filaId: id.nullable().optional() }),
-  z.object({ accion: z.literal("nota"), fecha, cuadrilla: c, nota: z.string().trim().max(500).nullable() }),
+  z.object({ accion: z.literal("nota"), fecha, cuadrilla: cS, nota: z.string().trim().max(500).nullable() }),
   z.object({ accion: z.literal("instrucciones"), fecha, otId: z.number().int().positive(), cuadrilla: c.nullable().optional(), horaInicio: hora.nullable().optional(), hoy: z.string().trim().max(500).nullable().optional(), chips: z.array(z.string().max(80)).max(20).optional() }),
-  z.object({ accion: z.literal("copiar_como_hoy"), fecha, cuadrilla: c }),
+  z.object({ accion: z.literal("copiar_como_hoy"), fecha, cuadrilla: cS }),
   /** "Sacarlo de la 1": saca de la hoja `desde` los vehículos que maneja ese chofer (por defecto, el de todo el día de `cuadrilla`). */
   z.object({ accion: z.literal("pasar_chofer"), fecha, cuadrilla: c, desde: c, choferId: id.nullable().optional() }),
-  z.object({ accion: z.literal("liberar"), fecha, cuadrilla: c }),
+  z.object({ accion: z.literal("liberar"), fecha, cuadrilla: cS }),
   // Contratistas (sólo cantidades): arrastrar suma 1, el stepper suma o resta 1, el menú
   // "Agregar a la Cuadrilla N…" suma N. Quedar en 0 es "todavía no sé cuántos". Ponerlo a
   // cargo es `a_cargo` con el id del contratista.
@@ -93,7 +102,11 @@ export const accionHojaSchema = z.discriminatedUnion("accion", [
 export type AccionHoja = z.infer<typeof accionHojaSchema>;
 
 export const accionViajeSchema = z.discriminatedUnion("accion", [
-  z.object({ accion: z.literal("crear"), fecha, vehiculoId: id.nullable().optional(), fleteExterno: z.string().trim().max(80).nullable().optional(), pedidoId: id.nullable().optional(), tipo: tipoViaje, hacia: puntoSchema, desde: puntoSchema.nullable().optional(), hora: hora.nullable().optional(), noAntesDe: hora.nullable().optional(), carga: z.string().trim().max(300).nullable().optional(), duracionMin: z.number().int().positive().max(600).nullable().optional(), orden: z.number().nullable().optional() }),
+  z.object({ accion: z.literal("crear"), fecha, vehiculoId: id.nullable().optional(), fleteExterno: z.string().trim().max(80).nullable().optional(), pedidoId: id.nullable().optional(), tipo: tipoViaje, hacia: puntoSchema, desde: puntoSchema.nullable().optional(), hora: hora.nullable().optional(), noAntesDe: hora.nullable().optional(), carga: z.string().trim().max(300).nullable().optional(), duracionMin: z.number().int().positive().max(600).nullable().optional(), orden: z.number().nullable().optional(), queHace: accionParada.nullable().optional(), horaAprox: z.boolean().optional() }),
+  // El recorrido del pizarrón (F3): cambiar una parada (lugar, qué hace, nota, hora y si es
+  // aproximada) en un gesto, y dejar las paradas del camión en otro orden.
+  z.object({ accion: z.literal("parada_editar"), viajeId: id, hacia: puntoSchema.optional(), queHace: accionParada.nullable().optional(), carga: z.string().trim().max(300).nullable().optional(), hora: hora.nullable().optional(), horaAprox: z.boolean().optional() }),
+  z.object({ accion: z.literal("reordenar"), fecha, vehiculoId: id, ids: z.array(id).min(1).max(60) }),
   z.object({ accion: z.literal("poner_pedido"), pedidoId: id, vehiculoId: id, sobre: id.nullable().optional(), orden: z.number().nullable().optional() }),
   z.object({ accion: z.literal("mover"), viajeId: id, vehiculoId: id.nullable(), orden: z.number().nullable().optional(), hora: hora.nullable().optional() }),
   z.object({ accion: z.literal("hora"), viajeId: id, hora: hora.nullable(), noAntesDe: hora.nullable().optional() }),
@@ -124,6 +137,12 @@ export const accionPedidoSchema = z.discriminatedUnion("accion", [
   z.object({ accion: z.literal("aceptar_sugerido"), fecha, key: z.string().regex(/^(arranca|termina)-\d+$/) }),
   z.object({ accion: z.literal("descartar_sugerido"), fecha, key: z.string().regex(/^(arranca|termina)-\d+$/) }),
   z.object({ accion: z.literal("esperar"), pedidoId: id, motivo: z.string().trim().min(1).max(120), hasta: hora.nullable().optional() }),
+  // F4: corregir un pedido desde el pizarrón (qué, adónde, cuándo). Si ya está en un camión, el viaje lo sigue.
+  z.object({
+    accion: z.literal("editar"), pedidoId: id, que: z.string().trim().min(1, "Falta qué").max(300).optional(), hacia: puntoSchema.optional(),
+    urgencia: z.enum(["frena", "hora", "cliente", "hoy", "cuando_se_pueda"]).optional(), horaLimite: hora.nullable().optional(),
+    necesita: z.enum(["cualquiera", "camion", "hidrogrua"]).optional(), nota: z.string().trim().max(500).nullable().optional(),
+  }),
   z.object({ accion: z.literal("ya_esta"), pedidoId: id }),
   z.object({ accion: z.literal("pasar_a_manana"), pedidoId: id }),
   z.object({ accion: z.literal("anular"), pedidoId: id, motivo: z.string().trim().max(200).optional() }),
@@ -193,6 +212,8 @@ async function asegurarHoja(g: Grabador, db: DB, f: Fecha, cuadrilla: number, di
   const h = await filaHoja(db, f, cuadrilla);
   if (h) return h;
   const p = dia?.parametros;
+  // El depósito (F2) es la hoja con el 0 y sector 'deposito' (el CHECK de la base lo exige): se encuentran ahí.
+  if (esDeposito(cuadrilla)) return g.insertar("hd_hojas", { fecha: f, cuadrilla_odoo_id: cuadrilla, sector: "deposito", chofer_modo: "sin", encuentro_lugar: "deposito", encuentro_hora: p?.encuentroDeposito ?? "07:00", origen: "manual" });
   return g.insertar("hd_hojas", { fecha: f, cuadrilla_odoo_id: cuadrilla, chofer_modo: "sin", encuentro_lugar: "obra", encuentro_hora: p?.encuentroObra ?? "08:00", origen: "manual" });
 }
 async function integranteDe(db: DB, f: Fecha, pid: string): Promise<Fila | null> {
@@ -211,6 +232,9 @@ function filaViaje(f: Fecha, v: ViajeNuevo): Fila {
     hoja_vehiculo_id: v.hojaVehiculoId, cuadrilla_odoo_id: v.cuadrillaOdooId, ...columnasPunto("hacia", v.hacia), ...columnasPunto("desde", v.desde), orden: v.orden,
     hora: v.hora, no_antes_de: v.noAntesDe, duracion_min: v.duracionMin, vuelta: v.vuelta, vuelta_carga: v.vueltaCarga, vuelta_llega: v.vueltaLlega, carga: v.carga,
     carga_deposito: v.cargaDeposito, ok_todo_el_dia: v.okTodoElDia,
+    // El recorrido (F3): sólo si el viaje los trae (los planes viejos no).
+    ...(v.accion !== undefined ? { accion: v.accion } : {}),
+    ...(v.horaAprox !== undefined ? { hora_aprox: v.horaAprox } : {}),
   };
 }
 
@@ -295,7 +319,7 @@ async function escribirPlan(g: Grabador, db: DB, dia: DiaHoja, f: Fecha, p: Plan
     encuentro_hora: p.encuentro.hora, origen: p.origen, copiada_de: p.copiadaDe, chofer_tocado_at: ts(),
     a_cargo_contratista_id: p.aCargoId ? null : p.aCargoContratistaId,
   };
-  const hoja = existente ? await g.actualizar("hd_hojas", String(existente.id), valores) : await g.insertar("hd_hojas", { fecha: f, cuadrilla_odoo_id: p.cuadrillaOdooId, ...valores });
+  const hoja = existente ? await g.actualizar("hd_hojas", String(existente.id), valores) : await g.insertar("hd_hojas", { fecha: f, cuadrilla_odoo_id: p.cuadrillaOdooId, ...(esDeposito(p.cuadrillaOdooId) ? { sector: "deposito" } : {}), ...valores });
   if (existente) {
     const r = await db.from("hd_integrantes").select("id").eq("hoja_id", existente.id);
     for (const i of r.data ?? []) await g.borrar("hd_integrantes", String(i.id));
@@ -430,7 +454,9 @@ async function precargarCon(g: Grabador, db: DB, userId: string, f: Fecha, modo:
   const plan = planPrecarga(dia, modo);
   if (!plan.hojas.length) throw new Error(dia.obras.length ? "Todas las cuadrillas con obras ya tienen hoja ese día." : "El tablero no tiene obras ese día.");
   for (const p of plan.hojas) await escribirPlan(g, db, dia, f, p, null);
-  const texto = modo === "hoy" ? `Listo: ${plan.hojas.length} hojas copiadas del ${dia.anterior ? `${ddmm(dia.anterior.fecha)}` : "día anterior"}` : modo === "plantel" ? "Listo: hojas armadas con el plantel base" : "Listo: hojas vacías con las obras del tablero";
+  const nC = plan.hojas.filter((p) => !esDeposito(p.cuadrillaOdooId)).length;
+  const conDep = plan.hojas.some((p) => esDeposito(p.cuadrillaOdooId));
+  const texto = modo === "hoy" ? `Listo: ${nC} ${nC === 1 ? "hoja copiada" : "hojas copiadas"}${conDep ? " y el depósito" : ""} del ${dia.anterior ? `${ddmm(dia.anterior.fecha)}` : "día anterior"}` : modo === "plantel" ? "Listo: hojas armadas con el plantel base" : "Listo: hojas vacías con las obras del tablero";
   return listo(userId, texto, g, { fecha: f, entidad: "precarga", accion: `precarga_${modo}` }, { avisos: plan.avisos });
 }
 
@@ -457,7 +483,7 @@ async function accionHojaCon(g: Grabador, db: DB, userId: string, a: AccionHoja)
     case "agregar": {
       const hoja = await asegurarHojaCx(g, db, cx, f, a.cuadrilla);
       const actual = await integranteDeCx(db, cx, f, a.personaId);
-      if (actual && actual.hoja_id === hoja.id && !a.reemplaza) return { ok: true, texto: `${N(dia, a.personaId)} ya está en la ${C(a.cuadrilla)}`, historialId: null };
+      if (actual && actual.hoja_id === hoja.id && !a.reemplaza) return { ok: true, texto: `${N(dia, a.personaId)} ya está en ${laCuadrilla(dia, a.cuadrilla)}`, historialId: null };
       const de = actual ? dia.hojas.find((h) => h.id === actual.hoja_id)?.cuadrillaOdooId ?? null : null;
       const eraCargo = !!actual?.a_cargo;
       // Pasar de cuadrilla es UNA escritura (cambiar hoja_id), no borrar e insertar: si algo
@@ -477,16 +503,16 @@ async function accionHojaCon(g: Grabador, db: DB, userId: string, a: AccionHoja)
       if (actual) await g.actualizar("hd_integrantes", String(actual.id), { hoja_id: hoja.id, a_cargo: !!a.aCargo, orden, nota: null }, actual);
       else await g.insertar("hd_integrantes", { hoja_id: hoja.id, ...(await colPersonaCx(cx, a.personaId)), a_cargo: !!a.aCargo, orden });
       const texto = a.reemplaza
-        ? `${N(dia, a.personaId)} reemplazó a ${N(dia, a.reemplaza)}${de != null && de !== a.cuadrilla ? ` (venía de ${laC(dia, de)})` : ""}.${reempCargo ? ` La ${C(a.cuadrilla)} quedó sin nadie a cargo` : ` ${N(dia, a.reemplaza)} quedó sin asignar`}`
-        : `${N(dia, a.personaId)} pasó a la ${C(a.cuadrilla)}${de != null && de !== a.cuadrilla ? ` (estaba en ${laC(dia, de)}${eraCargo ? `, a cargo: ${laC(dia, de)} quedó sin nadie a cargo` : ""})` : ""}`;
+        ? `${N(dia, a.personaId)} reemplazó a ${N(dia, a.reemplaza)}${de != null && de !== a.cuadrilla ? ` (venía de ${laC(dia, de)})` : ""}.${reempCargo ? ` ${cap(laCuadrilla(dia, a.cuadrilla))} quedó sin nadie a cargo` : ` ${N(dia, a.reemplaza)} quedó sin asignar`}`
+        : `${N(dia, a.personaId)} pasó ${aLaC(dia, a.cuadrilla)}${de != null && de !== a.cuadrilla ? ` (estaba en ${laC(dia, de)}${eraCargo ? `, a cargo: ${laC(dia, de)} quedó sin nadie a cargo` : ""})` : ""}`;
       return listo(userId, texto, g, { ...base, entidad: "integrante", entidadId: a.personaId, hojaId: String(hoja.id), accion: a.accion });
     }
     case "sacar": {
       const actual = await integranteDeCx(db, cx, f, a.personaId);
       if (!actual) return { ok: true, texto: `${N(dia, a.personaId)} no estaba en ninguna cuadrilla`, historialId: null };
-      const c0 = dia.hojas.find((h) => h.id === actual.hoja_id)?.cuadrillaOdooId ?? 0;
+      const c0 = dia.hojas.find((h) => h.id === actual.hoja_id)?.cuadrillaOdooId ?? null;
       await g.borrar("hd_integrantes", String(actual.id));
-      return listo(userId, `${N(dia, a.personaId)} salió de la ${C(c0)} y quedó sin asignar${actual.a_cargo ? `. ${cap(laC(dia, c0))} quedó sin nadie a cargo` : ""}`, g, { ...base, entidad: "integrante", entidadId: a.personaId, hojaId: String(actual.hoja_id), accion: a.accion });
+      return listo(userId, `${N(dia, a.personaId)} salió ${c0 != null ? deLaC(dia, c0) : "de su cuadrilla"} y quedó sin asignar${actual.a_cargo && c0 != null ? `. ${cap(laC(dia, c0))} quedó sin nadie a cargo` : ""}`, g, { ...base, entidad: "integrante", entidadId: a.personaId, hojaId: String(actual.hoja_id), accion: a.accion });
     }
     case "a_cargo": {
       const hoja = await asegurarHojaCx(g, db, cx, f, a.cuadrilla);
@@ -496,7 +522,7 @@ async function accionHojaCon(g: Grabador, db: DB, userId: string, a: AccionHoja)
       if (prev) await g.actualizar("hd_integrantes", String(prev.id), { a_cargo: false }, prev);
       if (!a.personaId) {
         if (antK) await g.actualizar("hd_hojas", String(hoja.id), { a_cargo_contratista_id: null }, hoja);
-        return listo(userId, `${N(dia, ant)} ya no está a cargo. La ${C(a.cuadrilla)} quedó sin nadie a cargo`, g, { ...base, hojaId: String(hoja.id), accion: a.accion });
+        return listo(userId, `${N(dia, ant)} ya no está a cargo. ${cap(laCuadrilla(dia, a.cuadrilla))} quedó sin nadie a cargo`, g, { ...base, hojaId: String(hoja.id), accion: a.accion });
       }
       // Una hoja a cargo de un contratista: la recibe su referente. Tiene que tener gente en
       // esa hoja, y está a cargo de una sola por día (su link es uno por día).
@@ -515,15 +541,15 @@ async function accionHojaCon(g: Grabador, db: DB, userId: string, a: AccionHoja)
       }
       const envioAnt = ant && ant !== a.personaId ? dia.envios.find((e) => e.personaId === ant && e.enviadaMin != null && !e.anulado) : null;
       const texto = envioAnt
-        ? `${N(dia, a.personaId)} queda a cargo de la ${C(a.cuadrilla)}. ${N(dia, ant)} deja de recibir la hoja: avisale`
-        : `${N(dia, a.personaId)} queda a cargo de la ${C(a.cuadrilla)}${ant && ant !== a.personaId ? ` (antes ${N(dia, ant)})` : ""}`;
+        ? `${N(dia, a.personaId)} queda a cargo ${deLaC(dia, a.cuadrilla)}. ${N(dia, ant)} deja de recibir la hoja: avisale`
+        : `${N(dia, a.personaId)} queda a cargo ${deLaC(dia, a.cuadrilla)}${ant && ant !== a.personaId ? ` (antes ${N(dia, ant)})` : ""}`;
       return listo(userId, texto, g, { ...base, hojaId: String(hoja.id), entidadId: a.personaId, accion: a.accion }, { avisarA: envioAnt ? ant : null });
     }
     case "recibe": {
       const hoja = await asegurarHojaCx(g, db, cx, f, a.cuadrilla);
       const col = a.personaId ? await colPersonaCx(cx, a.personaId) : { persona_id: null, externa_id: null };
       await g.actualizar("hd_hojas", String(hoja.id), { recibe_id: col.persona_id, recibe_externa_id: col.externa_id }, hoja);
-      return listo(userId, a.personaId ? `La hoja de la ${C(a.cuadrilla)} le llega a ${N(dia, a.personaId)}` : `La ${C(a.cuadrilla)} no tiene a quién mandarle la hoja`, g, { ...base, hojaId: String(hoja.id), accion: a.accion });
+      return listo(userId, a.personaId ? `La hoja ${deLaC(dia, a.cuadrilla)} le llega a ${N(dia, a.personaId)}` : `${cap(laCuadrilla(dia, a.cuadrilla))} no tiene a quién mandarle la hoja`, g, { ...base, hojaId: String(hoja.id), accion: a.accion });
     }
     case "nota_persona": {
       const actual = await integranteDeCx(db, cx, f, a.personaId);
@@ -580,6 +606,7 @@ async function accionHojaCon(g: Grabador, db: DB, userId: string, a: AccionHoja)
       return listo(userId, texto, g, { ...base, hojaId: String(hoja.id), accion: a.accion });
     }
     case "encuentro": {
+      if (esDeposito(a.cuadrilla) && a.lugar === "obra") throw new Error("El depósito no tiene obra: el encuentro es en el depósito (u otro lugar).");
       const hoja = await asegurarHojaCx(g, db, cx, f, a.cuadrilla);
       await cambiarVehiculos(g, cx, hoja, a.cuadrilla, { k: "encuentro", lugar: a.lugar, hora: a.hora, texto: a.texto });
       return listo(userId, `${C(a.cuadrilla)}: encuentro ${normHora(a.hora)} en ${a.lugar === "deposito" ? "el depósito" : a.lugar === "obra" ? "la obra" : a.texto ?? "otro lugar"}`, g, { ...base, hojaId: String(hoja.id), accion: a.accion });
@@ -657,7 +684,7 @@ async function accionHojaCon(g: Grabador, db: DB, userId: string, a: AccionHoja)
     }
     case "copiar_como_hoy": {
       const plan = planCopiarComoHoy(dia, a.cuadrilla);
-      if (!plan) return { ok: true, texto: `La ${C(a.cuadrilla)} no tuvo hoja el día anterior`, historialId: null };
+      if (!plan) return { ok: true, texto: `${cap(laCuadrilla(dia, a.cuadrilla))} no tuvo hoja el día anterior`, historialId: null };
       const existente = await hojaFila(db, cx, f, a.cuadrilla);
       const h = await escribirPlan(g, db, dia, f, plan, existente);
       return listo(userId, `${C(a.cuadrilla)} copiada del ${ddmm(plan.copiadaDe ?? "")}`, g, { ...base, hojaId: String(h.id), accion: a.accion });
@@ -683,7 +710,7 @@ async function accionHojaCon(g: Grabador, db: DB, userId: string, a: AccionHoja)
       for (const i of ints) await g.borrar("hd_integrantes", String(i.id));
       if (hoja.a_cargo_contratista_id) await g.actualizar("hd_hojas", String(hoja.id), { a_cargo_contratista_id: null }, hoja);
       for (const x of ks) await g.borrar("hd_hoja_contratistas", String(x.id));
-      return listo(userId, `La gente de la ${C(a.cuadrilla)} quedó sin asignar`, g, { ...base, hojaId: String(hoja.id), accion: a.accion });
+      return listo(userId, `La gente ${deLaC(dia, a.cuadrilla)} quedó sin asignar`, g, { ...base, hojaId: String(hoja.id), accion: a.accion });
     }
     case "contratista_sumar": {
       const k = contratista(dia, a.contratistaId);
@@ -833,6 +860,7 @@ async function accionViajeCon(g: Grabador, db: DB, userId: string, a: AccionViaj
       cuadrillaOdooId: null, hacia: pp ? pp.hacia : (a.hacia as Punto), desde: pp ? pp.desde : (a.desde as Punto | null | undefined) ?? null, orden, hora: a.hora ?? null,
       noAntesDe: a.noAntesDe ?? (esHoy(ahora) && !a.hora ? hm(Math.round((ahora + 10) / 5) * 5) : null), duracionMin: a.duracionMin ?? null,
       vuelta: tipo === "trae_material", vueltaCarga: null, vueltaLlega: null, carga: a.carga ?? pp?.que ?? null, cargaDeposito: null, okTodoElDia: false,
+      ...(a.queHace !== undefined ? { accion: a.queHace } : {}), ...(a.horaAprox !== undefined ? { horaAprox: a.horaAprox && !!a.hora } : {}),
     }));
     const vv = mapViaje(v, a.fecha);
     let avisarA: string | null = null;
@@ -866,7 +894,10 @@ async function accionViajeCon(g: Grabador, db: DB, userId: string, a: AccionViaj
     const ch = vc ? choferDe(dia2, vc) : choferParaOrden(dia, a.vehiculoId, "nuevo" in plan ? plan.nuevo.orden : 0);
     const texto = "sumarA" in plan
       ? `Sumado al viaje a ${lugar(dia, ped.hacia).n} ${elVeh(dia, a.vehiculoId, "del")} (${NCh(dia, ch)})${vc ? `, ~${hm(vc.t)}` : ""}`
-      : `Pedido${ped.pidioId ? ` de ${N(dia, ped.pidioId)}` : ""} ${elVeh(dia, a.vehiculoId, "en el")} (${NCh(dia, ch)})${vc ? `, ${vc.hora ? "" : "~"}${hm(Math.round(vc.t / 5) * 5)}` : ""}`;
+      : plan.hueco
+        // F4: "Parada 2 del Iveco AB 497 YY (Gómez) · de paso entre Gurruchaga 1650 y Juramento 2145 (+5 min)".
+        ? `«${ped.que}» → parada ${plan.hueco.n} ${elVeh(dia, a.vehiculoId, "del")} (${NCh(dia, ch)}) · ${plan.hueco.viaTxt} (${desvioTxt(plan.hueco.min)})`
+        : `Pedido${ped.pidioId ? ` de ${N(dia, ped.pidioId)}` : ""} ${elVeh(dia, a.vehiculoId, "en el")} (${NCh(dia, ch)})${vc ? `, ${vc.hora ? "" : "~"}${hm(Math.round(vc.t / 5) * 5)}` : ""}`;
     const enviado = dia.envios.some((e) => e.personaId === ch && e.enviadaMin != null && !e.anulado);
     return listo(userId, texto, g, { fecha: f, entidad: "pedido", entidadId: a.pedidoId, pedidoId: a.pedidoId, viajeId, accion: a.accion }, {
       viajeId, avisarA: enviado ? ch : null, avisarDeposito: !!(vc && esHoy(ahoraDe(f)) && vc.carga && ["lleva_material", "entre_depositos"].includes(vc.tipo) && /^l:|^dep$/.test(vc.desdeKey)),
@@ -897,6 +928,16 @@ async function accionViajeCon(g: Grabador, db: DB, userId: string, a: AccionViaj
     return listo(userId, a.choferId ? `${cap(elVeh(dia, a.vehiculoId))} lo maneja ${N(dia, a.choferId)} (${(vs.data ?? []).length} viajes)` : `${cap(elVeh(dia, a.vehiculoId))} queda sin chofer`, g, { fecha: a.fecha, entidad: "camion", entidadId: a.vehiculoId, accion: a.accion });
   }
 
+  if (a.accion === "reordenar") {
+    const dia = await leerDia(a.fecha, { cacheOdoo: true });
+    const plan = planReordenar(dia, a.vehiculoId, a.ids);
+    if (!plan) throw new Error("El recorrido cambió mientras lo ordenabas: mirá cómo quedó y probá de nuevo.");
+    if (!plan.length) return { ok: true, texto: "El recorrido ya estaba en ese orden", historialId: null };
+    for (const x of plan) await g.actualizar("hd_viajes", x.id, { orden: x.orden });
+    const ch = choferSugerido(dia, a.vehiculoId, ahoraDe(a.fecha));
+    return listo(userId, `Recorrido ${elVeh(dia, a.vehiculoId, "del")} reordenado`, g, { fecha: a.fecha, entidad: "camion", entidadId: a.vehiculoId, accion: a.accion }, { avisarA: ch && dia.envios.some((e) => e.personaId === ch && e.enviadaMin != null && !e.anulado) ? ch : null });
+  }
+
   const v = await filaViajeDb(db, a.viajeId);
   const f = String(v.fecha);
   const dia = await leerDia(f, { cacheOdoo: true });
@@ -907,6 +948,35 @@ async function accionViajeCon(g: Grabador, db: DB, userId: string, a: AccionViaj
   const chV = choferDe(dia, vv);
 
   switch (a.accion) {
+    case "parada_editar": {
+      if (vv.estado !== "planeado") throw new Error("Esa parada ya no está pendiente.");
+      const deC = esDeCuadrilla(vv);
+      // Un lleva/busca/mueve de una cuadrilla va a la obra del tablero y lleva o busca gente:
+      // el lugar y qué hace no se cambian acá (la hora sí, por el camino de siempre).
+      if (deC && (a.hacia || a.queHace !== undefined)) throw new Error("Esa parada es de la cuadrilla: el lugar lo pone el tablero.");
+      const valores: Fila = {};
+      const cambios: string[] = [];
+      if (a.hacia) { Object.assign(valores, columnasPunto("hacia", a.hacia as Punto)); cambios.push(`va a ${lugar(dia, a.hacia as Punto).n}`); }
+      if (a.queHace !== undefined) { valores.accion = a.queHace; if (a.queHace) cambios.push(lowFirst(accionTxt(a.queHace))); }
+      if (a.carga !== undefined) { valores.carga = a.carga; cambios.push(a.carga ? `«${a.carga}»` : "sin nota"); }
+      if (a.hora !== undefined) {
+        valores.hora = a.hora;
+        // Una hora fija nueva (candado) ordena por la hora, como en Camiones; una aproximada no mueve la parada.
+        const aprox = a.horaAprox ?? vv.horaAprox ?? false;
+        if (a.hora && !aprox) { valores.orden = toMin(a.hora); Object.assign(valores, llegadaCorrida(vv, a.hora)); }
+        if (a.hora === null) valores.no_antes_de = null;
+        cambios.push(a.hora ? `${aprox ? "~" : ""}${normHora(a.hora)}` : "sin hora");
+      }
+      if (a.horaAprox !== undefined) { valores.hora_aprox = a.horaAprox; if (a.hora === undefined) cambios.push(a.horaAprox ? "hora aproximada" : "hora fija"); }
+      if (!Object.keys(valores).length) return { ok: true, texto: "Sin cambios", historialId: null };
+      await g.actualizar("hd_viajes", a.viajeId, valores);
+      if (deC && vv.tipo === "lleva" && a.hora) {
+        const h = dia.hojas.find((x) => x.id === vv.hojaId);
+        if (h?.encuentro.lugar === "deposito" && esLlevaPrincipal(h, vv)) await g.actualizar("hd_hojas", h.id, { encuentro_hora: a.hora });
+      }
+      const enviado = !!chV && dia.envios.some((e) => e.personaId === chV && e.enviadaMin != null && !e.anulado);
+      return listo(userId, `${corto}: ${cambios.join(" · ")}`, g, base, { avisarA: enviado ? chV : null });
+    }
     case "mover": {
       const antes = vv.vehiculoId;
       const orden = a.hora && vv.hora ? toMin(a.hora)! : a.orden ?? vv.orden;
@@ -1130,6 +1200,32 @@ async function accionPedidoCon(g: Grabador, db: DB, userId: string, a: AccionPed
       const hasta = a.hasta ? instanteDe(f, toMin(a.hasta)!) : new Date(Date.now() + 3_600_000).toISOString();
       await g.actualizar("hd_pedidos", a.pedidoId, { estado: "esperando", esperando_motivo: a.motivo, esperando_hasta: hasta, no_pudo_visto: true });
       return listo(userId, `Esperando: ${donde} · ${lowFirst(a.motivo)}${a.hasta ? ` · vuelve a «Para hacer vos» a las ${normHora(a.hasta)}` : ""}`, g, base);
+    }
+    case "editar": {
+      if (p.estado === "anulado" || p.estado === "hecho") throw new Error("Ese pedido ya está cerrado.");
+      const valores: Fila = {};
+      const cambios: string[] = [];
+      if (a.que !== undefined && a.que !== p.que) { valores.que = a.que; cambios.push(`ahora es «${a.que}»`); }
+      if (a.hacia) { Object.assign(valores, columnasPunto("hacia", a.hacia as Punto)); cambios.push(`va a ${lugar(dia, a.hacia as Punto).n}`); }
+      if (a.urgencia !== undefined) valores.urgencia = a.urgencia;
+      if (a.horaLimite !== undefined) valores.hora_limite = a.horaLimite;
+      if (a.necesita !== undefined) valores.necesita = a.necesita;
+      if (a.nota !== undefined) valores.nota = a.nota;
+      if (!Object.keys(valores).length) return listo(userId, "Sin cambios", g, base);
+      // Ya en un camión: el viaje va adonde va el pedido y su carga dice lo nuevo (si era sólo de él).
+      if (p.viaje_id && (a.hacia || valores.que)) {
+        const [v] = await g.leer("hd_viajes", { id: p.viaje_id });
+        if (v && v.estado === "planeado") {
+          const otros = (await g.leer("hd_pedidos", { viaje_id: p.viaje_id })).filter((x) => x.id !== p.id && x.estado !== "anulado");
+          if (a.hacia && otros.length) throw new Error("Ese viaje lleva otros pedidos: para cambiarle el lugar, sacalo del camión primero.");
+          const vv: Fila = {};
+          if (a.hacia) Object.assign(vv, columnasPunto("hacia", a.hacia as Punto));
+          if (valores.que && !otros.length && (v.carga == null || v.carga === p.que)) vv.carga = valores.que;
+          if (Object.keys(vv).length) await g.actualizar("hd_viajes", String(v.id), vv, v);
+        }
+      }
+      await g.actualizar("hd_pedidos", a.pedidoId, valores, p);
+      return listo(userId, cambios.length ? `Pedido corregido: ${cambios.join(" · ")}` : "Pedido corregido", g, base);
     }
     case "ya_esta":
       await g.actualizar("hd_pedidos", a.pedidoId, { estado: p.viaje_id ? "en_camion" : "sin_camion", esperando_hasta: null });

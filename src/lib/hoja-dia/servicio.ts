@@ -33,7 +33,7 @@ import type {
   Ausencia, CamionDia, Contratista, Cuadrilla, DiaAnterior, DiaHoja, Envio, Fecha, Hoja, Lugar, ObraDia, Parametros, Pedido, Persona, Punto,
   Vehiculo, Viaje,
 } from "./tipos";
-import { PARAMETROS_POR_DEFECTO } from "./tipos";
+import { PARAMETROS_POR_DEFECTO, esDeposito } from "./tipos";
 import {
   addDia, ausenciasDeAsistencia, fletesDelDia, horariosCierre, minutosDesde, nombresCortos, normHora, obrasDe, aCargoDe, hojaDeCuadrilla,
   ausenciaDe, deContratistas, persona, cantidadDe, contratistasDe, esPersonalDeObra, genteConChoferes, vehiculosDe, vehTxt, type FilaAsistencia,
@@ -54,14 +54,20 @@ const s = (v: unknown): string | null => (typeof v === "string" && v.trim() !== 
 const n = (v: unknown): number | null => (v == null || v === "" ? null : Number.isFinite(Number(v)) ? Number(v) : null);
 const b = (v: unknown) => v === true;
 const punto = (f: Fila, pre: "hacia" | "desde"): Punto | null => {
-  const p = { otId: n(f[`${pre}_ot_id`]), lugarId: s(f[`${pre}_lugar_id`]), texto: s(f[`${pre}_texto`]) };
-  return p.otId == null && !p.lugarId && !p.texto ? null : p;
+  const p: Punto = { otId: n(f[`${pre}_ot_id`]), lugarId: s(f[`${pre}_lugar_id`]), texto: s(f[`${pre}_texto`]) };
+  if (p.otId == null && !p.lugarId && !p.texto) return null;
+  const lat = n(f[`${pre}_lat`]), lng = n(f[`${pre}_lng`]);
+  return lat != null && lng != null ? { ...p, lat, lng } : p;
 };
 const PUNTO_VACIO: Punto = { otId: null, lugarId: null, texto: null };
 
-/** Columnas de un Punto para insertar/actualizar. */
+/** Columnas de un Punto para insertar/actualizar (las coordenadas, sólo de una "otra dirección" y de a pares). */
 export function columnasPunto(pre: "hacia" | "desde", p: Punto | null): Fila {
-  return { [`${pre}_ot_id`]: p?.otId ?? null, [`${pre}_lugar_id`]: p?.lugarId ?? null, [`${pre}_texto`]: p?.texto ?? null };
+  const geo = p?.texto && p.otId == null && !p.lugarId && p.lat != null && p.lng != null;
+  return {
+    [`${pre}_ot_id`]: p?.otId ?? null, [`${pre}_lugar_id`]: p?.lugarId ?? null, [`${pre}_texto`]: p?.texto ?? null,
+    [`${pre}_lat`]: geo ? p.lat : null, [`${pre}_lng`]: geo ? p.lng : null,
+  };
 }
 
 // ─── Mapeos fila → tipo ─────────────────────────────────────────────────────
@@ -139,6 +145,9 @@ export function mapViaje(f: Fila, fecha: Fecha): Viaje {
     foto: !!s(f.foto_path),
     creadoMin: minutosDesde(fecha, String(f.created_at)),
     version: n(f.version) ?? 1,
+    accion: (s(f.accion) as Viaje["accion"]) ?? null,
+    horaAprox: b(f.hora_aprox),
+    salioMin: s(f.salio_at) ? minutosDesde(fecha, String(f.salio_at)) : null,
   };
 }
 
@@ -534,7 +543,10 @@ export async function leerDia(fecha: Fecha, opts: { cacheOdoo?: boolean; fresco?
 
   // Vuelta 2: el día anterior con hojas (Odoo necesita la fecha) y lo suyo.
   const filasPrevias = ok<Fila[]>(await previasP, "las hojas anteriores");
-  const anteriorFecha = filasPrevias[0] ? String(filasPrevias[0].fecha) : null;
+  // El día anterior es el último con hojas de CUADRILLAS (un domingo con sólo el depósito no
+  // cuenta para "Copiar del día anterior"); el depósito sale de ahí o de su última hoja.
+  const filaAnt = filasPrevias.find((f) => !esDeposito(Number(f.cuadrilla_odoo_id)));
+  const anteriorFecha = filaAnt ? String(filaAnt.fecha) : null;
   const idsPrevias = filasPrevias.map((f) => f.id as string);
   const [tab, intPrevR, viajesAntR, camionesAntR, hojaContrPrevR, hojaVehPrevR] = await Promise.all([
     tablero(anteriorFecha ? [anteriorFecha, fecha] : [fecha], opts.cacheOdoo ? 45_000 : opts.fresco ? 0 : 30_000),
@@ -811,6 +823,8 @@ export function traducirErrorDb(m: string): string {
   if (/idx_hd_links_contratista/.test(m)) return "Otra persona creó ese link recién. Probá de nuevo.";
   if (/hd_hoja_contratistas_contratista_id_fkey|violates foreign key constraint.*hd_hoja_contratistas/.test(m)) return "Ese contratista ya tiene jornadas cargadas: no se borra, se desactiva.";
   if (/hd_hoja_contratistas_cantidad_check/.test(m)) return "La cantidad va de 0 a 60.";
+  if (/hd_hojas_deposito_es_cero|hd_hojas_sector_valido/.test(m)) return "El depósito es un sector, no una cuadrilla: no se puede usar así.";
+  if (/column "sector" .*does not exist|hd_hojas\.sector/.test(m)) return "Falta aplicar la migración del depósito (20261013000001_hoja_dia_deposito.sql).";
   if (/idx_hd_hoja_vehiculos_vehiculo/.test(m)) return "Ese vehículo ya va en esa cuadrilla: elegí otro o cambiá el que está.";
   if (/HD_CAMBIO/.test(m)) return "No se puede deshacer: eso cambió después. Hacelo a mano.";
   if (/row-level security/i.test(m)) return "No tenés permiso para hacer este cambio.";
@@ -991,6 +1005,8 @@ export type PrecargaCierre = {
  */
 export async function precargaCierre(cuadrillaOdooId: number, fecha: Fecha, otId: number | null): Promise<PrecargaCierre> {
   const vacia: PrecargaCierre = { hayHoja: false, punteroEmployeeId: null, punteroNombre: null, personas: 0, contratistas: null, camionEnObra: false, fletes: { cantidad: 0, tercerizado: false, detalle: [] }, manoObra: [] };
+  // El depósito no tiene parte de Odoo (F2).
+  if (esDeposito(cuadrillaOdooId)) return vacia;
   const db = createAdminClient();
   const existe = await db.from("hd_hojas").select("id").eq("fecha", fecha).eq("cuadrilla_odoo_id", cuadrillaOdooId).maybeSingle();
   if (!existe.data) return vacia;
@@ -1040,9 +1056,10 @@ export function alertasDelDia(dia: DiaHoja, ahora: number): NuevaAlerta[] {
   if (!diaAlertable(ahora)) return [];
   const enlace = `/planificacion/hoja?dia=${dia.fecha}`;
   const b = bandeja(dia, ahora);
+  // El depósito no alerta (F2): no es una obra del tablero.
   const rojos = [
-    ...b.vos.filter((x) => x.rojo && (x.k === "sinenv" || x.k.startsWith("chg-"))),
-    ...b.esp.filter((x) => x.rojo),
+    ...b.vos.filter((x) => x.rojo && (x.k === "sinenv" || x.k.startsWith("chg-")) && !esDeposito(x.c)),
+    ...b.esp.filter((x) => x.rojo && !esDeposito(x.c)),
   ].map((x) => ({ k: x.k, t: x.t }));
   const despacho = ahora >= 0 && ahora < 1440 ? ahoraItems(dia, ahora).filter((x) => x.nivel === "rojo" && /^(np|fr|nadie)-/.test(x.k)).map((x) => ({ k: x.k, t: x.t })) : [];
   return [...rojos, ...despacho].map((x) => ({

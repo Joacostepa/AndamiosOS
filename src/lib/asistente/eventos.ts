@@ -25,6 +25,12 @@ export type AccionVista = {
   resultado: Record<string, unknown> | null;
   error: string | null;
   venceAt: string;
+  /**
+   * La acción quedó en error o en duda y se puede volver a ejecutar tal cual: la tarjeta muestra
+   * «Reintentar», que hace POST /api/comercial/asistente/acciones/:id con
+   * { decision: "reintentar" } (SSE, como Confirmar). El servidor vuelve a mirar si se puede.
+   */
+  reintentable: boolean;
 };
 
 export type PdfVista = { id: string; nombre: string; tipo: "preview" | "final"; url: string; version: number };
@@ -34,6 +40,13 @@ export type Evento =
   | { t: "transcripcion"; texto: string }
   | { t: "texto"; d: string }
   | { t: "pensando"; on: boolean }
+  /**
+   * Lo que el modelo anota entre herramientas («Ya tengo el frente; ahora calculo la bandeja»).
+   * Una o dos oraciones, para mostrar como el paso en curso mientras espera. Sólo en los modelos
+   * que lo dan (Opus 5.5 y parecidos); puede no llegar ninguno. No es parte de la respuesta: no
+   * se guarda como texto ni se dice en voz.
+   */
+  | { t: "progreso"; texto: string }
   | { t: "herramienta"; id: string; nombre: string; etiqueta: string; estado: "inicio" | "ok" | "error"; resumen?: string }
   | { t: "borrador"; borrador: BorradorVista }
   | { t: "accion"; accion: AccionVista }

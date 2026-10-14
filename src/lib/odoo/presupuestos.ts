@@ -13,8 +13,11 @@
 //   · la oportunidad del CRM se busca y se vincula; si hay que crearla, en la etapa default:
 //     nunca se mueve de etapa ni se le crean actividades (lo maneja cada vendedor).
 //
-// IDEMPOTENCIA: la orden lleva x_asistente_ref = id de la acción. Antes de crear se busca por
-// esa marca: un reintento sigue desde donde quedó en vez de duplicar.
+// IDEMPOTENCIA: la orden lleva x_asistente_ref = id del BORRADOR (un borrador crea a lo sumo
+// una orden). Antes de crear se busca por esa marca: si un intento anterior la creó y no llegó
+// a anotarla (Odoo tardó más de 45 s y el guardado quedó "incierto"), el intento nuevo —que es
+// otra acción— la encuentra y la actualiza en vez de crear otra. Hasta el 12/10 la marca era el
+// id de la acción, que cambia en cada intento: por eso también se busca por la marca vieja.
 
 import { executeKw, type OpcionesRpc } from "@/lib/odoo/client";
 
@@ -27,7 +30,8 @@ type M2O = [number, string] | false;
 
 export type NuevoCliente = {
   razonSocial: string;
-  cuit: string;
+  /** null: se da de alta sin CUIT (JS, 12/10) y se completa en Odoo antes de facturar. */
+  cuit: string | null;
   email: string | null;
   telefono: string | null;
   domicilio: string | null;
@@ -57,12 +61,24 @@ export async function clientePorCuit(cuit: string): Promise<{ id: number; nombre
   return p ? { id: p.id, nombre: p.name } : null;
 }
 
-/** Alta de cliente con los defaults de ABA. Si el CUIT ya existe, devuelve ese y no crea. */
+/** Sin CUIT, la única forma de no duplicar: el mismo nombre exacto (sin mayúsculas). */
+export async function clientePorNombre(nombre: string): Promise<{ id: number; nombre: string } | null> {
+  const [p] = await executeKw<{ id: number; name: string }[]>(
+    "res.partner", "search_read", [[["name", "=ilike", nombre.trim()], ["parent_id", "=", false]]],
+    { fields: ["id", "name"], limit: 1, order: "is_company desc, customer_rank desc, id" }, LECTURA,
+  );
+  return p ? { id: p.id, nombre: p.name } : null;
+}
+
+/**
+ * Alta de cliente con los defaults de ABA. Si el CUIT ya existe, devuelve ese y no crea. Sin
+ * CUIT se busca por el nombre exacto y, si no está, se crea sin CUIT.
+ */
 export async function crearCliente(c: NuevoCliente): Promise<{ id: number; creado: boolean; contactoId: number | null }> {
-  const ya = await clientePorCuit(c.cuit);
+  const digitos = (c.cuit ?? "").replace(/\D/g, "");
+  const ya = digitos ? await clientePorCuit(digitos) : await clientePorNombre(c.razonSocial);
   if (ya) return { id: ya.id, creado: false, contactoId: null };
 
-  const digitos = c.cuit.replace(/\D/g, "");
   let responsabilidad: number | false = false;
   if (c.condicionIva) {
     const [r] = await executeKw<{ id: number }[]>(
@@ -72,10 +88,9 @@ export async function crearCliente(c: NuevoCliente): Promise<{ id: number; cread
   }
   const id = await executeKw<number>("res.partner", "create", [{
     name: c.razonSocial.trim(),
-    vat: digitos,
-    l10n_latam_identification_type_id: IDS_ODOO.identificacionCuit,
-    // Por el prefijo: 30/33/34 son personas jurídicas.
-    is_company: /^3[034]/.test(digitos),
+    ...(digitos ? { vat: digitos, l10n_latam_identification_type_id: IDS_ODOO.identificacionCuit } : {}),
+    // Por el prefijo: 30/33/34 son personas jurídicas. Sin CUIT, lo decide el tipo de razón social.
+    is_company: digitos ? /^3[034]/.test(digitos) : /\b(s\.?a\.?|s\.?r\.?l\.?|s\.?a\.?s\.?|sociedad|consorcio|asociaci[oó]n|fundaci[oó]n|club|colegio|cooperativa)\b/i.test(c.razonSocial),
     email: c.email ?? false,
     phone: c.telefono ?? false,
     street: c.domicilio ?? false,
@@ -120,6 +135,8 @@ export type DatosOrden = {
   impuestoIvaId: number;
   terminoPagoId: number;
   asistenteRef: string;
+  /** La marca con la que se guardaban antes (id de la acción): sólo para buscar. */
+  refAnterior?: string;
   /** YYYY-MM-DD: hasta cuándo vale la oferta (la misma fecha que dice el PDF). */
   validez?: string | null;
 };
@@ -151,9 +168,11 @@ function valoresOrden(d: DatosOrden, reemplazarLineas: boolean): Record<string, 
   };
 }
 
-export async function ordenPorRef(ref: string): Promise<{ id: number; name: string; state: string } | null> {
+export async function ordenPorRef(...refs: (string | undefined)[]): Promise<{ id: number; name: string; state: string } | null> {
+  const marcas = refs.filter((r): r is string => !!r);
+  if (!marcas.length) return null;
   const [o] = await executeKw<{ id: number; name: string; state: string }[]>(
-    "sale.order", "search_read", [[["x_asistente_ref", "=", ref]]], { fields: ["id", "name", "state"], limit: 1 }, LECTURA,
+    "sale.order", "search_read", [[["x_asistente_ref", "in", marcas]]], { fields: ["id", "name", "state"], limit: 1, order: "id desc" }, LECTURA,
   );
   return o ?? null;
 }
@@ -173,9 +192,14 @@ export async function guardarOrden(d: DatosOrden, ordenId: number | null): Promi
     }
     await executeKw("sale.order", "write", [[id], valoresOrden(d, true)], {}, ESCRITURA);
   } else {
-    const ya = await ordenPorRef(d.asistenteRef);
+    const ya = await ordenPorRef(d.asistenteRef, d.refAnterior);
     if (ya) {
+      // La creó un intento anterior: se le escriben los datos de ahora (el borrador pudo cambiar).
+      if (ya.state !== "draft" && ya.state !== "sent") {
+        throw new Error(`La ${ya.name} ya existe y está confirmada o cancelada en Odoo: no se modifica.`);
+      }
       id = ya.id;
+      await executeKw("sale.order", "write", [[id], valoresOrden(d, true)], {}, ESCRITURA);
     } else {
       id = await executeKw<number>("sale.order", "create", [valoresOrden(d, false)], {}, ESCRITURA);
       creada = true;
@@ -282,4 +306,32 @@ export async function enviarPropuesta(p: { ordenId: number; plantillaId: number;
   );
   await notaInterna(p.ordenId, `<p>Propuesta enviada por mail a <b>${dest.email}</b> desde el Asistente Comercial.</p>`);
   return { mailId: typeof mailId === "number" ? mailId : null, para: dest.email };
+}
+
+/**
+ * ¿Ya salió un mail de esta orden desde `desde`? Se mira antes de reenviar uno que quedó en duda
+ * (un intento que se cortó a mitad de camino, o un error después de que Odoo lo mandó):
+ * mandarlo dos veces le llega dos veces al cliente.
+ *
+ * Lo que deja en Odoo (visto el 12/10 en las órdenes reales): la plantilla de la casa no se borra
+ * al enviar (`auto_delete` en false), así que queda un mail.mail en `sent` (o `outgoing`, en
+ * cola) con su mensaje `email_outgoing` en el chatter, y nuestra nota «Propuesta enviada por
+ * mail». Los `email` sueltos son respuestas del cliente: no cuentan.
+ */
+export async function mailYaEnviado(ordenId: number, desde: Date): Promise<{ enviado: boolean; cuando: string | null }> {
+  // Odoo guarda las fechas en UTC como «AAAA-MM-DD HH:MM:SS».
+  const fecha = new Date(desde.getTime() - 60_000).toISOString().slice(0, 19).replace("T", " ");
+  const base = [["model", "=", "sale.order"], ["res_id", "=", ordenId], ["create_date", ">=", fecha]];
+  const [mails, mensajes] = await Promise.all([
+    executeKw<{ create_date: string }[]>(
+      "mail.mail", "search_read", [[...base, ["state", "in", ["outgoing", "sent", "received"]]]], { fields: ["create_date"], limit: 1, order: "id desc" }, LECTURA,
+    ),
+    executeKw<{ create_date: string }[]>(
+      "mail.message", "search_read",
+      [[...base, "|", ["message_type", "=", "email_outgoing"], ["body", "ilike", "Propuesta enviada por mail"]]],
+      { fields: ["create_date"], limit: 1, order: "id desc" }, LECTURA,
+    ),
+  ]);
+  const hit = mails[0] ?? mensajes[0];
+  return { enviado: !!hit, cuando: hit?.create_date ?? null };
 }

@@ -1,7 +1,8 @@
 "use client";
 
-// Las pestañas de Planificación: [Tablero] [Hoja del día]. Van en la barra del tablero y en
-// el encabezado de la hoja. "Hoja del día" sólo si el usuario la puede abrir.
+// Las pestañas de Planificación: [Tablero] [Hoja del día]. Van en la barra del tablero, en
+// la barra del Pizarrón (que ES la Hoja del día) y en el encabezado de Camiones. "Hoja del
+// día" sólo si el usuario la puede abrir.
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -14,12 +15,13 @@ export function PestanasPlanificacion({ className }: { className?: string }) {
   const acceso = useAcceso();
   const enHoja = pathname.startsWith("/planificacion/hoja");
   if (!puedeAbrir(acceso, "/planificacion/hoja")) return null;
+  const tabs = [
+    { href: "/planificacion", l: "Tablero", on: !enHoja },
+    { href: "/planificacion/hoja", l: "Hoja del día", on: enHoja },
+  ];
   return (
     <nav aria-label="Planificación" className={cn("inline-flex gap-0.5 rounded-lg bg-muted p-[3px]", className)}>
-      {[
-        { href: "/planificacion", l: "Tablero", on: !enHoja },
-        { href: "/planificacion/hoja", l: "Hoja del día", on: enHoja },
-      ].map((t) => (
+      {tabs.map((t) => (
         <Link
           key={t.href}
           href={t.href}

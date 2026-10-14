@@ -55,6 +55,21 @@ export const TIPOS_VIAJE: Record<TipoViaje, { nombre: string; corto: string }> =
 
 export type EstadoViaje = "planeado" | "hecho" | "no_pudo" | "anulado";
 
+/**
+ * Qué hace el camión en una parada de su recorrido (hd_viajes.accion, rediseño F3). null = la
+ * de siempre según el tipo (accionDe, estado.ts).
+ */
+export type AccionParada = "lleva_gente" | "deja_material" | "carga" | "descarga" | "busca_gente" | "compra" | "espera";
+export const ACCIONES_PARADA: [AccionParada, string][] = [
+  ["lleva_gente", "Lleva gente"],
+  ["deja_material", "Deja material"],
+  ["carga", "Carga"],
+  ["descarga", "Descarga"],
+  ["busca_gente", "Busca gente"],
+  ["compra", "Compra"],
+  ["espera", "Espera"],
+];
+
 export type TipoPedido = "lleva_material" | "trae_material" | "compra" | "entre_depositos" | "taller" | "otro";
 
 export type Urgencia = "frena" | "hora" | "cliente" | "hoy" | "cuando_se_pueda";
@@ -224,7 +239,19 @@ export type Cuadrilla = {
   tercerizada: boolean;
   /** El plantel base de Configuración de cuadrillas, si está vinculada. */
   plantel: { responsableId: string | null; personaIds: string[] } | null;
+  /** El Depósito (sector, no cuadrilla de Odoo): ver DEPOSITO. */
+  deposito?: boolean;
 };
+
+/**
+ * EL DEPÓSITO (rediseño F2): un sector siempre presente, con su gente y su encargado (el "a
+ * cargo"), que se guarda como una hoja más con `cuadrilla_odoo_id = 0` (hd_hojas.sector =
+ * 'deposito'; en Odoo no hay cuadrilla 0). Nunca va al parte de Odoo, ni a las alertas del
+ * tablero, ni lleva camiones, viajes ni contratistas.
+ */
+export const DEPOSITO = 0;
+export const CUADRILLA_DEPOSITO: Cuadrilla = { odooId: DEPOSITO, nombre: "Depósito", numero: null, tercerizada: false, plantel: null, deposito: true };
+export const esDeposito = (c: number | null | undefined) => c === DEPOSITO;
 
 /** Una obra del tablero ese día, con lo que la hoja muestra de su OT. */
 export type ObraDia = {
@@ -308,8 +335,11 @@ export type Hoja = {
   aCargoContratistaId: string | null;
 };
 
-/** Destino u origen de un viaje o pedido: una obra, un lugar frecuente o texto. */
-export type Punto = { otId: number | null; lugarId: string | null; texto: string | null };
+/**
+ * Destino u origen de un viaje o pedido: una obra, un lugar frecuente o texto. Con texto
+ * ("otra dirección"), `lat/lng` geocodificadas (F4; siempre las dos o ninguna).
+ */
+export type Punto = { otId: number | null; lugarId: string | null; texto: string | null; lat?: number | null; lng?: number | null };
 
 export type Viaje = {
   id: string;
@@ -352,6 +382,15 @@ export type Viaje = {
   foto: boolean;
   creadoMin: Minutos;
   version: number;
+  /**
+   * Rediseño F3 (el recorrido). Opcionales: los días guardados en el celular y los armados a
+   * mano (tests) no los traen. `accion` null/ausente = la del tipo; `horaAprox` = la hora es
+   * una pista (no avisa choques; el candado la vuelve fija); `salioMin` = tocó "Salí" (F6).
+   * Las coordenadas de "otra dirección" van en `hacia.lat/lng`.
+   */
+  accion?: AccionParada | null;
+  horaAprox?: boolean;
+  salioMin?: Minutos | null;
 };
 
 export type Pedido = {

@@ -134,6 +134,8 @@ export type EnVivo = {
   texto: string;
   herramientas: { id: string; etiqueta: string; estado: "inicio" | "ok" | "error" }[];
   pensando: boolean;
+  /** El paso en curso según el servidor (evento `progreso`), si lo manda. */
+  progreso?: string | null;
   /** Pasó una herramienta desde el último texto: lo que sigue es otra tanda y va en otro párrafo. */
   corte?: boolean;
 };
@@ -162,6 +164,7 @@ export function useChat(conversacionId: string | null, opciones: { onEvento?: (e
           ...v,
           texto: v.texto + (v.corte && v.texto && !/\s$/.test(v.texto) ? "\n\n" : "") + e.d,
           pensando: false,
+          progreso: null,
           corte: false,
         }));
         break;
@@ -191,13 +194,19 @@ export function useChat(conversacionId: string | null, opciones: { onEvento?: (e
         break;
       case "continuar":
         return true;
+      case "progreso":
+        // Lo que el modelo dice que está haciendo (sólo algunos modelos lo mandan).
+        setEnVivo((v) => ({ ...v, progreso: e.texto }));
+        break;
     }
     return false;
   }, []);
 
   const correr = useCallback(
-    async (url: string, cuerpo: unknown, vendedor: EnVivo["vendedor"]) => {
-      if (!conversacionId) return;
+    /** Devuelve si el turno llegó a arrancar (si no, quien lo mandó recupera su texto). */
+    async (url: string, cuerpo: unknown, vendedor: EnVivo["vendedor"], seguidas = 0): Promise<boolean> => {
+      if (!conversacionId) return false;
+      let llego = false;
       setError(null);
       setRespondiendo(true);
       setEnVivo({ ...VACIO, vendedor });
@@ -228,7 +237,9 @@ export function useChat(conversacionId: string | null, opciones: { onEvento?: (e
             const linea = parte.split("\n").find((l) => l.startsWith("data: "));
             if (!linea) continue;
             try {
-              if (procesar(JSON.parse(linea.slice(6)) as Evento)) seguir = true;
+              const ev = JSON.parse(linea.slice(6)) as Evento;
+              if (ev.t !== "inicio" && ev.t !== "error") llego = true;
+              if (procesar(ev)) seguir = true;
             } catch {
               // una línea rota no corta el resto
             }
@@ -243,8 +254,11 @@ export function useChat(conversacionId: string | null, opciones: { onEvento?: (e
         setEnVivo(VACIO);
         setRespondiendo(false);
       }
-      // El turno se cortó por tiempo en medio de muchas herramientas: sigue solo.
-      if (seguir) await correr(`${BASE}/chat`, { conversacionId, continuar: true }, null);
+      // El turno se cortó por tiempo en medio de muchas herramientas: sigue solo, hasta dos
+      // veces seguidas (cada vuelta cuesta; sin tope, sólo lo frenaba el gasto del día).
+      if (seguir && seguidas < 2) await correr(`${BASE}/chat`, { conversacionId, continuar: true }, null, seguidas + 1);
+      else if (seguir) setError("Se cortó por tiempo varias veces seguidas. Escribí «seguí» para que continúe.");
+      return llego;
     },
     [conversacionId, procesar, qc],
   );
@@ -256,7 +270,7 @@ export function useChat(conversacionId: string | null, opciones: { onEvento?: (e
   );
 
   const decidir = useCallback(
-    (accionId: string, decision: "confirmar" | "rechazar") => correr(`${BASE}/acciones/${accionId}`, { decision }, null),
+    (accionId: string, decision: "confirmar" | "rechazar" | "reintentar") => correr(`${BASE}/acciones/${accionId}`, { decision }, null),
     [correr],
   );
 

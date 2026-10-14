@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useImperativeHandle, useRef, useState, type Ref } from "react";
 import { AudioLines, FileText, Loader2, Mic, Paperclip, SendHorizontal, Square, X } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { subirAdjunto, type Adjunto } from "@/hooks/use-asistente";
@@ -12,7 +13,15 @@ import { subirAdjunto, type Adjunto } from "@/hooks/use-asistente";
 //     en el cuadro para mirarlo antes de mandarlo;
 //   · el clip sube fotos (de la cámara o la galería), planos en PDF o un audio reenviado;
 //   · una captura de pantalla se pega con Ctrl/Cmd+V, en el cuadro o en cualquier parte del chat;
-//   · con el cuadro vacío, el botón de la derecha es "Hablar" (voz en vivo, si está configurada).
+//   · UN botón de voz: un toque graba un audio (y lo transcribe); mantenerlo apretado medio
+//     segundo y soltar abre la voz en vivo. Se arranca al SOLTAR porque en el celular el toque
+//     que habilita el micrófono y el audio es el que termina (pointerup), no el que empieza;
+//   · todo lo que se toca mide 44 px, y abajo deja lugar a la barra del iPhone (safe area).
+
+/** Lo que la pantalla puede hacer con el cuadro: las sugerencias lo llenan, no se mandan solas. */
+export type CompositorApi = { poner: (texto: string) => void };
+
+const MANTENER_MS = 500;
 
 async function pedirJson<T>(url: string, body: unknown): Promise<T> {
   const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -28,16 +37,26 @@ export function Compositor({
   onParar,
   transcripcionDisponible,
   onHablar,
+  textoInicial = "",
+  ref,
 }: {
   conversacionId: string;
   respondiendo: boolean;
-  onEnviar: (texto: string, adjuntos: Adjunto[]) => void;
+  /** `false` si el mensaje no llegó a arrancar: el texto vuelve al cuadro. */
+  onEnviar: (texto: string, adjuntos: Adjunto[]) => void | Promise<boolean>;
   /** Sin onParar el turno no lo sigue esta pantalla (se recargó a mitad): no hay qué cortar. */
   onParar?: () => void;
   transcripcionDisponible: boolean;
   onHablar?: () => void;
+  /** Con qué arranca el cuadro (la sugerencia que se tocó antes de que existiera la charla). */
+  textoInicial?: string;
+  ref?: Ref<CompositorApi>;
 }) {
-  const [texto, setTexto] = useState("");
+  const [texto, setTexto] = useState(textoInicial);
+  const [manteniendo, setManteniendo] = useState(false);
+  const temporizador = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const largo = useRef(false);
+  const ignorarClick = useRef(false);
   const [adjuntos, setAdjuntos] = useState<Adjunto[]>([]);
   const [subiendo, setSubiendo] = useState(0);
   const [grabando, setGrabando] = useState(false);
@@ -46,6 +65,19 @@ export function Compositor({
   const area = useRef<HTMLTextAreaElement>(null);
   const grabador = useRef<MediaRecorder | null>(null);
   const trozos = useRef<Blob[]>([]);
+
+  useImperativeHandle(ref, () => ({
+    poner: (t: string) => {
+      setTexto(t);
+      // Al final, para seguir escribiendo («Editar el S0…» → el número).
+      requestAnimationFrame(() => {
+        const a = area.current;
+        if (!a) return;
+        a.focus();
+        a.setSelectionRange(a.value.length, a.value.length);
+      });
+    },
+  }), []);
 
   useEffect(() => {
     const t = area.current;
@@ -140,17 +172,69 @@ export function Compositor({
   function enviar() {
     const t = texto.trim();
     if ((!t && !adjuntos.length) || respondiendo || subiendo) return;
-    onEnviar(t, adjuntos);
+    const enviados = adjuntos;
+    // Si no llegó (sin señal en obra, el tope del día, un turno en curso), lo escrito vuelve al
+    // cuadro en vez de perderse; el error lo muestra la pantalla.
+    void Promise.resolve(onEnviar(t, enviados)).then((llego) => {
+      if (llego !== false) return;
+      setTexto((ahora) => ahora || t);
+      setAdjuntos((ahora) => (ahora.length ? ahora : enviados));
+    });
     setTexto("");
     setAdjuntos([]);
   }
 
   const tactil = typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
 
+  // El botón de voz. Con las dos cosas disponibles: toque = audio, mantener y soltar = en vivo.
+  const conAudio = transcripcionDisponible;
+  const conVivo = !!onHablar;
+  const cortarMantener = () => {
+    if (temporizador.current) clearTimeout(temporizador.current);
+    temporizador.current = null;
+    setManteniendo(false);
+  };
+  const vozAbajo = () => {
+    largo.current = false;
+    if (!conVivo || !conAudio || grabando) return;
+    temporizador.current = setTimeout(() => {
+      largo.current = true;
+      setManteniendo(true);
+      navigator.vibrate?.(15);
+    }, MANTENER_MS);
+  };
+  const vozArriba = () => {
+    cortarMantener();
+    if (!largo.current) return;
+    largo.current = false;
+    ignorarClick.current = true;
+    onHablar?.();
+  };
+  const vozCancelada = () => {
+    cortarMantener();
+    largo.current = false;
+  };
+  const vozClick = () => {
+    if (ignorarClick.current) {
+      ignorarClick.current = false;
+      return;
+    }
+    if (conAudio) void alternarGrabacion();
+    else onHablar?.();
+  };
+  const etiquetaVoz = grabando
+    ? "Terminar de grabar"
+    : conAudio && conVivo
+      ? "Grabar un audio (mantené apretado y soltá para hablar en vivo)"
+      : conAudio ? "Grabar un audio" : "Hablar en vivo con el asistente";
+
   return (
-    <div className="border-t border-border bg-background p-3">
+    <div className="border-t border-border bg-background px-3 pt-2.5 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+      {manteniendo && (
+        <p role="status" className="mb-2 rounded-lg bg-primary/10 px-3 py-2 text-center text-[14px] font-medium">Soltá para hablar en vivo</p>
+      )}
       {(adjuntos.length > 0 || subiendo > 0) && (
-        <div className="mb-2 flex flex-wrap gap-2">
+        <div className="mb-2 flex flex-wrap gap-3 pt-1">
           {adjuntos.map((a, i) => (
             <div key={a.path} className="relative">
               {a.vista ? (
@@ -159,8 +243,8 @@ export function Compositor({
               ) : (
                 <div className="flex h-14 items-center gap-1 rounded-md border border-border px-2 text-[12px]"><FileText className="size-4" />{a.nombre}</div>
               )}
-              <button className="absolute -top-1.5 -right-1.5 rounded-full bg-background p-0.5 shadow" onClick={() => setAdjuntos((x) => x.filter((_, j) => j !== i))} aria-label="Sacar">
-                <X className="size-3" />
+              <button className="absolute -top-3 -right-3 flex size-11 items-center justify-center" onClick={() => setAdjuntos((x) => x.filter((_, j) => j !== i))} aria-label={`Sacar ${a.nombre}`}>
+                <span className="rounded-full bg-background p-1 shadow"><X className="size-3.5" /></span>
               </button>
             </div>
           ))}
@@ -169,7 +253,7 @@ export function Compositor({
       )}
       <div className="flex items-end gap-2">
         <input ref={archivos} type="file" multiple accept="image/*,application/pdf,audio/*" className="hidden" onChange={(e) => agregar(e.target.files)} />
-        <Button variant="ghost" size="icon" onClick={() => archivos.current?.click()} aria-label="Adjuntar foto, plano o audio" title="Adjuntar foto, plano o audio (una captura también se pega con Ctrl+V)" disabled={respondiendo}>
+        <Button variant="ghost" size="icon" className="size-11 [&_svg:not([class*='size-'])]:size-5" onClick={() => archivos.current?.click()} aria-label="Adjuntar foto, plano o audio" title="Adjuntar foto, plano o audio (una captura también se pega con Ctrl+V)" disabled={respondiendo}>
           <Paperclip />
         </Button>
         <textarea
@@ -183,30 +267,33 @@ export function Compositor({
             }
           }}
           rows={1}
-          placeholder={transcribiendo ? "Transcribiendo el audio…" : grabando ? "Grabando… tocá el cuadrado para terminar" : "Contame qué hay que cotizar o qué necesitás saber"}
-          className="max-h-56 min-h-10 flex-1 resize-none rounded-xl border border-input bg-transparent px-3.5 py-2.5 text-[15px] outline-none focus-visible:border-ring"
+          placeholder={transcribiendo ? "Transcribiendo el audio…" : grabando ? "Grabando… tocá el cuadrado para terminar" : "Contame qué hay que cotizar o qué necesitás"}
+          className="max-h-56 min-h-11 min-w-0 flex-1 resize-none rounded-xl border border-input bg-transparent px-3.5 py-2.5 text-[16px] outline-none focus-visible:border-ring"
         />
-        {transcripcionDisponible && (
+        {(conAudio || conVivo) && (
           <Button
             variant={grabando ? "destructive" : "ghost"}
             size="icon"
-            onClick={alternarGrabacion}
+            className={cn("size-11 touch-none select-none [-webkit-touch-callout:none] [&_svg:not([class*='size-'])]:size-5", manteniendo && "bg-primary/15")}
+            onClick={vozClick}
+            onPointerDown={vozAbajo}
+            onPointerUp={vozArriba}
+            onPointerLeave={vozCancelada}
+            onPointerCancel={vozCancelada}
+            onContextMenu={(e) => e.preventDefault()}
             disabled={transcribiendo || respondiendo}
-            aria-label={grabando ? "Terminar de grabar" : "Grabar un audio"}
+            aria-label={etiquetaVoz}
+            title={etiquetaVoz}
           >
-            {transcribiendo ? <Loader2 className="animate-spin" /> : grabando ? <Square /> : <Mic />}
+            {transcribiendo ? <Loader2 className="animate-spin" /> : grabando ? <Square /> : conAudio ? <Mic /> : <AudioLines />}
           </Button>
         )}
         {respondiendo && onParar ? (
-          <Button size="icon" variant="outline" onClick={onParar} aria-label="Parar"><Square /></Button>
+          <Button size="icon" variant="outline" className="size-11 [&_svg:not([class*='size-'])]:size-5" onClick={onParar} aria-label="Parar"><Square /></Button>
         ) : respondiendo ? (
-          <Button size="icon" variant="outline" disabled aria-label="El asistente está respondiendo"><Loader2 className="animate-spin" /></Button>
-        ) : onHablar && !texto.trim() && !adjuntos.length && !subiendo && !grabando && !transcribiendo ? (
-          <Button size="icon" onClick={onHablar} aria-label="Hablar con el asistente" title="Hablar con el asistente">
-            <AudioLines />
-          </Button>
+          <Button size="icon" variant="outline" className="size-11" disabled aria-label="El asistente está respondiendo"><Loader2 className="size-5 animate-spin" /></Button>
         ) : (
-          <Button size="icon" onClick={enviar} disabled={(!texto.trim() && !adjuntos.length) || subiendo > 0} aria-label="Enviar">
+          <Button size="icon" className="size-11 bg-hd-boton text-white hover:bg-hd-boton-hover [&_svg:not([class*='size-'])]:size-5" onClick={enviar} disabled={(!texto.trim() && !adjuntos.length) || subiendo > 0} aria-label="Enviar">
             <SendHorizontal />
           </Button>
         )}

@@ -1,7 +1,7 @@
 "use client";
 
-// Encabezado de la Hoja del día, compartido por Cuadrillas y Camiones:
-//   Hoja del día  [Cuadrillas | Camiones]  ‹ [Hoy · mar 13] [Mañana · mié 14] ›  …acciones de la vista
+// Encabezado de la vista Camiones de la Hoja del día (el Pizarrón tiene su propia barra):
+//   Hoja del día  [Pizarrón | Camiones]  ‹ [Hoy · mar 13] [Mañana · mié 14] ›  …acciones de la vista
 // El día va en `?dia=` y se conserva al cambiar de vista. Las acciones las pone cada vista
 // con <AccionesHoja> (el hueco de la derecha).
 
@@ -15,7 +15,7 @@ import { useRefHueco } from "./acciones-hoja";
 import { PestanasPlanificacion } from "./pestanas-planificacion";
 import { useDiaHoja } from "./use-dia-hoja";
 
-const RUTA_CUADRILLAS = "/planificacion/hoja";
+const RUTA_PIZARRON = "/planificacion/hoja";
 const RUTA_CAMIONES = "/planificacion/hoja/camiones";
 
 /** "mar 13" */
@@ -39,7 +39,7 @@ export function EncabezadoHoja() {
 
       <nav aria-label="Vista" className="inline-flex gap-0.5 rounded-lg bg-muted p-[3px]">
         {[
-          { href: RUTA_CUADRILLAS, l: "Cuadrillas", on: !enCamiones },
+          { href: RUTA_PIZARRON, l: "Pizarrón", on: !enCamiones },
           { href: RUTA_CAMIONES, l: "Camiones", on: enCamiones },
         ].map((t) => (
           <Link

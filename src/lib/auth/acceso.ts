@@ -66,6 +66,7 @@ const DEFINICION = [
   { id: "personal", titulo: "Legajos", grupo: "Personal y flota", rutas: ["/personal"] },
   { id: "fichadas", titulo: "Fichadas", grupo: "Personal y flota", rutas: ["/fichadas"] },
   { id: "vehiculos", titulo: "Vehículos", grupo: "Personal y flota", rutas: ["/vehiculos"] },
+  { id: "organigrama", titulo: "Organigrama", grupo: "Personal y flota", rutas: ["/organigrama"] },
   { id: "configuracion", titulo: "Configuración", grupo: "Sistema", rutas: ["/configuracion"] },
 ] as const satisfies readonly DefModulo[];
 

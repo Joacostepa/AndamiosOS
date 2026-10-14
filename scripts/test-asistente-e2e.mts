@@ -26,7 +26,7 @@ const ok = (cond: unknown, que: string) => {
 const { data: yo } = await db.from("user_profiles").select("id").eq("email", "js@andamiosbuenosaires.com.ar").single();
 const sis = await construirSistema(db);
 const conv = await crearConversacion(db, {
-  usuario_id: yo!.id, canal: "web", modelo: "claude-opus-5", esfuerzo: "high", system_snapshot: sis.bloques, system_hash: sis.hash,
+  usuario_id: yo!.id, canal: "web", modelo: "claude-opus-5-5", esfuerzo: "medium", system_snapshot: sis.bloques, system_hash: sis.hash,
   criterio_version: sis.criterioVersion, parametros_version: sis.parametrosVersion, titulo: "[PRUEBA E2E] asistente",
 });
 
@@ -47,9 +47,12 @@ let ordenId: number | null = null;
 let partnerId: number | null = null;
 try {
   await turno(
-    `Es una PRUEBA del sistema. Cotizame una bandeja de protección de 12 metros lineales, 3 m de altura, en Calle Falsa 123, CABA. ` +
+    // Fuera de CABA: en CABA no se guarda sin verificar el frente en el catastro (desde el 26/09),
+    // y una dirección inventada no está. Acá el frente lo da el cliente.
+    `Es una PRUEBA del sistema. Cotizame una bandeja de protección de 12 metros lineales, 3 m de altura, en Calle Falsa 123, Lomas de Zamora, Provincia de Buenos Aires. ` +
+    `El frente del lote es de 12 m, lo pasó el cliente. ` +
     `Cliente nuevo: ZZ PRUEBA ASISTENTE SA, CUIT ${CUIT}, contacto Prueba Borrar, celular 1100000000, mail prueba-asistente@example.com, ` +
-    `domicilio Calle Falsa 123, CABA. Armado 1 jornada y desarme 1, cuadrilla de 3, sin render, sin concertina ni gestoría. ` +
+    `domicilio Calle Falsa 123, Lomas de Zamora. Armado 1 jornada y desarme 1, cuadrilla de 3, sin render, sin concertina ni gestoría. ` +
     `No hace falta revisar nada más: dejalo listo para guardar en Odoo y proponé guardarlo.`,
   );
   const { data: acciones } = await db.from("asistente_acciones").select("numero, estado, tipo").eq("conversacion_id", conv.id);

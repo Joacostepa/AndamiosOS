@@ -5,8 +5,30 @@ Para retomar en una sesión nueva. El diseño completo y todo lo aprendido está
 quede 100 % automático** y el orden para seguir.
 
 Para arrancar: "Leé docs/permisos/handoff.md y docs/permisos/modulo.md y
-seguimos con lo que falta". **Empezar por § "Rediseño implementado", después § "09/10 a la noche", § "09/10", § "06/10", § "02/10" y § "Estado al 26/09", seguir con
+seguimos con lo que falta". **Empezar por § "14/10", § "Rediseño implementado", después § "09/10 a la noche", § "09/10", § "06/10", § "02/10" y § "Estado al 26/09", seguir con
 § "17/09 — primera encomienda cerrada sola", § "Noche 16/09" y § "Estado 16/09 19:00".**
+
+---
+
+## 14/10 — Paraná 631 (S02695) liberado con un poder en vez del acta
+
+- Consorcio Paraná 627/31/35, administrador Ricardo Rabadán Paz. El acta de designación que subió
+  el cliente es de 2010 (vencida). El 13/10 subió en el mismo casillero (`acta_asamblea`, v2) el
+  **poder por escritura n° 141 (04/07/2008, Reg. 44 Tres de Febrero)** a Rabadán Paz, y la IA lo
+  observó por no ser el documento pedido (y le volvió a mandar el mail de corrección al cliente).
+- **Decisión de JS:** el poder alcanza para presentar. Se pasó el documento a `ok` desde la Mac
+  (script temporal, ya borrado): `revision.manual` con el motivo y evento `documento_revisado`
+  con actor `persona`. Mismo criterio que el libro de actas de S02202 (17/09).
+- Después JS generó informe técnico y croquis y siguió con la encomienda desde la ficha. Falta la
+  póliza de Segucom (endoso pedido el 13/10); con eso se presenta sola de 19 a 7.
+- **Riesgo:** en consorcios el mismo documento va a los casilleros "Designación de autoridades" y
+  "Poder" de TAD, así que el GCBA recibe el poder como designación. Si lo observa, entra por
+  subsanación con el acta vigente.
+- **Pendiente:** el mail automático del 13/10 le pidió de nuevo el acta al cliente; avisarle (por
+  Agustina) que el poder alcanzó.
+- **Falta en la app:** no hay botón para que una persona apruebe un documento observado
+  ("Aprobar igual", con motivo). Hoy se hace por script; conviene agregarlo a la ficha, sólo para
+  gestores, y que corra `siLegajoCompletoGenerar` al aprobar.
 
 ---
 

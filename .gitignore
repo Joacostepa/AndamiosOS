@@ -47,3 +47,6 @@ next-env.d.ts
 
 # capturas del robot de permisos: tienen datos de clientes y del expediente
 /robot/capturas/
+
+# Fotos de obras de clientes (referencia del modelador, no van al repo público)
+docs/oficina-tecnica/modelador/fotos/

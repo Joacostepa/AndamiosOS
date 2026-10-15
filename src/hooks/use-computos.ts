@@ -2,6 +2,8 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
+import { origenAlGuardar } from "@/lib/tecnica/persistencia/origen";
+import type { OrigenItem } from "@/lib/tecnica/persistencia/tipos";
 
 export type ComputoItem = {
   id: string;
@@ -9,6 +11,10 @@ export type ComputoItem = {
   cantidad_requerida: number;
   cantidad_disponible: number | null;
   notas: string | null;
+  /** De dónde salió la fila: el modelador ('modelo'), el modelador y después a mano ('modelo_editado') o a mano. */
+  origen?: OrigenItem;
+  /** Lo que dijo el modelo la última vez que generó (para el diff). null si nunca lo dijo. */
+  modelo_cantidad?: number | null;
   catalogo_piezas?: {
     codigo: string;
     descripcion: string;
@@ -205,6 +211,10 @@ export type SaveComputoInput = {
 // Persiste el set completo de ítems de una obra (autoguardado de Pantalla 2).
 // Crea el cómputo si todavía no existe (estado default 'borrador') y reemplaza
 // los ítems (delete + insert). Devuelve el id del cómputo para reusarlo.
+//
+// El reemplazo CONSERVA de dónde salió cada fila (computo_items.origen / modelo_cantidad, del
+// modelador): una fila del modelo cuya cantidad se cambió acá pasa a 'modelo_editado' (y el modelador
+// no la pisa sin preguntar); una fila nueva es 'manual'. Ver origenAlGuardar.
 export function useSaveComputoItems() {
   const supabase = createClient();
   const queryClient = useQueryClient();
@@ -228,6 +238,26 @@ export function useSaveComputoItems() {
         id = computo.id as string;
       }
 
+      // Lo que había, para no perder el origen. Si la base todavía no tiene las columnas del
+      // modelador (migración 20261015000001 sin aplicar), se guarda como antes. Un cómputo recién
+      // creado no tiene nada que conservar: sus filas toman el default de la base ('manual').
+      let previos: Map<string, { origen: OrigenItem; modelo_cantidad: number | null }> | null = null;
+      if (computoId) {
+        const { data: actuales, error: readError } = await supabase
+          .from("computo_items")
+          .select("pieza_id, origen, modelo_cantidad")
+          .eq("computo_id", id);
+        if (readError) {
+          if (readError.code !== "42703") throw readError;
+          previos = null;
+        } else {
+          previos = new Map();
+          for (const r of (actuales ?? []) as { pieza_id: string; origen: OrigenItem | null; modelo_cantidad: number | null }[]) {
+            previos.set(r.pieza_id, { origen: r.origen ?? "manual", modelo_cantidad: r.modelo_cantidad });
+          }
+        }
+      }
+
       // Reemplazar ítems: borrar los actuales e insertar los activos (>0).
       const { error: deleteError } = await supabase
         .from("computo_items")
@@ -242,6 +272,7 @@ export function useSaveComputoItems() {
           computo_id: id,
           pieza_id: i.pieza_id,
           cantidad_requerida: i.cantidad_requerida,
+          ...(previos ? origenAlGuardar(previos.get(i.pieza_id), i.cantidad_requerida) : {}),
         }));
         const { error: insertError } = await supabase
           .from("computo_items")

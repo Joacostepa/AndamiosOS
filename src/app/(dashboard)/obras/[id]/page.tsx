@@ -9,7 +9,7 @@ import { BalanceMaterial } from "@/components/obras/balance-material";
 import { Chatter } from "@/components/shared/chatter";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -22,7 +22,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDate, formatRelativeDate } from "@/lib/utils/formatters";
 import { ESTADO_OBRA_TRANSITIONS, ESTADO_OBRA_LABELS } from "@/lib/validators/obra";
-import { ArrowRight, ChevronDown, Send, Loader2, MessageSquare, Plus, CheckCircle, XCircle, Clock, Shield, FileText } from "lucide-react";
+import { ArrowRight, Boxes, ChevronDown, Send, Loader2, MessageSquare, Plus, CheckCircle, XCircle, Clock, Shield, FileText } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 
@@ -86,6 +86,9 @@ export default function ObraDetailPage({ params }: { params: Promise<{ id: strin
             </DropdownMenuContent>
           </DropdownMenu>
         )}
+        <Link href={`/oficina-tecnica/modelador?obra=${obraId}`} className={buttonVariants({ variant: "outline" })}>
+          <Boxes className="mr-2 h-4 w-4" />Diseñar andamio
+        </Link>
       </PageHeader>
 
       <ObraProgressBar estado={obra.estado} />

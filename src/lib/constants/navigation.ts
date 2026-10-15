@@ -2,7 +2,7 @@ import {
   Building2, Users, Wrench, Package, Truck, UserCheck, Bell,
   Settings, FileText, ClipboardList, Calculator, Calendar, HardHat,
   PackagePlus, AlertTriangle, Search, Car, Hammer, MessageSquare,
-  MapPin, Fingerprint, Bot, Building, ListOrdered, ShieldCheck, FileBarChart, Landmark, SlidersHorizontal, Network,
+  MapPin, Fingerprint, Bot, Building, ListOrdered, ShieldCheck, FileBarChart, Landmark, SlidersHorizontal, Network, Boxes,
   type LucideIcon,
 } from "lucide-react";
 
@@ -51,6 +51,7 @@ export const navigation: NavGroup[] = [
     label: "Oficina Tecnica",
     items: [
       { title: "Computos", href: "/oficina-tecnica/computos", icon: Calculator },
+      { title: "Modelador", href: "/oficina-tecnica/modelador", icon: Boxes },
     ],
   },
   {

@@ -50,6 +50,10 @@ const DEFINICION = [
   // ruta más larga (ver moduloDeRuta), así /planificacion/hoja no la abre Planificación.
   { id: "hoja-dia", titulo: "Hoja del día", grupo: "Operaciones", rutas: ["/planificacion/hoja"] },
   { id: "computos", titulo: "Cómputos", grupo: "Oficina técnica", rutas: ["/oficina-tecnica/computos"] },
+  // El modelador 3D (docs/oficina-tecnica/modelador/arquitectura-produccion.md): modelos, plantillas
+  // propias y «Generar cómputo». Generar escribe en Cómputos, así que esa acción pide además Cómputos
+  // en «editar» (lo chequea la ruta y la RPC tec_generar_computo).
+  { id: "modelador", titulo: "Modelador", grupo: "Oficina técnica", rutas: ["/oficina-tecnica/modelador"] },
   { id: "stock", titulo: "Stock", grupo: "Depósito y logística", rutas: ["/deposito/stock"] },
   { id: "catalogo", titulo: "Catálogo de piezas", grupo: "Depósito y logística", rutas: ["/deposito/catalogo"] },
   { id: "movimientos", titulo: "Movimientos", grupo: "Depósito y logística", rutas: ["/deposito/movimientos"] },
@@ -126,6 +130,7 @@ const APIS: Record<string, readonly ModuloId[]> = {
   "/api/comercial/asistente": ["asistente-comercial"],
   "/api/comercial/parametros": ["parametros-cotizacion"],
   "/api/ai/computo": ["computos"],
+  "/api/tecnica/modelador": ["modelador"],
   "/api/panol": ["panol"],
   "/api/panol/kiosco": ["panol-kiosco", "panol"],
   // Hoja del día (§14 "Acceso"). Los pedidos también los crean quien planifica (desde el
@@ -155,8 +160,8 @@ export const PERFILES: readonly { rol: Rol; titulo: string; descripcion: string;
   {
     rol: "operativo",
     titulo: "Oficina",
-    descripcion: "Planificación, órdenes de trabajo, partes y habilitaciones.",
-    permisos: { ...CIRCUITO, habilitaciones: "editar", "permisos-via-publica": "editar", "mapa-obras": "ver" },
+    descripcion: "Planificación, órdenes de trabajo, partes, habilitaciones y el modelador.",
+    permisos: { ...CIRCUITO, habilitaciones: "editar", "permisos-via-publica": "editar", "mapa-obras": "ver", modelador: "editar" },
   },
   { rol: "deposito", titulo: "Depósito", descripcion: "Planificación, órdenes de trabajo y partes.", permisos: CIRCUITO },
   { rol: "campo", titulo: "Campo", descripcion: "Planificación, órdenes de trabajo y partes.", permisos: CIRCUITO },

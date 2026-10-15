@@ -24,3 +24,5 @@ export { validarEsqueleto } from './esqueleto/validar.ts';
 export { celdaId, panoCeldaId, nodoId, partirClave } from './esqueleto/esqueleto.ts';
 export { fusionarNodos } from './fusionar.ts';
 export { fmt } from './util.ts';
+// Volúmenes de referencia (edificio y obstáculos desde medidas, modelar arriba, choques).
+export * from './volumenes/index.ts';

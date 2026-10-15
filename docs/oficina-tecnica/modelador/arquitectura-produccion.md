@@ -957,6 +957,21 @@ Reglas de convivencia:
   - Generar: `{ obra_id, revision, decisiones, reemplazarOtroModelo?, aceptoOmitidas? }`. 422 + `omitidas` si hay líneas sin código y no se confirmó; 423 si el cómputo está completado; 409 si cambió la revisión; error si el cómputo de la obra salió de **otro** modelo y no se mandó `reemplazarOtroModelo`.
   - `DiffLinea.tipo` suma `quita_editado` (fila editada a mano que el modelo ya no tiene: `mantener` | `borrar`) y `manual` (no se toca). `sumar` = cantidad del modelo + lo que la persona había agregado a mano (`actual − modelo_cantidad` anterior).
   - `useSaveComputoItems` marca `modelo_editado` una fila del modelo cuya cantidad cambió, y la vuelve a `modelo` si vuelve a la cantidad del modelo (`persistencia/origen.ts`).
+- **15/10/2026 · A (tipologías y volúmenes) · sin cambios en `tipos.ts`:**
+  - **Tipologías nuevas.** Diez archivos en `tipologias/` registrados en `_nuevas.ts`: `bandeja`, `bandeja_portico`, `bandeja_voladizo`, `torre_plataforma`, `torre_movil`, `colgante`, `envolvente`, `patio_interno`, `sobre_escalera` y `hueco_escalera`, con 18 presets.
+    - Ayudas propias en `tipologias/nuevas-comunes.ts`. Chequeos de test en `tipologias/nuevas-test-utils.ts`: piezas repetidas, tubos que pasan por una vertical, verticales dobles y pies repetidos.
+  - **Volúmenes de referencia.** Están en `volumenes/**` y se exportan desde `index.ts`.
+    - Cada volumen se guarda en `contexto.volumenes` como `VolumenModelado`: un `Volumen` más `def` (la definición paramétrica) y `defVersion`. Las tipologías solo leen `planta`, `yBase` e `yTope`.
+    - API: `agregarVolumen`, `actualizarVolumen`, `quitarVolumen`, `migrarVolumenes`, `solidosDe`, `carasDe` y `carasDelDiseno`.
+    - Para modelar sobre una cara: `propuestaParaCara` y `agregarEnCara`.
+    - Para los choques: `detectarChoques`, `avisosDeChoque` (ids `VC*`, nivel `error`, con reparación) y `accionesRetiro`.
+    - **Para B:** `avisosDeChoque(diseno, resultado, catalogo.medidas)` se concatena a `resultado.avisos` en el editor. No sale de `construir`, para no tocar el núcleo.
+  - **Para el núcleo.** Lo detecté y lo resolví del lado de las tipologías; conviene corregirlo en `comunes/`:
+    1. `grillaPoligono` redondea las columnas al milímetro y, en lados inclinados, deja vanos de 0,729: quedan «sin código» (`ajustarMedidasCatalogo`).
+    2. En medida libre, `grillaPoligono` cierra cada lado con hasta 5 mm de tolerancia y deja verticales casi duplicadas en las esquinas (`cerrarEsquinasPoligono` + `fusionarColumnasCercanas`).
+    3. `grillaPoligono({ lado: 'adentro' })` deja uniones en T: la horizontal exterior de un lado pasa por la primera vertical del siguiente. El patio perimetral se arma con tiras y cuadros de esquina (`incorporar`).
+    4. En un vano libre de menos de 0,25 el rodapié queda «sin código»: se corta de fenólico (`rodapiesCortos`).
+    5. El fixture no tiene código de `estabilizador`. La torre móvil exterior arranca sin estabilizadores para cumplir el test de presets sin faltantes; con estabilizadores salen «sin código» hasta que OT los mapee.
 
 ---
 

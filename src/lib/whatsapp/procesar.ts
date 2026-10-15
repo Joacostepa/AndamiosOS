@@ -44,8 +44,11 @@ const COLUMNAS = "wamid, telefono, tipo, contenido, recibido_at, enviado_at";
 const espera = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const ahora = () => new Date().toISOString();
 
-/** Anota lo que llegó (una vez: Meta reintenta). Devuelve los teléfonos con algo nuevo. */
-export async function registrarEntrantes(db: SupabaseClient, mensajes: MensajeMeta[]): Promise<string[]> {
+/**
+ * Anota lo que llegó (una vez: Meta reintenta). Devuelve los teléfonos con algo nuevo.
+ * `numero`: el phone_number_id por el que llegó (el del asistente de vendedores).
+ */
+export async function registrarEntrantes(db: SupabaseClient, mensajes: MensajeMeta[], numero: string | null = null): Promise<string[]> {
   const telefonos = new Set<string>();
   for (const m of mensajes) {
     if (!m?.id || !m.from) continue;
@@ -58,6 +61,7 @@ export async function registrarEntrantes(db: SupabaseClient, mensajes: MensajeMe
           tipo: TIPOS.has(m.type) ? m.type : "otro",
           contenido: m,
           enviado_at: m.timestamp ? new Date(Number(m.timestamp) * 1000).toISOString() : null,
+          phone_number_id: numero,
         },
         { onConflict: "wamid", ignoreDuplicates: true },
       )

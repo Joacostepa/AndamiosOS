@@ -142,5 +142,6 @@ Todas mergeadas a `main` y deployadas, con lo que reportó JS probando en produc
 | En la torre el pincel Ménsula/Anclaje aparecía pero no hacía nada | Los overrides de ménsula y anclaje van a los nodos del vano en toda plantilla que no sea fachada | `modelo/construir.ts` + `tipologias/mensula-pincel.test.ts` |
 | No se podía elegir el largo del voladizo, y la diagonal del voladizo bajaba 0,50 | Chips de «Vuelo» (0,45 · 0,73 · 1,09 · 1,25 · 1,50 · 2,00 · 2,50) en la barra del pincel; ≤ 0,45 = ménsula de catálogo; mayor = horizontal del vuelo + diagonal **2,00 × vuelo** que baja 2,00 al parante. Cambiaron los golden de bandeja 45/90 y envolvente de tanque | `armar/armar.ts` (`armarNodos`), `OverrideCelda.brazoMensula` |
 | Al plegar la columna izquierda, el editor se desarmaba (3D en una columna de 0 px) | Cada panel fijo en su columna de la grilla | `editor.tsx` |
+| En la estructura libre, la ménsula (y anclaje, horizontal, baranda, abertura, lona, caño) pintada no quedaba | El pincel leía el estado de la vista previa y al soltar lo volvía a alternar; ahora lee del diseño | `estado/acciones.ts` (`pintarDiseno`) |
 
 **Para trabajar en local:** `node_modules` del checkout principal no tenía `three` (se había instalado solo en el worktree): correr `npm install`. Si Turbopack tira un FATAL al levantar `next dev`, borrar `.next/`.

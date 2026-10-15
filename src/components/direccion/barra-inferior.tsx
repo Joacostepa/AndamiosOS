@@ -33,7 +33,7 @@ export function BarraInferior() {
           const s = SECCIONES.find((x) => x.id === id)!;
           const Icono = ICONO[id];
           return (
-            <Link key={id} href={`${s.href}${qMoneda}`} aria-current={activa === id ? "page" : undefined} className={cn(item, activa === id ? "text-primary" : "text-muted-foreground")}>
+            <Link key={id} href={`${s.href}${qMoneda}`} scroll={false} aria-current={activa === id ? "page" : undefined} className={cn(item, activa === id ? "text-primary" : "text-muted-foreground")}>
               <Icono className="size-5" aria-hidden />
               {s.corto}
             </Link>
@@ -51,7 +51,7 @@ export function BarraInferior() {
           {deMas.map((s) => {
             const Icono = ICONO[s.id];
             return (
-              <Link key={s.id} href={`${s.href}${qMoneda}`} onClick={() => setMas(false)} className="flex min-h-14 items-center gap-3 rounded-md px-3 hover:bg-muted">
+              <Link key={s.id} href={`${s.href}${qMoneda}`} scroll={false} onClick={() => setMas(false)} className="flex min-h-14 items-center gap-3 rounded-md px-3 hover:bg-muted">
                 <Icono className="size-[18px]" aria-hidden />
                 <span className="flex flex-1 flex-col">
                   <b className="text-sm font-semibold">{s.titulo}</b>

@@ -127,6 +127,7 @@ export function PestanasDireccion() {
           <li key={s.id}>
             <Link
               href={`${s.href}${qMoneda}`}
+              scroll={false}
               aria-current={activa === s.id ? "page" : undefined}
               className={cn(
                 "inline-flex items-center gap-1.5 border-b-2 px-3 pt-2 pb-[9px] text-sm font-medium whitespace-nowrap focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
@@ -163,6 +164,16 @@ export function EncabezadoDireccion() {
   // Opaco y con sombra al hacer scroll: lo que pasa por debajo se lee como "debajo", no como tapado.
   const ref = useRef<HTMLElement>(null);
   const pegado = usePegado(ref);
+  // Al cambiar de pantalla, Next lleva el contenido nuevo al tope del <main>, y ahí queda debajo
+  // del encabezado sticky (la primera fila se ve cortada). Volvemos al tope real: encabezado y
+  // contenido completos. Corre después del scroll de Next (y otra vez en el próximo cuadro).
+  useEffect(() => {
+    const cont = ref.current?.closest("main");
+    if (!cont) return;
+    cont.scrollTo({ top: 0 });
+    const cuadro = requestAnimationFrame(() => cont.scrollTo({ top: 0 }));
+    return () => cancelAnimationFrame(cuadro);
+  }, [pathname]);
   return (
     <header
       ref={ref}

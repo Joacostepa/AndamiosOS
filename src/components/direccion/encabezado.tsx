@@ -4,8 +4,10 @@
 // el toggle de moneda (en la URL) y "Actualizar ahora". Debajo, las pestañas (escritorio);
 // en el celular las reemplaza la barra inferior. Sticky al hacer scroll.
 //
-// Las acciones propias de una pantalla (Compartir, Reunión en La semana; el selector de
-// período en Ventas) las pone la página, debajo del encabezado.
+// Las acciones propias de una pantalla (Compartir, Reunión en La semana) las pone la página,
+// debajo del encabezado. El selector de período de Ventas va DENTRO del encabezado, en el hueco
+// #dir-encabezado-extra (con un portal desde la página): si quedara afuera, al hacer scroll
+// pasaría por detrás del encabezado sticky y se vería encimado.
 
 import Link from "next/link";
 import { useEffect, useState, useTransition } from "react";
@@ -159,6 +161,7 @@ export function EncabezadoDireccion() {
         </div>
       </div>
       <LineaDatos />
+      <div id="dir-encabezado-extra" className="mt-2.5 empty:hidden" />
       <PestanasDireccion />
     </header>
   );

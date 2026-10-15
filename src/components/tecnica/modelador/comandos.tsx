@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useEditor, estructuraSel } from "./estado/store";
 import { borrarEstructura, convertir, pintar } from "./estado/acciones";
+import { gruposDe, quitarGrupo } from "./volumenes/geometria";
 import { kg } from "./util/formato";
 
 const st = () => useEditor.getState();
@@ -77,16 +78,31 @@ let armadoBorrar = 0;
 /** Supr / ⌫ sobre una estructura: pide una segunda pulsación en 2,5 s (en Mac «delete» es ⌫). */
 export function borrarConConfirmacion(): void {
   const s = st();
-  const est = estructuraSel(s);
-  if (!est || s.soloLectura) return;
+  if (s.soloLectura) return;
+  // un volumen elegido en el panel gana: es lo último que se tocó
+  const vol = s.sel.volumen ? gruposDe(s.diseno).find((g) => g.grupo === s.sel.volumen) : undefined;
+  const est = vol ? undefined : estructuraSel(s);
+  const nombre = vol?.nombre ?? est?.nombre;
+  if (!nombre) return;
   if (Date.now() - armadoBorrar < 2500) {
     armadoBorrar = 0;
     toast.dismiss("armado-borrar");
-    borrarEstructura(est.id);
+    if (vol) borrarVolumen(vol.grupo);
+    else if (est) borrarEstructura(est.id);
     return;
   }
   armadoBorrar = Date.now();
-  toast(`Apretá ⌫ otra vez para borrar ${est.nombre}`, { id: "armado-borrar", duration: 2500 });
+  toast(`Apretá ⌫ otra vez para borrar ${nombre}`, { id: "armado-borrar", duration: 2500 });
+}
+
+/** Borra el volumen (y sus salientes) en un paso deshacible y suelta la selección. */
+export function borrarVolumen(grupo: string): void {
+  const s = st();
+  const v = gruposDe(s.diseno).find((g) => g.grupo === grupo);
+  if (!v || s.soloLectura) return;
+  s.commit(quitarGrupo(s.diseno, grupo), `Borrar volumen ${v.nombre}`);
+  s.seleccionar({ volumen: null });
+  toast(`Borré el volumen ${v.nombre}`, { action: { label: "Deshacer", onClick: () => st().deshacer() } });
 }
 
 // ───────────── medida rápida (L / H) ─────────────

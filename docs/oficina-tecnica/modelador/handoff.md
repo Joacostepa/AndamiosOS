@@ -2,7 +2,7 @@
 
 Para retomar en una sesión nueva: «Leé docs/oficina-tecnica/modelador/handoff.md y seguimos con el modelador».
 
-**Estado:** terminado en la rama `feat/modelador`. Pasa 922 tests y `tsc` da limpio. La subida a producción está en curso; ver el §6.
+**Estado:** **en producción desde el 15/10/2026** (`main`). Pasa 931 tests y `tsc` da limpio. Pendientes de la subida en el §6.
 Todo lo que calcula es **PREDIMENSIONADO**, porque los criterios no tienen firma. No reemplaza la memoria de cálculo.
 
 ---
@@ -107,14 +107,18 @@ Además:
 - [x] **Migraciones 000001 → 000004 aplicadas en producción (15/10).**
   - Quedaron creadas `tec_modelos`, `computos.modelo_id` y la RPC `tec_generar_computo(uuid,uuid,uuid,int,jsonb,jsonb,jsonb)`.
   - Las apliqué con `node --env-file=.env.local migrar.mjs`, que detecta el pooler `aws-0-us-west-2` y toma `SUPABASE_DB_PASSWORD` de `.env.local`.
-- [ ] **El mapa de piezas `tec_pieza_mapa` quedó VACÍO (0 filas).**
-  - La semilla buscaba códigos como `HOR-048-250` y `VERT-200-CE`, que vienen de la migración de marzo (`20260331000010_import_productos_odoo.sql`).
-  - El sync con Odoo los reemplazó en producción por `ODOO-<n>`: el catálogo real tiene 268 piezas y la medida va en la descripción, por ejemplo «CAÑO - 2,50m» o «BASTIDOR DE ANDAMIO - 1,30m. x 1.80 h».
-  - Mientras no se arme el mapa, «Generar cómputo» marca todo «sin código» y no escribe ítems.
-  - **Siguiente paso:** una migración de semilla que mapee por **descripción** (regex tolerante) contra el catálogo real, y que se verifique leyendo `catalogo_piezas` de producción. Esa lectura necesita permiso de JS, o bien un CSV exportado desde el Table Editor.
+- [x] **Mapa de piezas por descripción** (migración 000005, `src/lib/tecnica/persistencia/mapa-descripcion.ts`).
+  - Quedaron 148 filas contra los códigos reales `ODOO-<n>`, más 6 kits de bastidor con composición *supuesta*.
+  - Si Odoo trae un código sin fila en el mapa, `catalogo.ts` lo infiere por la descripción (prioridad 900). Lo que cargue OT siempre gana.
+  - **Siguen sin código, porque no existen en Odoo:**
+    - en Paraná 631: anclaje, rodapié 1,50 y recubrimiento de vertical;
+    - en otras tipologías: lona, chapa, estabilizador, defensa, vigas celosía de 5/6/7,5, ménsulas de 0,73 y 1,09, pasador, grampa de viga, placa de anclaje, escalón de arranque.
+  - Para que esas piezas entren al cómputo hay que crearlas en Odoo.
+  - **Para confirmar con JS:** cuál es la diagonal 2,00×2,00 real (ODOO-91 o ODOO-93), y la composición de los módulos de bastidor (hoy: 1 bastidor + 2 riendas H + 2 riendas D).
+  - **Ninguna pieza tiene `peso_kg` en Odoo**, así que las toneladas salen «sin peso».
 - [ ] **Permisos:** `tec_backfill_permisos` quedó en 0, así que nadie tenía Cómputos «ver/editar» en `user_profiles.permisos` para copiar. Hay que dar a mano Modelador «editar» a la Oficina Técnica (Configuración → usuarios). El admin entra igual.
 - [ ] Revisar que `SUPABASE_SERVICE_ROLE_KEY` esté en Vercel.
-- [ ] **Merge a `main`, push y deploy.** Ya se puede, porque las migraciones están aplicadas. Antes de mergear hay que mover la copia sin commitear de `docs/oficina-tecnica/modelador/` que está en el checkout principal, porque choca con el merge. Las fotos se vuelven a copiar después: están en `.gitignore`.
+- [x] **Merge a `main`, push y deploy (15/10).** Commits `b5bbb68` (modelador) y `d417191` (mapa). Vercel deploya solo; en producción la API del modelador responde 401 sin sesión.
 - [ ] Prueba de punta a punta: crear un modelo, guardarlo y generar el cómputo en una obra de prueba.
 
 Para volver atrás: `supabase/scripts/modelador_down.sql`. ⚠ Borra los modelos guardados.

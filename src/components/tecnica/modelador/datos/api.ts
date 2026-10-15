@@ -9,7 +9,7 @@ import type { AvisoCatalogo } from "@/lib/tecnica/persistencia/catalogo";
 
 export {
   ErrorApi, ErrorOmitidas, ErrorRevision, guardarModelo, subirImagen,
-  useArchivarModelo, useCrearModelo, useDuplicarModelo, useGenerarComputo, useGuardarComoPlantilla,
+  useArchivarModelo, useCrearModelo, useDuplicarModelo, useRestaurarModelo, useGenerarComputo, useGuardarComoPlantilla,
   useGuardarModelo, useModelo, useModelos, usePreviaComputo, useSubirImagen,
 } from "@/hooks/use-modelador";
 

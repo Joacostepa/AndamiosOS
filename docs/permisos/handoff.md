@@ -29,8 +29,17 @@ seguimos con lo que falta". **Empezar por § "15/10", § "14/10", § "Rediseño 
   actualiza solo: hasta reinstalar sigue con el código viejo y falla igual.
 - **Cómo saber si anduvo:** el aviso amarillo desaparece de la lista en la vuelta siguiente. Si sigue,
   el error nuevo (`pvp_robot.ultimo_error`, se corta a ~500 caracteres) dice en qué paso quedó.
-- **Idea a decidir:** que el robot haga `git pull` y se reinicie solo al empezar cada vuelta. Riesgo:
-  un cambio roto en `main` le llega sin que nadie lo instale.
+- **Actualización diaria del robot (`robot/actualizar.mjs`):** una vez por día, en la primera vuelta
+  entre las 8 y las 18 (fuera de la ventana de presentación) y sin tarea en curso, el robot hace
+  `git fetch` de main; si hay código nuevo avanza con `--ff-only` y se cierra, y launchd lo vuelve a
+  arrancar (KeepAlive) con el código nuevo. Trabas: sólo en main con el árbol limpio; si cambian
+  `package.json`/`package-lock.json` no actualiza (hay que `npm install` y reinstalar a mano); si algún
+  `robot/*.mjs` no pasa `node --check` vuelve al commit anterior. Cada traba deja aviso "El robot de
+  TAD no se pudo actualizar solo" (uno por día) y sigue con el código que tenía. **Ojo:** `node --check`
+  sólo ve errores de sintaxis; un error al correr (import mal escrito) igual llega al robot. Probado en
+  un clon (actualiza y vuelve atrás con código roto); en la Mac mini empieza a andar **después de la
+  próxima reinstalación a mano**. Falta ver que `git fetch` tenga las credenciales de GitHub corriendo
+  desde launchd.
 
 ---
 

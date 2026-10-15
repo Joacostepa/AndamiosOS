@@ -40,6 +40,7 @@ import { parsearCaratula, sinAltura, textoDePdf } from "./caratula.mjs";
 import { parsearPermiso } from "./permiso.mjs";
 import { atenderEncomienda } from "./cpau-encomienda.mjs";
 import { atenderPresentacion, frenarPresentacion } from "./tad-presentar.mjs";
+import { actualizarSiToca } from "./actualizar.mjs";
 import { read, searchRead, write } from "../scripts/odoo-rpc.mjs";
 
 const UNA_VEZ = process.argv.includes("--una-vez");
@@ -828,6 +829,14 @@ async function recuperarTareasCortadas() {
 log(`Robot de TAD en ${os.hostname()}${UNA_VEZ ? " (una vuelta)" : ""}`);
 await recuperarTareasCortadas();
 while (!apagando) {
+  // Una vez por día, entre tareas: si hay código nuevo en main se cierra y launchd lo vuelve a
+  // arrancar (robot/actualizar.mjs).
+  const act = UNA_VEZ ? null : actualizarSiToca(log);
+  if (act?.problema) {
+    log("!! actualización", act.problema);
+    await avisar([{ tipo: "permiso_robot", clave: `permiso_robot:actualizar:${new Date().toISOString().slice(0, 10)}`, titulo: "El robot de TAD no se pudo actualizar solo", descripcion: `${act.problema}. Sigue andando con el código que tenía.`, prioridad: "media", enlace: "/permisos-via-publica" }]);
+  }
+  if (act?.reiniciar) break;
   const tarea = await tomarTarea();
   const tareaId = tarea?.id ?? null;
   if (tarea?.tipo === "cpau_encomienda") {
@@ -888,3 +897,5 @@ while (!apagando) {
   await new Promise((r) => setTimeout(r, 20_000));
 }
 await browser.close().catch(() => {});
+// Después de actualizarse sale explícito: launchd lo vuelve a arrancar con el código nuevo.
+process.exit(0);

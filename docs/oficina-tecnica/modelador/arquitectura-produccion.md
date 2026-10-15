@@ -818,6 +818,16 @@ Hace lo siguiente:
 6. Borra las filas `origen='modelo'` cuyas piezas ya no están en `p_lineas`. Las `modelo_editado` que ya no están se conservan, salvo que la decisión sea `'borrar'`.
 7. Actualiza `computos.modelo_id`, `modelo_revision`, `superficie`, `metros_lineales`, `altura_maxima` y `tipo_sistema_andamio` (multidireccional/tubular) desde `p_metricas`.
 
+> **Cambio del 15/10 (migración 20261015000004_modelador_endurecer.sql).** La firma pasa a ser
+> `tec_generar_computo(p_uid uuid, p_modelo uuid, …)` y **solo la ejecuta `service_role`**: antes, con
+> `GRANT … TO authenticated`, se podía llamar por PostgREST con líneas inventadas. La ruta
+> `/api/tecnica/modelador/[id]/computo` la llama con `createAdminClient()` y el `userId` que ya verificó
+> `exigirModulo`; la RPC revalida los permisos con `tec_puede_editar_uid(p_uid)` y
+> `computos_puede_editar_uid(p_uid)`. Además toma `pg_advisory_xact_lock` por obra (dos generaciones a la
+> vez no crean dos cómputos). La misma migración deja `tec_pieza_mapa` y `tec_kits` editables solo por
+> admin, fuerza la autoría al crear un modelo y pone tope al `resumen`. Bajada manual:
+> `supabase/scripts/modelador_down.sql`.
+
 **`supabase/migrations/20261015000003_modelador_storage.sql`**: bucket privado `tec-modelos` (como `20260909000001_fotos_obra.sql`). Lectura con `tec_puede_ver()` y escritura con `tec_puede_editar()`. Path: `<modelo_id>/portada.png`.
 
 `tec_criterios` (reglas firmadas) **no** entra en esta etapa. Los criterios siguen en `criterios.ts` con `firmado:false`.

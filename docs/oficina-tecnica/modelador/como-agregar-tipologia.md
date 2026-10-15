@@ -195,3 +195,28 @@ El edificio y sus obstáculos se dibujan desde medidas con `agregarVolumen(disen
 Se guardan en `diseno.contexto.volumenes` con su `def` y su `defVersion`. Las tipologías leen solo `planta`, `yBase` e `yTope`.
 
 Desde una cara (`carasDelDiseno`), `agregarEnCara` crea la fachada, la envolvente o el patio que corresponde. `avisosDeChoque` marca las piezas que se meten en un volumen y trae la reparación de un clic.
+
+### Campo «volumen»: la tipología depende de algo del contexto
+
+Si la tipología se apoya en un volumen (una escalera, la losa de la que cuelga, la azotea), declará el campo con
+`tipo: 'volumen'` y los tipos que sirven:
+
+```ts
+{ ruta: 'params.volumenId', etiqueta: 'Escalera', tipo: 'volumen', volumenes: ['escalera'], grupo: 'Apoyo' },
+```
+
+La pantalla muestra una lista con los volúmenes compatibles y el botón «Crear uno con estas medidas». Al ubicar
+la plantilla, si el diseño no tiene ninguno compatible, se crea solo (`vincularVolumenSugerido` en
+`volumenes/sugerido.ts`) y queda vinculado: nadie tiene que tipear un id. Si tu tipología necesita un volumen
+de otra forma, sumá el caso en `volumenSugerido` con su test en `volumenes.test.ts`.
+
+### Reglas que el test de presets exige
+
+- `motor.test.ts` arma **todos** los presets con el catálogo de prueba y falla si alguno abre con un aviso de nivel
+  `aviso` o `error` por cómo está configurado (anclá lo que es esbelto, dale profundidad al paso peatonal, etc.).
+  Los avisos de verificación obligatoria (colgar, volar, cargar una losa) están en una lista aparte del test.
+- Todas las piezas tienen que tener código en el fixture (o la línea queda «sin código» y el test lo marca). Si
+  una pieza nueva no existe en Odoo, agregala al fixture con `{ plausible: true }`: en producción queda «sin
+  código» hasta que Oficina Técnica la mapee en `tec_pieza_mapa` (nunca se inventa).
+- Cada caño lleva sus propias grampas con id `<id del caño>:g0`, `:g1`…: `fusionarNodos` no las deduplica por
+  posición (dos caños que llegan al mismo nodo suman 4 grampas) y solo las saca si se fue su caño.

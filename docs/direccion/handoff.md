@@ -13,9 +13,15 @@ Hecho:
 - **Quiénes tienen acceso**: Joaquín, Jorge, Gabriel y Juan Pablo, los cuatro con Dirección = Editar y Socios = Ver. Se cargan en Configuración › Usuarios.
 - **Cron** `/api/cron/direccion` a las 04:30 (07:30 UTC, en `vercel.json`): calcula todo y guarda el snapshot del día. Necesita `CRON_SECRET` en Vercel.
 
+Corregido después de subir (15/10, con la primera revisión de Joaquín en escritorio):
+- **Pantallas en gris que no cargaban**: las páginas y las APIs de Dirección no tenían `maxDuration` y Vercel cortaba el cálculo en vivo (La semana tarda ~14 s, Ventas hasta ~49 s sin caché). Ahora `export const maxDuration = 300` en el layout y en las rutas `/api/direccion/*` que calculan.
+- **Primera fila tapada por el encabezado**: el `<main>` del dashboard tiene `p-6` y `sticky top-0` se mide desde adentro de ese padding, así que el encabezado bajaba 24 px sin mover el contenido (−8 px de separación, medido con Playwright). Va con `-top-6`. Además: encabezado opaco, sombra al hacer scroll y, al cambiar de pantalla, vuelta al tope del `<main>` (Next llevaba el contenido nuevo al tope y quedaba detrás del encabezado). Si se cambia el padding del `<main>`, hay que cambiar también `-top-6` y `-mt-6` en `encabezado.tsx`.
+- **Selector de período de Ventas**: va dentro del encabezado sticky, por portal al hueco `#dir-encabezado-extra`.
+- **Gráfico "Retiros por mes contra el resultado"**: escala con montos redondos, resultado como línea, monto sobre cada barra y en ámbar la barra del mes en que se retiró más que el resultado. El acumulado de la cuenta particular también tiene la escala completa.
+
 Falta:
 1. **Confirmar que el primer cron corrió** (16/10 a las 04:30): en el log de Vercel tiene que aparecer `[cron direccion] …: ok` y `direccion_snapshots` tiene que tener filas de ese día.
-2. **Revisión en el navegador con sesión**, en escritorio (1440 px) y celular (375 px), claro y oscuro. No se hizo antes de subir.
+2. **Revisión en el celular** (375 px) y en modo oscuro. En escritorio y claro ya se revisaron La semana, Caja, Ventas y Socios.
 3. **Primer uso**: fijar el colchón mínimo de caja y asignar dueños en "Para decidir".
 
 ## Reglas que importan

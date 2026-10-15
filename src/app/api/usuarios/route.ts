@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { claveTemporal, datosUsuarioSchema, exigirAdmin, invalido } from "@/lib/auth/servidor";
 import { normalizarPermisos } from "@/lib/auth/acceso";
+import { controlarExplicitos, registrarCambioExplicito } from "@/lib/auth/explicitos-servidor";
 
 // GET  /api/usuarios — todas las cuentas, con su perfil y su último ingreso.
 // POST /api/usuarios — alta con contraseña temporal.
@@ -64,6 +65,10 @@ export async function POST(req: NextRequest) {
   const { email, ...datos } = parsed.data;
 
   const admin = createAdminClient();
+  // Dirección › Socios: ser admin no alcanza para darlo (ver explicitos-servidor.ts).
+  const explicito = await controlarExplicitos(admin, null, datos.permisos);
+  if (explicito instanceof NextResponse) return explicito;
+
   const clave = claveTemporal();
   // email_confirm: sin esto la cuenta queda pendiente de confirmar y NO puede entrar.
   const { data: cuenta, error } = await admin.auth.admin.createUser({ email, password: clave, email_confirm: true });
@@ -87,6 +92,8 @@ export async function POST(req: NextRequest) {
     await admin.auth.admin.deleteUser(cuenta.user.id);
     return NextResponse.json({ error: `No se pudo crear el perfil: ${errPerfil.message}` }, { status: 500 });
   }
+
+  await registrarCambioExplicito(cuenta.user.id, explicito);
 
   return NextResponse.json({ id: cuenta.user.id, clave });
 }

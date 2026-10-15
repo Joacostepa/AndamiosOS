@@ -2,7 +2,7 @@ import {
   Building2, Users, Wrench, Package, Truck, UserCheck, Bell,
   Settings, FileText, ClipboardList, Calculator, Calendar, HardHat,
   PackagePlus, AlertTriangle, Search, Car, Hammer, MessageSquare,
-  MapPin, Fingerprint, Bot, Building, ListOrdered, ShieldCheck, FileBarChart, Landmark, SlidersHorizontal, Network, Boxes,
+  MapPin, Fingerprint, Bot, Building, ListOrdered, ShieldCheck, FileBarChart, Landmark, SlidersHorizontal, Network, Boxes, Gauge,
   type LucideIcon,
 } from "lucide-react";
 
@@ -13,6 +13,12 @@ export type NavItem = { title: string; href: string; icon: LucideIcon; subItems?
 export type NavGroup = { label?: string; items: NavItem[] };
 
 export const navigation: NavGroup[] = [
+  {
+    // El tablero de los socios (docs/direccion/diseno.md §2.3): primero en el menú y SIN
+    // sub-entradas; las secciones son pestañas dentro del sector. Sólo con el módulo.
+    label: "Dirección",
+    items: [{ title: "Dirección", href: "/direccion", icon: Gauge }],
+  },
   {
     label: "Comercial",
     items: [

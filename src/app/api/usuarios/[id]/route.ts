@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { datosUsuarioSchema, exigirAdmin, invalido } from "@/lib/auth/servidor";
+import { controlarExplicitos, registrarCambioExplicito } from "@/lib/auth/explicitos-servidor";
 
 // PATCH /api/usuarios/:id — datos, perfil, módulos, y activar/desactivar.
 //
@@ -35,6 +36,10 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   }
 
   const admin = createAdminClient();
+  // Dirección › Socios: ser admin no alcanza para darlo o sacarlo (ni a uno mismo).
+  const explicito = await controlarExplicitos(admin, id, cambios.permisos);
+  if (explicito instanceof NextResponse) return explicito;
+
   const { data: perfil, error: errLectura } = await admin
     .from("user_profiles")
     .select("id")
@@ -64,6 +69,8 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     });
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  await registrarCambioExplicito(id, explicito);
 
   if (cambios.activo !== undefined) {
     const { error } = await admin.auth.admin.updateUserById(id, {

@@ -83,7 +83,9 @@ export function EditorUsuario({ open, onOpenChange, usuario, yoId, onClaveTempor
       apellido: apellido.trim(),
       telefono: telefono.trim() || null,
       rol,
-      permisos: rol === "admin" ? {} : permisos,
+      // El admin trae todo solo, MENOS los módulos que exigen permiso explícito (Dirección ›
+      // Socios): esos se guardan aunque sea admin.
+      permisos: rol === "admin" ? soloExplicitos(permisos) : permisos,
     };
     if (!datos.nombre) {
       toast.error("Falta el nombre");
@@ -224,9 +226,26 @@ export function EditorUsuario({ open, onOpenChange, usuario, yoId, onClaveTempor
               )}
             </div>
             {rol === "admin" ? (
-              <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                Un administrador ve y edita todos los módulos, y administra los usuarios.
-              </p>
+              <div className="space-y-3">
+                <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                  Un administrador ve y edita todos los módulos, y administra los usuarios.
+                </p>
+                <div className="divide-y rounded-lg border">
+                  {MODULOS.filter((m) => m.exigeExplicito).map((m) => (
+                    <div key={m.id} className="flex items-center justify-between gap-3 px-3 py-2">
+                      <span className="text-sm">
+                        {m.titulo}
+                        <span className="block text-xs text-muted-foreground">{LEYENDA_EXPLICITO}</span>
+                      </span>
+                      <SelectorNivel
+                        valor={permisos[m.id] ?? null}
+                        soloLectura={!!m.soloLectura}
+                        onChange={(n) => setNivel(m.id, n)}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
             ) : (
               <div className="space-y-4">
                 {GRUPOS.map((grupo) => (
@@ -237,7 +256,12 @@ export function EditorUsuario({ open, onOpenChange, usuario, yoId, onClaveTempor
                     <div className="divide-y rounded-lg border">
                       {MODULOS.filter((m) => m.grupo === grupo).map((m) => (
                         <div key={m.id} className="flex items-center justify-between gap-3 px-3 py-2">
-                          <span className="text-sm">{m.titulo}</span>
+                          <span className="text-sm">
+                            {m.titulo}
+                            {m.exigeExplicito && (
+                              <span className="block text-xs text-muted-foreground">{LEYENDA_EXPLICITO}</span>
+                            )}
+                          </span>
                           <SelectorNivel
                             valor={permisos[m.id] ?? null}
                             soloLectura={!!m.soloLectura}
@@ -310,6 +334,15 @@ export function EditorUsuario({ open, onOpenChange, usuario, yoId, onClaveTempor
       />
     </>
   );
+}
+
+const LEYENDA_EXPLICITO = "Información reservada a socios: ni el perfil Administrador lo trae. Sólo lo da o lo saca alguien que ya lo tiene.";
+
+/** Sólo los módulos que el admin no trae solo (exigeExplicito). */
+function soloExplicitos(permisos: Permisos): Permisos {
+  const salida: Permisos = {};
+  for (const m of MODULOS) if (m.exigeExplicito && permisos[m.id]) salida[m.id] = permisos[m.id];
+  return salida;
 }
 
 const OPCIONES: { valor: Nivel | null; etiqueta: string }[] = [

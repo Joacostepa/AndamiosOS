@@ -38,6 +38,13 @@ export function PanelLibre({ r, soloLectura }: { r: EstructuraResuelta; soloLect
   const vanosCat = catalogo.medidas.multi.vanos.length ? catalogo.medidas.multi.vanos : [2.5, 2, 1.5, 1.25, 1.09, 0.73];
   const libre = !vanosCat.some((x) => Math.abs(x - medida) < 0.002);
   const op = (o: OpEsqueleto, nombre: string) => operarEsqueleto(r.id, o, nombre);
+  // nombre legible del vano (V1, V2… en su cara), en vez del id interno
+  const nombreVano = (v: { id: string; cara?: string } | undefined) => {
+    if (!v) return "—";
+    const deCara = esq.vanos.filter((x) => x.cara === v.cara);
+    const i = deCara.findIndex((x) => x.id === v.id);
+    return `V${i + 1}${v.cara && v.cara !== "exterior" ? ` (${v.cara})` : ""}`;
+  };
   const columnasSel = [...new Set(vanosSel.flatMap((v) => [v.a, v.b]))];
   const colsDe = columnasSel.map((id) => esq.columnas.find((c) => c.id === id)).filter((c) => !!c);
 
@@ -57,8 +64,8 @@ export function PanelLibre({ r, soloLectura }: { r: EstructuraResuelta; soloLect
       <h4 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Estructura libre</h4>
       <p className="text-[11px] text-muted-foreground">
         {vanosSel.length
-          ? `Crece desde el vano ${vano?.id} (${fmt(vano?.medida ?? 0)} m${vano?.libre ? ", caño y grampa" : ""}) · ${celdas.length} celda${celdas.length === 1 ? "" : "s"}`
-          : `Sin selección: crece desde el vano ${vano?.id ?? "—"} de la cara exterior. Tocá una celda en el alzado o en el 3D para crecer desde otro lado.`}
+          ? `Crece desde el vano ${nombreVano(vano)} (${fmt(vano?.medida ?? 0)} m${vano?.libre ? ", caño y grampa" : ""}) · ${celdas.length} celda${celdas.length === 1 ? "" : "s"}`
+          : `Sin selección: crece desde el vano ${nombreVano(vano)} de la cara exterior. Tocá una celda en el alzado o en el 3D para crecer desde otro lado.`}
       </p>
 
       <div className="space-y-1">
@@ -70,19 +77,22 @@ export function PanelLibre({ r, soloLectura }: { r: EstructuraResuelta; soloLect
         </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-1">
-        <Button size="xs" variant="outline" disabled={soloLectura || !vano} onClick={() => crecer("izq")} title="Un vano más al costado, al principio de la fila (en el sentido del alzado)">
-          <ArrowLeft /> Al costado (inicio)
-        </Button>
-        <Button size="xs" variant="outline" disabled={soloLectura || !vano} onClick={() => crecer("der")} title="Un vano más al costado, al final de la fila (en el sentido del alzado)">
-          Al costado (final) <ArrowRight />
-        </Button>
-        <Button size="xs" variant="outline" disabled={soloLectura || !vano} onClick={() => crecer("afuera")} title="Otra fila de profundidad del lado de la cara exterior">
-          <ArrowDown /> Hacia afuera (+profundidad)
-        </Button>
-        <Button size="xs" variant="outline" disabled={soloLectura || !vano} onClick={() => crecer("adentro")} title="Otra fila de profundidad del lado de la fachada">
-          <ArrowUp /> Hacia la fachada (+profundidad)
-        </Button>
+      <div className="space-y-1">
+        <span className="text-xs text-muted-foreground">Agregar un vano</span>
+        <div className="grid grid-cols-2 gap-1 [&_button]:h-auto [&_button]:min-h-7 [&_button]:whitespace-normal [&_button]:py-1 [&_button]:text-left">
+          <Button size="xs" variant="outline" disabled={soloLectura || !vano} onClick={() => crecer("izq")} title="Un vano más al costado, al principio de la fila (en el sentido del alzado)">
+            <ArrowLeft /> Al costado, al inicio
+          </Button>
+          <Button size="xs" variant="outline" disabled={soloLectura || !vano} onClick={() => crecer("der")} title="Un vano más al costado, al final de la fila (en el sentido del alzado)">
+            <ArrowRight /> Al costado, al final
+          </Button>
+          <Button size="xs" variant="outline" disabled={soloLectura || !vano} onClick={() => crecer("afuera")} title="Otra fila de profundidad del lado de la cara exterior">
+            <ArrowDown /> Hacia afuera
+          </Button>
+          <Button size="xs" variant="outline" disabled={soloLectura || !vano} onClick={() => crecer("adentro")} title="Otra fila de profundidad del lado de la fachada">
+            <ArrowUp /> Hacia la fachada
+          </Button>
+        </div>
       </div>
       <label className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
         Solo en la zona elegida (niveles de la selección)
@@ -90,17 +100,18 @@ export function PanelLibre({ r, soloLectura }: { r: EstructuraResuelta; soloLect
       </label>
 
       <div className="flex flex-wrap gap-1">
-        <Button size="xs" variant="outline" disabled={soloLectura || !vanosSel.length} onClick={() => vano && op({ op: "medidaVano", vanoId: vano.id, medida, libre }, `Vano ${vano.id}: ${fmt(vano.medida)} → ${fmt(medida)} m`)}>
+        <Button size="xs" variant="outline" disabled={soloLectura || !vanosSel.length} onClick={() => vano && op({ op: "medidaVano", vanoId: vano.id, medida, libre }, `Vano ${nombreVano(vano)}: ${fmt(vano.medida)} → ${fmt(medida)} m`)}>
           Cambiar medida a {fmt(medida)}
         </Button>
-        <Button size="xs" variant="outline" disabled={soloLectura || !vanosSel.length || esq.vanos.length <= 1} onClick={() => vano && op({ op: "quitarVano", vanoId: vano.id }, `Quitar vano ${vano.id}`)}>
+        <Button size="xs" variant="outline" disabled={soloLectura || !vanosSel.length || esq.vanos.length <= 1} onClick={() => vano && op({ op: "quitarVano", vanoId: vano.id }, `Quitar vano ${nombreVano(vano)}`)}>
           <Minus /> Quitar vano
         </Button>
       </div>
 
       <div className="space-y-1 border-t border-border pt-2">
-        <span className="text-xs text-muted-foreground">Niveles (cotas: {esq.cotas.map((c) => fmt(c)).join(" · ")})</span>
-        <div className="flex items-center gap-1">
+        <span className="text-xs text-muted-foreground">Niveles: {esq.cotas.length} (a {esq.cotas.map((c) => fmt(c)).join(" · ")} m)</span>
+        <span className="block text-[11px] text-muted-foreground">Altura del nivel nuevo</span>
+        <div className="flex flex-wrap items-center gap-1">
           <CampoNumero className="w-24" valor={cotaNueva ?? cotaSug} min={0.1} unidad="m" onCambiar={setCotaNueva} deshabilitado={soloLectura} ariaLabel="Cota del nivel nuevo" />
           <Button
             size="xs"
@@ -130,7 +141,7 @@ export function PanelLibre({ r, soloLectura }: { r: EstructuraResuelta; soloLect
 
       {colsDe.length > 0 && (
         <div className="space-y-1 border-t border-border pt-2">
-          <span className="text-xs text-muted-foreground">Apoyo de las columnas {colsDe.map((c) => c.id).join(", ")}</span>
+          <span className="text-xs text-muted-foreground">Apoyo de {colsDe.length === 1 ? "la columna elegida" : `las ${colsDe.length} columnas elegidas`}</span>
           <Chips
             opciones={APOYOS}
             valor={colsDe.every((c) => c.apoyo === colsDe[0].apoyo) ? colsDe[0].apoyo : undefined}

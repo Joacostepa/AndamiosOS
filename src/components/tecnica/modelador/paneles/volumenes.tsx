@@ -18,12 +18,13 @@ import { cn } from "@/lib/utils";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useEditor, resueltaSel } from "../estado/store";
 import {
-  formaDeGrupo, gruposDe, ladosDe, NOMBRE_FORMA, NOMBRE_SALIENTE, nuevoIdVolumen, ponerForma, quitarGrupo, salientePorDefecto,
+  formaDeGrupo, gruposDe, ladosDe, NOMBRE_FORMA, NOMBRE_SALIENTE, nuevoIdVolumen, ponerForma, salientePorDefecto,
   type FormaVolumen, type VolumenRef,
 } from "../volumenes/geometria";
 import { CampoNumero, EditorPoligono } from "../alzado/planta";
 import { Chips } from "./campos";
 import { fmt } from "../util/formato";
+import { borrarVolumen } from "../comandos";
 import { Box, MousePointerClick, Plus, Trash2 } from "lucide-react";
 
 type Forma = FormaVolumen["forma"];
@@ -159,7 +160,14 @@ function EditorVolumen({ grupo, soloLectura }: { grupo: string; soloLectura: boo
   const diseno = useEditor((s) => s.diseno);
   const fg = formaDeGrupo(diseno, grupo);
   const [nombre, setNombre] = useState<string | null>(null);
-  if (!fg) return <p className="px-2 py-1 text-[11px] text-muted-foreground">Este volumen no se edita con el formulario (planta no rectangular o cargado de otra forma): se ve y cuenta para choques y caras.</p>;
+  if (!fg) {
+    return (
+      <div className="space-y-1 rounded-b-lg border-x border-b border-border p-2">
+        <p className="text-[11px] text-muted-foreground">Este volumen no se edita con el formulario (planta no rectangular o cargado de otra forma): se ve y cuenta para choques y caras.</p>
+        <BotonBorrarVolumen grupo={grupo} soloLectura={soloLectura} />
+      </div>
+    );
+  }
   const f = fg.forma;
   const set = (nueva: FormaVolumen, txt: string, nom = fg.nombre) => {
     const s = useEditor.getState();
@@ -298,18 +306,15 @@ function EditorVolumen({ grupo, soloLectura }: { grupo: string; soloLectura: boo
           </div>
         </div>
       )}
-      <Button
-        size="xs"
-        variant="ghost"
-        className="text-destructive"
-        disabled={soloLectura}
-        onClick={() => {
-          const s = useEditor.getState();
-          s.commit(quitarGrupo(s.diseno, grupo), `Borrar volumen ${fg.nombre}`);
-        }}
-      >
-        <Trash2 /> Borrar volumen
-      </Button>
+      <BotonBorrarVolumen grupo={grupo} soloLectura={soloLectura} />
     </div>
+  );
+}
+
+function BotonBorrarVolumen({ grupo, soloLectura }: { grupo: string; soloLectura: boolean }) {
+  return (
+    <Button size="xs" variant="ghost" className="text-destructive" disabled={soloLectura} onClick={() => borrarVolumen(grupo)}>
+      <Trash2 /> Borrar volumen
+    </Button>
   );
 }

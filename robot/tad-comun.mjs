@@ -108,7 +108,20 @@ export async function entrar(page) {
   await esperarCarga(page, 120000);
   await elegir.click({ timeout: 30000 });
   await page.waitForTimeout(1500);
-  await page.getByText(/EMPRENDIMIENTOS Y ESTRUCTURAS/i).first().click({ timeout: 30000 });
+  // Desde el 15/10 TAD muestra a quién representar como chips (Angular): el <input type="radio"
+  // class="radio-chip-input"> está encima del texto y se queda con el clic, y Playwright esperaba
+  // 30 s a que el texto "recibiera" el clic. Se hace clic forzado en el radio del chip (o en el
+  // texto, que cae sobre el radio, si el radio no está).
+  const empresa = page.getByText(/EMPRENDIMIENTOS Y ESTRUCTURAS/i).first();
+  await empresa.waitFor({ timeout: 30000 });
+  const radio = empresa.locator("xpath=ancestor::*[.//input[@type='radio']][1]//input[@type='radio']").first();
+  if (await radio.count()) await radio.click({ force: true });
+  else await empresa.click({ force: true });
+  // Si la pantalla nueva pide confirmar la elección, se confirma.
+  if (!(await representando.waitFor({ timeout: 5000 }).then(() => true, () => false))) {
+    const confirmar = page.locator("button:visible", { hasText: /^\s*(Confirmar|Continuar|Aceptar|Ingresar)\s*$/i }).first();
+    if (await confirmar.count()) await confirmar.click();
+  }
   await representando.waitFor({ timeout: 15000 });
   await page.waitForTimeout(3000);
 }

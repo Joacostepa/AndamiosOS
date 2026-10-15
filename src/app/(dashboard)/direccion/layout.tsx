@@ -46,3 +46,6 @@ export default async function DireccionLayout({ children }: { children: React.Re
     </DireccionProvider>
   );
 }
+
+// Calcula en vivo contra Odoo: La semana y Ventas pueden pasar los 10–15 s del límite por defecto de Vercel.
+export const maxDuration = 300;

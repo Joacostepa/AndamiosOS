@@ -378,6 +378,8 @@ function armarPanos(esq: Esqueleto, ix: IndiceEsqueleto, em: Emisor): void {
 function armarNodos(esq: Esqueleto, ix: IndiceEsqueleto, em: Emisor): void {
   const hechas = new Set<string>();
   const postes = new Set<string>();
+  const sinPie: string[] = [];
+  const cortas: { key: string; h: number }[] = [];
   // ménsulas por vano: las dos columnas del vano con ménsula en la misma dirección
   for (const v of esq.vanos) {
     const A = ix.col.get(v.a);
@@ -397,8 +399,24 @@ function armarNodos(esq: Esqueleto, ix: IndiceEsqueleto, em: Emisor): void {
         if (hechas.has(hk)) continue;
         hechas.add(hk);
         const tip = mas(X.p, n, mX.brazo);
-        const drop = Math.min(0.5, mX.brazo * 0.7);
-        em.add(`men:${hk}`, 'mensula', { largo: mX.brazo }, P3(X.p, c), P3(tip, c), { celda: key, nodo: nodoId(X.id, k), primitivas: [{ a: P3(X.p, c), b: P3(tip, c) }, { a: P3(X.p, c - drop), b: P3(tip, c) }] });
+        if (mX.brazo <= CRITERIOS.mensulaPiezaMax + EPS) {
+          // vuelo corto: pieza ménsula de catálogo (trae su propio refuerzo)
+          const drop = Math.min(0.5, mX.brazo * 0.7);
+          em.add(`men:${hk}`, 'mensula', { largo: mX.brazo }, P3(X.p, c), P3(tip, c), { celda: key, nodo: nodoId(X.id, k), primitivas: [{ a: P3(X.p, c), b: P3(tip, c) }, { a: P3(X.p, c - drop), b: P3(tip, c) }] });
+          continue;
+        }
+        // vuelo mayor (armado ABA): horizontal del vuelo + diagonal que baja 2,00 hasta el parante.
+        // Si el vuelo cae sobre un vano propio de la estructura (esquina), ya lo sostiene su horizontal.
+        if (vanoEnDireccion(esq, ix, X, n, k)) continue;
+        em.tubo(`mh:${hk}`, 'horizontal', mX.brazo, P3(X.p, c), P3(tip, c), { canoSiNoHay: true, celda: key });
+        const pie = pieDiagonalVoladizo(X, c, esq.cotas);
+        if (pie === null) {
+          sinPie.push(key);
+          continue;
+        }
+        const h = r3(c - pie);
+        if (Math.abs(h - CRITERIOS.caidaDiagonalVoladizo) > 0.002) cortas.push({ key, h });
+        em.add(`md:${hk}`, 'diagonal', { alto: h, largo: mX.brazo }, P3(X.p, pie), P3(tip, c), { celda: key, nodo: nodoId(X.id, k) });
       }
       const nt = nTablones(brazo);
       for (let j = 0; j < nt; j++) {
@@ -432,6 +450,11 @@ function armarNodos(esq: Esqueleto, ix: IndiceEsqueleto, em: Emisor): void {
       }
     }
   }
+  if (cortas.length) {
+    const hs = [...new Set(cortas.map((x) => fmt(x.h)))].join(' / ');
+    em.avisos.push({ regla: 'mensula.diagonal_corta', nivel: 'aviso', estructuraId: em.estId, celda: cortas[0].key, texto: `${cortas.length} diagonal${cortas.length > 1 ? 'es' : ''} de voladizo baja${cortas.length > 1 ? 'n' : ''} ${hs} y no ${fmt(CRITERIOS.caidaDiagonalVoladizo)} (no hay nodo a ${fmt(CRITERIOS.caidaDiagonalVoladizo)} por debajo): verificá el armado.`, reparaciones: [] });
+  }
+  if (sinPie.length) em.avisos.push({ regla: 'mensula.sin_diagonal', nivel: 'error', estructuraId: em.estId, celda: sinPie[0], texto: `${sinPie.length} voladizo${sinPie.length > 1 ? 's' : ''} sin nodo por debajo para la diagonal: queda${sinPie.length > 1 ? 'n' : ''} sin refuerzo. Usá ménsula de ${fmt(CRITERIOS.mensulaPiezaMax)} o subí el voladizo.`, reparaciones: [] });
   // anclajes y estabilizadores
   for (const [key, nx] of Object.entries(esq.nodos)) {
     const i = key.lastIndexOf('@');
@@ -460,6 +483,32 @@ function armarNodos(esq: Esqueleto, ix: IndiceEsqueleto, em: Emisor): void {
       em.add(`est:${key}`, 'estabilizador', { largo: nx.estabilizador.brazo }, P3(C.p, c), P3(pie, C.ySuelo ?? 0), { nodo: key, sistema: 'comun' });
     }
   }
+}
+
+/**
+ * Cota del pie de la diagonal de un voladizo sobre la columna X: el nodo (cota del esqueleto o roseta de
+ * la columna) 2,00 por debajo de c. Si la columna no llega, la cota más baja del esqueleto entre c − 2,00
+ * y c, o la base. null si no hay nada por debajo.
+ */
+export function pieDiagonalVoladizo(X: Columna, c: number, cotas: number[]): number | null {
+  const objetivo = r3(c - CRITERIOS.caidaDiagonalVoladizo);
+  // el nodo del esqueleto a 2,00 o, si esa cota no es un anillo (p. ej. bajo el último nivel, 1,50 más alto),
+  // la roseta de la columna a 2,00: la diagonal de catálogo se acuña igual a la roseta
+  if (cubre(X, objetivo) && (cotas.some((y) => Math.abs(y - objetivo) < 0.002) || enRoseta(X, objetivo))) return objetivo;
+  const cand = cotas.filter((y) => y >= objetivo - EPS && y < c - 0.1 && cubre(X, y));
+  if (X.yBase >= objetivo - EPS && X.yBase < c - 0.1) cand.push(X.yBase);
+  return cand.length ? r3(Math.min(...cand)) : null;
+}
+
+/** ¿Sale de X, en la dirección n, un vano de la estructura con horizontal en la cota k? */
+function vanoEnDireccion(esq: Esqueleto, ix: IndiceEsqueleto, X: Columna, n: V2, k: number): boolean {
+  return (ix.vanosDeCol.get(X.id) || []).some((w) => {
+    const o = ix.col.get(w.a === X.id ? w.b : w.a);
+    if (!o) return false;
+    const L = dist2(X.p, o.p) || 1;
+    const dot = ((o.p[0] - X.p[0]) * n[0] + (o.p[1] - X.p[1]) * n[1]) / L;
+    return dot > 0.99 && esq.celdas[celdaId(w.id, k)]?.horizontal !== false && cubre(o, esq.cotas[k]);
+  });
 }
 
 function colinealidad(w: Vano, v: Vano, ix: IndiceEsqueleto): number {

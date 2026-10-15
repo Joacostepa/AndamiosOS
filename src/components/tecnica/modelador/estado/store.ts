@@ -6,7 +6,7 @@
 // cambios entran siempre por commit() (con historial) o preview() (arrastre de pincel).
 
 import { create } from "zustand";
-import { avisosDeChoque, construir, type Aviso, type Catalogo, type Diseno, type Resultado } from "@/lib/tecnica/modelo";
+import { avisosDeChoque, construir, VUELO_MENSULA_DEFECTO, type Aviso, type Catalogo, type Diseno, type Resultado } from "@/lib/tecnica/modelo";
 import { migrarVolumenesPantalla } from "../volumenes/geometria";
 
 export type Herramienta = "seleccionar" | "pincel" | "cara" | "colocar";
@@ -44,6 +44,8 @@ export interface EstadoEditor {
   hover: string | null;
   herramienta: Herramienta;
   pincel: Pincel;
+  /** Vuelo del pincel de ménsula (m): 0,45 = pieza ménsula; mayor = horizontal + diagonal 2,00. */
+  vueloMensula: number;
   /** Preset que se está ubicando en la escena (herramienta 'colocar'). */
   colocando: string | null;
   /** Separación a fachada y si sigue el contorno del volumen al crear una fachada desde una cara. */
@@ -71,6 +73,7 @@ export interface EstadoEditor {
   setHover(celda: string | null): void;
   setHerramienta(h: Herramienta): void;
   setPincel(p: Pincel): void;
+  setVueloMensula(v: number): void;
   setColocando(preset: string | null): void;
   setDesdeCara(v: Partial<EstadoEditor["desdeCara"]>): void;
   setBomResaltado(codigo: string | null): void;
@@ -121,6 +124,7 @@ export const useEditor = create<EstadoEditor>((set, get) => ({
   hover: null,
   herramienta: "seleccionar",
   pincel: "diagonal",
+  vueloMensula: VUELO_MENSULA_DEFECTO,
   colocando: null,
   desdeCara: { retiro: 0.2, contorno: false },
   bomResaltado: null,
@@ -215,6 +219,7 @@ export const useEditor = create<EstadoEditor>((set, get) => ({
   setHover: (hover) => set({ hover }),
   setHerramienta: (herramienta) => set({ herramienta, ...(herramienta !== "colocar" ? { colocando: null } : {}) }),
   setPincel: (pincel) => set({ pincel, herramienta: "pincel" }),
+  setVueloMensula: (vueloMensula) => set({ vueloMensula }),
   setColocando: (colocando) => set({ colocando, herramienta: colocando ? "colocar" : "seleccionar" }),
   setDesdeCara: (v) => set({ desdeCara: { ...get().desdeCara, ...v } }),
   setBomResaltado: (bomResaltado) => set({ bomResaltado }),

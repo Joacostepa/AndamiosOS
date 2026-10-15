@@ -1,11 +1,12 @@
 /**
- * Bandeja de protección con visera (pedido 2): soportes volados (ménsulas hasta 1,09 o vigas en voladizo
- * por encima), fenólico en m² y la visera vertical (90°) o inclinada (45°) con su cerramiento.
+ * Bandeja de protección con visera (pedido 2): soportes volados (ménsula 0,45, horizontal + diagonal
+ * 2,00 hasta 1,09 o vigas en voladizo por encima), fenólico en m² y la visera vertical (90°) o inclinada (45°) con su cerramiento.
  * Devuelve Elementos en coordenadas LOCALES.
  */
 import type { Elemento, V2, V3 } from '../../tipos.ts';
 import { medidasPorDefecto, type MedidasCatalogo } from '../../catalogo/catalogo.ts';
 import { canoPara } from '../../medida/ajustes.ts';
+import { CRITERIOS } from '../../criterios.ts';
 import { r3 } from '../../util.ts';
 
 export interface OpcionesVisera {
@@ -31,6 +32,22 @@ export interface OpcionesVisera {
 
 const P = (p: V3, d: V2, k: number, dy = 0): V3 => [r3(p[0] + d[0] * k), r3(p[1] + dy), r3(p[2] + d[1] * k)];
 
+/**
+ * Soporte volado «tipo ménsula» de la raíz (sobre la columna) a la punta, a la misma cota (armado ABA):
+ * hasta 0,45 la pieza ménsula de catálogo; más, un horizontal del vuelo y una diagonal 2,00 × vuelo
+ * que baja 2,00 por la columna. `cateto`: lo que baja la diagonal si no llegó a 2,00 (null si bajó 2,00).
+ */
+export function voladizoMensula(id: string, raiz: V3, punta: V3, largo: number, ancho: number, grupo = 'bandeja'): { elementos: Elemento[]; cateto: number | null } {
+  if (largo <= CRITERIOS.mensulaPiezaMax + 1e-6) {
+    const pie = P(raiz, [0, 0], 0, -Math.min(0.5, ancho * 0.7));
+    return { elementos: [{ id, familia: 'mensula', medidas: { largo }, a: raiz, b: punta, grupo, primitivas: [{ a: raiz, b: punta }, { a: pie, b: punta }] }], cateto: null };
+  }
+  const h = r3(Math.min(CRITERIOS.caidaDiagonalVoladizo, raiz[1]));
+  const els: Elemento[] = [{ id: `${id}:h`, familia: 'horizontal', medidas: { largo }, a: raiz, b: punta, grupo }];
+  if (h > 0.1) els.push({ id: `${id}:d`, familia: 'diagonal', medidas: { alto: h, largo }, a: P(raiz, [0, 0], 0, -h), b: punta, grupo });
+  return { elementos: els, cateto: Math.abs(h - CRITERIOS.caidaDiagonalVoladizo) > 0.002 ? h : null };
+}
+
 export function visera(o: OpcionesVisera): Elemento[] {
   const m = o.medidas || medidasPorDefecto();
   const pf = o.prefijo || 'band';
@@ -49,7 +66,7 @@ export function visera(o: OpcionesVisera): Elemento[] {
     const base = P(o.desde, u, (largo * i) / n);
     const tip = P(base, o.dir, o.ancho);
     if (soporte === 'mensula') {
-      out.push({ id: `${pf}:men${i}`, familia: 'mensula', medidas: { largo: largoSoporte }, a: base, b: tip, grupo: 'bandeja', primitivas: [{ a: base, b: tip }, { a: P(base, [0, 0], 0, -Math.min(0.5, o.ancho * 0.7)), b: tip }] });
+      out.push(...voladizoMensula(`${pf}:men${i}`, base, tip, largoSoporte, o.ancho).elementos);
     } else {
       out.push({ id: `${pf}:viga${i}`, familia: 'viga_celosia', medidas: { largo: largoSoporte }, a: base, b: tip, grupo: 'bandeja' });
     }

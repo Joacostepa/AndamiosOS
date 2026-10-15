@@ -45,6 +45,18 @@ export const CRITERIOS = Object.freeze({
   cargaBandeja: 1.5,
   pasoRoseta: 0.5,
   pasoNivel: 2.0,
+  /** Voladizo: hasta este vuelo se usa la pieza ménsula de catálogo (trae su refuerzo). */
+  mensulaPiezaMax: 0.45,
+  /** Voladizo mayor: horizontal del vuelo + diagonal que baja este cateto hasta el parante (armado ABA). */
+  caidaDiagonalVoladizo: 2.0,
 });
+
+/** Vuelos de ménsula que se pueden elegir (0,45 = pieza ménsula; el resto, horizontal + diagonal 2,00 × vuelo). */
+export const VUELOS_MENSULA = Object.freeze([0.45, 0.73, 1.09, 1.25, 1.5, 2.0, 2.5]);
+/** Vuelo por defecto del pincel de ménsula. */
+export const VUELO_MENSULA_DEFECTO = 0.73;
+/** Vuelo guardado en un override (número válido entre 0,20 y 2,50) o `def`. */
+export const vueloMensula = (v: unknown, def: number): number =>
+  typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.round(Math.min(2.5, Math.max(0.2, v)) * 1000) / 1000 : def;
 
 export type Criterios = typeof CRITERIOS;

@@ -19,7 +19,9 @@ test('envolvente: golden por preset, anillo cerrado, sin verticales dobles y mis
   const esperado: Record<string, Record<string, number>> = {
     // anillo rectangular de catálogo (foto 5): sin cuadros de esquina ni relleno de caño y grampa
     envolvente_cupula: { vertical: 136, horizontal: 428, diagonal: 40, tablon: 192, viga_celosia: 2, mensula: 64, base_regulable: 32, anclaje: 12, cano: 12 },
-    envolvente_tanque: { vertical: 96, horizontal: 384, diagonal: 24, tablon: 120, mensula: 24, base_regulable: 32, anclaje: 8, cano: 6 },
+    // voladizos de 0,73 hacia el tanque (armado ABA): horizontal + diagonal 2,00 × 0,73 en vez de ménsula;
+    // en las 12 columnas de esquina el vuelo cae sobre un vano propio del anillo y lo sostiene su horizontal
+    envolvente_tanque: { vertical: 96, horizontal: 396, diagonal: 36, tablon: 120, base_regulable: 32, anclaje: 8, cano: 6 },
     envolvente_columna: { vertical: 32, horizontal: 120, diagonal: 16, tablon: 32, base_regulable: 16, anclaje: 4 },
   };
   for (const [id, g] of Object.entries(esperado)) {

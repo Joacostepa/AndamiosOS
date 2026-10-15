@@ -7,7 +7,7 @@
  */
 import type { Accion, Aviso, Estructura, OverrideCelda, Regla, UnionResuelta, V2, V3 } from '../tipos.ts';
 import type { Campo, CtxGenerar, Generado, Preset, Tipologia } from './registro.ts';
-import { CRITERIOS } from '../criterios.ts';
+import { CRITERIOS, vueloMensula } from '../criterios.ts';
 import { PREDIMENSIONADO } from '../constantes.ts';
 import { ConstructorEsqueleto, celdaId } from '../esqueleto/esqueleto.ts';
 import { conIntermedios, intermedios, type ModoPlataforma } from '../medida/alturas.ts';
@@ -76,13 +76,13 @@ export function normalizarFachada(parcial: Partial<ParamsFachada>): { params: Pa
   p.altura = alt;
   p.profundidad = clamp(num(p.profundidad, 0.73), 0.3, 3);
   p.retiro = clamp(num(p.retiro, 0.2), 0, 3);
-  p.brazoMensula = clamp(num(p.brazoMensula, 0.73), 0.2, 2);
+  p.brazoMensula = clamp(num(p.brazoMensula, 0.73), 0.2, 2.5);
   if (!['arriba', 'pantalla'].includes(p.niveles)) p.niveles = 'arriba';
   if (!['cada_2m', 'cada_nivel', 'solo_trabajo', 'ninguna'].includes(p.modoPlataforma)) p.modoPlataforma = 'cada_2m';
   if (!['nada', 'media_sombra', 'lona'].includes(p.cubierta)) p.cubierta = 'nada';
   if (!Array.isArray(p.esquinas)) p.esquinas = [];
   if (!Array.isArray(p.mensulas)) p.mensulas = [];
-  p.mensulas = p.mensulas.filter((x) => x && (x.lado === 'afuera' || x.lado === 'fachada')).map((x) => ({ ...x, brazo: clamp(num(x.brazo, p.brazoMensula), 0.2, 2) }));
+  p.mensulas = p.mensulas.filter((x) => x && (x.lado === 'afuera' || x.lado === 'fachada')).map((x) => ({ ...x, brazo: clamp(num(x.brazo, p.brazoMensula), 0.2, 2.5) }));
   for (const k of ['bandejaPB', 'viaPublica', 'concertina', 'anclada', 'pataDeGallo'] as const) p[k] = !!p[k];
   if (!['cemento', 'tierra', 'losa'].includes(p.terreno)) p.terreno = 'cemento';
   return { params: p, avisos };
@@ -319,11 +319,13 @@ export function generarFachadaMulti(est: Estructura & { params: ParamsFachada },
     // plataformas, barandas, ménsulas
     const accF = accesos.filter((a) => a.f === f).map((a) => a.v);
     const mensDe = (v: number, n: number): { lado: 'afuera' | 'fachada'; brazo: number } | null => {
-      const o = O(v, n).mensula;
+      const ov = O(v, n);
+      const o = ov.mensula;
       if (o === false) return null;
       if (o === 'afuera' || o === 'fachada') {
+        // el vuelo elegido en el pincel gana sobre el de la plantilla
         const spec = (p.mensulas || []).find((x) => x.lado === o);
-        return { lado: o, brazo: spec?.brazo || p.brazoMensula || 0.73 };
+        return { lado: o, brazo: vueloMensula(ov.brazoMensula, spec?.brazo || p.brazoMensula || 0.73) };
       }
       for (const spec of p.mensulas || []) {
         if (spec.frentes && !spec.frentes.includes(f)) continue;
@@ -658,7 +660,7 @@ export { avisoPasoBajoBandeja };
 
 function validarMensulas(avisos: Omit<Aviso, 'id'>[], reglas: Omit<Regla, 'id'>[], est: Estructura, p: ParamsFachada, retiro: number, mensulas: number[]): void {
   const specs: { lado: 'afuera' | 'fachada'; brazo: number }[] = [...(p.mensulas || [])];
-  for (const o of Object.values(est.overrides || {})) if (o.mensula) specs.push({ lado: o.mensula, brazo: specs.find((s) => s.lado === o.mensula)?.brazo || p.brazoMensula || 0.73 });
+  for (const o of Object.values(est.overrides || {})) if (o.mensula) specs.push({ lado: o.mensula, brazo: vueloMensula(o.brazoMensula, specs.find((s) => s.lado === o.mensula)?.brazo || p.brazoMensula || 0.73) });
   for (const sp of specs) {
     if (sp.lado === 'fachada' && sp.brazo > retiro - 0.05 + EPS) {
       const cabe = [...mensulas].sort((a, b) => b - a).find((x) => x <= retiro - 0.05 + EPS);
@@ -688,7 +690,7 @@ const CAMPOS: Campo[] = [
   { ruta: 'params.cubierta', etiqueta: 'Cubierta', tipo: 'opcion', opciones: [{ valor: 'nada', etiqueta: 'Nada' }, { valor: 'media_sombra', etiqueta: 'Media sombra' }, { valor: 'lona', etiqueta: 'Lona' }], grupo: 'Protección' },
   { ruta: 'params.concertina', etiqueta: 'Concertina', tipo: 'bool', grupo: 'Protección' },
   { ruta: 'params.mensulas', etiqueta: 'Ménsulas', tipo: 'texto', grupo: 'Avanzado', ayuda: 'Lista de {lado, brazo, desdeNivel, hastaNivel}.' },
-  { ruta: 'params.brazoMensula', etiqueta: 'Brazo de ménsula', tipo: 'medida', unidad: 'm', catalogo: 'mensulas', grupo: 'Avanzado' },
+  { ruta: 'params.brazoMensula', etiqueta: 'Vuelo de ménsula', tipo: 'medida', unidad: 'm', catalogo: 'vuelosMensula', grupo: 'Avanzado', ayuda: 'Hasta 0,45: pieza ménsula. Mayor: horizontal del vuelo + diagonal que baja 2,00 al parante.' },
   { ruta: 'params.anclada', etiqueta: 'Anclada', tipo: 'bool', grupo: 'Apoyo' },
   { ruta: 'params.terreno', etiqueta: 'Terreno', tipo: 'opcion', opciones: [{ valor: 'cemento', etiqueta: 'Cemento' }, { valor: 'tierra', etiqueta: 'Tierra' }, { valor: 'losa', etiqueta: 'Losa' }], grupo: 'Apoyo' },
   { ruta: 'params.accesos', etiqueta: 'Accesos', tipo: 'texto', grupo: 'Accesos', ayuda: "'auto', una cantidad o [{f, v}]." },

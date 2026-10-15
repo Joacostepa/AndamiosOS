@@ -1,7 +1,7 @@
 // Barril público del núcleo del modelador. A, B y C importan SOLO de acá (o de tipos.ts).
 export * from './tipos.ts';
 export { VERSION_MOTOR, ESQUEMA_DISENO, PREDIMENSIONADO, SIMPLIFICACIONES } from './constantes.ts';
-export { CRITERIOS } from './criterios.ts';
+export { CRITERIOS, VUELOS_MENSULA, VUELO_MENSULA_DEFECTO, vueloMensula } from './criterios.ts';
 export type { Criterios } from './criterios.ts';
 export { construir, generarTodas } from './construir.ts';
 export { calcularBom, GRUPO_AJUSTE } from './bom.ts';

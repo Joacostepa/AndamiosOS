@@ -168,8 +168,13 @@ test('pincel: sin plataforma, lona, ménsula y anclaje', () => {
   assert.ok(!sinPlat.piezas.some((p) => esPlataforma(p) && p.celda === `f0p3@${kk}`));
   const lona = build(M.setOverride(d, 'E1', k, { lona: true }));
   assert.ok(lona.piezas.some((p) => p.codigo === 'LONA-PVC' && p.celda?.startsWith('f0e3@')));
+  // sin vuelo en el override: el de la plantilla (0,73) → horizontal + diagonal 2,00 × 0,73 por columna
   const mens = build(M.setOverride(d, 'E1', k, { mensula: 'afuera' }));
-  assert.equal(cuenta(mens, (p) => p.familia === 'mensula'), 2);
+  assert.equal(cuenta(mens, (p) => p.familia === 'mensula'), 0);
+  assert.equal(cuenta(mens, (p) => p.id.includes(':md:') && p.codigo === 'DIAG-200x073'), 2);
+  assert.equal(cuenta(mens, (p) => p.id.includes(':mh:') && p.codigo === 'HOR-048-073'), 2);
+  const corta = build(M.setOverride(d, 'E1', k, { mensula: 'afuera', brazoMensula: 0.45 }));
+  assert.equal(cuenta(corta, (p) => p.familia === 'mensula'), 2);
   const sinAnc = build(M.setOverride(d, 'E1', 'f0e0@N7', { anclaje: false }));
   assert.equal(sinAnc.resumen.anclajes, r0.resumen.anclajes - 1);
   assert.equal(M.setOverride(M.setOverride(d, 'E1', k, { lona: true }), 'E1', k, null).estructuras[0].overrides[k], undefined);
@@ -262,7 +267,9 @@ test('pórtico vehicular: vigas de celosía, gálibo 4,50, luz máxima', () => {
 
 test('voladizo con ménsulas: hacia la fachada, choque y reparación', () => {
   const r = build(M.crearDiseno('voladizo'));
-  assert.ok(bomDe(r, 'MENSULA-109') > 0);
+  // vuelo 1,09: horizontal + diagonal 2,00 × 1,09 por parante (sin pieza ménsula)
+  assert.ok(r.piezas.some((p) => p.id.includes(':md:') && p.codigo === 'DIAG-200x109'));
+  assert.equal(bomDe(r, 'MENSULA-109'), 0);
   assert.ok(!r.avisos.some((a) => a.nivel === 'error'));
   assert.match(textos(r.reglas), /Ménsulas hacia la fachada/);
   const d = M.crearDiseno('voladizo', { retiro: 0.6 });
@@ -270,7 +277,7 @@ test('voladizo con ménsulas: hacia la fachada, choque y reparación', () => {
   assert.ok(e);
   assert.ok(!build(M.aplicarReparacion(d, e.reparaciones[0].accion)).avisos.some((a) => a.nivel === 'error'));
   const afuera = build(M.crearDiseno('estructura', { mensulas: [{ lado: 'afuera', brazo: 0.73, desdeNivel: 3, hastaNivel: 3 }] }));
-  assert.ok(bomDe(afuera, 'MENSULA-073') > 0);
+  assert.ok(afuera.piezas.some((p) => p.id.includes(':md:') && p.codigo === 'DIAG-200x073'));
   assert.ok(afuera.avisos.some((a) => /M09/.test(a.texto)));
   const bast = build(M.crearDiseno('voladizo', { sistema: 'bastidor' }));
   assert.ok(bast.avisos.some((a) => /ménsulas son de multidireccional/.test(a.texto)));

@@ -20,7 +20,8 @@ export interface Campo {
   visibleSi?: { ruta: string; igual?: unknown; distinto?: unknown };
   ayuda?: string;
   grupo?: 'Medidas' | 'Protección' | 'Apoyo' | 'Accesos' | 'Avanzado';
-  catalogo?: 'vanos' | 'profundidades' | 'mensulas' | 'vigasCelosia';
+  /** 'vuelosMensula': vuelos elegibles del voladizo (0,45 ménsula; mayores, horizontal + diagonal 2,00). */
+  catalogo?: 'vanos' | 'profundidades' | 'mensulas' | 'vuelosMensula' | 'vigasCelosia';
   /** tipo 'volumen': qué volúmenes del contexto se ofrecen (y cuál se crea con «Crear uno»). */
   volumenes?: ('edificio' | 'losa' | 'puente' | 'cupula' | 'cilindro' | 'muro' | 'escalera')[];
 }

@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { toast } from "./util/toast";
-import { presetsGaleria, PREDIMENSIONADO, SIMPLIFICACIONES, type Catalogo, type Diseno, type Regla } from "@/lib/tecnica/modelo";
+import { presetsGaleria, PREDIMENSIONADO, SIMPLIFICACIONES, VUELOS_MENSULA, CRITERIOS, type Catalogo, type Diseno, type Regla } from "@/lib/tecnica/modelo";
 import { cn } from "@/lib/utils";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -497,6 +497,7 @@ function BarraHerramientas({ vista, onVista, onEncuadrar, verVolumenes, onVerVol
 }) {
   const herramienta = useEditor((s) => s.herramienta);
   const pincel = useEditor((s) => s.pincel);
+  const vuelo = useEditor((s) => s.vueloMensula);
   const soloLectura = useEditor((s) => s.soloLectura);
   const est = useEditor(estructuraSel);
   const celdas = useEditor((s) => s.sel.celdas);
@@ -524,6 +525,23 @@ function BarraHerramientas({ vista, onVista, onEncuadrar, verVolumenes, onVerVol
               className="rounded px-1.5 py-0.5 text-[11px] text-muted-foreground hover:bg-muted aria-pressed:bg-primary/15 aria-pressed:font-medium aria-pressed:text-foreground"
             >
               {p.etiqueta}
+            </button>
+          ))}
+        </div>
+      )}
+      {herramienta === "pincel" && pincel === "mensula" && (
+        <div className="flex flex-wrap items-center gap-0.5 border-l border-border pl-1" role="group" aria-label="Vuelo de la ménsula">
+          <span className="text-[11px] text-muted-foreground" title="Hasta 0,45 sale la pieza ménsula. Más: horizontal del vuelo + diagonal 2,00 × vuelo que baja 2,00 al parante.">Vuelo</span>
+          {VUELOS_MENSULA.map((v) => (
+            <button
+              key={v}
+              type="button"
+              aria-pressed={Math.abs(vuelo - v) < 0.001}
+              title={v <= CRITERIOS.mensulaPiezaMax + 0.001 ? `Ménsula de ${fmt(v)}` : `Horizontal de ${fmt(v)} + diagonal 2,00 × ${fmt(v)}`}
+              onClick={() => useEditor.getState().setVueloMensula(v)}
+              className="rounded px-1.5 py-0.5 text-[11px] tabular-nums text-muted-foreground hover:bg-muted aria-pressed:bg-primary/15 aria-pressed:font-medium aria-pressed:text-foreground"
+            >
+              {fmt(v)}
             </button>
           ))}
         </div>

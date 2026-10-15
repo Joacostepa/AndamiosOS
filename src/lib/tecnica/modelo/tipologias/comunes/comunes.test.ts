@@ -51,7 +51,9 @@ test('visera: bandeja de 1,09 con ménsulas, fenólico y visera a 45° con lona'
   const g = grillaRect({ vanosS: [2.5, 2.5], profundidades: [0.73], cotas: [0.5, 2.5, 3], catalogo: C });
   g.esqueleto.elementos.push(...els);
   const r = M.construir(conEsqueleto(g.esqueleto), C);
-  assert.equal(r.bom.find((l) => l.codigo === 'MENSULA-109')?.cantidad, 3);
+  // vuelo 1,09 (> 0,45): cada soporte es horizontal de 1,09 + diagonal 2,00 × 1,09, sin pieza ménsula
+  assert.equal(r.bom.find((l) => l.codigo === 'DIAG-200x109')?.cantidad, 3);
+  assert.ok(!r.bom.some((l) => l.familia === 'mensula'));
   assert.ok(r.bom.some((l) => l.codigo === 'PLACA-FEN-122x244'));
   assert.ok(r.bom.some((l) => l.codigo === 'LONA-PVC' && (l.medida || 0) > 5));
   const v90 = visera({ desde: [0, 3, 0], hasta: [5, 3, 0], dir: [0, 1], ancho: 2.5, tipo: '90', alto: 1.2, cerramiento: 'chapa', soporte: 'viga' });

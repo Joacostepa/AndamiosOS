@@ -2,7 +2,7 @@
 
 Para retomar en una sesión nueva: «Leé docs/oficina-tecnica/modelador/handoff.md y seguimos con el modelador».
 
-**Estado:** **en producción desde el 15/10/2026** (`main`). Pasa 931 tests y `tsc` da limpio. Pendientes de la subida en el §6.
+**Estado:** **en producción desde el 15/10/2026** (`main`). Pasa 940 tests y `tsc` da limpio. Pendientes de la subida en el §6; correcciones posteriores en el §7.
 Todo lo que calcula es **PREDIMENSIONADO**, porque los criterios no tienen firma. No reemplaza la memoria de cálculo.
 
 ---
@@ -28,7 +28,7 @@ La dirección la eligió JS el 14/10 y se llama «Plantillas que encastran». Se
 | Volúmenes de referencia | `src/lib/tecnica/modelo/volumenes/` (lógica) y `src/components/tecnica/modelador/volumenes/` (UI) |
 | Persistencia y cómputo | `src/lib/tecnica/persistencia/`, `src/app/api/tecnica/modelador/**`, `src/hooks/use-modelador.ts` |
 | Pantalla | `src/components/tecnica/modelador/**` (vista 3D en `vista3d/`, alzado, paneles, estado) |
-| Base de datos | `supabase/migrations/20261015000001…04_modelador*.sql`; para volver atrás, `supabase/scripts/modelador_down.sql` |
+| Base de datos | `supabase/migrations/20261015000001…05_modelador*.sql` (todas aplicadas); para volver atrás, `supabase/scripts/modelador_down.sql` |
 | Cómo sumar una tipología | `como-agregar-tipologia.md` |
 | Casos nuevos por sumar | `pendientes/` (README con el formato) |
 | Detalle técnico del cierre | `handoff-produccion.md` |
@@ -83,18 +83,25 @@ Además:
 3. **Última plataforma:** con una altura de 18 queda a 16,50 y no a 17,00. Hay que definir si sube el último nivel o se suma uno.
 4. **Bastidor:** confirmar la medida y qué compone un cuerpo.
 5. **Criterios de armado para firmar:** diagonales cada cuántos vanos, grilla de anclajes, cargas de bandeja. Faltan quién firma y con qué matrícula (Hougassian). Mientras no se firmen, todo queda en PREDIMENSIONADO.
-6. **Probar con la Oficina Técnica:** 2 o 3 personas, sin explicación previa, cronometradas con los casos de la propuesta (§3 de `propuesta-recomendada.md`).
+6. **Voladizos (confirmar, 15/10):**
+   - con vuelo de 0,45 sale solo la ménsula de catálogo, sin diagonal de 2,00: ¿es así en obra?
+   - si 2,00 más abajo no hay nivel, la diagonal apoya en la roseta del parante a 2,00: ¿se arma así?
+   - con balcones cada 2,80 la diagonal de 2,00 no entra entre niveles y la reparación propone ménsula de 0,45: ¿es correcto?
+   - en Odoo solo existe la ménsula de 0,45; los vuelos mayores salen con horizontal + diagonal 2,00 × vuelo, que sí existen.
+7. **Probar con la Oficina Técnica:** 2 o 3 personas, sin explicación previa, cronometradas con los casos de la propuesta (§3 de `propuesta-recomendada.md`).
 
 **Desarrollo**
-1. Manijas de largo y alto que se puedan arrastrar en el 3D. Hoy se tipea con L/H y Enter.
-2. Que «Mis plantillas» se ubiquen con encastre.
-3. Bug: «Detrás de la selección» ubica mal el volumen en las fachadas en L (`volumenes/geometria.ts`).
-4. Control optimista en la pantalla de Cómputos (`use-computos.ts`) y consolidar en la RPC los ítems duplicados manual + modelo.
-5. Tests de la RPC y de las rutas API contra un Supabase local.
-6. Medida libre: cerrar el sobrante con ménsula o caño volado.
-7. Pórtico con bandeja: lista de huecos sobre accesos.
-8. Recorrido guiado y atajos K, M y Shift+P de la maqueta.
-9. **Más adelante:**
+1. **Bug conocido:** en las plantillas que no son fachada (torres, bandejas…), los pinceles **Lona** y **Abertura** se guardan pero no generan nada. Diagonal, caño, ménsula y anclaje ya funcionan (`aplicarOverridesGenericos` en `src/lib/tecnica/modelo/construir.ts`).
+2. **Portada de la tarjeta:** se actualiza solo al tocar «Imagen», así que puede quedar vieja (p. ej. una tarjeta con «0 m²» mostrando una torre que ya se borró). Propuesta: regenerarla sola al guardar, con un debounce.
+3. Manijas de largo y alto que se puedan arrastrar en el 3D. Hoy se tipea con L/H y Enter.
+4. Que «Mis plantillas» se ubiquen con encastre.
+5. Bug: «Detrás de la selección» ubica mal el volumen en las fachadas en L (`volumenes/geometria.ts`).
+6. Control optimista en la pantalla de Cómputos (`use-computos.ts`) y consolidar en la RPC los ítems duplicados manual + modelo.
+7. Tests de la RPC y de las rutas API contra un Supabase local.
+8. Medida libre: cerrar el sobrante con ménsula o caño volado.
+9. Pórtico con bandeja: lista de huecos sobre accesos.
+10. Recorrido guiado y atajos K, M y Shift+P de la maqueta.
+11. **Más adelante:**
    - importar DWG/DXF y volúmenes de SketchUp (OBJ, DAE, glTF o IFC) para modelar arriba;
    - verificaciones M03, M05 y M11 portadas con los bugs corregidos (ver `../handoff.md` §3);
    - lámina PDF.
@@ -112,13 +119,28 @@ Además:
   - Si Odoo trae un código sin fila en el mapa, `catalogo.ts` lo infiere por la descripción (prioridad 900). Lo que cargue OT siempre gana.
   - **Siguen sin código, porque no existen en Odoo:**
     - en Paraná 631: anclaje, rodapié 1,50 y recubrimiento de vertical;
-    - en otras tipologías: lona, chapa, estabilizador, defensa, vigas celosía de 5/6/7,5, ménsulas de 0,73 y 1,09, pasador, grampa de viga, placa de anclaje, escalón de arranque.
+    - en otras tipologías: lona, chapa, estabilizador, defensa, vigas celosía de 5/6/7,5, pasador, grampa de viga, placa de anclaje, escalón de arranque.
   - Para que esas piezas entren al cómputo hay que crearlas en Odoo.
   - **Para confirmar con JS:** cuál es la diagonal 2,00×2,00 real (ODOO-91 o ODOO-93), y la composición de los módulos de bastidor (hoy: 1 bastidor + 2 riendas H + 2 riendas D).
   - **Ninguna pieza tiene `peso_kg` en Odoo**, así que las toneladas salen «sin peso».
 - [ ] **Permisos:** `tec_backfill_permisos` quedó en 0, así que nadie tenía Cómputos «ver/editar» en `user_profiles.permisos` para copiar. Hay que dar a mano Modelador «editar» a la Oficina Técnica (Configuración → usuarios). El admin entra igual.
 - [ ] Revisar que `SUPABASE_SERVICE_ROLE_KEY` esté en Vercel.
-- [x] **Merge a `main`, push y deploy (15/10).** Commits `b5bbb68` (modelador) y `d417191` (mapa). Vercel deploya solo; en producción la API del modelador responde 401 sin sesión.
+- [x] **Merge a `main`, push y deploy (15/10).** Commits `b5bbb68` (modelador) y `d417191` (mapa, migración 000005 aplicada: 148 filas). Vercel deploya solo; en producción la API del modelador responde 401 sin sesión.
 - [ ] Prueba de punta a punta: crear un modelo, guardarlo y generar el cómputo en una obra de prueba.
 
 Para volver atrás: `supabase/scripts/modelador_down.sql`. ⚠ Borra los modelos guardados.
+
+## 7. Correcciones del 15/10, después de la subida
+
+Todas mergeadas a `main` y deployadas, con lo que reportó JS probando en producción:
+
+| Qué | Arreglo | Dónde |
+|---|---|---|
+| No se podían borrar los volúmenes creados por una plantilla («Edificio (azotea)», «Escalera») | El botón «Borrar volumen» aparece siempre, y Supr/⌫ (doble pulsación, con Deshacer) borra el volumen elegido | `paneles/volumenes.tsx`, `comandos.tsx` |
+| La lista de modelos solo ofrecía «Archivar», sin vuelta atrás | Menú con «Duplicar» y «Eliminar…» (confirma, aviso con «Deshacer»). Sigue siendo borrado lógico (`archivado_at`) porque un cómputo puede apuntar al modelo | `lista-modelos.tsx`, `api/tecnica/modelador/[id]/restaurar` |
+| Panel de estructura libre: los 4 botones de crecer se pisaban, «4 m» parecía cantidad de niveles, se veían ids internos («s1_0») | Botones en 2 columnas, «Altura del nivel nuevo», vanos como V1, V2… | `paneles/libre.tsx` |
+| En la torre el pincel Ménsula/Anclaje aparecía pero no hacía nada | Los overrides de ménsula y anclaje van a los nodos del vano en toda plantilla que no sea fachada | `modelo/construir.ts` + `tipologias/mensula-pincel.test.ts` |
+| No se podía elegir el largo del voladizo, y la diagonal del voladizo bajaba 0,50 | Chips de «Vuelo» (0,45 · 0,73 · 1,09 · 1,25 · 1,50 · 2,00 · 2,50) en la barra del pincel; ≤ 0,45 = ménsula de catálogo; mayor = horizontal del vuelo + diagonal **2,00 × vuelo** que baja 2,00 al parante. Cambiaron los golden de bandeja 45/90 y envolvente de tanque | `armar/armar.ts` (`armarNodos`), `OverrideCelda.brazoMensula` |
+| Al plegar la columna izquierda, el editor se desarmaba (3D en una columna de 0 px) | Cada panel fijo en su columna de la grilla | `editor.tsx` |
+
+**Para trabajar en local:** `node_modules` del checkout principal no tenía `three` (se había instalado solo en el worktree): correr `npm install`. Si Turbopack tira un FATAL al levantar `next dev`, borrar `.next/`.

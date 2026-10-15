@@ -21,3 +21,6 @@ export async function POST(req: NextRequest) {
   invalidarPantalla(p);
   return NextResponse.json({ ok: true });
 }
+
+// Calcula en vivo contra Odoo: La semana y Ventas pueden pasar los 10–15 s del límite por defecto de Vercel.
+export const maxDuration = 300;

@@ -1,0 +1,1342 @@
+[
+ {
+  "codigo": "ODOO-152",
+  "descripcion": "COLA DE AMARRE DE ARNES CON DOBLE MOSQUETON",
+  "categoria": "anclaje"
+ },
+ {
+  "codigo": "ODOO-245",
+  "descripcion": "BARANDA TRIBUNA LATERAL REJA 2.50 X 1.50 Mts.",
+  "categoria": "barandilla"
+ },
+ {
+  "codigo": "ODOO-243",
+  "descripcion": "BARANDA TRIBUNA TRASERA 2.50 Mts. INFERIOR",
+  "categoria": "barandilla"
+ },
+ {
+  "codigo": "ODOO-244",
+  "descripcion": "BARANDA TRIBUNA TRASERA 2.50 Mts. SUPERIOR",
+  "categoria": "barandilla"
+ },
+ {
+  "codigo": "ODOO-13",
+  "descripcion": "CAÑO - 0,10m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-14",
+  "descripcion": "CAÑO - 0,20m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-15",
+  "descripcion": "CAÑO - 0,30m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-16",
+  "descripcion": "CAÑO - 0,40m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-17",
+  "descripcion": "CAÑO - 0,50m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-18",
+  "descripcion": "CAÑO - 0,60m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-19",
+  "descripcion": "CAÑO - 0,70m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-20",
+  "descripcion": "CAÑO - 0,80m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-21",
+  "descripcion": "CAÑO - 0,90m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-22",
+  "descripcion": "CAÑO - 1,00m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-23",
+  "descripcion": "CAÑO - 1,10m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-24",
+  "descripcion": "CAÑO - 1,20m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-25",
+  "descripcion": "CAÑO - 1,30m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-26",
+  "descripcion": "CAÑO - 1,40m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-27",
+  "descripcion": "CAÑO - 1,50m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-28",
+  "descripcion": "CAÑO - 1,60m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-29",
+  "descripcion": "CAÑO - 1,70m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-30",
+  "descripcion": "CAÑO - 1,80m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-31",
+  "descripcion": "CAÑO - 1,90m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-32",
+  "descripcion": "CAÑO - 2,00m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-33",
+  "descripcion": "CAÑO - 2,10m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-34",
+  "descripcion": "CAÑO - 2,20m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-35",
+  "descripcion": "CAÑO - 2,30m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-36",
+  "descripcion": "CAÑO - 2,40m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-37",
+  "descripcion": "CAÑO - 2,50m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-38",
+  "descripcion": "CAÑO - 2,60m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-39",
+  "descripcion": "CAÑO - 2,70m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-40",
+  "descripcion": "CAÑO - 2,80m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-41",
+  "descripcion": "CAÑO - 2,90m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-42",
+  "descripcion": "CAÑO - 3,00m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-43",
+  "descripcion": "CAÑO - 3,10m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-44",
+  "descripcion": "CAÑO - 3,20m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-45",
+  "descripcion": "CAÑO - 3,30m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-46",
+  "descripcion": "CAÑO - 3,40m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-47",
+  "descripcion": "CAÑO - 3,50m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-48",
+  "descripcion": "CAÑO - 3,60m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-49",
+  "descripcion": "CAÑO - 3,70m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-50",
+  "descripcion": "CAÑO - 3,80m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-51",
+  "descripcion": "CAÑO - 3,90m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-52",
+  "descripcion": "CAÑO - 4,00m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-53",
+  "descripcion": "CAÑO - 4,10m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-54",
+  "descripcion": "CAÑO - 4,20m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-55",
+  "descripcion": "CAÑO - 4,30m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-56",
+  "descripcion": "CAÑO - 4,40m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-57",
+  "descripcion": "CAÑO - 4,50m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-58",
+  "descripcion": "CAÑO - 4,60m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-59",
+  "descripcion": "CAÑO - 4,70m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-60",
+  "descripcion": "CAÑO - 4,80m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-61",
+  "descripcion": "CAÑO - 4,90m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-62",
+  "descripcion": "CAÑO - 5,00m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-63",
+  "descripcion": "CAÑO - 5,10m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-64",
+  "descripcion": "CAÑO - 5,20m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-65",
+  "descripcion": "CAÑO - 5,30m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-66",
+  "descripcion": "CAÑO - 5,40m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-67",
+  "descripcion": "CAÑO - 5,50m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-68",
+  "descripcion": "CAÑO - 5,60m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-69",
+  "descripcion": "CAÑO - 5,70m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-70",
+  "descripcion": "CAÑO - 5,80m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-71",
+  "descripcion": "CAÑO - 5,90m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-72",
+  "descripcion": "CAÑO - 6,00m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-73",
+  "descripcion": "CAÑO - 6,10m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-74",
+  "descripcion": "CAÑO - 6,20m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-75",
+  "descripcion": "CAÑO - 6,30m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-76",
+  "descripcion": "CAÑO - 6,40m",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-239",
+  "descripcion": "CAÑO ESTRUCTURAL 50X20X2 MM S D. (TUBO)",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-225",
+  "descripcion": "RECARGA TUBO CO2",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-224",
+  "descripcion": "TUBO CO2 (RETORNABLE)",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-534",
+  "descripcion": "⁠CAÑO ESTRUCTURAL 2 1/2\" x 3,2mm",
+  "categoria": "caño"
+ },
+ {
+  "codigo": "ODOO-212",
+  "descripcion": "Espiga con media grapa Q235, 1/2x21mm，Grado 8.8 HDG",
+  "categoria": "conector"
+ },
+ {
+  "codigo": "ODOO-210",
+  "descripcion": "Grapa roseta (Roseta móvil Coronet)",
+  "categoria": "conector"
+ },
+ {
+  "codigo": "ODOO-100",
+  "descripcion": "NUDO FIJO",
+  "categoria": "conector"
+ },
+ {
+  "codigo": "ODOO-101",
+  "descripcion": "NUDO GIRATORIO",
+  "categoria": "conector"
+ },
+ {
+  "codigo": "ODOO-208",
+  "descripcion": "Puño con nudo Q235, M14x22mm HDG",
+  "categoria": "conector"
+ },
+ {
+  "codigo": "ODOO-209",
+  "descripcion": "Puño con nudo giratorio Q235, M14x22mm HDG",
+  "categoria": "conector"
+ },
+ {
+  "codigo": "ODOO-547",
+  "descripcion": "ADHESIVO \"PULPITO\"",
+  "categoria": "consumible"
+ },
+ {
+  "codigo": "ODOO-227",
+  "descripcion": "ALAMBRE COBREADO CONARCO 1,2mm x 18kg",
+  "categoria": "consumible"
+ },
+ {
+  "codigo": "ODOO-494",
+  "descripcion": "ALAMBRE CONCERTINA DOBLE 45mm x 10m (ALAMBRE PUA)",
+  "categoria": "consumible"
+ },
+ {
+  "codigo": "ODOO-204",
+  "descripcion": "ALAMBRE RECOCIDO DEL 16",
+  "categoria": "consumible"
+ },
+ {
+  "codigo": "ODOO-540",
+  "descripcion": "Adiabatic - Manguera de pintura de 7.5 mt - Cod 00MPIN8M",
+  "categoria": "consumible"
+ },
+ {
+  "codigo": "ODOO-200",
+  "descripcion": "Alambre Conarco C01 1.2 x 18 Kg",
+  "categoria": "consumible"
+ },
+ {
+  "codigo": "ODOO-552",
+  "descripcion": "Cinta métrica por unidad",
+  "categoria": "consumible"
+ },
+ {
+  "codigo": "ODOO-228",
+  "descripcion": "DISCO DE CORTE 114x1,6x22,2",
+  "categoria": "consumible"
+ },
+ {
+  "codigo": "ODOO-229",
+  "descripcion": "DISCO FLAP 4,5\"",
+  "categoria": "consumible"
+ },
+ {
+  "codigo": "ODOO-201",
+  "descripcion": "Disco Sensitiva Secur 350x3.0x25x4",
+  "categoria": "consumible"
+ },
+ {
+  "codigo": "ODOO-197",
+  "descripcion": "MAQUINA PINTURA ADIABATIC MEGAJET MONOFÁSICA",
+  "categoria": "consumible"
+ },
+ {
+  "codigo": "ODOO-496",
+  "descripcion": "PINTURA BRILLOPLAST AZUL SINTÉTICO MUESTRA 5720 (CÓDIGO COLOR 020)",
+  "categoria": "consumible"
+ },
+ {
+  "codigo": "ODOO-507",
+  "descripcion": "PINTURA DURALBA ACRILICO AZUL MUESTRA 5719",
+  "categoria": "consumible"
+ },
+ {
+  "codigo": "ODOO-506",
+  "descripcion": "PINTURA SINTÉTICO ALUMINIO MUESTRA 5721",
+  "categoria": "consumible"
+ },
+ {
+  "codigo": "ODOO-521",
+  "descripcion": "PINTURA SINTÉTICO AMARILLO",
+  "categoria": "consumible"
+ },
+ {
+  "codigo": "ODOO-522",
+  "descripcion": "PINTURA SINTÉTICO NEGRO",
+  "categoria": "consumible"
+ },
+ {
+  "codigo": "ODOO-551",
+  "descripcion": "Productos varios Consumibles herrería / producción",
+  "categoria": "consumible"
+ },
+ {
+  "codigo": "ODOO-558",
+  "descripcion": "Productos varios Consumibles pinturas y accesorios afines",
+  "categoria": "consumible"
+ },
+ {
+  "codigo": "ODOO-86",
+  "descripcion": "DIAGONAL 1.50 X 2.50 m (P/ROJA)",
+  "categoria": "diagonal"
+ },
+ {
+  "codigo": "ODOO-87",
+  "descripcion": "DIAGONAL 2.00 X 0.73 m (P/NEGRA)",
+  "categoria": "diagonal"
+ },
+ {
+  "codigo": "ODOO-88",
+  "descripcion": "DIAGONAL 2.00 X 1.09 m (P/AZUL)",
+  "categoria": "diagonal"
+ },
+ {
+  "codigo": "ODOO-89",
+  "descripcion": "DIAGONAL 2.00 X 1.25 m (P/VERDE)",
+  "categoria": "diagonal"
+ },
+ {
+  "codigo": "ODOO-90",
+  "descripcion": "DIAGONAL 2.00 X 1.50 m (P/AMARILLA)",
+  "categoria": "diagonal"
+ },
+ {
+  "codigo": "ODOO-91",
+  "descripcion": "DIAGONAL 2.00 X 2.00 m",
+  "categoria": "diagonal"
+ },
+ {
+  "codigo": "ODOO-92",
+  "descripcion": "DIAGONAL 2.00 X 2.50 m",
+  "categoria": "diagonal"
+ },
+ {
+  "codigo": "ODOO-93",
+  "descripcion": "DIAGONAL DE 2.00 X 2.00",
+  "categoria": "diagonal"
+ },
+ {
+  "codigo": "ODOO-79",
+  "descripcion": "DIAGONAL PLANTA 2.50 x 2.50 m",
+  "categoria": "diagonal"
+ },
+ {
+  "codigo": "ODOO-104",
+  "descripcion": "RIENDA ANDAMIO 2.50 m (2.77 m.) - DIAGONAL",
+  "categoria": "diagonal"
+ },
+ {
+  "codigo": "ODOO-106",
+  "descripcion": "RIENDA ANDAMIO JR 1.50 m (1.65 m.) - DIAGONAL",
+  "categoria": "diagonal"
+ },
+ {
+  "codigo": "ODOO-151",
+  "descripcion": "ARNES DE SEGURIDAD SIN COLA",
+  "categoria": "epp"
+ },
+ {
+  "codigo": "ODOO-550",
+  "descripcion": "DISPOSITIVO ANTI CAIDA T4 PARA ARNES DE SEGURIDAD",
+  "categoria": "epp"
+ },
+ {
+  "codigo": "ODOO-84",
+  "descripcion": "ESFERA DE SEGURIDAD",
+  "categoria": "epp"
+ },
+ {
+  "codigo": "ODOO-528",
+  "descripcion": "GUANTES ALGODON CON PVC",
+  "categoria": "epp"
+ },
+ {
+  "codigo": "ODOO-202",
+  "descripcion": "PAR DE GUANTES DE CUERO DE DESCARNE",
+  "categoria": "epp"
+ },
+ {
+  "codigo": "ODOO-246",
+  "descripcion": "PAR DE GUANTES SOLDADOR",
+  "categoria": "epp"
+ },
+ {
+  "codigo": "ODOO-242",
+  "descripcion": "PRECINTOS FL 4250",
+  "categoria": "epp"
+ },
+ {
+  "codigo": "ODOO-6",
+  "descripcion": "BARANDA DE ESCALERA INTERNA (PARA MULTIDIRECCIONAL)",
+  "categoria": "escalera"
+ },
+ {
+  "codigo": "ODOO-188",
+  "descripcion": "ESCALERA DE ALUMINIO DOBLE HOJA EXTENSIBLE - (3,70m - 5,80m)",
+  "categoria": "escalera"
+ },
+ {
+  "codigo": "ODOO-80",
+  "descripcion": "ESCALERA DE ALUMINIO EXTENSIBLE (9,80m)",
+  "categoria": "escalera"
+ },
+ {
+  "codigo": "ODOO-82",
+  "descripcion": "ESCALERA INTERNA (PARA MULTIDIRECCIONAL)",
+  "categoria": "escalera"
+ },
+ {
+  "codigo": "ODOO-83",
+  "descripcion": "ESCALERA MARINERA 2 m.",
+  "categoria": "escalera"
+ },
+ {
+  "codigo": "ODOO-532",
+  "descripcion": "Escalera Burrito Móvil",
+  "categoria": "escalera"
+ },
+ {
+  "codigo": "ODOO-195",
+  "descripcion": "ZANCA (LIMON) ESCALERA DENCANSO 150X250",
+  "categoria": "escalera"
+ },
+ {
+  "codigo": "ODOO-4",
+  "descripcion": "APAREJO CADENA MANUAL 2 TON",
+  "categoria": "herramienta"
+ },
+ {
+  "codigo": "ODOO-559",
+  "descripcion": "REPARACIÓN / ARREGLOS DE MÁQUINAS DE TRABAJO (SOLDADORAS, AMOLADORAS, ETC)",
+  "categoria": "herramienta"
+ },
+ {
+  "codigo": "ODOO-94",
+  "descripcion": "HORIZONTAL ø48.3 x 0.73 m",
+  "categoria": "horizontal"
+ },
+ {
+  "codigo": "ODOO-95",
+  "descripcion": "HORIZONTAL ø48.3 x 1.09 m",
+  "categoria": "horizontal"
+ },
+ {
+  "codigo": "ODOO-96",
+  "descripcion": "HORIZONTAL ø48.3 x 1.25 m",
+  "categoria": "horizontal"
+ },
+ {
+  "codigo": "ODOO-97",
+  "descripcion": "HORIZONTAL ø48.3 x 1.50 m",
+  "categoria": "horizontal"
+ },
+ {
+  "codigo": "ODOO-98",
+  "descripcion": "HORIZONTAL ø48.3 x 2.00 m",
+  "categoria": "horizontal"
+ },
+ {
+  "codigo": "ODOO-99",
+  "descripcion": "HORIZONTAL ø48.3 x 2.50 m",
+  "categoria": "horizontal"
+ },
+ {
+  "codigo": "ODOO-103",
+  "descripcion": "RIENDA ANDAMIO 2.50 m - HORIZONTAL",
+  "categoria": "horizontal"
+ },
+ {
+  "codigo": "ODOO-105",
+  "descripcion": "RIENDA ANDAMIO JR 1.50 m - HORIZONTAL",
+  "categoria": "horizontal"
+ },
+ {
+  "codigo": "ODOO-233",
+  "descripcion": "Camisa Pampero (hasta talle 46) C/Logo",
+  "categoria": "indumentaria"
+ },
+ {
+  "codigo": "ODOO-234",
+  "descripcion": "Camisa Pampero (talle 48 al 54) C/Logo",
+  "categoria": "indumentaria"
+ },
+ {
+  "codigo": "ODOO-231",
+  "descripcion": "Pantalon Cargo Pampero (hasta talle 54)",
+  "categoria": "indumentaria"
+ },
+ {
+  "codigo": "ODOO-230",
+  "descripcion": "Pantalon Pampero (hasta talle 60)",
+  "categoria": "indumentaria"
+ },
+ {
+  "codigo": "ODOO-235",
+  "descripcion": "Par de Botin c/p Ozono",
+  "categoria": "indumentaria"
+ },
+ {
+  "codigo": "ODOO-554",
+  "descripcion": "Productos varios Indumentaria - ropa de trabajo",
+  "categoria": "indumentaria"
+ },
+ {
+  "codigo": "ODOO-237",
+  "descripcion": "Remeras Algodon manga corta C/Logo",
+  "categoria": "indumentaria"
+ },
+ {
+  "codigo": "ODOO-5",
+  "descripcion": "BARANDA DE ESCALERA INTERNA (PARA BASTIDOR)",
+  "categoria": "marco"
+ },
+ {
+  "codigo": "ODOO-8",
+  "descripcion": "BASTIDOR BARANDA - 1,30m. x 1.00 h",
+  "categoria": "marco"
+ },
+ {
+  "codigo": "ODOO-7",
+  "descripcion": "BASTIDOR BARANDA PASILLO - 0,90m. x 1.00 h",
+  "categoria": "marco"
+ },
+ {
+  "codigo": "ODOO-9",
+  "descripcion": "BASTIDOR DE ANDAMIO - 1,30m. x 1.80 h",
+  "categoria": "marco"
+ },
+ {
+  "codigo": "ODOO-10",
+  "descripcion": "BASTIDOR DE ANDAMIO PASILLO - 0,90 m. X 1.80 h.",
+  "categoria": "marco"
+ },
+ {
+  "codigo": "ODOO-12",
+  "descripcion": "BASTIDOR PASO PEATONAL - 1,30m. x 2.50 h",
+  "categoria": "marco"
+ },
+ {
+  "codigo": "ODOO-11",
+  "descripcion": "BASTIDOR PASO PEATONAL PASILLO - 0,90m. x 2.50 h",
+  "categoria": "marco"
+ },
+ {
+  "codigo": "ODOO-81",
+  "descripcion": "ESCALERA INTERNA (PARA BASTIDOR)",
+  "categoria": "marco"
+ },
+ {
+  "codigo": "ODOO-150",
+  "descripcion": "MODULO BARANDA DE ANDAMIO PASILLO 0,90 X 2,50 X 1,00",
+  "categoria": "modulo"
+ },
+ {
+  "codigo": "ODOO-171",
+  "descripcion": "MODULO BARANDA DE ANDAMIO PASILLO JUNIOR 0,90 X 1,50 X 1,00",
+  "categoria": "modulo"
+ },
+ {
+  "codigo": "ODOO-149",
+  "descripcion": "MODULO BARANDA DE ANDAMIO STD 1,30 X 2,50 X 1,80",
+  "categoria": "modulo"
+ },
+ {
+  "codigo": "ODOO-142",
+  "descripcion": "MODULO DE ANDAMIO JUNIOR 1,30 X 1,50 X 1,80",
+  "categoria": "modulo"
+ },
+ {
+  "codigo": "ODOO-139",
+  "descripcion": "MODULO DE ANDAMIO PASILLO 0,90 X 2,50 X 1,80",
+  "categoria": "modulo"
+ },
+ {
+  "codigo": "ODOO-148",
+  "descripcion": "MODULO DE ANDAMIO PASILLO JUNIOR 0,90 X 1,50 X 1,80",
+  "categoria": "modulo"
+ },
+ {
+  "codigo": "ODOO-519",
+  "descripcion": "MODULO DE ANDAMIO PASO PEATONAL PASILLO 0,90 X 2,50 X 2,50",
+  "categoria": "modulo"
+ },
+ {
+  "codigo": "ODOO-518",
+  "descripcion": "MODULO DE ANDAMIO PASO PEATONAL STD 1,30 X 2,50 X 2,50",
+  "categoria": "modulo"
+ },
+ {
+  "codigo": "ODOO-138",
+  "descripcion": "MODULO DE ANDAMIO STD 1,30 X 2,50 X 1,80",
+  "categoria": "modulo"
+ },
+ {
+  "codigo": "ODOO-548",
+  "descripcion": "ALQUILER DE TORRE PARA EVENTO",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-537",
+  "descripcion": "Adiabatic - Depósito completo de 20 l - cod 0220CLX0",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-539",
+  "descripcion": "Adiabatic - Pistola GP c/ mango plastico - Cod PIGPMPDP",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-538",
+  "descripcion": "Adiabatic - Regulador de presion c/ mano - Cod 0234DLX0",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-503",
+  "descripcion": "BATERÍA 12 X 85",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-232",
+  "descripcion": "Bermuda Pampero (hasta talle 54)",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-187",
+  "descripcion": "Butaca m4 (Sin Respaldo)",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-561",
+  "descripcion": "CABALLETE PLEGABLE DE MADERA",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-220",
+  "descripcion": "CAJAS OPERARIOS",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-203",
+  "descripcion": "CLAVOS PUNTA PARÍS 2,5´´",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-77",
+  "descripcion": "COLLARIN CORTO (0.33 m)",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-78",
+  "descripcion": "COLLARIN LARGO (0.48 m)",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-492",
+  "descripcion": "CORTADORA SENSITIVA CORTE EN FRÍO TR-200 (Nº SERIE 2375)",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-196",
+  "descripcion": "CORTADORA SENSITIVA DUCA 300W",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-544",
+  "descripcion": "CUBIERTA 215/75 R17.5 126/124M TL SR200 SR-200 FATE",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-543",
+  "descripcion": "CUBIERTA 225/75 R16C 118/116R AVANTIA AR-410",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-545",
+  "descripcion": "CUBIERTA 235/75 R17.5 132/130M SR-200 TL SR-200 FATE",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-207",
+  "descripcion": "Chaveta Q355 galvanizado en caliente",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-529",
+  "descripcion": "DELANTAL CUERO SOLDADOR",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-520",
+  "descripcion": "DISEÑO Y/O PRODUCCIÓN DE MOBILIARIO / INSTALACIONES",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-85",
+  "descripcion": "ESPIGA EXPANSIBLE",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "Delivery_007",
+  "descripcion": "Envío estándar (flete)",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-190",
+  "descripcion": "Fenolico pino Rivadavia \"D\"Scrap 122x244x18",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-535",
+  "descripcion": "HIERRO ANGULO 1 1/4\" x 1/8\"",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-241",
+  "descripcion": "HIERRO PLANCHUELA 1 1/2´´X 3/16´´",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-493",
+  "descripcion": "HOJA DE SIERRA  Φ250MM",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-504",
+  "descripcion": "KENDO MASCARILLA DESCARTABLE PINTOR 23033ZFE1008611F",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-526",
+  "descripcion": "LUBRICANTE WD-40 LATA",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-533",
+  "descripcion": "Luz de Trabajo LED con PIE",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-192",
+  "descripcion": "MADERA BASE 10X10cm",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-221",
+  "descripcion": "MEDIA SOMBRA N°5 NEGRO (4m x 50m)",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-240",
+  "descripcion": "METAL DESPLEGADO 250.30.12 1.5X3 MTS",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-205",
+  "descripcion": "MONITOR LG PANTALLA 27´´FHD LG-27MS500-B",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-556",
+  "descripcion": "Media Placa Fenólico 0,60 x 2,44 m.",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-247",
+  "descripcion": "MÁSCARA DE SOLDADOR",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-170",
+  "descripcion": "MÍNIMO OPERATIVO Andamios Bs. As.",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-217",
+  "descripcion": "NOTEBOOK LENOVO THINKPAD L16 G1 AMD RYZEN 5PRO 7535U Free 32GB 512GB",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-505",
+  "descripcion": "PILAS X UNIDAD (AA Y AAA)",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-525",
+  "descripcion": "PINCEL N 15",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-524",
+  "descripcion": "PINCEL N 25",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-530",
+  "descripcion": "PINZA DE MASA BRONCE SOLDADOR",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-531",
+  "descripcion": "PINZA DE MASA CHAPA SOLDADOR",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-248",
+  "descripcion": "PROTECTOR AUDITIVO",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-102",
+  "descripcion": "PUÑO DOBLE MULTIDIRECCIONAL",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-206",
+  "descripcion": "PUÑO GALVANIZADO SIN CHAVETA",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-236",
+  "descripcion": "Par de Zapatilla Snecker Ombu",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-183",
+  "descripcion": "Placa Fenólico 1,22 x 2,44 m.",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-3",
+  "descripcion": "Producto Ejemplo",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-500",
+  "descripcion": "REPARACIÓN VEHÍCULOS Y ELEVADORES (TALLER/ARREGLOS M/O Y REPUESTOS)",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-523",
+  "descripcion": "RODILLO PELO LARGO N 22",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-214",
+  "descripcion": "Rack 1.06x1.06Mx1.1M pintado",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-215",
+  "descripcion": "Rack con rejilla 1.06x1.06Mx1.1M, Pintado",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-226",
+  "descripcion": "SERVICIOS PRESTADOS",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-542",
+  "descripcion": "SILLA TIPO PARÍS NEGRA",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-557",
+  "descripcion": "SOGA POLIETILENO 13 MM. X 20 M",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-218",
+  "descripcion": "Servicio de Traslado",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-555",
+  "descripcion": "Soporte curvo para pantalla 45º",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-497",
+  "descripcion": "THINNER STANDARD UNIVERSAL DIPROEL (CÓDIGO TP18)",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-186",
+  "descripcion": "TIRANTE MADERA 3 X 3 ´´ - 3,00m",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-499",
+  "descripcion": "VENTA DE MATERIAL",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-546",
+  "descripcion": "VIRUTA MEDIANA",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-495",
+  "descripcion": "pantal",
+  "categoria": "otro"
+ },
+ {
+  "codigo": "ODOO-181",
+  "descripcion": "PUNTAL TELESCÓPICO - (2,10m a 3,50m)",
+  "categoria": "puntal"
+ },
+ {
+  "codigo": "ODOO-107",
+  "descripcion": "RODAPIE 0,73m",
+  "categoria": "rodapie"
+ },
+ {
+  "codigo": "ODOO-108",
+  "descripcion": "RODAPIE 0,90m",
+  "categoria": "rodapie"
+ },
+ {
+  "codigo": "ODOO-109",
+  "descripcion": "RODAPIE 1,09m",
+  "categoria": "rodapie"
+ },
+ {
+  "codigo": "ODOO-110",
+  "descripcion": "RODAPIE 1,25m",
+  "categoria": "rodapie"
+ },
+ {
+  "codigo": "ODOO-111",
+  "descripcion": "RODAPIE 1,30m",
+  "categoria": "rodapie"
+ },
+ {
+  "codigo": "ODOO-112",
+  "descripcion": "RODAPIE 2,50m",
+  "categoria": "rodapie"
+ },
+ {
+  "codigo": "ODOO-211",
+  "descripcion": "Adaptador Ajustable para Rueda 12'', Q235 HDG",
+  "categoria": "rueda"
+ },
+ {
+  "codigo": "ODOO-141",
+  "descripcion": "JUEGO DE RUEDAS DE ANDAMIO STANDARD (4 U)",
+  "categoria": "rueda"
+ },
+ {
+  "codigo": "ODOO-153",
+  "descripcion": "RUEDA \"INTERMEDIA\" (ROJA) POR UNIDAD",
+  "categoria": "rueda"
+ },
+ {
+  "codigo": "ODOO-140",
+  "descripcion": "RUEDA DE ANDAMIO STANDARD",
+  "categoria": "rueda"
+ },
+ {
+  "codigo": "ODOO-155",
+  "descripcion": "RUEDA DE ANDAMIO STANDARD CON FRENO, POR UNIDAD",
+  "categoria": "rueda"
+ },
+ {
+  "codigo": "ODOO-154",
+  "descripcion": "RUEDA DE GRAN PORTE POR UNIDAD",
+  "categoria": "rueda"
+ },
+ {
+  "codigo": "ODOO-213",
+  "descripcion": "Ménsula 48.3x3.2mm & 32x2.5mm, 1 x 320mm W Tablón - 0.45M Q235, Galvanizado en Caliente",
+  "categoria": "tablon"
+ },
+ {
+  "codigo": "ODOO-179",
+  "descripcion": "TABLERO TRIBUNA 0.30 x 2.50",
+  "categoria": "tablon"
+ },
+ {
+  "codigo": "ODOO-180",
+  "descripcion": "TABLERO TRIBUNA 0.60 x 2.50",
+  "categoria": "tablon"
+ },
+ {
+  "codigo": "ODOO-113",
+  "descripcion": "TABLON ESCOTILLA 2.50 m",
+  "categoria": "tablon"
+ },
+ {
+  "codigo": "ODOO-114",
+  "descripcion": "TABLON METALICO 0.73 m",
+  "categoria": "tablon"
+ },
+ {
+  "codigo": "ODOO-115",
+  "descripcion": "TABLON METALICO 1.09 m",
+  "categoria": "tablon"
+ },
+ {
+  "codigo": "ODOO-116",
+  "descripcion": "TABLON METALICO 1.25 m",
+  "categoria": "tablon"
+ },
+ {
+  "codigo": "ODOO-117",
+  "descripcion": "TABLON METALICO 1.50 m",
+  "categoria": "tablon"
+ },
+ {
+  "codigo": "ODOO-121",
+  "descripcion": "TABLON METALICO 1.50 m 0.20",
+  "categoria": "tablon"
+ },
+ {
+  "codigo": "ODOO-118",
+  "descripcion": "TABLON METALICO 2.00 m",
+  "categoria": "tablon"
+ },
+ {
+  "codigo": "ODOO-119",
+  "descripcion": "TABLON METALICO 2.50 m",
+  "categoria": "tablon"
+ },
+ {
+  "codigo": "ODOO-120",
+  "descripcion": "TABLON METALICO 2.50 m 0.20",
+  "categoria": "tablon"
+ },
+ {
+  "codigo": "ODOO-502",
+  "descripcion": "BULON C/HEXAGONAL 1/2 X 1.1/2",
+  "categoria": "tornillo"
+ },
+ {
+  "codigo": "ODOO-536",
+  "descripcion": "BULON LAYHER",
+  "categoria": "tornillo"
+ },
+ {
+  "codigo": "ODOO-175",
+  "descripcion": "TORNILLON DE 300 mm. POR UNIDAD (BASE FIJA)",
+  "categoria": "tornillo"
+ },
+ {
+  "codigo": "ODOO-176",
+  "descripcion": "TORNILLON DE 600 mm. POR UNIDAD (BASE FIJA)",
+  "categoria": "tornillo"
+ },
+ {
+  "codigo": "ODOO-177",
+  "descripcion": "TORNILLON DE 600 mm. POR UNIDAD (BASE MÓVIL)",
+  "categoria": "tornillo"
+ },
+ {
+  "codigo": "ODOO-501",
+  "descripcion": "TUERCA HEXAGONAL PESADA 1/2 W",
+  "categoria": "tornillo"
+ },
+ {
+  "codigo": "ODOO-189",
+  "descripcion": "Limon Tribuna (para Butacas Plasticas)",
+  "categoria": "tribuna"
+ },
+ {
+  "codigo": "ODOO-167",
+  "descripcion": "VALLA FREESTANDING - POR UNIDAD (Delimitación y Contención)",
+  "categoria": "valla"
+ },
+ {
+  "codigo": "ODOO-184",
+  "descripcion": "VALLA STANDARD X 3 M. - ALQUILER POR UNIDAD (Delimitación y Contención)",
+  "categoria": "valla"
+ },
+ {
+  "codigo": "ODOO-122",
+  "descripcion": "VERTICAL 0.50 m CON ESPIGA",
+  "categoria": "vertical"
+ },
+ {
+  "codigo": "ODOO-123",
+  "descripcion": "VERTICAL 0.50 m SIN ESPIGA",
+  "categoria": "vertical"
+ },
+ {
+  "codigo": "ODOO-124",
+  "descripcion": "VERTICAL 1.00 m CON ESPIGA",
+  "categoria": "vertical"
+ },
+ {
+  "codigo": "ODOO-125",
+  "descripcion": "VERTICAL 1.00 m SIN ESPIGA",
+  "categoria": "vertical"
+ },
+ {
+  "codigo": "ODOO-126",
+  "descripcion": "VERTICAL 1.50 m CON ESPIGA",
+  "categoria": "vertical"
+ },
+ {
+  "codigo": "ODOO-127",
+  "descripcion": "VERTICAL 1.50 m SIN ESPIGA",
+  "categoria": "vertical"
+ },
+ {
+  "codigo": "ODOO-128",
+  "descripcion": "VERTICAL 2.00 m CON ESPIGA",
+  "categoria": "vertical"
+ },
+ {
+  "codigo": "ODOO-129",
+  "descripcion": "VERTICAL 2.00 m SIN ESPIGA",
+  "categoria": "vertical"
+ },
+ {
+  "codigo": "ODOO-130",
+  "descripcion": "VERTICAL 3.00 m CON ESPIGA",
+  "categoria": "vertical"
+ },
+ {
+  "codigo": "ODOO-131",
+  "descripcion": "VERTICAL 3.00 m SIN ESPIGA",
+  "categoria": "vertical"
+ },
+ {
+  "codigo": "ODOO-132",
+  "descripcion": "VIGA CELOSIA 0.73 m",
+  "categoria": "viga"
+ },
+ {
+  "codigo": "ODOO-133",
+  "descripcion": "VIGA CELOSIA 1.09 m",
+  "categoria": "viga"
+ },
+ {
+  "codigo": "ODOO-134",
+  "descripcion": "VIGA CELOSIA 2.50 m",
+  "categoria": "viga"
+ },
+ {
+  "codigo": "ODOO-560",
+  "descripcion": "VIGA MADERA H20 X 3M.",
+  "categoria": "viga"
+ },
+ {
+  "codigo": "ODOO-135",
+  "descripcion": "VIGA PUENTE ø1.50 m",
+  "categoria": "viga"
+ },
+ {
+  "codigo": "ODOO-136",
+  "descripcion": "VIGA PUENTE ø2.50 m",
+  "categoria": "viga"
+ },
+ {
+  "codigo": "ODOO-527",
+  "descripcion": "VIGA X 3,00 M.",
+  "categoria": "viga"
+ }
+]

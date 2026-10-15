@@ -11,7 +11,7 @@ import { armar, Emisor } from './armar/armar.ts';
 import { calcularBom } from './bom.ts';
 import { fusionarNodos } from './fusionar.ts';
 import { rellenarLargo } from './medida/rellenar.ts';
-import { celdaId, cubre, indexar, panoCeldaId, partirClave, columnasPano } from './esqueleto/esqueleto.ts';
+import { celdaId, cubre, indexar, nodoId, panoCeldaId, partirClave, columnasPano } from './esqueleto/esqueleto.ts';
 import { categoriaDe, tipologia } from './tipologias/indice.ts';
 import type { Generado, Relaciones, Tipologia } from './tipologias/registro.ts';
 import { aLocal, dentroPoligono, enBorde, fmt, fmtKg, marco, type Marco, r3, sum } from './util.ts';
@@ -50,13 +50,33 @@ export function puertoMundo(p: Omit<Puerto, 'estructuraId'>, m: Marco, estructur
   return { ...p, estructuraId, p0: W(p.p0), p1: W(p.p1), normal: rot(p.normal), d: rot(p.d) };
 }
 
-/** Aplica los overrides genéricos (diagonal, cano) sobre celdas del esqueleto con la misma clave. */
+/** Las fachadas leen ménsula y anclaje de sus overrides por banda: acá no se repiten. */
+const NODOS_PROPIOS = new Set(['fachada', 'fachada_bastidor']);
+/** Mismo brazo que el pincel de ménsula de la estructura libre. */
+const BRAZO_MENSULA_PINCEL = 0.73;
+
+/**
+ * Aplica los overrides genéricos sobre celdas del esqueleto con la misma clave: diagonal y caño en
+ * la celda; ménsula y anclaje en los dos nodos del vano (así el pincel sirve en torres, bandejas…).
+ */
 function aplicarOverridesGenericos(esq: Esqueleto, est: Estructura): void {
-  const vanos = new Set(esq.vanos.map((v) => v.id));
+  const vanos = new Map(esq.vanos.map((v) => [v.id, v]));
+  const nodos = !NODOS_PROPIOS.has(est.tipologia);
   for (const [clave, o] of Object.entries(est.overrides || {})) {
     if (!/@\d+$/.test(clave)) continue;
     const { id, k } = partirClave(clave);
-    if (!vanos.has(id) || k < 0 || k >= esq.cotas.length) continue;
+    const v = vanos.get(id);
+    if (!v || k < 0 || k >= esq.cotas.length) continue;
+    if (nodos && (o.mensula || o.anclaje)) {
+      for (const col of [v.a, v.b]) {
+        const nk = nodoId(col, k);
+        const n = { ...(esq.nodos[nk] || {}) };
+        // la ménsula sale del lado de la cara del vano (afuera en la exterior, hacia la fachada en la interior)
+        if (o.mensula) n.mensula = { dir: v.cara === 'interior' ? 'fachada' : 'afuera', brazo: BRAZO_MENSULA_PINCEL };
+        if (o.anclaje) n.anclaje = true;
+        esq.nodos[nk] = n;
+      }
+    }
     const ce = { ...(esq.celdas[clave] || {}) };
     if (o.diagonal === false) delete ce.diagonal;
     else if (o.diagonal) ce.diagonal = o.diagonal;

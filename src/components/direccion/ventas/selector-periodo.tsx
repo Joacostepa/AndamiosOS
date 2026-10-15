@@ -4,8 +4,11 @@
 // El período vive en la URL (?g=&p=&vs=, o desde/hasta en Personalizado): se puede compartir
 // el link exacto. Los parámetros de cada opción los calcula el servidor (detalle.periodo), así
 // el cliente no repite reglas de períodos. ← / → mueven el período si el foco no está en un campo.
+// Se dibuja dentro del encabezado sticky (#dir-encabezado-extra, ver encabezado.tsx) para que
+// quede fijo con las pestañas; hasta que el hueco existe, se dibuja en el lugar.
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState, useSyncExternalStore, useTransition } from "react";
+import { createPortal } from "react-dom";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
@@ -13,6 +16,9 @@ import { flarga } from "@/lib/direccion/formato";
 import type { PeriodoVista } from "@/lib/direccion/calculo/ventas-armar";
 import type { Gran, Vs } from "@/lib/direccion/calculo/ventas-reglas";
 import { cn } from "@/lib/utils";
+
+/** El hueco del encabezado existe desde que se monta el layout y no cambia: no hay a qué suscribirse. */
+const sinSuscripcion = () => () => {};
 
 const GRANULARIDADES: [Gran, string][] = [["semana", "Semana"], ["mes", "Mes"], ["trimestre", "Trimestre"], ["anio", "Año"], ["pers", "Personalizado"]];
 
@@ -63,8 +69,10 @@ export function SelectorPeriodo({ periodo }: { periodo: PeriodoVista }) {
     ir({ g: "pers", desde: d, hasta: h });
   }
 
+  const hueco = useSyncExternalStore(sinSuscripcion, () => document.getElementById("dir-encabezado-extra"), () => null);
+
   const vs = periodo.vsOpciones.find((o) => o.valor === periodo.vs);
-  return (
+  const selector = (
     <div role="group" aria-label="Período" aria-busy={cargando} className={cn("flex flex-wrap items-center gap-1.5", cargando && "opacity-70")}>
       <div className="inline-flex items-center rounded-md border border-input bg-card">
         <button type="button" onClick={() => ir(periodo.anterior)} disabled={!periodo.anterior} aria-label="Período anterior" className="grid h-[30px] w-8 place-items-center disabled:opacity-35 max-md:h-11 max-md:w-11">
@@ -112,4 +120,5 @@ export function SelectorPeriodo({ periodo }: { periodo: PeriodoVista }) {
       {periodo.recortadoInicio && <span className="text-xs text-muted-foreground">· hay datos desde el {flarga(periodo.inicio)}</span>}
     </div>
   );
+  return hueco ? createPortal(selector, hueco) : selector;
 }

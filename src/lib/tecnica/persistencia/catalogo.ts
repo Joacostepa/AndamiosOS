@@ -6,13 +6,15 @@
  * - El peso se copia TAL CUAL de catalogo_piezas. Si no hay (o es 0, que en Odoo es «no cargado»),
  *   queda null y la UI dice «sin peso». Nunca se inventa.
  * - La familia sale de tec_pieza_mapa (no de `categoria`: las riendas figuran como 'anclaje').
- * - Un código sin fila en tec_pieza_mapa se infiere por convención (semillas.ts) si `inferir`.
+ * - Un código sin fila en tec_pieza_mapa se infiere por convención (semillas.ts) si `inferir`, y si
+ *   el código no dice nada (los «ODOO-<n>» del sync), por la descripción (mapa-descripcion.ts).
  *   Uno que tiene filas, aunque estén inactivas, NO: manda lo que cargó Oficina Técnica.
  */
 import type { Familia, SistemaPieza } from '../modelo/index.ts';
 import { medidasPorDefecto } from '../modelo/index.ts';
 import type { Catalogo, EntradaMapa, ItemCatalogo, MedidasCatalogo } from '../modelo/index.ts';
-import { mapeoPorCodigo } from './semillas.ts';
+import { mapeoPorCodigo, type EntradaInferida } from './semillas.ts';
+import { mapeoPorDescripcion } from './mapa-descripcion.ts';
 
 export interface FilaPieza {
   id: string;
@@ -144,17 +146,18 @@ export function catalogoDesdeFilas(filas: FilasCatalogo, opciones: { inferir?: b
   if (inferir) {
     for (const p of filas.piezas) {
       if (conFila.has(p.codigo) || !p.activo) continue;
-      const ents = mapeoPorCodigo(p.codigo);
+      let ents: (EntradaInferida & { prioridad?: number })[] = mapeoPorCodigo(p.codigo);
+      if (!ents.length) ents = mapeoPorDescripcion(p.descripcion || '');
       if (!ents.length) continue;
       inferidas++;
       for (const x of ents) {
-        // prioridad 900: si OT carga una fila a mano para la misma medida, gana la de OT
-        mapa.push({ familia: x.familia, sistema: x.sistema, largo: x.largo, alto: x.alto, ancho: x.ancho, variante: x.variante, codigo: p.codigo, prioridad: 900 });
+        // prioridad 900+: si OT carga una fila a mano para la misma medida, gana la de OT
+        mapa.push({ familia: x.familia, sistema: x.sistema, largo: x.largo, alto: x.alto, ancho: x.ancho, variante: x.variante, codigo: p.codigo, prioridad: 800 + (x.prioridad ?? 100) });
       }
       extra.set(p.codigo, { familia: ents[0].familia, sistema: ents[0].sistema, rinde: ents[0].rinde, unidad: ents[0].unidad });
     }
   }
-  if (inferidas) avisos.push({ regla: 'catalogo.inferidas', texto: `${inferidas} código(s) sin fila en tec_pieza_mapa se mapearon por la convención del código. Conviene cargarlos.` });
+  if (inferidas) avisos.push({ regla: 'catalogo.inferidas', texto: `${inferidas} código(s) sin fila en tec_pieza_mapa se mapearon por la convención del código o por la descripción. Conviene cargarlos en tec_pieza_mapa.` });
 
   const piezas: Record<string, ItemCatalogo> = {};
   for (const p of filas.piezas) {

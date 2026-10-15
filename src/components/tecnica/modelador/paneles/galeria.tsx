@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 import { useEditor } from "../estado/store";
 import { agregarPreset } from "../estado/acciones";
 import { useModelos } from "../datos/api";
-import type { ModeloFila } from "../datos/tipos";
+import { etiquetaCategoria, type ModeloFila } from "../datos/tipos";
 import { galeriaAgrupada, iconoDe } from "../util/galeria";
 import { ChevronDown, ChevronRight, Star } from "lucide-react";
 
@@ -148,7 +148,7 @@ export function Galeria() {
               >
                 <Star className="size-3.5 shrink-0 text-primary" />
                 <span className="min-w-0 flex-1 truncate">{m.nombre}</span>
-                <span className="text-[10px] text-muted-foreground">{m.plantilla_categoria ?? ""}</span>
+                <span className="text-[10px] text-muted-foreground">{etiquetaCategoria(m.plantilla_categoria)}</span>
               </button>
             ))}
           </div>

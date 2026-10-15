@@ -19,7 +19,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { EmptyState } from "@/components/shared/empty-state";
 import { useObras } from "@/hooks/use-obras";
 import { useArchivarModelo, useCatalogoModelador, useCrearModelo, useModelos } from "./datos/api";
-import type { ModeloLista } from "./datos/tipos";
+import { etiquetaCategoria, type ModeloLista, type ResumenModelo } from "./datos/tipos";
 import { galeriaAgrupada, iconoDe } from "./util/galeria";
 import { fmt, haceCuanto, kg } from "./util/formato";
 import { Boxes, Building2, Loader2, MoreHorizontal, Plus, Search, Star } from "lucide-react";
@@ -125,7 +125,9 @@ export function ListaModelos({ obraId }: { obraId: string | null }) {
 }
 
 function Tarjeta({ m, puede, onArchivar }: { m: ModeloLista; puede: boolean; onArchivar: () => void }) {
-  const r = m.resumen ?? {};
+  // El resumen es jsonb: puede venir de una versión anterior con menos campos.
+  const r: Partial<ResumenModelo> = m.resumen ?? {};
+  const sinCodigo = Array.isArray(r.sinCodigo) ? r.sinCodigo.reduce((t, x) => t + (x.cantidad ?? 0), 0) : 0;
   return (
     <div className="group relative overflow-hidden rounded-xl border border-border bg-card transition-colors hover:border-primary/50">
       <Link href={`/oficina-tecnica/modelador/${m.id}`} className="block">
@@ -144,12 +146,12 @@ function Tarjeta({ m, puede, onArchivar }: { m: ModeloLista; puede: boolean; onA
           </div>
           <div className="flex items-center gap-1 truncate text-xs text-muted-foreground">
             <Building2 className="size-3" />
-            {m.obra ? <><span className="font-mono">{m.obra.codigo}</span> · {m.obra.nombre}</> : m.es_plantilla ? (m.plantilla_categoria ?? "plantilla") : m.cotizacion_ref ?? "Sin obra"}
+            {m.obra ? <><span className="font-mono">{m.obra.codigo}</span> · {m.obra.nombre}</> : m.es_plantilla ? (etiquetaCategoria(m.plantilla_categoria) || "plantilla") : m.cotizacion_ref ?? "Sin obra"}
           </div>
           <div className="flex items-center justify-between font-mono text-[11px] text-muted-foreground">
             <span>
               {r.m2 !== undefined ? `${fmt(r.m2, 0)} m²` : "—"} · {r.pesoKg !== undefined ? `${kg(r.pesoKg)}${r.pesoParcial ? "*" : ""} kg` : "—"}
-              {r.sinCodigo ? ` · ${r.sinCodigo} sin código` : ""}
+              {sinCodigo ? ` · ${sinCodigo} sin código` : ""}
             </span>
             <span>{haceCuanto(m.updated_at)}</span>
           </div>

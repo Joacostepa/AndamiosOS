@@ -13,6 +13,9 @@ import type { AvisoCatalogo } from "@/lib/tecnica/persistencia/catalogo";
 import type {
   DecisionDiff, LineaOmitida, ModeloFila, ModeloLista, PreviaComputo, RespuestaGenerar, ResumenModelo,
 } from "@/lib/tecnica/persistencia/tipos";
+import type { CATEGORIAS_PLANTILLA } from "@/lib/tecnica/persistencia/validar";
+
+type CategoriaPlantilla = (typeof CATEGORIAS_PLANTILLA)[number];
 
 export class ErrorApi extends Error {
   status: number;
@@ -124,11 +127,24 @@ export type GuardarModeloInput = {
   resumen?: ResumenModelo | null;
 };
 
+/**
+ * PATCH sin pasar por react-query (lo usa el autoguardado, que corre fuera de un componente).
+ * Tira ErrorRevision ante un 409. Devuelve la revisión nueva.
+ */
+export async function guardarModelo({ id, ...body }: GuardarModeloInput): Promise<number> {
+  return (await api<{ revision: number }>(`${BASE}/${id}`, { method: "PATCH", json: body })).revision;
+}
+
+/** Sube la portada (PNG del lienzo) sin pasar por react-query. */
+export async function subirImagen(id: string, png: Blob): Promise<{ imagen_path: string; url: string | null }> {
+  return api(`${BASE}/${id}/imagen`, { method: "POST", headers: { "Content-Type": "image/png" }, body: png });
+}
+
 /** PATCH con control optimista. Tira ErrorRevision ante un 409. Devuelve la revisión nueva. */
 export function useGuardarModelo() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, ...body }: GuardarModeloInput) => (await api<{ revision: number }>(`${BASE}/${id}`, { method: "PATCH", json: body })).revision,
+    mutationFn: guardarModelo,
     onSuccess: (revision, v) => {
       qc.setQueryData<ModeloFila>(["modelador", "modelo", v.id], (m) => (m ? {
         ...m, revision,
@@ -173,7 +189,7 @@ export function useDuplicarModelo() {
 export function useGuardarComoPlantilla() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, ...body }: { id: string; nombre: string; descripcion?: string | null; categoria: "fachada" | "bandeja" | "torre" | "portico" | "especial" | "libre" }) =>
+    mutationFn: async ({ id, ...body }: { id: string; nombre: string; descripcion?: string | null; categoria: CategoriaPlantilla }) =>
       (await api<{ modelo: ModeloFila }>(`${BASE}/${id}/plantilla`, { method: "POST", json: body })).modelo,
     onSuccess: () => qc.invalidateQueries({ queryKey: ["modelador", "lista"] }),
   });
@@ -183,8 +199,7 @@ export function useGuardarComoPlantilla() {
 export function useSubirImagen() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, png }: { id: string; png: Blob }) =>
-      api<{ imagen_path: string; url: string | null }>(`${BASE}/${id}/imagen`, { method: "POST", headers: { "Content-Type": "image/png" }, body: png }),
+    mutationFn: ({ id, png }: { id: string; png: Blob }) => subirImagen(id, png),
     onSuccess: (r, v) => {
       qc.setQueryData<ModeloFila>(["modelador", "modelo", v.id], (m) => (m ? { ...m, imagen_path: r.imagen_path, imagen_url: r.url } : m));
       qc.invalidateQueries({ queryKey: ["modelador", "lista"] });

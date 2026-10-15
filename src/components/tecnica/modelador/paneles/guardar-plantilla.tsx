@@ -13,16 +13,20 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useEditor } from "../estado/store";
 import { guardarAhora } from "../estado/autoguardado";
 import { useGuardarComoPlantilla } from "../datos/api";
-import { CATEGORIAS_PLANTILLA } from "../datos/tipos";
+import { CATEGORIAS_PLANTILLA, type CategoriaPlantilla } from "../datos/tipos";
+import { grupoDePreset } from "../util/galeria";
 import { Chips } from "./campos";
 import { Loader2 } from "lucide-react";
 
-function categoriaSugerida(): string {
+/** La categoría que le tocaría en la galería a la primera estructura (mismo criterio que los grupos). */
+function categoriaSugerida(): CategoriaPlantilla {
   const d = useEditor.getState().diseno;
-  const t = tipologia(d.estructuras[0]?.tipologia ?? "")?.categoria;
-  if (t === "portico") return "bandeja";
-  if (t === "fachada" || t === "bandeja" || t === "torre") return t;
-  return "especial";
+  const id = d.estructuras[0]?.tipologia ?? "";
+  const t = tipologia(id);
+  if (!t) return "especial";
+  const grupo = grupoDePreset({ tipologia: id, categoria: t.categoria });
+  const POR_GRUPO = { fachadas: "fachada", bandejas: "bandeja", torres: "torre", interiores: "interior", especiales: "especial" } as const;
+  return POR_GRUPO[grupo];
 }
 
 export function GuardarPlantilla({ abierto, onCambiar }: { abierto: boolean; onCambiar: (v: boolean) => void }) {
@@ -30,7 +34,7 @@ export function GuardarPlantilla({ abierto, onCambiar }: { abierto: boolean; onC
   const nombreDiseno = useEditor((s) => s.diseno.nombre);
   const [nombre, setNombre] = useState<string | null>(null);
   const [descripcion, setDescripcion] = useState("");
-  const [categoria, setCategoria] = useState<string | null>(null);
+  const [categoria, setCategoria] = useState<CategoriaPlantilla | null>(null);
   const guardar = useGuardarComoPlantilla();
 
   const confirmar = async () => {
@@ -71,7 +75,7 @@ export function GuardarPlantilla({ abierto, onCambiar }: { abierto: boolean; onC
             </label>
             <div className="space-y-1 text-sm">
               <span className="text-muted-foreground">Categoría de la galería</span>
-              <Chips opciones={CATEGORIAS_PLANTILLA.map((c) => ({ valor: c.valor as string, etiqueta: c.etiqueta }))} valor={categoria ?? categoriaSugerida()} onElegir={setCategoria} />
+              <Chips opciones={CATEGORIAS_PLANTILLA.map((c) => ({ valor: c.valor, etiqueta: c.etiqueta }))} valor={categoria ?? categoriaSugerida()} onElegir={setCategoria} />
             </div>
           </div>
         )}

@@ -1,6 +1,7 @@
 "use client";
 
-import { use, useMemo, useSyncExternalStore } from "react";
+import { use, useEffect, useMemo, useSyncExternalStore } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { ejemploParana631 } from "@/lib/tecnica/modelo";
@@ -39,6 +40,10 @@ export default function EditorModeloPage({ params }: { params: Promise<{ id: str
   const modelo = useModelo(demo ? null : id);
   const catalogo = useCatalogoModelador();
   const disenoDemo = useMemo(() => (demo ? ejemploParana631() : undefined), [demo]);
+  // El autoguardado guarda por fuera de react-query: al salir del editor se descarta el modelo
+  // cacheado para que al volver se lea la revisión nueva (si no, el primer guardado daría 409).
+  const qc = useQueryClient();
+  useEffect(() => () => qc.removeQueries({ queryKey: ["modelador", "modelo", id] }), [qc, id]);
 
   if (!grande) {
     return (

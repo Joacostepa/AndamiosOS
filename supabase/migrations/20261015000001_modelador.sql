@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS tec_modelos (
   -- Nombre de la venta/cotización de Odoo (S0xxxx) cuando el modelo todavía no tiene obra.
   cotizacion_ref text CHECK (cotizacion_ref IS NULL OR length(cotizacion_ref) <= 60),
   es_plantilla boolean NOT NULL DEFAULT false,
-  -- Galería «Mis plantillas»: 'fachada' | 'bandeja' | 'torre' | 'portico' | 'especial' | 'libre'.
+  -- Galería «Mis plantillas»: 'fachada' | 'bandeja' | 'torre' | 'portico' | 'interior' | 'especial' | 'libre'.
   plantilla_categoria text,
   diseno jsonb NOT NULL,
   esquema int NOT NULL,                      -- Diseno.esquema (núcleo: ESQUEMA_DISENO)

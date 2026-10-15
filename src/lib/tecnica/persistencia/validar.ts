@@ -13,7 +13,7 @@ const nombre = z.string().trim().min(1, 'Falta el nombre').max(120, 'El nombre e
 const descripcion = z.string().trim().max(2000, 'La descripción es muy larga').nullable();
 const cotizacion = z.string().trim().max(60, 'La referencia de cotización es muy larga').nullable();
 
-export const CATEGORIAS_PLANTILLA = ['fachada', 'bandeja', 'torre', 'portico', 'especial', 'libre'] as const;
+export const CATEGORIAS_PLANTILLA = ['fachada', 'bandeja', 'torre', 'portico', 'interior', 'especial', 'libre'] as const;
 
 const resumen = z.looseObject({
   m2: z.number(),

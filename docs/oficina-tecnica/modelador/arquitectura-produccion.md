@@ -972,6 +972,23 @@ Reglas de convivencia:
     3. `grillaPoligono({ lado: 'adentro' })` deja uniones en T: la horizontal exterior de un lado pasa por la primera vertical del siguiente. El patio perimetral se arma con tiras y cuadros de esquina (`incorporar`).
     4. En un vano libre de menos de 0,25 el rodapié queda «sin código»: se corta de fenólico (`rodapiesCortos`).
     5. El fixture no tiene código de `estabilizador`. La torre móvil exterior arranca sin estabilizadores para cumplir el test de presets sin faltantes; con estabilizadores salen «sin código» hasta que OT los mapee.
+- **15/10/2026 · integración (pantalla ↔ persistencia ↔ volúmenes):**
+  - **Un solo cliente de la API.** `src/components/tecnica/modelador/datos/api.ts` reexporta los hooks de `src/hooks/use-modelador.ts`, y `datos/tipos.ts` los tipos de `persistencia/tipos.ts`. Se agregaron `guardarModelo()` y `subirImagen()` sin react-query, porque el autoguardado corre fuera de un componente. El único hook propio de la pantalla es `useCatalogoModelador`: si la ruta falla, cae al catálogo de prueba. Usa la key `["modelador","catalogo","con-respaldo"]` porque devuelve otra forma.
+  - **El resumen del modelo lo arma `persistencia/computo.ts#resumenDe`**, el mismo que el servidor. La lista tolera resúmenes viejos con menos campos.
+  - **La previa del cómputo usa el contrato de persistencia:**
+    - las opciones y la decisión por defecto de cada línea las manda el servidor;
+    - se muestran los tipos `quita_editado` y `manual`;
+    - se manda `aceptoOmitidas`, y `reemplazarOtroModelo` con un tilde cuando el cómputo vino de otro modelo.
+  - **Categorías de plantilla:** se suma `interior` («Interiores y escaleras», el grupo de la galería) a `CATEGORIAS_PLANTILLA` en `validar.ts`. La columna es `text` sin CHECK, así que no hace falta migración.
+  - **Permisos:** la pantalla usa `nivelEn(acceso, "modelador")` y ya no cae en Cómputos, porque la migración copia ese nivel.
+  - **Volúmenes:** la pantalla usa la lógica oficial.
+    - `components/tecnica/modelador/volumenes/geometria.ts` es ahora un adaptador. Traduce entre la `def` y la receta del formulario, que se deriva y no se guarda.
+    - El 3D dibuja `solidosDe`: tramos, cúpula, balcones repetidos y patios.
+    - El clic en una cara llama a `agregarEnCara`, y el toggle «Seguir el contorno» pasa `seguir: 'contorno'`.
+    - Los choques salen de `avisosDeChoque(diseno, res, catalogo.medidas)`.
+    - Un patio suelto, sin cuerpo que lo contenga, va como volumen sin `def` con `hueco: true`, que `solidosDe` entiende.
+    - `migrarVolumenesPantalla` convierte al cargar los volúmenes del formato provisorio (`forma`/`grupo`).
+  - **`npm test`** pasa `--experimental-strip-types`, porque Node 22.16 no lo trae activo. El test de rendimiento exige el mínimo por debajo de 15 ms y la mediana por debajo de 40 ms, así no falla por la carga de la máquina.
 
 ---
 

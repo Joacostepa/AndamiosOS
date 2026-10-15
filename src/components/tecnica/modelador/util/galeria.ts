@@ -21,7 +21,7 @@ export const GRUPOS: { id: GrupoGaleria; etiqueta: string }[] = [
 /** Tipologías de interior/escalera (las categorías del núcleo no distinguen interiores). */
 const INTERIORES = /patio|hueco|sobre_escalera|interior/i;
 
-export function grupoDePreset(p: PresetGaleria): GrupoGaleria {
+export function grupoDePreset(p: Pick<PresetGaleria, "tipologia" | "categoria">): GrupoGaleria {
   if (INTERIORES.test(p.tipologia)) return "interiores";
   switch (p.categoria) {
     case "fachada": return "fachadas";

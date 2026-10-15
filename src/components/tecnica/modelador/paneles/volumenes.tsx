@@ -3,11 +3,13 @@
 // VOLÚMENES DE REFERENCIA (pedido de JS: "muchas veces nos pasan solo las medidas del
 // edificio"). Se dibujan a partir de medidas: caja, prisma por planta, escalonado con
 // retranqueos, salientes (balcón, marquesina, cornisa), cilindro/cúpula y huecos/patios.
-// Se guardan en diseno.contexto.volumenes (con la receta, versionada) y sobre ellos se modela:
-// la herramienta "Fachada desde una cara" crea la fachada con el largo, el ángulo y la altura
-// de la cara, separada lo que se configure.
+// Se guardan en diseno.contexto.volumenes con el formato del núcleo (def versionada, ver
+// src/lib/tecnica/modelo/volumenes) y sobre ellos se modela: «Estructura desde una cara» arma
+// la fachada con el largo, el ángulo y la altura de la cara (o una envolvente en una cara curva,
+// un patio interno en un patio y una estructura libre sobre una terraza).
 
 import { useState } from "react";
+import { toast } from "sonner";
 import type { V2 } from "@/lib/tecnica/modelo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,8 +18,8 @@ import { cn } from "@/lib/utils";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useEditor, resueltaSel } from "../estado/store";
 import {
-  carasDe, formaDeGrupo, gruposDe, NOMBRE_FORMA, NOMBRE_SALIENTE, nuevoIdVolumen, ponerGrupo, quitarGrupo, salientePorDefecto,
-  volumenesDesdeForma, type FormaVolumen, type VolumenRef,
+  formaDeGrupo, gruposDe, ladosDe, NOMBRE_FORMA, NOMBRE_SALIENTE, nuevoIdVolumen, ponerForma, quitarGrupo, salientePorDefecto,
+  type FormaVolumen, type VolumenRef,
 } from "../volumenes/geometria";
 import { CampoNumero, EditorPoligono } from "../alzado/planta";
 import { Chips } from "./campos";
@@ -25,6 +27,11 @@ import { fmt } from "../util/formato";
 import { Box, MousePointerClick, Plus, Trash2 } from "lucide-react";
 
 type Forma = FormaVolumen["forma"];
+
+/** Los avisos de la geometría (planta inválida, saliente sin padre…) como toast. */
+function avisar(avisos: string[]) {
+  if (avisos.length) toast.warning(avisos[0], avisos.length > 1 ? { description: avisos.slice(1).join(" ") } : undefined);
+}
 
 function formaInicial(forma: Forma, diseno: ReturnType<typeof useEditor.getState>["diseno"], sobre?: VolumenRef): FormaVolumen | null {
   switch (forma) {
@@ -34,10 +41,9 @@ function formaInicial(forma: Forma, diseno: ReturnType<typeof useEditor.getState
     case "cilindro": return { forma, centro: [0, -6], radio: 5, alto: 8, cupula: true, altoCupula: 3, yBase: 0 };
     case "hueco": return { forma, largo: 6, ancho: 4, origen: [0, -8], rumbo: 0, yBase: 0, alto: 15 };
     case "saliente": {
-      const v = sobre ?? (diseno.contexto.volumenes as VolumenRef[]).find((x) => !x.hueco && x.tipo === "edificio");
+      const v = sobre ?? (diseno.contexto.volumenes as VolumenRef[]).find((x) => !x.hueco && x.tipo === "edificio" && x.def?.tipo !== "saliente");
       if (!v) return null;
-      const c = carasDe(v)[0];
-      return salientePorDefecto("marquesina", v.grupo ?? v.id, 0, c?.largo ?? 10);
+      return salientePorDefecto("marquesina", v.id, 0, ladosDe(v)[0]?.largo ?? 10);
     }
   }
 }
@@ -58,8 +64,9 @@ export function Volumenes() {
     if (!f) return;
     const id = nuevoIdVolumen(s.diseno);
     const nombre = forma === "saliente" ? NOMBRE_SALIENTE[(f as Extract<FormaVolumen, { forma: "saliente" }>).tipo] : forma === "hueco" ? "Patio" : forma === "cilindro" ? "Tanque" : "Edificio";
-    const d = ponerGrupo(s.diseno, id, volumenesDesdeForma(f, id, nombre, s.diseno));
-    if (s.commit(d, `Agregar volumen: ${NOMBRE_FORMA[forma].toLowerCase()}`)) useEditor.getState().seleccionar({ volumen: id });
+    const r = ponerForma(s.diseno, id, f, nombre);
+    avisar(r.avisos);
+    if (s.commit(r.diseno, `Agregar volumen: ${NOMBRE_FORMA[forma].toLowerCase()}`)) useEditor.getState().seleccionar({ volumen: id });
   };
 
   /** Edificio detrás de la estructura seleccionada (largo y altura de la estructura). */
@@ -74,7 +81,7 @@ export function Volumenes() {
     const origen: V2 = [r.marco.origen[0] - n[0] * (retiro + ancho), r.marco.origen[1] - n[1] * (retiro + ancho)];
     const id = nuevoIdVolumen(s.diseno);
     const f: FormaVolumen = { forma: "caja", largo: Math.max(2, r.ml), ancho, alto: Math.max(3, Math.round(r.alturaReal)), origen: [Math.round(origen[0] * 100) / 100, Math.round(origen[1] * 100) / 100], rumbo: r.marco.rumbo, yBase: 0 };
-    if (s.commit(ponerGrupo(s.diseno, id, volumenesDesdeForma(f, id, "Edificio", s.diseno)), `Edificio detrás de ${r.nombre}`)) useEditor.getState().seleccionar({ volumen: id });
+    if (s.commit(ponerForma(s.diseno, id, f, "Edificio").diseno, `Edificio detrás de ${r.nombre}`)) useEditor.getState().seleccionar({ volumen: id });
   };
 
   return (
@@ -108,18 +115,18 @@ export function Volumenes() {
             disabled={soloLectura}
             aria-pressed={herramienta === "cara"}
             onClick={() => useEditor.getState().setHerramienta(herramienta === "cara" ? "seleccionar" : "cara")}
-            title="Tocá una cara de un volumen en el 3D: se crea la fachada con su largo, ángulo y altura"
+            title="Tocá una cara de un volumen en el 3D: se crea la fachada con su largo, ángulo y altura (envolvente en una cara curva, patio interno en un patio)"
           >
-            <MousePointerClick /> {herramienta === "cara" ? "Tocá una cara en el 3D…" : "Fachada desde una cara"}
+            <MousePointerClick /> {herramienta === "cara" ? "Tocá una cara en el 3D…" : "Estructura desde una cara"}
           </Button>
           <div className="grid grid-cols-2 gap-1.5">
             <label className="text-[11px] text-muted-foreground">
               Separación a fachada
               <CampoNumero valor={desdeCara.retiro} min={0} unidad="m" onCambiar={(v) => useEditor.getState().setDesdeCara({ retiro: v })} />
             </label>
-            <label className="text-[11px] text-muted-foreground" title="Cuántas caras seguidas sigue la fachada (contorno del volumen)">
-              Seguir caras
-              <CampoNumero valor={desdeCara.caras} min={1} onCambiar={(v) => useEditor.getState().setDesdeCara({ caras: Math.max(1, Math.round(v)) })} />
+            <label className="flex flex-col gap-1 text-[11px] text-muted-foreground" title="La fachada sigue las esquinas a 90° del volumen hasta una medianera">
+              Seguir el contorno
+              <Switch size="sm" checked={desdeCara.contorno} onCheckedChange={(v) => useEditor.getState().setDesdeCara({ contorno: v })} />
             </label>
           </div>
         </div>
@@ -133,10 +140,10 @@ export function Volumenes() {
               onClick={() => useEditor.getState().seleccionar({ volumen: selGrupo === g.grupo ? null : g.grupo })}
               className={cn("flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-xs hover:bg-muted", selGrupo === g.grupo && "bg-primary/10")}
             >
-              <span className={cn("size-2.5 shrink-0 rounded-sm", g.volumenes[0]?.hueco ? "border border-dashed border-sky-600" : "bg-muted-foreground/50")} />
+              <span className={cn("size-2.5 shrink-0 rounded-sm", g.volumen.hueco ? "border border-dashed border-sky-600" : "bg-muted-foreground/50")} />
               <span className="min-w-0 flex-1 truncate">{g.nombre}</span>
               <span className="font-mono text-[10px] text-muted-foreground">
-                {g.forma ? NOMBRE_FORMA[g.forma.forma].split(" ")[0].toLowerCase() : "volumen"} · {fmt(Math.max(...g.volumenes.map((v) => v.yTope)), 1)} m
+                {g.forma ? NOMBRE_FORMA[g.forma.forma].split(" ")[0].toLowerCase() : "volumen"} · {fmt(g.yTope, 1)} m
               </span>
             </button>
             {selGrupo === g.grupo && <EditorVolumen grupo={g.grupo} soloLectura={soloLectura} />}
@@ -152,11 +159,13 @@ function EditorVolumen({ grupo, soloLectura }: { grupo: string; soloLectura: boo
   const diseno = useEditor((s) => s.diseno);
   const fg = formaDeGrupo(diseno, grupo);
   const [nombre, setNombre] = useState<string | null>(null);
-  if (!fg) return <p className="px-2 py-1 text-[11px] text-muted-foreground">Volumen importado sin receta: se ve, pero no se edita acá.</p>;
+  if (!fg) return <p className="px-2 py-1 text-[11px] text-muted-foreground">Este volumen no se edita con el formulario (planta no rectangular o cargado de otra forma): se ve y cuenta para choques y caras.</p>;
   const f = fg.forma;
   const set = (nueva: FormaVolumen, txt: string, nom = fg.nombre) => {
     const s = useEditor.getState();
-    s.commit(ponerGrupo(s.diseno, grupo, volumenesDesdeForma(nueva, grupo, nom, s.diseno)), `${nom}: ${txt}`);
+    const r = ponerForma(s.diseno, grupo, nueva, nom);
+    avisar(r.avisos);
+    s.commit(r.diseno, `${nom}: ${txt}`);
   };
   const num = (etiqueta: string, valor: number, aplicar: (v: number) => FormaVolumen, min = 0, unidad = "m") => (
     <label className="text-[11px] text-muted-foreground">
@@ -170,7 +179,7 @@ function EditorVolumen({ grupo, soloLectura }: { grupo: string; soloLectura: boo
       {num("Posición z", o[1], (v) => aplicar([o[0], v]), -1000)}
     </>
   );
-  const vols = (diseno.contexto.volumenes as VolumenRef[]).filter((v) => !v.hueco && v.forma?.forma !== "saliente");
+  const vols = (diseno.contexto.volumenes as VolumenRef[]).filter((v) => !v.hueco && v.def?.tipo !== "saliente");
 
   return (
     <div className="space-y-2 rounded-b-lg border-x border-b border-border p-2">
@@ -274,15 +283,15 @@ function EditorVolumen({ grupo, soloLectura }: { grupo: string; soloLectura: boo
             <label className="text-[11px] text-muted-foreground">
               Sobre
               <select className="h-7 w-full rounded-md border border-input bg-transparent px-1.5 text-xs" value={f.sobre} disabled={soloLectura} onChange={(e) => set({ ...f, sobre: e.target.value, cara: 0 }, "volumen")}>
-                {vols.map((v) => <option key={v.id} value={v.grupo ?? v.id}>{v.nombre || v.id}</option>)}
+                {vols.map((v) => <option key={v.id} value={v.id}>{v.nombre || v.id}</option>)}
               </select>
             </label>
             <label className="text-[11px] text-muted-foreground">
               Cara
               <select className="h-7 w-full rounded-md border border-input bg-transparent px-1.5 text-xs" value={f.cara} disabled={soloLectura} onChange={(e) => set({ ...f, cara: +e.target.value }, "cara")}>
                 {(() => {
-                  const v = vols.find((x) => (x.grupo ?? x.id) === f.sobre);
-                  return v ? carasDe(v).map((c) => <option key={c.i} value={c.i}>{`${c.i + 1} · ${fmt(c.largo)} m`}</option>) : null;
+                  const v = vols.find((x) => x.id === f.sobre);
+                  return v ? ladosDe(v).map((l) => <option key={l.lado} value={l.lado}>{`${l.lado + 1} · ${fmt(l.largo)} m`}</option>) : null;
                 })()}
               </select>
             </label>

@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useEditor } from "../estado/store";
-import { formaDeGrupo, ponerGrupo, volumenesDesdeForma, type FormaVolumen, type VolumenRef } from "../volumenes/geometria";
+import { formaDe, formaDeGrupo, ponerForma, type FormaVolumen, type VolumenRef } from "../volumenes/geometria";
 import { evalExpr, fmt } from "../util/formato";
 import { Plus, Trash2 } from "lucide-react";
 
@@ -65,9 +65,9 @@ export function Planta({ className }: { className?: string }) {
 
   const delta: V2 = arrastre ? [arrastre.actual[0] - arrastre.desde[0], arrastre.actual[1] - arrastre.desde[1]] : [0, 0];
   const plantaDe = (v: VolumenRef): Poligono => {
-    if (!arrastre || (v.grupo ?? v.id) !== arrastre.grupo) return v.planta;
+    if (!arrastre || v.id !== arrastre.grupo) return v.planta;
     if (arrastre.vertice === null) return v.planta.map((p) => [p[0] + delta[0], p[1] + delta[1]] as V2);
-    if (v.forma?.forma !== "prisma") return v.planta;
+    if (formaDe(v)?.forma !== "prisma") return v.planta;
     return v.planta.map((p, i) => (i === arrastre.vertice ? ([p[0] + delta[0], p[1] + delta[1]] as V2) : p));
   };
 
@@ -82,8 +82,7 @@ export function Planta({ className }: { className?: string }) {
     if (a.vertice !== null && fg.forma.forma === "prisma") {
       forma = { ...fg.forma, puntos: fg.forma.puntos.map((p, i) => (i === a.vertice ? ([r2(p[0] + delta[0]), r2(p[1] + delta[1])] as V2) : p)) };
     } else forma = moverForma(fg.forma, delta[0], delta[1]);
-    const nuevos = volumenesDesdeForma(forma, a.grupo, fg.nombre, s.diseno);
-    s.commit(ponerGrupo(s.diseno, a.grupo, nuevos), a.vertice !== null ? `Mover vértice de ${fg.nombre}` : `Mover ${fg.nombre}`);
+    s.commit(ponerForma(s.diseno, a.grupo, forma, fg.nombre).diseno, a.vertice !== null ? `Mover vértice de ${fg.nombre}` : `Mover ${fg.nombre}`);
   };
 
   return (
@@ -112,7 +111,7 @@ export function Planta({ className }: { className?: string }) {
       </defs>
       <rect x={vb.x} y={vb.z} width={vb.w} height={vb.h} fill="url(#grilla-planta)" pointerEvents="none" />
       {vols.map((v) => {
-        const g = v.grupo ?? v.id;
+        const g = v.id;
         const esSel = sel.volumen === g;
         const pts = plantaDe(v);
         return (
@@ -137,7 +136,7 @@ export function Planta({ className }: { className?: string }) {
             >
               <title>{`${v.nombre || v.id} · ${fmt(v.yBase)}–${fmt(v.yTope)} m`}</title>
             </polygon>
-            {esSel && v.forma?.forma === "prisma" && !soloLectura &&
+            {esSel && formaDe(v)?.forma === "prisma" && !soloLectura &&
               pts.map((p, i) => (
                 <circle
                   key={i}

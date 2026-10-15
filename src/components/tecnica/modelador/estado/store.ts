@@ -6,8 +6,8 @@
 // cambios entran siempre por commit() (con historial) o preview() (arrastre de pincel).
 
 import { create } from "zustand";
-import { construir, type Aviso, type Catalogo, type Diseno, type Resultado } from "@/lib/tecnica/modelo";
-import { choques } from "../volumenes/geometria";
+import { avisosDeChoque, construir, type Aviso, type Catalogo, type Diseno, type Resultado } from "@/lib/tecnica/modelo";
+import { migrarVolumenesPantalla } from "../volumenes/geometria";
 
 export type Herramienta = "seleccionar" | "pincel" | "cara" | "colocar";
 
@@ -22,7 +22,7 @@ export interface Seleccion {
   estructuraId: string | null;
   /** Claves de celda del esqueleto (`vanoId@k` o `panoId@k`) de la estructura seleccionada. */
   celdas: string[];
-  /** Grupo de volumen seleccionado (panel de volúmenes y vista planta). */
+  /** Volumen seleccionado (panel de volúmenes y vista planta). */
   volumen: string | null;
 }
 
@@ -46,8 +46,8 @@ export interface EstadoEditor {
   pincel: Pincel;
   /** Preset que se está ubicando en la escena (herramienta 'colocar'). */
   colocando: string | null;
-  /** Separación a fachada y caras a seguir al crear una fachada desde un volumen. */
-  desdeCara: { retiro: number; caras: number };
+  /** Separación a fachada y si sigue el contorno del volumen al crear una fachada desde una cara. */
+  desdeCara: { retiro: number; contorno: boolean };
   bomResaltado: string | null;
   pasado: Paso[];
   futuro: Paso[];
@@ -87,7 +87,7 @@ function calcular(d: Diseno, catalogo: Catalogo): { res: Resultado; avisosPantal
   const res = construir(d, catalogo);
   let avisosPantalla: Aviso[] = [];
   try {
-    avisosPantalla = choques(d, res, catalogo.medidas.multi.mensulas);
+    avisosPantalla = d.contexto?.volumenes?.length ? avisosDeChoque(d, res, catalogo.medidas) : [];
   } catch {
     avisosPantalla = [];
   }
@@ -105,7 +105,7 @@ function selValida(sel: Seleccion, d: Diseno, res: Resultado): Seleccion {
     const existen = new Set(res.celdas.filter((c) => c.estructuraId === estructuraId).map((c) => c.id.slice(c.estructuraId.length + 1)));
     celdas = celdas.filter((c) => existen.has(c));
   }
-  if (volumen && !d.contexto.volumenes.some((v) => ((v as { grupo?: string }).grupo ?? v.id) === volumen)) volumen = null;
+  if (volumen && !d.contexto.volumenes.some((v) => v.id === volumen)) volumen = null;
   return { estructuraId, celdas, volumen };
 }
 
@@ -120,7 +120,7 @@ export const useEditor = create<EstadoEditor>((set, get) => ({
   herramienta: "seleccionar",
   pincel: "diagonal",
   colocando: null,
-  desdeCara: { retiro: 0.2, caras: 1 },
+  desdeCara: { retiro: 0.2, contorno: false },
   bomResaltado: null,
   pasado: [],
   futuro: [],
@@ -132,7 +132,8 @@ export const useEditor = create<EstadoEditor>((set, get) => ({
   version: 0,
   versionGuardada: 0,
 
-  iniciar(d, catalogo, o) {
+  iniciar(d0, catalogo, o) {
+    const d = migrarVolumenesPantalla(d0);
     const c = calcular(d, catalogo);
     set({
       listo: true, diseno: d, ...c, catalogo, pasado: [], futuro: [], ultimo: null,

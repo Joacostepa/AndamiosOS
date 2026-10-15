@@ -12,7 +12,7 @@ import {
   agregarEstructura, buscarSnap, construir, crearDiseno,
   type Catalogo, type CeldaResuelta, type Diseno, type Pieza, type Resultado, type Snap, type V2, type V3,
 } from "@/lib/tecnica/modelo";
-import { carasDe, type VolumenRef } from "../volumenes/geometria";
+import { carasDe, solidosDelDiseno, type Cara, type VolumenRef } from "../volumenes/geometria";
 import { ES_CAJA, ES_LAMINA, grupoColor, leerPaleta, paletaExport, type GrupoColor, type Paleta } from "./paleta";
 
 export type ModoVista = "iso" | "planta" | "frente";
@@ -37,7 +37,7 @@ export interface CallbacksEscena {
   alHover(info: { pieza: Pieza | null; estructuraId: string | null; celda: string | null; x: number; y: number } | null): void;
   /** Pincel arrastrado sobre celdas (pointerdown → move → up). */
   alPintar?(info: { estructuraId: string; celda: string; fase: "inicio" | "mover" | "fin" }): void;
-  alClicCara(info: { grupo: string; volumenId: string; cara: number }): void;
+  alClicCara(info: { volumenId: string; caraId: string }): void;
   alClicVolumen(grupo: string | null): void;
   alColocar(info: { estado: "mover" | "fin"; snap: Snap | null; alt: boolean }): void;
   alColocado(info: { diseno: Diseno; estructuraId: string; snap: Snap | null }): void;
@@ -120,7 +120,8 @@ export class Escena {
   private volSelCargado: string | null = null;
   private bbox = new THREE.Box3(new THREE.Vector3(-5, 0, -5), new THREE.Vector3(5, 3, 5));
   private hoverPi = -1;
-  private hoverCara: { grupo: string; cara: number } | null = null;
+  private hoverCara: Cara | null = null;
+  private carasPorId = new Map<string, Cara>();
   private pendiente = false;
   private ultimoEv: PointerEvent | null = null;
   private movPend = false;
@@ -404,9 +405,9 @@ export class Escena {
       this.bbox.expandByPoint(_p.set(...p.a));
       this.bbox.expandByPoint(_p.set(...p.b));
     }
-    for (const v of d.diseno.contexto.volumenes) for (const q of v.planta) {
-      this.bbox.expandByPoint(_p.set(q[0], v.yTope, q[1]));
-      this.bbox.expandByPoint(_p.set(q[0], 0, q[1]));
+    for (const so of solidosDelDiseno(d.diseno)) for (const q of so.planta) {
+      this.bbox.expandByPoint(_p.set(q[0], so.yTope, q[1]));
+      this.bbox.expandByPoint(_p.set(q[0], Math.min(0, so.yBase), q[1]));
     }
     if (this.bbox.isEmpty()) this.bbox.set(new THREE.Vector3(-5, 0, -5), new THREE.Vector3(5, 3, 5));
     this.crearGrilla();
@@ -467,40 +468,47 @@ export class Escena {
     vaciar(this.gVol, this.compartidas);
     this.carasPick = [];
     this.volMallas = [];
+    this.carasPorId.clear();
     const d = this.datos;
     if (!d) return;
-    for (const v of d.diseno.contexto.volumenes as VolumenRef[]) {
-      if (v.planta.length < 3) continue;
-      const grupo = v.grupo ?? v.id;
-      const sel = d.volumenSel === grupo;
-      const alto = Math.max(0.05, v.yTope - v.yBase);
-      const shape = new THREE.Shape(v.planta.map((q) => new THREE.Vector2(q[0], -q[1])));
+    const vols = d.diseno.contexto.volumenes as VolumenRef[];
+    const porId = new Map(vols.map((v) => [v.id, v]));
+    // los sólidos de la lógica oficial: tramos del escalonado, balcones repetidos, cúpula, patios
+    for (const so of solidosDelDiseno(d.diseno)) {
+      if (so.planta.length < 3) continue;
+      const v = porId.get(so.volumenId);
+      const def = v?.def;
+      // la cúpula se dibuja como media esfera (más abajo), no por rodajas
+      if (so.rol === "cupula" && def?.tipo === "cilindro") continue;
+      const hueco = so.rol === "hueco" || !!v?.hueco;
+      const sel = d.volumenSel === so.volumenId;
+      const alto = Math.max(0.05, so.yTope - so.yBase);
+      const shape = new THREE.Shape(so.planta.map((q) => new THREE.Vector2(q[0], -q[1])));
       const geo = new THREE.ExtrudeGeometry(shape, { depth: alto, bevelEnabled: false });
       geo.rotateX(-Math.PI / 2);
-      geo.translate(0, v.yBase, 0);
-      const color = v.hueco ? this.pal.hueco : this.pal.volumen;
-      const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.95, metalness: 0, transparent: true, opacity: v.hueco ? 0.08 : sel ? 0.34 : 0.2, depthWrite: false });
+      geo.translate(0, so.yBase, 0);
+      const color = hueco ? this.pal.hueco : this.pal.volumen;
+      const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.95, metalness: 0, transparent: true, opacity: hueco ? 0.08 : sel ? 0.34 : 0.2, depthWrite: false });
       const malla = new THREE.Mesh(geo, mat);
       malla.renderOrder = 1;
-      malla.userData = { grupo, volumenId: v.id };
+      malla.userData = { grupo: so.volumenId, volumenId: so.volumenId };
       this.gVol.add(malla);
       this.volMallas.push(malla);
-      const bordes = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 20), new THREE.LineBasicMaterial({ color: sel ? this.pal.sel : v.hueco ? this.pal.hueco : this.pal.volumenBorde, transparent: true, opacity: 0.9 }));
+      const bordes = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 20), new THREE.LineBasicMaterial({ color: sel ? this.pal.sel : hueco ? this.pal.hueco : this.pal.volumenBorde, transparent: true, opacity: 0.9 }));
       this.gVol.add(bordes);
-      if (v.tipo === "cupula" && v.forma?.forma === "cilindro" && v.forma.altoCupula > 0) {
-        const f = v.forma;
-        const dome = new THREE.Mesh(new THREE.SphereGeometry(f.radio, 24, 10, 0, Math.PI * 2, 0, Math.PI / 2), mat.clone());
-        dome.scale.set(1, f.altoCupula / f.radio, 1);
-        dome.position.set(f.centro[0], v.yTope, f.centro[1]);
+      if (so.rol === "cuerpo" && def?.tipo === "cilindro" && def.cupula) {
+        const dome = new THREE.Mesh(new THREE.SphereGeometry(def.radio, 24, 10, 0, Math.PI * 2, 0, Math.PI / 2), mat.clone());
+        dome.scale.set(1, def.cupula.alto / def.radio, 1);
+        dome.position.set(def.centro[0], so.yTope, def.centro[1]);
         this.gVol.add(dome);
       }
       // líneas de losas cada 3 m (lectura de la escala)
-      if (!v.hueco && v.tipo === "edificio" && alto > 4) {
+      if (!hueco && (so.rol === "cuerpo" || so.rol === "tramo") && v?.tipo === "edificio" && alto > 4) {
         const pts: number[] = [];
-        for (let y = v.yBase + 3; y < v.yTope - 0.5; y += 3) {
-          for (let i = 0; i < v.planta.length; i++) {
-            const a = v.planta[i];
-            const b = v.planta[(i + 1) % v.planta.length];
+        for (let y = so.yBase + 3; y < so.yTope - 0.5; y += 3) {
+          for (let i = 0; i < so.planta.length; i++) {
+            const a = so.planta[i];
+            const b = so.planta[(i + 1) % so.planta.length];
             pts.push(a[0], y, a[1], b[0], y, b[1]);
           }
         }
@@ -508,18 +516,22 @@ export class Escena {
         g.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
         this.gVol.add(new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: this.pal.volumenBorde, transparent: true, opacity: 0.35 })));
       }
-      // caras para "clic en una cara → fachada"
-      for (const c of carasDe(v)) {
+    }
+    // caras para «clic en una cara» (lógica oficial: fachada, terraza, envolvente o patio)
+    for (const v of vols) {
+      for (const c of carasDe(v, d.diseno)) {
+        this.carasPorId.set(c.id, c);
         const g = new THREE.BufferGeometry();
         const P = [c.a[0], c.yBase, c.a[1], c.b[0], c.yBase, c.b[1], c.b[0], c.yTope, c.b[1], c.a[0], c.yTope, c.a[1]];
         g.setAttribute("position", new THREE.Float32BufferAttribute(P, 3));
         g.setIndex([0, 1, 2, 0, 2, 3]);
         const m = new THREE.Mesh(g, this.matPick);
-        m.userData = { grupo, volumenId: v.id, cara: c.i, normal: c.normal };
+        m.userData = { volumenId: c.volumenId, caraId: c.id };
         this.gVol.add(m);
         this.carasPick.push(m);
       }
     }
+    if (this.hoverCara) this.hoverCara = this.carasPorId.get(this.hoverCara.id) ?? null;
     this.pedirRender();
   }
 
@@ -565,9 +577,8 @@ export class Escena {
     }
     // cara del volumen bajo el cursor (herramienta "Fachada desde cara")
     if (this.hoverCara && d.herramienta === "cara") {
-      const v = (d.diseno.contexto.volumenes as VolumenRef[]).find((x) => (x.grupo ?? x.id) === this.hoverCara!.grupo && carasDe(x)[this.hoverCara!.cara]);
-      const c = v ? carasDe(v)[this.hoverCara.cara] : null;
-      if (c) {
+      const c = this.hoverCara;
+      {
         const off = 0.03;
         const P = [
           c.a[0] + c.normal[0] * off, c.yBase, c.a[1] + c.normal[1] * off, c.b[0] + c.normal[0] * off, c.yBase, c.b[1] + c.normal[1] * off,
@@ -623,10 +634,10 @@ export class Escena {
     return hit && hit.faceIndex !== undefined && hit.faceIndex !== null ? { clave: this.pickCeldas.claves[hit.faceIndex], dist: hit.distance } : null;
   }
 
-  private hitCara(): { grupo: string; volumenId: string; cara: number } | null {
+  private hitCara(): { volumenId: string; caraId: string } | null {
     if (!this.gVol.visible) return null;
     const hit = this.ray.intersectObjects(this.carasPick, false)[0];
-    return hit ? (hit.object.userData as { grupo: string; volumenId: string; cara: number }) : null;
+    return hit ? (hit.object.userData as { volumenId: string; caraId: string }) : null;
   }
 
   private hitVolumen(): string | null {
@@ -657,10 +668,10 @@ export class Escena {
     }
     if (d.herramienta === "cara") {
       const c = this.hitCara();
-      const k = c ? `${c.grupo}|${c.cara}` : null;
-      const ant = this.hoverCara ? `${this.hoverCara.grupo}|${this.hoverCara.cara}` : null;
+      const k = c?.caraId ?? null;
+      const ant = this.hoverCara?.id ?? null;
       if (k !== ant) {
-        this.hoverCara = c ? { grupo: c.grupo, cara: c.cara } : null;
+        this.hoverCara = k ? (this.carasPorId.get(k) ?? null) : null;
         this.overlays();
       }
       return;

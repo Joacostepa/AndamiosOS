@@ -17,15 +17,20 @@ import { usePuedeEditar } from "@/components/providers/acceso-provider";
 import { cn } from "@/lib/utils";
 import { useEditor } from "../estado/store";
 import { guardarAhora } from "../estado/autoguardado";
-import { usePreviaComputo, useGenerarComputo } from "../datos/api";
+import { ErrorOmitidas, ErrorRevision, usePreviaComputo, useGenerarComputo } from "../datos/api";
 import type { DecisionDiff, DiffLinea, PreviaComputo, TipoDiff } from "../datos/tipos";
 import { Loader2 } from "lucide-react";
 
-const ETIQUETA: Record<TipoDiff, string> = { nuevo: "Nuevo", cambia: "Cambia", igual: "Igual", quita: "Sale", conflicto_manual: "Editado a mano" };
+const ETIQUETA: Record<TipoDiff, string> = {
+  nuevo: "Nuevo", cambia: "Cambia", igual: "Igual", quita: "Sale", conflicto_manual: "Editado a mano",
+  quita_editado: "Editado a mano, sale", manual: "Manual",
+};
 const COLOR: Record<TipoDiff, string> = {
   nuevo: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400", cambia: "bg-sky-500/15 text-sky-700 dark:text-sky-400",
   igual: "bg-muted text-muted-foreground", quita: "bg-destructive/10 text-destructive", conflicto_manual: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+  quita_editado: "bg-amber-500/15 text-amber-700 dark:text-amber-400", manual: "bg-muted text-muted-foreground",
 };
+const ETIQUETA_DECISION: Record<DecisionDiff, string> = { mantener: "Mantener lo manual", modelo: "Usar el modelo", sumar: "Sumar", borrar: "Borrar" };
 
 export function GenerarComputo({ abierto, onCambiar }: { abierto: boolean; onCambiar: (v: boolean) => void }) {
   const modeloId = useEditor((s) => s.modeloId);
@@ -40,6 +45,7 @@ export function GenerarComputo({ abierto, onCambiar }: { abierto: boolean; onCam
   const [datos, setDatos] = useState<PreviaComputo | null>(null);
   const [decisiones, setDecisiones] = useState<Record<string, DecisionDiff>>({});
   const [aceptoOmitidas, setAcepto] = useState(false);
+  const [reemplazar, setReemplazar] = useState(false);
 
   const pedirPrevia = async () => {
     if (!modeloId || !obraElegida) return;
@@ -54,6 +60,7 @@ export function GenerarComputo({ abierto, onCambiar }: { abierto: boolean; onCam
       setDatos(p);
       setDecisiones({});
       setAcepto(p.omitidas.length === 0);
+      setReemplazar(false);
     } catch (e) {
       toast.error("No pude calcular la previa", { description: e instanceof Error ? e.message : undefined });
     }
@@ -63,19 +70,30 @@ export function GenerarComputo({ abierto, onCambiar }: { abierto: boolean; onCam
     if (!modeloId || !obraElegida || !datos) return;
     const rev = useEditor.getState().revision ?? 1;
     try {
-      const r = await generar.mutateAsync({ id: modeloId, obra_id: obraElegida, revision: rev, decisiones });
+      const r = await generar.mutateAsync({
+        id: modeloId, obra_id: obraElegida, revision: rev, decisiones,
+        aceptoOmitidas, reemplazarOtroModelo: datos.computo.otroModelo ? reemplazar : undefined,
+      });
       onCambiar(false);
       setDatos(null);
       toast.success("Cómputo generado desde el modelo", {
-        description: `${r.insertadas} nuevas · ${r.actualizadas} actualizadas · ${r.conservadas} conservadas · ${r.borradas} borradas${r.omitidas_sin_codigo ? ` · ${r.omitidas_sin_codigo} sin código` : ""}`,
+        description: `${r.insertadas} nuevas · ${r.actualizadas} actualizadas · ${r.conservadas} conservadas · ${r.borradas} borradas${r.omitidas.length ? ` · ${r.omitidas.length} sin código` : ""}`,
         action: { label: "Abrir cómputo", onClick: () => (window.location.href = `/oficina-tecnica/computos/${obraElegida}`) },
       });
     } catch (e) {
+      if (e instanceof ErrorRevision) {
+        toast.error("El modelo cambió mientras mirabas la previa", { description: "Volvé a pedir «Ver qué cambia»." });
+        setDatos(null);
+        return;
+      }
+      if (e instanceof ErrorOmitidas) {
+        toast.error("Hay piezas sin código que no entran al cómputo", { description: "Confirmá abajo que las cargás a mano." });
+        return;
+      }
       toast.error("No se generó el cómputo", { description: e instanceof Error ? e.message : undefined });
     }
   };
 
-  const conDecision = useMemo(() => (datos?.diff ?? []).filter((l) => l.tipo === "conflicto_manual" || (l.tipo === "quita" && l.origen === "modelo_editado")), [datos]);
   const visibles = useMemo(() => (datos?.diff ?? []).filter((l) => l.tipo !== "igual"), [datos]);
 
   return (
@@ -115,7 +133,7 @@ export function GenerarComputo({ abierto, onCambiar }: { abierto: boolean; onCam
               <>
                 {datos.computo.bloqueado ? (
                   <p className="rounded-md bg-destructive/10 p-2 text-sm text-destructive">
-                    El cómputo de esta obra está completado ({datos.computo.estado}): no se regenera. Pedí que lo reabran si hace falta.
+                    {datos.computo.motivoBloqueo ?? `El cómputo de esta obra está completado (${datos.computo.estado}): no se regenera. Pedí que lo reabran si hace falta.`}
                   </p>
                 ) : (
                   <p className="text-xs text-muted-foreground">
@@ -128,11 +146,17 @@ export function GenerarComputo({ abierto, onCambiar }: { abierto: boolean; onCam
                       <tr><th className="p-1.5 text-left font-medium">Pieza</th><th className="p-1.5 text-right font-medium">Hoy</th><th className="p-1.5 text-right font-medium">Modelo</th><th className="p-1.5 text-left font-medium">Qué hago</th></tr>
                     </thead>
                     <tbody>
-                      {visibles.map((l) => <FilaDiff key={l.pieza_id} l={l} decision={decisiones[l.pieza_id]} conDecision={conDecision.includes(l)} onDecidir={(d) => setDecisiones({ ...decisiones, [l.pieza_id]: d })} />)}
+                      {visibles.map((l) => <FilaDiff key={l.pieza_id} l={l} decision={decisiones[l.pieza_id]} onDecidir={(d) => setDecisiones({ ...decisiones, [l.pieza_id]: d })} />)}
                       {!visibles.length && <tr><td colSpan={4} className="p-3 text-center text-muted-foreground">No cambia nada.</td></tr>}
                     </tbody>
                   </table>
                 </div>
+                {datos.computo.otroModelo && !datos.computo.bloqueado && (
+                  <label className="flex items-start gap-2 rounded-md bg-amber-500/10 p-2 text-xs">
+                    <Checkbox checked={reemplazar} onCheckedChange={(v) => setReemplazar(!!v)} />
+                    <span>El cómputo de esta obra se generó desde otro modelo. Entiendo que pasa a depender de este.</span>
+                  </label>
+                )}
                 {(datos.omitidas.length > 0 || sinCodigo.length > 0) && (
                   <div className="rounded-md bg-amber-500/10 p-2 text-xs">
                     <p className="font-medium text-amber-700 dark:text-amber-400">
@@ -154,7 +178,7 @@ export function GenerarComputo({ abierto, onCambiar }: { abierto: boolean; onCam
         <DialogFooter>
           <Button variant="outline" onClick={() => onCambiar(false)}>Cancelar</Button>
           {datos && !datos.computo.bloqueado && (
-            <Button onClick={confirmar} disabled={generar.isPending || !aceptoOmitidas}>
+            <Button onClick={confirmar} disabled={generar.isPending || !aceptoOmitidas || (datos.computo.otroModelo && !reemplazar)}>
               {generar.isPending && <Loader2 className="animate-spin" />} Generar cómputo
             </Button>
           )}
@@ -169,16 +193,15 @@ export function GenerarComputo({ abierto, onCambiar }: { abierto: boolean; onCam
   );
 }
 
-function FilaDiff({ l, decision, conDecision, onDecidir }: { l: DiffLinea; decision?: DecisionDiff; conDecision: boolean; onDecidir: (d: DecisionDiff) => void }) {
-  const opciones: { valor: DecisionDiff; etiqueta: string }[] =
-    l.tipo === "quita" ? [{ valor: "mantener", etiqueta: "Mantener" }, { valor: "borrar", etiqueta: "Borrar" }]
-      : [{ valor: "mantener", etiqueta: "Mantener lo manual" }, { valor: "modelo", etiqueta: "Usar el modelo" }, { valor: "sumar", etiqueta: "Sumar" }];
+function FilaDiff({ l, decision, onDecidir }: { l: DiffLinea; decision?: DecisionDiff; onDecidir: (d: DecisionDiff) => void }) {
+  // Las opciones las dice el servidor (solo en conflicto_manual y quita_editado).
+  const conDecision = l.opciones.length > 0;
   return (
     <tr className="border-t border-border">
       <td className="p-1.5">
         <div className="flex items-center gap-1.5">
           <Badge variant="outline" className={cn("border-0 px-1.5 text-[10px]", COLOR[l.tipo])}>{ETIQUETA[l.tipo]}</Badge>
-          <span className="font-mono">{l.codigo}</span>
+          <span className="font-mono">{l.codigo ?? "—"}</span>
         </div>
         <div className="truncate text-muted-foreground">{l.descripcion}</div>
       </td>
@@ -186,11 +209,11 @@ function FilaDiff({ l, decision, conDecision, onDecidir }: { l: DiffLinea; decis
       <td className="p-1.5 text-right font-mono">{l.modelo ?? "—"}</td>
       <td className="p-1.5">
         {conDecision ? (
-          <select className="h-7 rounded-md border border-input bg-transparent px-1 text-xs" value={decision ?? "mantener"} onChange={(e) => onDecidir(e.target.value as DecisionDiff)}>
-            {opciones.map((o) => <option key={o.valor} value={o.valor}>{o.etiqueta}</option>)}
+          <select className="h-7 rounded-md border border-input bg-transparent px-1 text-xs" value={decision ?? l.decisionPorDefecto ?? l.opciones[0]} onChange={(e) => onDecidir(e.target.value as DecisionDiff)}>
+            {l.opciones.map((o) => <option key={o} value={o}>{ETIQUETA_DECISION[o]}</option>)}
           </select>
         ) : (
-          <span className="text-muted-foreground">{l.tipo === "quita" ? "Se borra" : l.tipo === "nuevo" ? "Se agrega" : "Se actualiza"}</span>
+          <span className="text-muted-foreground">{l.tipo === "quita" ? "Se borra" : l.tipo === "nuevo" ? "Se agrega" : l.tipo === "manual" ? "No se toca" : "Se actualiza"}</span>
         )}
       </td>
     </tr>

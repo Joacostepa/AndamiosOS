@@ -5,20 +5,18 @@
 // recargar lo de la otra persona o sobrescribir con lo propio.
 
 import { useEffect } from "react";
-import type { Resultado } from "@/lib/tecnica/modelo";
-import { ErrorApi, guardarModelo } from "../datos/api";
+import type { Diseno, Resultado } from "@/lib/tecnica/modelo";
+import { resumenDe as resumenPersistencia } from "@/lib/tecnica/persistencia/computo";
+import { ErrorRevision, guardarModelo } from "../datos/api";
 import type { ResumenModelo } from "../datos/tipos";
 import { useEditor } from "./store";
 
 const ESPERA_MS = 1500;
 let revisionRemota: number | null = null;
 
-export function resumenDe(res: Resultado, estructuras: number): ResumenModelo {
-  const r = res.resumen;
-  return {
-    m2: r.m2, ml: r.ml, alturaMax: r.alturaMax, pesoKg: r.pesoKg, pesoParcial: r.pesoParcial, piezas: r.piezas,
-    estructuras, sinCodigo: r.sinCodigo.length, texto: r.texto,
-  };
+/** El resumen que se guarda en tec_modelos.resumen: el mismo que arma el servidor. */
+export function resumenDe(res: Resultado, diseno: Diseno): ResumenModelo {
+  return resumenPersistencia(res, diseno);
 }
 
 /** Guarda ya (Ctrl+S o "sobrescribir"). Devuelve true si quedó guardado. */
@@ -30,16 +28,16 @@ export async function guardarAhora(forzar = false): Promise<boolean> {
   const revision = forzar && revisionRemota !== null ? revisionRemota : s.revision ?? 1;
   s.setGuardado("guardando");
   try {
-    const r = await guardarModelo(s.modeloId, {
-      revision, diseno: s.diseno, nombre: s.diseno.nombre || "Modelo sin nombre",
-      obra_id: s.diseno.obra?.id ?? null, resumen: resumenDe(s.res, s.diseno.estructuras.length),
+    const nueva = await guardarModelo({
+      id: s.modeloId, revision, diseno: s.diseno, nombre: s.diseno.nombre || "Modelo sin nombre",
+      obra_id: s.diseno.obra?.id ?? null, resumen: resumenDe(s.res, s.diseno),
     });
     revisionRemota = null;
-    useEditor.getState().marcarGuardado(r.revision, version);
+    useEditor.getState().marcarGuardado(nueva, version);
     return true;
   } catch (e) {
-    if (e instanceof ErrorApi && e.status === 409) {
-      revisionRemota = typeof e.datos.revisionActual === "number" ? e.datos.revisionActual : null;
+    if (e instanceof ErrorRevision) {
+      revisionRemota = e.revisionActual;
       useEditor.getState().setGuardado("conflicto");
     } else {
       useEditor.getState().setGuardado("error");

@@ -5,11 +5,10 @@
 
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { toast } from "sonner";
-import { agregarEstructura, type Diseno, type Pieza } from "@/lib/tecnica/modelo";
+import { agregarEnCara, type Diseno, type Pieza } from "@/lib/tecnica/modelo";
 import { cn } from "@/lib/utils";
 import { useEditor, todosLosAvisos } from "../estado/store";
 import { pintarDiseno } from "../estado/acciones";
-import { fachadaDesdeCara, type VolumenRef } from "../volumenes/geometria";
 import { fmt } from "../util/formato";
 import { Escena, type DatosEscena } from "./escena";
 
@@ -79,19 +78,26 @@ export function Lienzo({ escenaRef, verVolumenes, className }: { escenaRef: RefO
         }
         s.preview(pintarDiseno(p.base, s.res, p.estructuraId, [...p.celdas], s.pincel));
       },
-      alClicCara({ grupo, cara }) {
+      alClicCara({ caraId }) {
         const s = useEditor.getState();
         if (s.soloLectura) return;
-        const v = (s.diseno.contexto.volumenes as VolumenRef[]).find((x) => (x.grupo ?? x.id) === grupo);
-        if (!v) return;
-        const pf = fachadaDesdeCara(v, cara, s.desdeCara);
-        if (!pf) return;
         try {
-          const { diseno, estructuraId } = agregarEstructura(s.diseno, "estructura", { origen: pf.origen, rumbo: pf.rumbo, params: pf.params, nombre: `Fachada ${v.nombre || v.id}` }, s.catalogo);
-          if (s.commit(diseno, `Fachada desde ${v.nombre || v.id} (${pf.texto})`)) {
-            useEditor.getState().seleccionar({ estructuraId, celdas: [] });
+          // lógica oficial: fachada en planta baja, libre sobre una terraza, envolvente en una cara
+          // curva o patio interno en la pared de un patio
+          const r = agregarEnCara(s.diseno, caraId, { retiro: s.desdeCara.retiro, seguir: s.desdeCara.contorno ? "contorno" : "cara" }, s.catalogo);
+          if (!r.estructuraId || !r.propuesta) {
+            toast.error("No pude armar una estructura en esa cara", { description: r.avisos[0] });
+            return;
+          }
+          const nombre = r.diseno.estructuras.find((e) => e.id === r.estructuraId)?.nombre ?? "Estructura";
+          if (s.commit(r.diseno, `${nombre} desde una cara`)) {
+            useEditor.getState().seleccionar({ estructuraId: r.estructuraId, celdas: [] });
             useEditor.getState().setHerramienta("seleccionar");
-            toast.success(`Fachada de ${pf.texto}`, { description: `Separada ${fmt(s.desdeCara.retiro)} m de la cara. Cambiá el largo, la altura o los frentes en Propiedades.`, action: { label: "Deshacer", onClick: () => useEditor.getState().deshacer() } });
+            const que = { fachada: "Fachada", terraza: "Estructura sobre la terraza", envolvente: "Envolvente", patio: "Patio interno" }[r.propuesta.tipo];
+            toast.success(`${que}: ${nombre}`, {
+              description: [`Separada ${fmt(s.desdeCara.retiro)} m de la cara.`, ...r.avisos].join(" "),
+              action: { label: "Deshacer", onClick: () => useEditor.getState().deshacer() },
+            });
           }
         } catch (e) {
           toast.error("No pude armar la fachada desde esa cara", { description: e instanceof Error ? e.message : undefined });

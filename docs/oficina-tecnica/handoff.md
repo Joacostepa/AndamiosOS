@@ -2,6 +2,8 @@
 
 Para retomar en una sesión nueva: "Leé docs/oficina-tecnica/handoff.md y seguimos con el diseñador 3D".
 
+> **15/10/2026:** el diseñador 3D se reemplazó por el **Modelador de andamios**. Ver [modelador/handoff.md](modelador/handoff.md). Lo de abajo queda como antecedente, y el §3 (bugs del cálculo) sigue vigente para cuando se porten las verificaciones.
+
 **Estado: en pausa.** El 12/10 JS decidió no hacer nada por ahora. Este documento junta el relevamiento y
 la propuesta para tomarla cuando haga falta. No se tocó código.
 

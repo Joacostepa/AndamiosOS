@@ -178,7 +178,9 @@ export function EncabezadoDireccion() {
     <header
       ref={ref}
       className={cn(
-        "sticky top-0 z-20 -mx-6 -mt-6 border-b bg-background px-6 pt-4 transition-shadow max-md:px-4 max-md:pb-2.5",
+        // top = −24 px: el <main> tiene p-6 y el sticky se mide desde adentro de ese padding; con
+        // top-0 el encabezado bajaba 24 px sin mover el contenido y tapaba la primera fila.
+        "sticky -top-6 z-20 -mx-6 -mt-6 border-b bg-background px-6 pt-4 transition-shadow max-md:px-4 max-md:pb-2.5",
         pegado && "shadow-[0_8px_16px_-12px_rgb(0_0_0/0.3)]",
       )}
     >

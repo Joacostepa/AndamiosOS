@@ -152,7 +152,10 @@ export function pintarDiseno(diseno: Diseno, res: Resultado, estructuraId: strin
   if (!est || !r) return diseno;
   let d = diseno;
   if (est.tipologia === "libre") {
-    const esq = r.esqueleto;
+    // El estado (nodos y celdas) se lee del DISEÑO, no del resultado: durante un arrastre el resultado
+    // es la vista previa ya pintada, y releerlo invertía los pinceles que alternan (ménsula, anclaje…).
+    // La geometría (vanos, nodos de la celda) sale del resultado, que es la misma.
+    const esq = { ...r.esqueleto, nodos: est.esqueleto?.nodos ?? {}, celdas: est.esqueleto?.celdas ?? {} };
     for (const clave of celdas) {
       const { k } = partirClave(clave);
       const pano = esPano(r, clave);

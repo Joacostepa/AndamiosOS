@@ -174,6 +174,14 @@ export function useArchivarModelo() {
   });
 }
 
+export function useRestaurarModelo() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api<void>(`${BASE}/${id}/restaurar`, { method: "POST" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["modelador", "lista"] }),
+  });
+}
+
 export function useDuplicarModelo() {
   const qc = useQueryClient();
   return useMutation({

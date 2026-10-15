@@ -19,11 +19,11 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { EmptyState } from "@/components/shared/empty-state";
 import { useObras } from "@/hooks/use-obras";
-import { useArchivarModelo, useCatalogoModelador, useCrearModelo, useModelos } from "./datos/api";
+import { useArchivarModelo, useCatalogoModelador, useCrearModelo, useDuplicarModelo, useModelos, useRestaurarModelo } from "./datos/api";
 import { etiquetaCategoria, type ModeloLista, type ResumenModelo } from "./datos/tipos";
 import { galeriaAgrupada, iconoDe } from "./util/galeria";
 import { fmt, haceCuanto, kg } from "./util/formato";
-import { Boxes, Building2, Loader2, Lock, MoreHorizontal, Plus, Search, Star } from "lucide-react";
+import { Boxes, Building2, Copy, Loader2, Lock, MoreHorizontal, Plus, Search, Star, Trash2 } from "lucide-react";
 
 type Filtro = "todos" | "obra" | "sin_obra" | "plantillas";
 
@@ -46,6 +46,19 @@ function ListaModelosConAcceso({ obraId }: { obraId: string | null }) {
   const obras = useObras();
   const obra = useMemo(() => obras.data?.find((o) => o.id === obraId) ?? null, [obras.data, obraId]);
   const archivar = useArchivarModelo();
+  const restaurar = useRestaurarModelo();
+  const duplicar = useDuplicarModelo();
+  const [aEliminar, setAEliminar] = useState<ModeloLista | null>(null);
+  const eliminar = (m: ModeloLista) =>
+    archivar.mutate(m.id, {
+      onSuccess: () => {
+        setAEliminar(null);
+        toast.success(`Eliminé ${m.nombre}`, {
+          action: { label: "Deshacer", onClick: () => restaurar.mutate(m.id, { onError: (e) => toast.error(e.message) }) },
+        });
+      },
+      onError: (e) => toast.error(e.message),
+    });
   const lista = (modelos.data ?? []).filter((m) => (filtro === "sin_obra" ? !m.obra_id && !m.es_plantilla : filtro === "plantillas" ? m.es_plantilla : !m.es_plantilla));
 
   return (
@@ -119,10 +132,33 @@ function ListaModelosConAcceso({ obraId }: { obraId: string | null }) {
       {lista.length > 0 && (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3">
           {lista.map((m) => (
-            <Tarjeta key={m.id} m={m} puede={puede} onArchivar={() => archivar.mutate(m.id, { onSuccess: () => toast.success(`Archivé ${m.nombre}`), onError: (e) => toast.error(e.message) })} />
+            <Tarjeta
+              key={m.id}
+              m={m}
+              puede={puede}
+              onDuplicar={() => duplicar.mutate({ id: m.id }, { onSuccess: (c) => toast.success(`Dupliqué ${m.nombre}`, { action: { label: "Abrir", onClick: () => router.push(`/oficina-tecnica/modelador/${c.id}`) } }), onError: (e) => toast.error(e.message) })}
+              onEliminar={() => setAEliminar(m)}
+            />
           ))}
         </div>
       )}
+
+      <Dialog open={aEliminar !== null} onOpenChange={(v) => !v && setAEliminar(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>¿Eliminar «{aEliminar?.nombre}»?</DialogTitle>
+            <DialogDescription>
+              Sale de la lista. Los cómputos que ya generaste con este modelo no se tocan. Si te equivocás, tocá «Deshacer» en el aviso.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAEliminar(null)}>Cancelar</Button>
+            <Button variant="destructive" disabled={archivar.isPending} onClick={() => aEliminar && eliminar(aEliminar)}>
+              {archivar.isPending && <Loader2 className="animate-spin" />} Eliminar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <NuevoModelo
         abierto={nuevo}
@@ -134,7 +170,7 @@ function ListaModelosConAcceso({ obraId }: { obraId: string | null }) {
   );
 }
 
-function Tarjeta({ m, puede, onArchivar }: { m: ModeloLista; puede: boolean; onArchivar: () => void }) {
+function Tarjeta({ m, puede, onDuplicar, onEliminar }: { m: ModeloLista; puede: boolean; onDuplicar: () => void; onEliminar: () => void }) {
   // El resumen es jsonb: puede venir de una versión anterior con menos campos.
   const r: Partial<ResumenModelo> = m.resumen ?? {};
   const sinCodigo = Array.isArray(r.sinCodigo) ? r.sinCodigo.reduce((t, x) => t + (x.cantidad ?? 0), 0) : 0;
@@ -174,7 +210,8 @@ function Tarjeta({ m, puede, onArchivar }: { m: ModeloLista; puede: boolean; onA
               <MoreHorizontal />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={onArchivar}>Archivar</DropdownMenuItem>
+              <DropdownMenuItem onClick={onDuplicar}><Copy /> Duplicar</DropdownMenuItem>
+              <DropdownMenuItem variant="destructive" onClick={onEliminar}><Trash2 /> Eliminar…</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

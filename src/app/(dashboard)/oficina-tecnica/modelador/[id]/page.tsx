@@ -9,7 +9,9 @@ import { buttonVariants } from "@/components/ui/button";
 import { EmptyState } from "@/components/shared/empty-state";
 import { useCatalogoModelador, useModelo } from "@/components/tecnica/modelador/datos/api";
 import { useNivelModelador } from "@/components/tecnica/modelador/util/permisos";
-import { Boxes, Monitor } from "lucide-react";
+import { useAcceso } from "@/components/providers/acceso-provider";
+import { Button } from "@/components/ui/button";
+import { Boxes, Lock, Monitor } from "lucide-react";
 
 // Editor del modelador. El 3D (three) solo corre en el navegador: el editor se carga con
 // dynamic(ssr:false), que en Next 16 solo vale dentro de un client component (como el mapa de
@@ -37,6 +39,7 @@ export default function EditorModeloPage({ params }: { params: Promise<{ id: str
   const demo = id === "demo";
   const grande = useAncho(1280);
   const nivel = useNivelModelador();
+  const acceso = useAcceso();
   const modelo = useModelo(demo ? null : id);
   const catalogo = useCatalogoModelador();
   const disenoDemo = useMemo(() => (demo ? ejemploParana631() : undefined), [demo]);
@@ -49,6 +52,20 @@ export default function EditorModeloPage({ params }: { params: Promise<{ id: str
     return (
       <EmptyState icon={Monitor} title="El modelador se usa en una pantalla grande" description="Abrilo en una compu (1280 px o más). Desde acá podés ver la lista de modelos.">
         <Link href="/oficina-tecnica/modelador" className={buttonVariants({ variant: "outline" })}>Ver los modelos</Link>
+      </EmptyState>
+    );
+  }
+  if (!demo && acceso && nivel === null) {
+    return (
+      <EmptyState icon={Lock} title="No tenés acceso al Modelador" description="Pedile a un administrador el permiso del módulo Modelador (ver o editar).">
+        <Link href="/" className={buttonVariants({ variant: "outline" })}>Volver al inicio</Link>
+      </EmptyState>
+    );
+  }
+  if (catalogo.isError) {
+    return (
+      <EmptyState icon={Boxes} title="No pude leer el catálogo de piezas" description={`Sin el catálogo real no se arma la lista de piezas (no se usan pesos inventados). ${catalogo.error instanceof Error ? catalogo.error.message : ""}`}>
+        <Button variant="outline" onClick={() => void catalogo.refetch()}>Reintentar</Button>
       </EmptyState>
     );
   }

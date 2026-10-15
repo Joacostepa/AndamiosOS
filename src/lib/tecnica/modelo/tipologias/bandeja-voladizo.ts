@@ -97,7 +97,7 @@ export function generarBandejaVoladizo(est: Estructura & { params: ParamsBandeja
     ndp++;
   }
   // anclaje estructural del voladizo en el anillo de la bandeja: toma la tracción (no es un amarre)
-  for (const [i, c] of cols.entries()) b.elemento({ id: `bvanc${i}`, familia: 'accesorio', medidas: { variante: 'anclaje_voladizo' }, a: [S[i], yB, t0], b: [S[i], yB, 0], grupo: 'anclaje', sistema: 'comun' });
+  for (let i = 0; i < cols.length; i++) b.elemento({ id: `bvanc${i}`, familia: 'accesorio', medidas: { variante: 'anclaje_voladizo' }, a: [S[i], yB, t0], b: [S[i], yB, 0], grupo: 'anclaje', sistema: 'comun' });
   const trib = cols.length > 1 ? (S[S.length - 1] - S[0]) / (cols.length - 1) : 1;
   const q = CRITERIOS.cargaBandeja;
   const tension = r3((q * trib * vuelo * vuelo) / (2 * p.altoPoste));

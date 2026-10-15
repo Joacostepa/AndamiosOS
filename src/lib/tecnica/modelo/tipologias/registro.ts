@@ -11,7 +11,7 @@ import type { rellenarLargo } from '../medida/rellenar.ts';
 export interface Campo {
   ruta: string;
   etiqueta: string;
-  tipo: 'medida' | 'entero' | 'opcion' | 'bool' | 'frentes' | 'poligono' | 'lista_medidas' | 'texto';
+  tipo: 'medida' | 'entero' | 'opcion' | 'bool' | 'frentes' | 'poligono' | 'lista_medidas' | 'texto' | 'volumen';
   unidad?: 'm' | 'm²' | '°';
   min?: number;
   max?: number;
@@ -21,6 +21,8 @@ export interface Campo {
   ayuda?: string;
   grupo?: 'Medidas' | 'Protección' | 'Apoyo' | 'Accesos' | 'Avanzado';
   catalogo?: 'vanos' | 'profundidades' | 'mensulas' | 'vigasCelosia';
+  /** tipo 'volumen': qué volúmenes del contexto se ofrecen (y cuál se crea con «Crear uno»). */
+  volumenes?: ('edificio' | 'losa' | 'puente' | 'cupula' | 'cilindro' | 'muro' | 'escalera')[];
 }
 
 export interface Preset {

@@ -7,7 +7,8 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { toast } from "sonner";
+import { useRouter } from "next/navigation";
+import { toast } from "../util/toast";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -26,17 +27,17 @@ const ETIQUETA: Record<TipoDiff, string> = {
   quita_editado: "Editado a mano, sale", manual: "Manual",
 };
 const COLOR: Record<TipoDiff, string> = {
-  nuevo: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400", cambia: "bg-sky-500/15 text-sky-700 dark:text-sky-400",
-  igual: "bg-muted text-muted-foreground", quita: "bg-destructive/10 text-destructive", conflicto_manual: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
-  quita_editado: "bg-amber-500/15 text-amber-700 dark:text-amber-400", manual: "bg-muted text-muted-foreground",
+  nuevo: "bg-[var(--tb-ok)]/15 text-[var(--tb-ok)]", cambia: "bg-primary/10 text-primary",
+  igual: "bg-muted text-muted-foreground", quita: "bg-destructive/10 text-destructive", conflicto_manual: "bg-[var(--tb-aviso-bg)] text-[var(--tb-aviso-text)]",
+  quita_editado: "bg-[var(--tb-aviso-bg)] text-[var(--tb-aviso-text)]", manual: "bg-muted text-muted-foreground",
 };
 const ETIQUETA_DECISION: Record<DecisionDiff, string> = { mantener: "Mantener lo manual", modelo: "Usar el modelo", sumar: "Sumar", borrar: "Borrar" };
 
 export function GenerarComputo({ abierto, onCambiar }: { abierto: boolean; onCambiar: (v: boolean) => void }) {
   const modeloId = useEditor((s) => s.modeloId);
   const obraDiseno = useEditor((s) => s.diseno.obra);
-  const sinCodigo = useEditor((s) => s.res.resumen.sinCodigo);
   const puedeComputos = usePuedeEditar("computos");
+  const router = useRouter();
   const obras = useObras();
   const [obraId, setObraId] = useState<string>("");
   const obraElegida = obraDiseno?.id ?? obraId;
@@ -76,9 +77,14 @@ export function GenerarComputo({ abierto, onCambiar }: { abierto: boolean; onCam
       });
       onCambiar(false);
       setDatos(null);
+      // la RPC vincula a la obra un modelo que no tenía: el editor lo refleja sin recargar
+      if (!obraDiseno) {
+        const o = obras.data?.find((x) => x.id === obraElegida);
+        if (o) useEditor.getState().setObraVinculada({ id: o.id, codigo: o.codigo, nombre: o.nombre });
+      }
       toast.success("Cómputo generado desde el modelo", {
         description: `${r.insertadas} nuevas · ${r.actualizadas} actualizadas · ${r.conservadas} conservadas · ${r.borradas} borradas${r.omitidas.length ? ` · ${r.omitidas.length} sin código` : ""}`,
-        action: { label: "Abrir cómputo", onClick: () => (window.location.href = `/oficina-tecnica/computos/${obraElegida}`) },
+        action: { label: "Abrir cómputo", onClick: () => router.push(`/oficina-tecnica/computos/${obraElegida}`) },
       });
     } catch (e) {
       if (e instanceof ErrorRevision) {
@@ -116,7 +122,7 @@ export function GenerarComputo({ abierto, onCambiar }: { abierto: boolean; onCam
               {obraDiseno ? (
                 <span className="font-medium">{obraDiseno.codigo} · {obraDiseno.nombre}</span>
               ) : (
-                <select className="h-8 min-w-0 flex-1 rounded-md border border-input bg-transparent px-2 text-sm" value={obraId} onChange={(e) => { setObraId(e.target.value); setDatos(null); }}>
+                <select className="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-sm" value={obraId} onChange={(e) => { setObraId(e.target.value); setDatos(null); }}>
                   <option value="">Elegí la obra…</option>
                   {(obras.data ?? []).map((o) => <option key={o.id} value={o.id}>{o.codigo} · {o.nombre}</option>)}
                 </select>
@@ -152,14 +158,14 @@ export function GenerarComputo({ abierto, onCambiar }: { abierto: boolean; onCam
                   </table>
                 </div>
                 {datos.computo.otroModelo && !datos.computo.bloqueado && (
-                  <label className="flex items-start gap-2 rounded-md bg-amber-500/10 p-2 text-xs">
+                  <label className="flex items-start gap-2 rounded-md bg-[var(--tb-aviso-bg)] p-2 text-xs">
                     <Checkbox checked={reemplazar} onCheckedChange={(v) => setReemplazar(!!v)} />
                     <span>El cómputo de esta obra se generó desde otro modelo. Entiendo que pasa a depender de este.</span>
                   </label>
                 )}
-                {(datos.omitidas.length > 0 || sinCodigo.length > 0) && (
-                  <div className="rounded-md bg-amber-500/10 p-2 text-xs">
-                    <p className="font-medium text-amber-700 dark:text-amber-400">
+                {datos.omitidas.length > 0 && (
+                  <div className="rounded-md bg-[var(--tb-aviso-bg)] p-2 text-xs">
+                    <p className="font-medium text-[var(--tb-aviso-text)]">
                       {datos.omitidas.length} pieza{datos.omitidas.length === 1 ? "" : "s"} sin código no entra{datos.omitidas.length === 1 ? "" : "n"} al cómputo:
                     </p>
                     <ul className="mt-1 max-h-24 list-disc overflow-y-auto pl-4 text-muted-foreground">
@@ -209,7 +215,7 @@ function FilaDiff({ l, decision, onDecidir }: { l: DiffLinea; decision?: Decisio
       <td className="p-1.5 text-right font-mono">{l.modelo ?? "—"}</td>
       <td className="p-1.5">
         {conDecision ? (
-          <select className="h-7 rounded-md border border-input bg-transparent px-1 text-xs" value={decision ?? l.decisionPorDefecto ?? l.opciones[0]} onChange={(e) => onDecidir(e.target.value as DecisionDiff)}>
+          <select className="h-7 rounded-md border border-input bg-background px-1 text-xs" value={decision ?? l.decisionPorDefecto ?? l.opciones[0]} onChange={(e) => onDecidir(e.target.value as DecisionDiff)}>
             {l.opciones.map((o) => <option key={o} value={o}>{ETIQUETA_DECISION[o]}</option>)}
           </select>
         ) : (

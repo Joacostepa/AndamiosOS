@@ -107,7 +107,7 @@ const CAMPOS: Campo[] = [
 ];
 
 const PRESETS: Preset[] = [
-  { id: 'libre_vacia', nombre: 'Estructura libre', icono: 'libre', descripcion: 'Un vano de 2,50 × 1,09 × 2,00 para crecer a mano en cualquier dirección.', params: { largo: 2.5, profundidad: 1.09, altura: 2 } },
+  { id: 'libre_vacia', nombre: 'Estructura libre (un vano)', icono: 'libre', descripcion: 'Un vano de 2,50 × 1,09 × 2,00 para crecer a mano en cualquier dirección.', params: { largo: 2.5, profundidad: 1.09, altura: 2 } },
   { id: 'libre_desde_medidas', nombre: 'Libre desde medidas', icono: 'libre', descripcion: 'Largo × profundidad × alto de la medida que quieras; después se retoca a mano.', params: { largo: 7.3, profundidad: 1.09, altura: 6 } },
 ];
 

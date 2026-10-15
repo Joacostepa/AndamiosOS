@@ -231,7 +231,9 @@ export function useGenerarComputo() {
     mutationFn: ({ id, ...body }: GenerarComputoInput) => api<RespuestaGenerar>(`${BASE}/${id}/computo`, { method: "POST", json: body }),
     onSuccess: (_r, v) => {
       qc.invalidateQueries({ queryKey: ["computos"] });
-      qc.invalidateQueries({ queryKey: ["modelador", "modelo", v.id] });
+      // El modelo abierto NO se invalida: el refetch reiniciaba el editor (se perdía deshacer y lo no
+      // guardado). Solo cambia la obra vinculada (si no tenía) y eso se anota en la caché.
+      qc.setQueryData<ModeloFila>(["modelador", "modelo", v.id], (m) => (m ? { ...m, obra_id: m.obra_id ?? v.obra_id } : m));
       qc.invalidateQueries({ queryKey: ["modelador", "lista"] });
     },
   });

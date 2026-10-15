@@ -273,7 +273,7 @@ const CAMPOS: Campo[] = [
 ];
 
 const PRESETS: Preset[] = [
-  { id: 'portico_peatonal', nombre: 'Pórtico peatonal', icono: 'portico', tecla: 'P', sistema: 'bastidor', descripcion: 'Paso cubierto sobre la vereda: 2,50 libres, paso ≥ 1,20, bandeja de fenólico.', params: { clase: 'peatonal', largo: 10, alturaLibre: 2.5, ancho: 1.3 } },
+  { id: 'portico_peatonal', nombre: 'Pórtico peatonal (bastidor)', icono: 'portico', tecla: 'P', sistema: 'bastidor', descripcion: 'Paso cubierto sobre la vereda: 2,50 libres, paso ≥ 1,20, bandeja de fenólico.', params: { clase: 'peatonal', largo: 10, alturaLibre: 2.5, ancho: 1.3 } },
   { id: 'portico_vehicular', nombre: 'Pórtico vehicular', icono: 'camion', sistema: 'multi', descripcion: 'Vigas de celosía sobre dos torres. Gálibo 4,50 y luces de 5 a 7,50 m.', params: { clase: 'vehicular', luz: 6, galibo: 4.5, profundidad: 1.09, anchoTorre: 1.09 } },
 ];
 

@@ -3,10 +3,11 @@
 // Intenciones de la UI → operaciones del núcleo → commit. Todo lo que cambia el diseño pasa por
 // acá (o por commit directo) para que el historial tenga un nombre legible.
 
-import { toast } from "sonner";
+import { toast } from "../util/toast";
 import {
-  agregarEstructura, aplicarReparacion, convertirALibre, editarEsqueleto, partirClave, quitarEstructura, setOverride,
-  type Accion, type Diseno, type EstructuraResuelta, type OpEsqueleto, type OverrideCelda, type Resultado,
+  agregarEstructura, aplicarReparacion, construir, convertirALibre, editarEsqueleto, partirClave, quitarEstructura, setOverride,
+  tipologia, vincularVolumenSugerido, volumenesCompatibles,
+  type Accion, type Catalogo, type Diseno, type EstructuraResuelta, type OpEsqueleto, type OverrideCelda, type Resultado,
 } from "@/lib/tecnica/modelo";
 import { useEditor, type Pincel } from "./store";
 
@@ -32,10 +33,37 @@ export function operarEsqueleto(estructuraId: string, op: OpEsqueleto, nombre: s
   }
 }
 
+/**
+ * Si la tipología depende de un volumen del contexto (escalera, losa, puente, azotea) y el diseño no tiene
+ * ninguno compatible, lo crea con las medidas de la estructura y la vincula; si hay uno solo, la vincula a
+ * ese. Así el contexto se ve en el 3D sin tipear ids.
+ */
+export function conContexto(diseno: Diseno, estructuraId: string, catalogo: Catalogo): Diseno {
+  const est = diseno.estructuras.find((e) => e.id === estructuraId);
+  const campo = est ? tipologia(est.tipologia)?.campos.find((c) => c.tipo === "volumen" && c.ruta === "params.volumenId") : undefined;
+  if (!est || !campo?.volumenes || (est.params as Record<string, unknown>).volumenId) return diseno;
+  const compatibles = volumenesCompatibles(diseno, campo.volumenes);
+  if (compatibles.length === 1) {
+    const d = structuredClone(diseno);
+    const e = d.estructuras.find((x) => x.id === estructuraId)!;
+    e.params = { ...e.params, volumenId: compatibles[0].id };
+    return d;
+  }
+  if (compatibles.length > 1) return diseno;
+  try {
+    const huella = construir(diseno, catalogo).estructuras.find((e) => e.id === estructuraId)?.huella ?? [];
+    return vincularVolumenSugerido(diseno, estructuraId, campo.volumenes, huella);
+  } catch {
+    return diseno;
+  }
+}
+
 export function agregarPreset(presetId: string, nombre: string, opciones: Parameters<typeof agregarEstructura>[2] = {}): string | null {
   const s = st();
   try {
-    const { diseno, estructuraId } = agregarEstructura(s.diseno, presetId, opciones, s.catalogo);
+    const r = agregarEstructura(s.diseno, presetId, opciones, s.catalogo);
+    const estructuraId = r.estructuraId;
+    const diseno = conContexto(r.diseno, estructuraId, s.catalogo);
     if (!s.commit(diseno, `Agregar ${nombre}`)) return null;
     st().seleccionar({ estructuraId, celdas: [] });
     return estructuraId;

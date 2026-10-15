@@ -119,7 +119,7 @@ export function Planta({ className }: { className?: string }) {
             <polygon
               points={pts.map((p) => p.join(",")).join(" ")}
               className={cn(
-                v.hueco ? "fill-sky-500/10 stroke-sky-600" : "fill-muted-foreground/20 stroke-muted-foreground",
+                v.hueco ? "fill-primary/10 stroke-primary/70" : "fill-muted-foreground/20 stroke-muted-foreground",
                 esSel && "stroke-primary",
                 !soloLectura && "cursor-move",
               )}

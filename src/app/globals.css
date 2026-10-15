@@ -544,3 +544,7 @@
 .driver-popover.tour-aba .driver-popover-arrow {
   border-color: var(--card);
 }
+
+/* Controles nativos (select, scrollbars) acompañan el tema */
+:root { color-scheme: light; }
+.dark { color-scheme: dark; }

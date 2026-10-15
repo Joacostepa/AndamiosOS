@@ -88,8 +88,8 @@ export function ListaPiezas() {
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto" onPointerLeave={() => useEditor.getState().setBomResaltado(null)}>
         {grupos.map(([grupo, lineas]) => (
-          <section key={grupo} className={cn("border-b border-border", grupo === GRUPO_AJUSTE && "bg-amber-500/5")}>
-            <h4 className={cn("sticky top-0 z-[1] bg-card/95 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide backdrop-blur", grupo === GRUPO_AJUSTE ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground")}>
+          <section key={grupo} className={cn("border-b border-border", grupo === GRUPO_AJUSTE && "bg-[var(--tb-aviso-bg)]")}>
+            <h4 className={cn("sticky top-0 z-[1] bg-card/95 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide backdrop-blur", grupo === GRUPO_AJUSTE ? "text-[var(--tb-aviso-text)]" : "text-muted-foreground")}>
               {grupo} <span className="font-mono font-normal">({lineas.reduce((t, l) => t + l.cantidad, 0)})</span>
             </h4>
             <ul>

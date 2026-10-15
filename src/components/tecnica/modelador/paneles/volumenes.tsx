@@ -9,7 +9,7 @@
 // un patio interno en un patio y una estructura libre sobre una terraza).
 
 import { useState } from "react";
-import { toast } from "sonner";
+import { toast } from "../util/toast";
 import type { V2 } from "@/lib/tecnica/modelo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -140,7 +140,7 @@ export function Volumenes() {
               onClick={() => useEditor.getState().seleccionar({ volumen: selGrupo === g.grupo ? null : g.grupo })}
               className={cn("flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-xs hover:bg-muted", selGrupo === g.grupo && "bg-primary/10")}
             >
-              <span className={cn("size-2.5 shrink-0 rounded-sm", g.volumen.hueco ? "border border-dashed border-sky-600" : "bg-muted-foreground/50")} />
+              <span className={cn("size-2.5 shrink-0 rounded-sm", g.volumen.hueco ? "border border-dashed border-primary" : "bg-muted-foreground/50")} />
               <span className="min-w-0 flex-1 truncate">{g.nombre}</span>
               <span className="font-mono text-[10px] text-muted-foreground">
                 {g.forma ? NOMBRE_FORMA[g.forma.forma].split(" ")[0].toLowerCase() : "volumen"} · {fmt(g.yTope, 1)} m
@@ -175,8 +175,8 @@ function EditorVolumen({ grupo, soloLectura }: { grupo: string; soloLectura: boo
   );
   const pos = (o: V2, aplicar: (o: V2) => FormaVolumen) => (
     <>
-      {num("Posición x", o[0], (v) => aplicar([v, o[1]]), -1000)}
-      {num("Posición z", o[1], (v) => aplicar([o[0], v]), -1000)}
+      {num("A lo largo", o[0], (v) => aplicar([v, o[1]]), -1000)}
+      {num("Hacia el fondo", o[1], (v) => aplicar([o[0], v]), -1000)}
     </>
   );
   const vols = (diseno.contexto.volumenes as VolumenRef[]).filter((v) => !v.hueco && v.def?.tipo !== "saliente");
@@ -202,7 +202,7 @@ function EditorVolumen({ grupo, soloLectura }: { grupo: string; soloLectura: boo
             {num("Alto", f.alto, (v) => ({ ...f, alto: v }), 0.5)}
             {num("Desde altura", f.yBase, (v) => ({ ...f, yBase: v }), -50)}
             {pos(f.origen, (o) => ({ ...f, origen: o }))}
-            {num("Rumbo", f.rumbo, (v) => ({ ...f, rumbo: v }), -360, "°")}
+            {num("Giro (°)", f.rumbo, (v) => ({ ...f, rumbo: v }), -360, "°")}
           </>
         )}
         {f.forma === "hueco" && (
@@ -212,7 +212,7 @@ function EditorVolumen({ grupo, soloLectura }: { grupo: string; soloLectura: boo
             {num("Alto", f.alto, (v) => ({ ...f, alto: v }), 0.5)}
             {num("Desde altura", f.yBase, (v) => ({ ...f, yBase: v }), -50)}
             {pos(f.origen, (o) => ({ ...f, origen: o }))}
-            {num("Rumbo", f.rumbo, (v) => ({ ...f, rumbo: v }), -360, "°")}
+            {num("Giro (°)", f.rumbo, (v) => ({ ...f, rumbo: v }), -360, "°")}
           </>
         )}
         {f.forma === "prisma" && (
@@ -235,7 +235,7 @@ function EditorVolumen({ grupo, soloLectura }: { grupo: string; soloLectura: boo
             {num("Largo", f.largo, (v) => ({ ...f, largo: v }), 0.5)}
             {num("Ancho", f.ancho, (v) => ({ ...f, ancho: v }), 0.5)}
             {pos(f.origen, (o) => ({ ...f, origen: o }))}
-            {num("Rumbo", f.rumbo, (v) => ({ ...f, rumbo: v }), -360, "°")}
+            {num("Giro (°)", f.rumbo, (v) => ({ ...f, rumbo: v }), -360, "°")}
           </>
         )}
         {f.forma === "saliente" && (
@@ -282,13 +282,13 @@ function EditorVolumen({ grupo, soloLectura }: { grupo: string; soloLectura: boo
           <div className="grid grid-cols-2 gap-1.5">
             <label className="text-[11px] text-muted-foreground">
               Sobre
-              <select className="h-7 w-full rounded-md border border-input bg-transparent px-1.5 text-xs" value={f.sobre} disabled={soloLectura} onChange={(e) => set({ ...f, sobre: e.target.value, cara: 0 }, "volumen")}>
+              <select className="h-7 w-full rounded-md border border-input bg-background px-1.5 text-xs" value={f.sobre} disabled={soloLectura} onChange={(e) => set({ ...f, sobre: e.target.value, cara: 0 }, "volumen")}>
                 {vols.map((v) => <option key={v.id} value={v.id}>{v.nombre || v.id}</option>)}
               </select>
             </label>
             <label className="text-[11px] text-muted-foreground">
               Cara
-              <select className="h-7 w-full rounded-md border border-input bg-transparent px-1.5 text-xs" value={f.cara} disabled={soloLectura} onChange={(e) => set({ ...f, cara: +e.target.value }, "cara")}>
+              <select className="h-7 w-full rounded-md border border-input bg-background px-1.5 text-xs" value={f.cara} disabled={soloLectura} onChange={(e) => set({ ...f, cara: +e.target.value }, "cara")}>
                 {(() => {
                   const v = vols.find((x) => x.id === f.sobre);
                   return v ? ladosDe(v).map((l) => <option key={l.lado} value={l.lado}>{`${l.lado + 1} · ${fmt(l.largo)} m`}</option>) : null;

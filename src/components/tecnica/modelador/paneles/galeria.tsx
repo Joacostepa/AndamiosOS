@@ -4,8 +4,8 @@
 // Oficina Técnica. Clic en una plantilla: si la obra está vacía la agrega en el origen; si no,
 // la deja "en la mano" para ubicarla en el 3D con encastre (como en la maqueta).
 
-import { useState } from "react";
-import { toast } from "sonner";
+import { createElement, useMemo, useState } from "react";
+import { toast } from "../util/toast";
 import { instanciarPlantilla, type Diseno, type PresetGaleria, type Union } from "@/lib/tecnica/modelo";
 import { cn } from "@/lib/utils";
 import { useEditor } from "../estado/store";
@@ -13,9 +13,31 @@ import { agregarPreset } from "../estado/acciones";
 import { useModelos } from "../datos/api";
 import { etiquetaCategoria, type ModeloFila } from "../datos/tipos";
 import { galeriaAgrupada, iconoDe } from "../util/galeria";
-import { ChevronDown, ChevronRight, Star } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { ChevronDown, ChevronRight, Clock, Search, Star } from "lucide-react";
 
 const GRUPOS = galeriaAgrupada();
+const TODOS = GRUPOS.flatMap((g) => g.presets);
+const CLAVE_ABIERTOS = "modelador.galeria.abiertos";
+const CLAVE_RECIENTES = "modelador.galeria.recientes";
+
+// Preferencias por persona en este navegador (si el almacenamiento falla, la galería anda igual).
+function leerLocal<T>(clave: string, def: T): T {
+  try {
+    const v = localStorage.getItem(clave);
+    return v ? (JSON.parse(v) as T) : def;
+  } catch {
+    return def;
+  }
+}
+function guardarLocal(clave: string, v: unknown) {
+  try {
+    localStorage.setItem(clave, JSON.stringify(v));
+  } catch {
+    /* sin almacenamiento: no se recuerda */
+  }
+}
+const normalizar = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
 /** Suma las estructuras de una plantilla propia al diseño, con ids nuevos. */
 export function sumarPlantilla(diseno: Diseno, plantilla: Diseno, origen: [number, number]): { diseno: Diseno; ids: string[] } {
@@ -43,12 +65,27 @@ export function sumarPlantilla(diseno: Diseno, plantilla: Diseno, origen: [numbe
 export function Galeria() {
   const soloLectura = useEditor((s) => s.soloLectura);
   const colocando = useEditor((s) => s.colocando);
-  const [abiertos, setAbiertos] = useState<Record<string, boolean>>({ fachadas: true });
+  const [abiertos, setAbiertosRaw] = useState<Record<string, boolean>>(() => leerLocal(CLAVE_ABIERTOS, { fachadas: true }));
+  const [recientes, setRecientes] = useState<string[]>(() => leerLocal<string[]>(CLAVE_RECIENTES, []));
+  const [q, setQ] = useState("");
+  const setAbiertos = (v: Record<string, boolean>) => {
+    setAbiertosRaw(v);
+    guardarLocal(CLAVE_ABIERTOS, v);
+  };
   const plantillas = useModelos({ plantillas: true });
+  const encontrados = useMemo(() => {
+    const t = normalizar(q.trim());
+    if (!t) return null;
+    return TODOS.filter((p) => normalizar(`${p.nombre} ${p.descripcion} ${p.tipologia}`).includes(t));
+  }, [q]);
+  const listaRecientes = recientes.map((id) => TODOS.find((p) => p.id === id)).filter((p): p is PresetGaleria => !!p);
 
   const elegir = (p: PresetGaleria) => {
     const s = useEditor.getState();
     if (s.soloLectura) return;
+    const r = [p.id, ...recientes.filter((x) => x !== p.id)].slice(0, 4);
+    setRecientes(r);
+    guardarLocal(CLAVE_RECIENTES, r);
     if (!s.diseno.estructuras.length) {
       agregarPreset(p.id, p.nombre);
       return;
@@ -76,7 +113,25 @@ export function Galeria() {
 
   return (
     <div className="space-y-1">
-      {GRUPOS.map((g) => {
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar plantilla (torre, visera, colgante…)" aria-label="Buscar plantilla" className="h-7 pl-7 text-xs" />
+      </div>
+      {encontrados && (
+        <div className="grid grid-cols-2 gap-1 pb-1">
+          {encontrados.map((p) => <Tarjeta key={p.id} p={p} activa={colocando === p.id} deshabilitada={soloLectura} onElegir={elegir} />)}
+          {!encontrados.length && <p className="col-span-2 px-1 text-[11px] text-muted-foreground">Ninguna plantilla coincide. Probá con otra palabra o usá la estructura libre.</p>}
+        </div>
+      )}
+      {!encontrados && listaRecientes.length > 0 && (
+        <section>
+          <p className="flex items-center gap-1 px-1 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"><Clock className="size-3" /> Recientes</p>
+          <div className="grid grid-cols-2 gap-1 pb-1">
+            {listaRecientes.map((p) => <Tarjeta key={p.id} p={p} activa={colocando === p.id} deshabilitada={soloLectura} onElegir={elegir} />)}
+          </div>
+        </section>
+      )}
+      {!encontrados && GRUPOS.map((g) => {
         const abierto = abiertos[g.id] ?? false;
         return (
           <section key={g.id}>
@@ -92,30 +147,7 @@ export function Galeria() {
             </button>
             {abierto && (
               <div className="grid grid-cols-2 gap-1 pb-1">
-                {g.presets.map((p) => {
-                  const Ic = iconoDe(p.icono, p.tipologia);
-                  return (
-                    <button
-                      key={p.id}
-                      type="button"
-                      disabled={soloLectura}
-                      title={`${p.descripcion}\nClic: ubicar en la obra`}
-                      onClick={() => elegir(p)}
-                      aria-pressed={colocando === p.id}
-                      className={cn(
-                        "flex flex-col items-start gap-1 rounded-lg border border-border p-1.5 text-left text-xs transition-colors hover:border-primary/50 hover:bg-muted disabled:opacity-50",
-                        colocando === p.id && "border-primary bg-primary/10",
-                      )}
-                    >
-                      <span className="flex w-full items-center justify-between">
-                        <Ic className="size-4 text-muted-foreground" />
-                        {p.tecla && <kbd className="rounded border border-border px-1 font-mono text-[10px] text-muted-foreground">{p.tecla}</kbd>}
-                      </span>
-                      <span className="line-clamp-2 leading-tight">{p.nombre}</span>
-                      <span className="text-[10px] text-muted-foreground">{p.sistema === "bastidor" ? "bastidor" : "multidireccional"}</span>
-                    </button>
-                  );
-                })}
+                {g.presets.map((p) => <Tarjeta key={p.id} p={p} activa={colocando === p.id} deshabilitada={soloLectura} onElegir={elegir} />)}
               </div>
             )}
           </section>
@@ -155,5 +187,28 @@ export function Galeria() {
         )}
       </section>
     </div>
+  );
+}
+
+function Tarjeta({ p, activa, deshabilitada, onElegir }: { p: PresetGaleria; activa: boolean; deshabilitada: boolean; onElegir: (p: PresetGaleria) => void }) {
+  return (
+    <button
+      type="button"
+      disabled={deshabilitada}
+      title={`${p.descripcion}\nClic: ubicar en la obra`}
+      onClick={() => onElegir(p)}
+      aria-pressed={activa}
+      className={cn(
+        "flex flex-col items-start gap-1 rounded-lg border border-border p-1.5 text-left text-xs transition-colors hover:border-primary/50 hover:bg-muted disabled:opacity-50",
+        activa && "border-primary bg-primary/10",
+      )}
+    >
+      <span className="flex w-full items-center justify-between">
+        {createElement(iconoDe(p.icono, p.tipologia), { className: "size-4 text-muted-foreground" })}
+        {p.tecla && <kbd className="rounded border border-border px-1 font-mono text-[10px] text-muted-foreground">{p.tecla}</kbd>}
+      </span>
+      <span className="line-clamp-2 leading-tight">{p.nombre}</span>
+      {p.sistema === "bastidor" && <span className="text-[10px] text-muted-foreground">bastidor</span>}
+    </button>
   );
 }

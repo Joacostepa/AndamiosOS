@@ -241,4 +241,5 @@ export function previaDesde(ctx: ContextoComputo, modeloId: string): PreviaCompu
 }
 
 /** Saca comodines de un texto de búsqueda para .ilike / .or de PostgREST. */
-export const textoBusqueda = (q: string) => q.replace(/[%_,()*\\]/g, ' ').trim();
+/** Texto para el filtro .or() de PostgREST: sin comodines, separadores, comillas ni caracteres de control. */
+export const textoBusqueda = (q: string) => q.replace(/[%_,()*\\"'`\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);

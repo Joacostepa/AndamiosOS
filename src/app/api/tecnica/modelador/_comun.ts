@@ -32,13 +32,17 @@ export function invalido(e: z.ZodError) {
 
 export const sinCache = { "Cache-Control": "no-store" };
 
+/** Los 5xx nunca devuelven el texto crudo de Postgres/PostgREST (tablas, constraints): se loguea acá. */
 export function fallo(e: unknown) {
-  if (e instanceof ErrorModelador) {
+  if (e instanceof ErrorModelador && e.status < 500) {
     return NextResponse.json({ error: e.message, ...(e.extra ?? {}) }, { status: e.status });
   }
-  const msg = e instanceof Error ? e.message : String(e);
-  console.error("[modelador]", msg);
-  return NextResponse.json({ error: msg || "Algo falló en el modelador." }, { status: 500 });
+  if (e instanceof ErrorModelador && e.status === 503) {
+    console.error("[modelador]", e.message);
+    return NextResponse.json({ error: e.message }, { status: 503 });
+  }
+  console.error("[modelador]", e instanceof Error ? e.message : String(e));
+  return NextResponse.json({ error: "Algo falló en el modelador. Probá de nuevo; si sigue, avisale a sistemas." }, { status: 500 });
 }
 
 /** El body como JSON, o null si no lo es. */

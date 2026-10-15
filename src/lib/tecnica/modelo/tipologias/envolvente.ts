@@ -376,7 +376,7 @@ export function generarEnvolvente(est: Estructura & { params: ParamsEnvolvente }
   const puertos: PuertoLocal[] = [];
   if (gp) {
     const col = new Map(b.esq.columnas.map((c) => [c.id, c]));
-    gp.lados.forEach((L, i) => {
+    gp.lados.forEach((L) => {
       if (L.exterior.length < 2) return;
       const a = col.get(L.exterior[0])!.p;
       const z = col.get(L.exterior[L.exterior.length - 1])!.p;

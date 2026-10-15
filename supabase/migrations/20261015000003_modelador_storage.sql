@@ -11,7 +11,7 @@ INSERT INTO storage.buckets (id, name, public)
 VALUES ('tec-modelos', 'tec-modelos', false)
 ON CONFLICT (id) DO NOTHING;
 
-UPDATE storage.buckets SET file_size_limit = 5242880, allowed_mime_types = ARRAY['image/png']
+UPDATE storage.buckets SET file_size_limit = 4194304, allowed_mime_types = ARRAY['image/png']
 WHERE id = 'tec-modelos';
 
 DROP POLICY IF EXISTS "Modelador: leer portadas" ON storage.objects;

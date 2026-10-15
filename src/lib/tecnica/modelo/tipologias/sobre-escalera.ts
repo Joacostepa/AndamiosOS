@@ -169,7 +169,7 @@ const CAMPOS: Campo[] = [
   { ruta: 'params.escalera.inicio', etiqueta: 'Primer peldaño a', tipo: 'medida', unidad: 'm', min: -20, max: 50, paso: 0.05, grupo: 'Apoyo' },
   { ruta: 'params.escalera.descansoTras', etiqueta: 'Descanso después del peldaño', tipo: 'entero', min: 0, max: 60, grupo: 'Apoyo' },
   { ruta: 'params.perfil', etiqueta: 'Perfil de apoyo (s → cota)', tipo: 'lista_medidas', grupo: 'Avanzado', ayuda: 'Tramos a mano: desde s, el suelo está a la cota y. Manda sobre la escalera.' },
-  { ruta: 'params.volumenId', etiqueta: 'Escalera del contexto', tipo: 'texto', grupo: 'Apoyo' },
+  { ruta: 'params.volumenId', etiqueta: 'Escalera', tipo: 'volumen', volumenes: ['escalera'], grupo: 'Apoyo', ayuda: 'La escalera de la obra. Si no hay, «Crear una» la arma con los peldaños cargados y se ve en el 3D.' },
   { ruta: 'params.intermedias', etiqueta: 'Plataformas intermedias', tipo: 'bool', grupo: 'Medidas' },
   { ruta: 'params.anclada', etiqueta: 'Anclada al muro', tipo: 'bool', grupo: 'Apoyo' },
   { ruta: 'params.contraMuro', etiqueta: 'Lado contra el muro', tipo: 'opcion', opciones: [{ valor: 'ninguno', etiqueta: 'Ninguno' }, { valor: 'frente', etiqueta: 'Frente' }, { valor: 'fondo', etiqueta: 'Fondo' }], grupo: 'Protección' },

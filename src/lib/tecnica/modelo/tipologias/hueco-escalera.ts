@@ -97,7 +97,7 @@ const CAMPOS: Campo[] = [
   { ruta: 'params.escalera.huella', etiqueta: 'Huella', tipo: 'medida', unidad: 'm', min: 0.2, max: 0.45, paso: 0.01, grupo: 'Apoyo' },
   { ruta: 'params.escalera.contrahuella', etiqueta: 'Contrahuella', tipo: 'medida', unidad: 'm', min: 0.1, max: 0.25, paso: 0.005, grupo: 'Apoyo' },
   { ruta: 'params.perfil', etiqueta: 'Perfil de apoyo (s → cota)', tipo: 'lista_medidas', grupo: 'Avanzado' },
-  { ruta: 'params.volumenId', etiqueta: 'Escalera del contexto', tipo: 'texto', grupo: 'Apoyo' },
+  { ruta: 'params.volumenId', etiqueta: 'Escalera', tipo: 'volumen', volumenes: ['escalera'], grupo: 'Apoyo', ayuda: 'La escalera de la obra. Si no hay, «Crear una» la arma con los peldaños cargados y se ve en el 3D.' },
 ];
 
 const PRESETS: Preset[] = [

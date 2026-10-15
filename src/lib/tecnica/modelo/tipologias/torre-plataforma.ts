@@ -114,7 +114,7 @@ const CAMPOS: Campo[] = [
   { ruta: 'params.plataformas', etiqueta: 'Plataformas', tipo: 'opcion', opciones: [{ valor: 'cada_2m', etiqueta: 'Cada 2,00' }, { valor: 'cada_nivel', etiqueta: 'Cada nivel' }, { valor: 'solo_trabajo', etiqueta: 'Solo arriba' }], grupo: 'Medidas' },
   { ruta: 'params.acceso', etiqueta: 'Acceso', tipo: 'opcion', opciones: [{ valor: 'escalera_interior', etiqueta: 'Escalera interior' }, { valor: 'zanca', etiqueta: 'Zancas' }, { valor: 'ninguno', etiqueta: 'Sin acceso' }], grupo: 'Accesos' },
   { ruta: 'params.cotaApoyo', etiqueta: 'Cota del apoyo', tipo: 'medida', unidad: 'm', min: 0, max: 200, paso: 0.05, grupo: 'Apoyo', ayuda: 'Azotea o losa donde apoya la torre (0 = suelo).' },
-  { ruta: 'params.volumenId', etiqueta: 'Sobre el volumen', tipo: 'texto', grupo: 'Apoyo' },
+  { ruta: 'params.volumenId', etiqueta: 'Sobre el volumen', tipo: 'volumen', volumenes: ['edificio', 'losa'], grupo: 'Apoyo', ayuda: 'La azotea o losa donde apoya. Si no hay, «Crear uno» arma el edificio a la cota de apoyo.' },
   { ruta: 'params.anclada', etiqueta: 'Anclada', tipo: 'bool', grupo: 'Apoyo' },
 ];
 

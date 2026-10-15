@@ -14,6 +14,9 @@ import { AlertTriangle, Info, OctagonAlert, Undo2 } from "lucide-react";
 
 const ICONO = { error: OctagonAlert, aviso: AlertTriangle, info: Info } as const;
 
+/** «1 aviso» / «3 avisos». */
+export const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`;
+
 export function Avisos() {
   const res = useEditor((s) => s.res);
   const pantalla = useEditor((s) => s.avisosPantalla);
@@ -32,7 +35,7 @@ export function Avisos() {
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center justify-between gap-2 border-b border-border p-3">
         <span className="text-xs text-muted-foreground">
-          {avisos.filter((a) => a.nivel === "error").length} errores · {avisos.filter((a) => a.nivel === "aviso").length} avisos
+          {plural(avisos.filter((a) => a.nivel === "error").length, "error", "errores")} · {plural(avisos.filter((a) => a.nivel === "aviso").length, "aviso", "avisos")}
         </span>
         <Chips opciones={[{ valor: "todo", etiqueta: "Toda la obra" }, { valor: "sel", etiqueta: "Selección" }]} valor={alcance} onElegir={setAlcance} />
       </div>
@@ -44,7 +47,7 @@ export function Avisos() {
               key={a.id}
               className={cn(
                 "rounded-lg border p-2 text-xs",
-                a.nivel === "error" ? "border-destructive/40 bg-destructive/5" : a.nivel === "aviso" ? "border-amber-500/40 bg-amber-500/5" : "border-border bg-muted/30",
+                a.nivel === "error" ? "border-destructive/40 bg-destructive/5" : a.nivel === "aviso" ? "border-[var(--tb-aviso-borde)] bg-[var(--tb-aviso-bg)]" : "border-border bg-muted/30",
               )}
             >
               <button
@@ -52,9 +55,9 @@ export function Avisos() {
                 className="flex w-full items-start gap-2 text-left"
                 onClick={() => a.estructuraId && useEditor.getState().seleccionar({ estructuraId: a.estructuraId, celdas: a.celda ? [a.celda] : [] })}
               >
-                <Ic className={cn("mt-0.5 size-3.5 shrink-0", a.nivel === "error" ? "text-destructive" : a.nivel === "aviso" ? "text-amber-600" : "text-muted-foreground")} />
+                <Ic className={cn("mt-0.5 size-3.5 shrink-0", a.nivel === "error" ? "text-destructive" : a.nivel === "aviso" ? "text-[var(--tb-aviso-icono)]" : "text-muted-foreground")} />
                 <span>
-                  {a.estructuraId && <b className="font-medium">{nombres.get(a.estructuraId) ?? a.estructuraId}: </b>}
+                  {a.estructuraId && !a.texto.startsWith(nombres.get(a.estructuraId) ?? "\u0000") && <b className="font-medium">{nombres.get(a.estructuraId) ?? a.estructuraId}: </b>}
                   {a.texto}
                 </span>
               </button>

@@ -6,7 +6,8 @@ import { z } from 'zod';
 import { validarDiseno, type Diseno } from '../modelo/index.ts';
 
 export const TOPE_DISENO_BYTES = 2_000_000;
-export const TOPE_IMAGEN_BYTES = 5 * 1024 * 1024;
+/** Vercel corta el cuerpo de una función en 4,5 MB: la portada se limita a 4 MB. */
+export const TOPE_IMAGEN_BYTES = 4 * 1024 * 1024;
 
 const uuid = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, 'Id inválido');
 const nombre = z.string().trim().min(1, 'Falta el nombre').max(120, 'El nombre es muy largo (máximo 120)');
@@ -15,14 +16,27 @@ const cotizacion = z.string().trim().max(60, 'La referencia de cotización es mu
 
 export const CATEGORIAS_PLANTILLA = ['fachada', 'bandeja', 'torre', 'portico', 'interior', 'especial', 'libre'] as const;
 
-const resumen = z.looseObject({
-  m2: z.number(),
-  ml: z.number(),
-  alturaMax: z.number(),
-  pesoKg: z.number(),
+// Resumen de la lista: claves conocidas (z.object descarta las demás), números acotados y tope de
+// tamaño (la columna además tiene CHECK pg_column_size < 20000, migración 20261015000004).
+export const TOPE_RESUMEN_BYTES = 16_000;
+const num = (max: number) => z.number().finite().min(0).max(max);
+const resumen = z.object({
+  m2: num(1e6),
+  ml: num(1e5),
+  alturaMax: num(1000),
+  pesoKg: num(1e8),
   pesoParcial: z.boolean(),
-  piezas: z.number().int().nonnegative(),
-});
+  piezas: z.number().int().nonnegative().max(1e7),
+  piezasAjuste: z.number().int().nonnegative().max(1e7).optional(),
+  estructuras: z.number().int().nonnegative().max(1000).optional(),
+  tipologias: z.array(z.string().max(60)).max(60).optional(),
+  sinCodigo: z.array(z.object({
+    clave: z.string().max(200), familia: z.string().max(40), medidas: z.record(z.string(), z.union([z.number(), z.string()])), cantidad: z.number().finite(),
+  })).max(50).optional(),
+  avisos: z.object({ errores: z.number().int().nonnegative(), avisos: z.number().int().nonnegative() }).optional(),
+  texto: z.string().max(2000).optional(),
+  motorVersion: z.string().max(40).optional(),
+}).refine((r) => JSON.stringify(r).length <= TOPE_RESUMEN_BYTES, { message: 'El resumen es demasiado grande.' });
 
 export const crearSchema = z.union([
   z.object({

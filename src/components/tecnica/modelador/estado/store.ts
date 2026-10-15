@@ -76,6 +76,8 @@ export interface EstadoEditor {
   setBomResaltado(codigo: string | null): void;
   marcarGuardado(revision: number, version: number): void;
   setGuardado(g: EstadoGuardado): void;
+  /** La obra que vinculó el servidor (p. ej. al generar el cómputo): no es un cambio del usuario ni sube la versión. */
+  setObraVinculada(obra: Diseno["obra"]): void;
 }
 
 const VACIO: Diseno = {
@@ -219,6 +221,7 @@ export const useEditor = create<EstadoEditor>((set, get) => ({
   marcarGuardado: (revision, version) =>
     set({ revision, versionGuardada: version, guardado: get().version === version ? "guardado" : "pendiente" }),
   setGuardado: (guardado) => set({ guardado }),
+  setObraVinculada: (obra) => set({ diseno: { ...get().diseno, obra } }),
 }));
 
 function construirVacio(): Resultado {

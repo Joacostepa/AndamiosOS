@@ -342,6 +342,24 @@ ON CONFLICT DO NOTHING;
 -- ------------------------------------------------------------
 -- 8. Backfill de permisos: a quien tiene Cómputos, Modelador con el mismo nivel
 -- ------------------------------------------------------------
+-- Quiénes recibieron el permiso por este backfill (para poder deshacerlo sin tocar a quien se lo
+-- asignaron después a mano). Lo lee solo admin.
+CREATE TABLE IF NOT EXISTS tec_backfill_permisos (
+  user_id uuid PRIMARY KEY REFERENCES user_profiles(id) ON DELETE CASCADE,
+  nivel text NOT NULL,
+  creado_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE tec_backfill_permisos ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Admin ve el backfill de permisos" ON tec_backfill_permisos;
+CREATE POLICY "Admin ve el backfill de permisos" ON tec_backfill_permisos
+  FOR SELECT TO authenticated USING (get_user_role() = 'admin');
+
+INSERT INTO tec_backfill_permisos (user_id, nivel)
+SELECT id, permisos->>'computos' FROM user_profiles
+ WHERE permisos ? 'computos' AND NOT permisos ? 'modelador'
+   AND permisos->>'computos' IN ('ver', 'editar')
+ON CONFLICT DO NOTHING;
+
 UPDATE user_profiles
    SET permisos = permisos || jsonb_build_object('modelador', permisos->>'computos')
  WHERE permisos ? 'computos' AND NOT permisos ? 'modelador'

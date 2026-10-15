@@ -4,9 +4,9 @@
 // volúmenes · lienzo 3D con alzado/planta · propiedades, lista de piezas y avisos. Se carga con
 // dynamic(ssr:false) desde la página: three solo corre en el navegador.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { toast } from "sonner";
+import { toast } from "./util/toast";
 import { presetsGaleria, PREDIMENSIONADO, SIMPLIFICACIONES, type Catalogo, type Diseno, type Regla } from "@/lib/tecnica/modelo";
 import { cn } from "@/lib/utils";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -14,7 +14,8 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useEditor, estructuraSel } from "./estado/store";
-import { aplicar, borrarEstructura, pincelDisponible, PINCELES, pintar } from "./estado/acciones";
+import { aplicar, pincelDisponible, PINCELES, pintar } from "./estado/acciones";
+import { aberturaSeleccion, borrarConConfirmacion, duplicarSeleccion, limpiarCeldas, MedidaRapida, PaletaComandos, puedeMedir, type Medida } from "./comandos";
 import { guardarAhora, useAutoguardado } from "./estado/autoguardado";
 import { subirImagen } from "./datos/api";
 import type { ModeloFila } from "./datos/tipos";
@@ -34,7 +35,7 @@ import { GuardarPlantilla } from "./paneles/guardar-plantilla";
 import { fmt } from "./util/formato";
 import {
   ArrowLeft, BookmarkPlus, Calculator, Check, CloudOff, Eye, EyeOff, Focus, ImageDown, Keyboard, Loader2,
-  MousePointer2, Paintbrush, Redo2, TriangleAlert, Undo2,
+  MousePointer2, Paintbrush, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Redo2, TriangleAlert, Undo2,
 } from "lucide-react";
 
 export interface PropsEditor {
@@ -45,6 +46,14 @@ export interface PropsEditor {
   errorCatalogo: string | null;
   soloLectura: boolean;
 }
+
+/** Pinceles agrupados para las acciones rápidas sobre celdas (todos visibles; «Limpiar» siempre). */
+const GRUPOS_PINCEL: { nombre: string; ids: string[] }[] = [
+  { nombre: "Estructura", ids: ["diagonal", "sin_diagonal", "horizontal", "abertura", "cano"] },
+  { nombre: "Protección", ids: ["plataforma", "sin_plataforma", "baranda", "lona"] },
+  { nombre: "Fijación", ids: ["mensula", "anclaje"] },
+  { nombre: "Volver a lo generado", ids: ["borrar"] },
+];
 
 const TECLAS_PRESET = new Map(
   presetsGaleria().flatMap((g) => g.presets).filter((p) => p.tecla).map((p) => [p.tecla!.toLowerCase(), p] as const),
@@ -63,13 +72,52 @@ export default function Editor({ modelo, disenoDemo, catalogo, errorCatalogo, so
   const [vista, setVista] = useState<ModoVista>("iso");
   const [tab, setTab] = useState("props");
   const [dlg, setDlg] = useState<null | "computo" | "plantilla" | "atajos">(null);
+  const [paleta, setPaleta] = useState(false);
+  // columnas laterales plegables (en 1280 px el lienzo quedaba en ~680); se recuerda en este navegador
+  const [plegadas, setPlegadas] = useState<{ izq: boolean; der: boolean }>(() => {
+    try {
+      const v = localStorage.getItem("modelador.columnas");
+      return v ? JSON.parse(v) : { izq: false, der: false };
+    } catch {
+      return { izq: false, der: false };
+    }
+  });
+  const plegar = (lado: "izq" | "der") => setPlegadas((p) => {
+    const n = { ...p, [lado]: !p[lado] };
+    try {
+      localStorage.setItem("modelador.columnas", JSON.stringify(n));
+    } catch {
+      /* sin almacenamiento */
+    }
+    return n;
+  });
+  // con una fachada elegida el alzado es donde se edita fino: más alto
+  const esFachada = useEditor((s) => estructuraSel(s)?.tipologia === "fachada");
+  const [medida, setMedidaRaw] = useState<Medida | null>(null);
+  const [medidaN, setMedidaN] = useState(0);
+  const setMedida = useCallback((m: Medida | null) => {
+    if (m && !puedeMedir(m)) return;
+    setMedidaN((n) => n + 1);
+    setMedidaRaw(m);
+  }, []);
+  const cerrarMedida = useCallback(() => setMedidaRaw(null), []);
 
   // ── arranque ──
+  // Una sola vez por modelo: un refetch del mismo modelo (otra pestaña, generar cómputo) trae un objeto
+  // nuevo y no tiene que reiniciar el editor (se perdían deshacer, la selección y lo no guardado).
+  const iniciado = useRef<string | null>(null);
   useEffect(() => {
     const d = modelo?.diseno ?? disenoDemo;
     if (!d) return;
+    const clave = modelo?.id ?? "demo";
+    if (iniciado.current === clave) return;
+    iniciado.current = clave;
     useEditor.getState().iniciar(d, catalogo, { soloLectura, modeloId: modelo?.id ?? null, revision: modelo?.revision ?? null });
   }, [modelo, disenoDemo, catalogo, soloLectura]);
+  // el catálogo o el permiso pueden llegar/cambiar después sin reiniciar el modelo
+  useEffect(() => {
+    if (iniciado.current && useEditor.getState().catalogo !== catalogo) useEditor.getState().cambiarCatalogo(catalogo);
+  }, [catalogo]);
 
   useAutoguardado();
 
@@ -88,13 +136,22 @@ export default function Editor({ modelo, disenoDemo, catalogo, errorCatalogo, so
       }
       const antes = new Set(u.prevRes.reglas.map(claveRegla));
       const nuevas = s.res.reglas.filter((r) => !antes.has(claveRegla(r)) && !SILENCIOSAS.test(r.regla));
-      for (const r of nuevas.slice(0, 2)) {
+      if (nuevas.length === 1) {
+        const r = nuevas[0];
         const n = u.n;
         toast(r.texto, {
+          id: "reglas-nuevas",
           description: "Regla automática (provisoria)",
           action: r.deshacer
             ? { label: "Deshacer", onClick: () => (useEditor.getState().pasado.length === n ? aplicar(r.deshacer!, `Deshacer regla: ${r.texto.slice(0, 48)}`) : useEditor.getState().deshacer()) }
             : undefined,
+        });
+      } else if (nuevas.length > 1) {
+        // varias reglas juntas: un solo toast (no tapan el panel de propiedades)
+        toast(`Apliqué ${nuevas.length} reglas automáticas (provisorias)`, {
+          id: "reglas-nuevas",
+          description: nuevas.slice(0, 2).map((r) => r.texto).join(" · ").slice(0, 160),
+          action: { label: "Ver en Avisos", onClick: () => setTab("avisos") },
         });
       }
       const errAntes = new Set(u.prevRes.avisos.filter((a) => a.nivel === "error").map((a) => a.texto));
@@ -109,40 +166,68 @@ export default function Editor({ modelo, disenoDemo, catalogo, errorCatalogo, so
   // ── atajos de teclado ──
   useEffect(() => {
     const tecla = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
-      if (document.querySelector('[role="dialog"]')) return;
       const s = useEditor.getState();
       const mod = e.metaKey || e.ctrlKey;
-      if (mod && e.key.toLowerCase() === "z") {
+      const k = e.key;
+      // Ctrl+S funciona aunque el foco esté en un campo (si no, el navegador abre «Guardar página»)
+      if (mod && k.toLowerCase() === "s") {
+        e.preventDefault();
+        void guardarAhora(true).then((ok) => ok && toast.success("Guardado"));
+        return;
+      }
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable || t.closest('[role="combobox"],[role="spinbutton"],[role="slider"]'))) return;
+      // con un diálogo, un menú o una lista desplegada abiertos, las teclas son de ellos
+      if (document.querySelector('[role="dialog"],[role="menu"],[role="listbox"],[role="alertdialog"]')) return;
+      if (mod && k.toLowerCase() === "z") {
         e.preventDefault();
         if (e.shiftKey) s.rehacer();
         else s.deshacer();
         return;
       }
-      if (mod && e.key.toLowerCase() === "y") {
+      if (mod && k.toLowerCase() === "y") {
         e.preventDefault();
         s.rehacer();
         return;
       }
-      if (mod && e.key.toLowerCase() === "s") {
+      if (mod && k.toLowerCase() === "d") {
         e.preventDefault();
-        void guardarAhora(true).then((ok) => ok && toast.success("Guardado"));
+        if (!duplicarSeleccion()) toast("Elegí una estructura para duplicarla.");
         return;
       }
       if (mod || e.altKey) return;
-      const k = e.key;
       if (k === "Escape") {
-        if (s.colocando) s.setColocando(null);
+        if (medida) cerrarMedida();
+        else if (s.colocando) s.setColocando(null);
         else if (s.herramienta !== "seleccionar") s.setHerramienta("seleccionar");
         else if (s.sel.celdas.length || s.sel.volumen) s.seleccionar({ celdas: [], volumen: null });
         return;
       }
       if (k === "?") return setDlg("atajos");
+      // con el pincel activo, los números eligen pincel (y dejan de cambiar la vista)
       if (s.herramienta === "pincel" && /^[0-9]$/.test(k)) {
         const p = PINCELES.find((x) => x.tecla === k);
-        if (p) s.setPincel(p.id);
+        const tip = estructuraSel(s)?.tipologia ?? "";
+        if (p && pincelDisponible(p.id, tip)) s.setPincel(p.id);
+        else if (p) toast(`El pincel «${p.etiqueta}» es solo para la estructura libre.`);
         return;
+      }
+      switch (k) {
+        case "Backspace":
+          // En Mac la tecla «delete» es ⌫: segunda pulsación para no borrar sin querer.
+          e.preventDefault();
+          if (s.sel.celdas.length) {
+            limpiarCeldas();
+            return;
+          }
+          return borrarConConfirmacion();
+        case "Delete":
+          // Con celdas elegidas nunca borra la estructura: vuelve las celdas a lo generado.
+          if (s.sel.celdas.length) {
+            limpiarCeldas();
+            return;
+          }
+          return borrarConConfirmacion();
       }
       switch (k.toLowerCase()) {
         case "v": return s.setHerramienta("seleccionar");
@@ -150,22 +235,35 @@ export default function Editor({ modelo, disenoDemo, catalogo, errorCatalogo, so
         case "r": return escenaRef.current?.girarColocacion();
         case "z": return escenaRef.current?.encuadrar();
         case "a": return setAlzadoGrande((x) => !x);
+        case "o": if (!s.soloLectura) aberturaSeleccion(); return;
+        case "l":
+        case "h":
+          // preventDefault: si no, la letra cae en el campo que se abre con foco
+          e.preventDefault();
+          if (!s.soloLectura) setMedida(k.toLowerCase() === "l" ? "largo" : "altura");
+          return;
         case "1": setVista("planta"); return escenaRef.current?.vista("planta");
         case "2": setVista("frente"); return escenaRef.current?.vista("frente");
         case "3": setVista("iso"); return escenaRef.current?.vista("iso");
-        case "delete":
-        case "backspace": {
-          const est = estructuraSel(s);
-          if (est && !s.sel.celdas.length && !s.soloLectura) borrarEstructura(est.id);
-          return;
-        }
       }
       const p = TECLAS_PRESET.get(k.toLowerCase()) ?? TECLAS_PRESET.get(k);
       if (p && !s.soloLectura) s.setColocando(s.colocando === p.id ? null : p.id);
     };
+    // Ctrl+K: en el editor abre la paleta del modelador (no el buscador general), aunque el foco esté en un campo
+    const paletaK = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        setPaleta((x) => !x);
+      }
+    };
+    window.addEventListener("keydown", paletaK, { capture: true });
     window.addEventListener("keydown", tecla);
-    return () => window.removeEventListener("keydown", tecla);
-  }, []);
+    return () => {
+      window.removeEventListener("keydown", paletaK, { capture: true });
+      window.removeEventListener("keydown", tecla);
+    };
+  }, [medida, setMedida, cerrarMedida]);
 
   if (!listo) {
     return <div className="grid h-full place-items-center text-sm text-muted-foreground">Armando el modelo…</div>;
@@ -174,21 +272,24 @@ export default function Editor({ modelo, disenoDemo, catalogo, errorCatalogo, so
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card">
       <BarraSuperior soloLectura={soloLectura} onDialogo={setDlg} escenaRef={escenaRef} />
-      <div className="flex items-center gap-2 border-b border-amber-500/30 bg-amber-500/10 px-3 py-1 text-[11px] text-amber-800 dark:text-amber-300">
+      <div className="flex items-center gap-2 border-b border-[var(--tb-aviso-borde)] bg-[var(--tb-aviso-bg)] px-3 py-1 text-[11px] text-[var(--tb-aviso-text)]">
         <TriangleAlert className="size-3.5" />
         <b className="font-mono tracking-wide">{PREDIMENSIONADO}</b>
         <span className="truncate">· reglas provisorias sin firma · no reemplaza la memoria de cálculo</span>
         {(catalogo.fuente === "fixture" || errorCatalogo) && (
-          <span className="ml-auto shrink-0 rounded bg-amber-500/20 px-1.5 font-medium" title={errorCatalogo ?? undefined}>
+          <span className="ml-auto shrink-0 rounded bg-[var(--tb-aviso-borde)] px-1.5 font-medium" title={errorCatalogo ?? undefined}>
             Catálogo de prueba: códigos y pesos NO son los de Andamios OS
           </span>
         )}
         {soloLectura && <span className="ml-auto shrink-0 rounded bg-muted px-1.5 font-medium text-muted-foreground">Solo lectura</span>}
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-[260px_minmax(0,1fr)_340px]">
+      <div
+        className="grid min-h-0 flex-1"
+        style={{ gridTemplateColumns: `${plegadas.izq ? "0px" : "260px"} minmax(0,1fr) ${plegadas.der ? "0px" : "340px"}` }}
+      >
         {/* izquierda */}
-        <aside className="min-h-0 space-y-3 overflow-y-auto border-r border-border p-2">
+        <aside className={cn("min-h-0 space-y-3 overflow-y-auto border-r border-border p-2", plegadas.izq && "hidden")}>
           <Bloque titulo="Plantillas">
             <Galeria />
           </Bloque>
@@ -212,12 +313,15 @@ export default function Editor({ modelo, disenoDemo, catalogo, errorCatalogo, so
             verVolumenes={verVolumenes}
             onVerVolumenes={() => setVerVolumenes((x) => !x)}
             onAtajos={() => setDlg("atajos")}
+            plegadas={plegadas}
+            onPlegar={plegar}
           />
           <div className="relative min-h-0 flex-1">
             <Lienzo escenaRef={escenaRef} verVolumenes={verVolumenes} className="absolute inset-0" />
             <Leyenda />
+            {medida && <MedidaRapida key={medida + medidaN} que={medida} onCerrar={cerrarMedida} />}
           </div>
-          <div className={cn("flex min-h-0 flex-col border-t border-border", alzadoGrande ? "h-[55%]" : "h-[30%]")}>
+          <div className={cn("flex min-h-0 flex-col border-t border-border", alzadoGrande ? "h-[55%]" : esFachada ? "h-[45%]" : "h-[30%]")}>
             <div className="flex items-center gap-1 px-2 pt-1">
               <Tabs value={abajo} onValueChange={(v) => setAbajo(v as "alzado" | "planta")}>
                 <TabsList className="h-7">
@@ -235,7 +339,7 @@ export default function Editor({ modelo, disenoDemo, catalogo, errorCatalogo, so
         </main>
 
         {/* derecha */}
-        <aside className="flex min-h-0 flex-col border-l border-border">
+        <aside className={cn("flex min-h-0 flex-col border-l border-border", plegadas.der && "hidden")}>
           <Tabs value={tab} onValueChange={(v) => setTab(String(v))} className="flex min-h-0 flex-1 flex-col gap-0">
             <TabsList className="m-2 mb-0 grid grid-cols-3">
               <TabsTrigger value="props" className="text-xs">Propiedades</TabsTrigger>
@@ -260,6 +364,7 @@ export default function Editor({ modelo, disenoDemo, catalogo, errorCatalogo, so
       <GenerarComputo abierto={dlg === "computo"} onCambiar={(v) => setDlg(v ? "computo" : null)} />
       <GuardarPlantilla abierto={dlg === "plantilla"} onCambiar={(v) => setDlg(v ? "plantilla" : null)} />
       <Atajos abierto={dlg === "atajos"} onCambiar={(v) => setDlg(v ? "atajos" : null)} />
+      <PaletaComandos abierta={paleta} onCambiar={setPaleta} onMedida={setMedida} onDialogo={setDlg} />
       <Conflicto />
     </div>
   );
@@ -275,9 +380,14 @@ function Bloque({ titulo, children }: { titulo: string; children: React.ReactNod
 }
 
 function ContadorAvisos() {
-  const n = useEditor((s) => s.res.avisos.filter((a) => a.nivel === "error").length + s.avisosPantalla.length);
-  if (!n) return null;
-  return <span className="ml-1 rounded-full bg-destructive px-1.5 font-mono text-[10px] text-white">{n}</span>;
+  const errores = useEditor((s) => s.res.avisos.filter((a) => a.nivel === "error").length + s.avisosPantalla.filter((a) => a.nivel === "error").length);
+  const avisos = useEditor((s) => s.res.avisos.filter((a) => a.nivel === "aviso").length + s.avisosPantalla.filter((a) => a.nivel === "aviso").length);
+  return (
+    <>
+      {errores > 0 && <span className="ml-1 rounded-full bg-[var(--tb-peligro-solido)] px-1.5 font-mono text-[10px] text-white" title={`${errores} ${errores === 1 ? "error" : "errores"}`}>{errores}</span>}
+      {avisos > 0 && <span className="ml-1 rounded-full border border-[var(--tb-aviso-borde)] bg-[var(--tb-aviso-bg)] px-1.5 font-mono text-[10px] text-[var(--tb-aviso-text)]" title={`${avisos} ${avisos === 1 ? "aviso" : "avisos"}`}>{avisos}</span>}
+    </>
+  );
 }
 
 function EstadoGuardado() {
@@ -287,7 +397,7 @@ function EstadoGuardado() {
     pendiente: { Ic: Loader2, txt: "Cambios sin guardar", cls: "text-muted-foreground" },
     guardando: { Ic: Loader2, txt: "Guardando…", cls: "text-muted-foreground" },
     error: { Ic: CloudOff, txt: "No se pudo guardar", cls: "text-destructive" },
-    conflicto: { Ic: TriangleAlert, txt: "Alguien más lo cambió", cls: "text-amber-600" },
+    conflicto: { Ic: TriangleAlert, txt: "Alguien más lo cambió", cls: "text-[var(--tb-aviso-icono)]" },
     local: { Ic: CloudOff, txt: "Demostración: no se guarda", cls: "text-muted-foreground" },
   }[g];
   return (
@@ -321,11 +431,14 @@ function BarraSuperior({ soloLectura, onDialogo, escenaRef }: { soloLectura: boo
     a.href = out.url;
     a.download = `${(s.diseno.nombre || "modelo").replace(/[^\p{L}\p{N}]+/gu, "-")}.png`;
     a.click();
+    let portada: boolean | null = null;
     if (s.modeloId && !s.soloLectura) {
       const blob = await out.blob();
-      if (blob) subirImagen(s.modeloId, blob).catch(() => undefined);
+      portada = blob ? await subirImagen(s.modeloId, blob).then(() => true, () => false) : false;
     }
-    toast.success("Imagen descargada", { description: s.modeloId ? "También quedó como portada del modelo." : undefined });
+    toast.success("Imagen descargada", {
+      description: portada === true ? "También quedó como portada del modelo." : portada === false ? "No se pudo guardar como portada del modelo." : undefined,
+    });
   };
 
   return (
@@ -378,8 +491,9 @@ function BarraSuperior({ soloLectura, onDialogo, escenaRef }: { soloLectura: boo
   );
 }
 
-function BarraHerramientas({ vista, onVista, onEncuadrar, verVolumenes, onVerVolumenes, onAtajos }: {
+function BarraHerramientas({ vista, onVista, onEncuadrar, verVolumenes, onVerVolumenes, onAtajos, plegadas, onPlegar }: {
   vista: ModoVista; onVista: (v: ModoVista) => void; onEncuadrar: () => void; verVolumenes: boolean; onVerVolumenes: () => void; onAtajos: () => void;
+  plegadas: { izq: boolean; der: boolean }; onPlegar: (lado: "izq" | "der") => void;
 }) {
   const herramienta = useEditor((s) => s.herramienta);
   const pincel = useEditor((s) => s.pincel);
@@ -389,6 +503,9 @@ function BarraHerramientas({ vista, onVista, onEncuadrar, verVolumenes, onVerVol
   const tip = est?.tipologia ?? "";
   return (
     <div className="flex flex-wrap items-center gap-1 border-b border-border px-2 py-1">
+      <Button size="icon-xs" variant="ghost" onClick={() => onPlegar("izq")} title={plegadas.izq ? "Mostrar plantillas y estructuras" : "Ocultar plantillas y estructuras"} aria-label="Columna izquierda">
+        {plegadas.izq ? <PanelLeftOpen /> : <PanelLeftClose />}
+      </Button>
       <Button size="xs" variant={herramienta === "seleccionar" ? "secondary" : "ghost"} aria-pressed={herramienta === "seleccionar"} onClick={() => useEditor.getState().setHerramienta("seleccionar")} title="Seleccionar (V)">
         <MousePointer2 /> Seleccionar
       </Button>
@@ -412,13 +529,21 @@ function BarraHerramientas({ vista, onVista, onEncuadrar, verVolumenes, onVerVol
         </div>
       )}
       {herramienta !== "pincel" && celdas.length > 0 && est && !soloLectura && (
-        <div className="flex items-center gap-0.5 border-l border-border pl-1">
+        <div className="flex flex-wrap items-center gap-0.5 border-l border-border pl-1">
           <span className="text-[11px] text-muted-foreground">{celdas.length} celda{celdas.length === 1 ? "" : "s"}:</span>
-          {PINCELES.filter((p) => pincelDisponible(p.id, tip)).slice(0, 8).map((p) => (
-            <button key={p.id} type="button" title={p.ayuda} onClick={() => pintar(est.id, celdas, p.id)} className="rounded px-1.5 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground">
-              {p.etiqueta}
-            </button>
-          ))}
+          {GRUPOS_PINCEL.map((g) => {
+            const ps = PINCELES.filter((p) => g.ids.includes(p.id) && pincelDisponible(p.id, tip));
+            if (!ps.length) return null;
+            return (
+              <span key={g.nombre} className="flex items-center gap-0.5 border-l border-border/60 pl-1 first-of-type:border-0" title={g.nombre}>
+                {ps.map((p) => (
+                  <button key={p.id} type="button" title={p.ayuda} onClick={() => pintar(est.id, celdas, p.id)} className={cn("rounded px-1.5 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground", p.id === "borrar" && "font-medium text-foreground")}>
+                    {p.etiqueta}
+                  </button>
+                ))}
+              </span>
+            );
+          })}
         </div>
       )}
       <div className="ml-auto flex items-center gap-0.5">
@@ -433,8 +558,11 @@ function BarraHerramientas({ vista, onVista, onEncuadrar, verVolumenes, onVerVol
         <Button size="icon-xs" variant="ghost" onClick={onVerVolumenes} title={verVolumenes ? "Ocultar volúmenes" : "Mostrar volúmenes"} aria-label="Volúmenes">
           {verVolumenes ? <Eye /> : <EyeOff />}
         </Button>
-        <Button size="icon-xs" variant="ghost" onClick={onAtajos} title="Atajos (?)" aria-label="Atajos">
+        <Button size="icon-xs" variant="ghost" onClick={onAtajos} title="Atajos (?) · paleta Ctrl+K" aria-label="Atajos">
           <Keyboard />
+        </Button>
+        <Button size="icon-xs" variant="ghost" onClick={() => onPlegar("der")} title={plegadas.der ? "Mostrar propiedades" : "Ocultar propiedades"} aria-label="Columna derecha">
+          {plegadas.der ? <PanelRightOpen /> : <PanelRightClose />}
         </Button>
       </div>
     </div>
@@ -469,18 +597,24 @@ function Pie() {
 
 function Atajos({ abierto, onCambiar }: { abierto: boolean; onCambiar: (v: boolean) => void }) {
   const filas: [string, string][] = [
+    ["Ctrl+K", "Paleta de comandos («torre 2,50×1,50 h 12», «pórtico 10», «altura 21»)"],
     ["Ctrl+Z / Ctrl+Shift+Z", "Deshacer / rehacer (con nombre)"],
-    ["Ctrl+S", "Guardar ya"],
+    ["Ctrl+S", "Guardar ya (también con el foco en un campo)"],
+    ["Ctrl+D", "Duplicar la estructura elegida, alineada al lado"],
     ["V · B", "Seleccionar · pincel por celda"],
-    ["0–9 (con pincel)", "Elegir el pincel"],
+    ["0–9 (con pincel)", "Elegir el pincel (con el pincel activo los números no cambian la vista)"],
     ...[...TECLAS_PRESET.entries()].map(([k, p]) => [k.toUpperCase(), `Ubicar ${p.nombre.toLowerCase()}`] as [string, string]),
+    ["L · H", "Largo · altura de la estructura elegida: tipeá y Enter (kg en vivo)"],
+    ["O", "Abertura en las celdas elegidas"],
     ["R", "Girar lo que estás ubicando"],
     ["Alt (al ubicar)", "Soltar sin unir"],
-    ["1 · 2 · 3", "Vista planta · frente · 3D"],
+    ["1 · 2 · 3", "Vista planta · frente · 3D (sin pincel)"],
     ["Z · doble clic", "Encuadrar"],
     ["A", "Agrandar el alzado"],
-    ["Shift+clic", "Sumar celdas a la selección"],
-    ["Supr", "Borrar la estructura seleccionada"],
+    ["Shift+clic · arrastrar", "Sumar celdas · elegir un rectángulo en el alzado"],
+    ["N1… · V1…", "En el alzado: elegir un nivel o un vano entero"],
+    ["Supr (con celdas)", "Volver las celdas a lo generado"],
+    ["⌫ ⌫ · Supr Supr", "Borrar la estructura elegida (dos pulsaciones)"],
     ["Esc", "Cancelar / soltar la selección"],
   ];
   return (

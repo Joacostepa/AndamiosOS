@@ -54,6 +54,7 @@ export function Propiedades() {
 
   return (
     <div className="space-y-3 p-3">
+      <div className="space-y-1">
       <div className="flex items-center gap-2">
         <Input
           key={est.id + est.nombre}
@@ -67,10 +68,11 @@ export function Propiedades() {
           }}
           onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
         />
-        <Badge variant="outline" className="shrink-0">{tip.nombre}</Badge>
-        <Button size="icon-sm" variant="ghost" aria-label="Borrar estructura" title="Borrar estructura (Supr)" disabled={soloLectura} onClick={() => borrarEstructura(est.id)}>
+        <Button size="icon-sm" variant="ghost" aria-label="Borrar estructura" title="Borrar estructura (⌫ dos veces)" disabled={soloLectura} onClick={() => borrarEstructura(est.id)}>
           <Trash2 />
         </Button>
+      </div>
+      <Badge variant="outline">{tip.nombre}</Badge>
       </div>
       {r && (
         <p className="font-mono text-[11px] text-muted-foreground">
@@ -91,7 +93,7 @@ export function Propiedades() {
           </div>
         )}
         {est.sistema === "bastidor" ? (
-          <p className="rounded-md bg-amber-500/10 px-2 py-1 text-[11px] text-amber-700 dark:text-amber-400">
+          <p className="rounded-md bg-[var(--tb-aviso-bg)] px-2 py-1 text-[11px] text-[var(--tb-aviso-text)]">
             Supuesto sin confirmar: bastidor 1,30 × 1,80. Cómputo por kit (toggle en la lista).
           </p>
         ) : (
@@ -114,7 +116,10 @@ export function Propiedades() {
           <div className="flex items-center justify-between gap-2">
             <span className="text-xs text-muted-foreground">Apoyo</span>
             <Chips
-              opciones={tip.apoyos.map((a) => ({ valor: a, etiqueta: NOMBRE_APOYO[a] }))}
+              opciones={tip.apoyos.map((a) => ({
+                valor: a, etiqueta: NOMBRE_APOYO[a],
+                ...(a === "sobre_estructura" && !otras.length ? { deshabilitada: true, titulo: "Agregá otra estructura primero" } : {}),
+              }))}
               valor={apoyo.tipo}
               deshabilitado={soloLectura}
               onElegir={(t) => {
@@ -139,7 +144,7 @@ export function Propiedades() {
               <div className="grid grid-cols-[7.5rem_1fr] items-center gap-2">
                 <span className="text-xs text-muted-foreground">Cuelga de</span>
                 <select
-                  className="h-7 rounded-md border border-input bg-transparent px-2 text-xs"
+                  className="h-7 rounded-md border border-input bg-background px-2 text-xs"
                   value={apoyo.soporte.volumenId ?? (apoyo.soporte.estructuraId ? `E:${apoyo.soporte.estructuraId}` : "")}
                   disabled={soloLectura}
                   onChange={(e) => {
@@ -169,12 +174,12 @@ export function Propiedades() {
                   onElegir={(v) => cambiar("apoyo", { ...apoyo, sujecion: v }, "Sujeción del colgado")}
                 />
               </div>
-              <p className="text-[11px] text-amber-700 dark:text-amber-400">Sin bases en el suelo: verificá el soporte (PREDIMENSIONADO).</p>
+              <p className="text-[11px] text-[var(--tb-aviso-text)]">Sin bases en el suelo: verificá el soporte (PREDIMENSIONADO).</p>
             </div>
           )}
           {apoyo.tipo === "sobre_estructura" && (
             <select
-              className="h-7 w-full rounded-md border border-input bg-transparent px-2 text-xs"
+              className="h-7 w-full rounded-md border border-input bg-background px-2 text-xs"
               value={apoyo.estructuraId}
               disabled={soloLectura}
               onChange={(e) => cambiar("apoyo", { tipo: "sobre_estructura", estructuraId: e.target.value }, "Apoyada sobre otra estructura")}

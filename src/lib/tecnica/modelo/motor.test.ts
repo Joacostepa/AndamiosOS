@@ -321,24 +321,8 @@ test('puertos, buscarSnap y unir', () => {
   assert.equal(quitada.uniones.length, 0);
 });
 
-test('rendimiento: fachada 22 ml × 18 m (Paraná 631)', () => {
-  const d = M.ejemploParana631();
-  for (let i = 0; i < 8; i++) build(d);
-  const t: number[] = [];
-  for (let i = 0; i < 15; i++) {
-    const t0 = performance.now();
-    build(d);
-    t.push(performance.now() - t0);
-  }
-  t.sort((a, b) => a - b);
-  const mediana = t[Math.floor(t.length / 2)];
-  console.log(`  construir() 22 ml × 18 m: mediana ${mediana.toFixed(2)} ms, mín ${t[0].toFixed(2)} ms, ${build(d).piezas.length} piezas`);
-  // El mínimo es el que mide el motor; la mediana sube cuando `node --test` corre
-  // todos los archivos en paralelo, así que tiene un margen amplio para no fallar
-  // por la carga de la máquina.
-  assert.ok(t[0] < 15, `mínimo ${t[0]} ms`);
-  assert.ok(mediana < 40, `mediana ${mediana} ms`);
-});
+// El benchmark de velocidad (Paraná 631) vive en scripts/bench-modelador.mts (npm run bench): con umbrales en
+// ms era inestable en la suite bajo carga.
 
 // ── esquinas en L: geometría construible ──
 const MMx = (v: number) => Math.round(v * 1000);

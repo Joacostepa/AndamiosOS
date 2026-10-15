@@ -136,6 +136,7 @@ export class Escena {
   private anim = 0;
   private modo: ModoVista = "iso";
   private destruida = false;
+  private entorno: RoomEnvironment | null = null;
 
   constructor(contenedor: HTMLDivElement, cb: CallbacksEscena) {
     this.cont = contenedor;
@@ -150,7 +151,8 @@ export class Escena {
     this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     const pmrem = new THREE.PMREMGenerator(this.renderer);
-    this.scene.environment = pmrem.fromScene(new RoomEnvironment(this.renderer), 0.04).texture;
+    this.entorno = new RoomEnvironment(this.renderer);
+    this.scene.environment = pmrem.fromScene(this.entorno, 0.04).texture;
     pmrem.dispose();
     this.scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 0.6));
     const sol = new THREE.DirectionalLight(0xffffff, 1.4);
@@ -202,7 +204,27 @@ export class Escena {
     for (const g of [this.gObra, this.gVol, this.gOver, this.gGhost, this.gPuertos]) vaciar(g, this.compartidas);
     this.geoCil.dispose();
     this.geoCaja.dispose();
+    // materiales compartidos, suelo, grilla y entorno: si no, cada ida y vuelta lista ↔ editor dejaba
+    // recursos de GPU vivos hasta agotar los contextos WebGL del navegador
+    for (const m of [this.matTubo, this.matCaja, this.matLam, this.matPick]) m.dispose();
+    this.suelo.geometry.dispose();
+    (this.suelo.material as THREE.Material).dispose();
+    if (this.grilla) {
+      this.grilla.geometry.dispose();
+      const gm = this.grilla.material as THREE.Material | THREE.Material[];
+      for (const m of Array.isArray(gm) ? gm : [gm]) m.dispose();
+    }
+    this.scene.environment?.dispose();
+    this.scene.environment = null;
+    this.entorno?.traverse((o) => {
+      const m = o as THREE.Mesh;
+      m.geometry?.dispose();
+      const mat = m.material as THREE.Material | THREE.Material[] | undefined;
+      for (const x of Array.isArray(mat) ? mat : mat ? [mat] : []) x.dispose();
+    });
+    this.entorno = null;
     this.renderer.dispose();
+    this.renderer.forceContextLoss();
     this.canvas.remove();
   }
 
@@ -977,35 +999,46 @@ export class Escena {
   // ───────────── imagen PNG ─────────────
   /** Imagen isométrica con fondo blanco y rótulo (título, subtítulo, PREDIMENSIONADO). */
   png({ titulo = "", subtitulo = "", pie = "" }: { titulo?: string; subtitulo?: string; pie?: string } = {}): { url: string; blob: () => Promise<Blob | null> } {
+    // Se renderiza con el MISMO renderer (sin abrir otro contexto WebGL), a 1500 × 940 y 1× para que la
+    // portada quede bien por debajo del tope de subida (4 MB), y se copia al canvas 2D en la misma tarea
+    // (antes de que el navegador presente el cuadro). Todo el estado se restaura en el finally.
     const W = 1500;
     const H = 940;
-    const PR = 2;
-    const off = document.createElement("canvas");
-    const r2 = new THREE.WebGLRenderer({ canvas: off, antialias: true, preserveDrawingBuffer: true });
-    r2.setPixelRatio(PR);
-    r2.setSize(W, H, false);
-    r2.outputColorSpace = THREE.SRGBColorSpace;
     const cam = new THREE.PerspectiveCamera(30, W / H, 0.1, 3000);
     const sph = this.bbox.getBoundingSphere(new THREE.Sphere());
     cam.position.copy(sph.center.clone().add(this.dirIso(0.68).multiplyScalar(this.distanciaPara(sph.radius * 0.92, cam))));
     cam.lookAt(sph.center);
     const PE = paletaExport(this.pal);
-    const vis = [this.gOver.visible, this.gGhost.visible, this.gPuertos.visible];
-    this.gOver.visible = this.gGhost.visible = this.gPuertos.visible = false;
+    const vis = [this.gOver.visible, this.gGhost.visible, this.gPuertos.visible] as const;
     const bg = this.scene.background;
-    this.scene.background = new THREE.Color(PE.fondo);
-    if (this.grilla) this.grilla.visible = false;
-    this.suelo.visible = false;
-    this.recolorear(PE, false);
-    r2.render(this.scene, cam);
+    const tam = this.renderer.getSize(new THREE.Vector2());
+    const pr = this.renderer.getPixelRatio();
     const out = document.createElement("canvas");
-    out.width = W * PR;
-    out.height = (H + 104) * PR;
+    out.width = W;
+    out.height = H + 104;
     const g = out.getContext("2d")!;
     g.fillStyle = "#ffffff";
     g.fillRect(0, 0, out.width, out.height);
-    g.drawImage(off, 0, 0);
-    g.scale(PR, PR);
+    try {
+      this.gOver.visible = this.gGhost.visible = this.gPuertos.visible = false;
+      this.scene.background = new THREE.Color(PE.fondo);
+      if (this.grilla) this.grilla.visible = false;
+      this.suelo.visible = false;
+      this.recolorear(PE, false);
+      this.renderer.setPixelRatio(1);
+      this.renderer.setSize(W, H, false);
+      this.renderer.render(this.scene, cam);
+      g.drawImage(this.canvas, 0, 0, W, H);
+    } finally {
+      this.renderer.setPixelRatio(pr);
+      this.renderer.setSize(tam.x, tam.y, false);
+      this.scene.background = bg;
+      if (this.grilla) this.grilla.visible = true;
+      this.suelo.visible = true;
+      [this.gOver.visible, this.gGhost.visible, this.gPuertos.visible] = vis;
+      this.recolorear();
+      this.renderer.render(this.scene, this.camera);
+    }
     const fuente = getComputedStyle(document.body).fontFamily || "system-ui, sans-serif";
     g.fillStyle = this.pal.sel;
     g.fillRect(36, H + 20, 5, 64);
@@ -1023,13 +1056,6 @@ export class Escena {
     g.font = `400 14px ${fuente}`;
     g.fillText(pie, W - 36, H + 76);
     const url = out.toDataURL("image/png");
-    r2.dispose();
-    r2.forceContextLoss();
-    this.scene.background = bg;
-    if (this.grilla) this.grilla.visible = true;
-    this.suelo.visible = true;
-    [this.gOver.visible, this.gGhost.visible, this.gPuertos.visible] = vis;
-    this.recolorear();
     return { url, blob: () => new Promise((res) => out.toBlob((b) => res(b), "image/png")) };
   }
 }

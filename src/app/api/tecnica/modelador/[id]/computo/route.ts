@@ -3,12 +3,15 @@ import { decisionesValidas, lineasParaComputo, diferenciasComputo, metricasDe, r
 import { contextoComputo, traducirErrorDb } from "@/lib/tecnica/persistencia/servidor";
 import { generarSchema } from "@/lib/tecnica/persistencia/validar";
 import type { RespuestaGenerar } from "@/lib/tecnica/persistencia/tipos";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { fallo, guardia, idInvalido, idValido, invalido, leerJson, sesion } from "../../_comun";
 
 // POST /api/tecnica/modelador/[id]/computo — { obra_id, revision, decisiones, reemplazarOtroModelo?, aceptoOmitidas? }
 // Genera el cómputo REAL de la obra (computos + computo_items con origen 'modelo') vía la RPC
 // tec_generar_computo, que es transaccional, vuelve a chequear la revisión y bloquea si está completado.
 // Las líneas salen del modelo recalculado acá; lo que mande el navegador como BOM se ignora.
+// La RPC solo la puede ejecutar service_role (migración 20261015000004): se llama con el cliente de
+// servicio y el uid ya verificado por guardia(); la RPC revalida los permisos de ese uid.
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +40,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     const decisiones: Record<string, string> = decisionesValidas(diff, p.data.decisiones);
     if (p.data.reemplazarOtroModelo) decisiones._modelo = "reemplazar";
 
-    const { data, error } = await db.rpc("tec_generar_computo", {
+    const { data, error } = await createAdminClient().rpc("tec_generar_computo", {
+      p_uid: g.userId,
       p_modelo: id,
       p_obra: p.data.obra_id,
       p_revision: p.data.revision,

@@ -56,7 +56,9 @@ export function PanelLibre({ r, soloLectura }: { r: EstructuraResuelta; soloLect
     <section className="space-y-2 rounded-lg border border-border p-2">
       <h4 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Estructura libre</h4>
       <p className="text-[11px] text-muted-foreground">
-        {vanosSel.length ? `Vano ${vano?.id} (${fmt(vano?.medida ?? 0)} m${vano?.libre ? ", caño y grampa" : ""}) · ${celdas.length} celda${celdas.length === 1 ? "" : "s"}` : "Tocá una celda en el alzado o en el 3D para crecer desde ahí."}
+        {vanosSel.length
+          ? `Crece desde el vano ${vano?.id} (${fmt(vano?.medida ?? 0)} m${vano?.libre ? ", caño y grampa" : ""}) · ${celdas.length} celda${celdas.length === 1 ? "" : "s"}`
+          : `Sin selección: crece desde el vano ${vano?.id ?? "—"} de la cara exterior. Tocá una celda en el alzado o en el 3D para crecer desde otro lado.`}
       </p>
 
       <div className="space-y-1">
@@ -64,22 +66,22 @@ export function PanelLibre({ r, soloLectura }: { r: EstructuraResuelta; soloLect
         <Chips opciones={vanosCat.map((x) => ({ valor: x, etiqueta: fmt(x) }))} valor={medida} onElegir={setMedida} deshabilitado={soloLectura} />
         <div className="flex items-center gap-2">
           <CampoNumero className="w-24" valor={medida} min={0.2} unidad="m" onCambiar={setMedida} deshabilitado={soloLectura} ariaLabel="Medida libre del vano" />
-          {libre && <span className="text-[11px] text-amber-600">medida libre: caño y grampa</span>}
+          {libre && <span className="text-[11px] text-[var(--tb-aviso-icono)]">medida libre: caño y grampa</span>}
         </div>
       </div>
 
       <div className="grid grid-cols-4 gap-1">
-        <Button size="xs" variant="outline" disabled={soloLectura || !vano} onClick={() => crecer("izq")} title="Crecer hacia la izquierda">
-          <ArrowLeft /> Izq.
+        <Button size="xs" variant="outline" disabled={soloLectura || !vano} onClick={() => crecer("izq")} title="Un vano más al costado, al principio de la fila (en el sentido del alzado)">
+          <ArrowLeft /> Al costado (inicio)
         </Button>
-        <Button size="xs" variant="outline" disabled={soloLectura || !vano} onClick={() => crecer("der")} title="Crecer hacia la derecha">
-          Der. <ArrowRight />
+        <Button size="xs" variant="outline" disabled={soloLectura || !vano} onClick={() => crecer("der")} title="Un vano más al costado, al final de la fila (en el sentido del alzado)">
+          Al costado (final) <ArrowRight />
         </Button>
-        <Button size="xs" variant="outline" disabled={soloLectura || !vano} onClick={() => crecer("afuera")} title="Crecer hacia afuera (otra fila de profundidad)">
-          <ArrowDown /> Afuera
+        <Button size="xs" variant="outline" disabled={soloLectura || !vano} onClick={() => crecer("afuera")} title="Otra fila de profundidad del lado de la cara exterior">
+          <ArrowDown /> Hacia afuera (+profundidad)
         </Button>
-        <Button size="xs" variant="outline" disabled={soloLectura || !vano} onClick={() => crecer("adentro")} title="Crecer hacia adentro">
-          <ArrowUp /> Adentro
+        <Button size="xs" variant="outline" disabled={soloLectura || !vano} onClick={() => crecer("adentro")} title="Otra fila de profundidad del lado de la fachada">
+          <ArrowUp /> Hacia la fachada (+profundidad)
         </Button>
       </div>
       <label className="flex items-center justify-between gap-2 text-xs text-muted-foreground">

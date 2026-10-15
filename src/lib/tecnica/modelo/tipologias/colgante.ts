@@ -103,7 +103,7 @@ const CAMPOS: Campo[] = [
   { ruta: 'params.largo', etiqueta: 'Largo', tipo: 'medida', unidad: 'm', min: 1, max: 120, grupo: 'Medidas' },
   { ruta: 'params.ancho', etiqueta: 'Ancho', tipo: 'medida', unidad: 'm', min: 0.73, max: 20, grupo: 'Medidas' },
   { ruta: 'params.cotaSoporte', etiqueta: 'Cota del soporte', tipo: 'medida', unidad: 'm', min: 2, max: 120, paso: 0.05, grupo: 'Apoyo', ayuda: 'Cara inferior de la losa o del puente. Si elegís un volumen, se toma de ahí.', visibleSi: { ruta: 'params.volumenId', igual: '' } },
-  { ruta: 'params.volumenId', etiqueta: 'Colgar de (volumen)', tipo: 'texto', grupo: 'Apoyo' },
+  { ruta: 'params.volumenId', etiqueta: 'Colgar de', tipo: 'volumen', volumenes: ['losa', 'puente', 'edificio'], grupo: 'Apoyo', ayuda: 'La losa o el puente del que cuelga. Si no hay, «Crear uno» lo arma a la cota del soporte.' },
   { ruta: 'params.alturaColgada', etiqueta: 'Altura colgada', tipo: 'medida', unidad: 'm', min: 1.5, max: 30, paso: 0.5, grupo: 'Medidas' },
   { ruta: 'params.plataformas', etiqueta: 'Plataformas', tipo: 'opcion', opciones: [{ valor: 'abajo', etiqueta: 'Solo abajo' }, { valor: 'cada_2m', etiqueta: 'Cada 2,00' }], grupo: 'Medidas' },
   { ruta: 'params.soporte', etiqueta: 'Se toma de', tipo: 'opcion', opciones: [{ valor: 'losa', etiqueta: 'Losa de hormigón (placa y bulón)' }, { valor: 'acero', etiqueta: 'Viga de acero (grampa de viga)' }, { valor: 'estructura', etiqueta: 'Otra estructura de andamio' }], grupo: 'Apoyo' },

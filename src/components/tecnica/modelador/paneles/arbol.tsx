@@ -43,7 +43,7 @@ export function Arbol() {
                 {e.tipologia === "libre" ? " · libre" : e.medida === "libre" ? " · medida libre" : ""}
               </span>
             </span>
-            {errs > 0 ? <span className="size-2 rounded-full bg-destructive" title={`${errs} errores`} /> : avs > 0 ? <span className="size-2 rounded-full bg-amber-500" title={`${avs} avisos`} /> : null}
+            {errs > 0 ? <span className="size-2 rounded-full bg-destructive" title={`${errs} errores`} /> : avs > 0 ? <span className="size-2 rounded-full bg-[var(--tb-aviso-icono)]" title={`${avs} avisos`} /> : null}
             {nOv > 0 && <span className="size-2 rounded-full bg-primary" title={`${nOv} ajustes de celda`} />}
           </button>
         );

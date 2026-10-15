@@ -11,7 +11,7 @@ import { CRITERIOS } from '../criterios.ts';
 import { PREDIMENSIONADO } from '../constantes.ts';
 import { cotasNiveles, grillaRect } from './comunes/grilla.ts';
 import { avisoEsbeltez, puertosCaja } from './comunes/util-tipologias.ts';
-import { anclarLinea, type AvisoGen, ksDe, largoCatalogo, medida, metricasCaja, opcion, profundidadDe, tramosDe, viseraEnPuntos } from './nuevas-comunes.ts';
+import { anclarLinea, type AvisoGen, ksDe, medida, metricasCaja, opcion, profundidadDe, tramosDe, viseraEnPuntos } from './nuevas-comunes.ts';
 import { fmt, r3 } from '../util.ts';
 
 export interface ParamsBandeja extends Record<string, unknown> {

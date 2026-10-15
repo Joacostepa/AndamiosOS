@@ -187,3 +187,21 @@ test('volúmenes sin definición (cargados a mano): prisma que choca; con `hueco
   (d.contexto.volumenes as (M.Volumen & { hueco?: boolean })[]).push({ id: 'P', tipo: 'edificio', planta: [[0.5, 0.5], [5, 0.5], [5, 5], [0.5, 5]], yBase: 0, yTope: 9, hueco: true });
   assert.deepEqual(M.detectarChoques(d, build(d)), []);
 });
+
+test('volumen sugerido: la escalera del hueco y la losa del colgante se crean y quedan vinculadas', () => {
+  for (const [preset, tipos] of [['hueco_escalera', ['escalera']], ['sobre_escalera', ['escalera']], ['colgante_losa', ['losa', 'puente', 'edificio']], ['torre_azotea', ['edificio', 'losa']]] as const) {
+    const d0 = M.crearDiseno(preset, { catalogo: C });
+    const r0 = build(d0);
+    const d = M.vincularVolumenSugerido(d0, 'E1', [...tipos], r0.estructuras[0].huella);
+    const id = d.estructuras[0].params.volumenId as string;
+    assert.ok(id && d.contexto.volumenes.some((v) => v.id === id), preset);
+    assert.equal(M.volumenesCompatibles(d, [...tipos]).length, 1, preset);
+    const r = build(d);
+    assert.ok(!r.avisos.some((a) => /sin_volumen/.test(a.regla)), `${preset}: vinculado`);
+    if (preset === 'hueco_escalera' || preset === 'sobre_escalera') {
+      // misma escalera que el perfil paramétrico: los mismos apoyos
+      const bases = (x: M.Resultado) => x.estructuras[0].esqueleto.columnas.map((c) => c.ySuelo).sort().join(',');
+      assert.equal(bases(r), bases(r0), `${preset}: mismos apoyos`);
+    }
+  }
+});

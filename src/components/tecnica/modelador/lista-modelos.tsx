@@ -7,9 +7,10 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
+import { toast } from "./util/toast";
 import { crearDiseno, ejemploParana631, type Diseno } from "@/lib/tecnica/modelo";
-import { usePuedeModelador } from "./util/permisos";
+import { useNivelModelador, usePuedeModelador } from "./util/permisos";
+import { useAcceso } from "@/components/providers/acceso-provider";
 import { cn } from "@/lib/utils";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,11 +23,20 @@ import { useArchivarModelo, useCatalogoModelador, useCrearModelo, useModelos } f
 import { etiquetaCategoria, type ModeloLista, type ResumenModelo } from "./datos/tipos";
 import { galeriaAgrupada, iconoDe } from "./util/galeria";
 import { fmt, haceCuanto, kg } from "./util/formato";
-import { Boxes, Building2, Loader2, MoreHorizontal, Plus, Search, Star } from "lucide-react";
+import { Boxes, Building2, Loader2, Lock, MoreHorizontal, Plus, Search, Star } from "lucide-react";
 
 type Filtro = "todos" | "obra" | "sin_obra" | "plantillas";
 
 export function ListaModelos({ obraId }: { obraId: string | null }) {
+  const acceso = useAcceso();
+  const nivel = useNivelModelador();
+  if (acceso && nivel === null) {
+    return <EmptyState icon={Lock} title="No tenés acceso al Modelador" description="Pedile a un administrador el permiso del módulo Modelador (ver o editar)." />;
+  }
+  return <ListaModelosConAcceso obraId={obraId} />;
+}
+
+function ListaModelosConAcceso({ obraId }: { obraId: string | null }) {
   const router = useRouter();
   const puede = usePuedeModelador();
   const [q, setQ] = useState("");
@@ -44,7 +54,7 @@ export function ListaModelos({ obraId }: { obraId: string | null }) {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Modelador</h1>
           <p className="text-sm text-muted-foreground">
-            Andamios en 3D con lista de piezas y cómputo. Todo cálculo es <b className="font-mono text-amber-700 dark:text-amber-400">PREDIMENSIONADO</b>.
+            Andamios en 3D con lista de piezas y cómputo. Todo cálculo es <b className="font-mono text-[var(--tb-aviso-text)]">PREDIMENSIONADO</b>.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -227,7 +237,7 @@ function NuevoModelo({ abierto, onCambiar, obraInicial, onCreado }: {
           </label>
           <label className="space-y-1 text-sm">
             <span className="text-muted-foreground">Obra (opcional)</span>
-            <select className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm" value={obraId} onChange={(e) => setObraSel(e.target.value)}>
+            <select className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm" value={obraId} onChange={(e) => setObraSel(e.target.value)}>
               <option value="">Sin obra (para cotizar)</option>
               {obraInicial && !obras.data?.some((o) => o.id === obraInicial.id) && <option value={obraInicial.id}>{obraInicial.codigo} · {obraInicial.nombre}</option>}
               {(obras.data ?? []).map((o) => <option key={o.id} value={o.id}>{o.codigo} · {o.nombre}</option>)}

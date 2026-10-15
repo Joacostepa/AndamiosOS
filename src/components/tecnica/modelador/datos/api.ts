@@ -1,8 +1,7 @@
 "use client";
 
 // Acceso a la API del modelador desde la pantalla. Todo sale de los hooks oficiales
-// (src/hooks/use-modelador.ts); acá solo queda el catálogo con respaldo: si la ruta falla, el
-// editor usa el catálogo de prueba y lo dice en pantalla.
+// (src/hooks/use-modelador.ts); acá solo queda el catálogo con respaldo de desarrollo.
 
 import { useQuery } from "@tanstack/react-query";
 import { CATALOGO_FIXTURE, type Catalogo } from "@/lib/tecnica/modelo";
@@ -16,10 +15,15 @@ export {
 
 const BASE = "/api/tecnica/modelador";
 
+/** En producción nunca se usa el catálogo de prueba: pesos y stock inventados no pueden llegar a la base. */
+export const PERMITE_FIXTURE = process.env.NODE_ENV !== "production";
+
 /**
- * Catálogo real (catalogo_piezas + stock + tec_pieza_mapa + tec_kits). Si la ruta no responde,
- * devuelve el catálogo de prueba con `error` para que la pantalla avise que códigos y pesos no
- * son los reales. La key es distinta de la del hook oficial porque la forma del dato cambia.
+ * Catálogo real (catalogo_piezas + stock + tec_pieza_mapa + tec_kits).
+ * - Producción: si la ruta falla (sesión vencida, 500, red) la query FALLA y reintenta; la página muestra
+ *   un estado de error. Nunca cae al catálogo de prueba.
+ * - Desarrollo: cae al catálogo de prueba con `error`, para poder trabajar sin base, y el editor lo dice.
+ * La key es distinta de la del hook oficial porque la forma del dato cambia.
  */
 export function useCatalogoModelador() {
   return useQuery({
@@ -31,9 +35,11 @@ export function useCatalogoModelador() {
         if (!res.ok || !body?.catalogo) throw new Error(body?.error ?? `Error ${res.status}`);
         return { catalogo: body.catalogo, avisos: body.avisos ?? [], error: null };
       } catch (e) {
+        if (!PERMITE_FIXTURE) throw e;
         return { catalogo: CATALOGO_FIXTURE, avisos: [], error: e instanceof Error ? e.message : "No se pudo leer el catálogo" };
       }
     },
+    retry: 2,
     staleTime: 5 * 60_000,
     refetchOnWindowFocus: false,
   });

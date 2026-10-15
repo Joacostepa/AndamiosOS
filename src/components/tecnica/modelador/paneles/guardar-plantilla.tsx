@@ -4,7 +4,7 @@
 // compuesta) como plantilla propia y aparece en la galería en "Mis plantillas", sin programar.
 
 import { useState } from "react";
-import { toast } from "sonner";
+import { toast } from "../util/toast";
 import { tipologia } from "@/lib/tecnica/modelo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

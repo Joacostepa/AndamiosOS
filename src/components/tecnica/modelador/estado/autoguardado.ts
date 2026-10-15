@@ -7,6 +7,7 @@
 import { useEffect } from "react";
 import type { Diseno, Resultado } from "@/lib/tecnica/modelo";
 import { resumenDe as resumenPersistencia } from "@/lib/tecnica/persistencia/computo";
+import { serializarGuardado } from "@/lib/tecnica/persistencia/candado";
 import { ErrorRevision, guardarModelo } from "../datos/api";
 import type { ResumenModelo } from "../datos/tipos";
 import { useEditor } from "./store";
@@ -19,8 +20,16 @@ export function resumenDe(res: Resultado, diseno: Diseno): ResumenModelo {
   return resumenPersistencia(res, diseno);
 }
 
-/** Guarda ya (Ctrl+S o "sobrescribir"). Devuelve true si quedó guardado. */
-export async function guardarAhora(forzar = false): Promise<boolean> {
+// Un solo guardado en vuelo (src/lib/tecnica/persistencia/candado.ts, con tests): si llega otro pedido
+// mientras tanto, queda pendiente y se manda al terminar con la revisión nueva.
+const candado = serializarGuardado((forzar) => guardarUnaVez(forzar));
+
+/** Guarda ya (Ctrl+S o "sobrescribir"). Devuelve true si quedó guardado. Serializa los guardados. */
+export function guardarAhora(forzar = false): Promise<boolean> {
+  return candado.pedir(forzar);
+}
+
+async function guardarUnaVez(forzar: boolean): Promise<boolean> {
   const s = useEditor.getState();
   if (!s.modeloId || s.soloLectura) return false;
   if (!forzar && s.version === s.versionGuardada) return true;
@@ -28,9 +37,12 @@ export async function guardarAhora(forzar = false): Promise<boolean> {
   const revision = forzar && revisionRemota !== null ? revisionRemota : s.revision ?? 1;
   s.setGuardado("guardando");
   try {
+    // obra_id no viaja en el autoguardado: la columna manda (la RPC de cómputo puede vincular la obra) y
+    // solo se cambia cuando el usuario elige otra obra. Con el catálogo de prueba no se guarda el resumen
+    // (pesos inventados nunca llegan a la base).
     const nueva = await guardarModelo({
       id: s.modeloId, revision, diseno: s.diseno, nombre: s.diseno.nombre || "Modelo sin nombre",
-      obra_id: s.diseno.obra?.id ?? null, resumen: resumenDe(s.res, s.diseno),
+      ...(s.catalogo.fuente === "fixture" ? {} : { resumen: resumenDe(s.res, s.diseno) }),
     });
     revisionRemota = null;
     useEditor.getState().marcarGuardado(nueva, version);

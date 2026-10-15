@@ -44,6 +44,12 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     if (b.resumen !== undefined) cambios.resumen = b.resumen;
     let obra = undefined as Awaited<ReturnType<typeof leerObra>> | null | undefined;
     if (b.obra_id !== undefined) {
+      if (b.obra_id) {
+        const { data: fila } = await db.from("tec_modelos").select("es_plantilla").eq("id", id).maybeSingle();
+        if ((fila as { es_plantilla?: boolean } | null)?.es_plantilla) {
+          return NextResponse.json({ error: "Una plantilla no se vincula a una obra: creá un modelo desde la plantilla." }, { status: 400 });
+        }
+      }
       obra = b.obra_id ? await leerObra(db, b.obra_id) : null;
       cambios.obra_id = obra?.id ?? null;
     }

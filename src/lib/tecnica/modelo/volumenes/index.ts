@@ -6,3 +6,5 @@ export { carasDelDiseno, buscarCara, cadenaContorno, propuestaParaCara, agregarE
 export type { OpcionesCara, Propuesta } from './frentes.ts';
 export { detectarChoques, avisosDeChoque, accionesRetiro } from './choques.ts';
 export type { Choque } from './choques.ts';
+export { volumenesCompatibles, volumenSugerido, vincularVolumenSugerido } from './sugerido.ts';
+export type { TipoVolumen } from './sugerido.ts';

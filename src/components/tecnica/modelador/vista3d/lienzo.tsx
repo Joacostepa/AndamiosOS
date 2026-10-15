@@ -4,11 +4,11 @@
 // traduce sus intenciones (clic, pincel, cara de volumen, colocación) a operaciones del núcleo.
 
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { toast } from "sonner";
+import { toast } from "../util/toast";
 import { agregarEnCara, type Diseno, type Pieza } from "@/lib/tecnica/modelo";
 import { cn } from "@/lib/utils";
 import { useEditor, todosLosAvisos } from "../estado/store";
-import { pintarDiseno } from "../estado/acciones";
+import { conContexto, pintarDiseno } from "../estado/acciones";
 import { fmt } from "../util/formato";
 import { Escena, type DatosEscena } from "./escena";
 
@@ -113,8 +113,9 @@ export function Lienzo({ escenaRef, verVolumenes, className }: { escenaRef: RefO
         }
         setHint(snap ? `Encastra en ${snap.etiqueta}` : alt ? "Sin unir (Alt)" : "Libre: acercate a una línea azul para unir");
       },
-      alColocado({ diseno, estructuraId, snap }) {
+      alColocado({ diseno: d0, estructuraId, snap }) {
         const s = useEditor.getState();
+        const diseno = conContexto(d0, estructuraId, s.catalogo);
         const nombre = diseno.estructuras.find((e) => e.id === estructuraId)?.nombre ?? "estructura";
         s.setColocando(null);
         if (s.commit(diseno, snap ? `Agregar ${nombre} (unión con ${snap.etiqueta.split(" · ").slice(0, 2).join(" · ")})` : `Agregar ${nombre}`)) {

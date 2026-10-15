@@ -949,6 +949,14 @@ Reglas de convivencia:
   - `crearDiseno(id, opciones)` acepta id de tipología **o** de preset, y `opciones.catalogo` (B lo pasa para que la estructura libre elija caño y grampa en bandas sin diagonal de catálogo). `unir`, `puertosDe`, `buscarSnap`, `editarEsqueleto`, `convertirALibre` y `aplicarReparacion` aceptan el catálogo como último parámetro opcional.
   - Overrides de la fachada: clave `"<vanoExterior>@<k>"` (k = índice de cota) o `"<vanoExterior>@N<n>"` (n = nivel, la usa la migración de la maqueta). Los vanos exteriores de la fachada se llaman `f<frente>e<vano>`.
   - Helpers de test para tipologías nuevas en `src/lib/tecnica/modelo/test-utils.ts` (`assertDiagonalesEnNodos`, `bomPlano`, `porFamilia`, `coordenadasFinitas`).
+- **14/10/2026 · C (persistencia) · agregados y precisiones de §8:**
+  - `tec_pieza_mapa` suma `rinde` y `unidad_compra` (placa de fenólico 2,9768 m², media sombra 200 m², concertina 10 m): `catalogo_piezas` no los tiene.
+  - `catalogoDesdeFilas(filas, { inferir })` devuelve `{ catalogo, avisos }`. Si un código no tiene **ninguna** fila en `tec_pieza_mapa`, se infiere por la convención del código (`persistencia/semillas.ts`, prioridad 900; una fila de OT gana). Peso `0` en Odoo = «sin peso». `GET /catalogo` devuelve `{ catalogo, avisos }`.
+  - `revision` sube **solo cuando cambia `diseno`** (trigger). Renombrar o vincular a obra no pide revisión ni la invalida. PATCH con `diseno` exige `revision`.
+  - Nuevas: `POST /[id]/duplicar` (`{ nombre?, obra_id? }`) y filtro `?sinObra=1` en la lista. `ModeloFila.computo` = último cómputo generado desde el modelo (`desactualizado` si su `modelo_revision` ≠ `revision`).
+  - Generar: `{ obra_id, revision, decisiones, reemplazarOtroModelo?, aceptoOmitidas? }`. 422 + `omitidas` si hay líneas sin código y no se confirmó; 423 si el cómputo está completado; 409 si cambió la revisión; error si el cómputo de la obra salió de **otro** modelo y no se mandó `reemplazarOtroModelo`.
+  - `DiffLinea.tipo` suma `quita_editado` (fila editada a mano que el modelo ya no tiene: `mantener` | `borrar`) y `manual` (no se toca). `sumar` = cantidad del modelo + lo que la persona había agregado a mano (`actual − modelo_cantidad` anterior).
+  - `useSaveComputoItems` marca `modelo_editado` una fila del modelo cuya cantidad cambió, y la vuelve a `modelo` si vuelve a la cantidad del modelo (`persistencia/origen.ts`).
 
 ---
 

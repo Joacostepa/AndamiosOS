@@ -4,7 +4,7 @@
 // una tipología nueva registrada en el núcleo aparece con su panel sin tocar la pantalla.
 
 import { useState } from "react";
-import { vincularVolumenSugerido, volumenesCompatibles, type Campo, type Catalogo, type Estructura, type EstructuraResuelta } from "@/lib/tecnica/modelo";
+import { vincularVolumenSugerido, volumenesCompatibles, VUELOS_MENSULA, type Campo, type Catalogo, type Estructura, type EstructuraResuelta } from "@/lib/tecnica/modelo";
 import { useEditor } from "../estado/store";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
@@ -71,6 +71,7 @@ const listaCatalogo = (cat: Catalogo, c: Campo["catalogo"]): number[] => {
     case "vanos": return m.vanos;
     case "profundidades": return m.profundidades;
     case "mensulas": return m.mensulas;
+    case "vuelosMensula": return [...VUELOS_MENSULA];
     case "vigasCelosia": return m.vigasCelosia;
     default: return [];
   }
@@ -169,7 +170,7 @@ export function CampoParam({ campo, est, r, catalogo, deshabilitado, onCambiar }
       );
     default: {
       if (ruta === "params.accesos") return <Fila etiqueta={etiqueta} ayuda={campo.ayuda}><CampoAccesos valor={valor} deshabilitado={deshabilitado} onCambiar={(v, n) => onCambiar(ruta, v, n)} /></Fila>;
-      if (ruta === "params.mensulas") return <div className="space-y-1 py-1">{etiqueta}<CampoMensulas valor={valor} catalogo={catalogo} deshabilitado={deshabilitado} onCambiar={(v, n) => onCambiar(ruta, v, n)} /></div>;
+      if (ruta === "params.mensulas") return <div className="space-y-1 py-1">{etiqueta}<CampoMensulas valor={valor} deshabilitado={deshabilitado} onCambiar={(v, n) => onCambiar(ruta, v, n)} /></div>;
       // texto: escalares como texto, estructuras como JSON (campos avanzados)
       const esObj = valor !== null && typeof valor === "object";
       return (
@@ -260,10 +261,10 @@ function CampoAccesos({ valor, deshabilitado, onCambiar }: { valor: unknown; des
 
 interface FilaMensula { lado: "afuera" | "fachada"; brazo: number; desdeNivel?: number; hastaNivel?: number }
 
-/** Ménsulas de la fachada: filas con lado, brazo de catálogo y rango de niveles (en vez de JSON). */
-function CampoMensulas({ valor, catalogo, deshabilitado, onCambiar }: { valor: unknown; catalogo: Catalogo; deshabilitado: boolean; onCambiar: (v: FilaMensula[], nombre: string) => void }) {
+/** Ménsulas de la fachada: filas con lado, vuelo y rango de niveles (en vez de JSON). */
+function CampoMensulas({ valor, deshabilitado, onCambiar }: { valor: unknown; deshabilitado: boolean; onCambiar: (v: FilaMensula[], nombre: string) => void }) {
   const filas = (Array.isArray(valor) ? valor : []) as FilaMensula[];
-  const brazos = catalogo.medidas.multi.mensulas;
+  const brazos: readonly number[] = VUELOS_MENSULA;
   const set = (i: number, patch: Partial<FilaMensula>, n: string) => onCambiar(filas.map((f, j) => (j === i ? { ...f, ...patch } : f)), n);
   const nivel = (v: number | undefined) => (v === undefined ? "" : String(v + 1));
   return (

@@ -13,6 +13,7 @@ import { rellenarLargo } from '../medida/rellenar.ts';
 import { bandaConDiagonal, celdaDiagonal, sentidoZigzag, vanosArriostrados } from '../reglas/diagonales.ts';
 import { clamp, EPS, fmt, masCercano, num, r3 } from '../util.ts';
 import type { GrillaRect } from './comunes/grilla.ts';
+import { voladizoMensula } from './comunes/visera.ts';
 
 export type AvisoGen = Omit<Aviso, 'id'>;
 
@@ -211,8 +212,9 @@ export function viseraEnPuntos(o: OpcionesViseraPuntos): { elementos: Elemento[]
     } else if (o.soporte === 'cano') {
       els.push(...canoGrampa(`${pf}:sop${i}`, raiz, punta, { grupo: 'bandeja', canos: m.canos }));
     } else if (o.soporte === 'mensula') {
-      const drop = Math.min(0.5, o.ancho * 0.7);
-      els.push({ id: `${pf}:men${i}`, familia: 'mensula', medidas: { largo: sop.largo }, a: raiz, b: punta, grupo: 'bandeja', primitivas: [{ a: raiz, b: punta }, { a: [s, r3(y - drop), o.t0], b: punta }] });
+      const v = voladizoMensula(`${pf}:men${i}`, raiz, punta, sop.largo, o.ancho);
+      els.push(...v.elementos);
+      if (v.cateto !== null && i === 0) avisos.push(`La diagonal del soporte baja ${fmt(v.cateto)} y no ${fmt(CRITERIOS.caidaDiagonalVoladizo)}: la bandeja está muy baja.`);
     } else {
       // la viga se dibuja con su largo real de catálogo: la raíz queda a sop.largo de la punta
       const r0: V3 = [s, y, r3(tPunta - sop.largo)];

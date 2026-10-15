@@ -10,6 +10,7 @@
 import type { Accion, Aviso, Diseno, Estructura, Pieza, Resultado, V2 } from '../tipos.ts';
 import { medidasPorDefecto, type MedidasCatalogo } from '../catalogo/catalogo.ts';
 import { PREDIMENSIONADO } from '../constantes.ts';
+import { CRITERIOS } from '../criterios.ts';
 import { clone, fmt, r3 } from '../util.ts';
 import { dentroSolido, distanciaAdentro, ladoMasCercano, solidosDe } from './geometria.ts';
 import type { Solido, VolumenModelado } from './tipos.ts';
@@ -136,7 +137,9 @@ export function avisosDeChoque(diseno: Diseno, resultado: Pick<Resultado, 'pieza
       const frentes = (res?.info?.frentes as { niveles?: { cota: number }[] }[] | undefined) || [];
       const niveles = frentes[0]?.niveles || [];
       const topeSaliente = Math.max(c.yMax, ...solidosDe(vol!, vols).map((s) => s.yTope));
-      const desde = niveles.findIndex((l) => l.cota >= topeSaliente + 0.3);
+      // vuelo > 0,45: la diagonal del voladizo baja 2,00 desde el nivel, así que el nivel queda 2,00 más arriba
+      const bajo = ok !== undefined && ok > CRITERIOS.mensulaPiezaMax + 1e-6 ? CRITERIOS.caidaDiagonalVoladizo : 0;
+      const desde = niveles.findIndex((l) => l.cota >= topeSaliente + 0.3 + bajo);
       if (ok && desde >= 0 && (def.clase === 'marquesina' || def.clase === 'cornisa')) {
         reps.push({
           etiqueta: `Retirar a ${fmt(nuevo)} y acercar con ménsulas de ${fmt(ok)} desde el nivel ${desde + 1}`,
@@ -149,9 +152,16 @@ export function avisosDeChoque(diseno: Diseno, resultado: Pick<Resultado, 'pieza
       }
       if (ok && def.clase === 'balcon' && niveles.length) {
         // balcones repetidos en altura: ménsulas hacia la fachada en los niveles que no chocan con ningún balcón
-        // (la ménsula baja ~0,50 bajo la plataforma y su baranda sube 1,00), así se trabaja la fachada entre balcones
+        // (la ménsula de 0,45 baja ~0,50 bajo la plataforma; un vuelo mayor, 2,00 con su diagonal; la baranda
+        // sube 1,00), así se trabaja la fachada entre balcones. Si el vuelo mayor no entra en ningún nivel, 0,45.
         const sol = solidosDe(vol!, vols);
-        const libre = niveles.map((l) => !sol.some((x) => x.yTope > l.cota - 0.55 && x.yBase < l.cota + 1.05));
+        const libresCon = (vuelo: number) => {
+          const caida = vuelo > CRITERIOS.mensulaPiezaMax + 1e-6 ? CRITERIOS.caidaDiagonalVoladizo : 0.5;
+          return niveles.map((l) => !sol.some((x) => x.yTope > l.cota - 0.05 - caida && x.yBase < l.cota + 1.05));
+        };
+        const vuelos = [...new Set([ok, CRITERIOS.mensulaPiezaMax])].filter((v) => v <= ok + 1e-6);
+        const vuelo = vuelos.find((v) => libresCon(v).some(Boolean)) ?? ok;
+        const libre = libresCon(vuelo);
         const tramos: { desdeNivel: number; hastaNivel: number }[] = [];
         libre.forEach((v, i) => {
           if (!v) return;
@@ -161,11 +171,11 @@ export function avisosDeChoque(diseno: Diseno, resultado: Pick<Resultado, 'pieza
         });
         const n = libre.filter(Boolean).length;
         if (n) reps.push({
-          etiqueta: `Retirar a ${fmt(nuevo)} y acercar con ménsulas de ${fmt(ok)} en ${n} nivel${n > 1 ? 'es' : ''} entre balcones`,
+          etiqueta: `Retirar a ${fmt(nuevo)} y acercar con ménsulas de ${fmt(vuelo)} en ${n} nivel${n > 1 ? 'es' : ''} entre balcones`,
           accion: { tipo: 'lote', acciones: [
             ...accionesRetiro(est, nuevo),
-            { tipo: 'param', estructuraId: est.id, ruta: 'params.mensulas', valor: tramos.map((t) => ({ lado: 'fachada', brazo: ok, ...t })) },
-            { tipo: 'param', estructuraId: est.id, ruta: 'params.brazoMensula', valor: ok },
+            { tipo: 'param', estructuraId: est.id, ruta: 'params.mensulas', valor: tramos.map((t) => ({ lado: 'fachada', brazo: vuelo, ...t })) },
+            { tipo: 'param', estructuraId: est.id, ruta: 'params.brazoMensula', valor: vuelo },
           ] as Accion[] },
         });
       }

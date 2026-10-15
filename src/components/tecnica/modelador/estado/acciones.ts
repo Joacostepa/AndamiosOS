@@ -6,7 +6,7 @@
 import { toast } from "../util/toast";
 import {
   agregarEstructura, aplicarReparacion, construir, convertirALibre, editarEsqueleto, partirClave, quitarEstructura, setOverride,
-  tipologia, vincularVolumenSugerido, volumenesCompatibles,
+  tipologia, vincularVolumenSugerido, volumenesCompatibles, VUELO_MENSULA_DEFECTO, vueloMensula,
   type Accion, type Catalogo, type Diseno, type EstructuraResuelta, type OpEsqueleto, type OverrideCelda, type Resultado,
 } from "@/lib/tecnica/modelo";
 import { useEditor, type Pincel } from "./store";
@@ -108,7 +108,7 @@ export const PINCELES: { id: Pincel; etiqueta: string; tecla?: string; ayuda: st
   { id: "abertura", etiqueta: "Abertura", tecla: "7", ayuda: "Paso sin horizontales intermedios ni diagonal." },
   { id: "lona", etiqueta: "Lona", tecla: "8", ayuda: "Cerramiento de lona en la cara." },
   { id: "cano", etiqueta: "Caño y grampa", tecla: "9", ayuda: "Arma la celda con caño y grampa (medida libre)." },
-  { id: "mensula", etiqueta: "Ménsula", ayuda: "Ménsula hacia afuera en los nodos de la celda." },
+  { id: "mensula", etiqueta: "Ménsula", ayuda: "Voladizo hacia afuera en los nodos de la celda, con el vuelo elegido (0,45 = ménsula; más = horizontal + diagonal 2,00). Repintar con otro vuelo lo cambia; con el mismo, lo saca." },
   { id: "anclaje", etiqueta: "Anclaje", ayuda: "Anclaje a la fachada en los nodos de la celda." },
   { id: "borrar", etiqueta: "Limpiar", tecla: "0", ayuda: "Vuelve la celda a lo que dicen las reglas." },
 ];
@@ -143,8 +143,10 @@ function nodosDeCelda(r: EstructuraResuelta, clave: string): string[] {
   return [`${v.a}@${k}`, `${v.b}@${k}`];
 }
 
-/** Lo que hace un pincel sobre un diseño (sin commit). */
-export function pintarDiseno(diseno: Diseno, res: Resultado, estructuraId: string, celdas: string[], pincel: Pincel, catalogo = st().catalogo): Diseno {
+const mismoVuelo = (a: number | undefined, b: number) => a !== undefined && Math.abs(a - b) < 0.001;
+
+/** Lo que hace un pincel sobre un diseño (sin commit). `vuelo`: el del pincel de ménsula. */
+export function pintarDiseno(diseno: Diseno, res: Resultado, estructuraId: string, celdas: string[], pincel: Pincel, catalogo = st().catalogo, vuelo = st().vueloMensula): Diseno {
   const est = diseno.estructuras.find((e) => e.id === estructuraId);
   const r = res.estructuras.find((e) => e.id === estructuraId);
   if (!est || !r) return diseno;
@@ -184,9 +186,16 @@ export function pintarDiseno(diseno: Diseno, res: Resultado, estructuraId: strin
         case "cano":
           if (!pano) ops.push({ op: "celda", clave, valor: { cano: !ce.cano } });
           break;
-        case "mensula":
-          for (const n of nodosDeCelda(r, clave)) ops.push({ op: "nodo", clave: n, valor: { mensula: esq.nodos[n]?.mensula ? null : { dir: "afuera", brazo: 0.73 } } });
+        case "mensula": {
+          // mismo vuelo en los dos nodos: se saca; si no, se pone (o se cambia) con el vuelo elegido
+          const ns = nodosDeCelda(r, clave);
+          const sacar = ns.length > 0 && ns.every((n) => mismoVuelo(esq.nodos[n]?.mensula?.brazo, vuelo));
+          for (const n of ns) {
+            const m = esq.nodos[n]?.mensula;
+            ops.push({ op: "nodo", clave: n, valor: { mensula: sacar ? null : { ...(m ?? { dir: "afuera" }), brazo: vuelo } } });
+          }
           break;
+        }
         case "anclaje":
           for (const n of nodosDeCelda(r, clave)) ops.push({ op: "nodo", clave: n, valor: { anclaje: esq.nodos[n]?.anclaje ? null : true } });
           break;
@@ -212,7 +221,17 @@ export function pintarDiseno(diseno: Diseno, res: Resultado, estructuraId: strin
       case "abertura": valor = { abertura: actual.abertura ? null : true }; break;
       case "lona": valor = { lona: actual.lona ? null : true }; break;
       case "cano": valor = { cano: actual.cano ? null : true }; break;
-      case "mensula": valor = { mensula: actual.mensula ? null : "afuera" }; break;
+      case "mensula": {
+        if (!actual.mensula) {
+          valor = { mensula: "afuera", brazoMensula: vuelo };
+          break;
+        }
+        // vuelo que tiene hoy la celda: el del override o, en diseños viejos, el que armó la plantilla
+        const enNodos = nodosDeCelda(r, clave).map((n) => r.esqueleto.nodos[n]?.mensula?.brazo).find((b) => b !== undefined);
+        const hoy = vueloMensula(actual.brazoMensula, enNodos ?? VUELO_MENSULA_DEFECTO);
+        valor = mismoVuelo(hoy, vuelo) ? { mensula: null, brazoMensula: null } : { brazoMensula: vuelo };
+        break;
+      }
       case "anclaje": valor = { anclaje: actual.anclaje ? null : true }; break;
       case "borrar": valor = null; break;
       default: valor = undefined;
@@ -231,7 +250,8 @@ export function pintar(estructuraId: string, celdas: string[], pincel: Pincel, b
   const desde = base ?? s.diseno;
   const d = pintarDiseno(desde, s.res, estructuraId, celdas, pincel);
   if (d === desde) return false;
-  return s.commit(d, `${NOMBRE_PINCEL[pincel]} en ${celdas.length} celda${celdas.length === 1 ? "" : "s"}`, base);
+  const nombre = pincel === "mensula" ? `${NOMBRE_PINCEL[pincel]} ${s.vueloMensula.toFixed(2).replace(".", ",")}` : NOMBRE_PINCEL[pincel];
+  return s.commit(d, `${nombre} en ${celdas.length} celda${celdas.length === 1 ? "" : "s"}`, base);
 }
 
 /** ¿El pincel aplica a esta estructura? (algunos solo editan el esqueleto de la libre). */

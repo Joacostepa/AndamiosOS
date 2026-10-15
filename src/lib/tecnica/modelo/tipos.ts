@@ -86,6 +86,8 @@ export interface OverrideCelda {
   sinPlataforma?: boolean;
   lona?: boolean;
   mensula?: 'afuera' | 'fachada' | false;
+  /** Vuelo de la ménsula pintada (m). Sin dato: el de la plantilla (fachada) o 0,73. */
+  brazoMensula?: number;
   anclaje?: boolean;
   /** Forzar o quitar la diagonal de una celda de cara. */
   diagonal?: 'sube' | 'baja' | false;

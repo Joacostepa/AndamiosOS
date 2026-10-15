@@ -20,8 +20,9 @@ test('bandeja: normalizar con params vacíos o absurdos no tira y avisa', () => 
 
 test('bandeja: golden por preset, bien armada y «Convertir a libre» da la misma BOM', () => {
   const esperado: Record<string, Record<string, number>> = {
-    bandeja_45: { vertical: 20, horizontal: 43, diagonal: 4, tablon: 8, mensula: 5, base_regulable: 10, anclaje: 7, cano: 25 },
-    bandeja_90: { vertical: 20, horizontal: 43, diagonal: 4, tablon: 8, mensula: 5, base_regulable: 10, anclaje: 7, cano: 25 },
+    // soportes de 1,09 (armado ABA): horizontal de 1,09 + diagonal 2,00 × 1,09 en vez de ménsula (5 + 5)
+    bandeja_45: { vertical: 20, horizontal: 48, diagonal: 9, tablon: 8, base_regulable: 10, anclaje: 7, cano: 25 },
+    bandeja_90: { vertical: 20, horizontal: 48, diagonal: 9, tablon: 8, base_regulable: 10, anclaje: 7, cano: 25 },
     bandeja_amplia: { vertical: 30, horizontal: 43, diagonal: 6, tablon: 8, viga_celosia: 5, base_regulable: 10, anclaje: 7, cano: 36 },
   };
   for (const [id, g] of Object.entries(esperado)) {
@@ -43,9 +44,12 @@ test('bandeja: visera vertical a 90° y a 45°, con lona y fenólico', () => {
   assert.ok(mont45.every((p) => Math.abs(Math.abs(p.b[1] - p.a[1]) - Math.hypot(p.b[0] - p.a[0], p.b[2] - p.a[2])) < 0.002), 'montantes a 45°');
   assert.ok(r45.bom.some((l) => l.codigo === 'LONA-PVC' && (l.medida || 0) > 10));
   assert.ok(r45.bom.some((l) => l.codigo === 'PLACA-FEN-122x244'));
-  // las ménsulas arrancan en un nodo de la cara exterior (columna × cota de la bandeja)
+  // los soportes (horizontal del vuelo + diagonal 2,00) arrancan en la columna de la cara exterior
   const cols = new Set(r45.piezas.filter((p) => p.familia === 'vertical').map((p) => `${p.a[0]}|${p.a[2]}`));
-  assert.ok(r45.piezas.filter((p) => p.familia === 'mensula').every((p) => cols.has(`${p.a[0]}|${p.a[2]}`)));
+  const sop = r45.piezas.filter((p) => /:men\d+:[hd]$/.test(p.elemento ?? ''));
+  assert.equal(sop.length, 10);
+  assert.ok(sop.every((p) => cols.has(`${p.a[0]}|${p.a[2]}`)));
+  assert.ok(sop.filter((p) => p.familia === 'diagonal').every((p) => Math.abs(p.b[1] - p.a[1] - 2) < 0.002), 'la diagonal baja 2,00');
 });
 
 test('bandeja amplia: vigas de celosía voladas con tornapunta a 45° desde el anillo de abajo', () => {

@@ -119,8 +119,9 @@ test('marquesina: choca con la fachada → «Retirar y acercar con ménsulas» l
   d = M.aplicarReparacion(d, av[0].reparaciones[0].accion, C);
   r = build(d);
   assert.deepEqual(M.avisosDeChoque(d, r, C.medidas), []);
-  const men = r.piezas.filter((p) => p.familia === 'mensula');
-  assert.ok(men.length > 0 && men.every((p) => p.a[1] > 3.25), 'ménsulas por encima de la marquesina');
+  // voladizo de 1,09: horizontal + diagonal 2,00 que baja al parante; todo por encima de la marquesina
+  const men = r.piezas.filter((p) => /:(men|mh|md):/.test(p.id));
+  assert.ok(men.length > 0 && men.every((p) => Math.min(p.a[1], p.b[1]) > 3.25), 'voladizos por encima de la marquesina');
   assert.ok(d.estructuras[0].params.retiro as number >= 1.35 - 1e-9);
 });
 
@@ -138,7 +139,7 @@ test('balcones repetidos en cada piso: un solo aviso por fachada y «Retirar» l
   const dm = M.aplicarReparacion(d, conMen!.accion, C);
   const rm = build(dm);
   assert.deepEqual(M.avisosDeChoque(dm, rm, C.medidas), []);
-  assert.ok(rm.piezas.some((p) => p.familia === 'mensula'), 'hay ménsulas hacia la fachada');
+  assert.ok(rm.piezas.some((p) => /:(men|mh):.*@fachada@/.test(p.id)), 'hay voladizos hacia la fachada');
   d = M.aplicarReparacion(d, av[0].reparaciones[av[0].reparaciones.length - 1].accion, C);
   assert.deepEqual(M.avisosDeChoque(d, build(d), C.medidas), []);
 });

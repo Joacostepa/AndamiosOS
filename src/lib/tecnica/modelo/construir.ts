@@ -5,7 +5,7 @@
  */
 import type { Aviso, CeldaResuelta, Diseno, Esqueleto, Estructura, EstructuraResuelta, Pieza, Poligono, Puerto, Regla, Resultado, UnionResuelta, V2, V3 } from './tipos.ts';
 import type { Catalogo } from './catalogo/catalogo.ts';
-import { CRITERIOS, type Criterios } from './criterios.ts';
+import { CRITERIOS, type Criterios, VUELO_MENSULA_DEFECTO, vueloMensula } from './criterios.ts';
 import { PREDIMENSIONADO } from './constantes.ts';
 import { armar, Emisor } from './armar/armar.ts';
 import { calcularBom } from './bom.ts';
@@ -52,8 +52,8 @@ export function puertoMundo(p: Omit<Puerto, 'estructuraId'>, m: Marco, estructur
 
 /** Las fachadas leen ménsula y anclaje de sus overrides por banda: acá no se repiten. */
 const NODOS_PROPIOS = new Set(['fachada', 'fachada_bastidor']);
-/** Mismo brazo que el pincel de ménsula de la estructura libre. */
-const BRAZO_MENSULA_PINCEL = 0.73;
+/** Vuelo del pincel de ménsula cuando el override no trae el suyo (diseños anteriores). */
+const BRAZO_MENSULA_PINCEL = VUELO_MENSULA_DEFECTO;
 
 /**
  * Aplica los overrides genéricos sobre celdas del esqueleto con la misma clave: diagonal y caño en
@@ -72,7 +72,7 @@ function aplicarOverridesGenericos(esq: Esqueleto, est: Estructura): void {
         const nk = nodoId(col, k);
         const n = { ...(esq.nodos[nk] || {}) };
         // la ménsula sale del lado de la cara del vano (afuera en la exterior, hacia la fachada en la interior)
-        if (o.mensula) n.mensula = { dir: v.cara === 'interior' ? 'fachada' : 'afuera', brazo: BRAZO_MENSULA_PINCEL };
+        if (o.mensula) n.mensula = { dir: v.cara === 'interior' ? 'fachada' : 'afuera', brazo: vueloMensula(o.brazoMensula, BRAZO_MENSULA_PINCEL) };
         if (o.anclaje) n.anclaje = true;
         esq.nodos[nk] = n;
       }

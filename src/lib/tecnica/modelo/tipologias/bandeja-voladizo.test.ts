@@ -53,6 +53,11 @@ test('voladizo: tornapuntas nodo a nodo desde el pie del poste; sin tornapuntas 
 
 test('voladizo con ménsulas (vuelo ≤ 1,09) y medida libre', () => {
   const r = build(M.crearDiseno('bandeja_voladizo', { params: { vuelo: 1.09, largo: 6.2 }, medida: 'libre' }));
-  assert.equal(r.piezas.filter((p) => p.familia === 'mensula').length, r.piezas.filter((p) => p.familia === 'vertical').length);
+  // vuelo 1,09 (> 0,45): un soporte por poste, horizontal + diagonal 2,00 × 1,09 (sin pieza ménsula)
+  const sop = (sufijo: string) => r.piezas.filter((p) => new RegExp(`:men\\d+:${sufijo}$`).test(p.id));
+  assert.equal(r.piezas.filter((p) => p.familia === 'mensula').length, 0);
+  assert.equal(sop('h').length, r.piezas.filter((p) => p.familia === 'vertical').length);
+  assert.ok(sop('d').every((p) => p.codigo === 'DIAG-200x109'));
+  assert.equal(sop('d').length, sop('h').length);
   assert.deepEqual(problemasDeArmado(r), []);
 });

@@ -1,4 +1,4 @@
-# Handoff — Asistente comercial (actualizado 2026-10-12)
+# Handoff — Asistente comercial (actualizado 2026-10-15)
 
 Para retomar en una sesión nueva. Cómo funciona el módulo, cómo se configura y cómo se prueba
 está en `docs/asistente-comercial/modulo.md`; esto es el estado, lo que falta y el orden para
@@ -6,8 +6,20 @@ seguir. El plan original (aprobado el 26/09) está en
 `~/.claude/plans/buenas-ahora-quiero-que-flickering-haven.md`.
 
 Para arrancar: "Leé docs/asistente-comercial/handoff.md y docs/asistente-comercial/modulo.md y
-seguimos con lo que falta". **Empezar por § "Estado al 12/10" y § "Lo primero en la sesión
-nueva".** El detalle de lo hecho el 12/10 está en `docs/asistente-comercial/auditoria-2026-10-12.md`.
+seguimos con lo que falta". **Empezar por § "Al 15/10", § "Estado al 12/10" y § "Lo primero en
+la sesión nueva".** El detalle de lo hecho el 12/10 está en `docs/asistente-comercial/auditoria-2026-10-12.md`.
+
+---
+
+## Al 15/10
+
+Entre el 12 y el 15/10 no se tocó el código del asistente. Lo que contó JS el 15/10:
+
+- **Opus 5.5:** «me anduvo perfecto». Queda como modelo.
+- **Re-editar con el PDF adjunto** (lectura por `file_id`, `leer_pdf_propuesta`): JS re-editó
+  y anduvo perfecto. Probado con uso real.
+- **Consulta de CUIT en ARCA:** postergada otra vez («por ahora no»). No ofrecerla hasta que JS
+  la pida.
 
 ---
 
@@ -471,12 +483,10 @@ nuestra base):
 
 0. **Si ya pasó el 26/10: ¿el dictado sigue andando?** (ver § "Estado al 12/10", plan de
    ElevenLabs).
-1. **Preguntarle a JS cómo anduvo con Opus 5.5** y mirar Parámetros → Uso: el gasto por
-   presupuesto contra los ~US$ 1,66 de antes, y la espera.
-2. **La lectura del PDF por `file_id`** (`leer_pdf_propuesta`) no se probó con una charla real.
-   - Preguntar si JS re-editó una orden con la propuesta adjunta.
-   - Si una charla dio error después de leer un PDF, mirar los logs de Vercel de
-     `/api/comercial/asistente/chat`.
+1. ~~Preguntarle a JS cómo anduvo con Opus 5.5~~: hecho el 15/10, anduvo perfecto. Si hace
+   falta el número, el gasto por presupuesto está en Parámetros → Uso (antes ~US$ 1,66).
+2. ~~La lectura del PDF por `file_id`~~: hecho el 15/10, JS re-editó una orden con la propuesta
+   adjunta y anduvo bien.
 3. **Leer los «esto estuvo mal»** de la pestaña Uso y seguir § "Cómo se va a ir mejorando".
    Cada uno tiene el `turno_id` de la charla.
 4. **Antes de darles el alta a Gabriel y Jorge:**
@@ -556,7 +566,7 @@ Gabriel y Jorge dejen anotado lo que no les sirvió. No contestó: queda como id
       anuncian un cobro por mensaje desde el 1/10/2026. Confirmarlo al dar de alta la cuenta.
   - **Al retomarlo:** leer el doc, contestar las decisiones y construir la etapa 1.
 
-- **Consulta de CUIT en ARCA (postergada por JS el 28/09).** Idea de JS: que el asistente
+- **Consulta de CUIT en ARCA (postergada por JS el 28/09 y otra vez el 15/10).** Idea de JS: que el asistente
   verifique el CUIT y traiga los datos del cliente, como hace cuitonline. Se descartó leer
   cuitonline, que no es oficial, es frágil y va contra sus condiciones. Se usa el padrón oficial
   de ARCA.

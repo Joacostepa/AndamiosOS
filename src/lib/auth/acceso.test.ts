@@ -75,3 +75,18 @@ test("Dirección › Socios: sólo quien ya lo tiene puede darlo o sacarlo (ni u
   assert.equal(motivoRechazoExplicitos(adminSinSocios, dar, () => false), null);
   assert.match(motivoRechazoExplicitos(persona("operativo", { direccion: "editar" }), dar, () => false) ?? "", /Sólo alguien/);
 });
+
+test("WhatsApp de clientes: página y APIs del módulo clientes-whatsapp, aparte de Clientes", () => {
+  assert.equal(moduloDeRuta("/comercial/clientes")?.id, "clientes-whatsapp");
+  assert.equal(moduloDeRuta("/clientes")?.id, "clientes");
+  const atiende = persona("comercial", { "clientes-whatsapp": "editar" });
+  const mira = persona("comercial", { "clientes-whatsapp": "ver" });
+  const otro = persona("comercial", { "asistente-comercial": "editar" });
+  assert.equal(puedeAbrir(atiende, "/comercial/clientes"), true);
+  assert.equal(puedeAbrir(otro, "/comercial/clientes"), false);
+  assert.equal(motivoDeRechazoApi(atiende, "/api/comercial/clientes/conversaciones/x/responder", "POST"), null);
+  assert.equal(motivoDeRechazoApi(mira, "/api/comercial/clientes/conversaciones", "GET"), null);
+  assert.match(motivoDeRechazoApi(mira, "/api/comercial/clientes/conversaciones/x/responder", "POST") ?? "", /sólo lectura/);
+  assert.match(motivoDeRechazoApi(otro, "/api/comercial/clientes/conversaciones", "GET") ?? "", /No tenés acceso a WhatsApp de clientes/);
+  assert.equal(puedeAbrir(persona("admin"), "/comercial/clientes"), true);
+});

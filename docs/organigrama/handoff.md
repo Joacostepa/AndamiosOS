@@ -1,6 +1,6 @@
 # Handoff — Organigrama
 
-## Estado (14/10/2026)
+## Estado (15/10/2026)
 
 **En producción** desde el merge `8ba57b9` a `main` (rama `feat/organigrama`). El mismo 12/10 se sumaron la vista **Árbol** del Lienzo, la **jerarquía visual** (tamaños por tipo, recuadros de área, vacantes calmas) con **renombrar en línea**, y la **estructura v2**, que el dueño ya **cargó como borrador** (27 nodos, junto a la v1 vigente; todavía sin publicar). La migración `20261012000003_organigrama.sql` la aplicó el dueño a mano desde su terminal y quedó verificada: versión 1 publicada con los 24 nodos y ningún ocupante.
 
@@ -34,12 +34,12 @@
 1. **Probar en el navegador con datos reales** (nadie lo vio todavía con la base de verdad): la lista de abajo.
 2. **Dar permisos** en Configuración › Usuarios: «ver» a todos los perfiles y «editar» a quien mantiene la estructura (el admin ya edita). Hasta entonces solo lo ve el admin.
 3. **Ubicar a la gente**: todo arranca vacante; se arrastra a cada persona desde el banco del Lienzo.
-4. **Cuenta duplicada**: hay dos usuarios activos «Joaquin Stepansky»; desactivar uno o aparece dos veces en el banco.
+4. ~~**Cuenta duplicada**~~ — **resuelto el 14/10**: la genérica `admin@andamios.com` (admin, activa; alguien entró con ella el 10/10) se renombró «Administrador» en vez de desactivarla, por las dudas. La cuenta de Joaquin es `js@andamiosbuenosaires.com.ar`. **Queda**: la genérica era titular de `tec_com`; el dueño lo pasa a su cuenta desde el Lienzo (quitar a «Administrador» y arrastrar a Joaquin).
 5. Cargar las **misiones** de los 18 puestos de la v1 (vacías a propósito, como en el original). La v2 ya las trae.
 7. **Borrador perdido (a investigar)**: el 12/10 el dueño vio en el Lienzo «BORRADOR · 3 cambios», pero poco después la base no tenía ningún borrador. Si no lo descartó él, algún guardado falló sin que se viera; revisar la cola de `proveedor.tsx` (`operacionesPara` / el toast de error) reproduciendo crear borrador → 3 cambios → recargar.
-8. **Personas sin legajo (pedido del dueño, 14/10, sin empezar)**:
-   - **Gabriel y Jorge (los dueños) no aparecen** en el banco: el 14/10 no había ningún «Gabriel» ni «Jorge» en `personal` (nombre/apellido) ni en `user_profiles` (nombre/email). El organigrama solo conoce legajos activos, usuarios activos y externos de cuadrillas; como dueños, seguramente no vienen de Odoo. Si van a entrar a la app, alcanza con crearles el usuario en Configuración › Usuarios (sin código).
-   - **Personal externo** (contador, asesor SyH, firmante, gestor…): hoy solo existe el nombre libre de «¿Es de afuera?» en Asignar persona (ficha del puesto): sin empresa, rol ni contacto, se tipea en cada puesto y no está en el banco hasta asignarlo. Propuesta: una lista propia «Personas sin legajo» (dueños y externos: nombre, empresa, rol, contacto opcional) que aparezca en el banco. Rompe a propósito la regla «las personas no se copian» solo para quien no existe en otro lado → migración nueva. Pendiente que el dueño diga si los dueños tendrán usuario y qué datos guardar de los externos.
+8. **Personas sin legajo (pedido del dueño, 14/10)**:
+   - ~~**Los dueños no aparecían**~~ — **resuelto el 14/10**: no tenían legajo ni usuario (el organigrama solo conoce legajos activos, usuarios activos y externos de cuadrillas). Se les creó usuario: **Jorge Riveros** (`jr@andamiosbuenosaires.com.ar`) y **Gabriel Stepansky** (`gs@andamiosbuenosaires.com.ar`), los dos con la clave inicial que pidió el dueño, mail confirmado, rol `operativo`, **sin permisos** (se los asigna el dueño) y `debe_cambiar_clave = true` (cambian la clave al primer ingreso). Ya aparecen en el banco; falta ubicarlos en Dirección.
+   - **Personal externo** (contador, asesor SyH, firmante, gestor…): hoy solo existe el nombre libre de «¿Es de afuera?» en Asignar persona (ficha del puesto): sin empresa, rol ni contacto, se tipea en cada puesto y no está en el banco hasta asignarlo. Propuesta: una lista propia «Personas sin legajo» (dueños y externos: nombre, empresa, rol, contacto opcional) que aparezca en el banco. Rompe a propósito la regla «las personas no se copian» solo para quien no existe en otro lado → migración nueva. **Sin empezar**: pendiente que el dueño diga qué datos guardar de los externos. Ya no hace falta para los dueños.
 6. **App vieja `organigrama-aba`** (Firebase, proyecto `orgama-aba`): no tiene login, así que su Firestore probablemente está abierto con teléfonos y emails del equipo. Revisar las reglas o dar de baja el proyecto ahora que el módulo vive acá.
 
 ### Qué probar (primera vez con datos reales)
@@ -66,7 +66,7 @@
 - **Dos editores a la vez sobre el mismo borrador**: cada uno guarda diferencias contra lo que vio; no se pisan filas distintas, pero si los dos tocan el mismo puesto gana el último. Lo de los demás entra al volver a leer (no hay tiempo real).
 - **Deshacer en el Lienzo después de que entró un cambio de otra persona** puede deshacer también ese cambio (el historial guarda fotos locales).
 - Si una RPC falla, se pierde lo que estaba en la cola detrás de ella (se avisa y se vuelve a lo último guardado).
-- **Kiosco**: se excluye de las personas al usuario cuyo único módulo es `panol-kiosco`. Cualquier otro usuario activo aparece (hoy hay una cuenta duplicada de Joaquin Stepansky que va a aparecer dos veces).
+- **Kiosco**: se excluye de las personas al usuario cuyo único módulo es `panol-kiosco`. Cualquier otro usuario activo aparece, incluida la cuenta genérica «Administrador» (`admin@andamios.com`).
 - «Seguí el papel» usa las claves de la estructura base (`stock`, `montajes`, `cobr`…). Si se elimina uno de esos puestos, el papel no viaja a esa parada (el texto del paso se sigue leyendo).
 - `modalidad = 'compartido'` está permitida en la base pero la pantalla la lee como titular (compartir = dos titulares).
 - El historial de deshacer vive mientras el Lienzo está abierto.

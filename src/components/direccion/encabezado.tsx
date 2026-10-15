@@ -10,7 +10,7 @@
 // pasaría por detrás del encabezado sticky y se vería encimado.
 
 import Link from "next/link";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Lock, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
@@ -143,11 +143,34 @@ export function PestanasDireccion() {
   );
 }
 
+/** true cuando el contenido ya pasó por debajo del encabezado (el scroll lo hace el <main> del dashboard). */
+function usePegado(ref: React.RefObject<HTMLElement | null>) {
+  const [pegado, setPegado] = useState(false);
+  useEffect(() => {
+    const cont = ref.current?.closest("main");
+    if (!cont) return;
+    const mirar = () => setPegado(cont.scrollTop > 0);
+    mirar();
+    cont.addEventListener("scroll", mirar, { passive: true });
+    return () => cont.removeEventListener("scroll", mirar);
+  }, [ref]);
+  return pegado;
+}
+
 export function EncabezadoDireccion() {
   const pathname = usePathname();
   const seccion = seccionDeRuta(pathname);
+  // Opaco y con sombra al hacer scroll: lo que pasa por debajo se lee como "debajo", no como tapado.
+  const ref = useRef<HTMLElement>(null);
+  const pegado = usePegado(ref);
   return (
-    <header className="sticky top-0 z-20 -mx-6 -mt-6 border-b bg-background/92 px-6 pt-4 backdrop-blur-md max-md:px-4 max-md:pb-2.5">
+    <header
+      ref={ref}
+      className={cn(
+        "sticky top-0 z-20 -mx-6 -mt-6 border-b bg-background px-6 pt-4 transition-shadow max-md:px-4 max-md:pb-2.5",
+        pegado && "shadow-[0_8px_16px_-12px_rgb(0_0_0/0.3)]",
+      )}
+    >
       <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2.5">
         <h1 className="text-xl font-semibold tracking-tight">{seccion.pregunta}</h1>
         {seccion.socios && (

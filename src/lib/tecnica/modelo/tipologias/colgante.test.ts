@@ -18,7 +18,7 @@ test('colgante: normalizar no deja que llegue al suelo', () => {
 
 test('colgante: golden por preset, sin bases, colgadores hasta el soporte y misma BOM en libre', () => {
   const esperado: Record<string, Record<string, number>> = {
-    colgante_puente: { vertical: 18, horizontal: 82, diagonal: 8, tablon: 55, cano: 19 },
+    colgante_puente: { vertical: 18, horizontal: 82, diagonal: 8, tablon: 55, cano: 24 },
     colgante_losa: { vertical: 12, horizontal: 45, diagonal: 12, tablon: 20, cano: 6 },
   };
   for (const [id, g] of Object.entries(esperado)) {
@@ -47,4 +47,17 @@ test('colgante: toma la cota del volumen del contexto; si no lo encuentra avisa 
   assert.ok(av);
   d2 = M.aplicarReparacion(d2, av.reparaciones[0].accion, C);
   assert.ok(!build(d2).avisos.some((a) => a.regla === 'colgado.sin_volumen'));
+});
+
+test('colgante: piezas que la sostienen (doble grampa, placa o grampa de viga, pasadores) y planta arriostrada', () => {
+  const losa = build(M.crearDiseno('colgante_losa'));
+  const n = losa.estructuras[0].esqueleto.columnas.length;
+  const cod = (r: M.Resultado, c: string) => r.bom.filter((l) => l.codigo === c).reduce((s, l) => s + l.cantidad, 0);
+  assert.equal(cod(losa, 'PLACA-ANC-COLG'), n, 'una placa por colgador en la losa');
+  assert.ok(cod(losa, 'PASADOR-UNION') > 0, 'pasadores en los empalmes');
+  assert.equal(losa.piezas.filter((p) => p.familia === 'grampa_fija' && p.elemento?.startsWith('colg:')).length, 3 * n, 'doble grampa + la de abajo');
+  const puente = build(M.crearDiseno('colgante_puente'));
+  assert.equal(cod(puente, 'GRAMPA-VIGA'), puente.estructuras[0].esqueleto.columnas.length);
+  const dpl = puente.piezas.filter((p) => p.familia === 'diagonal_planta' || (p.familia === 'cano' && p.id.includes(':dpl')));
+  assert.ok(dpl.length >= 4, `planta arriostrada en varios vanos (${dpl.length})`);
 });

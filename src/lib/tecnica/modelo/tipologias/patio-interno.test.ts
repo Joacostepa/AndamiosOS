@@ -18,8 +18,8 @@ test('patio: normalizar total', () => {
 
 test('patio: golden por preset, bien armado (esquinas compartidas, sin cruces) y misma BOM en libre', () => {
   const esperado: Record<string, Record<string, number>> = {
-    patio_medianeras: { vertical: 80, horizontal: 152, diagonal: 25, tablon: 43, base_regulable: 10, anclaje: 29, escalera_interior: 6, tablon_escotilla: 5, cano: 3 },
-    patio_perimetral: { vertical: 120, horizontal: 228, diagonal: 40, tablon: 106, base_regulable: 24, anclaje: 30, escalera_interior: 5, tablon_escotilla: 4, cano: 76 },
+    patio_medianeras: { vertical: 80, horizontal: 152, diagonal: 25, tablon: 42, base_regulable: 10, anclaje: 29, escalera_interior: 6, tablon_escotilla: 6, cano: 3 },
+    patio_perimetral: { vertical: 140, horizontal: 306, diagonal: 50, tablon: 125, base_regulable: 28, anclaje: 30, escalera_interior: 5, tablon_escotilla: 5, cano: 44 },
   };
   for (const [id, g] of Object.entries(esperado)) {
     const d = M.crearDiseno(id);

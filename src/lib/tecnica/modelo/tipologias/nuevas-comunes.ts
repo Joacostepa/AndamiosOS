@@ -73,7 +73,7 @@ export function diagonalesEnVano(b: ConstructorEsqueleto, cat: Catalogo, vanoId:
 
 /** Diagonales en una fila de vanos (cara): arriostrados los extremos y uno cada CRITERIOS.diagonalCadaVanos ⚠. */
 export function diagonalesEnFila(b: ConstructorEsqueleto, cat: Catalogo, fila: string[], faseBase = 0, o: { desde?: number; hasta?: number; todos?: boolean } = {}): number {
-  const idx = o.todos ? fila.map((_, i) => i) : vanosArriostrados(fila.length);
+  const idx = o.todos ? fila.map((_, i) => i) : vanosArriostrados(fila.length, undefined, (i) => !!b.esq.vanos.find((v) => v.id === fila[i])?.libre);
   let n = 0;
   idx.forEach((i, fase) => {
     n += diagonalesEnVano(b, cat, fila[i], fase + faseBase, o);
@@ -163,6 +163,8 @@ export interface OpcionesViseraPuntos {
   soporte: 'mensula' | 'viga' | 'cano';
   /** t del extremo trasero del soporte (viga anclada a la estructura o a la fachada) */
   tRaiz?: number;
+  /** t de las verticales donde se toma la viga (2 grampas por vertical: cordón superior e inferior) */
+  tVerticales?: number[];
   /** puntal (tornapunta) de caño y grampa desde esta cota hasta la punta */
   tornapunta?: { yPie: number; tPie: number } | null;
   /** fenólico del piso de la bandeja (sobre correas de caño) */
@@ -212,10 +214,17 @@ export function viseraEnPuntos(o: OpcionesViseraPuntos): { elementos: Elemento[]
       const drop = Math.min(0.5, o.ancho * 0.7);
       els.push({ id: `${pf}:men${i}`, familia: 'mensula', medidas: { largo: sop.largo }, a: raiz, b: punta, grupo: 'bandeja', primitivas: [{ a: raiz, b: punta }, { a: [s, r3(y - drop), o.t0], b: punta }] });
     } else {
-      els.push({ id: `${pf}:viga${i}`, familia: 'viga_celosia', medidas: { largo: sop.largo }, a: raiz, b: punta, grupo: 'bandeja', primitivas: [{ a: raiz, b: punta }, { a: [s, r3(y - 0.5), raiz[2]], b: [s, r3(y - 0.5), r3(tPunta - 0.3)] }, { a: [s, r3(y - 0.5), r3(tPunta - 0.3)], b: punta }] });
-      // grampas de la viga a la estructura (en la raíz y en la cara exterior)
-      els.push({ id: `${pf}:viga${i}:g0`, familia: 'grampa_fija', medidas: {}, a: raiz, b: raiz, grupo: 'bandeja', sistema: 'comun' });
-      if (Math.abs(o.t0 - tRaiz) > 0.05) els.push({ id: `${pf}:viga${i}:g1`, familia: 'grampa_fija', medidas: {}, a: [s, y, o.t0], b: [s, y, o.t0], grupo: 'bandeja', sistema: 'comun' });
+      // la viga se dibuja con su largo real de catálogo: la raíz queda a sop.largo de la punta
+      const r0: V3 = [s, y, r3(tPunta - sop.largo)];
+      els.push({ id: `${pf}:viga${i}`, familia: 'viga_celosia', medidas: { largo: sop.largo }, a: r0, b: punta, grupo: 'bandeja', primitivas: [{ a: r0, b: punta }, { a: [s, r3(y - 0.5), r0[2]], b: [s, r3(y - 0.5), r3(tPunta - 0.3)] }, { a: [s, r3(y - 0.5), r3(tPunta - 0.3)], b: punta }] });
+      // grampas de la viga a cada vertical que la toma, en los dos cordones
+      const tvs = [...new Set((o.tVerticales ?? [tRaiz, o.t0]).map(r3))].filter((t) => t >= r0[2] - EPS && t <= tPunta + EPS);
+      tvs.forEach((t, j) => {
+        for (const [h, dy] of [['s', 0], ['i', -0.5]] as const) {
+          const q: V3 = [s, r3(y + dy), t];
+          els.push({ id: `${pf}:viga${i}:g${j}${h}`, familia: 'grampa_fija', medidas: {}, a: q, b: q, grupo: 'bandeja', sistema: 'comun' });
+        }
+      });
     }
     if (o.tornapunta && conSoporte) els.push(...canoGrampa(`${pf}:tp${i}`, [s, r3(o.tornapunta.yPie), r3(o.tornapunta.tPie)], [s, y, r3(Math.min(tPunta, o.tornapunta.tPie + (y - o.tornapunta.yPie)))], { grupo: 'bandeja', giratoria: true, canos: m.canos }));
     if (o.visera.tipo !== 'ninguna') {

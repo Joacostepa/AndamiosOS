@@ -192,7 +192,7 @@ const CAMPOS: Campo[] = [
 
 const PRESETS: Preset[] = [
   { id: 'patio_medianeras', nombre: 'Patio entre medianeras', icono: 'patio', descripcion: 'Andamio contra el fondo de un patio interno, de medianera a medianera, anclado a los tres muros.', params: {} },
-  { id: 'patio_perimetral', nombre: 'Patio perimetral', icono: 'patio', descripcion: 'Andamio por dentro del fondo y las dos medianeras de un patio, con escalera interior.', params: { modo: 'perimetral', ancho: 6, largo: 6, altura: 12, muros: [0, 1, 3] } },
+  { id: 'patio_perimetral', nombre: 'Patio perimetral', icono: 'patio', descripcion: 'Andamio por dentro del fondo y las dos medianeras de un patio, con escalera interior.', params: { modo: 'perimetral', ancho: 6.7, largo: 6.7, altura: 12, muros: [0, 1, 3] } },
 ];
 
 export const PATIO_INTERNO: Tipologia<ParamsPatio> = {

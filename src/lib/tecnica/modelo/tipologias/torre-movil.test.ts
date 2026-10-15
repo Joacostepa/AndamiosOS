@@ -19,8 +19,8 @@ test('torre móvil: normalizar total y altura máxima por H/B ⚠', () => {
 
 test('torre móvil: golden por preset, 4 ruedas con freno, trampilla y misma BOM en libre', () => {
   const esperado: Record<string, Record<string, number>> = {
-    torre_movil_interior: { vertical: 12, horizontal: 28, diagonal: 6, tablon: 9, rueda_freno: 4, escalera_interior: 2, tablon_escotilla: 1, cano: 2 },
-    torre_movil_exterior: { vertical: 8, horizontal: 20, diagonal: 4, tablon: 5, rueda_freno: 4, escalera_interior: 1, cano: 4 },
+    torre_movil_interior: { vertical: 12, horizontal: 28, diagonal: 6, tablon: 8, rueda_freno: 4, escalera_interior: 2, tablon_escotilla: 2, cano: 2 },
+    torre_movil_exterior: { vertical: 8, horizontal: 20, diagonal: 4, tablon: 4, rueda_freno: 4, escalera_interior: 1, tablon_escotilla: 1, cano: 4 },
   };
   for (const [id, g] of Object.entries(esperado)) {
     const d = M.crearDiseno(id);

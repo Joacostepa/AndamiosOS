@@ -150,7 +150,8 @@ export function armarBase(c: Columna, em: Emisor, esq: Esqueleto, nodo: string, 
     em.add(`${tag}:rueda`, c.apoyo, {}, P3(c.p, y0), P3(c.p, c.yBase), { nodo, sistema: 'comun' });
   } else return;
   if (collarin) em.add(`${tag}:coll`, 'collarin', {}, P3(c.p, c.yBase), P3(c.p, c.yBase + 0.33), { nodo });
-  if (esq.terreno === 'tierra') em.add(`${tag}:mad`, 'accesorio', { variante: 'madera_base' }, P3(c.p, y0 - 0.1), P3(c.p, y0), { nodo, sistema: 'comun' });
+  // tierra o losa: tablón de reparto (madera) bajo cada base
+  if (esq.terreno === 'tierra' || esq.terreno === 'losa') em.add(`${tag}:mad`, 'accesorio', { variante: 'madera_base' }, P3(c.p, y0 - 0.1), P3(c.p, y0), { nodo, sistema: 'comun' });
 }
 
 function armarMulti(esq: Esqueleto, ix: IndiceEsqueleto, em: Emisor, ctx: CtxArmar): void {

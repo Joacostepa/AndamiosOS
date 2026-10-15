@@ -81,7 +81,8 @@ export function crearDiseno(tipologiaId = 'estructura_pantalla', opciones: Parti
 
 /** Ejemplo de la maqueta: fachada en L 14 + 8 × 18 con estructura + pantalla (datos ilustrativos). */
 export function ejemploParana631(): Diseno {
-  const d = crearDiseno('estructura_pantalla', { frentes: [{ largo: 14 }, { largo: 8, angulo: 90 }], altura: 18 });
+  // profundidad 0,73 a propósito: muestra el aviso de paso bajo la bandeja con su reparación (1,25)
+  const d = crearDiseno('estructura_pantalla', { frentes: [{ largo: 14 }, { largo: 8, angulo: 90 }], altura: 18, profundidad: 0.73 });
   d.nombre = 'Obra de ejemplo · Paraná 631 (datos ilustrativos)';
   d.estructuras[0].nombre = 'Fachada L';
   return d;

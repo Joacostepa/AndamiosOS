@@ -1,15 +1,17 @@
 /**
  * Estructura colgante (pedido 4, foto 4): sin apoyo en el suelo, suspendida de una losa, un puente u otra
  * estructura. Grilla multidireccional que cuelga desde la cota del soporte: columnas colgadas (sin bases),
- * colgadores de caño y grampa (o colgadores de catálogo) en cada vertical hasta el soporte, plataforma
+ * colgadores de caño y grampa (con grampa de seguridad, placa o grampa de viga arriba y pasadores en los
+ * empalmes) en cada vertical hasta el soporte, plataforma
  * abajo (y en los niveles intermedios), barandas en todo el perímetro y diagonales en las cuatro caras
- * más diagonal en planta (no hay base que la trabe). Todo es PREDIMENSIONADO.
+ * más diagonal en planta en los extremos y cada ≤ 3 vanos (no hay base que la trabe). Todo es PREDIMENSIONADO.
  */
 import type { Estructura, Regla, Volumen } from '../tipos.ts';
 import type { Campo, CtxGenerar, Generado, Preset, Tipologia } from './registro.ts';
 import { CRITERIOS } from '../criterios.ts';
 import { grillaRect } from './comunes/grilla.ts';
-import { colgar } from './comunes/colgar.ts';
+import { colgar, type SoporteColgado } from './comunes/colgar.ts';
+import { vanosArriostrados } from '../reglas/diagonales.ts';
 import { puertosCaja } from './comunes/util-tipologias.ts';
 import { type AvisoGen, barandasPerimetro, diagonalesPerimetro, diagonalPlanta, medida, metricasCaja, opcion, plataformaGrilla, tramosAncho, tramosDe } from './nuevas-comunes.ts';
 import { EPS, fmt, r3 } from '../util.ts';
@@ -26,9 +28,11 @@ export interface ParamsColgante extends Record<string, unknown> {
   sujecion: 'cano_grampa' | 'viga_celosia' | 'anclaje_quimico';
   /** id de un volumen del contexto (losa, puente) del que cuelga: toma su cota inferior */
   volumenId: string;
+  /** de qué se toma arriba: losa de hormigón (placa/bulón), ala de acero (grampa de viga) u otra estructura */
+  soporte: SoporteColgado;
 }
 
-const DEF: ParamsColgante = { largo: 7.5, ancho: 2.5, cotaSoporte: 6, alturaColgada: 2.5, plataformas: 'abajo', sujecion: 'cano_grampa', volumenId: '' };
+const DEF: ParamsColgante = { largo: 7.5, ancho: 2.5, cotaSoporte: 6, alturaColgada: 2.5, plataformas: 'abajo', sujecion: 'cano_grampa', volumenId: '', soporte: 'losa' };
 
 export function normalizarColgante(parcial: Partial<ParamsColgante>): { params: ParamsColgante; avisos: string[] } {
   const x = (parcial || {}) as Record<string, unknown>;
@@ -40,6 +44,7 @@ export function normalizarColgante(parcial: Partial<ParamsColgante>): { params: 
     plataformas: opcion(x.plataformas, ['abajo', 'cada_2m'] as const, 'abajo'),
     sujecion: opcion(x.sujecion, ['cano_grampa', 'viga_celosia', 'anclaje_quimico'] as const, 'cano_grampa'),
     volumenId: typeof x.volumenId === 'string' ? x.volumenId : '',
+    soporte: opcion(x.soporte, ['losa', 'acero', 'estructura'] as const, 'losa'),
   };
   const avisos: string[] = [];
   if (p.alturaColgada > p.cotaSoporte - 0.5) {
@@ -74,10 +79,16 @@ export function generarColgante(est: Estructura & { params: ParamsColgante }, ct
     barandasPerimetro(b, g, k);
   }
   const nd = diagonalesPerimetro(b, cat, g);
-  for (const e of diagonalPlanta(b, cat, g, 0, 0, b.k(yP), 'col')) b.elemento(e);
-  for (const a of colgar(b.esq, { cota: cotaS, sujecion: p.sujecion, estructuraId: est.id, medidas: m })) avisos.push(a);
+  // sin base que la trabe: diagonal en planta en los extremos y cada ≤ 3 vanos, abajo y en el anillo de arriba
+  let ndp = 0;
+  const kArriba = b.k(cotas[cotas.length - 1]);
+  for (const k of [...new Set([b.k(yP), kArriba])]) for (const i of vanosArriostrados(g.S.length - 1, 3)) for (let j = 0; j < g.T.length - 1; j++) {
+    for (const e of diagonalPlanta(b, cat, g, i, j, k, 'col')) b.elemento(e);
+    ndp++;
+  }
+  for (const a of colgar(b.esq, { cota: cotaS, sujecion: p.sujecion, soporte: p.soporte, estructuraId: est.id, medidas: m })) avisos.push(a);
   if (topes - yP < 1 - EPS) avisos.push({ regla: 'colgado.baranda', nivel: 'aviso', estructuraId: est.id, texto: `Entre la plataforma y el soporte hay ${fmt(cotaS - yP)}: no entra la baranda de 1,00.`, reparaciones: [{ etiqueta: 'Bajar la plataforma', accion: { tipo: 'param', estructuraId: est.id, ruta: 'params.alturaColgada', valor: 2 } }] });
-  reglas.push({ regla: 'colgado.armado', estructuraId: est.id, texto: `Colgada de ${vol ? `«${vol.nombre || vol.id}»` : 'un soporte'} a ${fmt(cotaS)}: ${b.esq.columnas.length} colgadores (${p.sujecion.replace('_', ' ')}), plataforma a ${fmt(yP)}, ${nd} diagonales y diagonal en planta. Sin bases.` });
+  reglas.push({ regla: 'colgado.armado', estructuraId: est.id, texto: `Colgada de ${vol ? `«${vol.nombre || vol.id}»` : 'un soporte'} a ${fmt(cotaS)}: ${b.esq.columnas.length} colgadores (${p.sujecion.replace('_', ' ')}), plataforma a ${fmt(yP)}, ${nd} diagonales y ${ndp} diagonales en planta. Sin bases.` });
   const L = g.S[g.S.length - 1];
   const B = g.T[g.T.length - 1];
   return {
@@ -95,11 +106,12 @@ const CAMPOS: Campo[] = [
   { ruta: 'params.volumenId', etiqueta: 'Colgar de (volumen)', tipo: 'texto', grupo: 'Apoyo' },
   { ruta: 'params.alturaColgada', etiqueta: 'Altura colgada', tipo: 'medida', unidad: 'm', min: 1.5, max: 30, paso: 0.5, grupo: 'Medidas' },
   { ruta: 'params.plataformas', etiqueta: 'Plataformas', tipo: 'opcion', opciones: [{ valor: 'abajo', etiqueta: 'Solo abajo' }, { valor: 'cada_2m', etiqueta: 'Cada 2,00' }], grupo: 'Medidas' },
+  { ruta: 'params.soporte', etiqueta: 'Se toma de', tipo: 'opcion', opciones: [{ valor: 'losa', etiqueta: 'Losa de hormigón (placa y bulón)' }, { valor: 'acero', etiqueta: 'Viga de acero (grampa de viga)' }, { valor: 'estructura', etiqueta: 'Otra estructura de andamio' }], grupo: 'Apoyo' },
   { ruta: 'params.sujecion', etiqueta: 'Sujeción', tipo: 'opcion', opciones: [{ valor: 'cano_grampa', etiqueta: 'Caño y grampa' }, { valor: 'viga_celosia', etiqueta: 'Colgadores desde vigas arriba' }, { valor: 'anclaje_quimico', etiqueta: 'Colgadores con anclaje químico' }], grupo: 'Apoyo' },
 ];
 
 const PRESETS: Preset[] = [
-  { id: 'colgante_puente', nombre: 'Colgante bajo puente', icono: 'colgante', descripcion: 'Plataforma colgada bajo el tablero de un puente, con barandas y diagonales.', params: { largo: 12.5, ancho: 3.5, cotaSoporte: 5, alturaColgada: 2.5 } },
+  { id: 'colgante_puente', nombre: 'Colgante bajo puente', icono: 'colgante', descripcion: 'Plataforma colgada bajo el tablero de un puente, con barandas y diagonales.', params: { largo: 12.5, ancho: 3.5, cotaSoporte: 5, alturaColgada: 2.5, soporte: 'acero' } },
   { id: 'colgante_losa', nombre: 'Colgante de losa', icono: 'colgante', descripcion: 'Estructura colgada de una losa con caño y grampa, sin apoyo en el suelo.', params: { largo: 5, ancho: 1.5, cotaSoporte: 8, alturaColgada: 4.5, plataformas: 'cada_2m' } },
 ];
 

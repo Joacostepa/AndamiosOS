@@ -132,6 +132,13 @@ test('balcones repetidos en cada piso: un solo aviso por fachada y «Retirar» l
   let d = M.agregarEnCara(diseno, cara.id, {}, C).diseno;
   const av = M.avisosDeChoque(d, build(d), C.medidas);
   assert.equal(av.length, 1);
+  // la primera opción acerca el trabajo a la fachada con ménsulas en los niveles libres entre balcones
+  const conMen = av[0].reparaciones.find((x) => /ménsulas .* entre balcones/.test(x.etiqueta));
+  assert.ok(conMen, av[0].reparaciones.map((x) => x.etiqueta).join(' | '));
+  const dm = M.aplicarReparacion(d, conMen!.accion, C);
+  const rm = build(dm);
+  assert.deepEqual(M.avisosDeChoque(dm, rm, C.medidas), []);
+  assert.ok(rm.piezas.some((p) => p.familia === 'mensula'), 'hay ménsulas hacia la fachada');
   d = M.aplicarReparacion(d, av[0].reparaciones[av[0].reparaciones.length - 1].accion, C);
   assert.deepEqual(M.avisosDeChoque(d, build(d), C.medidas), []);
 });

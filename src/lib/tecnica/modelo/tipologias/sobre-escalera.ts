@@ -176,7 +176,7 @@ const CAMPOS: Campo[] = [
 ];
 
 const PRESETS: Preset[] = [
-  { id: 'sobre_escalera', nombre: 'Estructura sobre escalera', icono: 'escalera', descripcion: 'Andamio con apoyos escalonados siguiendo los peldaños, bases regulables y plataforma arriba.', params: {} },
+  { id: 'sobre_escalera', nombre: 'Estructura sobre escalera', icono: 'escalera', descripcion: 'Andamio con apoyos escalonados siguiendo los peldaños, bases regulables, plataforma arriba y anclado al muro de la escalera.', params: { anclada: true, contraMuro: 'fondo' } },
 ];
 
 export const SOBRE_ESCALERA: Tipologia<ParamsSobreEscalera> = {

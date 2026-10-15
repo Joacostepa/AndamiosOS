@@ -384,7 +384,7 @@ export function generarFachadaMulti(est: Estructura & { params: ParamsFachada },
     }
 
     // diagonales: roseta a roseta, zigzag continuo (pedido 1)
-    const arr = vanosArriostrados(m);
+    const arr = vanosArriostrados(m, undefined, (v) => !!F.libres[v]);
     let diag = arr;
     if (esqFin && m > 1) diag = [...new Set([...arr.filter((v) => v !== m - 1), m - 2])].sort((a, c) => a - c);
     diagTxt.push(`${F.etiqueta}: vanos ${diag.map((v) => v + 1).join(', ')}`);
@@ -522,7 +522,7 @@ export function generarFachadaMulti(est: Estructura & { params: ParamsFachada },
     if (Math.abs(F.relleno.desvio) > CRITERIOS.toleranciaRelleno + EPS) {
       const reps = F.relleno.alternativas.slice(0, 2).map((a) => ({ etiqueta: `${a.etiqueta}: ${a.texto}`, accion: { tipo: 'param', estructuraId: est.id, ruta: `params.frentes.${f}.vanos`, valor: a.vanos.map((x) => x.medida) } as Accion }));
       if (est.medida === 'catalogo') reps.push({ etiqueta: 'Pasar a medida libre', accion: { tipo: 'medida', estructuraId: est.id, modo: 'libre' } });
-      aviso('aviso', 'medida.desvio', `${F.etiqueta}: ${F.relleno.texto} (${F.relleno.desvio > 0 ? 'sobran' : 'faltan'} ${fmt(Math.abs(F.relleno.desvio))} m).`, { reparaciones: reps });
+      aviso('aviso', 'medida.desvio', `${F.etiqueta}: ${F.relleno.texto} (${F.relleno.desvio > 0 ? `se pasa ${fmt(F.relleno.desvio)} m del largo pedido: si termina contra una medianera o un volumen, choca` : `faltan ${fmt(-F.relleno.desvio)} m para el largo pedido`}).`, { reparaciones: reps });
     }
     if (F.relleno.vanos.some((t) => t.libre)) regla('medida.libre', `${F.etiqueta}: ${F.relleno.texto}.`, { tipo: 'medida', estructuraId: est.id, modo: 'catalogo' });
     if (Math.abs(F.alturaReal - F.altura) > 0.25 + EPS) aviso('info', 'altura.real', `${F.etiqueta}: altura real ${fmt(F.alturaReal)} m (pediste ${fmt(F.altura)}).`);
@@ -696,9 +696,9 @@ const CAMPOS: Campo[] = [
 
 const PRESETS: Preset[] = [
   { id: 'pantalla', nombre: 'Pantalla peatonal', icono: 'pantalla', descripcion: 'Bandeja de fenólico sobre la vereda con esferas y recubrimiento. 3, 6 u 8 m.', params: { frentes: [{ largo: 12.5 }], altura: 3, profundidad: 1.25, niveles: 'pantalla', modoPlataforma: 'ninguna', bandejaPB: true, viaPublica: true, accesos: [] } },
-  { id: 'estructura_pantalla', nombre: 'Estructura + pantalla', icono: 'fachada', tecla: 'F', descripcion: 'Fachada completa con bandeja en PB, niveles cada 2 m y media sombra.', params: { frentes: [{ largo: 14 }, { largo: 8, angulo: 90 }], altura: 18, bandejaPB: true, viaPublica: true, cubierta: 'media_sombra', esquinas: ['vertical_compartida'] } },
+  { id: 'estructura_pantalla', nombre: 'Estructura + pantalla', icono: 'fachada', tecla: 'F', descripcion: 'Fachada completa con bandeja en PB, niveles cada 2 m y media sombra.', params: { frentes: [{ largo: 14 }, { largo: 8, angulo: 90 }], altura: 18, profundidad: 1.25, bandejaPB: true, viaPublica: true, cubierta: 'media_sombra', esquinas: ['vertical_compartida'] } },
   { id: 'estructura', nombre: 'Estructura sin pantalla', icono: 'fachada', descripcion: 'Patio, medianera o contrafrente. Igual que la fachada, sin bandeja.', params: {} },
-  { id: 'voladizo', nombre: 'Voladizo con ménsulas', icono: 'voladizo', descripcion: 'Andamio retirado (marquesina o retiro) que se acerca a la fachada con ménsulas.', params: { frentes: [{ largo: 12.5 }], altura: 15, retiro: 1.2, bandejaPB: true, viaPublica: true, mensulas: [{ lado: 'fachada', brazo: 1.09, desdeNivel: 1 }], brazoMensula: 1.09 } },
+  { id: 'voladizo', nombre: 'Voladizo con ménsulas', icono: 'voladizo', descripcion: 'Andamio retirado (marquesina o retiro) que se acerca a la fachada con ménsulas.', params: { frentes: [{ largo: 12.5 }], altura: 15, profundidad: 1.25, retiro: 1.2, bandejaPB: true, viaPublica: true, mensulas: [{ lado: 'fachada', brazo: 1.09, desdeNivel: 1 }], brazoMensula: 1.09 } },
 ];
 
 export const FACHADA: Tipologia<ParamsFachada> = {

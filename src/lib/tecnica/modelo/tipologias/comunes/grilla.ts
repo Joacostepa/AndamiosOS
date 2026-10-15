@@ -117,7 +117,7 @@ export function grillaRect(o: OpcionesGrillaRect): GrillaRect {
   const diag = (h: number, largo: number, s: 'sube' | 'baja') => (o.catalogo ? celdaDiagonal(o.catalogo, h, largo, s) : { diagonal: s });
   if (o.diagonales !== false && sistema === 'multi') {
     const ks = b.esq.cotas;
-    vanosArriostrados(ts.length).forEach((i, fase) => {
+    vanosArriostrados(ts.length, undefined, (i) => ts[i].libre).forEach((i, fase) => {
       let orden = 0;
       for (let k = 1; k < ks.length; k++) if (bandaConDiagonal(ks[k] - ks[k - 1])) b.celda(vanosS[nj][i], k, diag(ks[k] - ks[k - 1], ts[i].medida, sentidoZigzag(orden++, fase)));
     });
@@ -348,7 +348,7 @@ export function grillaPoligono(o: OpcionesGrillaPoligono): GrillaPoligono {
   if (o.diagonales !== false) {
     const ks = b.esq.cotas;
     for (const L of lados) {
-      vanosArriostrados(L.vExt.length).forEach((i, fase) => {
+      vanosArriostrados(L.vExt.length, undefined, (i) => !!L.tramos[i]?.libre).forEach((i, fase) => {
         let orden = 0;
         for (let k = 1; k < ks.length; k++) if (bandaConDiagonal(ks[k] - ks[k - 1])) b.celda(L.vExt[i], k, diag(ks[k] - ks[k - 1], L.tramos[i].medida, sentidoZigzag(orden++, fase)));
       });

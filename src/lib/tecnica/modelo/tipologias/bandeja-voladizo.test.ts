@@ -19,13 +19,22 @@ test('voladizo: normalizar total (alto de poste a la grilla de rosetas)', () => 
 test('voladizo: golden, sin bases ni patas en la vereda, todo anclado', () => {
   const d = M.crearDiseno('bandeja_voladizo');
   const r = build(d);
-  assert.deepEqual(golden(porFamilia(r), FAMILIAS_GOLDEN), { vertical: 5, horizontal: 8, diagonal: 2, viga_celosia: 5, anclaje: 10, cano: 38 });
+  assert.deepEqual(golden(porFamilia(r), FAMILIAS_GOLDEN), { vertical: 5, horizontal: 8, diagonal: 2, viga_celosia: 5, anclaje: 5, cano: 45 });
   assert.deepEqual(problemasDeArmado(r), []);
   assert.equal(r.piezas.filter((p) => /base|rueda|collarin/.test(p.familia)).length, 0);
   // nada baja de la cota del pie de los postes
   const pie = 4.5 - 2;
   assert.ok(r.piezas.every((p) => Math.min(p.a[1], p.b[1]) >= pie - 1e-6));
-  assert.ok(r.avisos.some((a) => a.regla === 'colgado.soporte'));
+  // amarre abajo (ANC) y anclaje estructural arriba (código propio) con su tracción PREDIMENSIONADO
+  assert.equal(r.bom.filter((l) => l.codigo === 'ANC-VOL-PLACA').reduce((s, l) => s + l.cantidad, 0), 5);
+  assert.match(r.avisos.find((a) => a.regla === 'voladizo.anclaje')!.texto, /kN de tracción.*PREDIMENSIONADO/);
+  // arriostramiento en planta bajo la bandeja
+  assert.ok(r.piezas.filter((p) => p.familia === 'cano' && /bvdp\d+$/.test(p.elemento || '')).length >= 2);
+  // cada viga se dibuja con su largo de catálogo y su raíz en el poste (no entra en la fachada)
+  for (const v of r.piezas.filter((p) => p.familia === 'viga_celosia')) {
+    assert.ok(Math.abs(Math.hypot(v.b[0] - v.a[0], v.b[2] - v.a[2]) - v.medidas.largo!) < 0.002);
+    assert.ok(Math.min(v.a[2], v.b[2]) >= 0.15 - 1e-6);
+  }
   assert.deepEqual(bomPlano(build(M.convertirALibre(d, 'E1', C))), bomPlano(r));
 });
 

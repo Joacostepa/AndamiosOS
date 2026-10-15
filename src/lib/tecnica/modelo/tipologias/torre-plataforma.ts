@@ -94,7 +94,10 @@ export function generarTorrePlataforma(est: Estructura & { params: ParamsTorrePl
       reparaciones: [{ etiqueta: 'Anclar', accion: { tipo: 'param', estructuraId: est.id, ruta: 'params.anclada', valor: true } }, { etiqueta: `Ensanchar a ${fmt(Bmin)}`, accion: { tipo: 'param', estructuraId: est.id, ruta: L < B ? 'params.largo' : 'params.ancho', valor: Bmin } }],
     });
   }
-  if (ySuelo > 0.5 && !sop) avisos.push({ regla: 'azotea.losa', nivel: 'aviso', estructuraId: est.id, texto: `Torre sobre losa a ${fmt(ySuelo)}: verificá la carga sobre la losa y apoyá las bases sobre tablones de reparto. ${PREDIMENSIONADO}.`, reparaciones: [] });
+  if (ySuelo > 0.5 && !sop) {
+    b.esq.terreno = 'losa';
+    avisos.push({ regla: 'azotea.losa', nivel: 'aviso', estructuraId: est.id, texto: `Torre sobre losa a ${fmt(ySuelo)}: verificá la carga sobre la losa. Las bases van sobre tablones de reparto (incluidos en el cómputo). ${PREDIMENSIONADO}.`, reparaciones: [] });
+  }
   reglas.push({ regla: 'torre.plataforma', estructuraId: est.id, texto: `Torre de ${fmt(L)} × ${fmt(B)} con ${cn.plataformas.length} plataforma${cn.plataformas.length === 1 ? '' : 's'} y ${nd} diagonales en las 4 caras.` });
   return {
     esqueleto: b.esq, avisos, reglas,

@@ -22,7 +22,7 @@ test('bandeja: golden por preset, bien armada y «Convertir a libre» da la mism
   const esperado: Record<string, Record<string, number>> = {
     bandeja_45: { vertical: 20, horizontal: 43, diagonal: 4, tablon: 8, mensula: 5, base_regulable: 10, anclaje: 7, cano: 25 },
     bandeja_90: { vertical: 20, horizontal: 43, diagonal: 4, tablon: 8, mensula: 5, base_regulable: 10, anclaje: 7, cano: 25 },
-    bandeja_amplia: { vertical: 30, horizontal: 43, diagonal: 6, tablon: 8, viga_celosia: 5, base_regulable: 10, anclaje: 7, cano: 40 },
+    bandeja_amplia: { vertical: 30, horizontal: 43, diagonal: 6, tablon: 8, viga_celosia: 5, base_regulable: 10, anclaje: 7, cano: 36 },
   };
   for (const [id, g] of Object.entries(esperado)) {
     const d = M.crearDiseno(id);
@@ -79,4 +79,23 @@ test('bandeja: medida libre (7,30 de largo) cierra exacto con caño y grampa y s
   const xs = r.piezas.filter((p) => p.familia === 'vertical').map((p) => p.a[0]);
   assert.ok(Math.abs(Math.max(...xs) - Math.min(...xs) - 7.3) < 0.006);
   assert.ok(r.bom.some((l) => l.esAjuste));
+});
+
+test('bandeja amplia: cada viga de celosía tiene la raíz sobre una vertical y se toma de las dos', () => {
+  const r = build(M.crearDiseno('bandeja_amplia'));
+  const verts = r.piezas.filter((p) => p.familia === 'vertical');
+  const vigas = r.piezas.filter((p) => p.familia === 'viga_celosia');
+  assert.equal(vigas.length, 5);
+  for (const v of vigas) {
+    const raiz = v.a[2] < v.b[2] ? v.a : v.b;
+    // la raíz está en la vertical interior (t = 0) o detrás, hacia la fachada, sin pasar el retiro
+    assert.ok(raiz[2] <= 1e-6 && raiz[2] >= -0.2, `raíz en t=${raiz[2]}`);
+    assert.ok(verts.some((p) => Math.abs(p.a[0] - v.a[0]) < 1e-6 && Math.abs(p.a[2]) < 1e-6), 'hay vertical interior en ese s');
+    assert.ok(Math.abs(Math.hypot(v.b[0] - v.a[0], v.b[2] - v.a[2]) - v.medidas.largo!) < 0.002, 'dibujada con su largo de catálogo');
+    const g = r.piezas.filter((p) => p.familia === 'grampa_fija' && p.elemento?.startsWith(`${v.elemento}:g`));
+    assert.equal(g.length, 4, '2 verticales × 2 cordones');
+  }
+  // pedir 2,00 (no entra con viga de catálogo): avisa el vuelo real con reparación
+  const r2 = build(M.crearDiseno('bandeja_amplia', { params: { ancho: 2 } }));
+  assert.ok(r2.avisos.some((a) => a.regla === 'bandeja.viga_largo' && a.reparaciones.length));
 });

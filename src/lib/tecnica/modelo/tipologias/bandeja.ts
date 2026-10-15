@@ -76,29 +76,40 @@ export function generarBandeja(est: Estructura & { params: ParamsBandeja }, ctx:
     avisos.push({ regla: 'bandeja.mensula_corta', nivel: 'error', estructuraId: est.id, texto: `No hay ménsula para volar ${fmt(p.ancho)} (la mayor es ${fmt(maxMensula)}).`, reparaciones: [{ etiqueta: 'Pasar a viga en voladizo', accion: { tipo: 'param', estructuraId: est.id, ruta: 'params.soporte', valor: 'viga' } }, { etiqueta: `Volar ${fmt(maxMensula)}`, accion: { tipo: 'param', estructuraId: est.id, ruta: 'params.ancho', valor: maxMensula } }] });
   }
   const T = prof.medida;
-  // viga de celosía: la de catálogo más corta que alcanza el vuelo; la cola entra sobre el andamio
+  // viga de celosía: tomada de las DOS verticales (interior y exterior) y volada hasta la punta. La raíz va en
+  // la vertical interior o, como mucho, entre el andamio y la fachada (retiro − 0,05). Si ningún largo de
+  // catálogo cae en ese rango, se usa la mayor viga que entra y el vuelo real se avisa (con reparación).
   let tRaiz = T;
+  let vuelo = p.ancho;
   if (soporte === 'viga') {
-    const v = largoCatalogo(p.ancho, m.multi.vigasCelosia);
-    tRaiz = r3(T + p.ancho - v.largo);
-    if (tRaiz < -p.retiro + 0.05) {
-      const menores = m.multi.vigasCelosia.filter((l) => l <= p.ancho + 1e-6);
-      const vuelo = menores.length ? Math.max(...menores) : Math.min(...m.multi.vigasCelosia);
-      avisos.push({ regla: 'bandeja.viga_choca', nivel: 'error', estructuraId: est.id, texto: `La viga de ${fmt(v.largo)} para volar ${fmt(p.ancho)} entra ${fmt(-tRaiz)} detrás de la cara interior: choca con la fachada.`, reparaciones: [{ etiqueta: `Volar ${fmt(vuelo)}`, accion: { tipo: 'param', estructuraId: est.id, ruta: 'params.ancho', valor: vuelo } }] });
-      tRaiz = 0;
+    const fondo = -Math.max(0, p.retiro - 0.05);
+    const tP = T + p.ancho;
+    const lista = [...m.multi.vigasCelosia].sort((a, c) => a - c);
+    const justa = lista.find((v) => v >= tP - 0.005 && tP - v >= fondo - 0.005);
+    if (justa !== undefined) tRaiz = r3(tP - justa);
+    else {
+      const entra = [...lista].reverse().find((v) => v <= tP - fondo + 0.005 && v > T + 0.3);
+      if (entra !== undefined) {
+        vuelo = r3(entra - T);
+        tRaiz = 0;
+        avisos.push({ regla: 'bandeja.viga_largo', nivel: 'aviso', estructuraId: est.id, texto: `Con la viga de celosía de ${fmt(entra)} tomada de las dos verticales el vuelo es ${fmt(vuelo)} (pediste ${fmt(p.ancho)}): no hay viga de catálogo que llegue sin chocar la fachada.`, reparaciones: [{ etiqueta: `Volar ${fmt(vuelo)}`, accion: { tipo: 'param', estructuraId: est.id, ruta: 'params.ancho', valor: vuelo } }] });
+      } else {
+        avisos.push({ regla: 'bandeja.viga_choca', nivel: 'error', estructuraId: est.id, texto: `No hay viga de celosía de catálogo para volar ${fmt(p.ancho)} tomada de las dos verticales.`, reparaciones: [{ etiqueta: 'Pasar a ménsulas', accion: { tipo: 'param', estructuraId: est.id, ruta: 'params.soporte', valor: 'mensula' } }] });
+        tRaiz = 0;
+      }
     }
   }
   const kAbajo = kB - 1 >= 0 ? kB - 1 : -1;
   const yPie = kAbajo >= 0 ? b.esq.cotas[kAbajo] : null;
   const vis = viseraEnPuntos({
-    puntos: g.S, y: yB, t0: T, ancho: p.ancho, visera: p.visera, cerramiento: p.cerramiento,
-    soporte: soporte === 'viga' ? 'viga' : 'mensula', tRaiz,
-    tornapunta: soporte === 'viga' && p.ancho > 1.5 && yPie !== null && yB - yPie >= 1 ? { yPie, tPie: T } : null,
+    puntos: g.S, y: yB, t0: T, ancho: vuelo, visera: p.visera, cerramiento: p.cerramiento,
+    soporte: soporte === 'viga' ? 'viga' : 'mensula', tRaiz, tVerticales: [0, T],
+    tornapunta: soporte === 'viga' && vuelo > 1.5 && yPie !== null && yB - yPie >= 1 ? { yPie, tPie: T } : null,
     prefijo: 'band', medidas: m,
   });
   for (const e of vis.elementos) b.elemento(e);
   for (const t of vis.avisos) avisos.push({ regla: 'bandeja.soporte', nivel: 'aviso', estructuraId: est.id, texto: t, reparaciones: [] });
-  reglas.push({ regla: 'bandeja.armado', estructuraId: est.id, texto: `Bandeja a ${fmt(yB)} con vuelo de ${fmt(p.ancho)} sobre ${soporte === 'viga' ? 'vigas de celosía en voladizo' : 'ménsulas'}, piso de fenólico${p.cerramiento === 'lona' ? ' + lona' : ''} y ${p.visera.tipo === 'ninguna' ? 'sin visera' : `visera a ${p.visera.tipo}° de ${fmt(p.visera.alto)}`}.` });
+  reglas.push({ regla: 'bandeja.armado', estructuraId: est.id, texto: `Bandeja a ${fmt(yB)} con vuelo de ${fmt(vuelo)} sobre ${soporte === 'viga' ? 'vigas de celosía tomadas de las dos verticales' : 'ménsulas'}, piso de fenólico${p.cerramiento === 'lona' ? ' + lona' : ''} y ${p.visera.tipo === 'ninguna' ? 'sin visera' : `visera a ${p.visera.tipo}° de ${fmt(p.visera.alto)}`}.` });
   // anclajes a la fachada (la bandeja vuelca hacia la calle)
   if (p.anclada) {
     const n = anclarLinea(b, g.col.map((c) => c[0]), ksDe(b, cn.cotas.filter((c) => c > cn.cotas[0] + 1)), [0, -1], p.retiro);
@@ -111,9 +122,9 @@ export function generarBandeja(est: Estructura & { params: ParamsBandeja }, ctx:
   const L = g.S[g.S.length - 1];
   return {
     esqueleto: b.esq, avisos, reglas,
-    metricas: metricasCaja(L, T + p.ancho, yB + 1),
+    metricas: metricasCaja(L, T + vuelo, yB + 1),
     puertos: puertosCaja('Bandeja', g.S, L, T, yB + 1, r3(yB + 1)),
-    info: { cota: yB, vuelo: p.ancho, soporte, visera: p.visera, yTope: r3(yB + 1), relleno: tramos },
+    info: { cota: yB, vuelo, soporte, visera: p.visera, yTope: r3(yB + 1), relleno: tramos },
   };
 }
 
@@ -133,7 +144,7 @@ const CAMPOS: Campo[] = [
 const PRESETS: Preset[] = [
   { id: 'bandeja_45', nombre: 'Bandeja con visera a 45°', icono: 'bandeja', descripcion: 'Bandeja de protección de 1,09 sobre ménsulas con visera inclinada y lona.', params: { visera: { tipo: '45', alto: 1 }, ancho: 1.09 } },
   { id: 'bandeja_90', nombre: 'Bandeja con visera a 90°', icono: 'bandeja', descripcion: 'Bandeja de protección cerrada con visera vertical.', params: { visera: { tipo: '90', alto: 1 }, ancho: 1.09 } },
-  { id: 'bandeja_amplia', nombre: 'Bandeja amplia', icono: 'bandeja', descripcion: 'Bandeja de 2,00 volada con vigas de celosía, piso de fenólico y visera a 45°.', params: { ancho: 2, soporte: 'viga', cota: 4, visera: { tipo: '45', alto: 1.2 } } },
+  { id: 'bandeja_amplia', nombre: 'Bandeja amplia', icono: 'bandeja', descripcion: 'Bandeja de 1,75 volada con vigas de celosía de 2,50 tomadas de las dos verticales, piso de fenólico y visera a 45°.', params: { ancho: 1.75, soporte: 'viga', cota: 4, visera: { tipo: '45', alto: 1.2 } } },
 ];
 
 export const BANDEJA: Tipologia<ParamsBandeja> = {

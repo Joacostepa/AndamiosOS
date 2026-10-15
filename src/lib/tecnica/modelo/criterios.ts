@@ -34,11 +34,15 @@ export const CRITERIOS = Object.freeze({
   anchoTablon: 0.32,
   /** Medida libre: tramo de caño y grampa mínimo y máximo. */
   tramoLibreMin: 0.2,
+  /** Medida libre: el vano de ajuste con columnas propias no baja de esto (si sobra menos, se reacomoda). */
+  vanoLibreMin: 0.73,
   tramoLibreMax: 2.5,
   /** Vuelo del caño más allá de la grampa en cada punta. */
   vueloGrampa: 0.15,
   /** Solape máximo de un tablón de catálogo sobre un vano libre. */
   solapeTablonMax: 0.5,
+  /** Carga de diseño provisoria de una bandeja (peso propio + escombro), kN/m² ⚠. Solo para predimensionar. */
+  cargaBandeja: 1.5,
   pasoRoseta: 0.5,
   pasoNivel: 2.0,
 });

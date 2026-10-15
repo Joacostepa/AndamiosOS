@@ -11,11 +11,27 @@ import { CRITERIOS } from '../criterios.ts';
 import { type Catalogo, resolverCodigo } from '../catalogo/catalogo.ts';
 
 /** Índices de vanos arriostrados en un tramo de m vanos (extremos + cada ≤ n). */
-export function vanosArriostrados(m: number, cada = CRITERIOS.diagonalCadaVanos): number[] {
+export function vanosArriostrados(m: number, cada: number = CRITERIOS.diagonalCadaVanos, evitar?: (i: number) => boolean): number[] {
   if (m <= 0) return [];
   const set = new Set<number>([0, m - 1]);
   for (let v = 0; v < m; v += cada) set.add(v);
-  return [...set].sort((a, b) => a - b);
+  if (!evitar) return [...set].sort((a, b) => a - b);
+  // un vano de ajuste (caño y grampa, más angosto que el catálogo) nunca es el arriostrado: pasa al vecino
+  const out = new Set<number>();
+  for (const i of [...set].sort((a, b) => a - b)) {
+    if (!evitar(i)) {
+      out.add(i);
+      continue;
+    }
+    for (let d = 1; d < m; d++) {
+      const j = [i - d, i + d].find((x) => x >= 0 && x < m && !evitar(x) && !out.has(x) && !set.has(x));
+      if (j !== undefined) {
+        out.add(j);
+        break;
+      }
+    }
+  }
+  return [...out].sort((a, b) => a - b);
 }
 
 /**

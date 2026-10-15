@@ -6,6 +6,7 @@
 import type { Esqueleto, Estructura, V2 } from '../tipos.ts';
 import type { Campo, CtxGenerar, Generado, Preset, Tipologia } from './registro.ts';
 import { revisarEsqueleto } from '../reglas/motor-reglas.ts';
+import { CRITERIOS } from '../criterios.ts';
 import { cotasNiveles, grillaRect } from './comunes/grilla.ts';
 import { puerto, type PuertoLocal } from './comunes/util-tipologias.ts';
 import { clamp, envolvente, num, r3, sum } from '../util.ts';
@@ -45,6 +46,17 @@ export function esqueletoDesdeMedidas(est: Estructura & { params: ParamsLibre },
     plataformas = cn.plataformas;
   }
   const g = grillaRect({ vanosS: rel.vanos, profundidades: [prof], cotas, plataformas, medidas: m, catalogo: ctx.catalogo, sistema: 'multi' });
+  // esbelta (H/B > 3 ⚠): anclada al muro de atrás al tresbolillo, cada 2 anillos (≈ 4,00), como una fachada
+  const H = cotas[cotas.length - 1] + 1;
+  if (H / prof > CRITERIOS.hbMax) {
+    for (let k = 1; k < cotas.length; k++) {
+      if (k % CRITERIOS.anclajeDn !== 0 && k !== cotas.length - 1) continue;
+      g.col.forEach((c, i) => {
+        if ((i + k) % CRITERIOS.anclajeDx !== 0 && i !== 0 && i !== g.col.length - 1) return;
+        g.b.nodo(c[0], k, { anclaje: { retiro: 0.2, dir: [0, -1] } });
+      });
+    }
+  }
   return g.esqueleto;
 }
 
@@ -95,7 +107,7 @@ const CAMPOS: Campo[] = [
 ];
 
 const PRESETS: Preset[] = [
-  { id: 'libre_vacia', nombre: 'Estructura libre', icono: 'libre', descripcion: 'Un vano de 2,50 × 0,73 × 2,00 para crecer a mano en cualquier dirección.', params: { largo: 2.5, profundidad: 0.73, altura: 2 } },
+  { id: 'libre_vacia', nombre: 'Estructura libre', icono: 'libre', descripcion: 'Un vano de 2,50 × 1,09 × 2,00 para crecer a mano en cualquier dirección.', params: { largo: 2.5, profundidad: 1.09, altura: 2 } },
   { id: 'libre_desde_medidas', nombre: 'Libre desde medidas', icono: 'libre', descripcion: 'Largo × profundidad × alto de la medida que quieras; después se retoca a mano.', params: { largo: 7.3, profundidad: 1.09, altura: 6 } },
 ];
 

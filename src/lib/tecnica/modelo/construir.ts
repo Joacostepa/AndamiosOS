@@ -223,7 +223,7 @@ export function construir(diseno: Diseno, cat: Catalogo, criterios: Criterios = 
   const celdas: CeldaResuelta[] = [];
   for (const g of gens.values()) celdas.push(...celdasDe(g, avisosNum));
   const puertos = [...gens.values()].flatMap((g) => g.puertos);
-  const sinPeso = bom.filter((l) => l.peso_unit === null && l.codigo).map((l) => l.codigo as string);
+  const sinPeso = [...new Set(bom.filter((l) => l.peso_unit === null && l.codigo).map((l) => l.codigo as string))];
   const sinCodigo = bom.filter((l) => l.sinCodigo).map((l) => {
     const p = piezas.find((x) => !x.codigo && `SIN:${x.familia}` === l.clave.split(':').slice(0, 2).join(':'));
     return { clave: l.clave, familia: l.familia, medidas: p?.medidas || {}, cantidad: l.cantidad };

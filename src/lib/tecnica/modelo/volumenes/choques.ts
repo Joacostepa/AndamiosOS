@@ -147,6 +147,28 @@ export function avisosDeChoque(diseno: Diseno, resultado: Pick<Resultado, 'pieza
           ] as Accion[] },
         });
       }
+      if (ok && def.clase === 'balcon' && niveles.length) {
+        // balcones repetidos en altura: ménsulas hacia la fachada en los niveles que no chocan con ningún balcón
+        // (la ménsula baja ~0,50 bajo la plataforma y su baranda sube 1,00), así se trabaja la fachada entre balcones
+        const sol = solidosDe(vol!, vols);
+        const libre = niveles.map((l) => !sol.some((x) => x.yTope > l.cota - 0.55 && x.yBase < l.cota + 1.05));
+        const tramos: { desdeNivel: number; hastaNivel: number }[] = [];
+        libre.forEach((v, i) => {
+          if (!v) return;
+          const t = tramos[tramos.length - 1];
+          if (t && t.hastaNivel === i - 1) t.hastaNivel = i;
+          else tramos.push({ desdeNivel: i, hastaNivel: i });
+        });
+        const n = libre.filter(Boolean).length;
+        if (n) reps.push({
+          etiqueta: `Retirar a ${fmt(nuevo)} y acercar con ménsulas de ${fmt(ok)} en ${n} nivel${n > 1 ? 'es' : ''} entre balcones`,
+          accion: { tipo: 'lote', acciones: [
+            ...accionesRetiro(est, nuevo),
+            { tipo: 'param', estructuraId: est.id, ruta: 'params.mensulas', valor: tramos.map((t) => ({ lado: 'fachada', brazo: ok, ...t })) },
+            { tipo: 'param', estructuraId: est.id, ruta: 'params.brazoMensula', valor: ok },
+          ] as Accion[] },
+        });
+      }
       reps.push({ etiqueta: `Retirar a ${fmt(nuevo)}`, accion: { tipo: 'lote', acciones: accionesRetiro(est, nuevo) } });
     } else {
       const d = r3(c.profundidad + 0.2);

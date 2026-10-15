@@ -19,7 +19,7 @@ test('pórtico con bandeja: normalizar total', () => {
 test('pórtico con bandeja: golden, bien armado y misma BOM al convertir a libre', () => {
   const d = M.crearDiseno('bandeja_portico_peatonal');
   const r = build(d);
-  assert.deepEqual(golden(porFamilia(r), FAMILIAS_GOLDEN), { vertical: 24, horizontal: 40, diagonal: 4, tablon: 25, viga_celosia: 10, base_regulable: 12, anclaje: 4, cano: 20 });
+  assert.deepEqual(golden(porFamilia(r), FAMILIAS_GOLDEN), { vertical: 22, horizontal: 32, diagonal: 4, tablon: 25, viga_celosia: 2, base_regulable: 10, anclaje: 4, cano: 20 });
   assert.deepEqual(problemasDeArmado(r), []);
   assert.deepEqual(r.resumen.sinCodigo, []);
   assert.deepEqual(bomPlano(build(M.convertirALibre(d, 'E1', C))), bomPlano(r));
@@ -33,8 +33,8 @@ test('pórtico con bandeja: el paso peatonal queda libre (ningún tubo cruza la 
   const cruzan = r.piezas.filter((p) => Math.max(p.a[1], p.b[1]) < galibo - 1e-6 && Math.abs(p.a[2] - p.b[2]) > 0.05);
   assert.deepEqual(cruzan.map((p) => p.id), []);
   // esferas de seguridad en las verticales y vigas de celosía bajo el piso
-  assert.equal(r.piezas.filter((p) => p.familia === 'esfera').length, 24);
-  assert.ok(r.piezas.filter((p) => p.familia === 'viga_celosia').every((p) => p.codigo === 'VIGA-CEL-250'));
+  assert.equal(r.piezas.filter((p) => p.familia === 'esfera').length, 20, 'solo en las patas');
+  assert.ok(r.piezas.filter((p) => p.familia === 'viga_celosia').every((p) => p.codigo === 'VIGA-CEL-500'));
 });
 
 test('pórtico con bandeja: reglas de vía pública con reparación (paso y gálibo)', () => {
@@ -47,4 +47,17 @@ test('pórtico con bandeja: reglas de vía pública con reparación (paso y gál
     r = build(d);
   }
   assert.ok(!r.avisos.some((a) => a.regla.startsWith('via.')));
+});
+
+test('pórtico con bandeja: cada viga de celosía salta al menos un vano (libera patas) y las puntas quedan arriostradas', () => {
+  for (const largo of [12.5, 25, 10]) {
+    const r = build(M.crearDiseno('bandeja_portico_peatonal', { params: { largo } }));
+    const vanos = r.estructuras[0].esqueleto.vanos;
+    const minVano = Math.min(...vanos.map((v) => v.medida));
+    for (const v of r.piezas.filter((p) => p.familia === 'viga_celosia')) assert.ok(Math.abs(v.b[0] - v.a[0]) >= 2 * Math.min(2.5, minVano) - 1e-6 || Math.abs(v.b[0] - v.a[0]) >= 5 - 1e-6, `${largo}: viga de ${v.medidas.largo}`);
+    assert.deepEqual(problemasDeArmado(r), [], String(largo));
+    assert.ok(r.piezas.some((p) => p.familia === 'diagonal'), `${largo}: diagonales en las puntas`);
+  }
+  const cada25 = build(M.crearDiseno('bandeja_portico_peatonal', { params: { pasoPatas: 2.5 } }));
+  assert.equal(cada25.piezas.filter((p) => p.familia === 'viga_celosia').length, 0, 'una pata por vano: horizontales, sin vigas');
 });

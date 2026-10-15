@@ -101,6 +101,18 @@ export function generarTorre(est: Estructura & { params: ParamsTorre }, ctx: Ctx
       });
     });
     if (p.pataDeGallo) pataDeGallo(b, L, B, ARR, reglas, est);
+    // anclada: a la fachada (cara del fondo) cada ≈ 4,00, en las dos verticales del fondo
+    if (p.anclada && !unida) {
+      let n = 0;
+      nv.niveles.forEach((lv, i) => {
+        if (i % 2 !== 1 && i !== N - 1) return;
+        for (const c of [cols[2], cols[3]]) {
+          b.nodo(c, b.k(lv.cota), { anclaje: { retiro: 0.2, dir: [0, 1] } });
+          n++;
+        }
+      });
+      reglas.push({ regla: 'torre.anclajes', estructuraId: est.id, texto: `${est.nombre}: ${n} anclajes a la fachada cada ≈ 4,00 en la cara del fondo.`, deshacer: { tipo: 'param', estructuraId: est.id, ruta: 'params.anclada', valor: false } });
+    }
   }
   if (unida) reglas.push({ regla: 'torre.desembarco', estructuraId: est.id, texto: `${est.nombre}: desembarco ${p.desembarco === 'cada_nivel' ? 'en cada nivel de la fachada' : p.desembarco === 'ultimo' ? 'solo en el último nivel' : 'en los niveles elegidos'}.` });
   if (!unida && !p.anclada) {
@@ -188,8 +200,8 @@ const CAMPOS: Campo[] = [
 ];
 
 const PRESETS: Preset[] = [
-  { id: 'torre_escalera', nombre: 'Torre escalera', icono: 'escalera', tecla: 'T', descripcion: 'Torre de 2,50 × 1,50 con zancas y descansos. Desembarca en cada nivel.', params: { largo: 2.5, ancho: 1.5, altura: 18, acceso: 'escalera' } },
-  { id: 'torre_acceso', nombre: 'Torre de acceso', icono: 'torre', descripcion: 'Torre con escalera interna y escotilla en cada nivel.', params: { largo: 2.5, ancho: 1.09, altura: 10, acceso: 'interna' } },
+  { id: 'torre_escalera', nombre: 'Torre escalera', icono: 'escalera', tecla: 'T', descripcion: 'Torre de 2,50 × 1,50 con zancas y descansos, anclada a la fachada. Desembarca en cada nivel.', params: { largo: 2.5, ancho: 1.5, altura: 18, acceso: 'escalera', anclada: true } },
+  { id: 'torre_acceso', nombre: 'Torre de acceso', icono: 'torre', descripcion: 'Torre con escalera interna y escotilla en cada nivel.', params: { largo: 2.5, ancho: 1.09, altura: 10, acceso: 'interna', anclada: true } },
 ];
 
 export const TORRE: Tipologia<ParamsTorre> = {

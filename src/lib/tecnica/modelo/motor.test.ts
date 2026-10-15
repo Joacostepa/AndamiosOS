@@ -277,12 +277,16 @@ test('voladizo con ménsulas: hacia la fachada, choque y reparación', () => {
 });
 
 test('torres: escalera con zancas, H/B > 3 suelta con reparaciones', () => {
+  // el preset viene anclado (como en obra): sin aviso de esbeltez y con anclajes
   const r = build(M.crearDiseno('torre_escalera'));
   assert.equal(bomDe(r, 'ZANCA-ESC-150x250'), frentes(r)[0].niveles.length);
-  const av = r.avisos.find((a) => /H\/B/.test(a.texto))!;
+  assert.ok(!r.avisos.some((a) => /H\/B/.test(a.texto)));
+  assert.ok(r.piezas.some((p) => p.familia === 'anclaje'));
+  const suelta = M.crearDiseno('torre_escalera', { anclada: false });
+  const av = build(suelta).avisos.find((a) => /H\/B/.test(a.texto))!;
   assert.ok(av);
   assert.deepEqual(av.reparaciones.map((x) => x.etiqueta).slice(0, 2), ['Anclar', 'Pata de gallo']);
-  assert.ok(!build(M.aplicarReparacion(M.crearDiseno('torre_escalera'), av.reparaciones[0].accion)).avisos.some((a) => /H\/B/.test(a.texto)));
+  assert.ok(!build(M.aplicarReparacion(suelta, av.reparaciones[0].accion)).avisos.some((a) => /H\/B/.test(a.texto)));
   const pata = build(M.crearDiseno('torre_escalera', { pataDeGallo: true, altura: 10 }));
   assert.ok(pata.piezas.some((p) => p.codigo === 'DIAG-150x250'));
   const acc = build(M.crearDiseno('torre_acceso'));
@@ -608,5 +612,15 @@ test('torre escalera: cada zanca sube un módulo (2,00) de anillo a anillo y arr
       }
       assert.ok(Math.min(...zancas.map((z) => Math.min(z.a[1], z.b[1]))) > 0.2, 'no arranca en el suelo');
     }
+  }
+});
+
+test('ningún preset de la galería abre con un aviso o error de configuración', () => {
+  // estos avisos son de verificación obligatoria (colgar, volar, cargar una losa): quedan siempre
+  const VERIFICAR = new Set(['colgado.soporte', 'voladizo.anclaje', 'azotea.losa', 'envolvente.torre_apoyo', 'via.defensas']);
+  for (const t of M.TIPOLOGIAS) for (const p of t.presets) {
+    const r = build(M.crearDiseno(p.id, { catalogo: C }));
+    const malos = r.avisos.filter((a) => a.nivel !== 'info' && !VERIFICAR.has(a.regla));
+    assert.deepEqual(malos.map((a) => `${a.regla}: ${a.texto}`), [], p.id);
   }
 });

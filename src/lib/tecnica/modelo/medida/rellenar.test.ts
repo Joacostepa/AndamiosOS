@@ -8,12 +8,14 @@ import { diagonalesFueraDeNodo } from '../test-utils.ts';
 const C = M.CATALOGO_FIXTURE;
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
 
-test('libre: 7,30 → 2×2,50 + 2,00 + ajuste 0,30 con caño y grampas', () => {
+test('libre: 7,30 → 2×2,50 + 1,50 + ajuste 0,80 (nunca un vano de ajuste de menos de 0,73)', () => {
   const r = rellenarLargo(7.3, 'multi', { modo: 'libre' });
-  assert.equal(r.texto, '7,30 → 2×2,50 + 2,00 + ajuste 0,30 con caño y grampas');
+  assert.equal(r.texto, '7,30 → 2×2,50 + 1,50 + ajuste 0,80 con caño y grampas');
   assert.equal(r.desvio, 0);
   assert.equal(r.total, 7.3);
-  assert.deepEqual(r.vanos.filter((t) => t.libre).map((t) => t.medida), [0.3]);
+  assert.deepEqual(r.vanos.filter((t) => t.libre).map((t) => t.medida), [0.8]);
+  // 13,37: antes 4×2,50 + 2,00 + 1,09 + 0,28 (columnas a 28 cm)
+  assert.equal(rellenarLargo(13.37, 'multi', { modo: 'libre' }).texto, '13,37 → 5×2,50 + ajuste 0,87 con caño y grampas');
   assert.ok(r.alternativas.some((a) => a.id === 'solo_catalogo'));
 });
 
@@ -23,7 +25,7 @@ test('libre: cualquier largo queda exacto, con un solo tramo libre entre 0,20 y 
     assert.ok(Math.abs(r.total - L) < 0.006, `${L}: ${r.texto}`);
     const libres = r.vanos.filter((t) => t.libre);
     assert.ok(libres.length <= 1, `${L}: ${r.texto}`);
-    for (const t of libres) assert.ok(t.medida >= 0.2 - 1e-9 && t.medida <= 2.5 + 1e-9, `${L}: ${r.texto}`);
+    for (const t of libres) assert.ok(t.medida >= (L >= 0.73 ? 0.73 : 0.2) - 1e-9 && t.medida <= 2.5 + 1e-9, `${L}: ${r.texto}`);
     assert.ok(r.vanos.filter((t) => !t.libre).every((t) => C.medidas.multi.vanos.includes(t.medida)));
   }
 });
@@ -54,14 +56,16 @@ test('fachada en medida libre: vano de ajuste con caño y grampa, tablón volado
   const r = M.construir(d, C);
   const F = (r.estructuras[0].info.frentes as { vanos: number[]; texto: string }[])[0];
   assert.equal(sum(F.vanos), 7.3);
-  assert.match(F.texto, /ajuste 0,30 con caño y grampas/);
+  assert.match(F.texto, /ajuste 0,80 con caño y grampas/);
   const ajuste = r.bom.filter((l) => l.esAjuste);
   assert.ok(ajuste.length > 0 && ajuste.every((l) => l.grupo === 'Ajuste con caño y grampa'));
   assert.ok(ajuste.some((l) => /^CAÑO-/.test(l.codigo || '')) && ajuste.some((l) => l.codigo === 'NUDO-FIJO'));
-  // la diagonal del vano de ajuste (arriostrado por ser extremo) es caño con grampas giratorias
-  assert.ok(r.piezas.some((p) => p.familia === 'grampa_giratoria' && p.ajuste));
-  assert.ok(r.piezas.some((p) => p.familia === 'tablon' && p.ajuste?.medidaPedida === 0.3));
-  assert.ok(r.avisos.some((a) => a.regla === 'plataforma.tablon_volado'));
+  // el vano de ajuste no es el arriostrado: la diagonal del extremo pasa al vano de catálogo vecino
+  const esq = r.estructuras[0].esqueleto;
+  const libres = new Set(esq.vanos.filter((v) => v.libre && v.cara === 'exterior').map((v) => v.id));
+  assert.ok(libres.size > 0);
+  assert.ok(!r.piezas.some((p) => (p.familia === 'diagonal' || (p.familia === 'cano' && p.id.includes(':d:'))) && libres.has(p.celda!.split('@')[0])), 'sin diagonal en el vano de ajuste');
+  assert.ok(r.piezas.some((p) => p.familia === 'tablon' && p.ajuste?.medidaPedida === 0.8));
   assert.deepEqual(diagonalesFueraDeNodo(r), []);
   assert.ok(r.resumen.piezasAjuste > 0);
 });

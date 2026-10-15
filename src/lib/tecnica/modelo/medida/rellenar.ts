@@ -131,7 +131,9 @@ export function rellenarLargo(largo: number, sistema: Sistema = 'multi', opcione
 }
 
 function rellenoLibre(L: number, ajuste: 'final' | 'centrado', vanosCat: number[], validas: number[][]): Relleno {
-  const min = CRITERIOS.tramoLibreMin;
+  // el vano de ajuste lleva su propia línea de columnas: nunca más angosto que el vano libre mínimo (0,73 ⚠);
+  // si con la mejor combinación sobra menos, se reacomodan los vanos de catálogo (p. ej. 13,37 → 5×2,50 + 0,87)
+  const min = L >= CRITERIOS.vanoLibreMin ? CRITERIOS.vanoLibreMin : CRITERIOS.tramoLibreMin;
   const max = CRITERIOS.tramoLibreMax;
   const tolExacto = 0.005;
   let mejor: { cat: number[]; resto: number } | null = null;
@@ -143,7 +145,9 @@ function rellenoLibre(L: number, ajuste: 'final' | 'centrado', vanosCat: number[
     const exacto = Math.abs(resto) <= tolExacto;
     if (!exacto && (resto < min - EPS || resto > max + EPS)) continue;
     const r = exacto ? 0 : resto;
-    if (!mejor || r < mejor.resto - EPS || (Math.abs(r - mejor.resto) < EPS && v.length < mejor.cat.length)) mejor = { cat: v, resto: r };
+    // exacto gana; si no, equilibrio entre el ajuste más chico y menos vanos (cada línea de columnas pesa 0,30)
+    const score = (c: number[], x: number) => (x === 0 ? -1 : (c.length + 1) * 0.3 + x);
+    if (!mejor || score(v, r) < score(mejor.cat, mejor.resto) - EPS) mejor = { cat: v, resto: r };
   }
   let tramos: TramoVano[];
   if (!mejor) {

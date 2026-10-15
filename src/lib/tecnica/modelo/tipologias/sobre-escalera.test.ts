@@ -29,8 +29,8 @@ test('sobre escalera / hueco: normalizar total', () => {
 
 test('sobre escalera y hueco: golden, apoyos a distinto nivel, bien armados y misma BOM en libre', () => {
   const esperado: Record<string, Record<string, number>> = {
-    sobre_escalera: { vertical: 10, horizontal: 31, diagonal: 6, tablon: 6, base_regulable: 6, cano: 4 },
-    hueco_escalera: { vertical: 12, horizontal: 28, diagonal: 2, base_regulable: 6, cano: 4 },
+    sobre_escalera: { vertical: 10, horizontal: 27, diagonal: 6, tablon: 6, base_regulable: 6, anclaje: 2, cano: 4 },
+    hueco_escalera: { vertical: 12, horizontal: 28, diagonal: 2, base_regulable: 6, cano: 8 },
   };
   for (const [id, g] of Object.entries(esperado)) {
     const d = M.crearDiseno(id);
@@ -51,7 +51,7 @@ test('sobre escalera y hueco: golden, apoyos a distinto nivel, bien armados y mi
 });
 
 test('sobre escalera: perfil editable a mano y regla de esbeltez con «Anclar al muro»', () => {
-  let d = M.crearDiseno('sobre_escalera', { params: { perfil: [{ s: -10, y: 0 }, { s: 2, y: 0.9 }, { s: 4, y: 1.8 }] } });
+  let d = M.crearDiseno('sobre_escalera', { params: { anclada: false, contraMuro: 'ninguno', perfil: [{ s: -10, y: 0 }, { s: 2, y: 0.9 }, { s: 4, y: 1.8 }] } });
   let r = build(d);
   const bases = r.estructuras[0].esqueleto.columnas.map((c) => c.ySuelo);
   assert.ok(bases.includes(0.9) && bases.includes(1.8));
@@ -83,4 +83,15 @@ test('hueco de escalera armado todo con caño y grampa (foto 13)', () => {
   assert.equal(r.piezas.filter((p) => p.familia === 'horizontal' || p.familia === 'baranda').length, 0);
   assert.ok(r.piezas.filter((p) => p.familia === 'cano').length > 20);
   assert.ok(r.bom.some((l) => l.esAjuste));
+});
+
+test('hueco de escalera: fenólico sobre correas de caño cada ≤ 0,50 y placas contadas sobre toda la superficie', () => {
+  const r = build(M.crearDiseno('hueco_escalera'));
+  const correas = r.piezas.filter((p) => p.familia === 'cano' && /(^|:)cor\d+$/.test(p.elemento || ''));
+  const B = Math.max(...r.estructuras[0].esqueleto.columnas.map((c) => c.p[1]));
+  const ts = [0, ...correas.map((p) => p.a[2]).sort((a, b) => a - b), B];
+  for (let i = 1; i < ts.length; i++) assert.ok(ts[i] - ts[i - 1] <= 0.5 + 1e-6, `separación ${ts[i] - ts[i - 1]}`);
+  for (const c of correas) assert.ok(r.piezas.filter((p) => p.familia === 'grampa_fija' && p.elemento?.startsWith(`${c.elemento}:`)).length >= 2);
+  const fen = r.bom.filter((l) => l.codigo === 'PLACA-FEN-122x244').reduce((s, l) => s + l.cantidad, 0);
+  assert.equal(fen, 3, '8,75 m² → 3 placas');
 });

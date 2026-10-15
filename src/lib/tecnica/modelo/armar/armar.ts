@@ -392,7 +392,7 @@ function armarNodos(esq: Esqueleto, ix: IndiceEsqueleto, em: Emisor): void {
       const brazo = Math.min(mA.brazo, mB.brazo);
       const key = celdaId(v.id, k);
       for (const [X, mX] of [[A, mA], [B, mB]] as const) {
-        const hk = `${X.id}@${k}@${mX.dir}`;
+        const hk = `${X.id}@${k}@${mX.dir}@${mm(n[0])},${mm(n[1])}`;
         if (hechas.has(hk)) continue;
         hechas.add(hk);
         const tip = mas(X.p, n, mX.brazo);

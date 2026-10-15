@@ -7,6 +7,15 @@ import { EPS, mm } from './util.ts';
 
 const DE_COLUMNA = new Set<Familia>(['vertical', 'base_regulable', 'base_fija', 'collarin', 'rueda', 'rueda_freno', 'recubrimiento', 'esfera', 'accesorio']);
 const NO_DEDUP = new Set<Familia>(['lona', 'media_sombra', 'chapa', 'anclaje', 'fenolico']);
+/**
+ * Uniones puntuales: cada caño lleva sus propias grampas, así que dos caños que llegan al mismo nodo suman
+ * 4 grampas. Nunca se deduplican por posición; solo se van si se fue el tubo dueño (id sin el sufijo `:gN`).
+ */
+const UNIONES = new Set<Familia>(['grampa_fija', 'grampa_giratoria', 'manguito']);
+const duenoDe = (id: string): string | null => {
+  const m = /^(.*):g\d+(~\d+)?$/.exec(id);
+  return m ? m[1] : null;
+};
 
 const claveCodigo = (p: Pieza) => p.codigo ?? `SIN:${p.familia}:${p.medidas.largo ?? ''}x${p.medidas.alto ?? ''}x${p.medidas.ancho ?? ''}:${p.medidas.variante ?? ''}`;
 
@@ -53,12 +62,17 @@ export function fusionarNodos(piezas: Pieza[]): { piezas: Pieza[]; fusionadas: n
   }
   const vistos = new Set<string>();
   for (const p of resto) {
-    if (NO_DEDUP.has(p.familia)) continue;
+    if (NO_DEDUP.has(p.familia) || UNIONES.has(p.familia)) continue;
     const ka = `${mm(p.a[0])},${mm(p.a[1])},${mm(p.a[2])}`;
     const kb = `${mm(p.b[0])},${mm(p.b[1])},${mm(p.b[2])}`;
     const key = `${claveCodigo(p)}|${ka < kb ? ka + '|' + kb : kb + '|' + ka}`;
     if (vistos.has(key)) quitar.add(p.id);
     else vistos.add(key);
+  }
+  for (const p of resto) {
+    if (!UNIONES.has(p.familia)) continue;
+    const d = duenoDe(p.id);
+    if (d && quitar.has(d)) quitar.add(p.id);
   }
   return { piezas: piezas.filter((p) => !quitar.has(p.id)), fusionadas: quitar.size, compartidas };
 }

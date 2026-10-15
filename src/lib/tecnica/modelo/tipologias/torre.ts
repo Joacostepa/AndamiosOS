@@ -86,23 +86,12 @@ export function generarTorre(est: Estructura & { params: ParamsTorre }, ctx: Ctx
     });
     if (Math.abs(L - 2.5) < EPS && (Math.abs(B - 2.5) < EPS || Math.abs(B - 1.5) < EPS)) b.celdaPano(pano, 0, { diagonalPlanta: true });
     const el = (e: Elemento) => b.elemento(e);
+    if (p.acceso === 'escalera') escaleraConDescansos(el, W, cotas, ARR, nv.niveles[N - 1].cota, L, B, avisos, est);
     nv.niveles.forEach((lv: Nivel, n) => {
       const y0 = n === 0 ? 0 : nv.niveles[n - 1].cota;
       const c = lv.cota;
       const k = b.k(c);
-      if (p.acceso === 'escalera') {
-        const ida = n % 2 === 0;
-        const s0 = ida ? 0.55 : L - 0.55;
-        const s1 = ida ? L - 0.55 : 0.55;
-        el({ id: `zan${n}`, familia: 'zanca', medidas: { ancho: 1.5, largo: 2.5 }, a: W(s0, y0, B / 2), b: W(s1, c, B / 2), grupo: 'escalera', primitivas: [{ a: W(s0, y0, 0.08), b: W(s1, c, 0.08) }, { a: W(s0, y0, B - 0.08), b: W(s1, c, B - 0.08) }] });
-        el({ id: `bze${n}`, familia: 'baranda_escalera', medidas: {}, a: W(s0, y0 + 1, B - 0.05), b: W(s1, c + 1, B - 0.05), grupo: 'escalera' });
-        for (const [d0, d1, kk] of [[0, 0.55, 'a'], [L - 0.55, L, 'b']] as const) {
-          for (let j = 0; j < 2; j++) {
-            const s = d0 + ((j + 0.5) * (d1 - d0)) / 2;
-            el({ id: `des${n}${kk}${j}`, familia: 'tablon', medidas: { largo: B }, a: W(s, c, 0), b: W(s, c, B), grupo: 'escalera', sistema: 'comun' });
-          }
-        }
-      } else {
+      if (p.acceso !== 'escalera') {
         el({ id: `esc${n}`, familia: 'escalera_interior', medidas: {}, a: W(0.25, y0, B / 2), b: W(1.05, c, B / 2), grupo: 'acceso' });
         b.celdaPano(pano, k, { plataforma: n < N - 1 && Math.abs(L - 2.5) < EPS ? 'escotilla' : 'tablones' });
       }
@@ -125,6 +114,41 @@ export function generarTorre(est: Estructura & { params: ParamsTorre }, ctx: Ctx
     puertos: puertosCaja('Torre', [0, L], L, B, nv.alturaReal, nv.yTopCol),
     info: { prof: B, largo: L, ARR, desembarcos, frentes: [{ f: 0, etiqueta: 'Torre', largo: L, vanos: [L], S: [0, L], niveles: nv.niveles, ARR, yTopCol: nv.yTopCol, alturaReal: nv.alturaReal, altura: H, texto: `${fmt(L)} × ${fmt(B)}` }] },
   };
+}
+
+/** Módulo de altura de la zanca de catálogo (ZANCA-ESC-150x250: sube 2,00 en 1,40 de planta). */
+export const MODULO_ZANCA = 2;
+
+/**
+ * Escalera con descansos (pedido 6, foto 7): arranca en el primer anillo (no en el suelo), cada tramo sube
+ * exactamente un módulo de zanca (2,00) de anillo a anillo y alterna el sentido; del suelo al arranque va un
+ * escalón de arranque. Si el último nivel no cae en la grilla de 2,00, el resto se sube con escalera interna.
+ */
+function escaleraConDescansos(el: (e: Elemento) => void, W: (s: number, y: number, t: number) => [number, number, number], cotas: number[], ARR: number, top: number, L: number, B: number, avisos: Omit<Aviso, 'id'>[], est: Estructura): void {
+  const hay = (y: number) => cotas.some((c) => Math.abs(c - y) < EPS);
+  el({ id: 'zarr', familia: 'accesorio', medidas: { variante: 'escalon_arranque' }, a: W(0.3, 0, B / 2), b: W(0.3, ARR, B / 2), grupo: 'escalera', sistema: 'comun' });
+  let y = ARR;
+  let n = 0;
+  while (y + MODULO_ZANCA <= top + EPS && hay(y + MODULO_ZANCA)) {
+    const c = Math.round((y + MODULO_ZANCA) * 1000) / 1000;
+    const ida = n % 2 === 0;
+    const s0 = ida ? 0.55 : L - 0.55;
+    const s1 = ida ? L - 0.55 : 0.55;
+    el({ id: `zan${n}`, familia: 'zanca', medidas: { ancho: 1.5, largo: 2.5 }, a: W(s0, y, B / 2), b: W(s1, c, B / 2), grupo: 'escalera', primitivas: [{ a: W(s0, y, 0.08), b: W(s1, c, 0.08) }, { a: W(s0, y, B - 0.08), b: W(s1, c, B - 0.08) }] });
+    el({ id: `bze${n}`, familia: 'baranda_escalera', medidas: {}, a: W(s0, y + 1, B - 0.05), b: W(s1, c + 1, B - 0.05), grupo: 'escalera' });
+    for (const [d0, d1, kk] of [[0, 0.55, 'a'], [L - 0.55, L, 'b']] as const) {
+      for (let j = 0; j < 2; j++) {
+        const s = d0 + ((j + 0.5) * (d1 - d0)) / 2;
+        el({ id: `des${n}${kk}${j}`, familia: 'tablon', medidas: { largo: B }, a: W(s, c, 0), b: W(s, c, B), grupo: 'escalera', sistema: 'comun' });
+      }
+    }
+    y = c;
+    n++;
+  }
+  if (top - y > EPS) {
+    el({ id: 'zfin', familia: 'escalera_interior', medidas: {}, a: W(0.25, y, B / 2), b: W(1.05, top, B / 2), grupo: 'escalera' });
+    avisos.push({ regla: 'torre.escalera_resto', nivel: 'info', estructuraId: est.id, texto: `${est.nombre}: el último nivel (${fmt(top)}) no cae en un módulo de zanca de 2,00; los ${fmt(top - y)} finales se suben con escalera interna.`, reparaciones: [] });
+  }
 }
 
 function pataDeGallo(b: ConstructorEsqueleto, L: number, B: number, ARR: number, reglas: Omit<Regla, 'id'>[], est: Estructura): void {

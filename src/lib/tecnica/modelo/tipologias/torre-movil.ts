@@ -60,7 +60,7 @@ export function generarTorreMovil(est: Estructura & { params: ParamsTorreMovil }
   const reglas: Omit<Regla, 'id'>[] = [];
   const vanosS = tramosDe(p.largo, est.medida, m);
   const prof = profundidadDe(p.ancho, est.medida, m, [...m.multi.profundidades, 1.5]);
-  const cn = cotasNiveles({ altura: p.alturaPlataforma + 1, modo: p.descansos ? 'cada_nivel' : 'solo_trabajo' });
+  const cn = cotasNiveles({ altura: p.alturaPlataforma + 1, modo: p.descansos ? 'cada_nivel' : 'solo_trabajo', topeExacto: true });
   const g = grillaRect({ vanosS, profundidades: [prof], cotas: cn.cotas, plataformas: cn.plataformas, diagonales: false, catalogo: cat, medidas: m, apoyo: 'rueda_freno' });
   const b = g.b;
   const nd = diagonalesPerimetro(b, cat, g);

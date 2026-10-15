@@ -1,15 +1,24 @@
 /**
  * Envolvente (pedido 5, foto 5): andamio que rodea un volumen de planta poligonal o circular (cúpula,
- * tanque, columna) con un anillo cerrado: cada lado se parte en vanos, las esquinas se cierran con cuadros
- * y el cierre es exacto con caño y grampa (medida libre). Opción: torre central apoyada sobre vigas de
+ * tanque, columna) con un anillo cerrado.
+ * - 'ortogonal' (default, como arma ABA en la foto 5): anillo rectangular alrededor del volumen con lados de
+ *   vanos de catálogo, verticales compartidas en las esquinas (sin cuadros extra ni caño y grampa) y
+ *   ménsulas hacia adentro donde la curva queda lejos del anillo.
+ * - 'poligonal': cada lado del polígono es un tramo, las esquinas se cierran con cuadros y el cierre es
+ *   exacto con caño y grampa (medida libre). Opción: torre central apoyada sobre vigas de
  * celosía que cruzan el anillo (el linternón de una cúpula). Anclajes al volumen. Todo es PREDIMENSIONADO.
  */
-import type { Elemento, Estructura, Poligono, Regla, V2, V3 } from '../tipos.ts';
+import type { Elemento, Estructura, Poligono, Regla, TramoVano, V2, V3 } from '../tipos.ts';
+import type { MedidasCatalogo } from '../catalogo/catalogo.ts';
+import { CRITERIOS } from '../criterios.ts';
+import { ConstructorEsqueleto } from '../esqueleto/esqueleto.ts';
+import { rellenarLargo } from '../medida/rellenar.ts';
+import { bandaConDiagonal, celdaDiagonal, sentidoZigzag, vanosArriostrados } from '../reglas/diagonales.ts';
 import type { Campo, CtxGenerar, Generado, Preset, Tipologia } from './registro.ts';
 import { cotasNiveles, grillaPoligono, grillaRect } from './comunes/grilla.ts';
 import { antihorario, poligonoCirculo } from './comunes/poligono.ts';
 import { primViga, puerto, type PuertoLocal } from './comunes/util-tipologias.ts';
-import { ajustarMedidasCatalogo, anclarLinea, cerrarEsquinasPoligono, fusionarColumnasCercanas, rodapiesCortos, type AvisoGen, barandasPerimetro, diagonalesPerimetro, ksDe, largoCatalogo, medida, opcion, plataformaGrilla } from './nuevas-comunes.ts';
+import { ajustarMedidasCatalogo, anclarLinea, profundidadDe, cerrarEsquinasPoligono, fusionarColumnasCercanas, rodapiesCortos, type AvisoGen, barandasPerimetro, diagonalesPerimetro, ksDe, largoCatalogo, medida, opcion, plataformaGrilla } from './nuevas-comunes.ts';
 import { aLocal, centroide, envolvente, EPS, fmt, marco, r3, sum } from '../util.ts';
 
 export type PlantaEnvolvente =
@@ -36,9 +45,11 @@ export interface ParamsEnvolvente extends Record<string, unknown> {
   cierreExacto: boolean;
   anclada: boolean;
   torreCentral: TorreCentral | null;
+  /** 'ortogonal': anillo rectangular con ménsulas hacia la curva; 'poligonal': un tramo por lado */
+  trazado: 'ortogonal' | 'poligonal';
 }
 
-const DEF: ParamsEnvolvente = { planta: { tipo: 'circulo', centro: [0, 0], radio: 3, lados: 8 }, offset: 0.3, profundidad: 0.73, altura: 10, modoPlataforma: 'cada_2m', cierreExacto: true, anclada: true, torreCentral: null };
+const DEF: ParamsEnvolvente = { planta: { tipo: 'circulo', centro: [0, 0], radio: 3, lados: 8 }, offset: 0.3, profundidad: 0.73, altura: 10, modoPlataforma: 'cada_2m', cierreExacto: true, anclada: true, torreCentral: null, trazado: 'ortogonal' };
 
 function normalizarPlanta(v: unknown): PlantaEnvolvente {
   const x = (v && typeof v === 'object' ? v : {}) as Record<string, unknown>;
@@ -63,6 +74,7 @@ export function normalizarEnvolvente(parcial: Partial<ParamsEnvolvente>): { para
     modoPlataforma: opcion(x.modoPlataforma, ['cada_2m', 'cada_nivel', 'solo_trabajo'] as const, 'cada_2m'),
     cierreExacto: x.cierreExacto === undefined ? true : !!x.cierreExacto,
     anclada: x.anclada === undefined ? true : !!x.anclada,
+    trazado: opcion(x.trazado, ['ortogonal', 'poligonal'] as const, 'ortogonal'),
     torreCentral: t ? { largo: medida(t.largo, 2.5, 0.73, 5), ancho: medida(t.ancho, 2.5, 0.73, 5), desde: medida(t.desde, 0, 0, 120), hasta: medida(t.hasta, altura + 4, 2, 150) } : null,
   };
   return { params: p, avisos: [] };
@@ -97,6 +109,167 @@ function cuerdaX(P: Poligono, z0: number): [number, number] | null {
   return [Math.min(...xs), Math.max(...xs)];
 }
 
+/** Lado de catálogo: la combinación de vanos de catálogo más corta que cubre `L` (nunca menos). */
+export function ladoCatalogo(L: number, m: MedidasCatalogo): TramoVano[] {
+  for (let extra = 0; extra < 3; extra = r3(extra + 0.05)) {
+    const r = rellenarLargo(L + extra, 'multi', { modo: 'catalogo', medidas: m });
+    if (r.total >= L - 0.005) return r.vanos;
+  }
+  return rellenarLargo(L + 3, 'multi', { modo: 'catalogo', medidas: m }).vanos;
+}
+
+/** Distancia de un punto al borde de un polígono. */
+function distAlBorde(P: Poligono, q: V2): number {
+  let d = Infinity;
+  for (let i = 0; i < P.length; i++) {
+    const a = P[i];
+    const b = P[(i + 1) % P.length];
+    const dx = b[0] - a[0];
+    const dz = b[1] - a[1];
+    const L2 = dx * dx + dz * dz || 1;
+    const t = Math.max(0, Math.min(1, ((q[0] - a[0]) * dx + (q[1] - a[1]) * dz) / L2));
+    d = Math.min(d, Math.hypot(q[0] - (a[0] + t * dx), q[1] - (a[1] + t * dz)));
+  }
+  return d;
+}
+
+interface AnilloOrtogonal {
+  b: ConstructorEsqueleto;
+  /** columnas de la línea interior (contacto con el volumen) */
+  contacto: string[];
+  /** s de las dos líneas interiores (para las vigas de la torre central) */
+  sIn: [number, number];
+  perimetro: number;
+  lados: { a: V2; z: V2; afuera: V2; cols: number[] }[];
+  mensulas: number;
+}
+
+/**
+ * Anillo rectangular (foto 5): lados de vanos de catálogo alrededor de la caja del volumen + separación,
+ * profundidad de catálogo, una vertical por nodo (las esquinas se comparten), diagonales en zigzag en las
+ * caras exteriores y ménsulas hacia adentro en los niveles con plataforma donde la curva queda lejos.
+ */
+function anilloOrtogonal(o: { P: Poligono; offset: number; prof: number; cotas: number[]; plataformas: number[]; catalogo: CtxGenerar['catalogo']; m: MedidasCatalogo }): AnilloOrtogonal {
+  const { P, m } = o;
+  const xs = P.map((q) => q[0]);
+  const zs = P.map((q) => q[1]);
+  const [x0, x1, z0, z1] = [Math.min(...xs), Math.max(...xs), Math.min(...zs), Math.max(...zs)];
+  const ws = ladoCatalogo(x1 - x0 + 2 * o.offset, m);
+  const wt = ladoCatalogo(z1 - z0 + 2 * o.offset, m);
+  const Wi = sum(ws.map((t) => t.medida));
+  const Di = sum(wt.map((t) => t.medida));
+  const pr = o.prof;
+  const S = [r3((x0 + x1) / 2 - Wi / 2 - pr)];
+  for (const v of [pr, ...ws.map((t) => t.medida), pr]) S.push(r3(S[S.length - 1] + v));
+  const T = [r3((z0 + z1) / 2 - Di / 2 - pr)];
+  for (const v of [pr, ...wt.map((t) => t.medida), pr]) T.push(r3(T[T.length - 1] + v));
+  const nS = S.length;
+  const nT = T.length;
+  const b = new ConstructorEsqueleto('multi', o.cotas);
+  const cotas = [...o.cotas].sort((a, c) => a - c);
+  const yBase = cotas[0];
+  const plats = o.plataformas.map(r3);
+  const yTope = r3(cotas[cotas.length - 1] + (plats.includes(r3(cotas[cotas.length - 1])) ? 1 : 0));
+  const anilloPano = (i: number, j: number) => i === 0 || i === nS - 2 || j === 0 || j === nT - 2;
+  const pano = (i: number, j: number) => i >= 0 && j >= 0 && i <= nS - 2 && j <= nT - 2 && anilloPano(i, j);
+  const hueco = (i: number, j: number) => i >= 0 && j >= 0 && i <= nS - 2 && j <= nT - 2 && !anilloPano(i, j);
+  const col: (string | null)[][] = [];
+  for (let i = 0; i < nS; i++) {
+    col[i] = [];
+    for (let j = 0; j < nT; j++) {
+      const usa = pano(i - 1, j - 1) || pano(i, j - 1) || pano(i - 1, j) || pano(i, j);
+      col[i][j] = usa ? b.columna(`gc${i}_${j}`, [S[i], T[j]], yBase, yTope, 'base_regulable') : null;
+    }
+  }
+  const cx = (S[0] + S[nS - 1]) / 2;
+  const cz = (T[0] + T[nT - 1]) / 2;
+  const vS: Record<string, string> = {};
+  const vT: Record<string, string> = {};
+  const caraDe = (pa: boolean, pb: boolean, ha: boolean, hb: boolean, borde: boolean): 'exterior' | 'interior' | 'interna' => (borde ? 'exterior' : (pa && hb) || (pb && ha) ? 'interior' : 'interna');
+  for (let j = 0; j < nT; j++) for (let i = 0; i < nS - 1; i++) {
+    const abajo = pano(i, j - 1);
+    const arriba = pano(i, j);
+    if (!abajo && !arriba) continue;
+    const borde = j === 0 || j === nT - 1;
+    const cara = caraDe(abajo, arriba, hueco(i, j - 1), hueco(i, j), borde);
+    const normal: V2 | undefined = cara === 'exterior' ? [0, j === 0 ? -1 : 1] : cara === 'interior' ? [0, abajo ? 1 : -1] : undefined;
+    const tramo = i === 0 || i === nS - 2 ? null : ws[i - 1];
+    vS[`${i}_${j}`] = b.vano(`gs${j}_${i}`, col[i][j]!, col[i + 1][j]!, cara, { libre: !!tramo?.libre, normal });
+  }
+  for (let i = 0; i < nS; i++) for (let j = 0; j < nT - 1; j++) {
+    const izq = pano(i - 1, j);
+    const der = pano(i, j);
+    if (!izq && !der) continue;
+    const borde = i === 0 || i === nS - 1;
+    const cara0 = caraDe(izq, der, hueco(i - 1, j), hueco(i, j), borde);
+    const cara = cara0 === 'interna' ? 'transversal' : cara0;
+    const normal: V2 | undefined = cara === 'exterior' ? [i === 0 ? -1 : 1, 0] : cara === 'interior' ? [izq ? 1 : -1, 0] : undefined;
+    const tramo = j === 0 || j === nT - 2 ? null : wt[j - 1];
+    vT[`${i}_${j}`] = b.vano(`gt${i}_${j}`, col[i][j]!, col[i][j + 1]!, cara, { libre: !!tramo?.libre, normal });
+  }
+  const panos: string[] = [];
+  for (let i = 0; i < nS - 1; i++) for (let j = 0; j < nT - 1; j++) {
+    if (!pano(i, j)) continue;
+    panos.push(b.pano(`gp${i}_${j}`, [vS[`${i}_${j}`], vT[`${i + 1}_${j}`], vS[`${i}_${j + 1}`], vT[`${i}_${j}`]], { sentido: j === 0 || j === nT - 2 ? vS[`${i}_${j}`] : vT[`${i}_${j}`] }));
+  }
+  const exteriores = b.esq.vanos.filter((v) => v.cara === 'exterior');
+  const interiores = b.esq.vanos.filter((v) => v.cara === 'interior');
+  // plataformas, barandas exteriores y, hacia el volumen, ménsulas donde la curva queda lejos
+  const brazos = [...m.multi.mensulas].sort((a, c) => a - c);
+  let mensulas = 0;
+  for (const c of plats) {
+    const k = b.k(c);
+    if (k < 0) continue;
+    for (const pid of panos) b.celdaPano(pid, k, { plataforma: 'tablones' });
+    for (const v of exteriores) b.celda(v.id, k, { baranda: 2 });
+    for (const v of interiores) {
+      const A = b.col(v.a);
+      const B = b.col(v.b);
+      const medio: V2 = [(A.p[0] + B.p[0]) / 2, (A.p[1] + B.p[1]) / 2];
+      const hueco0 = Math.min(distAlBorde(P, A.p), distAlBorde(P, B.p), distAlBorde(P, medio));
+      const brazo = [...brazos].reverse().find((x) => x <= hueco0 - 0.05 + EPS);
+      if (brazo && hueco0 > CRITERIOS.retiroLibre + EPS) {
+        for (const X of [A, B]) {
+          const prev = b.esq.nodos[`${X.id}@${k}`]?.mensula;
+          if (!prev || prev.brazo > brazo) b.nodo(X.id, k, { mensula: { dir: 'fachada', brazo, baranda: false } });
+        }
+        mensulas++;
+      }
+      const resto = brazo ? hueco0 - brazo : hueco0;
+      if (resto > CRITERIOS.retiroLibre + EPS) b.celda(v.id, k, { baranda: 2 });
+    }
+  }
+  // diagonales: zigzag en los vanos arriostrados de cada cara exterior (los lados del rectángulo)
+  const ks = b.esq.cotas;
+  const filas: string[][] = [
+    Array.from({ length: nS - 1 }, (_, i) => vS[`${i}_0`]),
+    Array.from({ length: nT - 1 }, (_, j) => vT[`${nS - 1}_${j}`]),
+    Array.from({ length: nS - 1 }, (_, i) => vS[`${nS - 2 - i}_${nT - 1}`]),
+    Array.from({ length: nT - 1 }, (_, j) => vT[`0_${nT - 2 - j}`]),
+  ];
+  filas.forEach((fila, f) => {
+    vanosArriostrados(fila.length).forEach((i, fase) => {
+      const v = b.esq.vanos.find((x) => x.id === fila[i])!;
+      let orden = 0;
+      for (let k = 1; k < ks.length; k++) if (bandaConDiagonal(ks[k] - ks[k - 1])) b.celda(v.id, k, celdaDiagonal(o.catalogo, ks[k] - ks[k - 1], v.medida, sentidoZigzag(orden++, fase + f)));
+    });
+  });
+  const contacto: string[] = [];
+  for (let i = 1; i < nS - 1; i++) for (let j = 1; j < nT - 1; j++) if (col[i][j] && (i === 1 || i === nS - 2 || j === 1 || j === nT - 2)) contacto.push(col[i][j]!);
+  const esquinas: V2[] = [[S[0], T[0]], [S[nS - 1], T[0]], [S[nS - 1], T[nT - 1]], [S[0], T[nT - 1]]];
+  const lados = esquinas.map((a, i) => {
+    const z = esquinas[(i + 1) % 4];
+    const medio: V2 = [(a[0] + z[0]) / 2, (a[1] + z[1]) / 2];
+    const L = Math.hypot(medio[0] - cx, medio[1] - cz) || 1;
+    const afuera: V2 = [r3((medio[0] - cx) / L), r3((medio[1] - cz) / L)];
+    const largo = Math.hypot(z[0] - a[0], z[1] - a[1]);
+    const nodos = i % 2 === 0 ? S : T;
+    const rel = nodos.map((x) => r3(Math.abs(x - nodos[i < 2 ? 0 : nodos.length - 1])));
+    return { a, z, afuera, cols: (i < 2 ? rel : [...rel].reverse()).filter((x) => x <= largo + EPS) };
+  });
+  return { b, contacto, sIn: [S[1], S[nS - 2]], perimetro: r3(2 * (S[nS - 1] - S[0]) + 2 * (T[nT - 1] - T[0])), lados, mensulas };
+}
+
 export function generarEnvolvente(est: Estructura & { params: ParamsEnvolvente }, ctx: CtxGenerar): Generado {
   const p = est.params;
   const m = ctx.catalogo.medidas;
@@ -105,17 +278,54 @@ export function generarEnvolvente(est: Estructura & { params: ParamsEnvolvente }
   const reglas: Omit<Regla, 'id'>[] = [];
   const P = plantaLocal(est, ctx, avisos);
   const cn = cotasNiveles({ altura: p.altura, modo: p.modoPlataforma });
-  const modo = est.medida === 'libre' || p.cierreExacto ? 'libre' : 'catalogo';
-  const gp = grillaPoligono({ poligono: P, offset: p.offset, profundidad: p.profundidad, cotas: cn.cotas, cerrada: true, plataformas: cn.plataformas, modo, catalogo: cat, medidas: m, prefijo: 'g' });
-  const b = gp.b;
-  cerrarEsquinasPoligono(b.esq, gp.lados, [...m.multi.vanos, ...m.multi.profundidades]);
-  ajustarMedidasCatalogo(b.esq, m);
-  if (modo === 'catalogo') avisos.push({ regla: 'envolvente.cierre', nivel: 'aviso', estructuraId: est.id, texto: 'Envolvente con vanos de catálogo: las esquinas pueden no cerrar exacto.', reparaciones: [{ etiqueta: 'Cerrar exacto con caño y grampa', accion: { tipo: 'param', estructuraId: est.id, ruta: 'params.cierreExacto', valor: true } }] });
-  const libres = b.esq.vanos.filter((v) => v.libre).length;
-  reglas.push({ regla: 'envolvente.armado', estructuraId: est.id, texto: `Anillo cerrado de ${gp.lados.length} lados a ${fmt(p.offset)} del volumen, ${fmt(p.profundidad)} de profundidad${libres ? `, ${libres} vanos de ajuste con caño y grampa` : ''}.` });
-  if (p.anclada) {
-    const n = anclarLinea(b, gp.contacto, ksDe(b, cn.plataformas), null, p.offset);
-    reglas.push({ regla: 'envolvente.anclajes', estructuraId: est.id, texto: `${n} anclajes al volumen al tresbolillo.`, deshacer: { tipo: 'param', estructuraId: est.id, ruta: 'params.anclada', valor: false } });
+  const orto = p.trazado === 'ortogonal';
+  let b: ConstructorEsqueleto;
+  let luzVigas: (z: number) => [number, number] | null;
+  let ladosPuerto: { a: V2; z: V2; afuera: V2; cols: number[] }[] = [];
+  let perimetro = 0;
+  let gp: ReturnType<typeof grillaPoligono> | null = null;
+  if (orto) {
+    const prof = profundidadDe(p.profundidad, 'catalogo', m);
+    const an = anilloOrtogonal({ P, offset: p.offset, prof: prof.medida, cotas: cn.cotas, plataformas: cn.plataformas, catalogo: cat, m });
+    b = an.b;
+    luzVigas = () => an.sIn;
+    ladosPuerto = an.lados;
+    perimetro = an.perimetro;
+    reglas.push({ regla: 'envolvente.armado', estructuraId: est.id, texto: `Anillo rectangular de catálogo alrededor del volumen (como en obra): esquinas con vertical compartida${an.mensulas ? `, ${an.mensulas} tramos con ménsulas hacia la curva` : ''}.`, deshacer: { tipo: 'param', estructuraId: est.id, ruta: 'params.trazado', valor: 'poligonal' } });
+    if (p.anclada) {
+      let n = 0;
+      const ks = ksDe(b, cn.plataformas);
+      ks.forEach((k, j) => {
+        if (j % CRITERIOS.anclajeDn !== 0 && j !== ks.length - 1) return;
+        an.contacto.forEach((cid, i) => {
+          if ((i + j) % CRITERIOS.anclajeDx !== 0) return;
+          const C = b.col(cid);
+          const retiro = distAlBorde(P, C.p);
+          if (retiro > 1.5) return;
+          b.nodo(cid, k, { anclaje: { retiro: r3(Math.max(0.15, retiro)) } });
+          n++;
+        });
+      });
+      if (n) reglas.push({ regla: 'envolvente.anclajes', estructuraId: est.id, texto: `${n} anclajes al volumen al tresbolillo.`, deshacer: { tipo: 'param', estructuraId: est.id, ruta: 'params.anclada', valor: false } });
+    }
+  } else {
+    const modo = est.medida === 'libre' || p.cierreExacto ? 'libre' : 'catalogo';
+    gp = grillaPoligono({ poligono: P, offset: p.offset, profundidad: p.profundidad, cotas: cn.cotas, cerrada: true, plataformas: cn.plataformas, modo, catalogo: cat, medidas: m, prefijo: 'g' });
+    b = gp.b;
+    cerrarEsquinasPoligono(b.esq, gp.lados, [...m.multi.vanos, ...m.multi.profundidades]);
+    ajustarMedidasCatalogo(b.esq, m);
+    if (modo === 'catalogo') avisos.push({ regla: 'envolvente.cierre', nivel: 'aviso', estructuraId: est.id, texto: 'Envolvente con vanos de catálogo: las esquinas pueden no cerrar exacto.', reparaciones: [{ etiqueta: 'Cerrar exacto con caño y grampa', accion: { tipo: 'param', estructuraId: est.id, ruta: 'params.cierreExacto', valor: true } }] });
+    const libres = b.esq.vanos.filter((v) => v.libre).length;
+    reglas.push({ regla: 'envolvente.armado', estructuraId: est.id, texto: `Anillo cerrado de ${gp.lados.length} lados a ${fmt(p.offset)} del volumen, ${fmt(p.profundidad)} de profundidad${libres ? `, ${libres} vanos de ajuste con caño y grampa` : ''}.`, deshacer: { tipo: 'param', estructuraId: est.id, ruta: 'params.trazado', valor: 'ortogonal' } });
+    if (p.anclada) {
+      const n = anclarLinea(b, gp.contacto, ksDe(b, cn.plataformas), null, p.offset);
+      reglas.push({ regla: 'envolvente.anclajes', estructuraId: est.id, texto: `${n} anclajes al volumen al tresbolillo.`, deshacer: { tipo: 'param', estructuraId: est.id, ruta: 'params.anclada', valor: false } });
+    }
+    luzVigas = (z) => {
+      const cu = cuerdaX(P, z);
+      return cu ? [r3(cu[0] - p.offset), r3(cu[1] + p.offset)] : null;
+    };
+    perimetro = r3(sum(gp.lados.flatMap((L) => L.tramos.map((t) => t.medida))));
   }
   const els: Elemento[] = [];
   let yTop = cn.yTopCol;
@@ -146,10 +356,9 @@ export function generarEnvolvente(est: Estructura & { params: ParamsEnvolvente }
     diagonalesPerimetro(b, cat, gt, { desde });
     // vigas de celosía que cruzan el anillo bajo las patas de la torre
     for (const [j, z] of [t0, r3(t0 + tc.ancho)].entries()) {
-      const cu = cuerdaX(P, z);
+      const cu = luzVigas(z);
       if (!cu) continue;
-      const xa = r3(cu[0] - p.offset);
-      const xb = r3(cu[1] + p.offset);
+      const [xa, xb] = cu;
       const luz = r3(xb - xa);
       const v = largoCatalogo(luz, m.multi.vigasCelosia);
       const a: V3 = [xa, desde, z];
@@ -164,30 +373,32 @@ export function generarEnvolvente(est: Estructura & { params: ParamsEnvolvente }
   }
   for (const e of els) b.elemento(e);
   // puertos: la cara exterior de cada lado
-  const col = new Map(b.esq.columnas.map((c) => [c.id, c]));
   const puertos: PuertoLocal[] = [];
-  gp.lados.forEach((L, i) => {
-    if (L.exterior.length < 2) return;
-    const a = col.get(L.exterior[0])!.p;
-    const z = col.get(L.exterior[L.exterior.length - 1])!.p;
-    const largo = Math.hypot(z[0] - a[0], z[1] - a[1]);
-    const n: V2 = [-(z[1] - a[1]) / (largo || 1), (z[0] - a[0]) / (largo || 1)];
-    const [cx, cz] = centroide(P);
-    const afuera = (a[0] - cx) * n[0] + (a[1] - cz) * n[1] > 0 ? n : ([-n[0], -n[1]] as V2);
-    let acc = 0;
-    const cols = [0, ...L.tramos.map((t) => (acc = r3(acc + t.medida)))];
-    puertos.push(puerto(`l${i}`, 'cara', `Envolvente · lado ${i + 1}`, [a[0], 0, a[1]], [z[0], 0, z[1]], [afuera[0], 0, afuera[1]], cols, cn.alturaReal));
-  });
-  const fusionadas = fusionarColumnasCercanas(b.esq);
-  if (fusionadas) reglas.push({ regla: 'envolvente.esquinas', estructuraId: est.id, texto: `${fusionadas} verticales de esquina compartidas entre lados.` });
-  rodapiesCortos(b.esq);
-  const perimetro = r3(sum(gp.lados.flatMap((L) => L.tramos.map((t) => t.medida))));
+  if (gp) {
+    const col = new Map(b.esq.columnas.map((c) => [c.id, c]));
+    gp.lados.forEach((L, i) => {
+      if (L.exterior.length < 2) return;
+      const a = col.get(L.exterior[0])!.p;
+      const z = col.get(L.exterior[L.exterior.length - 1])!.p;
+      const largo = Math.hypot(z[0] - a[0], z[1] - a[1]);
+      const n: V2 = [-(z[1] - a[1]) / (largo || 1), (z[0] - a[0]) / (largo || 1)];
+      const [cx, cz] = centroide(P);
+      const afuera = (a[0] - cx) * n[0] + (a[1] - cz) * n[1] > 0 ? n : ([-n[0], -n[1]] as V2);
+      let acc = 0;
+      const cols = [0, ...L.tramos.map((t) => (acc = r3(acc + t.medida)))];
+      ladosPuerto.push({ a, z, afuera, cols });
+    });
+    const fusionadas = fusionarColumnasCercanas(b.esq);
+    if (fusionadas) reglas.push({ regla: 'envolvente.esquinas', estructuraId: est.id, texto: `${fusionadas} verticales de esquina compartidas entre lados.` });
+    rodapiesCortos(b.esq);
+  }
+  ladosPuerto.forEach((L, i) => puertos.push(puerto(`l${i}`, 'cara', `Envolvente · lado ${i + 1}`, [L.a[0], 0, L.a[1]], [L.z[0], 0, L.z[1]], [L.afuera[0], 0, L.afuera[1]], L.cols, cn.alturaReal)));
   const ext = envolvente(b.esq.columnas.map((c) => c.p));
   return {
     esqueleto: b.esq, avisos, reglas,
     metricas: { m2: r3(perimetro * cn.alturaReal), ml: perimetro, alturaReal: yTop, huella: ext.length >= 3 ? ext : P },
     puertos,
-    info: { lados: gp.lados.length, perimetro, poligono: P },
+    info: { lados: gp ? gp.lados.length : 4, perimetro, poligono: P, trazado: p.trazado },
   };
 }
 
@@ -197,15 +408,16 @@ const CAMPOS: Campo[] = [
   { ruta: 'params.offset', etiqueta: 'Separación al volumen', tipo: 'medida', unidad: 'm', min: 0.05, max: 3, paso: 0.05, grupo: 'Medidas' },
   { ruta: 'params.profundidad', etiqueta: 'Profundidad', tipo: 'medida', unidad: 'm', catalogo: 'profundidades', grupo: 'Medidas' },
   { ruta: 'params.modoPlataforma', etiqueta: 'Plataformas', tipo: 'opcion', opciones: [{ valor: 'cada_2m', etiqueta: 'Cada 2,00' }, { valor: 'cada_nivel', etiqueta: 'Cada nivel' }, { valor: 'solo_trabajo', etiqueta: 'Solo arriba' }], grupo: 'Medidas' },
-  { ruta: 'params.cierreExacto', etiqueta: 'Cierre exacto (caño y grampa)', tipo: 'bool', grupo: 'Avanzado' },
+  { ruta: 'params.trazado', etiqueta: 'Trazado', tipo: 'opcion', opciones: [{ valor: 'ortogonal', etiqueta: 'Anillo rectangular + ménsulas (como en obra)' }, { valor: 'poligonal', etiqueta: 'Un tramo por lado del polígono' }], grupo: 'Medidas' },
+  { ruta: 'params.cierreExacto', etiqueta: 'Cierre exacto (caño y grampa)', tipo: 'bool', grupo: 'Avanzado', visibleSi: { ruta: 'params.trazado', igual: 'poligonal' } },
   { ruta: 'params.anclada', etiqueta: 'Anclada al volumen', tipo: 'bool', grupo: 'Apoyo' },
   { ruta: 'params.torreCentral.largo', etiqueta: 'Torre central · largo', tipo: 'medida', unidad: 'm', catalogo: 'vanos', grupo: 'Accesos' },
   { ruta: 'params.torreCentral.hasta', etiqueta: 'Torre central · hasta', tipo: 'medida', unidad: 'm', grupo: 'Accesos' },
 ];
 
 const PRESETS: Preset[] = [
-  { id: 'envolvente_cupula', nombre: 'Envolvente de cúpula', icono: 'envolvente', descripcion: 'Anillo octogonal alrededor de una cúpula con torre central sobre vigas para el linternón.', params: { planta: { tipo: 'circulo', centro: [0, 0], radio: 3.5, lados: 8 }, altura: 10, torreCentral: { largo: 2.5, ancho: 2.5, desde: 0, hasta: 14 } } },
-  { id: 'envolvente_tanque', nombre: 'Envolvente de tanque', icono: 'envolvente', descripcion: 'Anillo de 12 lados alrededor de un tanque cilíndrico, plataformas cada 2,00.', params: { planta: { tipo: 'circulo', centro: [0, 0], radio: 2.5, lados: 12 }, altura: 8 } },
+  { id: 'envolvente_cupula', nombre: 'Envolvente de cúpula', icono: 'envolvente', descripcion: 'Anillo rectangular alrededor de una cúpula, ménsulas hacia la curva y torre central sobre vigas para el linternón.', params: { planta: { tipo: 'circulo', centro: [0, 0], radio: 3.5, lados: 8 }, altura: 10, offset: 0.2, torreCentral: { largo: 2.5, ancho: 2.5, desde: 0, hasta: 14 } } },
+  { id: 'envolvente_tanque', nombre: 'Envolvente de tanque', icono: 'envolvente', descripcion: 'Anillo rectangular alrededor de un tanque cilíndrico con ménsulas hacia la curva, plataformas cada 2,00.', params: { planta: { tipo: 'circulo', centro: [0, 0], radio: 2.5, lados: 12 }, altura: 8 } },
   { id: 'envolvente_columna', nombre: 'Envolvente de columna', icono: 'envolvente', descripcion: 'Andamio cuadrado alrededor de una columna o pilar.', params: { planta: { tipo: 'poligono', puntos: [[0, 0], [0.6, 0], [0.6, 0.6], [0, 0.6]] }, altura: 6, offset: 0.2, modoPlataforma: 'cada_nivel' } },
 ];
 

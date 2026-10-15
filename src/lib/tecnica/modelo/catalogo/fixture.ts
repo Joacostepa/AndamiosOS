@@ -54,6 +54,7 @@ const FILAS: Fila[] = [
   ['MAD-BASE-10x10', 'MADERA BASE 10X10cm', 'accesorio', 'comun', { variante: 'madera_base' }, 1.2, 600],
   ['RUEDA-STD', 'RUEDA STANDARD', 'rueda', 'comun', {}, null, 40],
   ['RUEDA-STD-FRENO', 'RUEDA STANDARD CON FRENO', 'rueda_freno', 'comun', {}, null, 40],
+  ['ESC-ARR', 'ESCALÓN DE ARRANQUE (TORRE ESCALERA)', 'accesorio', 'comun', { variante: 'escalon_arranque' }, null, 20, { plausible: true }],
   ['ESC-INT-MULTI', 'ESCALERA INTERNA (PARA MULTIDIRECCIONAL)', 'escalera_interior', 'multi', {}, null, 40],
   ['ESC-INT-BAST', 'ESCALERA INTERNA (PARA BASTIDOR)', 'escalera_interior', 'bastidor', {}, 9.5, 30],
   ['BAR-ESC-MULTI', 'BARANDA DE ESCALERA INTERNA (PARA MULTIDIRECCIONAL)', 'baranda_escalera', 'multi', {}, 8.0, 30],

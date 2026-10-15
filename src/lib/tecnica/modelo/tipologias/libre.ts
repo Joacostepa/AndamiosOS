@@ -40,7 +40,7 @@ export function esqueletoDesdeMedidas(est: Estructura & { params: ParamsLibre },
     cotas = [r3(arr), r3(Math.max(arr + 0.5, p.altura))];
     plataformas = [cotas[1]];
   } else {
-    const cn = cotasNiveles({ altura: p.altura + 1, modo: 'solo_trabajo' });
+    const cn = cotasNiveles({ altura: p.altura + 1, modo: 'solo_trabajo', topeExacto: true });
     cotas = cn.cotas;
     plataformas = cn.plataformas;
   }

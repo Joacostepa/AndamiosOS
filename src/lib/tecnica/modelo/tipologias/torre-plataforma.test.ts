@@ -18,7 +18,7 @@ test('torre de plataforma: normalizar total', () => {
 
 test('torre de plataforma y azotea: golden, bien armadas y misma BOM en libre', () => {
   const esperado: Record<string, Record<string, number>> = {
-    torre_plataforma: { vertical: 36, horizontal: 108, diagonal: 16, tablon: 95, base_regulable: 12, escalera_interior: 2, tablon_escotilla: 1 },
+    torre_plataforma: { vertical: 24, horizontal: 91, diagonal: 16, tablon: 95, base_regulable: 12, escalera_interior: 2, tablon_escotilla: 1 },
     torre_azotea: { vertical: 12, horizontal: 20, diagonal: 6, tablon: 3, base_regulable: 4, anclaje: 2, escalera_interior: 1, cano: 3 },
   };
   for (const [id, g] of Object.entries(esperado)) {

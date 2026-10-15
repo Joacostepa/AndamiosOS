@@ -59,7 +59,7 @@ export function generarBandeja(est: Estructura & { params: ParamsBandeja }, ctx:
   const reglas: Omit<Regla, 'id'>[] = [];
   const tramos = tramosDe(p.largo, est.medida, m);
   const prof = profundidadDe(p.profundidad, est.medida, m);
-  const cn = cotasNiveles({ altura: p.cota + 1, modo: 'solo_trabajo' });
+  const cn = cotasNiveles({ altura: p.cota + 1, modo: 'solo_trabajo', topeExacto: true });
   const yB = cn.plataformas[cn.plataformas.length - 1] ?? cn.cotas[cn.cotas.length - 1];
   if (Math.abs(yB - p.cota) > 0.01) avisos.push({ regla: 'bandeja.cota', nivel: 'info', estructuraId: est.id, texto: `La bandeja queda a ${fmt(yB)} (roseta más cercana a ${fmt(p.cota)}).`, reparaciones: [] });
   const g = grillaRect({

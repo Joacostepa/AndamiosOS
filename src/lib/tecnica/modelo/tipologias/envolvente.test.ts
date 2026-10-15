@@ -17,9 +17,10 @@ test('envolvente: normalizar total (planta rara → círculo)', () => {
 
 test('envolvente: golden por preset, anillo cerrado, sin verticales dobles y misma BOM en libre', () => {
   const esperado: Record<string, Record<string, number>> = {
-    envolvente_cupula: { vertical: 288, horizontal: 540, diagonal: 40, tablon: 208, viga_celosia: 2, base_regulable: 56, anclaje: 48, cano: 304 },
-    envolvente_tanque: { vertical: 240, horizontal: 372, diagonal: 36, tablon: 144, base_regulable: 60, anclaje: 36, cano: 360 },
-    envolvente_columna: { vertical: 72, horizontal: 96, diagonal: 8, tablon: 48, base_regulable: 24, anclaje: 12, cano: 120 },
+    // anillo rectangular de catálogo (foto 5): sin cuadros de esquina ni relleno de caño y grampa
+    envolvente_cupula: { vertical: 136, horizontal: 428, diagonal: 40, tablon: 192, viga_celosia: 2, mensula: 64, base_regulable: 32, anclaje: 12, cano: 12 },
+    envolvente_tanque: { vertical: 96, horizontal: 384, diagonal: 24, tablon: 120, mensula: 24, base_regulable: 32, anclaje: 8, cano: 6 },
+    envolvente_columna: { vertical: 32, horizontal: 120, diagonal: 16, tablon: 32, base_regulable: 16, anclaje: 4 },
   };
   for (const [id, g] of Object.entries(esperado)) {
     const d = M.crearDiseno(id);
@@ -50,7 +51,7 @@ test('envolvente de cúpula: torre central sobre vigas, más alta que el anillo'
 });
 
 test('envolvente de un volumen del contexto y aviso de cierre en solo catálogo (con reparación)', () => {
-  let d = M.crearDiseno('envolvente_tanque', { params: { planta: { tipo: 'volumen', volumenId: 'T1' }, cierreExacto: false } });
+  let d = M.crearDiseno('envolvente_tanque', { params: { planta: { tipo: 'volumen', volumenId: 'T1' }, cierreExacto: false, trazado: 'poligonal' } });
   d.contexto.volumenes.push({ id: 'T1', tipo: 'cilindro', planta: [[4, 0], [2, 3.46], [-2, 3.46], [-4, 0], [-2, -3.46], [2, -3.46]], yBase: 0, yTope: 6 });
   let r = build(d);
   assert.ok(r.piezas.length > 100);
@@ -60,4 +61,21 @@ test('envolvente de un volumen del contexto y aviso de cierre en solo catálogo 
   r = build(d);
   assert.ok(!r.avisos.some((a) => a.regla === 'envolvente.cierre'));
   assert.deepEqual(problemasDeArmado(r), []);
+});
+
+test('envolvente de columna: un anillo con una vertical por nodo y sin caño y grampa', () => {
+  const r = build(M.crearDiseno('envolvente_columna'));
+  const f = porFamilia(r);
+  assert.ok((f.base_regulable || 0) <= 16, `bases ${f.base_regulable}`);
+  assert.equal(f.cano || 0, 0);
+  assert.equal(f.grampa_fija || 0, 0);
+  // ningún par de verticales a menos de 0,70 (antes quedaban a 0,27)
+  const cols = r.estructuras[0].esqueleto.columnas;
+  for (let i = 0; i < cols.length; i++) for (let j = i + 1; j < cols.length; j++) assert.ok(Math.hypot(cols[i].p[0] - cols[j].p[0], cols[i].p[1] - cols[j].p[1]) > 0.7);
+});
+
+test('envolvente poligonal sigue disponible (un tramo por lado)', () => {
+  const r = build(M.crearDiseno('envolvente_tanque', { params: { trazado: 'poligonal' } }));
+  assert.deepEqual(problemasDeArmado(r), []);
+  assert.ok(r.estructuras[0].esqueleto.columnas.length > 32);
 });

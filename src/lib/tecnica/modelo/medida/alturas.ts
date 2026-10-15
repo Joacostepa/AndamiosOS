@@ -1,6 +1,6 @@
 /**
- * Niveles y alturas (port de la maqueta): niveles cada 2,00 sobre la grilla de rosetas de 0,50,
- * arranque regulable con el tornillón y último nivel a H − 1,00.
+ * Niveles y alturas: primer nivel a 2,00 del arranque y después cada 2,00 sobre la grilla de rosetas de 0,50,
+ * arranque regulable con el tornillón y último nivel a H − 1,00 (o 0,50 más abajo).
  */
 import { CRITERIOS } from '../criterios.ts';
 import { EPS, mod, r3 } from '../util.ts';
@@ -27,11 +27,28 @@ export const arrDesde = (objetivo: number): number => r3(0.25 + mod(objetivo - 0
 
 export type ModoPlataforma = 'cada_2m' | 'cada_nivel' | 'solo_trabajo' | 'ninguna';
 
-export function nivelesMulti(H: number, ARR: number, p: { viaPublica?: boolean; modoPlataforma?: ModoPlataforma; bandejaPB?: boolean } = {}): Niveles {
+/**
+ * `topeExacto`: la cota de arriba es un dato (bandeja, plataforma de una torre móvil): los niveles bajan cada
+ * 2,00 desde H − 1 y el primer tramo absorbe la diferencia (con su anillo intermedio si pasa de 2,00).
+ */
+export function nivelesMulti(H: number, ARR: number, p: { viaPublica?: boolean; modoPlataforma?: ModoPlataforma; bandejaPB?: boolean; topeExacto?: boolean } = {}): Niveles {
   const yN = r3(ARR + 0.5 * Math.floor((H - 1 - ARR) / 0.5 + EPS));
   const minimo = p.viaPublica ? Math.max(ARR + 1.5, CRITERIOS.galiboPeatonal) : ARR + 1.5;
+  // Como en obra: el primer nivel va a 2,00 del arranque (0,50 → 2,50 → 4,50…), sin el anillo extra que
+  // dejaba una banda de 0,50 sin diagonal. La diferencia con H − 1 la toma el último tramo (o la baranda).
+  let c0 = r3(ARR + CRITERIOS.pasoNivel);
+  if (c0 < minimo - EPS) c0 = r3(ARR + CRITERIOS.pasoRoseta * Math.ceil((minimo - ARR) / CRITERIOS.pasoRoseta - EPS));
   const cotas: number[] = [];
-  for (let c = yN; c >= minimo - EPS; c = r3(c - CRITERIOS.pasoNivel)) cotas.unshift(c);
+  if (p.topeExacto) {
+    for (let c = yN; c >= minimo - EPS; c = r3(c - CRITERIOS.pasoNivel)) cotas.unshift(c);
+  } else {
+    for (let c = c0; c <= yN + EPS; c = r3(c + CRITERIOS.pasoNivel)) cotas.push(c);
+    // Si el último nivel de la grilla queda 1,50 por debajo de H − 1 se suma un nivel a H − 1; si queda 1,00, el
+    // último sube a H − 1 (tramo de 3,00 con su anillo intermedio y banda arriostrada); 0,50 lo absorbe la baranda.
+    const dif = cotas.length ? r3(yN - cotas[cotas.length - 1]) : 0;
+    if (dif >= 1.5 - EPS) cotas.push(yN);
+    else if (dif >= 1 - EPS) cotas[cotas.length - 1] = yN;
+  }
   if (!cotas.length) cotas.push(Math.max(yN, r3(ARR + 0.5)));
   const N = cotas.length;
   const niveles: Nivel[] = cotas.map((cota, n) => ({ n, cota, plataforma: false, bandeja: false }));

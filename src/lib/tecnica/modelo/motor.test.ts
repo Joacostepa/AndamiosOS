@@ -84,8 +84,10 @@ test('ejemplo Paraná 631: fachada en L generada, resumen y 2–3 faltantes ilus
   assert.match(textos(r.reglas), /Agregué \d+ anclajes por la media sombra/);
   assert.ok(r.uniones.some((u) => u.tipo === 'esquina' && u.modo === 'vertical_compartida' && u.compartidas === 2));
   assert.ok(r.puertos.some((p) => p.id === 'f1:ext'));
-  assert.equal(F[0].niveles.at(-1)!.cota, 17);
-  assert.equal(F[0].alturaReal, 18);
+  // primer nivel a 2,00 del arranque (2,50) y cada 2,00: el último queda a 16,50 (la baranda llega a 17,50)
+  assert.equal(F[0].niveles[0].cota, 2.5);
+  assert.equal(F[0].niveles.at(-1)!.cota, 16.5);
+  assert.equal(F[0].alturaReal, 17.5);
 });
 
 test('ids estables y construir() puro', () => {
@@ -113,7 +115,7 @@ test('fusionarNodos: la esquina comparte dos verticales y la torre dos', () => {
   assert.equal(u.compartidas, 2);
   assert.equal(cuenta(r2, esBase), bases + 4 - 2);
   assert.match(textos(r2.reglas), /comparte 2 verticales con Fachada L · Frente B/);
-  assert.equal(d2.estructuras[1].params.altura, 18, 'hereda la altura');
+  assert.equal(d2.estructuras[1].params.altura, 17.5, 'hereda la altura');
   assert.match(textos(r2.reglas), /acceso es por la torre/);
   assert.equal(bomDe(r2, 'ESC-INT-MULTI'), 0);
   const porNodoY = new Map<string, number>();
@@ -544,6 +546,8 @@ test('voladizo: la baranda lateral llega a la punta de la ménsula y el amarre l
   assert.equal(bomDe(r, 'CAÑO-150'), bomDe(r, 'ANC-QUIM-M12'), 'un caño de 1,50 por anclaje con retiro 1,20');
 });
 
+const F0alto = (r: Resultado) => frentes(r)[0].alturaReal;
+
 test('cómputo: fenólico por despiece y verticales sin escalonar con suplemento arriba', () => {
   const r = build(M.ejemploParana631());
   assert.equal(bomDe(r, 'PLACA-FEN-122x244'), 7);
@@ -551,7 +555,9 @@ test('cómputo: fenólico por despiece y verticales sin escalonar con suplemento
   assert.ok(bomDe(r, 'VERT-300-CE') > 0);
   const col = r.piezas.filter((p) => p.familia === 'vertical' && p.id.startsWith('E1:c:f0c0i:v')).sort((a, b) => a.a[1] - b.a[1]);
   assert.equal(col[0].codigo, 'VERT-300-CE');
-  assert.equal(col.at(-1)!.codigo, 'VERT-050-CE', 'suplemento arriba');
+  const largo = col.reduce((t, p) => t + Math.abs(p.b[1] - p.a[1]), 0);
+  assert.ok(Math.abs(col[0].a[1] + largo - F0alto(r)) < 0.01, 'la columna llega a la baranda de arriba');
+  assert.ok(col.slice(1).every((p) => p.codigo === 'VERT-200-CE' || p.codigo === 'VERT-050-CE' || p.codigo === 'VERT-150-CE'), 'sin escalonar: 2,00 y suplemento arriba');
   const esc = build(M.setParam(M.ejemploParana631(), 'E1', 'params.escalonarEmpalmes', true));
   assert.ok(bomDe(esc, 'VERT-100-CE') > 0, 'el escalonado queda como opción');
 });
@@ -584,5 +590,23 @@ test('barrido: ningún preset (multi y bastidor) ni L/U/entrante tiene cruces, s
     assert.deepEqual(cruces(r), [], `${nom}: cruces`);
     assert.deepEqual(superpuestos(r), [], `${nom}: superpuestos`);
     assert.deepEqual(piesRepetidos(r), [], `${nom}: pies`);
+  }
+});
+
+test('torre escalera: cada zanca sube un módulo (2,00) de anillo a anillo y arranca en el primer anillo', () => {
+  const casos: Diseno[] = [M.crearDiseno('torre_escalera')];
+  casos.push(M.agregarEstructura(M.ejemploParana631(), 'torre_escalera', { unirA: { estructuraId: 'E1', puerto: 'f1:ext', s: 2.5 } }).diseno);
+  for (const d of casos) {
+    const r = build(d);
+    for (const e of r.estructuras.filter((x) => x.tipologia === 'torre')) {
+      const anillos = new Set(e.esqueleto.cotas.map((c) => Math.round(c * 1000)));
+      const zancas = r.piezas.filter((p) => p.estructuraId === e.id && p.familia === 'zanca');
+      assert.ok(zancas.length > 0);
+      for (const z of zancas) {
+        assert.ok(Math.abs(Math.abs(z.b[1] - z.a[1]) - 2) < 1e-6, `${z.id}: sube ${Math.abs(z.b[1] - z.a[1])}`);
+        assert.ok(anillos.has(Math.round(z.a[1] * 1000)) && anillos.has(Math.round(z.b[1] * 1000)), `${z.id}: extremos en anillos`);
+      }
+      assert.ok(Math.min(...zancas.map((z) => Math.min(z.a[1], z.b[1]))) > 0.2, 'no arranca en el suelo');
+    }
   }
 });

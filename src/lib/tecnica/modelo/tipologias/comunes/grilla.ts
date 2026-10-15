@@ -144,11 +144,11 @@ export interface CotasNiveles {
  * `arranque` fija la fase de rosetas (p. ej. heredada de otra estructura); `base` corre todo hacia arriba
  * (estructura sobre una losa o azotea).
  */
-export function cotasNiveles(o: { altura: number; modo?: ModoPlataforma; arranque?: number; viaPublica?: boolean; base?: number }): CotasNiveles {
+export function cotasNiveles(o: { altura: number; modo?: ModoPlataforma; arranque?: number; viaPublica?: boolean; base?: number; topeExacto?: boolean }): CotasNiveles {
   const base = o.base ?? 0;
   const H = o.altura;
   const ARR = o.arranque ?? arrDesde(H - 1);
-  const nv = nivelesMulti(H, ARR, { modoPlataforma: o.modo || 'cada_2m', viaPublica: o.viaPublica });
+  const nv = nivelesMulti(H, ARR, { modoPlataforma: o.modo || 'cada_2m', viaPublica: o.viaPublica, topeExacto: o.topeExacto });
   const { cotas } = conIntermedios([nv.ARR, ...nv.niveles.map((x) => x.cota)]);
   const sube = (y: number) => r3(y + base);
   return {

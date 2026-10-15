@@ -1,12 +1,36 @@
-# Handoff — Gestoría de permisos de andamio (actualizado 2026-10-09)
+# Handoff — Gestoría de permisos de andamio (actualizado 2026-10-15)
 
 Para retomar en una sesión nueva. El diseño completo y todo lo aprendido está en
 `docs/permisos/modulo.md`; esto es el estado, **lo que falta para que el circuito
 quede 100 % automático** y el orden para seguir.
 
 Para arrancar: "Leé docs/permisos/handoff.md y docs/permisos/modulo.md y
-seguimos con lo que falta". **Empezar por § "14/10", § "Rediseño implementado", después § "09/10 a la noche", § "09/10", § "06/10", § "02/10" y § "Estado al 26/09", seguir con
+seguimos con lo que falta". **Empezar por § "15/10", § "14/10", § "Rediseño implementado", después § "09/10 a la noche", § "09/10", § "06/10", § "02/10" y § "Estado al 26/09", seguir con
 § "17/09 — primera encomienda cerrada sola", § "Noche 16/09" y § "Estado 16/09 19:00".**
+
+---
+
+## 15/10 — el robot no entra a TAD: cambió la pantalla de "a quién representar"
+
+- **Síntoma:** la lista muestra "El robot no revisa TAD hace N h" con
+  `locator.click: Timeout 30000ms exceeded … getByText(/EMPRENDIMIENTOS Y ESTRUCTURAS/i) …
+  <input type="radio" class="radio-chip-input"`. La última vuelta buena fue el 15/10 a las 6:46.
+  Desde ahí falla en cada vuelta, **en el login**: no revisa expedientes, no presenta y no cierra
+  encomiendas (lo que entra queda en la cola).
+- **Causa:** TAD cambió la pantalla de elegir a quién representar (ahora chips de Angular). El
+  `<input type="radio">` del chip está encima del texto y se queda con el clic; Playwright espera 30 s
+  a que el texto lo reciba y se rinde. Nuestro código no cambiaba desde el 15/09.
+- **Arreglo (`1bbedb6`, en `main`):** `entrar` en `robot/tad-comun.mjs` hace clic forzado en el radio
+  del chip (o en el texto si no hay radio) y, si la pantalla pide "Confirmar/Continuar/Aceptar/Ingresar",
+  lo toca. **Sin probar contra TAD:** no se vio la pantalla nueva (el robot y sus claves están sólo en
+  la Mac mini); no se sabe si pide confirmar.
+- **Pendiente (JS, en la Mac mini o entrando a distancia):**
+  `cd ~/Desktop/Proyectos/AndamiosOS && git pull && bash robot/instalar-launchd.sh`. El robot no se
+  actualiza solo: hasta reinstalar sigue con el código viejo y falla igual.
+- **Cómo saber si anduvo:** el aviso amarillo desaparece de la lista en la vuelta siguiente. Si sigue,
+  el error nuevo (`pvp_robot.ultimo_error`, se corta a ~500 caracteres) dice en qué paso quedó.
+- **Idea a decidir:** que el robot haga `git pull` y se reinicie solo al empezar cada vuelta. Riesgo:
+  un cambio roto en `main` le llega sin que nadie lo instale.
 
 ---
 

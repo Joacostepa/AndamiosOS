@@ -50,3 +50,8 @@ next-env.d.ts
 
 # Fotos de obras de clientes (referencia del modelador, no van al repo público)
 docs/oficina-tecnica/modelador/fotos/
+
+# Dirección: maqueta y diseño con datos reales de la empresa (caja, deudores, retiros)
+docs/direccion/maqueta.html
+docs/direccion/diseno.md
+docs/direccion/handoff-maqueta.md

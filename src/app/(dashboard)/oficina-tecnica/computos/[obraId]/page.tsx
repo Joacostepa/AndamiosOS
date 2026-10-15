@@ -24,7 +24,7 @@ import {
 } from "@/lib/constants/categorias-material";
 import { esCompletado, ESTADO_AL_CONFIRMAR } from "@/lib/computos/estado";
 import { formatDate } from "@/lib/utils/formatters";
-import { ArrowLeft, Save, Search, Package } from "lucide-react";
+import { ArrowLeft, Boxes, Save, Search, Package } from "lucide-react";
 import { toast } from "sonner";
 
 const DEBOUNCE_MS = 1500;
@@ -56,6 +56,11 @@ export default function ComputoObraPage({
   const pendienteRef = useRef(false);
 
   const modoLectura = !!computo && esCompletado(computo.estado);
+  // Modelador: modelo_id y origen los agrega la migración del modelador (pueden no venir todavía).
+  const modeloId = (computo as { modelo_id?: string | null } | null | undefined)?.modelo_id ?? null;
+  const desdeModelo = (computo?.computo_items ?? []).some(
+    (it) => (it as { origen?: string }).origen === "modelo" || (it as { origen?: string }).origen === "modelo_editado",
+  );
 
   // Categorías presentes en el catálogo, ordenadas.
   const categorias = useMemo(
@@ -252,16 +257,35 @@ export default function ComputoObraPage({
             )}
           </p>
         </div>
-        {!modoLectura && (
+        <div className="flex items-center gap-2">
+          {desdeModelo && (
+            <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+              Generado desde el modelo
+            </span>
+          )}
+          {/* Modelador: abre el modelo del cómputo o la lista de modelos de la obra. */}
           <Button
-            onClick={guardarBorrador}
-            disabled={saveItems.isPending}
-            style={{ backgroundColor: "#D85A30", color: "#fff" }}
+            variant="outline"
+            onClick={() =>
+              router.push(
+                modeloId ? `/oficina-tecnica/modelador/${modeloId}` : `/oficina-tecnica/modelador?obra=${obraId}`,
+              )
+            }
           >
-            <Save className="mr-2 h-4 w-4" />
-            Guardar borrador
+            <Boxes className="mr-2 h-4 w-4" />
+            {modeloId ? "Abrir en modelador" : "Diseñar andamio"}
           </Button>
-        )}
+          {!modoLectura && (
+            <Button
+              onClick={guardarBorrador}
+              disabled={saveItems.isPending}
+              style={{ backgroundColor: "#D85A30", color: "#fff" }}
+            >
+              <Save className="mr-2 h-4 w-4" />
+              Guardar borrador
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Sidebar + panel principal */}

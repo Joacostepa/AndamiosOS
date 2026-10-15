@@ -4,6 +4,8 @@
 // Variables de entorno:
 //   WHATSAPP_TOKEN            token permanente de un usuario del sistema de Meta Business
 //   WHATSAPP_PHONE_NUMBER_ID  el id del número del asistente (no el número)
+//   WHATSAPP_CLIENTES_PHONE_NUMBER_ID  opcional: el id del número de clientes (la bandeja de
+//                             /comercial/clientes). Misma app de Meta y mismo token.
 //   WHATSAPP_APP_SECRET       la clave secreta de la app: firma cada aviso del webhook
 //   WHATSAPP_VERIFY_TOKEN     lo que se escribe al suscribir el webhook (lo inventa uno)
 //   WHATSAPP_GRAPH_VERSION    opcional (v23.0)
@@ -16,6 +18,19 @@ const version = () => process.env.WHATSAPP_GRAPH_VERSION || "v23.0";
 
 export function hayWhatsapp(): boolean {
   return !!(process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID && process.env.WHATSAPP_APP_SECRET && process.env.WHATSAPP_VERIFY_TOKEN);
+}
+
+/** El número de clientes (docs/clientes/crm-propuesta.md §13). null si no está configurado. */
+export function numeroClientes(): string | null {
+  return hayWhatsapp() ? process.env.WHATSAPP_CLIENTES_PHONE_NUMBER_ID || null : null;
+}
+
+/** Lo que no aceptó Meta, con su código (131047 = fuera de las 24 h, etc.). */
+export class ErrorWhatsapp extends Error {
+  constructor(mensaje: string, readonly codigo: number | null, readonly status: number) {
+    super(mensaje);
+    this.name = "ErrorWhatsapp";
+  }
 }
 
 /** X-Hub-Signature-256 = "sha256=" + HMAC del cuerpo CRUDO (los bytes, no el JSON re-armado). */
@@ -48,28 +63,38 @@ export { variantesTelefono } from "./tandas";
 
 const recortar = (t: string, n: number) => (t.length > n ? `${t.slice(0, n - 1)}…` : t);
 
-async function mensajes(cuerpo: Record<string, unknown>): Promise<void> {
-  const res = await fetch(`${GRAPH}/${version()}/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`, {
+/**
+ * Manda por `numero` (el phone_number_id; por defecto, el del asistente de vendedores) y
+ * devuelve el wamid que asignó Meta: con él se cruzan después los avisos de entrega.
+ */
+async function mensajes(cuerpo: Record<string, unknown>, numero?: string | null): Promise<string> {
+  const desde = numero || process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const res = await fetch(`${GRAPH}/${version()}/${desde}/messages`, {
     method: "POST",
     headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`, "Content-Type": "application/json" },
     body: JSON.stringify({ messaging_product: "whatsapp", ...cuerpo }),
     signal: AbortSignal.timeout(20_000),
   });
+  const j = (await res.json().catch(() => null)) as { messages?: { id?: string }[]; error?: { message?: string; code?: number } } | null;
   if (!res.ok) {
-    const j = (await res.json().catch(() => null)) as { error?: { message?: string; code?: number } } | null;
-    throw new Error(`WhatsApp no aceptó el mensaje (${res.status}${j?.error?.code ? ` · ${j.error.code}` : ""}): ${j?.error?.message ?? "sin detalle"}`);
+    const codigo = typeof j?.error?.code === "number" ? j.error.code : null;
+    throw new ErrorWhatsapp(`WhatsApp no aceptó el mensaje (${res.status}${codigo ? ` · ${codigo}` : ""}): ${j?.error?.message ?? "sin detalle"}`, codigo, res.status);
   }
+  return j?.messages?.[0]?.id ?? "";
 }
 
-export async function enviarTexto(para: string, texto: string): Promise<void> {
+/** Uno o más mensajes (lo largo se parte): devuelve un wamid por parte. */
+export async function enviarTexto(para: string, texto: string, numero?: string | null): Promise<string[]> {
+  const ids: string[] = [];
   for (const parte of partir(texto, MAX_TEXTO)) {
-    await mensajes({ recipient_type: "individual", to: para, type: "text", text: { body: parte, preview_url: false } });
+    ids.push(await mensajes({ recipient_type: "individual", to: para, type: "text", text: { body: parte, preview_url: false } }, numero));
   }
+  return ids;
 }
 
 /** Hasta 3 botones de respuesta (título de hasta 20 caracteres; el texto, hasta 1024). */
-export async function enviarBotones(para: string, texto: string, botones: { id: string; titulo: string }[]): Promise<void> {
-  await mensajes({
+export async function enviarBotones(para: string, texto: string, botones: { id: string; titulo: string }[], numero?: string | null): Promise<string> {
+  return mensajes({
     recipient_type: "individual",
     to: para,
     type: "interactive",
@@ -78,22 +103,35 @@ export async function enviarBotones(para: string, texto: string, botones: { id: 
       body: { text: recortar(texto, 1024) },
       action: { buttons: botones.slice(0, 3).map((b) => ({ type: "reply", reply: { id: b.id.slice(0, 256), title: recortar(b.titulo, 20) } })) },
     },
-  });
+  }, numero);
 }
 
 /** Un documento por link (WhatsApp lo baja al mandarlo: sirve una URL firmada de Storage). */
-export async function enviarDocumento(para: string, url: string, nombre: string, epigrafe?: string): Promise<void> {
-  await mensajes({
+export async function enviarDocumento(para: string, url: string, nombre: string, epigrafe?: string, numero?: string | null): Promise<string> {
+  return mensajes({
     recipient_type: "individual",
     to: para,
     type: "document",
     document: { link: url, filename: nombre, ...(epigrafe ? { caption: recortar(epigrafe, 1024) } : {}) },
-  });
+  }, numero);
 }
 
-/** Tildes azules y "escribiendo…" (dura hasta 25 s o hasta que sale la respuesta). Si falla, no importa. */
-export async function marcarLeido(wamid: string): Promise<void> {
-  await mensajes({ status: "read", message_id: wamid, typing_indicator: { type: "text" } }).catch(() => {});
+/** Una foto por link (JPG o PNG; WhatsApp no acepta otras como imagen). */
+export async function enviarImagen(para: string, url: string, epigrafe?: string, numero?: string | null): Promise<string> {
+  return mensajes({
+    recipient_type: "individual",
+    to: para,
+    type: "image",
+    image: { link: url, ...(epigrafe ? { caption: recortar(epigrafe, 1024) } : {}) },
+  }, numero);
+}
+
+/**
+ * Tildes azules y, si `escribiendo`, "escribiendo…" (dura hasta 25 s o hasta que sale la
+ * respuesta). Si falla, no importa.
+ */
+export async function marcarLeido(wamid: string, numero?: string | null, escribiendo = true): Promise<void> {
+  await mensajes({ status: "read", message_id: wamid, ...(escribiendo ? { typing_indicator: { type: "text" } } : {}) }, numero).catch(() => {});
 }
 
 /** Un audio, foto o archivo que mandaron: primero se pide su URL, después se baja con el token. */

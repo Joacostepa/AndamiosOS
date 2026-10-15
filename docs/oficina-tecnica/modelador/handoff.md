@@ -104,10 +104,17 @@ Además:
 ## 6. Subida a producción (15/10)
 
 - [x] Backup de `computos`, `computo_items` y `user_profiles`, en `~/Desktop/Proyectos/AndamiosOS-backups/2026-10-15-pre-modelador/`.
-- [ ] Migraciones 000001 → 000004. Hace falta `SUPABASE_DB_URL` en `.env.local`.
+- [x] **Migraciones 000001 → 000004 aplicadas en producción (15/10).**
+  - Quedaron creadas `tec_modelos`, `computos.modelo_id` y la RPC `tec_generar_computo(uuid,uuid,uuid,int,jsonb,jsonb,jsonb)`.
+  - Las apliqué con `node --env-file=.env.local migrar.mjs`, que detecta el pooler `aws-0-us-west-2` y toma `SUPABASE_DB_PASSWORD` de `.env.local`.
+- [ ] **El mapa de piezas `tec_pieza_mapa` quedó VACÍO (0 filas).**
+  - La semilla buscaba códigos como `HOR-048-250` y `VERT-200-CE`, que vienen de la migración de marzo (`20260331000010_import_productos_odoo.sql`).
+  - El sync con Odoo los reemplazó en producción por `ODOO-<n>`: el catálogo real tiene 268 piezas y la medida va en la descripción, por ejemplo «CAÑO - 2,50m» o «BASTIDOR DE ANDAMIO - 1,30m. x 1.80 h».
+  - Mientras no se arme el mapa, «Generar cómputo» marca todo «sin código» y no escribe ítems.
+  - **Siguiente paso:** una migración de semilla que mapee por **descripción** (regex tolerante) contra el catálogo real, y que se verifique leyendo `catalogo_piezas` de producción. Esa lectura necesita permiso de JS, o bien un CSV exportado desde el Table Editor.
+- [ ] **Permisos:** `tec_backfill_permisos` quedó en 0, así que nadie tenía Cómputos «ver/editar» en `user_profiles.permisos` para copiar. Hay que dar a mano Modelador «editar» a la Oficina Técnica (Configuración → usuarios). El admin entra igual.
 - [ ] Revisar que `SUPABASE_SERVICE_ROLE_KEY` esté en Vercel.
-- [ ] Merge a `main`, push y deploy. Va **después** de las migraciones, porque la pantalla de Cómputos y la de obra ya leen las columnas nuevas.
-- [ ] Permisos: Modelador «editar» para la Oficina Técnica. La migración copia el nivel de Cómputos y lo anota en `tec_backfill_permisos`.
+- [ ] **Merge a `main`, push y deploy.** Ya se puede, porque las migraciones están aplicadas. Antes de mergear hay que mover la copia sin commitear de `docs/oficina-tecnica/modelador/` que está en el checkout principal, porque choca con el merge. Las fotos se vuelven a copiar después: están en `.gitignore`.
 - [ ] Prueba de punta a punta: crear un modelo, guardarlo y generar el cómputo en una obra de prueba.
 
 Para volver atrás: `supabase/scripts/modelador_down.sql`. ⚠ Borra los modelos guardados.

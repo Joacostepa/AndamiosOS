@@ -285,11 +285,12 @@ export default function Editor({ modelo, disenoDemo, catalogo, errorCatalogo, so
       </div>
 
       <div
-        className="grid min-h-0 flex-1"
+        // cada panel tiene su columna fija (col-start-*): al plegar uno, los otros no se corren
+        className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)]"
         style={{ gridTemplateColumns: `${plegadas.izq ? "0px" : "260px"} minmax(0,1fr) ${plegadas.der ? "0px" : "340px"}` }}
       >
         {/* izquierda */}
-        <aside className={cn("min-h-0 space-y-3 overflow-y-auto border-r border-border p-2", plegadas.izq && "hidden")}>
+        <aside className={cn("col-start-1 row-start-1 min-h-0 space-y-3 overflow-y-auto border-r border-border p-2", plegadas.izq && "hidden")}>
           <Bloque titulo="Plantillas">
             <Galeria />
           </Bloque>
@@ -302,7 +303,7 @@ export default function Editor({ modelo, disenoDemo, catalogo, errorCatalogo, so
         </aside>
 
         {/* centro */}
-        <main className="flex min-h-0 min-w-0 flex-col">
+        <main className="col-start-2 row-start-1 flex min-h-0 min-w-0 flex-col">
           <BarraHerramientas
             vista={vista}
             onVista={(v) => {
@@ -339,7 +340,7 @@ export default function Editor({ modelo, disenoDemo, catalogo, errorCatalogo, so
         </main>
 
         {/* derecha */}
-        <aside className={cn("flex min-h-0 flex-col border-l border-border", plegadas.der && "hidden")}>
+        <aside className={cn("col-start-3 row-start-1 flex min-h-0 flex-col border-l border-border", plegadas.der && "hidden")}>
           <Tabs value={tab} onValueChange={(v) => setTab(String(v))} className="flex min-h-0 flex-1 flex-col gap-0">
             <TabsList className="m-2 mb-0 grid grid-cols-3">
               <TabsTrigger value="props" className="text-xs">Propiedades</TabsTrigger>

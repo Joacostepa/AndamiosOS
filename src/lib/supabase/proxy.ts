@@ -58,6 +58,9 @@ export async function updateSession(request: NextRequest) {
   // /api/operaciones/geocodificar: el cron que pone coordenadas a las obras (Mapa de Obras y
   //   Hoja del día). Ruta completa y protegida por CRON_SECRET (falla cerrado). Hasta el 11/10
   //   faltaba acá y el cron contestaba 401 todos los días sin llegar a la ruta.
+  // /api/cron/direccion: el snapshot nocturno de Dirección (04:30, después del cron de USD de
+  //   Odoo). Ruta completa y protegida por CRON_SECRET, falla cerrado, como los otros crons:
+  //   el resto de /api/direccion se lee CON sesión y por permisos.
   // /cotizador y /api/public: cotizador hogareño para clientes finales (sin cuenta).
   // /endosos: portal del productor de seguros (Segucom) para subir pólizas. Lo protege el
   //   token de la URL, que valida /api/public/endosos; la página sola no muestra nada.
@@ -86,6 +89,7 @@ export async function updateSession(request: NextRequest) {
     "/api/alertas/barrido",
     "/api/permisos-via-publica/latido",
     "/api/cron/personal-odoo",
+    "/api/cron/direccion",
     "/api/operaciones/geocodificar",
     "/cotizador",
     "/api/public",
@@ -167,7 +171,12 @@ export async function updateSession(request: NextRequest) {
   // Pedir una página que no le toca no es un error: se lo lleva a su pantalla de arranque.
   // El menú ya no la muestra, así que llegar acá es escribir la URL a mano o volver sobre
   // un enlace viejo.
-  if (!puedeAbrir(acceso, pathname)) return redirigir(inicioDe(acceso));
+  if (!puedeAbrir(acceso, pathname)) {
+    // Dentro de Dirección (p. ej. Socios sin su permiso) se vuelve a La semana con el aviso
+    // "No tenés acceso a esa sección" (docs/direccion/diseno.md §7.7), no al inicio.
+    if (pathname.startsWith("/direccion/") && puedeAbrir(acceso, "/direccion")) return redirigir("/direccion", "sin-acceso");
+    return redirigir(inicioDe(acceso));
+  }
 
   return supabaseResponse;
 }

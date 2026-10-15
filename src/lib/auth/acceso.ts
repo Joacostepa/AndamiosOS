@@ -30,10 +30,31 @@ type DefModulo = {
    * quien tiene Pañol en "editar" (un encargado) también tiene que poder abrir el kiosco.
    */
   incluidoEn?: string;
+  /**
+   * El atajo de admin NO lo abre: sólo quien lo tiene tildado en su perfil. Ser
+   * administrador de la app (gestionar usuarios) no es ser socio. Lo usa Dirección › Socios
+   * (retiros, dividendos, política): ver docs/direccion/diseno.md §10.1.
+   */
+  exigeExplicito?: boolean;
 };
 
 // El orden es el del menú, y es el que usa la pantalla de usuarios para agrupar.
 const DEFINICION = [
+  // Dirección (docs/direccion/diseno.md): el tablero de los socios. Lee Odoo y no escribe
+  // nunca (src/lib/direccion/odoo-lectura.ts). "editar" = anotar decisiones, asignar dueños,
+  // metas y colchón mínimo; "ver" = sólo lee.
+  { id: "direccion", titulo: "Dirección", grupo: "Dirección", rutas: ["/direccion"] },
+  // Retiros, dividendos, política de retiros y circuitos de facturación. Abrirlo exige
+  // ADEMÁS `direccion` (lo chequean la página y las APIs). Gana la ruta más larga, así
+  // /direccion/socios es de este módulo y no de `direccion`.
+  {
+    id: "direccion-socios",
+    titulo: "Dirección · Socios",
+    grupo: "Dirección",
+    rutas: ["/direccion/socios"],
+    soloLectura: true,
+    exigeExplicito: true,
+  },
   { id: "clientes", titulo: "Clientes", grupo: "Comercial", rutas: ["/clientes"] },
   { id: "asistente-comercial", titulo: "Asistente comercial", grupo: "Comercial", rutas: ["/comercial/asistente"] },
   { id: "parametros-cotizacion", titulo: "Parámetros de cotización", grupo: "Comercial", rutas: ["/comercial/parametros"] },
@@ -140,8 +161,18 @@ const APIS: Record<string, readonly ModuloId[]> = {
   "/api/hoja-dia/pedidos": ["hoja-dia", "planificacion", "panol"],
   "/api/hoja-dia/ausencias": ["hoja-dia", "personal"],
   "/api/hoja-dia/cierre": ["hoja-dia", "planificacion", "partes"],
+  // Dirección. Las rutas igual repiten el chequeo (src/lib/direccion/permisos-servidor.ts):
+  // lo de socios no puede depender de una sola puerta.
+  "/api/direccion": ["direccion"],
+  "/api/direccion/socios": ["direccion-socios"],
 };
 const PREFIJOS_API = Object.keys(APIS).sort((a, b) => b.length - a.length);
+
+/**
+ * POST que no cambian datos: piden "ver" y no "editar". "Actualizar ahora" de Dirección
+ * sólo relee Odoo (invalida una caché): también lo puede pedir quien sólo mira.
+ */
+const POST_DE_LECTURA = ["/api/direccion/actualizar"];
 
 /** Servicios auxiliares sin datos de nadie, y la cuenta propia. */
 const APIS_DE_TODOS = ["/api/clima", "/api/feriados", "/api/afip", "/api/odoo/health", "/api/cuenta"];
@@ -216,11 +247,46 @@ export function esAdmin(acceso: Acceso | null | undefined): boolean {
 /** Nivel en un módulo. null = sin acceso. */
 export function nivelEn(acceso: Acceso | null | undefined, modulo: ModuloId): Nivel | null {
   if (!acceso?.activo) return null;
-  if (acceso.rol === "admin") return "editar";
+  if (acceso.rol === "admin" && !esExplicito(modulo)) return "editar";
   const propio = acceso.permisos[modulo] ?? null;
   const padre = (MODULOS.find((m) => m.id === modulo)?.incluidoEn ?? null) as ModuloId | null;
   if (propio === "editar" || !padre) return propio;
   return acceso.permisos[padre] === "editar" ? "editar" : propio;
+}
+
+/**
+ * Módulos `exigeExplicito` (Dirección › Socios) cuyo nivel cambia entre dos juegos de
+ * permisos. Los compara normalizados: lo que no cambia no cuenta.
+ */
+export function explicitosCambiados(antes: Permisos | null | undefined, despues: Permisos | null | undefined): ModuloId[] {
+  const a = antes ?? {};
+  const d = despues ?? {};
+  return MODULOS.filter((m) => m.exigeExplicito && (a[m.id] ?? null) !== (d[m.id] ?? null)).map((m) => m.id);
+}
+
+/**
+ * ¿Puede `actor` dar o sacar estos módulos explícitos? Ser admin no alcanza (si no, el admin
+ * se tildaría Socios a sí mismo y `exigeExplicito` sería una decoración): hace falta TENER
+ * ya el módulo. La única excepción es el arranque: si todavía nadie lo tiene (`hayTitular`
+ * false), un admin puede darlo la primera vez. Devuelve null si puede, o el motivo.
+ */
+export function motivoRechazoExplicitos(
+  actor: Acceso | null | undefined,
+  cambiados: readonly ModuloId[],
+  hayTitular: (modulo: ModuloId) => boolean,
+): string | null {
+  for (const m of cambiados) {
+    if (nivelEn(actor, m) !== null) continue;
+    if (esAdmin(actor) && !hayTitular(m)) continue;
+    const titulo = MODULOS.find((x) => x.id === m)?.titulo ?? m;
+    return `Sólo alguien que ya tiene ${titulo} puede darlo o sacarlo. Pedíselo a un socio.`;
+  }
+  return null;
+}
+
+/** ¿Es un módulo que el admin NO trae solo? (ver `exigeExplicito`). */
+export function esExplicito(modulo: ModuloId): boolean {
+  return !!MODULOS.find((m) => m.id === modulo)?.exigeExplicito;
 }
 
 function alcanza(tiene: Nivel | null, pide: Nivel): boolean {
@@ -232,8 +298,9 @@ export function puedeAbrir(acceso: Acceso | null | undefined, pathname: string):
   if (!acceso?.activo) return false;
   if (RUTAS_DE_ADMIN.some((r) => coincide(r, pathname))) return acceso.rol === "admin";
   if (RUTAS_DE_TODOS.some((r) => coincide(r, pathname))) return true;
-  if (acceso.rol === "admin") return true;
   const modulo = moduloDeRuta(pathname);
+  // El admin abre todo MENOS lo que exige permiso explícito (Dirección › Socios).
+  if (acceso.rol === "admin" && !modulo?.exigeExplicito) return true;
   return !!modulo && nivelEn(acceso, modulo.id) !== null;
 }
 
@@ -266,13 +333,16 @@ export function motivoDeRechazoApi(
     return acceso.rol === "admin" ? null : "Sólo un administrador puede hacer esto.";
   }
   if (APIS_DE_TODOS.some((r) => coincide(r, pathname))) return null;
-  if (acceso.rol === "admin") return null;
 
   const prefijo = PREFIJOS_API.find((p) => coincide(p, pathname));
+  // El admin pasa salvo que TODOS los módulos de la API exijan permiso explícito
+  // (/api/direccion/socios): ahí se lo mide como a cualquiera.
+  if (acceso.rol === "admin" && !(prefijo && APIS[prefijo].every(esExplicito))) return null;
   if (!prefijo) return "Esta función todavía está habilitada sólo para administradores.";
 
   const modulos = APIS[prefijo];
-  const pide: Nivel = metodo === "GET" || metodo === "HEAD" ? "ver" : "editar";
+  const pide: Nivel =
+    metodo === "GET" || metodo === "HEAD" || (metodo === "POST" && POST_DE_LECTURA.some((r) => coincide(r, pathname))) ? "ver" : "editar";
   if (modulos.some((m) => alcanza(nivelEn(acceso, m), pide))) return null;
 
   // Nombrar sólo lo que aplica: "Tenés Planificación en sólo lectura" a quien ni siquiera

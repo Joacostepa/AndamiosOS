@@ -1,0 +1,41 @@
+/* Dirección: alias semánticos sobre los tokens de la app (diseno.md §8.1). Se usan con la
+   sintaxis de Tailwind v4 `bg-(--dir-bien-bg)`. Claro y oscuro salen solos de globals.css
+   (--hd-* y --tb-* ya tienen su variante .dark). Rojo/ámbar/verde SÓLO significan estado y
+   siempre van con ícono o texto; el coral (--primary) significa "ahora" o "acción". */
+.dir {
+  --dir-bien: var(--hd-verde);
+  --dir-bien-bg: var(--tb-verde-bg);
+  --dir-aten: var(--hd-ambar);
+  --dir-aten-bg: var(--hd-ambar-bg);
+  --dir-mal: var(--hd-rojo);
+  --dir-mal-bg: var(--hd-rojo-bg);
+  --dir-neutro-bg: var(--tb-neutro-bg);
+  --dir-neutro-text: var(--tb-neutro-text);
+  /* Serie base de gráficos y barras de "sale". */
+  --dir-serie: color-mix(in srgb, var(--muted-foreground) 55%, transparent);
+  /* Serie "entra" del flujo. */
+  --dir-entra: color-mix(in srgb, var(--hd-verde) 70%, transparent);
+  --dir-sombra-1: 0 1px 2px oklch(0 0 0 / 6%);
+  --dir-sombra-2: 0 6px 24px -8px oklch(0 0 0 / 18%), 0 1px 3px oklch(0 0 0 / 6%);
+}
+.dark .dir {
+  --dir-sombra-1: 0 1px 2px oklch(0 0 0 / 40%);
+  --dir-sombra-2: 0 10px 30px -10px oklch(0 0 0 / 70%);
+}
+
+/* Tramos de antigüedad: de neutro (no vencido) a rojo (+90 d) en un solo matiz. */
+.dir-t0 { background: color-mix(in srgb, var(--muted-foreground) 35%, transparent); }
+.dir-t1 { background: color-mix(in srgb, var(--hd-rojo) 25%, var(--muted-foreground)); }
+.dir-t2 { background: color-mix(in srgb, var(--hd-rojo) 50%, var(--muted-foreground)); }
+.dir-t3 { background: color-mix(in srgb, var(--hd-rojo) 75%, var(--muted-foreground)); }
+.dir-t4 { background: var(--hd-rojo); }
+
+/* Pendiente / estimado: trama diagonal (banda de ritmo, pendiente de pasar a dólares, Borelli). */
+.dir-trama {
+  background-image: repeating-linear-gradient(45deg, transparent 0 4px, color-mix(in srgb, currentColor var(--tb-trama-alfa), transparent) 4px 6px);
+}
+
+/* Toda la tarjeta clickeable sin anidar controles: el <button> del nombre se estira. */
+.dir-estirado::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
+.dir-estirado:focus-visible { outline: none; }
+.dir-tarjeta:has(.dir-estirado:focus-visible) { outline: 2px solid var(--primary); outline-offset: 2px; }

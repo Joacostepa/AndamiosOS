@@ -19,13 +19,15 @@ export type OdooConfig = {
   apiKey: string;
 };
 
+// Sin "parameter properties" (public readonly en el constructor) a propósito: los tests de
+// unidad corren con `node --experimental-strip-types`, que no las soporta, y Dirección
+// (src/lib/direccion/odoo-lectura.ts) importa este archivo desde sus tests.
 export class OdooError extends Error {
-  constructor(
-    message: string,
-    public readonly data?: unknown,
-  ) {
+  readonly data?: unknown;
+  constructor(message: string, data?: unknown) {
     super(message);
     this.name = "OdooError";
+    this.data = data;
   }
 }
 

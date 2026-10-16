@@ -105,6 +105,11 @@ test("reintentar: sólo desde error, o desde ejecutando si quedó colgada más d
   assert.equal(!corre.ok && corre.motivo, "Se está guardando ahora: esperá un momento.");
   assert.equal((await tomarUnaVez(repo, "colgada", "reintentar", { estado: "ejecutando" }, nombres, ahora)).ok, true);
   assert.equal((await tomarUnaVez(repo, "pend", "reintentar", { estado: "ejecutando" }, nombres, ahora)).ok, false);
+  // La que quedó «falta la plantilla» se manda cuando el cliente vuelve a escribir.
+  const repo3 = repoEnMemoria([pendiente("fp", { estado: "falta_plantilla", decididoPor: "js" }), pendiente("ap", { estado: "aprobada", decididoPor: "js" })]);
+  assert.equal((await tomarUnaVez(repo3, "fp", "reintentar", { estado: "ejecutando" }, nombres, ahora)).ok, true);
+  const ya = await tomarUnaVez(repo3, "ap", "reintentar", { estado: "ejecutando" }, nombres, ahora);
+  assert.equal(!ya.ok && ya.motivo, "Ya lo aprobó Joaquín.");
   // Dos reintentos a la vez sobre el mismo error: uno solo.
   const repo2 = repoEnMemoria([pendiente("e2", { estado: "error" })]);
   const rs = await Promise.all([1, 2, 3].map(() => tomarUnaVez(repo2, "e2", "reintentar", { estado: "ejecutando" }, nombres, ahora)));
@@ -114,7 +119,7 @@ test("reintentar: sólo desde error, o desde ejecutando si quedó colgada más d
 test("los estados desde los que se puede decidir", () => {
   assert.deepEqual(estadosDesde("aprobar"), ["pendiente"]);
   assert.deepEqual(estadosDesde("rechazar"), ["pendiente"]);
-  assert.deepEqual(estadosDesde("reintentar"), ["error", "ejecutando"]);
+  assert.deepEqual(estadosDesde("reintentar"), ["error", "ejecutando", "falta_plantilla"]);
   const todos: EstadoAprobacion[] = ["pendiente", "ejecutando", "error", "aprobada", "corregida", "falta_plantilla", "rechazada", "tomada", "vencida", "descartada"];
   for (const e of todos) assert.ok(motivoYaDecidida(e, "Sandra").length > 5, e);
   assert.match(motivoYaDecidida("falta_plantilla", "Sandra"), /falta mandarlo con la plantilla/);

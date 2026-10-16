@@ -20,7 +20,6 @@ import { recalcular, type DatosBorrador, type ResultadoBorrador } from "../asist
 import { pesos, type Tarifas } from "../cotizador/tipos.ts";
 import { textosBandejaFacil } from "./facil.ts";
 import { nombreParaSaludo } from "./saludo.ts";
-import { duracion, puedeTextoLibre, ventana, VENTANA_MS } from "./ventana.ts";
 
 // ── Estados ─────────────────────────────────────────────────────────────────────────────
 
@@ -50,7 +49,10 @@ export const ESTADOS_DECIDIDOS: readonly EstadoAprobacion[] = ["aprobada", "corr
 export type AccionTarjeta =
   /** Aprobar (precio), Confirmar (técnico) o Editar y mandar (texto bloqueado). */
   | "aprobar"
-  /** Volver a intentar lo que falló en Odoo o en el PDF. Saltea lo ya hecho. */
+  /**
+   * Volver a intentar lo que falló (Odoo, el PDF o WhatsApp), o mandar una «falta la plantilla»
+   * cuando el cliente volvió a escribir y la ventana se abrió. Saltea lo ya hecho.
+   */
   | "reintentar"
   /** Rechazar / Lo tomo yo / Descartar. */
   | "rechazar";
@@ -65,7 +67,7 @@ export function estadosDesde(accion: AccionTarjeta): EstadoAprobacion[] {
     case "rechazar":
       return ["pendiente"];
     case "reintentar":
-      return ["error", "ejecutando"];
+      return ["error", "ejecutando", "falta_plantilla"];
   }
 }
 
@@ -101,8 +103,8 @@ export function motivoYaDecidida(estado: EstadoAprobacion, quien: string | null,
  * El repositorio mínimo para tomar la decisión una sola vez: un UPDATE condicionado al estado
  * (en Supabase, `.eq("id").in("estado", desde)`), que devuelve la fila si la cambió y null si no.
  */
-export type RepoUnaVez<F> = {
-  actualizarSi(id: string, desde: EstadoAprobacion[], cambios: Partial<F>): Promise<F | null>;
+export type RepoUnaVez<F, C = Partial<F>> = {
+  actualizarSi(id: string, desde: EstadoAprobacion[], cambios: C): Promise<F | null>;
   leer(id: string): Promise<F | null>;
 };
 
@@ -110,13 +112,14 @@ export type FilaDecision = { id: string; estado: EstadoAprobacion; tipo: TipoApr
 
 /**
  * Toma la aprobación para una acción. Gana el primero: el segundo recibe el motivo con el nombre
- * de quien la tomó. «reintentar» desde «ejecutando» sólo si quedó colgada (EJECUTANDO_VENCE_MS).
+ * de quien la tomó. «reintentar» desde «error» o «falta_plantilla», y desde «ejecutando» sólo si
+ * quedó colgada (EJECUTANDO_VENCE_MS).
  */
-export async function tomarUnaVez<F extends FilaDecision>(
-  repo: RepoUnaVez<F>,
+export async function tomarUnaVez<F extends FilaDecision, C>(
+  repo: RepoUnaVez<F, C>,
   id: string,
   accion: AccionTarjeta,
-  cambios: Partial<F>,
+  cambios: C,
   nombreDe: (usuarioId: string | null) => Promise<string | null> = async () => null,
   ahora: number = Date.now(),
 ): Promise<{ ok: true; fila: F } | { ok: false; motivo: string; fila: F | null }> {
@@ -125,7 +128,7 @@ export async function tomarUnaVez<F extends FilaDecision>(
     const actual = await repo.leer(id);
     if (!actual) return { ok: false, motivo: "Esa aprobación ya no existe.", fila: null };
     const colgada = actual.estado === "ejecutando" && ahora - new Date(actual.updatedAt).getTime() > EJECUTANDO_VENCE_MS;
-    if (actual.estado !== "error" && !colgada) {
+    if (actual.estado !== "error" && actual.estado !== "falta_plantilla" && !colgada) {
       return { ok: false, motivo: actual.estado === "ejecutando" ? "Se está guardando ahora: esperá un momento." : motivoYaDecidida(actual.estado, await nombreDe(actual.decididoPor), actual.tipo), fila: actual };
     }
     desde = [actual.estado];
@@ -261,25 +264,8 @@ export function verificarRecalculo(montoVisto: number | null | undefined, recalc
 
 // ── La ventana de 24 h ──────────────────────────────────────────────────────────────────
 
-/** libre: sale el texto y el PDF · plantilla: la ventana está cerrada, falta la plantilla de Meta. */
-export function modoEnvio(ultimoEntranteAt: string | Date | null | undefined, ahora: number = Date.now()): "libre" | "plantilla" {
-  return puedeTextoLibre(ultimoEntranteAt, ahora) ? "libre" : "plantilla";
-}
-
-export type AvisoVentana = { nivel: "ok" | "por_vencer" | "cerrada"; texto: string; horas: number | null };
-
-/** La línea de la ventana en la tarjeta. Con menos de 2 h, «Aprobar» pregunta antes. */
-export function avisoVentana(ultimoEntranteAt: string | Date | null | undefined, ahora: number = Date.now()): AvisoVentana {
-  const v = ventana(ultimoEntranteAt, ahora);
-  if (v.sinMensajes) return { nivel: "cerrada", texto: "El cliente nunca escribió: sólo puede salir con una plantilla de Meta.", horas: null };
-  if (!v.abierta || !puedeTextoLibre(ultimoEntranteAt, ahora)) {
-    const h = Math.floor((v.cerradaHaceMs + VENTANA_MS) / 3_600_000);
-    return { nivel: "cerrada", texto: `Ventana cerrada (${h} h): se guarda en Odoo y queda «aprobada, falta la plantilla». La plantilla «Tu presupuesto está listo» todavía no está aprobada en Meta.`, horas: 0 };
-  }
-  const horas = Math.floor(v.restanteMs / 3_600_000);
-  if (v.porVencer) return { nivel: "por_vencer", texto: `Se vence la ventana en ${duracion(v.restanteMs)}. Si no sale ahora, después sólo con la plantilla.`, horas };
-  return { nivel: "ok", texto: `Ventana: quedan ${duracion(v.restanteMs)}`, horas };
-}
+// modoEnvio y avisoVentana viven en ventana.ts (la tarjeta los usa en la pantalla).
+export { avisoVentana, modoEnvio, type AvisoVentana } from "./ventana.ts";
 
 // ── Los textos para el cliente ──────────────────────────────────────────────────────────
 

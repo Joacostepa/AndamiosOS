@@ -77,6 +77,11 @@ const ESTADO_PENDIENTE: Record<string, string> = {
   rechazada: "el equipo decidió no mandarlo",
   tomada: "lo sigue una persona del equipo",
   vencida: "vencido",
+  // Paso 6: los estados intermedios de la tarjeta.
+  ejecutando: "aprobado, se está mandando",
+  error: "aprobado, pero todavía no salió (lo está viendo el equipo)",
+  falta_plantilla: "aprobado; se lo manda el equipo apenas se pueda",
+  descartada: "el equipo decidió no mandarlo",
 };
 
 export function repoSofia(db: SupabaseClient): RepoSofia {
@@ -223,13 +228,25 @@ async function direccionCotizada(direccion: string | null): Promise<{ cotizada: 
   }
 }
 
-/** El último técnico al que le tocó el turno (una asignación confirmada por la regla 5). */
+/**
+ * El último técnico al que le tocó el turno: la última decisión que lo consumió (turno_tecnico,
+ * paso 6: confirmar la propuesta del turno o aprobar la bandeja fácil que la traía). Sin la
+ * migración 20261018000001, como antes: la última asignación del turno confirmada.
+ */
 async function ultimoDelTurno(db: SupabaseClient): Promise<string | null> {
+  const nuevo = await db
+    .from("cli_aprobaciones")
+    .select("turno_tecnico")
+    .not("turno_tecnico", "is", null)
+    .order("decidido_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!nuevo.error) return (nuevo.data?.turno_tecnico as string | undefined) ?? null;
   const { data } = await db
     .from("cli_aprobaciones")
     .select("payload")
     .eq("tipo", "tecnico")
-    .in("estado", ["aprobada", "corregida"])
+    .eq("estado", "aprobada")
     .eq("payload->asignacion->>regla", "turno")
     .order("decidido_at", { ascending: false })
     .limit(1)

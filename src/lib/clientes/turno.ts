@@ -427,7 +427,7 @@ async function unaTanda(
         armarPedido({
           modelo: cfg.modelo,
           maxTokens: MAX_TOKENS,
-          system: sistemaSofia(),
+          system: sistemaSofia(cfg.datosEmpresa),
           tools: definicionesSofia(),
           messages: mensajes,
           esfuerzo: cfg.esfuerzo,

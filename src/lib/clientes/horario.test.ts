@@ -23,8 +23,8 @@ test("jueves a las 10: hay personas", () => {
   assert.equal(a.cuando, null);
 });
 
-test("jueves a las 7: hoy a primera hora", () => {
-  assert.equal(atencion(ba("2026-10-15T07:00"), HORARIO_POR_DEFECTO, sinFeriados).cuando, "hoy a primera hora");
+test("jueves a las 7: hoy desde las 8", () => {
+  assert.equal(atencion(ba("2026-10-15T07:00"), HORARIO_POR_DEFECTO, sinFeriados).cuando, "hoy desde las 8");
 });
 
 test("jueves a las 17 en punto: ya cerró, mañana", () => {
@@ -65,4 +65,15 @@ test("más de una semana sin días hábiles: dice el número del día", () => {
 
 test("ahoraLegible: hora de Buenos Aires", () => {
   assert.equal(ahoraLegible(ba("2026-10-16T22:40")), "viernes 16/10 22:40");
+});
+
+test("sistemaSofia: con datos de ABA suma un bloque y la caché va en el último", async () => {
+  const { sistemaSofia } = await import("./prompt.ts");
+  assert.equal(sistemaSofia().length, 1);
+  assert.equal(sistemaSofia("  ").length, 1);
+  const b = sistemaSofia("- Oficina: Maturín 2570");
+  assert.equal(b.length, 2);
+  assert.equal(b[0].cache_control, undefined);
+  assert.ok(b[1].cache_control);
+  assert.match(b[1].text, /Maturín 2570/);
 });

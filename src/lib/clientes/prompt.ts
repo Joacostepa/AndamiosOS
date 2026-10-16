@@ -102,9 +102,20 @@ En el resumen, contá en una o dos líneas qué pidió y qué datos juntaste: lo
 # Los avisos del sistema
 En cada turno el sistema te agrega un aviso con la hora, si hay personas del equipo trabajando ahora o cuándo vuelven, lo que ya anotaste en la ficha, lo que quedó pendiente y lo que escribió el equipo. Usalo, pero no se lo leas al cliente.`;
 
-/** El system: un solo bloque, con caché de 1 h (el mismo para todas las charlas). */
-export function sistemaSofia(): Anthropic.Beta.BetaTextBlockParam[] {
-  return [{ type: "text", text: INSTRUCCIONES, cache_control: { type: "ephemeral", ttl: "1h" } }];
+/** El system: las instrucciones y, si están cargados, los datos de ABA (parámetro
+ *  clientes_datos_empresa). La caché de 1 h va en el último bloque: es el mismo para todas las
+ *  charlas mientras nadie edite los datos. */
+export function sistemaSofia(datosEmpresa?: string | null): Anthropic.Beta.BetaTextBlockParam[] {
+  const datos = datosEmpresa?.trim();
+  if (!datos) return [{ type: "text", text: INSTRUCCIONES, cache_control: { type: "ephemeral", ttl: "1h" } }];
+  return [
+    { type: "text", text: INSTRUCCIONES },
+    {
+      type: "text",
+      text: `# Datos de ABA (lo que podés contestar)\nLas preguntas sobre la empresa (oficina, horarios, pagos, zona, permisos, seguros, facturación) contestalas con esto, con tus palabras y sin agregar nada. Lo que no esté acá no lo sabés: decí que lo consultás con el equipo.\n\n${datos}`,
+      cache_control: { type: "ephemeral", ttl: "1h" },
+    },
+  ];
 }
 
 // ── El aviso de cada turno ──────────────────────────────────────────────────────────────

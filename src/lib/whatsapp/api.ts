@@ -16,13 +16,20 @@ import { MAX_TEXTO, partir } from "./formato";
 const GRAPH = "https://graph.facebook.com";
 const version = () => process.env.WHATSAPP_GRAPH_VERSION || "v23.0";
 
-export function hayWhatsapp(): boolean {
-  return !!(process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID && process.env.WHATSAPP_APP_SECRET && process.env.WHATSAPP_VERIFY_TOKEN);
+/** La app de Meta está configurada (token, clave y verify token), con cualquiera de los dos números. */
+export function hayCuentaMeta(): boolean {
+  return !!(process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_APP_SECRET && process.env.WHATSAPP_VERIFY_TOKEN);
 }
 
-/** El número de clientes (docs/clientes/crm-propuesta.md §13). null si no está configurado. */
+/** El asistente de vendedores por WhatsApp: la app de Meta más el número de vendedores. */
+export function hayWhatsapp(): boolean {
+  return hayCuentaMeta() && !!process.env.WHATSAPP_PHONE_NUMBER_ID;
+}
+
+/** El número de clientes (docs/clientes/crm-propuesta.md §13). null si no está configurado.
+ *  No depende del número de vendedores: el de clientes puede estar solo. */
 export function numeroClientes(): string | null {
-  return hayWhatsapp() ? process.env.WHATSAPP_CLIENTES_PHONE_NUMBER_ID || null : null;
+  return hayCuentaMeta() ? process.env.WHATSAPP_CLIENTES_PHONE_NUMBER_ID || null : null;
 }
 
 /** Lo que no aceptó Meta, con su código (131047 = fuera de las 24 h, etc.). */

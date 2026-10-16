@@ -41,6 +41,9 @@ export type TarjetaTecnico = {
   resumen: string;
   motivo: string | null;
   disponibilidad: string | null;
+  /** Bandeja con los datos completos que no salió fácil: los renglones en contra de esFacil.
+   *  Sólo para el equipo (Sofía recibe un motivo genérico). */
+  porQueNoFacil: string[] | null;
   propuesta: (ParejaVista & { motivo: string; regla: string; requiereConfirmacion: boolean; tambienTrabajoCon: string[] }) | null;
   /** Las parejas que se pueden elegir con «Elegir otra». */
   opciones: (ParejaVista & { siguienteEnTurno: boolean; textoCliente: string | null })[];

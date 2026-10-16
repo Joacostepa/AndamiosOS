@@ -11,8 +11,8 @@ import type { CorreccionPedida, TarjetaAprobacion, TarjetasCharla, VistaCorrecci
 import { ErrorPedido, urlPdfVistaPrevia, useAprobaciones, useDecidir, useVistaCorreccion, type PedidoTarjeta } from "@/hooks/use-clientes-whatsapp";
 import { Pastilla, PastillaGamaAlta } from "./pastillas";
 
-// La tarjeta de aprobación (paso 6, docs/clientes/crm-propuesta.md §7 y la maqueta
-// docs/clientes/crm-maqueta.html): lo que Sofía dejó esperando el botón de una persona.
+// La tarjeta de aprobación (paso 6, docs/sofia/crm-propuesta.md §7 y la maqueta
+// docs/sofia/crm-maqueta.html): lo que Sofía dejó esperando el botón de una persona.
 //
 //   · Precio (bandeja fácil): «Esto es lo que le va a llegar a Marcela»: el mensaje exacto, el
 //     PDF (vista previa), los renglones del motor, «Por qué es fácil», la pareja y la ventana.

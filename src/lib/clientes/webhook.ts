@@ -1,4 +1,4 @@
-// WhatsApp de clientes: lo que llega al número de clientes (docs/clientes/crm-propuesta.md
+// WhatsApp de clientes: lo que llega al número de clientes (docs/sofia/crm-propuesta.md
 // §7 y §13, etapa 0). Lo llama el webhook, después de validar la firma de Meta.
 //
 // SIN IA (etapa 0): lo que entra se anota en la bandeja y nadie contesta solo. La única

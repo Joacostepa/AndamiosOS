@@ -618,7 +618,7 @@ Rige sobre la tabla de abajo, que queda como estaba propuesta. Los números son 
 ## 14. Guion para la maqueta
 
 **Reglas:**
-- HTML de una sola página, como `docs/clientes/maqueta.html`.
+- HTML de una sola página, como `docs/sofia/maqueta.html`.
 - Dos paneles: a la izquierda el celular del cliente (WhatsApp) y a la derecha el celular de la asistente (la app), más una vista de escritorio para el tablero.
 - **Todos los clientes, teléfonos, CUIT y direcciones son inventados.** Los nombres del equipo (Sandra, Rocío, Agustina, Tamara, Gabriel, Jorge, Joaquín) son los reales, porque es para uso interno.
 - Para el precio de la bandeja, la maqueta usa $140.000, con la etiqueta «tarifa vigente desde 01/08» (fecha de ejemplo; la real la cargás vos). Así se ve el aviso de más de 45 días: «revisá la tarifa».

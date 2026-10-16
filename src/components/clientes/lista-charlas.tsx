@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { filtrar, telefonoLegible, type CharlaListada, type Filtro } from "@/lib/clientes/vista";
 import { PastillaEstado, PastillaGamaAlta, PastillaVentana } from "./pastillas";
 
-// La lista de charlas (docs/clientes/crm-propuesta.md §7): filtros «Para vos», «Todas» y
+// La lista de charlas (docs/sofia/crm-propuesta.md §7): filtros «Para vos», «Todas» y
 // «Cerradas». Todos ven todas: es una familia, no hay paredes, sólo filtros. Cada fila: quién,
 // la pastilla del estado, la última línea, hace cuánto y lo que le queda a la ventana de 24 h.
 // Las de gama alta (pidió multidireccional) llevan su pastilla y, si esperan a una persona, van

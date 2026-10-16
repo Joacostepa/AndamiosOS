@@ -7,7 +7,7 @@
 -- §7: si se vuelve a 0, lo que llegue a una charla que tenía Sofía pasa a una persona.
 -- Para prenderla: 1 (Comercial → Parámetros de cotización → Agente de clientes), con el motivo.
 --
--- Los demás (docs/clientes/crm-propuesta.md §10, §12 y §13):
+-- Los demás (docs/sofia/crm-propuesta.md §10, §12 y §13):
 --   · clientes_modelo (claude-opus-5-5) y clientes_esfuerzo (low): decisión 19 de JS;
 --   · clientes_tope_tel_usd (1): por teléfono y por día; al llegar, la charla pasa a una persona
 --     sin decirle por qué al cliente;

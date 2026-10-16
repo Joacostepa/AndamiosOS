@@ -2,7 +2,7 @@
 -- WhatsApp de clientes, paso 6 — la tarjeta de aprobación
 -- ========================================================================
 --
--- QUÉ AGREGA (docs/clientes/crm-propuesta.md §7 y §13, paso 6). TODO ES ADITIVO: no borra
+-- QUÉ AGREGA (docs/sofia/crm-propuesta.md §7 y §13, paso 6). TODO ES ADITIVO: no borra
 -- columnas ni filas, y los estados viejos siguen valiendo.
 --
 --   · cli_aprobaciones.estado suma cuatro estados:

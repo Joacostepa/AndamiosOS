@@ -1,7 +1,7 @@
 // Las instrucciones de Sofía, el agente de clientes del WhatsApp de ABA, y el aviso que el
 // servidor le agrega en cada turno. Puro, con tests (prompt.test.ts).
 //
-// docs/clientes/crm-propuesta.md §3 (qué hace sola, supervisada y nunca), §6 (cuándo pasa a una
+// docs/sofia/crm-propuesta.md §3 (qué hace sola, supervisada y nunca), §6 (cuándo pasa a una
 // persona) y §12 (lo que decidió JS el 15/10), más las decisiones de JS para Sofía:
 //   · el saludo lo manda el código (saludo.ts), una vez: Sofía no saluda ni se presenta;
 //   · nunca niega ser una IA: si le preguntan en serio, dice que sí y ofrece pasar con alguien;

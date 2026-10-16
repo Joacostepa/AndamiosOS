@@ -15,7 +15,7 @@ import { PastillaEstado, PastillaGamaAlta, PastillaVentana, useAhora } from "@/c
 import { useBorrarCharla, useCambiarEstado, useCharla, useCharlas } from "@/hooks/use-clientes-whatsapp";
 import { telefonoLegible, type Filtro } from "@/lib/clientes/vista";
 
-// Comercial → WhatsApp de clientes (docs/clientes/crm-propuesta.md §7, etapa 0).
+// Comercial → WhatsApp de clientes (docs/sofia/crm-propuesta.md §7, etapa 0).
 //
 // La bandeja del número de clientes: el número no está en ningún celular (sólo la Cloud API
 // de Meta), así que ésta es LA forma de contestarlo, y tiene que andar bien en el teléfono.

@@ -2,7 +2,7 @@
 -- WhatsApp de clientes, etapa 0 — la bandeja compartida (sin IA)
 -- ========================================================================
 --
--- QUÉ PROBLEMA RESUELVE (docs/clientes/crm-propuesta.md §7, §12 y §13, pasos 2 y 3): ABA
+-- QUÉ PROBLEMA RESUELVE (docs/sofia/crm-propuesta.md §7, §12 y §13, pasos 2 y 3): ABA
 -- suma un número de WhatsApp para clientes, conectado sólo a la Cloud API de Meta. No se usa
 -- desde ningún celular: la única forma de contestarlo es la bandeja de AndamiosOS
 -- (Comercial → WhatsApp de clientes, /comercial/clientes). En la etapa 0 no hay IA: el número

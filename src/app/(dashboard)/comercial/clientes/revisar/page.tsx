@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 import { useAuditoria } from "@/hooks/use-clientes-whatsapp";
 import type { DecisionAuditada } from "@/lib/clientes/vista-aprobacion";
 
-// Comercial → WhatsApp de clientes → Revisar charlas (el auditor, docs/clientes/crm-propuesta.md
+// Comercial → WhatsApp de clientes → Revisar charlas (el auditor, docs/sofia/crm-propuesta.md
 // §7, sólo admin). Dos listas y un contador:
 //   · las aprobaciones decididas, con lo que propuso Sofía (el motor) contra lo que salió;
 //   · las charlas donde intervino una persona (escribió, tomó, devolvió, aprobó);

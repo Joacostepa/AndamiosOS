@@ -6,7 +6,7 @@ import { iaClientesActiva } from "@/lib/clientes/interruptor";
 import { errorResponse, exigirModulo, invalido } from "../../../../_comun";
 
 // GET /api/comercial/clientes/conversaciones/:id/aprobaciones — las tarjetas de aprobación de
-// la charla (paso 6, docs/clientes/crm-propuesta.md §7): lo que espera el OK de una persona y lo
+// la charla (paso 6, docs/sofia/crm-propuesta.md §7): lo que espera el OK de una persona y lo
 // que quedó a medio camino (guardando, con error o «falta la plantilla»), con el precio
 // recalculado con las tarifas de hoy, el mensaje exacto para el cliente y la racha de la etapa 2.
 

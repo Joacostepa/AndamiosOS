@@ -1,7 +1,7 @@
 // ¿Es una bandeja «fácil»? Y si lo es, el borrador que la cotiza. Puro, con tests
 // (facil.test.ts). Sin IA: la regla está escrita acá y el precio lo pone el motor.
 //
-// docs/clientes/crm-propuesta.md §4 (reglas F1 a F9) con lo que decidió JS el 15/10 (§12):
+// docs/sofia/crm-propuesta.md §4 (reglas F1 a F9) con lo que decidió JS el 15/10 (§12):
 //   · fácil = bandeja de protección de 3 m sola, en CABA, frente verificado sin esquina, que
 //     cubre todo el frente y mide hasta `agente_facil_max_ml` (25 m.l.), cliente nuevo, sin
 //     deuda, dirección no cotizada en 12 meses y nada raro en lo que escribió el cliente;

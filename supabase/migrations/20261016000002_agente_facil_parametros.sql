@@ -2,7 +2,7 @@
 -- Agente de clientes de WhatsApp: los parámetros de la bandeja «fácil»
 -- ========================================================================
 --
--- docs/clientes/crm-propuesta.md §4 y §13, con lo que decidió JS el 15/10 (§12):
+-- docs/sofia/crm-propuesta.md §4 y §13, con lo que decidió JS el 15/10 (§12):
 --   · agente_facil_max_ml (25): el ÚNICO tope de metros de la bandeja fácil (decisión 5). Lo
 --     usan esFacil y armarBorradorFacil (src/lib/clientes/facil.ts). Se sube a 30 cuando se
 --     complete la racha de la etapa 2;

@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { pastilla, type CharlaListada, type Tono } from "@/lib/clientes/vista";
 import { textoVentana, ventana } from "@/lib/clientes/ventana";
 
-// Las pastillas de la bandeja (docs/clientes/crm-propuesta.md §7): el estado de la charla y
+// Las pastillas de la bandeja (docs/sofia/crm-propuesta.md §7): el estado de la charla y
 // lo que le queda a la ventana de 24 h.
 
 const TONOS: Record<Tono | "suave" | "gama", string> = {

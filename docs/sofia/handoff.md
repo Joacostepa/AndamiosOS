@@ -2,7 +2,7 @@
 
 **Actualizado el 16/10/2026.** El estado de abajo es el vigente. La historia del 12/10 está más abajo, en «Historia: la charla del 12/10».
 
-Para retomar, decí: «Leé docs/clientes/handoff.md y seguimos con el CRM de WhatsApp».
+Para retomar, decí: «Leé docs/sofia/handoff.md y seguimos con el CRM de WhatsApp».
 
 - **La propuesta** (cerrada por un equipo de agentes y auditada, con las decisiones de JS en la §12): [crm-propuesta.md](./crm-propuesta.md).
 - **La maqueta:** [crm-maqueta.html](./crm-maqueta.html), publicada en https://claude.ai/artifact/6mhAeU4umDQLv152rDai8e.
@@ -104,7 +104,7 @@ JS **no quiere** correr los guiones de ataque (`scripts/test-agente-clientes.mts
    - **Dónde quedó:** el iPhone corporativo (iPhone 16 Pro Max, **WhatsApp Business**) tiene los chats. El WhatsApp de la Mac es el personal y WhatsApp Web no guarda la historia. WhatsApp no exporta todo junto desde el iPhone, así que el camino es:
      1. una copia de seguridad del iPhone **en esta Mac, SIN encriptar** (Finder → el iPhone → General → «Respaldar todos los datos del iPhone en esta Mac» → «Realizar respaldo ahora»). JS la empezó el 16/10, se tuvo que ir y la canceló;
      2. darle a la app **Terminal** «Acceso total al disco» (Configuración del Sistema → Privacidad y seguridad). macOS no deja que Claude lea `~/Library/Application Support/MobileSync/Backup`, así que el comando lo corre JS en Terminal;
-     3. exportar con el programa libre **WhatsApp Chat Exporter**: `pip install whatsapp-chat-exporter`, después `wtsexporter -i --business -j` hacia `~/Documents/chats-clientes`, **fuera del repo y nunca en GitHub** (son datos personales de clientes);
+     3. exportar con el programa libre **WhatsApp Chat Exporter**: `pip install whatsapp-chat-exporter`, después `wtsexporter -i --business -j` hacia `~/Documents/clientes-sofia`, **fuera del repo y nunca en GitHub** (son datos personales de clientes);
      4. anonimizar (nombres, teléfonos, CUIT, direcciones) y analizar con un equipo de agentes: tono de JS, preguntas por tipo de trabajo, objeciones, señales de cada tipo de cliente, preguntas frecuentes, por qué se pierden. El resultado es una propuesta de cambios a la guía de trabajos, los datos de ABA y las instrucciones de Sofía, que **aprueba JS**. Los precios viejos no se usan;
      5. al terminar: **volver los respaldos del iPhone a iCloud** y **borrar la copia local** (Administrar respaldos…).
    - **Ojo:** el iPhone tiene unos 247 GB usados y la Mac unos 79 GB libres. La copia entra sólo si las fotos están en Fotos de iCloud. Si no entra, la alternativa paga es iMazing.

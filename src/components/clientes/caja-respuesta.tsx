@@ -8,7 +8,7 @@ import { motivoVentanaCerrada, ventana, duracion } from "@/lib/clientes/ventana"
 import type { CharlaListada } from "@/lib/clientes/vista";
 import { subirArchivo, useResponder, type ArchivoSubido } from "@/hooks/use-clientes-whatsapp";
 
-// La caja para contestarle al cliente desde la app (docs/clientes/crm-propuesta.md §7):
+// La caja para contestarle al cliente desde la app (docs/sofia/crm-propuesta.md §7):
 // texto, foto o documento. Dentro de las 24 h se manda gratis; afuera WhatsApp sólo deja
 // plantillas (todavía no están en la app), así que la caja se apaga y dice por qué.
 // Si nadie tenía la charla, al escribir pasa a ser de quien escribe.

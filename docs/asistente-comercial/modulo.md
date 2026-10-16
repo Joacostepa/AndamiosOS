@@ -488,7 +488,7 @@ teléfono identifica al vendedor, que además tiene que tener el módulo con per
 No hacen falta plantillas: el asistente sólo contesta, siempre dentro de las 24 h desde el
 último mensaje del vendedor.
 
-### El número de clientes (16/10, etapa 0 de `docs/clientes/crm-propuesta.md`)
+### El número de clientes (16/10, etapa 0 de `docs/sofia/crm-propuesta.md`)
 
 La misma app de Meta tiene un segundo número, el de clientes. El webhook rutea por el
 `phone_number_id` de cada aviso (`src/lib/clientes/ruteo.ts`), nunca por el teléfono de quien

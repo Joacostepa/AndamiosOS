@@ -1,6 +1,6 @@
 // WhatsApp: a qué bandeja va cada aviso de Meta. Puro, con tests (ruteo.test.ts).
 //
-// Hay DOS números en la misma app de Meta (docs/clientes/crm-propuesta.md §13):
+// Hay DOS números en la misma app de Meta (docs/sofia/crm-propuesta.md §13):
 //   · el del asistente comercial (WHATSAPP_PHONE_NUMBER_ID): le escriben los vendedores;
 //   · el de clientes (WHATSAPP_CLIENTES_PHONE_NUMBER_ID): va a la bandeja de la app.
 // Se rutea SIEMPRE por el `phone_number_id` del aviso, nunca por «el teléfono es de un

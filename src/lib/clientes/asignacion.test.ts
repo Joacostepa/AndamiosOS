@@ -8,7 +8,7 @@ import {
   type ClienteAsignacion, type ContextoAsignacion, type CuentaSocio,
 } from "./asignacion.ts";
 
-// Unas filas de docs/clientes/cuentas-socios.md, como llegarían de Parámetros.
+// Unas filas de docs/sofia/cuentas-socios.md, como llegarían de Parámetros.
 const SOCIOS: CuentaSocio[] = [
   { nombre: "MIG S.A", tecnico: "RIVEROS, Jorge", partnerId: 501 },
   { nombre: "Kir Construcciones SRL", tecnico: "STEPANSKY, Gabriel", cuit: "30-70000000-1" },

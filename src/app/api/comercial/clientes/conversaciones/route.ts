@@ -8,7 +8,7 @@ import type { ListaCharlas } from "@/lib/clientes/vista";
 import { errorResponse, exigirModulo } from "../../_comun";
 
 // GET /api/comercial/clientes/conversaciones — la bandeja: todas las abiertas y las últimas
-// cerradas, lo último primero. Todos ven todas (docs/clientes/crm-propuesta.md §7): los
+// cerradas, lo último primero. Todos ven todas (docs/sofia/crm-propuesta.md §7): los
 // filtros «Para vos», «Todas» y «Cerradas» los hace la pantalla. La pantalla consulta cada
 // pocos segundos.
 

@@ -57,7 +57,7 @@ const DEFINICION = [
   },
   { id: "clientes", titulo: "Clientes", grupo: "Comercial", rutas: ["/clientes"] },
   { id: "asistente-comercial", titulo: "Asistente comercial", grupo: "Comercial", rutas: ["/comercial/asistente"] },
-  // La bandeja del número de WhatsApp de clientes (docs/clientes/crm-propuesta.md §7 y §12,
+  // La bandeja del número de WhatsApp de clientes (docs/sofia/crm-propuesta.md §7 y §12,
   // decisión 16: al principio entra sólo JS). "ver" = lee las charlas; "editar" = contesta,
   // toma y cierra.
   { id: "clientes-whatsapp", titulo: "WhatsApp de clientes", grupo: "Comercial", rutas: ["/comercial/clientes"] },

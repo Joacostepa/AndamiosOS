@@ -26,7 +26,7 @@ export function hayWhatsapp(): boolean {
   return hayCuentaMeta() && !!process.env.WHATSAPP_PHONE_NUMBER_ID;
 }
 
-/** El número de clientes (docs/clientes/crm-propuesta.md §13). null si no está configurado.
+/** El número de clientes (docs/sofia/crm-propuesta.md §13). null si no está configurado.
  *  No depende del número de vendedores: el de clientes puede estar solo. */
 export function numeroClientes(): string | null {
   return hayCuentaMeta() ? process.env.WHATSAPP_CLIENTES_PHONE_NUMBER_ID || null : null;

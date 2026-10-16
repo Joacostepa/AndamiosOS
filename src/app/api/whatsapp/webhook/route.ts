@@ -10,7 +10,7 @@ import { iaClientesActiva } from "@/lib/clientes/interruptor";
 // /api/whatsapp/webhook — los avisos de WhatsApp (Meta), de los DOS números de la app:
 //   · el del asistente comercial (WHATSAPP_PHONE_NUMBER_ID): le escriben los vendedores;
 //   · el de clientes (WHATSAPP_CLIENTES_PHONE_NUMBER_ID): va a la bandeja de
-//     /comercial/clientes (docs/clientes/crm-propuesta.md §13). Sin IA en la etapa 0; con
+//     /comercial/clientes (docs/sofia/crm-propuesta.md §13). Sin IA en la etapa 0; con
 //     clientes_ia_activa = 1 (paso 5), lo atiende Sofía (src/lib/clientes/agente.ts) después
 //     del 200, como el asistente.
 // Se rutea por el phone_number_id del aviso (src/lib/clientes/ruteo.ts), nunca por el teléfono

@@ -282,7 +282,7 @@ export function serviciosSofia(db: SupabaseClient, charla: CharlaSofia): Servici
         nombre: ficha.nombre,
         direccionCotizada: dir?.cotizada ? { tecnico: dir.tecnico, venta: dir.venta, fecha: dir.fecha } : null,
       };
-      // Las cuentas de los socios y «Hoy no estoy» van a Parámetros (docs/clientes/cuentas-socios.md):
+      // Las cuentas de los socios y «Hoy no estoy» van a Parámetros (docs/sofia/cuentas-socios.md):
       // mientras no estén, la lista va vacía y la tarjeta lo decide.
       return asignarPareja(cliente, { config: PAREJAS_15_10, cuentasSocios: [], turno: { ultimo } });
     },

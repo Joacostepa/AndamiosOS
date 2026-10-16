@@ -1,5 +1,5 @@
 // La bandeja fácil (crm-propuesta.md §4 y §12) con los escenarios de la propuesta y de la
-// maqueta (docs/clientes/crm-maqueta.html): Marcela en Los Aromos 1234, la esquina, el 14 → 11,
+// maqueta (docs/sofia/crm-maqueta.html): Marcela en Los Aromos 1234, la esquina, el 14 → 11,
 // el regateo, la tabla floja y el alquiler simple del viernes a la noche.
 
 import { test } from "node:test";

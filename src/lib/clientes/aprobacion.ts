@@ -1,7 +1,7 @@
 // La tarjeta de aprobación (paso 6): las reglas, sin base ni red. Puro, con tests
 // (aprobacion.test.ts). Lo que toca Supabase, Odoo y Meta está en aprobar.ts.
 //
-// docs/clientes/crm-propuesta.md §7 (la tarjeta), §6 (la ventana de 24 h), §9 (la racha de la
+// docs/sofia/crm-propuesta.md §7 (la tarjeta), §6 (la ventana de 24 h), §9 (la racha de la
 // etapa 2) y §13 (paso 6), con lo que decidió JS el 15/10 (§12):
 //   · LA DECISIÓN SE TOMA UNA SOLA VEZ: cada acción pasa de unos estados a otro con un UPDATE
 //     condicionado (tomarUnaVez). Si dos tocan Aprobar a la vez, gana el primero y el segundo

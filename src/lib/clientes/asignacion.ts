@@ -3,7 +3,7 @@
 // lista de cuentas de los socios, las parejas y el estado del turno, y devuelve la propuesta
 // y el turno siguiente. Guardar el turno es cosa de quien llama, y sólo cuando se confirma.
 //
-// docs/clientes/crm-propuesta.md §5, con lo que decidió JS el 15/10 (§12, decisiones 3 y 4).
+// docs/sofia/crm-propuesta.md §5, con lo que decidió JS el 15/10 (§12, decisiones 3 y 4).
 // Las reglas van en este orden y corta la primera que se cumple:
 //   1. cuenta de los socios → al socio de esa cuenta (con su asistente);
 //   2. alquiler simple sin montaje → Tamara, sin técnico (aunque ya sea cliente);
@@ -47,7 +47,7 @@ export const PAREJAS_15_10: ConfigParejas = {
 };
 
 /**
- * Una cuenta de los socios (docs/clientes/cuentas-socios.md). La lista NO está en el código: la
+ * Una cuenta de los socios (docs/sofia/cuentas-socios.md). La lista NO está en el código: la
  * arma JS y va a Parámetros. Se reconoce por partner de Odoo, por CUIT o por el nombre.
  */
 export type CuentaSocio = {

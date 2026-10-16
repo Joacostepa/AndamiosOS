@@ -2,7 +2,7 @@
 -- WhatsApp de clientes, paso 5 — Sofía, el agente (las tablas)
 -- ========================================================================
 --
--- QUÉ AGREGA (docs/clientes/crm-propuesta.md §13, paso 5):
+-- QUÉ AGREGA (docs/sofia/crm-propuesta.md §13, paso 5):
 --   · cli_api_mensajes — la historia EXACTA que se le manda a la API de Claude, append-only,
 --     como asistente_mensajes. `contenido` es JSON y NO JSONB a propósito: jsonb reordena las
 --     claves y un tool_use reenviado con otro orden rompe el caché y la firma de los bloques de

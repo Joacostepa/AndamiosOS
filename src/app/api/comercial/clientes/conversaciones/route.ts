@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { nivelEn } from "@/lib/auth/acceso";
+import { esAdmin, nivelEn } from "@/lib/auth/acceso";
 import { numeroClientes } from "@/lib/whatsapp/api";
 import { listarCharlas } from "@/lib/clientes/bandeja";
 import { iaClientesActiva } from "@/lib/clientes/interruptor";
@@ -24,6 +24,7 @@ export async function GET() {
       yo: quien.userId,
       puedeEditar: nivelEn(quien.acceso, "clientes-whatsapp") === "editar",
       iaActiva,
+      esAdmin: esAdmin(quien.acceso),
       numeroConfigurado: !!numeroClientes(),
       charlas,
     };

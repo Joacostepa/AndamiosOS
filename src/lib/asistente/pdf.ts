@@ -32,7 +32,7 @@ export function dimensionesImagen(b: Buffer): { ancho: number; alto: number; tip
   return null;
 }
 
-async function imagenDelRender(db: SupabaseClient, b: Borrador): Promise<DatosPropuesta["imagenes"]> {
+async function imagenDelRender(db: SupabaseClient, b: Pick<Borrador, "datos">): Promise<DatosPropuesta["imagenes"]> {
   const r = b.datos.render;
   let path: string | null = null;
   if (r.eleccion === "biblioteca" && r.renderId) {
@@ -55,18 +55,22 @@ function item(l: { descripcion: string; importe: number; importeLista: number; d
     : { desc: l.descripcion, monto: l.importe, unidad: l.unidad };
 }
 
-export async function generarPdfDelBorrador(
+/**
+ * Lo que va al PDF a partir de un borrador (o de uno armado en memoria, como la vista previa de
+ * la tarjeta de aprobación del WhatsApp de clientes). Sin número de Odoo sale como BORRADOR.
+ */
+export async function datosPropuestaDe(
   db: SupabaseClient,
-  b: Borrador,
-  p: { tarifas: Tarifas; vendedorEnPropuesta: string; usuarioId: string },
-): Promise<{ vista: PdfVista; pdf: Buffer; nombre: string }> {
+  b: Pick<Borrador, "datos" | "resultado" | "odoo_venta_nombre">,
+  p: { tarifas: Tarifas; vendedorEnPropuesta: string },
+): Promise<DatosPropuesta> {
   const r = b.resultado;
   if (!r) throw new Error("El borrador todavía no tiene números: cotizá algo primero.");
   const d = b.datos;
   const final = !!b.odoo_venta_nombre;
   const hoy = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Argentina/Buenos_Aires" });
 
-  const datos: DatosPropuesta = {
+  return {
     numero: b.odoo_venta_nombre,
     fechaEmision: hoy,
     validezDias: p.tarifas.validezDias,
@@ -90,6 +94,16 @@ export async function generarPdfDelBorrador(
     aclaraciones: d.aclaraciones,
     borrador: !final,
   };
+}
+
+export async function generarPdfDelBorrador(
+  db: SupabaseClient,
+  b: Borrador,
+  p: { tarifas: Tarifas; vendedorEnPropuesta: string; usuarioId: string },
+): Promise<{ vista: PdfVista; pdf: Buffer; nombre: string }> {
+  const d = b.datos;
+  const final = !!b.odoo_venta_nombre;
+  const datos = await datosPropuestaDe(db, b, p);
 
   const pdf = await generarPdfPropuesta(datos);
   const nombre = nombreArchivoPropuesta(b.odoo_venta_nombre, d.cliente.razonSocial ?? "Cliente", d.obra.direccion ?? "Obra", d.referencia ?? "Propuesta");

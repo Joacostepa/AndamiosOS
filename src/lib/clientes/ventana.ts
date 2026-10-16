@@ -68,3 +68,25 @@ export function motivoVentanaCerrada(ultimoEntranteAt: string | Date | null | un
   const horas = Math.floor((v.cerradaHaceMs + VENTANA_MS) / 3_600_000);
   return `Pasaron ${horas} h desde el último mensaje del cliente: WhatsApp no deja mandar texto libre ni archivos fuera de las 24 h, sólo plantillas aprobadas. Cuando el cliente vuelva a escribir, se abre de nuevo.`;
 }
+
+// ── Para la tarjeta de aprobación (paso 6, aprobacion.ts) ─────────────────────────────
+
+/** libre: sale el texto y el PDF · plantilla: la ventana está cerrada, falta la plantilla de Meta. */
+export function modoEnvio(ultimoEntranteAt: string | Date | null | undefined, ahora: number = Date.now()): "libre" | "plantilla" {
+  return puedeTextoLibre(ultimoEntranteAt, ahora) ? "libre" : "plantilla";
+}
+
+export type AvisoVentana = { nivel: "ok" | "por_vencer" | "cerrada"; texto: string; horas: number | null };
+
+/** La línea de la ventana en la tarjeta. Con menos de 2 h, «Aprobar» pregunta antes. */
+export function avisoVentana(ultimoEntranteAt: string | Date | null | undefined, ahora: number = Date.now()): AvisoVentana {
+  const v = ventana(ultimoEntranteAt, ahora);
+  if (v.sinMensajes) return { nivel: "cerrada", texto: "El cliente nunca escribió: sólo puede salir con una plantilla de Meta.", horas: null };
+  if (!v.abierta || !puedeTextoLibre(ultimoEntranteAt, ahora)) {
+    const h = Math.floor((v.cerradaHaceMs + VENTANA_MS) / 3_600_000);
+    return { nivel: "cerrada", texto: `Ventana cerrada (${h} h): se guarda en Odoo y queda «aprobada, falta la plantilla». La plantilla «Tu presupuesto está listo» todavía no está aprobada en Meta.`, horas: 0 };
+  }
+  const horas = Math.floor(v.restanteMs / 3_600_000);
+  if (v.porVencer) return { nivel: "por_vencer", texto: `Se vence la ventana en ${duracion(v.restanteMs)}. Si no sale ahora, después sólo con la plantilla.`, horas };
+  return { nivel: "ok", texto: `Ventana: quedan ${duracion(v.restanteMs)}`, horas };
+}

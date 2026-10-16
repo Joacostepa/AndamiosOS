@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import type { DetalleCharla, ListaCharlas } from "@/lib/clientes/vista";
+import type { Auditoria, CorreccionPedida, ResultadoDecision, TarjetasCharla, VistaCorreccion } from "@/lib/clientes/vista-aprobacion";
 
 // La bandeja de WhatsApp de clientes del lado de la pantalla.
 //
@@ -14,7 +15,7 @@ import type { DetalleCharla, ListaCharlas } from "@/lib/clientes/vista";
 const BASE = "/api/comercial/clientes";
 
 export class ErrorPedido extends Error {
-  constructor(mensaje: string, readonly status: number, readonly codigo?: string) {
+  constructor(mensaje: string, readonly status: number, readonly codigo?: string, readonly datos?: Record<string, unknown>) {
     super(mensaje);
   }
 }
@@ -22,8 +23,8 @@ export class ErrorPedido extends Error {
 async function pedir<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { ...init, headers: init?.body ? { "Content-Type": "application/json" } : undefined });
   if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as { error?: string; codigo?: string } | null;
-    throw new ErrorPedido(body?.error ?? `Error ${res.status}`, res.status, body?.codigo);
+    const body = (await res.json().catch(() => null)) as ({ error?: string; codigo?: string } & Record<string, unknown>) | null;
+    throw new ErrorPedido(body?.error ?? `Error ${res.status}`, res.status, body?.codigo, body ?? undefined);
   }
   return (await res.json()) as T;
 }
@@ -79,5 +80,58 @@ export function useResponder(id: string | null) {
   return useMutation<{ ok: true; id: string }, ErrorPedido, { texto?: string; archivo?: ArchivoSubido }>({
     mutationFn: (b) => pedir(`${BASE}/conversaciones/${id}/responder`, { method: "POST", body: JSON.stringify(b) }),
     onSettled: () => id && refrescar(qc, id),
+  });
+}
+
+// ── La tarjeta de aprobación (paso 6) ───────────────────────────────────────────────────
+
+export function useAprobaciones(id: string | null) {
+  return useQuery({
+    queryKey: ["clientes-aprobaciones", id],
+    queryFn: () => pedir<TarjetasCharla>(`${BASE}/conversaciones/${id}/aprobaciones`),
+    enabled: !!id,
+    refetchInterval: 6000,
+    staleTime: 2000,
+  });
+}
+
+export type PedidoTarjeta =
+  | { accion: "aprobar"; montoVisto: number; correccion?: CorreccionPedida | null; confirmarVentana?: boolean; despues?: "sofia" | "persona" | null }
+  | { accion: "reintentar" }
+  | { accion: "tomar"; motivo?: string }
+  | { accion: "confirmar"; elegida?: { tecnico: string | null; asistente: string | null } | null; avisar: boolean; despues?: "sofia" | "persona" | null }
+  | { accion: "mandar"; texto: string; despues?: "sofia" | "persona" | null };
+
+export function useDecidir(charlaId: string) {
+  const qc = useQueryClient();
+  return useMutation<Extract<ResultadoDecision, { ok: true }>, ErrorPedido, { aprobacionId: string; pedido: PedidoTarjeta }>({
+    mutationFn: ({ aprobacionId, pedido }) => pedir(`${BASE}/conversaciones/${charlaId}/aprobaciones/${aprobacionId}`, { method: "POST", body: JSON.stringify(pedido) }),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: ["clientes-aprobaciones", charlaId] });
+      refrescar(qc, charlaId);
+    },
+  });
+}
+
+/** «Recalcular» al corregir: el nuevo, antes de mandar. No escribe nada. */
+export function useVistaCorreccion(charlaId: string) {
+  return useMutation<VistaCorreccion, ErrorPedido, { aprobacionId: string; correccion: CorreccionPedida }>({
+    mutationFn: ({ aprobacionId, correccion }) =>
+      pedir(`${BASE}/conversaciones/${charlaId}/aprobaciones/${aprobacionId}`, { method: "POST", body: JSON.stringify({ accion: "corregir", correccion }) }),
+  });
+}
+
+export function urlPdfVistaPrevia(charlaId: string, aprobacionId: string, correccion?: CorreccionPedida | null): string {
+  const base = `${BASE}/conversaciones/${charlaId}/aprobaciones/${aprobacionId}/pdf`;
+  return correccion ? `${base}?correccion=${encodeURIComponent(JSON.stringify(correccion))}` : base;
+}
+
+export function useAuditoria(habilitado: boolean) {
+  return useQuery({
+    queryKey: ["clientes-auditoria"],
+    queryFn: () => pedir<Auditoria>(`${BASE}/revisar`),
+    enabled: habilitado,
+    refetchInterval: 60_000,
+    staleTime: 20_000,
   });
 }

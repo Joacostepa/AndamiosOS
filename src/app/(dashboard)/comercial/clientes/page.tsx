@@ -2,13 +2,15 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, Bot, Hand, Loader2, Lock, MessageCircle, TriangleAlert, Undo2 } from "lucide-react";
+import Link from "next/link";
+import { ArrowLeft, Bot, ClipboardCheck, Hand, Loader2, Lock, MessageCircle, TriangleAlert, Undo2 } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { useSeguirAbajo } from "@/components/asistente/hilo";
 import { ListaCharlas } from "@/components/clientes/lista-charlas";
 import { HiloCharla } from "@/components/clientes/hilo-charla";
 import { CajaRespuesta } from "@/components/clientes/caja-respuesta";
+import { TarjetasAprobacion } from "@/components/clientes/tarjeta-aprobacion";
 import { PastillaEstado, PastillaVentana, useAhora } from "@/components/clientes/pastillas";
 import { useCambiarEstado, useCharla, useCharlas } from "@/hooks/use-clientes-whatsapp";
 import { telefonoLegible, type Filtro } from "@/lib/clientes/vista";
@@ -24,7 +26,9 @@ import { telefonoLegible, type Filtro } from "@/lib/clientes/vista";
 // escribe) pasa a tenerlo, y lo puede soltar o cerrar. Con Sofía (paso 5): lo nuevo entra con
 // ella; lo que escribe se ve en celeste, distinto de lo que escribe una persona. Si alguien toma
 // la charla (o le escribe), Sofía se calla; «Devolver a Sofía» se la devuelve, con una nota
-// opcional para ella. Las tarjetas de aprobación son el paso 6.
+// opcional para ella. Paso 6: lo que Sofía deja esperando el OK (un precio, un técnico, un texto
+// que frenó el filtro) aparece como tarjeta de aprobación debajo del hilo; «Revisar charlas»
+// (sólo admin) es el auditor.
 
 function Bandeja() {
   const router = useRouter();
@@ -65,6 +69,11 @@ function Bandeja() {
           <MessageCircle className="size-5 text-hd-boton" />
           <h1 className="flex-1 text-[15px] font-semibold">WhatsApp de clientes</h1>
           {lista.isFetching && !lista.isLoading && <Loader2 className="size-4 animate-spin text-muted-foreground" aria-label="Actualizando" />}
+          {lista.data?.esAdmin && (
+            <Link href="/comercial/clientes/revisar" className={buttonVariants({ variant: "ghost", className: "h-10 gap-1.5 px-2.5 text-[13.5px]" })} title="Revisar charlas: el auditor">
+              <ClipboardCheck className="size-4" /> Revisar
+            </Link>
+          )}
         </header>
         {lista.data && !lista.data.numeroConfigurado && (
           <p className="border-b border-border bg-hd-ambar-bg px-3 py-2 text-[13px] text-hd-ambar">
@@ -203,6 +212,7 @@ function Charla({ id, ahora, onVolver }: { id: string; ahora: number; onVolver: 
       <div ref={cajaRef} className="min-h-0 flex-1 overflow-y-auto bg-muted/30 px-3 py-4 sm:px-6">
         <div ref={contenidoRef} className="mx-auto max-w-3xl">
           <HiloCharla items={d.items} nombreCliente={c.nombre?.split(" ")[0] || "Cliente"} />
+          <TarjetasAprobacion charla={c} ahora={ahora} puedeEditar={d.puedeEditar} />
         </div>
       </div>
 

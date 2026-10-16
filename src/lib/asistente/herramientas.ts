@@ -984,7 +984,8 @@ const NOMBRES_TRABAJO: Record<string, string> = {
   llevaPermiso: "x_lleva_permiso", permisoModalidad: "x_permiso_modalidad", syhPresencial: "x_syh_presencial", fechaFinEstimada: "x_fecha_fin_obra_estimada",
 };
 
-function camposTrabajo(d: DatosBorrador): Record<string, unknown> {
+/** Los campos del trabajo de la orden (también los usa la tarjeta de aprobación de clientes). */
+export function camposTrabajo(d: DatosBorrador): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, campo] of Object.entries(NOMBRES_TRABAJO)) {
     const v = d.trabajo[k as keyof DatosBorrador["trabajo"]];
@@ -1003,7 +1004,8 @@ function camposTrabajo(d: DatosBorrador): Record<string, unknown> {
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-function notaHtml(d: DatosBorrador, r: ResultadoBorrador): string {
+/** La nota interna de la orden (también la usa la tarjeta de aprobación de clientes). */
+export function notaHtml(d: DatosBorrador, r: ResultadoBorrador): string {
   const partes: string[] = [];
   partes.push(`<p>Modelo de cotización: <b>${d.modelo ?? "—"}</b>. Neto ${pesos(r.totales.subtotal)}${r.totales.renovacion ? `; renovación ${r.totales.renovacion.pct} % = ${pesos(r.totales.renovacion.monto)} por mes` : ""}.</p>`);
   const desvios = r.lineas.filter((l) => l.desvio);

@@ -375,3 +375,13 @@ test("gama alta: esFacil da no fácil con el motivo, aunque el resto sea la band
   assert.deepEqual(marcada.enContra.map((m) => m.codigo), ["gama_alta"]);
   assert.ok(!marcada.motivos.some((m) => m.codigo === "palabras" && m.ok), "no dice «Sin palabras de alerta»");
 });
+
+test("un nombre del equipo cuenta sólo si el cliente lo pide, no si es su propio nombre (JS, 16/10)", () => {
+  const pide = (x: string) => escanearPalabras(x).some((a) => a.codigo === "persona");
+  for (const x of ["Hacelo a nombre de Joaquín Fernández", "Soy Jorge, tengo una obra en Palermo", "Me llamo Sandra Gómez", "Gabriel Pérez, DNI 30.123.456", "a nombre de Rocío Martínez"]) {
+    assert.equal(pide(x), false, x);
+  }
+  for (const x of ["Quiero hablar con Jorge", "pasame con Sandra por favor", "¿Está Gabriel?", "necesito a Rocío", "Joaquín me puede llamar?", "me comunico con Joaquín"]) {
+    assert.equal(pide(x), true, x);
+  }
+});

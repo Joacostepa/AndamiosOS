@@ -204,8 +204,11 @@ const PALABRAS: { codigo: CodigoAlerta; texto: string; terminos: (string | RegEx
       "persona", "humano", "operador", "operadora", "asesor", "asesora", "vendedor", "vendedora", "atencion al cliente", "quiero hablar",
       "hablar con", "pasame con", "comunicarme con", "contactarme con", "llamame", "llamarme", "me llaman", "me pueden llamar", "me podes llamar",
       "me puede llamar", "llamada", "llamen", "dueno", "encargado", "gerente",
-      // El equipo por su nombre.
-      "sandra", "rocio", "agustina", "tamara", "gabriel", "jorge", "joaquin", "stepansky", "riveros",
+      // El equipo por su nombre, SÓLO si lo pide («quiero hablar con Jorge», «pasame con Sandra»,
+      // «¿está Gabriel?»). Suelto no: «a nombre de Joaquín Fernández», «soy Jorge» o «me llamo
+      // Sandra» es el nombre del cliente (JS, 16/10: una bandeja fácil salió «no fácil» por eso).
+      /(?:^|[^a-z])(?:hablar|comunicar(?:me)?|contactar(?:me)?|pasa(?:me|s|r|rme)?|l?lam(?:a|e|en|ar|ame|enme)|atend(?:e|er|eme)|busco|buscando|quiero|necesito|esta|estan|anda|con)(?: con| a| al| que)?(?: el| la)? (sandra|rocio|agustina|tamara|gabriel|jorge|joaquin|stepansky|riveros)(?![a-z])/,
+      /(?:^|[^a-z])(sandra|rocio|agustina|tamara|gabriel|jorge|joaquin)(?: esta| estan| anda| me (?:puede|podria|llama|atiende|escribe))(?![a-z])/,
     ],
   },
   {

@@ -120,7 +120,7 @@ JS **no quiere** correr los guiones de ataque (`scripts/test-agente-clientes.mts
 9. ~~Sumar palabras de «gama alta»~~: hecho en la rama `feat/sofia-analisis-chats` (Layher, instituciones, industria y licitaciones, aprobado por JS el 16/10). Se suman más en `PALABRAS_GAMA_ALTA` de `facil.ts`.
 10. **Búsquedas laborales por Slack** (idea de JS, 16/10): que Sofía junte los datos de quien busca trabajo (nombre, puesto, zona, experiencia) y los mande ordenados por Slack al responsable de personal. Hoy sólo le dice «le paso tu mensaje al responsable de personal» y deriva con `fuera_de_tema`.
 11. **Lo que quedó de la propuesta del análisis de chats:** D4 (campos nuevos en la ficha: altura en metros, tiempo de obra, quién arma, silleteros, etapa de decisión, quién decide, origen), D7 (cliente que vuelve, depende del paso 2b), D8 (aviso si un pedido pasa 24 a 48 h sin respuesta) y la bandera `urgente` para «para hoy» y «para mañana».
-12. **Confirmar con JS que el echeq se acepta:** los datos de ABA dicen «transferencia bancaria o echeq»; JS sólo dijo que no se acepta efectivo.
+12. ~~Confirmar el echeq~~: JS confirmó el 16/10 que se acepta (transferencia o echeq, nunca efectivo).
 
 ## Historia: la charla del 12/10
 

@@ -1,0 +1,102 @@
+// La bandeja de clientes, del lado de la pantalla: lo que devuelven las rutas y cómo se
+// nombra cada estado. Puro (sin base ni red): lo importan las rutas y la página.
+
+export type EstadoCharla = "bot" | "espera_ok" | "humano" | "derivada" | "cerrada";
+
+export type CharlaListada = {
+  id: string;
+  telefono: string;
+  /** El nombre del perfil de WhatsApp (puede faltar). */
+  nombre: string | null;
+  estado: EstadoCharla;
+  motivo: string | null;
+  /** Quién la tiene (estado humano). */
+  asistente: { id: string; nombre: string } | null;
+  ultimoMensajeAt: string | null;
+  ultimoEntranteAt: string | null;
+  ultimoResumen: string | null;
+  sinLeer: number;
+  optOut: boolean;
+  createdAt: string;
+};
+
+export type AdjuntoVista =
+  | {
+      tipo: "archivo";
+      mime: string | null;
+      nombre: string;
+      /** /api/comercial/clientes/medios/<id del hilo>: redirige a una URL firmada. null mientras se baja. */
+      url: string | null;
+      pendiente: boolean;
+      error: string | null;
+    }
+  | { tipo: "ubicacion"; lat: number; lng: number; nombre: string | null; direccion: string | null };
+
+export type ItemHilo = {
+  id: string;
+  direccion: "entrante" | "saliente" | "evento";
+  autor: "cliente" | "persona" | "sistema" | "ia" | "plantilla";
+  /** El nombre de quien escribió (persona). */
+  autorNombre: string | null;
+  tipo: string;
+  texto: string | null;
+  adjunto: AdjuntoVista | null;
+  transcripcion: string | null;
+  estado: "recibido" | "enviando" | "enviado" | "entregado" | "leido" | "error";
+  errorCodigo: number | null;
+  errorDetalle: string | null;
+  momento: string;
+};
+
+export type ListaCharlas = {
+  yo: string;
+  puedeEditar: boolean;
+  /** Si falta WHATSAPP_CLIENTES_PHONE_NUMBER_ID, no se puede mandar nada. */
+  numeroConfigurado: boolean;
+  charlas: CharlaListada[];
+};
+
+export type DetalleCharla = {
+  yo: string;
+  puedeEditar: boolean;
+  numeroConfigurado: boolean;
+  charla: CharlaListada;
+  items: ItemHilo[];
+};
+
+export type Tono = "gris" | "ambar" | "coral" | "rojo";
+
+/** La pastilla de cada estado (crm-propuesta.md §7). En la etapa 0 no hay IA: «derivada» es «Sin tomar». */
+export function pastilla(c: Pick<CharlaListada, "estado" | "motivo" | "asistente">, yo: string): { texto: string; tono: Tono } {
+  switch (c.estado) {
+    case "bot":
+      return { texto: "Atiende la IA", tono: "gris" };
+    case "espera_ok":
+      return { texto: "Espera tu OK", tono: "ambar" };
+    case "humano":
+      if (!c.asistente) return { texto: "Tomada", tono: "coral" };
+      return { texto: c.asistente.id === yo ? "La tenés vos" : `La tiene ${c.asistente.nombre}`, tono: "coral" };
+    case "derivada":
+      return { texto: c.motivo ? `Sin tomar · ${c.motivo}` : "Sin tomar", tono: "rojo" };
+    case "cerrada":
+      return { texto: "Cerrada", tono: "gris" };
+  }
+}
+
+export type Filtro = "vos" | "todas" | "cerradas";
+
+/** «Para vos»: las mías y las que nadie tomó. Todos ven todas (es una familia: sólo filtros). */
+export function filtrar(charlas: CharlaListada[], filtro: Filtro, yo: string): CharlaListada[] {
+  if (filtro === "cerradas") return charlas.filter((c) => c.estado === "cerrada");
+  const abiertas = charlas.filter((c) => c.estado !== "cerrada");
+  if (filtro === "todas") return abiertas;
+  return abiertas.filter((c) => c.estado === "derivada" || c.estado === "espera_ok" || (c.estado === "humano" && c.asistente?.id === yo));
+}
+
+/** El teléfono como se lee en Argentina: +54 9 11 5555-1234. Lo demás, con un + adelante. */
+export function telefonoLegible(tel: string): string {
+  const d = tel.replace(/\D/g, "");
+  const m = /^549(11|\d{3,4})(\d{3,4})(\d{4})$/.exec(d);
+  if (m && (m[1].length + m[2].length + m[3].length === 10)) return `+54 9 ${m[1]} ${m[2]}-${m[3]}`;
+  return d ? `+${d}` : tel;
+}

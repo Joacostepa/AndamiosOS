@@ -488,6 +488,23 @@ teléfono identifica al vendedor, que además tiene que tener el módulo con per
 No hacen falta plantillas: el asistente sólo contesta, siempre dentro de las 24 h desde el
 último mensaje del vendedor.
 
+### El número de clientes (16/10, etapa 0 de `docs/clientes/crm-propuesta.md`)
+
+La misma app de Meta tiene un segundo número, el de clientes. El webhook rutea por el
+`phone_number_id` de cada aviso (`src/lib/clientes/ruteo.ts`), nunca por el teléfono de quien
+escribe:
+
+- `WHATSAPP_PHONE_NUMBER_ID` → este asistente, igual que siempre;
+- `WHATSAPP_CLIENTES_PHONE_NUMBER_ID` → la bandeja de **Comercial → WhatsApp de clientes**
+  (`/comercial/clientes`, módulo `clientes-whatsapp`). Sin IA: se anota, se bajan los adjuntos,
+  se transcriben los audios y se contesta desde la app. Los avisos de entrega (`statuses`) se
+  anotan en el hilo, incluido el error 131047 de fuera de las 24 h;
+- otro número de la cuenta se ignora.
+
+`WHATSAPP_CLIENTES_RESPUESTA_FIJA=1` prende un mensaje fijo («en un rato te escribe una
+persona del equipo») para las charlas nuevas o reabiertas. Apagado por defecto. Datos en la
+migración `20261016000001_clientes_whatsapp.sql`.
+
 ---
 
 ## Cómo está hecho

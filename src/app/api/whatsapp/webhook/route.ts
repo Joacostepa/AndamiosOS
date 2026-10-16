@@ -2,8 +2,15 @@ import { after, NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { firmaValida, hayWhatsapp } from "@/lib/whatsapp/api";
 import { procesarTelefono, registrarEntrantes, type MensajeMeta } from "@/lib/whatsapp/procesar";
+import { destinoDeNumero, numerosDelEntorno } from "@/lib/clientes/ruteo";
+import { despuesDeRecibir, recibirMensajes, registrarStatuses, type AvisoClientes, type Pendientes } from "@/lib/clientes/webhook";
 
-// /api/whatsapp/webhook — los avisos de WhatsApp (Meta) para el asistente comercial.
+// /api/whatsapp/webhook — los avisos de WhatsApp (Meta), de los DOS números de la app:
+//   · el del asistente comercial (WHATSAPP_PHONE_NUMBER_ID): le escriben los vendedores;
+//   · el de clientes (WHATSAPP_CLIENTES_PHONE_NUMBER_ID): va a la bandeja de
+//     /comercial/clientes (docs/clientes/crm-propuesta.md §13). Sin IA en la etapa 0.
+// Se rutea por el phone_number_id del aviso (src/lib/clientes/ruteo.ts), nunca por el teléfono
+// de quien escribe.
 //
 // GET: la verificación al suscribir el webhook (Meta manda hub.challenge y hay que devolverlo).
 // POST: cada mensaje que le mandan al número del asistente. Meta quiere un 200 enseguida y el
@@ -17,7 +24,7 @@ export const maxDuration = 300;
 
 type Aviso = {
   object?: string;
-  entry?: { changes?: { field?: string; value?: { metadata?: { phone_number_id?: string }; messages?: MensajeMeta[] } }[] }[];
+  entry?: { changes?: { field?: string; value?: AvisoClientes }[] }[];
 };
 
 export async function GET(req: NextRequest) {
@@ -42,16 +49,34 @@ export async function POST(req: NextRequest) {
   }
 
   const db = createAdminClient();
+  const numeros = numerosDelEntorno();
   const telefonos = new Set<string>();
+  const clientes: Pendientes = { adjuntos: [], respuestasFijas: [] };
   for (const e of aviso.entry ?? []) {
     for (const c of e.changes ?? []) {
-      // Sólo mensajes (no los avisos de entregado/leído) y sólo al número del asistente.
-      if (c.field !== "messages" || !c.value?.messages?.length) continue;
+      if (c.field !== "messages" || !c.value) continue;
       const numero = c.value.metadata?.phone_number_id;
-      if (numero && numero !== process.env.WHATSAPP_PHONE_NUMBER_ID) continue;
+      const destino = destinoDeNumero(numero, numeros);
       // Si falla anotar, el error vuelve como 500 y Meta reintenta más tarde.
-      for (const t of await registrarEntrantes(db, c.value.messages)) telefonos.add(t);
+      if (destino === "clientes" && numero) {
+        if (c.value.messages?.length) {
+          const p = await recibirMensajes(db, c.value, numero);
+          clientes.adjuntos.push(...p.adjuntos);
+          clientes.respuestasFijas.push(...p.respuestasFijas);
+        }
+        // Entregado, leído o error (el 131047: fuera de las 24 h). Antes se descartaban.
+        if (c.value.statuses?.length) await registrarStatuses(db, c.value.statuses);
+      } else if (destino === "vendedores" && c.value.messages?.length) {
+        // Los avisos de entrega del asistente de vendedores se siguen descartando: no hay
+        // dónde mostrarlos.
+        for (const t of await registrarEntrantes(db, c.value.messages as MensajeMeta[], numero ?? null)) telefonos.add(t);
+      }
     }
+  }
+
+  if (clientes.adjuntos.length || clientes.respuestasFijas.length) {
+    // Bajar los adjuntos enseguida (los links de Meta vencen) y transcribir los audios.
+    after(() => despuesDeRecibir(db, clientes).catch((e) => console.error("[clientes] después de recibir", e)));
   }
 
   if (telefonos.size) {

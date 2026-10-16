@@ -2,7 +2,7 @@ import {
   Building2, Users, Wrench, Package, Truck, UserCheck, Bell,
   Settings, FileText, ClipboardList, Calculator, Calendar, HardHat,
   PackagePlus, AlertTriangle, Search, Car, Hammer, MessageSquare,
-  MapPin, Fingerprint, Bot, Building, ListOrdered, ShieldCheck, FileBarChart, Landmark, SlidersHorizontal, Network, Boxes, Gauge,
+  MapPin, Fingerprint, Bot, MessageCircle, Building, ListOrdered, ShieldCheck, FileBarChart, Landmark, SlidersHorizontal, Network, Boxes, Gauge,
   type LucideIcon,
 } from "lucide-react";
 
@@ -23,6 +23,8 @@ export const navigation: NavGroup[] = [
     label: "Comercial",
     items: [
       { title: "Asistente comercial", href: "/comercial/asistente", icon: Bot },
+      // Sólo con el módulo clientes-whatsapp (el menú filtra con puedeAbrir).
+      { title: "WhatsApp de clientes", href: "/comercial/clientes", icon: MessageCircle },
       { title: "Clientes", href: "/clientes", icon: Users },
       { title: "Parámetros de cotización", href: "/comercial/parametros", icon: SlidersHorizontal },
     ],

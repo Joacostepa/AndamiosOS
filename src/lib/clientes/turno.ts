@@ -221,6 +221,12 @@ function notaDelEquipo(it: ItemNuevo): string | null {
   return null;
 }
 
+/** Lo que solo no merece respuesta: una reacción, o un «Hola» anterior al saludo (ya contestado). */
+function esRuido(e: ItemNuevo, saludoAt: string | null): boolean {
+  if (e.tipo === "reaction") return true;
+  return e.tipo === "text" && esSoloSaludo(e.texto) && !!saludoAt && Date.parse(e.creado) <= Date.parse(saludoAt);
+}
+
 // ── El turno ───────────────────────────────────────────────────────────────────────────
 
 /**
@@ -252,6 +258,14 @@ export async function atenderCharla(deps: DepsSofia, conversacionId: string, opc
       const nuevos = await repo.nuevosDelHilo(charla.id, charla.iaLeidoHasta);
       const entrantes = nuevos.filter((n) => n.direccion === "entrante");
       if (!entrantes.length && !devuelta) break;
+      // Una reacción (👍), o el «Hola» que ya se contestó con el saludo, solos no se contestan:
+      // quedan para la próxima.
+      if (!devuelta && entrantes.every((e) => esRuido(e, charla.iaSaludoAt))) break;
+      // Devuelta con la ventana de 24 h cerrada: no se le puede escribir. Sigue cuando escriba él.
+      if (!puedeTextoLibre(charla.ultimoEntranteAt)) {
+        if (devuelta) await repo.evento(charla.id, "Sofía espera a que el cliente escriba: la ventana de 24 h está cerrada.");
+        break;
+      }
       // Un audio que todavía se está bajando: lo levanta el turno que dispara su transcripción.
       // (Si ya falló un intento, no se espera: Sofía le pide que lo escriba o pasa la charla.)
       if (entrantes.some((e) => e.tipo === "audio" && !e.transcripcion && e.adjunto?.pendiente === true && !e.adjunto?.error)) {
@@ -324,8 +338,7 @@ export async function atenderCharla(deps: DepsSofia, conversacionId: string, opc
     if (charla?.estado === "bot" && charla.iaSaludoAt) {
       const nuevos = await repo.nuevosDelHilo(conversacionId, charla.iaLeidoHasta);
       const quedan = nuevos.filter((n) => n.direccion === "entrante");
-      const soloSaludos = quedan.length > 0 && quedan.every((e) => e.tipo === "text" && esSoloSaludo(e.texto));
-      if (quedan.length && !soloSaludos) {
+      if (quedan.length && !quedan.every((e) => esRuido(e, charla.iaSaludoAt))) {
         const otra = await atenderCharla({ ...deps, esperarTanda: undefined }, conversacionId, { profundidad: (opciones.profundidad ?? 0) + 1 });
         return { ...otra, enviados: [...res.enviados, ...otra.enviados], costoUsd: res.costoUsd + otra.costoUsd, resultado: otra.resultado === "sin_novedades" ? res.resultado : otra.resultado };
       }

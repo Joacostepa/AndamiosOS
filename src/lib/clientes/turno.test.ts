@@ -412,3 +412,26 @@ test("la historia queda con el formato de la API: cliente, aviso, pedido y resul
   assert.deepEqual(m.historia.map((h) => `${h.rol}:${h.tipo}`), ["user:cliente", "system:contexto", "assistant:asistente", "user:resultados", "assistant:asistente"]);
   assert.equal(m.historia.at(-1)!.enviado, true);
 });
+
+test("una reacción sola no despierta al modelo", async () => {
+  const m = crearMundo();
+  m.escribe("Hola");
+  await atenderCharla(m.deps(guion()), m.charla.id);
+  m.escribe("Reaccionó con 👍", { tipo: "reaction" });
+  const r = await atenderCharla(m.deps(guion()), m.charla.id);
+  assert.equal(r.resultado, "sin_novedades");
+  assert.equal(m.pedidos.length, 0);
+});
+
+test("devuelta con la ventana de 24 h cerrada: no le escribe, espera al cliente", async () => {
+  const m = crearMundo();
+  m.escribe("Hola, necesito una bandeja");
+  m.charla.ultimoEntranteAt = new Date(Date.now() - 30 * 3_600_000).toISOString();
+  m.charla.iaSaludoAt = new Date().toISOString();
+  m.charla.iaLeidoHasta = m.hilo.at(-1)!.creado;
+  const r = await atenderCharla(m.deps(guion()), m.charla.id, { devuelta: true });
+  assert.equal(m.pedidos.length, 0);
+  assert.deepEqual(m.salidas, []);
+  assert.equal(r.resultado, "sin_novedades");
+  assert.ok(m.eventos.some((e) => /ventana de 24 h está cerrada/.test(e)));
+});

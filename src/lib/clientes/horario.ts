@@ -53,7 +53,7 @@ export function esDiaHabil(fecha: string, feriados: ReadonlySet<string>): boolea
 export type Atencion = {
   /** Hay personas ahora mismo. */
   enHorario: boolean;
-  /** Cuándo sigue una persona, para decírselo al cliente: «hoy a primera hora», «mañana a primera hora», «el lunes a primera hora», «el martes 24 a primera hora». null si es ahora. */
+  /** Cuándo sigue una persona, para decírselo al cliente: «hoy desde las 8», «mañana a primera hora», «el lunes a primera hora», «el martes 24 a primera hora». null si es ahora. */
   cuando: string | null;
   /** El día hábil en que sigue (YYYY-MM-DD). */
   fecha: string;
@@ -64,7 +64,9 @@ export function atencion(ahora: Date, horario: Horario, feriados: ReadonlySet<st
   const { fecha, minutos } = enBuenosAires(ahora);
   if (esDiaHabil(fecha, feriados)) {
     if (minutos >= horario.desdeMin && minutos < horario.hastaMin) return { enHorario: true, cuando: null, fecha };
-    if (minutos < horario.desdeMin) return { enHorario: false, cuando: "hoy a primera hora", fecha };
+    // Antes de que empiece el horario: «hoy desde las 8» (JS, 16/10: «hoy a primera hora» a las
+    // 7:58 sonaba raro).
+    if (minutos < horario.desdeMin) return { enHorario: false, cuando: `hoy desde las ${horaLegible(horario.desdeMin)}`, fecha };
   }
   let siguiente = sumarDias(fecha, 1);
   for (let i = 0; i < 30 && !esDiaHabil(siguiente, feriados); i++) siguiente = sumarDias(siguiente, 1);
@@ -82,4 +84,10 @@ export function atencion(ahora: Date, horario: Horario, feriados: ReadonlySet<st
 export function ahoraLegible(ahora: Date): string {
   const { fecha, minutos } = enBuenosAires(ahora);
   return `${DIAS[diaDeSemana(fecha)]} ${fecha.slice(8, 10)}/${fecha.slice(5, 7)} ${String(Math.floor(minutos / 60)).padStart(2, "0")}:${String(minutos % 60).padStart(2, "0")}`;
+}
+
+/** 480 → «8», 510 → «8:30». */
+function horaLegible(min: number): string {
+  const h = Math.floor(min / 60), m = min % 60;
+  return m ? `${h}:${String(m).padStart(2, "0")}` : String(h);
 }

@@ -25,6 +25,9 @@ export type ConfigSofia = {
   horario: Horario;
   /** Decisión 21: el de JS. Vacío hasta que se cargue (el texto fijo dice 911). */
   telefonoGuardia: string | null;
+  /** Lo que Sofía puede contestar de la empresa (oficina, pagos, zona, permisos…). Lo edita JS en
+   *  Parámetros sin deploy. Vacío: lo consulta al equipo. */
+  datosEmpresa: string | null;
 };
 
 /** Decisión 19 de JS: Opus 5.5 con esfuerzo bajo. */
@@ -32,7 +35,7 @@ export const MODELO_POR_DEFECTO = "claude-opus-5-5";
 
 export const CLAVES_SOFIA = [
   "clientes_ia_activa", "clientes_modelo", "clientes_esfuerzo", "clientes_tope_tel_usd", "clientes_tope_global_usd", "clientes_horario",
-  "clientes_telefono_guardia",
+  "clientes_telefono_guardia", "clientes_datos_empresa",
 ] as const;
 
 export function configSofiaDesdeFilas(filas: FilaConfig[]): ConfigSofia {
@@ -50,5 +53,6 @@ export function configSofiaDesdeFilas(filas: FilaConfig[]): ConfigSofia {
     topeGlobalUsd: Math.max(0, num("clientes_tope_global_usd", 15)),
     horario: leerHorario(txt("clientes_horario")),
     telefonoGuardia: txt("clientes_telefono_guardia"),
+    datosEmpresa: txt("clientes_datos_empresa"),
   };
 }

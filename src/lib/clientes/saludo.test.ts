@@ -1,12 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { esSoloSaludo, nombreParaSaludo, saludoInicial, textoSeguridad } from "./saludo.ts";
+import { esSoloSaludo, nombreParaSaludo, saludoDelMomento, saludoInicial, textoSeguridad } from "./saludo.ts";
 import { detectarPlata } from "./filtro-salida.ts";
 
 test("el saludo exacto que decidió JS, con y sin nombre", () => {
-  assert.equal(saludoInicial("Carlos"), "Hola Carlos, acá Sofía, asistente digital de Andamios Buenos Aires. Contame en qué te puedo ayudar.");
-  assert.equal(saludoInicial(null), "Hola, acá Sofía, asistente digital de Andamios Buenos Aires. Contame en qué te puedo ayudar.");
-  assert.equal(saludoInicial("Constructora Delta SRL"), "Hola, acá Sofía, asistente digital de Andamios Buenos Aires. Contame en qué te puedo ayudar.");
+  const manana = new Date("2026-10-16T12:00:00Z"); // 9:00 en Buenos Aires
+  assert.equal(saludoInicial("Carlos", manana), "¡Buen día Carlos! Acá Sofía, asistente digital de Andamios Buenos Aires. Contame en qué te puedo ayudar.");
+  assert.equal(saludoInicial(null, manana), "¡Buen día! Acá Sofía, asistente digital de Andamios Buenos Aires. Contame en qué te puedo ayudar.");
+  assert.equal(saludoInicial("Constructora Delta SRL", manana), "¡Buen día! Acá Sofía, asistente digital de Andamios Buenos Aires. Contame en qué te puedo ayudar.");
 });
 
 const CON_NOMBRE: [string, string][] = [
@@ -120,4 +121,15 @@ test("los textos fijos no hablan de plata (salen sin filtro, pero igual)", () =>
 test("seguridad: con el teléfono de guardia, o el 911 si todavía no se cargó", () => {
   assert.match(textoSeguridad("11 2734 4214"), /llamá al 11 2734 4214\.$/);
   assert.match(textoSeguridad(""), /911/);
+});
+
+test("buen día, buenas tardes o buenas noches según la hora de Buenos Aires", () => {
+  const ba = (hhmm: string) => new Date(`2026-10-16T${hhmm}:00-03:00`);
+  assert.equal(saludoDelMomento(ba("05:00")), "Buen día");
+  assert.equal(saludoDelMomento(ba("12:59")), "Buen día");
+  assert.equal(saludoDelMomento(ba("13:00")), "Buenas tardes");
+  assert.equal(saludoDelMomento(ba("19:59")), "Buenas tardes");
+  assert.equal(saludoDelMomento(ba("20:00")), "Buenas noches");
+  assert.equal(saludoDelMomento(ba("02:30")), "Buenas noches");
+  assert.equal(saludoInicial("Joaquin", ba("21:15")), "¡Buenas noches Joaquin! Acá Sofía, asistente digital de Andamios Buenos Aires. Contame en qué te puedo ayudar.");
 });

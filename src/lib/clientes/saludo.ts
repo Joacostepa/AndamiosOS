@@ -3,8 +3,8 @@
 //
 // Decisión de JS (15/10): el saludo lo arma el CÓDIGO, una sola vez, en el primer mensaje de
 // cada charla nueva:
-//   «Hola Carlos, acá Sofía, asistente digital de Andamios Buenos Aires. Contame en qué te
-//   puedo ayudar.»
+//   «¡Buen día Carlos! Acá Sofía, asistente digital de Andamios Buenos Aires. Contame en qué te
+//   puedo ayudar.» (buen día, buenas tardes o buenas noches según la hora: pedido de JS, 16/10)
 // El nombre sale del perfil de WhatsApp: sólo el primer nombre, con mayúscula inicial, sin lo
 // que está entre paréntesis. Si el perfil parece una empresa, un apodo, o tiene emojis,
 // números o una sola letra, saluda sin nombre. Ante la duda, sin nombre: un «Hola Mamá» o un
@@ -17,7 +17,7 @@ import { normalizar } from "./texto.ts";
 
 export const NOMBRE_ASISTENTE = "Sofía";
 
-const CUERPO = "acá Sofía, asistente digital de Andamios Buenos Aires. Contame en qué te puedo ayudar.";
+const CUERPO = "Acá Sofía, asistente digital de Andamios Buenos Aires. Contame en qué te puedo ayudar.";
 
 /** Se comparan normalizadas como texto.ts (sin tildes ni letras dobles): se escriben como se escriben. */
 const lista = (xs: string[]) => new Set(xs.map((x) => normalizar(x)));
@@ -95,10 +95,21 @@ export function nombreParaSaludo(perfil: string | null | undefined): string | nu
   return capitalizar(primera);
 }
 
-/** El saludo de la charla nueva. Lo manda el servidor, una sola vez. */
-export function saludoInicial(perfil: string | null | undefined): string {
+/** «Buen día» hasta las 12:59, «Buenas tardes» hasta las 19:59 y «Buenas noches» el resto,
+ *  en hora de Buenos Aires (pedido de JS, 16/10). */
+export function saludoDelMomento(ahora: Date = new Date()): string {
+  const h = Number(new Intl.DateTimeFormat("en-GB", { hour: "2-digit", hourCycle: "h23", timeZone: "America/Argentina/Buenos_Aires" }).format(ahora));
+  if (h >= 5 && h < 13) return "Buen día";
+  if (h >= 13 && h < 20) return "Buenas tardes";
+  return "Buenas noches";
+}
+
+/** El saludo de la charla nueva. Lo manda el servidor, una sola vez:
+ *  «¡Buen día Carlos! Acá Sofía, asistente digital de Andamios Buenos Aires. Contame…». */
+export function saludoInicial(perfil: string | null | undefined, ahora: Date = new Date()): string {
   const nombre = nombreParaSaludo(perfil);
-  return nombre ? `Hola ${nombre}, ${CUERPO}` : `Hola, ${CUERPO}`;
+  const momento = saludoDelMomento(ahora);
+  return nombre ? `¡${momento} ${nombre}! ${CUERPO}` : `¡${momento}! ${CUERPO}`;
 }
 
 /**

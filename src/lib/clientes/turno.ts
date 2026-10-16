@@ -278,7 +278,7 @@ export async function atenderCharla(deps: DepsSofia, conversacionId: string, opc
       // ── El saludo, una vez, armado por el código ──
       let saludoEnviado: string | null = null;
       if (!charla.iaSaludoAt) {
-        saludoEnviado = saludoInicial(charla.nombrePerfil);
+        saludoEnviado = saludoInicial(charla.nombrePerfil, ahora());
         await repo.mandar(charla.id, charla.telefono, saludoEnviado, "ia");
         await repo.marcarSaludo(charla.id);
         res.enviados.push(saludoEnviado);
@@ -381,7 +381,7 @@ async function unaTanda(
     horario: describirHorario(cfg.horario),
     // En la primera vuelta con el modelo, que sepa qué saludo le llegó al cliente (aunque se
     // haya mandado en un turno anterior, con un «Hola» solo).
-    saludoEnviado: o.saludoEnviado ?? (historia.length === 0 && charla.iaSaludoAt ? saludoInicial(charla.nombrePerfil) : null),
+    saludoEnviado: o.saludoEnviado ?? (historia.length === 0 && charla.iaSaludoAt ? saludoInicial(charla.nombrePerfil, new Date(charla.iaSaludoAt)) : null),
     ficha,
     pendientes,
     notasEquipo,

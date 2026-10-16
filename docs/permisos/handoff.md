@@ -1,12 +1,47 @@
-# Handoff — Gestoría de permisos de andamio (actualizado 2026-10-15)
+# Handoff — Gestoría de permisos de andamio (actualizado 2026-10-16)
 
 Para retomar en una sesión nueva. El diseño completo y todo lo aprendido está en
 `docs/permisos/modulo.md`; esto es el estado, **lo que falta para que el circuito
 quede 100 % automático** y el orden para seguir.
 
 Para arrancar: "Leé docs/permisos/handoff.md y docs/permisos/modulo.md y
-seguimos con lo que falta". **Empezar por § "15/10", § "14/10", § "Rediseño implementado", después § "09/10 a la noche", § "09/10", § "06/10", § "02/10" y § "Estado al 26/09", seguir con
+seguimos con lo que falta". **Empezar por § "15/10 a la noche", § "15/10", § "14/10", § "Rediseño implementado", después § "09/10 a la noche", § "09/10", § "06/10", § "02/10" y § "Estado al 26/09", seguir con
 § "17/09 — primera encomienda cerrada sola", § "Noche 16/09" y § "Estado 16/09 19:00".**
+
+---
+
+## 15/10 a la noche — el robot vuelve a entrar y Paraná 631 se presenta solo
+
+- **La Mac mini es la máquina donde se desarrolla.** El robot corre desde este mismo repo
+  (`~/Desktop/Web-App/44-AndamiosOS`, el `WorkingDirectory` del plist); `~/Desktop/Proyectos/AndamiosOS`
+  no existe. Se reinstala desde acá con `bash robot/instalar-launchd.sh`, entre vueltas y sin tarea
+  `tomada` (en el log, "se reintenta sola a las HH:MM" es una tarea pendiente: se puede).
+- **`1bbedb6` no alcanzaba.** Reinstalado a las 19:08: elegía bien a Emprendimientos y Estructuras
+  (la captura muestra el chip con el tilde), pero el desplegable quedaba abierto debajo de
+  "Representando a:" y tapaba las solapas. El clic en "Tareas pendientes" caía en el chip de
+  TECNO ESTRUCTURAS S.A. Ni Escape ni un clic en el margen lo cierran.
+- **Arreglo (`fed06d3`):** `entrar` toca la flecha `expand_more` del selector (nunca la X `close` de
+  al lado, que borra la elección), controla que se haya cerrado y que diga EMPRENDI, y si no frena
+  con un error claro. En `tad-presentar.mjs` el clic en la empresa del modal de "Iniciar trámite" es
+  forzado, por si ese modal también trae chips (no se sabe: la presentación pasó igual).
+- **Probado contra TAD:** reinstalado a las 19:12, vuelta OK a las 19:16 (16 en curso, 621
+  finalizados) y todas las de la noche OK. A las 19:31 se presentó solo **Paraná 631 (S02695):
+  EX-2026-46197413**, borrador 13311324, los 11 adjuntos en 2 min y Odoo escrito a las 19:37. Es el
+  del poder en vez del acta (§ "14/10").
+- **Lo que trajo la primera vuelta buena:**
+  - S02663 (Sarmiento 2530, EX-2026-43549558) pasó a **emitido** en Odoo.
+  - Carátula de **EX-2026-46108150, Av. Juramento 1733**, creado el 15/10 y **no por el robot**
+    (no está en el log): lo presentó alguien a mano. El anterior, EX-2026-44967803, es uno de los
+    archivados sin permiso. Mirar en la lista si quedó vinculado a la venta y confirmar el vínculo,
+    porque sin eso no se escribe Odoo.
+- **Actualización diaria:** el 16/10 a las 8:00 avisó "la copia del robot tiene cambios locales sin
+  subir" (el arreglo estaba sin commitear). Ese control va **antes** del `git fetch` y el intento
+  cuenta aunque falle, así que **el fetch con las credenciales de GitHub desde launchd sigue sin
+  verse**. El próximo intento es el 17/10 desde las 8: buscar en el log "Actualización:".
+- **Riesgo:** como el robot corre desde la copia donde se desarrolla, una sesión que deje cambios sin
+  commitear o una rama que no sea main a las 8 traba la actualización (con aviso al canal), y si
+  launchd lo reinicia con otra rama en uso, arranca con ese código. Conviene un clon aparte sólo
+  para el robot (con su `.env.local` y su `robot/.env.robot`) y reinstalar desde ahí.
 
 ---
 
@@ -22,11 +57,9 @@ seguimos con lo que falta". **Empezar por § "15/10", § "14/10", § "Rediseño 
   a que el texto lo reciba y se rinde. Nuestro código no cambiaba desde el 15/09.
 - **Arreglo (`1bbedb6`, en `main`):** `entrar` en `robot/tad-comun.mjs` hace clic forzado en el radio
   del chip (o en el texto si no hay radio) y, si la pantalla pide "Confirmar/Continuar/Aceptar/Ingresar",
-  lo toca. **Sin probar contra TAD:** no se vio la pantalla nueva (el robot y sus claves están sólo en
-  la Mac mini); no se sabe si pide confirmar.
-- **Pendiente (JS, en la Mac mini o entrando a distancia):**
-  `cd ~/Desktop/Proyectos/AndamiosOS && git pull && bash robot/instalar-launchd.sh`. El robot no se
-  actualiza solo: hasta reinstalar sigue con el código viejo y falla igual.
+  lo toca. Probado a la noche: elegía bien pero no alcanzaba (§ "15/10 a la noche", `fed06d3`).
+- ~~Pendiente: reinstalar en la Mac mini.~~ Hecho el 15/10 a las 19:08 desde la misma Mac (la ruta
+  que figuraba acá era otra, ver § "15/10 a la noche").
 - **Cómo saber si anduvo:** el aviso amarillo desaparece de la lista en la vuelta siguiente. Si sigue,
   el error nuevo (`pvp_robot.ultimo_error`, se corta a ~500 caracteres) dice en qué paso quedó.
 - **Actualización diaria del robot (`robot/actualizar.mjs`):** una vez por día, en la primera vuelta
@@ -53,7 +86,8 @@ seguimos con lo que falta". **Empezar por § "15/10", § "14/10", § "Rediseño 
   (script temporal, ya borrado): `revision.manual` con el motivo y evento `documento_revisado`
   con actor `persona`. Mismo criterio que el libro de actas de S02202 (17/09).
 - Después JS generó informe técnico y croquis y siguió con la encomienda desde la ficha. Falta la
-  póliza de Segucom (endoso pedido el 13/10); con eso se presenta sola de 19 a 7.
+  póliza de Segucom (endoso pedido el 13/10); con eso se presenta sola de 19 a 7. **Presentado solo
+  el 15/10 a las 19:37: EX-2026-46197413.**
 - **Riesgo:** en consorcios el mismo documento va a los casilleros "Designación de autoridades" y
   "Poder" de TAD, así que el GCBA recibe el poder como designación. Si lo observa, entra por
   subsanación con el acta vigente.

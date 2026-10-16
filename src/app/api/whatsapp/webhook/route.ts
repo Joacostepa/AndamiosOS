@@ -1,6 +1,6 @@
 import { after, NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { firmaValida, hayWhatsapp } from "@/lib/whatsapp/api";
+import { firmaValida, hayCuentaMeta } from "@/lib/whatsapp/api";
 import { procesarTelefono, registrarEntrantes, type MensajeMeta } from "@/lib/whatsapp/procesar";
 import { destinoDeNumero, numerosDelEntorno } from "@/lib/clientes/ruteo";
 import { despuesDeRecibir, recibirMensajes, registrarStatuses, type AvisoClientes, type Pendientes } from "@/lib/clientes/webhook";
@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const crudo = Buffer.from(await req.arrayBuffer());
-  if (!hayWhatsapp() || !firmaValida(crudo, req.headers.get("x-hub-signature-256"))) {
+  if (!hayCuentaMeta() || !firmaValida(crudo, req.headers.get("x-hub-signature-256"))) {
     return NextResponse.json({ error: "firma inválida" }, { status: 401 });
   }
   let aviso: Aviso;

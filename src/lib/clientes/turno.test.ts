@@ -11,7 +11,7 @@ import { detectarPlata } from "./filtro-salida.ts";
 import { INSTRUCCIONES } from "./prompt.ts";
 import { TEXTO_ERROR, TEXTO_PASO_A_PERSONA } from "./saludo.ts";
 
-const SALUDO_MARCELA = "Hola Marcela, acá Sofía, asistente digital de Andamios Buenos Aires. Contame en qué te puedo ayudar.";
+const SALUDO_MARCELA = "¡Buen día Marcela! Acá Sofía, asistente digital de Andamios Buenos Aires. Contame en qué te puedo ayudar.";
 
 /** El último aviso de sistema que vio el modelo. */
 function ultimoAviso(m: ReturnType<typeof crearMundo>): string {
@@ -71,7 +71,7 @@ test("«Hola» solo: sale el saludo armado por el código y no se llama al model
   assert.equal(m.salidas[1].texto, "Dale. ¿Me pasás la dirección de la obra?");
   const cliente = m.historia.find((h) => h.tipo === "cliente")!;
   assert.match(String(cliente.texto), /Hola buenas tardes\n.*necesito una bandeja/);
-  assert.match(ultimoAviso(m), /ya le mandó este saludo: «Hola Marcela, acá Sofía/);
+  assert.match(ultimoAviso(m), /ya le mandó este saludo: «¡Buen día Marcela! Acá Sofía/);
 });
 
 test("primer mensaje con pedido: saludo y respuesta, en ese orden; el saludo una sola vez", async () => {
@@ -79,12 +79,12 @@ test("primer mensaje con pedido: saludo y respuesta, en ese orden; el saludo una
   m.escribe("Hola, necesito una bandeja para la vereda");
   await atenderCharla(m.deps(guion(respuestaTexto("¿Me pasás la dirección de la obra?"))), m.charla.id);
   assert.deepEqual(m.salidas.map((s) => s.texto), [
-    "Hola, acá Sofía, asistente digital de Andamios Buenos Aires. Contame en qué te puedo ayudar.",
+    "¡Buen día! Acá Sofía, asistente digital de Andamios Buenos Aires. Contame en qué te puedo ayudar.",
     "¿Me pasás la dirección de la obra?",
   ]);
   m.escribe("Los Aromos 1234");
   await atenderCharla(m.deps(guion(respuestaTexto("Gracias. ¿La bandeja va por todo el frente?"))), m.charla.id);
-  assert.equal(m.salidas.filter((s) => s.texto.startsWith("Hola")).length, 1);
+  assert.equal(m.salidas.filter((s) => s.texto.includes("Acá Sofía")).length, 1);
 });
 
 test("el pedido al modelo: prompt de Sofía con caché de 1 h, sus 7 herramientas, block_binding y respaldo", async () => {

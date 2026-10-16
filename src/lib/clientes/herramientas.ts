@@ -428,12 +428,22 @@ async function prepararPedidoSimple(i: z.infer<typeof esquemaSimple>, { ficha, s
 async function pedirTecnico(i: z.infer<typeof esquemaTecnico>, { ficha, servicios }: ContextoHerramienta): Promise<ResultadoHerramienta> {
   if (i.disponibilidad) ficha.visita = i.disponibilidad;
   const asignacion = await servicios.asignar(ficha);
+  // Para la tarjeta del equipo (nunca para el modelo): por qué una bandeja con los datos
+  // completos no salió como fácil (JS, 16/10: «a nombre de Joaquín» la marcaba sin que se viera).
+  let porQueNoFacil: string[] | null = null;
+  if (ficha.trabajo === "bandeja" && !faltantesBandeja(ficha).length) {
+    try {
+      porQueNoFacil = esFacil(ficha, await servicios.contextoFacil(ficha)).enContra.map((m) => m.texto);
+    } catch {
+      porQueNoFacil = null;
+    }
+  }
   const { numero } = await servicios.registrarPendiente({
     tipo: "tecnico",
     carril: "tecnico",
     resumen: i.resumen,
     montoPropuesto: null,
-    payload: { motivo: i.motivo, resumen: i.resumen, disponibilidad: i.disponibilidad ?? null, asignacion, ficha: { ...ficha, mensajesCliente: undefined } },
+    payload: { motivo: i.motivo, resumen: i.resumen, disponibilidad: i.disponibilidad ?? null, asignacion, porQueNoFacil, ficha: { ...ficha, mensajesCliente: undefined } },
   });
   // Al modelo, sólo «pendiente»: el nombre lo manda el servidor cuando alguien confirma (§5).
   return {

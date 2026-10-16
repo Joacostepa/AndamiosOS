@@ -449,6 +449,15 @@ function TarjetaTecnico({ t, charla, puedeEditar, datos }: { t: TarjetaAprobacio
     >
       <p className="text-[14px] whitespace-pre-wrap">{k.resumen}</p>
       {k.disponibilidad && <p className="text-[13.5px] text-muted-foreground">Visita: {k.disponibilidad}</p>}
+      {k.porQueNoFacil && k.porQueNoFacil.length > 0 && (
+        <Aviso tono="ambar">
+          <b className="text-foreground">Por qué no salió como bandeja fácil:</b>
+          <ul className="mt-1 list-disc pl-5">
+            {k.porQueNoFacil.map((m) => <li key={m}>{m}</li>)}
+          </ul>
+          <span className="mt-1 block">Si te parece que era fácil, contámelo: así se ajusta la regla.</span>
+        </Aviso>
+      )}
       {k.propuesta ? (
         <Aviso tono="neutro">
           <b className="text-foreground">{quien(k.propuesta) || "Sin pareja"}</b> — {k.propuesta.motivo}

@@ -222,3 +222,15 @@ test("gama alta: preparar_cotizacion_facil nunca deja una cotización, y la deri
   const seguridad = await ejecutarHerramientaSofia("derivar_a_persona", { motivo: "seguridad_obra", resumen: "Tabla floja." }, c);
   assert.equal(seguridad.efecto?.estado === "derivada" && seguridad.efecto.motivo, "Seguridad en obra · urgente");
 });
+
+test("pedir_tecnico: la tarjeta del equipo trae por qué la bandeja no salió fácil (JS, 16/10)", async () => {
+  const c = contexto({ ...MARCELA, mensajesCliente: ["Quiero hablar con Jorge"] });
+  await ejecutarHerramientaSofia("pedir_tecnico", { motivo: "trabajo_no_facil", resumen: "Bandeja en Los Aromos 1234" }, c);
+  const p = c.mundo.pendientes.at(-1)!;
+  const porQue = (p.payload as { porQueNoFacil: string[] | null }).porQueNoFacil;
+  assert.ok(porQue?.some((m) => /Pide hablar con una persona/.test(m)), JSON.stringify(porQue));
+  // Un trabajo que no es bandeja: no hay renglones de «fácil».
+  const f = contexto({ trabajo: "fachada" as FichaSofia["trabajo"] });
+  await ejecutarHerramientaSofia("pedir_tecnico", { motivo: "trabajo_no_facil", resumen: "Fachada" }, f);
+  assert.equal((f.mundo.pendientes.at(-1)!.payload as { porQueNoFacil: unknown }).porQueNoFacil, null);
+});

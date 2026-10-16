@@ -296,6 +296,7 @@ function tarjetaDe(f: Fila, charla: Charla, ctx: Contexto, iaActiva: boolean, no
       resumen: (f.payload.resumen as string | undefined) ?? f.resumen ?? "",
       motivo: (f.payload.motivo as string | undefined) ?? null,
       disponibilidad: (f.payload.disponibilidad as string | undefined) ?? null,
+      porQueNoFacil: Array.isArray(f.payload.porQueNoFacil) ? (f.payload.porQueNoFacil as string[]) : null,
       propuesta: a
         ? { tecnico: a.tecnico, asistente: a.asistente, motivo: a.motivo, regla: a.regla, requiereConfirmacion: a.requiereConfirmacion, tambienTrabajoCon: a.tambienTrabajoCon ?? [] }
         : null,

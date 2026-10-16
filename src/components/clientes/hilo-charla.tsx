@@ -1,14 +1,15 @@
 "use client";
 
 import { Fragment } from "react";
-import { AlertCircle, Check, CheckCheck, Clock, Download, FileText, Loader2, MapPin } from "lucide-react";
+import { AlertCircle, Bot, Check, CheckCheck, Clock, Download, FileText, Loader2, MapPin } from "lucide-react";
 import { format, isToday, isYesterday, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import type { AdjuntoVista, ItemHilo } from "@/lib/clientes/vista";
 
 // El hilo de la charla, estilo WhatsApp: lo del cliente a la izquierda, lo de ABA a la
-// derecha (coral si lo escribió una persona), los eventos (tomó, cerró) al medio. Fotos,
+// derecha (coral si lo escribió una persona; celeste y con el robot si lo escribió Sofía, la
+// IA), los eventos (tomó, cerró, Sofía pasó la charla) al medio. Fotos,
 // audios con la transcripción abajo como ayuda, videos, documentos y ubicaciones. Lo que sale
 // lleva las tildes de entrega, y si Meta lo rechazó, el motivo (el 131047 de las 24 h).
 
@@ -94,7 +95,7 @@ function Burbuja({ item, nombreCliente }: { item: ItemHilo; nombreCliente: strin
         ? "Texto fijo"
         : item.autor === "plantilla"
           ? "Plantilla de Meta"
-          : "IA"
+          : "Sofía · IA"
     : nombreCliente;
   const textoEsAdjunto = item.adjunto?.tipo === "ubicacion"; // el texto de la ubicación ya está en la tarjeta
   return (
@@ -105,12 +106,14 @@ function Burbuja({ item, nombreCliente }: { item: ItemHilo; nombreCliente: strin
           sale ? "rounded-tr-sm" : "rounded-tl-sm",
           !sale && "border-border bg-card",
           sale && item.autor === "persona" && "border-transparent bg-hd-boton/10",
-          sale && item.autor !== "persona" && "border-border bg-hd-card2",
+          sale && item.autor === "ia" && "border-sky-500/30 bg-sky-500/10",
+          sale && item.autor !== "persona" && item.autor !== "ia" && "border-border bg-hd-card2",
           item.estado === "error" && "border-dashed border-hd-rojo",
         )}
       >
         <div className="flex items-center gap-2 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
-          <span className="truncate">{quien}</span>
+          {sale && item.autor === "ia" && <Bot className="size-3.5 shrink-0 text-sky-700 dark:text-sky-300" aria-hidden />}
+          <span className={cn("truncate", sale && item.autor === "ia" && "text-sky-700 dark:text-sky-300")}>{quien}</span>
           <span className="ml-auto flex shrink-0 items-center gap-1 font-normal tracking-normal normal-case tabular-nums">
             {hora}
             {sale && <Tildes estado={item.estado} />}

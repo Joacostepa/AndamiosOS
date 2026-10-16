@@ -4,11 +4,15 @@ import { firmaValida, hayCuentaMeta } from "@/lib/whatsapp/api";
 import { procesarTelefono, registrarEntrantes, type MensajeMeta } from "@/lib/whatsapp/procesar";
 import { destinoDeNumero, numerosDelEntorno } from "@/lib/clientes/ruteo";
 import { despuesDeRecibir, recibirMensajes, registrarStatuses, type AvisoClientes, type Pendientes } from "@/lib/clientes/webhook";
+import { atenderConSofia, pasarAPersonas } from "@/lib/clientes/agente";
+import { iaClientesActiva } from "@/lib/clientes/interruptor";
 
 // /api/whatsapp/webhook — los avisos de WhatsApp (Meta), de los DOS números de la app:
 //   · el del asistente comercial (WHATSAPP_PHONE_NUMBER_ID): le escriben los vendedores;
 //   · el de clientes (WHATSAPP_CLIENTES_PHONE_NUMBER_ID): va a la bandeja de
-//     /comercial/clientes (docs/clientes/crm-propuesta.md §13). Sin IA en la etapa 0.
+//     /comercial/clientes (docs/clientes/crm-propuesta.md §13). Sin IA en la etapa 0; con
+//     clientes_ia_activa = 1 (paso 5), lo atiende Sofía (src/lib/clientes/agente.ts) después
+//     del 200, como el asistente.
 // Se rutea por el phone_number_id del aviso (src/lib/clientes/ruteo.ts), nunca por el teléfono
 // de quien escribe.
 //
@@ -51,7 +55,9 @@ export async function POST(req: NextRequest) {
   const db = createAdminClient();
   const numeros = numerosDelEntorno();
   const telefonos = new Set<string>();
-  const clientes: Pendientes = { adjuntos: [], respuestasFijas: [] };
+  const clientes: Pendientes = { adjuntos: [], respuestasFijas: [], charlas: [] };
+  // El interruptor de Sofía se lee una vez por aviso, y sólo si llegó algo al número de clientes.
+  let iaActiva: boolean | null = null;
   for (const e of aviso.entry ?? []) {
     for (const c of e.changes ?? []) {
       if (c.field !== "messages" || !c.value) continue;
@@ -60,9 +66,11 @@ export async function POST(req: NextRequest) {
       // Si falla anotar, el error vuelve como 500 y Meta reintenta más tarde.
       if (destino === "clientes" && numero) {
         if (c.value.messages?.length) {
-          const p = await recibirMensajes(db, c.value, numero);
+          iaActiva ??= await iaClientesActiva(db);
+          const p = await recibirMensajes(db, c.value, numero, { iaActiva });
           clientes.adjuntos.push(...p.adjuntos);
           clientes.respuestasFijas.push(...p.respuestasFijas);
+          for (const id of p.charlas) if (!clientes.charlas.includes(id)) clientes.charlas.push(id);
         }
         // Entregado, leído o error (el 131047: fuera de las 24 h). Antes se descartaban.
         if (c.value.statuses?.length) await registrarStatuses(db, c.value.statuses);
@@ -74,9 +82,16 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  if (clientes.adjuntos.length || clientes.respuestasFijas.length) {
-    // Bajar los adjuntos enseguida (los links de Meta vencen) y transcribir los audios.
-    after(() => despuesDeRecibir(db, clientes).catch((e) => console.error("[clientes] después de recibir", e)));
+  if (clientes.adjuntos.length || clientes.respuestasFijas.length || (iaActiva !== null && clientes.charlas.length)) {
+    // Bajar los adjuntos enseguida (los links de Meta vencen) y transcribir los audios. Después,
+    // con Sofía prendida, cada charla le pasa a ella (así ya lee los audios transcriptos); con el
+    // interruptor en 0, las que tenía Sofía pasan a una persona («Pausar la IA»).
+    const conIa = iaActiva === true;
+    after(async () => {
+      await despuesDeRecibir(db, clientes).catch((e) => console.error("[clientes] después de recibir", e));
+      if (conIa) await Promise.all(clientes.charlas.map((id) => atenderConSofia(db, id)));
+      else await pasarAPersonas(db, clientes.charlas).catch((e) => console.error("[clientes] pasar a personas", e));
+    });
   }
 
   if (telefonos.size) {

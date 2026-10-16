@@ -131,3 +131,67 @@ export function motivoBloqueo(r: ResultadoFiltro): string | null {
   if (!r.bloquea) return null;
   return `texto bloqueado: ${r.hallazgos.map((h) => h.motivo).join(", ")}`;
 }
+
+// ── Lo que además revisa Sofía (paso 5) ─────────────────────────────────────────────────
+//
+// Además de la plata (§11, riesgo 4: «también links, teléfonos y mails que no sean de ABA»):
+//   · contacto: links, mails y teléfonos. Sofía no tiene por qué escribir ninguno: un link o un
+//     CBU «de su cosecha» es justo lo que busca una trampa. Pasa lo de ABA (andamiosbuenosaires).
+//     El teléfono de guardia va en un texto fijo del servidor, que no pasa por acá;
+//   · negar que es una IA (decisión 17 de JS): «no soy un bot», «soy una persona». Si el modelo
+//     lo escribe igual, no sale. «No soy una persona» (la verdad) sí pasa.
+
+export type CodigoSalida = CodigoPlata | "contacto" | "niega_ia";
+
+export type HallazgoSalida = { codigo: CodigoSalida; motivo: string; fragmento: string };
+
+export type RevisionSalida = { bloquea: boolean; hallazgos: HallazgoSalida[]; motivo: string | null };
+
+const DOMINIO_ABA = /andamiosbuenosaires\.com(?:\.ar)?/i;
+const LINK = /\b(?:https?:\/\/|www\.)\S+|\b[\w-]+(?:\.[\w-]+)*\.(?:com|net|org|ar|io|me|ly|info|app|xyz|online|site|link|gob|edu)(?:\.ar)?\b(?:\/\S*)?/gi;
+const MAIL = /\b[\w.+-]+@[\w-]+(?:\.[\w-]+)+\b/g;
+/** Un teléfono: 8 o más dígitos, con espacios, guiones, puntos o paréntesis en el medio. */
+const TELEFONO_CRUDO = /(?:\+\s*)?\(?\d[\d\s().-]{6,}\d/g;
+
+function contacto(texto: string): string | null {
+  for (const m of texto.matchAll(MAIL)) if (!DOMINIO_ABA.test(m[0])) return m[0];
+  for (const m of texto.matchAll(LINK)) if (!DOMINIO_ABA.test(m[0])) return m[0];
+  for (const m of texto.matchAll(TELEFONO_CRUDO)) {
+    const crudo = m[0].trim();
+    // Un CUIT con guiones (20-12345678-9) no es un teléfono.
+    if (/^\d{2}-\d{8}-\d$/.test(crudo)) continue;
+    if (crudo.replace(/\D/g, "").length >= 8) return crudo;
+  }
+  return null;
+}
+
+const NIEGA_IA = [
+  /(?:^|[^a-z])(no soy (?:un |una )?(?:bot|robot|ia|inteligencia artificial|maquina|programa|asistente virtual|chatbot|contestador))(?![a-z])/,
+  /(?:^|[^a-z])((?<!no )soy (?:una |un )?(?:persona|humana|humano|ser humano)(?: real| de verdad| de carne y hueso)?)(?![a-z])/,
+  /(?:^|[^a-z])((?<!no )soy (?:real|de carne y hueso))(?![a-z])/,
+  /(?:^|[^a-z])(te (?:escribe|atiende|habla) una persona(?: real)?,? no (?:un |una )?(?:bot|robot|ia))(?![a-z])/,
+];
+
+function niegaIa(texto: string): string | null {
+  const n = normalizar(texto);
+  for (const re of NIEGA_IA) {
+    const m = re.exec(n);
+    if (m) return (m[1] ?? m[0]).trim();
+  }
+  return null;
+}
+
+/**
+ * Todo lo que escribe Sofía pasa por acá antes de salir (crm-propuesta.md §3 y §13). Si
+ * bloquea, al cliente no le llega nada y queda un aviso para la bandeja (`texto_bloqueado`).
+ */
+export function revisarSalida(texto: string): RevisionSalida {
+  const plata = detectarPlata(texto);
+  const hallazgos: HallazgoSalida[] = [...plata.hallazgos];
+  const c = contacto(texto);
+  if (c) hallazgos.push({ codigo: "contacto", motivo: "link, mail o teléfono", fragmento: c });
+  const n = niegaIa(texto);
+  if (n) hallazgos.push({ codigo: "niega_ia", motivo: "niega ser una IA", fragmento: n });
+  const bloquea = hallazgos.length > 0;
+  return { bloquea, hallazgos, motivo: bloquea ? `texto bloqueado: ${hallazgos.map((h) => h.motivo).join(", ")}` : null };
+}

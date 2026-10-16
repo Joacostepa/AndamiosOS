@@ -25,7 +25,10 @@ import {
 import { cambiosDeParametros, contextoDelTurno } from "./prompt";
 import { novedadesParaCharla } from "./novedades";
 import { tandasDeHerramientas } from "./tandas";
-import { cierreFaltante } from "./historia";
+import {
+  LIMITE_MS, PRESUPUESTO_MS, armarPedido, cierreFaltante, esAtado, esfuerzoValido, limpiarFallback, reparacionHuerfanos, senalDelPedido,
+  type Esfuerzo,
+} from "@/lib/ia/nucleo";
 import { notaDeContinuacion } from "@/lib/voz/continuacion";
 import {
   definicionesParaApi, ejecutarHerramienta, etiquetaDe, resumenCortoBorrador, vistaBorrador, type ContextoHerramientas,
@@ -37,36 +40,10 @@ import { crearEjecutor } from "./ejecutores";
 import type { Evento } from "./eventos";
 
 const MAX_VUELTAS = 15;
-const PRESUPUESTO_MS = 240_000;
-/**
- * Plazo duro: las rutas tienen 300 s y Vercel corta sin aviso (sin `finally`: el candado queda
- * tomado y una acción puede quedar "ejecutando"). El presupuesto de arriba sólo se mira al
- * empezar cada vuelta, y una vuelta sola llegó a tardar 189 s, así que el pedido al modelo se
- * corta acá y queda margen para guardar y soltar el candado.
- */
-const LIMITE_MS = 265_000;
 /** Guardar en Odoo llegó a tardar 24 s (más el PDF): no se arranca si queda menos que esto. */
 const MARGEN_ESCRITURA_MS = 90_000;
-const BETAS: Anthropic.Beta.AnthropicBeta[] = ["server-side-fallback-2026-07-01"];
-/**
- * Modelos que atan cada bloque de pensamiento a la conversación que lo produjo ("preserved
- * thinking"): si cambian las herramientas o el system después del bloque, la API lo rechaza
- * con un 400. Pasa con cada deploy que agrega o cambia una herramienta, con las charlas
- * abiertas. Con `drop_block` la API descarta ese pensamiento viejo y sigue.
- */
-const PENSAMIENTO_ATADO = new Set(["claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-1"]);
-const BETA_ATADO = "thinking-binding-controls-2026-08-01" as Anthropic.Beta.AnthropicBeta;
-/**
- * En esos mismos modelos, las notas que el modelo escribe entre herramientas («ya tengo el
- * frente, ahora calculo la bandeja») vuelven como bloques de pensamiento, vacíos por defecto.
- * Con `display: "updates"` (beta) vuelven con texto y el razonamiento sigue oculto: es lo que la
- * pantalla muestra como progreso mientras espera (evento `progreso`). Cambiar `display` cambia
- * el pedido, así que las charlas abiertas de estos modelos pierden el caché de los mensajes una
- * vez (el mismo deploy ya lo pierde por las herramientas nuevas); después queda fijo.
- */
-const BETA_PROGRESO = "thinking-display-updates-2026-08-18" as Anthropic.Beta.AnthropicBeta;
-type Esfuerzo = "low" | "medium" | "high" | "xhigh" | "max";
-const ESFUERZOS = new Set<string>(["low", "medium", "high", "xhigh", "max"]);
+// El respaldo de modelo, el pensamiento atado (block_binding), las notas de progreso, el plazo
+// duro de 265 s y el costo viven en el núcleo compartido con Sofía (src/lib/ia/nucleo.ts).
 
 export type Adjunto = { path: string; tipo: string; nombre: string };
 
@@ -76,18 +53,9 @@ export type EntradaTurno =
   | { tipo: "boton"; accionId: string; decision: "confirmar" | "rechazar" | "reintentar"; canal: "web" | "whatsapp" }
   | { tipo: "continuar"; canal: "web" | "voz" | "whatsapp" };
 
-type Bloque = Anthropic.Beta.BetaContentBlock;
-
 /** Lo guardado → lo que se le manda a la API, en el mismo orden y con el mismo contenido. */
 function paraApi(filas: FilaMensaje[]): Anthropic.Beta.BetaMessageParam[] {
   return filas.map((m) => ({ role: m.rol, content: m.contenido }) as Anthropic.Beta.BetaMessageParam);
-}
-
-/** Tras un fallback a mitad de respuesta: lo anterior al último bloque `fallback` que no sea texto no se reenvía ni se ejecuta. */
-function limpiarFallback(contenido: Bloque[]): Bloque[] {
-  const ultimo = contenido.map((b) => b.type as string).lastIndexOf("fallback");
-  if (ultimo < 0) return contenido;
-  return contenido.filter((b, i) => i > ultimo || b.type === "text");
 }
 
 async function subirAdjuntos(db: SupabaseClient, cliente: Anthropic, adjuntos: Adjunto[]): Promise<Anthropic.Beta.BetaContentBlockParam[]> {
@@ -183,11 +151,10 @@ export async function* ejecutarTurno(p: {
     // esfuerzo de voz de Parámetros. Cambiar el esfuerzo entre pedidos invalida el caché de los
     // mensajes una vez (al pasar del chat a la voz o al revés); dentro de la charla se recupera.
     const esfuerzoVoz = parametros.find((x) => x.clave === "asistente_esfuerzo_voz")?.texto?.trim();
-    const esfuerzo = (canal === "voz" && esfuerzoVoz && ESFUERZOS.has(esfuerzoVoz) ? esfuerzoVoz : conv.esfuerzo) as Esfuerzo;
-    // Sólo en esos modelos: a las charlas de Opus 5 no les cambia el pedido (ni pierden el caché).
-    const atado = PENSAMIENTO_ATADO.has(conv.modelo);
-    // Fuera de esos modelos no se cambia nada del pedido (Opus 5 no tiene "updates").
-    const betas = atado ? [...BETAS, BETA_ATADO, BETA_PROGRESO] : BETAS;
+    const esfuerzo = (canal === "voz" && esfuerzoVoz ? esfuerzoValido(esfuerzoVoz, conv.esfuerzo as Esfuerzo) : conv.esfuerzo) as Esfuerzo;
+    // Sólo en los modelos que atan el pensamiento (nucleo.ts): a las charlas de Opus 5 no les
+    // cambia el pedido (ni pierden el caché). Las notas de progreso se piden siempre ahí.
+    const atado = esAtado(conv.modelo);
 
     const ctx: ContextoHerramientas = {
       db, conversacion: conv, usuarioId: p.usuarioId, vendedor, borrador, tarifas, lista: listaCalculo, productos, odoo,
@@ -204,13 +171,7 @@ export async function* ejecutarTurno(p: {
     let notaVoz: string | null = null;
     // Reparación: si la historia terminó con un pedido de herramienta sin respuesta (no
     // debería pasar: se guardan juntos), se le responde "interrumpido" antes de seguir.
-    const ultima = historia.at(-1);
-    const huerfanos = ultima?.rol === "assistant" && Array.isArray(ultima.contenido)
-      ? (ultima.contenido as Bloque[]).filter((b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use")
-      : [];
-    const reparacion: Anthropic.Beta.BetaToolResultBlockParam[] = huerfanos.map((b) => ({
-      type: "tool_result", tool_use_id: b.id, is_error: true, content: "La respuesta anterior se interrumpió antes de terminar esta herramienta.",
-    }));
+    const reparacion = reparacionHuerfanos(historia.at(-1));
 
     if (p.entrada.tipo === "mensaje") {
       textoVendedor = p.entrada.texto.trim();
@@ -283,24 +244,19 @@ export async function* ejecutarTurno(p: {
         break;
       }
 
-      const plazo = AbortSignal.timeout(Math.max(1_000, LIMITE_MS - (Date.now() - inicio)));
+      const { plazo, senal } = senalDelPedido(inicio, p.signal);
       const stream = cliente.beta.messages.stream(
-        {
-          model: conv.modelo,
-          max_tokens: 32_000,
+        armarPedido({
+          modelo: conv.modelo,
+          maxTokens: 32_000,
           system: conv.system_snapshot,
           tools: definicionesParaApi(),
           messages: mensajes,
-          thinking: atado
-            ? { type: "adaptive", display: "updates", block_binding: { prefix_mismatch_behavior: "drop_block" } }
-            : { type: "adaptive" },
-          output_config: { effort: esfuerzo },
-          cache_control: { type: "ephemeral" },
-          betas,
-          fallbacks: "default",
-          metadata: { user_id: p.usuarioId },
-        },
-        { signal: p.signal ? AbortSignal.any([p.signal, plazo]) : plazo },
+          esfuerzo,
+          usuarioId: p.usuarioId,
+          progreso: true,
+        }),
+        { signal: senal },
       );
 
       let mensaje: Anthropic.Beta.BetaMessage;

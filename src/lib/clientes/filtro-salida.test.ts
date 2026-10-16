@@ -3,7 +3,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { detectarPlata, motivoBloqueo } from "./filtro-salida.ts";
+import { detectarPlata, motivoBloqueo, revisarSalida } from "./filtro-salida.ts";
 import { normalizar } from "./texto.ts";
 
 const BLOQUEA: [string, string][] = [
@@ -114,3 +114,55 @@ test("normalizar: tildes, mayúsculas, letras repetidas, letras sueltas, «x» y
   assert.equal(normalizar("Los Aromos 1234, 12,40 m"), "los aromos 1234, 12,40 m");
   assert.equal(normalizar("140k"), "140k");
 });
+
+// ── revisarSalida: lo que además revisa Sofía (paso 5) ──────────────────────────────────
+
+const SALIDA_BLOQUEA: [string, string][] = [
+  ["Entrá a https://pagos-aba.com/abc para pagar", "contacto"],
+  ["Mirá www.ofertas-andamios.com.ar", "contacto"],
+  ["Mandalo a bit.ly/xyz", "contacto"],
+  ["Escribile a joaquin@gmail.com", "contacto"],
+  ["Llamá al 11 5555-1234", "contacto"],
+  ["Llamá al +54 9 11 5555 1234", "contacto"],
+  ["Llamá al (011) 4555-1234", "contacto"],
+  ["No, soy una persona del equipo.", "niega_ia"],
+  ["No soy un bot, tranqui", "niega_ia"],
+  ["no soy una IA", "niega_ia"],
+  ["Soy humana, jaja", "niega_ia"],
+  ["Soy una persona real", "niega_ia"],
+  ["Te atiende una persona real, no un bot", "niega_ia"],
+  // La plata sigue bloqueando por acá.
+  ["son 140 lucas", "miles"],
+  ["Son $140.000 el metro", "moneda"],
+];
+
+for (const [texto, codigo] of SALIDA_BLOQUEA) {
+  test(`revisarSalida bloquea (${codigo}): «${texto}»`, () => {
+    const r = revisarSalida(texto);
+    assert.equal(r.bloquea, true);
+    assert.ok(r.hallazgos.some((h) => h.codigo === codigo), JSON.stringify(r.hallazgos));
+    assert.match(r.motivo!, /^texto bloqueado: /);
+  });
+}
+
+const SALIDA_PASA: string[] = [
+  "Sí, soy una asistente digital, una IA. Si preferís, te paso con una persona del equipo.",
+  "Sí, soy una IA, no una persona. ¿Querés que te pase con alguien?",
+  "No soy una persona: soy Sofía, la asistente digital de ABA.",
+  "En un rato te escribe una persona del equipo por acá.",
+  "Revisé el catastro: el frente de Los Aromos 1234 mide 12,40 m. ¿La bandeja va por todo el frente?",
+  "¿Me pasás el CUIT? Por ejemplo 20-12345678-9.",
+  "Ya tengo todo, te confirmo en un rato con el presupuesto #1042.",
+  "Más info en andamiosbuenosaires.com.ar",
+  "¿Necesitás 3 cuerpos y 4 tablones por 30 días?",
+  "Son 8 pisos, ¿tenés planos?",
+  "Dale. ¿Lo retirás vos o te lo llevamos? ¿A qué barrio?",
+];
+
+for (const texto of SALIDA_PASA) {
+  test(`revisarSalida deja pasar: «${texto}»`, () => {
+    const r = revisarSalida(texto);
+    assert.equal(r.bloquea, false, JSON.stringify(r.hallazgos));
+    assert.equal(r.motivo, null);
+  });
+}

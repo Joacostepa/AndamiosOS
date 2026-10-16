@@ -11,7 +11,7 @@ import { ListaCharlas } from "@/components/clientes/lista-charlas";
 import { HiloCharla } from "@/components/clientes/hilo-charla";
 import { CajaRespuesta } from "@/components/clientes/caja-respuesta";
 import { TarjetasAprobacion } from "@/components/clientes/tarjeta-aprobacion";
-import { PastillaEstado, PastillaVentana, useAhora } from "@/components/clientes/pastillas";
+import { PastillaEstado, PastillaGamaAlta, PastillaVentana, useAhora } from "@/components/clientes/pastillas";
 import { useBorrarCharla, useCambiarEstado, useCharla, useCharlas } from "@/hooks/use-clientes-whatsapp";
 import { telefonoLegible, type Filtro } from "@/lib/clientes/vista";
 
@@ -190,9 +190,15 @@ function Charla({ id, ahora, onVolver }: { id: string; ahora: number; onVolver: 
           )}
         </div>
         <div className="flex flex-wrap items-center gap-1.5 pt-1 pb-0.5 lg:pl-0">
+          <PastillaGamaAlta segmento={c.segmento} />
           <PastillaEstado charla={c} yo={d.yo} />
           {c.estado !== "cerrada" && <PastillaVentana ultimoEntranteAt={c.ultimoEntranteAt} ahora={ahora} />}
         </div>
+        {c.tarea && (
+          <p className="truncate pb-0.5 text-[13px] text-muted-foreground" title={c.tarea}>
+            <span className="font-medium text-foreground">Trabajo:</span> {c.tarea}
+          </p>
+        )}
         {borrando && d.esAdmin && (
           <div className="flex flex-wrap items-center gap-2 pt-1.5 pb-1 text-[13.5px]">
             <span className="min-w-0 flex-1 text-muted-foreground">

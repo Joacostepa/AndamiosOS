@@ -11,8 +11,10 @@ const CERRADAS_EN_LISTA = 60;
 /** Lo último del hilo que se manda a la pantalla. */
 const ITEMS_EN_DETALLE = 400;
 
+// Los dos últimos salen de la ficha (sin columna nueva): gama alta y qué trabajo va a hacer el
+// cliente. Un solo literal: así el cliente de Supabase entiende el select.
 const COLUMNAS_CHARLA =
-  "id, telefono, nombre_perfil, estado, motivo, asistente_id, ultimo_mensaje_at, ultimo_entrante_at, ultimo_resumen, sin_leer, opt_out, created_at";
+  "id, telefono, nombre_perfil, estado, motivo, asistente_id, ultimo_mensaje_at, ultimo_entrante_at, ultimo_resumen, sin_leer, opt_out, created_at, segmento:ficha->>segmento, tarea:ficha->>tarea";
 
 type FilaCharla = {
   id: string;
@@ -27,6 +29,8 @@ type FilaCharla = {
   sin_leer: number;
   opt_out: boolean;
   created_at: string;
+  segmento: string | null;
+  tarea: string | null;
 };
 
 /** id → nombre de pila (y apellido si hay dos con el mismo nombre). */
@@ -53,6 +57,8 @@ function aCharla(f: FilaCharla, nombres: Map<string, string>): CharlaListada {
     sinLeer: f.sin_leer,
     optOut: f.opt_out,
     createdAt: f.created_at,
+    segmento: f.segmento === "gama_alta" ? "gama_alta" : null,
+    tarea: f.tarea?.trim() || null,
   };
 }
 

@@ -32,6 +32,8 @@ export type PiezaPedida = { descripcion: string; cantidad: number };
 
 /** La ficha de Sofía: la del paso 4 (FichaCliente) más lo de los otros trabajos. */
 export type FichaSofia = FichaCliente & {
+  /** El trabajo que va a hacer el cliente, en pocas palabras («pintar la fachada», «cambiar las luces del galpón»). */
+  tarea: string | null;
   mail: string | null;
   /** «usted» si el cliente escribe de usted. */
   trato: "vos" | "usted" | null;
@@ -49,7 +51,7 @@ export type FichaSofia = FichaCliente & {
 };
 
 export function fichaSofiaVacia(): FichaSofia {
-  return { ...fichaVacia(), mail: null, trato: null, obra: null, visita: null, alquiler: null };
+  return { ...fichaVacia(), tarea: null, mail: null, trato: null, obra: null, visita: null, alquiler: null };
 }
 
 /** Lo guardado en cli_conversaciones.ficha (puede ser {} o de una versión vieja) → completa. */
@@ -59,6 +61,7 @@ export function leerFicha(guardada: unknown, telefono: string | null): FichaSofi
   f.mensajesCliente = Array.isArray(f.mensajesCliente) ? f.mensajesCliente : [];
   f.banderas = Array.isArray(f.banderas) ? f.banderas : [];
   if (!f.telefono && telefono) f.telefono = telefono;
+  if (f.segmento !== "gama_alta") f.segmento = null;
   return f;
 }
 
@@ -108,6 +111,7 @@ const texto = (max: number) => z.string().trim().min(1).max(max);
 const esquemaFicha = z.object({
   nombre: texto(80).optional().describe("A nombre de quién va el presupuesto (persona, consorcio o empresa), como lo dijo el cliente."),
   tipo_cliente: z.enum(["particular", "consorcio", "empresa"]).optional().describe("Para quién es: él mismo, un consorcio, o una empresa/constructora/organismo."),
+  tarea: texto(120).optional().describe("Qué trabajo va a hacer el cliente, en pocas palabras: «pintar la fachada», «demolición», «arreglar balcones», «cambiar luces del galpón»."),
   trabajo: z.enum(["bandeja", "alquiler_simple", "fachada", "otro"]).optional().describe("bandeja de protección; alquiler de material sin montaje; andamio de fachada; otro trabajo."),
   altura_bandeja: z.number().min(1).max(12).optional().describe("Altura de la bandeja en metros. La estándar es 3."),
   necesita_andamio: z.boolean().optional().describe("Si además de la bandeja necesita andamio para trabajar en el frente."),
@@ -151,6 +155,7 @@ const esquemaTecnico = z.object({
 export const MOTIVOS_DERIVACION = {
   seguridad_obra: "Seguridad en obra · urgente",
   pide_persona: "Pide hablar con una persona",
+  gama_alta: "Gama alta (multidireccional)",
   enojo_reclamo: "Enojo o reclamo",
   trabajo_no_facil: "Trabajo no fácil",
   regateo_o_pago: "Regateo, descuento o condiciones de pago",
@@ -185,6 +190,7 @@ async function anotarFicha(i: z.infer<typeof esquemaFicha>, { ficha }: ContextoH
     anotado.push(nombre);
   };
   poner("nombre", i.nombre, "nombre");
+  poner("tarea", i.tarea, "tarea");
   poner("tipoCliente", i.tipo_cliente, "tipo de cliente");
   poner("trabajo", i.trabajo, "trabajo");
   poner("alturaBandeja", i.altura_bandeja, "altura");
@@ -308,7 +314,11 @@ const POR_QUE_NO: Record<string, string> = {
   cubre_frente: "es sólo una parte del frente",
   tope_ml: "el frente es más largo que lo que se cotiza directo",
   metros_cliente: "los metros que dijo no coinciden con el catastro",
+  gama_alta: "es un cliente de gama alta (pidió multidireccional)",
 };
+
+const QUE_HACER_GAMA_ALTA =
+  "Es un cliente de gama alta: no se cotiza directo. Juntá lo básico (superficie o metros, altura, para qué es, plazo, si arma ABA, planos o memoria de cálculo) y usá derivar_a_persona con el motivo gama_alta.";
 
 const QUE_DECIR_PENDIENTE =
   "Decile que ya tenés todo y que se lo confirmás en un rato con el presupuesto (fuera de horario, cuándo le escribe una persona). Sin montos, sin plazos y sin nombres.";
@@ -317,6 +327,8 @@ async function prepararCotizacionFacil(_i: z.infer<typeof esquemaNada>, { ficha,
   if (ficha.trabajo && ficha.trabajo !== "bandeja") {
     return { contenido: json({ estado: "no_corresponde", que_hacer: "Esto es para bandejas. Para otros trabajos usá preparar_pedido_simple o pedir_tecnico." }) };
   }
+  // Gama alta (multidireccional): nunca una cotización fácil, aunque falten datos.
+  if (ficha.segmento === "gama_alta") return { contenido: json({ estado: "no_es_facil", motivos: [POR_QUE_NO.gama_alta], que_hacer: QUE_HACER_GAMA_ALTA }) };
   const falta = faltantesBandeja(ficha);
   if (falta.length) return { contenido: json({ estado: "faltan_datos", preguntar: falta }) };
 
@@ -435,15 +447,18 @@ async function pedirTecnico(i: z.infer<typeof esquemaTecnico>, { ficha, servicio
 
 // ── derivar_a_persona ──────────────────────────────────────────────────────────────────
 
-async function derivarAPersona(i: z.infer<typeof esquemaDerivar>): Promise<ResultadoHerramienta> {
+async function derivarAPersona(i: z.infer<typeof esquemaDerivar>, { ficha }: ContextoHerramienta): Promise<ResultadoHerramienta> {
   const seguridad = i.motivo === "seguridad_obra";
+  // Una charla de gama alta lo dice en el motivo, elija el modelo el que elija (salvo seguridad).
+  const gamaAlta = ficha.segmento === "gama_alta" && !seguridad && i.motivo !== "gama_alta";
+  const motivo = gamaAlta ? `Gama alta · ${MOTIVOS_DERIVACION[i.motivo]}` : MOTIVOS_DERIVACION[i.motivo];
   return {
     contenido: seguridad
       ? json({ estado: "derivada", urgente: true, que_decir: "El sistema ya le mandó al cliente el texto de seguridad. No escribas nada más: respondé [nada]." })
       : json({ estado: "derivada", que_decir: "Decile en una línea que se lo pasás al equipo y que le escriben por acá (fuera de horario, cuándo). Sin nombres ni plazos." }),
     efecto: {
       estado: "derivada",
-      motivo: MOTIVOS_DERIVACION[i.motivo],
+      motivo,
       resumen: i.resumen,
       urgente: seguridad,
       textoFijo: seguridad ? "seguridad" : null,

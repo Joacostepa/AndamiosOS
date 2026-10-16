@@ -5,11 +5,13 @@ import { formatDistanceToNowStrict, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { filtrar, telefonoLegible, type CharlaListada, type Filtro } from "@/lib/clientes/vista";
-import { PastillaEstado, PastillaVentana } from "./pastillas";
+import { PastillaEstado, PastillaGamaAlta, PastillaVentana } from "./pastillas";
 
 // La lista de charlas (docs/clientes/crm-propuesta.md §7): filtros «Para vos», «Todas» y
 // «Cerradas». Todos ven todas: es una familia, no hay paredes, sólo filtros. Cada fila: quién,
 // la pastilla del estado, la última línea, hace cuánto y lo que le queda a la ventana de 24 h.
+// Las de gama alta (pidió multidireccional) llevan su pastilla y, si esperan a una persona, van
+// arriba (filtrar en vista.ts).
 
 const FILTROS: { id: Filtro; texto: string }[] = [
   { id: "vos", texto: "Para vos" },
@@ -105,6 +107,7 @@ export function ListaCharlas({
                     )}
                   </span>
                   <span className="flex flex-wrap items-center gap-1.5">
+                    <PastillaGamaAlta segmento={c.segmento} />
                     <PastillaEstado charla={c} yo={yo} />
                     {c.estado !== "cerrada" && <PastillaVentana ultimoEntranteAt={c.ultimoEntranteAt} ahora={ahora} corta />}
                   </span>

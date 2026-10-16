@@ -40,6 +40,7 @@ import { NADA, contextoDelTurno, sistemaSofia } from "./prompt.ts";
 import { esSoloSaludo, saludoInicial, textoSeguridad, TEXTO_ERROR, TEXTO_PASO_A_PERSONA } from "./saludo.ts";
 import { revisarSalida, type HallazgoSalida } from "./filtro-salida.ts";
 import { puedeTextoLibre } from "./ventana.ts";
+import { palabraGamaAlta } from "./facil.ts";
 import {
   definicionesSofia, ejecutarHerramientaSofia, type FichaSofia, type ServiciosSofia,
 } from "./herramientas.ts";
@@ -367,7 +368,11 @@ async function unaTanda(
   const textoCliente = entrantes.map((e) => (variasHoras ? `(${hora(e.momento)}) ` : "") + textoDelCliente(e)).join("\n");
   for (const e of entrantes) {
     const t = e.tipo === "audio" ? e.transcripcion : e.texto;
-    if (t?.trim() && (e.tipo === "text" || e.tipo === "audio" || e.tipo === "image" || e.tipo === "document")) ficha.mensajesCliente.push(t.trim());
+    if (t?.trim() && (e.tipo === "text" || e.tipo === "audio" || e.tipo === "image" || e.tipo === "document")) {
+      ficha.mensajesCliente.push(t.trim());
+      // Gama alta (multidireccional): lo marca el código, no el modelo. Se guarda con la ficha.
+      if (palabraGamaAlta(t)) ficha.segmento = "gama_alta";
+    }
   }
   const notasEquipo = nuevos.map(notaDelEquipo).filter((x): x is string => !!x);
 
@@ -427,7 +432,7 @@ async function unaTanda(
         armarPedido({
           modelo: cfg.modelo,
           maxTokens: MAX_TOKENS,
-          system: sistemaSofia(cfg.datosEmpresa),
+          system: sistemaSofia(cfg.datosEmpresa, cfg.guiaTrabajos),
           tools: definicionesSofia(),
           messages: mensajes,
           esfuerzo: cfg.esfuerzo,

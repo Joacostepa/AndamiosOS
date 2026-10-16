@@ -190,3 +190,35 @@ test("leerFicha: lo guardado vacío o viejo se completa", () => {
   assert.equal(vieja.nombre, "Hugo");
   assert.deepEqual(vieja.banderas, []);
 });
+
+// ── La tarea y la gama alta (JS, 16/10) ─────────────────────────────────────────────────
+
+test("anotar_ficha: anota la tarea del cliente; la gama alta no la puede tocar el modelo", async () => {
+  const c = contexto();
+  const r = await ejecutarHerramientaSofia("anotar_ficha", { tarea: "pintar la fachada" }, c);
+  assert.equal(r.esError, undefined);
+  assert.equal(c.ficha.tarea, "pintar la fachada");
+  const intento = await ejecutarHerramientaSofia("anotar_ficha", { segmento: "gama_alta" }, c);
+  assert.equal(intento.esError, true);
+  assert.equal(c.ficha.segmento, null);
+  assert.equal(leerFicha({ segmento: "cualquiera" }, null).segmento, null);
+  assert.equal(leerFicha({ segmento: "gama_alta", tarea: "demolición" }, null).segmento, "gama_alta");
+  assert.equal(leerFicha({}, null).tarea, null);
+});
+
+test("gama alta: preparar_cotizacion_facil nunca deja una cotización, y la derivación lo dice", async () => {
+  const c = contexto({ ...MARCELA, segmento: "gama_alta" });
+  const r = await ejecutarHerramientaSofia("preparar_cotizacion_facil", {}, c);
+  assert.equal(r.efecto, undefined);
+  assert.match(r.contenido, /no_es_facil/);
+  assert.match(r.contenido, /gama alta/);
+  assert.equal(c.mundo.pendientes.length, 0);
+
+  const propio = await ejecutarHerramientaSofia("derivar_a_persona", { motivo: "gama_alta", resumen: "Multidireccional para 8 pisos, 30 m de frente." }, c);
+  assert.equal(propio.efecto?.estado, "derivada");
+  assert.equal(propio.efecto?.estado === "derivada" && propio.efecto.motivo, "Gama alta (multidireccional)");
+  const otro = await ejecutarHerramientaSofia("derivar_a_persona", { motivo: "pide_persona", resumen: "Quiere hablar con alguien." }, c);
+  assert.equal(otro.efecto?.estado === "derivada" && otro.efecto.motivo, "Gama alta · Pide hablar con una persona");
+  const seguridad = await ejecutarHerramientaSofia("derivar_a_persona", { motivo: "seguridad_obra", resumen: "Tabla floja." }, c);
+  assert.equal(seguridad.efecto?.estado === "derivada" && seguridad.efecto.motivo, "Seguridad en obra · urgente");
+});

@@ -28,6 +28,9 @@ export type ConfigSofia = {
   /** Lo que Sofía puede contestar de la empresa (oficina, pagos, zona, permisos…). Lo edita JS en
    *  Parámetros sin deploy. Vacío: lo consulta al equipo. */
   datosEmpresa: string | null;
+  /** Cómo entender qué trabajo hace el cliente y qué preguntar (clientes_guia_trabajos). Lo edita
+   *  JS en Parámetros sin deploy. Vacío: Sofía sigue sólo con las instrucciones. */
+  guiaTrabajos: string | null;
 };
 
 /** Decisión 19 de JS: Opus 5.5 con esfuerzo bajo. */
@@ -35,7 +38,7 @@ export const MODELO_POR_DEFECTO = "claude-opus-5-5";
 
 export const CLAVES_SOFIA = [
   "clientes_ia_activa", "clientes_modelo", "clientes_esfuerzo", "clientes_tope_tel_usd", "clientes_tope_global_usd", "clientes_horario",
-  "clientes_telefono_guardia", "clientes_datos_empresa",
+  "clientes_telefono_guardia", "clientes_datos_empresa", "clientes_guia_trabajos",
 ] as const;
 
 export function configSofiaDesdeFilas(filas: FilaConfig[]): ConfigSofia {
@@ -54,5 +57,6 @@ export function configSofiaDesdeFilas(filas: FilaConfig[]): ConfigSofia {
     horario: leerHorario(txt("clientes_horario")),
     telefonoGuardia: txt("clientes_telefono_guardia"),
     datosEmpresa: txt("clientes_datos_empresa"),
+    guiaTrabajos: txt("clientes_guia_trabajos"),
   };
 }

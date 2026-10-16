@@ -21,6 +21,7 @@ import { variantesTelefono } from "@/lib/whatsapp/tandas";
 import { RESPUESTA_FIJA, debeResponderFijo, esBaja, extension, leerEntrante, nombreSeguro, respuestaFijaActivada, type AdjuntoPendiente, type MensajeCliente } from "./entrante";
 import { avanza, leerStatus, type EstadoHilo, type StatusMeta } from "./estados";
 import { mandarTexto } from "./envio";
+import { palabraGamaAlta } from "./facil";
 
 export const BUCKET = "comercial";
 /** Un adjunto que no se pudo bajar se reintenta hasta esta cantidad de veces. */
@@ -115,6 +116,18 @@ export async function charlaPara(db: SupabaseClient, telefono: string, numero: s
   throw new Error("No se pudo ubicar la charla del cliente (tres choques seguidos).");
 }
 
+/**
+ * Pidió multidireccional: la charla queda de gama alta (ficha.segmento), aunque Sofía esté
+ * apagada o la tenga una persona. Así va arriba en la bandeja desde el primer mensaje. Sofía
+ * lo vuelve a marcar en su turno (turno.ts), con lo que lee de la ficha y el texto.
+ */
+async function marcarGamaAlta(db: SupabaseClient, conversacionId: string): Promise<void> {
+  const { data } = await db.from("cli_conversaciones").select("ficha").eq("id", conversacionId).maybeSingle();
+  const ficha = data?.ficha && typeof data.ficha === "object" ? (data.ficha as Record<string, unknown>) : {};
+  if (ficha.segmento === "gama_alta") return;
+  await db.from("cli_conversaciones").update({ ficha: { ...ficha, segmento: "gama_alta" }, updated_at: ahora() }).eq("id", conversacionId);
+}
+
 export async function anotarEvento(db: SupabaseClient, conversacionId: string, texto: string, autorId: string | null = null): Promise<void> {
   await db.from("cli_hilo").insert({
     conversacion_id: conversacionId,
@@ -177,6 +190,9 @@ export async function recibirMensajes(db: SupabaseClient, valor: AvisoClientes, 
       const { error: eAnotar } = await db.rpc("cli_anotar_entrante", { p_conversacion: charla.id, p_momento: momento, p_resumen: e.resumen });
       if (eAnotar) throw new Error(`cli_anotar_entrante: ${eAnotar.message}`);
       if (e.adjunto && "pendiente" in e.adjunto) pend.adjuntos.push(fila.id as string);
+    }
+    if (fila && e.tipo === "text" && e.texto && palabraGamaAlta(e.texto)) {
+      await marcarGamaAlta(db, charla.id).catch((err) => console.error("[clientes] no se pudo marcar gama alta", charla.id, err));
     }
     if (e.tipo === "text" && esBaja(e.texto)) {
       await db.from("cli_conversaciones").update({ opt_out: true, updated_at: ahora() }).eq("id", charla.id);

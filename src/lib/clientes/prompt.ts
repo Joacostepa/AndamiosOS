@@ -49,6 +49,7 @@ No inventes servicios, direcciones, horarios de depósito, marcas ni condiciones
 Nunca lo niegues ni lo esquives. Decí que sí, que sos Sofía, la asistente digital de ABA (una IA), y ofrecé pasarlo con alguien del equipo. Por ejemplo: «Sí, soy Sofía, la asistente digital de ABA: una IA. Si preferís, te paso con una persona del equipo.» Si dice que sí, usá derivar_a_persona con el motivo pide_persona.
 
 # Lo que hacés sola
+- Lo primero es entender qué trabajo va a hacer el cliente y dónde, antes de decidir qué necesita: seguí «Cómo entender el trabajo del cliente» y anotalo con anotar_ficha (tarea).
 - Preguntar y repreguntar para juntar los datos del pedido, y anotarlos con anotar_ficha a medida que el cliente los da (sin pedirle permiso).
 - Verificar la dirección en el catastro de la Ciudad (verificar_direccion) apenas la tengas. Podés decirle lo que dice el catastro («el frente mide 12,40 m»): medidas, alturas y cantidades no son plata.
 - Validar un CUIT (validar_cuit), sólo si el cliente lo da o hace falta para facturar.
@@ -103,19 +104,17 @@ En el resumen, contá en una o dos líneas qué pidió y qué datos juntaste: lo
 En cada turno el sistema te agrega un aviso con la hora, si hay personas del equipo trabajando ahora o cuándo vuelven, lo que ya anotaste en la ficha, lo que quedó pendiente y lo que escribió el equipo. Usalo, pero no se lo leas al cliente.`;
 
 /** El system: las instrucciones y, si están cargados, los datos de ABA (parámetro
- *  clientes_datos_empresa). La caché de 1 h va en el último bloque: es el mismo para todas las
- *  charlas mientras nadie edite los datos. */
-export function sistemaSofia(datosEmpresa?: string | null): Anthropic.Beta.BetaTextBlockParam[] {
+ *  clientes_datos_empresa) y la guía de trabajos (clientes_guia_trabajos). La caché de 1 h va en
+ *  el último bloque: es el mismo para todas las charlas mientras nadie edite los parámetros. */
+export function sistemaSofia(datosEmpresa?: string | null, guiaTrabajos?: string | null): Anthropic.Beta.BetaTextBlockParam[] {
   const datos = datosEmpresa?.trim();
-  if (!datos) return [{ type: "text", text: INSTRUCCIONES, cache_control: { type: "ephemeral", ttl: "1h" } }];
-  return [
-    { type: "text", text: INSTRUCCIONES },
-    {
-      type: "text",
-      text: `# Datos de ABA (lo que podés contestar)\nLas preguntas sobre la empresa (oficina, horarios, pagos, zona, permisos, seguros, facturación) contestalas con esto, con tus palabras y sin agregar nada. Lo que no esté acá no lo sabés: decí que lo consultás con el equipo.\n\n${datos}`,
-      cache_control: { type: "ephemeral", ttl: "1h" },
-    },
-  ];
+  const guia = guiaTrabajos?.trim();
+  const textos = [INSTRUCCIONES];
+  if (datos) {
+    textos.push(`# Datos de ABA (lo que podés contestar)\nLas preguntas sobre la empresa (oficina, horarios, pagos, zona, permisos, seguros, facturación) contestalas con esto, con tus palabras y sin agregar nada. Lo que no esté acá no lo sabés: decí que lo consultás con el equipo.\n\n${datos}`);
+  }
+  if (guia) textos.push(`# Cómo entender el trabajo del cliente\n${guia}`);
+  return textos.map((text, i) => (i === textos.length - 1 ? { type: "text" as const, text, cache_control: { type: "ephemeral" as const, ttl: "1h" as const } } : { type: "text" as const, text }));
 }
 
 // ── El aviso de cada turno ──────────────────────────────────────────────────────────────
@@ -126,6 +125,7 @@ const m = (n: number) => n.toLocaleString("es-AR", { maximumFractionDigits: 2 })
 export function resumenFicha(f: FichaSofia): string[] {
   const l: string[] = [];
   const trabajo = { bandeja: "bandeja de protección", alquiler_simple: "alquiler de material", fachada: "andamio de fachada", otro: "otro trabajo" };
+  if (f.tarea) l.push(`Tarea del cliente: ${f.tarea}`);
   if (f.trabajo) l.push(`Trabajo: ${trabajo[f.trabajo]}${f.trabajo === "bandeja" && f.alturaBandeja ? ` de ${m(f.alturaBandeja)} m` : ""}`);
   if (f.necesitaAndamio !== null) l.push(f.necesitaAndamio ? "Necesita también andamio para el frente" : "Sólo la bandeja (no necesita andamio)");
   if (f.direccion) {
@@ -174,6 +174,13 @@ export type DatosContexto = {
   devuelta: boolean;
 };
 
+/** Lo que cambia cuando la charla es de gama alta (pidió multidireccional: JS, 16/10). */
+export const AVISO_GAMA_ALTA = `Cliente de gama alta: pidió multidireccional. Busca profesionalismo y servicio.
+- Tono más profesional: seguí de vos (de usted si él escribe de usted), pero más técnico y cuidado.
+- Preguntá lo técnico, de a una o dos cosas: superficie o metros, altura, para qué es la estructura, plazo, si la arma ABA o ellos, y si tienen planos o necesitan memoria de cálculo.
+- Nunca prepares una cotización fácil (preparar_cotizacion_facil no corresponde).
+- Cuando tengas lo básico, usá derivar_a_persona con el motivo gama_alta y un resumen técnico: lo atiende una persona con prioridad.`;
+
 export function contextoDelTurno(d: DatosContexto): string {
   const partes: string[] = ["[Aviso del sistema: no lo escribió el cliente]"];
   partes.push(
@@ -185,6 +192,7 @@ export function contextoDelTurno(d: DatosContexto): string {
   if (d.devuelta) partes.push("La charla la tuvo una persona del equipo y te la devolvió: seguí desde donde quedó, sin repetir lo que ya le dijeron.");
   if (d.notasEquipo.length) partes.push(`Lo que hizo el equipo:\n${d.notasEquipo.map((n) => `- ${n}`).join("\n")}`);
   if (d.noLlego) partes.push(`Ojo: tu respuesta anterior NO le llegó al cliente (${d.noLlego}).`);
+  if (d.ficha.segmento === "gama_alta") partes.push(AVISO_GAMA_ALTA);
   const ficha = resumenFicha(d.ficha);
   partes.push(ficha.length ? `Ficha hasta ahora:\n${ficha.map((x) => `- ${x}`).join("\n")}` : "Ficha: todavía vacía.");
   if (d.pendientes.length) partes.push(`Pendiente con el equipo:\n${d.pendientes.map((x) => `- ${x}`).join("\n")}`);

@@ -9,7 +9,7 @@ import { avisoVentana, type AvisoVentana } from "@/lib/clientes/ventana";
 import type { CharlaListada } from "@/lib/clientes/vista";
 import type { CorreccionPedida, TarjetaAprobacion, TarjetasCharla, VistaCorreccion } from "@/lib/clientes/vista-aprobacion";
 import { ErrorPedido, urlPdfVistaPrevia, useAprobaciones, useDecidir, useVistaCorreccion, type PedidoTarjeta } from "@/hooks/use-clientes-whatsapp";
-import { Pastilla } from "./pastillas";
+import { Pastilla, PastillaGamaAlta } from "./pastillas";
 
 // La tarjeta de aprobación (paso 6, docs/clientes/crm-propuesta.md §7 y la maqueta
 // docs/clientes/crm-maqueta.html): lo que Sofía dejó esperando el botón de una persona.
@@ -102,7 +102,7 @@ function Tarjeta(p: { t: TarjetaAprobacion; charla: CharlaListada; ahora: number
   return <TarjetaSimple {...p} />;
 }
 
-function Marco({ titulo, t, tono = "ambar", children, pie }: { titulo: string; t: TarjetaAprobacion; tono?: "ambar" | "rojo"; children: React.ReactNode; pie?: React.ReactNode }) {
+function Marco({ titulo, t, charla, tono = "ambar", children, pie }: { titulo: string; t: TarjetaAprobacion; charla?: CharlaListada; tono?: "ambar" | "rojo"; children: React.ReactNode; pie?: React.ReactNode }) {
   const estado =
     t.estado === "pendiente" ? "Espera tu OK"
     : t.estado === "ejecutando" ? "Guardando…"
@@ -116,7 +116,15 @@ function Marco({ titulo, t, tono = "ambar", children, pie }: { titulo: string; t
         <Pastilla tono={t.estado === "error" ? "rojo" : "ambar"}>{estado}</Pastilla>
         <span className="font-mono text-[12px] text-muted-foreground">#{t.numero}</span>
       </header>
-      <div className="flex flex-col gap-3 p-3">{children}</div>
+      <div className="flex flex-col gap-3 p-3">
+        {charla && (charla.tarea || charla.segmento) && (
+          <p className="flex flex-wrap items-center gap-1.5 text-[13.5px]">
+            <PastillaGamaAlta segmento={charla.segmento} />
+            {charla.tarea && <span><span className="text-muted-foreground">Trabajo del cliente:</span> {charla.tarea}</span>}
+          </p>
+        )}
+        {children}
+      </div>
       {pie && <footer className="flex flex-wrap items-center gap-2 border-t border-border px-3 py-2.5">{pie}</footer>}
     </section>
   );
@@ -227,6 +235,7 @@ function TarjetaPrecio({ t, charla, ahora, puedeEditar, datos }: { t: TarjetaApr
     <Marco
       titulo={`Esto es lo que le va a llegar a ${pila}`}
       t={t}
+      charla={charla}
       pie={
         pendiente && puedeEditar ? (
           <>
@@ -425,6 +434,7 @@ function TarjetaTecnico({ t, charla, puedeEditar, datos }: { t: TarjetaAprobacio
     <Marco
       titulo="Asignar técnico"
       t={t}
+      charla={charla}
       tono="rojo"
       pie={
         pendiente && puedeEditar ? (
@@ -551,6 +561,7 @@ function TarjetaSimple({ t, charla, puedeEditar }: { t: TarjetaAprobacion; charl
     <Marco
       titulo={s ? "Pedido de alquiler simple" : "Espera tu OK"}
       t={t}
+      charla={charla}
       pie={
         pendiente && puedeEditar ? (
           <Button variant="outline" className="h-11" onClick={() => decidir.mutate({ aprobacionId: t.id, pedido: { accion: "tomar" } }, { onSuccess: () => toast.success("La charla queda con vos"), onError: (e) => toast.error(errorDe(e)) })} disabled={decidir.isPending}>

@@ -437,3 +437,29 @@ test("devuelta con la ventana de 24 h cerrada: no le escribe, espera al cliente"
   assert.equal(r.resultado, "sin_novedades");
   assert.ok(m.eventos.some((e) => /ventana de 24 h está cerrada/.test(e)));
 });
+
+// ── Gama alta (JS, 16/10) ──────────────────────────────────────────────────────────────
+
+test("gama alta: «multi direccional» marca la charla por código y Sofía recibe las indicaciones", async () => {
+  const m = crearMundo();
+  m.escribe("Hola, necesitamos andamio multi direccional para una obra de 8 pisos");
+  await atenderCharla(m.deps(guion(respuestaTexto("Perfecto. ¿Cuántos metros de frente tiene y para qué es la estructura?"))), m.charla.id);
+  assert.equal(m.charla.ficha.segmento, "gama_alta");
+  assert.match(ultimoAviso(m), /Cliente de gama alta: pidió multidireccional/);
+
+  m.escribe("Son 30 metros, es para revocar. La arman ustedes, no tenemos memoria de cálculo");
+  await atenderCharla(m.deps(guion(
+    respuestaHerramientas(["derivar_a_persona", { motivo: "gama_alta", resumen: "Multidireccional, 8 pisos, 30 m de frente, para revocar; arma ABA; necesita memoria de cálculo." }]),
+    respuestaTexto("Gracias. Ya se lo paso al equipo técnico: te escriben por este mismo chat."),
+  )), m.charla.id);
+  assert.equal(m.charla.estado, "derivada");
+  assert.equal(m.charla.motivo, "Gama alta (multidireccional)");
+});
+
+test("sin multidireccional, el aviso no dice nada de gama alta", async () => {
+  const m = crearMundo();
+  m.escribe("Hola, necesito una bandeja para la vereda");
+  await atenderCharla(m.deps(guion(respuestaTexto("Dale. ¿Me pasás la dirección de la obra?"))), m.charla.id);
+  assert.equal(m.charla.ficha.segmento, null);
+  assert.doesNotMatch(ultimoAviso(m), /gama alta/i);
+});

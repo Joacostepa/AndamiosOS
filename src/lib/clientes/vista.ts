@@ -67,6 +67,8 @@ export type DetalleCharla = {
   /** Sofía prendida: se puede «Devolver a Sofía». */
   iaActiva?: boolean;
   numeroConfigurado: boolean;
+  /** Admin: puede borrar la charla entera (para pruebas). */
+  esAdmin?: boolean;
   charla: CharlaListada;
   items: ItemHilo[];
 };

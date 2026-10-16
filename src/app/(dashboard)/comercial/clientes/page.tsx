@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Bot, ClipboardCheck, Hand, Loader2, Lock, MessageCircle, TriangleAlert, Undo2 } from "lucide-react";
+import { ArrowLeft, Bot, ClipboardCheck, Hand, Loader2, Lock, MessageCircle, Trash2, TriangleAlert, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { useSeguirAbajo } from "@/components/asistente/hilo";
@@ -12,7 +12,7 @@ import { HiloCharla } from "@/components/clientes/hilo-charla";
 import { CajaRespuesta } from "@/components/clientes/caja-respuesta";
 import { TarjetasAprobacion } from "@/components/clientes/tarjeta-aprobacion";
 import { PastillaEstado, PastillaVentana, useAhora } from "@/components/clientes/pastillas";
-import { useCambiarEstado, useCharla, useCharlas } from "@/hooks/use-clientes-whatsapp";
+import { useBorrarCharla, useCambiarEstado, useCharla, useCharlas } from "@/hooks/use-clientes-whatsapp";
 import { telefonoLegible, type Filtro } from "@/lib/clientes/vista";
 
 // Comercial → WhatsApp de clientes (docs/clientes/crm-propuesta.md §7, etapa 0).
@@ -105,6 +105,9 @@ function Charla({ id, ahora, onVolver }: { id: string; ahora: number; onVolver: 
   // «Devolver a Sofía»: se abre un renglón para dejarle una nota (opcional).
   const [devolviendo, setDevolviendo] = useState(false);
   const [nota, setNota] = useState("");
+  // Borrar la charla (sólo admin, para pruebas): se confirma en un renglón, no con confirm().
+  const borrar = useBorrarCharla(id);
+  const [borrando, setBorrando] = useState(false);
 
   const accion = (a: "tomar" | "soltar" | "cerrar" | "devolver", forzar = false) =>
     cambiar.mutate(
@@ -178,6 +181,11 @@ function Charla({ id, ahora, onVolver }: { id: string; ahora: number; onVolver: 
                   <Lock /> <span className="hidden sm:inline">Cerrar</span>
                 </Button>
               )}
+              {d.esAdmin && (
+                <Button variant="outline" className="h-10 px-3 text-destructive" onClick={() => setBorrando((x) => !x)} disabled={borrar.isPending} title="Borrar la charla para probar de cero" aria-label="Borrar la charla">
+                  <Trash2 /> <span className="hidden sm:inline">Borrar</span>
+                </Button>
+              )}
             </div>
           )}
         </div>
@@ -185,6 +193,30 @@ function Charla({ id, ahora, onVolver }: { id: string; ahora: number; onVolver: 
           <PastillaEstado charla={c} yo={d.yo} />
           {c.estado !== "cerrada" && <PastillaVentana ultimoEntranteAt={c.ultimoEntranteAt} ahora={ahora} />}
         </div>
+        {borrando && d.esAdmin && (
+          <div className="flex flex-wrap items-center gap-2 pt-1.5 pb-1 text-[13.5px]">
+            <span className="min-w-0 flex-1 text-muted-foreground">
+              Se borra toda la charla de la app (mensajes, memoria de Sofía y aprobaciones) y el próximo mensaje arranca de cero. No borra lo que ya llegó al WhatsApp del cliente ni las órdenes de Odoo.
+            </span>
+            <Button
+              variant="destructive"
+              className="h-10"
+              disabled={borrar.isPending}
+              onClick={() =>
+                borrar.mutate(undefined, {
+                  onSuccess: () => {
+                    toast.success("Charla borrada", { description: "El próximo mensaje de ese número arranca de cero." });
+                    onVolver();
+                  },
+                  onError: (e) => toast.error(e.message),
+                })
+              }
+            >
+              {borrar.isPending ? <Loader2 className="animate-spin" /> : <Trash2 />} Borrar todo
+            </Button>
+            <Button type="button" variant="ghost" className="h-10" onClick={() => setBorrando(false)}>Cancelar</Button>
+          </div>
+        )}
         {devolviendo && puedeDevolver && (
           <form
             className="flex flex-wrap items-center gap-2 pt-1.5 pb-1"

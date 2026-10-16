@@ -10,7 +10,7 @@ import { PastillaEstado, PastillaGamaAlta, PastillaVentana } from "./pastillas";
 // La lista de charlas (docs/sofia/crm-propuesta.md §7): filtros «Para vos», «Todas» y
 // «Cerradas». Todos ven todas: es una familia, no hay paredes, sólo filtros. Cada fila: quién,
 // la pastilla del estado, la última línea, hace cuánto y lo que le queda a la ventana de 24 h.
-// Las de gama alta (pidió multidireccional) llevan su pastilla y, si esperan a una persona, van
+// Las de gama alta (multidireccional, Layher, instituciones…) llevan su pastilla y, si esperan a una persona, van
 // arriba (filtrar en vista.ts).
 
 const FILTROS: { id: Filtro; texto: string }[] = [

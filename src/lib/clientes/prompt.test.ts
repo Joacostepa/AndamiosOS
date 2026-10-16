@@ -11,7 +11,7 @@ test("el prompt tiene las reglas de §3, §6 y las decisiones de JS", () => {
     /Sos Sofía, la asistente digital de Andamios Buenos Aires/,
     /Nunca lo niegues ni lo esquives/,
     /Ningún precio, asignación de técnico ni traspaso sale sin que una persona lo apruebe/,
-    /Ya tengo todo, te lo confirmo en un rato con el presupuesto/,
+    /Ya tengo todo\. El presupuesto lo prepara el equipo y te llega por este mismo chat/,
     /Escribir plata: montos/,
     /Dar descuentos/,
     /Prometer fechas de armado, plazos de permisos/,
@@ -119,7 +119,7 @@ test("el aviso del turno: las indicaciones de gama alta sólo cuando la charla l
   const normal = contextoDelTurno({ ...base, ficha: fichaSofiaVacia() });
   assert.doesNotMatch(normal, /gama alta/i);
   const alta = contextoDelTurno({ ...base, ficha: { ...fichaSofiaVacia(), segmento: "gama_alta" } });
-  assert.match(alta, /Cliente de gama alta: pidió multidireccional/);
+  assert.match(alta, /Cliente de gama alta \(multidireccional, una marca de sistema/);
   assert.match(alta, /más técnico y cuidado/);
   assert.match(alta, /de usted si él escribe de usted/);
   assert.match(alta, /superficie o metros, altura, para qué es la estructura, plazo, si la arma ABA/);
@@ -127,4 +127,30 @@ test("el aviso del turno: las indicaciones de gama alta sólo cuando la charla l
   assert.match(alta, /Nunca prepares una cotización fácil/);
   assert.match(alta, /derivar_a_persona con el motivo gama_alta/);
   assert.equal(detectarPlata(alta).bloquea, false);
+});
+
+test("el prompt tiene lo que salió del análisis de los chats (aprobado por JS el 16/10)", () => {
+  for (const regla of [
+    /Venta de andamio multidireccional nuevo/,
+    /# Si no es un pedido nuevo/,
+    /obra_en_curso/, /administracion/, /estafa_pago/, /desprendimiento/, /quiere_avanzar/,
+    /Esa publicación no es de ABA/,
+    /van al final: nunca los pidas antes de entender el trabajo/,
+    /¿Lo arman ustedes, o necesitás que lo armemos\?/,
+    /Cuánto tiempo calculan que dura la obra/,
+    /YA ARMADA por ABA/,
+    /¿Está bien así\?/,
+  ]) assert.match(INSTRUCCIONES, regla);
+  assert.doesNotMatch(INSTRUCCIONES, /en un rato con el presupuesto/, "«en un rato» es un plazo");
+});
+
+test("las frases fijas nuevas del prompt pasan el filtro de salida", () => {
+  for (const frase of [
+    "Esa publicación no es de ABA. Nosotros no pedimos adelantos por publicaciones en redes. Es una estafa: no pagues y denunciá la publicación.",
+    "El valor depende de las medidas, el tiempo y si lo armamos nosotros. Con la dirección el equipo te lo prepara y te llega por acá.",
+    "Eso lo ve el equipo. Si tenés otro presupuesto, mandámelo y lo ven.",
+    "Buenísimo, ya le aviso al equipo para seguir.",
+    "Ya tengo todo. El presupuesto lo prepara el equipo y te llega por este mismo chat.",
+    "Hay un período mínimo de alquiler, así que contame cuántos días lo necesitás de verdad.",
+  ]) assert.equal(detectarPlata(frase).bloquea, false, frase);
 });

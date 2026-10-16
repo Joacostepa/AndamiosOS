@@ -80,7 +80,7 @@ export function parametrosFacilDesdeFilas(filas: FilaParametro[]): ParametrosFac
 
 export type TipoTrabajo = "bandeja" | "alquiler_simple" | "fachada" | "otro";
 export type TipoCliente = "particular" | "consorcio" | "empresa";
-/** gama_alta: pidió multidireccional (JS, 16/10). Lo marca el código, nunca la IA. */
+/** gama_alta: escribió una de PALABRAS_GAMA_ALTA (JS, 16/10). Lo marca el código, nunca la IA. */
 export type Segmento = "gama_alta";
 
 /** Lo que la IA puede marcar con anotar_ficha (§13). Sólo bajan a «no fácil». */
@@ -156,22 +156,30 @@ export type AlertaPalabra = { codigo: CodigoAlerta; palabra: string; texto: stri
  * es un cliente que busca profesionalismo, servicio, de gama alta»). Para sumar una marca o un
  * sistema, agregalo acá, escrito como se dice: se compara normalizado (sin tildes, mayúsculas
  * ni letras dobles) y también sin espacios, así «multi direccional» o «multi-direccional» cuentan.
+ *
+ * Del análisis de los chats (docs/sofia/analisis-chats-propuesta.md, D6), aprobado por JS el
+ * 16/10 («suma todo»): la marca Layher, las instituciones y empresas grandes, la industria y las
+ * licitaciones. «banco» suelto no: choca con «banco de trabajo».
  */
-export const PALABRAS_GAMA_ALTA: readonly string[] = ["multidireccional", "multidireccionales", "sistema multidireccional"];
+export const PALABRAS_GAMA_ALTA: readonly string[] = [
+  "multidireccional", "multidireccionales", "sistema multidireccional", "layher",
+  "hotel", "hoteles", "hospital", "sanatorio", "clinica", "clinicas", "shopping", "sucursal bancaria", "patrimonio", "edificio historico", "catedral", "embajada",
+  "planta industrial", "refineria", "clausula de no repeticion", "alta de proveedor", "orden de compra", "licitacion", "pliego", "pliegos",
+];
 
-export const TEXTO_GAMA_ALTA = "Pidió multidireccional: cliente de gama alta";
+export const TEXTO_GAMA_ALTA = "Cliente de gama alta";
 
 /** Las de más de 7 letras se buscan también sin espacios («multi direccional»). */
 const GAMA_ALTA_COMPACTAS = PALABRAS_GAMA_ALTA.map((p) => normalizar(p).replace(/\s+/g, "")).filter((p) => p.length > 7);
 
-/** La palabra de gama alta que escribió el cliente, o null. */
+/** La palabra de gama alta que escribió el cliente, como está en la lista («multidireccional»), o null. */
 export function palabraGamaAlta(texto: string): string | null {
   const n = normalizar(texto);
   const exacta = primeraCoincidencia(n, PALABRAS_GAMA_ALTA);
-  if (exacta) return exacta;
+  if (exacta) return PALABRAS_GAMA_ALTA.find((p) => normalizar(p) === exacta) ?? exacta;
   const compacto = n.replace(/\s+/g, "");
   const hit = GAMA_ALTA_COMPACTAS.find((p) => compacto.includes(p));
-  return hit ?? null;
+  return hit ? (PALABRAS_GAMA_ALTA.find((p) => normalizar(p).replace(/\s+/g, "") === hit) ?? hit) : null;
 }
 
 const MESES = "enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre";
@@ -228,7 +236,9 @@ const PALABRAS: { codigo: CodigoAlerta; texto: string; terminos: (string | RegEx
       /(?:^|[^a-z])(urgen[a-z]*|apurad[a-z]*|inmediat[a-z]*)/,
       "lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "sabados", "domingo", "domingos", "finde", "fin de semana", "feriado",
       "manana", "pasado manana", "para hoy", "hoy mismo", "desde hoy", "hoy a la", "hoy a las", "esta semana", "semana que viene", "proxima semana",
-      "semana proxima", "cuanto antes", "lo antes posible", "ya mismo", "fecha", "plazo", "cuando arman", "cuando pueden", "cuando lo arman",
+      // «plazo» no: es el tiempo de obra («el plazo es de 2 meses»), que Sofía pregunta para
+      // la bandeja (JS, 16/10). Una duración no es una fecha.
+      "semana proxima", "cuanto antes", "lo antes posible", "ya mismo", "fecha", "cuando arman", "cuando pueden", "cuando lo arman",
       new RegExp(`(?:^|[^a-z])((?:para|en|desde|hasta|antes de|despues de|principios de|fines de|fin de|mediados de) (?:${MESES}))(?![a-z])`),
       /(?:^|[^a-z0-9])((?:el|para el|desde el|hasta el|el dia) \d{1,2})(?![0-9a-z])/,
       /(?:^|[^0-9])(\d{1,2} ?\/ ?\d{1,2})(?![0-9])/,
@@ -241,10 +251,13 @@ const PALABRAS: { codigo: CodigoAlerta; texto: string; terminos: (string | RegEx
   },
   {
     codigo: "otro_trabajo",
-    texto: "Pide algo más que una bandeja de 3 m (andamio, pintura, pisos…)",
+    texto: "Pide algo más que una bandeja de 3 m (andamio, pisos…)",
+    // «pintar» y «silleta» no: la bandeja sola para silleteros («bandeja para pintar el frente con
+    // silleta») es justo la fácil (JS, 16/10, D1 del análisis de chats). Lo que la saca es pedir
+    // andamio, y eso lo atrapan «andami…» y necesitaAndamio, que tiene que ser false.
     terminos: [
-      /(?:^|[^a-z])(andami[a-z]*|pint[aou][a-z]*|demol[a-z]*|apuntal[a-z]*)/,
-      "pisos", "fachada", "torre", "colgante", "silleta", "balancin", "escalera", "tribuna", "escenario", "evento", "cuerpos", "cuerpo", "modulos",
+      /(?:^|[^a-z])(andami[a-z]*|demol[a-z]*|apuntal[a-z]*)/,
+      "pisos", "fachada", "torre", "colgante", "balancin", "escalera", "tribuna", "escenario", "evento", "cuerpos", "cuerpo", "modulos",
       "tablones", "tablon", "ruedas", "media sombra", "puntales", "doble bandeja", "bandeja doble", "techo",
     ],
   },
@@ -273,7 +286,7 @@ export function escanearPalabras(texto: string): AlertaPalabra[] {
     if (palabra) alertas.push({ codigo: p.codigo, palabra, texto: p.texto });
   }
   const gama = palabraGamaAlta(texto);
-  if (gama) alertas.push({ codigo: "gama_alta", palabra: gama, texto: TEXTO_GAMA_ALTA });
+  if (gama) alertas.push({ codigo: "gama_alta", palabra: gama, texto: `${TEXTO_GAMA_ALTA} («${gama}»)` });
   // Los signos se pierden al normalizar: «!!!» se mira en el texto original.
   const gritos = /!{3,}/.exec(texto ?? "");
   if (gritos && !alertas.some((a) => a.codigo === "enojo")) alertas.push({ codigo: "enojo", palabra: gritos[0], texto: "Parece enojado o es un reclamo" });
@@ -354,9 +367,10 @@ export function esFacil(ficha: FichaCliente, contexto: ContextoFacil): Resultado
   const alertas = ficha.mensajesCliente.flatMap(escanearPalabras);
   const porCodigo = new Map<string, AlertaPalabra>();
   for (const a of alertas) if (!porCodigo.has(a.codigo)) porCodigo.set(a.codigo, a);
-  // Gama alta (multidireccional): su propio renglón, aunque el código lo haya marcado antes en
-  // la ficha (el webhook) y no esté en estos mensajes.
-  if (porCodigo.has("gama_alta") || ficha.segmento === "gama_alta") trabajo("gama_alta", false, TEXTO_GAMA_ALTA);
+  // Gama alta: su propio renglón, aunque el código lo haya marcado antes en la ficha (el
+  // webhook) y no esté en estos mensajes.
+  const gama = porCodigo.get("gama_alta");
+  if (gama || ficha.segmento === "gama_alta") trabajo("gama_alta", false, gama?.texto ?? TEXTO_GAMA_ALTA);
   porCodigo.delete("gama_alta");
   for (const a of porCodigo.values()) trabajo("palabras", false, `${a.texto} («${a.palabra}»)`);
   const BANDERA: Record<BanderaIA, string> = {

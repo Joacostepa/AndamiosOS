@@ -445,7 +445,7 @@ test("gama alta: «multi direccional» marca la charla por código y Sofía reci
   m.escribe("Hola, necesitamos andamio multi direccional para una obra de 8 pisos");
   await atenderCharla(m.deps(guion(respuestaTexto("Perfecto. ¿Cuántos metros de frente tiene y para qué es la estructura?"))), m.charla.id);
   assert.equal(m.charla.ficha.segmento, "gama_alta");
-  assert.match(ultimoAviso(m), /Cliente de gama alta: pidió multidireccional/);
+  assert.match(ultimoAviso(m), /Cliente de gama alta \(multidireccional/);
 
   m.escribe("Son 30 metros, es para revocar. La arman ustedes, no tenemos memoria de cálculo");
   await atenderCharla(m.deps(guion(
@@ -453,7 +453,7 @@ test("gama alta: «multi direccional» marca la charla por código y Sofía reci
     respuestaTexto("Gracias. Ya se lo paso al equipo técnico: te escriben por este mismo chat."),
   )), m.charla.id);
   assert.equal(m.charla.estado, "derivada");
-  assert.equal(m.charla.motivo, "Gama alta (multidireccional)");
+  assert.equal(m.charla.motivo, "Gama alta");
 });
 
 test("sin multidireccional, el aviso no dice nada de gama alta", async () => {
@@ -462,4 +462,19 @@ test("sin multidireccional, el aviso no dice nada de gama alta", async () => {
   await atenderCharla(m.deps(guion(respuestaTexto("Dale. ¿Me pasás la dirección de la obra?"))), m.charla.id);
   assert.equal(m.charla.ficha.segmento, null);
   assert.doesNotMatch(ultimoAviso(m), /gama alta/i);
+});
+
+test("un contestador automático: ni saludo ni modelo, y queda leído (análisis de chats, D5)", async () => {
+  const m = crearMundo();
+  m.escribe("¡Hola! Gracias por comunicarte con Administración Delta. En este momento no estamos disponibles.");
+  const r = await atenderCharla(m.deps(guion()), m.charla.id);
+  assert.equal(r.resultado, "atendio");
+  assert.equal(m.salidas.length, 0);
+  assert.equal(m.pedidos.length, 0);
+  assert.equal(m.charla.iaSaludoAt, null, "no se gastó el saludo");
+  assert.ok(m.charla.iaLeidoHasta, "no se vuelve a leer");
+  // Si después escribe una persona, la charla arranca como siempre.
+  m.escribe("Hola, soy la administradora, necesitamos una bandeja");
+  await atenderCharla(m.deps(guion(respuestaTexto("¿Me pasás la dirección de la obra?"))), m.charla.id);
+  assert.deepEqual(m.salidas.map((s) => s.texto), [SALUDO_MARCELA, "¿Me pasás la dirección de la obra?"]);
 });

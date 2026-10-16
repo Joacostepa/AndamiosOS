@@ -419,7 +419,8 @@ const FALTANTES_DEL_ALTA = new Set(["cliente_nuevo", "cuit"]);
 
 const m = (n: number) => n.toLocaleString("es-AR", { maximumFractionDigits: 2 });
 
-function textos(direccion: string, metros: number, t: Tarifas, jornadas: number) {
+/** Referencia y secciones del PDF de la bandeja fácil (también al corregir los metros, aprobacion.ts). */
+export function textosBandejaFacil(direccion: string, metros: number, t: Tarifas, jornadas: number) {
   const minimo = metros < t.bandeja.minimoMl;
   const jd = `${m(jornadas)} jornada${jornadas === 1 ? "" : "s"}`;
   return {
@@ -494,7 +495,7 @@ export function armarBorradorFacil(ficha: FichaCliente, tarifas: Tarifas, opcion
   d.notasInternas = "Armado por el agente de clientes de WhatsApp (bandeja fácil): metros del catastro, tarifa vigente y jornadas fijas del parámetro.";
 
   if (metros && direccion) {
-    const tx = textos(direccion, metros, tarifas, p.jornadas);
+    const tx = textosBandejaFacil(direccion, metros, tarifas, p.jornadas);
     d.referencia = tx.referencia;
     d.seccion1 = tx.seccion1;
     d.seccion2 = tx.seccion2;

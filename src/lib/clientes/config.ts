@@ -1,8 +1,8 @@
 // La configuración de Sofía, de Parámetros (cotizacion_parametros, grupo agente_clientes). Puro,
-// con tests (config.test.ts).
+// con tests (en prompt.test.ts).
 //
 // EL INTERRUPTOR GENERAL ES `clientes_ia_activa`, Y ESTÁ APAGADO POR DEFECTO (0). Con 0, o si la
-// clave no existe (la migración 20261017000001 sin aplicar), todo sigue como la etapa 0: las
+// clave no existe (la migración 20261017000002 sin aplicar), todo sigue como la etapa 0: las
 // charlas nuevas entran «Sin tomar», nadie contesta solo y el código no toca las tablas nuevas.
 // Es también el «Pausar la IA» de §7: con 0, lo que llegue a una charla que estaba con Sofía
 // pasa a una persona.

@@ -16,7 +16,8 @@ const BUCKET = "comercial";
 /** Lo que WhatsApp muestra como foto; lo demás sale como documento. */
 const IMAGENES = new Set(["image/jpeg", "image/png"]);
 
-export type Autor = { autor: "persona"; autorId: string; autorNombre: string } | { autor: "sistema" };
+/** persona: alguien del equipo · sistema: un texto fijo del servidor · ia: lo que escribió Sofía. */
+export type Autor = { autor: "persona"; autorId: string; autorNombre: string } | { autor: "sistema" } | { autor: "ia" };
 
 export class SinNumeroClientes extends Error {
   constructor() {
@@ -59,7 +60,7 @@ async function salir(
   try {
     const wamid = await mandar();
     await db.from("cli_hilo").update({ wamid: wamid || null, estado: "enviado", estado_at: new Date().toISOString() }).eq("id", id).eq("estado", "enviando");
-    const quien = autor.autor === "persona" ? autor.autorNombre : "ABA";
+    const quien = autor.autor === "persona" ? autor.autorNombre : autor.autor === "ia" ? "Sofía" : "ABA";
     await db
       .from("cli_conversaciones")
       .update({ ultimo_mensaje_at: momento, ultimo_resumen: `${quien}: ${resumen}`.slice(0, 160), updated_at: momento })

@@ -253,7 +253,8 @@ export async function atenderCharla(deps: DepsSofia, conversacionId: string, opc
       const entrantes = nuevos.filter((n) => n.direccion === "entrante");
       if (!entrantes.length && !devuelta) break;
       // Un audio que todavía se está bajando: lo levanta el turno que dispara su transcripción.
-      if (entrantes.some((e) => e.tipo === "audio" && !e.transcripcion && e.adjunto?.pendiente === true)) {
+      // (Si ya falló un intento, no se espera: Sofía le pide que lo escriba o pasa la charla.)
+      if (entrantes.some((e) => e.tipo === "audio" && !e.transcripcion && e.adjunto?.pendiente === true && !e.adjunto?.error)) {
         quedoPendiente = true;
         break;
       }

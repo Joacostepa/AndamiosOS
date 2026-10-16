@@ -1,8 +1,10 @@
 // WhatsApp de clientes: lo que llega al número de clientes (docs/clientes/crm-propuesta.md
 // §7 y §13, etapa 0). Lo llama el webhook, después de validar la firma de Meta.
 //
-// SIN IA: lo que entra se anota en la bandeja y nadie contesta solo. La única excepción es
-// un mensaje fijo, apagado por defecto (WHATSAPP_CLIENTES_RESPUESTA_FIJA=1).
+// SIN IA (etapa 0): lo que entra se anota en la bandeja y nadie contesta solo. La única
+// excepción es un mensaje fijo, apagado por defecto (WHATSAPP_CLIENTES_RESPUESTA_FIJA=1).
+// CON SOFÍA (paso 5, clientes_ia_activa = 1): las charlas nuevas entran en «bot» y, después del
+// 200, el webhook le pasa cada charla a Sofía (agente.ts). El mensaje fijo no sale: saluda ella.
 //
 // DOS TIEMPOS, porque Meta quiere un 200 enseguida:
 //   1. en el pedido (recibirMensajes): el registro crudo en whatsapp_entrantes (una vez por
@@ -35,8 +37,11 @@ export type AvisoClientes = {
   statuses?: StatusMeta[];
 };
 
-/** Lo que queda para después del 200. */
-export type Pendientes = { adjuntos: string[]; respuestasFijas: { conversacionId: string; telefono: string }[] };
+/** Lo que queda para después del 200. `charlas`: las que recibieron algo (para Sofía). */
+export type Pendientes = { adjuntos: string[]; respuestasFijas: { conversacionId: string; telefono: string }[]; charlas: string[] };
+
+/** Cómo entra una charla nueva (o una cerrada que se reabre sin dueño): con Sofía o sin tomar. */
+export type OpcionesRecibir = { iaActiva: boolean };
 
 type Charla = { id: string; nueva: boolean; reabierta: boolean; optOut: boolean };
 
@@ -45,7 +50,8 @@ type Charla = { id: string; nueva: boolean; reabierta: boolean; optOut: boolean 
  * tenía, o queda sin tomar); si nunca escribió, una nueva. Una sola abierta por teléfono: si dos
  * mensajes simultáneos la crean a la vez, el índice único frena al segundo y se vuelve a buscar.
  */
-export async function charlaPara(db: SupabaseClient, telefono: string, numero: string, nombre: string | null): Promise<Charla> {
+export async function charlaPara(db: SupabaseClient, telefono: string, numero: string, nombre: string | null, o: OpcionesRecibir = { iaActiva: false }): Promise<Charla> {
+  const sinDueno = o.iaActiva ? "bot" : "derivada";
   const tels = variantesTelefono(telefono);
   for (let intento = 0; intento < 3; intento++) {
     const { data: abierta, error: e1 } = await db
@@ -78,9 +84,12 @@ export async function charlaPara(db: SupabaseClient, telefono: string, numero: s
       const { data: reabierta, error } = await db
         .from("cli_conversaciones")
         .update({
-          estado: cerrada.asistente_id ? "humano" : "derivada",
+          estado: cerrada.asistente_id ? "humano" : sinDueno,
           cerrada_at: null,
           cerrada_por: null,
+          // Con Sofía, una charla que se reabre es una charla nueva para el saludo (las columnas
+          // ia_* existen sólo con la migración del paso 5, que va antes de prender el interruptor).
+          ...(o.iaActiva ? { ia_saludo_at: null, motivo: null } : {}),
           ...(nombre ? { nombre_perfil: nombre } : {}),
           updated_at: ahora(),
         })
@@ -97,7 +106,7 @@ export async function charlaPara(db: SupabaseClient, telefono: string, numero: s
 
     const { data: nueva, error } = await db
       .from("cli_conversaciones")
-      .insert({ telefono, phone_number_id: numero, nombre_perfil: nombre, estado: "derivada" })
+      .insert({ telefono, phone_number_id: numero, nombre_perfil: nombre, estado: sinDueno })
       .select("id")
       .single();
     if (!error && nueva) return { id: nueva.id as string, nueva: true, reabierta: false, optOut: false };
@@ -119,10 +128,11 @@ export async function anotarEvento(db: SupabaseClient, conversacionId: string, t
 }
 
 /** Paso 1, dentro del pedido de Meta. Si falla algo, el error vuelve como 500 y Meta reintenta. */
-export async function recibirMensajes(db: SupabaseClient, valor: AvisoClientes, numero: string): Promise<Pendientes> {
-  const pend: Pendientes = { adjuntos: [], respuestasFijas: [] };
+export async function recibirMensajes(db: SupabaseClient, valor: AvisoClientes, numero: string, o: OpcionesRecibir = { iaActiva: false }): Promise<Pendientes> {
+  const pend: Pendientes = { adjuntos: [], respuestasFijas: [], charlas: [] };
   const nombres = new Map((valor.contacts ?? []).map((c) => [c.wa_id ?? "", c.profile?.name?.trim() || null]));
-  const fijaActivada = respuestaFijaActivada();
+  // Con Sofía prendida, el saludo lo manda ella: el mensaje fijo de la etapa 0 no sale.
+  const fijaActivada = respuestaFijaActivada() && !o.iaActiva;
 
   for (const m of valor.messages ?? []) {
     if (!m?.id || !m.from) continue;
@@ -142,7 +152,8 @@ export async function recibirMensajes(db: SupabaseClient, valor: AvisoClientes, 
       if (previo?.cli_conversacion_id) continue;
     }
 
-    const charla = await charlaPara(db, m.from, numero, nombres.get(m.from) ?? null);
+    const charla = await charlaPara(db, m.from, numero, nombres.get(m.from) ?? null, o);
+    if (!pend.charlas.includes(charla.id)) pend.charlas.push(charla.id);
     const e = leerEntrante(m);
     const momento = enviado ?? ahora();
     const { data: fila, error: eHilo } = await db

@@ -2,14 +2,14 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { filtrar, pastilla, telefonoLegible, type CharlaListada } from "./vista.ts";
+import { filtrar, gamaAltaEsperando, pastilla, telefonoLegible, type CharlaListada } from "./vista.ts";
 
 const YO = "u-joaquin";
 const SANDRA = { id: "u-sandra", nombre: "Sandra" };
 let n = 0;
 const charla = (x: Partial<CharlaListada>): CharlaListada => ({
   id: `c${++n}`, telefono: "5491155551234", nombre: null, estado: "derivada", motivo: null, asistente: null,
-  ultimoMensajeAt: null, ultimoEntranteAt: null, ultimoResumen: null, sinLeer: 0, optOut: false, createdAt: "2026-10-15T12:00:00Z", ...x,
+  ultimoMensajeAt: null, ultimoEntranteAt: null, ultimoResumen: null, sinLeer: 0, optOut: false, createdAt: "2026-10-15T12:00:00Z", segmento: null, tarea: null, ...x,
 });
 
 test("pastilla: los cinco estados, y «sin tomar» en la etapa 0", () => {
@@ -38,4 +38,20 @@ test("filtrar: «Para vos» son las mías y las sin tomar; todos ven todas", () 
 test("telefonoLegible: celulares argentinos y el resto", () => {
   assert.equal(telefonoLegible("5491155551234"), "+54 9 11 5555-1234");
   assert.equal(telefonoLegible("14155550000"), "+14155550000");
+});
+
+test("filtrar: las de gama alta que esperan a una persona van arriba en «Para vos» y «Todas»", () => {
+  const comun = charla({ estado: "derivada" });
+  const mia = charla({ estado: "humano", asistente: { id: YO, nombre: "Joaquín" } });
+  const altaSinTomar = charla({ estado: "derivada", segmento: "gama_alta" });
+  const altaEsperaOk = charla({ estado: "espera_ok", segmento: "gama_alta" });
+  const altaConSofia = charla({ estado: "bot", segmento: "gama_alta" });
+  const altaDeSandra = charla({ estado: "humano", asistente: SANDRA, segmento: "gama_alta" });
+  const altaCerrada = charla({ estado: "cerrada", segmento: "gama_alta" });
+  const todas = [comun, mia, altaConSofia, altaSinTomar, altaDeSandra, altaEsperaOk, altaCerrada];
+  assert.deepEqual(filtrar(todas, "vos", YO).map((c) => c.id), [altaSinTomar.id, altaEsperaOk.id, comun.id, mia.id]);
+  assert.deepEqual(filtrar(todas, "todas", YO).map((c) => c.id), [altaSinTomar.id, altaEsperaOk.id, comun.id, mia.id, altaConSofia.id, altaDeSandra.id]);
+  assert.deepEqual(filtrar(todas, "cerradas", YO).map((c) => c.id), [altaCerrada.id]);
+  assert.equal(gamaAltaEsperando(altaConSofia), false, "con Sofía no espera a nadie");
+  assert.equal(gamaAltaEsperando(comun), false);
 });

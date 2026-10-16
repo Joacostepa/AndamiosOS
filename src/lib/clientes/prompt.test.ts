@@ -83,3 +83,48 @@ test("config: sin la migración (o con 0) está apagada; los valores por defecto
   // Sólo 1 prende: un 2 o un 0,5 por error no la prende.
   assert.equal(configSofiaDesdeFilas([{ clave: "clientes_ia_activa", valor: 2 }]).activa, false);
 });
+
+test("sistemaSofia: instrucciones, datos de ABA y guía de trabajos; la caché en el último", () => {
+  const b = sistemaSofia("- Oficina: Maturín 2570", "- Siempre, antes que nada, preguntá qué trabajo va a hacer y dónde");
+  assert.equal(b.length, 3);
+  assert.equal(b[0].text, INSTRUCCIONES);
+  assert.match(b[1].text, /^# Datos de ABA/);
+  assert.match(b[2].text, /^# Cómo entender el trabajo del cliente\n- Siempre, antes que nada/);
+  assert.equal(b[0].cache_control, undefined);
+  assert.equal(b[1].cache_control, undefined);
+  assert.deepEqual(b[2].cache_control, { type: "ephemeral", ttl: "1h" });
+  // Sólo la guía: dos bloques; la guía vacía no suma nada.
+  const g = sistemaSofia(null, "- Guía");
+  assert.equal(g.length, 2);
+  assert.match(g[1].text, /^# Cómo entender el trabajo del cliente/);
+  assert.equal(sistemaSofia("- Datos", "  ").length, 2);
+  // Las instrucciones remiten al bloque: entender el trabajo es lo primero.
+  assert.match(INSTRUCCIONES, /Lo primero es entender qué trabajo va a hacer el cliente.*Cómo entender el trabajo del cliente/);
+});
+
+test("config: la guía de trabajos sale de clientes_guia_trabajos", () => {
+  assert.equal(configSofiaDesdeFilas([]).guiaTrabajos, null);
+  assert.equal(configSofiaDesdeFilas([{ clave: "clientes_guia_trabajos", valor: null, texto: " - Preguntá el trabajo " }]).guiaTrabajos, "- Preguntá el trabajo");
+});
+
+test("resumenFicha: la tarea del cliente", () => {
+  assert.ok(resumenFicha({ ...fichaSofiaVacia(), tarea: "pintar la fachada" }).includes("Tarea del cliente: pintar la fachada"));
+});
+
+test("el aviso del turno: las indicaciones de gama alta sólo cuando la charla lo es", () => {
+  const base = {
+    ahora: "viernes 16/10 10:40", enHorario: true, cuandoSigue: null, horario: "de lunes a viernes de 8 a 17", saludoEnviado: null,
+    pendientes: [], notasEquipo: [], noLlego: null, devuelta: false,
+  };
+  const normal = contextoDelTurno({ ...base, ficha: fichaSofiaVacia() });
+  assert.doesNotMatch(normal, /gama alta/i);
+  const alta = contextoDelTurno({ ...base, ficha: { ...fichaSofiaVacia(), segmento: "gama_alta" } });
+  assert.match(alta, /Cliente de gama alta: pidió multidireccional/);
+  assert.match(alta, /más técnico y cuidado/);
+  assert.match(alta, /de usted si él escribe de usted/);
+  assert.match(alta, /superficie o metros, altura, para qué es la estructura, plazo, si la arma ABA/);
+  assert.match(alta, /planos o necesitan memoria de cálculo/);
+  assert.match(alta, /Nunca prepares una cotización fácil/);
+  assert.match(alta, /derivar_a_persona con el motivo gama_alta/);
+  assert.equal(detectarPlata(alta).bloquea, false);
+});

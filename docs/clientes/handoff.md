@@ -21,6 +21,7 @@ Para retomar, decí: «Leé docs/clientes/handoff.md y seguimos con el CRM de Wh
 | Paso 5: Sofía | `turno.ts`, `prompt.ts`, `herramientas.ts`, `agente.ts`; el núcleo compartido con el asistente en `src/lib/ia/nucleo.ts` | ✅ En producción y **prendida** (`clientes_ia_activa = 1`) para las pruebas internas de JS |
 | Paso 6: la tarjeta de aprobación y «Revisar charlas» | `aprobacion.ts`, `aprobar.ts`, `tarjeta-aprobacion.tsx`, `/comercial/clientes/revisar` | ✅ En producción. **Todavía no se aprobó nada de verdad** |
 | Saludo según la hora | `saludo.ts` (`saludoDelMomento`, `saludoInicial`) | ✅ En producción |
+| Guía de trabajos y «Gama alta» (pedido de JS, 16/10) | `clientes_guia_trabajos` (bloque del system), `tarea` en la ficha; `PALABRAS_GAMA_ALTA` en `facil.ts`, `ficha.segmento`, pastilla y orden en `vista.ts` | Rama `feat/sofia-trabajo-y-gama-alta`. **Falta aplicar `20261019000002`** (sin ella, Sofía sigue sin la guía; lo demás anda) |
 
 **El saludo** (decisión de JS, 15 y 16/10). Lo arma el código, una sola vez, y el nombre sale del perfil de WhatsApp:
 > ¡Buen día Carlos! Acá Sofía, asistente digital de Andamios Buenos Aires. Contame en qué te puedo ayudar.

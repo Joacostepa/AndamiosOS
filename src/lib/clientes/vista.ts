@@ -18,6 +18,10 @@ export type CharlaListada = {
   sinLeer: number;
   optOut: boolean;
   createdAt: string;
+  /** «gama_alta» si pidió multidireccional (de la ficha; lo marca el código). */
+  segmento: "gama_alta" | null;
+  /** Qué trabajo va a hacer el cliente, como lo anotó Sofía (de la ficha). */
+  tarea: string | null;
 };
 
 export type AdjuntoVista =
@@ -94,12 +98,23 @@ export function pastilla(c: Pick<CharlaListada, "estado" | "motivo" | "asistente
 
 export type Filtro = "vos" | "todas" | "cerradas";
 
-/** «Para vos»: las mías y las que nadie tomó. Todos ven todas (es una familia: sólo filtros). */
+/** Gama alta y esperando a una persona (sin tomar o esperando un OK): va arriba de la lista. */
+export function gamaAltaEsperando(c: Pick<CharlaListada, "estado" | "segmento">): boolean {
+  return c.segmento === "gama_alta" && (c.estado === "derivada" || c.estado === "espera_ok");
+}
+
+/**
+ * «Para vos»: las mías y las que nadie tomó. Todos ven todas (es una familia: sólo filtros).
+ * En «Para vos» y «Todas», las de gama alta que esperan a una persona van primero; el resto
+ * queda en el orden en que llegó (el último mensaje arriba).
+ */
 export function filtrar(charlas: CharlaListada[], filtro: Filtro, yo: string): CharlaListada[] {
   if (filtro === "cerradas") return charlas.filter((c) => c.estado === "cerrada");
   const abiertas = charlas.filter((c) => c.estado !== "cerrada");
-  if (filtro === "todas") return abiertas;
-  return abiertas.filter((c) => c.estado === "derivada" || c.estado === "espera_ok" || (c.estado === "humano" && c.asistente?.id === yo));
+  const elegidas = filtro === "todas"
+    ? abiertas
+    : abiertas.filter((c) => c.estado === "derivada" || c.estado === "espera_ok" || (c.estado === "humano" && c.asistente?.id === yo));
+  return [...elegidas.filter(gamaAltaEsperando), ...elegidas.filter((c) => !gamaAltaEsperando(c))];
 }
 
 /** El teléfono como se lee en Argentina: +54 9 11 5555-1234. Lo demás, con un + adelante. */

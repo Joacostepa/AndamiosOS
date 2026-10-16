@@ -80,6 +80,8 @@ export function parametrosFacilDesdeFilas(filas: FilaParametro[]): ParametrosFac
 
 export type TipoTrabajo = "bandeja" | "alquiler_simple" | "fachada" | "otro";
 export type TipoCliente = "particular" | "consorcio" | "empresa";
+/** gama_alta: pidió multidireccional (JS, 16/10). Lo marca el código, nunca la IA. */
+export type Segmento = "gama_alta";
 
 /** Lo que la IA puede marcar con anotar_ficha (§13). Sólo bajan a «no fácil». */
 export type BanderaIA = "descuento" | "fecha" | "nocturno" | "condiciones" | "enojo" | "seguridad" | "persona" | "tramo" | "otro_trabajo";
@@ -115,12 +117,18 @@ export type FichaCliente = {
   /** Todo lo que escribió el cliente (y la transcripción de sus audios). */
   mensajesCliente: string[];
   banderas: BanderaIA[];
+  /**
+   * «gama_alta» si el cliente escribió una de PALABRAS_GAMA_ALTA. Lo pone el código (el webhook
+   * y el turno, con palabraGamaAlta); la IA no lo puede tocar. Va arriba en la bandeja y nunca
+   * es fácil.
+   */
+  segmento: Segmento | null;
 };
 
 export function fichaVacia(): FichaCliente {
   return {
     nombre: null, telefono: null, cuit: null, partnerId: null, tipoCliente: null, trabajo: null, alturaBandeja: null, necesitaAndamio: null,
-    direccion: null, enCaba: null, lote: null, cubreTodoElFrente: null, metrosCliente: null, mensajesCliente: [], banderas: [],
+    direccion: null, enCaba: null, lote: null, cubreTodoElFrente: null, metrosCliente: null, mensajesCliente: [], banderas: [], segmento: null,
   };
 }
 
@@ -139,9 +147,32 @@ export type ContextoFacil = {
 
 // ── Escaneo de palabras (F9) ────────────────────────────────────────────────────────────
 
-export type CodigoAlerta = "descuento" | "fecha" | "nocturno" | "otro_trabajo" | "esquina" | "tramo" | "enojo" | "seguridad" | "persona";
+export type CodigoAlerta = "descuento" | "fecha" | "nocturno" | "otro_trabajo" | "esquina" | "tramo" | "enojo" | "seguridad" | "persona" | "gama_alta";
 
 export type AlertaPalabra = { codigo: CodigoAlerta; palabra: string; texto: string };
+
+/**
+ * Lo que marca a un cliente de gama alta (JS, 16/10: «si piden andamios multidireccionales, ya
+ * es un cliente que busca profesionalismo, servicio, de gama alta»). Para sumar una marca o un
+ * sistema, agregalo acá, escrito como se dice: se compara normalizado (sin tildes, mayúsculas
+ * ni letras dobles) y también sin espacios, así «multi direccional» o «multi-direccional» cuentan.
+ */
+export const PALABRAS_GAMA_ALTA: readonly string[] = ["multidireccional", "multidireccionales", "sistema multidireccional"];
+
+export const TEXTO_GAMA_ALTA = "Pidió multidireccional: cliente de gama alta";
+
+/** Las de más de 7 letras se buscan también sin espacios («multi direccional»). */
+const GAMA_ALTA_COMPACTAS = PALABRAS_GAMA_ALTA.map((p) => normalizar(p).replace(/\s+/g, "")).filter((p) => p.length > 7);
+
+/** La palabra de gama alta que escribió el cliente, o null. */
+export function palabraGamaAlta(texto: string): string | null {
+  const n = normalizar(texto);
+  const exacta = primeraCoincidencia(n, PALABRAS_GAMA_ALTA);
+  if (exacta) return exacta;
+  const compacto = n.replace(/\s+/g, "");
+  const hit = GAMA_ALTA_COMPACTAS.find((p) => compacto.includes(p));
+  return hit ?? null;
+}
 
 const MESES = "enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre";
 
@@ -238,6 +269,8 @@ export function escanearPalabras(texto: string): AlertaPalabra[] {
     const palabra = primeraCoincidencia(n, p.terminos);
     if (palabra) alertas.push({ codigo: p.codigo, palabra, texto: p.texto });
   }
+  const gama = palabraGamaAlta(texto);
+  if (gama) alertas.push({ codigo: "gama_alta", palabra: gama, texto: TEXTO_GAMA_ALTA });
   // Los signos se pierden al normalizar: «!!!» se mira en el texto original.
   const gritos = /!{3,}/.exec(texto ?? "");
   if (gritos && !alertas.some((a) => a.codigo === "enojo")) alertas.push({ codigo: "enojo", palabra: gritos[0], texto: "Parece enojado o es un reclamo" });
@@ -253,7 +286,7 @@ export function escanearPalabras(texto: string): AlertaPalabra[] {
 
 export type CodigoMotivo =
   | "trabajo" | "palabras" | "bandera" | "caba" | "frente" | "esquina" | "cubre_frente" | "tope_ml" | "metros_cliente"
-  | "historial" | "conflicto_canal" | "deuda" | "cuenta_socio" | "empresa";
+  | "historial" | "conflicto_canal" | "deuda" | "cuenta_socio" | "empresa" | "gama_alta";
 
 /** Una línea de «Por qué es fácil» en la tarjeta del vendedor: ✓ si ok, ✗ si no. */
 export type Motivo = {
@@ -318,6 +351,10 @@ export function esFacil(ficha: FichaCliente, contexto: ContextoFacil): Resultado
   const alertas = ficha.mensajesCliente.flatMap(escanearPalabras);
   const porCodigo = new Map<string, AlertaPalabra>();
   for (const a of alertas) if (!porCodigo.has(a.codigo)) porCodigo.set(a.codigo, a);
+  // Gama alta (multidireccional): su propio renglón, aunque el código lo haya marcado antes en
+  // la ficha (el webhook) y no esté en estos mensajes.
+  if (porCodigo.has("gama_alta") || ficha.segmento === "gama_alta") trabajo("gama_alta", false, TEXTO_GAMA_ALTA);
+  porCodigo.delete("gama_alta");
   for (const a of porCodigo.values()) trabajo("palabras", false, `${a.texto} («${a.palabra}»)`);
   const BANDERA: Record<BanderaIA, string> = {
     descuento: "La IA marcó: pide descuento o regatea",
@@ -331,7 +368,7 @@ export function esFacil(ficha: FichaCliente, contexto: ContextoFacil): Resultado
     otro_trabajo: "La IA marcó: pide otro trabajo",
   };
   for (const b of new Set(ficha.banderas)) trabajo("bandera", false, BANDERA[b] ?? `La IA marcó: ${b}`);
-  if (!porCodigo.size && !ficha.banderas.length) trabajo("palabras", true, "Sin palabras de alerta");
+  if (!porCodigo.size && !ficha.banderas.length && !motivos.some((x) => x.codigo === "gama_alta")) trabajo("palabras", true, "Sin palabras de alerta");
 
   // F2: CABA, según USIG.
   trabajo("caba", ficha.enCaba === true, ficha.enCaba === true ? "CABA" : ficha.enCaba === false ? "Fuera de CABA" : "Falta verificar que sea CABA");

@@ -9,7 +9,7 @@ import { tarifasDesdeParametros } from "../cotizador/tarifas.ts";
 import type { Lote } from "../catastro/caba.ts";
 import { chequeoLote, recalcular } from "../asistente/borrador.ts";
 import {
-  armarBorradorFacil, escanearPalabras, esFacil, fichaVacia, parametrosFacilDesdeFilas,
+  armarBorradorFacil, escanearPalabras, esFacil, fichaVacia, palabraGamaAlta, parametrosFacilDesdeFilas, PALABRAS_GAMA_ALTA,
   type ContextoFacil, type FichaCliente, type ParametrosFacil,
 } from "./facil.ts";
 
@@ -335,4 +335,43 @@ test("parámetros: se leen de las filas y cortan si falta una clave", () => {
   assert.deepEqual(parametrosFacilDesdeFilas(filas), { maxMl: 25, jornadas: 1, renderId: null, empresasConPersona: false });
   assert.throws(() => parametrosFacilDesdeFilas(filas.slice(1)), /agente_facil_max_ml/);
   assert.throws(() => parametrosFacilDesdeFilas(filas.filter((f) => f.clave !== "agente_facil_render")), /agente_facil_render/);
+});
+
+// ── Gama alta: pidió multidireccional (JS, 16/10) ───────────────────────────────────────
+
+test("gama alta: el escaneo encuentra «multidireccional» con sus variantes", () => {
+  for (const texto of [
+    "Necesito andamios multidireccionales para una obra",
+    "Cotizame un MULTIDIRECCIONAL",
+    "busco multidirecional para 8 pisos",
+    "¿Trabajan con multi direccional?",
+    "un andamio multi-direccional",
+    "Necesitamos sistema multidireccional",
+    "multidireccionaaal",
+  ]) {
+    const a = escanearPalabras(texto).find((x) => x.codigo === "gama_alta");
+    assert.ok(a, `«${texto}» debería marcar gama alta`);
+    assert.equal(a.texto, "Pidió multidireccional: cliente de gama alta");
+  }
+  for (const texto of ["Necesito una bandeja para la vereda", "andamio para pintar la fachada", "es en la calle Dirección 123"]) {
+    assert.ok(!escanearPalabras(texto).some((x) => x.codigo === "gama_alta"), `«${texto}» no es gama alta`);
+  }
+});
+
+test("gama alta: la lista se amplía en PALABRAS_GAMA_ALTA y palabraGamaAlta la usa", () => {
+  assert.ok(PALABRAS_GAMA_ALTA.includes("multidireccional"));
+  assert.ok(palabraGamaAlta("Quiero multidireccional"));
+  assert.equal(palabraGamaAlta("Quiero una bandeja"), null);
+});
+
+test("gama alta: esFacil da no fácil con el motivo, aunque el resto sea la bandeja de Marcela", () => {
+  const r = esFacil(marcela({ mensajesCliente: [...marcela().mensajesCliente, "¿Tienen andamio multidireccional?"] }), NUEVO);
+  assert.equal(r.facil, false);
+  assert.equal(r.trabajoFacil, false);
+  assert.ok(r.enContra.some((m) => m.codigo === "gama_alta" && m.texto === "Pidió multidireccional: cliente de gama alta"));
+  // Marcada en la ficha (por el webhook) aunque no esté en los mensajes: tampoco es fácil.
+  const marcada = esFacil(marcela({ segmento: "gama_alta" }), NUEVO);
+  assert.equal(marcada.facil, false);
+  assert.deepEqual(marcada.enContra.map((m) => m.codigo), ["gama_alta"]);
+  assert.ok(!marcada.motivos.some((m) => m.codigo === "palabras" && m.ok), "no dice «Sin palabras de alerta»");
 });

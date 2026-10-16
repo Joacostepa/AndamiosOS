@@ -54,7 +54,7 @@ function refrescar(qc: ReturnType<typeof useQueryClient>, id: string) {
 
 export function useCambiarEstado(id: string | null) {
   const qc = useQueryClient();
-  return useMutation<{ ok: true }, ErrorPedido, { accion: "tomar" | "soltar" | "cerrar"; forzar?: boolean }>({
+  return useMutation<{ ok: true }, ErrorPedido, { accion: "tomar" | "soltar" | "cerrar" | "devolver"; forzar?: boolean; nota?: string }>({
     mutationFn: (b) => pedir(`${BASE}/conversaciones/${id}`, { method: "PATCH", body: JSON.stringify(b) }),
     onSettled: () => id && refrescar(qc, id),
   });

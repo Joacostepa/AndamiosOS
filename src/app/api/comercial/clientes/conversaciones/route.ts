@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { nivelEn } from "@/lib/auth/acceso";
 import { numeroClientes } from "@/lib/whatsapp/api";
 import { listarCharlas } from "@/lib/clientes/bandeja";
+import { iaClientesActiva } from "@/lib/clientes/interruptor";
 import type { ListaCharlas } from "@/lib/clientes/vista";
 import { errorResponse, exigirModulo } from "../../_comun";
 
@@ -17,10 +18,12 @@ export async function GET() {
   const quien = await exigirModulo("clientes-whatsapp", "ver");
   if (quien instanceof NextResponse) return quien;
   try {
-    const charlas = await listarCharlas(createAdminClient());
+    const db = createAdminClient();
+    const [charlas, iaActiva] = await Promise.all([listarCharlas(db), iaClientesActiva(db)]);
     const cuerpo: ListaCharlas = {
       yo: quien.userId,
       puedeEditar: nivelEn(quien.acceso, "clientes-whatsapp") === "editar",
+      iaActiva,
       numeroConfigurado: !!numeroClientes(),
       charlas,
     };

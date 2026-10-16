@@ -151,14 +151,17 @@ export async function ultimoEntrante(db: SupabaseClient, conversacionId: string)
   return (data?.wamid as string | undefined) ?? null;
 }
 
-export type Accion = "tomar" | "soltar" | "cerrar";
+export type Accion = "tomar" | "soltar" | "cerrar" | "devolver";
 
 /**
- * Tomar, soltar o cerrar. Devuelve null si se pudo, o el motivo si no.
+ * Tomar, soltar, cerrar o devolver a Sofía. Devuelve null si se pudo, o el motivo si no.
  * - tomar: si la tiene otra persona, hace falta `forzar` (la pantalla pregunta antes).
  * - soltar: sólo quien la tiene; queda sin tomar.
  * - cerrar: cualquiera con el módulo en «editar». Si el cliente vuelve a escribir, se reabre
  *   y vuelve a quien la tenía.
+ * - devolver: la charla vuelve a Sofía («bot»), con una nota opcional que ella lee en su próximo
+ *   turno (queda como evento de la persona en el hilo). Si la tiene otra persona, no. La ruta
+ *   chequea antes que Sofía esté prendida.
  */
 export async function cambiarEstado(
   db: SupabaseClient,
@@ -166,6 +169,7 @@ export async function cambiarEstado(
   accion: Accion,
   yo: { id: string; nombre: string },
   forzar = false,
+  nota: string | null = null,
 ): Promise<string | null> {
   const ahora = new Date().toISOString();
   const mia = charla.estado === "humano" && charla.asistente?.id === yo.id;
@@ -201,6 +205,23 @@ export async function cambiarEstado(
     if (error) throw new Error(error.message);
     if (!data?.length) return "Alguien la cambió recién. Volvé a mirar.";
     await anotarEvento(db, charla.id, `${yo.nombre} soltó la charla: queda sin tomar.`, yo.id);
+    return null;
+  }
+  if (accion === "devolver") {
+    if (charla.estado === "bot") return null;
+    if (charla.estado === "cerrada") return "La charla está cerrada: si el cliente vuelve a escribir, se reabre.";
+    if (charla.estado === "humano" && charla.asistente && charla.asistente.id !== yo.id) return `La tiene ${charla.asistente.nombre}: que la devuelva ella.`;
+    let q = db
+      .from("cli_conversaciones")
+      .update({ estado: "bot", asistente_id: null, tomada_at: null, motivo: null, updated_at: ahora })
+      .eq("id", charla.id)
+      .eq("estado", charla.estado);
+    q = charla.asistente ? q.eq("asistente_id", charla.asistente.id) : q.is("asistente_id", null);
+    const { data, error } = await q.select("id");
+    if (error) throw new Error(error.message);
+    if (!data?.length) return "Alguien la cambió recién. Volvé a mirar.";
+    const n = nota?.trim();
+    await anotarEvento(db, charla.id, `${yo.nombre} devolvió la charla a Sofía.${n ? ` Nota para Sofía: ${n}` : ""}`, yo.id);
     return null;
   }
   // cerrar

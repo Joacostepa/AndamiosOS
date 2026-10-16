@@ -35,6 +35,7 @@ export type AdjuntoVista =
 export type ItemHilo = {
   id: string;
   direccion: "entrante" | "saliente" | "evento";
+  /** ia: lo que escribió Sofía · sistema: un texto fijo del servidor · persona: alguien del equipo. */
   autor: "cliente" | "persona" | "sistema" | "ia" | "plantilla";
   /** El nombre de quien escribió (persona). */
   autorNombre: string | null;
@@ -51,6 +52,8 @@ export type ItemHilo = {
 export type ListaCharlas = {
   yo: string;
   puedeEditar: boolean;
+  /** Sofía prendida (clientes_ia_activa = 1). */
+  iaActiva?: boolean;
   /** Si falta WHATSAPP_CLIENTES_PHONE_NUMBER_ID, no se puede mandar nada. */
   numeroConfigurado: boolean;
   charlas: CharlaListada[];
@@ -59,6 +62,8 @@ export type ListaCharlas = {
 export type DetalleCharla = {
   yo: string;
   puedeEditar: boolean;
+  /** Sofía prendida: se puede «Devolver a Sofía». */
+  iaActiva?: boolean;
   numeroConfigurado: boolean;
   charla: CharlaListada;
   items: ItemHilo[];
@@ -66,13 +71,13 @@ export type DetalleCharla = {
 
 export type Tono = "gris" | "ambar" | "coral" | "rojo";
 
-/** La pastilla de cada estado (crm-propuesta.md §7). En la etapa 0 no hay IA: «derivada» es «Sin tomar». */
+/** La pastilla de cada estado (crm-propuesta.md §7). «derivada» es «Sin tomar», con el motivo si lo hay. */
 export function pastilla(c: Pick<CharlaListada, "estado" | "motivo" | "asistente">, yo: string): { texto: string; tono: Tono } {
   switch (c.estado) {
     case "bot":
-      return { texto: "Atiende la IA", tono: "gris" };
+      return { texto: "Atiende Sofía (IA)", tono: "gris" };
     case "espera_ok":
-      return { texto: "Espera tu OK", tono: "ambar" };
+      return { texto: c.motivo ? `Espera tu OK · ${c.motivo}` : "Espera tu OK", tono: "ambar" };
     case "humano":
       if (!c.asistente) return { texto: "Tomada", tono: "coral" };
       return { texto: c.asistente.id === yo ? "La tenés vos" : `La tiene ${c.asistente.nombre}`, tono: "coral" };

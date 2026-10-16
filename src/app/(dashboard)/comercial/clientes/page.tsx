@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, Hand, Loader2, Lock, MessageCircle, TriangleAlert, Undo2 } from "lucide-react";
+import { ArrowLeft, Bot, Hand, Loader2, Lock, MessageCircle, TriangleAlert, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useSeguirAbajo } from "@/components/asistente/hilo";
@@ -20,8 +20,11 @@ import { telefonoLegible, type Filtro } from "@/lib/clientes/vista";
 // En el celular, la lista ocupa la pantalla y la charla se abre encima (con «Charlas» para
 // volver); en la compu, lista a la izquierda y charla a la derecha.
 //
-// SIN IA todavía: no hay tarjetas de aprobación, ficha ni «Devolver a la IA». Lo nuevo entra
-// «Sin tomar»; quien lo toma (o le escribe) pasa a tenerlo, y lo puede soltar o cerrar.
+// Sin Sofía (etapa 0, clientes_ia_activa = 0): lo nuevo entra «Sin tomar»; quien lo toma (o le
+// escribe) pasa a tenerlo, y lo puede soltar o cerrar. Con Sofía (paso 5): lo nuevo entra con
+// ella; lo que escribe se ve en celeste, distinto de lo que escribe una persona. Si alguien toma
+// la charla (o le escribe), Sofía se calla; «Devolver a Sofía» se la devuelve, con una nota
+// opcional para ella. Las tarjetas de aprobación son el paso 6.
 
 function Bandeja() {
   const router = useRouter();
@@ -90,13 +93,21 @@ function Charla({ id, ahora, onVolver }: { id: string; ahora: number; onVolver: 
   const cambiar = useCambiarEstado(id);
   const [cajaRef, contenidoRef] = useSeguirAbajo(id, cambiar.isPending);
   const d = detalle.data;
+  // «Devolver a Sofía»: se abre un renglón para dejarle una nota (opcional).
+  const [devolviendo, setDevolviendo] = useState(false);
+  const [nota, setNota] = useState("");
 
-  const accion = (a: "tomar" | "soltar" | "cerrar", forzar = false) =>
+  const accion = (a: "tomar" | "soltar" | "cerrar" | "devolver", forzar = false) =>
     cambiar.mutate(
-      { accion: a, forzar },
+      { accion: a, forzar, ...(a === "devolver" && nota.trim() ? { nota: nota.trim() } : {}) },
       {
         onSuccess: () => {
           if (a === "cerrar") toast.success("Charla cerrada", { description: "Si el cliente vuelve a escribir, se reabre." });
+          if (a === "devolver") {
+            setDevolviendo(false);
+            setNota("");
+            toast.success("La charla volvió a Sofía", { description: "Sigue ella. Si la tomás de nuevo, se calla." });
+          }
         },
         onError: (e) => {
           // La tiene otra persona: se pregunta antes de sacársela.
@@ -121,6 +132,7 @@ function Charla({ id, ahora, onVolver }: { id: string; ahora: number; onVolver: 
   const nombre = c.nombre || telefonoLegible(c.telefono);
   const mia = c.estado === "humano" && c.asistente?.id === d.yo;
   const deOtro = c.estado === "humano" && !!c.asistente && c.asistente.id !== d.yo;
+  const puedeDevolver = !!d.iaActiva && d.puedeEditar && !deOtro && (c.estado === "humano" || c.estado === "derivada" || c.estado === "espera_ok");
 
   return (
     <>
@@ -147,6 +159,11 @@ function Charla({ id, ahora, onVolver }: { id: string; ahora: number; onVolver: 
                   <Hand /> Tomar
                 </Button>
               )}
+              {puedeDevolver && (
+                <Button variant="outline" className="h-10 px-3" onClick={() => setDevolviendo((x) => !x)} disabled={cambiar.isPending} title="Que siga Sofía" aria-label="Devolver a Sofía">
+                  <Bot /> <span className="hidden sm:inline">Devolver a Sofía</span>
+                </Button>
+              )}
               {c.estado !== "cerrada" && (
                 <Button variant="outline" className="h-10 px-3" onClick={() => accion("cerrar")} disabled={cambiar.isPending} aria-label="Cerrar la charla">
                   <Lock /> <span className="hidden sm:inline">Cerrar</span>
@@ -159,6 +176,28 @@ function Charla({ id, ahora, onVolver }: { id: string; ahora: number; onVolver: 
           <PastillaEstado charla={c} yo={d.yo} />
           {c.estado !== "cerrada" && <PastillaVentana ultimoEntranteAt={c.ultimoEntranteAt} ahora={ahora} />}
         </div>
+        {devolviendo && puedeDevolver && (
+          <form
+            className="flex flex-wrap items-center gap-2 pt-1.5 pb-1"
+            onSubmit={(e) => {
+              e.preventDefault();
+              accion("devolver");
+            }}
+          >
+            <input
+              value={nota}
+              onChange={(e) => setNota(e.target.value)}
+              maxLength={500}
+              placeholder="Nota para Sofía (opcional): «ya le expliqué el permiso, que junte el CUIT»"
+              aria-label="Nota para Sofía"
+              className="h-10 min-w-0 flex-1 rounded-md border border-border bg-background px-3 text-[14px]"
+            />
+            <Button type="submit" className="h-10" disabled={cambiar.isPending}>
+              {cambiar.isPending ? <Loader2 className="animate-spin" /> : <Bot />} Devolver
+            </Button>
+            <Button type="button" variant="ghost" className="h-10" onClick={() => setDevolviendo(false)}>Cancelar</Button>
+          </form>
+        )}
       </header>
 
       <div ref={cajaRef} className="min-h-0 flex-1 overflow-y-auto bg-muted/30 px-3 py-4 sm:px-6">

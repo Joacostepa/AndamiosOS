@@ -20,7 +20,7 @@ seguimos con lo que falta". **Empezar por § "15/10 a la noche", § "15/10", § 
   (la captura muestra el chip con el tilde), pero el desplegable quedaba abierto debajo de
   "Representando a:" y tapaba las solapas. El clic en "Tareas pendientes" caía en el chip de
   TECNO ESTRUCTURAS S.A. Ni Escape ni un clic en el margen lo cierran.
-- **Arreglo (`fed06d3`):** `entrar` toca la flecha `expand_more` del selector (nunca la X `close` de
+- **Arreglo (`9edc7e4`):** `entrar` toca la flecha `expand_more` del selector (nunca la X `close` de
   al lado, que borra la elección), controla que se haya cerrado y que diga EMPRENDI, y si no frena
   con un error claro. En `tad-presentar.mjs` el clic en la empresa del modal de "Iniciar trámite" es
   forzado, por si ese modal también trae chips (no se sabe: la presentación pasó igual).
@@ -57,7 +57,7 @@ seguimos con lo que falta". **Empezar por § "15/10 a la noche", § "15/10", § 
   a que el texto lo reciba y se rinde. Nuestro código no cambiaba desde el 15/09.
 - **Arreglo (`1bbedb6`, en `main`):** `entrar` en `robot/tad-comun.mjs` hace clic forzado en el radio
   del chip (o en el texto si no hay radio) y, si la pantalla pide "Confirmar/Continuar/Aceptar/Ingresar",
-  lo toca. Probado a la noche: elegía bien pero no alcanzaba (§ "15/10 a la noche", `fed06d3`).
+  lo toca. Probado a la noche: elegía bien pero no alcanzaba (§ "15/10 a la noche", `9edc7e4`).
 - ~~Pendiente: reinstalar en la Mac mini.~~ Hecho el 15/10 a las 19:08 desde la misma Mac (la ruta
   que figuraba acá era otra, ver § "15/10 a la noche").
 - **Cómo saber si anduvo:** el aviso amarillo desaparece de la lista en la vuelta siguiente. Si sigue,

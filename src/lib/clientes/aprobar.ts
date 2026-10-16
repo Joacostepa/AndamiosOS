@@ -295,9 +295,9 @@ function tarjetaDe(f: Fila, charla: Charla, ctx: Contexto, iaActiva: boolean, no
         ? { tecnico: a.tecnico, asistente: a.asistente, motivo: a.motivo, regla: a.regla, requiereConfirmacion: a.requiereConfirmacion, tambienTrabajoCon: a.tambienTrabajoCon ?? [] }
         : null,
       opciones: [
-        ...PAREJAS_15_10.parejas.map((p) => ({ tecnico: p.tecnico, asistente: p.asistente, siguienteEnTurno: p.tecnico === siguiente })),
+        ...PAREJAS_15_10.parejas.map((p) => ({ tecnico: p.tecnico as string | null, asistente: p.asistente as string | null, siguienteEnTurno: p.tecnico === siguiente })),
         { tecnico: null, asistente: PAREJAS_15_10.asistenteSimple, siguienteEnTurno: false },
-      ],
+      ].map((o) => ({ ...o, textoCliente: textoPareja({ ...o, trato: (charla.ficha.trato ?? null) as Trato }) })),
       textoCliente: a ? textoPareja({ asistente: a.asistente, tecnico: a.tecnico, trato: (charla.ficha.trato ?? null) as Trato }) : null,
       avisarPorDefecto: f.payload.avisarCliente !== false,
     };

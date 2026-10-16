@@ -54,6 +54,8 @@ export type ListaCharlas = {
   puedeEditar: boolean;
   /** Sofía prendida (clientes_ia_activa = 1). */
   iaActiva?: boolean;
+  /** Ve «Revisar charlas» (el auditor, §7). */
+  esAdmin?: boolean;
   /** Si falta WHATSAPP_CLIENTES_PHONE_NUMBER_ID, no se puede mandar nada. */
   numeroConfigurado: boolean;
   charlas: CharlaListada[];

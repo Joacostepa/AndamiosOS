@@ -43,7 +43,7 @@ export type TarjetaTecnico = {
   disponibilidad: string | null;
   propuesta: (ParejaVista & { motivo: string; regla: string; requiereConfirmacion: boolean; tambienTrabajoCon: string[] }) | null;
   /** Las parejas que se pueden elegir con «Elegir otra». */
-  opciones: (ParejaVista & { siguienteEnTurno: boolean })[];
+  opciones: (ParejaVista & { siguienteEnTurno: boolean; textoCliente: string | null })[];
   /** El texto fijo que le llega al cliente al confirmar (con la pareja propuesta). */
   textoCliente: string | null;
   avisarPorDefecto: boolean;

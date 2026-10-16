@@ -37,7 +37,7 @@ import {
 import type { ConfigSofia } from "./config.ts";
 import { ahoraLegible, atencion, describirHorario } from "./horario.ts";
 import { NADA, contextoDelTurno, sistemaSofia } from "./prompt.ts";
-import { esSoloSaludo, saludoInicial, textoSeguridad, TEXTO_ERROR, TEXTO_PASO_A_PERSONA } from "./saludo.ts";
+import { esContestadorAutomatico, esSoloSaludo, saludoInicial, textoSeguridad, TEXTO_ERROR, TEXTO_PASO_A_PERSONA } from "./saludo.ts";
 import { revisarSalida, type HallazgoSalida } from "./filtro-salida.ts";
 import { puedeTextoLibre } from "./ventana.ts";
 import { palabraGamaAlta } from "./facil.ts";
@@ -276,6 +276,13 @@ export async function atenderCharla(deps: DepsSofia, conversacionId: string, opc
       res.resultado = "atendio";
       await repo.escribiendo?.(charla.id);
 
+      // ── Un contestador automático: ni saludo ni modelo (análisis de chats, D5) ──
+      if (!devuelta && entrantes.every((e) => e.tipo === "text" && esContestadorAutomatico(e.texto))) {
+        await repo.evento(charla.id, "Sofía no contestó: es una respuesta automática de otro número.");
+        await repo.avanzarCursor(charla.id, nuevos.at(-1)!.creado);
+        break;
+      }
+
       // ── El saludo, una vez, armado por el código ──
       let saludoEnviado: string | null = null;
       if (!charla.iaSaludoAt) {
@@ -370,7 +377,7 @@ async function unaTanda(
     const t = e.tipo === "audio" ? e.transcripcion : e.texto;
     if (t?.trim() && (e.tipo === "text" || e.tipo === "audio" || e.tipo === "image" || e.tipo === "document")) {
       ficha.mensajesCliente.push(t.trim());
-      // Gama alta (multidireccional): lo marca el código, no el modelo. Se guarda con la ficha.
+      // Gama alta (PALABRAS_GAMA_ALTA): lo marca el código, no el modelo. Se guarda con la ficha.
       if (palabraGamaAlta(t)) ficha.segmento = "gama_alta";
     }
   }

@@ -18,7 +18,7 @@ export type CharlaListada = {
   sinLeer: number;
   optOut: boolean;
   createdAt: string;
-  /** «gama_alta» si pidió multidireccional (de la ficha; lo marca el código). */
+  /** «gama_alta» si escribió una de PALABRAS_GAMA_ALTA (de la ficha; lo marca el código). */
   segmento: "gama_alta" | null;
   /** Qué trabajo va a hacer el cliente, como lo anotó Sofía (de la ficha). */
   tarea: string | null;
@@ -103,9 +103,21 @@ export function gamaAltaEsperando(c: Pick<CharlaListada, "estado" | "segmento">)
   return c.segmento === "gama_alta" && (c.estado === "derivada" || c.estado === "espera_ok");
 }
 
+/** Los motivos de derivación que van arriba (MOTIVOS_DERIVACION: «Urgente · …», «Quiere avanzar»). */
+const MOTIVOS_PRIORITARIOS = /Urgente|Quiere avanzar/;
+
+/**
+ * Espera a una persona y no puede esperar: gama alta, un desprendimiento o un cliente que quiere
+ * avanzar (análisis de chats, D3: la demora es la causa de pérdida que más se podría evitar).
+ */
+export function esPrioritaria(c: Pick<CharlaListada, "estado" | "segmento" | "motivo">): boolean {
+  if (gamaAltaEsperando(c)) return true;
+  return (c.estado === "derivada" || c.estado === "espera_ok") && MOTIVOS_PRIORITARIOS.test(c.motivo ?? "");
+}
+
 /**
  * «Para vos»: las mías y las que nadie tomó. Todos ven todas (es una familia: sólo filtros).
- * En «Para vos» y «Todas», las de gama alta que esperan a una persona van primero; el resto
+ * En «Para vos» y «Todas», las prioritarias que esperan a una persona van primero; el resto
  * queda en el orden en que llegó (el último mensaje arriba).
  */
 export function filtrar(charlas: CharlaListada[], filtro: Filtro, yo: string): CharlaListada[] {
@@ -114,7 +126,7 @@ export function filtrar(charlas: CharlaListada[], filtro: Filtro, yo: string): C
   const elegidas = filtro === "todas"
     ? abiertas
     : abiertas.filter((c) => c.estado === "derivada" || c.estado === "espera_ok" || (c.estado === "humano" && c.asistente?.id === yo));
-  return [...elegidas.filter(gamaAltaEsperando), ...elegidas.filter((c) => !gamaAltaEsperando(c))];
+  return [...elegidas.filter(esPrioritaria), ...elegidas.filter((c) => !esPrioritaria(c))];
 }
 
 /** El teléfono como se lee en Argentina: +54 9 11 5555-1234. Lo demás, con un + adelante. */

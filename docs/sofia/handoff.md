@@ -93,7 +93,7 @@ JS **no quiere** correr los guiones de ataque (`scripts/test-agente-clientes.mts
 2. **La plantilla de Meta «Tu presupuesto está listo»**, con el PDF de encabezado, para mandar con la ventana de 24 h cerrada. Hoy queda «falta la plantilla».
 3. **Paso 2b:** la búsqueda del cliente por teléfono en Odoo (historial y deuda, F5/F7), el «lead sin orden» y el botón «Presupuestar». Hoy la tarjeta dice «no se pudo revisar».
 4. **Cargar en Parámetros** las cuentas de los socios y «Hoy no estoy»; las parejas están en el código (`PAREJAS_15_10`).
-5. **Confirmar con JS el apellido de Gabriel** (`TECNICOS_COMPLETOS` en `aprobacion.ts`).
+5. ~~Confirmar con JS el apellido de Gabriel~~: JS confirmó el 16/10 que «Gabriel Stepansky» está bien.
 6. **El token permanente** antes del 14/12.
 7. **Más adelante:**
    - el paso 8, que es el seguimiento con plantillas y consentimiento;
@@ -108,7 +108,19 @@ JS **no quiere** correr los guiones de ataque (`scripts/test-agente-clientes.mts
      4. anonimizar (nombres, teléfonos, CUIT, direcciones) y analizar con un equipo de agentes: tono de JS, preguntas por tipo de trabajo, objeciones, señales de cada tipo de cliente, preguntas frecuentes, por qué se pierden. El resultado es una propuesta de cambios a la guía de trabajos, los datos de ABA y las instrucciones de Sofía, que **aprueba JS**. Los precios viejos no se usan;
      5. al terminar: **volver los respaldos del iPhone a iCloud** y **borrar la copia local** (Administrar respaldos…).
    - **Ojo:** el iPhone tiene unos 247 GB usados y la Mac unos 79 GB libres. La copia entra sólo si las fotos están en Fotos de iCloud. Si no entra, la alternativa paga es iMazing.
-9. **Sumar palabras de «gama alta»** si JS las pasa (marcas de sistemas): `PALABRAS_GAMA_ALTA` en `facil.ts`.
+   - **Avance del 16/10 a la noche:**
+     - La copia se hizo en un SSD externo (`/Volumes/IphoneSSD`, APFS) con `idevicebackup2` (Homebrew, `libimobiledevice`), porque Finder se trababa. iOS 26 pide el código del iPhone en cada respaldo: hay que ponerlo enseguida, si no la copia falla con «version exchange».
+     - Se cortó a los 37 GB, a propósito: la base de WhatsApp Business ya estaba copiada.
+     - **La fuente quedó en `~/clientes-sofia/fuente/`** (fuera del repo y fuera de iCloud, carpeta 700): `ChatStorage.sqlite`, `ContactsV2.sqlite` y `LID.sqlite` de WhatsApp Business. Son 133.554 mensajes y 4.017 chats individuales, del 23/12/2014 al 16/10/2026. Para abrirla: `sqlite3 "file:…?immutable=1"`.
+     - El iPhone también tiene el WhatsApp común (2,8 M de mensajes, personal de JS): **no se toca**.
+     - **Pendiente de limpieza:** volver a activar Respaldo en iCloud en el iPhone; deshacer el enlace `~/Library/Application Support/MobileSync/Backup` y renombrar `Backup.viejo` (lo corre JS en Terminal); borrar los 37 GB del SSD cuando la exportación esté verificada.
+     - **Exportado y anonimizado** con un script propio (SQL directo): `~/clientes-sofia/anon/chats/Cxxxx.txt`, `anon/indice.csv` y `privado/mapa.csv` (id → teléfono y nombre, sólo para JS). Son 3.995 chats: 3.007 de clientes, 627 dudosos, 352 otros y 9 del equipo. Quedan algunos nombres de pila sin tapar (los que los clientes escriben en minúscula): sirve para uso local, pero hay que mejorarlo antes de compartir algo.
+     - **Analizado** por un equipo de 36 agentes (28 lotes → 6 síntesis → propuesta → revisión), el 16/10 a la noche. Resultado: **[analisis-chats-propuesta.md](./analisis-chats-propuesta.md)**, sin datos personales (verificado contra la agenda; JS pidió que vaya al repo). Las síntesis por tema quedan en `~/clientes-sofia/analisis/`.
+     - **JS contestó las preguntas el 16/10** (están arriba de todo en la propuesta) y los cambios se aplicaron en la rama `feat/sofia-analisis-chats`: el prompt, los motivos nuevos de derivación, la prioridad en la bandeja, el detector de contestadores automáticos, la bandeja para silleteros, el tiempo de obra y la gama alta ampliada. Los textos de Parámetros van en la migración `20261020000001`, que sólo pisa el texto si sigue siendo el original (lo era el 16/10).
+9. ~~Sumar palabras de «gama alta»~~: hecho en la rama `feat/sofia-analisis-chats` (Layher, instituciones, industria y licitaciones, aprobado por JS el 16/10). Se suman más en `PALABRAS_GAMA_ALTA` de `facil.ts`.
+10. **Búsquedas laborales por Slack** (idea de JS, 16/10): que Sofía junte los datos de quien busca trabajo (nombre, puesto, zona, experiencia) y los mande ordenados por Slack al responsable de personal. Hoy sólo le dice «le paso tu mensaje al responsable de personal» y deriva con `fuera_de_tema`.
+11. **Lo que quedó de la propuesta del análisis de chats:** D4 (campos nuevos en la ficha: altura en metros, tiempo de obra, quién arma, silleteros, etapa de decisión, quién decide, origen), D7 (cliente que vuelve, depende del paso 2b), D8 (aviso si un pedido pasa 24 a 48 h sin respuesta) y la bandera `urgente` para «para hoy» y «para mañana».
+12. ~~Confirmar el echeq~~: JS confirmó el 16/10 que se acepta (transferencia o echeq, nunca efectivo).
 
 ## Historia: la charla del 12/10
 

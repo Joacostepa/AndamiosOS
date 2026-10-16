@@ -167,6 +167,19 @@ test("derivar_a_persona: motivos cerrados; seguridad silencia al modelo y es urg
   assert.equal(otro.esError, true);
 });
 
+test("derivar_a_persona: los motivos del análisis de chats (D3); desprendimiento es urgente pero sin el texto de guardia", async () => {
+  const d = await ejecutarHerramientaSofia("derivar_a_persona", { motivo: "desprendimiento", resumen: "Se cae revoque de un balcón, Av. Siempreviva 742" }, contexto());
+  assert.ok(d.efecto?.estado === "derivada");
+  assert.equal(d.efecto.motivo, "Urgente · se desprende algo del edificio");
+  assert.equal(d.efecto.urgente, true, "avisa al equipo");
+  assert.equal(d.efecto.textoFijo, null, "no le manda al cliente el texto de guardia");
+  assert.equal(d.efecto.silenciar, false);
+  for (const [motivo, etiqueta] of [["quiere_avanzar", "Quiere avanzar"], ["obra_en_curso", "Obra en curso (retiro, desarme, renovación)"], ["administracion", "Facturas, pagos o cobranzas"], ["estafa_pago", "Víctima de una estafa que ya pagó"]]) {
+    const r = await ejecutarHerramientaSofia("derivar_a_persona", { motivo, resumen: "x" }, contexto());
+    assert.ok(r.efecto?.estado === "derivada" && r.efecto.motivo === etiqueta && !r.efecto.urgente && r.efecto.textoFijo === null, motivo);
+  }
+});
+
 test("ningún resultado, en ningún caso, trae plata", async () => {
   const resultados: string[] = [];
   const correr = async (n: string, i: unknown, c = contexto(MARCELA)) => resultados.push((await ejecutarHerramientaSofia(n, i, c)).contenido);
@@ -216,7 +229,7 @@ test("gama alta: preparar_cotizacion_facil nunca deja una cotización, y la deri
 
   const propio = await ejecutarHerramientaSofia("derivar_a_persona", { motivo: "gama_alta", resumen: "Multidireccional para 8 pisos, 30 m de frente." }, c);
   assert.equal(propio.efecto?.estado, "derivada");
-  assert.equal(propio.efecto?.estado === "derivada" && propio.efecto.motivo, "Gama alta (multidireccional)");
+  assert.equal(propio.efecto?.estado === "derivada" && propio.efecto.motivo, "Gama alta");
   const otro = await ejecutarHerramientaSofia("derivar_a_persona", { motivo: "pide_persona", resumen: "Quiere hablar con alguien." }, c);
   assert.equal(otro.efecto?.estado === "derivada" && otro.efecto.motivo, "Gama alta · Pide hablar con una persona");
   const seguridad = await ejecutarHerramientaSofia("derivar_a_persona", { motivo: "seguridad_obra", resumen: "Tabla floja." }, c);

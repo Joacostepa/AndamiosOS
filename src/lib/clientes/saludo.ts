@@ -123,6 +123,18 @@ export function esSoloSaludo(texto: string | null | undefined): boolean {
   return SALUDOS.test(n);
 }
 
+/**
+ * ¿Es la respuesta automática de otra empresa («Gracias por comunicarte con…», «En este momento
+ * no estamos disponibles»)? Entonces no se saluda ni se le contesta: en los chats de ABA hubo un
+ * ida y vuelta de un año con un bot (análisis de chats, D5). Si después escribe una persona, la
+ * charla sigue como siempre.
+ */
+export function esContestadorAutomatico(texto: string | null | undefined): boolean {
+  const n = normalizar(texto ?? "").replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+  if (!n) return false;
+  return /gracias por (?:comunicarte|comunicarse|contactarte|contactarse|contactarnos|escribirnos|tu mensaje|su mensaje)|en este momento no (?:estamos|podemos|nos encontramos)|(?:este es un )?mensaje automatico|respuesta automatica|nuestro horario de atencion es|(?:te|le) responderemos a la brevedad|(?:te|le) responderemos (?:lo antes posible|en breve)/.test(n);
+}
+
 /** Seguridad en una obra armada (§6, decisión 21): lo manda el servidor, no la IA. */
 export function textoSeguridad(telefonoGuardia: string | null | undefined): string {
   const tel = telefonoGuardia?.trim();

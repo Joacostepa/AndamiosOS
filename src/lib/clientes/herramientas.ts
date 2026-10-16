@@ -152,10 +152,20 @@ const esquemaTecnico = z.object({
   disponibilidad: texto(200).optional(),
 }).strict();
 
+/**
+ * Los motivos que puede elegir Sofía. Los de abajo de gama_alta que no estaban salen del análisis
+ * de los chats (docs/sofia/analisis-chats-propuesta.md, D3), aprobado por JS el 16/10.
+ * «Urgente» y «Quiere avanzar» van arriba en la bandeja (vista.ts, esPrioritaria).
+ */
 export const MOTIVOS_DERIVACION = {
   seguridad_obra: "Seguridad en obra · urgente",
+  desprendimiento: "Urgente · se desprende algo del edificio",
+  quiere_avanzar: "Quiere avanzar",
   pide_persona: "Pide hablar con una persona",
-  gama_alta: "Gama alta (multidireccional)",
+  gama_alta: "Gama alta",
+  obra_en_curso: "Obra en curso (retiro, desarme, renovación)",
+  administracion: "Facturas, pagos o cobranzas",
+  estafa_pago: "Víctima de una estafa que ya pagó",
   enojo_reclamo: "Enojo o reclamo",
   trabajo_no_facil: "Trabajo no fácil",
   regateo_o_pago: "Regateo, descuento o condiciones de pago",
@@ -314,20 +324,20 @@ const POR_QUE_NO: Record<string, string> = {
   cubre_frente: "es sólo una parte del frente",
   tope_ml: "el frente es más largo que lo que se cotiza directo",
   metros_cliente: "los metros que dijo no coinciden con el catastro",
-  gama_alta: "es un cliente de gama alta (pidió multidireccional)",
+  gama_alta: "es un cliente de gama alta",
 };
 
 const QUE_HACER_GAMA_ALTA =
   "Es un cliente de gama alta: no se cotiza directo. Juntá lo básico (superficie o metros, altura, para qué es, plazo, si arma ABA, planos o memoria de cálculo) y usá derivar_a_persona con el motivo gama_alta.";
 
 const QUE_DECIR_PENDIENTE =
-  "Decile que ya tenés todo y que se lo confirmás en un rato con el presupuesto (fuera de horario, cuándo le escribe una persona). Sin montos, sin plazos y sin nombres.";
+  "Decile que ya tenés todo, que el presupuesto lo prepara el equipo y que le llega por este mismo chat (fuera de horario, cuándo le escribe una persona). Sin montos, sin plazos («en un rato» también es un plazo) y sin nombres.";
 
 async function prepararCotizacionFacil(_i: z.infer<typeof esquemaNada>, { ficha, servicios }: ContextoHerramienta): Promise<ResultadoHerramienta> {
   if (ficha.trabajo && ficha.trabajo !== "bandeja") {
     return { contenido: json({ estado: "no_corresponde", que_hacer: "Esto es para bandejas. Para otros trabajos usá preparar_pedido_simple o pedir_tecnico." }) };
   }
-  // Gama alta (multidireccional): nunca una cotización fácil, aunque falten datos.
+  // Gama alta: nunca una cotización fácil, aunque falten datos.
   if (ficha.segmento === "gama_alta") return { contenido: json({ estado: "no_es_facil", motivos: [POR_QUE_NO.gama_alta], que_hacer: QUE_HACER_GAMA_ALTA }) };
   const falta = faltantesBandeja(ficha);
   if (falta.length) return { contenido: json({ estado: "faltan_datos", preguntar: falta }) };
@@ -459,8 +469,11 @@ async function pedirTecnico(i: z.infer<typeof esquemaTecnico>, { ficha, servicio
 
 async function derivarAPersona(i: z.infer<typeof esquemaDerivar>, { ficha }: ContextoHerramienta): Promise<ResultadoHerramienta> {
   const seguridad = i.motivo === "seguridad_obra";
-  // Una charla de gama alta lo dice en el motivo, elija el modelo el que elija (salvo seguridad).
-  const gamaAlta = ficha.segmento === "gama_alta" && !seguridad && i.motivo !== "gama_alta";
+  // Desprendimiento: urgente para el equipo, pero sin el texto de guardia (es un pedido, no una
+  // obra de ABA con riesgo) y Sofía sigue hablando.
+  const urgente = seguridad || i.motivo === "desprendimiento";
+  // Una charla de gama alta lo dice en el motivo, elija el modelo el que elija (salvo los urgentes).
+  const gamaAlta = ficha.segmento === "gama_alta" && !urgente && i.motivo !== "gama_alta";
   const motivo = gamaAlta ? `Gama alta · ${MOTIVOS_DERIVACION[i.motivo]}` : MOTIVOS_DERIVACION[i.motivo];
   return {
     contenido: seguridad
@@ -470,7 +483,7 @@ async function derivarAPersona(i: z.infer<typeof esquemaDerivar>, { ficha }: Con
       estado: "derivada",
       motivo,
       resumen: i.resumen,
-      urgente: seguridad,
+      urgente,
       textoFijo: seguridad ? "seguridad" : null,
       silenciar: seguridad,
     },

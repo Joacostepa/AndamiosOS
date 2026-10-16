@@ -351,7 +351,7 @@ test("gama alta: el escaneo encuentra «multidireccional» con sus variantes", (
   ]) {
     const a = escanearPalabras(texto).find((x) => x.codigo === "gama_alta");
     assert.ok(a, `«${texto}» debería marcar gama alta`);
-    assert.equal(a.texto, "Pidió multidireccional: cliente de gama alta");
+    assert.match(a.texto, /^Cliente de gama alta \(«(sistema )?multidireccional(es)?»\)$/);
   }
   for (const texto of ["Necesito una bandeja para la vereda", "andamio para pintar la fachada", "es en la calle Dirección 123"]) {
     assert.ok(!escanearPalabras(texto).some((x) => x.codigo === "gama_alta"), `«${texto}» no es gama alta`);
@@ -368,7 +368,7 @@ test("gama alta: esFacil da no fácil con el motivo, aunque el resto sea la band
   const r = esFacil(marcela({ mensajesCliente: [...marcela().mensajesCliente, "¿Tienen andamio multidireccional?"] }), NUEVO);
   assert.equal(r.facil, false);
   assert.equal(r.trabajoFacil, false);
-  assert.ok(r.enContra.some((m) => m.codigo === "gama_alta" && m.texto === "Pidió multidireccional: cliente de gama alta"));
+  assert.ok(r.enContra.some((m) => m.codigo === "gama_alta" && m.texto === "Cliente de gama alta («multidireccional»)"));
   // Marcada en la ficha (por el webhook) aunque no esté en los mensajes: tampoco es fácil.
   const marcada = esFacil(marcela({ segmento: "gama_alta" }), NUEVO);
   assert.equal(marcada.facil, false);
@@ -384,4 +384,31 @@ test("un nombre del equipo cuenta sólo si el cliente lo pide, no si es su propi
   for (const x of ["Quiero hablar con Jorge", "pasame con Sandra por favor", "¿Está Gabriel?", "necesito a Rocío", "Joaquín me puede llamar?", "me comunico con Joaquín"]) {
     assert.equal(pide(x), true, x);
   }
+});
+
+// ── Análisis de los chats (docs/sofia/analisis-chats-propuesta.md), aprobado por JS el 16/10 ──
+
+test("gama alta: Layher, instituciones, industria y licitaciones también cuentan (D6)", () => {
+  for (const texto of ["¿Trabajan con sistema Layher?", "es para la fachada de un hotel", "Somos de un hospital de zona norte", "obra en un sanatorio",
+    "trabajo en una planta industrial", "nos piden cláusula de no repetición", "les mando la orden de compra", "es para una licitación pública", "adjunto el pliego"]) {
+    assert.ok(escanearPalabras(texto).some((a) => a.codigo === "gama_alta"), `«${texto}» es gama alta`);
+  }
+  for (const texto of ["necesito un banco de trabajo", "es para el frente de mi casa", "quiero pintar el balcón"]) {
+    assert.ok(!escanearPalabras(texto).some((a) => a.codigo === "gama_alta"), `«${texto}» no es gama alta`);
+  }
+});
+
+test("la bandeja sola para silleteros no es «otro trabajo»: pintar y silleta ya no la sacan de fácil (D1)", () => {
+  for (const texto of ["necesito la bandeja para pintar el frente con silleta", "vamos a pintar con silleteros, sólo la bandeja", "es una bandeja para la pintura desde silleta"]) {
+    assert.ok(!escanearPalabras(texto).some((a) => a.codigo === "otro_trabajo"), texto);
+  }
+  // Pedir andamio sigue sacándola.
+  assert.ok(escanearPalabras("bandeja y andamio para pintar").some((a) => a.codigo === "otro_trabajo"));
+});
+
+test("el tiempo de obra no es una fecha: «el plazo es de 2 meses» no saca la bandeja de fácil (JS, 16/10)", () => {
+  for (const texto of ["el plazo de obra es de 2 meses", "calculamos unos 3 meses", "dura 45 días aprox"]) {
+    assert.ok(!escanearPalabras(texto).some((a) => a.codigo === "fecha"), texto);
+  }
+  assert.ok(escanearPalabras("la necesito para el lunes").some((a) => a.codigo === "fecha"));
 });

@@ -2,7 +2,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { filtrar, gamaAltaEsperando, pastilla, telefonoLegible, type CharlaListada } from "./vista.ts";
+import { esPrioritaria, filtrar, gamaAltaEsperando, pastilla, telefonoLegible, type CharlaListada } from "./vista.ts";
 
 const YO = "u-joaquin";
 const SANDRA = { id: "u-sandra", nombre: "Sandra" };
@@ -54,4 +54,15 @@ test("filtrar: las de gama alta que esperan a una persona van arriba en «Para v
   assert.deepEqual(filtrar(todas, "cerradas", YO).map((c) => c.id), [altaCerrada.id]);
   assert.equal(gamaAltaEsperando(altaConSofia), false, "con Sofía no espera a nadie");
   assert.equal(gamaAltaEsperando(comun), false);
+});
+
+test("filtrar: los urgentes y los que quieren avanzar también van arriba mientras esperan a una persona (análisis de chats, D3)", () => {
+  const comun = charla({ estado: "derivada", motivo: "Pide hablar con una persona" });
+  const avanza = charla({ estado: "derivada", motivo: "Quiere avanzar" });
+  const cae = charla({ estado: "derivada", motivo: "Urgente · se desprende algo del edificio" });
+  const avanzaGama = charla({ estado: "derivada", motivo: "Gama alta · Quiere avanzar" });
+  const tomada = charla({ estado: "humano", asistente: { id: YO, nombre: "Joaquín" }, motivo: "Quiere avanzar" });
+  assert.deepEqual(filtrar([comun, avanza, tomada, cae, avanzaGama], "todas", YO).map((c) => c.id), [avanza.id, cae.id, avanzaGama.id, comun.id, tomada.id]);
+  assert.equal(esPrioritaria(tomada), false, "si ya la tiene alguien, no espera");
+  assert.equal(esPrioritaria(comun), false);
 });

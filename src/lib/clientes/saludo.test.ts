@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { esSoloSaludo, nombreParaSaludo, saludoDelMomento, saludoInicial, textoSeguridad } from "./saludo.ts";
+import { esContestadorAutomatico, esSoloSaludo, nombreParaSaludo, saludoDelMomento, saludoInicial, textoSeguridad } from "./saludo.ts";
 import { detectarPlata } from "./filtro-salida.ts";
 
 test("el saludo exacto que decidió JS, con y sin nombre", () => {
@@ -128,4 +128,16 @@ test("buen día, buenas tardes o buenas noches según la hora de Buenos Aires", 
   assert.equal(saludoDelMomento(ba("20:00")), "Buenas noches");
   assert.equal(saludoDelMomento(ba("02:30")), "Buenas noches");
   assert.equal(saludoInicial("Joaquin", ba("21:15")), "¡Buenas noches Joaquin! Acá Sofía de Andamios Buenos Aires. Contame en qué te puedo ayudar.");
+});
+
+test("esContestadorAutomatico: las respuestas automáticas de otros números (análisis de chats, D5)", () => {
+  for (const t of [
+    "Gracias por comunicarte con Administración Pérez. En breve te respondemos.",
+    "¡Hola! Gracias por contactarnos. Nuestro horario de atención es de lunes a viernes de 9 a 18 hs.",
+    "En este momento no estamos disponibles. Te responderemos a la brevedad.",
+    "Este es un mensaje automático, por favor no responda.",
+  ]) assert.equal(esContestadorAutomatico(t), true, t);
+  for (const t of ["Hola, necesito una bandeja", "gracias!", "Gracias por la info, lo hablo con el consorcio", "en este momento estoy en la obra"]) {
+    assert.equal(esContestadorAutomatico(t), false, t);
+  }
 });

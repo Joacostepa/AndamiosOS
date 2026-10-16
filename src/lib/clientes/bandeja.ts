@@ -237,3 +237,19 @@ export async function cambiarEstado(
   await anotarEvento(db, charla.id, `${yo.nombre} cerró la charla.`, yo.id);
   return null;
 }
+
+/**
+ * Borra una charla entera, para volver a probar desde cero (pedido de JS, 16/10). Sólo admin.
+ * En cascada se van el hilo, la historia de Sofía (cli_api_mensajes) y las aprobaciones; los
+ * registros crudos de whatsapp_entrantes quedan, sin el vínculo. También borra los adjuntos de
+ * Storage (clientes/<id>/). NO toca Odoo (una orden que se aprobó queda) ni el WhatsApp del
+ * cliente: lo que ya le llegó sigue en su celular.
+ */
+export async function borrarCharla(db: SupabaseClient, id: string): Promise<void> {
+  const carpeta = `clientes/${id}`;
+  const { data: archivos } = await db.storage.from("comercial").list(carpeta, { limit: 1000 });
+  const paths = (archivos ?? []).map((a) => `${carpeta}/${a.name}`);
+  if (paths.length) await db.storage.from("comercial").remove(paths);
+  const { error } = await db.from("cli_conversaciones").delete().eq("id", id);
+  if (error) throw new Error(`No se pudo borrar la charla: ${error.message}`);
+}

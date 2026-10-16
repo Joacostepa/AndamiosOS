@@ -1,9 +1,9 @@
 import { after, NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { nivelEn } from "@/lib/auth/acceso";
+import { esAdmin, nivelEn } from "@/lib/auth/acceso";
 import { marcarLeido, numeroClientes } from "@/lib/whatsapp/api";
-import { cambiarEstado, leerCharla, leerHilo, nombresDe, ultimoEntrante } from "@/lib/clientes/bandeja";
+import { borrarCharla, cambiarEstado, leerCharla, leerHilo, nombresDe, ultimoEntrante } from "@/lib/clientes/bandeja";
 import { reintentarPendientes } from "@/lib/clientes/webhook";
 import { atenderConSofia } from "@/lib/clientes/agente";
 import { iaClientesActiva } from "@/lib/clientes/interruptor";
@@ -18,6 +18,8 @@ import { errorResponse, exigirModulo, invalido } from "../../../_comun";
 //       pregunta antes). «devolver»: la charla vuelve a Sofía (sólo con clientes_ia_activa = 1),
 //       con una nota opcional para ella; Sofía sigue después de responder (after), por eso la
 //       ruta tiene el plazo largo (un turno puede llevar hasta 265 s).
+// DELETE /api/comercial/clientes/conversaciones/:id — borra la charla entera para volver a
+//       probar desde cero (sólo admin). Ver borrarCharla en bandeja.ts.
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -49,7 +51,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
       after(() => reintentarPendientes(db, id).catch((e) => console.error("[clientes] reintentar", id, e)));
     }
 
-    const cuerpo: DetalleCharla = { yo: quien.userId, puedeEditar, iaActiva, numeroConfigurado: !!numero, charla: { ...charla, sinLeer: 0 }, items };
+    const cuerpo: DetalleCharla = { yo: quien.userId, puedeEditar, iaActiva, esAdmin: esAdmin(quien.acceso), numeroConfigurado: !!numero, charla: { ...charla, sinLeer: 0 }, items };
     return NextResponse.json(cuerpo);
   } catch (e) {
     return errorResponse(e);
@@ -82,6 +84,23 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     if (motivo) return NextResponse.json({ error: motivo }, { status: 409 });
     // Sofía retoma enseguida: lee lo que pasó mientras la tuvo una persona y la nota.
     if (accion === "devolver" && charla.estado !== "bot") after(() => atenderConSofia(db, id, { devuelta: true }).then(() => {}));
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    return errorResponse(e);
+  }
+}
+
+export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const { id } = await ctx.params;
+  if (!uuid.safeParse(id).success) return invalido("Id inválido");
+  const quien = await exigirModulo("clientes-whatsapp", "editar");
+  if (quien instanceof NextResponse) return quien;
+  if (!esAdmin(quien.acceso)) return NextResponse.json({ error: "Sólo un admin puede borrar una charla." }, { status: 403 });
+  try {
+    const db = createAdminClient();
+    const charla = await leerCharla(db, id);
+    if (!charla) return NextResponse.json({ error: "No existe esa charla." }, { status: 404 });
+    await borrarCharla(db, id);
     return NextResponse.json({ ok: true });
   } catch (e) {
     return errorResponse(e);

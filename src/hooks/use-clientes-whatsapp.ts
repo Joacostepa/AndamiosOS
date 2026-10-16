@@ -61,6 +61,18 @@ export function useCambiarEstado(id: string | null) {
   });
 }
 
+/** Borra la charla entera (sólo admin, para pruebas). */
+export function useBorrarCharla(id: string | null) {
+  const qc = useQueryClient();
+  return useMutation<{ ok: true }, ErrorPedido, void>({
+    mutationFn: () => pedir(`${BASE}/conversaciones/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      qc.removeQueries({ queryKey: ["clientes-charla", id] });
+      void qc.invalidateQueries({ queryKey: ["clientes-charlas"] });
+    },
+  });
+}
+
 export type ArchivoSubido = { path: string; mime: string; nombre: string };
 
 /** Sube un archivo para mandarle al cliente: URL firmada y directo a Storage. */

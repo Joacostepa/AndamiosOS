@@ -9,9 +9,11 @@ import { atenderCharla } from "./turno.ts";
 import { crearMundo, guion, respuestaHerramientas, respuestaTexto, resultadosDeHerramientas } from "./prueba-sofia.ts";
 import { detectarPlata } from "./filtro-salida.ts";
 import { INSTRUCCIONES } from "./prompt.ts";
-import { TEXTO_ERROR, TEXTO_PASO_A_PERSONA } from "./saludo.ts";
+import { saludoInicial, TEXTO_ERROR, TEXTO_PASO_A_PERSONA } from "./saludo.ts";
 
-const SALUDO_MARCELA = "¡Buen día Marcela! Acá Sofía, asistente digital de Andamios Buenos Aires. Contame en qué te puedo ayudar.";
+// El reloj de las pruebas marca las 10:30 de Buenos Aires (prueba-sofia.ts).
+const RELOJ = new Date("2026-10-15T13:30:00Z");
+const SALUDO_MARCELA = saludoInicial("Marcela", RELOJ);
 
 /** El último aviso de sistema que vio el modelo. */
 function ultimoAviso(m: ReturnType<typeof crearMundo>): string {
@@ -79,7 +81,7 @@ test("primer mensaje con pedido: saludo y respuesta, en ese orden; el saludo una
   m.escribe("Hola, necesito una bandeja para la vereda");
   await atenderCharla(m.deps(guion(respuestaTexto("¿Me pasás la dirección de la obra?"))), m.charla.id);
   assert.deepEqual(m.salidas.map((s) => s.texto), [
-    "¡Buen día! Acá Sofía, asistente digital de Andamios Buenos Aires. Contame en qué te puedo ayudar.",
+    saludoInicial(null, RELOJ),
     "¿Me pasás la dirección de la obra?",
   ]);
   m.escribe("Los Aromos 1234");

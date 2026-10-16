@@ -17,7 +17,7 @@ import { normalizar } from "./texto.ts";
 
 export const NOMBRE_ASISTENTE = "Sofía";
 
-const CUERPO = "Acá Sofía, asistente digital de Andamios Buenos Aires. Contame en qué te puedo ayudar.";
+const CUERPO = "Acá Sofía de Andamios Buenos Aires. Contame en qué te puedo ayudar.";
 
 /** Se comparan normalizadas como texto.ts (sin tildes ni letras dobles): se escriben como se escriben. */
 const lista = (xs: string[]) => new Set(xs.map((x) => normalizar(x)));

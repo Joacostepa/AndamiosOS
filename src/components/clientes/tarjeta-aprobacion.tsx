@@ -130,13 +130,13 @@ function EstadoIntermedio({ t, charlaId, ventanaAbierta, puedeEditar }: { t: Tar
       { aprobacionId: t.id, pedido: { accion: "reintentar" } },
       { onSuccess: (r) => toast.success(r.estado === "falta_plantilla" ? "Quedó en Odoo: falta la plantilla" : "Listo, salió", { description: r.avisos.join(" · ") || undefined }), onError: (e) => toast.error(errorDe(e)) },
     );
-  if (t.estado === "ejecutando") {
+  if (t.estado === "ejecutando" && !t.colgada) {
     return <Aviso tono="neutro"><Loader2 className="mr-1.5 inline size-4 animate-spin" />Aprobado por {t.decididoPor ?? "alguien"}. Guardando en Odoo y mandando…</Aviso>;
   }
-  if (t.estado === "error") {
+  if (t.estado === "error" || t.colgada) {
     return (
       <Aviso tono="rojo" className="flex flex-wrap items-center gap-2">
-        <span className="min-w-0 flex-1"><b>No salió.</b> {t.error ?? "Algo falló."} {t.odooVenta ? `Ya está en Odoo (${t.odooVenta.nombre}).` : "Al cliente no le llegó nada."}</span>
+        <span className="min-w-0 flex-1"><b>No salió.</b> {t.colgada ? "Se cortó mientras se guardaba: revisá Odoo; reintentar no duplica la orden." : t.error ?? "Algo falló."} {t.odooVenta ? `Ya está en Odoo (${t.odooVenta.nombre}).` : "Al cliente no le llegó nada."}</span>
         {puedeEditar && (
           <Button variant="outline" className="h-10" onClick={reintentar} disabled={decidir.isPending}>
             {decidir.isPending ? <Loader2 className="animate-spin" /> : <RotateCw />} Reintentar

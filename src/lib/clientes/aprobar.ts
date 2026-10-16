@@ -32,6 +32,10 @@
 //
 // Después de decidir, la charla vuelve a Sofía o queda con la persona (destinoDespues). Si
 // quedan otras aprobaciones pendientes en la charla, sigue en «Espera tu OK».
+//
+// LOS EVENTOS DEL HILO VAN COMO «sistema» (con el nombre de quien decidió en el texto): Sofía lee
+// los eventos de las personas, y éstos pueden llevar montos o el motivo de una corrección. El
+// precio nunca pasa por el modelo: ella sólo ve «cotización #N: se envió (aprobado)».
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { executeKw } from "@/lib/odoo/client";
@@ -48,7 +52,7 @@ import { crearEjecutor, type PayloadGuardar } from "@/lib/asistente/ejecutores";
 import { camposTrabajo, notaHtml } from "@/lib/asistente/herramientas";
 import { datosPropuestaDe } from "@/lib/asistente/pdf";
 import {
-  aplicarCorreccion, avisoVentana, bloqueosDelCalculo, CORTAN_RACHA, destinoDespues, ESTADOS_APROBADOS, mensajeDesdeCalculo, modoEnvio,
+  aplicarCorreccion, avisoVentana, EJECUTANDO_VENCE_MS, bloqueosDelCalculo, CORTAN_RACHA, destinoDespues, ESTADOS_APROBADOS, mensajeDesdeCalculo, modoEnvio,
   motivoYaDecidida, racha, recalcularBorrador, textoPareja, textoRacha, tomarUnaVez, validarCorreccion, verificarRecalculo,
   type Correccion, type Despues, type EstadoAprobacion, type FilaDecision, type RepoUnaVez, type TipoAprobacion, type TipoCorreccion, type Trato,
 } from "./aprobacion";
@@ -266,6 +270,7 @@ function tarjetaDe(f: Fila, charla: Charla, ctx: Contexto, iaActiva: boolean, no
     motivoCorreccion: f.motivo_correccion,
     odooVenta: f.odoo_venta_id && f.odoo_venta_nombre ? { nombre: f.odoo_venta_nombre, url: urlOdooVenta(f.odoo_venta_id) ?? "" } : null,
     despuesPorDefecto: destinoDespues({ tipo: f.tipo, accion: "aprobar", iaActiva, propuesta: f.payload.despues }),
+    colgada: f.estado === "ejecutando" && Date.now() - Date.parse(f.updated_at) > EJECUTANDO_VENCE_MS,
   };
   if (f.tipo === "precio" && f.carril === "facil") {
     try {
@@ -507,7 +512,7 @@ export async function aprobarPrecio(db: Db, conversacionId: string, id: string, 
   const eventoDecision = correccion
     ? `${quien.nombre} corrigió ${correccion.tipo === "texto" ? "el texto" : correccion.tipo} de la cotización #${f.numero} (${correccion.motivo.trim()}) y la aprobó: ${pesoCorto(resultado.totales.subtotal)} + IVA.`
     : `${quien.nombre} aprobó la cotización #${f.numero} sin cambios.`;
-  await anotarEvento(db, conversacionId, `${eventoDecision} Guardando en Odoo…`, quien.id);
+  await anotarEvento(db, conversacionId, `${eventoDecision} Guardando en Odoo…`);
   return ejecutarPrecio(db, toma.fila, quien, ctx);
 }
 
@@ -524,7 +529,7 @@ export async function reintentarPrecio(db: Db, conversacionId: string, id: strin
   }
   const toma = await tomarUnaVez(repoUnaVez(db), id, "reintentar", { estado: "ejecutando", error: null }, nombreDe(db));
   if (!toma.ok) return { ok: false, codigo: "ya_decidida", error: toma.motivo };
-  await anotarEvento(db, conversacionId, `${quien.nombre} ${f.estado === "falta_plantilla" ? "mandó" : "reintentó"} la cotización #${f.numero}.`, quien.id);
+  await anotarEvento(db, conversacionId, `${quien.nombre} ${f.estado === "falta_plantilla" ? "mandó" : "reintentó"} la cotización #${f.numero}.`);
   return ejecutarPrecio(db, toma.fila, quien, await contexto(db));
 }
 
@@ -724,7 +729,7 @@ export async function tomarYo(db: Db, conversacionId: string, id: string, quien:
   if (!toma.ok) return { ok: false, codigo: "ya_decidida", error: toma.motivo };
   const que = f.tipo === "texto_bloqueado" ? "descartó lo que había escrito Sofía" : f.tipo === "tecnico" ? `tomó la asignación #${f.numero}` : `no mandó la cotización #${f.numero} y la tomó`;
   const sigue = await despuesDeDecidir(db, conversacionId, "persona", quien);
-  await anotarEvento(db, conversacionId, `${quien.nombre} ${que}${motivo?.trim() ? ` (${motivo.trim()})` : ""}.${sigue}`, quien.id);
+  await anotarEvento(db, conversacionId, `${quien.nombre} ${que}${motivo?.trim() ? ` (${motivo.trim()})` : ""}.${sigue}`);
   return { ok: true, estado, avisos: [] };
 }
 
@@ -800,7 +805,6 @@ export async function confirmarTecnico(db: Db, conversacionId: string, id: strin
   await anotarEvento(
     db, conversacionId,
     `${quien.nombre} ${otra ? "eligió otra pareja" : "confirmó la asignación"}: ${quienes}${turno ? " (turno)" : ""}.${enviado ? " Se le avisó al cliente." : ""}${avisos.length ? ` ${avisos.join(" ")}` : ""}${sigue}`,
-    quien.id,
   );
   return { ok: true, estado: otra ? "corregida" : "aprobada", avisos };
 }
@@ -832,7 +836,7 @@ export async function mandarBloqueadoEditado(db: Db, conversacionId: string, id:
   await actualizar(db, id, { estado: cambiado ? "corregida" : "aprobada", texto_enviado: t, correccion_tipo: cambiado ? "texto" : null, error: null });
   const destino = destinoDespues({ tipo: "texto_bloqueado", accion: "aprobar", iaActiva, propuesta: f.payload.despues, elegido: despuesElegido });
   const sigue = await despuesDeDecidir(db, conversacionId, destino, quien);
-  await anotarEvento(db, conversacionId, `${quien.nombre} ${cambiado ? "corrigió y mandó" : "mandó"} lo que había bloqueado el filtro.${sigue}`, quien.id);
+  await anotarEvento(db, conversacionId, `${quien.nombre} ${cambiado ? "corrigió y mandó" : "mandó"} lo que había bloqueado el filtro.${sigue}`);
   return { ok: true, estado: cambiado ? "corregida" : "aprobada", avisos: [] };
 }
 

@@ -81,6 +81,8 @@ export type TarjetaAprobacion = {
   odooVenta: { nombre: string; url: string } | null;
   /** Quién sigue la charla después, si nadie elige otra cosa. */
   despuesPorDefecto: "sofia" | "persona";
+  /** Quedó «ejecutando» más de 6 minutos (la función se cortó): se puede reintentar. */
+  colgada: boolean;
   precio?: TarjetaPrecio;
   tecnico?: TarjetaTecnico;
   bloqueado?: TarjetaBloqueado;

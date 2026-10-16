@@ -123,6 +123,27 @@ export async function entrar(page) {
     if (await confirmar.count()) await confirmar.click();
   }
   await representando.waitFor({ timeout: 15000 });
+  // Elegida la empresa, el desplegable de los chips queda abierto debajo de "Representando a:" y
+  // tapa las solapas: el clic en "Tareas pendientes" caía en el chip de TECNO ESTRUCTURAS (19:09
+  // del 15/10). Ni Escape ni un clic afuera lo cierran: se toca la flecha (expand_more) del mismo
+  // selector. Nunca la X ("close") de al lado, que borra la elección.
+  const chips = page.locator("input[name='radio_apoderamientoSelect']");
+  const abierto = () => chips.first().isVisible().catch(() => false);
+  if (await abierto()) {
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(1000);
+  }
+  if (await abierto()) {
+    // Si la flecha no está dentro del botón, la primera de la página es la del selector (la otra
+    // es la del menú de usuario, más a la derecha).
+    const selector = page.getByRole("button", { name: /Seleccione a qui[eé]n representar/i }).first();
+    const flecha = selector.getByText("expand_more", { exact: true });
+    await ((await flecha.count()) ? flecha : page.getByText("expand_more", { exact: true })).first().click({ timeout: 10000 });
+    await page.waitForTimeout(1500);
+  }
+  if (await abierto()) throw new Error("El selector de a quién representar quedó abierto tapando la página");
+  const texto = await representando.evaluate((e) => e.closest("button, div")?.innerText ?? e.innerText).catch(() => "");
+  if (!/EMPRENDI/i.test(texto)) throw new Error(`TAD quedó representando a otra persona (${texto.replace(/\s+/g, " ").trim()})`);
   await page.waitForTimeout(3000);
 }
 

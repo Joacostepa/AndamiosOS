@@ -782,7 +782,9 @@ export async function presentarEnTad({ db, tarea, page, log }) {
     await listo("inicio");
     await page.locator(":visible", { hasText: /^\s*Elegir persona a representar/i }).last().click();
     await page.waitForTimeout(2000);
-    await page.locator(":visible", { hasText: /^\s*EMPRENDIMIENTOS Y ESTRUCTURAS/i }).last().click();
+    // Forzado: si este modal también trae los chips nuevos de TAD (15/10), el radio está encima
+    // del texto y se queda con el clic; el clic forzado cae sobre el radio y lo elige igual.
+    await page.locator(":visible", { hasText: /^\s*EMPRENDIMIENTOS Y ESTRUCTURAS/i }).last().click({ force: true });
     await page.waitForTimeout(1500);
     await page.locator("button:visible", { hasText: /^\s*Confirmar\s*$/ }).first().click();
     await page.waitForTimeout(10000);

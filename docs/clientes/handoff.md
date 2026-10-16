@@ -1,10 +1,95 @@
-# Handoff: pedido de presupuesto y agente de WhatsApp para clientes
+# Handoff: CRM con Sofía, el agente de WhatsApp para clientes
 
-Charla con JS del 12/10/2026. **Estado: hay propuesta, maqueta y el MCP de Meta instalado. Todavía no hay código.**
+**Actualizado el 16/10/2026.** El estado de abajo es el vigente. La historia del 12/10 está más abajo, en «Historia: la charla del 12/10».
 
-Para retomar, leé este archivo primero. El detalle completo está en [pedido-presupuesto-propuesta.md](./pedido-presupuesto-propuesta.md). La maqueta está en [maqueta.html](./maqueta.html) y publicada en https://claude.ai/artifact/K9cVuTzAvE87bMuwkQbNAz.
+Para retomar, decí: «Leé docs/clientes/handoff.md y seguimos con el CRM de WhatsApp».
+
+- **La propuesta** (cerrada por un equipo de agentes y auditada, con las decisiones de JS en la §12): [crm-propuesta.md](./crm-propuesta.md).
+- **La maqueta:** [crm-maqueta.html](./crm-maqueta.html), publicada en https://claude.ai/artifact/6mhAeU4umDQLv152rDai8e.
+- **Las cuentas de los socios** (borrador para que lo corrija JS): [cuentas-socios.md](./cuentas-socios.md).
 
 ---
+
+## Estado al 16/10
+
+**En producción y probado por JS el 15/10 a la noche:** un mensaje al número nuevo entra a la bandeja, se toma la charla, se contesta desde la app y le llega al cliente.
+
+| Qué | Dónde | Estado |
+|---|---|---|
+| Etapa 0: la bandeja (Comercial → WhatsApp de clientes) | `src/lib/clientes/`, `/comercial/clientes` | ✅ En producción, probada |
+| Paso 4: qué es fácil, a quién va y el filtro de plata | `facil.ts`, `asignacion.ts`, `filtro-salida.ts` | ✅ En producción |
+| Paso 5: Sofía | `turno.ts`, `prompt.ts`, `herramientas.ts`, `agente.ts`; el núcleo compartido con el asistente en `src/lib/ia/nucleo.ts` | ✅ En producción y **prendida** (`clientes_ia_activa = 1`) para las pruebas internas de JS |
+| Paso 6: la tarjeta de aprobación y «Revisar charlas» | `aprobacion.ts`, `aprobar.ts`, `tarjeta-aprobacion.tsx`, `/comercial/clientes/revisar` | ✅ En producción. **Todavía no se aprobó nada de verdad** |
+| Saludo según la hora | `saludo.ts` (`saludoDelMomento`, `saludoInicial`) | ✅ En producción |
+
+**El saludo** (decisión de JS, 15 y 16/10). Lo arma el código, una sola vez, y el nombre sale del perfil de WhatsApp:
+> ¡Buen día Carlos! Acá Sofía, asistente digital de Andamios Buenos Aires. Contame en qué te puedo ayudar.
+
+- Hasta las 12:59 dice buen día, hasta las 19:59 buenas tardes y después buenas noches.
+- Sin línea de aviso al pie. Si le preguntan, Sofía **nunca niega ser una IA**.
+- JS insistió en sacar «digital» y dijo que en Argentina no hay ley que lo exija. Se le explicó que lo piden las condiciones de uso de Claude y aceptó «asistente digital». **No volver a ofrecer esconderlo.**
+
+### Meta (WhatsApp Cloud API)
+
+- **Portfolio** «Andamios Buenos Aires», **verificado** el 15/10 (EMPRENDIMIENTOS Y ESTRUCTURAS S A).
+- **App de Meta:** «AndamiosOS» (id 1072332035564720), «Sin publicar», y funciona igual.
+- **Número de clientes:** **+54 9 11 7637 8551** (eSIM de Claro). Phone number ID `1403629372834757`, WABA `2233102921415343`.
+  - Registrado (CONNECTED, CLOUD_API). El nombre visible está en revisión.
+  - La eSIM queda en un celular, **inactiva pero sin dar de baja**: si Meta vuelve a pedir un código por SMS, se activa un rato.
+  - **Nunca abrir WhatsApp con ese número en ningún celular:** lo desconecta de la API.
+- **Webhook:** `https://andamios-os.vercel.app/api/whatsapp/webhook` (campo `messages`), con la WABA suscripta a la app.
+- **Medio de pago:** Visa 4560, en ARS.
+- **Variables en Vercel (Production):**
+  - `WHATSAPP_TOKEN`, `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN` y `WHATSAPP_CLIENTES_PHONE_NUMBER_ID`;
+  - los secretos también están en `.env.local`, con el PIN del número en `WHATSAPP_CLIENTES_PIN`.
+- **⚠️ El token es de usuario y vence el 14/12/2026.**
+  - El permanente (usuario del sistema `andamiosos-api`, id 61595559895577, que ya tiene la app y la WABA asignadas) quedó trabado por la **aprobación de pares**: tiene que aprobarlo otro administrador del portfolio (la agencia, que estaba de viaje).
+  - Cuando lo aprueben: «Generar token» → nunca vence → los dos permisos de WhatsApp → reemplazar `WHATSAPP_TOKEN` en Vercel y en `.env.local`.
+  - Sugerido a JS: pasar a la agencia a «socio» con acceso sólo a los anuncios.
+- **El MCP de Meta** (`whatsapp_business_tools`) está agregado, pero Meta todavía no lo habilitó para la cuenta de JS («Not yet available»).
+
+### Base (Supabase), migraciones aplicadas
+
+- `20261016000001` (bandeja) y `20261016000002` (parámetros de fácil);
+- `20261017000001` y `20261017000002` (Sofía);
+- `20261018000001` (aprobación).
+
+Parámetros en Parámetros → Agente de clientes:
+- `clientes_ia_activa` = 1;
+- modelo Opus 5.5, esfuerzo bajo;
+- topes de US$ 1 por teléfono y US$ 15 por día;
+- horario de 8 a 17;
+- `clientes_telefono_guardia` = +54 11 2734-4214 (columna `texto`).
+
+### Decisiones de JS (15/10)
+
+Están todas en la §12 de la propuesta. Las principales:
+- la bandeja a $140.000;
+- fácil = hasta 25 m.l., con 1 jornada de armado y 1 de desarme;
+- siempre «+ IVA»;
+- los clientes nuevos se reparten por turno entre Jorge, Gabriel y JS;
+- en la etapa 1 aprueba JS;
+- la IA atiende las 24 h;
+- el número se publica primero sólo en la web.
+
+JS **no quiere** correr los guiones de ataque (`scripts/test-agente-clientes.mts`) ni una lista de teléfonos de prueba: el número no lo tiene nadie y él hace pruebas internas.
+
+## Lo que falta
+
+1. **Que JS pruebe a Sofía** (el saludo, el catastro, «¿sos un bot?», un descuento, «tabla floja») y la tarjeta. **Aprobar crea una orden real en Odoo** (en borrador): borrarla después, o usar «Lo tomo yo».
+2. **La plantilla de Meta «Tu presupuesto está listo»**, con el PDF de encabezado, para mandar con la ventana de 24 h cerrada. Hoy queda «falta la plantilla».
+3. **Paso 2b:** la búsqueda del cliente por teléfono en Odoo (historial y deuda, F5/F7), el «lead sin orden» y el botón «Presupuestar». Hoy la tarjeta dice «no se pudo revisar».
+4. **Cargar en Parámetros** las cuentas de los socios y «Hoy no estoy»; las parejas están en el código (`PAREJAS_15_10`).
+5. **Confirmar con JS el apellido de Gabriel** (`TECNICOS_COMPLETOS` en `aprobacion.ts`).
+6. **El token permanente** antes del 14/12.
+7. **Más adelante:**
+   - el paso 8, que es el seguimiento con plantillas y consentimiento;
+   - el paso 9, la tarifa del alquiler simple con Tamara;
+   - limpiar las WABA viejas del portfolio;
+   - publicar el número en la web.
+
+## Historia: la charla del 12/10
+
 
 ## De qué se trata
 

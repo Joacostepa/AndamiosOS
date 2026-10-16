@@ -10,7 +10,7 @@ Para retomar, decí: «Leé docs/clientes/handoff.md y seguimos con el CRM de Wh
 
 ---
 
-## Estado al 16/10
+## Estado al 16/10 (a la tarde)
 
 **En producción y probado por JS el 15/10 a la noche:** un mensaje al número nuevo entra a la bandeja, se toma la charla, se contesta desde la app y le llega al cliente.
 
@@ -21,7 +21,13 @@ Para retomar, decí: «Leé docs/clientes/handoff.md y seguimos con el CRM de Wh
 | Paso 5: Sofía | `turno.ts`, `prompt.ts`, `herramientas.ts`, `agente.ts`; el núcleo compartido con el asistente en `src/lib/ia/nucleo.ts` | ✅ En producción y **prendida** (`clientes_ia_activa = 1`) para las pruebas internas de JS |
 | Paso 6: la tarjeta de aprobación y «Revisar charlas» | `aprobacion.ts`, `aprobar.ts`, `tarjeta-aprobacion.tsx`, `/comercial/clientes/revisar` | ✅ En producción. **Todavía no se aprobó nada de verdad** |
 | Saludo según la hora | `saludo.ts` (`saludoDelMomento`, `saludoInicial`) | ✅ En producción |
-| Guía de trabajos y «Gama alta» (pedido de JS, 16/10) | `clientes_guia_trabajos` (bloque del system), `tarea` en la ficha; `PALABRAS_GAMA_ALTA` en `facil.ts`, `ficha.segmento`, pastilla y orden en `vista.ts` | Rama `feat/sofia-trabajo-y-gama-alta`. **Falta aplicar `20261019000002`** (sin ella, Sofía sigue sin la guía; lo demás anda) |
+| Guía de trabajos y «Gama alta» (pedido de JS, 16/10) | `clientes_guia_trabajos` (bloque del system), `tarea` en la ficha; `PALABRAS_GAMA_ALTA` en `facil.ts`, `ficha.segmento`, pastilla y orden en `vista.ts` | ✅ En producción, con la migración aplicada |
+| Datos de ABA (oficina con cita previa, pagos, zona, 30 años, permisos, seguro, factura A) | parámetro `clientes_datos_empresa` (bloque del system, se edita en Parámetros) | ✅ En producción. Lo que no está ahí, Sofía lo consulta al equipo |
+| «Hoy desde las 8» en vez de «hoy a primera hora» | `horario.ts` | ✅ En producción |
+| Botón «Borrar» la charla (sólo admin, para probar de cero) | `borrarCharla` en `bandeja.ts`, `DELETE /api/comercial/clientes/conversaciones/:id` | ✅ En producción. No toca Odoo ni el WhatsApp del cliente |
+| El nombre del cliente ya no cuenta como «pide una persona» | `facil.ts` (los nombres del equipo cuentan sólo si los pide: «hablar con Jorge», «¿está Gabriel?») | ✅ En producción. Era el motivo de que «a nombre de Joaquín» saliera no fácil |
+| La tarjeta del técnico dice por qué la bandeja no salió fácil | `porQueNoFacil` (pedir_tecnico → payload → tarjeta) | ✅ En producción. Sofía sigue viendo sólo el motivo genérico |
+| Perfil del WhatsApp de clientes | logo (aro rojo), info «Andamios y bandejas de protección · CABA y GBA», descripción, Maturín 2570, info@…, la web y la categoría | ✅ Cargado por API el 16/10 |
 
 **El saludo** (decisión de JS, 15 y 16/10). Lo arma el código, una sola vez, y el nombre sale del perfil de WhatsApp:
 > ¡Buen día Carlos! Acá Sofía, asistente digital de Andamios Buenos Aires. Contame en qué te puedo ayudar.
@@ -53,14 +59,16 @@ Para retomar, decí: «Leé docs/clientes/handoff.md y seguimos con el CRM de Wh
 
 - `20261016000001` (bandeja) y `20261016000002` (parámetros de fácil);
 - `20261017000001` y `20261017000002` (Sofía);
-- `20261018000001` (aprobación).
+- `20261018000001` (aprobación);
+- `20261019000001` (datos de ABA) y `20261019000002` (guía de trabajos).
 
 Parámetros en Parámetros → Agente de clientes:
 - `clientes_ia_activa` = 1;
 - modelo Opus 5.5, esfuerzo bajo;
 - topes de US$ 1 por teléfono y US$ 15 por día;
 - horario de 8 a 17;
-- `clientes_telefono_guardia` = +54 11 2734-4214 (columna `texto`).
+- `clientes_telefono_guardia` = +54 11 2734-4214 (columna `texto`);
+- `clientes_datos_empresa` y `clientes_guia_trabajos`: texto editable, una línea por dato.
 
 ### Decisiones de JS (15/10)
 
@@ -92,6 +100,15 @@ JS **no quiere** correr los guiones de ataque (`scripts/test-agente-clientes.mts
    - el paso 9, la tarifa del alquiler simple con Tamara;
    - limpiar las WABA viejas del portfolio;
    - publicar el número en la web.
+8. **Analizar los chats de clientes del celular corporativo de JS para mejorar a Sofía** (idea de JS, 16/10).
+   - **Dónde quedó:** el iPhone corporativo (iPhone 16 Pro Max, **WhatsApp Business**) tiene los chats. El WhatsApp de la Mac es el personal y WhatsApp Web no guarda la historia. WhatsApp no exporta todo junto desde el iPhone, así que el camino es:
+     1. una copia de seguridad del iPhone **en esta Mac, SIN encriptar** (Finder → el iPhone → General → «Respaldar todos los datos del iPhone en esta Mac» → «Realizar respaldo ahora»). JS la empezó el 16/10, se tuvo que ir y la canceló;
+     2. darle a la app **Terminal** «Acceso total al disco» (Configuración del Sistema → Privacidad y seguridad). macOS no deja que Claude lea `~/Library/Application Support/MobileSync/Backup`, así que el comando lo corre JS en Terminal;
+     3. exportar con el programa libre **WhatsApp Chat Exporter**: `pip install whatsapp-chat-exporter`, después `wtsexporter -i --business -j` hacia `~/Documents/chats-clientes`, **fuera del repo y nunca en GitHub** (son datos personales de clientes);
+     4. anonimizar (nombres, teléfonos, CUIT, direcciones) y analizar con un equipo de agentes: tono de JS, preguntas por tipo de trabajo, objeciones, señales de cada tipo de cliente, preguntas frecuentes, por qué se pierden. El resultado es una propuesta de cambios a la guía de trabajos, los datos de ABA y las instrucciones de Sofía, que **aprueba JS**. Los precios viejos no se usan;
+     5. al terminar: **volver los respaldos del iPhone a iCloud** y **borrar la copia local** (Administrar respaldos…).
+   - **Ojo:** el iPhone tiene unos 247 GB usados y la Mac unos 79 GB libres. La copia entra sólo si las fotos están en Fotos de iCloud. Si no entra, la alternativa paga es iMazing.
+9. **Sumar palabras de «gama alta»** si JS las pasa (marcas de sistemas): `PALABRAS_GAMA_ALTA` en `facil.ts`.
 
 ## Historia: la charla del 12/10
 

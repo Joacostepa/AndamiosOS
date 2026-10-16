@@ -5,9 +5,9 @@ import { detectarPlata } from "./filtro-salida.ts";
 
 test("el saludo exacto que decidió JS, con y sin nombre", () => {
   const manana = new Date("2026-10-16T12:00:00Z"); // 9:00 en Buenos Aires
-  assert.equal(saludoInicial("Carlos", manana), "¡Buen día Carlos! Acá Sofía, asistente digital de Andamios Buenos Aires. Contame en qué te puedo ayudar.");
-  assert.equal(saludoInicial(null, manana), "¡Buen día! Acá Sofía, asistente digital de Andamios Buenos Aires. Contame en qué te puedo ayudar.");
-  assert.equal(saludoInicial("Constructora Delta SRL", manana), "¡Buen día! Acá Sofía, asistente digital de Andamios Buenos Aires. Contame en qué te puedo ayudar.");
+  assert.equal(saludoInicial("Carlos", manana), "¡Buen día Carlos! Acá Sofía de Andamios Buenos Aires. Contame en qué te puedo ayudar.");
+  assert.equal(saludoInicial(null, manana), "¡Buen día! Acá Sofía de Andamios Buenos Aires. Contame en qué te puedo ayudar.");
+  assert.equal(saludoInicial("Constructora Delta SRL", manana), "¡Buen día! Acá Sofía de Andamios Buenos Aires. Contame en qué te puedo ayudar.");
 });
 
 const CON_NOMBRE: [string, string][] = [
@@ -99,11 +99,7 @@ test("null y undefined", () => {
   assert.equal(nombreParaSaludo(undefined), null);
 });
 
-test("el saludo nunca dice «virtual» y dice que es asistente digital (decisión 17)", () => {
-  const s = saludoInicial("Carlos");
-  assert.ok(!/virtual/i.test(s));
-  assert.match(s, /asistente digital/);
-});
+
 
 test("esSoloSaludo: los saludos solos sí, cualquier pedido no", () => {
   for (const t of ["Hola", "hola!!", "Buenas", "Buenas tardes", "buen día", "Hola, buenas", "Hola buenas tardes", "Holaaa", "que tal", "Hola, ¿cómo estás?", "buenas buenas"]) {
@@ -131,5 +127,5 @@ test("buen día, buenas tardes o buenas noches según la hora de Buenos Aires", 
   assert.equal(saludoDelMomento(ba("19:59")), "Buenas tardes");
   assert.equal(saludoDelMomento(ba("20:00")), "Buenas noches");
   assert.equal(saludoDelMomento(ba("02:30")), "Buenas noches");
-  assert.equal(saludoInicial("Joaquin", ba("21:15")), "¡Buenas noches Joaquin! Acá Sofía, asistente digital de Andamios Buenos Aires. Contame en qué te puedo ayudar.");
+  assert.equal(saludoInicial("Joaquin", ba("21:15")), "¡Buenas noches Joaquin! Acá Sofía de Andamios Buenos Aires. Contame en qué te puedo ayudar.");
 });

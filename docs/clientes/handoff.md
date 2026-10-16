@@ -76,6 +76,10 @@ JS **no quiere** correr los guiones de ataque (`scripts/test-agente-clientes.mts
 
 ## Lo que falta
 
+0. **⚠️ ANTES DE PUBLICAR EL NÚMERO: el saludo tiene que volver a decir «asistente digital».**
+   - El 16/10, JS sacó «asistente digital» del saludo (`CUERPO` en `src/lib/clientes/saludo.ts`, commit `361cb44`) para las pruebas internas: «hasta que lancemos vamos a dejarlo así».
+   - Hoy dice «¡Buen día Joaquin! Acá Sofía de Andamios Buenos Aires…».
+   - Mientras el número lo tenga sólo JS, no confunde a nadie. Ante un cliente real, Sofía tiene que decir que es una asistente digital: lo piden las condiciones de uso de Claude.
 1. **Que JS pruebe a Sofía** (el saludo, el catastro, «¿sos un bot?», un descuento, «tabla floja») y la tarjeta. **Aprobar crea una orden real en Odoo** (en borrador): borrarla después, o usar «Lo tomo yo».
 2. **La plantilla de Meta «Tu presupuesto está listo»**, con el PDF de encabezado, para mandar con la ventana de 24 h cerrada. Hoy queda «falta la plantilla».
 3. **Paso 2b:** la búsqueda del cliente por teléfono en Odoo (historial y deuda, F5/F7), el «lead sin orden» y el botón «Presupuestar». Hoy la tarjeta dice «no se pudo revisar».

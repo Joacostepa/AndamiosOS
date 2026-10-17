@@ -49,10 +49,9 @@ Para retomar, decí: «Leé docs/sofia/handoff.md y seguimos con el CRM de Whats
 - **Variables en Vercel (Production):**
   - `WHATSAPP_TOKEN`, `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN` y `WHATSAPP_CLIENTES_PHONE_NUMBER_ID`;
   - los secretos también están en `.env.local`, con el PIN del número en `WHATSAPP_CLIENTES_PIN`.
-- **⚠️ El token es de usuario y vence el 14/12/2026.**
-  - El permanente (usuario del sistema `andamiosos-api`, id 61595559895577, que ya tiene la app y la WABA asignadas) quedó trabado por la **aprobación de pares**: tiene que aprobarlo otro administrador del portfolio (la agencia, que estaba de viaje).
-  - Cuando lo aprueben: «Generar token» → nunca vence → los dos permisos de WhatsApp → reemplazar `WHATSAPP_TOKEN` en Vercel y en `.env.local`.
+- **Token permanente, desde el 16/10 a la noche:** `WHATSAPP_TOKEN` es el del usuario del sistema `andamiosos-api` (id 61595559895577). No vence. Está en Vercel Production y en `.env.local`.
   - Sugerido a JS: pasar a la agencia a «socio» con acceso sólo a los anuncios.
+- **⚠️ El 16/10, de 08:39 a 23:11, Meta bloqueó la API** («API access blocked», código 200, en todas las llamadas y con cualquier token). Motivo: la cuenta personal de Facebook de JS, dueña de la app, quedó bloqueada por «actividad inusual» después de muchos cambios de seguridad seguidos. Mientras duró, no entró ningún mensaje y Sofía no podía contestar. Se destrabó cuando JS restauró su cuenta. **Si vuelven a dejar de entrar mensajes, lo primero es probar la API** (por ejemplo `GET /1403629372834757?fields=status`) **y entrar a facebook.com con la cuenta de JS.** Conviene sumar otra persona de confianza como administradora del portfolio.
 - **El MCP de Meta** (`whatsapp_business_tools`) está agregado, pero Meta todavía no lo habilitó para la cuenta de JS («Not yet available»).
 
 ### Base (Supabase), migraciones aplicadas
@@ -94,7 +93,7 @@ JS **no quiere** correr los guiones de ataque (`scripts/test-agente-clientes.mts
 3. **Paso 2b:** la búsqueda del cliente por teléfono en Odoo (historial y deuda, F5/F7), el «lead sin orden» y el botón «Presupuestar». Hoy la tarjeta dice «no se pudo revisar».
 4. **Cargar en Parámetros** las cuentas de los socios y «Hoy no estoy»; las parejas están en el código (`PAREJAS_15_10`).
 5. ~~Confirmar con JS el apellido de Gabriel~~: JS confirmó el 16/10 que «Gabriel Stepansky» está bien.
-6. **El token permanente** antes del 14/12.
+6. ~~El token permanente~~: hecho el 16/10 (usuario del sistema, no vence).
 7. **Más adelante:**
    - el paso 8, que es el seguimiento con plantillas y consentimiento;
    - el paso 9, la tarifa del alquiler simple con Tamara;

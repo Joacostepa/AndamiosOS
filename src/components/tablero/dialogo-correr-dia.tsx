@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
-import { CalendarClock, Loader2, Phone, Pin, TriangleAlert, UserMinus } from "lucide-react";
+import { CalendarClock, Loader2, Phone, Pin, TriangleAlert, UserMinus, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -105,7 +105,10 @@ export function DialogoCorrerDia({
 
   if (!abierto) return null;
 
-  const hayAlgo = (plan?.jornadas ?? 0) > 0;
+  // Puede no correrse nada y sólo quitarse apoyos: se suspendió una cuadrilla que ese día
+  // únicamente iba de apoyo a una obra que sale igual.
+  const quitados = plan?.apoyosQuitados.length ?? 0;
+  const hayAlgo = (plan?.jornadas ?? 0) > 0 || quitados > 0;
 
   // Las cuadrillas que quedan marcadas como suspendidas en el tablero: las tildadas que
   // tenían algo ese día. Una tildada sin nada asignado no perdió el día, y taparle la
@@ -227,9 +230,12 @@ export function DialogoCorrerDia({
             onClick={() => plan && onCorrer(plan, { dia: fecha, motivo: motivo.trim(), cuadrillaIds: suspendidas })}
           >
             {guardando && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {hayAlgo
-              ? `Correr ${plan!.jornadas} jornada${plan!.jornadas === 1 ? "" : "s"} de ${plan!.obras} obra${plan!.obras === 1 ? "" : "s"}`
-              : "No hay nada para correr"}
+            {!hayAlgo
+              ? "No hay nada para correr"
+              : plan!.jornadas === 0
+                ? `Quitar ${quitados} apoyo${quitados === 1 ? "" : "s"}`
+                : `Correr ${plan!.jornadas} jornada${plan!.jornadas === 1 ? "" : "s"} de ${plan!.obras} obra${plan!.obras === 1 ? "" : "s"}` +
+                  (quitados > 0 ? ` · quitar ${quitados} apoyo${quitados === 1 ? "" : "s"}` : "")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -286,13 +292,14 @@ function Consecuencias({
   hastaCargado: string;
 }) {
   const nada =
+    plan.apoyosQuitados.length === 0 &&
     plan.fijas.length === 0 &&
     plan.confirmadas.length === 0 &&
     plan.rompenTecho.length === 0 &&
     plan.sobrecargas.length === 0 &&
     plan.solas.length === 0;
 
-  if (plan.jornadas === 0) {
+  if (plan.jornadas === 0 && plan.apoyosQuitados.length === 0) {
     return (
       <p className="text-[13px] text-muted-foreground">
         No hay jornadas para correr el {diaLargo(diaSuspendido)} en las cuadrillas tildadas.
@@ -332,6 +339,20 @@ function Consecuencias({
         >
           Alguna cuadrilla no tiene un solo día libre en los próximos meses, así que el
           corrimiento se cortó donde llegó. Mirá si no conviene correr sólo el día.
+        </Bloque>
+      )}
+
+      {/* Los apoyos que no van: su cuadrilla se suspende y la obra sale igual (o está
+          fija). Se quitan del tablero y queda anotado; el deshacer los devuelve. */}
+      {plan.apoyosQuitados.length > 0 && (
+        <Bloque icono={<Users className="h-3.5 w-3.5" />} titulo={`Se quedan sin apoyo (${plan.apoyosQuitados.length})`}>
+          <ul className="space-y-0.5">
+            {plan.apoyosQuitados.map((q) => (
+              <li key={q.id}>
+                <strong>{q.titulo}</strong> se queda sin el apoyo de {q.cuadrillaNombre} el {dia(q.fecha)}
+              </li>
+            ))}
+          </ul>
         </Bloque>
       )}
 

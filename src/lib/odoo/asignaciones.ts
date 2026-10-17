@@ -14,6 +14,15 @@
 import { searchRead, write, executeKw, read, authenticate } from "./client";
 import { CAMPOS_TRABAJO, leerTrabajo, type FilaTrabajo } from "./trabajo";
 import { alertaDe, semaforoHoy } from "@/lib/habilitaciones/derivacion";
+import {
+  claveDia,
+  conflictosDeApoyo,
+  diasPorOt,
+  estadoDespues,
+  type CambiosDeRol,
+  type ConflictoApoyo,
+  type FilaRol,
+} from "@/lib/tablero/apoyo";
 import type { HabSemaforo } from "@/lib/habilitaciones/tipos";
 import type {
   AsignacionTablero,
@@ -100,7 +109,12 @@ const OT_FIELDS = [
   "x_instrucciones_ids",
 ];
 
-const ASIG_FIELDS = ["id", "x_ot_id", "x_fecha", "x_cuadrilla_id", "x_fraccion", "x_estado", "x_orden_dia", "x_notas", "x_parte_id", "x_motivo_fija"];
+// x_apoyo lo agrega scripts/odoo-add-apoyo-a-asignacion.mjs: sin correrlo antes, esta
+// lectura falla entera ("Invalid field"). Es a propósito: el apoyo tiene que salir todo
+// junto, y un tablero que no supiera de apoyos contaría jornadas de más. El error llega
+// traducido ("Falta correr scripts/odoo-add-apoyo-a-asignacion.mjs", ver
+// campoDeApoyoFaltante en client.ts), no como el "Invalid field" crudo de Odoo.
+const ASIG_FIELDS = ["id", "x_ot_id", "x_fecha", "x_cuadrilla_id", "x_fraccion", "x_estado", "x_orden_dia", "x_notas", "x_parte_id", "x_motivo_fija", "x_apoyo"];
 
 type OdooOtRow = {
   id: number;
@@ -146,6 +160,7 @@ type OdooAsigRow = {
   x_notas: string | false;
   x_parte_id: M2O;
   x_motivo_fija: string | false;
+  x_apoyo: boolean;
 };
 
 /**
@@ -171,15 +186,39 @@ type OdooAsigRow = {
  * El dominio va con el OR explícito: en Odoo, una condición sobre `x_parte_id.x_estado`
  * se resuelve como subconsulta y deja afuera las asignaciones que todavía no tienen
  * parte, que son justamente las que más cuentan como tomadas.
+ *
+ * LOS APOYOS NO CUENTAN (docs/tablero-planificacion/apoyo.md). Una obra de 3 días con la
+ * C3 de apoyo el martes sigue siendo una obra de 3 días: si el apoyo sumara, la bandeja
+ * pediría una jornada que no falta y el listado nunca llegaría a la "última de la OT".
  */
-const DOM_TOMADAS = ["|", ["x_parte_id", "=", false], ["x_parte_id.x_estado", "!=", "no_ejecutado"]];
-const DOM_HECHAS = [["x_parte_id", "!=", false], ["x_parte_id.x_estado", "!=", "no_ejecutado"]];
+const SIN_APOYOS = ["x_apoyo", "=", false];
+const DOM_TOMADAS = [SIN_APOYOS, "|", ["x_parte_id", "=", false], ["x_parte_id.x_estado", "!=", "no_ejecutado"]];
+const DOM_HECHAS = [SIN_APOYOS, ["x_parte_id", "!=", false], ["x_parte_id.x_estado", "!=", "no_ejecutado"]];
 
-/** Las dos consultas de avance, juntas para que el tablero y el listado no diverjan. */
-export function consultasDeAvance() {
+/**
+ * Las dos consultas de avance, juntas para que el tablero y el listado no diverjan.
+ * Devuelven DÍAS DISTINTOS por OT: `Map<otId, días>`.
+ *
+ * POR DÍAS Y NO POR REGISTROS: es la protección extra del apoyo para lo que el dominio no
+ * ataja —dos principales el mismo día cargadas a mano en Odoo, los partes duplicados
+ * viejos—, que igual son un solo día de obra. Ver diasPorOt en lib/tablero/apoyo.ts.
+ *
+ * Se agrupa en Odoo por (OT, día) en vez de traer las asignaciones: vuelve un grupo por
+ * día de obra (337 al 17/10/2026, igual que las asignaciones, porque hasta hoy no hay
+ * dos el mismo día), sin los demás campos de cada fila. La fecha sale de `__range`, que
+ * es ISO; la etiqueta ("18 ago 2026") depende del idioma del usuario de la API.
+ */
+export function consultasDeAvance(): readonly [Promise<Map<number, number>>, Promise<Map<number, number>>] {
   const porOt = (dominio: unknown[]) =>
-    executeKw<{ x_ot_id: M2O; __count: number }[]>(
-      "x_aba_asignacion", "read_group", [dominio, ["x_ot_id"], ["x_ot_id"]], { lazy: false },
+    executeKw<{ x_ot_id: M2O; "x_fecha:day"?: string | false; __range?: { "x_fecha:day"?: { from?: string } }; __count: number }[]>(
+      "x_aba_asignacion", "read_group", [dominio, ["x_ot_id"], ["x_ot_id", "x_fecha:day"]], { lazy: false },
+    ).then((grupos) =>
+      diasPorOt(
+        grupos.map((g) => ({
+          otId: m2oId(g.x_ot_id),
+          fecha: g.__range?.["x_fecha:day"]?.from?.slice(0, 10) ?? str(g["x_fecha:day"] ?? false),
+        })),
+      ),
     );
   return [porOt(DOM_TOMADAS), porOt(DOM_HECHAS)] as const;
 }
@@ -253,6 +292,7 @@ function mapAsig(row: OdooAsigRow): AsignacionTablero {
     notas: str(row.x_notas),
     parteId: m2oId(row.x_parte_id),
     motivoFija: str(row.x_motivo_fija),
+    apoyo: row.x_apoyo === true,
   };
 }
 
@@ -323,17 +363,10 @@ export async function fetchTablero(desde: string, hasta: string): Promise<Tabler
       estado: str(p.x_estado) ?? "previsto",
       motivoNoEjec: str(p.x_motivo_no_ejec),
     })),
-    progreso: (() => {
-      const cerradasPorOt = new Map(
-        gruposCerradas.map((g) => [m2oId(g.x_ot_id) ?? 0, g.__count]),
-      );
-      return gruposAsignadas
-        .map((g) => {
-          const otId = m2oId(g.x_ot_id) ?? 0;
-          return { otId, asignadas: g.__count, cerradas: cerradasPorOt.get(otId) ?? 0 };
-        })
-        .filter((p) => p.otId);
-    })(),
+    // Días distintos y sin apoyos (ver consultasDeAvance).
+    progreso: [...gruposAsignadas]
+      .map(([otId, asignadas]) => ({ otId, asignadas, cerradas: gruposCerradas.get(otId) ?? 0 }))
+      .filter((p) => p.otId),
   };
 }
 
@@ -382,7 +415,8 @@ export async function fetchTableroDeFechas(fechas: string[]): Promise<{
   // armado y el último de un desarme (los sugeridos de la noche anterior).
   const [otsRaw, jornadasRaw] = await Promise.all([
     read<OdooOtRow>("x_aba_orden_trabajo", otIds, OT_FIELDS),
-    searchRead<{ x_ot_id: M2O; x_fecha: string | false }>("x_aba_asignacion", [["x_ot_id", "in", otIds]], ["x_ot_id", "x_fecha"]),
+    // Sin apoyos: "día 2 de 3" cuenta días de la obra, y el apoyo no agrega ninguno.
+    searchRead<{ x_ot_id: M2O; x_fecha: string | false }>("x_aba_asignacion", [["x_ot_id", "in", otIds], SIN_APOYOS], ["x_ot_id", "x_fecha"]),
   ]);
   const ventaIds = [...new Set(otsRaw.map((o) => m2oId(o.x_order_id)).filter((x): x is number => x != null))];
   const coords = ventaIds.length
@@ -645,6 +679,9 @@ function valoresAsignacion(a: NuevaAsignacion, tituloOt: string): Record<string,
     x_estado: a.estado,
     x_orden_dia: a.ordenDia,
     x_notas: a.notas ?? false,
+    // Sólo en los apoyos: la principal queda con el default de Odoo (false). Así planificar
+    // una obra común no depende de que el campo exista.
+    ...(a.apoyo === true ? { x_apoyo: true } : {}),
   };
 }
 
@@ -656,13 +693,53 @@ export async function crearAsignaciones(nuevas: NuevaAsignacion[]): Promise<numb
   if (nuevas.length === 0) return [];
   const otIds = [...new Set(nuevas.map((n) => n.otId))];
   const titulos = new Map<number, string>();
-  const rows = await read<{ id: number; x_name: string | false }>("x_aba_orden_trabajo", otIds, ["x_name"]);
+  const [rows, partesDelDia] = await Promise.all([
+    read<{ id: number; x_name: string | false }>("x_aba_orden_trabajo", otIds, ["x_name"]),
+    partesDePrincipales(nuevas.filter((n) => n.apoyo === true)),
+  ]);
   for (const r of rows) titulos.set(r.id, str(r.x_name) ?? `OT #${r.id}`);
 
   const ids = await executeKw<number | number[]>("x_aba_asignacion", "create", [
-    nuevas.map((n) => valoresAsignacion(n, titulos.get(n.otId) ?? `OT #${n.otId}`)),
+    nuevas.map((n) => {
+      const valores = valoresAsignacion(n, titulos.get(n.otId) ?? `OT #${n.otId}`);
+      // SUMAR UN APOYO A UN DÍA QUE YA TIENE PARTE (apoyo.md, casos borde). El parte es uno
+      // por obra y día y ya existe: el apoyo nace vinculado a él, y confirmado, como lo deja
+      // el cierre. Si naciera suelto quedaría como una jornada sin parte que nadie puede
+      // cargar (el apoyo no carga parte). El parte NO se toca: el listado de Partes avisa
+      // "sumá la gente de C3 al parte" hasta que alguien la cargue.
+      const parteId = n.apoyo === true ? partesDelDia.get(claveDia(n.otId, n.fecha)) : undefined;
+      return parteId ? { ...valores, x_parte_id: parteId, x_estado: "confirmada" } : valores;
+    }),
   ]);
   return Array.isArray(ids) ? ids : [ids];
+}
+
+/**
+ * El parte de la principal de cada (obra, día) de los apoyos que se van a crear, por
+ * `claveDia`. Una sola lectura, y ninguna si no se crea ningún apoyo (casi siempre).
+ */
+async function partesDePrincipales(apoyos: NuevaAsignacion[]): Promise<Map<string, number>> {
+  const porDia = new Map<string, number>();
+  if (apoyos.length === 0) return porDia;
+  const principales = await searchRead<{ id: number; x_ot_id: M2O; x_fecha: string | false; x_parte_id: M2O }>(
+    "x_aba_asignacion",
+    [
+      ["x_apoyo", "=", false],
+      ["x_parte_id", "!=", false],
+      ["x_ot_id", "in", [...new Set(apoyos.map((a) => a.otId))]],
+      ["x_fecha", "in", [...new Set(apoyos.map((a) => a.fecha))]],
+    ],
+    ["x_ot_id", "x_fecha", "x_parte_id"],
+    { order: "id" },
+  );
+  for (const p of principales) {
+    const otId = m2oId(p.x_ot_id);
+    const fecha = str(p.x_fecha);
+    const parteId = m2oId(p.x_parte_id);
+    // La primera que llegó, como agruparApoyos si hubiera dos principales ese día.
+    if (otId && fecha && parteId && !porDia.has(claveDia(otId, fecha))) porDia.set(claveDia(otId, fecha), parteId);
+  }
+  return porDia;
 }
 
 /** Actualiza uno o varios registros con los mismos valores (mover un bloque = N fechas distintas → usar `moverBloque`). */
@@ -678,8 +755,112 @@ export async function actualizarAsignaciones(ids: number[], cambio: CambioAsigna
   // Con texto queda fija; con null se suelta. El `?? false` es el "vacío" de Odoo, que
   // para un char no es "" sino false — un "" pasaría a contar como fija.
   if (cambio.motivoFija !== undefined) values.x_motivo_fija = cambio.motivoFija || false;
+  if (cambio.apoyo !== undefined) values.x_apoyo = cambio.apoyo;
   if (Object.keys(values).length === 0) return;
   await write("x_aba_asignacion", ids, values);
+}
+
+/**
+ * "Hacer principal": cambia el rol de cada asignación, en UNA request.
+ *
+ * Dos escrituras (una por valor) y no una por id. Van juntas en la misma request porque el
+ * estado intermedio —dos principales, o un apoyo sin principal— es justo lo que la
+ * validación de roles no deja escribir: la ruta valida el intercambio ENTERO antes de
+ * llamar acá. Primero se baja la principal a apoyo y después se sube el apoyo: si la
+ * segunda escritura fallara, queda un día sin principal (se ve en rojo en el tablero y se
+ * arregla con un clic) en vez de dos principales, que contarían un día de obra de más.
+ */
+export async function cambiarRoles(roles: { id: number; apoyo: boolean }[]): Promise<void> {
+  const aApoyo = roles.filter((r) => r.apoyo).map((r) => r.id);
+  const aPrincipal = roles.filter((r) => !r.apoyo).map((r) => r.id);
+  if (aApoyo.length > 0) await write("x_aba_asignacion", aApoyo, { x_apoyo: true });
+  if (aPrincipal.length > 0) await write("x_aba_asignacion", aPrincipal, { x_apoyo: false });
+}
+
+const CAMPOS_ROL = ["x_ot_id", "x_fecha", "x_cuadrilla_id", "x_apoyo"];
+type OdooRolRow = { id: number; x_ot_id: M2O; x_fecha: string | false; x_cuadrilla_id: M2O; x_apoyo: boolean };
+
+function filaRol(r: OdooRolRow): FilaRol {
+  return {
+    id: r.id,
+    otId: m2oId(r.x_ot_id),
+    fecha: str(r.x_fecha),
+    cuadrillaId: m2oId(r.x_cuadrilla_id),
+    apoyo: r.x_apoyo === true,
+  };
+}
+
+/**
+ * Los problemas de roles que crearía esta escritura (apoyo.md, etapa 2): apoyo sin
+ * principal, dos principales el mismo día, o el apoyo en la cuadrilla de la principal.
+ * Vacío = se puede escribir.
+ *
+ * POR QUÉ EN EL SERVIDOR, si el tablero ya lo controla: el tablero decide con lo que tiene
+ * en memoria, que puede tener treinta segundos de atraso, y hay más de un camino que
+ * escribe asignaciones (el editor de jornadas, la ficha, el arrastre, el deshacer). Una
+ * obra con dos principales el mismo día cuenta un día de más y dos partes; un apoyo
+ * huérfano es una jornada que nadie puede cerrar. Es la misma lógica que en el cliente
+ * (conflictosDeApoyo, con tests), así que el servidor sólo frena lo que la pantalla ya
+ * debería haber evitado.
+ *
+ * CUESTA HASTA DOS LECTURAS, y cero cuando el gesto no puede romper nada:
+ *  - un reordenamiento dentro de la celda (mismo día, misma cuadrilla) no lee la obra;
+ *  - un cambio de estado, fracción, nota o fijación no llega acá (lo filtra la ruta).
+ * Primero las filas tocadas (para saber de qué obra y qué día son) y después todas las
+ * de esas obras en esos días.
+ */
+export async function validarRoles(cambios: CambiosDeRol): Promise<ConflictoApoyo[]> {
+  const idsTocados = [
+    ...(cambios.mover ?? []).map((m) => m.id),
+    ...(cambios.actualizar?.ids ?? []),
+    ...(cambios.roles ?? []).map((r) => r.id),
+    ...(cambios.borrar ?? []),
+  ];
+  const tocadas =
+    idsTocados.length > 0
+      ? (await read<OdooRolRow>("x_aba_asignacion", [...new Set(idsTocados)], CAMPOS_ROL)).map(filaRol)
+      : [];
+
+  // Mover sin cambiar de día ni de cuadrilla es reordenar la pila: no toca roles.
+  if (cambios.mover && !cambios.crear && !cambios.actualizar && !cambios.roles && !cambios.borrar) {
+    const porId = new Map(tocadas.map((t) => [t.id, t]));
+    const cambiaAlgo = cambios.mover.some((m) => {
+      const t = porId.get(m.id);
+      return !t || t.fecha !== m.fecha || (m.cuadrillaId !== undefined && m.cuadrillaId !== t.cuadrillaId);
+    });
+    if (!cambiaAlgo) return [];
+  }
+
+  const otIds = new Set<number>();
+  const fechas = new Set<string>();
+  for (const t of tocadas) {
+    if (t.otId) otIds.add(t.otId);
+    if (t.fecha) fechas.add(t.fecha);
+  }
+  for (const c of cambios.crear ?? []) {
+    otIds.add(c.otId);
+    fechas.add(c.fecha);
+  }
+  for (const m of cambios.mover ?? []) fechas.add(m.fecha);
+  if (cambios.actualizar?.cambio.fecha) fechas.add(cambios.actualizar.cambio.fecha);
+  if (otIds.size === 0 || fechas.size === 0) return [];
+
+  const vecinas = await searchRead<OdooRolRow>(
+    "x_aba_asignacion",
+    [
+      ["x_ot_id", "in", [...otIds]],
+      ["x_fecha", "in", [...fechas]],
+    ],
+    CAMPOS_ROL,
+  );
+  // Las tocadas van por si alguna quedó fuera del dominio (sin OT o sin fecha): su estado
+  // de antes tiene que estar para poder compararlo con el de después.
+  const antes = new Map<number, FilaRol>();
+  for (const v of vecinas) antes.set(v.id, filaRol(v));
+  for (const t of tocadas) antes.set(t.id, t);
+  const lista = [...antes.values()];
+  const { despues, claves } = estadoDespues(lista, cambios);
+  return conflictosDeApoyo(lista, despues, claves);
 }
 
 /** Mueve un bloque multi-jornada: cada id a su nueva fecha (un write por fecha distinta). */
@@ -752,6 +933,31 @@ export async function asignacionesNoMovibles(
     }));
 }
 
+/**
+ * Las que un corrimiento NO puede borrar como "apoyo quitado" (apoyo.md, etapa 3): las que
+ * no son apoyo, o que ya están en un parte. Misma razón que asignacionesNoMovibles: el
+ * plan llega hecho del tablero, pero borrar una principal o un día con parte por un
+ * tablero con atraso no tiene vuelta. Una lectura, y sólo si el corrimiento quita algo.
+ */
+export async function apoyosNoBorrables(ids: number[]): Promise<{ id: number; motivo: string }[]> {
+  if (ids.length === 0) return [];
+  const filas = await read<{ id: number; x_apoyo: boolean; x_parte_id: M2O }>(
+    "x_aba_asignacion",
+    ids,
+    ["x_apoyo", "x_parte_id"],
+  );
+  const vistas = new Set(filas.map((f) => f.id));
+  return [
+    ...ids.filter((id) => !vistas.has(id)).map((id) => ({ id, motivo: "ya no existe" })),
+    ...filas
+      .filter((f) => f.x_apoyo !== true || m2oId(f.x_parte_id) !== null)
+      .map((f) => ({
+        id: f.id,
+        motivo: f.x_apoyo !== true ? "ya no es un apoyo" : "ya está en un parte",
+      })),
+  ];
+}
+
 export async function borrarAsignaciones(ids: number[]): Promise<void> {
   if (ids.length === 0) return;
   await executeKw("x_aba_asignacion", "unlink", [ids]);
@@ -796,7 +1002,9 @@ export async function sincronizarFechaProgramada(otIds: number[]): Promise<void>
   const [pendientes, ots] = await Promise.all([
     searchRead<{ x_ot_id: M2O; x_fecha: string | false; x_estado: string | false }>(
       "x_aba_asignacion",
-      [["x_ot_id", "in", ids], ["x_parte_id", "=", false]],
+      // Sin apoyos: la fecha y su firmeza son de la obra, y un apoyo tentativo sumado a un
+      // día ya confirmado no vuelve tentativa la fecha que se le prometió al cliente.
+      [["x_ot_id", "in", ids], ["x_parte_id", "=", false], SIN_APOYOS],
       ["x_ot_id", "x_fecha", "x_estado"],
       { order: "x_fecha" },
     ),

@@ -172,6 +172,19 @@ export type AsignacionTablero = {
    * fija se queda y obliga a que alguien decida.
    */
   motivoFija: string | null;
+  /**
+   * Cuadrilla de APOYO: va a ayudar a la principal de la obra ese día (x_apoyo en Odoo).
+   * Ausente o false = principal, que es todo lo que existía antes. Ver
+   * docs/tablero-planificacion/apoyo.md y src/lib/tablero/apoyo.ts.
+   *
+   * Ocupa capacidad en la fila de SU cuadrilla como cualquier asignación, pero no es una
+   * jornada más de la obra: no suma días al avance ni a la duración, no tiene parte propio
+   * (lo carga la principal y le cierra la jornada a los dos) y no cuenta como pendiente.
+   *
+   * Opcional por lo mismo que `origen`: que el tipo no obligue a tocar cada lugar que arma
+   * una asignación. Leelo siempre con `esApoyo()`.
+   */
+  apoyo?: boolean;
 };
 
 /** Alta de una tarjeta de operaciones. Una fila por día. */
@@ -426,9 +439,13 @@ export type DocumentoOt = {
  */
 export type ProgresoOt = {
   otId: number;
-  /** Jornadas con asignación en el tablero (en cualquier fecha). */
+  /**
+   * DÍAS DISTINTOS con asignación principal en el tablero (en cualquier fecha). Los apoyos
+   * no cuentan, y dos asignaciones de la obra el mismo día cuentan una: es un día de obra.
+   * Las de parte no ejecutado tampoco (ver DOM_TOMADAS en lib/odoo/asignaciones.ts).
+   */
   asignadas: number;
-  /** De esas, las que ya tienen parte diario cargado. */
+  /** De esos días, los que ya tienen parte diario cargado (y ejecutado). */
   cerradas: number;
 };
 
@@ -448,6 +465,8 @@ export type NuevaAsignacion = {
   estado: EstadoAsignacion;
   ordenDia: number;
   notas?: string | null;
+  /** true = es un apoyo a la principal de esa obra y ese día. Ausente = principal. */
+  apoyo?: boolean;
 };
 
 export type CambioAsignacion = {
@@ -459,6 +478,8 @@ export type CambioAsignacion = {
   notas?: string | null;
   /** Texto = fijar a este día; null = soltar. */
   motivoFija?: string | null;
+  /** Pasar a apoyo (true) o a principal (false). Es lo que usa "Hacer principal". */
+  apoyo?: boolean;
 };
 
 export type MovimientoAsignacion = {

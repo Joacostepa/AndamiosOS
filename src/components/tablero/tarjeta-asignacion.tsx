@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
-import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, CalendarRange, Circle, Check, CircleCheck, CircleDashed, ClipboardCheck, Lock, MessageSquare, MoreVertical, Pencil, Pin, PinOff, Trash2, Wrench } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, CalendarRange, Circle, Check, CircleCheck, CircleDashed, ClipboardCheck, Lock, MessageSquare, MoreVertical, PanelRightOpen, Pencil, Pin, PinOff, Trash2, Users, Wrench } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -28,6 +28,8 @@ import {
   PELIGRO,
   PELIGRO_SUAVE,
   PELIGRO_TEXTO,
+  APOYO,
+  RAYADO_APOYO,
 } from "@/lib/tablero/colores";
 import { partesTitulo, direccionDeObra, direccionCorta, nombrePropio } from "@/lib/tablero/titulo";
 import { jornadasLiberables } from "@/lib/tablero/cierre";
@@ -117,7 +119,20 @@ export function ContenidoTarjeta({
   queEjecutar = false,
   pegarA,
   sinParteDia = null,
+  apoyo = null,
+  chipsApoyo = [],
 }: {
+  /**
+   * La tarjeta es de una cuadrilla de APOYO (apoyo.md): rayada, "Apoyo · dirección" y abajo
+   * quién carga el parte. `principal` es el nombre de la cuadrilla principal ese día; null
+   * si no hay ninguna (un apoyo huérfano, que se marca en rojo).
+   */
+  apoyo?: { principal: string | null; principalCorta: string | null } | null;
+  /**
+   * En la tarjeta PRINCIPAL: los apoyos que tiene, como chips "+C3 ½". `peligro` = un chip
+   * de roles rotos ("2 principales"), en rojo.
+   */
+  chipsApoyo?: { texto: string; titulo: string; peligro?: boolean }[];
   /** El primer día que ya pasó y sigue sin parte, para decirlo en texto. */
   sinParteDia?: string | null;
   /**
@@ -211,6 +226,23 @@ export function ContenidoTarjeta({
   // viera mal: no se leía. Ahora `tipo.text` es un token y en oscuro ya viene claro, así
   // que el par se arregla sin tocar nada de esta lógica.
   const colorTexto = noEjecutada ? PELIGRO_TEXTO : tipo.text;
+
+  if (apoyo) {
+    return (
+      <ContenidoApoyo
+        ot={ot}
+        bloque={bloque}
+        direccion={direccion}
+        apoyo={apoyo}
+        unaLinea={unaLinea}
+        compacta={compacta}
+        vieneDeAntes={vieneDeAntes}
+        sigueDespues={sigueDespues}
+        ejecutada={cierre?.estado === "ejecutado"}
+        pegarA={pegarA}
+      />
+    );
+  }
 
   return (
     <div
@@ -389,6 +421,23 @@ export function ContenidoTarjeta({
             </span>
           </span>
         )}
+        {/* LOS APOYOS DE ESTE TRAMO (apoyo.md): "+C3 ½". En el par de colores del apoyo y no
+            en el del tipo: es la misma marca que la tarjeta rayada de la otra fila, y es lo
+            que dice que esa tarjeta y ésta son la misma obra. */}
+        {chipsApoyo.map((c) => (
+          <span
+            key={c.texto}
+            className="shrink-0 self-center whitespace-nowrap rounded-[3px] border px-[3px] text-[10px] font-semibold leading-[14px]"
+            style={
+              c.peligro
+                ? { backgroundColor: PELIGRO_SUAVE, color: PELIGRO_TEXTO, borderColor: PELIGRO }
+                : { backgroundColor: APOYO.fondo, color: APOYO.texto, borderColor: APOYO.borde }
+            }
+            title={c.titulo}
+          >
+            {c.texto}
+          </span>
+        ))}
         {/* En una tarjeta de un renglón el problema no tiene dónde ir: va acá, corto. */}
         {unaLinea && problema && (
           <span className="shrink-0 text-[11px] font-medium" style={{ color: PELIGRO_TEXTO }}>
@@ -450,6 +499,100 @@ export function ContenidoTarjeta({
 }
 
 /**
+ * La tarjeta de una cuadrilla de APOYO: "Apoyo · Thames 1820" y abajo "parte: Cuadrilla 2".
+ *
+ * RAYADA Y SIN EL COLOR DEL TIPO. El apoyo ocupa capacidad de verdad en su fila —por eso
+ * es una tarjeta y no una marca— pero no es una obra más: no suma días, no tiene parte
+ * propio y no reclama nada. Con el relleno del tipo se leería como una segunda obra en la
+ * grilla. Las rayas son las de la tapa de suspendido (anchas, a 135°) y no la trama fina de
+ * la tentativa, que sigue diciéndose con el borde punteado, como en cualquier tarjeta.
+ *
+ * NUNCA DICE "SIN PARTE": el parte es de la principal, y la deuda ya la reclama su tarjeta.
+ * Repetirla acá sería contar dos veces lo mismo, que es justo lo que el apoyo vino a evitar.
+ * Lo único que va en rojo es el apoyo SIN principal ese día (huérfano: alguien borró la
+ * principal o editó en Odoo), porque ése sí no lo va a cerrar nadie.
+ */
+function ContenidoApoyo({
+  ot,
+  bloque,
+  direccion,
+  apoyo,
+  unaLinea,
+  compacta,
+  vieneDeAntes,
+  sigueDespues,
+  ejecutada,
+  pegarA,
+}: {
+  ot: OtTablero | undefined;
+  bloque: Pick<Bloque, "estado" | "fraccion" | "fechas" | "multiDia">;
+  direccion: string;
+  apoyo: { principal: string | null; principalCorta: string | null };
+  unaLinea: boolean;
+  compacta: boolean;
+  vieneDeAntes: boolean;
+  sigueDespues: boolean;
+  ejecutada: boolean;
+  pegarA?: number;
+}) {
+  const huerfano = apoyo.principal == null;
+  const confirmada = bloque.estado === "confirmada";
+  const quien = huerfano ? "Sin cuadrilla principal ese día" : `parte: ${apoyo.principal}`;
+  return (
+    <div
+      className={cn(
+        "flex h-full min-w-0 flex-col justify-center gap-0.5 rounded-[4px] px-2",
+        pegarA != null ? "overflow-clip" : "overflow-hidden",
+        unaLinea ? "py-0" : "py-1",
+        compacta && "shadow-md",
+      )}
+      style={{
+        backgroundColor: APOYO.fondo,
+        backgroundImage: RAYADO_APOYO,
+        border: huerfano
+          ? `1px dashed ${PELIGRO}`
+          : `1px ${confirmada ? "solid" : "dashed"} ${APOYO.borde}`,
+      }}
+      title={
+        huerfano
+          ? `Apoyo en ${direccion} sin cuadrilla principal ese día: nadie va a cargar su parte. Sumale una principal o quitalo.`
+          : `Apoyo a ${apoyo.principal} en ${direccion}${ot?.titulo ? ` — ${ot.titulo}` : ""}. El parte lo carga ${apoyo.principal}.`
+      }
+    >
+      <div
+        className={cn("flex items-baseline gap-1", pegarA != null && "sticky w-fit max-w-full")}
+        style={pegarA != null ? { left: pegarA } : undefined}
+      >
+        {vieneDeAntes && <ChevronLeft className="h-3 w-3 shrink-0 self-center" style={{ color: APOYO.texto }} />}
+        <Users className="h-3.5 w-3.5 shrink-0 self-center" style={{ color: APOYO.texto }} aria-hidden />
+        {ejecutada && <CircleCheck className="h-3 w-3 shrink-0 self-center" style={{ color: OK }} />}
+        <span className="min-w-0 flex-1 truncate text-[12px] font-medium leading-tight" style={{ color: APOYO.texto }}>
+          Apoyo · {direccion}
+          {/* En un renglón no entra el de abajo: quién carga el parte va acá, corto. */}
+          {unaLinea && (
+            <span style={{ color: huerfano ? PELIGRO_TEXTO : undefined }}>
+              {huerfano ? " (sin principal)" : ` (parte: ${apoyo.principalCorta ?? apoyo.principal})`}
+            </span>
+          )}
+        </span>
+        <span className="shrink-0 whitespace-nowrap text-[11px] font-medium tabular-nums" style={{ color: APOYO.texto }}>
+          {textoOcupa(bloque)}
+        </span>
+        {sigueDespues && <ChevronRight className="h-3 w-3 shrink-0 self-center" style={{ color: APOYO.texto }} />}
+      </div>
+      {!unaLinea && (
+        <p
+          className="truncate text-[11px] leading-tight"
+          style={{ color: huerfano ? PELIGRO_TEXTO : APOYO.texto, fontWeight: huerfano ? 500 : undefined }}
+        >
+          {quien}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
  * Por debajo de esto sólo entra un renglón: el de arriba mide ~16px y el padding y el
  * borde se comen el resto. Una jornada de ¼ (24px) cae siempre de este lado.
  */
@@ -489,6 +632,8 @@ export function TarjetaAsignacion({
   comentarios = null,
   pegarA,
   sinParteDia = null,
+  apoyo = null,
+  chipsApoyo = [],
   onCerrarJornada,
   onAbrir,
   onFraccion,
@@ -497,6 +642,7 @@ export function TarjetaAsignacion({
   onFijar,
   onSoltar,
   onQuitar,
+  onHacerPrincipal,
   onTareaHecha,
   onEditarTarea,
 }: {
@@ -528,6 +674,10 @@ export function TarjetaAsignacion({
   pegarA?: number;
   /** El primer día pasado sin parte, para decir "Sin parte del 8/10". */
   sinParteDia?: string | null;
+  /** Es la tarjeta de un apoyo. Ver ContenidoApoyo. */
+  apoyo?: { principal: string | null; principalCorta: string | null } | null;
+  /** Los apoyos de este tramo de la principal ("+C3 ½"), y el rojo de "2 principales". */
+  chipsApoyo?: { texto: string; titulo: string; peligro?: boolean }[];
   onCerrarJornada: (accion: NonNullable<AccionCierre>) => void;
   onAbrir: () => void;
   onFraccion: (f: FraccionStr) => void;
@@ -538,6 +688,11 @@ export function TarjetaAsignacion({
   /** Suelta sin preguntar: soltar no necesita justificarse, fijar sí. */
   onSoltar: () => void;
   onQuitar: () => void;
+  /**
+   * Sólo en la tarjeta de un apoyo: intercambia los roles con la principal ese día ("se
+   * rompió el camión de la C2"). Ver hacerPrincipal en tablero-board.
+   */
+  onHacerPrincipal?: () => void;
   /** Sólo en tarjetas de operaciones: el cierre de una tarea es un sí o un no. */
   onTareaHecha?: (hecha: boolean) => void;
   onEditarTarea?: () => void;
@@ -641,6 +796,8 @@ export function TarjetaAsignacion({
         comentarios={comentarios}
         pegarA={pegarA}
         sinParteDia={sinParteDia}
+        apoyo={apoyo}
+        chipsApoyo={chipsApoyo}
       />
 
       {/* El menú no aparece mientras se guarda: todas sus opciones escriben, y con el id
@@ -683,7 +840,49 @@ export function TarjetaAsignacion({
             {/* UNA TAREA TIENE OTRO MENÚ. No se confirma (no es borrador: la puso
                 Operaciones y va), no tiene jornadas de obra que editar ni parte que
                 cerrar. Lo único que comparte con una obra es la fracción y el quitar. */}
-            {bloque.tarea ? (
+            {/* UN APOYO TIENE SU PROPIO MENÚ. No se confirma ni se fija por su cuenta (va
+                con la principal), no tiene jornadas de obra que editar ni parte que
+                cerrar: lo carga la principal. Lo que sí se decide del apoyo es cuánto va
+                y si va. Pasarlo a otra cuadrilla es arrastrarlo, en el mismo día. */}
+            {bloque.apoyo ? (
+              <>
+                <DropdownMenuItem onClick={onAbrir}>
+                  <PanelRightOpen className="mr-2 h-4 w-4" />
+                  Abrir la obra
+                </DropdownMenuItem>
+                {!bloque.multiDia && (
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel>Cuánto va el apoyo</DropdownMenuLabel>
+                    {FRACCIONES.map((f) => (
+                      <DropdownMenuItem key={f.value} onClick={() => onFraccion(f.value)}>
+                        <span className="mr-2 w-6 text-center">{f.label}</span>
+                        {f.detalle}
+                        {Number(f.value) === bloque.fraccion && <Check className="ml-auto h-3.5 w-3.5" />}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuGroup>
+                )}
+                {/* De a un día: en un apoyo de varios días no se sabe cuál, y eso se elige
+                    desde la ficha. Sin parte y con principal: con parte los roles ya
+                    quedaron escritos en el cierre, y sin principal no hay con quién
+                    intercambiar. */}
+                {onHacerPrincipal && !bloque.multiDia && apoyo?.principal != null && liberables > 0 && (
+                  <DropdownMenuItem onClick={onHacerPrincipal}>
+                    <ArrowUpDown className="mr-2 h-4 w-4" />
+                    Hacer principal
+                  </DropdownMenuItem>
+                )}
+                {liberables > 0 && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={onQuitar} style={{ color: CORAL }}>
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Quitar el apoyo
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </>
+            ) : bloque.tarea ? (
               <>
                 <DropdownMenuItem onClick={() => onTareaHecha?.(!bloque.tarea!.hecha)}>
                   {bloque.tarea.hecha ? (

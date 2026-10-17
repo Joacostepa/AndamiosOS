@@ -95,6 +95,9 @@ export function Obra({ o, abierta, onVisor }: { o: ObraPublica; abierta: boolean
         {!abierta && <span className={s.mas} aria-hidden>{open ? "cerrar" : "ver"}</span>}
       </div>
       <div className={s.tp}><Tipo tipo={o.tipo} txt={o.tipoTxt} /> {o.detalle}</div>
+      {/* Va en la cabecera, a la vista aunque la obra esté plegada: es lo primero que el
+          capataz del apoyo tiene que saber (la obra no es suya y no carga el parte). */}
+      {o.apoyo && <div className={s.tp}><b>{o.apoyo}</b></div>}
     </>
   );
   const body = (

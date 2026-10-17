@@ -7,7 +7,10 @@ import {
   borrarAsignaciones,
   otsDeAsignaciones,
   sincronizarFechaProgramada,
+  validarRoles,
+  cambiarRoles,
 } from "@/lib/odoo/asignaciones";
+import { textoConflicto, type CambiosDeRol } from "@/lib/tablero/apoyo";
 import { OdooError } from "@/lib/odoo/client";
 import { createClient } from "@/lib/supabase/server";
 import { registrarConfirmacion } from "@/lib/planificacion/confirmaciones";
@@ -18,7 +21,8 @@ import { VALORES_FRACCION } from "@/lib/tablero/fracciones";
 // Escrituras del Tablero de Planificación sobre x_aba_asignacion (Odoo).
 //
 //   POST   → crear las jornadas de una obra (una asignación por día)
-//   PATCH  → actualizar (fracción, estado, cuadrilla, orden) o mover un bloque
+//   PATCH  → actualizar (fracción, estado, cuadrilla, orden), mover un bloque o
+//            intercambiar roles principal/apoyo ("Hacer principal")
 //   DELETE → sacar del tablero (la obra vuelve a la bandeja de sin asignar)
 //
 // REGLA DE NEGOCIO: la app es la única que escribe asignaciones; en Odoo se ven en
@@ -42,6 +46,12 @@ import { VALORES_FRACCION } from "@/lib/tablero/fracciones";
 // tablero se edita en ráfagas, así que no pueden colgarse del camino crítico. La UI ya
 // es optimista y no depende de ese dato.
 
+// LOS ROLES DE LA OBRA SE VALIDAN ACÁ (apoyo.md, etapa 2): no puede quedar un apoyo sin
+// principal ese día, ni dos principales de la misma obra el mismo día, ni el apoyo en la
+// cuadrilla de la principal. Contesta 409 con la frase lista para el toast. Sólo frena lo
+// que el gesto EMPEORA: un día que ya venía roto de Odoo no traba a nadie (ver
+// conflictosDeApoyo en lib/tablero/apoyo.ts).
+
 export const dynamic = "force-dynamic";
 
 const fecha = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha YYYY-MM-DD");
@@ -64,6 +74,10 @@ const estadoBloqueSchema = z.object({
   cuadrillaNombre: z.string().nullable(),
   fraccion: z.number().positive().optional(),
   motivoFija: z.string().nullable().optional(),
+  // El bloque era un apoyo: la frase del historial dice "Sumó el apoyo de…" (tipos-movimiento).
+  apoyo: z.boolean().optional(),
+  // "Hacer principal": la frase dice "Hizo principal a…" (tipos-movimiento).
+  intercambio: z.boolean().optional(),
 });
 
 const registroSchema = z.object({
@@ -88,6 +102,8 @@ const crearSchema = z.object({
         estado,
         ordenDia: z.number().int().min(0),
         notas: z.string().nullable().optional(),
+        // Cuadrilla de apoyo a la principal de esa obra y ese día (apoyo.md). Ausente = principal.
+        apoyo: z.boolean().optional(),
       }),
     )
     .min(1),
@@ -109,6 +125,8 @@ const actualizarSchema = z.object({
       // El tope es el mismo que el `size` del campo en Odoo: si acá entrara más, Odoo lo
       // cortaría en silencio y el motivo que se guarda no sería el que se escribió.
       motivoFija: z.string().max(300).nullable().optional(),
+      // "Hacer principal" / pasar a apoyo.
+      apoyo: z.boolean().optional(),
     })
     .refine((c) => Object.keys(c).length > 0, "Nada para actualizar"),
   /**
@@ -139,6 +157,18 @@ const moverSchema = z.object({
     .min(1),
 });
 
+/**
+ * "Hacer principal": un rol distinto por id, en UNA request. No entra en `actualizar`
+ * (mismos valores para todos) y no puede ir en dos PATCH: el estado del medio —dos
+ * principales o un apoyo solo— es justo lo que la validación de roles no deja escribir.
+ */
+const rolesSchema = z.object({
+  registro: registroSchema.optional(),
+  roles: z
+    .array(z.object({ id: z.number().int().positive(), apoyo: z.boolean() }))
+    .min(1),
+});
+
 const borrarSchema = z.object({
   ids: z.array(z.number().int().positive()).min(1),
   registro: registroSchema.optional(),
@@ -160,6 +190,26 @@ async function anotar(
 function errorResponse(e: unknown) {
   const msg = e instanceof OdooError ? e.message : e instanceof Error ? e.message : String(e);
   return NextResponse.json({ error: msg }, { status: 502 });
+}
+
+/**
+ * 409 si la escritura deja mal los roles de alguna obra; null si se puede seguir.
+ *
+ * Si la lectura de validación falla, NO se frena la escritura: la validación protege
+ * contra un tablero desactualizado, y que Odoo tarde en contestar una lectura no es razón
+ * para no dejar planificar. La escritura que sigue va a fallar igual si Odoo está caído.
+ */
+async function frenoDeRoles(cambios: CambiosDeRol): Promise<NextResponse | null> {
+  let conflictos;
+  try {
+    conflictos = await validarRoles(cambios);
+  } catch (e) {
+    console.error("[asignaciones] no se pudieron validar los roles de apoyo", e);
+    return null;
+  }
+  if (conflictos.length === 0) return null;
+  const frases = [...new Set(conflictos.map((c) => textoConflicto(c)))];
+  return NextResponse.json({ error: frases.join(" "), conflictos }, { status: 409 });
 }
 
 function invalido(issues: z.ZodIssue[]) {
@@ -192,6 +242,8 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) return invalido(parsed.error.issues);
 
   try {
+    const freno = await frenoDeRoles({ crear: parsed.data.asignaciones });
+    if (freno) return freno;
     const ids = await crearAsignaciones(parsed.data.asignaciones);
     sincronizarLuego(parsed.data.asignaciones.map((a) => a.otId));
     // Los ids recién existen después de crear, así que el registro va acá y no antes.
@@ -210,12 +262,32 @@ export async function PATCH(req: NextRequest) {
   // los errores del OTRO esquema —"falta ids", "falta cambio"—, que es lo que llegaba al
   // toast: un mensaje que no dice nada de lo que realmente estaba mal.
   const esMover = !!body && typeof body === "object" && "movimientos" in body;
+  const esRoles = !!body && typeof body === "object" && "roles" in body;
+
+  if (esRoles) {
+    const roles = rolesSchema.safeParse(body);
+    if (!roles.success) return invalido(roles.error.issues);
+    try {
+      const freno = await frenoDeRoles({ roles: roles.data.roles });
+      if (freno) return freno;
+      const ids = roles.data.roles.map((r) => r.id);
+      await cambiarRoles(roles.data.roles);
+      // La fecha programada de la OT no cambia (los días son los mismos) y el avance
+      // tampoco: cambia quién lleva la obra ese día, no cuántos días tiene.
+      const movimientoId = await anotar(roles.data.registro, ids);
+      return NextResponse.json({ ok: true, movimientoId });
+    } catch (e) {
+      return errorResponse(e);
+    }
+  }
 
   if (esMover) {
     const mover = moverSchema.safeParse(body);
     if (!mover.success) return invalido(mover.error.issues);
     try {
       const ids = mover.data.movimientos.map((m) => m.id);
+      const freno = await frenoDeRoles({ mover: mover.data.movimientos });
+      if (freno) return freno;
       await moverAsignaciones(mover.data.movimientos);
       // La OT no cambia al mover, así que se resuelve después de responder junto con la
       // sincronización, sin sumar una lectura al camino crítico.
@@ -232,6 +304,12 @@ export async function PATCH(req: NextRequest) {
 
   try {
     const { ids, cambio, contexto, registro } = parsed.data;
+    // Sólo lo que puede cambiar roles: día, cuadrilla o el propio rol. Estado, fracción,
+    // notas y fijación no leen nada de más (son la mayoría de los PATCH).
+    if (cambio.fecha !== undefined || cambio.cuadrillaId !== undefined || cambio.apoyo !== undefined) {
+      const freno = await frenoDeRoles({ actualizar: { ids, cambio } });
+      if (freno) return freno;
+    }
     await actualizarAsignaciones(ids, cambio);
     sincronizarLuego(otsDeAsignaciones(ids));
     const movimientoId = await anotar(registro, ids);
@@ -276,6 +354,10 @@ export async function DELETE(req: NextRequest) {
     // Acá SÍ hay que leer antes: una vez borradas no hay forma de saber de qué OT eran,
     // y es justo el caso en que la fecha de la OT tiene que limpiarse.
     const otIds = await otsDeAsignaciones(parsed.data.ids);
+    // Sacar una principal sin sus apoyos los dejaría huérfanos: el tablero los manda
+    // juntos (volverABandeja, el editor de jornadas) y esto ataja al que no.
+    const freno = await frenoDeRoles({ borrar: parsed.data.ids });
+    if (freno) return freno;
     await borrarAsignaciones(parsed.data.ids);
     sincronizarLuego(otIds);
     // Se anota DESPUÉS de borrar, con los ids que ya no existen: son justamente lo que

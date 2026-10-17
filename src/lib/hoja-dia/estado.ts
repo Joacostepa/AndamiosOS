@@ -394,6 +394,20 @@ export const laC = (dia: DiaHoja, c: number) => {
 };
 /** "la Cuadrilla 3" / "el depósito": para armar frases ("pasó a la Cuadrilla 3"). */
 export const laCuadrilla = (dia: DiaHoja, c: number | null | undefined) => (esDeposito(c) ? "el depósito" : `la ${cNombre(dia, c)}`);
+/**
+ * "Hoy apoyás Thames 1820, el parte lo hace la Cuadrilla 2." (apoyo.md, sección 2).
+ *
+ * Lo dicen el pizarrón, la Hoja del capataz en el celular y el mensaje: el capataz del
+ * apoyo tiene que saber que esa obra no es suya y que no carga nada. Sin principal ese día
+ * (alguien la sacó, o se editó a mano en Odoo) NO dice "la cuadrilla principal": no existe,
+ * y el capataz entendería que alguien lo carga cuando nadie lo va a cargar.
+ */
+export function textoApoyo(dia: DiaHoja, o: ObraDia): string {
+  if (o.principalOdooId == null) {
+    return `Hoy apoyás ${o.corto}, pero la obra no tiene cuadrilla principal hoy: avisá a la oficina.`;
+  }
+  return `Hoy apoyás ${o.corto}, el parte lo hace la ${cNombre(dia, o.principalOdooId)}.`;
+}
 /** "a la Cuadrilla 3" / "al depósito". */
 export const aLaC = (dia: DiaHoja, c: number | null | undefined) => (esDeposito(c) ? "al depósito" : `a la ${cNombre(dia, c)}`);
 /** "de la Cuadrilla 3" / "del depósito". */

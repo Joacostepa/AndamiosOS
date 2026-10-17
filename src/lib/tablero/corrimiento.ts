@@ -22,14 +22,26 @@
 // llueve: depósito, mantenimiento, capacitación. Sí cuentan para la carga del día —si una
 // obra corrida cae encima de un traslado, el día aparece sobreasignado— y sí frenan la
 // cascada, porque un día con una tarea es un día que la cuadrilla ya tiene tomado.
+//
+// LAS CUADRILLAS DE APOYO VAN CON SU OBRA (apoyo.md, etapa 3). Un apoyo no se corre por la
+// cadena de SU cuadrilla: se corre cuando se corre la principal de esa obra y ese día, al
+// mismo día que ella, esté o no tildada la cuadrilla del apoyo. Si la principal NO se corre
+// (su cuadrilla salió, o está fija) y la que se suspende es la del apoyo, el apoyo se QUITA
+// —esa cuadrilla no va— y queda anotado en el historial con el motivo: "Thames 1820 se
+// queda sin el apoyo de C3". El deshacer lo vuelve a crear. Dejarlo donde estaba diría que
+// la C3 sale bajo la lluvia; correrlo solo lo dejaría colgado de un día sin su obra.
 
-import { esDomingo, siguienteDiaLaboral } from "./bloques";
-import { violaTecho } from "./ventana";
-import type { RegistroCorrida } from "./tipos-movimiento";
+import { claveDia, esApoyo } from "./apoyo.ts";
+import { esDomingo, siguienteDiaLaboral } from "./bloques.ts";
+import { aFraccionStr } from "./fracciones.ts";
+import { violaTecho } from "./ventana.ts";
+import type { EstadoBloque, RegistroApoyoCorrida, RegistroCorrida } from "./tipos-movimiento";
 import type {
   AsignacionTablero,
   CuadrillaTablero,
+  EstadoAsignacion,
   MovimientoAsignacion,
+  NuevaAsignacion,
   OtTablero,
 } from "./tipos";
 
@@ -54,11 +66,33 @@ const PISO_VALE_LA_PENA = 0.5;
 
 export type LineaObra = { otId: number; titulo: string };
 
+/**
+ * Un apoyo que el corrimiento saca: su cuadrilla no sale el día suspendido y su principal
+ * no se corre. Lleva todo lo que hace falta para volver a crearlo al deshacer, porque el
+ * id se pierde con el borrado.
+ */
+export type ApoyoQuitado = LineaObra & {
+  id: number;
+  cuadrillaId: number;
+  cuadrillaNombre: string;
+  fecha: string;
+  fraccion: number;
+  estado: EstadoAsignacion;
+  ordenDia: number;
+  notas: string | null;
+};
+
 export type Corrimiento = {
   /** Lo que hay que escribir. Vacío = no hay nada para correr. */
   movimientos: MovimientoAsignacion[];
   /** Una fila de historial por obra y cuadrilla. */
   registros: RegistroCorrida[];
+  /** Ids de los apoyos que se borran (ver ApoyoQuitado). */
+  quitar: number[];
+  /** Los mismos, para el diálogo y para el deshacer. */
+  apoyosQuitados: ApoyoQuitado[];
+  /** Una fila de historial por apoyo quitado, con la acción "quitar" y el motivo del lote. */
+  registrosApoyo: RegistroApoyoCorrida[];
   /** Se quedan en su día. Es la lista que se lee bajo la lluvia. */
   fijas: (LineaObra & { fecha: string; motivo: string })[];
   /** Se movieron y tienen la fecha prometida al cliente: hay que llamar. */
@@ -114,6 +148,27 @@ function esMovible(a: AsignacionTablero): boolean {
   );
 }
 
+/**
+ * Un apoyo se corre con su principal AUNQUE ESTÉ FIJO. La regla es una sola en todo el
+ * tablero (apoyo.md: "el apoyo va con la obra"): mover la tarjeta y el editor de jornadas
+ * ya arrastran al apoyo sin mirar la fijación, y el tablero no deja fijar un apoyo. Si el
+ * corrimiento la respetara, la principal se iría al día siguiente y el apoyo quedaría
+ * huérfano en el día viejo —y esta ruta no valida roles, así que quedaría escrito—. Una
+ * fijación en un apoyo sólo puede venir de una edición a mano en Odoo. Con parte, no.
+ */
+function apoyoMovible(a: AsignacionTablero): boolean {
+  return (a.origen ?? "ot") !== "tarea" && a.parteId == null && a.cuadrillaId !== null;
+}
+
+/**
+ * Lo que la cadena de una cuadrilla empuja por sí misma: lo movible que NO es apoyo. El
+ * apoyo se mueve con su principal (paso 2b), así que para la cascada de su cuadrilla
+ * cuenta como lo fijo: ocupa el día, pero no hay nada que empujar.
+ */
+function esMoviblePropia(a: AsignacionTablero): boolean {
+  return esMovible(a) && !esApoyo(a);
+}
+
 export function planearCorrimiento(entrada: EntradaCorrimiento): Corrimiento {
   const { asignaciones, ots, cuadrillas, dia, modo } = entrada;
   const enFoco = new Set(entrada.cuadrillaIds);
@@ -130,7 +185,7 @@ export function planearCorrimiento(entrada: EntradaCorrimiento): Corrimiento {
     else porCelda.set(k, [a]);
   }
   const enDia = (c: number, f: string) => porCelda.get(celda(c, f)) ?? [];
-  const moviblesDe = (c: number, f: string) => enDia(c, f).filter(esMovible);
+  const moviblesDe = (c: number, f: string) => enDia(c, f).filter(esMoviblePropia);
 
   // ── 1. Qué días se corren, por cuadrilla ───────────────────────────────────
   //
@@ -176,7 +231,10 @@ export function planearCorrimiento(entrada: EntradaCorrimiento): Corrimiento {
   for (const [cuadrillaId, cadena] of cadenas) {
     for (const fecha of cadena) {
       for (const a of enDia(cuadrillaId, fecha)) {
-        if (esMovible(a)) {
+        // El apoyo no lo corre su cuadrilla: va con su principal (abajo), aunque tenga
+        // una fijación (ver apoyoMovible).
+        if (esApoyo(a)) continue;
+        if (esMoviblePropia(a)) {
           const nueva = siguienteDiaLaboral(a.fecha);
           movimientos.push({ id: a.id, fecha: nueva });
           movidas.push({ a, nueva });
@@ -197,6 +255,45 @@ export function planearCorrimiento(entrada: EntradaCorrimiento): Corrimiento {
     }
   }
 
+  // ── 2b. Los apoyos, detrás de su principal ─────────────────────────────────
+  //
+  // Se resuelven DESPUÉS de saber qué principales se mueven, contra el plan original: un
+  // apoyo del jueves sigue a la principal del jueves aunque ésta haya caído en el viernes
+  // por la cascada de otra cuadrilla.
+  const destinoDePrincipal = new Map<string, string>();
+  for (const { a, nueva } of movidas) {
+    const k = claveDia(a.otId, a.fecha);
+    if (!destinoDePrincipal.has(k)) destinoDePrincipal.set(k, nueva);
+  }
+  const apoyosQuitados: ApoyoQuitado[] = [];
+  for (const a of asignaciones) {
+    if (!esApoyo(a) || !apoyoMovible(a)) continue;
+    const nueva = destinoDePrincipal.get(claveDia(a.otId, a.fecha));
+    if (nueva) {
+      movimientos.push({ id: a.id, fecha: nueva });
+      movidas.push({ a, nueva });
+      continue;
+    }
+    // La principal se queda (salió, o está fija o con parte) y la cuadrilla del apoyo no
+    // sale ese día: el apoyo no va. Sólo el día suspendido: en los días de la cascada la
+    // cuadrilla trabaja, y lo que le cae encima se reporta como sobrecarga.
+    if (a.fecha === dia && a.cuadrillaId !== null && enFoco.has(a.cuadrillaId)) {
+      apoyosQuitados.push({
+        id: a.id,
+        otId: a.otId,
+        titulo: ots.get(a.otId)?.titulo ?? `OT ${a.otId}`,
+        cuadrillaId: a.cuadrillaId,
+        cuadrillaNombre: nombre.get(a.cuadrillaId) ?? `Cuadrilla ${a.cuadrillaId}`,
+        fecha: a.fecha,
+        fraccion: a.fraccion,
+        estado: a.estado,
+        ordenDia: a.ordenDia,
+        notas: a.notas,
+      });
+    }
+  }
+  const quitados = new Set(apoyosQuitados.map((q) => q.id));
+
   // ── 3. El daño colateral ───────────────────────────────────────────────────
 
   // Confirmadas: se mueven igual —si no se puede trabajar, dejarlas donde están sería
@@ -204,7 +301,8 @@ export function planearCorrimiento(entrada: EntradaCorrimiento): Corrimiento {
   // día: es lo que el cliente preguntó.
   const confirmadas = new Map<number, Corrimiento["confirmadas"][number]>();
   for (const { a, nueva } of movidas) {
-    if (a.estado !== "confirmada") continue;
+    // El apoyo no agrega a quién llamar: la obra ya está en la lista por su principal.
+    if (a.estado !== "confirmada" || esApoyo(a)) continue;
     const ya = confirmadas.get(a.otId);
     if (!ya || a.fecha < ya.de) {
       confirmadas.set(a.otId, {
@@ -225,7 +323,7 @@ export function planearCorrimiento(entrada: EntradaCorrimiento): Corrimiento {
   const nuevaFechaPorId = new Map(movidas.map((m) => [m.a.id, m.nueva]));
   const ultimoPorOt = new Map<number, { antes: string; despues: string }>();
   for (const a of asignaciones) {
-    if ((a.origen ?? "ot") === "tarea") continue;
+    if ((a.origen ?? "ot") === "tarea" || esApoyo(a)) continue;
     const despues = nuevaFechaPorId.get(a.id) ?? a.fecha;
     const ya = ultimoPorOt.get(a.otId);
     ultimoPorOt.set(a.otId, {
@@ -252,7 +350,7 @@ export function planearCorrimiento(entrada: EntradaCorrimiento): Corrimiento {
   // fijas, que no se movieron pero siguen ocupando la cuadrilla.
   const cargaFinal = new Map<string, number>();
   for (const a of asignaciones) {
-    if (a.cuadrillaId === null) continue;
+    if (a.cuadrillaId === null || quitados.has(a.id)) continue;
     const fecha = nuevaFechaPorId.get(a.id) ?? a.fecha;
     const k = celda(a.cuadrillaId, fecha);
     cargaFinal.set(k, (cargaFinal.get(k) ?? 0) + a.fraccion);
@@ -291,9 +389,12 @@ export function planearCorrimiento(entrada: EntradaCorrimiento): Corrimiento {
   // Por obra Y cuadrilla porque el "antes/después" del registro habla de un bloque, y un
   // bloque tiene una sola cuadrilla. Una obra repartida entre dos cuadrillas deja dos
   // filas del mismo lote, que es lo correcto: son dos cosas que se movieron.
+  //
+  // El apoyo va en su propia fila (con `apoyo: true`): una cuadrilla puede ser principal de
+  // la obra un día y apoyo otro, y mezclarlas haría que el historial no pueda decir cuál.
   const porBloque = new Map<string, { a: AsignacionTablero; nueva: string }[]>();
   for (const m of movidas) {
-    const k = `${m.a.otId}|${m.a.cuadrillaId}`;
+    const k = `${m.a.otId}|${m.a.cuadrillaId}|${esApoyo(m.a) ? "a" : "p"}`;
     const lista = porBloque.get(k);
     if (lista) lista.push(m);
     else porBloque.set(k, [m]);
@@ -307,6 +408,7 @@ export function planearCorrimiento(entrada: EntradaCorrimiento): Corrimiento {
     const primera = lista[0].a;
     const cuadrillaId = primera.cuadrillaId;
     const cuadrillaNombre = cuadrillaId == null ? null : (nombre.get(cuadrillaId) ?? null);
+    const apoyo = esApoyo(primera) ? { apoyo: true } : {};
     registros.push({
       otId: primera.otId,
       otTitulo: ots.get(primera.otId)?.titulo ?? null,
@@ -316,21 +418,36 @@ export function planearCorrimiento(entrada: EntradaCorrimiento): Corrimiento {
         cuadrillaId,
         cuadrillaNombre,
         fraccion: primera.fraccion,
+        ...apoyo,
       },
       despues: {
         fechas: lista.map((m) => m.nueva).sort(),
         cuadrillaId,
         cuadrillaNombre,
         fraccion: primera.fraccion,
+        ...apoyo,
       },
     });
   }
+
+  // Una fila por apoyo quitado: "Quitó el apoyo de C3 mar 16 — Lluvia".
+  const registrosApoyo: RegistroApoyoCorrida[] = apoyosQuitados.map((q) => ({
+    otId: q.otId,
+    otTitulo: ots.get(q.otId)?.titulo ?? null,
+    accion: "quitar",
+    asignacionIds: [q.id],
+    antes: estadoDeQuitado(q),
+    despues: null,
+  }));
 
   const fechasDestino = movidas.map((m) => m.nueva).sort();
 
   return {
     movimientos,
     registros,
+    quitar: apoyosQuitados.map((q) => q.id),
+    apoyosQuitados,
+    registrosApoyo,
     fijas,
     confirmadas: [...confirmadas.values()].sort((a, b) => a.de.localeCompare(b.de)),
     rompenTecho,
@@ -344,6 +461,16 @@ export function planearCorrimiento(entrada: EntradaCorrimiento): Corrimiento {
   };
 }
 
+function estadoDeQuitado(q: ApoyoQuitado): EstadoBloque {
+  return {
+    fechas: [q.fecha],
+    cuadrillaId: q.cuadrillaId,
+    cuadrillaNombre: q.cuadrillaNombre,
+    fraccion: q.fraccion,
+    apoyo: true,
+  };
+}
+
 /**
  * El corrimiento al revés, para deshacerlo.
  *
@@ -351,10 +478,20 @@ export function planearCorrimiento(entrada: EntradaCorrimiento): Corrimiento {
  * al día del que salió, aunque el plan haya cambiado de forma en el medio. Quién puede y
  * quién no deshacer lo decide la guarda del tablero, que comprueba que las asignaciones
  * sigan existiendo y nadie las haya tocado.
+ *
+ * Los apoyos quitados se VUELVEN A CREAR (con ids nuevos: los viejos ya no existen), como
+ * estaban. `crear[i]` y `registrosApoyo[i]` van emparejados: la ruta le pone a cada fila
+ * del historial el id que Odoo le dio a su apoyo.
  */
 export function invertirCorrimiento(
   registros: Corrimiento["registros"],
-): { movimientos: MovimientoAsignacion[]; registros: Corrimiento["registros"] } {
+  apoyosQuitados: ApoyoQuitado[] = [],
+): {
+  movimientos: MovimientoAsignacion[];
+  registros: Corrimiento["registros"];
+  crear: NuevaAsignacion[];
+  registrosApoyo: RegistroApoyoCorrida[];
+} {
   const movimientos: MovimientoAsignacion[] = [];
   for (const r of registros) {
     // `antes.fechas` y `asignacionIds` están los dos ordenados por fecha de origen, así
@@ -367,6 +504,24 @@ export function invertirCorrimiento(
   return {
     movimientos,
     registros: registros.map((r) => ({ ...r, antes: r.despues, despues: r.antes })),
+    crear: apoyosQuitados.map((q) => ({
+      otId: q.otId,
+      fecha: q.fecha,
+      cuadrillaId: q.cuadrillaId,
+      fraccion: aFraccionStr(q.fraccion),
+      estado: q.estado,
+      ordenDia: q.ordenDia,
+      notas: q.notas,
+      apoyo: true,
+    })),
+    registrosApoyo: apoyosQuitados.map((q) => ({
+      otId: q.otId,
+      otTitulo: q.titulo,
+      accion: "crear",
+      asignacionIds: [],
+      antes: null,
+      despues: estadoDeQuitado(q),
+    })),
   };
 }
 

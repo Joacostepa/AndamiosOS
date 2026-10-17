@@ -16,6 +16,7 @@ import { HistoriaOt } from "./historia-ot";
 import { CascoSyh } from "./casco-syh";
 import { ComentariosOt } from "./comentarios-ot";
 import { DetalleTecnico } from "./detalle-tecnico";
+import { ApoyoOt, type ApoyoDeLaObra, type DatosApoyoOt } from "./apoyo-ot";
 import { ChipTipoOt } from "@/components/habilitaciones/chip-tipo-ot";
 import { ETAPA_LABEL, type HabAlerta, type HabEtapa } from "@/lib/habilitaciones/tipos";
 import { ALERTA_LABEL } from "@/lib/habilitaciones/derivacion";
@@ -771,6 +772,10 @@ export function PanelOt({
   onEditarJornadas,
   onCerrarJornada,
   onQuitar,
+  apoyo = null,
+  onSumarApoyo,
+  onQuitarApoyo,
+  onHacerPrincipal,
   onOpenChange,
 }: {
   ot: OtTablero | null;
@@ -822,6 +827,15 @@ export function PanelOt({
   onEditarJornadas: () => void;
   onCerrarJornada: (accion: NonNullable<AccionCierre>) => void;
   onQuitar: () => void;
+  /**
+   * La cuadrilla de apoyo (apoyo.md): los que ya tiene y lo necesario para sumar otro.
+   * Null cuando la obra no tiene días en la grilla ni apoyos que mostrar.
+   */
+  apoyo?: DatosApoyoOt | null;
+  onSumarApoyo?: (cuadrillaId: number, fechas: string[], fraccion: FraccionStr) => void;
+  onQuitarApoyo?: (apoyo: ApoyoDeLaObra, ids: number[]) => void;
+  /** "Hacer principal" a un día de apoyo (el id de esa asignación de apoyo). */
+  onHacerPrincipal?: (apoyoId: number) => void;
   onOpenChange: (abierto: boolean) => void;
 }) {
   const sem = semaforo(ot?.habSemaforo);
@@ -1057,6 +1071,19 @@ export function PanelOt({
                 setPlanificando(null);
                 onPlanificar(cuadrillaId, dia);
               }}
+            />
+          )}
+
+          {/* LA CUADRILLA DE APOYO, en el encabezado y no en el cuerpo: es una acción sobre
+              la jornada, como confirmar o fijar, y los apoyos que ya tiene son parte del
+              estado de la obra ("Cuadrilla 2 + apoyo de la 3 el martes"). */}
+          {apoyo && onSumarApoyo && onQuitarApoyo && (
+            <ApoyoOt
+              key={ot.id}
+              datos={apoyo}
+              onSumar={onSumarApoyo}
+              onQuitar={onQuitarApoyo}
+              onHacerPrincipal={onHacerPrincipal}
             />
           )}
         </header>

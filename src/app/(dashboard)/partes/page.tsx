@@ -26,6 +26,7 @@ import {
 } from "@/components/partes/fila-jornada";
 import type { JornadaListado } from "@/lib/tablero/tipos-jornada";
 import { asBuiltAEnviar, type DatosCierre } from "@/lib/tablero/tipos-parte";
+import { apoyosAlParte } from "@/lib/partes/apoyos";
 
 // Carga de partes diarios. Es el ÚNICO lugar donde se crea un parte.
 //
@@ -48,11 +49,27 @@ function aDatosCierre(b: Borrador, j: JornadaListado): DatosCierre {
   const desde = parseHora(b.desde) ?? 8;
   const hasta = parseHora(b.hasta) ?? 17;
   const personas = Number(b.personas) || 0;
+  const tarea = j.tipo === "desarme" ? "desarme" : "armado";
+  // Los apoyos: un renglón de mano de obra por cada uno que fue, con SU cuadrilla, y el
+  // "fue / no fue" de todos para que el mismo parte cierre sus jornadas (o las borre).
+  const deApoyos = apoyosAlParte(
+    (b.apoyos ?? []).map((a) => ({
+      asignacionId: a.asignacionId,
+      cuadrillaId: a.cuadrillaId,
+      fue: a.fue,
+      personas: Number(a.personas) || 0,
+      horaDesde: parseHora(a.desde) ?? 8,
+      horaHasta: parseHora(a.hasta) ?? 17,
+    })),
+    ejecutado,
+    tarea,
+  );
+  const cuadrillaId = b.cuadrillaId ? Number(b.cuadrillaId) : null;
   return {
     fecha: j.fecha,
     // La cuadrilla ya no se pregunta: viaja la planificada, que es la que usa el informe
     // de obra. Lo que se carga a mano es el capataz.
-    cuadrillaId: b.cuadrillaId ? Number(b.cuadrillaId) : null,
+    cuadrillaId,
     punteroId: b.capatazId ? Number(b.capatazId) : null,
     camionEnObra: b.camionEnObra,
     estado: b.estado,
@@ -68,8 +85,14 @@ function aDatosCierre(b: Borrador, j: JornadaListado): DatosCierre {
     // todo el relato en notas. Un solo campo de texto.
     tareas: null,
     observaciones: b.observaciones.trim() || null,
-    manoObra: ejecutado && personas > 0
-      ? [{ tarea: j.tipo === "desarme" ? "desarme" : "armado", personas, horaDesde: desde, horaHasta: hasta }]
+    // Con apoyo, el renglón de la principal dice su cuadrilla explícitamente: si no, una
+    // fila sin cuadrilla planificada mandaría su gente "sin cuadrilla" mezclada con la del
+    // apoyo, y el informe de obra no sabría de quién es cada hora.
+    manoObra: ejecutado
+      ? [
+          ...(personas > 0 ? [{ tarea, personas, horaDesde: desde, horaHasta: hasta, cuadrillaId }] : []),
+          ...deApoyos.lineas,
+        ]
       : [],
     flete: ejecutado && Number(b.fletes) > 0
       ? {
@@ -78,6 +101,10 @@ function aDatosCierre(b: Borrador, j: JornadaListado): DatosCierre {
           costoManual: b.tercerizado ? Number(b.costoFlete) || 0 : undefined,
         }
       : null,
+    // Los viajes de otro camión (el del apoyo), cada uno en su línea. Sólo si se cargaron.
+    fletesExtra: ejecutado
+      ? (b.fletesExtra ?? []).map(Number).filter((n) => n > 0).map((cantidad) => ({ cantidad, tercerizado: false }))
+      : [],
     incidencias: ejecutado && b.incidenciaTipo && b.incidenciaDesc.trim()
       ? [{ tipo: b.incidenciaTipo as never, descripcion: b.incidenciaDesc.trim() }]
       : [],
@@ -90,6 +117,9 @@ function aDatosCierre(b: Borrador, j: JornadaListado): DatosCierre {
     ejecutadoReal: asBuiltAEnviar(
       j.tipo, j.ultimaDeLaOt && b.finalizarOt === true, b.armadoCoincide, b.armadoReal, j.detalleTecnico,
     ),
+    // Vacío = la fila no tenía apoyos al abrirse. El backend igual vincula los que se
+    // sumaron mientras tanto (planDeApoyos): ninguno queda suelto como deuda.
+    apoyos: deApoyos.apoyos,
   } as DatosCierre;
 }
 
@@ -186,10 +216,14 @@ function Contenido() {
       return j && !j.parte && b.estado === "ejecutado" ? s + horasHombreDe(b) : s;
     }, 0);
     const fletes =
-      cargadas.reduce((s, j) => s + (j.parte?.flete?.cantidad ?? 0), 0) +
+      cargadas.reduce(
+        (s, j) => s + (j.parte?.flete?.cantidad ?? 0) + (j.parte?.fletesExtra ?? []).reduce((t, f) => t + f.cantidad, 0),
+        0,
+      ) +
       Object.entries(borradores).reduce((s, [id, b]) => {
         const j = filas.find((x) => x.asignacionId === Number(id));
-        return j && !j.parte ? s + (Number(b.fletes) || 0) : s;
+        const extra = (b.fletesExtra ?? []).reduce((t, v) => t + (Number(v) || 0), 0);
+        return j && !j.parte ? s + (Number(b.fletes) || 0) + extra : s;
       }, 0);
     return { hh: hhGuardadas + hhBorrador, fletes };
   }, [cargadas, borradores, filas]);
@@ -205,15 +239,31 @@ function Contenido() {
   function confirmarComoPlanificado() {
     const nuevos: Record<number, Borrador> = { ...borradores };
     let sinDotacion = 0;
+    // Los apoyos arrancan siempre sin personas (no se inventan): el atajo no los puede
+    // completar, y hay que decirlo, porque esas filas no se van a poder guardar así.
+    let conApoyo = 0;
     for (const j of pendientesDelDia) {
       if (nuevos[j.asignacionId]) continue;
       nuevos[j.asignacionId] = borradorDe(j);
       if (j.personalPrevisto <= 0) sinDotacion++;
+      if (nuevos[j.asignacionId].apoyos.length > 0) conApoyo++;
     }
     setBorradores(nuevos);
+    if (conApoyo > 0) {
+      setAbiertas((prev) => {
+        const sig = { ...prev };
+        for (const j of pendientesDelDia) if (nuevos[j.asignacionId]?.apoyos.length) sig[j.asignacionId] = true;
+        return sig;
+      });
+    }
     if (sinDotacion > 0) {
       toast.warning(`${sinDotacion} obra(s) sin dotación cargada`, {
         description: "Hay que completar la cantidad de personas a mano: sin eso el parte va con 0 horas-hombre.",
+      });
+    }
+    if (conApoyo > 0) {
+      toast.warning(`${conApoyo} obra(s) con cuadrilla de apoyo`, {
+        description: "Completá cuántas personas fue cada apoyo, o destildá \"fue\" si al final no fue.",
       });
     }
   }
@@ -297,7 +347,13 @@ function Contenido() {
         }
         if (b.estado === "no_ejecutado" && b.reprogramarA) {
           try {
-            await reprogramar.mutateAsync({ asignacionId: j.asignacionId, reprogramarA: b.reprogramarA });
+            await reprogramar.mutateAsync({
+              asignacionId: j.asignacionId,
+              reprogramarA: b.reprogramarA,
+              // Los apoyos del día perdido que se recrean en la fecha nueva (tildados de
+              // entrada en la fila; apoyo.md, etapa 3).
+              apoyoIds: b.apoyos.filter((a) => a.recrear).map((a) => a.asignacionId),
+            });
           } catch (e) {
             // El parte de la jornada perdida quedó guardado; lo que no se creó es la
             // jornada nueva. Se dice, en vez de reportar el parte como fallado.

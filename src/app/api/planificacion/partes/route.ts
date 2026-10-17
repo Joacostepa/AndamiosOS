@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { cerrarJornada, editarParte, fetchParte } from "@/lib/odoo/partes";
 import { OdooError } from "@/lib/odoo/client";
-import { ParteYaCargadoError } from "@/lib/odoo/parte-existente";
+import { ApoyoNoCargaParteError, ParteYaCargadoError } from "@/lib/odoo/parte-existente";
 import { duracionTurno, MAX_HORAS_TURNO } from "@/lib/tablero/horas";
 
 // Cierre de jornada desde el tablero.
@@ -10,7 +10,9 @@ import { duracionTurno, MAX_HORAS_TURNO } from "@/lib/tablero/horas";
 //   GET   ?parteId=123   → el parte con sus líneas (ver / editar)
 //   POST  { asignacionId, datos } → crea el parte y marca la jornada como cerrada. Si la
 //                                   asignación YA tiene parte: 409 { error, parteId } (nunca
-//                                   lo reescribe ni lo duplica; corregirlo es el PATCH)
+//                                   lo reescribe ni lo duplica; corregirlo es el PATCH).
+//                                   Si la asignación es un APOYO: 409 { error, principalAsignacionId }
+//                                   ("el parte lo carga la Cuadrilla 2"; ver apoyo.md)
 //   PATCH { parteId, otId, datos } → reescribe un parte ya cargado (pedido explícito, con su id)
 //
 // REGLA DE NEGOCIO: la app nunca manda costos ni horas-hombre; los calcula Odoo con la
@@ -25,11 +27,19 @@ export const maxDuration = 300;
 
 const hora = z.number().min(0).max(24);
 
+const lineaFlete = z.object({
+  cantidad: z.number().int().min(0),
+  tercerizado: z.boolean(),
+  costoManual: z.number().min(0).optional(),
+});
+
 const lineaManoObra = z.object({
   tarea: z.enum(["armado", "desarme", "carga_descarga"]),
   personas: z.number().int().min(1),
   horaDesde: hora,
   horaHasta: hora,
+  // De qué cuadrilla es la gente. Ausente = la del parte.
+  cuadrillaId: z.number().int().positive().nullable().optional(),
 });
 
 const datosSchema = z
@@ -48,13 +58,9 @@ const datosSchema = z
     tareas: z.string().nullable(),
     observaciones: z.string().nullable(),
     manoObra: z.array(lineaManoObra),
-    flete: z
-      .object({
-        cantidad: z.number().int().min(0),
-        tercerizado: z.boolean(),
-        costoManual: z.number().min(0).optional(),
-      })
-      .nullable(),
+    flete: lineaFlete.nullable(),
+    // Las líneas de flete que se suman a mano (el camión del apoyo). Nunca se duplican solas.
+    fletesExtra: z.array(lineaFlete).max(10).optional(),
     incidencias: z.array(
       z.object({
         // Los valores son los de la selección real de Odoo: uno fuera de lista se rechaza.
@@ -72,6 +78,11 @@ const datosSchema = z
     ),
     // Sólo llega cuando se cierra la OT y el trabajo deja estructura en pie.
     ejecutadoReal: z.string().nullable().default(null),
+    // El "fue / no fue" de cada apoyo. Ausente = todos los apoyos sin parte se cierran
+    // con éste (ver planDeApoyos en lib/tablero/apoyo.ts).
+    apoyos: z
+      .array(z.object({ asignacionId: z.number().int().positive(), fue: z.boolean() }))
+      .optional(),
   })
   // El motivo es obligatorio cuando no se ejecutó: es el dato que permite medir después
   // cuántas jornadas se pierden por lluvia o por el cliente.
@@ -93,6 +104,12 @@ const datosSchema = z
 function errorResponse(e: unknown) {
   if (e instanceof ParteYaCargadoError) {
     return NextResponse.json({ error: e.message, parteId: e.parteId }, { status: 409 });
+  }
+  if (e instanceof ApoyoNoCargaParteError) {
+    return NextResponse.json(
+      { error: e.message, principalAsignacionId: e.principalAsignacionId },
+      { status: 409 },
+    );
   }
   const msg = e instanceof OdooError ? e.message : e instanceof Error ? e.message : String(e);
   return NextResponse.json({ error: msg }, { status: 502 });

@@ -10,12 +10,13 @@ import {
 import { toast } from "sonner";
 import type { Feriado } from "@/lib/feriados/argentina";
 import { fechasDeJornadas } from "@/lib/tablero/bloques";
+import { esApoyo } from "@/lib/tablero/apoyo";
 import { CLAVE_CONFIRMACIONES } from "@/hooks/use-confirmaciones";
 import { CLAVE_ACTIVIDAD } from "@/hooks/use-actividad";
 import { CLAVE_SUSPENSIONES } from "@/hooks/use-suspensiones";
 import { avisarCambio } from "@/lib/tablero/avisos";
 import type { RegistroConfirmacion } from "@/lib/tablero/tipos-confirmacion";
-import type { RegistroCorrida, RegistroMovimiento } from "@/lib/tablero/tipos-movimiento";
+import type { RegistroApoyoCorrida, RegistroCorrida, RegistroMovimiento } from "@/lib/tablero/tipos-movimiento";
 import type {
   AsignacionTablero,
   CambioAsignacion,
@@ -246,11 +247,13 @@ export function useCrearAsignaciones() {
         parteId: null,
         // Ni fija: se planifica primero y se clava después, si hay motivo.
         motivoFija: null,
+        apoyo: a.apoyo === true,
       }));
       const ctx = await aplicarOptimista(qc, (data) => ({
         ...data,
         asignaciones: [...data.asignaciones, ...nuevas],
-        progreso: sumarProgreso(data.progreso, nuevas.map((n) => n.otId)),
+        // Un apoyo no suma días a la obra (apoyo.md): el avance sólo cuenta principales.
+        progreso: sumarProgreso(data.progreso, nuevas.filter((n) => !esApoyo(n)).map((n) => n.otId)),
       }));
       return { ...ctx, temporales };
     },
@@ -346,6 +349,7 @@ export function useActualizarAsignaciones() {
                 ...(cambio.motivoFija !== undefined
                   ? { motivoFija: cambio.motivoFija || null }
                   : {}),
+                ...(cambio.apoyo !== undefined ? { apoyo: cambio.apoyo } : {}),
               }
             : a,
         ),
@@ -405,6 +409,37 @@ export function useMoverAsignaciones() {
 }
 
 /**
+ * "Hacer principal" (apoyo.md): un rol por id, todo en una request.
+ *
+ * El avance no se toca: la obra sigue teniendo los mismos días, cambia quién la lleva.
+ */
+export function useCambiarRoles() {
+  const qc = useQueryClient();
+  return useMutation<
+    { ok: true; movimientoId?: string | null },
+    Error,
+    { roles: { id: number; apoyo: boolean }[]; registro?: RegistroMovimiento },
+    Contexto
+  >({
+    mutationFn: (body) =>
+      pedir<{ ok: true; movimientoId?: string | null }>("/api/planificacion/asignaciones", {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    onMutate: ({ roles }) => {
+      const porId = new Map(roles.map((r) => [r.id, r.apoyo]));
+      return aplicarOptimista(qc, (data) => ({
+        ...data,
+        asignaciones: data.asignaciones.map((a) => (porId.has(a.id) ? { ...a, apoyo: porId.get(a.id) } : a)),
+      }));
+    },
+    onSuccess: (_d, { registro }) => avisarCambio("cambió la cuadrilla principal de", registro?.otTitulo),
+    onError: (error, _vars, ctx) => revertir(qc, ctx, "No se pudo cambiar la principal", error),
+    onSettled: () => refrescarPronto(qc),
+  });
+}
+
+/**
  * Correr un día: muchas jornadas de muchas obras, en un solo gesto.
  *
  * NO REVIERTE CUANDO FALLA, a diferencia de todas las demás. Las otras mandan una
@@ -423,6 +458,11 @@ export function useCorrerDia() {
       motivo: string;
       movimientos: MovimientoAsignacion[];
       registros: RegistroCorrida[];
+      /** Apoyos que se quitan (su cuadrilla no sale y la principal sí). Ver corrimiento.ts. */
+      quitar?: number[];
+      /** Deshacer: esos apoyos, vueltos a crear. */
+      crear?: NuevaAsignacion[];
+      registrosApoyo?: RegistroApoyoCorrida[];
       deshaceA?: Record<string, string>;
       suspension?: { dia: string; cuadrillaIds: number[] };
       levantaLote?: string;
@@ -434,14 +474,19 @@ export function useCorrerDia() {
         "/api/planificacion/corrimiento",
         { method: "POST", body: JSON.stringify(body) },
       ),
-    onMutate: ({ movimientos }) => {
+    onMutate: ({ movimientos, quitar }) => {
       const porId = new Map(movimientos.map((m) => [m.id, m.fecha]));
+      // Los apoyos quitados salen ya; los recreados del deshacer aparecen con el refresco
+      // (no tienen id hasta que Odoo los crea). Los apoyos no tocan el avance.
+      const fuera = new Set(quitar ?? []);
       return aplicarOptimista(qc, (data) => ({
         ...data,
-        asignaciones: data.asignaciones.map((a) => {
-          const fecha = porId.get(a.id);
-          return fecha ? { ...a, fecha } : a;
-        }),
+        asignaciones: data.asignaciones
+          .filter((a) => !fuera.has(a.id))
+          .map((a) => {
+            const fecha = porId.get(a.id);
+            return fecha ? { ...a, fecha } : a;
+          }),
       }));
     },
     onSuccess: () => avisarCambio("corrió un día del tablero"),
@@ -480,7 +525,8 @@ export function useBorrarAsignaciones() {
           asignaciones: data.asignaciones.filter((a) => !ids.includes(a.id)),
           // Liberar jornadas devuelve la obra a la bandeja con su remanente: el avance
           // baja en la cantidad de jornadas liberadas, no de golpe a cero.
-          progreso: restarProgreso(data.progreso, borradas.map((a) => a.otId)),
+          // Los apoyos no restan: nunca sumaron (apoyo.md).
+          progreso: restarProgreso(data.progreso, borradas.filter((a) => !esApoyo(a)).map((a) => a.otId)),
         };
       }),
     onSuccess: (_d, { registro }) => avisarCambio("quitó del tablero", registro?.otTitulo),

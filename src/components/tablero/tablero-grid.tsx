@@ -11,6 +11,7 @@ import { TarjetaAsignacion } from "./tarjeta-asignacion";
 import { PopoverNotasDia } from "./notas-jornada";
 import { ChipClima, textoClima } from "./chip-clima";
 import { agruparBloques, esDomingo, repartirPorAltura } from "@/lib/tablero/bloques";
+import { agruparApoyos, apoyosDelTramo, claveDia, textoChipApoyo } from "@/lib/tablero/apoyo";
 import { accionDeCierre, bloqueCerrado, type AccionCierre } from "@/lib/tablero/cierre";
 import { MOTIVOS_NO_EJEC } from "@/lib/tablero/tipos-parte";
 import {
@@ -66,7 +67,7 @@ export function anchoRecursoPara(compacta: boolean): number {
 }
 
 /** "CUADRILLA 2" → "C2". Los nombres que no siguen el patrón quedan como están y se cortan. */
-function abreviarCuadrilla(nombre: string): string {
+export function abreviarCuadrilla(nombre: string): string {
   const m = nombre.match(/cuadrilla\s*(\d+)/i);
   return m ? `C${m[1]}` : nombre;
 }
@@ -221,6 +222,7 @@ export function TableroGrid({
   onEditarTarea,
   ots,
   planPorObra,
+  nombresCuadrillas,
   partes,
   notas,
   suspensiones,
@@ -238,6 +240,7 @@ export function TableroGrid({
   onFijar,
   onSoltar,
   onQuitar,
+  onHacerPrincipal,
   candados,
   comentarios,
   clima,
@@ -277,6 +280,11 @@ export function TableroGrid({
    * La tarjeta muestra un tramo; con esto puede decir que hay más y cuántos.
    */
   planPorObra: Map<number, { dias: number; tramos: number }>;
+  /**
+   * Nombre de TODAS las cuadrillas, no sólo las visibles: la tarjeta de un apoyo dice quién
+   * carga el parte ("parte: Cuadrilla 2"), y la principal puede estar en una fila filtrada.
+   */
+  nombresCuadrillas: Map<number, string>;
   partes: ParteTablero[];
   /**
    * Lo que hay que tener en cuenta esos días y no es una obra: "el chofer se va 14 h",
@@ -325,6 +333,8 @@ export function TableroGrid({
   onFijar: (bloque: Bloque) => void;
   onSoltar: (bloque: Bloque) => void;
   onQuitar: (bloque: Bloque) => void;
+  /** Sólo en la tarjeta de un apoyo: pasa a ser la principal ese día (apoyo.md). */
+  onHacerPrincipal?: (bloque: Bloque) => void;
   /**
    * OTs cuyo cliente pidió no armar sin el permiso emitido. La tarjeta muestra el
    * candado, pero se arrastra igual: planificar es un borrador y bloquear ahí sería
@@ -510,6 +520,61 @@ export function TableroGrid({
   const partesPorId = new Map(partes.map((p) => [p.id, p]));
   const etiquetaMotivo = (valor: string | null) =>
     MOTIVOS_NO_EJEC.find((m) => m.value === valor)?.label ?? valor;
+
+  // LOS APOYOS, emparejados con su principal por obra y día (apoyo.md). De TODAS las
+  // asignaciones y no sólo de las filas visibles: la principal de un apoyo puede estar en
+  // una cuadrilla filtrada, y entonces su tarjeta diría "sin principal" sin serlo.
+  const principalDelDia = new Map<string, AsignacionTablero>();
+  // Cuántas principales tiene cada (obra, día). Más de una sólo pasa si alguien editó a mano
+  // en Odoo (el servidor no deja escribirlo): se marca en rojo (apoyo.md, sección 4).
+  const principalesPorDia = new Map<string, number>();
+  for (const a of asignaciones) {
+    if (!a.apoyo && !a.tarea && a.otId) {
+      const k = claveDia(a.otId, a.fecha);
+      if (!principalDelDia.has(k)) principalDelDia.set(k, a);
+      principalesPorDia.set(k, (principalesPorDia.get(k) ?? 0) + 1);
+    }
+  }
+  const { apoyosDe } = agruparApoyos(asignaciones.filter((a) => !a.tarea));
+  const nombreDe = (id: number | null) => (id == null ? null : (nombresCuadrillas.get(id) ?? null));
+
+  /** Para la tarjeta de un apoyo: quién carga el parte. */
+  function datosApoyo(b: Bloque): { principal: string | null; principalCorta: string | null } {
+    // Un tramo de apoyo de varios días va con la misma principal todos los días casi
+    // siempre; si cambiara, se nombra la del primero —el resto está en el tooltip de su
+    // tarjeta— y basta con que UN día no tenga principal para marcarlo huérfano.
+    const principales = b.fechas.map((f) => principalDelDia.get(claveDia(b.otId, f)) ?? null);
+    if (principales.some((p) => p == null)) return { principal: null, principalCorta: null };
+    const nombre = nombreDe(principales[0]!.cuadrillaId);
+    const legible = nombre ? nombrePropio(nombre) : "la principal";
+    return { principal: legible, principalCorta: nombre ? abreviarCuadrilla(nombre) : legible };
+  }
+
+  /**
+   * Para la tarjeta principal: los chips "+C3 ½" de los apoyos de este tramo y, en rojo
+   * adelante, el de "2 principales" si algún día la obra tiene otra principal además de ésta.
+   */
+  function chipsDe(b: Bloque): { texto: string; titulo: string; peligro?: boolean }[] {
+    if (b.apoyo || b.tarea || !b.otId) return [];
+    const dobles = b.fechas.filter((f) => (principalesPorDia.get(claveDia(b.otId, f)) ?? 0) > 1);
+    const rojo: { texto: string; titulo: string; peligro?: boolean }[] = dobles.length
+      ? [{
+          texto: "2 principales",
+          titulo: `La obra tiene más de una cuadrilla principal el ${dobles.map((f) => format(parseISO(f), "EEE d", { locale: es })).join(", ")}: dejá una y sumá la otra como apoyo. Pasa si se editó a mano en Odoo.`,
+          peligro: true,
+        }]
+      : [];
+    return rojo.concat(apoyosDelTramo(b.otId, b.fechas, apoyosDe).map((x) => {
+      const nombre = nombreDe(x.cuadrillaId);
+      const dias = x.fechas
+        .map((f, i) => `${format(parseISO(f), "EEE d", { locale: es })} (${DECIMAL.format(x.fracciones[i])} j)`)
+        .join(", ");
+      return {
+        texto: textoChipApoyo(nombre ? abreviarCuadrilla(nombre) : "?", x.fracciones, b.fechas.length),
+        titulo: `Apoyo de ${nombre ? nombrePropio(nombre) : "otra cuadrilla"}: ${dias}. El parte lo carga esta cuadrilla.`,
+      };
+    }));
+  }
 
   // LO QUE QUEDA LIBRE EN EL DÍA y cuántas cuadrillas están pasadas, sumando las filas
   // visibles. Contesta "¿qué día tiene lugar para esta obra?" sin recorrer cinco celdas.
@@ -911,7 +976,8 @@ export function TableroGrid({
                   })}
 
                   {ubicados.map(({ bloque, colocacion, top, alto }) => {
-                    const accion = accionDeCierre(bloque, hoyISO);
+                    // Un apoyo no se cierra ni reclama parte: lo carga la principal (apoyo.md).
+                    const accion = bloque.apoyo ? null : accionDeCierre(bloque, hoyISO);
                     const parteDelBloque = bloqueCerrado(bloque)
                       ? partesPorId.get(bloque.partes.find((x) => x != null) as number)
                       : undefined;
@@ -922,7 +988,9 @@ export function TableroGrid({
                         // Una tarea no tiene OT ni plan de obra: los dos quedan
                         // indefinidos y la tarjeta se dibuja con lo que trae el bloque.
                         ot={bloque.tarea ? undefined : ots.get(bloque.otId)}
-                        plan={bloque.tarea ? undefined : planPorObra.get(bloque.otId)}
+                        // El apoyo tampoco: su "1 j" es lo que ocupa en SU fila, no un tramo de la
+                        // obra, y el "de 3 d" de la principal no le corresponde.
+                        plan={bloque.tarea || bloque.apoyo ? undefined : planPorObra.get(bloque.otId)}
                         colocacion={colocacion}
                         // De fracción de jornada a píxeles. La conversión vive acá
                         // porque la celda es la que sabe cuánto mide una jornada.
@@ -939,10 +1007,16 @@ export function TableroGrid({
                         // "Ya pasó" no es lo relevante: lo relevante es si tiene parte.
                         // Atenuar todo lo pasado por igual escondía justo las jornadas que
                         // requieren acción — las que se trabajaron y nadie cargó.
-                        vencidaSinParte={bloque.fechas.some(
-                          (f, i) => f < hoyISO && bloque.partes[i] == null,
-                        )}
-                        sinParteDia={bloque.fechas.find((f, i) => f < hoyISO && bloque.partes[i] == null) ?? null}
+                        vencidaSinParte={
+                          !bloque.apoyo && bloque.fechas.some((f, i) => f < hoyISO && bloque.partes[i] == null)
+                        }
+                        sinParteDia={
+                          bloque.apoyo
+                            ? null
+                            : (bloque.fechas.find((f, i) => f < hoyISO && bloque.partes[i] == null) ?? null)
+                        }
+                        apoyo={bloque.apoyo ? datosApoyo(bloque) : null}
+                        chipsApoyo={chipsDe(bloque)}
                         cierre={
                           parteDelBloque
                             ? {
@@ -952,11 +1026,11 @@ export function TableroGrid({
                             : null
                         }
                         accionCierre={accion}
-                        candado={!bloque.tarea && (candados?.has(bloque.otId) ?? false)}
+                        candado={!bloque.tarea && !bloque.apoyo && (candados?.has(bloque.otId) ?? false)}
                         queEjecutar={queEjecutar}
                         // Una tarea de operaciones no tiene obra detrás, así que tampoco
                         // tiene hilo: el globito ahí sería una promesa vacía.
-                        comentarios={bloque.tarea ? null : (comentarios?.get(bloque.otId) ?? null)}
+                        comentarios={bloque.tarea || bloque.apoyo ? null : (comentarios?.get(bloque.otId) ?? null)}
                         onCerrarJornada={(a) => onCerrarJornada(bloque, a)}
                         // Pegada justo a la derecha de la columna fija de cuadrillas.
                         pegarA={colocacion.span > 1 ? anchoRecurso + 6 : undefined}
@@ -967,6 +1041,9 @@ export function TableroGrid({
                         onFijar={() => onFijar(bloque)}
                         onSoltar={() => onSoltar(bloque)}
                         onQuitar={() => onQuitar(bloque)}
+                        onHacerPrincipal={
+                          bloque.apoyo && onHacerPrincipal ? () => onHacerPrincipal(bloque) : undefined
+                        }
                         onTareaHecha={(h) => onTareaHecha(bloque, h)}
                         onEditarTarea={() => onEditarTarea(bloque)}
                       />

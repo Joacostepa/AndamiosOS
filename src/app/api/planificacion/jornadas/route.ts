@@ -14,7 +14,8 @@ import { VALORES_FRACCION } from "@/lib/tablero/fracciones";
 //   GET  ?fecha=YYYY-MM-DD   → las jornadas de ese día + las tentativas vencidas
 //   GET  ?pendientes=1       → sólo el contador para el badge del sidebar
 //   POST { otId, fecha, ... }→ jornada no planificada (trabajo de urgencia)
-//   POST { asignacionId, reprogramarA } → crea la jornada nueva de una reprogramación
+//   POST { asignacionId, reprogramarA } → crea la jornada nueva de una reprogramación (y, con
+//        apoyoIds, vuelve a crear esos apoyos en la fecha nueva)
 //
 // El parte en sí se guarda por /api/planificacion/partes: es el mismo cierre de siempre.
 
@@ -67,6 +68,8 @@ const noPlanificadaSchema = z.object({
 const reprogramarSchema = z.object({
   asignacionId: z.number().int().positive(),
   reprogramarA: fechaSchema,
+  /** Las jornadas de apoyo del día perdido que se recrean en la fecha nueva (apoyo.md). */
+  apoyoIds: z.array(z.number().int().positive()).max(20).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -75,8 +78,8 @@ export async function POST(req: NextRequest) {
   const repro = reprogramarSchema.safeParse(body);
   if (repro.success) {
     try {
-      const id = await reprogramarJornada(repro.data.asignacionId, repro.data.reprogramarA);
-      return NextResponse.json({ asignacionId: id });
+      const r = await reprogramarJornada(repro.data.asignacionId, repro.data.reprogramarA, repro.data.apoyoIds);
+      return NextResponse.json({ asignacionId: r.id, apoyos: r.apoyos });
     } catch (e) {
       return errorResponse(e);
     }

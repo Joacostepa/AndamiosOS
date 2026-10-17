@@ -18,7 +18,7 @@ import {
   aCargoDe, cNombre, cap, choferDe, cuadrillaDeViaje, diaSemana, encTxt, envioDe, estadoPedido, fechaMensaje, fmtFrases,
   frLargo, genteDe, hCorta, hm, hm5, hojaDeCuadrilla, horaTxt, lowFirst, lugar, lugarDeKey, nombreDe, normHora, obrasCon,
   pedidosDeViaje, recibeDe, suspendida, textoViaje, todoDe, vehiculo, vehiculoNombre, elVeh, viajesCalc, viajesChofer,
-  persona, contratistasDe, aCargoContratista, vanDe, vehiculosDe, genteConChoferes, conLlevaTrae, choferesTodoDe, laCuadrilla, esDeposito, horaFija, type ViajeCalc,
+  persona, contratistasDe, aCargoContratista, vanDe, vehiculosDe, genteConChoferes, conLlevaTrae, choferesTodoDe, laCuadrilla, esDeposito, horaFija, textoApoyo, type ViajeCalc,
 } from "./estado.ts";
 import { vanEnPalabras } from "./contratistas.ts";
 import { urlComoLlegar } from "./maps.ts";
@@ -59,6 +59,11 @@ export type ObraPublica = {
   archivos: ArchivoPublico[];
   /** "Para tu obra": los viajes y pedidos de material de esa obra, con su estado. */
   paraTuObra: LineaObra[];
+  /**
+   * La cuadrilla va de APOYO a esta obra: "Hoy apoyás Thames 1820, el parte lo hace la
+   * Cuadrilla 2" (apoyo.md). Ausente o null = la obra es suya (y las vistas viejas guardadas).
+   */
+  apoyo?: string | null;
 };
 
 export type GentePublica = {
@@ -301,6 +306,7 @@ function obrasPublicas(dia: DiaHoja, c: number, pid: string, ahora: number, op: 
       hoy: ins?.hoy ? ins.hoy.replace(/^Hoy:\s*/i, "") : null, chips: ins?.chips ?? [],
       queHacer: o.detalleTecnico, observaciones: o.observaciones, contacto: o.contactoObra, telefono: o.telObra,
       archivos: o.cantArchivos && op.archivos ? op.archivos(o.otId) : [], paraTuObra: paraTuObra(dia, o.otId, pid, ahora),
+      apoyo: o.apoyo ? textoApoyo(dia, o) : null,
     };
   });
 }

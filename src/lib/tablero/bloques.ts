@@ -99,6 +99,12 @@ export type Bloque = {
    */
   motivoFija: string | null;
   multiDia: boolean;
+  /**
+   * Es un tramo de APOYO a la principal de la obra (docs/tablero-planificacion/apoyo.md).
+   * Un bloque es siempre homogéneo: la clave de agrupación separa apoyos de principales,
+   * así que una tarjeta nunca mezcla días de una y de otra.
+   */
+  apoyo: boolean;
 };
 
 /**
@@ -114,7 +120,10 @@ export function agruparBloques(asignaciones: AsignacionTablero[]): Bloque[] {
     // como una sola tarjeta de varios días. El prefijo mantiene los dos espacios de id
     // separados: la obra 7 y la tarea 7 no son lo mismo.
     const propietario = a.tarea ? `t${a.tarea.grupoId}` : `o${a.otId}`;
-    const k = `${propietario}:${a.cuadrillaId ?? "sin"}`;
+    // El apoyo va en la clave: los días de apoyo nunca se pegan a los de la principal en
+    // la misma tarjeta, ni siquiera si alguien dejara las dos en la misma cuadrilla. Son
+    // cosas distintas: una suma días a la obra y la otra no.
+    const k = `${propietario}:${a.cuadrillaId ?? "sin"}:${a.apoyo === true ? "apoyo" : "principal"}`;
     const lista = porGrupo.get(k);
     if (lista) lista.push(a);
     else porGrupo.set(k, [a]);
@@ -149,6 +158,7 @@ export function agruparBloques(asignaciones: AsignacionTablero[]): Bloque[] {
         // movería ese día también.
         motivoFija: tramo.find((t) => t.motivoFija)?.motivoFija ?? null,
         multiDia: tramo.length > 1,
+        apoyo: primera.apoyo === true,
       });
       tramo = [];
     };
@@ -171,6 +181,69 @@ export function agruparBloques(asignaciones: AsignacionTablero[]): Bloque[] {
   }
 
   return bloques;
+}
+
+/**
+ * Lo planificado de una obra, sumando todos sus tramos.
+ *
+ * `ultimoDia` es lo que hace falta para el techo: el cliente pide el trabajo TERMINADO,
+ * así que la fecha contra la que se mide es la del último día, no la del bloque que se
+ * está tocando. Ver src/lib/tablero/ventana.ts.
+ */
+export type PlanObra = {
+  /** Días DISTINTOS con principal: la obra de 3 días con un apoyo el martes sigue en 3. */
+  dias: number;
+  /** Tarjetas de la principal (tramos separados). Los apoyos no parten la obra. */
+  tramos: number;
+  primerDia: string | null;
+  ultimoDia: string | null;
+};
+
+/**
+ * Cuántos días y cuántos tramos tiene planificada cada obra, a partir de sus bloques.
+ *
+ * SIN APOYOS Y POR DÍAS DISTINTOS (apoyo.md). Antes sumaba `fechas.length` de cada bloque:
+ * con un apoyo la obra de 3 días se leía "4 d" y "partida en 2", y el aviso de obra partida
+ * saltaba por una tarjeta que no es un tramo de la obra. Contar días distintos protege
+ * además del caso de dos principales el mismo día (edición a mano en Odoo).
+ *
+ * Las tareas operativas tampoco entran: no son obras (su otId es 0).
+ */
+export function planDeObras(bloques: Iterable<Bloque>): Map<number, PlanObra> {
+  const dias = new Map<number, Set<string>>();
+  const mapa = new Map<number, PlanObra>();
+  for (const b of bloques) {
+    if (b.apoyo || b.origen === "tarea" || !b.otId) continue;
+    const set = dias.get(b.otId) ?? new Set<string>();
+    for (const f of b.fechas) set.add(f);
+    dias.set(b.otId, set);
+    const actual = mapa.get(b.otId) ?? { dias: 0, tramos: 0, primerDia: null, ultimoDia: null };
+    const fechas = [...b.fechas].sort();
+    mapa.set(b.otId, {
+      dias: set.size,
+      tramos: actual.tramos + 1,
+      // El primero y el último de la obra ENTERA, no del tramo: una obra partida en dos
+      // tramos termina cuando termina el segundo, y el techo se mide contra eso.
+      primerDia: actual.primerDia && actual.primerDia < fechas[0] ? actual.primerDia : fechas[0],
+      ultimoDia:
+        actual.ultimoDia && actual.ultimoDia > fechas[fechas.length - 1] ? actual.ultimoDia : fechas[fechas.length - 1],
+    });
+  }
+  return mapa;
+}
+
+/**
+ * La primera tarjeta PRINCIPAL de una obra: la que abre la ficha cuando se llega a la obra
+ * por su id y no por una tarjeta (buscador, "seguir"). Un apoyo nunca: la ficha de la obra
+ * es la de quien la lleva.
+ */
+export function primerBloqueDeObra(bloques: Iterable<Bloque>, otId: number): Bloque | null {
+  let primero: Bloque | null = null;
+  for (const b of bloques) {
+    if (b.otId !== otId || b.origen === "tarea" || b.apoyo) continue;
+    if (!primero || b.fechas[0].localeCompare(primero.fechas[0]) < 0) primero = b;
+  }
+  return primero;
 }
 
 export type Colocacion = {

@@ -285,6 +285,15 @@ export type ObraDia = {
    * explícito, con su id). Ver B1 en handoff.md.
    */
   parteId: number | null;
+  /**
+   * Esta cuadrilla va de APOYO a la principal de la obra ese día
+   * (docs/tablero-planificacion/apoyo.md). En su hoja la obra aparece igual —dirección,
+   * horario, instrucciones—, pero no cierra jornada: el parte lo carga la principal y le
+   * cierra también ésta. Ausente = principal, que es todo lo que existía antes.
+   */
+  apoyo?: boolean;
+  /** Sólo en un apoyo: la cuadrilla principal de la obra ese día. null si no hay ninguna. */
+  principalOdooId?: number | null;
 };
 
 // ─── Lo del módulo (Supabase) ────────────────────────────────────────────────

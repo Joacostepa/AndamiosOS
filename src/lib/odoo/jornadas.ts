@@ -11,16 +11,24 @@
 // o se pierde el trabajo o queda un parte huérfano. Derivándolo, el comportamiento sale
 // gratis: la jornada se confirma y aparece; vuelve a tentativa y desaparece, sin borrar
 // nada, porque dejó de cumplir el filtro.
+//
+// LOS APOYOS (docs/tablero-planificacion/apoyo.md) no son filas: la obra sale UNA vez, con
+// la jornada de la principal, y sus apoyos van adentro (JornadaListado.apoyos). El parte
+// lo carga la principal y cierra a los dos.
 
 import { searchRead, executeKw, create, read } from "./client";
 import { consultasDeAvance } from "./asignaciones";
 import { fetchPartes } from "./partes";
-import type { JornadaListado, ListadoJornadas } from "@/lib/tablero/tipos-jornada";
+import { claveDia, horarioSugeridoApoyo } from "@/lib/tablero/apoyo";
+import type { ApoyoListado, JornadaListado, ListadoJornadas } from "@/lib/tablero/tipos-jornada";
 
 type M2O = [number, string] | false;
 
 function m2oId(v: M2O | undefined): number | null {
   return Array.isArray(v) ? v[0] : null;
+}
+function m2oName(v: M2O | undefined): string | null {
+  return Array.isArray(v) ? v[1] : null;
 }
 function str(v: string | false | null | undefined): string | null {
   return typeof v === "string" && v.trim() !== "" ? v : null;
@@ -37,6 +45,9 @@ type FilaAsig = {
 };
 
 const CAMPOS_ASIG = ["x_ot_id", "x_fecha", "x_cuadrilla_id", "x_fraccion", "x_estado", "x_parte_id"];
+
+/** Las filas del listado son siempre principales: los apoyos van adentro. */
+const SIN_APOYOS = ["x_apoyo", "=", false];
 
 function fraccionNum(v: string | false | null | undefined): number {
   const n = typeof v === "string" ? Number(v) : NaN;
@@ -89,7 +100,7 @@ function diasAntes(iso: string, dias: number): string {
 export async function fetchListadoJornadas(fecha: string, hoy: string): Promise<ListadoJornadas> {
   const dominioDelDia =
     fecha <= hoy
-      ? [["x_fecha", "=", fecha], ["x_estado", "=", "confirmada"]]
+      ? [["x_fecha", "=", fecha], ["x_estado", "=", "confirmada"], SIN_APOYOS]
       : // Fecha futura: no hay nada para cargar. Se devuelve vacío en vez de esconder la
         // navegación, así se puede mirar adelante sin que parezca que faltan partes.
         [["id", "=", 0]];
@@ -106,6 +117,7 @@ export async function fetchListadoJornadas(fecha: string, hoy: string): Promise<
           ["x_fecha", ">=", diasAntes(hoy, DIAS_ATRAS_SIN_CONFIRMAR)],
           ["x_estado", "=", "tentativa"],
           ["x_parte_id", "=", false],
+          SIN_APOYOS,
         ],
         CAMPOS_ASIG,
         { order: "x_fecha desc, id", limit: MAX_SIN_CONFIRMAR },
@@ -132,6 +144,21 @@ export async function fetchListadoJornadas(fecha: string, hoy: string): Promise<
 
   const todas = [...asigsDia, ...asigsSinConfirmar];
   const otIds = [...new Set(todas.map((a) => m2oId(a.x_ot_id)).filter((x): x is number => !!x))];
+
+  // Los apoyos de esas obras en esas fechas, en la MISMA tanda que la lectura de las OTs y
+  // de los partes: no suma un round-trip en serie. Se piden sin mirar el estado: un apoyo
+  // tentativo de una principal confirmada igual fue (o no), y es el parte el que lo dice.
+  const fechasListadas = [...new Set(todas.map((a) => str(a.x_fecha)).filter((x): x is string => !!x))];
+  const apoyosRaw =
+    otIds.length && fechasListadas.length
+      ? searchRead<FilaAsig>(
+          "x_aba_asignacion",
+          [["x_apoyo", "=", true], ["x_ot_id", "in", otIds], ["x_fecha", "in", fechasListadas]],
+          CAMPOS_ASIG,
+          { order: "x_cuadrilla_id, id" },
+        )
+      : Promise.resolve([] as FilaAsig[]);
+  apoyosRaw.catch(() => {});
 
   const ots = otIds.length
     ? await read<{
@@ -160,10 +187,37 @@ export async function fetchListadoJornadas(fecha: string, hoy: string): Promise<
   // Se leen TODOS de una: fetchPartes agrupa por `in` y son 5 llamadas fijas, no 5 por
   // parte. De a uno, un día con cinco jornadas cargadas eran 25 round-trips.
   const parteIds = [...new Set(todas.map((a) => m2oId(a.x_parte_id)).filter((x): x is number => !!x))];
-  const partePorId = await fetchPartes(parteIds);
+  const [partePorId, apoyos] = await Promise.all([fetchPartes(parteIds), apoyosRaw]);
 
-  const tomadasPorOt = new Map(gruposTomadas.map((g) => [m2oId(g.x_ot_id) ?? 0, g.__count]));
-  const hechasPorOt = new Map(gruposHechas.map((g) => [m2oId(g.x_ot_id) ?? 0, g.__count]));
+  // Días distintos y sin apoyos (ver consultasDeAvance): `ultimaDeLaOt` sale de acá.
+  const tomadasPorOt = gruposTomadas;
+  const hechasPorOt = gruposHechas;
+
+  // Apoyos colgados de su obra y día. Uno sin principal listada ese día (la principal es
+  // tentativa a futuro, o la borraron a mano) no se muestra: no tiene fila donde cargarse
+  // y tampoco cuenta como pendiente. El tablero es el que lo marca.
+  const apoyosPorDia = new Map<string, ApoyoListado[]>();
+  for (const a of apoyos) {
+    const otId = m2oId(a.x_ot_id);
+    const f = str(a.x_fecha);
+    if (!otId || !f) continue;
+    const fraccion = fraccionNum(a.x_fraccion);
+    const k = claveDia(otId, f);
+    const lista = apoyosPorDia.get(k) ?? [];
+    lista.push({
+      asignacionId: a.id,
+      cuadrillaId: m2oId(a.x_cuadrilla_id),
+      cuadrillaNombre: m2oName(a.x_cuadrilla_id),
+      fraccion,
+      estadoAsignacion: a.x_estado === "confirmada" ? "confirmada" : "tentativa",
+      parteId: m2oId(a.x_parte_id),
+      horarioSugerido: horarioSugeridoApoyo(fraccion),
+    });
+    apoyosPorDia.set(k, lista);
+  }
+  for (const lista of apoyosPorDia.values()) {
+    lista.sort((x, y) => (x.cuadrillaNombre ?? "").localeCompare(y.cuadrillaNombre ?? "", "es", { numeric: true }));
+  }
 
   const mapear = (a: FilaAsig, tentativaVencida: boolean): JornadaListado => {
     const otId = m2oId(a.x_ot_id) ?? 0;
@@ -174,10 +228,11 @@ export async function fetchListadoJornadas(fecha: string, hoy: string): Promise<
     const asignadas = tomadasPorOt.get(otId) ?? 0;
     const hechas = hechasPorOt.get(otId) ?? 0;
     const parteId = m2oId(a.x_parte_id);
+    const fechaAsig = str(a.x_fecha) ?? "";
 
     return {
       asignacionId: a.id,
-      fecha: str(a.x_fecha) ?? "",
+      fecha: fechaAsig,
       otId,
       titulo: str(ot?.x_name) ?? `OT #${otId}`,
       direccionObra: str(ot?.x_direccion_obra),
@@ -201,6 +256,7 @@ export async function fetchListadoJornadas(fecha: string, hoy: string): Promise<
       // Un campo más del read que ya se hace, igual que detalleTecnico.
       tecnico: str(ot?.x_tecnico),
       tentativaVencida,
+      apoyos: apoyosPorDia.get(claveDia(otId, fechaAsig)) ?? [],
     };
   };
 
@@ -217,10 +273,15 @@ export async function fetchListadoJornadas(fecha: string, hoy: string): Promise<
   };
 }
 
-/** Cuántas jornadas quedaron sin parte hasta ayer. Es el badge del sidebar. */
+/**
+ * Cuántas jornadas quedaron sin parte hasta ayer. Es el badge del sidebar.
+ *
+ * Sin apoyos: el apoyo no carga parte, así que contarlo sería deuda que nadie puede
+ * saldar. Si la principal está pendiente, ya la cuenta ella.
+ */
 export async function contarPendientes(hoy: string): Promise<number> {
   return executeKw<number>("x_aba_asignacion", "search_count", [
-    [["x_fecha", "<", hoy], ["x_parte_id", "=", false], ["x_estado", "=", "confirmada"]],
+    [["x_fecha", "<", hoy], ["x_parte_id", "=", false], ["x_estado", "=", "confirmada"], SIN_APOYOS],
   ]);
 }
 
@@ -259,23 +320,61 @@ export async function crearJornadaNoPlanificada(datos: {
  *
  * Nace TENTATIVA: es una fecha nueva que el planificador todavía tiene que mirar contra
  * la capacidad de esa cuadrilla.
+ *
+ * CON SUS APOYOS (apoyo.md, etapa 3): `apoyoIds` son las jornadas de apoyo del día perdido
+ * que hay que recrear en la fecha nueva (el listado los ofrece tildados de entrada). Se
+ * crean DESPUÉS de la principal —un apoyo sin principal ese día es justo lo que no puede
+ * existir—, con su cuadrilla y su fracción, tentativos como ella. Las originales quedan
+ * colgadas del parte "no ejecutado", igual que la principal. Sólo se aceptan apoyos de la
+ * misma obra: un id cualquiera no puede colarse acá como apoyo.
  */
-export async function reprogramarJornada(asignacionId: number, nuevaFecha: string): Promise<number> {
+export async function reprogramarJornada(
+  asignacionId: number,
+  nuevaFecha: string,
+  apoyoIds: number[] = [],
+): Promise<{ id: number; apoyos: number[] }> {
   const [orig] = await read<FilaAsig>("x_aba_asignacion", [asignacionId], CAMPOS_ASIG);
   if (!orig) throw new Error("La asignación no existe");
   const otId = m2oId(orig.x_ot_id);
   if (!otId) throw new Error("La asignación no tiene orden de trabajo");
 
-  const [ot] = await read<{ id: number; x_name: string | false }>(
-    "x_aba_orden_trabajo", [otId], ["x_name"],
-  );
-  return create("x_aba_asignacion", {
-    x_name: `${str(ot?.x_name) ?? `OT #${otId}`} · ${nuevaFecha}`,
+  const [[ot], apoyos] = await Promise.all([
+    read<{ id: number; x_name: string | false }>("x_aba_orden_trabajo", [otId], ["x_name"]),
+    apoyoIds.length > 0
+      ? read<FilaAsig & { x_apoyo: boolean }>("x_aba_asignacion", apoyoIds, [...CAMPOS_ASIG, "x_apoyo"])
+      : Promise.resolve([] as (FilaAsig & { x_apoyo: boolean })[]),
+  ]);
+  const nombre = `${str(ot?.x_name) ?? `OT #${otId}`} · ${nuevaFecha}`;
+  const cuadrillaPrincipal = m2oId(orig.x_cuadrilla_id);
+  const id = await create("x_aba_asignacion", {
+    x_name: nombre,
     x_ot_id: otId,
     x_fecha: nuevaFecha,
-    x_cuadrilla_id: m2oId(orig.x_cuadrilla_id) ?? false,
+    x_cuadrilla_id: cuadrillaPrincipal ?? false,
     x_fraccion: orig.x_fraccion || "1",
     x_estado: "tentativa",
     x_orden_dia: 0,
   });
+
+  const aRecrear = apoyos.filter(
+    (a) =>
+      a.x_apoyo === true &&
+      m2oId(a.x_ot_id) === otId &&
+      m2oId(a.x_cuadrilla_id) !== null &&
+      m2oId(a.x_cuadrilla_id) !== cuadrillaPrincipal,
+  );
+  if (aRecrear.length === 0) return { id, apoyos: [] };
+  const creados = await executeKw<number | number[]>("x_aba_asignacion", "create", [
+    aRecrear.map((a) => ({
+      x_name: nombre,
+      x_ot_id: otId,
+      x_fecha: nuevaFecha,
+      x_cuadrilla_id: m2oId(a.x_cuadrilla_id),
+      x_fraccion: a.x_fraccion || "1",
+      x_estado: "tentativa",
+      x_orden_dia: 0,
+      x_apoyo: true,
+    })),
+  ]);
+  return { id, apoyos: Array.isArray(creados) ? creados : [creados] };
 }

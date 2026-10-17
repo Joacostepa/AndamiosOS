@@ -31,6 +31,21 @@ export class OdooError extends Error {
   }
 }
 
+/**
+ * La frase entendible cuando Odoo todavía no tiene los campos de la cuadrilla de apoyo
+ * (docs/tablero-planificacion/apoyo.md). Sin el script, TODO lo que lee x_apoyo —el
+ * tablero, el listado de Partes, el contador del menú, la Hoja del día— y la mano de obra
+ * con su cuadrilla fallan con el "Invalid field 'x_apoyo'…" crudo de Odoo, que no le dice
+ * a nadie qué hacer. Null si el error es otro.
+ */
+export function campoDeApoyoFaltante(msg: string): string | null {
+  if (!/invalid field/i.test(msg)) return null;
+  const apoyo = /\bx_apoyo\b/.test(msg);
+  const cuadrillaManoObra = /\bx_cuadrilla_id\b/.test(msg) && /x_aba_mano_obra/.test(msg);
+  if (!apoyo && !cuadrillaManoObra) return null;
+  return "Odoo todavía no tiene los campos de la cuadrilla de apoyo. Falta correr scripts/odoo-add-apoyo-a-asignacion.mjs.";
+}
+
 // Lee la config desde el entorno. Lanza un error claro si falta algo, así el
 // problema se detecta al primer uso y no como un fallo críptico de red.
 function getConfig(): OdooConfig {
@@ -190,7 +205,7 @@ async function jsonRpcSinCola<T>(
   if (json.error) {
     const msg =
       json.error.data?.message || json.error.message || "Error desconocido de Odoo";
-    throw new OdooError(msg, json.error.data);
+    throw new OdooError(campoDeApoyoFaltante(msg) ?? msg, json.error.data);
   }
 
   return json.result as T;

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { ArrowDown, ArrowUp, Camera, Check, ChevronDown, ChevronRight, Loader2, MoreHorizontal, Square, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import { AlertTriangle, ArrowDown, ArrowUp, Camera, Check, ChevronDown, ChevronRight, Loader2, MoreHorizontal, Square, Users, X } from "lucide-react";
 import { addDays, format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { Input } from "@/components/ui/input";
@@ -10,7 +11,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { colorTipo, CORAL } from "@/lib/tablero/colores";
+import { AVISO, colorTipo, CORAL, PELIGRO_TEXTO } from "@/lib/tablero/colores";
+import { textoChipApoyo } from "@/lib/tablero/apoyo";
 import { direccionDeObra } from "@/lib/tablero/titulo";
 import { fraccionLabel } from "@/lib/tablero/fracciones";
 import {
@@ -26,10 +28,13 @@ import {
   MOMENTOS_FOTO, MOTIVOS_NO_EJEC, TIPOS_INCIDENCIA, DEJAN_ESTRUCTURA, faltaAsBuilt,
 } from "@/lib/tablero/tipos-parte";
 import { comprimirFoto, pesoLegible, type FotoComprimida } from "@/lib/tablero/imagenes";
-import { useEmpleados } from "@/hooks/use-parte";
+import { useEditarParte, useEmpleados } from "@/hooks/use-parte";
+import { usePrecargaCierre } from "@/hooks/use-hoja-dia";
 import { ComoQuedoArmado } from "@/components/partes/como-quedo-armado";
 import { SelectorCapataz } from "@/components/partes/selector-capataz";
-import type { JornadaListado } from "@/lib/tablero/tipos-jornada";
+import { apoyosSinGente, datosDeParteCargado } from "@/lib/partes/apoyos";
+import type { ApoyoListado, JornadaListado } from "@/lib/tablero/tipos-jornada";
+import type { ParteCargado } from "@/lib/tablero/tipos-parte";
 
 // Una fila del listado de partes. Se edita EN LÍNEA, sin modal: abrir y cerrar un diálogo
 // cinco veces cada mañana es la fricción que hace que la gente vuelva a la planilla.
@@ -55,6 +60,11 @@ export type Borrador = {
   desde: string;
   hasta: string;
   fletes: string;
+  /**
+   * Viajes de OTRO camión, una línea de flete cada uno: el del apoyo, si fue con el suyo
+   * (decisión 5 del 17/10). A mano: nunca se precargan ni se duplican.
+   */
+  fletesExtra?: string[];
   tercerizado: boolean;
   costoFlete: string;
   observaciones: string;
@@ -75,7 +85,63 @@ export type Borrador = {
   armadoCoincide: boolean | null;
   /** Qué quedó armado, cuando NO coincide con lo previsto. */
   armadoReal: string;
+  /**
+   * Las cuadrillas de apoyo de la obra ese día (docs/tablero-planificacion/apoyo.md). El
+   * parte es uno solo: la gente de cada apoyo va en su propio renglón, con su cuadrilla, y
+   * al guardar se cierra también su jornada. Vacío casi siempre.
+   */
+  apoyos: BorradorApoyo[];
 };
+
+/**
+ * Un apoyo dentro del borrador. Mismos campos de texto que la principal, por lo mismo:
+ * las personas tienen que poder estar VACÍAS.
+ */
+export type BorradorApoyo = {
+  asignacionId: number;
+  cuadrillaId: number | null;
+  /** "Cuadrilla 3", para los avisos y la sub-fila. */
+  nombre: string;
+  fraccion: number;
+  /**
+   * El tilde "fue". Destildado, la jornada del apoyo SE BORRA al guardar (decisión del
+   * 17/10): no queda pegada a un parte en el que no trabajó, ni se reprograma sola.
+   */
+  fue: boolean;
+  /**
+   * Si el parte sale "no ejecutado" y se reprograma, ¿se vuelve a crear este apoyo en la
+   * fecha nueva? Tildado de entrada (apoyo.md, etapa 3): el día que se perdió necesitaba
+   * las dos cuadrillas, y el que se reprograma también, salvo que se diga lo contrario.
+   */
+  recrear: boolean;
+  /** Las personas y el horario ya los completó la Hoja del día de esa cuadrilla (una vez). */
+  deHoja?: boolean;
+  personas: string;
+  desde: string;
+  hasta: string;
+};
+
+/**
+ * El apoyo, listo para el borrador.
+ *
+ * Las personas arrancan VACÍAS: las completa la Hoja del día de la otra cuadrilla cuando se
+ * abre la fila (ver FilaJornada) y, si no tuvo hoja, quedan para cargar a mano: inventar
+ * una dotación es inventar horas-hombre que van al costo. El horario sí se precarga, según
+ * la fracción: el día entero de 8 a 17, ½ de 13 a 17.
+ */
+export function borradorApoyoDe(a: ApoyoListado): BorradorApoyo {
+  return {
+    asignacionId: a.asignacionId,
+    cuadrillaId: a.cuadrillaId,
+    nombre: a.cuadrillaNombre ?? "Cuadrilla de apoyo",
+    fraccion: a.fraccion,
+    fue: true,
+    recrear: true,
+    personas: "",
+    desde: formatHora(a.horarioSugerido.horaDesde),
+    hasta: formatHora(a.horarioSugerido.horaHasta),
+  };
+}
 
 export type FotoEnBorrador = FotoComprimida & { momento: string };
 
@@ -96,6 +162,7 @@ export function borradorDe(j: JornadaListado): Borrador {
     desde: "08:00",
     hasta: "17:00",
     fletes: String(j.fleteSugerido),
+    fletesExtra: [],
     tercerizado: false,
     costoFlete: "",
     observaciones: "",
@@ -105,27 +172,44 @@ export function borradorDe(j: JornadaListado): Borrador {
     finalizarOt: null,
     armadoCoincide: null,
     armadoReal: "",
+    // Sólo los que todavía no tienen parte: uno colgado de otro parte es historia (los
+    // casos viejos de dos cuadrillas con dos partes) y el cierre no lo toca.
+    apoyos: (j.apoyos ?? []).filter((a) => a.parteId === null).map(borradorApoyoDe),
   };
 }
 
-/** Horas-hombre del borrador, con el mismo cálculo que hace Odoo (sin la hora de almuerzo). */
-export function horasHombreDe(b: Borrador): number {
-  const d = parseHora(b.desde);
-  const h = parseHora(b.hasta);
-  const p = Number(b.personas);
+/** Todos los viajes del parte: el flete del parte y los de otro camión (el del apoyo). */
+function fletesDelParte(parte: ParteCargado): number {
+  return (parte.flete?.cantidad ?? 0) + (parte.fletesExtra ?? []).reduce((s, f) => s + f.cantidad, 0);
+}
+
+/** Horas-hombre de un renglón de texto. 0 si todavía no se entiende. */
+function horasHombreRenglon(personas: string, desdeTxt: string, hastaTxt: string): number {
+  const d = parseHora(desdeTxt);
+  const h = parseHora(hastaTxt);
+  const p = Number(personas);
   if (d === null || h === null || !Number.isFinite(p) || p <= 0) return 0;
   return horasEfectivas(d, h) * p;
 }
 
-/** Qué le falta al borrador para poder guardarse. Vacío = está listo. */
-export function erroresDe(b: Borrador, j: JornadaListado): string[] {
+/**
+ * Horas-hombre del borrador, con el mismo cálculo que hace Odoo (sin la hora de almuerzo).
+ * Incluye a los apoyos que fueron: el parte es uno solo y su total es el de toda la gente.
+ */
+export function horasHombreDe(b: Borrador): number {
+  const principal = horasHombreRenglon(b.personas, b.desde, b.hasta);
+  if (b.estado !== "ejecutado") return principal;
+  return (b.apoyos ?? []).reduce(
+    (s, a) => (a.fue ? s + horasHombreRenglon(a.personas, a.desde, a.hasta) : s),
+    principal,
+  );
+}
+
+/** Lo que le falta a un renglón de horario. Compartido entre la principal y los apoyos. */
+function erroresHorario(desdeTxt: string, hastaTxt: string): string[] {
   const e: string[] = [];
-  if (b.estado === "no_ejecutado") {
-    if (!b.motivo) e.push("Falta el motivo");
-    return e;
-  }
-  const d = parseHora(b.desde);
-  const h = parseHora(b.hasta);
+  const d = parseHora(desdeTxt);
+  const h = parseHora(hastaTxt);
   if (d === null) e.push("Hora de entrada inválida");
   if (h === null) e.push("Hora de salida inválida");
   // Una salida ANTERIOR a la entrada ya no es un error: es el turno de noche, que termina
@@ -142,8 +226,28 @@ export function erroresDe(b: Borrador, j: JornadaListado): string[] {
       e.push(`El turno da ${horas} h: ¿se cambiaron de lugar la entrada y la salida?`);
     }
   }
+  return e;
+}
+
+/** Qué le falta al borrador para poder guardarse. Vacío = está listo. */
+export function erroresDe(b: Borrador, j: JornadaListado): string[] {
+  const e: string[] = [];
+  if (b.estado === "no_ejecutado") {
+    if (!b.motivo) e.push("Falta el motivo");
+    return e;
+  }
+  e.push(...erroresHorario(b.desde, b.hasta));
   const p = Number(b.personas);
   if (!b.personas.trim() || !Number.isFinite(p) || p <= 0) e.push("Falta la cantidad de personas");
+  // Cada apoyo que fue necesita su gente: guardarlo vacío sería cerrarle la jornada con
+  // cero horas-hombre, una cuadrilla entera trabajando gratis en el costo de la obra. El
+  // que no sabe si fue destilda "fue" o deja la fila como borrador.
+  for (const a of b.apoyos ?? []) {
+    if (!a.fue) continue;
+    const pa = Number(a.personas);
+    if (!a.personas.trim() || !Number.isFinite(pa) || pa <= 0) e.push(`Faltan las personas del apoyo ${a.nombre}`);
+    for (const err of erroresHorario(a.desde, a.hasta)) e.push(`${a.nombre}: ${err.charAt(0).toLowerCase()}${err.slice(1)}`);
+  }
   if (!b.capatazId) e.push("Falta el capataz");
   if (j.ultimaDeLaOt && b.finalizarOt === null) e.push("Falta decir si la OT está finalizada");
   const faltaAs = faltaAsBuilt(
@@ -154,6 +258,19 @@ export function erroresDe(b: Borrador, j: JornadaListado): string[] {
 }
 
 const ICONO_TIPO = { arriba: ArrowUp, abajo: ArrowDown, otro: MoreHorizontal } as const;
+
+/** "Cuadrilla 3" → "C3", para el chip "+C3 ½" de la fila plegada (igual que la tarjeta del tablero). */
+function cuadrillaCorta(nombre: string | null): string {
+  if (!nombre) return "apoyo";
+  return nombre.replace(/^cuadrilla\s*/i, "C");
+}
+
+/**
+ * Ámbar de aviso: lo mismo que el "sin confirmar" de la fila. Los tokens y no hex fijos:
+ * con el tema oscuro el beige claro quedaba con letras casi blancas encima.
+ */
+const AMBAR_FONDO = AVISO.fondo;
+const AMBAR_TEXTO = AVISO.texto;
 
 export function FilaJornada({
   jornada,
@@ -189,9 +306,41 @@ export function FilaJornada({
   const parte = jornada.parte;
   const cargado = !!parte;
   const noEjecutado = parte?.estado === "no_ejecutado";
+  const sinGente = parte ? apoyosSinGente(parte, jornada.apoyos ?? []) : [];
+  const nombreCuadrilla = (id: number | null) =>
+    cuadrillas.find((c) => c.id === id)?.nombre ??
+    jornada.apoyos?.find((a) => a.cuadrillaId === id)?.cuadrillaNombre ??
+    null;
 
   const set = (cambio: Partial<Borrador>) => borrador && onCambio({ ...borrador, ...cambio });
   const hh = borrador ? horasHombreDe(borrador) : 0;
+
+  // LA GENTE DEL APOYO SEGÚN SU HOJA DEL DÍA (apoyo.md, etapa 3). Se pide sólo con la fila
+  // abierta y algún apoyo todavía sin personas, y se aplica UNA vez por apoyo: si después
+  // alguien borra el número, no se le vuelve a escribir encima. Si la hoja de esa cuadrilla
+  // trae varios horarios (llegó gente más tarde), se suman las personas y se toma el
+  // horario del grupo más grande: el renglón del borrador es uno solo y se puede corregir.
+  const faltaGenteApoyo = abierta && !!borrador && borrador.estado === "ejecutado" &&
+    borrador.apoyos.some((a) => a.fue && !a.personas.trim());
+  const { data: precargaHoja } = usePrecargaCierre(
+    faltaGenteApoyo ? jornada.cuadrillaId : null,
+    faltaGenteApoyo ? jornada.fecha : null,
+    jornada.otId,
+  );
+  useEffect(() => {
+    if (!borrador || !precargaHoja?.apoyos?.length) return;
+    let cambio = false;
+    const apoyos = borrador.apoyos.map((a) => {
+      if (a.personas.trim() || a.deHoja) return a;
+      const h = precargaHoja.apoyos.find((x) => x.asignacionId === a.asignacionId);
+      if (!h?.hayHoja || h.manoObra.length === 0) return a;
+      const total = h.manoObra.reduce((s, l) => s + l.personas, 0);
+      const mayor = [...h.manoObra].sort((x, y) => y.personas - x.personas)[0];
+      cambio = true;
+      return { ...a, personas: String(total), desde: mayor.desde, hasta: mayor.hasta, deHoja: true };
+    });
+    if (cambio) onCambio({ ...borrador, apoyos });
+  }, [precargaHoja, borrador, onCambio]);
 
   // La fracción real del día es tiempo, no gente: la capacidad del tablero es por
   // cuadrilla-día. Comparar contra lo planificado es el desvío del día, visible en el
@@ -231,9 +380,34 @@ export function FilaJornada({
 
         <span className="w-24 shrink-0 truncate text-[12px] font-medium">{cuadrillaPlan}</span>
 
+        {/* Los apoyos van adentro de la obra, no como fila propia: el parte es uno solo.
+            El chip dice que hay más gente que la de la cuadrilla de la fila. */}
+        {/* El mismo texto que la tarjeta del tablero ("+C3", "+C3 ½"). En pantallas
+            angostas se juntan en uno ("+2 apoyos"): de a uno le comían el ancho a la
+            dirección hasta hacerla desaparecer. */}
+        {jornada.apoyos?.map((a) => (
+          <span
+            key={a.asignacionId}
+            className="hidden shrink-0 rounded border border-dashed px-1 text-[10px] font-medium text-muted-foreground sm:inline"
+            title={`Apoyo ${a.cuadrillaNombre ?? ""} · ${fraccionLabel(a.fraccion)} de jornada`}
+          >
+            {textoChipApoyo(cuadrillaCorta(a.cuadrillaNombre), [a.fraccion], 1)}
+          </span>
+        ))}
+        {(jornada.apoyos?.length ?? 0) > 0 && (
+          <span
+            className="shrink-0 rounded border border-dashed px-1 text-[10px] font-medium text-muted-foreground sm:hidden"
+            title={jornada.apoyos!.map((a) => `Apoyo ${a.cuadrillaNombre ?? ""} · ${fraccionLabel(a.fraccion)} de jornada`).join(" · ")}
+          >
+            {jornada.apoyos!.length === 1
+              ? textoChipApoyo(cuadrillaCorta(jornada.apoyos![0].cuadrillaNombre), [jornada.apoyos![0].fraccion], 1)
+              : `+${jornada.apoyos!.length} apoyos`}
+          </span>
+        )}
+
         <IconoTipo className="h-3.5 w-3.5 shrink-0" style={{ color: tipo.text }} aria-hidden />
 
-        <span className="min-w-0 flex-1 truncate text-[13px]" title={jornada.titulo}>
+        <span className="min-w-[5rem] flex-1 truncate text-[13px]" title={jornada.titulo}>
           {direccion}
           {/* La referencia va en la MISMA línea y atenuada: la fila es de una sola
               altura y un renglón extra rompería la densidad del listado. */}
@@ -242,8 +416,19 @@ export function FilaJornada({
           )}
         </span>
 
+        {sinGente.length > 0 && (
+          <span
+            className="flex shrink-0 items-center gap-0.5 rounded px-1 text-[10px] font-semibold"
+            style={{ backgroundColor: AMBAR_FONDO, color: AMBAR_TEXTO }}
+            title="El apoyo se sumó después de cargar el parte: falta su gente"
+          >
+            <AlertTriangle className="h-3 w-3" />
+            sumá {sinGente.map((a) => cuadrillaCorta(a.cuadrillaNombre)).join(", ")}
+          </span>
+        )}
+
         {jornada.tentativaVencida && (
-          <span className="shrink-0 rounded px-1 text-[10px] font-semibold" style={{ backgroundColor: "#FAEEDA", color: "#854F0B" }}>
+          <span className="shrink-0 rounded px-1 text-[10px] font-semibold" style={{ backgroundColor: AMBAR_FONDO, color: AMBAR_TEXTO }}>
             sin confirmar
           </span>
         )}
@@ -255,9 +440,11 @@ export function FilaJornada({
             </>
           ) : cargado ? (
             <>
-              {parte.manoObra[0]?.personas ?? 0}p ·{" "}
+              {/* Con apoyo el parte tiene un renglón por cuadrilla: las personas son la
+                  suma, el horario el de la principal. */}
+              {parte.manoObra.reduce((s, l) => s + l.personas, 0)}p ·{" "}
               {formatHora(parte.manoObra[0]?.horaDesde ?? 8)}–{formatHora(parte.manoObra[0]?.horaHasta ?? 17)}
-              {parte.flete ? ` · ${parte.flete.cantidad} flete` : ""}
+              {fletesDelParte(parte) > 0 ? ` · ${fletesDelParte(parte)} flete` : ""}
               {"  "}
               <span className="font-medium text-foreground">{parte.horasHombre} hh</span>
             </>
@@ -338,10 +525,47 @@ export function FilaJornada({
                   placeholder="Cualquier cosa del día que valga la pena registrar"
                 />
               </label>
+              {/* El día se perdió para todos: el apoyo queda registrado con el mismo parte,
+                  como la principal. No es un apoyo que "no fue" —ése se borra— y por eso
+                  no se ofrece el tilde. */}
+              {borrador.apoyos.length > 0 && (
+                <div className="space-y-1 sm:col-span-2">
+                  <p className="text-[11px] text-muted-foreground">
+                    {borrador.apoyos.map((a) => a.nombre).join(" y ")}{" "}
+                    {borrador.apoyos.length === 1 ? "iba de apoyo: queda registrado" : "iban de apoyo: quedan registrados"}{" "}
+                    con este parte.
+                  </p>
+                  {/* Al reprogramar se ofrece recrear el apoyo, tildado de entrada. */}
+                  {borrador.reprogramarA &&
+                    borrador.apoyos.map((a) => (
+                      <label key={a.asignacionId} className="flex items-center gap-2 text-[12px]">
+                        <Checkbox
+                          checked={a.recrear}
+                          onCheckedChange={(v) =>
+                            set({
+                              apoyos: borrador.apoyos.map((x) =>
+                                x.asignacionId === a.asignacionId ? { ...x, recrear: v === true } : x,
+                              ),
+                            })
+                          }
+                        />
+                        Recrear también el apoyo de {a.nombre} ({fraccionLabel(a.fraccion)}) el{" "}
+                        {format(parseISO(borrador.reprogramarA), "EEE d MMM", { locale: es })}
+                      </label>
+                    ))}
+                </div>
+              )}
             </div>
           ) : (
             <>
               {/* ── Personal y horario ── */}
+              {/* Con apoyo, cada renglón dice de qué cuadrilla es: el parte lleva uno por
+                  cuadrilla (x_cuadrilla_id en la mano de obra). */}
+              {borrador.apoyos.length > 0 && (
+                <p className="text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
+                  {cuadrillaPlan}
+                </p>
+              )}
               <div className="flex flex-wrap items-end gap-2">
                 <label className="space-y-1">
                   <span className="text-[11px] font-medium">Personas</span>
@@ -424,6 +648,18 @@ export function FilaJornada({
                 )}
               </p>
 
+              {borrador.apoyos.map((a, i) => (
+                <SubFilaApoyo
+                  key={a.asignacionId}
+                  apoyo={a}
+                  fecha={jornada.fecha}
+                  deHoja={a.deHoja === true}
+                  onCambio={(cambio) =>
+                    set({ apoyos: borrador.apoyos.map((x, idx) => (idx === i ? { ...x, ...cambio } : x)) })
+                  }
+                />
+              ))}
+
               {/* ── Capataz y fletes ── */}
               <div className="grid gap-3 sm:grid-cols-2">
                 {/* El capataz reemplaza a la cuadrilla: "Cuadrilla 3" es una etiqueta que
@@ -460,6 +696,44 @@ export function FilaJornada({
                       Quedó en obra
                     </label>
                   </div>
+                  {/* Un solo flete por parte, también con apoyo: el que se precarga es el de
+                      la obra y no se duplica por cuadrilla. Si el apoyo fue con su camión,
+                      sus viajes se suman acá a mano. */}
+                  {(borrador.fletesExtra ?? []).map((v, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <Input
+                        className="h-8 w-20"
+                        inputMode="numeric"
+                        value={v}
+                        onChange={(e) =>
+                          set({
+                            fletesExtra: (borrador.fletesExtra ?? []).map((x, idx) =>
+                              idx === i ? e.target.value.replace(/[^\d]/g, "") : x,
+                            ),
+                          })
+                        }
+                        aria-label="Viajes del camión del apoyo"
+                      />
+                      <span className="text-[11px] text-muted-foreground">viajes del camión del apoyo</span>
+                      <button
+                        type="button"
+                        className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                        onClick={() => set({ fletesExtra: (borrador.fletesExtra ?? []).filter((_, idx) => idx !== i) })}
+                        aria-label="Quitar esta línea de flete"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                  {borrador.apoyos.some((a) => a.fue) && (
+                    <button
+                      type="button"
+                      className="block text-[11px] underline underline-offset-2 text-muted-foreground hover:text-foreground"
+                      onClick={() => set({ fletesExtra: [...(borrador.fletesExtra ?? []), "1"] })}
+                    >
+                      + Flete del apoyo (fue con su camión)
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -607,12 +881,256 @@ export function FilaJornada({
           <p className="font-medium">Parte cargado el {format(parseISO(parte.fecha), "d 'de' MMMM", { locale: es })}</p>
           {parte.manoObra.map((l, i) => (
             <p key={i} className="text-muted-foreground">
+              {/* El nombre de la cuadrilla sólo cuando hay más de un renglón: con uno solo
+                  es la de la fila y repetirlo es ruido. */}
+              {parte.manoObra.length > 1 && (
+                <span className="font-medium text-foreground">{nombreCuadrilla(l.cuadrillaId ?? parte.cuadrillaId) ?? "Sin cuadrilla"} · </span>
+              )}
               {l.personas} personas · {formatHora(l.horaDesde)}–{formatHora(l.horaHasta)} · {l.horasHombre} hh
             </p>
           ))}
           {parte.flete && <p className="text-muted-foreground">{parte.flete.cantidad} viaje(s) de flete</p>}
+          {(parte.fletesExtra ?? []).map((f, i) => (
+            <p key={i} className="text-muted-foreground">{f.cantidad} viaje(s) de otro camión</p>
+          ))}
           {parte.sector && <p className="text-muted-foreground">Sector: {parte.sector}</p>}
           {parte.observaciones && <p className="text-muted-foreground">{parte.observaciones}</p>}
+          {sinGente.map((a) => (
+            <AvisoApoyoSinGente key={a.asignacionId} parte={parte} apoyo={a} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * La sub-fila de un apoyo adentro de la obra: el tilde "fue", sus personas y su horario.
+ *
+ * Es un renglón más del mismo parte, no un parte aparte: capataz, fletes, fotos y notas
+ * van una sola vez, en la principal. Sin atajos de salida a propósito: el horario ya viene
+ * precargado según la fracción planificada, y el caso normal es no tocarlo.
+ */
+function SubFilaApoyo({
+  apoyo,
+  fecha,
+  deHoja,
+  onCambio,
+}: {
+  apoyo: BorradorApoyo;
+  fecha: string;
+  /** Las personas y el horario los completó la Hoja del día de esa cuadrilla. */
+  deHoja: boolean;
+  onCambio: (cambio: Partial<BorradorApoyo>) => void;
+}) {
+  const desde = parseHora(apoyo.desde);
+  const hasta = parseHora(apoyo.hasta);
+  const hh = apoyo.fue ? horasHombreRenglon(apoyo.personas, apoyo.desde, apoyo.hasta) : 0;
+  return (
+    <div className="space-y-2 rounded-md border border-dashed px-2.5 py-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <Users className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+        <span className="text-[12px] font-medium">Apoyo {apoyo.nombre}</span>
+        <span className="text-[11px] text-muted-foreground">planificado: {fraccionLabel(apoyo.fraccion)} de jornada</span>
+        <label className="ml-auto flex items-center gap-1.5 text-[11px] font-medium">
+          <Checkbox checked={apoyo.fue} onCheckedChange={(v) => onCambio({ fue: v === true })} />
+          Fue
+        </label>
+      </div>
+      {apoyo.fue ? (
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="space-y-1">
+            <span className="text-[11px] font-medium">Personas</span>
+            <Input
+              className="h-8 w-20"
+              inputMode="numeric"
+              value={apoyo.personas}
+              onChange={(e) => onCambio({ personas: e.target.value.replace(/[^\d]/g, "") })}
+              // Vacío a propósito: sale de la Hoja de la otra cuadrilla, no se inventa.
+              placeholder="?"
+            />
+          </label>
+          <label className="space-y-1">
+            <span className="text-[11px] font-medium">Desde</span>
+            <Input
+              className="h-8 w-20 tabular-nums"
+              value={apoyo.desde}
+              onChange={(e) => onCambio({ desde: e.target.value })}
+              onBlur={() => {
+                const v = parseHora(apoyo.desde);
+                if (v !== null) onCambio({ desde: formatHora(v) });
+              }}
+            />
+          </label>
+          <label className="space-y-1">
+            <span className="text-[11px] font-medium">Hasta</span>
+            <Input
+              className="h-8 w-20 tabular-nums"
+              value={apoyo.hasta}
+              onChange={(e) => onCambio({ hasta: e.target.value })}
+              onBlur={() => {
+                const v = parseHora(apoyo.hasta);
+                if (v !== null) onCambio({ hasta: formatHora(v) });
+              }}
+            />
+          </label>
+          {desde !== null && hasta !== null && cruzaMedianoche(desde, hasta) && (
+            <span className="pb-1.5 text-[11px] font-medium text-muted-foreground">
+              +1 día · termina el {format(addDays(parseISO(fecha), 1), "d/M")}
+            </span>
+          )}
+          <span className="pb-1.5 text-[11px] text-muted-foreground">
+            {hh || 0} horas-hombre{deHoja ? " · según su Hoja del día" : ""}
+          </span>
+        </div>
+      ) : (
+        // Decir qué va a pasar ANTES de guardar: borrar una jornada del tablero no es algo
+        // que se tenga que descubrir después.
+        <p className="text-[11px]" style={{ color: AMBAR_TEXTO }}>
+          No fue: al guardar, la jornada de apoyo de {apoyo.nombre} se saca del tablero.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * "Sumá la gente de C3 al parte".
+ *
+ * El apoyo se sumó en el tablero DESPUÉS de cargar el parte. Queda vinculado a ese parte
+ * (no hay otro: es uno por obra y día), pero el parte no se toca solo: inventaría personas
+ * y horas que van al costo de la obra. Acá se completa sin salir del listado —el formulario
+ * completo vive en el tablero y pide abrir la tarjeta—, o se dice que al final no fue.
+ *
+ * Guardar reescribe el parte tal como está más el renglón nuevo (datosDeParteCargado): el
+ * PATCH reemplaza todas las líneas y lo que no viaja se borraría.
+ */
+function AvisoApoyoSinGente({ parte, apoyo }: { parte: ParteCargado; apoyo: ApoyoListado }) {
+  const editar = useEditarParte();
+  const [abierto, setAbierto] = useState(false);
+  const [personas, setPersonas] = useState("");
+  const [desdeTxt, setDesdeTxt] = useState(formatHora(apoyo.horarioSugerido.horaDesde));
+  const [hastaTxt, setHastaTxt] = useState(formatHora(apoyo.horarioSugerido.horaHasta));
+  const nombre = apoyo.cuadrillaNombre ?? "la cuadrilla de apoyo";
+
+  const p = Number(personas);
+  const errores = [
+    ...(!personas.trim() || !Number.isFinite(p) || p <= 0 ? ["Falta la cantidad de personas"] : []),
+    ...erroresHorario(desdeTxt, hastaTxt),
+  ];
+
+  function guardar(fue: boolean) {
+    const d = parseHora(desdeTxt);
+    const h = parseHora(hastaTxt);
+    // La tarea es la del parte: el apoyo hace lo mismo que la principal ese día.
+    const tarea = parte.manoObra[0]?.tarea ?? "armado";
+    const datos = datosDeParteCargado(parte, {
+      lineaExtra:
+        fue && d !== null && h !== null
+          ? { tarea, personas: p, horaDesde: d, horaHasta: h, cuadrillaId: apoyo.cuadrillaId }
+          : null,
+      apoyos: [{ asignacionId: apoyo.asignacionId, fue }],
+    });
+    editar.mutate(
+      { parteId: parte.id, otId: parte.otId, datos },
+      {
+        onSuccess: (r) => {
+          const fallos = r.pasos.filter((x) => !x.ok);
+          if (fallos.length > 0) {
+            toast.warning("El parte se guardó, pero algo quedó sin hacer en Odoo", {
+              description: fallos.map((x) => (x.detalle ? `${x.nombre}: ${x.detalle}` : x.nombre)).join(" · "),
+              duration: Infinity,
+              closeButton: true,
+            });
+          } else {
+            toast.success(fue ? `Gente de ${nombre} sumada al parte` : `Apoyo de ${nombre} sacado del tablero`);
+          }
+        },
+        onError: (e) => toast.error("No se pudo actualizar el parte", { description: e.message }),
+      },
+    );
+  }
+
+  return (
+    <div className="mt-2 space-y-2 rounded-md px-2.5 py-2" style={{ backgroundColor: AMBAR_FONDO, color: AMBAR_TEXTO }}>
+      <div className="flex flex-wrap items-center gap-2">
+        <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden />
+        <span className="text-[12px] font-medium">
+          Se sumó el apoyo de {nombre} ({fraccionLabel(apoyo.fraccion)}) después de cargar el parte: sumá su gente al parte.
+        </span>
+        {!abierto && (
+          <button
+            type="button"
+            className="ml-auto text-[12px] font-semibold underline underline-offset-2"
+            onClick={() => setAbierto(true)}
+          >
+            Editar el parte
+          </button>
+        )}
+      </div>
+      {/* Sin text-foreground: el recuadro hereda el texto del aviso, que tiene su variante
+          oscura. Con foreground, en oscuro las etiquetas quedaban blancas sobre beige. */}
+      {abierto && (
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="space-y-1">
+            <span className="text-[11px] font-medium">Personas</span>
+            <Input
+              className="h-8 w-20 bg-background"
+              inputMode="numeric"
+              value={personas}
+              onChange={(e) => setPersonas(e.target.value.replace(/[^\d]/g, ""))}
+              placeholder="?"
+            />
+          </label>
+          <label className="space-y-1">
+            <span className="text-[11px] font-medium">Desde</span>
+            <Input
+              className="h-8 w-20 bg-background tabular-nums"
+              value={desdeTxt}
+              onChange={(e) => setDesdeTxt(e.target.value)}
+              onBlur={() => {
+                const v = parseHora(desdeTxt);
+                if (v !== null) setDesdeTxt(formatHora(v));
+              }}
+            />
+          </label>
+          <label className="space-y-1">
+            <span className="text-[11px] font-medium">Hasta</span>
+            <Input
+              className="h-8 w-20 bg-background tabular-nums"
+              value={hastaTxt}
+              onChange={(e) => setHastaTxt(e.target.value)}
+              onBlur={() => {
+                const v = parseHora(hastaTxt);
+                if (v !== null) setHastaTxt(formatHora(v));
+              }}
+            />
+          </label>
+          <Button
+            type="button"
+            size="sm"
+            style={{ backgroundColor: CORAL, color: "#fff" }}
+            disabled={errores.length > 0 || editar.isPending}
+            onClick={() => guardar(true)}
+          >
+            {editar.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
+            Sumar al parte
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={editar.isPending}
+            onClick={() => guardar(false)}
+            title="La jornada de apoyo se saca del tablero"
+          >
+            No fue
+          </Button>
+          {personas.trim() !== "" && errores.length > 0 && (
+            <span className="pb-1.5 text-[11px] font-medium" style={{ color: PELIGRO_TEXTO }}>
+              {errores.join(" · ")}
+            </span>
+          )}
         </div>
       )}
     </div>

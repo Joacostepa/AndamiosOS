@@ -11,7 +11,9 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FRACCIONES, ocupacionCelda, type FraccionStr, aFraccionStr } from "@/lib/tablero/fracciones";
 import { siguienteDiaLaboral, sonContiguas } from "@/lib/tablero/bloques";
-import { AVISO, CORAL, OK } from "@/lib/tablero/colores";
+import { APOYO, AVISO, CORAL, OK } from "@/lib/tablero/colores";
+import { apoyosDe, textoChipApoyo } from "@/lib/tablero/apoyo";
+import { abreviarCuadrilla } from "./tablero-grid";
 import type { AsignacionTablero, CuadrillaTablero, OtTablero } from "@/lib/tablero/tipos";
 
 // Días de una obra: cuántos son, qué día cae cada uno y qué fracción ocupa.
@@ -31,6 +33,13 @@ import type { AsignacionTablero, CuadrillaTablero, OtTablero } from "@/lib/table
 //
 // Las jornadas ya cerradas no se tocan: su fracción y su fecha quedaron registradas en el
 // parte, y cambiarlas dejaría el tablero diciendo una cosa y el parte otra.
+//
+// LA COLUMNA "APOYO" (apoyo.md, etapa 2). Las jornadas que se editan acá son las de la
+// obra —las principales—; las cuadrillas de apoyo no son filas, porque no son días de
+// obra. Pero se muestran al lado del día que ayudan, porque lo que se haga con ese día les
+// pasa a ellas: si el día cambia de fecha, su apoyo se va con él (lo hace el tablero al
+// guardar, en la misma escritura), y si se quita, el apoyo se quita también. Sin la
+// columna, esas dos cosas pasaban sin que nadie las viera venir.
 
 export type CambiosJornadas = {
   /** Días existentes que cambiaron de fracción. */
@@ -81,6 +90,7 @@ export function DialogoJornadas({
   otId,
   ot,
   asignaciones,
+  apoyos = [],
   cuadrillas,
   fueraDeRango,
   guardando,
@@ -92,6 +102,8 @@ export function DialogoJornadas({
   ot: OtTablero | undefined;
   /** TODAS las jornadas de la obra que hay cargadas, sin importar en qué tarjeta caen. */
   asignaciones: AsignacionTablero[];
+  /** Los apoyos de la obra en el rango cargado. Se muestran, no se editan (ver arriba). */
+  apoyos?: AsignacionTablero[];
   cuadrillas: CuadrillaTablero[];
   /**
    * Jornadas de la obra que existen en Odoo pero caen fuera del rango de fechas cargado.
@@ -133,6 +145,27 @@ export function DialogoJornadas({
   // La columna de cuadrilla sólo aparece si la obra está repartida entre varias: en el
   // caso normal repetiría el mismo nombre en cada fila.
   const variasCuadrillas = new Set(filas.map((f) => f.cuadrillaId)).size > 1;
+  // La columna de apoyo, sólo si la obra tiene alguno. Se busca por la fecha ORIGINAL de
+  // la jornada: el apoyo está atado a ese día y se mueve con él.
+  const conApoyo = apoyos.length > 0;
+  const apoyosDeFila = (f: Fila) => {
+    const fechaOriginal = f.asignacionId != null ? originalPorId.get(f.asignacionId)?.fecha : null;
+    return fechaOriginal && otId != null ? apoyosDe(apoyos, otId, fechaOriginal) : [];
+  };
+  const chipApoyo = (a: AsignacionTablero) => {
+    const nombre = cuadrillas.find((c) => c.id === a.cuadrillaId)?.nombre;
+    return textoChipApoyo(nombre ? abreviarCuadrilla(nombre) : "?", [a.fraccion], 1);
+  };
+  // Apoyos que se van con este guardado: los de las jornadas que se quitan, salvo que otra
+  // jornada quede ese mismo día (el tablero se los deja a ella; ver onGuardar).
+  const fechasQueQuedan = new Set(filas.map((f) => f.fecha));
+  const apoyosQueSeVan = original
+    .filter((o) => !o.cerrada && !filas.some((f) => f.asignacionId === o.asignacionId))
+    .filter((o) => !fechasQueQuedan.has(o.fecha))
+    .flatMap((o) => (otId != null ? apoyosDe(apoyos, otId, o.fecha) : []));
+  const apoyosQueSeMueven = filas.filter(
+    (f) => f.asignacionId != null && f.fecha !== originalPorId.get(f.asignacionId)?.fecha && apoyosDeFila(f).length > 0,
+  ).length;
 
   const editables = filas.filter((f) => !f.cerrada);
   const cambios: CambiosJornadas = {
@@ -321,6 +354,15 @@ export function DialogoJornadas({
           </p>
         )}
 
+        {conApoyo && (
+          <div className="flex items-center gap-2 text-[10px] uppercase text-muted-foreground">
+            <span className="w-8 shrink-0" />
+            <span className="w-[130px] shrink-0">Día</span>
+            {variasCuadrillas && <span className="w-24 shrink-0">Cuadrilla</span>}
+            <span className="w-20 shrink-0">Apoyo</span>
+          </div>
+        )}
+
         <div className="max-h-[50vh] space-y-2 overflow-y-auto pr-1">
           {filas.map((fila, i) => (
             <div key={fila.asignacionId ?? `nueva-${i}`} className="flex items-center gap-2">
@@ -358,6 +400,21 @@ export function DialogoJornadas({
               {variasCuadrillas && (
                 <span className="w-24 shrink-0 truncate text-[11px] text-muted-foreground">
                   {nombreCuadrilla(fila.cuadrillaId)}
+                </span>
+              )}
+
+              {conApoyo && (
+                <span className="flex w-20 shrink-0 flex-wrap gap-0.5" aria-label="Apoyo">
+                  {apoyosDeFila(fila).map((a) => (
+                    <span
+                      key={a.id}
+                      className="rounded border px-1 text-[10px] font-medium leading-4"
+                      style={{ backgroundColor: APOYO.fondo, color: APOYO.texto, borderColor: APOYO.borde }}
+                      title={`Apoyo de ${nombreCuadrilla(a.cuadrillaId)}: se mueve y se quita con este día`}
+                    >
+                      {chipApoyo(a)}
+                    </span>
+                  ))}
                 </span>
               )}
 
@@ -459,6 +516,21 @@ export function DialogoJornadas({
               por tramo.
             </p>
           )
+        )}
+
+        {(apoyosQueSeMueven > 0 || apoyosQueSeVan.length > 0) && (
+          <p className="text-xs text-muted-foreground">
+            {[
+              apoyosQueSeMueven > 0
+                ? `${apoyosQueSeMueven === 1 ? "El apoyo del día que movés se va" : "Los apoyos de los días que movés se van"} con él al día nuevo.`
+                : null,
+              apoyosQueSeVan.length > 0
+                ? `${apoyosQueSeVan.length === 1 ? "Se quita también el apoyo" : `Se quitan también ${apoyosQueSeVan.length} apoyos`} de los días que sacás.`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(" ")}
+          </p>
         )}
 
         {confirmadasMovidas > 0 && (

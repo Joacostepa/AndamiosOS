@@ -32,6 +32,12 @@ export type PedidoDestino = {
   duracionNueva: number;
   /** Lo que hay que hacer en los dos casos: sacar las jornadas del tablero. */
   aplicar: () => void;
+  /**
+   * Lo que se hace si se cierra sin elegir: el borrado no va, pero el resto del guardado
+   * del editor de jornadas (fechas, días nuevos) sí. Lo usa el editor, que desde la
+   * cuadrilla de apoyo encadena esas escrituras DESPUÉS del borrado (ver tablero-board).
+   */
+  alCancelar?: () => void;
 };
 
 export function DialogoDestinoJornadas({

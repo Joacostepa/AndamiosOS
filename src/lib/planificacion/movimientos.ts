@@ -10,7 +10,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
-  AccionMovimiento, EstadoBloque, Movimiento, RegistroCorrida, RegistroMovimiento,
+  AccionMovimiento, EstadoBloque, Movimiento, RegistroApoyoCorrida, RegistroCorrida, RegistroMovimiento,
 } from "@/lib/tablero/tipos-movimiento";
 
 type DB = SupabaseClient;
@@ -72,6 +72,11 @@ function colapsarLotes(movimientos: Movimiento[]): Movimiento[] {
   const salida: Movimiento[] = [];
   const yaVisto = new Map<string, Movimiento>();
 
+  // Un lote puede traer, además de las corridas, apoyos quitados (o recreados al deshacer):
+  // ver RegistroApoyoCorrida. La cabeza tiene que ser una corrida —la frase es "Corrió el
+  // día…"— y los totales cuentan sólo lo que se corrió. Un lote de sólo apoyos quitados
+  // (se suspendió una cuadrilla que únicamente iba de apoyo) queda con su propia frase.
+  const esCorrida = (x: Movimiento) => x.accion === "correr";
   for (const m of movimientos) {
     if (!m.loteId) {
       salida.push(m);
@@ -81,17 +86,27 @@ function colapsarLotes(movimientos: Movimiento[]): Movimiento[] {
     if (!cabeza) {
       const nuevo: Movimiento = {
         ...m,
-        lote: { jornadas: m.asignacionIds.length, obras: 1 },
+        lote: esCorrida(m) ? { jornadas: m.asignacionIds.length, obras: 1 } : { jornadas: 0, obras: 0 },
       };
       yaVisto.set(m.loteId, nuevo);
       salida.push(nuevo);
       continue;
     }
-    cabeza.lote!.jornadas += m.asignacionIds.length;
-    cabeza.lote!.obras += 1;
+    if (esCorrida(m) && !esCorrida(cabeza)) {
+      // La cabeza pasa a ser esta corrida; se conservan los totales y el resto.
+      Object.assign(cabeza, {
+        otId: m.otId, otTitulo: m.otTitulo, accion: m.accion, antes: m.antes, despues: m.despues,
+      });
+    }
+    if (esCorrida(m)) {
+      cabeza.lote!.jornadas += m.asignacionIds.length;
+      cabeza.lote!.obras += 1;
+    }
     cabeza.asignacionIds = [...cabeza.asignacionIds, ...m.asignacionIds];
     cabeza.deshecho = cabeza.deshecho || m.deshecho;
   }
+  // Un lote sin ninguna corrida no lleva totales: se lee con la frase de su acción.
+  for (const m of salida) if (m.lote && m.lote.obras === 0) delete m.lote;
 
   return salida;
 }
@@ -149,16 +164,18 @@ export async function registrarMovimiento(
 export async function registrarCorrimiento(
   db: DB,
   registros: RegistroCorrida[],
-  opts: { motivo: string; deshaceA?: Map<number, string> },
+  opts: { motivo: string; deshaceA?: Map<number, string>; apoyos?: RegistroApoyoCorrida[] },
 ): Promise<{ loteId: string; porOt: Map<number, string> } | null> {
-  if (registros.length === 0) return null;
+  const apoyos = opts.apoyos ?? [];
+  if (registros.length === 0 && apoyos.length === 0) return null;
   const loteId = crypto.randomUUID();
+  const comun = { lote_id: loteId, motivo: opts.motivo };
 
   try {
     const { data, error } = await db
       .from(TABLA)
-      .insert(
-        registros.map((r) => ({
+      .insert([
+        ...registros.map((r) => ({
           odoo_ot_id: r.otId,
           ot_titulo: r.otTitulo,
           accion: "correr" as const,
@@ -166,16 +183,30 @@ export async function registrarCorrimiento(
           antes: r.antes,
           despues: r.despues,
           deshace_a: opts.deshaceA?.get(r.otId) ?? null,
-          lote_id: loteId,
-          motivo: opts.motivo,
+          ...comun,
         })),
-      )
-      .select("id, odoo_ot_id");
+        // Los apoyos que quitó el corrimiento (o que el deshacer vuelve a crear). Mismas
+        // columnas y mismo lote: no hace falta migración, "quitar" y "crear" ya están en
+        // el CHECK de `accion`.
+        ...apoyos.map((r) => ({
+          odoo_ot_id: r.otId,
+          ot_titulo: r.otTitulo,
+          accion: r.accion,
+          asignacion_ids: r.asignacionIds,
+          antes: r.antes,
+          despues: r.despues,
+          deshace_a: opts.deshaceA?.get(r.otId) ?? null,
+          ...comun,
+        })),
+      ])
+      .select("id, odoo_ot_id, accion");
     if (error) throw new Error(error.message);
 
+    // Por obra, prefiriendo la fila de la corrida: es la que el deshacer marca como
+    // deshecha. La de un apoyo quitado sólo cuando la obra no tuvo corrida en el lote.
     const porOt = new Map<number, string>();
-    for (const f of (data ?? []) as { id: string; odoo_ot_id: number }[]) {
-      porOt.set(f.odoo_ot_id, f.id);
+    for (const f of (data ?? []) as { id: string; odoo_ot_id: number; accion: string }[]) {
+      if (f.accion === "correr" || !porOt.has(f.odoo_ot_id)) porOt.set(f.odoo_ot_id, f.id);
     }
     return { loteId, porOt };
   } catch (e) {

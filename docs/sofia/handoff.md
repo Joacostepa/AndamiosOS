@@ -33,8 +33,10 @@ Para retomar, decí: «Leé docs/sofia/handoff.md y seguimos con el CRM de Whats
 | **Saludo con nota de voz** (17/10) | `voz.ts` (genera, procesa con ffmpeg, verifica con speech-to-text y guarda en Storage `comercial/voz/saludo/v1/`), `mandarNotaDeVoz` en `envio.ts`, `enviarAudio` en `whatsapp/api.ts`; interruptor `clientes_saludo_voz` = 1 | ✅ En producción, con `ELEVENLABS_VOZ_API_KEY` en Vercel. Si el audio falla, sale sólo el texto y la charla anota «No salió el audio del saludo». Falta que JS lo pruebe por WhatsApp |
 | Perfil del WhatsApp de clientes | logo (aro rojo), info «Andamios y bandejas de protección · CABA y GBA», descripción, Maturín 2570, info@…, la web y la categoría | ✅ Cargado por API el 16/10 |
 
-**El saludo** (decisión de JS, 15 y 16/10; con voz y con Tomás desde el 17/10). Lo arma el código, una sola vez, y el nombre sale del perfil de WhatsApp. Primero una nota de voz y después el texto:
+**El saludo** (decisión de JS, 15 y 16/10; con voz y con Tomás desde el 17/10). Lo arma el código, una sola vez, y el nombre sale del perfil de WhatsApp. Sale **sólo como nota de voz** (WhatsApp le pone la transcripción abajo; JS lo probó el 17/10 y pidió sacar el texto, que repetía lo mismo):
 > 🎤 «Carlos, buen día. Tomás, de Andamios Buenos Aires, ¿en qué te ayudo?»
+
+Si el audio falla (o `clientes_saludo_voz` = 0), sale el texto:
 > ¡Buen día Carlos! Acá Tomás de Andamios Buenos Aires. Contame en qué te puedo ayudar.
 
 Así están para las pruebas internas. El de lanzamiento, abajo, tiene que decir «asistente digital».
@@ -207,7 +209,7 @@ JS **no quiere** correr los guiones de ataque (`scripts/test-agente-clientes.mts
      - **Programado y desplegado el 17/10** (`ce18cdc`): el agente pasa a llamarse Tomás en todos lados (decisión de JS) y el saludo sale como nota de voz y después el texto (ver la tabla de arriba). La versión de lanzamiento con «asistente digital» queda para después (punto 0).
        - Cómo funciona: `voz.ts` genera con v4, procesa con la misma cadena de `audio-whatsapp.py` (con `ffmpeg-static`), transcribe y compara (`audioDiceElGuion`: si se come el nombre o «Andamios», lo genera de nuevo; dos intentos), guarda en Storage por momento del día y nombre y lo manda con `voice: true` (nota de voz). La primera vez tarda unos 4 s; después, 0,3 s.
        - Probado desde la Mac contra Storage: `buenas-tardes-joaquin.ogg` quedó generado (Ogg/Opus, 4,9 s, 14 KB).
-       - Falta que JS lo pruebe por WhatsApp. Si en el celular llega como audio común y no como nota de voz (sin la onda ni la foto del perfil), Meta ignoró `voice: true`: revisar el formato.
+       - **Probado por JS el 17/10 a las 13:52:** llegó como nota de voz (con la onda, el micrófono y el logo) y WhatsApp mostró la transcripción. Desde `5ef0f1c` sale sólo el audio. Si en el celular llega como audio común y no como nota de voz (sin la onda ni la foto del perfil), Meta ignoró `voice: true`: revisar el formato.
    - **Para seguir (antes de elegir):** probar sin ambiente y con otra prosodia (por ejemplo «¡Hola Jorge, buen día! ¿Cómo andás? …»), estabilidad 0 en v3, otras voces con v3, o grabar una voz real con consentimiento. Todavía no hay nada programado en Sofía.
 
 ## Historia: la charla del 12/10

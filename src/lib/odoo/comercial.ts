@@ -12,6 +12,7 @@
 
 import { executeKw, searchCount, type OpcionesRpc } from "@/lib/odoo/client";
 import { urlOdooVenta } from "@/lib/odoo/habilitaciones";
+import { variantesTelefonoOdoo } from "@/lib/odoo/telefono";
 
 export const LECTURA: OpcionesRpc = { timeoutMs: 20_000 };
 
@@ -113,6 +114,69 @@ export async function verCliente(id: number): Promise<ClienteDetalle | null> {
       vencida: Math.round(vencidas.reduce((a, f) => a + f.amount_residual, 0)),
       facturasVencidas: vencidas.length,
     },
+  };
+}
+
+// ── Identificar al cliente que escribe por WhatsApp (Sofía, paso 2b) ─────────────────────
+
+export type ClienteIdentificado = {
+  /** La empresa o persona comercial (commercial_partner_id), si se encontró. */
+  partnerId: number | null;
+  nombre: string | null;
+  /** F5: tuvo una orden confirmada en los últimos 12 meses. */
+  historial: boolean;
+  /** F7: tiene facturas vencidas sin pagar. Al cliente nunca se le dice. */
+  deudaVencida: boolean;
+  /** La última orden confirmada (cualquier fecha), para mandarlo a la pareja de siempre. */
+  ultimaOrdenGanada: { tecnico: string | null; venta: string; fecha: string | null } | null;
+  /** Otros técnicos de sus órdenes confirmadas («también trabajó con…»). */
+  otrosTecnicos: string[];
+};
+
+/**
+ * Busca al cliente por el teléfono de WhatsApp (phone_sanitized de partners, contactos y leads)
+ * y, si lo dio, por el CUIT. Sólo lectura. Si Odoo no contesta, tira: el que llama lo cuenta
+ * como «no se pudo revisar» (docs/sofia/crm-propuesta.md §4, F5 y F7).
+ */
+export async function identificarCliente(p: { telefono: string | null; cuit?: string | null }): Promise<ClienteIdentificado> {
+  const tels = variantesTelefonoOdoo(p.telefono);
+  const cuits = p.cuit ? variantesCuit(p.cuit) : [];
+  const [porTelefono, porCuit, leads] = await Promise.all([
+    tels.length ? leer<{ commercial_partner_id: M2O }>("res.partner", [["phone_sanitized", "in", tels]], ["commercial_partner_id"], { limit: 10 }) : [],
+    cuits.length ? leer<{ commercial_partner_id: M2O }>("res.partner", [["vat", "in", cuits]], ["commercial_partner_id"], { limit: 10 }) : [],
+    tels.length ? leer<{ partner_id: M2O }>("crm.lead", [["phone_sanitized", "in", tels], ["partner_id", "!=", false]], ["partner_id"], { limit: 10, context: { active_test: false } }) : [],
+  ]);
+  const deLeads = leads.map((l) => idDe(l.partner_id)).filter((x): x is number => x !== null);
+  const comerciales = deLeads.length
+    ? await leer<{ commercial_partner_id: M2O }>("res.partner", [["id", "in", deLeads]], ["commercial_partner_id"], { limit: 10 })
+    : [];
+  // El CUIT manda: es la identificación fuerte. Después el teléfono del partner y por último el lead.
+  const encontrados = [...porCuit, ...porTelefono, ...comerciales];
+  const ids = [...new Set(encontrados.map((x) => idDe(x.commercial_partner_id)).filter((x): x is number => x !== null))];
+  if (!ids.length) return { partnerId: null, nombre: null, historial: false, deudaVencida: false, ultimaOrdenGanada: null, otrosTecnicos: [] };
+
+  const hace12 = new Date();
+  hace12.setFullYear(hace12.getFullYear() - 1);
+  const hoy = new Date().toISOString().slice(0, 10);
+  const [ganadas, deuda] = await Promise.all([
+    leer<{ name: string; date_order: string | false; x_studio_tcnico: M2O }>(
+      "sale.order", [["partner_id", "child_of", ids], ["state", "in", ["sale", "done"]]], ["name", "date_order", "x_studio_tcnico"], { limit: 20, order: "date_order desc" },
+    ),
+    searchCount("account.move", [
+      ["commercial_partner_id", "in", ids], ["move_type", "in", ["out_invoice", "out_receipt"]], ["state", "=", "posted"],
+      ["payment_state", "in", ["not_paid", "partial"]], ["invoice_date_due", "<", hoy],
+    ]),
+  ]);
+  const ultima = ganadas[0];
+  const primero = encontrados.find((x) => idDe(x.commercial_partner_id) === ids[0]);
+  const tecnicos = [...new Set(ganadas.map((g) => nombre(g.x_studio_tcnico)).filter((x): x is string => !!x))];
+  return {
+    partnerId: ids[0],
+    nombre: primero ? nombre(primero.commercial_partner_id) : null,
+    historial: ganadas.some((g) => g.date_order && new Date(g.date_order) >= hace12),
+    deudaVencida: deuda > 0,
+    ultimaOrdenGanada: ultima ? { tecnico: nombre(ultima.x_studio_tcnico), venta: ultima.name, fecha: ultima.date_order ? ultima.date_order.slice(0, 10) : null } : null,
+    otrosTecnicos: tecnicos.slice(1),
   };
 }
 

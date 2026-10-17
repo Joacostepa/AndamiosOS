@@ -12,7 +12,7 @@ import { fallaDeCuenta, avisarFallaDeCuenta } from "@/lib/permisos-via-publica/f
 import { leerParametros } from "@/lib/parametros-cotizacion/servidor";
 import { tarifasDesdeParametros } from "@/lib/cotizador/tarifas";
 import { consultarLote } from "@/lib/catastro/caba";
-import { conflictoCanal } from "@/lib/odoo/comercial";
+import { conflictoCanal, identificarCliente, type ClienteIdentificado } from "@/lib/odoo/comercial";
 import { feriadosDelRango } from "@/lib/feriados/argentina";
 import { crearAlertas } from "@/lib/alertas/servicio";
 import { marcarLeido, numeroClientes } from "@/lib/whatsapp/api";
@@ -257,17 +257,28 @@ async function ultimoDelTurno(db: SupabaseClient): Promise<string | null> {
 
 export function serviciosSofia(db: SupabaseClient, charla: CharlaSofia): ServiciosSofia {
   const hoy = enBuenosAires(new Date()).fecha;
+  // F5 y F7 (paso 2b): quién es, por el teléfono de WhatsApp y el CUIT si lo dio. Una vez por
+  // turno y por CUIT; null si Odoo no contestó («no se pudo revisar» cuenta como no fácil).
+  const identificados = new Map<string, Promise<ClienteIdentificado | null>>();
+  const identificar = (ficha: FichaSofia) => {
+    const clave = ficha.cuit ?? "";
+    if (!identificados.has(clave)) {
+      identificados.set(clave, identificarCliente({ telefono: charla.telefono || ficha.telefono, cuit: ficha.cuit }).catch((e) => {
+        console.error("[sofia] identificar cliente", e);
+        return null;
+      }));
+    }
+    return identificados.get(clave)!;
+  };
   return {
     hoy,
     verificarDireccion: (direccion) => consultarLote({ direccion, enCaba: null }),
     async contextoFacil(ficha: FichaSofia) {
-      const [filas, dir] = await Promise.all([leerParametros(db), direccionCotizada(ficha.direccion)]);
+      const [filas, dir, quien] = await Promise.all([leerParametros(db), direccionCotizada(ficha.direccion), identificar(ficha)]);
       return {
         parametros: parametrosFacilDesdeFilas(filas),
-        // F5 y F7 (historial y deuda por phone_sanitized) son del paso 2b, que todavía no está:
-        // «no se pudo revisar» cuenta como no fácil para mandar sola, y la tarjeta lo muestra.
-        clienteConHistorial: null,
-        deudaVencida: null,
+        clienteConHistorial: quien ? quien.historial : null,
+        deudaVencida: quien ? quien.deudaVencida : null,
         direccionCotizada: dir ? dir.cotizada : null,
       };
     },
@@ -275,11 +286,14 @@ export function serviciosSofia(db: SupabaseClient, charla: CharlaSofia): Servici
       return tarifasDesdeParametros(await leerParametros(db));
     },
     async asignar(ficha) {
-      const [dir, ultimo] = await Promise.all([direccionCotizada(ficha.direccion), ultimoDelTurno(db)]);
+      const [dir, ultimo, quien] = await Promise.all([direccionCotizada(ficha.direccion), ultimoDelTurno(db), identificar(ficha)]);
       const cliente: ClienteAsignacion = {
         alquilerSimple: ficha.trabajo === "alquiler_simple",
         cuit: ficha.cuit,
-        nombre: ficha.nombre,
+        nombre: quien?.nombre ?? ficha.nombre,
+        partnerId: quien?.partnerId ?? null,
+        ultimaOrdenGanada: quien?.ultimaOrdenGanada ? { tecnico: quien.ultimaOrdenGanada.tecnico, venta: quien.ultimaOrdenGanada.venta, fecha: quien.ultimaOrdenGanada.fecha ?? undefined } : null,
+        otrosTecnicos: quien?.otrosTecnicos ?? [],
         direccionCotizada: dir?.cotizada ? { tecnico: dir.tecnico, venta: dir.venta, fecha: dir.fecha } : null,
       };
       // Las cuentas de los socios y «Hoy no estoy» van a Parámetros (docs/sofia/cuentas-socios.md):

@@ -90,7 +90,9 @@ JS **no quiere** correr los guiones de ataque (`scripts/test-agente-clientes.mts
    - Mientras el número lo tenga sólo JS, no confunde a nadie. Ante un cliente real, Sofía tiene que decir que es una asistente digital: lo piden las condiciones de uso de Claude.
 1. **Que JS pruebe a Sofía** (el saludo, el catastro, «¿sos un bot?», un descuento, «tabla floja») y la tarjeta. **Aprobar crea una orden real en Odoo** (en borrador): borrarla después, o usar «Lo tomo yo».
 2. **La plantilla de Meta «Tu presupuesto está listo»**, con el PDF de encabezado, para mandar con la ventana de 24 h cerrada. Hoy queda «falta la plantilla».
-3. **Paso 2b:** la búsqueda del cliente por teléfono en Odoo (historial y deuda, F5/F7), el «lead sin orden» y el botón «Presupuestar». Hoy la tarjeta dice «no se pudo revisar».
+3. **Paso 2b:**
+   - ✅ **Hecho el 16/10 a la noche:** la búsqueda del cliente en Odoo (`identificarCliente` en `src/lib/odoo/comercial.ts`). Busca por `phone_sanitized` en partners, contactos y leads, con y sin el 9 del celular (`variantesTelefonoOdoo`), y por CUIT si lo dio. Devuelve F5 (orden confirmada en 12 meses), F7 (facturas vencidas) y la última orden ganada para la asignación. Si Odoo no contesta, sigue contando como «no se pudo revisar».
+   - Falta: el «lead sin orden», `pedidos_presupuesto` y el botón «Presupuestar».
 4. **Cargar en Parámetros** las cuentas de los socios y «Hoy no estoy»; las parejas están en el código (`PAREJAS_15_10`).
 5. ~~Confirmar con JS el apellido de Gabriel~~: JS confirmó el 16/10 que «Gabriel Stepansky» está bien.
 6. ~~El token permanente~~: hecho el 16/10 (usuario del sistema, no vence).

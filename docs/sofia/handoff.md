@@ -138,6 +138,17 @@ JS **no quiere** correr los guiones de ataque (`scripts/test-agente-clientes.mts
      3. **la lista con el 80 % no coincide con lo que se cobra en Odoo.** En las órdenes desde julio, el módulo STD sale entre 13.000 y 18.000 (la lista da unos 15.500: parecido), pero la baranda sale 13.000 a 18.000 (la lista da unos 6.200), el tablón de 2,50 sale 13.000 a 18.000 (la lista da unos 22.200) y el juego de 4 ruedas, 30.000 (la lista da unos 160.000). Hay que decidir cuál vale. En Odoo los productos tienen precio de lista 1: el precio lo escribe a mano quien arma la orden;
      4. el tope de cantidad para que salga solo y si hay que chequear stock.
    - **Reglas propuestas para «fácil»:** el cliente sabe qué piezas quiere (sin calcular nada), todas están en la lista, retira o es una entrega en CABA con flete definido, sin palabras de alerta y sin deuda (F7 ya existe).
+14. **Saludo con voz (en pruebas, 16 y 17/10; JS sigue probando: «suena raro, no me termina de cerrar ninguno»).**
+   - **La idea:** que el saludo sea una nota de voz con el nombre del cliente («¡Buen día Jorge!…»), por cercanía. Un panel de expertos lo analizó: [saludo-voz-propuesta.md](./saludo-voz-propuesta.md). Recomienda audio y después el texto (no sólo audio), con un A/B por la mitad de las charlas y sin audio para la gama alta. JS quiere el nombre del cliente en el audio.
+   - **Guion de prueba** (el de las pruebas internas, sin «asistente digital»; **al publicar el número, el audio también tiene que decir «asistente digital»**): «¡Buen día Jorge! ¿Cómo estás? Acá Sofía de Andamios Buenos Aires. Contame... ¿en qué te puedo ayudar?».
+   - **Lo que se probó** (página de muestras: https://claude.ai/artifact/MNr2JA9b3uHHsrPhJWzyoS):
+     1. cinco voces argentinas de la biblioteca: Lore (la del agente de voz, cordobesa), Sofía (`h60rOzgfLmYsntfqgGu2`), Melanie, Agustina y Martina. **JS eligió la voz «Sofía»**;
+     2. el modelo rápido `eleven_flash_v2_5` (0,9 s por audio) a velocidad 1,05 / 1,10 / 1,15. A JS le gustó, pero el cierre «Contame...» sonaba cortado, también con `<break>`, con coma y con más expresividad;
+     3. **`eleven_v3`, el más real**, con la etiqueta `[warmly]`. Es el que más le gustó a JS, pero lo encontró lento. Tarda unos 2,5 s en generarse. **v3 ignora `speed`**, y la etiqueta `[speaking quickly]` casi no cambia nada: se aceleró con ffmpeg (`atempo` 1,10 a 1,20, sin cambiar el tono). Una vez se comió una sílaba («Andami Buenos Aires»): en producción, cada audio nuevo se verifica con speech-to-text y se regenera si no coincide;
+     4. ambiente de fondo: primero un ruido sintético (casi no se oía) y después una oficina con teclado, generada con la API de efectos de ElevenLabs, a tres niveles. **JS: «suena raro».**
+   - **Lo técnico ya resuelto:** ElevenLabs entrega directo `opus_48000_32` en contenedor Ogg (`OggS`), el formato de nota de voz de WhatsApp, sin convertir. El audio se guarda por nombre, para generarlo una sola vez. Los scripts y las dos tomas de oficina están en `scripts/sofia-voz/`.
+   - **La clave de ElevenLabs para estas pruebas** está en `.env.local` (`ELEVENLABS_API_KEY`, «Sofía saludo»), con permisos de TTS, voces, efectos de sonido y speech-to-text. En Vercel hay otra clave, la de transcribir los audios.
+   - **Para seguir:** probar sin ambiente y con otra prosodia (por ejemplo «¡Hola Jorge, buen día! ¿Cómo andás? …»), estabilidad 0 en v3, otras voces con v3, o grabar una voz real con consentimiento. Todavía no hay nada programado en Sofía.
 
 ## Historia: la charla del 12/10
 

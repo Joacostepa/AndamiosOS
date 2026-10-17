@@ -4,21 +4,25 @@
 //   · el texto de un audio suyo de referencia: «Hola, Jorge, acá Tomás de Andamios Buenos Aires.
 //     Contame... en qué te puedo ayudar.» (guionSaludoVoz en saludo.ts; la pausa, porque de un
 //     tirón el cierre sonaba robótico);
-//   · la voz «Tomás» de ElevenLabs con Eleven v4, sin etiquetas de tono ([warmly] le sonó
-//     exagerado) y con estabilidad 0,2: con 0,85 le dijeron que sonaba «demasiado perfecta»;
-//     acelerada ×1,25 (v4 no hace caso a `speed`);
+//   · la voz «Gabi B» (mendocino) de ElevenLabs con Eleven v4: antes era «Tomás», que sonaba
+//     a locutor; sin etiquetas de tono ([warmly] le sonó exagerado) y con estabilidad 0,2 (con
+//     0,85 le dijeron que sonaba «demasiado perfecta»); acelerada ×1,40 (v4 no hace caso a
+//     `speed`);
 //   · que suene a un audio de WhatsApp grabado en la oficina y no a un micrófono prolijo: el fondo
 //     «oficina + depósito» (voz/fondo-oficina-deposito.mp3, de la API de efectos) va debajo de
 //     la voz ANTES del micrófono; la voz a un metro del celular (más eco de cuarto que voz
 //     directa, el eco con 8 ms de retraso, sin graves ni agudos de más y el fondo 3 dB más
 //     arriba); el micrófono del teléfono, el volumen automático que sube el ruido en las pausas,
 //     y Opus a 24 kb/s y 16 kHz, el formato de las notas de voz de WhatsApp. Es la misma cadena
-//     que audio-whatsapp.py con armar(1.25, "ofidep-1", -16, "1m").
+//     que audio-whatsapp.py con armar(1.40, "ofidep-1", -16, "1m").
 //
 // Cada audio se genera una sola vez por nombre (claveSaludoVoz) y queda en Storage
-// (comercial/voz/saludo/v3/; v1 y v2 eran guiones anteriores). Antes de guardarlo se transcribe y se compara con el guion
-// (audioDiceElGuion): si no coincide, se genera de nuevo; si tampoco, no hay audio y el turno
-// manda sólo el texto. Usa su propia clave de ElevenLabs (ELEVENLABS_VOZ_API_KEY, con permisos de
+// (comercial/voz/saludo/v4/; v1 a v3 eran voces y guiones anteriores). Antes de guardarlo se
+// transcribe la voz CRUDA (antes de acelerarla y procesarla) y se compara con el guion
+// (audioDiceElGuion): si ElevenLabs se comió una sílaba, se genera de nuevo; si tampoco sale, no
+// hay audio y el turno manda el texto. Se transcribe la cruda porque a ×1,40 el transcriptor
+// confunde «Andamios» con «Andamis» aunque se entienda bien: la aceleración es siempre la misma y
+// no cambia las palabras. Usa su propia clave de ElevenLabs (ELEVENLABS_VOZ_API_KEY, con permisos de
 // voz y de speech-to-text), no la del asistente de voz.
 
 import { execFile } from "node:child_process";
@@ -33,12 +37,12 @@ import { audioDiceElGuion, claveSaludoVoz, guionSaludoVoz, nombreParaSaludo } fr
 const correr = promisify(execFile);
 
 const API = "https://api.elevenlabs.io/v1";
-/** «Tomás - Argentina & Uruguaya», de la biblioteca de voces de ElevenLabs. */
-const VOZ = "QK4xDwo9ESPHA4JNUpX3";
+/** «Gabi B» (mendocino), de la biblioteca de voces de ElevenLabs. La eligió JS el 17/10. */
+const VOZ = "xDZJO6bbSnscJEAbhpRF";
 const MODELO = "eleven_v4";
 const BUCKET = "comercial";
 /** Si cambia la voz, el guion o el sonido, se sube la versión y los audios se generan de nuevo. */
-const CARPETA = "voz/saludo/v3";
+const CARPETA = "voz/saludo/v4";
 const FONDO = path.join(process.cwd(), "src/lib/clientes/voz/fondo-oficina-deposito.mp3");
 const INTENTOS = 2;
 
@@ -65,7 +69,7 @@ async function transcribir(audio: Buffer): Promise<string> {
   const form = new FormData();
   form.append("model_id", "scribe_v1");
   form.append("language_code", "es");
-  form.append("file", new Blob([new Uint8Array(audio)], { type: "audio/ogg" }), "saludo.ogg");
+  form.append("file", new Blob([new Uint8Array(audio)], { type: "audio/mpeg" }), "saludo.mp3");
   const res = await fetch(`${API}/speech-to-text`, { method: "POST", headers: { "xi-api-key": clave() }, body: form, signal: AbortSignal.timeout(30_000) });
   if (!res.ok) throw new Error(`ElevenLabs no transcribió el saludo (${res.status}).`);
   const j = (await res.json()) as { text?: string };
@@ -77,7 +81,7 @@ async function transcribir(audio: Buffer): Promise<string> {
  * (ruido que se apaga en unos 0,6 s y llega 8 ms tarde: las paredes), 2 el siseo del celular, 3 el fondo.
  */
 const FILTRO = [
-  "[0:a]atempo=1.25,loudnorm=I=-18:TP=-2,aresample=44100,adelay=350:all=1,apad=pad_dur=0.6,asplit[d][w]",
+  "[0:a]atempo=1.40,loudnorm=I=-18:TP=-2,aresample=44100,adelay=350:all=1,apad=pad_dur=0.6,asplit[d][w]",
   "[w][1:a]afir=dry=0:wet=1[r]",
   "[d]lowpass=f=4000,highpass=f=180[dd]",
   "[dd][r]amix=inputs=2:weights=4 6:normalize=1:duration=first[v]",
@@ -122,12 +126,13 @@ export async function audioSaludo(db: SupabaseClient, perfil: string | null): Pr
 
   let ultimo = "";
   for (let i = 0; i < INTENTOS; i++) {
-    const ogg = await procesar(await hablar(guion));
-    const dijo = await transcribir(ogg);
+    const voz = await hablar(guion);
+    const dijo = await transcribir(voz);
     if (!audioDiceElGuion(guion, dijo, nombreParaSaludo(perfil))) {
       ultimo = dijo;
       continue;
     }
+    const ogg = await procesar(voz);
     const { error } = await db.storage.from(BUCKET).upload(archivo, ogg, { contentType: "audio/ogg", upsert: true });
     if (error) throw new Error(`No se pudo guardar el audio: ${error.message}`);
     const firmado = await firmar();

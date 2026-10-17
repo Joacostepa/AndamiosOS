@@ -10,6 +10,43 @@ seguimos con lo que falta". **Empezar por § "15/10 a la noche", § "15/10", § 
 
 ---
 
+## 17/10 — tres permisos que no se hacen
+
+- **Decisión de JS:** Doblas 141 (S02685), Av. La Plata 2552 (S02348) y Av. Entre Ríos 149 (S01235)
+  no se tramitan. Las tres ventas quedaron en `pvp_config.descartes.ventas` con el motivo (salen de
+  "Ventas para iniciar"; se vuelven con "No se tramita acá" → deshacer).
+- **Doblas tenía trámite abierto** (25/09, link mandado a am@, el cliente abrió el portal el 13/10,
+  sin papeles ni tareas). Se borró desde la Mac (trámite `503bc792…`, cascada de documentos y
+  eventos; no había archivos): el link del cliente ya no anda.
+- **Falta en la app:** cancelar un trámite real con motivo (hoy el DELETE sólo acepta pruebas).
+
+### Subsanaciones al 17/10
+
+Ninguna tarea pendiente en TAD; 4 expedientes en SUBSANACION ya contestados (a mano, fuera de la app).
+
+- **Corrientes 985 (S02711):** el GCBA observó acta y nota por el DNI de Leticia Aquino: tipeó
+  2757770 en el portal, el real es 27577709 (DNI y poder). **Decisión de JS:** corregirlo nosotros
+  con la misma firma. Se sacó la firma del PDF original y se rearmaron los dos con
+  `generarActaCompromiso`/`generarNotaAutorizacion` (mismos datos y fecha del 01/10, sólo cambia el
+  DNI). Quedaron como v3 en la ficha, con la anterior en `revision.leido.correccion` y evento de
+  persona. Si el GCBA vuelve a pedirlo, subir esos.
+- **Uruguay 1275 (S01966):** presentado a mano el 01/09, antes del robot (la app lo conoce desde la
+  carga inicial del 14/09, sin trámite): la póliza nunca pasó por la revisión. El 16/10 pasó por
+  TRAMITACION (Odoo quedó "emitido") y a las horas volvió a SUBSANACION pidiendo reglamento y el
+  consorcio como coasegurado. Sigue en "dejar de seguir" (Tamara, 13/10). No hay permiso
+  descargado (`permiso_path` vacío): el "emitido" salió sólo de TRAMITACION.
+  **Pendiente (JS dijo que sí, 17/10; no se corrió por falta de permiso en la sesión):** Odoo
+  S01966 (id 1966) → `x_tramite_estado: "presentado"`, `x_permiso_fecha: false` (con
+  `scripts/odoo-rpc.mjs`); `odoo_escrito.x_tramite_estado` del expediente `f17f5518…` a
+  "presentado"; sacarlo de `pvp_config.descartes.expedientes` (o "Volver a seguir" en la ficha);
+  evento de persona en cada paso.
+- **El robot trata TRAMITACION como permiso emitido** (`deseadoEnOdoo` en `worker-tad.mjs`) y Uruguay
+  muestra que puede volver atrás. Conviene exigir el PDF del permiso (RS-) antes de escribir "emitido".
+- **Acuña de Figueroa 1312 (S02521):** se deja como está (JS).
+- **Falta en el portal:** que la firma frene si el DNI tipeado no coincide con el del DNI o el poder.
+
+---
+
 ## 15/10 a la noche — el robot vuelve a entrar y Paraná 631 se presenta solo
 
 - **La Mac mini es la máquina donde se desarrolla.** El robot corre desde este mismo repo

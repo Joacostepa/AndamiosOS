@@ -97,6 +97,11 @@ const DEFINICION = [
   { id: "vehiculos", titulo: "Vehículos", grupo: "Personal y flota", rutas: ["/vehiculos"] },
   { id: "organigrama", titulo: "Organigrama", grupo: "Personal y flota", rutas: ["/organigrama"] },
   { id: "configuracion", titulo: "Configuración", grupo: "Sistema", rutas: ["/configuracion"] },
+  // La bandeja de Sistemas (docs/sistemas/propuesta.md): los reportes de errores, correcciones
+  // y mejoras que manda cualquiera. Explícito como Socios: las capturas pueden mostrar sueldos
+  // o lo de Dirección, así que el admin NO la trae sola (decisión 2 de JS, §5). Sin
+  // `soloLectura`: revisar es «editar». «Mis reportes» es de todos (RUTAS_DE_TODOS).
+  { id: "sistemas", titulo: "Sistemas · Revisión", grupo: "Sistema", rutas: ["/sistemas/revision"], exigeExplicito: true },
 ] as const satisfies readonly DefModulo[];
 
 export type ModuloId = (typeof DEFINICION)[number]["id"];
@@ -117,7 +122,13 @@ const RUTAS_DE_TODOS = [
   // La campanita la ve TODO EL MUNDO y lleva acá: esconder el destino y mostrar el aviso
   // sería un badge que rebota. Es seguro: la RLS de `alertas` filtra por destinatario.
   "/alertas",
+  // Lo que cada uno le reportó a Sistemas: cualquiera reporta, así que cualquiera ve lo suyo
+  // (la RLS de sis_reportes filtra por creador). NO "/sistemas": compara por prefijo y
+  // abriría también /sistemas/revision.
+  "/sistemas/mis-reportes",
 ];
+/** Páginas de todos que se comparan EXACTAS (sin prefijo): /sistemas sólo redirige a Mis reportes. */
+const RUTAS_EXACTAS_DE_TODOS = ["/sistemas"];
 const RUTAS_DE_ADMIN = ["/configuracion/usuarios"];
 
 /**
@@ -170,6 +181,9 @@ const APIS: Record<string, readonly ModuloId[]> = {
   // lo de socios no puede depender de una sola puerta.
   "/api/direccion": ["direccion"],
   "/api/direccion/socios": ["direccion-socios"],
+  // La bandeja de Sistemas. Las rutas repiten exigirModulo(["sistemas"], "editar"), también
+  // en los GET: con «ver» no se ve nada (src/app/api/sistemas/_comun.ts).
+  "/api/sistemas/revision": ["sistemas"],
 };
 const PREFIJOS_API = Object.keys(APIS).sort((a, b) => b.length - a.length);
 
@@ -180,7 +194,12 @@ const PREFIJOS_API = Object.keys(APIS).sort((a, b) => b.length - a.length);
 const POST_DE_LECTURA = ["/api/direccion/actualizar"];
 
 /** Servicios auxiliares sin datos de nadie, y la cuenta propia. */
-const APIS_DE_TODOS = ["/api/clima", "/api/feriados", "/api/afip", "/api/odoo/health", "/api/cuenta"];
+const APIS_DE_TODOS = [
+  "/api/clima", "/api/feriados", "/api/afip", "/api/odoo/health", "/api/cuenta",
+  // Reportar a Sistemas y seguir lo propio: cualquiera con sesión. Las escrituras van por RPC
+  // que chequean auth.uid() y la lectura por RLS (lo propio).
+  "/api/sistemas/reportes",
+];
 const APIS_DE_ADMIN = ["/api/usuarios"];
 
 const IDS = new Set<string>(MODULOS.map((m) => m.id));
@@ -284,7 +303,9 @@ export function motivoRechazoExplicitos(
     if (nivelEn(actor, m) !== null) continue;
     if (esAdmin(actor) && !hayTitular(m)) continue;
     const titulo = MODULOS.find((x) => x.id === m)?.titulo ?? m;
-    return `Sólo alguien que ya tiene ${titulo} puede darlo o sacarlo. Pedíselo a un socio.`;
+    // «un socio» sólo tiene sentido para Socios; Sistemas · Revisión lo tiene quien revisa.
+    const quien = m === "direccion-socios" ? "a un socio" : "a quien ya lo tenga";
+    return `Sólo alguien que ya tiene ${titulo} puede darlo o sacarlo. Pedíselo ${quien}.`;
   }
   return null;
 }
@@ -303,6 +324,7 @@ export function puedeAbrir(acceso: Acceso | null | undefined, pathname: string):
   if (!acceso?.activo) return false;
   if (RUTAS_DE_ADMIN.some((r) => coincide(r, pathname))) return acceso.rol === "admin";
   if (RUTAS_DE_TODOS.some((r) => coincide(r, pathname))) return true;
+  if (RUTAS_EXACTAS_DE_TODOS.includes(pathname)) return true;
   const modulo = moduloDeRuta(pathname);
   // El admin abre todo MENOS lo que exige permiso explícito (Dirección › Socios).
   if (acceso.rol === "admin" && !modulo?.exigeExplicito) return true;

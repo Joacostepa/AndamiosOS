@@ -14,7 +14,9 @@ import {
 import { useClientes } from "@/hooks/use-clientes";
 import { navegacionPara } from "@/lib/constants/navigation";
 import { useAcceso } from "@/components/providers/acceso-provider";
-import { Search, Users } from "lucide-react";
+import { Megaphone, Search, Users } from "lucide-react";
+import { pedirReporte } from "@/components/sistemas/disparar";
+import { TEXTOS } from "@/lib/sistemas/tipos";
 
 export function CommandSearch() {
   const acceso = useAcceso();
@@ -111,6 +113,21 @@ export function CommandSearch() {
             </CommandGroup>
           )}
 
+          {/* Sistema: reportar desde el buscador. Se cierra el diálogo y se espera a que
+              desaparezca antes de sacar la foto, para que no salga en la captura. */}
+          <CommandGroup heading="Sistema">
+            <CommandItem
+              value={`${TEXTOS.boton.menu} reportar error mejora corrección sistemas`}
+              onSelect={() => {
+                setOpen(false);
+                pedirReporte({ despuesDePopup: true });
+              }}
+              className="gap-2"
+            >
+              <Megaphone className="h-4 w-4 text-muted-foreground" />
+              <span>{TEXTOS.boton.menu}</span>
+            </CommandItem>
+          </CommandGroup>
         </CommandList>
         </Command>
       </CommandDialog>

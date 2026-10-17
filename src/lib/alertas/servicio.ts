@@ -72,7 +72,15 @@ export type TipoAlerta =
    * o un empleado que no se pudo cruzar (dos legajos con el mismo nombre, sin régimen). Van
    * a CADA persona con Legajos en editar (destinatarioId), no a un rol. SÓLO CAMPANITA.
    */
-  | "personal_odoo";
+  | "personal_odoo"
+  /**
+   * Sistemas (docs/sistemas/contrato.md §5): un reporte nuevo (`sistemas_reporte`) o uno que
+   * frena el trabajo (`sistemas_bloqueante`, el único que sale a Slack #sistemas) les llega a
+   * CADA revisor; `sistemas_novedad` (cambio de estado o mensaje de Sistemas) a quien reportó;
+   * `sistemas_respuesta` (mensaje o «Sigue pasando» de quien reportó) a los revisores. Los
+   * títulos nunca llevan la descripción: cualquier admin ve todas las alertas.
+   */
+  | "sistemas_reporte" | "sistemas_bloqueante" | "sistemas_novedad" | "sistemas_respuesta";
 
 export type Prioridad = "baja" | "media" | "alta" | "critica";
 
@@ -89,6 +97,12 @@ export type NuevaAlerta = {
   destinatarioRol?: Rol | null;
   /** Una persona puntual (user_profiles.id). Con esto el rol por defecto pasa a null. */
   destinatarioId?: string | null;
+  /**
+   * false = sólo campanita, aunque el tipo vaya a un canal. Para un aviso que se crea una vez
+   * por destinatario (el bloqueante de Sistemas, una fila por revisor) y tiene que salir a
+   * Slack UNA sola vez: la primera fila lleva true y el resto false. Por defecto, true.
+   */
+  espejoSlack?: boolean;
 };
 
 /**
@@ -142,7 +156,7 @@ export async function crearAlertas(db: DB, alertas: NuevaAlerta[]): Promise<numb
   const creadas = data ?? [];
   if (creadas.length > 0) {
     const nuevas = new Set(creadas.map((f) => f.clave as string));
-    espejarEnSlack(alertas.filter((a) => nuevas.has(a.clave)));
+    espejarEnSlack(alertas.filter((a) => nuevas.has(a.clave) && a.espejoSlack !== false));
   }
   return creadas.length;
 }

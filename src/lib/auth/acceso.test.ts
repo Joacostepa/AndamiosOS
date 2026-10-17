@@ -90,3 +90,58 @@ test("WhatsApp de clientes: página y APIs del módulo clientes-whatsapp, aparte
   assert.match(motivoDeRechazoApi(otro, "/api/comercial/clientes/conversaciones", "GET") ?? "", /No tenés acceso a WhatsApp de clientes/);
   assert.equal(puedeAbrir(persona("admin"), "/comercial/clientes"), true);
 });
+
+test("Sistemas: cualquiera abre Mis reportes y /sistemas, y reporta por /api/sistemas/reportes", () => {
+  const campo = persona("campo", { planificacion: "editar", partes: "editar" });
+  const sinNada = persona("comercial");
+  for (const p of [campo, sinNada]) {
+    assert.equal(puedeAbrir(p, "/sistemas/mis-reportes"), true);
+    assert.equal(puedeAbrir(p, "/sistemas"), true);
+    assert.equal(motivoDeRechazoApi(p, "/api/sistemas/reportes", "GET"), null);
+    assert.equal(motivoDeRechazoApi(p, "/api/sistemas/reportes", "POST"), null);
+    assert.equal(motivoDeRechazoApi(p, "/api/sistemas/reportes/subidas", "POST"), null);
+    assert.equal(motivoDeRechazoApi(p, "/api/sistemas/reportes/x/confirmar", "POST"), null);
+  }
+  // Sin sesión activa, nada.
+  assert.equal(puedeAbrir({ ...campo, activo: false }, "/sistemas/mis-reportes"), false);
+});
+
+test("Sistemas · Revisión: un usuario de campo no abre la bandeja ni su API", () => {
+  const campo = persona("campo", { planificacion: "editar", partes: "editar" });
+  assert.equal(moduloDeRuta("/sistemas/revision")?.id, "sistemas");
+  assert.equal(puedeAbrir(campo, "/sistemas/revision"), false);
+  assert.match(motivoDeRechazoApi(campo, "/api/sistemas/revision", "GET") ?? "", /No tenés acceso a Sistemas · Revisión/);
+  // /sistemas es exacta: no abre por prefijo nada de abajo.
+  assert.equal(puedeAbrir(campo, "/sistemas/revisionX"), false);
+  assert.equal(puedeAbrir(campo, "/sistemas/otra"), false);
+});
+
+test("Sistemas · Revisión: el admin NO la trae sola (exigeExplicito)", () => {
+  const admin = persona("admin");
+  assert.equal(nivelEn(admin, "sistemas"), null);
+  assert.equal(puedeAbrir(admin, "/sistemas/revision"), false);
+  assert.match(motivoDeRechazoApi(admin, "/api/sistemas/revision", "GET") ?? "", /No tenés acceso/);
+  assert.match(motivoDeRechazoApi(admin, "/api/sistemas/revision/x", "PATCH") ?? "", /No tenés acceso/);
+  // Sus propios reportes, sí.
+  assert.equal(puedeAbrir(admin, "/sistemas/mis-reportes"), true);
+  assert.equal(motivoDeRechazoApi(admin, "/api/sistemas/reportes", "POST"), null);
+});
+
+test("Sistemas · Revisión: con el módulo en «editar» entra; en «ver» no cambia nada", () => {
+  const revisor = persona("operativo", { sistemas: "editar" });
+  assert.equal(puedeAbrir(revisor, "/sistemas/revision"), true);
+  assert.equal(motivoDeRechazoApi(revisor, "/api/sistemas/revision", "GET"), null);
+  assert.equal(motivoDeRechazoApi(revisor, "/api/sistemas/revision/x", "PATCH"), null);
+  const mira = persona("admin", { sistemas: "ver" });
+  assert.match(motivoDeRechazoApi(mira, "/api/sistemas/revision/x", "PATCH") ?? "", /sólo lectura/);
+  // No es soloLectura: «editar» se guarda tal cual.
+  assert.deepEqual(normalizarPermisos({ sistemas: "editar" }), { sistemas: "editar" });
+});
+
+test("Explícitos: «Pedíselo a un socio» sólo para Socios", async () => {
+  const { motivoRechazoExplicitos } = await import("./acceso.ts");
+  const adminSin = persona("admin");
+  assert.match(motivoRechazoExplicitos(adminSin, ["sistemas"], () => true) ?? "", /Sistemas · Revisión.*Pedíselo a quien ya lo tenga\./);
+  assert.match(motivoRechazoExplicitos(adminSin, ["direccion-socios"], () => true) ?? "", /Pedíselo a un socio\./);
+  assert.equal(motivoRechazoExplicitos(persona("operativo", { sistemas: "editar" }), ["sistemas"], () => true), null);
+});

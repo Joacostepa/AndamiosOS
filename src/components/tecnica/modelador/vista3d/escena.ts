@@ -14,6 +14,7 @@ import {
 } from "@/lib/tecnica/modelo";
 import { carasDe, solidosDelDiseno, type Cara, type VolumenRef } from "../volumenes/geometria";
 import { ES_CAJA, ES_LAMINA, grupoColor, leerPaleta, paletaExport, type GrupoColor, type Paleta } from "./paleta";
+import { registrarLienzo } from "@/lib/sistemas/lienzos-webgl";
 
 export type ModoVista = "iso" | "planta" | "frente";
 
@@ -137,6 +138,7 @@ export class Escena {
   private modo: ModoVista = "iso";
   private destruida = false;
   private entorno: RoomEnvironment | null = null;
+  private quitarFoto: () => void = () => {};
 
   constructor(contenedor: HTMLDivElement, cb: CallbacksEscena) {
     this.cont = contenedor;
@@ -189,10 +191,18 @@ export class Escena {
     this.canvas.addEventListener("pointerup", this.onUp);
     this.canvas.addEventListener("pointerleave", this.onLeave);
     this.canvas.addEventListener("dblclick", this.onDbl);
+    // «Reportar» (Sistemas): sin preserveDrawingBuffer el lienzo sale en blanco en la foto;
+    // se renderiza y se lee en el mismo instante (src/lib/sistemas/lienzos-webgl.ts).
+    this.quitarFoto = registrarLienzo(this.canvas, () => {
+      if (this.destruida) return null;
+      this.renderer.render(this.scene, this.camera);
+      return this.canvas.toDataURL("image/png");
+    });
   }
 
   destruir() {
     this.destruida = true;
+    this.quitarFoto();
     cancelAnimationFrame(this.anim);
     for (const o of this.obs) o.disconnect();
     this.canvas.removeEventListener("pointermove", this.onMove);

@@ -1,6 +1,6 @@
 "use client";
 
-import { LogOut, User, Sun, Moon, Monitor, KeyRound } from "lucide-react";
+import { LogOut, User, Sun, Moon, Monitor, KeyRound, Inbox, Megaphone } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -21,6 +21,10 @@ import { Separator } from "@/components/ui/separator";
 import { CommandSearch } from "@/components/layout/command-search";
 import { Campanita } from "@/components/layout/campanita";
 import { etiquetaRol } from "@/lib/auth/acceso";
+import { BotonReportar } from "@/components/sistemas/boton-reportar";
+import { ReportarSistemas } from "@/components/sistemas/reportar-sistemas";
+import { pedirReporte } from "@/components/sistemas/disparar";
+import { TEXTOS } from "@/lib/sistemas/tipos";
 
 export function Header() {
   const { data: user } = useUser();
@@ -46,6 +50,11 @@ export function Header() {
       <CommandSearch />
 
       <div className="flex-1" />
+
+      {/* Reportar a Sistemas: a la izquierda del tema y la campanita, como en la maqueta. El
+          panel no tiene disparador propio: escucha los eventos de src/components/sistemas. */}
+      <BotonReportar />
+      <ReportarSistemas />
 
       <DropdownMenu>
         <DropdownMenuTrigger render={<Button variant="ghost" size="icon" />}>
@@ -105,6 +114,15 @@ export function Header() {
           <DropdownMenuItem>
             <User className="mr-2 h-4 w-4" />
             Perfil
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => router.push("/sistemas/mis-reportes")}>
+            <Inbox className="mr-2 h-4 w-4" />
+            {TEXTOS.boton.misReportes}
+          </DropdownMenuItem>
+          {/* Espera a que el menú se termine de cerrar: si no, sale en la foto. */}
+          <DropdownMenuItem onClick={() => pedirReporte({ despuesDePopup: true })}>
+            <Megaphone className="mr-2 h-4 w-4" />
+            {TEXTOS.boton.menu}
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => router.push("/cambiar-clave")}>
             <KeyRound className="mr-2 h-4 w-4" />

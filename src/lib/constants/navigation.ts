@@ -2,7 +2,7 @@ import {
   Building2, Users, Wrench, Package, Truck, UserCheck, Bell,
   Settings, FileText, ClipboardList, Calculator, Calendar, HardHat,
   PackagePlus, AlertTriangle, Search, Car, Hammer, MessageSquare,
-  MapPin, Fingerprint, Bot, MessageCircle, Building, ListOrdered, ShieldCheck, FileBarChart, Landmark, SlidersHorizontal, Network, Boxes, Gauge,
+  MapPin, Fingerprint, Bot, MessageCircle, Building, ListOrdered, ShieldCheck, FileBarChart, Landmark, SlidersHorizontal, Network, Boxes, Gauge, LifeBuoy,
   type LucideIcon,
 } from "lucide-react";
 
@@ -93,6 +93,15 @@ export const navigation: NavGroup[] = [
   {
     label: "Sistema",
     items: [
+      // Reportar a Sistemas (docs/sistemas/contrato.md §4): «Mis reportes» es de todos;
+      // «Revisión» sólo con el módulo `sistemas` (navegacionPara la esconde al resto).
+      {
+        title: "Sistemas", href: "/sistemas/mis-reportes", icon: LifeBuoy,
+        subItems: [
+          { title: "Mis reportes", href: "/sistemas/mis-reportes" },
+          { title: "Revisión", href: "/sistemas/revision" },
+        ],
+      },
       { title: "Alertas", href: "/alertas", icon: Bell },
       {
         title: "Configuracion", href: "/configuracion", icon: Settings,

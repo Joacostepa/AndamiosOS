@@ -20,13 +20,14 @@
 import type { NuevaAlerta, TipoAlerta } from "./servicio";
 
 /** Los canales reales del workspace. Un Incoming Webhook está atado a UN canal. */
-type Canal = "syh" | "logistica" | "permisos" | "panol";
+type Canal = "syh" | "logistica" | "permisos" | "panol" | "sistemas";
 
 const NOMBRE_CANAL: Record<Canal, string> = {
   syh: "#syh-documentacion-de-obra",
   logistica: "#logistica-operativa",
   permisos: "#permisos-de-andamio-",
   panol: "#pañol",
+  sistemas: "#sistemas",
 };
 
 /**
@@ -69,6 +70,12 @@ const DESTINOS: Record<TipoAlerta, Canal[]> = {
   panol_sin_alta: ["panol"],
   panol_resumen: ["panol"],
   panol_baja: ["panol"],
+  // Sistemas: SÓLO los errores que frenan el trabajo van al canal (decisión 4 de JS, §5); el
+  // resto es campanita. Una fila por revisor, pero sale una sola vez (espejoSlack).
+  sistemas_bloqueante: ["sistemas"],
+  sistemas_reporte: [],
+  sistemas_novedad: [],
+  sistemas_respuesta: [],
 };
 
 /**
@@ -242,6 +249,40 @@ const ESTILO: Record<
     destacado: false,
     prefijos: ["Legajos"],
   },
+  // El único de Sistemas que llega al canal: alguien no puede seguir trabajando.
+  sistemas_bloqueante: {
+    color: "#dc2626",
+    emoji: "🚨",
+    rotulo: "Frena el trabajo",
+    plural: "reportes que frenan el trabajo",
+    destacado: true,
+    prefijos: ["Frena el trabajo:"],
+  },
+  // Los otros tres son sólo campanita (DESTINOS vacío); el estilo queda por si algún día van.
+  sistemas_reporte: {
+    color: "#64748b",
+    emoji: "📣",
+    rotulo: "Reporte a Sistemas",
+    plural: "reportes a Sistemas",
+    destacado: false,
+    prefijos: [],
+  },
+  sistemas_novedad: {
+    color: "#2563eb",
+    emoji: "🛟",
+    rotulo: "Sistemas",
+    plural: "novedades de Sistemas",
+    destacado: false,
+    prefijos: [],
+  },
+  sistemas_respuesta: {
+    color: "#2563eb",
+    emoji: "💬",
+    rotulo: "Respuesta a Sistemas",
+    plural: "respuestas a Sistemas",
+    destacado: false,
+    prefijos: [],
+  },
 };
 
 /**
@@ -255,6 +296,8 @@ function tituloLimpio(a: NuevaAlerta): string {
   let t = a.titulo;
   for (const p of ESTILO[a.tipo].prefijos) {
     if (t.startsWith(`${p} — `)) t = t.slice(p.length + 3);
+    // «Frena el trabajo: reporte #12…» no lleva guion largo: el prefijo ya trae los dos puntos.
+    else if (t.startsWith(`${p} `)) t = t.slice(p.length + 1);
   }
   return t;
 }
@@ -263,6 +306,9 @@ function tituloLimpio(a: NuevaAlerta): string {
 const MAX_EN_LISTA = 8;
 
 function webhookDe(canal: Canal): string | undefined {
+  // #sistemas NO cae a otro canal: un error que frena el trabajo de alguien no se le cuela a
+  // logística. Sin SLACK_WEBHOOK_SISTEMAS no sale nada (queda la campanita de los revisores).
+  if (canal === "sistemas") return process.env.SLACK_WEBHOOK_SISTEMAS || undefined;
   // Sin el webhook propio de permisos todavía configurado, siguen yendo a #syh como antes.
   if (canal === "permisos") return process.env.SLACK_WEBHOOK_PERMISOS || process.env.SLACK_WEBHOOK_SYH;
   // Mientras no exista #pañol (10/10: no hay canal ni webhook), el depósito es de logística:

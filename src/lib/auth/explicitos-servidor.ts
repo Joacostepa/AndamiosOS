@@ -1,4 +1,5 @@
-// Dar o sacar un módulo `exigeExplicito` (Dirección › Socios) desde la pantalla de usuarios.
+// Dar o sacar un módulo `exigeExplicito` (Dirección › Socios, Sistemas · Revisión) desde la
+// pantalla de usuarios.
 //
 // exigirAdmin() no alcanza: ser admin no es ser socio. Sólo quien YA tiene el módulo puede
 // darlo o sacarlo (acceso.ts → motivoRechazoExplicitos), salvo el arranque (nadie lo tiene
@@ -10,7 +11,7 @@ import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { accesoActual } from "@/lib/auth/servidor";
 import { explicitosCambiados, motivoRechazoExplicitos, normalizarPermisos, type ModuloId, type Permisos } from "@/lib/auth/acceso";
-import { registrarAuditoria } from "@/lib/direccion/auditoria";
+import { registrarAuditoria, type AccionAuditoria } from "@/lib/direccion/auditoria";
 
 export type CambioExplicito = { cambiados: ModuloId[]; antes: Permisos; despues: Permisos; actor: string };
 
@@ -47,13 +48,29 @@ export async function controlarExplicitos(
   return { cambiados, antes, despues: nuevos, actor: sesion.userId };
 }
 
-/** Registra el cambio (si lo hubo). Con la service role; sin la tabla, no registra. */
+/**
+ * Con qué acción queda cada módulo explícito en direccion_auditoria. Uno que falte cae en
+ * "permiso_socios", que era lo único que había antes de Sistemas.
+ */
+const ACCION: Partial<Record<ModuloId, AccionAuditoria>> = { "direccion-socios": "permiso_socios", sistemas: "permiso_sistemas" };
+
+/**
+ * Registra el cambio (si lo hubo). Con la service role; sin la tabla, no registra. Una fila
+ * por acción, con los módulos de esa acción: dar Socios y Sistemas a la vez deja dos filas.
+ */
 export async function registrarCambioExplicito(destinoId: string, c: CambioExplicito): Promise<void> {
   if (!c.cambiados.length) return;
-  await registrarAuditoria(c.actor, "permiso_socios", {
-    usuario: destinoId,
-    modulos: c.cambiados,
-    antes: Object.fromEntries(c.cambiados.map((m) => [m, c.antes[m] ?? null])),
-    despues: Object.fromEntries(c.cambiados.map((m) => [m, c.despues[m] ?? null])),
-  });
+  const porAccion = new Map<AccionAuditoria, ModuloId[]>();
+  for (const m of c.cambiados) {
+    const accion = ACCION[m] ?? "permiso_socios";
+    porAccion.set(accion, [...(porAccion.get(accion) ?? []), m]);
+  }
+  for (const [accion, modulos] of porAccion) {
+    await registrarAuditoria(c.actor, accion, {
+      usuario: destinoId,
+      modulos,
+      antes: Object.fromEntries(modulos.map((m) => [m, c.antes[m] ?? null])),
+      despues: Object.fromEntries(modulos.map((m) => [m, c.despues[m] ?? null])),
+    });
+  }
 }

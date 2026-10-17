@@ -6,6 +6,9 @@ import type { NextConfig } from "next";
 const SALUDO_VOZ = ["./node_modules/ffmpeg-static/ffmpeg", "./src/lib/clientes/voz/**/*"];
 
 const nextConfig: NextConfig = {
+  // Sistemas: la versión del bundle que tiene abierto quien reporta (contexto-cliente.ts). El
+  // servidor guarda la suya (VERCEL_GIT_COMMIT_SHA) y la bandeja avisa si difieren.
+  env: { NEXT_PUBLIC_SHA: process.env.VERCEL_GIT_COMMIT_SHA ?? "local" },
   // ffmpeg-static devuelve la ruta del binario dentro de node_modules: no se empaqueta.
   serverExternalPackages: ["ffmpeg-static"],
   // El PDF de la propuesta (src/lib/cotizador/pdf) lee las fuentes Poppins y el logo del disco:

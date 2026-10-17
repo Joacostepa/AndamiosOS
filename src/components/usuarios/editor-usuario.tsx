@@ -235,7 +235,7 @@ export function EditorUsuario({ open, onOpenChange, usuario, yoId, onClaveTempor
                     <div key={m.id} className="flex items-center justify-between gap-3 px-3 py-2">
                       <span className="text-sm">
                         {m.titulo}
-                        <span className="block text-xs text-muted-foreground">{LEYENDA_EXPLICITO}</span>
+                        <span className="block text-xs text-muted-foreground">{leyendaExplicito(m.id)}</span>
                       </span>
                       <SelectorNivel
                         valor={permisos[m.id] ?? null}
@@ -259,7 +259,7 @@ export function EditorUsuario({ open, onOpenChange, usuario, yoId, onClaveTempor
                           <span className="text-sm">
                             {m.titulo}
                             {m.exigeExplicito && (
-                              <span className="block text-xs text-muted-foreground">{LEYENDA_EXPLICITO}</span>
+                              <span className="block text-xs text-muted-foreground">{leyendaExplicito(m.id)}</span>
                             )}
                           </span>
                           <SelectorNivel
@@ -337,6 +337,12 @@ export function EditorUsuario({ open, onOpenChange, usuario, yoId, onClaveTempor
 }
 
 const LEYENDA_EXPLICITO = "Información reservada a socios: ni el perfil Administrador lo trae. Sólo lo da o lo saca alguien que ya lo tiene.";
+// Sistemas · Revisión también es explícito, pero no por ser de socios: las capturas pueden
+// mostrar cualquier pantalla de cualquiera.
+const LEYENDAS_EXPLICITO: Partial<Record<ModuloId, string>> = {
+  sistemas: "Las capturas pueden mostrar cualquier pantalla: ni el perfil Administrador lo trae. Sólo lo da o lo saca alguien que ya lo tiene.",
+};
+const leyendaExplicito = (id: ModuloId) => LEYENDAS_EXPLICITO[id] ?? LEYENDA_EXPLICITO;
 
 /** Sólo los módulos que el admin no trae solo (exigeExplicito). */
 function soloExplicitos(permisos: Permisos): Permisos {

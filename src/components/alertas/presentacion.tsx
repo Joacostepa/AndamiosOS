@@ -6,6 +6,10 @@ import {
   FileCheck,
   Landmark,
   FileWarning,
+  Flame,
+  LifeBuoy,
+  Megaphone,
+  MessageCircle,
   Package,
   ShieldCheck,
   ShieldOff,
@@ -48,6 +52,12 @@ const ICONOS: Record<string, typeof Bell> = {
   permiso_novedad: Landmark,
   permiso_robot: Bot,
   permiso_endoso: FileCheck,
+  // Sistemas: el megáfono del botón «Reportar»; la llama, lo que frena el trabajo; el
+  // salvavidas del menú para lo que contesta Sistemas; el globito para lo que responde quien reportó.
+  sistemas_reporte: Megaphone,
+  sistemas_bloqueante: Flame,
+  sistemas_novedad: LifeBuoy,
+  sistemas_respuesta: MessageCircle,
   // Tipos previstos en el schema original, todavía sin productor.
   documento_vencimiento: FileWarning,
   stock_bajo_minimo: Package,

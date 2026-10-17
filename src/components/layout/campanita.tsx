@@ -50,7 +50,7 @@ export function Campanita() {
     <Popover open={abierto} onOpenChange={setAbierto}>
       <PopoverTrigger
         render={
-          <Button variant="ghost" size="icon" className="relative" aria-label="Alertas" />
+          <Button variant="ghost" size="icon" className="relative" aria-label="Alertas" data-tour="campanita" />
         }
       >
         <Bell className="h-4 w-4" />

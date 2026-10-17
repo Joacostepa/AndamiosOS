@@ -21,6 +21,7 @@ import type { GeoJSONSource, Map as MapLibreMap, MapGeoJSONFeature, PointLike } 
 import type { CiudadArmadaMapaApi, CiudadArmadaMapaProps, ObraParaMapa } from "@/lib/mapa-obras/tipos";
 import { anclaDe, armarCapas, medidasDibujo, puntoDetras, seDibuja } from "@/lib/mapa-obras/geometria";
 import { CAPA_EDIFICIOS, colorPaleta, estiloMapa } from "@/lib/mapa-obras/estilo-mapa";
+import { registrarLienzo } from "@/lib/sistemas/lienzos-webgl";
 import {
   agregarCapasObras,
   CAPA,
@@ -103,6 +104,7 @@ export function CiudadArmadaMapa({
     let ro: ResizeObserver | null = null;
     let raf = 0;
     let intro: ReturnType<typeof setTimeout> | undefined;
+    let quitarFoto: (() => void) | undefined;
     const pul = pulso.current;
     const alCambiarVisibilidad = () => pul.actualizar();
 
@@ -133,6 +135,12 @@ export function CiudadArmadaMapa({
         return;
       }
       mapa.current = m;
+      // «Reportar» (Sistemas): sin preserveDrawingBuffer el lienzo sale en blanco en la foto;
+      // se redibuja y se lee en el mismo instante (src/lib/sistemas/lienzos-webgl.ts).
+      quitarFoto = registrarLienzo(m.getCanvas(), () => {
+        m.redraw();
+        return m.getCanvas().toDataURL("image/png");
+      });
       m.addControl(new maplibre.NavigationControl({ visualizePitch: true }), "bottom-right");
 
       m.on("error", (e) => {
@@ -244,6 +252,7 @@ export function CiudadArmadaMapa({
       document.removeEventListener("visibilitychange", alCambiarVisibilidad);
       pul.actualizar = () => {};
       ro?.disconnect();
+      quitarFoto?.();
       mapa.current?.remove();
       mapa.current = null;
       pendiente.current = null;

@@ -10,6 +10,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef, useState } from "react";
 import { useTheme } from "next-themes";
 import type { Map as MapLibreMap, Marker } from "maplibre-gl";
+import { registrarLienzo } from "@/lib/sistemas/lienzos-webgl";
 
 const ESTILOS = {
   light: "https://tiles.openfreemap.org/styles/positron",
@@ -46,6 +47,7 @@ export function MiniMapa({ puntos, onTocar, colocar }: {
 
   useEffect(() => {
     let vivo = true;
+    let quitarFoto: (() => void) | undefined;
     (async () => {
       const m = await cargar();
       if (!vivo || !contenedor.current || mapa.current) return;
@@ -65,9 +67,15 @@ export function MiniMapa({ puntos, onTocar, colocar }: {
         setListo(true);
       });
       mapa.current = map;
+      // «Reportar» (Sistemas): la foto del lienzo WebGL (src/lib/sistemas/lienzos-webgl.ts).
+      quitarFoto = registrarLienzo(map.getCanvas(), () => {
+        map.redraw();
+        return map.getCanvas().toDataURL("image/png");
+      });
     })();
     return () => {
       vivo = false;
+      quitarFoto?.();
       mapa.current?.remove();
       mapa.current = null;
       setListo(false);

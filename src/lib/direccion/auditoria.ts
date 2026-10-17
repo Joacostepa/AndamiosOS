@@ -10,6 +10,8 @@ import { esTablaFaltante } from "./supabase.ts";
 
 export type AccionAuditoria =
   | "abrir_socios" | "politica" | "meta" | "dueno" | "config" | "aviso_cargar" | "aviso_cerrar" | "permiso_socios"
+  // Dar o sacar Sistemas · Revisión (src/lib/auth/explicitos-servidor.ts; CHECK en 20261022000001).
+  | "permiso_sistemas"
   | `actualizar:${string}`;
 
 export async function registrarAuditoria(usuario: string, accion: AccionAuditoria, detalle: Record<string, unknown> = {}): Promise<void> {

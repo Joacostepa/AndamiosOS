@@ -561,6 +561,118 @@
   border-color: var(--card);
 }
 
+/* ── Recorrido obligatorio (src/hooks/use-recorrido-obligatorio.ts) ──────────
+ *
+ * Variante `tour-aba obligatorio`: lo de arriba sigue igual para Habilitaciones. El globo
+ * lleva «Paso k de 5» arriba del título y los puntitos de avance abajo, como la maqueta
+ * (docs/sistemas/maqueta.html); la bienvenida es una tarjeta centrada más ancha. */
+.driver-popover.tour-aba.obligatorio {
+  max-width: min(22rem, calc(100vw - 24px));
+}
+
+.driver-popover.tour-aba.obligatorio .tour-paso,
+.driver-popover.tour-aba.obligatorio .tour-eyebrow {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--primary);
+  margin-bottom: 0.25rem;
+}
+
+.driver-popover.tour-aba.obligatorio .driver-popover-footer {
+  margin-top: 0.8rem;
+}
+
+/* Sin «Atrás» ni cerrar: driver.js igual los crea; que no ocupen lugar. */
+.driver-popover.tour-aba.obligatorio .driver-popover-prev-btn,
+.driver-popover.tour-aba.obligatorio .driver-popover-close-btn {
+  display: none !important;
+}
+
+.driver-popover.tour-aba.obligatorio .driver-popover-navigation-btns button:disabled {
+  opacity: 0.6;
+}
+
+.driver-popover.tour-aba.obligatorio .tour-puntos {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.driver-popover.tour-aba.obligatorio .tour-puntos i {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background-color: var(--border);
+}
+
+.driver-popover.tour-aba.obligatorio .tour-puntos i.on {
+  background-color: var(--primary);
+}
+
+.driver-popover.tour-aba.obligatorio.bienvenida {
+  max-width: min(28rem, calc(100vw - 32px));
+  min-width: min(20rem, calc(100vw - 32px));
+  padding: 1.35rem 1.4rem 1.1rem;
+  border-radius: calc(var(--radius) + 4px);
+}
+
+.driver-popover.tour-aba.obligatorio.bienvenida .driver-popover-title {
+  font-size: 1.25rem;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+  margin-bottom: 0.6rem;
+}
+
+.driver-popover.tour-aba.obligatorio.bienvenida .tour-eyebrow {
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  margin-bottom: 0.5rem;
+}
+
+.driver-popover.tour-aba.obligatorio.bienvenida .driver-popover-description p {
+  margin: 0 0 0.75rem;
+  font-size: 0.85rem;
+}
+
+.driver-popover.tour-aba.obligatorio .tour-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.driver-popover.tour-aba.obligatorio .tour-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+  --tipo: var(--muted-foreground);
+  color: var(--tipo);
+  background-color: color-mix(in oklch, var(--tipo) 14%, transparent);
+}
+
+.driver-popover.tour-aba.obligatorio .tour-chip.t-error { --tipo: var(--destructive); }
+.driver-popover.tour-aba.obligatorio .tour-chip.t-correccion { --tipo: oklch(0.62 0.14 70); }
+.driver-popover.tour-aba.obligatorio .tour-chip.t-mejora { --tipo: var(--chart-2); }
+
+.driver-popover.tour-aba.obligatorio.bienvenida .driver-popover-progress-text {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.75rem;
+}
+
+.driver-popover.tour-aba.obligatorio .tour-reloj {
+  width: 13px;
+  height: 13px;
+}
+
 /* Controles nativos (select, scrollbars) acompañan el tema */
 :root { color-scheme: light; }
 .dark { color-scheme: dark; }

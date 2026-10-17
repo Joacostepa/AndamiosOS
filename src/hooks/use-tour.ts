@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef } from "react";
-import { driver, type Driver } from "driver.js";
-// El CSS base de la librería (overlay, recorte, posicionamiento). La apariencia del
-// popover se sobreescribe en globals.css para que siga el tema de la app.
-import "driver.js/dist/driver.css";
+import type { Driver } from "driver.js";
+// La fábrica trae el CSS de la librería y lo común a todos los recorridos (aspecto
+// `tour-aba`, recorte, textos); acá va sólo lo propio de los tours de Habilitaciones.
+import { crearDriver } from "@/lib/recorridos/driver";
+import { ATRIBUTO_RECORRIDO_ACTIVO } from "@/lib/sistemas/tipos";
 import type { PasoTour } from "@/lib/habilitaciones/tour";
 
 /**
@@ -42,17 +43,9 @@ export function useTour(
     if (disponibles.length === 0) return false;
 
     instancia.current?.destroy();
-    const d = driver({
+    const d = crearDriver({
       showProgress: true,
       allowClose: true,
-      overlayOpacity: 0.6,
-      stagePadding: 6,
-      stageRadius: 8,
-      popoverClass: "tour-aba",
-      nextBtnText: "Siguiente",
-      prevBtnText: "Atrás",
-      doneBtnText: "Listo",
-      progressText: "{{current}} de {{total}}",
       steps: disponibles.map((p) => ({
         element: `[data-tour="${p.ancla}"]`,
         popover: { title: p.titulo, description: p.texto, side: p.lado ?? "bottom", align: "start" },
@@ -82,6 +75,10 @@ export function useTour(
     // Un frame de aire para que el layout se asiente y driver.js mida bien el recorte.
     const t = window.setTimeout(() => {
       if (window.localStorage.getItem(clave) === "visto") return;
+      // Si está corriendo un recorrido obligatorio (src/hooks/use-recorrido-obligatorio.ts),
+      // éste no arranca encima: dos driver.js a la vez se pisan el overlay. Queda sin marcar
+      // y sale en la próxima visita.
+      if (document.documentElement.hasAttribute(ATRIBUTO_RECORRIDO_ACTIVO)) return;
       if (abrir()) window.localStorage.setItem(clave, "visto");
     }, 350);
     return () => window.clearTimeout(t);

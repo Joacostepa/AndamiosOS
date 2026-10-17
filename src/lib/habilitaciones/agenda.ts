@@ -29,6 +29,11 @@ export type TarjetaAgenda = {
   cliente: string | null;
   tipo: string;
   urgencia: UrgenciaOt;
+  /**
+   * Lleva técnico de Seguridad e Higiene nuestro (`x_syh_presencial` en la venta). Pedido de
+   * Habilitaciones (13/10): para planificar con Iñaki las obras que vienen.
+   */
+  syh: boolean;
   cuadrilla: string | null;
   /**
    * Cuántas jornadas tiene la obra ese día. Dos cuadrillas en la misma obra el mismo día son
@@ -97,6 +102,7 @@ export function armarAgenda(payload: TableroPayload, bandeja: Bandeja | undefine
       cliente: partesTitulo(ot.titulo).cliente,
       tipo: ot.tipo,
       urgencia: (ot.urgencia === "alta" || ot.urgencia === "media" ? ot.urgencia : "baja") as UrgenciaOt,
+      syh: ot.syh,
       cuadrilla: a.cuadrillaId ? (cuadrillas.get(a.cuadrillaId) ?? null) : null,
       jornadas: 1,
       estado: a.estado,

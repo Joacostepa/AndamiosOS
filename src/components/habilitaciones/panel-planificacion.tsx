@@ -11,6 +11,7 @@ import { armarAgenda, type TarjetaAgenda } from "@/lib/habilitaciones/agenda";
 import { hoyISO, sumarDias } from "@/lib/habilitaciones/derivacion";
 import { ChipTipoOt } from "@/components/habilitaciones/chip-tipo-ot";
 import { ChipUrgencia } from "@/components/habilitaciones/chip-urgencia";
+import { CascoSyh } from "@/components/tablero/casco-syh";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -224,6 +225,18 @@ function Tarjeta({ t, dias }: { t: TarjetaAgenda; dias: number }) {
     >
       <span className="flex min-w-0 items-center gap-1.5">
         <span className="truncate font-medium">{t.direccion}</span>
+        {/* El mismo casco que la tarjeta del tablero, en el mismo lugar: después de la
+            dirección. Se aprende una sola vez y se lee igual en las dos pantallas. */}
+        {t.syh && (
+          <span
+            className="flex shrink-0"
+            title="Lleva técnico de Seguridad e Higiene"
+            role="img"
+            aria-label="Lleva técnico de Seguridad e Higiene"
+          >
+            <CascoSyh />
+          </span>
+        )}
         <ChipUrgencia urgencia={t.urgencia} />
         {t.tipo !== "armado" && <ChipTipoOt tipo={t.tipo} />}
       </span>

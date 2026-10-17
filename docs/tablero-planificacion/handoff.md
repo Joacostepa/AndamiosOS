@@ -17,10 +17,10 @@ cosas, así que ante la duda manda el código y los comentarios largos que tiene
    (02/10) y pidió más color: se cambió a la opción B, que falta mirar en el tablero publicado.
 2. **Lo que dejó la auditoría del 08/10** (detalle abajo, en "Auditoría UX y técnica"). Lo más
    urgente: el candado que falla abierto para Depósito y Campo, y la RLS abierta.
-
-3. **La cuadrilla de apoyo** (rama `feat/apoyo-cuadrillas`, sin desplegar): antes de desplegar
-   hay que correr `scripts/odoo-add-apoyo-a-asignacion.mjs` y resolver los 19 renglones sin
-   cuadrilla. Detalle y lo que falta en "17/10 — la cuadrilla de apoyo", abajo.
+3. **Probar la cuadrilla de apoyo en producción** (17/10, ver abajo): sumar un apoyo desde la
+   ficha, ver la tarjeta rayada y el chip "+C3", cerrar el parte con el tilde "fue" y mirar la
+   Hoja del día del apoyo. Después, cargar la cuadrilla en los 19 partes viejos y correr el
+   script por segunda vez.
 
 **Cerrado el 17/10 (JS lo dio por terminado):** la ficha nueva de la OT y la bandeja nueva
 (09/10), la tarjeta y el encabezado nuevos de la grilla (09/10) y el casco de SyH (13–14/10).
@@ -35,7 +35,7 @@ OFRECE achicarla; el parte lo carga sólo la principal (el apoyo no deja fotos);
 "no fue" se BORRA; un solo flete precargado, y líneas de flete de más a mano si el apoyo fue con
 su camión.
 
-**Hecho (sin desplegar):** etapas 1 y 2 enteras, y de la 3 la precarga desde la Hoja del apoyo,
+**En producción desde el 17/10** (rama `feat/apoyo-cuadrillas`, merge `808e04e`). Etapas 1 y 2 enteras, y de la 3 la precarga desde la Hoja del apoyo,
 el cartel "Hoy apoyás…, el parte lo hace la Cuadrilla 2" (pizarrón, Hoja del celular y mensaje
 de la hoja) y correr el día con los apoyos. Revisión del 17/10 aplicada: el editor de jornadas
 ya no rebota "saco el martes y junto los días" con apoyo; el formulario de cierre (tablero y
@@ -43,11 +43,12 @@ Hoja) lista cada apoyo con su tilde "fue", también al editar un parte; `editarP
 apoyos por la fecha planificada; "Sumar apoyo" acepta días con parte (queda vinculado); el
 tablero marca en rojo "2 principales"; los errores "Invalid field 'x_apoyo'" llegan traducidos.
 
-**Antes de desplegar:**
-- Correr `node --env-file=.env.local scripts/odoo-add-apoyo-a-asignacion.mjs` (crea `x_apoyo` y
-  `x_aba_mano_obra.x_cuadrilla_id`). Sin eso el tablero, Partes y el contador del menú fallan
-  con "Falta correr scripts/odoo-add-apoyo-a-asignacion.mjs".
-- **La segunda corrida.** La especificación pide `x_cuadrilla_id` obligatorio, pero el script
+**Odoo:**
+- `scripts/odoo-add-apoyo-a-asignacion.mjs` ya se corrió el 17/10: creó `x_apoyo` y
+  `x_aba_mano_obra.x_cuadrilla_id`, y completó 1543 renglones viejos con la cuadrilla de la
+  cabecera de su parte. Si en otra base faltan los campos, el tablero, Partes y el contador del
+  menú fallan con "Falta correr scripts/odoo-add-apoyo-a-asignacion.mjs".
+- **Falta la segunda corrida.** La especificación pide `x_cuadrilla_id` obligatorio, pero el script
   lo deja opcional mientras haya renglones sin cuadrilla. Hoy son 19, en 19 partes sin cuadrilla
   en la cabecera y SIN asignación vinculada (no hay de dónde sacarla): #78, #288, #310, #335,
   #403, #424, #425, #460, #487, #494, #501, #503, #523, #587, #784, #860, #880, #902 y #1060
@@ -68,6 +69,7 @@ tablero marca en rojo "2 principales"; los errores "Invalid field 'x_apoyo'" lle
   ejecutado": esas escrituras no pasan por la validación de la ruta de asignaciones.
 - El flete del apoyo es una línea más con cantidad; no dice qué vehículo hizo cada viaje
   (x_aba_flete no tiene ese campo).
+- El mensaje de Telegram al capataz no dice que va de apoyo (sí la Hoja y su mensaje).
 
 ## 13/10 — el técnico de SyH, visible en el tablero
 
@@ -381,6 +383,10 @@ el motivo.
 - **Correr el día:** cálculo en `src/lib/tablero/corrimiento.ts` (`planearCorrimiento`, la misma
   función para el preview y para ejecutar), diálogo `dialogo-correr-dia.tsx`, ruta
   `/api/planificacion/corrimiento`. Deshacer = corrimiento inverso con `deshace_a`.
+- **Apoyo:** `x_aba_asignacion.x_apoyo`. Lógica pura en `src/lib/tablero/apoyo.ts` (`esApoyo`,
+  `agruparApoyos`, `apoyosDe`, `planDeApoyos`…) y `src/lib/partes/apoyos.ts`; ficha
+  `apoyo-ot.tsx`; el cierre de los apoyos con el parte de la principal en `cerrarJornada`
+  (`src/lib/odoo/partes.ts`). El avance de una obra cuenta días distintos sin apoyos.
 - **En vivo:** `use-avisos-tablero.ts` escucha los cambios de los demás e invalida las queries.
 - **Colores:** todo sale de `src/lib/tablero/colores.ts` (tokens `--tb-*` en `globals.css`, claro y
   oscuro). `npm run contraste` controla el contraste del tablero.

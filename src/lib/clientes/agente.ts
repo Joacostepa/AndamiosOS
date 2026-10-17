@@ -188,7 +188,9 @@ export function repoSofia(db: SupabaseClient): RepoSofia {
       await mandarTexto(db, id, telefono, autor === "ia" ? aWhatsapp(texto) : texto, { autor });
     },
     async mandarSaludoVoz(id, telefono, perfil, momento) {
-      await mandarNotaDeVoz(db, id, telefono, await audioSaludo(db, perfil, momento), { autor: "ia" });
+      const audio = await audioSaludo(db, perfil, momento);
+      await mandarNotaDeVoz(db, id, telefono, audio, { autor: "ia" });
+      return audio.guion;
     },
     async evento(id, texto) {
       await anotarEvento(db, id, texto);

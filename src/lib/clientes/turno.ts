@@ -114,9 +114,9 @@ export type RepoSofia = {
   nuevosDelHilo(id: string, desde: string | null): Promise<ItemNuevo[]>;
   avanzarCursor(id: string, hasta: string): Promise<void>;
   marcarSaludo(id: string): Promise<void>;
-  /** El saludo como nota de voz (voz.ts), antes del texto. Si falla, tira el error y sale sólo el
-   *  texto. Opcional: sin esto (los tests, o sin voz configurada) no hay audio. */
-  mandarSaludoVoz?(id: string, telefono: string, perfil: string | null, ahora: Date): Promise<void>;
+  /** El saludo como nota de voz (voz.ts), en lugar del texto. Devuelve lo que dice el audio. Si
+   *  falla, tira el error y sale el texto. Opcional: sin esto (los tests, o sin voz) no hay audio. */
+  mandarSaludoVoz?(id: string, telefono: string, perfil: string | null, ahora: Date): Promise<string>;
   leerHistoria(id: string): Promise<FilaHistoria[]>;
   /** Agrega al final, en un solo insert. Devuelve el seq siguiente. */
   agregarHistoria(id: string, seq: number, filas: NuevaFila[]): Promise<number>;
@@ -290,17 +290,20 @@ export async function atenderCharla(deps: DepsSofia, conversacionId: string, opc
       let saludoEnviado: string | null = null;
       if (!charla.iaSaludoAt) {
         const momento = ahora();
-        // Pruebas del 17/10: primero el audio («Jorge, buen día. Tomás, de…») y después el texto,
-        // que queda escrito para quien no escucha audios. Si el audio no sale, va sólo el texto.
+        // Pruebas del 17/10: el saludo sale como nota de voz («Jorge, buen día. Tomás, de…») y
+        // nada más: WhatsApp le pone la transcripción abajo (JS, 17/10: el texto repetía lo mismo).
+        // Si el audio no sale, va el texto.
         if (cfg.saludoVoz && repo.mandarSaludoVoz) {
           try {
-            await repo.mandarSaludoVoz(charla.id, charla.telefono, charla.nombrePerfil, momento);
+            saludoEnviado = await repo.mandarSaludoVoz(charla.id, charla.telefono, charla.nombrePerfil, momento);
           } catch (e) {
-            await repo.evento(charla.id, `No salió el audio del saludo: se mandó sólo el texto (${e instanceof Error ? e.message.slice(0, 200) : "error"}).`);
+            await repo.evento(charla.id, `No salió el audio del saludo: se mandó el texto (${e instanceof Error ? e.message.slice(0, 200) : "error"}).`);
           }
         }
-        saludoEnviado = saludoInicial(charla.nombrePerfil, momento);
-        await repo.mandar(charla.id, charla.telefono, saludoEnviado, "ia");
+        if (!saludoEnviado) {
+          saludoEnviado = saludoInicial(charla.nombrePerfil, momento);
+          await repo.mandar(charla.id, charla.telefono, saludoEnviado, "ia");
+        }
         await repo.marcarSaludo(charla.id);
         res.enviados.push(saludoEnviado);
         // «Hola» solo: el saludo ya pregunta en qué lo ayudamos. No se llama al modelo y el

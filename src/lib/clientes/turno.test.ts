@@ -90,39 +90,42 @@ test("primer mensaje con pedido: saludo y respuesta, en ese orden; el saludo una
   assert.equal(m.salidas.filter((s) => s.texto.includes("Acá Tomás")).length, 1);
 });
 
-test("saludo con voz prendido: primero la nota de voz y después el texto, una sola vez", async () => {
+test("saludo con voz prendido: sale sólo la nota de voz, una sola vez, y el modelo sabe qué dijo", async () => {
   const m = crearMundo({ config: { saludoVoz: true } });
   const d = m.deps(guion());
   const audios: { perfil: string | null; ahora: Date }[] = [];
   d.repo.mandarSaludoVoz = async (_id, _tel, perfil, ahora) => {
     audios.push({ perfil, ahora });
     m.salidas.push({ texto: "[audio]", autor: "ia" });
+    return "Marcela, buen día. Tomás, de Andamios Buenos Aires, ¿en qué te ayudo?";
   };
   m.escribe("Hola");
   await atenderCharla(d, m.charla.id);
-  assert.deepEqual(m.salidas.map((s) => s.texto), ["[audio]", SALUDO_MARCELA]);
+  assert.deepEqual(m.salidas.map((s) => s.texto), ["[audio]"]);
+  assert.ok(m.charla.iaSaludoAt);
   assert.equal(audios.length, 1);
   assert.equal(audios[0].perfil, "Marcela Ríos");
   m.escribe("necesito una bandeja");
   await atenderCharla({ ...d, modelo: guion(respuestaTexto("¿Me pasás la dirección de la obra?")) }, m.charla.id);
   assert.equal(audios.length, 1, "el audio no se repite");
+  assert.deepEqual(m.salidas.map((s) => s.texto), ["[audio]", "¿Me pasás la dirección de la obra?"], "y no sale el texto del saludo");
 });
 
-test("si el audio del saludo falla, sale sólo el texto y queda anotado", async () => {
+test("si el audio del saludo falla, sale el texto y queda anotado", async () => {
   const m = crearMundo({ config: { saludoVoz: true } });
   const d = m.deps(guion());
   d.repo.mandarSaludoVoz = async () => { throw new Error("ElevenLabs no generó la voz (500)"); };
   m.escribe("Hola");
   await atenderCharla(d, m.charla.id);
   assert.deepEqual(m.salidas.map((s) => s.texto), [SALUDO_MARCELA]);
-  assert.ok(m.eventos.some((e) => /No salió el audio del saludo: se mandó sólo el texto \(ElevenLabs/.test(e)));
+  assert.ok(m.eventos.some((e) => /No salió el audio del saludo: se mandó el texto \(ElevenLabs/.test(e)));
 });
 
 test("saludo con voz apagado: no se pide el audio", async () => {
   const m = crearMundo();
   const d = m.deps(guion());
   let pedido = false;
-  d.repo.mandarSaludoVoz = async () => { pedido = true; };
+  d.repo.mandarSaludoVoz = async () => { pedido = true; return ""; };
   m.escribe("Hola");
   await atenderCharla(d, m.charla.id);
   assert.equal(pedido, false);

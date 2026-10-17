@@ -4,6 +4,29 @@
 import type { ParteCargado } from "./tipos-parte";
 
 /**
+ * Una cuadrilla de APOYO de la jornada (docs/tablero-planificacion/apoyo.md). No es una
+ * fila propia del listado: va adentro de la jornada de la principal, que es la que carga el
+ * parte y le cierra la jornada también al apoyo.
+ */
+export type ApoyoListado = {
+  /** La asignación del apoyo (x_aba_asignacion con x_apoyo). Es lo que viaja en `DatosCierre.apoyos`. */
+  asignacionId: number;
+  cuadrillaId: number | null;
+  /** Para "Apoyo Cuadrilla 3" sin tener que cruzar con `cuadrillas`. */
+  cuadrillaNombre: string | null;
+  /** 1 = jornada entera, 0.5 = medio día. */
+  fraccion: number;
+  estadoAsignacion: "tentativa" | "confirmada";
+  /** El parte al que ya quedó vinculado (el de la principal). null = todavía no. */
+  parteId: number | null;
+  /**
+   * Con qué horario precargar el renglón de su gente: el día entero de 8 a 17, una fracción
+   * contada hacia atrás desde la salida (½ → 13 a 17). Ver horarioSugeridoApoyo.
+   */
+  horarioSugerido: { horaDesde: number; horaHasta: number };
+};
+
+/**
  * Una fila del listado. NO es un registro: es una jornada planificada, con su parte
  * colgando si ya se cargó. El parte se escribe en Odoo una sola vez, al guardar.
  */
@@ -45,6 +68,12 @@ export type JornadaListado = {
   tecnico: string | null;
   /** Tentativa cuya fecha ya pasó: va a la sección plegada del pie. */
   tentativaVencida: boolean;
+  /**
+   * Las cuadrillas de apoyo de esta obra ese día, ordenadas por nombre. Vacío casi
+   * siempre. La fila es SIEMPRE la de la principal: los apoyos nunca salen como fila
+   * propia, ni cuentan como pendientes.
+   */
+  apoyos: ApoyoListado[];
 };
 
 export type ListadoJornadas = {

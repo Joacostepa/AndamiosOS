@@ -33,6 +33,19 @@ export type EstadoBloque = {
    * historial no puede decir por qué había estado fija.
    */
   motivoFija?: string | null;
+  /**
+   * El bloque era una cuadrilla de APOYO (apoyo.md). Viaja en el JSON del registro y no
+   * como acción propia: la columna `accion` tiene un CHECK en Supabase y sumar "apoyo"
+   * pediría una migración. Con esto "crear" se lee "Sumó el apoyo de…" y "quitar",
+   * "Quitó el apoyo de…", que es lo que pasó.
+   */
+  apoyo?: boolean;
+  /**
+   * "Hacer principal" (apoyo.md): `antes` es la principal que pasó a apoyo y `despues` el
+   * apoyo que pasó a principal, el mismo día. Va con la acción "cuadrilla" por lo mismo
+   * que `apoyo`: sin tocar el CHECK de la columna.
+   */
+  intercambio?: boolean;
 };
 
 export type Movimiento = {
@@ -112,6 +125,21 @@ export type RegistroCorrida = {
   despues: EstadoBloque;
 };
 
+/**
+ * Una fila del historial de un corrimiento que NO es "correr": un apoyo que se quitó
+ * porque su cuadrilla no salió y su principal sí (apoyo.md, etapa 3), o —al deshacer— el
+ * mismo apoyo vuelto a crear. Va en el mismo lote y con el mismo motivo que las corridas,
+ * así la ficha de la obra dice "Quitó el apoyo de C3 mar 16 — Lluvia".
+ */
+export type RegistroApoyoCorrida = {
+  otId: number;
+  otTitulo: string | null;
+  accion: "quitar" | "crear";
+  asignacionIds: number[];
+  antes: EstadoBloque | null;
+  despues: EstadoBloque | null;
+};
+
 /** Lo que la ruta recibe del tablero para poder registrar el gesto. */
 export type RegistroMovimiento = {
   otId: number;
@@ -156,6 +184,11 @@ export function fraseMovimiento(m: Movimiento): string {
 
   switch (m.accion) {
     case "crear": {
+      if (despues?.apoyo) {
+        return `Sumó el apoyo de ${despues.cuadrillaNombre ?? "otra cuadrilla"} ${rango(despues.fechas)}${
+          despues.fechas.length > 1 ? ` · ${despues.fechas.length} días` : ""
+        }${m.motivo ? ` — ${m.motivo}` : ""}`;
+      }
       const n = despues?.fechas.length ?? 0;
       return `Planificó ${rango(despues?.fechas ?? [])}${
         despues?.cuadrillaNombre ? ` en ${despues.cuadrillaNombre}` : ""
@@ -168,6 +201,11 @@ export function fraseMovimiento(m: Movimiento): string {
       const cambioDia = rango(antes?.fechas ?? []) !== rango(despues?.fechas ?? []);
       const cambioCuadrilla =
         (antes?.cuadrillaId ?? null) !== (despues?.cuadrillaId ?? null);
+      // El apoyo no cambia de día por su cuenta (va con la obra): lo que se hace con él es
+      // pasarlo a otra cuadrilla.
+      if (antes?.apoyo && cambioCuadrilla && !cambioDia) {
+        return `Pasó el apoyo de ${antes.cuadrillaNombre ?? "sin cuadrilla"} a ${despues?.cuadrillaNombre ?? "sin cuadrilla"}`;
+      }
       const partes: string[] = [];
       if (cambioDia) partes.push(`de ${rango(antes?.fechas ?? [])} a ${rango(despues?.fechas ?? [])}`);
       if (cambioCuadrilla) {
@@ -184,9 +222,20 @@ export function fraseMovimiento(m: Movimiento): string {
       return `Cambió la fracción de ${fraccionLabel(antes?.fraccion)} a ${fraccionLabel(despues?.fraccion)}`;
 
     case "cuadrilla":
+      if (despues?.intercambio) {
+        return `Hizo principal a ${despues.cuadrillaNombre ?? "sin cuadrilla"} ${rango(despues.fechas)} · ${
+          antes?.cuadrillaNombre ?? "la otra"
+        } queda de apoyo`;
+      }
       return `Pasó de ${antes?.cuadrillaNombre ?? "sin cuadrilla"} a ${despues?.cuadrillaNombre ?? "sin cuadrilla"}`;
 
     case "quitar": {
+      if (antes?.apoyo) {
+        // Con motivo sólo cuando lo quitó un corrimiento ("se suspendió sólo el apoyo").
+        return `Quitó el apoyo de ${antes.cuadrillaNombre ?? "otra cuadrilla"} ${rango(antes.fechas)}${
+          m.motivo ? ` — ${m.motivo}` : ""
+        }`;
+      }
       const n = antes?.fechas.length ?? 0;
       return `Quitó del tablero ${rango(antes?.fechas ?? [])}${n > 1 ? ` · ${n} jornadas` : ""}`;
     }

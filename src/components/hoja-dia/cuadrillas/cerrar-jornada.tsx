@@ -9,6 +9,11 @@
 // 17:20 · puntero Ortega, 5 personas" y "Ver parte", que abre ese parte (sólo lectura,
 // con "Editar", que es el PATCH con su id). El servidor además rechaza (409) un cierre
 // nuevo sobre una asignación que ya tiene parte.
+//
+// LA CUADRILLA DE APOYO NO CIERRA (apoyo.md, etapa 3): el parte es uno por obra y día y lo
+// carga la principal, que le cierra también la jornada al apoyo. Por eso las obras de
+// apoyo no son candidatas, y si a la cuadrilla sólo le quedan apoyos el pedido muestra
+// "Hoy apoyás Thames 1820, el parte lo hace la Cuadrilla 2" en lugar del formulario.
 
 import { useState } from "react";
 import { useParte } from "@/hooks/use-parte";
@@ -16,8 +21,8 @@ import { Button } from "@/components/ui/button";
 import type { DiaHoja, ObraDia } from "@/lib/hoja-dia/tipos";
 import type { Bloque } from "@/lib/tablero/bloques";
 import type { OtTablero } from "@/lib/tablero/tipos";
-import { cNombre, obrasDe } from "@/lib/hoja-dia/estado";
-import { FormularioCierre } from "@/components/tablero/formulario-cierre";
+import { cNombre, obrasDe, textoApoyo } from "@/lib/hoja-dia/estado";
+import { FormularioCierre, type ApoyoDelFormulario } from "@/components/tablero/formulario-cierre";
 import { ItemMenu } from "@/components/hoja-dia/comunes/menu-flotante";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 
@@ -27,6 +32,9 @@ function bloqueDe(o: ObraDia, fecha: string): Bloque {
     key: `hoja-${o.asignacionId}`, ids: [o.asignacionId], origen: "ot", otId: o.otId, cuadrillaId: o.cuadrillaOdooId,
     fechas: [fecha], partes: [o.parteId], fraccion: o.fraccion, fraccionesPorDia: [o.fraccion], estado: o.estadoAsignacion,
     ordenDia: o.ordenDia, notas: null, motivoFija: null, multiDia: false,
+    // Un apoyo nunca llega acá a cerrar (no es candidata); sí a "Ver parte", que es el de
+    // la principal. Si igual se intentara, el POST lo rechaza con 409.
+    apoyo: o.apoyo === true,
   };
 }
 /** La OT con lo que el formulario usa (tipo y personal por jornada). */
@@ -46,12 +54,24 @@ export type PedidoCierre = { c: number; otId?: number | null };
 export function CerrarJornada({ dia, pedido, onCerrar }: { dia: DiaHoja; pedido: PedidoCierre | null; onCerrar: () => void }) {
   const c = pedido?.c ?? null;
   const obras = c != null ? obrasDe(dia, c) : [];
-  // Con obra pedida ("Ver parte"), ésa. Si no, sólo las que todavía no tienen parte.
-  const candidatas = pedido?.otId != null ? obras.filter((x) => x.otId === pedido.otId) : obras.filter((x) => x.parteId == null);
+  // Con obra pedida ("Ver parte"), ésa. Si no, sólo las que todavía no tienen parte y que
+  // esta cuadrilla hace como principal: las de apoyo las cierra la otra.
+  const candidatas = pedido?.otId != null
+    ? obras.filter((x) => x.otId === pedido.otId)
+    : obras.filter((x) => x.parteId == null && !x.apoyo);
+  const apoyos = pedido?.otId == null ? obras.filter((x) => x.apoyo && x.parteId == null) : [];
   const [elegida, setElegida] = useState<number | null>(null);
   const o = candidatas.length === 1 ? candidatas[0] : candidatas.find((x) => x.otId === elegida) ?? null;
   return (
     <>
+      <Dialog open={c != null && candidatas.length === 0 && apoyos.length > 0} onOpenChange={(v) => !v && onCerrar()}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogTitle className="text-[17px] font-semibold">No hay jornada para cerrar · {cNombre(dia, c)}</DialogTitle>
+          <DialogDescription className="text-[13px]">
+            {apoyos.map((x) => textoApoyo(dia, x)).join(" ")} No tenés que cargar nada.
+          </DialogDescription>
+        </DialogContent>
+      </Dialog>
       <Dialog open={c != null && candidatas.length > 1 && !o} onOpenChange={(v) => !v && onCerrar()}>
         <DialogContent showCloseButton={false} className="sm:max-w-[420px]">
           <DialogTitle className="text-[17px] font-semibold">Cerrar jornada · {cNombre(dia, c)}</DialogTitle>
@@ -71,6 +91,10 @@ export function CerrarJornada({ dia, pedido, onCerrar }: { dia: DiaHoja; pedido:
         asignacionId={o?.asignacionId ?? null}
         parteId={o?.parteId ?? null}
         esUltimaJornada={!!o && o.dia != null && o.totalDias != null && o.dia === o.totalDias}
+        // Los apoyos de la obra hoy, salgan de la hoja de quien sea: el formulario los
+        // necesita aunque ninguna de las dos cuadrillas haya armado su Hoja.
+        apoyos={o ? apoyosDeLaObra(dia, o) : []}
+        nombreCuadrilla={(id) => cNombre(dia, id)}
         onOpenChange={(v) => {
           if (!v) {
             setElegida(null);
@@ -81,6 +105,22 @@ export function CerrarJornada({ dia, pedido, onCerrar }: { dia: DiaHoja; pedido:
     </>
   );
 }
+
+/** Los apoyos de la obra de `o` ese día (sin parte, o vinculados a su parte). */
+function apoyosDeLaObra(dia: DiaHoja, o: ObraDia): ApoyoDelFormulario[] {
+  return dia.obras
+    .filter((x) => x.apoyo === true && x.otId === o.otId && (x.parteId == null || x.parteId === o.parteId))
+    .map((x) => ({
+      asignacionId: x.asignacionId,
+      cuadrillaId: x.cuadrillaOdooId,
+      nombre: cNombre(dia, x.cuadrillaOdooId),
+      fraccion: x.fraccion,
+      parteId: x.parteId,
+    }));
+}
+
+// La frase vive en lib/hoja-dia/estado.ts: la usan también la Hoja del celular y el mensaje.
+export { textoApoyo };
 
 /** "17:20" (o "12/10 17:20" si se cargó otro día), en Buenos Aires. */
 function cuandoSeCargo(iso: string | null | undefined, fecha: string): string | null {

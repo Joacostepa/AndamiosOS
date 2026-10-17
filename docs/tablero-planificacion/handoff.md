@@ -18,10 +18,56 @@ cosas, así que ante la duda manda el código y los comentarios largos que tiene
 2. **Lo que dejó la auditoría del 08/10** (detalle abajo, en "Auditoría UX y técnica"). Lo más
    urgente: el candado que falla abierto para Depósito y Campo, y la RLS abierta.
 
+3. **La cuadrilla de apoyo** (rama `feat/apoyo-cuadrillas`, sin desplegar): antes de desplegar
+   hay que correr `scripts/odoo-add-apoyo-a-asignacion.mjs` y resolver los 19 renglones sin
+   cuadrilla. Detalle y lo que falta en "17/10 — la cuadrilla de apoyo", abajo.
+
 **Cerrado el 17/10 (JS lo dio por terminado):** la ficha nueva de la OT y la bandeja nueva
 (09/10), la tarjeta y el encabezado nuevos de la grilla (09/10) y el casco de SyH (13–14/10).
 
 ---
+
+## 17/10 — la cuadrilla de apoyo
+
+**Pedido y diseño:** [apoyo.md](apoyo.md), aprobado por JS el 17/10 con estas respuestas a la
+sección 6: el apoyo siempre ayuda a la principal; la duración sigue en días y el sistema
+OFRECE achicarla; el parte lo carga sólo la principal (el apoyo no deja fotos); el apoyo que
+"no fue" se BORRA; un solo flete precargado, y líneas de flete de más a mano si el apoyo fue con
+su camión.
+
+**Hecho (sin desplegar):** etapas 1 y 2 enteras, y de la 3 la precarga desde la Hoja del apoyo,
+el cartel "Hoy apoyás…, el parte lo hace la Cuadrilla 2" (pizarrón, Hoja del celular y mensaje
+de la hoja) y correr el día con los apoyos. Revisión del 17/10 aplicada: el editor de jornadas
+ya no rebota "saco el martes y junto los días" con apoyo; el formulario de cierre (tablero y
+Hoja) lista cada apoyo con su tilde "fue", también al editar un parte; `editarParte` busca los
+apoyos por la fecha planificada; "Sumar apoyo" acepta días con parte (queda vinculado); el
+tablero marca en rojo "2 principales"; los errores "Invalid field 'x_apoyo'" llegan traducidos.
+
+**Antes de desplegar:**
+- Correr `node --env-file=.env.local scripts/odoo-add-apoyo-a-asignacion.mjs` (crea `x_apoyo` y
+  `x_aba_mano_obra.x_cuadrilla_id`). Sin eso el tablero, Partes y el contador del menú fallan
+  con "Falta correr scripts/odoo-add-apoyo-a-asignacion.mjs".
+- **La segunda corrida.** La especificación pide `x_cuadrilla_id` obligatorio, pero el script
+  lo deja opcional mientras haya renglones sin cuadrilla. Hoy son 19, en 19 partes sin cuadrilla
+  en la cabecera y SIN asignación vinculada (no hay de dónde sacarla): #78, #288, #310, #335,
+  #403, #424, #425, #460, #487, #494, #501, #503, #523, #587, #784, #860, #880, #902 y #1060
+  (relevado el 17/10, sólo lectura). Hay que cargarles la cuadrilla al parte en Odoo y volver a
+  correr el script, que ahí lo deja obligatorio. Mientras sea opcional, editar esos partes desde
+  la app sigue andando (manda el renglón sin cuadrilla); obligatorio sin corregirlos, rebotaría.
+- Control periódico de roles, sólo lectura: `node --no-warnings --experimental-strip-types
+  --env-file=.env.local scripts/odoo-control-apoyos.mjs [desde]` lista dos principales, apoyo
+  sin principal, apoyo en la cuadrilla de la principal y apoyo duplicado. Sale con 1 si hay
+  algo. Falta colgarlo de un cron.
+
+**Pendiente explícito (no está hecho):**
+- "Sumar apoyo" desde la Hoja del día (etapa 2). Hoy sólo desde la ficha de la obra.
+- El aviso "Romero figura en dos partes del 12/11" (etapa 3): cruzar los integrantes de las
+  Hojas del día de las cuadrillas que cargan partes distintos con horarios que se pisan.
+- El arrastre con Alt para crear un apoyo (etapa 3).
+- Validar roles al recrear apoyos desde el deshacer del corrimiento y al reprogramar un "no
+  ejecutado": esas escrituras no pasan por la validación de la ruta de asignaciones.
+- El flete del apoyo es una línea más con cantidad; no dice qué vehículo hizo cada viaje
+  (x_aba_flete no tiene ese campo).
 
 ## 13/10 — el técnico de SyH, visible en el tablero
 

@@ -66,7 +66,24 @@ export type LineaManoObra = {
   /** Formato decimal: 8.0 = 08:00, 17.5 = 17:30. */
   horaDesde: number;
   horaHasta: number;
+  /**
+   * De qué cuadrilla es esta gente (x_aba_mano_obra.x_cuadrilla_id). Con apoyo, el parte
+   * lleva un renglón por cuadrilla. Ausente o null = la del parte (`DatosCierre.cuadrillaId`),
+   * que es lo que se guarda en Odoo: el renglón nunca queda sin cuadrilla.
+   */
+  cuadrillaId?: number | null;
 };
+
+/**
+ * Qué pasó con un apoyo de la obra ese día, según quien carga el parte.
+ *
+ *  - fue = true  → la jornada del apoyo queda cerrada con este mismo parte.
+ *  - fue = false → la jornada del apoyo SE BORRA: no queda pegada a un parte en el que no
+ *    trabajó, ni se reprograma sola (decisión del 17/10).
+ *
+ * Los apoyos que no vienen en la lista se vinculan igual (ver planDeApoyos).
+ */
+export type ApoyoDelCierre = { asignacionId: number; fue: boolean };
 
 export type LineaFlete = {
   cantidad: number;
@@ -108,6 +125,12 @@ export type DatosCierre = {
   observaciones: string | null;
   manoObra: LineaManoObra[];
   flete: LineaFlete | null;
+  /**
+   * Líneas de flete de más, que se agregan A MANO: el camión del apoyo, cuando fue con el
+   * suyo (decisión 5 del 17/10). El flete del parte sigue siendo uno y se precarga una sola
+   * vez; esto nunca se duplica solo. Ausente = ninguna.
+   */
+  fletesExtra?: LineaFlete[];
   incidencias: LineaIncidencia[];
   fotos: FotoParaSubir[];
   /**
@@ -118,6 +141,11 @@ export type DatosCierre = {
    * desarme describe lo vendido, que meses más tarde no es lo que hay en la obra.
    */
   ejecutadoReal: string | null;
+  /**
+   * Los apoyos de la obra ese día con su "fue / no fue". Opcional: sin lista, todos los
+   * apoyos sin parte se vinculan a éste.
+   */
+  apoyos?: ApoyoDelCierre[];
 };
 
 export type PasoCierre = { nombre: string; ok: boolean; detalle?: string };
@@ -151,8 +179,11 @@ export type ParteCargado = {
   /** Calculados por Odoo, solo lectura. */
   horasHombre: number;
   costoTotal: number;
-  manoObra: (LineaManoObra & { horas: number; horasHombre: number })[];
+  /** `cuadrillaId` siempre presente al leer: null sólo en líneas viejas sin rellenar. */
+  manoObra: (LineaManoObra & { cuadrillaId: number | null; horas: number; horasHombre: number })[];
   flete: LineaFlete | null;
+  /** Las demás líneas de flete del parte (ver DatosCierre.fletesExtra). Siempre presente al leer. */
+  fletesExtra: LineaFlete[];
   incidencias: LineaIncidencia[];
   fotos: { momento: string; descripcion: string | null }[];
 };

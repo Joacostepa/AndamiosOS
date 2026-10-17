@@ -210,6 +210,8 @@
    * no pasa AA a 12px. Los trazos —franjas, bordes, íconos— usan la otra. */
   --tb-ok: #639922;
   --tb-ok-solido: oklch(0.52 0.13 140);
+  /* Verde de TEXTO ("queda libre ½ j" en Sumar apoyo): --tb-ok es de trazo y como texto da 3,3:1. */
+  --tb-ok-text: oklch(0.45 0.12 140);
   --tb-alerta: #ef9f27;
   --tb-peligro: #d92d20;
   --tb-peligro-solido: #d92d20;
@@ -245,6 +247,15 @@
   --tb-suspendido-gris-borde: #8a8d91;
   --tb-suspendido-gris-sello: #5f6368;
   --tb-suspendido-gris-text: #5f6368;
+  /* Cuadrilla de APOYO (docs/tablero-planificacion/apoyo.md): la tarjeta va rayada como la
+     tapa de suspendido —rayas anchas a 135°, que no se confunden con la trama fina a 45° de
+     la tentativa— y en un gris cálido SIN tono propio: el apoyo no es una obra más (no suma
+     días ni tiene parte), así que no puede llevar el azul o el ámbar del tipo, que dirían
+     "esta es una obra". El texto y el chip "+C3" del lado de la principal usan el mismo par. */
+  --tb-apoyo-bg: #f2f0ea;
+  --tb-apoyo-raya: #e2ded3;
+  --tb-apoyo-borde: #7d786b;
+  --tb-apoyo-text: #3f3b33;
   --tb-inactivo: #8a8880;
   /* ── Hoja del día ──────────────────────────────────────────────────────────
    * El coral de los BOTONES es más oscuro que --primary: blanco sobre oklch(0.62 0.16 42)
@@ -383,6 +394,7 @@
 
   --tb-ok: oklch(0.72 0.15 140);
   --tb-ok-solido: oklch(0.55 0.14 140);
+  --tb-ok-text: oklch(0.84 0.13 140);
   --tb-alerta: oklch(0.78 0.14 66);
   --tb-peligro: oklch(0.68 0.19 28);
   /* El relleno de badge no se aclara: tiene texto blanco encima. */
@@ -411,6 +423,10 @@
   --tb-suspendido-gris-borde: #8a8d91;
   --tb-suspendido-gris-sello: #5f6368;
   --tb-suspendido-gris-text: #b5b7ba;
+  --tb-apoyo-bg: #23221f;
+  --tb-apoyo-raya: #33312c;
+  --tb-apoyo-borde: #8f8a7e;
+  --tb-apoyo-text: #ddd8cc;
   --tb-inactivo: oklch(0.62 0 0);
   --hd-card2: oklch(0.17 0 0);
   --hd-rojo: oklch(0.72 0.17 28);

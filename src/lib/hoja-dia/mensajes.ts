@@ -12,10 +12,10 @@
 //
 // Lógica pura: usa estado.ts para las cuentas; sin red.
 
-import type { DiaHoja, Diferencia, Minutos } from "./tipos.ts";
+import type { DiaHoja, Diferencia, Minutos, ObraDia } from "./tipos.ts";
 import { esDeposito } from "./tipos.ts";
 import {
-  cNombre, cap, choferDe, encTxt, envioDe, esExChofer, esHoy, estadoEnvio, fechaMensaje, hCorta, hm, hm5, horaTxt, laC, lowFirst,
+  cNombre, cap, choferDe, encTxt, envioDe, esExChofer, esHoy, estadoEnvio, fechaMensaje, hCorta, hm, hm5, horaTxt, laC, lowFirst, textoApoyo,
   lugar, nombreDe, normHora, obrasCon, vehTxt, elVeh, recibeDe, textoViaje, todoDe, viajesChofer, yList,
   cortoV, hojaDeCuadrilla, hojaDe, aCargoDe, suspendida, persona, genteDe, vehiculo, vehiculosDe, deLaC, type Destinatario, type ViajeCalc,
 } from "./estado.ts";
@@ -49,7 +49,12 @@ export function mensajeHoja(dia: DiaHoja, pid: string, c: number, o: Opts): stri
   const chof = choferesEnPalabras(dia, c, pid);
   // Con gente de contratistas, quiénes van (el referente no sabe de memoria quién es de ABA).
   const van = h.contratistas?.length ? ` Van: ${vanEnPalabras(dia, c, genteDe(h))}.` : "";
-  return `Hola ${nombreDe(dia, pid)}, tu hoja ${deHoy(dia, o.ahora)}: ${cNombre(dia, c)}, ${quien}. Encuentro ${encTxt(dia, c)}${chof}. ${ob.length > 1 ? "Obras" : "Obra"}: ${yList(ob.map((x) => x.o.corto))}.${van}${mirá(o)} Cuando la veas tocá "Recibido".`;
+  return `Hola ${nombreDe(dia, pid)}, tu hoja ${deHoy(dia, o.ahora)}: ${cNombre(dia, c)}, ${quien}. Encuentro ${encTxt(dia, c)}${chof}. ${ob.length > 1 ? "Obras" : "Obra"}: ${yList(ob.map((x) => x.o.corto))}.${deApoyo(dia, ob)}${van}${mirá(o)} Cuando la veas tocá "Recibido".`;
+}
+
+/** " Hoy apoyás Thames 1820, el parte lo hace la Cuadrilla 2." por cada obra de apoyo; "" si no hay. */
+function deApoyo(dia: DiaHoja, ob: { o: ObraDia }[]): string {
+  return ob.filter((x) => x.o.apoyo).map((x) => ` ${textoApoyo(dia, x.o)}`).join("");
 }
 /**
  * Los vehículos de la cuadrilla en palabras, para el mensaje: ", te lleva Kiska", ", va Borda

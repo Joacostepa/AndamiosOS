@@ -22,3 +22,41 @@ export class ParteYaCargadoError extends Error {
 export function exigirSinParte(parteVinculado: number | null): void {
   if (parteVinculado !== null) throw new ParteYaCargadoError(parteVinculado);
 }
+
+/**
+ * La jornada es de APOYO: no carga parte propio (docs/tablero-planificacion/apoyo.md).
+ *
+ * Hay un solo parte por obra y día, y lo carga la principal, que le cierra la jornada
+ * también al apoyo. Si el apoyo pudiera cerrar la suya, la obra terminaría con dos partes
+ * del mismo día —el costo de la gente contado dos veces, el flete también— que es
+ * exactamente lo que el apoyo vino a evitar. La ruta contesta 409.
+ */
+export class ApoyoNoCargaParteError extends Error {
+  /** La asignación de la principal, para que la pantalla ofrezca abrir ESA. null = no hay principal. */
+  readonly principalAsignacionId: number | null;
+  readonly cuadrillaPrincipal: string | null;
+  constructor(cuadrillaPrincipal: string | null, principalAsignacionId: number | null) {
+    super(mensajeApoyo(cuadrillaPrincipal, principalAsignacionId));
+    this.name = "ApoyoNoCargaParteError";
+    this.principalAsignacionId = principalAsignacionId;
+    this.cuadrillaPrincipal = cuadrillaPrincipal;
+  }
+}
+
+function mensajeApoyo(cuadrilla: string | null, principal: number | null): string {
+  if (principal === null) {
+    return "Esta jornada es de apoyo y la obra no tiene cuadrilla principal ese día: corregilo en el tablero antes de cargar el parte.";
+  }
+  // "lo carga la Cuadrilla 2", como se dice: el nombre en Odoo es "Cuadrilla 2", sin artículo.
+  const quien = cuadrilla ? (/^cuadrilla\b/i.test(cuadrilla) ? `la ${cuadrilla}` : cuadrilla) : "la cuadrilla principal";
+  return `Esta jornada es de apoyo: el parte lo carga ${quien}.`;
+}
+
+/** El POST de cierre sólo sigue si la asignación es la principal de su obra ese día. */
+export function exigirPrincipal(
+  esApoyo: boolean,
+  principal: { asignacionId: number; cuadrilla: string | null } | null,
+): void {
+  if (!esApoyo) return;
+  throw new ApoyoNoCargaParteError(principal?.cuadrilla ?? null, principal?.asignacionId ?? null);
+}

@@ -21,10 +21,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { TopbarTablero } from "./topbar-tablero";
 import { PanelActividad } from "./panel-actividad";
-import { TableroGrid, DIAS_VENTANA, anchoRecursoPara } from "./tablero-grid";
+import { TableroGrid, DIAS_VENTANA, abreviarCuadrilla, anchoRecursoPara } from "./tablero-grid";
 import { PanelSinAsignar, ID_BANDEJA } from "./panel-sin-asignar";
 import { ContenidoTarjeta } from "./tarjeta-asignacion";
 import { PanelOt } from "./panel-ot";
+import type { ApoyoDeLaObra, DatosApoyoOt } from "./apoyo-ot";
 import { CajonPlanificacion } from "./cajon-planificacion";
 import { FormularioCierre } from "./formulario-cierre";
 import { DialogoJornadas } from "./dialogo-jornadas";
@@ -44,7 +45,8 @@ import { useNotasJornada } from "@/hooks/use-notas-jornada";
 import { useQuitarSuspension, useSuspensiones } from "@/hooks/use-suspensiones";
 import { claveSuspension, type SuspensionDia } from "@/lib/tablero/tipos-suspension";
 import { useAvisosTablero } from "@/hooks/use-avisos-tablero";
-import { direccionDeObra } from "@/lib/tablero/titulo";
+import { direccionDeObra, nombrePropio } from "@/lib/tablero/titulo";
+import { apoyosAlEditarJornadas, apoyosDeDias, arrastreDeApoyos, diasSiAchica, esApoyo, type DiaDeObra } from "@/lib/tablero/apoyo";
 import { useClima } from "@/hooks/use-clima";
 import {
   useTablero,
@@ -52,6 +54,7 @@ import {
   useCrearAsignaciones,
   useActualizarAsignaciones,
   useMoverAsignaciones,
+  useCambiarRoles,
   useCorrerDia,
   useBorrarAsignaciones,
   useCrearTarea,
@@ -60,7 +63,14 @@ import {
   useBorrarTareas,
   fechasDeObra,
 } from "@/hooks/use-tablero";
-import { agruparBloques, fechasDeJornadas, type Bloque } from "@/lib/tablero/bloques";
+import {
+  agruparBloques,
+  fechasDeJornadas,
+  planDeObras,
+  primerBloqueDeObra,
+  type Bloque,
+  type PlanObra,
+} from "@/lib/tablero/bloques";
 import { jornadasLiberables, motivoNoVuelveABandeja, type AccionCierre } from "@/lib/tablero/cierre";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
@@ -70,7 +80,7 @@ import {
 } from "@/lib/tablero/ventana";
 import { type OtTablero, type TipoTarea } from "@/lib/tablero/tipos";
 import type { ObraPendiente, ObraPlanificada } from "./panel-sin-asignar";
-import type { MovimientoAsignacion, NuevaAsignacion, TableroPayload } from "@/lib/tablero/tipos";
+import type { AsignacionTablero, MovimientoAsignacion, NuevaAsignacion, TableroPayload } from "@/lib/tablero/tipos";
 
 // Tablero de Planificación de Cuadrillas.
 //
@@ -110,22 +120,9 @@ const MS_DESTELLO = 4000;
 
 const iso = (d: Date) => format(d, "yyyy-MM-dd");
 
-/**
- * Lo planificado de una obra, sumando todos sus tramos.
- *
- * `ultimoDia` es lo que hace falta para el techo: el cliente pide el trabajo TERMINADO,
- * así que la fecha contra la que se mide es la del último día, no la del bloque que se
- * está tocando. Ver src/lib/tablero/ventana.ts.
- */
-export type PlanObra = {
-  dias: number;
-  tramos: number;
-  primerDia: string | null;
-  ultimoDia: string | null;
-};
-
-const min = (a: string | null, b: string) => (a && a < b ? a : b);
-const max = (a: string | null, b: string) => (a && a > b ? a : b);
+// Lo planificado de una obra vive en lib/tablero/bloques.ts (planDeObras): ahí se cuenta
+// sin apoyos y por días distintos, con tests. Se re-exporta para no mover a quien lo use.
+export type { PlanObra };
 
 /**
  * Domingos habilitados a mano. Se guardan porque planificar un domingo lleva varios pasos
@@ -241,7 +238,9 @@ export function TableroBoard() {
   // `seguir`: la obra se acaba de planificar desde la ficha. El panel adopta su primer
   // bloque en cuanto aparece en la grilla, y la ficha pasa de "bandeja" a "grilla" sin
   // cerrarse: lo siguiente que se hace con una obra recién puesta es confirmarla.
-  const [panel, setPanel] = useState<{ otId: number; bloqueKey: string | null; seguir?: boolean } | null>(null);
+  // `dia`: el día con el que arranca elegido "Sumar apoyo". Lo pone abrir la ficha desde la
+  // tarjeta de un apoyo, que lleva a la principal pero recuerda de qué día se venía.
+  const [panel, setPanel] = useState<{ otId: number; bloqueKey: string | null; seguir?: boolean; dia?: string | null } | null>(null);
   // El orden en que la bandeja muestra sus obras, para las flechas ‹ › de la ficha.
   const [ordenBandeja, setOrdenBandeja] = useState<number[]>([]);
   const recibirOrdenBandeja = useCallback(
@@ -339,6 +338,7 @@ export function TableroBoard() {
   const crear = useCrearAsignaciones();
   const actualizar = useActualizarAsignaciones();
   const mover = useMoverAsignaciones();
+  const cambiarRoles = useCambiarRoles();
   const correrDia = useCorrerDia();
   const borrar = useBorrarAsignaciones();
   // Las tareas escriben en Supabase y las obras en Odoo, pero se sienten igual: el
@@ -356,6 +356,7 @@ export function TableroBoard() {
     crear.isPending ||
     actualizar.isPending ||
     mover.isPending ||
+    cambiarRoles.isPending ||
     borrar.isPending ||
     crearTarea.isPending ||
     actualizarTarea.isPending ||
@@ -702,31 +703,33 @@ export function TableroBoard() {
 
   // Todas las jornadas de la obra que se está editando, sin importar en qué tarjeta o
   // cuadrilla caen: es lo que hace que una obra partida se pueda arreglar de un lado solo.
+  //
+  // SIN LOS APOYOS: el editor cuenta y reparte jornadas DE LA OBRA, y un apoyo no es una
+  // (apoyo.md). Con ellos adentro, una obra de 3 días con apoyo el martes se abría con 4
+  // filas y guardar podía moverlos de día por su cuenta. Lo que sí se respeta: si se saca
+  // un día de la principal, su apoyo se va con él (ver onGuardar del diálogo).
   const jornadasDeLaObra = useMemo(
     () =>
-      jornadasDe == null ? [] : (data?.asignaciones ?? []).filter((a) => a.otId === jornadasDe),
+      jornadasDe == null
+        ? []
+        : (data?.asignaciones ?? []).filter((a) => a.otId === jornadasDe && !esApoyo(a)),
     [data, jornadasDe],
+  );
+
+  // Nombre de cada cuadrilla, de TODAS: la tarjeta del apoyo nombra a la principal aunque
+  // esa fila esté filtrada.
+  const nombresCuadrillas = useMemo(
+    () => new Map((data?.cuadrillas ?? []).map((c) => [c.id, c.nombre])),
+    [data],
   );
 
   // Cuántos días y cuántos tramos separados tiene planificada cada obra. La tarjeta lo usa
   // para avisar que lo que se ve es una parte: sin eso, una obra partida se lee como una
   // obra de un día y el resto del plan queda invisible.
-  const planPorObra = useMemo(() => {
-    const mapa = new Map<number, PlanObra>();
-    for (const b of bloquesPorClave.values()) {
-      const actual = mapa.get(b.otId) ?? { dias: 0, tramos: 0, primerDia: null, ultimoDia: null };
-      // El primero y el último de la obra ENTERA, no del tramo: una obra partida en dos
-      // tramos termina cuando termina el segundo, y el techo se mide contra eso.
-      const fechas = [...b.fechas].sort();
-      mapa.set(b.otId, {
-        dias: actual.dias + b.fechas.length,
-        tramos: actual.tramos + 1,
-        primerDia: min(actual.primerDia, fechas[0]),
-        ultimoDia: max(actual.ultimoDia, fechas[fechas.length - 1]),
-      });
-    }
-    return mapa;
-  }, [bloquesPorClave]);
+  //
+  // Sin apoyos y por días distintos: una obra de 3 días con la C3 de apoyo el martes sigue
+  // diciendo "3 d" y no aparece como partida (ver planDeObras).
+  const planPorObra = useMemo(() => planDeObras(bloquesPorClave.values()), [bloquesPorClave]);
 
   // Obras ya en la grilla, para que el buscador conteste "¿esta obra ya la planifiqué?".
   //
@@ -735,6 +738,8 @@ export function TableroBoard() {
   const planificadas = useMemo<ObraPlanificada[]>(() => {
     const nombres = new Map((data?.cuadrillas ?? []).map((c) => [c.id, c.nombre]));
     return [...bloquesPorClave.values()].flatMap((b) => {
+      // Un apoyo no es "dónde está planificada la obra": es la principal la que la lleva.
+      if (b.apoyo) return [];
       const ot = otsPorId.get(b.otId);
       if (!ot) return [];
       return [{
@@ -771,7 +776,8 @@ export function TableroBoard() {
     const p = pendienteResaltado.current;
     if (!p) return;
     for (const b of bloquesPorClave.values()) {
-      if (b.otId === p.otId && b.fechas.includes(p.fecha)) {
+      // La tarjeta de la obra es la de la principal, nunca la de un apoyo.
+      if (b.otId === p.otId && !b.apoyo && b.fechas.includes(p.fecha)) {
         pendienteResaltado.current = null;
         setResaltado({ key: b.key, desde: Date.now() });
         return;
@@ -1224,9 +1230,11 @@ export function TableroBoard() {
   }
 
   function estadoDelBloque(
-    b: Pick<Bloque, "fechas" | "cuadrillaId" | "fraccion" | "motivoFija">,
+    b: Pick<Bloque, "fechas" | "cuadrillaId" | "fraccion" | "motivoFija"> & { apoyo?: boolean },
   ): EstadoBloque {
     return {
+      // Sólo cuando lo es: el historial viejo no lo tiene y "ausente" ya quiere decir principal.
+      ...(b.apoyo ? { apoyo: true } : {}),
       fechas: b.fechas,
       cuadrillaId: b.cuadrillaId,
       cuadrillaNombre: nombreCuadrilla(b.cuadrillaId),
@@ -1265,6 +1273,33 @@ export function TableroBoard() {
     // una tarea viajan a Supabase y los de una obra a Odoo.
     if (bloque.origen === "tarea") return moverTarea.mutate(movimientos);
 
+    // LOS APOYOS VAN CON LA OBRA (apoyo.md): cada día de la principal se lleva a sus
+    // apoyos al día de destino, en la misma cuadrilla de apoyo. Viajan en la MISMA request
+    // que la principal: el servidor valida el resultado entero, y por separado vería un
+    // instante con el apoyo solo en el día viejo y lo rechazaría.
+    const arrastre = arrastreDeApoyos(
+      data?.asignaciones ?? [],
+      bloque.otId,
+      bloque.fechas.map((f, i) => ({ desde: f, hasta: dias[i] })),
+      cuadrillaId,
+    );
+    if (arrastre.choques.length > 0) {
+      const nombre = nombreCuadrilla(cuadrillaId);
+      toast.error(`${nombre ? nombrePropio(nombre) : "Esa cuadrilla"} es el apoyo de la obra ese día`, {
+        description: "No puede ser principal y apoyo a la vez. Para cambiar los roles, usá \"Hacer principal\" en la tarjeta del apoyo.",
+      });
+      return;
+    }
+    if (arrastre.mover.some((m) => m.apoyo.id < 0)) return avisarGuardando();
+    const apoyosMovidos = arrastre.mover.map((m) => m.apoyo);
+    movimientos.push(
+      ...arrastre.mover.map((m) => ({
+        id: m.apoyo.id,
+        fecha: m.fecha,
+        ordenDia: m.apoyo.cuadrillaId != null ? proximoOrden(m.apoyo.cuadrillaId, m.fecha) : m.apoyo.ordenDia,
+      })),
+    );
+
     const antes = estadoDelBloque(bloque);
     const despues: EstadoBloque = {
       fechas: dias,
@@ -1292,17 +1327,30 @@ export function TableroBoard() {
         onSuccess: ({ movimientoId }) => {
           if (!seMovio) return;
           ofrecerDeshacer({
-            etiqueta: `Movida a ${format(parseISO(dias[0]), "EEE d MMM", { locale: es })}`,
-            asignacionIds: bloque.ids,
+            etiqueta: `Movida a ${format(parseISO(dias[0]), "EEE d MMM", { locale: es })}${
+              apoyosMovidos.length > 0 ? " con su apoyo" : ""
+            }`,
+            // Los apoyos entran en la guarda: si alguien tocó uno en el medio, el deshacer
+            // pisaría su gesto.
+            asignacionIds: [...bloque.ids, ...apoyosMovidos.map((a) => a.id)],
             ejecutar: () =>
               mover.mutate({
-                // Vuelve cada jornada a su día, su cuadrilla y su lugar en la pila.
-                movimientos: bloque.ids.map((id, i) => ({
-                  id,
-                  fecha: bloque.fechas[i],
-                  cuadrillaId: bloque.cuadrillaId,
-                  ordenDia: bloque.ordenDia,
-                })),
+                // Vuelve cada jornada a su día, su cuadrilla y su lugar en la pila. Los
+                // apoyos que se fueron con ella vuelven también, en el mismo gesto.
+                movimientos: [
+                  ...bloque.ids.map((id, i) => ({
+                    id,
+                    fecha: bloque.fechas[i],
+                    cuadrillaId: bloque.cuadrillaId,
+                    ordenDia: bloque.ordenDia,
+                  })),
+                  ...apoyosMovidos.map((a) => ({
+                    id: a.id,
+                    fecha: a.fecha,
+                    cuadrillaId: a.cuadrillaId,
+                    ordenDia: a.ordenDia,
+                  })),
+                ],
                 registro: {
                   otId: bloque.otId,
                   otTitulo: tituloDeOt(bloque.otId),
@@ -1366,7 +1414,24 @@ export function TableroBoard() {
     antesDelCandado?: () => void,
   ) {
     const otDelBloque = otsPorId.get(b.otId);
-    const aplicar = () =>
+    // LOS APOYOS SIGUEN A SU PRINCIPAL (apoyo.md): confirmar la jornada confirma a quien la
+    // ayuda ese día, y volver a tentativa la afloja igual. Sólo los que no tienen parte:
+    // uno con parte ya trabajó y su estado quedó escrito por el cierre.
+    //
+    // Va en un PATCH aparte y sin `contexto`: el registro de confirmaciones es de las
+    // jornadas DE LA OBRA, una fila por día; anotar también al apoyo mostraría cada día
+    // dos veces en "Confirmó mar 10 – jue 12".
+    const apoyos =
+      b.origen === "tarea" || b.apoyo
+        ? []
+        : apoyosDeDias(data?.asignaciones ?? [], b.otId, b.fechas).filter(
+            (a) => a.parteId == null && a.id > 0 && a.estado !== estado,
+          );
+    const aplicarApoyos = () => {
+      if (apoyos.length > 0) actualizar.mutate({ ids: apoyos.map((a) => a.id), cambio: { estado } });
+    };
+    const aplicar = () => {
+      aplicarApoyos();
       actualizar.mutate({
         ids: b.ids,
         cambio: { estado },
@@ -1381,6 +1446,7 @@ export function TableroBoard() {
         contexto:
           b.otId > 0 ? { otId: b.otId, fechas: b.fechas } : undefined,
       });
+    };
     if (estado !== "confirmada") return aplicar();
 
     // EL PERMISO PRIMERO: es el único que puede hacer que el trabajo sea
@@ -1475,7 +1541,8 @@ export function TableroBoard() {
     actualizar.mutate({ ids: b.ids, cambio: { fraccion: f } });
 
     const asignadas = data?.progreso.find((p) => p.otId === b.otId)?.asignadas ?? b.ids.length;
-    if (b.multiDia || asignadas !== 1 || b.otId <= 0) return;
+    // Un apoyo tampoco: cuánto va la cuadrilla de apoyo no dice nada de cuánto dura la obra.
+    if (b.multiDia || asignadas !== 1 || b.otId <= 0 || b.apoyo) return;
 
     const horas = FRACCIONES.find((x) => x.value === f)?.horas;
     fijarPlan.mutate({
@@ -1513,6 +1580,11 @@ export function TableroBoard() {
         motivo: datos.motivo,
         movimientos: plan.movimientos,
         registros: plan.registros,
+        // Los apoyos cuya cuadrilla no sale y cuya principal sí: se quitan, con su fila en
+        // el historial (apoyo.md, etapa 3). Los que siguen a su principal ya van en
+        // `movimientos`.
+        quitar: plan.quitar,
+        registrosApoyo: plan.registrosApoyo,
         // El día queda tapado con el motivo en las cuadrillas que no salieron: sin esto el
         // hueco se leía como un día libre (Juan Agustín, 01/10).
         suspension: { dia: datos.dia, cuadrillaIds: datos.cuadrillaIds },
@@ -1520,15 +1592,23 @@ export function TableroBoard() {
       {
         onSuccess: ({ filas, loteId }) => {
           setCorrimientoAbierto(false);
-          const vuelta = invertirCorrimiento(plan.registros);
+          const vuelta = invertirCorrimiento(plan.registros, plan.apoyosQuitados);
+          const quitados = plan.apoyosQuitados.length;
           ofrecerDeshacer({
-            etiqueta: `Corrido el ${format(parseISO(datos.dia), "EEE d MMM", { locale: es })} · ${plan.jornadas} jornadas`,
+            etiqueta: `Corrido el ${format(parseISO(datos.dia), "EEE d MMM", { locale: es })} · ${
+              plan.jornadas > 0 ? `${plan.jornadas} jornadas` : ""
+            }${plan.jornadas > 0 && quitados > 0 ? " · " : ""}${
+              quitados > 0 ? `${quitados} apoyo${quitados === 1 ? "" : "s"} quitado${quitados === 1 ? "" : "s"}` : ""
+            }`,
             asignacionIds: plan.movimientos.map((m) => m.id),
             ejecutar: () =>
               correrDia.mutate({
                 motivo: `Deshacer: ${datos.motivo}`,
                 movimientos: vuelta.movimientos,
                 registros: vuelta.registros,
+                // Los apoyos quitados vuelven a crearse, como estaban.
+                crear: vuelta.crear,
+                registrosApoyo: vuelta.registrosApoyo,
                 // Cada fila de la vuelta apunta a la de ida de su misma obra, para que el
                 // panel marque el corrimiento original como deshecho.
                 deshaceA: filas,
@@ -1546,8 +1626,366 @@ export function TableroBoard() {
    * arrastre al panel y la opción del menú de la tarjeta, así que la regla de qué se
    * puede sacar vale para los dos gestos.
    */
+  // ── Cuadrilla de apoyo (apoyo.md) ─────────────────────────────────────────
+
+  function asignacionesDe(ids: number[]): AsignacionTablero[] {
+    const set = new Set(ids);
+    return (data?.asignaciones ?? []).filter((a) => set.has(a.id));
+  }
+
+  /** Los apoyos de la obra en esos días que todavía no están en un parte. */
+  function apoyosSinParteDe(otId: number, fechas: string[]): AsignacionTablero[] {
+    if (fechas.length === 0) return [];
+    const dias = new Set(fechas);
+    return (data?.asignaciones ?? []).filter(
+      (a) => esApoyo(a) && a.otId === otId && dias.has(a.fecha) && a.parteId == null && a.id > 0,
+    );
+  }
+
+  /** Para el deshacer: el apoyo como estaba, listo para volver a crearse. */
+  function comoNuevoApoyo(a: AsignacionTablero): NuevaAsignacion {
+    return {
+      otId: a.otId,
+      fecha: a.fecha,
+      cuadrillaId: a.cuadrillaId,
+      fraccion: aFraccionStr(a.fraccion),
+      estado: a.estado,
+      ordenDia: a.ordenDia,
+      notas: a.notas,
+      apoyo: true,
+    };
+  }
+
+  /**
+   * Sumar una cuadrilla de apoyo a la obra, uno o varios días. Pasa por la MISMA ruta que
+   * planificar (POST de asignaciones, con `apoyo: true`): es una asignación más, que ocupa
+   * capacidad en la fila de su cuadrilla.
+   *
+   * El estado lo toma de la principal de ese día: un apoyo a una jornada confirmada se
+   * suma confirmado (la principal ya se le prometió al cliente y el apoyo no cambia eso).
+   *
+   * SI CON ESTO LA OBRA QUEDA CON APOYO TODOS LOS DÍAS, OFRECE achicarla. No la achica
+   * sola (decisión de Joaquín, 17/10): la duración sigue en días de calendario y es de
+   * Operaciones. La oferta lleva al editor de jornadas, que es donde se sacan días y donde
+   * ya se pregunta si la obra "no hacía falta" tan larga.
+   */
+  function sumarApoyo(otId: number, cuadrillaId: number, fechas: string[], fraccion: FraccionStr) {
+    if (fechas.length === 0) return;
+    const asignaciones = data?.asignaciones ?? [];
+    const principales = asignaciones.filter((a) => a.otId === otId && !esApoyo(a) && !a.tarea);
+    const principalDe = new Map<string, AsignacionTablero>();
+    for (const a of principales) if (!principalDe.has(a.fecha)) principalDe.set(a.fecha, a);
+    const nuevas: NuevaAsignacion[] = fechas.map((f) => ({
+      otId,
+      fecha: f,
+      cuadrillaId,
+      fraccion,
+      estado: principalDe.get(f)?.estado ?? "tentativa",
+      ordenDia: proximoOrden(cuadrillaId, f),
+      apoyo: true,
+    }));
+    const nombre = nombreCuadrilla(cuadrillaId);
+
+    // ¿Queda con apoyo todos los días? Sólo se puede afirmar si la obra entera está en el
+    // rango cargado: `progreso` cuenta días en cualquier fecha, y si hay más de los que se
+    // ven, alguno puede no tener apoyo.
+    const diasObra = new Set(principalDe.keys());
+    const conApoyo = new Set([
+      ...asignaciones.filter((a) => esApoyo(a) && a.otId === otId).map((a) => a.fecha),
+      ...fechas,
+    ]);
+    const enteraALaVista = (data?.progreso.find((p) => p.otId === otId)?.asignadas ?? 0) === diasObra.size;
+    const todos = enteraALaVista && [...diasObra].every((f) => conApoyo.has(f));
+    const achicaA = todos ? diasSiAchica(diasObra.size, Number(fraccion)) : null;
+    // Sumado a un día que ya tiene parte: el servidor lo vincula a ese parte.
+    const conParteYa = fechas.some((f) => principalDe.get(f)?.parteId != null);
+
+    crear.mutate(
+      {
+        asignaciones: nuevas,
+        registro: {
+          otId,
+          otTitulo: tituloDeOt(otId),
+          accion: "crear",
+          antes: null,
+          despues: {
+            fechas: [...fechas].sort(),
+            cuadrillaId,
+            cuadrillaNombre: nombre,
+            fraccion: Number(fraccion),
+            apoyo: true,
+          },
+        },
+      },
+      {
+        onSuccess: () => {
+          if (achicaA != null) {
+            toast("La obra tiene apoyo todos los días", {
+              description: `Con dos cuadrillas podría salir en ${achicaA} días en vez de ${diasObra.size}. Si la achicás, sacá los días que sobran desde Jornadas de la obra.`,
+              duration: 10000,
+              closeButton: true,
+              action: {
+                label: `Achicar a ${achicaA} días…`,
+                onClick: () => {
+                  cerrarPanel();
+                  setJornadasDe(otId);
+                },
+              },
+            });
+            return;
+          }
+          toast.success(`Apoyo de ${nombre ? nombrePropio(nombre) : "otra cuadrilla"} sumado`, {
+            description: conParteYa
+              ? "Quedó vinculado al parte ya cargado: sumá su gente en Partes."
+              : "El parte lo carga la cuadrilla principal, con la gente de las dos.",
+          });
+        },
+      },
+    );
+  }
+
+  /**
+   * Quitar apoyos. Los que ya están en un parte no se tocan: ese día trabajaron, y si al
+   * final no fueron se dice en el parte ("no fue"), que es el que lo borra.
+   */
+  function quitarApoyos(apoyos: AsignacionTablero[]) {
+    const liberables = apoyos.filter((a) => a.parteId == null && a.id > 0);
+    if (liberables.length === 0) {
+      toast.error("No se puede quitar el apoyo", {
+        // El camino real: el parte de la principal (tarjeta → Ver parte → Editar), que ahora
+        // lista cada apoyo con su "fue".
+        description: "Ya está en el parte de la obra. Si al final no fue, abrí el parte de la principal, tocá Editar y destildá \"fue\".",
+      });
+      return;
+    }
+    const primero = liberables[0];
+    const nombre = nombreCuadrilla(primero.cuadrillaId);
+    const fechas = liberables.map((a) => a.fecha).sort();
+    const estado: EstadoBloque = {
+      fechas,
+      cuadrillaId: primero.cuadrillaId,
+      cuadrillaNombre: nombre,
+      fraccion: primero.fraccion,
+      apoyo: true,
+    };
+    borrar.mutate(
+      {
+        ids: liberables.map((a) => a.id),
+        registro: { otId: primero.otId, otTitulo: tituloDeOt(primero.otId), accion: "quitar", antes: estado, despues: null },
+      },
+      {
+        onSuccess: () =>
+          toast.success(`Se quitó el apoyo de ${nombre ? nombrePropio(nombre) : "otra cuadrilla"}`, {
+            duration: 6000,
+            closeButton: true,
+            action: {
+              label: "Deshacer",
+              onClick: () =>
+                crear.mutate({
+                  asignaciones: liberables.map(comoNuevoApoyo),
+                  registro: {
+                    otId: primero.otId,
+                    otTitulo: tituloDeOt(primero.otId),
+                    accion: "crear",
+                    antes: null,
+                    despues: estado,
+                  },
+                }),
+            },
+          }),
+      },
+    );
+  }
+
+  /**
+   * Arrastrar la tarjeta de un apoyo. El apoyo NO SE MUEVE DE DÍA por su cuenta: va con la
+   * obra (apoyo.md). Lo que sí se puede es pasarlo a otra cuadrilla el mismo día, que es
+   * soltarlo en otra fila de la misma columna.
+   */
+  function soltarApoyo(bloque: Bloque, cuadrillaId: number, fecha: string) {
+    if (sinGuardar(bloque)) return avisarGuardando();
+    if (fecha !== bloque.fechas[0]) {
+      toast.info("El apoyo va con la obra", {
+        description: "No cambia de día por su cuenta. Podés pasarlo a otra cuadrilla soltándolo en otra fila del mismo día.",
+      });
+      return;
+    }
+    if (cuadrillaId === bloque.cuadrillaId) return;
+    // CON PARTE NO SE CAMBIA DE CUADRILLA: el renglón de mano de obra del parte ya dice de
+    // qué cuadrilla fue la gente, y pasarlo dejaría al tablero diciendo C4 y al parte C3
+    // (y a Partes pidiendo "sumá C4" sobre un parte cerrado). Misma regla que quitarlo.
+    if (bloque.partes.some((p) => p != null)) {
+      toast.error("No se puede pasar el apoyo a otra cuadrilla", {
+        description: "Ya está en el parte de la obra. Si hay que corregir quién fue, editá el parte.",
+      });
+      return;
+    }
+    // Ni a una cuadrilla que YA es apoyo de la obra ese día: sería la misma gente dos
+    // veces, y dos jornadas que el parte cierra como si fueran dos.
+    const yaEsApoyo = bloque.fechas.some((f) =>
+      (data?.asignaciones ?? []).some(
+        (a) => a.otId === bloque.otId && a.fecha === f && esApoyo(a) && a.cuadrillaId === cuadrillaId && !bloque.ids.includes(a.id),
+      ),
+    );
+    if (yaEsApoyo) {
+      toast.error("Esa cuadrilla ya es apoyo de la obra ese día", {
+        description: "Para sacar este apoyo, usá \"Quitar el apoyo\".",
+      });
+      return;
+    }
+    const principalAhi = bloque.fechas.some((f) =>
+      (data?.asignaciones ?? []).some(
+        (a) => a.otId === bloque.otId && a.fecha === f && !esApoyo(a) && a.cuadrillaId === cuadrillaId,
+      ),
+    );
+    if (principalAhi) {
+      toast.error("Esa cuadrilla ya lleva la obra ese día", {
+        description: "Un apoyo tiene que ser de otra cuadrilla. Para sacarlo, usá \"Quitar el apoyo\".",
+      });
+      return;
+    }
+    const orden = proximoOrden(cuadrillaId, fecha);
+    const antes = estadoDelBloque(bloque);
+    mover.mutate({
+      // Mismos días: cambia sólo la fila.
+      movimientos: bloque.ids.map((id, i) => ({ id, fecha: bloque.fechas[i], cuadrillaId, ordenDia: orden })),
+      registro: {
+        otId: bloque.otId,
+        otTitulo: tituloDeOt(bloque.otId),
+        accion: "mover",
+        antes,
+        despues: { ...antes, cuadrillaId, cuadrillaNombre: nombreCuadrilla(cuadrillaId) },
+      },
+    });
+  }
+
+  /**
+   * "Hacer principal" (apoyo.md: "se rompe el camión de la principal"): ese día el apoyo
+   * pasa a llevar la obra y la principal queda de apoyo. Cambia el ROL, no la gente ni la
+   * capacidad: cada cuadrilla conserva su fracción y su lugar en la fila. Las dos
+   * escrituras viajan en una request, que el servidor valida entera.
+   *
+   * No con parte: el parte ya se cargó con la cuadrilla que lo cargó, y cambiar los roles
+   * después dejaría la cabecera diciendo una cosa y el tablero otra.
+   */
+  function hacerPrincipal(apoyoId: number) {
+    const asignaciones = data?.asignaciones ?? [];
+    const apoyo = asignaciones.find((a) => a.id === apoyoId && esApoyo(a));
+    if (!apoyo) return;
+    const principal = asignaciones.find(
+      (a) => a.otId === apoyo.otId && a.fecha === apoyo.fecha && !esApoyo(a) && !a.tarea,
+    );
+    if (!principal) {
+      toast.error("No hay principal ese día", {
+        description: "Este apoyo quedó solo. Quitalo, o planificá la obra ese día en esta cuadrilla.",
+      });
+      return;
+    }
+    if (apoyo.id < 0 || principal.id < 0) {
+      avisarGuardando();
+      return;
+    }
+    if (apoyo.parteId != null || principal.parteId != null) {
+      toast.error("Ese día ya tiene parte", {
+        description: "Los roles quedaron escritos al cargar el parte. Si hay que corregirlo, editá el parte.",
+      });
+      return;
+    }
+    const fechas = [apoyo.fecha];
+    const antes: EstadoBloque = {
+      fechas,
+      cuadrillaId: principal.cuadrillaId,
+      cuadrillaNombre: nombreCuadrilla(principal.cuadrillaId),
+      intercambio: true,
+    };
+    const despues: EstadoBloque = {
+      fechas,
+      cuadrillaId: apoyo.cuadrillaId,
+      cuadrillaNombre: nombreCuadrilla(apoyo.cuadrillaId),
+      intercambio: true,
+    };
+    const nuevo = nombreCuadrilla(apoyo.cuadrillaId);
+    const ida = [
+      { id: principal.id, apoyo: true },
+      { id: apoyo.id, apoyo: false },
+    ];
+    cambiarRoles.mutate(
+      {
+        roles: ida,
+        registro: { otId: apoyo.otId, otTitulo: tituloDeOt(apoyo.otId), accion: "cuadrilla", antes, despues },
+      },
+      {
+        onSuccess: ({ movimientoId }) =>
+          ofrecerDeshacer({
+            etiqueta: `${nuevo ? nombrePropio(nuevo) : "El apoyo"} lleva la obra el ${format(parseISO(apoyo.fecha), "EEE d", { locale: es })}`,
+            asignacionIds: ida.map((r) => r.id),
+            ejecutar: () =>
+              cambiarRoles.mutate({
+                roles: ida.map((r) => ({ id: r.id, apoyo: !r.apoyo })),
+                registro: {
+                  otId: apoyo.otId,
+                  otTitulo: tituloDeOt(apoyo.otId),
+                  accion: "cuadrilla",
+                  antes: despues,
+                  despues: antes,
+                  deshaceA: movimientoId ?? null,
+                },
+              }),
+          }),
+      },
+    );
+  }
+
+  /** Lo que la ficha necesita para mostrar y sumar apoyos. Null si no hay nada que mostrar. */
+  function datosApoyoDe(otId: number, diaInicial: string | null): DatosApoyoOt | null {
+    if (!data) return null;
+    const deLaObra = data.asignaciones
+      .filter((a) => a.otId === otId && !a.tarea)
+      .sort((a, b) => a.fecha.localeCompare(b.fecha));
+    const dias = new Map<string, DiaDeObra>();
+    const porCuadrilla = new Map<number | null, ApoyoDeLaObra>();
+    const noEjecutados = new Set(data.partes.filter((p) => p.estado === "no_ejecutado").map((p) => p.id));
+    for (const a of deLaObra) {
+      if (!esApoyo(a)) {
+        if (!dias.has(a.fecha)) {
+          dias.set(a.fecha, {
+            fecha: a.fecha,
+            cuadrillaId: a.cuadrillaId,
+            estado: a.estado,
+            conParte: a.parteId != null,
+            parteNoEjecutado: a.parteId != null && noEjecutados.has(a.parteId),
+          });
+        }
+        continue;
+      }
+      const actual =
+        porCuadrilla.get(a.cuadrillaId) ??
+        { cuadrillaId: a.cuadrillaId, nombre: nombreCuadrilla(a.cuadrillaId) ?? "Sin cuadrilla", dias: [] };
+      actual.dias.push({ id: a.id, fecha: a.fecha, fraccion: a.fraccion, parteId: a.parteId });
+      porCuadrilla.set(a.cuadrillaId, actual);
+    }
+    if (dias.size === 0 && porCuadrilla.size === 0) return null;
+    // La ocupación se suma una vez por celda y no en cada render del formulario.
+    const ocupada = new Map<string, number>();
+    for (const a of data.asignaciones) {
+      if (a.cuadrillaId == null) continue;
+      const k = `${a.cuadrillaId}|${a.fecha}`;
+      ocupada.set(k, (ocupada.get(k) ?? 0) + a.fraccion);
+    }
+    return {
+      dias: [...dias.values()],
+      apoyos: [...porCuadrilla.values()].sort((x, y) => x.nombre.localeCompare(y.nombre)),
+      cuadrillas: data.cuadrillas.map((c) => ({ id: c.id, nombre: c.nombre })),
+      diaInicial,
+      ocupacion: (cuadrillaId, fecha) => ocupada.get(`${cuadrillaId}|${fecha}`) ?? 0,
+    };
+  }
+
   function volverABandeja(bloque: Bloque) {
     if (sinGuardar(bloque)) return avisarGuardando();
+    // UN APOYO NO VUELVE A NINGUNA BANDEJA: nunca le sumó días a la obra, así que sacarlo
+    // es quitar el apoyo y nada más (apoyo.md).
+    if (bloque.apoyo) return quitarApoyos(asignacionesDe(bloque.ids));
     // Sacarla del tablero es la forma más brusca de moverla de su día: si está fija,
     // también hay que soltarla primero.
     if (bloque.motivoFija) return avisarFija(bloque.fechas[0], bloque.motivoFija);
@@ -1585,6 +2023,13 @@ export function TableroBoard() {
     // Solo las jornadas sin parte: las cerradas se conservan, o el parte quedaría
     // huérfano y la obra volvería a la bandeja como si nunca se hubiera empezado.
     const liberables = jornadasLiberables(bloque);
+    // Y LOS APOYOS DE ESOS DÍAS se van con la principal: un apoyo sin obra que ayudar
+    // quedaría huérfano en la otra fila, ocupando capacidad para nada. El deshacer los
+    // devuelve junto con ella.
+    const apoyosQueSeVan = apoyosSinParteDe(
+      bloque.otId,
+      bloque.fechas.filter((_, i) => liberables.includes(bloque.ids[i])),
+    );
 
     // Se fotografía lo que se va a borrar ANTES de borrarlo, para poder deshacer. No se
     // pierde ningún dato duro —los partes ni se tocan— pero sí el trabajo de planificar:
@@ -1595,7 +2040,7 @@ export function TableroBoard() {
     // barato de una obra tentativa de un día, y a la semana se clickea sin leer — queda la
     // fricción y el error igual. El undo no cuesta nada en el camino de ida. Cubre los dos
     // gestos, porque el arrastre al panel pasa por acá igual que la opción del menú.
-    const restaurar: NuevaAsignacion[] = bloque.ids.flatMap((_, i) =>
+    const restaurar: NuevaAsignacion[] = bloque.ids.flatMap((_, i): NuevaAsignacion[] =>
       bloque.partes[i] != null
         ? []
         : [{
@@ -1607,7 +2052,7 @@ export function TableroBoard() {
             ordenDia: bloque.ordenDia,
             notas: bloque.notas,
           }],
-    );
+    ).concat(apoyosQueSeVan.map(comoNuevoApoyo));
 
     // ¿La obra va a REAPARECER en la bandeja? La bandeja no mira si la obra tiene tarjetas:
     // resta las jornadas tomadas contra la duración estimada de la OT. Si a la obra le
@@ -1624,7 +2069,7 @@ export function TableroBoard() {
 
     const aplicar = () =>
       borrar.mutate({
-        ids: liberables,
+        ids: [...liberables, ...apoyosQueSeVan.map((a) => a.id)],
         registro: {
           otId: bloque.otId,
           otTitulo: tituloDeOt(bloque.otId),
@@ -1668,10 +2113,10 @@ export function TableroBoard() {
                     despues: estadoDelBloque(bloque),
                   },
                 }, {
-                  onSuccess: () =>
-                    toast.success(
-                      `Obra restaurada: ${restaurar.length} jornada${restaurar.length === 1 ? "" : "s"} vuelven al tablero`,
-                    ),
+                  onSuccess: () => {
+                    const n = restaurar.length - apoyosQueSeVan.length;
+                    toast.success(`Obra restaurada: ${n} jornada${n === 1 ? "" : "s"} vuelven al tablero`);
+                  },
                 });
               },
             },
@@ -1781,6 +2226,23 @@ export function TableroBoard() {
     const bloque = bloquesPorClave.get(activo.slice(7));
     if (!bloque) return;
 
+    // El apoyo tiene sus propias reglas: a la bandeja es quitarlo, y sólo cambia de fila.
+    if (bloque.apoyo) {
+      if (destino === ID_BANDEJA) return volverABandeja(bloque);
+      if (destino.startsWith("tarjeta:")) {
+        const otro = bloquesPorClave.get(destino.slice(8));
+        if (!otro || otro.key === bloque.key) return;
+        if (otro.cuadrillaId === bloque.cuadrillaId && otro.fechas[0] === bloque.fechas[0]) {
+          return reordenarCelda(bloque, otro);
+        }
+        if (otro.cuadrillaId !== null) soltarApoyo(bloque, otro.cuadrillaId, otro.fechas[0]);
+        return;
+      }
+      const celda = celdaDe(destino, over.data.current);
+      if (celda) soltarApoyo(bloque, celda.cuadrillaId, celda.fecha);
+      return;
+    }
+
     // Fuera de la grilla: la obra vuelve a la bandeja de sin asignar.
     if (destino === ID_BANDEJA) {
       volverABandeja(bloque);
@@ -1847,18 +2309,25 @@ export function TableroBoard() {
   const panelBloque = panel?.bloqueKey
     ? (bloquesPorClave.get(panel.bloqueKey) ?? null)
     : panel?.seguir
-      ? ([...bloquesPorClave.values()]
-          .filter((b) => b.otId === panel.otId && b.origen !== "tarea")
-          .sort((a, b) => a.fechas[0].localeCompare(b.fechas[0]))[0] ?? null)
+      ? // Con `dia` (después de "Hacer principal" desde la ficha), la tarjeta principal de
+        // ESE día: el intercambio rearma las tarjetas y la que estaba abierta deja de existir.
+        ((panel.dia
+          ? [...bloquesPorClave.values()].find(
+              (b) => b.otId === panel.otId && !b.apoyo && b.origen !== "tarea" && b.fechas.includes(panel.dia as string),
+            )
+          : undefined) ?? primerBloqueDeObra(bloquesPorClave.values(), panel.otId))
       : null;
   const panelPendiente = panel ? (sinAsignar.find((x) => x.ot.id === panel.otId) ?? null) : null;
   // Las flechas sólo desde la bandeja: desde la grilla no hay una lista que recorrer.
   const panelIndiceBandeja = panel && !panelBloque ? ordenBandeja.indexOf(panel.otId) : -1;
-  const panelPrimerBloque = panel
-    ? ([...bloquesPorClave.values()]
-        .filter((b) => b.otId === panel.otId && b.origen !== "tarea")
-        .sort((a, b) => a.fechas[0].localeCompare(b.fechas[0]))[0] ?? null)
-    : null;
+  // La primera tarjeta PRINCIPAL: la ficha de la obra nunca abre sobre un apoyo.
+  const panelPrimerBloque = panel ? primerBloqueDeObra(bloquesPorClave.values(), panel.otId) : null;
+  // El día con el que arranca "Sumar apoyo": el de la tarjeta de apoyo que se abrió, o el
+  // primero de la tarjeta abierta desde hoy (el pasado casi nunca se apoya).
+  const panelDia =
+    panel?.dia ??
+    (panelBloque ? (panelBloque.fechas.find((f) => f >= hoyISO) ?? panelBloque.fechas[0]) : null);
+  const panelApoyo = panel ? datosApoyoDe(panel.otId, panelDia) : null;
   const panelCuadrilla =
     panelBloque?.cuadrillaId != null
       ? (data.cuadrillas.find((c) => c.id === panelBloque.cuadrillaId)?.nombre ?? null)
@@ -1918,6 +2387,7 @@ export function TableroBoard() {
                 asignaciones={data.asignaciones}
                 ots={otsPorId}
                 planPorObra={planPorObra}
+                nombresCuadrillas={nombresCuadrillas}
                 partes={data.partes}
                 notas={notas ?? []}
                 suspensiones={suspensiones}
@@ -1940,6 +2410,19 @@ export function TableroBoard() {
                   // Una tarea no tiene ficha en Odoo que mostrar: el clic abre su propio
                   // diálogo, que es el único lugar donde vive.
                   if (b.origen === "tarea") return setTareaEnEdicion(b);
+                  // LA TARJETA DE UN APOYO ABRE LA FICHA DE LA OBRA, sobre la principal de
+                  // ese día: el apoyo no tiene ficha propia (no se confirma, no se cierra,
+                  // no lleva parte). Si quedó huérfano, la ficha abre sin bloque y muestra
+                  // el apoyo para quitarlo.
+                  if (b.apoyo) {
+                    const principal =
+                      [...bloquesPorClave.values()].find(
+                        (x) => x.otId === b.otId && !x.apoyo && x.origen !== "tarea" && x.fechas.includes(b.fechas[0]),
+                      ) ?? null;
+                    setPanel({ otId: b.otId, bloqueKey: principal?.key ?? null, dia: b.fechas[0] });
+                    marcarLeida(b.otId);
+                    return;
+                  }
                   abrirPanel(b.otId, b.key);
                 }}
                 onFraccion={cambiarFraccion}
@@ -1952,6 +2435,7 @@ export function TableroBoard() {
                 onFijar={pedirFijar}
                 onSoltar={(b) => fijarBloque(b, null)}
                 onQuitar={volverABandeja}
+                onHacerPrincipal={(b) => b.ids.length === 1 && hacerPrincipal(b.ids[0])}
                 onCrearTarea={(cuadrillaId, fecha) => setTareaNueva({ cuadrillaId, fecha })}
                 onTareaHecha={(b, hecha) => actualizarTarea.mutate({ ids: b.ids, cambio: { hecha } })}
                 onEditarTarea={(b) => setTareaEnEdicion(b)}
@@ -2009,6 +2493,18 @@ export function TableroBoard() {
                 bloque={arrastrando.bloque}
                 queEjecutar={queEjecutar}
                 compacta
+                // El fantasma de un apoyo es rayado como su tarjeta, y dice quién carga el parte.
+                apoyo={(() => {
+                  const b = arrastrando.bloque;
+                  if (!b.apoyo) return null;
+                  const principal = (data.asignaciones ?? []).find(
+                    (a) => a.otId === b.otId && a.fecha === b.fechas[0] && !esApoyo(a),
+                  );
+                  const nombre = principal ? nombreCuadrilla(principal.cuadrillaId) : null;
+                  return principal
+                    ? { principal: nombre ? nombrePropio(nombre) : "la principal", principalCorta: nombre ? abreviarCuadrilla(nombre) : null }
+                    : { principal: null, principalCorta: null };
+                })()}
               />
             </div>
           )}
@@ -2083,6 +2579,7 @@ export function TableroBoard() {
         otId={jornadasDe}
         ot={jornadasDe != null ? otsPorId.get(jornadasDe) : undefined}
         asignaciones={jornadasDeLaObra}
+        apoyos={jornadasDe == null ? [] : data.asignaciones.filter((a) => a.otId === jornadasDe && esApoyo(a))}
         cuadrillas={data.cuadrillas}
         // `progreso` cuenta las jornadas de la obra en CUALQUIER fecha; `jornadasDeLaObra`
         // sólo las del rango cargado. La diferencia son días que existen y no se ven.
@@ -2133,10 +2630,34 @@ export function TableroBoard() {
           // Los cambios de fecha van por `mover`, que es la forma del PATCH que acepta una
           // fecha distinta por id: es exactamente lo que hace falta para cerrar el hueco de
           // una obra partida sin tocar la cuadrilla ni el apilado.
-          if (cambios.fechas.length > 0) {
+          //
+          // LOS APOYOS VAN CON SU JORNADA (apoyo.md): si el martes pasa al jueves, el apoyo
+          // del martes pasa al jueves, en la misma request. Se calcula AHORA, con el tablero
+          // como estaba al guardar: la escritura puede salir recién después del borrado.
+          //
+          // El apoyo de un día que SE SACA se borra con su principal, aunque otro día se
+          // mueva ahí ("saco el martes y junto los días"): el borrado sale primero y solo, y
+          // si el apoyo del martes quedara, el servidor vería un apoyo sin principal y
+          // rechazaría el guardado entero. Lo reemplaza el apoyo del día que llega, si
+          // tiene, y nunca quedan dos de la misma cuadrilla el mismo día (ver
+          // apoyosAlEditarJornadas, con tests).
+          const planApoyos = apoyosAlEditarJornadas(
+            data.asignaciones,
+            jornadasDe,
+            jornadasDeLaObra,
+            cambios.borradas,
+            cambios.fechas,
+          );
+          const arrastre = planApoyos.mover;
+          const apoyosQueSeVan = planApoyos.borrar;
+          const moverFechas = () => {
+            if (cambios.fechas.length === 0) return;
             const fechasNuevas = cambios.fechas.map((f) => f.fecha).sort();
             mover.mutate({
-              movimientos: cambios.fechas.map((f) => ({ id: f.asignacionId, fecha: f.fecha })),
+              movimientos: [
+                ...cambios.fechas.map((f) => ({ id: f.asignacionId, fecha: f.fecha })),
+                ...arrastre.map((m) => ({ id: m.apoyo.id, fecha: m.fecha })),
+              ],
               registro: {
                 otId: jornadasDe,
                 otTitulo: tituloDeOt(jornadasDe),
@@ -2153,9 +2674,10 @@ export function TableroBoard() {
                 },
               },
             });
-          }
+          };
 
-          if (cambios.nuevas.length > 0) {
+          const crearNuevas = () => {
+            if (cambios.nuevas.length === 0) return;
             const estado = jornadasDeLaObra[0]?.estado ?? "tentativa";
             crear.mutate({
               asignaciones: cambios.nuevas.map((n) => ({
@@ -2178,7 +2700,18 @@ export function TableroBoard() {
                 },
               },
             });
-          }
+          };
+
+          // EL ORDEN IMPORTA desde que el servidor valida los roles (apoyo.md): "sacar el
+          // martes y juntar en días corridos" mueve el miércoles al martes. Si el movimiento
+          // llegara antes que el borrado, Odoo vería por un instante dos principales el
+          // martes y lo rechazaría. Por eso, con días que se sacan, primero se borra y
+          // recién después se mueve y se crea.
+          const resto = () => {
+            moverFechas();
+            crearNuevas();
+          };
+
           // Las jornadas que se sacan pasan por la MISMA pregunta que el arrastre a la
           // bandeja: son el mismo hecho —una jornada menos en el tablero— y si sólo un
           // camino preguntara, la mitad de las veces el dato no se registraría y la obra
@@ -2193,23 +2726,26 @@ export function TableroBoard() {
               repartirJornadas(duracion, planPorOt.has(jornadasDe)).length - quedan > 0;
             const duracionNueva = Number((duracion - cambios.borradas.length).toFixed(2));
             const aplicar = () =>
-              borrar.mutate({
-                ids: cambios.borradas,
-                registro: {
-                  otId: jornadasDe,
-                  otTitulo: tituloDeOt(jornadasDe),
-                  accion: "quitar",
-                  antes: {
-                    fechas: jornadasDeLaObra
-                      .filter((j) => cambios.borradas.includes(j.id))
-                      .map((j) => j.fecha)
-                      .sort(),
-                    cuadrillaId: jornadasDeLaObra[0]?.cuadrillaId ?? null,
-                    cuadrillaNombre: nombreCuadrilla(jornadasDeLaObra[0]?.cuadrillaId ?? null),
+              borrar.mutate(
+                {
+                  ids: [...cambios.borradas, ...apoyosQueSeVan.map((a) => a.id)],
+                  registro: {
+                    otId: jornadasDe,
+                    otTitulo: tituloDeOt(jornadasDe),
+                    accion: "quitar",
+                    antes: {
+                      fechas: jornadasDeLaObra
+                        .filter((j) => cambios.borradas.includes(j.id))
+                        .map((j) => j.fecha)
+                        .sort(),
+                      cuadrillaId: jornadasDeLaObra[0]?.cuadrillaId ?? null,
+                      cuadrillaNombre: nombreCuadrilla(jornadasDeLaObra[0]?.cuadrillaId ?? null),
+                    },
+                    despues: null,
                   },
-                  despues: null,
                 },
-              });
+                { onSuccess: resto },
+              );
 
             if (vuelveALaBandeja && duracionNueva >= 1) {
               setDestino({
@@ -2218,10 +2754,19 @@ export function TableroBoard() {
                 cantidad: cambios.borradas.length,
                 duracionNueva,
                 aplicar,
+                // Cerrar la pregunta cancela el borrado, no el resto del guardado: las
+                // fechas y los días nuevos se aplican igual, como antes.
+                alCancelar: resto,
               });
             } else {
               aplicar();
             }
+          } else if (apoyosQueSeVan.length > 0) {
+            // Sin días que se sacan, sólo puede ser un apoyo que llega a un día donde su
+            // cuadrilla ya es apoyo: se borra el que llega antes de mover.
+            borrar.mutate({ ids: apoyosQueSeVan.map((a) => a.id) }, { onSuccess: resto });
+          } else {
+            resto();
           }
 
           setJornadasDe(null);
@@ -2262,7 +2807,10 @@ export function TableroBoard() {
           );
           setDestino(null);
         }}
-        onCerrar={() => setDestino(null)}
+        onCerrar={() => {
+          destino?.alCancelar?.();
+          setDestino(null);
+        }}
       />
 
       <DialogoCandado pedido={pedidoCandado} onCerrar={() => setPedidoCandado(null)} />
@@ -2301,6 +2849,22 @@ export function TableroBoard() {
           const pendiente = sinAsignar.find((x) => x.ot.id === otId);
           return (pendiente?.pendientes ?? 0) === 0;
         })()}
+        // Los apoyos de la obra ese día, con su "fue": el formulario los manda siempre, así
+        // el que no fue se borra en vez de quedar pegado al parte (apoyo.md).
+        apoyos={(() => {
+          const otId = cierre ? bloquesPorClave.get(cierre.bloqueKey)?.otId : null;
+          if (!cierre || !otId) return [];
+          return data.asignaciones
+            .filter((a) => esApoyo(a) && a.otId === otId && a.fecha === cierre.fecha && a.id > 0)
+            .map((a) => ({
+              asignacionId: a.id,
+              cuadrillaId: a.cuadrillaId,
+              nombre: nombreCuadrilla(a.cuadrillaId) ?? "Otra cuadrilla",
+              fraccion: a.fraccion,
+              parteId: a.parteId,
+            }));
+        })()}
+        nombreCuadrilla={(id) => nombreCuadrilla(id)}
         onOpenChange={(abierto) => !abierto && setCierre(null)}
       />
 
@@ -2393,6 +2957,14 @@ export function TableroBoard() {
           // cerrarlo le sacaría la obra de adelante justo cuando la está mirando.
           if (!panelBloque.motivoFija && !motivoNoVuelveABandeja(panelBloque)) cerrarPanel();
           volverABandeja(panelBloque);
+        }}
+        apoyo={panelApoyo}
+        onSumarApoyo={(cuadrillaId, fechas, fraccion) => panelOt && sumarApoyo(panelOt.id, cuadrillaId, fechas, fraccion)}
+        onQuitarApoyo={(_apoyo, ids) => quitarApoyos(asignacionesDe(ids))}
+        onHacerPrincipal={(apoyoId) => {
+          const dia = data.asignaciones.find((a) => a.id === apoyoId)?.fecha ?? null;
+          hacerPrincipal(apoyoId);
+          if (panelOt) setPanel({ otId: panelOt.id, bloqueKey: null, seguir: true, dia });
         }}
         onOpenChange={(abierto) => !abierto && cerrarPanel()}
       />

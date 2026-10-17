@@ -17,7 +17,7 @@ import type { Columna, ObraColumna } from "@/lib/hoja-dia/pizarron";
 import { colorCuadrilla } from "@/lib/tablero/colores";
 import { cn } from "@/lib/utils";
 import { MenuFlotante, MenuTexto } from "@/components/hoja-dia/comunes/menu-flotante";
-import { JornadaCerrada } from "@/components/hoja-dia/cuadrillas/cerrar-jornada";
+import { JornadaCerrada, textoApoyo } from "@/components/hoja-dia/cuadrillas/cerrar-jornada";
 import { mismoDestino, usePizarron, useZona } from "./contexto";
 import { FichaCamionUI, FichaContratistaColumna, FichaPersonaUI } from "./fichas";
 
@@ -109,9 +109,13 @@ export function ColumnaUI({ col }: { col: Columna }) {
   const corto = col.conObra && col.van < col.prevista;
   const h = hojaDeCuadrilla(ctx.dia, col.c);
   // B1: las obras que ya tienen parte NO ofrecen "Cerrar jornada": muestran el parte.
+  // Las de APOYO (apoyo.md) no cierran: el parte lo hace la principal. En su lugar va el
+  // cartel "Hoy apoyás …, el parte lo hace la Cuadrilla 2", siempre a la vista y no sólo
+  // después de las 16, para que nadie salga a buscar dónde cargarlo.
   const obras = obrasDe(ctx.dia, col.c);
-  const conParte = obras.filter((o) => o.parteId != null);
-  const sinParte = obras.filter((o) => o.parteId == null);
+  const deApoyo = obras.filter((o) => o.apoyo);
+  const conParte = obras.filter((o) => o.parteId != null && !o.apoyo);
+  const sinParte = obras.filter((o) => o.parteId == null && !o.apoyo);
   const ofrecerCierre = esHoy(ctx.ahora) && ctx.ahora >= 16 * 60 && !ctx.vista.pasado && !col.suspendida && sinParte.length > 0 && !!h;
   const notas = [
     ...(h?.integrantes.filter((i) => i.nota).map((i) => ({ k: i.id, quien: nombreDe(ctx.dia, i.personaId), t: i.nota! })) ?? []),
@@ -208,6 +212,16 @@ export function ColumnaUI({ col }: { col: Columna }) {
             >
               {encuentroTxt(ctx.dia, col.c)}
             </button>
+          </div>
+        )}
+        {deApoyo.length > 0 && !col.suspendida && (
+          <div className="grid gap-1 text-xs text-muted-foreground" data-apoyo="">
+            {deApoyo.map((o) => (
+              <p key={o.otId} className="rounded-md border border-dashed border-foreground/30 px-2 py-1.5 leading-snug">
+                <b className="font-semibold text-foreground">{textoApoyo(ctx.dia, o)}</b>
+                {o.parteId != null ? " Ya está cargado." : " No tenés que cargar nada."}
+              </p>
+            ))}
           </div>
         )}
         {(conParte.length > 0 || ofrecerCierre) && (

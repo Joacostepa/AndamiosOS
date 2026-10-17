@@ -6,6 +6,12 @@
 // Una obra de 4 jornadas termina siendo 4 partes, uno por día. Cerrar una obra no toca
 // a las otras que la cuadrilla tenga ese mismo día.
 //
+// LA EXCEPCIÓN SON LOS APOYOS (docs/tablero-planificacion/apoyo.md). Una cuadrilla de apoyo
+// tiene su propia asignación (x_apoyo) pero NO su propio parte: hay uno solo por obra y
+// día, lo carga la principal y le escribe el mismo x_parte_id a los apoyos. Cerrar un
+// apoyo directamente se rechaza (ApoyoNoCargaParteError → 409). Cada renglón de mano de
+// obra dice de qué cuadrilla es (x_cuadrilla_id).
+//
 // REGLA DE NEGOCIO: la app NUNCA manda costos ni horas-hombre. Los calcula Odoo con la
 // tarifa vigente a esa fecha (x_horas, x_horas_hombre, x_valor_hora, x_costo, x_costo_*).
 // Tampoco escribe x_name: lo arma Odoo.
@@ -35,9 +41,13 @@
 
 import { searchRead, create, write, executeKw, read } from "./client";
 import { DEJAN_ESTRUCTURA } from "@/lib/tablero/tipos-parte";
-import { exigirSinParte } from "./parte-existente";
+import { exigirPrincipal, exigirSinParte } from "./parte-existente";
+import { planDeApoyos } from "@/lib/tablero/apoyo";
+import { nombrePropio } from "@/lib/tablero/titulo";
 import type {
+  ApoyoDelCierre,
   DatosCierre,
+  LineaFlete,
   ParteCargado,
   ResultadoCierre,
   PasoCierre,
@@ -77,8 +87,17 @@ function valoresParte(datos: DatosCierre, otId: number): Record<string, unknown>
 /** Cuántas líneas describe el parte. Sólo para informar el paso, ya no para contar creates. */
 function cuentaLineas(datos: DatosCierre): number {
   if (datos.estado !== "ejecutado") return 0;
-  const flete = datos.flete && datos.flete.cantidad > 0 ? 1 : 0;
-  return datos.manoObra.length + flete + datos.incidencias.length;
+  return datos.manoObra.length + lineasFlete(datos).length + datos.incidencias.length;
+}
+
+/**
+ * Todas las líneas de flete del parte: la del parte y las que se sumaron a mano (el camión
+ * del apoyo). Las de cero viajes no existen: un flete de 0 es no haber tenido flete.
+ */
+function lineasFlete(datos: DatosCierre): LineaFlete[] {
+  return [datos.flete, ...(datos.fletesExtra ?? [])].filter(
+    (f): f is LineaFlete => !!f && f.cantidad > 0,
+  );
 }
 
 /**
@@ -102,6 +121,12 @@ function comandosLineas(
   datos: DatosCierre,
   fecha: string,
   reemplazar: boolean,
+  /**
+   * La cuadrilla de un renglón que no dice la suya, si el parte tampoco tiene. En el
+   * cierre es la de la asignación: x_cuadrilla_id es obligatorio en la mano de obra y un
+   * renglón sin cuadrilla haría rebotar el parte entero.
+   */
+  cuadrillaPorDefecto: number | null = null,
 ): Record<string, unknown[]> {
   const ejecutado = datos.estado === "ejecutado";
   const vaciar = reemplazar ? [[5, 0, 0]] : [];
@@ -115,21 +140,24 @@ function comandosLineas(
           x_personas: l.personas,
           x_hora_desde: l.horaDesde,
           x_hora_hasta: l.horaHasta,
+          // De qué cuadrilla es la gente: con apoyo hay un renglón por cuadrilla. Sin dato,
+          // la del parte, que es la única que hubo hasta que existió el apoyo.
+          x_cuadrilla_id: l.cuadrillaId ?? datos.cuadrillaId ?? cuadrillaPorDefecto ?? false,
         },
       ])
     : [];
 
-  const flete = ejecutado && datos.flete && datos.flete.cantidad > 0
-    ? [[
+  const flete = ejecutado
+    ? lineasFlete(datos).map((f) => [
         0, 0,
         {
           x_fecha: fecha,
-          x_cantidad: datos.flete.cantidad,
-          x_tercerizado: datos.flete.tercerizado,
+          x_cantidad: f.cantidad,
+          x_tercerizado: f.tercerizado,
           // x_costo_manual solo tiene sentido en el tercerizado; el propio lo tarifa Odoo.
-          x_costo_manual: datos.flete.tercerizado ? (datos.flete.costoManual ?? 0) : 0,
+          x_costo_manual: f.tercerizado ? (f.costoManual ?? 0) : 0,
         },
-      ]]
+      ])
     : [];
 
   const incidencias = ejecutado
@@ -249,12 +277,38 @@ export async function cerrarJornada(
     x_ot_id: [number, string] | false;
     x_fecha: string | false;
     x_parte_id: [number, string] | false;
-  }>("x_aba_asignacion", [asignacionId], ["x_ot_id", "x_fecha", "x_parte_id"]);
+    x_cuadrilla_id: [number, string] | false;
+    x_apoyo: boolean;
+  }>("x_aba_asignacion", [asignacionId], ["x_ot_id", "x_fecha", "x_parte_id", "x_cuadrilla_id", "x_apoyo"]);
   if (!asignacion) throw new Error("La asignación no existe");
   const otId = m2oId(asignacion.x_ot_id);
   if (!otId) throw new Error("La asignación no tiene orden de trabajo");
 
   const fecha = datos.fecha || str(asignacion.x_fecha) || "";
+  // Los apoyos se buscan por la fecha PLANIFICADA, no por la del parte: son las jornadas del
+  // tablero de ese día. Si el parte se carga con otra fecha (retroactivo), igual cierra a
+  // los apoyos que se habían mandado con la principal.
+  const fechaPlan = str(asignacion.x_fecha) ?? fecha;
+
+  // ── 0) Un apoyo no carga parte ──────────────────────────────────────────────────
+  //
+  // Va ANTES que la regla de "ya tiene parte": un apoyo casi siempre ya está vinculado al
+  // parte de la principal, y lo que hay que decirle a quien lo intenta no es "abrí el
+  // parte" sino quién lo carga. Cuesta una lectura sólo en este caso.
+  if (asignacion.x_apoyo === true) {
+    const [principal] = await searchRead<{ id: number; x_cuadrilla_id: [number, string] | false }>(
+      "x_aba_asignacion",
+      [["x_ot_id", "=", otId], ["x_fecha", "=", fechaPlan], ["x_apoyo", "=", false]],
+      ["x_cuadrilla_id"],
+      { limit: 1, order: "id" },
+    );
+    exigirPrincipal(
+      true,
+      // Con nombrePropio: en Odoo el nombre está en mayúsculas ("CUADRILLA 2"), y el 409
+      // tiene que leerse "lo carga la Cuadrilla 2".
+      principal ? { asignacionId: principal.id, cuadrilla: nombrePropio(m2oNombre(principal.x_cuadrilla_id)) || null } : null,
+    );
+  }
 
   // La OT se lee ACÁ, en paralelo con la escritura del parte, aunque recién se use al
   // final: sólo depende de otId, que ya está. Encadenada detrás del parte era un
@@ -280,6 +334,10 @@ export async function cerrarJornada(
   const parteVinculado = m2oId(asignacion.x_parte_id);
   exigirSinParte(parteVinculado);
 
+  // Los apoyos de la obra ese día, en paralelo con el create: no dependen del parte.
+  const apoyosLeidos = leerApoyosDelDia(otId, fechaPlan);
+  apoyosLeidos.catch(() => {});
+
   // La cabecera y las líneas viajan en la MISMA llamada (ver comandosLineas). Si una línea
   // es inválida no se guarda nada: un parte sin mano de obra son cero horas-hombre y cero
   // costo — una obra que figura trabajada gratis. Es mejor que falle entero y se reintente.
@@ -287,20 +345,29 @@ export async function cerrarJornada(
   const reutilizado = false;
   const parteId = await create("x_aba_parte_diario", {
     ...valoresParte({ ...datos, fecha }, otId),
-    ...comandosLineas(datos, fecha, false),
+    ...comandosLineas(datos, fecha, false, m2oId(asignacion.x_cuadrilla_id)),
   });
   registrar("Parte diario", true, `#${parteId}`);
   if (lineas > 0) registrar("Personal, fletes e incidencias", true, `${lineas} línea${lineas === 1 ? "" : "s"}`);
 
   // Si ya había otro parte para esa OT y fecha, se avisa: puede ser un duplicado a
   // resolver en Odoo, pero no se toca. El aviso no bloquea: se lee al final.
-  const avisoDuplicados: Promise<number[]> = searchRead<{ id: number }>(
-    "x_aba_parte_diario",
-    [["x_orden_trabajo_id", "=", otId], ["x_fecha", "=", fecha], ["id", "!=", parteId]],
-    ["id"],
-    { limit: 3 },
-  ).then(
-    (otros) => otros.map((o) => o.id),
+  //
+  // NO SALTA POR EL APOYO: si un apoyo de ese día ya colgaba de otro parte (los casos viejos
+  // de dos cuadrillas con dos partes), ese parte es historia conocida y no un duplicado.
+  const avisoDuplicados: Promise<number[]> = Promise.all([
+    searchRead<{ id: number }>(
+      "x_aba_parte_diario",
+      [["x_orden_trabajo_id", "=", otId], ["x_fecha", "=", fecha], ["id", "!=", parteId]],
+      ["id"],
+      { limit: 5 },
+    ),
+    apoyosLeidos.catch(() => [] as ApoyoDelDia[]),
+  ]).then(
+    ([otros, apoyos]) => {
+      const deApoyos = new Set(apoyos.map((a) => a.parteId).filter((x): x is number => x !== null));
+      return otros.map((o) => o.id).filter((id) => !deApoyos.has(id)).slice(0, 3);
+    },
     () => [],
   );
 
@@ -311,7 +378,7 @@ export async function cerrarJornada(
   // ── 2..5) Fotos, jornada y orden de trabajo ────────────────────────────────
   //
   // Son independientes entre sí: van todas juntas y la cola de client.ts las reparte.
-  const [fotos, marcada, duplicados, ot] = await Promise.allSettled([
+  const [fotos, marcada, duplicados, ot, apoyos] = await Promise.allSettled([
     crearFotos(parteId, datos),
     // El parte CONFIRMA la jornada: es la prueba de que pasó. Una jornada que se
     // trabajó no puede quedar como tentativa, y así el listado de partes puede ofrecer
@@ -323,6 +390,8 @@ export async function cerrarJornada(
     // abajo el parte: si falla, el parte queda igual y la OT se corrige a mano o en el
     // próximo cierre.
     actualizarOt(otLeida, finalizarOt, finalizarOt ? datos.ejecutadoReal : null, fecha),
+    // El mismo parte cierra a los apoyos que fueron; los que no fueron se borran.
+    apoyosLeidos.then((existentes) => sincronizarApoyos(parteId, existentes, datos.apoyos)),
   ]);
 
   if (fotos.status === "rejected") {
@@ -353,6 +422,12 @@ export async function cerrarJornada(
     for (const paso of ot.value) registrar(paso, true);
   }
 
+  if (apoyos.status === "rejected") {
+    registrar("Jornadas de apoyo", false, `${mensaje(apoyos.reason)} — cerralas desde el tablero`);
+  } else {
+    for (const paso of apoyos.value) pasos.push(paso);
+  }
+
   if (duplicados.status === "fulfilled" && duplicados.value.length > 0) {
     registrar(
       "Ojo: ya existía otro parte para esa obra y fecha",
@@ -366,6 +441,61 @@ export async function cerrarJornada(
 
 function mensaje(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
+}
+
+function m2oNombre(v: [number, string] | false | undefined): string | null {
+  return Array.isArray(v) ? v[1] : null;
+}
+
+type ApoyoDelDia = { id: number; parteId: number | null; cuadrilla: string | null };
+
+/** Las asignaciones de apoyo de una obra en un día, con el parte al que cuelgan. */
+async function leerApoyosDelDia(otId: number, fecha: string): Promise<ApoyoDelDia[]> {
+  if (!fecha) return [];
+  const filas = await searchRead<{ id: number; x_parte_id: [number, string] | false; x_cuadrilla_id: [number, string] | false }>(
+    "x_aba_asignacion",
+    [["x_ot_id", "=", otId], ["x_fecha", "=", fecha], ["x_apoyo", "=", true]],
+    ["x_parte_id", "x_cuadrilla_id"],
+  );
+  return filas.map((f) => ({ id: f.id, parteId: m2oId(f.x_parte_id), cuadrilla: m2oNombre(f.x_cuadrilla_id) }));
+}
+
+/** Los apoyos que ya cuelgan de un parte, sin importar la fecha. */
+async function leerApoyosDelParte(parteId: number): Promise<ApoyoDelDia[]> {
+  const filas = await searchRead<{ id: number; x_cuadrilla_id: [number, string] | false }>(
+    "x_aba_asignacion",
+    [["x_parte_id", "=", parteId], ["x_apoyo", "=", true]],
+    ["x_cuadrilla_id"],
+  );
+  return filas.map((f) => ({ id: f.id, parteId, cuadrilla: m2oNombre(f.x_cuadrilla_id) }));
+}
+
+/**
+ * Cierra (o borra) las jornadas de apoyo de un parte. Ver planDeApoyos para la regla.
+ *
+ * Un write para todos los que fueron —mismo valor, mismos ids— y un unlink para los que
+ * no: dos llamadas como mucho, y ninguna si no hay apoyos, que es casi siempre. Confirmar
+ * va con el vínculo por lo mismo que en la principal: un apoyo que trabajó no puede quedar
+ * como tentativa.
+ */
+async function sincronizarApoyos(
+  parteId: number,
+  existentes: ApoyoDelDia[],
+  pedidos: ApoyoDelCierre[] | undefined,
+): Promise<PasoCierre[]> {
+  const { vincular, borrar } = planDeApoyos(existentes, pedidos, parteId);
+  const nombre = (ids: number[]) =>
+    ids.map((id) => existentes.find((a) => a.id === id)?.cuadrilla ?? `#${id}`).join(", ");
+  const pasos: PasoCierre[] = [];
+  if (vincular.length) {
+    await write("x_aba_asignacion", vincular, { x_parte_id: parteId, x_estado: "confirmada" });
+    pasos.push({ nombre: "Jornada de apoyo cerrada con este parte", ok: true, detalle: nombre(vincular) });
+  }
+  if (borrar.length) {
+    await executeKw("x_aba_asignacion", "unlink", [borrar]);
+    pasos.push({ nombre: "Apoyo que no fue, sacado del tablero", ok: true, detalle: nombre(borrar) });
+  }
+  return pasos;
 }
 
 type OtDelParte = {
@@ -497,12 +627,40 @@ export async function editarParte(parteId: number, datos: DatosCierre, otId: num
   const fotosSubiendo = crearFotos(parteId, datos);
   fotosSubiendo.catch(() => {});
 
+  // LA PRINCIPAL VINCULADA A ESTE PARTE dice dos cosas que el parte editado no:
+  //  - la fecha PLANIFICADA, que es por la que se buscan los apoyos. NO la fecha editada
+  //    del parte: si al editar se pasa del 10 al 11, buscar por el 11 vincularía a ESTE
+  //    parte los apoyos de la principal del 11, que todavía no cargó el suyo (y cuando
+  //    lo cargara, ya colgarían de otro). Igual que cerrarJornada con `fechaPlan`.
+  //  - la cuadrilla por defecto de los renglones de mano de obra, para los partes viejos
+  //    sin cuadrilla en la cabecera: x_cuadrilla_id del renglón va a ser obligatorio.
+  const [principal] = await searchRead<{ id: number; x_fecha: string | false; x_cuadrilla_id: [number, string] | false }>(
+    "x_aba_asignacion",
+    [["x_parte_id", "=", parteId], ["x_apoyo", "=", false]],
+    ["x_fecha", "x_cuadrilla_id"],
+    { limit: 1, order: "id" },
+  );
+  const fechaPlan = principal ? str(principal.x_fecha) : null;
+
+  // Los apoyos se resuelven también al editar: es el caso de "sumá la gente de C3 al
+  // parte" (el apoyo se agregó después de cargarlo) y el de destildar "fue" más tarde. Sólo
+  // se tocan los sin parte o los de ESTE parte. Sin principal vinculada (partes viejos) no
+  // hay fecha planificada en qué confiar: sólo los que ya cuelgan de este parte.
+  const apoyosLeidos = fechaPlan ? leerApoyosDelDia(otId, fechaPlan) : leerApoyosDelParte(parteId);
+  apoyosLeidos.catch(() => {});
+
   await write("x_aba_parte_diario", [parteId], {
     ...valoresParte(datos, otId),
-    ...comandosLineas(datos, datos.fecha, true),
+    ...comandosLineas(datos, datos.fecha, true, principal ? m2oId(principal.x_cuadrilla_id) : null),
   });
   pasos.push({ nombre: "Parte diario actualizado", ok: true, detalle: `#${parteId}` });
   pasos.push({ nombre: "Líneas reemplazadas", ok: true, detalle: `${cuentaLineas(datos)}` });
+
+  try {
+    pasos.push(...(await sincronizarApoyos(parteId, await apoyosLeidos, datos.apoyos)));
+  } catch (e) {
+    pasos.push({ nombre: "Jornadas de apoyo", ok: false, detalle: `${mensaje(e)} — cerralas desde el tablero` });
+  }
 
   const { subidas, fallidas } = await fotosSubiendo;
   if (subidas > 0 || fallidas.length > 0) {
@@ -549,7 +707,7 @@ export async function fetchPartes(parteIds: number[]): Promise<Map<number, Parte
   const [cabeceras, manoObra, fletes, incidencias, fotos] = await Promise.all([
     read<Record<string, unknown>>("x_aba_parte_diario", ids, CAMPOS_PARTE),
     searchRead<Record<string, unknown>>("x_aba_mano_obra", [["x_parte_diario_id", "in", ids]],
-      ["x_parte_diario_id", "x_tarea", "x_personas", "x_hora_desde", "x_hora_hasta", "x_horas", "x_horas_hombre"]),
+      ["x_parte_diario_id", "x_tarea", "x_personas", "x_hora_desde", "x_hora_hasta", "x_horas", "x_horas_hombre", "x_cuadrilla_id"]),
     searchRead<Record<string, unknown>>("x_aba_flete", [["x_parte_diario_id", "in", ids]],
       ["x_parte_diario_id", "x_cantidad", "x_tercerizado", "x_costo_manual"]),
     searchRead<Record<string, unknown>>("x_aba_incidencia", [["x_parte_diario_id", "in", ids]],
@@ -559,6 +717,11 @@ export async function fetchPartes(parteIds: number[]): Promise<Map<number, Parte
   ]);
 
   const num = (v: unknown) => (typeof v === "number" ? v : 0);
+  const lineaFleteDe = (f: Record<string, unknown>): LineaFlete => ({
+    cantidad: num(f.x_cantidad),
+    tercerizado: f.x_tercerizado === true,
+    costoManual: num(f.x_costo_manual),
+  });
   const texto = (v: unknown) => (typeof v === "string" && v.trim() !== "" ? v : null);
 
   /** Agrupa las líneas por el parte al que cuelgan. */
@@ -608,16 +771,15 @@ export async function fetchPartes(parteIds: number[]): Promise<Map<number, Parte
         personas: num(l.x_personas),
         horaDesde: num(l.x_hora_desde),
         horaHasta: num(l.x_hora_hasta),
+        cuadrillaId: m2oId(l.x_cuadrilla_id as [number, string] | false),
         horas: num(l.x_horas),
         horasHombre: num(l.x_horas_hombre),
       })),
-      flete: fletesDelParte.length
-        ? {
-            cantidad: num(fletesDelParte[0].x_cantidad),
-            tercerizado: fletesDelParte[0].x_tercerizado === true,
-            costoManual: num(fletesDelParte[0].x_costo_manual),
-          }
-        : null,
+      // La primera es la del parte; las demás, las que se sumaron a mano (el camión del
+      // apoyo). Leerlas todas importa también al editar: el PATCH reemplaza las líneas, y
+      // la que no viajara de vuelta se borraría.
+      flete: fletesDelParte.length ? lineaFleteDe(fletesDelParte[0]) : null,
+      fletesExtra: fletesDelParte.slice(1).map(lineaFleteDe),
       incidencias: (incidenciasPorParte.get(parteId) ?? []).map((i) => ({
         tipo: String(i.x_tipo ?? "otro"),
         descripcion: texto(i.x_descripcion) ?? "",

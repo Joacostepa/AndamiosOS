@@ -68,7 +68,11 @@ export function useJornadaNoPlanificada() {
 /** Reprogramar: crea la jornada nueva. La original se queda con su parte no ejecutado. */
 export function useReprogramar() {
   const qc = useQueryClient();
-  return useMutation<{ asignacionId: number }, Error, { asignacionId: number; reprogramarA: string }>({
+  return useMutation<
+    { asignacionId: number; apoyos?: number[] },
+    Error,
+    { asignacionId: number; reprogramarA: string; apoyoIds?: number[] }
+  >({
     mutationFn: (body) =>
       pedir("/api/planificacion/jornadas", { method: "POST", body: JSON.stringify(body) }),
     onSuccess: () => {

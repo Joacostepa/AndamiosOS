@@ -35,7 +35,7 @@ import type {
 } from "./tipos";
 import { PARAMETROS_POR_DEFECTO, esDeposito } from "./tipos";
 import {
-  addDia, ausenciasDeAsistencia, fletesDelDia, horariosCierre, minutosDesde, nombresCortos, normHora, obrasDe, aCargoDe, hojaDeCuadrilla,
+  addDia, ausenciasDeAsistencia, cNombre, fletesDelDia, horariosCierre, minutosDesde, nombresCortos, normHora, obrasDe, aCargoDe, hojaDeCuadrilla,
   ausenciaDe, deContratistas, persona, cantidadDe, contratistasDe, esPersonalDeObra, genteConChoferes, vehiculosDe, vehTxt, type FilaAsistencia,
 } from "./estado";
 import { telegramConfigurado, usuarioDelBot } from "./telegram";
@@ -469,7 +469,12 @@ function armarCuadrillas(tab: Tablero | null, cuadSb: Fila[], plantel: Fila[]): 
 /** Las obras del tablero de un día. */
 function obrasDeFecha(tab: Tablero, f: Fecha): ObraDia[] {
   const otPor = new Map(tab.ots.map((o) => [o.id, o]));
-  return tab.asignaciones.filter((a) => a.fecha === f && a.cuadrillaId != null && otPor.has(a.otId)).map((a) => {
+  const delDia = tab.asignaciones.filter((a) => a.fecha === f && a.cuadrillaId != null && otPor.has(a.otId));
+  // La cuadrilla principal de cada obra ese día, para que la hoja del apoyo diga quién carga
+  // el parte ("el parte lo hace la Cuadrilla 2"). La primera, como agruparApoyos.
+  const principalDe = new Map<number, number>();
+  for (const a of delDia) if (!a.apoyo && !principalDe.has(a.otId)) principalDe.set(a.otId, a.cuadrillaId!);
+  return delDia.map((a) => {
     const ot = otPor.get(a.otId)!;
     const dir = direccionDeObra(ot);
     const i = ot.fechasJornadas.indexOf(f);
@@ -479,6 +484,7 @@ function obrasDeFecha(tab: Tablero, f: Fecha): ObraDia[] {
       lat: ot.lat, lng: ot.lng, detalleTecnico: ot.detalleTecnico, observaciones: ot.observaciones, contactoObra: ot.contactoObra,
       telObra: ot.telObra, cantArchivos: ot.cantDocs + ot.cantInstrucciones, ventaId: ot.ventaId,
       dia: i >= 0 ? i + 1 : null, totalDias: ot.fechasJornadas.length || null, parteId: a.parteId ?? null,
+      ...(a.apoyo ? { apoyo: true, principalOdooId: principalDe.get(a.otId) ?? null } : {}),
     };
   });
 }
@@ -996,7 +1002,40 @@ export type PrecargaCierre = {
   fletes: { cantidad: number; tercerizado: boolean; detalle: string[]; porVehiculo?: { vehiculo: string; cantidad: number }[] };
   /** La mano de obra sugerida, por horario (horariosCierre): salen de las obras, el encuentro y el busca. */
   manoObra: { personas: number; desde: string; hasta: string }[];
+  /**
+   * Las cuadrillas de APOYO de la obra ese día (apoyo.md), cada una con su mano de obra
+   * según SU hoja: el parte es uno solo y lleva un renglón por cuadrilla. Sin hoja de esa
+   * cuadrilla, `hayHoja: false` y `manoObra` vacía: el renglón queda para completar, no se
+   * inventan horas. Los fletes NO se repiten acá: `fletes` ya cuenta todos los viajes del
+   * día a la obra, vengan del camión que vengan, una sola vez.
+   */
+  apoyos: {
+    asignacionId: number;
+    cuadrillaOdooId: number;
+    cuadrillaNombre: string;
+    fraccion: number;
+    hayHoja: boolean;
+    manoObra: { personas: number; desde: string; hasta: string }[];
+  }[];
 };
+
+/** Los apoyos de la obra en el día, con su mano de obra según la hoja de cada uno. */
+function apoyosDelCierre(dia: DiaHoja, otId: number): PrecargaCierre["apoyos"] {
+  return dia.obras
+    .filter((o) => o.apoyo && o.otId === otId && o.parteId == null)
+    .map((o) => {
+      const conHoja = !!hojaDeCuadrilla(dia, o.cuadrillaOdooId);
+      return {
+        asignacionId: o.asignacionId,
+        cuadrillaOdooId: o.cuadrillaOdooId,
+        cuadrillaNombre: cNombre(dia, o.cuadrillaOdooId),
+        fraccion: o.fraccion,
+        hayHoja: conHoja,
+        manoObra: conHoja ? horariosCierre(dia, o.cuadrillaOdooId, otId) : [],
+      };
+    })
+    .sort((a, b) => a.cuadrillaNombre.localeCompare(b.cuadrillaNombre));
+}
 
 /**
  * Lo que la hoja de (cuadrilla, fecha) dice del parte de una obra: puntero, cantidad de
@@ -1004,15 +1043,23 @@ export type PrecargaCierre = {
  * no hay hoja, `hayHoja` es false y el formulario se comporta como siempre.
  */
 export async function precargaCierre(cuadrillaOdooId: number, fecha: Fecha, otId: number | null): Promise<PrecargaCierre> {
-  const vacia: PrecargaCierre = { hayHoja: false, punteroEmployeeId: null, punteroNombre: null, personas: 0, contratistas: null, camionEnObra: false, fletes: { cantidad: 0, tercerizado: false, detalle: [] }, manoObra: [] };
+  const vacia: PrecargaCierre = { hayHoja: false, punteroEmployeeId: null, punteroNombre: null, personas: 0, contratistas: null, camionEnObra: false, fletes: { cantidad: 0, tercerizado: false, detalle: [] }, manoObra: [], apoyos: [] };
   // El depósito no tiene parte de Odoo (F2).
   if (esDeposito(cuadrillaOdooId)) return vacia;
   const db = createAdminClient();
-  const existe = await db.from("hd_hojas").select("id").eq("fecha", fecha).eq("cuadrilla_odoo_id", cuadrillaOdooId).maybeSingle();
-  if (!existe.data) return vacia;
+  // Las hojas del día de todas las cuadrillas: la de la principal para lo de siempre, y las
+  // otras porque un apoyo puede tener hoja aunque la principal no la tenga.
+  const hojas = await db.from("hd_hojas").select("cuadrilla_odoo_id").eq("fecha", fecha);
+  const conHoja = new Set((hojas.data ?? []).map((x) => Number(x.cuadrilla_odoo_id)));
+  if (conHoja.size === 0) return vacia;
   const dia = await leerDia(fecha, { cacheOdoo: true });
-  const h = hojaDeCuadrilla(dia, cuadrillaOdooId);
-  if (!h) return vacia;
+  const h = conHoja.has(cuadrillaOdooId) ? hojaDeCuadrilla(dia, cuadrillaOdooId) : null;
+  if (!h) {
+    // Sin hoja de la principal el formulario queda como siempre, salvo los renglones de
+    // los apoyos que sí tuvieron hoja.
+    const apoyos = otId != null ? apoyosDelCierre(dia, otId) : [];
+    return apoyos.some((a) => a.hayHoja) ? { ...vacia, apoyos } : vacia;
+  }
   const aCargo = aCargoDe(h);
   // El puntero es un empleado (hr.employee): si la hoja está a cargo de un contratista, no
   // hay puntero que precargar (decisión 5: el parte no cambia).
@@ -1021,7 +1068,9 @@ export async function precargaCierre(cuadrillaOdooId: number, fecha: Fecha, otId
   // Los choferes de todo el día suman; una persona a cargo y chofer (Conte) cuenta una vez.
   const personas = genteConChoferes(h).filter((p) => !ausenciaDe(dia, p)).length + deContratistas(h);
   const ks = contratistasDe(h).filter((x) => x.cantidad > 0);
-  const ot = otId ?? obrasDe(dia, cuadrillaOdooId)[0]?.otId ?? null;
+  // Sin obra pedida, la primera que esta cuadrilla hace como principal: la de apoyo no la
+  // cierra ella.
+  const ot = otId ?? obrasDe(dia, cuadrillaOdooId).find((o) => !o.apoyo)?.otId ?? null;
   const fl = ot != null ? fletesDelDia(dia, ot) : [];
   const porVehiculo = new Map<string, number>();
   for (const x of fl) { const k = x.v.fleteExterno ?? vehTxt(dia, x.v.vehiculoId); porVehiculo.set(k, (porVehiculo.get(k) ?? 0) + 1); }
@@ -1034,6 +1083,7 @@ export async function precargaCierre(cuadrillaOdooId: number, fecha: Fecha, otId
     camionEnObra: vehiculosDe(h).some((f) => f.modo === "todo_el_dia"),
     fletes: { cantidad: fl.length, tercerizado: fl.some((x) => x.tercerizado), detalle: fl.map((x) => x.txt), porVehiculo: [...porVehiculo].map(([p, cantidad]) => ({ vehiculo: p, cantidad })) },
     manoObra: ot != null ? horariosCierre(dia, cuadrillaOdooId, ot) : [],
+    apoyos: ot != null ? apoyosDelCierre(dia, ot) : [],
   };
 }
 

@@ -222,6 +222,8 @@ export const OK = "var(--tb-ok)";
  * sobre el verde de marca da 3,3:1 y no pasa AA al tamaño de los botones del cierre.
  */
 export const OK_SOLIDO = "var(--tb-ok-solido)";
+/** Verde de TEXTO: OK es de trazo y como texto no llega a AA. */
+export const OK_TEXTO = "var(--tb-ok-text)";
 /** Ámbar de aviso: obra empezada, franja de nota, urgencia media. */
 export const ALERTA = "var(--tb-alerta)";
 /** Rojo de trazo: bordes, franjas, íconos, sobreasignación. */
@@ -277,6 +279,23 @@ export const SUSPENDIDO = {
     texto: "var(--tb-suspendido-gris-text)",
   },
 } as const;
+
+/**
+ * Cuadrilla de APOYO (apoyo.md): la tarjeta rayada en la fila del apoyo y el chip "+C3 ½" en
+ * la principal. Gris cálido sin tono propio, a propósito: el apoyo ocupa capacidad pero no
+ * es una obra más, y el azul o el ámbar del tipo dirían que lo es. Las rayas anchas a 135°
+ * son las de la tapa de suspendido, no la trama fina a 45° de la tentativa: el estado
+ * (tentativa o confirmada) lo sigue diciendo el borde, punteado o lleno.
+ */
+export const APOYO = {
+  fondo: "var(--tb-apoyo-bg)",
+  raya: "var(--tb-apoyo-raya)",
+  borde: "var(--tb-apoyo-borde)",
+  texto: "var(--tb-apoyo-text)",
+} as const;
+
+/** El rayado de la tarjeta de apoyo. Más fino que la tapa (6px y no 8px): la tarjeta mide 24px. */
+export const RAYADO_APOYO = `repeating-linear-gradient(135deg, var(--tb-apoyo-raya) 0 6px, transparent 6px 12px)`;
 
 /** Recuadro de aviso ámbar (panel de OT, diálogo del candado). */
 export const AVISO = {

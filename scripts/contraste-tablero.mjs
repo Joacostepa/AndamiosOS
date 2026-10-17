@@ -236,12 +236,21 @@ const TEXTO = [
   ["urgencia media (chip)", "var(--tb-ambar-text)", "var(--tb-ambar-bg)"],
   ["nota de la jornada", "var(--tb-nota-text)", "var(--tb-nota-bg)"],
   ["recuadro de aviso", "var(--tb-aviso-text)", "var(--tb-aviso-bg)"],
+  // "Sumar apoyo": cuánto le queda libre a la cuadrilla, o que se pasa. Va sobre la ficha.
+  ["capacidad del apoyo (ok)", "var(--tb-ok-text)", "var(--card)"],
+  ["capacidad del apoyo (ok, fondo)", "var(--tb-ok-text)", "var(--background)"],
+  ["capacidad del apoyo (se pasa)", "var(--tb-peligro-text)", "var(--card)"],
+  ["capacidad del apoyo (se pasa, fondo)", "var(--tb-peligro-text)", "var(--background)"],
   ["encabezado de feriado", "var(--tb-feriado-texto)", "var(--tb-feriado-encabezado)"],
   // Día suspendido: el sello lleva texto blanco y el rótulo "Suspendido" va sobre el fondo.
   ["sello de suspendido (clima)", "#ffffff", "var(--tb-suspendido-sello)"],
   ["rótulo de suspendido (clima)", "var(--tb-suspendido-text)", "var(--tb-suspendido-bg)"],
   ["sello de suspendido (otro)", "#ffffff", "var(--tb-suspendido-gris-sello)"],
   ["rótulo de suspendido (otro)", "var(--tb-suspendido-gris-text)", "var(--tb-suspendido-gris-bg)"],
+  // Cuadrilla de apoyo: el texto va sobre el fondo y, por el rayado, también sobre la raya.
+  // El chip "+C3" de la tarjeta principal usa el mismo par.
+  ["tarjeta de apoyo", "var(--tb-apoyo-text)", "var(--tb-apoyo-bg)"],
+  ["tarjeta de apoyo sobre la raya", "var(--tb-apoyo-text)", "var(--tb-apoyo-raya)"],
   // Rellenos con texto blanco. Son la razón por la que existen los `-solido`.
   ["botón ejecutado", "#ffffff", "var(--tb-ok-solido)"],
   ["badge urgencia alta", "#ffffff", "var(--tb-peligro-solido)"],
@@ -261,6 +270,8 @@ const TRAZO = [
   ["semáforo rojo", "var(--tb-peligro)", "var(--card)"],
   ["semáforo vencida", "var(--tb-vencida)", "var(--card)"],
   ["candado", "var(--tb-candado)", "var(--card)"],
+  ["borde de la tarjeta de apoyo", "var(--tb-apoyo-borde)", "var(--background)"],
+  ["borde de la tarjeta de apoyo sobre su fondo", "var(--tb-apoyo-borde)", "var(--tb-apoyo-bg)"],
   // El casco de SyH. El 4.º elemento limita el par a un tema: en claro lo separa del fondo
   // el CONTORNO oscuro, en oscuro el RELLENO amarillo. Los fondos son la tarjeta vacía y
   // los dos tipos de obra, que es donde se dibuja.

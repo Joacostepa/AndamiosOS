@@ -19,7 +19,7 @@ import { comprimirFoto, pesoLegible, type FotoComprimida } from "@/lib/tablero/i
 import {
   MOTIVOS_NO_EJEC, TAREAS, TIPOS_INCIDENCIA, MOMENTOS_FOTO, horaADecimal, decimalAHora,
   DEJAN_ESTRUCTURA, asBuiltAEnviar, faltaAsBuilt,
-  type DatosCierre, type EstadoParte, type LineaManoObra, type LineaIncidencia,
+  type DatosCierre, type EstadoParte, type LineaFlete, type LineaManoObra, type LineaIncidencia,
 } from "@/lib/tablero/tipos-parte";
 import { useParte, useCerrarJornada, useEditarParte, useEmpleados } from "@/hooks/use-parte";
 import { SelectorCapataz } from "@/components/partes/selector-capataz";
@@ -30,6 +30,8 @@ import { CORAL, OK, OK_SOLIDO, PELIGRO, PELIGRO_SOLIDO } from "@/lib/tablero/col
 import { horasEfectivas } from "@/lib/tablero/horas";
 import type { Bloque } from "@/lib/tablero/bloques";
 import type { OtTablero } from "@/lib/tablero/tipos";
+import { horarioSugeridoApoyo } from "@/lib/tablero/apoyo";
+import { nombrePropio } from "@/lib/tablero/titulo";
 
 // Formulario de cierre de jornada. Se cierra por OBRA, no por jornada de la cuadrilla:
 // si una cuadrilla hace tres obras el mismo día, cada una se cierra por separado con
@@ -41,6 +43,19 @@ const JORNADA_DESDE = 8;
 const JORNADA_HASTA = 17;
 
 type FotoEnFormulario = FotoComprimida & { momento: string };
+
+/**
+ * Una cuadrilla de apoyo de la obra ese día (docs/tablero-planificacion/apoyo.md), como la
+ * conoce la pantalla que abre el formulario. Sólo las sin parte o las ya vinculadas a este
+ * parte: una colgada de otro parte es historia y no se toca.
+ */
+export type ApoyoDelFormulario = {
+  asignacionId: number;
+  cuadrillaId: number | null;
+  nombre: string;
+  fraccion: number;
+  parteId: number | null;
+};
 
 /** base-ui muestra el VALOR crudo en el trigger salvo que se le pase el mapa de etiquetas. */
 function comoItems(opciones: readonly { value: string; label: string }[]): Record<string, string> {
@@ -61,6 +76,8 @@ export function FormularioCierre({
   asignacionId,
   parteId,
   esUltimaJornada,
+  apoyos: apoyosDeLaPantalla,
+  nombreCuadrilla,
   onOpenChange,
 }: {
   abierto: boolean;
@@ -74,6 +91,14 @@ export function FormularioCierre({
    * preguntar si la obra terminó: antes la respuesta es siempre "quedan más".
    */
   esUltimaJornada: boolean;
+  /**
+   * Los apoyos de la obra ese día. Los da la pantalla (el tablero, la Hoja del día) porque
+   * ella los tiene a mano aunque nadie haya tenido Hoja ese día; sin la lista, salen de la
+   * precarga de la Hoja.
+   */
+  apoyos?: ApoyoDelFormulario[];
+  /** El nombre de una cuadrilla por su id de Odoo, para los renglones de mano de obra. */
+  nombreCuadrilla?: (id: number) => string | null;
   onOpenChange: (abierto: boolean) => void;
 }) {
   const soloLectura = !!parteId;
@@ -109,10 +134,15 @@ export function FormularioCierre({
   const [camionEnObra, setCamionEnObra] = useState(false);
   const [tercerizado, setTercerizado] = useState(false);
   const [costoFlete, setCostoFlete] = useState("");
+  // Las líneas de flete de más, A MANO: el camión del apoyo, si fue con el suyo (decisión 5
+  // del 17/10). El flete del parte sigue siendo uno y nunca se duplica solo.
+  const [fletesExtra, setFletesExtra] = useState<LineaFlete[]>([]);
   const [incidencias, setIncidencias] = useState<LineaIncidencia[]>([]);
   const [fotos, setFotos] = useState<FotoEnFormulario[]>([]);
   const [comprimiendo, setComprimiendo] = useState(false);
   const [resultado, setResultado] = useState<{ pasos: { nombre: string; ok: boolean; detalle?: string }[]; fallidas: string[] } | null>(null);
+  // Los apoyos destildados ("no fue"): al guardar, su jornada se BORRA (decisión del 17/10).
+  const [noFueron, setNoFueron] = useState<Set<number>>(new Set());
 
   const enModoEdicion = !soloLectura || editando;
 
@@ -131,11 +161,14 @@ export function FormularioCierre({
       setObjetivo(parteCargado.objetivo ?? "");
       setTareas(parteCargado.tareas ?? "");
       setObservaciones(parteCargado.observaciones ?? "");
-      setManoObra(parteCargado.manoObra.map(({ tarea, personas, horaDesde, horaHasta }) => ({ tarea, personas, horaDesde, horaHasta })));
+      // La cuadrilla de cada renglón viaja de vuelta: sin ella, editar un parte con apoyo
+      // pasaría toda la gente a la cuadrilla del parte.
+      setManoObra(parteCargado.manoObra.map(({ tarea, personas, horaDesde, horaHasta, cuadrillaId }) => ({ tarea, personas, horaDesde, horaHasta, cuadrillaId })));
       setViajes(parteCargado.flete?.cantidad ?? 0);
       setCamionEnObra(parteCargado.camionEnObra);
       setTercerizado(parteCargado.flete?.tercerizado ?? false);
       setCostoFlete(parteCargado.flete?.costoManual ? String(parteCargado.flete.costoManual) : "");
+      setFletesExtra(parteCargado.fletesExtra ?? []);
       setIncidencias(parteCargado.incidencias);
       setFotos([]);
     } else if (!parteId) {
@@ -149,10 +182,11 @@ export function FormularioCierre({
       setSector(""); setClima(""); setObjetivo(""); setTareas(""); setObservaciones("");
       setManoObra([]);
       setViajes(sugerenciaViajes);
-      setTercerizado(false); setCostoFlete("");
+      setTercerizado(false); setCostoFlete(""); setFletesExtra([]);
       setIncidencias([]); setFotos([]);
     }
     setResultado(null);
+    setNoFueron(new Set());
     setEditando(false);
     setObraFinalizada(null);
     // El as-built también: el diálogo es uno solo y se reusa para todas las obras. Sin
@@ -174,19 +208,65 @@ export function FormularioCierre({
   // hoja), los fletes quedan con la regla de siempre: un 0 de la hoja no quiere decir que
   // no hubo flete. Sin hoja (`hayHoja: false`, o la consulta falla) el formulario queda
   // exactamente como antes.
-  const { data: precarga } = usePrecargaCierre(
+  const { data: precarga, fetchStatus: estadoPrecarga } = usePrecargaCierre(
     abierto && !parteId ? (bloque?.cuadrillaId ?? null) : null,
     abierto && !parteId ? fecha : null,
     ot?.id ?? null,
   );
   const precargaAplicada = useRef<string | null>(null);
   const [desdeHoja, setDesdeHoja] = useState<{ manoObra: boolean; fletes: boolean } | null>(null);
+  // LOS APOYOS (apoyo.md, etapa 3): un renglón por cada cuadrilla de apoyo, con SU
+  // cuadrilla, y la gente y el horario según SU hoja. Sin hoja de esa cuadrilla el renglón
+  // queda con 0 personas para completar —guardar lo frena— porque inventar una dotación es
+  // inventar horas-hombre; el horario sí se sugiere según cuánto iba (½ jornada = 13 a 17).
+  // Los fletes no se suman: la hoja ya cuenta una sola vez todos los viajes del día a la
+  // obra. Si el apoyo fue con su camión, se suman sus viajes a mano.
+  //
+  // La lista sale de la pantalla y no sólo de la precarga: sin ninguna Hoja ese día la
+  // precarga viene vacía, y el apoyo quedaba cerrado con 0 horas-hombre sin ningún aviso.
+  const apoyosPrecarga = useMemo(() => precarga?.apoyos ?? [], [precarga]);
+  const listaApoyos = useMemo<ApoyoDelFormulario[]>(
+    () =>
+      (
+        apoyosDeLaPantalla ??
+        apoyosPrecarga.map((a) => ({
+          asignacionId: a.asignacionId,
+          cuadrillaId: a.cuadrillaOdooId,
+          nombre: a.cuadrillaNombre,
+          fraccion: a.fraccion,
+          parteId: null,
+        }))
+      ).filter((a) => a.parteId == null || a.parteId === parteId),
+    [apoyosDeLaPantalla, apoyosPrecarga, parteId],
+  );
+  // La precarga ya contestó (o no se va a pedir): recién ahí se arman los renglones, así
+  // los de un apoyo con Hoja no salen vacíos para llenarse un segundo después.
+  const precargaLista = estadoPrecarga === "idle";
+
+  /** Los renglones con que arranca un apoyo: los de su Hoja o, sin Hoja, para completar. */
+  function renglonesDeApoyo(a: ApoyoDelFormulario): LineaManoObra[] {
+    const tarea = ot?.tipo === "desarme" ? "desarme" : "armado";
+    const hoja = apoyosPrecarga.find((p) => p.asignacionId === a.asignacionId);
+    const suyas = (hoja?.manoObra ?? [])
+      .map((l) => ({ tarea, personas: l.personas, horaDesde: horaADecimal(l.desde), horaHasta: horaADecimal(l.hasta), cuadrillaId: a.cuadrillaId }))
+      .filter((l) => l.personas > 0 && l.horaHasta > l.horaDesde);
+    if (suyas.length) return suyas;
+    return [{ tarea, personas: 0, ...horarioSugeridoApoyo(a.fraccion), cuadrillaId: a.cuadrillaId }];
+  }
+
   useEffect(() => {
     if (!abierto) { precargaAplicada.current = null; setDesdeHoja(null); return; }
-    if (parteId || !precarga?.hayHoja) return;
+    if (parteId || !precargaLista) return;
     const clave = `${asignacionId}-${fecha}`;
     if (precargaAplicada.current === clave) return;
     precargaAplicada.current = clave;
+    const tarea = ot?.tipo === "desarme" ? "desarme" : "armado";
+    const deApoyos = listaApoyos.flatMap(renglonesDeApoyo);
+    if (!precarga?.hayHoja) {
+      // Sin hoja de la principal, lo de siempre; sólo se suman los renglones de los apoyos.
+      if (deApoyos.length) setManoObra((prev) => [...prev, ...deApoyos]);
+      return;
+    }
     if (precarga.punteroEmployeeId) setPunteroId(String(precarga.punteroEmployeeId));
     setCamionEnObra(precarga.camionEnObra);
     const conFletes = precarga.fletes.cantidad > 0;
@@ -194,13 +274,46 @@ export function FormularioCierre({
       setViajes(precarga.fletes.cantidad);
       setTercerizado(precarga.fletes.tercerizado);
     }
-    const tarea = ot?.tipo === "desarme" ? "desarme" : "armado";
     const lineas = (precarga.manoObra ?? [])
       .map((l) => ({ tarea, personas: l.personas, horaDesde: horaADecimal(l.desde), horaHasta: horaADecimal(l.hasta) }))
       .filter((l) => l.personas > 0 && l.horaHasta > l.horaDesde);
-    if (lineas.length) setManoObra(lineas);
+    if (lineas.length || deApoyos.length) setManoObra([...lineas, ...deApoyos]);
     setDesdeHoja({ manoObra: lineas.length > 0, fletes: conFletes });
-  }, [abierto, parteId, precarga, asignacionId, fecha, ot?.tipo]);
+    // renglonesDeApoyo lee lo mismo que ya está en las dependencias (precarga y ot).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [abierto, parteId, precarga, precargaLista, listaApoyos, asignacionId, fecha, ot?.tipo]);
+
+  /** La cuadrilla del parte: la elegida en la cabecera o, si no, la de la jornada. */
+  const cuadrillaDelParte = cuadrillaId ? Number(cuadrillaId) : (bloque?.cuadrillaId ?? null);
+
+  /** "Cuadrilla 3" de un renglón de apoyo; null en los de la principal. */
+  function cuadrillaDelRenglon(l: LineaManoObra): string | null {
+    if (l.cuadrillaId == null || l.cuadrillaId === cuadrillaDelParte) return null;
+    // El nombre sale de los apoyos o de la lista de cuadrillas, nunca del id: "Cuadrilla
+    // 57" es el id de Odoo y no coincide con ninguna cuadrilla real.
+    const nombre =
+      listaApoyos.find((a) => a.cuadrillaId === l.cuadrillaId)?.nombre ??
+      apoyosPrecarga.find((a) => a.cuadrillaOdooId === l.cuadrillaId)?.cuadrillaNombre ??
+      nombreCuadrilla?.(l.cuadrillaId) ??
+      null;
+    return nombre ? nombrePropio(nombre) : "otra cuadrilla";
+  }
+
+  /**
+   * "Fue / no fue" de un apoyo. Destildarlo saca sus renglones (no trabajó, no suma
+   * horas) y al guardar borra su jornada; volver a tildarlo los repone.
+   */
+  function alternarFue(a: ApoyoDelFormulario, fue: boolean) {
+    setNoFueron((prev) => {
+      const sig = new Set(prev);
+      if (fue) sig.delete(a.asignacionId);
+      else sig.add(a.asignacionId);
+      return sig;
+    });
+    if (a.cuadrillaId == null || a.cuadrillaId === cuadrillaDelParte) return;
+    if (!fue) setManoObra((prev) => prev.filter((l) => l.cuadrillaId !== a.cuadrillaId));
+    else if (!manoObra.some((l) => l.cuadrillaId === a.cuadrillaId)) setManoObra((prev) => [...prev, ...renglonesDeApoyo(a)]);
+  }
 
   // REGLA VIGENTE: menos de una jornada → 1 viaje redondo; N jornadas → N+1. Se muestra
   // como sugerencia, no se impone.
@@ -267,9 +380,17 @@ export function FormularioCierre({
       flete: ejecutado && viajes > 0
         ? { cantidad: viajes, tercerizado, costoManual: tercerizado ? Number(costoFlete) || 0 : 0 }
         : null,
+      fletesExtra: ejecutado ? fletesExtra.filter((f) => f.cantidad > 0) : [],
       incidencias: ejecutado ? incidencias.filter((i) => i.descripcion.trim()) : [],
       fotos: ejecutado ? fotos.map((f) => ({ nombre: f.nombre, base64: f.base64, momento: f.momento })) : [],
       ejecutadoReal: asBuiltAEnviar(tipoOt, obraFinalizada === true, armadoCoincide, armadoReal, previsto),
+      // Cada apoyo con su "fue": SIEMPRE explícito. Si no viajara, el servidor vincularía
+      // al parte también al que no fue (planDeApoyos) y quedaría cerrado sin haber
+      // trabajado. Con el parte "no ejecutado" no se dice nada: la obra no se trabajó y
+      // los apoyos quedan con su principal, para reprogramarlos juntos.
+      apoyos: ejecutado
+        ? listaApoyos.map((a) => ({ asignacionId: a.asignacionId, fue: !noFueron.has(a.asignacionId) }))
+        : undefined,
     };
   }
 
@@ -293,6 +414,31 @@ export function FormularioCierre({
     if (estado === "ejecutado" && manoObra.length === 0) {
       toast.error("Falta el personal", {
         description: "Sin líneas de personal el parte queda en 0 horas-hombre. Usá 'Jornada completa' o agregá una línea.",
+      });
+      return;
+    }
+    const apoyoVacio = estado === "ejecutado" ? manoObra.find((l) => cuadrillaDelRenglon(l) && !(l.personas > 0)) : undefined;
+    if (apoyoVacio) {
+      toast.error(`Falta la gente de ${cuadrillaDelRenglon(apoyoVacio)}`, {
+        description: "Su hoja del día no dice quiénes fueron. Completá las personas, o destildá \"fue\" si al final no fue.",
+      });
+      return;
+    }
+    // Un apoyo que fue tiene que tener su gente en el parte: es el aviso "sumá la gente de
+    // C3" de Partes, dicho acá antes de guardar.
+    const apoyoSinGente =
+      estado === "ejecutado"
+        ? listaApoyos.find(
+            (a) =>
+              !noFueron.has(a.asignacionId) &&
+              a.cuadrillaId != null &&
+              a.cuadrillaId !== cuadrillaDelParte &&
+              !manoObra.some((l) => l.cuadrillaId === a.cuadrillaId),
+          )
+        : undefined;
+    if (apoyoSinGente) {
+      toast.error(`Falta la gente de ${nombrePropio(apoyoSinGente.nombre)}`, {
+        description: "Sumá su renglón de personal, o destildá \"fue\" si al final no fue.",
       });
       return;
     }
@@ -495,6 +641,44 @@ export function FormularioCierre({
                     </p>
                   )}
 
+                  {/* ── Cuadrillas de apoyo: "fue / no fue" (apoyo.md) ── */}
+                  {listaApoyos.length > 0 && (
+                    <div className="space-y-1.5 rounded-md border px-2.5 py-2">
+                      <p className="text-xs font-medium">Cuadrillas de apoyo</p>
+                      {listaApoyos.map((a) => {
+                        const fue = !noFueron.has(a.asignacionId);
+                        const conRenglon = manoObra.some((l) => l.cuadrillaId === a.cuadrillaId);
+                        return (
+                          <div key={a.asignacionId} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                            <label className="flex items-center gap-2">
+                              <Checkbox
+                                checked={fue}
+                                onCheckedChange={(v) => alternarFue(a, v === true)}
+                                disabled={!enModoEdicion}
+                              />
+                              <span>{nombrePropio(a.nombre)} · fue</span>
+                            </label>
+                            {fue && !conRenglon && enModoEdicion && (
+                              <button
+                                type="button"
+                                className="text-xs underline underline-offset-2"
+                                style={{ color: CORAL }}
+                                onClick={() => setManoObra((prev) => [...prev, ...renglonesDeApoyo(a)])}
+                              >
+                                Sumar su gente
+                              </button>
+                            )}
+                            {!fue && (
+                              <span className="text-xs text-muted-foreground">
+                                No fue: al guardar, su jornada de apoyo se saca del tablero.
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
                   {manoObra.length > 0 && (
                     <div className="grid grid-cols-[minmax(100px,1fr)_68px_128px_128px_28px] gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
                       <span>Tarea</span>
@@ -505,7 +689,14 @@ export function FormularioCierre({
                     </div>
                   )}
                   {manoObra.map((l, i) => (
-                    <div key={i} className="grid grid-cols-[minmax(100px,1fr)_68px_128px_128px_28px] items-end gap-1.5">
+                    <div key={i} className="space-y-0.5">
+                    {cuadrillaDelRenglon(l) && (
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Apoyo · {cuadrillaDelRenglon(l)}
+                        {!(l.personas > 0) && <span style={{ color: CORAL }}> · completá la gente (no tuvo hoja del día)</span>}
+                      </p>
+                    )}
+                    <div className="grid grid-cols-[minmax(100px,1fr)_68px_128px_128px_28px] items-end gap-1.5">
                       <Select
                         items={comoItems(TAREAS)}
                         value={l.tarea}
@@ -518,7 +709,7 @@ export function FormularioCierre({
                         </SelectContent>
                       </Select>
                       <Input
-                        type="number" min={1} value={l.personas} disabled={!enModoEdicion}
+                        type="number" min={cuadrillaDelRenglon(l) ? 0 : 1} value={l.personas} disabled={!enModoEdicion}
                         onChange={(e) => actualizarLinea(i, { personas: Number(e.target.value) })}
                         title="Personas"
                       />
@@ -542,6 +733,7 @@ export function FormularioCierre({
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       )}
+                    </div>
                     </div>
                   ))}
 
@@ -606,6 +798,41 @@ export function FormularioCierre({
                       />
                     )}
                   </div>
+                  {/* EL CAMIÓN DEL APOYO: una línea más, a mano. No se precarga ni se duplica:
+                      la Hoja ya cuenta todos los viajes del día a la obra en la de arriba. */}
+                  {fletesExtra.map((f, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <Input
+                        type="number" min={0} value={f.cantidad} disabled={!enModoEdicion}
+                        onChange={(e) =>
+                          setFletesExtra((prev) => prev.map((x, idx) => (idx === i ? { ...x, cantidad: Number(e.target.value) } : x)))
+                        }
+                        className="w-20"
+                        title="Viajes redondos del otro camión"
+                      />
+                      <span className="text-xs text-muted-foreground">
+                        viajes de otro camión{f.tercerizado ? " · tercerizado" : ""}
+                      </span>
+                      {enModoEdicion && (
+                        <button
+                          type="button"
+                          onClick={() => setFletesExtra((prev) => prev.filter((_, idx) => idx !== i))}
+                          className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                          aria-label="Quitar esta línea de flete"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  {enModoEdicion && (listaApoyos.length > 0 || fletesExtra.length > 0) && (
+                    <Button
+                      type="button" variant="outline" size="sm"
+                      onClick={() => setFletesExtra((prev) => [...prev, { cantidad: 1, tercerizado: false }])}
+                    >
+                      <Plus className="mr-1 h-3.5 w-3.5" /> Flete del apoyo (fue con su camión)
+                    </Button>
+                  )}
                   <p className="text-[11px] text-muted-foreground">
                     El costo del flete propio lo calcula Odoo con la tarifa vigente.
                   </p>

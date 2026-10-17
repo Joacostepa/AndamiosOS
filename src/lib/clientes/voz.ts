@@ -1,19 +1,21 @@
 // El saludo como nota de voz (pruebas del 17/10/2026, docs/sofia/handoff.md punto 14).
 //
 // Lo que eligió JS después de varias rondas de muestras (scripts/sofia-voz/):
-//   · el guion «H»: «Jorge, buen día. Tomás, de Andamios Buenos Aires, ¿en qué te ayudo?»
-//     (guionSaludoVoz en saludo.ts);
-//   · la voz «Tomás» de ElevenLabs con Eleven v4, estabilidad 0,85 y sin etiquetas de tono
-//     ([warmly] le sonó exagerado), acelerada ×1,15 (v4 no hace caso a `speed`);
+//   · el texto de un audio suyo de referencia: «Hola, Jorge, acá Tomás de Andamios Buenos Aires.
+//     Contame en qué te puedo ayudar.» (guionSaludoVoz en saludo.ts);
+//   · la voz «Tomás» de ElevenLabs con Eleven v4, sin etiquetas de tono ([warmly] le sonó
+//     exagerado) y con estabilidad 0,2: con 0,85 le dijeron que sonaba «demasiado perfecta»;
+//     acelerada ×1,25 (v4 no hace caso a `speed`);
 //   · que suene a un audio de WhatsApp grabado en la oficina y no a un micrófono prolijo: el fondo
 //     «oficina + depósito» (voz/fondo-oficina-deposito.mp3, de la API de efectos) va debajo de
-//     la voz ANTES del micrófono, la voz lejos del celular (más eco de cuarto, menos agudos), el
-//     micrófono del teléfono, el volumen automático que sube el ruido en las pausas, y Opus a
-//     24 kb/s y 16 kHz, el formato de las notas de voz de WhatsApp. Es la misma cadena que
-//     audio-whatsapp.py con armar(1.15, "ofidep-1", -16, "lejos").
+//     la voz ANTES del micrófono; la voz a un metro del celular (más eco de cuarto que voz
+//     directa, el eco con 8 ms de retraso, sin graves ni agudos de más y el fondo 3 dB más
+//     arriba); el micrófono del teléfono, el volumen automático que sube el ruido en las pausas,
+//     y Opus a 24 kb/s y 16 kHz, el formato de las notas de voz de WhatsApp. Es la misma cadena
+//     que audio-whatsapp.py con armar(1.25, "ofidep-1", -16, "1m").
 //
-// Cada audio se genera una sola vez por momento del día y nombre (claveSaludoVoz) y queda en
-// Storage (comercial/voz/saludo/v1/). Antes de guardarlo se transcribe y se compara con el guion
+// Cada audio se genera una sola vez por nombre (claveSaludoVoz) y queda en Storage
+// (comercial/voz/saludo/v2/; v1 era el guion anterior). Antes de guardarlo se transcribe y se compara con el guion
 // (audioDiceElGuion): si no coincide, se genera de nuevo; si tampoco, no hay audio y el turno
 // manda sólo el texto. Usa su propia clave de ElevenLabs (ELEVENLABS_VOZ_API_KEY, con permisos de
 // voz y de speech-to-text), no la del asistente de voz.
@@ -25,7 +27,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import ffmpeg from "ffmpeg-static";
-import { audioDiceElGuion, claveSaludoVoz, guionSaludoVoz } from "./saludo.ts";
+import { audioDiceElGuion, claveSaludoVoz, guionSaludoVoz, nombreParaSaludo } from "./saludo.ts";
 
 const correr = promisify(execFile);
 
@@ -35,7 +37,7 @@ const VOZ = "QK4xDwo9ESPHA4JNUpX3";
 const MODELO = "eleven_v4";
 const BUCKET = "comercial";
 /** Si cambia la voz, el guion o el sonido, se sube la versión y los audios se generan de nuevo. */
-const CARPETA = "voz/saludo/v1";
+const CARPETA = "voz/saludo/v2";
 const FONDO = path.join(process.cwd(), "src/lib/clientes/voz/fondo-oficina-deposito.mp3");
 const INTENTOS = 2;
 
@@ -51,7 +53,7 @@ async function hablar(texto: string): Promise<Buffer> {
   const res = await fetch(`${API}/text-to-speech/${VOZ}?output_format=mp3_44100_128`, {
     method: "POST",
     headers: { "xi-api-key": clave(), "Content-Type": "application/json" },
-    body: JSON.stringify({ text: texto, model_id: MODELO, voice_settings: { stability: 0.85 } }),
+    body: JSON.stringify({ text: texto, model_id: MODELO, voice_settings: { stability: 0.2 } }),
     signal: AbortSignal.timeout(30_000),
   });
   if (!res.ok) throw new Error(`ElevenLabs no generó la voz (${res.status}): ${(await res.text().catch(() => "")).slice(0, 200)}`);
@@ -71,17 +73,17 @@ async function transcribir(audio: Buffer): Promise<string> {
 
 /**
  * La cadena de audio-whatsapp.py en un solo ffmpeg. Entradas: 0 la voz, 1 el eco de un cuarto
- * (ruido que se apaga en unos 0,4 s), 2 el siseo del celular, 3 el fondo.
+ * (ruido que se apaga en unos 0,6 s y llega 8 ms tarde: las paredes), 2 el siseo del celular, 3 el fondo.
  */
 const FILTRO = [
-  "[0:a]atempo=1.15,loudnorm=I=-18:TP=-2,aresample=44100,adelay=350:all=1,apad=pad_dur=0.6,asplit[d][w]",
+  "[0:a]atempo=1.25,loudnorm=I=-18:TP=-2,aresample=44100,adelay=350:all=1,apad=pad_dur=0.6,asplit[d][w]",
   "[w][1:a]afir=dry=0:wet=1[r]",
-  "[d]lowpass=f=4500[dd]",
-  "[dd][r]amix=inputs=2:weights=5 5:normalize=1:duration=first[v]",
+  "[d]lowpass=f=4000,highpass=f=180[dd]",
+  "[dd][r]amix=inputs=2:weights=4 6:normalize=1:duration=first[v]",
   "[2:a]lowpass=f=1200[s]",
-  "[3:a]loudnorm=I=-34:TP=-4,aresample=44100[f]",
+  "[3:a]loudnorm=I=-31:TP=-4,aresample=44100[f]",
   "[v][s][f]amix=inputs=3:normalize=0:duration=first," +
-    "highpass=f=130,lowpass=f=6800,equalizer=f=250:t=q:w=1:g=-2,equalizer=f=3000:t=q:w=1.2:g=3," +
+    "highpass=f=130,lowpass=f=6800,equalizer=f=250:t=q:w=1:g=-4,equalizer=f=3000:t=q:w=1.2:g=3," +
     "dynaudnorm=f=120:g=11:m=12:p=0.9,acompressor=threshold=-22dB:ratio=4:attack=3:release=60:makeup=2," +
     "loudnorm=I=-16:TP=-1.5,aresample=16000[o]",
 ].join(";");
@@ -96,7 +98,7 @@ async function procesar(voz: Buffer): Promise<Buffer> {
     await correr(ffmpeg, [
       "-loglevel", "error", "-y",
       "-i", entrada,
-      "-f", "lavfi", "-i", "anoisesrc=d=0.6:c=pink:r=44100:a=1,volume='exp(-t*10)':eval=frame,lowpass=f=5000",
+      "-f", "lavfi", "-i", "anoisesrc=d=0.6:c=pink:r=44100:a=1,volume='exp(-t*6)':eval=frame,lowpass=f=5000,adelay=8",
       "-f", "lavfi", "-i", "anoisesrc=d=30:c=brown:r=44100:a=0.012",
       "-i", FONDO,
       "-filter_complex", FILTRO, "-map", "[o]",
@@ -108,10 +110,10 @@ async function procesar(voz: Buffer): Promise<Buffer> {
   }
 }
 
-/** El audio del saludo para este perfil y esta hora: el guardado, o uno nuevo verificado. */
-export async function audioSaludo(db: SupabaseClient, perfil: string | null, ahora: Date): Promise<AudioSaludo> {
-  const guion = guionSaludoVoz(perfil, ahora);
-  const archivo = `${CARPETA}/${claveSaludoVoz(perfil, ahora)}.ogg`;
+/** El audio del saludo para este perfil: el guardado, o uno nuevo verificado. */
+export async function audioSaludo(db: SupabaseClient, perfil: string | null): Promise<AudioSaludo> {
+  const guion = guionSaludoVoz(perfil);
+  const archivo = `${CARPETA}/${claveSaludoVoz(perfil)}.ogg`;
   const firmar = () => db.storage.from(BUCKET).createSignedUrl(archivo, 3600);
 
   const guardado = await firmar();
@@ -121,7 +123,7 @@ export async function audioSaludo(db: SupabaseClient, perfil: string | null, aho
   for (let i = 0; i < INTENTOS; i++) {
     const ogg = await procesar(await hablar(guion));
     const dijo = await transcribir(ogg);
-    if (!audioDiceElGuion(guion, dijo)) {
+    if (!audioDiceElGuion(guion, dijo, nombreParaSaludo(perfil))) {
       ultimo = dijo;
       continue;
     }

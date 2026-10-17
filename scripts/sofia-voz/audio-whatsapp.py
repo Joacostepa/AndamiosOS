@@ -1,7 +1,7 @@
 # Hace que el saludo suene como un audio de WhatsApp grabado con el celular, no como un micrófono de estudio (17/10/2026).
 # Ver docs/sofia/handoff.md, punto 14. JS eligió el saludo H con la voz de Tomás, y después «depósito, rápido» (×1,15),
 # con más fondo y la voz un poco más lejos del micrófono.
-# Uso: python3 -I scripts/sofia-voz/audio-whatsapp.py <toma.mp3> <ambientes: dir con oficina.mp3 y deposito.mp3> <salida> [ronda6|lejos|ofidep]
+# Uso: python3 -I scripts/sofia-voz/audio-whatsapp.py <toma.mp3> <ambientes: dir con oficina.mp3 y deposito.mp3> <salida> [ronda6|lejos|ofidep|uno <nombre>|afinar|distancia]
 # Cadena: velocidad → eco de cuarto → fondo debajo (antes del micrófono, así se ensucia junto con la voz) + siseo →
 # micrófono de celular → control automático de volumen (sube el ruido en las pausas) → Opus 24 kb/s a 16 kHz, como WhatsApp.
 # El .mp3 es para la página de muestras; en producción se manda el .ogg (queda en <salida>/tmp).
@@ -18,19 +18,30 @@ DIST = {
   "cerca": {"mezcla": "8 2", "decae": 20, "agudos": 9000, "graves": 2},
   "media": {"mezcla": "6 4", "decae": 14, "agudos": 6000, "graves": 0},
   "lejos": {"mezcla": "5 5", "decae": 10, "agudos": 4500, "graves": -2},
+  "mas-lejos": {"mezcla": "4 6", "decae": 8, "agudos": 3800, "graves": -4},
+  "muy-lejos": {"mezcla": "3 7", "decae": 7, "agudos": 3200, "graves": -5},
+  # 17/10, segunda vuelta: JS no notó diferencia entre «más lejos» y «muy lejos». La distancia se oye cuando el cuarto
+  # pesa más que la voz directa, el eco llega con retraso (las paredes), el fondo sube en proporción (la voz baja y la
+  # oficina no) y se pierden los graves de hablar pegado al teléfono. «hp» corta graves, «retraso» en ms, «fondo» en dB.
+  "1m": {"mezcla": "4 6", "decae": 6, "agudos": 4000, "graves": -4, "hp": 180, "retraso": 8, "fondo": 3},
+  "2m": {"mezcla": "25 75", "decae": 4.5, "agudos": 3400, "graves": -6, "hp": 240, "retraso": 14, "fondo": 6},
+  "3m": {"mezcla": "15 85", "decae": 3.5, "agudos": 2800, "graves": -8, "hp": 300, "retraso": 20, "fondo": 8},
 }
 def armar(vel, fondo, nivel, dist, nombre):
     d = DIST[dist]
-    ir = f"{T}/ir-{d['decae']}.wav"
+    ret = d.get("retraso", 0)
+    ir = f"{T}/ir-{d['decae']}-{ret}.wav"
     if not os.path.exists(ir):
-        run("-f", "lavfi", "-i", "anoisesrc=d=0.6:c=pink:r=44100:a=1", "-af", f"volume='exp(-t*{d['decae']})':eval=frame,lowpass=f=5000", "-ac", "1", ir)
-    vw = f"{T}/voz-{vel}.wav"
+        larga = 1.2 if d["decae"] < 6 else 0.6
+        run("-f", "lavfi", "-i", f"anoisesrc=d={larga}:c=pink:r=44100:a=1", "-af", f"volume='exp(-t*{d['decae']})':eval=frame,lowpass=f=5000{',adelay=%d' % ret if ret else ''}", "-ac", "1", ir)
+    nivel = nivel + d.get("fondo", 0)
+    vw = f"{T}/voz-{os.path.basename(SRC)}-{vel}.wav"  # por toma: si no, «uno» reusa la voz de otra
     if not os.path.exists(vw):
         run("-i", SRC, "-af", f"atempo={vel},loudnorm=I=-18:TP=-2", "-ar", "44100", "-ac", "1", vw)
     tot = dur(vw) + 0.9
     cel = CEL.replace("equalizer=f=250:t=q:w=1:g=2", f"equalizer=f=250:t=q:w=1:g={d['graves']}")
     entradas = ["-i", vw, "-i", ir, "-f", "lavfi", "-i", f"anoisesrc=d={tot:.2f}:c=brown:r=44100:a=0.012"]
-    fc = (f"[0:a]adelay=350:all=1,apad=pad_dur=0.6,asplit[d][w];[w][1:a]afir=dry=0:wet=1[r];[d]lowpass=f={d['agudos']}[dd];"
+    fc = (f"[0:a]adelay=350:all=1,apad=pad_dur=0.6,asplit[d][w];[w][1:a]afir=dry=0:wet=1[r];[d]lowpass=f={d['agudos']}{',highpass=f=%d' % d['hp'] if d.get('hp') else ''}[dd];"
           f"[dd][r]amix=inputs=2:weights={d['mezcla']}:normalize=1:duration=first[v];[2:a]lowpass=f=1200[s];")
     if fondo:
         entradas += ["-i", f"{AMB}/{fondo}.mp3"]
@@ -45,6 +56,15 @@ if MODO == "ronda6":  # sala, oficina y depósito, a ×1,15 y ×1,22, con la voz
     for vel in (1.15, 1.22):
         for fondo, nivel in ((None, 0), ("oficina", -21), ("deposito", -23)):
             armar(vel, fondo, nivel, "cerca", f"h-{fondo or 'sala'}-v{round(vel*100)}")
+elif MODO == "uno":  # la cadena elegida (×1,15, ofidep-1, -16 dB, lejos) para una toma; argv[5] = nombre de salida
+    armar(1.15, "ofidep-1", -16, "lejos", sys.argv[5])
+elif MODO == "distancia":  # ×1,25 (JS, 17/10) a 1, 2 y 3 metros del celular, y la de antes («lejos») para comparar
+    for dist in ("lejos", "1m", "2m", "3m"):
+        armar(1.25, "ofidep-1", -16, dist, f"tomas-v125-{dist}")
+elif MODO == "afinar":  # 17/10: la toma de Tomás con el texto de JS (estabilidad 0,2), más rápida y más lejos del micrófono
+    for vel in (1.20, 1.25):
+        for dist in ("mas-lejos", "muy-lejos"):
+            armar(vel, "ofidep-1", -16, dist, f"tomas-v{round(vel*100)}-{dist}")
 elif MODO == "ofidep":  # la que eligió JS (×1,15, -16 dB, lejos) con ambientes de oficina con el depósito atrás
     # ofidep-3 = la oficina caótica adelante y el depósito detrás de una puerta (sin agudos y 5 dB más bajo).
     run("-i", f"{AMB}/oficina.mp3", "-i", f"{AMB}/deposito.mp3", "-filter_complex",

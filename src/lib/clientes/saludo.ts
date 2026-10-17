@@ -114,24 +114,23 @@ export function saludoInicial(perfil: string | null | undefined, ahora: Date = n
 }
 
 /**
- * Lo que dice el audio del saludo (el guion «H» que eligió JS el 17/10), con el mismo nombre y
- * el mismo momento del día que el texto: «Jorge, buen día. Tomás, de Andamios Buenos Aires, ¿en
- * qué te ayudo?». Sin nombre: «Buen día. Tomás, de…». Lo dice la voz (voz.ts), no el modelo.
+ * Lo que dice el audio del saludo. Desde el 17/10 a la tarde, el texto de un audio que grabó JS
+ * de referencia: «Hola, Jorge, acá Tomás de Andamios Buenos Aires. Contame en qué te puedo
+ * ayudar.» Sin nombre: «Hola, acá Tomás de…». No depende de la hora (dice «hola»), así que hay un
+ * audio por nombre. Lo dice la voz (voz.ts), no el modelo.
  * Versión de pruebas: al publicar el número tiene que decir «asistente digital» (handoff, punto 0).
  */
-export function guionSaludoVoz(perfil: string | null | undefined, ahora: Date = new Date()): string {
+export function guionSaludoVoz(perfil: string | null | undefined): string {
   const nombre = nombreParaSaludo(perfil);
-  const momento = saludoDelMomento(ahora);
-  const cuerpo = `${NOMBRE_ASISTENTE}, de Andamios Buenos Aires, ¿en qué te ayudo?`;
-  return nombre ? `${nombre}, ${momento.toLowerCase()}. ${cuerpo}` : `${momento}. ${cuerpo}`;
+  const cuerpo = `acá ${NOMBRE_ASISTENTE} de Andamios Buenos Aires. Contame en qué te puedo ayudar.`;
+  return nombre ? `Hola, ${nombre}, ${cuerpo}` : `Hola, ${cuerpo}`;
 }
 
-/** Con qué nombre se guarda el audio: uno por momento del día y nombre («buen-dia-jorge»), así
- *  se genera una sola vez. «Ana» y «Anna» comparten audio: se pronuncian igual. */
-export function claveSaludoVoz(perfil: string | null | undefined, ahora: Date = new Date()): string {
+/** Con qué nombre se guarda el audio: uno por nombre («jorge», «sin-nombre»), así se genera una
+ *  sola vez. «Ana» y «Anna» comparten audio: se pronuncian igual. */
+export function claveSaludoVoz(perfil: string | null | undefined): string {
   const nombre = nombreParaSaludo(perfil);
-  const slug = (t: string) => normalizar(t).replace(/[^a-z]+/g, "-").replace(/^-|-$/g, "");
-  return `${slug(saludoDelMomento(ahora))}-${nombre ? slug(nombre) : "sin-nombre"}`;
+  return nombre ? normalizar(nombre).replace(/[^a-z]+/g, "-").replace(/^-|-$/g, "") : "sin-nombre";
 }
 
 /**
@@ -139,12 +138,11 @@ export function claveSaludoVoz(perfil: string | null | undefined, ahora: Date = 
  * 17/10), así que cada audio nuevo se transcribe y se compara. Tolera una palabra de relleno
  * perdida («en», «te»), pero nunca el nombre del cliente, el del agente ni el de la empresa.
  */
-export function audioDiceElGuion(guion: string, transcripcion: string | null | undefined): boolean {
+export function audioDiceElGuion(guion: string, transcripcion: string | null | undefined, nombreCliente: string | null = null): boolean {
   const palabras = (t: string) => normalizar(t).replace(/[^a-z ]/g, " ").split(" ").filter(Boolean);
   const dichas = new Set(palabras(transcripcion ?? ""));
   const faltan = palabras(guion).filter((p) => !dichas.has(p));
-  const nombre = palabras(guion)[0];
-  const claves = new Set([normalizar(NOMBRE_ASISTENTE), "andamios", "buenos", "aires", nombre]);
+  const claves = new Set([normalizar(NOMBRE_ASISTENTE), "andamios", "buenos", "aires", ...(nombreCliente ? palabras(nombreCliente) : [])]);
   return faltan.length <= 1 && !faltan.some((p) => claves.has(p));
 }
 

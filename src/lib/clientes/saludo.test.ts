@@ -142,33 +142,30 @@ test("esContestadorAutomatico: las respuestas automáticas de otros números (an
   }
 });
 
-test("el guion del audio («H», 17/10): con el nombre y el momento del día, o sin nombre", () => {
-  const manana = new Date("2026-10-16T12:00:00Z"); // 9:00 en Buenos Aires
-  const tarde = new Date("2026-10-16T18:30:00Z"); // 15:30
-  assert.equal(guionSaludoVoz("Jorge Pérez", manana), "Jorge, buen día. Tomás, de Andamios Buenos Aires, ¿en qué te ayudo?");
-  assert.equal(guionSaludoVoz("María José", tarde), "María, buenas tardes. Tomás, de Andamios Buenos Aires, ¿en qué te ayudo?");
-  assert.equal(guionSaludoVoz("Constructora Delta SRL", manana), "Buen día. Tomás, de Andamios Buenos Aires, ¿en qué te ayudo?");
-  assert.equal(guionSaludoVoz(null, tarde), "Buenas tardes. Tomás, de Andamios Buenos Aires, ¿en qué te ayudo?");
+test("el guion del audio (el texto del audio de JS, 17/10): con el nombre o sin nombre, a cualquier hora", () => {
+  assert.equal(guionSaludoVoz("Jorge Pérez"), "Hola, Jorge, acá Tomás de Andamios Buenos Aires. Contame en qué te puedo ayudar.");
+  assert.equal(guionSaludoVoz("maría josé"), "Hola, María, acá Tomás de Andamios Buenos Aires. Contame en qué te puedo ayudar.");
+  assert.equal(guionSaludoVoz("Constructora Delta SRL"), "Hola, acá Tomás de Andamios Buenos Aires. Contame en qué te puedo ayudar.");
+  assert.equal(guionSaludoVoz(null), "Hola, acá Tomás de Andamios Buenos Aires. Contame en qué te puedo ayudar.");
 });
 
-test("cada audio se guarda por momento del día y nombre", () => {
-  const manana = new Date("2026-10-16T12:00:00Z");
-  const noche = new Date("2026-10-17T01:00:00Z"); // 22:00 del 16
-  assert.equal(claveSaludoVoz("Jorge Pérez", manana), "buen-dia-jorge");
-  assert.equal(claveSaludoVoz("JORGE", manana), "buen-dia-jorge");
-  assert.equal(claveSaludoVoz("Rocío", noche), "buenas-noches-rocio");
-  assert.equal(claveSaludoVoz("Iñaki", manana), "buen-dia-inaki");
-  assert.equal(claveSaludoVoz("Jean-Pierre", manana), "buen-dia-jean-piere", "las letras dobles se juntan (normalizar): suena igual");
-  assert.equal(claveSaludoVoz("Constructora Delta SRL", manana), "buen-dia-sin-nombre");
+test("cada audio se guarda por nombre", () => {
+  assert.equal(claveSaludoVoz("Jorge Pérez"), "jorge");
+  assert.equal(claveSaludoVoz("JORGE"), "jorge");
+  assert.equal(claveSaludoVoz("Rocío"), "rocio");
+  assert.equal(claveSaludoVoz("Iñaki"), "inaki");
+  assert.equal(claveSaludoVoz("Jean-Pierre"), "jean-piere", "las letras dobles se juntan (normalizar): suena igual");
+  assert.equal(claveSaludoVoz("Constructora Delta SRL"), "sin-nombre");
 });
 
 test("audioDiceElGuion: tolera puntuación y una palabra de relleno, nunca los nombres", () => {
-  const g = "Jorge, buen día. Tomás, de Andamios Buenos Aires, ¿en qué te ayudo?";
-  assert.ok(audioDiceElGuion(g, "Jorge, buen día. Tomás, de Andamios Buenos Aires. ¿En qué te ayudo?"));
-  assert.ok(audioDiceElGuion(g, "jorge buen dia tomas de andamios buenos aires que te ayudo"), "falta «en»");
-  assert.ok(!audioDiceElGuion(g, "Jorge, buen día. Tomás, de Andami Buenos Aires, ¿en qué te ayudo?"), "se comió una sílaba");
-  assert.ok(!audioDiceElGuion(g, "Buen día. Tomás, de Andamios Buenos Aires, ¿en qué te ayudo?"), "sin el nombre del cliente");
-  assert.ok(!audioDiceElGuion(g, "Jorge, buen día. De Andamios Buenos Aires, ¿en qué te ayudo?"), "sin Tomás");
-  assert.ok(!audioDiceElGuion(g, ""));
-  assert.ok(!audioDiceElGuion(g, null));
+  const g = "Hola, Jorge, acá Tomás de Andamios Buenos Aires. Contame en qué te puedo ayudar.";
+  assert.ok(audioDiceElGuion(g, "Hola, Jorge. Acá Tomás, de Andamios Buenos Aires. Contame en qué te puedo ayudar", "Jorge"));
+  assert.ok(audioDiceElGuion(g, "hola jorge aca tomas de andamios buenos aires contame que te puedo ayudar", "Jorge"), "falta «en»");
+  assert.ok(!audioDiceElGuion(g, "Hola, José. Acá Tomás, de Andamios Buenos Aires. Contame, ¿qué tipo de obra?", "Jorge"), "a 3 metros entendía «José»");
+  assert.ok(!audioDiceElGuion(g, "Hola, Jorge, acá Tomás de Andami Buenos Aires. Contame en qué te puedo ayudar", "Jorge"), "se comió una sílaba");
+  assert.ok(!audioDiceElGuion(g, "Hola, acá Tomás de Andamios Buenos Aires. Contame en qué te puedo ayudar", "Jorge"), "sin el nombre del cliente");
+  assert.ok(!audioDiceElGuion(g, "Hola, Jorge, acá de Andamios Buenos Aires. Contame en qué te puedo ayudar", "Jorge"), "sin Tomás");
+  assert.ok(!audioDiceElGuion(g, "", "Jorge"));
+  assert.ok(!audioDiceElGuion(g, null, "Jorge"));
 });

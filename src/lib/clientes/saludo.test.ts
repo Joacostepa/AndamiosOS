@@ -169,3 +169,18 @@ test("audioDiceElGuion: tolera puntuación y una palabra de relleno, nunca los n
   assert.ok(!audioDiceElGuion(g, "", "Jorge"));
   assert.ok(!audioDiceElGuion(g, null, "Jorge"));
 });
+
+test("audioDiceElGuion: el nombre del cliente se compara por cómo suena (17/10: «Iair» transcripto «Jair»)", () => {
+  const con = (n: string) => `Hola, ${n}, acá Tomás de Andamios Buenos Aires. Contame... en qué te puedo ayudar.`;
+  const dijo = (n: string) => `Hola, ${n}. Acá Tomás, de Andamios Buenos Aires. Contame en qué te puedo ayudar`;
+  assert.ok(audioDiceElGuion(con("Iair"), dijo("Jair"), "Iair"));
+  assert.ok(audioDiceElGuion(con("Brian"), dijo("Bryan"), "Brian"));
+  assert.ok(audioDiceElGuion(con("Yésica"), dijo("Jésica"), "Yésica"));
+  assert.ok(audioDiceElGuion(con("Hernán"), dijo("Ernán"), "Hernán"));
+  assert.ok(audioDiceElGuion(con("Valentina"), dijo("Balentina"), "Valentina"));
+  assert.ok(audioDiceElGuion(con("Maximiliano"), dijo("Maximilano"), "Maximiliano"), "largo: dos letras");
+  assert.ok(!audioDiceElGuion(con("Jorge"), dijo("José"), "Jorge"));
+  assert.ok(!audioDiceElGuion(con("Ana"), dijo("Juan"), "Ana"), "no vale por «acá»");
+  assert.ok(audioDiceElGuion(con("Ana"), dijo("Anna"), "Ana"));
+  assert.ok(!audioDiceElGuion(con("Iair"), dijo("Jair").replace("Andamios", "Andami"), "Iair"), "la empresa sigue siendo obligatoria");
+});

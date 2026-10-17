@@ -133,16 +133,48 @@ export function claveSaludoVoz(perfil: string | null | undefined): string {
   return nombre ? normalizar(nombre).replace(/[^a-z]+/g, "-").replace(/^-|-$/g, "") : "sin-nombre";
 }
 
+/** Cómo suena un nombre: sin h, con b/v, s/z/c y y/ll/i iguales («Iair» y «Yair», «Brian» y «Bryan»). */
+function comoSuena(p: string): string {
+  return p.replace(/h/g, "").replace(/v/g, "b").replace(/z/g, "s").replace(/c([ei])/g, "s$1").replace(/ll/g, "y").replace(/y/g, "i");
+}
+
+/** Letras de diferencia entre dos palabras (Levenshtein). */
+function distancia(a: string, b: string): number {
+  const d = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    let previa = d[0];
+    d[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const t = d[j];
+      d[j] = Math.min(d[j] + 1, d[j - 1] + 1, previa + (a[i - 1] === b[j - 1] ? 0 : 1));
+      previa = t;
+    }
+  }
+  return d[b.length];
+}
+
 /**
  * ¿El audio dijo el guion? La voz a veces se come una sílaba («Andami Buenos Aires», pruebas del
  * 17/10), así que cada audio nuevo se transcribe y se compara. Tolera una palabra de relleno
- * perdida («en», «te»), pero nunca el nombre del cliente, el del agente ni el de la empresa.
+ * perdida («en», «te»), pero nunca el nombre del agente ni el de la empresa. El nombre del cliente
+ * se compara por cómo suena y con una letra de diferencia (dos si es largo; ninguna si tiene tres): el transcriptor
+ * escribe «Jair» por «Iair» o «Bryan» por «Brian» aunque el audio lo diga bien (17/10: el audio de
+ * «Iair» se descartó por eso). «José» por «Jorge» sigue sin pasar.
  */
 export function audioDiceElGuion(guion: string, transcripcion: string | null | undefined, nombreCliente: string | null = null): boolean {
   const palabras = (t: string) => normalizar(t).replace(/[^a-z ]/g, " ").split(" ").filter(Boolean);
-  const dichas = new Set(palabras(transcripcion ?? ""));
-  const faltan = palabras(guion).filter((p) => !dichas.has(p));
-  const claves = new Set([normalizar(NOMBRE_ASISTENTE), "andamios", "buenos", "aires", ...(nombreCliente ? palabras(nombreCliente) : [])]);
+  const dichas = palabras(transcripcion ?? "");
+  const nombre = new Set(nombreCliente ? palabras(nombreCliente) : []);
+  // El nombre se busca entre lo que no es parte del resto del saludo («Ana» no vale por «acá»).
+  const resto = new Set(palabras(guion).filter((p) => !nombre.has(p)));
+  const candidatas = dichas.filter((p) => !resto.has(p));
+  for (const n of nombre) {
+    const tope = n.length >= 7 ? 2 : n.length >= 4 ? 1 : 0;
+    if (!candidatas.some((p) => distancia(comoSuena(p), comoSuena(n)) <= tope)) return false;
+  }
+  const set = new Set(dichas);
+  const faltan = palabras(guion).filter((p) => !nombre.has(p) && !set.has(p));
+  const claves = new Set([normalizar(NOMBRE_ASISTENTE), "andamios", "buenos", "aires"]);
   return faltan.length <= 1 && !faltan.some((p) => claves.has(p));
 }
 

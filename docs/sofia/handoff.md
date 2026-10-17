@@ -98,7 +98,7 @@ JS **no quiere** correr los guiones de ataque (`scripts/test-agente-clientes.mts
 6. ~~El token permanente~~: hecho el 16/10 (usuario del sistema, no vence).
 7. **Más adelante:**
    - el paso 8, que es el seguimiento con plantillas y consentimiento;
-   - el paso 9, la tarifa del alquiler simple con Tamara;
+   - el paso 9, el alquiler simple fácil (ver el punto 13);
    - limpiar las WABA viejas del portfolio;
    - publicar el número en la web.
 8. **Analizar los chats de clientes del celular corporativo de JS para mejorar a Sofía** (idea de JS, 16/10).
@@ -122,6 +122,20 @@ JS **no quiere** correr los guiones de ataque (`scripts/test-agente-clientes.mts
 10. **Búsquedas laborales por Slack** (idea de JS, 16/10): que Sofía junte los datos de quien busca trabajo (nombre, puesto, zona, experiencia) y los mande ordenados por Slack al responsable de personal. Hoy sólo le dice «le paso tu mensaje al responsable de personal» y deriva con `fuera_de_tema`.
 11. **Lo que quedó de la propuesta del análisis de chats:** D4 (campos nuevos en la ficha: altura en metros, tiempo de obra, quién arma, silleteros, etapa de decisión, quién decide, origen), D7 (cliente que vuelve, depende del paso 2b), D8 (aviso si un pedido pasa 24 a 48 h sin respuesta) y la bandera `urgente` para «para hoy» y «para mañana».
 12. ~~Confirmar el echeq~~: JS confirmó el 16/10 que se acepta (transferencia o echeq, nunca efectivo).
+13. **Alquiler simple que cotiza Sofía (pendiente; JS quiere trabajarlo bien en otra sesión, 16/10).** La idea es un «alquiler simple fácil», como la bandeja: reglas escritas, borrador con el cotizador de la app y la misma tarjeta de aprobación.
+   - **Por qué:** es un tercio de los pedidos (unos 1.000 de 3.000 chats) y donde más se pierde por demora: unos 145 chats terminan en «te va a contactar ventas».
+   - **Lo que ya existe en el cotizador:**
+     - la «Lista de alquiler junio 2026» (`lista_alquiler` y `lista_alquiler_piezas`, 48 piezas por componente);
+     - el canon de 30 días es la lista más `alquiler_recargo_lista_pct` (80 %);
+     - el período mínimo es de 30 días (`periodo_minimo_dias`) y la renovación es al 100 %;
+     - los fletes: GBA cercano $ 850.000 y La Plata $ 2.500.000; **el de CABA no tiene monto** («según volumen y acceso»);
+     - el módulo del motor es `cotizarAlquiler` en `src/lib/cotizador/alquiler.ts`.
+   - **Lo que hay que definir con JS (y Tamara) antes de programarlo:**
+     1. el flete en CABA: un monto fijo, escalones por cantidad, o que al principio sólo salga fácil si retira en el depósito;
+     2. qué es un «cuerpo» o «módulo» en la lista: el cliente pide módulos y la lista está por componente (¿módulo STD = 1 bastidor de 1,30 m?). Sofía no puede deducirlo, porque sería calcular la estructura;
+     3. **la lista con el 80 % no coincide con lo que se cobra en Odoo.** En las órdenes desde julio, el módulo STD sale entre 13.000 y 18.000 (la lista da unos 15.500: parecido), pero la baranda sale 13.000 a 18.000 (la lista da unos 6.200), el tablón de 2,50 sale 13.000 a 18.000 (la lista da unos 22.200) y el juego de 4 ruedas, 30.000 (la lista da unos 160.000). Hay que decidir cuál vale. En Odoo los productos tienen precio de lista 1: el precio lo escribe a mano quien arma la orden;
+     4. el tope de cantidad para que salga solo y si hay que chequear stock.
+   - **Reglas propuestas para «fácil»:** el cliente sabe qué piezas quiere (sin calcular nada), todas están en la lista, retira o es una entrega en CABA con flete definido, sin palabras de alerta y sin deuda (F7 ya existe).
 
 ## Historia: la charla del 12/10
 

@@ -1,4 +1,4 @@
-# Handoff — Tablero de planificación (actualizado 2026-10-14)
+# Handoff — Tablero de planificación (actualizado 2026-10-17)
 
 Para retomar en una sesión nueva: "Leé docs/tablero-planificacion/handoff.md y seguimos con las
 mejoras del tablero". Acá van el estado, lo pendiente y las mejoras pedidas, la más nueva arriba.
@@ -13,20 +13,13 @@ cosas, así que ante la duda manda el código y los comentarios largos que tiene
 
 ## Pendiente ahora
 
-1. **Probar la ficha nueva de la OT y la bandeja nueva en el tablero publicado** (09/10, ver abajo). Se validó con
-   `tsc` y `eslint`, pero nadie la vio andando: el dev local redirige a `/login` y no había
-   sesión. Mirar sobre todo "Planificar…" desde la bandeja, que la ficha pase sola a modo grilla
-   al planificar, las flechas ‹ › y el panel a ancho completo en el celular.
-2. **Ver la tapa de suspensión andando con un corrimiento real.** La del 29/09 JS ya la vio
+1. **Ver la tapa de suspensión andando con un corrimiento real.** La del 29/09 JS ya la vio
    (02/10) y pidió más color: se cambió a la opción B, que falta mirar en el tablero publicado.
-3. **Probar en el tablero publicado la tarjeta y el encabezado nuevos de la grilla** (09/10):
-   sobre todo que "libre X j" y "N pasadas" cierren con lo que se ve, y la dirección pegada al
-   scrollear un bloque largo.
-4. **Ver el casco de SyH en el tablero publicado** (13–14/10, ver abajo): que aparezca en
-   amarillo en las tarjetas de las obras con técnico (grilla y bandeja, claro y oscuro) y el
-   "N con SyH" en un día con dos.
-5. **Lo que dejó la auditoría del 08/10** (detalle abajo, en "Auditoría UX y técnica"). Lo más
+2. **Lo que dejó la auditoría del 08/10** (detalle abajo, en "Auditoría UX y técnica"). Lo más
    urgente: el candado que falla abierto para Depósito y Campo, y la RLS abierta.
+
+**Cerrado el 17/10 (JS lo dio por terminado):** la ficha nueva de la OT y la bandeja nueva
+(09/10), la tarjeta y el encabezado nuevos de la grilla (09/10) y el casco de SyH (13–14/10).
 
 ---
 
@@ -47,7 +40,7 @@ NOSOTROS ponemos el técnico; no confundir con `x_hab_syh_*`, el contacto de SyH
 - **Encabezado del día:** "· 🪖 N con SyH" en rojo cuando caen **dos o más** obras con técnico
   el mismo día, contando todas las cuadrillas (también las filtradas). El tooltip lista las
   direcciones. Con una sola no dice nada.
-- Se validó con `tsc`, `eslint` y la consulta contra Odoo; falta verlo en el publicado.
+- Se validó con `tsc`, `eslint` y la consulta contra Odoo; JS lo dio por terminado el 17/10.
 
 **14/10, el casco en amarillo (JS: "de un color fuerte, como si fuera una alerta"):** de tres
 variantes (casco amarillo de obra, chip naranja lleno, casco rojo) JS eligió la primera. El

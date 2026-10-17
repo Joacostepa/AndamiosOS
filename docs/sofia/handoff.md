@@ -30,11 +30,11 @@ Para retomar, decí: «Leé docs/sofia/handoff.md y seguimos con el CRM de Whats
 | El nombre del cliente ya no cuenta como «pide una persona» | `facil.ts` (los nombres del equipo cuentan sólo si los pide: «hablar con Jorge», «¿está Gabriel?») | ✅ En producción. Era el motivo de que «a nombre de Joaquín» saliera no fácil |
 | La tarjeta del técnico dice por qué la bandeja no salió fácil | `porQueNoFacil` (pedir_tecnico → payload → tarjeta) | ✅ En producción. Sofía sigue viendo sólo el motivo genérico |
 | **El agente se llama Tomás** (17/10) | El saludo, el prompt (en masculino), la bandeja, la tarjeta, los eventos y las etiquetas de Parámetros | ✅ En producción (`ce18cdc`, migración `20261021000001` aplicada) |
-| **Saludo con nota de voz** (17/10) | `voz.ts` (genera, procesa con ffmpeg, verifica con speech-to-text y guarda en Storage `comercial/voz/saludo/v1/`), `mandarNotaDeVoz` en `envio.ts`, `enviarAudio` en `whatsapp/api.ts`; interruptor `clientes_saludo_voz` = 1 | ✅ En producción, con `ELEVENLABS_VOZ_API_KEY` en Vercel. Si el audio falla, sale sólo el texto y la charla anota «No salió el audio del saludo». Falta que JS lo pruebe por WhatsApp |
+| **Saludo con nota de voz** (17/10) | `voz.ts` (genera, procesa con ffmpeg, verifica con speech-to-text y guarda en Storage `comercial/voz/saludo/v2/`), `mandarNotaDeVoz` en `envio.ts`, `enviarAudio` en `whatsapp/api.ts`; interruptor `clientes_saludo_voz` = 1 | ✅ En producción, con `ELEVENLABS_VOZ_API_KEY` en Vercel. Si el audio falla, sale sólo el texto y la charla anota «No salió el audio del saludo». Falta que JS lo pruebe por WhatsApp |
 | Perfil del WhatsApp de clientes | logo (aro rojo), info «Andamios y bandejas de protección · CABA y GBA», descripción, Maturín 2570, info@…, la web y la categoría | ✅ Cargado por API el 16/10 |
 
 **El saludo** (decisión de JS, 15 y 16/10; con voz y con Tomás desde el 17/10). Lo arma el código, una sola vez, y el nombre sale del perfil de WhatsApp. Sale **sólo como nota de voz** (WhatsApp le pone la transcripción abajo; JS lo probó el 17/10 y pidió sacar el texto, que repetía lo mismo):
-> 🎤 «Carlos, buen día. Tomás, de Andamios Buenos Aires, ¿en qué te ayudo?»
+> 🎤 «Hola, Carlos, acá Tomás de Andamios Buenos Aires. Contame en qué te puedo ayudar.» (desde el 17/10 a la tarde; ver el punto 14, «Ronda final»)
 
 Si el audio falla (o `clientes_saludo_voz` = 0), sale el texto:
 > ¡Buen día Carlos! Acá Tomás de Andamios Buenos Aires. Contame en qué te puedo ayudar.
@@ -96,7 +96,7 @@ JS **no quiere** correr los guiones de ataque (`scripts/test-agente-clientes.mts
 0. **⚠️ ANTES DE PUBLICAR EL NÚMERO: el saludo (el texto Y el audio) tiene que decir «asistente digital».**
    - El 16/10, JS sacó «asistente digital» del saludo (`CUERPO` en `src/lib/clientes/saludo.ts`, commit `361cb44`) para las pruebas internas: «hasta que lancemos vamos a dejarlo así». El 17/10 confirmó que la versión de lanzamiento del audio se hace después.
    - Hoy dice «¡Buen día Joaquin! Acá Tomás de Andamios Buenos Aires…» y el audio «Joaquin, buen día. Tomás, de Andamios Buenos Aires, ¿en qué te ayudo?».
-   - Para lanzar: cambiar `CUERPO` y `guionSaludoVoz` en `saludo.ts` (por ejemplo «Tomás, asistente digital de Andamios Buenos Aires, ¿en qué te ayudo?») y **subir `CARPETA` a `voz/saludo/v2` en `voz.ts`**, así no se reusan los audios viejos.
+   - Para lanzar: cambiar `CUERPO` y `guionSaludoVoz` en `saludo.ts` (por ejemplo «Tomás, asistente digital de Andamios Buenos Aires, ¿en qué te ayudo?») y **subir `CARPETA` a `voz/saludo/v3` en `voz.ts`**, así no se reusan los audios viejos.
    - Mientras el número lo tenga sólo JS, no confunde a nadie. Ante un cliente real, Tomás tiene que decir que es un asistente digital: lo piden las condiciones de uso de Claude.
 0b. ~~Cargar `ELEVENLABS_VOZ_API_KEY` en Vercel~~: **hecho el 17/10** por CLI (`vercel env add`, a pedido de JS) y redesplegado. El valor es la clave «Sofía saludo» de ElevenLabs, la misma que está en `.env.local` como `ELEVENLABS_API_KEY` y ahora también como `ELEVENLABS_VOZ_API_KEY`. Tiene permisos de TTS y speech-to-text. La `ELEVENLABS_API_KEY` de Vercel es otra (la de transcribir) y no se toca.
 1. **Que JS pruebe a Tomás** (el saludo con voz, el catastro, «¿sos un bot?», un descuento, «tabla floja») y la tarjeta. **Aprobar crea una orden real en Odoo** (en borrador): borrarla después, o usar «Lo tomo yo».
@@ -207,9 +207,21 @@ JS **no quiere** correr los guiones de ataque (`scripts/test-agente-clientes.mts
        - Velocidad ×1,15, con el fondo **`amb-ofidep-1.mp3`** a -16 dB de la voz y la voz «lejos».
        - Se procesa como un audio de WhatsApp: `audio-whatsapp.py`, `armar(1.15, "ofidep-1", -16, "lejos", …)`, en Opus a 24 kb/s.
      - **Programado y desplegado el 17/10** (`ce18cdc`): el agente pasa a llamarse Tomás en todos lados (decisión de JS) y el saludo sale como nota de voz y después el texto (ver la tabla de arriba). La versión de lanzamiento con «asistente digital» queda para después (punto 0).
-       - Cómo funciona: `voz.ts` genera con v4, procesa con la misma cadena de `audio-whatsapp.py` (con `ffmpeg-static`), transcribe y compara (`audioDiceElGuion`: si se come el nombre o «Andamios», lo genera de nuevo; dos intentos), guarda en Storage por momento del día y nombre y lo manda con `voice: true` (nota de voz). La primera vez tarda unos 4 s; después, 0,3 s.
+       - Cómo funciona: `voz.ts` genera con v4, procesa con la misma cadena de `audio-whatsapp.py` (con `ffmpeg-static`), transcribe y compara (`audioDiceElGuion`: si se come el nombre o «Andamios», lo genera de nuevo; dos intentos), guarda en Storage por nombre y lo manda con `voice: true` (nota de voz). La primera vez tarda unos 4 s; después, 0,3 s.
        - Probado desde la Mac contra Storage: `buenas-tardes-joaquin.ogg` quedó generado (Ogg/Opus, 4,9 s, 14 KB).
        - **Probado por JS el 17/10 a las 13:52:** llegó como nota de voz (con la onda, el micrófono y el logo) y WhatsApp mostró la transcripción. Desde `5ef0f1c` sale sólo el audio. Si en el celular llega como audio común y no como nota de voz (sin la onda ni la foto del perfil), Meta ignoró `voice: true`: revisar el formato.
+     - **Ronda final (17/10 a la tarde): «demasiado perfecta».** A JS le dijeron que la voz de Tomás sonaba demasiado perfecta.
+       - Se probó con menos estabilidad, con «eh» y con respiración (`menos-perfecto.py`).
+       - JS mandó un audio suyo de referencia: «Hola, Jorge, acá Joaquín de Andamios Buenos Aires. Contame en qué te puedo ayudar». Queda en `~/Downloads`; no está en el repo.
+       - Comparado: la misma velocidad (3,5 palabras/s), pero la voz de JS sube y baja (LRA 4,6 LU) y la de Tomás sale pareja (1,0 LU). La voz de ElevenLabs ya sale bastante pareja aun con estabilidad baja.
+       - Speech-to-speech (la grabación de JS con la voz de Tomás) daría la entonación de JS, pero la clave «Sofía saludo» no tiene ese permiso (401). Además el nombre cambia en cada charla: habría que grabar una versión sin nombre.
+       - **✅ ELEGIDO Y EN PRODUCCIÓN (`4b68f81`):**
+         - el texto de JS con Tomás: «Hola, Jorge, acá Tomás de Andamios Buenos Aires. Contame en qué te puedo ayudar.»;
+         - estabilidad **0,2**, a **×1,25**;
+         - la voz **a un metro del celular**: el modo `1m` de `audio-whatsapp.py`, con más cuarto que voz directa (4:6), el eco con 8 ms de retraso, sin graves de cercanía (highpass de 180 Hz) y el fondo 3 dB más arriba;
+         - mismo fondo (oficina + depósito 1);
+         - los audios en `voz/saludo/v2/`, uno por nombre (ya no por momento del día). `joaquin.ogg` y `jorge.ogg` ya están generados.
+       - «Más lejos» y «muy lejos» (cambios chicos) no se notaban. A 3 metros, speech-to-text entendía «José» por «Jorge»: el control lo descartaría.
    - **Para seguir (antes de elegir):** probar sin ambiente y con otra prosodia (por ejemplo «¡Hola Jorge, buen día! ¿Cómo andás? …»), estabilidad 0 en v3, otras voces con v3, o grabar una voz real con consentimiento. Todavía no hay nada programado en Sofía.
 
 ## Historia: la charla del 12/10

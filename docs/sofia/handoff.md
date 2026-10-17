@@ -1,6 +1,8 @@
-# Handoff: CRM con Sofía, el agente de WhatsApp para clientes
+# Handoff: CRM con Tomás (antes Sofía), el agente de WhatsApp para clientes
 
-**Actualizado el 16/10/2026.** El estado de abajo es el vigente. La historia del 12/10 está más abajo, en «Historia: la charla del 12/10».
+**Actualizado el 17/10/2026.** **Desde el 17/10 el agente se llama Tomás** (JS eligió una voz de hombre para el saludo con audio). La carpeta, los nombres internos del código (`atenderConSofia`, `FichaSofia`…) y la historia de abajo siguen diciendo Sofía.
+
+ El estado de abajo es el vigente. La historia del 12/10 está más abajo, en «Historia: la charla del 12/10».
 
 Para retomar, decí: «Leé docs/sofia/handoff.md y seguimos con el CRM de WhatsApp».
 
@@ -27,10 +29,15 @@ Para retomar, decí: «Leé docs/sofia/handoff.md y seguimos con el CRM de Whats
 | Botón «Borrar» la charla (sólo admin, para probar de cero) | `borrarCharla` en `bandeja.ts`, `DELETE /api/comercial/clientes/conversaciones/:id` | ✅ En producción. No toca Odoo ni el WhatsApp del cliente |
 | El nombre del cliente ya no cuenta como «pide una persona» | `facil.ts` (los nombres del equipo cuentan sólo si los pide: «hablar con Jorge», «¿está Gabriel?») | ✅ En producción. Era el motivo de que «a nombre de Joaquín» saliera no fácil |
 | La tarjeta del técnico dice por qué la bandeja no salió fácil | `porQueNoFacil` (pedir_tecnico → payload → tarjeta) | ✅ En producción. Sofía sigue viendo sólo el motivo genérico |
+| **El agente se llama Tomás** (17/10) | El saludo, el prompt (en masculino), la bandeja, la tarjeta, los eventos y las etiquetas de Parámetros | ✅ En producción (`ce18cdc`, migración `20261021000001` aplicada) |
+| **Saludo con nota de voz** (17/10) | `voz.ts` (genera, procesa con ffmpeg, verifica con speech-to-text y guarda en Storage `comercial/voz/saludo/v1/`), `mandarNotaDeVoz` en `envio.ts`, `enviarAudio` en `whatsapp/api.ts`; interruptor `clientes_saludo_voz` = 1 | ✅ Desplegado. **Falta que JS cargue `ELEVENLABS_VOZ_API_KEY` en Vercel** (ver «Lo que falta», punto 0b); sin eso sale sólo el texto y la charla anota «No salió el audio del saludo» |
 | Perfil del WhatsApp de clientes | logo (aro rojo), info «Andamios y bandejas de protección · CABA y GBA», descripción, Maturín 2570, info@…, la web y la categoría | ✅ Cargado por API el 16/10 |
 
-**El saludo** (decisión de JS, 15 y 16/10). Lo arma el código, una sola vez, y el nombre sale del perfil de WhatsApp:
-> ¡Buen día Carlos! Acá Sofía, asistente digital de Andamios Buenos Aires. Contame en qué te puedo ayudar.
+**El saludo** (decisión de JS, 15 y 16/10; con voz y con Tomás desde el 17/10). Lo arma el código, una sola vez, y el nombre sale del perfil de WhatsApp. Primero una nota de voz y después el texto:
+> 🎤 «Carlos, buen día. Tomás, de Andamios Buenos Aires, ¿en qué te ayudo?»
+> ¡Buen día Carlos! Acá Tomás de Andamios Buenos Aires. Contame en qué te puedo ayudar.
+
+Así están para las pruebas internas. El de lanzamiento, abajo, tiene que decir «asistente digital».
 
 - Hasta las 12:59 dice buen día, hasta las 19:59 buenas tardes y después buenas noches.
 - Sin línea de aviso al pie. Si le preguntan, Sofía **nunca niega ser una IA**.
@@ -84,11 +91,13 @@ JS **no quiere** correr los guiones de ataque (`scripts/test-agente-clientes.mts
 
 ## Lo que falta
 
-0. **⚠️ ANTES DE PUBLICAR EL NÚMERO: el saludo tiene que volver a decir «asistente digital».**
-   - El 16/10, JS sacó «asistente digital» del saludo (`CUERPO` en `src/lib/clientes/saludo.ts`, commit `361cb44`) para las pruebas internas: «hasta que lancemos vamos a dejarlo así».
-   - Hoy dice «¡Buen día Joaquin! Acá Sofía de Andamios Buenos Aires…».
-   - Mientras el número lo tenga sólo JS, no confunde a nadie. Ante un cliente real, Sofía tiene que decir que es una asistente digital: lo piden las condiciones de uso de Claude.
-1. **Que JS pruebe a Sofía** (el saludo, el catastro, «¿sos un bot?», un descuento, «tabla floja») y la tarjeta. **Aprobar crea una orden real en Odoo** (en borrador): borrarla después, o usar «Lo tomo yo».
+0. **⚠️ ANTES DE PUBLICAR EL NÚMERO: el saludo (el texto Y el audio) tiene que decir «asistente digital».**
+   - El 16/10, JS sacó «asistente digital» del saludo (`CUERPO` en `src/lib/clientes/saludo.ts`, commit `361cb44`) para las pruebas internas: «hasta que lancemos vamos a dejarlo así». El 17/10 confirmó que la versión de lanzamiento del audio se hace después.
+   - Hoy dice «¡Buen día Joaquin! Acá Tomás de Andamios Buenos Aires…» y el audio «Joaquin, buen día. Tomás, de Andamios Buenos Aires, ¿en qué te ayudo?».
+   - Para lanzar: cambiar `CUERPO` y `guionSaludoVoz` en `saludo.ts` (por ejemplo «Tomás, asistente digital de Andamios Buenos Aires, ¿en qué te ayudo?») y **subir `CARPETA` a `voz/saludo/v2` en `voz.ts`**, así no se reusan los audios viejos.
+   - Mientras el número lo tenga sólo JS, no confunde a nadie. Ante un cliente real, Tomás tiene que decir que es un asistente digital: lo piden las condiciones de uso de Claude.
+0b. **Cargar `ELEVENLABS_VOZ_API_KEY` en Vercel (Production) y volver a desplegar** (lo hace JS: Claude no tiene permiso para escribir secretos). El valor es la clave «Sofía saludo» de ElevenLabs, la misma que está en `.env.local` como `ELEVENLABS_API_KEY` y ahora también como `ELEVENLABS_VOZ_API_KEY`. Tiene permisos de TTS y speech-to-text. La `ELEVENLABS_API_KEY` de Vercel es otra (la de transcribir) y no se toca.
+1. **Que JS pruebe a Tomás** (el saludo con voz, el catastro, «¿sos un bot?», un descuento, «tabla floja») y la tarjeta. **Aprobar crea una orden real en Odoo** (en borrador): borrarla después, o usar «Lo tomo yo».
 2. **La plantilla de Meta «Tu presupuesto está listo»**, con el PDF de encabezado, para mandar con la ventana de 24 h cerrada. Hoy queda «falta la plantilla».
 3. **Paso 2b:**
    - ✅ **Hecho el 16/10 a la noche:** la búsqueda del cliente en Odoo (`identificarCliente` en `src/lib/odoo/comercial.ts`). Busca por `phone_sanitized` en partners, contactos y leads, con y sin el 9 del celular (`variantesTelefonoOdoo`), y por CUIT si lo dio. Devuelve F5 (orden confirmada en 12 meses), F7 (facturas vencidas) y la última orden ganada para la asignación. Si Odoo no contesta, sigue contando como «no se pudo revisar».
@@ -148,7 +157,58 @@ JS **no quiere** correr los guiones de ataque (`scripts/test-agente-clientes.mts
      4. ambiente de fondo: primero un ruido sintético (casi no se oía) y después una oficina con teclado, generada con la API de efectos de ElevenLabs, a tres niveles. **JS: «suena raro».**
    - **Lo técnico ya resuelto:** ElevenLabs entrega directo `opus_48000_32` en contenedor Ogg (`OggS`), el formato de nota de voz de WhatsApp, sin convertir. El audio se guarda por nombre, para generarlo una sola vez. Los scripts y las dos tomas de oficina están en `scripts/sofia-voz/`.
    - **La clave de ElevenLabs para estas pruebas** está en `.env.local` (`ELEVENLABS_API_KEY`, «Sofía saludo»), con permisos de TTS, voces, efectos de sonido y speech-to-text. En Vercel hay otra clave, la de transcribir los audios.
-   - **Para seguir:** probar sin ambiente y con otra prosodia (por ejemplo «¡Hola Jorge, buen día! ¿Cómo andás? …»), estabilidad 0 en v3, otras voces con v3, o grabar una voz real con consentimiento. Todavía no hay nada programado en Sofía.
+   - **17/10: Eleven v4** (salió el 28/9). Tu cuenta tiene `eleven_v4` y `eleven_v4_turbo`.
+     - Muestras con la voz «Sofía» comparadas con v3, generadas con `scripts/sofia-voz/generar-v4.py`: https://claude.ai/artifact/M58oMr4JiVgq9uCBxaWcFD.
+     - v4 hace una pausa real en «Contame... ¿en qué…?», que en v3 sonaba cortada. También habla más lento: 7,1 s contra 5,7 s.
+     - v4 también ignora `speed`. Se acelera con ffmpeg (`atempo` 1,12).
+     - En speech-to-text, v4 y el Turbo a velocidad normal dijeron el texto exacto. El Turbo con velocidad 1,12 se comió «Andamios» 2 veces de 3.
+     - **Ronda 2 (17/10), a pedido de JS:** le gustó v4, pero la calidez de `[warmly]` le pareció exagerada y pidió algo más normal, una voz de mujer y una de hombre y más ruido de fondo.
+       - Va sin etiqueta, con estabilidad 0,85.
+       - Mujer: «Sofía». Hombre: «Tomás» (`QK4xDwo9ESPHA4JNUpX3`), con «Leandro» (`6NviSCQ9jcQTnryEFRc1`) de alternativa.
+       - Las etiquetas de ambiente en el texto, como «[in a busy office]», no agregan ruido en v4: se midió el piso de ruido. El fondo se mezcla con `scripts/sofia-voz/mezclar-v4.py`.
+       - Los ambientes son `amb-v4-oficina.mp3` y `amb-v4-deposito.mp3`, a -30 LUFS (medio) o -26 LUFS (notorio). La voz queda en -16 LUFS y acelerada ×1,10.
+       - Las mezclas en «notorio» dan el texto exacto en speech-to-text.
+     - **Ronda 3 (17/10):** saludos cortos, de unos 4,4 s, con Sofía y Tomás (`generar-cortos.py`). A JS le gustaron «mucho más».
+       - El candidato es el A: «¡Hola Jorge, buen día! Soy Sofía, de Andamios Buenos Aires. ¿En qué te ayudo?».
+       - Para el lanzamiento: «Soy Sofía, asistente digital de Andamios Buenos Aires».
+     - **Ronda 4 (17/10):** la oficina tranquila le sonó a call center y pidió «bastante más quilombo».
+       - Hay cuatro fondos nuevos: oficina caótica, depósito u obra, vereda y camioneta (`amb-q-*.mp3`, generados con `ambientes-quilombo.py`).
+       - Van a -23 LUFS (fuerte) o -20 LUFS (muy fuerte), con la voz en -16 LUFS. En «muy fuerte», el speech-to-text sigue dando el texto exacto.
+     - **Ronda 5 (17/10):** ninguno de los fondos de la ronda 4 le cerró a JS («se nota muy falso»).
+       - Pidió sólo la voz de hombre, Tomás, y que no vuelva la de mujer.
+       - Los cuatro saludos cortos (A a D) van limpios o con `nota-de-voz.py`: eco de cuarto chico, micrófono de celular y ruido de sala bajo, sin fondo inventado.
+       - La página de muestras ya tiene sólo a Tomás.
+       - Pendiente: si la voz es de hombre, ¿el agente sigue llamándose Sofía?
+       - Lo más natural sería un fondo grabado de verdad en la oficina o el depósito.
+     - **Ronda 6 (17/10): JS eligió el saludo H.**
+       - Texto: «Jorge, buen día. Tomás, de Andamios Buenos Aires, ¿en qué te ayudo?».
+       - JS prefiere nombrar la empresa: el cliente suele pedir precio en varios lados.
+       - Pidió el saludo más rápido y que suene a «audio de WhatsApp, no un mic mega prolijo».
+       - `audio-whatsapp.py` arma el audio:
+         - velocidad ×1,15 o ×1,22;
+         - eco de cuarto;
+         - fondo (sala, oficina o depósito) debajo de la voz, antes de pasar por el micrófono;
+         - el micrófono del celular y el volumen automático (`dynaudnorm`);
+         - salida en Opus a 24 kb/s y 16 kHz, en `.ogg`, que es lo que se mandaría por WhatsApp.
+     - **Ronda 7 (17/10):** a JS le gustó «depósito, rápido» (×1,15) y pidió más fondo y la voz un poco más lejos del micrófono.
+       - El modo `lejos` de `audio-whatsapp.py` arma el depósito a -19 o -16 dB de la voz, con la voz a distancia «media» o «lejos».
+       - Antes el depósito iba a -23 dB, con la voz «cerca».
+       - JS eligió **«mucho más fondo, lejos»**: -16 dB y la voz lejos.
+     - **Ronda 8 (17/10):** tres entornos de oficina con el depósito y los caños atrás, con la configuración elegida.
+       - `amb-ofidep-1.mp3`: la puerta al depósito abierta.
+       - `amb-ofidep-2.mp3`: los caños del otro lado de la pared.
+       - `amb-ofidep-3.mp3`: la oficina caótica más el depósito filtrado.
+       - Se arman con `generar-ambiente.py` y el modo `ofidep` de `audio-whatsapp.py`.
+       - Falta que JS elija el entorno.
+     - **✅ ELEGIDO (17/10):**
+       - Saludo H con la voz de Tomás (`QK4xDwo9ESPHA4JNUpX3`) en `eleven_v4`, estabilidad 0,85, sin etiquetas.
+       - Velocidad ×1,15, con el fondo **`amb-ofidep-1.mp3`** a -16 dB de la voz y la voz «lejos».
+       - Se procesa como un audio de WhatsApp: `audio-whatsapp.py`, `armar(1.15, "ofidep-1", -16, "lejos", …)`, en Opus a 24 kb/s.
+     - **Programado y desplegado el 17/10** (`ce18cdc`): el agente pasa a llamarse Tomás en todos lados (decisión de JS) y el saludo sale como nota de voz y después el texto (ver la tabla de arriba). La versión de lanzamiento con «asistente digital» queda para después (punto 0).
+       - Cómo funciona: `voz.ts` genera con v4, procesa con la misma cadena de `audio-whatsapp.py` (con `ffmpeg-static`), transcribe y compara (`audioDiceElGuion`: si se come el nombre o «Andamios», lo genera de nuevo; dos intentos), guarda en Storage por momento del día y nombre y lo manda con `voice: true` (nota de voz). La primera vez tarda unos 4 s; después, 0,3 s.
+       - Probado desde la Mac contra Storage: `buenas-tardes-joaquin.ogg` quedó generado (Ogg/Opus, 4,9 s, 14 KB).
+       - Falta: la clave en Vercel (punto 0b) y que JS lo pruebe por WhatsApp. Si en el celular llega como audio común y no como nota de voz (sin la onda ni la foto del perfil), Meta ignoró `voice: true`: revisar el formato.
+   - **Para seguir (antes de elegir):** probar sin ambiente y con otra prosodia (por ejemplo «¡Hola Jorge, buen día! ¿Cómo andás? …»), estabilidad 0 en v3, otras voces con v3, o grabar una voz real con consentimiento. Todavía no hay nada programado en Sofía.
 
 ## Historia: la charla del 12/10
 

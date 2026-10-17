@@ -215,6 +215,9 @@ function ContactosDeObra({
               <span className="font-medium">{nombrePropio(c.nombre)}</span>
               {c.rol && <span className="text-muted-foreground"> · {c.rol}</span>}
             </p>
+            {/* El número a la vista, como el contacto de la OT de arriba: sin él parecía que
+                no se había guardado (Pepo, 17/10), y hay quien lo copia en vez de llamar. */}
+            {c.telefono?.trim() && <p className="text-xs text-muted-foreground">{c.telefono.trim()}</p>}
             {c.email && (
               <a href={`mailto:${c.email}`} className="block truncate text-xs text-muted-foreground underline">
                 {c.email}

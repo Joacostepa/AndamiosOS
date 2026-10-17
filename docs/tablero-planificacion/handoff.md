@@ -27,6 +27,15 @@ cosas, así que ante la duda manda el código y los comentarios largos que tiene
 
 ---
 
+## 17/10 — el teléfono de los contactos de obra, a la vista
+
+**Reporte (Pepo, Slack 17/10, con captura):** "No se cargan los teléfonos de los nuevos contactos
+que agregamos". Sí se guardaban (Florencia Camacho tiene "11 5105 2353" en
+`x_aba_contacto_obra`, y el botón Llamar andaba), pero la ficha mostraba sólo nombre y rol de
+la gente agregada, mientras que el contacto de la OT lleva el número debajo del nombre.
+**Arreglo:** `ContactosDeObra` (`panel-ot.tsx`) muestra el teléfono debajo del nombre, igual
+que el contacto de la OT.
+
 ## 17/10 — la cuadrilla de apoyo
 
 **Pedido y diseño:** [apoyo.md](apoyo.md), aprobado por JS el 17/10 con estas respuestas a la

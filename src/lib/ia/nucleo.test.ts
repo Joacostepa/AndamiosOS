@@ -42,7 +42,7 @@ test("asistente: el pedido con Opus 5 (no atado) es el mismo de antes", () => {
   assert.deepEqual(armarPedido({ ...base, modelo: "claude-opus-5", progreso: true }), pedidoDeAntes("claude-opus-5", false));
 });
 
-test("Sofía: atado sin notas de progreso, pero con block_binding y el respaldo", () => {
+test("Tomás: atado sin notas de progreso, pero con block_binding y el respaldo", () => {
   const p = armarPedido({ ...base, modelo: "claude-opus-5-5", progreso: false }) as unknown as Record<string, unknown>;
   assert.deepEqual(p.thinking, { type: "adaptive", block_binding: { prefix_mismatch_behavior: "drop_block" } });
   assert.deepEqual(p.betas, [...BETAS, BETA_ATADO]);

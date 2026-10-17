@@ -227,7 +227,7 @@ export async function cambiarEstado(
     if (error) throw new Error(error.message);
     if (!data?.length) return "Alguien la cambió recién. Volvé a mirar.";
     const n = nota?.trim();
-    await anotarEvento(db, charla.id, `${yo.nombre} devolvió la charla a Sofía.${n ? ` Nota para Sofía: ${n}` : ""}`, yo.id);
+    await anotarEvento(db, charla.id, `${yo.nombre} devolvió la charla a Tomás.${n ? ` Nota para Tomás: ${n}` : ""}`, yo.id);
     return null;
   }
   // cerrar

@@ -23,7 +23,8 @@ import { parametrosFacilDesdeFilas } from "./facil";
 import { leerFicha, type FichaSofia, type ServiciosSofia } from "./herramientas";
 import { atenderCharla, type CharlaSofia, type DepsSofia, type FilaHistoria, type ItemNuevo, type RepoSofia, type ResultadoTurno } from "./turno";
 import { enBuenosAires } from "./horario";
-import { mandarTexto } from "./envio";
+import { mandarNotaDeVoz, mandarTexto } from "./envio";
+import { audioSaludo } from "./voz";
 import { anotarEvento } from "./webhook";
 import { nombresDe, ultimoEntrante } from "./bandeja";
 import type { EstadoCharla } from "./vista";
@@ -54,11 +55,11 @@ export async function pasarAPersonas(db: SupabaseClient, conversacionIds: string
   if (!conversacionIds.length) return;
   const { data } = await db
     .from("cli_conversaciones")
-    .update({ estado: "derivada", motivo: "Sofía está en pausa", updated_at: ahora() })
+    .update({ estado: "derivada", motivo: "Tomás está en pausa", updated_at: ahora() })
     .in("id", conversacionIds)
     .eq("estado", "bot")
     .select("id");
-  for (const f of data ?? []) await anotarEvento(db, f.id as string, "Sofía está en pausa: la charla pasa a una persona.");
+  for (const f of data ?? []) await anotarEvento(db, f.id as string, "Tomás está en pausa: la charla pasa a una persona.");
 }
 
 // ── El repositorio ─────────────────────────────────────────────────────────────────────
@@ -134,7 +135,7 @@ export function repoSofia(db: SupabaseClient): RepoSofia {
     },
     async leerHistoria(id) {
       const { data, error } = await db.from("cli_api_mensajes").select("seq, rol, contenido, turno_id, enviado, nota").eq("conversacion_id", id).order("seq");
-      if (error) falla("No se pudo leer la historia de Sofía", error);
+      if (error) falla("No se pudo leer la historia de Tomás", error);
       return (data ?? []) as FilaHistoria[];
     },
     async agregarHistoria(id, seq, filas) {
@@ -143,7 +144,7 @@ export function repoSofia(db: SupabaseClient): RepoSofia {
         conversacion_id: id, seq: seq + i, rol: f.rol, tipo: f.tipo, contenido: f.contenido, texto: f.texto, turno_id: f.turno_id, uso: f.uso,
         modelo_servido: f.modelo_servido, costo_usd: f.costo_usd, interrumpido: f.interrumpido ?? false, enviado: f.enviado ?? null, nota: f.nota ?? null,
       })));
-      if (error) falla("No se pudo guardar la historia de Sofía", error);
+      if (error) falla("No se pudo guardar la historia de Tomás", error);
       return seq + filas.length;
     },
     async guardarFicha(id, ficha) {
@@ -185,6 +186,9 @@ export function repoSofia(db: SupabaseClient): RepoSofia {
     },
     async mandar(id, telefono, texto, autor) {
       await mandarTexto(db, id, telefono, autor === "ia" ? aWhatsapp(texto) : texto, { autor });
+    },
+    async mandarSaludoVoz(id, telefono, perfil, momento) {
+      await mandarNotaDeVoz(db, id, telefono, await audioSaludo(db, perfil, momento), { autor: "ia" });
     },
     async evento(id, texto) {
       await anotarEvento(db, id, texto);

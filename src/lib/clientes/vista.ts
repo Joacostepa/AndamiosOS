@@ -83,7 +83,7 @@ export type Tono = "gris" | "ambar" | "coral" | "rojo";
 export function pastilla(c: Pick<CharlaListada, "estado" | "motivo" | "asistente">, yo: string): { texto: string; tono: Tono } {
   switch (c.estado) {
     case "bot":
-      return { texto: "Atiende Sofía (IA)", tono: "gris" };
+      return { texto: "Atiende Tomás (IA)", tono: "gris" };
     case "espera_ok":
       return { texto: c.motivo ? `Espera tu OK · ${c.motivo}` : "Espera tu OK", tono: "ambar" };
     case "humano":

@@ -1,4 +1,4 @@
-// El turno de Sofía con un Claude simulado (prueba-sofia.ts): sin base, sin Meta, sin red y sin
+// El turno de Tomás con un Claude simulado (prueba-sofia.ts): sin base, sin Meta, sin red y sin
 // gastar. Lo que se prueba es lo que hace el CÓDIGO alrededor del modelo: el saludo, el
 // interruptor, que se calle cuando una persona toma la charla, el filtro de salida, lo pendiente,
 // la derivación y los errores. Lo que «decide» el modelo lo dice el guion.
@@ -34,7 +34,7 @@ test("interruptor apagado: no saluda, no llama al modelo, no manda nada", async 
   assert.equal(m.historia.length, 0);
 });
 
-test("si la charla la tiene una persona (humano), Sofía se calla", async () => {
+test("si la charla la tiene una persona (humano), Tomás se calla", async () => {
   for (const estado of ["humano", "derivada", "espera_ok", "cerrada"] as const) {
     const m = crearMundo({ estado });
     m.escribe("¿Me pasás el precio?");
@@ -73,7 +73,8 @@ test("«Hola» solo: sale el saludo armado por el código y no se llama al model
   assert.equal(m.salidas[1].texto, "Dale. ¿Me pasás la dirección de la obra?");
   const cliente = m.historia.find((h) => h.tipo === "cliente")!;
   assert.match(String(cliente.texto), /Hola buenas tardes\n.*necesito una bandeja/);
-  assert.match(ultimoAviso(m), /ya le mandó este saludo: «¡Buen día Marcela! Acá Sofía/);
+  // El saludo se marca con el reloj del mundo de prueba (la hora real): el momento del día varía.
+  assert.match(ultimoAviso(m), /ya le mandó este saludo: «¡(?:Buen día|Buenas tardes|Buenas noches) Marcela! Acá Tomás/);
 });
 
 test("primer mensaje con pedido: saludo y respuesta, en ese orden; el saludo una sola vez", async () => {
@@ -86,10 +87,49 @@ test("primer mensaje con pedido: saludo y respuesta, en ese orden; el saludo una
   ]);
   m.escribe("Los Aromos 1234");
   await atenderCharla(m.deps(guion(respuestaTexto("Gracias. ¿La bandeja va por todo el frente?"))), m.charla.id);
-  assert.equal(m.salidas.filter((s) => s.texto.includes("Acá Sofía")).length, 1);
+  assert.equal(m.salidas.filter((s) => s.texto.includes("Acá Tomás")).length, 1);
 });
 
-test("el pedido al modelo: prompt de Sofía con caché de 1 h, sus 7 herramientas, block_binding y respaldo", async () => {
+test("saludo con voz prendido: primero la nota de voz y después el texto, una sola vez", async () => {
+  const m = crearMundo({ config: { saludoVoz: true } });
+  const d = m.deps(guion());
+  const audios: { perfil: string | null; ahora: Date }[] = [];
+  d.repo.mandarSaludoVoz = async (_id, _tel, perfil, ahora) => {
+    audios.push({ perfil, ahora });
+    m.salidas.push({ texto: "[audio]", autor: "ia" });
+  };
+  m.escribe("Hola");
+  await atenderCharla(d, m.charla.id);
+  assert.deepEqual(m.salidas.map((s) => s.texto), ["[audio]", SALUDO_MARCELA]);
+  assert.equal(audios.length, 1);
+  assert.equal(audios[0].perfil, "Marcela Ríos");
+  m.escribe("necesito una bandeja");
+  await atenderCharla({ ...d, modelo: guion(respuestaTexto("¿Me pasás la dirección de la obra?")) }, m.charla.id);
+  assert.equal(audios.length, 1, "el audio no se repite");
+});
+
+test("si el audio del saludo falla, sale sólo el texto y queda anotado", async () => {
+  const m = crearMundo({ config: { saludoVoz: true } });
+  const d = m.deps(guion());
+  d.repo.mandarSaludoVoz = async () => { throw new Error("ElevenLabs no generó la voz (500)"); };
+  m.escribe("Hola");
+  await atenderCharla(d, m.charla.id);
+  assert.deepEqual(m.salidas.map((s) => s.texto), [SALUDO_MARCELA]);
+  assert.ok(m.eventos.some((e) => /No salió el audio del saludo: se mandó sólo el texto \(ElevenLabs/.test(e)));
+});
+
+test("saludo con voz apagado: no se pide el audio", async () => {
+  const m = crearMundo();
+  const d = m.deps(guion());
+  let pedido = false;
+  d.repo.mandarSaludoVoz = async () => { pedido = true; };
+  m.escribe("Hola");
+  await atenderCharla(d, m.charla.id);
+  assert.equal(pedido, false);
+  assert.deepEqual(m.salidas.map((s) => s.texto), [SALUDO_MARCELA]);
+});
+
+test("el pedido al modelo: prompt de Tomás con caché de 1 h, sus 7 herramientas, block_binding y respaldo", async () => {
   const m = crearMundo();
   m.escribe("Hola, ¿hacen bandejas?");
   await atenderCharla(m.deps(guion(respuestaTexto("Sí, hacemos bandejas de protección. ¿Para qué dirección es?"))), m.charla.id);
@@ -109,12 +149,12 @@ test("el pedido al modelo: prompt de Sofía con caché de 1 h, sus 7 herramienta
 
 test("guion «¿sos un bot?»: el prompt lo exige y la respuesta honesta sale tal cual", async () => {
   assert.match(INSTRUCCIONES, /Nunca lo niegues/);
-  assert.match(INSTRUCCIONES, /sos Sofía, la asistente digital de ABA \(una IA\)/);
+  assert.match(INSTRUCCIONES, /sos Tomás, el asistente digital de ABA \(una IA\)/);
   const m = crearMundo();
   m.escribe("Hola");
   await atenderCharla(m.deps(guion()), m.charla.id);
   m.escribe("¿Sos un bot o una persona?");
-  const honesta = "Sí, soy Sofía, la asistente digital de ABA: una IA. Si preferís, te paso con una persona del equipo.";
+  const honesta = "Sí, soy Tomás, el asistente digital de ABA: una IA. Si preferís, te paso con una persona del equipo.";
   await atenderCharla(m.deps(guion(respuestaTexto(honesta))), m.charla.id);
   assert.equal(m.salidas.at(-1)!.texto, honesta);
   assert.equal(m.charla.estado, "bot");
@@ -171,7 +211,7 @@ test("injection, modelo «comprado»: pide datos de otro cliente y escribe un pr
   assert.match(m.charla.motivo!, /^texto bloqueado: /);
   assert.equal(m.bloqueos.length, 1);
   assert.match(m.bloqueos[0].texto, /1\.250\.000/);
-  assert.ok(m.eventos.some((e) => /No se mandó lo que escribió Sofía/.test(e)));
+  assert.ok(m.eventos.some((e) => /No se mandó lo que escribió Tomás/.test(e)));
   // Las herramientas no aceptaron ids ni devolvieron plata.
   const res = resultadosDeHerramientas(m);
   assert.match(res[0], /Entrada inválida/);
@@ -202,7 +242,7 @@ test("evasiones del filtro: «ciento cuarenta mil», «140k», un CBU y un link 
 
 // ── Una persona toma la charla ─────────────────────────────────────────────────────────
 
-test("si una persona toma la charla mientras Sofía piensa, la respuesta no sale", async () => {
+test("si una persona toma la charla mientras Tomás piensa, la respuesta no sale", async () => {
   const m = crearMundo();
   m.escribe("Hola, ¿ustedes hacen el permiso del municipio?");
   await atenderCharla(m.deps(guion(() => {
@@ -216,7 +256,7 @@ test("si una persona toma la charla mientras Sofía piensa, la respuesta no sale
   assert.equal(final.enviado, false);
 });
 
-test("devuelta a Sofía: ve lo que escribió el equipo (como aviso, no como cliente) y sigue", async () => {
+test("devuelta a Tomás: ve lo que escribió el equipo (como aviso, no como cliente) y sigue", async () => {
   const m = crearMundo();
   m.escribe("Hola, ¿ustedes hacen el permiso del municipio?");
   await atenderCharla(m.deps(guion(respuestaTexto("Sí, en Capital lo gestionamos como opcional del presupuesto. ¿Para qué dirección es?"))), m.charla.id);
@@ -224,7 +264,7 @@ test("devuelta a Sofía: ve lo que escribió el equipo (como aviso, no como clie
   m.charla.estado = "humano";
   m.escribe("Hola, soy Sandra de ABA. Sí, el permiso lo hacemos nosotros.", { direccion: "saliente", autor: "persona", autorNombre: "Sandra" });
   m.escribe("Gracias Sandra!");
-  m.escribe("Sandra devolvió la charla a Sofía. Nota: que junte el CUIT para facturar.", { direccion: "evento", autor: "persona", autorNombre: "Sandra", tipo: "evento" });
+  m.escribe("Sandra devolvió la charla a Tomás. Nota: que junte el CUIT para facturar.", { direccion: "evento", autor: "persona", autorNombre: "Sandra", tipo: "evento" });
   m.charla.estado = "bot";
   await atenderCharla(m.deps(guion(respuestaTexto("Para dejarlo listo, ¿me pasás el CUIT o DNI y un mail?"))), m.charla.id, { devuelta: true });
   assert.equal(m.salidas.at(-1)!.texto, "Para dejarlo listo, ¿me pasás el CUIT o DNI y un mail?");
@@ -440,7 +480,7 @@ test("devuelta con la ventana de 24 h cerrada: no le escribe, espera al cliente"
 
 // ── Gama alta (JS, 16/10) ──────────────────────────────────────────────────────────────
 
-test("gama alta: «multi direccional» marca la charla por código y Sofía recibe las indicaciones", async () => {
+test("gama alta: «multi direccional» marca la charla por código y Tomás recibe las indicaciones", async () => {
   const m = crearMundo();
   m.escribe("Hola, necesitamos andamio multi direccional para una obra de 8 pisos");
   await atenderCharla(m.deps(guion(respuestaTexto("Perfecto. ¿Cuántos metros de frente tiene y para qué es la estructura?"))), m.charla.id);

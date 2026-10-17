@@ -30,7 +30,7 @@ export const GRUPOS: readonly { id: string; titulo: string; descripcion: string 
   { id: "mano_obra", titulo: "Mano de obra", descripcion: "Jornada-cuadrilla, recargos y productividad por altura." },
   { id: "viaticos", titulo: "Fuera de radio", descripcion: "Viajes, alojamiento y comida." },
   { id: "asistente", titulo: "Asistente", descripcion: "Modelo, esfuerzo y tope de uso." },
-  { id: "agente_clientes", titulo: "Agente de clientes (WhatsApp)", descripcion: "Sofía: el interruptor, el modelo, los topes de gasto y el horario. La bandeja «fácil»: tope de metros, jornadas, render y empresas." },
+  { id: "agente_clientes", titulo: "Agente de clientes (WhatsApp)", descripcion: "Tomás: el interruptor, el modelo, los topes de gasto y el horario. La bandeja «fácil»: tope de metros, jornadas, render y empresas." },
   { id: "odoo", titulo: "Odoo (técnico)", descripcion: "Ids fijos con los que se arma la orden. Sólo cambian si cambian en Odoo." },
 ];
 

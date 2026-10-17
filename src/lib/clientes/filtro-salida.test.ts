@@ -115,7 +115,7 @@ test("normalizar: tildes, mayúsculas, letras repetidas, letras sueltas, «x» y
   assert.equal(normalizar("140k"), "140k");
 });
 
-// ── revisarSalida: lo que además revisa Sofía (paso 5) ──────────────────────────────────
+// ── revisarSalida: lo que además revisa Tomás (paso 5) ──────────────────────────────────
 
 const SALIDA_BLOQUEA: [string, string][] = [
   ["Entrá a https://pagos-aba.com/abc para pagar", "contacto"],
@@ -148,7 +148,7 @@ for (const [texto, codigo] of SALIDA_BLOQUEA) {
 const SALIDA_PASA: string[] = [
   "Sí, soy una asistente digital, una IA. Si preferís, te paso con una persona del equipo.",
   "Sí, soy una IA, no una persona. ¿Querés que te pase con alguien?",
-  "No soy una persona: soy Sofía, la asistente digital de ABA.",
+  "No soy una persona: soy Tomás, el asistente digital de ABA.",
   "En un rato te escribe una persona del equipo por acá.",
   "Revisé el catastro: el frente de Los Aromos 1234 mide 12,40 m. ¿La bandeja va por todo el frente?",
   "¿Me pasás el CUIT? Por ejemplo 20-12345678-9.",

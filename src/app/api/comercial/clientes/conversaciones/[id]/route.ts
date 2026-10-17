@@ -61,7 +61,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
 const schema = z.object({
   accion: z.enum(["tomar", "soltar", "cerrar", "devolver"]),
   forzar: z.boolean().optional(),
-  nota: z.string().trim().max(500, "La nota para Sofía no puede pasar de 500 caracteres.").optional(),
+  nota: z.string().trim().max(500, "La nota para Tomás no puede pasar de 500 caracteres.").optional(),
 });
 
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -77,7 +77,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     if (!charla) return NextResponse.json({ error: "No existe esa charla." }, { status: 404 });
     const { accion, forzar, nota } = parsed.data;
     if (accion === "devolver" && !(await iaClientesActiva(db))) {
-      return NextResponse.json({ error: "Sofía está apagada (clientes_ia_activa en Parámetros): la charla sigue con una persona." }, { status: 409 });
+      return NextResponse.json({ error: "Tomás está apagado (clientes_ia_activa en Parámetros): la charla sigue con una persona." }, { status: 409 });
     }
     const yo = { id: quien.userId, nombre: (await nombresDe(db, [quien.userId])).get(quien.userId) ?? "Alguien" };
     const motivo = await cambiarEstado(db, charla, accion, yo, forzar, nota ?? null);

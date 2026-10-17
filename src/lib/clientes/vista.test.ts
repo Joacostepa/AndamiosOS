@@ -17,7 +17,7 @@ test("pastilla: los cinco estados, y «sin tomar» en la etapa 0", () => {
   assert.deepEqual(pastilla(charla({ estado: "derivada", motivo: "regateo" }), YO), { texto: "Sin tomar · regateo", tono: "rojo" });
   assert.deepEqual(pastilla(charla({ estado: "humano", asistente: { id: YO, nombre: "Joaquín" } }), YO), { texto: "La tenés vos", tono: "coral" });
   assert.deepEqual(pastilla(charla({ estado: "humano", asistente: SANDRA }), YO), { texto: "La tiene Sandra", tono: "coral" });
-  assert.equal(pastilla(charla({ estado: "bot" }), YO).texto, "Atiende Sofía (IA)");
+  assert.equal(pastilla(charla({ estado: "bot" }), YO).texto, "Atiende Tomás (IA)");
   assert.equal(pastilla(charla({ estado: "espera_ok" }), YO).tono, "ambar");
   assert.equal(pastilla(charla({ estado: "espera_ok", motivo: "cotización #1042" }), YO).texto, "Espera tu OK · cotización #1042");
   assert.equal(pastilla(charla({ estado: "espera_ok", motivo: "texto bloqueado: monto en letras" }), YO).texto, "Espera tu OK · texto bloqueado: monto en letras");
@@ -52,7 +52,7 @@ test("filtrar: las de gama alta que esperan a una persona van arriba en «Para v
   assert.deepEqual(filtrar(todas, "vos", YO).map((c) => c.id), [altaSinTomar.id, altaEsperaOk.id, comun.id, mia.id]);
   assert.deepEqual(filtrar(todas, "todas", YO).map((c) => c.id), [altaSinTomar.id, altaEsperaOk.id, comun.id, mia.id, altaConSofia.id, altaDeSandra.id]);
   assert.deepEqual(filtrar(todas, "cerradas", YO).map((c) => c.id), [altaCerrada.id]);
-  assert.equal(gamaAltaEsperando(altaConSofia), false, "con Sofía no espera a nadie");
+  assert.equal(gamaAltaEsperando(altaConSofia), false, "con Tomás no espera a nadie");
   assert.equal(gamaAltaEsperando(comun), false);
 });
 

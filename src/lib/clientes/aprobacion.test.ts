@@ -127,7 +127,7 @@ test("los estados desde los que se puede decidir", () => {
 
 // ── Recalcular y corregir ───────────────────────────────────────────────────────────────
 
-test("recalcular: con la misma tarifa da lo mismo que armó Sofía; si cambió, no se manda", () => {
+test("recalcular: con la misma tarifa da lo mismo que armó Tomás; si cambió, no se manda", () => {
   const b = borrador();
   const r = recalcularBorrador(b.datos, T, HOY);
   assert.equal(r.totales.subtotal, 1_736_000);
@@ -248,14 +248,14 @@ test("el texto de la pareja (§5): siempre la asistente con su técnico, nunca �
 
 // ── Después de decidir ──────────────────────────────────────────────────────────────────
 
-test("después de decidir: precio vuelve a Sofía; técnico, texto bloqueado y «Lo tomo yo» quedan con la persona", () => {
+test("después de decidir: precio vuelve a Tomás; técnico, texto bloqueado y «Lo tomo yo» quedan con la persona", () => {
   assert.equal(destinoDespues({ tipo: "precio", accion: "aprobar", iaActiva: true }), "sofia");
   assert.equal(destinoDespues({ tipo: "tecnico", accion: "aprobar", iaActiva: true }), "persona");
   assert.equal(destinoDespues({ tipo: "texto_bloqueado", accion: "aprobar", iaActiva: true }), "persona");
   assert.equal(destinoDespues({ tipo: "precio", accion: "rechazar", iaActiva: true }), "persona");
   assert.equal(destinoDespues({ tipo: "tecnico", accion: "aprobar", iaActiva: true, propuesta: "sofia" }), "sofia", "lo dice la propuesta");
   assert.equal(destinoDespues({ tipo: "precio", accion: "aprobar", iaActiva: true, elegido: "persona" }), "persona", "lo eligió quien aprueba");
-  assert.equal(destinoDespues({ tipo: "precio", accion: "aprobar", iaActiva: false, elegido: "sofia" }), "persona", "con Sofía apagada, siempre una persona");
+  assert.equal(destinoDespues({ tipo: "precio", accion: "aprobar", iaActiva: false, elegido: "sofia" }), "persona", "con Tomás apagado, siempre una persona");
 });
 
 // ── La racha ────────────────────────────────────────────────────────────────────────────

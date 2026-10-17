@@ -1,4 +1,4 @@
-// Las 7 herramientas de Sofía: lista cerrada, esquemas estrictos (ningún id de otro cliente) y
+// Las 7 herramientas de Tomás: lista cerrada, esquemas estrictos (ningún id de otro cliente) y
 // resultados sin plata ni datos de otros (crm-propuesta.md §13).
 
 import { test } from "node:test";

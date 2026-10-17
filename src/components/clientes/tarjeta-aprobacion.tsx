@@ -69,7 +69,7 @@ function ElegirDespues({ valor, onCambio, iaActiva }: { valor: "sofia" | "person
           onClick={() => onCambio(v)}
           className={cn("h-8 rounded-full border px-3", valor === v ? "border-hd-boton bg-hd-boton/10 text-hd-boton" : "border-border text-muted-foreground")}
         >
-          {v === "sofia" ? "Sigue Sofía" : "Queda con vos"}
+          {v === "sofia" ? "Sigue Tomás" : "Queda con vos"}
         </button>
       ))}
     </div>
@@ -255,7 +255,7 @@ function TarjetaPrecio({ t, charla, ahora, puedeEditar, datos }: { t: TarjetaApr
     >
       <EstadoIntermedio t={t} charlaId={charla.id} ventanaAbierta={v.nivel !== "cerrada"} puedeEditar={puedeEditar} />
       {p.cambioDesdeSofia && p.montoPropuesto !== null && (
-        <Aviso tono="ambar">Cambió la tarifa desde que Sofía lo armó: <s>{pesos(p.montoPropuesto)}</s> → <b>{pesos(p.neto)} + IVA</b>. Se manda el de hoy.</Aviso>
+        <Aviso tono="ambar">Cambió la tarifa desde que Tomás lo armó: <s>{pesos(p.montoPropuesto)}</s> → <b>{pesos(p.neto)} + IVA</b>. Se manda el de hoy.</Aviso>
       )}
       {vista && (
         <Aviso tono="ambar">
@@ -541,7 +541,7 @@ function TarjetaBloqueado({ t, charla, ahora, puedeEditar, datos }: { t: Tarjeta
     >
       <Aviso tono="ambar"><AlertTriangle className="mr-1 inline size-4" /> {k.motivo ?? "El filtro lo frenó"}. Al cliente no le llegó nada.</Aviso>
       <div>
-        <h4 className="mb-1 text-[12.5px] font-semibold tracking-wide text-muted-foreground uppercase">Lo que quiso decir Sofía</h4>
+        <h4 className="mb-1 text-[12.5px] font-semibold tracking-wide text-muted-foreground uppercase">Lo que quiso decir Tomás</h4>
         <div className="rounded-xl bg-sky-50 px-3 py-2 text-[14px] whitespace-pre-wrap dark:bg-sky-950/40">{k.texto}</div>
       </div>
       {k.hallazgos.length > 0 && (

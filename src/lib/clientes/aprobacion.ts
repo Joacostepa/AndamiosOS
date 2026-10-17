@@ -95,7 +95,7 @@ export function motivoYaDecidida(estado: EstadoAprobacion, quien: string | null,
     case "descartada":
       return `${q} lo descartó.`;
     case "vencida":
-      return "Venció: Sofía armó otro o la charla se cerró.";
+      return "Venció: Tomás armó otro o la charla se cerró.";
   }
 }
 

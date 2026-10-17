@@ -15,9 +15,10 @@
 
 import { normalizar } from "./texto.ts";
 
-export const NOMBRE_ASISTENTE = "Sofía";
+/** El agente se llamaba Sofía hasta el 17/10: JS eligió una voz de hombre para el saludo con audio. */
+export const NOMBRE_ASISTENTE = "Tomás";
 
-const CUERPO = "Acá Sofía de Andamios Buenos Aires. Contame en qué te puedo ayudar.";
+const CUERPO = `Acá ${NOMBRE_ASISTENTE} de Andamios Buenos Aires. Contame en qué te puedo ayudar.`;
 
 /** Se comparan normalizadas como texto.ts (sin tildes ni letras dobles): se escriben como se escriben. */
 const lista = (xs: string[]) => new Set(xs.map((x) => normalizar(x)));
@@ -113,8 +114,43 @@ export function saludoInicial(perfil: string | null | undefined, ahora: Date = n
 }
 
 /**
+ * Lo que dice el audio del saludo (el guion «H» que eligió JS el 17/10), con el mismo nombre y
+ * el mismo momento del día que el texto: «Jorge, buen día. Tomás, de Andamios Buenos Aires, ¿en
+ * qué te ayudo?». Sin nombre: «Buen día. Tomás, de…». Lo dice la voz (voz.ts), no el modelo.
+ * Versión de pruebas: al publicar el número tiene que decir «asistente digital» (handoff, punto 0).
+ */
+export function guionSaludoVoz(perfil: string | null | undefined, ahora: Date = new Date()): string {
+  const nombre = nombreParaSaludo(perfil);
+  const momento = saludoDelMomento(ahora);
+  const cuerpo = `${NOMBRE_ASISTENTE}, de Andamios Buenos Aires, ¿en qué te ayudo?`;
+  return nombre ? `${nombre}, ${momento.toLowerCase()}. ${cuerpo}` : `${momento}. ${cuerpo}`;
+}
+
+/** Con qué nombre se guarda el audio: uno por momento del día y nombre («buen-dia-jorge»), así
+ *  se genera una sola vez. «Ana» y «Anna» comparten audio: se pronuncian igual. */
+export function claveSaludoVoz(perfil: string | null | undefined, ahora: Date = new Date()): string {
+  const nombre = nombreParaSaludo(perfil);
+  const slug = (t: string) => normalizar(t).replace(/[^a-z]+/g, "-").replace(/^-|-$/g, "");
+  return `${slug(saludoDelMomento(ahora))}-${nombre ? slug(nombre) : "sin-nombre"}`;
+}
+
+/**
+ * ¿El audio dijo el guion? La voz a veces se come una sílaba («Andami Buenos Aires», pruebas del
+ * 17/10), así que cada audio nuevo se transcribe y se compara. Tolera una palabra de relleno
+ * perdida («en», «te»), pero nunca el nombre del cliente, el del agente ni el de la empresa.
+ */
+export function audioDiceElGuion(guion: string, transcripcion: string | null | undefined): boolean {
+  const palabras = (t: string) => normalizar(t).replace(/[^a-z ]/g, " ").split(" ").filter(Boolean);
+  const dichas = new Set(palabras(transcripcion ?? ""));
+  const faltan = palabras(guion).filter((p) => !dichas.has(p));
+  const nombre = palabras(guion)[0];
+  const claves = new Set([normalizar(NOMBRE_ASISTENTE), "andamios", "buenos", "aires", nombre]);
+  return faltan.length <= 1 && !faltan.some((p) => claves.has(p));
+}
+
+/**
  * ¿El mensaje es sólo un saludo («hola», «buenas tardes», «buen día!!»)? Entonces el saludo de
- * Sofía alcanza («Contame en qué te puedo ayudar») y no se le pregunta nada al modelo.
+ * Tomás alcanza («Contame en qué te puedo ayudar») y no se le pregunta nada al modelo.
  */
 export function esSoloSaludo(texto: string | null | undefined): boolean {
   const n = normalizar(texto ?? "").replace(/[^a-z ]/g, " ").replace(/\s+/g, " ").trim();

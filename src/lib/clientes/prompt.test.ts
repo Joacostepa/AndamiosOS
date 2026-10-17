@@ -8,7 +8,7 @@ import { detectarPlata } from "./filtro-salida.ts";
 
 test("el prompt tiene las reglas de §3, §6 y las decisiones de JS", () => {
   for (const regla of [
-    /Sos Sofía, la asistente digital de Andamios Buenos Aires/,
+    /Sos Tomás, el asistente digital de Andamios Buenos Aires/,
     /Nunca lo niegues ni lo esquives/,
     /Ningún precio, asignación de técnico ni traspaso sale sin que una persona lo apruebe/,
     /Ya tengo todo\. El presupuesto lo prepara el equipo y te llega por este mismo chat/,
@@ -44,7 +44,7 @@ test("el aviso del turno: horario, saludo, equipo y lo que no llegó; sin plata"
     enHorario: false,
     cuandoSigue: "el lunes a primera hora",
     horario: "de lunes a viernes de 8 a 17",
-    saludoEnviado: "Hola, acá Sofía…",
+    saludoEnviado: "Hola, acá Tomás…",
     ficha: fichaSofiaVacia(),
     pendientes: ["cotización #12: pendiente de revisión del equipo"],
     notasEquipo: ["(14:02) Sandra le escribió al cliente: «Hola»"],

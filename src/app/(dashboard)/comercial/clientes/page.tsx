@@ -118,7 +118,7 @@ function Charla({ id, ahora, onVolver }: { id: string; ahora: number; onVolver: 
           if (a === "devolver") {
             setDevolviendo(false);
             setNota("");
-            toast.success("La charla volvió a Sofía", { description: "Sigue ella. Si la tomás de nuevo, se calla." });
+            toast.success("La charla volvió a Tomás", { description: "Sigue él. Si la tomás de nuevo, se calla." });
           }
         },
         onError: (e) => {
@@ -172,8 +172,8 @@ function Charla({ id, ahora, onVolver }: { id: string; ahora: number; onVolver: 
                 </Button>
               )}
               {puedeDevolver && (
-                <Button variant="outline" className="h-10 px-3" onClick={() => setDevolviendo((x) => !x)} disabled={cambiar.isPending} title="Que siga Sofía" aria-label="Devolver a Sofía">
-                  <Bot /> <span className="hidden sm:inline">Devolver a Sofía</span>
+                <Button variant="outline" className="h-10 px-3" onClick={() => setDevolviendo((x) => !x)} disabled={cambiar.isPending} title="Que siga Tomás" aria-label="Devolver a Tomás">
+                  <Bot /> <span className="hidden sm:inline">Devolver a Tomás</span>
                 </Button>
               )}
               {c.estado !== "cerrada" && (
@@ -202,7 +202,7 @@ function Charla({ id, ahora, onVolver }: { id: string; ahora: number; onVolver: 
         {borrando && d.esAdmin && (
           <div className="flex flex-wrap items-center gap-2 pt-1.5 pb-1 text-[13.5px]">
             <span className="min-w-0 flex-1 text-muted-foreground">
-              Se borra toda la charla de la app (mensajes, memoria de Sofía y aprobaciones) y el próximo mensaje arranca de cero. No borra lo que ya llegó al WhatsApp del cliente ni las órdenes de Odoo.
+              Se borra toda la charla de la app (mensajes, memoria de Tomás y aprobaciones) y el próximo mensaje arranca de cero. No borra lo que ya llegó al WhatsApp del cliente ni las órdenes de Odoo.
             </span>
             <Button
               variant="destructive"
@@ -235,8 +235,8 @@ function Charla({ id, ahora, onVolver }: { id: string; ahora: number; onVolver: 
               value={nota}
               onChange={(e) => setNota(e.target.value)}
               maxLength={500}
-              placeholder="Nota para Sofía (opcional): «ya le expliqué el permiso, que junte el CUIT»"
-              aria-label="Nota para Sofía"
+              placeholder="Nota para Tomás (opcional): «ya le expliqué el permiso, que junte el CUIT»"
+              aria-label="Nota para Tomás"
               className="h-10 min-w-0 flex-1 rounded-md border border-border bg-background px-3 text-[14px]"
             />
             <Button type="submit" className="h-10" disabled={cambiar.isPending}>

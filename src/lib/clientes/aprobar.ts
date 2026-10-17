@@ -452,7 +452,7 @@ async function despuesDeDecidir(db: Db, conversacionId: string, destino: Despues
       .update({ estado: "bot", asistente_id: null, tomada_at: null, motivo: null, updated_at: ahora })
       .eq("id", conversacionId)
       .neq("estado", "cerrada");
-    return " La charla vuelve a Sofía.";
+    return " La charla vuelve a Tomás.";
   }
   await db.from("cli_conversaciones")
     .update({ estado: "humano", asistente_id: quien.id, tomada_at: ahora, motivo: null, updated_at: ahora })
@@ -700,7 +700,7 @@ async function guardarEnOdoo(db: Db, f: Fila, charla: Charla, envio: Envio, quie
   };
   const ejecutor = crearEjecutor({
     db, tarifas: ctx.tarifas, usuarioId: quien.id, vendedorEnPropuesta: ids.asistente?.nombre ?? a?.asistente ?? "Andamios Buenos Aires",
-    vendedorNombre: `${quien.nombre} (bandeja de WhatsApp de clientes, cotización de Sofía #${f.numero})`,
+    vendedorNombre: `${quien.nombre} (bandeja de WhatsApp de clientes, cotización de Tomás #${f.numero})`,
   });
   const r = await ejecutor(accion);
   pasos.odoo = r.pasos;
@@ -728,7 +728,7 @@ export async function tomarYo(db: Db, conversacionId: string, id: string, quien:
     estado, decidido_por: quien.id, decidido_at: ahoraIso(), motivo_correccion: motivo?.trim() || null,
   }, nombreDe(db));
   if (!toma.ok) return { ok: false, codigo: "ya_decidida", error: toma.motivo };
-  const que = f.tipo === "texto_bloqueado" ? "descartó lo que había escrito Sofía" : f.tipo === "tecnico" ? `tomó la asignación #${f.numero}` : `no mandó la cotización #${f.numero} y la tomó`;
+  const que = f.tipo === "texto_bloqueado" ? "descartó lo que había escrito Tomás" : f.tipo === "tecnico" ? `tomó la asignación #${f.numero}` : `no mandó la cotización #${f.numero} y la tomó`;
   const sigue = await despuesDeDecidir(db, conversacionId, "persona", quien);
   await anotarEvento(db, conversacionId, `${quien.nombre} ${que}${motivo?.trim() ? ` (${motivo.trim()})` : ""}.${sigue}`);
   return { ok: true, estado, avisos: [] };

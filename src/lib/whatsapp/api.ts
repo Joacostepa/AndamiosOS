@@ -123,6 +123,17 @@ export async function enviarDocumento(para: string, url: string, nombre: string,
   }, numero);
 }
 
+/** Un audio por link. Con `nota`, sale como nota de voz (la onda y el micrófono): tiene que ser
+ *  Ogg con Opus; con otro formato WhatsApp ignora la marca y lo manda como audio común. */
+export async function enviarAudio(para: string, url: string, nota = true, numero?: string | null): Promise<string> {
+  return mensajes({
+    recipient_type: "individual",
+    to: para,
+    type: "audio",
+    audio: { link: url, ...(nota ? { voice: true } : {}) },
+  }, numero);
+}
+
 /** Una foto por link (JPG o PNG; WhatsApp no acepta otras como imagen). */
 export async function enviarImagen(para: string, url: string, epigrafe?: string, numero?: string | null): Promise<string> {
   return mensajes({

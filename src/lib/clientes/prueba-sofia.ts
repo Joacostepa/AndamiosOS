@@ -22,7 +22,7 @@ export const CONFIG_PRUEBA: ConfigSofia = {
   topeTelefonoUsd: 1,
   topeGlobalUsd: 15,
   horario: HORARIO_POR_DEFECTO,
-  telefonoGuardia: "11 0000-0000", datosEmpresa: null, guiaTrabajos: null,
+  telefonoGuardia: "11 0000-0000", datosEmpresa: null, guiaTrabajos: null, saludoVoz: false,
 };
 
 export function lotePrueba(direccion: string, cambios: Partial<Lote> = {}): Lote {

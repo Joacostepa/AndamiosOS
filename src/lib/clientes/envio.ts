@@ -8,7 +8,7 @@
 // la etapa 0 sale como respuesta a un mensaje recién llegado, así que siempre está adentro.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { ErrorWhatsapp, enviarDocumento, enviarImagen, enviarTexto, numeroClientes } from "@/lib/whatsapp/api";
+import { ErrorWhatsapp, enviarAudio, enviarDocumento, enviarImagen, enviarTexto, numeroClientes } from "@/lib/whatsapp/api";
 import { MAX_TEXTO } from "@/lib/whatsapp/formato";
 import { explicarError } from "./estados";
 
@@ -35,7 +35,7 @@ async function salir(
   db: SupabaseClient,
   conversacionId: string,
   autor: Autor,
-  fila: { tipo: string; texto: string | null; adjunto?: Record<string, unknown> | null },
+  fila: { tipo: string; texto: string | null; adjunto?: Record<string, unknown> | null; transcripcion?: string | null },
   resumen: string,
   mandar: () => Promise<string>,
 ): Promise<{ id: string; wamid: string }> {
@@ -50,6 +50,7 @@ async function salir(
       tipo: fila.tipo,
       texto: fila.texto,
       adjunto: fila.adjunto ?? null,
+      ...(fila.transcripcion ? { transcripcion: fila.transcripcion } : {}),
       estado: "enviando",
       momento,
     })
@@ -60,7 +61,7 @@ async function salir(
   try {
     const wamid = await mandar();
     await db.from("cli_hilo").update({ wamid: wamid || null, estado: "enviado", estado_at: new Date().toISOString() }).eq("id", id).eq("estado", "enviando");
-    const quien = autor.autor === "persona" ? autor.autorNombre : autor.autor === "ia" ? "Sofía" : "ABA";
+    const quien = autor.autor === "persona" ? autor.autorNombre : autor.autor === "ia" ? "Tomás" : "ABA";
     await db
       .from("cli_conversaciones")
       .update({ ultimo_mensaje_at: momento, ultimo_resumen: `${quien}: ${resumen}`.slice(0, 160), updated_at: momento })
@@ -105,5 +106,25 @@ export async function mandarArchivo(
     { tipo: foto ? "image" : "document", texto, adjunto: { path: archivo.path, mime: archivo.mime, nombre: archivo.nombre } },
     foto ? `Foto${texto ? ` · ${texto}` : ""}` : `Archivo: ${archivo.nombre}`,
     () => (foto ? enviarImagen(telefono, data.signedUrl, texto ?? undefined, desde) : enviarDocumento(telefono, data.signedUrl, archivo.nombre, texto ?? undefined, desde)),
+  );
+}
+
+/** El saludo con voz (voz.ts): ya está en Storage, firmado. En la charla se ve el audio y, abajo,
+ *  lo que dice. */
+export async function mandarNotaDeVoz(
+  db: SupabaseClient,
+  conversacionId: string,
+  telefono: string,
+  audio: { path: string; url: string; mime: string; guion: string },
+  autor: Autor,
+) {
+  const desde = numero();
+  return salir(
+    db,
+    conversacionId,
+    autor,
+    { tipo: "audio", texto: null, adjunto: { path: audio.path, mime: audio.mime, nombre: "saludo.ogg" }, transcripcion: audio.guion },
+    `Audio: ${audio.guion}`,
+    () => enviarAudio(telefono, audio.url, true, desde),
   );
 }

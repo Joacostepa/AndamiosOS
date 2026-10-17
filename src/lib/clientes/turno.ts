@@ -114,6 +114,9 @@ export type RepoSofia = {
   nuevosDelHilo(id: string, desde: string | null): Promise<ItemNuevo[]>;
   avanzarCursor(id: string, hasta: string): Promise<void>;
   marcarSaludo(id: string): Promise<void>;
+  /** El saludo como nota de voz (voz.ts), antes del texto. Si falla, tira el error y sale sólo el
+   *  texto. Opcional: sin esto (los tests, o sin voz configurada) no hay audio. */
+  mandarSaludoVoz?(id: string, telefono: string, perfil: string | null, ahora: Date): Promise<void>;
   leerHistoria(id: string): Promise<FilaHistoria[]>;
   /** Agrega al final, en un solo insert. Devuelve el seq siguiente. */
   agregarHistoria(id: string, seq: number, filas: NuevaFila[]): Promise<number>;
@@ -264,7 +267,7 @@ export async function atenderCharla(deps: DepsSofia, conversacionId: string, opc
       if (!devuelta && entrantes.every((e) => esRuido(e, charla.iaSaludoAt))) break;
       // Devuelta con la ventana de 24 h cerrada: no se le puede escribir. Sigue cuando escriba él.
       if (!puedeTextoLibre(charla.ultimoEntranteAt)) {
-        if (devuelta) await repo.evento(charla.id, "Sofía espera a que el cliente escriba: la ventana de 24 h está cerrada.");
+        if (devuelta) await repo.evento(charla.id, "Tomás espera a que el cliente escriba: la ventana de 24 h está cerrada.");
         break;
       }
       // Un audio que todavía se está bajando: lo levanta el turno que dispara su transcripción.
@@ -278,7 +281,7 @@ export async function atenderCharla(deps: DepsSofia, conversacionId: string, opc
 
       // ── Un contestador automático: ni saludo ni modelo (análisis de chats, D5) ──
       if (!devuelta && entrantes.every((e) => e.tipo === "text" && esContestadorAutomatico(e.texto))) {
-        await repo.evento(charla.id, "Sofía no contestó: es una respuesta automática de otro número.");
+        await repo.evento(charla.id, "Tomás no contestó: es una respuesta automática de otro número.");
         await repo.avanzarCursor(charla.id, nuevos.at(-1)!.creado);
         break;
       }
@@ -286,7 +289,17 @@ export async function atenderCharla(deps: DepsSofia, conversacionId: string, opc
       // ── El saludo, una vez, armado por el código ──
       let saludoEnviado: string | null = null;
       if (!charla.iaSaludoAt) {
-        saludoEnviado = saludoInicial(charla.nombrePerfil, ahora());
+        const momento = ahora();
+        // Pruebas del 17/10: primero el audio («Jorge, buen día. Tomás, de…») y después el texto,
+        // que queda escrito para quien no escucha audios. Si el audio no sale, va sólo el texto.
+        if (cfg.saludoVoz && repo.mandarSaludoVoz) {
+          try {
+            await repo.mandarSaludoVoz(charla.id, charla.telefono, charla.nombrePerfil, momento);
+          } catch (e) {
+            await repo.evento(charla.id, `No salió el audio del saludo: se mandó sólo el texto (${e instanceof Error ? e.message.slice(0, 200) : "error"}).`);
+          }
+        }
+        saludoEnviado = saludoInicial(charla.nombrePerfil, momento);
         await repo.mandar(charla.id, charla.telefono, saludoEnviado, "ia");
         await repo.marcarSaludo(charla.id);
         res.enviados.push(saludoEnviado);
@@ -302,7 +315,7 @@ export async function atenderCharla(deps: DepsSofia, conversacionId: string, opc
         if (await repo.cambiarEstado(charla.id, "derivada", "Se llegó al tope de gasto", ["bot"])) {
           await repo.mandar(charla.id, charla.telefono, TEXTO_PASO_A_PERSONA, "sistema");
           res.enviados.push(TEXTO_PASO_A_PERSONA);
-          await repo.evento(charla.id, `Sofía pasó la charla a una persona: se llegó a ${cual}.`);
+          await repo.evento(charla.id, `Tomás pasó la charla a una persona: se llegó a ${cual}.`);
           res.estado = "derivada";
         }
         break;
@@ -330,7 +343,7 @@ export async function atenderCharla(deps: DepsSofia, conversacionId: string, opc
           await repo.mandar(conversacionId, charla.telefono, TEXTO_ERROR, "sistema").catch(() => {});
           res.enviados.push(TEXTO_ERROR);
         }
-        await repo.evento(conversacionId, `Sofía no pudo responder y pasó la charla a una persona (${e instanceof Error ? e.message.slice(0, 200) : "error"}).`);
+        await repo.evento(conversacionId, `Tomás no pudo responder y pasó la charla a una persona (${e instanceof Error ? e.message.slice(0, 200) : "error"}).`);
         res.estado = "derivada";
       }
     } catch (e2) {
@@ -431,7 +444,7 @@ async function unaTanda(
   let negado = false;
 
   for (let vuelta = 0; ; vuelta++) {
-    if (vuelta >= MAX_VUELTAS) throw new Error(`Sofía dio ${MAX_VUELTAS} vueltas sin terminar.`);
+    if (vuelta >= MAX_VUELTAS) throw new Error(`Tomás dio ${MAX_VUELTAS} vueltas sin terminar.`);
     const { plazo, senal } = senalDelPedido(o.inicio);
     let mensaje: Anthropic.Beta.BetaMessage;
     try {
@@ -494,7 +507,7 @@ async function unaTanda(
         const ok = pisa && (await repo.cambiarEstado(charla.id, r.efecto.estado, r.efecto.motivo, ["bot", estadoEsperado]));
         if (ok) estadoEsperado = r.efecto.estado;
         if (r.efecto.estado === "derivada") {
-          await repo.evento(charla.id, `Sofía pasó la charla a una persona · ${r.efecto.motivo}: ${r.efecto.resumen}`);
+          await repo.evento(charla.id, `Tomás pasó la charla a una persona · ${r.efecto.motivo}: ${r.efecto.resumen}`);
           if (r.efecto.urgente) await repo.avisarUrgente(charla.id, r.efecto.resumen).catch((e) => console.error("[sofia] aviso urgente", e));
           if (r.efecto.textoFijo === "seguridad" && ok) {
             const t = textoSeguridad(cfg.telefonoGuardia);
@@ -519,7 +532,7 @@ async function unaTanda(
     if (await repo.cambiarEstado(charla.id, "derivada", "La IA se negó a contestar", ["bot", estadoEsperado])) {
       await repo.mandar(charla.id, charla.telefono, TEXTO_PASO_A_PERSONA, "sistema");
       out.enviados.push(TEXTO_PASO_A_PERSONA);
-      await repo.evento(charla.id, "Sofía no quiso responder el último mensaje y pasó la charla a una persona.");
+      await repo.evento(charla.id, "Tomás no quiso responder el último mensaje y pasó la charla a una persona.");
       out.estado = "derivada";
     }
     return out;
@@ -541,14 +554,14 @@ async function unaTanda(
       out.bloqueado = revision.motivo!;
       await repo.registrarBloqueo(charla.id, t, revision.motivo!, revision.hallazgos);
       if (await repo.cambiarEstado(charla.id, "espera_ok", revision.motivo!, ["bot", estadoEsperado])) estadoEsperado = "espera_ok";
-      await repo.evento(charla.id, `No se mandó lo que escribió Sofía (${revision.motivo}). Revisalo antes de contestar.`);
+      await repo.evento(charla.id, `No se mandó lo que escribió Tomás (${revision.motivo}). Revisalo antes de contestar.`);
     } else if (!actual || actual.estado !== estadoEsperado) {
       // Una persona la tomó (o la cerró) mientras Sofía pensaba: se calla.
       nota = "una persona tomó la charla antes de que saliera";
-      await repo.evento(charla.id, "Sofía no mandó su respuesta: una persona tomó la charla.");
+      await repo.evento(charla.id, "Tomás no mandó su respuesta: una persona tomó la charla.");
     } else if (!puedeTextoLibre(actual.ultimoEntranteAt)) {
       nota = "la ventana de 24 h estaba cerrada";
-      await repo.evento(charla.id, "Sofía no mandó su respuesta: la ventana de 24 h está cerrada. Cuando el cliente escriba, se abre.");
+      await repo.evento(charla.id, "Tomás no mandó su respuesta: la ventana de 24 h está cerrada. Cuando el cliente escriba, se abre.");
     } else {
       try {
         await repo.mandar(charla.id, charla.telefono, t, "ia");
@@ -562,7 +575,7 @@ async function unaTanda(
   }
   if (filaFinal) await repo.agregarHistoria(charla.id, seq, [{ ...filaFinal, enviado: nada && !silenciar ? null : enviado, nota }]);
   // Meta no aceptó el mensaje: es un error técnico (texto fijo y pasa a una persona, arriba).
-  if (fallaEnvio) throw new Error(`WhatsApp no aceptó la respuesta de Sofía: ${fallaEnvio instanceof Error ? fallaEnvio.message : fallaEnvio}`);
+  if (fallaEnvio) throw new Error(`WhatsApp no aceptó la respuesta de Tomás: ${fallaEnvio instanceof Error ? fallaEnvio.message : fallaEnvio}`);
   if (estadoEsperado !== "bot") out.estado = estadoEsperado;
   return out;
 }

@@ -95,7 +95,7 @@ function Burbuja({ item, nombreCliente }: { item: ItemHilo; nombreCliente: strin
         ? "Texto fijo"
         : item.autor === "plantilla"
           ? "Plantilla de Meta"
-          : "Sofía · IA"
+          : "Tomás · IA"
     : nombreCliente;
   const textoEsAdjunto = item.adjunto?.tipo === "ubicacion"; // el texto de la ubicación ya está en la tarjeta
   return (

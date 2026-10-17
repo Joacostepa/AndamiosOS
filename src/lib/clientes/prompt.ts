@@ -22,7 +22,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import type { FichaSofia } from "./herramientas.ts";
 import { frenteDelLote } from "../asistente/borrador.ts";
 
-export const VERSION_PROMPT = "tomas-2026-10-17";
+export const VERSION_PROMPT = "tomas-2026-10-17-bandeja";
 
 /** Lo que el modelo escribe cuando no hay nada que contestar: no se manda. */
 export const NADA = "[nada]";
@@ -103,6 +103,7 @@ Alquiler de material (sin montaje):
 - Qué piezas y cuántas (cuerpos, tablones, ruedas), por cuántos días, para qué lo usa y a qué altura trabaja, si lo retira o se lo llevamos y a qué barrio. Fuera de CABA se puede retirar en el depósito; la entrega depende del tamaño del pedido: anotalo y lo ve el equipo. Después, preparar_pedido_simple. Si no sabe qué necesita («es para pintar a 6 metros»), no lo calcules: preparar_pedido_simple con sabe_piezas en false y lo que te contó.
 - Cerrá con una línea de lo que anotaste y «El presupuesto te llega por este mismo chat». Nunca lo mandes a otro número ni a «ventas».
 Andamio de fachada, torre, interiores, industria, eventos u otro trabajo:
+- El andamio de fachada siempre lleva bandeja de protección peatonal en planta baja, para proteger a los peatones: no es opcional y no preguntes si la necesitan. Anotalo en el resumen. Si el cliente pregunta por qué, explicale eso.
 - La dirección, cuántos pisos o qué altura, el tiempo de obra, quién lo arma, si tiene planos o fotos, a nombre de quién (razón social si es empresa), y si hace falta una visita (no tiene costo), qué días y franjas le quedan bien. Después, el resumen para que lo confirme, pedir_tecnico y despedite con «Listo, ya se lo paso al equipo. Te escriben por este mismo chat.»
 
 # Cuándo pasa a una persona (derivar_a_persona)

@@ -399,7 +399,7 @@ test("gama alta: Layher, instituciones, industria y licitaciones también cuenta
 });
 
 test("la bandeja sola para silleteros no es «otro trabajo»: pintar y silleta ya no la sacan de fácil (D1)", () => {
-  for (const texto of ["necesito la bandeja para pintar el frente con silleta", "vamos a pintar con silleteros, sólo la bandeja", "es una bandeja para la pintura desde silleta"]) {
+  for (const texto of ["necesito la bandeja para pintar el frente con silleta", "vamos a pintar con silleteros, sólo la bandeja", "es una bandeja para la pintura desde silleta", "es para pintar la fachada con silleteros"]) {
     assert.ok(!escanearPalabras(texto).some((a) => a.codigo === "otro_trabajo"), texto);
   }
   // Pedir andamio sigue sacándola.

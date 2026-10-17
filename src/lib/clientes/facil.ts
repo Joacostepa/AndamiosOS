@@ -252,12 +252,13 @@ const PALABRAS: { codigo: CodigoAlerta; texto: string; terminos: (string | RegEx
   {
     codigo: "otro_trabajo",
     texto: "Pide algo más que una bandeja de 3 m (andamio, pisos…)",
-    // «pintar» y «silleta» no: la bandeja sola para silleteros («bandeja para pintar el frente con
-    // silleta») es justo la fácil (JS, 16/10, D1 del análisis de chats). Lo que la saca es pedir
-    // andamio, y eso lo atrapan «andami…» y necesitaAndamio, que tiene que ser false.
+    // «pintar», «silleta» y «fachada» no: la bandeja sola para silleteros («pintar la fachada con
+    // silleteros») es justo la fácil (JS, 16/10, D1 del análisis de chats; la tarjeta #1006 salió
+    // no fácil por «fachada»). Lo que la saca es pedir andamio, y eso lo atrapan «andami…» y
+    // necesitaAndamio, que tiene que ser false.
     terminos: [
       /(?:^|[^a-z])(andami[a-z]*|demol[a-z]*|apuntal[a-z]*)/,
-      "pisos", "fachada", "torre", "colgante", "balancin", "escalera", "tribuna", "escenario", "evento", "cuerpos", "cuerpo", "modulos",
+      "pisos", "torre", "colgante", "balancin", "escalera", "tribuna", "escenario", "evento", "cuerpos", "cuerpo", "modulos",
       "tablones", "tablon", "ruedas", "media sombra", "puntales", "doble bandeja", "bandeja doble", "techo",
     ],
   },

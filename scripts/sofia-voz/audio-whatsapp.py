@@ -1,7 +1,7 @@
 # Hace que el saludo suene como un audio de WhatsApp grabado con el celular, no como un micrófono de estudio (17/10/2026).
 # Ver docs/sofia/handoff.md, punto 14. JS eligió el saludo H con la voz de Tomás, y después «depósito, rápido» (×1,15),
 # con más fondo y la voz un poco más lejos del micrófono.
-# Uso: python3 -I scripts/sofia-voz/audio-whatsapp.py <toma.mp3> <ambientes: dir con oficina.mp3 y deposito.mp3> <salida> [ronda6|lejos|ofidep|uno <nombre>|afinar|distancia]
+# Uso: python3 -I scripts/sofia-voz/audio-whatsapp.py <toma.mp3> <ambientes: dir con oficina.mp3 y deposito.mp3> <salida> [ronda6|lejos|ofidep|uno <nombre>|afinar|distancia|uno1m <nombre>]
 # Cadena: velocidad → eco de cuarto → fondo debajo (antes del micrófono, así se ensucia junto con la voz) + siseo →
 # micrófono de celular → control automático de volumen (sube el ruido en las pausas) → Opus 24 kb/s a 16 kHz, como WhatsApp.
 # El .mp3 es para la página de muestras; en producción se manda el .ogg (queda en <salida>/tmp).
@@ -58,6 +58,8 @@ if MODO == "ronda6":  # sala, oficina y depósito, a ×1,15 y ×1,22, con la voz
             armar(vel, fondo, nivel, "cerca", f"h-{fondo or 'sala'}-v{round(vel*100)}")
 elif MODO == "uno":  # la cadena elegida (×1,15, ofidep-1, -16 dB, lejos) para una toma; argv[5] = nombre de salida
     armar(1.15, "ofidep-1", -16, "lejos", sys.argv[5])
+elif MODO == "uno1m":  # la cadena de producción desde el 17/10 a la tarde (voz.ts): ×1,25, ofidep-1, a un metro
+    armar(1.25, "ofidep-1", -16, "1m", sys.argv[5])
 elif MODO == "distancia":  # ×1,25 (JS, 17/10) a 1, 2 y 3 metros del celular, y la de antes («lejos») para comparar
     for dist in ("lejos", "1m", "2m", "3m"):
         armar(1.25, "ofidep-1", -16, dist, f"tomas-v125-{dist}")

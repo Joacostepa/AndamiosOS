@@ -2,7 +2,8 @@
 //
 // Lo que eligió JS después de varias rondas de muestras (scripts/sofia-voz/):
 //   · el texto de un audio suyo de referencia: «Hola, Jorge, acá Tomás de Andamios Buenos Aires.
-//     Contame en qué te puedo ayudar.» (guionSaludoVoz en saludo.ts);
+//     Contame... en qué te puedo ayudar.» (guionSaludoVoz en saludo.ts; la pausa, porque de un
+//     tirón el cierre sonaba robótico);
 //   · la voz «Tomás» de ElevenLabs con Eleven v4, sin etiquetas de tono ([warmly] le sonó
 //     exagerado) y con estabilidad 0,2: con 0,85 le dijeron que sonaba «demasiado perfecta»;
 //     acelerada ×1,25 (v4 no hace caso a `speed`);
@@ -15,7 +16,7 @@
 //     que audio-whatsapp.py con armar(1.25, "ofidep-1", -16, "1m").
 //
 // Cada audio se genera una sola vez por nombre (claveSaludoVoz) y queda en Storage
-// (comercial/voz/saludo/v2/; v1 era el guion anterior). Antes de guardarlo se transcribe y se compara con el guion
+// (comercial/voz/saludo/v3/; v1 y v2 eran guiones anteriores). Antes de guardarlo se transcribe y se compara con el guion
 // (audioDiceElGuion): si no coincide, se genera de nuevo; si tampoco, no hay audio y el turno
 // manda sólo el texto. Usa su propia clave de ElevenLabs (ELEVENLABS_VOZ_API_KEY, con permisos de
 // voz y de speech-to-text), no la del asistente de voz.
@@ -37,7 +38,7 @@ const VOZ = "QK4xDwo9ESPHA4JNUpX3";
 const MODELO = "eleven_v4";
 const BUCKET = "comercial";
 /** Si cambia la voz, el guion o el sonido, se sube la versión y los audios se generan de nuevo. */
-const CARPETA = "voz/saludo/v2";
+const CARPETA = "voz/saludo/v3";
 const FONDO = path.join(process.cwd(), "src/lib/clientes/voz/fondo-oficina-deposito.mp3");
 const INTENTOS = 2;
 

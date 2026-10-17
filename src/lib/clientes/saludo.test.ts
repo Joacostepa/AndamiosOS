@@ -143,10 +143,10 @@ test("esContestadorAutomatico: las respuestas automáticas de otros números (an
 });
 
 test("el guion del audio (el texto del audio de JS, 17/10): con el nombre o sin nombre, a cualquier hora", () => {
-  assert.equal(guionSaludoVoz("Jorge Pérez"), "Hola, Jorge, acá Tomás de Andamios Buenos Aires. Contame en qué te puedo ayudar.");
-  assert.equal(guionSaludoVoz("maría josé"), "Hola, María, acá Tomás de Andamios Buenos Aires. Contame en qué te puedo ayudar.");
-  assert.equal(guionSaludoVoz("Constructora Delta SRL"), "Hola, acá Tomás de Andamios Buenos Aires. Contame en qué te puedo ayudar.");
-  assert.equal(guionSaludoVoz(null), "Hola, acá Tomás de Andamios Buenos Aires. Contame en qué te puedo ayudar.");
+  assert.equal(guionSaludoVoz("Jorge Pérez"), "Hola, Jorge, acá Tomás de Andamios Buenos Aires. Contame... en qué te puedo ayudar.");
+  assert.equal(guionSaludoVoz("maría josé"), "Hola, María, acá Tomás de Andamios Buenos Aires. Contame... en qué te puedo ayudar.");
+  assert.equal(guionSaludoVoz("Constructora Delta SRL"), "Hola, acá Tomás de Andamios Buenos Aires. Contame... en qué te puedo ayudar.");
+  assert.equal(guionSaludoVoz(null), "Hola, acá Tomás de Andamios Buenos Aires. Contame... en qué te puedo ayudar.");
 });
 
 test("cada audio se guarda por nombre", () => {
@@ -159,7 +159,7 @@ test("cada audio se guarda por nombre", () => {
 });
 
 test("audioDiceElGuion: tolera puntuación y una palabra de relleno, nunca los nombres", () => {
-  const g = "Hola, Jorge, acá Tomás de Andamios Buenos Aires. Contame en qué te puedo ayudar.";
+  const g = "Hola, Jorge, acá Tomás de Andamios Buenos Aires. Contame... en qué te puedo ayudar.";
   assert.ok(audioDiceElGuion(g, "Hola, Jorge. Acá Tomás, de Andamios Buenos Aires. Contame en qué te puedo ayudar", "Jorge"));
   assert.ok(audioDiceElGuion(g, "hola jorge aca tomas de andamios buenos aires contame que te puedo ayudar", "Jorge"), "falta «en»");
   assert.ok(!audioDiceElGuion(g, "Hola, José. Acá Tomás, de Andamios Buenos Aires. Contame, ¿qué tipo de obra?", "Jorge"), "a 3 metros entendía «José»");

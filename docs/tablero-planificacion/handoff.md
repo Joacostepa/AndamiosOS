@@ -22,6 +22,16 @@ cosas, así que ante la duda manda el código y los comentarios largos que tiene
    Hoja del día del apoyo. Después, cargar la cuadrilla en los 19 partes viejos y correr el
    script por segunda vez.
 
+4. **Guardias (18/10, en propuesta):** reservar jornadas de las cuadrillas propias para lo
+   imprevisto, y rellenarlas el día anterior si nadie las usó. Propuesta del panel de expertos en
+   [guardias.md](guardias.md) y datos en [guardias-datos.md](guardias-datos.md). Esperan las
+   decisiones de JS (sección 10) antes de construir la etapa 1. Maqueta para Comercial y
+   Operaciones: https://claude.ai/artifact/3Nwweo3NvHnj8fxAtsLNDN (copia en
+   [maqueta-guardias.html](maqueta-guardias.html)). **Segunda ronda, el mismo día:** JS pidió
+   guardias automáticas desde el principio y "comodines" (OTs sin urgencia para rellenar las
+   guardias que no se usan); propuesta en [comodines.md](comodines.md) (decisiones en la
+   sección 11), que modifica guardias.md y la maqueta.
+
 **Cerrado el 17/10 (JS lo dio por terminado):** la ficha nueva de la OT y la bandeja nueva
 (09/10), la tarjeta y el encabezado nuevos de la grilla (09/10) y el casco de SyH (13–14/10).
 

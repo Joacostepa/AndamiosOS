@@ -1,0 +1,1418 @@
+<title>Guardias del tablero</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Diseño: el lenguaje del tablero de AndamiosOS (neutros, tarjetas por tipo de OT, coral para hoy y selección).
+   Una columna para leer de arriba abajo, sección por sección; la grilla de la semana es la pieza ancha. */
+:root {
+  --font: "DM Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  --radius: .5rem;
+  --nav-h: 50px;
+
+  --bg: oklch(.985 0 0); --card: oklch(1 0 0); --fg: oklch(.145 0 0);
+  --muted: oklch(.96 0 0); --muted-fg: oklch(.5 0 0); --border: oklch(.9 0 0);
+  --coral: #D85A30; --accent-btn: #B5461F; --on-accent: #ffffff;
+  --armado-bg: #e6f1fb; --armado-borde: #378add; --armado-text: #0c447c;
+  --desarme-bg: #faeeda; --desarme-borde: #ef9f27; --desarme-text: #633806;
+  --otro-bg: #f1efe8; --otro-text: #5f5e5a;
+  --tarea-bg: #edeafb; --tarea-borde: #7b6bd8; --tarea-text: #332a72;
+  --tentativa: var(--card); --trama-alfa: 19%;
+  --pasado: oklch(.955 0 0); --canaleta: #f1efe8;
+  --riel: #e8e6df; --riel-relleno: #b4b2a9;
+  --ok: #639922; --ok-text: oklch(.45 .12 140); --alerta: #ef9f27;
+  --peligro: #d92d20; --peligro-suave: #fdecea; --peligro-text: #912018;
+  --clima-bg: #e6eefb; --clima-text: #14477d;
+  --susp-bg: #e6eefb; --susp-raya: #b9cff2; --susp-borde: #5b8bd6; --susp-sello: #1f5bbf; --susp-text: #1f5bbf;
+  --apoyo-bg: #f2f0ea; --apoyo-raya: #e2ded3; --apoyo-borde: #7d786b; --apoyo-text: #3f3b33;
+  --aviso-bg: #fef6e7; --aviso-borde: #f5d9a0; --aviso-text: #7a4405; --aviso-icono: #b54708;
+  --guardia-bg: #fef6e7; --guardia-raya: #f8e6c2; --guardia-borde: #e8c27a; --guardia-text: #7a4405; --guardia-icono: #b54708;
+  --sombra: 0 1px 2px oklch(0 0 0 / 6%);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: oklch(.13 0 0); --card: oklch(.2 0 0); --fg: oklch(.93 0 0);
+    --coral: #D85A30; --accent-btn: #B5461F; --on-accent: #ffffff;
+    --muted: oklch(.25 0 0); --muted-fg: oklch(.68 0 0); --border: oklch(1 0 0 / 10%);
+    --armado-bg: oklch(.27 .045 254); --armado-borde: oklch(.7 .14 254); --armado-text: oklch(.86 .06 254);
+    --desarme-bg: oklch(.27 .04 70); --desarme-borde: oklch(.78 .14 66); --desarme-text: oklch(.87 .08 75);
+    --otro-bg: oklch(.26 .006 90); --otro-text: oklch(.85 .008 90);
+    --tarea-bg: oklch(.28 .05 288); --tarea-borde: oklch(.68 .15 288); --tarea-text: oklch(.86 .07 288);
+    --tentativa: var(--bg); --trama-alfa: 6%;
+    --pasado: oklch(.165 0 0); --canaleta: oklch(.155 .004 90);
+    --riel: oklch(.28 0 0); --riel-relleno: oklch(.55 0 0);
+    --ok: oklch(.72 .15 140); --ok-text: oklch(.84 .13 140); --alerta: oklch(.78 .14 66);
+    --peligro: oklch(.68 .19 28); --peligro-suave: oklch(.28 .06 28); --peligro-text: oklch(.86 .08 28);
+    --clima-bg: oklch(.28 .05 250); --clima-text: oklch(.85 .08 250);
+    --susp-bg: #1d2a3d; --susp-raya: #2c446a; --susp-borde: #6f9be0; --susp-sello: #2f6fd8; --susp-text: #8db4f2;
+    --apoyo-bg: #23221f; --apoyo-raya: #33312c; --apoyo-borde: #8f8a7e; --apoyo-text: #ddd8cc;
+    --aviso-bg: oklch(.25 .035 70); --aviso-borde: oklch(.35 .05 70); --aviso-text: oklch(.87 .07 75); --aviso-icono: oklch(.8 .13 65);
+    --guardia-bg: oklch(.24 .03 70); --guardia-raya: oklch(.29 .045 70); --guardia-borde: oklch(.5 .08 70); --guardia-text: oklch(.87 .07 75); --guardia-icono: oklch(.8 .13 65);
+    --sombra: 0 1px 2px oklch(0 0 0 / 30%);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: oklch(.13 0 0); --card: oklch(.2 0 0); --fg: oklch(.93 0 0);
+  --coral: #D85A30; --accent-btn: #B5461F; --on-accent: #ffffff;
+  --muted: oklch(.25 0 0); --muted-fg: oklch(.68 0 0); --border: oklch(1 0 0 / 10%);
+  --armado-bg: oklch(.27 .045 254); --armado-borde: oklch(.7 .14 254); --armado-text: oklch(.86 .06 254);
+  --desarme-bg: oklch(.27 .04 70); --desarme-borde: oklch(.78 .14 66); --desarme-text: oklch(.87 .08 75);
+  --otro-bg: oklch(.26 .006 90); --otro-text: oklch(.85 .008 90);
+  --tarea-bg: oklch(.28 .05 288); --tarea-borde: oklch(.68 .15 288); --tarea-text: oklch(.86 .07 288);
+  --tentativa: var(--bg); --trama-alfa: 6%;
+  --pasado: oklch(.165 0 0); --canaleta: oklch(.155 .004 90);
+  --riel: oklch(.28 0 0); --riel-relleno: oklch(.55 0 0);
+  --ok: oklch(.72 .15 140); --ok-text: oklch(.84 .13 140); --alerta: oklch(.78 .14 66);
+  --peligro: oklch(.68 .19 28); --peligro-suave: oklch(.28 .06 28); --peligro-text: oklch(.86 .08 28);
+  --clima-bg: oklch(.28 .05 250); --clima-text: oklch(.85 .08 250);
+  --susp-bg: #1d2a3d; --susp-raya: #2c446a; --susp-borde: #6f9be0; --susp-sello: #2f6fd8; --susp-text: #8db4f2;
+  --apoyo-bg: #23221f; --apoyo-raya: #33312c; --apoyo-borde: #8f8a7e; --apoyo-text: #ddd8cc;
+  --aviso-bg: oklch(.25 .035 70); --aviso-borde: oklch(.35 .05 70); --aviso-text: oklch(.87 .07 75); --aviso-icono: oklch(.8 .13 65);
+  --guardia-bg: oklch(.24 .03 70); --guardia-raya: oklch(.29 .045 70); --guardia-borde: oklch(.5 .08 70); --guardia-text: oklch(.87 .07 75); --guardia-icono: oklch(.8 .13 65);
+  --sombra: 0 1px 2px oklch(0 0 0 / 30%);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } *, *::before, *::after { animation: none !important; transition: none !important; } }
+body { background: var(--bg); color: var(--fg); font-family: var(--font); font-size: 16px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 30; background: var(--card); }
+h1, h2, h3 { text-wrap: balance; margin: 0; line-height: 1.2; }
+p { margin: 0; }
+b, strong { font-weight: 600; }
+.num { font-variant-numeric: tabular-nums; }
+:focus-visible { outline: 2px solid var(--coral); outline-offset: 2px; border-radius: 4px; }
+
+.wrap { max-width: 1320px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+
+/* Barra de arriba */
+.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; background: var(--card); border-bottom: 1px solid var(--border); }
+.top .wrap { display: flex; align-items: center; gap: 16px; height: var(--nav-h); }
+.marca { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; white-space: nowrap; }
+.marca i { width: 10px; height: 10px; border-radius: 3px; background: var(--coral); display: block; }
+.nav { display: flex; gap: 2px; overflow-x: auto; min-width: 0; scrollbar-width: none; }
+.nav::-webkit-scrollbar { display: none; }
+.nav a { color: var(--muted-fg); text-decoration: none; font-size: 14px; font-weight: 500; padding: 6px 10px; border-radius: 6px; white-space: nowrap; }
+.nav a:hover { color: var(--fg); background: var(--muted); }
+.nav a.activo { color: var(--fg); background: var(--muted); }
+
+/* Secciones */
+.sec { border-top: 1px solid var(--border); scroll-margin-top: calc(var(--nav-h) + env(safe-area-inset-top, 0px)); }
+.sec > .wrap { padding-block: 56px; display: flex; flex-direction: column; gap: 28px; }
+.ceja { display: flex; gap: 10px; align-items: baseline; font-size: 13px; font-weight: 600; color: var(--muted-fg); text-transform: uppercase; letter-spacing: .06em; }
+.ceja .dur { font-weight: 500; text-transform: none; letter-spacing: 0; }
+.cab { display: flex; flex-direction: column; gap: 10px; max-width: 64rem; }
+h2 { font-size: 28px; font-weight: 700; letter-spacing: -.01em; }
+h3 { font-size: 20px; font-weight: 600; }
+.lead { font-size: 20px; color: var(--muted-fg); max-width: 60ch; }
+.prosa { max-width: 68ch; }
+.pie { font-size: 13px; color: var(--muted-fg); }
+
+.chip { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 600; line-height: 1; padding: 6px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--muted); color: var(--muted-fg); white-space: nowrap; }
+.chip.ambar { background: var(--aviso-bg); border-color: var(--aviso-borde); color: var(--aviso-text); }
+.adef { display: inline-flex; align-items: center; font-size: 11px; font-weight: 600; line-height: 16px; padding: 0 6px; border-radius: 4px; border: 1px dashed var(--aviso-icono); color: var(--aviso-text); background: var(--aviso-bg); white-space: nowrap; vertical-align: 2px; }
+
+.btn { font: inherit; font-size: 15px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 8px 16px; border-radius: 8px; border: 1px solid var(--border); background: var(--card); color: var(--fg); cursor: pointer; box-shadow: var(--sombra); }
+.btn:hover { background: var(--muted); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn.prim { background: var(--accent-btn); border-color: var(--accent-btn); color: var(--on-accent); }
+.btn.prim:hover { filter: brightness(1.06); }
+.btn.chico { min-height: 32px; padding: 4px 12px; font-size: 14px; }
+
+/* Portada */
+#inicio > .wrap { padding-block: 64px 56px; }
+.portada { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 40px; align-items: center; }
+.portada h1 { font-size: 40px; font-weight: 700; letter-spacing: -.02em; }
+.portada .txt { display: flex; flex-direction: column; gap: 18px; align-items: flex-start; min-width: 0; }
+.frase { border-left: 3px solid var(--coral); padding: 4px 0 4px 18px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.frase q { font-size: 20px; font-weight: 600; quotes: "“" "”"; }
+.frase span { font-size: 16px; color: var(--muted-fg); }
+.miniguardia { margin-top: 8px; width: min(100%, 220px); }
+@media (max-width: 820px) { .portada { grid-template-columns: 1fr; } .portada h1 { font-size: 32px; } }
+
+/* P1 números */
+.numeros { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+.numero { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.numero .n { font-size: 40px; font-weight: 700; line-height: 1.05; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.numero .n small { font-size: 20px; font-weight: 600; color: var(--muted-fg); }
+.numero p { color: var(--muted-fg); }
+.franja { background: var(--muted); border-radius: var(--radius); padding: 14px 18px; display: flex; flex-wrap: wrap; gap: 8px 28px; align-items: baseline; }
+.franja .t { font-weight: 600; font-size: 14px; color: var(--muted-fg); text-transform: uppercase; letter-spacing: .05em; }
+.franja span { white-space: nowrap; }
+.cierre { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 32px; align-items: center; }
+.cierre > p { font-size: 20px; font-weight: 600; }
+.barras { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.barra { display: grid; grid-template-columns: 9.5rem minmax(0, 1fr); gap: 12px; align-items: center; font-size: 14px; }
+.barra .riel { height: 22px; background: var(--riel); border-radius: 4px; position: relative; overflow: hidden; }
+.barra .relleno { position: absolute; inset: 0 auto 0 0; border-radius: 4px; background: var(--riel-relleno); }
+.barra .relleno.rango { background: repeating-linear-gradient(90deg, var(--guardia-raya) 0 3px, var(--guardia-bg) 3px 9px); border: 1px solid var(--guardia-borde); }
+.barra .relleno.solido { background: var(--guardia-borde); }
+.escala { display: grid; grid-template-columns: 9.5rem minmax(0, 1fr); gap: 12px; font-size: 12px; color: var(--muted-fg); }
+.escala div { display: flex; justify-content: space-between; }
+@media (max-width: 820px) { .cierre { grid-template-columns: 1fr; } }
+
+/* Tablero */
+.tablero-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); -webkit-overflow-scrolling: touch; }
+.tablero { display: grid; min-width: min-content; font-size: 12px; }
+.tb-esq, .tb-dia, .tb-fila, .tb-celda { border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.tb-esq { position: sticky; left: 0; z-index: 3; background: var(--card); font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: .05em; color: var(--muted-fg); display: flex; align-items: flex-end; padding: 6px 8px; }
+.tb-dia { background: var(--card); min-height: 52px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 4px; text-align: center; }
+.tb-dia .d1 { display: flex; align-items: center; gap: 4px; }
+.tb-dia .dn { font-size: 11px; text-transform: uppercase; color: var(--muted-fg); letter-spacing: .04em; }
+.tb-dia .dd { font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.tb-dia .hoy { background: var(--accent-btn); color: var(--on-accent); font-weight: 600; font-size: 12px; height: 19px; border-radius: 10px; padding: 0 7px; display: inline-flex; align-items: center; }
+.tb-dia .d2 { font-size: 12px; color: var(--muted-fg); display: flex; gap: 4px; align-items: center; flex-wrap: wrap; justify-content: center; font-variant-numeric: tabular-nums; }
+.tb-dia .d2 .g { color: var(--guardia-text); font-weight: 500; }
+.clima { display: inline-flex; align-items: center; height: 15px; padding: 0 4px; border-radius: 4px; background: var(--clima-bg); color: var(--clima-text); font-size: 11px; font-weight: 600; }
+.tb-dia.lunes, .tb-celda.lunes { border-left: 2px solid var(--border); }
+.tb-dia.sig { background: var(--muted); }
+.tb-fila { position: sticky; left: 0; z-index: 2; background: var(--card); padding: 6px 8px 6px 11px; display: flex; flex-direction: column; justify-content: center; gap: 2px; min-width: 0; }
+.tb-fila::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--fila-color, var(--border)); }
+.tb-fila .nom { font-size: 12px; font-weight: 500; }
+.tb-fila .carga { font-size: 12px; color: var(--muted-fg); font-variant-numeric: tabular-nums; }
+.tb-fila .carga .g { color: var(--guardia-text); font-weight: 500; }
+.tb-fila .nota { font-size: 11px; color: var(--muted-fg); line-height: 1.3; }
+.tb-celda { position: relative; height: 116px; padding: 4px 2px 14px; display: flex; flex-direction: column; gap: 3px; background: var(--bg); min-width: 0; }
+.tb-celda.pasado { background: var(--pasado); }
+.tb-celda.sig { background: color-mix(in oklch, var(--muted) 60%, var(--bg)); }
+.tb-celda .ocup { position: absolute; left: 6px; right: 6px; bottom: 4px; height: 4px; border-radius: 2px; background: var(--riel); overflow: hidden; }
+.tb-celda .ocup i { position: absolute; inset: 0 auto 0 0; background: var(--riel-relleno); border-radius: 2px; }
+.tb-celda .ocup i.sobre { background: var(--peligro); }
+.tb-celda.sig .ocup { display: none; }
+
+.tarjeta { position: relative; border-radius: 4px; margin: 0 2px; padding: 4px 7px; display: flex; flex-direction: column; justify-content: center; gap: 2px; overflow: hidden; flex: none; min-height: 18px; line-height: 1.25; }
+.tarjeta .r1 { display: flex; align-items: flex-start; gap: 4px; min-width: 0; }
+.tarjeta .ico { flex: none; width: 13px; height: 15px; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; }
+.tarjeta .ico svg { width: 13px; height: 13px; }
+.tarjeta .dir { font-size: 12px; font-weight: 500; min-width: 0; flex: 1; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word; }
+.tarjeta.corta .dir { -webkit-line-clamp: 1; white-space: nowrap; text-overflow: ellipsis; display: block; }
+.tarjeta .j { flex: none; font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums; opacity: .85; }
+.tarjeta .r2 { font-size: 11px; color: color-mix(in oklch, currentColor 92%, transparent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tarjeta .r2.mov { color: var(--aviso-text); font-weight: 600; }
+.tarjeta .r2.mov.corto { color: var(--peligro-text); }
+.tarjeta .r3 { display: flex; flex-wrap: wrap; gap: 3px; }
+.tarjeta .r2.urg { color: var(--peligro-text); font-weight: 600; }
+.chipt { font-size: 11px; font-weight: 600; line-height: 14px; padding: 0 4px; border-radius: 3px; border: 1px solid currentColor; white-space: nowrap; }
+.chipt.sello-g { text-transform: uppercase; letter-spacing: .04em; font-size: 11px; font-weight: 700; background: var(--guardia-bg); border-color: var(--guardia-borde); color: var(--guardia-icono); }
+.chipt.neutro { border-color: var(--border); background: var(--card); color: var(--muted-fg); }
+.chipt.urg { background: var(--peligro-suave); border-color: var(--peligro); color: var(--peligro-text); }
+.chipt.apoyo { border-color: var(--apoyo-borde); background: var(--apoyo-bg); color: var(--apoyo-text); }
+
+.tarjeta.armado { background: var(--armado-bg); border: 1px solid color-mix(in oklch, var(--armado-text) 30%, transparent); color: var(--armado-text); }
+.tarjeta.desarme { background: var(--desarme-bg); border: 1px solid color-mix(in oklch, var(--desarme-text) 30%, transparent); color: var(--desarme-text); }
+.tarjeta.otro { background: var(--otro-bg); border: 1px solid color-mix(in oklch, var(--otro-text) 30%, transparent); color: var(--otro-text); }
+.tarjeta.tentativa { background-color: var(--tentativa); border: 1px dashed var(--border); }
+.tarjeta.tentativa.armado { background-image: repeating-linear-gradient(45deg, color-mix(in oklch, var(--armado-text) var(--trama-alfa), transparent) 0 2px, transparent 2px 7px); }
+.tarjeta.tentativa.desarme { background-image: repeating-linear-gradient(45deg, color-mix(in oklch, var(--desarme-text) var(--trama-alfa), transparent) 0 2px, transparent 2px 7px); }
+.tarjeta.tentativa.otro { background-image: repeating-linear-gradient(45deg, color-mix(in oklch, var(--otro-text) var(--trama-alfa), transparent) 0 2px, transparent 2px 7px); }
+.tarjeta.apoyo { background-color: var(--apoyo-bg); color: var(--apoyo-text); border: 1px solid var(--apoyo-borde); background-image: repeating-linear-gradient(135deg, var(--apoyo-raya) 0 6px, transparent 6px 12px); }
+.tarjeta.deposito { background: var(--tarea-bg); color: var(--tarea-text); border: 1px solid color-mix(in oklch, var(--tarea-text) 30%, transparent); }
+.tarjeta.guardia { background-color: var(--guardia-bg); background-image: repeating-linear-gradient(90deg, var(--guardia-raya) 0 3px, transparent 3px 9px); border: 1px solid var(--guardia-borde); color: var(--guardia-text); }
+.tarjeta.guardia .sello { font-size: 11px; font-weight: 700; line-height: 14px; letter-spacing: .06em; text-transform: uppercase; padding: 0 4px; border-radius: 3px; background: var(--guardia-bg); border: 1px solid var(--guardia-borde); color: var(--guardia-icono); }
+.tarjeta.guardia .ico { color: var(--guardia-icono); }
+.tarjeta.guardia .r2 { color: var(--guardia-text); white-space: normal; }
+.tarjeta.guardia .r2 b { font-weight: 600; }
+.tarjeta.guardia.corta .r2 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tarjeta.guardia.reservada { border-style: dashed; border-color: var(--susp-borde); }
+.tarjeta.guardia .r2.res { color: var(--susp-text); font-weight: 600; }
+.tarjeta.movida { box-shadow: inset 0 0 0 1px var(--aviso-icono); }
+.tarjeta.cambio { outline: 2px solid var(--coral); outline-offset: 1px; animation: latido 1.2s ease-out 1; }
+@keyframes latido { 0% { outline-offset: 5px; } 100% { outline-offset: 1px; } }
+.tarjeta .sigue { flex: none; font-size: 12px; opacity: .7; }
+
+.tapa-susp { position: absolute; inset: 4px 4px 12px 4px; border-radius: 6px; border: 2px dashed var(--susp-borde); background-color: var(--susp-bg); background-image: repeating-linear-gradient(135deg, var(--susp-raya) 0 8px, transparent 8px 16px); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; z-index: 1; }
+.tapa-susp .sello { background: var(--susp-sello); color: var(--on-accent); font-size: 12px; font-weight: 700; border-radius: 999px; padding: 4px 10px 4px 8px; }
+.tapa-susp small { font-size: 11px; font-weight: 700; letter-spacing: .12em; color: var(--susp-text); }
+.tapa-susp.cambio { outline: 2px solid var(--coral); outline-offset: 1px; }
+.vacio-sig { font-size: 11px; color: var(--muted-fg); text-align: center; padding-top: 30px; }
+
+/* P2 */
+.p2 { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 24px; align-items: start; }
+.p2-izq { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.indicadores { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.claves { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; counter-reset: c; }
+.claves li { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 4px 10px; }
+.claves li::before { counter-increment: c; content: counter(c); grid-row: span 2; width: 26px; height: 26px; border-radius: 50%; background: var(--muted); color: var(--fg); font-weight: 700; font-size: 14px; display: flex; align-items: center; justify-content: center; }
+.claves b { font-size: 16px; }
+.claves span { color: var(--muted-fg); font-size: 15px; }
+@media (max-width: 1000px) { .p2 { grid-template-columns: 1fr; } }
+
+/* P3 simulación */
+.simbar { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; box-shadow: var(--sombra); z-index: 10; }
+@media (min-width: 900px) { .simbar { position: sticky; top: calc(var(--nav-h) + env(safe-area-inset-top, 0px) + 8px); } }
+.simbar .fila { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; padding: 2px; background: var(--muted); gap: 2px; }
+.seg button { font: inherit; font-size: 15px; font-weight: 600; border: 0; background: transparent; color: var(--muted-fg); padding: 7px 14px; border-radius: 6px; cursor: pointer; min-height: 36px; }
+.seg button[aria-pressed="true"] { background: var(--card); color: var(--fg); box-shadow: var(--sombra); }
+.seg.version button[aria-pressed="true"][data-v="con"] { color: var(--guardia-icono); }
+.pasos { display: flex; gap: 8px; align-items: center; margin-left: auto; }
+.pasos .cual { font-size: 14px; color: var(--muted-fg); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ejemplo { font-size: 13px; font-weight: 600; color: var(--aviso-text); background: var(--aviso-bg); border: 1px solid var(--aviso-borde); border-radius: 6px; padding: 4px 10px; }
+.dias-salto { display: flex; gap: 4px; flex-wrap: wrap; }
+.dias-salto button { font: inherit; font-size: 13px; font-weight: 500; border: 1px solid var(--border); background: var(--card); color: var(--muted-fg); border-radius: 999px; padding: 3px 10px; cursor: pointer; font-variant-numeric: tabular-nums; }
+.dias-salto button[aria-current="true"] { border-color: var(--coral); color: var(--fg); font-weight: 600; box-shadow: inset 0 0 0 1px var(--coral); }
+.dias-salto .reiniciar { margin-left: auto; color: var(--fg); }
+.dias-salto .rot { font-size: 13px; color: var(--muted-fg); align-self: center; margin-right: 4px; }
+@media (max-width: 899px) { .pasos { margin-left: 0; width: 100%; justify-content: space-between; } }
+
+.contadores { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+.cont { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cont .et { font-size: 13px; color: var(--muted-fg); line-height: 1.3; }
+.cont .v { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.15; }
+.cont .v small { font-size: 15px; color: var(--muted-fg); font-weight: 600; }
+.cont .otra { font-size: 13px; color: var(--muted-fg); font-variant-numeric: tabular-nums; }
+.cont.sube { border-color: var(--coral); }
+@media (max-width: 900px) { .contadores { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+.paso-panel { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 900px) { .paso-panel { grid-template-columns: 1fr; } }
+.evento { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.evento .meta { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 13px; color: var(--muted-fg); }
+.evento .hora { font-family: var(--mono); font-size: 13px; font-weight: 500; color: var(--fg); background: var(--muted); padding: 2px 8px; border-radius: 4px; font-variant-numeric: tabular-nums; }
+.evento .det { color: var(--muted-fg); }
+.evento .que { font-size: 17px; }
+.evento .version-tag { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+.evento .version-tag.con { color: var(--guardia-icono); }
+.aviso { background: var(--aviso-bg); border: 1px solid var(--aviso-borde); color: var(--aviso-text); border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+.aviso .tit { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--aviso-icono); }
+.aviso .msg { font-size: 16px; font-weight: 600; }
+.aviso .acciones { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.aviso .op { font-size: 13px; }
+.bandeja { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; background: var(--bg); }
+.bandeja .q { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.bandeja .q small { color: var(--muted-fg); font-size: 13px; }
+.llamada { border-left: 3px solid var(--peligro); padding: 2px 0 2px 12px; font-size: 15px; color: var(--muted-fg); }
+.llamada b { color: var(--fg); }
+.msj-capataz { align-self: flex-start; max-width: 100%; background: var(--muted); border-radius: 12px 12px 12px 4px; padding: 10px 14px; display: flex; flex-direction: column; gap: 2px; }
+.msj-capataz small { font-size: 12px; color: var(--muted-fg); }
+.msj-capataz b { font-size: 16px; }
+.asist { display: flex; flex-direction: column; gap: 6px; font-size: 15px; }
+.asist .burb { border-radius: 12px; padding: 8px 12px; max-width: 34rem; }
+.asist .yo { align-self: flex-end; background: var(--muted); border-bottom-right-radius: 4px; }
+.asist .ia { align-self: flex-start; background: var(--armado-bg); color: var(--armado-text); border-bottom-left-radius: 4px; }
+
+.llamadas { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.llamadas h3 { font-size: 16px; }
+.llamadas table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.llamadas th { text-align: left; font-size: 12px; font-weight: 600; color: var(--muted-fg); padding: 4px 6px 4px 0; border-bottom: 1px solid var(--border); }
+.llamadas td { padding: 6px 6px 6px 0; border-bottom: 1px solid var(--border); vertical-align: top; font-variant-numeric: tabular-nums; }
+.llamadas tr:last-child td { border-bottom: 0; }
+.llamadas .corto { color: var(--peligro-text); font-weight: 600; }
+.llamadas .vacio { color: var(--muted-fg); font-size: 14px; }
+.llamadas .por { color: var(--muted-fg); font-size: 13px; }
+.tabla-scroll { overflow-x: auto; }
+
+.leyenda { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 13px; color: var(--muted-fg); align-items: center; }
+.leyenda span { display: inline-flex; align-items: center; gap: 6px; }
+.leyenda i { width: 22px; height: 14px; border-radius: 3px; display: inline-block; flex: none; }
+.lg-armado { background: var(--armado-bg); border: 1px solid var(--armado-borde); }
+.lg-desarme { background: var(--desarme-bg); border: 1px solid var(--desarme-borde); }
+.lg-otro { background: var(--otro-bg); border: 1px solid var(--otro-text); }
+.lg-tent { background-color: var(--tentativa); border: 1px dashed var(--muted-fg); background-image: repeating-linear-gradient(45deg, color-mix(in oklch, var(--fg) 20%, transparent) 0 2px, transparent 2px 6px); }
+.lg-guardia { background-color: var(--guardia-bg); background-image: repeating-linear-gradient(90deg, var(--guardia-raya) 0 3px, transparent 3px 7px); border: 1px solid var(--guardia-borde); }
+.lg-apoyo { background-color: var(--apoyo-bg); background-image: repeating-linear-gradient(135deg, var(--apoyo-raya) 0 4px, transparent 4px 8px); border: 1px solid var(--apoyo-borde); }
+.lg-dep { background: var(--tarea-bg); border: 1px solid var(--tarea-borde); }
+.lg-susp { background-color: var(--susp-bg); background-image: repeating-linear-gradient(135deg, var(--susp-raya) 0 4px, transparent 4px 8px); border: 1px dashed var(--susp-borde); }
+.lg-mov { background: var(--card); box-shadow: inset 0 0 0 1px var(--aviso-icono); }
+.lg-mas1 { background: var(--card); border: 1px solid var(--border); }
+.lg-cambio { background: var(--card); outline: 2px solid var(--coral); outline-offset: -2px; }
+
+.final { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+.final .col { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.final .col.actual { border-color: var(--coral); }
+.final .col h3 { font-size: 16px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted-fg); }
+.final dl { margin: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; }
+.final dt { color: var(--muted-fg); }
+.final dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+.final dd.grande { font-size: 28px; line-height: 1.1; }
+.final-frase { font-size: 20px; font-weight: 600; max-width: 60ch; }
+@media (max-width: 700px) { .final { grid-template-columns: 1fr; } }
+
+/* P4, P6 tarjetas */
+.tarjetas { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+.tj { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.tj h3 { font-size: 18px; }
+.tj p { color: var(--muted-fg); }
+.tj p.cita { color: var(--fg); font-style: italic; }
+
+/* P5 pestañas */
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); }
+.tabs button { font: inherit; font-size: 16px; font-weight: 600; border: 0; background: transparent; color: var(--muted-fg); padding: 10px 16px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.tabs button[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--coral); }
+.agenda { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.agenda li { display: grid; grid-template-columns: 13rem minmax(0, 1fr); gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--border); }
+.agenda li:last-child { border-bottom: 0; }
+.agenda .cuando { font-weight: 600; }
+.agenda .que { color: var(--muted-fg); }
+.agenda .que b { color: var(--fg); }
+.orden { margin: 6px 0 0; padding-left: 20px; color: var(--muted-fg); }
+@media (max-width: 700px) { .agenda li { grid-template-columns: 1fr; gap: 4px; } }
+.primer-dia { border: 1px solid var(--border); border-left: 3px solid var(--muted-fg); border-radius: var(--radius); background: var(--card); padding: 14px 18px; display: flex; flex-direction: column; gap: 6px; max-width: 64rem; }
+.primer-dia .tit { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted-fg); }
+.primer-dia p { color: var(--muted-fg); }
+.primer-dia b { color: var(--fg); }
+.pregunta-abierta { background: var(--aviso-bg); border: 1px solid var(--aviso-borde); color: var(--aviso-text); border-radius: var(--radius); padding: 12px 16px; font-weight: 600; }
+
+/* P6 */
+.dos { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+@media (max-width: 760px) { .dos { grid-template-columns: 1fr; } }
+.dos ul { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; color: var(--muted-fg); }
+.dos ul b { color: var(--fg); }
+.franja-fuerte { border: 1px solid var(--border); border-left: 3px solid var(--coral); border-radius: var(--radius); background: var(--card); padding: 14px 18px; font-size: 17px; font-weight: 600; }
+
+/* P7 */
+.adefinir { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; max-width: 64rem; }
+.adefinir li { display: flex; gap: 12px; align-items: baseline; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 16px; }
+.adefinir li > span:last-child { min-width: 0; }
+.metas { width: 100%; max-width: 64rem; border-collapse: collapse; font-size: 15px; }
+.metas th, .metas td { text-align: left; padding: 10px 12px 10px 0; border-bottom: 1px solid var(--border); vertical-align: top; }
+.metas th { font-size: 13px; color: var(--muted-fg); font-weight: 600; }
+.metas td.num { white-space: nowrap; }
+
+/* P8 */
+.faq { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; }
+.faq-grupo { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.faq-grupo h3 { font-size: 14px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted-fg); }
+details { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); }
+summary { cursor: pointer; padding: 12px 14px; font-weight: 600; list-style: none; display: flex; gap: 10px; align-items: baseline; }
+summary::-webkit-details-marker { display: none; }
+summary::before { content: "+"; color: var(--muted-fg); font-weight: 700; width: 12px; flex: none; }
+details[open] summary::before { content: "−"; }
+details p { padding: 0 14px 14px 36px; color: var(--muted-fg); }
+.fin { display: flex; gap: 12px; flex-wrap: wrap; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-escudo" viewBox="0 0 16 16"><path d="M8 1.5 2.5 3.5v4c0 3.3 2.3 5.9 5.5 7 3.2-1.1 5.5-3.7 5.5-7v-4L8 1.5Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
+  <symbol id="i-llave" viewBox="0 0 16 16"><path d="M10.5 1.8a3.7 3.7 0 0 0-3.4 5L2 11.9 4.1 14l5.1-5.1a3.7 3.7 0 0 0 4.9-4.6l-2.2 2.2-2.1-.4-.4-2.1 2.2-2.2c-.4-.1-.7-.1-1.1-.1Z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></symbol>
+</svg>
+
+<header class="top">
+  <div class="wrap">
+    <div class="marca"><i></i>Guardias</div>
+    <nav class="nav" aria-label="Secciones">
+      <a href="#inicio">Inicio</a>
+      <a href="#problema">El problema</a>
+      <a href="#que-es">Qué es</a>
+      <a href="#semana">La semana</a>
+      <a href="#comercial">Comercial</a>
+      <a href="#operaciones">Operaciones</a>
+      <a href="#ia">La IA</a>
+      <a href="#a-definir">A definir</a>
+      <a href="#preguntas">Preguntas</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+<!-- P0 -->
+<section class="sec" id="inicio" style="border-top:0">
+  <div class="wrap">
+    <div class="portada">
+      <div class="txt">
+        <span class="chip ambar">Propuesta · en discusión</span>
+        <h1>Guardias en el tablero</h1>
+        <p class="lead">Una jornada guardada para lo que no se puede prever. Si nadie la usa, el día anterior se convierte en trabajo.</p>
+        <button class="btn prim" id="btn-empezar" type="button">Empezar</button>
+      </div>
+      <div class="frase">
+        <q>La guardia es para lo que no se podía prever; para lo demás, motivo escrito.</q>
+        <span>Guardamos lugar cuando todavía hay, para no mover obras cuando ya no hay.</span>
+        <div class="miniguardia" aria-hidden="true">
+          <div class="tarjeta guardia" style="height:72px">
+            <div class="r1"><span class="ico"><svg><use href="#i-escudo"/></svg></span><span class="sello">Guardia</span><span style="flex:1"></span><span class="j">1 j</span></div>
+            <div class="r2">si no entra nada: <b>Depósito</b></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- P1 -->
+<section class="sec" id="problema">
+  <div class="wrap">
+    <div class="cab">
+      <div class="ceja">1 · El problema hoy <span class="dur">≈ 2 min</span></div>
+      <h2>Para meter una obra, muchas veces movemos otra</h2>
+      <p class="lead">El problema no es solo que estemos llenos: es que movemos obras a último momento, y a esos clientes los llama Comercial.</p>
+    </div>
+    <div class="numeros">
+      <div class="numero"><div class="n">0,5 <small>de 12</small></div><p>jornadas libres en los próximos 3 días hábiles (C1 a C4, mediana a la noche)</p></div>
+      <div class="numero"><div class="n">37%</div><p>de los cambios de fecha se avisan con 3 días o menos</p></div>
+      <div class="numero"><div class="n">62%</div><p>de las obras que se ponen en el tablero después se mueven</p></div>
+      <div class="numero"><div class="n">60 <small>de 195</small></div><p>obras se metieron a presión y movieron a otras 84. 51 figuraban como urgencia baja; casi nadie carga la urgencia, así que alguna puede haber sido urgente.</p></div>
+    </div>
+    <div class="franja">
+      <span class="t">Lo que se repite todas las semanas</span>
+      <span>Lluvia: <b>casi 1 día</b></span>
+      <span>Urgencias: <b>4 a 8</b></span>
+      <span>Trabajos cortos: <b>3 a 6</b></span>
+      <span>Armados que se pasan: <b>1 de cada 8</b></span>
+    </div>
+    <div class="cierre">
+      <p>Para cubrir eso hacen falta 1,5 a 2 jornadas libres a la vista. Hoy, mirando los próximos 3 días, queda media.</p>
+      <div class="barras" role="img" aria-label="Hacen falta entre 1,5 y 2 jornadas libres a la vista; hoy, en los próximos 3 días, queda media jornada.">
+        <div class="barra"><span>Lo que hace falta</span><div class="riel"><div class="relleno solido" style="width:75%"></div><div class="relleno rango" style="left:75%;width:25%"></div></div></div>
+        <div class="barra"><span>Lo que queda hoy (próximos 3 días)</span><div class="riel"><div class="relleno" style="width:25%"></div></div></div>
+        <div class="escala" aria-hidden="true"><span></span><div class="num"><span>0</span><span>0,5</span><span>1</span><span>1,5</span><span>2 j</span></div></div>
+      </div>
+    </div>
+    <p class="pie">Datos reales de 5 semanas de tablero (14/09 al 17/10). Lo de “a presión” es aproximado: una obra que entró y, en la misma media hora, otra de esa cuadrilla y ese día se movió.</p>
+  </div>
+</section>
+
+<!-- P2 -->
+<section class="sec" id="que-es">
+  <div class="wrap">
+    <div class="cab">
+      <div class="ceja">2 · Qué es una guardia <span class="dur">≈ 1,5 min</span></div>
+      <h2>Una tarjeta más en el tablero, que guarda una jornada</h2>
+      <p class="lead">Así se vería la semana del 26/10 con las dos guardias de la propuesta: martes en la C2 y jueves en la C3.</p>
+    </div>
+    <div class="p2">
+      <div class="p2-izq">
+        <div class="indicadores">
+          <span class="chip">Lugar protegido próximos 5 días hábiles: <span class="num">2 de 2 j</span></span>
+          <span class="pie">En gris si alcanza. Si falta, en ámbar:</span>
+          <span class="chip ambar">Lugar protegido próximos 5 días hábiles: <span class="num">0 de 2 j</span></span>
+        </div>
+        <div class="tablero-scroll" tabindex="0" role="region" aria-label="Tablero de ejemplo con dos guardias">
+          <div class="tablero" id="tablero-p2"></div>
+        </div>
+        <p class="pie">Encabezado del día: “libre 0 · guardia 1”. Fila de la cuadrilla: “5 de 6 j + 1 guardia”. La guardia ocupa lugar como cualquier tarjeta, pero se cuenta aparte.</p>
+      </div>
+      <ol class="claves">
+        <li><b>Se pone 2 semanas antes</b><span>Cuando esa semana suele estar al 75% y no hay que mover a nadie.</span></li>
+        <li><b>Protege un lugar que todavía está libre</b><span>No le saca la fecha a nadie: marca 2 jornadas por semana para que no se vendan. Si la semana ya trae lugar libre de sobra, se ponen menos <span class="adef">a definir cuánto</span></span></li>
+        <li><b>Nunca llega vacía</b><span>El día anterior a las 13 h se convierte en una obra o en depósito. El capataz nunca recibe “guardia”.</span></li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- P3 -->
+<section class="sec" id="semana">
+  <div class="wrap">
+    <div class="cab">
+      <div class="ceja">3 · Una semana simulada <span class="dur">≈ 4 min</span></div>
+      <h2>La misma semana, sin guardias y con guardias</h2>
+      <p class="lead">Avanzá paso a paso y cambiá de versión cuando quieras: la grilla muestra qué se mueve y a quién hay que llamar.</p>
+    </div>
+
+    <div class="simbar" id="simbar">
+      <div class="fila">
+        <div class="seg version" role="group" aria-label="Versión">
+          <button type="button" id="v-sin" data-v="sin" aria-pressed="true">Sin guardias</button>
+          <button type="button" id="v-con" data-v="con" aria-pressed="false">Con guardias</button>
+        </div>
+        <div class="seg" role="group" aria-label="Clima">
+          <button type="button" id="c-seca" data-c="seca" aria-pressed="false">Semana seca</button>
+          <button type="button" id="c-lluvia" data-c="lluvia" aria-pressed="true">Llueve el miércoles</button>
+        </div>
+        <span class="ejemplo">Semana de ejemplo armada para explicar. No es una medición. Muestra cómo funcionaría completo, no lo que hay el primer día.</span>
+        <div class="pasos">
+          <button type="button" class="btn chico" id="btn-ant">◀ Anterior</button>
+          <span class="cual" id="paso-cual" aria-live="polite">Paso 1 de 10</span>
+          <button type="button" class="btn chico prim" id="btn-sig">Siguiente paso ▶</button>
+        </div>
+      </div>
+      <div class="dias-salto" id="dias-salto" role="group" aria-label="Saltar a un día"></div>
+    </div>
+
+    <div class="contadores" id="contadores"></div>
+
+    <div class="paso-panel">
+      <div class="evento" id="evento" aria-live="polite"></div>
+      <div class="llamadas" id="llamadas"></div>
+    </div>
+
+    <div class="tablero-scroll" tabindex="0" role="region" aria-label="Tablero de la semana simulada">
+      <div class="tablero" id="tablero-sim"></div>
+    </div>
+
+    <div class="leyenda" aria-label="Referencias">
+      <span><i class="lg-armado"></i>Armado</span>
+      <span><i class="lg-desarme"></i>Desarme</span>
+      <span><i class="lg-otro"></i>Mantenimiento u otro</span>
+      <span><i class="lg-tent"></i>Tentativa (borde punteado)</span>
+      <span><i class="lg-guardia"></i>Guardia</span>
+      <span><i class="lg-apoyo"></i>Apoyo</span>
+      <span><i class="lg-dep"></i>Depósito</span>
+      <span><i class="lg-susp"></i>Suspendido por lluvia</span>
+      <span><i class="lg-mov"></i>Obra movida</span>
+      <span><i class="lg-mas1"></i>“+1 día al vender”: fecha dada 1 día más tarde</span>
+      <span><i class="lg-cambio"></i>Cambió en este paso</span>
+    </div>
+
+    <div id="final" hidden></div>
+  </div>
+</section>
+
+<!-- P4 -->
+<section class="sec" id="comercial">
+  <div class="wrap">
+    <div class="cab">
+      <div class="ceja">4 · Qué cambia para Comercial <span class="dur">≈ 2 min</span></div>
+      <h2>Prometé la primera fecha sin tocar guardia</h2>
+    </div>
+    <div class="tarjetas">
+      <div class="tj"><h3>Preguntale al asistente</h3><p>Va a responder “primera fecha sin tocar guardia”. Esa es la fecha que se promete.</p></div>
+      <div class="tj"><h3>Lo normal espera 1 o 2 días más <span class="adef">a definir</span></h3><p>Hoy, entre que se crea la OT y su primera fecha pasan 8 días (la mediana); pasaría a 10 como mucho. Si pasa de 10, se revisa. A cambio, es mucho menos probable que te la tengamos que mover: hoy el 37% de los cambios de fecha se avisa con 3 días o menos, y la meta es menos del 20%.</p></div>
+      <div class="tj"><h3>Si tu cliente es urgente, avisale a Planificación</h3><p>Planificación toca <b>Meter urgente</b> y queda escrito en la OT. En general espera 2 o 3 días hábiles, sin mover a otro cliente. Si las guardias de la semana ya se usaron, se mueve una tentativa, como hoy.</p></div>
+      <div class="tj"><h3>Desarmes <span class="adef">a definir</span></h3><p><b>Pedido para Comercial esta semana:</b> llamar a 10 clientes con andamio en obra y preguntarles si aceptan desarmar “desde el X”. Si adelantar el desarme les corta el alquiler, no se usa.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- P5 -->
+<section class="sec" id="operaciones">
+  <div class="wrap">
+    <div class="cab">
+      <div class="ceja">5 · Qué cambia para Operaciones <span class="dur">≈ 2 min</span></div>
+      <h2>Un rato los viernes y un clic a las 13 h</h2>
+    </div>
+    <div>
+      <div class="tabs" role="tablist" aria-label="Para quién">
+        <button type="button" role="tab" id="tab-plan" aria-selected="true" aria-controls="panel-plan">Planificación</button>
+        <button type="button" role="tab" id="tab-capa" aria-selected="false" aria-controls="panel-capa" tabindex="-1">Capataces</button>
+      </div>
+      <div role="tabpanel" id="panel-plan" aria-labelledby="tab-plan">
+        <ul class="agenda">
+          <li><span class="cuando">Viernes, 10 minutos</span><span class="que">Aceptar o ajustar las guardias para dentro de dos semanas. <b>Al principio se ponen a mano.</b></span></li>
+          <li><span class="cuando">Todos los días, 13 h</span><span class="que">El aviso de relleno para mañana, con <b>Confirmar</b> y <b>Otra</b>. Si nadie confirma, queda depósito.</span></li>
+          <li><span class="cuando">Llega algo urgente</span><span class="que">Botón <b>Meter urgente</b>. El orden es:
+            <ol class="orden"><li>la guardia más cercana;</li><li>la C5, si su arreglo lo permite <span class="adef">a definir</span>;</li><li>recién ahí, mover una tentativa, con motivo.</li></ol></span></li>
+          <li><span class="cuando">Obra común sobre una guardia</span><span class="que">Se puede, con <b>motivo escrito</b> que carga Planificación. No se bloquea y queda en el resumen de los lunes.</span></li>
+          <li><span class="cuando">Lluvia</span><span class="que">Si se pronostican <b>5 mm o más</b>, la guardia del día hábil siguiente no se libera: queda para lo que se corra. Si hay una celda libre, se suma otra guardia. <b>Ojo: la guardia frena la cascada solo en su cuadrilla.</b> En las otras se corre como siempre.</span></li>
+          <li><span class="cuando">Si no hay lugar</span><span class="que"><b>Nunca se mueve una obra para poner una guardia.</b> Si no hay lugar, no se pone y el indicador queda en ámbar.</span></li>
+        </ul>
+      </div>
+      <div role="tabpanel" id="panel-capa" aria-labelledby="tab-capa" hidden>
+        <ul class="agenda">
+          <li><span class="cuando">A las 7</span><span class="que"><b>Recibís una obra o depósito. Nunca “guardia”.</b></span></li>
+          <li><span class="cuando">A quién le toca</span><span class="que">La guardia va rotando entre <b>C2, C3 y C4</b>. No le toca siempre al mismo. La C1 entra cuando no tenga una obra de más de 10 jornadas.</span></li>
+          <li><span class="cuando">Qué te puede tocar</span><span class="que">Una urgencia, un servicio corto, la obra que se corrió por lluvia, un apoyo a un armado atrasado, una obra adelantada de otra semana o depósito.</span></li>
+        </ul>
+        <p class="pregunta-abierta">Pregunta abierta para ustedes: ¿media jornada sirve con los viajes?</p>
+      </div>
+    </div>
+    <div class="primer-dia">
+      <span class="tit">Qué hay desde el primer día (propuesto: semana del 26/10)</span>
+      <p><b>Las guardias puestas a mano, el indicador de lugar protegido y la respuesta del asistente “primera fecha sin tocar guardia”.</b> Al poner una obra común sobre una guardia, se pide el motivo.</p>
+      <p>Lo demás viene después: el aviso automático de las 13 h, el botón Meter urgente, la reserva por lluvia y el resumen del lunes. Mientras tanto, la guardia de mañana la libera Planificación a mano a las 13 h.</p>
+    </div>
+  </div>
+</section>
+
+<!-- P6 -->
+<section class="sec" id="ia">
+  <div class="wrap">
+    <div class="cab">
+      <div class="ceja">6 · Qué hace la IA y qué no <span class="dur">≈ 1 min</span></div>
+      <h2>La regla reserva. La IA sugiere. Una persona decide.</h2>
+    </div>
+    <div class="dos">
+      <div class="tj">
+        <h3>Regla fija</h3>
+        <ul>
+          <li><b>Cuánto se reserva y dónde.</b></li>
+          <li><b>La hora de liberación:</b> el día anterior a las 13 h.</li>
+          <li><b>Quién puede usar la guardia</b> sin pedir nada, y quién con motivo.</li>
+          <li><b>Qué rellenos son válidos.</b></li>
+        </ul>
+      </div>
+      <div class="tj">
+        <h3>IA (propone)</h3>
+        <ul>
+          <li><b>A las 13 h</b> ordena los rellenos y lo explica en una línea: <i>“Apoyo a Cabildo 2280: lleva 1 día de atraso y termina el viernes.”</i></li>
+          <li><b>En una urgencia</b> dice qué guardia usar o, si no queda ninguna, qué tentativa conviene mover y a qué cliente avisar.</li>
+          <li><b>Los lunes</b> le arma a JS un resumen: en qué se usó cada guardia y cuántas terminaron en depósito.</li>
+        </ul>
+      </div>
+    </div>
+    <p class="franja-fuerte">Si se apaga la IA, las guardias siguen funcionando. La IA no mueve obras sola ni toca nada confirmado o fijo.</p>
+  </div>
+</section>
+
+<!-- P7 -->
+<section class="sec" id="a-definir">
+  <div class="wrap">
+    <div class="cab">
+      <div class="ceja">7 · Lo que todavía estamos definiendo <span class="dur">≈ 1 min</span></div>
+      <h2>Propuesta inicial, a revisar a las 6 semanas</h2>
+    </div>
+    <ul class="adefinir">
+      <li><span class="adef">a definir</span><span><b>Tamaño:</b> 2 jornadas por semana, martes y jueves (se pensó entre 1,7 y 2,5).</span></li>
+      <li><span class="adef">a definir</span><span><b>Jornada entera o media:</b> lo deciden los capataces.</span></li>
+      <li><span class="adef">a definir</span><span><b>La C5:</b> depende de cómo se le paga. Mientras tanto queda fuera de la rotación.</span></li>
+      <li><span class="adef">a definir</span><span><b>Desarmes adelantados:</b> dependen de las 10 llamadas.</span></li>
+      <li><span class="adef">a definir</span><span><b>Que lo normal espere 1 o 2 días más:</b> la primera fecha pasaría de 8 a 10 días como mucho (mediana).</span></li>
+      <li><span class="adef">a definir</span><span><b>Si un día en depósito cuenta como día de trabajo</b> para la cuadrilla.</span></li>
+      <li><span class="adef">a definir</span><span><b>Si falta capacidad de fondo:</b> no está claro todavía. Si entra más de lo que hacemos, ninguna guardia alcanza y hay que resolver la C5.</span></li>
+    </ul>
+    <div class="tabla-scroll">
+      <table class="metas">
+        <thead><tr><th>Qué medimos</th><th>Hoy</th><th>Meta</th></tr></thead>
+        <tbody>
+          <tr><td><b>Cambios de fecha con 3 días o menos de aviso</b> (la principal)</td><td class="num">37%</td><td class="num"><b>menos de 20%</b></td></tr>
+          <tr><td>Lugar libre o en guardia en los próximos 3 días hábiles (mediana a la noche)</td><td class="num">0,5 j</td><td class="num">1,5 j o más</td></tr>
+          <tr><td>Días hasta la primera fecha de lo normal (mediana)</td><td class="num">8 días</td><td class="num">si pasa de 10, se revisa</td></tr>
+          <tr><td>Ocupación ejecutada de C1 a C4</td><td class="num">90–98%</td><td class="num">90% o más</td></tr>
+          <tr><td>Guardias que terminan en depósito</td><td class="num">sin base</td><td class="num">menos de la mitad (si más de la mitad, 3 semanas seguidas, baja a 1,5 j por semana)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="prosa"><b>Arranque propuesto:</b> semana del 26/10, que está al 58%. No hay que mover nada. Arranca solo con lo básico (ver “Qué hay desde el primer día”, en la sección 5).</p>
+    <div><a class="btn" href="#preguntas">Ver preguntas frecuentes</a></div>
+  </div>
+</section>
+
+<!-- P8 -->
+<section class="sec" id="preguntas">
+  <div class="wrap">
+    <div class="cab">
+      <div class="ceja">8 · Preguntas frecuentes</div>
+      <h2>Lo que nos van a preguntar</h2>
+    </div>
+    <div class="faq">
+      <div class="faq-grupo">
+        <h3>Comercial</h3>
+        <details><summary>“Voy a perder la venta si no prometo mañana.”</summary><p>De las 60 obras metidas a presión, la mayoría figuraban como no urgentes, y entre todas movieron a 84 clientes. Una fecha 1 o 2 días más lejos que no hay que tocar vale más que una cercana que después se cambia.</p></details>
+        <details><summary>“Entonces marco todo como urgente.”</summary><p>La urgencia la marca Planificación con <b>Meter urgente</b> y queda escrita en la OT. En el resumen de los lunes JS ve en qué se usó cada guardia.</p></details>
+        <details><summary>“Hay lugar en el tablero y no me dejan usarlo.”</summary><p>Pedile a Planificación que meta la obra sobre la guardia con motivo escrito (por ejemplo, “cliente grande, pidió esa fecha”). No se bloquea, y queda en el resumen de los lunes.</p></details>
+        <details><summary>“¿Y si mi cliente es grande?”</summary><p>Mismo camino: Planificación la mete sobre la guardia con el motivo escrito. La regla no la frena; lo decide una persona.</p></details>
+        <details><summary>“¿Vamos a vender menos?”</summary><p>No debería: la guardia se llena con trabajo real, y lo que se mide es lo ejecutado, que no tiene que bajar de 90%. Si resulta que entra más de lo que hacemos, ninguna guardia alcanza y hay que resolver la C5 <span class="adef">a definir</span></p></details>
+        <details><summary>“¿Qué le digo al cliente que pide mañana y no es urgente?”</summary><p>Por ejemplo: “Te doy el jueves. Prefiero darte una fecha que podamos cumplir y no una para mañana que después te tengamos que cambiar.”</p></details>
+        <details><summary>“¿Me van a avisar si falta relleno?”</summary><p>Sí: si quedan menos de 3 jornadas de relleno real, se le avisa a Comercial. La idea es conseguir trabajo que se pueda adelantar; qué se hace exactamente con ese aviso está <span class="adef">a definir</span></p></details>
+      </div>
+      <div class="faq-grupo">
+        <h3>Planificación</h3>
+        <details><summary>“Es una jornada perdida.”</summary><p>Nunca queda vacía. El día anterior se rellena con apoyo, una tentativa adelantada o depósito. Y tiene alarma: si más de la mitad termina en depósito durante 3 semanas, la guardia baja a 1,5 jornadas por semana.</p></details>
+        <details><summary>“Ya estamos al límite, no hay dónde ponerla.”</summary><p>Se pone con dos semanas de anticipación, cuando esa semana suele estar al 75%. Si no hay lugar, no se pone y el indicador avisa.</p></details>
+        <details><summary>“Otra tarea más.”</summary><p>Son 10 minutos los viernes y un clic a las 13 h. Hoy se hacen entre 50 y 100 cambios de fecha por semana.</p></details>
+        <details><summary>“¿Y si llueve dos días seguidos?”</summary><p>La guardia absorbe uno, y solo en la cuadrilla donde está. En las otras cuadrillas, y el segundo día, se corre como siempre. Es un colchón, no una garantía.</p></details>
+        <details><summary>“¿Por qué martes y jueves?”</summary><p>Así casi siempre hay una guardia a pocos días: en general una urgencia espera 2 o 3 días hábiles sin mover a nadie. Si las dos de la semana ya se usaron, se mueve una tentativa, como hoy. Se revisa a las 6 semanas.</p></details>
+      </div>
+      <div class="faq-grupo">
+        <h3>Capataces</h3>
+        <details><summary>“¿Me van a dejar parado?”</summary><p>No. A las 7 recibís una obra o depósito. <span class="adef">a definir</span> si un día en depósito cuenta igual que uno en obra.</p></details>
+        <details><summary>“¿Siempre me toca a mí?”</summary><p>Va rotando entre C2, C3 y C4.</p></details>
+        <h3 style="margin-top:16px">Generales</h3>
+        <details><summary>“¿La IA decide dónde trabajo?”</summary><p>No. Lo decide una regla que se puede explicar, y siempre confirma una persona.</p></details>
+        <details><summary>“¿Y si no funciona?”</summary><p>A las 6 semanas se compara con las 5 que ya medimos, y se achica o se ajusta.</p></details>
+      </div>
+    </div>
+    <div class="fin"><a class="btn" href="#inicio">Volver al principio</a></div>
+  </div>
+</section>
+
+</main>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------- Datos del escenario ----------
+  const CUADRILLAS = [
+    { id: "C1", nom: "Cuadrilla 1", color: "var(--armado-borde)", nota: "San Martín toda la semana" },
+    { id: "C2", nom: "Cuadrilla 2", color: "var(--desarme-borde)", nota: "Centro y oeste" },
+    { id: "C3", nom: "Cuadrilla 3", color: "var(--ok)", nota: "Zona norte" },
+    { id: "C4", nom: "Cuadrilla 4", color: "var(--tarea-borde)", nota: "Cabildo de lunes a viernes" },
+    { id: "C5", nom: "Cuadrilla 5", color: "var(--riel-relleno)", nota: "Fuera de la rotación (a definir)" }
+  ];
+  const PROPIAS = ["C1", "C2", "C3", "C4"];
+  const DIAS = [
+    { dn: "Lun", dd: "26", abbr: "lun" },
+    { dn: "Mar", dd: "27", abbr: "mar" },
+    { dn: "Mié", dd: "28", abbr: "mié" },
+    { dn: "Jue", dd: "29", abbr: "jue" },
+    { dn: "Vie", dd: "30", abbr: "vie" },
+    { dn: "Sáb", dd: "31", abbr: "sáb" },
+    { dn: "Lun", dd: "02/11", abbr: "lun 02/11", sig: true },
+    { dn: "Mar", dd: "03/11", abbr: "mar 03/11", sig: true }
+  ];
+  const OBRAS = {
+    balbin: { dir: "Obra de San Martín", zona: "Armado largo", tipo: "armado", est: "confirmada", cont: true },
+    diazvelez: { dir: "Av. Díaz Vélez 4310", zona: "Almagro", tipo: "desarme", est: "confirmada" },
+    corrientes: { dir: "Av. Corrientes 5480", zona: "Villa Crespo", tipo: "desarme", est: "tentativa" },
+    jbjusto: { dir: "Av. Juan B. Justo 2260", zona: "Palermo", tipo: "desarme", est: "tentativa" },
+    gorriti: { dir: "Gorriti 4870", zona: "Palermo", tipo: "armado", est: "tentativa" },
+    scalabrini: { dir: "Av. Scalabrini Ortiz 1320", zona: "Palermo", tipo: "desarme", est: "tentativa" },
+    triunvirato: { dir: "Av. Triunvirato 4550", zona: "Villa Urquiza", tipo: "desarme", est: "confirmada" },
+    congreso: { dir: "Av. Congreso 2480", zona: "Belgrano", tipo: "otro", est: "confirmada" },
+    libertador: { dir: "Av. del Libertador 13400", zona: "Martínez", tipo: "desarme", est: "tentativa" },
+    maipu: { dir: "Av. Maipú 2350", zona: "Olivos", tipo: "desarme", est: "tentativa" },
+    pelliza: { dir: "Pelliza 1820", zona: "Olivos", tipo: "armado", est: "tentativa" },
+    sucre: { dir: "Av. Sucre 2450", zona: "Beccar", tipo: "armado", est: "tentativa" },
+    centenario: { dir: "Av. Centenario 680", zona: "San Isidro", tipo: "desarme", est: "tentativa" },
+    cabildo: { dir: "Av. Cabildo 2280", zona: "Belgrano", tipo: "armado", est: "confirmada", cont: true },
+    fondolegua: { dir: "Av. Fondo de la Legua 1450", zona: "Boulogne", tipo: "desarme", est: "tentativa" },
+    rivadavia: { dir: "Av. Rivadavia 6150", zona: "Flores · lona", tipo: "otro", est: "confirmada" },
+    directorio: { dir: "Av. Directorio 2950", zona: "Flores · baranda", tipo: "otro", est: "confirmada" },
+    yrigoyen: { dir: "Av. H. Yrigoyen 8950", zona: "Lomas de Zamora", tipo: "armado", est: "confirmada", cont: true },
+    calchaqui: { dir: "Av. Calchaquí 3400", zona: "Quilmes · bajo techo", tipo: "otro", est: "confirmada", cont: true },
+    mitre: { dir: "Av. Mitre 2750", zona: "Avellaneda", tipo: "desarme", est: "tentativa", cont: true }
+  };
+  const corto = (o) => OBRAS[o].dir.replace(/^Av\. /, "");
+
+  // Pasos: índice del día donde cae (para "hoy" y los saltos). -1 = viernes 23/10; 6 = lun 02/11
+  const PASOS = [
+    { dia: -1, rot: "Vie 23/10", hora: "21:00" },
+    { dia: 0, rot: "Lun 26/10", hora: "08:30" },
+    { dia: 0, rot: "Lun 26/10", hora: "11:00" },
+    { dia: 0, rot: "Lun 26/10", hora: "13:00" },
+    { dia: 1, rot: "Mar 27/10", hora: "13:00" },
+    { dia: 1, rot: "Mar 27/10", hora: "18:00" },
+    { dia: 2, rot: "Mié 28/10", hora: null },
+    { dia: 3, rot: "Jue 29/10", hora: "07:00" },
+    { dia: 4, rot: "Vie 30/10", hora: "10:00" },
+    { dia: 6, rot: "Lun 02/11", hora: "08:00" }
+  ];
+  const SALTOS = [
+    { rot: "Vie 23", paso: 0 }, { rot: "Lun 26", paso: 1 }, { rot: "Mar 27", paso: 4 }, { rot: "Mié 28", paso: 6 },
+    { rot: "Jue 29", paso: 7 }, { rot: "Vie 30", paso: 8 }, { rot: "Lun 02/11", paso: 9 }
+  ];
+
+  const RELLENOS = [
+    { id: "apoyo", corto: "Apoyo a Cabildo 2280", txt: "Apoyo a Av. Cabildo 2280 (C4): lleva 1 día de atraso y termina el viernes." },
+    { id: "sucre", corto: "Adelantar el armado de Sucre 2450", txt: "Adelantar el armado de Av. Sucre 2450 (tentativa) del mar 03/11 al jueves. Hay que avisarle hoy al cliente para mañana." },
+    { id: "desarme", corto: "Desarme pedido con ventana amplia", txt: "Ninguno cargado todavía. A definir: si adelantar un desarme corta el alquiler.", adef: true, deshab: true },
+    { id: "deposito", corto: "Depósito", txt: "Depósito: mantenimiento de material. Siempre queda como piso." }
+  ];
+
+  // ---------- Estado de la página ----------
+  const S = { v: "sin", clima: "lluvia", paso: 0, urgAbierta: false, urgUsada: false, opcion: 0, relleno: null };
+
+  // ---------- Construcción de la semana ----------
+  const O = (o, j, extra) => Object.assign({ k: "obra", o: o, j: j == null ? 1 : j }, extra || {});
+  const G = (id, j) => ({ k: "guardia", id: id, j: j == null ? 1 : j });
+  const fila = (arr) => arr.map((x) => (x ? [x] : []));
+
+  function base(v) {
+    const g = {};
+    g.C1 = fila([O("balbin"), O("balbin"), O("balbin"), O("balbin"), O("balbin"), O("balbin"), O("balbin", 1, { fin: true }), null]);
+    if (v === "sin") {
+      g.C2 = fila([O("diazvelez"), O("corrientes"), O("jbjusto"), O("gorriti"), O("scalabrini"), null, null, null]);
+      g.C3 = fila([O("triunvirato"), O("congreso"), O("libertador"), O("maipu"), O("pelliza"), O("centenario"), null, O("sucre")]);
+    } else {
+      const m = { mas1: true };
+      g.C2 = fila([O("diazvelez"), G("G1"), O("corrientes", 1, m), O("jbjusto", 1, m), O("gorriti", 1, m), O("scalabrini", 1, m), null, null]);
+      g.C3 = fila([O("triunvirato"), O("congreso"), O("libertador"), G("G2"), O("maipu", 1, m), O("pelliza", 1, m), O("centenario", 1, m), O("sucre")]);
+    }
+    g.C4 = fila([O("cabildo"), O("cabildo"), O("cabildo"), O("cabildo"), O("cabildo", 1, { finCab: true }), O("fondolegua"), null, null]);
+    g.C5 = fila([O("yrigoyen"), O("yrigoyen"), O("calchaqui"), O("calchaqui"), O("mitre"), O("mitre"), null, null]);
+    return { v: v, g: g, susp: {}, clima: {}, movs: [], gu: { G1: "activa", G2: "activa" }, decision: null };
+  }
+
+  // Obras que, con guardias, recibieron su fecha 1 día hábil más tarde al venderse
+  const MAS1 = (function () { const b = base("con"); let n = 0; Object.keys(b.g).forEach((c) => b.g[c].forEach((cel) => cel.forEach((it) => { if (it.mas1) n++; }))); return n; })();
+
+  function addMov(st, m) {
+    if (st.movs.some((x) => x.o === m.o)) return;
+    st.movs.push(m);
+  }
+  function mover(st, c, de, a, o, aviso, paso, por, extra) {
+    const celda = st.g[c][de];
+    const i = celda.findIndex((x) => x.o === o);
+    if (i < 0) return;
+    const it = celda.splice(i, 1)[0];
+    it.mov = { de: de, a: a, aviso: aviso };
+    it.chg = paso;
+    delete it.mas1;
+    Object.assign(it, extra || {});
+    st.g[c][a].push(it);
+    addMov(st, { o: o, de: de, a: a, aviso: aviso, por: por });
+  }
+  function quitarGuardia(st, c, d) {
+    st.g[c][d] = st.g[c][d].filter((x) => x.k !== "guardia");
+  }
+  function cabildoSabado(st, paso, por, aviso) {
+    // Cabildo necesita el sábado: Fondo de la Legua pasa al mar 03/11
+    mover(st, "C4", 5, 7, "fondolegua", aviso, paso, por);
+    st.g.C4[5].push(O("cabildo", 1, { ext: "+1 día · balcón", chg: paso }));
+    st.g.C4[4].forEach((x) => { if (x.o === "cabildo") x.finCab = false; });
+  }
+
+  function construir(v, clima, hasta, op) {
+    const st = base(v);
+    const lluvia = clima === "lluvia";
+    for (let p = 1; p <= hasta; p++) {
+      if (p === 1) {
+        if (v === "sin") {
+          mover(st, "C2", 1, 5, "corrientes", 1, p, "para hacer lugar a la lona");
+          st.g.C2[1].push(O("rivadavia", 0.5, { urg: true, chg: p }));
+        } else if (hasta > 1 || op.urgUsada) {
+          st.g.C2[1] = [O("rivadavia", 0.5, { urg: true, deG: "urgencia", chg: p }), G("G1", 0.5)];
+          st.gu.G1 = "usada (urgencia)";
+        }
+      }
+      if (p === 2) {
+        if (v === "sin") {
+          st.g.C2[1].push(O("directorio", 0.5, { chg: p }));
+        } else {
+          quitarGuardia(st, "C2", 1);
+          st.g.C2[1].push(O("directorio", 0.5, { deG: "servicio", chg: p }));
+          st.gu.G1 = "usada (urgencia y servicio)";
+        }
+      }
+      if (p === 4 && lluvia) {
+        st.clima[2] = "12 mm";
+        if (v === "con") {
+          st.g.C3[3].forEach((x) => { if (x.k === "guardia") { x.reservada = true; x.chg = p; } });
+          st.gu.G2 = "reservada por lluvia";
+        }
+      }
+      if (p === 5) {
+        if (v === "sin" || lluvia) cabildoSabado(st, p, "para que Cabildo termine", 4);
+      }
+      if (p === 6) {
+        if (lluvia) {
+          st.susp["C1-2"] = p; st.susp["C3-2"] = p;
+          st.g.C1[2] = [];
+          st.g.C1[7].push(O("balbin", 1, { chg: p, fin: true }));
+          st.g.C1[6].forEach((x) => { x.fin = false; });
+          addMov(st, { o: "balbin", de: 6, a: 7, aviso: 5, por: "por la lluvia (termina un día después)" });
+          st.g.C1[7][0].mov = { de: 6, a: 7, aviso: 5 };
+          if (v === "sin") {
+            mover(st, "C3", 2, 3, "libertador", 0, p, "por la lluvia");
+            mover(st, "C3", 3, 4, "maipu", 1, p, "en cascada por la lluvia");
+            mover(st, "C3", 4, 5, "pelliza", 2, p, "en cascada por la lluvia");
+            mover(st, "C3", 5, 6, "centenario", 3, p, "en cascada por la lluvia");
+          } else {
+            quitarGuardia(st, "C3", 3);
+            mover(st, "C3", 2, 3, "libertador", 0, p, "por la lluvia", { deG: "lluvia" });
+            st.gu.G2 = "usada (lluvia)";
+          }
+        } else if (v === "con") {
+          let r = op.relleno;
+          if (!r && hasta > 6) { r = "deposito"; st.decision = "nadie"; }
+          else if (r) st.decision = r;
+          if (r) aplicarRelleno(st, r, p);
+        }
+      }
+    }
+    return st;
+  }
+
+  function aplicarRelleno(st, r, p) {
+    quitarGuardia(st, "C3", 3);
+    if (r === "apoyo") {
+      st.g.C3[3].push({ k: "apoyo", o: "cabildo", j: 1, deG: "apoyo", chg: p });
+      st.g.C4[3].forEach((x) => { x.apoyoChip = "+C3"; x.chg = p; });
+      st.gu.G2 = "rellenada (apoyo a Cabildo)";
+    } else if (r === "sucre") {
+      mover(st, "C3", 7, 3, "sucre", 1, p, "adelantada para rellenar la guardia", { deG: "adelantada" });
+      cabildoSabado(st, p, "para que Cabildo termine", 3);
+      st.gu.G2 = "rellenada (Sucre adelantada)";
+    } else {
+      st.g.C3[3].push({ k: "deposito", j: 1, deG: "depósito", chg: p });
+      cabildoSabado(st, p, "para que Cabildo termine", 3);
+      st.gu.G2 = "depósito";
+    }
+  }
+
+  function cuentas(st) {
+    let ocup = 0, guard = 0, dep = 0;
+    PROPIAS.forEach((c) => {
+      for (let d = 0; d < 6; d++) {
+        if (st.susp[c + "-" + d]) continue;
+        st.g[c][d].forEach((it) => {
+          if (it.k === "guardia") guard += it.j;
+          else if (it.k === "deposito") dep += it.j;
+          else ocup += it.j;
+        });
+      }
+    });
+    return {
+      movidas: st.movs.length,
+      corto: st.movs.filter((m) => m.aviso <= 3).length,
+      mas1: st.v === "con" ? MAS1 : 0,
+      ocup: ocup, guard: guard, dep: dep
+    };
+  }
+
+  // ---------- Formato ----------
+  const fn = (x) => String(x).replace(".", ",");
+  const fj = (j) => (j === 0.5 ? "½" : fn(j));
+  const avisoTxt = (a) => (a === 0 ? "aviso 0 días" : a === 1 ? "aviso 1 día" : "aviso " + a + " días");
+
+  // ---------- Grilla ----------
+  function tarjeta(it, n, ctx) {
+    const H = 96;
+    const h = Math.max(18, it.j * H - (n > 1 ? 1.5 : 0));
+    const compacta = h < 60;
+    const cambio = it.chg != null && it.chg === ctx.paso && ctx.marcarCambios ? " cambio" : "";
+    const st = 'style="height:' + h + 'px"';
+
+    if (it.k === "guardia") {
+      const nota = it.reservada
+        ? '<div class="r2 res">reservada: pronóstico 12 mm</div>'
+        : '<div class="r2">si no entra nada: <b>Depósito</b></div>';
+      return '<div class="tarjeta guardia' + (it.reservada ? " reservada" : "") + (compacta ? " corta" : "") + cambio + '" ' + st + ' title="Guardia: lugar guardado para lo que no se puede prever">' +
+        '<div class="r1"><span class="ico"><svg aria-hidden="true"><use href="#i-escudo"/></svg></span><span class="sello">Guardia</span><span style="flex:1"></span><span class="j">' + fj(it.j) + ' j</span></div>' +
+        nota + '</div>';
+    }
+    if (it.k === "deposito") {
+      return '<div class="tarjeta deposito' + (compacta ? " corta" : "") + cambio + '" ' + st + '>' +
+        '<div class="r1"><span class="ico"><svg aria-hidden="true"><use href="#i-llave"/></svg></span><span class="dir">Depósito</span><span class="j">1 j</span></div>' +
+        '<div class="r2">mantenimiento de material</div><div class="r3"><span class="chipt sello-g">de guardia</span></div></div>';
+    }
+    if (it.k === "apoyo") {
+      return '<div class="tarjeta apoyo' + cambio + '" ' + st + '>' +
+        '<div class="r1"><span class="ico">+</span><span class="dir">Apoyo a ' + corto(it.o) + '</span><span class="j">1 j</span></div>' +
+        '<div class="r2">con la C4 · Belgrano</div><div class="r3"><span class="chipt sello-g">de guardia</span></div></div>';
+    }
+    const ob = OBRAS[it.o];
+    const tipo = ob.tipo;
+    const ico = tipo === "armado" ? "↑" : tipo === "desarme" ? "↓" : "○";
+    const cls = ["tarjeta", tipo, ob.est === "tentativa" ? "tentativa" : "confirmada"];
+    if (compacta) cls.push("corta");
+    if (it.mov) cls.push("movida");
+    let r2 = '<div class="r2">' + ob.zona + "</div>";
+    if (it.mov) {
+      const de = DIAS[it.mov.de].abbr;
+      const verbo = it.mov.a < it.mov.de ? "adelantada del " : "movida del ";
+      r2 = '<div class="r2 mov' + (it.mov.aviso <= 3 ? " corto" : "") + '">' + (it.o === "balbin" ? "corre 1 día · " + avisoTxt(it.mov.aviso) : verbo + de + " · " + avisoTxt(it.mov.aviso)) + "</div>";
+    } else if (it.urg) {
+      r2 = '<div class="r2 urg">Urgente · ' + ob.zona.split(" · ")[0] + "</div>";
+    }
+    const chips = [];
+    if (it.deG) chips.push('<span class="chipt sello-g" title="Usó la guardia: ' + it.deG + '">de guardia</span>');
+    if (it.mas1 && ctx.marcarCambios) chips.push('<span class="chipt neutro" title="Al venderla, el asistente dio la primera fecha sin tocar guardia">+1 día al vender</span>');
+    if (it.ext) chips.push('<span class="chipt neutro">' + it.ext + "</span>");
+    if (it.apoyoChip) chips.push('<span class="chipt apoyo">' + it.apoyoChip + "</span>");
+    const conts = ob.cont && !it.fin && !it.finCab ? '<span class="sigue" aria-hidden="true">›</span>' : "";
+    let html = '<div class="' + cls.join(" ") + cambio + '" ' + st + ' title="' + ob.dir + " · " + ob.zona + " · " + ob.est + '">' +
+      '<div class="r1"><span class="ico" aria-hidden="true">' + ico + '</span><span class="dir">' + ob.dir + '</span>' + conts + '<span class="j">' + fj(it.j) + ' j</span></div>';
+    if (compacta) {
+      html += chips.length ? '<div class="r3">' + chips.join("") + "</div>" : r2;
+    } else {
+      html += r2 + (chips.length ? '<div class="r3">' + chips.join("") + "</div>" : "");
+    }
+    return html + "</div>";
+  }
+
+  function grilla(el, st, ctx) {
+    const nd = ctx.sig ? 8 : 6;
+    const anchoFila = window.matchMedia("(max-width: 600px)").matches ? "86px" : "140px";
+    let cols = anchoFila + " repeat(6, minmax(118px, 1fr))";
+    if (ctx.sig) cols += " repeat(2, minmax(100px, .85fr))";
+    el.style.gridTemplateColumns = cols;
+    let h = '<div class="tb-esq">Cuadrillas</div>';
+    for (let d = 0; d < nd; d++) {
+      const D = DIAS[d];
+      let libre = 0, guard = 0;
+      PROPIAS.forEach((c) => {
+        if (st.susp[c + "-" + d]) return;
+        let carga = 0;
+        st.g[c][d].forEach((it) => { carga += it.j; if (it.k === "guardia") guard += it.j; });
+        libre += Math.max(0, 1 - carga);
+      });
+      const hoy = ctx.dia === d;
+      let l2 = "";
+      if (st.clima[d]) l2 += '<span class="clima">☂ ' + st.clima[d] + "</span>";
+      if (D.sig) l2 += "<span>semana siguiente</span>";
+      else if (guard > 0) l2 += "<span>libre " + fn(libre) + ' · <span class="g">guardia ' + fn(guard) + "</span></span>";
+      else if (libre > 0) l2 += "<span>libre " + fn(libre) + " j</span>";
+      else l2 += "<span>sin lugar</span>";
+      h += '<div class="tb-dia' + (d === 0 || d === 6 ? " lunes" : "") + (D.sig ? " sig" : "") + '"><div class="d1"><span class="dn">' + D.dn + '</span>' +
+        (hoy ? '<span class="hoy">' + D.dd + "</span>" : '<span class="dd">' + D.dd + "</span>") + '</div><div class="d2">' + l2 + "</div></div>";
+    }
+    CUADRILLAS.forEach((cu) => {
+      let obra = 0, guard = 0, disp = 0;
+      for (let d = 0; d < 6; d++) {
+        if (st.susp[cu.id + "-" + d]) continue;
+        disp++;
+        st.g[cu.id][d].forEach((it) => { if (it.k === "guardia") guard += it.j; else obra += it.j; });
+      }
+      const carga = fn(obra) + " de " + disp + " j" + (guard ? ' <span class="g">+ ' + fn(guard) + " guardia</span>" : "");
+      h += '<div class="tb-fila" style="--fila-color:' + cu.color + '"><span class="nom">' + cu.id + " · " + cu.nom + '</span><span class="carga">' + carga + '</span><span class="nota">' + cu.nota + "</span></div>";
+      for (let d = 0; d < nd; d++) {
+        const D = DIAS[d];
+        const items = st.g[cu.id][d];
+        const cls = ["tb-celda"];
+        if (d === 0 || d === 6) cls.push("lunes");
+        if (D.sig) cls.push("sig");
+        else if (ctx.dia != null && d < ctx.dia) cls.push("pasado");
+        let carga = 0;
+        items.forEach((it) => { carga += it.j; });
+        let inner = items.map((it) => tarjeta(it, items.length, ctx)).join("");
+        const sp = st.susp[cu.id + "-" + d];
+        if (sp) inner += '<div class="tapa-susp' + (sp === ctx.paso && ctx.marcarCambios ? " cambio" : "") + '"><span class="sello">☂ ' + (st.clima[d] || "lluvia") + "</span><small>SUSPENDIDO</small></div>";
+        if (D.sig && !items.length) inner = "";
+        inner += '<div class="ocup"><i class="' + (carga > 1 ? "sobre" : "") + '" style="width:' + Math.min(100, carga * 100) + '%"></i></div>';
+        h += '<div class="' + cls.join(" ") + '">' + inner + "</div>";
+      }
+    });
+    el.innerHTML = h;
+  }
+
+  // ---------- Textos de cada paso ----------
+  function msjCapataz(quien, txt) {
+    return '<div class="msj-capataz"><small>' + quien + "</small><b>" + txt + "</b></div>";
+  }
+  function avisoBox(tit, msg, extra) {
+    return '<div class="aviso"><span class="tit">' + tit + '</span><span class="msg">' + msg + "</span>" + (extra || "") + "</div>";
+  }
+
+  function textos(st) {
+    const v = S.v, lluvia = S.clima === "lluvia", p = S.paso;
+    const T = { tit: "", det: "", que: "", extra: "" };
+    switch (p) {
+      case 0:
+        T.tit = "Así queda la semana el viernes a la noche";
+        T.det = "La C1 está toda la semana en el armado largo de San Martín y la C4, de lunes a viernes, en el armado de Cabildo 2280. La C2 y la C3 hacen desarmes y obras cortas. La C5 está al 100% y queda fuera de la rotación de guardias hasta que se defina cómo se le paga.";
+        if (v === "sin") {
+          T.que = "Hay <b>23 de 24 jornadas comprometidas</b> en C1 a C4 (96%). Lo único libre es el sábado en la C2.";
+          T.extra = '<span class="chip ambar">Lugar protegido próximos 5 días hábiles: <span class="num">0 de 2 j</span></span>';
+        } else {
+          T.que = "Las guardias se pusieron entre el 19 y el 23/10, con la semana al 58% y <b>sin mover ninguna obra</b>: martes en la C2 y jueves en la C3. Hay 22 jornadas de obra más 2 guardias.";
+          T.extra = '<span class="chip">Lugar protegido próximos 5 días hábiles: <span class="num">2 de 2 j</span></span>' +
+            '<p class="det">Las 7 obras vendidas después recibieron del asistente la primera fecha sin tocar guardia: salen 1 día hábil más tarde (marca “+1 día al vender”) y Centenario 680 pasa al lun 02/11. No cuenta como cambio de fecha, porque el cliente recibió esa fecha desde el principio. <b>Es el costo de las guardias: 7 clientes esperan 1 día más.</b></p>' +
+            '<div class="asist" aria-label="Ejemplo de consulta al asistente"><div class="burb yo">¿Cuándo podemos desarmar Av. Centenario 680?</div><div class="burb ia">Primera fecha sin tocar guardia: <b>lunes 02/11</b>.</div></div>';
+        }
+        break;
+      case 1:
+        T.tit = "Urgencia: se soltó una lona en Av. Rivadavia 6150";
+        T.det = "Llama el encargado del edificio. Media jornada, urgencia alta. No puede esperar más de mañana.";
+        if (v === "sin") {
+          T.que = "No hay nada libre hasta el sábado. Planificación saca el desarme de Corrientes 5480 del martes y lo pasa al sábado, al único lugar libre de la semana. La lona va el martes a la mañana en la C2. (La otra salida habitual: cargar la C2 de más y que el desarme quede a medias.)";
+          T.extra = '<p class="llamada"><b>Llamada al cliente de Corrientes 5480:</b> “Hola, te llamo de Andamios Buenos Aires: el desarme de mañana lo tenemos que pasar al sábado.”</p>';
+        } else if (!S.urgUsada) {
+          T.que = "La OT entra a la bandeja. Planificación toca <b>Meter urgente</b>.";
+          T.extra = '<div class="bandeja"><div class="q"><b>Av. Rivadavia 6150 · lona suelta</b><small>Mantenimiento · ½ j · urgencia alta</small></div><button type="button" class="btn chico" id="btn-urgente">Meter urgente</button></div>' +
+            (S.urgAbierta ? avisoBox("Guardia más cercana", "Usar guardia martes C2", '<span class="op">Media guardia, a la mañana. No hace falta mover a nadie.</span><div class="acciones"><button type="button" class="btn chico prim" id="btn-usar">Usar esta guardia</button></div>') : "");
+        } else {
+          T.que = "Le ofrece la guardia más cercana: martes, C2. Se usa media guardia, a la mañana. <b>Nadie se mueve.</b>";
+          T.extra = avisoBox("Guardia martes C2", "Usada · urgencia (½ j)");
+        }
+        break;
+      case 2:
+        T.tit = "Servicio corto: agregar una baranda en Av. Directorio 2950";
+        T.det = "Media jornada, urgencia media. Está a 12 cuadras de la lona.";
+        T.que = v === "sin"
+          ? "Entra el martes a la tarde en la C2, en la mitad que dejó libre el desarme de Corrientes. No mueve a nadie más."
+          : "Planificación parte la guardia del martes en dos medias porque caen en la misma zona: a la mañana la lona, a la tarde la baranda. <b>Nadie se mueve.</b>";
+        if (v === "con") T.extra = '<p class="det">Partir la guardia en dos medias se hace solo si caen en la misma zona. Si conviene trabajar con medias jornadas en general <span class="adef">a definir</span> lo deciden los capataces.</p>';
+        break;
+      case 3:
+        T.tit = "Aviso de las 13 h para mañana";
+        if (v === "sin") {
+          T.que = "Sin guardias no existe este aviso. El martes a las 7 el capataz de la C2 recibe lo que quedó en el tablero: la lona y la baranda.";
+        } else {
+          T.que = "La guardia de mañana ya está usada. No hay nada para liberar.";
+          T.extra = avisoBox("Aviso de las 13 h", "Mañana: guardia C2 ya usada → Rivadavia 6150 + Directorio 2950.") +
+            msjCapataz("C2 · martes 27/10 · 7:00", "Av. Rivadavia 6150 (lona) y Av. Directorio 2950 (baranda)") +
+            '<p class="det">El capataz recibe las dos direcciones. Nunca recibe “guardia”.</p>';
+        }
+        break;
+      case 4:
+        T.tit = "Pronóstico para el miércoles";
+        if (lluvia) {
+          T.det = "El pronóstico da 12 mm para el miércoles.";
+          if (v === "sin") T.que = "Sin guardias no cambia nada: si llueve, lo que se corre empuja a lo que sigue.";
+          else {
+            T.que = "La guardia del jueves en la C3 queda reservada para lo que se corra.";
+            T.extra = avisoBox("Aviso de las 13 h", "Miércoles: 12 mm. La guardia del jueves queda reservada para lo que se corra.") +
+              '<p class="det">La regla: si se pronostican 5 mm o más, la guardia del día hábil siguiente no se libera.</p>';
+          }
+        } else {
+          T.det = "El pronóstico da seco para el miércoles.";
+          T.que = v === "sin" ? "No cambia nada." : "La guardia del jueves en la C3 se va a poder liberar mañana a las 13 h.";
+        }
+        break;
+      case 5:
+        T.tit = "El armado de Cabildo 2280 viene 1 día atrasado";
+        T.det = "El capataz de la C4 avisa que apareció un balcón que no estaba en el relevamiento. Para terminar necesita el sábado.";
+        if (v === "sin") {
+          T.que = "Se decide esa misma tarde: el desarme de Fondo de la Legua 1450 sale del sábado y pasa al martes 03/11, para que la C4 termine Cabildo el sábado.";
+        } else if (lluvia) {
+          T.que = "La guardia del jueves está reservada por la lluvia, no queda otra guardia y la C5 está llena. Hay que mover una tentativa, <b>igual que sin guardias</b>: las guardias no tapan todo.";
+          T.extra = avisoBox("Sugerencia", "No queda guardia libre esta semana. Conviene mover Fondo de la Legua 1450 (tentativa, urgencia baja) al mar 03/11 y avisarle al cliente.");
+        } else {
+          T.que = "El pronóstico es seco, así que la guardia del jueves en la C3 sigue libre. Mañana a las 13 h se va a proponer usarla de apoyo en Cabildo, para que termine el viernes. <b>Fondo de la Legua queda el sábado, como estaba.</b>";
+        }
+        break;
+      case 6:
+        if (lluvia) {
+          T.tit = "Llueve 12 mm";
+          T.det = "Se suspende el trabajo en altura: la C1 (San Martín, piso 11) y la C3 (Libertador 13400, piso 8) no salen. La C2 y la C4 tienen trabajo bajo y salen cuando para; la C5 está bajo techo en Quilmes.";
+          T.que = v === "sin"
+            ? "San Martín corre un día y termina el mar 03/11. En la C3 se corre todo en cascada: Libertador al jueves, Maipú al viernes, Pelliza al sábado y Centenario al lunes 02/11. <b>Son cuatro clientes de la C3 a los que hay que llamar ese mismo día.</b>"
+            : "San Martín corre igual, al mar 03/11. En la C3, Libertador cae sobre la guardia del jueves y la usa: <b>ahí se frena la cascada.</b> Maipú, Pelliza y Centenario quedan donde estaban.";
+        } else if (v === "sin") {
+          T.tit = "Miércoles sin lluvia";
+          T.que = "No pasa nada. Sin guardias no hay aviso de las 13 h: el jueves la C3 sigue con lo que tenía (Maipú 2350).";
+        } else {
+          T.tit = "Aviso de las 13 h: la guardia de mañana está libre";
+          T.que = "No llovió y nadie usó la guardia del jueves. El aviso propone el mejor relleno. Planificación confirma con un clic o pide otra opción.";
+          T.extra = avisoRelleno();
+        }
+        break;
+      case 7: {
+        T.tit = "Jueves 7 h: qué recibe el capataz de la C3";
+        let rec;
+        if (lluvia) {
+          rec = "Av. del Libertador 13400 · desarme";
+          T.que = v === "sin"
+            ? "Recibe la obra que se corrió por la lluvia. Detrás de ella se corrieron Maipú, Pelliza y Centenario."
+            : "Recibe la obra que se corrió por la lluvia, que cayó sobre la guardia. Maipú, Pelliza y Centenario siguen en su fecha. <b>Nunca recibe “guardia”.</b>";
+        } else if (v === "sin") {
+          rec = "Av. Maipú 2350 · desarme";
+          T.que = "Recibe su obra, como estaba.";
+        } else {
+          const r = st.decision;
+          rec = r === "apoyo" ? "Apoyo en Av. Cabildo 2280" : r === "sucre" ? "Av. Sucre 2450 · armado" : "Depósito: mantenimiento de material";
+          T.que = (r === "nadie" ? "Nadie confirmó a las 13 h, así que quedó <b>depósito</b>. Cabildo necesita el sábado y Fondo de la Legua pasa al mar 03/11. Podés volver un paso y confirmar otra opción. " : "") +
+            "<b>Nunca recibe “guardia”:</b> recibe una obra o depósito.";
+        }
+        T.extra = msjCapataz("C3 · jueves 29/10 · 7:00", rec);
+        break;
+      }
+      case 8:
+        T.tit = "Viernes: guardias para dentro de dos semanas";
+        T.que = v === "sin"
+          ? "Nada especial. Sin guardias, la semana que viene se sigue llenando con lo primero que entra."
+          : "<b>10 minutos:</b> Planificación acepta o ajusta las guardias de la semana del 09/11, rotando entre C2, C3 y C4. Al principio se ponen a mano. Si no hay lugar, no se pone ninguna y el indicador queda en ámbar: nunca se mueve una obra para poner una guardia.";
+        break;
+      case 9:
+        T.tit = "Resumen del lunes";
+        if (v === "sin") T.que = "No hay resumen. Abajo está cómo terminó la semana en las dos versiones.";
+        else {
+          const g1 = "una usada por urgencia y servicio (mar, C2)";
+          let g2, rell = 0, dep = 0;
+          if (lluvia) g2 = "una usada por lluvia (jue, C3)";
+          else if (st.decision === "apoyo") { g2 = "una rellenada con apoyo a Cabildo (jue, C3)"; rell = 1; }
+          else if (st.decision === "sucre") { g2 = "una rellenada adelantando Sucre 2450 (jue, C3)"; rell = 1; }
+          else { g2 = "una terminó en depósito (jue, C3)"; dep = 1; }
+          T.que = "Así les llega a JS y a Planificación:";
+          T.extra = avisoBox("Resumen del lunes", "Guardias de la semana: 2. " + g1.charAt(0).toUpperCase() + g1.slice(1) + "; " + g2 + ". Rellenadas: " + rell + ". En depósito: " + dep + ". Obra común con motivo: 0.");
+        }
+        break;
+    }
+    return T;
+  }
+
+  function avisoRelleno() {
+    if (S.relleno) {
+      const r = RELLENOS.find((x) => x.id === S.relleno);
+      return avisoBox("Aviso de las 13 h · confirmado", "Mañana: guardia C3 → " + r.corto, '<span class="op">' + r.txt + '</span><div class="acciones"><button type="button" class="btn chico" id="btn-cambiar">Cambiar</button></div>');
+    }
+    const r = RELLENOS[S.opcion];
+    return avisoBox("Aviso de las 13 h · opción " + (S.opcion + 1) + " de " + RELLENOS.length,
+      "Mañana: guardia C3 libre → " + r.corto + (r.adef ? ' <span class="adef">a definir</span>' : ""),
+      '<span class="op">' + r.txt + '</span><div class="acciones"><button type="button" class="btn chico prim" id="btn-confirmar"' + (r.deshab ? " disabled" : "") + '>Confirmar</button><button type="button" class="btn chico" id="btn-otra">Otra</button></div>' +
+      '<span class="op">Si nadie confirma, queda depósito. Si avanzás sin confirmar, eso es lo que pasa.</span>');
+  }
+
+  // ---------- Render de la simulación ----------
+  const $ = (id) => document.getElementById(id);
+
+  function estado(v) {
+    return construir(v, S.clima, S.paso, { urgUsada: S.urgUsada, relleno: S.relleno });
+  }
+
+  function render() {
+    const st = estado(S.v);
+    const otra = estado(S.v === "sin" ? "con" : "sin");
+    const a = cuentas(st), b = cuentas(otra);
+    const P = PASOS[S.paso];
+
+    $("v-sin").setAttribute("aria-pressed", String(S.v === "sin"));
+    $("v-con").setAttribute("aria-pressed", String(S.v === "con"));
+    $("c-seca").setAttribute("aria-pressed", String(S.clima === "seca"));
+    $("c-lluvia").setAttribute("aria-pressed", String(S.clima === "lluvia"));
+    $("paso-cual").textContent = "Paso " + (S.paso + 1) + " de " + PASOS.length;
+    $("btn-ant").disabled = S.paso === 0;
+    $("btn-sig").disabled = S.paso === PASOS.length - 1;
+    // Miércoles seco con guardias: si se avanza sin confirmar el relleno, queda depósito
+    $("btn-sig").textContent = S.paso === 6 && S.v === "con" && S.clima === "seca" && !S.relleno ? "Seguir sin confirmar ▶" : "Siguiente paso ▶";
+
+    let saltos = '<span class="rot">Ir a:</span>';
+    SALTOS.forEach((s, i) => {
+      const fin = i + 1 < SALTOS.length ? SALTOS[i + 1].paso : PASOS.length;
+      const actual = S.paso >= s.paso && S.paso < fin;
+      saltos += '<button type="button" data-paso="' + s.paso + '" aria-current="' + actual + '">' + s.rot + "</button>";
+    });
+    saltos += '<button type="button" class="reiniciar" id="btn-reiniciar">Empezar de nuevo</button>';
+    $("dias-salto").innerHTML = saltos;
+
+    // Contadores
+    const otroNom = S.v === "sin" ? "con guardias" : "sin guardias";
+    const pct = (x) => Math.round((x / 24) * 100);
+    let ocupSub = "";
+    if (a.guard) ocupSub += " + " + fn(a.guard) + " guardia" + (a.guard > 1 ? "s" : "");
+    if (a.dep) ocupSub += " + " + fn(a.dep) + " depósito";
+    const fin = S.paso === PASOS.length - 1;
+    const cont = [
+      { et: "Obras movidas", v: a.movidas, o: b.movidas },
+      { et: "Con aviso de 3 días o menos", v: a.corto, o: b.corto },
+      { et: "Clientes con fecha 1 día más tarde al vender", v: a.mas1, o: b.mas1 },
+      { et: fin ? "Ocupación ejecutada C1–C4" : "Ocupación C1–C4 en obra", v: fn(a.ocup) + "<small>/24 · " + pct(a.ocup) + "%" + ocupSub + "</small>", o: fn(b.ocup) + "/24" },
+      { et: "Jornadas en depósito", v: fn(a.dep), o: fn(b.dep) }
+    ];
+    $("contadores").innerHTML = cont.map((c) =>
+      '<div class="cont"><span class="et">' + c.et + '</span><span class="v">' + c.v + '</span><span class="otra">' + otroNom + ": " + c.o + "</span></div>"
+    ).join("");
+
+    // Evento
+    const T = textos(st);
+    const hora = P.hora || (S.clima === "lluvia" ? "07:00" : "13:00");
+    $("evento").innerHTML =
+      '<div class="meta"><span class="hora">' + P.rot + " · " + hora + '</span><span class="version-tag' + (S.v === "con" ? " con" : "") + '">' + (S.v === "con" ? "Con guardias" : "Sin guardias") + "</span></div>" +
+      "<h3>" + T.tit + "</h3>" + (T.det ? '<p class="det">' + T.det + "</p>" : "") + '<p class="que">' + T.que + "</p>" + (T.extra || "");
+
+    // Llamadas
+    let ll = "<h3>Clientes a llamar para cambiarles la fecha (" + st.movs.length + ")</h3>";
+    if (!st.movs.length) ll += '<p class="vacio">Ninguno hasta ahora.</p>';
+    else {
+      ll += '<div class="tabla-scroll"><table><thead><tr><th>Obra</th><th>Cambio</th><th>Aviso</th></tr></thead><tbody>';
+      st.movs.forEach((m) => {
+        ll += "<tr><td>" + corto(m.o) + '<br><span class="por">' + m.por + "</span></td><td>" + DIAS[m.de].abbr + " → " + DIAS[m.a].abbr + '</td><td class="' + (m.aviso <= 3 ? "corto" : "") + '">' + m.aviso + (m.aviso === 1 ? " día" : " días") + "</td></tr>";
+      });
+      ll += "</tbody></table></div>";
+    }
+    if (S.v === "con") ll += '<p class="por">Además, ' + MAS1 + ' clientes recibieron su fecha 1 día más tarde al vender. A esos no hay que llamarlos, pero esperan un día más.</p>';
+    $("llamadas").innerHTML = ll;
+
+    grilla($("tablero-sim"), st, { paso: S.paso, dia: P.dia, sig: true, marcarCambios: true });
+
+    // Final
+    const f = $("final");
+    if (fin) {
+      const sin = S.v === "sin" ? a : b, con = S.v === "con" ? a : b;
+      const col = (nom, c, act) => '<div class="col' + (act ? " actual" : "") + '"><h3>' + nom + "</h3><dl>" +
+        '<dt>Obras movidas (clientes a llamar)</dt><dd class="grande">' + c.movidas + "</dd>" +
+        "<dt>Con aviso de 3 días o menos</dt><dd>" + c.corto + "</dd>" +
+        "<dt>Clientes con fecha 1 día más tarde al vender</dt><dd>" + c.mas1 + "</dd>" +
+        "<dt>Ocupación ejecutada C1–C4</dt><dd>" + fn(c.ocup) + "/24 (" + pct(c.ocup) + "%)</dd>" +
+        "<dt>Jornadas en depósito</dt><dd>" + fn(c.dep) + "</dd></dl></div>";
+      f.innerHTML = '<div style="display:flex;flex-direction:column;gap:16px"><h3>Cómo terminó la semana' + (S.clima === "lluvia" ? " con lluvia el miércoles" : " seca") + "</h3>" +
+        '<div class="final">' + col("Sin guardias", sin, S.v === "sin") + col("Con guardias", con, S.v === "con") + "</div>" +
+        '<p class="final-frase">' + fraseFinal(sin, con) + "</p>" +
+        (S.clima === "lluvia" ? '<p class="pie">Con guardias también se mueven San Martín y Libertador, que se corren sí o sí por la lluvia, y Fondo de la Legua, porque la guardia del jueves estaba reservada. La guardia frena la cascada solo en la cuadrilla donde está. Probá “Semana seca” para ver qué pasa con una guardia que nadie usó.</p>'
+          : (estado("con").decision === "nadie" ? '<p class="pie">Con guardias nadie confirmó el relleno del miércoles: quedó depósito y Fondo de la Legua se movió. Volvé al “Mié 28” y confirmá el apoyo a Cabildo para ver la diferencia.</p>' : "") +
+            '<p class="pie">Probá “Llueve el miércoles” para ver cómo la guardia frena la cascada de la lluvia.</p>') +
+        "</div>";
+      f.hidden = false;
+    } else {
+      f.hidden = true;
+      f.innerHTML = "";
+    }
+  }
+
+  function plural(n, uno, varios) { return n + " " + (n === 1 ? uno : varios); }
+  function fraseFinal(sin, con) {
+    let t = "Ninguna cuadrilla quedó parada por falta de obra" +
+      (S.clima === "lluvia" ? "; la lluvia frenó a la C1 y la C3 el miércoles en las dos versiones. " : ". ");
+    t += "Con guardias, " + plural(con.mas1, "cliente recibió", "clientes recibieron") + " desde el principio una fecha 1 día más tarde";
+    t += con.movidas ? " y a " + con.movidas + " hubo que llamarlos (" + con.corto + " con 3 días o menos). " : ", y no hubo que llamar a nadie. ";
+    t += "Sin guardias, a " + sin.movidas + " hubo que llamarlos para cambiarles la fecha, " + sin.corto + " con 3 días o menos.";
+    return t;
+  }
+
+  function irA(p) {
+    const enSaltos = document.activeElement && document.activeElement.closest && document.activeElement.closest("#dias-salto");
+    S.paso = Math.max(0, Math.min(PASOS.length - 1, p));
+    render();
+    if (enSaltos) { const b = document.querySelector('#dias-salto button[aria-current="true"]'); if (b) b.focus(); }
+    else if (document.activeElement === document.body || (document.activeElement && document.activeElement.disabled)) { const b = $(S.paso === 0 ? "btn-sig" : "btn-ant"); if (b) b.focus(); }
+  }
+  function reiniciar() {
+    S.paso = 0; S.urgAbierta = false; S.urgUsada = false; S.opcion = 0; S.relleno = null;
+    render();
+    $("btn-sig").focus();
+  }
+
+  // ---------- Eventos ----------
+  $("v-sin").addEventListener("click", () => { S.v = "sin"; render(); });
+  $("v-con").addEventListener("click", () => { S.v = "con"; render(); });
+  $("c-seca").addEventListener("click", () => { S.clima = "seca"; render(); });
+  $("c-lluvia").addEventListener("click", () => { S.clima = "lluvia"; render(); });
+  $("btn-ant").addEventListener("click", () => irA(S.paso - 1));
+  $("btn-sig").addEventListener("click", () => irA(S.paso + 1));
+  $("dias-salto").addEventListener("click", (e) => {
+    if (e.target.closest("#btn-reiniciar")) { reiniciar(); return; }
+    const b = e.target.closest("button[data-paso]");
+    if (b) irA(Number(b.dataset.paso));
+  });
+  $("evento").addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    const foco = (id) => { const x = $(id); if (x) x.focus(); };
+    if (b.id === "btn-urgente") { S.urgAbierta = true; render(); foco("btn-usar"); }
+    else if (b.id === "btn-usar") { S.urgUsada = true; render(); }
+    else if (b.id === "btn-otra") { S.opcion = (S.opcion + 1) % RELLENOS.length; render(); foco("btn-otra"); }
+    else if (b.id === "btn-confirmar") { S.relleno = RELLENOS[S.opcion].id; render(); foco("btn-cambiar"); }
+    else if (b.id === "btn-cambiar") { S.relleno = null; render(); foco("btn-confirmar"); }
+  });
+
+  // Flechas del teclado para avanzar cuando la simulación está a la vista
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    const t = e.target;
+    if (t && (t.closest(".tablero-scroll") || t.closest('[role="tablist"]') || /INPUT|TEXTAREA|SELECT/.test(t.tagName))) return;
+    const r = $("semana").getBoundingClientRect();
+    if (r.top > window.innerHeight * 0.6 || r.bottom < window.innerHeight * 0.4) return;
+    e.preventDefault();
+    irA(S.paso + (e.key === "ArrowRight" ? 1 : -1));
+  });
+
+  // Portada
+  $("btn-empezar").addEventListener("click", () => {
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    $("problema").scrollIntoView({ behavior: reduce ? "auto" : "smooth" });
+  });
+
+  // Pestañas de Operaciones
+  const tabs = [$("tab-plan"), $("tab-capa")];
+  function elegirTab(i, foco) {
+    tabs.forEach((t, k) => {
+      const sel = k === i;
+      t.setAttribute("aria-selected", String(sel));
+      t.tabIndex = sel ? 0 : -1;
+      $(t.getAttribute("aria-controls")).hidden = !sel;
+    });
+    if (foco) tabs[i].focus();
+  }
+  tabs.forEach((t, i) => {
+    t.addEventListener("click", () => elegirTab(i, false));
+    t.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowRight" || e.key === "ArrowLeft") { e.preventDefault(); elegirTab(i === 0 ? 1 : 0, true); }
+    });
+  });
+
+  // Navegación: marca la sección visible
+  const links = Array.from(document.querySelectorAll(".nav a"));
+  const secciones = links.map((a) => document.querySelector(a.getAttribute("href")));
+  function marcarNav() {
+    const y = window.innerHeight * 0.3;
+    let act = 0;
+    secciones.forEach((s, i) => { if (s && s.getBoundingClientRect().top <= y) act = i; });
+    links.forEach((a, i) => a.classList.toggle("activo", i === act));
+  }
+  window.addEventListener("scroll", marcarNav, { passive: true });
+
+  // P2: tablero estático con las dos guardias
+  function renderP2() {
+    grilla($("tablero-p2"), base("con"), { paso: -1, dia: null, sig: false, marcarCambios: false });
+  }
+  let ancho = window.innerWidth;
+  window.addEventListener("resize", () => {
+    if ((ancho <= 600) !== (window.innerWidth <= 600)) { renderP2(); render(); }
+    ancho = window.innerWidth;
+  });
+
+  renderP2();
+  render();
+  marcarNav();
+})();
+</script>

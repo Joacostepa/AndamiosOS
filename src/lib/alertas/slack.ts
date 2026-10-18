@@ -79,8 +79,9 @@ const DESTINOS: Record<TipoAlerta, Canal[]> = {
   sistemas_respuesta: [],
   // Guardias (guardias-contrato.md §1.2 y §1.3): al canal sólo lo que Planificación y JS
   // tienen que ver aunque no estén en la app —qué puso la corrida del viernes y un pedido que
-  // espera a JS—. El relleno de las 13 h, la respuesta de JS y el comodín vencido son de la
-  // campanita: son de una persona o se miran en el tablero.
+  // espera a JS—. El relleno de las 13 h y la respuesta de JS son de la campanita: son de una
+  // persona o se miran en el tablero. (`comodin_vencido` ya no se crea desde el 18/10: queda
+  // para las alertas viejas.)
   guardia_puesta: ["planificacion"],
   guardia_solicitud: ["planificacion"],
   guardia_relleno: [],

@@ -29,6 +29,10 @@ cosas, así que ante la duda manda el código y los comentarios largos que tiene
    [guardias.md](guardias.md), [guardias-datos.md](guardias-datos.md) y
    [comodines.md](comodines.md), y la maqueta en [maqueta-guardias.html](maqueta-guardias.html)
    (https://claude.ai/artifact/3Nwweo3NvHnj8fxAtsLNDN).
+5. **Comodín = OT marcada a mano (18/10, decidido por JS):** se sacó la regla automática (y el
+   vencimiento a los 7 días); Planificación marca o quita desde el ⋯/⋮ de la tarjeta y la ficha,
+   tabla `plan_comodines`. Falta aplicar `20261018100003_comodines_marcados.sql` y desplegar
+   (detalle en [guardias-handoff.md](guardias-handoff.md), "Comodines marcados a mano").
 
 **Cerrado el 17/10 (JS lo dio por terminado):** la ficha nueva de la OT y la bandeja nueva
 (09/10), la tarjeta y el encabezado nuevos de la grilla (09/10) y el casco de SyH (13–14/10).
@@ -50,7 +54,8 @@ cómo correr la corrida a mano y los cuidados: [guardias-handoff.md](guardias-ha
 - La corrida del viernes (13 UTC) pone 2 por semana para las semanas +1 y +2: martes y jueves,
   repuestos mié/lun y mié/vie, una por cuadrilla, rotando; nunca mueve una obra. La de las 13 h
   (lun–sáb) cierra las pasadas como depósito, avisa las libres de mañana con candidatos y los
-  comodines vencidos.
+  comodines vencidos (esto último se sacó el mismo 18/10: el comodín pasó a ser una marca manual
+  sin vencimiento, ver "Pendiente ahora", punto 5).
 - El candado vale en el servidor: asignaciones, tareas, jornadas y el editor contestan 409
   `RechazoCandado` sobre una guardia activa; sólo `/api/planificacion/guardias/usar` la
   reemplaza, en un lote deshacible. El corrimiento la consume ("usada · lluvia") y el deshacer la

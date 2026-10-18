@@ -92,8 +92,10 @@ export type TipoAlerta =
    *   · `guardia_solicitud`: alguien pidió autorización (a JS; sale a #planificacion,
    *     destacado: es lo único de esto que espera una respuesta);
    *   · `guardia_respuesta`: JS aprobó o rechazó (a quien pidió; sólo campanita);
-   *   · `comodin_vencido`: un desarme pasó los 7 días hábiles esperando y ya es urgente
-   *     (a Planificación; sólo campanita). No escribe nada en Odoo;
+   *   · `comodin_vencido`: YA NO SE CREA. Avisaba un desarme que pasaba los 7 días hábiles
+   *     como comodín; desde el 18/10 el comodín es una marca manual sin vencimiento
+   *     (guardias-contrato.md §2, decidido por JS). Queda en el tipo para que las alertas
+   *     que ya se crearon se sigan leyendo y Slack siga sabiendo cómo dibujarlas;
    *   · `guardia_problema`: algo de una guardia quedó a medias y hay que mirarlo a mano (el
    *     corrimiento corrió las obras pero no pudo marcar la guardia que pisaron). A
    *     Planificación; sólo campanita.

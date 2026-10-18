@@ -268,8 +268,8 @@
   --tb-guardia-texto: #7a4405;
   --tb-guardia-sello: #9a3c06;
   /* COMODÍN (guardias-contrato.md §2.3): la tarjeta conserva el color de su tipo y suma un
-     chip "comodín · desde 20/10". El chip va en una superficie propia, neutra, porque tiene
-     que leerse igual sobre el azul del armado, el ámbar del desarme y la tentativa vacía. */
+     chip "comodín". El chip va en una superficie propia, neutra, porque tiene que leerse
+     igual sobre el azul del armado, el ámbar del desarme y la tentativa vacía. */
   --tb-comodin-bg: #ffffff;
   --tb-comodin-borde: #6b7a8d;
   --tb-comodin-text: #2e3a47;

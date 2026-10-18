@@ -17,6 +17,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { conectarAvisos, type AvisoTablero } from "@/lib/tablero/avisos";
 import { CLAVE_ACTIVIDAD } from "@/hooks/use-actividad";
+import { CLAVE_COMODINES } from "@/hooks/use-comodines";
 import { CLAVE_SUSPENSIONES } from "@/hooks/use-suspensiones";
 import { CLAVE_GUARDIAS, CLAVE_SOLICITUDES_GUARDIA } from "@/hooks/use-tablero";
 import { useUser } from "@/hooks/use-user";
@@ -81,6 +82,10 @@ export function useAvisosTablero() {
         // esto la bandeja de JS se entera de un pedido nuevo sin que nadie refresque.
         void qc.invalidateQueries({ queryKey: CLAVE_GUARDIAS });
         void qc.invalidateQueries({ queryKey: CLAVE_SOLICITUDES_GUARDIA });
+        // Las marcas de comodín (plan_comodines): otro marcó o sacó uno. Tampoco viajan en
+        // el payload del tablero —son de Planificación, no de Odoo—, así que sin esto el
+        // naipe y el grupo de la bandeja de los demás quedarían viejos hasta el próximo foco.
+        void qc.invalidateQueries({ queryKey: CLAVE_COMODINES });
 
         // `info` y no `warning`: que otro planifique no es un problema, es el uso normal
         // de un tablero compartido. El ámbar está reservado para lo que hay que mirar.

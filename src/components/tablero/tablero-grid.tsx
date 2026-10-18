@@ -27,6 +27,7 @@ import {
 } from "@/lib/tablero/colores";
 import { claveCelda, cuentaConGuardias, esGuardia } from "@/lib/tablero/guardias";
 import type { Comodin, UsoGuardia } from "@/lib/tablero/guardias-tipos";
+import { otMarcable } from "@/lib/tablero/comodines";
 import { ocupacionCelda, capacidadDelRango, redondearFraccion } from "@/lib/tablero/fracciones";
 import type { FraccionStr } from "@/lib/tablero/fracciones";
 import { notasDe, notasDeCuadrilla } from "@/lib/tablero/tipos-nota";
@@ -145,8 +146,15 @@ export type GuardiasGrilla = {
    * chip "de guardia", que al tocarlo abre esa guardia).
    */
   usadas: Map<number, { uso: UsoGuardia | null; guardiaId: number }>;
-  /** otId → comodín, vencidos incluidos (el naipe y el chip). */
+  /** otId → comodín vigente (el naipe y el chip). */
   comodines: Map<number, Comodin>;
+  /**
+   * Las OTs MARCADAS como comodín (plan_comodines), vigentes o no: el ⋮ ofrece "Quitar
+   * comodín" según la marca, no según si hoy se muestra.
+   */
+  marcados: ReadonlySet<number>;
+  /** Marcar o quitar desde el ⋮ de la tarjeta. Ausente = quien mira no edita Planificación. */
+  onComodin?: (ot: OtTablero, marcar: boolean) => void;
   /** Mientras se arrastra algo que cambia qué se resalta. */
   arrastre: ArrastreGuardias | null;
   puedeAutorizar: boolean;
@@ -162,7 +170,7 @@ export type GuardiasGrilla = {
 
 /**
  * "comodin": se levantó un comodín; cada guardia dice si lo acepta ("puede": sin pedir nada,
- * "pide": con autorización de JS). Las que no están no lo aceptan (antes del piso, o el
+ * "pide": con autorización de JS). Las que no están no lo aceptan (un día que ya pasó, o el
  * candado no deja ni pidiendo).
  * "guardia": se levantó una guardia; las celdas donde puede ir (claveCelda).
  */
@@ -1133,6 +1141,17 @@ export function TableroGrid({
                           return u ? { uso: u.uso, onAbrir: () => guardias.onAbrirGuardia(u.guardiaId) } : null;
                         })()}
                         comodin={bloque.tarea || bloque.apoyo ? null : (guardias?.comodines.get(bloque.otId) ?? null)}
+                        // Marcar o quitar el comodín es sobre la OBRA: no en un apoyo (es la
+                        // misma obra, se marca desde la principal) ni en una tarea (no hay OT).
+                        accionComodin={(() => {
+                          const otDe = bloque.tarea || bloque.apoyo ? undefined : ots.get(bloque.otId);
+                          const cambiar = guardias?.onComodin;
+                          if (!otDe || !cambiar) return null;
+                          const marcado = guardias.marcados.has(otDe.id);
+                          // Una OT cerrada no se marca; si quedó marcada, se puede quitar igual.
+                          if (!marcado && !otMarcable(otDe)) return null;
+                          return { marcado, onCambiar: () => cambiar(otDe, !marcado) };
+                        })()}
                         // Mientras se arrastra un comodín o una guardia, las obras no son
                         // destino: se apagan para que se vea dónde sí.
                         atenuada={!!guardias?.arrastre}

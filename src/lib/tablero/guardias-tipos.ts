@@ -7,9 +7,9 @@
 // nada que corra: sólo tipos.
 //
 // LAS DOS PALABRAS SON INTERNAS. "Guardia" es una jornada que el sistema reserva para lo
-// imprevisto; "comodín", un desarme que ya puede ir cualquier día. Ninguna de las dos llega
-// al capataz ni al cliente: el capataz recibe "Depósito · mantenimiento de material" (ver
-// TEXTO_GUARDIA_CAPATAZ) y el cliente no se entera de nada.
+// imprevisto; "comodín", una obra que Planificación marcó porque puede ir cualquier día.
+// Ninguna de las dos llega al capataz ni al cliente: el capataz recibe "Depósito ·
+// mantenimiento de material" (ver TEXTO_GUARDIA_CAPATAZ) y el cliente no se entera de nada.
 //
 // DÓNDE VIVE UNA GUARDIA: es una fila de `tablero_tareas` con tipo 'guardia' (migración
 // 20261018100001). Mientras está ACTIVA viaja en el payload del tablero como una tarea más
@@ -47,12 +47,6 @@ export const SEMANAS_ROTACION = 4;
 
 /** Una urgencia usa la guardia sin pedir nada si la OT se creó hace estos días hábiles o menos. */
 export const DIAS_HABILES_URGENCIA = 3;
-
-/** Pasados estos días hábiles desde el piso, un desarme deja de ser comodín y pasa a urgente. */
-export const DIAS_MAX_COMODIN = 7;
-
-/** "Quedan 2 d": desde cuántos días hábiles restantes el chip del comodín avisa que se acaba. */
-export const AVISO_COMODIN_DIAS = 2;
 
 /** Desde esta hora (Argentina) del día hábil anterior, un comodín rellena la guardia sin pedir nada. */
 export const HORA_RELLENO = 13;
@@ -396,9 +390,9 @@ export type CandidatoRelleno = {
   tipo: TipoCandidato;
   /** null en depósito. */
   otId: number | null;
-  /** "Apoyo a S02025 · Thames 1820", "Comodín S02658 · espera 3 días hábiles", "Depósito". */
+  /** "Apoyo a S02025 · Thames 1820", "Comodín S02658 · Callao 1234", "Depósito". */
   titulo: string;
-  /** Una línea más: dónde está hoy, el piso, cuánto lleva de atraso. */
+  /** Una línea más: dónde está hoy, desde cuándo es comodín, cuánto lleva de atraso. */
   detalle: string | null;
   /** Dónde está hoy en la grilla (comodín o tentativa). null = sin fecha. */
   desde: { fecha: string; cuadrillaId: number | null } | null;
@@ -406,22 +400,28 @@ export type CandidatoRelleno = {
 
 // ─── Comodines ─────────────────────────────────────────────────────────────────────────
 
-/** Un desarme que ya puede ir cualquier día (contrato §2.1). Se calcula, no se guarda. */
+/**
+ * Una obra que Planificación MARCÓ como comodín y que todavía corresponde mostrar (contrato §2,
+ * decidido por JS el 18/10): pendiente o en proceso y con algo por hacer. La marca vive en
+ * `plan_comodines`; esto es la marca cruzada con el tablero (comodines.ts). Sin piso ni
+ * vencimiento: puede ir cualquier día, y es comodín hasta que alguien lo quite.
+ */
 export type Comodin = {
   otId: number;
-  /** El piso que se usa: `fechaDesde` si está, si no el día en que se creó la OT. */
-  piso: string;
-  /** El piso salió de la creación de la OT y no de un "a partir de" cargado. */
-  pisoDeCreacion: boolean;
-  /** Días hábiles desde el piso hasta hoy (0 si el piso todavía no llegó). */
-  espera: number;
-  /** DIAS_MAX_COMODIN - espera. Negativo = vencido. */
-  quedan: number;
-  /** Pasó DIAS_MAX_COMODIN: ya no es comodín, se muestra como urgente. */
-  vencido: boolean;
   jornadas: number;
   /** Dónde está hoy en la grilla (su primer día). null = "sin fecha". */
   ubicacion: { fecha: string; cuadrillaId: number | null } | null;
+  /** Cuándo se marcó (ISO). Ordena el grupo de la bandeja y el relleno: el más viejo primero. */
+  marcadoEl: string;
+};
+
+/** Una marca, como la devuelve GET /api/planificacion/comodines. */
+export type MarcaComodin = {
+  otId: number;
+  /** ISO (timestamptz). */
+  marcadoEl: string;
+  /** Nombre de quien la puso. null si ya no tiene perfil o no se pudo leer. */
+  marcadoPorNombre: string | null;
 };
 
 // ─── El indicador de arriba ────────────────────────────────────────────────────────────

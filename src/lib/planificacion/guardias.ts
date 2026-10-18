@@ -2,9 +2,10 @@
 // sacarlas, los pedidos a JS y los avisos. SÓLO SERVIDOR (usa la service role y Odoo).
 //
 // Contrato: docs/tablero-planificacion/guardias-contrato.md (manda). Plan técnico:
-// guardias-plan-tecnico.md §2–§6. Las REGLAS (dónde van, qué deja el candado, qué es un
-// comodín) no están acá: están en src/lib/tablero/guardias.ts y comodines.ts, que son puras
-// y las usa también el tablero. Este archivo junta los datos, llama a la regla y escribe.
+// guardias-plan-tecnico.md §2–§6. Las REGLAS (dónde van, qué deja el candado, cuándo cuenta
+// una marca de comodín) no están acá: están en src/lib/tablero/guardias.ts y comodines.ts, que
+// son puras y las usa también el tablero. Este archivo junta los datos, llama a la regla y
+// escribe. Las marcas de comodín se leen con src/lib/planificacion/comodines.ts.
 //
 // QUIÉN ESCRIBE QUÉ, y por qué con dos clientes distintos:
 //   · las guardias, su historia (plan_guardia_eventos) y los pedidos (plan_guardia_solicitudes)
@@ -47,7 +48,8 @@ import {
 import { jornadasPlanTodas } from "@/lib/planificacion/jornadas-plan";
 import { suspensionesEnRango } from "@/lib/planificacion/suspensiones";
 import { textoConflicto } from "@/lib/tablero/apoyo";
-import { comodinDe, comodinPuedeIr } from "@/lib/tablero/comodines";
+import { leerMarcados } from "@/lib/planificacion/comodines";
+import { comodinDe, comodinPuedeIr, type Marcados } from "@/lib/tablero/comodines";
 import { hoyBA, lunesDe, sumarDias } from "@/lib/tablero/dias-habiles";
 import {
   claveCelda,
@@ -498,21 +500,36 @@ export async function leerGrillaLiviana(adm: DB, desde: string, hasta: string): 
 }
 
 /**
- * La grilla completa, con las OTs y su avance: la usa la corrida de las 13 h (candidatos para
- * rellenar: armados atrasados, comodines, tentativas). Lee con la service role: la corre un
- * cron, sin sesión.
+ * La grilla completa, con las OTs, su avance y las marcas de comodín: la usa la corrida de las
+ * 13 h (candidatos para rellenar: armados atrasados, comodines, tentativas). Lee con la service
+ * role: la corre un cron, sin sesión.
+ *
+ * LAS MARCAS NO FRENAN LA CORRIDA. Si plan_comodines no se puede leer, el aviso sale sin
+ * comodines (y queda en el log): "mañana la guardia C3 está libre" sigue sirviendo sin la lista
+ * completa, y no avisar nada sería peor. El candado, en cambio, falla cerrado por su lado.
  */
 export async function leerGrilla(
   desde: string,
   hasta: string,
-): Promise<GrillaGuardias & { ots: Map<number, OtTablero>; progreso: Map<number, ProgresoOt>; duracionDe: (ot: OtTablero) => number }> {
+): Promise<
+  GrillaGuardias & {
+    ots: Map<number, OtTablero>;
+    progreso: Map<number, ProgresoOt>;
+    duracionDe: (ot: OtTablero) => number;
+    marcados: Marcados;
+  }
+> {
   const adm = createAdminClient();
-  const [tablero, tareas, suspensiones, feriados, planes] = await Promise.all([
+  const [tablero, tareas, suspensiones, feriados, planes, marcados] = await Promise.all([
     fetchTablero(desde, hasta),
     tareasEnRango(adm, desde, hasta),
     suspensionesEnRango(adm, desde, hasta),
     feriadosDelRango(desde, hasta),
     jornadasPlanTodas(adm),
+    leerMarcados(adm).catch((e: unknown) => {
+      console.error("[guardias] no se pudieron leer los comodines; el aviso sale sin ellos", e);
+      return new Map<number, string>() as Marcados;
+    }),
   ]);
   const plan = new Map(planes.map((p) => [p.otId, p.jornadas]));
   return {
@@ -524,9 +541,10 @@ export async function leerGrilla(
     ots: new Map(tablero.ots.map((o) => [o.id, o])),
     progreso: new Map(tablero.progreso.map((p) => [p.otId, p])),
     // La del CANDADO (la mayor entre Odoo y el plan), porque esta grilla la usa la corrida de
-    // las 13 h para decir qué es comodín y qué armado está atrasado: lo mismo que decide si
-    // se puede usar la guardia (duracionParaCandado).
+    // las 13 h para decir qué armado está atrasado: lo mismo que decide si se puede usar la
+    // guardia (duracionParaCandado).
     duracionDe: (ot) => duracionParaCandado(ot, plan.get(ot.id)),
+    marcados,
   };
 }
 
@@ -670,6 +688,8 @@ type UsoPreparado = {
   avance: ProgresoOt | null;
   feriados: Set<string>;
   comodin: ReturnType<typeof comodinDe>;
+  /** Hoy en Buenos Aires: un comodín puede ir a cualquier guardia que no haya pasado. */
+  hoy: string;
   ahora: string;
 };
 
@@ -728,15 +748,19 @@ async function prepararUso(adm: DB, pedido: PedidoUsoGuardia): Promise<UsoPrepar
     throw conflicto("Las jornadas no caen justo en esas guardias: refrescá el tablero y volvé a soltar la obra.");
   }
 
-  // La OT, su avance y si es comodín.
+  // La OT, su avance y si es comodín (la MARCA de Planificación, contrato §2 del 18/10).
   const maxFecha = destinos.map((d) => d.fecha).sort().at(-1) ?? hoy;
-  const [ots, avances, planes, feriadosLista] = await Promise.all([
+  const [ots, avances, planes, feriadosLista, marcados] = await Promise.all([
     leerOts([pedido.otId]),
     avanceDeOts([pedido.otId]),
     jornadasPlanTodas(adm),
-    // 45 días para atrás alcanzan para "creada hace 3 días hábiles" y "espera 7 días
-    // hábiles": más viejo que eso ya no cumple ni con todos los feriados del mundo.
+    // 45 días para atrás alcanzan para "creada hace 3 días hábiles": más viejo que eso ya no
+    // cumple ni con todos los feriados del mundo.
     feriadosDelRango(sumarDias(hoy, -45), sumarDias(maxFecha, 1)),
+    // Si no se puede leer, tira y el uso no se hace (la ruta contesta 500): el candado no se
+    // abre por un error, y tratarla como "no comodín" acá pediría autorización por una obra
+    // que quizás no la necesita sin decir por qué.
+    leerMarcados(adm, [pedido.otId]),
   ]);
   const ot = ots[0];
   if (!ot) throw new ErrorGuardia(404, { error: "La OT ya no existe en Odoo." });
@@ -745,13 +769,12 @@ async function prepararUso(adm: DB, pedido: PedidoUsoGuardia): Promise<UsoPrepar
   const avance = avances.get(ot.id) ?? null;
   const feriados = new Set(feriadosLista.map((f) => f.fecha));
   const comodin = comodinDe(ot, {
+    marcados,
     asignaciones: [],
     progreso: avance ? [avance] : [],
-    hoy,
-    feriados,
     duracionDe: () => duracion,
   });
-  return { filas, crear, mover, destinos, actuales, ot, duracion, avance, feriados, comodin, ahora };
+  return { filas, crear, mover, destinos, actuales, ot, duracion, avance, feriados, comodin, hoy, ahora };
 }
 
 /** El candado, guardia por guardia. `aprobadas`: las guardias que abre una autorización de JS. */
@@ -766,7 +789,7 @@ function decidirUso(p: UsoPreparado, aprobada: { guardiaIds: ReadonlySet<number>
       avance: p.avance,
       ahora: p.ahora,
       feriados: p.feriados,
-      esComodin: !!p.comodin && comodinPuedeIr(p.comodin, g.fecha),
+      esComodin: comodinPuedeIr(p.comodin, g.fecha, p.hoy),
       aprobada: aprobada?.guardiaIds.has(g.id) ? aprobada.tipo : null,
     });
     return { fila: f, g, sobre, decision };
@@ -914,12 +937,19 @@ export async function usarGuardias(
     }
   }
 
-  // EL COMODÍN SE MUEVE, NO SE COPIA (contrato §2.3). Si la obra ya tiene jornadas principales
-  // por hacer en la grilla y el pedido CREA una principal nueva, se estaría duplicando: el
-  // tablero manda `mover`, y esto ataja a una pantalla vieja o a una llamada a mano.
+  // EL COMODÍN SE MUEVE, NO SE COPIA (contrato §2.3). Si el pedido CREA más jornadas
+  // principales de las que le faltan a la obra, se estaría duplicando un comodín que ya está en
+  // la grilla: el tablero manda `mover`, y esto ataja a una pantalla vieja o a una llamada a mano.
+  //
+  // "LAS QUE LE FALTAN" Y NO "NINGUNA" desde el 18/10: el comodín era un desarme de una jornada
+  // (o estaba en la grilla o en la bandeja), y ahora Planificación puede marcar cualquier obra.
+  // Una de 3 j con un día ya puesto tiene 2 en la bandeja, y soltar esas 2 en la guardia es
+  // planificarlas, no copiar nada. Copiar es pasarse de la duración: lo puesto (hecho o no) más
+  // lo que se crea, contra la del candado (la mayor entre Odoo y el plan), redondeada para arriba.
   const usaComoComodin = decisiones.some((d) => d.decision.libre && d.decision.uso === "comodin");
-  const pendientes = avance ? avance.asignadas - avance.cerradas : 0;
-  if (usaComoComodin && pendientes > 0 && crear.some((c) => c.apoyo !== true)) {
+  const principalesNuevas = crear.filter((c) => c.apoyo !== true).length;
+  const yaTomadas = avance ? avance.asignadas : 0;
+  if (usaComoComodin && principalesNuevas > 0 && yaTomadas > 0 && yaTomadas + principalesNuevas > Math.max(1, Math.ceil(p.duracion))) {
     throw conflicto("Ese comodín ya está en el tablero: se mueve a la guardia, no se copia. Refrescá y volvé a soltarlo.");
   }
 

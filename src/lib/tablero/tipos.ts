@@ -335,13 +335,14 @@ export type OtTablero = {
    */
   syh: boolean;
   /**
-   * Cuándo se creó la OT en Odoo (`create_date`, UTC, como lo devuelve Odoo). Lo usan dos
-   * reglas de guardias-contrato.md: una urgencia usa la guardia sin pedir nada sólo si la OT
-   * se creó hace 3 días hábiles o menos (§1.3), y un desarme sin piso cargado cuenta como
-   * comodín desde que se creó (§2.1). Para pasarlo a fecha de acá: fechaBADeOdoo().
+   * Cuándo se creó la OT en Odoo (`create_date`, UTC, como lo devuelve Odoo). Lo usa una regla
+   * de guardias-contrato.md: una urgencia usa la guardia sin pedir nada sólo si la OT se creó
+   * hace 3 días hábiles o menos (§1.3). (Hasta el 18/10 también contaba la espera de un
+   * comodín sin piso; desde que el comodín es una marca manual, ya no.) Para pasarlo a fecha de
+   * acá: fechaBADeOdoo().
    *
    * Opcional hasta que fetchTablero lo traiga en todas sus lecturas; sin el dato, la urgencia
-   * NO cumple la regla (pasa por JS) y el comodín sin piso no cuenta: falla cerrado.
+   * NO cumple la regla (pasa por JS): falla cerrado.
    */
   creadaEl?: string | null;
   url: string;

@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 import { CascoSyh } from "./casco-syh";
 import { ChipDeGuardia } from "./tarjeta-guardia";
 import { ChipComodin } from "./grupo-comodines";
-import { textoChipComodin } from "@/lib/tablero/comodines";
+import { tituloComodin } from "@/lib/tablero/comodines";
 import type { Comodin, UsoGuardia } from "@/lib/tablero/guardias-tipos";
 import { FRACCIONES, fraccionLabel, type FraccionStr } from "@/lib/tablero/fracciones";
 import {
@@ -135,8 +135,8 @@ export function ContenidoTarjeta({
    */
   deGuardia?: { uso: UsoGuardia | null; onAbrir?: () => void } | null;
   /**
-   * La obra es un COMODÍN (§2.3): conserva el color de su tipo y suma el naipe y el chip
-   * "comodín · desde 20/10". Vencido, "Esperando hace N días hábiles" en rojo.
+   * La obra es un COMODÍN (contrato §2, 18/10: una obra que Planificación marcó porque puede ir
+   * cualquier día): conserva el color de su tipo y suma el naipe y el chip "comodín".
    */
   comodin?: Comodin | null;
   /**
@@ -339,15 +339,10 @@ export function ContenidoTarjeta({
         />
         {/* EL NAIPE DEL COMODÍN va pegado al ícono del tipo: los dos dicen QUÉ es la obra
             (un desarme, y además uno que puede ir cualquier día). En la tarjeta de un solo
-            renglón es lo único que entra; el chip completo va en el tooltip. Vencido, en
-            rojo: ya no es comodín, espera de más. */}
+            renglón es lo único que entra; desde cuándo está marcada va en el tooltip. */}
         {comodin && (
-          <span className="flex shrink-0 self-center" title={textoChipComodin(comodin)}>
-            <Spade
-              className="h-3 w-3"
-              style={{ color: comodin.vencido ? PELIGRO_TEXTO : colorTexto }}
-              aria-label={comodin.vencido ? textoChipComodin(comodin) : "Comodín"}
-            />
+          <span className="flex shrink-0 self-center" title={tituloComodin(comodin)}>
+            <Spade className="h-3 w-3" style={{ color: colorTexto }} aria-label="Comodín" />
           </span>
         )}
         {/* En una obra el tilde lo pone el parte; en una tarea, el booleano `hecha`. */}
@@ -678,6 +673,7 @@ export function TarjetaAsignacion({
   chipsApoyo = [],
   deGuardia = null,
   comodin = null,
+  accionComodin = null,
   atenuada = false,
   onCerrarJornada,
   onAbrir,
@@ -727,6 +723,13 @@ export function TarjetaAsignacion({
   deGuardia?: { uso: UsoGuardia | null; onAbrir?: () => void } | null;
   /** Es un comodín. Ver ContenidoTarjeta. */
   comodin?: Comodin | null;
+  /**
+   * "Marcar como comodín" / "Quitar comodín" en el ⋮ (contrato §2, 18/10). `marcado` es la
+   * MARCA guardada, no si hoy se muestra como comodín: así "Quitar" se ofrece también en una
+   * obra marcada que ya no corresponde mostrar. null = quien mira no edita Planificación, o
+   * la OT no se puede marcar (completada, cancelada).
+   */
+  accionComodin?: { marcado: boolean; onCambiar: () => void } | null;
   /**
    * Mientras se arrastra un comodín o una guardia, lo que NO es destino se apaga (contrato
    * §2.3: "se resaltan las guardias donde puede ir y lo demás se atenúa").
@@ -1022,6 +1025,17 @@ export function TarjetaAsignacion({
               )}
               {bloque.motivoFija ? "Soltar: puede moverse" : "Fijar: no se mueve de este día"}
             </DropdownMenuItem>
+
+            {/* EL COMODÍN ES UNA DECISIÓN SOBRE LA OBRA (contrato §2, 18/10), no sobre este
+                día: marca la OT entera, en la grilla, en la bandeja y en la ficha. Va junto a
+                fijar porque también dice cuánto se puede mover la obra, para el otro lado:
+                fija no se mueve, comodín va donde haya lugar. */}
+            {accionComodin && (
+              <DropdownMenuItem onClick={accionComodin.onCambiar}>
+                <Spade className="mr-2 h-4 w-4" />
+                {accionComodin.marcado ? "Quitar comodín" : "Marcar como comodín"}
+              </DropdownMenuItem>
+            )}
 
             <DropdownMenuSeparator />
             {/* Siempre disponible: es la única forma de estirar una obra de un día a

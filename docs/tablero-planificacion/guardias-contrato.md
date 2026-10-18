@@ -5,8 +5,8 @@ contradice a `guardias.md`, `comodines.md` o la maqueta, manda este.** El por qu
 en esos documentos. La maqueta (`maqueta-guardias.html`) es la referencia visual: la guardia es un
 bloque rayado ámbar claro, nunca rojo.
 
-Palabras: **guardia** (jornada reservada para lo imprevisto) y **comodín** (desarme que ya puede
-ir cualquier día). Las dos son palabras internas. **JS** = Joaquín Stepansky, el dueño, el único que
+Palabras: **guardia** (jornada reservada para lo imprevisto) y **comodín** (obra que Planificación
+marcó porque puede ir cualquier día; ver §2, cambiado el 18/10). Las dos son palabras internas. **JS** = Joaquín Stepansky, el dueño, el único que
 autoriza.
 
 ---
@@ -124,7 +124,7 @@ guardia: para usarla con una obra común hace falta la autorización de JS").
   activa de mañana (el día hábil siguiente), deja una alerta a Planificación: "Mañana: guardia C3
   libre. Para rellenar: …", con los candidatos en este orden:
   1. apoyo a un armado atrasado;
-  2. comodín (primero el que más espera);
+  2. comodín (primero el que está marcado hace más tiempo);
   3. adelantar una tentativa de las semanas siguientes, si su piso lo permite;
   4. depósito.
 - Desde ese momento, soltar un comodín sobre la guardia no pide autorización.
@@ -176,48 +176,57 @@ guardia: para usarla con una obra común hace falta la autorización de JS").
 
 ## 2. Comodines
 
-### 2.1 Qué es
+### 2.1 Qué es (18/10, decidido por JS: reemplaza la definición anterior)
 
-Los desarmes **no se adelantan; se pueden atrasar**. Comercial llama unos 10 días antes del
-vencimiento del contrato, y si el cliente terminó carga el desarme "a partir de" esa fecha
-(`x_fecha_desde`, el piso). Si un desarme está cargado, el cliente lo pidió.
+**Un comodín es una OT que Planificación marcó a mano.** No hay regla: ningún criterio de tipo,
+duración, urgencia ni fecha decide si algo es comodín. Que una obra pueda ir "cuando haya lugar" es
+una decisión muy particular de cada obra (lo que se habló con el cliente, si el edificio deja entrar
+cualquier día, si el material ya volvió) y la toma quien planifica.
 
-**Un comodín es una OT que cumple todo esto:**
-- es de tipo **desarme**;
-- está pendiente o en proceso, con jornadas por planificar o planificadas que todavía no se
-  hicieron;
-- no tiene urgencia alta;
-- dura **1 jornada o menos**;
-- su **piso ya llegó**, o llega antes del día donde se lo quiere poner (sin piso cargado, cuenta
-  desde que se creó la OT);
-- **no lleva más de 7 días hábiles esperando** desde el piso.
+- **Quién marca o quita:** sólo Planificación, es decir quien puede **editar** el módulo
+  `planificacion`. Se valida en el servidor (ruta y base), no sólo en pantalla.
+- **Qué OTs:** cualquier OT del tablero, de cualquier tipo, **pendiente o en proceso**.
+- **Sin fecha:** al marcarla no se pide nada. "Puede ir ya", a cualquier día. No hay piso del
+  comodín: lo único que no puede es ir a un día que ya pasó, como cualquier cosa.
+- **Sin vencimiento:** es comodín hasta que alguien lo quite. No hay "esperando hace N días", ni
+  paso a urgente, ni aviso de vencidos.
+- **Dónde se guarda:** tabla `plan_comodines` en Supabase (OT, quién la marcó, cuándo). No hay campo
+  nuevo en Odoo.
+- Una OT que ya se cerró con parte (todas sus jornadas hechas), o que se completó o canceló, **deja
+  de mostrarse como comodín** aunque la marca quede guardada.
 
-**Se calcula, no se guarda:** no hay campo nuevo en Odoo. **Nunca se pone un comodín antes de su
-piso.**
+> Antes del 18/10 un comodín se calculaba: desarme, ≤ 1 jornada, sin urgencia alta, con el "a partir
+> de" cumplido y vencido a los 7 días hábiles (`DIAS_MAX_COMODIN`). JS lo vio en producción y lo
+> cambió por la marca manual. Lo de esa regla ya no aplica (ni la sección "Cuando espera demasiado",
+> que se sacó).
 
-### 2.2 Cuando espera demasiado
+### 2.2 Marcar y quitar
 
-Pasados **7 días hábiles desde el piso** sin hacerse, deja de ser comodín.
-- Se muestra como **urgente** en el tablero y en la bandeja ("Esperando hace 8 días hábiles"), y
-  deja una alerta a Planificación. **No escribe nada en Odoo.**
-- Es un valor configurable en un solo lugar (`DIAS_MAX_COMODIN = 7`).
+- "**Marcar como comodín**" / "**Quitar comodín**" está en el ⋯ de la tarjeta de la bandeja, en el ⋮
+  de la tarjeta de la grilla y en el ⋯ de la ficha de la OT. Sólo lo ve quien edita Planificación.
+- Es optimista (el naipe aparece ya) y se avisa a las otras pantallas abiertas, como cualquier
+  cambio del tablero.
 
 ### 2.3 Cómo se ve y se usa
 
-- **En la grilla y en la bandeja:** conserva el color de su tipo, con un **ícono de naipe** y un
-  chip "comodín · desde 20/10". Si está cerca del límite, el chip lo dice ("comodín · quedan 2 d").
+- **En la grilla, la bandeja y la ficha:** conserva el color de su tipo, con un **ícono de naipe** y
+  un chip que dice simplemente "**comodín**" (cuándo se marcó y quién, en el tooltip).
 - **En la bandeja**, un grupo **"Comodines (N · X j)"** arriba, que también incluye los que ya
-  están en la grilla, ordenados por cuánto esperan. Cada tarjeta muestra dónde está hoy (fecha y
-  cuadrilla, o "sin fecha") y el piso.
+  están en la grilla, ordenados por **cuándo se marcaron, el más viejo primero**. Cada tarjeta
+  muestra dónde está hoy (fecha y cuadrilla, o "sin fecha"). Una urgente sin fecha que además es
+  comodín se queda en "Urgentes", con el chip.
 - **Arrastrar:**
-  - al levantar un comodín, se resaltan las guardias donde puede ir (piso, fecha y candado) y lo
-    demás se atenúa;
+  - al levantar un comodín, se resaltan las guardias donde puede ir (de hoy en adelante, según el
+    candado) y lo demás se atenúa;
   - al soltarlo sobre una guardia, en **un solo lote que se deshace entero**: el comodín se
     **mueve** (no se copia) a la celda de la guardia, la guardia queda "rellenada (comodín, OT)" y
     se libera su fecha anterior;
   - antes de las 13 h del día hábil anterior, pide autorización de JS (1.3);
   - también se puede soltar en una celda libre común, como cualquier obra.
-- **Alerta de las 13 h (1.5):** los comodines aparecen como candidatos, primero el que más espera.
+- **Candado (1.3):** un comodín usa la guardia sin pedir permiso desde las 13 h del día hábil
+  anterior; antes pide autorización de JS. No cambió.
+- **Alerta de las 13 h (1.5):** los comodines aparecen como candidatos, primero el que está marcado
+  hace más tiempo.
 
 ---
 
@@ -249,8 +258,8 @@ en esta entrega:
 - **Las tareas programadas** van en `vercel.json`, protegidas como las que ya existen (mirá cómo se
   validan `/api/cron/*`).
 - **Pruebas:** funciones puras con tests (`npm test`) para la regla de dónde van las guardias, el
-  candado (qué se permite y qué pide autorización), el cálculo de comodín y el consumo por el
-  corrimiento.
+  candado (qué se permite y qué pide autorización), cuándo una marca de comodín cuenta y el
+  consumo por el corrimiento.
 - **Verificación:** `npx tsc --noEmit`, `npx eslint` sobre lo tocado, `npm test` y `npx next build`.
 - **Documentación:**
   - actualizar `docs/tablero-planificacion/handoff.md`: una entrada nueva arriba y el mapa del

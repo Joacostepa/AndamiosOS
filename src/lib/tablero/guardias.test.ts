@@ -21,6 +21,8 @@ import {
   type EntradaColocacion,
   type GrillaGuardias,
 } from "./guardias.ts";
+import { comodinDe, comodinPuedeIr } from "./comodines.ts";
+import { hoyBA } from "./dias-habiles.ts";
 import type { GuardiaResumen, OtParaCandado } from "./guardias-tipos.ts";
 import type { AsignacionTablero, CuadrillaTablero, OtTablero, ProgresoOt } from "./tipos.ts";
 
@@ -340,6 +342,23 @@ test("comodín: a las 12:59 del hábil anterior pide; a las 13:00 rellena", () =
   assert.deepEqual(justo.libre && justo.uso, "comodin");
 });
 
+test("comodín MARCADO (18/10): cualquier tipo y fecha; antes de las 13 h del hábil anterior pide, después rellena", () => {
+  // Un armado de 3 j con un "a partir de" posterior a la guardia: con la regla vieja nunca
+  // hubiera sido comodín. Marcado, lo es, y el candado lo trata igual que a cualquier comodín.
+  const otTab = otTablero({ id: 3001, titulo: "Armado marcado", tipo: "armado", jornadas: 3, fechaDesde: "2026-11-20" });
+  const marcados = new Map([[3001, "2026-10-20T15:00:00Z"]]);
+  const esComodinA = (ahora: string) =>
+    comodinPuedeIr(comodinDe(otTab, { marcados, asignaciones: [], progreso: [] }), GJ.fecha, hoyBA(ahora));
+  const antes = candado({ esComodin: esComodinA("2026-10-28T15:59:00Z"), ot: ot({ jornadas: 3, fechaDesde: "2026-11-20" }), ahora: "2026-10-28T15:59:00Z" });
+  assert.equal(!antes.libre && antes.pide, "comodin_antes");
+  const despues = candado({ esComodin: esComodinA("2026-10-28T16:00:00Z"), ot: ot({ jornadas: 3, fechaDesde: "2026-11-20" }), ahora: "2026-10-28T16:00:00Z" });
+  assert.deepEqual(despues.libre && despues.uso, "comodin");
+  // Sin la marca, la misma obra es una obra común: pide autorización a JS.
+  const sinMarca = comodinPuedeIr(comodinDe(otTab, { marcados: new Map(), asignaciones: [], progreso: [] }), GJ.fecha, "2026-10-28");
+  const comun = candado({ esComodin: sinMarca, ot: ot({ jornadas: 3 }), ahora: "2026-10-28T16:00:00Z" });
+  assert.equal(!comun.libre && comun.pide, "obra_comun");
+});
+
 test("comodín con guardia el lunes: la apertura es el sábado a las 13 h", () => {
   assert.equal(aperturaRelleno(LUN, SIN_FERIADOS), "2026-10-31T16:00:00.000Z");
   // Con el sábado feriado, el viernes.
@@ -436,21 +455,32 @@ function otTablero(p: Partial<OtTablero> & Pick<OtTablero, "id" | "titulo" | "ti
   } as OtTablero;
 }
 
-test("candidatos: apoyo atrasado, comodines (el que más espera primero), tentativa y depósito al final", () => {
+test("candidatos: apoyo atrasado, comodines marcados (el más viejo primero), tentativa y depósito al final", () => {
   const gJue = guardia({ id: 9000, fecha: JUE, cuadrillaId: C3, ranura: 2 });
   const ots = new Map<number, OtTablero>([
     [1, otTablero({ id: 1, titulo: "Armado Thames", tipo: "armado", estado: "en_proceso", jornadas: 2 })],
-    [2, otTablero({ id: 2, titulo: "Desarme Callao", tipo: "desarme", fechaDesde: "2026-10-28" })],
-    [3, otTablero({ id: 3, titulo: "Desarme Corrientes", tipo: "desarme", fechaDesde: "2026-11-02" })],
-    [4, otTablero({ id: 4, titulo: "Desarme vencido", tipo: "desarme", fechaDesde: "2026-10-01" })],
-    [5, otTablero({ id: 5, titulo: "Desarme futuro", tipo: "desarme", fechaDesde: "2026-11-10" })],
+    [2, otTablero({ id: 2, titulo: "Desarme Callao", tipo: "desarme", fechaDesde: "2026-11-20" })],
+    [3, otTablero({ id: 3, titulo: "Desarme Corrientes", tipo: "desarme" })],
+    [4, otTablero({ id: 4, titulo: "Desarme sin marcar", tipo: "desarme", fechaDesde: "2026-10-01" })],
+    [5, otTablero({ id: 5, titulo: "Ampliación marcada", tipo: "ampliacion", jornadas: 2 })],
+    [6, otTablero({ id: 6, titulo: "Desarme ya puesto antes", tipo: "desarme" })],
     [7, otTablero({ id: 7, titulo: "Ampliación Rivadavia", tipo: "ampliacion" })],
     [8, otTablero({ id: 8, titulo: "Ampliación con piso", tipo: "ampliacion", fechaDesde: "2026-11-09" })],
     [9, otTablero({ id: 9, titulo: "Armado largo", tipo: "armado", jornadas: 4 })],
   ]);
+  // La marca manda, no el tipo ni las fechas: el 2 tiene un "a partir de" futuro y va igual
+  // (contrato §2, 18/10), el 4 es un desarme viejo sin marcar y no va, el 5 es una ampliación
+  // de 2 j y va. El 6 está marcado pero ya está en la grilla el martes: no se atrasa.
+  const marcados = new Map<number, string>([
+    [3, "2026-10-28T15:00:00Z"],
+    [2, "2026-10-20T15:00:00Z"],
+    [5, "2026-10-25T15:00:00Z"],
+    [6, "2026-10-01T15:00:00Z"],
+  ]);
   const progreso = new Map<number, ProgresoOt>([[1, { otId: 1, asignadas: 3, cerradas: 2 }]]);
   const asignaciones = [
     obra(C1, JUE, 1),
+    obra(C4, "2026-11-03", 6),
     obra(C2, "2026-11-12", 7),
     obra(C2, "2026-11-13", 8),
     obra(C4, "2026-11-12", 9),
@@ -464,31 +494,43 @@ test("candidatos: apoyo atrasado, comodines (el que más espera primero), tentat
     ots,
     progreso,
     cuadrillas,
+    marcados,
   });
   assert.deepEqual(
     c.map((x) => [x.tipo, x.otId]),
-    [["apoyo", 1], ["comodin", 2], ["comodin", 3], ["tentativa", 7], ["deposito", null]],
+    [["apoyo", 1], ["comodin", 2], ["comodin", 5], ["comodin", 3], ["tentativa", 7], ["deposito", null]],
   );
-  assert.equal(c[1].detalle, "espera 6 días hábiles · sin fecha");
-  assert.equal(c[3].detalle, "hoy: jue 12/11 C2");
+  assert.equal(c[1].detalle, "marcado el 20/10 · sin fecha");
+  assert.equal(c[2].detalle, "marcado el 25/10 · 2 j · sin fecha");
+  assert.equal(c[4].detalle, "hoy: jue 12/11 C2");
+  assert.ok(c.every((x) => !/vencid|espera|quedan/.test(`${x.titulo} ${x.detalle ?? ""}`)));
 
   const aviso = textoAvisoRelleno(gJue, "C3", c);
   assert.equal(aviso.titulo, "Mañana: guardia C3 libre");
-  assert.match(aviso.descripcion, /^jue 05\/11, C3\. Para rellenar: 1\) Apoyo a Armado Thames .*; 2\) Comodín Desarme Callao .*; 3\) Comodín Desarme Corrientes/);
+  assert.match(aviso.descripcion, /^jue 05\/11, C3\. Para rellenar: 1\) Apoyo a Armado Thames .*; 2\) Comodín Desarme Callao .*; 3\) Comodín Ampliación marcada/);
   assert.match(aviso.descripcion, /Si no entra nada: Depósito\./);
   assert.doesNotMatch(aviso.descripcion, /Rivadavia/, "como mucho tres además del depósito");
 });
 
+test("candidatos: sin marcas no hay comodines, aunque haya desarmes de un día esperando", () => {
+  const gJue = guardia({ id: 9001, fecha: JUE, cuadrillaId: C3, ranura: 2 });
+  const ots = new Map<number, OtTablero>([[2, otTablero({ id: 2, titulo: "Desarme Callao", tipo: "desarme", fechaDesde: "2026-10-28" })]]);
+  const c = candidatosRelleno({
+    guardia: gJue, ahora: "2026-11-04T16:30:00Z", feriados: SIN_FERIADOS, asignaciones: [], ots, progreso: new Map(), cuadrillas, marcados: new Map(),
+  });
+  assert.deepEqual(c.map((x) => x.tipo), ["deposito"]);
+});
+
 test("candidatos: sin nada para rellenar, sólo el depósito", () => {
   const gJue = guardia({ id: 9000, fecha: JUE, cuadrillaId: C3, ranura: 2 });
-  const c = candidatosRelleno({ guardia: gJue, ahora: "2026-11-04T16:30:00Z", feriados: SIN_FERIADOS, asignaciones: [], ots: new Map(), progreso: new Map(), cuadrillas });
+  const c = candidatosRelleno({ guardia: gJue, ahora: "2026-11-04T16:30:00Z", feriados: SIN_FERIADOS, asignaciones: [], ots: new Map(), progreso: new Map(), cuadrillas, marcados: new Map() });
   assert.deepEqual(c.map((x) => x.tipo), ["deposito"]);
   assert.match(textoAvisoRelleno(gJue, "C3", c).descripcion, /No hay nada en la bandeja/);
 });
 
 test("aviso de las 13 h: el sábado no dice «Mañana» de la guardia del lunes", () => {
   const gLun = guardia({ id: 9001, fecha: "2026-11-09", cuadrillaId: C3, ranura: 1 });
-  const c = candidatosRelleno({ guardia: gLun, ahora: "2026-11-07T16:30:00Z", feriados: SIN_FERIADOS, asignaciones: [], ots: new Map(), progreso: new Map(), cuadrillas });
+  const c = candidatosRelleno({ guardia: gLun, ahora: "2026-11-07T16:30:00Z", feriados: SIN_FERIADOS, asignaciones: [], ots: new Map(), progreso: new Map(), cuadrillas, marcados: new Map() });
   assert.equal(textoAvisoRelleno(gLun, "C3", c, "2026-11-07").titulo, "Lun 09/11: guardia C3 libre");
   assert.equal(textoAvisoRelleno(gLun, "C3", c, "2026-11-08").titulo, "Mañana: guardia C3 libre");
 });

@@ -71,7 +71,8 @@ import {
   siglaCuadrilla,
   type GrillaGuardias,
 } from "@/lib/tablero/guardias";
-import { comodinPuedeIr, evaluarComodines } from "@/lib/tablero/comodines";
+import { comodinPuedeIr, evaluarComodines, otMarcable } from "@/lib/tablero/comodines";
+import { useCambiarComodin, useMarcados, usePuedeEditarPlanificacion } from "@/hooks/use-comodines";
 import { diaDeSemana, hoyBA, lunesDe } from "@/lib/tablero/dias-habiles";
 import {
   ETIQUETA_USO,
@@ -476,6 +477,11 @@ export function TableroBoard() {
   const puedeAutorizar = usePuedeAutorizar();
   const { data: usuario } = useUser();
   const { data: guardiasData } = useGuardias(desde, hasta);
+  // Las marcas de comodín (plan_comodines), con su propia clave: desde el 18/10 un comodín es
+  // una decisión de Planificación, no algo que se calcule de la OT (contrato §2).
+  const { marcados, porOt: marcaPorOt } = useMarcados();
+  const cambiarComodin = useCambiarComodin();
+  const puedeMarcarComodin = usePuedeEditarPlanificacion();
   // El contador del botón "Autorizaciones": sólo se consulta para quien puede autorizar.
   const { data: pendientesJS } = useSolicitudesGuardia("pendiente", { habilitado: puedeAutorizar });
   const [fichaGuardiaId, setFichaGuardiaId] = useState<number | null>(null);
@@ -815,11 +821,11 @@ export function TableroBoard() {
   );
 
   /**
-   * La duración con la que mira el CANDADO (y lo que lo alimenta: qué es comodín, qué armado
-   * está atrasado): la mayor entre Odoo y el plan de Operaciones (duracionParaCandado). NO es
-   * duracionDe: el plan lo edita Planificación, y achicar un número no puede abrir una guardia.
-   * Es la misma que usa el servidor; si el tablero mirara otra, ofrecería "usar" y el servidor
-   * contestaría 409, o al revés.
+   * La duración con la que mira el CANDADO (y lo que lo alimenta: qué armado está atrasado):
+   * la mayor entre Odoo y el plan de Operaciones (duracionParaCandado). NO es duracionDe: el
+   * plan lo edita Planificación, y achicar un número no puede abrir una guardia. Es la misma
+   * que usa el servidor; si el tablero mirara otra, ofrecería "usar" y el servidor contestaría
+   * 409, o al revés.
    */
   const duracionCandado = useCallback(
     (ot: OtTablero) => duracionParaCandado(ot, planPorOt.get(ot.id)?.jornadas),
@@ -950,8 +956,9 @@ export function TableroBoard() {
     [progresoPorOt],
   );
 
-  // LOS COMODINES se calculan, no se guardan (contrato §2.1). Una sola pasada para todo el
-  // tablero: la grilla (naipe y chip), la bandeja (el grupo) y el candado (esComodin).
+  // LOS COMODINES son las MARCAS de Planificación cruzadas con el tablero (contrato §2,
+  // 18/10): marcada, pendiente o en proceso, y con algo por hacer. Una sola pasada para todo
+  // el tablero: la grilla (naipe y chip), la bandeja (el grupo) y el candado (esComodin).
   const comodines = useMemo<Comodin[]>(
     () =>
       data
@@ -959,30 +966,42 @@ export function TableroBoard() {
             () =>
               evaluarComodines({
                 ots: data.ots,
+                marcados,
                 asignaciones: data.asignaciones,
                 progreso: data.progreso,
-                hoy: hoyBa,
-                feriados: feriadosSet,
-                // La del candado: un comodín es lo que el candado deja pasar como comodín.
+                // La del candado, como el servidor: decide cuándo la obra ya está hecha.
                 duracionDe: duracionCandado,
               }),
             [],
             "los comodines",
           )
         : [],
-    [data, hoyBa, feriadosSet, duracionCandado],
+    [data, marcados, duracionCandado],
   );
   const comodinPorOt = useMemo(() => new Map(comodines.map((c) => [c.otId, c])), [comodines]);
-  const vencidos = useMemo(() => new Map(comodines.filter((c) => c.vencido).map((c) => [c.otId, c])), [comodines]);
+  const idsMarcados = useMemo(() => new Set(marcados.keys()), [marcados]);
 
-  /** ¿Esta OT es un comodín que puede ir ese día? Nunca antes de su piso. */
+  /** ¿Esta OT es un comodín que puede ir ese día? Cualquier día que no haya pasado: ya no hay piso. */
   const esComodinPara = useCallback(
-    (otId: number, fecha: string) => {
-      const c = comodinPorOt.get(otId);
-      return !!c && comodinPuedeIr(c, fecha);
-    },
-    [comodinPorOt],
+    (otId: number, fecha: string) => comodinPuedeIr(comodinPorOt.get(otId), fecha, hoyBa),
+    [comodinPorOt, hoyBa],
   );
+
+  /**
+   * Marcar o quitar el comodín (sólo quien edita Planificación: la ruta y la base lo repiten).
+   * undefined = no se ofrece en ningún menú.
+   */
+  const onComodin = puedeMarcarComodin
+    ? (ot: OtTablero, marcar: boolean) => cambiarComodin.mutate({ otId: ot.id, marcar, titulo: ot.titulo })
+    : undefined;
+  /** Lo que el ⋮ de la tarjeta y el ⋯ de la ficha necesitan para ofrecer marcar o quitar. */
+  const accionComodinDe = (ot: OtTablero | null): { marcado: boolean; onCambiar: () => void } | null => {
+    if (!ot || !onComodin) return null;
+    const marcado = idsMarcados.has(ot.id);
+    // Una OT cerrada no se marca; si quedó marcada, se puede quitar igual.
+    if (!marcado && !otMarcable(ot)) return null;
+    return { marcado, onCambiar: () => onComodin(ot, !marcado) };
+  };
 
   /** "C3" para una cuadrilla del tablero. */
   const siglaDe = useCallback(
@@ -1025,6 +1044,7 @@ export function TableroBoard() {
                   progreso: progresoPorOt,
                   cuadrillas: data.cuadrillas,
                   duracionDe: duracionCandado,
+                  marcados,
                 }),
               [],
               "el relleno de una guardia",
@@ -1034,7 +1054,7 @@ export function TableroBoard() {
       m.set(g.id, ot ? `comodín ${ot.ordenVenta ?? direccionCorta(direccionDeObra(ot))}` : "Depósito");
     }
     return m;
-  }, [data, activas, hoyBa, ahora, feriadosSet, otsPorId, progresoPorOt, duracionCandado]);
+  }, [data, activas, hoyBa, ahora, feriadosSet, otsPorId, progresoPorOt, duracionCandado, marcados]);
 
   // "Lugar protegido próximos 5 días hábiles: X de N j" (contrato §1.6).
   const protegido = useMemo<LugarProtegido | null>(
@@ -1830,8 +1850,10 @@ export function TableroBoard() {
           activas: activas.filter((g) => g.fecha >= hoyBa),
           ahora: ahoraISO(),
           feriados: feriadosSet,
-          // Una OT en urgencia alta deja de ser comodín (contrato §2.1).
-          esComodin: false,
+          // La marca, como en el servidor (prepararUso la lee de plan_comodines): desde el 18/10
+          // una urgencia también puede estar marcada como comodín (contrato §2). Si la
+          // urgencia no cumple, el comodín abierto desde las 13 h la deja pasar igual.
+          esComodin: comodinPorOt.has(ot.id),
           avance: avanceDe(ot.id),
         }),
       null,
@@ -1863,14 +1885,14 @@ export function TableroBoard() {
     const id = bloque ? (bloque.apoyo || bloque.origen === "tarea" ? null : bloque.otId) : otId;
     const c = id != null ? comodinPorOt.get(id) : undefined;
     const ot = id != null ? otsPorId.get(id) : undefined;
-    if (id == null || !c || c.vencido || !ot) {
+    if (id == null || !c || !ot) {
       setArrastreGuardias(null);
       return;
     }
     const instante = ahoraISO();
     const destinos = new Map<number, "puede" | "pide">();
     for (const g of activas) {
-      if (g.fecha < hoyBa || !comodinPuedeIr(c, g.fecha)) continue;
+      if (!comodinPuedeIr(c, g.fecha, hoyBa)) continue;
       const d = seguro(
         () =>
           evaluarCandado({
@@ -3196,6 +3218,8 @@ export function TableroBoard() {
     relleno,
     usadas,
     comodines: comodinPorOt,
+    marcados: idsMarcados,
+    onComodin,
     arrastre: arrastreGuardias,
     puedeAutorizar,
     onAbrir: (b) => {
@@ -3210,12 +3234,12 @@ export function TableroBoard() {
     onSacar: (b) => abrirSacar(b.ids[0], "sacar"),
   };
 
-  // El grupo "Comodines" de la bandeja: sin los vencidos (ésos van con las urgentes), en el
-  // orden de evaluarComodines (el que más espera primero), con dónde está hoy cada uno.
+  // El grupo "Comodines" de la bandeja, en el orden de evaluarComodines (el marcado hace más
+  // tiempo primero), con dónde está hoy cada uno.
   const pendientesIds = new Set(sinAsignar.map((x) => x.ot.id));
   const comodinesBandeja: ComodinEnBandeja[] = comodines.flatMap((c) => {
     const ot = otsPorId.get(c.otId);
-    if (!ot || c.vencido) return [];
+    if (!ot) return [];
     const bloque = c.ubicacion
       ? [...bloquesPorClave.values()].find(
           (b) => b.otId === c.otId && !b.apoyo && b.origen !== "tarea" && b.fechas.includes(c.ubicacion!.fecha),
@@ -3230,6 +3254,7 @@ export function TableroBoard() {
       pendiente,
       bloqueKey: bloque?.key ?? null,
       cuadrillaNombre: bloque?.cuadrillaId != null ? nombreCuadrilla(bloque.cuadrillaId) : null,
+      marcadoPor: marcaPorOt.get(c.otId)?.marcadoPorNombre ?? null,
     }];
   });
 
@@ -3393,8 +3418,8 @@ export function TableroBoard() {
             }}
             onOrden={recibirOrdenBandeja}
             comodines={comodinesBandeja}
-            vencidos={vencidos}
             onMeterUrgente={(ot) => setUrgenteDe(ot)}
+            onComodin={onComodin}
           />
         </div>
 
@@ -3896,6 +3921,8 @@ export function TableroBoard() {
         }}
         onOpenChange={(abierto) => !abierto && cerrarPanel()}
         comodin={panelOt ? (comodinPorOt.get(panelOt.id) ?? null) : null}
+        marcadoPor={panelOt ? (marcaPorOt.get(panelOt.id)?.marcadoPorNombre ?? null) : null}
+        accionComodin={accionComodinDe(panelOt)}
         // La ficha y el diálogo son dos modales: se cierra la ficha antes de abrirlo.
         onMeterUrgente={() => {
           if (!panelOt) return;

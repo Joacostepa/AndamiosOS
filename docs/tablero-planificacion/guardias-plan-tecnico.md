@@ -5,6 +5,12 @@ contradice al contrato, manda el contrato**; si contradice al código, mirá el 
 Contexto: [guardias.md](guardias.md), [comodines.md](comodines.md),
 [maqueta-guardias.html](maqueta-guardias.html) y [handoff.md](handoff.md).
 
+> **Cambio del 18/10 (decidido por JS):** el comodín dejó de calcularse. Es una OT que
+> Planificación marca a mano (tabla `plan_comodines`, ruta `/api/planificacion/comodines`), sin
+> piso ni vencimiento. Lo que este plan dice del cálculo (`piso`, `espera`, `vencido`,
+> `DIAS_MAX_COMODIN`, la alerta `comodin_vencido`) quedó como historia; lo vigente está en el
+> contrato §2 y en [guardias-handoff.md](guardias-handoff.md), "Comodines marcados a mano".
+
 Lo construyen **tres tracks en paralelo en el mismo worktree** (`feat/guardias`), con archivos
 **disjuntos** (sección 11). Lo compartido ya está escrito y no se toca sin avisar (sección 1).
 

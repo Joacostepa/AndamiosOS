@@ -325,12 +325,12 @@ export const GUARDIA = {
 export const RAYADO_GUARDIA = `repeating-linear-gradient(90deg, var(--tb-guardia-raya) 0 3px, transparent 3px 9px)`;
 
 /**
- * El NAIPE del comodín (§2.3): un desarme que ya puede ir cualquier día. La tarjeta conserva
- * el color de su tipo —sigue siendo un desarme— y suma el ícono y un chip "comodín · desde
- * 20/10". El chip va sobre una superficie propia y neutra porque se dibuja encima del ámbar
- * del desarme, de la tentativa vacía y del fondo de la bandeja, y tiene que leerse igual en
- * los tres. El vencido ("Esperando hace 8 días hábiles") no usa esto: va en el rojo de
- * PELIGRO, porque ya es urgente.
+ * El NAIPE del comodín (§2.3): una obra que Planificación marcó porque puede ir cualquier día.
+ * La tarjeta conserva el color de su tipo —sigue siendo un desarme, un armado…— y suma el
+ * ícono y un chip "comodín". El chip va sobre una superficie propia y neutra porque se dibuja
+ * encima del azul del armado, del ámbar del desarme, de la tentativa vacía y del fondo de la
+ * bandeja, y tiene que leerse igual en todos. (Hasta el 18/10 había un "vencido" en rojo; con
+ * la marca manual no vence.)
  */
 export const NAIPE = {
   fondo: "var(--tb-comodin-bg)",

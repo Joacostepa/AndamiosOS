@@ -19,6 +19,7 @@ import {
   MapPin,
   MessageSquare,
   Siren,
+  Spade,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
@@ -30,6 +31,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import {
   colorTipo,
@@ -316,18 +318,26 @@ function TarjetaOt({
   onDetalle,
   onDuracion,
   comodin = null,
+  marcadoPor = null,
   onMeterUrgente,
+  onComodin,
 }: {
   obra: ObraPendiente;
   hoy: string;
   /**
-   * Es un comodín (guardias-contrato.md §2.3): un desarme que ya puede ir cualquier día. La
-   * tarjeta conserva el color de su tipo y suma el naipe y el chip "comodín · desde 20/10";
-   * vencido, "Esperando hace N días hábiles" en rojo.
+   * Es un comodín (guardias-contrato.md §2, 18/10): Planificación la marcó porque puede ir
+   * cualquier día. La tarjeta conserva el color de su tipo y suma el naipe y el chip "comodín".
    */
   comodin?: Comodin | null;
-  /** "Meter urgente" desde el menú de la tarjeta. Ausente = sin menú. */
+  /** Quién la marcó como comodín, para el tooltip del chip. */
+  marcadoPor?: string | null;
+  /** "Meter urgente" desde el menú de la tarjeta. */
   onMeterUrgente?: (ot: OtTablero) => void;
+  /**
+   * "Marcar como comodín" / "Quitar comodín" desde el mismo menú. Ausente = quien mira no
+   * edita Planificación y no se ofrece (la ruta y la base tampoco lo dejarían).
+   */
+  onComodin?: (ot: OtTablero, marcar: boolean) => void;
   /** Resumen del hilo de la obra. null = nadie comentó nada todavía. */
   comentarios: ResumenEnTarjeta | null;
   /**
@@ -361,8 +371,8 @@ function TarjetaOt({
   // El menú de duración vive en un portal, pero sus clics suben por el árbol de React hasta
   // la tarjeta: sin esta guarda, elegir una duración abría además la ficha.
   const [menuAbierto, setMenuAbierto] = useState(false);
-  // El ⋯ de acciones ("Meter urgente") tiene la misma guarda que el de duración: sus clics
-  // también suben por el portal hasta la tarjeta.
+  // El ⋯ de acciones ("Meter urgente", "Marcar como comodín") tiene la misma guarda que el de
+  // duración: sus clics también suben por el portal hasta la tarjeta.
   const [accionesAbierto, setAccionesAbierto] = useState(false);
   const menuCerradoEn = useRef(0);
   const tipo = colorTipo(ot.tipo);
@@ -482,8 +492,11 @@ function TarjetaOt({
         )}
         {/* "METER URGENTE" (guardias-contrato.md §1.6) en un ⋯ y no a la vista: es un gesto
             de excepción, y un botón rojo en las 36 tarjetas de la bandeja sería invitar a
-            usarlo. Una que ya es urgente no lo ofrece. */}
-        {onMeterUrgente && !urgente && (
+            usarlo. Una que ya es urgente no lo ofrece.
+            "MARCAR COMO COMODÍN" (§2, 18/10) va en el mismo ⋯: es una decisión sobre la obra
+            que se toma de a una y con calma, no algo para tener a un clic sin querer. Sólo
+            para quien edita Planificación (onComodin ausente = no se ofrece). */}
+        {((onMeterUrgente && !urgente) || onComodin) && (
           <DropdownMenu
             open={accionesAbierto}
             onOpenChange={(abierto) => {
@@ -500,11 +513,20 @@ function TarjetaOt({
             >
               <MoreHorizontal className="h-3.5 w-3.5" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem onClick={() => onMeterUrgente(ot)}>
-                <Siren className="mr-2 h-4 w-4" />
-                Meter urgente…
-              </DropdownMenuItem>
+            <DropdownMenuContent align="end" className="w-52">
+              {onMeterUrgente && !urgente && (
+                <DropdownMenuItem onClick={() => onMeterUrgente(ot)}>
+                  <Siren className="mr-2 h-4 w-4" />
+                  Meter urgente…
+                </DropdownMenuItem>
+              )}
+              {onMeterUrgente && !urgente && onComodin && <DropdownMenuSeparator />}
+              {onComodin && (
+                <DropdownMenuItem onClick={() => onComodin(ot, !comodin)}>
+                  <Spade className="mr-2 h-4 w-4" />
+                  {comodin ? "Quitar comodín" : "Marcar como comodín"}
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         )}
@@ -599,12 +621,12 @@ function TarjetaOt({
           )}
         </p>
 
-        {/* EL COMODÍN: el chip y, sin fecha, desde cuándo puede ir. Vencido va en rojo: ya
-            no es comodín, es una obra que espera de más (contrato §2.2). */}
+        {/* EL COMODÍN: el chip y nada más que decir de fechas. Desde el 18/10 es una marca de
+            Planificación sin piso ni vencimiento (contrato §2): "puede ir ya". */}
         {comodin && (
           <p className="flex flex-wrap items-center gap-x-1 gap-y-0.5">
-            <ChipComodin comodin={comodin} />
-            {!comodin.vencido && <span>sin fecha · el cliente la pidió desde el {format(parseISO(comodin.piso), "dd/MM")}</span>}
+            <ChipComodin comodin={comodin} marcadoPor={marcadoPor} />
+            <span>sin fecha · puede ir cualquier día</span>
           </p>
         )}
 
@@ -715,19 +737,19 @@ export function PanelSinAsignar({
   onIrABloque,
   onOrden,
   comodines = [],
-  vencidos,
   onMeterUrgente,
+  onComodin,
 }: {
   ots: ObraPendiente[];
   /**
-   * Los comodines (guardias-contrato.md §2.3), SIN los vencidos y ordenados por espera:
-   * van en un grupo propio arriba, también los que ya están en la grilla.
+   * Los comodines (guardias-contrato.md §2, 18/10), ordenados por cuándo se marcaron: van en
+   * un grupo propio arriba, también los que ya están en la grilla.
    */
   comodines?: ComodinEnBandeja[];
-  /** Los que esperaron más de 7 días hábiles: van con las urgentes, con el chip en rojo. */
-  vencidos?: Map<number, Comodin>;
   /** "Meter urgente" desde el ⋯ de la tarjeta. */
   onMeterUrgente?: (ot: OtTablero) => void;
+  /** Marcar o quitar el comodín desde el ⋯. Ausente = quien mira no edita Planificación. */
+  onComodin?: (ot: OtTablero, marcar: boolean) => void;
   /** Obras que ya están en la grilla, para el buscador. Sólo las del rango cargado. */
   planificadas: ObraPlanificada[];
   /** Obras planificadas con todas sus jornadas fuera del rango cargado. */
@@ -858,16 +880,18 @@ export function PanelSinAsignar({
   // ninguna. La tarjeta urgente conserva su punto de semáforo: está arriba porque es
   // urgente, no porque esté habilitada, y esas dos cosas no pueden confundirse.
   //
-  // EL COMODÍN VENCIDO VA CON LAS URGENTES (contrato §2.2): esperó más de 7 días hábiles
-  // desde que el cliente lo pidió y deja de ser "cuando haya lugar". No se escribe nada en
-  // Odoo: es la bandeja la que lo sube.
-  //
   // LOS COMODINES SIN FECHA salen de los grupos de habilitación y van al suyo, arriba: cada
   // obra sigue en UN solo grupo, así los contadores siguen sumando el total.
-  const esVencido = (o: ObraPendiente) => vencidos?.has(o.ot.id) ?? false;
+  //
+  // UNA URGENTE QUE ADEMÁS ES COMODÍN se queda en "Urgentes", con el chip. Desde el 18/10
+  // cualquier OT se puede marcar (contrato §2), así que puede pasar; y dibujarla en los dos
+  // grupos rompería el arrastre (dnd-kit no admite dos tarjetas con el mismo id) y la cuenta.
+  // Gana la urgencia, por lo mismo que gana sobre la habilitación: es lo que no se puede
+  // perder de vista.
+  const comodinDe = new Map(comodines.map((c) => [c.ot.id, c]));
   const idsComodin = new Set(comodines.filter((c) => c.pendiente).map((c) => c.ot.id));
-  const urgentes = conFiltros.filter((o) => esUrgente(o.ot) || esVencido(o));
-  const resto = conFiltros.filter((o) => !esUrgente(o.ot) && !esVencido(o) && !idsComodin.has(o.ot.id));
+  const urgentes = conFiltros.filter((o) => esUrgente(o.ot));
+  const resto = conFiltros.filter((o) => !esUrgente(o.ot) && !idsComodin.has(o.ot.id));
   const listas = resto.filter((o) => !habilitacionPendiente(o.ot));
   const pendientesHab = resto.filter((o) => habilitacionPendiente(o.ot));
   // Los comodines que pasan la búsqueda y los filtros: los sin fecha, si están entre las
@@ -875,7 +899,7 @@ export function PanelSinAsignar({
   const visibles = new Set(conFiltros.map((o) => o.ot.id));
   const comodinesVisibles = comodines.filter((c) =>
     c.pendiente
-      ? visibles.has(c.ot.id)
+      ? visibles.has(c.ot.id) && !esUrgente(c.ot)
       : (!q || coincide(c.ot, q)) && (tipoFiltro === null || tipoFiltro === tipoDe(c.ot)) && duracionFiltro === null,
   );
   const obraDe = new Map(conFiltros.map((o) => [o.ot.id, o]));
@@ -1090,7 +1114,7 @@ export function PanelSinAsignar({
             onToggle={() => {}}
           >
             {urgentes.map((obra) => (
-              <TarjetaOt key={obra.ot.id} obra={obra} hoy={hoy} comentarios={comentarios?.get(obra.ot.id) ?? null} queEjecutar={queEjecutar} onDetalle={onDetalle} onDuracion={onDuracion} comodin={vencidos?.get(obra.ot.id) ?? null} onMeterUrgente={onMeterUrgente} />
+              <TarjetaOt key={obra.ot.id} obra={obra} hoy={hoy} comentarios={comentarios?.get(obra.ot.id) ?? null} queEjecutar={queEjecutar} onDetalle={onDetalle} onDuracion={onDuracion} comodin={comodinDe.get(obra.ot.id)?.comodin ?? null} marcadoPor={comodinDe.get(obra.ot.id)?.marcadoPor ?? null} onMeterUrgente={onMeterUrgente} onComodin={onComodin} />
             ))}
           </Grupo>
 
@@ -1100,7 +1124,7 @@ export function PanelSinAsignar({
             tarjeta={(item) => {
               const obra = obraDe.get(item.ot.id);
               return obra ? (
-                <TarjetaOt obra={obra} hoy={hoy} comentarios={comentarios?.get(obra.ot.id) ?? null} queEjecutar={queEjecutar} onDetalle={onDetalle} onDuracion={onDuracion} comodin={item.comodin} onMeterUrgente={onMeterUrgente} />
+                <TarjetaOt obra={obra} hoy={hoy} comentarios={comentarios?.get(obra.ot.id) ?? null} queEjecutar={queEjecutar} onDetalle={onDetalle} onDuracion={onDuracion} comodin={item.comodin} marcadoPor={item.marcadoPor} onMeterUrgente={onMeterUrgente} onComodin={onComodin} />
               ) : null;
             }}
           />
@@ -1126,7 +1150,7 @@ export function PanelSinAsignar({
             onToggle={() => {}}
           >
             {listas.map((obra) => (
-              <TarjetaOt key={obra.ot.id} obra={obra} hoy={hoy} comentarios={comentarios?.get(obra.ot.id) ?? null} queEjecutar={queEjecutar} onDetalle={onDetalle} onDuracion={onDuracion} onMeterUrgente={onMeterUrgente} />
+              <TarjetaOt key={obra.ot.id} obra={obra} hoy={hoy} comentarios={comentarios?.get(obra.ot.id) ?? null} queEjecutar={queEjecutar} onDetalle={onDetalle} onDuracion={onDuracion} onMeterUrgente={onMeterUrgente} onComodin={onComodin} />
             ))}
           </Grupo>
 
@@ -1139,7 +1163,7 @@ export function PanelSinAsignar({
             onToggle={() => setPendientesAbierto((v) => !v)}
           >
             {pendientesHab.map((obra) => (
-              <TarjetaOt key={obra.ot.id} obra={obra} hoy={hoy} comentarios={comentarios?.get(obra.ot.id) ?? null} queEjecutar={queEjecutar} onDetalle={onDetalle} onDuracion={onDuracion} onMeterUrgente={onMeterUrgente} />
+              <TarjetaOt key={obra.ot.id} obra={obra} hoy={hoy} comentarios={comentarios?.get(obra.ot.id) ?? null} queEjecutar={queEjecutar} onDetalle={onDetalle} onDuracion={onDuracion} onMeterUrgente={onMeterUrgente} onComodin={onComodin} />
             ))}
           </Grupo>
 

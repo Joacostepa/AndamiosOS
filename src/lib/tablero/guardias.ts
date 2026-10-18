@@ -42,7 +42,7 @@ import {
   sumarDias,
   type Feriados,
 } from "./dias-habiles.ts";
-import { evaluarComodines } from "./comodines.ts";
+import { comodinPuedeIr, evaluarComodines, type Marcados } from "./comodines.ts";
 import type {
   AvanceArmado,
   CandidatoRelleno,
@@ -128,6 +128,9 @@ export function diaCorto(fecha: string): string {
 }
 
 const plural = (n: number, uno: string, varios: string) => (n === 1 ? uno : varios);
+
+/** "1,5 j": las jornadas como se leen, sin ceros de más. */
+const DECIMAL_J = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 });
 
 /** Une "a", "b" y "c" como se dice: "a, b y c". */
 function enumerar(partes: readonly string[]): string {
@@ -429,7 +432,10 @@ export type EntradaCandado = {
   /** Ahora (ISO). La hora importa: el comodín se libera a las 13 h del día hábil anterior. */
   ahora: string;
   feriados: Feriados;
-  /** El comodín está en regla (piso, espera, duración): lo resuelve comodines.ts. */
+  /**
+   * La OT está MARCADA como comodín y sigue vigente (comodines.ts). Desde el 18/10 es una
+   * marca de Planificación, no una regla: el candado no mira tipo, duración ni fechas.
+   */
   esComodin: boolean;
   /** Una solicitud aprobada por JS para esta guardia y esta OT, todavía sin usar. */
   aprobada?: TipoSolicitud | null;
@@ -453,13 +459,12 @@ const USO_APROBADO: Record<TipoSolicitud, UsoGuardia | null> = {
  *
  * POR QUÉ NO LA DEL PLAN A SECAS, como el resto del tablero: el plan lo escribe Planificación
  * (PUT /api/planificacion/jornadas-plan), que es justamente a quien el candado le pone el
- * límite. Bajarle a 1 la duración a un desarme de 3 j lo volvería comodín, y bajársela a un
- * armado en curso lo volvería "atrasado": dos maneras de abrir una guardia sin JS editando un
- * número. Con la mayor, corregir para ARRIBA (lo que de verdad pasa: la obra se alargó) sigue
- * valiendo, y corregir para abajo no abre nada. El costo: un desarme que Operaciones achicó a
- * 1 j no es comodín hasta que Comercial corrija la estimación en Odoo. Lo usan el tablero, la
- * ruta de usar, el 409 de las rutas comunes y la corrida de las 13 h: si cada uno mirara una
- * duración distinta, el tablero ofrecería "usar" y el servidor contestaría 409.
+ * límite. Bajársela a un armado en curso lo volvería "atrasado": una manera de abrir una
+ * guardia sin JS editando un número. Con la mayor, corregir para ARRIBA (lo que de verdad
+ * pasa: la obra se alargó) sigue valiendo, y corregir para abajo no abre nada. (Hasta el 18/10
+ * también decidía qué desarme era comodín; desde que el comodín es una marca, ya no.) Lo usan
+ * el tablero, la ruta de usar, el 409 de las rutas comunes y la corrida de las 13 h: si cada
+ * uno mirara una duración distinta, el tablero ofrecería "usar" y el servidor contestaría 409.
  */
 export function duracionParaCandado(ot: OtTablero, plan?: number | null): number {
   return Math.max(ot.jornadas, plan ?? 0);
@@ -498,11 +503,11 @@ export function otParaCandado(ot: OtTablero, duracion: number = ot.jornadas): Ot
  * `mensaje` va tal cual al toast y al 409: "Esa jornada es una guardia: para usarla con una
  * obra común hace falta la autorización de JS".
  *
- * UN MATIZ DEL PUNTO 4: una urgencia vieja que ADEMÁS es un comodín ya abierto (un desarme
- * de urgencia media que espera desde hace días) entra como comodín. La urgencia no cumple,
- * pero el comodín desde las 13 h no pide nada, y frenarlo por tener urgencia marcada
- * castigaría justo a la obra que más espera. Si el comodín todavía no abrió, lo que se pide
- * es la urgencia: es lo que la persona está alegando.
+ * UN MATIZ DEL PUNTO 4: una urgencia vieja que ADEMÁS es un comodín ya abierto (una obra de
+ * urgencia media que Planificación marcó como comodín) entra como comodín. La urgencia no
+ * cumple, pero el comodín desde las 13 h no pide nada, y frenarlo por tener urgencia marcada
+ * castigaría justo a la obra que está esperando lugar. Si el comodín todavía no abrió, lo que
+ * se pide es la urgencia: es lo que la persona está alegando.
  */
 export function evaluarCandado(e: EntradaCandado): DecisionCandado {
   const { guardia, ot } = e;
@@ -639,6 +644,8 @@ export type EntradaRelleno = {
   cuadrillas: readonly CuadrillaTablero[];
   /** Duración vigente de una OT (la que fijó Operaciones si la corrigió). Por defecto ot.jornadas. */
   duracionDe?: (ot: OtTablero) => number;
+  /** Las OTs que Planificación marcó como comodín (otId → cuándo). Sin esto no hay comodines. */
+  marcados: Marcados;
 };
 
 /** Cuántas tentativas se ofrecen como mucho: más que eso ya no es un aviso, es un listado. */
@@ -646,12 +653,13 @@ const MAX_TENTATIVAS = 5;
 
 /**
  * Los candidatos para rellenar una guardia que sigue libre, en el orden de la regla
- * (contrato §1.5): 1) apoyo a un armado atrasado; 2) comodín, primero el que más espera;
+ * (contrato §1.5): 1) apoyo a un armado atrasado; 2) comodín, primero el que está marcado
+ * hace más tiempo;
  * 3) adelantar una tentativa de las semanas siguientes si su piso lo permite (nunca antes
  * del piso; jornada de 1 o menos, o el primer día de una obra que entra sola); 4) depósito,
  * que SIEMPRE está al final. Sin IA: el orden lo da esto.
  *
- * Cada OT aparece una sola vez, en el primer grupo que la toma: un desarme de 1 j que es
+ * Cada OT aparece una sola vez, en el primer grupo que la toma: una obra de 1 j marcada como
  * comodín no se ofrece además como "adelantar una tentativa".
  */
 export function candidatosRelleno(e: EntradaRelleno): CandidatoRelleno[] {
@@ -691,19 +699,20 @@ export function candidatosRelleno(e: EntradaRelleno): CandidatoRelleno[] {
     });
   }
 
-  // 2. Comodines que pueden ir ese día (piso cumplido, no vencidos), el que más espera
-  //    primero (evaluarComodines ya los ordena así). Uno que ya está en la grilla ANTES de la
-  //    guardia no se ofrece: moverlo a la guardia sería atrasarlo, no rellenar.
+  // 2. Los comodines marcados, el que está marcado hace más tiempo primero (evaluarComodines
+  //    ya los ordena así). Sin piso ni vencimiento: cualquiera puede ir a cualquier guardia que
+  //    no haya pasado. Uno que ya está en la grilla ANTES de la guardia (o ese mismo día) no se
+  //    ofrece: moverlo a la guardia sería atrasarlo, no rellenar. Uno de más de una jornada sí
+  //    se ofrece —la marca es de Planificación y sabrá si entra— pero el detalle lo dice.
   const comodines = evaluarComodines({
     ots: [...e.ots.values()],
+    marcados: e.marcados,
     asignaciones: e.asignaciones,
     progreso: [...e.progreso.values()],
-    hoy,
-    feriados: e.feriados,
     duracionDe: e.duracionDe,
   });
   for (const c of comodines) {
-    if (c.vencido || c.piso > guardia.fecha || usadas.has(c.otId)) continue;
+    if (!comodinPuedeIr(c, guardia.fecha, hoy) || usadas.has(c.otId)) continue;
     if (c.ubicacion && c.ubicacion.fecha <= guardia.fecha) continue;
     const ot = e.ots.get(c.otId);
     if (!ot) continue;
@@ -712,9 +721,13 @@ export function candidatosRelleno(e: EntradaRelleno): CandidatoRelleno[] {
       tipo: "comodin",
       otId: c.otId,
       titulo: `Comodín ${ot.titulo}`,
-      detalle:
-        `espera ${c.espera} ${plural(c.espera, "día hábil", "días hábiles")} · ` +
-        (c.ubicacion ? `hoy: ${donde(c.ubicacion.fecha, c.ubicacion.cuadrillaId)}` : "sin fecha"),
+      detalle: [
+        `marcado el ${ddmm(hoyBA(c.marcadoEl))}`,
+        c.jornadas > 1 ? `${DECIMAL_J.format(c.jornadas)} j` : null,
+        c.ubicacion ? `hoy: ${donde(c.ubicacion.fecha, c.ubicacion.cuadrillaId)}` : "sin fecha",
+      ]
+        .filter(Boolean)
+        .join(" · "),
       desde: c.ubicacion,
     });
   }

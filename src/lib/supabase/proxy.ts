@@ -63,7 +63,7 @@ export async function updateSession(request: NextRequest) {
   //   el resto de /api/direccion se lee CON sesión y por permisos.
   // /api/cron/guardias-viernes y /api/cron/guardias-relleno: las corridas de las guardias del
   //   tablero (viernes 10 h: pone las de las dos semanas siguientes; lun–sáb 13 h: cierra las
-  //   pasadas como depósito, avisa las libres de mañana y los comodines vencidos). Rutas
+  //   pasadas como depósito y avisa las libres de mañana con qué rellenarlas). Rutas
   //   completas y protegidas por CRON_SECRET, falla cerrado: el resto de /api/planificacion
   //   se usa CON sesión y por permisos (el candado de las guardias vive ahí).
   // /cotizador y /api/public: cotizador hogareño para clientes finales (sin cuenta).

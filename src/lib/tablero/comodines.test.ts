@@ -1,14 +1,21 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { comodinDe, comodinPuedeIr, evaluarComodines, textoChipComodin, type EntradaComodines } from "./comodines.ts";
+import {
+  comodinDe,
+  comodinPuedeIr,
+  evaluarComodines,
+  otMarcable,
+  TEXTO_CHIP_COMODIN,
+  tituloComodin,
+  type EntradaComodines,
+} from "./comodines.ts";
 import type { AsignacionTablero, OtTablero, ProgresoOt } from "./tipos.ts";
 
-// Un comodín es un desarme de 1 j o menos, pendiente, sin urgencia alta, con el piso ya
-// llegado y que no lleva más de 7 días hábiles esperando (guardias-contrato.md §2.1). Hoy
-// es el miércoles 04/11/2026.
+// Desde el 18/10 un comodín es una OT que Planificación MARCÓ (guardias-contrato.md §2,
+// decidido por JS): ningún criterio de tipo, duración, urgencia ni fecha decide nada. Lo único
+// que se cruza con la marca es que la OT siga pendiente o en proceso y le quede algo por hacer.
 
 const HOY = "2026-11-04";
-const SIN_FERIADOS = new Set<string>();
 
 function ot(p: Partial<OtTablero> & Pick<OtTablero, "id">): OtTablero {
   return {
@@ -17,91 +24,87 @@ function ot(p: Partial<OtTablero> & Pick<OtTablero, "id">): OtTablero {
     estado: "pendiente",
     urgencia: "baja",
     jornadas: 1,
-    fechaDesde: "2026-10-30",
+    fechaDesde: null,
     fechaAntesDe: null,
     creadaEl: "2026-10-01 12:00:00",
     ...p,
   } as OtTablero;
 }
 
-function entrada(asignaciones: AsignacionTablero[] = [], progreso: ProgresoOt[] = []): Omit<EntradaComodines, "ots"> {
-  return { asignaciones, progreso, hoy: HOY, feriados: SIN_FERIADOS };
+function entrada(
+  marcados: [number, string][] = [],
+  asignaciones: AsignacionTablero[] = [],
+  progreso: ProgresoOt[] = [],
+): Omit<EntradaComodines, "ots"> {
+  return { marcados: new Map(marcados), asignaciones, progreso };
 }
 
-test("desarme de 1 j pendiente con el piso cumplido: es comodín", () => {
-  const c = comodinDe(ot({ id: 1 }), entrada());
-  assert.ok(c);
-  assert.equal(c.piso, "2026-10-30");
-  assert.equal(c.pisoDeCreacion, false);
-  // Sábado 31, lunes 02, martes 03, miércoles 04.
-  assert.equal(c.espera, 4);
-  assert.equal(c.quedan, 3);
-  assert.equal(c.vencido, false);
-  assert.equal(c.ubicacion, null);
-  // En proceso también.
-  assert.ok(comodinDe(ot({ id: 1, estado: "en_proceso" }), entrada()));
+const MARCA = "2026-10-20T15:00:00Z";
+
+test("sin marca no es comodín, aunque sea el desarme de un día de siempre", () => {
+  assert.equal(comodinDe(ot({ id: 1 }), entrada()), null);
+  assert.deepEqual(evaluarComodines({ ...entrada(), ots: [ot({ id: 1 }), ot({ id: 2 })] }), []);
 });
 
-test("un armado no es comodín; una urgencia alta tampoco; 1,5 j tampoco", () => {
-  assert.equal(comodinDe(ot({ id: 1, tipo: "armado" }), entrada()), null);
-  assert.equal(comodinDe(ot({ id: 1, urgencia: "alta" }), entrada()), null);
-  assert.ok(comodinDe(ot({ id: 1, urgencia: "media" }), entrada()));
-  assert.equal(comodinDe(ot({ id: 1, jornadas: 1.5 }), entrada()), null);
-  assert.ok(comodinDe(ot({ id: 1, jornadas: 0.5 }), entrada()));
-  // La duración vigente manda sobre la estimada.
-  assert.equal(comodinDe(ot({ id: 1 }), { ...entrada(), duracionDe: () => 2 }), null);
+test("marcada es comodín: cualquier tipo, urgencia, duración y fecha", () => {
+  const marcas: [number, string][] = [[1, MARCA]];
+  const c = comodinDe(ot({ id: 1 }), entrada(marcas));
+  assert.deepEqual(c, { otId: 1, jornadas: 1, ubicacion: null, marcadoEl: MARCA });
+  // Lo que antes la dejaba afuera ya no cuenta.
+  assert.ok(comodinDe(ot({ id: 1, tipo: "armado" }), entrada(marcas)));
+  assert.ok(comodinDe(ot({ id: 1, urgencia: "alta" }), entrada(marcas)));
+  assert.ok(comodinDe(ot({ id: 1, jornadas: 3 }), entrada(marcas)));
+  assert.ok(comodinDe(ot({ id: 1, fechaDesde: "2026-12-01" }), entrada(marcas)));
+  assert.ok(comodinDe(ot({ id: 1, fechaDesde: null, creadaEl: null }), entrada(marcas)));
+  assert.ok(comodinDe(ot({ id: 1, estado: "en_proceso" }), entrada(marcas)));
+  // Sin piso ni vencimiento: el objeto no lleva nada de eso.
+  assert.deepEqual(Object.keys(c!).sort(), ["jornadas", "marcadoEl", "otId", "ubicacion"]);
 });
 
-test("un desarme completado, o con su jornada ya cerrada, no es comodín", () => {
-  assert.equal(comodinDe(ot({ id: 1, estado: "completada" }), entrada()), null);
-  assert.equal(comodinDe(ot({ id: 1 }), entrada([], [{ otId: 1, asignadas: 1, cerradas: 1 }])), null);
-  assert.ok(comodinDe(ot({ id: 1 }), entrada([], [{ otId: 1, asignadas: 1, cerradas: 0 }])));
+test("la duración vigente es la que se informa en jornadas", () => {
+  const c = comodinDe(ot({ id: 1, jornadas: 1 }), { ...entrada([[1, MARCA]]), duracionDe: () => 2.5 });
+  assert.equal(c?.jornadas, 2.5);
 });
 
-test("piso futuro: espera 0 y no puede ir antes del piso", () => {
-  const c = comodinDe(ot({ id: 1, fechaDesde: "2026-11-10" }), entrada());
-  assert.ok(c);
-  assert.equal(c.espera, 0);
-  assert.equal(c.vencido, false);
-  assert.equal(comodinPuedeIr(c, "2026-11-09"), false);
-  assert.equal(comodinPuedeIr(c, "2026-11-10"), true);
+test("completada o cancelada no se muestra, aunque la marca siga guardada", () => {
+  assert.equal(comodinDe(ot({ id: 1, estado: "completada" }), entrada([[1, MARCA]])), null);
+  assert.equal(comodinDe(ot({ id: 1, estado: "cancelada" }), entrada([[1, MARCA]])), null);
+  assert.equal(otMarcable({ estado: "pendiente" }), true);
+  assert.equal(otMarcable({ estado: "en_proceso" }), true);
+  assert.equal(otMarcable({ estado: "completada" }), false);
 });
 
-test("sin piso cargado cuenta desde que se creó la OT; sin ninguno de los dos, no es", () => {
-  // 23:30 UTC del 30 = 20:30 del 30 acá.
-  const c = comodinDe(ot({ id: 1, fechaDesde: null, creadaEl: "2026-10-30 23:30:00" }), entrada());
-  assert.ok(c);
-  assert.equal(c.piso, "2026-10-30");
-  assert.equal(c.pisoDeCreacion, true);
-  assert.equal(comodinDe(ot({ id: 1, fechaDesde: null, creadaEl: null }), entrada()), null);
+test("cerrada con parte (todas sus jornadas hechas) deja de ser comodín", () => {
+  const marcas: [number, string][] = [[1, MARCA]];
+  assert.equal(comodinDe(ot({ id: 1 }), entrada(marcas, [], [{ otId: 1, asignadas: 1, cerradas: 1 }])), null);
+  assert.ok(comodinDe(ot({ id: 1 }), entrada(marcas, [], [{ otId: 1, asignadas: 1, cerradas: 0 }])));
+  // Una de tres con dos hechas sigue siendo comodín: le queda un día.
+  assert.ok(comodinDe(ot({ id: 1, jornadas: 3 }), entrada(marcas, [], [{ otId: 1, asignadas: 3, cerradas: 2 }])));
+  assert.equal(comodinDe(ot({ id: 1, jornadas: 3 }), entrada(marcas, [], [{ otId: 1, asignadas: 3, cerradas: 3 }])), null);
+  // Sin estimar (0 j): con un día cerrado ya está hecha.
+  assert.equal(comodinDe(ot({ id: 1, jornadas: 0 }), entrada(marcas, [], [{ otId: 1, asignadas: 1, cerradas: 1 }])), null);
 });
 
-test("7 días hábiles esperando todavía es comodín; 8 ya está vencido", () => {
-  // Del lunes 26/10: martes 27 … miércoles 04 son 8 hábiles.
-  const ocho = comodinDe(ot({ id: 1, fechaDesde: "2026-10-26" }), entrada());
-  assert.equal(ocho?.espera, 8);
-  assert.equal(ocho?.vencido, true);
-  assert.equal(ocho?.quedan, -1);
-  const siete = comodinDe(ot({ id: 1, fechaDesde: "2026-10-27" }), entrada());
-  assert.equal(siete?.espera, 7);
-  assert.equal(siete?.vencido, false);
-  assert.equal(siete?.quedan, 0);
-  // Vencido no puede ir a ningún lado como comodín (va como urgente).
-  assert.equal(comodinPuedeIr(ocho!, "2026-11-05"), false);
+test("puede ir a cualquier día que no haya pasado; sin comodín, a ninguno", () => {
+  const c = comodinDe(ot({ id: 1, fechaDesde: "2026-12-01" }), entrada([[1, MARCA]]));
+  assert.equal(comodinPuedeIr(c, HOY, HOY), true);
+  assert.equal(comodinPuedeIr(c, "2026-11-05", HOY), true, "antes de su 'a partir de' también: ya no hay piso");
+  assert.equal(comodinPuedeIr(c, "2026-11-03", HOY), false, "un día pasado no, como cualquier cosa");
+  assert.equal(comodinPuedeIr(null, "2026-11-05", HOY), false);
 });
 
-test("orden: el que más espera primero; incluye los vencidos marcados", () => {
+test("orden: por cuándo se marcó, el más viejo primero; a igual momento, el número de OT", () => {
   const lista = evaluarComodines({
-    ...entrada(),
-    ots: [
-      ot({ id: 1, fechaDesde: "2026-11-02" }),
-      ot({ id: 2, fechaDesde: "2026-10-26" }),
-      ot({ id: 3, fechaDesde: "2026-10-30" }),
-      ot({ id: 4, tipo: "armado" }),
-    ],
+    ...entrada([
+      [1, "2026-10-28T12:00:00Z"],
+      [2, "2026-10-15T12:00:00Z"],
+      [3, "2026-10-20T12:00:00Z"],
+      [5, "2026-10-20T12:00:00Z"],
+      [9, "2026-10-01T12:00:00Z"], // marcada pero no está en el tablero: no aparece
+    ]),
+    ots: [ot({ id: 5 }), ot({ id: 1 }), ot({ id: 2 }), ot({ id: 3 }), ot({ id: 4 })],
   });
-  assert.deepEqual(lista.map((c) => c.otId), [2, 3, 1]);
-  assert.equal(lista[0].vencido, true);
+  assert.deepEqual(lista.map((c) => c.otId), [2, 3, 5, 1]);
 });
 
 test("dónde está hoy: su primer día en la grilla, sin contar apoyos ni días ya cerrados", () => {
@@ -111,15 +114,13 @@ test("dónde está hoy: su primer día en la grilla, sin contar apoyos ni días 
     { ...base, id: 11, otId: 1, fecha: "2026-11-06", cuadrillaId: 13, parteId: null, apoyo: true },
     { ...base, id: 12, otId: 1, fecha: "2026-11-02", cuadrillaId: 14, parteId: 99 },
   ];
-  const c = comodinDe(ot({ id: 1 }), entrada(asignaciones));
+  const c = comodinDe(ot({ id: 1, jornadas: 2 }), entrada([[1, MARCA]], asignaciones));
   assert.deepEqual(c?.ubicacion, { fecha: "2026-11-09", cuadrillaId: 12 });
 });
 
-test("el chip: desde el piso; cerca del límite, cuántos días quedan; vencido, cuánto espera", () => {
-  const c = comodinDe(ot({ id: 1, fechaDesde: "2026-10-28" }), entrada());
-  assert.equal(c?.quedan, 1);
-  assert.equal(textoChipComodin(c!), "comodín · quedan 1 d");
-  assert.equal(textoChipComodin({ piso: "2026-10-30", espera: 5, quedan: 2, vencido: false }), "comodín · quedan 2 d");
-  assert.equal(textoChipComodin({ piso: "2026-10-20", espera: 3, quedan: 4, vencido: false }), "comodín · desde 20/10");
-  assert.equal(textoChipComodin({ piso: "2026-10-20", espera: 8, quedan: -1, vencido: true }), "Esperando hace 8 días hábiles");
+test("el chip dice sólo «comodín»; el tooltip, desde cuándo está marcada (día de Buenos Aires)", () => {
+  assert.equal(TEXTO_CHIP_COMODIN, "comodín");
+  // 01:30 UTC del 21 = 22:30 del 20 acá.
+  assert.match(tituloComodin({ marcadoEl: "2026-10-21T01:30:00Z" }), /^Marcada como comodín el 20\/10: puede ir cualquier día/);
+  assert.doesNotMatch(tituloComodin({ marcadoEl: MARCA }), /quedan|vencid|esperando/i);
 });

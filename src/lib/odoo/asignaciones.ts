@@ -1064,8 +1064,8 @@ export async function fetchGrillaLiviana(desde: string, hasta: string): Promise<
 
 /**
  * Algunas OTs, con el mismo mapeo que el tablero (mapOt): el candado de las guardias necesita
- * tipo, estado, urgencia, creación, piso y duración, y el comodín lo mismo. Sin la URL de la
- * acción (no la necesita nadie que llame a esto) ni el dato de SyH.
+ * tipo, estado, urgencia, creación, piso y duración, y marcar un comodín mira el estado. Sin
+ * la URL de la acción (no la necesita nadie que llame a esto) ni el dato de SyH.
  */
 export async function leerOts(otIds: number[]): Promise<OtTablero[]> {
   const unicos = [...new Set(otIds)].filter((id) => Number.isInteger(id) && id > 0);

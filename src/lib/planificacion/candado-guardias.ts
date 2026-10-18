@@ -24,6 +24,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { feriadosDelRango } from "@/lib/feriados/argentina";
 import { avanceDeOts, celdasDeAsignaciones, leerOts } from "@/lib/odoo/asignaciones";
 import { jornadasPlanTodas } from "@/lib/planificacion/jornadas-plan";
+import { leerMarcados } from "@/lib/planificacion/comodines";
 import { comodinDe, comodinPuedeIr } from "@/lib/tablero/comodines";
 import { hoyBA, sumarDias } from "@/lib/tablero/dias-habiles";
 import { claveCelda, duracionParaCandado, evaluarCandado, MENSAJE_OBRA_COMUN, otParaCandado } from "@/lib/tablero/guardias";
@@ -82,11 +83,16 @@ async function rechazo(g: GuardiaResumen, ctx: ContextoCandado): Promise<NextRes
 
   try {
     const hoy = hoyBA();
-    const [ots, avances, planes, feriadosLista] = await Promise.all([
+    const adm = createAdminClient();
+    const [ots, avances, planes, feriadosLista, marcados] = await Promise.all([
       leerOts([ctx.otId]),
       avanceDeOts([ctx.otId]),
-      jornadasPlanTodas(createAdminClient()),
+      jornadasPlanTodas(adm),
       feriadosDelRango(sumarDias(hoy, -45), sumarDias(g.fecha, 1)),
+      // Si es comodín lo dice la MARCA de Planificación (plan_comodines), no una regla
+      // (contrato §2, 18/10). Si no se puede leer, el catch de abajo pide como obra común:
+      // falla cerrado, igual que todo el candado.
+      leerMarcados(adm, [ctx.otId]),
     ]);
     const ot = ots[0];
     if (!ot) return cuerpo(MENSAJE_OBRA_COMUN, "obra_comun");
@@ -94,7 +100,7 @@ async function rechazo(g: GuardiaResumen, ctx: ContextoCandado): Promise<NextRes
     const duracion = duracionParaCandado(ot, planes.find((p) => p.otId === ot.id)?.jornadas);
     const avance = avances.get(ot.id) ?? null;
     const feriados = new Set(feriadosLista.map((f) => f.fecha));
-    const comodin = comodinDe(ot, { asignaciones: [], progreso: avance ? [avance] : [], hoy, feriados, duracionDe: () => duracion });
+    const comodin = comodinDe(ot, { marcados, asignaciones: [], progreso: avance ? [avance] : [], duracionDe: () => duracion });
     const d = evaluarCandado({
       guardia: g,
       ot: otParaCandado(ot, duracion),
@@ -102,7 +108,7 @@ async function rechazo(g: GuardiaResumen, ctx: ContextoCandado): Promise<NextRes
       avance,
       ahora: new Date().toISOString(),
       feriados,
-      esComodin: !!comodin && comodinPuedeIr(comodin, g.fecha),
+      esComodin: comodinPuedeIr(comodin, g.fecha, hoy),
     });
     if (d.libre) {
       return cuerpo(

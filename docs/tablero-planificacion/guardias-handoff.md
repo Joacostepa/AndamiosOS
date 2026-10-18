@@ -9,10 +9,49 @@ Qué se construyó: [guardias-contrato.md](guardias-contrato.md) (manda). Cómo:
 
 En una línea: el sistema reserva **2 jornadas por semana** en las cuadrillas propias para lo
 imprevisto (la **guardia**). Planificación la usa sola para una urgencia nueva, la lluvia, un
-armado atrasado o un **comodín** (desarme que ya puede ir cualquier día) desde las 13 h del día
-hábil anterior; para todo lo demás le pide a JS. El candado vale en el servidor.
+armado atrasado o un **comodín** (una obra que Planificación marcó porque puede ir cualquier día)
+desde las 13 h del día hábil anterior; para todo lo demás le pide a JS. El candado vale en el
+servidor.
 
 ---
+
+## Comodines marcados a mano (18/10, decidido por JS)
+
+JS vio en producción el comodín calculado (desarme ≤ 1 j, sin urgencia alta, con el piso cumplido,
+vencido a los 7 días hábiles) y decidió que **un comodín es una OT que Planificación marca a mano**.
+Contrato §2 reescrito. Lo que cambió:
+
+- **Se guarda** en la tabla nueva `plan_comodines` (`ot_id` PK, `marcado_por` → auth.users,
+  `marcado_el`). Migración `supabase/migrations/20261018100003_comodines_marcados.sql` (ver
+  "Aplicar las migraciones", es la 3). Lee cualquier autenticado; INSERT/DELETE sólo con
+  `plan_puede_editar()` (el INSERT, además, firmado con `auth.uid()`); sin UPDATE.
+- **Ruta** `src/app/api/planificacion/comodines/route.ts`: `GET` (las marcas con el nombre de quien
+  las puso), `POST {otId}` (marcar; lee la OT en Odoo y exige pendiente o en proceso; si ya estaba,
+  la deja como estaba) y `DELETE ?otId=` (quitar, idempotente). `exigirPermisoDeApi`: GET pide
+  "ver", POST/DELETE "editar" (mapa APIS, `/api/planificacion` → planificación). Escribe con la
+  sesión, así la RLS es la tercera puerta. No va a `plan_movimientos` (es de jornadas: su
+  `accion` tiene CHECK y el deshacer cuenta con eso).
+- **Servidor:** `src/lib/planificacion/comodines.ts` lee y escribe la tabla. El candado
+  (`candado-guardias.ts`, `prepararUso` en `guardias.ts`) lee la marca con la service role; si no
+  puede, falla cerrado. La corrida de las 13 h la lee en `leerGrilla` (si falla, avisa sin
+  comodines) y ya **no** avisa vencidos: `comodin_vencido` no se crea más (queda en el tipo para las
+  alertas viejas).
+- **Regla pura** (`src/lib/tablero/comodines.ts`): `evaluarComodines` cruza las marcas con el
+  tablero (OT pendiente o en proceso y con algo por hacer) y ordena por `marcadoEl`, el más viejo
+  primero. `comodinPuedeIr(c, fecha, hoy)` ya no tiene piso: cualquier día que no haya pasado. Se
+  fueron `piso`, `pisoDeCreacion`, `espera`, `quedan`, `vencido`, `DIAS_MAX_COMODIN`,
+  `AVISO_COMODIN_DIAS` y `textoChipComodin` (el chip dice "comodín"; el tooltip, cuándo y quién).
+- **Pantalla:** "Marcar como comodín" / "Quitar comodín" en el ⋯ de la tarjeta de la bandeja, el ⋮
+  de la tarjeta de la grilla y el ⋯ de la ficha; sólo para quien edita Planificación
+  (`usePuedeEditarPlanificacion`). Hook `src/hooks/use-comodines.ts`, clave propia
+  `["comodines-tablero"]` (nunca bajo `["tablero"]`), optimista; avisa por el canal en vivo y
+  `use-avisos-tablero.ts` invalida la clave en las otras pantallas. Una urgente sin fecha que además
+  es comodín queda en "Urgentes" con el chip (no en los dos grupos: dnd-kit no admite el mismo id).
+- **El candado no cambió:** un comodín usa la guardia sin pedir desde las 13 h del día hábil
+  anterior; antes pide `comodin_antes` a JS.
+- **Orden de despliegue:** primero la migración 3, después el código. Si el código llega antes, el
+  tablero se ve sin comodines, marcar da 500 y el candado trata a toda obra como no comodín (pide a
+  JS): falla cerrado, no rompe nada.
 
 ## Estado
 
@@ -50,10 +89,9 @@ hábil anterior; para todo lo demás le pide a JS. El candado vale en el servido
   - **"Armado atrasado" cuenta lo hecho:** `cerradas >= estimadas`; planificarle un día de más
     ya no abre nada.
   - **La duración del candado es la mayor entre Odoo y el plan de Operaciones**
-    (`duracionParaCandado`): achicar `plan_jornadas_ot` no vuelve comodín a un desarme ni
-    "atrasado" a un armado. Lo usan el tablero, `/usar`, el 409 de las rutas comunes y la
-    corrida de las 13 h. Costo: un desarme que Operaciones achicó a 1 j no es comodín hasta
-    que se corrija la estimación en Odoo.
+    (`duracionParaCandado`): achicar `plan_jornadas_ot` no vuelve "atrasado" a un armado. Lo
+    usan el tablero, `/usar`, el 409 de las rutas comunes y la corrida de las 13 h. (Hasta la
+    marca manual del 18/10 también decidía qué desarme era comodín; ya no.)
   - **Las autorizaciones:** el tipo del pedido lo decide el servidor (`evaluarCandado`), la
     aprobada sirve sólo a quien la pidió y para el MISMO pedido (misma obra, guardias y celdas),
     abre todas las guardias del pedido y se gasta de forma atómica. Los pedidos pendientes de
@@ -84,10 +122,12 @@ hábil anterior; para todo lo demás le pide a JS. El candado vale en el servido
 
 | Archivo | Qué hace |
 |---|---|
-| `src/lib/tablero/guardias-tipos.ts` | Todos los tipos y las constantes (`DIAS_MAX_COMODIN`, `HORA_RELLENO`, ranuras…). Un número se cambia acá y nada más. |
+| `src/lib/tablero/guardias-tipos.ts` | Todos los tipos y las constantes (`HORA_RELLENO`, ranuras…). Un número se cambia acá y nada más. |
 | `src/lib/tablero/dias-habiles.ts` | Días hábiles (lunes a sábado sin feriados) y la hora de Buenos Aires. |
 | `src/lib/tablero/guardias.ts` | **La regla, pura:** dónde van (`motivoCeldaNoApta`, `planearGuardiasSemana`, `destinoValidoGuardia`), el candado (`evaluarCandado`, `urgenciaCumple`, `armadoAtrasado`, `guardiaMasCercanaPara`), el relleno de las 13 h (`candidatosRelleno`), los textos de los avisos, el indicador (`lugarProtegido`) y lo que ve el capataz (`tareaParaCapataz`). |
-| `src/lib/tablero/comodines.ts` | Qué es un comodín (`evaluarComodines`, `comodinDe`), si puede ir (`comodinPuedeIr`) y su chip. |
+| `src/lib/tablero/comodines.ts` | Las marcas cruzadas con el tablero (`evaluarComodines`, `comodinDe`), si puede ir (`comodinPuedeIr`), si se puede marcar (`otMarcable`) y el chip. |
+| `src/lib/planificacion/comodines.ts` | Lee y escribe `plan_comodines` (`leerMarcados`, `leerMarcas`, `marcarComodin`, `quitarComodin`). |
+| `src/app/api/planificacion/comodines/route.ts` | `GET` las marcas, `POST {otId}` marcar, `DELETE ?otId=` quitar. |
 | `src/lib/tablero/corrimiento.ts` | El corrimiento consume las guardias (`guardiasConsumidas`); el deshacer las reactiva. |
 | `src/lib/tablero/tareas.ts` | Las guardias activas viajan al tablero como tarea "Guardia"; las que terminaron en depósito, como "Depósito" (`deGuardia`). |
 | `src/lib/planificacion/guardias.ts` | El servicio del servidor: leer, poner, usar (un lote), deshacer, correr, sacar, consumir por lluvia, liberar por salida, cerrar a depósito, pedidos a JS, avisos y los esquemas de las rutas. |
@@ -95,17 +135,18 @@ hábil anterior; para todo lo demás le pide a JS. El candado vale en el servido
 | `src/app/api/planificacion/guardias/**` | `GET` (rango), `usar`, `deshacer`, `mover`, `sacar` (JS), `solicitudes` (GET/POST/DELETE), `autorizar` (JS). |
 | `src/app/api/planificacion/{asignaciones,tareas,jornadas,corrimiento}/route.ts` | El candado y la segunda llave (`exigirPermisoDeApi`) en cada handler que escribe; el corrimiento consume y reactiva. |
 | `src/app/api/cron/guardias-viernes/route.ts` | Viernes 13 UTC: pone las de las semanas +1 y +2. |
-| `src/app/api/cron/guardias-relleno/route.ts` | Lun–sáb 16 UTC: pasadas a depósito, aviso de las libres de mañana, comodines vencidos. |
+| `src/app/api/cron/guardias-relleno/route.ts` | Lun–sáb 16 UTC: pasadas a depósito y aviso de las libres de mañana (con los comodines marcados como candidatos). |
 | `src/lib/odoo/asignaciones.ts` | `creadaEl` (create_date) en las OTs; lecturas para el candado (`celdasDeAsignaciones`, `asignacionesEnCeldas`, `leerOts`, `avanceDeOts`, `fetchGrillaLiviana`). |
 | `src/lib/alertas/{servicio,slack}.ts` | Los seis avisos nuevos (`guardia_problema` desde la revisión) y el canal `#planificacion` (`SLACK_WEBHOOK_PLANIFICACION`); el texto que va a Slack se escapa. |
 | `src/lib/asistente/{planificacion,herramientas}.ts` | El asistente comercial no ofrece guardias: `libreSinGuardia` y `primeraFechaSinGuardia`. |
 | `supabase/migrations/20261018100001_guardias.sql` | Columnas `guardia_*` en `tablero_tareas`, historia, pedidos, permisos y el trigger del candado para tareas. |
+| `supabase/migrations/20261018100003_comodines_marcados.sql` | La tabla `plan_comodines` y su RLS (18/10). |
 | `vercel.json`, `src/lib/supabase/proxy.ts` | Los dos crons (rutas públicas protegidas por `CRON_SECRET`). |
 
 **Pantalla:** `src/components/tablero/{tarjeta-guardia,ficha-guardia,dialogo-pedir-autorizacion,bandeja-autorizaciones,grupo-comodines,indicador-protegido,dialogo-meter-urgente}.tsx`
 (nuevos) y los cambios en `tablero-board`, `tablero-grid`, `celda-dia`, `tarjeta-asignacion`,
 `panel-ot`, `panel-sin-asignar`, `topbar-tablero`, `dialogo-correr-dia`, `apoyo-ot`,
-`dialogo-candado`; `src/hooks/use-guardias.ts` (nuevo), `use-tablero.ts`, `use-avisos-tablero.ts`;
+`dialogo-candado`; `src/hooks/use-guardias.ts` y `use-comodines.ts` (nuevos), `use-tablero.ts`, `use-avisos-tablero.ts`;
 `src/lib/tablero/colores.ts`, `src/app/globals.css` (tokens `--tb-guardia-*`),
 `scripts/contraste-tablero.mjs`; la página `src/app/(dashboard)/planificacion/autorizaciones/page.tsx`.
 
@@ -117,7 +158,8 @@ y `supabase/migrations/20261018100002_tablero_rls.sql` (RLS de las tablas `plan_
 
 ## Aplicar las migraciones
 
-Dos, **en este orden** (la segunda usa `plan_nivel()`/`plan_puede_editar()` de la primera):
+Tres, **en este orden** (la segunda y la tercera usan `plan_nivel()`/`plan_puede_editar()` de la
+primera). Las dos primeras ya están en producción desde el 18/10; **falta la tercera**:
 
 1. `supabase/migrations/20261018100001_guardias.sql` — columnas `guardia_*` en
    `tablero_tareas` (incluida `guardia_deshacer`), `plan_guardia_eventos`,
@@ -125,6 +167,16 @@ Dos, **en este orden** (la segunda usa `plan_nivel()`/`plan_puede_editar()` de l
    candado para tareas y el permiso de JS.
 2. `supabase/migrations/20261018100002_tablero_rls.sql` — cierra las escrituras directas de
    `tablero_tareas` y las `plan_*` y suma `permiso_guardias` al CHECK de `direccion_auditoria`.
+3. `supabase/migrations/20261018100003_comodines_marcados.sql` — la tabla `plan_comodines` (las
+   marcas de comodín, 18/10) con su RLS. **Antes de desplegar** la versión que la lee.
+
+```bash
+# la tercera, sola (la primera ya está aplicada, así que plan_puede_editar() existe)
+node --env-file=.env.local scripts/probar-migracion.mjs supabase/migrations/20261018100003_comodines_marcados.sql
+npx supabase db query --linked -f supabase/migrations/20261018100003_comodines_marcados.sql
+```
+
+Las dos primeras, si hubiera que repetirlas desde cero:
 
 ```bash
 # ensayo en un ROLLBACK (pide SUPABASE_DB_URL en .env.local y `pg` instalado). La segunda
@@ -248,5 +300,8 @@ Para mirar sin escribir: `npx supabase db query --linked -o table "select id, fe
 - **Comodines fuera del rango cargado:** el grupo "Comodines" de la bandeja ve lo que el tablero
   tiene cargado; un comodín planificado varias semanas más allá aparece cuando se navega hasta
   ahí. El aviso de las 13 h sí mira 21 días hacia adelante.
+- **Marcas que quedan:** una OT completada sigue en `plan_comodines` (el tablero no la muestra).
+  No molesta; si algún día pesa, se limpian las de OTs cerradas con un DELETE a mano.
 - **Recalibrar:** los números están todos en `guardias-tipos.ts` (2 por semana, ranuras,
-  4 semanas de rotación, 3 días hábiles, 7 días de comodín, 13 h, 5 días del indicador).
+  4 semanas de rotación, 3 días hábiles, 13 h, 5 días del indicador). El comodín ya no tiene
+  números: es una marca.

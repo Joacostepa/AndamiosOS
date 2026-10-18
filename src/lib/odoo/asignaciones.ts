@@ -32,6 +32,7 @@ import type {
   MovimientoAsignacion,
   NuevaAsignacion,
   OtTablero,
+  ProgresoOt,
   TableroPayload,
 } from "@/lib/tablero/tipos";
 
@@ -107,6 +108,10 @@ const OT_FIELDS = [
   // Fotos y croquis que Comercial sube EN LA OT. Distinto de x_doc_ids, que espeja los
   // adjuntos de la venta y es de sólo lectura.
   "x_instrucciones_ids",
+  // Cuándo se cargó la OT (guardias-contrato.md): una urgencia usa la guardia sin pedir nada
+  // sólo si la OT es de los últimos 3 días hábiles, y un desarme sin "a partir de" es comodín
+  // desde que se creó. Es un campo de todo modelo de Odoo: no hay script que correr.
+  "create_date",
 ];
 
 // x_apoyo lo agrega scripts/odoo-add-apoyo-a-asignacion.mjs: sin correrlo antes, esta
@@ -147,6 +152,7 @@ type OdooOtRow = {
   x_obra_referencia: string | false;
   x_detalle_tecnico: string | false;
   x_instrucciones_ids: number[] | false;
+  create_date: string | false;
 };
 
 type OdooAsigRow = {
@@ -276,6 +282,7 @@ function mapOt(row: OdooOtRow, base: string, actionId: number | null, conSyh: Re
     fechaDesde: str(row.x_fecha_desde),
     fechaAntesDe: str(row.x_fecha_antes_de),
     syh: conSyh.has(row.id),
+    creadaEl: str(row.create_date),
     url: urlOt(base, actionId, row.id),
   };
 }
@@ -956,6 +963,143 @@ export async function apoyosNoBorrables(ids: number[]): Promise<{ id: number; mo
         motivo: f.x_apoyo !== true ? "ya no es un apoyo" : "ya está en un parte",
       })),
   ];
+}
+
+// ── Lo que el candado de las guardias necesita leer ─────────────────────────
+
+/** Dónde está cada jornada hoy en Odoo: lo que el candado mira para saber qué celda pisa. */
+export type CeldaAsignacion = {
+  id: number;
+  otId: number | null;
+  fecha: string | null;
+  cuadrillaId: number | null;
+  apoyo: boolean;
+  parteId: number | null;
+};
+
+/**
+ * La celda actual de cada asignación (obra, día, cuadrilla, rol). Las que ya no existen no
+ * vuelven: quien llama decide qué hacer con la falta.
+ *
+ * LA USA EL CANDADO DE LAS GUARDIAS (src/lib/planificacion/candado-guardias.ts) para las
+ * escrituras que no traen la celda entera: un PATCH que cambia sólo la fecha o sólo la
+ * cuadrilla, un mover sin cuadrilla, una reprogramación. Es la misma lectura que ya hace
+ * validarRoles, de a lote y sólo de los ids tocados.
+ */
+export async function celdasDeAsignaciones(ids: number[]): Promise<CeldaAsignacion[]> {
+  const unicos = [...new Set(ids)].filter((id) => Number.isInteger(id) && id > 0);
+  if (unicos.length === 0) return [];
+  const filas = await read<{ id: number; x_ot_id: M2O; x_fecha: string | false; x_cuadrilla_id: M2O; x_apoyo: boolean; x_parte_id: M2O }>(
+    "x_aba_asignacion",
+    unicos,
+    ["x_ot_id", "x_fecha", "x_cuadrilla_id", "x_apoyo", "x_parte_id"],
+  );
+  return filas.map((f) => ({
+    id: f.id,
+    otId: m2oId(f.x_ot_id),
+    fecha: str(f.x_fecha),
+    cuadrillaId: m2oId(f.x_cuadrilla_id),
+    apoyo: f.x_apoyo === true,
+    parteId: m2oId(f.x_parte_id),
+  }));
+}
+
+/**
+ * Lo que hay HOY en Odoo en estas celdas (cuadrilla y día exactos). Para saber si la celda
+ * de una guardia quedó totalmente libre antes de reactivarla (deshacer un uso, una obra que
+ * se fue): una sola consulta por las fechas y cuadrillas, y el cruce exacto acá.
+ */
+export async function asignacionesEnCeldas(
+  celdas: readonly { cuadrillaId: number; fecha: string }[],
+): Promise<CeldaAsignacion[]> {
+  if (celdas.length === 0) return [];
+  const claves = new Set(celdas.map((c) => `${c.cuadrillaId}|${c.fecha}`));
+  const filas = await searchRead<{ id: number; x_ot_id: M2O; x_fecha: string | false; x_cuadrilla_id: M2O; x_apoyo: boolean; x_parte_id: M2O }>(
+    "x_aba_asignacion",
+    [
+      ["x_fecha", "in", [...new Set(celdas.map((c) => c.fecha))]],
+      ["x_cuadrilla_id", "in", [...new Set(celdas.map((c) => c.cuadrillaId))]],
+    ],
+    ["x_ot_id", "x_fecha", "x_cuadrilla_id", "x_apoyo", "x_parte_id"],
+  );
+  return filas
+    .map((f) => ({
+      id: f.id,
+      otId: m2oId(f.x_ot_id),
+      fecha: str(f.x_fecha),
+      cuadrillaId: m2oId(f.x_cuadrilla_id),
+      apoyo: f.x_apoyo === true,
+      parteId: m2oId(f.x_parte_id),
+    }))
+    .filter((f) => claves.has(`${f.cuadrillaId}|${f.fecha}`));
+}
+
+/**
+ * Las cuadrillas activas y las asignaciones de un rango, y nada más. Es lo que necesitan las
+ * reglas de LUGAR de las guardias (¿la celda está libre?, ¿queda en medio de una obra?): la
+ * corrida del viernes y "correr la guardia" no miran OTs, partes ni avance, que son la parte
+ * cara de fetchTablero (las ~52 OTs candidatas y el avance de todas).
+ */
+export async function fetchGrillaLiviana(desde: string, hasta: string): Promise<{
+  cuadrillas: { id: number; nombre: string; tercerizada: boolean }[];
+  asignaciones: AsignacionTablero[];
+}> {
+  await authenticate();
+  const [cuadrillasRaw, asigsRaw] = await Promise.all([
+    searchRead<{ id: number; x_name: string | false; x_tercerizada: boolean }>(
+      "x_aba_cuadrilla", [["x_activa", "=", true]], ["id", "x_name", "x_tercerizada"], { order: "x_name" },
+    ),
+    searchRead<OdooAsigRow>(
+      "x_aba_asignacion",
+      [["x_fecha", ">=", desde], ["x_fecha", "<=", hasta]],
+      ASIG_FIELDS,
+      { order: "x_fecha, x_orden_dia, id" },
+    ),
+  ]);
+  return {
+    cuadrillas: cuadrillasRaw.map((c) => ({ id: c.id, nombre: str(c.x_name) ?? `Cuadrilla #${c.id}`, tercerizada: c.x_tercerizada === true })),
+    asignaciones: asigsRaw.map(mapAsig),
+  };
+}
+
+/**
+ * Algunas OTs, con el mismo mapeo que el tablero (mapOt): el candado de las guardias necesita
+ * tipo, estado, urgencia, creación, piso y duración, y el comodín lo mismo. Sin la URL de la
+ * acción (no la necesita nadie que llame a esto) ni el dato de SyH.
+ */
+export async function leerOts(otIds: number[]): Promise<OtTablero[]> {
+  const unicos = [...new Set(otIds)].filter((id) => Number.isInteger(id) && id > 0);
+  if (unicos.length === 0) return [];
+  const filas = await read<OdooOtRow>("x_aba_orden_trabajo", unicos, OT_FIELDS);
+  const base = process.env.ODOO_URL ?? "";
+  return filas.map((f) => mapOt(f, base, null, new Set()));
+}
+
+/**
+ * El avance de unas pocas OTs (días tomados y días hechos, sin apoyos), con la misma regla
+ * que consultasDeAvance pero filtrado por OT: el candado lo pide para UNA obra ("¿este armado
+ * ya se pasó de lo estimado?") y traer el avance de todas sería pagar la consulta entera.
+ */
+export async function avanceDeOts(otIds: number[]): Promise<Map<number, ProgresoOt>> {
+  const unicos = [...new Set(otIds)].filter((id) => Number.isInteger(id) && id > 0);
+  const salida = new Map<number, ProgresoOt>();
+  if (unicos.length === 0) return salida;
+  const porOt = (dominio: unknown[]) =>
+    executeKw<{ x_ot_id: M2O; "x_fecha:day"?: string | false; __range?: { "x_fecha:day"?: { from?: string } } }[]>(
+      "x_aba_asignacion", "read_group", [[["x_ot_id", "in", unicos], ...dominio], ["x_ot_id"], ["x_ot_id", "x_fecha:day"]], { lazy: false },
+    ).then((grupos) =>
+      diasPorOt(
+        grupos.map((g) => ({
+          otId: m2oId(g.x_ot_id),
+          fecha: g.__range?.["x_fecha:day"]?.from?.slice(0, 10) ?? str(g["x_fecha:day"] ?? false),
+        })),
+      ),
+    );
+  const [tomadas, hechas] = await Promise.all([porOt(DOM_TOMADAS), porOt(DOM_HECHAS)]);
+  for (const otId of unicos) {
+    salida.set(otId, { otId, asignadas: tomadas.get(otId) ?? 0, cerradas: hechas.get(otId) ?? 0 });
+  }
+  return salida;
 }
 
 export async function borrarAsignaciones(ids: number[]): Promise<void> {

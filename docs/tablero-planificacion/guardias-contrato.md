@@ -128,9 +128,17 @@ guardia: para usarla con una obra común hace falta la autorización de JS").
   3. adelantar una tentativa de las semanas siguientes, si su piso lo permite;
   4. depósito.
 - Desde ese momento, soltar un comodín sobre la guardia no pide autorización.
-- **Si nadie la rellena, el capataz recibe "Depósito · mantenimiento de material".** El capataz
-  **nunca ve la palabra "guardia"**: ni en la Hoja del día, ni en el pizarrón, ni en el mensaje de
-  Telegram. Planificación sí la ve en el tablero.
+- **El capataz nunca ve la palabra "guardia"**: ni en la Hoja del día, ni en el pizarrón, ni en el
+  mensaje de Telegram. Planificación sí la ve en el tablero.
+- **Cambio del 18/10, decidido por JS: en esta entrega NO se toca la Hoja del día.** Hoy la Hoja no
+  muestra ninguna tarea del tablero, solo obras de Odoo, y JS todavía no decidió si debería
+  mostrarlas. Así que una guardia sin usar no le llega al capataz como nada, igual que hoy un
+  "Depósito". No agregar tareas a la Hoja, al pizarrón ni a Telegram. Lo que haga falta es que, si
+  una guardia aparece por algún camino que ya existe, no diga "guardia".
+- **Pendiente para después, anotado por JS:** hoy no hay forma de bloquear celdas porque una
+  cuadrilla no está disponible (licencia, falta de personal). Por eso se cargan tareas tipo
+  "QUINTANA NO DISPONIBLE". Hay que agregarlo más adelante. Mientras tanto, esas tareas ocupan la
+  celda, así que la corrida no pone guardias ahí.
 - Sin IA en esta etapa. El orden lo da una regla.
 
 ### 1.6 Cómo se ve en el tablero

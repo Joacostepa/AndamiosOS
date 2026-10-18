@@ -21,7 +21,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { TopbarTablero } from "./topbar-tablero";
 import { PanelActividad } from "./panel-actividad";
-import { TableroGrid, DIAS_VENTANA, abreviarCuadrilla, anchoRecursoPara } from "./tablero-grid";
+import {
+  TableroGrid,
+  DIAS_VENTANA,
+  abreviarCuadrilla,
+  anchoRecursoPara,
+  type ArrastreGuardias,
+  type GuardiasGrilla,
+} from "./tablero-grid";
 import { PanelSinAsignar, ID_BANDEJA } from "./panel-sin-asignar";
 import { ContenidoTarjeta } from "./tarjeta-asignacion";
 import { PanelOt } from "./panel-ot";
@@ -35,22 +42,67 @@ import { DialogoFijar, type PedidoFijar } from "./dialogo-fijar";
 import { DialogoCorrerDia } from "./dialogo-correr-dia";
 import { invertirCorrimiento, type Corrimiento } from "@/lib/tablero/corrimiento";
 import { DialogoDestinoJornadas, type PedidoDestino } from "./dialogo-destino-jornadas";
+import { DialogoPedirAutorizacion, type PedidoAutorizacion } from "./dialogo-pedir-autorizacion";
+import { FichaGuardia, type DestinoCorrer } from "./ficha-guardia";
+import { DialogoMeterUrgente, type GuardiaCercana } from "./dialogo-meter-urgente";
+import { ContenidoGuardia } from "./tarjeta-guardia";
+import type { ComodinEnBandeja } from "./grupo-comodines";
+import {
+  useDeshacerUsoGuardia,
+  useGuardias,
+  useMoverGuardia,
+  usePuedeAutorizar,
+  useSolicitudesGuardia,
+  useUsarGuardia,
+} from "@/hooks/use-guardias";
+import { useUser } from "@/hooks/use-user";
+import {
+  candidatosRelleno,
+  claveCelda,
+  destinoValidoGuardia,
+  duracionParaCandado,
+  esCuadrillaPropia,
+  esGuardia,
+  evaluarCandado,
+  guardiaMasCercanaPara,
+  guardiasPisadas,
+  lugarProtegido,
+  otParaCandado as otParaCandadoDe,
+  siglaCuadrilla,
+  type GrillaGuardias,
+} from "@/lib/tablero/guardias";
+import { comodinPuedeIr, evaluarComodines } from "@/lib/tablero/comodines";
+import { diaDeSemana, hoyBA, lunesDe } from "@/lib/tablero/dias-habiles";
+import {
+  ETIQUETA_USO,
+  type Comodin,
+  type DecisionCandado,
+  type Guardia,
+  type GuardiaResumen,
+  type LugarProtegido,
+  type PedidoUsoGuardia,
+  type RegistroUsoGuardia,
+  type RespuestaUsoGuardia,
+  type UsoGuardia,
+} from "@/lib/tablero/guardias-tipos";
 import { useCandado } from "@/hooks/use-habilitaciones";
 import { useResumenComentarios } from "@/hooks/use-comentarios-ot";
 import { haySinLeer, leerVistos, marcarVisto, type Vistos } from "@/lib/tablero/comentarios-vistos";
 import type { ResumenEnTarjeta } from "@/lib/tablero/tipos-comentario";
-import type { EstadoBloque } from "@/lib/tablero/tipos-movimiento";
+import type { EstadoBloque, RegistroMovimiento } from "@/lib/tablero/tipos-movimiento";
 import { usePlanJornadas, useFijarJornadasPlan } from "@/hooks/use-plan-jornadas";
 import { useNotasJornada } from "@/hooks/use-notas-jornada";
 import { useQuitarSuspension, useSuspensiones } from "@/hooks/use-suspensiones";
 import { claveSuspension, type SuspensionDia } from "@/lib/tablero/tipos-suspension";
 import { useAvisosTablero } from "@/hooks/use-avisos-tablero";
-import { direccionDeObra, nombrePropio } from "@/lib/tablero/titulo";
+import { direccionCorta, direccionDeObra, nombrePropio } from "@/lib/tablero/titulo";
 import { apoyosAlEditarJornadas, apoyosDeDias, arrastreDeApoyos, diasSiAchica, esApoyo, type DiaDeObra } from "@/lib/tablero/apoyo";
 import { useClima } from "@/hooks/use-clima";
 import {
   useTablero,
   useFeriados,
+  escucharRechazosGuardia,
+  type RechazoEnEscritura,
   useCrearAsignaciones,
   useActualizarAsignaciones,
   useMoverAsignaciones,
@@ -120,6 +172,63 @@ const MS_DESTELLO = 4000;
 
 const iso = (d: Date) => format(d, "yyyy-MM-dd");
 
+// ── Guardias: lo que el board necesita y no es de React ───────────────────────
+//
+// LAS REGLAS SON DE guardias.ts Y comodines.ts, puras y con tests: la misma función decide
+// acá antes de soltar y en el servidor al validar. El board sólo arma la entrada (la OT, el
+// avance, si es comodín, la hora) y actúa sobre la decisión.
+
+/**
+ * Corre una regla y, si tira, devuelve `siFalla` y lo deja en la consola.
+ *
+ * POR QUÉ: las reglas de las guardias corren EN EL RENDER del tablero (el indicador, el
+ * "si no entra nada", el resaltado del arrastre). Una excepción ahí tumba la pantalla
+ * entera, y el tablero es la herramienta del día: que un cálculo nuevo falle no puede
+ * dejar a Planificación sin grilla. Lo que falla, falla CERRADO: sin decisión del candado
+ * se pide autorización (`CANDADO_CERRADO`), sin indicador no se muestra indicador. Nunca
+ * se abre una guardia porque una regla no pudo contestar.
+ */
+function seguro<T>(fn: () => T, siFalla: T, que: string): T {
+  try {
+    return fn();
+  } catch (e) {
+    console.error(`[guardias] no se pudo calcular ${que}`, e);
+    return siFalla;
+  }
+}
+
+/** Lo que dice el candado cuando no pudo decidir: pedirle a JS, nunca dejar pasar. */
+const CANDADO_CERRADO: DecisionCandado = {
+  libre: false,
+  pide: "obra_comun",
+  mensaje: "Esa jornada es una guardia: para usarla con una obra común hace falta la autorización de JS",
+};
+
+/**
+ * Ahora, en ISO. Fuera del componente a propósito: el linter de React trata `new Date()`
+ * dentro del cuerpo como impuro (ver `deshacer`), y esto se llama desde los gestos —soltar,
+ * meter urgente—, nunca durante el render. El render usa el `ahora` del estado, que se
+ * actualiza cada minuto (la regla del comodín cambia a las 13 h).
+ */
+const ahoraISO = () => new Date().toISOString();
+
+const diaCorto = (f: string) => format(parseISO(f), "EEE d", { locale: es });
+
+/** El id que arrastra dnd-kit → la clave del bloque. Un comodín de la bandeja arrastra SU tarjeta. */
+function claveArrastrada(id: string): string | null {
+  if (id.startsWith("bloque:")) return id.slice(7);
+  if (id.startsWith("comodin:")) return id.slice(8);
+  return null;
+}
+
+/** El registro de un gesto, como lo pide /guardias/usar (las únicas acciones son crear y mover). */
+function aRegistroUso(r: RegistroMovimiento | undefined, accion: "crear" | "mover"): RegistroUsoGuardia | undefined {
+  return r ? { otId: r.otId, otTitulo: r.otTitulo, accion, antes: r.antes, despues: r.despues } : undefined;
+}
+
+/** Una jornada que se quiere poner, para saber si pisa una guardia. */
+type JornadaDestino = { cuadrillaId: number | null; fecha: string; apoyo?: boolean };
+
 // Lo planificado de una obra vive en lib/tablero/bloques.ts (planDeObras): ahí se cuenta
 // sin apoyos y por días distintos, con tests. Se re-exporta para no mover a quien lo use.
 export type { PlanObra };
@@ -181,10 +290,13 @@ const detectarColision: CollisionDetection = (args) => {
   const sobreTarjeta = dentro.find((c) => String(c.id).startsWith("tarjeta:"));
   if (sobreTarjeta) {
     const destino = sobreTarjeta.data?.droppableContainer?.data?.current as { bloque?: Bloque } | undefined;
-    const desdeBandeja = String(args.active.id).startsWith("ot:");
+    // Un comodín arrastrado DESDE LA BANDEJA (grupo-comodines) se comporta como lo que viene
+    // de la bandeja: gana la celda, que es la que sabe el día.
+    const activo = String(args.active.id);
+    const desdeBandeja = activo.startsWith("ot:") || activo.startsWith("comodin:");
     // Soltar un bloque sobre SÍ MISMO no hace nada, como siempre: con la celda ganando, un
     // arrastre corto dentro de una obra de 22 días la movía al día que quedó bajo el puntero.
-    const sobreSiMismo = String(sobreTarjeta.id).slice(8) === String(args.active.id).slice(7);
+    const sobreSiMismo = String(sobreTarjeta.id).slice(8) === claveArrastrada(activo);
     const celda = dentro.find((c) => String(c.id).startsWith("celda:"));
     if (celda && !sobreSiMismo && (desdeBandeja || destino?.bloque?.multiDia)) return [celda];
     return [sobreTarjeta];
@@ -352,7 +464,38 @@ export function TableroBoard() {
   // duración de una obra no tiene por qué reconsultar el rango entero de Odoo.
   const { porOt: planPorOt } = usePlanJornadas();
   const fijarPlan = useFijarJornadasPlan();
+
+  // ── Guardias y comodines (guardias-contrato.md) ───────────────────────────
+  //
+  // Las ACTIVAS viajan en el payload del tablero como tareas tipo 'guardia' (ocupan la
+  // celda sin que nadie más tenga que enterarse). Lo demás —su historia, las usadas, las
+  // sacadas, los pedidos a JS— viene de useGuardias, con su propia clave.
+  const usarGuardia = useUsarGuardia();
+  const deshacerUso = useDeshacerUsoGuardia();
+  const moverGuardia = useMoverGuardia();
+  const puedeAutorizar = usePuedeAutorizar();
+  const { data: usuario } = useUser();
+  const { data: guardiasData } = useGuardias(desde, hasta);
+  // El contador del botón "Autorizaciones": sólo se consulta para quien puede autorizar.
+  const { data: pendientesJS } = useSolicitudesGuardia("pendiente", { habilitado: puedeAutorizar });
+  const [fichaGuardiaId, setFichaGuardiaId] = useState<number | null>(null);
+  const [pedidoAutorizacion, setPedidoAutorizacion] = useState<PedidoAutorizacion | null>(null);
+  const [urgenteDe, setUrgenteDe] = useState<OtTablero | null>(null);
+  // Qué se resalta mientras se arrastra un comodín o una guardia. Se calcula UNA vez al
+  // levantar la tarjeta, no en cada movimiento del puntero.
+  const [arrastreGuardias, setArrastreGuardias] = useState<ArrastreGuardias | null>(null);
+  // La hora de las reglas que se pintan (el comodín se libera a las 13 h del día anterior).
+  // Un minuto de resolución alcanza; los gestos leen la hora exacta con ahoraISO().
+  const [ahora, setAhora] = useState(ahoraISO);
+  useEffect(() => {
+    const t = setInterval(() => setAhora(ahoraISO()), 60_000);
+    return () => clearInterval(t);
+  }, []);
+
   const guardando =
+    usarGuardia.isPending ||
+    deshacerUso.isPending ||
+    moverGuardia.isPending ||
     crear.isPending ||
     actualizar.isPending ||
     mover.isPending ||
@@ -627,7 +770,7 @@ export function TableroBoard() {
     () => [...new Set((data?.asignaciones ?? []).map((a) => a.otId))],
     [data],
   );
-  const { data: candados } = useCandado(otIdsEnTablero);
+  const { data: candados, isError: errorCandado, refetch: refetchCandado } = useCandado(otIdsEnTablero);
   const [pedidoCandado, setPedidoCandado] = useState<PedidoConfirmacion | null>(null);
   const [pedidoFijar, setPedidoFijar] = useState<PedidoFijar | null>(null);
   const [corrimientoAbierto, setCorrimientoAbierto] = useState(false);
@@ -670,6 +813,20 @@ export function TableroBoard() {
     (ot: OtTablero) => planPorOt.get(ot.id)?.jornadas ?? ot.jornadas,
     [planPorOt],
   );
+
+  /**
+   * La duración con la que mira el CANDADO (y lo que lo alimenta: qué es comodín, qué armado
+   * está atrasado): la mayor entre Odoo y el plan de Operaciones (duracionParaCandado). NO es
+   * duracionDe: el plan lo edita Planificación, y achicar un número no puede abrir una guardia.
+   * Es la misma que usa el servidor; si el tablero mirara otra, ofrecería "usar" y el servidor
+   * contestaría 409, o al revés.
+   */
+  const duracionCandado = useCallback(
+    (ot: OtTablero) => duracionParaCandado(ot, planPorOt.get(ot.id)?.jornadas),
+    [planPorOt],
+  );
+  /** Lo que el candado necesita de una OT del tablero. Sin `creadaEl` la urgencia no cumple: falla cerrado. */
+  const otParaCandado = useCallback((ot: OtTablero) => otParaCandadoDe(ot, duracionCandado(ot)), [duracionCandado]);
 
   // Bandeja: obras a las que les quedan jornadas por planificar. No es "asignada sí o
   // no": una obra de 4 jornadas que se ejecutó 2 y se suspendió vuelve acá con 2
@@ -730,6 +887,174 @@ export function TableroBoard() {
   // Sin apoyos y por días distintos: una obra de 3 días con la C3 de apoyo el martes sigue
   // diciendo "3 d" y no aparece como partida (ver planDeObras).
   const planPorObra = useMemo(() => planDeObras(bloquesPorClave.values()), [bloquesPorClave]);
+
+  // ── Guardias: lo derivado ─────────────────────────────────────────────────
+  //
+  // Hoy y los feriados COMO LOS PIDEN LAS REGLAS: hoy en Buenos Aires (a las 22 h el UTC ya
+  // es mañana) y los feriados como Set de fechas. Los feriados del tablero son un Map de
+  // marca visual; para las guardias sí cuentan (nunca van en un feriado, y los plazos de
+  // días hábiles no los cuentan).
+  const hoyBa = hoyBA(ahora);
+  const feriadosSet = useMemo(() => new Set(feriados.keys()), [feriados]);
+  const guardiaPorId = useMemo(
+    () => new Map((guardiasData?.guardias ?? []).map((g) => [g.id, g])),
+    [guardiasData],
+  );
+  // LAS ACTIVAS SALEN DEL TABLERO y no del payload de guardias: el tablero es lo que se
+  // escribe optimista (usarla, correrla, sacarla), así que es lo que está al día un segundo
+  // después del gesto. Del payload sólo se toman la semana y la ranura.
+  const activas = useMemo<GuardiaResumen[]>(
+    () =>
+      (data?.asignaciones ?? []).flatMap((a) =>
+        esGuardia(a) && a.cuadrillaId != null
+          ? [{
+              id: a.id,
+              fecha: a.fecha,
+              cuadrillaId: a.cuadrillaId,
+              semana: guardiaPorId.get(a.id)?.semana ?? lunesDe(a.fecha),
+              ranura: guardiaPorId.get(a.id)?.ranura ?? 1,
+              estado: "activa" as const,
+            }]
+          : [],
+      ),
+    [data, guardiaPorId],
+  );
+  // Todas las del rango: las activas del tablero más las que ya no lo son (usadas,
+  // rellenadas, sacadas). Es lo que miran el indicador y "no dos el mismo día de la semana".
+  const todasLasGuardias = useMemo<GuardiaResumen[]>(() => {
+    const ids = new Set(activas.map((g) => g.id));
+    return [
+      ...activas,
+      ...(guardiasData?.guardias ?? [])
+        .filter((g) => !ids.has(g.id) && g.estado !== "activa")
+        .map((g) => ({ id: g.id, fecha: g.fecha, cuadrillaId: g.cuadrillaId, semana: g.semana, ranura: g.ranura, estado: g.estado })),
+    ];
+  }, [activas, guardiasData]);
+  const suspendidasSet = useMemo(
+    () => new Set((suspensionesData ?? []).map((x) => claveCelda(x.cuadrillaId, x.fecha))),
+    [suspensionesData],
+  );
+  const grillaGuardias = useMemo<GrillaGuardias | null>(
+    () =>
+      data
+        ? { asignaciones: data.asignaciones, cuadrillas: data.cuadrillas, feriados: feriadosSet, suspendidas: suspendidasSet, hoy: hoyBa }
+        : null,
+    [data, feriadosSet, suspendidasSet, hoyBa],
+  );
+  const progresoPorOt = useMemo(() => new Map((data?.progreso ?? []).map((p) => [p.otId, p])), [data]);
+  const avanceDe = useCallback(
+    (otId: number) => {
+      const p = progresoPorOt.get(otId);
+      return p ? { asignadas: p.asignadas, cerradas: p.cerradas } : null;
+    },
+    [progresoPorOt],
+  );
+
+  // LOS COMODINES se calculan, no se guardan (contrato §2.1). Una sola pasada para todo el
+  // tablero: la grilla (naipe y chip), la bandeja (el grupo) y el candado (esComodin).
+  const comodines = useMemo<Comodin[]>(
+    () =>
+      data
+        ? seguro(
+            () =>
+              evaluarComodines({
+                ots: data.ots,
+                asignaciones: data.asignaciones,
+                progreso: data.progreso,
+                hoy: hoyBa,
+                feriados: feriadosSet,
+                // La del candado: un comodín es lo que el candado deja pasar como comodín.
+                duracionDe: duracionCandado,
+              }),
+            [],
+            "los comodines",
+          )
+        : [],
+    [data, hoyBa, feriadosSet, duracionCandado],
+  );
+  const comodinPorOt = useMemo(() => new Map(comodines.map((c) => [c.otId, c])), [comodines]);
+  const vencidos = useMemo(() => new Map(comodines.filter((c) => c.vencido).map((c) => [c.otId, c])), [comodines]);
+
+  /** ¿Esta OT es un comodín que puede ir ese día? Nunca antes de su piso. */
+  const esComodinPara = useCallback(
+    (otId: number, fecha: string) => {
+      const c = comodinPorOt.get(otId);
+      return !!c && comodinPuedeIr(c, fecha);
+    },
+    [comodinPorOt],
+  );
+
+  /** "C3" para una cuadrilla del tablero. */
+  const siglaDe = useCallback(
+    (cuadrillaId: number) => {
+      const c = data?.cuadrillas.find((x) => x.id === cuadrillaId);
+      return c ? siglaCuadrilla(c) : "cuadrilla";
+    },
+    [data],
+  );
+
+  // El chip "de guardia": cada jornada de obra que ocupa una guardia usada o rellenada.
+  const usadas = useMemo(() => {
+    const m = new Map<number, { uso: UsoGuardia | null; guardiaId: number }>();
+    for (const g of guardiasData?.guardias ?? []) {
+      if (g.estado !== "usada" && g.estado !== "rellenada") continue;
+      for (const id of g.asignacionIds) m.set(id, { uso: g.uso, guardiaId: g.id });
+    }
+    return m;
+  }, [guardiasData]);
+
+  // "si no entra nada: Depósito", o el comodín que la regla de las 13 h tiene primero
+  // (candidatosRelleno: apoyo atrasado, comodín, tentativa, depósito). Se nombra sólo el
+  // comodín porque es lo que el contrato pide mostrar en la tarjeta; el resto de la fila lo
+  // trae la alerta de las 13 h.
+  const relleno = useMemo(() => {
+    const m = new Map<number, string>();
+    if (!data) return m;
+    for (const g of activas) {
+      const candidatos =
+        g.fecha < hoyBa
+          ? []
+          : seguro(
+              () =>
+                candidatosRelleno({
+                  guardia: g,
+                  ahora,
+                  feriados: feriadosSet,
+                  asignaciones: data.asignaciones,
+                  ots: otsPorId,
+                  progreso: progresoPorOt,
+                  cuadrillas: data.cuadrillas,
+                  duracionDe: duracionCandado,
+                }),
+              [],
+              "el relleno de una guardia",
+            );
+      const comodin = candidatos.find((c) => c.tipo === "comodin" && c.otId != null);
+      const ot = comodin?.otId != null ? otsPorId.get(comodin.otId) : undefined;
+      m.set(g.id, ot ? `comodín ${ot.ordenVenta ?? direccionCorta(direccionDeObra(ot))}` : "Depósito");
+    }
+    return m;
+  }, [data, activas, hoyBa, ahora, feriadosSet, otsPorId, progresoPorOt, duracionCandado]);
+
+  // "Lugar protegido próximos 5 días hábiles: X de N j" (contrato §1.6).
+  const protegido = useMemo<LugarProtegido | null>(
+    () =>
+      data
+        ? seguro(
+            () =>
+              lugarProtegido({
+                hoy: hoyBa,
+                feriados: feriadosSet,
+                asignaciones: data.asignaciones,
+                cuadrillas: data.cuadrillas,
+                guardias: todasLasGuardias,
+              }),
+            null,
+            "el lugar protegido",
+          )
+        : null,
+    [data, hoyBa, feriadosSet, todasLasGuardias],
+  );
 
   // Obras ya en la grilla, para que el buscador conteste "¿esta obra ya la planifiqué?".
   //
@@ -1080,21 +1405,22 @@ export function TableroBoard() {
       estado: "tentativa",
       ordenDia: orden,
     }));
-    crear.mutate({
-      asignaciones: nuevas,
-      registro: {
-        otId,
-        otTitulo: tituloDeOt(otId),
-        accion: "crear",
-        antes: null,
-        despues: {
-          fechas: dias,
-          cuadrillaId,
-          cuadrillaNombre: nombreCuadrilla(cuadrillaId),
-          fraccion: Number(fracciones[0]),
-        },
+    const registro: RegistroMovimiento = {
+      otId,
+      otTitulo: tituloDeOt(otId),
+      accion: "crear",
+      antes: null,
+      despues: {
+        fechas: dias,
+        cuadrillaId,
+        cuadrillaNombre: nombreCuadrilla(cuadrillaId),
+        fraccion: Number(fracciones[0]),
       },
-    });
+    };
+    // ¿Cae sobre una guardia? La obra la REEMPLAZA (si el candado deja) o se pide a JS.
+    const decididas = decidirGuardias(otId, nuevas);
+    if (decididas) return usarOPedir({ otId, decididas, crear: nuevas, registro });
+    crear.mutate({ asignaciones: nuevas, registro });
   }
 
   // ── Deshacer el último gesto ──────────────────────────────────────────────
@@ -1249,12 +1575,339 @@ export function TableroBoard() {
     return otsPorId.get(otId)?.titulo ?? null;
   }
 
+  // ── Guardias: el candado antes de soltar ──────────────────────────────────
+  //
+  // NUNCA SE APILA SOBRE UNA GUARDIA (contrato §1.6). Todo gesto que pone algo en una celda
+  // —soltar desde la bandeja, mover un bloque, cambiar de fila un apoyo, sumar un apoyo—
+  // pregunta primero si alguna de sus jornadas cae en una guardia activa. Si cae:
+  //   · el candado dice que se puede (urgencia que cumple, apoyo a un armado atrasado,
+  //     comodín desde las 13 h del día anterior, o una solicitud ya aprobada) → la obra
+  //     REEMPLAZA a la guardia, en un solo lote que se deshace entero;
+  //   · si no, se ofrece pedirle autorización a JS con el pedido ya armado, y hasta que
+  //     conteste la guardia sigue puesta.
+  // El servidor valida lo mismo con la misma función: esto es para que el usuario se entere
+  // ANTES de soltar, no la única llave.
+
+  /** Las guardias que pisan estas jornadas, con lo que dice el candado de cada una. null = ninguna. */
+  function decidirGuardias(otId: number, jornadas: JornadaDestino[]) {
+    const pisadas = guardiasPisadas(jornadas, activas);
+    if (pisadas.length === 0) return null;
+    const ot = otsPorId.get(otId);
+    const instante = ahoraISO();
+    // Una solicitud que JS aprobó y no se pudo ejecutar sola queda HABILITADA para quien
+    // pidió (plan técnico §0, decisión 5): soltar la misma obra en la misma guardia la usa.
+    // Sólo las PROPIAS (el servidor no deja usar la de otro) y abre todas las guardias del
+    // pedido aprobado, no sólo la que figura en la solicitud: igual que el servidor.
+    const aprobadas = (guardiasData?.solicitudes ?? []).filter(
+      (x) => x.otId === otId && x.estado === "aprobada" && !x.ejecutadaAt && x.pedidoPorId === usuario?.id,
+    );
+    return pisadas.map((guardia) => {
+      const jornada = jornadas.find((j) => j.cuadrillaId === guardia.cuadrillaId && j.fecha === guardia.fecha);
+      const aprobada =
+        aprobadas.find((x) => x.guardiaId === guardia.id || (x.pedido?.guardiaIds ?? []).includes(guardia.id)) ?? null;
+      const decision: DecisionCandado = !ot
+        ? CANDADO_CERRADO
+        : seguro(
+            () =>
+              evaluarCandado({
+                guardia,
+                ot: otParaCandado(ot),
+                esApoyo: jornada?.apoyo === true,
+                avance: avanceDe(otId),
+                ahora: instante,
+                feriados: feriadosSet,
+                esComodin: esComodinPara(otId, guardia.fecha),
+                aprobada: aprobada?.tipo ?? null,
+              }),
+            CANDADO_CERRADO,
+            "el candado de una guardia",
+          );
+      return { guardia, decision, solicitudId: aprobada?.id };
+    });
+  }
+
+  /**
+   * Usar la guardia o pedir autorización, según lo que dijo el candado. `volver` son los
+   * movimientos que deshacen un `mover` (cada jornada a donde estaba).
+   */
+  function usarOPedir(e: {
+    otId: number;
+    decididas: NonNullable<ReturnType<typeof decidirGuardias>>;
+    crear?: NuevaAsignacion[];
+    mover?: MovimientoAsignacion[];
+    volver?: MovimientoAsignacion[];
+    registro?: RegistroMovimiento;
+  }) {
+    const guardiaIds = e.decididas.map((d) => d.guardia.id);
+    const ot = otsPorId.get(e.otId);
+    const obra = ot ? direccionCorta(direccionDeObra(ot)) : null;
+    const pedido: PedidoUsoGuardia = {
+      guardiaIds,
+      otId: e.otId,
+      crear: e.crear,
+      mover: e.mover,
+      registro: aRegistroUso(e.registro, e.crear ? "crear" : "mover"),
+      solicitudId: e.decididas.find((d) => d.solicitudId)?.solicitudId,
+    };
+    const trabada = e.decididas.find((d) => !d.decision.libre);
+    if (trabada && !trabada.decision.libre) {
+      const g = trabada.guardia;
+      // `pide: null` = no se puede ni pidiendo (un día que ya pasó, una guardia que dejó de
+      // estar activa): se dice por qué y nada más.
+      if (trabada.decision.pide == null) {
+        toast.error("No se puede usar esa guardia", { description: trabada.decision.mensaje });
+        return;
+      }
+      setPedidoAutorizacion({
+        guardia: { id: g.id, fecha: g.fecha, cuadrillaId: g.cuadrillaId },
+        sigla: siglaDe(g.cuadrillaId),
+        tipo: trabada.decision.pide,
+        mensaje: trabada.decision.mensaje,
+        pedido: { ...pedido, solicitudId: undefined },
+        obra,
+        volver: e.volver,
+      });
+      return;
+    }
+    usarGuardia.mutate(pedido, {
+      onSuccess: (r: RespuestaUsoGuardia) => ofrecerDeshacerUso(r, { ...e, guardiaIds }),
+    });
+  }
+
+  /**
+   * El "Deshacer" de un uso de guardia: el de Planificación cuando la usa sola, y el de JS
+   * cuando autoriza y se ejecuta en el acto (contrato §1.6: "un solo lote que se deshace
+   * entero", también si lo aprobó JS). Qué se borra y adónde vuelve lo decide el servidor;
+   * `borrar` y `volver` viajan para el optimista.
+   */
+  function ofrecerDeshacerUso(
+    r: RespuestaUsoGuardia,
+    e: { otId: number; guardiaIds: number[]; crear?: NuevaAsignacion[]; mover?: MovimientoAsignacion[]; volver?: MovimientoAsignacion[] },
+  ) {
+    // Las tarjetas de las guardias como estaban, para que el deshacer las devuelva al toque.
+    const restaurar = (data?.asignaciones ?? []).filter((a) => esGuardia(a) && e.guardiaIds.includes(a.id));
+    const primera = activas.find((g) => g.id === e.guardiaIds[0]) ?? todasLasGuardias.find((g) => g.id === e.guardiaIds[0]);
+    const donde = primera ? `del ${diaCorto(primera.fecha)} (${siglaDe(primera.cuadrillaId)}) ` : "";
+    const creo = (e.crear?.length ?? 0) > 0;
+    ofrecerDeshacer({
+      etiqueta: `Guardia ${donde}usada: ${ETIQUETA_USO[r.uso]}`,
+      // La guarda del deshacer: las jornadas que entraron tienen que seguir ahí.
+      asignacionIds: creo ? r.ids : (e.mover ?? []).map((m) => m.id),
+      ejecutar: () =>
+        deshacerUso.mutate({
+          loteId: r.loteId,
+          guardiaIds: e.guardiaIds,
+          borrar: creo ? r.ids : undefined,
+          volver: e.volver,
+          restaurar,
+          otTitulo: tituloDeOt(e.otId),
+        }),
+    });
+  }
+
+  /** Las guardias no sacadas de la misma semana, menos ésta: las reglas de dónde puede correrse. */
+  function otrasDeLaSemana(g: GuardiaResumen): GuardiaResumen[] {
+    return todasLasGuardias.filter((x) => x.id !== g.id && x.semana === g.semana && x.estado !== "sacada");
+  }
+
+  /**
+   * Dónde se puede correr una guardia: cada celda de una cuadrilla propia, de lunes a
+   * sábado de SU semana, que pase destinoValidoGuardia (la misma regla del servidor).
+   */
+  function destinosDe(g: GuardiaResumen): DestinoCorrer[] {
+    if (!grillaGuardias || !data) return [];
+    const otras = otrasDeLaSemana(g);
+    const salida: DestinoCorrer[] = [];
+    for (let n = 1; n <= 6; n++) {
+      const fecha = diaDeSemana(g.semana, n);
+      for (const c of data.cuadrillas) {
+        if (!esCuadrillaPropia(c) || (c.id === g.cuadrillaId && fecha === g.fecha)) continue;
+        const motivo = seguro(
+          () => destinoValidoGuardia(grillaGuardias, g, { cuadrillaId: c.id, fecha }, otras),
+          "no se pudo comprobar",
+          "si la guardia puede correrse",
+        );
+        if (motivo === null) salida.push({ fecha, cuadrillaId: c.id, sigla: siglaCuadrilla(c) });
+      }
+    }
+    return salida;
+  }
+
+  /**
+   * Correr una guardia dentro de su semana (contrato §1.3, punto 5): Planificación lo hace
+   * sin pedir nada, a una celda totalmente libre de una cuadrilla propia. El deshacer la
+   * vuelve a donde estaba.
+   */
+  function correrGuardia(guardiaId: number, cuadrillaId: number, fecha: string) {
+    const g = activas.find((x) => x.id === guardiaId);
+    if (!g || !grillaGuardias) return;
+    if (g.cuadrillaId === cuadrillaId && g.fecha === fecha) return;
+    if (guardiaId < 0) return avisarGuardando();
+    const motivo = seguro(
+      () => destinoValidoGuardia(grillaGuardias, g, { cuadrillaId, fecha }, otrasDeLaSemana(g)),
+      "No se pudo comprobar si puede ir ahí. Probá de nuevo.",
+      "si la guardia puede correrse",
+    );
+    if (motivo) {
+      toast.error("La guardia no puede ir ahí", { description: motivo });
+      return;
+    }
+    moverGuardia.mutate(
+      { guardiaId, fecha, cuadrillaId },
+      {
+        onSuccess: () =>
+          ofrecerDeshacer({
+            etiqueta: `Guardia corrida al ${diaCorto(fecha)} (${siglaDe(cuadrillaId)})`,
+            asignacionIds: [guardiaId],
+            ejecutar: () => moverGuardia.mutate({ guardiaId, fecha: g.fecha, cuadrillaId: g.cuadrillaId }),
+          }),
+      },
+    );
+  }
+
+  /** "Pedir autorización para sacarla" (Planificación) o "Sacar" (JS). */
+  function abrirSacar(guardiaId: number, modo: "pedir" | "sacar") {
+    const g = activas.find((x) => x.id === guardiaId);
+    if (!g) return;
+    // La ficha y el diálogo son dos modales: uno encima del otro se pelean el foco.
+    setFichaGuardiaId(null);
+    setPedidoAutorizacion({
+      guardia: { id: g.id, fecha: g.fecha, cuadrillaId: g.cuadrillaId },
+      sigla: siglaDe(g.cuadrillaId),
+      tipo: "sacar",
+      modo,
+    });
+  }
+
+  /**
+   * Un 409 del candado que llegó de una escritura común (la pantalla no sabía de esa
+   * guardia): en vez de un error rojo, el mismo camino que si la hubiera visto.
+   */
+  function atenderRechazo(r: RechazoEnEscritura) {
+    const { rechazo } = r;
+    const otId = r.otId ?? r.registro?.otId ?? r.crear?.[0]?.otId;
+    const conocida = guardiaPorId.get(rechazo.guardiaId) ?? activas.find((g) => g.id === rechazo.guardiaId);
+    if (rechazo.pide == null || !otId || !conocida) {
+      toast.error("Esa jornada es una guardia", { description: rechazo.error });
+      return;
+    }
+    const jornadas: JornadaDestino[] = [
+      ...(r.crear ?? []).map((a) => ({ cuadrillaId: a.cuadrillaId, fecha: a.fecha, apoyo: a.apoyo })),
+      ...(r.mover ?? []).map((m) => ({ cuadrillaId: m.cuadrillaId ?? null, fecha: m.fecha })),
+    ];
+    const guardiaIds =
+      r.guardiaIds ?? [...new Set([rechazo.guardiaId, ...guardiasPisadas(jornadas, activas).map((g) => g.id)])];
+    const ot = otsPorId.get(otId);
+    setPedidoAutorizacion({
+      guardia: { id: conocida.id, fecha: conocida.fecha, cuadrillaId: conocida.cuadrillaId },
+      sigla: siglaDe(conocida.cuadrillaId),
+      tipo: rechazo.pide,
+      mensaje: rechazo.error,
+      pedido: {
+        guardiaIds,
+        otId,
+        crear: r.crear,
+        mover: r.mover,
+        registro: aRegistroUso(r.registro, r.crear ? "crear" : "mover"),
+      },
+      obra: ot ? direccionCorta(direccionDeObra(ot)) : null,
+    });
+  }
+  // Por ref, como el deshacer: el oyente se anota una vez y tiene que llamar a la versión
+  // fresca, que cambia con cada tablero que llega.
+  const atenderRechazoRef = useRef(atenderRechazo);
+  useEffect(() => {
+    atenderRechazoRef.current = atenderRechazo;
+  });
+  useEffect(() => escucharRechazosGuardia((r) => atenderRechazoRef.current(r)), []);
+
+  /** "Meter urgente": la guardia más cercana que la OT (ya en alta) puede usar. */
+  function guardiaCercana(ot: OtTablero): GuardiaCercana | null {
+    const r = seguro(
+      () =>
+        guardiaMasCercanaPara({
+          ot: otParaCandado(ot),
+          activas: activas.filter((g) => g.fecha >= hoyBa),
+          ahora: ahoraISO(),
+          feriados: feriadosSet,
+          // Una OT en urgencia alta deja de ser comodín (contrato §2.1).
+          esComodin: false,
+          avance: avanceDe(ot.id),
+        }),
+      null,
+      "la guardia más cercana",
+    );
+    if (!r) return null;
+    return {
+      guardiaId: r.guardia.id,
+      fecha: r.guardia.fecha,
+      sigla: siglaDe(r.guardia.cuadrillaId),
+      libre: r.decision.libre,
+      texto: r.decision.libre ? r.decision.razon : r.decision.mensaje,
+    };
+  }
+
+  /**
+   * Al levantar una tarjeta: qué se resalta. Una GUARDIA muestra las celdas de su semana
+   * donde puede ir; un COMODÍN, las guardias que lo aceptan ("puede") o lo aceptarían con
+   * permiso de JS ("pide"). Lo demás se atenúa (contrato §2.3).
+   */
+  function resaltarAlLevantar(bloque: Bloque | null, otId: number | null) {
+    if (bloque && esGuardia(bloque)) {
+      const g = activas.find((x) => x.id === bloque.ids[0]);
+      setArrastreGuardias(
+        g ? { tipo: "guardia", validas: new Set(destinosDe(g).map((d) => claveCelda(d.cuadrillaId, d.fecha))) } : null,
+      );
+      return;
+    }
+    const id = bloque ? (bloque.apoyo || bloque.origen === "tarea" ? null : bloque.otId) : otId;
+    const c = id != null ? comodinPorOt.get(id) : undefined;
+    const ot = id != null ? otsPorId.get(id) : undefined;
+    if (id == null || !c || c.vencido || !ot) {
+      setArrastreGuardias(null);
+      return;
+    }
+    const instante = ahoraISO();
+    const destinos = new Map<number, "puede" | "pide">();
+    for (const g of activas) {
+      if (g.fecha < hoyBa || !comodinPuedeIr(c, g.fecha)) continue;
+      const d = seguro(
+        () =>
+          evaluarCandado({
+            guardia: g,
+            ot: otParaCandado(ot),
+            esApoyo: false,
+            avance: avanceDe(id),
+            ahora: instante,
+            feriados: feriadosSet,
+            esComodin: true,
+          }),
+        CANDADO_CERRADO,
+        "el candado de una guardia",
+      );
+      if (d.libre) destinos.set(g.id, "puede");
+      else if (d.pide) destinos.set(g.id, "pide");
+    }
+    setArrastreGuardias({ tipo: "comodin", destinos });
+  }
+
+  /** Lleva el tablero hasta una guardia y la destaca. */
+  function irAGuardia(guardiaId: number, fecha: string) {
+    const b = [...bloquesPorClave.values()].find((x) => x.ids.includes(guardiaId));
+    if (b) setResaltado({ key: b.key, desde: Date.now() });
+    scrollAFecha(fecha);
+  }
+
   function moverBloque(
     bloque: Bloque,
     cuadrillaId: number,
     fecha: string,
     opts: { permitirDomingo?: boolean } = {},
   ) {
+    // La guardia se CORRE con sus propias reglas (misma semana, celda libre de una propia).
+    if (esGuardia(bloque)) return correrGuardia(bloque.ids[0], cuadrillaId, fecha);
+    // La guardia que terminó en depósito es historia: no se mueve.
+    if (bloque.tarea?.deGuardia) return;
     if (sinGuardar(bloque)) return avisarGuardando();
     const dias = fechasDeJornadas(fecha, bloque.ids.length, opts);
     const trabada = fijaQueSeMueve(bloque, dias);
@@ -1271,7 +1924,18 @@ export function TableroBoard() {
     }));
     // Un bloque es homogéneo, así que alcanza con mirar su origen una vez: los días de
     // una tarea viajan a Supabase y los de una obra a Odoo.
-    if (bloque.origen === "tarea") return moverTarea.mutate(movimientos);
+    if (bloque.origen === "tarea") {
+      // UNA TAREA NO VA SOBRE UNA GUARDIA: no es lo imprevisto, y el candado no tiene a qué
+      // OT preguntarle. Si la cuadrilla no puede ese día, lo que corresponde es pedir que se
+      // saque la guardia, no taparla.
+      if (guardiasPisadas(dias.map((f) => ({ cuadrillaId, fecha: f })), activas).length > 0) {
+        toast.error("Esa jornada es una guardia", {
+          description: "Una tarea no va encima de una guardia. Ponela en otra celda, o corré la guardia desde su menú.",
+        });
+        return;
+      }
+      return moverTarea.mutate(movimientos);
+    }
 
     // LOS APOYOS VAN CON LA OBRA (apoyo.md): cada día de la principal se lleva a sus
     // apoyos al día de destino, en la misma cuadrilla de apoyo. Viajan en la MISMA request
@@ -1311,6 +1975,31 @@ export function TableroBoard() {
     // tarjeta y se suelta en la misma celda— y ofrecer deshacer un no-movimiento es ruido.
     const seMovio =
       antes.fechas.join() !== despues.fechas.join() || antes.cuadrillaId !== despues.cuadrillaId;
+
+    // ¿CAE SOBRE UNA GUARDIA? El comodín soltado en una guardia se MUEVE (no se copia) y
+    // la guardia queda rellenada, todo en un lote (contrato §2.3). Los apoyos que viajan con
+    // la obra también cuentan: un apoyo que cae en la guardia de otra cuadrilla la pisa.
+    const decididas = decidirGuardias(bloque.otId, [
+      ...dias.map((f) => ({ cuadrillaId, fecha: f })),
+      ...arrastre.mover.map((m) => ({ cuadrillaId: m.apoyo.cuadrillaId, fecha: m.fecha, apoyo: true })),
+    ]);
+    if (decididas) {
+      return usarOPedir({
+        otId: bloque.otId,
+        decididas,
+        mover: movimientos,
+        volver: [
+          ...bloque.ids.map((id, i) => ({
+            id,
+            fecha: bloque.fechas[i],
+            cuadrillaId: bloque.cuadrillaId,
+            ordenDia: bloque.ordenDia,
+          })),
+          ...apoyosMovidos.map((a) => ({ id: a.id, fecha: a.fecha, cuadrillaId: a.cuadrillaId, ordenDia: a.ordenDia })),
+        ],
+        registro: { otId: bloque.otId, otTitulo: tituloDeOt(bloque.otId), accion: "mover", antes, despues },
+      });
+    }
 
     mover.mutate(
       {
@@ -1460,6 +2149,28 @@ export function TableroBoard() {
     // pidió esperarlo, y expediente sin número. Las órdenes viejas no tienen
     // modalidad cargada, así que no disparan ninguna.
     const f = candados?.get(b.otId);
+    // EL CANDADO YA NO FALLA ABIERTO (guardias-contrato.md §3, plan técnico §7.3). Antes,
+    // si la consulta del permiso daba error —a Depósito y Campo les daba 403— o todavía no
+    // había terminado para esta obra, `f` venía vacío y se confirmaba sin preguntar nada:
+    // "no sé" se leía como "no hay nada que frenar". Ahora "no sé" pasa por el diálogo con
+    // un motivo, que queda registrado, y la opción de volver a comprobar.
+    if (!f && b.otId > 0) {
+      antesDelCandado?.();
+      setPedidoCandado({
+        otId: b.otId,
+        friccion: {
+          tipo: "sin_comprobar",
+          error: errorCandado,
+          motivo: errorCandado
+            ? "La consulta del permiso municipal dio error, así que no sé si esta obra lo necesita."
+            : "Todavía no terminé de comprobar el permiso municipal de esta obra.",
+        },
+        pedidosPrevios: 0,
+        confirmar: aplicar,
+        reintentar: () => void refetchCandado(),
+      });
+      return;
+    }
     // Se evalúa UNA sola por vez a propósito: dos diálogos encadenados para
     // un clic se leen como que el sistema no quiere que trabajes.
     //
@@ -1588,18 +2299,25 @@ export function TableroBoard() {
         // El día queda tapado con el motivo en las cuadrillas que no salieron: sin esto el
         // hueco se leía como un día libre (Juan Agustín, 01/10).
         suspension: { dia: datos.dia, cuadrillaIds: datos.cuadrillaIds },
+        // LAS GUARDIAS QUE LA LLUVIA CONSUME (contrato §1.4): lo que cae sobre una guardia
+        // la reemplaza y la cascada se frena ahí. Es lo que vio el preview; el servidor
+        // busca y consume las que haya aunque no vengan acá.
+        consumirGuardias: plan.guardiasConsumidas.map((g) => g.id),
       },
       {
-        onSuccess: ({ filas, loteId }) => {
+        onSuccess: ({ filas, loteId, guardiasConsumidas }) => {
           setCorrimientoAbierto(false);
-          const vuelta = invertirCorrimiento(plan.registros, plan.apoyosQuitados);
+          const vuelta = invertirCorrimiento(plan.registros, plan.apoyosQuitados, plan.guardiasConsumidas);
+          // El deshacer reactiva LAS QUE EL SERVIDOR CONSUMIÓ, que es la autoridad: puede
+          // haber consumido alguna que esta pantalla no veía.
+          const reactivar = guardiasConsumidas ?? vuelta.reactivarGuardias;
           const quitados = plan.apoyosQuitados.length;
           ofrecerDeshacer({
             etiqueta: `Corrido el ${format(parseISO(datos.dia), "EEE d MMM", { locale: es })} · ${
               plan.jornadas > 0 ? `${plan.jornadas} jornadas` : ""
             }${plan.jornadas > 0 && quitados > 0 ? " · " : ""}${
               quitados > 0 ? `${quitados} apoyo${quitados === 1 ? "" : "s"} quitado${quitados === 1 ? "" : "s"}` : ""
-            }`,
+            }${reactivar.length > 0 ? ` · usó ${reactivar.length} guardia${reactivar.length === 1 ? "" : "s"}` : ""}`,
             asignacionIds: plan.movimientos.map((m) => m.id),
             ejecutar: () =>
               correrDia.mutate({
@@ -1614,6 +2332,8 @@ export function TableroBoard() {
                 deshaceA: filas,
                 // Y la tapa del día se levanta con él.
                 levantaLote: loteId ?? undefined,
+                // Y las guardias que usó vuelven a estar activas.
+                reactivarGuardias: reactivar.length > 0 ? reactivar : undefined,
               }),
           });
         },
@@ -1699,6 +2419,27 @@ export function TableroBoard() {
     const achicaA = todos ? diasSiAchica(diasObra.size, Number(fraccion)) : null;
     // Sumado a un día que ya tiene parte: el servidor lo vincula a ese parte.
     const conParteYa = fechas.some((f) => principalDe.get(f)?.parteId != null);
+
+    // UN APOYO SOBRE UNA GUARDIA la usa sin pedir nada si el armado ya se pasó de lo
+    // estimado (contrato §1.3, punto 3); si no, se pide a JS. Nunca se apila.
+    const decididas = decidirGuardias(
+      otId,
+      nuevas.map((n) => ({ cuadrillaId: n.cuadrillaId, fecha: n.fecha, apoyo: true })),
+    );
+    if (decididas) {
+      return usarOPedir({
+        otId,
+        decididas,
+        crear: nuevas,
+        registro: {
+          otId,
+          otTitulo: tituloDeOt(otId),
+          accion: "crear",
+          antes: null,
+          despues: { fechas: [...fechas].sort(), cuadrillaId, cuadrillaNombre: nombre, fraccion: Number(fraccion), apoyo: true },
+        },
+      });
+    }
 
     crear.mutate(
       {
@@ -1846,17 +2587,36 @@ export function TableroBoard() {
     }
     const orden = proximoOrden(cuadrillaId, fecha);
     const antes = estadoDelBloque(bloque);
-    mover.mutate({
-      // Mismos días: cambia sólo la fila.
-      movimientos: bloque.ids.map((id, i) => ({ id, fecha: bloque.fechas[i], cuadrillaId, ordenDia: orden })),
-      registro: {
+    // Mismos días: cambia sólo la fila.
+    const movimientos = bloque.ids.map((id, i) => ({ id, fecha: bloque.fechas[i], cuadrillaId, ordenDia: orden }));
+    const registro: RegistroMovimiento = {
+      otId: bloque.otId,
+      otTitulo: tituloDeOt(bloque.otId),
+      accion: "mover",
+      antes,
+      despues: { ...antes, cuadrillaId, cuadrillaNombre: nombreCuadrilla(cuadrillaId) },
+    };
+    // Pasar el apoyo a una cuadrilla que tiene una guardia ese día es usarla (armado
+    // atrasado) o pedirla: lo mismo que sumarlo ahí.
+    const decididas = decidirGuardias(
+      bloque.otId,
+      bloque.fechas.map((f) => ({ cuadrillaId, fecha: f, apoyo: true })),
+    );
+    if (decididas) {
+      return usarOPedir({
         otId: bloque.otId,
-        otTitulo: tituloDeOt(bloque.otId),
-        accion: "mover",
-        antes,
-        despues: { ...antes, cuadrillaId, cuadrillaNombre: nombreCuadrilla(cuadrillaId) },
-      },
-    });
+        decididas,
+        mover: movimientos,
+        volver: bloque.ids.map((id, i) => ({
+          id,
+          fecha: bloque.fechas[i],
+          cuadrillaId: bloque.cuadrillaId,
+          ordenDia: bloque.ordenDia,
+        })),
+        registro,
+      });
+    }
+    mover.mutate({ movimientos, registro });
   }
 
   /**
@@ -1965,23 +2725,69 @@ export function TableroBoard() {
       porCuadrilla.set(a.cuadrillaId, actual);
     }
     if (dias.size === 0 && porCuadrilla.size === 0) return null;
-    // La ocupación se suma una vez por celda y no en cada render del formulario.
+    // La ocupación se suma una vez por celda y no en cada render del formulario. SIN LAS
+    // GUARDIAS: un apoyo que cae en una guardia la reemplaza, no se suma a ella.
     const ocupada = new Map<string, number>();
     for (const a of data.asignaciones) {
-      if (a.cuadrillaId == null) continue;
+      if (a.cuadrillaId == null || esGuardia(a)) continue;
       const k = `${a.cuadrillaId}|${a.fecha}`;
       ocupada.set(k, (ocupada.get(k) ?? 0) + a.fraccion);
     }
+    const guardiaPorCelda = new Map(activas.map((g) => [claveCelda(g.cuadrillaId, g.fecha), g]));
+    const ot = otsPorId.get(otId);
+    const instante = ahoraISO();
     return {
       dias: [...dias.values()],
       apoyos: [...porCuadrilla.values()].sort((x, y) => x.nombre.localeCompare(y.nombre)),
       cuadrillas: data.cuadrillas.map((c) => ({ id: c.id, nombre: c.nombre })),
       diaInicial,
       ocupacion: (cuadrillaId, fecha) => ocupada.get(`${cuadrillaId}|${fecha}`) ?? 0,
+      // Lo que dice el candado, el mismo que decide al sumar (sumarApoyo → decidirGuardias).
+      candadoEn: (cuadrillaId, fecha) => {
+        const guardia = guardiaPorCelda.get(claveCelda(cuadrillaId, fecha));
+        if (!guardia) return null;
+        if (!ot) return CANDADO_CERRADO;
+        return seguro(
+          () =>
+            evaluarCandado({
+              guardia,
+              ot: otParaCandado(ot),
+              esApoyo: true,
+              avance: avanceDe(otId),
+              ahora: instante,
+              feriados: feriadosSet,
+              esComodin: esComodinPara(otId, fecha),
+            }),
+          CANDADO_CERRADO,
+          "el candado de una guardia",
+        );
+      },
     };
   }
 
   function volverABandeja(bloque: Bloque) {
+    // UNA GUARDIA NO SE QUITA ARRASTRÁNDOLA (contrato §1.3): sacarla es de JS. A quien no
+    // puede se le ofrece pedirlo; a JS, sacarla con su motivo. Nunca un borrado silencioso.
+    if (esGuardia(bloque)) {
+      const id = bloque.ids[0];
+      toast.info(
+        puedeAutorizar ? "Sacar una guardia queda registrado con tu motivo" : "Para sacarla hace falta la autorización de JS",
+        {
+          description: puedeAutorizar
+            ? "Sacada, esa semana no se repone."
+            : "Hasta que JS responda, la guardia sigue puesta. También la podés correr dentro de la semana.",
+          action: puedeAutorizar
+            ? { label: "Sacar…", onClick: () => abrirSacar(id, "sacar") }
+            : { label: "Pedir autorización…", onClick: () => abrirSacar(id, "pedir") },
+        },
+      );
+      return;
+    }
+    // La guardia que terminó en depósito ya pasó: es historia, no se saca.
+    if (bloque.tarea?.deGuardia) {
+      toast.info("Fue una guardia que nadie usó", { description: "La cuadrilla fue al depósito. No se puede quitar." });
+      return;
+    }
     if (sinGuardar(bloque)) return avisarGuardando();
     // UN APOYO NO VUELVE A NINGUNA BANDEJA: nunca le sumó días a la obra, así que sacarlo
     // es quitar el apoyo y nada más (apoyo.md).
@@ -2166,9 +2972,12 @@ export function TableroBoard() {
 
     // Acá SÍ se mezclan: en una celda pueden convivir obras y tareas, y reordenar el día
     // las toca a todas. Se separa por origen porque cada lote va a una base distinta.
+    // LA GUARDIA NO SE REORDENA: el servidor rechaza tocarla por la ruta de tareas (se corre
+    // desde su menú), y su lugar en la pila no significa nada. Las demás se numeran igual,
+    // con el índice del día completo.
     const movs = (soloTareas: boolean): MovimientoAsignacion[] =>
       reordenados
-        .filter((b) => (b.origen === "tarea") === soloTareas)
+        .filter((b) => (b.origen === "tarea") === soloTareas && !esGuardia(b))
         .flatMap((b) =>
           b.ids.map((id, i) => ({
             id,
@@ -2192,15 +3001,23 @@ export function TableroBoard() {
 
   function onDragStart(e: DragStartEvent) {
     const id = String(e.active.id);
-    if (id.startsWith("ot:")) setArrastrando({ tipo: "ot", otId: Number(id.slice(3)) });
-    else if (id.startsWith("bloque:")) {
-      const bloque = bloquesPorClave.get(id.slice(7));
-      setArrastrando(bloque ? { tipo: "bloque", bloque } : null);
+    if (id.startsWith("ot:")) {
+      const otId = Number(id.slice(3));
+      setArrastrando({ tipo: "ot", otId });
+      resaltarAlLevantar(null, otId);
+      return;
     }
+    // Un bloque de la grilla, o un comodín que ya está en la grilla arrastrado desde la
+    // bandeja (es SU tarjeta: soltarlo la mueve).
+    const clave = claveArrastrada(id);
+    const bloque = clave ? bloquesPorClave.get(clave) : undefined;
+    setArrastrando(bloque ? { tipo: "bloque", bloque } : null);
+    resaltarAlLevantar(bloque ?? null, null);
   }
 
   function onDragEnd(e: DragEndEvent) {
     setArrastrando(null);
+    setArrastreGuardias(null);
     const over = e.over;
     if (!over) return;
 
@@ -2222,9 +3039,13 @@ export function TableroBoard() {
       return;
     }
 
-    if (!activo.startsWith("bloque:")) return;
-    const bloque = bloquesPorClave.get(activo.slice(7));
+    const clave = claveArrastrada(activo);
+    if (!clave) return;
+    const bloque = bloquesPorClave.get(clave);
     if (!bloque) return;
+    // Un comodín arrastrado desde la bandeja: igual que una obra de la bandeja, en celular
+    // la bandeja se va para dejar ver dónde cayó.
+    if (activo.startsWith("comodin:") && esMovil) setBandejaMovilAbierta(false);
 
     // El apoyo tiene sus propias reglas: a la bandeja es quitarlo, y sólo cambia de fila.
     if (bloque.apoyo) {
@@ -2333,6 +3154,85 @@ export function TableroBoard() {
       ? (data.cuadrillas.find((c) => c.id === panelBloque.cuadrillaId)?.nombre ?? null)
       : null;
 
+  // ── Guardias: lo que va a la pantalla ──────────────────────────────────────
+
+  // La ficha de la guardia abierta. Del payload de guardias (historia, porQué), con la
+  // posición que tiene HOY en el tablero (lo optimista). Si el payload todavía no llegó, se
+  // arma con lo que sabe el tablero: la ficha abre igual, sin historia.
+  const fichaGuardia: Guardia | null = (() => {
+    if (fichaGuardiaId == null) return null;
+    const delPayload = guardiaPorId.get(fichaGuardiaId);
+    const enGrilla = data.asignaciones.find((a) => a.id === fichaGuardiaId && a.origen === "tarea");
+    if (delPayload) {
+      return enGrilla && esGuardia(enGrilla) && enGrilla.cuadrillaId != null
+        ? { ...delPayload, fecha: enGrilla.fecha, cuadrillaId: enGrilla.cuadrillaId }
+        : delPayload;
+    }
+    if (!enGrilla || enGrilla.cuadrillaId == null) return null;
+    const activa = esGuardia(enGrilla);
+    return {
+      id: enGrilla.id,
+      fecha: enGrilla.fecha,
+      cuadrillaId: enGrilla.cuadrillaId,
+      semana: lunesDe(enGrilla.fecha),
+      ranura: 1,
+      estado: activa ? "activa" : "rellenada",
+      origen: "sistema",
+      uso: activa ? null : "deposito",
+      otId: null,
+      asignacionIds: [],
+      porQue: null,
+      loteId: null,
+      creadaAt: "",
+      estadoAt: null,
+      estadoPorNombre: null,
+      estadoMotivo: null,
+    };
+  })();
+  const fichaResumen = fichaGuardia ? activas.find((g) => g.id === fichaGuardia.id) : undefined;
+
+  // Lo que la grilla necesita de las guardias y los comodines.
+  const guardiasGrilla: GuardiasGrilla = {
+    relleno,
+    usadas,
+    comodines: comodinPorOt,
+    arrastre: arrastreGuardias,
+    puedeAutorizar,
+    onAbrir: (b) => {
+      if (!cierre) setFichaGuardiaId(b.ids[0]);
+    },
+    onAbrirGuardia: (id) => {
+      if (!cierre) setFichaGuardiaId(id);
+    },
+    hoy: hoyBa,
+    onCorrer: (b) => setFichaGuardiaId(b.ids[0]),
+    onPedirSacar: (b) => abrirSacar(b.ids[0], "pedir"),
+    onSacar: (b) => abrirSacar(b.ids[0], "sacar"),
+  };
+
+  // El grupo "Comodines" de la bandeja: sin los vencidos (ésos van con las urgentes), en el
+  // orden de evaluarComodines (el que más espera primero), con dónde está hoy cada uno.
+  const pendientesIds = new Set(sinAsignar.map((x) => x.ot.id));
+  const comodinesBandeja: ComodinEnBandeja[] = comodines.flatMap((c) => {
+    const ot = otsPorId.get(c.otId);
+    if (!ot || c.vencido) return [];
+    const bloque = c.ubicacion
+      ? [...bloquesPorClave.values()].find(
+          (b) => b.otId === c.otId && !b.apoyo && b.origen !== "tarea" && b.fechas.includes(c.ubicacion!.fecha),
+        )
+      : undefined;
+    const pendiente = pendientesIds.has(c.otId);
+    // Planificado fuera de las semanas cargadas: no hay tarjeta que arrastrar ni a dónde ir.
+    if (!pendiente && !bloque) return [];
+    return [{
+      comodin: c,
+      ot,
+      pendiente,
+      bloqueKey: bloque?.key ?? null,
+      cuadrillaNombre: bloque?.cuadrillaId != null ? nombreCuadrilla(bloque.cuadrillaId) : null,
+    }];
+  });
+
   return (
     // min-w-0: el tablero es ancho por naturaleza y ya scrollea adentro. Sin esto puede
     // empujar el ancho de la pagina y aparece un segundo scroll horizontal, el de afuera,
@@ -2357,6 +3257,9 @@ export function TableroBoard() {
         onQueEjecutar={cambiarQueEjecutar}
         onCorrerDia={() => setCorrimientoAbierto(true)}
         onRefrescar={() => refetch()}
+        protegido={protegido}
+        // El acceso a la bandeja de JS, sólo para quien autoriza.
+        autorizaciones={puedeAutorizar ? (pendientesJS?.length ?? 0) : null}
       />
 
       <DndContext
@@ -2365,7 +3268,10 @@ export function TableroBoard() {
         autoScroll={autoScroll}
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
-        onDragCancel={() => setArrastrando(null)}
+        onDragCancel={() => {
+          setArrastrando(null);
+          setArrastreGuardias(null);
+        }}
       >
         {/* `relative`: en celular la bandeja flota adentro de este marco. */}
         <div className="relative flex min-h-0 flex-1 overflow-hidden rounded-md border">
@@ -2407,6 +3313,9 @@ export function TableroBoard() {
                 // desmontó, asi que una guarda por "menu abierto" llega tarde.
                 onAbrirBloque={(b) => {
                   if (cierre) return;
+                  // La guardia (activa, o la que terminó en depósito) abre SU ficha: ni la
+                  // de una OT ni el diálogo de tareas.
+                  if (esGuardia(b) || b.tarea?.deGuardia) return setFichaGuardiaId(b.ids[0]);
                   // Una tarea no tiene ficha en Odoo que mostrar: el clic abre su propio
                   // diálogo, que es el único lugar donde vive.
                   if (b.origen === "tarea") return setTareaEnEdicion(b);
@@ -2439,6 +3348,7 @@ export function TableroBoard() {
                 onCrearTarea={(cuadrillaId, fecha) => setTareaNueva({ cuadrillaId, fecha })}
                 onTareaHecha={(b, hecha) => actualizarTarea.mutate({ ids: b.ids, cambio: { hecha } })}
                 onEditarTarea={(b) => setTareaEnEdicion(b)}
+                guardias={guardiasGrilla}
               />
             ) : (
               <div className="flex flex-1 items-center justify-center p-6 text-center text-sm text-muted-foreground">
@@ -2482,16 +3392,25 @@ export function TableroBoard() {
               scrollAFecha(fecha);
             }}
             onOrden={recibirOrdenBandeja}
+            comodines={comodinesBandeja}
+            vencidos={vencidos}
+            onMeterUrgente={(ot) => setUrgenteDe(ot)}
           />
         </div>
 
         <DragOverlay>
-          {arrastrando?.tipo === "bloque" && (
+          {arrastrando?.tipo === "bloque" && esGuardia(arrastrando.bloque) && (
+            <div className="h-[44px] w-[150px]">
+              <ContenidoGuardia relleno={relleno.get(arrastrando.bloque.ids[0]) ?? "Depósito"} compacta />
+            </div>
+          )}
+          {arrastrando?.tipo === "bloque" && !esGuardia(arrastrando.bloque) && (
             <div className="w-[150px]">
               <ContenidoTarjeta
                 ot={otsPorId.get(arrastrando.bloque.otId)}
                 bloque={arrastrando.bloque}
                 queEjecutar={queEjecutar}
+                comodin={arrastrando.bloque.apoyo ? null : (comodinPorOt.get(arrastrando.bloque.otId) ?? null)}
                 compacta
                 // El fantasma de un apoyo es rayado como su tarjeta, y dice quién carga el parte.
                 apoyo={(() => {
@@ -2558,6 +3477,15 @@ export function TableroBoard() {
               cambio: { fraccion: v.fraccion },
             });
           } else if (tareaNueva) {
+            // Una tarea nueva de varios días puede caer sobre una guardia: no va encima
+            // (el servidor y la base también lo frenan; esto es para decirlo antes).
+            const diasTarea = fechasDeJornadas(tareaNueva.fecha, v.dias, { permitirDomingo: true });
+            if (guardiasPisadas(diasTarea.map((f) => ({ cuadrillaId: tareaNueva.cuadrillaId, fecha: f })), activas).length > 0) {
+              toast.error("Uno de esos días es una guardia", {
+                description: "Una tarea no va encima de una guardia. Acortala o ponela en otra cuadrilla.",
+              });
+              return;
+            }
             crearTarea.mutate({
               titulo: v.titulo,
               tipo: v.tipo,
@@ -2967,6 +3895,58 @@ export function TableroBoard() {
           if (panelOt) setPanel({ otId: panelOt.id, bloqueKey: null, seguir: true, dia });
         }}
         onOpenChange={(abierto) => !abierto && cerrarPanel()}
+        comodin={panelOt ? (comodinPorOt.get(panelOt.id) ?? null) : null}
+        // La ficha y el diálogo son dos modales: se cierra la ficha antes de abrirlo.
+        onMeterUrgente={() => {
+          if (!panelOt) return;
+          const ot = panelOt;
+          cerrarPanel();
+          setUrgenteDe(ot);
+        }}
+      />
+
+      <FichaGuardia
+        guardia={fichaGuardia}
+        eventos={guardiasData?.eventos ?? []}
+        solicitudes={guardiasData?.solicitudes ?? []}
+        sigla={siglaDe}
+        relleno={fichaGuardia ? (relleno.get(fichaGuardia.id) ?? "Depósito") : "Depósito"}
+        destinos={fichaResumen ? destinosDe(fichaResumen) : []}
+        hoy={hoyBa}
+        puedeAutorizar={puedeAutorizar}
+        usuarioId={usuario?.id ?? null}
+        onCorrer={(d) => {
+          if (!fichaGuardia) return;
+          correrGuardia(fichaGuardia.id, d.cuadrillaId, d.fecha);
+          setFichaGuardiaId(null);
+          scrollAFecha(d.fecha);
+        }}
+        onPedirSacar={() => fichaGuardia && abrirSacar(fichaGuardia.id, "pedir")}
+        onSacar={() => fichaGuardia && abrirSacar(fichaGuardia.id, "sacar")}
+        onOpenChange={(abierto) => !abierto && setFichaGuardiaId(null)}
+      />
+
+      <DialogoPedirAutorizacion
+        pedido={pedidoAutorizacion}
+        onCerrar={() => setPedidoAutorizacion(null)}
+        // JS autorizó lo suyo y se ejecutó: el mismo "Deshacer" que si lo hubiera usado sola.
+        onUsada={(uso, p) =>
+          p.pedido &&
+          ofrecerDeshacerUso(uso, {
+            otId: p.pedido.otId,
+            guardiaIds: uso.guardiaIds,
+            crear: p.pedido.crear,
+            mover: p.pedido.mover,
+            volver: p.volver,
+          })
+        }
+      />
+
+      <DialogoMeterUrgente
+        ot={urgenteDe}
+        guardiaCercana={guardiaCercana}
+        onIr={(g) => irAGuardia(g.guardiaId, g.fecha)}
+        onCerrar={() => setUrgenteDe(null)}
       />
     </div>
   );

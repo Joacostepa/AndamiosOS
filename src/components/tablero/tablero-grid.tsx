@@ -8,6 +8,7 @@ import { MousePointerClick, StickyNote } from "lucide-react";
 import { CascoSyh } from "./casco-syh";
 import { CeldaDia } from "./celda-dia";
 import { TarjetaAsignacion } from "./tarjeta-asignacion";
+import { TarjetaGuardia } from "./tarjeta-guardia";
 import { PopoverNotasDia } from "./notas-jornada";
 import { ChipClima, textoClima } from "./chip-clima";
 import { agruparBloques, esDomingo, repartirPorAltura } from "@/lib/tablero/bloques";
@@ -20,9 +21,12 @@ import {
   CORAL,
   FERIADO_ENCABEZADO,
   FERIADO_TEXTO,
+  GUARDIA,
   NOTA,
   PELIGRO_TEXTO,
 } from "@/lib/tablero/colores";
+import { claveCelda, cuentaConGuardias, esGuardia } from "@/lib/tablero/guardias";
+import type { Comodin, UsoGuardia } from "@/lib/tablero/guardias-tipos";
 import { ocupacionCelda, capacidadDelRango, redondearFraccion } from "@/lib/tablero/fracciones";
 import type { FraccionStr } from "@/lib/tablero/fracciones";
 import { notasDe, notasDeCuadrilla } from "@/lib/tablero/tipos-nota";
@@ -127,6 +131,44 @@ const ALTO_BARRA = 10;
 const ALTO_CELDA = 96;
 /** Aire entre la última tarjeta y el riel. */
 const RESPIRO_FILA = 8;
+
+/**
+ * Lo que la grilla necesita saber de las guardias y los comodines (guardias-contrato.md
+ * §1.6 y §2.3). Llega armado desde el board, que es el que tiene las reglas y los datos de
+ * useGuardias: la grilla sólo dibuja.
+ */
+export type GuardiasGrilla = {
+  /** Id de la asignación de una guardia activa → qué va si nadie la usa ("Depósito", el comodín). */
+  relleno: Map<number, string>;
+  /**
+   * Id de una jornada que ocupa una guardia usada o rellenada → para qué se usó y cuál es (el
+   * chip "de guardia", que al tocarlo abre esa guardia).
+   */
+  usadas: Map<number, { uso: UsoGuardia | null; guardiaId: number }>;
+  /** otId → comodín, vencidos incluidos (el naipe y el chip). */
+  comodines: Map<number, Comodin>;
+  /** Mientras se arrastra algo que cambia qué se resalta. */
+  arrastre: ArrastreGuardias | null;
+  puedeAutorizar: boolean;
+  onAbrir: (b: Bloque) => void;
+  /** Abrir una guardia por su id (la que usó una obra: no está en la grilla). */
+  onAbrirGuardia: (guardiaId: number) => void;
+  /** Hoy en Buenos Aires: una guardia de un día pasado ya no se corre ni se saca. */
+  hoy: string;
+  onCorrer: (b: Bloque) => void;
+  onPedirSacar: (b: Bloque) => void;
+  onSacar: (b: Bloque) => void;
+};
+
+/**
+ * "comodin": se levantó un comodín; cada guardia dice si lo acepta ("puede": sin pedir nada,
+ * "pide": con autorización de JS). Las que no están no lo aceptan (antes del piso, o el
+ * candado no deja ni pidiendo).
+ * "guardia": se levantó una guardia; las celdas donde puede ir (claveCelda).
+ */
+export type ArrastreGuardias =
+  | { tipo: "comodin"; destinos: Map<number, "puede" | "pide"> }
+  | { tipo: "guardia"; validas: Set<string> };
 
 // Dos decimales para MOSTRAR, aunque la carga se calcule con tres: una semana con jornadas
 // de 3 h y 5 h suma 4,375 y "4,38 / 6" se lee de un vistazo, "4,375 / 6" no. El tercer
@@ -247,6 +289,7 @@ export function TableroGrid({
   domingosAbiertos,
   onToggleDomingo,
   compacta,
+  guardias,
 }: {
   cuadrillas: CuadrillaTablero[];
   fechas: string[];
@@ -360,6 +403,8 @@ export function TableroGrid({
    * ANCHO_RECURSO_MOVIL.
    */
   compacta: boolean;
+  /** Guardias y comodines. Sin esto la grilla se dibuja como antes. */
+  guardias?: GuardiasGrilla;
 }) {
   const hoy = new Date();
 
@@ -580,13 +625,22 @@ export function TableroGrid({
   // visibles. Contesta "¿qué día tiene lugar para esta obra?" sin recorrer cinco celdas.
   // Antes sólo se avisaba cuando TODAS estaban pasadas, que con cinco cuadrillas no pasaba
   // nunca: el miércoles con dos de cinco pasadas no decía nada.
+  //
+  // CON LAS GUARDIAS APARTE (guardias-contrato.md §1.6): la guardia ocupa la celda —no está
+  // libre, nadie la puede vender— pero no es trabajo, así que el encabezado dice "libre 0 ·
+  // guardia 1" y no "sin lugar". Se cuenta CELDA POR CELDA (cuentaConGuardias con capacidad
+  // 1) y no sumando el día entero: una cuadrilla pasada no le come el lugar libre a otra.
   const resumenDia = new Map(
     fechas.map((f) => {
       let libre = 0;
+      let enGuardia = 0;
       let pasadas = 0;
       for (const c of cuadrillas) {
-        const { total } = ocupacionCelda(enCelda(c.id, f).map((a) => a.fraccion));
-        libre += Math.max(0, 1 - total);
+        const deLaCelda = enCelda(c.id, f);
+        const { total } = ocupacionCelda(deLaCelda.map((a) => a.fraccion));
+        const cuenta = cuentaConGuardias(deLaCelda, 1);
+        libre += cuenta.libre;
+        enGuardia += cuenta.guardias;
         if (total > 1) pasadas++;
       }
       // OBRAS CON TÉCNICO DE SyH ese día, de TODAS las cuadrillas y no sólo las visibles: el
@@ -594,7 +648,7 @@ export function TableroGrid({
       const conSyh = [
         ...new Set(asignaciones.filter((a) => a.fecha === f && ots.get(a.otId)?.syh).map((a) => a.otId)),
       ].map((id) => ots.get(id)!);
-      return [f, { libre: redondearFraccion(libre), pasadas, conSyh }] as const;
+      return [f, { libre: redondearFraccion(libre), guardias: enGuardia, pasadas, conSyh }] as const;
     }),
   );
 
@@ -752,9 +806,18 @@ export function TableroGrid({
                       if (!r || cuadrillas.length === 0) return null;
                       return (
                         <>
-                          <span title="Jornadas libres sumando las cuadrillas visibles">
-                            {r.libre === 0 ? "sin lugar" : `libre ${DECIMAL.format(r.libre)} j`}
-                          </span>
+                          {r.guardias > 0 ? (
+                            <span title="Jornadas libres y guardias, sumando las cuadrillas visibles. La guardia ocupa lugar: está guardada para lo imprevisto.">
+                              libre {DECIMAL.format(r.libre)} ·{" "}
+                              <span className="font-medium" style={{ color: GUARDIA.texto }}>
+                                guardia {r.guardias}
+                              </span>
+                            </span>
+                          ) : (
+                            <span title="Jornadas libres sumando las cuadrillas visibles">
+                              {r.libre === 0 ? "sin lugar" : `libre ${DECIMAL.format(r.libre)} j`}
+                            </span>
+                          )}
                           {r.pasadas > 0 && (
                             <span className="font-medium" style={{ color: PELIGRO_TEXTO }}>
                               · {r.pasadas} pasada{r.pasadas === 1 ? "" : "s"}
@@ -855,11 +918,15 @@ export function TableroGrid({
           // es contra los días hábiles de una semana. Se mueve junto con el label de
           // arriba, porque los dos derivan de la misma semana.
           const deLaSemana = deLaCuadrilla.filter((a) => semanaCentrada.includes(a.fecha));
-          const jornadas = ocupacionCelda(deLaSemana.map((a) => a.fraccion)).total;
+          // "4,5 de 6 j + 1 guardia" (contrato §1.6): el trabajo y las guardias por separado.
+          // La guardia SÍ cuenta contra la capacidad (el exceso), porque ocupa la jornada.
+          const cuentaSemana = cuentaConGuardias(deLaSemana, 0);
+          const jornadas = cuentaSemana.ocupado;
+          const guardiasSemana = cuentaSemana.guardias;
           // El domingo suma capacidad sólo si ESTA cuadrilla trabaja ese domingo.
           const conTrabajo = new Set(deLaSemana.map((a) => a.fecha));
           const capacidad = capacidadDelRango(semanaCentrada, conTrabajo);
-          const exceso = redondearFraccion(jornadas - capacidad);
+          const exceso = redondearFraccion(jornadas + guardiasSemana - capacidad);
           // Los días PASADOS de la semana: la carga semanal sola los diluía — una fila con un
           // día de casi dos jornadas decía "4,75 / 6" en gris.
           const diasPasados = semanaCentrada.filter(
@@ -887,10 +954,15 @@ export function TableroGrid({
                   }`}
                 >
                   {compacta ? (
-                    `${DECIMAL.format(jornadas)}/${capacidad}`
+                    `${DECIMAL.format(jornadas + guardiasSemana)}/${capacidad}`
                   ) : (
                     <>
-                      {jornadas === 0 ? "libre" : `${DECIMAL.format(jornadas)} de ${capacidad} j`}
+                      {jornadas === 0 && guardiasSemana === 0 ? "libre" : `${DECIMAL.format(jornadas)} de ${capacidad} j`}
+                      {guardiasSemana > 0 && (
+                        <span className="font-medium" style={{ color: GUARDIA.texto }}>
+                          {" "}+ {guardiasSemana} guardia{guardiasSemana === 1 ? "" : "s"}
+                        </span>
+                      )}
                       {diasPasados > 0 && (
                         <span className="font-medium" style={{ color: PELIGRO_TEXTO }}>
                           {" "}· {diasPasados} día{diasPasados === 1 ? "" : "s"} pasado{diasPasados === 1 ? "" : "s"}
@@ -925,6 +997,7 @@ export function TableroGrid({
                     // las cinco celdas de la columna.
                     const suyas = colapsado(f) ? [] : notasDeCuadrilla(notas, f, cuadrilla.id);
                     const suspension = suspensiones?.get(claveSuspension(cuadrilla.id, f)) ?? null;
+                    const arrastreGuardia = guardias?.arrastre?.tipo === "guardia" ? guardias.arrastre : null;
                     return (
                       <CeldaDia
                         key={`${cuadrilla.id}-${f}`}
@@ -938,6 +1011,13 @@ export function TableroGrid({
                         pasada={f < hoyISO}
                         fracciones={enCelda(cuadrilla.id, f).map((a) => a.fraccion)}
                         onCrearTarea={() => onCrearTarea(cuadrilla.id, f)}
+                        destino={
+                          arrastreGuardia
+                            ? arrastreGuardia.validas.has(claveCelda(cuadrilla.id, f))
+                              ? "valida"
+                              : "atenuada"
+                            : null
+                        }
                         suspension={suspension}
                         onQuitarSuspension={
                           suspension && onQuitarSuspension ? () => onQuitarSuspension(suspension) : undefined
@@ -976,6 +1056,35 @@ export function TableroGrid({
                   })}
 
                   {ubicados.map(({ bloque, colocacion, top, alto }) => {
+                    // LA GUARDIA ACTIVA tiene su propia tarjeta (tarjeta-guardia.tsx): ni el
+                    // menú ni el clic ni el contenido son los de una obra.
+                    if (guardias && esGuardia(bloque)) {
+                      const arrastre = guardias.arrastre;
+                      const destino =
+                        arrastre?.tipo === "comodin" ? (arrastre.destinos.get(bloque.ids[0]) ?? null) : null;
+                      return (
+                        <TarjetaGuardia
+                          key={bloque.key}
+                          bloque={bloque}
+                          colocacion={colocacion}
+                          top={top * ALTO_CELDA}
+                          alto={alto * ALTO_CELDA}
+                          etiqueta={`Guardia de ${nombrePropio(cuadrilla.nombre)} el ${format(parseISO(bloque.fechas[0]), "EEEE d 'de' MMMM", { locale: es })}`}
+                          relleno={guardias.relleno.get(bloque.ids[0]) ?? "Depósito"}
+                          seleccionada={bloqueSeleccionado === bloque.key}
+                          destino={destino}
+                          // Al arrastrar un comodín, la guardia que no lo acepta se apaga; al
+                          // arrastrar una guardia, las otras también (no son destino).
+                          atenuada={!!arrastre && !destino}
+                          puedeAutorizar={guardias.puedeAutorizar}
+                          editable={bloque.fechas[0] >= guardias.hoy}
+                          onAbrir={() => guardias.onAbrir(bloque)}
+                          onCorrer={() => guardias.onCorrer(bloque)}
+                          onPedirSacar={() => guardias.onPedirSacar(bloque)}
+                          onSacar={() => guardias.onSacar(bloque)}
+                        />
+                      );
+                    }
                     // Un apoyo no se cierra ni reclama parte: lo carga la principal (apoyo.md).
                     const accion = bloque.apoyo ? null : accionDeCierre(bloque, hoyISO);
                     const parteDelBloque = bloqueCerrado(bloque)
@@ -1017,6 +1126,16 @@ export function TableroGrid({
                         }
                         apoyo={bloque.apoyo ? datosApoyo(bloque) : null}
                         chipsApoyo={chipsDe(bloque)}
+                        deGuardia={(() => {
+                          if (!guardias || bloque.tarea) return null;
+                          const id = bloque.ids.find((x) => guardias.usadas.has(x));
+                          const u = id != null ? guardias.usadas.get(id) : undefined;
+                          return u ? { uso: u.uso, onAbrir: () => guardias.onAbrirGuardia(u.guardiaId) } : null;
+                        })()}
+                        comodin={bloque.tarea || bloque.apoyo ? null : (guardias?.comodines.get(bloque.otId) ?? null)}
+                        // Mientras se arrastra un comodín o una guardia, las obras no son
+                        // destino: se apagan para que se vea dónde sí.
+                        atenuada={!!guardias?.arrastre}
                         cierre={
                           parteDelBloque
                             ? {

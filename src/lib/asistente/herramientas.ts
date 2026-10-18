@@ -432,14 +432,16 @@ const HERRAMIENTAS = [
       "El Tablero de Planificación, SÓLO LECTURA (el tablero es de Operaciones): qué tiene cada cuadrilla cada día y cuánto le queda libre " +
       "(la jornada de una cuadrilla es 1,00 = 8 h), lo confirmado y lo tentativo, las tareas de Operaciones, feriados y domingos; " +
       "las obras que faltan planificar (jornadas, urgencia, habilitación, ventana del cliente); y con `obra`, todas las fechas de esa obra " +
-      "aunque caigan fuera del rango. Rango por defecto: 7 días desde hoy; máximo 31. Para decir cuándo se podría armar algo nuevo, buscá " +
-      "días con horas libres suficientes y aclará que es según el tablero de hoy y que la fecha la confirma Operaciones.",
+      "aunque caigan fuera del rango. Rango por defecto: 7 días desde hoy; máximo 31. Las jornadas 'reservadas para imprevistos' NO se " +
+      "ofrecen: no son lugar libre. Para decir cuándo se podría armar algo nuevo, pasá `duracion` (jornadas) y usá `primeraFechaSinGuardia` " +
+      "(o los días con `libreSinGuardia` suficiente), y aclará que es según el tablero de hoy y que la fecha la confirma Operaciones.",
     etiqueta: "Mirando el tablero de planificación",
     esquema: z.object({
       desde: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("AAAA-MM-DD. Por defecto, hoy"),
       hasta: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("AAAA-MM-DD. Por defecto, desde + 6 días"),
       cuadrilla: z.string().optional().describe("Parte del nombre de una cuadrilla"),
       obra: z.string().optional().describe("Parte de la dirección, del título de la OT o el número de venta (S02457)"),
+      duracion: z.number().positive().max(30).optional().describe("Jornadas de la obra a ofrecer (0,5 = media; 3 = tres días): devuelve primeraFechaSinGuardia"),
     }),
     ejecutar: async (i, ctx) => {
       if (!(await puedeVerPlanificacion(ctx.db, ctx.usuarioId))) {

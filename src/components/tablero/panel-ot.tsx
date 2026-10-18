@@ -6,7 +6,7 @@ import { es } from "date-fns/locale";
 import {
   AlertTriangle, CalendarPlus, Check, ChevronDown, ChevronLeft, ChevronRight, CircleCheck,
   CircleDashed, ClipboardCheck, Construction, ExternalLink, Fence, FileText, LocateFixed,
-  MapPin, MoreHorizontal, Phone, Pin, PinOff, Plus, CalendarRange, Trash2, X,
+  MapPin, MoreHorizontal, Phone, Pin, PinOff, Plus, CalendarRange, Siren, Trash2, X,
 } from "lucide-react";
 import { useRef, useState } from "react";
 import { useDetalleOt } from "@/hooks/use-detalle-ot";
@@ -17,6 +17,8 @@ import { CascoSyh } from "./casco-syh";
 import { ComentariosOt } from "./comentarios-ot";
 import { DetalleTecnico } from "./detalle-tecnico";
 import { ApoyoOt, type ApoyoDeLaObra, type DatosApoyoOt } from "./apoyo-ot";
+import { ChipComodin } from "./grupo-comodines";
+import type { Comodin } from "@/lib/tablero/guardias-tipos";
 import { ChipTipoOt } from "@/components/habilitaciones/chip-tipo-ot";
 import { ETAPA_LABEL, type HabAlerta, type HabEtapa } from "@/lib/habilitaciones/tipos";
 import { ALERTA_LABEL } from "@/lib/habilitaciones/derivacion";
@@ -462,7 +464,10 @@ function AccionesJornada({
   onEditarJornadas,
   onCerrarJornada,
   onQuitar,
+  masItems = null,
 }: {
+  /** Lo que la ficha suma al ⋯ (p. ej. "Meter urgente"). */
+  masItems?: React.ReactNode;
   bloque: Bloque;
   hoy: string;
   urlOdoo: string;
@@ -509,6 +514,7 @@ function AccionesJornada({
         Jornadas
       </Button>
       <MenuMas urlOdoo={urlOdoo}>
+        {masItems}
         {liberables > 0 && (
           <>
             <DropdownMenuItem variant="destructive" disabled={guardando} onClick={onQuitar}>
@@ -780,7 +786,16 @@ export function PanelOt({
   onQuitarApoyo,
   onHacerPrincipal,
   onOpenChange,
+  comodin = null,
+  onMeterUrgente,
 }: {
+  /** La obra es un comodín (guardias-contrato.md §2.3): el chip con el naipe en el encabezado. */
+  comodin?: Comodin | null;
+  /**
+   * "Meter urgente" (§1.6): abre el diálogo que escribe la urgencia en la OT y después
+   * muestra la guardia más cercana que puede usar. Ausente = no se ofrece.
+   */
+  onMeterUrgente?: () => void;
   ot: OtTablero | null;
   bloque: Bloque | null;
   cuadrillaNombre: string | null;
@@ -930,6 +945,19 @@ export function PanelOt({
             ? { alerta: false, texto: "Ya se puede ir." }
             : null;
 
+  // "Meter urgente" en el ⋯, desde la bandeja y desde la grilla: es un gesto de excepción y
+  // no merece un botón a la vista. Una OT que ya está en alta no lo ofrece.
+  const itemUrgente =
+    onMeterUrgente && ot.urgencia !== "alta" ? (
+      <>
+        <DropdownMenuItem onClick={onMeterUrgente}>
+          <Siren />
+          Meter urgente…
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+      </>
+    ) : null;
+
   const tecnico = nombrePropio(detalle?.tecnicoNombre ?? ot.tecnico);
   const vendedor = nombrePropio(detalle?.vendedor);
   const telObra = ot.telObra ?? detalle?.telFichaCliente ?? null;
@@ -962,6 +990,7 @@ export function PanelOt({
               <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
                 <span>{[cliente, ot.ordenVenta].filter(Boolean).join(" · ") || ot.titulo}</span>
                 <ChipTipoOt tipo={ot.tipo} />
+                {comodin && <ChipComodin comodin={comodin} />}
                 {ot.urgencia === "alta" && (
                   <Badge style={{ backgroundColor: PELIGRO_SOLIDO, color: "#fff" }}>Urgencia alta</Badge>
                 )}
@@ -1041,6 +1070,7 @@ export function PanelOt({
               onEditarJornadas={onEditarJornadas}
               onCerrarJornada={onCerrarJornada}
               onQuitar={onQuitar}
+              masItems={itemUrgente}
             />
           ) : (
             <div className="flex flex-wrap items-center gap-1.5">
@@ -1057,7 +1087,7 @@ export function PanelOt({
                   Ver en el tablero
                 </Button>
               )}
-              <MenuMas urlOdoo={ot.url} />
+              <MenuMas urlOdoo={ot.url}>{itemUrgente}</MenuMas>
             </div>
           )}
 

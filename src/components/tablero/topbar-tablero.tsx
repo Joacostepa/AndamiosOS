@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import {
-  CalendarX2, ChevronLeft, ChevronRight, HardHat, History, Loader2, MoreHorizontal, RefreshCw, Users,
+  CalendarX2, ChevronLeft, ChevronRight, HardHat, History, KeyRound, Loader2, MoreHorizontal, RefreshCw, Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,6 +12,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SelectorCuadrillas } from "./selector-cuadrillas";
+import { IndicadorProtegido } from "./indicador-protegido";
+import { AVISO } from "@/lib/tablero/colores";
+import type { LugarProtegido } from "@/lib/tablero/guardias-tipos";
 import { PestanasPlanificacion } from "@/components/hoja-dia/comunes/pestanas-planificacion";
 import type { CuadrillaTablero } from "@/lib/tablero/tipos";
 
@@ -37,6 +41,8 @@ export function TopbarTablero({
   onCorrerDia,
   queEjecutar,
   onQueEjecutar,
+  protegido = null,
+  autorizaciones = null,
 }: {
   rangoLabel: string;
   cuadrillas: CuadrillaTablero[];
@@ -56,7 +62,15 @@ export function TopbarTablero({
   /** Las tarjetas muestran qué hay que ejecutar en vez del cliente y el técnico. */
   queEjecutar: boolean;
   onQueEjecutar: (v: boolean) => void;
+  /** "Lugar protegido próximos 5 días hábiles" (guardias-contrato.md §1.6). */
+  protegido?: LugarProtegido | null;
+  /**
+   * Pedidos sobre guardias esperando respuesta. SÓLO PARA QUIEN AUTORIZA (JS): null esconde
+   * el acceso. A los demás no les sirve un botón que lleva a una página que no pueden abrir.
+   */
+  autorizaciones?: number | null;
 }) {
+  const hayPedidos = (autorizaciones ?? 0) > 0;
   const etiquetaModo = queEjecutar ? "Qué ejecutar" : "Cliente y técnico";
 
   return (
@@ -114,6 +128,9 @@ export function TopbarTablero({
         <span className="hidden md:inline">{etiquetaModo}</span>
       </Button>
 
+      {/* EL LUGAR PROTEGIDO va con lo que dice cómo está el tablero, no con las acciones. */}
+      <IndicadorProtegido lugar={protegido} />
+
       <div className="ml-auto flex items-center gap-2 md:gap-3">
         {/* Las escrituras van a Odoo de a una; este es el único indicador de que algo viaja.
             En celular queda el spinner solo. */}
@@ -131,6 +148,27 @@ export function TopbarTablero({
               NO VA EN EL ENCABEZADO DEL DÍA, que sería el lugar natural: ese ya es agarre
               para desplazar la grilla, botón para abrir el domingo y disparador del popover
               de notas. Un cuarto gesto ahí adentro no entra. */}
+          {/* LA BANDEJA DE JS, con el contador de lo que espera respuesta. En ámbar cuando hay
+              algo: es "mirá esto", igual que el indicador. Sin pedidos queda gris y sigue
+              ahí, porque también sirve para ver lo que ya se resolvió. */}
+          {autorizaciones != null && (
+            <Button
+              variant="outline"
+              size="sm"
+              nativeButton={false}
+              render={<Link href="/planificacion/autorizaciones" />}
+              title={hayPedidos ? `${autorizaciones} pedido${autorizaciones === 1 ? "" : "s"} sobre guardias esperando tu respuesta` : "Pedidos sobre guardias"}
+              style={hayPedidos ? { backgroundColor: AVISO.fondo, borderColor: AVISO.borde, color: AVISO.texto } : undefined}
+            >
+              <KeyRound className="mr-1.5 h-4 w-4" />
+              Autorizaciones
+              {hayPedidos && (
+                <span className="ml-1 rounded-full px-1.5 text-xs font-semibold tabular-nums" style={{ backgroundColor: AVISO.texto, color: AVISO.fondo }}>
+                  {autorizaciones}
+                </span>
+              )}
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={onCorrerDia}>
             <CalendarX2 className="mr-1.5 h-4 w-4" />
             Correr un día
@@ -169,6 +207,12 @@ export function TopbarTablero({
                 <CalendarX2 className="mr-2 h-4 w-4" />
                 Correr un día
               </DropdownMenuItem>
+              {autorizaciones != null && (
+                <DropdownMenuItem render={<Link href="/planificacion/autorizaciones" />}>
+                  <KeyRound className="mr-2 h-4 w-4" />
+                  Autorizaciones{hayPedidos ? ` (${autorizaciones})` : ""}
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem onClick={onActividad}>
                 <History className="mr-2 h-4 w-4" />
                 Actividad

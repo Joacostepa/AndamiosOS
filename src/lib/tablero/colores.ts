@@ -297,6 +297,47 @@ export const APOYO = {
 /** El rayado de la tarjeta de apoyo. Más fino que la tapa (6px y no 8px): la tarjeta mide 24px. */
 export const RAYADO_APOYO = `repeating-linear-gradient(135deg, var(--tb-apoyo-raya) 0 6px, transparent 6px 12px)`;
 
+/**
+ * GUARDIA (guardias-contrato.md §1.6): la jornada que el sistema reserva para lo imprevisto.
+ *
+ * ÁMBAR CLARO RAYADO, NUNCA ROJO. El rojo en este tablero es "algo salió mal" —no
+ * ejecutada, sobreasignada, sin parte— y una guardia es exactamente lo contrario: lugar
+ * guardado a propósito. Si se pintara de rojo, la grilla con dos guardias por semana se
+ * leería como una semana con dos problemas.
+ *
+ * LAS RAYAS SON VERTICALES (90°) y finas, y no por gusto: las de 135° ya son el apoyo y la
+ * tapa de suspendido, y la trama de 45° es la tentativa. Cada textura dice una sola cosa.
+ * Del desarme, que es el otro ámbar claro, la separan la FORMA —rayas, borde lleno, sello
+ * "GUARDIA" y escudo— y no el tono (ver el par "guardia vs celda libre" en el contraste).
+ *
+ * `sello` es el tono fuerte: el rótulo "GUARDIA", el escudo, el chip "de guardia" de la obra
+ * que la usó y el contorno de una celda donde la guardia puede ir mientras se arrastra.
+ */
+export const GUARDIA = {
+  fondo: "var(--tb-guardia-fondo)",
+  raya: "var(--tb-guardia-raya)",
+  borde: "var(--tb-guardia-borde)",
+  texto: "var(--tb-guardia-texto)",
+  sello: "var(--tb-guardia-sello)",
+} as const;
+
+/** El rayado de la guardia: 3px de raya cada 9px, como la maqueta que vio JS. */
+export const RAYADO_GUARDIA = `repeating-linear-gradient(90deg, var(--tb-guardia-raya) 0 3px, transparent 3px 9px)`;
+
+/**
+ * El NAIPE del comodín (§2.3): un desarme que ya puede ir cualquier día. La tarjeta conserva
+ * el color de su tipo —sigue siendo un desarme— y suma el ícono y un chip "comodín · desde
+ * 20/10". El chip va sobre una superficie propia y neutra porque se dibuja encima del ámbar
+ * del desarme, de la tentativa vacía y del fondo de la bandeja, y tiene que leerse igual en
+ * los tres. El vencido ("Esperando hace 8 días hábiles") no usa esto: va en el rojo de
+ * PELIGRO, porque ya es urgente.
+ */
+export const NAIPE = {
+  fondo: "var(--tb-comodin-bg)",
+  borde: "var(--tb-comodin-borde)",
+  texto: "var(--tb-comodin-text)",
+} as const;
+
 /** Recuadro de aviso ámbar (panel de OT, diálogo del candado). */
 export const AVISO = {
   fondo: "var(--tb-aviso-bg)",

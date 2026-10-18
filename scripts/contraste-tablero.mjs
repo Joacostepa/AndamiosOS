@@ -251,6 +251,20 @@ const TEXTO = [
   // El chip "+C3" de la tarjeta principal usa el mismo par.
   ["tarjeta de apoyo", "var(--tb-apoyo-text)", "var(--tb-apoyo-bg)"],
   ["tarjeta de apoyo sobre la raya", "var(--tb-apoyo-text)", "var(--tb-apoyo-raya)"],
+  // Guardia (guardias-contrato.md §1.6): "si no entra nada: Depósito" va sobre el fondo y,
+  // por el rayado, también sobre la raya. El sello "GUARDIA" (11px, mayúsculas) es texto y no
+  // trazo: tiene que llegar a 4,5 sobre los dos. El chip "de guardia" de la obra que la usó
+  // es el mismo par que el sello.
+  ["tarjeta de guardia", "var(--tb-guardia-texto)", "var(--tb-guardia-fondo)"],
+  ["tarjeta de guardia sobre la raya", "var(--tb-guardia-texto)", "var(--tb-guardia-raya)"],
+  ["sello de guardia", "var(--tb-guardia-sello)", "var(--tb-guardia-fondo)"],
+  ["sello de guardia sobre la raya", "var(--tb-guardia-sello)", "var(--tb-guardia-raya)"],
+  // "guardia 1" en el encabezado del día y "+ 1 guardia" en la fila de la cuadrilla, y el
+  // aviso del apoyo sobre una guardia en la ficha: el texto de la guardia sobre la superficie.
+  ["guardia en el encabezado", "var(--tb-guardia-texto)", "var(--card)"],
+  ["guardia sobre el fondo", "var(--tb-guardia-texto)", "var(--background)"],
+  // Chip del comodín (§2.3): superficie propia, así se lee igual sobre cualquier tipo.
+  ["chip de comodín", "var(--tb-comodin-text)", "var(--tb-comodin-bg)"],
   // Rellenos con texto blanco. Son la razón por la que existen los `-solido`.
   ["botón ejecutado", "#ffffff", "var(--tb-ok-solido)"],
   ["badge urgencia alta", "#ffffff", "var(--tb-peligro-solido)"],
@@ -272,6 +286,13 @@ const TRAZO = [
   ["candado", "var(--tb-candado)", "var(--card)"],
   ["borde de la tarjeta de apoyo", "var(--tb-apoyo-borde)", "var(--background)"],
   ["borde de la tarjeta de apoyo sobre su fondo", "var(--tb-apoyo-borde)", "var(--tb-apoyo-bg)"],
+  // El borde de la guardia es lo que la recorta contra una celda vacía: sin él, en claro, el
+  // ámbar pálido casi no se separa del blanco. Y el escudo es un ícono: 3:1.
+  ["borde de la guardia", "var(--tb-guardia-borde)", "var(--card)"],
+  ["escudo de la guardia", "var(--tb-guardia-sello)", "var(--tb-guardia-fondo)"],
+  // Al arrastrar, el contorno punteado de una celda donde la guardia puede ir.
+  ["destino válido al arrastrar", "var(--tb-guardia-sello)", "var(--card)"],
+  ["borde del chip de comodín", "var(--tb-comodin-borde)", "var(--tb-comodin-bg)"],
   // El casco de SyH. El 4.º elemento limita el par a un tema: en claro lo separa del fondo
   // el CONTORNO oscuro, en oscuro el RELLENO amarillo. Los fondos son la tarjeta vacía y
   // los dos tipos de obra, que es donde se dibuja.
@@ -312,6 +333,12 @@ const ESTADO = [
   ["desarme: confirmada vs tentativa", "var(--tb-ambar-bg)", "var(--tb-tentativa)"],
   ["tarea: confirmada vs tentativa", "var(--tb-violeta-bg)", "var(--tb-tentativa)"],
   ["sin tipo: confirmada vs tentativa", "var(--tb-neutro-bg)", "var(--tb-tentativa)"],
+  // Una guardia no puede confundirse con una celda libre: el relleno tiene que separarse de
+  // la superficie, además del borde y el sello. CONTRA EL DESARME NO SE MIDE A PROPÓSITO: los
+  // dos son ámbar claro (ΔE 0,02 en claro) y lo que los separa es la FORMA —rayas verticales,
+  // borde lleno, sello "GUARDIA" y escudo—, que es lo que aprobó JS en la maqueta. Correr el
+  // tono para que dé el número la acercaría al rojo o al verde, que ya dicen otra cosa.
+  ["guardia vs celda libre", "var(--tb-guardia-fondo)", "var(--tb-tentativa)"],
 ];
 
 const VELO = [

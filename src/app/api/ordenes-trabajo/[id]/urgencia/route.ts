@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { exigirPermisoDeApi } from "@/lib/auth/servidor";
 import { marcarUrgencia } from "@/lib/odoo/ordenes";
 import { OdooError, read } from "@/lib/odoo/client";
 import { claveDe, crearAlertas } from "@/lib/alertas/servicio";
@@ -15,6 +16,18 @@ import { claveDe, crearAlertas } from "@/lib/alertas/servicio";
 // NO ESPERA A ODOO PARA RESPONDER: acá sí espera. La escritura es un RPC de ~800 ms y es
 // el resultado que el usuario pidió; devolver "listo" antes de saberlo sería mentir sobre
 // el único gesto de la pantalla. El aviso, en cambio, no puede voltear la marcación.
+//
+// LA SEGUNDA LLAVE (exigirPermisoDeApi: Órdenes de trabajo o Planificación en "editar", la
+// misma regla que el proxy). Antes sólo miraba que hubiera sesión, y la urgencia abre las
+// guardias: una OT alta o media creada en los últimos 3 días hábiles usa una guardia sin
+// pedirle nada a JS (guardias-contrato.md §1.3). Quien sólo mira el tablero (Comercial) no
+// puede volver urgente una obra para que entre en una guardia.
+//
+// EL AVISO VA CON LA SERVICE ROLE, DESPUÉS DE LA LLAVE. La política de `alertas` sólo deja
+// insertar a admin y operativo (get_user_role), así que cuando "Meter urgente" lo tocaba
+// Depósito o Campo —que sí pueden marcar— la OT quedaba urgente y nadie se enteraba (el
+// error se tragaba en el log). Es el mismo criterio que la Hoja del día y Sistemas: quien
+// llama ya está validado, y el contenido del aviso lo arma esta ruta, no el cuerpo.
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +44,9 @@ const schema = z
   });
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const sesion = await exigirPermisoDeApi(req);
+  if (sesion instanceof NextResponse) return sesion;
+
   const otId = Number((await ctx.params).id);
   if (!Number.isInteger(otId) || otId <= 0) {
     return NextResponse.json({ error: "Id inválido" }, { status: 400 });
@@ -43,10 +59,6 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       { status: 400 },
     );
   }
-
-  const db = await createClient();
-  const { data: auth } = await db.auth.getUser();
-  if (!auth.user) return NextResponse.json({ error: "Sin sesión" }, { status: 401 });
 
   const { urgencia, motivo } = parsed.data;
   const texto = motivo?.trim() || null;
@@ -73,7 +85,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
           "x_aba_orden_trabajo", [otId], ["x_name"],
         );
         const titulo = typeof fila?.x_name === "string" && fila.x_name.trim() ? fila.x_name : `OT #${otId}`;
-        await crearAlertas(db, [
+        await crearAlertas(createAdminClient(), [
           {
             tipo: "ot_urgente",
             clave: claveDe("ot_urgente", otId),

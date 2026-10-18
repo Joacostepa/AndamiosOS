@@ -4,7 +4,7 @@ import { randomInt } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
-import { ROLES, accesoDeFila, esAdmin, nivelEn, normalizarPermisos, type Acceso, type ModuloId, type Nivel } from "@/lib/auth/acceso";
+import { ROLES, accesoDeFila, esAdmin, motivoDeRechazoApi, nivelEn, normalizarPermisos, type Acceso, type ModuloId, type Nivel } from "@/lib/auth/acceso";
 
 /** Quién hace el pedido y qué puede. null = sin sesión o sin perfil. */
 export async function accesoActual(): Promise<{ userId: string; acceso: Acceso } | null> {
@@ -48,6 +48,29 @@ export async function exigirModulo(modulos: readonly ModuloId[], nivel: Nivel): 
     return tiene === "editar" || (tiene === "ver" && nivel === "ver");
   });
   if (!ok) return NextResponse.json({ error: nivel === "editar" ? "No tenés permiso para hacer cambios acá." : "No tenés acceso a esto." }, { status: 403 });
+  return sesion;
+}
+
+/**
+ * La segunda llave de las rutas de la API, con la MISMA regla que el proxy: el mapa APIS de
+ * acceso.ts y el método (GET pide "ver", el resto "editar"). Se llama al principio de cada
+ * handler que escribe.
+ *
+ * POR QUÉ, SI EL PROXY YA LO HACE: la auditoría del 08/10 encontró rutas de planificación
+ * que escribían sin mirar quién (handoff.md, "Auditoría UX y técnica"), y el candado de las
+ * guardias (guardias-contrato.md §3) no puede depender de una sola puerta: si mañana alguien
+ * toca el matcher del proxy o mueve una ruta, esto sigue en pie. Y como usa la misma función
+ * que el proxy, las dos puertas no pueden discrepar.
+ *
+ * Devuelve la respuesta de rechazo (401/403, con el motivo en castellano) o quién llama.
+ */
+export async function exigirPermisoDeApi(
+  req: { method: string; nextUrl: { pathname: string } },
+): Promise<{ userId: string; acceso: Acceso } | NextResponse> {
+  const sesion = await accesoActual();
+  if (!sesion) return NextResponse.json({ error: "Tu sesión venció: volvé a iniciar sesión." }, { status: 401 });
+  const motivo = motivoDeRechazoApi(sesion.acceso, req.nextUrl.pathname, req.method);
+  if (motivo) return NextResponse.json({ error: motivo }, { status: 403 });
   return sesion;
 }
 

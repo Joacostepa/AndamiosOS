@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { crearContactoObra, borrarContactoObra } from "@/lib/odoo/asignaciones";
 import { OdooError } from "@/lib/odoo/client";
+import { exigirPermisoDeApi } from "@/lib/auth/servidor";
 
 // Los contactos de una obra.
 //
@@ -17,7 +18,10 @@ import { OdooError } from "@/lib/odoo/client";
 // la solapa "Trabajo a ejecutar" de la venta. Tenerlo en dos bases sin un id que las ate
 // es exactamente el problema que ya tenemos con las cuadrillas.
 //
-// Ruta protegida por sesión (no está en publicPaths del middleware).
+// Ruta protegida por sesión (no está en publicPaths del middleware), y además cada handler
+// arranca con la segunda llave (exigirPermisoDeApi, Planificación en "editar"): escribe en
+// Odoo con la llave del servidor, así que lo único que separa a quien mira de quien escribe
+// es esta validación. Con el proxy solo, la ruta dependía de una sola puerta.
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +49,8 @@ function invalido(issues: z.ZodIssue[]) {
 }
 
 export async function POST(req: NextRequest) {
+  const sesion = await exigirPermisoDeApi(req);
+  if (sesion instanceof NextResponse) return sesion;
   const body = await req.json().catch(() => null);
   const parsed = crearSchema.safeParse(body);
   if (!parsed.success) return invalido(parsed.error.issues);
@@ -57,6 +63,8 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  const sesion = await exigirPermisoDeApi(req);
+  if (sesion instanceof NextResponse) return sesion;
   const body = await req.json().catch(() => null);
   const parsed = borrarSchema.safeParse(body);
   if (!parsed.success) return invalido(parsed.error.issues);

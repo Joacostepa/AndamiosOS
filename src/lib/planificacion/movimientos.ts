@@ -164,11 +164,13 @@ export async function registrarMovimiento(
 export async function registrarCorrimiento(
   db: DB,
   registros: RegistroCorrida[],
-  opts: { motivo: string; deshaceA?: Map<number, string>; apoyos?: RegistroApoyoCorrida[] },
+  opts: { motivo: string; deshaceA?: Map<number, string>; apoyos?: RegistroApoyoCorrida[]; loteId?: string },
 ): Promise<{ loteId: string; porOt: Map<number, string> } | null> {
   const apoyos = opts.apoyos ?? [];
   if (registros.length === 0 && apoyos.length === 0) return null;
-  const loteId = crypto.randomUUID();
+  // El lote puede venir de la ruta (el corrimiento lo genera antes, para que la marca del día
+  // y las guardias que consume lo tengan aunque este registro falle).
+  const loteId = opts.loteId ?? crypto.randomUUID();
   const comun = { lote_id: loteId, motivo: opts.motivo };
 
   try {

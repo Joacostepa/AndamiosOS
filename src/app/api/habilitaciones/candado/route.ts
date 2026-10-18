@@ -5,7 +5,8 @@ import { friccionDelTablero } from "@/lib/habilitaciones/derivacion";
 import {
   contarConsultas, hayConsultaReciente, registrarGestion,
 } from "@/lib/habilitaciones/servicio";
-import { errorResponse, invalido, sesion } from "../_comun";
+import { exigirPermisoDeApi } from "@/lib/auth/servidor";
+import { db as clienteDeSesion, errorResponse, invalido } from "../_comun";
 import type { Friccion } from "@/lib/habilitaciones/derivacion";
 
 // El candado del tablero.
@@ -26,6 +27,14 @@ import type { Friccion } from "@/lib/habilitaciones/derivacion";
 // entera: sin mirar qué hace cada OT, el desarme heredaba el freno del armado y
 // Operaciones tenía que escribir un motivo para sacar de la calle un andamio que ya
 // estaba puesto. Por eso se lee el tipo de OT junto con el permiso.
+//
+// LO USA QUIEN PLANIFICA, NO SÓLO HABILITACIONES. En APIS (acceso.ts) este prefijo admite
+// Habilitaciones o Planificación: Depósito y Campo planifican sin el módulo de
+// habilitaciones, recibían 403 y el tablero confirmaba sin fricción (el candado fallaba
+// abierto; auditoría del 08/10, guardias-contrato.md §3). Sigue con la sesión y no con la
+// service role: la RLS de hab_gestiones deja leer e insertar a cualquier autenticado (es
+// append-only: sin UPDATE ni DELETE), así que Depósito y Campo ya pasan y no hace falta la
+// llave maestra. Lo que separa a quien mira de quien registra es la segunda llave del POST.
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +46,8 @@ export async function GET(req: NextRequest) {
   if (otIds.length === 0) return NextResponse.json({ fricciones: [] });
 
   try {
-    const { db } = await sesion();
+    // Sin auth.getUser(): la lectura no tiene autor y la RLS la aplica Postgres con el JWT.
+    const db = await clienteDeSesion();
     const permisos = await permisosDeOts(otIds);
 
     const fricciones: FriccionDeOt[] = await Promise.all(
@@ -67,6 +77,10 @@ const schema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  // Segunda llave: Habilitaciones o Planificación en "editar" (la misma regla que el proxy).
+  // El autor de la gestión sale de acá, sin volver a preguntarle a Supabase quién es.
+  const llave = await exigirPermisoDeApi(req);
+  if (llave instanceof NextResponse) return llave;
   const parsed = schema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return invalido(parsed.error.issues.map((i) => i.message).join(" · "));
 
@@ -79,7 +93,8 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { db, userId } = await sesion();
+    const db = await clienteDeSesion();
+    const userId = llave.userId;
 
     if (tipo === "consulta") {
       // DEDUPLICADO: un bloque de 4 jornadas confirmadas no puede dejar 4 pedidos

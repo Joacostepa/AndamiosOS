@@ -1,4 +1,4 @@
-# Handoff — Tablero de planificación (actualizado 2026-10-17)
+# Handoff — Tablero de planificación (actualizado 2026-10-18)
 
 Para retomar en una sesión nueva: "Leé docs/tablero-planificacion/handoff.md y seguimos con las
 mejoras del tablero". Acá van el estado, lo pendiente y las mejoras pedidas, la más nueva arriba.
@@ -15,27 +15,66 @@ cosas, así que ante la duda manda el código y los comentarios largos que tiene
 
 1. **Ver la tapa de suspensión andando con un corrimiento real.** La del 29/09 JS ya la vio
    (02/10) y pidió más color: se cambió a la opción B, que falta mirar en el tablero publicado.
-2. **Lo que dejó la auditoría del 08/10** (detalle abajo, en "Auditoría UX y técnica"). Lo más
-   urgente: el candado que falla abierto para Depósito y Campo, y la RLS abierta.
+2. **Lo que dejó la auditoría del 08/10** (detalle abajo, en "Auditoría UX y técnica"). El
+   candado que fallaba abierto para Depósito y Campo, la RLS abierta y el PATCH sin permisos
+   quedan cerrados con las guardias (punto 4) cuando se despliegue.
 3. **Probar la cuadrilla de apoyo en producción** (17/10, ver abajo): sumar un apoyo desde la
    ficha, ver la tarjeta rayada y el chip "+C3", cerrar el parte con el tilde "fue" y mirar la
    Hoja del día del apoyo. Después, cargar la cuadrilla en los 19 partes viejos y correr el
    script por segunda vez.
-
-4. **Guardias (18/10, en propuesta):** reservar jornadas de las cuadrillas propias para lo
-   imprevisto, y rellenarlas el día anterior si nadie las usó. Propuesta del panel de expertos en
-   [guardias.md](guardias.md) y datos en [guardias-datos.md](guardias-datos.md). Esperan las
-   decisiones de JS (sección 10) antes de construir la etapa 1. Maqueta para Comercial y
-   Operaciones: https://claude.ai/artifact/3Nwweo3NvHnj8fxAtsLNDN (copia en
-   [maqueta-guardias.html](maqueta-guardias.html)). **Segunda ronda, el mismo día:** JS pidió
-   guardias automáticas desde el principio y "comodines" (OTs sin urgencia para rellenar las
-   guardias que no se usan); propuesta en [comodines.md](comodines.md) (decisiones en la
-   sección 11), que modifica guardias.md y la maqueta.
+4. **Guardias y comodines (18/10): construido e integrado en `feat/guardias`; falta aplicar las
+   dos migraciones (en orden), desplegar y correr el arranque.** Todo en
+   [guardias-handoff.md](guardias-handoff.md) (ver la entrada del 18/10 abajo). Manda
+   [guardias-contrato.md](guardias-contrato.md); la historia de la propuesta está en
+   [guardias.md](guardias.md), [guardias-datos.md](guardias-datos.md) y
+   [comodines.md](comodines.md), y la maqueta en [maqueta-guardias.html](maqueta-guardias.html)
+   (https://claude.ai/artifact/3Nwweo3NvHnj8fxAtsLNDN).
 
 **Cerrado el 17/10 (JS lo dio por terminado):** la ficha nueva de la OT y la bandeja nueva
 (09/10), la tarjeta y el encabezado nuevos de la grilla (09/10) y el casco de SyH (13–14/10).
 
 ---
+
+## 18/10 — guardias y comodines
+
+**Qué es:** el sistema reserva 2 jornadas por semana de las cuadrillas propias para lo
+imprevisto (la guardia), y los desarmes que ya pueden ir cualquier día (comodines) la rellenan
+si nadie la usó. Contrato (manda): [guardias-contrato.md](guardias-contrato.md); plan técnico:
+[guardias-plan-tecnico.md](guardias-plan-tecnico.md); **handoff propio, con el mapa de archivos,
+cómo correr la corrida a mano y los cuidados: [guardias-handoff.md](guardias-handoff.md).**
+
+**Cómo quedó, en corto:**
+- La guardia es una fila de `tablero_tareas` con `tipo = 'guardia'` (migración
+  `20261018100001_guardias.sql`): activa viaja al tablero como una tarea "Guardia" y ocupa la
+  celda; usada, rellenada o sacada queda en la historia (`plan_guardia_eventos`).
+- La corrida del viernes (13 UTC) pone 2 por semana para las semanas +1 y +2: martes y jueves,
+  repuestos mié/lun y mié/vie, una por cuadrilla, rotando; nunca mueve una obra. La de las 13 h
+  (lun–sáb) cierra las pasadas como depósito, avisa las libres de mañana con candidatos y los
+  comodines vencidos.
+- El candado vale en el servidor: asignaciones, tareas, jornadas y el editor contestan 409
+  `RechazoCandado` sobre una guardia activa; sólo `/api/planificacion/guardias/usar` la
+  reemplaza, en un lote deshacible. El corrimiento la consume ("usada · lluvia") y el deshacer la
+  reactiva. Sacarla, una obra común, un comodín antes de las 13 h o una urgencia vieja: pedido a
+  JS (`planificacion-autoriza`), que aprueba o rechaza desde `/planificacion/autorizaciones`.
+- **La Hoja del día no se tocó** (decisión de JS del 18/10): no muestra tareas del tablero, así
+  que el capataz no recibe nada de las guardias. Un test cuida que nunca diga "guardia".
+- Seguridad de paso: segunda llave (`exigirPermisoDeApi`) en todas las rutas de planificación
+  que escriben, RLS cerrada para escribir `tablero_tareas` y las `plan_*`
+  (`20261018100002_tablero_rls.sql`), y el candado de habilitaciones que ya no falla abierto.
+
+**Integración (18/10, a la noche):** se juntaron los tres tracks. Los pedidos de JS traen el
+nombre de la cuadrilla (la bandeja ya no lee el tablero entero para decir "C3"); deshacer el uso
+de una guardia queda en el historial (`plan_movimientos`, con `deshace_a`); el aviso de las 13 h
+del sábado dice "Lun 20/10: guardia C3 libre" y no "Mañana"; "Autorizar guardias" tiene su
+leyenda propia en Usuarios y su nombre en los reportes de Sistemas; `.env.example` suma
+`SLACK_WEBHOOK_PLANIFICACION`. Verificado: `tsc`, `eslint` sobre lo tocado, `npm test`,
+`npm run contraste` y `next build`. **No se probó con sesión ni contra la base**: las
+migraciones no se ensayaron (falta `SUPABASE_DB_URL`).
+
+**Falta:** ensayar y aplicar las dos migraciones (en orden), desplegar, correr el arranque
+(`/api/cron/guardias-viernes?hoy=2026-10-23`, cubre el 26/10 y el 02/11), cargar
+`SLACK_WEBHOOK_PLANIFICACION` si se quiere el canal, y probar con sesión: usar una guardia con
+una urgencia, deshacer, correrla, pedir y aprobar, correr un día con lluvia sobre una guardia.
 
 ## 17/10 — el teléfono de los contactos de obra, a la vista
 
@@ -397,8 +436,8 @@ el motivo.
 - **Datos:** las asignaciones viven en **Odoo** (`x_aba_asignacion`, cuadrillas `x_aba_cuadrilla`)
   y se leen por `/api/planificacion/tablero` (`use-tablero.ts`, optimista). En **Supabase** viven
   lo que nadie lee desde el ERP: historial de movimientos (`plan_movimientos`, con `lote_id` y
-  `motivo` para los corrimientos), notas del día (`plan_notas_dia`) y días suspendidos
-  (`plan_suspensiones`).
+  `motivo` para los corrimientos y los usos de guardias), notas del día (`plan_notas_dia`), días
+  suspendidos (`plan_suspensiones`), tareas de Operaciones y guardias (`tablero_tareas`).
 - **Correr el día:** cálculo en `src/lib/tablero/corrimiento.ts` (`planearCorrimiento`, la misma
   función para el preview y para ejecutar), diálogo `dialogo-correr-dia.tsx`, ruta
   `/api/planificacion/corrimiento`. Deshacer = corrimiento inverso con `deshace_a`.
@@ -406,6 +445,14 @@ el motivo.
   `agruparApoyos`, `apoyosDe`, `planDeApoyos`…) y `src/lib/partes/apoyos.ts`; ficha
   `apoyo-ot.tsx`; el cierre de los apoyos con el parte de la principal en `cerrarJornada`
   (`src/lib/odoo/partes.ts`). El avance de una obra cuenta días distintos sin apoyos.
+- **Guardias y comodines:** reglas puras en `src/lib/tablero/guardias.ts`, `comodines.ts` y
+  `dias-habiles.ts` (tipos en `guardias-tipos.ts`); servidor en `src/lib/planificacion/guardias.ts`
+  y `candado-guardias.ts`; rutas `/api/planificacion/guardias/**` y los crons
+  `/api/cron/guardias-viernes` y `/api/cron/guardias-relleno`; pantalla en `tarjeta-guardia.tsx`,
+  `ficha-guardia.tsx`, `bandeja-autorizaciones.tsx`, `indicador-protegido.tsx`,
+  `grupo-comodines.tsx` y `use-guardias.ts`. La guardia vive en `tablero_tareas` (tipo
+  `guardia`); su historia en `plan_guardia_eventos` y los pedidos a JS en
+  `plan_guardia_solicitudes`. Detalle en [guardias-handoff.md](guardias-handoff.md).
 - **En vivo:** `use-avisos-tablero.ts` escucha los cambios de los demás e invalida las queries.
 - **Colores:** todo sale de `src/lib/tablero/colores.ts` (tokens `--tb-*` en `globals.css`, claro y
   oscuro). `npm run contraste` controla el contraste del tablero.

@@ -256,6 +256,23 @@
   --tb-apoyo-raya: #e2ded3;
   --tb-apoyo-borde: #7d786b;
   --tb-apoyo-text: #3f3b33;
+  /* GUARDIA (docs/tablero-planificacion/guardias-contrato.md §1.6): la jornada que el sistema
+     reserva para lo imprevisto. ÁMBAR CLARO RAYADO, NUNCA ROJO: el rojo es "algo salió mal" y
+     una guardia es lo contrario, lugar guardado a propósito. Es el ámbar del recuadro de aviso
+     (--tb-aviso-*) con rayas verticales finas: las de 135° ya son el apoyo y el suspendido, y
+     la trama de 45° es la tentativa. El sello "GUARDIA" y el escudo van en el tono más fuerte
+     (--tb-guardia-sello), que también es el del chip "de guardia" en la obra que la usó. */
+  --tb-guardia-fondo: #fef6e7;
+  --tb-guardia-raya: #f8e6c2;
+  --tb-guardia-borde: #b97a1f;
+  --tb-guardia-texto: #7a4405;
+  --tb-guardia-sello: #9a3c06;
+  /* COMODÍN (guardias-contrato.md §2.3): la tarjeta conserva el color de su tipo y suma un
+     chip "comodín · desde 20/10". El chip va en una superficie propia, neutra, porque tiene
+     que leerse igual sobre el azul del armado, el ámbar del desarme y la tentativa vacía. */
+  --tb-comodin-bg: #ffffff;
+  --tb-comodin-borde: #6b7a8d;
+  --tb-comodin-text: #2e3a47;
   --tb-inactivo: #8a8880;
   /* ── Hoja del día ──────────────────────────────────────────────────────────
    * El coral de los BOTONES es más oscuro que --primary: blanco sobre oklch(0.62 0.16 42)
@@ -427,6 +444,17 @@
   --tb-apoyo-raya: #33312c;
   --tb-apoyo-borde: #8f8a7e;
   --tb-apoyo-text: #ddd8cc;
+  /* La guardia en oscuro: el mismo hue que el aviso, como tinte sobre la superficie, y el
+     texto claro. Las rayas suben apenas de luminancia: se tienen que ver como textura, no
+     competir con el sello. */
+  --tb-guardia-fondo: oklch(0.24 0.03 70);
+  --tb-guardia-raya: oklch(0.29 0.045 70);
+  --tb-guardia-borde: oklch(0.62 0.1 70);
+  --tb-guardia-texto: oklch(0.87 0.07 75);
+  --tb-guardia-sello: oklch(0.82 0.13 65);
+  --tb-comodin-bg: oklch(0.2 0 0);
+  --tb-comodin-borde: oklch(0.7 0.03 245);
+  --tb-comodin-text: oklch(0.86 0.02 245);
   --tb-inactivo: oklch(0.62 0 0);
   --hd-card2: oklch(0.17 0 0);
   --hd-rojo: oklch(0.72 0.17 28);

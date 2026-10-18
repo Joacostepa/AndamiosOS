@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { exigirPermisoDeApi } from "@/lib/auth/servidor";
 import {
   ConflictoDeNota,
   actualizarPendiente,
@@ -22,6 +23,11 @@ import {
 // con la sesión del usuario y no con la service role — las políticas de RLS deciden
 // quién escribe, y el autor sale de la sesión y no del body, para que no se pueda
 // firmar a nombre de otro.
+//
+// Cada handler que escribe arranca con la segunda llave (exigirPermisoDeApi: la misma
+// regla que el proxy, planificación en "editar"). La RLS de 20261018100002 pide lo mismo
+// (o la Hoja del día, que tilda pendientes al pasarlos a pedido), así que las dos puertas
+// coinciden y el autor sale de la llave, sin preguntarle a Supabase dos veces quién es.
 
 export const dynamic = "force-dynamic";
 
@@ -53,17 +59,18 @@ const notaSchema = z.object({
 });
 
 export async function PUT(req: NextRequest) {
+  const sesion = await exigirPermisoDeApi(req);
+  if (sesion instanceof NextResponse) return sesion;
   const parsed = notaSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return invalido(parsed.error.issues.map((i) => i.message).join(" · "));
 
   try {
     const db = await createClient();
-    const { data } = await db.auth.getUser();
     const nota = await guardarNota(
       db,
       parsed.data.texto,
       parsed.data.updatedAt,
-      data.user?.id ?? null,
+      sesion.userId,
     );
     return NextResponse.json({ nota });
   } catch (e) {
@@ -82,13 +89,14 @@ const crearSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const sesion = await exigirPermisoDeApi(req);
+  if (sesion instanceof NextResponse) return sesion;
   const parsed = crearSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return invalido(parsed.error.issues.map((i) => i.message).join(" · "));
 
   try {
     const db = await createClient();
-    const { data } = await db.auth.getUser();
-    const pendiente = await agregarPendiente(db, parsed.data.texto, data.user?.id ?? null);
+    const pendiente = await agregarPendiente(db, parsed.data.texto, sesion.userId);
     return NextResponse.json({ pendiente });
   } catch (e) {
     return errorResponse(e);
@@ -106,6 +114,8 @@ const cambiarSchema = z
   });
 
 export async function PATCH(req: NextRequest) {
+  const sesion = await exigirPermisoDeApi(req);
+  if (sesion instanceof NextResponse) return sesion;
   const parsed = cambiarSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return invalido(parsed.error.issues.map((i) => i.message).join(" · "));
 
@@ -122,6 +132,8 @@ export async function PATCH(req: NextRequest) {
 const borrarSchema = z.object({ pendienteId: z.string().uuid() });
 
 export async function DELETE(req: NextRequest) {
+  const sesion = await exigirPermisoDeApi(req);
+  if (sesion instanceof NextResponse) return sesion;
   const parsed = borrarSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return invalido("Pendiente inválido");
 

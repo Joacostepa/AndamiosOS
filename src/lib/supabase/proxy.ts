@@ -61,6 +61,11 @@ export async function updateSession(request: NextRequest) {
   // /api/cron/direccion: el snapshot nocturno de Dirección (04:30, después del cron de USD de
   //   Odoo). Ruta completa y protegida por CRON_SECRET, falla cerrado, como los otros crons:
   //   el resto de /api/direccion se lee CON sesión y por permisos.
+  // /api/cron/guardias-viernes y /api/cron/guardias-relleno: las corridas de las guardias del
+  //   tablero (viernes 10 h: pone las de las dos semanas siguientes; lun–sáb 13 h: cierra las
+  //   pasadas como depósito, avisa las libres de mañana y los comodines vencidos). Rutas
+  //   completas y protegidas por CRON_SECRET, falla cerrado: el resto de /api/planificacion
+  //   se usa CON sesión y por permisos (el candado de las guardias vive ahí).
   // /cotizador y /api/public: cotizador hogareño para clientes finales (sin cuenta).
   // /endosos: portal del productor de seguros (Segucom) para subir pólizas. Lo protege el
   //   token de la URL, que valida /api/public/endosos; la página sola no muestra nada.
@@ -90,6 +95,8 @@ export async function updateSession(request: NextRequest) {
     "/api/permisos-via-publica/latido",
     "/api/cron/personal-odoo",
     "/api/cron/direccion",
+    "/api/cron/guardias-viernes",
+    "/api/cron/guardias-relleno",
     "/api/operaciones/geocodificar",
     "/cotizador",
     "/api/public",

@@ -145,3 +145,99 @@ test("Explícitos: «Pedíselo a un socio» sólo para Socios", async () => {
   assert.match(motivoRechazoExplicitos(adminSin, ["direccion-socios"], () => true) ?? "", /Pedíselo a un socio\./);
   assert.equal(motivoRechazoExplicitos(persona("operativo", { sistemas: "editar" }), ["sistemas"], () => true), null);
 });
+
+// ── Guardias (guardias-contrato.md §1.3 y §3) ────────────────────────────────────────────
+// "Solo JS" es el módulo explícito `planificacion-autoriza`: el admin NO lo trae solo. Los
+// perfiles salen de PERFILES (no a mano) para que, si cambia el CIRCUITO, el test lo vea.
+
+const perfil = async (rol: Acceso["rol"]) => {
+  const { PERFILES } = await import("./acceso.ts");
+  return persona(rol, PERFILES.find((p) => p.rol === rol)!.permisos);
+};
+
+test("Guardias: el admin sin el módulo no saca guardias ni responde pedidos", () => {
+  const admin = persona("admin");
+  assert.equal(nivelEn(admin, "planificacion-autoriza"), null);
+  assert.match(motivoDeRechazoApi(admin, "/api/planificacion/guardias/sacar", "POST") ?? "", /No tenés acceso a Planificación · Autorizar guardias/);
+  assert.match(motivoDeRechazoApi(admin, "/api/planificacion/guardias/autorizar", "POST") ?? "", /No tenés acceso/);
+  // Usar una guardia y pedir autorización, sí (es Planificación, que el admin trae).
+  assert.equal(motivoDeRechazoApi(admin, "/api/planificacion/guardias/usar", "POST"), null);
+  assert.equal(motivoDeRechazoApi(admin, "/api/planificacion/guardias/solicitudes", "POST"), null);
+});
+
+test("Guardias: JS (admin con planificacion-autoriza en editar) saca y autoriza", () => {
+  const js = persona("admin", { "planificacion-autoriza": "editar" });
+  assert.equal(motivoDeRechazoApi(js, "/api/planificacion/guardias/sacar", "POST"), null);
+  assert.equal(motivoDeRechazoApi(js, "/api/planificacion/guardias/autorizar", "POST"), null);
+  assert.equal(motivoDeRechazoApi(js, "/api/planificacion/guardias/usar", "POST"), null);
+  assert.equal(puedeAbrir(js, "/planificacion/autorizaciones"), true);
+  // En «ver» abre la bandeja pero no responde: responder es escribir.
+  const mira = persona("admin", { "planificacion-autoriza": "ver" });
+  assert.match(motivoDeRechazoApi(mira, "/api/planificacion/guardias/autorizar", "POST") ?? "", /sólo lectura/);
+});
+
+test("Guardias: Oficina usa la guardia y pide autorización, pero no la saca", async () => {
+  const oficina = await perfil("operativo");
+  assert.equal(motivoDeRechazoApi(oficina, "/api/planificacion/guardias/usar", "POST"), null);
+  assert.equal(motivoDeRechazoApi(oficina, "/api/planificacion/guardias/mover", "POST"), null);
+  assert.equal(motivoDeRechazoApi(oficina, "/api/planificacion/guardias/solicitudes", "POST"), null);
+  assert.equal(motivoDeRechazoApi(oficina, "/api/planificacion/guardias", "GET"), null);
+  assert.match(motivoDeRechazoApi(oficina, "/api/planificacion/guardias/sacar", "POST") ?? "", /No tenés acceso/);
+  assert.match(motivoDeRechazoApi(oficina, "/api/planificacion/guardias/autorizar", "POST") ?? "", /No tenés acceso/);
+  assert.equal(puedeAbrir(oficina, "/planificacion/autorizaciones"), false);
+});
+
+test("Guardias: Comercial (planificación en ver) mira las guardias pero no las usa", async () => {
+  const comercial = await perfil("comercial");
+  assert.equal(motivoDeRechazoApi(comercial, "/api/planificacion/guardias", "GET"), null);
+  assert.match(motivoDeRechazoApi(comercial, "/api/planificacion/guardias/usar", "POST") ?? "", /sólo lectura/);
+  assert.match(motivoDeRechazoApi(comercial, "/api/planificacion/guardias/solicitudes", "POST") ?? "", /sólo lectura/);
+  // "Meter urgente" abre una guardia (urgencia que cumple): quien sólo mira no la marca.
+  assert.ok(motivoDeRechazoApi(comercial, "/api/ordenes-trabajo/123/urgencia", "POST"));
+});
+
+test("Guardias: el admin no abre /planificacion/autorizaciones sin el módulo (gana la ruta más larga)", () => {
+  assert.equal(moduloDeRuta("/planificacion/autorizaciones")?.id, "planificacion-autoriza");
+  assert.equal(moduloDeRuta("/planificacion")?.id, "planificacion");
+  const admin = persona("admin");
+  assert.equal(puedeAbrir(admin, "/planificacion"), true);
+  assert.equal(puedeAbrir(admin, "/planificacion/autorizaciones"), false);
+});
+
+test("Guardias: sólo quien ya tiene el permiso de JS lo da o lo saca", async () => {
+  const { explicitosCambiados, motivoRechazoExplicitos } = await import("./acceso.ts");
+  const dar = explicitosCambiados({}, { "planificacion-autoriza": "editar" });
+  assert.deepEqual(dar, ["planificacion-autoriza"]);
+  assert.match(motivoRechazoExplicitos(persona("admin"), dar, () => true) ?? "", /Pedíselo a quien ya lo tenga/);
+  assert.equal(motivoRechazoExplicitos(persona("admin", { "planificacion-autoriza": "editar" }), dar, () => true), null);
+});
+
+test("Candado de habilitaciones: Depósito y Campo leen la fricción y registran la consulta", async () => {
+  for (const rol of ["deposito", "campo"] as const) {
+    const p = await perfil(rol);
+    assert.equal(nivelEn(p, "habilitaciones"), null);
+    assert.equal(motivoDeRechazoApi(p, "/api/habilitaciones/candado", "GET"), null);
+    assert.equal(motivoDeRechazoApi(p, "/api/habilitaciones/candado", "POST"), null);
+    // El resto del módulo de habilitaciones sigue cerrado para ellos.
+    assert.ok(motivoDeRechazoApi(p, "/api/habilitaciones/bandeja", "GET"));
+    assert.ok(motivoDeRechazoApi(p, "/api/habilitaciones/123/notas", "POST"));
+  }
+  // Comercial lee la fricción (ver) pero no registra nada.
+  const comercial = await perfil("comercial");
+  assert.equal(motivoDeRechazoApi(comercial, "/api/habilitaciones/candado", "GET"), null);
+  assert.match(motivoDeRechazoApi(comercial, "/api/habilitaciones/candado", "POST") ?? "", /sólo lectura/);
+});
+
+test("Segunda llave: las rutas de planificación que escriben piden editar", async () => {
+  const comercial = await perfil("comercial");
+  const campo = await perfil("campo");
+  for (const ruta of ["cajon", "notas", "jornadas-plan", "suspensiones", "contactos-obra", "partes"]) {
+    assert.match(motivoDeRechazoApi(comercial, `/api/planificacion/${ruta}`, "POST") ?? "", /sólo lectura/, ruta);
+    assert.equal(motivoDeRechazoApi(campo, `/api/planificacion/${ruta}`, "POST"), null, ruta);
+  }
+  // Partes sin Planificación: notas y partes sí (APIS), el cajón no.
+  const soloPartes = persona("campo", { partes: "editar" });
+  assert.equal(motivoDeRechazoApi(soloPartes, "/api/planificacion/notas", "POST"), null);
+  assert.equal(motivoDeRechazoApi(soloPartes, "/api/planificacion/partes", "PATCH"), null);
+  assert.ok(motivoDeRechazoApi(soloPartes, "/api/planificacion/cajon", "PUT"));
+});

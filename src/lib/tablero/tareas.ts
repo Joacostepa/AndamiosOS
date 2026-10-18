@@ -8,6 +8,18 @@
 // propio. Una tarea entra al tablero como una asignación más y desde ahí para arriba
 // nadie distingue de qué base salió — la capacidad de la celda y el armado de bloques
 // funcionan sin enterarse. Ver el comentario de la migración.
+//
+// LAS GUARDIAS VIVEN EN ESTA MISMA TABLA (tipo 'guardia', migración 20261018100001), pero
+// al tablero sólo llegan dos de sus estados (guardias-plan-tecnico.md §2):
+//   · ACTIVA: como una tarea "Guardia" que ocupa la celda. Así cuenta en la capacidad, en el
+//     riel, en "N de 6 j", frena el corrimiento y la ve el asistente, sin que nadie tenga que
+//     enterarse de que existe.
+//   · RELLENADA CON DEPÓSITO (nadie la usó y el día pasó): como la tarea "Depósito" que fue,
+//     con `deGuardia` y hecha. Es lo que se hizo ese día.
+// Usada, sacada o rellenada con un comodín NO viajan: en la celda está la obra que la usó (o
+// nada), y su historia se lee aparte (GET /api/planificacion/guardias). Las escrituras de
+// abajo no las tocan: la RLS no deja escribir una guardia con la sesión, y las rutas
+// rechazan antes con un mensaje claro.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AsignacionTablero, CambioTarea, NuevaTarea } from "@/lib/tablero/tipos";
@@ -16,7 +28,15 @@ type DB = SupabaseClient;
 
 const TABLA = "tablero_tareas";
 
-const COLUMNAS = "id, grupo_id, titulo, tipo, notas, cuadrilla_odoo_id, fecha, fraccion, orden_dia, hecha";
+const COLUMNAS =
+  "id, grupo_id, titulo, tipo, notas, cuadrilla_odoo_id, fecha, fraccion, orden_dia, hecha, guardia_estado, guardia_uso";
+
+/**
+ * Las tareas comunes, las guardias activas y las rellenadas con depósito (ver arriba). En
+ * sintaxis de PostgREST: `or` de tres condiciones, la última un `and`.
+ */
+const FILTRO_VISIBLES =
+  "tipo.neq.guardia,guardia_estado.eq.activa,and(guardia_estado.eq.rellenada,guardia_uso.eq.deposito)";
 
 type Fila = {
   id: number;
@@ -29,7 +49,22 @@ type Fila = {
   fraccion: number | string;
   orden_dia: number;
   hecha: boolean;
+  guardia_estado?: string | null;
+  guardia_uso?: string | null;
 };
+
+/** Cómo viaja cada fila según sea tarea, guardia activa o guardia que terminó en depósito. */
+function datosTarea(f: Fila): NonNullable<AsignacionTablero["tarea"]> {
+  if (f.tipo === "guardia") {
+    // Cada guardia es su propia tarjeta: su grupo es su id. (El grupo_id guardado es un
+    // número interno que sólo existe para cumplir el NOT NULL y el UNIQUE de la tabla.)
+    if (f.guardia_estado === "activa") {
+      return { grupoId: f.id, titulo: "Guardia", tipo: "guardia", hecha: false };
+    }
+    return { grupoId: f.id, titulo: "Depósito", tipo: "deposito", hecha: true, deGuardia: true };
+  }
+  return { grupoId: f.grupo_id, titulo: f.titulo, tipo: f.tipo, hecha: f.hecha };
+}
 
 function mapear(f: Fila): AsignacionTablero {
   const fraccion = Number(f.fraccion);
@@ -39,12 +74,7 @@ function mapear(f: Fila): AsignacionTablero {
     // Sin OT detrás. Es 0 y no null para no obligar a cada consumidor a manejar el nulo:
     // lo que dice que no hay obra es `origen`, no este número.
     otId: 0,
-    tarea: {
-      grupoId: f.grupo_id,
-      titulo: f.titulo,
-      tipo: f.tipo,
-      hecha: f.hecha,
-    },
+    tarea: datosTarea(f),
     fecha: f.fecha,
     cuadrillaId: f.cuadrilla_odoo_id,
     fraccion: Number.isFinite(fraccion) && fraccion > 0 ? fraccion : 1,
@@ -66,7 +96,10 @@ function mapear(f: Fila): AsignacionTablero {
   };
 }
 
-/** Las tareas del rango que dibuja el tablero, ya con forma de asignación. */
+/**
+ * Las tareas del rango que dibuja el tablero, ya con forma de asignación. Incluye las
+ * guardias activas y las que terminaron en depósito (ver el comentario de arriba).
+ */
 export async function tareasEnRango(
   db: DB,
   desde: string,
@@ -75,6 +108,7 @@ export async function tareasEnRango(
   const { data, error } = await db
     .from(TABLA)
     .select(COLUMNAS)
+    .or(FILTRO_VISIBLES)
     .gte("fecha", desde)
     .lte("fecha", hasta)
     .order("fecha")

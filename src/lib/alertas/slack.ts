@@ -20,7 +20,7 @@
 import type { NuevaAlerta, TipoAlerta } from "./servicio";
 
 /** Los canales reales del workspace. Un Incoming Webhook está atado a UN canal. */
-type Canal = "syh" | "logistica" | "permisos" | "panol" | "sistemas";
+type Canal = "syh" | "logistica" | "permisos" | "panol" | "sistemas" | "planificacion";
 
 const NOMBRE_CANAL: Record<Canal, string> = {
   syh: "#syh-documentacion-de-obra",
@@ -28,6 +28,7 @@ const NOMBRE_CANAL: Record<Canal, string> = {
   permisos: "#permisos-de-andamio-",
   panol: "#pañol",
   sistemas: "#sistemas",
+  planificacion: "#planificacion",
 };
 
 /**
@@ -76,6 +77,16 @@ const DESTINOS: Record<TipoAlerta, Canal[]> = {
   sistemas_reporte: [],
   sistemas_novedad: [],
   sistemas_respuesta: [],
+  // Guardias (guardias-contrato.md §1.2 y §1.3): al canal sólo lo que Planificación y JS
+  // tienen que ver aunque no estén en la app —qué puso la corrida del viernes y un pedido que
+  // espera a JS—. El relleno de las 13 h, la respuesta de JS y el comodín vencido son de la
+  // campanita: son de una persona o se miran en el tablero.
+  guardia_puesta: ["planificacion"],
+  guardia_solicitud: ["planificacion"],
+  guardia_relleno: [],
+  guardia_respuesta: [],
+  comodin_vencido: [],
+  guardia_problema: [],
 };
 
 /**
@@ -283,6 +294,56 @@ const ESTILO: Record<
     destacado: false,
     prefijos: [],
   },
+  // Guardias. Ámbar como la tarjeta del tablero, nunca rojo: una guardia es lugar guardado,
+  // no un problema. El único destacado es el pedido a JS, que espera una respuesta.
+  guardia_puesta: {
+    color: "#d97706",
+    emoji: "🛡️",
+    rotulo: "Guardias de la semana",
+    plural: "avisos de guardias",
+    destacado: false,
+    prefijos: [],
+  },
+  guardia_relleno: {
+    color: "#d97706",
+    emoji: "🛡️",
+    rotulo: "Guardia libre mañana",
+    plural: "guardias libres mañana",
+    destacado: false,
+    prefijos: [],
+  },
+  guardia_solicitud: {
+    color: "#d97706",
+    emoji: "✋",
+    rotulo: "Pedido de autorización",
+    plural: "pedidos de autorización",
+    destacado: true,
+    prefijos: ["Pedido de autorización:"],
+  },
+  guardia_respuesta: {
+    color: "#2563eb",
+    emoji: "💬",
+    rotulo: "Respuesta de JS",
+    plural: "respuestas de JS",
+    destacado: false,
+    prefijos: [],
+  },
+  comodin_vencido: {
+    color: "#dc2626",
+    emoji: "🃏",
+    rotulo: "Desarme esperando",
+    plural: "desarmes que esperan demasiado",
+    destacado: false,
+    prefijos: [],
+  },
+  guardia_problema: {
+    color: "#d97706",
+    emoji: "🛡️",
+    rotulo: "Guardia para revisar",
+    plural: "guardias para revisar",
+    destacado: false,
+    prefijos: [],
+  },
 };
 
 /**
@@ -309,6 +370,9 @@ function webhookDe(canal: Canal): string | undefined {
   // #sistemas NO cae a otro canal: un error que frena el trabajo de alguien no se le cuela a
   // logística. Sin SLACK_WEBHOOK_SISTEMAS no sale nada (queda la campanita de los revisores).
   if (canal === "sistemas") return process.env.SLACK_WEBHOOK_SISTEMAS || undefined;
+  // #planificacion tampoco cae a otro canal (guardias-contrato.md: "si hay un canal de Slack
+  // configurado"): sin SLACK_WEBHOOK_PLANIFICACION no sale nada y queda la campanita.
+  if (canal === "planificacion") return process.env.SLACK_WEBHOOK_PLANIFICACION || undefined;
   // Sin el webhook propio de permisos todavía configurado, siguen yendo a #syh como antes.
   if (canal === "permisos") return process.env.SLACK_WEBHOOK_PERMISOS || process.env.SLACK_WEBHOOK_SYH;
   // Mientras no exista #pañol (10/10: no hay canal ni webhook), el depósito es de logística:
@@ -339,12 +403,22 @@ function recortar(texto: string, max = 280): string {
   return texto.length <= max ? texto : `${texto.slice(0, max - 1).trimEnd()}…`;
 }
 
+/**
+ * Lo que escribió una persona (el motivo de un pedido, el título de una OT) va a Slack COMO
+ * TEXTO. En mrkdwn `<!channel>` arroba a todo el canal y `<https://x|Aprobar>` muestra un link
+ * disfrazado: un motivo así se colaba tal cual en #planificacion (revisión de seguridad del
+ * 18/10). Slack pide escapar estos tres y nada más; los muestra como el carácter original.
+ */
+function escaparSlack(texto: string): string {
+  return texto.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+
 /** `*negrita*` y `<url|texto>` son mrkdwn de Slack, no Markdown. */
 function linea(a: NuevaAlerta): string {
   const url = urlAbsoluta(a.enlace);
-  const texto = recortar(tituloLimpio(a), 150);
+  const texto = escaparSlack(recortar(tituloLimpio(a), 150));
   const titulo = url ? `<${url}|${texto}>` : texto;
-  return a.descripcion ? `*${titulo}*\n${recortar(a.descripcion)}` : `*${titulo}*`;
+  return a.descripcion ? `*${titulo}*\n${escaparSlack(recortar(a.descripcion))}` : `*${titulo}*`;
 }
 
 type Bloque = Record<string, unknown>;
@@ -402,7 +476,7 @@ function armarMensaje(tipo: TipoAlerta, alertas: NuevaAlerta[]): Record<string, 
     // de canales, donde los blocks no se renderizan. Sin esto Slack muestra un mensaje vacío.
     text:
       alertas.length === 1
-        ? `${estilo.emoji} ${estilo.rotulo} — ${tituloLimpio(alertas[0])}`
+        ? `${estilo.emoji} ${estilo.rotulo} — ${escaparSlack(tituloLimpio(alertas[0]))}`
         : `${estilo.emoji} ${alertas.length} ${estilo.plural}`,
     // La barra de color es de attachments, no de blocks. Sigue siendo la única manera de
     // que un aviso rojo se distinga de uno gris de un vistazo, scrolleando el canal.

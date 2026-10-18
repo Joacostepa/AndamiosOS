@@ -23,6 +23,14 @@
 // obra corrida cae encima de un traslado, el día aparece sobreasignado— y sí frenan la
 // cascada, porque un día con una tarea es un día que la cuadrilla ya tiene tomado.
 //
+// LAS GUARDIAS SON LA EXCEPCIÓN A "SE SUMA" (guardias-contrato.md §1.4). Una guardia es una
+// tarea (no se corre y frena la cascada, como cualquier tarea), pero lo que cae encima NO se
+// suma: la CONSUME. Para eso existe: es la jornada que se reservó para lo que la lluvia
+// empuja. La guardia pasa a "usada (lluvia)", su celda no aparece como sobrecargada y el
+// deshacer la vuelve a "activa". Una guardia en el MISMO día suspendido no se toca: ese día
+// no se trabaja, y la lluvia de hoy no consume la protección de hoy (se queda para lo que
+// venga cuando escampe). Ver guardiasConsumidas.
+//
 // LAS CUADRILLAS DE APOYO VAN CON SU OBRA (apoyo.md, etapa 3). Un apoyo no se corre por la
 // cadena de SU cuadrilla: se corre cuando se corre la principal de esa obra y ese día, al
 // mismo día que ella, esté o no tildada la cuadrilla del apoyo. Si la principal NO se corre
@@ -34,6 +42,7 @@
 import { claveDia, esApoyo } from "./apoyo.ts";
 import { esDomingo, siguienteDiaLaboral } from "./bloques.ts";
 import { aFraccionStr } from "./fracciones.ts";
+import { esGuardia } from "./guardias.ts";
 import { violaTecho } from "./ventana.ts";
 import type { EstadoBloque, RegistroApoyoCorrida, RegistroCorrida } from "./tipos-movimiento";
 import type {
@@ -119,6 +128,26 @@ export type Corrimiento = {
    * mirando. El que planifica tiene que enterarse y scrollear el tablero antes de correr.
    */
   alBorde: boolean;
+  /**
+   * Guardias que el corrimiento CONSUME (guardias-contrato.md §1.4): lo que cae sobre una
+   * guardia activa la reemplaza —no se suma— y la guardia pasa a "usada (lluvia)". La
+   * cascada ya se frena ahí sola (una guardia es una tarea: no hay nada movible que
+   * empujar). El deshacer las vuelve a "activa" (invertirCorrimiento → reactivarGuardias).
+   *
+   * Es lo que VIO el tablero. La ruta no confía sólo en esto: vuelve a buscar guardias
+   * activas en las celdas destino y consume las que encuentre (guardias-plan-tecnico.md §4.3).
+   */
+  guardiasConsumidas: GuardiaConsumida[];
+};
+
+/** Una guardia que el corrimiento consume. El id es el de su fila en tablero_tareas. */
+export type GuardiaConsumida = {
+  id: number;
+  cuadrillaId: number;
+  cuadrillaNombre: string;
+  fecha: string;
+  /** Las obras que caen sobre ella (para el diálogo: "Thames 1820 usa la guardia del jue 22"). */
+  obras: LineaObra[];
 };
 
 export type EntradaCorrimiento = {
@@ -346,16 +375,47 @@ export function planearCorrimiento(entrada: EntradaCorrimiento): Corrimiento {
     });
   }
 
+  // Guardias que se consumen: las activas de las celdas donde cae algo. Se resuelven ANTES de
+  // la carga final porque la guardia consumida deja de ocupar: lo que cae la reemplaza. El
+  // día suspendido mismo nunca es destino (todo se corre hacia adelante), así que su guardia
+  // no puede consumirse; la condición explícita queda por si algún día cambia la cascada.
+  const tocadas = new Set(movidas.map((m) => celda(m.a.cuadrillaId, m.nueva)));
+  const guardiasConsumidas: GuardiaConsumida[] = [];
+  const consumidas = new Set<number>();
+  for (const a of asignaciones) {
+    if (!esGuardia(a) || a.cuadrillaId === null || a.fecha === dia) continue;
+    if (!tocadas.has(celda(a.cuadrillaId, a.fecha))) continue;
+    const obras = new Map<number, LineaObra>();
+    for (const m of movidas) {
+      if (m.a.cuadrillaId !== a.cuadrillaId || m.nueva !== a.fecha || obras.has(m.a.otId)) continue;
+      obras.set(m.a.otId, { otId: m.a.otId, titulo: ots.get(m.a.otId)?.titulo ?? `OT ${m.a.otId}` });
+    }
+    consumidas.add(a.id);
+    guardiasConsumidas.push({
+      id: a.id,
+      cuadrillaId: a.cuadrillaId,
+      cuadrillaNombre: nombre.get(a.cuadrillaId) ?? `Cuadrilla ${a.cuadrillaId}`,
+      fecha: a.fecha,
+      obras: [...obras.values()],
+    });
+  }
+  guardiasConsumidas.sort((x, y) => x.fecha.localeCompare(y.fecha) || x.cuadrillaId - y.cuadrillaId);
+
   // Sobrecarga: cómo queda cada día tocado una vez aplicado todo. Cuenta las tareas y las
-  // fijas, que no se movieron pero siguen ocupando la cuadrilla.
+  // fijas, que no se movieron pero siguen ocupando la cuadrilla. Las guardias consumidas NO:
+  // dejaron de existir como reserva en el mismo gesto. (Los ids de tareas y de Odoo son
+  // espacios distintos: por eso la guardia se reconoce con esGuardia y no sólo por id.)
   const cargaFinal = new Map<string, number>();
   for (const a of asignaciones) {
-    if (a.cuadrillaId === null || quitados.has(a.id)) continue;
-    const fecha = nuevaFechaPorId.get(a.id) ?? a.fecha;
+    const esTarea = (a.origen ?? "ot") === "tarea";
+    if (a.cuadrillaId === null || (!esTarea && quitados.has(a.id))) continue;
+    if (esGuardia(a) && consumidas.has(a.id)) continue;
+    // Una tarea nunca se mueve: si su id coincide con el de una jornada de Odoo corrida, no
+    // es ella la que se corrió.
+    const fecha = esTarea ? a.fecha : (nuevaFechaPorId.get(a.id) ?? a.fecha);
     const k = celda(a.cuadrillaId, fecha);
     cargaFinal.set(k, (cargaFinal.get(k) ?? 0) + a.fraccion);
   }
-  const tocadas = new Set(movidas.map((m) => celda(m.a.cuadrillaId, m.nueva)));
   const sobrecargas: Corrimiento["sobrecargas"] = [];
   for (const k of tocadas) {
     const carga = cargaFinal.get(k) ?? 0;
@@ -458,6 +518,7 @@ export function planearCorrimiento(entrada: EntradaCorrimiento): Corrimiento {
     ultimoDia: fechasDestino.at(-1) ?? null,
     truncado,
     alBorde,
+    guardiasConsumidas,
   };
 }
 
@@ -486,11 +547,14 @@ function estadoDeQuitado(q: ApoyoQuitado): EstadoBloque {
 export function invertirCorrimiento(
   registros: Corrimiento["registros"],
   apoyosQuitados: ApoyoQuitado[] = [],
+  guardiasConsumidas: GuardiaConsumida[] = [],
 ): {
   movimientos: MovimientoAsignacion[];
   registros: Corrimiento["registros"];
   crear: NuevaAsignacion[];
   registrosApoyo: RegistroApoyoCorrida[];
+  /** Las guardias que el corrimiento consumió, para volverlas a "activa". */
+  reactivarGuardias: number[];
 } {
   const movimientos: MovimientoAsignacion[] = [];
   for (const r of registros) {
@@ -522,6 +586,7 @@ export function invertirCorrimiento(
       antes: null,
       despues: estadoDeQuitado(q),
     })),
+    reactivarGuardias: guardiasConsumidas.map((g) => g.id),
   };
 }
 

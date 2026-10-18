@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { conectarAvisos, type AvisoTablero } from "@/lib/tablero/avisos";
 import { CLAVE_ACTIVIDAD } from "@/hooks/use-actividad";
 import { CLAVE_SUSPENSIONES } from "@/hooks/use-suspensiones";
+import { CLAVE_GUARDIAS, CLAVE_SOLICITUDES_GUARDIA } from "@/hooks/use-tablero";
 import { useUser } from "@/hooks/use-user";
 
 /**
@@ -75,6 +76,11 @@ export function useAvisosTablero() {
         void qc.invalidateQueries({ queryKey: ["tablero"] });
         void qc.invalidateQueries({ queryKey: CLAVE_ACTIVIDAD });
         void qc.invalidateQueries({ queryKey: CLAVE_SUSPENSIONES });
+        // Las guardias y los pedidos a JS: otro usó, corrió o pidió autorización por una
+        // guardia, y eso no está en el payload del tablero (sólo las activas lo están). Con
+        // esto la bandeja de JS se entera de un pedido nuevo sin que nadie refresque.
+        void qc.invalidateQueries({ queryKey: CLAVE_GUARDIAS });
+        void qc.invalidateQueries({ queryKey: CLAVE_SOLICITUDES_GUARDIA });
 
         // `info` y no `warning`: que otro planifique no es un problema, es el uso normal
         // de un tablero compartido. El ámbar está reservado para lo que hay que mirar.

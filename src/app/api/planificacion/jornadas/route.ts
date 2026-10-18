@@ -7,7 +7,11 @@ import {
   reprogramarJornada,
 } from "@/lib/odoo/jornadas";
 import { OdooError } from "@/lib/odoo/client";
+import { celdasDeAsignaciones } from "@/lib/odoo/asignaciones";
+import { exigirPermisoDeApi } from "@/lib/auth/servidor";
+import { frenoDeGuardias } from "@/lib/planificacion/candado-guardias";
 import { VALORES_FRACCION } from "@/lib/tablero/fracciones";
+import { hoyBA } from "@/lib/tablero/dias-habiles";
 
 // Listado de partes diarios.
 //
@@ -18,6 +22,11 @@ import { VALORES_FRACCION } from "@/lib/tablero/fracciones";
 //        apoyoIds, vuelve a crear esos apoyos en la fecha nueva)
 //
 // El parte en sí se guarda por /api/planificacion/partes: es el mismo cierre de siempre.
+//
+// LAS DOS ESCRITURAS PASAN POR EL CANDADO DE LAS GUARDIAS (guardias-contrato.md §1.3): una
+// reprogramación o una jornada no planificada que cae en la celda de una guardia activa
+// contesta 409 RechazoCandado, como el resto de las rutas que escriben asignaciones. El POST
+// arranca con exigirPermisoDeApi (segunda llave, la misma regla que el proxy).
 
 export const dynamic = "force-dynamic";
 // El listado son varias consultas a Odoo Online, que a ~800 ms cada una rozan el default
@@ -31,9 +40,13 @@ function errorResponse(e: unknown) {
   return NextResponse.json({ error: msg }, { status: 502 });
 }
 
-/** Hoy del lado del servidor. El listado depende de qué día es para decidir qué mostrar. */
+/**
+ * Hoy del lado del servidor, EN BUENOS AIRES. El listado depende de qué día es para decidir
+ * qué mostrar, y el servidor corre en UTC: con la fecha UTC, de 21 a 24 h de acá el listado
+ * ya creía que era mañana (y las tentativas de hoy aparecían como vencidas).
+ */
 function hoyISO(): string {
-  return new Date().toISOString().slice(0, 10);
+  return hoyBA();
 }
 
 export async function GET(req: NextRequest) {
@@ -73,10 +86,27 @@ const reprogramarSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const quien = await exigirPermisoDeApi(req);
+  if (quien instanceof NextResponse) return quien;
   const body = await req.json().catch(() => null);
 
   const repro = reprogramarSchema.safeParse(body);
   if (repro.success) {
+    // La jornada nueva va a la cuadrilla de la original (y cada apoyo a la suya), en la fecha
+    // nueva: ésas son las celdas que el candado tiene que mirar.
+    let celdas;
+    try {
+      celdas = await celdasDeAsignaciones([repro.data.asignacionId, ...(repro.data.apoyoIds ?? [])]);
+    } catch (e) {
+      console.error("[jornadas] no se pudo leer la jornada para el candado", e);
+      return NextResponse.json({ error: "No pude comprobar las guardias: probá de nuevo." }, { status: 503 });
+    }
+    const original = celdas.find((c) => c.id === repro.data.asignacionId);
+    const candado = await frenoDeGuardias(
+      celdas.map((c) => ({ cuadrillaId: c.cuadrillaId, fecha: repro.data.reprogramarA })),
+      { otId: original?.otId ?? undefined },
+    );
+    if (candado) return candado;
     try {
       const r = await reprogramarJornada(repro.data.asignacionId, repro.data.reprogramarA, repro.data.apoyoIds);
       return NextResponse.json({ asignacionId: r.id, apoyos: r.apoyos });
@@ -92,6 +122,8 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
+  const candado = await frenoDeGuardias([{ cuadrillaId: parsed.data.cuadrillaId, fecha: parsed.data.fecha }], { otId: parsed.data.otId });
+  if (candado) return candado;
   try {
     return NextResponse.json({ asignacionId: await crearJornadaNoPlanificada(parsed.data) });
   } catch (e) {

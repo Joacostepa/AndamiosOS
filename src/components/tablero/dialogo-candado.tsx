@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CalendarClock, Loader2, Lock, TriangleAlert } from "lucide-react";
+import { CalendarClock, Loader2, Lock, RefreshCw, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { useRegistrarCandado } from "@/hooks/use-habilitaciones";
 import { Button } from "@/components/ui/button";
@@ -38,12 +38,36 @@ import type { Friccion } from "@/lib/habilitaciones/derivacion";
 // CARGAR EL PARTE NUNCA SE BLOQUEA y no pasa por acá. Si la cuadrilla fue igual, se
 // registra igual: un sistema que no deja anotar lo que pasó garantiza datos falsos.
 
+/**
+ * NO SE PUDO COMPROBAR EL PERMISO (guardias-contrato.md §3, plan técnico §7.3): la consulta
+ * del candado dio error, o todavía no terminó para esta OT.
+ *
+ * ANTES ESTO CONFIRMABA SIN FRICCIÓN, y era el agujero que encontró la auditoría del 08/10:
+ * Depósito y Campo no tienen el módulo de habilitaciones, la consulta les daba 403 y el
+ * tablero lo leía como "no hay nada que frenar". Un candado que se abre cuando falla no es
+ * un candado. Ahora falla con AVISO: se puede confirmar igual —el permiso puede estar, y
+ * frenar la operación por un error de red sería peor—, pero con un motivo escrito que queda
+ * registrado como excepción, igual que confirmar sin el permiso. Y se ofrece volver a
+ * comprobar, que es lo que casi siempre resuelve.
+ *
+ * Vive acá y no en derivacion.ts (que es el candado de habilitaciones) porque no es una
+ * fricción del permiso sino de la consulta: no la calcula nadie, la pone el tablero.
+ */
+export type FriccionSinComprobar = {
+  tipo: "sin_comprobar";
+  motivo: string;
+  /** true = la consulta dio error; false = todavía no terminó para esta OT. */
+  error: boolean;
+};
+
 export type PedidoConfirmacion = {
   otId: number;
-  friccion: NonNullable<Friccion>;
+  friccion: NonNullable<Friccion> | FriccionSinComprobar;
   pedidosPrevios: number;
   /** Se ejecuta cuando el usuario decide seguir adelante. */
   confirmar: () => void;
+  /** Sólo con `sin_comprobar`: vuelve a pedir el candado. */
+  reintentar?: () => void;
 };
 
 export function DialogoCandado({
@@ -60,8 +84,10 @@ export function DialogoCandado({
 
   // Se desestructura a locales porque `seguir()` es una función anidada y el
   // estrechamiento del `if (!pedido)` no la alcanza.
-  const { friccion, otId, pedidosPrevios, confirmar } = pedido;
+  const { friccion, otId, pedidosPrevios, confirmar, reintentar } = pedido;
+  const sinComprobar = friccion.tipo === "sin_comprobar";
   const necesitaMotivo =
+    sinComprobar ||
     friccion.tipo === "bloqueo" ||
     friccion.tipo === "falta_expediente" ||
     friccion.tipo === "antes_de_piso" ||
@@ -84,7 +110,13 @@ export function DialogoCandado({
         // Sin modalidad definida se registra el PEDIDO al técnico, no una excepción:
         // no hicimos nada mal, falta que alguien conteste.
         tipo: friccion.tipo === "pedir_modalidad" ? "consulta" : "excepcion",
-        motivo: necesitaMotivo ? motivo.trim() : null,
+        // La excepción por no haber podido comprobar se distingue en el texto: en el
+        // historial de la habilitación tiene que leerse distinto de "confirmé sin permiso".
+        motivo: !necesitaMotivo
+          ? null
+          : sinComprobar
+            ? `Sin poder comprobar el permiso: ${motivo.trim()}`
+            : motivo.trim(),
       },
       {
         onSuccess: (r) => {
@@ -95,12 +127,19 @@ export function DialogoCandado({
                 ? `Confirmada · ${r.pedido}º pedido de modalidad registrado`
                 : "Confirmada · ya había un pedido reciente, no se duplicó",
             );
+          } else if (sinComprobar) {
+            toast.success("Confirmada · quedó registrado que no se pudo comprobar el permiso");
           } else {
             toast.success("Confirmada · la excepción quedó registrada");
           }
           cerrar();
         },
-        onError: (e) => toast.error(e instanceof Error ? e.message : "No se pudo registrar"),
+        // FALLA CERRADO: si no queda registrado el motivo, no se confirma. Confirmar sin
+        // registro sería volver al agujero de antes por otro camino.
+        onError: (e) =>
+          toast.error("No se confirmó: no se pudo registrar el motivo", {
+            description: e instanceof Error ? e.message : String(e),
+          }),
       },
     );
   }
@@ -110,14 +149,18 @@ export function DialogoCandado({
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            {friccion.tipo === "bloqueo" ? (
+            {sinComprobar ? (
+              <TriangleAlert className="h-4 w-4" style={{ color: AVISO.icono }} />
+            ) : friccion.tipo === "bloqueo" ? (
               <Lock className="h-4 w-4" style={{ color: CANDADO }} />
             ) : friccion.tipo === "antes_de_piso" || friccion.tipo === "despues_de_techo" ? (
               <CalendarClock className="h-4 w-4" style={{ color: AVISO.icono }} />
             ) : (
               <TriangleAlert className="h-4 w-4" style={{ color: AVISO.icono }} />
             )}
-            {friccion.tipo === "bloqueo"
+            {sinComprobar
+              ? "No pude comprobar el permiso municipal"
+              : friccion.tipo === "bloqueo"
               ? "No se puede confirmar sin el permiso"
               : friccion.tipo === "pedir_modalidad"
                 ? "Falta la modalidad de permiso"
@@ -157,7 +200,9 @@ export function DialogoCandado({
         {necesitaMotivo && (
           <div className="space-y-2">
             <p className="text-[12px] text-muted-foreground">
-              {friccion.tipo === "bloqueo"
+              {sinComprobar
+                ? "Se puede confirmar igual, pero queda registrado con tu nombre que no se pudo comprobar. Si el cliente pidió esperar el permiso, la cuadrilla podría no poder trabajar."
+                : friccion.tipo === "bloqueo"
                 ? "Se puede confirmar igual, pero la excepción queda registrada con tu nombre y la fecha."
                 : friccion.tipo === "antes_de_piso"
                   ? `La dejaste el ${friccion.fecha} y el cliente la recibe a partir del ${friccion.piso}. Se puede confirmar igual —a veces se reacuerda por teléfono— pero decí por qué, porque si no la cuadrilla viaja y vuelve.`
@@ -181,6 +226,21 @@ export function DialogoCandado({
           <Button variant="ghost" onClick={cerrar}>
             Cancelar
           </Button>
+          {sinComprobar && reintentar && (
+            <Button
+              variant="outline"
+              onClick={() => {
+                reintentar();
+                cerrar();
+                toast.info("Comprobando el permiso de nuevo", {
+                  description: "Confirmá otra vez en unos segundos.",
+                });
+              }}
+            >
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Volver a comprobar
+            </Button>
+          )}
           <Button onClick={seguir} disabled={registrar.isPending}>
             {registrar.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             {friccion.tipo === "pedir_modalidad"

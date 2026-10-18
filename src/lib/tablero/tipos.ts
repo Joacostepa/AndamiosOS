@@ -108,7 +108,16 @@ export const TIPOS_TAREA = {
 
 export type TipoTarea = keyof typeof TIPOS_TAREA;
 
+/**
+ * LA GUARDIA NO ESTÁ EN TIPOS_TAREA, a propósito: de ahí salen el desplegable del diálogo de
+ * tareas y el enum de /api/planificacion/tareas, y una guardia no la crea una persona a
+ * mano —la pone el sistema (guardias-contrato.md §1.2)—. Es una fila de tablero_tareas con
+ * tipo 'guardia' (TIPO_GUARDIA en guardias-tipos.ts) que sólo escriben las rutas de
+ * /api/planificacion/guardias. Acá sólo se le da nombre para la oficina; al capataz le
+ * llega como depósito (tareaParaCapataz en guardias.ts).
+ */
 export function tipoTareaLabel(t: string | null | undefined): string {
+  if (t === "guardia") return "Guardia";
   return TIPOS_TAREA[(t ?? "otro") as TipoTarea] ?? TIPOS_TAREA.otro;
 }
 
@@ -132,6 +141,13 @@ export type DatosTarea = {
   tipo: string;
   /** Sin parte diario: el cierre de una tarea es un sí o un no. */
   hecha: boolean;
+  /**
+   * Una guardia que nadie usó y terminó en depósito (rellenada · deposito, guardias-tipos.ts):
+   * viaja como la tarea "Depósito" que fue, con `tipo` 'deposito', para que esGuardia() no la
+   * confunda con una activa. Es SÓLO LECTURA: la fila sigue siendo tipo 'guardia' en la base y
+   * la RLS no deja tocarla con la sesión. Ausente en las tareas comunes.
+   */
+  deGuardia?: boolean;
 };
 
 export type AsignacionTablero = {
@@ -318,6 +334,16 @@ export type OtTablero = {
    * false también cuando nadie contestó: para la grilla "no sabemos" y "no" se ven igual.
    */
   syh: boolean;
+  /**
+   * Cuándo se creó la OT en Odoo (`create_date`, UTC, como lo devuelve Odoo). Lo usan dos
+   * reglas de guardias-contrato.md: una urgencia usa la guardia sin pedir nada sólo si la OT
+   * se creó hace 3 días hábiles o menos (§1.3), y un desarme sin piso cargado cuenta como
+   * comodín desde que se creó (§2.1). Para pasarlo a fecha de acá: fechaBADeOdoo().
+   *
+   * Opcional hasta que fetchTablero lo traiga en todas sus lecturas; sin el dato, la urgencia
+   * NO cumple la regla (pasa por JS) y el comodín sin piso no cuenta: falla cerrado.
+   */
+  creadaEl?: string | null;
   url: string;
 };
 

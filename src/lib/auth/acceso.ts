@@ -74,6 +74,18 @@ const DEFINICION = [
   // un módulo aparte: se puede ver la hoja sin poder mover el tablero, y al revés. Gana la
   // ruta más larga (ver moduloDeRuta), así /planificacion/hoja no la abre Planificación.
   { id: "hoja-dia", titulo: "Hoja del día", grupo: "Operaciones", rutas: ["/planificacion/hoja"] },
+  // Autorizar lo que el candado de las guardias no deja hacer solo (guardias-contrato.md
+  // §1.3): sacar una guardia, poner una obra común encima, un comodín antes de las 13 h o una
+  // urgencia que no cumple la regla. Explícito como Sistemas: "solo JS", y ningún admin lo
+  // trae solo. Se da en la migración 20261018100001 a js@andamiosbuenosaires.com.ar. La
+  // página es la bandeja de pedidos; desde el tablero se ve también.
+  {
+    id: "planificacion-autoriza",
+    titulo: "Planificación · Autorizar guardias",
+    grupo: "Operaciones",
+    rutas: ["/planificacion/autorizaciones"],
+    exigeExplicito: true,
+  },
   { id: "computos", titulo: "Cómputos", grupo: "Oficina técnica", rutas: ["/oficina-tecnica/computos"] },
   // El modelador 3D (docs/oficina-tecnica/modelador/arquitectura-produccion.md): modelos, plantillas
   // propias y «Generar cómputo». Generar escribe en Cómputos, así que esa acción pide además Cómputos
@@ -156,9 +168,23 @@ const APIS: Record<string, readonly ModuloId[]> = {
   "/api/planificacion/comentarios": ["planificacion", "ordenes-trabajo"],
   "/api/planificacion/documentos": ["planificacion", "ordenes-trabajo"],
   "/api/planificacion/cuadrillas-futuras": ["planificacion", "configuracion"],
+  // Guardias (guardias-contrato.md §1.3). Usar, correr y pedir autorización: Planificación.
+  // Sacar y responder un pedido: SÓLO quien tiene el módulo explícito (JS); como todos los
+  // módulos del prefijo son explícitos, el admin se mide como cualquiera.
+  "/api/planificacion/guardias": ["planificacion"],
+  "/api/planificacion/guardias/sacar": ["planificacion-autoriza"],
+  "/api/planificacion/guardias/autorizar": ["planificacion-autoriza"],
   "/api/ordenes-trabajo": ["ordenes-trabajo", "planificacion"],
   "/api/odoo/push/ordenes-trabajo": ["ordenes-trabajo"],
   "/api/habilitaciones": ["habilitaciones"],
+  // El candado del tablero (la fricción del permiso municipal al confirmar) lo usa quien
+  // PLANIFICA, no sólo quien gestiona habilitaciones. Sin esta línea, Depósito y Campo
+  // (CIRCUITO: planificación en editar, sin habilitaciones) recibían 403 y el tablero
+  // confirmaba sin fricción: el candado fallaba abierto (auditoría del 08/10,
+  // guardias-contrato.md §3). GET (leer la fricción) pide "ver"; POST (registrar la consulta
+  // o la excepción al confirmar) pide "editar". El resto de /api/habilitaciones sigue siendo
+  // sólo del módulo.
+  "/api/habilitaciones/candado": ["habilitaciones", "planificacion"],
   "/api/permisos-via-publica": ["permisos-via-publica"],
   "/api/operaciones": ["mapa-obras"],
   "/api/informes-obra": ["informes-obra"],

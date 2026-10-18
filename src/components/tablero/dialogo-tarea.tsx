@@ -13,6 +13,7 @@ import { FRACCIONES, type FraccionStr } from "@/lib/tablero/fracciones";
 import { CORAL, TAREA } from "@/lib/tablero/colores";
 import { TIPOS_TAREA, type TipoTarea } from "@/lib/tablero/tipos";
 import type { CuadrillaTablero } from "@/lib/tablero/tipos";
+import { TIPO_GUARDIA } from "@/lib/tablero/guardias-tipos";
 
 // Alta y edición de una tarjeta de operaciones.
 //
@@ -78,6 +79,12 @@ export function DialogoTarea({
     setEstado((prev) => (prev ? { ...prev, v: { ...prev.v, ...parcial } } : prev));
 
   if (!fecha) return null;
+  // UNA GUARDIA NO SE EDITA ACÁ (guardias-contrato.md §1.6): no la crea ni la cambia una
+  // persona a mano —la pone el sistema y se corre o se saca desde su ficha, con su candado—.
+  // El board ya manda el clic de una guardia a su ficha; esto es la segunda llave, por si
+  // algún camino nuevo la trajera hasta acá: abrirla en este formulario permitiría
+  // "editarla" a depósito y la RLS rebotaría el guardado sin explicar nada.
+  if (edicion && (edicion.tipo as string) === TIPO_GUARDIA) return null;
 
   const cuadrilla = cuadrillas.find((c) => c.id === cuadrillaId);
   const puedeGuardar = v.titulo.trim().length > 0 && !guardando;

@@ -23,6 +23,14 @@
     {
       "path": "/api/cron/direccion",
       "schedule": "30 7 * * *"
+    },
+    {
+      "path": "/api/cron/guardias-viernes",
+      "schedule": "0 13 * * 5"
+    },
+    {
+      "path": "/api/cron/guardias-relleno",
+      "schedule": "0 16 * * 1-6"
     }
   ]
 }

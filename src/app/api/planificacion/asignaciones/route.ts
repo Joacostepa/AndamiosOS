@@ -13,6 +13,10 @@ import {
 import { textoConflicto, type CambiosDeRol } from "@/lib/tablero/apoyo";
 import { OdooError } from "@/lib/odoo/client";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { exigirPermisoDeApi } from "@/lib/auth/servidor";
+import { frenoDeGuardias, frenoParaActualizar, frenoParaMover } from "@/lib/planificacion/candado-guardias";
+import { liberarPorSalida } from "@/lib/planificacion/guardias";
 import { registrarConfirmacion } from "@/lib/planificacion/confirmaciones";
 import { registrarMovimiento } from "@/lib/planificacion/movimientos";
 import { ACCIONES } from "@/lib/tablero/tipos-movimiento";
@@ -51,6 +55,17 @@ import { VALORES_FRACCION } from "@/lib/tablero/fracciones";
 // cuadrilla de la principal. Contesta 409 con la frase lista para el toast. Sólo frena lo
 // que el gesto EMPEORA: un día que ya venía roto de Odoo no traba a nadie (ver
 // conflictosDeApoyo en lib/tablero/apoyo.ts).
+
+// EL CANDADO DE LAS GUARDIAS (guardias-contrato.md §1.3, plan técnico §5). Ninguna escritura
+// de esta ruta pone una obra en la celda de una guardia activa: soltar una obra, sumar un
+// apoyo, el editor de jornadas, mover un bloque o cambiarle día o cuadrilla. Si lo intenta,
+// 409 RechazoCandado y el tablero pasa por /api/planificacion/guardias/usar, que es la única
+// que la reemplaza (en un lote que se deshace entero). Falla CERRADO: sin poder comprobarlo,
+// 503. Y al revés: si una obra que había usado una guardia se va de su celda (se mueve o se
+// quita) y la celda queda libre, la guardia vuelve a estar activa (liberarPorSalida).
+//
+// Cada handler arranca con exigirPermisoDeApi: la misma regla que el proxy, como segunda
+// llave (la auditoría del 08/10 encontró este PATCH escribiendo sin mirar quién).
 
 export const dynamic = "force-dynamic";
 
@@ -222,6 +237,22 @@ function invalido(issues: z.ZodIssue[]) {
 }
 
 /**
+ * Después de mover o quitar jornadas: las guardias que esas jornadas habían usado vuelven a
+ * "activa" si su celda quedó libre. Después de responder, como la fecha de la OT: el gesto ya
+ * está hecho y esto no puede voltearlo. Si falla, la guardia queda usada (se ve en la ficha)
+ * y se loguea.
+ */
+function liberarLuego(ids: number[], autorId: string) {
+  after(async () => {
+    try {
+      await liberarPorSalida(createAdminClient(), ids, autorId);
+    } catch (e) {
+      console.error("[asignaciones] no se pudieron liberar las guardias", e);
+    }
+  });
+}
+
+/**
  * Resincroniza la fecha de las OTs después de responder. Un fallo acá no puede tirar
  * abajo la escritura de la asignación, que es lo que el usuario pidió: se registra y la
  * próxima edición de esa obra lo corrige, porque la fecha se recalcula entera cada vez.
@@ -237,11 +268,19 @@ function sincronizarLuego(otIds: number[] | Promise<number[]>) {
 }
 
 export async function POST(req: NextRequest) {
+  const quien = await exigirPermisoDeApi(req);
+  if (quien instanceof NextResponse) return quien;
   const body = await req.json().catch(() => null);
   const parsed = crearSchema.safeParse(body);
   if (!parsed.success) return invalido(parsed.error.issues);
 
   try {
+    const nuevas = parsed.data.asignaciones;
+    const candado = await frenoDeGuardias(nuevas, {
+      otId: nuevas.length > 0 && nuevas.every((a) => a.otId === nuevas[0].otId) ? nuevas[0].otId : undefined,
+      esApoyo: nuevas.every((a) => a.apoyo === true),
+    });
+    if (candado) return candado;
     const freno = await frenoDeRoles({ crear: parsed.data.asignaciones });
     if (freno) return freno;
     const ids = await crearAsignaciones(parsed.data.asignaciones);
@@ -255,6 +294,8 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  const quien = await exigirPermisoDeApi(req);
+  if (quien instanceof NextResponse) return quien;
   const body = await req.json().catch(() => null);
 
   // Cuál de las dos formas es se decide por la CLAVE, no probando una y cayendo en la
@@ -286,9 +327,12 @@ export async function PATCH(req: NextRequest) {
     if (!mover.success) return invalido(mover.error.issues);
     try {
       const ids = mover.data.movimientos.map((m) => m.id);
+      const candado = await frenoParaMover(mover.data.movimientos);
+      if (candado) return candado;
       const freno = await frenoDeRoles({ mover: mover.data.movimientos });
       if (freno) return freno;
       await moverAsignaciones(mover.data.movimientos);
+      liberarLuego(ids, quien.userId);
       // La OT no cambia al mover, así que se resuelve después de responder junto con la
       // sincronización, sin sumar una lectura al camino crítico.
       sincronizarLuego(otsDeAsignaciones(ids));
@@ -306,11 +350,17 @@ export async function PATCH(req: NextRequest) {
     const { ids, cambio, contexto, registro } = parsed.data;
     // Sólo lo que puede cambiar roles: día, cuadrilla o el propio rol. Estado, fracción,
     // notas y fijación no leen nada de más (son la mayoría de los PATCH).
-    if (cambio.fecha !== undefined || cambio.cuadrillaId !== undefined || cambio.apoyo !== undefined) {
+    const cambiaCelda = cambio.fecha !== undefined || cambio.cuadrillaId !== undefined;
+    if (cambiaCelda) {
+      const candado = await frenoParaActualizar(ids, cambio);
+      if (candado) return candado;
+    }
+    if (cambiaCelda || cambio.apoyo !== undefined) {
       const freno = await frenoDeRoles({ actualizar: { ids, cambio } });
       if (freno) return freno;
     }
     await actualizarAsignaciones(ids, cambio);
+    if (cambiaCelda) liberarLuego(ids, quien.userId);
     sincronizarLuego(otsDeAsignaciones(ids));
     const movimientoId = await anotar(registro, ids);
 
@@ -346,6 +396,8 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  const quien = await exigirPermisoDeApi(req);
+  if (quien instanceof NextResponse) return quien;
   const body = await req.json().catch(() => null);
   const parsed = borrarSchema.safeParse(body);
   if (!parsed.success) return invalido(parsed.error.issues);
@@ -360,6 +412,7 @@ export async function DELETE(req: NextRequest) {
     if (freno) return freno;
     await borrarAsignaciones(parsed.data.ids);
     sincronizarLuego(otIds);
+    liberarLuego(parsed.data.ids, quien.userId);
     // Se anota DESPUÉS de borrar, con los ids que ya no existen: son justamente lo que
     // hace falta para saber qué se fue del tablero.
     const movimientoId = await anotar(parsed.data.registro, parsed.data.ids);

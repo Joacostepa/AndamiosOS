@@ -80,7 +80,27 @@ export type TipoAlerta =
    * `sistemas_respuesta` (mensaje o «Sigue pasando» de quien reportó) a los revisores. Los
    * títulos nunca llevan la descripción: cualquier admin ve todas las alertas.
    */
-  | "sistemas_reporte" | "sistemas_bloqueante" | "sistemas_novedad" | "sistemas_respuesta";
+  | "sistemas_reporte" | "sistemas_bloqueante" | "sistemas_novedad" | "sistemas_respuesta"
+  /**
+   * Guardias y comodines del tablero (docs/tablero-planificacion/guardias-contrato.md). Los
+   * crea el servidor con la service role, UNA FILA POR PERSONA (destinatarioId) y con
+   * espejoSlack sólo en la primera, como Sistemas:
+   *   · `guardia_puesta`: la corrida del viernes dice qué guardias puso y cuáles no entraron
+   *     (a Planificación y a JS; sale a #planificacion si hay webhook);
+   *   · `guardia_relleno`: a las 13 h, una guardia de mañana sigue libre y estos son los
+   *     candidatos para rellenarla (a Planificación; sólo campanita);
+   *   · `guardia_solicitud`: alguien pidió autorización (a JS; sale a #planificacion,
+   *     destacado: es lo único de esto que espera una respuesta);
+   *   · `guardia_respuesta`: JS aprobó o rechazó (a quien pidió; sólo campanita);
+   *   · `comodin_vencido`: un desarme pasó los 7 días hábiles esperando y ya es urgente
+   *     (a Planificación; sólo campanita). No escribe nada en Odoo;
+   *   · `guardia_problema`: algo de una guardia quedó a medias y hay que mirarlo a mano (el
+   *     corrimiento corrió las obras pero no pudo marcar la guardia que pisaron). A
+   *     Planificación; sólo campanita.
+   * La palabra "guardia" no sale de la oficina: ninguno de estos va al capataz.
+   */
+  | "guardia_puesta" | "guardia_relleno" | "guardia_solicitud" | "guardia_respuesta" | "comodin_vencido"
+  | "guardia_problema";
 
 export type Prioridad = "baja" | "media" | "alta" | "critica";
 

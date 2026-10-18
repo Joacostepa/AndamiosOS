@@ -4,6 +4,7 @@ import { cerrarJornada, editarParte, fetchParte } from "@/lib/odoo/partes";
 import { OdooError } from "@/lib/odoo/client";
 import { ApoyoNoCargaParteError, ParteYaCargadoError } from "@/lib/odoo/parte-existente";
 import { duracionTurno, MAX_HORAS_TURNO } from "@/lib/tablero/horas";
+import { exigirPermisoDeApi } from "@/lib/auth/servidor";
 
 // Cierre de jornada desde el tablero.
 //
@@ -18,6 +19,11 @@ import { duracionTurno, MAX_HORAS_TURNO } from "@/lib/tablero/horas";
 // REGLA DE NEGOCIO: la app nunca manda costos ni horas-hombre; los calcula Odoo con la
 // tarifa vigente a esa fecha. Odoo sigue siendo editable en paralelo: ante conflicto de
 // edición simultánea, gana la última escritura.
+//
+// POST y PATCH arrancan con la segunda llave (exigirPermisoDeApi: la misma regla que el
+// proxy, Planificación o Partes en "editar"). Escriben en Odoo con la llave del servidor,
+// así que esta validación es lo único que separa a quien mira el tablero de quien cierra
+// una jornada; antes la ruta dependía sólo del proxy.
 
 export const dynamic = "force-dynamic";
 // Un parte con fotos son ~10 escrituras a Odoo Online, y cada foto va en base64 de unos
@@ -130,6 +136,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const sesion = await exigirPermisoDeApi(req);
+  if (sesion instanceof NextResponse) return sesion;
   const body = await req.json().catch(() => null);
   const parsed = z
     .object({
@@ -157,6 +165,8 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  const sesion = await exigirPermisoDeApi(req);
+  if (sesion instanceof NextResponse) return sesion;
   const body = await req.json().catch(() => null);
   const parsed = z
     .object({

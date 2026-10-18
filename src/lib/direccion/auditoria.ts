@@ -12,6 +12,9 @@ export type AccionAuditoria =
   | "abrir_socios" | "politica" | "meta" | "dueno" | "config" | "aviso_cargar" | "aviso_cerrar" | "permiso_socios"
   // Dar o sacar Sistemas · Revisión (src/lib/auth/explicitos-servidor.ts; CHECK en 20261022000001).
   | "permiso_sistemas"
+  // Dar o sacar Planificación · Autorizar guardias, el "solo JS" del candado de las guardias
+  // (src/lib/auth/explicitos-servidor.ts; CHECK en 20261018100002).
+  | "permiso_guardias"
   | `actualizar:${string}`;
 
 export async function registrarAuditoria(usuario: string, accion: AccionAuditoria, detalle: Record<string, unknown> = {}): Promise<void> {

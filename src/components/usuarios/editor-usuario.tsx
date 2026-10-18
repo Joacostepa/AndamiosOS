@@ -341,6 +341,7 @@ const LEYENDA_EXPLICITO = "Información reservada a socios: ni el perfil Adminis
 // mostrar cualquier pantalla de cualquiera.
 const LEYENDAS_EXPLICITO: Partial<Record<ModuloId, string>> = {
   sistemas: "Las capturas pueden mostrar cualquier pantalla: ni el perfil Administrador lo trae. Sólo lo da o lo saca alguien que ya lo tiene.",
+  "planificacion-autoriza": "Autoriza lo que el candado de las guardias no deja hacer solo: ni el perfil Administrador lo trae. Sólo lo da o lo saca alguien que ya lo tiene.",
 };
 const leyendaExplicito = (id: ModuloId) => LEYENDAS_EXPLICITO[id] ?? LEYENDA_EXPLICITO;
 

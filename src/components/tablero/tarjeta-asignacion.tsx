@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
-import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, CalendarRange, Circle, Check, CircleCheck, CircleDashed, ClipboardCheck, Lock, MessageSquare, MoreVertical, PanelRightOpen, Pencil, Pin, PinOff, Trash2, Users, Wrench } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, CalendarRange, Circle, Check, CircleCheck, CircleDashed, ClipboardCheck, Lock, MessageSquare, MoreVertical, PanelRightOpen, Pencil, Pin, PinOff, ShieldCheck, Spade, Trash2, Users, Wrench } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -14,6 +14,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { CascoSyh } from "./casco-syh";
+import { ChipDeGuardia } from "./tarjeta-guardia";
+import { ChipComodin } from "./grupo-comodines";
+import { textoChipComodin } from "@/lib/tablero/comodines";
+import type { Comodin, UsoGuardia } from "@/lib/tablero/guardias-tipos";
 import { FRACCIONES, fraccionLabel, type FraccionStr } from "@/lib/tablero/fracciones";
 import {
   colorTipo,
@@ -121,7 +125,20 @@ export function ContenidoTarjeta({
   sinParteDia = null,
   apoyo = null,
   chipsApoyo = [],
+  deGuardia = null,
+  comodin = null,
 }: {
+  /**
+   * Esta jornada OCUPA UNA GUARDIA que se usó para ella (guardias-contrato.md §1.6: "usada o
+   * rellenada: se ve la obra que la usa, con un chip 'de guardia'"). Sale de las
+   * asignacionIds de cada guardia (useGuardias). null = no.
+   */
+  deGuardia?: { uso: UsoGuardia | null; onAbrir?: () => void } | null;
+  /**
+   * La obra es un COMODÍN (§2.3): conserva el color de su tipo y suma el naipe y el chip
+   * "comodín · desde 20/10". Vencido, "Esperando hace N días hábiles" en rojo.
+   */
+  comodin?: Comodin | null;
   /**
    * La tarjeta es de una cuadrilla de APOYO (apoyo.md): rayada, "Apoyo · dirección" y abajo
    * quién carga el parte. `principal` es el nombre de la cuadrilla principal ese día; null
@@ -226,6 +243,10 @@ export function ContenidoTarjeta({
   // viera mal: no se leía. Ahora `tipo.text` es un token y en oscuro ya viene claro, así
   // que el par se arregla sin tocar nada de esta lógica.
   const colorTexto = noEjecutada ? PELIGRO_TEXTO : tipo.text;
+  // UNA GUARDIA QUE TERMINÓ EN DEPÓSITO viaja como la tarea "Depósito" que fue
+  // (DatosTarea.deGuardia): se ve como cualquier depósito, con el chip "de guardia" para que
+  // Planificación sepa de dónde salió. El capataz nunca ve el chip: ve el depósito.
+  const chipGuardia = deGuardia ?? (tarea?.deGuardia ? { uso: "deposito" as const } : null);
 
   if (apoyo) {
     return (
@@ -316,6 +337,19 @@ export function ContenidoTarjeta({
           style={{ color: colorTexto }}
           aria-hidden
         />
+        {/* EL NAIPE DEL COMODÍN va pegado al ícono del tipo: los dos dicen QUÉ es la obra
+            (un desarme, y además uno que puede ir cualquier día). En la tarjeta de un solo
+            renglón es lo único que entra; el chip completo va en el tooltip. Vencido, en
+            rojo: ya no es comodín, espera de más. */}
+        {comodin && (
+          <span className="flex shrink-0 self-center" title={textoChipComodin(comodin)}>
+            <Spade
+              className="h-3 w-3"
+              style={{ color: comodin.vencido ? PELIGRO_TEXTO : colorTexto }}
+              aria-label={comodin.vencido ? textoChipComodin(comodin) : "Comodín"}
+            />
+          </span>
+        )}
         {/* En una obra el tilde lo pone el parte; en una tarea, el booleano `hecha`. */}
         {(cierre?.estado === "ejecutado" || tarea?.hecha) && (
           <CircleCheck className="h-3 w-3 shrink-0 self-center" style={{ color: OK }} />
@@ -424,6 +458,9 @@ export function ContenidoTarjeta({
         {/* LOS APOYOS DE ESTE TRAMO (apoyo.md): "+C3 ½". En el par de colores del apoyo y no
             en el del tipo: es la misma marca que la tarjeta rayada de la otra fila, y es lo
             que dice que esa tarjeta y ésta son la misma obra. */}
+        {/* LA OBRA QUE USÓ UNA GUARDIA: el chip ámbar "de guardia" (el par del sello). Es lo
+            que explica, mirando la grilla, por qué esa obra está ahí sin haber movido a nadie. */}
+        {chipGuardia && <ChipDeGuardia uso={chipGuardia.uso} onAbrir={deGuardia?.onAbrir} />}
         {chipsApoyo.map((c) => (
           <span
             key={c.texto}
@@ -473,6 +510,11 @@ export function ContenidoTarjeta({
             {problema}
             {!tarea && " · "}
           </span>
+        )}
+        {comodin && (
+          <>
+            <ChipComodin comodin={comodin} />{" "}
+          </>
         )}
         {tarea
           ? [tipoTareaLabel(tarea.tipo), tarea.hecha ? "hecha" : null].filter(Boolean).join(" · ")
@@ -634,6 +676,9 @@ export function TarjetaAsignacion({
   sinParteDia = null,
   apoyo = null,
   chipsApoyo = [],
+  deGuardia = null,
+  comodin = null,
+  atenuada = false,
   onCerrarJornada,
   onAbrir,
   onFraccion,
@@ -678,6 +723,15 @@ export function TarjetaAsignacion({
   apoyo?: { principal: string | null; principalCorta: string | null } | null;
   /** Los apoyos de este tramo de la principal ("+C3 ½"), y el rojo de "2 principales". */
   chipsApoyo?: { texto: string; titulo: string; peligro?: boolean }[];
+  /** Ocupa una guardia que se usó para ella. Ver ContenidoTarjeta. */
+  deGuardia?: { uso: UsoGuardia | null; onAbrir?: () => void } | null;
+  /** Es un comodín. Ver ContenidoTarjeta. */
+  comodin?: Comodin | null;
+  /**
+   * Mientras se arrastra un comodín o una guardia, lo que NO es destino se apaga (contrato
+   * §2.3: "se resaltan las guardias donde puede ir y lo demás se atenúa").
+   */
+  atenuada?: boolean;
   onCerrarJornada: (accion: NonNullable<AccionCierre>) => void;
   onAbrir: () => void;
   onFraccion: (f: FraccionStr) => void;
@@ -702,6 +756,10 @@ export function TarjetaAsignacion({
   // que Odoo no conoce y volvería rebotada, con la tarjeta saltando de vuelta al lugar
   // anterior. Dura lo que tarda la creación, cerca de un segundo.
   const guardando = bloque.ids.some((id) => id < 0);
+  // UNA GUARDIA QUE TERMINÓ EN DEPÓSITO ES SÓLO LECTURA (DatosTarea.deGuardia): la fila sigue
+  // siendo una guardia en la base y la RLS no deja tocarla. Se ve, se abre su ficha (lo que
+  // pasó con esa guardia) y nada más: ni se arrastra ni se edita ni se borra.
+  const soloLectura = bloque.tarea?.deGuardia === true;
   // Lo que realmente mide en pantalla: el alto que le tocó menos el aire que le deja a la
   // de abajo. Es contra ESTE número que se decide si entran dos renglones — descontar
   // después habría dejado tarjetas de 35px intentando dibujar dos líneas.
@@ -710,7 +768,7 @@ export function TarjetaAsignacion({
   const { setNodeRef: dragRef, attributes, listeners, isDragging } = useDraggable({
     id: `bloque:${bloque.key}`,
     data: { bloque },
-    disabled: guardando,
+    disabled: guardando || soloLectura,
   });
   // La tarjeta también es zona de drop: soltar sobre ella reordena el día.
   const { setNodeRef: dropRef, isOver } = useDroppable({
@@ -747,7 +805,7 @@ export function TarjetaAsignacion({
         height: altoReal,
         // Se atenúa lo TERMINADO, no lo pasado. Una jornada vencida sin parte queda a
         // opacidad plena: es la que reclama que alguien la cargue.
-        opacity: isDragging ? 0.35 : vencidaSinParte ? 1 : ejecutada ? 0.55 : 1,
+        opacity: isDragging ? 0.35 : atenuada ? 0.4 : vencidaSinParte ? 1 : ejecutada ? 0.55 : 1,
         outline: seleccionada ? `2px solid ${CORAL}` : isOver ? `2px dashed ${CORAL}` : undefined,
         outlineOffset: "-1px",
         // Táctil: sin demora de doble toque, y sin el menú de "copiar / compartir" que iOS
@@ -761,8 +819,8 @@ export function TarjetaAsignacion({
         // extendiera una SELECCIÓN, y una selección que se estira más allá del borde
         // scrollea el contenedor sola — el mismo síntoma que el auto-scroll, por otro
         // camino. La tarjeta es un agarre para arrastrar, no un texto para seleccionar.
-        "group/tarjeta relative z-10 mx-0.5 select-none rounded-[4px]",
-        guardando ? "cursor-progress" : "cursor-grab active:cursor-grabbing",
+        "group/tarjeta relative z-10 mx-0.5 select-none rounded-[4px] transition-opacity",
+        guardando ? "cursor-progress" : soloLectura ? "cursor-pointer" : "cursor-grab active:cursor-grabbing",
       )}
       title={guardando ? "Guardando en Odoo…" : undefined}
       {...attributes}
@@ -798,6 +856,8 @@ export function TarjetaAsignacion({
         sinParteDia={sinParteDia}
         apoyo={apoyo}
         chipsApoyo={chipsApoyo}
+        deGuardia={deGuardia}
+        comodin={comodin}
       />
 
       {/* El menú no aparece mientras se guarda: todas sus opciones escriben, y con el id
@@ -844,7 +904,13 @@ export function TarjetaAsignacion({
                 con la principal), no tiene jornadas de obra que editar ni parte que
                 cerrar: lo carga la principal. Lo que sí se decide del apoyo es cuánto va
                 y si va. Pasarlo a otra cuadrilla es arrastrarlo, en el mismo día. */}
-            {bloque.apoyo ? (
+            {/* La guardia que terminó en depósito: sólo se mira. */}
+            {soloLectura ? (
+              <DropdownMenuItem onClick={onAbrir}>
+                <ShieldCheck className="mr-2 h-4 w-4" />
+                Ver la guardia
+              </DropdownMenuItem>
+            ) : bloque.apoyo ? (
               <>
                 <DropdownMenuItem onClick={onAbrir}>
                   <PanelRightOpen className="mr-2 h-4 w-4" />

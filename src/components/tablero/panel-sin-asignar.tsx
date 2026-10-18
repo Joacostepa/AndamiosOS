@@ -18,6 +18,7 @@ import {
   Loader2,
   MapPin,
   MessageSquare,
+  Siren,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
@@ -25,6 +26,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuGroup,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
@@ -50,6 +52,8 @@ import { partesTitulo, normalizar, direccionDeObra, nombrePropio } from "@/lib/t
 import { piso } from "@/lib/tablero/ventana";
 import type { OtTablero } from "@/lib/tablero/tipos";
 import { CascoSyh } from "./casco-syh";
+import { ChipComodin, GrupoComodines, type ComodinEnBandeja } from "./grupo-comodines";
+import type { Comodin } from "@/lib/tablero/guardias-tipos";
 import { tituloResumen, type ResumenEnTarjeta } from "@/lib/tablero/tipos-comentario";
 
 // Panel lateral de obras sin asignar. Es una COLUMNA y no una franja horizontal
@@ -311,9 +315,19 @@ function TarjetaOt({
   queEjecutar,
   onDetalle,
   onDuracion,
+  comodin = null,
+  onMeterUrgente,
 }: {
   obra: ObraPendiente;
   hoy: string;
+  /**
+   * Es un comodín (guardias-contrato.md §2.3): un desarme que ya puede ir cualquier día. La
+   * tarjeta conserva el color de su tipo y suma el naipe y el chip "comodín · desde 20/10";
+   * vencido, "Esperando hace N días hábiles" en rojo.
+   */
+  comodin?: Comodin | null;
+  /** "Meter urgente" desde el menú de la tarjeta. Ausente = sin menú. */
+  onMeterUrgente?: (ot: OtTablero) => void;
   /** Resumen del hilo de la obra. null = nadie comentó nada todavía. */
   comentarios: ResumenEnTarjeta | null;
   /**
@@ -347,6 +361,9 @@ function TarjetaOt({
   // El menú de duración vive en un portal, pero sus clics suben por el árbol de React hasta
   // la tarjeta: sin esta guarda, elegir una duración abría además la ficha.
   const [menuAbierto, setMenuAbierto] = useState(false);
+  // El ⋯ de acciones ("Meter urgente") tiene la misma guarda que el de duración: sus clics
+  // también suben por el portal hasta la tarjeta.
+  const [accionesAbierto, setAccionesAbierto] = useState(false);
   const menuCerradoEn = useRef(0);
   const tipo = colorTipo(ot.tipo);
   const IconoTipo = ICONO_TIPO[tipo.icono];
@@ -358,7 +375,7 @@ function TarjetaOt({
   const orden = partes.numero ?? null;
   const cliente = partes.cliente ? nombrePropio(partes.cliente) : null;
   const abrir = () => {
-    if (menuAbierto || Date.now() - menuCerradoEn.current < 400) return;
+    if (menuAbierto || accionesAbierto || Date.now() - menuCerradoEn.current < 400) return;
     onDetalle(ot);
   };
 
@@ -373,7 +390,7 @@ function TarjetaOt({
       // había un botón "i" aparte, de 22px, que era el único camino a la ficha.
       onClick={abrir}
       onKeyDown={(e) => {
-        if (e.key === "Enter" && !menuAbierto) {
+        if (e.key === "Enter" && !menuAbierto && !accionesAbierto) {
           e.preventDefault();
           abrir();
         }
@@ -462,6 +479,34 @@ function TarjetaOt({
           >
             Urgente
           </span>
+        )}
+        {/* "METER URGENTE" (guardias-contrato.md §1.6) en un ⋯ y no a la vista: es un gesto
+            de excepción, y un botón rojo en las 36 tarjetas de la bandeja sería invitar a
+            usarlo. Una que ya es urgente no lo ofrece. */}
+        {onMeterUrgente && !urgente && (
+          <DropdownMenu
+            open={accionesAbierto}
+            onOpenChange={(abierto) => {
+              setAccionesAbierto(abierto);
+              if (!abierto) menuCerradoEn.current = Date.now();
+            }}
+          >
+            <DropdownMenuTrigger
+              className="-mr-1 -mt-0.5 shrink-0 rounded p-1 text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
+              aria-label="Más acciones de la obra"
+            >
+              <MoreHorizontal className="h-3.5 w-3.5" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem onClick={() => onMeterUrgente(ot)}>
+                <Siren className="mr-2 h-4 w-4" />
+                Meter urgente…
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
       </div>
 
@@ -553,6 +598,15 @@ function TarjetaOt({
             </span>
           )}
         </p>
+
+        {/* EL COMODÍN: el chip y, sin fecha, desde cuándo puede ir. Vencido va en rojo: ya
+            no es comodín, es una obra que espera de más (contrato §2.2). */}
+        {comodin && (
+          <p className="flex flex-wrap items-center gap-x-1 gap-y-0.5">
+            <ChipComodin comodin={comodin} />
+            {!comodin.vencido && <span>sin fecha · el cliente la pidió desde el {format(parseISO(comodin.piso), "dd/MM")}</span>}
+          </p>
+        )}
 
         {/* LA HABILITACIÓN CON TEXTO cuando no está al día. Un punto de 8px con tooltip no
             se lee en táctil, y el ámbar sobre el fondo del desarme casi no se veía. La
@@ -660,8 +714,20 @@ export function PanelSinAsignar({
   onDuracion,
   onIrABloque,
   onOrden,
+  comodines = [],
+  vencidos,
+  onMeterUrgente,
 }: {
   ots: ObraPendiente[];
+  /**
+   * Los comodines (guardias-contrato.md §2.3), SIN los vencidos y ordenados por espera:
+   * van en un grupo propio arriba, también los que ya están en la grilla.
+   */
+  comodines?: ComodinEnBandeja[];
+  /** Los que esperaron más de 7 días hábiles: van con las urgentes, con el chip en rojo. */
+  vencidos?: Map<number, Comodin>;
+  /** "Meter urgente" desde el ⋯ de la tarjeta. */
+  onMeterUrgente?: (ot: OtTablero) => void;
   /** Obras que ya están en la grilla, para el buscador. Sólo las del rango cargado. */
   planificadas: ObraPlanificada[];
   /** Obras planificadas con todas sus jornadas fuera del rango cargado. */
@@ -702,7 +768,10 @@ export function PanelSinAsignar({
   // En la computadora no cambia nada: soltar una obra de la bandeja en la bandeja nunca
   // hizo nada.
   const { active: activoGlobal } = useDndContext();
-  const arrastrandoObra = String(activoGlobal?.id ?? "").startsWith("ot:");
+  // Un comodín que ya está en la grilla también se arrastra DESDE ACÁ (grupo-comodines): para
+  // la bandeja es lo mismo que una obra, se corre en celular y no es destino.
+  const idActivo = String(activoGlobal?.id ?? "");
+  const arrastrandoObra = idActivo.startsWith("ot:") || idActivo.startsWith("comodin:");
   const { setNodeRef, isOver, active } = useDroppable({ id: ID_BANDEJA, disabled: arrastrandoObra });
   const soltando = isOver && String(active?.id ?? "").startsWith("bloque:");
 
@@ -788,14 +857,39 @@ export function PanelSinAsignar({
   // sumando el total del encabezado y se puede verificar de un vistazo que no falta
   // ninguna. La tarjeta urgente conserva su punto de semáforo: está arriba porque es
   // urgente, no porque esté habilitada, y esas dos cosas no pueden confundirse.
-  const urgentes = conFiltros.filter((o) => esUrgente(o.ot));
-  const resto = conFiltros.filter((o) => !esUrgente(o.ot));
+  //
+  // EL COMODÍN VENCIDO VA CON LAS URGENTES (contrato §2.2): esperó más de 7 días hábiles
+  // desde que el cliente lo pidió y deja de ser "cuando haya lugar". No se escribe nada en
+  // Odoo: es la bandeja la que lo sube.
+  //
+  // LOS COMODINES SIN FECHA salen de los grupos de habilitación y van al suyo, arriba: cada
+  // obra sigue en UN solo grupo, así los contadores siguen sumando el total.
+  const esVencido = (o: ObraPendiente) => vencidos?.has(o.ot.id) ?? false;
+  const idsComodin = new Set(comodines.filter((c) => c.pendiente).map((c) => c.ot.id));
+  const urgentes = conFiltros.filter((o) => esUrgente(o.ot) || esVencido(o));
+  const resto = conFiltros.filter((o) => !esUrgente(o.ot) && !esVencido(o) && !idsComodin.has(o.ot.id));
   const listas = resto.filter((o) => !habilitacionPendiente(o.ot));
   const pendientesHab = resto.filter((o) => habilitacionPendiente(o.ot));
+  // Los comodines que pasan la búsqueda y los filtros: los sin fecha, si están entre las
+  // filtradas; los de la grilla, por texto y tipo (son siempre desarmes de un día o menos).
+  const visibles = new Set(conFiltros.map((o) => o.ot.id));
+  const comodinesVisibles = comodines.filter((c) =>
+    c.pendiente
+      ? visibles.has(c.ot.id)
+      : (!q || coincide(c.ot, q)) && (tipoFiltro === null || tipoFiltro === tipoDe(c.ot)) && duracionFiltro === null,
+  );
+  const obraDe = new Map(conFiltros.map((o) => [o.ot.id, o]));
 
   // El orden de la ficha es el que se VE, con la búsqueda y los filtros puestos: la
   // recorrida con ‹ › tiene que pasar por las mismas tarjetas que tenés adelante.
-  const ordenVisible = [...urgentes, ...listas, ...pendientesHab].map((o) => o.ot.id).join(",");
+  const ordenVisible = [
+    ...urgentes,
+    ...comodinesVisibles.flatMap((c) => (c.pendiente && obraDe.has(c.ot.id) ? [obraDe.get(c.ot.id)!] : [])),
+    ...listas,
+    ...pendientesHab,
+  ]
+    .map((o) => o.ot.id)
+    .join(",");
   useEffect(() => {
     onOrden?.(ordenVisible ? ordenVisible.split(",").map(Number) : []);
   }, [ordenVisible, onOrden]);
@@ -966,7 +1060,7 @@ export function PanelSinAsignar({
           coincidencias: ahí abajo está "Ya planificadas", que es justo donde suele estar
           lo que no aparece. Antes, sin coincidencias en la bandeja caía al mensaje vacío
           y "ninguna obra coincide" se leía como que la obra no existía. */}
-      {conFiltros.length > 0 || q ? (
+      {conFiltros.length > 0 || q || comodinesVisibles.length > 0 ? (
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-2">
           {conFiltros.length === 0 && (
             <div className="flex flex-wrap items-center gap-2 px-1 text-xs text-muted-foreground">
@@ -996,9 +1090,20 @@ export function PanelSinAsignar({
             onToggle={() => {}}
           >
             {urgentes.map((obra) => (
-              <TarjetaOt key={obra.ot.id} obra={obra} hoy={hoy} comentarios={comentarios?.get(obra.ot.id) ?? null} queEjecutar={queEjecutar} onDetalle={onDetalle} onDuracion={onDuracion} />
+              <TarjetaOt key={obra.ot.id} obra={obra} hoy={hoy} comentarios={comentarios?.get(obra.ot.id) ?? null} queEjecutar={queEjecutar} onDetalle={onDetalle} onDuracion={onDuracion} comodin={vencidos?.get(obra.ot.id) ?? null} onMeterUrgente={onMeterUrgente} />
             ))}
           </Grupo>
+
+          <GrupoComodines
+            comodines={comodinesVisibles}
+            onIrABloque={onIrABloque}
+            tarjeta={(item) => {
+              const obra = obraDe.get(item.ot.id);
+              return obra ? (
+                <TarjetaOt obra={obra} hoy={hoy} comentarios={comentarios?.get(obra.ot.id) ?? null} queEjecutar={queEjecutar} onDetalle={onDetalle} onDuracion={onDuracion} comodin={item.comodin} onMeterUrgente={onMeterUrgente} />
+              ) : null;
+            }}
+          />
 
           {/* "Se pueden planificar" y no "Habilitadas", que es lo que decía y era FALSO
               para el amarillo: ese grupo junta verde con amarillo a propósito —el trámite
@@ -1021,7 +1126,7 @@ export function PanelSinAsignar({
             onToggle={() => {}}
           >
             {listas.map((obra) => (
-              <TarjetaOt key={obra.ot.id} obra={obra} hoy={hoy} comentarios={comentarios?.get(obra.ot.id) ?? null} queEjecutar={queEjecutar} onDetalle={onDetalle} onDuracion={onDuracion} />
+              <TarjetaOt key={obra.ot.id} obra={obra} hoy={hoy} comentarios={comentarios?.get(obra.ot.id) ?? null} queEjecutar={queEjecutar} onDetalle={onDetalle} onDuracion={onDuracion} onMeterUrgente={onMeterUrgente} />
             ))}
           </Grupo>
 
@@ -1034,7 +1139,7 @@ export function PanelSinAsignar({
             onToggle={() => setPendientesAbierto((v) => !v)}
           >
             {pendientesHab.map((obra) => (
-              <TarjetaOt key={obra.ot.id} obra={obra} hoy={hoy} comentarios={comentarios?.get(obra.ot.id) ?? null} queEjecutar={queEjecutar} onDetalle={onDetalle} onDuracion={onDuracion} />
+              <TarjetaOt key={obra.ot.id} obra={obra} hoy={hoy} comentarios={comentarios?.get(obra.ot.id) ?? null} queEjecutar={queEjecutar} onDetalle={onDetalle} onDuracion={onDuracion} onMeterUrgente={onMeterUrgente} />
             ))}
           </Grupo>
 

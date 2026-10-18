@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { exigirPermisoDeApi } from "@/lib/auth/servidor";
 import {
   agregarNotaJornada,
   borrarNotaJornada,
@@ -20,6 +21,10 @@ import {
 // Va con la sesión del usuario y no con la service role: las políticas de RLS de la
 // tabla son las que deciden quién escribe, y `autor_id` sale de la sesión y no del
 // body, para que no se pueda firmar una nota a nombre de otro.
+//
+// POST y DELETE arrancan con la segunda llave (exigirPermisoDeApi: la misma regla que el
+// proxy, Planificación o Partes en "editar"). La RLS de 20261018100002 pide lo mismo, así
+// que quien pasa la ruta pasa la política, y el autor sale de la llave.
 
 export const dynamic = "force-dynamic";
 
@@ -65,17 +70,18 @@ const crearSchema = z
   });
 
 export async function POST(req: NextRequest) {
+  const sesion = await exigirPermisoDeApi(req);
+  if (sesion instanceof NextResponse) return sesion;
   const parsed = crearSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return invalido(parsed.error.issues.map((i) => i.message).join(" · "));
 
   try {
     const db = await createClient();
-    const { data } = await db.auth.getUser();
     const { desde, hasta, cuadrillaId, texto } = parsed.data;
     await agregarNotaJornada(
       db,
       { desde, hasta: hasta ?? desde, cuadrillaId, texto },
-      data.user?.id ?? null,
+      sesion.userId,
     );
     return NextResponse.json({ ok: true });
   } catch (e) {
@@ -86,6 +92,8 @@ export async function POST(req: NextRequest) {
 const borrarSchema = z.object({ notaId: z.string().uuid() });
 
 export async function DELETE(req: NextRequest) {
+  const sesion = await exigirPermisoDeApi(req);
+  if (sesion instanceof NextResponse) return sesion;
   const parsed = borrarSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return invalido("Nota inválida");
 

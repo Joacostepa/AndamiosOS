@@ -12,6 +12,14 @@
 // pasar (se marca, no se bloquea); el domingo no se trabaja salvo que haya algo puesto; los
 // feriados se marcan pero no bloquean. Lo que se ve es el tablero de HOY: lo maneja
 // Operaciones, y una fecha se le promete al cliente cuando ellos la confirman.
+//
+// LAS GUARDIAS NO SE OFRECEN (guardias-contrato.md §1.1). Una guardia activa es una jornada
+// que el sistema reserva para lo imprevisto: ocupa la celda como cualquier tarea —así ya la
+// cuenta la ocupación— y acá se describe como "reservada para imprevistos (no se ofrece)",
+// para que el asistente no la lea como un hueco ni como trabajo de Operaciones. Cada día
+// trae `libreSinGuardia` (lo libre que SÍ se puede ofrecer) y, con una duración, la consulta
+// devuelve `primeraFechaSinGuardia`: el primer lugar donde entra la obra entera sin tocar
+// guardias ni pasarse de la jornada.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { addDays, differenceInCalendarDays, format, parseISO } from "date-fns";
@@ -21,6 +29,7 @@ import { fechasDeOt, fetchTablero } from "@/lib/odoo/asignaciones";
 import { feriadosDelRango } from "@/lib/feriados/argentina";
 import { jornadasPlanTodas } from "@/lib/planificacion/jornadas-plan";
 import { FRACCIONES, ocupacionCelda, repartirJornadas } from "@/lib/tablero/fracciones";
+import { esGuardia } from "@/lib/tablero/guardias";
 import { tareasEnRango } from "@/lib/tablero/tareas";
 import { tipoOtLabel, type AsignacionTablero, type OtTablero } from "@/lib/tablero/tipos";
 
@@ -54,7 +63,17 @@ export type ConsultaPlanificacion = {
   obra?: string;
   /** Hoy en Buenos Aires (AAAA-MM-DD). */
   hoy: string;
+  /**
+   * Jornadas de la obra que se quiere ofrecer (0,5 = media jornada; 3 = tres días). Con esto
+   * la respuesta trae `primeraFechaSinGuardia`.
+   */
+  duracion?: number;
 };
+
+const GUARDIA_ASISTENTE = "reservada para imprevistos (no se ofrece)";
+
+/** Lo libre de una celda en jornadas, con la guardia contando como ocupada. */
+const libreDe = (ocupado: number) => Math.max(0, Math.round((1 - ocupado) * 100) / 100);
 
 export async function consultarPlanificacion(db: SupabaseClient, p: ConsultaPlanificacion) {
   const desde = p.desde ?? p.hoy;
@@ -95,6 +114,7 @@ export async function consultarPlanificacion(db: SupabaseClient, p: ConsultaPlan
 
   function describir(a: AsignacionTablero) {
     const base = { fraccion: a.fraccion, horas: horas(a.fraccion) };
+    if (esGuardia(a)) return { ...base, reservada: GUARDIA_ASISTENTE };
     if (a.origen === "tarea") {
       return { ...base, tareaDeOperaciones: a.tarea?.titulo ?? "Tarea", tipo: a.tarea?.tipo, hecha: a.tarea?.hecha || undefined, notas: a.notas || undefined };
     }
@@ -113,12 +133,25 @@ export async function consultarPlanificacion(db: SupabaseClient, p: ConsultaPlan
     };
   }
 
+  // Lo libre de cada celda (cuadrilla y día) contando TODO lo que hay —también las guardias—,
+  // sin el filtro de obra: para ofrecer una fecha importa la celda entera.
+  const ocupadoPorCelda = new Map<string, number>();
+  for (const a of asignaciones) {
+    if (a.cuadrillaId == null) continue;
+    const k = `${a.cuadrillaId}|${a.fecha}`;
+    ocupadoPorCelda.set(k, (ocupadoPorCelda.get(k) ?? 0) + a.fraccion);
+  }
+  const libreCelda = (cuadrillaId: number, fecha: string) => libreDe(ocupadoPorCelda.get(`${cuadrillaId}|${fecha}`) ?? 0);
+
   const dias = [];
   for (let d = parseISO(desde); format(d, "yyyy-MM-dd") <= hasta; d = addDays(d, 1)) {
     const fecha = format(d, "yyyy-MM-dd");
     const delDia = asignaciones.filter((a) => a.fecha === fecha && coincide(a));
     const ocupadas = [];
     const libres: string[] = [];
+    const reservadas = cuadrillas
+      .filter((c) => asignaciones.some((a) => a.fecha === fecha && a.cuadrillaId === c.id && esGuardia(a)))
+      .map((c) => c.nombre);
     for (const c of cuadrillas) {
       const items = delDia.filter((a) => a.cuadrillaId === c.id);
       if (!items.length) {
@@ -136,13 +169,17 @@ export async function consultarPlanificacion(db: SupabaseClient, p: ConsultaPlan
     const sinCuadrilla = delDia.filter((a) => a.cuadrillaId === null || !nombreCuadrilla.has(a.cuadrillaId));
     // Con una obra puntual, sólo los días en que aparece: los libres del resto no vienen al caso.
     if (qObra && !ocupadas.length && !sinCuadrilla.length) continue;
+    const domingo = d.getDay() === 0;
     dias.push({
       fecha,
       dia: aDia(fecha),
       feriado: feriado.get(fecha),
-      domingo: d.getDay() === 0 || undefined,
+      domingo: domingo || undefined,
       ocupadas,
       libres: qObra ? undefined : libres,
+      // Jornadas libres que se pueden ofrecer ese día (la guardia ya cuenta como ocupada).
+      libreSinGuardia: qObra || domingo ? undefined : Math.round(cuadrillas.reduce((s, c) => s + libreCelda(c.id, fecha), 0) * 100) / 100,
+      reservadasParaImprevistos: reservadas.length ? reservadas : undefined,
       sinCuadrilla: sinCuadrilla.length && !qCuadrilla ? sinCuadrilla.map(describir) : undefined,
     });
   }
@@ -187,9 +224,38 @@ export async function consultarPlanificacion(db: SupabaseClient, p: ConsultaPlan
     );
   }
 
+  // La primera fecha donde entra la obra ENTERA en una cuadrilla propia, en días seguidos
+  // (salteando domingos y feriados), sin tocar guardias ni pasarse de la jornada. Las
+  // tercerizadas no: no tienen disponibilidad asegurada.
+  let primeraFechaSinGuardia: { fecha: string; cuadrilla: string; dias: string[] } | { nota: string } | undefined;
+  if (p.duracion && p.duracion > 0) {
+    const necesarias = Math.ceil(p.duracion - 1e-6);
+    const resto = Math.round((p.duracion - (necesarias - 1)) * 100) / 100;
+    const habiles: string[] = [];
+    for (let d = parseISO(desde > p.hoy ? desde : p.hoy); format(d, "yyyy-MM-dd") <= hasta; d = addDays(d, 1)) {
+      const f = format(d, "yyyy-MM-dd");
+      if (d.getDay() !== 0 && !feriado.has(f)) habiles.push(f);
+    }
+    buscar: for (let i = 0; i + necesarias <= habiles.length; i++) {
+      for (const c of cuadrillas) {
+        if (c.tercerizada) continue;
+        const tramo = habiles.slice(i, i + necesarias);
+        const entra = tramo.every((f, j) => libreCelda(c.id, f) + 1e-6 >= (j === tramo.length - 1 ? resto : 1));
+        if (entra) {
+          primeraFechaSinGuardia = { fecha: tramo[0], cuadrilla: c.nombre, dias: tramo };
+          break buscar;
+        }
+      }
+    }
+    primeraFechaSinGuardia ??= { nota: `No hay lugar para ${p.duracion} jornada(s) seguidas sin tocar guardias entre el ${desde} y el ${hasta}.` };
+  }
+
   return {
     rango: { desde, hasta, recortadoA31Dias: recortado || undefined },
-    nota: "Tablero de hoy (lo maneja Operaciones). Jornada de cuadrilla = 1,00 = 8 h. 'tentativa' ya ocupa lugar pero no está confirmada.",
+    primeraFechaSinGuardia,
+    nota:
+      "Tablero de hoy (lo maneja Operaciones). Jornada de cuadrilla = 1,00 = 8 h. 'tentativa' ya ocupa lugar pero no está confirmada. " +
+      `Una jornada '${GUARDIA_ASISTENTE}' está guardada para urgencias: no es un hueco y no se le ofrece a un cliente; lo que se puede ofrecer es 'libreSinGuardia'.`,
     cuadrillas: cuadrillas.map((c) => c.nombre + (c.tercerizada ? " (tercerizada)" : "")),
     dias,
     fechasDeLaObra,

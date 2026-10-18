@@ -51,8 +51,18 @@ export async function controlarExplicitos(
 /**
  * Con qué acción queda cada módulo explícito en direccion_auditoria. Uno que falte cae en
  * "permiso_socios", que era lo único que había antes de Sistemas.
+ *
+ * `planificacion-autoriza` ("solo JS": sacar guardias y responder los pedidos del candado,
+ * guardias-contrato.md §1.3) lleva su propia acción: quién se lo dio a quién es justamente
+ * lo que hay que poder mirar si una guardia desaparece. El CHECK de la tabla la admite desde
+ * 20261018100002_tablero_rls.sql; sin esa migración el insert falla y registrarAuditoria
+ * sólo lo avisa en el log (nunca rompe el guardado del usuario).
  */
-const ACCION: Partial<Record<ModuloId, AccionAuditoria>> = { "direccion-socios": "permiso_socios", sistemas: "permiso_sistemas" };
+const ACCION: Partial<Record<ModuloId, AccionAuditoria>> = {
+  "direccion-socios": "permiso_socios",
+  sistemas: "permiso_sistemas",
+  "planificacion-autoriza": "permiso_guardias",
+};
 
 /**
  * Registra el cambio (si lo hubo). Con la service role; sin la tabla, no registra. Una fila

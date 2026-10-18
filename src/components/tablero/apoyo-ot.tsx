@@ -3,13 +3,14 @@
 import { useState } from "react";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
-import { ArrowUpDown, Plus, Users, X } from "lucide-react";
+import { ArrowUpDown, Plus, ShieldCheck, Users, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { APOYO, OK_TEXTO, PELIGRO_TEXTO } from "@/lib/tablero/colores";
+import { APOYO, GUARDIA, OK_TEXTO, PELIGRO_TEXTO } from "@/lib/tablero/colores";
 import { FRACCIONES, fraccionLabel, redondearFraccion, type FraccionStr } from "@/lib/tablero/fracciones";
 import { diasParaApoyo, type DiaDeObra } from "@/lib/tablero/apoyo";
 import { nombrePropio } from "@/lib/tablero/titulo";
 import { cn } from "@/lib/utils";
+import type { DecisionCandado } from "@/lib/tablero/guardias-tipos";
 
 // La cuadrilla de APOYO desde la ficha de la obra (docs/tablero-planificacion/apoyo.md).
 //
@@ -39,8 +40,19 @@ export type DatosApoyoOt = {
   cuadrillas: { id: number; nombre: string }[];
   /** El día con el que arranca elegido: el de la tarjeta que se abrió. */
   diaInicial: string | null;
-  /** Cuánto tiene ocupado HOY esa cuadrilla ese día (suma de fracciones). */
+  /**
+   * Cuánto tiene ocupado HOY esa cuadrilla ese día (suma de fracciones). SIN LAS GUARDIAS:
+   * el apoyo que cae en una guardia la reemplaza, no se suma (guardias-contrato.md §1.6).
+   */
   ocupacion: (cuadrillaId: number, fecha: string) => number;
+  /**
+   * Si esa cuadrilla tiene una guardia activa ese día, lo que dice el CANDADO de poner este
+   * apoyo ahí (evaluarCandado, el mismo que decide al sumar); null si no hay guardia. Un apoyo
+   * ahí la USA: sin pedir nada si el candado lo deja (armado atrasado, pero también una urgencia
+   * nueva o un comodín abierto); si no, se pide a JS. Antes se pasaba sólo "el armado está
+   * atrasado", y una urgencia que sí cumplía leía "hace falta la autorización de JS".
+   */
+  candadoEn?: (cuadrillaId: number, fecha: string) => DecisionCandado | null;
 };
 
 const DIA = (f: string) => format(parseISO(f), "EEE d", { locale: es });
@@ -178,6 +190,16 @@ function FormApoyo({
     return { fecha: d.fecha, total };
   });
   const pasados = carga.filter((c) => c.total > 1);
+  // Los días que caen sobre una guardia de esa cuadrilla.
+  const enGuardia =
+    cuadrillaId != null && datos.candadoEn
+      ? (plan?.sumar ?? []).flatMap((d) => {
+          const decision = datos.candadoEn!(cuadrillaId, d.fecha);
+          return decision ? [{ ...d, decision }] : [];
+        })
+      : [];
+  const libreEnTodas = enGuardia.length > 0 && enGuardia.every((d) => d.decision.libre);
+  const razon = enGuardia.find((d) => d.decision.libre)?.decision;
 
   const alternar = (f: string) =>
     setFechas((previas) => (previas.includes(f) ? previas.filter((x) => x !== f) : [...previas, f]));
@@ -276,6 +298,20 @@ function FormApoyo({
             <p className="text-muted-foreground">
               {plan.sumar.filter((d) => d.conParte).map((d) => `El ${DIA(d.fecha)}`).join(", ")} ya tiene parte: el
               apoyo queda vinculado a ese parte. Después sumá su gente en Partes.
+            </p>
+          )}
+          {/* EL APOYO SOBRE UNA GUARDIA, dicho antes de sumarlo: si el candado lo deja la usa
+              sin pedir nada (y dice por qué); si no, el botón termina en un pedido a JS y hasta
+              que conteste no se suma nada. */}
+          {enGuardia.length > 0 && (
+            <p className="flex items-start gap-1.5" style={{ color: GUARDIA.texto }}>
+              <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" style={{ color: GUARDIA.sello }} aria-hidden />
+              <span>
+                {enGuardia.map((d) => `El ${DIA(d.fecha)}`).join(", ")} {nombre} tiene una guardia:{" "}
+                {libreEnTodas
+                  ? `el apoyo la usa sin pedir nada. ${razon?.libre ? razon.razon : ""}`
+                  : "para usarla con este apoyo hace falta la autorización de JS."}
+              </span>
             </p>
           )}
           {plan.sumar.length > 0 && (

@@ -10,6 +10,7 @@ import {
   CANALETA,
   CORAL,
   FERIADO_COLUMNA,
+  GUARDIA,
   PASADO,
   RIEL_OCUPACION,
   SUSPENDIDO,
@@ -45,6 +46,7 @@ export function CeldaDia({
   suspension = null,
   onQuitarSuspension,
   onCrearTarea,
+  destino = null,
 }: {
   cuadrillaId: number;
   fecha: string;
@@ -89,6 +91,16 @@ export function CeldaDia({
    * en cualquier calendario, y no se pisa con el arrastre.
    */
   onCrearTarea?: () => void;
+  /**
+   * Mientras se ARRASTRA UNA GUARDIA (correrla dentro de la semana, contrato §1.3 punto 5):
+   * "valida" = acá puede ir (misma semana, celda totalmente libre de una cuadrilla propia,
+   * sin la otra guardia ese día ni en esa fila: destinoValidoGuardia, la misma regla que
+   * valida el servidor); "atenuada" = acá no. null = no se está arrastrando una guardia.
+   *
+   * Se dice con el contorno y un rótulo, no sólo con el color: soltarla en una celda
+   * atenuada no hace nada malo (el board explica por qué no), pero tiene que verse antes.
+   */
+  destino?: "valida" | "atenuada" | null;
 }) {
   const { setNodeRef, isOver, active } = useDroppable({
     id: `celda:${cuadrillaId}:${fecha}`,
@@ -112,7 +124,11 @@ export function CeldaDia({
         // un dato del día que vale igual antes y después de hoy.
         backgroundColor: dropActivo
           ? ACENTO_BG
-          : colapsada
+          : destino === "valida"
+            ? GUARDIA.fondo
+            : destino === "atenuada" && !colapsada
+              ? PASADO
+              : colapsada
             ? CANALETA
             : feriado
               ? FERIADO_COLUMNA
@@ -122,7 +138,11 @@ export function CeldaDia({
         // El separador de semana recorre la altura completa: en el encabezado solo, a
         // 40px, no alcanza para ubicarse cuando se scrollea entre semanas.
         borderLeft: inicioSemana ? "2px solid var(--border)" : undefined,
-        outline: dropActivo ? `2px dashed ${CORAL}` : undefined,
+        outline: dropActivo
+          ? `2px dashed ${CORAL}`
+          : destino === "valida"
+            ? `2px dashed ${GUARDIA.sello}`
+            : undefined,
         outlineOffset: "-2px",
       }}
       // group/celda: la cruz de la tapa aparece al pasar por la celda (la tapa no toma el puntero).
@@ -132,6 +152,17 @@ export function CeldaDia({
       onDoubleClick={colapsada ? undefined : onCrearTarea}
       title={!colapsada && onCrearTarea ? "Doble clic para agregar una tarea acá" : undefined}
     >
+      {/* El rótulo del destino válido: lo que dice el contorno, en palabras. No toma el
+          puntero, así la celda sigue siendo zona de drop. */}
+      {!colapsada && destino === "valida" && !dropActivo && (
+        <span
+          className="pointer-events-none absolute left-1.5 top-1.5 rounded-sm px-1 text-[10px] font-semibold"
+          style={{ backgroundColor: GUARDIA.fondo, color: GUARDIA.sello }}
+        >
+          puede ir acá
+        </span>
+      )}
+
       {!colapsada && suspension && (
         <TapaSuspension
           motivo={suspension.motivo}

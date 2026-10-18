@@ -16,6 +16,7 @@ import { CLAVE_ACTIVIDAD } from "@/hooks/use-actividad";
 import { CLAVE_SUSPENSIONES } from "@/hooks/use-suspensiones";
 import { avisarCambio } from "@/lib/tablero/avisos";
 import type { RegistroConfirmacion } from "@/lib/tablero/tipos-confirmacion";
+import type { RechazoCandado } from "@/lib/tablero/guardias-tipos";
 import type { RegistroApoyoCorrida, RegistroCorrida, RegistroMovimiento } from "@/lib/tablero/tipos-movimiento";
 import type {
   AsignacionTablero,
@@ -36,20 +37,105 @@ import type {
 
 const CLAVE = ["tablero"] as const;
 
+/** La clave raíz del payload de asignaciones. La exporta para use-guardias, que escribe ahí. */
+export const CLAVE_TABLERO = CLAVE;
+
+/**
+ * Las guardias y los pedidos a JS (guardias-contrato.md) viven en CLAVES PROPIAS y no bajo
+ * ["tablero"]: aplicarOptimista reescribe todo lo que cuelga de esa clave como si fuera el
+ * payload de asignaciones (la regla del módulo, ver handoff.md). Las activas igual viajan
+ * en el tablero —son tareas tipo 'guardia'— y ésas sí se tocan optimistas ahí.
+ *
+ * Se declaran ACÁ y no en use-guardias porque las invalida también useCorrerDia (la lluvia
+ * consume guardias), y use-guardias importa de este archivo: así no hay import circular.
+ */
+export const CLAVE_GUARDIAS = ["guardias-tablero"] as const;
+export const CLAVE_SOLICITUDES_GUARDIA = ["guardias-solicitudes"] as const;
+
 export function claveTablero(desde: string, hasta: string) {
   return [...CLAVE, desde, hasta];
 }
 
-async function pedir<T>(url: string, init?: RequestInit): Promise<T> {
+/**
+ * El error de una ruta, CON SU CUERPO.
+ *
+ * Antes alcanzaba con el texto: todo error terminaba en un toast. Con las guardias un 409
+ * puede ser un RechazoCandado (`codigo: "guardia"`), y eso no es un error para mostrar sino
+ * una pregunta para hacer: "¿le pedís autorización a JS?". Para poder distinguirlo hay que
+ * conservar el status y el cuerpo, no sólo el mensaje. Sigue siendo un Error: quien sólo
+ * mira `.message` no se entera del cambio.
+ */
+export class ErrorApi extends Error {
+  readonly status: number;
+  readonly cuerpo: unknown;
+  constructor(mensaje: string, status: number, cuerpo: unknown) {
+    super(mensaje);
+    this.name = "ErrorApi";
+    this.status = status;
+    this.cuerpo = cuerpo;
+  }
+}
+
+/** Si el error es el 409 del candado de una guardia, su cuerpo; si no, null. */
+export function rechazoDeGuardia(e: unknown): RechazoCandado | null {
+  if (!(e instanceof ErrorApi) || e.status !== 409) return null;
+  const c = e.cuerpo as Partial<RechazoCandado> | null;
+  return c && c.codigo === "guardia" && typeof c.guardiaId === "number" ? (c as RechazoCandado) : null;
+}
+
+export async function pedir<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...init,
     headers: init?.body ? { "Content-Type": "application/json" } : undefined,
   });
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { error?: string } | null;
-    throw new Error(body?.error ?? `Error ${res.status}`);
+    throw new ErrorApi(body?.error ?? `Error ${res.status}`, res.status, body);
   }
   return (await res.json()) as T;
+}
+
+// ── El 409 de una guardia, desde cualquier escritura ─────────────────────────
+//
+// EL TABLERO YA EVALÚA EL CANDADO ANTES DE SOLTAR (tablero-board, guardiasPisadas →
+// evaluarCandado), así que el servidor no debería contestarlo nunca. Si lo contesta es
+// porque la pantalla estaba vieja: otro puso o corrió una guardia y este tablero todavía no
+// se enteró. Ahí un toast rojo con "Esa jornada es una guardia" deja al usuario sin salida;
+// lo que corresponde es ofrecerle el mismo camino que si lo hubiera visto: pedirle a JS.
+//
+// El hook no sabe armar ese pedido ni abrir un diálogo, así que avisa a quien escuche —el
+// board— con lo que intentó escribir. Sin nadie escuchando, cae al toast de siempre.
+
+/** Lo que una escritura intentó cuando el servidor la frenó por una guardia. */
+export type RechazoEnEscritura = {
+  rechazo: RechazoCandado;
+  /** Cuando la escritura ya era un uso de guardia: lo que se pidió, entero. */
+  otId?: number;
+  guardiaIds?: number[];
+  crear?: NuevaAsignacion[];
+  mover?: MovimientoAsignacion[];
+  registro?: RegistroMovimiento;
+};
+
+const oyentesRechazo = new Set<(r: RechazoEnEscritura) => void>();
+
+/** El board se anota al montarse. Devuelve cómo darse de baja. */
+export function escucharRechazosGuardia(oyente: (r: RechazoEnEscritura) => void): () => void {
+  oyentesRechazo.add(oyente);
+  return () => {
+    oyentesRechazo.delete(oyente);
+  };
+}
+
+/** true si el error era de una guardia y alguien se hizo cargo (no hace falta el toast). */
+export function avisarRechazoGuardia(
+  error: unknown,
+  intento: Omit<RechazoEnEscritura, "rechazo"> = {},
+): boolean {
+  const rechazo = rechazoDeGuardia(error);
+  if (!rechazo || oyentesRechazo.size === 0) return false;
+  for (const o of oyentesRechazo) o({ rechazo, ...intento });
+  return true;
 }
 
 /**
@@ -138,14 +224,19 @@ export function useFeriados(desde: string, hasta: string) {
 
 // ── Andamiaje de las mutaciones optimistas ───────────────────────────────────
 
-type Contexto = {
+export type Contexto = {
   previos: [readonly unknown[], TableroPayload | undefined][];
   /** Ids temporales que creó esta mutación, en el orden en que se pidieron. */
   temporales?: number[];
 };
 
-/** Aplica un cambio a todas las semanas cacheadas y devuelve el snapshot para revertir. */
-async function aplicarOptimista(
+/**
+ * Aplica un cambio a todas las semanas cacheadas y devuelve el snapshot para revertir.
+ *
+ * Exportada para use-guardias: usar una guardia es una escritura más sobre el MISMO array
+ * (la tarjeta de la guardia se va y entra la obra), y tiene que revertir igual que el resto.
+ */
+export async function aplicarOptimista(
   qc: QueryClient,
   fn: (data: TableroPayload) => TableroPayload,
 ): Promise<Contexto> {
@@ -155,17 +246,29 @@ async function aplicarOptimista(
   return { previos };
 }
 
-function revertir(qc: QueryClient, ctx: Contexto | undefined, mensaje: string, error: Error) {
+/**
+ * Vuelve la pantalla atrás. Con `silencioso` no muestra el toast: es el caso del 409 de una
+ * guardia que ya atendió el board (ofrece pedir autorización en vez de un error rojo).
+ */
+export function revertir(
+  qc: QueryClient,
+  ctx: Contexto | undefined,
+  mensaje: string,
+  error: Error,
+  silencioso = false,
+) {
   for (const [clave, data] of ctx?.previos ?? []) qc.setQueryData(clave, data);
-  toast.error(mensaje, { description: error.message });
+  if (!silencioso) toast.error(mensaje, { description: error.message });
   // Cuando algo falla el refresco NO se agrupa: la pantalla acaba de volver atrás y hay
   // que saber ya qué quedó realmente escrito en Odoo. Agrupar está bien mientras todo
   // sale bien, que es el caso normal.
   void qc.invalidateQueries({ queryKey: CLAVE });
+  // Un 409 de guardia quiere decir que la pantalla no sabía de esa guardia: se relee también.
+  if (rechazoDeGuardia(error)) void qc.invalidateQueries({ queryKey: CLAVE_GUARDIAS });
 }
 
 /** Suma una jornada al avance de cada OT indicada (crea la entrada si no estaba). */
-function sumarProgreso(progreso: TableroPayload["progreso"], otIds: number[]) {
+export function sumarProgreso(progreso: TableroPayload["progreso"], otIds: number[]) {
   const mapa = new Map(progreso.map((p) => [p.otId, { ...p }]));
   for (const otId of otIds) {
     const actual = mapa.get(otId) ?? { otId, asignadas: 0, cerradas: 0 };
@@ -175,7 +278,7 @@ function sumarProgreso(progreso: TableroPayload["progreso"], otIds: number[]) {
 }
 
 /** Resta una jornada del avance por cada asignación borrada. */
-function restarProgreso(progreso: TableroPayload["progreso"], otIds: number[]) {
+export function restarProgreso(progreso: TableroPayload["progreso"], otIds: number[]) {
   const mapa = new Map(progreso.map((p) => [p.otId, { ...p }]));
   for (const otId of otIds) {
     const actual = mapa.get(otId);
@@ -187,6 +290,11 @@ function restarProgreso(progreso: TableroPayload["progreso"], otIds: number[]) {
 // Ids temporales para las tarjetas que todavía no existen en Odoo. Negativos para no
 // chocar nunca con un id real.
 let proximoIdTemporal = -1;
+
+/** Un id temporal nuevo. Lo usa use-guardias para las jornadas que crea al usar una guardia. */
+export function nuevoIdTemporal(): number {
+  return proximoIdTemporal--;
+}
 
 /**
  * Refresco de fondo contra Odoo, AGRUPADO.
@@ -208,7 +316,7 @@ let proximoIdTemporal = -1;
 let refrescoPendiente: ReturnType<typeof setTimeout> | null = null;
 const ESPERA_REFRESCO = 1500;
 
-function refrescarPronto(qc: QueryClient) {
+export function refrescarPronto(qc: QueryClient) {
   if (refrescoPendiente) clearTimeout(refrescoPendiente);
   refrescoPendiente = setTimeout(() => {
     refrescoPendiente = null;
@@ -285,7 +393,14 @@ export function useCrearAsignaciones() {
           : data,
       );
     },
-    onError: (error, _vars, ctx) => revertir(qc, ctx, "No se pudo asignar", error),
+    onError: (error, { asignaciones, registro }, ctx) =>
+      revertir(
+        qc,
+        ctx,
+        "No se pudo asignar",
+        error,
+        avisarRechazoGuardia(error, { crear: asignaciones, registro }),
+      ),
     onSettled: () => refrescarPronto(qc),
   });
 }
@@ -403,7 +518,14 @@ export function useMoverAsignaciones() {
       }));
     },
     onSuccess: (_d, { registro }) => avisarCambio("movió", registro?.otTitulo),
-    onError: (error, _vars, ctx) => revertir(qc, ctx, "No se pudo mover la obra", error),
+    onError: (error, { movimientos, registro }, ctx) =>
+      revertir(
+        qc,
+        ctx,
+        "No se pudo mover la obra",
+        error,
+        avisarRechazoGuardia(error, { mover: movimientos, registro }),
+      ),
     onSettled: () => refrescarPronto(qc),
   });
 }
@@ -452,7 +574,18 @@ export function useCambiarRoles() {
 export function useCorrerDia() {
   const qc = useQueryClient();
   return useMutation<
-    { ok: true; escrituras: number; loteId: string | null; filas: Record<string, string> },
+    {
+      ok: true;
+      escrituras: number;
+      loteId: string | null;
+      filas: Record<string, string>;
+      /**
+       * Las guardias que el servidor consumió de verdad (guardias-contrato.md §1.4). Puede
+       * diferir de lo que mandó el tablero: el servidor es la autoridad y consume también las
+       * que la pantalla no veía. Es lo que el deshacer tiene que reactivar.
+       */
+      guardiasConsumidas?: number[];
+    },
     Error,
     {
       motivo: string;
@@ -466,23 +599,41 @@ export function useCorrerDia() {
       deshaceA?: Record<string, string>;
       suspension?: { dia: string; cuadrillaIds: number[] };
       levantaLote?: string;
+      /**
+       * Las guardias que el plan hace caer bajo lo que se corre: lo que cae las REEMPLAZA y
+       * pasan a "usada (lluvia)" (guardias-contrato.md §1.4). Es lo que vio el tablero; el
+       * servidor igual busca y consume las que haya.
+       */
+      consumirGuardias?: number[];
+      /** Deshacer: esas guardias vuelven a "activa". */
+      reactivarGuardias?: number[];
     },
     Contexto
   >({
     mutationFn: (body) =>
-      pedir<{ ok: true; escrituras: number; loteId: string | null; filas: Record<string, string> }>(
-        "/api/planificacion/corrimiento",
-        { method: "POST", body: JSON.stringify(body) },
-      ),
-    onMutate: ({ movimientos, quitar }) => {
+      pedir<{
+        ok: true;
+        escrituras: number;
+        loteId: string | null;
+        filas: Record<string, string>;
+        guardiasConsumidas?: number[];
+      }>("/api/planificacion/corrimiento", { method: "POST", body: JSON.stringify(body) }),
+    onMutate: ({ movimientos, quitar, consumirGuardias }) => {
       const porId = new Map(movimientos.map((m) => [m.id, m.fecha]));
       // Los apoyos quitados salen ya; los recreados del deshacer aparecen con el refresco
       // (no tienen id hasta que Odoo los crea). Los apoyos no tocan el avance.
+      //
+      // LAS GUARDIAS CONSUMIDAS TAMBIÉN SALEN YA: la obra que cae encima las reemplaza, y
+      // dejarlas hasta el refresco mostraría por un segundo la obra apilada sobre la guardia
+      // —justo lo que la regla dice que no pasa—. Las reactivadas por el deshacer vuelven
+      // con el refresco, igual que los apoyos recreados.
       const fuera = new Set(quitar ?? []);
+      const guardiasFuera = new Set(consumirGuardias ?? []);
       return aplicarOptimista(qc, (data) => ({
         ...data,
         asignaciones: data.asignaciones
           .filter((a) => !fuera.has(a.id))
+          .filter((a) => !(a.origen === "tarea" && guardiasFuera.has(a.id)))
           .map((a) => {
             const fecha = porId.get(a.id);
             return fecha ? { ...a, fecha } : a;
@@ -500,6 +651,8 @@ export function useCorrerDia() {
     onSettled: () => {
       refrescarPronto(qc);
       void qc.invalidateQueries({ queryKey: CLAVE_SUSPENSIONES });
+      // La lluvia usa y el deshacer reactiva guardias: su historia y el indicador cambian.
+      void qc.invalidateQueries({ queryKey: CLAVE_GUARDIAS });
     },
   });
 }

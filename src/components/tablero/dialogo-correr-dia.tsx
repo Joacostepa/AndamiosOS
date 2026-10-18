@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
-import { CalendarClock, Loader2, Phone, Pin, TriangleAlert, UserMinus, Users } from "lucide-react";
+import { CalendarClock, Loader2, Phone, Pin, ShieldCheck, TriangleAlert, UserMinus, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,9 @@ import { Label } from "@/components/ui/label";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import { AVISO, PELIGRO_SUAVE, PELIGRO_TEXTO } from "@/lib/tablero/colores";
+import { AVISO, GUARDIA, PELIGRO_SUAVE, PELIGRO_TEXTO, RAYADO_GUARDIA } from "@/lib/tablero/colores";
+import { siglaCuadrilla } from "@/lib/tablero/guardias";
+import { direccionCorta, direccionDeObra } from "@/lib/tablero/titulo";
 import { fraccionLabel } from "@/lib/tablero/fracciones";
 import { diaCorrible, planearCorrimiento, type ModoCorrimiento } from "@/lib/tablero/corrimiento";
 import type { Corrimiento } from "@/lib/tablero/corrimiento";
@@ -215,7 +217,7 @@ export function DialogoCorrerDia({
               </div>
             </div>
 
-            {plan && <Consecuencias plan={plan} dia={fecha} hastaCargado={hastaCargado} />}
+            {plan && <Consecuencias plan={plan} dia={fecha} hastaCargado={hastaCargado} ots={ots} />}
           </>
         )}
 
@@ -286,12 +288,20 @@ function Consecuencias({
   plan,
   dia: diaSuspendido,
   hastaCargado,
+  ots,
 }: {
   plan: Corrimiento;
   dia: string;
   hastaCargado: string;
+  /** Para nombrar la obra por su dirección ("Thames 1820") y no por el título entero. */
+  ots: Map<number, OtTablero>;
 }) {
+  const obraCorta = (o: { otId: number; titulo: string }) => {
+    const ot = ots.get(o.otId);
+    return ot ? direccionCorta(direccionDeObra(ot)) : o.titulo;
+  };
   const nada =
+    plan.guardiasConsumidas.length === 0 &&
     plan.apoyosQuitados.length === 0 &&
     plan.fijas.length === 0 &&
     plan.confirmadas.length === 0 &&
@@ -339,6 +349,32 @@ function Consecuencias({
         >
           Alguna cuadrilla no tiene un solo día libre en los próximos meses, así que el
           corrimiento se cortó donde llegó. Mirá si no conviene correr sólo el día.
+        </Bloque>
+      )}
+
+      {/* LAS GUARDIAS QUE SE USAN (guardias-contrato.md §1.4): lo que cae sobre una guardia
+          la REEMPLAZA —no se suma— y la cascada se frena ahí, en esa cuadrilla. Por eso no
+          aparece entre los días sobreasignados: es justo para lo que estaba guardada. Va
+          primero y en el ámbar de la guardia porque es una buena noticia, no un problema. El
+          deshacer la vuelve a dejar activa. */}
+      {plan.guardiasConsumidas.length > 0 && (
+        <Bloque
+          icono={<ShieldCheck className="h-3.5 w-3.5" />}
+          titulo={`Usa ${plan.guardiasConsumidas.length === 1 ? "una guardia" : `${plan.guardiasConsumidas.length} guardias`}`}
+          tono="guardia"
+        >
+          <ul className="space-y-0.5">
+            {plan.guardiasConsumidas.map((g) => (
+              <li key={g.id}>
+                Usa la guardia del {dia(g.fecha)} ({siglaCuadrilla({ id: g.cuadrillaId, nombre: g.cuadrillaNombre })})
+                {g.obras.length > 0 && (
+                  <>
+                    : <strong>{g.obras.map(obraCorta).join(", ")}</strong>
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
         </Bloque>
       )}
 
@@ -433,11 +469,14 @@ function Bloque({
   icono,
   titulo,
   peligro = false,
+  tono,
   children,
 }: {
   icono: React.ReactNode;
   titulo: string;
   peligro?: boolean;
+  /** "guardia": el ámbar rayado de la tarjeta de guardia, para que se reconozca de un vistazo. */
+  tono?: "guardia";
   children: React.ReactNode;
 }) {
   return (
@@ -446,7 +485,9 @@ function Bloque({
       style={
         peligro
           ? { backgroundColor: PELIGRO_SUAVE, borderColor: PELIGRO_TEXTO, color: PELIGRO_TEXTO }
-          : { backgroundColor: AVISO.fondo, borderColor: AVISO.borde, color: AVISO.texto }
+          : tono === "guardia"
+            ? { backgroundColor: GUARDIA.fondo, backgroundImage: RAYADO_GUARDIA, borderColor: GUARDIA.borde, color: GUARDIA.texto }
+            : { backgroundColor: AVISO.fondo, borderColor: AVISO.borde, color: AVISO.texto }
       }
     >
       <p className="flex items-center gap-1.5 pb-1 font-medium">

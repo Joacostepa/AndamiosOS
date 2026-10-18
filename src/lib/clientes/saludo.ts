@@ -114,15 +114,16 @@ export function saludoInicial(perfil: string | null | undefined, ahora: Date = n
 }
 
 /**
- * Lo que dice el audio del saludo. Desde el 17/10 a la tarde, el texto de un audio que grabó JS
- * de referencia, con una pausa antes del cierre («de un tirón sonaba robótico»): «Hola, Jorge, acá
- * Tomás de Andamios Buenos Aires. Contame... en qué te puedo ayudar.» Sin nombre: «Hola, acá Tomás de…». No depende de la hora (dice «hola»), así que hay un
- * audio por nombre. Lo dice la voz (voz.ts), no el modelo.
+ * Lo que dice el audio del saludo: «Hola, Jorge, acá Tomás de Andamios Buenos Aires. ¿En qué te
+ * puedo ayudar?» Sin nombre: «Hola, acá Tomás de…». Sale de un audio de referencia de JS (17/10);
+ * el 18/10 JS cambió el cierre «Contame... en qué te puedo ayudar.», que sonaba raro, por la
+ * pregunta sola. No depende de la hora (dice «hola»), así que hay un audio por nombre. Lo dice la
+ * voz (voz.ts), no el modelo.
  * Versión de pruebas: al publicar el número tiene que decir «asistente digital» (handoff, punto 0).
  */
 export function guionSaludoVoz(perfil: string | null | undefined): string {
   const nombre = nombreParaSaludo(perfil);
-  const cuerpo = `acá ${NOMBRE_ASISTENTE} de Andamios Buenos Aires. Contame... en qué te puedo ayudar.`;
+  const cuerpo = `acá ${NOMBRE_ASISTENTE} de Andamios Buenos Aires. ¿En qué te puedo ayudar?`;
   return nombre ? `Hola, ${nombre}, ${cuerpo}` : `Hola, ${cuerpo}`;
 }
 

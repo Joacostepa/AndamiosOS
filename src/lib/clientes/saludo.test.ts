@@ -143,10 +143,10 @@ test("esContestadorAutomatico: las respuestas automáticas de otros números (an
 });
 
 test("el guion del audio (el texto del audio de JS, 17/10): con el nombre o sin nombre, a cualquier hora", () => {
-  assert.equal(guionSaludoVoz("Jorge Pérez"), "Hola, Jorge, acá Tomás de Andamios Buenos Aires. Contame... en qué te puedo ayudar.");
-  assert.equal(guionSaludoVoz("maría josé"), "Hola, María, acá Tomás de Andamios Buenos Aires. Contame... en qué te puedo ayudar.");
-  assert.equal(guionSaludoVoz("Constructora Delta SRL"), "Hola, acá Tomás de Andamios Buenos Aires. Contame... en qué te puedo ayudar.");
-  assert.equal(guionSaludoVoz(null), "Hola, acá Tomás de Andamios Buenos Aires. Contame... en qué te puedo ayudar.");
+  assert.equal(guionSaludoVoz("Jorge Pérez"), "Hola, Jorge, acá Tomás de Andamios Buenos Aires. ¿En qué te puedo ayudar?");
+  assert.equal(guionSaludoVoz("maría josé"), "Hola, María, acá Tomás de Andamios Buenos Aires. ¿En qué te puedo ayudar?");
+  assert.equal(guionSaludoVoz("Constructora Delta SRL"), "Hola, acá Tomás de Andamios Buenos Aires. ¿En qué te puedo ayudar?");
+  assert.equal(guionSaludoVoz(null), "Hola, acá Tomás de Andamios Buenos Aires. ¿En qué te puedo ayudar?");
 });
 
 test("cada audio se guarda por nombre", () => {
@@ -159,20 +159,20 @@ test("cada audio se guarda por nombre", () => {
 });
 
 test("audioDiceElGuion: tolera puntuación y una palabra de relleno, nunca los nombres", () => {
-  const g = "Hola, Jorge, acá Tomás de Andamios Buenos Aires. Contame... en qué te puedo ayudar.";
-  assert.ok(audioDiceElGuion(g, "Hola, Jorge. Acá Tomás, de Andamios Buenos Aires. Contame en qué te puedo ayudar", "Jorge"));
-  assert.ok(audioDiceElGuion(g, "hola jorge aca tomas de andamios buenos aires contame que te puedo ayudar", "Jorge"), "falta «en»");
+  const g = "Hola, Jorge, acá Tomás de Andamios Buenos Aires. ¿En qué te puedo ayudar?";
+  assert.ok(audioDiceElGuion(g, "Hola, Jorge. Acá Tomás, de Andamios Buenos Aires. ¿En qué te puedo ayudar?", "Jorge"));
+  assert.ok(audioDiceElGuion(g, "hola jorge aca tomas de andamios buenos aires que te puedo ayudar", "Jorge"), "falta «en»");
   assert.ok(!audioDiceElGuion(g, "Hola, José. Acá Tomás, de Andamios Buenos Aires. Contame, ¿qué tipo de obra?", "Jorge"), "a 3 metros entendía «José»");
   assert.ok(!audioDiceElGuion(g, "Hola, Jorge, acá Tomás de Andami Buenos Aires. Contame en qué te puedo ayudar", "Jorge"), "se comió una sílaba");
-  assert.ok(!audioDiceElGuion(g, "Hola, acá Tomás de Andamios Buenos Aires. Contame en qué te puedo ayudar", "Jorge"), "sin el nombre del cliente");
-  assert.ok(!audioDiceElGuion(g, "Hola, Jorge, acá de Andamios Buenos Aires. Contame en qué te puedo ayudar", "Jorge"), "sin Tomás");
+  assert.ok(!audioDiceElGuion(g, "Hola, acá Tomás de Andamios Buenos Aires. ¿En qué te puedo ayudar?", "Jorge"), "sin el nombre del cliente");
+  assert.ok(!audioDiceElGuion(g, "Hola, Jorge, acá de Andamios Buenos Aires. ¿En qué te puedo ayudar?", "Jorge"), "sin Tomás");
   assert.ok(!audioDiceElGuion(g, "", "Jorge"));
   assert.ok(!audioDiceElGuion(g, null, "Jorge"));
 });
 
 test("audioDiceElGuion: el nombre del cliente se compara por cómo suena (17/10: «Iair» transcripto «Jair»)", () => {
-  const con = (n: string) => `Hola, ${n}, acá Tomás de Andamios Buenos Aires. Contame... en qué te puedo ayudar.`;
-  const dijo = (n: string) => `Hola, ${n}. Acá Tomás, de Andamios Buenos Aires. Contame en qué te puedo ayudar`;
+  const con = (n: string) => `Hola, ${n}, acá Tomás de Andamios Buenos Aires. ¿En qué te puedo ayudar?`;
+  const dijo = (n: string) => `Hola, ${n}. Acá Tomás, de Andamios Buenos Aires. ¿En qué te puedo ayudar?`;
   assert.ok(audioDiceElGuion(con("Iair"), dijo("Jair"), "Iair"));
   assert.ok(audioDiceElGuion(con("Brian"), dijo("Bryan"), "Brian"));
   assert.ok(audioDiceElGuion(con("Yésica"), dijo("Jésica"), "Yésica"));

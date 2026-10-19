@@ -241,6 +241,15 @@ JS **no quiere** correr los guiones de ataque (`scripts/test-agente-clientes.mts
        - El cierre «Contame... en qué te puedo ayudar.» le sonaba raro. Se probaron otras tomas de la misma frase, el cierre más lento (×1,20 desde «Aires») y cinco frases. Eligió **H: «¿En qué te puedo ayudar?»**, sin «Contame».
        - En producción (`guionSaludoVoz` en `saludo.ts` y `FILTRO` en `voz.ts`); los audios pasan a `voz/saludo/v5/` y se generan de nuevo la primera vez que entra cada nombre. El texto de respaldo (si el audio falla) sigue diciendo «Contame en qué te puedo ayudar.».
    - **Si se quiere seguir mejorando:** grabar una voz real con consentimiento, o speech-to-speech con una clave que tenga ese permiso. Lo elegido ya está programado y en producción (`voz.ts`).
+   - **VoiceStudio (18/10, para ver más adelante).** A JS se lo recomendaron como reemplazo gratis de ElevenLabs. Es un programa de código abierto que corre en la propia compu (https://github.com/debpalash/VoiceStudio, de un solo desarrollador, nuevo y en parte en beta). JS decidió no usarlo por ahora, por estos motivos:
+     - el programa es AGPL, pero su modelo por defecto (OmniVoice, de k2-fsa) es **CC-BY-NC, sin uso comercial**, según la ficha oficial de Hugging Face;
+     - no corre en Vercel: necesita un servidor propio con GPU o una Mac Apple Silicon prendida;
+     - la voz de Gabi es de la biblioteca de ElevenLabs y no se puede clonar sin permiso;
+     - la verificación del saludo y la transcripción de los audios de clientes siguen en ElevenLabs;
+     - el gasto actual es chico, porque cada saludo se genera una vez por nombre;
+     - no hay pruebas de cómo suena en castellano rioplatense.
+
+     Si se retoma: probarlo en la Mac con un par de saludos para compararlo con Gabi, y antes de usarlo con clientes resolver la licencia del modelo y el servidor.
 
 ## Historia: la charla del 12/10
 

@@ -6,6 +6,8 @@
 
 Para retomar, decí: «Leé docs/sofia/handoff.md y seguimos con el CRM de WhatsApp».
 
+**En curso (18/10): el alquiler simple que cotiza Tomás.** La propuesta está en [alquiler-simple-propuesta.md](./alquiler-simple-propuesta.md) y lo pendiente, en el punto 13 de «Lo que falta» (13 preguntas para JS). No hay código todavía.
+
 - **La propuesta** (cerrada por un equipo de agentes y auditada, con las decisiones de JS en la §12): [crm-propuesta.md](./crm-propuesta.md).
 - **La maqueta:** [crm-maqueta.html](./crm-maqueta.html), publicada en https://claude.ai/artifact/6mhAeU4umDQLv152rDai8e.
 - **Las cuentas de los socios** (borrador para que lo corrija JS): [cuentas-socios.md](./cuentas-socios.md).
@@ -141,6 +143,31 @@ JS **no quiere** correr los guiones de ataque (`scripts/test-agente-clientes.mts
 11. **Lo que quedó de la propuesta del análisis de chats:** D4 (campos nuevos en la ficha: altura en metros, tiempo de obra, quién arma, silleteros, etapa de decisión, quién decide, origen), D7 (cliente que vuelve, depende del paso 2b), D8 (aviso si un pedido pasa 24 a 48 h sin respuesta) y la bandera `urgente` para «para hoy» y «para mañana».
 12. ~~Confirmar el echeq~~: JS confirmó el 16/10 que se acepta (transferencia o echeq, nunca efectivo).
 13. **Alquiler simple que cotiza Sofía (pendiente; JS quiere trabajarlo bien en otra sesión, 16/10).** La idea es un «alquiler simple fácil», como la bandeja: reglas escritas, borrador con el cotizador de la app y la misma tarjeta de aprobación.
+   - **18/10: borrador en [alquiler-simple-propuesta.md](./alquiler-simple-propuesta.md)**, con lo que explicó JS (cómo se arma el módulo, la altura, los tablones, las ruedas y los tornillones) y lo que se cobra de verdad en Odoo:
+     - se cotiza por **módulo armado** con los productos de Odoo, no con la lista por pieza de la app;
+     - $ 13.000, $ 16.000 o $ 18.000 por pieza, según los días;
+     - el flete por barrio de la tanda del 31/3/2026;
+     - el mínimo operativo de $ 500.000 netos, con el flete incluido.
+   - JS ya confirmó estas tres cosas y también las condiciones de la §6: la entrega nunca en el mismo día, el DNI y los servicios con la dirección verificada, gente para descargar y el retiro con un día de anticipación.
+   - **Pendiente de JS (y Tamara) para seguir el 19/10** (el detalle está en la §9 de la propuesta):
+     1. los márgenes de altura: la persona alcanza plataforma + 2 m y la cabeza necesita plataforma + 1,90 m;
+     2. cuántos tablones lleva el pasillo de 0,90 (¿3?);
+     3. si el flete por barrio cubre la entrega y el retiro;
+     4. el precio de las ruedas (¿$ 30.000, o subió a $ 47.000 o $ 60.000?) y el de los tornillones (propuesta: $ 9.000 cada uno);
+     5. los techos bajos: si con 1 módulo no entra la cabeza (hacen falta 3,85 m de techo), ¿los tablones van más abajo, se arma sin ruedas o va a un vendedor?;
+     6. si el pasillo y el junior también se apilan hasta 3 sin anclar;
+     7. más de 30 días: ¿se cobra por mes o fracción?;
+     8. si se cotiza sin baranda cuando el cliente insiste (propuesta: con 1 módulo sí, con 2 o más no);
+     9. el tope de módulos para que salga solo (propuesta: 10);
+     10. la medida de la rienda JR diagonal: ¿1,65 m (como dice Odoo) o 1,77 m?;
+     11. los documentos:
+         - ¿se piden siempre, o no a una empresa ni a un cliente que ya alquiló?;
+         - ¿en qué momento? (propuesta: al aceptar el presupuesto; sin documentos no se entrega);
+         - ¿dónde se guardan? (propuesta: adjuntos en la orden de Odoo);
+         - si la dirección no coincide, ¿Tomás avisa y sigue, o el alquiler queda frenado?;
+     12. si vence y no avisaron, ¿cómo se cobra lo que sigue corriendo: por día, por semana o un mes entero?;
+     13. a qué número se avisa el retiro (este WhatsApp o el 11 2734-4214) y si hay días sin entregas ni retiros.
+   - **Después de las respuestas:** ajustar la propuesta y programarla según su §10 (`alquiler-simple.ts`, la herramienta `cotizar_alquiler_simple`, el paso de documentación, el flete leído de Odoo y la tarjeta de aprobación). Lo que sigue más abajo en este punto es de antes y quedó superado por la propuesta.
    - **Por qué:** es un tercio de los pedidos (unos 1.000 de 3.000 chats) y donde más se pierde por demora: unos 145 chats terminan en «te va a contactar ventas».
    - **Lo que ya existe en el cotizador:**
      - la «Lista de alquiler junio 2026» (`lista_alquiler` y `lista_alquiler_piezas`, 48 piezas por componente);

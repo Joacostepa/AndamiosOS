@@ -202,7 +202,7 @@ export function solidosDe(v: Volumen | VolumenModelado, todos: Volumen[] = []): 
 }
 
 /** Planta base (lado de referencia) del padre de un saliente. */
-function plantaBase(v: Volumen | VolumenModelado): Poligono {
+export function plantaBase(v: Volumen | VolumenModelado): Poligono {
   const def = (v as VolumenModelado).def;
   if (!def) return antihorario(v.planta);
   if (def.tipo === 'caja') return rectanguloCaja(def.origen, def.rumbo, def.largo, def.ancho);

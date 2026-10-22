@@ -18,6 +18,11 @@ export interface Paleta {
   volumen: string;
   volumenBorde: string;
   hueco: string;
+  /** ejes al mover un volumen, como SketchUp: rojo a lo largo, verde hacia el fondo, azul vertical; magenta = ejes del terreno */
+  ejeRojo: string;
+  ejeVerde: string;
+  ejeAzul: string;
+  ejeMundo: string;
   ajuste: string;
   sinCodigo: string;
   fam: Record<GrupoColor, string>;
@@ -104,6 +109,10 @@ export function leerPaleta(): Paleta {
     volumen: oscuro ? "#5b6170" : "#b9bec6",
     volumenBorde: oscuro ? "#8a91a0" : "#8d939c",
     hueco: oscuro ? "#3b82f6" : "#2563eb",
+    ejeRojo: oscuro ? "#ff5c5c" : "#d32020",
+    ejeVerde: oscuro ? "#3ddc6a" : "#13923a",
+    ejeAzul: oscuro ? "#4d8dff" : "#1d55d6",
+    ejeMundo: oscuro ? "#e05cf0" : "#b0249e",
     ajuste: oscuro ? "#e0a34f" : "#b86a12",
     sinCodigo: oscuro ? "#ff6b6b" : "#c62828",
     fam: oscuro ? FAM_OSCURO : FAM_CLARO,

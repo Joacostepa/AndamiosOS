@@ -145,3 +145,25 @@ Todas mergeadas a `main` y deployadas, con lo que reportó JS probando en produc
 | En la estructura libre, la ménsula (y anclaje, horizontal, baranda, abertura, lona, caño) pintada no quedaba | El pincel leía el estado de la vista previa y al soltar lo volvía a alternar; ahora lee del diseño | `estado/acciones.ts` (`pintarDiseno`) |
 
 **Para trabajar en local:** `node_modules` del checkout principal no tenía `three` (se había instalado solo en el worktree): correr `npm install`. Si Turbopack tira un FATAL al levantar `next dev`, borrar `.next/`.
+
+## 8. Mover volúmenes con el mouse, estilo SketchUp (rama `feat/modelador-mover-volumen`, sin mergear)
+
+JS lo pidió el 22/10: hasta ahora un volumen solo se movía tipeando «A lo largo» / «Hacia el fondo».
+
+- **Cómo se usa:**
+  - Con **Seleccionar**, se arrastra el volumen **ya elegido**. Sobre uno que no está elegido, arrastrar sigue girando la cámara, porque los edificios tapan casi todo el lienzo.
+  - Con **Mover (M)**, que también está en la barra: un clic levanta cualquier volumen y otro clic lo suelta.
+  - Mientras se mueve:
+    - cerca de sus ejes se pega a ellos (rojo a lo largo, verde hacia el fondo; magenta para los del terreno si el volumen está girado);
+    - Shift fija el eje; → rojo, ← verde, ↑ azul (altura) y ↓ libre;
+    - encastra esquinas y bordes contra otros volúmenes, la huella y el frente de las estructuras, y la pared detrás de una fachada; si no encastra, redondea a 0,05;
+    - tipear un número y Enter lo corre exactamente esa distancia;
+    - Esc, o un clic fuera del lienzo, lo deja donde estaba.
+- **Un solo paso de deshacer** («Edificio: mover 3,20 m»). Durante el arrastre solo se corren las mallas, sin `preview()`, sin `construir()` por cuadro y sin autoguardado.
+- **Lógica pura:** `src/lib/tecnica/modelo/volumenes/mover.ts`, con pruebas en `mover.test.ts`.
+  - Traslada la definición (origen, centro, planta y patios), los volúmenes sin definición (planta, cotas, y origen y descansos de la escalera) y los salientes hijos.
+  - La planta (2D) usa la misma función. Arregla que los patios internos quedaban atrás al mover una caja o un prisma.
+- **Límites:**
+  - El saliente solo se desliza sobre su cara y sube con ↑.
+  - El escalonado no sube, porque el formulario lo mide desde el piso.
+  - Un volumen que usa una estructura (azotea, losa del colgante, escalera) no sube, porque movería la estructura. En planta sí se mueve y la estructura queda en su lugar. La envolvente de un tanque sí lo sigue, porque está definida por el volumen.

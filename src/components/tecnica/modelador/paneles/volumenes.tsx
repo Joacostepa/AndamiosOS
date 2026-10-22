@@ -9,7 +9,7 @@
 // un patio interno en un patio y una estructura libre sobre una terraza).
 
 import { useState } from "react";
-import { toast } from "../util/toast";
+import { avisar } from "../util/toast";
 import type { V2 } from "@/lib/tecnica/modelo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,11 +28,6 @@ import { borrarVolumen } from "../comandos";
 import { Box, MousePointerClick, Plus, Trash2 } from "lucide-react";
 
 type Forma = FormaVolumen["forma"];
-
-/** Los avisos de la geometría (planta inválida, saliente sin padre…) como toast. */
-function avisar(avisos: string[]) {
-  if (avisos.length) toast.warning(avisos[0], avisos.length > 1 ? { description: avisos.slice(1).join(" ") } : undefined);
-}
 
 function formaInicial(forma: Forma, diseno: ReturnType<typeof useEditor.getState>["diseno"], sobre?: VolumenRef): FormaVolumen | null {
   switch (forma) {
@@ -152,6 +147,11 @@ export function Volumenes() {
         ))}
       </ul>
       {!hayVolumenes && <p className="px-1 text-[11px] text-muted-foreground">Dibujá el edificio con sus medidas para modelar arriba: tocá una cara y sale la fachada.</p>}
+      {hayVolumenes && !soloLectura && (
+        <p className="px-1 text-[11px] text-muted-foreground">
+          Arrastrá el volumen elegido en el 3D para moverlo, o usá Mover (M): clic lo levanta y clic lo suelta. Shift o las flechas fijan el eje; tipeá la distancia y Enter.
+        </p>
+      )}
     </div>
   );
 }
@@ -253,6 +253,7 @@ function EditorVolumen({ grupo, soloLectura }: { grupo: string; soloLectura: boo
             {num("Espesor", f.espesor, (v) => ({ ...f, espesor: v }), 0.02)}
             {num("Largo", f.largo, (v) => ({ ...f, largo: v }), 0.2)}
             {num("Desde (sobre la cara)", f.desde, (v) => ({ ...f, desde: v }), 0)}
+            <p className="col-span-2 text-[11px] text-muted-foreground">En el 3D se arrastra sobre su cara (y con ↑, en altura).</p>
           </>
         )}
       </div>

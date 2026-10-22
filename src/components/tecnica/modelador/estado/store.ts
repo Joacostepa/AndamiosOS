@@ -9,7 +9,7 @@ import { create } from "zustand";
 import { avisosDeChoque, construir, VUELO_MENSULA_DEFECTO, type Aviso, type Catalogo, type Diseno, type Resultado } from "@/lib/tecnica/modelo";
 import { migrarVolumenesPantalla } from "../volumenes/geometria";
 
-export type Herramienta = "seleccionar" | "pincel" | "cara" | "colocar";
+export type Herramienta = "seleccionar" | "pincel" | "cara" | "colocar" | "mover";
 
 /** Pinceles por celda (alzado y 3D). En la estructura libre editan el esqueleto. */
 export type Pincel =

@@ -15,3 +15,8 @@ export const toast = Object.assign((m: Msg, o?: ExternalToast) => base(m, { ...P
   warning: (m: Msg, o?: ExternalToast) => base.warning(m, { ...P, ...o }),
   dismiss: base.dismiss,
 });
+
+/** Los avisos de la geometría (planta inválida, saliente sin padre, un choque nuevo…) como un solo toast. */
+export function avisar(avisos: string[]) {
+  if (avisos.length) toast.warning(avisos[0], avisos.length > 1 ? { description: avisos.slice(1).join(" ") } : undefined);
+}

@@ -48,7 +48,9 @@ const CRITERIOS: Record<string, { descripcion: string; reglas: Regla[] }> = {
   acta_compromiso: { descripcion: "Acta de compromiso del GCBA para el permiso de andamio en la vía pública, con el encabezado completo (fecha, solicitante, representación, CUIT, domicilio real y domicilio electrónico), todas sus hojas y firmada al pie.", reglas: ["firma", "completo"] },
   poder: { descripcion: "Poder otorgado por la empresa (dueña del lote o inquilina), certificado por escribano.", reglas: ["titular"] },
   estatuto: { descripcion: "Estatuto o contrato social de la empresa (dueña del lote o inquilina), certificado.", reglas: ["titular"] },
-  acta_directorio: { descripcion: "Acta de directorio o de asamblea que designa las autoridades de la empresa (dueña del lote o inquilina).", reglas: ["titular", "vigencia"] },
+  // Ley 19.550, art. 257: el directorio se elige por tres ejercicios como máximo. Valle 510
+  // (S02731, 13/10): la IA dio vencida un acta del 25/10/2023 "por tres ejercicios" sin fecha.
+  acta_directorio: { descripcion: "Acta de directorio o de asamblea que designa las autoridades de la empresa (dueña del lote o inquilina). Si el acta fija hasta cuándo dura el mandato, vale ese plazo. Si no lo fija, el directorio dura como máximo tres ejercicios (Ley 19.550, art. 257): está vigente si la designación tiene menos de tres años a la fecha de hoy.", reglas: ["titular", "vigencia"] },
   nota_autorizacion: { descripcion: "Nota firmada por el dueño del lote autorizando la instalación del andamio o el trámite del permiso, con lugar y fecha y la firma aclarada.", reglas: ["firma", "completo"] },
   titulo_propiedad: { descripcion: "Título de propiedad (escritura) del inmueble de la obra.", reglas: ["titular", "direccion"] },
   contrato_alquiler: { descripcion: "Contrato de alquiler del inmueble de la obra.", reglas: ["direccion"] },
@@ -143,14 +145,15 @@ type Vigencia = { vigente: boolean; desde: string | null; hasta: string | null; 
  * de Tucumán 969 (S02516, asamblea del 04/11/2025) salió "vencida" dos veces el 17/09/2026 y
  * "vigente" otras dos con el mismo PDF. Si el acta fija hasta cuándo dura el mandato, vale ese
  * plazo aunque pase el año (JS, 17/09: Nahuel Huapi 5100 lo renovó del 01/11/2025 al 31/03/2027).
- * Si no, en consorcios dura un año (Ley 941, art. 13) desde la fecha en que corre. Sin ninguna
- * fecha legible queda lo que contestó la IA.
+ * Si no, en consorcios dura un año (Ley 941, art. 13) y en empresas tres (Ley 19.550, art. 257)
+ * desde la fecha en que corre. Sin ninguna fecha legible queda lo que contestó la IA.
  */
 export function vigenciaDelMandato(clave: string, l: Pick<z.infer<typeof Lectura>, "vigente" | "fecha_designacion" | "vigente_hasta">, hoy: string): Vigencia | null {
   const desde = l.fecha_designacion && FECHA.test(l.fecha_designacion) ? l.fecha_designacion : null;
   const fijado = l.vigente_hasta && FECHA.test(l.vigente_hasta) ? l.vigente_hasta : null;
-  const unAnio = clave === "acta_asamblea" && desde ? `${Number(desde.slice(0, 4)) + 1}${desde.slice(4)}` : null;
-  const hasta = fijado ?? unAnio;
+  const anios = ({ acta_asamblea: 1, acta_directorio: 3 } as Record<string, number>)[clave];
+  const porLey = anios && desde ? `${Number(desde.slice(0, 4)) + anios}${desde.slice(4)}` : null;
+  const hasta = fijado ?? porLey;
   // Un mandato que "empieza" después de hoy es casi seguro una fecha mal leída: ante la duda, observa.
   if (desde && desde > hoy) return { vigente: false, desde, hasta, futura: true };
   if (hasta) return { vigente: hoy <= hasta, desde, hasta };

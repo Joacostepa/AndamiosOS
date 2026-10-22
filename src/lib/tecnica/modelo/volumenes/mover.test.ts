@@ -201,3 +201,56 @@ test('distancia tipeada: en el sentido del movimiento, sobre el eje o en altura'
   assert.equal(M.distanciaMovimiento([3, 0, 4]), 5);
   assert.equal(M.nombreMovimiento('Edificio', [3.2, 0, 0]), 'Edificio: mover 3,20 m');
 });
+
+test('subir: los patios con base o tope propios suben con el volumen (caja y prisma)', () => {
+  const patio = { nombre: 'Patio', planta: [[4, 3], [9, 3], [9, 7], [4, 7]] as V2[], yBase: 3, yTope: 9 };
+  const libre = { nombre: 'Aire', planta: [[1, 1], [2, 1], [2, 2], [1, 2]] as V2[] };
+  for (const d0 of [
+    { ...caja, huecos: [patio, libre] } as DefVolumen,
+    { tipo: 'prisma', planta: [[0, 0], [12, 0], [12, 8], [0, 8]], alto: 11, huecos: [patio, libre] } as DefVolumen,
+  ]) {
+    const x = M.moverDef(d0, [1, 2.5, -1]) as { yBase?: number; huecos: { planta: V2[]; yBase?: number; yTope?: number }[] };
+    assert.equal(x.yBase, 2.5, d0.tipo);
+    assert.equal(x.huecos[0].yBase, 5.5);
+    assert.equal(x.huecos[0].yTope, 11.5);
+    assert.ok(corrido(patio.planta, x.huecos[0].planta, 1, -1));
+    assert.ok(!('yBase' in x.huecos[1]) && !('yTope' in x.huecos[1]), 'el patio sin cotas sigue tomando las del volumen');
+  }
+});
+
+test('escalera sin vincular: sube con sus descansos', () => {
+  const d0 = M.crearDiseno('sobre_escalera', { catalogo: C });
+  const d = M.vincularVolumenSugerido(d0, 'E1', ['escalera'], M.construir(d0, C).estructuras[0].huella);
+  const id = d.estructuras[0].params.volumenId as string;
+  delete d.estructuras[0].params.volumenId;
+  const v0 = d.contexto.volumenes.find((v) => v.id === id)!;
+  v0.escalera!.descansos = [...v0.escalera!.descansos, { s0: 1, s1: 2, cota: 1.5 }];
+  assert.equal(M.movilidadDe(d, id)!.vertical, true);
+  const r = M.moverVolumen(d, id, [0, 2, 0]);
+  const v = r.diseno.contexto.volumenes.find((x) => x.id === id)!;
+  assert.equal(v.yBase, v0.yBase + 2);
+  assert.equal(v.yTope, v0.yTope + 2);
+  assert.deepEqual(v.escalera!.descansos.map((x) => x.cota), v0.escalera!.descansos.map((x) => x.cota + 2));
+  assert.deepEqual(v.escalera!.origen, v0.escalera!.origen);
+});
+
+test('un saliente que usa una estructura no deja subir al edificio que lo lleva', () => {
+  let d = M.agregarVolumen(M.agregarEstructura(vacio(), 'estructura', { origen: [0, 0] }, C).diseno, caja, { nombre: 'Edificio' }).diseno;
+  d = M.agregarVolumen(d, { tipo: 'saliente', padre: 'V1', lado: 0, desde: 2, largo: 6, vuelo: 1.2, yBase: 6, espesor: 0.25, clase: 'marquesina' }, { nombre: 'Marquesina' }).diseno;
+  d.estructuras[0].params = { ...d.estructuras[0].params, volumenId: 'V2' };
+  const m = M.movilidadDe(d, 'V1')!;
+  assert.equal(m.vertical, false);
+  assert.match(m.motivoVertical!, /sobre Marquesina/);
+  const r = M.moverVolumen(d, 'V1', [1, 3, 0]);
+  assert.deepEqual(r.delta, [1, 0, 0]);
+  assert.equal((def(r.diseno, 'V2') as { yBase: number }).yBase, 6, 'la marquesina queda a su altura');
+  // con la movilidad ya calculada da lo mismo
+  assert.deepEqual(M.limitarDelta(d, 'V1', [1, 3, 0], m), [1, 0, 0]);
+});
+
+test('topes de la altura: la base entre −20 y 300', () => {
+  const d = conVolumen(caja);
+  assert.deepEqual(M.limitarDelta(d, 'V1', [0, -50, 0]), [0, -20, 0]);
+  assert.deepEqual(M.limitarDelta(d, 'V1', [0, 400, 0]), [0, 300, 0]);
+  assert.deepEqual(M.limitarDelta(d, 'NO', [1, 1, 1]), [0, 0, 0]);
+});

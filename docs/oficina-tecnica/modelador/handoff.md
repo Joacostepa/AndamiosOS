@@ -166,4 +166,4 @@ JS lo pidió el 22/10: hasta ahora un volumen solo se movía tipeando «A lo lar
 - **Límites:**
   - El saliente solo se desliza sobre su cara y sube con ↑.
   - El escalonado no sube, porque el formulario lo mide desde el piso.
-  - Un volumen que usa una estructura (azotea, losa del colgante, escalera) no sube, porque movería la estructura. En planta sí se mueve y la estructura queda en su lugar. La envolvente de un tanque sí lo sigue, porque está definida por el volumen.
+  - Un volumen que usa una estructura (azotea, losa del colgante, escalera) no sube, porque movería la estructura. Tampoco sube un edificio cuyo saliente usa una estructura (un colgante de la marquesina). En planta sí se mueve y la estructura queda en su lugar. La envolvente de un tanque sí lo sigue, porque está definida por el volumen.

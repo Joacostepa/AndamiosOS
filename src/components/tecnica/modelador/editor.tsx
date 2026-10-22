@@ -251,9 +251,11 @@ export default function Editor({ modelo, disenoDemo, catalogo, errorCatalogo, so
       const p = TECLAS_PRESET.get(k.toLowerCase()) ?? TECLAS_PRESET.get(k);
       if (p && !s.soloLectura) s.setColocando(s.colocando === p.id ? null : p.id);
     };
-    // Ctrl+K: en el editor abre la paleta del modelador (no el buscador general), aunque el foco esté en un campo
+    // Ctrl+K: en el editor abre la paleta del modelador (no el buscador general), aunque el foco esté en un campo.
+    // Con un volumen levantado no: la escena se queda con las teclas y la paleta no se podría usar.
     const paletaK = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        if (escenaRef.current?.estaMoviendo) return;
         e.preventDefault();
         e.stopImmediatePropagation();
         setPaleta((x) => !x);

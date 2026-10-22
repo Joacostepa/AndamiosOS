@@ -138,23 +138,33 @@ export function movilidadDe(diseno: Diseno, id: string): Movilidad | null {
     const alineado = Math.abs(rojo[0]) > Math.cos((0.5 * Math.PI) / 180) || Math.abs(rojo[1]) > Math.cos((0.5 * Math.PI) / 180);
     if (!alineado) ejes.push({ eje: 'x', dir: [1, 0] }, { eje: 'z', dir: [0, 1] });
   }
+  const ids = grupoDeMovimiento(vols, id);
   let motivoVertical: string | undefined;
-  const est = usadoPor(diseno, id);
   // el escalonado mide sus tramos desde el piso (el formulario no lo podría editar más) y una estructura
-  // vinculada (azotea, losa del colgante, escalera) subiría o bajaría con el volumen
+  // vinculada (azotea, losa del colgante, escalera) subiría o bajaría con el volumen; también la que usa
+  // un saliente que lo acompaña (un colgante de la marquesina, una torre sobre el balcón)
   if (def?.tipo === 'escalonado') motivoVertical = 'El escalonado se mueve solo en planta.';
-  else if (est) motivoVertical = `Lo usa ${est.nombre || est.id}: subirlo o bajarlo cambiaría la estructura.`;
-  return { ids: grupoDeMovimiento(vols, id), libre, vertical: !motivoVertical, ...(motivoVertical ? { motivoVertical } : {}), ejes };
+  else {
+    for (const x of ids) {
+      const est = usadoPor(diseno, x);
+      if (!est) continue;
+      const sobre = x === id ? '' : ` (sobre ${vols.find((y) => y.id === x)?.nombre || x})`;
+      motivoVertical = `Lo usa ${est.nombre || est.id}${sobre}: subirlo o bajarlo cambiaría la estructura.`;
+      break;
+    }
+  }
+  return { ids, libre, vertical: !motivoVertical, ...(motivoVertical ? { motivoVertical } : {}), ejes };
 }
 
 /**
  * El desplazamiento que el volumen admite: sin vertical si no se puede, el saliente proyectado sobre su lado
- * (y sin salirse de él) y la base dentro del rango de la definición.
+ * (y sin salirse de él) y la base dentro del rango de la definición. `mov`: la movilidad ya calculada (la
+ * escena la guarda al levantar el volumen y no la recalcula en cada cuadro).
  */
-export function limitarDelta(diseno: Diseno, id: string, d: V3): V3 {
+export function limitarDelta(diseno: Diseno, id: string, d: V3, mov?: Movilidad): V3 {
   const vols = volumenesDe(diseno);
   const v = vols.find((x) => x.id === id);
-  const m = v ? movilidadDe(diseno, id) : null;
+  const m = v ? mov ?? movilidadDe(diseno, id) : null;
   if (!v || !m) return [0, 0, 0];
   let [dx, dy, dz] = d;
   const def = defDe(v);

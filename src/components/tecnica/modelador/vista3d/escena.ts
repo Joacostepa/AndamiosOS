@@ -158,6 +158,8 @@ export class Escena {
   private gPuertos = new THREE.Group();
   /** Guías del movimiento: el eje, la banda desde el punto tomado y el punto de encastre. */
   private gGuia = new THREE.Group();
+  /** Las piezas de la guía se arman una vez y se reusan: rehacerlas en cada cuadro liberaba y recompilaba su shader. */
+  private guia: { eje: THREE.LineSegments; banda: THREE.LineSegments; puntos: THREE.Points; encastre: THREE.Points } | null = null;
   /** Un grupo por volumen dentro de gVol: moverlo en la vista previa es correr su posición. */
   private gruposVol = new Map<string, THREE.Group>();
   private suelo: THREE.Mesh;
@@ -226,6 +228,9 @@ export class Escena {
     sol.position.set(20, 40, 30);
     this.scene.add(sol);
     this.camera.position.set(30, 22, 34);
+    // antes que OrbitControls: al apretar sobre un volumen movible se apaga el giro ANTES de que la órbita tome
+    // el pointerdown; si no, queda en «girando» y la rueda no hace zoom durante el arrastre
+    this.canvas.addEventListener("pointerdown", this.onDown);
     this.controls = new OrbitControls(this.camera, this.canvas);
     this.controls.enableDamping = false;
     this.controls.screenSpacePanning = true;
@@ -256,10 +261,12 @@ export class Escena {
     this.redimensionar();
 
     this.canvas.addEventListener("pointermove", this.onMove);
-    this.canvas.addEventListener("pointerdown", this.onDown);
     this.canvas.addEventListener("pointerup", this.onUp);
     this.canvas.addEventListener("pointerleave", this.onLeave);
     this.canvas.addEventListener("dblclick", this.onDbl);
+    this.canvas.addEventListener("pointercancel", this.onPunteroPerdido);
+    this.canvas.addEventListener("lostpointercapture", this.onPunteroPerdido);
+    window.addEventListener("blur", this.onPunteroPerdido);
     // «Reportar» (Sistemas): sin preserveDrawingBuffer el lienzo sale en blanco en la foto;
     // se renderiza y se lee en el mismo instante (src/lib/sistemas/lienzos-webgl.ts).
     this.quitarFoto = registrarLienzo(this.canvas, () => {
@@ -279,12 +286,16 @@ export class Escena {
     this.canvas.removeEventListener("pointerup", this.onUp);
     this.canvas.removeEventListener("pointerleave", this.onLeave);
     this.canvas.removeEventListener("dblclick", this.onDbl);
+    this.canvas.removeEventListener("pointercancel", this.onPunteroPerdido);
+    this.canvas.removeEventListener("lostpointercapture", this.onPunteroPerdido);
+    window.removeEventListener("blur", this.onPunteroPerdido);
     window.removeEventListener("keydown", this.onTeclaMover, { capture: true });
     window.removeEventListener("keyup", this.onSoltarTecla, { capture: true });
     window.removeEventListener("pointerdown", this.onPunteroAfuera, { capture: true });
     this.moviendo = null;
     this.controls.dispose();
     for (const g of [this.gObra, this.gVol, this.gOver, this.gGhost, this.gPuertos, this.gGuia]) vaciar(g, this.compartidas);
+    this.guia = null;
     this.geoCil.dispose();
     this.geoCaja.dispose();
     // materiales compartidos, suelo, grilla y entorno: si no, cada ida y vuelta lista ↔ editor dejaba
@@ -781,6 +792,7 @@ export class Escena {
   private volumenMovible(hp: { dist: number } | null, hc: { dist: number } | null): { grupo: string; punto: THREE.Vector3; dist: number } | null {
     const d = this.datos;
     if (!d || d.soloLectura || this.colocando || (d.herramienta !== "seleccionar" && d.herramienta !== "mover")) return null;
+    if (d.herramienta === "seleccionar" && !d.volumenSel) return null;
     const hv = this.hitVolumenPunto();
     if (!hv || (hp && hp.dist < hv.dist) || (hc && hc.dist < hv.dist)) return null;
     if (d.herramienta === "seleccionar" && d.volumenSel !== hv.grupo) return null;
@@ -851,6 +863,7 @@ export class Escena {
 
   private onDown = (e: PointerEvent) => {
     this.downXY = [e.clientX, e.clientY];
+    this.candidato = null;
     if (e.button !== 0 || !this.datos) return;
     this.botonApretado = true;
     // con un volumen levantado por clic, el próximo clic lo suelta (en onUp); la órbita sigue apagada
@@ -874,7 +887,7 @@ export class Escena {
     this.setRay(e);
     const hv = this.volumenMovible(this.hitPieza(), this.hitCelda());
     if (hv) {
-      // OrbitControls ya tomó el pointerdown: sin giro ni paneo no mueve la cámara (la rueda sigue haciendo zoom)
+      // corre antes que OrbitControls: sin giro ni paneo no mueve la cámara (la rueda sigue haciendo zoom)
       this.candidato = { grupo: hv.grupo, punto: hv.punto };
       this.controls.enableRotate = false;
       this.controls.enablePan = false;
@@ -954,6 +967,24 @@ export class Escena {
       this.pedirRender();
     }
     this.cb.alHover(null);
+  };
+
+  /**
+   * El puntero se perdió sin pointerup (gesto del sistema, lápiz, cambio de ventana): se olvida el candidato, la
+   * órbita vuelve y un arrastre se cancela. Un clic de Mover sigue levantado. lostpointercapture también llega
+   * después de cada pointerup normal: con el botón ya suelto no hay nada que hacer.
+   */
+  private onPunteroPerdido = (e: Event) => {
+    if (e.type === "lostpointercapture" && !this.botonApretado) return;
+    this.candidato = null;
+    this.downXY = null;
+    this.botonApretado = false;
+    this.soltarControles = false;
+    if (this.moviendo?.modo === "arrastre") this.cancelarMovimiento();
+    if (!this.moviendo) {
+      this.controls.enableRotate = true;
+      this.controls.enablePan = true;
+    }
   };
 
   // con Mover, el clic que levanta y el que suelta no encuadran
@@ -1063,7 +1094,7 @@ export class Escena {
       m.dir = eje?.dir ?? null;
       if (enc.encastre) m.encastre = { punto: [enc.encastre.punto[0], m.yRef, enc.encastre.punto[1]], etiqueta: enc.encastre.etiqueta };
     }
-    m.delta = limitarDelta(m.base, m.grupo, delta);
+    m.delta = limitarDelta(m.base, m.grupo, delta, m.mov);
     this.desplazarGrupos(m.mov.ids, m.delta);
     this.dibujarGuia();
     this.avisarMovimiento();
@@ -1085,37 +1116,54 @@ export class Escena {
     return { rojo: this.pal.ejeRojo, verde: this.pal.ejeVerde, azul: this.pal.ejeAzul, x: this.pal.ejeMundo, z: this.pal.ejeMundo }[eje];
   }
 
+  private piezasGuia() {
+    if (this.guia) return this.guia;
+    const geo = (n: number) => {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(n * 3), 3));
+      return g;
+    };
+    // frustumCulled = false: la esfera envolvente se calcula una vez y las posiciones cambian en cada cuadro
+    const linea = () => new THREE.LineSegments(geo(2), new THREE.LineBasicMaterial({ transparent: true, depthTest: false }));
+    const puntos = (n: number, size: number) => new THREE.Points(geo(n), new THREE.PointsMaterial({ size, sizeAttenuation: false, depthTest: false }));
+    this.guia = { eje: linea(), banda: linea(), puntos: puntos(2, 6), encastre: puntos(1, 11) };
+    for (const o of Object.values(this.guia)) {
+      o.renderOrder = o === this.guia.encastre ? 10 : 9;
+      o.frustumCulled = false;
+      o.visible = false;
+      this.gGuia.add(o);
+    }
+    return this.guia;
+  }
+
+  private ocultarGuia() {
+    if (this.guia) for (const o of Object.values(this.guia)) o.visible = false;
+  }
+
   private dibujarGuia() {
-    vaciar(this.gGuia, this.compartidas);
     const m = this.moviendo;
-    if (!m) return;
+    if (!m) return this.ocultarGuia();
+    const G = this.piezasGuia();
     const A = m.agarre;
     const P = new THREE.Vector3(A.x + m.delta[0], A.y + m.delta[1], A.z + m.delta[2]);
     const color = this.colorEje(m.eje) ?? this.pal.hover;
-    const linea = (pts: number[], op: number) => {
-      const g = new THREE.BufferGeometry();
-      g.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
-      const l = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color, transparent: true, opacity: op, depthTest: false }));
-      l.renderOrder = 9;
-      this.gGuia.add(l);
+    const poner = (o: THREE.LineSegments | THREE.Points, pts: number[], col: string, op = 1) => {
+      const a = o.geometry.getAttribute("position") as THREE.BufferAttribute;
+      (a.array as Float32Array).set(pts);
+      a.needsUpdate = true;
+      const mat = o.material as THREE.LineBasicMaterial | THREE.PointsMaterial;
+      mat.color.set(col);
+      mat.opacity = op;
+      o.visible = true;
     };
     // el eje entero (largo) y la banda desde el punto tomado hasta donde va
-    if (m.eje === "azul") linea([P.x, P.y - 300, P.z, P.x, P.y + 300, P.z], 0.45);
-    else if (m.dir) linea([P.x - m.dir[0] * 300, P.y, P.z - m.dir[1] * 300, P.x + m.dir[0] * 300, P.y, P.z + m.dir[1] * 300], 0.45);
-    linea([A.x, A.y, A.z, P.x, P.y, P.z], m.eje ? 1 : 0.7);
-    const puntos = [A.x, A.y, A.z, P.x, P.y, P.z];
-    const g = new THREE.BufferGeometry();
-    g.setAttribute("position", new THREE.Float32BufferAttribute(puntos, 3));
-    const pts = new THREE.Points(g, new THREE.PointsMaterial({ color, size: 6, sizeAttenuation: false, depthTest: false }));
-    pts.renderOrder = 9;
-    this.gGuia.add(pts);
-    if (m.encastre) {
-      const ge = new THREE.BufferGeometry();
-      ge.setAttribute("position", new THREE.Float32BufferAttribute(m.encastre.punto, 3));
-      const pe = new THREE.Points(ge, new THREE.PointsMaterial({ color: this.pal.sel, size: 11, sizeAttenuation: false, depthTest: false }));
-      pe.renderOrder = 10;
-      this.gGuia.add(pe);
-    }
+    if (m.eje === "azul") poner(G.eje, [P.x, P.y - 300, P.z, P.x, P.y + 300, P.z], color, 0.45);
+    else if (m.dir) poner(G.eje, [P.x - m.dir[0] * 300, P.y, P.z - m.dir[1] * 300, P.x + m.dir[0] * 300, P.y, P.z + m.dir[1] * 300], color, 0.45);
+    else G.eje.visible = false;
+    poner(G.banda, [A.x, A.y, A.z, P.x, P.y, P.z], color, m.eje ? 1 : 0.7);
+    poner(G.puntos, [A.x, A.y, A.z, P.x, P.y, P.z], color);
+    if (m.encastre) poner(G.encastre, m.encastre.punto, this.pal.sel);
+    else G.encastre.visible = false;
   }
 
   private avisarMovimiento() {
@@ -1223,7 +1271,7 @@ export class Escena {
       this.avisarMovimiento();
       return;
     }
-    m.delta = limitarDelta(m.base, m.grupo, dd);
+    m.delta = limitarDelta(m.base, m.grupo, dd, m.mov);
     this.terminarMovimiento(true);
   }
 
@@ -1243,7 +1291,7 @@ export class Escena {
     }
     // antes de avisar: si el commit no entra (solo lectura, construir falla), no se reconstruye y quedarían corridas
     this.desplazarGrupos(m.mov.ids, [0, 0, 0]);
-    vaciar(this.gGuia, this.compartidas);
+    this.ocultarGuia();
     this.canvas.style.cursor = "";
     this.cb.alMover?.(null);
     this.pedirRender();
@@ -1251,10 +1299,8 @@ export class Escena {
   }
 
   /** Esc o cambio de herramienta: el volumen vuelve a donde estaba, sin cambiar el diseño. */
-  cancelarMovimiento() {
-    if (!this.moviendo) return false;
+  private cancelarMovimiento() {
     this.terminarMovimiento(false);
-    return true;
   }
 
   // ───────────── colocación con encastre ─────────────

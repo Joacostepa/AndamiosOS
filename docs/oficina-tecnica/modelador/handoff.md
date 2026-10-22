@@ -1,8 +1,8 @@
-# Handoff: Modelador de andamios (actualizado 2026-10-15)
+# Handoff: Modelador de andamios (actualizado 2026-10-22)
 
 Para retomar en una sesión nueva: «Leé docs/oficina-tecnica/modelador/handoff.md y seguimos con el modelador».
 
-**Estado:** **en producción desde el 15/10/2026** (`main`). Pasa 940 tests y `tsc` da limpio. Pendientes de la subida en el §6; correcciones posteriores en el §7.
+**Estado:** **en producción desde el 15/10/2026** (`main`). Pasa 1636 tests (`npm test`). Pendientes de la subida en el §6; correcciones posteriores en el §7; mover volúmenes con el mouse en el §8.
 Todo lo que calcula es **PREDIMENSIONADO**, porque los criterios no tienen firma. No reemplaza la memoria de cálculo.
 
 ---
@@ -146,7 +146,7 @@ Todas mergeadas a `main` y deployadas, con lo que reportó JS probando en produc
 
 **Para trabajar en local:** `node_modules` del checkout principal no tenía `three` (se había instalado solo en el worktree): correr `npm install`. Si Turbopack tira un FATAL al levantar `next dev`, borrar `.next/`.
 
-## 8. Mover volúmenes con el mouse, estilo SketchUp (rama `feat/modelador-mover-volumen`, sin mergear)
+## 8. Mover volúmenes con el mouse, estilo SketchUp (en producción desde el 22/10, merge `0cbf19a`)
 
 JS lo pidió el 22/10: hasta ahora un volumen solo se movía tipeando «A lo largo» / «Hacia el fondo».
 
@@ -167,3 +167,7 @@ JS lo pidió el 22/10: hasta ahora un volumen solo se movía tipeando «A lo lar
   - El saliente solo se desliza sobre su cara y sube con ↑.
   - El escalonado no sube, porque el formulario lo mide desde el piso.
   - Un volumen que usa una estructura (azotea, losa del colgante, escalera) no sube, porque movería la estructura. Tampoco sube un edificio cuyo saliente usa una estructura (un colgante de la marquesina). En planta sí se mueve y la estructura queda en su lugar. La envolvente de un tanque sí lo sigue, porque está definida por el volumen.
+- **Quedó afuera:**
+  - corregir la distancia tipeada después de soltar, como permite SketchUp;
+  - encastrar contra piezas sueltas del andamio (hoy encastra contra la huella y el frente de cada estructura);
+  - ejes y encastre en la planta 2D, que solo redondea a 0,05.

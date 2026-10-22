@@ -1,16 +1,16 @@
 "use client";
 
 // Monta la Escena 3D (imperativa) y la conecta con el store: le pasa los datos en cada cambio y
-// traduce sus intenciones (clic, pincel, cara de volumen, colocación) a operaciones del núcleo.
+// traduce sus intenciones (clic, pincel, cara de volumen, colocación, mover un volumen) a operaciones del núcleo.
 
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { toast } from "../util/toast";
-import { agregarEnCara, type Diseno, type Pieza } from "@/lib/tecnica/modelo";
+import { avisar, toast } from "../util/toast";
+import { agregarEnCara, moverVolumen, nombreMovimiento, type Diseno, type EjeMovimiento, type Pieza } from "@/lib/tecnica/modelo";
 import { cn } from "@/lib/utils";
 import { useEditor, todosLosAvisos } from "../estado/store";
 import { conContexto, pintarDiseno } from "../estado/acciones";
 import { fmt } from "../util/formato";
-import { Escena, type DatosEscena } from "./escena";
+import { Escena, type DatosEscena, type InfoMover } from "./escena";
 
 function datosDe(verVolumenes: boolean): DatosEscena {
   const s = useEditor.getState();
@@ -22,8 +22,13 @@ function datosDe(verVolumenes: boolean): DatosEscena {
   return {
     res: s.res, diseno: s.diseno, catalogo: s.catalogo, estructuraSel: s.sel.estructuraId, celdasSel: s.sel.celdas,
     hover: s.hover, volumenSel: s.sel.volumen, herramienta: s.herramienta, bomResaltado: s.bomResaltado, errores, verVolumenes,
+    soloLectura: s.soloLectura,
   };
 }
+
+const NOMBRE_EJE: Record<EjeMovimiento, string> = {
+  rojo: "Eje rojo · a lo largo", verde: "Eje verde · hacia el fondo", azul: "Eje azul · en altura", x: "Eje X del terreno", z: "Eje Z del terreno",
+};
 
 interface Ficha {
   pieza: Pieza;
@@ -35,6 +40,7 @@ export function Lienzo({ escenaRef, verVolumenes, className }: { escenaRef: RefO
   const cont = useRef<HTMLDivElement>(null);
   const [ficha, setFicha] = useState<Ficha | null>(null);
   const [hint, setHint] = useState<string | null>(null);
+  const [movida, setMovida] = useState<InfoMover | null>(null);
   const verRef = useRef(verVolumenes);
   const pintura = useRef<{ base: Diseno; estructuraId: string; celdas: Set<string> } | null>(null);
 
@@ -113,6 +119,22 @@ export function Lienzo({ escenaRef, verVolumenes, className }: { escenaRef: RefO
         }
         setHint(snap ? `Encastra en ${snap.etiqueta}` : alt ? "Sin unir (Alt)" : "Libre: acercate a una línea azul para unir");
       },
+      alMover(info) {
+        setMovida(info);
+        if (info) setFicha(null);
+      },
+      alMovido({ grupo, delta }) {
+        const s = useEditor.getState();
+        if (s.soloLectura) return;
+        // un solo cambio en el historial; los choques nuevos con estructuras salen en el mismo aviso
+        const r = moverVolumen(s.diseno, grupo, delta);
+        if (!r.movidos.length) return;
+        const v = s.diseno.contexto.volumenes.find((x) => x.id === grupo);
+        const antes = new Set(s.avisosPantalla.map((a) => a.texto));
+        if (!s.commit(r.diseno, nombreMovimiento(v?.nombre || grupo, r.delta))) return;
+        const choques = useEditor.getState().avisosPantalla.filter((a) => a.nivel === "error" && !antes.has(a.texto)).map((a) => a.texto);
+        avisar([...r.avisos, ...choques]);
+      },
       alColocado({ diseno: d0, estructuraId, snap }) {
         const s = useEditor.getState();
         const diseno = conContexto(d0, estructuraId, s.catalogo);
@@ -131,7 +153,7 @@ export function Lienzo({ escenaRef, verVolumenes, className }: { escenaRef: RefO
     escena.actualizar(datosDe(verRef.current));
     let previo = useEditor.getState();
     const desub = useEditor.subscribe((s) => {
-      if (s.res === previo.res && s.diseno === previo.diseno && s.sel === previo.sel && s.hover === previo.hover && s.herramienta === previo.herramienta && s.bomResaltado === previo.bomResaltado && s.avisosPantalla === previo.avisosPantalla) return;
+      if (s.res === previo.res && s.diseno === previo.diseno && s.sel === previo.sel && s.hover === previo.hover && s.herramienta === previo.herramienta && s.bomResaltado === previo.bomResaltado && s.avisosPantalla === previo.avisosPantalla && s.soloLectura === previo.soloLectura) return;
       previo = s;
       escena.actualizar(datosDe(verRef.current));
     });
@@ -161,11 +183,34 @@ export function Lienzo({ escenaRef, verVolumenes, className }: { escenaRef: RefO
   return (
     <div className={cn("relative h-full w-full overflow-hidden", className)}>
       <div ref={cont} className="absolute inset-0" />
-      {hint && (
+      {hint && !movida && (
         <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-lg border border-border bg-popover/95 px-3 py-1.5 text-xs text-popover-foreground shadow">
           <b className="font-medium">{hint}</b>
           <span className="ml-2 text-muted-foreground">Clic coloca · Alt sin unir · R gira · Esc cancela</span>
         </div>
+      )}
+      {movida && (
+        <>
+          <div role="status" className="pointer-events-none absolute left-1/2 top-3 max-w-[calc(100%-1.5rem)] -translate-x-1/2 rounded-lg border border-border bg-popover/95 px-3 py-1.5 text-xs text-popover-foreground shadow">
+            <b className={cn("font-medium", movida.aviso && "text-destructive")}>
+              {movida.aviso ?? (movida.encastre ? `Encastra: ${movida.encastre}` : movida.eje ? `${NOMBRE_EJE[movida.eje]}${movida.bloqueado ? " (fijo)" : ""}` : "Libre")}
+            </b>
+            <span className="ml-2 text-muted-foreground">Shift fija el eje · → rojo · ← verde · ↑ azul · ↓ libre · tipeá la distancia + Enter · Esc cancela</span>
+          </div>
+          <div
+            className="pointer-events-none fixed z-50 flex items-center gap-1.5 rounded-md border border-border bg-popover px-2 py-1 font-mono text-xs text-popover-foreground shadow-lg"
+            style={{ left: Math.min(movida.x + 16, (typeof window !== "undefined" ? window.innerWidth : 2000) - 160), top: movida.y + 14 }}
+          >
+            {movida.color && <span className="size-2 rounded-full" style={{ background: movida.color }} />}
+            {movida.vcb ? (
+              <span>
+                Distancia: <b>{movida.vcb}</b> m
+              </span>
+            ) : (
+              <span>{fmt(movida.distancia)} m</span>
+            )}
+          </div>
+        </>
       )}
       {ficha && (
         <div

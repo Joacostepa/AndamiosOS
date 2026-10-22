@@ -35,7 +35,7 @@ import { GuardarPlantilla } from "./paneles/guardar-plantilla";
 import { fmt } from "./util/formato";
 import {
   ArrowLeft, BookmarkPlus, Calculator, Check, CloudOff, Eye, EyeOff, Focus, ImageDown, Keyboard, Loader2,
-  MousePointer2, Paintbrush, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Redo2, TriangleAlert, Undo2,
+  MousePointer2, Move, Paintbrush, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Redo2, TriangleAlert, Undo2,
 } from "lucide-react";
 
 export interface PropsEditor {
@@ -232,6 +232,8 @@ export default function Editor({ modelo, disenoDemo, catalogo, errorCatalogo, so
       switch (k.toLowerCase()) {
         case "v": return s.setHerramienta("seleccionar");
         case "b": return s.soloLectura ? undefined : s.setHerramienta("pincel");
+        // M como en SketchUp: clic levanta el volumen, clic lo suelta (mientras se mueve, las teclas son de la escena)
+        case "m": return s.soloLectura ? undefined : s.setHerramienta(s.herramienta === "mover" ? "seleccionar" : "mover");
         case "r": return escenaRef.current?.girarColocacion();
         case "z": return escenaRef.current?.encuadrar();
         case "a": return setAlzadoGrande((x) => !x);
@@ -249,9 +251,11 @@ export default function Editor({ modelo, disenoDemo, catalogo, errorCatalogo, so
       const p = TECLAS_PRESET.get(k.toLowerCase()) ?? TECLAS_PRESET.get(k);
       if (p && !s.soloLectura) s.setColocando(s.colocando === p.id ? null : p.id);
     };
-    // Ctrl+K: en el editor abre la paleta del modelador (no el buscador general), aunque el foco esté en un campo
+    // Ctrl+K: en el editor abre la paleta del modelador (no el buscador general), aunque el foco esté en un campo.
+    // Con un volumen levantado no: la escena se queda con las teclas y la paleta no se podría usar.
     const paletaK = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        if (escenaRef.current?.estaMoviendo) return;
         e.preventDefault();
         e.stopImmediatePropagation();
         setPaleta((x) => !x);
@@ -514,6 +518,9 @@ function BarraHerramientas({ vista, onVista, onEncuadrar, verVolumenes, onVerVol
       <Button size="xs" variant={herramienta === "pincel" ? "secondary" : "ghost"} aria-pressed={herramienta === "pincel"} disabled={soloLectura} onClick={() => useEditor.getState().setHerramienta("pincel")} title="Pincel por celda (B): arrastrá sobre el alzado o el 3D">
         <Paintbrush /> Pincel
       </Button>
+      <Button size="xs" variant={herramienta === "mover" ? "secondary" : "ghost"} aria-pressed={herramienta === "mover"} disabled={soloLectura} onClick={() => useEditor.getState().setHerramienta(herramienta === "mover" ? "seleccionar" : "mover")} title="Mover volumen (M): clic lo levanta, clic lo suelta. También se arrastra el volumen elegido.">
+        <Move /> Mover
+      </Button>
       {herramienta === "pincel" && (
         <div className="flex flex-wrap items-center gap-0.5 border-l border-border pl-1">
           {PINCELES.filter((p) => pincelDisponible(p.id, tip)).map((p) => (
@@ -621,6 +628,9 @@ function Atajos({ abierto, onCambiar }: { abierto: boolean; onCambiar: (v: boole
     ["Ctrl+S", "Guardar ya (también con el foco en un campo)"],
     ["Ctrl+D", "Duplicar la estructura elegida, alineada al lado"],
     ["V · B", "Seleccionar · pincel por celda"],
+    ["M", "Mover un volumen: clic lo levanta y clic lo suelta (o arrastrá el volumen elegido)"],
+    ["Shift · → ← ↑ ↓", "Moviendo: fijar el eje actual · rojo (a lo largo) · verde (hacia el fondo) · azul (altura) · ↓ libre"],
+    ["Número + Enter", "Moviendo: correrlo exactamente esa distancia en la dirección marcada"],
     ["0–9 (con pincel)", "Elegir el pincel (con el pincel activo los números no cambian la vista)"],
     ...[...TECLAS_PRESET.entries()].map(([k, p]) => [k.toUpperCase(), `Ubicar ${p.nombre.toLowerCase()}`] as [string, string]),
     ["L · H", "Largo · altura de la estructura elegida: tipeá y Enter (kg en vivo)"],
@@ -634,7 +644,7 @@ function Atajos({ abierto, onCambiar }: { abierto: boolean; onCambiar: (v: boole
     ["N1… · V1…", "En el alzado: elegir un nivel o un vano entero"],
     ["Supr (con celdas)", "Volver las celdas a lo generado"],
     ["⌫ ⌫ · Supr Supr", "Borrar la estructura elegida (dos pulsaciones)"],
-    ["Esc", "Cancelar / soltar la selección"],
+    ["Esc", "Cancelar (vuelve el volumen a su lugar) / soltar la selección"],
   ];
   return (
     <Dialog open={abierto} onOpenChange={onCambiar}>

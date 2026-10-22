@@ -9,10 +9,13 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import {
-  agregarEstructura, buscarSnap, construir, crearDiseno,
-  type Catalogo, type CeldaResuelta, type Diseno, type Pieza, type Resultado, type Snap, type V2, type V3,
+  agregarEstructura, buscarSnap, candidatosEncastre, construir, crearDiseno, deltaPorDistancia, distanciaMovimiento, encastrar,
+  encastrarCota, formaMovil, inferirEje, limitarDelta, movilidadDe, proyectar, puntoEnEje,
+  type CandidatosEncastre, type Catalogo, type CeldaResuelta, type Diseno, type EjeMovimiento, type EjePlano, type Movilidad,
+  type Pieza, type Poligono, type Resultado, type Snap, type V2, type V3,
 } from "@/lib/tecnica/modelo";
 import { carasDe, solidosDelDiseno, type Cara, type VolumenRef } from "../volumenes/geometria";
+import { evalExpr } from "../util/formato";
 import { ES_CAJA, ES_LAMINA, grupoColor, leerPaleta, paletaExport, type GrupoColor, type Paleta } from "./paleta";
 import { registrarLienzo } from "@/lib/sistemas/lienzos-webgl";
 
@@ -26,11 +29,55 @@ export interface DatosEscena {
   celdasSel: string[];
   hover: string | null;
   volumenSel: string | null;
-  herramienta: "seleccionar" | "pincel" | "cara" | "colocar";
+  herramienta: "seleccionar" | "pincel" | "cara" | "colocar" | "mover";
   bomResaltado: string | null;
   /** Celdas con error o aviso: `${estructuraId}|${clave}`. */
   errores: Set<string>;
   verVolumenes: boolean;
+  /** Sin permiso de edición: no se arrastran volúmenes. */
+  soloLectura: boolean;
+}
+
+/** Lo que muestra el lienzo mientras se mueve un volumen (rótulo junto al cursor y ayuda arriba). */
+export interface InfoMover {
+  grupo: string;
+  distancia: number;
+  delta: V3;
+  eje: EjeMovimiento | null;
+  /** color del eje en la vista (null = libre) */
+  color: string | null;
+  bloqueado: boolean;
+  encastre: string | null;
+  /** distancia que se está tipeando (caja de medidas) */
+  vcb: string;
+  aviso: string | null;
+  x: number;
+  y: number;
+}
+
+/** Un volumen levantado (arrastre o herramienta Mover). La vista previa solo corre las mallas: el diseño no cambia hasta soltar. */
+interface Movimiento {
+  grupo: string;
+  modo: "arrastre" | "clic";
+  herramienta: DatosEscena["herramienta"];
+  /** diseño al levantarlo: si cambia por otro lado, se cancela */
+  base: Diseno;
+  agarre: THREE.Vector3;
+  plano: THREE.Plane;
+  mov: Movilidad;
+  forma: { plantas: Poligono[]; cotas: number[] };
+  cand: CandidatosEncastre;
+  yRef: number;
+  delta: V3;
+  eje: EjeMovimiento | null;
+  dir: V2 | null;
+  bloqueo: EjeMovimiento | null;
+  porShift: boolean;
+  encastre: { punto: V3; etiqueta: string } | null;
+  vcb: string;
+  aviso: string | null;
+  x: number;
+  y: number;
 }
 
 export interface CallbacksEscena {
@@ -42,6 +89,10 @@ export interface CallbacksEscena {
   alClicVolumen(grupo: string | null): void;
   alColocar(info: { estado: "mover" | "fin"; snap: Snap | null; alt: boolean }): void;
   alColocado(info: { diseno: Diseno; estructuraId: string; snap: Snap | null }): void;
+  /** Moviendo un volumen: rótulo y ayuda (null = terminó o se canceló). */
+  alMover?(info: InfoMover | null): void;
+  /** Volumen soltado: el desplazamiento en mundo [dx, dy, dz] que hay que aplicar al diseño (un solo cambio). */
+  alMovido?(info: { grupo: string; delta: V3 }): void;
 }
 
 const RADIO: Partial<Record<GrupoColor, number>> = {
@@ -50,6 +101,10 @@ const RADIO: Partial<Record<GrupoColor, number>> = {
 };
 const Y = new THREE.Vector3(0, 1, 0);
 const RADIO_SNAP = 3.5;
+/** Píxeles de pantalla dentro de los que un volumen que se mueve encastra (se pasan a metros según la distancia). */
+const TOL_ENCASTRE_PX = 10;
+/** Arrastre mínimo (px) para que deje de ser un clic. */
+const UMBRAL_CLIC = 5;
 
 const _q = new THREE.Quaternion();
 const _p = new THREE.Vector3();
@@ -101,6 +156,12 @@ export class Escena {
   private gOver = new THREE.Group();
   private gGhost = new THREE.Group();
   private gPuertos = new THREE.Group();
+  /** Guías del movimiento: el eje, la banda desde el punto tomado y el punto de encastre. */
+  private gGuia = new THREE.Group();
+  /** Las piezas de la guía se arman una vez y se reusan: rehacerlas en cada cuadro liberaba y recompilaba su shader. */
+  private guia: { eje: THREE.LineSegments; banda: THREE.LineSegments; puntos: THREE.Points; encastre: THREE.Points } | null = null;
+  /** Un grupo por volumen dentro de gVol: moverlo en la vista previa es correr su posición. */
+  private gruposVol = new Map<string, THREE.Group>();
   private suelo: THREE.Mesh;
   private grilla: THREE.GridHelper | null = null;
   private geoCil = new THREE.CylinderGeometry(1, 1, 1, 8, 1);
@@ -133,6 +194,12 @@ export class Escena {
   private ptr = new THREE.Vector2();
   private plano = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   private colocando: { preset: string; rumbo: number; clave: string; prop: { diseno: Diseno; estructuraId: string } | null; snap: Snap | null; ultimo: V2 | null; alt: boolean } | null = null;
+  /** Apretó sobre un volumen movible: si arrastra más de UMBRAL_CLIC, lo levanta; si no, es un clic. */
+  private candidato: { grupo: string; punto: THREE.Vector3 } | null = null;
+  private moviendo: Movimiento | null = null;
+  private botonApretado = false;
+  /** La órbita se devuelve al soltar el botón (si no, el resto del arrastre giraría la cámara). */
+  private soltarControles = false;
   private obs: (ResizeObserver | MutationObserver)[] = [];
   private anim = 0;
   private modo: ModoVista = "iso";
@@ -161,15 +228,22 @@ export class Escena {
     sol.position.set(20, 40, 30);
     this.scene.add(sol);
     this.camera.position.set(30, 22, 34);
+    // antes que OrbitControls: al apretar sobre un volumen movible se apaga el giro ANTES de que la órbita tome
+    // el pointerdown; si no, queda en «girando» y la rueda no hace zoom durante el arrastre
+    this.canvas.addEventListener("pointerdown", this.onDown);
     this.controls = new OrbitControls(this.camera, this.canvas);
     this.controls.enableDamping = false;
     this.controls.screenSpacePanning = true;
     this.controls.maxPolarAngle = Math.PI * 0.499;
-    this.controls.addEventListener("change", () => this.pedirRender());
+    this.controls.addEventListener("change", () => {
+      // la rueda sigue haciendo zoom con un volumen levantado: la guía y el encastre se recalculan
+      if (this.moviendo) this.reprocesar();
+      this.pedirRender();
+    });
     this.suelo = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), new THREE.MeshStandardMaterial({ color: 0x1d1e21, roughness: 1 }));
     this.suelo.rotation.x = -Math.PI / 2;
     this.suelo.position.y = -0.005;
-    this.scene.add(this.suelo, this.gObra, this.gVol, this.gOver, this.gGhost, this.gPuertos);
+    this.scene.add(this.suelo, this.gObra, this.gVol, this.gOver, this.gGhost, this.gPuertos, this.gGuia);
     this.pal = leerPaleta();
     this.aplicarTema();
 
@@ -187,10 +261,12 @@ export class Escena {
     this.redimensionar();
 
     this.canvas.addEventListener("pointermove", this.onMove);
-    this.canvas.addEventListener("pointerdown", this.onDown);
     this.canvas.addEventListener("pointerup", this.onUp);
     this.canvas.addEventListener("pointerleave", this.onLeave);
     this.canvas.addEventListener("dblclick", this.onDbl);
+    this.canvas.addEventListener("pointercancel", this.onPunteroPerdido);
+    this.canvas.addEventListener("lostpointercapture", this.onPunteroPerdido);
+    window.addEventListener("blur", this.onPunteroPerdido);
     // «Reportar» (Sistemas): sin preserveDrawingBuffer el lienzo sale en blanco en la foto;
     // se renderiza y se lee en el mismo instante (src/lib/sistemas/lienzos-webgl.ts).
     this.quitarFoto = registrarLienzo(this.canvas, () => {
@@ -210,8 +286,16 @@ export class Escena {
     this.canvas.removeEventListener("pointerup", this.onUp);
     this.canvas.removeEventListener("pointerleave", this.onLeave);
     this.canvas.removeEventListener("dblclick", this.onDbl);
+    this.canvas.removeEventListener("pointercancel", this.onPunteroPerdido);
+    this.canvas.removeEventListener("lostpointercapture", this.onPunteroPerdido);
+    window.removeEventListener("blur", this.onPunteroPerdido);
+    window.removeEventListener("keydown", this.onTeclaMover, { capture: true });
+    window.removeEventListener("keyup", this.onSoltarTecla, { capture: true });
+    window.removeEventListener("pointerdown", this.onPunteroAfuera, { capture: true });
+    this.moviendo = null;
     this.controls.dispose();
-    for (const g of [this.gObra, this.gVol, this.gOver, this.gGhost, this.gPuertos]) vaciar(g, this.compartidas);
+    for (const g of [this.gObra, this.gVol, this.gOver, this.gGhost, this.gPuertos, this.gGuia]) vaciar(g, this.compartidas);
+    this.guia = null;
     this.geoCil.dispose();
     this.geoCaja.dispose();
     // materiales compartidos, suelo, grilla y entorno: si no, cada ida y vuelta lista ↔ editor dejaba
@@ -283,6 +367,9 @@ export class Escena {
   actualizar(d: DatosEscena) {
     const primera = !this.datos;
     this.datos = d;
+    // un volumen levantado se suelta sin aplicar si cambia la herramienta, el permiso o el diseño (deshacer, otra pestaña)
+    const m = this.moviendo;
+    if (m && (d.soloLectura || !d.verVolumenes || d.herramienta !== m.herramienta || d.diseno !== m.base)) this.cancelarMovimiento();
     if (d.res !== this.resCargado) {
       this.resCargado = d.res;
       this.cargarPiezas();
@@ -296,7 +383,7 @@ export class Escena {
     this.recolorear();
     this.overlays();
     if (primera) this.vista("iso", false);
-    this.canvas.style.cursor = d.herramienta === "cara" || d.herramienta === "colocar" ? "crosshair" : d.herramienta === "pincel" ? "cell" : "";
+    this.canvas.style.cursor = this.moviendo ? "grabbing" : d.herramienta === "cara" || d.herramienta === "colocar" ? "crosshair" : d.herramienta === "pincel" ? "cell" : "";
     this.pedirRender();
   }
 
@@ -501,8 +588,19 @@ export class Escena {
     this.carasPick = [];
     this.volMallas = [];
     this.carasPorId.clear();
+    this.gruposVol.clear();
     const d = this.datos;
     if (!d) return;
+    const grupoDe = (id: string) => {
+      let g = this.gruposVol.get(id);
+      if (!g) {
+        g = new THREE.Group();
+        g.userData = { volumenId: id };
+        this.gruposVol.set(id, g);
+        this.gVol.add(g);
+      }
+      return g;
+    };
     const vols = d.diseno.contexto.volumenes as VolumenRef[];
     const porId = new Map(vols.map((v) => [v.id, v]));
     // los sólidos de la lógica oficial: tramos del escalonado, balcones repetidos, cúpula, patios
@@ -524,15 +622,16 @@ export class Escena {
       const malla = new THREE.Mesh(geo, mat);
       malla.renderOrder = 1;
       malla.userData = { grupo: so.volumenId, volumenId: so.volumenId };
-      this.gVol.add(malla);
+      const gv = grupoDe(so.volumenId);
+      gv.add(malla);
       this.volMallas.push(malla);
       const bordes = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 20), new THREE.LineBasicMaterial({ color: sel ? this.pal.sel : hueco ? this.pal.hueco : this.pal.volumenBorde, transparent: true, opacity: 0.9 }));
-      this.gVol.add(bordes);
+      gv.add(bordes);
       if (so.rol === "cuerpo" && def?.tipo === "cilindro" && def.cupula) {
         const dome = new THREE.Mesh(new THREE.SphereGeometry(def.radio, 24, 10, 0, Math.PI * 2, 0, Math.PI / 2), mat.clone());
         dome.scale.set(1, def.cupula.alto / def.radio, 1);
         dome.position.set(def.centro[0], so.yTope, def.centro[1]);
-        this.gVol.add(dome);
+        gv.add(dome);
       }
       // líneas de losas cada 3 m (lectura de la escala)
       if (!hueco && (so.rol === "cuerpo" || so.rol === "tramo") && v?.tipo === "edificio" && alto > 4) {
@@ -546,7 +645,7 @@ export class Escena {
         }
         const g = new THREE.BufferGeometry();
         g.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
-        this.gVol.add(new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: this.pal.volumenBorde, transparent: true, opacity: 0.35 })));
+        gv.add(new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: this.pal.volumenBorde, transparent: true, opacity: 0.35 })));
       }
     }
     // caras para «clic en una cara» (lógica oficial: fachada, terraza, envolvente o patio)
@@ -559,11 +658,13 @@ export class Escena {
         g.setIndex([0, 1, 2, 0, 2, 3]);
         const m = new THREE.Mesh(g, this.matPick);
         m.userData = { volumenId: c.volumenId, caraId: c.id };
-        this.gVol.add(m);
+        grupoDe(c.volumenId).add(m);
         this.carasPick.push(m);
       }
     }
     if (this.hoverCara) this.hoverCara = this.carasPorId.get(this.hoverCara.id) ?? null;
+    // reconstruido en pleno movimiento (selección, tema): la vista previa vuelve a correr las mallas
+    if (this.moviendo) this.desplazarGrupos(this.moviendo.mov.ids, this.moviendo.delta);
     this.pedirRender();
   }
 
@@ -646,7 +747,7 @@ export class Escena {
   }
 
   // ───────────── puntero ─────────────
-  private setRay(e: PointerEvent | MouseEvent) {
+  private setRay(e: { clientX: number; clientY: number }) {
     const r = this.canvas.getBoundingClientRect();
     this.ptr.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
     this.ray.setFromCamera(this.ptr, this.camera);
@@ -672,10 +773,30 @@ export class Escena {
     return hit ? (hit.object.userData as { volumenId: string; caraId: string }) : null;
   }
 
-  private hitVolumen(): string | null {
+  /** Volumen bajo el cursor, con el punto tocado (su altura es el plano del arrastre) y la distancia. */
+  private hitVolumenPunto(): { grupo: string; punto: THREE.Vector3; dist: number } | null {
     if (!this.gVol.visible) return null;
     const hit = this.ray.intersectObjects(this.volMallas, false)[0];
-    return hit ? (hit.object.userData.grupo as string) : null;
+    return hit ? { grupo: hit.object.userData.grupo as string, punto: hit.point.clone(), dist: hit.distance } : null;
+  }
+
+  private hitVolumen(): string | null {
+    return this.hitVolumenPunto()?.grupo ?? null;
+  }
+
+  /**
+   * El volumen que se puede levantar bajo el cursor: con Mover, cualquiera; con Seleccionar, solo el elegido
+   * (los edificios grandes tapan casi todo el lienzo y arrastrar sobre ellos tiene que seguir girando la cámara).
+   * Una pieza o una celda más cerca gana.
+   */
+  private volumenMovible(hp: { dist: number } | null, hc: { dist: number } | null): { grupo: string; punto: THREE.Vector3; dist: number } | null {
+    const d = this.datos;
+    if (!d || d.soloLectura || this.colocando || (d.herramienta !== "seleccionar" && d.herramienta !== "mover")) return null;
+    if (d.herramienta === "seleccionar" && !d.volumenSel) return null;
+    const hv = this.hitVolumenPunto();
+    if (!hv || (hp && hp.dist < hv.dist) || (hc && hc.dist < hv.dist)) return null;
+    if (d.herramienta === "seleccionar" && d.volumenSel !== hv.grupo) return null;
+    return hv;
   }
 
   private onMove = (e: PointerEvent) => {
@@ -693,6 +814,17 @@ export class Escena {
     const d = this.datos;
     if (!e || !d) return;
     this.setRay(e);
+    if (this.moviendo) {
+      this.actualizarMovimiento(e);
+      return;
+    }
+    if (this.candidato && this.downXY && Math.hypot(e.clientX - this.downXY[0], e.clientY - this.downXY[1]) >= UMBRAL_CLIC) {
+      const c = this.candidato;
+      this.candidato = null;
+      this.empezarMovimiento(c.grupo, c.punto, "arrastre", e.pointerId);
+      this.actualizarMovimiento(e);
+      return;
+    }
     if (this.colocando) {
       const q = this.puntoColocacion();
       if (q) this.moverColocacion(q, e.altKey);
@@ -724,13 +856,21 @@ export class Escena {
     }
     const pieza = pi >= 0 ? d.res.piezas[pi] : null;
     const celda = pieza?.celda && pieza.estructuraId === d.estructuraSel ? pieza.celda : hc?.clave ?? null;
-    this.canvas.style.cursor = d.herramienta === "pincel" ? "cell" : pieza || hc ? "pointer" : "";
+    const movible = this.pintando ? null : this.volumenMovible(hp, hc);
+    this.canvas.style.cursor = d.herramienta === "pincel" ? "cell" : movible ? "move" : pieza || hc ? "pointer" : "";
     this.cb.alHover(pieza || celda ? { pieza, estructuraId: pieza?.estructuraId ?? this.pickCeldas.estructuraId, celda, x: e.clientX, y: e.clientY } : null);
   }
 
   private onDown = (e: PointerEvent) => {
     this.downXY = [e.clientX, e.clientY];
+    this.candidato = null;
     if (e.button !== 0 || !this.datos) return;
+    this.botonApretado = true;
+    // con un volumen levantado por clic, el próximo clic lo suelta (en onUp); la órbita sigue apagada
+    if (this.moviendo) {
+      e.preventDefault();
+      return;
+    }
     if (this.datos.herramienta === "pincel" && !this.colocando) {
       this.setRay(e);
       const hc = this.hitCelda();
@@ -742,18 +882,51 @@ export class Escena {
         this.ultimaPintada = hc.clave;
         this.cb.alPintar?.({ estructuraId: this.pickCeldas.estructuraId, celda: hc.clave, fase: "inicio" });
       }
+      return;
+    }
+    this.setRay(e);
+    const hv = this.volumenMovible(this.hitPieza(), this.hitCelda());
+    if (hv) {
+      // corre antes que OrbitControls: sin giro ni paneo no mueve la cámara (la rueda sigue haciendo zoom)
+      this.candidato = { grupo: hv.grupo, punto: hv.punto };
+      this.controls.enableRotate = false;
+      this.controls.enablePan = false;
     }
   };
 
   private onUp = (e: PointerEvent) => {
-    const click = !!this.downXY && Math.hypot(e.clientX - this.downXY[0], e.clientY - this.downXY[1]) < 5;
+    const click = !!this.downXY && Math.hypot(e.clientX - this.downXY[0], e.clientY - this.downXY[1]) < UMBRAL_CLIC;
     this.downXY = null;
+    if (e.button === 0) this.botonApretado = false;
+    if (this.soltarControles && !this.moviendo) {
+      this.soltarControles = false;
+      this.controls.enableRotate = true;
+      this.controls.enablePan = true;
+    }
     if (this.pintando) {
       this.pintando = false;
       this.controls.enabled = true;
       if (this.pickCeldas.estructuraId && this.ultimaPintada) this.cb.alPintar?.({ estructuraId: this.pickCeldas.estructuraId, celda: this.ultimaPintada, fase: "fin" });
       this.ultimaPintada = null;
       return;
+    }
+    if (this.moviendo) {
+      // arrastre: suelta al levantar el botón; por clic: suelta con el segundo clic
+      if (e.button === 0 && (this.moviendo.modo === "arrastre" || click)) this.terminarMovimiento(true);
+      return;
+    }
+    if (this.candidato) {
+      const c = this.candidato;
+      this.candidato = null;
+      this.controls.enableRotate = true;
+      this.controls.enablePan = true;
+      // herramienta Mover: el clic lo levanta (y lo elige); con Seleccionar, el clic sigue eligiendo como siempre
+      if (click && e.button === 0 && this.datos?.herramienta === "mover") {
+        this.cb.alClicVolumen(c.grupo);
+        this.empezarMovimiento(c.grupo, c.punto, "clic", null);
+        this.actualizarMovimiento(e);
+        return;
+      }
     }
     if (!click || e.button !== 0 || !this.datos) return;
     this.setRay(e);
@@ -786,7 +959,7 @@ export class Escena {
   };
 
   private onLeave = () => {
-    if (this.pintando) return;
+    if (this.pintando || this.moviendo) return;
     if (this.hoverPi >= 0) {
       const ant = this.hoverPi;
       this.hoverPi = -1;
@@ -796,7 +969,339 @@ export class Escena {
     this.cb.alHover(null);
   };
 
-  private onDbl = () => this.encuadrar();
+  /**
+   * El puntero se perdió sin pointerup (gesto del sistema, lápiz, cambio de ventana): se olvida el candidato, la
+   * órbita vuelve y un arrastre se cancela. Un clic de Mover sigue levantado. lostpointercapture también llega
+   * después de cada pointerup normal: con el botón ya suelto no hay nada que hacer.
+   */
+  private onPunteroPerdido = (e: Event) => {
+    if (e.type === "lostpointercapture" && !this.botonApretado) return;
+    this.candidato = null;
+    this.downXY = null;
+    this.botonApretado = false;
+    this.soltarControles = false;
+    if (this.moviendo?.modo === "arrastre") this.cancelarMovimiento();
+    if (!this.moviendo) {
+      this.controls.enableRotate = true;
+      this.controls.enablePan = true;
+    }
+  };
+
+  // con Mover, el clic que levanta y el que suelta no encuadran
+  private onDbl = () => {
+    if (this.moviendo || this.datos?.herramienta === "mover") return;
+    this.encuadrar();
+  };
+
+  // ───────────── mover volúmenes (estilo SketchUp) ─────────────
+  // Se levanta el volumen (y sus salientes) y se corren sus mallas sobre el plano horizontal a la altura
+  // del punto tomado; el diseño se cambia UNA vez al soltar (alMovido → un solo paso de deshacer y sin
+  // autoguardado por cuadro). Inferencia: cerca de los ejes propios (rojo a lo largo, verde hacia el
+  // fondo) o del terreno se pega al eje; Shift lo bloquea, → ← ↑ eligen rojo, verde y azul (altura) y
+  // ↓ lo libera. Encastra esquinas y bordes contra otros volúmenes y los frentes de las estructuras; si no,
+  // redondea a 0,05. Tipear un número + Enter mueve exactamente esa distancia. Esc cancela.
+
+  get estaMoviendo() {
+    return !!this.moviendo;
+  }
+
+  private empezarMovimiento(grupo: string, agarre: THREE.Vector3, modo: Movimiento["modo"], pointerId: number | null) {
+    const d = this.datos;
+    if (!d) return;
+    const mov = movilidadDe(d.diseno, grupo);
+    if (!mov) return;
+    const forma = formaMovil(d.diseno, mov.ids);
+    this.moviendo = {
+      grupo, modo, herramienta: d.herramienta, base: d.diseno, agarre: agarre.clone(), plano: new THREE.Plane(Y.clone(), -agarre.y),
+      mov, forma, cand: candidatosEncastre(d.diseno, mov.ids, d.res), yRef: forma.cotas.length ? Math.min(...forma.cotas) : agarre.y,
+      delta: [0, 0, 0], eje: null, dir: null, bloqueo: null, porShift: false, encastre: null, vcb: "", aviso: null, x: 0, y: 0,
+    };
+    this.soltarControles = false;
+    this.controls.enableRotate = false;
+    this.controls.enablePan = false;
+    if (pointerId !== null) {
+      try {
+        this.canvas.setPointerCapture(pointerId);
+      } catch {
+        /* el puntero ya no está activo */
+      }
+    }
+    // las teclas son del movimiento (números, flechas, Enter, Esc) antes que de los atajos del editor
+    window.addEventListener("keydown", this.onTeclaMover, { capture: true });
+    window.addEventListener("keyup", this.onSoltarTecla, { capture: true });
+    window.addEventListener("pointerdown", this.onPunteroAfuera, { capture: true });
+    if (this.hoverPi >= 0) {
+      const ant = this.hoverPi;
+      this.hoverPi = -1;
+      this.recolorPieza(ant);
+    }
+    this.cb.alHover(null);
+    this.canvas.style.cursor = "grabbing";
+  }
+
+  /** Metros que mide un píxel a la distancia de `p` (para que la tolerancia del encastre sea de pantalla). */
+  private metrosPorPixel(p: THREE.Vector3) {
+    const dist = this.camera.position.distanceTo(p);
+    return (2 * dist * Math.tan((this.camera.fov * Math.PI) / 360)) / Math.max(1, this.canvas.clientHeight);
+  }
+
+  private actualizarMovimiento(e: { clientX: number; clientY: number }) {
+    const m = this.moviendo;
+    if (!m) return;
+    this.setRay(e);
+    m.x = e.clientX;
+    m.y = e.clientY;
+    const A = m.agarre;
+    const o = this.ray.ray.origin;
+    const v = this.ray.ray.direction;
+    const ro: V3 = [o.x, o.y, o.z];
+    const rd: V3 = [v.x, v.y, v.z];
+    const tol = TOL_ENCASTRE_PX * this.metrosPorPixel(_p.set(A.x + m.delta[0], A.y + m.delta[1], A.z + m.delta[2]));
+    m.encastre = null;
+    let delta: V3;
+    if (m.bloqueo === "azul") {
+      const t = puntoEnEje(ro, rd, [A.x, A.y, A.z], [0, 1, 0]);
+      if (t === null) return;
+      const c = encastrarCota(m.forma.cotas, t, m.cand, { tol });
+      delta = [0, c.dy, 0];
+      m.eje = "azul";
+      m.dir = null;
+      if (c.cota) m.encastre = { punto: [A.x, c.cota.y, A.z], etiqueta: c.cota.etiqueta };
+    } else {
+      // un saliente solo se corre sobre su cara (eje rojo)
+      const fijo: EjePlano | null = m.bloqueo ? m.mov.ejes.find((x) => x.eje === m.bloqueo) ?? null : !m.mov.libre ? m.mov.ejes[0] : null;
+      const q = this.ray.ray.intersectPlane(m.plano, _d);
+      const enPlano: V2 | null = q && q.distanceTo(A) < 2000 ? [q.x - A.x, q.z - A.z] : null;
+      let eje: EjePlano | null = fijo;
+      let crudo: V2;
+      if (fijo) {
+        // sobre el eje: el punto del eje más cercano al rayo (sirve aunque la cámara mire casi de costado)
+        const t = puntoEnEje(ro, rd, [A.x, A.y, A.z], [fijo.dir[0], 0, fijo.dir[1]]);
+        if (t !== null) crudo = [fijo.dir[0] * t, fijo.dir[1] * t];
+        else if (enPlano) crudo = proyectar(enPlano, fijo.dir);
+        else return;
+      } else {
+        if (!enPlano) return;
+        eje = inferirEje(enPlano, m.mov.ejes);
+        crudo = eje ? proyectar(enPlano, eje.dir) : enPlano;
+      }
+      // sin eje bloqueado, una esquina o un borde cerca gana a la inferencia del eje
+      let enc = fijo ? null : encastrar(m.forma.plantas, enPlano!, m.cand, { tol });
+      if (enc?.encastre) eje = null;
+      else enc = encastrar(m.forma.plantas, crudo, m.cand, { tol, dir: eje?.dir ?? null });
+      delta = [enc.delta[0], 0, enc.delta[1]];
+      m.eje = eje?.eje ?? null;
+      m.dir = eje?.dir ?? null;
+      if (enc.encastre) m.encastre = { punto: [enc.encastre.punto[0], m.yRef, enc.encastre.punto[1]], etiqueta: enc.encastre.etiqueta };
+    }
+    m.delta = limitarDelta(m.base, m.grupo, delta, m.mov);
+    this.desplazarGrupos(m.mov.ids, m.delta);
+    this.dibujarGuia();
+    this.avisarMovimiento();
+    this.pedirRender();
+  }
+
+  private desplazarGrupos(ids: string[], delta: V3) {
+    for (const id of ids) {
+      const g = this.gruposVol.get(id);
+      if (!g) continue;
+      g.position.set(delta[0], delta[1], delta[2]);
+      // los rayos del próximo cuadro tienen que ver el volumen corrido
+      g.updateMatrixWorld(true);
+    }
+  }
+
+  private colorEje(eje: EjeMovimiento | null): string | null {
+    if (!eje) return null;
+    return { rojo: this.pal.ejeRojo, verde: this.pal.ejeVerde, azul: this.pal.ejeAzul, x: this.pal.ejeMundo, z: this.pal.ejeMundo }[eje];
+  }
+
+  private piezasGuia() {
+    if (this.guia) return this.guia;
+    const geo = (n: number) => {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(n * 3), 3));
+      return g;
+    };
+    // frustumCulled = false: la esfera envolvente se calcula una vez y las posiciones cambian en cada cuadro
+    const linea = () => new THREE.LineSegments(geo(2), new THREE.LineBasicMaterial({ transparent: true, depthTest: false }));
+    const puntos = (n: number, size: number) => new THREE.Points(geo(n), new THREE.PointsMaterial({ size, sizeAttenuation: false, depthTest: false }));
+    this.guia = { eje: linea(), banda: linea(), puntos: puntos(2, 6), encastre: puntos(1, 11) };
+    for (const o of Object.values(this.guia)) {
+      o.renderOrder = o === this.guia.encastre ? 10 : 9;
+      o.frustumCulled = false;
+      o.visible = false;
+      this.gGuia.add(o);
+    }
+    return this.guia;
+  }
+
+  private ocultarGuia() {
+    if (this.guia) for (const o of Object.values(this.guia)) o.visible = false;
+  }
+
+  private dibujarGuia() {
+    const m = this.moviendo;
+    if (!m) return this.ocultarGuia();
+    const G = this.piezasGuia();
+    const A = m.agarre;
+    const P = new THREE.Vector3(A.x + m.delta[0], A.y + m.delta[1], A.z + m.delta[2]);
+    const color = this.colorEje(m.eje) ?? this.pal.hover;
+    const poner = (o: THREE.LineSegments | THREE.Points, pts: number[], col: string, op = 1) => {
+      const a = o.geometry.getAttribute("position") as THREE.BufferAttribute;
+      (a.array as Float32Array).set(pts);
+      a.needsUpdate = true;
+      const mat = o.material as THREE.LineBasicMaterial | THREE.PointsMaterial;
+      mat.color.set(col);
+      mat.opacity = op;
+      o.visible = true;
+    };
+    // el eje entero (largo) y la banda desde el punto tomado hasta donde va
+    if (m.eje === "azul") poner(G.eje, [P.x, P.y - 300, P.z, P.x, P.y + 300, P.z], color, 0.45);
+    else if (m.dir) poner(G.eje, [P.x - m.dir[0] * 300, P.y, P.z - m.dir[1] * 300, P.x + m.dir[0] * 300, P.y, P.z + m.dir[1] * 300], color, 0.45);
+    else G.eje.visible = false;
+    poner(G.banda, [A.x, A.y, A.z, P.x, P.y, P.z], color, m.eje ? 1 : 0.7);
+    poner(G.puntos, [A.x, A.y, A.z, P.x, P.y, P.z], color);
+    if (m.encastre) poner(G.encastre, m.encastre.punto, this.pal.sel);
+    else G.encastre.visible = false;
+  }
+
+  private avisarMovimiento() {
+    const m = this.moviendo;
+    if (!m) return;
+    this.cb.alMover?.({
+      grupo: m.grupo, distancia: distanciaMovimiento(m.delta), delta: m.delta, eje: m.eje, color: this.colorEje(m.eje), bloqueado: !!m.bloqueo,
+      encastre: m.encastre?.etiqueta ?? null, vcb: m.vcb, aviso: m.aviso, x: m.x, y: m.y,
+    });
+  }
+
+  private reprocesar() {
+    const m = this.moviendo;
+    if (m) this.actualizarMovimiento({ clientX: m.x, clientY: m.y });
+  }
+
+  private bloquear(eje: EjeMovimiento) {
+    const m = this.moviendo;
+    if (!m) return;
+    if (eje === "azul" && !m.mov.vertical) m.aviso = m.mov.motivoVertical ?? "Este volumen no se sube ni se baja.";
+    else if (eje === "verde" && !m.mov.libre) m.aviso = "El saliente se corre solo sobre su cara.";
+    else {
+      m.aviso = null;
+      m.bloqueo = m.bloqueo === eje ? null : eje;
+      m.porShift = false;
+    }
+    this.reprocesar();
+  }
+
+  private onTeclaMover = (e: KeyboardEvent) => {
+    const m = this.moviendo;
+    if (!m) return;
+    const mod = e.metaKey || e.ctrlKey;
+    // Ctrl+S sigue guardando (el diseño todavía no cambió); el resto de los atajos espera a que lo sueltes
+    if (mod && e.key.toLowerCase() === "s") return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (mod || e.altKey) return;
+    const k = e.key;
+    if (k === "Escape") {
+      this.cancelarMovimiento();
+      return;
+    }
+    if (k === "Enter") {
+      this.confirmarDistancia();
+      return;
+    }
+    if (k === "Backspace") {
+      m.vcb = m.vcb.slice(0, -1);
+      this.avisarMovimiento();
+      return;
+    }
+    if (/^[0-9.,+\-*/()x×]$/.test(k)) {
+      if (m.vcb.length < 24) m.vcb += k;
+      m.aviso = null;
+      this.avisarMovimiento();
+      return;
+    }
+    if (k === "Shift") {
+      if (!e.repeat && !m.bloqueo && m.eje) {
+        m.bloqueo = m.eje;
+        m.porShift = true;
+        this.reprocesar();
+      }
+      return;
+    }
+    if (k === "ArrowDown") {
+      m.bloqueo = null;
+      m.porShift = false;
+      m.aviso = null;
+      this.reprocesar();
+      return;
+    }
+    const flecha = ({ ArrowRight: "rojo", ArrowLeft: "verde", ArrowUp: "azul" } as Record<string, EjeMovimiento>)[k];
+    if (flecha) this.bloquear(flecha);
+  };
+
+  /** Un clic fuera del lienzo (panel, barra) con el volumen levantado lo deja donde estaba. */
+  private onPunteroAfuera = (e: PointerEvent) => {
+    if (this.moviendo && e.target !== this.canvas) this.cancelarMovimiento();
+  };
+
+  private onSoltarTecla = (e: KeyboardEvent) => {
+    const m = this.moviendo;
+    if (!m || e.key !== "Shift" || !m.porShift) return;
+    m.bloqueo = null;
+    m.porShift = false;
+    this.reprocesar();
+  };
+
+  /** Enter: la distancia tipeada en la dirección actual (o soltar donde está, si no se tipeó nada). */
+  private confirmarDistancia() {
+    const m = this.moviendo;
+    if (!m) return;
+    const txt = m.vcb.trim();
+    if (!txt) {
+      this.terminarMovimiento(true);
+      return;
+    }
+    const n = evalExpr(txt);
+    const dd = n === null ? null : deltaPorDistancia(m.eje, m.dir, n, m.delta);
+    if (!dd) {
+      m.aviso = n === null ? `No entiendo «${txt}»: tipeá una distancia en metros.` : "Mové el mouse para marcar hacia dónde y después tipeá la distancia.";
+      m.vcb = "";
+      this.avisarMovimiento();
+      return;
+    }
+    m.delta = limitarDelta(m.base, m.grupo, dd, m.mov);
+    this.terminarMovimiento(true);
+  }
+
+  /** Suelta el volumen: las mallas vuelven a su lugar y, si se confirma, el lienzo aplica el movimiento al diseño. */
+  private terminarMovimiento(confirmar: boolean) {
+    const m = this.moviendo;
+    if (!m) return;
+    this.moviendo = null;
+    this.candidato = null;
+    window.removeEventListener("keydown", this.onTeclaMover, { capture: true });
+    window.removeEventListener("keyup", this.onSoltarTecla, { capture: true });
+    window.removeEventListener("pointerdown", this.onPunteroAfuera, { capture: true });
+    if (this.botonApretado) this.soltarControles = true;
+    else {
+      this.controls.enableRotate = true;
+      this.controls.enablePan = true;
+    }
+    // antes de avisar: si el commit no entra (solo lectura, construir falla), no se reconstruye y quedarían corridas
+    this.desplazarGrupos(m.mov.ids, [0, 0, 0]);
+    this.ocultarGuia();
+    this.canvas.style.cursor = "";
+    this.cb.alMover?.(null);
+    this.pedirRender();
+    if (confirmar && distanciaMovimiento(m.delta) > 1e-3) this.cb.alMovido?.({ grupo: m.grupo, delta: m.delta });
+  }
+
+  /** Esc o cambio de herramienta: el volumen vuelve a donde estaba, sin cambiar el diseño. */
+  private cancelarMovimiento() {
+    this.terminarMovimiento(false);
+  }
 
   // ───────────── colocación con encastre ─────────────
   private puntoColocacion(): V2 | null {
@@ -1019,7 +1524,7 @@ export class Escena {
     cam.position.copy(sph.center.clone().add(this.dirIso(0.68).multiplyScalar(this.distanciaPara(sph.radius * 0.92, cam))));
     cam.lookAt(sph.center);
     const PE = paletaExport(this.pal);
-    const vis = [this.gOver.visible, this.gGhost.visible, this.gPuertos.visible] as const;
+    const vis = [this.gOver.visible, this.gGhost.visible, this.gPuertos.visible, this.gGuia.visible] as const;
     const bg = this.scene.background;
     const tam = this.renderer.getSize(new THREE.Vector2());
     const pr = this.renderer.getPixelRatio();
@@ -1030,7 +1535,7 @@ export class Escena {
     g.fillStyle = "#ffffff";
     g.fillRect(0, 0, out.width, out.height);
     try {
-      this.gOver.visible = this.gGhost.visible = this.gPuertos.visible = false;
+      this.gOver.visible = this.gGhost.visible = this.gPuertos.visible = this.gGuia.visible = false;
       this.scene.background = new THREE.Color(PE.fondo);
       if (this.grilla) this.grilla.visible = false;
       this.suelo.visible = false;
@@ -1045,7 +1550,7 @@ export class Escena {
       this.scene.background = bg;
       if (this.grilla) this.grilla.visible = true;
       this.suelo.visible = true;
-      [this.gOver.visible, this.gGhost.visible, this.gPuertos.visible] = vis;
+      [this.gOver.visible, this.gGhost.visible, this.gPuertos.visible, this.gGuia.visible] = vis;
       this.recolorear();
       this.renderer.render(this.scene, this.camera);
     }

@@ -1,18 +1,20 @@
 "use client";
 
 // Vista en planta (SVG): huellas de las estructuras y volúmenes de referencia. Clic selecciona;
-// el volumen seleccionado se mueve arrastrándolo y, si es un prisma, sus vértices también.
+// el volumen seleccionado se mueve arrastrándolo (con la lógica oficial, la misma del 3D) y, si es un
+// prisma, sus vértices también.
 // Además exporta EditorPoligono, el editor de planta poligonal de los campos tipo 'poligono'
 // (envolventes): vértices por tipeo o arrastrando.
 
 import { useMemo, useRef, useState } from "react";
-import type { Poligono, V2 } from "@/lib/tecnica/modelo";
+import { grupoDeMovimiento, limitarDelta, moverVolumen, nombreMovimiento, type Poligono, type V2 } from "@/lib/tecnica/modelo";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useEditor } from "../estado/store";
 import { formaDe, formaDeGrupo, ponerForma, type FormaVolumen, type VolumenRef } from "../volumenes/geometria";
 import { evalExpr, fmt } from "../util/formato";
+import { avisar } from "../util/toast";
 import { Plus, Trash2 } from "lucide-react";
 
 const r2 = (v: number) => Math.round(v * 100) / 100;
@@ -37,21 +39,6 @@ function puntoSvg(svg: SVGSVGElement, e: { clientX: number; clientY: number }): 
   return [q.x, q.y];
 }
 
-function moverForma(f: FormaVolumen, dx: number, dz: number): FormaVolumen {
-  switch (f.forma) {
-    case "caja":
-    case "escalonado":
-    case "hueco":
-      return { ...f, origen: [r2(f.origen[0] + dx), r2(f.origen[1] + dz)] };
-    case "prisma":
-      return { ...f, puntos: f.puntos.map((p) => [r2(p[0] + dx), r2(p[1] + dz)] as V2) };
-    case "cilindro":
-      return { ...f, centro: [r2(f.centro[0] + dx), r2(f.centro[1] + dz)] };
-    default:
-      return f;
-  }
-}
-
 export function Planta({ className }: { className?: string }) {
   const diseno = useEditor((s) => s.diseno);
   const res = useEditor((s) => s.res);
@@ -64,9 +51,12 @@ export function Planta({ className }: { className?: string }) {
   const sw = Math.max(vb.w, vb.h) / 500;
 
   const delta: V2 = arrastre ? [arrastre.actual[0] - arrastre.desde[0], arrastre.actual[1] - arrastre.desde[1]] : [0, 0];
+  // el volumen entero se mueve con la lógica oficial (patios, salientes, volúmenes de plantilla); la vista
+  // previa corre lo mismo que se va a aplicar (un saliente, solo sobre su cara)
+  const entero = arrastre && arrastre.vertice === null ? { ids: grupoDeMovimiento(vols, arrastre.grupo), d: limitarDelta(diseno, arrastre.grupo, [delta[0], 0, delta[1]]) } : null;
   const plantaDe = (v: VolumenRef): Poligono => {
+    if (entero) return entero.ids.includes(v.id) ? v.planta.map((p) => [p[0] + entero.d[0], p[1] + entero.d[2]] as V2) : v.planta;
     if (!arrastre || v.id !== arrastre.grupo) return v.planta;
-    if (arrastre.vertice === null) return v.planta.map((p) => [p[0] + delta[0], p[1] + delta[1]] as V2);
     if (formaDe(v)?.forma !== "prisma") return v.planta;
     return v.planta.map((p, i) => (i === arrastre.vertice ? ([p[0] + delta[0], p[1] + delta[1]] as V2) : p));
   };
@@ -76,13 +66,16 @@ export function Planta({ className }: { className?: string }) {
     setArrastre(null);
     if (!a || (Math.abs(delta[0]) < 0.02 && Math.abs(delta[1]) < 0.02)) return;
     const s = useEditor.getState();
+    if (a.vertice === null) {
+      const r = moverVolumen(s.diseno, a.grupo, [delta[0], 0, delta[1]]);
+      const v = s.diseno.contexto.volumenes.find((x) => x.id === a.grupo);
+      if (r.movidos.length && s.commit(r.diseno, nombreMovimiento(v?.nombre || a.grupo, r.delta))) avisar(r.avisos);
+      return;
+    }
     const fg = formaDeGrupo(s.diseno, a.grupo);
-    if (!fg) return;
-    let forma: FormaVolumen;
-    if (a.vertice !== null && fg.forma.forma === "prisma") {
-      forma = { ...fg.forma, puntos: fg.forma.puntos.map((p, i) => (i === a.vertice ? ([r2(p[0] + delta[0]), r2(p[1] + delta[1])] as V2) : p)) };
-    } else forma = moverForma(fg.forma, delta[0], delta[1]);
-    s.commit(ponerForma(s.diseno, a.grupo, forma, fg.nombre).diseno, a.vertice !== null ? `Mover vértice de ${fg.nombre}` : `Mover ${fg.nombre}`);
+    if (!fg || fg.forma.forma !== "prisma") return;
+    const forma: FormaVolumen = { ...fg.forma, puntos: fg.forma.puntos.map((p, i) => (i === a.vertice ? ([r2(p[0] + delta[0]), r2(p[1] + delta[1])] as V2) : p)) };
+    s.commit(ponerForma(s.diseno, a.grupo, forma, fg.nombre).diseno, `Mover vértice de ${fg.nombre}`);
   };
 
   return (

@@ -1,12 +1,79 @@
-# Handoff — Gestoría de permisos de andamio (actualizado 2026-10-16)
+# Handoff — Gestoría de permisos de andamio (actualizado 2026-10-22)
 
 Para retomar en una sesión nueva. El diseño completo y todo lo aprendido está en
 `docs/permisos/modulo.md`; esto es el estado, **lo que falta para que el circuito
 quede 100 % automático** y el orden para seguir.
 
 Para arrancar: "Leé docs/permisos/handoff.md y docs/permisos/modulo.md y
-seguimos con lo que falta". **Empezar por § "15/10 a la noche", § "15/10", § "14/10", § "Rediseño implementado", después § "09/10 a la noche", § "09/10", § "06/10", § "02/10" y § "Estado al 26/09", seguir con
+seguimos con lo que falta". **Empezar por § "22/10", § "20/10", § "17/10", § "15/10 a la noche", § "15/10", § "14/10", § "Rediseño implementado", después § "09/10 a la noche", § "09/10", § "06/10", § "02/10" y § "Estado al 26/09", seguir con
 § "17/09 — primera encomienda cerrada sola", § "Noche 16/09" y § "Estado 16/09 19:00".**
+
+---
+
+## 22/10 — Valle 510 (S02731): acta de empresa rechazada y lote unificado que el catastro no encontraba
+
+ANKA CONSTRUCCIONES S.A., dueña del lote (trámite `1b8dcf88…`, vendedora Tamara). El legajo estaba
+completo salvo el acta de directorio, observada desde el 13/10 como "no vigente".
+
+- **El acta estaba bien.** Asamblea del 25/10/2023 que elige el directorio "por tres ejercicios";
+  el ejercicio cierra el 30/06 (estatuto, acta constitutiva), así que el mandato llega hasta la
+  asamblea del balance de junio de 2026 (hasta fines de octubre) y, por el art. 257 de la Ley
+  19.550, el director sigue hasta que lo reemplacen.
+- **Por qué la rechazó:** para `acta_directorio` el código no calculaba la vigencia y quedaba lo que
+  contestara la IA (dijo `vigente: false` sin fecha). La misma acta, dentro del PDF del poder, había
+  pasado como correcta 24 minutos antes. Y el cliente no tiene mail en Odoo: nunca le llegó el pedido
+  de corrección, así que quedó trabado sin que nadie se enterara.
+- **Arreglo (`d6afab3`, `vigenciaDelMandato`):** sin fecha de fin escrita, el acta de una empresa vale
+  **tres años** desde la designación (tope del art. 257), como el año de los consorcios. Con esa
+  regla el acta de Valle vence el **25/10/2026**.
+- **Aprobada a mano (JS, 22/10)** por script: `estado ok`, `revision.manual` con el motivo y el
+  estado anterior, chequeo de vigencia en ok y evento `documento_revisado` con actor `persona`.
+- **Segundo problema: el catastro.** EPOK da vacío para Valle 510 y 516 por calle y altura, aunque
+  la parcela **040-070-002A** (unificada en 2024) ya tiene las dos puertas cargadas (DGROC, 09/10).
+  Por SMP la trae bien; por coordenadas no sirve (el punto de USIG cae en el eje de la calle). Sin
+  parcela el croquis salió sin plancheta (observado) y `pedirEncomienda` frenaba con "No se
+  encontraron las puertas del lote".
+- **Arreglo (`41707b8`, `parcelaPorDireccion` → `parcelaPorVecinas`):** si la altura da vacío, busca
+  la manzana con una altura vecina de la misma vereda (±2 hasta ±30) y recorre sus lotes hasta el que
+  tiene esa puerta. Probado con Valle 510, Valle 516 y Trelles 1086 (igual que antes). Lo usan
+  también la revisión del legajo, la encomienda y la presentación.
+- **Después:** se regeneraron informe técnico y croquis (ok, con plancheta) y se pidió la encomienda
+  (**tarea 111**, 70 m², frente VALLE 510–516, `finalizar: true`: firma, paga y carga sola).
+
+### Pendientes de Valle
+
+1. **Ver que el robot tome la tarea 111.** No se pudo mirar el latido desde esta sesión. Si la
+   encomienda queda en "pedida", el robot no está corriendo.
+2. Con el certificado del CPAU y la póliza (ok desde el 15/10) se presenta sola de 19 a 7.
+3. **Si se presenta después del 25/10**, el acta queda fuera de los tres años: pedirle a ANKA (por
+   Tamara) el acta de la asamblea de este año por si el GCBA la observa.
+4. **Cargarle el mail al cliente en Odoo** (ANKA no tiene): sin eso no le llega ningún aviso.
+
+### Para tener en cuenta
+
+- **Esta Mac no tiene el robot.** Se trabajó desde `~/Desktop/Proyectos/AndamiosOS`; acá no existe
+  `~/Desktop/Web-App/44-AndamiosOS` ni el LaunchAgent ni el log. El robot corre en otra máquina.
+- Los scripts con `tsx` tienen que estar dentro del repo (en `scripts/`, como `_tmp-…`): desde el
+  scratchpad no encuentran `@supabase/supabase-js`. Correr con
+  `npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/_tmp-….mts` y borrarlos después.
+- Sigue faltando en la ficha el botón "Aprobar igual" (§ "14/10"): es la segunda vez que se aprueba
+  un documento por script.
+
+---
+
+## 20/10 — Rosario 575 (S02847): sólo los papeles, la gestoría la hace el cliente
+
+- Caso nuevo: el cliente tramita el permiso y ABA sólo le entrega **informe técnico, croquis y
+  encomienda del CPAU**. ELE JOTA SRL; dueño CONSORCIO DE PROPIETARIOS ROSARIO 571 575 579 (CUIT
+  33-53867623-9). Trámite `dba5a909…`, encomienda tarea 105, R.Nro 00329525805, pago 293973.
+  El certificado llegó el 21/10 a las 10:57.
+- **Cómo se hizo (por script, no hay botón):** `pvp_tramites` con `titular_nombre`/`titular_cuit` y
+  **sin `tipo_dueno`**, así nunca queda listo para presentar en TAD. Sin link al cliente, sin endoso y
+  sin `cargarTitular`. Después `generarDocumentosAba` + `pedirEncomienda`, y a JS se le dieron links
+  firmados de Supabase (30 días, con `download`).
+- **Si se repite:** mismo camino; JS confirma el pago de $50.000 cada vez. No mandar links del portal
+  ni mails al cliente.
+- **Falta en la app:** un botón "sólo entregar los papeles" en la ficha.
 
 ---
 

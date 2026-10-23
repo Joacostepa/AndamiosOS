@@ -69,7 +69,29 @@ export async function normalizar(direccion: string): Promise<{ codCalle: number;
 
 export async function parcelaPorDireccion(codCalle: number, altura: number): Promise<Parcela | null> {
   const r = await pedir<Partial<Parcela>>(`${EPOK}/parcela/?codigo_calle=${codCalle}&altura=${altura}`);
-  return r.smp ? (r as Parcela) : null;
+  return r.smp ? (r as Parcela) : parcelaPorVecinas(codCalle, altura);
+}
+
+/**
+ * EPOK no encuentra por calle y altura los lotes recién unificados aunque ya tengan las puertas
+ * cargadas: Valle 510 (S02731, 22/10) es la 040-070-002A, con 510 y 516 de la DGROC del 09/10,
+ * y por altura da vacío. Se busca la manzana con una altura vecina de la misma vereda y se
+ * recorren sus lotes hasta el que tiene esa puerta.
+ */
+async function parcelaPorVecinas(codCalle: number, altura: number): Promise<Parcela | null> {
+  let vecina: Parcela | null = null;
+  for (let d = 2; d <= 30 && !vecina; d += 2) {
+    for (const a of [altura - d, altura + d]) {
+      if (a <= 0) continue;
+      const r = await pedir<Partial<Parcela>>(`${EPOK}/parcela/?codigo_calle=${codCalle}&altura=${a}`).catch(() => ({}) as Partial<Parcela>);
+      if (r.smp) { vecina = r as Parcela; break; }
+    }
+  }
+  if (!vecina) return null;
+  const lista = await pedir<{ datos: { smp: string }[] }>(`${EPOK}/smp/${vecina.seccion}/${vecina.manzana}/`);
+  const lotes = await enParalelo(lista.datos, 3, ({ smp }) => pedir<Partial<Parcela>>(`${EPOK}/parcela/?smp=${smp}`).catch(() => null));
+  const lote = lotes.find((l) => l?.smp && l.puertas?.some((p) => p.codigo_calle === codCalle && p.altura === altura));
+  return lote ? (lote as Parcela) : null;
 }
 
 export type LoteDibujable = { smp: string; numero: string; anillo: [number, number][]; esObra: boolean; calles: string[] };

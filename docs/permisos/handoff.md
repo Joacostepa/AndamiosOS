@@ -1,12 +1,163 @@
-# Handoff — Gestoría de permisos de andamio (actualizado 2026-10-22)
+# Handoff — Gestoría de permisos de andamio (actualizado 2026-11-03)
 
 Para retomar en una sesión nueva. El diseño completo y todo lo aprendido está en
 `docs/permisos/modulo.md`; esto es el estado, **lo que falta para que el circuito
 quede 100 % automático** y el orden para seguir.
 
 Para arrancar: "Leé docs/permisos/handoff.md y docs/permisos/modulo.md y
-seguimos con lo que falta". **Empezar por § "22/10", § "20/10", § "17/10", § "15/10 a la noche", § "15/10", § "14/10", § "Rediseño implementado", después § "09/10 a la noche", § "09/10", § "06/10", § "02/10" y § "Estado al 26/09", seguir con
+seguimos con lo que falta". **Empezar por § "03/11", § "02/11", § "22/10", § "20/10", § "17/10", § "15/10 a la noche", § "15/10", § "14/10", § "Rediseño implementado", después § "09/10 a la noche", § "09/10", § "06/10", § "02/10" y § "Estado al 26/09", seguir con
 § "17/09 — primera encomienda cerrada sola", § "Noche 16/09" y § "Estado 16/09 19:00".**
+
+---
+
+## 03/11 — Pueyrredón rechazado otra vez (aviso aplanado) y Olleros 1641 frenada por el catastro
+
+### Pueyrredón 1774 (S02454): la copia limpia también fue rechazada
+
+- **Tarea 119 (02/11):** a las 19:00 falló entrando a TAD (no pudo cerrar el selector de a quién
+  representar, `expand_more`, 10 s) y el reintento de las 19:30 entró bien. A las 19:33 frenó en el
+  sexto casillero con el mismo error del 29/10. Dejó el borrador **13496948** con IF-2026-49168075,
+  -49168086, -49168111, -49168126 y RE-2026-49168147.
+- **Causa probable, sin confirmar:** los campos del aviso (número, fecha, firmas y sellos: 7 widgets)
+  quedaron en las hojas, pero el PDF ya no tiene el índice de campos (`AcroForm`). Samsung lo perdió y
+  la copia del 02/11 conservó los widgets a propósito. Se comparó el archivo actual de cada trámite:
+
+  | Aviso | Cantidad | Campos en las hojas | `AcroForm` | Resultado |
+  | --- | --- | --- | --- | --- |
+  | Original del GCBA, iText | 23 | sí | sí | entró |
+  | Reguardado con PDFium | 5 | no | no | entró |
+  | Microsoft Print To PDF | 1 | no | no | entró |
+  | **Samsung y copia del 02/11** | 2 | **sí** | **no** | **rechazados** |
+
+  Eso descarta la fecha vacía y la tercera hoja que proponía § "02/11". Se confirma recién si TAD
+  acepta el aplanado.
+- **Versión 3 cargada por script, a pedido de JS:** los 7 campos pegados a la hoja, sin firma digital
+  ni objetos viejos (`aviso_obra-1793709168572.pdf`, 14 KB, 2 hojas). Controlada a ojo: número, fecha,
+  sellos y texto iguales. En la hoja sigue diciendo "Digitally signed by Comunicaciones Oficiales",
+  pero no hay firma verificable. Las versiones 1 y 2 siguen en el bucket.
+- **`empezarDeCero` corrido con el usuario de JS:** tarea **120** `pendiente` para las **19:00 del
+  03/11**, sin `continuar_borrador`, 11 casilleros, con el mismo archivo controlado por hash. Trámite
+  en `listo_para_presentar`.
+
+**Pendientes de Pueyrredón:**
+
+1. **Ver el resultado de la tarea 120.** Tiene que salir "Presentado en TAD" en
+   `#permisos-de-andamio-`.
+2. **Pedirle a Agustina el PDF original del GCBA**, bajado y enviado sin abrirlo ni guardarlo en el
+   celular (no se pidió todavía). Sirve si TAD rechaza el aplanado o si el GCBA observa la firma. Si
+   TAD lo rechaza, no insistir con otra copia: cada intento gasta 5 números oficiales.
+3. **Borrar en TAD los borradores 13463506 y 13496948**, con el robot frenado y después de ver el
+   resultado. Los dos están descartados en la app.
+4. **Si el aplanado entra, proponer el arreglo del robot:** detectar en `prepararAdjuntos` un PDF con
+   widgets y sin `AcroForm`, y aplanarlo o frenar antes de adjuntar nada. Hoy el aviso de obra queda
+   afuera del aplanado a propósito. Reemplaza al control propuesto en § "02/11".
+
+### Av. Olleros 1641 (S02811): "no se encontraron las puertas del lote"
+
+Trámite `ae6270a7…`, consorcio. Tamara tocó "Armar la encomienda" dos veces a las 8:28 del 03/11 y dio
+400. No se creó ninguna tarea ni se pagó nada.
+
+- **El lote está bien:** a las 9:30 el catastro daba 023-123-024 (el lote 24 de la plancheta de
+  Tamara), puertas 1637 y 1641. Cuatro consultas desde la Mac con la dirección que usa la app
+  salieron bien, y el 02/11 a las 18:22 el informe y el croquis se generaron con esos datos.
+- **Causa probable: falla momentánea del catastro, sin confirmar.** El código tomaba cualquier falla
+  como lote sin puertas y no guardaba el error. Tampoco se pudo probar la consulta desde Vercel: el
+  único camino es el botón, que paga.
+- **Arreglo (`930249c`, `buscarFrente` en `catastro.ts`, en producción):** si el catastro no da las
+  puertas, el frente sale de `revision.leido.puertas` del informe técnico. Si además falta el código
+  de la calle, se saca de la puerta con la altura de la dirección; si dos calles tienen esa altura,
+  frena. El cartel separa "el catastro no responde" de "no se encontraron las puertas", y el error
+  real queda en los registros de Vercel (`[encomienda] El catastro falló…`). 7 tests con caídas
+  simuladas en `catastro.test.ts`; todavía no se vio en producción.
+
+**Pendientes de Olleros (al 03/11, 9:45, sin tarea creada):**
+
+1. **Confirmar la medida antes de armarla:** el trámite tiene pantalla de **10 ml** y el catastro da
+   **8,67 m** de frente (AGIP 2008). Puede estar bien si la pantalla pasa del frente del lote.
+2. **Tamara vuelve a tocar "Armar la encomienda":** el robot finaliza, firma, paga los $50.000 y carga
+   solo, con frente OLLEROS AV. 1637–1641 y 40 m². Es irreversible. Después llega el certificado por
+   mail; la póliza ya está en ok.
+
+### Para tener en cuenta
+
+- **Valle 510 (S02731) ya tiene una `tad_presentar` en ok:** queda resuelto el pendiente 1 de § "22/10".
+- **El push a main publica solo en Vercel:** `930249c` arrancó el build en segundos.
+- **Para ver producción desde acá:** `npx vercel logs requests --since <hora> --environment production
+  --non-interactive` da método, ruta y estado, sin duración. Los errores de una ruta sólo aparecen si
+  el código los escribe.
+- **`SUPABASE_DB_URL` no está en `.env.local`:** el `npx supabase db query` de § "Orden sugerido" no
+  anda así. Para leer alcanza `fetch` a `/rest/v1` con `SUPABASE_SERVICE_ROLE_KEY`, desde un script en
+  el scratchpad con `node --env-file=.env.local`.
+- **En esta Mac no se puede renderizar con `pdftoppm`:** un script de Swift con PDFKit deja cada hoja en
+  PNG. PDFKit redibuja los campos, así que "DGROC" y "Asesor" salían cortados en el archivo del cliente.
+
+---
+
+## 02/11 — Pueyrredón 1774 (S02454): TAD rechazó un aviso de obra reguardado en un celular
+
+**Actualizado el 03/11:** la copia limpia también fue rechazada y la causa de abajo quedó descartada.
+Ver § "03/11".
+
+Trámite `4d25e855…`, consorcio, vendió Agustina. La presentación del 29/10 (tarea 118, borrador
+13463506) frenó a las 19:03 en el sexto casillero: *"No pudimos adjuntar tu documento. Error al generar
+documento. Error en generación de documento con referencia: Aviso de obra presentado…"*. Es la única
+tarea de la base con ese error. Quedó trabado hasta el 02/11.
+
+**El aviso que subió el cliente no era el PDF original del GCBA.** El contenido está bien
+(IF-2026-47424491-GCABA-DGROC, dirección correcta), por eso la revisión con IA lo aprobó. Pero lo
+volvió a guardar un dispositivo Samsung el 29/10 a las 13:25 (`Producer: Samsung Electronics`).
+Comparado con los 31 avisos de la base (los 28 de la tabla, 2 sin presentar y este):
+
+| Avisos de trámites ya presentados | Firma digital | Fecha de creación | Hojas |
+| --- | --- | --- | --- |
+| Original del GCBA, iText (23) | intacta | correcta | 2 |
+| Reguardados con PDFium (4) | rota | correcta | 2 |
+| Impreso con Microsoft Print To PDF (1) | no tiene | no se revisó | 2 |
+| **Pueyrredón, Samsung: rechazado** | rota | **vacía, `/CreationDate(D:)`** | **3, la última en blanco y de 600 × 848** |
+
+- **La causa no está confirmada.** La firma rota queda descartada, porque otros 4 con la firma rota se
+  presentaron. Quedan la fecha vacía o la tercera hoja, y la copia limpia corrige las dos, así que
+  aunque entre no va a decir cuál fue. "Se presentó" se tomó de que el trámite tiene una
+  `tad_presentar` en ok; no se miró si después el GCBA observó alguno.
+- **Copia limpia (pedido de JS, 02/11):** con pdf-lib, una copia con las hojas 1 y 2 y la fecha
+  válida. Se conservan los widgets de firma (ahí están el número, la fecha y los sellos: controlado
+  a ojo, igual al original). La firma digital no valida, como ya pasaba en el archivo del cliente.
+- **Cargada por script como versión 2** del aviso (`aviso_obra-1793638977445.pdf`, con
+  `revision.manual` y `revision.correccion` y evento de persona). El archivo del cliente sigue en
+  el bucket, en `aviso_obra-1793291353050.pdf`.
+- **`empezarDeCero` corrido con el usuario de JS:** borrador 13463506 descartado, tarea **119**
+  `pendiente` para las **19:00 del 02/11**, trámite en `listo_para_presentar`. Se controló que el
+  payload lleve el archivo nuevo (mismo hash que la copia local).
+
+### Pendientes de Pueyrredón
+
+1. **Ver el resultado de la tarea 119.** Al escribir esto (02/11, 14:05) sigue `pendiente`. Tiene que
+   salir "Presentado en TAD" en `#permisos-de-andamio-`, con el número en la ficha.
+2. **Si TAD rechaza la copia:** pedirle a Agustina el PDF original del cliente, bajado del GCBA y
+   enviado sin abrirlo y guardarlo en el celular. Cargarlo como versión nueva y volver a empezar de
+   cero. Otro rechazo deja más IF sueltos y otro borrador para limpiar.
+3. **Si el GCBA observa la firma del aviso:** se contesta por subsanación con el original.
+4. **Borrar en TAD el borrador 13463506**, con el robot frenado. Sus documentos quedan sueltos:
+   IF-2026-48793229, -48793243, -48793276, -48793286 y RE-2026-48793314.
+
+### Propuesto a JS, sin decidir ni hacer
+
+- **Revisión al subir:** avisar si el aviso de obra no es el original o trae hojas de más, para que
+  se corrija ese día y no a la noche en TAD.
+- **Control del robot antes de empezar** (`prepararAdjuntos`): frenar antes de adjuntar nada si un
+  archivo tiene estos problemas, para no gastar IF.
+- **Mensaje de la ficha:** cuando TAD rechaza el archivo, pedir que se reemplace. Hoy ofrece "Empezar
+  de cero", que vuelve a usar el mismo PDF y frenaría igual.
+
+### Para tener en cuenta
+
+- **Este rechazo no activa el aplanado:** `FIRMADO` en `adjuntar` sólo reconoce "previamente firmado"
+  o "espacios de firma", y `prepararAdjuntos` no aplana el aviso de obra a propósito.
+- **La ficha no deja reemplazar un aviso aprobado:** sólo la póliza tiene botón de subida, y "Pedir
+  corrección" aparece sólo con el documento observado. Es la tercera cosa de la ficha que se resuelve
+  por script, junto con "Aprobar igual" y "sólo entregar los papeles".
+- **Esta Mac tampoco tiene `qpdf`, `gs` ni `pdfinfo`.** Para mirar un PDF desde acá alcanza con pdf-lib y
+  `grep -a`. El estado del robot se ve en `pvp_robot` (`equipo: Mac-mini.local`).
 
 ---
 

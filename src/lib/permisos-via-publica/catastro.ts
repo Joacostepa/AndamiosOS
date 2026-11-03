@@ -94,6 +94,59 @@ async function parcelaPorVecinas(codCalle: number, altura: number): Promise<Parc
   return lote ? (lote as Parcela) : null;
 }
 
+export type Frente = { calle: string; desde: number; hasta: number };
+export type BusquedaFrente = { frente: Frente | null; origen: "catastro" | "informe" | null; fallo: string | null };
+
+/** Las puertas del lote sobre una calle: la primera y la última altura. */
+function frenteSobreCalle(puertas: Puerta[], codCalle: number): Frente | null {
+  const sobreCalle = puertas.filter((p) => p.codigo_calle === codCalle);
+  if (!sobreCalle.length) return null;
+  const alturas = sobreCalle.map((p) => p.altura);
+  return { calle: sobreCalle[0].calle, desde: Math.min(...alturas), hasta: Math.max(...alturas) };
+}
+
+/**
+ * El frente con las puertas guardadas en el informe técnico. Si USIG tampoco dio el código de la
+ * calle, se saca de la puerta con la altura de la dirección; si dos calles tienen esa altura no se
+ * adivina, porque con este dato se paga la encomienda.
+ */
+function frenteGuardado(direccion: string, puertas: Puerta[], codCalle: number | null): Frente | null {
+  if (codCalle !== null) return frenteSobreCalle(puertas, codCalle);
+  const altura = Number(direccionBuscable(direccion).match(/(\d+)\s*$/)?.[1]);
+  const calles = new Set(puertas.filter((p) => p.altura === altura).map((p) => p.codigo_calle));
+  return calles.size === 1 ? frenteSobreCalle(puertas, [...calles][0]) : null;
+}
+
+const detalleDelError = (e: unknown) => {
+  const causa = (e as { cause?: { code?: string; message?: string } })?.cause;
+  return [e instanceof Error ? e.message : String(e), causa?.code ?? causa?.message].filter(Boolean).join(": ");
+};
+
+/**
+ * El frente que pide la encomienda. Una falla del catastro no es lo mismo que un lote sin puertas:
+ * Av. Olleros 1641 (S02811, 03/11) dio "no se encontraron las puertas" dos veces a las 8:28 y una
+ * hora después el catastro las daba bien, sin que quedara registro de qué había pasado. Si el
+ * catastro no las da, se usan las que quedaron en el informe técnico, que salieron de esta misma
+ * consulta. `fallo` trae el error real.
+ */
+export async function buscarFrente(direccion: string, puertasDelInforme: Puerta[] = []): Promise<BusquedaFrente> {
+  let codCalle: number | null = null;
+  let fallo: string | null = null;
+  try {
+    const n = await normalizar(direccion);
+    if (n) {
+      codCalle = n.codCalle;
+      const parcela = await parcelaPorDireccion(n.codCalle, n.altura);
+      const frente = frenteSobreCalle(parcela?.puertas ?? [], n.codCalle);
+      if (frente) return { frente, origen: "catastro", fallo: null };
+    }
+  } catch (e) {
+    fallo = detalleDelError(e);
+  }
+  const frente = frenteGuardado(direccion, puertasDelInforme, codCalle);
+  return { frente, origen: frente ? "informe" : null, fallo };
+}
+
 export type LoteDibujable = { smp: string; numero: string; anillo: [number, number][]; esObra: boolean; calles: string[] };
 export type Manzana = { lotes: LoteDibujable[] };
 

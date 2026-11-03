@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { registrarEvento } from "./endosos";
-import { normalizar, parcelaPorDireccion } from "./catastro";
+import { buscarFrente, type Puerta } from "./catastro";
 import { FaltanDatos } from "./generacion";
 import type { TipoAndamio } from "./informe-tecnico";
 import { formatoCuit } from "./tipos";
@@ -17,7 +17,8 @@ import { formatoCuit } from "./tipos";
 // DE DÓNDE SALE CADA DATO:
 //   propietario → el titular del lote que cargó el cliente en el portal
 //   medidas     → las del informe técnico generado (las mismas de la venta de Odoo)
-//   frente      → las puertas del lote en el catastro (EPOK) sobre la calle de la obra
+//   frente      → las puertas del lote en el catastro (EPOK) sobre la calle de la obra; si el
+//                 catastro no las da, las que quedaron en el informe técnico
 //   superficie  → pantalla: ml × 4; estructura y torre: base × altura (igual que x_permiso_m2),
 //                 redondeada para arriba. El importe es siempre el mismo (JS, 15/09).
 
@@ -53,16 +54,6 @@ export function descripcionEncomienda(tipo: TipoAndamio, base: number, alto: num
   return `Estructura de ${num(base)} x ${num(alto)} mts.`;
 }
 
-async function frenteDelLote(direccion: string): Promise<PayloadEncomienda["frente"] | null> {
-  const n = await normalizar(direccion).catch(() => null);
-  if (!n) return null;
-  const parcela = await parcelaPorDireccion(n.codCalle, n.altura).catch(() => null);
-  const puertas = (parcela?.puertas ?? []).filter((p) => p.codigo_calle === n.codCalle);
-  if (!puertas.length) return null;
-  const alturas = puertas.map((p) => p.altura);
-  return { calle: puertas[0].calle, desde: Math.min(...alturas), hasta: Math.max(...alturas) };
-}
-
 export async function armarPayload(db: SupabaseClient, tramiteId: string): Promise<PayloadEncomienda> {
   const [{ data: t }, { data: informe }] = await Promise.all([
     db.from("pvp_tramites").select("direccion, titular_nombre, titular_cuit, es_prueba").eq("id", tramiteId).maybeSingle(),
@@ -71,12 +62,19 @@ export async function armarPayload(db: SupabaseClient, tramiteId: string): Promi
   if (!t) throw new FaltanDatos("El trámite no existe.");
   if (!t.titular_nombre || !t.titular_cuit) throw new FaltanDatos("Falta el dueño del lote (nombre y CUIT): lo carga el cliente en el portal.");
 
-  const leido = (informe?.revision as { leido?: { tipo?: TipoAndamio; base?: number; alto?: number; direccion?: string } } | null)?.leido;
+  const leido = (informe?.revision as { leido?: { tipo?: TipoAndamio; base?: number; alto?: number; direccion?: string; puertas?: Puerta[] } } | null)?.leido;
   if (!leido?.tipo || !leido.base || !leido.alto) throw new FaltanDatos("Primero hay que generar el informe técnico: de ahí salen las medidas.");
   const direccion = leido.direccion || t.direccion;
 
-  const frente = (await frenteDelLote(direccion)) ?? (t.es_prueba ? FRENTE_PRUEBA : null);
-  if (!frente) throw new FaltanDatos(`No se encontraron las puertas del lote de ${direccion} en el catastro de la Ciudad: sin eso no se puede cargar el frente.`);
+  const busqueda = await buscarFrente(direccion, leido.puertas ?? []);
+  if (busqueda.fallo) console.error(`[encomienda] El catastro falló para ${direccion}: ${busqueda.fallo}`);
+  if (busqueda.origen === "informe") console.warn(`[encomienda] ${direccion}: frente tomado del informe técnico (${busqueda.frente?.calle} ${busqueda.frente?.desde}-${busqueda.frente?.hasta})`);
+  const frente = busqueda.frente ?? (t.es_prueba ? FRENTE_PRUEBA : null);
+  if (!frente) {
+    throw new FaltanDatos(busqueda.fallo
+      ? `El catastro de la Ciudad no responde y el informe técnico de ${direccion} no tiene las puertas guardadas: probá de nuevo en unos minutos.`
+      : `No se encontraron las puertas del lote de ${direccion} en el catastro de la Ciudad: sin eso no se puede cargar el frente.`);
+  }
 
   return {
     es_prueba: !!t.es_prueba,

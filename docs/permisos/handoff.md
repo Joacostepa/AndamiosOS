@@ -68,15 +68,19 @@ Trámite `ae6270a7…`, consorcio. Tamara tocó "Armar la encomienda" dos veces 
   de la calle, se saca de la puerta con la altura de la dirección; si dos calles tienen esa altura,
   frena. El cartel separa "el catastro no responde" de "no se encontraron las puertas", y el error
   real queda en los registros de Vercel (`[encomienda] El catastro falló…`). 7 tests con caídas
-  simuladas en `catastro.test.ts`; todavía no se vio en producción.
+  simuladas en `catastro.test.ts`. El camino de respaldo todavía no se vio en producción: en el
+  intento de las 9:46 el catastro contestó.
+- **Encomienda cerrada sola (JS confirmó la pantalla de 10 ml, aunque el catastro da 8,67 m de frente
+  con dato de AGIP 2008, y tocó el botón a las 9:46):** **tarea 121**, 40 m², frente OLLEROS AV.
+  1637–1641, R.Nro **00329527226**, pago **294665** (autorización 011516), cargada en la Plataforma a
+  las 9:49.
 
-**Pendientes de Olleros (al 03/11, 9:45, sin tarea creada):**
+**Pendientes de Olleros:**
 
-1. **Confirmar la medida antes de armarla:** el trámite tiene pantalla de **10 ml** y el catastro da
-   **8,67 m** de frente (AGIP 2008). Puede estar bien si la pantalla pasa del frente del lote.
-2. **Tamara vuelve a tocar "Armar la encomienda":** el robot finaliza, firma, paga los $50.000 y carga
-   solo, con frente OLLEROS AV. 1637–1641 y 40 m². Es irreversible. Después llega el certificado por
-   mail; la póliza ya está en ok.
+1. **Ver llegar el certificado del CPAU** (el robot revisa el mail cada 15 min). Si tarda, mirar el
+   Spam de permisos-andamio@.
+2. Con el certificado tendría que presentarse sola de 19 a 7: la póliza y el resto de los papeles
+   están en ok. Controlar que salga "Presentado en TAD" en `#permisos-de-andamio-`.
 
 ### Para tener en cuenta
 

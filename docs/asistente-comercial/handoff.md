@@ -1,4 +1,4 @@
-# Handoff — Asistente comercial (actualizado 2026-10-15)
+# Handoff — Asistente comercial (actualizado 2026-11-07)
 
 Para retomar en una sesión nueva. Cómo funciona el módulo, cómo se configura y cómo se prueba
 está en `docs/asistente-comercial/modulo.md`; esto es el estado, lo que falta y el orden para
@@ -7,16 +7,56 @@ seguir. El plan original (aprobado el 26/09) está en
 
 Para arrancar: "Leé docs/asistente-comercial/handoff.md y docs/asistente-comercial/modulo.md y
 seguimos con lo que falta". **Empezar por § "Al 15/10", § "Estado al 12/10" y § "Lo primero en
-la sesión nueva".** El detalle de lo hecho el 12/10 está en `docs/asistente-comercial/auditoria-2026-10-12.md`.
+la sesión nueva"; si es sobre el cotizador rápido, por § "Al 07/11".** El detalle de lo hecho el 12/10 está en `docs/asistente-comercial/auditoria-2026-10-12.md`.
 
 ---
 
-## Al 07/11
+## Al 07/11: cotizador rápido en producción
 
-JS lo usó mucho (104 presupuestos guardados al 05/11). Funciona, pero no le resulta expeditivo
-escribirle todo. Se diseñó una variante con pantalla, botones y la IA que completa lo pegado:
-**`docs/asistente-comercial/cotizador-rapido.md`**, con la maqueta y el análisis del uso real.
-No se tocó código; esperan las decisiones de JS de ese doc.
+**Por qué.** JS lo usó mucho: 104 presupuestos guardados entre el 26/09 y el 05/11. Funciona, pero no le resulta expeditivo escribirle todo. Cada presupuesto le lleva unos 4,6 min de mediana, y sólo un tercio es espera.
+
+**Qué se hizo:**
+- **Diseño:** un equipo de agentes y un análisis del uso real en producción (sólo lectura).
+- **Prototipo:** https://claude.ai/artifact/G8nibwjcBsZXfD42gpWifY. JS lo probó («me encantó») y pidió implementarlo.
+- **Construido y desplegado:** `/comercial/asistente/cotizar`, con un botón «Cotizar» en el asistente.
+  - Commit `5dc07a4` en main, también en la rama `feat/cotizador-rapido`.
+  - Deploy `andamios-jcgn3vzdb` (Ready, production) con `npx vercel --prod --yes` desde un worktree limpio.
+  - Sin migraciones.
+
+**Todo el detalle está en `docs/asistente-comercial/cotizador-rapido.md`:** qué es, cómo está hecho, el uso real, las etapas, lo probado y lo pendiente.
+
+**Lo esencial para retomar:**
+- **Cada presupuesto del cotizador es una conversación del asistente con su borrador.** El cajón «Asistente» de la pantalla es el mismo chat sobre el mismo presupuesto.
+- **La pantalla usa las mismas herramientas que el chat, pero sin el modelo** (`/api/comercial/asistente/cotizador/:id/accion`, con lista permitida): catastro, conflicto de canal, buscar clientes, `editar_presupuesto`, `nuevo_borrador` desde un S0, PDF y `guardar_presupuesto_odoo`.
+  - El Confirmar del guardado ejecuta la acción sin un turno del modelo (`/cotizador/acciones/:id`).
+  - Toma el mismo candado que el chat: si el chat está respondiendo, la pantalla espera (409).
+- **Lo que carga la pantalla entra al borrador por `aplicarFormulario`** (`src/lib/cotizador-rapido/formulario.ts`, puro y con tests).
+  - Sólo toca lo que maneja la pantalla, y sólo si cambió.
+  - Lo propio de la pantalla va en el campo nuevo `DatosBorrador.cotizador`, que es `null` en los presupuestos hechos sólo por el chat.
+  - Los textos de la propuesta salen solos (`textosAutomaticos`) mientras el vendedor no los edite a mano.
+- **El motor corre también en el navegador** para mostrar el precio al instante. El servidor guarda a los 0,7 s con la versión del borrador (409 si cambió) y es el que manda.
+- **«Pegá y completo»** (`interpretar.ts`): una llamada a `claude-opus-5-5` con esfuerzo `low` y salida estructurada, que tarda unos 5 s y cuesta unos US$ 0,02.
+  - Llena sólo los campos vacíos.
+  - Lo que choca con lo cargado vuelve como cambio para aplicar.
+  - Lo deducido se confirma con ✓ antes de guardar.
+- **Prueba sin escribir en Odoo:** `npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/test-cotizador-rapido.mts`.
+  - Usa la base, el catastro y Odoo reales, cuesta unos US$ 0,02 y limpia al final.
+  - Pasó el 07/11: Florida 375 → vecina 371, conflicto de canal con otro técnico, sin faltantes y guardado propuesto.
+
+**Decisiones por defecto** (como en el prototipo; JS las puede cambiar):
+- los metros del catastro se usan con un botón, no se precargan;
+- gestoría opcional;
+- render obligatorio de elegir;
+- ✓ obligatorio en lo que deduce la IA.
+
+**Lo primero en la sesión nueva:**
+1. **Preguntarle a JS cómo le fue con el cotizador en uso real.** Si guardó algo en Odoo desde ahí, revisar la orden: es la primera vez que se guarda sin el chat.
+2. **El costo de `interpretar` no se registra en `asistente_mensajes`:** no entra en la pestaña Uso ni en el tope diario. Sumarlo.
+3. **Pendientes del cotizador:**
+   - armador de cuotas en la pantalla (hoy se pide por el chat);
+   - al re-emitir, copiar los renglones de la orden vieja (hoy se muestran como referencia);
+   - probarlo en el celular.
+4. **Deploy:** desde la copia principal no conviene, porque `.claude/` pesa unos 9 GB (worktrees) y no hay `.vercelignore`. Usar un worktree limpio, o agregar un `.vercelignore` con `.claude/`.
 
 ---
 

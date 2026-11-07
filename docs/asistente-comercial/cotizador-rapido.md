@@ -17,7 +17,11 @@
 
 Ningún cálculo de la maqueta consulta la red: todo sale de las tarifas de `TARIFAS_AGO26`.
 
-**Estado (07/11):** JS probó el prototipo y pidió implementarlo. Está construido en `/comercial/asistente/cotizar` (botón «Cotizar» en el asistente). Las preguntas de abajo se resolvieron por defecto como en el prototipo; JS puede cambiarlas.
+**Estado (07/11):** en producción en `/comercial/asistente/cotizar`, con el botón «Cotizar» en el asistente.
+- Commit `5dc07a4`.
+- Deploy `andamios-jcgn3vzdb`, desde un worktree limpio.
+
+JS probó el prototipo y pidió implementarlo. Las preguntas de abajo se resolvieron por defecto como en el prototipo; JS puede cambiarlas.
 
 ## Lo que se construyó (07/11)
 

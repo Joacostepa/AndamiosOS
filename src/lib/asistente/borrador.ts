@@ -95,6 +95,27 @@ export type DatosBorrador = {
    * motor. Los que no están en la lista van después, en el orden del motor.
    */
   ordenLineas: string[] | null;
+  /**
+   * Lo que sólo usa el cotizador rápido (/comercial/asistente/cotizar): el tipo elegido, los
+   * detalles de la pantalla que no son entradas del motor y las marcas de lo que completó la IA.
+   * null en los presupuestos que se armaron sólo por el chat. Ver src/lib/cotizador-rapido/.
+   */
+  cotizador: DatosCotizador | null;
+};
+
+export type DatosCotizador = {
+  tipo: "bandeja" | "fachada" | "desglosado";
+  /** El domicilio del cliente nuevo es el de la obra (16 veces en el uso real). */
+  domicilioObra: boolean;
+  /** Los textos de la propuesta los escribió el vendedor: no se regeneran solos. */
+  textosAMano: boolean;
+  fachada: { bandejaA3: boolean; filasTablones: "1" | "2" | "todas"; mediaSombra: boolean };
+  /** Trabajo a ejecutar en el desglosado («plataforma en hueco de escalera»), para los textos. */
+  trabajo: string | null;
+  /** Renglones del desglosado que todavía no tienen monto (no van a la oferta). */
+  filasSinMonto: { id: string; concepto: string; porPeriodo: boolean; seccion: "base" | "opcional" }[];
+  /** Lo que completó la IA al interpretar: campo → de dónde lo sacó y si hay que confirmarlo. */
+  ia: Record<string, { cita: string; deducido: boolean }>;
 };
 
 /** Los que el borrador agrega solo en toda bandeja y fachada (ver opcionalesEstandar). */
@@ -125,6 +146,7 @@ export function borradorVacio(): DatosBorrador {
     notasInternas: null,
     opcionalesDescartados: [],
     ordenLineas: null,
+    cotizador: null,
   };
 }
 

@@ -11,6 +11,15 @@ la sesión nueva".** El detalle de lo hecho el 12/10 está en `docs/asistente-co
 
 ---
 
+## Al 07/11
+
+JS lo usó mucho (104 presupuestos guardados al 05/11). Funciona, pero no le resulta expeditivo
+escribirle todo. Se diseñó una variante con pantalla, botones y la IA que completa lo pegado:
+**`docs/asistente-comercial/cotizador-rapido.md`**, con la maqueta y el análisis del uso real.
+No se tocó código; esperan las decisiones de JS de ese doc.
+
+---
+
 ## Al 15/10
 
 Entre el 12 y el 15/10 no se tocó el código del asistente. Lo que contó JS el 15/10:

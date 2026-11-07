@@ -2,7 +2,8 @@
 
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Bot, Loader2, MessagesSquare, Plus, TriangleAlert } from "lucide-react";
+import Link from "next/link";
+import { Bot, Calculator, Loader2, MessagesSquare, Plus, TriangleAlert } from "lucide-react";
 import { formatDistanceToNowStrict, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { toast } from "sonner";
@@ -161,6 +162,9 @@ function Asistente() {
               <p className="truncate text-[13px] text-muted-foreground xl:hidden">Editando {borrador.odooVentaNombre} en Odoo</p>
             )}
           </div>
+          <Link href="/comercial/asistente/cotizar" className="inline-flex h-11 items-center gap-1.5 rounded-lg bg-hd-boton px-3 text-[15px] font-medium text-white hover:bg-hd-boton-hover">
+            <Calculator className="size-4" /> Cotizar
+          </Link>
           {/* "+ Nueva" a mano en el celular (antes había que abrir la lista). */}
           <Button variant="outline" className="h-11 px-3 text-[15px] lg:hidden" onClick={() => nueva()} disabled={crear.isPending} aria-label="Nueva conversación">
             {crear.isPending ? <Loader2 className="animate-spin" /> : <Plus />} Nueva

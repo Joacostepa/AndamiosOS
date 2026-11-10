@@ -54,11 +54,17 @@ Plataforma). JS confirmó que los certificados están en permisos-andamio@.
 - **`robot/actualizar.mjs`:** el `node --check` de la actualización diaria incluye también el módulo
   compartido de `src/lib`.
 
+**El robot estaba atrasado desde el 17/10:** JS lo actualizó a mano el 10/11 a las 19:05 en la Mac mini
+(`git pull && bash robot/instalar-launchd.sh` en `~/Desktop/Web-App/44-AndamiosOS`; vuelta OK a las
+19:07). El pull bajó todo lo que había desde el 17/10: la actualización diaria estaba trabada porque
+`package.json` cambió ese día (`ce18cdc`, `7ed38d6`), y ante eso no actualiza sola. Desde el 16/10 no
+cambió nada del robot salvo `0b0f248`, así que no se perdió ningún arreglo suyo. Para que no se vuelva
+a trabar en silencio, correr `npm install` en esa copia cuando cambie `package.json`. Hay que
+confirmar si el aviso "El robot de TAD no se pudo actualizar solo" salió todos los días.
+
 **Pendientes:**
 
-1. **Que el robot tome el código nuevo:** se actualiza solo una vez por día (8 a 18) o con
-   `bash robot/instalar-launchd.sh` en la Mac del robot. **Reanudar recién después:** con el código
-   viejo vuelve a frenar.
+1. ~~Que el robot tome el código nuevo.~~ Hecho el 10/11 a las 19:05 (ver arriba).
 2. Opcional, en la Mac del robot:
    `node --env-file=.env.local --env-file=robot/.env.robot robot/probar-cpau-cierre.mjs mail <R.Nro>`
    para ver que reconoce los mails reales (121: 00329527226, 122: 00329527415, 123: 00329527600,

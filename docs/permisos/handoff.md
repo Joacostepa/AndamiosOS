@@ -64,13 +64,27 @@ confirmar si el aviso "El robot de TAD no se pudo actualizar solo" salió todos 
 
 **Pendientes:**
 
+**Resuelto el 10/11 a la noche:** JS tocó «Reanudar el cierre» en las 4 fichas a las 19:13. A las
+19:16 el robot ya había tomado los 4 certificados del mail, cada uno con su frente, todos con
+formato nuevo y ninguno en Spam:
+
+| Tarea | Trámite | Certificado | RETP | Inmueble |
+| --- | --- | --- | --- | --- |
+| 121 | S02811 Olleros 1641 | certificado-2902147.pdf | 2902147 | OLLEROS 1637–1641 |
+| 122 | S02808 Tres Arroyos 2964 | certificado-2902298.pdf | 2902298 | TRES ARROYOS 2964 |
+| 123 | S02289 Cavia 3063 | certificado-2902464.pdf | 2902464 | CAVIA 3063–3069 |
+| 124 | S00284 Humahuaca 4625 | certificado-2902465.pdf | 2902465 | HUMAHUACA 4625–4629 |
+
+Los 4 trámites quedaron con todos los papeles en ok. La presentación la pide el barrido del cron
+`/api/permisos-via-publica/latido` (cada 30 min) y sale de 19 a 7.
+
+**Pueyrredón 1774 (S02454) se presentó:** la tarea 120 (03/11) dio ok, así que TAD aceptó el aviso de
+obra aplanado (§ "03/11"). Quedan los pendientes 3 y 4 de esa sección: borrar los borradores 13463506
+y 13496948 y proponer el control en `prepararAdjuntos`.
+
 1. ~~Que el robot tome el código nuevo.~~ Hecho el 10/11 a las 19:05 (ver arriba).
-2. Opcional, en la Mac del robot:
-   `node --env-file=.env.local --env-file=robot/.env.robot robot/probar-cpau-cierre.mjs mail <R.Nro>`
-   para ver que reconoce los mails reales (121: 00329527226, 122: 00329527415, 123: 00329527600,
-   124: 00329527602). Sobre todo Olleros, que en el catastro es "OLLEROS AV.".
-3. **Tocar «Reanudar el cierre»** en las fichas de S02811, S02808, S02289 (Cavia) y S00284
-   (Humahuaca). Si alguno no aparece en el mail, subirlo a mano desde la ficha.
+2. ~~Reanudar las 4 encomiendas.~~ Hecho el 10/11 a las 19:13; certificados tomados a las 19:16.
+3. **Ver que las 4 se presenten** y que salga "Presentado en TAD" en `#permisos-de-andamio-`.
 4. **Primera presentación con el certificado nuevo:**
    - `prepararAdjuntos` lo aplana con qpdf (tiene `/ByteRange`) y a TAD llega sin firma digital, con
      el sello pegado a la hoja. No se pudo probar acá porque esta Mac no tiene qpdf.

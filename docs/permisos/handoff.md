@@ -84,8 +84,11 @@ y 13496948 y proponer el control en `prepararAdjuntos`.
 
 1. ~~Que el robot tome el código nuevo.~~ Hecho el 10/11 a las 19:05 (ver arriba).
 2. ~~Reanudar las 4 encomiendas.~~ Hecho el 10/11 a las 19:13; certificados tomados a las 19:16.
-3. **Ver que las 4 se presenten** y que salga "Presentado en TAD" en `#permisos-de-andamio-`.
-4. **Primera presentación con el certificado nuevo:**
+3. **Ver que las 4 se presenten.** El barrido de las 19:30 pidió las presentaciones: tareas 125 (Tres
+   Arroyos), 126 (Olleros), 127 (Humahuaca) y 128 (Cavia). **Tres Arroyos se presentó a las 19:35:
+   EX-2026-50295570** (borrador 13586551). TAD aceptó el certificado nuevo aplanado. Faltan 126 a 128.
+4. ~~**Primera presentación con el certificado nuevo:**~~ TAD la aceptó (Tres Arroyos, ver punto 3). Queda
+   ver si el GCBA observa la falta del registro y del comprobante. Lo que se había anotado:
    - `prepararAdjuntos` lo aplana con qpdf (tiene `/ByteRange`) y a TAD llega sin firma digital, con
      el sello pegado a la hoja. No se pudo probar acá porque esta Mac no tiene qpdf.
    - Ver que TAD lo acepte y que el GCBA no observe la falta del registro y del comprobante.

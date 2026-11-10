@@ -5,7 +5,10 @@
 //                                  comprobante de prueba, y NO toca «Enviar»
 //   pago                           completa la compra hasta el formulario de Decidir con la tarjeta y NO toca
 //                                  «Aceptar» (deja una intención de pago sin pagar en la tienda, como el mapeo)
-//   mail <R.Nro>                   busca el PDF final de ese R.Nro en permisos-andamio@
+//   mail <R.Nro>                   busca el certificado de ese R.Nro en permisos-andamio@ (últimos 30 días).
+//                                  Saca el frente de la tarea cpau_encomienda con ese R.Nro (sólo lee la
+//                                  base): el certificado nuevo (11/2026) no trae el R.Nro y se reconoce
+//                                  por el inmueble. No carga nada.
 //
 // Correr (sin tareas del CPAU en curso en el robot):
 //   node --env-file=.env.local --env-file=robot/.env.robot robot/probar-cpau-cierre.mjs firma 00329522116
@@ -59,8 +62,15 @@ try {
     });
     console.log("pago (sin Aceptar):", r);
   } else if (modo === "mail") {
-    const r = await buscarCertificadoEnMail({ registro, desde: new Date(Date.now() - 30 * 86_400_000), log: console.log });
-    console.log("mail:", r ? { nombre: r.nombre, mail: r.mail, chequeos: r.chequeos, bytes: r.pdf.length } : "no llegó");
+    const largo = String(registro ?? "").replace(/\D/g, "").padStart(11, "0");
+    const { data: tarea, error } = await db.from("pvp_tareas").select("id, payload, resultado")
+      .eq("tipo", "cpau_encomienda").eq("resultado->>registro", largo).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (error) throw new Error(`No se pudo leer la tarea del R.Nro ${largo}: ${error.message}`);
+    if (!tarea) console.log(`No hay tarea cpau_encomienda con R.Nro ${largo}: sólo se reconoce el formato viejo.`);
+    const encomienda = { registro: largo, frente: tarea?.payload?.frente ?? null, calle_cpau: tarea?.resultado?.calle_cpau ?? null };
+    console.log(`tarea ${tarea?.id ?? "—"} · frente`, encomienda.frente, "· calle CPAU", encomienda.calle_cpau);
+    const r = await buscarCertificadoEnMail({ encomienda, desde: new Date(Date.now() - 30 * 86_400_000), log: console.log });
+    console.log("mail:", r ? { nombre: r.nombre, mail: r.mail, formato: r.formato, retp: r.retp, inmueble: r.inmueble, chequeos: r.chequeos, bytes: r.pdf.length } : "no llegó");
   } else {
     console.log("Modos: firma <R.Nro> · plataforma <R.Nro> [operación] · pago · mail <R.Nro>");
   }

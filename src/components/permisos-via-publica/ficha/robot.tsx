@@ -54,7 +54,7 @@ function Encomienda({ ficha, e, ahora }: { ficha: FichaPermiso; e: EncomiendaFic
         </ol>
         {(e.resultado?.registro || cierre?.pago?.operacion || cierre?.certificado) && (
           <p className="text-[12px] text-muted-foreground">
-            {[e.resultado?.registro && `N.º de registro ${e.resultado.registro}`, cierre?.pago?.aprobado_at && cierre.pago.operacion && `operación ${cierre.pago.operacion}`, cierre?.certificado && `certificado ${cierre.certificado.nombre} (${cuandoFue(cierre.certificado.recibido_at, ahora)})`].filter(Boolean).join(" · ")}
+            {[e.resultado?.registro && `N.º de registro ${e.resultado.registro}`, cierre?.pago?.aprobado_at && cierre.pago.operacion && `operación ${cierre.pago.operacion}`, cierre?.certificado && `certificado ${cierre.certificado.nombre}${cierre.certificado.retp ? ` · RETP ${cierre.certificado.retp}` : ""} (${cierre.certificado.a_mano ? "subido a mano " : ""}${cuandoFue(cierre.certificado.recibido_at, ahora)})`].filter(Boolean).join(" · ")}
           </p>
         )}
         {e.estado === "pendiente" && cierre?.etapa === "cargada" && (
@@ -124,26 +124,24 @@ function FrenoViejo({ ficha, e }: { ficha: FichaPermiso; e: EncomiendaFicha }) {
 }
 
 /**
- * Subir el certificado del CPAU a mano: la encomienda final (aparece 30–40 min después de enviarla)
- * y la certificación. El servidor las une en un PDF; con eso el documento queda listo.
+ * Subir el certificado del CPAU a mano, si el mail no llega. Desde noviembre de 2026 el CPAU manda
+ * sólo el certificado (1 hoja, firmado digitalmente): va ese PDF tal cual, sin unir ni re-guardar.
+ * El servidor controla que el inmueble sea el frente de la encomienda y que el RETP no esté en otro
+ * trámite; si algo no coincide, queda observado y no se presenta.
  */
 function SubirCertificado({ tramiteId }: { tramiteId: string }) {
   const subir = useSubirCertificado(tramiteId);
-  const [encomienda, setEncomienda] = useState<File | null>(null);
-  const [certificacion, setCertificacion] = useState<File | null>(null);
-  const [soloUno, setSoloUno] = useState(false);
+  const [archivo, setArchivo] = useState<File | null>(null);
   const [vuelta, setVuelta] = useState(0);
-  const elegir = (set: (f: File | null) => void) => (ev: React.ChangeEvent<HTMLInputElement>) => set(ev.target.files?.[0] ?? null);
   const clase = "max-w-full text-[12px] file:mr-2 file:rounded file:border file:bg-background file:px-2 file:py-1";
   function mandar() {
-    if (!encomienda) return;
-    subir.mutate(certificacion ? [encomienda, certificacion] : [encomienda], {
+    if (!archivo) return;
+    subir.mutate([archivo], {
       onSuccess: (r) => {
-        if (r.estado === "ok") toast.success("Certificado del CPAU cargado");
-        else toast.warning(`Certificado cargado pero a corregir: ${r.observacion}`);
-        setEncomienda(null);
-        setCertificacion(null);
-        setSoloUno(false);
+        if (r.estado !== "ok") toast.warning(`Certificado cargado pero no se presenta: ${r.observacion}`);
+        else if (r.observacion) toast.warning(`Certificado del CPAU cargado. A controlar: ${r.observacion}`);
+        else toast.success("Certificado del CPAU cargado");
+        setArchivo(null);
         setVuelta((v) => v + 1);
       },
       onError: (err) => toast.error(err instanceof Error ? err.message : "No se pudo subir"),
@@ -152,24 +150,13 @@ function SubirCertificado({ tramiteId }: { tramiteId: string }) {
   return (
     <div className="space-y-1.5 border-t pt-3 text-[12px]">
       <p className="font-medium text-[13px]">Subir el certificado a mano</p>
-      <p className="text-muted-foreground">Si el mail no llega: la encomienda final y la certificación. Se unen en un solo PDF.</p>
+      <p className="text-muted-foreground">Si el mail no llega: el PDF del certificado que manda el CPAU, tal cual llegó (sin abrirlo ni volver a guardarlo). Se controla que sea del frente de esta encomienda.</p>
       <div key={vuelta} className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-        <label className="flex items-center gap-2"><span>1. Encomienda</span><input type="file" accept="application/pdf,.pdf" disabled={subir.isPending} className={clase} onChange={elegir(setEncomienda)} /></label>
-        <label className="flex items-center gap-2"><span>2. Certificación</span><input type="file" accept="application/pdf,.pdf" disabled={subir.isPending} className={clase} onChange={elegir(setCertificacion)} /></label>
-        <Button size="sm" variant="outline" disabled={!encomienda || subir.isPending} onClick={() => (certificacion ? mandar() : setSoloUno(true))}>
+        <label className="flex items-center gap-2"><span>Certificado</span><input type="file" accept="application/pdf,.pdf" disabled={subir.isPending} className={clase} onChange={(ev) => setArchivo(ev.target.files?.[0] ?? null)} /></label>
+        <Button size="sm" variant="outline" disabled={!archivo || subir.isPending} onClick={mandar}>
           {subir.isPending ? <Loader2 className="size-4 animate-spin" /> : <FileSignature className="size-4" />} Subir certificado
         </Button>
       </div>
-      <Dialogo
-        open={soloUno}
-        onOpenChange={setSoloUno}
-        titulo="¿Subir sólo este PDF?"
-        texto="Está bien si ya trae la certificación (las 5 hojas juntas)."
-        cancelar="Elegir la certificación"
-        confirmar="Subir sólo este"
-        cargando={subir.isPending}
-        onConfirmar={mandar}
-      />
     </div>
   );
 }

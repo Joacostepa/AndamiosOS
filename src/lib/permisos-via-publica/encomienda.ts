@@ -151,6 +151,9 @@ async function cierreEnCurso(db: SupabaseClient, tramiteId: string): Promise<{ i
  * "Reanudar el cierre": una encomienda finalizada cuyo cierre se frenó vuelve a la cola y sigue
  * desde la etapa donde quedó. Un pago o una carga intentados sin confirmar vuelven a frenar: eso
  * lo resuelve una persona mirando el CPAU.
+ * Frenada esperando el certificado («cargada», p. ej. porque pasaron los 5 días): el robot vuelve a
+ * buscar el mail desde la carga en la Plataforma y los 5 días se cuentan de nuevo desde ahora
+ * (`espera_desde`). Sin eso, si el mail no está ya en la casilla, frenaría en la primera vuelta.
  */
 export async function reanudarCierre(db: SupabaseClient, tramiteId: string, userId: string | null): Promise<void> {
   const cierre = await cierreEnCurso(db, tramiteId);
@@ -158,12 +161,13 @@ export async function reanudarCierre(db: SupabaseClient, tramiteId: string, user
   if (cierre.estado !== "error") throw new FaltanDatos("El cierre no está frenado: el robot lo está siguiendo.");
   const { data: tarea } = await db.from("pvp_tareas").select("resultado").eq("id", cierre.id).single();
   const resultado = tarea?.resultado as { cierre: Record<string, unknown> };
+  const espera = cierre.etapa === "cargada" ? { espera_desde: new Date().toISOString() } : {};
   const { data, error } = await db.from("pvp_tareas")
-    .update({ estado: "pendiente", tomada_at: null, reintentar_desde: null, error: null, resultado: { ...resultado, cierre: { ...resultado.cierre, reintentos: 0 } } })
+    .update({ estado: "pendiente", tomada_at: null, reintentar_desde: null, error: null, resultado: { ...resultado, cierre: { ...resultado.cierre, ...espera, reintentos: 0 } } })
     .eq("id", cierre.id).eq("estado", "error").select("id");
   if (error) throw new Error(error.message);
   if (!data?.length) throw new FaltanDatos("La encomienda cambió mientras tanto: recargá la ficha.");
-  await registrarEvento(db, tramiteId, "encomienda_cpau", `Se reanudó el cierre de la encomienda desde «${cierre.etapa}».`, { tarea_id: cierre.id, por: userId }, userId ? "persona" : "sistema");
+  await registrarEvento(db, tramiteId, "encomienda_cpau", `Se reanudó el cierre de la encomienda desde «${cierre.etapa}».${cierre.etapa === "cargada" ? " El robot vuelve a buscar el certificado en el mail desde la carga y lo espera otros 5 días." : ""}`, { tarea_id: cierre.id, por: userId }, userId ? "persona" : "sistema");
 }
 
 /** Descarta la encomienda que espera aprobación (o que todavía no tomó el robot) para pedirla de nuevo. */

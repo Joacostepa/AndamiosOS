@@ -1,12 +1,74 @@
-# Handoff — Gestoría de permisos de andamio (actualizado 2026-11-03)
+# Handoff — Gestoría de permisos de andamio (actualizado 2026-11-10)
 
 Para retomar en una sesión nueva. El diseño completo y todo lo aprendido está en
 `docs/permisos/modulo.md`; esto es el estado, **lo que falta para que el circuito
 quede 100 % automático** y el orden para seguir.
 
 Para arrancar: "Leé docs/permisos/handoff.md y docs/permisos/modulo.md y
-seguimos con lo que falta". **Empezar por § "03/11", § "02/11", § "22/10", § "20/10", § "17/10", § "15/10 a la noche", § "15/10", § "14/10", § "Rediseño implementado", después § "09/10 a la noche", § "09/10", § "06/10", § "02/10" y § "Estado al 26/09", seguir con
+seguimos con lo que falta". **Empezar por § "10/11", § "03/11", § "02/11", § "22/10", § "20/10", § "17/10", § "15/10 a la noche", § "15/10", § "14/10", § "Rediseño implementado", después § "09/10 a la noche", § "09/10", § "06/10", § "02/10" y § "Estado al 26/09", seguir con
 § "17/09 — primera encomienda cerrada sola", § "Noche 16/09" y § "Estado 16/09 19:00".**
+
+---
+
+## 10/11 — el CPAU ahora manda sólo el certificado (1 hoja)
+
+**Qué cambió en el CPAU:** antes el mail traía un PDF de 5 hojas: el registro firmado y sellado
+(×3, con "Número de Registro <R.Nro>"), la certificación y el comprobante. Ahora trae **sólo el
+certificado: 1 hoja, sin R.Nro ni comprobante**, generado con FPDF y firmado digitalmente con
+pyHanko. Lo que identifica la encomienda es "RETP: <n°>", el comitente y "En el inmueble/predio sito
+en: CALLE (desde - hasta)". Muestra: Tres Arroyos 2964 (S02808, tarea 122), RETP 2902298, emitido el
+04/11 a las 17:15.
+
+**Qué pasaba:** el robot sólo tomaba PDFs con "Número de Registro" y ≥4 hojas, así que nunca
+reconoció ninguno. Quedaron en error, por los 5 días, las tareas **121 Olleros 1641, 122 Tres Arroyos
+2964, 123 Cavia 3063 y 124 Humahuaca 4625**, todas en «cargada» (pagadas y cargadas en la
+Plataforma). JS confirmó que los certificados están en permisos-andamio@.
+
+**Arreglo (decisión de JS: se carga sólo el certificado, tal cual llega):**
+- **`src/lib/permisos-via-publica/certificado-cpau.mjs`** (nuevo, JS puro, lo usan el robot y la app):
+  `revisarCertificado(paginas, {registro, frente, calle_cpau}, {aMano})`.
+  - El formato viejo se reconoce por el R.Nro, como antes.
+  - El formato nuevo se reconoce por CERTIFICA QUE, HABILITACIÓN ESTRUCTURA TRANSITORIA, comitente ABA y
+    el inmueble igual a `payload.frente` (o a `resultado.calle_cpau`).
+  - Para comparar calles normaliza tildes y AV./AVENIDA, y exige las mismas palabras ("VALLE" ≠
+    "VALLEJOS", "PAZ" ≠ "PAZ SOLDAN"). Desde y hasta tienen que ser exactos.
+  - Bloquean la matrícula 12658 y el RETP. Tiene 19 tests (`certificado-cpau.test.ts`, `node --test`).
+- **Robot** (`cpau-cierre.mjs`, `cpau-encomienda.mjs`):
+  - Guarda el RETP en `resultado.cierre.certificado` y en `revision.leido` del documento.
+  - Un RETP que ya está en otra tarea o trámite se saltea.
+  - Si otra tarea espera certificado del mismo frente, **frena** en vez de adivinar. Cuentan como
+    gemelas las tareas en «cargada», o en «pagada» con la carga intentada, que no estén presentadas
+    ni tengan ya el certificado ok.
+  - Saltea los mails de más de 30 min antes de la carga.
+  - Los bytes se suben sin re-guardar.
+- **`hastaElFinal` corregido:** cortaba el salto de línea después del último `%%EOF`, y en el
+  certificado nuevo eso rompía la firma (`/ByteRange` cubre hasta el último byte).
+- **Subida a mano** (`tramites/[id]/certificado`):
+  - Acepta un solo PDF. Si el inmueble coincide, la matrícula y el RETP ilegibles quedan sólo como
+    aviso. Un inmueble distinto o un RETP de otro trámite lo dejan observado.
+  - Cierra la tarea `cpau_encomienda`. Si el robot la tenía tomada, la cierra él en la vuelta
+    siguiente al ver el documento ok subido por una persona.
+  - El catch del robot ya no baja a observado un documento que está ok.
+- **«Reanudar el cierre» en «cargada»:** pone `cierre.espera_desde` y vuelve a contar 5 días desde
+  ahí. El mail se sigue buscando desde la carga.
+- **`robot/actualizar.mjs`:** el `node --check` de la actualización diaria incluye también el módulo
+  compartido de `src/lib`.
+
+**Pendientes:**
+
+1. **Que el robot tome el código nuevo:** se actualiza solo una vez por día (8 a 18) o con
+   `bash robot/instalar-launchd.sh` en la Mac del robot. **Reanudar recién después:** con el código
+   viejo vuelve a frenar.
+2. Opcional, en la Mac del robot:
+   `node --env-file=.env.local --env-file=robot/.env.robot robot/probar-cpau-cierre.mjs mail <R.Nro>`
+   para ver que reconoce los mails reales (121: 00329527226, 122: 00329527415, 123: 00329527600,
+   124: 00329527602). Sobre todo Olleros, que en el catastro es "OLLEROS AV.".
+3. **Tocar «Reanudar el cierre»** en las fichas de S02811, S02808, S02289 (Cavia) y S00284
+   (Humahuaca). Si alguno no aparece en el mail, subirlo a mano desde la ficha.
+4. **Primera presentación con el certificado nuevo:**
+   - `prepararAdjuntos` lo aplana con qpdf (tiene `/ByteRange`) y a TAD llega sin firma digital, con
+     el sello pegado a la hoja. No se pudo probar acá porque esta Mac no tiene qpdf.
+   - Ver que TAD lo acepte y que el GCBA no observe la falta del registro y del comprobante.
 
 ---
 
@@ -861,7 +923,8 @@ con el acta todavía observada; el acta quedó ok a las 13:14 (§ siguiente).
   `#validarPaso1` (POST `/Check/`) → `#tipoEnco`=`HE`, `#nroForm`=R.Nro sin ceros, `#enco` → `#tipopago`=
   `PAGO`, `#pagoseguro`=operación, `#comprobante` → `#submit_data` (POST `/grabar`). PDF ≤ 3 MB. Misma
   traba que el pago (`plataforma.intentado_at`).
-- **Certificado:** el CPAU se lo manda a Hougassian; él lo reenvía a **permisos-andamio@** (IMAP, clave
+- **Certificado** (**desde noviembre el CPAU manda sólo el certificado de 1 hoja: ver § "10/11"**):
+  el CPAU se lo manda a Hougassian; él lo reenvía a **permisos-andamio@** (IMAP, clave
   de aplicación en `robot/.env.robot`). La tarea queda `pendiente` y se revisa cada 15 min (hasta 5
   días). Toma el PDF que trae "Número de Registro <R.Nro>" + "CERTIFICA QUE", lo sube como
   `encomienda_cpau` ok (subido_por `robot`) y avisa. El cron del latido ahora también corre

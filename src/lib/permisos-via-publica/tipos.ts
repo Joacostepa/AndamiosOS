@@ -454,7 +454,10 @@ export type EncomiendaFicha = {
       pago?: { operacion?: string; intentado_at?: string | null; aprobado_at?: string; rechazado_at?: string };
       plataforma?: { intentado_at?: string; enviada_at?: string };
       ultima_busqueda_at?: string;
-      certificado?: { nombre: string; recibido_at: string };
+      /** "Reanudar el cierre" en «cargada»: desde acá se cuentan de nuevo los 5 días de espera del mail. */
+      espera_desde?: string;
+      /** formato "nuevo" (noviembre de 2026): sólo la certificación, sin R.Nro; se reconoce por el inmueble y se anota el RETP. */
+      certificado?: { nombre: string; recibido_at: string; formato?: "viejo" | "nuevo" | null; retp?: string | null; /** Subido desde la ficha, no por mail. */ a_mano?: boolean };
       reintentos?: number;
       ultimo_error?: string;
     };

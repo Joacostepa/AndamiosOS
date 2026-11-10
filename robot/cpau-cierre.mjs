@@ -12,9 +12,15 @@
 //   4. CARGA: tramites.cpau.org/Plataforma (matrícula + DNI → "Habilitación de estructuras
 //      transitoria" + R.Nro + registro firmado → "Pago Electrónico" + n° de operación + comprobante →
 //      Enviar). Una sola vez, con la misma traba que el pago.
-//   5. CERTIFICADO: el CPAU visa (30-40 min, en horario de oficina) y le manda a Hougassian el PDF
-//      final (<RETP Nro>.pdf: registro firmado y sellado + certificación + comprobante). Él lo
-//      reenvía a permisos-andamio@andamiosbuenosaires.com.ar y el robot lo busca por IMAP.
+//   5. CERTIFICADO: el CPAU visa (30-40 min, en horario de oficina) y le manda a Hougassian el
+//      certificado. Él lo reenvía a permisos-andamio@andamiosbuenosaires.com.ar y el robot lo busca
+//      por IMAP y lo sube tal cual llega. Desde noviembre de 2026 el CPAU manda SÓLO la
+//      certificación: 1 hoja firmada digitalmente, sin "Número de Registro" y sin comprobante. Como no
+//      trae el R.Nro, se reconoce por el inmueble ("sito en: CALLE (desde - hasta)" = el frente que
+//      cargó el robot), el comitente y la tarea, y se anota su número RETP para no dárselo a dos
+//      trámites. El formato viejo (<RETP Nro>.pdf de 5-6 hojas: registro firmado y sellado ×3 +
+//      certificación + comprobante) se sigue reconociendo por el R.Nro. Los dos formatos y los
+//      controles están en src/lib/permisos-via-publica/certificado-cpau.mjs.
 //
 // Mapeos: robot/mapear-cpau-cierre.mjs, mapear-cpau-compra.mjs y mapear-cpau-historico.mjs;
 // detalle en docs/modulo-gestoria-permisos.md § "Cierre de la encomienda — mapeo 16/09".
@@ -23,6 +29,7 @@ import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import { PDFDocument } from "pdf-lib";
 import { extractText, getDocumentProxy } from "unpdf";
+import { registroCorto, revisarCertificado } from "../src/lib/permisos-via-publica/certificado-cpau.mjs";
 
 const RETP = "https://retp.cpau.org";
 const BUCKET = "permisos-via-publica";
@@ -44,8 +51,7 @@ export function hastaElFinal(bytes) {
   return fin > 0 ? b.subarray(0, fin + 5) : b;
 }
 
-/** R.Nro sin ceros adelante, como lo imprime el registro ("Número de Registro 329522116"). */
-export const registroCorto = (registro) => String(registro).replace(/\D/g, "").replace(/^0+/, "");
+export { registroCorto };
 
 async function textoPdf(bytes) {
   const pdf = await getDocumentProxy(new Uint8Array(bytes));
@@ -335,18 +341,21 @@ export async function cargarEnPlataforma({ context, registro, registroFirmado, o
 
 // ── 5. Certificado por mail ────────────────────────────────────────────────
 
-/** El PDF final: el registro de ese R.Nro, la certificación y el comprobante. */
-export async function verificarCertificado(bytes, registro) {
+/**
+ * Qué es el PDF y si es el de esta encomienda (`encomienda` = { registro, frente, calle_cpau }).
+ * Devuelve { formato, deLaTarea, retp, inmueble, hojas, chequeos }: ver revisarCertificado.
+ */
+export async function verificarCertificado(bytes, encomienda) {
   const { paginas } = await textoPdf(bytes);
-  const todo = paginas.join(" ");
-  const corto = registroCorto(registro);
-  return [
-    { clave: "registro", ok: todo.includes(`Número de Registro ${corto}`), bloquea: true, detalle: `Trae el registro ${corto}.` },
-    { clave: "certificacion", ok: /CERTIFICA QUE/i.test(todo), bloquea: true, detalle: "Trae la certificación del CPAU." },
-    { clave: "comprobante", ok: new RegExp(`Enc N\\S*:\\s*\\d+/${corto}`).test(todo) || /Sistema Pago Seguro/i.test(todo), bloquea: false, detalle: "Trae el comprobante de pago." },
-    { clave: "hojas", ok: paginas.length >= 4, bloquea: true, detalle: `${paginas.length} hojas.` },
-  ];
+  return revisarCertificado(paginas, encomienda);
 }
+
+/**
+ * El certificado nuevo no trae el R.Nro: uno que se reenvió ANTES de que el robot cargara la
+ * encomienda es de otra (otra obra en el mismo frente), aunque el inmueble coincida. Margen para
+ * relojes desparejos.
+ */
+const MARGEN_FECHA_MIN = 30;
 
 async function adjuntosPdf(mail, profundidad = 0) {
   const lista = [];
@@ -358,13 +367,18 @@ async function adjuntosPdf(mail, profundidad = 0) {
 }
 
 /**
- * Busca en permisos-andamio@ un mail desde `desde` con el PDF final del R.Nro. Devuelve el PDF, su
- * nombre, el mail (asunto, remitente, fecha) y los chequeos, o null si todavía no llegó.
+ * Busca en permisos-andamio@ un mail desde `desde` (la carga en la Plataforma) con el certificado de
+ * la encomienda (`encomienda` = { registro, frente, calle_cpau }). `descartar(revision)` puede
+ * devolver un motivo para saltear un PDF que coincide (su RETP ya es de otra tarea). Devuelve el PDF
+ * con los bytes tal cual llegaron (está firmado digitalmente: no se re-guarda), su nombre, el mail
+ * (asunto, remitente, fecha), el formato, el RETP, el inmueble y los chequeos, o null si todavía no
+ * llegó.
  */
-export async function buscarCertificadoEnMail({ registro, desde, log = () => {} }) {
+export async function buscarCertificadoEnMail({ encomienda, desde, descartar = async () => null, log = () => {} }) {
   const user = process.env.PERMISOS_BUZON;
   const pass = process.env.PERMISOS_BUZON_CLAVE;
   if (!user || !pass) throw new CierreFrenado("Faltan PERMISOS_BUZON y PERMISOS_BUZON_CLAVE en robot/.env.robot");
+  const minimo = new Date(desde).getTime() - MARGEN_FECHA_MIN * 60_000;
   const cliente = new ImapFlow({ host: "imap.gmail.com", port: 993, secure: true, auth: { user, pass }, logger: false });
   await cliente.connect();
   try {
@@ -382,12 +396,22 @@ export async function buscarCertificadoEnMail({ registro, desde, log = () => {} 
           if (!mensaje?.source) continue;
           const mail = await simpleParser(mensaje.source);
           for (const adjunto of await adjuntosPdf(mail)) {
-            const chequeos = await verificarCertificado(adjunto.bytes, registro).catch(() => null);
-            if (!chequeos?.find((c) => c.clave === "registro")?.ok) continue;
+            const revision = await verificarCertificado(adjunto.bytes, encomienda).catch(() => null);
+            if (!revision?.deLaTarea) continue;
+            if (revision.formato === "nuevo" && mail.date && mail.date.getTime() < minimo) {
+              log(`CPAU: salteo ${adjunto.nombre} (RETP ${revision.retp ?? "?"}): es del mismo frente pero llegó antes de cargar la encomienda`);
+              continue;
+            }
+            const motivo = await descartar(revision);
+            if (motivo) {
+              log(`CPAU: salteo ${adjunto.nombre}: ${motivo}`);
+              continue;
+            }
             const enSpam = caja === spam;
-            log(`CPAU: llegó el certificado de ${registro} por mail (${adjunto.nombre}${enSpam ? ", estaba en Spam" : ""})`);
+            log(`CPAU: llegó el certificado de ${encomienda.registro} por mail (${adjunto.nombre}, formato ${revision.formato}${revision.retp ? `, RETP ${revision.retp}` : ""}${enSpam ? ", estaba en Spam" : ""})`);
             return {
-              pdf: Buffer.from(adjunto.bytes), nombre: adjunto.nombre, chequeos,
+              pdf: Buffer.from(adjunto.bytes), nombre: adjunto.nombre,
+              formato: revision.formato, retp: revision.retp, inmueble: revision.inmueble, chequeos: revision.chequeos,
               mail: { asunto: mail.subject ?? null, de: mail.from?.text ?? null, fecha: mail.date?.toISOString() ?? null, en_spam: enSpam },
             };
           }

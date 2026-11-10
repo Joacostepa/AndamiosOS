@@ -189,7 +189,7 @@ export function usePedirEndosoTramite(id: string) {
 export function useSubirCertificado(id: string) {
   const qc = useQueryClient();
   return useMutation({
-    /** La encomienda final y la certificación, en ese orden: el servidor las une en un PDF. */
+    /** El certificado del CPAU (uno solo, tal cual llegó). Con el formato viejo eran dos: la encomienda y la certificación, que el servidor une. */
     mutationFn: (archivos: File[]) => {
       const form = new FormData();
       for (const archivo of archivos) form.append("archivo", archivo);

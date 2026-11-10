@@ -16,6 +16,7 @@ import { execFileSync } from "node:child_process";
 import { readdirSync } from "node:fs";
 import path from "node:path";
 
+const COMPARTIDOS = ["src/lib/permisos-via-publica/certificado-cpau.mjs"];
 const HORA_DESDE = 8;
 const HORA_HASTA = 18;
 
@@ -57,9 +58,12 @@ export function actualizarSiToca(log) {
 
     git("merge", "--ff-only", "--quiet", "origin/main");
     const dir = path.resolve("robot");
-    for (const f of readdirSync(dir).filter((n) => n.endsWith(".mjs"))) {
+    // Más los módulos de fuera de robot/ que el robot importa (compartidos con la app).
+    const archivos = [...readdirSync(dir).filter((n) => n.endsWith(".mjs")).map((f) => path.join(dir, f)), ...COMPARTIDOS.map((f) => path.resolve(f))];
+    for (const archivo of archivos) {
+      const f = path.relative(process.cwd(), archivo);
       try {
-        execFileSync(process.execPath, ["--check", path.join(dir, f)], { stdio: "pipe", timeout: 30_000 });
+        execFileSync(process.execPath, ["--check", archivo], { stdio: "pipe", timeout: 30_000 });
       } catch (e) {
         git("reset", "--hard", "--quiet", desde);
         return { problema: `el código nuevo no compila (${f}); se volvió al anterior` };

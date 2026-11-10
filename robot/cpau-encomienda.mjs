@@ -22,6 +22,7 @@
 //     RETP Nro): en la primera pasada no puede aparecer ninguna fila.
 import { chromium } from "playwright";
 import { CierreFrenado, bajarRegistro, buscarCertificadoEnMail, cargarEnPlataforma, firmarRegistro, pagarEncomienda } from "./cpau-cierre.mjs";
+import { mismoFrente, retpGuardado } from "../src/lib/permisos-via-publica/certificado-cpau.mjs";
 
 const RETP = "https://retp.cpau.org";
 const P = "#ContentPlaceHolder1_Wizard1_";
@@ -282,6 +283,53 @@ const REINTENTOS_CIERRE = 3;
 const REINTENTOS_ARMADO = 3;
 
 /**
+ * Las demás encomiendas, para no asignar un certificado nuevo (sin R.Nro) a la que no es:
+ *   retps:     RETP de un certificado ya cargado → de quién es (otra tarea, o el documento de otro
+ *              trámite subido a mano).
+ *   esperando: las que pueden estar esperando un certificado, con su frente: etapa «cargada» (en la
+ *              cola o frenadas) y también «pagada» con la carga en la Plataforma intentada y sin
+ *              confirmar (pudo haber llegado al CPAU igual). Quedan afuera las de trámites que ya
+ *              tienen el certificado cargado (estado ok) o que se presentaron, cancelaron o cerraron:
+ *              esas no esperan nada, y si contaran frenarían para siempre a cualquier encomienda
+ *              nueva del mismo frente.
+ */
+async function otrasEncomiendas(db, tarea) {
+  const [{ data: tareas, error: e1 }, { data: docs, error: e2 }] = await Promise.all([
+    db.from("pvp_tareas")
+      .select("id, tramite_id, estado, frente:payload->frente, calle_cpau:resultado->>calle_cpau, etapa:resultado->cierre->>etapa, carga_intentada:resultado->cierre->plataforma->>intentado_at, certificado:resultado->cierre->certificado")
+      .eq("tipo", "cpau_encomienda").neq("id", tarea.id),
+    db.from("pvp_documentos")
+      .select("tramite_id, retp:revision->leido->>retp")
+      .eq("clave", "encomienda_cpau").neq("tramite_id", tarea.tramite_id).not("revision->leido->>retp", "is", null),
+  ]);
+  if (e1 || e2) throw new Error(`No se pudieron leer las otras encomiendas para controlar el certificado: ${(e1 ?? e2).message}`);
+  const retps = new Map();
+  for (const o of tareas ?? []) {
+    const retp = retpGuardado(o.certificado);
+    if (retp) retps.set(retp, `la tarea ${o.id}`);
+  }
+  for (const d of docs ?? []) if (d.retp && !retps.has(String(d.retp))) retps.set(String(d.retp), `otro trámite (${d.tramite_id})`);
+
+  const candidatas = (tareas ?? []).filter((o) =>
+    ["pendiente", "tomada", "error"].includes(o.estado) && o.frente
+    && (o.etapa === "cargada" || (o.etapa === "pagada" && !!o.carga_intentada)));
+  const ids = [...new Set(candidatas.map((o) => o.tramite_id))];
+  const resueltos = new Set();
+  if (ids.length) {
+    const [{ data: tramites, error: e3 }, { data: conCertificado, error: e4 }] = await Promise.all([
+      db.from("pvp_tramites").select("id").in("id", ids).in("estado", ["presentado", "cancelado", "cerrado"]),
+      db.from("pvp_documentos").select("tramite_id").in("tramite_id", ids).eq("clave", "encomienda_cpau").eq("estado", "ok"),
+    ]);
+    if (e3 || e4) throw new Error(`No se pudieron leer las otras encomiendas para controlar el certificado: ${(e3 ?? e4).message}`);
+    for (const x of [...(tramites ?? []).map((t) => t.id), ...(conCertificado ?? []).map((d) => d.tramite_id)]) resueltos.add(x);
+  }
+  const esperando = candidatas
+    .filter((o) => !resueltos.has(o.tramite_id))
+    .map((o) => ({ id: o.id, etapa: o.etapa, frente: { ...o.frente, calle_cpau: o.calle_cpau ?? null } }));
+  return { retps, esperando };
+}
+
+/**
  * Timeouts y cortes de red: el CPAU no contestó. Los errores propios (calle que no está, resumen
  * que no coincide, login rechazado, matrícula ajena) no se arreglan reintentando.
  */
@@ -483,38 +531,80 @@ async function continuarCierre({ db, tarea, log, p, ahora, obra, doc, evento, av
     }
 
     if (cierre.etapa === "cargada") {
-      const llego = await buscarCertificadoEnMail({ registro, desde: cierre.plataforma.enviada_at, log });
+      // Si mientras tanto alguien subió el certificado a mano desde la ficha (y la ficha no pudo cerrar
+      // la tarea porque el robot la tenía tomada), se cierra con ese: no se busca el mail ni se pisa.
+      const { data: cargado } = await db.from("pvp_documentos")
+        .select("estado, archivo_path, archivo_nombre, subido_por, subido_at, revision")
+        .eq("tramite_id", tarea.tramite_id).eq("clave", "encomienda_cpau").maybeSingle();
+      if (cargado?.estado === "ok" && cargado.subido_por === "persona" && cargado.subido_at && Date.parse(cargado.subido_at) >= Date.parse(cierre.plataforma.enviada_at)) {
+        const leido = cargado.revision?.leido ?? {};
+        const certificado = { path: cargado.archivo_path, nombre: cargado.archivo_nombre, recibido_at: cargado.subido_at, formato: leido.formato ?? null, retp: leido.retp ?? null, inmueble: leido.inmueble ?? null, a_mano: true };
+        await guardar({ etapa: "certificado", certificado }, { estado: "ok", terminada_at: ahora(), reintentar_desde: null, error: null });
+        await evento(`El certificado del CPAU ya se había subido a mano desde la ficha (${cargado.archivo_nombre}): la encomienda queda cerrada con ese y el robot deja de buscar el mail.`, { tarea_id: tarea.id, path: cargado.archivo_path });
+        log(`CPAU: certificado de ${registro} ya subido a mano`);
+        return;
+      }
+
+      // El certificado nuevo (noviembre de 2026) no trae el R.Nro: se reconoce por el frente que se
+      // cargó en el CPAU. Para no darle a este trámite el certificado de otro, se miran las demás
+      // encomiendas: un RETP que ya es de otra se saltea y, si otra espera el certificado del mismo
+      // frente, frena para que decida una persona.
+      const encomienda = { registro, frente: p.frente, calle_cpau: resultado.calle_cpau ?? null };
+      const otras = await otrasEncomiendas(db, tarea);
+      const llego = await buscarCertificadoEnMail({
+        encomienda, desde: cierre.plataforma.enviada_at, log,
+        descartar: async (r) => {
+          const otra = r.retp && otras.retps.get(r.retp);
+          return otra ? `el RETP ${r.retp} ya está cargado en ${otra}` : null;
+        },
+      });
       if (!llego) {
-        const dias = (Date.now() - Date.parse(cierre.plataforma.enviada_at)) / 86_400_000;
+        // "Reanudar el cierre" vuelve a contar los días desde que se reanudó (cierre.espera_desde); el
+        // mail se sigue buscando desde la carga.
+        const dias = (Date.now() - Date.parse(cierre.espera_desde ?? cierre.plataforma.enviada_at)) / 86_400_000;
         if (dias > ESPERA_CERTIFICADO_DIAS) {
-          throw new CierreFrenado(`Pasaron ${ESPERA_CERTIFICADO_DIAS} días desde la carga y no llegó a permisos-andamio@ el mail del CPAU con el certificado: pedirle a Hougassian que lo reenvíe`);
+          throw new CierreFrenado(`Pasaron ${ESPERA_CERTIFICADO_DIAS} días y no llegó a permisos-andamio@ el mail del CPAU con el certificado: pedirle a Hougassian que lo reenvíe y tocar «Reanudar el cierre» (vuelve a esperar ${ESPERA_CERTIFICADO_DIAS} días), o subirlo a mano en la ficha`);
         }
         const cuando = new Date(Date.now() + ESPERA_CERTIFICADO_MIN * 60_000).toISOString();
         await guardar({ ultima_busqueda_at: ahora() }, { estado: "pendiente", reintentar_desde: cuando });
         return;
       }
+      const inmueble = llego.inmueble ? `${llego.inmueble.calle} (${llego.inmueble.desde} - ${llego.inmueble.hasta})` : "sin inmueble";
+      if (llego.formato === "nuevo") {
+        const gemelas = otras.esperando.filter((o) => mismoFrente(o.frente, encomienda.frente ? { ...encomienda.frente, calle_cpau: encomienda.calle_cpau } : null));
+        if (gemelas.length) {
+          const cuales = gemelas.map((o) => `${o.id}${o.etapa === "pagada" ? " (con la carga en la Plataforma sin confirmar)" : ""}`).join(", ");
+          throw new CierreFrenado(`Llegó el certificado del CPAU de ${inmueble} (RETP ${llego.retp ?? "?"}), pero la tarea ${cuales} puede estar esperando uno del mismo frente y el certificado no trae el R.Nro: no se sabe de cuál es. Buscar el RETP en el Histórico del CPAU, ver de qué R.Nro es y subirlo a mano en la ficha de ese trámite`);
+        }
+      }
       const fallas = llego.chequeos.filter((c) => !c.ok && c.bloquea);
       if (fallas.length) {
-        throw new CierreFrenado(`Llegó un PDF del CPAU para el R.Nro ${registro} pero no está completo: ${fallas.map((c) => c.clave).join(", ")}`);
+        const queHacer = llego.formato === "nuevo"
+          ? "Revisarlo y, si está bien, subirlo a mano en la ficha: si el inmueble coincide con el frente, ahí se carga igual y queda como aviso"
+          : "Revisarlo y, si está bien, subirlo a mano en la ficha";
+        throw new CierreFrenado(`Llegó un PDF del CPAU para el R.Nro ${registro} (${llego.nombre}) pero no se puede cargar: ${fallas.map((c) => c.detalle).join(" ")} ${queHacer}`);
       }
+      // Los bytes tal cual llegaron: el certificado nuevo viene firmado digitalmente.
       const path = await subir(`tramites/${tarea.tramite_id}/encomienda_cpau-${Date.now()}.pdf`, llego.pdf);
       const { data: previo } = await db.from("pvp_documentos").select("id, version").eq("tramite_id", tarea.tramite_id).eq("clave", "encomienda_cpau").maybeSingle();
       const valores = {
         estado: "ok", archivo_path: path, archivo_nombre: llego.nombre, version: (previo?.version ?? 0) + 1,
         subido_por: "robot", subido_at: ahora(), revisado_at: ahora(), updated_at: ahora(), observacion: null,
-        revision: { modelo: null, leido: { mail: llego.mail, registro }, chequeos: llego.chequeos.map((c) => ({ ...c, detalle: c.ok ? c.detalle : `Falta: ${c.detalle}` })) },
+        revision: { modelo: null, leido: { mail: llego.mail, registro, formato: llego.formato, retp: llego.retp, inmueble: llego.inmueble }, chequeos: llego.chequeos },
       };
       const { error } = previo
         ? await db.from("pvp_documentos").update(valores).eq("id", previo.id)
         : await db.from("pvp_documentos").insert({ ...valores, tramite_id: tarea.tramite_id, clave: "encomienda_cpau", origen: "aba" });
       if (error) throw new Error(`No se pudo guardar el certificado del CPAU: ${error.message}`);
-      await guardar({ etapa: "certificado", certificado: { path, nombre: llego.nombre, mail: llego.mail, recibido_at: ahora() } }, { estado: "ok", terminada_at: ahora(), reintentar_desde: null, error: null });
-      await evento(`Llegó el certificado del CPAU por mail (${llego.nombre}) y quedó cargado: se presenta en TAD en el horario de presentación.`, { tarea_id: tarea.id, path, mail: llego.mail });
+      const certificado = { path, nombre: llego.nombre, mail: llego.mail, recibido_at: ahora(), formato: llego.formato, retp: llego.retp, inmueble: llego.inmueble };
+      await guardar({ etapa: "certificado", certificado }, { estado: "ok", terminada_at: ahora(), reintentar_desde: null, error: null });
+      const retp = llego.retp ? `RETP ${llego.retp}, ` : "";
+      await evento(`Llegó el certificado del CPAU por mail (${llego.nombre}, ${retp}${inmueble}) y quedó cargado: se presenta en TAD en el horario de presentación.`, { tarea_id: tarea.id, path, mail: llego.mail, formato: llego.formato, retp: llego.retp, inmueble: llego.inmueble });
       await aviso({
         tipo: "permiso_novedad",
         clave: `permiso_novedad:tramite:${tarea.tramite_id}:encomienda-certificado:${tarea.id}`,
         titulo: `Certificado del CPAU recibido — ${obra}`,
-        descripcion: `${llego.nombre} · R.Nro ${registro}. Con esto el trámite queda listo para presentar en TAD (de 19 a 7).${llego.mail.en_spam ? " El mail había caído en Spam de permisos-andamio@: marcarlo como «No es spam»." : ""}`,
+        descripcion: `${llego.nombre} · ${retp}R.Nro ${registro} · ${inmueble}. Con esto el trámite queda listo para presentar en TAD (de 19 a 7).${llego.mail.en_spam ? " El mail había caído en Spam de permisos-andamio@: marcarlo como «No es spam»." : ""}`,
       });
       log(`CPAU: certificado de ${registro} cargado`);
     }
@@ -529,7 +619,9 @@ async function continuarCierre({ db, tarea, log, p, ahora, obra, doc, evento, av
       return;
     }
     await db.from("pvp_tareas").update({ estado: "error", error: msg, terminada_at: ahora(), resultado: { ...resultado, cierre } }).eq("id", tarea.id);
-    await doc({ estado: "observado", observacion: `El cierre de la encomienda se frenó en «${cierre.etapa}»: ${msg}` });
+    // Un certificado que ya está bien (subido a mano mientras el robot esperaba) no se baja a
+    // observado: el trámite sigue listo para presentar; el freno queda en la tarea y en el aviso.
+    await doc({ estado: "observado", observacion: `El cierre de la encomienda se frenó en «${cierre.etapa}»: ${msg}` }).neq("estado", "ok");
     await evento(`El cierre de la encomienda del CPAU se frenó en «${cierre.etapa}»: ${msg}`, { tarea_id: tarea.id, etapa: cierre.etapa });
     await aviso({
       tipo: "permiso_robot",

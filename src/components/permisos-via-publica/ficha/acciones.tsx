@@ -358,7 +358,9 @@ function DialogoReanudar({ ficha, onCerrar }: { ficha: FichaPermiso; onCerrar: (
       onOpenChange={(o) => !o && onCerrar()}
       peligroso
       titulo="¿Reanudar el cierre de la encomienda?"
-      texto={`El robot sigue desde «${etapa ?? "donde quedó"}». No repite un pago ni un envío que ya intentó: si el error habla de eso, mirá el CPAU antes.`}
+      texto={etapa === "cargada"
+        ? "El robot vuelve a buscar el certificado del CPAU en el mail de permisos-andamio@ desde que cargó la encomienda, y lo espera otros 5 días. No paga ni envía nada de nuevo."
+        : `El robot sigue desde «${etapa ?? "donde quedó"}». No repite un pago ni un envío que ya intentó: si el error habla de eso, mirá el CPAU antes.`}
       confirmar={`Reanudar${etapa ? ` desde «${etapa}»` : ""}`}
       cargando={encomienda.isPending}
       onConfirmar={() => encomienda.mutate("reanudar", { onSuccess: () => { toast.success("Reanudado: el robot sigue en unos segundos"); onCerrar(); }, onError: (e) => err(e, "No se pudo") })}

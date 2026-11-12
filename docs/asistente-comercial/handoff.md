@@ -62,6 +62,12 @@ la sesión nueva"; si es sobre el cotizador rápido, por § "Al 07/11".** El det
 - **Las secciones completas se achican a un renglón en verde**, con un resumen, por ejemplo «✓ Cliente · Milenia Fitz Roy S.A · CUIT 33-…». Se abren tocándolo y se cierran con «Achicar». Si el foco entra en una sección, queda abierta aunque se complete, para no cerrarse mientras se escribe. Una sección sin `resumen` no se achica nunca.
 - **JS pidió primero que las secciones aparecieran de a una.** Se le propuso achicarlas en vez de esconderlas, y lo aceptó: con «Pegá y completo» la IA llena varias a la vez, y el vendedor a veces carga fuera de orden.
 
+**12/11: «Para seguir» no mostraba los presupuestos hechos sólo en el cotizador** (JS los rehízo 7 veces creyendo que se habían borrado).
+- **Causa:** `listarConversaciones` traía 40 ordenadas por `ultimo_mensaje_at` (NULLS LAST). Un presupuesto armado sin el chat no tiene mensajes, así que quedaba afuera.
+- **Arreglo** (`src/lib/asistente/datos.ts`): trae dos tandas, las que tienen mensajes y las que no, y las ordena juntas por `actividad`, que es lo más nuevo entre el último mensaje y el `updated_at` del borrador. El «hace X» de «Para seguir» usa `actividad`.
+- **Limpieza:** se archivaron 6 duplicados de Milenia Fitz Roy (Fitz Roy 2109) y quedó el de las 8 líneas (`ac1839ae`).
+- **Ojo:** el push a main despliega solo (integración de Vercel con Git).
+
 **12/11: el alcance del desglosado, con «Mejorar con IA»** (pedido de JS).
 - **El campo** «Trabajo» pasó a ser «Alcance: qué le vamos a brindar y para qué», en un textarea. Se guarda en el mismo `DatosCotizador.trabajo`, sin migración.
 - **En la propuesta:** si es un párrafo (`esAlcanceRedactado`), va tal cual a la Sección 1 y la plantilla le suma «En **dir**, por un período de **N días**». La referencia sale de la negrita (`referenciaDelAlcance`). Una frase corta (los presupuestos de antes) sigue con la plantilla «Provisión, armado y desarme de **X**…».

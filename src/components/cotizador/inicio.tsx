@@ -163,7 +163,7 @@ export function Inicio() {
               <li key={c.id}>
                 <button type="button" onClick={() => abrir(c.id)} className="flex min-h-12 w-full flex-col justify-center px-4 py-2 text-left hover:bg-muted/60">
                   <span className="truncate text-[15px]">{[c.obra, c.cliente].filter(Boolean).join(" · ")}</span>
-                  <span className="truncate text-[13px] text-muted-foreground">{c.ultimo_mensaje_at || c.created_at ? `hace ${formatDistanceToNowStrict(parseISO(c.ultimo_mensaje_at ?? c.created_at), { locale: es })}` : ""}</span>
+                  <span className="truncate text-[13px] text-muted-foreground">{c.actividad ? `hace ${formatDistanceToNowStrict(parseISO(c.actividad), { locale: es })}` : ""}</span>
                 </button>
               </li>
             ))}

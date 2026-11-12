@@ -99,6 +99,12 @@ export type ConversacionListada = {
   archivada: boolean;
   /** Nombre del dueño si no es de quien mira (un admin buscando en las de todos). */
   dueno: string | null;
+  /**
+   * La última actividad: el último mensaje del chat o el último cambio del borrador, lo que sea
+   * más nuevo. Un presupuesto hecho sólo en el cotizador no tiene mensajes: sin esto quedaba
+   * fuera de la lista (JS, 12/11: «no me aparece para seguirlo»).
+   */
+  actividad: string;
   /** Sólo en la búsqueda: el pedacito del mensaje donde aparece lo buscado. */
   fragmento?: Tramo[] | null;
 };
@@ -112,11 +118,11 @@ async function completarListado(db: Db, filas: FilaListada[], usuarioId: string)
   const ajenos = [...new Set(filas.map((c) => c.usuario_id).filter((u) => u !== usuarioId))];
   const [borradores, perfiles] = await Promise.all([
     ids.length
-      ? db.from("cotizacion_borradores").select("id, odoo_venta_nombre, estado, cliente:datos->cliente->>razonSocial, obra:datos->obra->>direccion").in("id", ids)
+      ? db.from("cotizacion_borradores").select("id, odoo_venta_nombre, estado, updated_at, cliente:datos->cliente->>razonSocial, obra:datos->obra->>direccion").in("id", ids)
       : Promise.resolve({ data: [] }),
     ajenos.length ? db.from("user_profiles").select("id, nombre, apellido").in("id", ajenos) : Promise.resolve({ data: [] }),
   ]);
-  type B = { id: string; odoo_venta_nombre: string | null; estado: string; cliente: string | null; obra: string | null };
+  type B = { id: string; odoo_venta_nombre: string | null; estado: string; updated_at: string | null; cliente: string | null; obra: string | null };
   const porId = new Map(((borradores.data ?? []) as B[]).map((b) => [b.id, b]));
   const nombres = new Map(((perfiles.data ?? []) as { id: string; nombre: string | null; apellido: string | null }[])
     .map((p) => [p.id, [p.nombre, p.apellido].filter(Boolean).join(" ") || "otra persona"]));
@@ -134,20 +140,25 @@ async function completarListado(db: Db, filas: FilaListada[], usuarioId: string)
       obra: b?.obra?.trim() ? prolijo(b.obra) : null,
       archivada: c.estado === "archivada",
       dueno: c.usuario_id === usuarioId ? null : nombres.get(c.usuario_id) ?? "otra persona",
+      actividad: [c.ultimo_mensaje_at, b?.updated_at, c.created_at].filter((x): x is string => !!x).reduce((a, x) => (Date.parse(x) > Date.parse(a) ? x : a)),
     };
   });
 }
 
 export async function listarConversaciones(db: Db, usuarioId: string, limite = 40): Promise<ConversacionListada[]> {
-  const { data, error } = await db
-    .from("asistente_conversaciones")
-    .select(COLUMNAS_LISTA)
-    .eq("usuario_id", usuarioId)
-    .eq("estado", "activa")
-    .order("ultimo_mensaje_at", { ascending: false, nullsFirst: false })
-    .limit(limite);
-  if (error) falla("No se pudieron leer las conversaciones", error);
-  return completarListado(db, (data ?? []) as FilaListada[], usuarioId);
+  // Dos tandas: las del chat por su último mensaje, y las que no tienen mensajes (hechas en el
+  // cotizador rápido) por su creación. Antes era una sola, ordenada por el último mensaje: las del
+  // cotizador quedaban al final y no entraban en las 40. Se ordenan juntas por la actividad.
+  const base = () => db.from("asistente_conversaciones").select(COLUMNAS_LISTA).eq("usuario_id", usuarioId).eq("estado", "activa");
+  const [conMensajes, sinMensajes] = await Promise.all([
+    base().not("ultimo_mensaje_at", "is", null).order("ultimo_mensaje_at", { ascending: false }).limit(limite),
+    base().is("ultimo_mensaje_at", null).order("created_at", { ascending: false }).limit(limite),
+  ]);
+  if (conMensajes.error) falla("No se pudieron leer las conversaciones", conMensajes.error);
+  if (sinMensajes.error) falla("No se pudieron leer las conversaciones", sinMensajes.error);
+  const filas = [...(conMensajes.data ?? []), ...(sinMensajes.data ?? [])] as FilaListada[];
+  const lista = await completarListado(db, filas, usuarioId);
+  return lista.sort((a, b) => Date.parse(b.actividad) - Date.parse(a.actividad)).slice(0, limite);
 }
 
 /**

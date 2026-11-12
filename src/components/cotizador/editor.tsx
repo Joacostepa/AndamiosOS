@@ -601,7 +601,9 @@ export function Editor({ id }: { id: string }) {
       </Sheet>
 
       <Dialog open={!!accion || !!listo} onOpenChange={(o) => { if (!o && !confirmando) { if (accion) void decidir("rechazar"); setListo(null); } }}>
-        <DialogContent className="sm:max-w-lg">
+        {/* grid-cols-[minmax(0,1fr)]: sin esto, la columna del diálogo crece con el nombre largo del PDF
+            (el truncate no corta dentro de una grilla) y la tarjeta y los botones se salían del cuadro. */}
+        <DialogContent className="grid-cols-[minmax(0,1fr)] sm:max-w-xl">
           {listo ? (
             <>
               <DialogHeader>

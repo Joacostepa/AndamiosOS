@@ -57,6 +57,11 @@ la sesión nueva"; si es sobre el cotizador rápido, por § "Al 07/11".** El det
   - el aviso se ve en ámbar mientras quede algo por confirmar.
   - El ✓ que ya estaba en los metros y la altura sigue igual.
 
+**12/11: lo que falta en rojo y las secciones completas achicadas** (pedido de JS: «que lo que falta se vea en rojo» y «que no se vea todo de una»).
+- **Lo que falta, en rojo desde el principio** (antes sólo al intentar guardar): `Seccion` (`campos.tsx`) lee de `FaltasContext` lo que le falta. Lo arma el editor a partir de la lista «Faltan para guardar», y el render cuenta en «Jornadas y render». La sección va con el borde y el título en rojo y la lista de lo que le falta debajo del título. El campo puntual no se marca: los faltantes del motor son por sección.
+- **Las secciones completas se achican a un renglón en verde**, con un resumen, por ejemplo «✓ Cliente · Milenia Fitz Roy S.A · CUIT 33-…». Se abren tocándolo y se cierran con «Achicar». Si el foco entra en una sección, queda abierta aunque se complete, para no cerrarse mientras se escribe. Una sección sin `resumen` no se achica nunca.
+- **JS pidió primero que las secciones aparecieran de a una.** Se le propuso achicarlas en vez de esconderlas, y lo aceptó: con «Pegá y completo» la IA llena varias a la vez, y el vendedor a veces carga fuera de orden.
+
 **Lo primero en la sesión nueva:**
 1. **Preguntarle a JS cómo le fue con el cotizador en uso real.** Si guardó algo en Odoo desde ahí, revisar la orden: es la primera vez que se guarda sin el chat.
 2. **El costo de `interpretar` no se registra en `asistente_mensajes`:** no entra en la pestaña Uso ni en el tope diario. Sumarlo.

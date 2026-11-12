@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
-import { Check } from "lucide-react";
+import { createContext, useContext, useState, type ReactNode } from "react";
+import { Check, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Estado3 } from "@/lib/cotizador-rapido/formulario";
 
@@ -21,13 +21,61 @@ export function leerNumero(s: string): number | null {
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
-export function Seccion({ id, titulo, extra, children, alerta }: { id: string; titulo: string; extra?: ReactNode; children: ReactNode; alerta?: boolean }) {
+/**
+ * Lo que le falta a cada sección (id → textos), desde la lista «Faltan para guardar» del editor.
+ * Las secciones lo leen solas: no hace falta pasarlo por cada una.
+ */
+export const FaltasContext = createContext<ReadonlyMap<string, string[]>>(new Map());
+
+/**
+ * Una sección del cotizador (JS, 12/11: «que lo que falta se vea en rojo» y «que no se vea todo
+ * de una»):
+ *   · si le falta algo, va abierta, con el borde y el título en rojo y la lista de lo que falta;
+ *   · si está completa y tiene `resumen`, se achica a un renglón en verde con ese resumen; se abre
+ *     tocándolo. Sin `resumen` no se achica nunca;
+ *   · si el vendedor la está usando (el foco entra), queda abierta aunque se complete, para no
+ *     cerrársele mientras escribe. Se vuelve a achicar con «Achicar».
+ */
+export function Seccion({ id, titulo, extra, children, alerta, resumen }: { id: string; titulo: string; extra?: ReactNode; children: ReactNode; alerta?: boolean; resumen?: ReactNode }) {
+  const faltas = useContext(FaltasContext).get(id) ?? [];
+  const rojo = faltas.length > 0 || !!alerta;
+  const completa = !rojo && resumen !== undefined && resumen !== null && resumen !== "";
+  // null: decide el estado (abierta si falta algo); true/false: lo eligió el vendedor.
+  const [abierta, setAbierta] = useState<boolean | null>(null);
+  const abiertaAhora = rojo || (abierta ?? !completa);
+
+  if (!abiertaAhora) {
+    return (
+      <section id={id} className="scroll-mt-4 overflow-hidden rounded-xl border border-emerald-500/40 bg-card">
+        <button type="button" onClick={() => setAbierta(true)} aria-expanded={false}
+          className="flex min-h-12 w-full items-center gap-2.5 px-4 py-2.5 text-left hover:bg-muted/40">
+          <Check className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+          <span className="shrink-0 text-[14px] font-semibold">{titulo}</span>
+          <span className="min-w-0 flex-1 truncate text-[14px] text-muted-foreground">{resumen}</span>
+          <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
+        </button>
+      </section>
+    );
+  }
   return (
-    <section id={id} className={cn("scroll-mt-4 overflow-hidden rounded-xl border bg-card", alerta ? "border-amber-500/60" : "border-border")}>
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/40 px-4 py-2.5">
-        <h2 className="text-[14px] font-semibold">{titulo}</h2>
-        {extra}
+    <section id={id} onFocusCapture={() => { if (abierta === null) setAbierta(true); }}
+      className={cn("scroll-mt-4 overflow-hidden rounded-xl border bg-card", rojo ? "border-red-500/70" : "border-border")}>
+      <div className={cn("flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2.5", rojo ? "border-red-500/30 bg-red-500/5" : "border-border bg-muted/40")}>
+        <h2 className={cn("text-[14px] font-semibold", rojo && "text-red-600 dark:text-red-400")}>{titulo}</h2>
+        <div className="flex flex-wrap items-center gap-2">
+          {extra}
+          {completa && (
+            <button type="button" onClick={() => setAbierta(false)} className="min-h-9 rounded-md px-2 text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground">
+              Achicar
+            </button>
+          )}
+        </div>
       </div>
+      {faltas.length > 0 && (
+        <ul className="flex flex-col gap-0.5 border-b border-red-500/20 bg-red-500/5 px-4 py-2 text-[13px] font-medium text-red-600 dark:text-red-400">
+          {faltas.map((t, i) => <li key={i}>{t}</li>)}
+        </ul>
+      )}
       <div className="flex flex-col gap-4 p-4">{children}</div>
     </section>
   );

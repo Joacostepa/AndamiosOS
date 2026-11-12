@@ -23,7 +23,7 @@ import { aplicarFormulario, formularioDesdeBorrador, seccionDeFaltante, type For
 import { aplicarPropuesta, ETIQUETAS, type Cambio } from "@/lib/cotizador-rapido/propuesta";
 import type { PropuestaIA } from "@/lib/cotizador-rapido/interpretar";
 import { cn } from "@/lib/utils";
-import { pesos } from "./campos";
+import { FaltasContext, pesos } from "./campos";
 import {
   loteVigente, SeccionCliente, SeccionCondiciones, SeccionJornadas, SeccionObra, SeccionTextos, SeccionTipo, setTarifasPlantillas, type EstadoCatastro,
 } from "./secciones";
@@ -179,6 +179,16 @@ export function Editor({ id }: { id: string }) {
     return out;
   }, [vista, form?.ia]);
   const seccionesConFalta = new Set(faltantes.map((x) => x.seccion));
+  // Lo que falta, por sección, para pintarla en rojo (Seccion lo lee de FaltasContext). El render
+  // está en la sección de las jornadas.
+  const faltasPorSeccion = useMemo(() => {
+    const m = new Map<string, string[]>();
+    for (const x of faltantes) {
+      const id = x.seccion === "s-render" ? "s-jornadas" : x.seccion;
+      m.set(id, [...(m.get(id) ?? []), x.texto]);
+    }
+    return m;
+  }, [faltantes]);
 
   // ── Catastro y conflicto de canal, al salir de la dirección ────────────────────────────
   const [catastro, setCatastro] = useState<EstadoCatastro>({ estado: "nada" });
@@ -549,6 +559,7 @@ export function Editor({ id }: { id: string }) {
             </div>
           )}
 
+          <FaltasContext.Provider value={faltasPorSeccion}>
           <SeccionCliente f={form} cambiar={cambiar} buscar={buscarClientes} alerta={intento && seccionesConFalta.has("s-cliente")} />
           <SeccionObra f={form} cambiar={cambiar} borrador={vista.b} catastro={catastro} alerta={intento && seccionesConFalta.has("s-obra")}
             onDireccion={() => void verificarDireccion(true)} onVecina={elegirVecina} onFrente={declararFrente} />
@@ -558,6 +569,7 @@ export function Editor({ id }: { id: string }) {
             onDespues={async () => { await alDia(); toast.success("Quedó en «Para seguir»."); router.push("/comercial/asistente/cotizar"); }} />
           <SeccionCondiciones f={form} cambiar={cambiar} tarifas={tarifas} alerta={intento && seccionesConFalta.has("s-condiciones")} />
           <SeccionTextos f={form} cambiar={cambiar} borrador={vista.b} alerta={intento && seccionesConFalta.has("s-textos")} />
+          </FaltasContext.Provider>
         </div>
 
         <aside className="hidden xl:sticky xl:top-4 xl:block">{resumen}</aside>

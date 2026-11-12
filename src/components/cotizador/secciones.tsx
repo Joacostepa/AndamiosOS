@@ -31,6 +31,10 @@ const sinIa = (f: Formulario, k: string): Formulario => {
   return { ...f, ia };
 };
 
+/** El renglón de una sección completa (Seccion → resumen): los datos que hay, separados por «·». */
+const renglon = (...partes: (string | null | undefined | false)[]) => partes.filter((x): x is string => !!x && !!x.trim()).join(" · ") || undefined;
+const nro = (n: number) => n.toLocaleString("es-AR", { maximumFractionDigits: 2 });
+
 // ── Cliente ─────────────────────────────────────────────────────────────────────────────
 
 export function SeccionCliente({ f, cambiar, buscar, alerta }: { f: Formulario; cambiar: Cambiar; buscar: (t: string) => Promise<ClienteResumen[]>; alerta: boolean }) {
@@ -53,7 +57,7 @@ export function SeccionCliente({ f, cambiar, buscar, alerta }: { f: Formulario; 
 
   if (c.partnerId) {
     return (
-      <Seccion id="s-cliente" titulo="Cliente" alerta={alerta} extra={<span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">Ya es cliente en Odoo</span>}>
+      <Seccion id="s-cliente" titulo="Cliente" alerta={alerta} resumen={renglon(c.razonSocial, c.cuit && `CUIT ${c.cuit}`, "ya es cliente")} extra={<span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">Ya es cliente en Odoo</span>}>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="min-w-0">
             <p className="text-[13px] text-muted-foreground">Cliente</p>
@@ -74,7 +78,7 @@ export function SeccionCliente({ f, cambiar, buscar, alerta }: { f: Formulario; 
   }
 
   return (
-    <Seccion id="s-cliente" titulo="Cliente" alerta={alerta} extra={c.razonSocial ? <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">Nuevo: se da de alta al guardar</span> : undefined}>
+    <Seccion id="s-cliente" titulo="Cliente" alerta={alerta} resumen={c.razonSocial.trim() ? renglon(c.razonSocial, c.cuit && `CUIT ${c.cuit}`, c.contacto !== c.razonSocial && c.contacto) : undefined} extra={c.razonSocial ? <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">Nuevo: se da de alta al guardar</span> : undefined}>
       <div className="flex flex-col gap-1.5">
         <label htmlFor="cli-buscar" className="text-[13px] font-medium text-muted-foreground">Buscar en Odoo</label>
         <div className="relative">
@@ -169,7 +173,7 @@ export function SeccionObra({ f, cambiar, borrador, catastro, onDireccion, onVec
   });
 
   return (
-    <Seccion id="s-obra" titulo="Obra" alerta={alerta}
+    <Seccion id="s-obra" titulo="Obra" alerta={alerta} resumen={f.obra.direccion.trim() ? renglon(f.obra.direccion, f.obra.enCaba === true ? "CABA" : f.obra.enCaba === false ? "Provincia" : null, f.obra.esquina && `esquina: ${f.obra.esquina}`) : undefined}
       extra={<Chips opciones={[{ v: true, t: "CABA" }, { v: false, t: "Provincia" }]} valor={enCaba} onCambiar={(v) => cambiar((x) => ({ ...x, obra: { ...x.obra, enCaba: v } }))} />}>
       <Campo id="obra-dir" etiqueta="Dirección de la obra (calle y altura)" marca={f.ia.direccion}>
         <Texto id="obra-dir" valor={f.obra.direccion} placeholder="Florida 375" onCambiar={(v) => cambiar((x) => sinIa({ ...x, obra: { ...x.obra, direccion: v } }, "direccion"))} onSalir={onDireccion} />
@@ -262,10 +266,21 @@ function FrenteDeclarado({ valor, setValor, origen, setOrigen, onUsar }: { valor
 
 const TIPOS: { v: Formulario["tipo"]; t: string }[] = [{ v: "bandeja", t: "Bandeja" }, { v: "fachada", t: "Fachada" }, { v: "desglosado", t: "Desglosado" }];
 
+/** El renglón de la sección del tipo cuando está completa. */
+function resumenTipo(f: Formulario): string | undefined {
+  if (f.tipo === "bandeja") return f.bandeja.metros ? renglon(`${nro(f.bandeja.metros)} m.l.`, `${nro(f.bandeja.altura)} m de alto`) : undefined;
+  if (f.tipo === "fachada") {
+    const frente = f.fachada.frentes.reduce((a, b) => a + b, 0);
+    return frente && f.fachada.altura ? renglon(`${nro(frente)} m de frente`, `${nro(f.fachada.altura)} m de alto`) : undefined;
+  }
+  const n = f.desglose.filas.length;
+  return n ? `${n} ${n === 1 ? "renglón" : "renglones"}` : undefined;
+}
+
 export function SeccionTipo({ f, cambiar, tarifas, borrador, alerta }: { f: Formulario; cambiar: Cambiar; tarifas: Tarifas; borrador: BorradorVista | null; alerta: boolean }) {
   const titulo = { bandeja: "Bandeja de protección · por m.l.", fachada: "Fachada · por m²", desglosado: "Desglosado · renglones con tus montos" }[f.tipo];
   return (
-    <Seccion id="s-tipo" titulo={titulo} alerta={alerta} extra={<Chips opciones={TIPOS} valor={f.tipo} onCambiar={(v) => cambiar((x) => ({ ...x, tipo: v }))} />}>
+    <Seccion id="s-tipo" titulo={titulo} alerta={alerta} resumen={resumenTipo(f)} extra={<Chips opciones={TIPOS} valor={f.tipo} onCambiar={(v) => cambiar((x) => ({ ...x, tipo: v }))} />}>
       {f.tipo === "bandeja" ? <Bandeja f={f} cambiar={cambiar} tarifas={tarifas} borrador={borrador} />
         : f.tipo === "fachada" ? <Fachada f={f} cambiar={cambiar} tarifas={tarifas} />
           : <Desglose f={f} cambiar={cambiar} borrador={borrador} />}
@@ -520,7 +535,8 @@ export function SeccionJornadas({ f, cambiar, renders, alertaJornadas, alertaRen
   const lista = renders.filter((r) => TIPOS_RENDER_POR[f.tipo].includes(String(r.tipo))).sort((a, b) => Number(b.por_defecto) - Number(a.por_defecto)).slice(0, 6);
   const archivo = useRef<HTMLInputElement>(null);
   return (
-    <Seccion id="s-jornadas" titulo="Jornadas y render" alerta={alertaJornadas || alertaRender} extra={<span className="text-[13px] text-muted-foreground">las jornadas las confirma el técnico</span>}>
+    <Seccion id="s-jornadas" titulo="Jornadas y render" alerta={alertaJornadas || alertaRender}
+      resumen={j.armado && j.desarme ? renglon(`${nro(j.armado)} de armado + ${nro(j.desarme)} de desarme`, { biblioteca: "render de la biblioteca", propio: "render propio", ninguno: "sin render" }[f.render.eleccion ?? "ninguno"]) : undefined} extra={<span className="text-[13px] text-muted-foreground">las jornadas las confirma el técnico</span>}>
       <div className="flex flex-wrap items-end gap-4">
         <button type="button" onClick={() => cambiar((x) => ({ ...x, jornadas: { armado: 1, desarme: 1 } }))}
           className={cn("min-h-11 min-w-24 rounded-lg px-4 text-[15px] font-semibold", j.armado === 1 && j.desarme === 1 ? "bg-hd-boton text-white" : "border border-border hover:bg-muted")}>1 + 1</button>
@@ -577,6 +593,7 @@ export function SeccionCondiciones({ f, cambiar, tarifas, alerta }: { f: Formula
   const otraForma = !!f.formaPago && !formas.some((x) => x.v === f.formaPago);
   return (
     <Seccion id="s-condiciones" titulo={f.tipo === "desglosado" ? "Condiciones" : "Opcionales y condiciones"} alerta={alerta}
+      resumen={renglon(`${f.plazoDias} días`, f.formaPago === FORMAS_PAGO["5050"] ? "50 % anticipo · 50 % fin de montaje" : f.formaPago === FORMAS_PAGO["100"] ? "100 % anticipado" : f.formaPago?.trim() ? "otra forma de pago" : null)}
       extra={<span className="text-[13px] text-muted-foreground">a Odoo va sólo la base; lo opcional queda en el PDF</span>}>
       {f.tipo !== "desglosado" && (
         <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
@@ -614,7 +631,7 @@ export function SeccionTextos({ f, cambiar, borrador, alerta }: { f: Formulario;
   const aMano = f.textos.aMano;
   const tomarDelBorrador = () => cambiar((x) => ({ ...x, textos: { aMano: true, referencia: d?.referencia ?? "", seccion1: d?.seccion1 ?? "", seccion2: d?.seccion2 ?? [] } }));
   return (
-    <Seccion id="s-textos" titulo="Textos de la propuesta" alerta={alerta}
+    <Seccion id="s-textos" titulo="Textos de la propuesta" alerta={alerta} resumen={aMano ? "escritos a mano" : "automáticos"}
       extra={<button type="button" className="min-h-9 text-[14px] text-primary underline-offset-2 hover:underline" onClick={() => setAbierto(!abierto)}>{abierto ? "Cerrar" : aMano ? "Ver (a mano)" : "Ver (automáticos)"}</button>}>
       {!abierto ? (
         <p className="line-clamp-2 text-[14px] text-muted-foreground">{(aMano ? f.textos.seccion1 : d?.seccion1)?.replace(/\*\*/g, "") || "Salen solos con los datos de arriba."}</p>

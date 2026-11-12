@@ -193,12 +193,24 @@ export function Editor({ id }: { id: string }) {
   // ── Catastro y conflicto de canal, al salir de la dirección ────────────────────────────
   const [catastro, setCatastro] = useState<EstadoCatastro>({ estado: "nada" });
   const ultimaDir = useRef<string | null>(null);
+  // Mientras dura todo (guardar lo pendiente, el catastro y el conflicto de canal): la pantalla
+  // lo muestra desde el primer toque (JS, 12/11: «el botón queda como si nada»).
+  const [verificando, setVerificando] = useState(false);
   const verificarDireccion = useCallback(async (forzar = false) => {
     const f = formRef.current;
     const dir = f?.obra.direccion.trim();
     if (!f || !dir) return;
     if (!forzar && ultimaDir.current === dir) return;
     ultimaDir.current = dir;
+    setVerificando(true);
+    try {
+      await verificarAhora(f, dir);
+    } finally {
+      setVerificando(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, servidor, alDia, tomarBorrador, cambiar]);
+  const verificarAhora = async (f: Formulario, dir: string) => {
     await alDia();
     if (f.obra.enCaba !== false && !loteVigente(servidor, dir)) {
       setCatastro({ estado: "cargando" });
@@ -225,7 +237,7 @@ export function Editor({ id }: { id: string }) {
     } catch {
       // Queda el faltante «revisar si otro vendedor…»: se reintenta al guardar.
     }
-  }, [id, servidor, alDia, tomarBorrador, cambiar]);
+  };
 
   const elegirVecina = async (smp: string) => {
     setCatastro({ estado: "cargando" });
@@ -561,7 +573,7 @@ export function Editor({ id }: { id: string }) {
 
           <FaltasContext.Provider value={faltasPorSeccion}>
           <SeccionCliente f={form} cambiar={cambiar} buscar={buscarClientes} alerta={intento && seccionesConFalta.has("s-cliente")} />
-          <SeccionObra f={form} cambiar={cambiar} borrador={vista.b} catastro={catastro} alerta={intento && seccionesConFalta.has("s-obra")}
+          <SeccionObra f={form} cambiar={cambiar} borrador={vista.b} catastro={catastro} verificando={verificando} alerta={intento && seccionesConFalta.has("s-obra")}
             onDireccion={() => void verificarDireccion(true)} onVecina={elegirVecina} onFrente={declararFrente} />
           <SeccionTipo f={form} cambiar={cambiar} tarifas={tarifas} borrador={vista.b} alerta={intento && seccionesConFalta.has("s-tipo")}
             onMejorarAlcance={async (texto) => { await alDia(); return (await mejorarAlcance(id, texto)).texto; }} />

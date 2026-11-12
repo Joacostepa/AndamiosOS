@@ -150,8 +150,10 @@ export function loteVigente(b: BorradorVista | null, direccion: string): Lote | 
   return lote && lote.direccionConsultada.trim() === direccion.trim() ? lote : null;
 }
 
-export function SeccionObra({ f, cambiar, borrador, catastro, onDireccion, onVecina, onFrente, alerta }: {
+export function SeccionObra({ f, cambiar, borrador, catastro, verificando, onDireccion, onVecina, onFrente, alerta }: {
   f: Formulario; cambiar: Cambiar; borrador: BorradorVista | null; catastro: EstadoCatastro; alerta: boolean;
+  /** La verificación en curso (catastro y conflicto de canal): se muestra desde el primer toque. */
+  verificando: boolean;
   onDireccion: () => void; onVecina: (smp: string) => void; onFrente: (metros: number, origen: string) => void;
 }) {
   const lote = loteVigente(borrador, f.obra.direccion);
@@ -182,10 +184,12 @@ export function SeccionObra({ f, cambiar, borrador, catastro, onDireccion, onVec
 
       {!f.obra.direccion.trim() ? (
         <p className="text-[13px] text-muted-foreground">Al salir del campo se verifica el frente en el catastro y si otro vendedor ya cotizó esa dirección.</p>
+      ) : verificando || catastro.estado === "cargando" ? (
+        <p className="flex items-center gap-2 text-[14px] text-muted-foreground" role="status">
+          <Loader2 className="size-4 animate-spin" /> {enCaba ? "Verificando el frente en el catastro y si otro vendedor ya cotizó esta dirección…" : "Verificando si otro vendedor ya cotizó esta dirección…"}
+        </p>
       ) : !enCaba ? (
         <Aviso tono="gris">Fuera de CABA no hay catastro: el frente lo da el cliente. La gestoría del permiso no aplica.</Aviso>
-      ) : catastro.estado === "cargando" ? (
-        <p className="flex items-center gap-2 text-[14px] text-muted-foreground"><Loader2 className="size-4 animate-spin" /> Verificando el frente en el catastro…</p>
       ) : catastro.estado === "vecinas" ? (
         <Aviso tono="ambar">
           <span><b>{catastro.direccion} no es una puerta oficial.</b> ¿Cuál de estas parcelas es la obra?</span>
@@ -201,7 +205,7 @@ export function SeccionObra({ f, cambiar, borrador, catastro, onDireccion, onVec
         <Aviso tono="ambar">
           <span>{catastro.mensaje}</span>
           <div className="flex flex-wrap items-end gap-2">
-            <button type="button" onClick={onDireccion} className="min-h-10 rounded-lg border border-border bg-background px-3 text-[14px] text-foreground hover:bg-muted">Probar de nuevo</button>
+            <button type="button" onClick={onDireccion} disabled={verificando} className="min-h-10 rounded-lg border border-border bg-background px-3 text-[14px] text-foreground hover:bg-muted disabled:opacity-50">Probar de nuevo</button>
             <FrenteDeclarado valor={frenteDeclarado} setValor={setFrenteDeclarado} origen={origen} setOrigen={setOrigen} onUsar={onFrente} />
           </div>
         </Aviso>
@@ -240,7 +244,9 @@ export function SeccionObra({ f, cambiar, borrador, catastro, onDireccion, onVec
       ) : (
         <div className="flex flex-wrap items-center gap-2 text-[13px] text-muted-foreground">
           Falta verificar el frente.
-          <button type="button" onClick={onDireccion} className="min-h-10 rounded-lg border border-border px-3 text-[14px] text-foreground hover:bg-muted">Verificar ahora</button>
+          <button type="button" onClick={onDireccion} disabled={verificando} className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-border px-3 text-[14px] text-foreground hover:bg-muted disabled:opacity-50">
+            {verificando && <Loader2 className="size-4 animate-spin" />} {verificando ? "Verificando…" : "Verificar ahora"}
+          </button>
         </div>
       )}
 

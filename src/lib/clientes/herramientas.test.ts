@@ -1,10 +1,11 @@
-// Las 7 herramientas de Tomás: lista cerrada, esquemas estrictos (ningún id de otro cliente) y
-// resultados sin plata ni datos de otros (crm-propuesta.md §13).
+// Las 11 herramientas de Tomás: lista cerrada, esquemas estrictos (ningún id de otro cliente) y
+// resultados sin plata ni datos de otros (crm-propuesta.md §13). Las 4 del alquiler simple
+// (alquiler-simple-propuesta.md, 12/11) al final.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  NOMBRES_HERRAMIENTAS, definicionesSofia, ejecutarHerramientaSofia, faltantesBandeja, fichaSofiaVacia, leerFicha, type ContextoHerramienta, type FichaSofia,
+  NOMBRES_HERRAMIENTAS, definicionesSofia, ejecutarHerramientaSofia, faltantesBandeja, fichaSofiaVacia, leerFicha, validarRetiro, type ContextoHerramienta, type FichaSofia,
 } from "./herramientas.ts";
 import { crearMundo, lotePrueba } from "./prueba-sofia.ts";
 import { detectarPlata, revisarSalida } from "./filtro-salida.ts";
@@ -22,11 +23,12 @@ const MARCELA: Partial<FichaSofia> = {
   enCaba: true, lote: lotePrueba("Los Aromos 1234"), tipoCliente: "particular",
 };
 
-test("son exactamente las 7 de §13, en orden", () => {
+test("son exactamente las 7 de §13 más las 4 del alquiler simple, en orden", () => {
   assert.deepEqual(NOMBRES_HERRAMIENTAS, [
-    "anotar_ficha", "validar_cuit", "verificar_direccion", "preparar_cotizacion_facil", "preparar_pedido_simple", "pedir_tecnico", "derivar_a_persona",
+    "anotar_ficha", "validar_cuit", "verificar_direccion", "preparar_cotizacion_facil", "cotizar_alquiler_simple", "preparar_pedido_simple", "pedir_tecnico",
+    "cliente_acepta_alquiler", "revisar_documentos", "pedir_retiro", "derivar_a_persona",
   ]);
-  assert.equal(definicionesSofia().length, 7);
+  assert.equal(definicionesSofia().length, 11);
 });
 
 test("ninguna herramienta tiene un campo para identificar a otro cliente", () => {
@@ -47,6 +49,11 @@ test("una clave de más es un error, no se ignora (y la ficha no cambia)", async
     ["preparar_pedido_simple", { sabe_piezas: true, piezas: [{ descripcion: "cuerpo", cantidad: 3 }], precio: 500000 }],
     ["pedir_tecnico", { motivo: "otro", resumen: "x", tecnico: "Jorge" }],
     ["derivar_a_persona", { motivo: "pide_persona", resumen: "x", a: "Sandra" }],
+    ["cotizar_alquiler_simple", { altura_trabajo_m: 5, precio: 500000 }],
+    ["cotizar_alquiler_simple", { piezas: { modulos_por_torre: 2, flete: 140400 } }],
+    ["cliente_acepta_alquiler", { fecha: "2026-10-16", franja: "manana", orden_id: 5 }],
+    ["revisar_documentos", { dni: "30123456" }],
+    ["pedir_retiro", { fecha: "2026-10-19", franja: "manana", telefono: "5491100000000" }],
   ] as [string, unknown][]) {
     const c = contexto();
     const antes = JSON.stringify(c.ficha);
@@ -246,4 +253,328 @@ test("pedir_tecnico: la tarjeta del equipo trae por qué la bandeja no salió f�
   const f = contexto({ trabajo: "fachada" as FichaSofia["trabajo"] });
   await ejecutarHerramientaSofia("pedir_tecnico", { motivo: "trabajo_no_facil", resumen: "Fachada" }, f);
   assert.equal((f.mundo.pendientes.at(-1)!.payload as { porQueNoFacil: unknown }).porQueNoFacil, null);
+});
+
+// ── El alquiler simple (alquiler-simple-propuesta.md, cerrada con JS el 12/11) ─────────
+
+/** El ejemplo de la §5: pintar una pared de patio hasta 5 m en Palermo, piso liso, espacio de sobra. */
+const PALERMO = {
+  lugar: "afuera", altura_trabajo_m: 5, espacio_de_sobra: true, piso: "liso", direccion: "Gorriti 4500", fecha: "2026-10-16", franja: "manana",
+} as const;
+
+const sinNumero = (t: string) => t.replace(/#\d+/g, "#N");
+
+test("cotizar_alquiler_simple: el ejemplo de Palermo queda pendiente en el carril «alquiler», con el contrato de la tarjeta y sin plata para el modelo", async () => {
+  const c = contexto({ nombre: "Marcela Ríos" });
+  const r = await ejecutarHerramientaSofia("cotizar_alquiler_simple", PALERMO, c);
+  const o = JSON.parse(r.contenido);
+  assert.equal(o.estado, "pendiente", r.contenido);
+  assert.match(o.presupuesto, /^#\d+$/);
+  assert.equal(r.efecto?.estado, "espera_ok");
+  assert.match(r.efecto!.motivo, /^presupuesto de alquiler #\d+$/);
+  assert.match(o.que_decir, /unos minutos/);
+  assert.match(o.condiciones, /choferes no pueden entrar/);
+  assert.equal(detectarPlata(r.contenido).bloquea, false, r.contenido);
+  assert.ok(!/500000|500\.000|140400|140\.400|197600/.test(r.contenido));
+
+  const p = c.mundo.pendientes[0];
+  assert.equal(p.tipo, "precio");
+  assert.equal(p.carril, "alquiler");
+  assert.equal(p.montoPropuesto, 500_000, "el total neto va para la tarjeta");
+  assert.match(p.resumen, /^Alquiler simple · 1 torre de 2 módulos 1,30 × 2,50 · Palermo · viernes 16 de octubre, de 8 a 12$/);
+  const alq = p.payload.alquiler as { pedido: { alturaTrabajo: number }; resultado: { precio: { total: number }; facil: boolean }; flete: unknown; entrega: unknown };
+  assert.equal(alq.pedido.alturaTrabajo, 5);
+  assert.equal(alq.resultado.precio.total, 500_000);
+  assert.equal(alq.resultado.facil, true);
+  assert.deepEqual(alq.flete, { id: 400, nombre: "Palermo", precio: 140_400 });
+  assert.deepEqual(alq.entrega, { fecha: "2026-10-16", franja: { tipo: "manana" } });
+  assert.ok("alertas" in p.payload && "asignacion" in p.payload);
+  assert.equal(p.payload.direccion, "Gorriti 4500");
+
+  assert.equal(c.ficha.trabajo, "alquiler_simple");
+  assert.equal(c.ficha.alquiler?.cotizacion?.numero, p.numero);
+  assert.equal(c.ficha.alquiler?.ubicacion?.fleteId, 400);
+  assert.ok(!JSON.stringify(c.ficha).includes("140400"), "el precio del flete no queda en la ficha");
+});
+
+test("cotizar_alquiler_simple: se suma de a poco; pide lo que falta, en el orden de la §3, y al final el nombre", async () => {
+  const c = contexto();
+  const r1 = JSON.parse((await ejecutarHerramientaSofia("cotizar_alquiler_simple", { lugar: "afuera", altura_trabajo_m: 5 }, c)).contenido);
+  assert.equal(r1.estado, "faltan_datos");
+  assert.ok(r1.preguntar.some((x: string) => /espacio libre/.test(x)), JSON.stringify(r1));
+  assert.ok(r1.preguntar.some((x: string) => /piso/.test(x)));
+  assert.ok(r1.preguntar.some((x: string) => /Dónde es/.test(x)));
+  assert.equal(r1.preguntar.at(-1), "¿A nombre de quién va el presupuesto?");
+  assert.equal(c.mundo.pendientes.length, 0);
+
+  await ejecutarHerramientaSofia("cotizar_alquiler_simple", { espacio_de_sobra: true, piso: "liso" }, c);
+  assert.equal(c.ficha.alquiler?.pedido?.alturaTrabajo, 5, "lo anterior no se pierde");
+  const r3 = JSON.parse((await ejecutarHerramientaSofia("cotizar_alquiler_simple", { direccion: "Gorriti 4500", fecha: "2026-10-16", franja: "tarde" }, c)).contenido);
+  assert.deepEqual(r3.preguntar, ["¿A nombre de quién va el presupuesto?"]);
+  await ejecutarHerramientaSofia("anotar_ficha", { nombre: "Marcela" }, c);
+  const r4 = JSON.parse((await ejecutarHerramientaSofia("cotizar_alquiler_simple", {}, c)).contenido);
+  assert.equal(r4.estado, "pendiente");
+});
+
+test("cotizar_alquiler_simple: con deuda el modelo recibe exactamente lo mismo; la tarjeta lo sabe", async () => {
+  const correr = async (deuda: boolean | null) => {
+    const c = contexto({ nombre: "Marcela" });
+    c.mundo.deudaVencida = deuda;
+    const r = await ejecutarHerramientaSofia("cotizar_alquiler_simple", PALERMO, c);
+    return { t: sinNumero(r.contenido), c };
+  };
+  const nuevo = await correr(false);
+  const deudor = await correr(true);
+  const sinSaber = await correr(null);
+  assert.equal(deudor.t, nuevo.t);
+  assert.equal(sinSaber.t, nuevo.t);
+  assert.ok(!/deuda/i.test(deudor.t));
+  const res = deudor.c.mundo.pendientes[0].payload.alquiler as { resultado: { facil: boolean; trabajoFacil: boolean } };
+  assert.equal(res.resultado.facil, false, "la tarjeta ve que no sale solo");
+  assert.equal(res.resultado.trabajoFacil, true);
+});
+
+test("cotizar_alquiler_simple: para hoy pasa sola a un vendedor, sin pendiente", async () => {
+  const c = contexto({ nombre: "Hugo" });
+  const r = await ejecutarHerramientaSofia("cotizar_alquiler_simple", { ...PALERMO, fecha: undefined, para_hoy: true }, c);
+  assert.equal(JSON.parse(r.contenido).estado, "derivada");
+  assert.ok(r.efecto?.estado === "derivada" && r.efecto.motivo === "Alquiler simple para el mismo día" && !r.efecto.urgente);
+  assert.equal(c.mundo.pendientes.length, 0);
+  // La fecha de hoy también cuenta como «para hoy».
+  const c2 = contexto({ nombre: "Hugo" });
+  const r2 = await ejecutarHerramientaSofia("cotizar_alquiler_simple", { ...PALERMO, fecha: "2026-10-15" }, c2);
+  assert.equal(r2.efecto?.estado, "derivada");
+});
+
+test("cotizar_alquiler_simple: lo que no entra en las reglas dice qué hacer (técnico, vendedor o persona)", async () => {
+  const montaje = JSON.parse((await ejecutarHerramientaSofia("cotizar_alquiler_simple", { ...PALERMO, montaje: true }, contexto({ nombre: "A" }))).contenido);
+  assert.equal(montaje.estado, "no_es_facil");
+  assert.match(montaje.que_hacer, /pedir_tecnico/);
+
+  const lejos = contexto({ nombre: "A" });
+  lejos.mundo.fleteAlquiler = async () => ({ estado: "ok", enCaba: false, lugar: "Cañuelas", partido: "Cañuelas", normalizada: "X", flete: null });
+  const r = JSON.parse((await ejecutarHerramientaSofia("cotizar_alquiler_simple", PALERMO, lejos)).contenido);
+  assert.equal(r.estado, "no_es_facil");
+  assert.match(r.que_hacer, /preparar_pedido_simple/);
+  assert.match(r.detalle, /lista de fletes/);
+  assert.ok(lejos.ficha.alquiler!.porQueNo.some((x) => /Cañuelas/.test(x)), "la tarjeta sabe por qué");
+  // preparar_pedido_simple aprovecha lo que juntó: 30 días y envío, sin volver a preguntar.
+  const p = JSON.parse((await ejecutarHerramientaSofia("preparar_pedido_simple", { sabe_piezas: false, notas: "pintar pared de patio a 5 m" }, lejos)).contenido);
+  assert.equal(p.estado, "pendiente");
+  const pend = lejos.mundo.pendientes[0];
+  assert.equal(pend.carril, "simple");
+  const a = pend.payload.alquiler as { dias: number; entrega: string; barrio: string; pedido: { alturaTrabajo: number } };
+  assert.equal(a.dias, 30);
+  assert.equal(a.entrega, "envio");
+  assert.equal(a.barrio, "Cañuelas");
+  assert.equal(a.pedido.alturaTrabajo, 5);
+
+  const escalera = JSON.parse((await ejecutarHerramientaSofia("cotizar_alquiler_simple", { ...PALERMO, piezas_fuera_de_catalogo: ["escalera"] }, contexto({ nombre: "A" }))).contenido);
+  assert.match(escalera.que_hacer, /No ofrezcas escaleras/);
+
+  const persona = contexto({ nombre: "A", mensajesCliente: ["Quiero hablar con una persona"] });
+  const rp = JSON.parse((await ejecutarHerramientaSofia("cotizar_alquiler_simple", PALERMO, persona)).contenido);
+  assert.equal(rp.estado, "no_es_facil");
+  assert.match(rp.que_hacer, /derivar_a_persona/);
+
+  const gama = JSON.parse((await ejecutarHerramientaSofia("cotizar_alquiler_simple", PALERMO, contexto({ nombre: "A", segmento: "gama_alta" }))).contenido);
+  assert.match(gama.que_hacer, /gama_alta/);
+});
+
+test("cotizar_alquiler_simple: la dirección ambigua o no encontrada se pregunta; USIG caído no rompe", async () => {
+  const c = contexto({ nombre: "A" });
+  c.mundo.fleteAlquiler = async () => ({ estado: "ambigua", opciones: ["DORREGO 3307, CABA", "DORREGO 3307, Monte Grande"] });
+  const r = JSON.parse((await ejecutarHerramientaSofia("cotizar_alquiler_simple", PALERMO, c)).contenido);
+  assert.equal(r.estado, "faltan_datos");
+  assert.ok(r.preguntar.some((x: string) => /Monte Grande/.test(x)), JSON.stringify(r));
+  c.mundo.fleteAlquiler = async () => { throw new Error("USIG 503"); };
+  const caido = await ejecutarHerramientaSofia("cotizar_alquiler_simple", {}, c);
+  assert.equal(caido.esError, undefined);
+  assert.match(JSON.parse(caido.contenido).preguntar.join(" "), /No pude ubicar/);
+});
+
+test("cotizar_alquiler_simple: la franja de una hora pide la hora; con recargo, el modelo sabe que hay recargo pero no cuánto", async () => {
+  const c = contexto({ nombre: "A" });
+  const sinHora = JSON.parse((await ejecutarHerramientaSofia("cotizar_alquiler_simple", { ...PALERMO, franja: "hora_particular" }, c)).contenido);
+  assert.equal(sinHora.estado, "faltan_datos");
+  assert.match(sinHora.preguntar[0], /a qué hora/);
+  const r = await ejecutarHerramientaSofia("cotizar_alquiler_simple", { ...PALERMO, franja: "hora_particular", hora_desde: "10" }, c);
+  assert.equal(JSON.parse(r.contenido).estado, "pendiente");
+  assert.match(r.contenido, /recargo por los costos operativos/);
+  assert.ok(!/20|%|por ciento/.test(JSON.parse(r.contenido).detalle));
+  assert.equal(detectarPlata(r.contenido).bloquea, false);
+  assert.equal(c.mundo.pendientes[0].montoPropuesto, 600_000, "el 20 % sobre el total del servicio (fila 15)");
+  assert.deepEqual(c.ficha.alquiler?.pedido?.franja, { tipo: "hora", desde: 10 });
+});
+
+test("cotizar_alquiler_simple: el techo bajo propone el peldaño y espera la respuesta", async () => {
+  const c = contexto({ nombre: "A" });
+  const r = JSON.parse((await ejecutarHerramientaSofia("cotizar_alquiler_simple", {
+    lugar: "adentro", trabajo_en_techo: true, altura_techo_m: 3, espacio_de_sobra: true, piso: "liso", direccion: "Gorriti 4500", fecha: "2026-10-16", franja: "manana",
+  }, c)).contenido);
+  assert.equal(r.estado, "confirmar");
+  assert.match(r.detalle, /un solo tablón de 30 cm/);
+  assert.equal(c.mundo.pendientes.length, 0);
+  const ok = JSON.parse((await ejecutarHerramientaSofia("cotizar_alquiler_simple", { acepta_peldano: true }, c)).contenido);
+  assert.equal(ok.estado, "pendiente");
+  const no = contexto({ nombre: "A" });
+  await ejecutarHerramientaSofia("cotizar_alquiler_simple", { lugar: "adentro", trabajo_en_techo: true, altura_techo_m: 3, espacio_de_sobra: true, piso: "liso", direccion: "Gorriti 4500", fecha: "2026-10-16", franja: "manana", acepta_peldano: false }, no);
+  assert.equal(no.mundo.pendientes.length, 0);
+});
+
+test("leerFicha: el alquiler del formato viejo (17/10) se completa sin perder nada", () => {
+  const f = leerFicha({ trabajo: "alquiler_simple", alquiler: { sabePiezas: true, piezas: [{ descripcion: "tablón", cantidad: 4 }], dias: 30, entrega: "envio", barrio: "Caballito", notas: null } }, null);
+  assert.equal(f.alquiler?.barrio, "Caballito");
+  assert.deepEqual(f.alquiler?.piezas, [{ descripcion: "tablón", cantidad: 4 }]);
+  assert.equal(f.alquiler?.pedido, null);
+  assert.equal(f.alquiler?.documentos, null);
+  assert.deepEqual(f.alquiler?.porQueNo, []);
+  assert.equal(f.alquiler?.aceptado, null);
+  // Un pedido guardado a medias se completa con los valores vacíos.
+  const g = leerFicha({ alquiler: { pedido: { alturaTrabajo: 4 } } }, null);
+  assert.equal(g.alquiler?.pedido?.alturaTrabajo, 4);
+  assert.deepEqual(g.alquiler?.pedido?.piezasFueraDeCatalogo, []);
+  assert.equal(g.alquiler?.pedido?.lugar, null);
+});
+
+// ── La aceptación, los documentos y el retiro ──────────────────────────────────────────
+
+const PRESUPUESTO = { numero: 1042, estado: "aprobada", entrega: { fecha: "2026-10-16", franja: { tipo: "manana" as const } }, ordenAlquiler: { id: 777, nombre: "S03100" } };
+
+test("cliente_acepta_alquiler: sólo con el presupuesto ya enviado; primero el precio, después los requisitos", async () => {
+  const sin = JSON.parse((await ejecutarHerramientaSofia("cliente_acepta_alquiler", { fecha: "2026-10-16", franja: "manana" }, contexto())).contenido);
+  assert.equal(sin.estado, "sin_presupuesto");
+
+  const c = contexto();
+  c.mundo.presupuestoAlquiler = { ...PRESUPUESTO, estado: "pendiente" };
+  const espera = JSON.parse((await ejecutarHerramientaSofia("cliente_acepta_alquiler", { fecha: "2026-10-16", franja: "manana" }, c)).contenido);
+  assert.equal(espera.estado, "presupuesto_en_camino");
+  assert.equal(c.ficha.alquiler, null, "no se anota la aceptación ni se piden documentos");
+
+  // Aprobado pero sin mandar (la ventana estaba cerrada): el precio no le llegó, no se aceptan ni se piden documentos.
+  c.mundo.presupuestoAlquiler = { ...PRESUPUESTO, estado: "falta_plantilla" };
+  const sinMandar = JSON.parse((await ejecutarHerramientaSofia("cliente_acepta_alquiler", { fecha: "2026-10-19", franja: "manana" }, c)).contenido);
+  assert.equal(sinMandar.estado, "presupuesto_en_camino");
+  assert.doesNotMatch(sinMandar.que_decir, /pedile los documentos/i);
+  assert.equal(c.ficha.alquiler, null);
+  assert.equal(c.mundo.avisos.length, 1);
+  assert.match(c.mundo.avisos[0].texto, /no le llegó \(faltaba la plantilla\).*mandalo desde la tarjeta/);
+
+  c.mundo.presupuestoAlquiler = { ...PRESUPUESTO, estado: "rechazada" };
+  assert.equal(JSON.parse((await ejecutarHerramientaSofia("cliente_acepta_alquiler", { fecha: "2026-10-16", franja: "manana" }, c)).contenido).estado, "presupuesto_no_salio");
+});
+
+test("cliente_acepta_alquiler: anota el día, avisa al equipo una vez y pide los documentos", async () => {
+  const c = contexto();
+  c.mundo.presupuestoAlquiler = PRESUPUESTO;
+  const r = await ejecutarHerramientaSofia("cliente_acepta_alquiler", { fecha: "2026-10-19", franja: "manana" }, c);
+  const o = JSON.parse(r.contenido);
+  assert.equal(o.estado, "aceptado");
+  assert.equal(o.entrega, "lunes 19 de octubre, de 8 a 12");
+  assert.match(o.que_decir, /DNI de frente y de dorso/);
+  assert.match(o.que_decir, /sin los documentos no se entrega/);
+  assert.match(o.documentos, /falta la foto del DNI de frente/);
+  assert.equal(detectarPlata(r.contenido).bloquea, false);
+  assert.deepEqual(c.ficha.alquiler?.aceptado, { at: "2026-10-15T13:30:00.000Z", presupuesto: 1042, fecha: "2026-10-19", franja: { tipo: "manana" } });
+  assert.ok(c.ficha.alquiler?.documentos);
+  assert.equal(c.mundo.avisos.length, 1);
+  assert.match(c.mundo.avisos[0].texto, /aceptó el alquiler simple #1042 \(S03100\): entrega el lunes 19 de octubre, de 8 a 12\. El presupuesto decía el viernes 16 de octubre, de 8 a 12: cambiala en la orden S03100/);
+  await ejecutarHerramientaSofia("cliente_acepta_alquiler", { fecha: "2026-10-19", franja: "manana" }, c);
+  assert.equal(c.mundo.avisos.length, 1, "la misma aceptación no avisa dos veces");
+});
+
+test("cliente_acepta_alquiler: domingo, feriado o una franja que cambia el precio no se anotan", async () => {
+  const c = contexto();
+  c.mundo.presupuestoAlquiler = PRESUPUESTO;
+  const dom = JSON.parse((await ejecutarHerramientaSofia("cliente_acepta_alquiler", { fecha: "2026-10-18", franja: "manana" }, c)).contenido);
+  assert.equal(dom.estado, "fecha_no_va");
+  assert.match(dom.motivo, /domingo/);
+  assert.equal(dom.proxima, "lunes 19 de octubre, de 8 a 12");
+  c.mundo.feriados = ["2026-10-19"];
+  assert.match(JSON.parse((await ejecutarHerramientaSofia("cliente_acepta_alquiler", { fecha: "2026-10-19", franja: "tarde" }, c)).contenido).motivo, /feriado/);
+  const hora = JSON.parse((await ejecutarHerramientaSofia("cliente_acepta_alquiler", { fecha: "2026-10-20", franja: "hora_particular", hora_desde: "10" }, c)).contenido);
+  assert.equal(hora.estado, "cambia_el_presupuesto");
+  assert.match(hora.que_hacer, /cotizar_alquiler_simple/);
+  assert.equal(c.ficha.alquiler, null);
+});
+
+test("revisar_documentos: sólo después de aceptar; uno solo servicio si no tiene dos", async () => {
+  assert.equal(JSON.parse((await ejecutarHerramientaSofia("revisar_documentos", {}, contexto())).contenido).estado, "no_corresponde");
+  const c = contexto();
+  c.mundo.presupuestoAlquiler = PRESUPUESTO;
+  await ejecutarHerramientaSofia("cliente_acepta_alquiler", { fecha: "2026-10-19", franja: "manana" }, c);
+  const docs = c.ficha.alquiler!.documentos!;
+  const doc = (hiloId: string, tipo: "dni_frente" | "dni_dorso" | "servicio", servicio: string | null = null) => ({
+    hiloId, path: `p/${hiloId}`, mime: "image/jpeg", nombre: "f.jpg", tipo, legible: true, titular: "Marcela Ríos", servicio, direccion: tipo === "servicio" ? "Gorriti 4500" : null, leidoAt: "x", error: null,
+  });
+  docs.recibidos.push(doc("a", "dni_frente"), doc("b", "dni_dorso"), doc("c", "servicio", "luz"));
+  const r1 = JSON.parse((await ejecutarHerramientaSofia("revisar_documentos", {}, c)).contenido);
+  assert.equal(r1.estado, "faltan");
+  assert.match(r1.faltan[0], /otro servicio/);
+  assert.ok(!r1.detalle.includes("Gorriti") && !r1.detalle.includes("Marcela"), "Tomás no ve los datos");
+  const r2 = JSON.parse((await ejecutarHerramientaSofia("revisar_documentos", { solo_tiene_un_servicio: true }, c)).contenido);
+  assert.equal(r2.estado, "completos");
+  assert.equal(docs.unSoloServicio, true);
+});
+
+test("validarRetiro: 24 h hasta el comienzo de la franja, nunca el mismo día, ni domingos ni feriados, sábados de 8 a 12", () => {
+  const ahora = new Date("2026-10-15T13:30:00Z"); // jueves 10:30 en Buenos Aires
+  const hoy = "2026-10-15";
+  assert.equal(validarRetiro(hoy, { tipo: "tarde" }, ahora, hoy, []).motivo, "hoy");
+  const manana = validarRetiro("2026-10-16", { tipo: "manana" }, ahora, hoy, []);
+  assert.equal(manana.motivo, "anticipacion");
+  assert.deepEqual(manana.proxima, { fecha: "2026-10-16", franja: { tipo: "tarde" } });
+  assert.equal(validarRetiro("2026-10-16", { tipo: "tarde" }, ahora, hoy, []).ok, true);
+  const sabado = validarRetiro("2026-10-17", { tipo: "tarde" }, ahora, hoy, []);
+  assert.equal(sabado.motivo, "sabado_tarde");
+  assert.deepEqual(sabado.proxima, { fecha: "2026-10-17", franja: { tipo: "manana" } });
+  assert.equal(validarRetiro("2026-10-18", { tipo: "manana" }, ahora, hoy, []).motivo, "domingo");
+  assert.equal(validarRetiro("2026-10-19", { tipo: "manana" }, ahora, hoy, ["2026-10-19"]).motivo, "feriado");
+  // Una hora particular: las 24 h se miden hasta esa hora.
+  assert.equal(validarRetiro("2026-10-16", { tipo: "hora", desde: 10 }, ahora, hoy, []).motivo, "anticipacion");
+  assert.equal(validarRetiro("2026-10-16", { tipo: "hora", desde: 11 }, ahora, hoy, []).ok, true);
+});
+
+test("pedir_retiro: anota, avisa al equipo y le recuerda las condiciones", async () => {
+  const c = contexto({ direccion: "Gorriti 4500" });
+  const no = JSON.parse((await ejecutarHerramientaSofia("pedir_retiro", { fecha: "2026-10-16", franja: "manana" }, c)).contenido);
+  assert.equal(no.estado, "fecha_no_va");
+  assert.match(no.motivo, /24 h/);
+  assert.equal(no.proxima, "viernes 16 de octubre, de 13 a 16");
+  assert.equal(c.mundo.avisos.length, 0);
+
+  const r = await ejecutarHerramientaSofia("pedir_retiro", { fecha: "2026-10-16", franja: "tarde" }, c);
+  const o = JSON.parse(r.contenido);
+  assert.equal(o.estado, "anotado");
+  assert.match(o.que_decir, /desarmado/);
+  assert.match(o.que_decir, /gente para subirlo/);
+  assert.match(o.que_decir, /sigue corriendo/);
+  assert.equal(detectarPlata(r.contenido).bloquea, false);
+  assert.equal(c.ficha.alquiler?.retiro?.fecha, "2026-10-16");
+  assert.equal(c.mundo.avisos.length, 1);
+  assert.match(c.mundo.avisos[0].texto, /pide el retiro.*viernes 16 de octubre, de 13 a 16.*Gorriti 4500/);
+  assert.equal(r.efecto, undefined, "la charla sigue con Tomás");
+
+  const sinDir = JSON.parse((await ejecutarHerramientaSofia("pedir_retiro", { fecha: "2026-10-19", franja: "manana" }, contexto())).contenido);
+  assert.equal(sinDir.estado, "faltan_datos");
+});
+
+test("ningún resultado del alquiler simple, en ningún caso, trae plata", async () => {
+  const resultados: string[] = [];
+  const correr = async (n: string, i: unknown, c = contexto({ nombre: "A" })) => resultados.push((await ejecutarHerramientaSofia(n, i, c)).contenido);
+  await correr("cotizar_alquiler_simple", PALERMO);
+  await correr("cotizar_alquiler_simple", { ...PALERMO, franja: "hora_particular", hora_desde: "9:30" });
+  await correr("cotizar_alquiler_simple", { ...PALERMO, altura_trabajo_m: 2, torres: 1 });
+  await correr("cotizar_alquiler_simple", { ...PALERMO, altura_trabajo_m: 9 });
+  await correr("cotizar_alquiler_simple", { ...PALERMO, piezas: { modulos_por_torre: 1, con_baranda: false, tablones_por_torre: 2 } });
+  await correr("cotizar_alquiler_simple", { ...PALERMO, ancho_libre_m: 0.5, espacio_de_sobra: false, largo_libre_m: 3 });
+  const c = contexto();
+  c.mundo.presupuestoAlquiler = PRESUPUESTO;
+  await correr("cliente_acepta_alquiler", { fecha: "2026-10-19", franja: "manana" }, c);
+  await correr("revisar_documentos", {}, c);
+  await correr("pedir_retiro", { fecha: "2026-10-20", franja: "manana" }, c);
+  for (const t of resultados) {
+    assert.equal(detectarPlata(t).bloquea, false, t);
+    assert.ok(!/\$|\d{2,3}\.\d{3}/.test(t), t);
+  }
 });

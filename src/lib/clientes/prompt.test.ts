@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { INSTRUCCIONES, contextoDelTurno, resumenFicha, sistemaSofia } from "./prompt.ts";
-import { fichaSofiaVacia } from "./herramientas.ts";
+import { ALQUILER_SIMPLE, INSTRUCCIONES, VERSION_PROMPT, contextoDelTurno, resumenFicha, sistemaSofia } from "./prompt.ts";
+import { fichaSofiaVacia, leerFicha } from "./herramientas.ts";
 import { lotePrueba } from "./prueba-sofia.ts";
 import { configSofiaDesdeFilas } from "./config.ts";
 import { detectarPlata } from "./filtro-salida.ts";
@@ -153,4 +153,58 @@ test("las frases fijas nuevas del prompt pasan el filtro de salida", () => {
     "Ya tengo todo. El presupuesto lo prepara el equipo y te llega por este mismo chat.",
     "Hay un período mínimo de alquiler, así que contame cuántos días lo necesitás de verdad.",
   ]) assert.equal(detectarPlata(frase).bloquea, false, frase);
+});
+
+test("el bloque del alquiler simple: §3, §6 y §7, sin montos ni porcentajes, adentro del bloque fijo", () => {
+  assert.match(VERSION_PROMPT, /alquiler-simple/);
+  assert.ok(INSTRUCCIONES.includes(ALQUILER_SIMPLE), "va en el bloque con caché, igual para todas las charlas");
+  for (const regla of [
+    /Qué trabajo van a hacer y hasta qué altura/,
+    /Cuánto espacio libre hay en el piso/,
+    /Cómo es el piso: liso, o desparejo/,
+    /Dónde es/,
+    /Para cuándo lo necesitan/,
+    /servicio es siempre de 30 días/,
+    /los choferes no pueden entrar a los domicilios/,
+    /de lunes a viernes de 8 a 12 o de 13 a 16, y los sábados de 8 a 12\. Domingos y feriados no/,
+    /con un recargo por los costos operativos; cuánto es lo dice el presupuesto, vos no/,
+    /La baranda va siempre incluida\. Si no la quiere, no se la llevamos, pero el servicio es el mismo/,
+    /Siempre el piso completo de tablones/,
+    /¿Te lo reservo para el lunes a la mañana\?/,
+    /sólo como excepción/,
+    /un solo tablón, de 30 cm/,
+    /Nunca ofrezcas escaleras/,
+    /cliente_acepta_alquiler/,
+    /la foto del DNI de frente y de dorso, y dos servicios a su nombre/,
+    /Sin los documentos no se entrega/,
+    /vale la de los servicios/,
+    /pedir_retiro/,
+    /24 h de anticipación/,
+    /desarmado/,
+    /preparar_pedido_simple queda sólo para eso/,
+  ]) assert.match(INSTRUCCIONES, regla);
+  assert.ok(!/%|\$|\d{2,3}\.\d{3}|por ciento/.test(ALQUILER_SIMPLE), "ni montos ni el porcentaje del recargo");
+});
+
+test("resumenFicha: el alquiler, la aceptación, los documentos y el retiro, sin datos de los documentos", () => {
+  const f = leerFicha({
+    trabajo: "alquiler_simple",
+    alquiler: {
+      pedido: { lugar: "adentro", alturaTrabajo: 3, alturaTecho: 3, piso: "liso", fecha: "2026-10-16", franja: { tipo: "manana" }, aceptaPeldano: true },
+      ubicacion: { direccion: "Gorriti 4500", enCaba: true, lugar: "Palermo", partido: null, normalizada: "GORRITI 4500", fleteId: 400, fleteNombre: "Palermo" },
+      aceptado: { at: "x", presupuesto: 1042, fecha: "2026-10-19", franja: { tipo: "tarde" } },
+      documentos: {
+        pedidosAt: "x", recibidos: [{ hiloId: "a", path: "p", mime: "image/jpeg", nombre: "f", tipo: "servicio", legible: true, titular: "Marcela", servicio: "luz", direccion: "Gorriti 4500", leidoAt: "x", error: null }],
+      },
+      retiro: { avisadoAt: "x", fecha: "2026-11-16", franja: { tipo: "manana" }, direccion: "Gorriti 4500" },
+    },
+  }, null);
+  const l = resumenFicha(f).join("\n");
+  assert.match(l, /Alquiler simple \(lo que juntaste\): adentro, llegar a 3 m, techo de 3 m, piso liso, entrega el viernes 16 de octubre, de 8 a 12, acepta la plataforma en el peldaño/);
+  assert.match(l, /Entrega en: Palermo/);
+  assert.match(l, /Aceptó el alquiler \(presupuesto #1042\): entrega el lunes 19 de octubre, de 13 a 16/);
+  assert.match(l, /Documentos: ya están un servicio a su nombre; falta la foto del DNI de frente/);
+  assert.match(l, /Retiro pedido para el lunes 16 de noviembre, de 8 a 12/);
+  assert.ok(!l.includes("Marcela"), "el titular no llega al modelo");
+  assert.equal(detectarPlata(l).bloquea, false);
 });

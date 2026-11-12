@@ -20,12 +20,16 @@ import { aWhatsapp } from "@/lib/whatsapp/formato";
 import { CLAVES_SOFIA, configSofiaDesdeFilas, type ConfigSofia } from "./config";
 import { asignarPareja, PAREJAS_15_10, type ClienteAsignacion } from "./asignacion";
 import { parametrosFacilDesdeFilas } from "./facil";
-import { leerFicha, type FichaSofia, type ServiciosSofia } from "./herramientas";
+import { parametrosAlquilerDesdeFilas } from "./alquiler-simple";
+import { adjuntarArchivosAOrden, barrioDeDireccion, fleteParaUbicacion, fletesAlquilerSimple, lugarParaFlete } from "@/lib/odoo/alquiler-simple";
+import { clasificadorClaude, type DepsDocumentos } from "./documentos";
+import { entregaDelPresupuesto } from "./aprobacion-alquiler";
+import { leerFicha, type FichaSofia, type PresupuestoAlquiler, type ResultadoFleteAlquiler, type ServiciosSofia } from "./herramientas";
 import { atenderCharla, type CharlaSofia, type DepsSofia, type FilaHistoria, type ItemNuevo, type RepoSofia, type ResultadoTurno } from "./turno";
 import { enBuenosAires } from "./horario";
 import { mandarNotaDeVoz, mandarTexto } from "./envio";
 import { audioSaludo } from "./voz";
-import { anotarEvento } from "./webhook";
+import { anotarEvento, BUCKET } from "./webhook";
 import { nombresDe, ultimoEntrante } from "./bandeja";
 import type { EstadoCharla } from "./vista";
 
@@ -69,7 +73,7 @@ type FilaCharla = {
   ultimo_entrante_at: string | null; ia_leido_hasta: string | null; ia_saludo_at: string | null;
 };
 
-const NOMBRE_PENDIENTE: Record<string, string> = { facil: "cotización", simple: "pedido de alquiler", tecnico: "asignación" };
+const NOMBRE_PENDIENTE: Record<string, string> = { facil: "cotización", simple: "pedido de alquiler", alquiler: "presupuesto de alquiler", tecnico: "asignación" };
 const ESTADO_PENDIENTE: Record<string, string> = {
   pendiente: "pendiente de revisión del equipo",
   // Paso 6: al aprobar, el modelo se entera sin montos.
@@ -261,6 +265,58 @@ async function ultimoDelTurno(db: SupabaseClient): Promise<string | null> {
   return a?.tecnico ?? null;
 }
 
+/** Los estados en que la aprobación del alquiler ya creó la orden de Odoo (aprobar.ts). */
+const ALQUILER_APROBADO = ["aprobada", "corregida", "falta_plantilla"];
+
+/**
+ * El último presupuesto de alquiler simple de la charla (carril «alquiler»): su estado, la entrega
+ * con que se cotizó y la orden de Odoo que dejó aprobar.ts en pasos.ordenAlquiler.
+ */
+async function ultimoPresupuestoAlquiler(db: SupabaseClient, conversacionId: string, soloAprobados = false): Promise<PresupuestoAlquiler | null> {
+  let q = db
+    .from("cli_aprobaciones")
+    .select("numero, estado, payload, pasos")
+    .eq("conversacion_id", conversacionId)
+    .eq("tipo", "precio")
+    .eq("carril", "alquiler");
+  if (soloAprobados) q = q.in("estado", ALQUILER_APROBADO);
+  const { data, error } = await q.order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (error) falla("No se pudo leer el presupuesto de alquiler", error);
+  if (!data) return null;
+  const pasos = (data.pasos ?? {}) as { ordenAlquiler?: { id?: number; nombre?: string } };
+  const o = pasos.ordenAlquiler;
+  return {
+    numero: Number(data.numero),
+    estado: String(data.estado),
+    // La que le llegó al cliente (con la corrección de fecha, si hubo) o, sin aprobar, la de Tomás.
+    entrega: entregaDelPresupuesto(data.payload as Record<string, unknown> | null),
+    ordenAlquiler: o?.id ? { id: Number(o.id), nombre: o.nombre ?? `#${o.id}` } : null,
+  };
+}
+
+/**
+ * Lo de afuera de los documentos del alquiler (documentos.ts): Storage, la visión (Claude Haiku,
+ * fuera del contexto de Tomás), la orden de Odoo de la aprobación y los eventos de la bandeja.
+ */
+export function documentosSofia(db: SupabaseClient, charla: CharlaSofia): DepsDocumentos {
+  return {
+    async bajar(path) {
+      const { data, error } = await db.storage.from(BUCKET).download(path);
+      if (error || !data) throw new Error(`No se pudo bajar el documento: ${error?.message ?? "vacío"}`);
+      return { datos: new Uint8Array(await data.arrayBuffer()), mime: data.type };
+    },
+    clasificar: clasificadorClaude(),
+    async ordenAlquiler() {
+      return (await ultimoPresupuestoAlquiler(db, charla.id, true))?.ordenAlquiler ?? null;
+    },
+    async adjuntar(ordenId, archivos, nota) {
+      return adjuntarArchivosAOrden(ordenId, archivos, { nota });
+    },
+    evento: (texto) => anotarEvento(db, charla.id, texto),
+    ahora,
+  };
+}
+
 export function serviciosSofia(db: SupabaseClient, charla: CharlaSofia): ServiciosSofia {
   const hoy = enBuenosAires(new Date()).fecha;
   // F5 y F7 (paso 2b): quién es, por el teléfono de WhatsApp y el CUIT si lo dio. Una vez por
@@ -276,6 +332,7 @@ export function serviciosSofia(db: SupabaseClient, charla: CharlaSofia): Servici
     }
     return identificados.get(clave)!;
   };
+  const ubicaciones = new Map<string, Promise<ResultadoFleteAlquiler>>();
   return {
     hoy,
     verificarDireccion: (direccion) => consultarLote({ direccion, enCaba: null }),
@@ -305,6 +362,40 @@ export function serviciosSofia(db: SupabaseClient, charla: CharlaSofia): Servici
       // Las cuentas de los socios y «Hoy no estoy» van a Parámetros (docs/sofia/cuentas-socios.md):
       // mientras no estén, la lista va vacía y la tarjeta lo decide.
       return asignarPareja(cliente, { config: PAREJAS_15_10, cuentasSocios: [], turno: { ultimo } });
+    },
+    async fleteAlquiler(direccion) {
+      // Una vez por turno y por dirección: USIG es gratis, pero Places (el respaldo) no.
+      if (!ubicaciones.has(direccion)) {
+        ubicaciones.set(direccion, (async (): Promise<ResultadoFleteAlquiler> => {
+          const u = await barrioDeDireccion(direccion);
+          if (u.estado !== "ok") return u;
+          const fletes = await fletesAlquilerSimple();
+          return {
+            estado: "ok", enCaba: u.ubicacion.enCaba, lugar: lugarParaFlete(u.ubicacion), partido: u.ubicacion.partido, normalizada: u.ubicacion.direccion,
+            flete: fleteParaUbicacion(fletes, u.ubicacion),
+          };
+        })());
+      }
+      return ubicaciones.get(direccion)!;
+    },
+    async contextoAlquiler(ficha) {
+      const [filas, quien] = await Promise.all([leerParametros(db), identificar(ficha)]);
+      // Las cuentas de los socios van a Parámetros (docs/sofia/cuentas-socios.md): mientras no
+      // estén, no se marcan (como en asignar).
+      return { parametros: parametrosAlquilerDesdeFilas(filas), deudaVencida: quien ? quien.deudaVencida : null };
+    },
+    async feriados() {
+      return [...(await feriados())];
+    },
+    presupuestoAlquiler: () => ultimoPresupuestoAlquiler(db, charla.id),
+    async avisarEquipo(texto, titulo, o = {}) {
+      await anotarEvento(db, charla.id, texto);
+      const base = { tipo: "asistente_aviso" as const, titulo, descripcion: texto, prioridad: "alta" as const, enlace: `/comercial/clientes?c=${charla.id}` };
+      const clave = `clientes_alquiler:${charla.id}:${Date.now()}`;
+      await crearAlertas(db, [
+        { ...base, clave: `${clave}:comercial`, destinatarioRol: "comercial" },
+        ...(o.logistica ? [{ ...base, clave: `${clave}:operativo`, destinatarioRol: "operativo" as const, espejoSlack: false }] : []),
+      ]).catch((e) => console.error("[sofia] aviso al equipo", e));
     },
     async registrarPendiente(p) {
       const fila = {
@@ -354,6 +445,7 @@ export function depsSofia(db: SupabaseClient): DepsSofia {
     config: () => leerConfigSofia(db),
     feriados,
     servicios: (charla) => serviciosSofia(db, charla),
+    documentos: (charla) => documentosSofia(db, charla),
     modelo: (params, senal) => cliente.beta.messages.stream(params, { signal: senal }).finalMessage(),
     alFallar: async (e) => {
       const f = fallaDeCuenta(e);

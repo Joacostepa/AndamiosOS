@@ -132,7 +132,7 @@ test("saludo con voz apagado: no se pide el audio", async () => {
   assert.deepEqual(m.salidas.map((s) => s.texto), [SALUDO_MARCELA]);
 });
 
-test("el pedido al modelo: prompt de Tomás con caché de 1 h, sus 7 herramientas, block_binding y respaldo", async () => {
+test("el pedido al modelo: prompt de Tomás con caché de 1 h, sus 11 herramientas, block_binding y respaldo", async () => {
   const m = crearMundo();
   m.escribe("Hola, ¿hacen bandejas?");
   await atenderCharla(m.deps(guion(respuestaTexto("Sí, hacemos bandejas de protección. ¿Para qué dirección es?"))), m.charla.id);
@@ -141,7 +141,8 @@ test("el pedido al modelo: prompt de Tomás con caché de 1 h, sus 7 herramienta
   assert.equal(p.system[0].text, INSTRUCCIONES);
   assert.deepEqual(p.system[0].cache_control, { type: "ephemeral", ttl: "1h" });
   assert.deepEqual(p.tools.map((t) => t.name), [
-    "anotar_ficha", "validar_cuit", "verificar_direccion", "preparar_cotizacion_facil", "preparar_pedido_simple", "pedir_tecnico", "derivar_a_persona",
+    "anotar_ficha", "validar_cuit", "verificar_direccion", "preparar_cotizacion_facil", "cotizar_alquiler_simple", "preparar_pedido_simple", "pedir_tecnico",
+    "cliente_acepta_alquiler", "revisar_documentos", "pedir_retiro", "derivar_a_persona",
   ]);
   assert.deepEqual(p.thinking, { type: "adaptive", block_binding: { prefix_mismatch_behavior: "drop_block" } });
   assert.equal(p.fallbacks, "default");
@@ -520,4 +521,132 @@ test("un contestador automático: ni saludo ni modelo, y queda leído (análisis
   m.escribe("Hola, soy la administradora, necesitamos una bandeja");
   await atenderCharla(m.deps(guion(respuestaTexto("¿Me pasás la dirección de la obra?"))), m.charla.id);
   assert.deepEqual(m.salidas.map((s) => s.texto), [SALUDO_MARCELA, "¿Me pasás la dirección de la obra?"]);
+});
+
+// ── El alquiler simple (alquiler-simple-propuesta.md, 12/11) ───────────────────────────
+
+test("alquiler simple: Tomás junta los datos, el servidor arma el andamio y queda pendiente; ni el modelo ni el cliente ven plata", async () => {
+  const m = crearMundo();
+  m.escribe("Hola, necesito un andamio para pintar una pared del patio hasta 5 metros. Lo armo yo. Es en Gorriti 4500, Palermo, piso liso y hay lugar de sobra. Lo quiero para mañana a la mañana. Soy Marcela Ríos.");
+  await atenderCharla(m.deps(guion(
+    respuestaHerramientas(
+      ["anotar_ficha", { nombre: "Marcela Ríos", tarea: "pintar una pared del patio", tipo_cliente: "particular" }],
+      ["cotizar_alquiler_simple", { lugar: "afuera", altura_trabajo_m: 5, espacio_de_sobra: true, piso: "liso", direccion: "Gorriti 4500", fecha: "2026-10-16", franja: "manana" }],
+    ),
+    respuestaTexto("Te armé una torre de 2 módulos con baranda: trabajás cómoda hasta unos 5,75 m. El presupuesto lo revisa el equipo y te llega por acá en unos minutos."),
+  )), m.charla.id);
+  assert.equal(m.charla.estado, "espera_ok");
+  assert.match(m.charla.motivo!, /^presupuesto de alquiler #\d+$/);
+  const p = m.pendientes[0];
+  assert.equal(p.carril, "alquiler");
+  assert.equal(p.montoPropuesto, 500_000);
+  const res = resultadosDeHerramientas(m);
+  for (const t of res) assert.equal(detectarPlata(t).bloquea, false, t);
+  assert.ok(!/500000|500\.000|140400|140\.400/.test(JSON.stringify(m.historia)), "ningún monto en la historia del modelo");
+  assert.equal(m.salidas.at(-1)!.autor, "ia");
+  assert.equal(m.charla.ficha.alquiler?.cotizacion?.numero, p.numero);
+  // El aviso del turno siguiente le muestra lo que juntó y el pendiente, sin plata.
+  m.charla.estado = "bot";
+  m.escribe("Gracias!");
+  await atenderCharla(m.deps(guion(respuestaTexto("[nada]"))), m.charla.id);
+  const aviso = ultimoAviso(m);
+  assert.match(aviso, /Alquiler simple \(lo que juntaste\): afuera, llegar a 5 m/);
+  assert.match(aviso, /presupuesto de alquiler #\d+: pendiente/);
+  assert.equal(detectarPlata(aviso).bloquea, false);
+});
+
+test("documentos: si acepta en este turno, se revisan las fotos de la tanda y las que mandó desde el presupuesto", async () => {
+  const m = crearMundo({
+    ficha: {
+      nombre: "Marcela Ríos", trabajo: "alquiler_simple",
+      alquiler: {
+        sabePiezas: false, piezas: [], dias: null, entrega: null, barrio: null, notas: null, pedido: null, ubicacion: null, porQueNo: [], retiro: null,
+        cotizacion: { numero: 1042, at: new Date(Date.now() - 60 * 60_000).toISOString(), fecha: "2026-10-19", franja: { tipo: "manana" } },
+        aceptado: null, documentos: null,
+      },
+    },
+  });
+  m.charla.iaSaludoAt = "2026-10-15T11:00:00Z";
+  m.presupuestoAlquiler = { numero: 1042, estado: "aprobada", entrega: { fecha: "2026-10-19", franja: { tipo: "manana" } }, ordenAlquiler: null };
+  // Una tanda anterior, ya leída: mandó el dorso del DNI antes de aceptar.
+  const dorso = m.escribe("", { tipo: "image", adjunto: { path: "clientes/charla-1/dorso.jpg", mime: "image/jpeg", nombre: "dorso.jpg", bytes: 1000 } });
+  m.charla.iaLeidoHasta = dorso.creado;
+  // Esta tanda: acepta y manda el frente.
+  m.escribe("Dale, reservámelo para el lunes a la mañana. Te mando el DNI");
+  m.escribe("", { tipo: "image", adjunto: { path: "clientes/charla-1/frente.jpg", mime: "image/jpeg", nombre: "frente.jpg", bytes: 1000 } });
+  const clasificados: string[] = [];
+  let vioLosDocumentos = "";
+  const modelo = guion(
+    respuestaHerramientas(["cliente_acepta_alquiler", { fecha: "2026-10-19", franja: "manana" }]),
+    (params) => {
+      vioLosDocumentos = JSON.stringify((params.messages as unknown[]).at(-1));
+      return respuestaTexto("¡Listo! Te lo reservo para el lunes a la mañana. Ya tengo el DNI: me faltan dos servicios a tu nombre.");
+    },
+  );
+  await atenderCharla(m.deps(modelo, {
+    documentos: () => ({
+      bajar: async (path) => ({ datos: new TextEncoder().encode(path), mime: "image/jpeg" }),
+      clasificar: async ({ datos }) => {
+        const path = new TextDecoder().decode(datos);
+        clasificados.push(path);
+        const tipo = path.includes("dorso") ? "dni_dorso" : "dni_frente";
+        return { lectura: { tipo, legible: true, titular: "RIOS MARCELA 30.123.456", servicio: null, direccion: null }, costoUsd: 0.0004 };
+      },
+      ordenAlquiler: async () => null,
+      adjuntar: async () => { throw new Error("no debería adjuntar: faltan los servicios"); },
+      evento: async (t) => { m.eventos.push(t); },
+      ahora: () => "2026-10-15T13:30:00.000Z",
+    }),
+  }), m.charla.id);
+  const a = m.charla.ficha.alquiler!;
+  assert.ok(a.aceptado);
+  assert.deepEqual(clasificados.sort(), ["clientes/charla-1/dorso.jpg", "clientes/charla-1/frente.jpg"], "las dos, una sola vez");
+  assert.deepEqual(a.documentos!.recibidos.map((r) => r.tipo).sort(), ["dni_dorso", "dni_frente"]);
+  // Tomás lo sabe antes de contestar: no le vuelve a pedir el DNI.
+  assert.match(vioLosDocumentos, /Al aceptar, el servidor revisó lo que ya había mandado/);
+  assert.match(vioLosDocumentos, /ya están la foto del DNI de frente, la foto del DNI de dorso/);
+  assert.ok(!vioLosDocumentos.includes("30.123.456"));
+});
+
+test("documentos: el servidor clasifica la foto antes del modelo; Tomás ve sólo qué falta, nunca los datos", async () => {
+  const m = crearMundo({
+    ficha: {
+      nombre: "Marcela Ríos", trabajo: "alquiler_simple",
+      alquiler: {
+        sabePiezas: false, piezas: [], dias: null, entrega: null, barrio: null, notas: null, pedido: null, ubicacion: null, porQueNo: [], cotizacion: null, retiro: null,
+        aceptado: { at: "2026-10-15T12:00:00Z", presupuesto: 1042, fecha: "2026-10-19", franja: { tipo: "manana" } },
+        documentos: { pedidosAt: "2026-10-15T12:00:00Z", recibidos: [], unSoloServicio: false, direccionActual: null, completosAt: null, esperanOrden: false, adjuntados: null },
+      },
+    },
+  });
+  m.charla.iaSaludoAt = "2026-10-15T11:00:00Z";
+  m.escribe("", { tipo: "image", adjunto: { path: "clientes/charla-1/h1-foto.jpg", mime: "image/jpeg", nombre: "foto.jpg", bytes: 1000 } });
+  const clasificados: string[] = [];
+  const modelo = guion((params) => {
+    const ultimo = JSON.stringify((params.messages as unknown[]).at(-1));
+    assert.ok(!ultimo.includes("30.123.456") && !ultimo.includes("Siempreviva"), "el modelo no ve los datos del DNI");
+    return respuestaTexto("¡Gracias! Recibí el frente del DNI. Me falta el dorso y los servicios.");
+  });
+  const r = await atenderCharla(m.deps(modelo, {
+    documentos: () => ({
+      bajar: async (path) => ({ datos: new TextEncoder().encode(path), mime: "image/jpeg" }),
+      clasificar: async () => {
+        clasificados.push("x");
+        return { lectura: { tipo: "dni_frente", legible: true, titular: "RIOS MARCELA 30.123.456", servicio: null, direccion: "Av. Siempreviva 742" }, costoUsd: 0.0004 };
+      },
+      ordenAlquiler: async () => ({ id: 777, nombre: "S03100" }),
+      adjuntar: async () => { throw new Error("no debería adjuntar: faltan documentos"); },
+      evento: async (t) => { m.eventos.push(t); },
+      ahora: () => "2026-10-15T13:30:00.000Z",
+    }),
+  }), m.charla.id);
+  assert.equal(r.resultado, "atendio");
+  assert.equal(clasificados.length, 1);
+  const aviso = ultimoAviso(m);
+  assert.match(aviso, /Documentos: ya están la foto del DNI de frente; falta la foto del DNI de dorso, dos servicios/);
+  assert.ok(!aviso.includes("Siempreviva") && !aviso.includes("30.123.456"));
+  const d = m.charla.ficha.alquiler!.documentos!;
+  assert.equal(d.recibidos[0].tipo, "dni_frente");
+  assert.ok(!JSON.stringify(m.charla.ficha).includes("30.123.456"), "el número no queda en la ficha");
+  assert.ok(m.charla.costo > 0.0004, "la visión se suma al costo de la charla");
 });

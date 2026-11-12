@@ -10,7 +10,8 @@ import type { ConfigSofia } from "./config.ts";
 import { HORARIO_POR_DEFECTO } from "./horario.ts";
 import { asignarPareja, PAREJAS_15_10 } from "./asignacion.ts";
 import type { ContextoFacil } from "./facil.ts";
-import { fichaSofiaVacia, type FichaSofia, type ServiciosSofia } from "./herramientas.ts";
+import { fichaSofiaVacia, type FichaSofia, type PresupuestoAlquiler, type ResultadoFleteAlquiler, type ServiciosSofia } from "./herramientas.ts";
+import type { ParametrosAlquiler } from "./alquiler-simple.ts";
 import type { HallazgoSalida } from "./filtro-salida.ts";
 import type { CharlaSofia, DepsSofia, FilaHistoria, ItemNuevo, NuevaFila, RepoSofia } from "./turno.ts";
 import type { EstadoCharla } from "./vista.ts";
@@ -33,6 +34,14 @@ export function lotePrueba(direccion: string, cambios: Partial<Lote> = {}): Lote
   };
 }
 
+/** Los precios del alquiler simple de la propuesta (§5), como los deja la migración 20261112000001. */
+export const PARAMETROS_ALQUILER_PRUEBA: ParametrosAlquiler = {
+  precioPieza: 18_000, ruedasJuego: 36_000, tornillonesJuego: 36_000, minimoOperativo: 500_000, maxModulos: 10, recargoFranjaPct: 20,
+};
+
+/** El flete de Palermo de la lista de Odoo (método 400 inventado; el precio es el de la §5). */
+export const FLETE_PALERMO = { carrierId: 400, nombre: "Palermo", precio: 140_400 };
+
 export type Pendiente = { numero: number; tipo: string; carril: string; resumen: string; montoPropuesto: number | null; payload: Record<string, unknown> };
 
 export type Mundo = {
@@ -51,6 +60,12 @@ export type Mundo = {
   /** El catastro de mentira: dirección → resultado. */
   catastro: (direccion: string) => Promise<import("../catastro/caba.ts").ConsultaLote>;
   contextoFacil: ContextoFacil | null;
+  /** El alquiler simple: de la dirección al flete, la deuda, el último presupuesto y los avisos al equipo. */
+  fleteAlquiler: (direccion: string) => Promise<ResultadoFleteAlquiler>;
+  deudaVencida: boolean | null;
+  presupuestoAlquiler: PresupuestoAlquiler | null;
+  feriados: string[];
+  avisos: { texto: string; titulo: string }[];
   /** Agrega un mensaje del cliente al hilo (o de una persona). */
   escribe(texto: string, o?: Partial<ItemNuevo>): ItemNuevo;
   deps(modelo: DepsSofia["modelo"], cambios?: Partial<DepsSofia>): DepsSofia;
@@ -88,6 +103,11 @@ export function crearMundo(o: { perfil?: string | null; estado?: EstadoCharla; c
     pedidos: [],
     catastro: async (direccion) => ({ estado: "encontrado", lote: lotePrueba(direccion) }),
     contextoFacil: null,
+    fleteAlquiler: async (direccion) => ({ estado: "ok", enCaba: true, lugar: "Palermo", partido: null, normalizada: direccion.toUpperCase(), flete: FLETE_PALERMO }),
+    deudaVencida: false,
+    presupuestoAlquiler: null,
+    feriados: [],
+    avisos: [],
     escribe(texto, x = {}) {
       const ahora = tic();
       const it: ItemNuevo = {
@@ -146,7 +166,8 @@ export function crearMundo(o: { perfil?: string | null; estado?: EstadoCharla; c
           return mundo.gasto;
         },
         async pendientes() {
-          return mundo.pendientes.map((p) => `${p.tipo === "precio" ? (p.carril === "simple" ? "pedido de alquiler" : "cotización") : "asignación"} #${p.numero}: pendiente de revisión del equipo`);
+          const nombre = (p: Pendiente) => (p.tipo !== "precio" ? "asignación" : p.carril === "simple" ? "pedido de alquiler" : p.carril === "alquiler" ? "presupuesto de alquiler" : "cotización");
+          return mundo.pendientes.map((p) => `${nombre(p)} #${p.numero}: pendiente de revisión del equipo`);
         },
         async registrarBloqueo(_id, texto, motivo, hallazgos) {
           mundo.bloqueos.push({ texto, motivo, hallazgos });
@@ -178,7 +199,16 @@ export function crearMundo(o: { perfil?: string | null; estado?: EstadoCharla; c
           mundo.pendientes.push({ numero: ++numero, ...p });
           return { numero, yaEstaba: false };
         },
+        fleteAlquiler: (d) => mundo.fleteAlquiler(d),
+        contextoAlquiler: async () => ({ parametros: PARAMETROS_ALQUILER_PRUEBA, deudaVencida: mundo.deudaVencida }),
+        feriados: async () => mundo.feriados,
+        presupuestoAlquiler: async () => mundo.presupuestoAlquiler,
+        avisarEquipo: async (texto, titulo) => {
+          mundo.avisos.push({ texto, titulo });
+          mundo.eventos.push(texto);
+        },
         hoy: "2026-10-15",
+        ahora: () => new Date("2026-10-15T13:30:00Z"),
       });
       return {
         repo,

@@ -45,6 +45,7 @@ import {
   definicionesSofia, ejecutarHerramientaSofia, type FichaSofia, type ServiciosSofia,
 } from "./herramientas.ts";
 import type { EstadoCharla } from "./vista.ts";
+import { estadoDocumentos, procesarDocumentos, textoDocumentosParaTomas, type DepsDocumentos, type ItemDocumento } from "./documentos.ts";
 
 const MAX_VUELTAS = 8;
 /** Cuántas tandas de mensajes nuevos atiende un mismo turno (si siguen llegando mientras contesta). */
@@ -149,6 +150,11 @@ export type DepsSofia = {
   feriados(): Promise<ReadonlySet<string>>;
   /** Arma los servicios de las herramientas para esta charla. */
   servicios(charla: CharlaSofia): ServiciosSofia;
+  /**
+   * Los documentos del alquiler simple (documentos.ts): Storage, la visión y Odoo. Opcional: sin
+   * esto (los tests que no los prueban) las fotos sólo las ve el equipo, como antes.
+   */
+  documentos?(charla: CharlaSofia): DepsDocumentos;
   /** El pedido a Claude (en producción, `cliente.beta.messages.stream(...).finalMessage()`). */
   modelo(params: ReturnType<typeof armarPedido>, senal: AbortSignal): Promise<Anthropic.Beta.BetaMessage>;
   ahora?: () => Date;
@@ -399,6 +405,16 @@ async function unaTanda(
   }
   const notasEquipo = nuevos.map(notaDelEquipo).filter((x): x is string => !!x);
 
+  // ── Los documentos del alquiler: los clasifica el servidor ANTES del modelo ──
+  // Tomás no ve las fotos: en el aviso (resumenFicha) le llega sólo qué está y qué falta.
+  const docs = deps.documentos && ficha.alquiler?.aceptado && ficha.alquiler.documentos && !ficha.alquiler.documentos.adjuntados
+    ? deps.documentos(charla)
+    : null;
+  if (docs) out.costo += await documentosDelTurno(repo, charla.id, ficha, entrantes, docs);
+  // Si acepta en este turno, lo que ya mandó se revisa en el momento (ver el loop).
+  const aceptadoAlEmpezar = !!ficha.alquiler?.aceptado;
+  let docsAlAceptar: DepsDocumentos | null = null;
+
   const [historia, feriados, pendientes] = await Promise.all([repo.leerHistoria(charla.id), deps.feriados(), repo.pendientes(charla.id)]);
   const at = atencion(o.ahora, cfg.horario, feriados);
   const ultimaRespuesta = [...historia].reverse().find((h) => h.rol === "assistant" && h.enviado !== null && h.enviado !== undefined);
@@ -501,7 +517,19 @@ async function unaTanda(
     // Herramientas, de a una y en orden (tocan la ficha). Sus resultados en UN mensaje.
     const resultados: Anthropic.Beta.BetaToolResultBlockParam[] = [];
     for (const u of usos) {
-      const r = await ejecutarHerramientaSofia(u.name, u.input, { ficha, servicios });
+      let r = await ejecutarHerramientaSofia(u.name, u.input, { ficha, servicios });
+      // Aceptó recién: las fotos que mandó junto con el «dale» (o antes, desde el presupuesto)
+      // ya pasaron el cursor y la revisión de arriba no corrió porque todavía no había aceptado.
+      // Se revisan ahora, antes de que Tomás conteste, para que no le pida lo que ya mandó.
+      if (!aceptadoAlEmpezar && !docsAlAceptar && deps.documentos && ficha.alquiler?.aceptado && ficha.alquiler.documentos && !ficha.alquiler.documentos.adjuntados) {
+        docsAlAceptar = deps.documentos(charla);
+        out.costo += await documentosDelTurno(repo, charla.id, ficha, await desdeElPresupuesto(repo, charla.id, ficha, entrantes), docsAlAceptar);
+        const d = ficha.alquiler.documentos;
+        if (d.recibidos.length) {
+          const e = estadoDocumentos(d);
+          r = { ...r, contenido: `${r.contenido}\n\nAl aceptar, el servidor revisó lo que ya había mandado (esto pisa lo de arriba sobre los documentos). ${textoDocumentosParaTomas(e)}${e.completos ? "" : " Pedile sólo lo que falta."}` };
+        }
+      }
       resultados.push({ type: "tool_result", tool_use_id: u.id, content: r.contenido, ...(r.esError ? { is_error: true } : {}) });
       if (r.efecto) {
         // Una derivación pesa más que un pendiente: si ya se derivó, el pendiente queda registrado
@@ -527,6 +555,11 @@ async function unaTanda(
     mensajes.push({ role: "assistant", content: fila.contenido } as Anthropic.Beta.BetaMessageParam, { role: "user", content: resultados });
   }
 
+  // Si en este turno se completaron (revisar_documentos con un solo servicio), se adjuntan ya.
+  if (deps.documentos && ficha.alquiler?.aceptado && ficha.alquiler.documentos && !ficha.alquiler.documentos.adjuntados) {
+    // Con lo de esta tanda: documentosNuevos descarta por hiloId lo que ya se revisó arriba.
+    out.costo += await documentosDelTurno(repo, charla.id, ficha, entrantes, docs ?? docsAlAceptar ?? deps.documentos(charla));
+  }
   await repo.guardarFicha(charla.id, ficha);
   if (out.costo) await repo.sumarCosto(charla.id, out.costo);
 
@@ -581,4 +614,32 @@ async function unaTanda(
   if (fallaEnvio) throw new Error(`WhatsApp no aceptó la respuesta de Tomás: ${fallaEnvio instanceof Error ? fallaEnvio.message : fallaEnvio}`);
   if (estadoEsperado !== "bot") out.estado = estadoEsperado;
   return out;
+}
+
+/**
+ * Lo que mandó el cliente desde que salió el presupuesto (ficha.alquiler.cotizacion.at), más lo de
+ * esta tanda. Si el hilo no se puede leer, alcanza con la tanda: lo de antes lo ve el equipo.
+ */
+async function desdeElPresupuesto(repo: RepoSofia, id: string, ficha: FichaSofia, tanda: ItemNuevo[]): Promise<ItemDocumento[]> {
+  const desde = ficha.alquiler?.cotizacion?.at ?? null;
+  if (!desde) return tanda;
+  try {
+    const antes = await repo.nuevosDelHilo(id, desde);
+    const vistos = new Set(antes.map((x) => x.id));
+    return [...antes, ...tanda.filter((x) => !vistos.has(x.id))];
+  } catch {
+    return tanda;
+  }
+}
+
+/** procesarDocumentos sin tirar: una falla de Storage, la visión u Odoo no frena el turno. */
+async function documentosDelTurno(repo: RepoSofia, id: string, ficha: FichaSofia, items: ItemDocumento[], deps: DepsDocumentos): Promise<number> {
+  try {
+    const r = await procesarDocumentos(ficha, items, deps);
+    if (r.cambio) await repo.guardarFicha(id, ficha);
+    return r.costoUsd;
+  } catch (e) {
+    await repo.evento(id, `No se pudieron revisar los documentos del alquiler (${e instanceof Error ? e.message.slice(0, 200) : "error"}). Miralos en la charla.`).catch(() => {});
+    return 0;
+  }
 }

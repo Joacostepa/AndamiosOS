@@ -22,12 +22,12 @@
 // SERVIDOR al aprobar (mensajePresupuestoAlquiler del motor).
 
 import {
-  cotizarAlquilerSimple, describirArmado, mensajePresupuestoAlquiler, metros, pesos, textoFecha, textoFranja,
+  cotizarAlquilerSimple, DEPOSITO, describirArmado, mensajePresupuestoAlquiler, metros, pesos, textoFecha, textoFranja, textoPeldano,
   type Armado, type ClienteAlquiler, type CodigoMotivoAlquiler, type CodigoPieza, type FleteAlquiler, type Franja,
-  type LineaAlquiler, type MotivoAlquiler, type ParametrosAlquiler, type PedidoAlquiler, type PrecioAlquiler, type ResultadoAlquiler,
+  type CodigoConfirmacion, type LineaAlquiler, type MotivoAlquiler, type ParametrosAlquiler, type PedidoAlquiler, type PrecioAlquiler, type ResultadoAlquiler,
 } from "./alquiler-simple.ts";
 import {
-  CODIGOS_PIEZA, FRANJA_MANANA, FRANJA_TARDE, lineasOrdenAlquilerSimple,
+  CODIGOS_PIEZA, FRANJA_DEPOSITO_MANANA, FRANJA_DEPOSITO_TARDE, FRANJA_MANANA, FRANJA_TARDE, lineasOrdenAlquilerSimple,
   type CotizacionParaOdoo, type Flete, type Franja as FranjaOdoo,
 } from "../odoo/alquiler-simple.ts";
 import type { Feriado } from "../feriados/argentina.ts";
@@ -46,6 +46,7 @@ export type PayloadAlquiler = {
   pedido: PedidoAlquiler;
   /** El resultado del motor cuando Tomás lo armó: de acá salen la deuda y la cuenta de los socios. */
   resultado: ResultadoAlquiler;
+  /** null si retira en el depósito (pedido.retiraEnDeposito): no hay flete. */
   flete: FleteGuardado | null;
   entrega: EntregaPedida | null;
   /** La dirección de entrega (ficha.direccion). */
@@ -57,7 +58,7 @@ const obj = (v: unknown): Record<string, unknown> | null => (v && typeof v === "
 function franjaValida(v: unknown): Franja | null {
   const f = obj(v);
   if (!f) return null;
-  if (f.tipo === "manana" || f.tipo === "tarde") return { tipo: f.tipo };
+  if (f.tipo === "manana" || f.tipo === "tarde" || f.tipo === "deposito_manana" || f.tipo === "deposito_tarde") return { tipo: f.tipo };
   if (f.tipo === "hora" && typeof f.desde === "number" && Number.isFinite(f.desde)) return { tipo: "hora", desde: f.desde };
   return null;
 }
@@ -88,8 +89,16 @@ export function leerPayloadAlquiler(payload: Record<string, unknown> | null | un
   const e = obj(a?.entrega);
   const fecha = typeof e?.fecha === "string" ? e.fecha : pedido.fecha;
   const franja = franjaValida(e?.franja) ?? franjaValida(pedido.franja);
+  // Los pedidos armados antes del 12/11 a la tarde: `aceptaPeldano` (hoy aceptaPlataforma) y sin
+  // la modalidad (eran todos con envío).
+  const viejo = pedido as PedidoAlquiler & { aceptaPeldano?: boolean | null };
   return {
-    pedido: { ...pedido, piezasFueraDeCatalogo: Array.isArray(pedido.piezasFueraDeCatalogo) ? pedido.piezasFueraDeCatalogo : [] },
+    pedido: {
+      ...pedido,
+      piezasFueraDeCatalogo: Array.isArray(pedido.piezasFueraDeCatalogo) ? pedido.piezasFueraDeCatalogo : [],
+      aceptaPlataforma: typeof pedido.aceptaPlataforma === "boolean" ? pedido.aceptaPlataforma : typeof viejo.aceptaPeldano === "boolean" ? viejo.aceptaPeldano : null,
+      retiraEnDeposito: typeof pedido.retiraEnDeposito === "boolean" ? pedido.retiraEnDeposito : null,
+    },
     resultado,
     flete: fleteValido(a?.flete),
     entrega: fecha && franja ? { fecha, franja } : null,
@@ -136,7 +145,7 @@ export function fleteDeHoy(
   resultadoGuardado: ResultadoAlquiler,
 ): { alquiler: FleteAlquiler; odoo: FleteGuardado | null; aviso: string | null } {
   const anterior = resultadoGuardado.flete;
-  const barrio = anterior?.tipo === "lista" ? anterior.barrio : anterior?.barrio ?? guardado?.nombre ?? null;
+  const barrio = anterior?.tipo === "lista" || anterior?.tipo === "fuera_de_lista" ? anterior.barrio : guardado?.nombre ?? null;
   if (!guardado) return { alquiler: { tipo: "fuera_de_lista", barrio }, odoo: null, aviso: null };
   const nombre = barrio ?? guardado.nombre;
   if (!fletes) {
@@ -177,20 +186,25 @@ export function clienteParaRecalculo(ficha: ContextoRecalculo["ficha"], guardado
  * persona, como en la bandeja fácil («Fácil el trabajo, no el cliente»).
  */
 export const MOTIVOS_QUE_BLOQUEAN: readonly CodigoMotivoAlquiler[] = [
-  "para_hoy", "anclar", "techo_no_deja", "peldano_rechazado", "espacio_ancho", "espacio_largo", "sin_flete", "piezas_fuera", "montaje",
-  "tope_modulos", "cuenta_socio",
+  "para_hoy", "anclar", "techo_no_deja", "plataforma_rechazada", "espacio_ancho", "espacio_largo", "sin_flete", "fuera_de_caba", "piezas_fuera",
+  "montaje", "tope_modulos", "cuenta_socio",
 ];
+
+const BLOQUEO_CONFIRMACION: Partial<Record<CodigoConfirmacion, string>> = {
+  plataforma: "Falta que el cliente diga si le sirve la plataforma (en un peldaño, o que no llega cómodo al techo).",
+  deposito: "La obra está en provincia: falta que el cliente diga si lo retira en el depósito (no se entrega fuera de CABA).",
+};
 
 export function bloqueosAlquiler(r: ResultadoAlquiler, entrega: EntregaPedida | null): string[] {
   const b: string[] = [];
   for (const m of r.enContra) if (MOTIVOS_QUE_BLOQUEAN.includes(m.codigo)) b.push(m.texto);
   for (const f of r.faltan) b.push(`Falta un dato: ${f.pregunta}`);
   for (const c of r.aConfirmar) {
-    b.push(c.codigo === "peldano" ? "Falta que el cliente diga si le sirve la plataforma en el peldaño." : c.codigo === "fecha" ? `La fecha no se puede: ${c.texto} Corregí la fecha.` : c.texto);
+    b.push(BLOQUEO_CONFIRMACION[c.codigo] ?? (c.codigo === "fecha" ? `La fecha no se puede: ${c.texto} Corregí la fecha.` : c.texto));
   }
   if (!entrega) b.push("Falta la fecha o la franja de entrega.");
   if (!r.armado) b.push("No hay armado.");
-  else if (!r.precio) b.push("No hay precio: el flete del barrio no está en la lista.");
+  else if (!r.precio) b.push(r.modalidad === "deposito" ? "No hay precio." : "No hay precio: el flete del barrio no está en la lista.");
   return [...new Set(b)];
 }
 
@@ -363,6 +377,8 @@ const hhmm = (h: number) => `${String(Math.floor(h)).padStart(2, "0")}:${String(
 export function franjaParaOdoo(f: Franja): FranjaOdoo {
   if (f.tipo === "manana") return FRANJA_MANANA;
   if (f.tipo === "tarde") return FRANJA_TARDE;
+  if (f.tipo === "deposito_manana") return FRANJA_DEPOSITO_MANANA;
+  if (f.tipo === "deposito_tarde") return FRANJA_DEPOSITO_TARDE;
   return { desde: hhmm(f.desde), hasta: hhmm(f.desde + 1) };
 }
 
@@ -375,14 +391,17 @@ export function sumarDias(fecha: string, n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** La cotización para crearOrdenAlquilerSimple: las piezas con su precio, el flete, el mínimo y el recargo. */
-export function cotizacionParaOdoo(precio: PrecioAlquiler, flete: FleteGuardado, entrega: EntregaPedida): CotizacionParaOdoo {
+/**
+ * La cotización para crearOrdenAlquilerSimple: las piezas con su precio, el flete, el mínimo y el
+ * recargo. `flete` null: retira en el depósito (sin flete ni método de envío).
+ */
+export function cotizacionParaOdoo(precio: PrecioAlquiler, flete: FleteGuardado | null, entrega: EntregaPedida): CotizacionParaOdoo {
   return {
     piezas: precio.lineas
       .filter((l) => (CODIGOS_PIEZA as readonly string[]).includes(l.codigo))
       .map((l) => ({ codigo: l.codigo as CodigoPieza, cantidad: l.cantidad, precioUnitario: l.precioUnitario })),
     // El monto del motor (que salió del mismo método de envío): así la orden suma lo que se manda.
-    flete: { carrierId: flete.carrierId, nombre: flete.nombre, precio: precio.flete },
+    flete: flete ? { carrierId: flete.carrierId, nombre: flete.nombre, precio: precio.flete } : null,
     minimoOperativo: precio.minimoOperativo,
     recargoFranja: precio.recargoFranja,
     recargoFranjaPct: precio.recargoFranjaPct,
@@ -419,7 +438,11 @@ export type RecalculoAlquiler = {
  */
 export function recalcularAlquiler(p: PayloadAlquiler, ctx: ContextoRecalculo, c: CorreccionAlquiler | null): RecalculoAlquiler {
   const avisos: string[] = [];
-  const flete = fleteDeHoy(ctx.fletes, p.flete, p.resultado);
+  // Retira en el depósito (fila 17): no hay flete que buscar (la corrección no cambia la modalidad).
+  const deposito = p.pedido.retiraEnDeposito === true;
+  const flete: { alquiler: FleteAlquiler | null; odoo: FleteGuardado | null; aviso: string | null } = deposito
+    ? { alquiler: null, odoo: null, aviso: null }
+    : fleteDeHoy(ctx.fletes, p.flete, p.resultado);
   if (flete.aviso) avisos.push(flete.aviso);
   const cliente = clienteParaRecalculo(ctx.ficha, p.resultado);
   const motor = (pedido: PedidoAlquiler) =>
@@ -427,8 +450,12 @@ export function recalcularAlquiler(p: PayloadAlquiler, ctx: ContextoRecalculo, c
 
   // Las cantidades se corrigen sobre el armado de HOY (sin corregir).
   const armadoHoy = c?.tipo === "piezas" ? motor(p.pedido).armado : null;
-  const { pedido, entrega } = aplicarCorreccionAlquiler(p, armadoHoy, c);
+  const corregido = aplicarCorreccionAlquiler(p, armadoHoy, c);
+  const pedido = corregido.pedido;
   const resultado = motor(pedido);
+  // La franja de la modalidad (franjaSegunModalidad, en el motor): la del depósito si retira ahí.
+  // Si no tiene (una franja de una hora para el depósito), no hay entrega y bloquea.
+  const entrega: EntregaPedida | null = corregido.entrega && resultado.franja ? { ...corregido.entrega, franja: resultado.franja } : null;
   const bloqueos = bloqueosAlquiler(resultado, entrega);
   if (c?.tipo === "piezas" && !armadoHoy) bloqueos.push("No hay armado para corregir las cantidades.");
 
@@ -458,9 +485,9 @@ export function recalcularAlquiler(p: PayloadAlquiler, ctx: ContextoRecalculo, c
 
   // Lo que va a Odoo, y que sume lo mismo que se le dice al cliente.
   let cotizacion: CotizacionParaOdoo | null = null;
-  if (precio && entrega && flete.odoo) {
+  if (precio && entrega && (flete.odoo || deposito)) {
     try {
-      cotizacion = cotizacionParaOdoo(precio, flete.odoo, entrega);
+      cotizacion = cotizacionParaOdoo(precio, deposito ? null : flete.odoo, entrega);
       const armado = lineasOrdenAlquilerSimple(cotizacion);
       // Con las piezas bajadas en proporción, el redondeo a centavos puede dejar unos centavos.
       if (Math.abs(armado.neto - precio.total) > 1) {
@@ -472,7 +499,7 @@ export function recalcularAlquiler(p: PayloadAlquiler, ctx: ContextoRecalculo, c
       bloqueos.push(`No se pueden armar las líneas de Odoo: ${e instanceof Error ? e.message : e}`);
     }
   }
-  if (precio && !flete.odoo && !bloqueos.length) bloqueos.push("No hay método de envío de Odoo para el flete.");
+  if (precio && !deposito && !flete.odoo && !bloqueos.length) bloqueos.push("No hay método de envío de Odoo para el flete.");
 
   return {
     resultado, pedido, entrega, precio, total: precio?.total ?? null, flete: flete.odoo, mensaje, cotizacion,
@@ -486,6 +513,7 @@ export function recalcularAlquiler(p: PayloadAlquiler, ctx: ContextoRecalculo, c
 export function datosDelPedido(pedido: PedidoAlquiler): { etiqueta: string; valor: string }[] {
   const d: { etiqueta: string; valor: string }[] = [];
   d.push({ etiqueta: "Lugar", valor: pedido.lugar === "adentro" ? "Adentro" : pedido.lugar === "afuera" ? "Afuera" : "—" });
+  d.push({ etiqueta: "Cómo llega", valor: pedido.retiraEnDeposito === true ? `Retira en el depósito (${DEPOSITO.texto})` : "Se lo llevamos (envío)" });
   d.push({ etiqueta: "Trabajo", valor: pedido.trabajoEnTecho ? "En el techo (cielorraso)" : pedido.alturaTrabajo ? `Hasta ${metros(pedido.alturaTrabajo)} m` : "—" });
   if (pedido.alturaTecho || pedido.lugar === "adentro") d.push({ etiqueta: "Techo", valor: pedido.alturaTecho ? `${metros(pedido.alturaTecho)} m` : "—" });
   const espacio = pedido.espacioDeSobra
@@ -501,10 +529,14 @@ export function datosDelPedido(pedido: PedidoAlquiler): { etiqueta: string; valo
   return d;
 }
 
-/** «Plataforma arriba a 3,75 m» o «Plataforma EN EL PELDAÑO de 0,80 (a 0,95 m), un solo tablón». */
+/**
+ * «Plataforma arriba a 3,75 m…» o «Plataforma EN EL PELDAÑO de 0,80 m del segundo módulo (a 2,75 m),
+ * un solo tablón…», y si es en el techo y no llega cómodo, el techo.
+ */
 export function textoPlataforma(a: Armado): string {
-  if (a.peldano === null) return `Plataforma arriba, a ${metros(a.alturaPlataforma)} m: trabaja hasta ~${metros(a.llegaHasta)} m (la cabeza llega a ${metros(a.cabezaHasta)} m)`;
-  return `Plataforma EN EL PELDAÑO de ${metros(a.peldano)} m (a ${metros(a.alturaPlataforma)} m del piso), un solo tablón de 30 cm: trabaja hasta ~${metros(a.llegaHasta)} m (la cabeza llega a ${metros(a.cabezaHasta)} m). Se cobra igual que el módulo completo`;
+  const alTecho = a.llegaAlTecho === false && a.techo !== null ? `. Techo de ${metros(a.techo)} m: no llega cómodo al techo (el cliente lo confirmó)` : "";
+  if (a.peldano === null) return `Plataforma arriba, a ${metros(a.alturaPlataforma)} m: trabaja hasta ~${metros(a.llegaHasta)} m (la cabeza llega a ${metros(a.cabezaHasta)} m)${alTecho}`;
+  return `Plataforma EN ${textoPeldano(a.peldano, a.modulosPorTorre).replace("el peldaño", "EL PELDAÑO")} (a ${metros(a.alturaPlataforma)} m del piso), un solo tablón de 30 cm: trabaja hasta ~${metros(a.llegaHasta)} m (la cabeza llega a ${metros(a.cabezaHasta)} m). Se cobra igual que el módulo completo${alTecho}`;
 }
 
 /** Lo que le entra sin pagar más, en palabras (para la tarjeta). */
@@ -545,9 +577,14 @@ export function notaInternaAlquiler(p: {
   if (a) {
     parrafos.push(`<p><b>Armado:</b> ${esc(describirArmado(a))}. ${esc(textoPlataforma(a))}.${a.ajustes.length ? ` ${esc(a.ajustes.join(" "))}` : ""}</p>`);
   }
-  if (r.entrega) parrafos.push(`<p><b>Entrega:</b> el ${esc(textoFecha(r.entrega.fecha))}, ${esc(textoFranja(r.entrega.franja))}${p.direccion ? `, en ${esc(p.direccion)}` : ""}. Servicio de ${DIAS_SERVICIO} días.</p>`);
+  const deposito = r.resultado.modalidad === "deposito";
+  if (r.entrega) {
+    parrafos.push(deposito
+      ? `<p><b>Retira en el depósito</b> (${esc(DEPOSITO.texto)}) el ${esc(textoFecha(r.entrega.fecha))}, ${esc(textoFranja(r.entrega.franja))}: sin flete, viene con su vehículo y gente para cargar. Lo devuelve ahí, desarmado, con 24 h de aviso.${p.direccion ? ` Obra: ${esc(p.direccion)}.` : ""} Servicio de ${DIAS_SERVICIO} días.</p>`
+      : `<p><b>Entrega:</b> el ${esc(textoFecha(r.entrega.fecha))}, ${esc(textoFranja(r.entrega.franja))}${p.direccion ? `, en ${esc(p.direccion)}` : ""}. Servicio de ${DIAS_SERVICIO} días.</p>`);
+  }
   if (pr) {
-    const partes = [`<b>Total del servicio por ${DIAS_SERVICIO} días, con la entrega y el retiro:</b> ${pesos(pr.base)} + IVA`];
+    const partes = [`<b>Total del servicio por ${DIAS_SERVICIO} días, ${deposito ? "retirando en el depósito (sin flete)" : "con la entrega y el retiro"}:</b> ${pesos(pr.base)} + IVA`];
     if (pr.minimoOperativo > 0) partes.push(`(con ${pesos(pr.minimoOperativo)} de mínimo operativo)`);
     if (pr.recargoFranja > 0) partes.push(`· recargo de la franja de una hora (${pr.recargoFranjaPct} %): ${pesos(pr.recargoFranja)} · en total ${pesos(pr.total)} + IVA`);
     partes.push(`· renovación por día: ${pesos(pr.porDia)} + IVA`);

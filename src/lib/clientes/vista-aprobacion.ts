@@ -77,6 +77,10 @@ export type TarjetaSimple = {
 export type TarjetaAlquiler = {
   /** El mensaje exacto que le llega al cliente (mensajePresupuestoAlquiler). null si no se puede armar. */
   mensaje: string | null;
+  /** Lo retira y lo devuelve en el depósito (sin flete, fila 17). */
+  deposito: boolean;
+  /** La vendedora de la orden: siempre Tamara (aprobar.ts, VENDEDORA_ALQUILER_SIMPLE). */
+  vendedora: string;
   /** Lo que dijo el cliente: lugar, altura, techo, espacio, piso. */
   pedido: { etiqueta: string; valor: string }[];
   armado: {
@@ -84,9 +88,11 @@ export type TarjetaAlquiler = {
     torres: number;
     modulosPorTorre: number;
     apoyo: "ruedas" | "tornillones";
-    /** «Plataforma arriba…» o «Plataforma EN EL PELDAÑO…»: la tarjeta lo destaca si es peldaño. */
+    /** «Plataforma arriba…» o «Plataforma EN EL PELDAÑO…»: la tarjeta lo destaca si es peldaño o no llega al techo. */
     plataforma: string;
     peldano: number | null;
+    /** En el techo y no llega cómodo (se le aclaró al cliente). */
+    noLlegaAlTecho: boolean;
     barandaSeLleva: boolean;
     ajustes: string[];
   } | null;

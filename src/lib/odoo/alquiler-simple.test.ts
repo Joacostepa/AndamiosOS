@@ -5,7 +5,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  armarFletes, barrioDeDireccion, buscarFletePorBarrio, checksumOdoo, elegirNormalizada, fleteParaUbicacion, FRANJA_MANANA, FRANJA_TARDE,
+  armarFletes, BARRIOS_CABA_EN_LISTA, barrioDeDireccion, buscarFletePorBarrio, checksumOdoo, DIRECCION_RETIRA_EN_DEPOSITO, elegirNormalizada, fleteParaUbicacion,
+  FRANJA_DEPOSITO_MANANA, FRANJA_DEPOSITO_TARDE, FRANJA_MANANA, FRANJA_TARDE,
   horarioEntregaOdoo, lineaRenovacion, lineasOrdenAlquilerSimple, normalizarLugar, utcOdoo, valoresOrdenAlquilerSimple,
   PRODUCTO_BARANDA_090_JUNIOR, PRODUCTO_BASTIDOR_BARANDA_130, PRODUCTO_FLETE, PRODUCTO_MINIMO_OPERATIVO, PRODUCTO_RIENDA_JR_HORIZONTAL, PRODUCTO_RECARGO_FRANJA, PRODUCTO_RENOVACION, PRODUCTOS_ALQUILER_SIMPLE,
   type CotizacionParaOdoo, type Flete, type NormalizadaUsig, type Ubicacion,
@@ -88,20 +89,44 @@ test("buscarFletePorBarrio: los nombres de USIG que en Odoo están distinto", ()
   assert.equal(buscarFletePorBarrio(FLETES, "Barrio Palermo")?.carrierId, 407);
 });
 
-test("buscarFletePorBarrio: localidades del conurbano con su nombre largo o con «Este/Oeste»", () => {
-  assert.equal(buscarFletePorBarrio(FLETES, "Lanús Este")?.carrierId, 391);
-  assert.equal(buscarFletePorBarrio(FLETES, "Florida Oeste")?.carrierId, 381);
-  assert.equal(buscarFletePorBarrio(FLETES, "Boulogne Sur Mer")?.carrierId, 366);
-  assert.equal(buscarFletePorBarrio(FLETES, "Belén de Escobar")?.carrierId, 377);
-  assert.equal(buscarFletePorBarrio(FLETES, "General Pacheco")?.carrierId, 406);
-  assert.equal(buscarFletePorBarrio(FLETES, "José León Suárez")?.carrierId, 387);
-  assert.equal(buscarFletePorBarrio(FLETES, "José C. Paz")?.carrierId, 386);
-  assert.equal(buscarFletePorBarrio(FLETES, "General San Martín")?.carrierId, 423);
-  assert.equal(buscarFletePorBarrio(FLETES, "Olivos")?.carrierId, 405);
+test("Belgrano a secas se cobra siempre BELGRANO C, el más caro (JS, 12/11)", () => {
+  assert.equal(buscarFletePorBarrio(FLETES, "Belgrano")?.carrierId, 361);
+  assert.equal(buscarFletePorBarrio(FLETES, "BELGRANO")?.nombre, "BELGRANO C");
+  assert.equal(buscarFletePorBarrio(FLETES, "Belgrano, CABA")?.carrierId, 361);
+  // Los que ya dicen cuál, el suyo.
+  assert.equal(buscarFletePorBarrio(FLETES, "Belgrano R")?.carrierId, 362);
+  assert.equal(buscarFletePorBarrio(FLETES, "Belgrano C")?.carrierId, 361);
+  // Y desde la ubicación de USIG («Belgrano» es como lo dice datos_utiles).
+  const u: Ubicacion = { enCaba: true, barrio: "Belgrano", localidad: null, partido: null, direccion: "", punto: null, fuente: "usig" };
+  assert.equal(fleteParaUbicacion(FLETES, u)?.precio, 130800);
+});
+
+test("el conurbano no se usa: armarFletes deja sólo los barrios de CABA y fuera de CABA no hay flete", () => {
+  const regla = (id: number, precio: number) => ({ carrier_id: [id, "x"] as [number, string], variable: "quantity", operator: ">=", max_value: 0, list_base_price: precio, list_price: 0 });
+  const { fletes, descartados } = armarFletes(
+    [
+      { id: 407, name: "PALERMO", active: true, product_id: [2, "Envío estándar (flete)"] },
+      { id: 418, name: "RETIRO", active: true, product_id: [2, "Envío estándar (flete)"] },
+      { id: 405, name: "OLIVOS", active: true, product_id: [2, "Envío estándar (flete)"] },
+      { id: 386, name: "JOSE C. PAZ", active: true, product_id: [2, "Envío estándar (flete)"] },
+    ],
+    [regla(407, 140400), regla(418, 187200), regla(405, 225600), regla(386, 432000)],
+  );
+  // RETIRO es el barrio de Retiro (187.200), no el retiro en el depósito.
+  assert.deepEqual(fletes.map((f) => f.nombre), ["PALERMO", "RETIRO"]);
+  assert.deepEqual(descartados, ["OLIVOS (no es de CABA: no se entrega)", "JOSE C. PAZ (no es de CABA: no se entrega)"]);
+  // Son 51 barrios, todos normalizados.
+  assert.equal(BARRIOS_CABA_EN_LISTA.size, 51);
+  for (const b of BARRIOS_CABA_EN_LISTA) assert.equal(normalizarLugar(b), b);
+  // Fuera de CABA, ni siquiera con la localidad en la lista.
+  const u = (x: Partial<Ubicacion>): Ubicacion => ({ enCaba: false, barrio: null, localidad: null, partido: null, direccion: "", punto: null, fuente: "usig", ...x });
+  assert.equal(fleteParaUbicacion(FLETES, u({ localidad: "Olivos", partido: "Vicente López" })), null);
+  assert.equal(fleteParaUbicacion(FLETES, u({ localidad: "Banfield Oeste", partido: "Lomas de Zamora" })), null);
+  // Los alias del conurbano se sacaron.
+  assert.equal(buscarFletePorBarrio(FLETES, "General Pacheco"), null);
 });
 
 test("buscarFletePorBarrio: lo que no está o es ambiguo va a un vendedor (null)", () => {
-  assert.equal(buscarFletePorBarrio(FLETES, "Belgrano"), null); // C o R: no se sabe
   assert.equal(buscarFletePorBarrio(FLETES, "Capital"), null);
   assert.equal(buscarFletePorBarrio(FLETES, "CABA"), null);
   assert.equal(buscarFletePorBarrio(FLETES, "Temperley"), null); // su partido está, ella no
@@ -176,7 +201,8 @@ test("barrioDeDireccion: en el conurbano usa la localidad del normalizador", asy
   assert.equal(r.estado, "ok");
   if (r.estado !== "ok") return;
   assert.deepEqual([r.ubicacion.enCaba, r.ubicacion.localidad, r.ubicacion.partido, r.ubicacion.barrio], [false, "Olivos", "Vicente López", null]);
-  assert.equal(fleteParaUbicacion(FLETES, r.ubicacion)?.carrierId, 405);
+  // OLIVOS está en la lista, pero no se entrega fuera de CABA (JS, 12/11): no hay flete.
+  assert.equal(fleteParaUbicacion(FLETES, r.ubicacion), null);
 });
 
 test("barrioDeDireccion: sin resultado de USIG y sin Places, no encontrada", async () => {
@@ -184,11 +210,10 @@ test("barrioDeDireccion: sin resultado de USIG y sin Places, no encontrada", asy
   assert.equal(r.estado, "no_encontrada");
 });
 
-test("fleteParaUbicacion: Belgrano (CABA) va a un vendedor; Temperley también", () => {
+test("fleteParaUbicacion: un barrio de CABA que no está en la lista va a un vendedor; Temperley no tiene flete", () => {
   const u = (x: Partial<Ubicacion>): Ubicacion => ({ enCaba: true, barrio: null, localidad: null, partido: null, direccion: "", punto: null, fuente: "usig", ...x });
-  assert.equal(fleteParaUbicacion(FLETES, u({ barrio: "Belgrano" })), null);
+  assert.equal(fleteParaUbicacion(FLETES, u({ barrio: "Villa Desconocida" })), null);
   assert.equal(fleteParaUbicacion(FLETES, u({ enCaba: false, localidad: "Temperley", partido: "Lomas de Zamora" })), null);
-  assert.equal(fleteParaUbicacion(FLETES, u({ enCaba: false, localidad: "Banfield Oeste", partido: "Lomas de Zamora" }))?.carrierId, 358);
 });
 
 // ── Las líneas ─────────────────────────────────────────────────────────────────────────
@@ -334,6 +359,35 @@ test("la tarde es 13 a 16, que también está en Odoo", () => {
 test("una franja rara sin recargo, o un recargo con franja de siempre, avisan", () => {
   assert.equal(lineasOrdenAlquilerSimple(palermo({ franja: { desde: "10:00", hasta: "11:00" } })).avisos.length, 1);
   assert.equal(lineasOrdenAlquilerSimple(palermo({ recargoFranja: 100000 })).avisos.length, 1);
+});
+
+test("retira en el depósito: sin línea de flete ni carrier_id, con el mínimo, y la orden lo dice en la dirección", () => {
+  const dep = palermo({ flete: null, minimoOperativo: 338000, franja: FRANJA_DEPOSITO_MANANA });
+  const r = lineasOrdenAlquilerSimple(dep);
+  assert.equal(r.neto, 500000);
+  assert.ok(!r.lineas.some((l) => l.esFlete || l.productId === PRODUCTO_FLETE));
+  assert.equal(r.lineas.at(-1)!.productId, PRODUCTO_MINIMO_OPERATIVO);
+  assert.equal(r.carrierId, null);
+  assert.equal(r.retiraEnDeposito, true);
+  assert.equal(r.inicioUtc, "2026-11-16 13:00:00"); // 10:00 en Buenos Aires
+  assert.equal(r.horarioEntrega, false); // de 10 a 12 no está en el desplegable
+  assert.deepEqual(r.avisos, []); // y no hace falta avisar
+  assert.equal(lineasOrdenAlquilerSimple(palermo({ flete: null, minimoOperativo: 338000, franja: FRANJA_DEPOSITO_TARDE })).horarioEntrega, "13:00 - 16:00");
+  // Sin recargo de franja en el depósito.
+  assert.throws(() => lineasOrdenAlquilerSimple(palermo({ flete: null, recargoFranja: 100000, recargoFranjaPct: 20 })), /depósito/);
+  const v = valoresOrdenAlquilerSimple(
+    { marca: "tomas-alquiler:x", partnerId: 9084, vendedorUserId: 73, cotizacion: dep, direccionEntrega: "Maipú 2000, Olivos", enCaba: false, origen: "ANDRÉS - SIMPLE", hoy: "2026-11-12" },
+    r, null, true,
+  );
+  assert.equal(v.carrier_id, false); // un reintento que antes tenía envío lo borra
+  assert.equal(v.x_direccion_obra, `${DIRECCION_RETIRA_EN_DEPOSITO} (obra: Maipú 2000, Olivos)`);
+  assert.match(DIRECCION_RETIRA_EN_DEPOSITO, /^RETIRA DE MATURÍN 2570/);
+  assert.equal(v.user_id, 73);
+  assert.equal(v.x_obra_provincia, "Buenos Aires");
+  const lineas = v.order_line as unknown[];
+  assert.ok(!lineas.slice(1).some((l) => (l as [number, number, Record<string, unknown>])[2].is_delivery));
+  const sinDir = valoresOrdenAlquilerSimple({ marca: "m", partnerId: 1, vendedorUserId: 73, cotizacion: dep, direccionEntrega: "", enCaba: true, origen: "X", hoy: "2026-11-12" }, r, null, false);
+  assert.equal(sinDir.x_direccion_obra, DIRECCION_RETIRA_EN_DEPOSITO);
 });
 
 test("una cotización sin sentido tira (es un error del motor)", () => {

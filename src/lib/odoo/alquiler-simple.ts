@@ -3,10 +3,12 @@
 // Qué hay acá:
 //   · el mapa CodigoPieza → producto de Odoo (los mismos que usa Tamara en las órdenes «Simple»);
 //   · los fletes por barrio (métodos de envío 354 a 450, la tanda del 31/3/2026) y cómo se elige
-//     el del barrio o la localidad de la dirección;
+//     el del barrio de la dirección. Sólo CABA: no se entrega ni se retira en provincia (JS,
+//     12/11): los métodos del conurbano de la lista no se usan;
 //   · de la dirección al barrio (CABA) o la localidad (GBA), con USIG y Places de respaldo;
 //   · las líneas de la orden tal como las arman hoy en Odoo (pura, con tests);
-//   · crear la orden EN BORRADOR y adjuntarle los documentos del cliente.
+//   · crear la orden EN BORRADOR y adjuntarle los documentos del cliente. Si retira en el
+//     depósito, sin flete ni método de envío y con la dirección como las marca hoy Tamara.
 //
 // Lo que vio Claude en Odoo el 12/11 está en docs/sofia/alquiler-simple-odoo.md.
 //
@@ -166,12 +168,29 @@ export type ReglaPrecioOdoo = {
 };
 
 /**
+ * Los métodos de envío de la tanda del 31/3/2026 que son barrios de CABA (51 de los 97, leídos el
+ * 12/11), normalizados con `normalizarLugar`. Los otros 46 son localidades del conurbano y NO se
+ * usan: no se entrega ni se retira fuera de CABA (JS, 12/11). Es una lista de los que SÍ, y no de
+ * los que no: un método nuevo que nadie revisó va a un vendedor en vez de cotizarse solo.
+ * «RETIRO» (418) es el barrio de Retiro, no el retiro en el depósito.
+ */
+export const BARRIOS_CABA_EN_LISTA: ReadonlySet<string> = new Set([
+  "AGRONOMIA", "ALMAGRO", "BALVANERA", "BARRACAS", "BARRIO NORTE", "BELGRANO C", "BELGRANO R", "BOEDO", "CABALLITO",
+  "CHACARITA", "COGHLAN", "COLEGIALES", "CONTITUCION", "FLORES", "FLORESTA", "LA BOCA", "LAS CANITAS", "LINIERS",
+  "MATADEROS", "MONSERRAT", "MONTE CASTRO", "NUEVA POMPEYA", "NUNEZ", "PALERMO", "PARQUE AVELLANEDA", "PARQUE CHACABUCO",
+  "PARQUE CHAS", "PARQUE PATRICIOS", "PATERNAL", "PUERTO MADERO", "RECOLETA", "RETIRO", "SAAVEDRA", "SAN CRISTOBAL",
+  "SAN NICOLAS", "SAN TELMO", "VELEZ SARSFIELD", "VERSALLES", "VILLA CRESPO", "VILLA DEL PARQUE", "VILLA DEVOTO",
+  "VILLA LUGANO", "VILLA LURO", "VILLA MITRE", "VILLA ORTUZAR", "VILLA PUEYRREDON", "VILLA REAL", "VILLA RIACHUELO",
+  "VILLA SANTA RITA", "VILLA SOLDATI", "VILLA URQUIZA",
+]);
+
+/**
  * De los métodos de envío y sus reglas de precio, la lista de fletes. PURA.
  *
  * En Odoo los 97 métodos son «base_on_rule» con `fixed_price` en 0: el precio es el
  * `list_base_price` de su única regla («cantidad >= 0», sin precio variable). Si un método no
  * tiene exactamente esa regla, o no usa el producto de flete, se descarta: mejor que vaya a un
- * vendedor que cobrar un flete que no sabemos leer.
+ * vendedor que cobrar un flete que no sabemos leer. Los que no son de CABA, también.
  */
 export function armarFletes(carriers: CarrierOdoo[], reglas: ReglaPrecioOdoo[]): { fletes: Flete[]; descartados: string[] } {
   const fletes: Flete[] = [];
@@ -179,6 +198,7 @@ export function armarFletes(carriers: CarrierOdoo[], reglas: ReglaPrecioOdoo[]):
   for (const c of carriers) {
     if (c.active === false) { descartados.push(`${c.name} (archivado)`); continue; }
     if (Array.isArray(c.product_id) && c.product_id[0] !== PRODUCTO_FLETE) { descartados.push(`${c.name} (otro producto)`); continue; }
+    if (!BARRIOS_CABA_EN_LISTA.has(normalizarLugar(c.name))) { descartados.push(`${c.name} (no es de CABA: no se entrega)`); continue; }
     const rs = reglas.filter((r) => Array.isArray(r.carrier_id) && r.carrier_id[0] === c.id);
     const r = rs[0];
     const simple = rs.length === 1 && r.variable === "quantity" && r.operator === ">=" && !r.max_value && !r.list_price;
@@ -223,17 +243,18 @@ export function normalizarLugar(s: string): string {
 
 /**
  * Cómo se llama en la lista lo que devuelven USIG o el cliente, cuando no es igual. Sólo los
- * obvios: el mismo lugar con otro nombre. Clave y valor ya normalizados.
+ * obvios: el mismo lugar con otro nombre. Clave y valor ya normalizados. Sólo CABA: los del
+ * conurbano se sacaron el 12/11, cuando JS decidió que no se entrega en provincia.
  *
- * NO están, a propósito:
- *   · «BELGRANO» a secas: en la lista hay BELGRANO C (130.800) y BELGRANO R (124.200) y USIG
- *     sólo dice «Belgrano». Es ambiguo: va a un vendedor (ver el doc).
- *   · «CAPITAL», «CABA» o «CAPITAL FEDERAL»: no es un barrio.
- *   · Localidades del conurbano que no están en la lista (Temperley, Beccar, Bernal…), aunque
- *     su partido sí esté: el flete es por localidad y no hay forma de saber si sale lo mismo.
+ * «BELGRANO» a secas (USIG dice sólo «Belgrano»): en la lista hay BELGRANO C (130.800) y
+ * BELGRANO R (124.200). JS decidió el 12/11 que se cobra siempre BELGRANO C, el más caro (fila 16
+ * de la §11 de docs/sofia/alquiler-simple-propuesta.md). Antes iba a un vendedor.
+ *
+ * NO están, a propósito: «CAPITAL», «CABA» o «CAPITAL FEDERAL», que no son un barrio.
  */
 const ALIAS_LUGAR: Record<string, string> = {
   // CABA: cómo los escribe USIG (datos_utiles) o la gente
+  "BELGRANO": "BELGRANO C",
   "CONSTITUCION": "CONTITUCION", // así está en Odoo, con la errata
   "MONTSERRAT": "MONSERRAT",
   "LA PATERNAL": "PATERNAL",
@@ -248,25 +269,14 @@ const ALIAS_LUGAR: Record<string, string> = {
   "PALERMO NUEVO": "PALERMO",
   "MICROCENTRO": "SAN NICOLAS",
   "ONCE": "BALVANERA",
-  // GBA: el nombre completo de la localidad
-  "BELEN DE ESCOBAR": "ESCOBAR",
-  "GENERAL PACHECO": "PACHECO",
-  "GRAL PACHECO": "PACHECO",
-  "INGENIERO MASCHWITZ": "MASCHWITZ",
-  "ING MASCHWITZ": "MASCHWITZ",
-  "ING BUDGE": "INGENIERO BUDGE",
-  "JOSE LEON SUAREZ": "JOSE L SUAREZ",
-  "JOSE CLEMENTE PAZ": "JOSE C PAZ",
-  "GENERAL SAN MARTIN": "SAN MARTIN",
-  "GRAL SAN MARTIN": "SAN MARTIN",
-  "BOULOGNE SUR MER": "BOULOGNE",
 };
 
-/** Lo que se le saca al final a una localidad: «Lanús Este», «Florida Oeste», «Banfield Oeste». */
+/** Lo que se le saca al final («… Este», «… Oeste»), por si el lugar viene escrito así. */
 const CALIFICATIVOS = /\s(ESTE|OESTE|NORTE|SUR|CENTRO)$/;
 
 /**
- * El flete del barrio (CABA) o la localidad (GBA). PURA.
+ * El flete del barrio. PURA. Busca en la lista que le pasen: la de `fletesAlquilerSimple` ya
+ * viene sin el conurbano.
  *
  * Compara normalizado (sin tildes, mayúsculas ni puntos), después por alias y por último sin el
  * «Este/Oeste/Norte/Sur/Centro» del final. Lo que va después de una coma o un paréntesis se
@@ -362,13 +372,18 @@ export function elegirNormalizada(
   return { ambigua: utiles.map((r) => r.direccion ?? "").filter(Boolean).slice(0, 5) };
 }
 
-/** El lugar que hay que buscar en la lista de fletes: el barrio en CABA, la localidad afuera. PURA. */
+/** El lugar de la obra, para Tomás y la tarjeta: el barrio en CABA, la localidad afuera. PURA. */
 export function lugarParaFlete(u: Ubicacion): string | null {
   return u.enCaba ? u.barrio : u.localidad;
 }
 
-/** El flete de una ubicación ya resuelta. PURA. Null: va a un vendedor. */
+/**
+ * El flete de una ubicación ya resuelta. PURA. Null: en CABA, el barrio no está en la lista (va
+ * a un vendedor); fuera de CABA, siempre: no se entrega ni se retira en provincia (JS, 12/11) y
+ * Tomás le ofrece retirarlo en el depósito.
+ */
 export function fleteParaUbicacion(fletes: Flete[], u: Ubicacion): Flete | null {
+  if (!u.enCaba) return null;
   return buscarFletePorBarrio(fletes, lugarParaFlete(u));
 }
 
@@ -457,10 +472,23 @@ export type PiezaCotizada = { codigo: CodigoPieza; cantidad: number; precioUnita
 export type Franja = { desde: string; hasta: string };
 export const FRANJA_MANANA: Franja = { desde: "08:00", hasta: "12:00" };
 export const FRANJA_TARDE: Franja = { desde: "13:00", hasta: "16:00" };
+/** Las del depósito (Maturín 2570): de 10 a 12 y de 13 a 16, de 12 a 13 para (JS, 12/11). */
+export const FRANJA_DEPOSITO_MANANA: Franja = { desde: "10:00", hasta: "12:00" };
+export const FRANJA_DEPOSITO_TARDE: Franja = { desde: "13:00", hasta: "16:00" };
+
+/**
+ * Cómo se marca hoy en Odoo una orden que retira en el depósito (visto el 12/11, sólo lectura):
+ * sin método de envío ni línea de flete, y con la dirección de la obra «RETIRA DE CUCHA CUCHA
+ * 2345» o «RETIRA CUCHA CUCHA 2345 - DEPOSITO ANDAMIOS BUENOS AIRES» (S03008, S02929, S02769,
+ * S01665, S01563). No hay un campo ni una etiqueta propia. Se sigue esa marca con el depósito que
+ * dio JS el 12/11 (Maturín 2570); la diferencia con Cucha Cucha está en el handoff.
+ */
+export const DIRECCION_RETIRA_EN_DEPOSITO = "RETIRA DE MATURÍN 2570 - DEPÓSITO ANDAMIOS BUENOS AIRES";
 
 export type CotizacionParaOdoo = {
   piezas: PiezaCotizada[];
-  flete: Flete;
+  /** null: retira en el depósito (sin línea de flete ni método de envío). */
+  flete: Flete | null;
   /** La diferencia hasta el mínimo, neta (0 si el material más el flete ya llega). */
   minimoOperativo: number;
   /** El recargo sobre el total del servicio si pidió la franja de una hora (0 si no). */
@@ -492,7 +520,9 @@ export type LineasAlquilerSimple = {
   /** rental_start_date / rental_return_date, en UTC como los guarda Odoo («AAAA-MM-DD HH:MM:SS»). */
   inicioUtc: string;
   finUtc: string;
-  carrierId: number;
+  /** null: retira en el depósito. */
+  carrierId: number | null;
+  retiraEnDeposito: boolean;
   /** El valor de x_studio_horario_entrega, o false si la franja no está en la lista de Odoo. */
   horarioEntrega: string | false;
   /** La suma de las líneas, neta. Tiene que dar el total del motor. */
@@ -554,7 +584,9 @@ const redondear = (n: number) => Math.round(n * 100) / 100;
  *     por cada una, 2 bastidores baranda de 1,30 y 2 riendas JR de 1,50, con el precio de la pieza
  *     repartido entre las 4 unidades (el neto no cambia). Con torres mezcladas queda la de 2,50 y
  *     un aviso (ver PRODUCTO_BARANDA_090_JUNIOR);
- *   · el recargo de la franja de una hora va con PRODUCTO_RECARGO_FRANJA y la franja en la descripción.
+ *   · el recargo de la franja de una hora va con PRODUCTO_RECARGO_FRANJA y la franja en la descripción;
+ *   · si retira en el depósito (`flete` null): sin línea de flete ni carrier_id, con el mínimo
+ *     operativo igual (todo material + mínimo) y sin recargo de franja (no aplica en el depósito).
  *
  * Tira si la cotización no tiene sentido (es un error del motor, no del cliente).
  */
@@ -573,8 +605,10 @@ export function lineasOrdenAlquilerSimple(
     if (!Number.isInteger(p.cantidad) || p.cantidad <= 0) throw new Error(`Cantidad inválida para ${p.codigo}: ${p.cantidad}.`);
     if (!Number.isFinite(p.precioUnitario) || p.precioUnitario < 0) throw new Error(`Precio inválido para ${p.codigo}.`);
   }
-  if (!(c.flete.precio > 0) || !c.flete.carrierId) throw new Error("Falta el flete.");
+  if (c.flete && (!(c.flete.precio > 0) || !c.flete.carrierId)) throw new Error("Falta el flete.");
   if (c.minimoOperativo < 0 || c.recargoFranja < 0) throw new Error("El mínimo y el recargo no pueden ser negativos.");
+  const deposito = c.flete === null;
+  if (deposito && c.recargoFranja > 0) throw new Error("En el depósito no hay recargo de franja.");
 
   const periodo = `del ${fechaHoraAr(c.entrega, c.franja.desde)} al ${fechaHoraAr(c.fin, c.franja.desde)}`;
   const avisos: string[] = [];
@@ -645,23 +679,27 @@ export function lineasOrdenAlquilerSimple(
       secuencia: secuencia++,
     });
     if (horarioEntrega) avisos.push(`Hay recargo por franja pactada pero la franja (${c.franja.desde} a ${c.franja.hasta}) es una de las de siempre.`);
-  } else if (!horarioEntrega) {
+  } else if (!horarioEntrega && !deposito) {
+    // En el depósito, la mañana (10 a 12) no está en el desplegable y no hace falta avisar.
     avisos.push(`La franja ${c.franja.desde} a ${c.franja.hasta} no es una de las de siempre y no tiene recargo.`);
   }
-  lineas.push({
-    productId: PRODUCTO_FLETE,
-    descripcion: c.flete.nombre,
-    cantidad: 1,
-    precioUnitario: redondear(c.flete.precio),
-    esFlete: true,
-    secuencia: secuencia++,
-  });
+  if (c.flete) {
+    lineas.push({
+      productId: PRODUCTO_FLETE,
+      descripcion: c.flete.nombre,
+      cantidad: 1,
+      precioUnitario: redondear(c.flete.precio),
+      esFlete: true,
+      secuencia: secuencia++,
+    });
+  }
 
   return {
     lineas,
     inicioUtc: utcOdoo(c.entrega, c.franja.desde),
     finUtc: utcOdoo(c.fin, c.franja.desde),
-    carrierId: c.flete.carrierId,
+    carrierId: c.flete?.carrierId ?? null,
+    retiraEnDeposito: deposito,
     horarioEntrega,
     neto: redondear(lineas.reduce((s, l) => s + l.cantidad * l.precioUnitario, 0)),
     avisos,
@@ -699,10 +737,13 @@ export type DatosOrdenAlquilerSimple = {
    */
   marca: string;
   partnerId: number;
-  /** El vendedor (res.users). Hoy los simples son casi todos de Tamara (73). Null: el de Odoo. */
+  /** El vendedor (res.users). Las de Tomás, siempre Tamara (73): VENDEDORA_ALQUILER_SIMPLE en aprobar.ts. Null: el de Odoo. */
   vendedorUserId: number | null;
   cotizacion: CotizacionParaOdoo;
-  /** La dirección de entrega: la de los servicios del cliente si ya los mandó (§6). */
+  /**
+   * La dirección de entrega: la de los servicios del cliente si ya los mandó (§6). Si retira en
+   * el depósito, la orden lleva DIRECCION_RETIRA_EN_DEPOSITO y esta va entre paréntesis (si hay).
+   */
   direccionEntrega: string;
   enCaba: boolean;
   /** El «Origen» de la orden. Tamara pone «NOMBRE - SIMPLE». */
@@ -768,11 +809,15 @@ export function valoresOrdenAlquilerSimple(
     x_studio_tipo_de_contrato: ODOO_ALQUILER_SIMPLE.contrato,
     ...(d.vendedorUserId ? { user_id: d.vendedorUserId } : {}),
     tag_ids: [[6, 0, [ODOO_ALQUILER_SIMPLE.etiquetaSimple]]],
-    carrier_id: armado.carrierId,
+    // Retira en el depósito: sin método de envío, como las órdenes de Tamara (false lo borra si
+    // un reintento la reescribe después de haber sido con envío).
+    carrier_id: armado.carrierId ?? false,
     rental_start_date: armado.inicioUtc,
     rental_return_date: armado.finUtc,
     x_studio_horario_entrega: armado.horarioEntrega,
-    x_direccion_obra: d.direccionEntrega,
+    x_direccion_obra: armado.retiraEnDeposito
+      ? `${DIRECCION_RETIRA_EN_DEPOSITO}${d.direccionEntrega.trim() ? ` (obra: ${d.direccionEntrega.trim()})` : ""}`
+      : d.direccionEntrega,
     x_obra_provincia: d.enCaba ? "Ciudad Autónoma de Buenos Aires" : "Buenos Aires",
     origin: d.origen,
     x_asistente_ref: d.marca,

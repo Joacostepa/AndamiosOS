@@ -23,8 +23,8 @@ import { Pastilla, PastillaGamaAlta } from "./pastillas";
 //     Descartar.
 //   · Alquiler simple que cotizó Tomás (carril «alquiler», docs/sofia/alquiler-simple-propuesta.md):
 //     el mensaje exacto (un solo total por 30 días + IVA), el pedido, el armado (destacado si la
-//     plataforma va en el peldaño), las líneas de la orden, el flete, la entrega, la asignación y
-//     las alertas. Aprobar y mandar / Corregir (total, cantidades, fecha o texto) / Lo tomo yo.
+//     plataforma va en un peldaño o no llega cómodo al techo), las líneas de la orden, el flete o
+//     el retiro en el depósito, la entrega, la vendedora (siempre Tamara) y las alertas. Aprobar y mandar / Corregir (total, cantidades, fecha o texto) / Lo tomo yo.
 //
 // Todo lo decide el servidor, una sola vez: si otro tocó antes, se lee «Ya lo aprobó Sandra».
 
@@ -574,7 +574,7 @@ const TIPOS_CORRECCION_ALQUILER: { id: CorreccionAlquilerPedida["tipo"]; etiquet
   { id: "texto", etiqueta: "Texto" },
 ];
 
-/** Las horas para una franja de una hora: adentro de 8 a 12 y de 13 a 16 (§6). */
+/** Las horas para una franja de una hora: adentro de 8 a 12 y de 13 a 16 (§6). En el depósito no hay. */
 const HORAS_FRANJA = [8, 8.5, 9, 9.5, 10, 10.5, 11, 13, 13.5, 14, 14.5, 15];
 const textoHora = (h: number) => `${Math.floor(h)}:${h % 1 ? "30" : "00"}`;
 
@@ -694,7 +694,7 @@ function TarjetaAlquilerSimple({ t, charla, ahora, puedeEditar, datos }: { t: Ta
 
             <div className="flex flex-col gap-3">
               <div className="rounded-lg border border-border bg-muted/30 px-3 py-2">
-                <p className="text-[12.5px] font-semibold tracking-wide text-muted-foreground uppercase">Total por 30 días, con la entrega y el retiro</p>
+                <p className="text-[12.5px] font-semibold tracking-wide text-muted-foreground uppercase">{k.deposito ? "Total por 30 días, retira en el depósito (sin flete)" : "Total por 30 días, con la entrega y el retiro"}</p>
                 <p className="text-[22px] font-semibold tabular-nums">{k.neto !== null ? `${pesos(k.neto)} + IVA` : "—"}</p>
                 <p className="text-[13px] text-muted-foreground tabular-nums">
                   {k.totalConIva !== null ? `Con IVA ${pesos(k.totalConIva)}` : null}
@@ -705,9 +705,10 @@ function TarjetaAlquilerSimple({ t, charla, ahora, puedeEditar, datos }: { t: Ta
 
               {k.entrega && (
                 <p className="flex flex-wrap items-center gap-1.5 text-[13.5px]">
-                  <span className="text-muted-foreground">Entrega:</span> {k.entrega.texto}, {k.entrega.franja}
+                  <span className="text-muted-foreground">{k.deposito ? "Retira en el depósito:" : "Entrega:"}</span> {k.entrega.texto}, {k.entrega.franja}
                   {k.entrega.hora && <Pastilla tono="ambar">Franja de una hora</Pastilla>}
-                  {k.direccion && <span className="text-muted-foreground">· {k.direccion}</span>}
+                  {k.deposito && <Pastilla tono="suave">Sin flete · Maturín 2570</Pastilla>}
+                  {k.direccion && <span className="text-muted-foreground">· {k.deposito ? `obra: ${k.direccion}` : k.direccion}</span>}
                 </p>
               )}
 
@@ -724,8 +725,8 @@ function TarjetaAlquilerSimple({ t, charla, ahora, puedeEditar, datos }: { t: Ta
                 <div className="flex flex-col gap-1.5">
                   <h4 className="text-[12.5px] font-semibold tracking-wide text-muted-foreground uppercase">Armado{k.armado.torres > 1 ? ` · ${k.armado.torres} torres` : ""}</h4>
                   <p className="text-[13.5px]">{k.armado.texto}.</p>
-                  {k.armado.peldano !== null ? (
-                    <Aviso tono="ambar"><AlertTriangle className="mr-1 inline size-4" /><b>Excepción del techo bajo:</b> {k.armado.plataforma}.</Aviso>
+                  {k.armado.peldano !== null || k.armado.noLlegaAlTecho ? (
+                    <Aviso tono="ambar"><AlertTriangle className="mr-1 inline size-4" /><b>{k.armado.peldano !== null ? "Plataforma en un peldaño (alternativa):" : "No llega cómodo al techo:"}</b> {k.armado.plataforma}.</Aviso>
                   ) : (
                     <p className="text-[13.5px] text-muted-foreground">{k.armado.plataforma}.</p>
                   )}
@@ -772,8 +773,9 @@ function TarjetaAlquilerSimple({ t, charla, ahora, puedeEditar, datos }: { t: Ta
                 <Aviso tono="ambar">Alertas en lo que escribió: {k.alertas.join(" · ")}</Aviso>
               )}
               <p className="text-[13.5px]">
-                <span className="text-muted-foreground">Asignación: </span>
-                {k.pareja?.asistente || k.pareja?.tecnico ? `${[k.pareja.asistente, k.pareja.tecnico].filter(Boolean).join(" con ")} — ${k.pareja.motivo}. Queda de vendedora en la orden.` : "sin pareja propuesta (la orden queda con el vendedor por defecto)"}
+                <span className="text-muted-foreground">Vendedora en Odoo: </span>
+                <b>{k.vendedora}</b> (siempre, en los alquileres de Tomás).
+                {(k.pareja?.asistente || k.pareja?.tecnico) && <span className="text-muted-foreground"> Asignación de la charla: {[k.pareja.asistente, k.pareja.tecnico].filter(Boolean).join(" con ")} — {k.pareja.motivo}.</span>}
               </p>
               <LineaVentana v={v} />
               {k.sinCuit && <Aviso tono="neutro">El cliente no dio CUIT: se da de alta en Odoo sin CUIT, con el aviso en la nota (completarlo antes de facturar).</Aviso>}
@@ -817,15 +819,15 @@ function TarjetaAlquilerSimple({ t, charla, ahora, puedeEditar, datos }: { t: Ta
           )}
           {corr.tipo === "fecha" && (
             <div className="grid gap-2 sm:grid-cols-2">
-              <label className="flex flex-col gap-1 text-[13px]">Día de entrega (ahora {k.entrega?.texto ?? "—"})
+              <label className="flex flex-col gap-1 text-[13px]">{k.deposito ? "Día en que retira" : "Día de entrega"} (ahora {k.entrega?.texto ?? "—"})
                 <input type="date" className="h-11 rounded-md border border-input bg-background px-3 text-[16px]" value={corr.fecha ?? ""} onChange={(e) => setCorr({ ...corr, fecha: e.target.value || undefined })} />
               </label>
               <label className="flex flex-col gap-1 text-[13px]">Franja (ahora {k.entrega?.franja ?? "—"})
                 <select className="h-11 rounded-md border border-input bg-background px-2 text-[15px]" value={franjaClave(corr.franja)} onChange={(e) => setCorr({ ...corr, franja: franjaDeClave(e.target.value) })}>
                   <option value="">Sin cambios</option>
-                  <option value="manana">De 8 a 12</option>
-                  <option value="tarde">De 13 a 16 (no los sábados)</option>
-                  {HORAS_FRANJA.map((h) => <option key={h} value={`hora-${h}`}>Una hora: de {textoHora(h)} a {textoHora(h + 1)} (con recargo)</option>)}
+                  <option value="manana">{k.deposito ? "De 10 a 12 (en el depósito)" : "De 8 a 12"}</option>
+                  <option value="tarde">{k.deposito ? "De 13 a 16 (en el depósito)" : "De 13 a 16 (no los sábados)"}</option>
+                  {!k.deposito && HORAS_FRANJA.map((h) => <option key={h} value={`hora-${h}`}>Una hora: de {textoHora(h)} a {textoHora(h + 1)} (con recargo)</option>)}
                 </select>
               </label>
             </div>

@@ -41,10 +41,10 @@
 //     4. PRIMERO ODOO: el cliente (el de la ficha si Tomás lo identificó; si no, el alta de
 //        partner del asistente comercial, crearCliente: nombre, celular y CUIT si lo hay), la
 //        orden EN BORRADOR con crearOrdenAlquilerSimple (idempotente por x_asistente_ref =
-//        «tomas-alquiler:<id de la aprobación>»), la vendedora de la pareja, la nota interna con
-//        el detalle y quién aprobó, y la oportunidad del CRM (si falla, es un aviso). El id queda
-//        en pasos.ordenAlquiler = { id, nombre }: de ahí lo lee Tomás para adjuntar los
-//        documentos del cliente (§6);
+//        «tomas-alquiler:<id de la aprobación>»), siempre a nombre de Tamara
+//        (VENDEDORA_ALQUILER_SIMPLE), la nota interna con el detalle y quién aprobó, y la
+//        oportunidad del CRM (si falla, es un aviso). El id queda en pasos.ordenAlquiler =
+//        { id, nombre }: de ahí lo lee Tomás para adjuntar los documentos del cliente (§6);
 //     5. si Odoo falla, NO SE MANDA NADA: queda en «error» con Reintentar;
 //     6. después WhatsApp: el mensaje del motor (mensajePresupuestoAlquiler), sólo texto, sin
 //        PDF. Con la ventana cerrada, «aprobada, falta la plantilla», como la bandeja;
@@ -781,6 +781,16 @@ async function guardarEnOdoo(db: Db, f: Fila, charla: Charla, envio: Envio, quie
 
 // ── El alquiler simple (carril «alquiler») ──────────────────────────────────────────────
 
+/**
+ * La vendedora de TODAS las órdenes de alquiler simple de Tomás: Tamara (res.users 73).
+ *
+ * DECISIÓN de JS (12/11, fila 18 de la §11 de la propuesta): van siempre a su nombre, no a la
+ * pareja del turno. Es la que lleva los simples (92 de las 117 órdenes «Simple» desde mayo) y la
+ * que las confirma. La pareja que propone la asignación sigue en la tarjeta y en la charla (el
+ * técnico), pero no es la vendedora de la orden ni de la oportunidad.
+ */
+export const VENDEDORA_ALQUILER_SIMPLE = { userId: 73, nombre: "Tamara" } as const;
+
 type CtxAlquiler = { parametros: ParametrosAlquiler; fletes: Flete[] | null; feriados: string[]; hoy: string; ivaPct: number };
 type ContextoAlquilerCargado = CtxAlquiler | { error: string };
 
@@ -837,11 +847,13 @@ function tarjetaAlquiler(f: Fila, charla: Charla, c: CtxAlquiler, r: RecalculoAl
     .map((x) => (x.palabra ? `${x.texto} («${x.palabra}»)` : String(x.texto)));
   return {
     mensaje: r.mensaje,
+    deposito: r.resultado.modalidad === "deposito",
+    vendedora: VENDEDORA_ALQUILER_SIMPLE.nombre,
     pedido: datosDelPedido(r.pedido),
     armado: a
       ? {
           texto: describirArmado(a), torres: a.torres, modulosPorTorre: a.modulosPorTorre, apoyo: a.apoyo, plataforma: textoPlataforma(a),
-          peldano: a.peldano, barandaSeLleva: a.barandaSeLleva, ajustes: a.ajustes,
+          peldano: a.peldano, noLlegaAlTecho: a.llegaAlTecho === false, barandaSeLleva: a.barandaSeLleva, ajustes: a.ajustes,
         }
       : null,
     lineas: (pr?.lineas ?? []).map((l) => ({ descripcion: l.descripcion, cantidad: l.cantidad, precioUnitario: l.precioUnitario, importe: l.importe, tipo: TIPO_LINEA[l.codigo] ?? "pieza" })),
@@ -1078,9 +1090,9 @@ async function guardarAlquilerEnOdoo(
   if (!nombre) throw new Error("Falta a nombre de quién va el presupuesto.");
   const avisos: string[] = [];
 
-  const ids = (pasos.idsPareja as Awaited<ReturnType<typeof idsDePareja>> | undefined) ?? (await idsDePareja({ tecnico: a?.tecnico ?? null, asistente: a?.asistente ?? null }));
+  // El técnico de la pareja, para la oportunidad. La vendedora es siempre Tamara (VENDEDORA_ALQUILER_SIMPLE).
+  const ids = (pasos.idsPareja as Awaited<ReturnType<typeof idsDePareja>> | undefined) ?? (await idsDePareja({ tecnico: a?.tecnico ?? null, asistente: null }));
   pasos.idsPareja = ids;
-  if (a?.asistente && !ids.asistente) avisos.push(`no se encontró a ${a.asistente} en los usuarios de Odoo: la orden queda con el vendedor por defecto`);
 
   let partnerId = (pasos.partnerId as number | undefined) ?? ficha.partnerId ?? charla.partner_id ?? null;
   if (!partnerId) {
@@ -1099,7 +1111,7 @@ async function guardarAlquilerEnOdoo(
   const o = await crearOrdenAlquilerSimple({
     marca: `tomas-alquiler:${f.id}`,
     partnerId,
-    vendedorUserId: ids.asistente?.id ?? null,
+    vendedorUserId: VENDEDORA_ALQUILER_SIMPLE.userId,
     cotizacion: envio.cotizacion,
     direccionEntrega: envio.direccion ?? "",
     enCaba: ficha.enCaba ?? true,
@@ -1109,13 +1121,13 @@ async function guardarAlquilerEnOdoo(
     impuestoIvaId: Number(iva),
   });
   avisos.push(...o.avisos);
-  if (!envio.direccion) avisos.push("la orden quedó sin dirección de entrega");
+  if (!envio.direccion && envio.cotizacion.flete) avisos.push("la orden quedó sin dirección de entrega");
 
   if (!pasos.oportunidadId) {
     try {
       const op = await vincularOportunidad({
         ordenId: o.id, ordenNombre: o.nombre, partnerId, cliente: nombre, direccionObra: envio.direccion, referencia: "Alquiler simple",
-        neto: envio.total, vendedorUserId: ids.asistente?.id ?? null, tecnicoEmployeeId: ids.tecnico?.id ?? null,
+        neto: envio.total, vendedorUserId: VENDEDORA_ALQUILER_SIMPLE.userId, tecnicoEmployeeId: ids.tecnico?.id ?? null,
       });
       pasos.oportunidadId = op.id;
     } catch (e) {

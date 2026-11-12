@@ -351,13 +351,14 @@ test("cotizar_alquiler_simple: lo que no entra en las reglas dice qué hacer (t�
   assert.equal(montaje.estado, "no_es_facil");
   assert.match(montaje.que_hacer, /pedir_tecnico/);
 
+  // Un barrio de CABA que no está en la lista de fletes: lo cotiza un vendedor.
   const lejos = contexto({ nombre: "A" });
-  lejos.mundo.fleteAlquiler = async () => ({ estado: "ok", enCaba: false, lugar: "Cañuelas", partido: "Cañuelas", normalizada: "X", flete: null });
+  lejos.mundo.fleteAlquiler = async () => ({ estado: "ok", enCaba: true, lugar: "Villa Desconocida", partido: null, normalizada: "X", flete: null });
   const r = JSON.parse((await ejecutarHerramientaSofia("cotizar_alquiler_simple", PALERMO, lejos)).contenido);
   assert.equal(r.estado, "no_es_facil");
   assert.match(r.que_hacer, /preparar_pedido_simple/);
   assert.match(r.detalle, /lista de fletes/);
-  assert.ok(lejos.ficha.alquiler!.porQueNo.some((x) => /Cañuelas/.test(x)), "la tarjeta sabe por qué");
+  assert.ok(lejos.ficha.alquiler!.porQueNo.some((x) => /Villa Desconocida/.test(x)), "la tarjeta sabe por qué");
   // preparar_pedido_simple aprovecha lo que juntó: 30 días y envío, sin volver a preguntar.
   const p = JSON.parse((await ejecutarHerramientaSofia("preparar_pedido_simple", { sabe_piezas: false, notas: "pintar pared de patio a 5 m" }, lejos)).contenido);
   assert.equal(p.estado, "pendiente");
@@ -366,7 +367,7 @@ test("cotizar_alquiler_simple: lo que no entra en las reglas dice qué hacer (t�
   const a = pend.payload.alquiler as { dias: number; entrega: string; barrio: string; pedido: { alturaTrabajo: number } };
   assert.equal(a.dias, 30);
   assert.equal(a.entrega, "envio");
-  assert.equal(a.barrio, "Cañuelas");
+  assert.equal(a.barrio, "Villa Desconocida");
   assert.equal(a.pedido.alturaTrabajo, 5);
 
   const escalera = JSON.parse((await ejecutarHerramientaSofia("cotizar_alquiler_simple", { ...PALERMO, piezas_fuera_de_catalogo: ["escalera"] }, contexto({ nombre: "A" }))).contenido);
@@ -407,7 +408,7 @@ test("cotizar_alquiler_simple: la franja de una hora pide la hora; con recargo, 
   assert.deepEqual(c.ficha.alquiler?.pedido?.franja, { tipo: "hora", desde: 10 });
 });
 
-test("cotizar_alquiler_simple: el techo bajo propone el peldaño y espera la respuesta", async () => {
+test("cotizar_alquiler_simple: el techo bajo propone el peldaño y espera la respuesta (acepta_plataforma)", async () => {
   const c = contexto({ nombre: "A" });
   const r = JSON.parse((await ejecutarHerramientaSofia("cotizar_alquiler_simple", {
     lugar: "adentro", trabajo_en_techo: true, altura_techo_m: 3, espacio_de_sobra: true, piso: "liso", direccion: "Gorriti 4500", fecha: "2026-10-16", franja: "manana",
@@ -415,11 +416,104 @@ test("cotizar_alquiler_simple: el techo bajo propone el peldaño y espera la res
   assert.equal(r.estado, "confirmar");
   assert.match(r.detalle, /un solo tablón de 30 cm/);
   assert.equal(c.mundo.pendientes.length, 0);
-  const ok = JSON.parse((await ejecutarHerramientaSofia("cotizar_alquiler_simple", { acepta_peldano: true }, c)).contenido);
+  const ok = JSON.parse((await ejecutarHerramientaSofia("cotizar_alquiler_simple", { acepta_plataforma: true }, c)).contenido);
   assert.equal(ok.estado, "pendiente");
   const no = contexto({ nombre: "A" });
-  await ejecutarHerramientaSofia("cotizar_alquiler_simple", { lugar: "adentro", trabajo_en_techo: true, altura_techo_m: 3, espacio_de_sobra: true, piso: "liso", direccion: "Gorriti 4500", fecha: "2026-10-16", franja: "manana", acepta_peldano: false }, no);
+  await ejecutarHerramientaSofia("cotizar_alquiler_simple", { lugar: "adentro", trabajo_en_techo: true, altura_techo_m: 3, espacio_de_sobra: true, piso: "liso", direccion: "Gorriti 4500", fecha: "2026-10-16", franja: "manana", acepta_plataforma: false }, no);
   assert.equal(no.mundo.pendientes.length, 0);
+});
+
+test("cotizar_alquiler_simple: si cambia el techo, la plataforma aceptada ya no vale y se vuelve a confirmar", async () => {
+  const c = contexto({ nombre: "A" });
+  const base = { lugar: "adentro", trabajo_en_techo: true, espacio_de_sobra: true, piso: "liso", direccion: "Gorriti 4500", fecha: "2026-10-16", franja: "manana" } as const;
+  await ejecutarHerramientaSofia("cotizar_alquiler_simple", { ...base, altura_techo_m: 3, acepta_plataforma: true }, c);
+  assert.equal(c.ficha.alquiler?.pedido?.aceptaPlataforma, true);
+  // Era 5 m, no 3: el peldaño del segundo módulo, que no llega cómodo al techo. Hay que volver a preguntar.
+  const r = JSON.parse((await ejecutarHerramientaSofia("cotizar_alquiler_simple", { altura_techo_m: 5 }, c)).contenido);
+  assert.equal(r.estado, "confirmar");
+  assert.equal(c.ficha.alquiler?.pedido?.aceptaPlataforma, null);
+  assert.match(r.detalle, /peldaño de 0,80 m del segundo módulo/);
+  assert.match(r.detalle, /acepta_plataforma/);
+  // Lo que no es de la altura (la fecha) no la borra.
+  await ejecutarHerramientaSofia("cotizar_alquiler_simple", { acepta_plataforma: true }, c);
+  await ejecutarHerramientaSofia("cotizar_alquiler_simple", { fecha: "2026-10-19" }, c);
+  assert.equal(c.ficha.alquiler?.pedido?.aceptaPlataforma, true);
+});
+
+// ── Provincia y el depósito (JS, 12/11, filas 16 y 17) ─────────────────────────────────
+
+test("cotizar_alquiler_simple: en provincia no hay flete (aunque la localidad esté en la lista) y se ofrece el depósito", async () => {
+  const c = contexto({ nombre: "A" });
+  const olivos = { carrierId: 405, nombre: "OLIVOS", precio: 225_600 };
+  c.mundo.fleteAlquiler = async () => ({ estado: "ok", enCaba: false, lugar: "Olivos", partido: "Vicente López", normalizada: "MAIPU 2000, OLIVOS", flete: olivos });
+  const r = JSON.parse((await ejecutarHerramientaSofia("cotizar_alquiler_simple", { ...PALERMO, direccion: "Maipú 2000, Olivos" }, c)).contenido);
+  assert.equal(r.estado, "confirmar");
+  assert.match(r.confirmar[0], /La obra está en Olivos \(provincia\): no entregamos ni retiramos fuera de CABA\. Ofrecele retirarlo en nuestro depósito/);
+  assert.equal(c.ficha.alquiler?.ubicacion?.fleteId, null, "el método del conurbano no se usa");
+  assert.equal(c.ficha.enCaba, false);
+  assert.equal(c.mundo.pendientes.length, 0);
+  // No puede retirarlo: no es un alquiler simple, y no se le ofrecen escaleras.
+  const no = contexto({ nombre: "A" });
+  no.mundo.fleteAlquiler = c.mundo.fleteAlquiler;
+  const rn = JSON.parse((await ejecutarHerramientaSofia("cotizar_alquiler_simple", { ...PALERMO, direccion: "Maipú 2000, Olivos", retira_en_deposito: false }, no)).contenido);
+  assert.equal(rn.estado, "no_es_facil");
+  assert.match(rn.que_hacer, /No entregamos ni retiramos fuera de Capital/);
+  // Lo retira: queda pendiente sin flete, con la franja del depósito.
+  const si = JSON.parse((await ejecutarHerramientaSofia("cotizar_alquiler_simple", { retira_en_deposito: true }, c)).contenido);
+  assert.equal(si.estado, "pendiente");
+  const p = c.mundo.pendientes[0];
+  assert.equal(p.montoPropuesto, 500_000, "material + mínimo, sin flete");
+  assert.match(p.resumen, /· retira en el depósito · viernes 16 de octubre, de 10 a 12$/);
+  const alq = p.payload.alquiler as { flete: unknown; entrega: unknown; pedido: { retiraEnDeposito: boolean } };
+  assert.equal(alq.flete, null);
+  assert.deepEqual(alq.entrega, { fecha: "2026-10-16", franja: { tipo: "deposito_manana" } });
+  assert.equal(alq.pedido.retiraEnDeposito, true);
+  assert.match(si.condiciones, /No hay chofer ni camión/);
+  assert.ok(!/choferes no pueden entrar/.test(si.condiciones));
+  assert.equal(detectarPlata(JSON.stringify(si)).bloquea, false);
+});
+
+test("cotizar_alquiler_simple: un cliente de Capital que retira en el depósito no necesita dirección", async () => {
+  const c = contexto({ nombre: "A" });
+  const { direccion: _d, ...sinDireccion } = PALERMO;
+  void _d;
+  const r = JSON.parse((await ejecutarHerramientaSofia("cotizar_alquiler_simple", { ...sinDireccion, retira_en_deposito: true, franja: "tarde" }, c)).contenido);
+  assert.equal(r.estado, "pendiente", JSON.stringify(r));
+  const alq = c.mundo.pendientes[0].payload.alquiler as { entrega: unknown };
+  assert.deepEqual(alq.entrega, { fecha: "2026-10-16", franja: { tipo: "deposito_tarde" } });
+  // Una franja de una hora en el depósito: se vuelve a preguntar, con las del depósito.
+  const h = contexto({ nombre: "A" });
+  const rh = JSON.parse((await ejecutarHerramientaSofia("cotizar_alquiler_simple", { ...sinDireccion, retira_en_deposito: true, franja: "hora_particular", hora_desde: "10" }, h)).contenido);
+  assert.equal(rh.estado, "faltan_datos");
+  assert.deepEqual(rh.preguntar, ["¿Pasás de 10 a 12 o de 13 a 16?"]);
+});
+
+test("cliente_acepta_alquiler y pedir_retiro: con el depósito, sus franjas y sus condiciones", async () => {
+  const c = contexto();
+  c.mundo.presupuestoAlquiler = { ...PRESUPUESTO, entrega: { fecha: "2026-10-16", franja: { tipo: "deposito_manana" } } };
+  // El sábado el depósito no abre.
+  const sab = JSON.parse((await ejecutarHerramientaSofia("cliente_acepta_alquiler", { fecha: "2026-10-17", franja: "manana" }, c)).contenido);
+  assert.equal(sab.estado, "fecha_no_va");
+  assert.match(sab.motivo, /el depósito abre de lunes a viernes/);
+  assert.equal(sab.proxima, "lunes 19 de octubre, de 10 a 12");
+  const r = JSON.parse((await ejecutarHerramientaSofia("cliente_acepta_alquiler", { fecha: "2026-10-19", franja: "manana" }, c)).contenido);
+  assert.equal(r.estado, "aceptado");
+  assert.equal(r.entrega, "retira en el depósito el lunes 19 de octubre, de 10 a 12");
+  assert.match(r.que_decir, /pasa a retirarlo por el depósito \(Maturín 2570 \(CABA\)\), y que venga con su vehículo y gente para cargarlo/);
+  assert.match(r.que_decir, /DNI de frente y de dorso/);
+  assert.ok(!/camioneta/.test(r.que_decir));
+  assert.deepEqual(c.ficha.alquiler?.aceptado?.franja, { tipo: "deposito_manana" });
+  assert.match(c.mundo.avisos.at(-1)!.texto, /retira en el depósito \(Maturín 2570 \(CABA\)\) el lunes 19 de octubre, de 10 a 12/);
+  // La devolución: en el depósito, con 24 h, sin dirección de la obra.
+  const dev = await ejecutarHerramientaSofia("pedir_retiro", { fecha: "2026-10-20", franja: "tarde" }, c);
+  const o = JSON.parse(dev.contenido);
+  assert.equal(o.estado, "anotado");
+  assert.equal(o.devolucion, "martes 20 de octubre, de 13 a 16");
+  assert.match(o.que_decir, /traiga desarmado al depósito/);
+  assert.ok(!/camión|choferes/.test(o.que_decir));
+  assert.match(c.mundo.avisos.at(-1)!.texto, /devuelve el andamio del alquiler simple #1042 en el depósito/);
+  assert.equal(c.mundo.avisos.at(-1)!.titulo, "WhatsApp de clientes · devuelve en el depósito");
+  assert.equal(detectarPlata(dev.contenido).bloquea, false);
 });
 
 test("leerFicha: el alquiler del formato viejo (17/10) se completa sin perder nada", () => {
@@ -435,6 +529,11 @@ test("leerFicha: el alquiler del formato viejo (17/10) se completa sin perder na
   assert.equal(g.alquiler?.pedido?.alturaTrabajo, 4);
   assert.deepEqual(g.alquiler?.pedido?.piezasFueraDeCatalogo, []);
   assert.equal(g.alquiler?.pedido?.lugar, null);
+  assert.equal(g.alquiler?.pedido?.retiraEnDeposito, null);
+  // Un pedido de antes del 12/11 a la tarde: `aceptaPeldano` pasa a aceptaPlataforma.
+  const v = leerFicha({ alquiler: { pedido: { alturaTecho: 3, aceptaPeldano: true } } }, null);
+  assert.equal(v.alquiler?.pedido?.aceptaPlataforma, true);
+  assert.ok(!("aceptaPeldano" in (v.alquiler?.pedido ?? {})));
 });
 
 // ── La aceptación, los documentos y el retiro ──────────────────────────────────────────
@@ -533,6 +632,12 @@ test("validarRetiro: 24 h hasta el comienzo de la franja, nunca el mismo día, n
   // Una hora particular: las 24 h se miden hasta esa hora.
   assert.equal(validarRetiro("2026-10-16", { tipo: "hora", desde: 10 }, ahora, hoy, []).motivo, "anticipacion");
   assert.equal(validarRetiro("2026-10-16", { tipo: "hora", desde: 11 }, ahora, hoy, []).ok, true);
+  // La devolución en el depósito: 24 h hasta las 10 o las 13, y nunca los sábados.
+  const dep = validarRetiro("2026-10-16", { tipo: "deposito_manana" }, ahora, hoy, []);
+  assert.equal(dep.motivo, "anticipacion");
+  assert.match(dep.texto, /^La devolución en el depósito se coordina con 24 h/);
+  assert.deepEqual(dep.proxima, { fecha: "2026-10-16", franja: { tipo: "deposito_tarde" } });
+  assert.equal(validarRetiro("2026-10-17", { tipo: "deposito_manana" }, ahora, hoy, []).motivo, "sabado_deposito");
 });
 
 test("pedir_retiro: anota, avisa al equipo y le recuerda las condiciones", async () => {

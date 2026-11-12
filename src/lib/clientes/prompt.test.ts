@@ -156,7 +156,7 @@ test("las frases fijas nuevas del prompt pasan el filtro de salida", () => {
 });
 
 test("el bloque del alquiler simple: §3, §6 y §7, sin montos ni porcentajes, adentro del bloque fijo", () => {
-  assert.match(VERSION_PROMPT, /alquiler-simple/);
+  assert.match(VERSION_PROMPT, /alquiler-deposito-peldanos/);
   assert.ok(INSTRUCCIONES.includes(ALQUILER_SIMPLE), "va en el bloque con caché, igual para todas las charlas");
   for (const regla of [
     /Qué trabajo van a hacer y hasta qué altura/,
@@ -171,8 +171,16 @@ test("el bloque del alquiler simple: §3, §6 y §7, sin montos ni porcentajes, 
     /La baranda va siempre incluida\. Si no la quiere, no se la llevamos, pero el servicio es el mismo/,
     /Siempre el piso completo de tablones/,
     /¿Te lo reservo para el lunes a la mañana\?/,
-    /sólo como excepción/,
-    /un solo tablón, de 30 cm/,
+    /como alternativa, es un tablón apoyado en un peldaño de la escalera del bastidor, en cualquier módulo/,
+    /un solo tablón de 30 cm/,
+    /acepta_plataforma/,
+    /entregamos y retiramos sólo en Capital/,
+    /le ofrecés retirarlo en nuestro depósito, en Maturín 2570 \(CABA\)/,
+    /retira_en_deposito/,
+    /Si lo retira en el depósito \(no hay franja de una hora ni recargo\)/,
+    /No hay chofer ni camión: tenés que venir con tu vehículo y con gente para cargarlo/,
+    /de lunes a viernes de 10 a 12 o de 13 a 16 \(de 12 a 13 el depósito está cerrado\)/,
+    /traelo desarmado al depósito/,
     /Nunca ofrezcas escaleras/,
     /cliente_acepta_alquiler/,
     /la foto del DNI de frente y de dorso, y dos servicios a su nombre/,
@@ -184,13 +192,17 @@ test("el bloque del alquiler simple: §3, §6 y §7, sin montos ni porcentajes, 
     /preparar_pedido_simple queda sólo para eso/,
   ]) assert.match(INSTRUCCIONES, regla);
   assert.ok(!/%|\$|\d{2,3}\.\d{3}|por ciento/.test(ALQUILER_SIMPLE), "ni montos ni el porcentaje del recargo");
+  // El pagaré es gestión administrativa: Tomás no lo pide ni lo nombra (fila 20).
+  assert.ok(!/pagar[eé]/i.test(INSTRUCCIONES));
+  // El depósito ya no es para preparar_pedido_simple.
+  assert.ok(!/o si lo retira en el depósito/.test(INSTRUCCIONES));
 });
 
 test("resumenFicha: el alquiler, la aceptación, los documentos y el retiro, sin datos de los documentos", () => {
   const f = leerFicha({
     trabajo: "alquiler_simple",
     alquiler: {
-      pedido: { lugar: "adentro", alturaTrabajo: 3, alturaTecho: 3, piso: "liso", fecha: "2026-10-16", franja: { tipo: "manana" }, aceptaPeldano: true },
+      pedido: { lugar: "adentro", alturaTrabajo: 3, alturaTecho: 3, piso: "liso", fecha: "2026-10-16", franja: { tipo: "manana" }, aceptaPlataforma: true },
       ubicacion: { direccion: "Gorriti 4500", enCaba: true, lugar: "Palermo", partido: null, normalizada: "GORRITI 4500", fleteId: 400, fleteNombre: "Palermo" },
       aceptado: { at: "x", presupuesto: 1042, fecha: "2026-10-19", franja: { tipo: "tarde" } },
       documentos: {
@@ -200,7 +212,7 @@ test("resumenFicha: el alquiler, la aceptación, los documentos y el retiro, sin
     },
   }, null);
   const l = resumenFicha(f).join("\n");
-  assert.match(l, /Alquiler simple \(lo que juntaste\): adentro, llegar a 3 m, techo de 3 m, piso liso, entrega el viernes 16 de octubre, de 8 a 12, acepta la plataforma en el peldaño/);
+  assert.match(l, /Alquiler simple \(lo que juntaste\): adentro, llegar a 3 m, techo de 3 m, piso liso, entrega el viernes 16 de octubre, de 8 a 12, le sirve la plataforma que le aclaraste/);
   assert.match(l, /Entrega en: Palermo/);
   assert.match(l, /Aceptó el alquiler \(presupuesto #1042\): entrega el lunes 19 de octubre, de 13 a 16/);
   assert.match(l, /Documentos: ya están un servicio a su nombre; falta la foto del DNI de frente/);

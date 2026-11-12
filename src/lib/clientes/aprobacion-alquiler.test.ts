@@ -89,7 +89,7 @@ test("recalcular: el ejemplo de Palermo da $ 500.000 y no bloquea", () => {
 test("recalcular: lo que va a Odoo suma lo mismo que el mensaje (con el mínimo y el flete del barrio)", () => {
   const r = recalc(leerPayloadAlquiler(payloadDe()));
   assert.ok(r.cotizacion);
-  assert.equal(r.cotizacion.flete.carrierId, 380);
+  assert.equal(r.cotizacion.flete?.carrierId, 380);
   assert.equal(r.cotizacion.entrega, LUNES);
   assert.equal(r.cotizacion.fin, "2026-12-16");
   assert.deepEqual(r.cotizacion.franja, { desde: "08:00", hasta: "12:00" });
@@ -150,7 +150,7 @@ test("bloqueosAlquiler: el peldaño sin confirmar y lo que falta", () => {
   const r = cotizar(pedido({ lugar: "adentro", alturaTecho: 3, alturaTrabajo: 2.9, trabajoEnTecho: false }));
   assert.equal(r.armado?.peldano, 0.8);
   assert.ok(bloqueosAlquiler(r, { fecha: LUNES, franja: MANANA }).some((b) => /peldaño/.test(b)));
-  const ok = cotizar(pedido({ lugar: "adentro", alturaTecho: 3, alturaTrabajo: 2.9, aceptaPeldano: true }));
+  const ok = cotizar(pedido({ lugar: "adentro", alturaTecho: 3, alturaTrabajo: 2.9, aceptaPlataforma: true }));
   assert.deepEqual(bloqueosAlquiler(ok, { fecha: LUNES, franja: MANANA }), []);
   assert.ok(bloqueosAlquiler(ok, null).some((b) => /fecha o la franja/.test(b)));
   const sinPiso = cotizar(pedido({ piso: null }));
@@ -158,10 +158,85 @@ test("bloqueosAlquiler: el peldaño sin confirmar y lo que falta", () => {
 });
 
 test("textoPlataforma: el peldaño se destaca y aclara que se cobra igual", () => {
-  const r = cotizar(pedido({ lugar: "adentro", alturaTecho: 3, alturaTrabajo: 2.9, aceptaPeldano: true }));
+  const r = cotizar(pedido({ lugar: "adentro", alturaTecho: 3, alturaTrabajo: 2.9, aceptaPlataforma: true }));
   assert.match(textoPlataforma(r.armado!), /EN EL PELDAÑO de 0,80 m \(a 0,95 m del piso\), un solo tablón/);
   assert.match(textoPlataforma(r.armado!), /Se cobra igual/);
   assert.match(textoPlataforma(cotizar(pedido()).armado!), /Plataforma arriba, a 3,75 m/);
+  // En el segundo módulo (fila 19), y sin llegar cómodo al techo.
+  const segundo = cotizar(pedido({ lugar: "adentro", alturaTecho: 5, alturaTrabajo: null, trabajoEnTecho: true, aceptaPlataforma: true }));
+  assert.match(textoPlataforma(segundo.armado!), /EN EL PELDAÑO de 0,80 m del segundo módulo \(a 2,75 m del piso\).*Techo de 5 m: no llega cómodo al techo/);
+  assert.deepEqual(bloqueosAlquiler(segundo, { fecha: LUNES, franja: MANANA }), []);
+});
+
+// ── Provincia y el depósito (filas 16 y 17) ────────────────────────────────────────────
+
+/** Lo que guarda la herramienta cuando retira en el depósito: sin flete y con la franja del depósito. */
+function payloadDeposito(cambios: Partial<PedidoAlquiler> = {}): Record<string, unknown> {
+  const p = pedido({ retiraEnDeposito: true, franja: { tipo: "deposito_manana" }, ...cambios });
+  const resultado = cotizarAlquilerSimple(p, { parametros: P, hoy: HOY, feriados: FERIADOS, flete: null, cliente: { ...FICHA, deudaVencida: false } });
+  return { alquiler: { pedido: p, resultado, flete: null, entrega: { fecha: p.fecha, franja: p.franja } }, alertas: [], asignacion: null, direccion: "Maipú 2000, Olivos" };
+}
+
+test("recalcular: retira en el depósito, sin flete ni método de envío, con el mínimo", () => {
+  const p = leerPayloadAlquiler(payloadDeposito());
+  assert.equal(p.flete, null);
+  // Aunque Odoo no responda: no hay flete que leer.
+  for (const fletes of [FLETES, null]) {
+    const r = recalc(p, null, { fletes });
+    assert.deepEqual(r.bloqueos, []);
+    assert.deepEqual(r.avisos, []);
+    assert.equal(r.total, 500000);
+    assert.equal(r.flete, null);
+    assert.equal(r.cotizacion?.flete, null);
+    assert.equal(r.cotizacion?.minimoOperativo, 338000);
+    assert.deepEqual(r.cotizacion?.franja, { desde: "10:00", hasta: "12:00" });
+    const odoo = lineasOrdenAlquilerSimple(r.cotizacion!);
+    assert.equal(odoo.neto, 500000);
+    assert.equal(odoo.carrierId, null);
+    assert.equal(odoo.retiraEnDeposito, true);
+    assert.match(r.mensaje!, /retirándolo vos en nuestro depósito de Maturín 2570, sale \$ 500\.000 \+ IVA/);
+    assert.ok(r.mensaje!.endsWith("¿Te lo reservo para retirarlo el lunes 16 de noviembre, de 10 a 12?"));
+  }
+  // La nota: retira en el depósito, sin flete.
+  const r = recalc(p);
+  const nota = notaInternaAlquiler({ numero: 7, aprobo: "Tamara", correccion: null, r, direccion: p.direccion, sinCuit: false, avisos: [] });
+  assert.match(nota, /<b>Retira en el depósito<\/b> \(Maturín 2570 \(CABA\)\) el lunes 16 de noviembre, de 10 a 12: sin flete/);
+  assert.match(nota, /Obra: Maipú 2000, Olivos/);
+  assert.match(nota, /retirando en el depósito \(sin flete\)/);
+  assert.equal(Object.fromEntries(datosDelPedido(p.pedido).map((x) => [x.etiqueta, x.valor]))["Cómo llega"], "Retira en el depósito (Maturín 2570 (CABA))");
+});
+
+test("recalcular: en el depósito, corregir la fecha a una franja común la pasa a la del depósito; el sábado bloquea", () => {
+  const p = leerPayloadAlquiler(payloadDeposito());
+  const tarde = recalc(p, { tipo: "fecha", motivo: "prefiere la tarde", franja: { tipo: "tarde" } });
+  assert.deepEqual(tarde.entrega, { fecha: LUNES, franja: { tipo: "deposito_tarde" } });
+  assert.deepEqual(tarde.bloqueos, []);
+  assert.match(tarde.mensaje!, /retirarlo el lunes 16 de noviembre, de 13 a 16\?$/);
+  const sabado = recalc(p, { tipo: "fecha", motivo: "el sábado", fecha: "2026-11-14" });
+  assert.ok(sabado.bloqueos.some((b) => /el depósito abre de lunes a viernes/.test(b)), sabado.bloqueos.join(" | "));
+  // Una franja de una hora no existe en el depósito: no hay entrega y bloquea.
+  const hora = recalc(p, { tipo: "fecha", motivo: "a las 10", franja: { tipo: "hora", desde: 10 } });
+  assert.equal(hora.entrega, null);
+  assert.ok(hora.bloqueos.length > 0);
+});
+
+test("bloqueosAlquiler: provincia sin decir si retira en el depósito, o sin poder retirarlo", () => {
+  const ctx = (retira: boolean | null) => cotizarAlquilerSimple(pedido({ retiraEnDeposito: retira }), {
+    parametros: P, hoy: HOY, feriados: FERIADOS, flete: { tipo: "provincia", lugar: "Olivos" }, cliente: { ...FICHA, deudaVencida: false },
+  });
+  assert.ok(bloqueosAlquiler(ctx(null), { fecha: LUNES, franja: MANANA }).some((b) => /falta que el cliente diga si lo retira en el depósito/.test(b)));
+  assert.ok(bloqueosAlquiler(ctx(false), { fecha: LUNES, franja: MANANA }).some((b) => /no entregamos ni retiramos fuera de CABA/.test(b)));
+});
+
+test("leerPayloadAlquiler: un pedido de antes del 12/11 a la tarde (aceptaPeldano, sin la modalidad)", () => {
+  const viejo = { ...pedido({ lugar: "adentro", alturaTecho: 3, alturaTrabajo: 2.9 }) } as Record<string, unknown>;
+  delete viejo.aceptaPlataforma;
+  delete viejo.retiraEnDeposito;
+  viejo.aceptaPeldano = true;
+  const p = leerPayloadAlquiler(payloadDe(viejo as PedidoAlquiler));
+  assert.equal(p.pedido.aceptaPlataforma, true);
+  assert.equal(p.pedido.retiraEnDeposito, null);
+  assert.deepEqual(recalc(p).bloqueos, []);
 });
 
 // ── La franja de una hora ──────────────────────────────────────────────────────────────
@@ -302,6 +377,7 @@ test("datosDelPedido: lo que dijo el cliente, corto", () => {
   const adentro = Object.fromEntries(datosDelPedido(pedido({ lugar: "adentro", alturaTecho: 3, espacioDeSobra: false, anchoLibre: 1, largoLibre: 2 })).map((x) => [x.etiqueta, x.valor]));
   assert.equal(adentro.Techo, "3 m");
   assert.equal(adentro.Espacio, "1 m de ancho × 2 m de largo");
+  assert.equal(d["Cómo llega"], "Se lo llevamos (envío)");
 });
 
 test("notaInternaAlquiler: quién aprobó, la corrección, el total y el aviso sin CUIT, escapado", () => {

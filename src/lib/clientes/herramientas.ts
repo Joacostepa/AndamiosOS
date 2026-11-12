@@ -27,7 +27,8 @@ import { frenteDelLote } from "../asistente/borrador.ts";
 import { armarBorradorFacil, esFacil, fichaVacia, type BanderaIA, type ContextoFacil, type FichaCliente, type ParametrosFacil, escanearPalabras } from "./facil.ts";
 import type { Asignacion } from "./asignacion.ts";
 import {
-  condicionesAlquilerSimple, cotizarAlquilerSimple, pedidoVacio, resumenParaTomas, textoFecha, textoFranja, validarEntrega,
+  condicionesAlquilerSimple, cotizarAlquilerSimple, DEPOSITO, esFranjaDeposito, franjaSegunModalidad, pedidoVacio, resumenParaTomas, textoFecha, textoFranja,
+  validarEntrega,
   type CodigoEntrega, type FleteAlquiler, type Franja, type ParametrosAlquiler, type PedidoAlquiler, type ResultadoAlquiler,
 } from "./alquiler-simple.ts";
 import type { Flete } from "../odoo/alquiler-simple.ts";
@@ -107,9 +108,17 @@ export function fichaSofiaVacia(): FichaSofia {
 function leerAlquiler(g: unknown): AlquilerFicha | null {
   if (!g || typeof g !== "object") return null;
   const a = g as Partial<AlquilerFicha>;
-  const pedido = a.pedido && typeof a.pedido === "object"
-    ? { ...pedidoVacio(), ...a.pedido, piezasFueraDeCatalogo: Array.isArray(a.pedido.piezasFueraDeCatalogo) ? a.pedido.piezasFueraDeCatalogo : [] }
+  // Los pedidos de antes del 12/11 a la tarde guardaban `aceptaPeldano` (hoy aceptaPlataforma).
+  const viejo = a.pedido as (PedidoAlquiler & { aceptaPeldano?: boolean | null }) | null | undefined;
+  const pedido = viejo && typeof viejo === "object"
+    ? {
+        ...pedidoVacio(),
+        ...viejo,
+        piezasFueraDeCatalogo: Array.isArray(viejo.piezasFueraDeCatalogo) ? viejo.piezasFueraDeCatalogo : [],
+        aceptaPlataforma: typeof viejo.aceptaPlataforma === "boolean" ? viejo.aceptaPlataforma : typeof viejo.aceptaPeldano === "boolean" ? viejo.aceptaPeldano : null,
+      }
     : null;
+  if (pedido) delete (pedido as { aceptaPeldano?: unknown }).aceptaPeldano;
   return {
     ...alquilerVacio(),
     ...a,
@@ -543,7 +552,7 @@ async function prepararPedidoSimple(i: z.infer<typeof esquemaSimple>, { ficha, s
 
 const FECHA = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "tiene que ser AAAA-MM-DD");
 const FRANJA = z.enum(["manana", "tarde", "hora_particular"])
-  .describe("manana: de 8 a 12 · tarde: de 13 a 16 (no los sábados) · hora_particular: una franja de una hora pactada, con recargo por costos operativos (va con hora_desde).");
+  .describe("manana: de 8 a 12 (en el depósito, de 10 a 12) · tarde: de 13 a 16 (no los sábados) · hora_particular: una franja de una hora pactada, con recargo por costos operativos (va con hora_desde; no existe en el depósito).");
 const HORA = z.string().trim().regex(/^([01]?\d|2[0-3])(:[0-5]\d)?$/, "«10» o «9:30»")
   .describe("Sólo con hora_particular: a qué hora empieza la franja de una hora («10», «9:30»).");
 const METROS = z.number().positive().max(30);
@@ -573,16 +582,18 @@ const esquemaAlquiler = z.object({
   montaje: z.boolean().optional().describe("true si pide que se lo armemos."),
   anclar: z.boolean().optional().describe("true si dice que hay que anclarlo (a la pared, a una estructura)."),
   para_hoy: z.boolean().optional().describe("true si lo necesita sí o sí en el día."),
-  direccion: texto(160).optional().describe("Dónde se entrega: calle, altura y localidad si no es Capital. De ahí sale el flete."),
+  direccion: texto(160).optional().describe("Dónde se entrega: calle, altura y localidad si no es Capital. De ahí sale el flete (sólo se entrega en Capital)."),
+  retira_en_deposito: z.boolean().optional()
+    .describe(`true si lo retira y lo devuelve él en nuestro depósito (${DEPOSITO.texto}), sin flete; false si dijo que no puede retirarlo. Fuera de Capital es la única opción.`),
   fecha: FECHA.optional().describe("La fecha de entrega que pidió, AAAA-MM-DD (el día de hoy está en el aviso)."),
   franja: FRANJA.optional(),
   hora_desde: HORA.optional(),
-  acepta_peldano: z.boolean().optional().describe("Lo que contestó cuando le ofreciste la plataforma en un peldaño (techo bajo)."),
+  acepta_plataforma: z.boolean().optional().describe("Lo que contestó cuando le aclaraste la plataforma que te pidió confirmar (un tablón en un peldaño, o que no llega cómodo al techo)."),
   notas: texto(400).optional().describe("Lo que contó y sirva para el equipo (para qué es, si va en la vereda, el acceso)."),
 }).strict();
 
 const esquemaAceptar = z.object({
-  fecha: FECHA.describe("El día de entrega que confirmó, AAAA-MM-DD."),
+  fecha: FECHA.describe("El día de entrega (o en que pasa a retirarlo por el depósito) que confirmó, AAAA-MM-DD."),
   franja: FRANJA,
   hora_desde: HORA.optional(),
 }).strict();
@@ -592,7 +603,7 @@ const esquemaDocumentos = z.object({
 }).strict();
 
 const esquemaRetiro = z.object({
-  fecha: FECHA.describe("El día en que quiere el retiro, AAAA-MM-DD."),
+  fecha: FECHA.describe("El día en que quiere el retiro (o en que lo devuelve en el depósito), AAAA-MM-DD."),
   franja: FRANJA,
   hora_desde: HORA.optional(),
   direccion: texto(160).optional().describe("Dónde está el andamio, si no es la de la ficha (o si es un alquiler de antes)."),
@@ -613,8 +624,13 @@ function franjaDe(f: z.infer<typeof FRANJA>, hora: string | undefined): Franja |
 
 const FALTA_HORA = { contenido: json({ estado: "faltan_datos", preguntar: ["a qué hora quiere la franja de una hora (por ejemplo «de 10 a 11»)"] }) };
 
-/** Lo que dijo el cliente se suma a lo que ya estaba (cada llamada trae sólo lo nuevo). */
+/**
+ * Lo que dijo el cliente se suma a lo que ya estaba (cada llamada trae sólo lo nuevo). Si cambia
+ * algo de la altura (el lugar, la altura, el techo o lo que pidió), la plataforma que había
+ * aceptado ya no es la misma: se borra la respuesta, salvo que venga en la misma llamada.
+ */
 function anotarPedido(p: PedidoAlquiler, i: z.infer<typeof esquemaAlquiler>, franja: Franja | null): void {
+  const alturaAntes = JSON.stringify([p.lugar, p.alturaTrabajo, p.trabajoEnTecho, p.alturaTecho, p.piezas?.modulosPorTorre ?? null]);
   if (i.lugar !== undefined) p.lugar = i.lugar;
   if (i.altura_trabajo_m !== undefined) p.alturaTrabajo = i.altura_trabajo_m;
   if (i.trabajo_en_techo !== undefined) p.trabajoEnTecho = i.trabajo_en_techo;
@@ -642,16 +658,25 @@ function anotarPedido(p: PedidoAlquiler, i: z.infer<typeof esquemaAlquiler>, fra
   if (i.para_hoy !== undefined) p.paraHoy = i.para_hoy;
   if (i.fecha !== undefined) p.fecha = i.fecha;
   if (franja) p.franja = franja;
-  if (i.acepta_peldano !== undefined) p.aceptaPeldano = i.acepta_peldano;
+  if (i.retira_en_deposito !== undefined) p.retiraEnDeposito = i.retira_en_deposito;
+  const alturaDespues = JSON.stringify([p.lugar, p.alturaTrabajo, p.trabajoEnTecho, p.alturaTecho, p.piezas?.modulosPorTorre ?? null]);
+  if (alturaAntes !== alturaDespues) p.aceptaPlataforma = null;
+  if (i.acepta_plataforma !== undefined) p.aceptaPlataforma = i.acepta_plataforma;
+  // La franja de la modalidad: en el depósito, la mañana es de 10 a 12 (franjaSegunModalidad).
+  p.franja = franjaSegunModalidad(p.franja, p.retiraEnDeposito === true);
 }
 
 const QUE_DECIR_ALQUILER =
   "Contale en una o dos líneas lo que le armaste y por qué le sirve, explicale las condiciones (abajo; con tus palabras, en pocos renglones, si todavía no se las explicaste) y decile que el presupuesto lo revisa el equipo y le llega por este mismo chat en unos minutos. Fuera de horario, aclarale cuándo le escribe una persona (está en el aviso). Sin montos ni porcentajes.";
 
+const QUE_HACER_FUERA_DE_CABA =
+  "No entregamos ni retiramos fuera de Capital, y no puede retirarlo en el depósito: decíselo con amabilidad, en una línea, sin vueltas. Si igual quiere avanzar de otra forma, usá derivar_a_persona con el motivo quiere_avanzar y un resumen. No ofrezcas escaleras.";
+
 /** Qué hacer cuando el alquiler no sale solo (§8), según por qué. Sin montos. */
 function queHacerNoFacil(r: ResultadoAlquiler): string {
   const c = new Set(r.enContra.filter((m) => m.grupo === "trabajo").map((m) => m.codigo));
   if (c.has("gama_alta")) return QUE_HACER_GAMA_ALTA;
+  if (c.has("fuera_de_caba") && c.size === 1) return QUE_HACER_FUERA_DE_CABA;
   if (c.has("montaje") || c.has("anclar")) {
     return "No es un alquiler simple: lleva montaje o anclaje. Juntá lo que falte (dirección, altura, para cuándo), mandale el resumen para que lo confirme y usá pedir_tecnico con el motivo trabajo_no_facil.";
   }
@@ -661,13 +686,16 @@ function queHacerNoFacil(r: ResultadoAlquiler): string {
   return "Lo cotiza un vendedor: usá preparar_pedido_simple (sabe_piezas en false, o las piezas si las pidió, y en notas lo que juntaste) y decile que lo ve un vendedor para que quede bien. No ofrezcas escaleras.";
 }
 
-/** El resumen de la tarjeta: «Alquiler simple · 1 torre de 2 módulos · Palermo · lunes 16 de noviembre, de 8 a 12». */
-function resumenAlquiler(r: ResultadoAlquiler, flete: Flete, fecha: string, franja: Franja): string {
+/**
+ * El resumen de la tarjeta: «Alquiler simple · 1 torre de 2 módulos · Palermo · lunes 16 de
+ * noviembre, de 8 a 12». `flete` null: retira en el depósito.
+ */
+function resumenAlquiler(r: ResultadoAlquiler, flete: Flete | null, fecha: string, franja: Franja): string {
   const a = r.armado!;
   const torres = a.torres === 1 ? "1 torre" : `${a.torres} torres`;
   const ancho = a.ancho === "estandar" ? "1,30" : "0,90";
   const largo = a.largo === "largo" ? "2,50" : "1,50";
-  return `Alquiler simple · ${torres} de ${a.modulosPorTorre} ${a.modulosPorTorre === 1 ? "módulo" : "módulos"} ${ancho} × ${largo}${a.peldano !== null ? " (plataforma en peldaño)" : ""} · ${flete.nombre} · ${textoFecha(fecha)}, ${textoFranja(franja)}`;
+  return `Alquiler simple · ${torres} de ${a.modulosPorTorre} ${a.modulosPorTorre === 1 ? "módulo" : "módulos"} ${ancho} × ${largo}${a.peldano !== null ? " (plataforma en peldaño)" : ""} · ${flete ? flete.nombre : "retira en el depósito"} · ${textoFecha(fecha)}, ${textoFranja(franja)}`;
 }
 
 async function cotizarAlquiler(i: z.infer<typeof esquemaAlquiler>, { ficha, servicios }: ContextoHerramienta): Promise<ResultadoHerramienta> {
@@ -694,15 +722,19 @@ async function cotizarAlquiler(i: z.infer<typeof esquemaAlquiler>, { ficha, serv
   let fleteOdoo: Flete | null = null;
   let preguntaDireccion: string | null = null;
   const dir = ficha.direccion?.trim() || null;
+  const deposito = p.retiraEnDeposito === true;
+  // En el depósito no hace falta el flete (el motor no lo mira), pero la dirección se ubica igual
+  // para la ficha: la provincia de la obra va a la orden.
   if (dir) {
     try {
       const u = await servicios.fleteAlquiler(dir);
       if (u.estado === "ok") {
-        fleteOdoo = u.flete;
+        // Fuera de CABA no hay flete (fila 16): el motor le ofrece retirarlo en el depósito.
+        fleteOdoo = u.enCaba ? u.flete : null;
         ficha.enCaba = u.enCaba;
-        a.ubicacion = { direccion: dir, enCaba: u.enCaba, lugar: u.lugar, partido: u.partido, normalizada: u.normalizada, fleteId: u.flete?.carrierId ?? null, fleteNombre: u.flete?.nombre ?? null };
-        flete = u.flete
-          ? { tipo: "lista", barrio: u.flete.nombre, monto: u.flete.precio, metodoEnvioId: u.flete.carrierId }
+        a.ubicacion = { direccion: dir, enCaba: u.enCaba, lugar: u.lugar, partido: u.partido, normalizada: u.normalizada, fleteId: fleteOdoo?.carrierId ?? null, fleteNombre: fleteOdoo?.nombre ?? null };
+        flete = !u.enCaba ? { tipo: "provincia", lugar: u.lugar }
+          : fleteOdoo ? { tipo: "lista", barrio: fleteOdoo.nombre, monto: fleteOdoo.precio, metodoEnvioId: fleteOdoo.carrierId }
           : { tipo: "fuera_de_lista", barrio: u.lugar };
       } else {
         a.ubicacion = null;
@@ -714,6 +746,8 @@ async function cotizarAlquiler(i: z.infer<typeof esquemaAlquiler>, { ficha, serv
       preguntaDireccion = "No pude ubicar la dirección ahora: seguí con lo demás y volvé a probar en un rato.";
     }
   }
+  // Si retira en el depósito, ni la dirección ni el flete hacen falta para cotizar.
+  if (deposito) preguntaDireccion = null;
 
   // ── El motor ──
   const [contexto, feriados] = await Promise.all([servicios.contextoAlquiler(ficha), servicios.feriados()]);
@@ -735,7 +769,7 @@ async function cotizarAlquiler(i: z.infer<typeof esquemaAlquiler>, { ficha, serv
     return {
       contenido: json({
         estado: "derivada",
-        que_decir: "La entrega es siempre desde el día siguiente: para el mismo día lo ve un vendedor. Decile en una línea que se lo pasás al equipo para ver qué se puede hacer y que le escriben por acá (fuera de horario, cuándo). Sin nombres ni plazos.",
+        que_decir: "La entrega (o el retiro en el depósito) es siempre desde el día siguiente: para el mismo día lo ve un vendedor. Decile en una línea que se lo pasás al equipo para ver qué se puede hacer y que le escriben por acá (fuera de horario, cuándo). Sin nombres ni plazos.",
       }),
       efecto: {
         estado: "derivada",
@@ -752,7 +786,7 @@ async function cotizarAlquiler(i: z.infer<typeof esquemaAlquiler>, { ficha, serv
   const preguntar = r.faltan.map((f) => (f.codigo === "direccion" && preguntaDireccion ? preguntaDireccion : f.pregunta));
   if (preguntaDireccion && !preguntar.includes(preguntaDireccion)) preguntar.push(preguntaDireccion);
   if (!ficha.nombre) preguntar.push("¿A nombre de quién va el presupuesto?");
-  if (preguntar.length || r.aConfirmar.length || !r.precio || !fleteOdoo || !p.fecha || !p.franja) {
+  if (preguntar.length || r.aConfirmar.length || !r.precio || (!deposito && !fleteOdoo) || !p.fecha || !r.franja) {
     return {
       contenido: json({
         estado: r.aConfirmar.length && !preguntar.length ? "confirmar" : "faltan_datos",
@@ -769,14 +803,15 @@ async function cotizarAlquiler(i: z.infer<typeof esquemaAlquiler>, { ficha, serv
   // recibe lo mismo en los dos casos, para no filtrar el motivo (como la bandeja fácil).
   const asignacion = await servicios.asignar(ficha).catch(() => null);
   const alertas = ficha.mensajesCliente.flatMap(escanearPalabras);
-  const entrega = { fecha: p.fecha, franja: p.franja };
+  const entrega = { fecha: p.fecha, franja: r.franja };
+  const fleteGuardado = deposito || !fleteOdoo ? null : fleteOdoo;
   const { numero } = await servicios.registrarPendiente({
     tipo: "precio",
     carril: "alquiler",
-    resumen: resumenAlquiler(r, fleteOdoo, p.fecha, p.franja),
+    resumen: resumenAlquiler(r, fleteGuardado, p.fecha, r.franja),
     montoPropuesto: r.precio.total,
     payload: {
-      alquiler: { pedido: p, resultado: r, flete: { id: fleteOdoo.carrierId, nombre: fleteOdoo.nombre, precio: fleteOdoo.precio }, entrega },
+      alquiler: { pedido: p, resultado: r, flete: fleteGuardado ? { id: fleteGuardado.carrierId, nombre: fleteGuardado.nombre, precio: fleteGuardado.precio } : null, entrega },
       alertas,
       asignacion,
       direccion: ficha.direccion,
@@ -784,7 +819,7 @@ async function cotizarAlquiler(i: z.infer<typeof esquemaAlquiler>, { ficha, serv
   });
   a.cotizacion = { numero, at: (servicios.ahora?.() ?? new Date()).toISOString(), ...entrega };
   return {
-    contenido: json({ estado: "pendiente", presupuesto: `#${numero}`, detalle: paraTomas, que_decir: QUE_DECIR_ALQUILER, condiciones: condicionesAlquilerSimple() }),
+    contenido: json({ estado: "pendiente", presupuesto: `#${numero}`, detalle: paraTomas, que_decir: QUE_DECIR_ALQUILER, condiciones: condicionesAlquilerSimple(r.modalidad) }),
     efecto: { estado: "espera_ok", motivo: `presupuesto de alquiler #${numero}` },
   };
 }
@@ -798,9 +833,13 @@ async function cotizarAlquiler(i: z.infer<typeof esquemaAlquiler>, { ficha, serv
 const PRESUPUESTO_ENVIADO = new Set(["aprobada", "corregida"]);
 const PRESUPUESTO_EN_CAMINO = new Set(["pendiente", "ejecutando", "error", "falta_plantilla"]);
 
+const FRANJA_DEPOSITO_NO_HORA = {
+  contenido: json({ estado: "faltan_datos", preguntar: ["si pasa de 10 a 12 o de 13 a 16 (en el depósito no hay franja de una hora)"] }),
+};
+
 async function clienteAceptaAlquiler(i: z.infer<typeof esquemaAceptar>, { ficha, servicios }: ContextoHerramienta): Promise<ResultadoHerramienta> {
-  const franja = franjaDe(i.franja, i.hora_desde);
-  if (!franja) return FALTA_HORA;
+  const pedida = franjaDe(i.franja, i.hora_desde);
+  if (!pedida) return FALTA_HORA;
   const p = await servicios.presupuestoAlquiler();
   if (!p) {
     return { contenido: json({ estado: "sin_presupuesto", que_hacer: "En esta charla no hay un presupuesto de alquiler simple. Si quiere avanzar con otro presupuesto, usá derivar_a_persona con quiere_avanzar." }) };
@@ -818,7 +857,11 @@ async function clienteAceptaAlquiler(i: z.infer<typeof esquemaAceptar>, { ficha,
   if (!PRESUPUESTO_ENVIADO.has(p.estado)) {
     return { contenido: json({ estado: "presupuesto_no_salio", que_hacer: "Ese presupuesto no se le mandó (lo decidió el equipo). Usá derivar_a_persona con quiere_avanzar y un resumen." }) };
   }
-  const v = validarEntrega(i.fecha, franja, servicios.hoy, await servicios.feriados());
+  // Si el presupuesto es para retirar en el depósito, la franja es la del depósito (fila 17).
+  const deposito = esFranjaDeposito(p.entrega?.franja) || (!p.entrega && ficha.alquiler?.pedido?.retiraEnDeposito === true);
+  const franja = franjaSegunModalidad(pedida, deposito);
+  if (!franja) return FRANJA_DEPOSITO_NO_HORA;
+  const v = validarEntrega(i.fecha, franja, servicios.hoy, await servicios.feriados(), { deposito });
   if (!v.ok) {
     return {
       contenido: json({
@@ -854,7 +897,7 @@ async function clienteAceptaAlquiler(i: z.infer<typeof esquemaAceptar>, { ficha,
       ? ` El presupuesto decía el ${textoFecha(p.entrega.fecha)}, ${textoFranja(p.entrega.franja)}: cambiala en la orden${p.ordenAlquiler ? ` ${p.ordenAlquiler.nombre}` : ""}.`
       : "";
     await servicios.avisarEquipo(
-      `El cliente aceptó el alquiler simple #${p.numero}${p.ordenAlquiler ? ` (${p.ordenAlquiler.nombre})` : ""}: entrega el ${textoFecha(i.fecha)}, ${textoFranja(franja)}.${otra} Tomás le pide los documentos (DNI y servicios); sin documentos no se entrega.`,
+      `El cliente aceptó el alquiler simple #${p.numero}${p.ordenAlquiler ? ` (${p.ordenAlquiler.nombre})` : ""}: ${deposito ? `retira en el depósito (${DEPOSITO.texto})` : "entrega"} el ${textoFecha(i.fecha)}, ${textoFranja(franja)}.${otra} Tomás le pide los documentos (DNI y servicios); sin documentos no se entrega.`,
       "WhatsApp de clientes · aceptó un alquiler",
     );
   }
@@ -862,11 +905,13 @@ async function clienteAceptaAlquiler(i: z.infer<typeof esquemaAceptar>, { ficha,
   return {
     contenido: json({
       estado: "aceptado",
-      entrega: `${textoFecha(i.fecha)}, ${textoFranja(franja)}`,
+      entrega: `${deposito ? "retira en el depósito el " : ""}${textoFecha(i.fecha)}, ${textoFranja(franja)}`,
       documentos: textoDocumentosParaTomas(e),
-      que_decir: e.completos
-        ? "Confirmale el día y la franja (la hora exacta depende del recorrido de la camioneta). Los documentos ya están."
-        : "Confirmale el día y la franja (la hora exacta depende del recorrido de la camioneta) y pedile los documentos: la foto del DNI de frente y de dorso, y dos servicios a su nombre (luz, gas, agua, internet), o uno si no tiene dos. Se los pedimos a todos y sin los documentos no se entrega. Que los mande por acá.",
+      que_decir: `${deposito
+        ? `Confirmale el día y el horario en que pasa a retirarlo por el depósito (${DEPOSITO.texto}), y que venga con su vehículo y gente para cargarlo.`
+        : "Confirmale el día y la franja (la hora exacta depende del recorrido de la camioneta)."}${e.completos
+        ? " Los documentos ya están."
+        : ` Pedile los documentos: la foto del DNI de frente y de dorso, y dos servicios a su nombre (luz, gas, agua, internet), o uno si no tiene dos. Se los pedimos a todos y sin los documentos no se ${deposito ? "entrega el material" : "entrega"}. Que los mande por acá.`}`,
     }),
   };
 }
@@ -895,7 +940,12 @@ export type ResultadoRetiro = { ok: boolean; motivo: CodigoEntrega | "anticipaci
 
 const HORA_MS = 3_600_000;
 /** Dónde empieza la franja, en horas. */
-const inicioFranja = (f: Franja) => (f.tipo === "manana" ? 8 : f.tipo === "tarde" ? 13 : f.desde);
+const inicioFranja = (f: Franja) =>
+  f.tipo === "manana" ? 8 : f.tipo === "tarde" || f.tipo === "deposito_tarde" ? 13 : f.tipo === "deposito_manana" ? 10 : f.desde;
+/** La otra franja común del mismo día (para ofrecer la próxima). */
+const OTRA_FRANJA: Partial<Record<Franja["tipo"], Franja>> = {
+  manana: { tipo: "tarde" }, tarde: { tipo: "manana" }, deposito_manana: { tipo: "deposito_tarde" }, deposito_tarde: { tipo: "deposito_manana" },
+};
 /** Esa hora de ese día en Buenos Aires (UTC-3, sin horario de verano) → instante. */
 const instanteBA = (fecha: string, horas: number) => Date.parse(`${fecha}T00:00:00Z`) + (horas + 3) * HORA_MS;
 const diaSiguiente = (f: string) => new Date(Date.parse(`${f}T12:00:00Z`) + 24 * HORA_MS).toISOString().slice(0, 10);
@@ -905,10 +955,16 @@ const diaSiguiente = (f: string) => new Date(Date.parse(`${f}T12:00:00Z`) + 24 *
  * mismo día, ni domingos ni feriados, sábados de 8 a 12) y además 24 h de anticipación como
  * mínimo, medidas hasta el comienzo de la franja. Si no, la próxima posible: el primer día con la
  * misma franja (o, si es una de las comunes, la otra) que cumple todo. PURA.
+ *
+ * Con una franja del depósito es la devolución en el depósito (fila 17): las mismas 24 h, de
+ * lunes a viernes, de 10 a 12 o de 13 a 16.
  */
 export function validarRetiro(fecha: string, franja: Franja, ahora: Date, hoy: string, feriados: readonly string[]): ResultadoRetiro {
+  const deposito = esFranjaDeposito(franja);
+  const que = deposito ? "La devolución en el depósito" : "El retiro";
   const conTiempo = (f: string, fr: Franja) => instanteBA(f, inicioFranja(fr)) - ahora.getTime() >= 24 * HORA_MS;
-  const opciones: Franja[] = franja.tipo === "hora" ? [franja] : franja.tipo === "manana" ? [franja, { tipo: "tarde" }] : [franja, { tipo: "manana" }];
+  const otra = OTRA_FRANJA[franja.tipo];
+  const opciones: Franja[] = otra ? [franja, otra] : [franja];
   const proxima = () => {
     let f = /^\d{4}-\d{2}-\d{2}$/.test(fecha) && fecha > hoy ? fecha : diaSiguiente(hoy);
     for (let i = 0; i < 30; i++, f = diaSiguiente(f)) {
@@ -917,16 +973,24 @@ export function validarRetiro(fecha: string, franja: Franja, ahora: Date, hoy: s
     return null;
   };
   const v = validarEntrega(fecha, franja, hoy, feriados);
-  if (!v.ok) return { ok: false, motivo: v.motivo, texto: v.motivo === "hoy" ? "No se retira en el mismo día en que avisan" : v.texto.replace("Lo pide para hoy: la entrega", "El retiro"), proxima: proxima() };
+  if (!v.ok) return { ok: false, motivo: v.motivo, texto: v.motivo === "hoy" ? `${que} no es en el mismo día en que avisan` : v.texto, proxima: proxima() };
   if (!conTiempo(fecha, franja)) {
-    return { ok: false, motivo: "anticipacion", texto: `El retiro se coordina con 24 h de anticipación como mínimo: para el ${textoFecha(fecha)}, ${textoFranja(franja)} no llega`, proxima: proxima() };
+    return { ok: false, motivo: "anticipacion", texto: `${que} se coordina con 24 h de anticipación como mínimo: para el ${textoFecha(fecha)}, ${textoFranja(franja)} no llega`, proxima: proxima() };
   }
-  return { ok: true, motivo: null, texto: `Retiro el ${textoFecha(fecha)}, ${textoFranja(franja)}`, proxima: { fecha, franja } };
+  return { ok: true, motivo: null, texto: `${deposito ? "Devolución en el depósito" : "Retiro"} el ${textoFecha(fecha)}, ${textoFranja(franja)}`, proxima: { fecha, franja } };
 }
 
+/**
+ * El fin del alquiler: el retiro (si se lo llevamos) o la devolución en el depósito (si lo retiró
+ * él, fila 17). Cuál es lo dice el alquiler de la charla: el presupuesto aceptado o el pedido.
+ */
 async function pedirRetiro(i: z.infer<typeof esquemaRetiro>, { ficha, servicios }: ContextoHerramienta): Promise<ResultadoHerramienta> {
-  const franja = franjaDe(i.franja, i.hora_desde);
-  if (!franja) return FALTA_HORA;
+  const pedida = franjaDe(i.franja, i.hora_desde);
+  if (!pedida) return FALTA_HORA;
+  const al = ficha.alquiler;
+  const deposito = al?.aceptado ? esFranjaDeposito(al.aceptado.franja) : al?.pedido?.retiraEnDeposito === true;
+  const franja = franjaSegunModalidad(pedida, deposito);
+  if (!franja) return FRANJA_DEPOSITO_NO_HORA;
   const ahora = servicios.ahora?.() ?? new Date();
   const v = validarRetiro(i.fecha, franja, ahora, servicios.hoy, await servicios.feriados());
   if (!v.ok) {
@@ -935,25 +999,33 @@ async function pedirRetiro(i: z.infer<typeof esquemaRetiro>, { ficha, servicios 
         estado: "fecha_no_va",
         motivo: v.texto,
         ...(v.proxima ? { proxima: `${textoFecha(v.proxima.fecha)}, ${textoFranja(v.proxima.franja)}` } : {}),
-        que_decir: "Explicale por qué no va (el retiro se avisa con 24 h, nunca el mismo día; ni domingos ni feriados; los sábados de 8 a 12) y ofrecele la próxima posible. Con lo que elija, volvé a llamar a esta herramienta.",
+        que_decir: deposito
+          ? "Explicale por qué no va (la devolución en el depósito se avisa con 24 h, nunca el mismo día; de lunes a viernes de 10 a 12 o de 13 a 16, sin feriados) y ofrecele la próxima posible. Con lo que elija, volvé a llamar a esta herramienta."
+          : "Explicale por qué no va (el retiro se avisa con 24 h, nunca el mismo día; ni domingos ni feriados; los sábados de 8 a 12) y ofrecele la próxima posible. Con lo que elija, volvé a llamar a esta herramienta.",
       }),
     };
   }
-  const direccion = i.direccion ?? ficha.alquiler?.ubicacion?.normalizada ?? ficha.direccion ?? null;
+  // En el depósito no hace falta la dirección: lo trae él.
+  const direccion = deposito ? DEPOSITO.texto : i.direccion ?? al?.ubicacion?.normalizada ?? ficha.direccion ?? null;
   if (!direccion) return { contenido: json({ estado: "faltan_datos", preguntar: ["la dirección donde está el andamio"] }) };
   ficha.trabajo ??= "alquiler_simple";
   const a = (ficha.alquiler ??= alquilerVacio());
   a.retiro = { avisadoAt: ahora.toISOString(), fecha: i.fecha, franja, direccion };
+  const num = a.aceptado ? ` simple #${a.aceptado.presupuesto}` : "";
   await servicios.avisarEquipo(
-    `El cliente pide el retiro del alquiler${a.aceptado ? ` simple #${a.aceptado.presupuesto}` : ""}: el ${textoFecha(i.fecha)}, ${textoFranja(franja)}${franja.tipo === "hora" ? " (franja de una hora: lleva el recargo)" : ""}, en ${direccion}. Coordinalo y confirmáselo por la charla.`,
-    "WhatsApp de clientes · pide un retiro",
+    deposito
+      ? `El cliente avisa que devuelve el andamio del alquiler${num} en el depósito (${DEPOSITO.texto}): el ${textoFecha(i.fecha)}, ${textoFranja(franja)}. Coordinalo y confirmáselo por la charla.`
+      : `El cliente pide el retiro del alquiler${num}: el ${textoFecha(i.fecha)}, ${textoFranja(franja)}${franja.tipo === "hora" ? " (franja de una hora: lleva el recargo)" : ""}, en ${direccion}. Coordinalo y confirmáselo por la charla.`,
+    deposito ? "WhatsApp de clientes · devuelve en el depósito" : "WhatsApp de clientes · pide un retiro",
     { logistica: true },
   );
   return {
     contenido: json({
       estado: "anotado",
-      retiro: `${textoFecha(i.fecha)}, ${textoFranja(franja)}`,
-      que_decir: `Confirmale que lo anotaste y que el equipo se lo confirma por acá. Recordale que el andamio tiene que estar desarmado y que tiene que haber gente para subirlo al camión (por el seguro, los choferes no pueden entrar), y que hasta que se retire el alquiler sigue corriendo.${franja.tipo === "hora" ? " La franja de una hora tiene un recargo por costos operativos (no digas cuánto)." : ""}`,
+      [deposito ? "devolucion" : "retiro"]: `${textoFecha(i.fecha)}, ${textoFranja(franja)}`,
+      que_decir: deposito
+        ? `Confirmale que lo anotaste y que el equipo se lo confirma por acá. Recordale que lo traiga desarmado al depósito (${DEPOSITO.texto}), con su vehículo y gente para descargarlo, y que hasta que lo devuelva el alquiler sigue corriendo.`
+        : `Confirmale que lo anotaste y que el equipo se lo confirma por acá. Recordale que el andamio tiene que estar desarmado y que tiene que haber gente para subirlo al camión (por el seguro, los choferes no pueden entrar), y que hasta que se retire el alquiler sigue corriendo.${franja.tipo === "hora" ? " La franja de una hora tiene un recargo por costos operativos (no digas cuánto)." : ""}`,
     }),
   };
 }
@@ -1044,13 +1116,13 @@ const HERRAMIENTAS: Def[] = [
   },
   {
     nombre: "cotizar_alquiler_simple",
-    descripcion: "Alquiler simple (andamio sin montaje que arma el cliente: módulos, baranda, tablones, ruedas o tornillones). Anota lo que te dijo (se suma en cada llamada: pasá sólo lo nuevo), busca el flete por la dirección y arma con las reglas del servidor el andamio que le sirve. Devuelve qué falta preguntar, qué tenés que confirmar con el cliente, «pendiente» (el presupuesto lo aprueba el equipo y lo manda el sistema) o «no es fácil» con qué hacer. Nunca devuelve montos.",
+    descripcion: "Alquiler simple (andamio sin montaje que arma el cliente: módulos, baranda, tablones, ruedas o tornillones). Anota lo que te dijo (se suma en cada llamada: pasá sólo lo nuevo), busca el flete por la dirección (sólo Capital) o anota que lo retira en el depósito, y arma con las reglas del servidor el andamio que le sirve. Devuelve qué falta preguntar, qué tenés que confirmar con el cliente, «pendiente» (el presupuesto lo aprueba el equipo y lo manda el sistema) o «no es fácil» con qué hacer. Nunca devuelve montos.",
     esquema: esquemaAlquiler,
     ejecutar: cotizarAlquiler as Def["ejecutar"],
   },
   {
     nombre: "preparar_pedido_simple",
-    descripcion: "Deja PENDIENTE un pedido de alquiler de material sin montaje para que una persona ponga el precio: lo que no entra en las reglas de cotizar_alquiler_simple (cuando te dice que lo cotiza un vendedor), piezas sueltas que no son un andamio armado, o si lo retira en el depósito. Si el cliente no sabe qué piezas necesita, sabe_piezas en false: lo calcula el equipo.",
+    descripcion: "Deja PENDIENTE un pedido de alquiler de material sin montaje para que una persona ponga el precio: lo que no entra en las reglas de cotizar_alquiler_simple (cuando te dice que lo cotiza un vendedor) o piezas sueltas que no son un andamio armado. El retiro en el depósito lo cotiza cotizar_alquiler_simple. Si el cliente no sabe qué piezas necesita, sabe_piezas en false: lo calcula el equipo.",
     esquema: esquemaSimple,
     ejecutar: prepararPedidoSimple as Def["ejecutar"],
   },
@@ -1062,7 +1134,7 @@ const HERRAMIENTAS: Def[] = [
   },
   {
     nombre: "cliente_acepta_alquiler",
-    descripcion: "Cuando el presupuesto de alquiler simple YA le llegó y el cliente dice que sí: anota la aceptación con el día y la franja de entrega (los valida), avisa al equipo y te dice cómo pedirle los documentos.",
+    descripcion: "Cuando el presupuesto de alquiler simple YA le llegó y el cliente dice que sí: anota la aceptación con el día y la franja de entrega, o en que pasa a retirarlo por el depósito (los valida), avisa al equipo y te dice cómo pedirle los documentos.",
     esquema: esquemaAceptar,
     ejecutar: clienteAceptaAlquiler as Def["ejecutar"],
   },
@@ -1074,7 +1146,7 @@ const HERRAMIENTAS: Def[] = [
   },
   {
     nombre: "pedir_retiro",
-    descripcion: "El cliente avisa que quiere que retiremos el andamio de un alquiler sin montaje: valida el día y la franja (24 h de anticipación, nunca el mismo día, ni domingos ni feriados, sábados de 8 a 12), lo anota y avisa al equipo.",
+    descripcion: "El cliente avisa que terminó un alquiler sin montaje: que retiremos el andamio, o que lo devuelve en el depósito si lo retiró él. Valida el día y la franja (24 h de anticipación, nunca el mismo día, ni domingos ni feriados; el retiro, sábados de 8 a 12; el depósito, de lunes a viernes de 10 a 12 o de 13 a 16), lo anota y avisa al equipo.",
     esquema: esquemaRetiro,
     ejecutar: pedirRetiro as Def["ejecutar"],
   },

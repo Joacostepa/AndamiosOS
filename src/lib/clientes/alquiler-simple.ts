@@ -5,11 +5,13 @@
 //   · el andamio (§2): módulos de 1,80 m de 1,30 (estándar) o 0,90 (angosto), de 2,50 o 1,50
 //     (junior) de largo; baranda arriba, piso completo de tablones y ruedas o tornillones;
 //   · la altura (§4): plataforma + 2 m para trabajar, plataforma + 1,90 m de techo para la
-//     cabeza; hasta 3 módulos sin anclar; la plataforma en un peldaño, como excepción, cuando
-//     arriba no entra la cabeza (y se cobra igual que el módulo completo, fila 14);
+//     cabeza; hasta 3 módulos sin anclar; la plataforma arriba de un módulo o, como alternativa,
+//     un tablón en un peldaño de cualquier módulo (fila 19), que se cobra igual (fila 14);
 //   · el precio (§5): un solo total por 30 días con el flete adentro, el mínimo operativo si no
 //     llega, el recargo de la franja de una hora sobre el total (fila 15) y la renovación por día;
-//   · la entrega (§6): nunca el mismo día, ni domingos ni feriados, sábados de 8 a 12;
+//   · la entrega (§6): nunca el mismo día, ni domingos ni feriados, sábados de 8 a 12; sólo en
+//     CABA (fila 16). O lo retira el cliente en el depósito (fila 17): sin flete, con el mínimo,
+//     de lunes a viernes de 10 a 12 o de 13 a 16;
 //   · cuándo no es fácil (§8): pasa a un vendedor.
 //
 // TOMÁS NUNCA VE PLATA (herramientas.ts, «ninguna devuelve plata»): el precio lo calcula este
@@ -99,19 +101,17 @@ export function parametrosAlquilerDesdeFilas(filas: FilaParametro[]): Parametros
  *
  * - `base`: las ruedas suman 0,15 m (§2). Con tornillones se toma la misma altura: son husillos
  *   regulables y la tabla de la §4 está confirmada con ruedas; la diferencia es de centímetros.
- * - `cabezaAlTecho`: cuando el trabajo es el techo, «lo que manda es el techo: la plataforma más
- *   alta que deje entrar la cabeza» (§4). La cabeza es el límite duro (plataforma + 1,90 ≤ techo);
- *   el alcance no: con los brazos arriba se llega al techo si la cabeza queda a 50 cm o menos
- *   (plataforma + 2 m hasta 40 cm debajo). En el ejemplo de JS, techo de 3 m, la cabeza queda a
- *   15 cm. DECISIÓN de Claude, para que la vea JS: con sólo el «~» del ejemplo (5 o 10 cm), los
- *   techos de casa de 2,70 a 2,80 m irían todos a un vendedor (el peldaño de 0,40 queda corto y
- *   el de 0,80 no deja entrar la cabeza). La otra cara: los cielorrasos de 3,76 a 3,84 m, de 4,36
- *   a 5,64 m y de 6,16 a 7,44 m van a un vendedor, porque la plataforma más alta que deja entrar
- *   la cabeza queda a más de 50 cm (con 5 m de techo, 1 módulo llega a ~3,95). La §4 al pie de la
- *   letra («la plataforma más alta que deje entrar la cabeza») los cotizaría igual, aunque no
- *   lleguen al techo. Va en el handoff como pregunta para JS.
+ * - `peldanos`: los de la escalera de cada bastidor, medidos desde abajo de SU módulo. La
+ *   plataforma en un peldaño se puede armar en cualquier módulo (JS, 12/11, fila 19): en el
+ *   segundo, el de 0,80 queda a 0,15 + 1,80 + 0,80 = 2,75 m.
  * - `hastaElTecho`: si tiene que trabajar hasta 10 cm del techo o más arriba, es trabajar en el
- *   techo («pintar la pared hasta arriba» con un techo de 3 m).
+ *   techo («pintar la pared hasta arriba» con un techo de 3 m). Es también el margen con el que
+ *   una plataforma «llega al techo» (plataforma + 2 m a 10 cm o menos): si queda más lejos, se
+ *   cotiza igual y Tomás le aclara hasta dónde llega para que lo confirme (fila 19).
+ *
+ * Ya no está el margen de 50 cm de la cabeza al techo (`cabezaAlTecho`, del 12/11 a la mañana):
+ * mandaba a un vendedor los cielorrasos en que la cabeza entraba pero la plataforma quedaba más
+ * abajo. JS decidió que se cotizan y se le aclara al cliente (fila 19).
  */
 export const MEDIDAS = {
   base: 0.15,
@@ -120,11 +120,21 @@ export const MEDIDAS = {
   cabeza: 1.9,
   peldanos: [0.4, 0.8, 1.2],
   maxModulosSinAnclar: 3,
-  cabezaAlTecho: 0.5,
   hastaElTecho: 0.1,
   /** Ancho de un tablón: la plataforma en un peldaño es de uno solo (§4). */
   tablon: 0.3,
 } as const;
+
+/**
+ * El depósito donde retira el cliente (fila 17): Maturín 2570, CABA. Abre de lunes a viernes que
+ * no sean feriado, de 10 a 16, y de 12 a 13 está cerrado. El retiro y la devolución se coordinan
+ * con 24 h de anticipación por este mismo WhatsApp.
+ *
+ * OJO: en Odoo, las órdenes que hoy «retiran en depósito» dicen «RETIRA DE CUCHA CUCHA 2345» en
+ * la dirección de la obra (S03008, S02929, S02769, S01563): la dirección es la que dio JS el 12/11
+ * y la otra está en el handoff como pregunta.
+ */
+export const DEPOSITO = { direccion: "Maturín 2570", texto: "Maturín 2570 (CABA)" } as const;
 
 /** Todo en centímetros enteros adentro: 0,15 + 1,80 × 2 en coma flotante no da 3,75. */
 const cm = (m: number) => Math.round(m * 100);
@@ -132,7 +142,6 @@ const BASE = cm(MEDIDAS.base);
 const MODULO = cm(MEDIDAS.modulo);
 const ALCANCE = cm(MEDIDAS.alcance);
 const CABEZA = cm(MEDIDAS.cabeza);
-const CABEZA_AL_TECHO = cm(MEDIDAS.cabezaAlTecho);
 const HASTA_EL_TECHO = cm(MEDIDAS.hastaElTecho);
 const PELDANOS = MEDIDAS.peldanos.map(cm);
 const MAX_SIN_ANCLAR = MEDIDAS.maxModulosSinAnclar;
@@ -197,8 +206,15 @@ const codigoApoyo = (a: Apoyo): CodigoPieza => (a === "ruedas" ? "ruedas_juego" 
 /**
  * La franja de entrega (§6): de 8 a 12, de 13 a 16, o una hora particular (con recargo) que
  * empieza en `desde` (horas: 10 = 10:00, 9.5 = 9:30) y dura una hora.
+ *
+ * Si retira en el depósito (fila 17), las del depósito: de 10 a 12 o de 13 a 16, de lunes a
+ * viernes (de 12 a 13 el depósito para). En el depósito no hay franja de una hora ni recargo.
+ * Son otros tipos y no las mismas con otro horario: así ningún texto dice «de 8 a 12» para el
+ * depósito por olvidarse de la modalidad.
  */
-export type Franja = { tipo: "manana" } | { tipo: "tarde" } | { tipo: "hora"; desde: number };
+export type Franja =
+  | { tipo: "manana" } | { tipo: "tarde" } | { tipo: "hora"; desde: number }
+  | { tipo: "deposito_manana" } | { tipo: "deposito_tarde" };
 
 /** Las ventanas de entrega en horas: lunes a viernes 8-12 y 13-16; sábados sólo 8-12. */
 const VENTANAS_SEMANA: [number, number][] = [[8, 12], [13, 16]];
@@ -209,11 +225,33 @@ const hora = (h: number) => {
   return min ? `${Math.floor(h)}:${String(min).padStart(2, "0")}` : String(Math.floor(h));
 };
 
-/** «de 8 a 12», «de 13 a 16», «de 10 a 11». */
+/** «de 8 a 12», «de 13 a 16», «de 10 a 11»; en el depósito, «de 10 a 12» o «de 13 a 16». */
 export function textoFranja(f: Franja): string {
   if (f.tipo === "manana") return "de 8 a 12";
-  if (f.tipo === "tarde") return "de 13 a 16";
+  if (f.tipo === "tarde" || f.tipo === "deposito_tarde") return "de 13 a 16";
+  if (f.tipo === "deposito_manana") return "de 10 a 12";
   return `de ${hora(f.desde)} a ${hora(f.desde + 1)}`;
+}
+
+/** ¿Es una franja del depósito? */
+export const esFranjaDeposito = (f: Franja | null | undefined): boolean => f?.tipo === "deposito_manana" || f?.tipo === "deposito_tarde";
+
+/**
+ * La franja según cómo llega el andamio. Tomás pregunta «a la mañana o a la tarde» en los dos
+ * casos y el servidor la pasa a la de la modalidad: en el depósito, la mañana es de 10 a 12 y la
+ * tarde de 13 a 16. Una franja de una hora no existe en el depósito: null (hay que preguntar
+ * de nuevo, con las del depósito).
+ */
+export function franjaSegunModalidad(f: Franja | null, deposito: boolean): Franja | null {
+  if (!f) return null;
+  if (deposito) {
+    if (f.tipo === "manana") return { tipo: "deposito_manana" };
+    if (f.tipo === "tarde") return { tipo: "deposito_tarde" };
+    return f.tipo === "hora" ? null : f;
+  }
+  if (f.tipo === "deposito_manana") return { tipo: "manana" };
+  if (f.tipo === "deposito_tarde") return { tipo: "tarde" };
+  return f;
 }
 
 // ── El pedido (lo que junta Tomás) ─────────────────────────────────────────────────────
@@ -263,15 +301,24 @@ export type PedidoAlquiler = {
   /** La fecha de entrega pedida (YYYY-MM-DD). */
   fecha: string | null;
   franja: Franja | null;
-  /** La respuesta a la plataforma en un peldaño (techo bajo). null: todavía no se le ofreció. */
-  aceptaPeldano: boolean | null;
+  /**
+   * La respuesta a la plataforma que hay que confirmarle (fila 19): un tablón en un peldaño, o
+   * una plataforma que no llega cómodo al techo. null: todavía no se le preguntó. La herramienta
+   * la borra si cambia la altura, el techo o lo que pidió (ya no es la misma plataforma).
+   */
+  aceptaPlataforma: boolean | null;
+  /**
+   * true: lo retira él en el depósito (fila 17), sin flete. false: dijo que no puede retirarlo.
+   * null: no lo dijo (en CABA va con envío; en provincia se le ofrece el depósito, fila 16).
+   */
+  retiraEnDeposito: boolean | null;
 };
 
 export function pedidoVacio(): PedidoAlquiler {
   return {
     lugar: null, alturaTrabajo: null, trabajoEnTecho: false, alturaTecho: null, espacioDeSobra: false, anchoLibre: null, largoLibre: null,
     largoACubrir: null, torres: null, piso: null, piezas: null, piezasFueraDeCatalogo: [], montaje: false, anclar: false, paraHoy: false,
-    fecha: null, franja: null, aceptaPeldano: null,
+    fecha: null, franja: null, aceptaPlataforma: null, retiraEnDeposito: null,
   };
 }
 
@@ -280,10 +327,13 @@ export function pedidoVacio(): PedidoAlquiler {
 /**
  * El flete del barrio (§5, los métodos de envío 354 a 450 de Odoo). Cubre la entrega y el
  * retiro: una sola línea por pedido. `fuera_de_lista`: el barrio no está, va a un vendedor.
+ * `provincia`: la obra está fuera de CABA. No se entrega ni se retira fuera de CABA (JS, 12/11,
+ * fila 16): no hay flete y Tomás le ofrece retirarlo en el depósito.
  */
 export type FleteAlquiler =
   | { tipo: "lista"; barrio: string; monto: number; metodoEnvioId?: number | null }
-  | { tipo: "fuera_de_lista"; barrio: string | null };
+  | { tipo: "fuera_de_lista"; barrio: string | null }
+  | { tipo: "provincia"; lugar: string | null };
 
 /**
  * Lo del cliente que ya maneja facil.ts (las palabras de alerta, las banderas de la IA, la gama
@@ -310,7 +360,7 @@ export type ContextoAlquiler = {
 
 // ── Fechas y franjas (§6) ──────────────────────────────────────────────────────────────
 
-export type CodigoEntrega = "fecha_invalida" | "hoy" | "pasada" | "domingo" | "feriado" | "sabado_tarde" | "fuera_de_franja";
+export type CodigoEntrega = "fecha_invalida" | "hoy" | "pasada" | "domingo" | "feriado" | "sabado_tarde" | "sabado_deposito" | "fuera_de_franja";
 
 export type ResultadoEntrega = {
   ok: boolean;
@@ -347,10 +397,13 @@ function fechasFeriado(feriados: readonly (Feriado | string)[]): Set<string> {
   return new Set(feriados.map((f) => (typeof f === "string" ? f : f.fecha)));
 }
 
-/** La franja cabe en el día: la mañana siempre; la tarde, no los sábados; la hora, dentro de una ventana. */
+/**
+ * La franja cabe en el día: la mañana siempre; la tarde, no los sábados; la hora, dentro de una
+ * ventana; las del depósito, nunca los sábados (abre de lunes a viernes).
+ */
 function franjaCabe(f: Franja, sabado: boolean): boolean {
   if (f.tipo === "manana") return true;
-  if (f.tipo === "tarde") return !sabado;
+  if (f.tipo === "tarde" || f.tipo === "deposito_manana" || f.tipo === "deposito_tarde") return !sabado;
   if (!Number.isFinite(f.desde)) return false;
   return (sabado ? VENTANAS_SABADO : VENTANAS_SEMANA).some(([a, b]) => f.desde >= a && f.desde + 1 <= b);
 }
@@ -372,13 +425,18 @@ function franjaQueCabe(f: Franja, sabado: boolean): Franja {
  *   · ni domingos ni feriados;
  *   · los sábados, sólo de 8 a 12;
  *   · de lunes a viernes, de 8 a 12 o de 13 a 16, o una hora adentro de esas ventanas.
+ * En el depósito (fila 17: una franja del depósito, o `deposito` sin franja) las mismas reglas
+ * con sus franjas: nunca hoy, ni domingos ni feriados, y tampoco los sábados.
  * Si no se puede, devuelve el motivo y la próxima fecha posible: el primer día desde la pedida
  * (o desde mañana) en el que entra la misma franja. Si la franja no entra en ningún día (una
  * hora de 12 a 13), se ofrece la hora más cercana que sí entra. `franja` null: sólo el día.
  */
-export function validarEntrega(fecha: string, franja: Franja | null, hoy: string, feriados: readonly (Feriado | string)[]): ResultadoEntrega {
+export function validarEntrega(
+  fecha: string, franja: Franja | null, hoy: string, feriados: readonly (Feriado | string)[], o: { deposito?: boolean } = {},
+): ResultadoEntrega {
+  const deposito = o.deposito === true || esFranjaDeposito(franja);
   const fer = fechasFeriado(feriados);
-  const diaOk = (f: string) => diaSemana(f) !== 0 && !fer.has(f);
+  const diaOk = (f: string) => diaSemana(f) !== 0 && !fer.has(f) && !(deposito && diaSemana(f) === 6);
 
   // La próxima posible desde `desde`, con la franja pedida si entra algún día de la semana.
   const proximaDesde = (desde: string, fr: Franja | null) => {
@@ -393,66 +451,111 @@ export function validarEntrega(fecha: string, franja: Franja | null, hoy: string
   const no = (motivo: CodigoEntrega, texto: string, desde: string): ResultadoEntrega => ({ ok: false, motivo, texto, proxima: proximaDesde(desde, franja) });
 
   if (!fechaValida(fecha)) return no("fecha_invalida", `La fecha «${fecha}» no es válida`, manana);
-  if (fecha === hoy) return no("hoy", "Lo pide para hoy: la entrega es desde el día siguiente", manana);
+  if (fecha === hoy) return no("hoy", deposito ? "Lo quiere retirar hoy: el retiro en el depósito es desde el día siguiente" : "Lo pide para hoy: la entrega es desde el día siguiente", manana);
   if (fecha < hoy) return no("pasada", `El ${textoFecha(fecha)} ya pasó`, manana);
   const dia = diaSemana(fecha);
   if (dia === 0) return no("domingo", `El ${textoFecha(fecha)} es domingo: los domingos no se entrega ni se retira`, fecha);
   if (fer.has(fecha)) return no("feriado", `El ${textoFecha(fecha)} es feriado: no se entrega ni se retira`, fecha);
+  if (deposito && dia === 6) return no("sabado_deposito", `El ${textoFecha(fecha)} es sábado: el depósito abre de lunes a viernes`, fecha);
   if (franja && !franjaCabe(franja, dia === 6)) {
     if (dia === 6) return no("sabado_tarde", `Los sábados se entrega sólo de 8 a 12 (pidió ${textoFranja(franja)})`, fecha);
     return no("fuera_de_franja", `La franja ${textoFranja(franja)} no entra: de lunes a viernes es de 8 a 12 o de 13 a 16`, fecha);
   }
-  return { ok: true, motivo: null, texto: `Entrega el ${textoFecha(fecha)}${franja ? `, ${textoFranja(franja)}` : ""}`, proxima: { fecha, franja } };
+  const que = deposito ? "Retira en el depósito" : "Entrega";
+  return { ok: true, motivo: null, texto: `${que} el ${textoFecha(fecha)}${franja ? `, ${textoFranja(franja)}` : ""}`, proxima: { fecha, franja } };
 }
 
 // ── La altura (§4) ─────────────────────────────────────────────────────────────────────
 
-/** Dónde queda la plataforma: arriba de `modulos` módulos, o en un peldaño del primero. */
+/**
+ * Dónde queda la plataforma: arriba de `modulos` módulos (`peldano` null), o un tablón en un
+ * peldaño del módulo de arriba de la torre (`peldano`: 0,40 / 0,80 / 1,20, medido desde abajo
+ * de ese módulo). Un peldaño de un módulo de más abajo no hace falta: es el mismo nivel con una
+ * torre más baja.
+ */
 type Nivel = { modulos: number; plataforma: number; peldano: number | null };
-/** A qué tiene que llegar la plataforma + 2 m (cm) y el techo, si hay. */
+/**
+ * A qué tiene que llegar la plataforma + 2 m (cm) y el techo, si hay. En el techo, `llegar` es el
+ * techo menos `hastaElTecho`: si la plataforma no llega a eso, se cotiza igual y se confirma.
+ */
 type Objetivo = { llegar: number; techo: number | null; enTecho: boolean };
-type SolucionAltura = { ok: true; nivel: Nivel } | { ok: false; motivo: "anclar" | "techo_no_deja" | "no_llega" | "no_entra" };
+type MotivoAltura = "anclar" | "techo_no_deja" | "no_llega" | "no_entra";
+type SolucionAltura = { ok: true; nivel: Nivel } | { ok: false; motivo: MotivoAltura; nivel?: Nivel };
 
 const arriba = (n: number): Nivel => ({ modulos: n, plataforma: BASE + MODULO * n, peldano: null });
-/** Los peldaños del primer módulo, del más alto al más bajo. */
-const enPeldanos = (): Nivel[] => [...PELDANOS].sort((a, b) => b - a).map((p) => ({ modulos: 1, plataforma: BASE + p, peldano: p }));
+/** Los peldaños del módulo de arriba de una torre de `n`, del más alto al más bajo. */
+const peldanosDe = (n: number): Nivel[] =>
+  [...PELDANOS].sort((a, b) => b - a).map((p) => ({ modulos: n, plataforma: BASE + MODULO * (n - 1) + p, peldano: p }));
+/** Los niveles posibles con `n` módulos: arriba y, como alternativa, los peldaños del de arriba. */
+const nivelesDe = (n: number): Nivel[] => [arriba(n), ...peldanosDe(n)];
 const llega = (nv: Nivel, o: Objetivo) => nv.plataforma + ALCANCE >= o.llegar;
 const entra = (nv: Nivel, o: Objetivo) => o.techo === null || nv.plataforma + CABEZA <= o.techo;
+const masAlto = (niveles: Nivel[]): Nivel | null => niveles.reduce<Nivel | null>((m, nv) => (!m || nv.plataforma > m.plataforma ? nv : m), null);
+/** Todos los niveles hasta 3 módulos, del más alto al más bajo (para los textos). */
+const todosLosNiveles = (): Nivel[] =>
+  Array.from({ length: MAX_SIN_ANCLAR }, (_, i) => nivelesDe(i + 1)).flat().sort((a, b) => b.plataforma - a.plataforma);
 
 /**
- * La menor cantidad de módulos con la plataforma arriba que llega y deja entrar la cabeza.
- * Si arriba del primer módulo no entra la cabeza, la excepción del peldaño: el más alto que deja
- * entrar la cabeza, si llega.
+ * La plataforma (JS, 12/11, fila 19: «en los peldaños se puede apoyar tablón como alternativa»).
+ * Los niveles posibles son arriba de cada módulo y, como alternativa, un tablón en cualquier
+ * peldaño de cualquier módulo, siempre con la base de 0,15 y hasta 3 módulos.
  *
- * DECISIÓN: el peldaño es sólo en el PRIMER módulo (plataforma a 1,35 m como mucho). La
- * propuesta lo escribe para el techo bajo («con 1 módulo el techo mide menos de 3,85 m») y la
- * plataforma del peldaño es de un tablón de 30 cm, sin la baranda, que queda arriba. Un tablón
- * solo en el peldaño de un segundo o tercer módulo (de 2,35 a 4,95 m) lo tiene que ver un
- * vendedor. Con `fijo` (lo que pidió el cliente) se prueba sólo esa cantidad de módulos.
+ *   · Trabajo en el techo: la plataforma más alta que deja entrar la cabeza (plataforma + 1,90 ≤
+ *     techo). Si la más alta de arriba de un módulo ya llega al techo, va esa («si sirve igual»:
+ *     piso completo y baranda); el peldaño, cuando acerca más al techo. Si no llega cómodo
+ *     (plataforma + 2 m a más de 10 cm del techo) se cotiza igual y Tomás se lo confirma
+ *     (aConfirmar «plataforma»): ya no va a un vendedor por el margen de 50 cm.
+ *   · Trabajo hasta una altura: la menor cantidad de módulos que llega con la cabeza adentro;
+ *     con esa cantidad, arriba si entra la cabeza y, si no, el peldaño más alto del módulo de
+ *     arriba que entra y llega.
+ *   · A un vendedor sólo va lo que no tiene ninguna plataforma posible o hay que anclar.
+ *
+ * Con `fijo` (lo que pidió el cliente) se prueba sólo esa cantidad de módulos. En el techo, si
+ * con lo que pidió queda más lejos del techo que con lo recomendado, es «no_llega».
  */
 function resolverAltura(o: Objetivo, fijo: number | null): SolucionAltura {
   if (fijo !== null && fijo > MAX_SIN_ANCLAR) return { ok: false, motivo: "anclar" };
   // Un techo más alto que lo que se alcanza sin anclar (~7,55 m) es trabajar a más de ~7,5 m (§8).
   if (o.enTecho && o.techo !== null && o.techo > arriba(MAX_SIN_ANCLAR).plataforma + ALCANCE) return { ok: false, motivo: "anclar" };
   const cantidades = fijo !== null ? [fijo] : Array.from({ length: MAX_SIN_ANCLAR }, (_, i) => i + 1);
+
+  if (o.enTecho) {
+    const conCabeza = cantidades.flatMap(nivelesDe).filter((nv) => entra(nv, o));
+    const alto = masAlto(conCabeza);
+    if (!alto) return { ok: false, motivo: fijo !== null ? "no_entra" : "techo_no_deja" };
+    const arribaAlto = masAlto(conCabeza.filter((nv) => nv.peldano === null));
+    const nivel = arribaAlto && (arribaAlto === alto || llega(arribaAlto, o)) ? arribaAlto : alto;
+    if (fijo !== null && !llega(nivel, o)) {
+      const rec = resolverAltura(o, null);
+      if (rec.ok && rec.nivel.plataforma > nivel.plataforma) return { ok: false, motivo: "no_llega", nivel };
+    }
+    return { ok: true, nivel };
+  }
+
   for (const n of cantidades) {
-    const nv = arriba(n);
-    if (llega(nv, o) && entra(nv, o)) return { ok: true, nivel: nv };
+    const a = arriba(n);
+    if (!llega(a, o)) continue;
+    if (entra(a, o)) return { ok: true, nivel: a };
+    const p = peldanosDe(n).find((nv) => entra(nv, o) && llega(nv, o));
+    if (p) return { ok: true, nivel: p };
+    // Llega, pero la cabeza no entra ni con un peldaño: con más módulos, menos todavía.
+    return { ok: false, motivo: fijo !== null ? "no_entra" : "techo_no_deja", nivel: a };
   }
-  if (cantidades.includes(1) && !entra(arriba(1), o)) {
-    const nv = enPeldanos().find((x) => entra(x, o));
-    if (nv && llega(nv, o)) return { ok: true, nivel: nv };
-  }
-  if (fijo !== null) return { ok: false, motivo: entra(arriba(fijo), o) ? "no_llega" : "no_entra" };
-  // Sin el techo, con 3 módulos llegaría: el problema es la cabeza. Si no, hay que anclar.
-  return { ok: false, motivo: llega(arriba(MAX_SIN_ANCLAR), o) ? "techo_no_deja" : "anclar" };
+  if (fijo !== null) return { ok: false, motivo: "no_llega", nivel: arriba(fijo) };
+  return { ok: false, motivo: "anclar" };
+}
+
+/** «el peldaño de 0,80 m», «el peldaño de 0,80 m del segundo módulo». En metros. */
+export function textoPeldano(peldano: number, modulos: number): string {
+  const ordinal = ["", "primer", "segundo", "tercer"][modulos] ?? `${modulos}.º`;
+  return `el peldaño de ${metros(peldano)} m${modulos > 1 ? ` del ${ordinal} módulo` : ""}`;
 }
 
 // ── El resultado ───────────────────────────────────────────────────────────────────────
 
 export type CodigoMotivoAlquiler =
-  | "para_hoy" | "altura" | "anclar" | "techo_no_deja" | "peldano_rechazado" | "espacio" | "espacio_ancho" | "espacio_largo"
-  | "flete" | "sin_flete" | "piezas_fuera" | "montaje" | "tope_modulos"
+  | "para_hoy" | "altura" | "anclar" | "techo_no_deja" | "plataforma_rechazada" | "espacio" | "espacio_ancho" | "espacio_largo"
+  | "flete" | "sin_flete" | "deposito" | "fuera_de_caba" | "piezas_fuera" | "montaje" | "tope_modulos"
   | "palabras" | "bandera" | "gama_alta" | "deuda" | "cuenta_socio";
 
 /**
@@ -465,7 +568,12 @@ export type CodigoFaltante = "lugar" | "altura" | "techo" | "ancho" | "largo" | 
 /** Un dato que falta, con la pregunta para Tomás (sin montos). */
 export type DatoFaltante = { codigo: CodigoFaltante; pregunta: string };
 
-export type CodigoConfirmacion = "peldano" | "piezas_no_sirven" | "fecha";
+/**
+ * plataforma: un tablón en un peldaño, o una plataforma que no llega cómodo al techo (fila 19) ·
+ * deposito: la obra está en provincia y no se entrega: ¿lo retira en el depósito? (fila 16) ·
+ * piezas_no_sirven: lo que pidió no le sirve · fecha: la fecha no se puede.
+ */
+export type CodigoConfirmacion = "plataforma" | "deposito" | "piezas_no_sirven" | "fecha";
 /** Algo que Tomás tiene que confirmar con el cliente antes de la tarjeta (sin montos). */
 export type Confirmacion = { codigo: CodigoConfirmacion; texto: string };
 
@@ -479,12 +587,19 @@ export type Armado = {
   apoyo: Apoyo;
   /** Metros, desde el piso. */
   alturaPlataforma: number;
-  /** null: la plataforma va arriba. Si no, el peldaño del primer módulo (0,40 / 0,80 / 1,20). */
+  /**
+   * null: la plataforma va arriba. Si no, el peldaño (0,40 / 0,80 / 1,20, desde abajo de su
+   * módulo) del módulo de arriba de la torre: un solo tablón de 30 cm (fila 19).
+   */
   peldano: number | null;
   /** Hasta dónde trabaja cómodo (plataforma + 2 m). */
   llegaHasta: number;
   /** Hasta dónde llega la cabeza (plataforma + 1,90 m). */
   cabezaHasta: number;
+  /** El techo, si el trabajo es en el techo (para decirle hasta dónde llega). null: no lo es. */
+  techo: number | null;
+  /** En el techo: si llega cómodo (plataforma + 2 m a 10 cm del techo o menos). null: no es en el techo. */
+  llegaAlTecho: boolean | null;
   tablonesPorTorre: number;
   /** La baranda se cobra siempre; si el cliente no la quiere, no se lleva (fila 8). */
   barandaSeLleva: boolean;
@@ -500,10 +615,11 @@ export type LineaAlquiler = { codigo: CodigoLinea; descripcion: string; cantidad
 export type PrecioAlquiler = {
   lineas: LineaAlquiler[];
   material: number;
+  /** 0 si retira en el depósito (no hay línea de flete). */
   flete: number;
   /** La línea «MÍNIMO OPERATIVO»: la diferencia hasta el mínimo, o 0 si llega. */
   minimoOperativo: number;
-  /** El servicio de 30 días con la entrega y el retiro: material + flete + mínimo. */
+  /** El servicio de 30 días con la entrega y el retiro (o retirando en el depósito): material + flete + mínimo. */
   base: number;
   /** El recargo de la franja de una hora, sobre `base` (fila 15). 0 si no hay. */
   recargoFranja: number;
@@ -518,7 +634,11 @@ export type PrecioAlquiler = {
 /** Lo que le entra sin pagar más cuando no llega al mínimo (§7). Sin montos. */
 export type SugerenciaMinimo = { tipo: "otra_torre"; cantidad: number } | { tipo: "modulo_mas"; llegaHasta: number };
 
+/** envio: lo llevamos y lo retiramos (sólo CABA) · deposito: lo retira y lo devuelve él (fila 17). */
+export type Modalidad = "envio" | "deposito";
+
 export type ResultadoAlquiler = {
+  modalidad: Modalidad;
   /** Sin ningún motivo en contra: el trabajo y el cliente. */
   facil: boolean;
   /** El trabajo es fácil aunque el cliente no (deuda, socios): igual se arma, lo ve una persona. */
@@ -530,9 +650,10 @@ export type ResultadoAlquiler = {
   faltan: DatoFaltante[];
   aConfirmar: Confirmacion[];
   armado: Armado | null;
-  /** null si no hay armado o el flete no está en la lista. */
+  /** null si no hay armado, o si va con envío y el flete no está en la lista. */
   precio: PrecioAlquiler | null;
   entrega: ResultadoEntrega | null;
+  /** La franja ya pasada a la de la modalidad (franjaSegunModalidad). */
   franja: Franja | null;
   entraSinPagarMas: SugerenciaMinimo[];
   flete: FleteAlquiler | null;
@@ -599,26 +720,42 @@ const PREGUNTA: Record<CodigoFaltante, string> = {
   fecha: "¿Para cuándo lo necesitan?",
   franja: "¿Te queda mejor de 8 a 12 o de 13 a 16?",
 };
+/** En el depósito no hace falta la dirección y las franjas son otras (fila 17). */
+const PREGUNTA_DEPOSITO: Partial<Record<CodigoFaltante, string>> = {
+  fecha: "¿Qué día querés pasar a retirarlo por el depósito?",
+  franja: "¿Pasás de 10 a 12 o de 13 a 16?",
+};
 
 /**
- * El pedido de alquiler simple: el armado (§4), el precio (§5), la entrega (§6) y si es fácil
- * (§8). Nunca tira: lo que falta va en `faltan`, lo que se sale de las reglas en `enContra`.
+ * El pedido de alquiler simple: el armado (§4), el precio (§5), la entrega o el retiro en el
+ * depósito (§6) y si es fácil (§8). Nunca tira: lo que falta va en `faltan`, lo que se sale de las
+ * reglas en `enContra`.
  */
 export function cotizarAlquilerSimple(pedido: PedidoAlquiler, ctx: ContextoAlquiler): ResultadoAlquiler {
   const p = ctx.parametros;
   const motivos: MotivoAlquiler[] = [];
   const faltan: DatoFaltante[] = [];
   const aConfirmar: Confirmacion[] = [];
+  // Lo retira en el depósito (fila 17). Los pedidos guardados antes no tienen el campo: envío.
+  const deposito = pedido.retiraEnDeposito === true;
+  const modalidad: Modalidad = deposito ? "deposito" : "envio";
   const trabajo = (codigo: CodigoMotivoAlquiler, ok: boolean, texto: string) => motivos.push({ codigo, ok, texto, grupo: "trabajo" });
-  const falta = (codigo: CodigoFaltante) => { if (!faltan.some((f) => f.codigo === codigo)) faltan.push({ codigo, pregunta: PREGUNTA[codigo] }); };
+  const falta = (codigo: CodigoFaltante) => {
+    if (!faltan.some((f) => f.codigo === codigo)) faltan.push({ codigo, pregunta: (deposito ? PREGUNTA_DEPOSITO[codigo] : undefined) ?? PREGUNTA[codigo] });
+  };
 
   // Lo que pidió el cliente, si es válido (una cantidad de módulos entera y positiva).
   const pedidas = pedido.piezas && entero(pedido.piezas.modulosPorTorre, 1) !== null ? pedido.piezas : null;
 
+  // La franja de la modalidad: en el depósito, de 10 a 12 o de 13 a 16 (una de una hora no existe).
+  const franja = franjaSegunModalidad(pedido.franja ?? null, deposito);
+
   // §8: para hoy. La fecha se valida igual, para ofrecer la próxima.
-  const entrega = pedido.fecha ? validarEntrega(pedido.fecha, pedido.franja, ctx.hoy, ctx.feriados) : null;
+  const entrega = pedido.fecha ? validarEntrega(pedido.fecha, franja, ctx.hoy, ctx.feriados, { deposito }) : null;
   const paraHoy = pedido.paraHoy || entrega?.motivo === "hoy";
-  trabajo("para_hoy", !paraHoy, paraHoy ? "Lo necesita para hoy: la entrega es desde el día siguiente" : "No es para hoy");
+  trabajo("para_hoy", !paraHoy, paraHoy
+    ? (deposito ? "Lo quiere retirar hoy: el retiro en el depósito es desde el día siguiente" : "Lo necesita para hoy: la entrega es desde el día siguiente")
+    : "No es para hoy");
 
   // ── La altura ──
   const techo = positivo(pedido.alturaTecho) ? cm(pedido.alturaTecho) : null;
@@ -632,15 +769,18 @@ export function cotizarAlquilerSimple(pedido: PedidoAlquiler, ctx: ContextoAlqui
   let altura: SolucionAltura | null = null;
   let recomendada: SolucionAltura | null = null;
   const objetivo: Objetivo | null =
-    // En el techo: que la cabeza quede a 50 cm o menos (plataforma + 2 m a 40 cm o menos).
-    enTecho && techo !== null ? { llegar: techo - (CABEZA + CABEZA_AL_TECHO - ALCANCE), techo, enTecho: true }
+    // En el techo: que la plataforma + 2 m quede a 10 cm del techo o menos (si no, se confirma).
+    enTecho && techo !== null ? { llegar: techo - HASTA_EL_TECHO, techo, enTecho: true }
     : !enTecho && trabajoAlto !== null && !(pedido.lugar === "adentro" && techo === null) ? { llegar: trabajoAlto, techo, enTecho: false }
     : null;
   if (objetivo) {
     recomendada = resolverAltura(objetivo, null);
     altura = pedidas ? resolverAltura(objetivo, pedidas.modulosPorTorre) : recomendada;
   }
-  const objetivoTxt = objetivo ? (objetivo.enTecho ? `el techo de ${metros((techo as number) / 100)} m` : `${metros(objetivo.llegar / 100)} m`) : "";
+  // «al techo de 5 m» o «a 5 m»: lo que tiene que alcanzar, con la preposición.
+  const aObjetivo = objetivo ? (objetivo.enTecho ? `al techo de ${metros((techo as number) / 100)} m` : `a ${metros(objetivo.llegar / 100)} m`) : "";
+  const modulosTxt = (n: number) => `${n} ${n === 1 ? "módulo" : "módulos"}`;
+  const nivelTxt = (nv: Nivel) => (nv.peldano !== null ? `con un tablón en ${textoPeldano(nv.peldano / 100, nv.modulos)}` : `arriba de ${modulosTxt(nv.modulos)}`);
 
   // Lo que pidió no le sirve: se cotiza lo recomendado y Tomás lo confirma con el cliente.
   let origen: Armado["origen"] = pedidas ? "cliente" : "recomendado";
@@ -650,12 +790,13 @@ export function cotizarAlquilerSimple(pedido: PedidoAlquiler, ctx: ContextoAlqui
   } else if (pedidas && altura && !altura.ok && altura.motivo !== "anclar" && recomendada?.ok) {
     const n = pedidas.modulosPorTorre;
     const r = recomendada.nivel;
+    const nv = altura.nivel ?? arriba(n);
     const porque = altura.motivo === "no_llega"
-      ? `con ${n} ${n === 1 ? "módulo" : "módulos"} llega hasta ~${metros((arriba(n).plataforma + ALCANCE) / 100)} m y tiene que llegar a ${objetivoTxt}`
-      : `con ${n} ${n === 1 ? "módulo" : "módulos"} la plataforma queda a ${metros(arriba(n).plataforma / 100)} m y no entra la cabeza (techo de ${metros((techo as number) / 100)} m)`;
+      ? `con ${modulosTxt(n)} llega hasta ~${metros((nv.plataforma + ALCANCE) / 100)} m y tiene que llegar ${aObjetivo}`
+      : `con ${modulosTxt(n)} la plataforma queda a ${metros(arriba(n).plataforma / 100)} m y no entra la cabeza (techo de ${metros((techo as number) / 100)} m)`;
     aConfirmar.push({
       codigo: "piezas_no_sirven",
-      texto: `Lo que pidió no le sirve: ${porque}. Se cotiza lo que sí le sirve, ${r.modulos} ${r.modulos === 1 ? "módulo" : "módulos"}${r.peldano !== null ? " con la plataforma en un peldaño" : ""}: confirmalo con el cliente.`,
+      texto: `Lo que pidió no le sirve: ${porque}. Se cotiza lo que sí le sirve, ${modulosTxt(r.modulos)}${r.peldano !== null ? ` con la plataforma en ${textoPeldano(r.peldano / 100, r.modulos)}` : ""}: confirmalo con el cliente.`,
     });
     altura = recomendada;
     origen = "recomendado";
@@ -666,30 +807,35 @@ export function cotizarAlquilerSimple(pedido: PedidoAlquiler, ctx: ContextoAlqui
     if (altura.motivo === "anclar") {
       trabajo("anclar", false, pedidas && pedidas.modulosPorTorre > MAX_SIN_ANCLAR
         ? `Pide ${pedidas.modulosPorTorre} módulos de alto: más de ${MAX_SIN_ANCLAR} hay que anclar`
-        : `Tiene que llegar a ${objetivoTxt}: sin anclar llega hasta ~${metros((arriba(MAX_SIN_ANCLAR).plataforma + ALCANCE) / 100)} m con ${MAX_SIN_ANCLAR} módulos`);
+        : `Tiene que llegar ${aObjetivo}: sin anclar llega hasta ~${metros((arriba(MAX_SIN_ANCLAR).plataforma + ALCANCE) / 100)} m con ${MAX_SIN_ANCLAR} módulos`);
     } else {
-      // Dos casos distintos con el mismo código: que la cabeza no entre en ninguna plataforma, o
-      // que entre pero no alcance (en el techo, con el margen de `cabezaAlTecho`). La tarjeta y
-      // Tomás tienen que decir el que es: «no deja pararse» sería falso en el segundo.
+      // Ninguna plataforma posible: o la cabeza no entra en ninguna (techo de menos de 2,45 m), o
+      // la que deja entrar la cabeza no llega a la altura de trabajo (una pared, no el techo). La
+      // tarjeta y Tomás tienen que decir el que es: «no deja pararse» sería falso en el segundo.
       const t = techo as number;
-      const mejor = [...Array.from({ length: MAX_SIN_ANCLAR }, (_, i) => arriba(MAX_SIN_ANCLAR - i)), ...enPeldanos()]
-        .find((nv) => nv.plataforma + CABEZA <= t);
+      const mejor = todosLosNiveles().find((nv) => nv.plataforma + CABEZA <= t);
       trabajo("techo_no_deja", false, mejor
-        ? `Techo de ${metros(t / 100)} m: con la cabeza adentro, la plataforma más alta queda a ${metros(mejor.plataforma / 100)} m (${mejor.peldano !== null ? `en el peldaño de ${metros(mejor.peldano / 100)}` : `${mejor.modulos} ${mejor.modulos === 1 ? "módulo" : "módulos"}`}) y llega hasta ~${metros((mejor.plataforma + ALCANCE) / 100)} m: no alcanza ${objetivo?.enTecho ? "a trabajar cómodo en el techo" : `a ${objetivoTxt}`}`
-        : `Techo de ${metros(t / 100)} m: no deja pararse con la cabeza adentro en ninguna plataforma, ni con el peldaño`);
+        ? `Techo de ${metros(t / 100)} m: con la cabeza adentro, la plataforma más alta queda a ${metros(mejor.plataforma / 100)} m (${nivelTxt(mejor)}) y llega hasta ~${metros((mejor.plataforma + ALCANCE) / 100)} m: no alcanza ${aObjetivo}`
+        : `Techo de ${metros(t / 100)} m: no deja pararse con la cabeza adentro en ninguna plataforma, ni con un tablón en el peldaño más bajo`);
     }
   }
   const nivel = altura?.ok ? altura.nivel : null;
+  const llegaAlTecho = nivel && objetivo?.enTecho ? llega(nivel, objetivo) : null;
   if (nivel) {
-    if (nivel.peldano !== null && pedido.aceptaPeldano === false) {
-      trabajo("peldano_rechazado", false, "Techo bajo: no le sirve la plataforma en el peldaño");
+    if (pedido.aceptaPlataforma === false && (nivel.peldano !== null || llegaAlTecho === false)) {
+      trabajo("plataforma_rechazada", false, `No le sirve la plataforma que se puede armar (a ${metros(nivel.plataforma / 100)} m, ${nivelTxt(nivel)})`);
     } else if (!pedido.anclar) {
-      trabajo("altura", true, `Llega a ~${metros((nivel.plataforma + ALCANCE) / 100)} m con ${nivel.modulos} ${nivel.modulos === 1 ? "módulo" : "módulos"}${nivel.peldano !== null ? ` (plataforma en el peldaño de ${metros(nivel.peldano / 100)})` : ""}, sin anclar`);
+      trabajo("altura", true, `Llega a ~${metros((nivel.plataforma + ALCANCE) / 100)} m con ${modulosTxt(nivel.modulos)}${nivel.peldano !== null ? ` (plataforma en ${textoPeldano(nivel.peldano / 100, nivel.modulos)})` : ""}, sin anclar`);
     }
-    if (nivel.peldano !== null && pedido.aceptaPeldano === null) {
+    // El peldaño (un tablón) o una plataforma que no llega cómodo al techo: se confirma (fila 19).
+    if ((nivel.peldano !== null || llegaAlTecho === false) && pedido.aceptaPlataforma === null) {
+      const donde = nivel.peldano !== null
+        ? `La plataforma va en ${textoPeldano(nivel.peldano / 100, nivel.modulos)} de la escalera del bastidor, a ${metros(nivel.plataforma / 100)} m del piso: es de un solo tablón de 30 cm.`
+        : `La plataforma queda arriba de ${modulosTxt(nivel.modulos)}, a ${metros(nivel.plataforma / 100)} m del piso.`;
+      const alTecho = llegaAlTecho === false ? ` El techo está a ${metros((techo as number) / 100)} m: no llega a trabajar cómodo en el techo.` : "";
       aConfirmar.push({
-        codigo: "peldano",
-        texto: `Con el techo de ${metros((techo as number) / 100)} m, arriba del módulo no entra la cabeza. Como excepción, la plataforma va en el peldaño de ${metros(nivel.peldano / 100)} m de la escalera del bastidor: queda a ${metros(nivel.plataforma / 100)} m, es de un solo tablón de 30 cm y llega hasta ~${metros((nivel.plataforma + ALCANCE) / 100)} m. Preguntale si le sirve.`,
+        codigo: "plataforma",
+        texto: `${donde} La cabeza llega a ${metros((nivel.plataforma + CABEZA) / 100)} m y trabaja cómodo hasta ~${metros((nivel.plataforma + ALCANCE) / 100)} m.${alTecho} Aclaráselo y preguntale si le sirve.`,
       });
     }
   }
@@ -759,6 +905,8 @@ export function cotizarAlquilerSimple(pedido: PedidoAlquiler, ctx: ContextoAlqui
       peldano: nivel.peldano === null ? null : nivel.peldano / 100,
       llegaHasta: (nivel.plataforma + ALCANCE) / 100,
       cabezaHasta: (nivel.plataforma + CABEZA) / 100,
+      techo: objetivo?.enTecho && techo !== null ? techo / 100 : null,
+      llegaAlTecho,
       tablonesPorTorre,
       barandaSeLleva,
       piezas: [
@@ -771,11 +919,29 @@ export function cotizarAlquilerSimple(pedido: PedidoAlquiler, ctx: ContextoAlqui
     };
   }
 
-  // ── El flete ──
+  // ── El flete, o el depósito ──
+  // En provincia no se entrega ni se retira (fila 16): se le ofrece el depósito. En CABA puede
+  // elegirlo igual (fila 17). En el depósito no hace falta la dirección.
   const flete = ctx.flete;
-  if (!flete) falta("direccion");
-  else if (flete.tipo === "fuera_de_lista") trabajo("sin_flete", false, flete.barrio ? `El barrio «${flete.barrio}» no está en la lista de fletes` : "No se encontró el barrio en la lista de fletes");
-  else trabajo("flete", true, `Flete ${flete.barrio} (entrega y retiro)`);
+  if (deposito) {
+    trabajo("deposito", true, `Retira y devuelve en el depósito (${DEPOSITO.texto}): sin flete`);
+  } else if (!flete) {
+    falta("direccion");
+  } else if (flete.tipo === "provincia") {
+    const lugar = flete.lugar ? `en ${flete.lugar} (provincia)` : "en provincia";
+    if (pedido.retiraEnDeposito === false) {
+      trabajo("fuera_de_caba", false, `La obra está ${lugar}: no entregamos ni retiramos fuera de CABA, y no puede retirarlo en el depósito`);
+    } else {
+      aConfirmar.push({
+        codigo: "deposito",
+        texto: `La obra está ${lugar}: no entregamos ni retiramos fuera de CABA. Ofrecele retirarlo en nuestro depósito, en ${DEPOSITO.texto}, de lunes a viernes de 10 a 12 o de 13 a 16, viniendo con su vehículo y gente para cargarlo. Anotá lo que conteste (retira_en_deposito).`,
+      });
+    }
+  } else if (flete.tipo === "fuera_de_lista") {
+    trabajo("sin_flete", false, flete.barrio ? `El barrio «${flete.barrio}» no está en la lista de fletes` : "No se encontró el barrio en la lista de fletes");
+  } else {
+    trabajo("flete", true, `Flete ${flete.barrio} (entrega y retiro)`);
+  }
 
   // §8: piezas fuera de la §2 y montaje.
   const fuera = pedido.piezasFueraDeCatalogo.map((x) => x.trim()).filter(Boolean);
@@ -792,19 +958,22 @@ export function cotizarAlquilerSimple(pedido: PedidoAlquiler, ctx: ContextoAlqui
       texto: `${entrega.texto}.${prox ? ` La próxima posible: el ${textoFecha(prox.fecha)}${prox.franja ? `, ${textoFranja(prox.franja)}` : ""}.` : ""}`,
     });
   }
-  if (!pedido.franja && !paraHoy) falta("franja");
+  if (!franja && !paraHoy) falta("franja");
 
   // ── El cliente ──
   if (ctx.cliente) motivos.push(...motivosDelCliente(ctx.cliente));
 
   // ── El precio ──
-  const franja = pedido.franja;
-  const precio = armado && flete?.tipo === "lista" ? calcularPrecio(armado, flete, franja, p) : null;
+  const precio = !armado ? null
+    : deposito ? calcularPrecio(armado, null, franja, p)
+    : flete?.tipo === "lista" ? calcularPrecio(armado, flete, franja, p)
+    : null;
   const entraSinPagarMas = armado && precio ? sugerenciasMinimo(armado, precio, techo, p) : [];
 
   const enContra = motivos.filter((m) => !m.ok);
   const facil = enContra.length === 0;
   return {
+    modalidad,
     facil,
     trabajoFacil: !enContra.some((m) => m.grupo === "trabajo"),
     listo: facil && faltan.length === 0 && aConfirmar.length === 0 && precio !== null,
@@ -831,20 +1000,23 @@ export function cotizarAlquilerSimple(pedido: PedidoAlquiler, ctx: ContextoAlqui
  * el mínimo, sobre el servicio entero (material + flete + mínimo). Es el ejemplo de JS: el de
  * Palermo sale $ 500.000 con el mínimo y el recargo da $ 100.000. Y la renovación por día sale
  * de la base SIN el recargo: el recargo paga una entrega a una hora fija, no el alquiler («el
- * total con el flete ÷ 30», §5).
+ * total con el flete ÷ 30», §5). Por eso tampoco lo lleva la renovación (fila 21).
+ *
+ * `flete` null: retira en el depósito (fila 17). No hay línea de flete, pero el mínimo operativo
+ * se cobra igual (todo material + mínimo) y no hay recargo de franja (no aplica en el depósito).
  */
-export function calcularPrecio(armado: Armado, flete: { barrio: string; monto: number }, franja: Franja | null, p: ParametrosAlquiler): PrecioAlquiler {
+export function calcularPrecio(armado: Armado, flete: { barrio: string; monto: number } | null, franja: Franja | null, p: ParametrosAlquiler): PrecioAlquiler {
   const unitario = (c: CodigoPieza) => (c === "ruedas_juego" ? p.ruedasJuego : c === "tornillones_juego" ? p.tornillonesJuego : p.precioPieza);
   const lineas: LineaAlquiler[] = armado.piezas
     .filter((x) => x.cantidad > 0)
     .map((x) => ({ codigo: x.codigo, descripcion: DESCRIPCION_PIEZA[x.codigo], cantidad: x.cantidad, precioUnitario: unitario(x.codigo), importe: x.cantidad * unitario(x.codigo) }));
   const material = lineas.reduce((s, l) => s + l.importe, 0);
-  const montoFlete = Math.max(0, Math.round(flete.monto));
-  lineas.push({ codigo: "flete", descripcion: `Flete ${flete.barrio} (entrega y retiro)`, cantidad: 1, precioUnitario: montoFlete, importe: montoFlete });
+  const montoFlete = flete ? Math.max(0, Math.round(flete.monto)) : 0;
+  if (flete) lineas.push({ codigo: "flete", descripcion: `Flete ${flete.barrio} (entrega y retiro)`, cantidad: 1, precioUnitario: montoFlete, importe: montoFlete });
   const minimoOperativo = Math.max(0, p.minimoOperativo - material - montoFlete);
   if (minimoOperativo > 0) lineas.push({ codigo: "minimo_operativo", descripcion: "Mínimo operativo", cantidad: 1, precioUnitario: minimoOperativo, importe: minimoOperativo });
   const base = material + montoFlete + minimoOperativo;
-  const recargoFranja = franja?.tipo === "hora" ? Math.round((base * p.recargoFranjaPct) / 100) : 0;
+  const recargoFranja = flete && franja?.tipo === "hora" ? Math.round((base * p.recargoFranjaPct) / 100) : 0;
   if (recargoFranja > 0) {
     lineas.push({ codigo: "recargo_franja", descripcion: `Recargo por franja de una hora (${textoFranja(franja as Franja)}, ${p.recargoFranjaPct} %)`, cantidad: 1, precioUnitario: recargoFranja, importe: recargoFranja });
   }
@@ -887,11 +1059,12 @@ function sugerenciasMinimo(a: Armado, precio: PrecioAlquiler, techo: number | nu
 const POR_QUE_NO: Partial<Record<CodigoMotivoAlquiler, string>> = {
   para_hoy: "lo necesita para hoy y la entrega es desde el día siguiente",
   anclar: "hay que anclar el andamio",
-  techo_no_deja: "con ese techo, ninguna plataforma deja trabajar con la cabeza adentro y llegar a donde tiene que trabajar, ni con la plataforma en el peldaño",
-  peldano_rechazado: "no le sirve la plataforma en el peldaño",
+  techo_no_deja: "con ese techo, ninguna plataforma deja trabajar con la cabeza adentro y llegar a donde tiene que trabajar, ni con un tablón en un peldaño",
+  plataforma_rechazada: "no le sirve la plataforma que se puede armar",
   espacio_ancho: "el espacio es más angosto que el andamio angosto",
   espacio_largo: "el espacio es más corto que el andamio junior",
   sin_flete: "el barrio no está en la lista de fletes",
+  fuera_de_caba: "la obra está en provincia (no entregamos ni retiramos fuera de CABA) y no puede retirarlo en el depósito",
   piezas_fuera: "pide piezas que no son del alquiler simple",
   montaje: "pide montaje",
   tope_modulos: "son más módulos de los que se cotizan directo",
@@ -928,17 +1101,21 @@ export function resumenParaTomas(r: ResultadoAlquiler): string {
   if (a) {
     l.push(`${a.origen === "cliente" ? "Lo que pidió, revisado" : "Lo recomendado"}: ${describirArmado(a)}.`);
     if (a.torres > 1) l.push("Si van en fila, cada torre se cobra entera.");
+    const alTecho = a.llegaAlTecho === false && a.techo !== null ? ` El techo está a ${metros(a.techo)} m: no llega cómodo a trabajar en el techo, aclaráselo.` : "";
     if (a.peldano === null) {
-      l.push(`La plataforma queda a ${metros(a.alturaPlataforma)} m y trabaja cómodo hasta ~${metros(a.llegaHasta)} m (la cabeza llega a ${metros(a.cabezaHasta)} m).`);
+      l.push(`La plataforma queda arriba, a ${metros(a.alturaPlataforma)} m, y trabaja cómodo hasta ~${metros(a.llegaHasta)} m (la cabeza llega a ${metros(a.cabezaHasta)} m).${alTecho}`);
     } else {
-      l.push(`Techo bajo: la plataforma va en el peldaño de ${metros(a.peldano)} m de la escalera del bastidor, a ${metros(a.alturaPlataforma)} m del piso. Es de un solo tablón de 30 cm (aclaráselo), la cabeza llega a ${metros(a.cabezaHasta)} m y trabaja hasta ~${metros(a.llegaHasta)} m. Es una excepción: el servicio es el mismo que con la plataforma arriba. Si no le sirve, pasa a un vendedor.`);
+      l.push(`La plataforma va como alternativa en ${textoPeldano(a.peldano, a.modulosPorTorre)} de la escalera del bastidor, a ${metros(a.alturaPlataforma)} m del piso. Es de un solo tablón de 30 cm (aclaráselo), la cabeza llega a ${metros(a.cabezaHasta)} m y trabaja cómodo hasta ~${metros(a.llegaHasta)} m.${alTecho} El servicio es el mismo que con la plataforma arriba. Si no le sirve, pasa a un vendedor.`);
     }
     l.push("La baranda va siempre incluida: si no la quiere, no se lleva, pero el servicio es el mismo. No la negocies.");
     for (const x of a.ajustes) l.push(x);
   }
+  if (r.modalidad === "deposito") {
+    l.push(`Lo retira y lo devuelve él en el depósito (${DEPOSITO.texto}): sin flete, con su vehículo y gente para cargar. Explicale las condiciones del depósito.`);
+  }
   for (const c of r.aConfirmar) {
-    // El peldaño ya está explicado arriba, con el armado: acá sólo lo que tiene que hacer.
-    l.push(c.codigo === "peldano" && a ? "Preguntale si le sirve la plataforma en el peldaño y anotá lo que conteste." : c.texto);
+    // La plataforma ya está explicada arriba, con el armado: acá sólo lo que tiene que hacer.
+    l.push(c.codigo === "plataforma" && a ? "Preguntale si le sirve esa plataforma y anotá lo que conteste (acepta_plataforma)." : c.texto);
   }
 
   if (r.entraSinPagarMas.length) {
@@ -970,11 +1147,24 @@ export function pesos(n: number): string {
  * WhatsApp). Fuente única: van en el prompt de Tomás y en el presupuesto. No tienen montos ni
  * porcentajes (el recargo de la franja de una hora lo dice el presupuesto), así que también
  * pasan por el filtro de salida si Tomás las repite.
+ *
+ * En el depósito (fila 17) son otras: no hay chofer ni camión, viene con su vehículo y gente para
+ * cargar, y la devolución es en el depósito, desarmado y con 24 h de aviso. No hay franja de una
+ * hora ni recargo. Ninguna de las dos pide el pagaré: es gestión administrativa (fila 20).
  */
-export function condicionesAlquilerSimple(): string {
+export function condicionesAlquilerSimple(modalidad: Modalidad = "envio"): string {
+  if (modalidad === "deposito") {
+    return [
+      "Te cuento cómo funciona.",
+      `Lo retirás en nuestro depósito, en ${DEPOSITO.texto}, de lunes a viernes de 10 a 12 o de 13 a 16 (de 12 a 13 el depósito está cerrado). Sábados, domingos y feriados no. El retiro se coordina con 24 horas de anticipación, nunca en el mismo día.`,
+      "No hay chofer ni camión: tenés que venir con tu vehículo y con gente para cargarlo.",
+      "Para devolverlo, traelo desarmado al depósito, en los mismos días y horarios, y avisanos por este mismo WhatsApp con 24 horas de anticipación como mínimo.",
+      "Si llega la fecha y no nos avisaste, el alquiler sigue corriendo y se cobra por día.",
+    ].join("\n\n");
+  }
   return [
     "Te cuento cómo funciona.",
-    "La entrega es de un día para el otro, nunca en el mismo día. Entregamos y retiramos de lunes a viernes de 8 a 12 o de 13 a 16, y los sábados de 8 a 12. Domingos y feriados no. La hora exacta dentro de la franja depende del recorrido de las camionetas. Si necesitás un horario particular, podemos pactar una franja de una hora, con un recargo por los costos operativos.",
+    "La entrega es de un día para el otro, nunca en el mismo día. Entregamos y retiramos sólo en Capital, de lunes a viernes de 8 a 12 o de 13 a 16, y los sábados de 8 a 12. Domingos y feriados no. La hora exacta dentro de la franja depende del recorrido de las camionetas. Si necesitás un horario particular, podemos pactar una franja de una hora, con un recargo por los costos operativos.",
     "Por un tema de seguros, los choferes no pueden entrar a los domicilios: no tienen un seguro que cubra roturas o daños. Por eso, en la entrega tiene que haber gente para bajar el material del camión, y en el retiro el andamio tiene que estar desarmado y tiene que haber gente para subirlo.",
     "Para el retiro, avisanos por este mismo WhatsApp con 24 horas de anticipación como mínimo. No retiramos en el mismo día en que nos avisás.",
     "Si llega la fecha y no nos avisaste, el alquiler sigue corriendo y se cobra por día.",
@@ -983,12 +1173,14 @@ export function condicionesAlquilerSimple(): string {
 
 /**
  * El presupuesto que manda el servidor cuando una persona aprueba la tarjeta: un solo total por
- * 30 días con la entrega y el retiro (§5, «no se le manda el precio desglosado»), el recargo si
- * pidió una franja de una hora, lo que le entra si es el mínimo, la renovación por día, las
- * condiciones y el cierre «¿Te lo reservo para el <día>?» (§7). Todo «+ IVA».
+ * 30 días con la entrega y el retiro, o retirándolo en el depósito (§5, «no se le manda el precio
+ * desglosado»), el recargo si pidió una franja de una hora, lo que le entra si es el mínimo, la
+ * renovación por día, las condiciones de su modalidad y el cierre «¿Te lo reservo para el
+ * <día>?» (§7). Todo «+ IVA».
  *
  * Tira si el resultado no tiene precio o si la franja no coincide con la que se cotizó (una
- * franja de una hora sin recargo, o al revés): mejor un error que un precio equivocado.
+ * franja de una hora sin recargo, o al revés; una del depósito con envío, o al revés): mejor un
+ * error que un precio equivocado.
  */
 export function mensajePresupuestoAlquiler(r: ResultadoAlquiler, fecha: string, franja: Franja): string {
   const pr = r.precio;
@@ -997,12 +1189,17 @@ export function mensajePresupuestoAlquiler(r: ResultadoAlquiler, fecha: string, 
   if ((franja.tipo === "hora") !== (pr.recargoFranja > 0)) {
     throw new Error("La franja del presupuesto no coincide con la cotizada (el recargo de la franja de una hora).");
   }
+  const deposito = r.modalidad === "deposito";
+  if (deposito !== esFranjaDeposito(franja)) throw new Error("La franja del presupuesto no es de la modalidad cotizada (envío o depósito).");
   const l: string[] = [];
+  const alTecho = a.llegaAlTecho === false && a.techo !== null ? ` El techo está a ${metros(a.techo)} m, así que al techo no llegás cómodo.` : "";
   const llega = a.peldano === null
-    ? `Llegás a trabajar cómodo hasta unos ${metros(a.llegaHasta)} m.`
-    : `Como el techo es bajo, la plataforma va en un peldaño de la escalera, a ${metros(a.alturaPlataforma)} m: es de un solo tablón, de 30 cm, y llegás hasta unos ${metros(a.llegaHasta)} m.`;
+    ? `La plataforma queda a ${metros(a.alturaPlataforma)} m y llegás a trabajar cómodo hasta unos ${metros(a.llegaHasta)} m.${alTecho}`
+    : `La plataforma va en un peldaño de la escalera, a ${metros(a.alturaPlataforma)} m: es de un solo tablón, de 30 cm, y llegás a trabajar cómodo hasta unos ${metros(a.llegaHasta)} m.${alTecho}`;
   l.push(`Te paso el presupuesto: ${describirArmadoCliente(a)}. ${llega}`);
-  l.push(`El servicio completo por 30 días, con la entrega y el retiro, sale ${pesos(pr.base)} + IVA.`);
+  l.push(deposito
+    ? `El servicio completo por 30 días, retirándolo vos en nuestro depósito de ${DEPOSITO.direccion}, sale ${pesos(pr.base)} + IVA.`
+    : `El servicio completo por 30 días, con la entrega y el retiro, sale ${pesos(pr.base)} + IVA.`);
   if (pr.minimoOperativo > 0) {
     const s = r.entraSinPagarMas.map((x) =>
       x.tipo === "otra_torre" ? (x.cantidad === 1 ? "otra torre igual" : `hasta ${x.cantidad} torres más`) : `un módulo más de alto (llegarías hasta unos ${metros(x.llegaHasta)} m)`);
@@ -1011,10 +1208,12 @@ export function mensajePresupuestoAlquiler(r: ResultadoAlquiler, fecha: string, 
   if (pr.recargoFranja > 0) {
     l.push(`Como pediste la entrega ${textoFranja(franja)}, se suma un recargo del ${String(pr.recargoFranjaPct).replace(".", ",")} % por los costos operativos de la franja de una hora (${pesos(pr.recargoFranja)} + IVA). En total, ${pesos(pr.total)} + IVA.`);
   }
-  if (!a.barandaSeLleva) l.push("La baranda va siempre incluida en el precio; como no la querés, no la llevamos.");
+  if (!a.barandaSeLleva) l.push(`La baranda va siempre incluida en el precio; como no la querés, no ${deposito ? "te la damos" : "la llevamos"}.`);
   l.push(`Si lo necesitás más tiempo, cada día de más es ${pesos(pr.porDia)} + IVA.`);
-  l.push(condicionesAlquilerSimple());
-  l.push(`¿Te lo reservo para el ${textoFecha(fecha)}, ${textoFranja(franja)}?`);
+  l.push(condicionesAlquilerSimple(r.modalidad));
+  l.push(deposito
+    ? `¿Te lo reservo para retirarlo el ${textoFecha(fecha)}, ${textoFranja(franja)}?`
+    : `¿Te lo reservo para el ${textoFecha(fecha)}, ${textoFranja(franja)}?`);
   return l.join("\n\n");
 }
 

@@ -828,7 +828,7 @@ async function cargarContextoAlquiler(ctx: Contexto, o: { fletesObligatorios: bo
 
 function contextoRecalculo(c: CtxAlquiler, charla: Charla): ContextoRecalculo {
   return {
-    parametros: c.parametros, fletes: c.fletes, hoy: c.hoy, feriados: c.feriados,
+    parametros: c.parametros, fletes: c.fletes, hoy: c.hoy, feriados: c.feriados, ahora: new Date(),
     ficha: { mensajesCliente: charla.ficha.mensajesCliente, banderas: charla.ficha.banderas, segmento: charla.ficha.segmento },
   };
 }
@@ -853,7 +853,7 @@ function tarjetaAlquiler(f: Fila, charla: Charla, c: CtxAlquiler, r: RecalculoAl
     armado: a
       ? {
           texto: describirArmado(a), torres: a.torres, modulosPorTorre: a.modulosPorTorre, apoyo: a.apoyo, plataforma: textoPlataforma(a),
-          peldano: a.peldano, noLlegaAlTecho: a.llegaAlTecho === false, barandaSeLleva: a.barandaSeLleva, ajustes: a.ajustes,
+          peldano: a.peldano, noLlega: a.noLlega !== null, barandaSeLleva: a.barandaSeLleva, ajustes: a.ajustes,
         }
       : null,
     lineas: (pr?.lineas ?? []).map((l) => ({ descripcion: l.descripcion, cantidad: l.cantidad, precioUnitario: l.precioUnitario, importe: l.importe, tipo: TIPO_LINEA[l.codigo] ?? "pieza" })),

@@ -91,8 +91,8 @@ export type TarjetaAlquiler = {
     /** «Plataforma arriba…» o «Plataforma EN EL PELDAÑO…»: la tarjeta lo destaca si es peldaño o no llega al techo. */
     plataforma: string;
     peldano: number | null;
-    /** En el techo y no llega cómodo (se le aclaró al cliente). */
-    noLlegaAlTecho: boolean;
+    /** No llega cómodo al techo o a la altura de trabajo (se le aclaró al cliente). */
+    noLlega: boolean;
     barandaSeLleva: boolean;
     ajustes: string[];
   } | null;

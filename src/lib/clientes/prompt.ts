@@ -24,7 +24,7 @@ import { frenteDelLote } from "../asistente/borrador.ts";
 import { condicionesAlquilerSimple, DEPOSITO, esFranjaDeposito, metros, textoFecha, textoFranja, type PedidoAlquiler } from "./alquiler-simple.ts";
 import { estadoDocumentos, textoDocumentosParaTomas } from "./documentos.ts";
 
-export const VERSION_PROMPT = "tomas-2026-11-12-alquiler-deposito-peldanos";
+export const VERSION_PROMPT = "tomas-2026-11-12-alquiler-deposito-cucha-cucha";
 
 /**
  * El alquiler simple (docs/sofia/alquiler-simple-propuesta.md §3, §4, §6 y §7, cerrada con JS el
@@ -45,10 +45,10 @@ Qué preguntás, en este orden y sin interrogatorio (una o dos cosas por mensaje
 2. Cuánto espacio libre hay en el piso para el andamio, de ancho y de largo («de sobra» también sirve).
 3. Cómo es el piso: liso, o desparejo (vereda rota, tierra, un escalón).
 4. Dónde es (la dirección, para el flete). Si dice que lo pasa a buscar, no hace falta: lo retira en el depósito (retira_en_deposito).
-5. Para cuándo lo necesitan: la entrega (o el retiro en el depósito) es siempre al día siguiente o después, en las franjas de abajo.
+5. Para cuándo lo necesitan: la entrega es siempre al día siguiente o después, en las franjas de abajo; el retiro en el depósito, con 24 h de anticipación hasta el horario en que pasa.
 Con cada dato, llamá a cotizar_alquiler_simple con lo nuevo (se suma). No preguntes por cuántos días: el servicio es siempre de 30 días, con la entrega y el retiro, aunque lo use menos; si lo necesita más tiempo, los días de más se cobran aparte. Si el cliente ya sabe qué quiere («2 módulos con ruedas»), no repitas las preguntas: pasalo en piezas y chequeá con lo que te devuelve que le sirva (la altura y el techo).
 
-Dónde: entregamos y retiramos sólo en Capital. Si la obra está en provincia, la herramienta te lo dice: no hay flete y le ofrecés retirarlo en nuestro depósito, en ${DEPOSITO.texto}. Anotá lo que conteste (retira_en_deposito). Un cliente de Capital también lo puede retirar en el depósito si prefiere: es el mismo servicio sin el flete.
+Dónde: entregamos y retiramos sólo en Capital. Si la obra está en provincia, la herramienta te lo dice: no hay flete y le ofrecés retirarlo en nuestro depósito, en ${DEPOSITO.texto}. Anotá lo que conteste (retira_en_deposito). Si no puede retirarlo, decile directamente y con amabilidad que no llegamos con entregas a provincia: no lo pases a nadie del equipo. Un cliente de Capital también lo puede retirar en el depósito si prefiere: es el mismo servicio sin el flete. De 12 a 13 no se entrega ni se retira.
 
 Cómo vendés:
 - Aconsejás, no imponés: contale lo que le armaste y por qué en una línea, pensando en él («Te incluí la baranda: arriba vas a estar a casi 2 m y es lo que te cuida si das un paso atrás»).
@@ -68,7 +68,7 @@ Si pide un horario particular, ofrecele pactar una franja de una hora, con un re
 Si lo retira en el depósito (no hay franja de una hora ni recargo):
 ${condicionesAlquilerSimple("deposito")}
 
-Cuándo no sale solo (te lo dice la herramienta, con qué hacer): lo necesita para hoy (pasa sola a un vendedor), hay que anclar o llegar a más de unos 7,5 m, el techo no deja pararse en ninguna plataforma, no le sirve la plataforma que se puede armar, el espacio es muy chico, el barrio no está en la lista de fletes, la obra está en provincia y no puede retirarlo en el depósito, pide piezas que no son estas (puntales, caños, nudos, paso peatonal, escaleras, ménsulas), pide montaje, son más de 10 módulos, o algo del cliente que tiene que ver una persona. Ahí usás lo que te diga: preparar_pedido_simple para que lo cotice un vendedor, pedir_tecnico si lleva montaje, o derivar_a_persona. preparar_pedido_simple queda sólo para eso: lo que no entra en las reglas o piezas sueltas que no son un andamio armado.
+Cuándo no sale solo (te lo dice la herramienta, con qué hacer): lo necesita para hoy (pasa sola a un vendedor), hay que anclar o llegar a más de unos 7,5 m, el techo no deja pararse en ninguna plataforma, no le sirve la plataforma que se puede armar, el espacio es muy chico, el barrio no está en la lista de fletes, pide piezas que no son estas (puntales, caños, nudos, paso peatonal, escaleras, ménsulas), pide montaje, son más de 10 módulos, o algo del cliente que tiene que ver una persona. Ahí usás lo que te diga: preparar_pedido_simple para que lo cotice un vendedor, pedir_tecnico si lleva montaje, o derivar_a_persona. preparar_pedido_simple queda sólo para eso: lo que no entra en las reglas o piezas sueltas que no son un andamio armado.
 
 Cuando el presupuesto ya le llegó (en el aviso: «presupuesto de alquiler #N: se envió») y el cliente dice que sí: cliente_acepta_alquiler con el día y la franja que confirma (si lo retira en el depósito, el día y el horario en que pasa). Primero el precio, después los requisitos: recién ahí le pedís los documentos, a todos sin excepción (también a empresas y a clientes que ya alquilaron): la foto del DNI de frente y de dorso, y dos servicios a su nombre (luz, gas, agua, internet), o uno si no tiene dos. Sin los documentos no se entrega. Las fotos las revisa el sistema y en el aviso ves qué está y qué falta; si la dirección del DNI no coincide con la de los servicios, se acepta igual (vale la de los servicios): no se lo planteés. Confirmá que los recibiste sin repetir ningún dato (ni el número de DNI ni la dirección). Si dice que tiene un solo servicio a su nombre, revisar_documentos con solo_tiene_un_servicio. No le pidas nada más que esos documentos.
 
@@ -248,9 +248,10 @@ export function resumenPedidoAlquiler(p: PedidoAlquiler): string {
   if (p.montaje) x.push("pide montaje");
   if (p.anclar) x.push("hay que anclar");
   if (p.paraHoy) x.push("lo necesita hoy");
-  if (p.fecha) x.push(`entrega el ${textoFecha(p.fecha)}${p.franja ? `, ${textoFranja(p.franja)}` : ""}`);
+  if (p.fecha) x.push(`${p.retiraEnDeposito ? "retira en el depósito el" : "entrega el"} ${textoFecha(p.fecha)}${p.franja ? `, ${textoFranja(p.franja)}` : ""}`);
   else if (p.franja) x.push(`franja ${textoFranja(p.franja)}`);
-  if (p.retiraEnDeposito !== null) x.push(p.retiraEnDeposito ? "lo retira en el depósito" : "no puede retirarlo en el depósito");
+  if (p.retiraEnDeposito === false) x.push("no puede retirarlo en el depósito");
+  else if (p.retiraEnDeposito && !p.fecha) x.push("lo retira en el depósito");
   if (p.aceptaPlataforma !== null) x.push(p.aceptaPlataforma ? "le sirve la plataforma que le aclaraste" : "no le sirve la plataforma que le aclaraste");
   return x.join(", ");
 }

@@ -136,10 +136,25 @@ test("§4: llegar hasta el techo (o a menos de 10 cm) es trabajar en el techo", 
   assert.equal(cotizar({ lugar: "adentro", alturaTrabajo: 4, alturaTecho: 4.05 }).armado?.modulosPorTorre, 1);
 });
 
-test("§4 y §8: un techo de más de ~7,5 m es trabajar a más de ~7,5 m: hay que anclar", () => {
-  assert.equal(cotizar({ lugar: "adentro", trabajoEnTecho: true, alturaTecho: 7.55 }).armado?.modulosPorTorre, 3);
-  assert.deepEqual(enContra(cotizar({ lugar: "adentro", trabajoEnTecho: true, alturaTecho: 7.6 })), ["anclar"]);
+test("§4 y §8: un techo de más de 8 m es trabajar a más de ~7,5 m: hay que anclar", () => {
+  // Hasta 7,65 m, 3 módulos llegan cómodo al techo (a 10 cm o menos): sale sin confirmar.
+  for (const techo of [7.55, 7.6, 7.65]) {
+    const r = cotizar({ lugar: "adentro", trabajoEnTecho: true, alturaTecho: techo });
+    assert.deepEqual([r.armado?.modulosPorTorre, r.armado?.peldano, r.armado?.noLlega], [3, null, null], `techo ${techo}`);
+    assert.ok(r.listo, `techo ${techo}`);
+  }
+  // De 7,70 a 8 m: 3 módulos, la cabeza entra y no llega cómodo: se cotiza y se confirma.
+  for (const techo of [7.7, 8]) {
+    const r = cotizar({ lugar: "adentro", trabajoEnTecho: true, alturaTecho: techo });
+    assert.ok(r.facil, `techo ${techo}`);
+    assert.deepEqual([r.armado?.modulosPorTorre, r.armado?.alturaPlataforma, r.armado?.noLlega?.hasta], [3, 5.55, techo]);
+    assert.deepEqual(r.aConfirmar.map((c) => c.codigo), ["plataforma"]);
+  }
+  // Más de 8 m: anclar.
+  assert.deepEqual(enContra(cotizar({ lugar: "adentro", trabajoEnTecho: true, alturaTecho: 8.05 })), ["anclar"]);
   assert.deepEqual(enContra(cotizar({ lugar: "adentro", trabajoEnTecho: true, alturaTecho: 9 })), ["anclar"]);
+  // Una pared de más de ~7,55 m, con o sin techo: anclar.
+  assert.deepEqual(enContra(cotizar({ lugar: "adentro", alturaTrabajo: 7.6, alturaTecho: 9 })), ["anclar"]);
 });
 
 // ── El peldaño (excepción, JS 12/11) ───────────────────────────────────────────────────
@@ -163,7 +178,7 @@ test("§4: techo de 3 m, el peldaño de 0,80 (el ejemplo de la propuesta)", () =
   assert.deepEqual(r.aConfirmar.map((c) => c.codigo), ["plataforma"]);
   assert.match(r.aConfirmar[0].texto, /peldaño de 0,80 m de la escalera del bastidor, a 0,95 m del piso: es de un solo tablón de 30 cm.*~2,95 m/);
   // Llega al techo (2,95 a 5 cm de 3 m): no dice que no llega.
-  assert.equal(r.armado?.llegaAlTecho, true);
+  assert.equal(r.armado?.noLlega, null);
   assert.ok(!/no llega/.test(r.aConfirmar[0].texto));
   const acepta = cotizar({ lugar: "adentro", trabajoEnTecho: true, alturaTecho: 3, aceptaPlataforma: true });
   assert.equal(acepta.listo, true);
@@ -197,10 +212,27 @@ test("§4 y §8: el techo que no deja pararse en ninguna plataforma va a un vend
   assert.match(bajo.enContra[0].texto, /no deja pararse con la cabeza adentro en ninguna plataforma/);
   // Una pared hasta 2 m con techo de 2,40: tampoco.
   assert.deepEqual(enContra(cotizar({ lugar: "adentro", alturaTrabajo: 2, alturaTecho: 2.4 })), ["techo_no_deja"]);
-  // Una pared hasta 5,30 con techo de 5,45: la cabeza entra con el peldaño de 1,20 del segundo, pero no llega.
+});
+
+test("revisión 12/11: una pared que ninguna plataforma alcanza con la cabeza adentro se cotiza con la más alta y se confirma", () => {
+  // Techo de 3,20, hasta 3 m: el peldaño de 0,80 (0,95 m) deja entrar la cabeza y llega a ~2,95.
+  const r = cotizar({ lugar: "adentro", alturaTrabajo: 3, alturaTecho: 3.2 });
+  assert.ok(r.facil, JSON.stringify(r.enContra));
+  assert.deepEqual([r.armado?.modulosPorTorre, r.armado?.peldano, r.armado?.alturaPlataforma], [1, 0.8, 0.95]);
+  assert.deepEqual(r.armado?.noLlega, { hasta: 3, enTecho: false });
+  assert.deepEqual(r.aConfirmar.map((c) => c.codigo), ["plataforma"]);
+  assert.match(r.aConfirmar[0].texto, /Tiene que trabajar hasta 3 m: no llega cómodo hasta ahí/);
+  // Igual que si pide el techo (3,10 m, a menos de 10 cm del techo).
+  assert.equal(cotizar({ lugar: "adentro", alturaTrabajo: 3.1, alturaTecho: 3.2 }).armado?.peldano, 0.8);
+  // Techo de 6, hasta 5,80: arriba de 2 módulos (3,75), llega a ~5,75.
+  const seis = cotizar({ lugar: "adentro", alturaTrabajo: 5.8, alturaTecho: 6 });
+  assert.ok(seis.facil);
+  assert.deepEqual([seis.armado?.modulosPorTorre, seis.armado?.peldano, seis.armado?.noLlega?.hasta], [2, null, 5.8]);
+  // Una pared hasta 5,30 con techo de 5,45: el peldaño de 1,20 del segundo (3,15 m), llega a ~5,15.
   const pared = cotizar({ lugar: "adentro", alturaTrabajo: 5.3, alturaTecho: 5.45 });
-  assert.deepEqual(enContra(pared), ["techo_no_deja"]);
-  assert.match(pared.enContra[0].texto, /la plataforma más alta queda a 3,15 m \(con un tablón en el peldaño de 1,20 m del segundo módulo\) y llega hasta ~5,15 m: no alcanza a 5,30 m/);
+  assert.deepEqual([pared.armado?.modulosPorTorre, pared.armado?.peldano, pared.armado?.alturaPlataforma], [2, 1.2, 3.15]);
+  sinPlata(resumenParaTomas(pared));
+  assert.match(mensajePresupuestoAlquiler(cotizar({ lugar: "adentro", alturaTrabajo: 3, alturaTecho: 3.2, aceptaPlataforma: true }), LUNES, MANANA), /Hasta 3 m no llegás cómodo\./);
 });
 
 // ── El peldaño en cualquier módulo y sin el margen de 50 cm (JS, 12/11, fila 19) ───────
@@ -214,7 +246,7 @@ test("fila 19: el peldaño en cualquier módulo, cuando acerca más al techo", (
   assert.equal(r.armado?.alturaPlataforma, 2.75);
   assert.equal(r.armado?.cabezaHasta, 4.65);
   assert.equal(r.armado?.llegaHasta, 4.75);
-  assert.equal(r.armado?.llegaAlTecho, false);
+  assert.deepEqual(r.armado?.noLlega, { hasta: 5, enTecho: true });
   // Se cobra igual que el módulo completo: 2 módulos, baranda, piso completo y ruedas.
   assert.deepEqual(piezas(r), { modulo_130x250: 2, baranda_130: 1, tablon_250: 4, ruedas_juego: 1 });
   // Se le aclara en qué altura queda y hasta dónde llega, para que lo confirme.
@@ -223,17 +255,17 @@ test("fila 19: el peldaño en cualquier módulo, cuando acerca más al techo", (
   assert.equal(cotizar({ lugar: "adentro", trabajoEnTecho: true, alturaTecho: 5, aceptaPlataforma: true }).listo, true);
   // Techo de 7 m: el peldaño de 1,20 del tercero (4,95 m) llega a ~6,95.
   const siete = cotizar({ lugar: "adentro", trabajoEnTecho: true, alturaTecho: 7 });
-  assert.deepEqual([siete.armado?.modulosPorTorre, siete.armado?.peldano, siete.armado?.alturaPlataforma, siete.armado?.llegaAlTecho], [3, 1.2, 4.95, true]);
+  assert.deepEqual([siete.armado?.modulosPorTorre, siete.armado?.peldano, siete.armado?.alturaPlataforma, siete.armado?.noLlega], [3, 1.2, 4.95, null]);
   // Una pared hasta 4,30 con techo de 5 m: 2 módulos no dejan entrar la cabeza; el peldaño de 0,80 del segundo, sí.
   const pared = cotizar({ lugar: "adentro", alturaTrabajo: 4.3, alturaTecho: 5 });
   assert.deepEqual([pared.armado?.modulosPorTorre, pared.armado?.peldano, pared.armado?.alturaPlataforma], [2, 0.8, 2.75]);
-  assert.equal(pared.armado?.llegaAlTecho, null); // no es en el techo
+  assert.equal(pared.armado?.noLlega, null); // llega a 4,30
 });
 
 test("fila 19: si la plataforma de arriba sirve igual, va arriba (piso completo y baranda)", () => {
   // Techo de 5,70: arriba de 2 módulos (3,75) la cabeza entra y llega a ~5,75: no hace falta confirmar.
   const r = cotizar({ lugar: "adentro", trabajoEnTecho: true, alturaTecho: 5.7 });
-  assert.deepEqual([r.armado?.modulosPorTorre, r.armado?.peldano, r.armado?.llegaAlTecho], [2, null, true]);
+  assert.deepEqual([r.armado?.modulosPorTorre, r.armado?.peldano, r.armado?.noLlega], [2, null, null]);
   assert.deepEqual(r.aConfirmar, []);
   assert.equal(r.listo, true);
   // Techo de 4: arriba de 1 módulo llega a ~3,95; ningún peldaño del segundo deja entrar la cabeza.
@@ -250,7 +282,7 @@ test("fila 19: ya no va a un vendedor por el margen de 50 cm: se cotiza y se con
   assert.match(r.aConfirmar[0].texto, /El techo está a 3,80 m: no llega a trabajar cómodo en el techo/);
   // 6 m: arriba de 2 módulos (3,75 m), llega a ~5,75: no llega cómodo al techo y se confirma (sin peldaño).
   const seis = cotizar({ lugar: "adentro", trabajoEnTecho: true, alturaTecho: 6 });
-  assert.deepEqual([seis.armado?.modulosPorTorre, seis.armado?.peldano, seis.armado?.llegaAlTecho], [2, null, false]);
+  assert.deepEqual([seis.armado?.modulosPorTorre, seis.armado?.peldano, seis.armado?.noLlega?.enTecho], [2, null, true]);
   assert.deepEqual(seis.aConfirmar.map((c) => c.codigo), ["plataforma"]);
   assert.match(seis.aConfirmar[0].texto, /^La plataforma queda arriba de 2 módulos, a 3,75 m del piso\. La cabeza llega a 5,65 m y trabaja cómodo hasta ~5,75 m\. El techo está a 6 m/);
   // Si no le sirve, a un vendedor (con el código nuevo).
@@ -461,11 +493,24 @@ test("lo que pide el cliente: si no llega, se cotiza lo que sirve y Tomás lo co
   const dos = cotizar({ lugar: "adentro", trabajoEnTecho: true, alturaTecho: 4.5, piezas: { modulosPorTorre: 2 } });
   assert.deepEqual([dos.armado?.origen, dos.armado?.modulosPorTorre, dos.armado?.peldano], ["cliente", 2, 0.4]);
   assert.deepEqual(dos.aConfirmar.map((c) => c.codigo), ["plataforma"]);
-  // 1 módulo para un techo de 5 m: queda más lejos del techo que con lo recomendado (el peldaño del segundo).
-  const uno = cotizar({ lugar: "adentro", trabajoEnTecho: true, alturaTecho: 5, piezas: { modulosPorTorre: 1 } });
-  assert.equal(uno.armado?.origen, "recomendado");
-  assert.deepEqual([uno.armado?.modulosPorTorre, uno.armado?.peldano], [2, 0.8]);
-  assert.match(uno.aConfirmar[0].texto, /con 1 módulo llega hasta ~3,95 m y tiene que llegar al techo de 5 m.*2 módulos con la plataforma en el peldaño de 0,80 m del segundo módulo/);
+  // 1 módulo para un techo de 5,70: con 2 módulos llega al techo: se cotiza lo que sí le sirve.
+  const sirve = cotizar({ lugar: "adentro", trabajoEnTecho: true, alturaTecho: 5.7, piezas: { modulosPorTorre: 1 } });
+  assert.equal(sirve.armado?.origen, "recomendado");
+  assert.equal(sirve.armado?.modulosPorTorre, 2);
+  assert.match(sirve.aConfirmar[0].texto, /con 1 módulo llega hasta ~3,95 m y tiene que llegar al techo de 5,70 m\. Se cotiza lo que sí le sirve, 2 módulos:/);
+  // 1 módulo para un techo de 6 m: 2 módulos (arriba) tampoco llegan, pero se acercan: «lo que más se acerca».
+  const acerca = cotizar({ lugar: "adentro", trabajoEnTecho: true, alturaTecho: 6, piezas: { modulosPorTorre: 1 } });
+  assert.deepEqual([acerca.armado?.origen, acerca.armado?.modulosPorTorre, acerca.armado?.peldano], ["recomendado", 2, null]);
+  assert.match(acerca.aConfirmar[0].texto, /Se cotiza lo que más se acerca, 2 módulos/);
+  assert.deepEqual(acerca.aConfirmar.map((c) => c.codigo), ["piezas_no_sirven", "plataforma"]);
+  // 1 módulo para un techo de 4,50 o de 5: lo recomendado es un tablón en un peldaño del segundo, que
+  // tampoco llega. No se cambia el piso completo por eso: va lo que pidió, y se confirma que no llega.
+  for (const techo of [4.5, 5]) {
+    const uno = cotizar({ lugar: "adentro", trabajoEnTecho: true, alturaTecho: techo, piezas: { modulosPorTorre: 1 } });
+    assert.deepEqual([uno.armado?.origen, uno.armado?.modulosPorTorre, uno.armado?.peldano], ["cliente", 1, null], `techo ${techo}`);
+    assert.deepEqual(uno.aConfirmar.map((c) => c.codigo), ["plataforma"]);
+    assert.match(uno.aConfirmar[0].texto, /no llega a trabajar cómodo en el techo/);
+  }
   // Si tampoco sirve lo recomendado, manda el motivo de las reglas.
   assert.deepEqual(enContra(cotizar({ lugar: "adentro", trabajoEnTecho: true, alturaTecho: 2.4, piezas: { modulosPorTorre: 1 } })), ["techo_no_deja"]);
 });
@@ -645,7 +690,7 @@ test("resumenParaTomas: el peldaño, como alternativa, y sin ofrecer escaleras",
   sinPlata(t);
   const segundo = resumenParaTomas(cotizar({ lugar: "adentro", trabajoEnTecho: true, alturaTecho: 5 }));
   assert.match(segundo, /peldaño de 0,80 m del segundo módulo de la escalera del bastidor, a 2,75 m del piso/);
-  assert.match(segundo, /El techo está a 5 m: no llega cómodo a trabajar en el techo, aclaráselo/);
+  assert.match(segundo, /El techo está a 5 m: no llega a trabajar cómodo en el techo: aclaráselo/);
   sinPlata(segundo);
   const no = resumenParaTomas(cotizar({ lugar: "adentro", trabajoEnTecho: true, alturaTecho: 2.4 }));
   assert.match(no, /No ofrezcas escaleras/);
@@ -719,12 +764,17 @@ test("fila 16: en provincia no hay flete: se le ofrece el depósito", () => {
   assert.equal(r.precio, null);
   assert.equal(r.modalidad, "envio");
   assert.deepEqual(r.aConfirmar.map((c) => c.codigo), ["deposito"]);
-  assert.match(r.aConfirmar[0].texto, /La obra está en Olivos \(provincia\): no entregamos ni retiramos fuera de CABA\. Ofrecele retirarlo en nuestro depósito, en Maturín 2570 \(CABA\)/);
+  assert.match(r.aConfirmar[0].texto, /La obra está en Olivos \(provincia\): no entregamos ni retiramos fuera de CABA\. Ofrecele retirarlo en nuestro depósito, en Cucha Cucha 2345, CABA/);
   sinPlata(resumenParaTomas(r));
   // Si no puede retirarlo: no es un alquiler simple.
   const no = cotizar({ alturaTrabajo: 5, retiraEnDeposito: false }, { flete: PROVINCIA });
   assert.deepEqual(enContra(no), ["fuera_de_caba"]);
-  assert.match(resumenParaTomas(no), /la obra está en provincia \(no entregamos ni retiramos fuera de CABA\) y no puede retirarlo en el depósito/);
+  // Fila 23: Tomás le dice con amabilidad que no llegamos a provincia, sin pasarlo a un vendedor.
+  const t = resumenParaTomas(no);
+  assert.match(t, /decile directamente y con amabilidad que no llegamos con entregas a provincia/);
+  assert.match(t, /No lo pases a nadie del equipo/);
+  assert.ok(!/vendedor|Pasalo al equipo/.test(t), t);
+  sinPlata(t);
   // Si lo retira: sale, sin flete.
   const si = cotizar({ alturaTrabajo: 5, retiraEnDeposito: true }, { flete: PROVINCIA });
   assert.equal(si.listo, true);
@@ -790,18 +840,54 @@ test("fila 17: las franjas del depósito (de 10 a 12 y de 13 a 16, de lunes a vi
   assert.deepEqual(falta.faltan.map((f) => f.pregunta), ["¿Qué día querés pasar a retirarlo por el depósito?", "¿Pasás de 10 a 12 o de 13 a 16?"]);
 });
 
+test("fila 17: el retiro en el depósito necesita 24 h hasta el comienzo de la franja (con `ahora`)", () => {
+  const jueves12 = new Date("2026-11-12T15:00:00Z"); // jueves 12/11, 12 h en Buenos Aires
+  const vie = "2026-11-13";
+  const r = validarEntrega(vie, DEP_MANANA, HOY, FERIADOS, { ahora: jueves12 });
+  assert.equal(r.motivo, "anticipacion");
+  assert.match(r.texto, /El retiro en el depósito se coordina con 24 h de anticipación: para el viernes 13 de noviembre, de 10 a 12 no llega/);
+  assert.deepEqual(r.proxima, { fecha: vie, franja: { tipo: "deposito_tarde" } });
+  assert.ok(validarEntrega(vie, { tipo: "deposito_tarde" }, HOY, FERIADOS, { ahora: jueves12 }).ok);
+  // Jueves a las 15 h (el ejemplo de la revisión): el viernes ya no llega, ni a la tarde; el lunes (el sábado está cerrado), con la franja que pidió.
+  const jueves15 = new Date("2026-11-12T18:00:00Z");
+  assert.equal(validarEntrega(vie, DEP_MANANA, HOY, FERIADOS, { ahora: jueves15 }).motivo, "anticipacion");
+  assert.deepEqual(validarEntrega(vie, DEP_MANANA, HOY, FERIADOS, { ahora: jueves15 }).proxima, { fecha: LUNES, franja: DEP_MANANA });
+  assert.deepEqual(validarEntrega(vie, { tipo: "deposito_tarde" }, HOY, FERIADOS, { ahora: jueves15 }).proxima, { fecha: LUNES, franja: { tipo: "deposito_tarde" } });
+  // El envío no necesita las 24 h: sólo nunca el mismo día.
+  assert.ok(validarEntrega(vie, MANANA, HOY, FERIADOS, { ahora: jueves15 }).ok);
+  // En el motor, con ctx.ahora, la fecha queda para confirmar con la próxima.
+  const c = cotizar({ alturaTrabajo: 5, retiraEnDeposito: true, fecha: vie, franja: MANANA }, { ahora: jueves12 });
+  assert.equal(c.listo, false);
+  assert.deepEqual(c.aConfirmar.map((x) => x.codigo), ["fecha"]);
+  assert.match(c.aConfirmar[0].texto, /La próxima posible: el viernes 13 de noviembre, de 13 a 16/);
+});
+
+test("fila 24: de 12 a 13 no se entrega ni se retira: ninguna franja ni hora particular cae ahí", () => {
+  for (const desde of [11.5, 12, 12.5]) {
+    const r = validarEntrega(LUNES, { tipo: "hora", desde }, HOY, FERIADOS);
+    assert.equal(r.motivo, "fuera_de_franja", `desde ${desde}`);
+    assert.match(r.texto, /de 12 a 13 no se entrega/);
+  }
+  assert.ok(validarEntrega(LUNES, { tipo: "hora", desde: 11 }, HOY, FERIADOS).ok);
+  assert.ok(validarEntrega(LUNES, { tipo: "hora", desde: 13 }, HOY, FERIADOS).ok);
+  // Las franjas (de envío y del depósito) terminan a las 12 o empiezan a las 13.
+  assert.deepEqual([MANANA, TARDE, DEP_MANANA, { tipo: "deposito_tarde" } as Franja].map(textoFranja), ["de 8 a 12", "de 13 a 16", "de 10 a 12", "de 13 a 16"]);
+  // Una hora de 12 a 13 que no entra ofrece la más cercana (de 11 a 12).
+  assert.deepEqual(validarEntrega(LUNES, { tipo: "hora", desde: 12 }, HOY, FERIADOS).proxima?.franja, { tipo: "hora", desde: 11 });
+});
+
 test("fila 17: las condiciones del depósito, sin chofer ni camión, sin plata ni markdown", () => {
   const c = condicionesAlquilerSimple("deposito");
   sinPlata(c);
   for (const frase of [
-    /depósito, en Maturín 2570 \(CABA\)/, /de lunes a viernes de 10 a 12 o de 13 a 16 \(de 12 a 13 el depósito está cerrado\)/,
+    /depósito, en Cucha Cucha 2345, CABA/, /de lunes a viernes de 10 a 12 o de 13 a 16 \(de 12 a 13 el depósito está cerrado\)/,
     /Sábados, domingos y feriados no/, /24 horas de anticipación, nunca en el mismo día/,
     /No hay chofer ni camión: tenés que venir con tu vehículo y con gente para cargarlo/,
     /traelo desarmado al depósito/, /este mismo WhatsApp con 24 horas de anticipación/, /el alquiler sigue corriendo y se cobra por día/,
   ]) assert.match(c, frase);
   assert.ok(!/franja de una hora|recargo|camionetas|choferes no pueden/.test(c));
   assert.ok(!/[*_#`]|^- /m.test(c));
-  assert.equal(DEPOSITO.direccion, "Maturín 2570");
+  assert.equal(DEPOSITO.direccion, "Cucha Cucha 2345");
   // Y las del envío dicen que es sólo en Capital.
   assert.match(condicionesAlquilerSimple(), /Entregamos y retiramos sólo en Capital/);
 });
@@ -809,7 +895,7 @@ test("fila 17: las condiciones del depósito, sin chofer ni camión, sin plata n
 test("fila 17: el presupuesto del depósito: el total sin flete, sus condiciones y el cierre", () => {
   const r = cotizar({ alturaTrabajo: 5, retiraEnDeposito: true });
   const m = mensajePresupuestoAlquiler(r, LUNES, DEP_MANANA);
-  assert.match(m, /El servicio completo por 30 días, retirándolo vos en nuestro depósito de Maturín 2570, sale \$ 500\.000 \+ IVA\./);
+  assert.match(m, /El servicio completo por 30 días, retirándolo vos en nuestro depósito de Cucha Cucha 2345, sale \$ 500\.000 \+ IVA\./);
   assert.match(m, /Es el mínimo del servicio/);
   assert.ok(m.includes(condicionesAlquilerSimple("deposito")));
   assert.ok(!m.includes(condicionesAlquilerSimple("envio")));
@@ -820,7 +906,7 @@ test("fila 17: el presupuesto del depósito: el total sin flete, sus condiciones
   assert.throws(() => mensajePresupuestoAlquiler(cotizar({ alturaTrabajo: 5 }), LUNES, DEP_MANANA), /modalidad/);
   // Lo que ve Tomás: el depósito, sin plata.
   const t = resumenParaTomas(r);
-  assert.match(t, /Lo retira y lo devuelve él en el depósito \(Maturín 2570 \(CABA\)\): sin flete, con su vehículo y gente para cargar/);
+  assert.match(t, /Lo retira y lo devuelve él en el depósito \(Cucha Cucha 2345, CABA\): sin flete, con su vehículo y gente para cargar/);
   sinPlata(t);
 });
 

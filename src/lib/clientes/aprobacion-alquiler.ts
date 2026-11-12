@@ -22,12 +22,12 @@
 // SERVIDOR al aprobar (mensajePresupuestoAlquiler del motor).
 
 import {
-  cotizarAlquilerSimple, DEPOSITO, describirArmado, mensajePresupuestoAlquiler, metros, pesos, textoFecha, textoFranja, textoPeldano,
+  cotizarAlquilerSimple, DEPOSITO, describirArmado, mensajePresupuestoAlquiler, metros, pesos, textoFecha, textoFranja, textoNoLlega, textoPeldano,
   type Armado, type ClienteAlquiler, type CodigoMotivoAlquiler, type CodigoPieza, type FleteAlquiler, type Franja,
   type CodigoConfirmacion, type LineaAlquiler, type MotivoAlquiler, type ParametrosAlquiler, type PedidoAlquiler, type PrecioAlquiler, type ResultadoAlquiler,
 } from "./alquiler-simple.ts";
 import {
-  CODIGOS_PIEZA, FRANJA_DEPOSITO_MANANA, FRANJA_DEPOSITO_TARDE, FRANJA_MANANA, FRANJA_TARDE, lineasOrdenAlquilerSimple,
+  BARRIOS_CABA_EN_LISTA, CODIGOS_PIEZA, FRANJA_DEPOSITO_MANANA, FRANJA_DEPOSITO_TARDE, FRANJA_MANANA, FRANJA_TARDE, lineasOrdenAlquilerSimple, normalizarLugar,
   type CotizacionParaOdoo, type Flete, type Franja as FranjaOdoo,
 } from "../odoo/alquiler-simple.ts";
 import type { Feriado } from "../feriados/argentina.ts";
@@ -131,6 +131,8 @@ export type ContextoRecalculo = {
   feriados: readonly (Feriado | string)[];
   /** Lo que escribió el cliente hasta ahora (las palabras de alerta pueden haber cambiado). */
   ficha: Pick<FichaCliente, "mensajesCliente" | "banderas" | "segmento">;
+  /** El momento: el retiro en el depósito necesita 24 h hasta la franja (fila 17). */
+  ahora?: Date | null;
 };
 
 /**
@@ -145,7 +147,16 @@ export function fleteDeHoy(
   resultadoGuardado: ResultadoAlquiler,
 ): { alquiler: FleteAlquiler; odoo: FleteGuardado | null; aviso: string | null } {
   const anterior = resultadoGuardado.flete;
-  const barrio = anterior?.tipo === "lista" || anterior?.tipo === "fuera_de_lista" ? anterior.barrio : guardado?.nombre ?? null;
+  const barrio = anterior?.tipo === "lista" || anterior?.tipo === "fuera_de_lista" ? anterior.barrio : anterior?.tipo === "provincia" ? anterior.lugar : guardado?.nombre ?? null;
+  if (anterior?.tipo === "provincia") return { alquiler: anterior, odoo: null, aviso: null };
+  // Un presupuesto de antes del 12/11 a la tarde con un flete del conurbano (fila 16): es provincia.
+  if (guardado?.nombre.trim() && !BARRIOS_CABA_EN_LISTA.has(normalizarLugar(guardado.nombre))) {
+    return {
+      alquiler: { tipo: "provincia", lugar: barrio ?? guardado.nombre },
+      odoo: null,
+      aviso: `El flete ${guardado.nombre} es del conurbano: no se entrega fuera de CABA. Se le ofrece retirarlo en el depósito.`,
+    };
+  }
   if (!guardado) return { alquiler: { tipo: "fuera_de_lista", barrio }, odoo: null, aviso: null };
   const nombre = barrio ?? guardado.nombre;
   if (!fletes) {
@@ -446,7 +457,7 @@ export function recalcularAlquiler(p: PayloadAlquiler, ctx: ContextoRecalculo, c
   if (flete.aviso) avisos.push(flete.aviso);
   const cliente = clienteParaRecalculo(ctx.ficha, p.resultado);
   const motor = (pedido: PedidoAlquiler) =>
-    cotizarAlquilerSimple(pedido, { parametros: ctx.parametros, flete: flete.alquiler, hoy: ctx.hoy, feriados: ctx.feriados, cliente });
+    cotizarAlquilerSimple(pedido, { parametros: ctx.parametros, flete: flete.alquiler, hoy: ctx.hoy, feriados: ctx.feriados, cliente, ahora: ctx.ahora });
 
   // Las cantidades se corrigen sobre el armado de HOY (sin corregir).
   const armadoHoy = c?.tipo === "piezas" ? motor(p.pedido).armado : null;
@@ -534,7 +545,7 @@ export function datosDelPedido(pedido: PedidoAlquiler): { etiqueta: string; valo
  * un solo tablón…», y si es en el techo y no llega cómodo, el techo.
  */
 export function textoPlataforma(a: Armado): string {
-  const alTecho = a.llegaAlTecho === false && a.techo !== null ? `. Techo de ${metros(a.techo)} m: no llega cómodo al techo (el cliente lo confirmó)` : "";
+  const alTecho = a.noLlega ? `. ${textoNoLlega(a.noLlega)} (se le aclaró al cliente)` : "";
   if (a.peldano === null) return `Plataforma arriba, a ${metros(a.alturaPlataforma)} m: trabaja hasta ~${metros(a.llegaHasta)} m (la cabeza llega a ${metros(a.cabezaHasta)} m)${alTecho}`;
   return `Plataforma EN ${textoPeldano(a.peldano, a.modulosPorTorre).replace("el peldaño", "EL PELDAÑO")} (a ${metros(a.alturaPlataforma)} m del piso), un solo tablón de 30 cm: trabaja hasta ~${metros(a.llegaHasta)} m (la cabeza llega a ${metros(a.cabezaHasta)} m). Se cobra igual que el módulo completo${alTecho}`;
 }
@@ -573,7 +584,7 @@ export function notaInternaAlquiler(p: {
   const pr = r.precio;
   const parrafos: string[] = [];
   parrafos.push(`<p><b>Alquiler simple cotizado por Tomás</b> (WhatsApp de clientes, cotización #${p.numero}), aprobado por ${esc(p.aprobo)}${p.correccion ? ` con una corrección (${esc(TIPOS_CORRECCION_ALQUILER.find((t) => t.id === p.correccion!.tipo)?.etiqueta.toLowerCase() ?? p.correccion.tipo)}): ${esc(p.correccion.motivo.trim())}` : " sin cambios"}.</p>`);
-  parrafos.push(`<p><b>Pedido:</b> ${esc(datosDelPedido(r.pedido).map((d) => `${d.etiqueta.toLowerCase()} ${d.valor.toLowerCase()}`).join(" · "))}.</p>`);
+  parrafos.push(`<p><b>Pedido:</b> ${esc(datosDelPedido(r.pedido).map((d) => `${d.etiqueta}: ${d.valor}`).join(" · "))}.</p>`);
   if (a) {
     parrafos.push(`<p><b>Armado:</b> ${esc(describirArmado(a))}. ${esc(textoPlataforma(a))}.${a.ajustes.length ? ` ${esc(a.ajustes.join(" "))}` : ""}</p>`);
   }

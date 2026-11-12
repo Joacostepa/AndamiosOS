@@ -707,7 +707,7 @@ function TarjetaAlquilerSimple({ t, charla, ahora, puedeEditar, datos }: { t: Ta
                 <p className="flex flex-wrap items-center gap-1.5 text-[13.5px]">
                   <span className="text-muted-foreground">{k.deposito ? "Retira en el depósito:" : "Entrega:"}</span> {k.entrega.texto}, {k.entrega.franja}
                   {k.entrega.hora && <Pastilla tono="ambar">Franja de una hora</Pastilla>}
-                  {k.deposito && <Pastilla tono="suave">Sin flete · Maturín 2570</Pastilla>}
+                  {k.deposito && <Pastilla tono="suave">Sin flete · Cucha Cucha 2345</Pastilla>}
                   {k.direccion && <span className="text-muted-foreground">· {k.deposito ? `obra: ${k.direccion}` : k.direccion}</span>}
                 </p>
               )}
@@ -725,8 +725,8 @@ function TarjetaAlquilerSimple({ t, charla, ahora, puedeEditar, datos }: { t: Ta
                 <div className="flex flex-col gap-1.5">
                   <h4 className="text-[12.5px] font-semibold tracking-wide text-muted-foreground uppercase">Armado{k.armado.torres > 1 ? ` · ${k.armado.torres} torres` : ""}</h4>
                   <p className="text-[13.5px]">{k.armado.texto}.</p>
-                  {k.armado.peldano !== null || k.armado.noLlegaAlTecho ? (
-                    <Aviso tono="ambar"><AlertTriangle className="mr-1 inline size-4" /><b>{k.armado.peldano !== null ? "Plataforma en un peldaño (alternativa):" : "No llega cómodo al techo:"}</b> {k.armado.plataforma}.</Aviso>
+                  {k.armado.peldano !== null || k.armado.noLlega ? (
+                    <Aviso tono="ambar"><AlertTriangle className="mr-1 inline size-4" /><b>{k.armado.peldano !== null ? "Plataforma en un peldaño (alternativa):" : "No llega cómodo:"}</b> {k.armado.plataforma}.</Aviso>
                   ) : (
                     <p className="text-[13.5px] text-muted-foreground">{k.armado.plataforma}.</p>
                   )}

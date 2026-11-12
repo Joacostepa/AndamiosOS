@@ -472,7 +472,7 @@ export type PiezaCotizada = { codigo: CodigoPieza; cantidad: number; precioUnita
 export type Franja = { desde: string; hasta: string };
 export const FRANJA_MANANA: Franja = { desde: "08:00", hasta: "12:00" };
 export const FRANJA_TARDE: Franja = { desde: "13:00", hasta: "16:00" };
-/** Las del depósito (Maturín 2570): de 10 a 12 y de 13 a 16, de 12 a 13 para (JS, 12/11). */
+/** Las del depósito (Cucha Cucha 2345): de 10 a 12 y de 13 a 16, de 12 a 13 para (JS, 12/11). */
 export const FRANJA_DEPOSITO_MANANA: Franja = { desde: "10:00", hasta: "12:00" };
 export const FRANJA_DEPOSITO_TARDE: Franja = { desde: "13:00", hasta: "16:00" };
 
@@ -480,10 +480,21 @@ export const FRANJA_DEPOSITO_TARDE: Franja = { desde: "13:00", hasta: "16:00" };
  * Cómo se marca hoy en Odoo una orden que retira en el depósito (visto el 12/11, sólo lectura):
  * sin método de envío ni línea de flete, y con la dirección de la obra «RETIRA DE CUCHA CUCHA
  * 2345» o «RETIRA CUCHA CUCHA 2345 - DEPOSITO ANDAMIOS BUENOS AIRES» (S03008, S02929, S02769,
- * S01665, S01563). No hay un campo ni una etiqueta propia. Se sigue esa marca con el depósito que
- * dio JS el 12/11 (Maturín 2570); la diferencia con Cucha Cucha está en el handoff.
+ * S01665, S01563). No hay un campo ni una etiqueta propia. Se sigue esa marca, igual: JS confirmó
+ * el 12/11 que el depósito es Cucha Cucha 2345 (fila 22).
  */
-export const DIRECCION_RETIRA_EN_DEPOSITO = "RETIRA DE MATURÍN 2570 - DEPÓSITO ANDAMIOS BUENOS AIRES";
+export const DIRECCION_RETIRA_EN_DEPOSITO = "RETIRA DE CUCHA CUCHA 2345 - DEPOSITO ANDAMIOS BUENOS AIRES";
+
+/**
+ * La nota (condiciones) de una orden que retira en el depósito. NO es la de la «Plantilla
+ * Simples»: esa habla de la entrega con camión y del pagaré, y Tomás no pide el pagaré (fila 20).
+ * Es lo mismo que le llegó al cliente en el presupuesto (condicionesAlquilerSimple("deposito")).
+ */
+export const NOTA_RETIRA_EN_DEPOSITO =
+  "<p><b>Alquiler sin montaje: retira y devuelve el cliente en nuestro depósito, Cucha Cucha 2345, CABA.</b></p>"
+  + "<p>De lunes a viernes hábiles, de 10 a 12 o de 13 a 16 (de 12 a 13 el depósito está cerrado). El retiro y la devolución se coordinan con 24 horas de anticipación por WhatsApp, nunca en el mismo día.</p>"
+  + "<p>No hay chofer ni camión: el cliente viene con su vehículo y con gente para cargar. El andamio se devuelve desarmado.</p>"
+  + "<p>Si llega la fecha y no avisó la devolución, el alquiler sigue corriendo y se cobra por día.</p>";
 
 export type CotizacionParaOdoo = {
   piezas: PiezaCotizada[];
@@ -857,7 +868,8 @@ export async function crearOrdenAlquilerSimple(d: DatosOrdenAlquilerSimple): Pro
     return { id: ya.id, nombre: ya.name, estado: ya.state, neto: o?.amount_untaxed ?? 0, creada: false, intacta: true, avisos: [`La ${ya.name} ya existe y no está en borrador: no se modificó.`] };
   }
 
-  const condiciones = await condicionesSimples();
+  // Si retira en el depósito, su propia nota: la de la plantilla es de la entrega con camión y el pagaré.
+  const condiciones = armado.retiraEnDeposito ? NOTA_RETIRA_EN_DEPOSITO : await condicionesSimples();
   let id: number;
   let creada = false;
   if (ya) {

@@ -27,7 +27,7 @@ import { frenteDelLote } from "../asistente/borrador.ts";
 import { armarBorradorFacil, esFacil, fichaVacia, type BanderaIA, type ContextoFacil, type FichaCliente, type ParametrosFacil, escanearPalabras } from "./facil.ts";
 import type { Asignacion } from "./asignacion.ts";
 import {
-  condicionesAlquilerSimple, cotizarAlquilerSimple, DEPOSITO, esFranjaDeposito, franjaSegunModalidad, pedidoVacio, resumenParaTomas, textoFecha, textoFranja,
+  con24h, condicionesAlquilerSimple, cotizarAlquilerSimple, DEPOSITO, esFranjaDeposito, franjaSegunModalidad, MENSAJE_PROVINCIA, pedidoVacio, resumenParaTomas, textoFecha, textoFranja,
   validarEntrega,
   type CodigoEntrega, type FleteAlquiler, type Franja, type ParametrosAlquiler, type PedidoAlquiler, type ResultadoAlquiler,
 } from "./alquiler-simple.ts";
@@ -669,8 +669,8 @@ function anotarPedido(p: PedidoAlquiler, i: z.infer<typeof esquemaAlquiler>, fra
 const QUE_DECIR_ALQUILER =
   "Contale en una o dos líneas lo que le armaste y por qué le sirve, explicale las condiciones (abajo; con tus palabras, en pocos renglones, si todavía no se las explicaste) y decile que el presupuesto lo revisa el equipo y le llega por este mismo chat en unos minutos. Fuera de horario, aclarale cuándo le escribe una persona (está en el aviso). Sin montos ni porcentajes.";
 
-const QUE_HACER_FUERA_DE_CABA =
-  "No entregamos ni retiramos fuera de Capital, y no puede retirarlo en el depósito: decíselo con amabilidad, en una línea, sin vueltas. Si igual quiere avanzar de otra forma, usá derivar_a_persona con el motivo quiere_avanzar y un resumen. No ofrezcas escaleras.";
+/** Provincia y no puede retirar en el depósito (fila 23): un no amable, sin derivar. */
+const QUE_HACER_FUERA_DE_CABA = MENSAJE_PROVINCIA;
 
 /** Qué hacer cuando el alquiler no sale solo (§8), según por qué. Sin montos. */
 function queHacerNoFacil(r: ResultadoAlquiler): string {
@@ -757,6 +757,8 @@ async function cotizarAlquiler(i: z.infer<typeof esquemaAlquiler>, { ficha, serv
     hoy: servicios.hoy,
     feriados,
     cliente: { mensajesCliente: ficha.mensajesCliente, banderas: ficha.banderas, segmento: ficha.segmento, deudaVencida: contexto.deudaVencida, cuentaSocio: contexto.cuentaSocio },
+    // El retiro en el depósito se coordina con 24 h hasta la franja (fila 17).
+    ahora: servicios.ahora?.() ?? new Date(),
   });
   const enContraTrabajo = r.enContra.filter((m) => m.grupo === "trabajo");
   a.porQueNo = enContraTrabajo.map((m) => m.texto);
@@ -861,14 +863,17 @@ async function clienteAceptaAlquiler(i: z.infer<typeof esquemaAceptar>, { ficha,
   const deposito = esFranjaDeposito(p.entrega?.franja) || (!p.entrega && ficha.alquiler?.pedido?.retiraEnDeposito === true);
   const franja = franjaSegunModalidad(pedida, deposito);
   if (!franja) return FRANJA_DEPOSITO_NO_HORA;
-  const v = validarEntrega(i.fecha, franja, servicios.hoy, await servicios.feriados(), { deposito });
+  // En el depósito, 24 h de anticipación hasta el comienzo de la franja (fila 17), como la devolución.
+  const v = validarEntrega(i.fecha, franja, servicios.hoy, await servicios.feriados(), { deposito, ahora: servicios.ahora?.() ?? new Date() });
   if (!v.ok) {
     return {
       contenido: json({
         estado: "fecha_no_va",
         motivo: v.texto,
         ...(v.proxima ? { proxima: `${textoFecha(v.proxima.fecha)}${v.proxima.franja ? `, ${textoFranja(v.proxima.franja)}` : ""}` } : {}),
-        que_decir: "Explicale por qué ese día o esa franja no van y ofrecele la próxima posible. Con lo que elija, volvé a llamar a esta herramienta.",
+        que_decir: deposito
+          ? "Explicale por qué ese día o ese horario no van (el retiro en el depósito se coordina con 24 h de anticipación, de lunes a viernes de 10 a 12 o de 13 a 16) y ofrecele la próxima posible. Con lo que elija, volvé a llamar a esta herramienta."
+          : "Explicale por qué ese día o esa franja no van y ofrecele la próxima posible. Con lo que elija, volvé a llamar a esta herramienta.",
       }),
     };
   }
@@ -939,15 +944,10 @@ async function revisarDocumentos(i: z.infer<typeof esquemaDocumentos>, { ficha }
 export type ResultadoRetiro = { ok: boolean; motivo: CodigoEntrega | "anticipacion" | null; texto: string; proxima: { fecha: string; franja: Franja } | null };
 
 const HORA_MS = 3_600_000;
-/** Dónde empieza la franja, en horas. */
-const inicioFranja = (f: Franja) =>
-  f.tipo === "manana" ? 8 : f.tipo === "tarde" || f.tipo === "deposito_tarde" ? 13 : f.tipo === "deposito_manana" ? 10 : f.desde;
 /** La otra franja común del mismo día (para ofrecer la próxima). */
 const OTRA_FRANJA: Partial<Record<Franja["tipo"], Franja>> = {
   manana: { tipo: "tarde" }, tarde: { tipo: "manana" }, deposito_manana: { tipo: "deposito_tarde" }, deposito_tarde: { tipo: "deposito_manana" },
 };
-/** Esa hora de ese día en Buenos Aires (UTC-3, sin horario de verano) → instante. */
-const instanteBA = (fecha: string, horas: number) => Date.parse(`${fecha}T00:00:00Z`) + (horas + 3) * HORA_MS;
 const diaSiguiente = (f: string) => new Date(Date.parse(`${f}T12:00:00Z`) + 24 * HORA_MS).toISOString().slice(0, 10);
 
 /**
@@ -962,7 +962,7 @@ const diaSiguiente = (f: string) => new Date(Date.parse(`${f}T12:00:00Z`) + 24 *
 export function validarRetiro(fecha: string, franja: Franja, ahora: Date, hoy: string, feriados: readonly string[]): ResultadoRetiro {
   const deposito = esFranjaDeposito(franja);
   const que = deposito ? "La devolución en el depósito" : "El retiro";
-  const conTiempo = (f: string, fr: Franja) => instanteBA(f, inicioFranja(fr)) - ahora.getTime() >= 24 * HORA_MS;
+  const conTiempo = (f: string, fr: Franja) => con24h(f, fr, ahora);
   const otra = OTRA_FRANJA[franja.tipo];
   const opciones: Franja[] = otra ? [franja, otra] : [franja];
   const proxima = () => {

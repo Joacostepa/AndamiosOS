@@ -164,7 +164,7 @@ test("textoPlataforma: el peldaño se destaca y aclara que se cobra igual", () =
   assert.match(textoPlataforma(cotizar(pedido()).armado!), /Plataforma arriba, a 3,75 m/);
   // En el segundo módulo (fila 19), y sin llegar cómodo al techo.
   const segundo = cotizar(pedido({ lugar: "adentro", alturaTecho: 5, alturaTrabajo: null, trabajoEnTecho: true, aceptaPlataforma: true }));
-  assert.match(textoPlataforma(segundo.armado!), /EN EL PELDAÑO de 0,80 m del segundo módulo \(a 2,75 m del piso\).*Techo de 5 m: no llega cómodo al techo/);
+  assert.match(textoPlataforma(segundo.armado!), /EN EL PELDAÑO de 0,80 m del segundo módulo \(a 2,75 m del piso\).*El techo está a 5 m: no llega a trabajar cómodo en el techo \(se le aclaró al cliente\)/);
   assert.deepEqual(bloqueosAlquiler(segundo, { fecha: LUNES, franja: MANANA }), []);
 });
 
@@ -194,16 +194,19 @@ test("recalcular: retira en el depósito, sin flete ni método de envío, con el
     assert.equal(odoo.neto, 500000);
     assert.equal(odoo.carrierId, null);
     assert.equal(odoo.retiraEnDeposito, true);
-    assert.match(r.mensaje!, /retirándolo vos en nuestro depósito de Maturín 2570, sale \$ 500\.000 \+ IVA/);
+    assert.match(r.mensaje!, /retirándolo vos en nuestro depósito de Cucha Cucha 2345, sale \$ 500\.000 \+ IVA/);
     assert.ok(r.mensaje!.endsWith("¿Te lo reservo para retirarlo el lunes 16 de noviembre, de 10 a 12?"));
   }
   // La nota: retira en el depósito, sin flete.
   const r = recalc(p);
   const nota = notaInternaAlquiler({ numero: 7, aprobo: "Tamara", correccion: null, r, direccion: p.direccion, sinCuit: false, avisos: [] });
-  assert.match(nota, /<b>Retira en el depósito<\/b> \(Maturín 2570 \(CABA\)\) el lunes 16 de noviembre, de 10 a 12: sin flete/);
+  assert.match(nota, /<b>Retira en el depósito<\/b> \(Cucha Cucha 2345, CABA\) el lunes 16 de noviembre, de 10 a 12: sin flete/);
   assert.match(nota, /Obra: Maipú 2000, Olivos/);
+  // El pedido va como lo dijo (sin pasarlo a minúsculas).
+  assert.match(nota, /Cómo llega: Retira en el depósito \(Cucha Cucha 2345, CABA\)/);
+  assert.ok(!/\(.*\(CABA\)\)/.test(nota), "sin paréntesis anidados");
   assert.match(nota, /retirando en el depósito \(sin flete\)/);
-  assert.equal(Object.fromEntries(datosDelPedido(p.pedido).map((x) => [x.etiqueta, x.valor]))["Cómo llega"], "Retira en el depósito (Maturín 2570 (CABA))");
+  assert.equal(Object.fromEntries(datosDelPedido(p.pedido).map((x) => [x.etiqueta, x.valor]))["Cómo llega"], "Retira en el depósito (Cucha Cucha 2345, CABA)");
 });
 
 test("recalcular: en el depósito, corregir la fecha a una franja común la pasa a la del depósito; el sábado bloquea", () => {
@@ -226,6 +229,25 @@ test("bloqueosAlquiler: provincia sin decir si retira en el depósito, o sin pod
   });
   assert.ok(bloqueosAlquiler(ctx(null), { fecha: LUNES, franja: MANANA }).some((b) => /falta que el cliente diga si lo retira en el depósito/.test(b)));
   assert.ok(bloqueosAlquiler(ctx(false), { fecha: LUNES, franja: MANANA }).some((b) => /no entregamos ni retiramos fuera de CABA/.test(b)));
+});
+
+test("recalcular: un presupuesto viejo con un flete del conurbano es provincia, no «fuera de lista»", () => {
+  const p = pedido();
+  const viejo = { ...payloadDe(p), alquiler: { pedido: p, resultado: cotizar(p), flete: { id: 405, nombre: "OLIVOS", precio: 225600 }, entrega: { fecha: LUNES, franja: MANANA } } };
+  const r = recalc(leerPayloadAlquiler(viejo));
+  assert.equal(r.resultado.flete?.tipo, "provincia");
+  assert.deepEqual(r.resultado.aConfirmar.map((c) => c.codigo), ["deposito"]);
+  assert.ok(!r.resultado.enContra.some((m) => m.codigo === "sin_flete"));
+  assert.ok(r.bloqueos.some((b) => /provincia/.test(b)));
+  assert.ok(r.avisos.some((a) => /OLIVOS es del conurbano/.test(a)));
+});
+
+test("recalcular: el retiro en el depósito, con `ahora`, bloquea si no llega a las 24 h", () => {
+  const p = leerPayloadAlquiler(payloadDeposito());
+  // El viernes 13 a las 10 es el lunes 16 para el payload: con «ahora» el domingo 15 a las 12, no llega.
+  const r = recalc(p, null, { ahora: new Date("2026-11-15T15:00:00Z") });
+  assert.ok(r.bloqueos.some((b) => /24 h de anticipación/.test(b)), r.bloqueos.join(" | "));
+  assert.deepEqual(recalc(p, null, { ahora: new Date("2026-11-14T15:00:00Z") }).bloqueos, []);
 });
 
 test("leerPayloadAlquiler: un pedido de antes del 12/11 a la tarde (aceptaPeldano, sin la modalidad)", () => {

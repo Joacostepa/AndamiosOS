@@ -457,16 +457,24 @@ test("cotizar_alquiler_simple: en provincia no hay flete (aunque la localidad es
   no.mundo.fleteAlquiler = c.mundo.fleteAlquiler;
   const rn = JSON.parse((await ejecutarHerramientaSofia("cotizar_alquiler_simple", { ...PALERMO, direccion: "Maipú 2000, Olivos", retira_en_deposito: false }, no)).contenido);
   assert.equal(rn.estado, "no_es_facil");
-  assert.match(rn.que_hacer, /No entregamos ni retiramos fuera de Capital/);
+  // Fila 23: se lo dice directo y con amabilidad, sin derivar ni dejar nada pendiente.
+  assert.match(rn.que_hacer, /no llegamos con entregas a provincia/);
+  assert.ok(!/derivar_a_persona|preparar_pedido_simple|pedir_tecnico/.test(rn.que_hacer));
+  assert.match(rn.detalle, /No lo pases a nadie del equipo/);
+  assert.equal(no.mundo.pendientes.length, 0);
   // Lo retira: queda pendiente sin flete, con la franja del depósito.
-  const si = JSON.parse((await ejecutarHerramientaSofia("cotizar_alquiler_simple", { retira_en_deposito: true }, c)).contenido);
+  // El viernes de 10 a 12 no llega a las 24 h (es jueves 10:30): se ofrece la tarde.
+  const pronto = JSON.parse((await ejecutarHerramientaSofia("cotizar_alquiler_simple", { retira_en_deposito: true }, c)).contenido);
+  assert.equal(pronto.estado, "confirmar");
+  assert.match(pronto.confirmar.join(" "), /24 h de anticipación.*La próxima posible: el viernes 16 de octubre, de 13 a 16/);
+  const si = JSON.parse((await ejecutarHerramientaSofia("cotizar_alquiler_simple", { fecha: "2026-10-19" }, c)).contenido);
   assert.equal(si.estado, "pendiente");
   const p = c.mundo.pendientes[0];
   assert.equal(p.montoPropuesto, 500_000, "material + mínimo, sin flete");
-  assert.match(p.resumen, /· retira en el depósito · viernes 16 de octubre, de 10 a 12$/);
+  assert.match(p.resumen, /· retira en el depósito · lunes 19 de octubre, de 10 a 12$/);
   const alq = p.payload.alquiler as { flete: unknown; entrega: unknown; pedido: { retiraEnDeposito: boolean } };
   assert.equal(alq.flete, null);
-  assert.deepEqual(alq.entrega, { fecha: "2026-10-16", franja: { tipo: "deposito_manana" } });
+  assert.deepEqual(alq.entrega, { fecha: "2026-10-19", franja: { tipo: "deposito_manana" } });
   assert.equal(alq.pedido.retiraEnDeposito, true);
   assert.match(si.condiciones, /No hay chofer ni camión/);
   assert.ok(!/choferes no pueden entrar/.test(si.condiciones));
@@ -499,12 +507,18 @@ test("cliente_acepta_alquiler y pedir_retiro: con el depósito, sus franjas y su
   const r = JSON.parse((await ejecutarHerramientaSofia("cliente_acepta_alquiler", { fecha: "2026-10-19", franja: "manana" }, c)).contenido);
   assert.equal(r.estado, "aceptado");
   assert.equal(r.entrega, "retira en el depósito el lunes 19 de octubre, de 10 a 12");
-  assert.match(r.que_decir, /pasa a retirarlo por el depósito \(Maturín 2570 \(CABA\)\), y que venga con su vehículo y gente para cargarlo/);
+  assert.match(r.que_decir, /pasa a retirarlo por el depósito \(Cucha Cucha 2345, CABA\), y que venga con su vehículo y gente para cargarlo/);
   assert.match(r.que_decir, /DNI de frente y de dorso/);
   assert.ok(!/camioneta/.test(r.que_decir));
   assert.deepEqual(c.ficha.alquiler?.aceptado?.franja, { tipo: "deposito_manana" });
-  assert.match(c.mundo.avisos.at(-1)!.texto, /retira en el depósito \(Maturín 2570 \(CABA\)\) el lunes 19 de octubre, de 10 a 12/);
+  assert.match(c.mundo.avisos.at(-1)!.texto, /retira en el depósito \(Cucha Cucha 2345, CABA\) el lunes 19 de octubre, de 10 a 12/);
   // La devolución: en el depósito, con 24 h, sin dirección de la obra.
+  // Volver a aceptar para mañana a las 10 (jueves 10:30): no llega a las 24 h; la tarde sí.
+  const pronto = JSON.parse((await ejecutarHerramientaSofia("cliente_acepta_alquiler", { fecha: "2026-10-16", franja: "manana" }, c)).contenido);
+  assert.equal(pronto.estado, "fecha_no_va");
+  assert.match(pronto.motivo, /24 h de anticipación/);
+  assert.equal(pronto.proxima, "viernes 16 de octubre, de 13 a 16");
+  assert.match(pronto.que_decir, /24 h de anticipación/);
   const dev = await ejecutarHerramientaSofia("pedir_retiro", { fecha: "2026-10-20", franja: "tarde" }, c);
   const o = JSON.parse(dev.contenido);
   assert.equal(o.estado, "anotado");

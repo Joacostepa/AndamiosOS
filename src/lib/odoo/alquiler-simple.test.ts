@@ -6,7 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   armarFletes, BARRIOS_CABA_EN_LISTA, barrioDeDireccion, buscarFletePorBarrio, checksumOdoo, DIRECCION_RETIRA_EN_DEPOSITO, elegirNormalizada, fleteParaUbicacion,
-  FRANJA_DEPOSITO_MANANA, FRANJA_DEPOSITO_TARDE, FRANJA_MANANA, FRANJA_TARDE,
+  FRANJA_DEPOSITO_MANANA, FRANJA_DEPOSITO_TARDE, FRANJA_MANANA, FRANJA_TARDE, NOTA_RETIRA_EN_DEPOSITO,
   horarioEntregaOdoo, lineaRenovacion, lineasOrdenAlquilerSimple, normalizarLugar, utcOdoo, valoresOrdenAlquilerSimple,
   PRODUCTO_BARANDA_090_JUNIOR, PRODUCTO_BASTIDOR_BARANDA_130, PRODUCTO_FLETE, PRODUCTO_MINIMO_OPERATIVO, PRODUCTO_RIENDA_JR_HORIZONTAL, PRODUCTO_RECARGO_FRANJA, PRODUCTO_RENOVACION, PRODUCTOS_ALQUILER_SIMPLE,
   type CotizacionParaOdoo, type Flete, type NormalizadaUsig, type Ubicacion,
@@ -381,7 +381,7 @@ test("retira en el depósito: sin línea de flete ni carrier_id, con el mínimo,
   );
   assert.equal(v.carrier_id, false); // un reintento que antes tenía envío lo borra
   assert.equal(v.x_direccion_obra, `${DIRECCION_RETIRA_EN_DEPOSITO} (obra: Maipú 2000, Olivos)`);
-  assert.match(DIRECCION_RETIRA_EN_DEPOSITO, /^RETIRA DE MATURÍN 2570/);
+  assert.match(DIRECCION_RETIRA_EN_DEPOSITO, /^RETIRA DE CUCHA CUCHA 2345/);
   assert.equal(v.user_id, 73);
   assert.equal(v.x_obra_provincia, "Buenos Aires");
   const lineas = v.order_line as unknown[];
@@ -443,6 +443,14 @@ test("valoresOrdenAlquilerSimple: orden de alquiler «Simple», con el flete, la
   assert.deepEqual((reemplazo.order_line as unknown[])[0], [5, 0, 0]);
   assert.ok(!("user_id" in reemplazo) && !("note" in reemplazo));
   assert.equal(reemplazo.x_obra_provincia, "Buenos Aires");
+});
+
+test("la nota de la orden del depósito es propia: Cucha Cucha, sin camión y sin pagaré", () => {
+  assert.match(NOTA_RETIRA_EN_DEPOSITO, /Cucha Cucha 2345, CABA/);
+  assert.match(NOTA_RETIRA_EN_DEPOSITO, /No hay chofer ni camión/);
+  assert.match(NOTA_RETIRA_EN_DEPOSITO, /de 12 a 13 el depósito está cerrado/);
+  assert.ok(!/pagar[eé]/i.test(NOTA_RETIRA_EN_DEPOSITO));
+  assert.equal(DIRECCION_RETIRA_EN_DEPOSITO, "RETIRA DE CUCHA CUCHA 2345 - DEPOSITO ANDAMIOS BUENOS AIRES");
 });
 
 test("checksumOdoo: el sha1 en hexa, como el `checksum` de ir.attachment", () => {

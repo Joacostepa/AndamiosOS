@@ -156,7 +156,7 @@ test("las frases fijas nuevas del prompt pasan el filtro de salida", () => {
 });
 
 test("el bloque del alquiler simple: §3, §6 y §7, sin montos ni porcentajes, adentro del bloque fijo", () => {
-  assert.match(VERSION_PROMPT, /alquiler-deposito-peldanos/);
+  assert.match(VERSION_PROMPT, /alquiler-deposito-cucha-cucha/);
   assert.ok(INSTRUCCIONES.includes(ALQUILER_SIMPLE), "va en el bloque con caché, igual para todas las charlas");
   for (const regla of [
     /Qué trabajo van a hacer y hasta qué altura/,
@@ -175,12 +175,15 @@ test("el bloque del alquiler simple: §3, §6 y §7, sin montos ni porcentajes, 
     /un solo tablón de 30 cm/,
     /acepta_plataforma/,
     /entregamos y retiramos sólo en Capital/,
-    /le ofrecés retirarlo en nuestro depósito, en Maturín 2570 \(CABA\)/,
+    /le ofrecés retirarlo en nuestro depósito, en Cucha Cucha 2345, CABA/,
     /retira_en_deposito/,
     /Si lo retira en el depósito \(no hay franja de una hora ni recargo\)/,
     /No hay chofer ni camión: tenés que venir con tu vehículo y con gente para cargarlo/,
     /de lunes a viernes de 10 a 12 o de 13 a 16 \(de 12 a 13 el depósito está cerrado\)/,
     /traelo desarmado al depósito/,
+    /Si no puede retirarlo, decile directamente y con amabilidad que no llegamos con entregas a provincia: no lo pases a nadie del equipo/,
+    /De 12 a 13 no se entrega ni se retira/,
+    /el retiro en el depósito, con 24 h de anticipación hasta el horario en que pasa/,
     /Nunca ofrezcas escaleras/,
     /cliente_acepta_alquiler/,
     /la foto del DNI de frente y de dorso, y dos servicios a su nombre/,
@@ -214,6 +217,11 @@ test("resumenFicha: el alquiler, la aceptación, los documentos y el retiro, sin
   const l = resumenFicha(f).join("\n");
   assert.match(l, /Alquiler simple \(lo que juntaste\): adentro, llegar a 3 m, techo de 3 m, piso liso, entrega el viernes 16 de octubre, de 8 a 12, le sirve la plataforma que le aclaraste/);
   assert.match(l, /Entrega en: Palermo/);
+  // Si retira en el depósito, lo dice así (no «entrega»).
+  const d = leerFicha({ trabajo: "alquiler_simple", alquiler: { pedido: { alturaTrabajo: 3, fecha: "2026-10-19", franja: { tipo: "deposito_manana" }, retiraEnDeposito: true } } }, null);
+  const ld = resumenFicha(d).join("\n");
+  assert.match(ld, /llegar a 3 m, retira en el depósito el lunes 19 de octubre, de 10 a 12$/m);
+  assert.match(ld, /Lo retira y lo devuelve en el depósito \(Cucha Cucha 2345, CABA\)/);
   assert.match(l, /Aceptó el alquiler \(presupuesto #1042\): entrega el lunes 19 de octubre, de 13 a 16/);
   assert.match(l, /Documentos: ya están un servicio a su nombre; falta la foto del DNI de frente/);
   assert.match(l, /Retiro pedido para el lunes 16 de noviembre, de 8 a 12/);

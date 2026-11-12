@@ -133,7 +133,7 @@ Lo relevó Claude en Odoo, sólo leyendo: **no hay un campo ni una etiqueta para
 - con la dirección de la obra **«RETIRA DE CUCHA CUCHA 2345»** o «RETIRA CUCHA CUCHA 2345 - DEPOSITO ANDAMIOS BUENOS AIRES»;
 - casi todas con «Horario Entrega» en «08:00 - 17:00».
 
-Tomás hace lo mismo con el depósito que dio JS el 12/11: sin `carrier_id` ni línea de flete, con el mínimo operativo igual, y `x_direccion_obra` = «RETIRA DE MATURÍN 2570 - DEPÓSITO ANDAMIOS BUENOS AIRES (obra: …)» (`DIRECCION_RETIRA_EN_DEPOSITO`). El período empieza a las 10 o a las 13, según la franja. «Horario Entrega» queda en «13:00 - 16:00» a la tarde y vacío a la mañana (10 a 12 no está en el desplegable). **Para JS:** las órdenes de hoy dicen Cucha Cucha 2345 y JS dijo Maturín 2570.
+Tomás hace lo mismo, con el depósito que confirmó JS el 12/11 (Cucha Cucha 2345, el de esas órdenes): sin `carrier_id` ni línea de flete, con el mínimo operativo igual, y `x_direccion_obra` = «RETIRA DE CUCHA CUCHA 2345 - DEPOSITO ANDAMIOS BUENOS AIRES (obra: …)» (`DIRECCION_RETIRA_EN_DEPOSITO`). La nota de condiciones (`note`) no es la de la «Plantilla Simples» (habla del camión y del pagaré): es `NOTA_RETIRA_EN_DEPOSITO`, la del depósito, sin pagaré. El período empieza a las 10 o a las 13, según la franja. «Horario Entrega» queda en «13:00 - 16:00» a la tarde y vacío a la mañana (10 a 12 no está en el desplegable).
 
 ## 4. Los adjuntos
 

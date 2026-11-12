@@ -6,7 +6,7 @@
 
 Para retomar, decí: «Leé docs/sofia/handoff.md y seguimos con el CRM de WhatsApp».
 
-**En curso (18/10): el alquiler simple que cotiza Tomás.** La propuesta está en [alquiler-simple-propuesta.md](./alquiler-simple-propuesta.md) y lo pendiente, en el punto 13 de «Lo que falta» (13 preguntas para JS). No hay código todavía.
+**En curso (12/11): el alquiler simple que cotiza Tomás.** JS contestó las 13 preguntas el 12/11; están en la §11 de [alquiler-simple-propuesta.md](./alquiler-simple-propuesta.md), con la ficha técnica del bastidor al lado. No queda nada por definir: sigue programarlo según la §10. No hay código todavía.
 
 - **La propuesta** (cerrada por un equipo de agentes y auditada, con las decisiones de JS en la §12): [crm-propuesta.md](./crm-propuesta.md).
 - **La maqueta:** [crm-maqueta.html](./crm-maqueta.html), publicada en https://claude.ai/artifact/6mhAeU4umDQLv152rDai8e.
@@ -151,7 +151,16 @@ JS **no quiere** correr los guiones de ataque (`scripts/test-agente-clientes.mts
      - el flete por barrio de la tanda del 31/3/2026;
      - el mínimo operativo de $ 500.000 netos, con el flete incluido.
    - JS ya confirmó estas tres cosas y también las condiciones de la §6: la entrega nunca en el mismo día, el DNI y los servicios con la dirección verificada, gente para descargar y el retiro con un día de anticipación.
-   - **Pendiente de JS (y Tamara) para seguir el 19/10** (el detalle está en la §9 de la propuesta):
+   - **✅ 12/11: JS contestó las 13 preguntas** (la tabla está en la §11 de la propuesta, y la propuesta ya está reescrita con las respuestas). Lo que más cambia:
+     - al cliente se le pasa **un solo precio por el servicio de 30 días, con la entrega y el retiro**, aunque lo use menos; lo que pasa de 30 días (y lo que corre si no avisan) es proporcional a ese total, por día;
+     - la baranda va siempre en el precio: si no la quiere, no se lleva pero se cobra;
+     - las ruedas y los tornillones salen $ 36.000 los 4;
+     - con techo bajo, como excepción, 1 tablón en un peldaño de la escalera del bastidor; si no sirve, a un vendedor (no se ofrecen escaleras);
+     - los documentos se piden a todos, después de que acepta el precio; si el DNI no coincide se acepta, porque los servicios dicen dónde vive hoy;
+     - las franjas de entrega y retiro: de 8 a 12 o de 13 a 16; los sábados de 8 a 12; ni domingos ni feriados; una franja de una hora con un 20 % de recargo;
+     - el retiro se pide a este WhatsApp con 24 h, con los andamios desarmados y gente para subirlos (los choferes no entran por el seguro).
+   - **Las 2 dudas que quedaban, contestadas el 12/11:** la plataforma en un peldaño se cobra igual que el módulo completo, y el recargo del 20 % es sobre el total del servicio. **Sigue programar según la §10 de la propuesta.**
+   - **Las preguntas del 18/10, ya contestadas** (quedan como historia):
      1. los márgenes de altura: la persona alcanza plataforma + 2 m y la cabeza necesita plataforma + 1,90 m;
      2. cuántos tablones lleva el pasillo de 0,90 (¿3?);
      3. si el flete por barrio cubre la entrega y el retiro;

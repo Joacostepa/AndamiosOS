@@ -18,7 +18,7 @@ Se miraron las **117 órdenes con contrato «Simple» desde mayo de 2026**: 83 c
 | `x_direccion_obra` | la dirección de entrega | la de los servicios del cliente (§6) |
 | `x_obra_provincia` | «Ciudad Autónoma de Buenos Aires» o «Buenos Aires», y muchas veces vacío | igual |
 | `origin` | «NOMBRE - SIMPLE» | igual |
-| `user_id` / `team_id` | Tamara (73) / Sales (1) | quien diga la aprobación (ver §6) |
+| `user_id` / `team_id` | Tamara (73) / Sales (1) | siempre Tamara (73), decisión de JS del 12/11 (`VENDEDORA_ALQUILER_SIMPLE` en `aprobar.ts`) |
 | `tag_ids` | la etiqueta `crm.tag` 4 «SIMPLE» (en la mayoría) | igual |
 | `sale_order_template_id` | 9 «Plantilla Simples» | **no se asigna**; se copia su texto (ver §5) |
 | `note` | las condiciones de la plantilla: alquiler sin montaje, retiro con 24 h, gente para cargar y pagaré de $ 2.500.000 | el texto de la plantilla 9, leído de Odoo |
@@ -91,7 +91,7 @@ Resumen de la lista nueva, en pesos netos, con la entrega y el retiro:
 | 187.200 | Puerto Madero, Recoleta y Retiro |
 | GBA, 196.800 a 667.200 | Villa Martelli 196.800 · Avellaneda, Caseros, Ciudadela, Florida, Ingeniero Budge, La Tablada, Villa Fiorito y Villa Madero 219.000 · Olivos y Vicente López 225.600 · La Lucila 231.000 · Munro 231.600 · San Martín, Valentín Alsina y Villa Lynch 247.200 · Banfield, Lomas de Zamora y Villa Adelina 257.400 · San Isidro 262.800 · Martínez 281.400 · Santos Lugares 286.800 · Ramos Mejía 296.400 · Sarandí 300.600 · Burzaco 304.800 · José L. Suárez 332.400 · Don Torcuato 339.000 · Boulogne 344.400 · Lanús, Quilmes y San Fernando 345.600 · Nordelta 381.000 · Tigre 387.000 · Escobar y Pacheco 410.400 · Garín, Hurlingham, Ituzaingó, José C. Paz, Longchamps y Maschwitz 432.000 · Benavídez 495.000 · Pilar 545.400 · Berazategui 553.200 · Dock Sud 603.600 · Ezeiza 667.200 |
 
-`fletesAlquilerSimple()` los lee de Odoo y los guarda 10 minutos en memoria.
+`fletesAlquilerSimple()` los lee de Odoo y los guarda 10 minutos en memoria. **Sólo usa los 51 barrios de CABA** (`BARRIOS_CABA_EN_LISTA`): JS decidió el 12/11 que no se entrega ni se retira en provincia, así que los 46 del conurbano se descartan, y `fleteParaUbicacion` no da flete fuera de CABA aunque la localidad esté en la lista. El método **«RETIRO» (418) es el barrio de Retiro** (187.200), no el retiro en el depósito.
 
 **El barrio de la dirección** sale de USIG, el servicio del GCBA: es gratis, no pide clave y cubre el AMBA.
 - El normalizador da la localidad y el partido en el conurbano, y el punto.
@@ -101,7 +101,7 @@ Resumen de la lista nueva, en pesos netos, con la entrega y el retiro:
 
 Para encontrar el flete, `buscarFletePorBarrio`:
 - compara sin tildes, sin mayúsculas y sin puntos;
-- prueba los alias obvios: «Constitucion» → CONTITUCION (en Odoo está con la errata), «Villa Gral. Mitre» → VILLA MITRE, «Boca» → LA BOCA, «Palermo Soho» → PALERMO, «General Pacheco» → PACHECO, «Belén de Escobar» → ESCOBAR;
+- prueba los alias obvios: «Constitucion» → CONTITUCION (en Odoo está con la errata), «Villa Gral. Mitre» → VILLA MITRE, «Boca» → LA BOCA, «Palermo Soho» → PALERMO, y **«Belgrano» a secas → BELGRANO C**, el más caro (JS, 12/11). Los alias del conurbano se sacaron;
 - por último, saca el «Este/Oeste» del final («Lanús Este» → LANUS).
 
 Si no encuentra el barrio, o si coinciden dos, devuelve null y el pedido va a un vendedor.
@@ -122,9 +122,18 @@ Probado contra USIG con direcciones de órdenes reales:
 | Pareja 3157 | **Villa Pueyrredón** | VILLA PUEYRREDON (109.200) | AGRONOMIA en S03024, VILLA DEVOTO en S02889 |
 | Sánchez de Bustamante 1491 | **Recoleta** | RECOLETA (187.200) | ALMAGRO |
 | Av. Monroe 3980 | **Villa Urquiza** | VILLA URQUIZA (109.200) | BELGRANO C |
-| Maipú 2000, Olivos | Olivos (Vicente López) | OLIVOS | — |
-| Libertador 15000, San Isidro | Acassuso (San Isidro) | vendedor | — |
-| H. Yrigoyen 10000, Lomas | Temperley (Lomas de Zamora) | vendedor | — |
+| Maipú 2000, Olivos | Olivos (Vicente López) | ninguno: provincia, se ofrece el depósito (antes OLIVOS) | — |
+| Libertador 15000, San Isidro | Acassuso (San Isidro) | ninguno: provincia, se ofrece el depósito | — |
+| H. Yrigoyen 10000, Lomas | Temperley (Lomas de Zamora) | ninguno: provincia, se ofrece el depósito | — |
+
+## 3 bis. El retiro en el depósito (12/11)
+
+Lo relevó Claude en Odoo, sólo leyendo: **no hay un campo ni una etiqueta para «retira en depósito»**. Las órdenes que retiran hoy (S03008, S02929, S02769, S01665, S01563) van:
+- **sin método de envío** (`carrier_id` vacío) y **sin línea de flete**;
+- con la dirección de la obra **«RETIRA DE CUCHA CUCHA 2345»** o «RETIRA CUCHA CUCHA 2345 - DEPOSITO ANDAMIOS BUENOS AIRES»;
+- casi todas con «Horario Entrega» en «08:00 - 17:00».
+
+Tomás hace lo mismo con el depósito que dio JS el 12/11: sin `carrier_id` ni línea de flete, con el mínimo operativo igual, y `x_direccion_obra` = «RETIRA DE MATURÍN 2570 - DEPÓSITO ANDAMIOS BUENOS AIRES (obra: …)» (`DIRECCION_RETIRA_EN_DEPOSITO`). El período empieza a las 10 o a las 13, según la franja. «Horario Entrega» queda en «13:00 - 16:00» a la tarde y vacío a la mañana (10 a 12 no está en el desplegable). **Para JS:** las órdenes de hoy dicen Cucha Cucha 2345 y JS dijo Maturín 2570.
 
 ## 4. Los adjuntos
 
@@ -151,13 +160,13 @@ Los adjuntos de una orden son `ir.attachment` con `res_model` en `sale.order` y 
 ## 6. Lo que no cierra
 
 1. **Tamara usa los fletes viejos.** Desde mayo, de las 78 órdenes con método de envío, 76 usan los viejos (159-255) y 2 los nuevos. Además, el precio de la línea muchas veces se escribe a mano: en S03023 cobró CABALLITO a 140.000, cuando la lista nueva dice 124.200 y la vieja 103.500. JS decidió la tanda del 31/3 (354-450), un 20 % más cara. **Tomás va a cotizar más caro que lo que cobra hoy Tamara en el mismo barrio.**
-2. **Belgrano.** USIG dice sólo «Belgrano», y la lista tiene BELGRANO C (130.800) y BELGRANO R (124.200). Hoy va a un vendedor. Si JS quiere, se puede elegir uno, o el más caro.
+2. **Belgrano.** USIG dice sólo «Belgrano», y la lista tiene BELGRANO C (130.800) y BELGRANO R (124.200). **Resuelto el 12/11:** JS decidió cobrar siempre BELGRANO C, el más caro.
 3. **El barrio oficial no siempre es el que usó Tamara.** En los cuatro casos de la tabla de la §3, el oficial de USIG da otro flete. En Sánchez de Bustamante 1491 la diferencia es grande: Recoleta sale 187.200 y Almagro 114.600. Tomás usa el oficial, que es el criterio que se puede repetir.
-4. **Las localidades del conurbano que no están en la lista van a un vendedor**, aunque su partido sí esté: por ejemplo Acassuso, Beccar y Temperley. Si JS dice que Acassuso y Beccar salen como San Isidro, o Temperley como Lomas, se agregan como alias.
+4. **El conurbano.** **Resuelto el 12/11:** no se entrega ni se retira fuera de CABA. Los métodos del conurbano no se usan y en provincia Tomás ofrece retirarlo en el depósito (§3 bis).
 5. **No hay un módulo baranda estándar junior.** Si todas las torres estándar son junior, cada baranda va como en S02997: 2 × «BASTIDOR BARANDA - 1,30m. x 1.00 h» (8) y 2 × «RIENDA ANDAMIO JR 1.50 m - HORIZONTAL» (105), con el precio de la pieza repartido entre las 4 unidades, así el neto no cambia. Con torres de 2,50 y junior del mismo ancho en el mismo pedido queda el de 2,50 (149) con un aviso en la tarjeta: no se sabe cuántas barandas son junior.
 6. **El recargo por la franja de una hora no tiene producto.** Se usa el 178 («ADICIONAL VARIOS - SERVICIOS EXTRA - MANO DE OBRA»), con la descripción «RECARGO POR FRANJA HORARIA PACTADA (entrega de 10:00 a 11:00 h, 20 % del servicio)», con el porcentaje del parámetro `alquiler_simple_recargo_franja`. Si JS quiere un producto propio, se crea a mano en Odoo y se cambia `PRODUCTO_RECARGO_FRANJA`. Desde acá nunca se crean productos.
 7. **El desplegable «Horario Entrega» no tiene franjas de una hora.** Con la franja pactada, el campo queda vacío y la hora va en la línea del recargo.
 8. **Los tornillones.** Se usa el de base fija (176), 4 por juego. El de base móvil (177) se usó 4 veces y no está claro para qué.
-9. **El vendedor.** Hoy los simples son casi todos de Tamara (user 73). `crearOrdenAlquilerSimple` recibe `vendedorUserId`: falta decidir si va siempre Tamara o la pareja del turno, como en la bandeja.
+9. **El vendedor.** **Resuelto el 12/11:** siempre Tamara (user 73), no la pareja del turno: `VENDEDORA_ALQUILER_SIMPLE` en `aprobar.ts`, en la orden y en la oportunidad.
 10. **El mínimo operativo es un producto «consu» con `is_rental`.** Por eso genera un movimiento en el remito de entrega, como ya pasa en las órdenes de Tamara. Se mantiene igual.
-11. **El pagaré.** Las condiciones de la plantilla piden un pagaré sin protesto de $ 2.500.000 como garantía. La propuesta (§6) habla del DNI y los servicios, no del pagaré. Falta que JS diga si el pagaré sigue y si Tomás lo tiene que pedir.
+11. **El pagaré.** Las condiciones de la plantilla piden un pagaré sin protesto de $ 2.500.000 como garantía. **Resuelto el 12/11:** Tomás no lo pide (es gestión administrativa). El texto de la plantilla se sigue copiando en `note` de la orden, como en las de Tamara.

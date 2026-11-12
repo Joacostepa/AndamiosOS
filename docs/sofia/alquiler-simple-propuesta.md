@@ -1,6 +1,6 @@
 # Alquiler simple que cotiza Tomás: propuesta
 
-**Borrador del 18/10/2026, cerrado con JS el 12/11/2026.** Sale de lo que explicó JS el 18/10, de lo que se cobró en Odoo desde mayo (unas 180 líneas de alquiler y 91 fletes) y de las preguntas que contestó JS el 12/11 (§11). No queda nada por definir: sigue programarlo (§10).
+**Borrador del 18/10/2026, cerrado con JS el 12/11/2026.** Sale de lo que explicó JS el 18/10, de lo que se cobró en Odoo desde mayo (unas 180 líneas de alquiler y 91 fletes) y de las preguntas que contestó JS el 12/11 (§11, filas 1 a 15). El 12/11 a la tarde JS sumó seis decisiones más (filas 16 a 21): sólo se entrega en CABA, el retiro en el depósito, Belgrano, el peldaño en cualquier módulo, la vendedora y el pagaré. Está programado en la rama `feat/alquiler-simple` (§10).
 
 ## 1. Qué es
 
@@ -13,6 +13,8 @@ La idea es que Tomás los atienda de punta a punta, como con la bandeja:
 4. **lo aprueba JS** con la misma tarjeta;
 5. sale por WhatsApp;
 6. cuando el cliente acepta, le pide los documentos (§6).
+
+Se lo llevamos (sólo en CABA) o lo retira el cliente en el depósito (§6).
 
 Tomás no calcula estructuras. Lo que se sale de las reglas pasa a un vendedor.
 
@@ -36,8 +38,8 @@ La ficha técnica está en [ficha-tecnica-bastidor.png](./ficha-tecnica-bastidor
 1. **Qué trabajo van a hacer y hasta qué altura tienen que llegar.** Si es adentro, también **la altura del techo**.
 2. **Cuánto espacio tienen para el andamio:** el ancho y el largo libres en el piso.
 3. **Cómo es el piso:** liso o desparejo (vereda rota, tierra, escalón).
-4. **Dónde es**, para el flete.
-5. **Para cuándo lo necesitan.** La entrega es siempre **al día siguiente o después**, en las franjas de la §6.
+4. **Dónde es**, para el flete. **Sólo se entrega y se retira en CABA** (JS, 12/11, fila 16): si la obra está en provincia, no hay flete y Tomás le ofrece **retirarlo en el depósito** (§6). Un cliente de CABA también lo puede elegir; si dice desde el principio que lo pasa a buscar, no hace falta la dirección.
+5. **Para cuándo lo necesitan.** La entrega (o el retiro en el depósito) es siempre **al día siguiente o después**, en las franjas de la §6.
 
 No pregunta cuántos días: se cotiza siempre el servicio de 30 días (§5).
 
@@ -53,13 +55,19 @@ Si el cliente ya sabe qué quiere («2 módulos con ruedas»), Tomás no repite 
 | 2 | 3,75 m | ~5,75 m | 5,65 m |
 | 3 | 5,55 m | ~7,55 m | 7,45 m |
 
-- Afuera, o adentro con techo alto: Tomás elige **la menor cantidad de módulos que llega**.
-- Adentro: además chequea que entre la cabeza. Si el trabajo es el cielorraso, lo que manda es el techo: la plataforma más alta que deje entrar la cabeza.
-- Si tiene que llegar a más de ~7,5 m, hay que anclar y va a un vendedor.
+**Dónde va la plataforma (JS, 12/11, fila 19).** Hay dos lugares posibles, siempre con la base de 0,15 m (ruedas o tornillones) y hasta 3 módulos:
+- **arriba de un módulo**, con el piso completo de tablones y la baranda (la tabla de arriba);
+- **como alternativa, un tablón apoyado en un peldaño** de la escalera del bastidor, **en cualquier módulo**. Los peldaños están a unos 0,40, 0,80 y 1,20 m desde abajo de cada módulo: en el segundo módulo, el de 0,80 queda a 0,15 + 1,80 + 0,80 = 2,75 m. Esa plataforma es de **un solo tablón, de 30 cm**, y Tomás se lo aclara.
 
-**Techo bajo: la plataforma en un peldaño (excepción, JS 12/11).** Si con la plataforma arriba del módulo no entra la cabeza (por ejemplo, con 1 módulo el techo mide menos de 3,85 m), Tomás puede ofrecer, **sólo como excepción**, apoyar **un tablón en un peldaño** de la escalera del bastidor (a unos 0,40, 0,80 o 1,20 m), el más alto que deje entrar la cabeza. Le aclara que esa plataforma es de **un solo tablón, de 30 cm**. Ejemplo: con un techo de 3 m, el peldaño de 0,80 deja la plataforma a 0,95 m con las ruedas; la cabeza entra (2,85 m) y llega hasta ~2,95 m.
-- Si al cliente no le sirve, **pasa a un vendedor**. Tomás **no menciona el alquiler de escaleras**.
-- **Se cobra igual que con la plataforma arriba** (JS, 12/11): el módulo completo, con la baranda, el piso de tablones y las ruedas.
+Cómo elige:
+- **Trabajo hasta una altura** (una pared, afuera o adentro): **la menor cantidad de módulos que llega con la cabeza adentro**. Con esa cantidad, arriba si entra la cabeza; si no, el peldaño más alto del módulo de arriba que deja entrar la cabeza y llega.
+- **Trabajo en el techo** (el cielorraso): **la plataforma más alta que deja entrar la cabeza** (plataforma + 1,90 ≤ techo). Si la de arriba de un módulo ya llega al techo, va esa; el peldaño, cuando acerca más al techo. Ejemplo: con un techo de 5 m, arriba de 1 módulo llega a ~3,95 m, y el peldaño de 0,80 del segundo módulo (2,75 m) llega a ~4,75 m: va el peldaño.
+- Si la plataforma **no llega cómodo al techo** (plataforma + 2 m a más de 10 cm del techo), **se cotiza igual**: Tomás le aclara a qué altura queda la plataforma y hasta dónde llega a trabajar cómodo, para que lo confirme. **Ya no va a un vendedor por quedar a más de 50 cm** (era una decisión de Claude, que JS cambió).
+- **A un vendedor va sólo lo que no tiene ninguna plataforma posible** (un techo de menos de 2,45 m, o una pared en que la plataforma que deja entrar la cabeza no llega) o hay que anclar: más de ~7,5 m.
+
+Ejemplo del techo bajo: con un techo de 3 m, el peldaño de 0,80 del primer módulo deja la plataforma a 0,95 m; la cabeza entra (2,85 m) y llega hasta ~2,95 m.
+- Si la plataforma que se le aclaró no le sirve, **pasa a un vendedor**. Tomás **no menciona el alquiler de escaleras**.
+- **El peldaño se cobra igual que con la plataforma arriba** (JS, 12/11): el módulo completo, con la baranda, el piso de tablones y las ruedas.
 
 **El ancho y el largo**, según el espacio libre:
 - ancho de 1,30 m o más: **estándar**; entre 0,90 y 1,30: **angosto**; menos de 0,90: va a un vendedor;
@@ -76,7 +84,7 @@ En las órdenes de Odoo los tablones van sólo en el nivel de arriba: por ejempl
 
 ## 5. Precios (+ IVA)
 
-**Al cliente se le pasa un solo precio: el servicio completo por 30 días, con la entrega y el retiro incluidos (JS, 12/11).** No se le manda el precio desglosado. El detalle por pieza queda en la orden de Odoo.
+**Al cliente se le pasa un solo precio: el servicio completo por 30 días, con la entrega y el retiro incluidos (JS, 12/11)**, o retirándolo en el depósito. No se le manda el precio desglosado. El detalle por pieza queda en la orden de Odoo.
 
 **Siempre 30 días.** Aunque el cliente lo necesite por una semana, se cotiza el servicio de 30 días. Los tramos más baratos por pieza (hasta 14 días y de 15 a 29) no se usan.
 
@@ -89,11 +97,13 @@ En las órdenes de Odoo los tablones van sólo en el nivel de arriba: por ejempl
 | Tornillones | $ 36.000 los 4 ($ 9.000 cada uno) |
 | Flete | el de la lista por barrio de Odoo |
 
-- **El flete** es el de la tanda del 31/3/2026 (los métodos de envío 354 a 450) y **cubre la entrega y el retiro** (JS, 12/11): va una sola línea por pedido. Si el barrio no está en la lista, va a un vendedor.
+- **El flete** es el de la tanda del 31/3/2026 (los métodos de envío 354 a 450) y **cubre la entrega y el retiro** (JS, 12/11): va una sola línea por pedido. **Sólo los 51 barrios de CABA de la lista**: los 46 métodos de localidades del conurbano no se usan (fila 16). Si el barrio no está en la lista, va a un vendedor.
+- **Belgrano a secas** (USIG dice sólo «Belgrano») se cobra siempre **BELGRANO C**, el más caro (130.800; BELGRANO R sale 124.200) (fila 16).
+- **Si retira en el depósito** (fila 17): no hay flete, pero el **mínimo operativo se cobra igual**: todo es material + mínimo. En el ejemplo de abajo, 162.000 de material y 338.000 de mínimo: $ 500.000 + IVA. Sin recargo de franja.
 - **Mínimo operativo: $ 500.000 netos, con el flete adentro.** Si el material más el flete no llega, se agrega la línea «MÍNIMO OPERATIVO» por la diferencia, como ya se hace en Odoo.
 - En Odoo los productos tienen precio de lista $ 1: el precio lo escribe la orden.
 
-**Más de 30 días: proporcional al total con el flete (JS, 12/11).** Si el cliente lo quiere más tiempo, la renovación es el total del servicio ÷ 30 × los días de más.
+**Más de 30 días: proporcional al total con el flete (JS, 12/11).** Si el cliente lo quiere más tiempo, la renovación es el total del servicio ÷ 30 × los días de más. **La renovación no lleva el recargo de la franja de una hora** (fila 21): el recargo paga una entrega a una hora fija, no el alquiler.
 
 **Si se vence y no avisaron, el alquiler sigue corriendo y se cobra igual, por día:** el total con el flete ÷ 30 por cada día. En Odoo va como «RENOVACIÓN ALQUILER SIMPLE (SIN MONTAJE)».
 
@@ -117,7 +127,9 @@ Lo que lee el cliente: «El servicio completo por 30 días, con la entrega y el 
 
 ## 6. Condiciones que Tomás siempre explica (JS, 18/10 y 12/11)
 
-JS pidió que Tomás las explique siempre y bien: son lo que evita problemas después.
+JS pidió que Tomás las explique siempre y bien: son lo que evita problemas después. Hay dos modalidades: **se lo llevamos** (sólo en CABA) o **lo retira en el depósito** (más abajo). Las condiciones son distintas.
+
+**Sólo en CABA (fila 16).** No se entrega ni se retira fuera de CABA. Si la obra está en provincia, Tomás le ofrece retirarlo en el depósito; si no puede, no es un alquiler simple (lo ve una persona).
 
 **La entrega es de un día para el otro, nunca el mismo día.**
 - Tomás lleva al cliente a recibirlo al día siguiente o más adelante.
@@ -148,6 +160,17 @@ JS pidió que Tomás las explique siempre y bien: son lo que evita problemas des
 - Las fotos se guardan **adjuntas a la orden de Odoo**.
 - Tomás no repite por escrito el número de DNI ni los datos de los servicios, sólo confirma que los recibió.
 
+**El retiro en el depósito (JS, 12/11, fila 17).** Lo puede elegir cualquier cliente, y es la única opción en provincia.
+- El depósito está en **Maturín 2570 (CABA)**.
+- Se retira y se devuelve **cualquier día hábil** (de lunes a viernes, no feriados) **de 10 a 12 o de 13 a 16**: de 12 a 13 el depósito para.
+- El retiro y la devolución se coordinan con **24 h de anticipación**, por este mismo WhatsApp. Las mismas validaciones de fecha: nunca el mismo día.
+- **No hay chofer ni camión**: el cliente viene con su vehículo y con gente para cargar.
+- **La devolución, desarmado**, en el depósito, con 24 h de aviso. Si no avisa, el alquiler sigue corriendo por día.
+- Sin flete, con el mínimo operativo (§5), y **sin franja de una hora ni recargo**.
+- En Odoo, la orden va **sin línea de flete ni método de envío**, y la dirección de la obra dice «RETIRA DE MATURÍN 2570 - DEPÓSITO ANDAMIOS BUENOS AIRES», como marca hoy Tamara las que retiran (ver [alquiler-simple-odoo.md](./alquiler-simple-odoo.md)).
+
+**El pagaré (fila 20).** Tomás no lo pide ni lo nombra: es gestión administrativa. Al cliente le pide sólo el DNI y los servicios.
+
 Cómo lo dice Tomás: claro y amable, como información útil y no como una advertencia. Por ejemplo: «Te cuento cómo funciona: te lo llevamos mañana entre las 8 y las 12, según el recorrido de la camioneta. Por el seguro, el chofer no puede entrar, así que tiene que haber alguien para bajarlo. Para el retiro, avisanos por acá con 24 h de anticipación y tenelo desarmado; si no avisás, el alquiler sigue corriendo». Las condiciones van también en el presupuesto.
 
 ## 7. Cómo vende Tomás
@@ -167,9 +190,10 @@ JS quiere que Tomás sea un excelente vendedor: que el cliente quiera alquilar.
 
 - lo necesitan para el mismo día;
 - hay que anclar, o la altura de trabajo pasa de ~7,5 m;
-- el techo no deja pararse, ni siquiera con la plataforma en un peldaño, o el cliente no la acepta;
+- no hay ninguna plataforma posible (el techo no deja pararse, ni con un tablón en el peldaño más bajo, o en una pared la plataforma que deja entrar la cabeza no llega), o el cliente no acepta la que se le aclaró (fila 19);
 - el espacio mide menos de 0,90 m de ancho o de 1,50 m de largo;
-- el barrio no está en la lista de fletes;
+- el barrio de CABA no está en la lista de fletes;
+- la obra está en provincia y no puede retirarlo en el depósito (fila 16);
 - piden piezas que no están en la sección 2 (puntales, caños, nudos, paso peatonal, escalera, ménsulas);
 - piden montaje;
 - **más de 10 módulos** en total, sumando todas las torres y sin contar las barandas (JS, 12/11);
@@ -181,12 +205,14 @@ Nada: las dos dudas que quedaban las contestó JS el 12/11 (filas 14 y 15 de la 
 
 Supuesto de Claude, sin confirmar: los dos servicios tienen que tener la misma dirección entre sí.
 
+Para confirmar con JS (12/11 a la tarde): en Odoo, las órdenes que hoy retiran en el depósito dicen «RETIRA DE CUCHA CUCHA 2345» en la dirección de la obra (S03008, S02929, S02769, S01563). ¿El depósito de retiro es Maturín 2570, como dijo JS, o siguen los dos? El código usa Maturín 2570.
+
 ## 10. Qué hay que programar
 
-- **Las reglas y el cálculo:** `src/lib/clientes/alquiler-simple.ts`, con la altura (incluida la excepción del peldaño), las torres, las piezas, el precio de 30 días, el flete por barrio, el mínimo y la renovación proporcional, más los tests con los casos de arriba.
+- **Las reglas y el cálculo:** `src/lib/clientes/alquiler-simple.ts`, con la altura (la plataforma arriba o un tablón en un peldaño de cualquier módulo), la modalidad (envío en CABA o retiro en el depósito), las torres, las piezas, el precio de 30 días, el flete por barrio, el mínimo y la renovación proporcional, más los tests con los casos de arriba.
 - **La herramienta de Tomás:** `cotizar_alquiler_simple`, que devuelve el total para el cliente, el detalle para Odoo y si salió fácil, y un bloque de la guía de venta en el prompt.
-- **El flete:** leerlo de Odoo (los métodos de envío 354 a 450) por el barrio de la dirección, que ya se geocodifica.
-- **La tarjeta de aprobación:** la misma de la bandeja. Al aprobar, crea la orden en Odoo con los productos de alquiler y las fechas, el método de envío del barrio y la línea de mínimo operativo si hace falta.
+- **El flete:** leerlo de Odoo (los métodos de envío 354 a 450, sólo los barrios de CABA) por el barrio de la dirección, que ya se geocodifica. En provincia no hay flete.
+- **La tarjeta de aprobación:** la misma de la bandeja. Al aprobar, crea la orden en Odoo con los productos de alquiler y las fechas, el método de envío del barrio (o nada, si retira en el depósito), la línea de mínimo operativo si hace falta y siempre a nombre de Tamara.
 - **Parámetros:** el precio por pieza, las ruedas, los tornillones, el mínimo, el tope de módulos y el recargo por horario.
 - **La fecha y la franja de entrega:** nunca hoy (si piden para hoy, se deriva sola); ni domingos ni feriados; los sábados sólo de 8 a 12. La fecha, la franja y el período van en la orden.
 - **Los documentos:** Tomás ya recibe imágenes por WhatsApp. Hace falta un paso «documentación», después de que el cliente acepta: pide las fotos, lee de los servicios la dirección actual, la deja en la ficha y en la tarjeta, y adjunta las fotos a la orden de Odoo. En la bandeja se guardan con acceso restringido.
@@ -212,3 +238,9 @@ Supuesto de Claude, sin confirmar: los dos servicios tienen que tener la misma d
 | 13 | Aviso de retiro y días | A este mismo WhatsApp. Ni domingos ni feriados; sábados de 8 a 12; de lunes a viernes, de 8 a 12 o de 13 a 16; una franja de una hora con un 20 % de recargo |
 | 14 | La plataforma en un peldaño, ¿se cobra igual? | Sí, igual que el módulo completo |
 | 15 | El recargo del 20 % por la franja de una hora | Sobre el total del servicio |
+| 16 | ¿Hasta dónde se entrega? ¿Y Belgrano? | Sólo en CABA: no se entrega ni se retira en provincia, y los métodos de envío de localidades del conurbano no se usan. En provincia, Tomás ofrece retirarlo en el depósito. Belgrano a secas se cobra siempre BELGRANO C (el más caro) |
+| 17 | Retiro en el depósito | Modalidad nueva, también para clientes de CABA. Maturín 2570 (CABA), días hábiles de 10 a 12 y de 13 a 16 (de 12 a 13 para), retiro y devolución con 24 h de aviso, nunca el mismo día. Sin flete, con el mínimo operativo de $ 500.000. Sin chofer ni camión: viene con su vehículo y gente para cargar; devuelve desarmado. Sin recargo de franja |
+| 18 | Vendedor de las órdenes de Tomás | Siempre Tamara (res.users 73), no la pareja del turno |
+| 19 | La plataforma en un peldaño, ¿sólo en el primer módulo? | En cualquier módulo, como alternativa: «no tiene que ir a ningún vendedor salvo que sea algo complejo». En el techo, la plataforma más alta que deja entrar la cabeza; si no llega cómodo, se cotiza y se le aclara para que lo confirme. A un vendedor, sólo si no hay ninguna plataforma posible o hay que anclar |
+| 20 | El pagaré de la plantilla | Tomás no lo pide: es gestión administrativa |
+| 21 | ¿La renovación por día lleva el recargo de franja? | No (ya estaba así) |

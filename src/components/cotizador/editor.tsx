@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ArrowLeft, Bot, ExternalLink, FileText, Loader2, Paperclip, Sparkles, X } from "lucide-react";
+import { ArrowLeft, Bot, Check, ExternalLink, FileText, Loader2, Paperclip, Sparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
@@ -20,7 +20,7 @@ import type { AccionVista, BorradorVista, PdfVista } from "@/lib/asistente/event
 import type { ClienteResumen } from "@/lib/odoo/comercial";
 import type { Vecina } from "@/lib/catastro/caba";
 import { aplicarFormulario, formularioDesdeBorrador, seccionDeFaltante, type Formulario } from "@/lib/cotizador-rapido/formulario";
-import { aplicarPropuesta, type Cambio } from "@/lib/cotizador-rapido/propuesta";
+import { aplicarPropuesta, ETIQUETAS, type Cambio } from "@/lib/cotizador-rapido/propuesta";
 import type { PropuestaIA } from "@/lib/cotizador-rapido/interpretar";
 import { cn } from "@/lib/utils";
 import { pesos } from "./campos";
@@ -37,6 +37,11 @@ import {
 const hoy = () => new Date().toLocaleDateString("sv-SE", { timeZone: "America/Argentina/Buenos_Aires" });
 
 type Faltante = { texto: string; seccion: string };
+
+/** El nombre de un dato que completó la IA, para el aviso y la lista de lo que falta. */
+function etiquetaIa(clave: string): string {
+  return (ETIQUETAS as Record<string, string>)[clave] ?? (clave.startsWith("fila:") ? "un renglón" : clave);
+}
 
 export function Editor({ id }: { id: string }) {
   const router = useRouter();
@@ -167,8 +172,10 @@ export function Editor({ id }: { id: string }) {
 
   const faltantes: Faltante[] = useMemo(() => {
     const out: Faltante[] = (vista?.r?.faltantes ?? []).map((x) => ({ texto: x.texto.replace(/\s*\((verificar_frente_lote|usar_foto_como_render)[^)]*\)/g, "").replace(/con usar_foto_como_render/g, "con «Subir foto»"), seccion: `s-${seccionDeFaltante(x)}` }));
-    const deducidos = Object.entries(form?.ia ?? {}).filter(([, v]) => v.deducido).map(([k]) => k);
-    if (deducidos.length) out.unshift({ texto: `Confirmá lo que dedujo la IA (${deducidos.length})`, seccion: "s-tipo" });
+    const deducidos = Object.entries(form?.ia ?? {}).filter(([, v]) => v.deducido).map(([k]) => etiquetaIa(k));
+    // Lleva al aviso de arriba, que tiene cada dato con su ✓ y «Confirmar todo» (JS, 12/11: antes
+    // llevaba a la sección del tipo, y un dato deducido de otra sección no tenía botón).
+    if (deducidos.length) out.unshift({ texto: `Confirmá lo que dedujo la IA: ${deducidos.join(", ")}`, seccion: "ia-confirmar" });
     return out;
   }, [vista, form?.ia]);
   const seccionesConFalta = new Set(faltantes.map((x) => x.seccion));
@@ -425,7 +432,11 @@ export function Editor({ id }: { id: string }) {
   const r = vista.r;
   const titulo = [form.cliente.razonSocial, form.obra.direccion].filter(Boolean).join(" · ") || "Presupuesto nuevo";
   const iaLlenos = Object.keys(form.ia).length;
-  const deducidos = Object.values(form.ia).filter((x) => x.deducido).length;
+  const deducidosIa = Object.entries(form.ia).filter(([, v]) => v.deducido);
+  const deducidos = deducidosIa.length;
+  /** Saca la marca «deducido» de un dato, o de todos (null). Lo que dedujo la IA se confirma acá. */
+  const confirmarDeducidos = (clave: string | null) =>
+    cambiar((x) => ({ ...x, ia: Object.fromEntries(Object.entries(x.ia).map(([k, v]) => [k, clave === null || k === clave ? { ...v, deducido: false } : v])) }));
   const bloqueado = chatOcupado;
 
   const resumen = (
@@ -509,10 +520,25 @@ export function Editor({ id }: { id: string }) {
           )}
 
           {iaLlenos > 0 && (
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-border bg-primary/5 px-3.5 py-2.5 text-[14px]">
-              <b>La IA completó {iaLlenos} dato{iaLlenos === 1 ? "" : "s"}</b>
-              {deducidos > 0 && <span className="text-amber-700 dark:text-amber-300">· {deducidos} para confirmar</span>}
-              <span className="text-muted-foreground">· pasá el mouse por la marca <span className="rounded-full bg-primary/10 px-1.5 text-[11px] font-semibold text-primary">IA</span> para ver de dónde salió</span>
+            <div id="ia-confirmar" className={cn("flex scroll-mt-4 flex-col gap-2 rounded-lg border px-3.5 py-2.5 text-[14px]", deducidos > 0 ? "border-amber-500/60 bg-amber-500/5" : "border-border bg-primary/5")}>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <b>La IA completó {iaLlenos} dato{iaLlenos === 1 ? "" : "s"}</b>
+                {deducidos > 0 && <span className="text-amber-700 dark:text-amber-300">· {deducidos} para confirmar</span>}
+                <span className="text-muted-foreground">· pasá el mouse por la marca <span className="rounded-full bg-primary/10 px-1.5 text-[11px] font-semibold text-primary">IA</span> para ver de dónde salió</span>
+              </div>
+              {deducidos > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                  {deducidosIa.map(([k, v]) => (
+                    <button key={k} type="button" title={`De: «${v.cita}». Tocá para confirmarlo.`} onClick={() => confirmarDeducidos(k)}
+                      className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-amber-500/60 px-3 text-[13px] font-medium text-amber-800 hover:bg-amber-500/10 dark:text-amber-200">
+                      <Check className="size-3.5" /> {etiquetaIa(k)}
+                    </button>
+                  ))}
+                  <Button className="h-9 bg-hd-boton text-white hover:bg-hd-boton-hover" onClick={() => confirmarDeducidos(null)}>
+                    <Check /> Confirmar todo
+                  </Button>
+                </div>
+              )}
             </div>
           )}
 

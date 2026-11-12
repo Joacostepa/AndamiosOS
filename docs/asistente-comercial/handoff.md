@@ -49,6 +49,14 @@ la sesión nueva"; si es sobre el cotizador rápido, por § "Al 07/11".** El det
 - render obligatorio de elegir;
 - ✓ obligatorio en lo que deduce la IA.
 
+**12/11: confirmar lo que dedujo la IA con un botón** (pedido de JS, que quedaba trabado en «Faltan 1 para guardar»).
+- **El problema:** la IA puede marcar como deducido cualquier campo de `CAMPOS_IA` (CUIT, domicilio, contacto…), pero sólo «Metros lineales» y «Altura» tenían el ✓ Confirmar. Un dato deducido de otra sección no se podía confirmar y bloqueaba el guardado. Además, «Confirmá lo que dedujo la IA (1)» llevaba a la sección del tipo y no decía qué dato era.
+- **El arreglo** (`src/components/cotizador/editor.tsx`):
+  - el aviso «La IA completó X datos» (`id="ia-confirmar"`) muestra cada dato deducido como un botón con ✓ y su nombre (`ETIQUETAS` de `propuesta.ts`; al pasar el mouse, la cita), que lo confirma solo, y un botón «Confirmar todo»;
+  - el faltante dice qué datos son («Confirmá lo que dedujo la IA: CUIT») y lleva a ese aviso;
+  - el aviso se ve en ámbar mientras quede algo por confirmar.
+  - El ✓ que ya estaba en los metros y la altura sigue igual.
+
 **Lo primero en la sesión nueva:**
 1. **Preguntarle a JS cómo le fue con el cotizador en uso real.** Si guardó algo en Odoo desde ahí, revisar la orden: es la primera vez que se guarda sin el chat.
 2. **El costo de `interpretar` no se registra en `asistente_mensajes`:** no entra en la pestaña Uso ni en el tope diario. Sumarlo.

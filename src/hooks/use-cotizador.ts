@@ -51,6 +51,11 @@ export function interpretar(conversacionId: string, texto: string, adjuntos: { p
   return pedir<{ propuesta: PropuestaIA; usoUsd: number }>(`${BASE}/${conversacionId}/interpretar`, { method: "POST", body: JSON.stringify({ texto, adjuntos }) });
 }
 
+/** «Mejorar con IA» del alcance del desglosado: el texto mejorado (no toca el borrador). */
+export function mejorarAlcance(conversacionId: string, texto: string) {
+  return pedir<{ texto: string; usoUsd: number }>(`${BASE}/${conversacionId}/alcance`, { method: "POST", body: JSON.stringify({ texto }) });
+}
+
 export type RespuestaConfirmar = { ok: boolean; motivo: string | null; accion: AccionVista; borrador: BorradorVista | null; pdf: PdfVista | null; whatsapp: string | null };
 
 export function decidirAccion(accionId: string, decision: "confirmar" | "rechazar" | "reintentar") {

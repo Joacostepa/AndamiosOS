@@ -13,7 +13,7 @@ import { Compositor } from "@/components/asistente/compositor";
 import { TarjetaAccion, TarjetaMandar, TarjetaPdf } from "@/components/asistente/tarjetas";
 import { subirAdjunto, useChat, useConversacion, type Adjunto } from "@/hooks/use-asistente";
 import {
-  decidirAccion, ErrorConBorrador, guardarFormulario, interpretar, llamarHerramienta, tomarPropuesta, useContextoCotizador,
+  decidirAccion, ErrorConBorrador, guardarFormulario, interpretar, llamarHerramienta, mejorarAlcance, tomarPropuesta, useContextoCotizador,
 } from "@/hooks/use-cotizador";
 import { recalcular, type ResultadoBorrador } from "@/lib/asistente/borrador";
 import type { AccionVista, BorradorVista, PdfVista } from "@/lib/asistente/eventos";
@@ -563,7 +563,8 @@ export function Editor({ id }: { id: string }) {
           <SeccionCliente f={form} cambiar={cambiar} buscar={buscarClientes} alerta={intento && seccionesConFalta.has("s-cliente")} />
           <SeccionObra f={form} cambiar={cambiar} borrador={vista.b} catastro={catastro} alerta={intento && seccionesConFalta.has("s-obra")}
             onDireccion={() => void verificarDireccion(true)} onVecina={elegirVecina} onFrente={declararFrente} />
-          <SeccionTipo f={form} cambiar={cambiar} tarifas={tarifas} borrador={vista.b} alerta={intento && seccionesConFalta.has("s-tipo")} />
+          <SeccionTipo f={form} cambiar={cambiar} tarifas={tarifas} borrador={vista.b} alerta={intento && seccionesConFalta.has("s-tipo")}
+            onMejorarAlcance={async (texto) => { await alDia(); return (await mejorarAlcance(id, texto)).texto; }} />
           <SeccionJornadas f={form} cambiar={cambiar} renders={contexto.data?.renders ?? []} alertaJornadas={intento && seccionesConFalta.has("s-jornadas")}
             alertaRender={intento && seccionesConFalta.has("s-render")} onSubir={subirRender} subiendo={subiendoRender} vistaPropia={vistaPropia}
             onDespues={async () => { await alDia(); toast.success("Quedó en «Para seguir»."); router.push("/comercial/asistente/cotizar"); }} />

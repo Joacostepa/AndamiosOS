@@ -6,7 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { TARIFAS_AGO26 as T } from "../cotizador/prueba-tarifas.ts";
 import { borradorVacio, recalcular, type DatosBorrador } from "../asistente/borrador.ts";
-import { aplicarFormulario, categoriaParaPrecio, formularioDesdeBorrador, idFila, type Formulario } from "./formulario.ts";
+import { aplicarFormulario, categoriaParaPrecio, esAlcanceRedactado, formularioDesdeBorrador, idFila, referenciaDelAlcance, type Formulario } from "./formulario.ts";
 
 const ctx = { tarifas: T };
 const calc = (d: DatosBorrador) => recalcular(d, { tarifas: T, lista: null, hoy: "2026-11-07" });
@@ -122,6 +122,30 @@ test("desglosado con los montos del vendedor y un renglón sin monto", () => {
   assert.equal(leido.desglose.filas.length, 7);
   assert.equal(leido.desglose.filas.at(-1)?.precio, null);
   assert.match(d.seccion1 ?? "", /10 días corridos/);
+});
+
+test("desglosado: el alcance redactado va tal cual a la Sección 1, con la dirección y el período", () => {
+  const d0 = borradorVacio();
+  const f = base(d0);
+  f.tipo = "desglosado";
+  const alcance = "Provisión, armado y desarme de **estructura multidireccional en hueco de escalera**, para que la cuadrilla del cliente pinte las paredes de los 4 pisos.";
+  f.desglose = {
+    trabajo: alcance,
+    filas: [{ id: idFila("1"), concepto: "Alquiler del material x 30 días", cantidad: 1, precio: 1_000_000, porPeriodo: true, seccion: "base", producto: "estructura_tubular" }],
+  };
+  const d = aplicarFormulario(d0, f, ctx);
+  assert.ok((d.seccion1 ?? "").startsWith("Provisión, armado y desarme de **estructura multidireccional en hueco de escalera**, para que"));
+  assert.match(d.seccion1 ?? "", /pisos\. En \*\*.+\*\*, por un período de \*\*30 días\*\*\.$/);
+  assert.equal(d.referencia, "Estructura multidireccional en hueco de escalera");
+});
+
+test("el alcance: párrafo redactado o frase corta de antes", () => {
+  assert.equal(esAlcanceRedactado("plataforma multidireccional en hueco de escalera"), false);
+  assert.equal(esAlcanceRedactado("Torre de 6 m."), false);
+  assert.equal(esAlcanceRedactado("Provisión de una torre"), true);
+  assert.equal(esAlcanceRedactado("Torre de 6 m. Para pintar el tanque."), true);
+  assert.equal(referenciaDelAlcance("plataforma en sala de máquinas"), "Plataforma en sala de máquinas");
+  assert.equal(referenciaDelAlcance("Provisión de **torre móvil** para pintar"), "Torre móvil");
 });
 
 test("cambiar de bandeja a fachada saca la bandeja", () => {

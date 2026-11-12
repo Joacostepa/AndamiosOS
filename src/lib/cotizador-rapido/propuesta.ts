@@ -13,7 +13,7 @@ export const ETIQUETAS: Record<CampoIA, string> = {
   razonSocial: "Razón social", cuit: "CUIT", contacto: "Dirigido a", celular: "Celular", email: "Correo", domicilio: "Domicilio",
   direccion: "Dirección de la obra", metros: "Metros lineales", alturaBandeja: "Altura de la bandeja", precioMl: "Precio por m.l.",
   frentes: "Frentes", alturaFachada: "Altura de la fachada", precioM2: "Precio por m²", jornadasArmado: "Jornadas de armado",
-  jornadasDesarme: "Jornadas de desarme", plazoDias: "Plazo", trabajo: "Trabajo", esquina: "Esquina", concertina: "Concertina",
+  jornadasDesarme: "Jornadas de desarme", plazoDias: "Plazo", trabajo: "Alcance", esquina: "Esquina", concertina: "Concertina",
   gestoria: "Gestoría del permiso", syh: "Técnico de SyH", memoria: "Memoria de cálculo", mediaSombra: "Media sombra", render: "Render",
 };
 

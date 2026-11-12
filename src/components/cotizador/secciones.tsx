@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ImageOff, ImagePlus, Loader2, Plus, Search, Trash2, Upload } from "lucide-react";
+import { ImageOff, ImagePlus, Loader2, Plus, Search, Sparkles, Trash2, Upload } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import type { Lote, Vecina } from "@/lib/catastro/caba";
 import type { ClienteResumen } from "@/lib/odoo/comercial";
@@ -277,13 +278,17 @@ function resumenTipo(f: Formulario): string | undefined {
   return n ? `${n} ${n === 1 ? "renglón" : "renglones"}` : undefined;
 }
 
-export function SeccionTipo({ f, cambiar, tarifas, borrador, alerta }: { f: Formulario; cambiar: Cambiar; tarifas: Tarifas; borrador: BorradorVista | null; alerta: boolean }) {
+export function SeccionTipo({ f, cambiar, tarifas, borrador, alerta, onMejorarAlcance }: {
+  f: Formulario; cambiar: Cambiar; tarifas: Tarifas; borrador: BorradorVista | null; alerta: boolean;
+  /** «Mejorar con IA» del alcance del desglosado: devuelve el texto propuesto. */
+  onMejorarAlcance: (texto: string) => Promise<string>;
+}) {
   const titulo = { bandeja: "Bandeja de protección · por m.l.", fachada: "Fachada · por m²", desglosado: "Desglosado · renglones con tus montos" }[f.tipo];
   return (
     <Seccion id="s-tipo" titulo={titulo} alerta={alerta} resumen={resumenTipo(f)} extra={<Chips opciones={TIPOS} valor={f.tipo} onCambiar={(v) => cambiar((x) => ({ ...x, tipo: v }))} />}>
       {f.tipo === "bandeja" ? <Bandeja f={f} cambiar={cambiar} tarifas={tarifas} borrador={borrador} />
         : f.tipo === "fachada" ? <Fachada f={f} cambiar={cambiar} tarifas={tarifas} />
-          : <Desglose f={f} cambiar={cambiar} borrador={borrador} />}
+          : <Desglose f={f} cambiar={cambiar} borrador={borrador} onMejorarAlcance={onMejorarAlcance} />}
     </Seccion>
   );
 }
@@ -445,7 +450,21 @@ const PLANTILLAS: { t: string; concepto: string; porPeriodo: boolean; monto?: (t
   { t: "Renglón libre", concepto: "", porPeriodo: false },
 ];
 
-function Desglose({ f, cambiar, borrador }: { f: Formulario; cambiar: Cambiar; borrador: BorradorVista | null }) {
+function Desglose({ f, cambiar, borrador, onMejorarAlcance }: { f: Formulario; cambiar: Cambiar; borrador: BorradorVista | null; onMejorarAlcance: (texto: string) => Promise<string> }) {
+  // «Mejorar con IA» (JS, 12/11): la propuesta se muestra abajo y se usa sólo si el vendedor quiere.
+  const [propuestaAlcance, setPropuestaAlcance] = useState<string | null>(null);
+  const [mejorando, setMejorando] = useState(false);
+  const mejorar = async () => {
+    setMejorando(true);
+    try {
+      setPropuestaAlcance(await onMejorarAlcance(f.desglose.trabajo));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo mejorar el alcance.");
+    } finally {
+      setMejorando(false);
+    }
+  };
+  const vacio = !f.desglose.trabajo.trim();
   const filas = f.desglose.filas;
   const setFila = (id: string, patch: Partial<(typeof filas)[number]>) =>
     cambiar((x) => sinIa({ ...x, desglose: { ...x.desglose, filas: x.desglose.filas.map((r) => (r.id === id ? { ...r, ...patch, ...(patch.concepto !== undefined ? { producto: r.productoOdoo ? r.producto : productoParaConcepto(patch.concepto, patch.porPeriodo ?? r.porPeriodo) } : {}) } : r)) } }, `fila:${id}`));
@@ -467,9 +486,29 @@ function Desglose({ f, cambiar, borrador }: { f: Formulario; cambiar: Cambiar; b
   };
   return (
     <div className="flex flex-col gap-4">
-      <Campo id="d-trabajo" etiqueta="Trabajo (para los textos de la propuesta)" marca={f.ia.trabajo}>
-        <Texto id="d-trabajo" valor={f.desglose.trabajo} onCambiar={(v) => cambiar((x) => sinIa({ ...x, desglose: { ...x.desglose, trabajo: v } }, "trabajo"))} placeholder="Plataforma multidireccional en hueco de escalera" />
+      <Campo id="d-trabajo" etiqueta="Alcance: qué le vamos a brindar y para qué" marca={f.ia.trabajo}
+        extra={
+          <button type="button" onClick={() => void mejorar()} disabled={mejorando || (vacio && !f.desglose.filas.length)}
+            title={vacio && !f.desglose.filas.length ? "Escribí el alcance o agregá renglones primero" : "La IA lo deja prolijo para la propuesta; vos elegís si lo usás"}
+            className="ml-auto inline-flex min-h-9 items-center gap-1.5 rounded-full border border-primary/40 px-3 text-[13px] font-semibold text-primary hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-45">
+            {mejorando ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />} {vacio ? "Redactar con IA" : "Mejorar con IA"}
+          </button>
+        }>
+        <textarea id="d-trabajo" value={f.desglose.trabajo} rows={3}
+          onChange={(e) => cambiar((x) => sinIa({ ...x, desglose: { ...x.desglose, trabajo: e.target.value } }, "trabajo"))}
+          placeholder="Ej.: provisión, armado y desarme de una estructura multidireccional en el hueco de la escalera, para que la cuadrilla del cliente pinte y repare las paredes de los 4 pisos."
+          className="min-h-24 rounded-lg border border-input bg-background p-3 text-[15px] leading-snug" />
       </Campo>
+      {propuestaAlcance && (
+        <div className="flex flex-col gap-2.5 rounded-lg border border-primary/40 bg-primary/5 p-3.5">
+          <span className="text-[13px] font-semibold text-primary">Así lo propone la IA</span>
+          <p className="whitespace-pre-line text-[15px] leading-snug">{propuestaAlcance}</p>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Chip onClick={() => setPropuestaAlcance(null)}>Descartar</Chip>
+            <Chip activo onClick={() => { const t = propuestaAlcance; setPropuestaAlcance(null); cambiar((x) => sinIa({ ...x, desglose: { ...x.desglose, trabajo: t } }, "trabajo")); }}>Usar este texto</Chip>
+          </div>
+        </div>
+      )}
       <div className="flex flex-col divide-y divide-border">
         {filas.length === 0 && <p className="py-2 text-[14px] text-muted-foreground">Todavía no hay renglones: pegá tu lista de precios arriba o agregalos con los botones.</p>}
         {filas.map((r, i) => (

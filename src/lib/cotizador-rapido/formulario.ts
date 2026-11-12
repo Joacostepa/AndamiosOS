@@ -445,21 +445,44 @@ export function textosAutomaticos(d: DatosBorrador, t: Tarifas): Textos {
     };
   }
 
-  // Desglosado: el alcance son los renglones.
+  // Desglosado: el alcance son los renglones, más lo que escribió el vendedor. Desde el 12/11 el
+  // campo es «Alcance: qué le vamos a brindar y para qué» (con «Mejorar con IA»): si es un
+  // párrafo, va tal cual a la Sección 1 y la plantilla le suma la dirección y el período. Si es
+  // una frase corta (los presupuestos de antes), sigue la plantilla de siempre.
   const trabajo = d.cotizador?.trabajo?.trim() || null;
   const renglones = d.lineasManuales.filter((l) => l.seccion === "base");
   if (!renglones.length && !trabajo) return { referencia: null, seccion1: null, seccion2: [] };
   const alquiler = renglones.find((l) => !l.unicaVez);
   const periodo = alquiler && /(\d+)\s*d[ií]as/i.test(alquiler.descripcion) ? alquiler.descripcion.match(/(\d+)\s*d[ií]as[^,.;]*/i)![0] : `${plazo} días`;
+  const redactado = !!trabajo && esAlcanceRedactado(trabajo);
   return {
-    referencia: trabajo ? (trabajo.length > 70 ? `${trabajo.slice(0, 67).trimEnd()}…` : trabajo.charAt(0).toUpperCase() + trabajo.slice(1)) : "Estructura según detalle",
-    seccion1: `Provisión, armado y desarme de **${trabajo ?? "la estructura detallada"}** en **${dir}**, por un período de **${periodo}**.`,
+    referencia: trabajo ? referenciaDelAlcance(trabajo) : "Estructura según detalle",
+    seccion1: redactado
+      ? `${trabajo!.replace(/[.\s]+$/, "")}. En **${dir}**, por un período de **${periodo}**.`
+      : `Provisión, armado y desarme de **${trabajo ?? "la estructura detallada"}** en **${dir}**, por un período de **${periodo}**.`,
     seccion2: [
       { titulo: "Alcance del servicio", contenido: renglones.map((l) => `* ${l.descripcion}.`).join("\n") || "* Según los renglones de la oferta." },
       { titulo: "Plazos de armado y desarme", contenido: textoJornadas(d) },
       ...(alquiler ? [{ titulo: "Renovación", contenido: `* Si la obra sigue, cada período adicional se cobra según el renglón «${alquiler.descripcion}».` }] : []),
     ],
   };
+}
+
+/**
+ * ¿El alcance del desglosado es un párrafo redactado (va tal cual a la Sección 1) o una frase
+ * corta, como «Plataforma multidireccional en hueco de escalera» (va adentro de la plantilla)?
+ */
+export function esAlcanceRedactado(t: string): boolean {
+  const s = t.trim();
+  return s.length > 100 || /\n/.test(s) || /[.;:]\s+\S/.test(s) || /^provisi[oó]n\b/i.test(s);
+}
+
+/** La referencia de la propuesta, del alcance: lo que está en negrita, o el comienzo. */
+export function referenciaDelAlcance(t: string): string {
+  const negrita = t.match(/\*\*(.+?)\*\*/)?.[1]?.trim();
+  const base = (negrita || t.replace(/\*\*/g, "").split(/[.\n]/)[0]).trim();
+  const r = base.length > 70 ? `${base.slice(0, 67).trimEnd()}…` : base;
+  return r.charAt(0).toUpperCase() + r.slice(1);
 }
 
 // ── Para la pantalla ────────────────────────────────────────────────────────────────────

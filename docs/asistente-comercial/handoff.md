@@ -62,6 +62,11 @@ la sesión nueva"; si es sobre el cotizador rápido, por § "Al 07/11".** El det
 - **Las secciones completas se achican a un renglón en verde**, con un resumen, por ejemplo «✓ Cliente · Milenia Fitz Roy S.A · CUIT 33-…». Se abren tocándolo y se cierran con «Achicar». Si el foco entra en una sección, queda abierta aunque se complete, para no cerrarse mientras se escribe. Una sección sin `resumen` no se achica nunca.
 - **JS pidió primero que las secciones aparecieran de a una.** Se le propuso achicarlas en vez de esconderlas, y lo aceptó: con «Pegá y completo» la IA llena varias a la vez, y el vendedor a veces carga fuera de orden.
 
+**12/11: el alcance del desglosado, con «Mejorar con IA»** (pedido de JS).
+- **El campo** «Trabajo» pasó a ser «Alcance: qué le vamos a brindar y para qué», en un textarea. Se guarda en el mismo `DatosCotizador.trabajo`, sin migración.
+- **En la propuesta:** si es un párrafo (`esAlcanceRedactado`), va tal cual a la Sección 1 y la plantilla le suma «En **dir**, por un período de **N días**». La referencia sale de la negrita (`referenciaDelAlcance`). Una frase corta (los presupuestos de antes) sigue con la plantilla «Provisión, armado y desarme de **X**…».
+- **«Mejorar con IA» / «Redactar con IA»:** `POST /api/comercial/asistente/cotizador/:id/alcance` → `src/lib/cotizador-rapido/alcance.ts`. Es una llamada a `claude-opus-5-5` con esfuerzo `low`, con lo escrito y los conceptos de los renglones (sin montos), y cuesta unos US$ 0,01. No toca el borrador: la pantalla muestra la propuesta con «Usar este texto» o «Descartar». Su costo, igual que el de `interpretar`, todavía no se registra en Uso.
+
 **12/11: tres arreglos del desglosado** (`secciones.tsx`, pedido de JS):
 - **Renders:** se ven 6, primero los del tipo y los de por defecto. «Ver toda la biblioteca (N)» muestra todos, también los de otros tipos. El elegido se ve aunque no esté entre los 6.
 - **Tab en los montos:** salta al monto del renglón siguiente (Shift+Tab, al anterior) y deja el número seleccionado (`data-monto-fila`). En el último renglón, Tab sigue normal.

@@ -62,6 +62,11 @@ la sesión nueva"; si es sobre el cotizador rápido, por § "Al 07/11".** El det
 - **Las secciones completas se achican a un renglón en verde**, con un resumen, por ejemplo «✓ Cliente · Milenia Fitz Roy S.A · CUIT 33-…». Se abren tocándolo y se cierran con «Achicar». Si el foco entra en una sección, queda abierta aunque se complete, para no cerrarse mientras se escribe. Una sección sin `resumen` no se achica nunca.
 - **JS pidió primero que las secciones aparecieran de a una.** Se le propuso achicarlas en vez de esconderlas, y lo aceptó: con «Pegá y completo» la IA llena varias a la vez, y el vendedor a veces carga fuera de orden.
 
+**12/11: tres arreglos del desglosado** (`secciones.tsx`, pedido de JS):
+- **Renders:** se ven 6, primero los del tipo y los de por defecto. «Ver toda la biblioteca (N)» muestra todos, también los de otros tipos. El elegido se ve aunque no esté entre los 6.
+- **Tab en los montos:** salta al monto del renglón siguiente (Shift+Tab, al anterior) y deja el número seleccionado (`data-monto-fila`). En el último renglón, Tab sigue normal.
+- **«Agregar renglón» en el orden de JS:** mano de obra armado, mano de obra desarme, alquiler N días, traslado de envío, traslado de retiro, memoria de cálculo, técnico de SyH, gestoría, etapa y renglón libre. La mano de obra va en dos renglones, con el mismo producto de Odoo que antes (`productoParaConcepto`).
+
 **Lo primero en la sesión nueva:**
 1. **Preguntarle a JS cómo le fue con el cotizador en uso real.** Si guardó algo en Odoo desde ahí, revisar la orden: es la primera vez que se guarda sin el chat.
 2. **El costo de `interpretar` no se registra en `asistente_mensajes`:** no entra en la pestaña Uso ni en el tope diario. Sumarlo.

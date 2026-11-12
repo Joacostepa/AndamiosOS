@@ -431,12 +431,14 @@ function ObjetivoFachada({ sup, onUsar }: { sup: number; onUsar: (p: number) => 
   );
 }
 
+/** Los botones de «Agregar renglón», en el orden en que JS arma un desglosado (12/11). */
 const PLANTILLAS: { t: string; concepto: string; porPeriodo: boolean; monto?: (t: Tarifas) => number }[] = [
-  { t: "Mano de obra", concepto: "Mano de obra de armado y desarme", porPeriodo: false },
+  { t: "Mano de obra armado", concepto: "Mano de obra de armado", porPeriodo: false },
+  { t: "Mano de obra desarme", concepto: "Mano de obra de desarme", porPeriodo: false },
   { t: "Alquiler N días", concepto: "Alquiler del material x 30 días", porPeriodo: true },
-  { t: "Memoria de cálculo", concepto: "Memoria de cálculo", porPeriodo: false, monto: (t) => t.complementarios.ingenieriaMemoria },
   { t: "Traslado de envío", concepto: "Traslado de envío", porPeriodo: false },
   { t: "Traslado de retiro", concepto: "Traslado de retiro", porPeriodo: false },
+  { t: "Memoria de cálculo", concepto: "Memoria de cálculo", porPeriodo: false, monto: (t) => t.complementarios.ingenieriaMemoria },
   { t: "Técnico de SyH", concepto: "Técnico de Seguridad e Higiene durante armado y desarme", porPeriodo: false },
   { t: "Gestoría", concepto: "Gestión del permiso de vía pública (GCBA)", porPeriodo: false, monto: (t) => t.complementarios.gestoriaCaba },
   { t: "Etapa", concepto: "Etapa 2: desarme y rearmado", porPeriodo: false },
@@ -453,6 +455,16 @@ function Desglose({ f, cambiar, borrador }: { f: Formulario; cambiar: Cambiar; b
     const id = idFila(`${Date.now().toString(36)}-${x.desglose.filas.length + 1}`);
     return { ...x, desglose: { ...x.desglose, filas: [...x.desglose.filas, { id, concepto: p.concepto, cantidad: 1, precio: p.monto && tarifas ? p.monto(tarifas) : null, porPeriodo: p.porPeriodo, seccion: "base", producto: productoParaConcepto(p.concepto || "estructura", p.porPeriodo) }] } };
   });
+  // Tab (y Shift+Tab) en un monto salta al monto del renglón de abajo (o de arriba), para cargar
+  // los precios de corrido (JS, 12/11). En el último, Tab sigue de largo como siempre.
+  const saltarMonto = (e: React.KeyboardEvent<HTMLDivElement>, i: number) => {
+    if (e.key !== "Tab") return;
+    const destino = document.querySelector<HTMLInputElement>(`[data-monto-fila="${e.shiftKey ? i - 1 : i + 1}"] input`);
+    if (!destino) return;
+    e.preventDefault();
+    destino.focus();
+    destino.select();
+  };
   return (
     <div className="flex flex-col gap-4">
       <Campo id="d-trabajo" etiqueta="Trabajo (para los textos de la propuesta)" marca={f.ia.trabajo}>
@@ -460,13 +472,13 @@ function Desglose({ f, cambiar, borrador }: { f: Formulario; cambiar: Cambiar; b
       </Campo>
       <div className="flex flex-col divide-y divide-border">
         {filas.length === 0 && <p className="py-2 text-[14px] text-muted-foreground">Todavía no hay renglones: pegá tu lista de precios arriba o agregalos con los botones.</p>}
-        {filas.map((r) => (
+        {filas.map((r, i) => (
           <div key={r.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 py-2.5 lg:grid-cols-[minmax(0,1fr)_9rem_auto_auto_auto] lg:items-center">
             <div className="flex min-w-0 items-center gap-2">
               <Texto id={`fila-${r.id}`} valor={r.concepto} onCambiar={(v) => setFila(r.id, { concepto: v })} placeholder="Concepto" />
               {f.ia[`fila:${r.id}`] && <span title={f.ia[`fila:${r.id}`].cita} className="cursor-help rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">IA</span>}
             </div>
-            <div className="lg:order-none">
+            <div className="lg:order-none" data-monto-fila={i} onKeyDown={(e) => saltarMonto(e, i)}>
               <Moneda valor={r.precio === null ? null : r.precio * r.cantidad} onCambiar={(v) => setFila(r.id, { precio: v, cantidad: 1 })} placeholder="Monto" deducido={r.precio === null} etiquetaAria="Monto sin IVA" />
             </div>
             <div className="col-span-2 flex flex-wrap gap-1.5 lg:col-span-1">
@@ -532,7 +544,14 @@ export function SeccionJornadas({ f, cambiar, renders, alertaJornadas, alertaRen
   const j = f.jornadas;
   const op = [0.5, 1, 2, 3];
   const setJ = (k: "armado" | "desarme", v: number | null) => cambiar((x) => ({ ...x, jornadas: { ...x.jornadas, [k]: v } }));
-  const lista = renders.filter((r) => TIPOS_RENDER_POR[f.tipo].includes(String(r.tipo))).sort((a, b) => Number(b.por_defecto) - Number(a.por_defecto)).slice(0, 6);
+  // Primero los del tipo (los de por defecto adelante) y después el resto de la biblioteca. Se ven
+  // 6; «Ver toda la biblioteca» muestra todos (JS, 12/11: en el desglosado faltaban renders).
+  const delTipo = (r: Render) => TIPOS_RENDER_POR[f.tipo].includes(String(r.tipo));
+  const ordenados = [...renders].sort((a, b) => Number(delTipo(b)) - Number(delTipo(a)) || Number(b.por_defecto) - Number(a.por_defecto) || a.nombre.localeCompare(b.nombre, "es"));
+  const [todos, setTodos] = useState(false);
+  const elegido = f.render.eleccion === "biblioteca" ? ordenados.find((r) => r.id === f.render.renderId) : undefined;
+  const primeros = ordenados.filter(delTipo).slice(0, 6);
+  const lista = todos ? ordenados : elegido && !primeros.includes(elegido) ? [...primeros, elegido] : primeros;
   const archivo = useRef<HTMLInputElement>(null);
   return (
     <Seccion id="s-jornadas" titulo="Jornadas y render" alerta={alertaJornadas || alertaRender}
@@ -563,6 +582,11 @@ export function SeccionJornadas({ f, cambiar, renders, alertaJornadas, alertaRen
           <BotonRender activo={f.render.eleccion === "ninguno"} nombre="Sin render" icono={<ImageOff className="size-6" />}
             onClick={() => cambiar((x) => ({ ...x, render: { eleccion: "ninguno", renderId: null, path: null } }))} />
         </div>
+        {ordenados.length > lista.length || todos ? (
+          <button type="button" onClick={() => setTodos(!todos)} className="self-start min-h-9 text-[14px] text-primary underline-offset-2 hover:underline">
+            {todos ? "Ver menos" : `Ver toda la biblioteca (${ordenados.length})`}
+          </button>
+        ) : null}
         <input ref={archivo} type="file" accept="image/png,image/jpeg" hidden onChange={(e) => { const a = e.target.files?.[0]; if (a) onSubir(a); e.target.value = ""; }} />
         {lista.length === 0 && <p className="text-[13px] text-muted-foreground">No hay renders de este tipo en la biblioteca (Parámetros → Renders).</p>}
       </div>

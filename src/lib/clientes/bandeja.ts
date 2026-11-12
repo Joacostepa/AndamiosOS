@@ -256,6 +256,14 @@ export async function borrarCharla(db: SupabaseClient, id: string): Promise<void
   const { data: archivos } = await db.storage.from("comercial").list(carpeta, { limit: 1000 });
   const paths = (archivos ?? []).map((a) => `${carpeta}/${a.name}`);
   if (paths.length) await db.storage.from("comercial").remove(paths);
+  // Las copias de las fotos y los PDF que vio Tomás (Files API de Anthropic, agente.ts).
+  const { data: conArchivo } = await db.from("cli_hilo").select("adjunto").eq("conversacion_id", id).not("adjunto->>anthropic_file_id", "is", null);
+  const fileIds = (conArchivo ?? []).map((f) => (f.adjunto as { anthropic_file_id?: string } | null)?.anthropic_file_id).filter((x): x is string => !!x);
+  if (fileIds.length) {
+    const { default: Anthropic } = await import("@anthropic-ai/sdk");
+    const cliente = new Anthropic();
+    await Promise.all(fileIds.map((f) => cliente.files.delete(f).catch((e) => console.error("[clientes] borrar archivo de Anthropic", f, e))));
+  }
   const { error } = await db.from("cli_conversaciones").delete().eq("id", id);
   if (error) throw new Error(`No se pudo borrar la charla: ${error.message}`);
 }

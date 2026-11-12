@@ -80,7 +80,7 @@ import {
   motivoYaDecidida, racha, recalcularBorrador, textoPareja, textoRacha, tomarUnaVez, validarCorreccion, verificarRecalculo,
   type Correccion, type Despues, type EstadoAprobacion, type FilaDecision, type RepoUnaVez, type TipoAprobacion, type TipoCorreccion, type Trato,
 } from "./aprobacion";
-import { describirArmado, parametrosAlquilerDesdeFilas, textoFecha, textoFranja, type ParametrosAlquiler } from "./alquiler-simple";
+import { describirArmado, parametrosAlquilerDesdeFilas, partesDelPresupuesto, textoFecha, textoFranja, type ParametrosAlquiler } from "./alquiler-simple";
 import {
   CARRIL_ALQUILER, CORRECCION_EN_BASE, datosDelPedido, leerPayloadAlquiler, motivosParaTarjeta, notaInternaAlquiler, recalcularAlquiler,
   textoEntraSinPagarMas, textoPlataforma, validarCorreccionAlquiler,
@@ -1056,7 +1056,15 @@ async function ejecutarAlquiler(db: Db, f: Fila, quien: Quien): Promise<Resultad
   }
   try {
     if (!pasos.textoEnviado) {
-      await mandarTexto(db, f.conversacion_id, charla.telefono, envio.texto, { autor: "sistema" });
+      // En dos mensajes: el precio y las condiciones (charlas de prueba del 12/11: en uno solo
+      // era muy largo). Si falla el segundo, el reintento manda sólo lo que falta.
+      const partes = partesDelPresupuesto(envio.texto);
+      for (let i = typeof pasos.partesEnviadas === "number" ? pasos.partesEnviadas : 0; i < partes.length; i++) {
+        await mandarTexto(db, f.conversacion_id, charla.telefono, partes[i], { autor: "sistema" });
+        pasos.partesEnviadas = i + 1;
+        // Se anota enseguida: si la función se corta entre las dos, el reintento no repite el precio.
+        if (i < partes.length - 1) await actualizar(db, f.id, { pasos });
+      }
       pasos.textoEnviado = ahoraIso();
     }
   } catch (e) {

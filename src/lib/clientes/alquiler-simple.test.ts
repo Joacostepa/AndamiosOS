@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import type { FilaParametro } from "../cotizador/tarifas.ts";
 import { detectarPlata } from "./filtro-salida.ts";
 import {
-  CLAVES_PARAMETROS_ALQUILER, condicionesAlquilerSimple, cotizarAlquilerSimple, DEPOSITO, franjaSegunModalidad, mensajePresupuestoAlquiler, metros,
+  CLAVES_PARAMETROS_ALQUILER, condicionesAlquilerSimple, cotizarAlquilerSimple, DEPOSITO, franjaSegunModalidad, mensajePresupuestoAlquiler, metros, partesDelPresupuesto,
   montoRenovacion, parametrosAlquilerDesdeFilas, pedidoVacio, pesos, resumenParaTomas, textoFranja, validarEntrega,
   type ClienteAlquiler, type ContextoAlquiler, type Franja, type PedidoAlquiler, type ResultadoAlquiler,
 } from "./alquiler-simple.ts";
@@ -708,6 +708,19 @@ test("condicionesAlquilerSimple: las de la §6, sin plata ni markdown", () => {
     /este mismo WhatsApp con 24 horas de anticipación/, /el alquiler sigue corriendo y se cobra por día/,
   ]) assert.match(c, frase);
   assert.ok(!/[*_#`]|^- /m.test(c));
+});
+
+test("partesDelPresupuesto: el precio en un mensaje y las condiciones con el cierre en otro (12/11)", () => {
+  const m = mensajePresupuestoAlquiler(cotizar({ alturaTrabajo: 5 }), LUNES, MANANA);
+  const [precio, condiciones, ...resto] = partesDelPresupuesto(m);
+  assert.equal(resto.length, 0);
+  assert.match(precio, /^Te paso el presupuesto: /);
+  assert.match(precio, /sale \$ 500\.000 \+ IVA/);
+  assert.ok(!precio.includes("Te cuento cómo funciona"));
+  assert.ok(condiciones.startsWith("Te cuento cómo funciona."));
+  assert.ok(condiciones.endsWith("¿Te lo reservo para el lunes 16 de noviembre, de 8 a 12?"));
+  assert.equal(`${precio}\n\n${condiciones}`, m);
+  assert.deepEqual(partesDelPresupuesto("Un texto sin condiciones"), ["Un texto sin condiciones"]);
 });
 
 test("mensajePresupuestoAlquiler: Palermo, un solo total por 30 días y el cierre", () => {

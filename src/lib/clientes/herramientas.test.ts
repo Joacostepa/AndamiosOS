@@ -272,7 +272,7 @@ test("cotizar_alquiler_simple: el ejemplo de Palermo queda pendiente en el carri
   assert.match(o.presupuesto, /^#\d+$/);
   assert.equal(r.efecto?.estado, "espera_ok");
   assert.match(r.efecto!.motivo, /^presupuesto de alquiler #\d+$/);
-  assert.match(o.que_decir, /unos minutos/);
+  assert.match(o.que_decir, /No prometas minutos/);
   assert.match(o.condiciones, /choferes no pueden entrar/);
   assert.equal(detectarPlata(r.contenido).bloquea, false, r.contenido);
   assert.ok(!/500000|500\.000|140400|140\.400|197600/.test(r.contenido));

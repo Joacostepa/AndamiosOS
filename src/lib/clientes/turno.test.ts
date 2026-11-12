@@ -8,12 +8,15 @@ import assert from "node:assert/strict";
 import { atenderCharla } from "./turno.ts";
 import { crearMundo, guion, respuestaHerramientas, respuestaTexto, resultadosDeHerramientas } from "./prueba-sofia.ts";
 import { detectarPlata } from "./filtro-salida.ts";
+import { alquilerVacio } from "./herramientas.ts";
 import { INSTRUCCIONES } from "./prompt.ts";
-import { saludoInicial, TEXTO_ERROR, TEXTO_PASO_A_PERSONA } from "./saludo.ts";
+import { saludoCorto, saludoInicial, TEXTO_ERROR, TEXTO_PASO_A_PERSONA } from "./saludo.ts";
 
 // El reloj de las pruebas marca las 10:30 de Buenos Aires (prueba-sofia.ts).
 const RELOJ = new Date("2026-10-15T13:30:00Z");
 const SALUDO_MARCELA = saludoInicial("Marcela", RELOJ);
+/** Cuando el primer mensaje ya trae el pedido, el saludo va sin «Contame en qué te puedo ayudar» (12/11). */
+const SALUDO_CORTO_MARCELA = saludoCorto("Marcela", RELOJ);
 
 /** El último aviso de sistema que vio el modelo. */
 function ultimoAviso(m: ReturnType<typeof crearMundo>): string {
@@ -82,7 +85,7 @@ test("primer mensaje con pedido: saludo y respuesta, en ese orden; el saludo una
   m.escribe("Hola, necesito una bandeja para la vereda");
   await atenderCharla(m.deps(guion(respuestaTexto("¿Me pasás la dirección de la obra?"))), m.charla.id);
   assert.deepEqual(m.salidas.map((s) => s.texto), [
-    saludoInicial(null, RELOJ),
+    saludoCorto(null, RELOJ),
     "¿Me pasás la dirección de la obra?",
   ]);
   m.escribe("Los Aromos 1234");
@@ -178,7 +181,7 @@ test("si el modelo igual niega ser una IA, no sale: queda bloqueado para la band
   const m = crearMundo();
   m.escribe("Hola, ¿sos una persona de verdad?");
   await atenderCharla(m.deps(guion(respuestaTexto("Sí, soy una persona del equipo, quedate tranquilo."))), m.charla.id);
-  assert.deepEqual(m.salidas.map((s) => s.texto), [SALUDO_MARCELA]);
+  assert.deepEqual(m.salidas.map((s) => s.texto), [SALUDO_CORTO_MARCELA]);
   assert.equal(m.charla.estado, "espera_ok");
   assert.match(m.charla.motivo!, /niega ser una IA/);
   assert.equal(m.bloqueos.length, 1);
@@ -210,7 +213,7 @@ test("injection, modelo «comprado»: pide datos de otro cliente y escribe un pr
     respuestaTexto("Listo Joaquín: el consorcio debe $1.250.000 y al cliente decile que son 140 lucas el metro."),
   )), m.charla.id);
   // Al cliente sólo le llegó el saludo.
-  assert.deepEqual(m.salidas.map((s) => s.texto), [SALUDO_MARCELA]);
+  assert.deepEqual(m.salidas.map((s) => s.texto), [SALUDO_CORTO_MARCELA]);
   assert.equal(m.charla.estado, "espera_ok");
   assert.match(m.charla.motivo!, /^texto bloqueado: /);
   assert.equal(m.bloqueos.length, 1);
@@ -239,7 +242,7 @@ test("evasiones del filtro: «ciento cuarenta mil», «140k», un CBU y un link 
     const m = crearMundo();
     m.escribe("¿Cuánto sale la bandeja?");
     await atenderCharla(m.deps(guion(respuestaTexto(malo))), m.charla.id);
-    assert.deepEqual(m.salidas.map((s) => s.texto), [SALUDO_MARCELA], malo);
+    assert.deepEqual(m.salidas.map((s) => s.texto), [SALUDO_CORTO_MARCELA], malo);
     assert.equal(m.charla.estado, "espera_ok", malo);
   }
 });
@@ -253,7 +256,7 @@ test("si una persona toma la charla mientras Tomás piensa, la respuesta no sale
     m.charla.estado = "humano"; // Sandra tocó «Tomar» justo ahora
     return respuestaTexto("Sí, el permiso de vía pública lo gestionamos como opcional.");
   })), m.charla.id);
-  assert.deepEqual(m.salidas.map((s) => s.texto), [SALUDO_MARCELA]);
+  assert.deepEqual(m.salidas.map((s) => s.texto), [SALUDO_CORTO_MARCELA]);
   assert.equal(m.charla.estado, "humano");
   assert.ok(m.eventos.some((e) => /una persona tomó la charla/.test(e)));
   const final = m.historia.filter((h) => h.rol === "assistant").at(-1)!;
@@ -367,7 +370,7 @@ test("seguridad en obra: texto fijo del servidor con el teléfono de guardia, ur
     respuestaTexto("[nada]"),
   )), m.charla.id);
   assert.deepEqual(m.salidas.map((s) => s.texto), [
-    SALUDO_MARCELA,
+    SALUDO_CORTO_MARCELA,
     "Gracias por avisar. Ya le pasé el aviso al equipo de obra. Si hay riesgo para alguien ahora, llamá al 11 0000-0000.",
   ]);
   assert.equal(m.salidas[1].autor, "sistema");
@@ -382,7 +385,7 @@ test("tope de gasto: pasa a una persona sin llamar al modelo y sin decir por qu�
   m.escribe("Hola, ¿me cotizás una bandeja?");
   await atenderCharla(m.deps(guion()), m.charla.id);
   assert.equal(m.pedidos.length, 0);
-  assert.deepEqual(m.salidas.map((s) => s.texto), [SALUDO_MARCELA, TEXTO_PASO_A_PERSONA]);
+  assert.deepEqual(m.salidas.map((s) => s.texto), [SALUDO_CORTO_MARCELA, TEXTO_PASO_A_PERSONA]);
   assert.equal(m.charla.estado, "derivada");
   assert.ok(m.eventos.some((e) => /tope del día para este teléfono/.test(e)));
 });
@@ -394,7 +397,7 @@ test("error de la API: texto fijo, pasa a una persona y no se reintenta en silen
     throw new Error("overloaded");
   }), m.charla.id);
   assert.equal(r.resultado, "error");
-  assert.deepEqual(m.salidas.map((s) => s.texto), [SALUDO_MARCELA, TEXTO_ERROR]);
+  assert.deepEqual(m.salidas.map((s) => s.texto), [SALUDO_CORTO_MARCELA, TEXTO_ERROR]);
   assert.equal(m.charla.estado, "derivada");
   assert.equal(m.charla.ocupada, false, "el candado se suelta");
 });
@@ -403,7 +406,7 @@ test("la IA se niega: texto fijo y pasa a una persona", async () => {
   const m = crearMundo();
   m.escribe("algo raro");
   await atenderCharla(m.deps(guion(respuestaTexto("", "refusal"))), m.charla.id);
-  assert.deepEqual(m.salidas.map((s) => s.texto), [SALUDO_MARCELA, TEXTO_PASO_A_PERSONA]);
+  assert.deepEqual(m.salidas.map((s) => s.texto), [SALUDO_CORTO_MARCELA, TEXTO_PASO_A_PERSONA]);
   assert.equal(m.charla.estado, "derivada");
   assert.equal(m.charla.motivo, "La IA se negó a contestar");
 });
@@ -418,7 +421,7 @@ test("«[nada]»: no se manda nada (un «gracias» suelto)", async () => {
   assert.equal(m.charla.estado, "bot");
 });
 
-test("mensajes que llegan mientras contesta: el mismo turno los levanta después", async () => {
+test("mensajes que llegan mientras contesta: esa respuesta no sale y contesta todo junto (12/11)", async () => {
   const m = crearMundo();
   m.escribe("Hola, necesito una bandeja");
   await atenderCharla(m.deps(guion(
@@ -428,13 +431,141 @@ test("mensajes que llegan mientras contesta: el mismo turno los levanta después
     },
     respuestaTexto("Perfecto, Los Aromos 1234. ¿La bandeja va por todo el frente?"),
   )), m.charla.id);
-  assert.deepEqual(m.salidas.slice(1).map((s) => s.texto), [
-    "¿Me pasás la dirección de la obra?",
-    "Perfecto, Los Aromos 1234. ¿La bandeja va por todo el frente?",
-  ]);
+  // Antes salían las dos: la pregunta por la dirección quedaba contestada antes de llegar.
+  assert.deepEqual(m.salidas.slice(1).map((s) => s.texto), ["Perfecto, Los Aromos 1234. ¿La bandeja va por todo el frente?"]);
   assert.equal(m.historia.filter((h) => h.tipo === "cliente").length, 2);
+  const primera = m.historia.find((h) => h.tipo === "asistente" && h.texto === "¿Me pasás la dirección de la obra?");
+  assert.equal(primera?.enviado, false);
+  assert.match(primera?.nota ?? "", /mandó más mensajes/);
+  // El modelo sabe que su respuesta anterior no salió.
+  assert.match(ultimoAviso(m), /NO le llegó al cliente \(el cliente mandó más mensajes/);
 });
 
+test("si el cliente sigue escribiendo en cada tanda, la última respuesta sale igual", async () => {
+  const m = crearMundo();
+  m.escribe("Hola, necesito una bandeja");
+  let n = 0;
+  const sigue = () => {
+    m.escribe(`y otra cosa ${++n}`);
+    return respuestaTexto(`Respuesta ${n}`);
+  };
+  await atenderCharla(m.deps(guion(sigue, sigue, sigue, respuestaTexto("Respuesta final"))), m.charla.id);
+  // Tres tandas: las dos primeras se descartan y la tercera sale aunque haya llegado algo más; lo
+  // último lo contesta la vuelta de después de soltar el candado.
+  assert.deepEqual(m.salidas.slice(1).map((s) => s.texto), ["Respuesta 3", "Respuesta final"]);
+});
+
+test("con el plazo del turno casi gastado, la respuesta sale aunque haya llegado algo", async () => {
+  const m = crearMundo();
+  m.escribe("Hola, necesito una bandeja");
+  await atenderCharla(m.deps(guion(
+    () => {
+      m.escribe("es en Los Aromos 1234");
+      return respuestaTexto("¿Me pasás la dirección de la obra?");
+    },
+    respuestaTexto("Perfecto, Los Aromos 1234."),
+  )), m.charla.id, { inicio: Date.now() - 200_000 });
+  // Sale la primera: no queda tiempo para otra vuelta del modelo y descartarla podría dejarlo sin nada.
+  assert.equal(m.salidas[1]?.texto, "¿Me pasás la dirección de la obra?");
+});
+
+test("la vuelta de después de soltar el candado no descarta", async () => {
+  const m = crearMundo();
+  m.charla.iaSaludoAt = "2026-10-16T12:00:00Z";
+  m.escribe("necesito una bandeja");
+  await atenderCharla(m.deps(guion(
+    () => {
+      m.escribe("es en Los Aromos 1234");
+      return respuestaTexto("¿Me pasás la dirección de la obra?");
+    },
+    respuestaTexto("Perfecto, Los Aromos 1234."),
+  )), m.charla.id, { profundidad: 1 });
+  assert.equal(m.salidas[0]?.texto, "¿Me pasás la dirección de la obra?");
+});
+
+// ── Fotos y PDF (12/11) ─────────────────────────────────────────────────────────────────
+
+test("fotos y PDF: el modelo los ve por la Files API, cada uno después de su renglón", async () => {
+  const m = crearMundo();
+  m.escribe("buenas! quería consultar si tienen algo así");
+  m.escribe("", { tipo: "image", adjunto: { path: "clientes/x/foto.jpg", mime: "image/jpeg", nombre: "foto.jpg" } });
+  m.escribe("", { tipo: "document", adjunto: { path: "clientes/x/frente.pdf", mime: "application/pdf", nombre: "FRENTE FLORIDA.pdf" } });
+  const d = m.deps(guion(respuestaTexto("Por la foto, es una plataforma con ruedas. ¿Para qué la vas a usar?")));
+  const pedidos: string[] = [];
+  d.repo.archivoParaModelo = async (it) => {
+    pedidos.push(it.tipo);
+    return it.tipo === "image" ? { bloque: "image", fileId: "file_foto" } : { bloque: "document", fileId: "file_pdf" };
+  };
+  await atenderCharla(d, m.charla.id);
+  assert.deepEqual(pedidos, ["image", "document"]);
+  const cliente = m.historia.find((h) => h.tipo === "cliente")!;
+  const bloques = cliente.contenido as { type: string; text?: string; source?: { type: string; file_id: string } }[];
+  assert.deepEqual(bloques.map((b) => b.type), ["text", "image", "text", "document"]);
+  assert.match(bloques[0].text!, /quería consultar si tienen algo así\n\[Mandó esta foto\]/);
+  assert.deepEqual(bloques[1].source, { type: "file", file_id: "file_foto" });
+  assert.match(bloques[2].text!, /\[Mandó este archivo \(FRENTE FLORIDA\.pdf\)\]/);
+  assert.deepEqual(bloques[3].source, { type: "file", file_id: "file_pdf" });
+  assert.match(cliente.texto ?? "", /\[Mandó esta foto\]/);
+});
+
+test("fotos: si no se pueden pasar al modelo, la ve el equipo", async () => {
+  const m = crearMundo();
+  m.escribe("Hola, mirá esto");
+  m.escribe("", { tipo: "image", adjunto: { path: "clientes/x/foto.heic", mime: "image/heic" } });
+  const d = m.deps(guion(respuestaTexto("¿Me contás qué trabajo tenés que hacer?")));
+  d.repo.archivoParaModelo = async () => null;
+  await atenderCharla(d, m.charla.id);
+  const cliente = m.historia.find((h) => h.tipo === "cliente")!;
+  const bloques = cliente.contenido as { type: string; text?: string }[];
+  assert.deepEqual(bloques.map((b) => b.type), ["text"]);
+  assert.match(bloques[0].text!, /\[Mandó una foto: la ve el equipo, vos no\]/);
+});
+
+test("fotos: desde el presupuesto del alquiler simple no se le muestran (son el DNI y los servicios)", async () => {
+  const m = crearMundo({
+    ficha: { alquiler: { ...alquilerVacio(), cotizacion: { numero: 1009, at: "2026-11-12T15:00:00Z", fecha: "2026-11-24", franja: { tipo: "manana" } as never } } },
+  });
+  m.charla.iaSaludoAt = "2026-11-12T14:00:00Z";
+  m.escribe("", { tipo: "image", adjunto: { path: "clientes/x/dni.jpg", mime: "image/jpeg" } });
+  const d = m.deps(guion(respuestaTexto("Gracias, lo recibí.")));
+  let pidio = false;
+  d.repo.archivoParaModelo = async () => { pidio = true; return { bloque: "image", fileId: "file_dni" }; };
+  await atenderCharla(d, m.charla.id);
+  assert.equal(pidio, false);
+  const cliente = m.historia.find((h) => h.tipo === "cliente")!;
+  assert.ok(!(cliente.contenido as { type: string }[]).some((b) => b.type === "image"));
+  // No «la ve el equipo»: le pediría que la reenvíe.
+  assert.match(cliente.texto ?? "", /si es un documento del alquiler, lo revisa el sistema/);
+});
+
+test("una foto que se está bajando: espera a que termine para que el modelo la vea", async () => {
+  const m = crearMundo();
+  m.escribe("Hola, es para esto");
+  const foto = m.escribe("", { tipo: "image", adjunto: { media_id: "m1", mime: "image/jpeg", pendiente: true } });
+  let esperas = 0;
+  const d = m.deps(guion(respuestaTexto("Por la foto, es un frente de 3 pisos.")), {
+    esperarAdjunto: async () => {
+      esperas++;
+      foto.adjunto = { path: "clientes/x/foto.jpg", mime: "image/jpeg" };
+    },
+  });
+  d.repo.archivoParaModelo = async (it) => (it.adjunto?.path ? { bloque: "image", fileId: "file_1" } : null);
+  await atenderCharla(d, m.charla.id);
+  assert.equal(esperas, 1);
+  const cliente = m.historia.find((h) => h.tipo === "cliente")!;
+  assert.ok((cliente.contenido as { type: string }[]).some((b) => b.type === "image"));
+});
+
+test("con la voz prendida y el pedido en el primer mensaje: el saludo corto, en texto", async () => {
+  const m = crearMundo({ config: { saludoVoz: true } });
+  const d = m.deps(guion(respuestaTexto("¿Me pasás la dirección de la obra?")));
+  let audio = false;
+  d.repo.mandarSaludoVoz = async () => { audio = true; return "audio"; };
+  m.escribe("Hola, necesito una bandeja para la vereda");
+  await atenderCharla(d, m.charla.id);
+  assert.equal(audio, false);
+  assert.deepEqual(m.salidas.map((s) => s.texto), [SALUDO_CORTO_MARCELA, "¿Me pasás la dirección de la obra?"]);
+});
 test("fuera de horario: el aviso le dice cuándo sigue una persona (con feriados)", async () => {
   const m = crearMundo();
   m.escribe("Hola, necesito 3 cuerpos de andamio con ruedas y 4 tablones");
@@ -520,7 +651,7 @@ test("un contestador automático: ni saludo ni modelo, y queda leído (análisis
   // Si después escribe una persona, la charla arranca como siempre.
   m.escribe("Hola, soy la administradora, necesitamos una bandeja");
   await atenderCharla(m.deps(guion(respuestaTexto("¿Me pasás la dirección de la obra?"))), m.charla.id);
-  assert.deepEqual(m.salidas.map((s) => s.texto), [SALUDO_MARCELA, "¿Me pasás la dirección de la obra?"]);
+  assert.deepEqual(m.salidas.map((s) => s.texto), [SALUDO_CORTO_MARCELA, "¿Me pasás la dirección de la obra?"]);
 });
 
 // ── El alquiler simple (alquiler-simple-propuesta.md, 12/11) ───────────────────────────

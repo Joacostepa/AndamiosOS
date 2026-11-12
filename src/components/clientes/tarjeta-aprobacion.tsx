@@ -687,7 +687,10 @@ function TarjetaAlquilerSimple({ t, charla, ahora, puedeEditar, datos }: { t: Ta
             <div className="flex flex-col gap-2">
               <h4 className="text-[12.5px] font-semibold tracking-wide text-muted-foreground uppercase">{v.nivel === "cerrada" ? "Lo que va a salir (cuando se pueda)" : "El mensaje exacto"}</h4>
               <div className="flex flex-col gap-2 rounded-xl bg-[#e6ddd4] p-2.5 dark:bg-muted">
-                {k.mensaje ? <Burbuja texto={k.mensaje} /> : <Aviso tono="rojo">No se puede armar el mensaje: mirá lo que bloquea.</Aviso>}
+                {/* Sale en dos mensajes, como en aprobar.ts (partesDelPresupuesto): el precio y las condiciones. */}
+                {k.mensaje
+                  ? k.mensaje.split(/\n\n(?=Te cuento cómo funciona\.)/).map((parte, i) => <Burbuja key={i} texto={parte} />)
+                  : <Aviso tono="rojo">No se puede armar el mensaje: mirá lo que bloquea.</Aviso>}
               </div>
               <p className="text-[12.5px] text-muted-foreground">Sale sólo el texto, sin PDF. La orden queda en Odoo en borrador; Tomás pide los documentos cuando el cliente acepta.</p>
             </div>

@@ -6,8 +6,9 @@
 // está, es 0) y el resto sólo corre con 1. Así el código puede subir antes que las migraciones
 // 20261017000001/2 sin cambiar nada de la etapa 0.
 
-import Anthropic from "@anthropic-ai/sdk";
+import Anthropic, { toFile } from "@anthropic-ai/sdk";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { PDFDocument } from "pdf-lib";
 import { fallaDeCuenta, avisarFallaDeCuenta } from "@/lib/permisos-via-publica/falla-ia";
 import { leerParametros } from "@/lib/parametros-cotizacion/servidor";
 import { tarifasDesdeParametros } from "@/lib/cotizador/tarifas";
@@ -25,7 +26,7 @@ import { adjuntarArchivosAOrden, barrioDeDireccion, fleteParaUbicacion, fletesAl
 import { clasificadorClaude, type DepsDocumentos } from "./documentos";
 import { entregaDelPresupuesto } from "./aprobacion-alquiler";
 import { leerFicha, type FichaSofia, type PresupuestoAlquiler, type ResultadoFleteAlquiler, type ServiciosSofia } from "./herramientas";
-import { atenderCharla, type CharlaSofia, type DepsSofia, type FilaHistoria, type ItemNuevo, type RepoSofia, type ResultadoTurno } from "./turno";
+import { atenderCharla, type ArchivoModelo, type CharlaSofia, type DepsSofia, type FilaHistoria, type ItemNuevo, type RepoSofia, type ResultadoTurno } from "./turno";
 import { enBuenosAires } from "./horario";
 import { mandarNotaDeVoz, mandarTexto } from "./envio";
 import { audioSaludo } from "./voz";
@@ -38,8 +39,104 @@ export { iaClientesActiva } from "./interruptor";
 const ahora = () => new Date().toISOString();
 /** Si nunca vio la charla (una de la etapa 0 que se le devuelve), sólo lo último. */
 const MAX_ITEMS_SIN_CURSOR = 30;
-/** El cliente suele mandar dos o tres mensajes seguidos: se espera un poco antes de leer. */
-const ESPERA_TANDA_MS = 2_500;
+/**
+ * El cliente suele mandar dos o tres mensajes seguidos: se espera un poco antes de leer. Era de
+ * 2,5 s; en las charlas de prueba del 12/11 salían dos respuestas casi iguales cuando el cliente
+ * mandaba texto, foto y texto en 10 s. Además, si llega algo mientras Tomás escribe, la respuesta
+ * no sale y contesta todo junto (turno.ts → puedeDescartar).
+ */
+const ESPERA_TANDA_MS = 5_000;
+/** Entre una mirada y otra a una foto o un PDF que se está bajando (hasta 6 veces: ~9 s). */
+const ESPERA_ADJUNTO_MS = 1_500;
+
+/** Las fotos que lee el modelo (las de WhatsApp son JPEG) y su tope (el de la API, 5 MB). */
+const IMAGENES_MODELO = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+const MAX_IMAGEN_BYTES = 5 * 1024 * 1024;
+/**
+ * Un PDF más largo o más pesado (un juego de planos) lo ve sólo el equipo: viaja en cada turno de
+ * la charla y, con las pausas de WhatsApp, casi siempre sin caché (US$ 0,10 a 0,30 por turno cada
+ * 20 páginas, contra el tope de US$ 1 por teléfono).
+ */
+const MAX_PDF_BYTES = 10 * 1024 * 1024;
+const MAX_PDF_PAGINAS = 8;
+/** El tope por archivo, contado por la API antes de subirlo (unas 7 páginas de PDF). */
+const MAX_TOKENS_ARCHIVO = 12_000;
+/**
+ * Cuántas fotos y PDF ve el modelo por charla: con más de 20 imágenes en un pedido, la API achica
+ * el máximo a 2000 px y rechazaría las fotos de celular en todos los turnos que siguen.
+ */
+const MAX_ARCHIVOS_CHARLA = 15;
+
+/**
+ * Sube una foto o un PDF del cliente a la Files API de Anthropic, una sola vez: el id queda en el
+ * adjunto (anthropic_file_id) y la historia de Tomás lo referencia (no se guarda el archivo en la
+ * base ni cambia de un turno a otro, así el caché sigue valiendo). Si no conviene, queda anotado
+ * por qué (anthropic_no) y el modelo recibe sólo «[Mandó una foto: la ve el equipo]».
+ *
+ * LA HISTORIA ES APPEND-ONLY: un archivo que la API rechace rompería todos los turnos que siguen.
+ * Por eso, antes de subirlo, la API lo valida y cuenta sus tokens (count_tokens, sin costo, con el
+ * archivo en base64: no acepta file_id): si no lo acepta o pesa demasiado, no se muestra.
+ */
+async function archivoParaModelo(db: SupabaseClient, cliente: Anthropic, it: ItemNuevo, modelo: string): Promise<ArchivoModelo | null> {
+  const a = it.adjunto ?? {};
+  const mime = typeof a.mime === "string" ? a.mime.split(";")[0].trim().toLowerCase() : "";
+  const bloque = IMAGENES_MODELO.has(mime) ? "image" : mime === "application/pdf" ? "document" : null;
+  if (!bloque) return null;
+  if (typeof a.anthropic_file_id === "string") return { bloque, fileId: a.anthropic_file_id };
+  if (typeof a.path !== "string" || a.pendiente || a.anthropic_no) return null;
+  const anotar = async (cambios: Record<string, unknown>) => {
+    const { error } = await db.from("cli_hilo").update({ adjunto: { ...a, ...cambios } }).eq("id", it.id);
+    if (error) throw new Error(`No se pudo anotar el adjunto: ${error.message}`);
+  };
+  const no = async (motivo: string) => {
+    await anotar({ anthropic_no: motivo }).catch((e) => console.error("[sofia] adjunto", it.id, e));
+    return null;
+  };
+  let subido: string | null = null;
+  try {
+    const tope = bloque === "image" ? MAX_IMAGEN_BYTES : MAX_PDF_BYTES;
+    if (typeof a.bytes === "number" && a.bytes > tope) return await no("muy pesado");
+    const { data: fila } = await db.from("cli_hilo").select("conversacion_id").eq("id", it.id).maybeSingle();
+    if (fila?.conversacion_id) {
+      const { count } = await db.from("cli_hilo").select("id", { count: "exact", head: true })
+        .eq("conversacion_id", fila.conversacion_id).not("adjunto->>anthropic_file_id", "is", null);
+      if ((count ?? 0) >= MAX_ARCHIVOS_CHARLA) return await no(`ya vio ${count} archivos en esta charla`);
+    }
+    const { data, error } = await db.storage.from(BUCKET).download(a.path);
+    if (error || !data) throw new Error(error?.message ?? "vacío");
+    const datos = new Uint8Array(await data.arrayBuffer());
+    if (datos.length > tope) return await no("muy pesado");
+    if (bloque === "document") {
+      const paginas = await PDFDocument.load(datos, { ignoreEncryption: true, updateMetadata: false }).then((d) => d.getPageCount()).catch(() => null);
+      if (paginas === null) return await no("no se pudo leer el PDF");
+      if (paginas > MAX_PDF_PAGINAS) return await no(`${paginas} páginas`);
+    }
+    // La API lo valida (formato, medidas, contraseña) y dice cuánto pesa, antes de que entre a la
+    // historia. Una falla que no sea un rechazo (la red, un 429) también lo deja afuera.
+    const base64 = Buffer.from(datos).toString("base64");
+    const prueba: Anthropic.Beta.BetaContentBlockParam = bloque === "image"
+      ? { type: "image", source: { type: "base64", media_type: mime as "image/jpeg", data: base64 } }
+      : { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } };
+    let tokens: number;
+    try {
+      tokens = (await cliente.beta.messages.countTokens({ model: modelo, messages: [{ role: "user", content: [prueba, { type: "text", text: "." }] }] })).input_tokens;
+    } catch (e) {
+      if (e instanceof Anthropic.BadRequestError) return await no(`la API no lo acepta: ${e.message.slice(0, 160)}`);
+      throw e;
+    }
+    if (tokens > MAX_TOKENS_ARCHIVO) return await no(`${tokens} tokens`);
+    const nombre = typeof a.nombre === "string" && a.nombre ? a.nombre : bloque === "image" ? "foto.jpg" : "archivo.pdf";
+    subido = (await cliente.files.upload({ file: await toFile(datos, nombre, { type: mime }) })).id;
+    await anotar({ anthropic_file_id: subido, anthropic_tokens: tokens });
+    return { bloque, fileId: subido };
+  } catch (e) {
+    // Una falla no frena el turno: el modelo recibe «[Mandó una foto: la ve el equipo]». Si se
+    // llegó a subir pero no quedó anotado, se borra (si no, nadie lo borraría nunca).
+    if (subido) await cliente.files.delete(subido).catch(() => {});
+    console.error("[sofia] no se pudo pasar el adjunto al modelo", it.id, e);
+    return null;
+  }
+}
 
 function falla(que: string, e: { message: string } | null): never {
   throw new Error(`${que}: ${e?.message ?? "sin detalle"}`);
@@ -89,8 +186,9 @@ const ESTADO_PENDIENTE: Record<string, string> = {
   descartada: "el equipo decidió no mandarlo",
 };
 
-export function repoSofia(db: SupabaseClient): RepoSofia {
+export function repoSofia(db: SupabaseClient, cliente?: Anthropic): RepoSofia {
   return {
+    ...(cliente ? { archivoParaModelo: (it: ItemNuevo, modelo: string) => archivoParaModelo(db, cliente, it, modelo) } : {}),
     async leerCharla(id) {
       const { data, error } = await db
         .from("cli_conversaciones")
@@ -441,7 +539,7 @@ async function feriados(): Promise<Set<string>> {
 export function depsSofia(db: SupabaseClient): DepsSofia {
   const cliente = new Anthropic();
   return {
-    repo: repoSofia(db),
+    repo: repoSofia(db, cliente),
     config: () => leerConfigSofia(db),
     feriados,
     servicios: (charla) => serviciosSofia(db, charla),
@@ -452,6 +550,7 @@ export function depsSofia(db: SupabaseClient): DepsSofia {
       if (f) await avisarFallaDeCuenta(db, f);
     },
     esperarTanda: () => new Promise((r) => setTimeout(r, ESPERA_TANDA_MS)),
+    esperarAdjunto: () => new Promise((r) => setTimeout(r, ESPERA_ADJUNTO_MS)),
   };
 }
 

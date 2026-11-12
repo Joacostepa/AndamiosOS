@@ -667,7 +667,7 @@ function anotarPedido(p: PedidoAlquiler, i: z.infer<typeof esquemaAlquiler>, fra
 }
 
 const QUE_DECIR_ALQUILER =
-  "Contale en una o dos líneas lo que le armaste y por qué le sirve, explicale las condiciones (abajo; con tus palabras, en pocos renglones, si todavía no se las explicaste) y decile que el presupuesto lo revisa el equipo y le llega por este mismo chat en unos minutos. Fuera de horario, aclarale cuándo le escribe una persona (está en el aviso). Sin montos ni porcentajes.";
+  "Contale en una o dos líneas lo que le armaste y por qué le sirve (con las mismas alturas de arriba) y decile que el presupuesto lo revisa el equipo y le llega por este mismo chat. No prometas minutos. Las condiciones (abajo) van completas en el presupuesto: no se las expliques ahora, salvo que pregunte algo puntual. Fuera de horario, aclarale cuándo le escribe una persona (está en el aviso). Sin montos ni porcentajes.";
 
 /** Provincia y no puede retirar en el depósito (fila 23): un no amable, sin derivar. */
 const QUE_HACER_FUERA_DE_CABA = MENSAJE_PROVINCIA;

@@ -1165,7 +1165,7 @@ export function resumenParaTomas(r: ResultadoAlquiler): string {
     for (const x of a.ajustes) l.push(x);
   }
   if (r.modalidad === "deposito") {
-    l.push(`Lo retira y lo devuelve él en el depósito (${DEPOSITO.texto}): sin flete, con su vehículo y gente para cargar. Explicale las condiciones del depósito.`);
+    l.push(`Lo retira y lo devuelve él en el depósito (${DEPOSITO.texto}): sin flete, con su vehículo y gente para cargar. Las condiciones del depósito van en el presupuesto.`);
   }
   for (const c of r.aConfirmar) {
     // La plataforma ya está explicada arriba, con el armado: acá sólo lo que tiene que hacer.
@@ -1271,6 +1271,16 @@ export function mensajePresupuestoAlquiler(r: ResultadoAlquiler, fecha: string, 
     ? `¿Te lo reservo para retirarlo el ${textoFecha(fecha)}, ${textoFranja(franja)}?`
     : `¿Te lo reservo para el ${textoFecha(fecha)}, ${textoFranja(franja)}?`);
   return l.join("\n\n");
+}
+
+/**
+ * El presupuesto en los mensajes en que sale por WhatsApp: el precio, y desde «Te cuento cómo
+ * funciona.» las condiciones con el cierre («¿Te lo reservo…?»). Si no encuentra el corte, uno solo.
+ */
+export function partesDelPresupuesto(texto: string): string[] {
+  const i = texto.indexOf("\n\nTe cuento cómo funciona.");
+  if (i <= 0) return [texto];
+  return [texto.slice(0, i).trim(), texto.slice(i).trim()];
 }
 
 /** El armado en palabras del cliente: sin códigos y sin piezas sueltas. */

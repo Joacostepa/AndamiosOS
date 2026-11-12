@@ -114,6 +114,19 @@ export function saludoInicial(perfil: string | null | undefined, ahora: Date = n
 }
 
 /**
+ * El saludo cuando el primer mensaje ya cuenta qué necesita («Necesito un presupuesto para…»):
+ * sin «Contame en qué te puedo ayudar», que ya lo dijo, y enseguida contesta Tomás. Charlas de
+ * prueba del 12/11: el saludo entero, seguido a los 10 segundos de la respuesta, quedaba robótico.
+ *  «¡Buen día Debi! Acá Tomás de Andamios Buenos Aires.»
+ */
+export function saludoCorto(perfil: string | null | undefined, ahora: Date = new Date()): string {
+  const nombre = nombreParaSaludo(perfil);
+  const momento = saludoDelMomento(ahora);
+  const cuerpo = `Acá ${NOMBRE_ASISTENTE} de Andamios Buenos Aires.`;
+  return nombre ? `¡${momento} ${nombre}! ${cuerpo}` : `¡${momento}! ${cuerpo}`;
+}
+
+/**
  * Lo que dice el audio del saludo: «Hola, Jorge, acá Tomás de Andamios Buenos Aires. ¿En qué te
  * puedo ayudar?» Sin nombre: «Hola, acá Tomás de…». Sale de un audio de referencia de JS (17/10);
  * el 18/10 JS cambió el cierre «Contame... en qué te puedo ayudar.», que sonaba raro, por la

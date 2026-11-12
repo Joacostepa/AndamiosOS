@@ -37,7 +37,7 @@ import {
 import type { ConfigSofia } from "./config.ts";
 import { ahoraLegible, atencion, describirHorario } from "./horario.ts";
 import { NADA, contextoDelTurno, sistemaSofia } from "./prompt.ts";
-import { esContestadorAutomatico, esSoloSaludo, saludoInicial, textoSeguridad, TEXTO_ERROR, TEXTO_PASO_A_PERSONA } from "./saludo.ts";
+import { esContestadorAutomatico, esSoloSaludo, saludoCorto, saludoInicial, textoSeguridad, TEXTO_ERROR, TEXTO_PASO_A_PERSONA } from "./saludo.ts";
 import { revisarSalida, type HallazgoSalida } from "./filtro-salida.ts";
 import { puedeTextoLibre } from "./ventana.ts";
 import { palabraGamaAlta } from "./facil.ts";
@@ -51,6 +51,16 @@ const MAX_VUELTAS = 8;
 /** Cuántas tandas de mensajes nuevos atiende un mismo turno (si siguen llegando mientras contesta). */
 const MAX_TANDAS = 3;
 const MAX_TOKENS = 8_000;
+/**
+ * Para descartar una respuesta (llegó algo mientras escribía), tiene que quedar al menos esto del
+ * plazo del turno: una vuelta del modelo con herramientas puede llevar más de un minuto y medio.
+ */
+const MARGEN_DESCARTE_MS = 150_000;
+/** Cuántas veces se espera (esperarAdjunto) a que termine de bajarse una foto o un PDF. */
+const ESPERAS_ADJUNTO = 6;
+
+/** Una foto o un PDF que todavía se está bajando de Meta (y no falló). */
+const bajandoVisual = (e: ItemNuevo) => (e.tipo === "image" || e.tipo === "document") && e.adjunto?.pendiente === true && !e.adjunto?.error;
 
 // ── Lo de afuera ───────────────────────────────────────────────────────────────────────
 
@@ -142,7 +152,18 @@ export type RepoSofia = {
   avisarUrgente(id: string, resumen: string): Promise<void>;
   /** Las tildes azules y el «escribiendo…» del último mensaje del cliente. */
   escribiendo?(id: string): Promise<void>;
+  /**
+   * Una foto o un PDF del cliente, listo para que lo vea el modelo: lo sube una vez a la Files API
+   * de Anthropic y guarda el id en el adjunto (así la historia se reenvía igual y no rompe el
+   * caché). null si no se puede o no conviene (un formato que el modelo no lee, un PDF muy largo,
+   * una falla): entonces el modelo recibe sólo «[Mandó una foto]». Opcional: sin esto (los tests
+   * que no lo prueban) las fotos las ve sólo el equipo, como antes.
+   */
+  archivoParaModelo?(item: ItemNuevo, modelo: string): Promise<ArchivoModelo | null>;
 };
+
+/** Lo que el modelo puede ver de un adjunto: una imagen o un PDF ya subido a la Files API. */
+export type ArchivoModelo = { bloque: "image" | "document"; fileId: string };
 
 export type DepsSofia = {
   repo: RepoSofia;
@@ -163,6 +184,11 @@ export type DepsSofia = {
   alFallar?: (e: unknown) => Promise<void>;
   /** Una pausa corta antes de leer, para juntar los mensajes que el cliente manda de a varios. */
   esperarTanda?: () => Promise<void>;
+  /**
+   * Una pausa cortita mientras se termina de bajar una foto o un PDF que llegó en la tanda (lo baja
+   * la función del webhook que lo recibió). Sin esto (los tests), no se espera.
+   */
+  esperarAdjunto?: () => Promise<void>;
 };
 
 export type ResultadoTurno = {
@@ -244,7 +270,12 @@ function esRuido(e: ItemNuevo, saludoAt: string | null): boolean {
  * «Devolver a Sofía». No tira: un error termina en el texto fijo y la charla pasa a una persona.
  * - `devuelta`: la charla volvió a Sofía; corre aunque no haya mensajes nuevos del cliente.
  */
-export async function atenderCharla(deps: DepsSofia, conversacionId: string, opciones: { devuelta?: boolean; profundidad?: number } = {}): Promise<ResultadoTurno> {
+export async function atenderCharla(
+  deps: DepsSofia,
+  conversacionId: string,
+  /** `inicio`: cuándo arrancó la función (la vuelta de después de soltar el candado usa el mismo plazo). */
+  opciones: { devuelta?: boolean; profundidad?: number; inicio?: number } = {},
+): Promise<ResultadoTurno> {
   const { repo } = deps;
   const ahora = deps.ahora ?? (() => new Date());
   const nuevoId = deps.nuevoId ?? (() => crypto.randomUUID());
@@ -257,7 +288,7 @@ export async function atenderCharla(deps: DepsSofia, conversacionId: string, opc
   if (primera.estado !== "bot") return { ...res, resultado: "callada" };
   if (!(await repo.tomarTurno(conversacionId))) return { ...res, resultado: "ocupado" };
 
-  const inicio = Date.now();
+  const inicio = opciones.inicio ?? Date.now();
   let devuelta = !!opciones.devuelta;
   let quedoPendiente = false;
   try {
@@ -265,9 +296,16 @@ export async function atenderCharla(deps: DepsSofia, conversacionId: string, opc
     for (let tanda = 0; tanda < MAX_TANDAS && Date.now() - inicio < PRESUPUESTO_MS; tanda++) {
       const charla = await repo.leerCharla(conversacionId);
       if (!charla || charla.estado !== "bot") break;
-      const nuevos = await repo.nuevosDelHilo(charla.id, charla.iaLeidoHasta);
-      const entrantes = nuevos.filter((n) => n.direccion === "entrante");
+      let nuevos = await repo.nuevosDelHilo(charla.id, charla.iaLeidoHasta);
+      let entrantes = nuevos.filter((n) => n.direccion === "entrante");
       if (!entrantes.length && !devuelta) break;
+      // Una foto o un PDF que todavía se está bajando (lo baja la función del webhook que lo
+      // recibió, en uno o dos segundos): se espera un poco para que Tomás lo pueda ver.
+      for (let i = 0; i < ESPERAS_ADJUNTO && deps.esperarAdjunto && entrantes.some(bajandoVisual); i++) {
+        await deps.esperarAdjunto();
+        nuevos = await repo.nuevosDelHilo(charla.id, charla.iaLeidoHasta);
+        entrantes = nuevos.filter((n) => n.direccion === "entrante");
+      }
       // Una reacción (👍), o el «Hola» que ya se contestó con el saludo, solos no se contestan:
       // quedan para la próxima.
       if (!devuelta && entrantes.every((e) => esRuido(e, charla.iaSaludoAt))) break;
@@ -296,10 +334,14 @@ export async function atenderCharla(deps: DepsSofia, conversacionId: string, opc
       let saludoEnviado: string | null = null;
       if (!charla.iaSaludoAt) {
         const momento = ahora();
+        // Si el primer mensaje ya cuenta qué necesita, el saludo va corto (sin «Contame en qué te
+        // puedo ayudar») y enseguida contesta Tomás. Charlas de prueba del 12/11.
+        const yaConto = !devuelta && entrantes.some((e) => e.tipo !== "reaction" && !(e.tipo === "text" && esSoloSaludo(e.texto)));
         // Pruebas del 17/10: el saludo sale como nota de voz («Jorge, buen día. Tomás, de…») y
         // nada más: WhatsApp le pone la transcripción abajo (JS, 17/10: el texto repetía lo mismo).
-        // Si el audio no sale, va el texto.
-        if (cfg.saludoVoz && repo.mandarSaludoVoz) {
+        // Si el audio no sale, va el texto. El audio pregunta «¿En qué te puedo ayudar?»: si ya lo
+        // contó, va el texto corto.
+        if (cfg.saludoVoz && repo.mandarSaludoVoz && !yaConto) {
           try {
             saludoEnviado = await repo.mandarSaludoVoz(charla.id, charla.telefono, charla.nombrePerfil, momento);
           } catch (e) {
@@ -307,7 +349,7 @@ export async function atenderCharla(deps: DepsSofia, conversacionId: string, opc
           }
         }
         if (!saludoEnviado) {
-          saludoEnviado = saludoInicial(charla.nombrePerfil, momento);
+          saludoEnviado = yaConto ? saludoCorto(charla.nombrePerfil, momento) : saludoInicial(charla.nombrePerfil, momento);
           await repo.mandar(charla.id, charla.telefono, saludoEnviado, "ia");
         }
         await repo.marcarSaludo(charla.id);
@@ -330,7 +372,12 @@ export async function atenderCharla(deps: DepsSofia, conversacionId: string, opc
         break;
       }
 
-      const r = await unaTanda(deps, cfg, charla, nuevos, { saludoEnviado, devuelta, inicio, ahora: ahora(), nuevoId });
+      // Si mientras escribe llegan más mensajes, su respuesta no sale y la tanda siguiente contesta
+      // todo junto (charlas de prueba del 12/11: dos respuestas casi iguales seguidas). Nunca en
+      // la última tanda ni en la vuelta de después de soltar el candado, y el plazo se mira al
+      // mandar (unaTanda): alguna respuesta tiene que salir.
+      const puedeDescartar = tanda < MAX_TANDAS - 1 && !opciones.profundidad;
+      const r = await unaTanda(deps, cfg, charla, nuevos, { saludoEnviado, devuelta, inicio, ahora: ahora(), nuevoId, puedeDescartar });
       devuelta = false;
       res.costoUsd += r.costo;
       res.enviados.push(...r.enviados);
@@ -369,7 +416,7 @@ export async function atenderCharla(deps: DepsSofia, conversacionId: string, opc
       const nuevos = await repo.nuevosDelHilo(conversacionId, charla.iaLeidoHasta);
       const quedan = nuevos.filter((n) => n.direccion === "entrante");
       if (quedan.length && !quedan.every((e) => esRuido(e, charla.iaSaludoAt))) {
-        const otra = await atenderCharla({ ...deps, esperarTanda: undefined }, conversacionId, { profundidad: (opciones.profundidad ?? 0) + 1 });
+        const otra = await atenderCharla({ ...deps, esperarTanda: undefined }, conversacionId, { profundidad: (opciones.profundidad ?? 0) + 1, inicio });
         return { ...otra, enviados: [...res.enviados, ...otra.enviados], costoUsd: res.costoUsd + otra.costoUsd, resultado: otra.resultado === "sin_novedades" ? res.resultado : otra.resultado };
       }
     }
@@ -379,12 +426,57 @@ export async function atenderCharla(deps: DepsSofia, conversacionId: string, opc
 
 type ResultadoTanda = { costo: number; enviados: string[]; estado?: EstadoCharla; bloqueado?: string };
 
+/**
+ * Lo del cliente como contenido del mensaje: el texto y, si el modelo las puede ver, las fotos y
+ * los PDF en su lugar (cada uno después de su renglón «[Mandó una foto]»). `texto` es lo mismo en
+ * palabras, para la columna `texto` de la historia.
+ */
+export async function contenidoDelCliente(
+  entrantes: ItemNuevo[],
+  conHora: boolean,
+  archivo: ((it: ItemNuevo) => Promise<ArchivoModelo | null>) | null,
+  /** Las fotos de esta tanda son para los documentos del alquiler: no se muestran ni se piden de nuevo. */
+  documentosAlquiler = false,
+): Promise<{ bloques: Anthropic.Beta.BetaContentBlockParam[]; texto: string }> {
+  const bloques: Anthropic.Beta.BetaContentBlockParam[] = [];
+  const renglones: string[] = [];
+  let pendientes: string[] = [];
+  const volcar = () => {
+    if (pendientes.length) bloques.push({ type: "text", text: pendientes.join("\n") });
+    pendientes = [];
+  };
+  for (const e of entrantes) {
+    const pre = conHora ? `(${hora(e.momento)}) ` : "";
+    const visual = archivo && (e.tipo === "image" || e.tipo === "document") ? await archivo(e).catch(() => null) : null;
+    let linea: string;
+    if (visual) {
+      const t = e.texto?.trim();
+      const nombre = typeof e.adjunto?.nombre === "string" ? ` (${e.adjunto.nombre})` : "";
+      linea = `${pre}${e.tipo === "image" ? "[Mandó esta foto]" : `[Mandó este archivo${nombre}]`}${t ? ` Epígrafe: ${t}` : ""}`;
+    } else if (documentosAlquiler && (e.tipo === "image" || e.tipo === "document")) {
+      // No «la ve el equipo»: el modelo le pediría que la reenvíe, y ya la revisó documentos.ts.
+      const t = e.texto?.trim();
+      linea = `${pre}[Mandó ${e.tipo === "image" ? "una foto" : "un archivo"}: si es un documento del alquiler, lo revisa el sistema y en el aviso ves qué llegó]${t ? ` Epígrafe: ${t}` : ""}`;
+    } else linea = pre + textoDelCliente(e);
+    renglones.push(linea);
+    pendientes.push(linea);
+    if (visual) {
+      volcar();
+      bloques.push(visual.bloque === "image"
+        ? { type: "image", source: { type: "file", file_id: visual.fileId } }
+        : { type: "document", source: { type: "file", file_id: visual.fileId } });
+    }
+  }
+  volcar();
+  return { bloques, texto: renglones.join("\n") };
+}
+
 async function unaTanda(
   deps: DepsSofia,
   cfg: ConfigSofia,
   charla: CharlaSofia,
   nuevos: ItemNuevo[],
-  o: { saludoEnviado: string | null; devuelta: boolean; inicio: number; ahora: Date; nuevoId: () => string },
+  o: { saludoEnviado: string | null; devuelta: boolean; inicio: number; ahora: Date; nuevoId: () => string; puedeDescartar?: boolean },
 ): Promise<ResultadoTanda> {
   const { repo } = deps;
   const turnoId = o.nuevoId();
@@ -394,7 +486,13 @@ async function unaTanda(
   // ── Lo nuevo: el cliente como mensaje; el equipo, en el aviso ──
   const entrantes = nuevos.filter((n) => n.direccion === "entrante");
   const variasHoras = new Set(entrantes.map((e) => hora(e.momento))).size > 1 || nuevos.some((n) => n.autor === "persona");
-  const textoCliente = entrantes.map((e) => (variasHoras ? `(${hora(e.momento)}) ` : "") + textoDelCliente(e)).join("\n");
+  // Las fotos y los PDF, Tomás los ve (charlas de prueba del 12/11: pedía por escrito lo que ya
+  // estaba en el PDF). No desde que salió el presupuesto de un alquiler simple: lo que llega ahí
+  // son el DNI y los servicios, y esos los revisa el servidor sin mostrárselos (documentos.ts).
+  const etapaDocumentos = !!ficha.alquiler?.cotizacion || !!ficha.alquiler?.aceptado;
+  const verArchivos = !!repo.archivoParaModelo && !etapaDocumentos;
+  const cliente = await contenidoDelCliente(entrantes, variasHoras, verArchivos ? (it) => repo.archivoParaModelo!(it, cfg.modelo) : null, etapaDocumentos);
+  const textoCliente = cliente.texto;
   for (const e of entrantes) {
     const t = e.tipo === "audio" ? e.transcripcion : e.texto;
     if (t?.trim() && (e.tipo === "text" || e.tipo === "audio" || e.tipo === "image" || e.tipo === "document")) {
@@ -443,7 +541,7 @@ async function unaTanda(
   if (cierre) filas.push({ ...base, rol: "assistant", tipo: "asistente", contenido: [{ type: "text", text: cierre.texto }], texto: cierre.texto, interrumpido: true });
   const reparacion = cierre ? [] : reparacionHuerfanos(historia.at(-1));
   if (textoCliente || reparacion.length) {
-    const contenido: Anthropic.Beta.BetaContentBlockParam[] = [...reparacion, ...(textoCliente ? [{ type: "text" as const, text: textoCliente }] : [])];
+    const contenido: Anthropic.Beta.BetaContentBlockParam[] = [...reparacion, ...cliente.bloques];
     filas.push({ ...base, rol: "user", tipo: "cliente", contenido, texto: textoCliente || null });
   }
   // Un solo aviso de sistema por turno, justo después del cliente (así lo pide la API).
@@ -598,6 +696,13 @@ async function unaTanda(
     } else if (!puedeTextoLibre(actual.ultimoEntranteAt)) {
       nota = "la ventana de 24 h estaba cerrada";
       await repo.evento(charla.id, "Tomás no mandó su respuesta: la ventana de 24 h está cerrada. Cuando el cliente escriba, se abre.");
+    } else if (
+      o.puedeDescartar && estadoEsperado === "bot" && Date.now() - o.inicio < PRESUPUESTO_MS - MARGEN_DESCARTE_MS &&
+      (await llegoAlgoNuevo(repo, charla.id, hasta ?? charla.iaLeidoHasta))
+    ) {
+      // El cliente siguió escribiendo mientras Tomás pensaba: esta respuesta no sale y la tanda
+      // siguiente contesta todo junto (con este aviso en el contexto: noLlego).
+      nota = "el cliente mandó más mensajes mientras la escribías; contestá ahora todo junto, sin repetir lo que no salió como si ya lo supiera";
     } else {
       try {
         await repo.mandar(charla.id, charla.telefono, t, "ia");
@@ -614,6 +719,16 @@ async function unaTanda(
   if (fallaEnvio) throw new Error(`WhatsApp no aceptó la respuesta de Tomás: ${fallaEnvio instanceof Error ? fallaEnvio.message : fallaEnvio}`);
   if (estadoEsperado !== "bot") out.estado = estadoEsperado;
   return out;
+}
+
+/** ¿Escribió el cliente algo más (que no sea una reacción) después de lo que leyó esta tanda? */
+async function llegoAlgoNuevo(repo: RepoSofia, id: string, desde: string | null): Promise<boolean> {
+  if (!desde) return false;
+  try {
+    return (await repo.nuevosDelHilo(id, desde)).some((n) => n.direccion === "entrante" && n.tipo !== "reaction");
+  } catch {
+    return false;
+  }
 }
 
 /**

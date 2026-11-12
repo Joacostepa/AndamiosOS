@@ -1,7 +1,9 @@
 // La tarjeta de aprobación y «Revisar charlas», del lado de la pantalla: lo que devuelven las
 // rutas. Sólo tipos y constantes (sin base ni red): lo importan las rutas y los componentes.
 
+import type { Franja } from "./alquiler-simple";
 import type { EstadoAprobacion, TipoAprobacion, TipoCorreccion } from "./aprobacion";
+import type { TipoCorreccionAlquiler } from "./aprobacion-alquiler";
 import type { Motivo } from "./facil";
 
 export type RenglonVista = { id: string; descripcion: string; importe: number; seccion: "base" | "adicional" | "opcional"; unidad?: string };
@@ -68,11 +70,60 @@ export type TarjetaSimple = {
   alertas: string[];
 };
 
+/**
+ * El alquiler simple que cotizó Tomás (carril «alquiler», docs/sofia/alquiler-simple-propuesta.md):
+ * todo recalculado con los parámetros, el flete y la fecha de hoy (aprobacion-alquiler.ts).
+ */
+export type TarjetaAlquiler = {
+  /** El mensaje exacto que le llega al cliente (mensajePresupuestoAlquiler). null si no se puede armar. */
+  mensaje: string | null;
+  /** Lo que dijo el cliente: lugar, altura, techo, espacio, piso. */
+  pedido: { etiqueta: string; valor: string }[];
+  armado: {
+    texto: string;
+    torres: number;
+    modulosPorTorre: number;
+    apoyo: "ruedas" | "tornillones";
+    /** «Plataforma arriba…» o «Plataforma EN EL PELDAÑO…»: la tarjeta lo destaca si es peldaño. */
+    plataforma: string;
+    peldano: number | null;
+    barandaSeLleva: boolean;
+    ajustes: string[];
+  } | null;
+  /** Las líneas de la orden: piezas, flete, mínimo operativo y recargo (netas). */
+  lineas: { descripcion: string; cantidad: number; precioUnitario: number; importe: number; tipo: "pieza" | "flete" | "minimo" | "recargo" }[];
+  flete: { barrio: string | null; metodo: string | null; monto: number } | null;
+  minimoOperativo: number;
+  recargo: { pct: number; monto: number; franja: string } | null;
+  /** El servicio por 30 días (sin el recargo), el neto que se manda, el IVA y el total. */
+  base: number | null;
+  neto: number | null;
+  iva: number | null;
+  totalConIva: number | null;
+  porDia: number | null;
+  entrega: { fecha: string; texto: string; franja: string; hora: boolean } | null;
+  direccion: string | null;
+  /** «Por qué es fácil»: los del trabajo y los del cliente (deuda, socios). */
+  motivos: { ok: boolean; texto: string; grupo: "trabajo" | "cliente" }[];
+  facil: boolean;
+  /** Las alertas de palabras que dejó la herramienta («descuento», «urgente»…). */
+  alertas: string[];
+  /** Lo que le entra sin pagar más si es el mínimo (§7). */
+  entraSinPagarMas: string[];
+  bloqueos: string[];
+  avisos: string[];
+  /** Lo que armó Tomás; si el motor de hoy da otro, `cambioDesdeTomas`. */
+  montoPropuesto: number | null;
+  cambioDesdeTomas: boolean;
+  pareja: (ParejaVista & { motivo: string; regla: string }) | null;
+  sinCuit: boolean;
+};
+
 export type TarjetaAprobacion = {
   id: string;
   numero: number;
   tipo: TipoAprobacion;
-  carril: "facil" | "simple" | "tecnico" | null;
+  carril: "facil" | "simple" | "tecnico" | "alquiler" | null;
   estado: EstadoAprobacion;
   resumen: string | null;
   creada: string;
@@ -90,11 +141,14 @@ export type TarjetaAprobacion = {
   tecnico?: TarjetaTecnico;
   bloqueado?: TarjetaBloqueado;
   simple?: TarjetaSimple;
+  alquiler?: TarjetaAlquiler;
 };
 
 export type TarjetasCharla = {
   tarjetas: TarjetaAprobacion[];
   racha: { actual: number; meta: number; completa: boolean };
+  /** La racha propia del alquiler simple (no cuenta para la de la bandeja: aprobacion-alquiler.ts). */
+  rachaAlquiler?: { actual: number; meta: number; completa: boolean };
   /** Sofía prendida: se puede elegir que siga ella. */
   iaActiva: boolean;
 };
@@ -109,6 +163,18 @@ export type CorreccionPedida = {
   texto?: string;
 };
 
+/** «Corregir» en un alquiler simple (aprobacion-alquiler.ts → CorreccionAlquiler). */
+export type CorreccionAlquilerPedida = {
+  tipo: TipoCorreccionAlquiler;
+  motivo: string;
+  total?: number;
+  modulosPorTorre?: number;
+  torres?: number;
+  fecha?: string;
+  franja?: Franja;
+  texto?: string;
+};
+
 /** Lo que devuelve «Recalcular» al corregir: el nuevo, antes de mandar. */
 export type VistaCorreccion = {
   mensaje: string;
@@ -118,6 +184,8 @@ export type VistaCorreccion = {
   netoAntes: number;
   bloqueos: string[];
   cortaRacha: boolean;
+  /** En un alquiler simple: la tarjeta entera con la corrección. */
+  alquiler?: TarjetaAlquiler;
 };
 
 export type ResultadoDecision =
@@ -156,6 +224,8 @@ export type CharlaIntervenida = {
 
 export type Auditoria = {
   racha: { actual: number; meta: number; completa: boolean; sinTocar: number; ultimoCorte: string | null };
+  /** La del alquiler simple, aparte (no cuenta para la etapa 2 de la bandeja). */
+  rachaAlquiler?: { actual: number; meta: number; completa: boolean; sinTocar: number; ultimoCorte: string | null };
   decisiones: DecisionAuditada[];
   intervenidas: CharlaIntervenida[];
 };

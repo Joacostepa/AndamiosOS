@@ -30,6 +30,27 @@
 //
 //   TEXTO BLOQUEADO: «Editar y mandar» (lo escribe la persona, sale con su nombre) o «Descartar».
 //
+//   APROBAR UN ALQUILER SIMPLE (carril «alquiler», docs/sofia/alquiler-simple-propuesta.md §10),
+//   con el mismo orden y las mismas garantías que la bandeja fácil:
+//     1. se recalcula con el motor del alquiler, los parámetros, el flete de Odoo y la fecha de
+//        HOY (aprobacion-alquiler.ts → recalcularAlquiler): si el total no es el que vio la
+//        persona, no se manda nada; si algo se sale de las reglas (§8) o la fecha ya no se puede,
+//        bloquea;
+//     2. con menos de 2 h de ventana, se pide confirmar antes;
+//     3. una sola vez: pendiente → ejecutando (tomarUnaVez);
+//     4. PRIMERO ODOO: el cliente (el de la ficha si Tomás lo identificó; si no, el alta de
+//        partner del asistente comercial, crearCliente: nombre, celular y CUIT si lo hay), la
+//        orden EN BORRADOR con crearOrdenAlquilerSimple (idempotente por x_asistente_ref =
+//        «tomas-alquiler:<id de la aprobación>»), la vendedora de la pareja, la nota interna con
+//        el detalle y quién aprobó, y la oportunidad del CRM (si falla, es un aviso). El id queda
+//        en pasos.ordenAlquiler = { id, nombre }: de ahí lo lee Tomás para adjuntar los
+//        documentos del cliente (§6);
+//     5. si Odoo falla, NO SE MANDA NADA: queda en «error» con Reintentar;
+//     6. después WhatsApp: el mensaje del motor (mensajePresupuestoAlquiler), sólo texto, sin
+//        PDF. Con la ventana cerrada, «aprobada, falta la plantilla», como la bandeja;
+//     7. la charla vuelve a Tomás (destinoDespues). El alquiler tiene su propia racha: no cuenta
+//        para la de la etapa 2 de la bandeja.
+//
 // Después de decidir, la charla vuelve a Sofía o queda con la persona (destinoDespues). Si
 // quedan otras aprobaciones pendientes en la charla, sigue en «Espera tu OK».
 //
@@ -45,6 +66,9 @@ import type { Parametro } from "@/lib/parametros-cotizacion/tipos";
 import { tarifasDesdeParametros } from "@/lib/cotizador/tarifas";
 import type { Tarifas } from "@/lib/cotizador/tipos";
 import { generarPdfPropuesta } from "@/lib/cotizador/pdf/documento";
+import { feriadosDelRango } from "@/lib/feriados/argentina";
+import { crearCliente, vincularOportunidad } from "@/lib/odoo/presupuestos";
+import { crearOrdenAlquilerSimple, fletesAlquilerSimple, type Flete } from "@/lib/odoo/alquiler-simple";
 import { alcanceTecnico, normalizarBorrador, type DatosBorrador, type ResultadoBorrador } from "@/lib/asistente/borrador";
 import { crearBorrador, leerBorrador, type Accion } from "@/lib/asistente/datos";
 import { productoDeLinea } from "@/lib/asistente/edicion";
@@ -56,6 +80,12 @@ import {
   motivoYaDecidida, racha, recalcularBorrador, textoPareja, textoRacha, tomarUnaVez, validarCorreccion, verificarRecalculo,
   type Correccion, type Despues, type EstadoAprobacion, type FilaDecision, type RepoUnaVez, type TipoAprobacion, type TipoCorreccion, type Trato,
 } from "./aprobacion";
+import { describirArmado, parametrosAlquilerDesdeFilas, textoFecha, textoFranja, type ParametrosAlquiler } from "./alquiler-simple";
+import {
+  CARRIL_ALQUILER, CORRECCION_EN_BASE, datosDelPedido, leerPayloadAlquiler, motivosParaTarjeta, notaInternaAlquiler, recalcularAlquiler,
+  textoEntraSinPagarMas, textoPlataforma, validarCorreccionAlquiler,
+  type ContextoRecalculo, type CorreccionAlquiler, type PayloadAlquiler, type RecalculoAlquiler, type TipoCorreccionAlquiler,
+} from "./aprobacion-alquiler";
 import { PAREJAS_15_10, siguienteEnTurno, tecnicoDeOdoo, type Asignacion } from "./asignacion";
 import { nombresDe } from "./bandeja";
 import { mandarArchivo, mandarTexto } from "./envio";
@@ -63,8 +93,8 @@ import type { Motivo } from "./facil";
 import { leerFicha, type FichaSofia } from "./herramientas";
 import { anotarEvento } from "./webhook";
 import type {
-  Auditoria, CharlaIntervenida, CorreccionPedida, DecisionAuditada, RenglonVista, ResultadoDecision, TarjetaAprobacion, TarjetaPrecio,
-  TarjetasCharla, VistaCorreccion,
+  Auditoria, CharlaIntervenida, CorreccionAlquilerPedida, CorreccionPedida, DecisionAuditada, RenglonVista, ResultadoDecision, TarjetaAlquiler,
+  TarjetaAprobacion, TarjetaPrecio, TarjetasCharla, VistaCorreccion,
 } from "./vista-aprobacion";
 
 type Db = SupabaseClient;
@@ -82,7 +112,7 @@ type FilaDb = {
   numero: number;
   conversacion_id: string;
   tipo: TipoAprobacion;
-  carril: "facil" | "simple" | "tecnico" | null;
+  carril: "facil" | "simple" | "tecnico" | "alquiler" | null;
   estado: EstadoAprobacion;
   resumen: string | null;
   monto_propuesto: number | string | null;
@@ -149,13 +179,14 @@ type Charla = {
   estado: string;
   asistente_id: string | null;
   ultimo_entrante_at: string | null;
+  partner_id: number | null;
   ficha: FichaSofia;
 };
 
 async function leerCharlaAprobacion(db: Db, id: string): Promise<Charla> {
   const { data, error } = await db
     .from("cli_conversaciones")
-    .select("id, telefono, nombre_perfil, estado, asistente_id, ultimo_entrante_at, ficha")
+    .select("id, telefono, nombre_perfil, estado, asistente_id, ultimo_entrante_at, partner_id, ficha")
     .eq("id", id)
     .maybeSingle();
   if (error) falla("No se pudo leer la charla", error);
@@ -205,12 +236,16 @@ const renglones = (r: ResultadoBorrador): RenglonVista[] =>
 /** Las que se muestran en la charla: las que esperan a alguien o quedaron a medio camino. */
 const ESTADOS_EN_TARJETA: EstadoAprobacion[] = ["pendiente", "ejecutando", "error", "falta_plantilla"];
 
-export async function rachaActual(db: Db) {
+/**
+ * La racha de la etapa 2 (§9): la de la bandeja fácil. Con carril «alquiler», la del alquiler
+ * simple, aparte (aprobacion-alquiler.ts: no cuenta para la de la bandeja).
+ */
+export async function rachaActual(db: Db, carril: "facil" | "alquiler" = "facil") {
   const { data, error } = await db
     .from("cli_aprobaciones")
     .select("estado, correccion_tipo, decidido_at")
     .eq("tipo", "precio")
-    .eq("carril", "facil")
+    .eq("carril", carril)
     .in("estado", [...ESTADOS_APROBADOS])
     .not("decidido_at", "is", null)
     .order("decidido_at", { ascending: false })
@@ -254,7 +289,9 @@ function tarjetaPrecio(f: Fila, charla: Charla, ctx: Contexto): TarjetaPrecio {
   };
 }
 
-function tarjetaDe(f: Fila, charla: Charla, ctx: Contexto, iaActiva: boolean, nombres: Map<string, string>, ultimoTurno: string | null): TarjetaAprobacion {
+function tarjetaDe(
+  f: Fila, charla: Charla, ctx: Contexto, iaActiva: boolean, nombres: Map<string, string>, ultimoTurno: string | null, ctxA: ContextoAlquilerCargado | null,
+): TarjetaAprobacion {
   const base: TarjetaAprobacion = {
     id: f.id,
     numero: Number(f.numero),
@@ -277,6 +314,14 @@ function tarjetaDe(f: Fila, charla: Charla, ctx: Contexto, iaActiva: boolean, no
       base.precio = tarjetaPrecio(f, charla, ctx);
     } catch (e) {
       base.error = base.error ?? `No se pudo recalcular: ${e instanceof Error ? e.message : e}`;
+    }
+  } else if (f.tipo === "precio" && f.carril === CARRIL_ALQUILER) {
+    try {
+      if (!ctxA) throw new Error("no se cargaron los parámetros del alquiler");
+      if ("error" in ctxA) throw new Error(ctxA.error);
+      base.alquiler = tarjetaAlquiler(f, charla, ctxA, recalcularAlquiler(leerPayloadAlquiler(f.payload), contextoRecalculo(ctxA, charla), null));
+    } catch (e) {
+      base.error = base.error ?? `No se pudo recalcular el alquiler: ${e instanceof Error ? e.message : e}`;
     }
   } else if (f.tipo === "precio" && f.carril === "simple") {
     const a = (f.payload.alquiler ?? {}) as { piezas?: { descripcion: string; cantidad: number }[]; dias?: number | null; entrega?: string | null; barrio?: string | null; notas?: string | null };
@@ -342,15 +387,20 @@ export async function tarjetasDeCharla(db: Db, conversacionId: string, iaActiva:
   const filas = ((data ?? []) as FilaDb[]).map(aFila);
   const r = await rachaActual(db);
   if (!filas.length) return { tarjetas: [], racha: { actual: r.actual, meta: r.meta, completa: r.completa }, iaActiva };
-  const [charla, ctx, nombres, ultimo] = await Promise.all([
+  const hayAlquiler = filas.some((f) => f.carril === CARRIL_ALQUILER);
+  const [charla, ctx, nombres, ultimo, rA] = await Promise.all([
     leerCharlaAprobacion(db, conversacionId),
     contexto(db),
     nombresDe(db, filas.map((f) => f.decidido_por)),
     filas.some((f) => f.tipo === "tecnico") ? ultimoDelTurno(db) : Promise.resolve(null),
+    hayAlquiler ? rachaActual(db, CARRIL_ALQUILER) : Promise.resolve(null),
   ]);
+  // Para mostrar, un Odoo caído no rompe la tarjeta: se usa el flete guardado con un aviso.
+  const ctxA = hayAlquiler ? await cargarContextoAlquiler(ctx, { fletesObligatorios: false }) : null;
   return {
-    tarjetas: filas.map((f) => tarjetaDe(f, charla, ctx, iaActiva, nombres, ultimo)),
+    tarjetas: filas.map((f) => tarjetaDe(f, charla, ctx, iaActiva, nombres, ultimo, ctxA)),
     racha: { actual: r.actual, meta: r.meta, completa: r.completa },
+    ...(rA ? { rachaAlquiler: { actual: rA.actual, meta: rA.meta, completa: rA.completa } } : {}),
     iaActiva,
   };
 }
@@ -362,9 +412,14 @@ function correccionDe(c: CorreccionPedida | null | undefined): Correccion | null
   return { tipo: c.tipo, motivo: c.motivo, metros: c.metros, precioMl: c.precioMl, concertina: c.concertina, gestoria: c.gestoria, texto: c.texto };
 }
 
-async function filaDePrecio(db: Db, id: string, conversacionId: string): Promise<Fila> {
+async function filaDeLaCharla(db: Db, id: string, conversacionId: string): Promise<Fila> {
   const f = await leerFila(db, id);
   if (!f || f.conversacion_id !== conversacionId) throw new ErrorTarjeta("Esa aprobación no es de esta charla.", 404);
+  return f;
+}
+
+async function filaDePrecio(db: Db, id: string, conversacionId: string): Promise<Fila> {
+  const f = await filaDeLaCharla(db, id, conversacionId);
   if (f.tipo !== "precio" || f.carril !== "facil") throw new ErrorTarjeta("Esto sólo vale para la bandeja fácil.", 400);
   return f;
 }
@@ -470,9 +525,13 @@ export type PedidoAprobar = {
   /** Con menos de 2 h de ventana, la tarjeta pregunta y vuelve con esto en true. */
   confirmarVentana?: boolean;
   despues?: Despues | null;
+  /** La corrección de un alquiler simple (carril «alquiler»). */
+  correccionAlquiler?: CorreccionAlquilerPedida | null;
 };
 
 export async function aprobarPrecio(db: Db, conversacionId: string, id: string, quien: Quien, p: PedidoAprobar, iaActiva: boolean): Promise<ResultadoDecision> {
+  const fila = await filaDeLaCharla(db, id, conversacionId);
+  if (fila.tipo === "precio" && fila.carril === CARRIL_ALQUILER) return aprobarAlquiler(db, fila, quien, p, iaActiva);
   const f = await filaDePrecio(db, id, conversacionId);
   if (f.estado !== "pendiente") {
     return { ok: false, codigo: "ya_decidida", error: motivoYaDecidida(f.estado, await nombreDe(db)(f.decidido_por), f.tipo) };
@@ -521,7 +580,8 @@ const pesoCorto = (n: number) => `$ ${Math.round(n).toLocaleString("es-AR")}`;
 
 /** Reintentar lo que falló, o mandar la «falta la plantilla» cuando la ventana se abrió. */
 export async function reintentarPrecio(db: Db, conversacionId: string, id: string, quien: Quien): Promise<ResultadoDecision> {
-  const f = await filaDePrecio(db, id, conversacionId);
+  const fila = await filaDeLaCharla(db, id, conversacionId);
+  const f = fila.tipo === "precio" && fila.carril === CARRIL_ALQUILER ? fila : await filaDePrecio(db, id, conversacionId);
   if (f.estado === "falta_plantilla") {
     const charla = await leerCharlaAprobacion(db, conversacionId);
     if (modoEnvio(charla.ultimo_entrante_at) !== "libre") {
@@ -531,6 +591,7 @@ export async function reintentarPrecio(db: Db, conversacionId: string, id: strin
   const toma = await tomarUnaVez(repoUnaVez(db), id, "reintentar", { estado: "ejecutando", error: null }, nombreDe(db));
   if (!toma.ok) return { ok: false, codigo: "ya_decidida", error: toma.motivo };
   await anotarEvento(db, conversacionId, `${quien.nombre} ${f.estado === "falta_plantilla" ? "mandó" : "reintentó"} la cotización #${f.numero}.`);
+  if (f.carril === CARRIL_ALQUILER) return ejecutarAlquiler(db, toma.fila, quien);
   return ejecutarPrecio(db, toma.fila, quien, await contexto(db));
 }
 
@@ -718,6 +779,352 @@ async function guardarEnOdoo(db: Db, f: Fila, charla: Charla, envio: Envio, quie
   };
 }
 
+// ── El alquiler simple (carril «alquiler») ──────────────────────────────────────────────
+
+type CtxAlquiler = { parametros: ParametrosAlquiler; fletes: Flete[] | null; feriados: string[]; hoy: string; ivaPct: number };
+type ContextoAlquilerCargado = CtxAlquiler | { error: string };
+
+let feriadosCache: { hasta: number; desde: string; fechas: string[] } | null = null;
+
+/** Los feriados de los próximos 90 días (la entrega puede ser más adelante). 6 h de caché, como el turno. */
+async function feriadosProximos(hoy: string): Promise<string[]> {
+  if (feriadosCache && feriadosCache.hasta > Date.now() && feriadosCache.desde === hoy) return feriadosCache.fechas;
+  const hasta = new Date(Date.parse(`${hoy}T12:00:00Z`) + 90 * 86_400_000).toISOString().slice(0, 10);
+  const fechas = (await feriadosDelRango(hoy, hasta).catch(() => [])).map((f) => f.fecha);
+  feriadosCache = { hasta: Date.now() + 6 * 3_600_000, desde: hoy, fechas };
+  return fechas;
+}
+
+/**
+ * Los parámetros del alquiler (Parámetros: precio por pieza, ruedas, mínimo, tope, recargo), los
+ * fletes de hoy de Odoo y los feriados. Para MOSTRAR la tarjeta, un Odoo caído no la rompe (se
+ * usa el flete guardado, con un aviso); para APROBAR, sí: el flete tiene que ser el de hoy.
+ */
+async function cargarContextoAlquiler(ctx: Contexto, o: { fletesObligatorios: boolean }): Promise<ContextoAlquilerCargado> {
+  let parametros: ParametrosAlquiler;
+  try {
+    parametros = parametrosAlquilerDesdeFilas(ctx.parametros);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  let fletes: Flete[] | null = null;
+  try {
+    fletes = await fletesAlquilerSimple();
+  } catch (e) {
+    if (o.fletesObligatorios) return { error: `No se pudo leer la lista de fletes de Odoo: ${e instanceof Error ? e.message : e}` };
+  }
+  return { parametros, fletes, feriados: await feriadosProximos(ctx.hoy), hoy: ctx.hoy, ivaPct: ctx.tarifas.ivaPct };
+}
+
+function contextoRecalculo(c: CtxAlquiler, charla: Charla): ContextoRecalculo {
+  return {
+    parametros: c.parametros, fletes: c.fletes, hoy: c.hoy, feriados: c.feriados,
+    ficha: { mensajesCliente: charla.ficha.mensajesCliente, banderas: charla.ficha.banderas, segmento: charla.ficha.segmento },
+  };
+}
+
+const TIPO_LINEA: Record<string, TarjetaAlquiler["lineas"][number]["tipo"]> = { flete: "flete", minimo_operativo: "minimo", recargo_franja: "recargo" };
+
+function tarjetaAlquiler(f: Fila, charla: Charla, c: CtxAlquiler, r: RecalculoAlquiler): TarjetaAlquiler {
+  const a = r.resultado.armado;
+  const pr = r.precio;
+  const asig = asignacionDe(f);
+  const montoPropuesto = num(f.monto_propuesto);
+  const flete = r.resultado.flete;
+  const iva = r.total !== null ? Math.round((r.total * c.ivaPct) / 100) : null;
+  const alertas = ((f.payload.alertas as { texto?: string; palabra?: string }[] | undefined) ?? [])
+    .filter((x) => x && typeof x.texto === "string")
+    .map((x) => (x.palabra ? `${x.texto} («${x.palabra}»)` : String(x.texto)));
+  return {
+    mensaje: r.mensaje,
+    pedido: datosDelPedido(r.pedido),
+    armado: a
+      ? {
+          texto: describirArmado(a), torres: a.torres, modulosPorTorre: a.modulosPorTorre, apoyo: a.apoyo, plataforma: textoPlataforma(a),
+          peldano: a.peldano, barandaSeLleva: a.barandaSeLleva, ajustes: a.ajustes,
+        }
+      : null,
+    lineas: (pr?.lineas ?? []).map((l) => ({ descripcion: l.descripcion, cantidad: l.cantidad, precioUnitario: l.precioUnitario, importe: l.importe, tipo: TIPO_LINEA[l.codigo] ?? "pieza" })),
+    flete: flete?.tipo === "lista" ? { barrio: flete.barrio, metodo: r.flete?.nombre ?? null, monto: flete.monto } : null,
+    minimoOperativo: pr?.minimoOperativo ?? 0,
+    recargo: pr && pr.recargoFranja > 0 && r.entrega ? { pct: pr.recargoFranjaPct, monto: pr.recargoFranja, franja: textoFranja(r.entrega.franja) } : null,
+    base: pr?.base ?? null,
+    neto: r.total,
+    iva,
+    totalConIva: r.total !== null && iva !== null ? r.total + iva : null,
+    porDia: pr?.porDia ?? null,
+    entrega: r.entrega ? { fecha: r.entrega.fecha, texto: textoFecha(r.entrega.fecha), franja: textoFranja(r.entrega.franja), hora: r.entrega.franja.tipo === "hora" } : null,
+    direccion: typeof f.payload.direccion === "string" ? f.payload.direccion : null,
+    motivos: motivosParaTarjeta(r.resultado),
+    facil: r.resultado.facil,
+    alertas,
+    entraSinPagarMas: textoEntraSinPagarMas(r.resultado),
+    bloqueos: r.bloqueos,
+    avisos: r.avisos,
+    montoPropuesto,
+    cambioDesdeTomas: montoPropuesto !== null && r.total !== null && Math.abs(montoPropuesto - r.total) > 1,
+    pareja: asig ? { tecnico: asig.tecnico, asistente: asig.asistente, motivo: asig.motivo, regla: asig.regla } : null,
+    sinCuit: !charla.ficha.cuit,
+  };
+}
+
+function correccionAlquilerDe(c: CorreccionAlquilerPedida | null | undefined): CorreccionAlquiler | null {
+  if (!c) return null;
+  return { tipo: c.tipo, motivo: c.motivo, total: c.total, modulosPorTorre: c.modulosPorTorre, torres: c.torres, fecha: c.fecha, franja: c.franja, texto: c.texto };
+}
+
+async function filaDeAlquiler(db: Db, id: string, conversacionId: string): Promise<Fila> {
+  const f = await filaDeLaCharla(db, id, conversacionId);
+  if (f.tipo !== "precio" || f.carril !== CARRIL_ALQUILER) throw new ErrorTarjeta("Esto sólo vale para un alquiler simple de Tomás.", 400);
+  return f;
+}
+
+/** «Recalcular» al corregir un alquiler: la tarjeta entera con la corrección, antes de mandar. No escribe nada. */
+export async function vistaCorreccionAlquiler(db: Db, conversacionId: string, id: string, pedida: CorreccionAlquilerPedida): Promise<VistaCorreccion> {
+  const f = await filaDeAlquiler(db, id, conversacionId);
+  const correccion = correccionAlquilerDe(pedida)!;
+  const invalida = validarCorreccionAlquiler(correccion);
+  if (invalida) throw new ErrorTarjeta(invalida, 400);
+  const [charla, ctx] = await Promise.all([leerCharlaAprobacion(db, conversacionId), contexto(db)]);
+  const ctxA = await cargarContextoAlquiler(ctx, { fletesObligatorios: false });
+  if ("error" in ctxA) throw new ErrorTarjeta(ctxA.error, 409);
+  const payload = leerPayloadAlquiler(f.payload);
+  const cr = contextoRecalculo(ctxA, charla);
+  const antes = recalcularAlquiler(payload, cr, null);
+  const r = recalcularAlquiler(payload, cr, correccion);
+  const t = tarjetaAlquiler(f, charla, ctxA, r);
+  return {
+    mensaje: r.mensaje ?? "",
+    renglones: t.lineas.map((l, i) => ({ id: `${t.lineas[i].tipo}-${i}`, descripcion: `${l.cantidad} × ${l.descripcion}`, importe: l.importe, seccion: "base" })),
+    neto: r.total ?? 0,
+    total: t.totalConIva ?? 0,
+    netoAntes: antes.total ?? 0,
+    bloqueos: r.bloqueos,
+    cortaRacha: CORTAN_RACHA.has(CORRECCION_EN_BASE[correccion.tipo]),
+    alquiler: t,
+  };
+}
+
+/** Lo que guarda el OK del alquiler para poder reintentar con exactamente lo mismo. */
+type EnvioAlquiler = {
+  cotizacion: NonNullable<RecalculoAlquiler["cotizacion"]>;
+  texto: string;
+  total: number;
+  direccion: string | null;
+  notaHtml: string;
+  despues: Despues;
+  correccion: CorreccionAlquiler | null;
+  /**
+   * La entrega que le llegó al cliente (con la corrección de fecha, si hubo). La lee Tomás
+   * (agente.ts → ultimoPresupuestoAlquiler) para comparar la franja que acepta el cliente.
+   */
+  entrega: NonNullable<RecalculoAlquiler["entrega"]>;
+};
+
+async function aprobarAlquiler(db: Db, f: Fila, quien: Quien, p: PedidoAprobar, iaActiva: boolean): Promise<ResultadoDecision> {
+  if (f.estado !== "pendiente") {
+    return { ok: false, codigo: "ya_decidida", error: motivoYaDecidida(f.estado, await nombreDe(db)(f.decidido_por), f.tipo) };
+  }
+  const correccion = correccionAlquilerDe(p.correccionAlquiler);
+  if (correccion) {
+    const invalida = validarCorreccionAlquiler(correccion);
+    if (invalida) return { ok: false, codigo: "bloqueo", error: invalida };
+  }
+  const [charla, ctx] = await Promise.all([leerCharlaAprobacion(db, f.conversacion_id), contexto(db)]);
+  const ctxA = await cargarContextoAlquiler(ctx, { fletesObligatorios: true });
+  if ("error" in ctxA) return { ok: false, codigo: "error", error: `No se mandó nada: ${ctxA.error}` };
+  let payload: PayloadAlquiler;
+  try {
+    payload = leerPayloadAlquiler(f.payload);
+  } catch (e) {
+    return { ok: false, codigo: "bloqueo", error: e instanceof Error ? e.message : String(e) };
+  }
+
+  // 1. Recalcular con los parámetros, el flete y la fecha de hoy.
+  const r = recalcularAlquiler(payload, contextoRecalculo(ctxA, charla), correccion);
+  if (r.bloqueos.length) return { ok: false, codigo: "bloqueo", error: `No se puede mandar así: ${r.bloqueos.join(" · ")}` };
+  if (r.total === null || !r.mensaje || !r.cotizacion || !r.entrega) return { ok: false, codigo: "bloqueo", error: "No se pudo armar el presupuesto: volvé a mirar la tarjeta." };
+  const v = verificarRecalculo(p.montoVisto, r.total);
+  if (!v.ok) return { ok: false, codigo: "cambio_monto", error: v.texto, antes: v.antes, despues: v.despues };
+
+  // 2. La ventana: con menos de 2 h, se pregunta antes.
+  const ventana = avisoVentana(charla.ultimo_entrante_at);
+  if (ventana.nivel === "por_vencer" && !p.confirmarVentana) return { ok: false, codigo: "ventana_por_vencer", error: ventana.texto };
+
+  // 3. Una sola vez.
+  const despues = destinoDespues({ tipo: "precio", accion: "aprobar", iaActiva, propuesta: f.payload.despues, elegido: p.despues });
+  const envio: EnvioAlquiler = {
+    cotizacion: r.cotizacion,
+    texto: r.mensaje,
+    total: r.total,
+    direccion: payload.direccion,
+    notaHtml: notaInternaAlquiler({
+      numero: Number(f.numero), aprobo: quien.nombre, correccion: correccion ? { tipo: correccion.tipo, motivo: correccion.motivo } : null, r,
+      direccion: payload.direccion, sinCuit: !charla.ficha.cuit?.trim(), avisos: r.avisos,
+    }),
+    despues,
+    correccion,
+    entrega: r.entrega,
+  };
+  const toma = await tomarUnaVez(repoUnaVez(db), f.id, "aprobar", {
+    estado: "ejecutando",
+    decidido_por: quien.id,
+    decidido_at: ahoraIso(),
+    monto_enviado: r.total,
+    correccion_tipo: correccion ? CORRECCION_EN_BASE[correccion.tipo] : null,
+    motivo_correccion: correccion ? `${etiquetaCorreccion(correccion.tipo)}: ${correccion.motivo.trim()}` : null,
+    error: null,
+    payload: { ...f.payload, envioAlquiler: envio },
+  }, nombreDe(db));
+  if (!toma.ok) return { ok: false, codigo: "ya_decidida", error: toma.motivo };
+  const eventoDecision = correccion
+    ? `${quien.nombre} corrigió ${etiquetaCorreccion(correccion.tipo).toLowerCase()} del alquiler #${f.numero} (${correccion.motivo.trim()}) y lo aprobó: ${pesoCorto(r.total)} + IVA.`
+    : `${quien.nombre} aprobó el alquiler #${f.numero} sin cambios: ${pesoCorto(r.total)} + IVA.`;
+  await anotarEvento(db, f.conversacion_id, `${eventoDecision} Guardando en Odoo…`);
+  return ejecutarAlquiler(db, toma.fila, quien);
+}
+
+const ETIQUETA_CORRECCION: Record<TipoCorreccionAlquiler, string> = { precio: "El total", piezas: "Las cantidades", fecha: "La fecha", texto: "El texto" };
+const etiquetaCorreccion = (t: TipoCorreccionAlquiler) => ETIQUETA_CORRECCION[t] ?? t;
+
+type OrdenAlquiler = { id: number; nombre: string };
+
+/** Odoo (cliente, orden en borrador, nota, oportunidad) y WhatsApp (el texto), con lo que dejó el OK. */
+async function ejecutarAlquiler(db: Db, f: Fila, quien: Quien): Promise<ResultadoDecision> {
+  const envio = f.payload.envioAlquiler as EnvioAlquiler | undefined;
+  if (!envio) {
+    await actualizar(db, f.id, { estado: "error", error: "Falta lo que se aprobó: volvé a aprobarlo." });
+    return { ok: false, codigo: "error", error: "Falta lo que se aprobó." };
+  }
+  const pasos: Record<string, unknown> = { ...(f.pasos ?? {}) };
+  const charla = await leerCharlaAprobacion(db, f.conversacion_id);
+  const a = asignacionDe(f);
+
+  // ── 4. Primero Odoo ──
+  let orden = pasos.ordenAlquiler as OrdenAlquiler | undefined;
+  if (!orden) {
+    try {
+      const g = await guardarAlquilerEnOdoo(db, f, charla, envio, a, pasos);
+      orden = { id: g.id, nombre: g.nombre };
+      pasos.ordenAlquiler = orden;
+      pasos.avisosOdoo = g.avisos;
+      await actualizar(db, f.id, { pasos, odoo_venta_id: orden.id, odoo_venta_nombre: orden.nombre });
+      await anotarEvento(db, f.conversacion_id, `Guardado en Odoo: ${orden.nombre} (en borrador)${g.avisos.length ? ` (${g.avisos.join(" · ")})` : ""}.`);
+    } catch (e) {
+      const mensaje = e instanceof Error ? e.message : String(e);
+      await actualizar(db, f.id, { estado: "error", error: `Odoo: ${mensaje}`.slice(0, 1000), pasos });
+      await anotarEvento(db, f.conversacion_id, `No se pudo guardar el alquiler #${f.numero} en Odoo: al cliente no le llegó nada. Reintentalo desde la tarjeta.`);
+      return { ok: false, codigo: "error", error: `No se guardó en Odoo y no se le mandó nada al cliente: ${mensaje}` };
+    }
+  }
+  const avisos = [...((pasos.avisosOdoo as string[] | undefined) ?? [])];
+
+  // La pareja va con el precio, como en la bandeja fácil.
+  const cambiosCharla: Record<string, unknown> = { updated_at: ahoraIso() };
+  if (typeof pasos.partnerId === "number") cambiosCharla.partner_id = pasos.partnerId;
+  if (a?.tecnico || a?.asistente) {
+    cambiosCharla.pareja_tecnico = a.tecnico;
+    cambiosCharla.pareja_asistente = a.asistente;
+    const ids = pasos.idsPareja as { tecnico: { id: number } | null } | undefined;
+    if (ids?.tecnico?.id) cambiosCharla.tecnico_employee_id = ids.tecnico.id;
+  }
+  const { error: eCharla } = await db.from("cli_conversaciones").update(cambiosCharla).eq("id", f.conversacion_id);
+  if (eCharla && typeof pasos.partnerId === "number") {
+    await db.from("cli_conversaciones").update({ partner_id: pasos.partnerId, updated_at: ahoraIso() }).eq("id", f.conversacion_id);
+  }
+
+  // ── 6. WhatsApp: el texto del motor, sin PDF ──
+  const final: EstadoAprobacion = f.correccion_tipo ? "corregida" : "aprobada";
+  const turno = a?.regla === "turno" && a.tecnico ? a.tecnico : null;
+  if (modoEnvio(charla.ultimo_entrante_at) !== "libre") {
+    await actualizar(db, f.id, { estado: "falta_plantilla", pasos, error: null, texto_enviado: null, turno_tecnico: turno, resultado: { venta: orden.nombre, avisos } });
+    await anotarEvento(db, f.conversacion_id, `Alquiler #${f.numero} en Odoo (${orden.nombre}), pero la ventana de 24 h está cerrada: no se le mandó al cliente. Queda «aprobado, falta la plantilla»: sale cuando el cliente vuelva a escribir.`);
+    const sigue = await despuesDeDecidir(db, f.conversacion_id, "persona", quien);
+    return { ok: true, estado: "falta_plantilla", venta: orden.nombre, avisos: [...avisos, `La ventana de 24 h está cerrada: quedó en Odoo y falta mandarlo con la plantilla.${sigue}`] };
+  }
+  try {
+    if (!pasos.textoEnviado) {
+      await mandarTexto(db, f.conversacion_id, charla.telefono, envio.texto, { autor: "sistema" });
+      pasos.textoEnviado = ahoraIso();
+    }
+  } catch (e) {
+    const mensaje = e instanceof Error ? e.message : String(e);
+    await actualizar(db, f.id, { estado: "error", error: `WhatsApp: ${mensaje}`.slice(0, 1000), pasos });
+    await anotarEvento(db, f.conversacion_id, `El alquiler #${f.numero} quedó en Odoo (${orden.nombre}), pero WhatsApp no lo aceptó: ${mensaje}. Reintentalo desde la tarjeta.`);
+    return { ok: false, codigo: "error", error: `Quedó en Odoo (${orden.nombre}), pero no salió por WhatsApp: ${mensaje}` };
+  }
+
+  // ── 7. Lo que queda: quién, cuándo, cuánto y la racha del alquiler ──
+  await actualizar(db, f.id, { estado: final, pasos, error: null, texto_enviado: envio.texto, turno_tecnico: turno, resultado: { venta: orden.nombre, avisos } });
+  const r = await rachaActual(db, CARRIL_ALQUILER);
+  const corta = f.correccion_tipo && CORTAN_RACHA.has(f.correccion_tipo);
+  const sigue = await despuesDeDecidir(db, f.conversacion_id, envio.despues, quien);
+  await anotarEvento(db, f.conversacion_id, `Se le mandó el presupuesto del alquiler #${f.numero} (${orden.nombre}) · alquiler: ${corta ? `racha vuelve a 0 de ${r.meta}` : textoRacha(r)}.${sigue}`);
+  return { ok: true, estado: final, venta: orden.nombre, avisos };
+}
+
+/**
+ * El cliente y la orden EN BORRADOR. El cliente: el que encontró el servidor en Odoo (ficha o
+ * charla); si no, el alta del asistente comercial (crearCliente: por CUIT, o por el nombre
+ * exacto; si no está, lo crea, con CUIT o sin CUIT con el aviso en la nota, regla del 12/10).
+ * La orden es idempotente por la marca: un reintento la encuentra y, si sigue en borrador, la
+ * reescribe. La oportunidad del CRM, como en el asistente: si falla, es un aviso.
+ */
+async function guardarAlquilerEnOdoo(
+  db: Db, f: Fila, charla: Charla, envio: EnvioAlquiler, a: Asignacion | null, pasos: Record<string, unknown>,
+): Promise<OrdenAlquiler & { avisos: string[] }> {
+  const ficha = charla.ficha;
+  const nombre = ficha.nombre?.trim() || charla.nombre_perfil?.trim() || null;
+  if (!nombre) throw new Error("Falta a nombre de quién va el presupuesto.");
+  const avisos: string[] = [];
+
+  const ids = (pasos.idsPareja as Awaited<ReturnType<typeof idsDePareja>> | undefined) ?? (await idsDePareja({ tecnico: a?.tecnico ?? null, asistente: a?.asistente ?? null }));
+  pasos.idsPareja = ids;
+  if (a?.asistente && !ids.asistente) avisos.push(`no se encontró a ${a.asistente} en los usuarios de Odoo: la orden queda con el vendedor por defecto`);
+
+  let partnerId = (pasos.partnerId as number | undefined) ?? ficha.partnerId ?? charla.partner_id ?? null;
+  if (!partnerId) {
+    const c = await crearCliente({
+      razonSocial: nombre, cuit: ficha.cuit?.trim() || null, email: ficha.mail ?? null, telefono: charla.telefono, domicilio: null,
+      enCaba: ficha.enCaba ?? true, contacto: nombre, condicionIva: null,
+    });
+    partnerId = c.id;
+    pasos.clienteCreado = c.creado;
+  }
+  pasos.partnerId = partnerId;
+  if (!ficha.cuit?.trim()) avisos.push("cliente sin CUIT: completarlo en Odoo antes de facturar");
+
+  const parametros = await leerParametros(db);
+  const iva = parametros.find((x) => x.clave === "odoo_impuesto_iva_id")?.valor ?? 88;
+  const o = await crearOrdenAlquilerSimple({
+    marca: `tomas-alquiler:${f.id}`,
+    partnerId,
+    vendedorUserId: ids.asistente?.id ?? null,
+    cotizacion: envio.cotizacion,
+    direccionEntrega: envio.direccion ?? "",
+    enCaba: ficha.enCaba ?? true,
+    origen: `${nombre.toUpperCase()} - SIMPLE`,
+    hoy: hoyBA(),
+    notaInterna: envio.notaHtml,
+    impuestoIvaId: Number(iva),
+  });
+  avisos.push(...o.avisos);
+  if (!envio.direccion) avisos.push("la orden quedó sin dirección de entrega");
+
+  if (!pasos.oportunidadId) {
+    try {
+      const op = await vincularOportunidad({
+        ordenId: o.id, ordenNombre: o.nombre, partnerId, cliente: nombre, direccionObra: envio.direccion, referencia: "Alquiler simple",
+        neto: envio.total, vendedorUserId: ids.asistente?.id ?? null, tecnicoEmployeeId: ids.tecnico?.id ?? null,
+      });
+      pasos.oportunidadId = op.id;
+    } catch (e) {
+      avisos.push(`no se pudo vincular la oportunidad del CRM: ${e instanceof Error ? e.message : e}`);
+    }
+  }
+  return { id: o.id, nombre: o.nombre, avisos };
+}
+
 // ── Rechazar / Lo tomo yo ───────────────────────────────────────────────────────────────
 
 export async function tomarYo(db: Db, conversacionId: string, id: string, quien: Quien, motivo: string | null): Promise<ResultadoDecision> {
@@ -844,8 +1251,9 @@ export async function mandarBloqueadoEditado(db: Db, conversacionId: string, id:
 // ── Revisar charlas (el auditor, sólo admin) ────────────────────────────────────────────
 
 export async function auditoria(db: Db): Promise<Auditoria> {
-  const [r, decs, hilo] = await Promise.all([
+  const [r, rA, decs, hilo] = await Promise.all([
     rachaActual(db),
+    rachaActual(db, CARRIL_ALQUILER),
     db
       .from("cli_aprobaciones")
       .select("id, numero, conversacion_id, tipo, carril, estado, resumen, monto_propuesto, monto_enviado, correccion_tipo, motivo_correccion, decidido_por, decidido_at, odoo_venta_nombre")
@@ -897,5 +1305,5 @@ export async function auditoria(db: Db): Promise<Auditoria> {
       intervenciones: c.n, ultima: c.ultima, ultimoTexto: c.texto,
     }))
     .sort((a, b) => b.ultima.localeCompare(a.ultima));
-  return { racha: r, decisiones, intervenidas };
+  return { racha: r, rachaAlquiler: rA, decisiones, intervenidas };
 }

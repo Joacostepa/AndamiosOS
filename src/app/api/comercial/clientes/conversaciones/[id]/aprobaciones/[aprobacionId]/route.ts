@@ -5,7 +5,7 @@ import { nombresDe } from "@/lib/clientes/bandeja";
 import { iaClientesActiva } from "@/lib/clientes/interruptor";
 import { SinNumeroClientes } from "@/lib/clientes/envio";
 import {
-  aprobarPrecio, confirmarTecnico, ErrorTarjeta, mandarBloqueadoEditado, reintentarPrecio, tomarYo, vistaCorreccion,
+  aprobarPrecio, confirmarTecnico, ErrorTarjeta, mandarBloqueadoEditado, reintentarPrecio, tomarYo, vistaCorreccion, vistaCorreccionAlquiler,
 } from "@/lib/clientes/aprobar";
 import { MAX_TEXTO } from "@/lib/whatsapp/formato";
 import { errorResponse, exigirModulo, invalido } from "../../../../../_comun";
@@ -18,7 +18,10 @@ import { errorResponse, exigirModulo, invalido } from "../../../../../_comun";
 //       bandeja fácil: recalcula (si cambió el monto, 409 codigo cambio_monto y no manda), con
 //       menos de 2 h de ventana pide confirmarVentana (409 ventana_por_vencer), y después
 //       primero Odoo, después el PDF, después WhatsApp (ventana cerrada: «falta la plantilla»);
+//       Alquiler simple (carril «alquiler»): lo mismo, con `correccionAlquiler` en vez de
+//       `correccion`, y Odoo es la orden de alquiler en borrador; sale sólo el texto;
 //   { accion: "corregir", correccion }  el nuevo, recalculado, ANTES de mandar (no escribe nada);
+//   { accion: "corregir_alquiler", correccionAlquiler }  lo mismo para un alquiler simple;
 //   { accion: "reintentar" }            lo que falló, o la «falta la plantilla» con la ventana abierta;
 //   { accion: "tomar", motivo? }        Rechazar / Lo tomo yo (o Descartar, en un texto bloqueado);
 //   { accion: "confirmar", elegida?, avisar, despues? }  técnico: Confirmar o Elegir otra;
@@ -40,9 +43,30 @@ const correccion = z.object({
   texto: z.string().trim().max(MAX_TEXTO).optional(),
 });
 
+// Alquiler simple (aprobacion-alquiler.ts → validarCorreccionAlquiler revisa lo de cada tipo).
+const franja = z.discriminatedUnion("tipo", [
+  z.object({ tipo: z.literal("manana") }),
+  z.object({ tipo: z.literal("tarde") }),
+  z.object({ tipo: z.literal("hora"), desde: z.number().min(8).max(15) }),
+]);
+const correccionAlquiler = z.object({
+  tipo: z.enum(["precio", "piezas", "fecha", "texto"]),
+  motivo: z.string().trim().min(3, "Escribí el motivo de la corrección.").max(500),
+  total: z.number().positive().max(100_000_000).optional(),
+  modulosPorTorre: z.number().int().min(1).max(10).optional(),
+  torres: z.number().int().min(1).max(10).optional(),
+  fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  franja: franja.optional(),
+  texto: z.string().trim().max(MAX_TEXTO).optional(),
+});
+
 const schema = z.discriminatedUnion("accion", [
-  z.object({ accion: z.literal("aprobar"), montoVisto: z.number(), correccion: correccion.nullable().optional(), confirmarVentana: z.boolean().optional(), despues }),
+  z.object({
+    accion: z.literal("aprobar"), montoVisto: z.number(), correccion: correccion.nullable().optional(), correccionAlquiler: correccionAlquiler.nullable().optional(),
+    confirmarVentana: z.boolean().optional(), despues,
+  }),
   z.object({ accion: z.literal("corregir"), correccion }),
+  z.object({ accion: z.literal("corregir_alquiler"), correccionAlquiler }),
   z.object({ accion: z.literal("reintentar") }),
   z.object({ accion: z.literal("tomar"), motivo: z.string().trim().max(500).optional() }),
   z.object({
@@ -66,6 +90,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     const yo = { id: quien.userId, nombre: (await nombresDe(db, [quien.userId])).get(quien.userId) ?? "Alguien" };
     const b = parsed.data;
     if (b.accion === "corregir") return NextResponse.json(await vistaCorreccion(db, id, aprobacionId, b.correccion));
+    if (b.accion === "corregir_alquiler") return NextResponse.json(await vistaCorreccionAlquiler(db, id, aprobacionId, b.correccionAlquiler));
 
     const iaActiva = await iaClientesActiva(db);
     const r =

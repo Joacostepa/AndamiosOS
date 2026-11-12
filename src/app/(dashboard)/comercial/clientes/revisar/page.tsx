@@ -17,6 +17,8 @@ import type { DecisionAuditada } from "@/lib/clientes/vista-aprobacion";
 //   · las charlas donde intervino una persona (escribió, tomó, devolvió, aprobó);
 //   · la racha de la etapa 2 (§9, decisión 5b): 20 aprobados seguidos sin cambios de importe,
 //     metros o piezas. Una corrección de texto no la corta.
+//   · el alquiler simple que cotiza Tomás (carril «alquiler») sale en la lista con su carril y
+//     tiene su propia racha, aparte: no cuenta para la de la bandeja (aprobacion-alquiler.ts).
 
 const pesos = (n: number | null) => (n === null ? "—" : `$ ${Math.round(n).toLocaleString("es-AR")}`);
 const fecha = (s: string | null) => (s ? format(parseISO(s), "dd/MM HH:mm", { locale: es }) : "—");
@@ -34,6 +36,7 @@ const ESTADO: Record<string, { texto: string; tono: "gris" | "ambar" | "coral" |
 };
 
 const TIPO: Record<string, string> = { precio: "Precio", tecnico: "Técnico", traspaso: "Traspaso", texto_bloqueado: "Texto bloqueado" };
+const CARRIL: Record<string, string> = { facil: "bandeja fácil", simple: "alquiler simple (a mano)", alquiler: "alquiler simple de Tomás" };
 
 function Decision({ d }: { d: DecisionAuditada }) {
   const e = ESTADO[d.estado] ?? { texto: d.estado, tono: "gris" as const };
@@ -45,7 +48,7 @@ function Decision({ d }: { d: DecisionAuditada }) {
         <span className="font-mono text-[12px] text-muted-foreground">#{d.numero}</span>
         <Pastilla tono={e.tono}>{e.texto}{d.correccionTipo ? ` · ${d.correccionTipo}` : ""}</Pastilla>
       </div>
-      <p className="text-[13px] text-muted-foreground">{TIPO[d.tipo] ?? d.tipo}{d.resumen ? ` · ${d.resumen}` : ""}</p>
+      <p className="text-[13px] text-muted-foreground">{TIPO[d.tipo] ?? d.tipo}{d.tipo === "precio" && d.carril && CARRIL[d.carril] ? ` (${CARRIL[d.carril]})` : ""}{d.resumen ? ` · ${d.resumen}` : ""}</p>
       {d.tipo === "precio" && (
         <p className={cn("text-[13.5px] tabular-nums", distinto && "text-hd-ambar")}>
           Propuso {pesos(d.propuesto)} → salió {d.estado === "rechazada" || d.estado === "tomada" ? "nada" : pesos(d.enviado)}{d.venta ? ` · ${d.venta}` : ""}
@@ -93,6 +96,7 @@ export default function RevisarCharlasPage() {
             <p className="mt-2 text-[13px] text-muted-foreground">
               Bandejas fáciles aprobadas seguidas sin cambios de importe, metros o piezas (los cambios de texto no la cortan). De éstas, {d.racha.sinTocar} salieron sin ningún toque.
               {d.racha.ultimoCorte ? ` Se cortó por última vez el ${fecha(d.racha.ultimoCorte)}.` : ""}
+              {d.rachaAlquiler ? ` El alquiler simple de Tomás lleva su propia racha, aparte: ${d.rachaAlquiler.actual} de ${d.rachaAlquiler.meta} (${d.rachaAlquiler.sinTocar} sin ningún toque).` : ""}
             </p>
           </section>
 

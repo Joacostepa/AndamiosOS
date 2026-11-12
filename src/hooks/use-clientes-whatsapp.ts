@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import type { DetalleCharla, ListaCharlas } from "@/lib/clientes/vista";
-import type { Auditoria, CorreccionPedida, ResultadoDecision, TarjetasCharla, VistaCorreccion } from "@/lib/clientes/vista-aprobacion";
+import type { Auditoria, CorreccionAlquilerPedida, CorreccionPedida, ResultadoDecision, TarjetasCharla, VistaCorreccion } from "@/lib/clientes/vista-aprobacion";
 
 // La bandeja de WhatsApp de clientes del lado de la pantalla.
 //
@@ -108,7 +108,15 @@ export function useAprobaciones(id: string | null) {
 }
 
 export type PedidoTarjeta =
-  | { accion: "aprobar"; montoVisto: number; correccion?: CorreccionPedida | null; confirmarVentana?: boolean; despues?: "sofia" | "persona" | null }
+  | {
+      accion: "aprobar";
+      montoVisto: number;
+      correccion?: CorreccionPedida | null;
+      /** Sólo en un alquiler simple (carril «alquiler»). */
+      correccionAlquiler?: CorreccionAlquilerPedida | null;
+      confirmarVentana?: boolean;
+      despues?: "sofia" | "persona" | null;
+    }
   | { accion: "reintentar" }
   | { accion: "tomar"; motivo?: string }
   | { accion: "confirmar"; elegida?: { tecnico: string | null; asistente: string | null } | null; avisar: boolean; despues?: "sofia" | "persona" | null }
@@ -130,6 +138,14 @@ export function useVistaCorreccion(charlaId: string) {
   return useMutation<VistaCorreccion, ErrorPedido, { aprobacionId: string; correccion: CorreccionPedida }>({
     mutationFn: ({ aprobacionId, correccion }) =>
       pedir(`${BASE}/conversaciones/${charlaId}/aprobaciones/${aprobacionId}`, { method: "POST", body: JSON.stringify({ accion: "corregir", correccion }) }),
+  });
+}
+
+/** «Recalcular» al corregir un alquiler simple: la tarjeta con la corrección. No escribe nada. */
+export function useVistaCorreccionAlquiler(charlaId: string) {
+  return useMutation<VistaCorreccion, ErrorPedido, { aprobacionId: string; correccion: CorreccionAlquilerPedida }>({
+    mutationFn: ({ aprobacionId, correccion }) =>
+      pedir(`${BASE}/conversaciones/${charlaId}/aprobaciones/${aprobacionId}`, { method: "POST", body: JSON.stringify({ accion: "corregir_alquiler", correccionAlquiler: correccion }) }),
   });
 }
 

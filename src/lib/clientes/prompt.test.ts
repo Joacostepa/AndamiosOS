@@ -156,7 +156,7 @@ test("las frases fijas nuevas del prompt pasan el filtro de salida", () => {
 });
 
 test("el bloque del alquiler simple: §3, §6 y §7, sin montos ni porcentajes, adentro del bloque fijo", () => {
-  assert.equal(VERSION_PROMPT, "tomas-2026-11-12-fotos-y-charlas-de-prueba");
+  assert.equal(VERSION_PROMPT, "tomas-2026-11-13-dias-del-cliente-sin-torre-de-mas");
   assert.ok(INSTRUCCIONES.includes(ALQUILER_SIMPLE), "va en el bloque con caché, igual para todas las charlas");
   for (const regla of [
     /Qué trabajo van a hacer y hasta qué altura/,
@@ -164,7 +164,9 @@ test("el bloque del alquiler simple: §3, §6 y §7, sin montos ni porcentajes, 
     /Cómo es el piso: liso, o desparejo/,
     /Dónde es/,
     /Para cuándo lo necesitan/,
-    /servicio es siempre de 30 días/,
+    /Por cuántos días lo necesitan/,
+    /Nunca le hables de un mínimo de días, de «30 días» ni del mínimo del servicio/,
+    /nunca le ofrezcas otra torre ni un módulo más/,
     /los choferes no pueden entrar a los domicilios/,
     /de lunes a viernes de 8 a 12 o de 13 a 16, y los sábados de 8 a 12\. Domingos y feriados no/,
     /con un recargo por los costos operativos; cuánto es lo dice el presupuesto, vos no/,

@@ -588,6 +588,7 @@ const esquemaAlquiler = z.object({
   fecha: FECHA.optional().describe("La fecha de entrega que pidió, AAAA-MM-DD (el día de hoy está en el aviso)."),
   franja: FRANJA.optional(),
   hora_desde: HORA.optional(),
+  dias: z.number().int().min(1).max(365).optional().describe("Por cuántos días lo necesita, como lo dijo el cliente («una semana» = 7). El presupuesto sale por esos días."),
   acepta_plataforma: z.boolean().optional().describe("Lo que contestó cuando le aclaraste la plataforma que te pidió confirmar (un tablón en un peldaño, o que no llega cómodo al techo)."),
   notas: texto(400).optional().describe("Lo que contó y sirva para el equipo (para qué es, si va en la vereda, el acceso)."),
 }).strict();
@@ -658,6 +659,7 @@ function anotarPedido(p: PedidoAlquiler, i: z.infer<typeof esquemaAlquiler>, fra
   if (i.para_hoy !== undefined) p.paraHoy = i.para_hoy;
   if (i.fecha !== undefined) p.fecha = i.fecha;
   if (franja) p.franja = franja;
+  if (i.dias !== undefined) p.dias = i.dias;
   if (i.retira_en_deposito !== undefined) p.retiraEnDeposito = i.retira_en_deposito;
   const alturaDespues = JSON.stringify([p.lugar, p.alturaTrabajo, p.trabajoEnTecho, p.alturaTecho, p.piezas?.modulosPorTorre ?? null]);
   if (alturaAntes !== alturaDespues) p.aceptaPlataforma = null;

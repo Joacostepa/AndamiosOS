@@ -662,7 +662,7 @@ test("alquiler simple: Tomás junta los datos, el servidor arma el andamio y que
   await atenderCharla(m.deps(guion(
     respuestaHerramientas(
       ["anotar_ficha", { nombre: "Marcela Ríos", tarea: "pintar una pared del patio", tipo_cliente: "particular" }],
-      ["cotizar_alquiler_simple", { lugar: "afuera", altura_trabajo_m: 5, espacio_de_sobra: true, piso: "liso", direccion: "Gorriti 4500", fecha: "2026-10-16", franja: "manana" }],
+      ["cotizar_alquiler_simple", { lugar: "afuera", altura_trabajo_m: 5, espacio_de_sobra: true, piso: "liso", direccion: "Gorriti 4500", fecha: "2026-10-16", franja: "manana", dias: 7 }],
     ),
     respuestaTexto("Te armé una torre de 2 módulos con baranda: trabajás cómoda hasta unos 5,75 m. El presupuesto lo revisa el equipo y te llega por acá en unos minutos."),
   )), m.charla.id);

@@ -259,7 +259,7 @@ test("pedir_tecnico: la tarjeta del equipo trae por qué la bandeja no salió f�
 
 /** El ejemplo de la §5: pintar una pared de patio hasta 5 m en Palermo, piso liso, espacio de sobra. */
 const PALERMO = {
-  lugar: "afuera", altura_trabajo_m: 5, espacio_de_sobra: true, piso: "liso", direccion: "Gorriti 4500", fecha: "2026-10-16", franja: "manana",
+  lugar: "afuera", altura_trabajo_m: 5, espacio_de_sobra: true, piso: "liso", direccion: "Gorriti 4500", fecha: "2026-10-16", franja: "manana", dias: 7,
 } as const;
 
 const sinNumero = (t: string) => t.replace(/#\d+/g, "#N");
@@ -309,7 +309,7 @@ test("cotizar_alquiler_simple: se suma de a poco; pide lo que falta, en el orden
 
   await ejecutarHerramientaSofia("cotizar_alquiler_simple", { espacio_de_sobra: true, piso: "liso" }, c);
   assert.equal(c.ficha.alquiler?.pedido?.alturaTrabajo, 5, "lo anterior no se pierde");
-  const r3 = JSON.parse((await ejecutarHerramientaSofia("cotizar_alquiler_simple", { direccion: "Gorriti 4500", fecha: "2026-10-16", franja: "tarde" }, c)).contenido);
+  const r3 = JSON.parse((await ejecutarHerramientaSofia("cotizar_alquiler_simple", { direccion: "Gorriti 4500", fecha: "2026-10-16", franja: "tarde", dias: 7 }, c)).contenido);
   assert.deepEqual(r3.preguntar, ["¿A nombre de quién va el presupuesto?"]);
   await ejecutarHerramientaSofia("anotar_ficha", { nombre: "Marcela" }, c);
   const r4 = JSON.parse((await ejecutarHerramientaSofia("cotizar_alquiler_simple", {}, c)).contenido);
@@ -411,7 +411,7 @@ test("cotizar_alquiler_simple: la franja de una hora pide la hora; con recargo, 
 test("cotizar_alquiler_simple: el techo bajo propone el peldaño y espera la respuesta (acepta_plataforma)", async () => {
   const c = contexto({ nombre: "A" });
   const r = JSON.parse((await ejecutarHerramientaSofia("cotizar_alquiler_simple", {
-    lugar: "adentro", trabajo_en_techo: true, altura_techo_m: 3, espacio_de_sobra: true, piso: "liso", direccion: "Gorriti 4500", fecha: "2026-10-16", franja: "manana",
+    lugar: "adentro", trabajo_en_techo: true, altura_techo_m: 3, espacio_de_sobra: true, piso: "liso", direccion: "Gorriti 4500", fecha: "2026-10-16", franja: "manana", dias: 7,
   }, c)).contenido);
   assert.equal(r.estado, "confirmar");
   assert.match(r.detalle, /un solo tablón de 30 cm/);
@@ -419,13 +419,13 @@ test("cotizar_alquiler_simple: el techo bajo propone el peldaño y espera la res
   const ok = JSON.parse((await ejecutarHerramientaSofia("cotizar_alquiler_simple", { acepta_plataforma: true }, c)).contenido);
   assert.equal(ok.estado, "pendiente");
   const no = contexto({ nombre: "A" });
-  await ejecutarHerramientaSofia("cotizar_alquiler_simple", { lugar: "adentro", trabajo_en_techo: true, altura_techo_m: 3, espacio_de_sobra: true, piso: "liso", direccion: "Gorriti 4500", fecha: "2026-10-16", franja: "manana", acepta_plataforma: false }, no);
+  await ejecutarHerramientaSofia("cotizar_alquiler_simple", { lugar: "adentro", trabajo_en_techo: true, altura_techo_m: 3, espacio_de_sobra: true, piso: "liso", direccion: "Gorriti 4500", fecha: "2026-10-16", franja: "manana", dias: 7, acepta_plataforma: false }, no);
   assert.equal(no.mundo.pendientes.length, 0);
 });
 
 test("cotizar_alquiler_simple: si cambia el techo, la plataforma aceptada ya no vale y se vuelve a confirmar", async () => {
   const c = contexto({ nombre: "A" });
-  const base = { lugar: "adentro", trabajo_en_techo: true, espacio_de_sobra: true, piso: "liso", direccion: "Gorriti 4500", fecha: "2026-10-16", franja: "manana" } as const;
+  const base = { lugar: "adentro", trabajo_en_techo: true, espacio_de_sobra: true, piso: "liso", direccion: "Gorriti 4500", fecha: "2026-10-16", franja: "manana", dias: 7 } as const;
   await ejecutarHerramientaSofia("cotizar_alquiler_simple", { ...base, altura_techo_m: 3, acepta_plataforma: true }, c);
   assert.equal(c.ficha.alquiler?.pedido?.aceptaPlataforma, true);
   // Era 5 m, no 3: el peldaño del segundo módulo, que no llega cómodo al techo. Hay que volver a preguntar.

@@ -31,7 +31,7 @@ function ctx(cambios: Partial<ContextoAlquiler> = {}): ContextoAlquiler {
 
 /** Afuera, piso liso, espacio de sobra, el lunes a la mañana. */
 function pedido(cambios: Partial<PedidoAlquiler> = {}): PedidoAlquiler {
-  return { ...pedidoVacio(), lugar: "afuera", espacioDeSobra: true, piso: "liso", fecha: LUNES, franja: MANANA, ...cambios };
+  return { ...pedidoVacio(), lugar: "afuera", espacioDeSobra: true, piso: "liso", fecha: LUNES, franja: MANANA, dias: 7, ...cambios };
 }
 
 const cotizar = (cambios: Partial<PedidoAlquiler> = {}, c: Partial<ContextoAlquiler> = {}) => cotizarAlquilerSimple(pedido(cambios), ctx(c));
@@ -413,18 +413,24 @@ test("§5: si el material y el flete pasan el mínimo, no hay línea de mínimo"
   assert.deepEqual(r.entraSinPagarMas, []);
 });
 
-test("§7: si no llega al mínimo, lo que le entra sin pagar más", () => {
-  // Palermo: le entra otra torre igual o un módulo más de alto.
-  assert.deepEqual(cotizar({ alturaTrabajo: 5 }).entraSinPagarMas, [{ tipo: "otra_torre", cantidad: 1 }, { tipo: "modulo_mas", llegaHasta: 7.55 }]);
-  // Con un flete barato, le entran 2 torres más.
-  const barato = cotizar({ alturaTrabajo: 3 }, { flete: { tipo: "lista", barrio: "Núñez", monto: 50000 } });
-  assert.deepEqual(barato.entraSinPagarMas, [{ tipo: "otra_torre", cantidad: 2 }, { tipo: "modulo_mas", llegaHasta: 5.75 }]);
-  // Con 3 módulos no hay módulo más (habría que anclar).
-  assert.deepEqual(cotizar({ alturaTrabajo: 7 }).entraSinPagarMas, []);
-  // Adentro, si con un módulo más no entra la cabeza, tampoco.
-  assert.deepEqual(cotizar({ lugar: "adentro", alturaTrabajo: 3, alturaTecho: 4 }).entraSinPagarMas, [{ tipo: "otra_torre", cantidad: 1 }]);
-  // Nunca por encima del tope de módulos.
-  assert.deepEqual(cotizar({ alturaTrabajo: 3 }, { parametros: { ...P, maxModulos: 1 } }).entraSinPagarMas, []);
+test("los días (JS, 13/11): sin días falta preguntarlos; más de 30 lo cotiza un vendedor", () => {
+  assert.ok(faltan(cotizar({ alturaTrabajo: 5, dias: null })).includes("dias"));
+  assert.equal(cotizar({ alturaTrabajo: 5, dias: null }).listo, false);
+  const ok = cotizar({ alturaTrabajo: 5, dias: 30 });
+  assert.equal(ok.listo, true);
+  assert.equal(ok.dias, 30);
+  const largo = cotizar({ alturaTrabajo: 5, dias: 45 });
+  assert.deepEqual(enContra(largo), ["mas_de_30_dias"]);
+  assert.match(resumenParaTomas(largo), /lo necesita por más de 30 días/);
+});
+
+test("§7 (JS, 13/11): aunque no llegue al mínimo, no se le ofrece otra torre ni un módulo más", () => {
+  for (const r of [cotizar({ alturaTrabajo: 5 }), cotizar({ alturaTrabajo: 3 }, { flete: { tipo: "lista", barrio: "Núñez", monto: 50000 } })]) {
+    assert.ok(r.precio && r.precio.minimoOperativo > 0, "no llega al mínimo");
+    assert.deepEqual(r.entraSinPagarMas, []);
+    const t = resumenParaTomas(r);
+    assert.ok(!/mínimo|otra torre|módulo más|sin pagar más/i.test(t), t);
+  }
 });
 
 test("§5: sin flete en la lista no hay precio y va a un vendedor; sin dirección, falta", () => {
@@ -525,7 +531,7 @@ test("lo que pide el cliente: más de 3 módulos de alto hay que anclar", () => 
 
 test("§3: lo que falta preguntar, en orden", () => {
   const r = cotizarAlquilerSimple(pedidoVacio(), ctx({ flete: null }));
-  assert.deepEqual(faltan(r), ["lugar", "altura", "ancho", "largo", "piso", "direccion", "fecha", "franja"]);
+  assert.deepEqual(faltan(r), ["lugar", "altura", "ancho", "largo", "piso", "direccion", "fecha", "franja", "dias"]);
   assert.equal(r.armado, null);
   assert.equal(r.listo, false);
   for (const f of r.faltan) sinPlata(f.pregunta);
@@ -659,7 +665,7 @@ test("resumenParaTomas: el armado sin ningún monto ni porcentaje", () => {
   assert.match(t, /1 torre de 2 módulos estándar \(1,30\) de 2,50, con la baranda arriba, piso completo de 4 tablones y ruedas con freno/);
   assert.match(t, /trabaja cómodo hasta ~5,75 m/);
   assert.match(t, /baranda va siempre incluida/);
-  assert.match(t, /otra torre igual o un módulo más de alto/);
+  assert.ok(!/otra torre|módulo más de alto|mínimo/.test(t), t);
   assert.match(t, /recargo por los costos operativos/);
   assert.ok(!/20|100|500|140|18/.test(t.replace(/\d+,\d+/g, "")), t);
 });
@@ -723,12 +729,16 @@ test("partesDelPresupuesto: el precio en un mensaje y las condiciones con el cie
   assert.deepEqual(partesDelPresupuesto("Un texto sin condiciones"), ["Un texto sin condiciones"]);
 });
 
-test("mensajePresupuestoAlquiler: Palermo, un solo total por 30 días y el cierre", () => {
+test("mensajePresupuestoAlquiler: Palermo, por los días que pidió (con el valor de 30), sin el mínimo, y el cierre", () => {
   const r = cotizar({ alturaTrabajo: 5 });
   const m = mensajePresupuestoAlquiler(r, LUNES, MANANA);
-  assert.match(m, /El servicio completo por 30 días, con la entrega y el retiro, sale \$ 500\.000 \+ IVA\./);
-  assert.match(m, /Es el mínimo del servicio: con ese mismo precio te entra otra torre igual o un módulo más de alto/);
+  // JS, 13/11: los 7 días que pidió, con el valor del servicio de 30; nada de «30 días» ni del mínimo.
+  assert.match(m, /El servicio por los 7 días que lo necesitás, con la entrega y el retiro, sale \$ 500\.000 \+ IVA\./);
+  assert.ok(!/30 días|mínimo del servicio|es el mínimo|otra torre|módulo más/i.test(m), m);
+  // Pasados los días que pidió, cada día de más: el valor de 30 días dividido 30.
   assert.match(m, /cada día de más es \$ 16\.667 \+ IVA/);
+  // Un día solo, en singular; sin los días (una cotización vieja), «el servicio completo».
+  assert.match(mensajePresupuestoAlquiler(cotizar({ alturaTrabajo: 5, dias: 1 }), LUNES, MANANA), /El servicio por el día que lo necesitás, con la entrega/);
   assert.ok(m.includes(condicionesAlquilerSimple()));
   assert.ok(m.endsWith("¿Te lo reservo para el lunes 16 de noviembre, de 8 a 12?"));
   // Sin desglose de piezas ni precios por pieza.
@@ -908,8 +918,8 @@ test("fila 17: las condiciones del depósito, sin chofer ni camión, sin plata n
 test("fila 17: el presupuesto del depósito: el total sin flete, sus condiciones y el cierre", () => {
   const r = cotizar({ alturaTrabajo: 5, retiraEnDeposito: true });
   const m = mensajePresupuestoAlquiler(r, LUNES, DEP_MANANA);
-  assert.match(m, /El servicio completo por 30 días, retirándolo vos en nuestro depósito de Cucha Cucha 2345, sale \$ 500\.000 \+ IVA\./);
-  assert.match(m, /Es el mínimo del servicio/);
+  assert.match(m, /El servicio por los 7 días que lo necesitás, retirándolo vos en nuestro depósito de Cucha Cucha 2345, sale \$ 500\.000 \+ IVA\./);
+  assert.ok(!/mínimo del servicio|es el mínimo|30 días/i.test(m), m);
   assert.ok(m.includes(condicionesAlquilerSimple("deposito")));
   assert.ok(!m.includes(condicionesAlquilerSimple("envio")));
   assert.ok(!/entrega y el retiro|camión/.test(m.replace("No hay chofer ni camión", "")));

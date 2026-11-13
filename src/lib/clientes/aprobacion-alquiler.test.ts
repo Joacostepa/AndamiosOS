@@ -24,7 +24,7 @@ const FICHA = { mensajesCliente: ["Hola, quiero pintar la pared del patio"], ban
 
 /** Pintar una pared de patio hasta 5 m en Palermo, piso liso, espacio de sobra (§5). */
 function pedido(cambios: Partial<PedidoAlquiler> = {}): PedidoAlquiler {
-  return { ...pedidoVacio(), lugar: "afuera", alturaTrabajo: 5, espacioDeSobra: true, piso: "liso", fecha: LUNES, franja: MANANA, ...cambios };
+  return { ...pedidoVacio(), lugar: "afuera", alturaTrabajo: 5, espacioDeSobra: true, piso: "liso", fecha: LUNES, franja: MANANA, dias: 7, ...cambios };
 }
 
 function cotizar(p: PedidoAlquiler, flete = PALERMO_ODOO, deuda: boolean | null = false): ResultadoAlquiler {
@@ -91,7 +91,8 @@ test("recalcular: lo que va a Odoo suma lo mismo que el mensaje (con el mínimo 
   assert.ok(r.cotizacion);
   assert.equal(r.cotizacion.flete?.carrierId, 380);
   assert.equal(r.cotizacion.entrega, LUNES);
-  assert.equal(r.cotizacion.fin, "2026-12-16");
+  // JS, 13/11: la devolución es la entrega + los días que pidió (7), no + 30.
+  assert.equal(r.cotizacion.fin, "2026-11-23");
   assert.deepEqual(r.cotizacion.franja, { desde: "08:00", hasta: "12:00" });
   const o = lineasOrdenAlquilerSimple(r.cotizacion);
   assert.equal(o.neto, 500000);
@@ -298,9 +299,9 @@ test("corregir el total para arriba: la diferencia va al mínimo operativo y Odo
   assert.equal(r.total, 520000);
   assert.equal(r.precio?.minimoOperativo, 217600);
   assert.equal(lineasOrdenAlquilerSimple(r.cotizacion!).neto, 520000);
-  // Con un total a mano no se dice «es el mínimo»: ya no lo es.
-  assert.ok(!/el mínimo del servicio/.test(r.mensaje ?? ""), r.mensaje ?? "");
-  assert.ok(/el mínimo del servicio/.test(recalc(leerPayloadAlquiler(payloadDe())).mensaje ?? ""), "sin corregir, sí lo dice");
+  // Del mínimo no se habla nunca (JS, 13/11), con o sin total a mano.
+  assert.ok(!/mínimo del servicio|es el mínimo/i.test(r.mensaje ?? ""), r.mensaje ?? "");
+  assert.ok(!/mínimo del servicio|es el mínimo/i.test(recalc(leerPayloadAlquiler(payloadDe())).mensaje ?? ""));
   assert.ok(r.mensaje?.includes("$ 520.000 + IVA"));
   assert.ok(r.mensaje?.includes("$ 17.333 + IVA"), "la renovación por día sale del total nuevo");
 });
@@ -413,8 +414,19 @@ test("notaInternaAlquiler: quién aprobó, la corrección, el total y el aviso s
   assert.match(nota, /documentos/);
 });
 
-test("cotizacionParaOdoo: las piezas del motor con su precio y el fin a 30 días", () => {
+test("una cotización armada antes del 13/11 (sin los días): vale como 30 días y no se bloquea", () => {
+  const viejo = payloadDe();
+  const alq = (viejo as { alquiler: { pedido: Record<string, unknown> } }).alquiler;
+  delete alq.pedido.dias;
+  const r = recalc(leerPayloadAlquiler(viejo));
+  assert.deepEqual(r.bloqueos, []);
+  assert.equal(r.cotizacion?.fin, "2026-12-16");
+  assert.match(r.mensaje ?? "", /El servicio por los 30 días que lo necesitás/);
+});
+
+test("cotizacionParaOdoo: las piezas del motor con su precio y el fin a los días que pidió (30 si no los dijo)", () => {
   const pr = cotizar(pedido()).precio!;
+  assert.equal(cotizacionParaOdoo(pr, { carrierId: 380, nombre: "PALERMO", precio: 140400 }, { fecha: LUNES, franja: MANANA }, 7).fin, "2026-11-23");
   const c = cotizacionParaOdoo(pr, { carrierId: 380, nombre: "PALERMO", precio: 140400 }, { fecha: LUNES, franja: MANANA });
   assert.deepEqual(c.piezas.map((x) => x.codigo), ["modulo_130x250", "baranda_130", "tablon_250", "ruedas_juego"]);
   assert.equal(c.minimoOperativo, 197600);

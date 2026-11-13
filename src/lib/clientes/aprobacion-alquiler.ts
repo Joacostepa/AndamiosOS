@@ -98,6 +98,8 @@ export function leerPayloadAlquiler(payload: Record<string, unknown> | null | un
       piezasFueraDeCatalogo: Array.isArray(pedido.piezasFueraDeCatalogo) ? pedido.piezasFueraDeCatalogo : [],
       aceptaPlataforma: typeof pedido.aceptaPlataforma === "boolean" ? pedido.aceptaPlataforma : typeof viejo.aceptaPeldano === "boolean" ? viejo.aceptaPeldano : null,
       retiraEnDeposito: typeof pedido.retiraEnDeposito === "boolean" ? pedido.retiraEnDeposito : null,
+      // Los armados antes del 13/11 no tenían los días del cliente: eran siempre 30.
+      dias: typeof pedido.dias === "number" ? pedido.dias : DIAS_SERVICIO,
     },
     resultado,
     flete: fleteValido(a?.flete),
@@ -198,7 +200,7 @@ export function clienteParaRecalculo(ficha: ContextoRecalculo["ficha"], guardado
  */
 export const MOTIVOS_QUE_BLOQUEAN: readonly CodigoMotivoAlquiler[] = [
   "para_hoy", "anclar", "techo_no_deja", "plataforma_rechazada", "espacio_ancho", "espacio_largo", "sin_flete", "fuera_de_caba", "piezas_fuera",
-  "montaje", "tope_modulos", "cuenta_socio",
+  "montaje", "tope_modulos", "cuenta_socio", "mas_de_30_dias",
 ];
 
 const BLOQUEO_CONFIRMACION: Partial<Record<CodigoConfirmacion, string>> = {
@@ -393,7 +395,10 @@ export function franjaParaOdoo(f: Franja): FranjaOdoo {
   return { desde: hhmm(f.desde), hasta: hhmm(f.desde + 1) };
 }
 
-/** Siempre el servicio de 30 días (§5): la devolución es la entrega + 30. */
+/**
+ * El precio es siempre el del servicio de 30 días (§5). La devolución, desde el 13/11 (JS), es la
+ * entrega + los días que pidió el cliente (pedido.dias); 30 sólo si no los dijo.
+ */
 export const DIAS_SERVICIO = 30;
 
 export function sumarDias(fecha: string, n: number): string {
@@ -406,7 +411,7 @@ export function sumarDias(fecha: string, n: number): string {
  * La cotización para crearOrdenAlquilerSimple: las piezas con su precio, el flete, el mínimo y el
  * recargo. `flete` null: retira en el depósito (sin flete ni método de envío).
  */
-export function cotizacionParaOdoo(precio: PrecioAlquiler, flete: FleteGuardado | null, entrega: EntregaPedida): CotizacionParaOdoo {
+export function cotizacionParaOdoo(precio: PrecioAlquiler, flete: FleteGuardado | null, entrega: EntregaPedida, dias: number | null = null): CotizacionParaOdoo {
   return {
     piezas: precio.lineas
       .filter((l) => (CODIGOS_PIEZA as readonly string[]).includes(l.codigo))
@@ -417,7 +422,7 @@ export function cotizacionParaOdoo(precio: PrecioAlquiler, flete: FleteGuardado 
     recargoFranja: precio.recargoFranja,
     recargoFranjaPct: precio.recargoFranjaPct,
     entrega: entrega.fecha,
-    fin: sumarDias(entrega.fecha, DIAS_SERVICIO),
+    fin: sumarDias(entrega.fecha, dias ?? DIAS_SERVICIO),
     franja: franjaParaOdoo(entrega.franja),
   };
 }
@@ -498,7 +503,7 @@ export function recalcularAlquiler(p: PayloadAlquiler, ctx: ContextoRecalculo, c
   let cotizacion: CotizacionParaOdoo | null = null;
   if (precio && entrega && (flete.odoo || deposito)) {
     try {
-      cotizacion = cotizacionParaOdoo(precio, deposito ? null : flete.odoo, entrega);
+      cotizacion = cotizacionParaOdoo(precio, deposito ? null : flete.odoo, entrega, resultado.dias);
       const armado = lineasOrdenAlquilerSimple(cotizacion);
       // Con las piezas bajadas en proporción, el redondeo a centavos puede dejar unos centavos.
       if (Math.abs(armado.neto - precio.total) > 1) {
@@ -525,6 +530,7 @@ export function datosDelPedido(pedido: PedidoAlquiler): { etiqueta: string; valo
   const d: { etiqueta: string; valor: string }[] = [];
   d.push({ etiqueta: "Lugar", valor: pedido.lugar === "adentro" ? "Adentro" : pedido.lugar === "afuera" ? "Afuera" : "—" });
   d.push({ etiqueta: "Cómo llega", valor: pedido.retiraEnDeposito === true ? `Retira en el depósito (${DEPOSITO.texto})` : "Se lo llevamos (envío)" });
+  d.push({ etiqueta: "Por cuántos días", valor: typeof pedido.dias === "number" ? `${pedido.dias} ${pedido.dias === 1 ? "día" : "días"} (precio de 30)` : "—" });
   d.push({ etiqueta: "Trabajo", valor: pedido.trabajoEnTecho ? "En el techo (cielorraso)" : pedido.alturaTrabajo ? `Hasta ${metros(pedido.alturaTrabajo)} m` : "—" });
   if (pedido.alturaTecho || pedido.lugar === "adentro") d.push({ etiqueta: "Techo", valor: pedido.alturaTecho ? `${metros(pedido.alturaTecho)} m` : "—" });
   const espacio = pedido.espacioDeSobra
@@ -589,13 +595,14 @@ export function notaInternaAlquiler(p: {
     parrafos.push(`<p><b>Armado:</b> ${esc(describirArmado(a))}. ${esc(textoPlataforma(a))}.${a.ajustes.length ? ` ${esc(a.ajustes.join(" "))}` : ""}</p>`);
   }
   const deposito = r.resultado.modalidad === "deposito";
+  const diasNota = r.resultado.dias ?? DIAS_SERVICIO;
   if (r.entrega) {
     parrafos.push(deposito
-      ? `<p><b>Retira en el depósito</b> (${esc(DEPOSITO.texto)}) el ${esc(textoFecha(r.entrega.fecha))}, ${esc(textoFranja(r.entrega.franja))}: sin flete, viene con su vehículo y gente para cargar. Lo devuelve ahí, desarmado, con 24 h de aviso.${p.direccion ? ` Obra: ${esc(p.direccion)}.` : ""} Servicio de ${DIAS_SERVICIO} días.</p>`
-      : `<p><b>Entrega:</b> el ${esc(textoFecha(r.entrega.fecha))}, ${esc(textoFranja(r.entrega.franja))}${p.direccion ? `, en ${esc(p.direccion)}` : ""}. Servicio de ${DIAS_SERVICIO} días.</p>`);
+      ? `<p><b>Retira en el depósito</b> (${esc(DEPOSITO.texto)}) el ${esc(textoFecha(r.entrega.fecha))}, ${esc(textoFranja(r.entrega.franja))}: sin flete, viene con su vehículo y gente para cargar. Lo devuelve ahí, desarmado, con 24 h de aviso.${p.direccion ? ` Obra: ${esc(p.direccion)}.` : ""} Lo necesita por ${diasNota} días.</p>`
+      : `<p><b>Entrega:</b> el ${esc(textoFecha(r.entrega.fecha))}, ${esc(textoFranja(r.entrega.franja))}${p.direccion ? `, en ${esc(p.direccion)}` : ""}. Lo necesita por ${diasNota} días.</p>`);
   }
   if (pr) {
-    const partes = [`<b>Total del servicio por ${DIAS_SERVICIO} días, ${deposito ? "retirando en el depósito (sin flete)" : "con la entrega y el retiro"}:</b> ${pesos(pr.base)} + IVA`];
+    const partes = [`<b>Total del servicio (precio de ${DIAS_SERVICIO} días, por los ${diasNota} que pidió), ${deposito ? "retirando en el depósito (sin flete)" : "con la entrega y el retiro"}:</b> ${pesos(pr.base)} + IVA`];
     if (pr.minimoOperativo > 0) partes.push(`(con ${pesos(pr.minimoOperativo)} de mínimo operativo)`);
     if (pr.recargoFranja > 0) partes.push(`· recargo de la franja de una hora (${pr.recargoFranjaPct} %): ${pesos(pr.recargoFranja)} · en total ${pesos(pr.total)} + IVA`);
     partes.push(`· renovación por día: ${pesos(pr.porDia)} + IVA`);

@@ -309,6 +309,12 @@ export type PedidoAlquiler = {
   fecha: string | null;
   franja: Franja | null;
   /**
+   * Por cuántos días lo necesita el cliente (JS, 13/11): el presupuesto dice esos días (nunca «30
+   * días» ni «el mínimo») con el valor del servicio de 30 días, y en Odoo la devolución es la
+   * entrega + estos días. Pasados, cada día de más se cobra por día. Más de 30: lo cotiza un vendedor.
+   */
+  dias: number | null;
+  /**
    * La respuesta a la plataforma que hay que confirmarle (fila 19): un tablón en un peldaño, o
    * una plataforma que no llega cómodo al techo. null: todavía no se le preguntó. La herramienta
    * la borra si cambia la altura, el techo o lo que pidió (ya no es la misma plataforma).
@@ -321,11 +327,14 @@ export type PedidoAlquiler = {
   retiraEnDeposito: boolean | null;
 };
 
+/** El precio es siempre el del servicio de 30 días (§5), aunque el cliente lo pida por menos. */
+export const DIAS_PRECIO = 30;
+
 export function pedidoVacio(): PedidoAlquiler {
   return {
     lugar: null, alturaTrabajo: null, trabajoEnTecho: false, alturaTecho: null, espacioDeSobra: false, anchoLibre: null, largoLibre: null,
     largoACubrir: null, torres: null, piso: null, piezas: null, piezasFueraDeCatalogo: [], montaje: false, anclar: false, paraHoy: false,
-    fecha: null, franja: null, aceptaPlataforma: null, retiraEnDeposito: null,
+    fecha: null, franja: null, dias: null, aceptaPlataforma: null, retiraEnDeposito: null,
   };
 }
 
@@ -600,7 +609,7 @@ export function textoPeldano(peldano: number, modulos: number): string {
 
 export type CodigoMotivoAlquiler =
   | "para_hoy" | "altura" | "anclar" | "techo_no_deja" | "plataforma_rechazada" | "espacio" | "espacio_ancho" | "espacio_largo"
-  | "flete" | "sin_flete" | "deposito" | "fuera_de_caba" | "piezas_fuera" | "montaje" | "tope_modulos"
+  | "flete" | "sin_flete" | "deposito" | "fuera_de_caba" | "piezas_fuera" | "montaje" | "tope_modulos" | "mas_de_30_dias"
   | "palabras" | "bandera" | "gama_alta" | "deuda" | "cuenta_socio";
 
 /**
@@ -609,7 +618,7 @@ export type CodigoMotivoAlquiler =
  */
 export type MotivoAlquiler = { codigo: CodigoMotivoAlquiler; ok: boolean; texto: string; grupo: "trabajo" | "cliente" };
 
-export type CodigoFaltante = "lugar" | "altura" | "techo" | "ancho" | "largo" | "piso" | "direccion" | "fecha" | "franja";
+export type CodigoFaltante = "lugar" | "altura" | "techo" | "ancho" | "largo" | "piso" | "direccion" | "fecha" | "franja" | "dias";
 /** Un dato que falta, con la pregunta para Tomás (sin montos). */
 export type DatoFaltante = { codigo: CodigoFaltante; pregunta: string };
 
@@ -704,6 +713,8 @@ export type ResultadoAlquiler = {
   franja: Franja | null;
   entraSinPagarMas: SugerenciaMinimo[];
   flete: FleteAlquiler | null;
+  /** Los días que pidió el cliente (pedido.dias, validado). null si todavía no los dijo. */
+  dias: number | null;
 };
 
 // ── Lo del cliente (facil.ts, filtrado) ────────────────────────────────────────────────
@@ -766,6 +777,7 @@ const PREGUNTA: Record<CodigoFaltante, string> = {
   direccion: "¿Dónde es? (para el flete)",
   fecha: "¿Para cuándo lo necesitan?",
   franja: "¿Te queda mejor de 8 a 12 o de 13 a 16?",
+  dias: "¿Por cuántos días lo necesitan?",
 };
 /** En el depósito no hace falta la dirección y las franjas son otras (fila 17). */
 const PREGUNTA_DEPOSITO: Partial<Record<CodigoFaltante, string>> = {
@@ -1004,6 +1016,14 @@ export function cotizarAlquilerSimple(pedido: PedidoAlquiler, ctx: ContextoAlqui
   }
   if (!franja && !paraHoy) falta("franja");
 
+  // ── Los días (JS, 13/11): se respeta lo que pide el cliente; más de 30, un vendedor ──
+  const dias = typeof pedido.dias === "number" && pedido.dias > 0 ? Math.round(pedido.dias) : null;
+  if (!dias) {
+    if (!paraHoy) falta("dias");
+  } else if (dias > DIAS_PRECIO) {
+    trabajo("mas_de_30_dias", false, `Lo necesita por ${dias} días (más de ${DIAS_PRECIO}): lo cotiza un vendedor`);
+  }
+
   // ── El cliente ──
   if (ctx.cliente) motivos.push(...motivosDelCliente(ctx.cliente));
 
@@ -1012,7 +1032,9 @@ export function cotizarAlquilerSimple(pedido: PedidoAlquiler, ctx: ContextoAlqui
     : deposito ? calcularPrecio(armado, null, franja, p)
     : flete?.tipo === "lista" ? calcularPrecio(armado, flete, franja, p)
     : null;
-  const entraSinPagarMas = armado && precio ? sugerenciasMinimo(armado, precio, techo, p) : [];
+  // JS, 13/11: no se le ofrece otra torre ni un módulo más para llegar al mínimo. Queda vacío (el
+  // tipo sigue, por las cotizaciones guardadas antes); sugerenciasMinimo ya no se usa.
+  const entraSinPagarMas: SugerenciaMinimo[] = [];
 
   const enContra = motivos.filter((m) => !m.ok);
   const facil = enContra.length === 0;
@@ -1031,6 +1053,7 @@ export function cotizarAlquilerSimple(pedido: PedidoAlquiler, ctx: ContextoAlqui
     franja,
     entraSinPagarMas,
     flete,
+    dias,
   };
 }
 
@@ -1075,28 +1098,6 @@ export function montoRenovacion(base: number, dias: number): number {
   return Math.round((base * dias) / 30);
 }
 
-/**
- * Lo que le entra sin pagar más si no llega al mínimo (§7): otra torre igual, o un módulo más de
- * alto en cada torre (si no hay que anclar, entra la cabeza y no va en el peldaño). Siempre
- * dentro del tope de módulos. El piso completo ya va siempre.
- */
-function sugerenciasMinimo(a: Armado, precio: PrecioAlquiler, techo: number | null, p: ParametrosAlquiler): SugerenciaMinimo[] {
-  const margen = precio.minimoOperativo;
-  if (margen <= 0) return [];
-  const s: SugerenciaMinimo[] = [];
-  // Las torres son iguales: el material de una es el total dividido por la cantidad.
-  const porTorre = precio.material / a.torres;
-  const modulos = a.modulosPorTorre * a.torres;
-  const torresMas = Math.min(Math.floor(margen / porTorre), Math.floor((p.maxModulos - modulos) / a.modulosPorTorre));
-  if (torresMas >= 1) s.push({ tipo: "otra_torre", cantidad: torresMas });
-  const n = a.modulosPorTorre + 1;
-  const nv = arriba(n);
-  if (a.peldano === null && n <= MAX_SIN_ANCLAR && p.precioPieza * a.torres <= margen && modulos + a.torres <= p.maxModulos && (techo === null || nv.plataforma + CABEZA <= techo)) {
-    s.push({ tipo: "modulo_mas", llegaHasta: (nv.plataforma + ALCANCE) / 100 });
-  }
-  return s;
-}
-
 // ── Lo que ve Tomás (sin plata) ────────────────────────────────────────────────────────
 
 /** Por qué no es fácil, en palabras que Tomás puede usar. Sólo los del grupo «trabajo». */
@@ -1112,6 +1113,7 @@ const POR_QUE_NO: Partial<Record<CodigoMotivoAlquiler, string>> = {
   piezas_fuera: "pide piezas que no son del alquiler simple",
   montaje: "pide montaje",
   tope_modulos: "son más módulos de los que se cotizan directo",
+  mas_de_30_dias: "lo necesita por más de 30 días",
   palabras: "escribió algo que tiene que ver una persona",
   bandera: "marcaste algo que tiene que ver una persona",
   gama_alta: "es un cliente de gama alta",
@@ -1172,15 +1174,7 @@ export function resumenParaTomas(r: ResultadoAlquiler): string {
     l.push(c.codigo === "plataforma" && a ? "Preguntale si le sirve esa plataforma y anotá lo que conteste (acepta_plataforma)." : c.texto);
   }
 
-  if (r.entraSinPagarMas.length) {
-    const opciones = r.entraSinPagarMas.map((s) =>
-      s.tipo === "otra_torre"
-        ? (s.cantidad === 1 ? "otra torre igual" : `hasta ${s.cantidad} torres más iguales`)
-        : `un módulo más de alto en cada torre (llegaría hasta ~${metros(s.llegaHasta)} m)`);
-    l.push(`No llega al mínimo del servicio: decíselo de frente y ofrecele lo que le entra sin pagar más: ${opciones.join(" o ")}. Sin números: el presupuesto los manda el equipo.`);
-  } else if (r.precio && r.precio.minimoOperativo > 0) {
-    l.push("No llega al mínimo del servicio: el presupuesto sale con el mínimo. Sin números: lo manda el equipo.");
-  }
+  // JS, 13/11: del mínimo del servicio no se le habla al cliente ni se le ofrecen torres o módulos de más.
   if (r.franja?.tipo === "hora") {
     l.push(`Pidió una franja de una hora (${textoFranja(r.franja)}): tiene un recargo por los costos operativos. Cuánto es lo dice el presupuesto, vos no lo digas.`);
   }
@@ -1253,14 +1247,12 @@ export function mensajePresupuestoAlquiler(r: ResultadoAlquiler, fecha: string, 
     ? `La plataforma queda a ${metros(a.alturaPlataforma)} m y llegás a trabajar cómodo hasta unos ${metros(a.llegaHasta)} m.${alTecho}`
     : `La plataforma va en un peldaño de la escalera, a ${metros(a.alturaPlataforma)} m: es de un solo tablón, de 30 cm, y llegás a trabajar cómodo hasta unos ${metros(a.llegaHasta)} m.${alTecho}`;
   l.push(`Te paso el presupuesto: ${describirArmadoCliente(a)}. ${llega}`);
+  // JS, 13/11: los días que pidió el cliente, con el valor del servicio de 30 días; nunca «30
+  // días» ni «el mínimo», ni lo que le entraría sin pagar más.
+  const porLosDias = !r.dias ? "completo" : r.dias === 1 ? "por el día que lo necesitás" : `por los ${r.dias} días que lo necesitás`;
   l.push(deposito
-    ? `El servicio completo por 30 días, retirándolo vos en nuestro depósito de ${DEPOSITO.direccion}, sale ${pesos(pr.base)} + IVA.`
-    : `El servicio completo por 30 días, con la entrega y el retiro, sale ${pesos(pr.base)} + IVA.`);
-  if (pr.minimoOperativo > 0) {
-    const s = r.entraSinPagarMas.map((x) =>
-      x.tipo === "otra_torre" ? (x.cantidad === 1 ? "otra torre igual" : `hasta ${x.cantidad} torres más`) : `un módulo más de alto (llegarías hasta unos ${metros(x.llegaHasta)} m)`);
-    l.push(`Es el mínimo del servicio${s.length ? `: con ese mismo precio te entra ${s.join(" o ")}, si te sirve` : ""}.`);
-  }
+    ? `El servicio ${porLosDias}, retirándolo vos en nuestro depósito de ${DEPOSITO.direccion}, sale ${pesos(pr.base)} + IVA.`
+    : `El servicio ${porLosDias}, con la entrega y el retiro, sale ${pesos(pr.base)} + IVA.`);
   if (pr.recargoFranja > 0) {
     l.push(`Como pediste la entrega ${textoFranja(franja)}, se suma un recargo del ${String(pr.recargoFranjaPct).replace(".", ",")} % por los costos operativos de la franja de una hora (${pesos(pr.recargoFranja)} + IVA). En total, ${pesos(pr.total)} + IVA.`);
   }

@@ -156,7 +156,7 @@ test("las frases fijas nuevas del prompt pasan el filtro de salida", () => {
 });
 
 test("el bloque del alquiler simple: §3, §6 y §7, sin montos ni porcentajes, adentro del bloque fijo", () => {
-  assert.equal(VERSION_PROMPT, "tomas-2026-11-13-dias-del-cliente-sin-torre-de-mas");
+  assert.equal(VERSION_PROMPT, "tomas-2026-11-13-charla-de-oscar");
   assert.ok(INSTRUCCIONES.includes(ALQUILER_SIMPLE), "va en el bloque con caché, igual para todas las charlas");
   for (const regla of [
     /Qué trabajo van a hacer y hasta qué altura/,

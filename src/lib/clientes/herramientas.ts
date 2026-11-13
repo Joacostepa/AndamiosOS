@@ -151,7 +151,8 @@ export type CarrilPendiente = "facil" | "simple" | "alquiler" | "tecnico";
 export type ResultadoFleteAlquiler =
   | { estado: "ok"; enCaba: boolean; lugar: string | null; partido: string | null; normalizada: string; flete: Flete | null }
   | { estado: "ambigua"; opciones: string[] }
-  | { estado: "no_encontrada"; motivo: string };
+  | { estado: "no_encontrada"; motivo: string }
+  | { estado: "sin_respuesta"; motivo: string };
 
 /** El último presupuesto de alquiler simple de la charla (cli_aprobaciones, carril «alquiler»). */
 export type PresupuestoAlquiler = {
@@ -668,6 +669,10 @@ function anotarPedido(p: PedidoAlquiler, i: z.infer<typeof esquemaAlquiler>, fra
   p.franja = franjaSegunModalidad(p.franja, p.retiraEnDeposito === true);
 }
 
+/** El buscador de direcciones no contesta: no es la dirección del cliente (charla de Oscar, 13/11). */
+const NO_RESPONDE_DIRECCION =
+  "El buscador de direcciones no responde ahora (la dirección del cliente puede estar bien): no se la vuelvas a pedir ni le digas que no la encontrás. Seguí con lo demás; la próxima vez que uses cotizar_alquiler_simple se busca de nuevo sola.";
+
 const QUE_DECIR_ALQUILER =
   "Contale en una o dos líneas lo que le armaste y por qué le sirve (con las mismas alturas de arriba) y decile que el presupuesto lo revisa el equipo y le llega por este mismo chat. No prometas minutos. Las condiciones (abajo) van completas en el presupuesto: no se las expliques ahora, salvo que pregunte algo puntual. Fuera de horario, aclarale cuándo le escribe una persona (está en el aviso). Sin montos ni porcentajes.";
 
@@ -742,10 +747,12 @@ async function cotizarAlquiler(i: z.infer<typeof esquemaAlquiler>, { ficha, serv
         a.ubicacion = null;
         preguntaDireccion = u.estado === "ambigua"
           ? `Esa dirección existe en varios lugares: preguntale cuál es (${u.opciones.join(" · ")}).`
-          : "No encontré la dirección: pedile calle y altura, y la localidad si no es Capital.";
+          : u.estado === "sin_respuesta" ? NO_RESPONDE_DIRECCION
+          // Charla de Oscar (13/11): se la pidió tres veces. Una sola vez, y si ya la confirmó, sigue.
+          : "No encontré la dirección en el mapa. Si el cliente todavía no la confirmó, pedile una sola vez que te la confirme (calle y altura, y la localidad si no es Capital); si ya te la confirmó, no se la vuelvas a pedir: seguí con lo demás y el equipo la revisa.";
       }
     } catch {
-      preguntaDireccion = "No pude ubicar la dirección ahora: seguí con lo demás y volvé a probar en un rato.";
+      preguntaDireccion = NO_RESPONDE_DIRECCION;
     }
   }
   // Si retira en el depósito, ni la dirección ni el flete hacen falta para cotizar.

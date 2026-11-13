@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  armarFletes, BARRIOS_CABA_EN_LISTA, barrioDeDireccion, buscarFletePorBarrio, checksumOdoo, DIRECCION_RETIRA_EN_DEPOSITO, elegirNormalizada, fleteParaUbicacion,
+  armarFletes, BARRIOS_CABA_EN_LISTA, barrioDeDireccion, sinBarrio, buscarFletePorBarrio, checksumOdoo, DIRECCION_RETIRA_EN_DEPOSITO, elegirNormalizada, fleteParaUbicacion,
   FRANJA_DEPOSITO_MANANA, FRANJA_DEPOSITO_TARDE, FRANJA_MANANA, FRANJA_TARDE, NOTA_RETIRA_EN_DEPOSITO,
   horarioEntregaOdoo, lineaRenovacion, lineasOrdenAlquilerSimple, normalizarLugar, utcOdoo, valoresOrdenAlquilerSimple,
   PRODUCTO_BARANDA_090_JUNIOR, PRODUCTO_BASTIDOR_BARANDA_130, PRODUCTO_FLETE, PRODUCTO_MINIMO_OPERATIVO, PRODUCTO_RIENDA_JR_HORIZONTAL, PRODUCTO_RECARGO_FRANJA, PRODUCTO_RENOVACION, PRODUCTOS_ALQUILER_SIMPLE,
@@ -208,6 +208,42 @@ test("barrioDeDireccion: en el conurbano usa la localidad del normalizador", asy
 test("barrioDeDireccion: sin resultado de USIG y sin Places, no encontrada", async () => {
   const r = await barrioDeDireccion("Tortugas Country Club", { fetchImpl: fetchUsig({ normalizar: { errorMessage: "no" } }), places: false });
   assert.equal(r.estado, "no_encontrada");
+});
+
+test("barrioDeDireccion: con el barrio escrito USIG dice «calle inexistente»; se vuelve a probar con «, CABA» (Oscar, 13/11)", async () => {
+  const uspallata: NormalizadaUsig = {
+    tipo: "calle_altura", direccion: "USPALLATA 2863, CABA", cod_partido: "caba", nombre_partido: "CABA", nombre_localidad: "CABA",
+    coordenadas: { x: "-58.402644", y: "-34.639032" },
+  };
+  const pedidos: string[] = [];
+  const f = (async (url: string | URL | Request) => {
+    const u = String(url);
+    pedidos.push(u);
+    const cuerpo = u.includes("datos_utiles") ? { barrio: "Parque Patricios" }
+      : u.includes("Parque%20Patricios") ? { direccionesNormalizadas: [], errorMessage: "Calle inexistente" }
+      : { direccionesNormalizadas: [uspallata] };
+    return new Response(JSON.stringify(cuerpo), { status: 200 });
+  }) as typeof fetch;
+  const r = await barrioDeDireccion("Uspallata 2863, Parque Patricios, CABA", { fetchImpl: f, places: false });
+  assert.equal(r.estado, "ok");
+  if (r.estado === "ok") assert.equal(r.ubicacion.barrio, "Parque Patricios");
+  assert.match(pedidos[1], /direccion=Uspallata%202863%2C%20CABA&/);
+});
+
+test("sinBarrio: sólo si lo que va después de la coma es Capital o un barrio", () => {
+  assert.equal(sinBarrio("Uspallata 2863, Parque Patricios, CABA"), "Uspallata 2863, CABA");
+  assert.equal(sinBarrio("Cuba 2542, Belgrano"), "Cuba 2542, CABA");
+  assert.equal(sinBarrio("Dorrego 3307, Monte Grande"), null);
+  assert.equal(sinBarrio("Uspallata 2863, CABA"), null);
+  assert.equal(sinBarrio("Uspallata 2863"), null);
+});
+
+test("barrioDeDireccion: si USIG no contesta, «sin_respuesta» y no «no encontrada» (Oscar, 13/11)", async () => {
+  const caido = (async () => new Response("Service Unavailable", { status: 503 })) as typeof fetch;
+  const r = await barrioDeDireccion("Uspallata 2863", { fetchImpl: caido, places: false });
+  assert.equal(r.estado, "sin_respuesta");
+  const red = (async () => { throw new Error("ECONNRESET"); }) as typeof fetch;
+  assert.equal((await barrioDeDireccion("Uspallata 2863", { fetchImpl: red, places: false })).estado, "sin_respuesta");
 });
 
 test("fleteParaUbicacion: un barrio de CABA que no está en la lista va a un vendedor; Temperley no tiene flete", () => {

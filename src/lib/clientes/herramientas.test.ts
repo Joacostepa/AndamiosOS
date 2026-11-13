@@ -391,7 +391,15 @@ test("cotizar_alquiler_simple: la dirección ambigua o no encontrada se pregunta
   c.mundo.fleteAlquiler = async () => { throw new Error("USIG 503"); };
   const caido = await ejecutarHerramientaSofia("cotizar_alquiler_simple", {}, c);
   assert.equal(caido.esError, undefined);
-  assert.match(JSON.parse(caido.contenido).preguntar.join(" "), /No pude ubicar/);
+  assert.match(JSON.parse(caido.contenido).preguntar.join(" "), /no responde ahora .*no se la vuelvas a pedir/);
+  // Charla de Oscar (13/11): USIG sin respuesta no es «no encontré la dirección».
+  c.mundo.fleteAlquiler = async () => ({ estado: "sin_respuesta", motivo: "USIG no contesta" });
+  const sinRespuesta = JSON.parse((await ejecutarHerramientaSofia("cotizar_alquiler_simple", {}, c)).contenido).preguntar.join(" ");
+  assert.match(sinRespuesta, /no se la vuelvas a pedir ni le digas que no la encontrás/);
+  assert.doesNotMatch(sinRespuesta, /No encontré la dirección/);
+  // No encontrada de verdad: se pide una sola vez.
+  c.mundo.fleteAlquiler = async () => ({ estado: "no_encontrada", motivo: "no" });
+  assert.match(JSON.parse((await ejecutarHerramientaSofia("cotizar_alquiler_simple", {}, c)).contenido).preguntar.join(" "), /una sola vez/);
 });
 
 test("cotizar_alquiler_simple: la franja de una hora pide la hora; con recargo, el modelo sabe que hay recargo pero no cuánto", async () => {

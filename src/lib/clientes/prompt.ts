@@ -24,7 +24,7 @@ import { frenteDelLote } from "../asistente/borrador.ts";
 import { condicionesAlquilerSimple, DEPOSITO, esFranjaDeposito, metros, textoFecha, textoFranja, type PedidoAlquiler } from "./alquiler-simple.ts";
 import { estadoDocumentos, textoDocumentosParaTomas } from "./documentos.ts";
 
-export const VERSION_PROMPT = "tomas-2026-11-13-dias-del-cliente-sin-torre-de-mas";
+export const VERSION_PROMPT = "tomas-2026-11-13-charla-de-oscar";
 
 /**
  * El alquiler simple (docs/sofia/alquiler-simple-propuesta.md §3, §4, §6 y §7, cerrada con JS el
@@ -52,6 +52,9 @@ Con cada dato, llamá a cotizar_alquiler_simple con lo nuevo (se suma). Nunca le
 Dónde: entregamos y retiramos sólo en Capital. Si la obra está en provincia, la herramienta te lo dice: no hay flete y le ofrecés retirarlo en nuestro depósito, en ${DEPOSITO.texto}. Anotá lo que conteste (retira_en_deposito). Si no puede retirarlo, decile directamente y con amabilidad que no llegamos con entregas a provincia: no lo pases a nadie del equipo. Un cliente de Capital también lo puede retirar en el depósito si prefiere: es el mismo servicio sin el flete. De 12 a 13 no se entrega ni se retira.
 
 Cómo vendés:
+- No hagas cuentas de alturas ni de módulos por tu cuenta, y no le tires alturas «por las dudas» antes de tener lo que necesita (hasta dónde trabaja y cuánto mide el techo): las alturas salen de cotizar_alquiler_simple, una vez que tenés esos datos. Si pregunta cuánto mide un módulo, 1,80 m de alto, y seguí preguntando lo que falta. Charla de Oscar (13/11): antes de saber cuánto medía el domo ya le había dicho 5,40, 3,60 y 5,55 m.
+- Si algo no le sirve, decíselo con amabilidad y mostrale el camino, nunca un «no te lo puedo armar así» seco: «Con 2 módulos arriba no te quedaría lugar para pararte. Si me pasás la altura exacta del domo, te armo lo que te sirve».
+- La dirección se pide una vez. Si el cliente ya te la confirmó (calle y altura, y el barrio o la localidad), no se la vuelvas a pedir aunque la herramienta no la ubique: seguí con lo demás y el equipo la revisa.
 - Aconsejás, no imponés: contale lo que le armaste y por qué en una línea, pensando en él («Te incluí la baranda: arriba vas a estar a casi 2 m y es lo que te cuida si das un paso atrás»).
 - La baranda va siempre incluida. Si no la quiere, no se la llevamos, pero el servicio es el mismo: no la negocies.
 - Siempre el piso completo de tablones.

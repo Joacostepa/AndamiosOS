@@ -323,7 +323,29 @@ export type Ubicacion = {
 export type ResultadoUbicacion =
   | { estado: "ok"; ubicacion: Ubicacion }
   | { estado: "ambigua"; opciones: string[] }
-  | { estado: "no_encontrada"; motivo: string };
+  | { estado: "no_encontrada"; motivo: string }
+  /** USIG (y Places) no contestaron: no es culpa de la dirección, se vuelve a probar después. */
+  | { estado: "sin_respuesta"; motivo: string };
+
+/** Lo que el cliente agrega después de la coma y dice «Capital»: CABA o un barrio. */
+const COLAS_CABA: ReadonlySet<string> = new Set([
+  ...BARRIOS_CABA_EN_LISTA, "CABA", "C A B A", "CAPITAL", "CAPITAL FEDERAL", "CIUDAD AUTONOMA DE BUENOS AIRES", "BELGRANO", "LA PATERNAL",
+  "VILLA GENERAL MITRE", "VILLA GRAL MITRE", "CONSTITUCION", "MICROCENTRO",
+]);
+
+/**
+ * Otra forma de escribirla si USIG no la encuentra: con el barrio («Uspallata 2863, Parque
+ * Patricios, CABA») USIG contesta «calle inexistente», y con sólo «, CABA» la encuentra (charla de
+ * Oscar, 13/11). Sólo si lo que va después de la coma es CABA o un barrio: «Dorrego 3307, Monte
+ * Grande» no se toca (sin la localidad sería la de Capital). PURA.
+ */
+export function sinBarrio(direccion: string): string | null {
+  const partes = direccion.split(",").map((x) => x.trim()).filter(Boolean);
+  if (partes.length < 2) return null;
+  if (!partes.slice(1).every((x) => COLAS_CABA.has(normalizarLugar(x)))) return null;
+  const otra = `${partes[0]}, CABA`;
+  return normalizarLugar(otra) === normalizarLugar(direccion) ? null : otra;
+}
 
 /** Una de las `direccionesNormalizadas` del normalizador de USIG (la parte que se usa). */
 export type NormalizadaUsig = {
@@ -443,22 +465,33 @@ export async function barrioDeDireccion(
   const limpia = limpiarDireccion(direccion).replace(/^calle\s+/i, "");
   if (!limpia) return { estado: "no_encontrada", motivo: "No hay dirección." };
 
-  const r = await pedirUsig<{ direccionesNormalizadas?: NormalizadaUsig[] }>(
-    `${USIG_NORMALIZAR}?direccion=${encodeURIComponent(limpia)}&geocodificar=true&maxOptions=10`, fetchImpl,
+  const normalizar = (texto: string) => pedirUsig<{ direccionesNormalizadas?: NormalizadaUsig[] }>(
+    `${USIG_NORMALIZAR}?direccion=${encodeURIComponent(texto)}&geocodificar=true&maxOptions=10`, fetchImpl,
   ).catch(() => null);
-  const eleccion = elegirNormalizada(r?.direccionesNormalizadas ?? [], limpia);
+  let texto = limpia;
+  let r = await normalizar(texto);
+  const otra = r && !r.direccionesNormalizadas?.length ? sinBarrio(limpia) : null;
+  if (otra) {
+    texto = otra;
+    r = await normalizar(texto);
+  }
+  // r null: USIG no contestó (caído, lento o un error), no que la dirección no exista.
+  const usigCaido = r === null;
+  const eleccion = elegirNormalizada(r?.direccionesNormalizadas ?? [], texto);
   if (eleccion && "ambigua" in eleccion) return { estado: "ambigua", opciones: eleccion.ambigua };
   if (eleccion) {
     const u = await ubicacionDeNormalizada(eleccion.elegida, "usig", fetchImpl);
     if (u.punto || !u.enCaba) return { estado: "ok", ubicacion: u };
   }
 
-  if (opciones.places === false) return { estado: "no_encontrada", motivo: `USIG no reconoce «${limpia}».` };
+  const caido = { estado: "sin_respuesta" as const, motivo: "El buscador de direcciones (USIG) no contesta ahora." };
+  if (opciones.places === false) return usigCaido ? caido : { estado: "no_encontrada", motivo: `USIG no reconoce «${limpia}».` };
   // Places de respaldo: import al vuelo, así los tests (que no lo usan) no cargan geocodificar.ts.
   const { geocodificarDireccion } = await import("./geocodificar");
-  const g = await geocodificarDireccion(limpia);
-  if (g.estado !== "ok") return { estado: "no_encontrada", motivo: `No se encontró «${limpia}» (ni en USIG ni en Google).` };
+  const g = await geocodificarDireccion(texto).catch(() => null);
+  if (g?.estado !== "ok") return usigCaido ? caido : { estado: "no_encontrada", motivo: `No se encontró «${limpia}» (ni en USIG ni en Google).` };
   const rev = await pedirUsig<NormalizadaUsig>(`${USIG_NORMALIZAR}?lat=${g.punto.lat}&lng=${g.punto.lng}`, fetchImpl).catch(() => null);
+  if (rev === null && usigCaido) return caido;
   if (!rev?.cod_partido) return { estado: "no_encontrada", motivo: `«${limpia}» queda fuera de lo que cubre USIG (el AMBA).` };
   return { estado: "ok", ubicacion: await ubicacionDeNormalizada({ ...rev, direccion: rev.direccion ?? limpia }, "places", fetchImpl, g.punto) };
 }

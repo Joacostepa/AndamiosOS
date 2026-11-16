@@ -42,8 +42,10 @@ export function Header() {
     ? `${user.nombre[0]}${user.apellido[0]}`.toUpperCase()
     : "??";
 
+  // En el iPhone la app ocupa también la franja del reloj (--sat): el encabezado crece eso y
+  // corre los botones para abajo; si no, el del menú queda debajo de la hora y no se puede tocar.
   return (
-    <header className="flex h-14 items-center gap-2 border-b px-4">
+    <header className="flex h-[calc(3.5rem+var(--sat))] shrink-0 items-center gap-2 border-b pt-(--sat) pr-[max(1rem,env(safe-area-inset-right))] pl-[max(1rem,env(safe-area-inset-left))]">
       <SidebarTrigger />
       <Separator orientation="vertical" className="h-6" />
 

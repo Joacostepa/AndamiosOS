@@ -147,7 +147,7 @@ function Asistente() {
   );
 
   return (
-    <div className="-m-6 flex h-[calc(100dvh-3.5rem)] min-h-0">
+    <div className="-m-6 flex h-[calc(100dvh-3.5rem-var(--sat))] min-h-0">
       <aside className="hidden w-64 shrink-0 border-r border-border lg:block">{listaConversaciones}</aside>
 
       <section className="flex min-w-0 flex-1 flex-col">

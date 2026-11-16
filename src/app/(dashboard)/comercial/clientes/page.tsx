@@ -64,7 +64,7 @@ function Bandeja() {
   );
 
   return (
-    <div className="-m-6 flex h-[calc(100dvh-3.5rem)] min-h-0">
+    <div className="-m-6 flex h-[calc(100dvh-3.5rem-var(--sat))] min-h-0">
       <aside className={`${actual ? "hidden lg:flex" : "flex"} w-full shrink-0 flex-col border-r border-border lg:w-96`}>
         <header className="flex h-14 items-center gap-2 border-b border-border px-3">
           <MessageCircle className="size-5 text-hd-boton" />

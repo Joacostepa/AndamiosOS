@@ -78,7 +78,7 @@ export default function EditorModeloPage({ params }: { params: Promise<{ id: str
   }
   const listo = catalogo.data && (demo || modelo.data);
   return (
-    <div className="h-[calc(100vh-6rem)]">
+    <div className="h-[calc(100dvh-6rem-var(--sat))]">
       {listo ? (
         <Editor
           modelo={demo ? null : modelo.data!}

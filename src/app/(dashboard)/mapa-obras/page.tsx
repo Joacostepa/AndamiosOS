@@ -266,7 +266,7 @@ export default function MapaObrasPage() {
   return (
     <div
       ref={contenedor}
-      className="relative isolate h-[calc(100vh-6rem)] overflow-hidden rounded-xl border shadow-sm"
+      className="relative isolate h-[calc(100dvh-6rem-var(--sat))] overflow-hidden rounded-xl border shadow-sm"
       style={{ background: FONDO[temaMapa] }}
     >
       <CiudadArmadaMapa

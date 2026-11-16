@@ -3265,7 +3265,7 @@ export function TableroBoard() {
     //
     // `dvh` y no `vh`: en el celular `100vh` mide la pantalla SIN descontar la barra del
     // navegador, y el pie de la grilla quedaba tapado.
-    <div className="flex h-[calc(100dvh-8rem)] min-w-0 flex-col">
+    <div className="flex h-[calc(100dvh-8rem-var(--sat))] min-w-0 flex-col">
       <TopbarTablero
         rangoLabel={rangoLabel}
         cuadrillas={data.cuadrillas}

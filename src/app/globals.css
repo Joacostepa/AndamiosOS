@@ -59,6 +59,10 @@
 }
 
 :root {
+  /* Alto de la muesca/reloj del iPhone. La app se dibuja debajo de la barra de estado
+     (viewportFit "cover" + statusBarStyle "black-translucent"), así que lo que va arriba
+     tiene que correrse esto. Fuera del iPhone vale 0. */
+  --sat: env(safe-area-inset-top, 0px);
   --background: oklch(0.985 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);

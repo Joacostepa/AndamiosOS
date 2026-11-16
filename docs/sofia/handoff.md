@@ -1,12 +1,18 @@
 # Handoff: CRM con Tomás (antes Sofía), el agente de WhatsApp para clientes
 
-**Actualizado el 12/11/2026.** **Desde el 17/10 el agente se llama Tomás** (JS eligió una voz de hombre para el saludo con audio). La carpeta, los nombres internos del código (`atenderConSofia`, `FichaSofia`…) y la historia de abajo siguen diciendo Sofía.
+**Actualizado el 16/11/2026.** **Desde el 17/10 el agente se llama Tomás** (JS eligió una voz de hombre para el saludo con audio). La carpeta, los nombres internos del código (`atenderConSofia`, `FichaSofia`…) y la historia de abajo siguen diciendo Sofía.
 
  El estado de abajo es el vigente. La historia del 12/10 está más abajo, en «Historia: la charla del 12/10».
 
 Para retomar, decí: «Leé docs/sofia/handoff.md y seguimos con el CRM de WhatsApp».
 
 **En curso (12/11): el alquiler simple que cotiza Tomás.** JS contestó las 13 preguntas el 12/11 y sumó seis decisiones a la tarde (filas 16 a 24: sólo CABA, el retiro en el depósito de Cucha Cucha 2345, Belgrano, el peldaño en cualquier módulo, Tamara de vendedora, el pagaré, provincia sin derivar y nada de 12 a 13); están en la §11 de [alquiler-simple-propuesta.md](./alquiler-simple-propuesta.md). **En producción desde el 12/11** (`09e4fe0` en main, deploy `andamios-d1mp5x9g6`, migraciones `20261112000001` y `…02` aplicadas). JS no quiso la prueba previa contra Odoo: lo prueba él por WhatsApp. Ver el punto 13.
+
+**16/11: «Copiar para Slack»** (JS: «como todavía no estamos usando todos la plataforma», pasar la charla por Slack). En el encabezado de cada charla, para cualquiera que ve la bandeja:
+- **Copiar para Slack** copia al portapapeles un texto con formato de Slack: los datos del cliente (nombre, teléfono, mail, CUIT, tipo, dirección y catastro), el servicio (qué pide, para qué, lo de la bandeja o la obra, la visita y todo el alquiler: lugar, días, alturas, espacio, piso, armado, entrega, presupuesto, aceptación, documentos, retiro), lo que marcó la IA, la pareja asignada, los archivos numerados con un link y la charla completa por día y hora (los audios con la transcripción; en la charla, «[Foto 1]»). El texto lo arma `textoParaSlack` (`src/lib/clientes/para-slack.ts`) en `GET /api/comercial/clientes/conversaciones/:id/slack`, que firma los links de Storage por 30 días (`LINKS_DIAS`): cualquiera con el link ve el archivo hasta que vence. Si el navegador no deja copiar, muestra el texto seleccionado para copiarlo a mano.
+- **Bajar archivos** (no en el celular) baja las fotos, PDF y videos de la charla uno por uno, para arrastrarlos a Slack y que queden guardados ahí. El navegador pregunta una vez si deja bajar varios.
+- **No manda nada a Slack solo:** los webhooks que hay (`src/lib/alertas/slack.ts`) no suben archivos. Para mandarlo directo a un canal o a una persona con las fotos haría falta un bot de Slack con `files:write`.
+- Sigue pendiente que la asignación de técnico les avise al técnico y a la vendedora (hoy no les llega nada).
 
 **13/11: los días del cliente y sin torre de más** (por la charla con Oscar Brito, que pidió 7 días y a quien Tomás le dijo «el servicio es siempre de 30 días» y le ofreció una segunda torre «sin pagar más»). Decisiones de JS:
 - **Tomás nunca habla del mínimo de días, de «30 días» ni del mínimo del servicio.** Pregunta por cuántos días lo necesitan (`dias` en `cotizar_alquiler_simple` y en `PedidoAlquiler`; es un dato que falta si no lo dijo) y respeta ese tiempo.

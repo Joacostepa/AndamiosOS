@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Bot, ClipboardCheck, Hand, Loader2, Lock, MessageCircle, Trash2, TriangleAlert, Undo2 } from "lucide-react";
+import { ArrowLeft, Bot, ClipboardCheck, Copy, Download, Hand, Loader2, Lock, MessageCircle, Trash2, TriangleAlert, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { useSeguirAbajo } from "@/components/asistente/hilo";
@@ -13,7 +13,7 @@ import { CajaRespuesta } from "@/components/clientes/caja-respuesta";
 import { TarjetasAprobacion } from "@/components/clientes/tarjeta-aprobacion";
 import { PastillaEstado, PastillaGamaAlta, PastillaVentana, useAhora } from "@/components/clientes/pastillas";
 import { useBorrarCharla, useCambiarEstado, useCharla, useCharlas } from "@/hooks/use-clientes-whatsapp";
-import { telefonoLegible, type Filtro } from "@/lib/clientes/vista";
+import { telefonoLegible, type Filtro, type ItemHilo } from "@/lib/clientes/vista";
 
 // Comercial → WhatsApp de clientes (docs/sofia/crm-propuesta.md §7, etapa 0).
 //
@@ -97,6 +97,53 @@ function Bandeja() {
   );
 }
 
+// «Copiar para Slack» (JS, 16/11): el texto lo arma el servidor (firma los links de los archivos
+// por 30 días). Se copia con ClipboardItem y una promesa: Safari no deja copiar después de
+// esperar un fetch si no es así (pierde el «gesto» del clic). Si el navegador no deja, se
+// muestra el texto para copiarlo a mano.
+async function copiarParaSlack(id: string): Promise<string | null> {
+  const pedir = fetch(`/api/comercial/clientes/conversaciones/${id}/slack`).then(async (r) => {
+    const body = (await r.json().catch(() => null)) as { texto?: string; error?: string } | null;
+    if (!r.ok || !body?.texto) throw new Error(body?.error ?? `Error ${r.status}`);
+    return body.texto;
+  });
+  try {
+    if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
+      await navigator.clipboard.write([new ClipboardItem({ "text/plain": pedir.then((t) => new Blob([t], { type: "text/plain" })) })]);
+    } else {
+      await navigator.clipboard.writeText(await pedir);
+    }
+    return null;
+  } catch (e) {
+    // Si falló el pedido, el error es ése; si falló el portapapeles, se muestra el texto.
+    const texto = await pedir;
+    if (!texto) throw e;
+    return texto;
+  }
+}
+
+/** Los archivos que se pueden bajar (fotos, PDF, videos; los audios ya están transcriptos). */
+function archivosParaBajar(items: ItemHilo[]) {
+  return items.flatMap((it) => {
+    const a = it.adjunto;
+    if (a?.tipo !== "archivo" || !a.url || it.tipo === "audio" || it.tipo === "sticker" || a.mime?.startsWith("audio/")) return [];
+    return [{ url: `${a.url}?descargar=1`, nombre: a.nombre }];
+  });
+}
+
+/** Uno por uno, con un respiro: el navegador pregunta una vez si deja bajar varios. */
+async function bajarArchivos(archivos: { url: string; nombre: string }[]) {
+  for (const f of archivos) {
+    const a = document.createElement("a");
+    a.href = f.url;
+    a.download = f.nombre;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    await new Promise((r) => setTimeout(r, 600));
+  }
+}
+
 function Charla({ id, ahora, onVolver }: { id: string; ahora: number; onVolver: () => void }) {
   const detalle = useCharla(id);
   const cambiar = useCambiarEstado(id);
@@ -108,6 +155,10 @@ function Charla({ id, ahora, onVolver }: { id: string; ahora: number; onVolver: 
   // Borrar la charla (sólo admin, para pruebas): se confirma en un renglón, no con confirm().
   const borrar = useBorrarCharla(id);
   const [borrando, setBorrando] = useState(false);
+  // Copiar para Slack y bajar los archivos (cualquiera que ve la bandeja).
+  const [copiando, setCopiando] = useState(false);
+  const [textoACopiar, setTextoACopiar] = useState<string | null>(null);
+  const [bajando, setBajando] = useState(false);
 
   const accion = (a: "tomar" | "soltar" | "cerrar" | "devolver", forzar = false) =>
     cambiar.mutate(
@@ -144,6 +195,23 @@ function Charla({ id, ahora, onVolver }: { id: string; ahora: number; onVolver: 
   const nombre = c.nombre || telefonoLegible(c.telefono);
   const mia = c.estado === "humano" && c.asistente?.id === d.yo;
   const deOtro = c.estado === "humano" && !!c.asistente && c.asistente.id !== d.yo;
+  const paraBajar = archivosParaBajar(d.items);
+
+  const copiar = () => {
+    setCopiando(true);
+    copiarParaSlack(id)
+      .then((manual) => {
+        if (manual) setTextoACopiar(manual);
+        else toast.success("Copiado para Slack", { description: "Pegalo en el canal o al compañero. Los links de los archivos andan 30 días." });
+      })
+      .catch((e: Error) => toast.error(e.message))
+      .finally(() => setCopiando(false));
+  };
+  const bajar = () => {
+    setBajando(true);
+    bajarArchivos(paraBajar).finally(() => setBajando(false));
+  };
+
   const puedeDevolver = !!d.iaActiva && d.puedeEditar && !deOtro && (c.estado === "humano" || c.estado === "derivada" || c.estado === "espera_ok");
 
   return (
@@ -159,6 +227,16 @@ function Charla({ id, ahora, onVolver }: { id: string; ahora: number; onVolver: 
               <a href={`tel:+${c.telefono}`} className="hover:underline">{telefonoLegible(c.telefono)}</a>
               {c.optOut && " · pidió la baja de los seguimientos"}
             </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <Button variant="outline" className="h-10 px-3" onClick={copiar} disabled={copiando} title="Copia los datos, el servicio, los links de los archivos y la charla, para pegar en Slack" aria-label="Copiar para Slack">
+              {copiando ? <Loader2 className="animate-spin" /> : <Copy />} <span className="hidden xl:inline">Copiar para Slack</span>
+            </Button>
+            {paraBajar.length > 0 && (
+              <Button variant="outline" className="hidden h-10 px-3 sm:inline-flex" onClick={bajar} disabled={bajando} title={`Baja ${paraBajar.length === 1 ? "el archivo" : `los ${paraBajar.length} archivos`} de la charla, para arrastrarlos a Slack`} aria-label="Bajar los archivos">
+                {bajando ? <Loader2 className="animate-spin" /> : <Download />} <span className="hidden xl:inline">Bajar {paraBajar.length === 1 ? "archivo" : `${paraBajar.length} archivos`}</span>
+              </Button>
+            )}
           </div>
           {d.puedeEditar && (
             <div className="flex shrink-0 items-center gap-1.5">
@@ -198,6 +276,20 @@ function Charla({ id, ahora, onVolver }: { id: string; ahora: number; onVolver: 
           <p className="truncate pb-0.5 text-[13px] text-muted-foreground" title={c.tarea}>
             <span className="font-medium text-foreground">Trabajo:</span> {c.tarea}
           </p>
+        )}
+        {textoACopiar !== null && (
+          <div className="space-y-1.5 pt-1.5 pb-1 text-[13.5px]">
+            <p className="text-muted-foreground">El navegador no dejó copiar solo: el texto ya está seleccionado, copialo con Cmd+C (o Ctrl+C).</p>
+            <textarea
+              readOnly
+              value={textoACopiar}
+              autoFocus
+              onFocus={(e) => e.currentTarget.select()}
+              aria-label="Texto para Slack"
+              className="h-40 w-full rounded-md border border-border bg-background p-2 font-mono text-[12.5px]"
+            />
+            <Button type="button" variant="ghost" className="h-10" onClick={() => setTextoACopiar(null)}>Cerrar</Button>
+          </div>
         )}
         {borrando && d.esAdmin && (
           <div className="flex flex-wrap items-center gap-2 pt-1.5 pb-1 text-[13.5px]">

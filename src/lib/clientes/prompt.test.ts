@@ -156,7 +156,7 @@ test("las frases fijas nuevas del prompt pasan el filtro de salida", () => {
 });
 
 test("el bloque del alquiler simple: §3, §6 y §7, sin montos ni porcentajes, adentro del bloque fijo", () => {
-  assert.equal(VERSION_PROMPT, "tomas-2026-11-13-charla-de-oscar");
+  assert.equal(VERSION_PROMPT, "tomas-2026-11-16-lo-que-alquilamos");
   assert.ok(INSTRUCCIONES.includes(ALQUILER_SIMPLE), "va en el bloque con caché, igual para todas las charlas");
   for (const regla of [
     /Qué trabajo van a hacer y hasta qué altura/,
@@ -229,4 +229,12 @@ test("resumenFicha: el alquiler, la aceptación, los documentos y el retiro, sin
   assert.match(l, /Retiro pedido para el lunes 16 de noviembre, de 8 a 12/);
   assert.ok(!l.includes("Marcela"), "el titular no llega al modelo");
   assert.equal(detectarPlata(l).bloquea, false);
+});
+
+test("lo que alquilamos (JS, 16/11): vallados sí, nunca «no alquilamos», y balancines, silletas y eléctricos con andamio tubular", () => {
+  assert.match(INSTRUCCIONES, /Vallados: vallas free standing, vallado de seguridad tipo reja y vallado ciego/);
+  assert.match(INSTRUCCIONES, /Nunca le digas a un cliente que algo no lo alquilamos/);
+  assert.match(INSTRUCCIONES, /no alquilamos son balancines, silletas y andamios eléctricos/);
+  assert.match(INSTRUCCIONES, /andamios tubulares, que es nuestra especialidad/);
+  assert.doesNotMatch(INSTRUCCIONES, /No trabajamos balancines/);
 });

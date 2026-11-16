@@ -142,3 +142,30 @@ Cambios de nombre sugeridos:
 - ¿Las pantallas del MVP sin uso (Incidentes, Inspecciones, Vehículos…) se esconden o se quedan?
 - ¿"Legajos" o "Personal"?
 - ¿Alertas se queda en el menú o alcanza con la campanita?
+
+## 6. En el iPhone: la franja del reloj (arreglado el 16/11, `9d998b3`, en producción)
+
+**Qué pasaba:** desde el iPhone no se podía tocar el botón del menú (arriba a la izquierda) porque
+quedaba debajo del reloj. La app abierta desde el ícono de inicio ocupa toda la pantalla, también la
+franja de la hora (`viewportFit: "cover"` y `statusBarStyle: "black-translucent"` en
+`src/app/layout.tsx`), y el encabezado no dejaba ese espacio.
+
+**Qué se hizo:**
+- `globals.css`: variable `--sat` = `env(safe-area-inset-top, 0px)`, el alto de la muesca. En la
+  computadora y en Android vale 0, así que ahí no cambia nada.
+- `header.tsx`: el encabezado mide `3.5rem + var(--sat)` y lleva `padding-top: var(--sat)`. Los costados
+  respetan la muesca con el celular acostado.
+- `ui/sidebar.tsx` (el Sheet del menú en el celular): `padding-top: var(--sat)` arriba y la rayita de
+  inicio abajo.
+- Las pantallas de alto fijo descuentan `var(--sat)`: Clientes, Asistente comercial, Tablero, Mapa de
+  obras y Modelador.
+
+**Regla para lo que venga:**
+- El encabezado ya no mide `h-14` fijo. Una pantalla que ocupe todo el alto usa
+  `h-[calc(100dvh-<lo de arriba>-var(--sat))]`, no `100vh`.
+- Todo lo que vaya pegado arriba de la pantalla (`fixed top-0`, un Sheet `side="top"` o `"left"`) lleva
+  `pt-(--sat)`.
+
+**Falta:** probarlo en un iPhone de verdad. Los cambios se revisaron compilando el CSS, pero en el
+navegador de la computadora la muesca vale 0. Sigue pendiente lo del punto 2: en mobile, el Sheet no se
+cierra al navegar.

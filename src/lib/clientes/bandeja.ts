@@ -3,6 +3,8 @@
 // detrás de exigirModulo("clientes-whatsapp") en cada ruta.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { nivelEn, type Acceso } from "@/lib/auth/acceso";
+import { crearAlertas } from "@/lib/alertas/servicio";
 import type { AdjuntoVista, CharlaListada, EstadoCharla, ItemHilo } from "./vista";
 import { anotarEvento } from "./webhook";
 
@@ -14,7 +16,7 @@ const ITEMS_EN_DETALLE = 400;
 // Los dos últimos salen de la ficha (sin columna nueva): gama alta y qué trabajo va a hacer el
 // cliente. Un solo literal: así el cliente de Supabase entiende el select.
 const COLUMNAS_CHARLA =
-  "id, telefono, nombre_perfil, estado, motivo, asistente_id, ultimo_mensaje_at, ultimo_entrante_at, ultimo_resumen, sin_leer, opt_out, created_at, segmento:ficha->>segmento, tarea:ficha->>tarea";
+  "id, telefono, nombre_perfil, estado, motivo, asistente_id, ultimo_mensaje_at, ultimo_entrante_at, ultimo_resumen, sin_leer, opt_out, created_at, segmento:ficha->>segmento, tarea:ficha->>tarea, pareja_tecnico, pareja_asistente";
 
 type FilaCharla = {
   id: string;
@@ -31,6 +33,8 @@ type FilaCharla = {
   created_at: string;
   segmento: string | null;
   tarea: string | null;
+  pareja_tecnico: string | null;
+  pareja_asistente: string | null;
 };
 
 /** id → nombre de pila (y apellido si hay dos con el mismo nombre). */
@@ -59,6 +63,7 @@ function aCharla(f: FilaCharla, nombres: Map<string, string>): CharlaListada {
     createdAt: f.created_at,
     segmento: f.segmento === "gama_alta" ? "gama_alta" : null,
     tarea: f.tarea?.trim() || null,
+    pareja: f.pareja_tecnico || f.pareja_asistente ? { tecnico: f.pareja_tecnico, asistente: f.pareja_asistente } : null,
   };
 }
 
@@ -157,7 +162,53 @@ export async function ultimoEntrante(db: SupabaseClient, conversacionId: string)
   return (data?.wamid as string | undefined) ?? null;
 }
 
-export type Accion = "tomar" | "soltar" | "cerrar" | "devolver";
+export type Accion = "tomar" | "soltar" | "cerrar" | "devolver" | "pasar";
+
+/** Quien puede quedarse con una charla: activo y con la bandeja en «editar». */
+export type PersonaBandeja = { id: string; nombre: string };
+
+/**
+ * La gente a la que se le puede pasar una charla (JS, 16/11): activos y con «WhatsApp de
+ * clientes» en «editar» (los admin también). Con el nombre como lo muestra la bandeja.
+ */
+export async function equipoBandeja(db: SupabaseClient): Promise<PersonaBandeja[]> {
+  const { data, error } = await db.from("user_profiles").select("id, nombre, apellido, rol, activo, permisos").eq("activo", true);
+  if (error) throw new Error(error.message);
+  const filas = (data ?? []) as { id: string; nombre: string; apellido: string | null; rol: Acceso["rol"]; activo: boolean; permisos: Acceso["permisos"] | null }[];
+  const pueden = filas.filter((f) => nivelEn({ rol: f.rol, activo: f.activo, permisos: f.permisos ?? {}, debeCambiarClave: false }, "clientes-whatsapp") === "editar");
+  const nombres = await nombresDe(db, pueden.map((f) => f.id));
+  return pueden.map((f) => ({ id: f.id, nombre: nombres.get(f.id) ?? f.nombre })).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+}
+
+const sinTildes = (x: string) => x.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+
+/**
+ * La persona de la bandeja que corresponde a un nombre de pila de las parejas («Rocío», «Agustina»).
+ * null si no tiene la bandeja en «editar» o si hay más de una con ese nombre.
+ */
+export async function personaPorNombre(db: SupabaseClient, nombre: string | null): Promise<PersonaBandeja | null> {
+  if (!nombre) return null;
+  const n = sinTildes(nombre);
+  const { data } = await db.from("user_profiles").select("id, nombre").eq("activo", true);
+  const mismas = ((data ?? []) as { id: string; nombre: string }[]).filter((f) => sinTildes(f.nombre) === n);
+  if (mismas.length !== 1) return null;
+  const equipo = await equipoBandeja(db);
+  return equipo.find((p) => p.id === mismas[0].id) ?? null;
+}
+
+/** La campanita de quien recibe una charla (sólo a esa persona, sin Slack). */
+export async function avisarQueLaTiene(db: SupabaseClient, conversacionId: string, para: PersonaBandeja, deQuien: string, cliente: string): Promise<void> {
+  await crearAlertas(db, [{
+    tipo: "asistente_aviso",
+    clave: `clientes_pasada:${conversacionId}:${para.id}:${Date.now()}`,
+    titulo: `WhatsApp de clientes · ${deQuien} te pasó una charla`,
+    descripcion: `La charla con ${cliente} ahora la tenés vos.`,
+    prioridad: "alta",
+    enlace: `/comercial/clientes?c=${conversacionId}`,
+    destinatarioId: para.id,
+    espejoSlack: false,
+  }]).catch((e) => console.error("[clientes] aviso de charla pasada", e));
+}
 
 /**
  * Tomar, soltar, cerrar o devolver a Sofía. Devuelve null si se pudo, o el motivo si no.
@@ -168,6 +219,9 @@ export type Accion = "tomar" | "soltar" | "cerrar" | "devolver";
  * - devolver: la charla vuelve a Sofía («bot»), con una nota opcional que ella lee en su próximo
  *   turno (queda como evento de la persona en el hilo). Si la tiene otra persona, no. La ruta
  *   chequea antes que Sofía esté prendida.
+ * - pasar: la charla queda con `para` (JS, 16/11: «Soltar» sólo la dejaba sin tomar). Si la
+ *   tiene otra persona, hace falta `forzar`, como al tomar. A quien la recibe le llega a la
+ *   campanita. La ruta chequea antes que `para` tenga la bandeja en «editar».
  */
 export async function cambiarEstado(
   db: SupabaseClient,
@@ -176,9 +230,30 @@ export async function cambiarEstado(
   yo: { id: string; nombre: string },
   forzar = false,
   nota: string | null = null,
+  para: PersonaBandeja | null = null,
 ): Promise<string | null> {
   const ahora = new Date().toISOString();
   const mia = charla.estado === "humano" && charla.asistente?.id === yo.id;
+  if (accion === "pasar") {
+    if (!para) return "Elegí a quién pasársela.";
+    if (charla.estado === "cerrada") return "La charla está cerrada: si el cliente vuelve a escribir, se reabre.";
+    if (para.id === yo.id) return cambiarEstado(db, charla, "tomar", yo, forzar);
+    if (charla.estado === "humano" && charla.asistente?.id === para.id) return null;
+    const deOtro = charla.estado === "humano" && charla.asistente && charla.asistente.id !== yo.id ? charla.asistente : null;
+    if (deOtro && !forzar) return `La tiene ${deOtro.nombre}.`;
+    let q = db
+      .from("cli_conversaciones")
+      .update({ estado: "humano", asistente_id: para.id, tomada_at: ahora, updated_at: ahora })
+      .eq("id", charla.id)
+      .eq("estado", charla.estado);
+    q = charla.asistente ? q.eq("asistente_id", charla.asistente.id) : q.is("asistente_id", null);
+    const { data, error } = await q.select("id");
+    if (error) throw new Error(error.message);
+    if (!data?.length) return "Alguien la cambió recién. Volvé a mirar.";
+    await anotarEvento(db, charla.id, `${yo.nombre} le pasó la charla a ${para.nombre}${deOtro ? ` (la tenía ${deOtro.nombre})` : ""}.`, yo.id);
+    await avisarQueLaTiene(db, charla.id, para, yo.nombre, charla.nombre || charla.telefono);
+    return null;
+  }
   if (accion === "tomar") {
     if (mia) return null;
     const deOtro = charla.estado === "humano" && charla.asistente && charla.asistente.id !== yo.id ? charla.asistente : null;

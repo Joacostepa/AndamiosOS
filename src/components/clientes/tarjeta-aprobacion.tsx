@@ -59,7 +59,7 @@ function LineaVentana({ v }: { v: AvisoVentana }) {
 }
 
 /** Quién sigue la charla después de decidir. Con Sofía apagada, siempre una persona. */
-function ElegirDespues({ valor, onCambio, iaActiva }: { valor: "sofia" | "persona"; onCambio: (v: "sofia" | "persona") => void; iaActiva: boolean }) {
+function ElegirDespues({ valor, onCambio, iaActiva, vendedora = false }: { valor: "sofia" | "persona"; onCambio: (v: "sofia" | "persona") => void; iaActiva: boolean; vendedora?: boolean }) {
   if (!iaActiva) return null;
   return (
     <div className="flex flex-wrap items-center gap-2 text-[13px]" role="radiogroup" aria-label="Después, quién sigue la charla">
@@ -71,9 +71,10 @@ function ElegirDespues({ valor, onCambio, iaActiva }: { valor: "sofia" | "person
           role="radio"
           aria-checked={valor === v}
           onClick={() => onCambio(v)}
+          title={v === "persona" && vendedora ? "La charla queda con la vendedora elegida; si ella no tiene la bandeja de clientes, queda con vos." : undefined}
           className={cn("h-8 rounded-full border px-3", valor === v ? "border-hd-boton bg-hd-boton/10 text-hd-boton" : "border-border text-muted-foreground")}
         >
-          {v === "sofia" ? "Sigue Tomás" : "Queda con vos"}
+          {v === "sofia" ? "Sigue Tomás" : vendedora ? "La sigue la vendedora" : "Queda con vos"}
         </button>
       ))}
     </div>
@@ -501,7 +502,7 @@ function TarjetaTecnico({ t, charla, puedeEditar, datos }: { t: TarjetaAprobacio
           <span>Avisarle al cliente: «{texto}»</span>
         </label>
       )}
-      {pendiente && puedeEditar && <ElegirDespues valor={despues} onCambio={setDespues} iaActiva={datos.iaActiva} />}
+      {pendiente && puedeEditar && <ElegirDespues valor={despues} onCambio={setDespues} iaActiva={datos.iaActiva} vendedora />}
       {pendiente && <p className="text-[12.5px] text-muted-foreground">Mientras no confirmes, el cliente sólo leyó «ya se lo paso al equipo».</p>}
     </Marco>
   );

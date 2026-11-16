@@ -87,7 +87,7 @@ import {
   type ContextoRecalculo, type CorreccionAlquiler, type PayloadAlquiler, type RecalculoAlquiler, type TipoCorreccionAlquiler,
 } from "./aprobacion-alquiler";
 import { PAREJAS_15_10, siguienteEnTurno, tecnicoDeOdoo, type Asignacion } from "./asignacion";
-import { nombresDe } from "./bandeja";
+import { avisarQueLaTiene, nombresDe, personaPorNombre } from "./bandeja";
 import { mandarArchivo, mandarTexto } from "./envio";
 import type { Motivo } from "./facil";
 import { leerFicha, type FichaSofia } from "./herramientas";
@@ -490,7 +490,11 @@ async function idsDePareja(p: { tecnico: string | null; asistente: string | null
 
 // ── Después de decidir: la charla ───────────────────────────────────────────────────────
 
-async function despuesDeDecidir(db: Db, conversacionId: string, destino: Despues, quien: Quien): Promise<string> {
+/**
+ * `para`: con quién queda la charla si sigue una persona (por defecto, quien decidió). Al
+ * confirmar la pareja es la vendedora elegida, si tiene la bandeja (JS, 16/11).
+ */
+async function despuesDeDecidir(db: Db, conversacionId: string, destino: Despues, quien: Quien, para: Quien = quien): Promise<string> {
   const { count } = await db
     .from("cli_aprobaciones")
     .select("id", { count: "exact", head: true })
@@ -502,18 +506,16 @@ async function despuesDeDecidir(db: Db, conversacionId: string, destino: Despues
   // Si la tomó otra persona mientras esperaba, no se le saca.
   if (charla.estado === "humano" && charla.asistente_id && charla.asistente_id !== quien.id) return "";
   const ahora = ahoraIso();
-  if (destino === "sofia") {
-    await db.from("cli_conversaciones")
-      .update({ estado: "bot", asistente_id: null, tomada_at: null, motivo: null, updated_at: ahora })
-      .eq("id", conversacionId)
-      .neq("estado", "cerrada");
-    return " La charla vuelve a Tomás.";
-  }
-  await db.from("cli_conversaciones")
-    .update({ estado: "humano", asistente_id: quien.id, tomada_at: ahora, motivo: null, updated_at: ahora })
-    .eq("id", conversacionId)
-    .neq("estado", "cerrada");
-  return ` La charla queda con ${quien.nombre}.`;
+  // Sólo si nadie la movió desde que se leyó (alguien pudo tomarla o pasarla mientras tanto).
+  const cambios = destino === "sofia"
+    ? { estado: "bot", asistente_id: null, tomada_at: null, motivo: null, updated_at: ahora }
+    : { estado: "humano", asistente_id: para.id, tomada_at: ahora, motivo: null, updated_at: ahora };
+  const q = db.from("cli_conversaciones").update(cambios).eq("id", conversacionId).eq("estado", charla.estado);
+  const { data: movida } = await (charla.asistente_id ? q.eq("asistente_id", charla.asistente_id) : q.is("asistente_id", null)).select("id");
+  if (!movida?.length) return "";
+  if (destino === "sofia") return " La charla vuelve a Tomás.";
+  if (para.id !== quien.id) await avisarQueLaTiene(db, conversacionId, para, quien.nombre, charla.nombre_perfil || charla.telefono);
+  return ` La charla queda con ${para.nombre}.`;
 }
 
 // ── Aprobar un precio ───────────────────────────────────────────────────────────────────
@@ -1176,7 +1178,7 @@ export async function confirmarTecnico(db: Db, conversacionId: string, id: strin
   if (!f || f.conversacion_id !== conversacionId) throw new ErrorTarjeta("Esa aprobación no es de esta charla.", 404);
   if (f.tipo !== "tecnico" && f.tipo !== "traspaso") throw new ErrorTarjeta("Esto es para asignar un técnico.", 400);
   const a = asignacionDe(f);
-  const validas = [...PAREJAS_15_10.parejas.map((x) => ({ tecnico: x.tecnico as string | null, asistente: x.asistente as string | null })), { tecnico: null, asistente: PAREJAS_15_10.asistenteSimple }];
+  const validas = parejasValidas();
   let pareja = { tecnico: a?.tecnico ?? null, asistente: a?.asistente ?? null };
   const otra = !!p.elegida && (p.elegida.tecnico !== pareja.tecnico || p.elegida.asistente !== pareja.asistente);
   if (p.elegida) {
@@ -1228,13 +1230,74 @@ export async function confirmarTecnico(db: Db, conversacionId: string, id: strin
   }
   if (enviado) await actualizar(db, id, { texto_enviado: enviado });
   const destino = destinoDespues({ tipo: "tecnico", accion: "aprobar", iaActiva, propuesta: f.payload.despues, elegido: p.despues });
-  const sigue = await despuesDeDecidir(db, conversacionId, destino, quien);
+  // Si sigue una persona, la sigue la vendedora elegida (si tiene la bandeja); si no, quien confirmó.
+  const vendedora = destino === "sofia" ? null : await personaPorNombre(db, pareja.asistente).catch(() => null);
+  const sigue = await despuesDeDecidir(db, conversacionId, destino, quien, vendedora ?? quien);
   const quienes = [pareja.asistente, pareja.tecnico].filter(Boolean).join(" con ");
   await anotarEvento(
     db, conversacionId,
     `${quien.nombre} ${otra ? "eligió otra pareja" : "confirmó la asignación"}: ${quienes}${turno ? " (turno)" : ""}.${enviado ? " Se le avisó al cliente." : ""}${avisos.length ? ` ${avisos.join(" ")}` : ""}${sigue}`,
   );
   return { ok: true, estado: otra ? "corregida" : "aprobada", avisos };
+}
+
+// ── Cambiar la pareja después ───────────────────────────────────────────────────────────
+
+/** Las parejas que se pueden elegir: las de PAREJAS_15_10 y Tamara sola (alquiler simple). */
+export function parejasValidas(): { tecnico: string | null; asistente: string | null }[] {
+  return [...PAREJAS_15_10.parejas.map((x) => ({ tecnico: x.tecnico as string | null, asistente: x.asistente as string | null })), { tecnico: null, asistente: PAREJAS_15_10.asistenteSimple }];
+}
+
+/**
+ * Asignar o cambiar la pareja de una charla sin tarjeta (JS, 16/11: una vez confirmada no se
+ * podía cambiar). Guarda la pareja y el técnico de Odoo, y si `avisar`, le manda al cliente
+ * quién lo atiende (con la ventana abierta). No mueve la charla: para eso está «Pasar a…».
+ * Con una tarjeta de técnico pendiente, se usa la tarjeta.
+ */
+export async function cambiarPareja(
+  db: Db, conversacionId: string, quien: Quien, elegida: { tecnico: string | null; asistente: string | null }, avisar: boolean,
+): Promise<{ ok: true; avisos: string[] } | { ok: false; error: string }> {
+  const pareja = parejasValidas().find((x) => x.tecnico === elegida.tecnico && x.asistente === elegida.asistente);
+  if (!pareja) return { ok: false, error: "Esa pareja no está en la lista." };
+  const { count } = await db
+    .from("cli_aprobaciones")
+    .select("id", { count: "exact", head: true })
+    .eq("conversacion_id", conversacionId)
+    .in("tipo", ["tecnico", "traspaso", "precio"])
+    .in("estado", ["pendiente", "ejecutando", "error", "falta_plantilla"]);
+  // Las tarjetas de precio traen su propia pareja y la escriben al aprobarse: cambiarla antes
+  // la pisaría (y la orden de Odoo saldría con la vieja).
+  if ((count ?? 0) > 0) return { ok: false, error: "Hay una tarjeta esperando abajo (cotización o asignación): resolvela primero; la pareja se elige ahí." };
+  const charla = await leerCharlaAprobacion(db, conversacionId);
+  const { data: antes } = await db.from("cli_conversaciones").select("pareja_tecnico, pareja_asistente").eq("id", conversacionId).maybeSingle();
+  const anterior = antes as { pareja_tecnico: string | null; pareja_asistente: string | null } | null;
+  if (anterior && anterior.pareja_tecnico === pareja.tecnico && anterior.pareja_asistente === pareja.asistente && !avisar) return { ok: true, avisos: [] };
+
+  const avisos: string[] = [];
+  const ids = await idsDePareja(pareja);
+  const cambios: Record<string, unknown> = { pareja_tecnico: pareja.tecnico, pareja_asistente: pareja.asistente, tecnico_employee_id: ids.tecnico?.id ?? null, updated_at: ahoraIso() };
+  if (!ids.tecnico && pareja.tecnico) avisos.push(`No se encontró a ${pareja.tecnico} en los empleados de Odoo.`);
+  const { error } = await db.from("cli_conversaciones").update(cambios).eq("id", conversacionId);
+  if (error) return { ok: false, error: `No se pudo guardar la pareja: ${error.message}` };
+
+  let avisado = false;
+  const texto = avisar ? textoPareja({ ...pareja, trato: (charla.ficha.trato ?? null) as Trato }) : null;
+  if (texto) {
+    if (modoEnvio(charla.ultimo_entrante_at) === "libre") {
+      try {
+        await mandarTexto(db, conversacionId, charla.telefono, texto, { autor: "sistema" });
+        avisado = true;
+      } catch (e) {
+        avisos.push(`No se le pudo avisar al cliente: ${e instanceof Error ? e.message : e}`);
+      }
+    } else {
+      avisos.push("La ventana de 24 h está cerrada: no se le avisó al cliente quién lo atiende.");
+    }
+  }
+  const quienes = [pareja.asistente, pareja.tecnico].filter(Boolean).join(" con ");
+  const eraOtra = anterior && (anterior.pareja_tecnico || anterior.pareja_asistente) ? ` (antes: ${[anterior.pareja_asistente, anterior.pareja_tecnico].filter(Boolean).join(" con ")})` : "";
+  await anotarEvento(db, conversacionId, `${quien.nombre} ${eraOtra ? "cambió la pareja" : "asignó la pareja"}: ${quienes}${eraOtra}.${avisado ? " Se le avisó al cliente." : ""}${avisos.length ? ` ${avisos.join(" ")}` : ""}`, quien.id);
+  return { ok: true, avisos };
 }
 
 // ── Texto bloqueado ─────────────────────────────────────────────────────────────────────

@@ -55,8 +55,29 @@ function refrescar(qc: ReturnType<typeof useQueryClient>, id: string) {
 
 export function useCambiarEstado(id: string | null) {
   const qc = useQueryClient();
-  return useMutation<{ ok: true }, ErrorPedido, { accion: "tomar" | "soltar" | "cerrar" | "devolver"; forzar?: boolean; nota?: string }>({
+  return useMutation<{ ok: true }, ErrorPedido, { accion: "tomar" | "soltar" | "cerrar" | "devolver" | "pasar"; forzar?: boolean; nota?: string; para?: string }>({
     mutationFn: (b) => pedir(`${BASE}/conversaciones/${id}`, { method: "PATCH", body: JSON.stringify(b) }),
+    onSettled: () => id && refrescar(qc, id),
+  });
+}
+
+export type Pareja = { tecnico: string | null; asistente: string | null };
+
+/** «Asignar»: a quién se le puede pasar una charla y las parejas que se pueden elegir. */
+export function useEquipoBandeja(activo: boolean) {
+  return useQuery({
+    queryKey: ["clientes-equipo"],
+    queryFn: () => pedir<{ personas: { id: string; nombre: string }[]; parejas: Pareja[] }>(`${BASE}/equipo`),
+    enabled: activo,
+    staleTime: 5 * 60_000,
+  });
+}
+
+/** Asignar o cambiar la pareja de la charla, fuera de la tarjeta. */
+export function useCambiarPareja(id: string | null) {
+  const qc = useQueryClient();
+  return useMutation<{ ok: true; avisos: string[] }, ErrorPedido, Pareja & { avisar: boolean }>({
+    mutationFn: (b) => pedir(`${BASE}/conversaciones/${id}/pareja`, { method: "POST", body: JSON.stringify(b) }),
     onSettled: () => id && refrescar(qc, id),
   });
 }

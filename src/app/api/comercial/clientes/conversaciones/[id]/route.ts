@@ -3,7 +3,7 @@ import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { esAdmin, nivelEn } from "@/lib/auth/acceso";
 import { marcarLeido, numeroClientes } from "@/lib/whatsapp/api";
-import { borrarCharla, cambiarEstado, leerCharla, leerHilo, nombresDe, ultimoEntrante } from "@/lib/clientes/bandeja";
+import { borrarCharla, cambiarEstado, equipoBandeja, leerCharla, leerHilo, nombresDe, ultimoEntrante } from "@/lib/clientes/bandeja";
 import { reintentarPendientes } from "@/lib/clientes/webhook";
 import { atenderConSofia } from "@/lib/clientes/agente";
 import { iaClientesActiva } from "@/lib/clientes/interruptor";
@@ -17,7 +17,8 @@ import { errorResponse, exigirModulo, invalido } from "../../../_comun";
 //       "devolver", forzar?, nota? } (forzar: tomar una que tiene otra persona; la pantalla
 //       pregunta antes). «devolver»: la charla vuelve a Sofía (sólo con clientes_ia_activa = 1),
 //       con una nota opcional para ella; Sofía sigue después de responder (after), por eso la
-//       ruta tiene el plazo largo (un turno puede llevar hasta 265 s).
+//       ruta tiene el plazo largo (un turno puede llevar hasta 265 s). «pasar» (con `para`, el id
+//       de alguien con la bandeja en «editar»): la charla queda con esa persona.
 // DELETE /api/comercial/clientes/conversaciones/:id — borra la charla entera para volver a
 //       probar desde cero (sólo admin). Ver borrarCharla en bandeja.ts.
 
@@ -59,7 +60,8 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
 }
 
 const schema = z.object({
-  accion: z.enum(["tomar", "soltar", "cerrar", "devolver"]),
+  accion: z.enum(["tomar", "soltar", "cerrar", "devolver", "pasar"]),
+  para: z.string().uuid().optional(),
   forzar: z.boolean().optional(),
   nota: z.string().trim().max(500, "La nota para Tomás no puede pasar de 500 caracteres.").optional(),
 });
@@ -75,12 +77,17 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     const db = createAdminClient();
     const charla = await leerCharla(db, id);
     if (!charla) return NextResponse.json({ error: "No existe esa charla." }, { status: 404 });
-    const { accion, forzar, nota } = parsed.data;
+    const { accion, forzar, nota, para } = parsed.data;
     if (accion === "devolver" && !(await iaClientesActiva(db))) {
       return NextResponse.json({ error: "Tomás está apagado (clientes_ia_activa en Parámetros): la charla sigue con una persona." }, { status: 409 });
     }
     const yo = { id: quien.userId, nombre: (await nombresDe(db, [quien.userId])).get(quien.userId) ?? "Alguien" };
-    const motivo = await cambiarEstado(db, charla, accion, yo, forzar, nota ?? null);
+    let destino = null;
+    if (accion === "pasar") {
+      destino = (await equipoBandeja(db)).find((p) => p.id === para) ?? null;
+      if (!destino) return NextResponse.json({ error: "Esa persona no tiene la bandeja de clientes para contestar." }, { status: 400 });
+    }
+    const motivo = await cambiarEstado(db, charla, accion, yo, forzar, nota ?? null, destino);
     if (motivo) return NextResponse.json({ error: motivo }, { status: 409 });
     // Sofía retoma enseguida: lee lo que pasó mientras la tuvo una persona y la nota.
     if (accion === "devolver" && charla.estado !== "bot") after(() => atenderConSofia(db, id, { devuelta: true }).then(() => {}));

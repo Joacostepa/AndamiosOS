@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Bot, ClipboardCheck, Copy, Download, Hand, Loader2, Lock, MessageCircle, Trash2, TriangleAlert, Undo2 } from "lucide-react";
+import { ArrowLeft, Bot, ClipboardCheck, Copy, Download, Hand, Loader2, Lock, MessageCircle, Trash2, TriangleAlert, Undo2, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { useSeguirAbajo } from "@/components/asistente/hilo";
@@ -11,6 +11,7 @@ import { ListaCharlas } from "@/components/clientes/lista-charlas";
 import { HiloCharla } from "@/components/clientes/hilo-charla";
 import { CajaRespuesta } from "@/components/clientes/caja-respuesta";
 import { TarjetasAprobacion } from "@/components/clientes/tarjeta-aprobacion";
+import { AsignarCharla, textoPareja } from "@/components/clientes/asignar-charla";
 import { PastillaEstado, PastillaGamaAlta, PastillaVentana, useAhora } from "@/components/clientes/pastillas";
 import { useBorrarCharla, useCambiarEstado, useCharla, useCharlas } from "@/hooks/use-clientes-whatsapp";
 import { telefonoLegible, type Filtro, type ItemHilo } from "@/lib/clientes/vista";
@@ -159,6 +160,8 @@ function Charla({ id, ahora, onVolver }: { id: string; ahora: number; onVolver: 
   const [copiando, setCopiando] = useState(false);
   const [textoACopiar, setTextoACopiar] = useState<string | null>(null);
   const [bajando, setBajando] = useState(false);
+  // «Asignar»: pasarle la charla a alguien y cambiar la pareja (JS, 16/11).
+  const [asignando, setAsignando] = useState(false);
 
   const accion = (a: "tomar" | "soltar" | "cerrar" | "devolver", forzar = false) =>
     cambiar.mutate(
@@ -249,6 +252,9 @@ function Charla({ id, ahora, onVolver }: { id: string; ahora: number; onVolver: 
                   <Hand /> Tomar
                 </Button>
               )}
+              <Button variant="outline" className="h-10 px-3" onClick={() => setAsignando((x) => !x)} title="Pasarle la charla a alguien o cambiar la pareja" aria-label="Asignar">
+                <UserPlus /> <span className="hidden sm:inline">Asignar</span>
+              </Button>
               {puedeDevolver && (
                 <Button variant="outline" className="h-10 px-3" onClick={() => setDevolviendo((x) => !x)} disabled={cambiar.isPending} title="Que siga Tomás" aria-label="Devolver a Tomás">
                   <Bot /> <span className="hidden sm:inline">Devolver a Tomás</span>
@@ -277,6 +283,12 @@ function Charla({ id, ahora, onVolver }: { id: string; ahora: number; onVolver: 
             <span className="font-medium text-foreground">Trabajo:</span> {c.tarea}
           </p>
         )}
+        {c.pareja && (
+          <p className="truncate pb-0.5 text-[13px] text-muted-foreground">
+            <span className="font-medium text-foreground">Pareja:</span> {textoPareja(c.pareja)}
+          </p>
+        )}
+        {asignando && d.puedeEditar && <AsignarCharla charla={c} yo={d.yo} onListo={() => setAsignando(false)} />}
         {textoACopiar !== null && (
           <div className="space-y-1.5 pt-1.5 pb-1 text-[13.5px]">
             <p className="text-muted-foreground">El navegador no dejó copiar solo: el texto ya está seleccionado, copialo con Cmd+C (o Ctrl+C).</p>

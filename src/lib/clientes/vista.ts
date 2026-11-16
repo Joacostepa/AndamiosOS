@@ -22,6 +22,8 @@ export type CharlaListada = {
   segmento: "gama_alta" | null;
   /** Qué trabajo va a hacer el cliente, como lo anotó Sofía (de la ficha). */
   tarea: string | null;
+  /** La pareja asignada (técnico y vendedora), por nombre de pila. */
+  pareja?: { tecnico: string | null; asistente: string | null } | null;
 };
 
 export type AdjuntoVista =

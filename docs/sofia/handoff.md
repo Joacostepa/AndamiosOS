@@ -15,7 +15,7 @@ Para retomar, decí: «Leé docs/sofia/handoff.md y seguimos con el CRM de Whats
 - Código: `src/lib/push/servidor.ts` (web-push 3.6.7, VAPID), `src/lib/clientes/push.ts` (`quienesReciben`, con tests), `public/sw.js` (sólo push, sin offline), `src/components/clientes/notificaciones.tsx`, ruta `/api/comercial/clientes/notificaciones` (alcanza con ver la bandeja). Ganchos: `recibirMensajes`/`despuesDeRecibir` (cliente), `salir` en `envio.ts` (Tomás y textos fijos), `cambiarEstado` del repo de Tomás (espera_ok y derivada) y `avisarQueLaTiene` (te pasaron la charla).
 - `sw.js` y `manifest.json` quedaron afuera del proxy: antes `manifest.json` rebotaba al login, así que el iPhone no podía instalar la app bien.
 - Tabla `push_suscripciones` (migración `20261116000002`, **aplicada el 16/11 con el OK de JS**). Un dispositivo que el servicio de push da por muerto (404/410) se borra solo.
-- **Claves:** `VAPID_PUBLIC_KEY` y `VAPID_PRIVATE_KEY` en Vercel (Production). Las carga JS: no se escriben secretos desde Claude. Sin ellas no sale nada y la campana dice «Falta configurar las claves en el servidor».
+- **Claves:** `VAPID_PUBLIC_KEY` y `VAPID_PRIVATE_KEY` en Vercel (Production), **cargadas el 16/11 por Claude con la autorización de JS** (vercel env add, la privada como sensitive) y redeploy de `9103169`. Si se cambian, las suscripciones viejas dejan de andar: hay que volver a activar en cada dispositivo. Sin claves no sale nada y la campana dice «Falta configurar las claves en el servidor».
 - En el iPhone sólo anda con AndamiosOS agregada a la pantalla de inicio (iOS 16.4 o más).
 
 **16/11: lo que alquilamos** (por la charla de Gabi Notario, BSL: pidió 30 m de vallas free standing y Tomás le dijo «no son de lo que solemos trabajar»). Decisiones de JS:

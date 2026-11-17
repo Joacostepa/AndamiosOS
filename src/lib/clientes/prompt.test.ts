@@ -156,7 +156,7 @@ test("las frases fijas nuevas del prompt pasan el filtro de salida", () => {
 });
 
 test("el bloque del alquiler simple: §3, §6 y §7, sin montos ni porcentajes, adentro del bloque fijo", () => {
-  assert.equal(VERSION_PROMPT, "tomas-2026-11-16-lo-que-alquilamos");
+  assert.equal(VERSION_PROMPT, "tomas-2026-11-16-sin-anotado");
   assert.ok(INSTRUCCIONES.includes(ALQUILER_SIMPLE), "va en el bloque con caché, igual para todas las charlas");
   for (const regla of [
     /Qué trabajo van a hacer y hasta qué altura/,
@@ -237,4 +237,10 @@ test("lo que alquilamos (JS, 16/11): vallados sí, nunca «no alquilamos», y ba
   assert.match(INSTRUCCIONES, /no alquilamos son balancines, silletas y andamios eléctricos/);
   assert.match(INSTRUCCIONES, /andamios tubulares, que es nuestra especialidad/);
   assert.doesNotMatch(INSTRUCCIONES, /No trabajamos balancines/);
+});
+
+test("sin «anotado» ni acuses repetidos (JS, 16/11)", () => {
+  assert.match(INSTRUCCIONES, /Nunca digas «anotado», «anoto», «lo anoté» ni «tomo nota»/);
+  assert.match(INSTRUCCIONES, /nunca dos mensajes seguidos que empiecen con un acuse/);
+  assert.match(INSTRUCCIONES, /nunca «lo que anoté»/);
 });

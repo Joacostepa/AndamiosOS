@@ -75,7 +75,7 @@ test("una herramienta que no está en la lista no existe", async () => {
 test("anotar_ficha: anota lo del cliente; lo verificable no se puede anotar", async () => {
   const c = contexto();
   const r = await ejecutarHerramientaSofia("anotar_ficha", { trabajo: "bandeja", direccion: "Los Aromos 1234", banderas: ["fecha"] }, c);
-  assert.match(r.contenido, /Anotado/);
+  assert.match(r.contenido, /Guardado en la ficha/);
   assert.equal(c.ficha.trabajo, "bandeja");
   assert.equal(c.ficha.direccion, "Los Aromos 1234");
   assert.deepEqual(c.ficha.banderas, ["fecha"]);

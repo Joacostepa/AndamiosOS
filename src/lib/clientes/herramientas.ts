@@ -339,7 +339,7 @@ async function anotarFicha(i: z.infer<typeof esquemaFicha>, { ficha }: ContextoH
     ficha.banderas = [...new Set([...ficha.banderas, ...i.banderas])];
     anotado.push(`marcas (${i.banderas.join(", ")})`);
   }
-  return { contenido: anotado.length ? `Anotado: ${anotado.join(", ")}.` : "No había nada nuevo para anotar." };
+  return { contenido: anotado.length ? `Guardado en la ficha: ${anotado.join(", ")}. (No se lo digas al cliente: seguí con lo que falta.)` : "No había nada nuevo para guardar." };
 }
 
 // ── validar_cuit ───────────────────────────────────────────────────────────────────────

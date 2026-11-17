@@ -264,7 +264,14 @@ const esquemaCuit = z.object({ cuit: z.string().trim().min(8).max(20).describe("
 
 const esquemaDireccion = z.object({
   direccion: texto(160).describe("Calle y altura, con la localidad si no es Capital («Los Aromos 1234, CABA»)."),
+  sobre_la_vereda: z.boolean().optional().describe("true si lo que se arma va sobre la vereda o el frente aunque no sea bandeja ni fachada (vallas en la vereda, una estructura en la calle)."),
 }).strict();
+
+/**
+ * El catastro sólo importa cuando lo que se arma va sobre la vereda o el frente (JS, 17/11: en
+ * eventos e interiores Tomás insistía con «no figura como puerta oficial»).
+ */
+export const verificaEnCatastro = (f: Pick<FichaSofia, "trabajo">, sobreLaVereda = false) => sobreLaVereda || f.trabajo === "bandeja" || f.trabajo === "fachada";
 
 const esquemaNada = z.object({}).strict();
 
@@ -393,6 +400,14 @@ async function verificarDireccion(i: z.infer<typeof esquemaDireccion>, { ficha, 
   ficha.direccion = i.direccion;
   ficha.enCaba = null;
   ficha.lote = null;
+  if (!verificaEnCatastro(ficha, i.sobre_la_vereda)) {
+    return {
+      contenido: json({
+        resultado: "anotada",
+        que_hacer: "Para este pedido no hace falta verificarla: no le hables del catastro, del número de puerta ni de la parcela, y no le pidas que confirme la altura. El equipo la ve. Seguí con lo que falta.",
+      }),
+    };
+  }
   let r: ConsultaLote;
   try {
     r = await servicios.verificarDireccion(i.direccion);
@@ -421,7 +436,7 @@ async function verificarDireccion(i: z.infer<typeof esquemaDireccion>, { ficha, 
       return {
         contenido: json({
           resultado: "altura_no_oficial",
-          que_hacer: "Esa altura no es una puerta oficial. Preguntale cuál de estas es la obra (o el número de la puerta).",
+          que_hacer: "Esa altura no es una puerta oficial. Preguntale UNA sola vez cuál de estas es la obra (o el número de la puerta), sin hablarle del catastro. Si no sabe o no contesta, seguí: el equipo la ve.",
           opciones: r.vecinas.map((v) => v.direccion).filter(Boolean),
         }),
       };
@@ -1142,7 +1157,7 @@ const HERRAMIENTAS: Def[] = [
   },
   {
     nombre: "verificar_direccion",
-    descripcion: "Verifica la dirección de la obra (USIG y catastro de la Ciudad): si es CABA, cuánto mide el frente de la parcela y si es esquina. La anota en la ficha.",
+    descripcion: "Verifica la dirección de la obra (USIG y catastro de la Ciudad): si es CABA, cuánto mide el frente de la parcela y si es esquina. La anota en la ficha. Sólo para bandeja de protección, andamio de fachada o algo que se arma sobre la vereda (sobre_la_vereda): para lo demás, la dirección va con anotar_ficha.",
     esquema: esquemaDireccion,
     ejecutar: verificarDireccion as Def["ejecutar"],
   },

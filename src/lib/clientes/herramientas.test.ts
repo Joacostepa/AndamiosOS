@@ -105,18 +105,18 @@ test("validar_cuit: sólo el dígito; no dice si es cliente ni de quién es", as
 });
 
 test("verificar_direccion: CABA con frente; esquina; fuera de CABA; catastro caído", async () => {
-  const c = contexto();
+  const c = contexto({ trabajo: "bandeja" });
   const r = JSON.parse((await ejecutarHerramientaSofia("verificar_direccion", { direccion: "Los Aromos 1234" }, c)).contenido);
   assert.equal(r.resultado, "verificada");
   assert.equal(r.frente_m, "12,4");
   assert.equal(c.ficha.enCaba, true);
   assert.equal(c.ficha.lote?.direccionConsultada, "Los Aromos 1234");
 
-  const fuera = contexto({}, { verificarDireccion: async () => ({ estado: "fuera_de_caba", direccion: "Av. Ficticia 2500, Vicente López" }) });
+  const fuera = contexto({ trabajo: "fachada" }, { verificarDireccion: async () => ({ estado: "fuera_de_caba", direccion: "Av. Ficticia 2500, Vicente López" }) });
   assert.equal(JSON.parse((await ejecutarHerramientaSofia("verificar_direccion", { direccion: "Av. Ficticia 2500, Vicente López" }, fuera)).contenido).resultado, "fuera_de_caba");
   assert.equal(fuera.ficha.enCaba, false);
 
-  const caido = contexto({}, { verificarDireccion: async () => { throw new Error("El catastro respondió 503"); } });
+  const caido = contexto({ trabajo: "bandeja" }, { verificarDireccion: async () => { throw new Error("El catastro respondió 503"); } });
   const x = await ejecutarHerramientaSofia("verificar_direccion", { direccion: "Los Aromos 1234" }, caido);
   assert.equal(x.esError, undefined);
   assert.equal(JSON.parse(x.contenido).resultado, "sin_respuesta");
@@ -716,4 +716,18 @@ test("anotar_ficha: el DNI (sólo los dígitos) y cómo nos conoció (JS, 16/11)
   // Un DNI que no lo es: la herramienta lo rechaza y no lo guarda.
   const mal = await ejecutarHerramientaSofia("anotar_ficha", { dni: "123" }, contexto());
   assert.equal(mal.esError, true);
+});
+
+test("verificar_direccion: sólo con bandeja, fachada o algo sobre la vereda (JS, 17/11)", async () => {
+  let consultas = 0;
+  const contar = { verificarDireccion: async () => { consultas++; return { estado: "no_encontrado" as const, motivo: "x" }; } };
+  const evento = contexto({ trabajo: "otro" }, contar);
+  const r = JSON.parse((await ejecutarHerramientaSofia("verificar_direccion", { direccion: "Ramsay 2131" }, evento)).contenido);
+  assert.equal(r.resultado, "anotada");
+  assert.match(r.que_hacer, /no le hables del catastro/);
+  assert.equal(evento.ficha.direccion, "Ramsay 2131");
+  assert.equal(consultas, 0);
+  // Unas vallas sobre la vereda sí.
+  await ejecutarHerramientaSofia("verificar_direccion", { direccion: "Cabrera 3800", sobre_la_vereda: true }, contexto({ trabajo: "otro" }, contar));
+  assert.equal(consultas, 1);
 });

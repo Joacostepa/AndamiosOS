@@ -156,7 +156,7 @@ test("las frases fijas nuevas del prompt pasan el filtro de salida", () => {
 });
 
 test("el bloque del alquiler simple: §3, §6 y §7, sin montos ni porcentajes, adentro del bloque fijo", () => {
-  assert.equal(VERSION_PROMPT, "tomas-2026-11-16-datos-del-cliente");
+  assert.equal(VERSION_PROMPT, "tomas-2026-11-17-catastro-y-minimo");
   assert.ok(INSTRUCCIONES.includes(ALQUILER_SIMPLE), "va en el bloque con caché, igual para todas las charlas");
   for (const regla of [
     /Qué trabajo van a hacer y hasta qué altura/,
@@ -257,4 +257,11 @@ test("los datos del cliente (JS, 16/11): mail, DNI o CUIT y cómo nos conoció, 
   assert.match(r, /DNI: ya lo dio/);
   assert.doesNotMatch(r, /30123456/);
   assert.match(r, /Cómo nos conoció: Google o la web/);
+});
+
+test("sin período mínimo y sin catastro fuera de la vereda (JS, 17/11)", () => {
+  assert.match(INSTRUCCIONES, /Nunca le hables de un período mínimo de alquiler/);
+  assert.doesNotMatch(INSTRUCCIONES, /avisale que hay un período mínimo/);
+  assert.match(INSTRUCCIONES, /SÓLO cuando lo que se arma va sobre la vereda o el frente/);
+  assert.match(INSTRUCCIONES, /nunca le hables del catastro, del número de puerta oficial ni de la parcela/);
 });

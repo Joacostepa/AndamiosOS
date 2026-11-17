@@ -97,12 +97,17 @@ function quienEscribio(it: ItemHilo, cliente: string): string {
   return "ABA (texto fijo)";
 }
 
-/** Los renglones «• Etiqueta: valor», sin los que no tienen valor. */
-function renglones(filas: [string, string | number | null | undefined][]): string[] {
-  return filas.filter(([, v]) => v !== null && v !== undefined && v !== "" && v !== "—").map(([k, v]) => `• ${k}: ${v}`);
+/** Un dato de la ficha: lo usan el texto para Slack y la página del link (link-charla.ts). */
+export type FilaFicha = { etiqueta: string; valor: string };
+
+/** Los datos con valor (sin los vacíos ni «—»). */
+function renglones(filas: [string, string | number | null | undefined][]): FilaFicha[] {
+  return filas.filter(([, v]) => v !== null && v !== undefined && v !== "" && v !== "—").map(([k, v]) => ({ etiqueta: k, valor: String(v) }));
 }
 
-function seccionCliente(d: DatosSlack): string[] {
+const vinetas = (fs: FilaFicha[]) => fs.map((f) => `• ${f.etiqueta}: ${f.valor}`);
+
+export function filasCliente(d: DatosSlack): FilaFicha[] {
   const f = d.ficha;
   const lote = f.lote;
   const ubic = f.alquiler?.ubicacion ?? null;
@@ -137,7 +142,8 @@ function seccionCliente(d: DatosSlack): string[] {
   ]);
 }
 
-function seccionServicio(d: DatosSlack): string[] {
+/** El servicio. «Ojo» (lo que marcó Tomás) va último. */
+export function filasServicio(d: DatosSlack): FilaFicha[] {
   const f = d.ficha;
   const out = renglones([
     ["Qué pide", f.trabajo ? TRABAJO[f.trabajo] ?? f.trabajo : null],
@@ -192,7 +198,7 @@ function seccionServicio(d: DatosSlack): string[] {
   return out;
 }
 
-function seccionEquipo(d: DatosSlack): string[] {
+export function filasEquipo(d: DatosSlack): FilaFicha[] {
   const p = pastilla(d.charla, "").texto;
   return renglones([
     ["Técnico", d.pareja.tecnico],
@@ -209,10 +215,10 @@ export function textoParaSlack(d: DatosSlack): string {
   const cliente = (f.nombre ?? d.charla.nombre)?.split(" ")[0] || "Cliente";
   const out: string[] = [`*WhatsApp de clientes: ${nombre}*`, ""];
 
-  out.push("*Datos del cliente*", ...seccionCliente(d), "");
-  const servicio = seccionServicio(d);
+  out.push("*Datos del cliente*", ...vinetas(filasCliente(d)), "");
+  const servicio = vinetas(filasServicio(d));
   if (servicio.length) out.push("*El servicio*", ...servicio, "");
-  out.push("*Equipo*", ...seccionEquipo(d), "");
+  out.push("*Equipo*", ...vinetas(filasEquipo(d)), "");
 
   // Los archivos, numerados: en la charla se nombran «[Foto 2]».
   const numero = new Map<string, string>();

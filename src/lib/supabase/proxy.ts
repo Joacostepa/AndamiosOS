@@ -69,6 +69,9 @@ export async function updateSession(request: NextRequest) {
   // /cotizador y /api/public: cotizador hogareño para clientes finales (sin cuenta).
   // /endosos: portal del productor de seguros (Segucom) para subir pólizas. Lo protege el
   //   token de la URL, que valida /api/public/endosos; la página sola no muestra nada.
+  // /charla/: la charla de WhatsApp compartida por link (JS, 16/11), protegida por el token de
+  //   la URL (24 bytes al azar) y con vencimiento a los 30 días (src/lib/clientes/link-charla.ts).
+  //   CON la barra final, como /permiso/.
   // /permiso/: portal del cliente para su legajo, protegido por el token de la URL. CON la
   //   barra final a propósito: la comparación es por prefijo y "/permiso" sin barra dejaría
   //   pública también la pantalla interna /permisos-via-publica.
@@ -86,6 +89,7 @@ export async function updateSession(request: NextRequest) {
     "/api/whatsapp/webhook",
     "/endosos",
     "/permiso/",
+    "/charla/",
     "/login",
     "/auth",
     "/api/odoo/sync",

@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Bot, ClipboardCheck, Copy, Download, Hand, Loader2, Lock, MessageCircle, Trash2, TriangleAlert, Undo2, UserPlus } from "lucide-react";
+import { ArrowLeft, Bot, ClipboardCheck, Copy, Download, Hand, Link2, Loader2, Lock, MessageCircle, Trash2, TriangleAlert, Undo2, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { useSeguirAbajo } from "@/components/asistente/hilo";
@@ -13,6 +13,7 @@ import { CajaRespuesta } from "@/components/clientes/caja-respuesta";
 import { TarjetasAprobacion } from "@/components/clientes/tarjeta-aprobacion";
 import { AsignarCharla, textoPareja } from "@/components/clientes/asignar-charla";
 import { BotonNotificaciones } from "@/components/clientes/notificaciones";
+import { CompartirLink } from "@/components/clientes/compartir-link";
 import { PastillaEstado, PastillaGamaAlta, PastillaVentana, useAhora } from "@/components/clientes/pastillas";
 import { useBorrarCharla, useCambiarEstado, useCharla, useCharlas } from "@/hooks/use-clientes-whatsapp";
 import { telefonoLegible, type Filtro, type ItemHilo } from "@/lib/clientes/vista";
@@ -164,6 +165,8 @@ function Charla({ id, ahora, onVolver }: { id: string; ahora: number; onVolver: 
   const [bajando, setBajando] = useState(false);
   // «Asignar»: pasarle la charla a alguien y cambiar la pareja (JS, 16/11).
   const [asignando, setAsignando] = useState(false);
+  // «Compartir link»: la página pública de la charla, por 30 días (JS, 16/11).
+  const [compartiendo, setCompartiendo] = useState(false);
 
   const accion = (a: "tomar" | "soltar" | "cerrar" | "devolver", forzar = false) =>
     cambiar.mutate(
@@ -234,6 +237,11 @@ function Charla({ id, ahora, onVolver }: { id: string; ahora: number; onVolver: 
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
+            {d.puedeEditar && (
+              <Button variant="outline" className="h-10 px-3" onClick={() => setCompartiendo((x) => !x)} title="Un link con la ficha, las fotos, los audios, los videos y la charla, por 30 días" aria-label="Compartir link">
+                <Link2 /> <span className="hidden xl:inline">Compartir link</span>
+              </Button>
+            )}
             <Button variant="outline" className="h-10 px-3" onClick={copiar} disabled={copiando} title="Copia los datos, el servicio, los links de los archivos y la charla, para pegar en Slack" aria-label="Copiar para Slack">
               {copiando ? <Loader2 className="animate-spin" /> : <Copy />} <span className="hidden xl:inline">Copiar para Slack</span>
             </Button>
@@ -290,6 +298,7 @@ function Charla({ id, ahora, onVolver }: { id: string; ahora: number; onVolver: 
             <span className="font-medium text-foreground">Pareja:</span> {textoPareja(c.pareja)}
           </p>
         )}
+        {compartiendo && d.puedeEditar && <CompartirLink charlaId={c.id} onCerrar={() => setCompartiendo(false)} />}
         {asignando && d.puedeEditar && <AsignarCharla charla={c} yo={d.yo} onListo={() => setAsignando(false)} />}
         {textoACopiar !== null && (
           <div className="space-y-1.5 pt-1.5 pb-1 text-[13.5px]">

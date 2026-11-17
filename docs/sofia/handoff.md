@@ -1,6 +1,6 @@
 # Handoff: CRM con Tomás (antes Sofía), el agente de WhatsApp para clientes
 
-**Actualizado el 16/11/2026.** **Desde el 17/10 el agente se llama Tomás** (JS eligió una voz de hombre para el saludo con audio). La carpeta, los nombres internos del código (`atenderConSofia`, `FichaSofia`…) y la historia de abajo siguen diciendo Sofía.
+**Actualizado el 17/11/2026.** **Desde el 17/10 el agente se llama Tomás** (JS eligió una voz de hombre para el saludo con audio). La carpeta, los nombres internos del código (`atenderConSofia`, `FichaSofia`…) y la historia de abajo siguen diciendo Sofía.
 
  El estado de abajo es el vigente. La historia del 12/10 está más abajo, en «Historia: la charla del 12/10».
 
@@ -11,7 +11,8 @@ Para retomar, decí: «Leé docs/sofia/handoff.md y seguimos con el CRM de Whats
 **17/11: sin período mínimo, y el catastro sólo sobre la vereda** (JS: «eso sólo debería entrar en validez si lo que pide es una bandeja de protección o una estructura o algo que se arma sobre la vereda»; «no quiero que mencione lo del período mínimo, nosotros cotizamos igual; lo importante es saber por cuánto tiempo les va a llevar el trabajo»). En 14 días, Tomás habló del catastro o de la «puerta oficial» en eventos e interiores (Leslie, Pili, Marina) y del período mínimo en 6 charlas que no eran alquiler simple.
 - `verificar_direccion` sólo consulta el catastro con `trabajo` bandeja o fachada, o con `sobre_la_vereda: true` (vallas en la vereda, una estructura en la calle). Si no, guarda la dirección y le dice a Tomás que no hable del catastro ni pida la altura (`verificaEnCatastro`). Con «puerta no oficial» pregunta una sola vez y sigue.
 - Prompt: el catastro sólo sobre la vereda; nunca hablar de un período mínimo; preguntar cuánto tiempo lo necesitan. Prompt `tomas-2026-11-17-catastro-y-minimo`.
-- Migración `20261117000001_clientes_sin_periodo_minimo.sql`: cambia el renglón «Período mínimo» de `clientes_datos_empresa` y el de «Dirección» de `clientes_guia_trabajos`.
+- Migración `20261117000001_clientes_sin_periodo_minimo.sql`, **aplicada el 17/11 con el OK de JS**: cambia el renglón «Período mínimo» de `clientes_datos_empresa` y el de «Dirección» de `clientes_guia_trabajos`.
+- **En producción desde el 17/11** (`9cdc1ef` en main). Parámetros se lee con caché de 1 h.
 
 **16/11: mail, DNI o CUIT, y cómo nos conoció** (JS: «no es excluyente… hay muchas personas que les molesta pasar tantos datos para un presupuesto»). **En producción desde el 16/11** (`c72084b` en main; sin migraciones: la ficha es JSONB). Sección nueva del prompt, «Los datos del cliente»: al final, cuando ya entendió el pedido, Tomás pide en un solo mensaje, aclarando que no es obligatorio, el mail (para el presupuesto formal) y, para la factura, el DNI si es una persona o el CUIT si es empresa, consorcio u organismo. En el alquiler simple, sin DNI, porque lo manda en foto si acepta (paso 7). Lo pide una sola vez, no insiste y nunca repite los datos. También pregunta una vez cómo nos conoció (Google o la web, redes, recomendación, vio un andamio o un cartel en la calle, ya trabajó con ABA, otro, con un detalle). No lo pregunta si ya es cliente, ni en urgencias, reclamos o estafas.
 - Ficha: `dni` (sólo dígitos) y `origen` ({ via, detalle }), por `anotar_ficha` (`dni`, `como_nos_conocio`, `como_nos_conocio_detalle`). `ORIGENES` en `herramientas.ts`.

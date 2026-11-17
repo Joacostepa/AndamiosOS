@@ -70,6 +70,7 @@ export async function POST(req: NextRequest) {
           const p = await recibirMensajes(db, c.value, numero, { iaActiva });
           clientes.adjuntos.push(...p.adjuntos);
           clientes.respuestasFijas.push(...p.respuestasFijas);
+          (clientes.avisos ??= []).push(...(p.avisos ?? []));
           for (const id of p.charlas) if (!clientes.charlas.includes(id)) clientes.charlas.push(id);
         }
         // Entregado, leído o error (el 131047: fuera de las 24 h). Antes se descartaban.

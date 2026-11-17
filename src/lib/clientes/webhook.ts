@@ -21,6 +21,7 @@ import { variantesTelefono } from "@/lib/whatsapp/tandas";
 import { RESPUESTA_FIJA, debeResponderFijo, esBaja, extension, leerEntrante, nombreSeguro, respuestaFijaActivada, type AdjuntoPendiente, type MensajeCliente } from "./entrante";
 import { avanza, leerStatus, type EstadoHilo, type StatusMeta } from "./estados";
 import { mandarTexto } from "./envio";
+import { avisarPush } from "./push";
 import { palabraGamaAlta } from "./facil";
 
 export const BUCKET = "comercial";
@@ -39,7 +40,13 @@ export type AvisoClientes = {
 };
 
 /** Lo que queda para después del 200. `charlas`: las que recibieron algo (para Sofía). */
-export type Pendientes = { adjuntos: string[]; respuestasFijas: { conversacionId: string; telefono: string }[]; charlas: string[] };
+export type Pendientes = {
+  adjuntos: string[];
+  respuestasFijas: { conversacionId: string; telefono: string }[];
+  charlas: string[];
+  /** Las notificaciones push de lo que escribió el cliente (push.ts), después del 200. */
+  avisos?: { conversacionId: string; texto: string }[];
+};
 
 /** Cómo entra una charla nueva (o una cerrada que se reabre sin dueño): con Sofía o sin tomar. */
 export type OpcionesRecibir = { iaActiva: boolean };
@@ -142,7 +149,7 @@ export async function anotarEvento(db: SupabaseClient, conversacionId: string, t
 
 /** Paso 1, dentro del pedido de Meta. Si falla algo, el error vuelve como 500 y Meta reintenta. */
 export async function recibirMensajes(db: SupabaseClient, valor: AvisoClientes, numero: string, o: OpcionesRecibir = { iaActiva: false }): Promise<Pendientes> {
-  const pend: Pendientes = { adjuntos: [], respuestasFijas: [], charlas: [] };
+  const pend: Pendientes = { adjuntos: [], respuestasFijas: [], charlas: [], avisos: [] };
   const nombres = new Map((valor.contacts ?? []).map((c) => [c.wa_id ?? "", c.profile?.name?.trim() || null]));
   // Con Sofía prendida, el saludo lo manda ella: el mensaje fijo de la etapa 0 no sale.
   const fijaActivada = respuestaFijaActivada() && !o.iaActiva;
@@ -190,6 +197,7 @@ export async function recibirMensajes(db: SupabaseClient, valor: AvisoClientes, 
       const { error: eAnotar } = await db.rpc("cli_anotar_entrante", { p_conversacion: charla.id, p_momento: momento, p_resumen: e.resumen });
       if (eAnotar) throw new Error(`cli_anotar_entrante: ${eAnotar.message}`);
       if (e.adjunto && "pendiente" in e.adjunto) pend.adjuntos.push(fila.id as string);
+      pend.avisos!.push({ conversacionId: charla.id, texto: e.resumen || e.texto || "Mandó un mensaje" });
     }
     if (fila && e.tipo === "text" && e.texto && palabraGamaAlta(e.texto)) {
       await marcarGamaAlta(db, charla.id).catch((err) => console.error("[clientes] no se pudo marcar gama alta", charla.id, err));
@@ -235,6 +243,7 @@ export async function registrarStatuses(db: SupabaseClient, statuses: StatusMeta
 /** Paso 2, después del 200. Cada cosa por su lado: que un audio roto no frene a los demás. */
 export async function despuesDeRecibir(db: SupabaseClient, pend: Pendientes): Promise<void> {
   await Promise.all([
+    ...(pend.avisos ?? []).map((a) => avisarPush(db, { tipo: "cliente", conversacionId: a.conversacionId, texto: a.texto })),
     ...pend.adjuntos.map((id) => bajarAdjunto(db, id).catch((e) => console.error("[clientes] adjunto", id, e))),
     ...pend.respuestasFijas.map((r) =>
       mandarTexto(db, r.conversacionId, r.telefono, RESPUESTA_FIJA, { autor: "sistema" }).catch((e) => console.error("[clientes] respuesta fija", r.conversacionId, e)),

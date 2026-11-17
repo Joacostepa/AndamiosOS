@@ -12,6 +12,7 @@ import { HiloCharla } from "@/components/clientes/hilo-charla";
 import { CajaRespuesta } from "@/components/clientes/caja-respuesta";
 import { TarjetasAprobacion } from "@/components/clientes/tarjeta-aprobacion";
 import { AsignarCharla, textoPareja } from "@/components/clientes/asignar-charla";
+import { BotonNotificaciones } from "@/components/clientes/notificaciones";
 import { PastillaEstado, PastillaGamaAlta, PastillaVentana, useAhora } from "@/components/clientes/pastillas";
 import { useBorrarCharla, useCambiarEstado, useCharla, useCharlas } from "@/hooks/use-clientes-whatsapp";
 import { telefonoLegible, type Filtro, type ItemHilo } from "@/lib/clientes/vista";
@@ -65,11 +66,12 @@ function Bandeja() {
 
   return (
     <div className="-m-6 flex h-[calc(100dvh-3.5rem-var(--sat))] min-h-0">
-      <aside className={`${actual ? "hidden lg:flex" : "flex"} w-full shrink-0 flex-col border-r border-border lg:w-96`}>
+      <aside className={`${actual ? "hidden lg:flex" : "flex"} relative w-full shrink-0 flex-col border-r border-border lg:w-96`}>
         <header className="flex h-14 items-center gap-2 border-b border-border px-3">
           <MessageCircle className="size-5 text-hd-boton" />
           <h1 className="flex-1 text-[15px] font-semibold">WhatsApp de clientes</h1>
           {lista.isFetching && !lista.isLoading && <Loader2 className="size-4 animate-spin text-muted-foreground" aria-label="Actualizando" />}
+          <BotonNotificaciones />
           {lista.data?.esAdmin && (
             <Link href="/comercial/clientes/revisar" className={buttonVariants({ variant: "ghost", className: "h-10 gap-1.5 px-2.5 text-[13.5px]" })} title="Revisar charlas: el auditor">
               <ClipboardCheck className="size-4" /> Revisar

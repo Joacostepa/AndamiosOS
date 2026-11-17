@@ -32,6 +32,7 @@ import { mandarNotaDeVoz, mandarTexto } from "./envio";
 import { audioSaludo } from "./voz";
 import { anotarEvento, BUCKET } from "./webhook";
 import { nombresDe, ultimoEntrante } from "./bandeja";
+import { avisarPush } from "./push";
 import type { EstadoCharla } from "./vista";
 
 export { iaClientesActiva } from "./interruptor";
@@ -260,7 +261,9 @@ export function repoSofia(db: SupabaseClient, cliente?: Anthropic): RepoSofia {
         .in("estado", [...new Set(desde)])
         .select("id");
       if (error) falla("No se pudo cambiar el estado de la charla", error);
-      return !!data?.length;
+      const cambio = !!data?.length;
+      if (cambio) await avisarPush(db, { tipo: "necesita", conversacionId: id, texto: `${estado === "espera_ok" ? "Espera tu OK" : "Tomás la pasó a una persona"}: ${motivo}` });
+      return cambio;
     },
     async sumarCosto(id, usd) {
       await db.rpc("cli_sumar_costo", { p_conversacion: id, p_usd: Math.round(usd * 100_000) / 100_000 });

@@ -8,6 +8,16 @@ Para retomar, decí: «Leé docs/sofia/handoff.md y seguimos con el CRM de Whats
 
 **En curso (12/11): el alquiler simple que cotiza Tomás.** JS contestó las 13 preguntas el 12/11 y sumó seis decisiones a la tarde (filas 16 a 24: sólo CABA, el retiro en el depósito de Cucha Cucha 2345, Belgrano, el peldaño en cualquier módulo, Tamara de vendedora, el pagaré, provincia sin derivar y nada de 12 a 13); están en la §11 de [alquiler-simple-propuesta.md](./alquiler-simple-propuesta.md). **En producción desde el 12/11** (`09e4fe0` en main, deploy `andamios-d1mp5x9g6`, migraciones `20261112000001` y `…02` aplicadas). JS no quiso la prueba previa contra Odoo: lo prueba él por WhatsApp. Ver el punto 13.
 
+**16/11: notificaciones push de la bandeja** (JS: «me gustaría que en principio me llegue todo, más ahora que quiero ir viendo las respuestas»). La campana en el encabezado de la lista activa las notificaciones en ESE dispositivo (cada celular o compu por su cuenta), con dos modos:
+- **Todo:** cada mensaje del cliente («Oscar Brito: …») y cada respuesta de Tomás o texto fijo («Tomás → Oscar Brito: …»). Las de una charla se reemplazan entre sí (tag por charla), así no se apilan.
+- **Sólo lo que me necesita:** Tomás pasó la charla a una persona, una tarjeta espera el OK, te pasaron una charla, o el cliente escribió en una charla tuya.
+- Los avisos «⚠️» (necesita) llegan en los dos modos y tienen su propio tag. Lo que escribe una persona no se avisa.
+- Código: `src/lib/push/servidor.ts` (web-push 3.6.7, VAPID), `src/lib/clientes/push.ts` (`quienesReciben`, con tests), `public/sw.js` (sólo push, sin offline), `src/components/clientes/notificaciones.tsx`, ruta `/api/comercial/clientes/notificaciones` (alcanza con ver la bandeja). Ganchos: `recibirMensajes`/`despuesDeRecibir` (cliente), `salir` en `envio.ts` (Tomás y textos fijos), `cambiarEstado` del repo de Tomás (espera_ok y derivada) y `avisarQueLaTiene` (te pasaron la charla).
+- `sw.js` y `manifest.json` quedaron afuera del proxy: antes `manifest.json` rebotaba al login, así que el iPhone no podía instalar la app bien.
+- Tabla `push_suscripciones` (migración `20261116000002`, **aplicada el 16/11 con el OK de JS**). Un dispositivo que el servicio de push da por muerto (404/410) se borra solo.
+- **Claves:** `VAPID_PUBLIC_KEY` y `VAPID_PRIVATE_KEY` en Vercel (Production). Las carga JS: no se escriben secretos desde Claude. Sin ellas no sale nada y la campana dice «Falta configurar las claves en el servidor».
+- En el iPhone sólo anda con AndamiosOS agregada a la pantalla de inicio (iOS 16.4 o más).
+
 **16/11: lo que alquilamos** (por la charla de Gabi Notario, BSL: pidió 30 m de vallas free standing y Tomás le dijo «no son de lo que solemos trabajar»). Decisiones de JS:
 - **Alquilamos vallados:** vallas free standing, vallado de seguridad tipo reja y vallado ciego (estructura multidireccional con fenólico). Están en «Qué hace ABA» del prompt.
 - **Tomás nunca dice que algo no lo alquilamos** ni «no es de lo que solemos trabajar»: ante la duda lo define el equipo (a veces conviene tercerizar el alquiler antes que no tomarlo). Junta qué, cuánto, dónde, cuándo y para qué, y lo pasa con `pedir_tecnico`, sin prometer.

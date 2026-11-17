@@ -5,6 +5,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { nivelEn, type Acceso } from "@/lib/auth/acceso";
 import { crearAlertas } from "@/lib/alertas/servicio";
+import { avisarPush } from "./push";
 import type { AdjuntoVista, CharlaListada, EstadoCharla, ItemHilo } from "./vista";
 import { anotarEvento } from "./webhook";
 
@@ -208,6 +209,7 @@ export async function avisarQueLaTiene(db: SupabaseClient, conversacionId: strin
     destinatarioId: para.id,
     espejoSlack: false,
   }]).catch((e) => console.error("[clientes] aviso de charla pasada", e));
+  await avisarPush(db, { tipo: "necesita", conversacionId, texto: `${deQuien} te pasó la charla`, soloPara: para.id });
 }
 
 /**

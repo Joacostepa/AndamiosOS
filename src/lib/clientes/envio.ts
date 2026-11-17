@@ -11,6 +11,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { ErrorWhatsapp, enviarAudio, enviarDocumento, enviarImagen, enviarTexto, numeroClientes } from "@/lib/whatsapp/api";
 import { MAX_TEXTO } from "@/lib/whatsapp/formato";
 import { explicarError } from "./estados";
+import { avisarPush } from "./push";
 
 const BUCKET = "comercial";
 /** Lo que WhatsApp muestra como foto; lo demás sale como documento. */
@@ -66,6 +67,8 @@ async function salir(
       .from("cli_conversaciones")
       .update({ ultimo_mensaje_at: momento, ultimo_resumen: `${quien}: ${resumen}`.slice(0, 160), updated_at: momento })
       .eq("id", conversacionId);
+    // Lo que escribe una persona no se avisa (lo escribió ella); lo de Tomás y los textos fijos, sí.
+    if (autor.autor !== "persona") await avisarPush(db, { tipo: "tomas", conversacionId, texto: autor.autor === "ia" ? resumen : `ABA: ${resumen}` });
     return { id, wamid };
   } catch (e) {
     const codigo = e instanceof ErrorWhatsapp ? e.codigo : null;

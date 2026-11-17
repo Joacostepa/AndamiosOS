@@ -217,7 +217,8 @@ const PREFIJOS_API = Object.keys(APIS).sort((a, b) => b.length - a.length);
  * POST que no cambian datos: piden "ver" y no "editar". "Actualizar ahora" de Dirección
  * sólo relee Odoo (invalida una caché): también lo puede pedir quien sólo mira.
  */
-const POST_DE_LECTURA = ["/api/direccion/actualizar"];
+// Las notificaciones push de la bandeja: recibir avisos no cambia nada, alcanza con verla.
+const POST_DE_LECTURA = ["/api/direccion/actualizar", "/api/comercial/clientes/notificaciones"];
 
 /** Servicios auxiliares sin datos de nadie, y la cuenta propia. */
 const APIS_DE_TODOS = [

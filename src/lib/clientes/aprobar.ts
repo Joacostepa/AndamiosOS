@@ -90,7 +90,7 @@ import { PAREJAS_15_10, siguienteEnTurno, tecnicoDeOdoo, type Asignacion } from 
 import { avisarQueLaTiene, nombresDe, personaPorNombre } from "./bandeja";
 import { mandarArchivo, mandarTexto } from "./envio";
 import type { Motivo } from "./facil";
-import { leerFicha, type FichaSofia } from "./herramientas";
+import { leerFicha, ORIGENES, type FichaSofia } from "./herramientas";
 import { anotarEvento } from "./webhook";
 import type {
   Auditoria, CharlaIntervenida, CorreccionAlquilerPedida, CorreccionPedida, DecisionAuditada, RenglonVista, ResultadoDecision, TarjetaAlquiler,
@@ -488,6 +488,13 @@ async function idsDePareja(p: { tecnico: string | null; asistente: string | null
   return { tecnico, asistente };
 }
 
+/** «Cómo nos conoció: Recomendación (el administrador).» para la nota interna, o null. */
+function textoOrigen(f: FichaSofia): string | null {
+  if (!f.origen) return null;
+  const d = f.origen.detalle?.replace(/[<>&]/g, "") ?? null;
+  return `Cómo nos conoció: ${ORIGENES[f.origen.via]}${d ? ` (${d})` : ""}.`;
+}
+
 // ── Después de decidir: la charla ───────────────────────────────────────────────────────
 
 /**
@@ -700,6 +707,7 @@ async function guardarEnOdoo(db: Db, f: Fila, charla: Charla, envio: Envio, quie
       datos.notasInternas,
       `Aprobado por ${quien.nombre} en la bandeja de WhatsApp de clientes (cotización #${f.numero}).`,
       f.correccion_tipo ? `Corrección (${f.correccion_tipo}): ${f.motivo_correccion ?? ""}` : null,
+      textoOrigen(ficha),
     ].filter(Boolean).join(" "),
   };
   let borradorId = f.borrador_id;
@@ -729,7 +737,7 @@ async function guardarEnOdoo(db: Db, f: Fila, charla: Charla, envio: Envio, quie
   // Sin CUIT se guarda igual (JS, 12/10): la nota lo avisa y se completa en Odoo antes de facturar.
   const payload: PayloadGuardar = {
     borradorId,
-    crearCliente: { razonSocial: nombre, cuit: d.cliente.cuit?.trim() || null, email: d.cliente.email, telefono: charla.telefono, domicilio: null, enCaba: d.obra.enCaba ?? true, contacto: nombre, condicionIva: null },
+    crearCliente: { razonSocial: nombre, cuit: d.cliente.cuit?.trim() || null, dni: ficha.dni ?? null, email: d.cliente.email, telefono: charla.telefono, domicilio: null, enCaba: d.obra.enCaba ?? true, contacto: nombre, condicionIva: null },
     partnerId: null,
     clienteNombre: nombre,
     orden: {
@@ -750,7 +758,7 @@ async function guardarEnOdoo(db: Db, f: Fila, charla: Charla, envio: Envio, quie
     cancelarVentaNombre: null,
     notaHtml: notaHtml(d, resultado),
   };
-  if (!payload.crearCliente!.cuit) avisos.push("cliente sin CUIT: completarlo en Odoo antes de facturar");
+  if (!payload.crearCliente!.cuit && !payload.crearCliente!.dni) avisos.push("cliente sin CUIT ni DNI: completarlo en Odoo antes de facturar");
 
   // El guardado del asistente comercial, con una «acción» armada para esta aprobación. Sus pasos
   // (cliente, orden, oportunidad, nota, PDF) se guardan: un reintento saltea lo ya hecho.
@@ -1107,14 +1115,14 @@ async function guardarAlquilerEnOdoo(
   let partnerId = (pasos.partnerId as number | undefined) ?? ficha.partnerId ?? charla.partner_id ?? null;
   if (!partnerId) {
     const c = await crearCliente({
-      razonSocial: nombre, cuit: ficha.cuit?.trim() || null, email: ficha.mail ?? null, telefono: charla.telefono, domicilio: null,
+      razonSocial: nombre, cuit: ficha.cuit?.trim() || null, dni: ficha.dni ?? null, email: ficha.mail ?? null, telefono: charla.telefono, domicilio: null,
       enCaba: ficha.enCaba ?? true, contacto: nombre, condicionIva: null,
     });
     partnerId = c.id;
     pasos.clienteCreado = c.creado;
   }
   pasos.partnerId = partnerId;
-  if (!ficha.cuit?.trim()) avisos.push("cliente sin CUIT: completarlo en Odoo antes de facturar");
+  if (!ficha.cuit?.trim() && !ficha.dni) avisos.push("cliente sin CUIT ni DNI: completarlo en Odoo antes de facturar");
 
   const parametros = await leerParametros(db);
   const iva = parametros.find((x) => x.clave === "odoo_impuesto_iva_id")?.valor ?? 88;
@@ -1127,7 +1135,7 @@ async function guardarAlquilerEnOdoo(
     enCaba: ficha.enCaba ?? true,
     origen: `${nombre.toUpperCase()} - SIMPLE`,
     hoy: hoyBA(),
-    notaInterna: envio.notaHtml,
+    notaInterna: textoOrigen(ficha) ? `${envio.notaHtml}<p>${textoOrigen(ficha)}</p>` : envio.notaHtml,
     impuestoIvaId: Number(iva),
   });
   avisos.push(...o.avisos);

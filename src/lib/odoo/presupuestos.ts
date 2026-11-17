@@ -39,9 +39,11 @@ export type NuevoCliente = {
   enCaba: boolean;
   condicionIva?: "responsable_inscripto" | "monotributo" | "exento" | "consumidor_final" | null;
   contacto?: string | null;
+  /** El DNI de una persona física, si no hay CUIT (Tomás lo pide para facturar, JS 16/11). */
+  dni?: string | null;
 };
 
-const IDS_ODOO = { argentina: 10, caba: 553, identificacionCuit: 4 };
+const IDS_ODOO = { argentina: 10, caba: 553, identificacionCuit: 4, identificacionDni: 5 };
 
 const CONDICIONES_IVA: Record<NonNullable<NuevoCliente["condicionIva"]>, string> = {
   responsable_inscripto: "IVA Responsable Inscripto",
@@ -88,7 +90,11 @@ export async function crearCliente(c: NuevoCliente): Promise<{ id: number; cread
   }
   const id = await executeKw<number>("res.partner", "create", [{
     name: c.razonSocial.trim(),
-    ...(digitos ? { vat: digitos, l10n_latam_identification_type_id: IDS_ODOO.identificacionCuit } : {}),
+    ...(digitos
+      ? { vat: digitos, l10n_latam_identification_type_id: IDS_ODOO.identificacionCuit }
+      : c.dni?.replace(/\D/g, "")
+        ? { vat: c.dni.replace(/\D/g, ""), l10n_latam_identification_type_id: IDS_ODOO.identificacionDni }
+        : {}),
     // Por el prefijo: 30/33/34 son personas jurídicas. Sin CUIT, lo decide el tipo de razón social.
     is_company: digitos ? /^3[034]/.test(digitos) : /\b(s\.?a\.?|s\.?r\.?l\.?|s\.?a\.?s\.?|sociedad|consorcio|asociaci[oó]n|fundaci[oó]n|club|colegio|cooperativa)\b/i.test(c.razonSocial),
     email: c.email ?? false,

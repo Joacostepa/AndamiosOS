@@ -39,10 +39,28 @@ import { documentosVacios, estadoDocumentos, leerDocumentos, textoDocumentosPara
 export type PiezaPedida = { descripcion: string; cantidad: number };
 
 /** La ficha de Sofía: la del paso 4 (FichaCliente) más lo de los otros trabajos. */
+/**
+ * Cómo llegó el cliente a ABA (JS, 16/11): se pregunta una vez, al final, y no frena nada.
+ * ya_cliente: ya trabajó con ABA.
+ */
+export const ORIGENES = {
+  google: "Google o la web",
+  redes: "Redes sociales",
+  recomendacion: "Recomendación",
+  via_publica: "Vio un andamio o un cartel de ABA en la calle",
+  ya_cliente: "Ya trabajó con ABA",
+  otro: "Otro",
+} as const;
+export type Origen = keyof typeof ORIGENES;
+
 export type FichaSofia = FichaCliente & {
   /** El trabajo que va a hacer el cliente, en pocas palabras («pintar la fachada», «cambiar las luces del galpón»). */
   tarea: string | null;
   mail: string | null;
+  /** El DNI de una persona física, sólo los dígitos (JS, 16/11: para facturar). Opcional: si no lo quiere dar, no se insiste. */
+  dni?: string | null;
+  /** Cómo nos conoció (JS, 16/11). `detalle`: quién lo recomendó, qué red, dónde vio el andamio. */
+  origen?: { via: Origen; detalle: string | null } | null;
   /** «usted» si el cliente escribe de usted. */
   trato: "vos" | "usted" | null;
   obra: { pisos: number | null; tienePlanos: boolean | null; descripcion: string | null } | null;
@@ -101,7 +119,7 @@ export function alquilerVacio(): AlquilerFicha {
 }
 
 export function fichaSofiaVacia(): FichaSofia {
-  return { ...fichaVacia(), tarea: null, mail: null, trato: null, obra: null, visita: null, alquiler: null };
+  return { ...fichaVacia(), tarea: null, mail: null, dni: null, origen: null, trato: null, obra: null, visita: null, alquiler: null };
 }
 
 /** El alquiler guardado (del formato del 17/10 o del 12/11) → completo. */
@@ -227,7 +245,12 @@ const esquemaFicha = z.object({
   direccion: texto(160).optional().describe("La dirección de la obra como la dio el cliente (calle, altura y localidad). Después verificala con verificar_direccion."),
   cubre_todo_el_frente: z.boolean().optional().describe("Si la bandeja va por todo el frente (true) o sólo por una parte (false)."),
   metros_cliente: z.number().positive().max(500).optional().describe("Si el cliente dijo una medida en metros lineales."),
-  mail: z.string().trim().email().max(120).optional(),
+  mail: z.string().trim().email().max(120).optional().describe("El mail que dio el cliente (para mandarle el presupuesto formal)."),
+  dni: z.string().trim().regex(/^\d{1,2}\.?\d{3}\.?\d{3}$/, "Un DNI tiene 7 u 8 dígitos.").optional()
+    .describe("El DNI de una persona física (7 u 8 dígitos, con o sin puntos). Una empresa da el CUIT: eso va por validar_cuit."),
+  como_nos_conocio: z.enum(Object.keys(ORIGENES) as [Origen, ...Origen[]]).optional()
+    .describe("Cómo llegó a ABA: google (Google o la web), redes, recomendacion, via_publica (vio un andamio o un cartel de ABA en la calle), ya_cliente (ya trabajó con ABA), otro."),
+  como_nos_conocio_detalle: texto(120).optional().describe("Quién lo recomendó, qué red, dónde vio el andamio, como lo dijo."),
   trato: z.enum(["vos", "usted"]).optional().describe("usted si el cliente escribe de usted."),
   pisos: z.number().int().min(0).max(80).optional(),
   tiene_planos: z.boolean().optional(),
@@ -324,6 +347,12 @@ async function anotarFicha(i: z.infer<typeof esquemaFicha>, { ficha }: ContextoH
   poner("cubreTodoElFrente", i.cubre_todo_el_frente, "todo el frente");
   poner("metrosCliente", i.metros_cliente, "metros");
   poner("mail", i.mail, "mail");
+  if (i.dni !== undefined) poner("dni", i.dni.replace(/\D/g, ""), "DNI");
+  if (i.como_nos_conocio !== undefined || i.como_nos_conocio_detalle !== undefined) {
+    const via = i.como_nos_conocio ?? ficha.origen?.via ?? "otro";
+    ficha.origen = { via, detalle: i.como_nos_conocio_detalle ?? ficha.origen?.detalle ?? null };
+    anotado.push("cómo nos conoció");
+  }
   poner("trato", i.trato, "trato");
   poner("visita", i.disponibilidad_visita, "visita");
   if (i.pisos !== undefined || i.tiene_planos !== undefined || i.descripcion_obra !== undefined) {

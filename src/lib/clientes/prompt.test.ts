@@ -135,7 +135,7 @@ test("el prompt tiene lo que salió del análisis de los chats (aprobado por JS 
     /# Si no es un pedido nuevo/,
     /obra_en_curso/, /administracion/, /estafa_pago/, /desprendimiento/, /quiere_avanzar/,
     /Esa publicación no es de ABA/,
-    /van al final: nunca los pidas antes de entender el trabajo/,
+    /Los datos para el alta van al final, cuando ya entendiste el trabajo y la obra: nunca antes/,
     /¿Lo arman ustedes, o necesitás que lo armemos\?/,
     /Cuánto tiempo calculan que dura la obra/,
     /YA ARMADA por ABA/,
@@ -156,7 +156,7 @@ test("las frases fijas nuevas del prompt pasan el filtro de salida", () => {
 });
 
 test("el bloque del alquiler simple: §3, §6 y §7, sin montos ni porcentajes, adentro del bloque fijo", () => {
-  assert.equal(VERSION_PROMPT, "tomas-2026-11-16-sin-anotado");
+  assert.equal(VERSION_PROMPT, "tomas-2026-11-16-datos-del-cliente");
   assert.ok(INSTRUCCIONES.includes(ALQUILER_SIMPLE), "va en el bloque con caché, igual para todas las charlas");
   for (const regla of [
     /Qué trabajo van a hacer y hasta qué altura/,
@@ -243,4 +243,18 @@ test("sin «anotado» ni acuses repetidos (JS, 16/11)", () => {
   assert.match(INSTRUCCIONES, /Nunca digas «anotado», «anoto», «lo anoté» ni «tomo nota»/);
   assert.match(INSTRUCCIONES, /nunca dos mensajes seguidos que empiecen con un acuse/);
   assert.match(INSTRUCCIONES, /nunca «lo que anoté»/);
+});
+
+test("los datos del cliente (JS, 16/11): mail, DNI o CUIT y cómo nos conoció, al final, una vez y sin insistir", () => {
+  assert.match(INSTRUCCIONES, /# Los datos del cliente/);
+  assert.match(INSTRUCCIONES, /el mail, para mandarle el presupuesto formal/);
+  assert.match(INSTRUCCIONES, /si es para él \(una persona\), el DNI; si es una empresa, un consorcio o un organismo, el CUIT/);
+  assert.match(INSTRUCCIONES, /Pedilo una sola vez\. Si no lo da, lo esquiva o le molesta, seguí sin insistir/);
+  assert.match(INSTRUCCIONES, /¿cómo llegaste a nosotros\?/);
+  assert.match(ALQUILER_SIMPLE, /el mail y cómo nos conoció/);
+  const f = { ...fichaSofiaVacia(), dni: "30123456", origen: { via: "google" as const, detalle: null } };
+  const r = resumenFicha(f).join("\n");
+  assert.match(r, /DNI: ya lo dio/);
+  assert.doesNotMatch(r, /30123456/);
+  assert.match(r, /Cómo nos conoció: Google o la web/);
 });

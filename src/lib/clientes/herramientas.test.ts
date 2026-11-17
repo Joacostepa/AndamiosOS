@@ -705,3 +705,15 @@ test("ningún resultado del alquiler simple, en ningún caso, trae plata", async
     assert.ok(!/\$|\d{2,3}\.\d{3}/.test(t), t);
   }
 });
+
+test("anotar_ficha: el DNI (sólo los dígitos) y cómo nos conoció (JS, 16/11)", async () => {
+  const c = contexto();
+  const r = await ejecutarHerramientaSofia("anotar_ficha", { mail: "ana@ejemplo.com", dni: "30.123.456", como_nos_conocio: "recomendacion", como_nos_conocio_detalle: "el administrador del edificio" }, c);
+  assert.equal(r.esError, undefined);
+  assert.equal(c.ficha.dni, "30123456");
+  assert.equal(c.ficha.mail, "ana@ejemplo.com");
+  assert.deepEqual(c.ficha.origen, { via: "recomendacion", detalle: "el administrador del edificio" });
+  // Un DNI que no lo es: la herramienta lo rechaza y no lo guarda.
+  const mal = await ejecutarHerramientaSofia("anotar_ficha", { dni: "123" }, contexto());
+  assert.equal(mal.esError, true);
+});

@@ -10,7 +10,7 @@
 import { datosDelPedido } from "./aprobacion-alquiler.ts";
 import { metros, textoFranja } from "./alquiler-simple.ts";
 import type { BanderaIA } from "./facil.ts";
-import type { FichaSofia } from "./herramientas.ts";
+import { ORIGENES, type FichaSofia } from "./herramientas.ts";
 import { pastilla, telefonoLegible, type CharlaListada, type ItemHilo } from "./vista.ts";
 
 /** Cuánto dura el link de cada archivo (los de Storage son privados). */
@@ -133,12 +133,14 @@ export function filasCliente(d: DatosSlack): FilaFicha[] {
     ["Teléfono", telefonoLegible(d.charla.telefono)],
     ["Mail", f.mail],
     ["CUIT", f.cuit],
+    ["DNI", f.dni],
     ["Es", f.tipoCliente ? TIPO_CLIENTE[f.tipoCliente] : null],
     ["Dirección", direccion ? `${direccion}${zona && !direccion.toLowerCase().includes(zona.toLowerCase()) ? ` (${zona})` : ""}` : null],
     ["Catastro", catastro],
     ["En Odoo", f.partnerId ? `ya es contacto (id ${f.partnerId})` : null],
     ["Trato", f.trato === "usted" ? "escribe de usted" : null],
     ["Gama alta", f.segmento === "gama_alta" ? "sí" : null],
+    ["Cómo nos conoció", f.origen ? `${ORIGENES[f.origen.via]}${f.origen.detalle ? ` (${f.origen.detalle})` : ""}` : null],
   ]);
 }
 

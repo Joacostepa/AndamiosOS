@@ -382,6 +382,18 @@ test("gama alta: esFacil da no fácil con el motivo, aunque el resto sea la band
   assert.ok(!marcada.motivos.some((m) => m.codigo === "palabras" && m.ok), "no dice «Sin palabras de alerta»");
 });
 
+test("«persona» y «hablar con» sueltos no son pedir a alguien del equipo (Miguel, 18/11)", () => {
+  const pide = (x: string) => escanearPalabras(x).some((a) => a.codigo === "persona");
+  for (const x of ["simplemente tiene que subir una persona, porque soy electricista", "es para una persona sola", "lo tengo que hablar con el consorcio", "hablar con mi socio y te aviso", "son 2 personas trabajando",
+    "lo armo yo con una persona más", "soy el dueño del local", "el encargado del edificio nos deja", "tengo que comunicarme con el consorcio", "me llaman de la obra", "no es una persona sola"]) {
+    assert.equal(pide(x), false, x);
+  }
+  for (const x of ["persona", "Persona.", "quiero hablar con una persona", "me atienda una persona por favor", "¿es una persona real?", "necesito hablar con alguien", "puedo hablar con un vendedor?", "no sos una persona",
+    "una persona por favor", "quiero una persona", "prefiero una persona", "necesito una persona que me atienda", "¿me pasás con alguien?", "que me llame alguien", "atención humana", "quiero hablar con el encargado"]) {
+    assert.equal(pide(x), true, x);
+  }
+});
+
 test("un nombre del equipo cuenta sólo si el cliente lo pide, no si es su propio nombre (JS, 16/10)", () => {
   const pide = (x: string) => escanearPalabras(x).some((a) => a.codigo === "persona");
   for (const x of ["Hacelo a nombre de Joaquín Fernández", "Soy Jorge, tengo una obra en Palermo", "Me llamo Sandra Gómez", "Gabriel Pérez, DNI 30.123.456", "a nombre de Rocío Martínez"]) {

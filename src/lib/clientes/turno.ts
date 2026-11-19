@@ -37,7 +37,7 @@ import {
 import type { ConfigSofia } from "./config.ts";
 import { ahoraLegible, atencion, describirHorario } from "./horario.ts";
 import { NADA, contextoDelTurno, sistemaSofia } from "./prompt.ts";
-import { esContestadorAutomatico, esSoloSaludo, saludoCorto, saludoInicial, textoSeguridad, TEXTO_ERROR, TEXTO_PASO_A_PERSONA } from "./saludo.ts";
+import { esContestadorAutomatico, esSoloSaludo, nombreParaSaludo, saludoCorto, saludoInicial, textoSeguridad, TEXTO_ERROR, TEXTO_PASO_A_PERSONA } from "./saludo.ts";
 import { revisarSalida, type HallazgoSalida } from "./filtro-salida.ts";
 import { puedeTextoLibre } from "./ventana.ts";
 import { palabraGamaAlta } from "./facil.ts";
@@ -56,6 +56,24 @@ const MAX_TOKENS = 8_000;
  * plazo del turno: una vuelta del modelo con herramientas puede llevar más de un minuto y medio.
  */
 const MARGEN_DESCARTE_MS = 150_000;
+/**
+ * Un mensaje del cliente de antes de que saliera la respuesta: lo escribió sin leerla. Meta manda
+ * la hora en segundos (truncada): 1 s de margen. Más no: un «Sí» rápido es una respuesta.
+ */
+const CRUCE_MS = 1_000;
+/** El «escribiendo…» de WhatsApp dura unos 25 s: se renueva antes. */
+const RENOVAR_ESCRIBIENDO_MS = 20_000;
+/** Lo que queda del plazo del turno sin pausa (para el envío y la historia). */
+const MARGEN_PAUSA_MS = 60_000;
+
+/**
+ * Cuánto tardaría una persona en escribirlo en el celular, contando desde el último mensaje del
+ * cliente: 3 s más unos 11 caracteres por segundo, con un tope de 40 s. 100 caracteres, 12 s;
+ * 300, 30 s.
+ */
+export function tiempoDeEscritura(texto: string): number {
+  return Math.min(40_000, 3_000 + texto.length * 90);
+}
 /** Cuántas veces se espera (esperarAdjunto) a que termine de bajarse una foto o un PDF. */
 const ESPERAS_ADJUNTO = 6;
 
@@ -100,6 +118,9 @@ export type FilaHistoria = {
   turno_id: string | null;
   enviado: boolean | null;
   nota: string | null;
+  /** created_at: en la respuesta final, cuándo salió (se guarda después de mandarla). */
+  created_at?: string;
+  texto?: string | null;
 };
 
 export type NuevaFila = {
@@ -189,6 +210,11 @@ export type DepsSofia = {
    * la función del webhook que lo recibió). Sin esto (los tests), no se espera.
    */
   esperarAdjunto?: () => Promise<void>;
+  /**
+   * La pausa antes de mandar la respuesta, como si la estuviera escribiendo (JS, 19/11: «contesta
+   * muy rápido, parece una IA»). Sin esto (los tests), sale enseguida.
+   */
+  pausaEscritura?: (ms: number) => Promise<void>;
 };
 
 export type ResultadoTurno = {
@@ -528,6 +554,10 @@ async function unaTanda(
     pendientes,
     notasEquipo,
     noLlego: ultimaRespuesta && ultimaRespuesta.enviado === false ? ultimaRespuesta.nota ?? "no salió" : null,
+    cruce: seCruzaron(ultimaRespuesta, entrantes),
+    // JS, 19/11: el perfil no tiene un nombre de pila («gonprifer», «Cerrajería»): el saludo salió
+    // sin nombre y Tomás se lo pregunta en su primer mensaje.
+    pedirNombre: historia.length === 0 && !nombreParaSaludo(charla.nombrePerfil) && !ficha.contacto && !ficha.nombre,
     devuelta: o.devuelta,
   });
 
@@ -681,6 +711,9 @@ async function unaTanda(
     nota = "se mandó un texto fijo en su lugar";
   } else if (!nada) {
     const revision = revisarSalida(t);
+    // Lo bloqueado no sale: no se espera. La pausa va antes de mirar si la tomó una persona o si
+    // el cliente escribió algo más (así junta más mensajes en una respuesta).
+    if (deps.pausaEscritura && !revision.bloquea) await pausaComoPersona(deps, charla.id, t, entrantes, o.inicio);
     const actual = await repo.leerCharla(charla.id);
     if (revision.bloquea) {
       // No sale: queda el aviso para la bandeja y la charla espera a una persona.
@@ -719,6 +752,30 @@ async function unaTanda(
   if (fallaEnvio) throw new Error(`WhatsApp no aceptó la respuesta de Tomás: ${fallaEnvio instanceof Error ? fallaEnvio.message : fallaEnvio}`);
   if (estadoEsperado !== "bot") out.estado = estadoEsperado;
   return out;
+}
+
+/**
+ * La respuesta anterior y lo nuevo del cliente se cruzaron: el primer mensaje nuevo es de antes de
+ * que la respuesta saliera, o de 1 s después a lo sumo (charlas del 18 y 19/11: Tomás volvía a
+ * preguntar lo mismo). Devuelve el texto de esa respuesta.
+ */
+export function seCruzaron(ultima: FilaHistoria | undefined, entrantes: ItemNuevo[]): string | null {
+  if (!ultima || ultima.enviado !== true || !ultima.created_at || !entrantes.length) return null;
+  const salio = Date.parse(ultima.created_at);
+  const escribio = Date.parse(entrantes[0].momento);
+  if (!Number.isFinite(salio) || !Number.isFinite(escribio) || escribio > salio + CRUCE_MS) return null;
+  return ultima.texto?.trim() || null;
+}
+
+/** Espera lo que falta para que parezca escrito por una persona, con el «escribiendo…» prendido. */
+async function pausaComoPersona(deps: DepsSofia, id: string, texto: string, entrantes: ItemNuevo[], inicio: number) {
+  const ultimo = Math.max(...entrantes.map((e) => Date.parse(e.momento)).filter(Number.isFinite), inicio);
+  const ms = Math.min(tiempoDeEscritura(texto) - (Date.now() - ultimo), PRESUPUESTO_MS - MARGEN_PAUSA_MS - (Date.now() - inicio));
+  // El «escribiendo…» del principio del turno se apaga con el saludo o a los 25 s: se prende de nuevo.
+  for (let falta = ms; falta > 500; falta -= RENOVAR_ESCRIBIENDO_MS) {
+    await deps.repo.escribiendo?.(id).catch(() => {});
+    await deps.pausaEscritura!(Math.min(falta, RENOVAR_ESCRIBIENDO_MS));
+  }
 }
 
 /** ¿Escribió el cliente algo más (que no sea una reacción) después de lo que leyó esta tanda? */

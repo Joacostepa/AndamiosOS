@@ -27,7 +27,6 @@ const CON_NOMBRE: [string, string][] = [
   ["Ñato Pérez", "Ñato"],
   ["Iñaki", "Iñaki"],
   ["Jean-Pierre Dupont", "Jean-Pierre"],
-  ["O'Higgins", "O'Higgins"],
   ["Ana", "Ana"],
   ["Luz Martínez", "Luz"],
   ["Sandra | ABA", "Sandra"],
@@ -88,6 +87,12 @@ const SIN_NOMBRE: string[] = [
   "WhatsApp Business",
   "Ventas",
   "Info",
+  // JS, 19/11: no son nombres de pila.
+  "gonprifer",
+  "Cerrajería",
+  "Cerrajeria 24hs",
+  "O'Higgins",
+  "Lavalleja",
 ];
 
 for (const perfil of SIN_NOMBRE) {

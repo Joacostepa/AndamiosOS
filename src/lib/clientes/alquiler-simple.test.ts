@@ -780,6 +780,38 @@ test("mensajePresupuestoAlquiler: sin precio, o con otra franja que la cotizada,
 const PROVINCIA = { tipo: "provincia" as const, lugar: "Olivos" };
 const DEP_MANANA: Franja = { tipo: "deposito_manana" };
 
+test("provincia (JS, 19/11): si igual lo ve un vendedor (anclar), no se le ofrece el depósito ni se le dice que no", () => {
+  // Dario, Ingeniero Allan: 7-8 m, hay que anclar.
+  const r = cotizar({ alturaTrabajo: 8 }, { flete: PROVINCIA });
+  assert.deepEqual(enContra(r), ["anclar"]);
+  assert.ok(!r.aConfirmar.some((c) => c.codigo === "deposito"));
+  const t = resumenParaTomas(r);
+  assert.match(t, /con armado vamos a provincia\. No le digas que no llegamos ni le ofrezcas el depósito/);
+  sinPlata(t);
+  // Ya eligió el depósito y lo ve un vendedor (más de 30 días): no se contradice.
+  const dep = resumenParaTomas(cotizar({ alturaTrabajo: 5, retiraEnDeposito: true, dias: 60 }, { flete: PROVINCIA }));
+  assert.doesNotMatch(dep, /ni le ofrezcas el depósito/);
+  // Sin armado y con pocos módulos, sigue igual: se le ofrece el depósito.
+  assert.deepEqual(cotizar({ alturaTrabajo: 5 }, { flete: PROVINCIA }).aConfirmar.map((c) => c.codigo), ["deposito"]);
+});
+
+test("insiste en lo que pidió (JS, 19/11): se cotiza aunque no llegue cómodo, pero la cabeza tiene que entrar", () => {
+  // 1 módulo para una pared hasta 4,50 m: no llega; se recomienda otro armado y se confirma.
+  const pide = { alturaTrabajo: 4.5, piezas: { modulosPorTorre: 1, torres: null, ancho: null, largo: null, apoyo: null, conBaranda: null, tablonesPorTorre: null } };
+  const antes = cotizar(pide);
+  assert.ok(antes.aConfirmar.some((c) => c.codigo === "piezas_no_sirven"));
+  assert.notEqual(antes.armado?.modulosPorTorre, 1);
+  // Insiste: sale con 1 módulo y no se le vuelve a preguntar.
+  const r = cotizar({ ...pide, insiste: true });
+  assert.equal(r.armado?.modulosPorTorre, 1);
+  assert.equal(r.armado?.origen, "cliente");
+  assert.ok(!r.aConfirmar.some((c) => c.codigo === "piezas_no_sirven" || c.codigo === "plataforma"));
+  assert.ok(r.armado?.noLlega);
+  // Más de 3 módulos sin anclar, no: insistir no cambia la seguridad.
+  const alto = cotizar({ alturaTrabajo: 9, insiste: true, piezas: { ...pide.piezas, modulosPorTorre: 4 } });
+  assert.ok(enContra(alto).includes("anclar"));
+});
+
 test("fila 16: en provincia no hay flete: se le ofrece el depósito", () => {
   const r = cotizar({ alturaTrabajo: 5 }, { flete: PROVINCIA });
   assert.ok(r.facil);
@@ -787,16 +819,16 @@ test("fila 16: en provincia no hay flete: se le ofrece el depósito", () => {
   assert.equal(r.precio, null);
   assert.equal(r.modalidad, "envio");
   assert.deepEqual(r.aConfirmar.map((c) => c.codigo), ["deposito"]);
-  assert.match(r.aConfirmar[0].texto, /La obra está en Olivos \(provincia\): no entregamos ni retiramos fuera de CABA\. Ofrecele retirarlo en nuestro depósito, en Cucha Cucha 2345, CABA/);
+  assert.match(r.aConfirmar[0].texto, /La obra está en Olivos \(provincia\): los alquileres sin armado no se entregan fuera de Capital\. Explicáselo y ofrecele retirarlo en nuestro depósito, en Cucha Cucha 2345, CABA/);
   sinPlata(resumenParaTomas(r));
   // Si no puede retirarlo: no es un alquiler simple.
   const no = cotizar({ alturaTrabajo: 5, retiraEnDeposito: false }, { flete: PROVINCIA });
   assert.deepEqual(enContra(no), ["fuera_de_caba"]);
   // Fila 23: Tomás le dice con amabilidad que no llegamos a provincia, sin pasarlo a un vendedor.
   const t = resumenParaTomas(no);
-  assert.match(t, /decile directamente y con amabilidad que no llegamos con entregas a provincia/);
-  assert.match(t, /No lo pases a nadie del equipo/);
-  assert.ok(!/vendedor|Pasalo al equipo/.test(t), t);
+  assert.match(t, /explicale con amabilidad que los alquileres sin armado los entregamos y retiramos sólo en Capital/);
+  assert.match(t, /Como alquiler sin armado no se lo pases a un vendedor/);
+  assert.ok(!/Pasalo al equipo/.test(t), t);
   sinPlata(t);
   // Si lo retira: sale, sin flete.
   const si = cotizar({ alturaTrabajo: 5, retiraEnDeposito: true }, { flete: PROVINCIA });

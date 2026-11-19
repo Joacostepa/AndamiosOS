@@ -62,6 +62,8 @@ export type FichaSofia = FichaCliente & {
   dni?: string | null;
   /** Cómo nos conoció (JS, 16/11). `detalle`: quién lo recomendó, qué red, dónde vio el andamio. */
   origen?: { via: Origen; detalle: string | null } | null;
+  /** Cómo se llama quien escribe (JS, 19/11: si el perfil no tiene un nombre, se le pregunta primero). */
+  contacto?: string | null;
   /** «usted» si el cliente escribe de usted. */
   trato: "vos" | "usted" | null;
   obra: { pisos: number | null; tienePlanos: boolean | null; descripcion: string | null } | null;
@@ -91,6 +93,8 @@ export type UbicacionAlquiler = {
  * charlas viejas guardaron sólo las seis primeras: leerFicha completa lo que falta.
  */
 export type AlquilerFicha = {
+  /** Ya se le preguntó a nombre de quién va: no frena más el presupuesto (19/11). */
+  nombrePreguntado?: boolean;
   sabePiezas: boolean;
   piezas: PiezaPedida[];
   dias: number | null;
@@ -120,7 +124,7 @@ export function alquilerVacio(): AlquilerFicha {
 }
 
 export function fichaSofiaVacia(): FichaSofia {
-  return { ...fichaVacia(), tarea: null, mail: null, dni: null, origen: null, trato: null, obra: null, visita: null, alquiler: null };
+  return { ...fichaVacia(), tarea: null, mail: null, dni: null, origen: null, contacto: null, trato: null, obra: null, visita: null, alquiler: null };
 }
 
 /** El alquiler guardado (del formato del 17/10 o del 12/11) → completo. */
@@ -248,6 +252,8 @@ const esquemaFicha = z.object({
   direccion: texto(160).optional().describe("La dirección de la obra como la dio el cliente (calle, altura y localidad). Después verificala con verificar_direccion."),
   cubre_todo_el_frente: z.boolean().optional().describe("Si la bandeja va por todo el frente (true) o sólo por una parte (false)."),
   metros_cliente: z.number().positive().max(500).optional().describe("Si el cliente dijo una medida en metros lineales."),
+  acepta_medida_catastro: z.literal(true).optional().describe("true si el cliente aceptó la medida del frente que dice el catastro en lugar de la que había dicho (por ejemplo «me dijeron 10 m, pero está bien»)."),
+  contacto: texto(80).optional().describe("Cómo se llama la persona que te escribe, como lo dijo («Francisco Gutiérrez»). No es lo mismo que a nombre de quién va el presupuesto."),
   mail: z.string().trim().email().max(120).optional().describe("El mail que dio el cliente (para mandarle el presupuesto formal)."),
   dni: z.string().trim().regex(/^\d{1,2}\.?\d{3}\.?\d{3}$/, "Un DNI tiene 7 u 8 dígitos.").optional()
     .describe("El DNI de una persona física (7 u 8 dígitos, con o sin puntos). Una empresa da el CUIT: eso va por validar_cuit."),
@@ -356,6 +362,9 @@ async function anotarFicha(i: z.infer<typeof esquemaFicha>, { ficha }: ContextoH
   }
   poner("cubreTodoElFrente", i.cubre_todo_el_frente, "todo el frente");
   poner("metrosCliente", i.metros_cliente, "metros");
+  // Lo que había dicho deja de contar: manda el catastro (Francesco, 18/11: «me dijeron 10 m»).
+  if (i.acepta_medida_catastro) poner("metrosCliente", null, "acepta la medida del catastro");
+  poner("contacto", i.contacto, "contacto");
   poner("mail", i.mail, "mail");
   if (i.dni !== undefined) poner("dni", i.dni.replace(/\D/g, ""), "DNI");
   if (i.como_nos_conocio !== undefined || i.como_nos_conocio_detalle !== undefined) {
@@ -638,6 +647,7 @@ const esquemaAlquiler = z.object({
   hora_desde: HORA.optional(),
   dias: z.number().int().min(1).max(365).optional().describe("Por cuántos días lo necesita, como lo dijo el cliente («una semana» = 7). El presupuesto sale por esos días."),
   acepta_plataforma: z.boolean().optional().describe("Lo que contestó cuando le aclaraste la plataforma que te pidió confirmar (un tablón en un peldaño, o que no llega cómodo al techo)."),
+  insiste_en_lo_que_pidio: z.boolean().optional().describe("true si, después de que le dijiste que lo que pidió no le llega cómodo, insiste en esas piezas: se cotiza lo que pidió."),
   notas: texto(400).optional().describe("Lo que contó y sirva para el equipo (para qué es, si va en la vereda, el acceso)."),
 }).strict();
 
@@ -710,8 +720,13 @@ function anotarPedido(p: PedidoAlquiler, i: z.infer<typeof esquemaAlquiler>, fra
   if (i.dias !== undefined) p.dias = i.dias;
   if (i.retira_en_deposito !== undefined) p.retiraEnDeposito = i.retira_en_deposito;
   const alturaDespues = JSON.stringify([p.lugar, p.alturaTrabajo, p.trabajoEnTecho, p.alturaTecho, p.piezas?.modulosPorTorre ?? null]);
-  if (alturaAntes !== alturaDespues) p.aceptaPlataforma = null;
+  // Otra altura u otras piezas: ni la plataforma aceptada ni la insistencia valen para lo nuevo.
+  if (alturaAntes !== alturaDespues) {
+    p.aceptaPlataforma = null;
+    p.insiste = false;
+  }
   if (i.acepta_plataforma !== undefined) p.aceptaPlataforma = i.acepta_plataforma;
+  if (i.insiste_en_lo_que_pidio !== undefined) p.insiste = i.insiste_en_lo_que_pidio;
   // La franja de la modalidad: en el depósito, la mañana es de 10 a 12 (franjaSegunModalidad).
   p.franja = franjaSegunModalidad(p.franja, p.retiraEnDeposito === true);
 }
@@ -843,7 +858,12 @@ async function cotizarAlquiler(i: z.infer<typeof esquemaAlquiler>, { ficha, serv
 
   const preguntar = r.faltan.map((f) => (f.codigo === "direccion" && preguntaDireccion ? preguntaDireccion : f.pregunta));
   if (preguntaDireccion && !preguntar.includes(preguntaDireccion)) preguntar.push(preguntaDireccion);
-  if (!ficha.nombre) preguntar.push("¿A nombre de quién va el presupuesto?");
+  // A nombre de quién: se le pregunta una vez; si no lo da, no frena el presupuesto (revisión del
+  // 19/11: «no lo vuelvas a preguntar» lo dejaba trabado). Sale con el contacto o el perfil.
+  if (!ficha.nombre && !ficha.contacto && !a.nombrePreguntado && !preguntar.length && !r.aConfirmar.length) {
+    preguntar.push("¿A nombre de quién va el presupuesto?");
+    a.nombrePreguntado = true;
+  }
   if (preguntar.length || r.aConfirmar.length || !r.precio || (!deposito && !fleteOdoo) || !p.fecha || !r.franja) {
     return {
       contenido: json({

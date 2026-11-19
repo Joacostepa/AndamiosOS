@@ -225,7 +225,7 @@ function mensajePara(f: Fila, charla: Charla, ctx: Contexto, datos: DatosBorrado
   if (correccion?.texto?.trim()) return correccion.texto.trim();
   const a = asignacionDe(f);
   return mensajeDesdeCalculo({
-    datos, resultado, tarifas: ctx.tarifas, nombre: charla.ficha.nombre ?? charla.nombre_perfil, asistente: a?.asistente ?? null, tecnico: a?.tecnico ?? null,
+    datos, resultado, tarifas: ctx.tarifas, nombre: charla.ficha.contacto ?? charla.ficha.nombre ?? charla.nombre_perfil, asistente: a?.asistente ?? null, tecnico: a?.tecnico ?? null,
     trato: (charla.ficha.trato ?? null) as Trato,
   });
 }
@@ -692,7 +692,8 @@ async function ejecutarPrecio(db: Db, f: Fila, quien: Quien, ctx: Contexto): Pro
 async function guardarEnOdoo(db: Db, f: Fila, charla: Charla, envio: Envio, quien: Quien, ctx: Contexto, a: Asignacion | null, pasos: Record<string, unknown>): Promise<Guardado> {
   const { datos, resultado } = envio;
   const ficha = charla.ficha;
-  const nombre = ficha.nombre?.trim() || charla.nombre_perfil?.trim() || null;
+  // El contacto (19/11) antes que el perfil: «Cerrajería» no es el nombre del cliente.
+  const nombre = ficha.nombre?.trim() || ficha.contacto?.trim() || charla.nombre_perfil?.trim() || null;
   if (!nombre) throw new Error("Falta a nombre de quién va el presupuesto.");
 
   // La pareja en Odoo: el técnico (hr.employee) y la asistente (res.users), por su nombre.
@@ -1107,7 +1108,8 @@ async function guardarAlquilerEnOdoo(
   db: Db, f: Fila, charla: Charla, envio: EnvioAlquiler, a: Asignacion | null, pasos: Record<string, unknown>,
 ): Promise<OrdenAlquiler & { avisos: string[] }> {
   const ficha = charla.ficha;
-  const nombre = ficha.nombre?.trim() || charla.nombre_perfil?.trim() || null;
+  // El contacto (19/11) antes que el perfil: «Cerrajería» no es el nombre del cliente.
+  const nombre = ficha.nombre?.trim() || ficha.contacto?.trim() || charla.nombre_perfil?.trim() || null;
   if (!nombre) throw new Error("Falta a nombre de quién va el presupuesto.");
   const avisos: string[] = [];
 

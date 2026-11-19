@@ -306,7 +306,8 @@ test("cotizar_alquiler_simple: se suma de a poco; pide lo que falta, en el orden
   assert.ok(r1.preguntar.some((x: string) => /espacio libre/.test(x)), JSON.stringify(r1));
   assert.ok(r1.preguntar.some((x: string) => /piso/.test(x)));
   assert.ok(r1.preguntar.some((x: string) => /Dónde es/.test(x)));
-  assert.equal(r1.preguntar.at(-1), "¿A nombre de quién va el presupuesto?");
+  // El nombre va al final, cuando no falta otra cosa.
+  assert.ok(!r1.preguntar.includes("¿A nombre de quién va el presupuesto?"));
   assert.equal(c.mundo.pendientes.length, 0);
 
   await ejecutarHerramientaSofia("cotizar_alquiler_simple", { espacio_de_sobra: true, piso: "liso" }, c);
@@ -316,6 +317,25 @@ test("cotizar_alquiler_simple: se suma de a poco; pide lo que falta, en el orden
   await ejecutarHerramientaSofia("anotar_ficha", { nombre: "Marcela" }, c);
   const r4 = JSON.parse((await ejecutarHerramientaSofia("cotizar_alquiler_simple", {}, c)).contenido);
   assert.equal(r4.estado, "pendiente");
+});
+
+test("cotizar_alquiler_simple: el nombre se pregunta una vez; si no lo da, el presupuesto sale igual (19/11)", async () => {
+  const c = contexto();
+  await ejecutarHerramientaSofia("cotizar_alquiler_simple", { lugar: "afuera", altura_trabajo_m: 5, espacio_de_sobra: true, piso: "liso" }, c);
+  const r = JSON.parse((await ejecutarHerramientaSofia("cotizar_alquiler_simple", { direccion: "Gorriti 4500", fecha: "2026-10-16", franja: "tarde", dias: 7 }, c)).contenido);
+  assert.deepEqual(r.preguntar, ["¿A nombre de quién va el presupuesto?"]);
+  const otra = JSON.parse((await ejecutarHerramientaSofia("cotizar_alquiler_simple", {}, c)).contenido);
+  assert.equal(otra.estado, "pendiente");
+});
+
+test("cotizar_alquiler_simple: con las piezas y sin la altura, afuera, sale lo que pidió (Eric, 18/11)", async () => {
+  const c = contexto({ nombre: "Eric" });
+  const r = JSON.parse((await ejecutarHerramientaSofia("cotizar_alquiler_simple", {
+    lugar: "afuera", piso: "liso", piezas: { modulos_por_torre: 1, ancho: "angosto", largo: "largo", apoyo: "ruedas" },
+    retira_en_deposito: true, fecha: "2026-10-19", franja: "tarde", dias: 30,
+  }, c)).contenido);
+  assert.ok(!JSON.stringify(r).includes("hasta qué altura"), JSON.stringify(r));
+  assert.equal(r.estado, "pendiente", JSON.stringify(r));
 });
 
 test("cotizar_alquiler_simple: con deuda el modelo recibe exactamente lo mismo; la tarjeta lo sabe", async () => {
@@ -458,7 +478,7 @@ test("cotizar_alquiler_simple: en provincia no hay flete (aunque la localidad es
   c.mundo.fleteAlquiler = async () => ({ estado: "ok", enCaba: false, lugar: "Olivos", partido: "Vicente López", normalizada: "MAIPU 2000, OLIVOS", flete: olivos });
   const r = JSON.parse((await ejecutarHerramientaSofia("cotizar_alquiler_simple", { ...PALERMO, direccion: "Maipú 2000, Olivos" }, c)).contenido);
   assert.equal(r.estado, "confirmar");
-  assert.match(r.confirmar[0], /La obra está en Olivos \(provincia\): no entregamos ni retiramos fuera de CABA\. Ofrecele retirarlo en nuestro depósito/);
+  assert.match(r.confirmar[0], /La obra está en Olivos \(provincia\): los alquileres sin armado no se entregan fuera de Capital\. Explicáselo y ofrecele retirarlo en nuestro depósito/);
   assert.equal(c.ficha.alquiler?.ubicacion?.fleteId, null, "el método del conurbano no se usa");
   assert.equal(c.ficha.enCaba, false);
   assert.equal(c.mundo.pendientes.length, 0);
@@ -468,9 +488,11 @@ test("cotizar_alquiler_simple: en provincia no hay flete (aunque la localidad es
   const rn = JSON.parse((await ejecutarHerramientaSofia("cotizar_alquiler_simple", { ...PALERMO, direccion: "Maipú 2000, Olivos", retira_en_deposito: false }, no)).contenido);
   assert.equal(rn.estado, "no_es_facil");
   // Fila 23: se lo dice directo y con amabilidad, sin derivar ni dejar nada pendiente.
-  assert.match(rn.que_hacer, /no llegamos con entregas a provincia/);
-  assert.ok(!/derivar_a_persona|preparar_pedido_simple|pedir_tecnico/.test(rn.que_hacer));
-  assert.match(rn.detalle, /No lo pases a nadie del equipo/);
+  assert.match(rn.que_hacer, /los alquileres sin armado los entregamos y retiramos sólo en Capital/);
+  // JS, 19/11: si le sirve con armado, a provincia vamos (pedir_tecnico); como alquiler, a nadie.
+  assert.match(rn.que_hacer, /eso sí lo hacemos en provincia/);
+  assert.ok(!/derivar_a_persona|preparar_pedido_simple/.test(rn.que_hacer));
+  assert.match(rn.detalle, /Como alquiler sin armado no se lo pases a un vendedor/);
   assert.equal(no.mundo.pendientes.length, 0);
   // Lo retira: queda pendiente sin flete, con la franja del depósito.
   // El viernes de 10 a 12 no llega a las 24 h (es jueves 10:30): se ofrece la tarde.
@@ -772,4 +794,11 @@ test("la imagen de referencia: la de por defecto y, si no hay, la más nueva", (
   assert.equal(elegirRender([f("a", false, "2026-09-01"), f("b", true, "2026-08-01"), f("c", false, "2026-10-01")])?.id, "b");
   assert.equal(elegirRender([f("escalera", false, "2026-09-26"), f("escotilla", false, "2026-09-29")])?.id, "escotilla");
   assert.equal(elegirRender([]), null);
+});
+
+test("anotar_ficha: si acepta la medida del catastro, deja de contar la que había dicho (Francesco, 18/11)", async () => {
+  const c = contexto({ ...MARCELA, metrosCliente: 10 });
+  await ejecutarHerramientaSofia("anotar_ficha", { acepta_medida_catastro: true, contacto: "Francisco Gutiérrez" }, c);
+  assert.equal(c.ficha.metrosCliente, null);
+  assert.equal(c.ficha.contacto, "Francisco Gutiérrez");
 });

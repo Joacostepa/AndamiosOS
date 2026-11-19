@@ -130,6 +130,7 @@ export function filasCliente(d: DatosSlack): FilaFicha[] {
     : null;
   return renglones([
     ["Nombre", f.nombre ?? (d.charla.nombre ? `${d.charla.nombre} (perfil de WhatsApp)` : null)],
+    ["Contacto", f.contacto && f.contacto !== f.nombre ? f.contacto : null],
     ["Teléfono", telefonoLegible(d.charla.telefono)],
     ["Mail", f.mail],
     ["CUIT", f.cuit],

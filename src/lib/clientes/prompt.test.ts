@@ -156,7 +156,7 @@ test("las frases fijas nuevas del prompt pasan el filtro de salida", () => {
 });
 
 test("el bloque del alquiler simple: §3, §6 y §7, sin montos ni porcentajes, adentro del bloque fijo", () => {
-  assert.equal(VERSION_PROMPT, "tomas-2026-11-19-imagenes-de-referencia");
+  assert.equal(VERSION_PROMPT, "tomas-2026-11-19-revision-de-charlas");
   assert.ok(INSTRUCCIONES.includes(ALQUILER_SIMPLE), "va en el bloque con caché, igual para todas las charlas");
   for (const regla of [
     /Qué trabajo van a hacer y hasta qué altura/,
@@ -183,7 +183,10 @@ test("el bloque del alquiler simple: §3, §6 y §7, sin montos ni porcentajes, 
     /No hay chofer ni camión: tenés que venir con tu vehículo y con gente para cargarlo/,
     /de lunes a viernes de 10 a 12 o de 13 a 16 \(de 12 a 13 el depósito está cerrado\)/,
     /traelo desarmado al depósito/,
-    /Si no puede retirarlo, decile directamente y con amabilidad que no llegamos con entregas a provincia: no lo pases a nadie del equipo/,
+    /Si no puede retirarlo, explicale con amabilidad que los alquileres sin armado no se entregan en provincia/,
+    /si la herramienta dice que lo ve un vendedor \(anclar, muchos módulos, montaje\), a provincia vamos/,
+    /si igual insiste en lo que pidió, se cotiza eso: insiste_en_lo_que_pidio/,
+    /lo recomendable es armar también una protección peatonal \(bandeja\), por las inspecciones y para cuidar a la gente que pasa por abajo/,
     /De 12 a 13 no se entrega ni se retira/,
     /el retiro en el depósito, con 24 h de anticipación hasta el horario en que pasa/,
     /Nunca ofrezcas escaleras/,
@@ -264,4 +267,16 @@ test("sin período mínimo y sin catastro fuera de la vereda (JS, 17/11)", () =>
   assert.doesNotMatch(INSTRUCCIONES, /avisale que hay un período mínimo/);
   assert.match(INSTRUCCIONES, /SÓLO cuando lo que se arma va sobre la vereda o el frente/);
   assert.match(INSTRUCCIONES, /nunca le hables del catastro, del número de puerta oficial ni de la parcela/);
+});
+
+test("el aviso del turno: los mensajes cruzados y el nombre que falta (revisión de charlas, 19/11)", () => {
+  const base = {
+    ahora: "jueves 19/11 10:40", enHorario: true, cuandoSigue: null, horario: "de lunes a viernes de 8 a 17", saludoEnviado: null,
+    pendientes: [], notasEquipo: [], noLlego: null, devuelta: false, ficha: fichaSofiaVacia(),
+  };
+  assert.doesNotMatch(contextoDelTurno(base), /se cruzó|con quién hablás/);
+  const cruce = contextoDelTurno({ ...base, cruce: "¿Me pasás la dirección de la obra?" });
+  assert.match(cruce, /se cruzó con tu mensaje anterior \(«¿Me pasás la dirección de la obra\?»\)/);
+  assert.match(cruce, /escribí exactamente \[nada\]/);
+  assert.match(contextoDelTurno({ ...base, pedirNombre: true }), /preguntale con quién hablás .*anotar_ficha \(contacto\)/);
 });

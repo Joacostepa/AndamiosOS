@@ -239,7 +239,7 @@ export function repoSofia(db: SupabaseClient, cliente?: Anthropic): RepoSofia {
       await db.from("cli_conversaciones").update({ ia_saludo_at: ahora() }).eq("id", id);
     },
     async leerHistoria(id) {
-      const { data, error } = await db.from("cli_api_mensajes").select("seq, rol, contenido, turno_id, enviado, nota").eq("conversacion_id", id).order("seq");
+      const { data, error } = await db.from("cli_api_mensajes").select("seq, rol, contenido, turno_id, enviado, nota, created_at, texto").eq("conversacion_id", id).order("seq");
       if (error) falla("No se pudo leer la historia de Tomás", error);
       return (data ?? []) as FilaHistoria[];
     },
@@ -558,6 +558,7 @@ export function depsSofia(db: SupabaseClient): DepsSofia {
     },
     esperarTanda: () => new Promise((r) => setTimeout(r, ESPERA_TANDA_MS)),
     esperarAdjunto: () => new Promise((r) => setTimeout(r, ESPERA_ADJUNTO_MS)),
+    pausaEscritura: (ms) => new Promise((r) => setTimeout(r, ms)),
   };
 }
 

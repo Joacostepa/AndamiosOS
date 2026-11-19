@@ -5,7 +5,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { atenderCharla } from "./turno.ts";
+import { atenderCharla, seCruzaron, tiempoDeEscritura } from "./turno.ts";
 import { crearMundo, guion, respuestaHerramientas, respuestaTexto, resultadosDeHerramientas } from "./prueba-sofia.ts";
 import { detectarPlata } from "./filtro-salida.ts";
 import { alquilerVacio } from "./herramientas.ts";
@@ -780,4 +780,36 @@ test("documentos: el servidor clasifica la foto antes del modelo; Tomás ve sól
   assert.equal(d.recibidos[0].tipo, "dni_frente");
   assert.ok(!JSON.stringify(m.charla.ficha).includes("30.123.456"), "el número no queda en la ficha");
   assert.ok(m.charla.costo > 0.0004, "la visión se suma al costo de la charla");
+});
+
+// ── Revisión de charlas (JS, 19/11) ────────────────────────────────────────────────────
+
+test("se cruzaron: el cliente escribió antes de que saliera la respuesta (o hasta 1 s después)", () => {
+  const ultima = { seq: 5, rol: "assistant" as const, contenido: [], turno_id: "t", enviado: true, nota: null, created_at: "2026-11-18T22:14:17.000Z", texto: "¿En qué calle es?" };
+  const de = (momento: string) => [{ id: "h", direccion: "entrante" as const, autor: "cliente" as const, autorNombre: null, tipo: "text", texto: "x", transcripcion: null, adjunto: null, creado: momento, momento }];
+  assert.equal(seCruzaron(ultima, de("2026-11-18T22:14:17.000Z")), "¿En qué calle es?");
+  assert.equal(seCruzaron(ultima, de("2026-11-18T22:14:16.000Z")), "¿En qué calle es?");
+  assert.equal(seCruzaron(ultima, de("2026-11-18T22:14:18.000Z")), "¿En qué calle es?");
+  // Un «Sí» a los 3 s ya es una respuesta.
+  assert.equal(seCruzaron(ultima, de("2026-11-18T22:14:20.000Z")), null);
+  assert.equal(seCruzaron(ultima, de("2026-11-18T22:14:45.000Z")), null);
+  assert.equal(seCruzaron({ ...ultima, enviado: false }, de("2026-11-18T22:14:17.000Z")), null);
+  assert.equal(seCruzaron(undefined, de("2026-11-18T22:14:17.000Z")), null);
+});
+
+test("el tiempo de escritura: 3 s más ~11 caracteres por segundo, hasta 40 s", () => {
+  assert.equal(tiempoDeEscritura(""), 3_000);
+  assert.equal(tiempoDeEscritura("x".repeat(100)), 12_000);
+  assert.equal(tiempoDeEscritura("x".repeat(2000)), 40_000);
+});
+
+test("la pausa de escritura: Tomás espera antes de mandar, y sin la pausa (los tests) sale enseguida", async () => {
+  const m = crearMundo();
+  m.escribe("Hola, ¿hacen bandejas?");
+  const pausas: number[] = [];
+  await atenderCharla(m.deps(guion(respuestaTexto("Sí, hacemos bandejas de protección peatonal. ¿En qué calle y a qué altura es la obra?")), {
+    pausaEscritura: async (ms) => { pausas.push(ms); },
+  }), m.charla.id);
+  assert.equal(m.salidas.length >= 1, true);
+  assert.ok(pausas.length >= 1 && pausas.every((ms) => ms > 0 && ms <= 20_000), JSON.stringify(pausas));
 });

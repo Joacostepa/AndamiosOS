@@ -325,6 +325,12 @@ export type PedidoAlquiler = {
    * null: no lo dijo (en CABA va con envío; en provincia se le ofrece el depósito, fila 16).
    */
   retiraEnDeposito: boolean | null;
+  /**
+   * JS, 19/11 (Eric: «1 cuerpo de pasillo + 1 tablón y ruedas»): el cliente insiste en lo que
+   * pidió aunque Tomás ya le dijo que no llega cómodo. Se cotiza lo que pidió, si es seguro: la
+   * cabeza tiene que entrar, hasta 3 módulos sin anclar, el piso completo y la baranda.
+   */
+  insiste?: boolean;
 };
 
 /** El precio es siempre el del servicio de 30 días (§5), aunque el cliente lo pida por menos. */
@@ -334,7 +340,7 @@ export function pedidoVacio(): PedidoAlquiler {
   return {
     lugar: null, alturaTrabajo: null, trabajoEnTecho: false, alturaTecho: null, espacioDeSobra: false, anchoLibre: null, largoLibre: null,
     largoACubrir: null, torres: null, piso: null, piezas: null, piezasFueraDeCatalogo: [], montaje: false, anclar: false, paraHoy: false,
-    fecha: null, franja: null, dias: null, aceptaPlataforma: null, retiraEnDeposito: null,
+    fecha: null, franja: null, dias: null, aceptaPlataforma: null, retiraEnDeposito: null, insiste: false,
   };
 }
 
@@ -823,7 +829,10 @@ export function cotizarAlquilerSimple(pedido: PedidoAlquiler, ctx: ContextoAlqui
   const enTecho = pedido.trabajoEnTecho || (techo !== null && trabajoAlto !== null && trabajoAlto >= techo - HASTA_EL_TECHO);
   if (pedido.lugar === null && techo === null && !enTecho) falta("lugar");
   if ((pedido.lugar === "adentro" || enTecho) && techo === null) falta("techo");
-  if (!enTecho && trabajoAlto === null) falta("altura");
+  // Si ya sabe qué piezas quiere (Eric, 18/11), la altura no se le pide: se arma lo que pidió,
+  // revisando sólo que la cabeza entre (con el techo, si es adentro) y que no haya que anclar.
+  const soloPiezas = pedidas !== null && !enTecho && trabajoAlto === null;
+  if (!enTecho && trabajoAlto === null && !pedidas) falta("altura");
 
   let altura: SolucionAltura | null = null;
   let recomendada: SolucionAltura | null = null;
@@ -831,6 +840,8 @@ export function cotizarAlquilerSimple(pedido: PedidoAlquiler, ctx: ContextoAlqui
     // En el techo: que la plataforma + 2 m quede a 10 cm del techo o menos (si no, se confirma).
     enTecho && techo !== null ? { llegar: techo - HASTA_EL_TECHO, techo, enTecho: true }
     : !enTecho && trabajoAlto !== null && !(pedido.lugar === "adentro" && techo === null) ? { llegar: trabajoAlto, techo, enTecho: false }
+    : soloPiezas && pedido.lugar !== null && !(pedido.lugar === "adentro" && techo === null)
+      ? { llegar: arriba(Math.min(pedidas.modulosPorTorre, MAX_SIN_ANCLAR)).plataforma + ALCANCE, techo, enTecho: false }
     : null;
   if (objetivo) {
     recomendada = resolverAltura(objetivo, null);
@@ -843,7 +854,11 @@ export function cotizarAlquilerSimple(pedido: PedidoAlquiler, ctx: ContextoAlqui
 
   // Lo que pidió no le sirve: se cotiza lo recomendado y Tomás lo confirma con el cliente.
   let origen: Armado["origen"] = pedidas ? "cliente" : "recomendado";
-  if (pedidas && altura && !altura.ok && altura.motivo !== "anclar" && recomendada && !recomendada.ok) {
+  if (pedidas && pedido.insiste && altura && !altura.ok && altura.motivo === "no_llega" && altura.nivel) {
+    // Insiste (JS, 19/11): lo que pidió, aunque no llegue cómodo (también si lo recomendado tampoco
+    // sirve). Lo que no llega ya se lo dijo: no se le vuelve a preguntar; el peldaño, sí.
+    altura = { ok: true, nivel: altura.nivel, llega: false };
+  } else if (pedidas && altura && !altura.ok && altura.motivo !== "anclar" && recomendada && !recomendada.ok) {
     // Ni lo que pidió ni lo recomendado: manda el motivo de las reglas (anclar o el techo).
     altura = recomendada;
   } else if (pedidas && altura && !altura.ok && altura.motivo !== "anclar" && recomendada?.ok) {
@@ -885,7 +900,7 @@ export function cotizarAlquilerSimple(pedido: PedidoAlquiler, ctx: ContextoAlqui
       trabajo("altura", true, `Llega a ~${metros((nivel.plataforma + ALCANCE) / 100)} m con ${modulosTxt(nivel.modulos)}${nivel.peldano !== null ? ` (plataforma en ${textoPeldano(nivel.peldano / 100, nivel.modulos)})` : ""}, sin anclar`);
     }
     // El peldaño (un tablón) o una plataforma que no llega cómodo: se confirma (fila 19).
-    if ((nivel.peldano !== null || noLlega) && pedido.aceptaPlataforma === null) {
+    if ((nivel.peldano !== null || noLlega) && pedido.aceptaPlataforma === null && !(pedido.insiste && origen === "cliente" && nivel.peldano === null)) {
       const donde = nivel.peldano !== null
         ? `La plataforma va en ${textoPeldano(nivel.peldano / 100, nivel.modulos)} de la escalera del bastidor, a ${metros(nivel.plataforma / 100)} m del piso: es de un solo tablón de 30 cm.`
         : `La plataforma queda arriba de ${modulosTxt(nivel.modulos)}, a ${metros(nivel.plataforma / 100)} m del piso.`;
@@ -984,15 +999,8 @@ export function cotizarAlquilerSimple(pedido: PedidoAlquiler, ctx: ContextoAlqui
   } else if (!flete) {
     falta("direccion");
   } else if (flete.tipo === "provincia") {
-    const lugar = flete.lugar ? `en ${flete.lugar} (provincia)` : "en provincia";
-    if (pedido.retiraEnDeposito === false) {
-      trabajo("fuera_de_caba", false, `La obra está ${lugar}: no entregamos ni retiramos fuera de CABA, y no puede retirarlo en el depósito`);
-    } else {
-      aConfirmar.push({
-        codigo: "deposito",
-        texto: `La obra está ${lugar}: no entregamos ni retiramos fuera de CABA. Ofrecele retirarlo en nuestro depósito, en ${DEPOSITO.texto}, de lunes a viernes de 10 a 12 o de 13 a 16, viniendo con su vehículo y gente para cargarlo. Anotá lo que conteste (retira_en_deposito).`,
-      });
-    }
+    // Se decide al final (JS, 19/11): sólo si es un alquiler simple de verdad. Si igual va a un
+    // vendedor (anclar, montaje, muchos módulos…), en provincia también vamos: no se le dice que no.
   } else if (flete.tipo === "fuera_de_lista") {
     trabajo("sin_flete", false, flete.barrio ? `El barrio «${flete.barrio}» no está en la lista de fletes` : "No se encontró el barrio en la lista de fletes");
   } else {
@@ -1026,6 +1034,23 @@ export function cotizarAlquilerSimple(pedido: PedidoAlquiler, ctx: ContextoAlqui
 
   // ── El cliente ──
   if (ctx.cliente) motivos.push(...motivosDelCliente(ctx.cliente));
+
+  // ── Provincia (fila 16; JS, 19/11) ──
+  // Un alquiler de pocos módulos que arma el cliente no se entrega en provincia: se le ofrece el
+  // depósito. Lo que igual va a un vendedor (anclar, montaje, muchos módulos, más de 30 días…) no:
+  // con armado vamos a provincia, y eso lo ve el vendedor.
+  if (!deposito && flete?.tipo === "provincia" && !motivos.some((m) => !m.ok && m.grupo === "trabajo")) {
+    const lugar = flete.lugar ? `en ${flete.lugar} (provincia)` : "en provincia";
+    if (pedido.retiraEnDeposito === false) {
+      trabajo("fuera_de_caba", false, `La obra está ${lugar}: no entregamos ni retiramos fuera de CABA, y no puede retirarlo en el depósito`);
+    } else {
+      aConfirmar.push({
+        codigo: "deposito",
+        texto: `La obra está ${lugar}: los alquileres sin armado no se entregan fuera de Capital. Explicáselo y ofrecele retirarlo en nuestro depósito, en ${DEPOSITO.texto}, de lunes a viernes de 10 a 12 o de 13 a 16, viniendo con su vehículo y gente para cargarlo. Anotá lo que conteste (retira_en_deposito).`,
+      });
+    }
+  }
+
 
   // ── El precio ──
   const precio = !armado ? null
@@ -1124,7 +1149,7 @@ const POR_QUE_NO: Partial<Record<CodigoMotivoAlquiler, string>> = {
  * con amabilidad. No se deriva: la charla queda como cualquier otra. Sin montos.
  */
 export const MENSAJE_PROVINCIA =
-  "La obra está en provincia y no puede retirarlo en el depósito: decile directamente y con amabilidad que no llegamos con entregas a provincia (entregamos y retiramos sólo en Capital), y que si más adelante puede pasar a buscarlo por el depósito, se lo preparamos.";
+  "La obra está en provincia y no puede retirarlo en el depósito: explicale con amabilidad que los alquileres sin armado los entregamos y retiramos sólo en Capital, y que si más adelante puede pasar a buscarlo por el depósito, se lo preparamos. Si le sirve que se lo armemos nosotros, eso sí lo hacemos en provincia: ofrecéselo y, si quiere, juntá lo que falte y usá pedir_tecnico.";
 
 const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`;
 
@@ -1146,7 +1171,7 @@ export function resumenParaTomas(r: ResultadoAlquiler): string {
   const enContra = r.enContra.filter((m) => m.grupo === "trabajo");
   if (enContra.length === 1 && enContra[0].codigo === "fuera_de_caba") {
     // Provincia y no puede retirarlo (fila 23): no es para un vendedor, es un no amable.
-    l.push(`${MENSAJE_PROVINCIA} No lo pases a nadie del equipo y no ofrezcas escaleras.`);
+    l.push(`${MENSAJE_PROVINCIA} Como alquiler sin armado no se lo pases a un vendedor, y no ofrezcas escaleras.`);
   } else if (enContra.length) {
     const motivos = [...new Set(enContra.map((m) => POR_QUE_NO[m.codigo] ?? "lo tiene que ver una persona"))];
     l.push(`No es un alquiler simple que se cotice directo: ${motivos.join("; ")}. Pasalo al equipo con un resumen y decile al cliente que lo ve un vendedor para que quede bien. No ofrezcas escaleras.`);
@@ -1165,6 +1190,9 @@ export function resumenParaTomas(r: ResultadoAlquiler): string {
     }
     l.push("La baranda va siempre incluida: si no la quiere, no se lleva, pero el servicio es el mismo. No la negocies.");
     for (const x of a.ajustes) l.push(x);
+  }
+  if (r.flete?.tipo === "provincia" && r.modalidad !== "deposito" && enContra.length && !enContra.some((m) => m.codigo === "fuera_de_caba")) {
+    l.push("La obra está en provincia, pero esto lo ve un vendedor: con armado vamos a provincia. No le digas que no llegamos ni le ofrezcas el depósito.");
   }
   if (r.modalidad === "deposito") {
     l.push(`Lo retira y lo devuelve él en el depósito (${DEPOSITO.texto}): sin flete, con su vehículo y gente para cargar. Las condiciones del depósito van en el presupuesto.`);

@@ -217,9 +217,19 @@ const PALABRAS: { codigo: CodigoAlerta; texto: string; terminos: (string | RegEx
     codigo: "persona",
     texto: "Pide hablar con una persona",
     terminos: [
-      "persona", "humano", "operador", "operadora", "asesor", "asesora", "vendedor", "vendedora", "atencion al cliente", "quiero hablar",
-      "hablar con", "pasame con", "comunicarme con", "contactarme con", "llamame", "llamarme", "me llaman", "me pueden llamar", "me podes llamar",
-      "me puede llamar", "llamada", "llamen", "dueno", "encargado", "gerente",
+      // Sueltos no cuentan (JS, 19/11): «tiene que subir una persona», «lo armo con una persona más»,
+      // «lo hablo con el consorcio», «soy el dueño del local» o «me llaman de la obra» no es pedir a
+      // alguien del equipo (Miguel quedó sin atender por eso).
+      /^[^a-z]*(?:una )?persona[^a-z]*(?:por favor[^a-z]*)?$/, "humano", "humana", "operador", "operadora", "asesor", "asesora",
+      "atencion al cliente", "quiero hablar",
+      /(?:^|[^a-z])(?:hablar|hable|habla|hablo|me atienda|atienda|atiende|atenderme|escriba|escribame|pasame|pasas|pasar)(?: con)? (?:a )?(?:una |alguna )?persona(?! mas)(?![a-z])/,
+      /(?:^|[^a-z])(?:quiero|prefiero|necesito) (?:hablar con )?(?:una |alguna )?persona(?! (?:mas|para|que (?:suba|trabaje|arme|me ayude)))(?![a-z])/,
+      /(?:^|[^a-z])una persona,? por favor/, /(?:^|[^a-z])persona (?:real|de verdad|fisica|humana)(?![a-z])/,
+      /(?:^|[^a-z])no (?:sos|eres) (?:una )?persona(?![a-z])/,
+      /(?:^|[^a-z])(?:hablar|pasa(?:me|s|r)?|comunicarme|contactarme) con (?:alguien|un (?:vendedor|asesor|encargado|tecnico)|una (?:vendedora|asesora|encargada)|el (?:vendedor|encargado|dueno|tecnico|gerente)|la (?:vendedora|encargada|duena|gerente))(?![a-z])/,
+      /(?:^|[^a-z])(?:me l?lame alguien|alguien (?:que )?me (?:l?lame|atienda))(?![a-z])/,
+      /(?:^|[^a-z])(?:vendedor|vendedora)(?![a-z])/,
+      "llamame", "llamarme", "me pueden llamar", "me podes llamar", "me puede llamar", "llamen", "una llamada",
       // El equipo por su nombre, SÓLO si lo pide («quiero hablar con Jorge», «pasame con Sandra»,
       // «¿está Gabriel?»). Suelto no: «a nombre de Joaquín Fernández», «soy Jorge» o «me llamo
       // Sandra» es el nombre del cliente (JS, 16/10: una bandeja fácil salió «no fácil» por eso).

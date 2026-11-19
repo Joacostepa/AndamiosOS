@@ -14,6 +14,7 @@
 // modelo: §6 de crm-propuesta.md. No pasan por el filtro de salida porque los arma el código.
 
 import { normalizar } from "./texto.ts";
+import { NOMBRES_DE_PILA } from "./nombres-propios.ts";
 
 /** El agente se llamaba Sofía hasta el 17/10: JS eligió una voz de hombre para el saludo con audio. */
 export const NOMBRE_ASISTENTE = "Tomás";
@@ -49,6 +50,8 @@ const TITULO = lista(["ing", "arq", "dr", "dra", "lic", "prof", "sr", "sra", "sr
 
 /** Una letra o un nombre propio (con tildes, ñ, apóstrofo o guion en el medio). */
 const PALABRA_NOMBRE = /^[\p{L}][\p{L}'’-]*$/u;
+/** JS, 19/11: sólo nombres de pila conocidos (nombres-propios.ts). «Gonprifer», «Cerrajería», no. */
+const NOMBRES = lista([...NOMBRES_DE_PILA]);
 const EMOJI = /[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}\u{FE0F}\u{200D}]/u;
 
 function capitalizar(p: string): string {
@@ -61,6 +64,7 @@ function capitalizar(p: string): string {
  * El primer nombre para el saludo, o null si conviene saludar sin nombre.
  *   «Carlos Gómez» → «Carlos» · «JUAN» → «Juan» · «Joaquin (Andamios Buenos Aires)» → «Joaquin»
  *   · «Ing. Pablo Ferreyra» → «Pablo» · «Constructora Delta SRL», «Mamá», «Juan 🔨», «J.», «Juan2» → null
+ *   · y sólo si es un nombre de pila conocido (nombres-propios.ts): «Gonprifer», «Cerrajería» → null
  */
 export function nombreParaSaludo(perfil: string | null | undefined): string | null {
   if (!perfil) return null;
@@ -91,6 +95,8 @@ export function nombreParaSaludo(perfil: string | null | undefined): string | nu
   if (primera.length > 20) return null;
   const norm = normalizar(primera).replace(/[^a-z]/g, "");
   if (APODO.has(norm) || EMPRESA.has(norm) || TITULO.has(norm)) return null;
+  // «Jean-Pierre»: alcanza con que la primera parte sea un nombre.
+  if (!NOMBRES.has(norm) && !NOMBRES.has(normalizar(primera.split(/[-'’]/)[0]).replace(/[^a-z]/g, ""))) return null;
   // Todo consonantes («Xkdj», «Brr»): no es un nombre.
   if (!/[aeiouy]/.test(norm)) return null;
   return capitalizar(primera);

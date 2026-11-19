@@ -1,4 +1,4 @@
-# Handoff — Asistente comercial (actualizado 2026-11-07)
+# Handoff — Asistente comercial (actualizado 2026-11-19)
 
 Para retomar en una sesión nueva. Cómo funciona el módulo, cómo se configura y cómo se prueba
 está en `docs/asistente-comercial/modulo.md`; esto es el estado, lo que falta y el orden para

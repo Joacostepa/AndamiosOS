@@ -26,6 +26,7 @@ import type { Tarifas } from "../cotizador/tipos.ts";
 import { frenteDelLote } from "../asistente/borrador.ts";
 import { armarBorradorFacil, esFacil, fichaVacia, type BanderaIA, type ContextoFacil, type FichaCliente, type ParametrosFacil, escanearPalabras } from "./facil.ts";
 import type { Asignacion } from "./asignacion.ts";
+import { epigrafeReferencia, TIPOS_REFERENCIA, type ResultadoReferencia, type TipoReferencia } from "./referencias.ts";
 import {
   con24h, condicionesAlquilerSimple, cotizarAlquilerSimple, DEPOSITO, esFranjaDeposito, franjaSegunModalidad, MENSAJE_PROVINCIA, pedidoVacio, resumenParaTomas, textoFecha, textoFranja,
   validarEntrega,
@@ -214,6 +215,8 @@ export type ServiciosSofia = {
    * `logistica`: también a Operaciones (el retiro mueve una camioneta).
    */
   avisarEquipo(texto: string, titulo: string, o?: { logistica?: boolean }): Promise<void>;
+  /** La imagen de referencia de ese tipo (referencias.ts), una vez por charla. Puede tirar. */
+  mandarReferencia(tipo: TipoReferencia, trato: "vos" | "usted" | null): Promise<ResultadoReferencia>;
   /** YYYY-MM-DD, hora de Buenos Aires. */
   hoy: string;
   /** El momento (para las 24 h del retiro). Sin esto, la hora del servidor. */
@@ -1140,6 +1143,39 @@ async function derivarAPersona(i: z.infer<typeof esquemaDerivar>, { ficha }: Con
   };
 }
 
+// ── mostrar_referencia ─────────────────────────────────────────────────────────────────
+
+const esquemaReferencia = z.object({
+  tipo: z.enum(TIPOS_REFERENCIA).describe("bandeja: bandeja de protección peatonal; fachada: andamio de fachada con pantalla (ya muestra la bandeja abajo); torre: torre de andamio que armamos nosotros."),
+}).strict();
+
+/** El mismo NADA de prompt.ts (que importa este archivo): con eso no sale ningún texto. */
+export const NADA_REFERENCIA = "[nada]";
+
+async function mostrarReferencia(i: z.infer<typeof esquemaReferencia>, { ficha, servicios }: ContextoHerramienta): Promise<ResultadoHerramienta> {
+  // JS: nunca en el alquiler simple (el andamio que arma el cliente es otro, aunque pida «una torre»).
+  if (ficha.trabajo === "alquiler_simple" || ficha.alquiler) {
+    return { contenido: json({ estado: "no_corresponde", que_decir: "En el alquiler simple no se manda imagen de referencia: seguí sin mencionarla." }) };
+  }
+  let r: ResultadoReferencia;
+  try {
+    r = await servicios.mandarReferencia(i.tipo, ficha.trato ?? null);
+  } catch (e) {
+    console.error("[sofia] imagen de referencia", e);
+    return { contenido: json({ estado: "no_se_pudo", que_decir: "No salió la imagen: seguí con la charla sin mencionarla." }) };
+  }
+  if (r === "ya_enviada") return { contenido: json({ estado: "ya_enviada", que_decir: "Ya se la mandaste en esta charla: no la vuelvas a mencionar." }) };
+  if (r === "sin_imagen") return { contenido: json({ estado: "sin_imagen", que_decir: "No hay imagen de ese tipo: seguí sin mencionarla." }) };
+  if (r === "charla_tomada") return { contenido: json({ estado: "charla_tomada", que_decir: "No salió: la charla ya la tiene una persona." }) };
+  return {
+    contenido: json({
+      estado: "enviada",
+      epigrafe: epigrafeReferencia(i.tipo, ficha.trato ?? null),
+      que_decir: `El cliente ya recibió la imagen con ese epígrafe, que le pregunta si es algo así lo que necesita. No repitas la pregunta ni describas la imagen: esperá su respuesta. Si no tenés nada más que decirle, escribí exactamente ${NADA_REFERENCIA}; si tenés que contestarle algo que preguntó, hacelo breve. Si después dice que no es eso, preguntá qué necesita y corregí el trabajo con anotar_ficha.`,
+    }),
+  };
+}
+
 // ── La lista ───────────────────────────────────────────────────────────────────────────
 
 const HERRAMIENTAS: Def[] = [
@@ -1208,6 +1244,12 @@ const HERRAMIENTAS: Def[] = [
     descripcion: "Pasa la charla a una persona del equipo, con un motivo de la lista y un resumen. Después de esto no seguís atendiendo la charla.",
     esquema: esquemaDerivar,
     ejecutar: derivarAPersona as Def["ejecutar"],
+  },
+  {
+    nombre: "mostrar_referencia",
+    descripcion: "Le manda al cliente una imagen de referencia de lo que hacemos (bandeja de protección peatonal, andamio de fachada con pantalla o torre de andamio), con un epígrafe, para confirmar que es lo que necesita. Una vez por tipo y por charla: si ya salió, no la repite.",
+    esquema: esquemaReferencia,
+    ejecutar: mostrarReferencia as Def["ejecutar"],
   },
 ];
 

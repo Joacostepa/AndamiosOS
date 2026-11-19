@@ -135,7 +135,7 @@ test("saludo con voz apagado: no se pide el audio", async () => {
   assert.deepEqual(m.salidas.map((s) => s.texto), [SALUDO_MARCELA]);
 });
 
-test("el pedido al modelo: prompt de Tomás con caché de 1 h, sus 11 herramientas, block_binding y respaldo", async () => {
+test("el pedido al modelo: prompt de Tomás con caché de 1 h, sus 12 herramientas, block_binding y respaldo", async () => {
   const m = crearMundo();
   m.escribe("Hola, ¿hacen bandejas?");
   await atenderCharla(m.deps(guion(respuestaTexto("Sí, hacemos bandejas de protección. ¿Para qué dirección es?"))), m.charla.id);
@@ -145,7 +145,7 @@ test("el pedido al modelo: prompt de Tomás con caché de 1 h, sus 11 herramient
   assert.deepEqual(p.system[0].cache_control, { type: "ephemeral", ttl: "1h" });
   assert.deepEqual(p.tools.map((t) => t.name), [
     "anotar_ficha", "validar_cuit", "verificar_direccion", "preparar_cotizacion_facil", "cotizar_alquiler_simple", "preparar_pedido_simple", "pedir_tecnico",
-    "cliente_acepta_alquiler", "revisar_documentos", "pedir_retiro", "derivar_a_persona",
+    "cliente_acepta_alquiler", "revisar_documentos", "pedir_retiro", "derivar_a_persona", "mostrar_referencia",
   ]);
   assert.deepEqual(p.thinking, { type: "adaptive", block_binding: { prefix_mismatch_behavior: "drop_block" } });
   assert.equal(p.fallbacks, "default");

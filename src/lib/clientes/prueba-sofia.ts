@@ -66,6 +66,8 @@ export type Mundo = {
   presupuestoAlquiler: PresupuestoAlquiler | null;
   feriados: string[];
   avisos: { texto: string; titulo: string }[];
+  /** Las imágenes de referencia que mandó Tomás (mostrar_referencia). */
+  referencias: string[];
   /** Agrega un mensaje del cliente al hilo (o de una persona). */
   escribe(texto: string, o?: Partial<ItemNuevo>): ItemNuevo;
   deps(modelo: DepsSofia["modelo"], cambios?: Partial<DepsSofia>): DepsSofia;
@@ -108,6 +110,7 @@ export function crearMundo(o: { perfil?: string | null; estado?: EstadoCharla; c
     presupuestoAlquiler: null,
     feriados: [],
     avisos: [],
+    referencias: [],
     escribe(texto, x = {}) {
       const ahora = tic();
       const it: ItemNuevo = {
@@ -206,6 +209,11 @@ export function crearMundo(o: { perfil?: string | null; estado?: EstadoCharla; c
         avisarEquipo: async (texto, titulo) => {
           mundo.avisos.push({ texto, titulo });
           mundo.eventos.push(texto);
+        },
+        mandarReferencia: async (tipo) => {
+          if (mundo.referencias.includes(tipo)) return "ya_enviada";
+          mundo.referencias.push(tipo);
+          return "enviada";
         },
         hoy: "2026-10-15",
         ahora: () => new Date("2026-10-15T13:30:00Z"),

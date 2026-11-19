@@ -22,6 +22,7 @@ import { CLAVES_SOFIA, configSofiaDesdeFilas, type ConfigSofia } from "./config"
 import { asignarPareja, PAREJAS_15_10, type ClienteAsignacion } from "./asignacion";
 import { parametrosFacilDesdeFilas } from "./facil";
 import { renderBandejaFacil } from "./render-bandeja";
+import { mandarReferencia } from "./referencias-envio";
 import { parametrosAlquilerDesdeFilas } from "./alquiler-simple";
 import { adjuntarArchivosAOrden, barrioDeDireccion, fleteParaUbicacion, fletesAlquilerSimple, lugarParaFlete } from "@/lib/odoo/alquiler-simple";
 import { clasificadorClaude, type DepsDocumentos } from "./documentos";
@@ -491,6 +492,7 @@ export function serviciosSofia(db: SupabaseClient, charla: CharlaSofia): Servici
       return [...(await feriados())];
     },
     presupuestoAlquiler: () => ultimoPresupuestoAlquiler(db, charla.id),
+    mandarReferencia: (tipo, trato) => mandarReferencia(db, charla, tipo, trato),
     async avisarEquipo(texto, titulo, o = {}) {
       await anotarEvento(db, charla.id, texto);
       const base = { tipo: "asistente_aviso" as const, titulo, descripcion: texto, prioridad: "alta" as const, enlace: `/comercial/clientes?c=${charla.id}` };

@@ -8,6 +8,8 @@ import {
   NOMBRES_HERRAMIENTAS, definicionesSofia, ejecutarHerramientaSofia, faltantesBandeja, fichaSofiaVacia, leerFicha, validarRetiro, type ContextoHerramienta, type FichaSofia,
 } from "./herramientas.ts";
 import { crearMundo, lotePrueba } from "./prueba-sofia.ts";
+import { elegirRender, epigrafeReferencia } from "./referencias.ts";
+import { NADA } from "./prompt.ts";
 import { detectarPlata, revisarSalida } from "./filtro-salida.ts";
 
 function contexto(ficha: Partial<FichaSofia> = {}, cambios: Partial<ContextoHerramienta["servicios"]> = {}): ContextoHerramienta & { mundo: ReturnType<typeof crearMundo> } {
@@ -23,12 +25,12 @@ const MARCELA: Partial<FichaSofia> = {
   enCaba: true, lote: lotePrueba("Los Aromos 1234"), tipoCliente: "particular",
 };
 
-test("son exactamente las 7 de §13 más las 4 del alquiler simple, en orden", () => {
+test("son exactamente las 7 de §13, las 4 del alquiler simple y la imagen de referencia, en orden", () => {
   assert.deepEqual(NOMBRES_HERRAMIENTAS, [
     "anotar_ficha", "validar_cuit", "verificar_direccion", "preparar_cotizacion_facil", "cotizar_alquiler_simple", "preparar_pedido_simple", "pedir_tecnico",
-    "cliente_acepta_alquiler", "revisar_documentos", "pedir_retiro", "derivar_a_persona",
+    "cliente_acepta_alquiler", "revisar_documentos", "pedir_retiro", "derivar_a_persona", "mostrar_referencia",
   ]);
-  assert.equal(definicionesSofia().length, 11);
+  assert.equal(definicionesSofia().length, 12);
 });
 
 test("ninguna herramienta tiene un campo para identificar a otro cliente", () => {
@@ -730,4 +732,44 @@ test("verificar_direccion: sólo con bandeja, fachada o algo sobre la vereda (JS
   // Unas vallas sobre la vereda sí.
   await ejecutarHerramientaSofia("verificar_direccion", { direccion: "Cabrera 3800", sobre_la_vereda: true }, contexto({ trabajo: "otro" }, contar));
   assert.equal(consultas, 1);
+});
+
+// ── mostrar_referencia (JS, 19/11) ─────────────────────────────────────────────────────
+
+test("mostrar_referencia: la manda una vez por tipo, y si falla Tomás sigue sin mencionarla", async () => {
+  const c = contexto();
+  const r1 = JSON.parse((await ejecutarHerramientaSofia("mostrar_referencia", { tipo: "bandeja" }, c)).contenido);
+  assert.equal(r1.estado, "enviada");
+  assert.equal(r1.epigrafe, "Imagen de referencia: una bandeja de protección peatonal. ¿Es algo así lo que necesitás?");
+  assert.ok(r1.que_decir.includes(NADA));
+  const r2 = JSON.parse((await ejecutarHerramientaSofia("mostrar_referencia", { tipo: "bandeja" }, c)).contenido);
+  assert.equal(r2.estado, "ya_enviada");
+  const r3 = JSON.parse((await ejecutarHerramientaSofia("mostrar_referencia", { tipo: "torre" }, c)).contenido);
+  assert.equal(r3.estado, "enviada");
+  assert.deepEqual(c.mundo.referencias, ["bandeja", "torre"]);
+
+  const apuntalamiento = await ejecutarHerramientaSofia("mostrar_referencia", { tipo: "apuntalamiento" }, c);
+  assert.equal(apuntalamiento.esError, true);
+
+  const falla = contexto({}, { mandarReferencia: async () => { throw new Error("Meta 500"); } });
+  const r4 = await ejecutarHerramientaSofia("mostrar_referencia", { tipo: "fachada" }, falla);
+  assert.ok(!r4.esError);
+  assert.equal(JSON.parse(r4.contenido).estado, "no_se_pudo");
+});
+
+test("mostrar_referencia: nunca en el alquiler simple, y de usted si el cliente escribe de usted", async () => {
+  const alquiler = contexto({ trabajo: "alquiler_simple" });
+  assert.equal(JSON.parse((await ejecutarHerramientaSofia("mostrar_referencia", { tipo: "torre" }, alquiler)).contenido).estado, "no_corresponde");
+  assert.deepEqual(alquiler.mundo.referencias, []);
+  assert.match(epigrafeReferencia("fachada", "usted"), /¿Es algo así lo que necesita\?$/);
+
+  const tomada = contexto({}, { mandarReferencia: async () => "charla_tomada" });
+  assert.equal(JSON.parse((await ejecutarHerramientaSofia("mostrar_referencia", { tipo: "bandeja" }, tomada)).contenido).estado, "charla_tomada");
+});
+
+test("la imagen de referencia: la de por defecto y, si no hay, la más nueva", () => {
+  const f = (id: string, por_defecto: boolean, created_at: string) => ({ id, path: `renders/${id}.png`, por_defecto, created_at });
+  assert.equal(elegirRender([f("a", false, "2026-09-01"), f("b", true, "2026-08-01"), f("c", false, "2026-10-01")])?.id, "b");
+  assert.equal(elegirRender([f("escalera", false, "2026-09-26"), f("escotilla", false, "2026-09-29")])?.id, "escotilla");
+  assert.equal(elegirRender([]), null);
 });

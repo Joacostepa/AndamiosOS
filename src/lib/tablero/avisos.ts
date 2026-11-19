@@ -41,6 +41,11 @@ export type AvisoTablero = {
   accion: string;
   /** La obra tocada, cuando el gesto es sobre una sola. */
   obra?: string | null;
+  /**
+   * "pm": el cambio es sólo del PM de una obra (plan_pm_ot), no de jornadas. Quien lo recibe
+   * refresca los PMs y NO el tablero entero, que son seis consultas a Odoo por pantalla.
+   */
+  ambito?: "pm";
 };
 
 let canal: RealtimeChannel | null = null;
@@ -89,9 +94,9 @@ export function conectarAvisos(autor: string, oyente: (a: AvisoTablero) => void)
  * de otro, no parte del gesto que el usuario pidió. Si el canal está caído, el que sufre
  * es el refresco ajeno, y para eso está la red de seguridad del foco de pestaña.
  */
-export function avisarCambio(accion: string, obra?: string | null): void {
+export function avisarCambio(accion: string, obra?: string | null, ambito?: "pm"): void {
   if (!canal) return;
   void canal
-    .send({ type: "broadcast", event: EVENTO, payload: { autor: autorLocal, accion, obra } })
+    .send({ type: "broadcast", event: EVENTO, payload: { autor: autorLocal, accion, obra, ...(ambito ? { ambito } : {}) } })
     .catch(() => {});
 }

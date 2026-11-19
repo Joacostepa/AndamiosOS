@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import {
-  CalendarX2, ChevronLeft, ChevronRight, HardHat, History, KeyRound, Loader2, MoreHorizontal, RefreshCw, Users,
+  CalendarX2, ChevronLeft, ChevronRight, HardHat, History, KeyRound, Loader2, MoreHorizontal, RefreshCw, UserRound, Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -43,7 +43,17 @@ export function TopbarTablero({
   onQueEjecutar,
   protegido = null,
   autorizaciones = null,
+  modoPm = null,
+  soloVer = false,
 }: {
+  /**
+   * El modo PM (19/11): las tarjetas dicen quién es el PM de cada obra y la columna derecha
+   * pasa a ser la lista de proyectos. `sinPm` cuenta TODAS las obras sin PM, también las que
+   * no están a la vista o todavía no tienen fecha. null = todavía no cargó.
+   */
+  modoPm?: { activo: boolean; sinPm: number; onCambiar: (v: boolean) => void } | null;
+  /** Planificación en «ver»: sin "Correr un día", que mueve el tablero entero. */
+  soloVer?: boolean;
   rangoLabel: string;
   cuadrillas: CuadrillaTablero[];
   visibles: number[];
@@ -128,6 +138,35 @@ export function TopbarTablero({
         <span className="hidden md:inline">{etiquetaModo}</span>
       </Button>
 
+      {/* EL MODO PM, al lado de "qué muestra la tarjeta" porque también decide qué dice el
+          segundo renglón. Con contador ámbar mientras haya obras sin PM: es "mirá esto",
+          igual que Autorizaciones. */}
+      {modoPm && (
+        <Button
+          variant={modoPm.activo ? "default" : "outline"}
+          size="sm"
+          onClick={() => modoPm.onCambiar(!modoPm.activo)}
+          aria-pressed={modoPm.activo}
+          title={
+            modoPm.activo
+              ? "Modo PM: las tarjetas dicen quién es el PM de cada obra. Tocá para volver."
+              : "Ver quién es el PM de cada obra y cuáles faltan tomar"
+          }
+        >
+          <UserRound className="h-4 w-4 md:mr-1.5" />
+          <span className="hidden md:inline">PM</span>
+          {modoPm.sinPm > 0 && (
+            <span
+              className="ml-1 rounded-full px-1.5 text-xs font-semibold tabular-nums"
+              style={{ backgroundColor: AVISO.fondo, color: AVISO.texto, border: `1px solid ${AVISO.borde}` }}
+              title={`${modoPm.sinPm} obra${modoPm.sinPm === 1 ? "" : "s"} sin PM`}
+            >
+              {modoPm.sinPm}
+            </span>
+          )}
+        </Button>
+      )}
+
       {/* EL LUGAR PROTEGIDO va con lo que dice cómo está el tablero, no con las acciones. */}
       <IndicadorProtegido lugar={protegido} />
 
@@ -169,10 +208,12 @@ export function TopbarTablero({
               )}
             </Button>
           )}
-          <Button variant="outline" size="sm" onClick={onCorrerDia}>
-            <CalendarX2 className="mr-1.5 h-4 w-4" />
-            Correr un día
-          </Button>
+          {!soloVer && (
+            <Button variant="outline" size="sm" onClick={onCorrerDia}>
+              <CalendarX2 className="mr-1.5 h-4 w-4" />
+              Correr un día
+            </Button>
+          )}
           {/* La actividad entra por un ícono y no por un panel fijo: en el tablero no
               sobra un píxel, y esto se consulta de vez en cuando. Al lado de Refrescar
               porque las dos son acciones sobre el tablero entero, no sobre una obra. */}
@@ -203,10 +244,12 @@ export function TopbarTablero({
               <MoreHorizontal className="h-4 w-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem onClick={onCorrerDia}>
-                <CalendarX2 className="mr-2 h-4 w-4" />
-                Correr un día
-              </DropdownMenuItem>
+              {!soloVer && (
+                <DropdownMenuItem onClick={onCorrerDia}>
+                  <CalendarX2 className="mr-2 h-4 w-4" />
+                  Correr un día
+                </DropdownMenuItem>
+              )}
               {autorizaciones != null && (
                 <DropdownMenuItem render={<Link href="/planificacion/autorizaciones" />}>
                   <KeyRound className="mr-2 h-4 w-4" />

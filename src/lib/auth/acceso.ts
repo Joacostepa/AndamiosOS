@@ -86,6 +86,12 @@ const DEFINICION = [
     rutas: ["/planificacion/autorizaciones"],
     exigeExplicito: true,
   },
+  // Ser PM (project manager) de obras (docs/oficina-tecnica/proyectos/, 19/11): quien lo tiene
+  // en «editar» aparece como PM posible y puede TOMAR obras desde el tablero, aunque tenga
+  // Planificación en «ver». No tiene pantalla propia: vive en el tablero (modo PM). La base
+  // lo lee del perfil y NO por el atajo de admin (plan_es_pm, migración 20261119000001): ser
+  // administrador no lo vuelve PM.
+  { id: "planificacion-pm", titulo: "PM de obras", grupo: "Oficina técnica", rutas: [] },
   { id: "computos", titulo: "Cómputos", grupo: "Oficina técnica", rutas: ["/oficina-tecnica/computos"] },
   // El modelador 3D (docs/oficina-tecnica/modelador/arquitectura-produccion.md): modelos, plantillas
   // propias y «Generar cómputo». Generar escribe en Cómputos, así que esa acción pide además Cómputos
@@ -174,6 +180,9 @@ const APIS: Record<string, readonly ModuloId[]> = {
   "/api/planificacion/guardias": ["planificacion"],
   "/api/planificacion/guardias/sacar": ["planificacion-autoriza"],
   "/api/planificacion/guardias/autorizar": ["planificacion-autoriza"],
+  // El PM de cada obra. Lo lee quien ve el tablero; tomar, pasar y soltar lo pide un PM (que
+  // puede tener Planificación en «ver») u Operaciones. La ruta afina quién puede qué.
+  "/api/planificacion/pm": ["planificacion", "planificacion-pm"],
   "/api/ordenes-trabajo": ["ordenes-trabajo", "planificacion"],
   "/api/odoo/push/ordenes-trabajo": ["ordenes-trabajo"],
   "/api/habilitaciones": ["habilitaciones"],
@@ -417,5 +426,6 @@ export function motivoDeRechazoApi(
  */
 export function inicioDe(acceso: Acceso | null | undefined): string {
   if (puedeAbrir(acceso, "/planificacion")) return "/planificacion";
-  return MODULOS.find((m) => puedeAbrir(acceso, m.rutas[0]))?.rutas[0] ?? "/alertas";
+  // Un módulo sin pantalla (PM de obras) no es destino.
+  return MODULOS.find((m) => m.rutas.length > 0 && puedeAbrir(acceso, m.rutas[0]))?.rutas[0] ?? "/alertas";
 }

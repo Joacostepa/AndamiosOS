@@ -28,6 +28,7 @@ import {
 import { claveCelda, cuentaConGuardias, esGuardia } from "@/lib/tablero/guardias";
 import type { Comodin, UsoGuardia } from "@/lib/tablero/guardias-tipos";
 import { otMarcable } from "@/lib/tablero/comodines";
+import { llevaPm, type PmGrilla } from "@/lib/tablero/pm";
 import { ocupacionCelda, capacidadDelRango, redondearFraccion } from "@/lib/tablero/fracciones";
 import type { FraccionStr } from "@/lib/tablero/fracciones";
 import { notasDe, notasDeCuadrilla } from "@/lib/tablero/tipos-nota";
@@ -298,7 +299,13 @@ export function TableroGrid({
   onToggleDomingo,
   compacta,
   guardias,
+  pm = null,
+  soloVer = false,
 }: {
+  /** El modo PM y las opciones "Proyecto" del ⋮ (19/11). null = todavía no cargó. */
+  pm?: PmGrilla | null;
+  /** Quien mira tiene Planificación en «ver»: no crea tareas y el ⋮ se achica. */
+  soloVer?: boolean;
   cuadrillas: CuadrillaTablero[];
   fechas: string[];
   /**
@@ -1018,7 +1025,7 @@ export function TableroGrid({
                         feriado={feriados.has(f)}
                         pasada={f < hoyISO}
                         fracciones={enCelda(cuadrilla.id, f).map((a) => a.fraccion)}
-                        onCrearTarea={() => onCrearTarea(cuadrilla.id, f)}
+                        onCrearTarea={soloVer ? undefined : () => onCrearTarea(cuadrilla.id, f)}
                         destino={
                           arrastreGuardia
                             ? arrastreGuardia.validas.has(claveCelda(cuadrilla.id, f))
@@ -1083,7 +1090,7 @@ export function TableroGrid({
                           destino={destino}
                           // Al arrastrar un comodín, la guardia que no lo acepta se apaga; al
                           // arrastrar una guardia, las otras también (no son destino).
-                          atenuada={!!arrastre && !destino}
+                          atenuada={(!!arrastre && !destino) || !!pm?.activo}
                           puedeAutorizar={guardias.puedeAutorizar}
                           editable={bloque.fechas[0] >= guardias.hoy}
                           onAbrir={() => guardias.onAbrir(bloque)}
@@ -1154,7 +1161,14 @@ export function TableroGrid({
                         })()}
                         // Mientras se arrastra un comodín o una guardia, las obras no son
                         // destino: se apagan para que se vea dónde sí.
-                        atenuada={!!guardias?.arrastre}
+                        // En modo PM se apaga lo que no lleva PM: desarmes, tareas y apoyos.
+                        atenuada={
+                          !!guardias?.arrastre ||
+                          (!!pm?.activo && (!!bloque.tarea || !!bloque.apoyo || !llevaPm(ots.get(bloque.otId)?.tipo)))
+                        }
+                        pm={pm?.activo && !bloque.tarea && !bloque.apoyo ? pm.enTarjeta(ots.get(bloque.otId)) : null}
+                        accionesPm={!bloque.tarea && !bloque.apoyo ? (pm?.acciones(ots.get(bloque.otId)) ?? null) : null}
+                        soloVer={soloVer}
                         cierre={
                           parteDelBloque
                             ? {

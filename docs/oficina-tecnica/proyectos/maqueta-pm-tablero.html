@@ -1,0 +1,440 @@
+<title>Modo PM del tablero</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Diseño: réplica simplificada del Tablero de Planificación (DM Sans, tarjetas por tipo de OT, coral para hoy).
+   El modo PM es una tercera opción del control de la barra; la columna derecha pasa a ser la lista de proyectos. */
+:root {
+  --font: "DM Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  --radius: .5rem;
+  --bg: oklch(.985 0 0); --card: oklch(1 0 0); --fg: oklch(.145 0 0);
+  --muted: oklch(.96 0 0); --muted-fg: oklch(.5 0 0); --border: oklch(.9 0 0);
+  --coral: #D85A30; --accent-btn: #B5461F; --on-accent: #ffffff;
+  --armado-bg: #e6f1fb; --armado-borde: #378add; --armado-text: #0c447c;
+  --desarme-bg: #faeeda; --desarme-borde: #ef9f27; --desarme-text: #633806;
+  --otro-bg: #f1efe8; --otro-text: #5f5e5a;
+  --tarea-bg: #edeafb; --tarea-borde: #7b6bd8; --tarea-text: #332a72;
+  --feriado: #f1eefa; --pasado: oklch(.955 0 0);
+  --peligro: #d92d20; --peligro-suave: #fdecea; --peligro-text: #912018;
+  --aviso-bg: #fef6e7; --aviso-borde: #e8b04a; --aviso-text: #7a4405;
+  --aug: #0f766e; --aug-bg: #dff3f0; --aug-text: #0b4f4a;
+  --jua: #6d4fc7; --jua-bg: #ece7fb; --jua-text: #3e2a85;
+  --sombra: 0 1px 2px oklch(0 0 0 / 6%); --sombra-alta: 0 8px 24px oklch(0 0 0 / 16%);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: oklch(.13 0 0); --card: oklch(.2 0 0); --fg: oklch(.93 0 0);
+    --muted: oklch(.25 0 0); --muted-fg: oklch(.68 0 0); --border: oklch(1 0 0 / 10%);
+    --coral: #E0693F;
+    --armado-bg: oklch(.27 .045 254); --armado-borde: oklch(.7 .14 254); --armado-text: oklch(.86 .06 254);
+    --desarme-bg: oklch(.28 .05 70); --desarme-borde: oklch(.75 .14 70); --desarme-text: oklch(.88 .07 75);
+    --otro-bg: oklch(.26 .01 90); --otro-text: oklch(.8 .01 90);
+    --tarea-bg: oklch(.27 .06 290); --tarea-borde: oklch(.65 .14 290); --tarea-text: oklch(.88 .06 290);
+    --feriado: oklch(.19 .03 290); --pasado: oklch(.17 0 0);
+    --peligro: #f97066; --peligro-suave: oklch(.27 .06 25); --peligro-text: #fda29b;
+    --aviso-bg: oklch(.27 .05 75); --aviso-borde: oklch(.62 .12 75); --aviso-text: oklch(.88 .08 80);
+    --aug: #2dd4bf; --aug-bg: oklch(.3 .05 180); --aug-text: oklch(.9 .06 180);
+    --jua: #a78bfa; --jua-bg: oklch(.3 .07 290); --jua-text: oklch(.9 .05 290);
+    --sombra: 0 1px 2px oklch(0 0 0 / 40%); --sombra-alta: 0 8px 24px oklch(0 0 0 / 55%);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: oklch(.13 0 0); --card: oklch(.2 0 0); --fg: oklch(.93 0 0);
+  --muted: oklch(.25 0 0); --muted-fg: oklch(.68 0 0); --border: oklch(1 0 0 / 10%);
+  --coral: #E0693F;
+  --armado-bg: oklch(.27 .045 254); --armado-borde: oklch(.7 .14 254); --armado-text: oklch(.86 .06 254);
+  --desarme-bg: oklch(.28 .05 70); --desarme-borde: oklch(.75 .14 70); --desarme-text: oklch(.88 .07 75);
+  --otro-bg: oklch(.26 .01 90); --otro-text: oklch(.8 .01 90);
+  --tarea-bg: oklch(.27 .06 290); --tarea-borde: oklch(.65 .14 290); --tarea-text: oklch(.88 .06 290);
+  --feriado: oklch(.19 .03 290); --pasado: oklch(.17 0 0);
+  --peligro: #f97066; --peligro-suave: oklch(.27 .06 25); --peligro-text: #fda29b;
+  --aviso-bg: oklch(.27 .05 75); --aviso-borde: oklch(.62 .12 75); --aviso-text: oklch(.88 .08 80);
+  --aug: #2dd4bf; --aug-bg: oklch(.3 .05 180); --aug-text: oklch(.9 .06 180);
+  --jua: #a78bfa; --jua-bg: oklch(.3 .07 290); --jua-text: oklch(.9 .05 290);
+  --sombra: 0 1px 2px oklch(0 0 0 / 40%); --sombra-alta: 0 8px 24px oklch(0 0 0 / 55%);
+  color-scheme: dark;
+}
+/* Color de «sin PM»: ámbar (recomendado) o rojo (lo que pediste), se cambia arriba */
+:root { --sinpm-bg: var(--aviso-bg); --sinpm-borde: var(--aviso-borde); --sinpm-text: var(--aviso-text); }
+body.sinpm-rojo { --sinpm-bg: var(--peligro-suave); --sinpm-borde: var(--peligro); --sinpm-text: var(--peligro-text); }
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font); font-size: 13px; line-height: 1.4;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 16px 96px; }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible { outline: 2px solid var(--coral); outline-offset: 2px; }
+button:disabled { cursor: default; }
+.wrap { max-width: 1400px; margin: 0 auto; display: grid; gap: 14px; }
+.etiq { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted-fg); font-weight: 600; }
+
+/* Controles de la maqueta (no son parte de la app) */
+.maq { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; padding: 10px 12px; border: 1px dashed var(--border); border-radius: var(--radius); }
+.maq .grupo { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.seg { display: inline-flex; background: var(--muted); border-radius: 999px; padding: 3px; gap: 2px; flex-wrap: wrap; }
+.seg button { border: 0; background: transparent; padding: 5px 11px; border-radius: 999px; font-weight: 500; display: inline-flex; gap: 6px; align-items: center; color: var(--muted-fg); }
+.seg button[aria-pressed="true"] { background: var(--card); color: var(--fg); box-shadow: var(--sombra); }
+.ejemplo { font-size: 12px; color: var(--muted-fg); background: var(--muted); border-radius: 999px; padding: 3px 10px; margin-left: auto; }
+
+.av { width: 20px; height: 20px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 9.5px; font-weight: 700; flex: none; color: var(--card); }
+.av.aug { background: var(--aug); } .av.jua { background: var(--jua); } .av.ops { background: var(--fg); color: var(--bg); }
+
+/* Barra del tablero */
+.barra { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; }
+.barra h1 { margin: 0 6px 0 0; font-size: 16px; font-weight: 600; }
+.btn { border: 1px solid var(--border); background: var(--card); border-radius: 7px; padding: 6px 11px; display: inline-flex; gap: 6px; align-items: center; font-weight: 500; }
+.fechas { font-weight: 600; padding: 0 4px; font-variant-numeric: tabular-nums; }
+.modo { display: inline-flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; background: var(--card); }
+.modo button { border: 0; background: transparent; padding: 6px 11px; display: inline-flex; gap: 6px; align-items: center; font-weight: 500; color: var(--muted-fg); }
+.modo button + button { border-left: 1px solid var(--border); }
+.modo button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
+.insignia { background: var(--sinpm-borde); color: #fff; border-radius: 999px; padding: 0 7px; font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }
+body:not(.sinpm-rojo) .insignia { color: #3b2503; }
+
+/* Tablero */
+.app { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 12px; align-items: start; }
+.scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); }
+.grilla { display: grid; grid-template-columns: 118px repeat(7, minmax(132px, 1fr)); min-width: 1060px; }
+.grilla > div { border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 5px; min-width: 0; }
+.grilla > div:nth-child(8n) { border-right: 0; }
+.gc { text-align: center; font-size: 11px; color: var(--muted-fg); padding-block: 8px !important; }
+.gc b { font-size: 14px; color: var(--fg); margin-left: 3px; font-variant-numeric: tabular-nums; }
+.gc.hoy b { background: var(--coral); color: #fff; border-radius: 999px; padding: 0 6px; }
+.gc.fer, .cel.fer { background: var(--feriado); }
+.gf { display: grid; align-content: center; gap: 2px; padding-left: 10px !important; }
+.gf b { font-size: 13px; font-weight: 600; } .gf span { color: var(--muted-fg); font-size: 11.5px; }
+.cel { display: grid; gap: 5px; align-content: start; min-height: 86px; }
+
+.tj { border-radius: 6px; padding: 6px 7px; display: grid; gap: 3px; position: relative; border: 1.5px solid transparent; transition: opacity .15s; }
+.tj.armado { background: var(--armado-bg); color: var(--armado-text); }
+.tj.desarme { background: var(--desarme-bg); color: var(--desarme-text); }
+.tj.otro { background: var(--otro-bg); color: var(--otro-text); }
+.tj.tarea { background: var(--tarea-bg); color: var(--tarea-text); border-left: 3px solid var(--tarea-borde); }
+.tj .l1 { display: flex; gap: 4px; align-items: center; font-weight: 600; font-size: 12.5px; padding-right: 16px; }
+.tj .l1 .dir { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+.tj .l1 .j { font-family: var(--mono); font-size: 10.5px; font-weight: 500; opacity: .75; }
+.tj .l2 { font-size: 11.5px; opacity: .85; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tj .kebab { position: absolute; top: 3px; right: 2px; border: 0; background: transparent; width: 20px; height: 20px; border-radius: 4px; font-weight: 700; line-height: 1; color: inherit; opacity: .7; }
+.tj .kebab:hover { background: color-mix(in oklch, currentColor 12%, transparent); opacity: 1; }
+body.pm .tj.no-aplica { opacity: .32; }
+body.pm .tj.sinpm { background: var(--sinpm-bg); border-color: var(--sinpm-borde); color: var(--sinpm-text); }
+.tj.flash { animation: flash .7s ease; }
+@keyframes flash { 40% { box-shadow: 0 0 0 3px var(--coral); } }
+.pmrow { display: flex; align-items: center; gap: 6px; justify-content: space-between; flex-wrap: wrap; }
+.chip-pm { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; font-size: 11.5px; border-radius: 999px; padding: 1px 8px 1px 1px; }
+.chip-pm .av { width: 17px; height: 17px; font-size: 8.5px; }
+.chip-pm.aug { background: var(--aug-bg); color: var(--aug-text); } .chip-pm.jua { background: var(--jua-bg); color: var(--jua-text); }
+.mini-tomar { border: 0; background: var(--accent-btn); color: var(--on-accent); font-weight: 600; font-size: 11.5px; padding: 2px 10px; border-radius: 999px; }
+.alarma { font-size: 11px; font-weight: 700; color: var(--peligro-text); }
+
+/* Menú ⋮ */
+.menu { position: fixed; z-index: 40; background: var(--card); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--sombra-alta); padding: 6px; width: 250px; display: grid; gap: 1px; }
+.menu .sec { font-size: 11px; color: var(--muted-fg); padding: 6px 8px 2px; font-weight: 600; }
+.menu button { border: 0; background: transparent; text-align: left; padding: 7px 8px; border-radius: 6px; display: flex; gap: 8px; align-items: center; }
+.menu button:hover:not(:disabled) { background: var(--muted); }
+.menu button:disabled { color: var(--muted-fg); opacity: .55; }
+.menu button.nuevo { font-weight: 600; }
+.menu hr { border: 0; border-top: 1px solid var(--border); margin: 4px 0; }
+.menu .rojo { color: var(--peligro-text); }
+
+/* Panel derecho */
+.panel { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); display: grid; align-content: start; min-width: 0; }
+.panel-cab { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+.panel-cab h2 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; font-weight: 600; display: flex; gap: 6px; align-items: center; }
+.grupo-lista { display: grid; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+.grupo-lista:last-child { border-bottom: 0; }
+.grupo-lista h3 { margin: 0; font-size: 11.5px; color: var(--muted-fg); font-weight: 600; display: flex; justify-content: space-between; }
+.fila { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; align-items: center; padding: 7px 8px; border-radius: 6px; background: var(--muted); }
+.fila.sinpm { background: var(--sinpm-bg); box-shadow: inset 0 0 0 1px var(--sinpm-borde); }
+.fila .d { font-weight: 600; font-size: 12.5px; border: 0; background: transparent; padding: 0; text-align: left; overflow-wrap: anywhere; }
+.fila .d:hover { text-decoration: underline; }
+.fila .m { grid-column: 1 / -1; font-size: 11.5px; color: var(--muted-fg); }
+.fila.sinpm .m { color: var(--sinpm-text); }
+.btn-tomar { border: 0; background: var(--accent-btn); color: var(--on-accent); font-weight: 600; font-size: 12px; padding: 4px 12px; border-radius: 999px; }
+.btn-link { border: 0; background: transparent; color: var(--muted-fg); font-size: 11.5px; text-decoration: underline; padding: 0; }
+.vacio { color: var(--muted-fg); font-size: 12px; padding: 4px 0; }
+.det-panel { color: var(--muted-fg); font-size: 12px; padding: 10px 12px; }
+
+/* Notas */
+.notas { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 12px; }
+.nota { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; font-size: 13.5px; }
+.nota h3 { margin: 0 0 8px; font-size: 14.5px; }
+.nota ol, .nota ul { margin: 0; padding-left: 20px; display: grid; gap: 7px; }
+.nota li { max-width: 70ch; }
+
+.toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%) translateY(16px); opacity: 0; pointer-events: none;
+  background: var(--fg); color: var(--bg); padding: 10px 16px; border-radius: 10px; box-shadow: var(--sombra-alta); font-weight: 500; max-width: min(520px, calc(100vw - 32px)); transition: opacity .2s, transform .2s; z-index: 50; }
+.toast.ver { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast.alerta { background: var(--peligro); color: #fff; }
+
+@media (max-width: 900px) {
+  .app { grid-template-columns: minmax(0, 1fr); }
+  body.pm .panel { order: -1; }
+  .notas { grid-template-columns: minmax(0, 1fr); }
+  .ejemplo { margin-left: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .tj, .toast { transition: none; } .tj.flash { animation: none; } }
+</style>
+
+<div class="wrap">
+  <div class="maq" aria-label="Controles de la maqueta">
+    <div class="grupo"><span class="etiq">Ver como</span>
+      <div class="seg" role="group">
+        <button id="v-aug" data-v="aug" aria-pressed="true"><span class="av aug">AU</span>Augusto</button>
+        <button id="v-jua" data-v="jua" aria-pressed="false"><span class="av jua">JI</span>Juani</button>
+        <button id="v-ops" data-v="ops" aria-pressed="false"><span class="av ops">OP</span>Operaciones</button>
+      </div>
+    </div>
+    <div class="grupo"><span class="etiq">«Sin PM» en</span>
+      <div class="seg" role="group">
+        <button id="c-ambar" data-c="ambar" aria-pressed="true">Ámbar (recomendado)</button>
+        <button id="c-rojo" data-c="rojo" aria-pressed="false">Rojo</button>
+      </div>
+    </div>
+    <span class="ejemplo">Maqueta · datos de ejemplo</span>
+  </div>
+
+  <div class="barra">
+    <h1>Planificación</h1>
+    <div class="seg"><button aria-pressed="true">Tablero</button><button aria-pressed="false" disabled>Hoja del día</button></div>
+    <button class="btn" disabled>‹</button><span class="fechas">19 nov – 26 nov 2026</span><button class="btn" disabled>›</button>
+    <button class="btn" disabled>Hoy</button>
+    <div class="modo" role="group" aria-label="Qué muestra la tarjeta">
+      <button id="m-cliente" data-m="cliente" aria-pressed="false">Cliente y técnico</button>
+      <button id="m-ejecutar" data-m="ejecutar" aria-pressed="false">Qué ejecutar</button>
+      <button id="m-pm" data-m="pm" aria-pressed="true">PM <span class="insignia" id="insignia">0</span></button>
+    </div>
+  </div>
+
+  <div class="app">
+    <div class="scroll"><div class="grilla" id="grilla"></div></div>
+    <aside class="panel" id="panel"></aside>
+  </div>
+
+  <section class="notas">
+    <div class="nota">
+      <h3>Qué cambia en el tablero</h3>
+      <ol>
+        <li><b>«PM» es una tercera opción</b> del control que ya existe («Cliente y técnico / Qué ejecutar»). Queda guardado por usuario: a Augusto y Juani el tablero les abre siempre en modo PM. La insignia dice cuántos armados faltan tomar, contando también los que están fuera de la semana o todavía sin fecha.</li>
+        <li><b>En la grilla</b>, el segundo renglón de cada armado dice quién es el PM o «Sin PM · Tomar». Lo que no es armado se atenúa.</li>
+        <li><b>La columna derecha</b> pasa a ser la lista de proyectos: los sin PM primero (esta semana, más adelante y sin fecha todavía), después los de cada uno. Desde ahí se toma con un clic. En el celular esa lista va arriba.</li>
+        <li><b>El menú ⋮</b> suma una sección «Proyecto» para tomar, soltar o pasárselo al otro. Operaciones puede asignar a cualquiera de los dos.</li>
+        <li><b>El rojo, como texto</b>, queda sólo para un armado que arranca en 2 días hábiles o menos y nadie tomó.</li>
+      </ol>
+    </div>
+    <div class="nota">
+      <h3>Probá</h3>
+      <ul>
+        <li>Como Augusto, tocá «Tomar» en <b>Av. Monroe 2870</b>: Juani lo tomó un segundo antes y te avisa.</li>
+        <li>Tocá el ⋮ de cualquier armado para ver la sección «Proyecto» dentro del menú de siempre.</li>
+        <li>Cambiá a «Cliente y técnico»: la tarjeta vuelve a ser la de hoy.</li>
+        <li>Cambiá «Sin PM en» a rojo y compará con los rojos que ya usa el tablero (urgente, sin habilitar).</li>
+      </ul>
+    </div>
+  </section>
+</div>
+
+<div id="menu" class="menu" hidden></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function () {
+  const P = { aug: { n: "Augusto", i: "AU" }, jua: { n: "Juani", i: "JI" } };
+  const COLS = [
+    { d: "jue", n: 19, hoy: true }, { d: "vie", n: 20 }, { d: "sáb", n: 21 },
+    { d: "lun", n: 23, fer: true }, { d: "mar", n: 24 }, { d: "mié", n: 25 }, { d: "jue", n: 26 },
+  ];
+  // c = columna de inicio, dias = columnas que ocupa; tipo: armado | desarme | otro | tarea
+  const OTS = [
+    { ot: 2271, tipo: "armado", dir: "Av. del Libertador 5980", cli: "Consorcio Libertador", tec: "JS", que: "Estructura + pantalla", cu: 1, c: 0, dias: 2, diaN: 4, tot: 5, pm: "jua", cuando: "en curso" },
+    { ot: 2190, tipo: "desarme", dir: "Av. Santa Fe 3420", cli: "Consorcio Santa Fe", tec: "GS", que: "Desarme total", cu: 2, c: 0, dias: 1 },
+    { ot: 2275, tipo: "armado", dir: "Gurruchaga 1650", cli: "Estudio Gurruchaga", tec: "JR", que: "Pantalla de protección", cu: 4, c: 0, dias: 1, diaN: 2, tot: 2, pm: "aug", cuando: "en curso" },
+    { ot: 2280, tipo: "armado", dir: "Av. Cabildo 3260", cli: "Constructora Cabildo", tec: "JS", que: "Estructura sin pantalla", cu: 3, c: 1, dias: 2, pm: null, cuando: "arranca mañana", urg: true },
+    { ot: 0, tipo: "tarea", dir: "Depósito", cli: "Orden y carga", tec: "", que: "Tarea", cu: 4, c: 1, dias: 1 },
+    { ot: 2283, tipo: "armado", dir: "Thames 1820", cli: "Consorcio Thames", tec: "GS", que: "Pantalla de protección", cu: 4, c: 4, dias: 1, pm: null, cuando: "arranca en 2 días hábiles", urg: true },
+    { ot: 2286, tipo: "armado", dir: "Ing. Huergo 913", cli: "Grupo Huergo", tec: "JS", que: "Estructura + pantalla", cu: 2, c: 4, dias: 3, pm: "aug", cuando: "arranca mar 24" },
+    { ot: 2205, tipo: "desarme", dir: "Pampa 2290", cli: "Consorcio Pampa", tec: "JR", que: "Desarme total", cu: 5, c: 4, dias: 2 },
+    { ot: 2291, tipo: "armado", dir: "Av. Monroe 2870", cli: "Colegio Monroe", tec: "GS", que: "Torre · 12 m", cu: 1, c: 5, dias: 1, pm: null, cuando: "arranca mié 25", carrera: true },
+    { ot: 2294, tipo: "armado", dir: "Arenales 2140", cli: "Consorcio Arenales", tec: "JS", que: "Estructura + pantalla", cu: 3, c: 5, dias: 2, tot: 4, pm: "jua", cuando: "arranca mié 25" },
+    { ot: 2211, tipo: "otro", dir: "Vidal 1650", cli: "Consorcio Vidal", tec: "JR", que: "Mantenimiento", cu: 5, c: 6, dias: 1 },
+    { ot: 2297, tipo: "armado", dir: "Av. Rivadavia 6150", cli: "Constructora Oeste", tec: "GS", que: "Pantalla de protección", cu: 4, c: 6, dias: 1, tot: 2, pm: null, cuando: "arranca jue 26" },
+    // fuera de la semana a la vista
+    { ot: 2301, tipo: "armado", dir: "Olazábal 4720", que: "Apuntalamiento vertical", pm: null, cuando: "arranca lun 30/11", fuera: true },
+    { ot: 2303, tipo: "armado", dir: "Juramento 2455", que: "Estructura + pantalla", pm: "aug", cuando: "arranca lun 30/11", fuera: true },
+    { ot: 2306, tipo: "armado", dir: "Bulnes 1180", que: "Plataforma", pm: null, cuando: "arranca mar 1/12", fuera: true },
+    // en la bandeja, sin fecha
+    { ot: 2318, tipo: "armado", dir: "Av. Las Heras 2650", que: "Estructura + pantalla", pm: null, cuando: "sin fecha · habilitada · comprometida 7/12", bandeja: true },
+    { ot: 2321, tipo: "armado", dir: "Billinghurst 1890", que: "Pantalla de protección", pm: null, cuando: "sin fecha · sin habilitar · comprometida 10/12", bandeja: true },
+    { ot: 2316, tipo: "armado", dir: "Cramer 2240", que: "Estructura sin pantalla", pm: "jua", cuando: "sin fecha · habilitada · comprometida 4/12", bandeja: true },
+  ];
+  const est = { yo: "aug", modo: "pm", color: "ambar", menuOt: null };
+  const $ = id => document.getElementById(id);
+  const armados = () => OTS.filter(o => o.tipo === "armado");
+  const av = p => '<span class="av ' + p + '">' + P[p].i + "</span>";
+  const chip = p => '<span class="chip-pm ' + p + '">' + av(p) + "PM " + P[p].n + "</span>";
+  const puedeTomar = () => est.yo !== "ops";
+
+  let tt;
+  function toast(m, alerta) { const t = $("toast"); t.textContent = m; t.className = "toast ver" + (alerta ? " alerta" : ""); clearTimeout(tt); tt = setTimeout(() => t.className = "toast", 3600); }
+
+  function tarjeta(o, col) {
+    const pm = est.modo === "pm";
+    const cls = ["tj", o.tipo];
+    if (o.tipo !== "armado") cls.push("no-aplica");
+    else if (!o.pm) cls.push("sinpm");
+    const n = o.diaN ? o.diaN + (col - o.c) : (col - o.c + 1);
+    const tot = o.tot || o.dias;
+    let l2;
+    if (pm && o.tipo === "armado") {
+      l2 = '<div class="pmrow">' + (o.pm ? chip(o.pm) : '<span style="font-weight:600;font-size:11.5px">Sin PM</span>' +
+        (puedeTomar() ? '<button class="mini-tomar" data-tomar="' + o.ot + '">Tomar</button>' : "")) + "</div>" +
+        (!o.pm && o.urg ? '<div class="alarma">' + o.cuando.charAt(0).toUpperCase() + o.cuando.slice(1) + " y nadie lo tomó</div>" : "");
+    } else if (est.modo === "ejecutar") {
+      l2 = '<div class="l2">' + o.que + "</div>";
+    } else {
+      l2 = '<div class="l2">' + o.cli + (o.tec ? " · " + o.tec : "") + "</div>";
+    }
+    const flecha = o.tipo === "armado" ? "↑" : o.tipo === "desarme" ? "↓" : o.tipo === "tarea" ? "▪" : "○";
+    return '<div class="' + cls.join(" ") + '" data-card="' + o.ot + '">' +
+      '<div class="l1"><span>' + flecha + '</span><span class="dir">' + o.dir + '</span><span class="j">' + (tot > 1 ? n + "/" + tot : "1 j") + "</span></div>" + l2 +
+      (o.ot ? '<button class="kebab" data-menu="' + o.ot + '" aria-label="Más opciones">⋮</button>' : "") + "</div>";
+  }
+
+  function renderGrilla() {
+    let h = '<div class="gc" style="text-align:left;padding-left:10px !important">CUADRILLAS</div>';
+    COLS.forEach(c => { h += '<div class="gc' + (c.hoy ? " hoy" : "") + (c.fer ? " fer" : "") + '">' + c.d.toUpperCase() + "<b>" + c.n + "</b>" + (c.fer ? "<br>Feriado" : "") + "</div>"; });
+    for (let cu = 1; cu <= 5; cu++) {
+      h += '<div class="gf"><b>Cuadrilla ' + cu + "</b><span>" + ["", "4,6 de 6 j", "5,5 de 6 j", "5 de 6 j", "4 de 6 j", "3 de 6 j"][cu] + "</span></div>";
+      COLS.forEach((c, i) => {
+        h += '<div class="cel' + (c.fer ? " fer" : "") + '">';
+        if (!c.fer) OTS.filter(o => o.cu === cu && i >= o.c && i < o.c + o.dias).forEach(o => { h += tarjeta(o, i); });
+        h += "</div>";
+      });
+    }
+    $("grilla").innerHTML = h;
+  }
+
+  function fila(o) {
+    let der = "";
+    if (!o.pm) der = puedeTomar() ? '<button class="btn-tomar" data-tomar="' + o.ot + '">Tomar</button>' : "";
+    else if (o.pm === est.yo) der = '<button class="btn-link" data-soltar="' + o.ot + '">Soltar</button>';
+    else der = chip(o.pm);
+    return '<div class="fila' + (o.pm ? "" : " sinpm") + '"><button class="d" data-ir="' + o.ot + '">' + o.dir + "</button>" + der +
+      '<div class="m">' + o.que + " · " + o.cuando + (o.urg && !o.pm ? " ⚠︎" : "") + "</div></div>";
+  }
+  function grupo(titulo, lista, vacio) {
+    return '<div class="grupo-lista"><h3><span>' + titulo + "</span><span>" + lista.length + "</span></h3>" +
+      (lista.length ? lista.map(fila).join("") : '<div class="vacio">' + vacio + "</div>") + "</div>";
+  }
+
+  function renderPanel() {
+    const a = armados();
+    if (est.modo !== "pm") {
+      const b = a.filter(o => o.bandeja);
+      $("panel").innerHTML = '<div class="panel-cab"><h2>Sin asignar <span class="insignia" style="background:var(--muted);color:var(--fg)">' + b.length + "</span></h2></div>" +
+        '<div class="grupo-lista">' + b.map(o => '<div class="fila"><span class="d">' + o.dir + '</span><span></span><div class="m">↑ Armado · ' + o.cuando + "</div></div>").join("") + "</div>" +
+        '<div class="det-panel">Es la bandeja de siempre. En modo PM esta columna pasa a ser la lista de proyectos.</div>';
+      return;
+    }
+    const sin = a.filter(o => !o.pm);
+    const otro = est.yo === "aug" ? "jua" : "jua" === est.yo ? "aug" : null;
+    let h = '<div class="panel-cab"><h2>Proyectos</h2><span class="etiq">' + (est.yo === "ops" ? "Operaciones" : "Vos: " + P[est.yo].n) + "</span></div>";
+    h += grupo("Sin PM · esta semana", sin.filter(o => !o.fuera && !o.bandeja), "Todo tomado.");
+    h += grupo("Sin PM · más adelante", sin.filter(o => o.fuera), "Todo tomado.");
+    h += grupo("Sin PM · sin fecha todavía", sin.filter(o => o.bandeja), "Todo tomado.");
+    if (est.yo === "ops") {
+      h += grupo("De Augusto", a.filter(o => o.pm === "aug"), "Ninguno.");
+      h += grupo("De Juani", a.filter(o => o.pm === "jua"), "Ninguno.");
+    } else {
+      h += grupo("Míos", a.filter(o => o.pm === est.yo), "Todavía no tomaste ninguno.");
+      h += grupo("De " + P[otro].n, a.filter(o => o.pm === otro), "Ninguno.");
+    }
+    $("panel").innerHTML = h;
+  }
+
+  function render() {
+    document.body.classList.toggle("pm", est.modo === "pm");
+    document.body.classList.toggle("sinpm-rojo", est.color === "rojo");
+    ["aug", "jua", "ops"].forEach(v => $("v-" + v).setAttribute("aria-pressed", String(est.yo === v)));
+    ["cliente", "ejecutar", "pm"].forEach(m => $("m-" + m).setAttribute("aria-pressed", String(est.modo === m)));
+    ["ambar", "rojo"].forEach(c => $("c-" + c).setAttribute("aria-pressed", String(est.color === c)));
+    $("insignia").textContent = armados().filter(o => !o.pm).length;
+    renderGrilla(); renderPanel();
+  }
+
+  function flash(ot) {
+    const els = document.querySelectorAll('[data-card="' + ot + '"]');
+    if (els[0]) els[0].scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
+    els.forEach(el => { el.classList.add("flash"); setTimeout(() => el.classList.remove("flash"), 750); });
+  }
+  const buscar = ot => OTS.find(o => o.ot === +ot);
+
+  function tomar(o, quien) {
+    if (o.pm) { render(); return; }
+    if (o.carrera && quien === "aug" && est.yo === "aug") {
+      o.carrera = false; o.pm = "jua"; render(); flash(o.ot);
+      toast("Ya lo tomó Juani hace unos segundos. Quedó a su nombre.", true); return;
+    }
+    o.carrera = false; o.pm = quien; render(); flash(o.ot);
+    toast(est.yo === "ops" ? "Asignaste " + o.dir + " a " + P[quien].n + "." : "Tomaste " + o.dir + ". Operaciones ya te ve como PM.");
+  }
+
+  function abrirMenu(btn, o) {
+    const m = $("menu");
+    let h = "";
+    if (o.tipo === "armado") {
+      h += '<div class="sec">Proyecto</div>';
+      if (est.yo === "ops") {
+        ["aug", "jua"].forEach(p => { if (o.pm !== p) h += '<button class="nuevo" data-asignar="' + p + '">' + av(p) + "Asignar a " + P[p].n + "</button>"; });
+        if (o.pm) h += '<button class="nuevo" data-soltar="' + o.ot + '">Quitar PM</button>';
+      } else if (!o.pm) {
+        h += '<button class="nuevo" data-tomar="' + o.ot + '">' + av(est.yo) + "Tomar como PM</button>";
+      } else if (o.pm === est.yo) {
+        const otro = est.yo === "aug" ? "jua" : "aug";
+        h += '<button class="nuevo" data-pasar="' + otro + '">' + av(otro) + "Pasársela a " + P[otro].n + "</button>";
+        h += '<button class="nuevo" data-soltar="' + o.ot + '">Soltar</button>';
+      } else {
+        h += '<button disabled>' + av(o.pm) + "La tiene " + P[o.pm].n + "</button>";
+      }
+      h += "<hr>";
+    } else {
+      h += '<div class="sec">Los ' + (o.tipo === "desarme" ? "desarmes" : "mantenimientos") + " no llevan PM</div><hr>";
+    }
+    h += "<button disabled>Volver a tentativa</button><button disabled>Fijar: no se mueve de este día</button><button disabled>Marcar como comodín</button><button disabled>Jornadas de la obra</button><button disabled>Fracción de jornada ›</button><hr><button disabled class=\"rojo\">Quitar del tablero</button>";
+    m.innerHTML = h; m.hidden = false; est.menuOt = o.ot;
+    const r = btn.getBoundingClientRect();
+    const x = Math.min(r.right - 250, window.innerWidth - 262), y = Math.min(r.bottom + 4, window.innerHeight - m.offsetHeight - 8);
+    m.style.left = Math.max(8, x) + "px"; m.style.top = Math.max(8, y) + "px";
+  }
+  function cerrarMenu() { $("menu").hidden = true; est.menuOt = null; }
+
+  document.addEventListener("click", e => {
+    const t = e.target;
+    const k = t.closest("[data-menu]");
+    if (k) { e.stopPropagation(); const o = buscar(k.dataset.menu); est.menuOt === o.ot ? cerrarMenu() : abrirMenu(k, o); return; }
+    const enMenu = t.closest("#menu");
+    const mo = est.menuOt ? buscar(est.menuOt) : null;
+    if (enMenu) {
+      const as = t.closest("[data-asignar]"), pa = t.closest("[data-pasar]");
+      if (as) { cerrarMenu(); mo.pm = null; mo.carrera = false; tomar(mo, as.dataset.asignar); return; }
+      if (pa) { cerrarMenu(); mo.pm = pa.dataset.pasar; render(); flash(mo.ot); toast("Le pasaste " + mo.dir + " a " + P[mo.pm].n + "."); return; }
+    }
+    const tm = t.closest("[data-tomar]");
+    if (tm) { cerrarMenu(); tomar(buscar(tm.dataset.tomar), est.yo); return; }
+    const sl = t.closest("[data-soltar]");
+    if (sl) { cerrarMenu(); const o = buscar(sl.dataset.soltar); o.pm = null; render(); flash(o.ot); toast((est.yo === "ops" ? "Quitaste el PM de " : "Soltaste ") + o.dir + "."); return; }
+    if (!enMenu) cerrarMenu();
+    const ir = t.closest("[data-ir]");
+    if (ir) { const o = buscar(ir.dataset.ir); if (o.fuera || o.bandeja) toast(o.bandeja ? o.dir + " todavía no tiene fecha: está en la bandeja." : o.dir + " cae la semana que viene: el tablero se correría hasta ahí."); else flash(o.ot); return; }
+    const v = t.closest("[data-v]"); if (v) { est.yo = v.dataset.v; render(); return; }
+    const m = t.closest("[data-m]"); if (m) { est.modo = m.dataset.m; render(); return; }
+    const c = t.closest("[data-c]"); if (c) { est.color = c.dataset.c; render(); return; }
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") cerrarMenu(); });
+  window.addEventListener("scroll", cerrarMenu, { passive: true });
+  render();
+})();
+</script>

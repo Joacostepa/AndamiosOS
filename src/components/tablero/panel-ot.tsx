@@ -6,7 +6,7 @@ import { es } from "date-fns/locale";
 import {
   AlertTriangle, CalendarPlus, Check, ChevronDown, ChevronLeft, ChevronRight, CircleCheck,
   CircleDashed, ClipboardCheck, Construction, ExternalLink, Fence, FileText, LocateFixed,
-  MapPin, MoreHorizontal, Phone, Pin, PinOff, Plus, CalendarRange, Siren, Spade, Trash2, X,
+  MapPin, MoreHorizontal, Phone, Pin, PinOff, Plus, CalendarRange, Siren, Spade, Trash2, UserRound, UserRoundX, X,
 } from "lucide-react";
 import { useRef, useState } from "react";
 import { useDetalleOt } from "@/hooks/use-detalle-ot";
@@ -26,7 +26,7 @@ import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  ALERTA, NOTA, OK, PELIGRO, PELIGRO_SOLIDO, semaforo,
+  ALERTA, AVISO, CORAL, NOTA, OK, PELIGRO, PELIGRO_SOLIDO, semaforo,
 } from "@/lib/tablero/colores";
 import { FRACCIONES, fraccionLabel, type FraccionStr } from "@/lib/tablero/fracciones";
 import { accionDeCierre, jornadasCerradas, jornadasLiberables, type AccionCierre } from "@/lib/tablero/cierre";
@@ -40,6 +40,7 @@ import {
 import { Button } from "@/components/ui/button";
 import type { Bloque } from "@/lib/tablero/bloques";
 import type { ContactoObra, DocumentoOt, OtTablero, TrabajoOt } from "@/lib/tablero/tipos";
+import type { AccionPm } from "@/lib/tablero/pm";
 
 // Panel lateral de la OT: todo lo que hace falta para coordinar la jornada sin salir
 // del tablero. La carga de partes, el circuito de habilitación y los costos viven en
@@ -790,7 +791,13 @@ export function PanelOt({
   marcadoPor = null,
   accionComodin = null,
   onMeterUrgente,
+  pm = null,
 }: {
+  /**
+   * El PM de la obra (19/11): va en Contactos, con el técnico y el vendedor, y sus opciones
+   * (tomar, pasar, soltar) en el ⋯. `nombre` null = sin PM. null entero = la obra no lleva PM.
+   */
+  pm?: { nombre: string | null; acciones: AccionPm[] | null } | null;
   /** La obra es un comodín (guardias-contrato.md §2, 18/10): el chip con el naipe en el encabezado. */
   comodin?: Comodin | null;
   /** Quién la marcó como comodín, para el tooltip del chip. */
@@ -960,9 +967,16 @@ export function PanelOt({
   //
   // "Marcar como comodín" va en el mismo ⋯ (contrato §2, 18/10): es una decisión sobre la obra
   // que se toma con calma, de a una. El chip del encabezado ya dice si lo es.
+  const accionesPm = pm?.acciones ?? [];
   const itemsMas =
-    (onMeterUrgente && ot.urgencia !== "alta") || accionComodin ? (
+    (onMeterUrgente && ot.urgencia !== "alta") || accionComodin || accionesPm.length > 0 ? (
       <>
+        {accionesPm.map((a) => (
+          <DropdownMenuItem key={a.clave} onClick={a.onClick} style={a.quitar ? { color: CORAL } : undefined}>
+            {a.quitar ? <UserRoundX /> : <UserRound />}
+            {a.etiqueta}
+          </DropdownMenuItem>
+        ))}
         {onMeterUrgente && ot.urgencia !== "alta" && (
           <DropdownMenuItem onClick={onMeterUrgente}>
             <Siren />
@@ -1334,9 +1348,21 @@ export function PanelOt({
 
             {/* TÉCNICO Y VENDEDOR como contactos y no como datos de la venta: para
                 Operaciones son a quién preguntarle cuando algo de la obra no cierra. */}
-            {(tecnico || vendedor) && (
+            {(tecnico || vendedor || pm) && (
               <div className="space-y-1.5">
                 <p className="text-xs text-muted-foreground">En ABA</p>
+                {pm && (
+                  <p className="text-sm">
+                    {pm.nombre ? (
+                      <span className="font-medium">{pm.nombre}</span>
+                    ) : (
+                      <span className="rounded px-1 font-medium" style={{ backgroundColor: AVISO.fondo, color: AVISO.texto }}>
+                        Sin PM
+                      </span>
+                    )}
+                    <span className="text-muted-foreground"> · PM de la obra</span>
+                  </p>
+                )}
                 {tecnico && (
                   <p className="text-sm">
                     <span className="font-medium">{tecnico}</span>

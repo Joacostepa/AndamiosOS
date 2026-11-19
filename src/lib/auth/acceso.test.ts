@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { motivoDeRechazoApi, moduloDeRuta, nivelEn, normalizarPermisos, puedeAbrir, type Acceso, type Permisos } from "./acceso.ts";
+import { inicioDe, motivoDeRechazoApi, moduloDeRuta, nivelEn, normalizarPermisos, puedeAbrir, type Acceso, type Permisos } from "./acceso.ts";
 
 const persona = (rol: Acceso["rol"], permisos: Permisos = {}): Acceso => ({ rol, activo: true, permisos, debeCambiarClave: false });
 
@@ -240,4 +240,19 @@ test("Segunda llave: las rutas de planificación que escriben piden editar", asy
   assert.equal(motivoDeRechazoApi(soloPartes, "/api/planificacion/notas", "POST"), null);
   assert.equal(motivoDeRechazoApi(soloPartes, "/api/planificacion/partes", "PATCH"), null);
   assert.ok(motivoDeRechazoApi(soloPartes, "/api/planificacion/cajon", "PUT"));
+});
+
+test("PM de obras: tomar con Planificación en «ver», sin abrir el resto del tablero", async () => {
+  const oficinaTecnica = persona("campo", { planificacion: "ver", "planificacion-pm": "editar" });
+  assert.equal(motivoDeRechazoApi(oficinaTecnica, "/api/planificacion/pm", "GET"), null);
+  assert.equal(motivoDeRechazoApi(oficinaTecnica, "/api/planificacion/pm", "POST"), null);
+  assert.equal(motivoDeRechazoApi(oficinaTecnica, "/api/planificacion/pm", "DELETE"), null);
+  // El permiso de PM no abre las escrituras del tablero.
+  assert.match(motivoDeRechazoApi(oficinaTecnica, "/api/planificacion/asignaciones", "POST") ?? "", /sólo lectura/);
+  // Comercial ve los PMs pero no toma.
+  const comercial = await perfil("comercial");
+  assert.equal(motivoDeRechazoApi(comercial, "/api/planificacion/pm", "GET"), null);
+  assert.ok(motivoDeRechazoApi(comercial, "/api/planificacion/pm", "POST"));
+  // Un módulo sin pantalla no es destino de inicio.
+  assert.equal(inicioDe(persona("campo", { "planificacion-pm": "editar" })), "/alertas");
 });

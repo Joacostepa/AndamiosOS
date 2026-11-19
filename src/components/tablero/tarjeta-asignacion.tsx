@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
-import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, CalendarRange, Circle, Check, CircleCheck, CircleDashed, ClipboardCheck, Lock, MessageSquare, MoreVertical, PanelRightOpen, Pencil, Pin, PinOff, ShieldCheck, Spade, Trash2, Users, Wrench } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, CalendarRange, Circle, Check, CircleCheck, CircleDashed, ClipboardCheck, Lock, MessageSquare, MoreVertical, PanelRightOpen, Pencil, Pin, PinOff, ShieldCheck, Spade, Trash2, UserRound, UserRoundX, Users, Wrench } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -34,7 +34,9 @@ import {
   PELIGRO_TEXTO,
   APOYO,
   RAYADO_APOYO,
+  AVISO,
 } from "@/lib/tablero/colores";
+import type { AccionPm, PmEnTarjeta } from "@/lib/tablero/pm";
 import { partesTitulo, direccionDeObra, direccionCorta, nombrePropio } from "@/lib/tablero/titulo";
 import { jornadasLiberables } from "@/lib/tablero/cierre";
 import type { Bloque, Colocacion } from "@/lib/tablero/bloques";
@@ -127,7 +129,13 @@ export function ContenidoTarjeta({
   chipsApoyo = [],
   deGuardia = null,
   comodin = null,
+  pm = null,
 }: {
+  /**
+   * MODO PM (19/11): el segundo renglón dice quién es el PM de la obra, o "Sin PM · Tomar".
+   * null = el modo está apagado o la obra no lleva PM (un desarme, una tarea).
+   */
+  pm?: PmEnTarjeta | null;
   /**
    * Esta jornada OCUPA UNA GUARDIA que se usó para ella (guardias-contrato.md §1.6: "usada o
    * rellenada: se ve la obra que la usa, con un chip 'de guardia'"). Sale de las
@@ -488,7 +496,8 @@ export function ContenidoTarjeta({
         )}
       </div>
 
-      {!unaLinea && (
+      {!unaLinea && pm && <RenglonPm pm={pm} />}
+      {!unaLinea && !pm && (
       <p
         // 11px y sin opacidad: a 10px y al 75% quedaba debajo del contraste mínimo.
         className="truncate text-[11px] leading-tight text-foreground/75"
@@ -532,6 +541,63 @@ export function ContenidoTarjeta({
       </p>
       )}
     </div>
+  );
+}
+
+/**
+ * El segundo renglón en MODO PM: "PM Augusto", o "Sin PM" y el botón "Tomar".
+ *
+ * ÁMBAR Y NO ROJO (decisión de JS, 19/11): en el tablero el rojo ya dice sin habilitar,
+ * urgente, sin parte y no ejecutada. "Sin PM" es "mirá esto"; recién pasa a rojo cuando la
+ * obra arranca en dos días hábiles o menos y nadie la tomó.
+ *
+ * El botón frena el pointerdown y el clic: si no, el clic abriría la ficha de la obra y el
+ * pointerdown empezaría un arrastre.
+ */
+function RenglonPm({ pm }: { pm: PmEnTarjeta }) {
+  if (pm.nombre) {
+    return (
+      <p className="flex min-w-0 items-center gap-1 truncate text-[11px] leading-tight text-foreground/80">
+        <UserRound className="h-3 w-3 shrink-0" />
+        <span className="truncate font-medium">PM {pm.nombre}</span>
+        {pm.esMio && <span className="shrink-0 text-foreground/60">· vos</span>}
+      </p>
+    );
+  }
+  const color = pm.urgente ? PELIGRO_TEXTO : AVISO.texto;
+  return (
+    <p className="flex min-w-0 items-center gap-1.5 text-[11px] leading-tight">
+      <span
+        className="shrink-0 rounded px-1 font-semibold"
+        style={{ backgroundColor: pm.urgente ? PELIGRO_SUAVE : AVISO.fondo, color, border: `1px solid ${pm.urgente ? PELIGRO : AVISO.borde}` }}
+      >
+        Sin PM
+      </span>
+      {pm.onTomar && (
+        <button
+          type="button"
+          className="shrink-0 rounded-full px-2 font-semibold text-white"
+          style={{ backgroundColor: CORAL }}
+          // Los sensores del tablero son de mouse y de toque (no de puntero): hay que frenar
+          // los tres para que apretar "Tomar" no empiece a arrastrar la tarjeta.
+          onPointerDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            pm.onTomar?.();
+          }}
+        >
+          Tomar
+        </button>
+      )}
+      {pm.urgente && (
+        <span className="truncate font-medium" style={{ color }}>
+          arranca ya
+        </span>
+      )}
+    </p>
   );
 }
 
@@ -675,6 +741,9 @@ export function TarjetaAsignacion({
   comodin = null,
   accionComodin = null,
   atenuada = false,
+  pm = null,
+  accionesPm = null,
+  soloVer = false,
   onCerrarJornada,
   onAbrir,
   onFraccion,
@@ -735,6 +804,16 @@ export function TarjetaAsignacion({
    * §2.3: "se resaltan las guardias donde puede ir y lo demás se atenúa").
    */
   atenuada?: boolean;
+  /** Modo PM: el renglón del PM. Ver ContenidoTarjeta. */
+  pm?: PmEnTarjeta | null;
+  /** La sección "Proyecto" del ⋮ (tomar, asignar, pasar, soltar). null = sin sección. */
+  accionesPm?: AccionPm[] | null;
+  /**
+   * Quien mira tiene Planificación en «ver» (Oficina Técnica, Comercial): la tarjeta no se
+   * arrastra (el tablero no le pasa sensores) y el ⋮ ofrece sólo abrir la obra, el parte y
+   * el PM. Antes veía todas las opciones y cada una rebotaba con un 403.
+   */
+  soloVer?: boolean;
   onCerrarJornada: (accion: NonNullable<AccionCierre>) => void;
   onAbrir: () => void;
   onFraccion: (f: FraccionStr) => void;
@@ -811,6 +890,9 @@ export function TarjetaAsignacion({
         opacity: isDragging ? 0.35 : atenuada ? 0.4 : vencidaSinParte ? 1 : ejecutada ? 0.55 : 1,
         outline: seleccionada ? `2px solid ${CORAL}` : isOver ? `2px dashed ${CORAL}` : undefined,
         outlineOffset: "-1px",
+        // Modo PM: la obra sin PM se rodea de ámbar (de rojo si arranca ya). Es un anillo por
+        // FUERA y no el borde: el borde ya dice tentativa, sin parte y no ejecutada.
+        boxShadow: pm && !pm.nombre ? `0 0 0 2px ${pm.urgente ? PELIGRO : AVISO.borde}` : undefined,
         // Táctil: sin demora de doble toque, y sin el menú de "copiar / compartir" que iOS
         // abre al mantener apretado, que es justo el gesto que agarra la tarjeta (ver los
         // sensores en tablero-board).
@@ -823,7 +905,7 @@ export function TarjetaAsignacion({
         // scrollea el contenedor sola — el mismo síntoma que el auto-scroll, por otro
         // camino. La tarjeta es un agarre para arrastrar, no un texto para seleccionar.
         "group/tarjeta relative z-10 mx-0.5 select-none rounded-[4px] transition-opacity",
-        guardando ? "cursor-progress" : soloLectura ? "cursor-pointer" : "cursor-grab active:cursor-grabbing",
+        guardando ? "cursor-progress" : soloLectura || soloVer ? "cursor-pointer" : "cursor-grab active:cursor-grabbing",
       )}
       title={guardando ? "Guardando en Odoo…" : undefined}
       {...attributes}
@@ -861,6 +943,7 @@ export function TarjetaAsignacion({
         chipsApoyo={chipsApoyo}
         deGuardia={deGuardia}
         comodin={comodin}
+        pm={pm}
       />
 
       {/* El menú no aparece mientras se guarda: todas sus opciones escriben, y con el id
@@ -900,6 +983,22 @@ export function TarjetaAsignacion({
             <MoreVertical className="h-3 w-3" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
+            {/* PROYECTO VA PRIMERO: en modo PM es a lo que se viene, y para quien sólo ve el
+                tablero es casi lo único que hay. Es sobre la OBRA, no sobre este día. */}
+            {accionesPm && accionesPm.length > 0 && !bloque.apoyo && !bloque.tarea && (
+              <>
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>Proyecto (PM)</DropdownMenuLabel>
+                  {accionesPm.map((a) => (
+                    <DropdownMenuItem key={a.clave} onClick={a.onClick} style={a.quitar ? { color: CORAL } : undefined}>
+                      {a.quitar ? <UserRoundX className="mr-2 h-4 w-4" /> : <UserRound className="mr-2 h-4 w-4" />}
+                      {a.etiqueta}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuGroup>
+                <DropdownMenuSeparator />
+              </>
+            )}
             {/* UNA TAREA TIENE OTRO MENÚ. No se confirma (no es borrador: la puso
                 Operaciones y va), no tiene jornadas de obra que editar ni parte que
                 cerrar. Lo único que comparte con una obra es la fracción y el quitar. */}
@@ -913,6 +1012,22 @@ export function TarjetaAsignacion({
                 <ShieldCheck className="mr-2 h-4 w-4" />
                 Ver la guardia
               </DropdownMenuItem>
+            ) : soloVer ? (
+              <>
+                {/* Una tarea no tiene ficha: su único lugar es el diálogo de edición. */}
+                {!bloque.tarea && (
+                  <DropdownMenuItem onClick={onAbrir}>
+                    <PanelRightOpen className="mr-2 h-4 w-4" />
+                    Abrir la obra
+                  </DropdownMenuItem>
+                )}
+                {accionCierre && accionCierre.tipo === "ver" && (
+                  <DropdownMenuItem onClick={() => onCerrarJornada(accionCierre)}>
+                    <ClipboardCheck className="mr-2 h-4 w-4" />
+                    Ver parte
+                  </DropdownMenuItem>
+                )}
+              </>
             ) : bloque.apoyo ? (
               <>
                 <DropdownMenuItem onClick={onAbrir}>

@@ -1,0 +1,470 @@
+<title>Proyectos de Oficina Técnica</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Diseño: el lenguaje del tablero de AndamiosOS (neutros, armado en azul con flecha que sube,
+   coral para hoy y acciones). Cada técnico tiene su color; una tarjeta sin PM es blanca y punteada. */
+:root {
+  --font: "DM Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  --radius: .5rem;
+
+  --bg: oklch(.985 0 0); --card: oklch(1 0 0); --fg: oklch(.145 0 0);
+  --muted: oklch(.96 0 0); --muted-fg: oklch(.5 0 0); --border: oklch(.9 0 0);
+  --coral: #D85A30; --accent-btn: #B5461F; --on-accent: #ffffff; --coral-suave: #fbeee8;
+  --armado-bg: #e6f1fb; --armado-borde: #378add; --armado-text: #0c447c;
+  --desarme-bg: #faeeda; --desarme-borde: #ef9f27; --desarme-text: #633806;
+  --pasado: oklch(.955 0 0);
+  --peligro: #d92d20; --peligro-suave: #fdecea; --peligro-text: #912018;
+  --aviso-bg: #fef6e7; --aviso-borde: #f5d9a0; --aviso-text: #7a4405;
+  --aug: #0f766e; --aug-bg: #dff3f0; --aug-text: #0b4f4a;
+  --jua: #6d4fc7; --jua-bg: #ece7fb; --jua-text: #3e2a85;
+  --sombra: 0 1px 2px oklch(0 0 0 / 6%);
+  --sombra-alta: 0 8px 24px oklch(0 0 0 / 14%);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: oklch(.13 0 0); --card: oklch(.2 0 0); --fg: oklch(.93 0 0);
+    --muted: oklch(.25 0 0); --muted-fg: oklch(.68 0 0); --border: oklch(1 0 0 / 10%);
+    --coral: #E0693F; --accent-btn: #B5461F; --on-accent: #ffffff; --coral-suave: oklch(.28 .05 40);
+    --armado-bg: oklch(.27 .045 254); --armado-borde: oklch(.7 .14 254); --armado-text: oklch(.86 .06 254);
+    --desarme-bg: oklch(.28 .05 70); --desarme-borde: oklch(.75 .14 70); --desarme-text: oklch(.88 .07 75);
+    --pasado: oklch(.17 0 0);
+    --peligro: #f97066; --peligro-suave: oklch(.27 .06 25); --peligro-text: #fda29b;
+    --aviso-bg: oklch(.27 .05 75); --aviso-borde: oklch(.5 .09 75); --aviso-text: oklch(.88 .08 80);
+    --aug: #2dd4bf; --aug-bg: oklch(.3 .05 180); --aug-text: oklch(.9 .06 180);
+    --jua: #a78bfa; --jua-bg: oklch(.3 .07 290); --jua-text: oklch(.9 .05 290);
+    --sombra: 0 1px 2px oklch(0 0 0 / 40%);
+    --sombra-alta: 0 8px 24px oklch(0 0 0 / 50%);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: oklch(.13 0 0); --card: oklch(.2 0 0); --fg: oklch(.93 0 0);
+  --muted: oklch(.25 0 0); --muted-fg: oklch(.68 0 0); --border: oklch(1 0 0 / 10%);
+  --coral: #E0693F; --accent-btn: #B5461F; --on-accent: #ffffff; --coral-suave: oklch(.28 .05 40);
+  --armado-bg: oklch(.27 .045 254); --armado-borde: oklch(.7 .14 254); --armado-text: oklch(.86 .06 254);
+  --desarme-bg: oklch(.28 .05 70); --desarme-borde: oklch(.75 .14 70); --desarme-text: oklch(.88 .07 75);
+  --pasado: oklch(.17 0 0);
+  --peligro: #f97066; --peligro-suave: oklch(.27 .06 25); --peligro-text: #fda29b;
+  --aviso-bg: oklch(.27 .05 75); --aviso-borde: oklch(.5 .09 75); --aviso-text: oklch(.88 .08 80);
+  --aug: #2dd4bf; --aug-bg: oklch(.3 .05 180); --aug-text: oklch(.9 .06 180);
+  --jua: #a78bfa; --jua-bg: oklch(.3 .07 290); --jua-text: oklch(.9 .05 290);
+  --sombra: 0 1px 2px oklch(0 0 0 / 40%);
+  --sombra-alta: 0 8px 24px oklch(0 0 0 / 50%);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font); font-size: 14px; line-height: 1.45;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 96px;
+}
+.wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 20px; }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--coral); outline-offset: 2px; }
+.mono { font-family: var(--mono); font-size: 12px; font-variant-numeric: tabular-nums; }
+
+/* Encabezado */
+.top { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: flex-end; justify-content: space-between; }
+.miga { color: var(--muted-fg); font-size: 13px; }
+h1 { margin: 2px 0 0; font-size: 24px; font-weight: 700; letter-spacing: -.01em; text-wrap: balance; }
+.etiq { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted-fg); font-weight: 600; }
+.ver-como { display: grid; gap: 6px; }
+.seg { display: inline-flex; background: var(--muted); border-radius: 999px; padding: 3px; gap: 2px; flex-wrap: wrap; }
+.seg button { border: 0; background: transparent; padding: 6px 12px; border-radius: 999px; font-weight: 500; display: inline-flex; gap: 6px; align-items: center; color: var(--muted-fg); }
+.seg button[aria-pressed="true"] { background: var(--card); color: var(--fg); box-shadow: var(--sombra); }
+.ejemplo { font-size: 12px; color: var(--muted-fg); background: var(--muted); border-radius: 999px; padding: 3px 10px; }
+
+/* Avatares de persona */
+.av { width: 22px; height: 22px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 10px; font-weight: 700; letter-spacing: .02em; flex: none; }
+.av.aug { background: var(--aug); color: var(--card); }
+.av.jua { background: var(--jua); color: var(--card); }
+.av.ops { background: var(--fg); color: var(--bg); }
+
+/* Barra de resumen */
+.resumen { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { border: 1px solid var(--border); background: var(--card); border-radius: 999px; padding: 6px 12px; display: inline-flex; gap: 8px; align-items: center; font-weight: 500; }
+.chip b { font-variant-numeric: tabular-nums; }
+.chip[aria-pressed="true"] { border-color: var(--fg); box-shadow: inset 0 0 0 1px var(--fg); }
+.chip .punto { width: 8px; height: 8px; border-radius: 50%; }
+.check { display: inline-flex; gap: 8px; align-items: center; color: var(--muted-fg); font-size: 13px; cursor: pointer; }
+.check input { accent-color: var(--coral); }
+
+/* Calendario de oficina técnica */
+.semana { display: grid; gap: 8px; }
+.semana h2 { margin: 0; font-size: 13px; font-weight: 600; color: var(--muted-fg); }
+.dias { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.dia { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px; display: grid; align-content: start; gap: 8px; min-height: 120px; min-width: 0; }
+.dia.pasado { background: var(--pasado); }
+.dia.hoy { border-color: var(--coral); box-shadow: inset 0 0 0 1px var(--coral); }
+.dia-cab { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; color: var(--muted-fg); }
+.dia-cab b { color: var(--fg); font-size: 15px; font-variant-numeric: tabular-nums; }
+.dia.hoy .dia-cab span:last-child { color: var(--coral); font-weight: 700; text-transform: uppercase; letter-spacing: .05em; font-size: 11px; }
+.vacio { font-size: 12px; color: var(--muted-fg); opacity: .7; }
+
+.tj { border-radius: 6px; padding: 8px; display: grid; gap: 6px; min-width: 0; position: relative; transition: transform .12s ease, box-shadow .12s ease; }
+.tj.libre { background: var(--card); border: 1.5px dashed var(--armado-borde); }
+.tj.tomada { background: var(--armado-bg); border: 1.5px solid transparent; }
+.tj.mia.aug { border-color: var(--aug); box-shadow: inset 0 0 0 1px var(--aug); }
+.tj.mia.jua { border-color: var(--jua); box-shadow: inset 0 0 0 1px var(--jua); }
+.tj.urgente { border-color: var(--peligro); border-style: solid; background: var(--peligro-suave); }
+.tj.desarme { background: var(--desarme-bg); border: 1px solid transparent; opacity: .8; }
+.tj.flash { animation: flash .6s ease; }
+@keyframes flash { 0% { transform: scale(1); } 40% { transform: scale(1.03); box-shadow: var(--sombra-alta); } 100% { transform: scale(1); } }
+.tj-l1 { display: flex; justify-content: space-between; gap: 6px; align-items: center; font-size: 11px; }
+.tipo { font-weight: 700; color: var(--armado-text); display: inline-flex; gap: 3px; align-items: center; }
+.tj.desarme .tipo { color: var(--desarme-text); }
+.tj.urgente .tipo { color: var(--peligro-text); }
+.dir { font-weight: 700; font-size: 13.5px; line-height: 1.25; overflow-wrap: anywhere; }
+.det { font-size: 12px; color: var(--muted-fg); line-height: 1.35; }
+.tj.tomada .det { color: color-mix(in oklch, var(--armado-text) 75%, var(--muted-fg)); }
+.alarma { font-size: 11.5px; font-weight: 600; color: var(--peligro-text); display: flex; gap: 4px; align-items: center; }
+.pm { display: flex; align-items: center; justify-content: space-between; gap: 6px; flex-wrap: wrap; border-top: 1px solid color-mix(in oklch, var(--armado-borde) 25%, transparent); padding-top: 6px; }
+.pm-quien { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; font-weight: 600; }
+.pm-quien small { font-weight: 500; color: var(--muted-fg); }
+.btn-tomar { border: 0; background: var(--accent-btn); color: var(--on-accent); font-weight: 600; font-size: 12.5px; padding: 5px 12px; border-radius: 999px; }
+.btn-tomar:hover { filter: brightness(1.08); }
+.btn-soltar { border: 0; background: transparent; color: var(--muted-fg); font-size: 12px; text-decoration: underline; text-underline-offset: 2px; padding: 2px 0; }
+.sin-pm { font-size: 12px; color: var(--muted-fg); }
+
+/* Vista de operaciones */
+.ops-cab { display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; align-items: center; }
+.nav-sem { display: inline-flex; gap: 6px; align-items: center; }
+.nav-sem button { border: 1px solid var(--border); background: var(--card); border-radius: 6px; padding: 5px 10px; }
+.nav-sem span { font-weight: 600; min-width: 170px; text-align: center; font-variant-numeric: tabular-nums; }
+.grilla-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); }
+.grilla { display: grid; grid-template-columns: 110px repeat(5, minmax(150px, 1fr)); min-width: 860px; }
+.grilla > div { border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 6px; min-width: 0; }
+.grilla > div:nth-child(6n) { border-right: 0; }
+.g-cab { font-size: 12px; color: var(--muted-fg); font-weight: 600; background: var(--muted); }
+.g-cab.hoy { color: var(--coral); }
+.g-fila { font-weight: 600; font-size: 13px; display: flex; align-items: center; background: var(--muted); }
+.g-celda { display: grid; gap: 6px; align-content: start; min-height: 64px; }
+.g-celda.pasado { background: var(--pasado); }
+.op { border-radius: 6px; padding: 6px 8px; display: grid; gap: 4px; font-size: 12px; }
+.op.armado { background: var(--armado-bg); color: var(--armado-text); }
+.op.desarme { background: var(--desarme-bg); color: var(--desarme-text); }
+.op-dir { font-weight: 700; display: flex; gap: 4px; align-items: baseline; justify-content: space-between; }
+.op-dir small { font-family: var(--mono); font-size: 10.5px; font-weight: 500; opacity: .8; white-space: nowrap; }
+.op-pm { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; font-size: 11.5px; border-radius: 999px; padding: 2px 8px 2px 2px; width: fit-content; }
+.op-pm .av { width: 18px; height: 18px; font-size: 9px; }
+.op-pm.aug { background: var(--aug-bg); color: var(--aug-text); }
+.op-pm.jua { background: var(--jua-bg); color: var(--jua-text); }
+.op-pm.nadie { background: var(--aviso-bg); color: var(--aviso-text); border: 1px solid var(--aviso-borde); padding: 1px 8px; }
+.leyenda { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--muted-fg); align-items: center; }
+.leyenda span { display: inline-flex; gap: 6px; align-items: center; }
+.cuadradito { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+
+/* Cómo lo haría */
+.como { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 16px; }
+.panel { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; min-width: 0; }
+.panel h3 { margin: 0 0 10px; font-size: 15px; }
+.panel ol, .panel ul { margin: 0; padding-left: 20px; display: grid; gap: 8px; }
+.panel li { max-width: 68ch; }
+.panel code { font-family: var(--mono); font-size: 12px; background: var(--muted); padding: 1px 5px; border-radius: 4px; }
+
+/* Aviso flotante */
+.toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%) translateY(20px); opacity: 0; pointer-events: none;
+  background: var(--fg); color: var(--bg); padding: 10px 16px; border-radius: 10px; box-shadow: var(--sombra-alta); font-weight: 500; max-width: min(520px, calc(100vw - 32px)); transition: opacity .2s, transform .2s; display: flex; gap: 10px; align-items: center; }
+.toast.ver { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
+.toast.alerta { background: var(--peligro); color: #fff; }
+
+@media (max-width: 760px) {
+  .dias { grid-template-columns: minmax(0, 1fr); }
+  .dia { min-height: 0; }
+  .dia.sin-nada:not(.hoy) { display: none; }
+  .como { grid-template-columns: minmax(0, 1fr); }
+  .nav-sem span { min-width: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tj, .toast { transition: none; }
+  .tj.flash { animation: none; }
+}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <div class="miga">Oficina técnica › Proyectos</div>
+      <h1 id="titulo">Armados que vienen</h1>
+    </div>
+    <div class="ver-como">
+      <span class="etiq">Ver como</span>
+      <div class="seg" role="group" aria-label="Ver como">
+        <button id="v-aug" data-v="aug" aria-pressed="true"><span class="av aug">AU</span>Augusto</button>
+        <button id="v-jua" data-v="jua" aria-pressed="false"><span class="av jua">JI</span>Juani</button>
+        <button id="v-ops" data-v="ops" aria-pressed="false"><span class="av ops">OP</span>Operaciones</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Vista Oficina Técnica -->
+  <section id="vista-ot" class="wrap" style="gap:16px">
+    <div class="resumen">
+      <div class="chips" role="group" aria-label="Filtrar">
+        <button class="chip" id="f-todos" data-f="todos" aria-pressed="true">Todos <b id="n-todos">0</b></button>
+        <button class="chip" id="f-libres" data-f="libres" aria-pressed="false"><span class="punto" style="background:var(--coral)"></span>Sin PM <b id="n-libres">0</b></button>
+        <button class="chip" id="f-mios" data-f="mios" aria-pressed="false"><span class="punto" id="punto-mio"></span>Míos <b id="n-mios">0</b></button>
+      </div>
+      <div class="chips" style="align-items:center">
+        <label class="check"><input type="checkbox" id="ver-desarmes"> Ver desarmes (no llevan PM)</label>
+        <span class="ejemplo">Datos de ejemplo</span>
+      </div>
+    </div>
+    <div id="calendario" class="wrap" style="gap:18px"></div>
+  </section>
+
+  <!-- Vista Operaciones -->
+  <section id="vista-ops" class="wrap" style="gap:12px" hidden>
+    <div class="ops-cab">
+      <div class="leyenda">
+        <span><i class="cuadradito" style="background:var(--armado-bg);border:1px solid var(--armado-borde)"></i>↑ Armado</span>
+        <span><i class="cuadradito" style="background:var(--desarme-bg);border:1px solid var(--desarme-borde)"></i>↓ Desarme</span>
+        <span><span class="op-pm aug"><span class="av aug">AU</span>Augusto</span></span>
+        <span><span class="op-pm jua"><span class="av jua">JI</span>Juani</span></span>
+        <span><span class="op-pm nadie">Sin PM</span></span>
+      </div>
+      <div class="nav-sem">
+        <button id="sem-ant" aria-label="Semana anterior">‹</button>
+        <span id="sem-label"></span>
+        <button id="sem-sig" aria-label="Semana siguiente">›</button>
+      </div>
+    </div>
+    <div class="grilla-scroll"><div class="grilla" id="grilla"></div></div>
+    <p class="det" style="margin:0">Así se vería en el tablero de planificación: la misma tarjeta de siempre, con el PM abajo. Si un armado está por arrancar sin PM, operaciones lo ve en ámbar.</p>
+  </section>
+
+  <section class="como">
+    <div class="panel">
+      <h3>Cómo lo armaría</h3>
+      <ol>
+        <li><b>Una pantalla nueva en Oficina técnica › Proyectos.</b> Lee del tablero las OTs de <b>armado</b> de las próximas 3 semanas y las muestra por día de inicio. Los desarmes no aparecen (se pueden prender para tener contexto).</li>
+        <li><b>Tomar es un botón.</b> Augusto o Juani tocan «Tomar» y la tarjeta queda a su nombre. Si se equivocan, «Soltar» la libera.</li>
+        <li><b>No se pueden pisar.</b> Cada OT tiene un solo lugar para el PM en la base de datos. Si los dos tocan al mismo tiempo, gana el primero y al otro le aparece «Ya lo tomó Juani». Probalo: como Augusto, tocá «Tomar» en Av. Monroe 2870.</li>
+        <li><b>Operaciones lo ve en su tablero.</b> La tarjeta del armado muestra quién es el PM, o «Sin PM» en ámbar si falta.</li>
+        <li><b>Alerta de lo que se viene.</b> Un armado que arranca en 2 días hábiles o menos y nadie tomó se pone en rojo. Opcional: un aviso push a los dos.</li>
+      </ol>
+    </div>
+    <div class="panel">
+      <h3>Para definir</h3>
+      <ul>
+        <li>¿Las <b>ampliaciones</b> también llevan PM, o sólo los armados?</li>
+        <li>¿Uno puede sacarle un proyecto al otro, o eso lo hacés sólo vos (o Juan Agustín)?</li>
+        <li>¿Querés que les llegue un push cuando entra un armado nuevo o cuando uno queda sin PM a 2 días?</li>
+        <li>¿El PM debería figurar también en el parte diario o en la ficha del cliente?</li>
+      </ul>
+      <p class="det" style="margin:12px 0 0">Para guardar quién tomó cada OT alcanza con una tabla chica en Supabase (<code>ot_pm</code>: la OT, la persona y cuándo la tomó). No hace falta tocar Odoo.</p>
+    </div>
+  </section>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function () {
+  const PERS = { aug: { nombre: "Augusto", ini: "AU" }, jua: { nombre: "Juani", ini: "JI" } };
+  const HOY = 3; // jueves 19/11, índice en días hábiles desde el lunes 16/11
+  const LUNES = new Date(2026, 10, 16);
+  const DIAS_SEM = ["lun", "mar", "mié", "jue", "vie"];
+
+  function fecha(i) {
+    const sem = Math.floor(i / 5), d = i % 5;
+    const f = new Date(LUNES); f.setDate(LUNES.getDate() + sem * 7 + d); return f;
+  }
+  function dm(i) { const f = fecha(i); return f.getDate() + "/" + (f.getMonth() + 1); }
+
+  const BASE = [
+    { ot: 2271, dir: "Av. del Libertador 5980", barrio: "Núñez", que: "Estructura + pantalla", alt: "PB + 9", ini: 0, dias: 5, cuad: 1, pm: "jua" },
+    { ot: 2275, dir: "Gurruchaga 1650", barrio: "Palermo", que: "Pantalla de protección", alt: "PB + 6", ini: 2, dias: 2, cuad: 4, pm: "aug" },
+    { ot: 2280, dir: "Av. Cabildo 3260", barrio: "Belgrano", que: "Estructura sin pantalla", alt: "PB + 4", ini: 4, dias: 2, cuad: 3, pm: null },
+    { ot: 2283, dir: "Thames 1820", barrio: "Palermo", que: "Pantalla de protección", alt: "PB + 5", ini: 5, dias: 1, cuad: 4, pm: null },
+    { ot: 2286, dir: "Ing. Huergo 913", barrio: "San Telmo", que: "Estructura + pantalla", alt: "PB + 11", ini: 5, dias: 3, cuad: 2, pm: "aug" },
+    { ot: 2291, dir: "Av. Monroe 2870", barrio: "Belgrano", que: "Torre", alt: "12 m", ini: 6, dias: 1, cuad: 1, pm: null, carrera: true },
+    { ot: 2294, dir: "Arenales 2140", barrio: "Recoleta", que: "Estructura + pantalla", alt: "PB + 8", ini: 7, dias: 4, cuad: 3, pm: "jua" },
+    { ot: 2297, dir: "Av. Rivadavia 6150", barrio: "Caballito", que: "Pantalla de protección", alt: "PB + 7", ini: 8, dias: 2, cuad: 5, pm: null },
+    { ot: 2301, dir: "Olazábal 4720", barrio: "Villa Urquiza", que: "Apuntalamiento vertical", alt: "2 losas", ini: 10, dias: 2, cuad: 2, pm: null },
+    { ot: 2303, dir: "Juramento 2455", barrio: "Belgrano", que: "Estructura + pantalla", alt: "PB + 10", ini: 10, dias: 5, cuad: 1, pm: "aug" },
+    { ot: 2306, dir: "Bulnes 1180", barrio: "Almagro", que: "Plataforma", alt: "6 m", ini: 11, dias: 1, cuad: 4, pm: null },
+    { ot: 2309, dir: "Av. Corrientes 4380", barrio: "Almagro", que: "Pantalla de protección", alt: "PB + 6", ini: 12, dias: 3, cuad: 5, pm: "jua" },
+    { ot: 2312, dir: "Echeverría 3010", barrio: "Belgrano", que: "Estructura sin pantalla", alt: "PB + 3", ini: 13, dias: 2, cuad: 3, pm: null },
+    { ot: 2315, dir: "Defensa 1340", barrio: "San Telmo", que: "Sercha", alt: "4 m", ini: 14, dias: 1, cuad: 2, pm: null },
+  ];
+  const DESARMES = [
+    { ot: 2190, dir: "Av. Santa Fe 3420", barrio: "Palermo", ini: 1, dias: 1, cuad: 2 },
+    { ot: 2205, dir: "Pampa 2290", barrio: "Belgrano", ini: 6, dias: 2, cuad: 5 },
+    { ot: 2211, dir: "Vidal 1650", barrio: "Belgrano", ini: 9, dias: 1, cuad: 4 },
+    { ot: 2218, dir: "Medrano 950", barrio: "Almagro", ini: 12, dias: 1, cuad: 1 },
+  ];
+
+  const est = {
+    vista: "aug", filtro: "todos", desarmes: false, semOps: 0,
+    armados: BASE.map(a => ({ ...a })),
+  };
+
+  const $ = id => document.getElementById(id);
+  let toastT;
+  function toast(msg, alerta) {
+    const t = $("toast"); t.textContent = msg; t.className = "toast ver" + (alerta ? " alerta" : "");
+    clearTimeout(toastT); toastT = setTimeout(() => { t.className = "toast"; }, 3600);
+  }
+
+  function diasHasta(a) { return a.ini - HOY; }
+  function esUrgente(a) { return !a.pm && diasHasta(a) >= 0 && diasHasta(a) <= 2; }
+  function cuandoArranca(a) {
+    const d = diasHasta(a);
+    if (d < 0) return "en curso";
+    if (d === 0) return "arranca hoy";
+    if (d === 1) return "arranca mañana";
+    return "arranca en " + d + " días hábiles";
+  }
+  function rango(a) { return a.dias === 1 ? "1 día" : a.dias + " días · " + dm(a.ini) + " → " + dm(a.ini + a.dias - 1); }
+
+  function avatar(p) { return '<span class="av ' + p + '">' + PERS[p].ini + "</span>"; }
+
+  function tarjeta(a) {
+    const yo = est.vista;
+    const mia = a.pm === yo;
+    const cls = ["tj", a.pm ? "tomada" : "libre"];
+    if (mia) cls.push("mia", yo);
+    if (esUrgente(a)) cls.push("urgente");
+    let pie;
+    if (!a.pm) {
+      pie = '<span class="sin-pm">Sin PM</span><button class="btn-tomar" data-tomar="' + a.ot + '">Tomar</button>';
+    } else if (mia) {
+      pie = '<span class="pm-quien">' + avatar(a.pm) + 'Vos <small>sos PM</small></span><button class="btn-soltar" data-soltar="' + a.ot + '">Soltar</button>';
+    } else {
+      pie = '<span class="pm-quien">' + avatar(a.pm) + PERS[a.pm].nombre + "</span>";
+    }
+    return '<article class="' + cls.join(" ") + '" id="tj-' + a.ot + '">' +
+      '<div class="tj-l1"><span class="tipo">↑ Armado</span><span class="mono">OT ' + a.ot + "</span></div>" +
+      '<div class="dir">' + a.dir + "</div>" +
+      '<div class="det">' + a.que + " · " + a.alt + "<br>" + rango(a) + " · Cuadrilla " + a.cuad + "</div>" +
+      (esUrgente(a) ? '<div class="alarma">● ' + cap(cuandoArranca(a)) + " y nadie lo tomó</div>" : "") +
+      '<div class="pm">' + pie + "</div></article>";
+  }
+  function tarjetaDesarme(d) {
+    return '<article class="tj desarme"><div class="tj-l1"><span class="tipo">↓ Desarme</span><span class="mono">OT ' + d.ot + "</span></div>" +
+      '<div class="dir">' + d.dir + '</div><div class="det">' + (d.dias === 1 ? "1 día" : d.dias + " días") + " · Cuadrilla " + d.cuad + "</div></article>";
+  }
+  function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+  function pasaFiltro(a) {
+    if (est.filtro === "libres") return !a.pm;
+    if (est.filtro === "mios") return a.pm === est.vista;
+    return true;
+  }
+
+  function renderOT() {
+    const yo = est.vista;
+    $("titulo").textContent = "Armados que vienen";
+    $("n-todos").textContent = est.armados.length;
+    $("n-libres").textContent = est.armados.filter(a => !a.pm).length;
+    $("n-mios").textContent = est.armados.filter(a => a.pm === yo).length;
+    $("punto-mio").style.background = "var(--" + yo + ")";
+    let html = "";
+    for (let s = 0; s < 3; s++) {
+      html += '<div class="semana"><h2>Semana del ' + dm(s * 5) + " al " + dm(s * 5 + 4) + '</h2><div class="dias">';
+      for (let d = 0; d < 5; d++) {
+        const i = s * 5 + d;
+        const del = est.armados.filter(a => a.ini === i && pasaFiltro(a));
+        const des = est.desarmes && est.filtro === "todos" ? DESARMES.filter(x => x.ini === i) : [];
+        const c = ["dia"];
+        if (i < HOY) c.push("pasado");
+        if (i === HOY) c.push("hoy");
+        if (!del.length && !des.length) c.push("sin-nada");
+        html += '<div class="' + c.join(" ") + '"><div class="dia-cab"><span>' + DIAS_SEM[d] + " <b>" + fecha(i).getDate() + "</b></span><span>" + (i === HOY ? "hoy" : "") + "</span></div>";
+        html += del.map(tarjeta).join("") + des.map(tarjetaDesarme).join("");
+        if (!del.length && !des.length) html += '<div class="vacio">Sin armados</div>';
+        html += "</div>";
+      }
+      html += "</div></div>";
+    }
+    $("calendario").innerHTML = html;
+  }
+
+  function renderOps() {
+    $("titulo").textContent = "Tablero · cómo lo ve operaciones";
+    const s = est.semOps;
+    $("sem-label").textContent = "Semana del " + dm(s * 5) + " al " + dm(s * 5 + 4);
+    $("sem-ant").disabled = s === 0; $("sem-sig").disabled = s === 2;
+    let h = '<div class="g-cab">Cuadrilla</div>';
+    for (let d = 0; d < 5; d++) {
+      const i = s * 5 + d;
+      h += '<div class="g-cab' + (i === HOY ? " hoy" : "") + '">' + DIAS_SEM[d] + " " + dm(i) + (i === HOY ? " · hoy" : "") + "</div>";
+    }
+    for (let c = 1; c <= 5; c++) {
+      h += '<div class="g-fila">Cuadrilla ' + c + "</div>";
+      for (let d = 0; d < 5; d++) {
+        const i = s * 5 + d;
+        h += '<div class="g-celda' + (i < HOY ? " pasado" : "") + '">';
+        est.armados.filter(a => a.cuad === c && i >= a.ini && i < a.ini + a.dias).forEach(a => {
+          const dia = i - a.ini + 1;
+          const chip = a.pm
+            ? '<span class="op-pm ' + a.pm + '">' + avatar(a.pm) + "PM " + PERS[a.pm].nombre + "</span>"
+            : '<span class="op-pm nadie">Sin PM</span>';
+          h += '<div class="op armado"><div class="op-dir"><span>↑ ' + a.dir + "</span><small>" + (a.dias > 1 ? dia + "/" + a.dias : "") + "</small></div>" + chip + "</div>";
+        });
+        DESARMES.filter(x => x.cuad === c && i >= x.ini && i < x.ini + x.dias).forEach(x => {
+          h += '<div class="op desarme"><div class="op-dir"><span>↓ ' + x.dir + "</span><small>" + (x.dias > 1 ? (i - x.ini + 1) + "/" + x.dias : "") + "</small></div></div>";
+        });
+        h += "</div>";
+      }
+    }
+    $("grilla").innerHTML = h;
+  }
+
+  function render() {
+    ["aug", "jua", "ops"].forEach(v => $("v-" + v).setAttribute("aria-pressed", String(est.vista === v)));
+    const ops = est.vista === "ops";
+    $("vista-ot").hidden = ops; $("vista-ops").hidden = !ops;
+    ops ? renderOps() : renderOT();
+  }
+
+  function flash(ot) {
+    const el = $("tj-" + ot); if (!el) return;
+    el.classList.add("flash"); setTimeout(() => el.classList.remove("flash"), 650);
+  }
+
+  document.addEventListener("click", e => {
+    const v = e.target.closest("[data-v]");
+    if (v) { est.vista = v.dataset.v; render(); return; }
+    const f = e.target.closest("[data-f]");
+    if (f) {
+      est.filtro = f.dataset.f;
+      document.querySelectorAll("[data-f]").forEach(b => b.setAttribute("aria-pressed", String(b === f)));
+      render(); return;
+    }
+    const t = e.target.closest("[data-tomar]");
+    if (t) {
+      const a = est.armados.find(x => x.ot === +t.dataset.tomar);
+      if (a.pm) { render(); return; }
+      if (a.carrera && est.vista === "aug") {
+        a.carrera = false; a.pm = "jua"; render(); flash(a.ot);
+        toast("Ya lo tomó Juani hace unos segundos. Quedó a su nombre.", true);
+        return;
+      }
+      a.pm = est.vista; a.carrera = false; render(); flash(a.ot);
+      toast("Tomaste " + a.dir + ". Operaciones ya te ve como PM.");
+      return;
+    }
+    const sl = e.target.closest("[data-soltar]");
+    if (sl) {
+      const a = est.armados.find(x => x.ot === +sl.dataset.soltar);
+      a.pm = null; render(); flash(a.ot);
+      toast("Soltaste " + a.dir + ". Queda libre para el otro.");
+      return;
+    }
+    if (e.target.id === "sem-ant" && est.semOps > 0) { est.semOps--; renderOps(); }
+    if (e.target.id === "sem-sig" && est.semOps < 2) { est.semOps++; renderOps(); }
+  });
+  $("ver-desarmes").addEventListener("change", e => { est.desarmes = e.target.checked; render(); });
+
+  render();
+})();
+</script>

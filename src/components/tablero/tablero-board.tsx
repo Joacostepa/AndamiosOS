@@ -73,6 +73,9 @@ import {
 } from "@/lib/tablero/guardias";
 import { comodinPuedeIr, evaluarComodines, otMarcable } from "@/lib/tablero/comodines";
 import { useCambiarComodin, useMarcados, usePuedeEditarPlanificacion } from "@/hooks/use-comodines";
+import { useCambiarPm, usePms, useYoPm } from "@/hooks/use-pm";
+import { llevaPm, sinPmUrgente, type AccionPm, type PmGrilla } from "@/lib/tablero/pm";
+import { PanelProyectos, type FilaProyecto } from "./panel-proyectos";
 import { diaDeSemana, hoyBA, lunesDe } from "@/lib/tablero/dias-habiles";
 import {
   ETIQUETA_USO,
@@ -153,6 +156,10 @@ const CLAVE_PANEL = "tablero:panel-colapsado";
  * cuadrillas a la mañana mira lo que hay que montar.
  */
 const CLAVE_QUE_EJECUTAR = "tablero:que-ejecutar";
+/** El modo PM, por usuario (19/11). Sin valor guardado, prendido para quien es PM. */
+const CLAVE_MODO_PM = "tablero:modo-pm";
+/** Sin sensores no se arrastra nada: es lo que deja el tablero en sólo lectura. */
+const SIN_SENSORES: never[] = [];
 const CLAVE_DOMINGOS = "tablero:domingos-abiertos";
 
 /** A cuántos px del borde del scroll se carga otra semana. */
@@ -401,6 +408,12 @@ export function TableroBoard() {
       typeof window !== "undefined" &&
       window.localStorage.getItem(CLAVE_QUE_EJECUTAR) === "true",
   );
+  // El modo PM: null = el usuario nunca eligió, y manda si es PM (abajo, `modoPm`).
+  const [modoPmGuardado, setModoPmGuardado] = useState<boolean | null>(() => {
+    if (typeof window === "undefined") return null;
+    const v = window.localStorage.getItem(CLAVE_MODO_PM);
+    return v === "true" ? true : v === "false" ? false : null;
+  });
   const [panelColapsado, setPanelColapsado] = useState<boolean>(
     () => typeof window !== "undefined" && window.localStorage.getItem(CLAVE_PANEL) === "true",
   );
@@ -482,6 +495,15 @@ export function TableroBoard() {
   const { marcados, porOt: marcaPorOt } = useMarcados();
   const cambiarComodin = useCambiarComodin();
   const puedeMarcarComodin = usePuedeEditarPlanificacion();
+  // PLANIFICACIÓN EN «VER» (Oficina Técnica, Comercial): el tablero se mira y no se mueve.
+  // Sin sensores no hay arrastre, y el ⋮, la barra y la bandeja esconden lo que escribe. La
+  // puerta de verdad sigue siendo el servidor: esto es para que no haya botones que rebotan.
+  const soloVer = !puedeMarcarComodin;
+  // El PM de cada obra (19/11): quién mira, quiénes pueden ser PM y quién tiene cada obra.
+  const yoPm = useYoPm();
+  const { porOt: pmPorOt, candidatos: candidatosPm } = usePms();
+  const cambiarPm = useCambiarPm();
+  const modoPm = modoPmGuardado ?? yoPm.esPm;
   // El contador del botón "Autorizaciones": sólo se consulta para quien puede autorizar.
   const { data: pendientesJS } = useSolicitudesGuardia("pendiente", { habilitado: puedeAutorizar });
   const [fichaGuardiaId, setFichaGuardiaId] = useState<number | null>(null);
@@ -544,6 +566,9 @@ export function TableroBoard() {
   // así que encontrarla abierta al día siguiente sería abrir el tablero sin ver el tablero.
   // La preferencia de la computadora (`panelColapsado`) no se toca.
   const [bandejaMovilAbierta, setBandejaMovilAbierta] = useState(false);
+  // La lista de proyectos en celular (modo PM): arranca ABIERTA, al revés que la bandeja. Para
+  // quien reparte obras desde el teléfono, la lista es la pantalla; la grilla, el contexto.
+  const [proyectosMovilAbierto, setProyectosMovilAbierto] = useState(true);
 
   // Sin preferencia guardada se deriva un default con criterio, sin escribirlo: recién
   // cuando el usuario elige, la selección pasa a ser suya y se persiste.
@@ -562,6 +587,13 @@ export function TableroBoard() {
     if (typeof window !== "undefined") {
       window.localStorage.setItem(CLAVE_QUE_EJECUTAR, String(valor));
     }
+  }
+
+  function cambiarModoPm(valor: boolean) {
+    setModoPmGuardado(valor);
+    if (typeof window !== "undefined") window.localStorage.setItem(CLAVE_MODO_PM, String(valor));
+    // En celular la lista de proyectos es lo principal: al prender el modo se abre.
+    if (valor && esMovil) setProyectosMovilAbierto(true);
   }
 
   function colapsarPanel(valor: boolean) {
@@ -3122,6 +3154,105 @@ export function TableroBoard() {
     return { cuadrillaId: Number(cuadrilla), fecha, esDomingo: parseISO(fecha).getDay() === 0 };
   }
 
+  // ── El PM de cada obra (19/11) ───────────────────────────────────────────
+  //
+  // SALE DE TODAS LAS OTs DEL TABLERO (`data.ots`) y no de las tarjetas a la vista: una obra
+  // que todavía está en la bandeja, o planificada más allá de las semanas cargadas, también
+  // tiene que poder tomarse. Si no, el PM se entera cuando ya tiene fecha, que es tarde.
+  const filasPm = useMemo<FilaProyecto[]>(() => {
+    if (!data) return [];
+    const fuera = new Set(fueraDeRango.map((o) => o.id));
+    return data.ots
+      .filter((ot) => llevaPm(ot.tipo) && otMarcable(ot))
+      .map((ot) => {
+        const plan = planPorObra.get(ot.id);
+        // `fueraDeRango` son obras con jornadas fuera de las semanas cargadas, ANTES o DESPUÉS:
+        // la que ya arrancó antes del rango está en curso, no "más adelante".
+        const yaArranco = !plan && fuera.has(ot.id) && !!ot.fechaProgramada && ot.fechaProgramada < hoyBa;
+        const grupo: FilaProyecto["grupo"] = plan || yaArranco ? "tablero" : fuera.has(ot.id) ? "adelante" : "sinFecha";
+        const primerDia = plan?.primerDia ?? (fuera.has(ot.id) ? ot.fechaProgramada : null);
+        const pm = pmPorOt.get(ot.id) ?? null;
+        return { ot, grupo, primerDia, pm, urgente: !pm && sinPmUrgente(primerDia, hoyBa, feriadosSet) };
+      });
+  }, [data, fueraDeRango, planPorObra, pmPorOt, hoyBa, feriadosSet]);
+  const filaPmPorOt = useMemo(() => new Map(filasPm.map((f) => [f.ot.id, f])), [filasPm]);
+  const sinPmTotal = filasPm.filter((f) => !f.pm).length;
+
+  function obraDe(ot: { titulo: string; direccionObra?: string | null }): string {
+    return direccionCorta(direccionDeObra({ direccionObra: ot.direccionObra ?? null, titulo: ot.titulo }));
+  }
+
+  /** Las opciones "Proyecto" de una obra: en el ⋮ de la tarjeta, en la lista y en la ficha. */
+  function accionesPmDe(ot: Pick<OtTablero, "id" | "tipo" | "titulo"> & { direccionObra?: string | null } | undefined): AccionPm[] | null {
+    if (!ot || !llevaPm(ot.tipo) || !filaPmPorOt.has(ot.id)) return null;
+    const actual = pmPorOt.get(ot.id) ?? null;
+    const titulo = obraDe(ot);
+    const yo = yoPm.id;
+    const acciones: AccionPm[] = [];
+    if (!actual) {
+      if (yoPm.esPm && yo) {
+        acciones.push({ clave: "tomar", etiqueta: "Tomar como PM", onClick: () => cambiarPm.mutate({ tipo: "tomar", otId: ot.id, pm: yo, titulo }) });
+      }
+      if (!soloVer) {
+        for (const c of candidatosPm) {
+          if (c.id === yo && yoPm.esPm) continue;
+          acciones.push({ clave: `asignar:${c.id}`, etiqueta: `Asignar a ${c.nombre}`, onClick: () => cambiarPm.mutate({ tipo: "tomar", otId: ot.id, pm: c.id, titulo }) });
+        }
+      }
+      return acciones;
+    }
+    const esMia = actual.pmId === yo;
+    if (!esMia && soloVer) return acciones;
+    for (const c of candidatosPm) {
+      if (c.id === actual.pmId) continue;
+      acciones.push({
+        clave: `pasar:${c.id}`,
+        etiqueta: esMia ? `Pasársela a ${c.nombre}` : `Pasar a ${c.nombre}`,
+        onClick: () => cambiarPm.mutate({ tipo: "pasar", otId: ot.id, pm: c.id, de: actual.pmId, titulo }),
+      });
+    }
+    acciones.push({
+      clave: "quitar",
+      etiqueta: esMia ? "Soltar" : "Quitar el PM",
+      quitar: true,
+      onClick: () => cambiarPm.mutate({ tipo: "quitar", otId: ot.id, titulo }),
+    });
+    return acciones;
+  }
+
+  function tomarPm(ot: OtTablero) {
+    if (!yoPm.id) return;
+    cambiarPm.mutate({ tipo: "tomar", otId: ot.id, pm: yoPm.id, titulo: obraDe(ot) });
+  }
+
+  const pmGrilla: PmGrilla = {
+    activo: modoPm,
+    enTarjeta: (otMin) => {
+      const fila = otMin ? filaPmPorOt.get(otMin.id) : undefined;
+      if (!fila) return null;
+      return {
+        nombre: fila.pm?.pmNombre ?? null,
+        esMio: !!fila.pm && fila.pm.pmId === yoPm.id,
+        urgente: fila.urgente,
+        onTomar: !fila.pm && yoPm.esPm ? () => tomarPm(fila.ot) : null,
+      };
+    },
+    acciones: (otMin) => {
+      const ot = otMin ? otsPorId.get(otMin.id) : undefined;
+      return accionesPmDe(ot);
+    },
+  };
+
+  /** Desde la lista: a la tarjeta si la obra tiene fecha, a su ficha si no. */
+  function irAProyecto(f: FilaProyecto) {
+    if (esMovil) setProyectosMovilAbierto(false);
+    if (f.grupo === "sinFecha") {
+      abrirPanel(f.ot.id, null);
+      return;
+    }
+    void irAObra(f.ot.id);
+  }
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   if (isLoading || !data) {
@@ -3285,10 +3416,12 @@ export function TableroBoard() {
         protegido={protegido}
         // El acceso a la bandeja de JS, sólo para quien autoriza.
         autorizaciones={puedeAutorizar ? (pendientesJS?.length ?? 0) : null}
+        modoPm={{ activo: modoPm, sinPm: sinPmTotal, onCambiar: cambiarModoPm }}
+        soloVer={soloVer}
       />
 
       <DndContext
-        sensors={sensors}
+        sensors={soloVer ? SIN_SENSORES : sensors}
         collisionDetection={detectarColision}
         autoScroll={autoScroll}
         onDragStart={onDragStart}
@@ -3343,7 +3476,8 @@ export function TableroBoard() {
                   if (esGuardia(b) || b.tarea?.deGuardia) return setFichaGuardiaId(b.ids[0]);
                   // Una tarea no tiene ficha en Odoo que mostrar: el clic abre su propio
                   // diálogo, que es el único lugar donde vive.
-                  if (b.origen === "tarea") return setTareaEnEdicion(b);
+                  // Quien sólo ve no abre el diálogo de edición: guardarlo rebotaría.
+                  if (b.origen === "tarea") return soloVer ? undefined : setTareaEnEdicion(b);
                   // LA TARJETA DE UN APOYO ABRE LA FICHA DE LA OBRA, sobre la principal de
                   // ese día: el apoyo no tiene ficha propia (no se confirma, no se cierra,
                   // no lleva parte). Si quedó huérfano, la ficha abre sin bloque y muestra
@@ -3374,6 +3508,8 @@ export function TableroBoard() {
                 onTareaHecha={(b, hecha) => actualizarTarea.mutate({ ids: b.ids, cambio: { hecha } })}
                 onEditarTarea={(b) => setTareaEnEdicion(b)}
                 guardias={guardiasGrilla}
+                pm={pmGrilla}
+                soloVer={soloVer}
               />
             ) : (
               <div className="flex flex-1 items-center justify-center p-6 text-center text-sm text-muted-foreground">
@@ -3384,6 +3520,20 @@ export function TableroBoard() {
             <CajonPlanificacion />
           </div>
 
+          {modoPm ? (
+            <PanelProyectos
+              filas={filasPm}
+              yoId={yoPm.id}
+              esPm={yoPm.esPm}
+              colapsado={esMovil ? !proyectosMovilAbierto : panelColapsado}
+              flotante={esMovil}
+              onColapsar={esMovil ? (v) => setProyectosMovilAbierto(!v) : colapsarPanel}
+              onIr={irAProyecto}
+              onTomar={tomarPm}
+              hoy={hoyBa}
+              acciones={(ot) => accionesPmDe(ot)}
+            />
+          ) : (
           <PanelSinAsignar
             ots={sinAsignar}
             planificadas={planificadas}
@@ -3418,9 +3568,10 @@ export function TableroBoard() {
             }}
             onOrden={recibirOrdenBandeja}
             comodines={comodinesBandeja}
-            onMeterUrgente={(ot) => setUrgenteDe(ot)}
+            onMeterUrgente={soloVer ? undefined : (ot) => setUrgenteDe(ot)}
             onComodin={onComodin}
           />
+          )}
         </div>
 
         <DragOverlay>
@@ -3923,8 +4074,13 @@ export function TableroBoard() {
         comodin={panelOt ? (comodinPorOt.get(panelOt.id) ?? null) : null}
         marcadoPor={panelOt ? (marcaPorOt.get(panelOt.id)?.marcadoPorNombre ?? null) : null}
         accionComodin={accionComodinDe(panelOt)}
+        pm={
+          panelOt && filaPmPorOt.has(panelOt.id)
+            ? { nombre: pmPorOt.get(panelOt.id)?.pmNombre ?? null, acciones: accionesPmDe(panelOt) }
+            : null
+        }
         // La ficha y el diálogo son dos modales: se cierra la ficha antes de abrirlo.
-        onMeterUrgente={() => {
+        onMeterUrgente={soloVer ? undefined : () => {
           if (!panelOt) return;
           const ot = panelOt;
           cerrarPanel();

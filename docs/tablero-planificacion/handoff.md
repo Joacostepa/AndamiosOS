@@ -1,4 +1,4 @@
-# Handoff — Tablero de planificación (actualizado 2026-10-18)
+# Handoff — Tablero de planificación (actualizado 2026-11-19)
 
 Para retomar en una sesión nueva: "Leé docs/tablero-planificacion/handoff.md y seguimos con las
 mejoras del tablero". Acá van el estado, lo pendiente y las mejoras pedidas, la más nueva arriba.
@@ -34,8 +34,71 @@ cosas, así que ante la duda manda el código y los comentarios largos que tiene
    tabla `plan_comodines`. Falta aplicar `20261018100003_comodines_marcados.sql` y desplegar
    (detalle en [guardias-handoff.md](guardias-handoff.md), "Comodines marcados a mano").
 
+6. **El PM de cada obra (19/11):** probarlo con Augusto o Juan Ignacio en el celular: que
+   abra en modo PM, que tome una obra y que Operaciones la vea. Ver la entrada del 19/11.
+
 **Cerrado el 17/10 (JS lo dio por terminado):** la ficha nueva de la OT y la bandeja nueva
 (09/10), la tarjeta y el encabezado nuevos de la grilla (09/10) y el casco de SyH (13–14/10).
+
+---
+
+## 19/11 — el PM de cada obra (modo PM)
+
+**Qué pidió JS:** Augusto y Juan Ignacio (Oficina Técnica) se reparten las obras que vienen y
+uno queda como PM (project manager). Que no se pisen y que Operaciones vea quién es el PM.
+Primero se maquetó como pantalla aparte y después, con tres agentes que leyeron el código, se
+decidió meterlo en el tablero: los dos ya arrancan ahí. Maquetas e historia en
+[docs/oficina-tecnica/proyectos/](../oficina-tecnica/proyectos/) (`maqueta-pm-tablero.html` es
+la que se construyó: https://claude.ai/artifact/N5TeXcH2NsmDQ3CiGx4t5U).
+
+**Decisiones de JS (19/11):**
+- Lleva PM **toda OT menos el desarme** (ampliaciones, desmontes parciales, mantenimiento, sí).
+- "Sin PM" va en **ámbar**, no en rojo: el rojo del tablero ya es sin habilitar, urgente, sin
+  parte y no ejecutada. Pasa a rojo sólo si la obra arranca en 2 días hábiles o menos (o ya
+  arrancó) y nadie la tomó (`DIAS_AVISO_SIN_PM`).
+- Augusto y Juan Ignacio **sólo toman proyectos**: Planificación en «ver» (ya lo tenían) más el
+  módulo nuevo **«PM de obras»** en «editar».
+
+**Cómo quedó:**
+- **Botón «PM»** en la barra, con contador ámbar de obras sin PM. Se guarda por usuario
+  (`tablero:modo-pm`); sin valor guardado arranca prendido para quien es PM.
+- **En modo PM** el renglón 2 de la tarjeta dice "PM Augusto" o "Sin PM" + **Tomar** (un clic,
+  sólo para quien es PM), con un anillo ámbar/rojo por fuera; lo que no lleva PM (desarmes,
+  tareas, apoyos, guardias) se atenúa. La columna derecha pasa a ser **Proyectos**
+  (`panel-proyectos.tsx`): sin PM en el tablero, más adelante y sin fecha todavía (la bandeja),
+  y después lo de cada PM. Sale de `data.ots`, no de las tarjetas a la vista. En celular la
+  lista arranca abierta.
+- **Sección «Proyecto (PM)»** en el ⋮ de la tarjeta, en la lista y en el ⋯ de la ficha: tomar,
+  asignar a… (sólo quien edita Planificación), pasársela al otro, soltar/quitar. La ficha muestra
+  el PM en Contactos › En ABA.
+- **Sólo lectura de verdad** para quien tiene Planificación en «ver» (`soloVer` en
+  `tablero-board.tsx`): sin sensores de dnd-kit (no se arrastra nada), sin «Correr un día», sin
+  crear tareas con doble clic, sin «Meter urgente», y el ⋮ queda en abrir la obra, ver el parte y
+  el PM. Antes veían todo y cada gesto rebotaba con 403. Lo que quede suelto lo frena el
+  servidor igual.
+- **Datos:** tabla `plan_pm_ot` (migración `20261119000001_pm_obras.sql`, **aplicada el 19/11**):
+  `ot_id` PRIMARY KEY (eso es lo que impide que se pisen: el segundo "Tomar" recibe 23505 y la
+  ruta contesta 409 "Ya la tomó …"), `pm`, `asignado_por`, `asignado_el`. RLS: sólo se asigna a
+  quien es PM (`plan_es_pm()`, lee el perfil, sin atajo de admin); un PM sólo se toma a sí mismo
+  y sólo suelta o pasa lo suyo; quien edita Planificación hace todo. Probado con las sesiones de
+  los dos dentro de un ROLLBACK.
+- **Ruta** `/api/planificacion/pm` (GET pms + candidatos, POST tomar/asignar, PATCH pasar con
+  `de` para no pisar un cambio que la pantalla no vio, DELETE soltar). Server en
+  `src/lib/planificacion/pm.ts`, puro en `src/lib/tablero/pm.ts`, cliente en `src/hooks/use-pm.ts`
+  (clave propia `["pm-obras"]`, optimista).
+- **En vivo:** los avisos de PM viajan con `ambito: "pm"`; quien los recibe refresca sólo los PMs
+  y no el tablero entero (seis consultas a Odoo).
+
+**Quién es PM:** se da en Configuración › Usuarios › «PM de obras» (grupo Oficina técnica). Es
+la lista que ofrece "Asignar a…".
+
+**Quedó para después (revisión del 19/11):**
+- **La ficha de la OT todavía muestra los botones que escriben** (planificar, confirmar, fijar,
+  fracción, jornadas, quitar) a quien tiene Planificación en «ver». Rebotan con 403, como ya le
+  pasaba a Comercial, pero en celular la ficha es la única puerta. Falta un `soloVer` en
+  `panel-ot.tsx`. Lo mismo el selector de duración de la bandeja (con el modo PM apagado).
+- En el editor de usuarios «PM de obras» ofrece «Ver», que no hace nada: sólo cuenta «Editar».
+- Las filas de `plan_pm_ot` de obras terminadas no se borran (son pocas; `leerPms` las lee todas).
 
 ---
 
@@ -458,6 +521,10 @@ el motivo.
   `grupo-comodines.tsx` y `use-guardias.ts`. La guardia vive en `tablero_tareas` (tipo
   `guardia`); su historia en `plan_guardia_eventos` y los pedidos a JS en
   `plan_guardia_solicitudes`. Detalle en [guardias-handoff.md](guardias-handoff.md).
+- **PM de cada obra (19/11):** `plan_pm_ot` en Supabase; `src/lib/tablero/pm.ts` (puro),
+  `src/lib/planificacion/pm.ts` (servidor), `/api/planificacion/pm`, `use-pm.ts`,
+  `panel-proyectos.tsx`; el renglón y el ⋮ en `tarjeta-asignacion.tsx`, el botón en
+  `topbar-tablero.tsx`.
 - **En vivo:** `use-avisos-tablero.ts` escucha los cambios de los demás e invalida las queries.
 - **Colores:** todo sale de `src/lib/tablero/colores.ts` (tokens `--tb-*` en `globals.css`, claro y
   oscuro). `npm run contraste` controla el contraste del tablero.

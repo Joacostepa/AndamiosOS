@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { conectarAvisos, type AvisoTablero } from "@/lib/tablero/avisos";
 import { CLAVE_ACTIVIDAD } from "@/hooks/use-actividad";
 import { CLAVE_COMODINES } from "@/hooks/use-comodines";
+import { CLAVE_PM } from "@/hooks/use-pm";
 import { CLAVE_SUSPENSIONES } from "@/hooks/use-suspensiones";
 import { CLAVE_GUARDIAS, CLAVE_SOLICITUDES_GUARDIA } from "@/hooks/use-tablero";
 import { useUser } from "@/hooks/use-user";
@@ -73,6 +74,14 @@ export function useAvisosTablero() {
         pendientes.current = [];
         timer.current = null;
         if (lote.length === 0) return;
+
+        // El PM de una obra no viaja con Odoo (plan_pm_ot): siempre se refresca, y si la
+        // ráfaga fue SÓLO de PMs no se vuelve a pedir el tablero entero.
+        void qc.invalidateQueries({ queryKey: CLAVE_PM });
+        if (lote.every((a) => a.ambito === "pm")) {
+          toast.info(frase(lote), { description: "El tablero se actualizó con lo que hicieron los demás." });
+          return;
+        }
 
         void qc.invalidateQueries({ queryKey: ["tablero"] });
         void qc.invalidateQueries({ queryKey: CLAVE_ACTIVIDAD });

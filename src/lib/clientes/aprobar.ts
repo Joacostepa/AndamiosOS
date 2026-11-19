@@ -89,7 +89,8 @@ import {
 import { PAREJAS_15_10, siguienteEnTurno, tecnicoDeOdoo, type Asignacion } from "./asignacion";
 import { avisarQueLaTiene, nombresDe, personaPorNombre } from "./bandeja";
 import { mandarArchivo, mandarTexto } from "./envio";
-import type { Motivo } from "./facil";
+import { conRenderBandeja, type Motivo } from "./facil";
+import { renderBandejaFacil } from "./render-bandeja";
 import { leerFicha, ORIGENES, type FichaSofia } from "./herramientas";
 import { anotarEvento } from "./webhook";
 import type {
@@ -200,11 +201,12 @@ const nombreDe = (db: Db) => async (id: string | null) => (id ? (await nombresDe
 
 // ── Lo que hace falta para calcular ─────────────────────────────────────────────────────
 
-type Contexto = { parametros: Parametro[]; tarifas: Tarifas; hoy: string };
+type Contexto = { parametros: Parametro[]; tarifas: Tarifas; hoy: string; renderBandeja: string | null };
 
 async function contexto(db: Db): Promise<Contexto> {
   const parametros = await leerParametros(db);
-  return { parametros, tarifas: tarifasDesdeParametros(parametros), hoy: hoyBA() };
+  const delParametro = parametros.find((p) => p.clave === "agente_facil_render")?.texto ?? null;
+  return { parametros, tarifas: tarifasDesdeParametros(parametros), hoy: hoyBA(), renderBandeja: await renderBandejaFacil(db, delParametro) };
 }
 
 const asignacionDe = (f: Fila) => (f.payload.asignacion as Asignacion | null | undefined) ?? null;
@@ -213,7 +215,7 @@ const asignacionDe = (f: Fila) => (f.payload.asignacion as Asignacion | null | u
 type Envio = { datos: DatosBorrador; resultado: ResultadoBorrador; texto: string; despues: Despues; correccion: Correccion | null };
 
 function calcular(f: Fila, ctx: Contexto, correccion: Correccion | null) {
-  const original = normalizarBorrador(f.payload.datos);
+  const original = conRenderBandeja(normalizarBorrador(f.payload.datos), ctx.renderBandeja);
   const datos = correccion ? aplicarCorreccion(original, correccion, ctx.tarifas) : original;
   const resultado = recalcularBorrador(datos, ctx.tarifas, ctx.hoy);
   return { original, datos, resultado };
@@ -280,7 +282,8 @@ function tarjetaPrecio(f: Fila, charla: Charla, ctx: Contexto): TarjetaPrecio {
     cambioDesdeSofia: montoPropuesto !== null && Math.abs(montoPropuesto - resultado.totales.subtotal) > 1,
     motivos,
     facil: f.payload.facil === true,
-    problemas: (f.payload.problemas as string[] | undefined) ?? [],
+    // Las tarjetas armadas sin render (antes del 19/11) lo traen ahora de la biblioteca.
+    problemas: ((f.payload.problemas as string[] | undefined) ?? []).filter((x) => !(datos.render.eleccion && x.startsWith("Falta el render genérico de bandeja"))),
     bloqueos: bloqueosDelCalculo(resultado),
     pareja: a ? { tecnico: a.tecnico, asistente: a.asistente, motivo: a.motivo, regla: a.regla } : null,
     tarifaVigenteDesde: vigente,

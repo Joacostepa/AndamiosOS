@@ -76,6 +76,14 @@ export function parametrosFacilDesdeFilas(filas: FilaParametro[]): ParametrosFac
   return p;
 }
 
+export const PROBLEMA_SIN_RENDER = "Falta el render genérico de bandeja (agente_facil_render en Parámetros, o uno por defecto de bandeja en la biblioteca).";
+
+/** El borrador con el render genérico de bandeja, si todavía no tiene uno elegido. */
+export function conRenderBandeja(d: DatosBorrador, renderId: string | null): DatosBorrador {
+  if (d.render.eleccion || !renderId) return d;
+  return { ...d, render: { eleccion: "biblioteca", renderId, path: null } };
+}
+
 // ── La ficha de la charla ───────────────────────────────────────────────────────────────
 
 export type TipoTrabajo = "bandeja" | "alquiler_simple" | "fachada" | "otro";
@@ -563,7 +571,7 @@ export function armarBorradorFacil(ficha: FichaCliente, tarifas: Tarifas, opcion
   const resultado = recalcular(d, { tarifas, lista: null, hoy: opciones.hoy });
 
   if (metros && metros > p.maxMl) problemas.push(`${m(metros)} m.l. pasa el tope de la bandeja fácil (${m(p.maxMl)} m.l.).`);
-  if (!p.renderId) problemas.push("Falta el render genérico de bandeja (agente_facil_render en Parámetros).");
+  if (!p.renderId) problemas.push(PROBLEMA_SIN_RENDER);
   // F8: el precio es el de la tarifa, sin bonificación ni desvíos.
   const bandeja = resultado.lineas.find((l) => l.id === "bandeja");
   if (bandeja && bandeja.precioUnitario !== tarifas.bandeja.m3) problemas.push("El precio de la bandeja no es el de la tarifa vigente.");

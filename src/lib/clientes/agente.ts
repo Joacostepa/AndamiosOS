@@ -21,6 +21,7 @@ import { aWhatsapp } from "@/lib/whatsapp/formato";
 import { CLAVES_SOFIA, configSofiaDesdeFilas, type ConfigSofia } from "./config";
 import { asignarPareja, PAREJAS_15_10, type ClienteAsignacion } from "./asignacion";
 import { parametrosFacilDesdeFilas } from "./facil";
+import { renderBandejaFacil } from "./render-bandeja";
 import { parametrosAlquilerDesdeFilas } from "./alquiler-simple";
 import { adjuntarArchivosAOrden, barrioDeDireccion, fleteParaUbicacion, fletesAlquilerSimple, lugarParaFlete } from "@/lib/odoo/alquiler-simple";
 import { clasificadorClaude, type DepsDocumentos } from "./documentos";
@@ -439,8 +440,9 @@ export function serviciosSofia(db: SupabaseClient, charla: CharlaSofia): Servici
     verificarDireccion: (direccion) => consultarLote({ direccion, enCaba: null }),
     async contextoFacil(ficha: FichaSofia) {
       const [filas, dir, quien] = await Promise.all([leerParametros(db), direccionCotizada(ficha.direccion), identificar(ficha)]);
+      const parametros = parametrosFacilDesdeFilas(filas);
       return {
-        parametros: parametrosFacilDesdeFilas(filas),
+        parametros: { ...parametros, renderId: await renderBandejaFacil(db, parametros.renderId) },
         clienteConHistorial: quien ? quien.historial : null,
         deudaVencida: quien ? quien.deudaVencida : null,
         direccionCotizada: dir ? dir.cotizada : null,

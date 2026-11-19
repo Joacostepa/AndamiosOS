@@ -1,12 +1,14 @@
 # Handoff: CRM con Tomás (antes Sofía), el agente de WhatsApp para clientes
 
-**Actualizado el 17/11/2026.** **Desde el 17/10 el agente se llama Tomás** (JS eligió una voz de hombre para el saludo con audio). La carpeta, los nombres internos del código (`atenderConSofia`, `FichaSofia`…) y la historia de abajo siguen diciendo Sofía.
+**Actualizado el 19/11/2026.** **Desde el 17/10 el agente se llama Tomás** (JS eligió una voz de hombre para el saludo con audio). La carpeta, los nombres internos del código (`atenderConSofia`, `FichaSofia`…) y la historia de abajo siguen diciendo Sofía.
 
  El estado de abajo es el vigente. La historia del 12/10 está más abajo, en «Historia: la charla del 12/10».
 
 Para retomar, decí: «Leé docs/sofia/handoff.md y seguimos con el CRM de WhatsApp».
 
 **En curso (12/11): el alquiler simple que cotiza Tomás.** JS contestó las 13 preguntas el 12/11 y sumó seis decisiones a la tarde (filas 16 a 24: sólo CABA, el retiro en el depósito de Cucha Cucha 2345, Belgrano, el peldaño en cualquier módulo, Tamara de vendedora, el pagaré, provincia sin derivar y nada de 12 a 13); están en la §11 de [alquiler-simple-propuesta.md](./alquiler-simple-propuesta.md). **En producción desde el 12/11** (`09e4fe0` en main, deploy `andamios-d1mp5x9g6`, migraciones `20261112000001` y `…02` aplicadas). JS no quiso la prueba previa contra Odoo: lo prueba él por WhatsApp. Ver el punto 13.
+
+**19/11: la tarjeta de la bandeja fácil no se podía aprobar por el render** (charla de Gaby, Consorcio Lavalleja 230: la primera tarjeta fácil de verdad). `agente_facil_render` estaba vacío en Parámetros desde el 16/10, así que el borrador salía sin render y «Aprobar» decía «Falta decidir el render». Ahora, si el parámetro está vacío, se usa el render por defecto de bandeja de la biblioteca («Bandeja-Pantalla Estandar»), al armar la tarjeta y también al aprobar una ya armada (`renderBandejaFacil` en `render-bandeja.ts`, `conRenderBandeja` en `facil.ts`, `calcular` en `aprobar.ts`). Se probó contra la tarjeta real de Gaby, sin escribir nada: sin bloqueos, $ 1.400.000 + IVA.
 
 **17/11: sin período mínimo, y el catastro sólo sobre la vereda** (JS: «eso sólo debería entrar en validez si lo que pide es una bandeja de protección o una estructura o algo que se arma sobre la vereda»; «no quiero que mencione lo del período mínimo, nosotros cotizamos igual; lo importante es saber por cuánto tiempo les va a llevar el trabajo»). En 14 días, Tomás habló del catastro o de la «puerta oficial» en eventos e interiores (Leslie, Pili, Marina) y del período mínimo en 6 charlas que no eran alquiler simple.
 - `verificar_direccion` sólo consulta el catastro con `trabajo` bandeja o fachada, o con `sobre_la_vereda: true` (vallas en la vereda, una estructura en la calle). Si no, guarda la dirección y le dice a Tomás que no hable del catastro ni pida la altura (`verificaEnCatastro`). Con «puerta no oficial» pregunta una sola vez y sigue.

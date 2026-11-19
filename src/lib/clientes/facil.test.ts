@@ -9,7 +9,7 @@ import { tarifasDesdeParametros } from "../cotizador/tarifas.ts";
 import type { Lote } from "../catastro/caba.ts";
 import { chequeoLote, recalcular } from "../asistente/borrador.ts";
 import {
-  armarBorradorFacil, escanearPalabras, esFacil, fichaVacia, palabraGamaAlta, parametrosFacilDesdeFilas, PALABRAS_GAMA_ALTA,
+  armarBorradorFacil, conRenderBandeja, escanearPalabras, esFacil, fichaVacia, palabraGamaAlta, parametrosFacilDesdeFilas, PALABRAS_GAMA_ALTA, PROBLEMA_SIN_RENDER,
   type ContextoFacil, type FichaCliente, type ParametrosFacil,
 } from "./facil.ts";
 
@@ -312,7 +312,13 @@ test("armar: sin frente verificado, sin render, sin conflicto revisado o pasado 
   assert.equal(sinLote.resultado.lineas.length, 0);
 
   const sinRender = armarBorradorFacil(marcela(), T, { parametros: { ...PARAMS, renderId: null }, hoy: HOY, conflictoCanal: null });
-  assert.deepEqual(sinRender.problemas, ["Falta el render genérico de bandeja (agente_facil_render en Parámetros)."]);
+  assert.deepEqual(sinRender.problemas, [PROBLEMA_SIN_RENDER]);
+  // Una tarjeta armada sin render (Gaby, 19/11) lo toma de la biblioteca al aprobar, y deja de bloquear.
+  const conRender = conRenderBandeja(sinRender.datos, "render-por-defecto");
+  assert.deepEqual(conRender.render, { eleccion: "biblioteca", renderId: "render-por-defecto", path: null });
+  assert.ok(!recalcular(conRender, { tarifas: T, lista: null, hoy: HOY }).faltantes.some((f) => f.codigo === "render"));
+  // Uno ya elegido no se pisa.
+  assert.equal(conRenderBandeja(conRender, "otro").render.renderId, "render-por-defecto");
 
   const sinConflicto = armarBorradorFacil(marcela(), T, { parametros: PARAMS, hoy: HOY });
   assert.ok(sinConflicto.problemas.some((p) => /otro vendedor ya cotizó/.test(p)));

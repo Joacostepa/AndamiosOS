@@ -32,21 +32,26 @@ export function dimensionesImagen(b: Buffer): { ancho: number; alto: number; tip
   return null;
 }
 
-async function imagenDelRender(db: SupabaseClient, b: Pick<Borrador, "datos">): Promise<DatosPropuesta["imagenes"]> {
+/** Las imágenes de «Representación gráfica»: la principal y las de más (JS, 19/11), en ese orden. */
+async function imagenesDelRender(db: SupabaseClient, b: Pick<Borrador, "datos">): Promise<DatosPropuesta["imagenes"]> {
   const r = b.datos.render;
-  let path: string | null = null;
-  if (r.eleccion === "biblioteca" && r.renderId) {
-    const { data } = await db.from("cotizacion_renders").select("path").eq("id", r.renderId).maybeSingle();
-    path = data?.path ?? null;
-  } else if (r.eleccion === "propio") {
-    path = r.path;
+  if (r.eleccion !== "biblioteca" && r.eleccion !== "propio") return [];
+  const todas = [{ renderId: r.eleccion === "biblioteca" ? r.renderId : null, path: r.eleccion === "propio" ? r.path : null }, ...(r.extras ?? [])];
+  const ids = todas.map((x) => x.renderId).filter((x): x is string => !!x);
+  const deBiblioteca = new Map<string, string>();
+  if (ids.length) {
+    const { data } = await db.from("cotizacion_renders").select("id, path").in("id", ids);
+    for (const f of (data ?? []) as { id: string; path: string | null }[]) if (f.path) deBiblioteca.set(f.id, f.path);
   }
-  if (!path) return [];
-  const { data, error } = await db.storage.from(BUCKET).download(path);
-  if (error || !data) return [];
-  const buf = Buffer.from(await data.arrayBuffer());
-  const dim = dimensionesImagen(buf);
-  return dim ? [{ src: buf, ancho: dim.ancho, alto: dim.alto }] : [];
+  const paths = todas.map((x) => (x.renderId ? deBiblioteca.get(x.renderId) ?? null : x.path)).filter((x): x is string => !!x);
+  const imagenes = await Promise.all(paths.map(async (path) => {
+    const { data, error } = await db.storage.from(BUCKET).download(path);
+    if (error || !data) return null;
+    const buf = Buffer.from(await data.arrayBuffer());
+    const dim = dimensionesImagen(buf);
+    return dim ? { src: buf, ancho: dim.ancho, alto: dim.alto } : null;
+  }));
+  return imagenes.filter((x): x is NonNullable<typeof x> => x !== null);
 }
 
 function item(l: { descripcion: string; importe: number; importeLista: number; descuentoPct?: number; unidad?: string }): ItemPdf {
@@ -78,7 +83,7 @@ export async function datosPropuestaDe(
     cliente: { razonSocial: d.cliente.razonSocial ?? "—", contacto: d.cliente.contacto, obra: d.obra.direccion ?? "—" },
     seccion1: d.seccion1 ?? "",
     seccion2: d.seccion2,
-    imagenes: await imagenDelRender(db, b),
+    imagenes: await imagenesDelRender(db, b),
     epigrafe: d.epigrafe,
     base: r.lineas.filter((l) => l.seccion === "base").map(item),
     adicionales: r.lineas.filter((l) => l.seccion === "adicional").map(item),

@@ -25,6 +25,9 @@ import type { Lote } from "../catastro/caba.ts";
 export type Modelo = "A" | "B" | "C" | "D";
 export type Contrato = "Obra " | "Simple" | "Alquiler Sin Montaje";
 
+/** Una imagen más para «Representación gráfica»: de la biblioteca o propia (una foto subida o pegada). */
+export type RenderExtra = { renderId: string | null; path: string | null };
+
 export type DatosBorrador = {
   cliente: {
     partnerId: number | null;
@@ -49,7 +52,11 @@ export type DatosBorrador = {
   referencia: string | null;
   seccion1: string | null;
   seccion2: { titulo: string; contenido: string }[];
-  render: { eleccion: "biblioteca" | "propio" | "ninguno" | null; renderId: string | null; path: string | null };
+  render: {
+    eleccion: "biblioteca" | "propio" | "ninguno" | null; renderId: string | null; path: string | null;
+    /** Más imágenes después de la principal (JS, 19/11): de la biblioteca (renderId) o propias (path). */
+    extras?: RenderExtra[];
+  };
   epigrafe: string | null;
   calculos: {
     bandeja?: EntradaBandeja;
@@ -130,7 +137,7 @@ export function borradorVacio(): DatosBorrador {
     referencia: null,
     seccion1: null,
     seccion2: [],
-    render: { eleccion: null, renderId: null, path: null },
+    render: { eleccion: null, renderId: null, path: null, extras: [] },
     epigrafe: null,
     calculos: {},
     lineasManuales: [],

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ImageOff, ImagePlus, Loader2, Plus, Search, Sparkles, Trash2, Upload } from "lucide-react";
+import { ClipboardPaste, ImageOff, ImagePlus, Loader2, Plus, Search, Sparkles, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import type { Lote, Vecina } from "@/lib/catastro/caba";
@@ -12,7 +12,7 @@ import { validarCuit } from "@/lib/cotizador/cuit";
 import { CATEGORIAS_FACHADA, type CategoriaFachada } from "@/lib/cotizador/fachada";
 import type { BorradorVista } from "@/lib/asistente/eventos";
 import {
-  categoriaParaPrecio, FORMAS_PAGO, idFila, productoParaConcepto, rangoCategoria, tarifaBandeja, type Formulario,
+  alternarRender, categoriaParaPrecio, FORMAS_PAGO, idFila, productoParaConcepto, rangoCategoria, rendersElegidos, tarifaBandeja, type Formulario,
 } from "@/lib/cotizador-rapido/formulario";
 import { Aviso, Campo, Chip, Chips, Moneda, Numero, numeroTexto, pesos, Seccion, Texto, Tri } from "./campos";
 
@@ -582,9 +582,12 @@ const TIPOS_RENDER_POR: Record<Formulario["tipo"], string[]> = {
   bandeja: ["bandeja"], fachada: ["fachada"], desglosado: ["torre", "plataforma", "apuntalamiento", "evento", "otro"],
 };
 
-export function SeccionJornadas({ f, cambiar, renders, alertaJornadas, alertaRender, onSubir, subiendo, vistaPropia, onDespues }: {
+export function SeccionJornadas({ f, cambiar, renders, alertaJornadas, alertaRender, onSubir, subiendo, vistas, onDespues }: {
   f: Formulario; cambiar: Cambiar; renders: Render[]; alertaJornadas: boolean; alertaRender: boolean;
-  onSubir: (archivo: File) => void; subiendo: boolean; vistaPropia: string | null; onDespues: () => void;
+  /** Sube una foto propia (elegida o pegada) y la suma al final de las elegidas. */
+  onSubir: (archivo: File) => void; subiendo: boolean;
+  /** La vista de cada foto propia subida en esta sesión (path → URL firmada). */
+  vistas: Record<string, string>; onDespues: () => void;
 }) {
   const j = f.jornadas;
   const op = [0.5, 1, 2, 3];
@@ -594,13 +597,43 @@ export function SeccionJornadas({ f, cambiar, renders, alertaJornadas, alertaRen
   const delTipo = (r: Render) => TIPOS_RENDER_POR[f.tipo].includes(String(r.tipo));
   const ordenados = [...renders].sort((a, b) => Number(delTipo(b)) - Number(delTipo(a)) || Number(b.por_defecto) - Number(a.por_defecto) || a.nombre.localeCompare(b.nombre, "es"));
   const [todos, setTodos] = useState(false);
-  const elegido = f.render.eleccion === "biblioteca" ? ordenados.find((r) => r.id === f.render.renderId) : undefined;
+  // Varios (JS, 19/11): el número es el orden en que salen en el PDF.
+  const elegidos = rendersElegidos(f.render);
+  const orden = (clave: string) => elegidos.findIndex((e) => (e.renderId ?? e.path) === clave) + 1;
+  const deBiblioteca = new Set(elegidos.map((e) => e.renderId).filter(Boolean));
   const primeros = ordenados.filter(delTipo).slice(0, 6);
-  const lista = todos ? ordenados : elegido && !primeros.includes(elegido) ? [...primeros, elegido] : primeros;
+  const lista = todos ? ordenados : [...primeros, ...ordenados.filter((r) => deBiblioteca.has(r.id) && !primeros.includes(r))];
+  const propias = elegidos.filter((e) => e.path).map((e) => e.path!);
   const archivo = useRef<HTMLInputElement>(null);
+  const subirVarias = (archivos: Iterable<File>) => {
+    for (const a of archivos) if (/^image\/(png|jpe?g)$/.test(a.type)) onSubir(a);
+      else toast.error("El PDF acepta imágenes PNG o JPG.");
+  };
+  // Pegar una captura (JS, 19/11: «a veces subo fotos copiadas»): con ⌘V en la sección o con el botón.
+  const alPegar = (e: React.ClipboardEvent) => {
+    const imagenes = [...e.clipboardData.files].filter((a) => a.type.startsWith("image/"));
+    if (!imagenes.length) return;
+    e.preventDefault();
+    e.stopPropagation();
+    subirVarias(imagenes);
+  };
+  const pegarDelPortapapeles = async () => {
+    try {
+      const items = await navigator.clipboard.read();
+      const archivos: File[] = [];
+      for (const it of items) {
+        const tipo = it.types.find((t) => t === "image/png" || t === "image/jpeg");
+        if (tipo) archivos.push(new File([await it.getType(tipo)], `captura-${Date.now()}.${tipo === "image/png" ? "png" : "jpg"}`, { type: tipo }));
+      }
+      if (archivos.length) subirVarias(archivos);
+      else toast.error("No hay una imagen copiada. Copiá la captura y probá de nuevo, o pegala con ⌘V acá.");
+    } catch {
+      toast.error("El navegador no dejó leer lo copiado: hacé clic en esta sección y pegá con ⌘V (Ctrl+V).");
+    }
+  };
   return (
     <Seccion id="s-jornadas" titulo="Jornadas y render" alerta={alertaJornadas || alertaRender}
-      resumen={j.armado && j.desarme ? renglon(`${nro(j.armado)} de armado + ${nro(j.desarme)} de desarme`, { biblioteca: "render de la biblioteca", propio: "render propio", ninguno: "sin render" }[f.render.eleccion ?? "ninguno"]) : undefined} extra={<span className="text-[13px] text-muted-foreground">las jornadas las confirma el técnico</span>}>
+      resumen={j.armado && j.desarme ? renglon(`${nro(j.armado)} de armado + ${nro(j.desarme)} de desarme`, elegidos.length > 1 ? `${elegidos.length} imágenes` : { biblioteca: "render de la biblioteca", propio: "render propio", ninguno: "sin render" }[f.render.eleccion ?? "ninguno"]) : undefined} extra={<span className="text-[13px] text-muted-foreground">las jornadas las confirma el técnico</span>}>
       <div className="flex flex-wrap items-end gap-4">
         <button type="button" onClick={() => cambiar((x) => ({ ...x, jornadas: { armado: 1, desarme: 1 } }))}
           className={cn("min-h-11 min-w-24 rounded-lg px-4 text-[15px] font-semibold", j.armado === 1 && j.desarme === 1 ? "bg-hd-boton text-white" : "border border-border hover:bg-muted")}>1 + 1</button>
@@ -615,33 +648,46 @@ export function SeccionJornadas({ f, cambiar, renders, alertaJornadas, alertaRen
         ))}
         <Chip onClick={onDespues} titulo="Queda en «Para seguir» y lo retomás cuando el técnico confirme">Las pregunto después</Chip>
       </div>
-      <div className="flex flex-col gap-2">
-        <span className="text-[13px] font-medium text-muted-foreground">Render</span>
+      <div className="flex flex-col gap-2 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-primary/40" tabIndex={-1} onPaste={alPegar}>
+        <span className="text-[13px] font-medium text-muted-foreground">
+          Render <span className="font-normal">· podés elegir varios: salen en el PDF en este orden. Para pegar una captura, hacé clic acá y ⌘V.</span>
+        </span>
         <div className="flex flex-wrap gap-2.5">
           {lista.map((r) => (
-            <BotonRender key={r.id} activo={f.render.eleccion === "biblioteca" && f.render.renderId === r.id} nombre={r.nombre} url={r.url}
-              onClick={() => cambiar((x) => ({ ...x, render: { eleccion: "biblioteca", renderId: r.id, path: null } }))} />
+            <BotonRender key={r.id} activo={deBiblioteca.has(r.id)} numero={orden(r.id)} nombre={r.nombre} url={r.url}
+              onClick={() => cambiar((x) => ({ ...x, render: alternarRender(x.render, { renderId: r.id, path: null }) }))} />
           ))}
-          <BotonRender activo={f.render.eleccion === "propio"} nombre={subiendo ? "Subiendo…" : f.render.eleccion === "propio" ? "Foto propia" : "Subir foto o render"} url={f.render.eleccion === "propio" ? vistaPropia : null}
+          {propias.map((path, i) => (
+            <BotonRender key={path} activo numero={orden(path)} nombre={`Foto propia${propias.length > 1 ? ` ${i + 1}` : ""}`} url={vistas[path] ?? null}
+              titulo="Tocala para sacarla" onClick={() => cambiar((x) => ({ ...x, render: alternarRender(x.render, { renderId: null, path }) }))} />
+          ))}
+          <BotonRender activo={false} nombre={subiendo ? "Subiendo…" : "Subir foto o render"}
             icono={subiendo ? <Loader2 className="size-6 animate-spin" /> : <Upload className="size-6" />} onClick={() => archivo.current?.click()} />
+          <BotonRender activo={false} nombre="Pegar captura" icono={<ClipboardPaste className="size-6" />} onClick={() => void pegarDelPortapapeles()} />
           <BotonRender activo={f.render.eleccion === "ninguno"} nombre="Sin render" icono={<ImageOff className="size-6" />}
-            onClick={() => cambiar((x) => ({ ...x, render: { eleccion: "ninguno", renderId: null, path: null } }))} />
+            onClick={() => cambiar((x) => ({ ...x, render: { eleccion: "ninguno", renderId: null, path: null, extras: [] } }))} />
         </div>
         {ordenados.length > lista.length || todos ? (
           <button type="button" onClick={() => setTodos(!todos)} className="self-start min-h-9 text-[14px] text-primary underline-offset-2 hover:underline">
             {todos ? "Ver menos" : `Ver toda la biblioteca (${ordenados.length})`}
           </button>
         ) : null}
-        <input ref={archivo} type="file" accept="image/png,image/jpeg" hidden onChange={(e) => { const a = e.target.files?.[0]; if (a) onSubir(a); e.target.value = ""; }} />
+        <input ref={archivo} type="file" accept="image/png,image/jpeg" multiple hidden onChange={(e) => { if (e.target.files) subirVarias([...e.target.files]); e.target.value = ""; }} />
         {lista.length === 0 && <p className="text-[13px] text-muted-foreground">No hay renders de este tipo en la biblioteca (Parámetros → Renders).</p>}
       </div>
     </Seccion>
   );
 }
 
-function BotonRender({ activo, nombre, url, icono, onClick }: { activo: boolean; nombre: string; url?: string | null; icono?: React.ReactNode; onClick: () => void }) {
+function BotonRender({ activo, nombre, url, icono, onClick, numero, titulo }: {
+  activo: boolean; nombre: string; url?: string | null; icono?: React.ReactNode; onClick: () => void; numero?: number; titulo?: string;
+}) {
   return (
-    <button type="button" onClick={onClick} className={cn("flex w-32 flex-col gap-1.5 rounded-xl border p-1.5 text-left text-[13px] font-medium", activo ? "border-primary bg-primary/10 text-primary" : "border-border hover:bg-muted")}>
+    <button type="button" onClick={onClick} title={titulo} aria-pressed={activo}
+      className={cn("relative flex w-32 flex-col gap-1.5 rounded-xl border p-1.5 text-left text-[13px] font-medium", activo ? "border-primary bg-primary/10 text-primary" : "border-border hover:bg-muted")}>
+      {activo && numero ? (
+        <span className="absolute right-2.5 top-2.5 z-10 flex size-6 items-center justify-center rounded-full bg-primary text-[12px] font-semibold text-primary-foreground shadow">{numero}</span>
+      ) : null}
       <span className="flex h-18 items-center justify-center overflow-hidden rounded-lg bg-muted text-muted-foreground">
         {/* URLs firmadas de Storage, que vencen: next/image no suma nada acá. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}

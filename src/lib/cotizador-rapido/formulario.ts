@@ -81,7 +81,7 @@ export type Formulario = {
   syh: Estado3;
   memoria: Estado3;
   jornadas: { armado: number | null; desarme: number | null };
-  render: { eleccion: "biblioteca" | "propio" | "ninguno" | null; renderId: string | null; path: string | null };
+  render: { eleccion: "biblioteca" | "propio" | "ninguno" | null; renderId: string | null; path: string | null; extras?: { renderId: string | null; path: string | null }[] };
   plazoDias: number;
   formaPago: string | null;
   textos: { aMano: boolean; referencia: string; seccion1: string; seccion2: { titulo: string; contenido: string }[] };
@@ -166,7 +166,7 @@ export function formularioDesdeBorrador(d: DatosBorrador): Formulario {
     syh: estadoComplementario(d, "syh"),
     memoria: estadoComplementario(d, "ingenieria"),
     jornadas: { armado: d.jornadas.armado, desarme: d.jornadas.desarme },
-    render: { ...d.render },
+    render: { ...d.render, extras: [...(d.render.extras ?? [])] },
     plazoDias: d.condiciones.periodoDias,
     formaPago: d.condiciones.formaPago,
     textos: {
@@ -318,11 +318,21 @@ export function aplicarFormulario(datos: DatosBorrador, f: Formulario, ctx: Cont
   }
 
   d.jornadas = { ...d.jornadas, armado: f.jornadas.armado, desarme: f.jornadas.desarme };
+  // Las de más (JS, 19/11): sólo con una principal, y cada una de la biblioteca o propia, sin repetir.
+  const conImagen = f.render.eleccion === "biblioteca" || f.render.eleccion === "propio";
+  const vistos = new Set([f.render.renderId, f.render.path].filter(Boolean));
+  const extras: { renderId: string | null; path: string | null }[] = [];
+  for (const e of conImagen ? f.render.extras ?? [] : []) {
+    const clave = e.renderId || e.path;
+    if (!clave || vistos.has(clave)) continue;
+    vistos.add(clave);
+    extras.push(e.renderId ? { renderId: e.renderId, path: null } : { renderId: null, path: e.path });
+  }
   d.render = f.render.eleccion === "biblioteca"
-    ? { eleccion: "biblioteca", renderId: f.render.renderId, path: null }
+    ? { eleccion: "biblioteca", renderId: f.render.renderId, path: null, extras }
     : f.render.eleccion === "propio"
-      ? { eleccion: "propio", renderId: null, path: f.render.path }
-      : { eleccion: f.render.eleccion, renderId: null, path: null };
+      ? { eleccion: "propio", renderId: null, path: f.render.path, extras }
+      : { eleccion: f.render.eleccion, renderId: null, path: null, extras: [] };
   d.condiciones = { ...d.condiciones, periodoDias: f.plazoDias > 0 ? Math.round(f.plazoDias) : 30, formaPago: oNull(f.formaPago) };
 
   const cotizador: DatosCotizador = {
@@ -530,4 +540,40 @@ export function cambiarFormulario(f: Formulario, cambios: Partial<Record<keyof F
 /** Un id nuevo para un renglón del desglosado (estable: lo usa la línea de la oferta). */
 export function idFila(semilla: string): string {
   return `manual:cr-${semilla}`;
+}
+
+// ── Varios renders (JS, 19/11) ──────────────────────────────────────────────────────────
+
+/** Una imagen elegida: de la biblioteca (renderId) o propia (path, subida o pegada). */
+export type RenderElegido = { renderId: string | null; path: string | null };
+type RenderForm = Formulario["render"];
+
+const claveRender = (e: RenderElegido) => e.renderId ?? e.path ?? "";
+
+/** Las elegidas, en el orden en que salen en el PDF: la principal y las de más. */
+export function rendersElegidos(r: RenderForm): RenderElegido[] {
+  const principal: RenderElegido[] = r.eleccion === "biblioteca" && r.renderId ? [{ renderId: r.renderId, path: null }]
+    : r.eleccion === "propio" && r.path ? [{ renderId: null, path: r.path }]
+    : [];
+  return r.eleccion === "biblioteca" || r.eleccion === "propio" ? [...principal, ...(r.extras ?? [])] : [];
+}
+
+/** De la lista al formulario: la primera es la principal. Sin ninguna, queda sin decidir. */
+export function renderDesde(lista: RenderElegido[]): RenderForm {
+  const [p, ...extras] = lista;
+  if (!p) return { eleccion: null, renderId: null, path: null, extras: [] };
+  return p.renderId ? { eleccion: "biblioteca", renderId: p.renderId, path: null, extras } : { eleccion: "propio", renderId: null, path: p.path, extras };
+}
+
+/** Tocar un render: si estaba, sale; si no, se suma al final. */
+export function alternarRender(r: RenderForm, e: RenderElegido): RenderForm {
+  const lista = rendersElegidos(r);
+  const k = claveRender(e);
+  return renderDesde(lista.some((x) => claveRender(x) === k) ? lista.filter((x) => claveRender(x) !== k) : [...lista, e]);
+}
+
+/** Una foto subida o pegada: se suma al final (si ya estaba, no se repite). */
+export function agregarRender(r: RenderForm, e: RenderElegido): RenderForm {
+  const lista = rendersElegidos(r);
+  return lista.some((x) => claveRender(x) === claveRender(e)) ? r : renderDesde([...lista, e]);
 }

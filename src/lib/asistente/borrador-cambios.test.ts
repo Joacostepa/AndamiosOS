@@ -42,7 +42,7 @@ test("normalizarBorrador: un borrador viejo recibe los campos nuevos con su defa
   assert.equal(n.modelo, "B");
   assert.deepEqual(n.opcionalesDescartados, []);
   assert.deepEqual(n.condiciones, borradorVacio().condiciones);
-  assert.deepEqual(n.render, { eleccion: null, renderId: null, path: null });
+  assert.deepEqual(n.render, { eleccion: null, renderId: null, path: null, extras: [] });
 });
 
 test("normalizarBorrador: calculos, decisiones y perfil comercial se toman tal cual (claves libres)", () => {

@@ -80,6 +80,13 @@ la sesión nueva"; si es sobre el cotizador rápido, por § "Al 07/11".** El det
 
 **19/11: el mail del cliente nuevo ya no es obligatorio** (JS: «muchos no usan mail»; Tomás lo pide, pero si no lo pasan se cotiza igual). Se sacó `email` de los datos que exige `faltantesParaEmitir` (`borrador.ts`) para dar de alta un cliente nuevo; vale para el cotizador y para el chat. Sin mail, el cliente se crea en Odoo sin `email` y «mandar por mail» pide a qué dirección, como ya hacía. Siguen obligatorios la razón social, el contacto, el celular y el domicilio.
 
+**19/11: varios renders y pegar una captura** (JS: «que el cotizador me permita seleccionar varios renders, no uno solo, para que luego aparezcan en el presupuesto, y que si quiero pegar una captura de pantalla en la sección de renders me lo permita»).
+- **Varios:** en «Jornadas y render» cada render se elige o se saca tocándolo, y lleva un número: el orden en que sale en el PDF. Se suben varias fotos propias (el selector acepta varias) y se mezclan con las de la biblioteca. «Sin render» borra todas. Sin ninguna elegida, vuelve a faltar el render.
+- **Pegar:** clic en la sección de render y ⌘V (Ctrl+V), o el botón «Pegar captura», que lee el portapapeles (el navegador pide permiso la primera vez). La captura se sube como foto propia (`subirAdjunto`) y se suma al final. Sólo PNG o JPG, porque el PDF no lee otros formatos.
+- **Datos:** la principal sigue en `render.eleccion/renderId/path` (así el chat, la tarjeta de Tomás y los presupuestos viejos no cambian) y las demás van en `render.extras` (`{ renderId | path }[]`, hasta 8, sin repetidas), con `[]` por defecto en `borradorVacio`. Las funciones `rendersElegidos`, `renderDesde`, `alternarRender` y `agregarRender` están en `formulario.ts`, con tests. `usar_foto_como_render` del chat cambia sólo la principal.
+- **PDF:** `imagenesDelRender` (`pdf.ts`) baja todas en orden. Con 1 o 2 imágenes, igual que antes; con 3 o más van de a dos por fila (`documento.ts`), cada fila entera en una página, el título con la primera y la nota al final. Probado con 1, 3 y 5 renders reales: con 5 PNG de la biblioteca el PDF pesa unos 11 MB, por si hace falta achicar las imágenes al armarlo.
+- **Pendiente:** al volver a abrir un presupuesto, las fotos propias se ven sin miniatura («Foto propia»), porque la vista firmada es sólo de la sesión en que se subieron. No se probó en el navegador con sesión.
+
 **Lo primero en la sesión nueva:**
 1. **Preguntarle a JS cómo le fue con el cotizador en uso real.** Si guardó algo en Odoo desde ahí, revisar la orden: es la primera vez que se guarda sin el chat.
 2. **El costo de `interpretar` no se registra en `asistente_mensajes`:** no entra en la pestaña Uso ni en el tope diario. Sumarlo.

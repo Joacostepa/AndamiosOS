@@ -404,27 +404,54 @@ export function Propuesta(d: DatosPropuesta): ReactElement {
 
   const graficos: ReactElement[] = [];
   if (d.imagenes.length) {
-    const capW = d.imagenes.length === 1 ? 360 : 300;
-    const capH = d.imagenes.length === 1 ? 300 : 235;
-    graficos.push(
-      h(
-        View,
-        { wrap: false, key: "graf" },
-        h(Text, { style: S.secblack }, "Representación Gráfica del Proyecto"),
-        h(View, { style: { height: 12 } }),
-        ...d.imagenes.map((img, i) => {
-          let w = Math.min(ANCHO, capW);
-          let hh = (w * img.alto) / img.ancho;
-          if (hh > capH) {
-            hh = capH;
-            w = (hh * img.ancho) / img.alto;
-          }
-          return h(Image, { key: `img${i}`, src: img.src, style: { width: w, height: hh, alignSelf: "center", marginBottom: 6 } });
-        }),
-        ...(d.epigrafe?.trim() ? [h(Text, { key: "epi", style: { ...S.cap, marginTop: 2 } }, ...rich(d.epigrafe.trim()))] : []),
-        h(Text, { style: { ...S.capdisc, marginTop: 3 } }, DISCLAIMER_ESQUEMA),
-      ),
-    );
+    const medida = (img: DatosPropuesta["imagenes"][number], capW: number, capH: number) => {
+      let w = Math.min(ANCHO, capW);
+      let hh = (w * img.alto) / img.ancho;
+      if (hh > capH) {
+        hh = capH;
+        w = (hh * img.ancho) / img.alto;
+      }
+      return { w, hh };
+    };
+    const titulo = [h(Text, { key: "tit", style: S.secblack }, "Representación Gráfica del Proyecto"), h(View, { key: "esp", style: { height: 12 } })];
+    const pie = [
+      ...(d.epigrafe?.trim() ? [h(Text, { key: "epi", style: { ...S.cap, marginTop: 2 } }, ...rich(d.epigrafe.trim()))] : []),
+      h(Text, { key: "disc", style: { ...S.capdisc, marginTop: 3 } }, DISCLAIMER_ESQUEMA),
+    ];
+    if (d.imagenes.length <= 2) {
+      const capW = d.imagenes.length === 1 ? 360 : 300;
+      const capH = d.imagenes.length === 1 ? 300 : 235;
+      graficos.push(
+        h(
+          View,
+          { wrap: false, key: "graf" },
+          ...titulo,
+          ...d.imagenes.map((img, i) => {
+            const { w, hh } = medida(img, capW, capH);
+            return h(Image, { key: `img${i}`, src: img.src, style: { width: w, height: hh, alignSelf: "center", marginBottom: 6 } });
+          }),
+          ...pie,
+        ),
+      );
+    } else {
+      // Tres o más (JS, 19/11: varios renders): de a dos por fila. Cada fila entera en una página;
+      // el título va con la primera.
+      const col = (ANCHO - 10) / 2;
+      const filas: DatosPropuesta["imagenes"][] = [];
+      for (let i = 0; i < d.imagenes.length; i += 2) filas.push(d.imagenes.slice(i, i + 2));
+      filas.forEach((fila, f) => {
+        const fotos = h(
+          View,
+          { key: `fila${f}`, style: { flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 10, marginBottom: 8 } },
+          ...fila.map((img, i) => {
+            const { w, hh } = medida(img, col, 190);
+            return h(Image, { key: `img${f}-${i}`, src: img.src, style: { width: w, height: hh } });
+          }),
+        );
+        const ultima = f === filas.length - 1;
+        graficos.push(h(View, { wrap: false, key: `graf${f}` }, ...(f === 0 ? titulo : []), fotos, ...(ultima ? pie : [])));
+      });
+    }
   }
 
   const filasTotales = [

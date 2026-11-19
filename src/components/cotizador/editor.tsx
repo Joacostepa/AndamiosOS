@@ -19,7 +19,7 @@ import { recalcular, type ResultadoBorrador } from "@/lib/asistente/borrador";
 import type { AccionVista, BorradorVista, PdfVista } from "@/lib/asistente/eventos";
 import type { ClienteResumen } from "@/lib/odoo/comercial";
 import type { Vecina } from "@/lib/catastro/caba";
-import { aplicarFormulario, formularioDesdeBorrador, seccionDeFaltante, type Formulario } from "@/lib/cotizador-rapido/formulario";
+import { agregarRender, aplicarFormulario, formularioDesdeBorrador, seccionDeFaltante, type Formulario } from "@/lib/cotizador-rapido/formulario";
 import { aplicarPropuesta, ETIQUETAS, type Cambio } from "@/lib/cotizador-rapido/propuesta";
 import type { PropuestaIA } from "@/lib/cotizador-rapido/interpretar";
 import { cn } from "@/lib/utils";
@@ -344,18 +344,19 @@ export function Editor({ id }: { id: string }) {
   };
 
   // ── Render propio ──────────────────────────────────────────────────────────────────────
-  const [vistaPropia, setVistaPropia] = useState<string | null>(null);
-  const [subiendoRender, setSubiendoRender] = useState(false);
+  // Varias (JS, 19/11): cada foto subida o pegada se suma al final de las elegidas.
+  const [vistasPropias, setVistasPropias] = useState<Record<string, string>>({});
+  const [subiendoRender, setSubiendoRender] = useState(0);
   const subirRender = async (archivo: File) => {
-    setSubiendoRender(true);
+    setSubiendoRender((n) => n + 1);
     try {
       const a = await subirAdjunto(id, archivo);
-      setVistaPropia(a.vista ?? null);
-      cambiar((x) => ({ ...x, render: { eleccion: "propio", renderId: null, path: a.path } }));
+      if (a.vista) setVistasPropias((v) => ({ ...v, [a.path]: a.vista! }));
+      cambiar((x) => ({ ...x, render: agregarRender(x.render, { renderId: null, path: a.path }) }));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "No se pudo subir");
     } finally {
-      setSubiendoRender(false);
+      setSubiendoRender((n) => n - 1);
     }
   };
 
@@ -578,7 +579,7 @@ export function Editor({ id }: { id: string }) {
           <SeccionTipo f={form} cambiar={cambiar} tarifas={tarifas} borrador={vista.b} alerta={intento && seccionesConFalta.has("s-tipo")}
             onMejorarAlcance={async (texto) => { await alDia(); return (await mejorarAlcance(id, texto)).texto; }} />
           <SeccionJornadas f={form} cambiar={cambiar} renders={contexto.data?.renders ?? []} alertaJornadas={intento && seccionesConFalta.has("s-jornadas")}
-            alertaRender={intento && seccionesConFalta.has("s-render")} onSubir={subirRender} subiendo={subiendoRender} vistaPropia={vistaPropia}
+            alertaRender={intento && seccionesConFalta.has("s-render")} onSubir={subirRender} subiendo={subiendoRender > 0} vistas={vistasPropias}
             onDespues={async () => { await alDia(); toast.success("Quedó en «Para seguir»."); router.push("/comercial/asistente/cotizar"); }} />
           <SeccionCondiciones f={form} cambiar={cambiar} tarifas={tarifas} alerta={intento && seccionesConFalta.has("s-condiciones")} />
           <SeccionTextos f={form} cambiar={cambiar} borrador={vista.b} alerta={intento && seccionesConFalta.has("s-textos")} />

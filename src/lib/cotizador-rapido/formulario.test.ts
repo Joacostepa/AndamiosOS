@@ -6,7 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { TARIFAS_AGO26 as T } from "../cotizador/prueba-tarifas.ts";
 import { borradorVacio, recalcular, type DatosBorrador } from "../asistente/borrador.ts";
-import { aplicarFormulario, categoriaParaPrecio, esAlcanceRedactado, formularioDesdeBorrador, idFila, referenciaDelAlcance, type Formulario } from "./formulario.ts";
+import { agregarRender, alternarRender, aplicarFormulario, categoriaParaPrecio, esAlcanceRedactado, formularioDesdeBorrador, idFila, referenciaDelAlcance, rendersElegidos, type Formulario } from "./formulario.ts";
 
 const ctx = { tarifas: T };
 const calc = (d: DatosBorrador) => recalcular(d, { tarifas: T, lista: null, hoy: "2026-11-07" });
@@ -167,4 +167,39 @@ test("textos a mano no se pisan", () => {
   const d2 = aplicarFormulario(d, f, ctx);
   assert.equal(d2.seccion1, "Texto mío");
   assert.equal(d2.referencia, "Pantalla especial");
+});
+
+// ── Varios renders (JS, 19/11) ──────────────────────────────────────────────────────────
+
+test("varios renders: se eligen y se sacan tocándolos, en orden; las fotos se suman al final", () => {
+  let r = base().render;
+  r = alternarRender(r, { renderId: "bandeja-std", path: null });
+  r = alternarRender(r, { renderId: "doble-altura", path: null });
+  r = agregarRender(r, { renderId: null, path: "adjuntos/c/captura.png" });
+  assert.deepEqual(rendersElegidos(r).map((e) => e.renderId ?? e.path), ["bandeja-std", "doble-altura", "adjuntos/c/captura.png"]);
+  assert.equal(r.eleccion, "biblioteca");
+  // La misma foto pegada dos veces no se repite.
+  assert.equal(rendersElegidos(agregarRender(r, { renderId: null, path: "adjuntos/c/captura.png" })).length, 3);
+  // Sacar la principal: pasa a serlo la siguiente.
+  r = alternarRender(r, { renderId: "bandeja-std", path: null });
+  assert.equal(r.renderId, "doble-altura");
+  r = alternarRender(r, { renderId: "doble-altura", path: null });
+  assert.equal(r.eleccion, "propio");
+  assert.equal(r.path, "adjuntos/c/captura.png");
+  // Sin ninguna: queda sin decidir (falta elegir).
+  assert.equal(alternarRender(r, { renderId: null, path: "adjuntos/c/captura.png" }).eleccion, null);
+  // Con «Sin render» no hay elegidas.
+  assert.deepEqual(rendersElegidos({ eleccion: "ninguno", renderId: null, path: null, extras: [{ renderId: "x", path: null }] }), []);
+});
+
+test("varios renders: llegan al borrador y vuelven iguales a la pantalla, sin repetidos", () => {
+  const { d } = bandejaFlorida();
+  const f = formularioDesdeBorrador(d);
+  f.render = { eleccion: "biblioteca", renderId: "a", path: null, extras: [{ renderId: "b", path: null }, { renderId: null, path: "adjuntos/c/p.png" }, { renderId: "a", path: null }] };
+  const d2 = aplicarFormulario(d, f, ctx);
+  assert.deepEqual(d2.render, { eleccion: "biblioteca", renderId: "a", path: null, extras: [{ renderId: "b", path: null }, { renderId: null, path: "adjuntos/c/p.png" }] });
+  assert.deepEqual(formularioDesdeBorrador(d2).render, d2.render);
+  // «Sin render» borra las de más.
+  f.render = { eleccion: "ninguno", renderId: null, path: null, extras: [{ renderId: "b", path: null }] };
+  assert.deepEqual(aplicarFormulario(d, f, ctx).render.extras, []);
 });

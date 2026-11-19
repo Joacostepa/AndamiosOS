@@ -771,7 +771,7 @@ const HERRAMIENTAS = [
     ejecutar: async ({ desdeElFinal }, ctx) => {
       const foto = await fotoDelChat(ctx.db, ctx.conversacion.id, desdeElFinal);
       if ("error" in foto) return { contenido: foto.error, esError: true };
-      const { b, cambios } = await mutarConCambios(ctx, (d) => ({ ...d, render: { eleccion: "propio", renderId: null, path: foto.path } }), { render: { eleccion: "propio", path: foto.path } });
+      const { b, cambios } = await mutarConCambios(ctx, (d) => ({ ...d, render: { ...d.render, eleccion: "propio", renderId: null, path: foto.path } }), { render: { eleccion: "propio", path: foto.path } });
       const siguiente = [
         "Preguntale al vendedor si quiere dejar esta imagen en la biblioteca de renders para usarla en otras propuestas; si dice que sí, guardar_render_en_biblioteca (proponé vos el tipo y un nombre corto).",
         ...(b.odoo_venta_nombre ? [`La ${b.odoo_venta_nombre} ya está en Odoo con un PDF sin este render: proponé guardar de nuevo (actualiza la misma orden y adjunta el PDF con el render).`] : []),

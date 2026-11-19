@@ -39,7 +39,10 @@ export const esquemaFormulario = z.object({
   syh: estado3,
   memoria: estado3,
   jornadas: z.object({ armado: z.number().finite().positive().max(60).nullable(), desarme: z.number().finite().positive().max(60).nullable() }),
-  render: z.object({ eleccion: z.enum(["biblioteca", "propio", "ninguno"]).nullable(), renderId: z.string().max(60).nullable(), path: z.string().max(300).nullable() }),
+  render: z.object({
+    eleccion: z.enum(["biblioteca", "propio", "ninguno"]).nullable(), renderId: z.string().max(60).nullable(), path: z.string().max(300).nullable(),
+    extras: z.array(z.object({ renderId: z.string().max(60).nullable(), path: z.string().max(300).nullable() })).max(8).optional(),
+  }),
   plazoDias: z.number().int().positive().max(3650),
   formaPago: texto(600).nullable(),
   textos: z.object({

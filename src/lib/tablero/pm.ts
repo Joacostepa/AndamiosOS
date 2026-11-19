@@ -35,11 +35,15 @@ export function llevaPm(tipo: string | null | undefined): boolean {
 export const DIAS_AVISO_SIN_PM = 2;
 
 /**
- * ¿La obra está por arrancar (o ya arrancó) sin PM? `primerDia` es la primera jornada
- * planificada; sin ella no hay apuro que medir.
+ * ¿La obra arranca de hoy a DIAS_AVISO_SIN_PM días hábiles y no tiene PM? `primerDia` es la
+ * primera jornada planificada; sin ella no hay apuro que medir.
+ *
+ * LA QUE YA ARRANCÓ NO ES URGENTE. Visto en producción el 19/11: el PM nació ese día, así que
+ * todas las obras en curso (algunas desde agosto) "arrancaron sin PM" y pintaban la lista de
+ * rojo. Van en ámbar, en su propio grupo.
  */
 export function sinPmUrgente(primerDia: string | null | undefined, hoy: string, feriados: Feriados): boolean {
-  if (!primerDia) return false;
+  if (!primerDia || primerDia < hoy) return false;
   return diasHabilesEntre(hoy, primerDia, feriados) <= DIAS_AVISO_SIN_PM;
 }
 
@@ -58,7 +62,7 @@ export type PmEnTarjeta = {
   nombre: string | null;
   /** El PM es quien mira: dice "vos". */
   esMio: boolean;
-  /** Sin PM y arranca en DIAS_AVISO_SIN_PM días hábiles o menos (o ya arrancó): en rojo. */
+  /** Sin PM y arranca de hoy a DIAS_AVISO_SIN_PM días hábiles: en rojo. */
   urgente: boolean;
   /** "Tomar" de un clic. null = quien mira no es PM (Operaciones asigna desde el ⋮). */
   onTomar: (() => void) | null;

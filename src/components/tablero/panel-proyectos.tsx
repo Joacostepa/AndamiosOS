@@ -75,11 +75,15 @@ export function PanelProyectos({
     );
   }, [filas, busqueda]);
 
+  // Lo que viene primero, y lo que YA ESTÁ EN CURSO al final: el PM nació el 19/11 y las obras
+  // en curso desde antes no son lo que hay que repartir con apuro.
   const sinPm = visibles.filter((f) => !f.pm);
+  const enCurso = (f: FilaProyecto) => f.grupo !== "sinFecha" && !!f.primerDia && f.primerDia < hoy;
   const grupos: { titulo: string; filas: FilaProyecto[]; vacio: string }[] = [
-    { titulo: "Sin PM · en el tablero", filas: ordenar(sinPm.filter((f) => f.grupo === "tablero")), vacio: "Todas tienen PM." },
-    { titulo: "Sin PM · más adelante", filas: ordenar(sinPm.filter((f) => f.grupo === "adelante")), vacio: "Todas tienen PM." },
+    { titulo: "Sin PM · arrancan en el tablero", filas: ordenar(sinPm.filter((f) => f.grupo === "tablero" && !enCurso(f))), vacio: "Todas tienen PM." },
+    { titulo: "Sin PM · más adelante", filas: ordenar(sinPm.filter((f) => f.grupo === "adelante" && !enCurso(f))), vacio: "Todas tienen PM." },
     { titulo: "Sin PM · sin fecha todavía", filas: ordenar(sinPm.filter((f) => f.grupo === "sinFecha")), vacio: "Todas tienen PM." },
+    { titulo: "Sin PM · ya en curso", filas: ordenar(sinPm.filter(enCurso)), vacio: "" },
   ];
   const conPm = visibles.filter((f) => f.pm);
   if (esPm && yoId) {
@@ -270,7 +274,7 @@ function Fila({
         )}
       </div>
       <p className="col-span-2 truncate text-[11.5px]" style={sinPm ? { color } : { color: "var(--muted-foreground)" }}>
-        {[tipoOtLabel(ot.tipo), cuando(fila, hoy), urgente && (fila.primerDia ?? "") >= hoy ? "arranca ya" : null]
+        {[tipoOtLabel(ot.tipo), cuando(fila, hoy), urgente ? "arranca ya" : null]
           .filter(Boolean)
           .join(" · ")}
       </p>

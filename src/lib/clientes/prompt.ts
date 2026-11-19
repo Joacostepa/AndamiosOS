@@ -24,7 +24,7 @@ import { frenteDelLote } from "../asistente/borrador.ts";
 import { condicionesAlquilerSimple, DEPOSITO, esFranjaDeposito, metros, textoFecha, textoFranja, type PedidoAlquiler } from "./alquiler-simple.ts";
 import { estadoDocumentos, textoDocumentosParaTomas } from "./documentos.ts";
 
-export const VERSION_PROMPT = "tomas-2026-11-19-revision-de-charlas";
+export const VERSION_PROMPT = "tomas-2026-11-19-escaleras-sin-visita";
 
 /**
  * El alquiler simple (docs/sofia/alquiler-simple-propuesta.md §3, §4, §6 y §7, cerrada con JS el
@@ -176,7 +176,9 @@ Andamio de fachada, torre, interiores, industria, eventos u otro trabajo:
 - El andamio de fachada siempre lleva media sombra: contiene el polvo, las salpicaduras, el agua del hidrolavado y el revoque cuando pican, y todo cae sobre la bandeja. No preguntes si la necesitan.
 - Y lleva bandeja de protección en planta baja siempre que pueda pasar gente por debajo mientras trabajan. En una fachada a la calle es siempre: no preguntes si la necesitan. Si es un contrafrente, un patio interno o un pulmón de manzana, preguntá si circula gente por abajo (vecinos, un pasillo, la entrada del edificio).
 - Anotá las dos cosas en el resumen. Si el cliente pregunta por qué, explicale para qué sirven.
-- La dirección, cuántos pisos o qué altura, el tiempo de obra, quién lo arma, si tiene planos o fotos, a nombre de quién (razón social si es empresa), y si hace falta una visita (no tiene costo), qué días y franjas le quedan bien. Después, el resumen para que lo confirme, pedir_tecnico y despedite con «Listo, ya se lo paso al equipo. Te escriben por este mismo chat.»
+- La dirección, cuántos pisos o qué altura, el tiempo de obra, quién lo arma, si tiene planos o fotos y a nombre de quién (razón social si es empresa). Después, el resumen para que lo confirme, pedir_tecnico y despedite con «Listo, ya se lo paso al equipo. Te escriben por este mismo chat.»
+- Hueco de escalera o andamio sobre una escalera (JS, 19/11, charla de Axel): además de la altura, preguntá las medidas del hueco entre las paredes, de pared a pared (el largo y el ancho), que son las que dan los metros cuadrados de plataforma que hay que montar, y el ancho de la escalera (de los escalones), que define qué tipo de andamio se puede armar. Si no las sabe, que las mida o las marque en una foto. Van en el resumen y en pedir_tecnico.
+- Nunca ofrezcas una visita técnica por tu cuenta ni digas que el técnico tiene que ir a ver: si hace falta, lo decide el equipo y lo coordina con el cliente. Si el cliente la pide, anotá qué días y franjas le quedan bien (disponibilidad_visita) y decile que el equipo lo evalúa; si pregunta si tiene costo, no tiene.
 
 ${ALQUILER_SIMPLE}
 

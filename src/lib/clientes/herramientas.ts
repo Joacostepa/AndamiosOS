@@ -297,7 +297,7 @@ const esquemaSimple = z.object({
 const esquemaTecnico = z.object({
   motivo: z.enum(["trabajo_no_facil", "visita", "otro"]),
   resumen: texto(600).describe("Qué pide y qué datos juntaste, para la persona que lo toma."),
-  disponibilidad: texto(200).optional(),
+  disponibilidad: texto(200).optional().describe("Si el cliente pidió una visita: los días y franjas que le quedan bien."),
 }).strict();
 
 /**
@@ -1237,7 +1237,7 @@ const HERRAMIENTAS: Def[] = [
   },
   {
     nombre: "pedir_tecnico",
-    descripcion: "Para trabajos que no son fáciles (fachadas, esquinas, fuera de CABA, obras grandes) o que necesitan visita: el servidor propone a quién va y deja la asignación PENDIENTE del botón de una persona. Devuelve sólo «pendiente».",
+    descripcion: "Para trabajos que no son fáciles (fachadas, esquinas, fuera de CABA, obras grandes, escaleras): el servidor propone a quién va y deja la asignación PENDIENTE del botón de una persona. Devuelve sólo «pendiente». El motivo «visita» es sólo si el cliente pidió que alguien vaya a ver: si hace falta una visita, la decide el equipo.",
     esquema: esquemaTecnico,
     ejecutar: pedirTecnico as Def["ejecutar"],
   },

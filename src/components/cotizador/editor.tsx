@@ -103,12 +103,15 @@ export function Editor({ id }: { id: string }) {
           setServidor(r.borrador);
           qc.setQueryData(["asistente-conversacion", id], (old: unknown) => (old && typeof old === "object" ? { ...(old as object), borrador: r.borrador } : old));
         } catch (e) {
-          pendiente.current = false;
           if (e instanceof ErrorConBorrador && e.status === 409 && e.borrador) {
+            pendiente.current = false;
             toast.warning(e.message);
             adoptar(e.borrador, true);
           } else {
-            toast.error(e instanceof Error ? e.message : "No se pudo guardar");
+            // Lo de la pantalla sigue sin guardar: queda pendiente, para que el borrador que llegue
+            // del servidor (el chat, el catastro, un botón) no lo pise, y se reintenta con el próximo
+            // cambio (JS, 19/11: un guardado rechazado y lo que siguió se perdió todo).
+            toast.error(`No se guardó: ${e instanceof Error ? e.message : "falló la conexión"}. Lo cargado sigue en pantalla; no recargues la página.`, { id: "cotizador-guardado", duration: 15_000 });
           }
           setGuardandoForm(false);
           return;
@@ -142,11 +145,20 @@ export function Editor({ id }: { id: string }) {
     if (enCurso.current) await enCurso.current;
   }, [persistir]);
 
-  // Guardar al salir de la pestaña.
+  // Guardar al salir de la pestaña, y avisar si queda algo sin guardar (recargar lo perdería).
   useEffect(() => {
     const salir = () => { if (pendiente.current) void persistir(); };
+    const avisar = (e: BeforeUnloadEvent) => {
+      if (!pendiente.current) return;
+      void persistir();
+      e.preventDefault();
+    };
     window.addEventListener("pagehide", salir);
-    return () => window.removeEventListener("pagehide", salir);
+    window.addEventListener("beforeunload", avisar);
+    return () => {
+      window.removeEventListener("pagehide", salir);
+      window.removeEventListener("beforeunload", avisar);
+    };
   }, [persistir]);
 
   /** Respuesta de una herramienta: el borrador nuevo (sin pisar lo que se esté escribiendo). */

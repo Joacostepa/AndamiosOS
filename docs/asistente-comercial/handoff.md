@@ -78,6 +78,8 @@ la sesión nueva"; si es sobre el cotizador rápido, por § "Al 07/11".** El det
 - **Tab en los montos:** salta al monto del renglón siguiente (Shift+Tab, al anterior) y deja el número seleccionado (`data-monto-fila`). En el último renglón, Tab sigue normal.
 - **«Agregar renglón» en el orden de JS:** mano de obra armado, mano de obra desarme, alquiler N días, traslado de envío, traslado de retiro, memoria de cálculo, técnico de SyH, gestoría, etapa y renglón libre. La mano de obra va en dos renglones, con el mismo producto de Odoo que antes (`productoParaConcepto`).
 
+**19/11: el mail del cliente nuevo ya no es obligatorio** (JS: «muchos no usan mail»; Tomás lo pide, pero si no lo pasan se cotiza igual). Se sacó `email` de los datos que exige `faltantesParaEmitir` (`borrador.ts`) para dar de alta un cliente nuevo; vale para el cotizador y para el chat. Sin mail, el cliente se crea en Odoo sin `email` y «mandar por mail» pide a qué dirección, como ya hacía. Siguen obligatorios la razón social, el contacto, el celular y el domicilio.
+
 **Lo primero en la sesión nueva:**
 1. **Preguntarle a JS cómo le fue con el cotizador en uso real.** Si guardó algo en Odoo desde ahí, revisar la orden: es la primera vez que se guarda sin el chat.
 2. **El costo de `interpretar` no se registra en `asistente_mensajes`:** no entra en la pestaña Uso ni en el tope diario. Sumarlo.

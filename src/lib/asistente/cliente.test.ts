@@ -27,6 +27,11 @@ test("cliente nuevo sin CUIT: no bloquea, avisa", () => {
   assert.ok(r.avisos.some((a) => a.codigo === "sin_cuit" && a.nivel === "advertencia"));
 });
 
+test("cliente nuevo sin mail: se puede guardar (JS, 19/11)", () => {
+  const r = recalcular(nuevo({ email: null, cuit: "30-71111650-4" }), ctx);
+  assert.ok(!r.faltantes.some((f) => f.codigo === "cliente_nuevo"));
+});
+
 test("un CUIT cargado que no valida sigue bloqueando, y el de 10 dígitos trae la propuesta", () => {
   const r = recalcular(nuevo({ cuit: "20-8632598-6" }), ctx);
   const f = r.faltantes.find((x) => x.codigo === "cuit");

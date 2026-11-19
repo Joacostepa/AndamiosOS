@@ -414,7 +414,8 @@ export function faltantesParaEmitir(d: DatosBorrador, r: { lineas: Linea[]; avis
   if (!c.partnerId && !c.esNuevo) f.push({ codigo: "cliente", texto: "Falta el cliente: buscarlo en Odoo (\"ya soy cliente\" no alcanza) o marcarlo como nuevo." });
   if (c.esNuevo) {
     // Sin CUIT se puede guardar (avisosCliente); uno cargado que no valida, no.
-    const faltan = (["razonSocial", "contacto", "celular", "email", "domicilio"] as const).filter((k) => !c[k]?.trim());
+    // El mail no se exige (JS, 19/11: muchos clientes no usan mail; la propuesta va por WhatsApp).
+    const faltan = (["razonSocial", "contacto", "celular", "domicilio"] as const).filter((k) => !c[k]?.trim());
     if (faltan.length) f.push({ codigo: "cliente_nuevo", texto: `Para dar de alta al cliente faltan: ${faltan.join(", ")}.` });
     const cuit = c.cuit?.trim() ? validarCuit(c.cuit) : null;
     if (cuit && !cuit.valido) {

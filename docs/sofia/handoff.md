@@ -6,6 +6,8 @@
 
 Para retomar, decí: «Leé docs/sofia/handoff.md y seguimos con el CRM de WhatsApp».
 
+**Lo último (19/11), todo en producción:** la tarjeta de la bandeja fácil con el render por defecto (`306bfa6`), las imágenes de referencia (`9495ce5`) y las mejoras por la revisión de las últimas 10 charlas (`52bc27f`, prompt `tomas-2026-11-19-revision-de-charlas`). El detalle, abajo. Para la próxima: volver a leer las charlas nuevas y ver si Tomás ya no repite preguntas, si la pausa al escribir se siente natural, si pregunta el nombre cuando el perfil no tiene uno y si las imágenes de referencia salen bien. En el cotizador, el mail ya no es obligatorio (`c7b5c19`, ver docs/asistente-comercial/handoff.md).
+
 **En curso (12/11): el alquiler simple que cotiza Tomás.** JS contestó las 13 preguntas el 12/11 y sumó seis decisiones a la tarde (filas 16 a 24: sólo CABA, el retiro en el depósito de Cucha Cucha 2345, Belgrano, el peldaño en cualquier módulo, Tamara de vendedora, el pagaré, provincia sin derivar y nada de 12 a 13); están en la §11 de [alquiler-simple-propuesta.md](./alquiler-simple-propuesta.md). **En producción desde el 12/11** (`09e4fe0` en main, deploy `andamios-d1mp5x9g6`, migraciones `20261112000001` y `…02` aplicadas). JS no quiso la prueba previa contra Odoo: lo prueba él por WhatsApp. Ver el punto 13.
 
 **19/11: revisión de las últimas 10 charlas** (JS: «leé las últimas 10 charlas que tuvo Tomás para que detectes qué se puede mejorar»). Charlas del 18/11 a la tarde y del 19/11 a la mañana: Karina, Francesco, María Jimena, Laura (estafa), Elvio, gonprifer, Gaby, Dario, Eric y Miguel. Lo que se cambió (prompt `tomas-2026-11-19-revision-de-charlas`):

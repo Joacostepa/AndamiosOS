@@ -69,6 +69,9 @@ la que se construyó: https://claude.ai/artifact/N5TeXcH2NsmDQ3CiGx4t5U).
   (`panel-proyectos.tsx`): sin PM en el tablero, más adelante y sin fecha todavía (la bandeja),
   y después lo de cada PM. Sale de `data.ots`, no de las tarjetas a la vista. En celular la
   lista arranca abierta.
+- **Tarjetas de un renglón** (obras de pocas horas, 19/11, lo vio JS): no tienen renglón 2, así
+  que el PM va al final del renglón de la dirección como etiqueta corta («Sin PM» o el nombre
+  de pila, `ChipPmCorto`), en lugar del «Sin parte». Sin «Tomar»: se toma desde el ⋮ o la lista.
 - **Sección «Proyecto (PM)»** en el ⋮ de la tarjeta, en la lista y en el ⋯ de la ficha: tomar,
   asignar a… (sólo quien edita Planificación), pasársela al otro, soltar/quitar. La ficha muestra
   el PM en Contactos › En ABA.

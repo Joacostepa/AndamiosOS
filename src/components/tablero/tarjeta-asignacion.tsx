@@ -478,8 +478,12 @@ export function ContenidoTarjeta({
             {c.texto}
           </span>
         ))}
+        {/* MODO PM EN UNA TARJETA DE UN RENGLÓN (pedido de JS, 19/11): el renglón del PM no
+            existe, así que el PM va acá, como el problema. Reemplaza al problema: en modo PM lo
+            que se mira es el PM, y el "Sin parte" vuelve al apagar el modo. */}
+        {unaLinea && pm && <ChipPmCorto pm={pm} />}
         {/* En una tarjeta de un renglón el problema no tiene dónde ir: va acá, corto. */}
-        {unaLinea && problema && (
+        {unaLinea && !pm && problema && (
           <span className="shrink-0 text-[11px] font-medium" style={{ color: PELIGRO_TEXTO }}>
             {noEjecutada ? "No ejecutada" : vencidaSinParte ? "Sin parte" : problema}
           </span>
@@ -598,6 +602,39 @@ function RenglonPm({ pm }: { pm: PmEnTarjeta }) {
         </span>
       )}
     </p>
+  );
+}
+
+/**
+ * El PM en el renglón de la dirección, para las tarjetas que miden un renglón (las obras de
+ * pocas horas): "Sin PM" en ámbar (rojo si arranca ya) o el nombre de pila del PM. No lleva
+ * "Tomar": no entra. Se toma desde el ⋮ o desde la lista, y el tooltip lo dice.
+ */
+function ChipPmCorto({ pm }: { pm: PmEnTarjeta }) {
+  if (pm.nombre) {
+    const pila = pm.nombre.split(/\s+/)[0];
+    return (
+      <span
+        className="flex shrink-0 items-center gap-0.5 rounded bg-card/70 px-1 text-[10.5px] font-medium text-foreground/80"
+        title={`PM: ${pm.nombre}${pm.esMio ? " (vos)" : ""}`}
+      >
+        <UserRound className="h-2.5 w-2.5" />
+        {pm.esMio ? "vos" : pila}
+      </span>
+    );
+  }
+  return (
+    <span
+      className="shrink-0 rounded px-1 text-[10.5px] font-semibold"
+      style={{
+        backgroundColor: pm.urgente ? PELIGRO_SUAVE : AVISO.fondo,
+        color: pm.urgente ? PELIGRO_TEXTO : AVISO.texto,
+        border: `1px solid ${pm.urgente ? PELIGRO : AVISO.borde}`,
+      }}
+      title={`Sin PM${pm.urgente ? ", y arranca ya" : ""}: tomala desde el ⋮ o desde la lista de proyectos.`}
+    >
+      Sin PM
+    </span>
   );
 }
 

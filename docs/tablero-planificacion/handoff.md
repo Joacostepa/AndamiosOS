@@ -54,8 +54,9 @@ la que se construyó: https://claude.ai/artifact/N5TeXcH2NsmDQ3CiGx4t5U).
 **Decisiones de JS (19/11):**
 - Lleva PM **toda OT menos el desarme** (ampliaciones, desmontes parciales, mantenimiento, sí).
 - "Sin PM" va en **ámbar**, no en rojo: el rojo del tablero ya es sin habilitar, urgente, sin
-  parte y no ejecutada. Pasa a rojo sólo si la obra arranca de hoy a 2 días hábiles y nadie la
-  tomó (`DIAS_AVISO_SIN_PM`). Las que ya están en curso sin PM (todas las anteriores al 19/11)
+  parte y no ejecutada. Pasa a rojo sólo si la PRÓXIMA jornada de la obra cae de hoy a 2 días
+  hábiles y nadie la tomó (`DIAS_AVISO_SIN_PM`; se mide contra la próxima y no la primera desde
+  que JS vio en ámbar una obra partida que volvía al día siguiente). Las que ya están en curso sin PM (todas las anteriores al 19/11)
   quedan en ámbar y van al final de la lista, en «Sin PM · ya en curso».
 - Augusto y Juan Ignacio **sólo toman proyectos**: Planificación en «ver» (ya lo tenían) más el
   módulo nuevo **«PM de obras»** en «editar».

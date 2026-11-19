@@ -62,7 +62,7 @@ export type PmEnTarjeta = {
   nombre: string | null;
   /** El PM es quien mira: dice "vos". */
   esMio: boolean;
-  /** Sin PM y arranca de hoy a DIAS_AVISO_SIN_PM días hábiles: en rojo. */
+  /** Sin PM y su PRÓXIMA jornada cae de hoy a DIAS_AVISO_SIN_PM días hábiles: en rojo. */
   urgente: boolean;
   /** "Tomar" de un clic. null = quien mira no es PM (Operaciones asigna desde el ⋮). */
   onTomar: (() => void) | null;

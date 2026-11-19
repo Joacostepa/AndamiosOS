@@ -3162,6 +3162,17 @@ export function TableroBoard() {
   const filasPm = useMemo<FilaProyecto[]>(() => {
     if (!data) return [];
     const fuera = new Set(fueraDeRango.map((o) => o.id));
+    // EL APURO SE MIDE CONTRA LA PRÓXIMA JORNADA, no contra la primera (JS, 19/11): una obra
+    // partida que arrancó el lunes y vuelve el viernes sin PM tiene que verse en rojo el
+    // jueves, igual que una que arranca el viernes. Sin los apoyos ni las tareas.
+    const proximo = new Map<number, string>();
+    for (const b of bloquesPorClave.values()) {
+      if (b.apoyo || b.origen === "tarea" || !b.otId) continue;
+      for (const f of b.fechas) {
+        const actual = proximo.get(b.otId);
+        if (f >= hoyBa && (!actual || f < actual)) proximo.set(b.otId, f);
+      }
+    }
     return data.ots
       .filter((ot) => llevaPm(ot.tipo) && otMarcable(ot))
       .map((ot) => {
@@ -3172,9 +3183,10 @@ export function TableroBoard() {
         const grupo: FilaProyecto["grupo"] = plan || yaArranco ? "tablero" : fuera.has(ot.id) ? "adelante" : "sinFecha";
         const primerDia = plan?.primerDia ?? (fuera.has(ot.id) ? ot.fechaProgramada : null);
         const pm = pmPorOt.get(ot.id) ?? null;
-        return { ot, grupo, primerDia, pm, urgente: !pm && sinPmUrgente(primerDia, hoyBa, feriadosSet) };
+        const siguiente = proximo.get(ot.id) ?? primerDia;
+        return { ot, grupo, primerDia, pm, urgente: !pm && sinPmUrgente(siguiente, hoyBa, feriadosSet) };
       });
-  }, [data, fueraDeRango, planPorObra, pmPorOt, hoyBa, feriadosSet]);
+  }, [data, fueraDeRango, planPorObra, bloquesPorClave, pmPorOt, hoyBa, feriadosSet]);
   const filaPmPorOt = useMemo(() => new Map(filasPm.map((f) => [f.ot.id, f])), [filasPm]);
   const sinPmTotal = filasPm.filter((f) => !f.pm).length;
 

@@ -9,10 +9,25 @@ import { Button } from "@/components/ui/button";
 // dispositivo. Cada celular o compu se activa por su cuenta. Modos: «Todo» (cada mensaje del
 // cliente y cada respuesta de Tomás) o «Sólo lo que me necesita». En el iPhone, sólo andan con
 // la app agregada a la pantalla de inicio (iOS 16.4 o más).
+//
+// El iPhone a veces pierde la suscripción sin avisar: Apple sigue aceptando los avisos y el
+// celular no los muestra (JS, 20/11: dejaron de llegar y hubo que activarlas de nuevo). Al abrir
+// la bandeja, si este dispositivo las tenía activas y ya no, se reactivan solas (con el permiso
+// dado) o la campana avisa en rojo. Se recuerda en el dispositivo cuál era su suscripción, para
+// borrar la muerta, y si se desactivaron a propósito, para no reactivarlas.
 
 const API = "/api/comercial/clientes/notificaciones";
 type Modo = "todo" | "necesita";
-type Estado = { configurado: boolean; clavePublica: string | null; suscripciones: { endpoint: string; modo: Modo }[] };
+type Estado = { configurado: boolean; clavePublica: string | null; suscripciones: { endpoint: string; modo: Modo; dispositivo: string | null }[] };
+
+const CLAVE_ENDPOINT = "andamios-push-endpoint";
+const CLAVE_APAGADA = "andamios-push-apagada";
+function leer(clave: string): string | null {
+  try { return localStorage.getItem(clave); } catch { return null; }
+}
+function escribir(clave: string, valor: string | null) {
+  try { if (valor === null) localStorage.removeItem(clave); else localStorage.setItem(clave, valor); } catch { /* sin almacenamiento: no se recuerda */ }
+}
 
 function claveABytes(base64: string): Uint8Array<ArrayBuffer> {
   const relleno = "=".repeat((4 - (base64.length % 4)) % 4);
@@ -44,6 +59,8 @@ export function BotonNotificaciones() {
   const [estado, setEstado] = useState<Estado | null>(null);
   const [modo, setModo] = useState<Modo>("todo");
   const [ocupado, setOcupado] = useState(false);
+  /** Este dispositivo las tenía activas y las perdió, y no se pudieron reactivar solas. */
+  const [perdida, setPerdida] = useState(false);
 
   const cargar = useCallback(async () => {
     const ok = typeof window !== "undefined" && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
@@ -58,7 +75,31 @@ export function BotonNotificaciones() {
       // Una suscripción del navegador que el servidor no conoce (se borró): se ofrece activar de nuevo.
       const conocida = actual && e?.suscripciones.find((s) => s.endpoint === actual.endpoint);
       setSub(conocida ? actual : null);
-      if (conocida) setModo(conocida.modo);
+      if (conocida) {
+        setModo(conocida.modo);
+        escribir(CLAVE_ENDPOINT, actual.endpoint);
+        return;
+      }
+      // ¿Las tenía activas? Lo recuerda el dispositivo o, si se le borró, el servidor por el nombre.
+      const antes = leer(CLAVE_ENDPOINT);
+      const nombre = nombreDispositivo();
+      const previa = e?.suscripciones.find((s) => s.endpoint === antes) ?? e?.suscripciones.find((s) => s.dispositivo === nombre);
+      if (leer(CLAVE_APAGADA) || !(antes || previa) || !e?.configurado || !e.clavePublica) return;
+      if (Notification.permission === "granted") {
+        try {
+          const nueva = actual ?? (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: claveABytes(e.clavePublica) }));
+          const m = previa?.modo ?? "todo";
+          await registrar(nueva, m, antes ?? previa?.endpoint);
+          setSub(nueva);
+          setModo(m);
+          toast.success("Volví a activar las notificaciones de este dispositivo", { description: "Se habían desactivado solas." });
+          return;
+        } catch (err) {
+          console.error("[notificaciones] no se pudieron reactivar solas", err);
+        }
+      }
+      setPerdida(true);
+      toast.warning("Las notificaciones de este dispositivo se desactivaron", { description: "Tocá la campana y activalas de nuevo.", duration: 12_000 });
     } catch (e) {
       console.error("[notificaciones]", e);
     }
@@ -67,6 +108,15 @@ export function BotonNotificaciones() {
   useEffect(() => {
     void cargar();
   }, [cargar]);
+
+  /** Le pasa la suscripción al servidor (y borra la anterior de este dispositivo, si cambió). */
+  const registrar = async (s: PushSubscription, m: Modo, anterior?: string | null) => {
+    const j = s.toJSON() as { endpoint: string; keys: { p256dh: string; auth: string } };
+    await pedir({ accion: "activar", suscripcion: { endpoint: j.endpoint, keys: j.keys }, modo: m, dispositivo: nombreDispositivo(), anterior: anterior && anterior !== j.endpoint ? anterior : undefined });
+    escribir(CLAVE_ENDPOINT, j.endpoint);
+    escribir(CLAVE_APAGADA, null);
+    setPerdida(false);
+  };
 
   const activar = async () => {
     setOcupado(true);
@@ -83,8 +133,7 @@ export function BotonNotificaciones() {
       const reg = await navigator.serviceWorker.ready;
       const previa = await reg.pushManager.getSubscription();
       const nueva = previa ?? (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: claveABytes(estado.clavePublica) }));
-      const j = nueva.toJSON() as { endpoint: string; keys: { p256dh: string; auth: string } };
-      await pedir({ accion: "activar", suscripcion: { endpoint: j.endpoint, keys: j.keys }, modo, dispositivo: nombreDispositivo() });
+      await registrar(nueva, modo, leer(CLAVE_ENDPOINT));
       setSub(nueva);
       toast.success("Notificaciones activadas en este dispositivo", { description: "Te mando una de prueba." });
       await pedir({ accion: "probar", endpoint: nueva.endpoint }).catch((e: Error) => toast.error(e.message));
@@ -101,6 +150,8 @@ export function BotonNotificaciones() {
     try {
       await pedir({ accion: "desactivar", endpoint: sub.endpoint });
       await sub.unsubscribe().catch(() => {});
+      escribir(CLAVE_ENDPOINT, null);
+      escribir(CLAVE_APAGADA, "1");
       setSub(null);
       toast.success("Notificaciones desactivadas en este dispositivo");
     } catch (e) {
@@ -126,15 +177,16 @@ export function BotonNotificaciones() {
     setOcupado(false);
   };
 
-  const Icono = sub ? BellRing : soporta === false ? BellOff : Bell;
+  const Icono = sub ? BellRing : soporta === false || perdida ? BellOff : Bell;
   return (
     <>
       <Button variant="ghost" className="h-10 gap-1.5 px-2.5 text-[13.5px]" onClick={() => setAbierto((x) => !x)} title="Notificaciones en este dispositivo" aria-label="Notificaciones" aria-expanded={abierto}>
-        <Icono className={sub ? "size-4 text-hd-boton" : "size-4"} />
+        <Icono className={sub ? "size-4 text-hd-boton" : perdida ? "size-4 text-hd-rojo" : "size-4"} />
       </Button>
       {abierto && (
         <div className="absolute top-14 right-0 left-0 z-20 space-y-2 border-b border-border bg-background p-3 text-[13.5px] shadow-md">
           <p className="font-semibold">Notificaciones en este dispositivo</p>
+          {perdida && !sub && <p className="text-hd-rojo">Se desactivaron solas (al iPhone a veces le pasa). Activalas de nuevo para que te sigan llegando.</p>}
           {soporta === false ? (
             <p className="text-muted-foreground">
               {esIos() && !instalada()

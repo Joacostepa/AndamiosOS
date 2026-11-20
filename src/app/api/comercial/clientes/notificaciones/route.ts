@@ -19,6 +19,8 @@ const schema = z.discriminatedUnion("accion", [
     suscripcion: z.object({ endpoint: z.string().url().max(1000), keys: z.object({ p256dh: z.string().min(1).max(200), auth: z.string().min(1).max(100) }) }),
     modo: MODO,
     dispositivo: z.string().max(200).optional(),
+    /** La suscripción que este dispositivo tenía antes (el iPhone la pierde sin avisar): se borra. */
+    anterior: z.string().max(1000).optional(),
   }),
   z.object({ accion: z.literal("modo"), endpoint: z.string().max(1000), modo: MODO }),
   z.object({ accion: z.literal("desactivar"), endpoint: z.string().max(1000) }),
@@ -30,7 +32,7 @@ export async function GET() {
   if (quien instanceof NextResponse) return quien;
   try {
     const db = createAdminClient();
-    const { data, error } = await db.from("push_suscripciones").select("endpoint, modo").eq("user_id", quien.userId);
+    const { data, error } = await db.from("push_suscripciones").select("endpoint, modo, dispositivo").eq("user_id", quien.userId);
     if (error) throw new Error(error.message);
     return NextResponse.json({ configurado: pushConfigurado(), clavePublica: clavePublicaPush(), suscripciones: data ?? [] });
   } catch (e) {
@@ -55,6 +57,9 @@ export async function POST(req: NextRequest) {
         { onConflict: "endpoint" },
       );
       if (error) throw new Error(error.message);
+      if (b.anterior && b.anterior !== b.suscripcion.endpoint) {
+        await db.from("push_suscripciones").delete().eq("endpoint", b.anterior).eq("user_id", quien.userId);
+      }
       return NextResponse.json({ ok: true });
     }
     if (b.accion === "modo") {

@@ -305,7 +305,8 @@ function tablaItems(items: ItemPdf[], clave: string): ReactElement {
     { key: clave, style: { borderWidth: 0.4, borderColor: LINE } },
     h(
       View,
-      { style: { flexDirection: "row", backgroundColor: RED } },
+      // El encabezado no queda solo al pie de una hoja: con él va al menos el primer renglón.
+      { minPresenceAhead: 40, style: { flexDirection: "row", backgroundColor: RED } },
       h(View, { style: { ...celda, width: "74%" } }, h(Text, { style: S.th }, "DESCRIPCIÓN")),
       h(View, { style: { ...celda, width: "26%" } }, h(Text, { style: S.th }, "IMPORTE (neto)")),
     ),
@@ -314,7 +315,7 @@ function tablaItems(items: ItemPdf[], clave: string): ReactElement {
       const filas = [
         h(
           View,
-          { key: `${clave}-${i}`, style: { flexDirection: "row", borderTopWidth: 0.4, borderTopColor: LINE } },
+          { key: `${clave}-${i}`, wrap: false, style: { flexDirection: "row", borderTopWidth: 0.4, borderTopColor: LINE } },
           h(
             View,
             { style: { ...celda, width: "74%" } },
@@ -330,7 +331,7 @@ function tablaItems(items: ItemPdf[], clave: string): ReactElement {
         filas.push(
           h(
             View,
-            { key: `${clave}-${i}-bon`, style: { flexDirection: "row", borderTopWidth: 0.4, borderTopColor: LINE } },
+            { key: `${clave}-${i}-bon`, wrap: false, style: { flexDirection: "row", borderTopWidth: 0.4, borderTopColor: LINE } },
             h(
               View,
               { style: { ...celda, width: "74%" } },
@@ -475,33 +476,40 @@ export function Propuesta(d: DatosPropuesta): ReactElement {
     }
   }
 
+  // La oferta arranca en hoja nueva. Si no entra en una (JS, 20/11: S03105, 17 renglones), se
+  // parte entre hojas por renglón: antes era un bloque que no se podía partir y react-pdf, al no
+  // tener dónde ponerlo, aplastaba la hoja entera (renglones y totales encimados).
   const oferta = h(
     View,
-    { wrap: false, break: true, key: "oferta" },
+    { break: true, key: "oferta" },
     // ReportLab descarta el margen superior del primer elemento de una hoja nueva; react-pdf
     // no. Sin esto la oferta arranca 14 pt más abajo que en la skill.
-    h(Text, { style: { ...S.sec, marginTop: 0 } }, "Sección 3: Oferta"),
+    h(Text, { minPresenceAhead: 60, style: { ...S.sec, marginTop: 0 } }, "Sección 3: Oferta"),
     tablaItems(d.base, "base"),
     h(
       View,
-      { style: { flexDirection: "row", marginTop: 4 } },
-      h(View, { style: { width: ANCHO * 0.52 } }),
-      h(View, { style: { width: ANCHO * 0.48, borderWidth: 0.4, borderColor: LINE } }, ...filasTotales),
+      { wrap: false },
+      h(
+        View,
+        { style: { flexDirection: "row", marginTop: 4 } },
+        h(View, { style: { width: ANCHO * 0.52 } }),
+        h(View, { style: { width: ANCHO * 0.48, borderWidth: 0.4, borderColor: LINE } }, ...filasTotales),
+      ),
+      h(Text, { style: { ...S.subletras, marginTop: 2 } }, `Subtotal: ${letras(d.totales.subtotal)}.`),
+      ...(d.renovacion
+        ? [
+            h(
+              Text,
+              { key: "renov", style: { ...S.subletras, fontStyle: "normal", color: INK, marginTop: 3 } },
+              `Renovación mensual a partir del segundo mes: ${money(d.renovacion.monto)} + IVA`,
+            ),
+          ]
+        : []),
     ),
-    h(Text, { style: { ...S.subletras, marginTop: 2 } }, `Subtotal: ${letras(d.totales.subtotal)}.`),
-    ...(d.renovacion
-      ? [
-          h(
-            Text,
-            { key: "renov", style: { ...S.subletras, fontStyle: "normal", color: INK, marginTop: 3 } },
-            `Renovación mensual a partir del segundo mes: ${money(d.renovacion.monto)} + IVA`,
-          ),
-        ]
-      : []),
   );
 
   const adicionales = d.adicionales.length
-    ? [h(View, { wrap: false, key: "adic" }, h(Text, { style: S.subsec }, "Servicios Adicionales (opcionales, no incluidos en el subtotal)"), tablaItems(d.adicionales, "adic"))]
+    ? [h(View, { key: "adic" }, h(Text, { minPresenceAhead: 60, style: S.subsec }, "Servicios Adicionales (opcionales, no incluidos en el subtotal)"), tablaItems(d.adicionales, "adic"))]
     : [];
 
   const opcionales = d.opcionales.length

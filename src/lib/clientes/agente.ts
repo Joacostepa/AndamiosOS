@@ -170,7 +170,7 @@ export async function pasarAPersonas(db: SupabaseClient, conversacionIds: string
 
 type FilaCharla = {
   id: string; telefono: string; nombre_perfil: string | null; estado: EstadoCharla; ficha: unknown;
-  ultimo_entrante_at: string | null; ia_leido_hasta: string | null; ia_saludo_at: string | null;
+  ultimo_entrante_at: string | null; ia_leido_hasta: string | null; ia_saludo_at: string | null; motivo?: string | null;
 };
 
 const NOMBRE_PENDIENTE: Record<string, string> = { facil: "cotización", simple: "pedido de alquiler", alquiler: "presupuesto de alquiler", tecnico: "asignación" };
@@ -195,7 +195,7 @@ export function repoSofia(db: SupabaseClient, cliente?: Anthropic): RepoSofia {
     async leerCharla(id) {
       const { data, error } = await db
         .from("cli_conversaciones")
-        .select("id, telefono, nombre_perfil, estado, ficha, ultimo_entrante_at, ia_leido_hasta, ia_saludo_at")
+        .select("id, telefono, nombre_perfil, estado, ficha, ultimo_entrante_at, ia_leido_hasta, ia_saludo_at, motivo")
         .eq("id", id)
         .maybeSingle();
       if (error) falla("No se pudo leer la charla", error);
@@ -203,7 +203,7 @@ export function repoSofia(db: SupabaseClient, cliente?: Anthropic): RepoSofia {
       const f = data as FilaCharla;
       return {
         id: f.id, telefono: f.telefono, nombrePerfil: f.nombre_perfil, estado: f.estado, ficha: leerFicha(f.ficha, f.telefono),
-        ultimoEntranteAt: f.ultimo_entrante_at, iaLeidoHasta: f.ia_leido_hasta, iaSaludoAt: f.ia_saludo_at,
+        ultimoEntranteAt: f.ultimo_entrante_at, iaLeidoHasta: f.ia_leido_hasta, iaSaludoAt: f.ia_saludo_at, motivo: f.motivo ?? null,
       } satisfies CharlaSofia;
     },
     async tomarTurno(id) {

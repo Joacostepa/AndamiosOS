@@ -452,3 +452,39 @@ test("entregaDelPresupuesto: manda la que le llegó al cliente (con la correcci�
   assert.equal(entregaDelPresupuesto({ alquiler: { entrega: { fecha: LUNES, franja: { tipo: "rara" } } } }), null);
   assert.equal(entregaDelPresupuesto(null), null);
 });
+
+// ── Fecha a confirmar (JS, 24/11) ─────────────────────────────────────────────────────
+
+test("fecha a confirmar: se aprueba con la primera posible de hoy, provisoria, y el mensaje no ofrece reservar", () => {
+  const p = pedido({ fecha: null, franja: null, fechaAConfirmar: true });
+  const prov = cotizar(p).entregaProvisoria!;
+  const payload = leerPayloadAlquiler({ ...payloadDe(p), alquiler: { ...(payloadDe(p).alquiler as object), entrega: { ...prov, aConfirmar: true } } });
+  assert.equal(payload.entrega?.aConfirmar, true);
+  const r = recalc(payload);
+  assert.deepEqual(r.bloqueos, []);
+  assert.equal(r.entrega?.aConfirmar, true);
+  assert.equal(r.entrega?.fecha, prov.fecha);
+  assert.match(r.mensaje ?? "", /Cuando sepas la fecha de entrega, avisame/);
+  assert.equal(r.cotizacion?.entrega, prov.fecha);
+  // Aprobada días después: la provisoria se vuelve a calcular (no queda una fecha pasada).
+  const despues = recalc(payload, null, { hoy: "2026-11-18" });
+  assert.equal(despues.entrega?.fecha, "2026-11-19");
+  assert.deepEqual(despues.bloqueos, []);
+  // Si la persona le pone la fecha, deja de ser a confirmar.
+  const corregida = recalc(payload, { tipo: "fecha", motivo: "Llamó y dijo el lunes", fecha: LUNES, franja: MANANA });
+  assert.equal(corregida.entrega?.aConfirmar, undefined);
+  assert.equal(corregida.entrega?.fecha, LUNES);
+  assert.match(corregida.mensaje ?? "", /¿Te lo reservo para el lunes/);
+});
+
+test("fecha a confirmar: la franja que pidió el cliente se respeta, y corregir sólo la franja no fija la fecha", () => {
+  const p = pedido({ fecha: null, franja: { tipo: "tarde" }, fechaAConfirmar: true });
+  const prov = cotizar(p).entregaProvisoria!;
+  assert.deepEqual(prov.franja, { tipo: "tarde" });
+  const payload = leerPayloadAlquiler({ ...payloadDe(p), alquiler: { ...(payloadDe(p).alquiler as object), entrega: { ...prov, aConfirmar: true } } });
+  assert.deepEqual(recalc(payload).entrega?.franja, { tipo: "tarde" });
+  const soloFranja = recalc(payload, { tipo: "fecha", motivo: "Prefiere a la mañana", franja: MANANA });
+  assert.equal(soloFranja.entrega?.aConfirmar, true);
+  assert.deepEqual(soloFranja.entrega?.franja, MANANA);
+  assert.match(soloFranja.mensaje ?? "", /Cuando sepas la fecha de entrega/);
+});

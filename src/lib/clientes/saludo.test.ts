@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { audioDiceElGuion, claveSaludoVoz, esContestadorAutomatico, esSoloSaludo, guionSaludoVoz, nombreParaSaludo, saludoDelMomento, saludoInicial, textoSeguridad } from "./saludo.ts";
+import { saludoVigente, audioDiceElGuion, claveSaludoVoz, esContestadorAutomatico, esSoloSaludo, guionSaludoVoz, nombreParaSaludo, saludoDelMomento, saludoInicial, textoSeguridad } from "./saludo.ts";
 import { detectarPlata } from "./filtro-salida.ts";
 
 test("el saludo exacto que decidió JS, con y sin nombre", () => {
@@ -188,4 +188,11 @@ test("audioDiceElGuion: el nombre del cliente se compara por cómo suena (17/10:
   assert.ok(!audioDiceElGuion(con("Ana"), dijo("Juan"), "Ana"), "no vale por «acá»");
   assert.ok(audioDiceElGuion(con("Ana"), dijo("Anna"), "Ana"));
   assert.ok(!audioDiceElGuion(con("Iair"), dijo("Jair").replace("Andamios", "Andami"), "Iair"), "la empresa sigue siendo obligatoria");
+});
+
+test("reabierta enseguida no se saluda de nuevo; pasadas 12 h, sí", () => {
+  const ahora = Date.parse("2026-11-24T15:20:00Z");
+  assert.equal(saludoVigente("2026-11-24T15:15:00Z", ahora), true);
+  assert.equal(saludoVigente("2026-11-24T02:00:00Z", ahora), false);
+  assert.equal(saludoVigente(null, ahora), false);
 });

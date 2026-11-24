@@ -190,7 +190,7 @@ export function filasServicio(d: DatosSlack): FilaFicha[] {
   }
   if (a) {
     out.push(...renglones([
-      ["Presupuesto", a.cotizacion ? `N° ${a.cotizacion.numero}, enviado el ${fechaHora(a.cotizacion.at)} (entrega ${fechaCorta(a.cotizacion.fecha)}, ${textoFranja(a.cotizacion.franja)})` : null],
+      ["Presupuesto", a.cotizacion ? `N° ${a.cotizacion.numero}, enviado el ${fechaHora(a.cotizacion.at)} (${a.cotizacion.aConfirmar ? `fecha a confirmar; provisoria ${fechaCorta(a.cotizacion.fecha)}` : `entrega ${fechaCorta(a.cotizacion.fecha)}, ${textoFranja(a.cotizacion.franja)}`})` : null],
       ["Aceptó", a.aceptado ? `sí, el ${fechaHora(a.aceptado.at)} (entrega ${fechaCorta(a.aceptado.fecha)}, ${textoFranja(a.aceptado.franja)})` : null],
       ["Documentos", a.documentos ? (a.documentos.completosAt ? `completos (${a.documentos.recibidos.length})` : `recibidos ${a.documentos.recibidos.length}, faltan`) : null],
       ["Retiro", a.retiro ? `avisado para el ${fechaCorta(a.retiro.fecha)}, ${textoFranja(a.retiro.franja)}` : null],

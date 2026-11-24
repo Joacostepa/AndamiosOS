@@ -40,7 +40,8 @@ import type { TipoCorreccion } from "./aprobacion.ts";
 export type FleteGuardado = { carrierId: number; nombre: string; precio: number };
 
 /** La entrega pedida: el día (AAAA-MM-DD) y la franja (§6). */
-export type EntregaPedida = { fecha: string; franja: Franja };
+/** `aConfirmar`: el cliente todavía no sabe la fecha; la de acá es la primera posible, provisoria. */
+export type EntregaPedida = { fecha: string; franja: Franja; aConfirmar?: boolean };
 
 export type PayloadAlquiler = {
   pedido: PedidoAlquiler;
@@ -103,7 +104,7 @@ export function leerPayloadAlquiler(payload: Record<string, unknown> | null | un
     },
     resultado,
     flete: fleteValido(a?.flete),
-    entrega: fecha && franja ? { fecha, franja } : null,
+    entrega: fecha && franja ? { fecha, franja, ...(e?.aConfirmar === true ? { aConfirmar: true } : {}) } : null,
     direccion: typeof payload?.direccion === "string" && payload.direccion.trim() ? payload.direccion.trim() : null,
   };
 }
@@ -118,7 +119,7 @@ export function leerPayloadAlquiler(payload: Record<string, unknown> | null | un
 export function entregaDelPresupuesto(payload: Record<string, unknown> | null | undefined): EntregaPedida | null {
   for (const e of [obj(obj(payload?.envioAlquiler)?.entrega), obj(obj(payload?.alquiler)?.entrega)]) {
     const franja = franjaValida(e?.franja);
-    if (typeof e?.fecha === "string" && franja) return { fecha: e.fecha, franja };
+    if (typeof e?.fecha === "string" && franja) return { fecha: e.fecha, franja, ...(e.aConfirmar === true ? { aConfirmar: true } : {}) };
   }
   return null;
 }
@@ -303,10 +304,23 @@ export function aplicarCorreccionAlquiler(
 ): { pedido: PedidoAlquiler; entrega: EntregaPedida | null } {
   const pedido: PedidoAlquiler = structuredClone(p.pedido);
   let entrega = p.entrega ? { ...p.entrega } : null;
-  // El motor valida la fecha del pedido y el mensaje usa la de la entrega: que sean la misma.
-  if (entrega) {
+  // Fecha a confirmar (JS, 24/11): la provisoria se vuelve a calcular con la fecha de hoy (la que
+  // guardó Tomás puede haber pasado); la da el motor (entregaProvisoria). Si la persona corrige la
+  // fecha, deja de ser a confirmar.
+  // La franja que pidió el cliente queda en el pedido (con su recargo, si es de una hora); una
+  // corrección que sólo cambia la franja no la vuelve una fecha firme.
+  if (entrega?.aConfirmar && (c?.tipo !== "fecha" || !c.fecha)) {
+    pedido.fecha = null;
+    pedido.fechaAConfirmar = true;
+    if (c?.tipo === "fecha" && c.franja) pedido.franja = franjaValida(c.franja) ?? pedido.franja;
+    entrega = null;
+    if (!c || c.tipo === "fecha") return { pedido, entrega };
+  } else if (entrega) {
+    // El motor valida la fecha del pedido y el mensaje usa la de la entrega: que sean la misma.
+    delete entrega.aConfirmar;
     pedido.fecha = entrega.fecha;
     pedido.franja = entrega.franja;
+    pedido.fechaAConfirmar = false;
   }
   if (!c) return { pedido, entrega };
   if (c.tipo === "piezas" && armado) {
@@ -471,7 +485,9 @@ export function recalcularAlquiler(p: PayloadAlquiler, ctx: ContextoRecalculo, c
   const resultado = motor(pedido);
   // La franja de la modalidad (franjaSegunModalidad, en el motor): la del depósito si retira ahí.
   // Si no tiene (una franja de una hora para el depósito), no hay entrega y bloquea.
-  const entrega: EntregaPedida | null = corregido.entrega && resultado.franja ? { ...corregido.entrega, franja: resultado.franja } : null;
+  const entrega: EntregaPedida | null = corregido.entrega && resultado.franja ? { ...corregido.entrega, franja: resultado.franja }
+    : !corregido.entrega && pedido.fechaAConfirmar && resultado.entregaProvisoria ? { ...resultado.entregaProvisoria, aConfirmar: true }
+    : null;
   const bloqueos = bloqueosAlquiler(resultado, entrega);
   if (c?.tipo === "piezas" && !armadoHoy) bloqueos.push("No hay armado para corregir las cantidades.");
 
@@ -493,7 +509,7 @@ export function recalcularAlquiler(p: PayloadAlquiler, ctx: ContextoRecalculo, c
       ? { ...resultado, precio: { ...precio, minimoOperativo: 0 }, entraSinPagarMas: [] }
       : { ...resultado, precio };
     try {
-      mensaje = mensajePresupuestoAlquiler(paraMensaje, entrega.fecha, entrega.franja);
+      mensaje = mensajePresupuestoAlquiler(paraMensaje, entrega.fecha, entrega.franja, entrega.aConfirmar === true);
     } catch (e) {
       bloqueos.push(e instanceof Error ? e.message : String(e));
     }
@@ -596,7 +612,9 @@ export function notaInternaAlquiler(p: {
   }
   const deposito = r.resultado.modalidad === "deposito";
   const diasNota = r.resultado.dias ?? DIAS_SERVICIO;
-  if (r.entrega) {
+  if (r.entrega?.aConfirmar) {
+    parrafos.push(`<p><b>Fecha a confirmar:</b> el cliente todavía no sabe cuándo lo necesita. La orden quedó con el ${esc(textoFecha(r.entrega.fecha))}, ${esc(textoFranja(r.entrega.franja))}, provisoria: cuando la confirme, cambiala.${p.direccion ? ` ${deposito ? "Obra" : "Entrega en"}: ${esc(p.direccion)}.` : ""} Lo necesita por ${diasNota} días.</p>`);
+  } else if (r.entrega) {
     parrafos.push(deposito
       ? `<p><b>Retira en el depósito</b> (${esc(DEPOSITO.texto)}) el ${esc(textoFecha(r.entrega.fecha))}, ${esc(textoFranja(r.entrega.franja))}: sin flete, viene con su vehículo y gente para cargar. Lo devuelve ahí, desarmado, con 24 h de aviso.${p.direccion ? ` Obra: ${esc(p.direccion)}.` : ""} Lo necesita por ${diasNota} días.</p>`
       : `<p><b>Entrega:</b> el ${esc(textoFecha(r.entrega.fecha))}, ${esc(textoFranja(r.entrega.franja))}${p.direccion ? `, en ${esc(p.direccion)}` : ""}. Lo necesita por ${diasNota} días.</p>`);

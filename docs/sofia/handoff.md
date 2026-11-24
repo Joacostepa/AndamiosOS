@@ -1,10 +1,21 @@
 # Handoff: CRM con Tomás (antes Sofía), el agente de WhatsApp para clientes
 
-**Actualizado el 19/11/2026.** **Desde el 17/10 el agente se llama Tomás** (JS eligió una voz de hombre para el saludo con audio). La carpeta, los nombres internos del código (`atenderConSofia`, `FichaSofia`…) y la historia de abajo siguen diciendo Sofía.
+**Actualizado el 24/11/2026.** **Desde el 17/10 el agente se llama Tomás** (JS eligió una voz de hombre para el saludo con audio). La carpeta, los nombres internos del código (`atenderConSofia`, `FichaSofia`…) y la historia de abajo siguen diciendo Sofía.
 
  El estado de abajo es el vigente. La historia del 12/10 está más abajo, en «Historia: la charla del 12/10».
 
 Para retomar, decí: «Leé docs/sofia/handoff.md y seguimos con el CRM de WhatsApp».
+
+**Lo último (24/11): revisión de las últimas 10 charlas** (prompt `tomas-2026-11-24-revision-de-charlas`). Lo que se vio y lo que se cambió:
+- **Protección peatonal (Pablo):** pidió protección peatonal y Tomás le preguntó por silleteros, por una malla para la fachada y tres veces si iba por todo el frente. Ahora «pantalla», «pantalla de protección», «protección peatonal» y «bandeja» son lo mismo; si pide eso, no pregunta por silleteros, andamio ni malla; si la bandeja va por todo el frente se pregunta una vez y, si no aclara, es todo el frente.
+- **Preguntas repetidas y el que sólo quiere precio (Marcelo, Lautaro):** cada dato se pregunta una vez (una segunda sólo si sin eso no se cotiza). Si sólo quiere el precio, no se piden mail, DNI ni CUIT (sólo a nombre de quién va).
+- **Alquiler simple sin fecha (Marcelo):** la fecha y la franja eran obligatorias y Tomás insistía. Ahora `fecha_a_confirmar` en cotizar_alquiler_simple: el presupuesto sale con la primera fecha posible como provisoria (`entregaProvisoria` en `alquiler-simple.ts`; mañana o la próxima hábil, a la mañana), la aprobación la recalcula con la fecha del día, el mensaje cierra con «Cuando sepas la fecha de entrega, avisame por acá y te lo reservo», la tarjeta muestra «Fecha a confirmar» y la nota de Odoo dice que es provisoria. Al aceptar, el aviso al equipo pide poner la fecha real en la orden. Si la persona corrige la fecha en la tarjeta, deja de ser a confirmar. La franja se pregunta sólo cuando ya hay día.
+- **Bandeja dada por hecha (Ana):** en una fachada, la bandeja va siempre si el andamio está sobre la vereda; si va dentro del terreno (casa retirada), Tomás pregunta si pasa gente por abajo.
+- **Charla en espera sin respuesta (Ana María):** preguntó dos veces dónde estábamos después de que Tomás la pasó y nadie contestó en tres días. Ahora, con la charla en `espera_ok` (presupuesto o asignación esperando) o `derivada` por un motivo común, Tomás contesta sólo preguntas simples (dirección, horarios, cuándo le escriben) o `[nada]`, en una tanda, sin herramientas y sin cambiar el estado (`puedeContestarEnEspera` y `TEXTO_EN_ESPERA`). Nunca si la tomó una persona, ni en seguridad, urgente, reclamo, estafa, «pide una persona», «no se entienden», pausa, tope o error. Cuando contesta, queda un evento en la charla.
+- **Saludo repetido:** una charla que se reabre dentro de las 12 h del saludo no se vuelve a saludar (`saludoVigente`, `saludo.ts`).
+- **Prometer de más (un escenario con motores):** no confirma que hacemos algo fuera de la lista; dice que el equipo lo evalúa.
+- **Para JS, no son de Tomás:** un cliente de apuntalamiento dijo que un mail a nuestro correo rebotó; otro (tablón) preguntó cuánto sale el traslado y quedó sin respuesta.
+Para la próxima: revisar si el modo en espera contesta bien (y se calla cuando debe), y si los presupuestos con fecha a confirmar salen y se aprueban sin problemas.
 
 **20/11, notificaciones push:** el iPhone de JS perdió su suscripción sin avisar (Apple seguía aceptando los avisos con 201 y el celular no los mostraba); hubo que activarlas de nuevo y se borró la vieja. Desde `79f9aaf`, al abrir la bandeja: si el dispositivo las tenía (localStorage `andamios-push-endpoint` o, si se borró, una suscripción del servidor con el mismo nombre de dispositivo) y ya no, con el permiso dado se suscribe solo y borra la anterior (`anterior` en «activar»); si no, la campana queda en rojo y avisa. Desactivarlas a propósito marca `andamios-push-apagada` y no se reactivan. No se probó en un iPhone.
 

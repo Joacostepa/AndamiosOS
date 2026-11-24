@@ -23,6 +23,7 @@ import { avanza, leerStatus, type EstadoHilo, type StatusMeta } from "./estados"
 import { mandarTexto } from "./envio";
 import { avisarPush } from "./push";
 import { palabraGamaAlta } from "./facil";
+import { saludoVigente } from "./saludo";
 
 export const BUCKET = "comercial";
 /** Un adjunto que no se pudo bajar se reintenta hasta esta cantidad de veces. */
@@ -81,7 +82,7 @@ export async function charlaPara(db: SupabaseClient, telefono: string, numero: s
 
     const { data: cerrada } = await db
       .from("cli_conversaciones")
-      .select("id, opt_out, asistente_id")
+      .select("id, opt_out, asistente_id, ia_saludo_at")
       .in("telefono", tels)
       .eq("phone_number_id", numero)
       .eq("estado", "cerrada")
@@ -97,7 +98,9 @@ export async function charlaPara(db: SupabaseClient, telefono: string, numero: s
           cerrada_por: null,
           // Con Sofía, una charla que se reabre es una charla nueva para el saludo (las columnas
           // ia_* existen sólo con la migración del paso 5, que va antes de prender el interruptor).
-          ...(o.iaActiva ? { ia_saludo_at: null, motivo: null } : {}),
+          // Salvo que el saludo haya salido hace poco (JS, 24/11: un cliente escribió 4 minutos después
+          // de que se cerrara y Tomás lo volvió a saludar).
+          ...(o.iaActiva ? { ...(saludoVigente(cerrada.ia_saludo_at as string | null) ? {} : { ia_saludo_at: null }), motivo: null } : {}),
           ...(nombre ? { nombre_perfil: nombre } : {}),
           updated_at: ahora(),
         })

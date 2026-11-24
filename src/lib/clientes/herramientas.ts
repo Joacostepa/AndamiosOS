@@ -107,7 +107,8 @@ export type AlquilerFicha = {
   /** Por qué no salió solo la última vez (grupo «trabajo», para la tarjeta de preparar_pedido_simple). */
   porQueNo: string[];
   /** El último presupuesto que quedó pendiente para la tarjeta. */
-  cotizacion: { numero: number; at: string; fecha: string; franja: Franja } | null;
+  /** `aConfirmar`: salió sin fecha (el cliente no la sabe); la de acá es la provisoria. */
+  cotizacion: { numero: number; at: string; fecha: string; franja: Franja; aConfirmar?: boolean } | null;
   /** El cliente aceptó el presupuesto (§6: recién ahí se piden los documentos). */
   aceptado: { at: string; presupuesto: number; fecha: string; franja: Franja } | null;
   /** Los documentos (documentos.ts): los clasifica el servidor, Tomás ve sólo qué falta. */
@@ -183,7 +184,7 @@ export type PresupuestoAlquiler = {
   /** El estado de cli_aprobaciones: pendiente, aprobada, corregida, falta_plantilla… */
   estado: string;
   /** La entrega con que se cotizó (payload.alquiler.entrega). */
-  entrega: { fecha: string; franja: Franja } | null;
+  entrega: { fecha: string; franja: Franja; aConfirmar?: boolean } | null;
   /** La orden de Odoo que creó la aprobación (pasos.ordenAlquiler). */
   ordenAlquiler: { id: number; nombre: string } | null;
 };
@@ -643,6 +644,7 @@ const esquemaAlquiler = z.object({
   retira_en_deposito: z.boolean().optional()
     .describe(`true si lo retira y lo devuelve él en nuestro depósito (${DEPOSITO.texto}), sin flete; false si dijo que no puede retirarlo. Fuera de Capital es la única opción.`),
   fecha: FECHA.optional().describe("La fecha de entrega que pidió, AAAA-MM-DD (el día de hoy está en el aviso)."),
+  fecha_a_confirmar: z.boolean().optional().describe("true si todavía no sabe la fecha, o sólo quiere saber el precio: se cotiza igual y la fecha la confirma cuando acepte. Preguntá la fecha una sola vez; si no la sabe, esto, y no insistas."),
   franja: FRANJA.optional(),
   hora_desde: HORA.optional(),
   dias: z.number().int().min(1).max(365).optional().describe("Por cuántos días lo necesita, como lo dijo el cliente («una semana» = 7). El presupuesto sale por esos días."),
@@ -716,6 +718,8 @@ function anotarPedido(p: PedidoAlquiler, i: z.infer<typeof esquemaAlquiler>, fra
   if (i.anclar !== undefined) p.anclar = i.anclar;
   if (i.para_hoy !== undefined) p.paraHoy = i.para_hoy;
   if (i.fecha !== undefined) p.fecha = i.fecha;
+  if (i.fecha_a_confirmar !== undefined) p.fechaAConfirmar = i.fecha_a_confirmar;
+  if (i.fecha) p.fechaAConfirmar = false;
   if (franja) p.franja = franja;
   if (i.dias !== undefined) p.dias = i.dias;
   if (i.retira_en_deposito !== undefined) p.retiraEnDeposito = i.retira_en_deposito;
@@ -759,12 +763,12 @@ function queHacerNoFacil(r: ResultadoAlquiler): string {
  * El resumen de la tarjeta: «Alquiler simple · 1 torre de 2 módulos · Palermo · lunes 16 de
  * noviembre, de 8 a 12». `flete` null: retira en el depósito.
  */
-function resumenAlquiler(r: ResultadoAlquiler, flete: Flete | null, fecha: string, franja: Franja): string {
+function resumenAlquiler(r: ResultadoAlquiler, flete: Flete | null, fecha: string, franja: Franja, aConfirmar = false): string {
   const a = r.armado!;
   const torres = a.torres === 1 ? "1 torre" : `${a.torres} torres`;
   const ancho = a.ancho === "estandar" ? "1,30" : "0,90";
   const largo = a.largo === "largo" ? "2,50" : "1,50";
-  return `Alquiler simple · ${torres} de ${a.modulosPorTorre} ${a.modulosPorTorre === 1 ? "módulo" : "módulos"} ${ancho} × ${largo}${a.peldano !== null ? " (plataforma en peldaño)" : ""} · ${flete ? flete.nombre : "retira en el depósito"} · ${textoFecha(fecha)}, ${textoFranja(franja)}`;
+  return `Alquiler simple · ${torres} de ${a.modulosPorTorre} ${a.modulosPorTorre === 1 ? "módulo" : "módulos"} ${ancho} × ${largo}${a.peldano !== null ? " (plataforma en peldaño)" : ""} · ${flete ? flete.nombre : "retira en el depósito"} · ${aConfirmar ? `fecha a confirmar (provisoria: ${textoFecha(fecha)})` : `${textoFecha(fecha)}, ${textoFranja(franja)}`}`;
 }
 
 async function cotizarAlquiler(i: z.infer<typeof esquemaAlquiler>, { ficha, servicios }: ContextoHerramienta): Promise<ResultadoHerramienta> {
@@ -864,7 +868,11 @@ async function cotizarAlquiler(i: z.infer<typeof esquemaAlquiler>, { ficha, serv
     preguntar.push("¿A nombre de quién va el presupuesto?");
     a.nombrePreguntado = true;
   }
-  if (preguntar.length || r.aConfirmar.length || !r.precio || (!deposito && !fleteOdoo) || !p.fecha || !r.franja) {
+  // Sin fecha «a confirmar» (JS, 24/11): sale con la primera posible, provisoria.
+  const entrega: { fecha: string; franja: Franja; aConfirmar?: boolean } | null = p.fecha && r.franja ? { fecha: p.fecha, franja: r.franja }
+    : p.fechaAConfirmar && r.entregaProvisoria ? { ...r.entregaProvisoria, aConfirmar: true }
+    : null;
+  if (preguntar.length || r.aConfirmar.length || !r.precio || (!deposito && !fleteOdoo) || !entrega) {
     return {
       contenido: json({
         estado: r.aConfirmar.length && !preguntar.length ? "confirmar" : "faltan_datos",
@@ -881,12 +889,11 @@ async function cotizarAlquiler(i: z.infer<typeof esquemaAlquiler>, { ficha, serv
   // recibe lo mismo en los dos casos, para no filtrar el motivo (como la bandeja fácil).
   const asignacion = await servicios.asignar(ficha).catch(() => null);
   const alertas = ficha.mensajesCliente.flatMap(escanearPalabras);
-  const entrega = { fecha: p.fecha, franja: r.franja };
   const fleteGuardado = deposito || !fleteOdoo ? null : fleteOdoo;
   const { numero } = await servicios.registrarPendiente({
     tipo: "precio",
     carril: "alquiler",
-    resumen: resumenAlquiler(r, fleteGuardado, p.fecha, r.franja),
+    resumen: resumenAlquiler(r, fleteGuardado, entrega.fecha, entrega.franja, entrega.aConfirmar === true),
     montoPropuesto: r.precio.total,
     payload: {
       alquiler: { pedido: p, resultado: r, flete: fleteGuardado ? { id: fleteGuardado.carrierId, nombre: fleteGuardado.nombre, precio: fleteGuardado.precio } : null, entrega },
@@ -974,7 +981,9 @@ async function clienteAceptaAlquiler(i: z.infer<typeof esquemaAceptar>, { ficha,
   a.aceptado = { at: ahora, presupuesto: p.numero, fecha: i.fecha, franja };
   a.documentos ??= documentosVacios(ahora);
   if (!igual) {
-    const otra = p.entrega && (p.entrega.fecha !== i.fecha || textoFranja(p.entrega.franja) !== textoFranja(franja))
+    const otra = p.entrega?.aConfirmar
+      ? ` El presupuesto salió con la fecha a confirmar (la orden quedó con el ${textoFecha(p.entrega.fecha)}, provisoria): poné esta en la orden${p.ordenAlquiler ? ` ${p.ordenAlquiler.nombre}` : ""}.`
+      : p.entrega && (p.entrega.fecha !== i.fecha || textoFranja(p.entrega.franja) !== textoFranja(franja))
       ? ` El presupuesto decía el ${textoFecha(p.entrega.fecha)}, ${textoFranja(p.entrega.franja)}: cambiala en la orden${p.ordenAlquiler ? ` ${p.ordenAlquiler.nombre}` : ""}.`
       : "";
     await servicios.avisarEquipo(
@@ -1166,7 +1175,7 @@ async function derivarAPersona(i: z.infer<typeof esquemaDerivar>, { ficha }: Con
 // ── mostrar_referencia ─────────────────────────────────────────────────────────────────
 
 const esquemaReferencia = z.object({
-  tipo: z.enum(TIPOS_REFERENCIA).describe("bandeja: bandeja de protección peatonal; fachada: andamio de fachada con pantalla (ya muestra la bandeja abajo); torre: torre de andamio que armamos nosotros."),
+  tipo: z.enum(TIPOS_REFERENCIA).describe("bandeja: bandeja de protección peatonal; fachada: andamio de fachada con media sombra (ya muestra la bandeja abajo); torre: torre de andamio que armamos nosotros."),
 }).strict();
 
 /** El mismo NADA de prompt.ts (que importa este archivo): con eso no sale ningún texto. */
@@ -1267,7 +1276,7 @@ const HERRAMIENTAS: Def[] = [
   },
   {
     nombre: "mostrar_referencia",
-    descripcion: "Le manda al cliente una imagen de referencia de lo que hacemos (bandeja de protección peatonal, andamio de fachada con pantalla o torre de andamio), con un epígrafe, para confirmar que es lo que necesita. Una vez por tipo y por charla: si ya salió, no la repite.",
+    descripcion: "Le manda al cliente una imagen de referencia de lo que hacemos (bandeja de protección peatonal, andamio de fachada o torre de andamio), con un epígrafe, para confirmar que es lo que necesita. Una vez por tipo y por charla: si ya salió, no la repite.",
     esquema: esquemaReferencia,
     ejecutar: mostrarReferencia as Def["ejecutar"],
   },

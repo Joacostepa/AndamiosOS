@@ -331,6 +331,12 @@ export type PedidoAlquiler = {
    * cabeza tiene que entrar, hasta 3 módulos sin anclar, el piso completo y la baranda.
    */
   insiste?: boolean;
+  /**
+   * JS, 24/11 (Marcelo: «solo necesito el presupuesto, no estoy contratando»): el cliente todavía
+   * no sabe la fecha. Se cotiza igual con la primera fecha posible como provisoria
+   * (`entregaProvisoria`); la fecha real la da al aceptar (cliente_acepta_alquiler).
+   */
+  fechaAConfirmar?: boolean;
 };
 
 /** El precio es siempre el del servicio de 30 días (§5), aunque el cliente lo pida por menos. */
@@ -721,6 +727,11 @@ export type ResultadoAlquiler = {
   flete: FleteAlquiler | null;
   /** Los días que pidió el cliente (pedido.dias, validado). null si todavía no los dijo. */
   dias: number | null;
+  /**
+   * Sin fecha y con `fechaAConfirmar`: la primera entrega posible (mañana o la próxima hábil, a la
+   * mañana), para la orden y la tarjeta. El presupuesto le dice al cliente que la fecha la confirma él.
+   */
+  entregaProvisoria?: { fecha: string; franja: Franja } | null;
 };
 
 // ── Lo del cliente (facil.ts, filtrado) ────────────────────────────────────────────────
@@ -1013,8 +1024,16 @@ export function cotizarAlquilerSimple(pedido: PedidoAlquiler, ctx: ContextoAlqui
   if (pedido.montaje) trabajo("montaje", false, "Pide montaje");
 
   // ── La fecha ──
+  // Sin fecha pero «a confirmar» (JS, 24/11): no frena el presupuesto; va la primera posible.
+  const aConfirmarFecha = !pedido.fecha && pedido.fechaAConfirmar === true && !paraHoy;
+  let entregaProvisoria: { fecha: string; franja: Franja } | null = null;
+  if (aConfirmarFecha) {
+    const fr: Franja = franja ?? { tipo: deposito ? "deposito_manana" : "manana" };
+    const prox = validarEntrega(sumarDias(ctx.hoy, 1), fr, ctx.hoy, ctx.feriados, { deposito, ahora: ctx.ahora }).proxima;
+    if (prox?.franja) entregaProvisoria = { fecha: prox.fecha, franja: prox.franja };
+  }
   if (!pedido.fecha) {
-    if (!paraHoy) falta("fecha");
+    if (!paraHoy && !aConfirmarFecha) falta("fecha");
   } else if (entrega && !entrega.ok && entrega.motivo !== "hoy") {
     const prox = entrega.proxima;
     aConfirmar.push({
@@ -1022,7 +1041,8 @@ export function cotizarAlquilerSimple(pedido: PedidoAlquiler, ctx: ContextoAlqui
       texto: `${entrega.texto}.${prox ? ` La próxima posible: el ${textoFecha(prox.fecha)}${prox.franja ? `, ${textoFranja(prox.franja)}` : ""}.` : ""}`,
     });
   }
-  if (!franja && !paraHoy) falta("franja");
+  // La franja se pregunta cuando ya hay día (JS, 24/11: a Marcelo le preguntó la franja antes que la fecha).
+  if (!franja && !paraHoy && pedido.fecha) falta("franja");
 
   // ── Los días (JS, 13/11): se respeta lo que pide el cliente; más de 30, un vendedor ──
   const dias = typeof pedido.dias === "number" && pedido.dias > 0 ? Math.round(pedido.dias) : null;
@@ -1079,6 +1099,7 @@ export function cotizarAlquilerSimple(pedido: PedidoAlquiler, ctx: ContextoAlqui
     entraSinPagarMas,
     flete,
     dias,
+    entregaProvisoria,
   };
 }
 
@@ -1258,7 +1279,7 @@ export function condicionesAlquilerSimple(modalidad: Modalidad = "envio"): strin
  * franja de una hora sin recargo, o al revés; una del depósito con envío, o al revés): mejor un
  * error que un precio equivocado.
  */
-export function mensajePresupuestoAlquiler(r: ResultadoAlquiler, fecha: string, franja: Franja): string {
+export function mensajePresupuestoAlquiler(r: ResultadoAlquiler, fecha: string, franja: Franja, fechaAConfirmar = false): string {
   const pr = r.precio;
   const a = r.armado;
   if (!pr || !a) throw new Error("El alquiler simple no tiene precio: no se puede armar el presupuesto.");
@@ -1287,9 +1308,14 @@ export function mensajePresupuestoAlquiler(r: ResultadoAlquiler, fecha: string, 
   if (!a.barandaSeLleva) l.push(`La baranda va siempre incluida en el precio; como no la querés, no ${deposito ? "te la damos" : "la llevamos"}.`);
   l.push(`Si lo necesitás más tiempo, cada día de más es ${pesos(pr.porDia)} + IVA.`);
   l.push(condicionesAlquilerSimple(r.modalidad));
-  l.push(deposito
-    ? `¿Te lo reservo para retirarlo el ${textoFecha(fecha)}, ${textoFranja(franja)}?`
-    : `¿Te lo reservo para el ${textoFecha(fecha)}, ${textoFranja(franja)}?`);
+  // Todavía no sabe la fecha (JS, 24/11): no se le ofrece reservar una que no pidió.
+  l.push(fechaAConfirmar
+    ? deposito
+      ? "Cuando sepas qué día lo pasás a retirar, avisame por acá y te lo reservo."
+      : "Cuando sepas la fecha de entrega, avisame por acá y te lo reservo."
+    : deposito
+      ? `¿Te lo reservo para retirarlo el ${textoFecha(fecha)}, ${textoFranja(franja)}?`
+      : `¿Te lo reservo para el ${textoFecha(fecha)}, ${textoFranja(franja)}?`);
   return l.join("\n\n");
 }
 

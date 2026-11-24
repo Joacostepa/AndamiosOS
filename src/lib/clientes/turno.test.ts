@@ -5,7 +5,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { atenderCharla, seCruzaron, tiempoDeEscritura } from "./turno.ts";
+import { atenderCharla, puedeContestarEnEspera, seCruzaron, tiempoDeEscritura } from "./turno.ts";
 import { crearMundo, guion, respuestaHerramientas, respuestaTexto, resultadosDeHerramientas } from "./prueba-sofia.ts";
 import { detectarPlata } from "./filtro-salida.ts";
 import { alquilerVacio } from "./herramientas.ts";
@@ -812,4 +812,76 @@ test("la pausa de escritura: Tomás espera antes de mandar, y sin la pausa (los 
   }), m.charla.id);
   assert.equal(m.salidas.length >= 1, true);
   assert.ok(pausas.length >= 1 && pausas.every((ms) => ms > 0 && ms <= 20_000), JSON.stringify(pausas));
+});
+
+// ── En espera (JS, 24/11): con la charla en el equipo, sólo una pregunta simple ──────────
+
+test("en espera: contesta una pregunta simple y la charla sigue con el equipo", async () => {
+  const m = crearMundo({ estado: "espera_ok" });
+  m.charla.motivo = "asignación pendiente #1050";
+  m.charla.iaSaludoAt = "2026-10-15T13:00:00Z";
+  m.escribe("¿En qué dirección están?");
+  const r = await atenderCharla(m.deps(guion(respuestaTexto("Estamos en Maturín 2570, en Capital. El equipo te escribe por este mismo chat."))), m.charla.id);
+  assert.deepEqual(m.salidas.map((s) => s.texto), ["Estamos en Maturín 2570, en Capital. El equipo te escribe por este mismo chat."]);
+  assert.equal(m.charla.estado, "espera_ok");
+  assert.equal(r.estado, undefined);
+  assert.match(ultimoAviso(m), /ya la tiene el equipo/);
+  assert.ok(m.eventos.some((e) => /mientras la charla espera al equipo/.test(e)));
+});
+
+test("en espera: si el modelo quiere usar una herramienta, no se ejecuta ni se manda nada", async () => {
+  const m = crearMundo({ estado: "derivada" });
+  m.charla.motivo = "Trabajo no fácil";
+  m.charla.iaSaludoAt = "2026-10-15T13:00:00Z";
+  m.escribe("Son 12 metros de frente");
+  await atenderCharla(m.deps(guion(respuestaHerramientas(["anotar_ficha", { metros_cliente: 12 }]))), m.charla.id);
+  assert.deepEqual(m.salidas, []);
+  assert.equal(m.charla.estado, "derivada");
+  assert.equal(m.pedidos.length, 1);
+  assert.equal(m.historia.filter((h) => h.rol === "assistant").at(-1)!.texto, "[nada]");
+});
+
+test("en espera: [nada] no manda nada, y un reclamo o una persona pedida lo dejan callado", async () => {
+  const m = crearMundo({ estado: "derivada" });
+  m.charla.motivo = "Quiere avanzar";
+  m.charla.iaSaludoAt = "2026-10-15T13:00:00Z";
+  m.escribe("Gracias!");
+  await atenderCharla(m.deps(guion(respuestaTexto("[nada]"))), m.charla.id);
+  assert.deepEqual(m.salidas, []);
+  for (const motivo of ["Enojo o reclamo", "Pide hablar con una persona", "Seguridad en obra · urgente", "Tomás está en pausa", "Se llegó al tope de gasto", "Algo se cayó (la IA no pudo responder)"]) {
+    const x = crearMundo({ estado: "derivada" });
+    x.charla.motivo = motivo;
+    x.escribe("¿Dónde están?");
+    const r = await atenderCharla(x.deps(guion()), x.charla.id);
+    assert.equal(r.resultado, "callada", motivo);
+    assert.equal(x.pedidos.length, 0, motivo);
+  }
+});
+
+test("puedeContestarEnEspera: los presupuestos que esperan el OK y las derivaciones comunes", () => {
+  assert.equal(puedeContestarEnEspera("espera_ok", "presupuesto de alquiler #12"), true);
+  assert.equal(puedeContestarEnEspera("espera_ok", "cotización #3"), true);
+  assert.equal(puedeContestarEnEspera("espera_ok", "Habla de plata"), false);
+  assert.equal(puedeContestarEnEspera("derivada", "No es un pedido"), true);
+  assert.equal(puedeContestarEnEspera("derivada", "Gama alta · Pide hablar con una persona"), false);
+  assert.equal(puedeContestarEnEspera("derivada", null), false);
+  assert.equal(puedeContestarEnEspera("humano", "Quiere avanzar"), false);
+  // La tuvo una persona y la soltó: Tomás no se mete.
+  assert.equal(puedeContestarEnEspera("derivada", "Soltada por Joaquin · Trabajo no fácil"), false);
+});
+
+test("en espera: si le devuelven la charla mientras piensa, sigue como devuelta", async () => {
+  const m = crearMundo({ estado: "derivada" });
+  m.charla.motivo = "Trabajo no fácil";
+  m.charla.iaSaludoAt = "2026-10-15T13:00:00Z";
+  m.escribe("¿Y entonces cuánto sale?");
+  await atenderCharla(m.deps(guion(
+    () => {
+      m.charla.estado = "bot"; // Sandra tocó «Devolver a Tomás» justo ahora
+      return respuestaTexto("[nada]");
+    },
+    respuestaTexto("El presupuesto lo arma el equipo y te llega por acá. ¿Me confirmás la dirección de la obra?"),
+  )), m.charla.id);
+  assert.deepEqual(m.salidas.map((s) => s.texto), ["El presupuesto lo arma el equipo y te llega por acá. ¿Me confirmás la dirección de la obra?"]);
+  assert.match(ultimoAviso(m), /te la devolvió/);
 });

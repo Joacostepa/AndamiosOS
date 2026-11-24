@@ -280,7 +280,8 @@ export async function cambiarEstado(
     if (!mia) return "Sólo la puede soltar quien la tiene.";
     const { data, error } = await db
       .from("cli_conversaciones")
-      .update({ estado: "derivada", asistente_id: null, tomada_at: null, updated_at: ahora })
+      // «Soltada por…»: la tuvo una persona, así que Tomás no contesta en espera (turno.ts).
+      .update({ estado: "derivada", asistente_id: null, tomada_at: null, motivo: `Soltada por ${yo.nombre}${charla.motivo ? ` · ${charla.motivo}` : ""}`.slice(0, 300), updated_at: ahora })
       .eq("id", charla.id)
       .eq("estado", "humano")
       .eq("asistente_id", yo.id)

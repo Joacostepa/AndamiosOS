@@ -1,5 +1,5 @@
 // Las imágenes de referencia que manda Tomás (JS, 19/11): cuando entiende que el cliente
-// necesita una bandeja de protección peatonal, un andamio de fachada con pantalla o una torre,
+// necesita una bandeja de protección peatonal, un andamio de fachada o una torre,
 // le manda el render de la biblioteca de ese tipo para confirmar que es eso. Una vez por tipo y
 // por charla. Apuntalamiento, no (por ahora).
 //
@@ -12,7 +12,7 @@ export type TipoReferencia = (typeof TIPOS_REFERENCIA)[number];
 
 export const REFERENCIAS: Record<TipoReferencia, { que: string; nombre: string }> = {
   bandeja: { que: "una bandeja de protección peatonal", nombre: "referencia-bandeja.jpg" },
-  fachada: { que: "un andamio de fachada con pantalla de protección", nombre: "referencia-fachada.jpg" },
+  fachada: { que: "un andamio de fachada con media sombra y bandeja de protección", nombre: "referencia-fachada.jpg" },
   torre: { que: "una torre de andamio multidireccional", nombre: "referencia-torre.jpg" },
 };
 

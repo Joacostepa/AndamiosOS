@@ -92,7 +92,28 @@ export type CharlaSofia = {
   /** created_at del último item del hilo que ya vio Sofía. */
   iaLeidoHasta: string | null;
   iaSaludoAt: string | null;
+  /** Por qué está como está (derivada, espera_ok): decide si Tomás contesta en espera. */
+  motivo?: string | null;
 };
+
+/**
+ * Lo que la charla espera del equipo y en el que Tomás NO habla: lo urgente, un reclamo, una
+ * estafa, que pidió una persona, que no se entienden, y lo que pasó solo (pausa, tope, error).
+ */
+const SIN_RESPUESTA_EN_ESPERA = [/soltada por/i, /seguridad/i, /urgente/i, /persona/i, /estafa/i, /enojo|reclamo/i, /no se entienden/i, /pausa/i, /tope de gasto/i, /se cayó/i, /se negó/i];
+
+/**
+ * JS, 24/11 (Ana María preguntó dos veces dónde estábamos y nadie le contestó en tres días): con
+ * la charla en manos del equipo, Tomás contesta una pregunta simple (dónde, horarios, cuándo le
+ * escriben) o se calla. Sólo si la pasó él por un pedido (pedir_tecnico, un presupuesto que
+ * espera el OK, una derivación común); nunca si la tomó una persona. PURA.
+ */
+export function puedeContestarEnEspera(estado: EstadoCharla, motivo: string | null | undefined): boolean {
+  const m = motivo?.trim() ?? "";
+  if (estado === "espera_ok") return /^(cotización|pedido de alquiler|presupuesto de alquiler|asignación pendiente) #/.test(m);
+  if (estado === "derivada") return !!m && !SIN_RESPUESTA_EN_ESPERA.some((r) => r.test(m));
+  return false;
+}
 
 /** Un item del hilo posterior al cursor: lo del cliente, y lo que escribió o hizo una persona. */
 export type ItemNuevo = {
@@ -311,7 +332,9 @@ export async function atenderCharla(
   if (!cfg.activa) return { ...res, resultado: "apagada" };
   const primera = await repo.leerCharla(conversacionId);
   if (!primera) return { ...res, resultado: "callada" };
-  if (primera.estado !== "bot") return { ...res, resultado: "callada" };
+  // En espera (la tiene el equipo): sólo una pregunta simple, una tanda, sin cambiar el estado.
+  const enEspera = primera.estado !== "bot";
+  if (enEspera && (opciones.devuelta || !puedeContestarEnEspera(primera.estado, primera.motivo))) return { ...res, resultado: "callada" };
   if (!(await repo.tomarTurno(conversacionId))) return { ...res, resultado: "ocupado" };
 
   const inicio = opciones.inicio ?? Date.now();
@@ -321,7 +344,7 @@ export async function atenderCharla(
     await deps.esperarTanda?.();
     for (let tanda = 0; tanda < MAX_TANDAS && Date.now() - inicio < PRESUPUESTO_MS; tanda++) {
       const charla = await repo.leerCharla(conversacionId);
-      if (!charla || charla.estado !== "bot") break;
+      if (!charla || charla.estado !== primera.estado) break;
       let nuevos = await repo.nuevosDelHilo(charla.id, charla.iaLeidoHasta);
       let entrantes = nuevos.filter((n) => n.direccion === "entrante");
       if (!entrantes.length && !devuelta) break;
@@ -347,7 +370,8 @@ export async function atenderCharla(
         break;
       }
       res.resultado = "atendio";
-      await repo.escribiendo?.(charla.id);
+      // En espera casi siempre se calla: el «escribiendo…» sale recién si contesta (pausaComoPersona).
+      if (!enEspera) await repo.escribiendo?.(charla.id);
 
       // ── Un contestador automático: ni saludo ni modelo (análisis de chats, D5) ──
       if (!devuelta && entrantes.every((e) => e.tipo === "text" && esContestadorAutomatico(e.texto))) {
@@ -358,7 +382,7 @@ export async function atenderCharla(
 
       // ── El saludo, una vez, armado por el código ──
       let saludoEnviado: string | null = null;
-      if (!charla.iaSaludoAt) {
+      if (!charla.iaSaludoAt && !enEspera) {
         const momento = ahora();
         // Si el primer mensaje ya cuenta qué necesita, el saludo va corto (sin «Contame en qué te
         // puedo ayudar») y enseguida contesta Tomás. Charlas de prueba del 12/11.
@@ -388,6 +412,7 @@ export async function atenderCharla(
       // ── Topes de gasto (§10): pasa a una persona sin decirle por qué ──
       const gasto = await repo.gastoHoy(charla.telefono);
       if (gasto.global >= cfg.topeGlobalUsd || gasto.telefono >= cfg.topeTelefonoUsd) {
+        if (enEspera) break;
         const cual = gasto.global >= cfg.topeGlobalUsd ? `el tope global del día (US$ ${cfg.topeGlobalUsd})` : `el tope del día para este teléfono (US$ ${cfg.topeTelefonoUsd})`;
         if (await repo.cambiarEstado(charla.id, "derivada", "Se llegó al tope de gasto", ["bot"])) {
           await repo.mandar(charla.id, charla.telefono, TEXTO_PASO_A_PERSONA, "sistema");
@@ -402,8 +427,8 @@ export async function atenderCharla(
       // todo junto (charlas de prueba del 12/11: dos respuestas casi iguales seguidas). Nunca en
       // la última tanda ni en la vuelta de después de soltar el candado, y el plazo se mira al
       // mandar (unaTanda): alguna respuesta tiene que salir.
-      const puedeDescartar = tanda < MAX_TANDAS - 1 && !opciones.profundidad;
-      const r = await unaTanda(deps, cfg, charla, nuevos, { saludoEnviado, devuelta, inicio, ahora: ahora(), nuevoId, puedeDescartar });
+      const puedeDescartar = tanda < MAX_TANDAS - 1 && !opciones.profundidad && !enEspera;
+      const r = await unaTanda(deps, cfg, charla, nuevos, { saludoEnviado, devuelta, inicio, ahora: ahora(), nuevoId, puedeDescartar, enEspera });
       devuelta = false;
       res.costoUsd += r.costo;
       res.enviados.push(...r.enviados);
@@ -412,11 +437,14 @@ export async function atenderCharla(
         res.estado = r.estado;
         break;
       }
+      if (enEspera) break;
     }
   } catch (e) {
     res.resultado = "error";
     await deps.alFallar?.(e).catch(() => {});
     console.error("[sofia] turno falló", conversacionId, e);
+    // En espera la charla ya la tiene el equipo: ni texto de error ni cambio de estado.
+    if (enEspera) return res;
     // §6: el cliente recibe un texto fijo y la charla pasa a una persona.
     try {
       const charla = await repo.leerCharla(conversacionId);
@@ -438,6 +466,21 @@ export async function atenderCharla(
   // Lo que llegó justo cuando se soltaba el candado: otra vuelta (una sola).
   if (!quedoPendiente && res.resultado !== "error" && (opciones.profundidad ?? 0) < 1) {
     const charla = await repo.leerCharla(conversacionId);
+    // Una persona tocó «Devolver a Tomás» mientras contestaba en espera: su turno dio «ocupado» y lo
+    // nuevo ya quedó leído. Se corre acá como devuelta.
+    if (enEspera && charla?.estado === "bot") {
+      const otra = await atenderCharla({ ...deps, esperarTanda: undefined }, conversacionId, { devuelta: true, profundidad: (opciones.profundidad ?? 0) + 1, inicio });
+      return { ...otra, enviados: [...res.enviados, ...otra.enviados], costoUsd: res.costoUsd + otra.costoUsd };
+    }
+    // Lo que llegó mientras contestaba en espera: otra vuelta, también en espera.
+    if (enEspera && charla && charla.estado === primera.estado && puedeContestarEnEspera(charla.estado, charla.motivo)) {
+      const nuevos = await repo.nuevosDelHilo(conversacionId, charla.iaLeidoHasta);
+      const quedan = nuevos.filter((n) => n.direccion === "entrante");
+      if (quedan.length && !quedan.every((e) => esRuido(e, charla.iaSaludoAt))) {
+        const otra = await atenderCharla({ ...deps, esperarTanda: undefined }, conversacionId, { profundidad: (opciones.profundidad ?? 0) + 1, inicio });
+        return { ...otra, enviados: [...res.enviados, ...otra.enviados], costoUsd: res.costoUsd + otra.costoUsd, resultado: otra.resultado === "sin_novedades" ? res.resultado : otra.resultado };
+      }
+    }
     if (charla?.estado === "bot" && charla.iaSaludoAt) {
       const nuevos = await repo.nuevosDelHilo(conversacionId, charla.iaLeidoHasta);
       const quedan = nuevos.filter((n) => n.direccion === "entrante");
@@ -502,7 +545,7 @@ async function unaTanda(
   cfg: ConfigSofia,
   charla: CharlaSofia,
   nuevos: ItemNuevo[],
-  o: { saludoEnviado: string | null; devuelta: boolean; inicio: number; ahora: Date; nuevoId: () => string; puedeDescartar?: boolean },
+  o: { saludoEnviado: string | null; devuelta: boolean; inicio: number; ahora: Date; nuevoId: () => string; puedeDescartar?: boolean; enEspera?: boolean },
 ): Promise<ResultadoTanda> {
   const { repo } = deps;
   const turnoId = o.nuevoId();
@@ -516,6 +559,7 @@ async function unaTanda(
   // estaba en el PDF). No desde que salió el presupuesto de un alquiler simple: lo que llega ahí
   // son el DNI y los servicios, y esos los revisa el servidor sin mostrárselos (documentos.ts).
   const etapaDocumentos = !!ficha.alquiler?.cotizacion || !!ficha.alquiler?.aceptado;
+  const enEspera = o.enEspera === true;
   const verArchivos = !!repo.archivoParaModelo && !etapaDocumentos;
   const cliente = await contenidoDelCliente(entrantes, variasHoras, verArchivos ? (it) => repo.archivoParaModelo!(it, cfg.modelo) : null, etapaDocumentos);
   const textoCliente = cliente.texto;
@@ -531,7 +575,7 @@ async function unaTanda(
 
   // ── Los documentos del alquiler: los clasifica el servidor ANTES del modelo ──
   // Tomás no ve las fotos: en el aviso (resumenFicha) le llega sólo qué está y qué falta.
-  const docs = deps.documentos && ficha.alquiler?.aceptado && ficha.alquiler.documentos && !ficha.alquiler.documentos.adjuntados
+  const docs = !enEspera && deps.documentos && ficha.alquiler?.aceptado && ficha.alquiler.documentos && !ficha.alquiler.documentos.adjuntados
     ? deps.documentos(charla)
     : null;
   if (docs) out.costo += await documentosDelTurno(repo, charla.id, ficha, entrantes, docs);
@@ -557,8 +601,9 @@ async function unaTanda(
     cruce: seCruzaron(ultimaRespuesta, entrantes),
     // JS, 19/11: el perfil no tiene un nombre de pila («gonprifer», «Cerrajería»): el saludo salió
     // sin nombre y Tomás se lo pregunta en su primer mensaje.
-    pedirNombre: historia.length === 0 && !nombreParaSaludo(charla.nombrePerfil) && !ficha.contacto && !ficha.nombre,
+    pedirNombre: !enEspera && historia.length === 0 && !nombreParaSaludo(charla.nombrePerfil) && !ficha.contacto && !ficha.nombre,
     devuelta: o.devuelta,
+    enEspera,
   });
 
   let seq = (historia.at(-1)?.seq ?? 0) + 1;
@@ -584,7 +629,8 @@ async function unaTanda(
 
   // ── El loop con el modelo ──
   const servicios = deps.servicios(charla);
-  let estadoEsperado: EstadoCharla = "bot";
+  // En espera, el estado de la charla no cambia: sólo se manda (o no) la respuesta.
+  let estadoEsperado: EstadoCharla = charla.estado;
   let textoFinal: string | null = null;
   let silenciar = false;
   let filaFinal: NuevaFila | null = null;
@@ -630,6 +676,12 @@ async function unaTanda(
     }
 
     const usos = contenido.filter((b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use");
+    // En espera no se usan herramientas: si quiso usar una, no contesta (lo ve el equipo).
+    if (enEspera && usos.length) {
+      filaFinal = { ...fila, contenido: [{ type: "text", text: NADA }], texto: NADA };
+      textoFinal = NADA;
+      break;
+    }
     if (mensaje.stop_reason === "pause_turn") {
       seq = await repo.agregarHistoria(charla.id, seq, [fila]);
       mensajes.push({ role: "assistant", content: fila.contenido } as Anthropic.Beta.BetaMessageParam);
@@ -684,7 +736,7 @@ async function unaTanda(
   }
 
   // Si en este turno se completaron (revisar_documentos con un solo servicio), se adjuntan ya.
-  if (deps.documentos && ficha.alquiler?.aceptado && ficha.alquiler.documentos && !ficha.alquiler.documentos.adjuntados) {
+  if (!enEspera && deps.documentos && ficha.alquiler?.aceptado && ficha.alquiler.documentos && !ficha.alquiler.documentos.adjuntados) {
     // Con lo de esta tanda: documentosNuevos descarta por hiloId lo que ya se revisó arriba.
     out.costo += await documentosDelTurno(repo, charla.id, ficha, entrantes, docs ?? docsAlAceptar ?? deps.documentos(charla));
   }
@@ -693,6 +745,7 @@ async function unaTanda(
 
   // ── La salida ──
   if (negado) {
+    if (enEspera) return out;
     if (await repo.cambiarEstado(charla.id, "derivada", "La IA se negó a contestar", ["bot", estadoEsperado])) {
       await repo.mandar(charla.id, charla.telefono, TEXTO_PASO_A_PERSONA, "sistema");
       out.enviados.push(TEXTO_PASO_A_PERSONA);
@@ -720,7 +773,7 @@ async function unaTanda(
       nota = `el filtro la bloqueó (${revision.motivo})`;
       out.bloqueado = revision.motivo!;
       await repo.registrarBloqueo(charla.id, t, revision.motivo!, revision.hallazgos);
-      if (await repo.cambiarEstado(charla.id, "espera_ok", revision.motivo!, ["bot", estadoEsperado])) estadoEsperado = "espera_ok";
+      if (!enEspera && (await repo.cambiarEstado(charla.id, "espera_ok", revision.motivo!, ["bot", estadoEsperado]))) estadoEsperado = "espera_ok";
       await repo.evento(charla.id, `No se mandó lo que escribió Tomás (${revision.motivo}). Revisalo antes de contestar.`);
     } else if (!actual || actual.estado !== estadoEsperado) {
       // Una persona la tomó (o la cerró) mientras Sofía pensaba: se calla.
@@ -741,6 +794,7 @@ async function unaTanda(
         await repo.mandar(charla.id, charla.telefono, t, "ia");
         enviado = true;
         out.enviados.push(t);
+        if (enEspera) await repo.evento(charla.id, "Tomás contestó una pregunta simple mientras la charla espera al equipo.");
       } catch (e) {
         nota = `WhatsApp no la aceptó (${e instanceof Error ? e.message.slice(0, 120) : "error"})`;
         fallaEnvio = e;
@@ -750,7 +804,7 @@ async function unaTanda(
   if (filaFinal) await repo.agregarHistoria(charla.id, seq, [{ ...filaFinal, enviado: nada && !silenciar ? null : enviado, nota }]);
   // Meta no aceptó el mensaje: es un error técnico (texto fijo y pasa a una persona, arriba).
   if (fallaEnvio) throw new Error(`WhatsApp no aceptó la respuesta de Tomás: ${fallaEnvio instanceof Error ? fallaEnvio.message : fallaEnvio}`);
-  if (estadoEsperado !== "bot") out.estado = estadoEsperado;
+  if (estadoEsperado !== charla.estado) out.estado = estadoEsperado;
   return out;
 }
 

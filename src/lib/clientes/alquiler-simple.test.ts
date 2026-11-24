@@ -531,7 +531,7 @@ test("lo que pide el cliente: más de 3 módulos de alto hay que anclar", () => 
 
 test("§3: lo que falta preguntar, en orden", () => {
   const r = cotizarAlquilerSimple(pedidoVacio(), ctx({ flete: null }));
-  assert.deepEqual(faltan(r), ["lugar", "altura", "ancho", "largo", "piso", "direccion", "fecha", "franja", "dias"]);
+  assert.deepEqual(faltan(r), ["lugar", "altura", "ancho", "largo", "piso", "direccion", "fecha", "dias"]);
   assert.equal(r.armado, null);
   assert.equal(r.listo, false);
   for (const f of r.faltan) sinPlata(f.pregunta);
@@ -892,7 +892,10 @@ test("fila 17: las franjas del depósito (de 10 a 12 y de 13 a 16, de lunes a vi
   assert.match(hoy.enContra[0].texto, /el retiro en el depósito es desde el día siguiente/);
   // Lo que falta, con las preguntas del depósito.
   const falta = cotizar({ alturaTrabajo: 5, retiraEnDeposito: true, fecha: null, franja: null }, { flete: null });
-  assert.deepEqual(falta.faltan.map((f) => f.pregunta), ["¿Qué día querés pasar a retirarlo por el depósito?", "¿Pasás de 10 a 12 o de 13 a 16?"]);
+  // La franja, recién cuando hay día (JS, 24/11).
+  assert.deepEqual(falta.faltan.map((f) => f.pregunta), ["¿Qué día querés pasar a retirarlo por el depósito?"]);
+  const conDia = cotizar({ alturaTrabajo: 5, retiraEnDeposito: true, fecha: LUNES, franja: null }, { flete: null });
+  assert.deepEqual(conDia.faltan.map((f) => f.pregunta), ["¿Pasás de 10 a 12 o de 13 a 16?"]);
 });
 
 test("fila 17: el retiro en el depósito necesita 24 h hasta el comienzo de la franja (con `ahora`)", () => {
@@ -983,4 +986,30 @@ test("formatos: metros y pesos", () => {
   assert.equal(pesos(500000), "$ 500.000");
   assert.equal(pesos(1736000), "$ 1.736.000");
   assert.equal(pesos(16666.67), "$ 16.667");
+});
+
+// ── Fecha a confirmar (JS, 24/11: Marcelo sólo quería el precio) ──────────────────────
+
+test("sin fecha y «a confirmar»: no frena el presupuesto; va la primera fecha posible, a la mañana", () => {
+  const sinFecha = cotizar({ alturaTrabajo: 5, fecha: null, franja: null });
+  assert.ok(faltan(sinFecha).includes("fecha"));
+  assert.equal(sinFecha.listo, false);
+  const r = cotizar({ alturaTrabajo: 5, fecha: null, franja: null, fechaAConfirmar: true });
+  assert.ok(!faltan(r).includes("fecha") && !faltan(r).includes("franja"), faltan(r).join());
+  assert.equal(r.listo, true);
+  // Hoy es jueves 12/11: mañana viernes 13, a la mañana.
+  assert.deepEqual(r.entregaProvisoria, { fecha: "2026-11-13", franja: MANANA });
+  // Sábado de hoy: el domingo no se entrega, va el lunes.
+  assert.equal(cotizar({ alturaTrabajo: 5, fecha: null, franja: null, fechaAConfirmar: true }, { hoy: "2026-11-14" }).entregaProvisoria?.fecha, "2026-11-16");
+  // En el depósito, la mañana del depósito.
+  assert.deepEqual(cotizar({ alturaTrabajo: 5, fecha: null, franja: null, fechaAConfirmar: true, retiraEnDeposito: true }).entregaProvisoria?.franja, { tipo: "deposito_manana" });
+});
+
+test("fecha a confirmar: el presupuesto no le ofrece reservar un día que no pidió", () => {
+  const r = cotizar({ alturaTrabajo: 5, fecha: null, franja: null, fechaAConfirmar: true });
+  const t = mensajePresupuestoAlquiler(r, r.entregaProvisoria!.fecha, r.entregaProvisoria!.franja, true);
+  assert.match(t, /Cuando sepas la fecha de entrega, avisame por acá y te lo reservo\./);
+  assert.ok(!/¿Te lo reservo para/.test(t));
+  const conFecha = cotizar({ alturaTrabajo: 5 });
+  assert.match(mensajePresupuestoAlquiler(conFecha, LUNES, MANANA), /¿Te lo reservo para el lunes 16 de noviembre/);
 });

@@ -107,7 +107,8 @@ export type TarjetaAlquiler = {
   iva: number | null;
   totalConIva: number | null;
   porDia: number | null;
-  entrega: { fecha: string; texto: string; franja: string; hora: boolean } | null;
+  /** `aConfirmar`: el cliente no sabe la fecha; la de acá es la primera posible, provisoria. */
+  entrega: { fecha: string; texto: string; franja: string; hora: boolean; aConfirmar?: boolean } | null;
   direccion: string | null;
   /** «Por qué es fácil»: los del trabajo y los del cliente (deuda, socios). */
   motivos: { ok: boolean; texto: string; grupo: "trabajo" | "cliente" }[];

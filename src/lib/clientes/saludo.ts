@@ -234,3 +234,13 @@ export const TEXTO_ERROR = "Perdón, se me complicó responderte. En un rato te 
 
 /** Pasa a una persona sin decir por qué (tope de gasto, texto bloqueado, la IA se negó). */
 export const TEXTO_PASO_A_PERSONA = "Gracias. En un rato te sigue una persona del equipo por acá.";
+
+/**
+ * Una charla que se reabre dentro de las 12 h del saludo no se vuelve a saludar (JS, 24/11: un cliente
+ * escribió 4 minutos después de que se cerrara y Tomás lo saludó de nuevo). PURA.
+ */
+export const SALUDO_VIGENTE_MS = 12 * 3600_000;
+export function saludoVigente(saludoAt: string | null | undefined, ahora = Date.now()): boolean {
+  const t = saludoAt ? Date.parse(saludoAt) : NaN;
+  return Number.isFinite(t) && ahora - t < SALUDO_VIGENTE_MS;
+}

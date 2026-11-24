@@ -879,7 +879,7 @@ function tarjetaAlquiler(f: Fila, charla: Charla, c: CtxAlquiler, r: RecalculoAl
     iva,
     totalConIva: r.total !== null && iva !== null ? r.total + iva : null,
     porDia: pr?.porDia ?? null,
-    entrega: r.entrega ? { fecha: r.entrega.fecha, texto: textoFecha(r.entrega.fecha), franja: textoFranja(r.entrega.franja), hora: r.entrega.franja.tipo === "hora" } : null,
+    entrega: r.entrega ? { fecha: r.entrega.fecha, texto: textoFecha(r.entrega.fecha), franja: textoFranja(r.entrega.franja), hora: r.entrega.franja.tipo === "hora", aConfirmar: r.entrega.aConfirmar === true } : null,
     direccion: typeof f.payload.direccion === "string" ? f.payload.direccion : null,
     motivos: motivosParaTarjeta(r.resultado),
     facil: r.resultado.facil,

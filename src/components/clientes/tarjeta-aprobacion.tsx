@@ -710,6 +710,7 @@ function TarjetaAlquilerSimple({ t, charla, ahora, puedeEditar, datos }: { t: Ta
               {k.entrega && (
                 <p className="flex flex-wrap items-center gap-1.5 text-[13.5px]">
                   <span className="text-muted-foreground">{k.deposito ? "Retira en el depósito:" : "Entrega:"}</span> {k.entrega.texto}, {k.entrega.franja}
+                  {k.entrega.aConfirmar && <Pastilla tono="ambar">Fecha a confirmar: el cliente no la sabe (va provisoria)</Pastilla>}
                   {k.entrega.hora && <Pastilla tono="ambar">Franja de una hora</Pastilla>}
                   {k.deposito && <Pastilla tono="suave">Sin flete · Cucha Cucha 2345</Pastilla>}
                   {k.direccion && <span className="text-muted-foreground">· {k.deposito ? `obra: ${k.direccion}` : k.direccion}</span>}

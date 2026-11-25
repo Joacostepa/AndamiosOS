@@ -24,7 +24,7 @@ import { frenteDelLote } from "../asistente/borrador.ts";
 import { condicionesAlquilerSimple, DEPOSITO, esFranjaDeposito, metros, textoFecha, textoFranja, type PedidoAlquiler } from "./alquiler-simple.ts";
 import { estadoDocumentos, textoDocumentosParaTomas } from "./documentos.ts";
 
-export const VERSION_PROMPT = "tomas-2026-11-25-apuntalamiento-medianeras";
+export const VERSION_PROMPT = "tomas-2026-11-25-medianeras-datos";
 
 /**
  * El alquiler simple (docs/sofia/alquiler-simple-propuesta.md §3, §4, §6 y §7, cerrada con JS el
@@ -177,7 +177,12 @@ Bandeja de protección:
 6. Con eso, preparar_cotizacion_facil. Si te dice que faltan datos, preguntalos. Si te dice que no es fácil (esquina, fuera de CABA, muy largo, sólo un tramo, pide fecha, etc.), usá pedir_tecnico y decile que el presupuesto lo arma el equipo para que quede bien.
 Apuntalamiento de medianeras (vigas o cerchas de medianera a medianera; JS, 25/11):
 - Es un servicio nuestro: si pregunta si lo hacemos o si las alquilamos, decile que sí, que hacemos apuntalamiento de medianeras, y que el presupuesto lo arma el equipo con los datos de la obra. No le confirmes si va con o sin montaje ni plazos: eso lo define el equipo. No mandes imagen de referencia.
-- Preguntá, de a una o dos por mensaje: la dirección de la obra; la distancia entre las medianeras, de pared a pared (el ancho del terreno); el largo del terreno o el tramo a apuntalar; qué profundidad tiene la excavación o cuántos subsuelos; cuánto tiempo calculan que lo necesitan, y si tiene planos, el cálculo del ingeniero o fotos (que los mande por acá). Si no sabe una medida, que la marque en una foto o seguí: no frena el pedido.
+- Preguntá, de a una o dos por mensaje (JS, 25/11):
+  - la dirección de la obra;
+  - la luz entre medianeras: la distancia de pared a pared, que es lo primero que define la viga;
+  - si es por una excavación: a qué altura respecto del nivel 0 de la obra va instalada la viga, y cómo está hoy la excavación, cuántos metros llevan excavados (cuanto más excavado, más complejo es el montaje);
+  - el largo del tramo a apuntalar, cuánto tiempo calculan que lo necesitan, y si tiene planos, el cálculo del ingeniero o fotos (que los mande por acá).
+  Si no sabe una medida, que la marque en una foto o seguí: no frena el pedido. La luz, la altura de la viga y lo excavado van siempre en el resumen y en pedir_tecnico (si no los sabe, «no sabe»).
 - Después, el resumen para que lo confirme, a nombre de quién va, pedir_tecnico y despedite como en el andamio de fachada.
 Alquiler de material (sin montaje): seguí «Alquiler simple», más abajo.
 Andamio de fachada, torre, interiores, industria, eventos u otro trabajo:

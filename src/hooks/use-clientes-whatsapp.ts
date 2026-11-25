@@ -45,7 +45,40 @@ export function useCharla(id: string | null) {
     enabled: !!id,
     refetchInterval: 4000,
     staleTime: 2000,
+    // Si ya estaba (la pidió la lista al pasar el mouse), se muestra al toque y se vuelve a
+    // pedir igual: ésa es la que la deja leída.
+    refetchOnMount: "always",
   });
+}
+
+/**
+ * Pasar el mouse por una charla de la lista la pide de antemano (JS, 25/11: tardaba en
+ * cambiar de charla): el hilo y las tarjetas. Sin dejarla leída (?previa=1). Si ya está en
+ * memoria y es reciente, no hace nada.
+ */
+export function usePrefetchCharla() {
+  const qc = useQueryClient();
+  return (id: string) => {
+    // El hilo no va por prefetchQuery: si la charla se abre mientras esto viaja, react-query
+    // reusaría este pedido (que no la deja leída) en vez de hacer el de verdad. Se pide aparte
+    // y se guarda sólo si nadie la abrió mientras tanto.
+    const clave = ["clientes-charla", id];
+    const q = qc.getQueryCache().find({ queryKey: clave, exact: true });
+    if (q && (q.getObserversCount() > 0 || Date.now() - q.state.dataUpdatedAt < 15_000)) return;
+    const desde = Date.now();
+    pedir<DetalleCharla>(`${BASE}/conversaciones/${id}?previa=1`)
+      .then((d) => {
+        const ahora = qc.getQueryCache().find({ queryKey: clave, exact: true });
+        if (ahora && (ahora.getObserversCount() > 0 || ahora.state.dataUpdatedAt > desde)) return;
+        qc.setQueryData(clave, d);
+      })
+      .catch(() => {});
+    void qc.prefetchQuery({
+      queryKey: ["clientes-aprobaciones", id],
+      queryFn: () => pedir<TarjetasCharla>(`${BASE}/conversaciones/${id}/aprobaciones`),
+      staleTime: 15_000,
+    });
+  };
 }
 
 function refrescar(qc: ReturnType<typeof useQueryClient>, id: string) {

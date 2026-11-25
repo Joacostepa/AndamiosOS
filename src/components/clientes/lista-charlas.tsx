@@ -37,6 +37,7 @@ export function ListaCharlas({
   onFiltro,
   actual,
   onElegir,
+  onAsomar,
   ahora,
 }: {
   charlas: CharlaListada[];
@@ -45,6 +46,8 @@ export function ListaCharlas({
   onFiltro: (f: Filtro) => void;
   actual: string | null;
   onElegir: (id: string) => void;
+  /** El mouse pasó por la charla: se pide de antemano para que abra al toque. */
+  onAsomar?: (id: string) => void;
   ahora: number;
 }) {
   const cuentas = useMemo(() => Object.fromEntries(FILTROS.map((f) => [f.id, filtrar(charlas, f.id, yo).length])) as Record<Filtro, number>, [charlas, yo]);
@@ -84,6 +87,7 @@ export function ListaCharlas({
               <button
                 type="button"
                 onClick={() => onElegir(c.id)}
+                onPointerEnter={(e) => e.pointerType === "mouse" && actual !== c.id && onAsomar?.(c.id)}
                 aria-current={actual === c.id ? "true" : undefined}
                 className={cn(
                   "flex min-h-[4.5rem] w-full items-start gap-3 px-3 py-2.5 text-left hover:bg-muted/60",

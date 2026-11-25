@@ -1,7 +1,7 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { memo, Suspense, useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Bot, ClipboardCheck, Copy, Download, Hand, Link2, Loader2, Lock, MessageCircle, Trash2, TriangleAlert, Undo2, UserPlus } from "lucide-react";
 import { toast } from "sonner";
@@ -15,7 +15,7 @@ import { AsignarCharla, textoPareja } from "@/components/clientes/asignar-charla
 import { BotonNotificaciones } from "@/components/clientes/notificaciones";
 import { CompartirLink } from "@/components/clientes/compartir-link";
 import { PastillaEstado, PastillaGamaAlta, PastillaVentana, useAhora } from "@/components/clientes/pastillas";
-import { useBorrarCharla, useCambiarEstado, useCharla, useCharlas } from "@/hooks/use-clientes-whatsapp";
+import { useAprobaciones, useBorrarCharla, useCambiarEstado, useCharla, useCharlas, usePrefetchCharla } from "@/hooks/use-clientes-whatsapp";
 import { telefonoLegible, type Filtro, type ItemHilo } from "@/lib/clientes/vista";
 
 // Comercial → WhatsApp de clientes (docs/sofia/crm-propuesta.md §7, etapa 0).
@@ -34,7 +34,6 @@ import { telefonoLegible, type Filtro, type ItemHilo } from "@/lib/clientes/vist
 // (sólo admin) es el auditor.
 
 function Bandeja() {
-  const router = useRouter();
   const params = useSearchParams();
   const actual = params.get("c");
   const [filtro, setFiltro] = useState<Filtro>("vos");
@@ -42,7 +41,14 @@ function Bandeja() {
   const lista = useCharlas();
   const yo = lista.data?.yo ?? "";
 
-  const elegir = (id: string | null) => router.replace(id ? `/comercial/clientes?c=${id}` : "/comercial/clientes");
+  // Cambiar de charla sólo cambia la URL en el navegador (replaceState, que Next sincroniza con
+  // useSearchParams): router.replace le pedía la página de nuevo al servidor en cada clic
+  // (JS, 25/11: tardaba en cambiar de charla).
+  const elegir = useCallback((id: string | null) => {
+    window.history.replaceState(null, "", id ? `/comercial/clientes?c=${id}` : "/comercial/clientes");
+  }, []);
+  const volver = useCallback(() => elegir(null), [elegir]);
+  const prefetch = usePrefetchCharla();
 
   // Las que nadie abrió, en el título de la pestaña (avisa aunque la pestaña esté en el fondo
   // cuando vuelve a consultar).
@@ -62,7 +68,7 @@ function Bandeja() {
       <TriangleAlert className="size-4" /> {lista.error.message}
     </div>
   ) : (
-    <ListaCharlas charlas={lista.data?.charlas ?? []} yo={yo} filtro={filtro} onFiltro={setFiltro} actual={actual} onElegir={elegir} ahora={ahora} />
+    <ListaCharlas charlas={lista.data?.charlas ?? []} yo={yo} filtro={filtro} onFiltro={setFiltro} actual={actual} onElegir={elegir} onAsomar={prefetch} ahora={ahora} />
   );
 
   return (
@@ -89,7 +95,7 @@ function Bandeja() {
 
       <section className={`${actual ? "flex" : "hidden lg:flex"} min-w-0 flex-1 flex-col`}>
         {actual ? (
-          <Charla key={actual} id={actual} ahora={ahora} onVolver={() => elegir(null)} />
+          <Charla key={actual} id={actual} ahora={ahora} onVolver={volver} />
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center text-muted-foreground">
             <MessageCircle className="size-10 opacity-50" />
@@ -148,8 +154,12 @@ async function bajarArchivos(archivos: { url: string; nombre: string }[]) {
   }
 }
 
-function Charla({ id, ahora, onVolver }: { id: string; ahora: number; onVolver: () => void }) {
+// memo: cambiar de filtro o el refresco de la lista no vuelven a pintar el hilo entero.
+const Charla = memo(function Charla({ id, ahora, onVolver }: { id: string; ahora: number; onVolver: () => void }) {
   const detalle = useCharla(id);
+  // Las tarjetas se piden junto con el hilo, no después de que se pinta (mismo pedido que
+  // usa TarjetasAprobacion: react-query no lo repite).
+  useAprobaciones(id);
   const cambiar = useCambiarEstado(id);
   const [cajaRef, contenidoRef] = useSeguirAbajo(id, cambiar.isPending);
   const d = detalle.data;
@@ -381,7 +391,7 @@ function Charla({ id, ahora, onVolver }: { id: string; ahora: number; onVolver: 
       )}
     </>
   );
-}
+});
 
 export default function ClientesWhatsappPage() {
   return (

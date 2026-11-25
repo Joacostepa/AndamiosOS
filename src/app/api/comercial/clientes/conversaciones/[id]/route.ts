@@ -27,32 +27,41 @@ export const maxDuration = 300;
 
 const uuid = z.string().uuid();
 
-export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   if (!uuid.safeParse(id).success) return invalido("Id inválido");
+  // ?previa=1: la lista la pide de antemano al pasar el mouse (JS, 25/11: tardaba en cambiar
+  // de charla). No la deja leída ni le pone las tildes azules al cliente: eso, sólo al abrirla.
+  const previa = req.nextUrl.searchParams.get("previa") === "1";
   const quien = await exigirModulo("clientes-whatsapp", "ver");
   if (quien instanceof NextResponse) return quien;
   try {
     const db = createAdminClient();
-    const charla = await leerCharla(db, id);
+    // Las tres lecturas a la vez: en serie sumaban un viaje a la base cada una.
+    const [charla, items, iaActiva] = await Promise.all([leerCharla(db, id), leerHilo(db, id), iaClientesActiva(db)]);
     if (!charla) return NextResponse.json({ error: "No existe esa charla." }, { status: 404 });
-    const items = await leerHilo(db, id);
     const puedeEditar = nivelEn(quien.acceso, "clientes-whatsapp") === "editar";
     const numero = numeroClientes();
-    const iaActiva = await iaClientesActiva(db);
 
-    if (charla.sinLeer > 0) {
-      await db.from("cli_conversaciones").update({ sin_leer: 0 }).eq("id", id);
-      if (puedeEditar && numero) {
-        const wamid = await ultimoEntrante(db, id);
-        if (wamid) after(() => marcarLeido(wamid, numero, false));
-      }
+    // Dejarla leída, después de contestar: la pantalla ya la muestra leída.
+    if (charla.sinLeer > 0 && !previa) {
+      after(async () => {
+        try {
+          await db.from("cli_conversaciones").update({ sin_leer: 0 }).eq("id", id);
+          if (puedeEditar && numero) {
+            const wamid = await ultimoEntrante(db, id);
+            if (wamid) await marcarLeido(wamid, numero, false);
+          }
+        } catch (e) {
+          console.error("[clientes] leída", id, e);
+        }
+      });
     }
     if (items.some((i) => i.adjunto?.tipo === "archivo" && i.adjunto.pendiente)) {
       after(() => reintentarPendientes(db, id).catch((e) => console.error("[clientes] reintentar", id, e)));
     }
 
-    const cuerpo: DetalleCharla = { yo: quien.userId, puedeEditar, iaActiva, esAdmin: esAdmin(quien.acceso), numeroConfigurado: !!numero, charla: { ...charla, sinLeer: 0 }, items };
+    const cuerpo: DetalleCharla = { yo: quien.userId, puedeEditar, iaActiva, esAdmin: esAdmin(quien.acceso), numeroConfigurado: !!numero, charla: previa ? charla : { ...charla, sinLeer: 0 }, items };
     return NextResponse.json(cuerpo);
   } catch (e) {
     return errorResponse(e);

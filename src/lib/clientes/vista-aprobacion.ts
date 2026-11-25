@@ -37,6 +37,8 @@ export type TarjetaPrecio = {
   tarifaVieja: boolean;
   /** Sin CUIT: se guarda igual en Odoo, con el aviso (regla del asistente comercial). */
   sinCuit: boolean;
+  /** Sin nombre: va a Odoo con el teléfono como nombre provisorio (nombre-cliente.ts). */
+  sinNombre?: boolean;
 };
 
 export type TarjetaTecnico = {
@@ -124,6 +126,7 @@ export type TarjetaAlquiler = {
   cambioDesdeTomas: boolean;
   pareja: (ParejaVista & { motivo: string; regla: string }) | null;
   sinCuit: boolean;
+  sinNombre?: boolean;
 };
 
 export type TarjetaAprobacion = {

@@ -59,6 +59,7 @@
 // precio nunca pasa por el modelo: ella sólo ve «cotización #N: se envió (aprobado)».
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { AVISO_NOMBRE_PROVISORIO, nombreDelCliente } from "./nombre-cliente";
 import { executeKw } from "@/lib/odoo/client";
 import { urlOdooVenta } from "@/lib/odoo/habilitaciones";
 import { leerParametros, leerProductos } from "@/lib/parametros-cotizacion/servidor";
@@ -289,6 +290,7 @@ function tarjetaPrecio(f: Fila, charla: Charla, ctx: Contexto): TarjetaPrecio {
     tarifaVigenteDesde: vigente,
     tarifaVieja: dias !== null && dias > TARIFA_VIEJA_DIAS,
     sinCuit: !charla.ficha.cuit,
+    sinNombre: nombreDelCliente(charla).provisorio,
   };
 }
 
@@ -692,14 +694,13 @@ async function ejecutarPrecio(db: Db, f: Fila, quien: Quien, ctx: Contexto): Pro
 async function guardarEnOdoo(db: Db, f: Fila, charla: Charla, envio: Envio, quien: Quien, ctx: Contexto, a: Asignacion | null, pasos: Record<string, unknown>): Promise<Guardado> {
   const { datos, resultado } = envio;
   const ficha = charla.ficha;
-  // El contacto (19/11) antes que el perfil: «Cerrajería» no es el nombre del cliente.
-  const nombre = ficha.nombre?.trim() || ficha.contacto?.trim() || charla.nombre_perfil?.trim() || null;
-  if (!nombre) throw new Error("Falta a nombre de quién va el presupuesto.");
+  // Sin nombre, el teléfono como nombre provisorio (nombre-cliente.ts).
+  const { nombre, provisorio } = nombreDelCliente(charla);
 
   // La pareja en Odoo: el técnico (hr.employee) y la asistente (res.users), por su nombre.
   const ids = (pasos.idsPareja as Awaited<ReturnType<typeof idsDePareja>> | undefined) ?? (await idsDePareja({ tecnico: a?.tecnico ?? null, asistente: a?.asistente ?? null }));
   pasos.idsPareja = ids;
-  const avisos: string[] = [];
+  const avisos: string[] = provisorio ? [AVISO_NOMBRE_PROVISORIO] : [];
   if (a?.tecnico && !ids.tecnico) avisos.push(`no se encontró a ${a.tecnico} en los empleados de Odoo: la orden queda sin técnico`);
   if (a?.asistente && !ids.asistente) avisos.push(`no se encontró a ${a.asistente} en los usuarios de Odoo: la orden queda sin vendedora`);
 
@@ -891,6 +892,7 @@ function tarjetaAlquiler(f: Fila, charla: Charla, c: CtxAlquiler, r: RecalculoAl
     cambioDesdeTomas: montoPropuesto !== null && r.total !== null && Math.abs(montoPropuesto - r.total) > 1,
     pareja: asig ? { tecnico: asig.tecnico, asistente: asig.asistente, motivo: asig.motivo, regla: asig.regla } : null,
     sinCuit: !charla.ficha.cuit,
+    sinNombre: nombreDelCliente(charla).provisorio,
   };
 }
 
@@ -1108,10 +1110,9 @@ async function guardarAlquilerEnOdoo(
   db: Db, f: Fila, charla: Charla, envio: EnvioAlquiler, a: Asignacion | null, pasos: Record<string, unknown>,
 ): Promise<OrdenAlquiler & { avisos: string[] }> {
   const ficha = charla.ficha;
-  // El contacto (19/11) antes que el perfil: «Cerrajería» no es el nombre del cliente.
-  const nombre = ficha.nombre?.trim() || ficha.contacto?.trim() || charla.nombre_perfil?.trim() || null;
-  if (!nombre) throw new Error("Falta a nombre de quién va el presupuesto.");
-  const avisos: string[] = [];
+  // Sin nombre, el teléfono como nombre provisorio (nombre-cliente.ts).
+  const { nombre, provisorio } = nombreDelCliente(charla);
+  const avisos: string[] = provisorio ? [AVISO_NOMBRE_PROVISORIO] : [];
 
   // El técnico de la pareja, para la oportunidad. La vendedora es siempre Tamara (VENDEDORA_ALQUILER_SIMPLE).
   const ids = (pasos.idsPareja as Awaited<ReturnType<typeof idsDePareja>> | undefined) ?? (await idsDePareja({ tecnico: a?.tecnico ?? null, asistente: null }));

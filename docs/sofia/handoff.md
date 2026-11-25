@@ -1,10 +1,12 @@
 # Handoff: CRM con Tomás (antes Sofía), el agente de WhatsApp para clientes
 
-**Actualizado el 24/11/2026.** **Desde el 17/10 el agente se llama Tomás** (JS eligió una voz de hombre para el saludo con audio). La carpeta, los nombres internos del código (`atenderConSofia`, `FichaSofia`…) y la historia de abajo siguen diciendo Sofía.
+**Actualizado el 25/11/2026.** **Desde el 17/10 el agente se llama Tomás** (JS eligió una voz de hombre para el saludo con audio). La carpeta, los nombres internos del código (`atenderConSofia`, `FichaSofia`…) y la historia de abajo siguen diciendo Sofía.
 
  El estado de abajo es el vigente. La historia del 12/10 está más abajo, en «Historia: la charla del 12/10».
 
 Para retomar, decí: «Leé docs/sofia/handoff.md y seguimos con el CRM de WhatsApp».
+
+**25/11: un presupuesto sin nombre ya no falla al aprobar.** Desde el 19/11 Tomás pregunta el nombre una vez y, si no lo dan, el presupuesto sale igual; pero Odoo no da de alta un cliente sin nombre y la aprobación fallaba después del OK («Falta a nombre de quién va el presupuesto»; un alquiler quedó cuatro días sin salir). Ahora `nombreDelCliente` (`nombre-cliente.ts`): el nombre, el contacto o el perfil; si no hay nada, «Cliente WhatsApp +<teléfono>» como provisorio, con el aviso en la orden. La tarjeta avisa en ámbar «El cliente no dio su nombre» antes de aprobar (bandeja y alquiler).
 
 **Lo último (24/11): revisión de las últimas 10 charlas** (prompt `tomas-2026-11-24-revision-de-charlas`). Lo que se vio y lo que se cambió:
 - **Protección peatonal (Pablo):** pidió protección peatonal y Tomás le preguntó por silleteros, por una malla para la fachada y tres veces si iba por todo el frente. Ahora «pantalla», «pantalla de protección», «protección peatonal» y «bandeja» son lo mismo; si pide eso, no pregunta por silleteros, andamio ni malla; si la bandeja va por todo el frente se pregunta una vez y, si no aclara, es todo el frente.

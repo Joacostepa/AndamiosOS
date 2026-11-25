@@ -330,6 +330,7 @@ function TarjetaPrecio({ t, charla, ahora, puedeEditar, datos }: { t: TarjetaApr
           </p>
           <LineaVentana v={v} />
           {p.tarifaVieja && <Aviso tono="ambar">Tarifa vigente desde {p.tarifaVigenteDesde?.split("-").reverse().join("/")}: tiene más de 45 días, revisá si sigue.</Aviso>}
+          {p.sinNombre && <Aviso tono="ambar">El cliente no dio su nombre: se da de alta en Odoo con el teléfono como nombre provisorio. Si lo sabés, pedíselo antes o cambialo después en Odoo.</Aviso>}
           {p.sinCuit && <Aviso tono="neutro">El cliente no dio CUIT: el cliente se da de alta en Odoo sin CUIT, con el aviso en la nota (completarlo antes de facturar).</Aviso>}
           {[...p.problemas, ...p.bloqueos].map((x) => <Aviso key={x} tono={p.bloqueos.includes(x) ? "rojo" : "ambar"}>{x}</Aviso>)}
         </div>
@@ -783,6 +784,7 @@ function TarjetaAlquilerSimple({ t, charla, ahora, puedeEditar, datos }: { t: Ta
                 {(k.pareja?.asistente || k.pareja?.tecnico) && <span className="text-muted-foreground"> Asignación de la charla: {[k.pareja.asistente, k.pareja.tecnico].filter(Boolean).join(" con ")} — {k.pareja.motivo}.</span>}
               </p>
               <LineaVentana v={v} />
+              {k.sinNombre && <Aviso tono="ambar">El cliente no dio su nombre: se da de alta en Odoo con el teléfono como nombre provisorio. Si lo sabés, pedíselo antes o cambialo después en Odoo.</Aviso>}
               {k.sinCuit && <Aviso tono="neutro">El cliente no dio CUIT: se da de alta en Odoo sin CUIT, con el aviso en la nota (completarlo antes de facturar).</Aviso>}
               {k.avisos.map((x) => <Aviso key={x} tono="ambar">{x}</Aviso>)}
               {k.bloqueos.map((x) => <Aviso key={x} tono="rojo">{x}</Aviso>)}

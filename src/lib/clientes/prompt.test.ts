@@ -156,7 +156,7 @@ test("las frases fijas nuevas del prompt pasan el filtro de salida", () => {
 });
 
 test("el bloque del alquiler simple: §3, §6 y §7, sin montos ni porcentajes, adentro del bloque fijo", () => {
-  assert.equal(VERSION_PROMPT, "tomas-2026-11-25-sin-apertura");
+  assert.equal(VERSION_PROMPT, "tomas-2026-11-25-no-vendemos");
   assert.ok(INSTRUCCIONES.includes(ALQUILER_SIMPLE), "va en el bloque con caché, igual para todas las charlas");
   for (const regla of [
     /Qué trabajo van a hacer y hasta qué altura/,
@@ -286,4 +286,10 @@ test("escaleras y visitas (JS, 19/11, charla de Axel): las medidas del hueco y e
   assert.match(INSTRUCCIONES, /el ancho de la escalera \(de los escalones\), que define qué tipo de andamio/);
   assert.match(INSTRUCCIONES, /Nunca ofrezcas una visita técnica por tu cuenta/);
   assert.doesNotMatch(INSTRUCCIONES, /si hace falta una visita \(no tiene costo\)/);
+});
+
+test("lo que no vendemos: se dice en una línea y no va al equipo (JS, 25/11)", () => {
+  assert.match(INSTRUCCIONES, /Lo único que vendemos es andamio multidireccional nuevo/);
+  assert.match(INSTRUCCIONES, /Escaleras no vendemos: lo nuestro es el alquiler de andamios\./);
+  assert.match(INSTRUCCIONES, /no le hagas el resumen ni uses pedir_tecnico/);
 });

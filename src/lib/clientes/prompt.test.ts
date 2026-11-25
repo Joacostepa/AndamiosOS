@@ -136,10 +136,10 @@ test("el prompt tiene lo que salió del análisis de los chats (aprobado por JS 
     /obra_en_curso/, /administracion/, /estafa_pago/, /desprendimiento/, /quiere_avanzar/,
     /Esa publicación no es de ABA/,
     /Los datos para el alta van al final, cuando ya entendiste el trabajo y la obra: nunca antes/,
-    /¿Lo arman ustedes, o necesitás que lo armemos\?/,
+    /Lo arman ustedes, o necesitás que lo armemos\?/,
     /Cuánto tiempo calculan que dura la obra/,
     /YA ARMADA por ABA/,
-    /¿Está bien así\?/,
+    /Está bien así\?/,
   ]) assert.match(INSTRUCCIONES, regla);
   assert.doesNotMatch(INSTRUCCIONES, /en un rato con el presupuesto/, "«en un rato» es un plazo");
 });
@@ -156,7 +156,7 @@ test("las frases fijas nuevas del prompt pasan el filtro de salida", () => {
 });
 
 test("el bloque del alquiler simple: §3, §6 y §7, sin montos ni porcentajes, adentro del bloque fijo", () => {
-  assert.equal(VERSION_PROMPT, "tomas-2026-11-25-medianeras-datos");
+  assert.equal(VERSION_PROMPT, "tomas-2026-11-25-sin-apertura");
   assert.ok(INSTRUCCIONES.includes(ALQUILER_SIMPLE), "va en el bloque con caché, igual para todas las charlas");
   for (const regla of [
     /Qué trabajo van a hacer y hasta qué altura/,
@@ -172,7 +172,7 @@ test("el bloque del alquiler simple: §3, §6 y §7, sin montos ni porcentajes, 
     /con un recargo por los costos operativos; cuánto es lo dice el presupuesto, vos no/,
     /La baranda va siempre incluida\. Si no la quiere, no se la llevamos, pero el servicio es el mismo/,
     /Siempre el piso completo de tablones/,
-    /¿Te lo reservo para el lunes a la mañana\?/,
+    /Te lo reservo para el lunes a la mañana\?/,
     /como alternativa, es un tablón apoyado en un peldaño de la escalera del bastidor, en cualquier módulo/,
     /un solo tablón de 30 cm/,
     /acepta_plataforma/,
@@ -253,7 +253,7 @@ test("los datos del cliente (JS, 16/11): mail, DNI o CUIT y cómo nos conoció, 
   assert.match(INSTRUCCIONES, /el mail, para mandarle el presupuesto formal/);
   assert.match(INSTRUCCIONES, /si es para él \(una persona\), el DNI; si es una empresa, un consorcio o un organismo, el CUIT/);
   assert.match(INSTRUCCIONES, /Pedilo una sola vez\. Si no lo da, lo esquiva o le molesta, seguí sin insistir/);
-  assert.match(INSTRUCCIONES, /¿cómo llegaste a nosotros\?/);
+  assert.match(INSTRUCCIONES, /cómo llegaste a nosotros\?/);
   assert.match(ALQUILER_SIMPLE, /el mail y cómo nos conoció/);
   const f = { ...fichaSofiaVacia(), dni: "30123456", origen: { via: "google" as const, detalle: null } };
   const r = resumenFicha(f).join("\n");

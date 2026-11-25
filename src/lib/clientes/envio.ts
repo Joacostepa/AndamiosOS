@@ -7,6 +7,7 @@
 // La ventana de 24 h la chequea la ruta ANTES de llamar acá (ventana.ts): el mensaje fijo de
 // la etapa 0 sale como respuesta a un mensaje recién llegado, así que siempre está adentro.
 
+import { sinApertura } from "./sin-apertura";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ErrorWhatsapp, enviarAudio, enviarDocumento, enviarImagen, enviarTexto, numeroClientes } from "@/lib/whatsapp/api";
 import { MAX_TEXTO } from "@/lib/whatsapp/formato";
@@ -79,7 +80,7 @@ async function salir(
 }
 
 export async function mandarTexto(db: SupabaseClient, conversacionId: string, telefono: string, texto: string, autor: Autor) {
-  const t = texto.trim().slice(0, MAX_TEXTO);
+  const t = sinApertura(texto, autor).trim().slice(0, MAX_TEXTO);
   if (!t) throw new Error("El mensaje está vacío.");
   const desde = numero();
   return salir(db, conversacionId, autor, { tipo: "text", texto: t }, t.replace(/\s+/g, " "), async () => {
@@ -101,7 +102,7 @@ export async function mandarArchivo(
   const { data, error } = await db.storage.from(BUCKET).createSignedUrl(archivo.path, 3600);
   if (error || !data?.signedUrl) throw new Error(`No se pudo preparar el archivo: ${error?.message ?? "sin URL"}`);
   const foto = IMAGENES.has(archivo.mime);
-  const texto = epigrafe?.trim().slice(0, 1000) || null;
+  const texto = (epigrafe ? sinApertura(epigrafe, autor) : epigrafe)?.trim().slice(0, 1000) || null;
   return salir(
     db,
     conversacionId,

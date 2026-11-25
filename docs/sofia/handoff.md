@@ -6,6 +6,8 @@
 
 Para retomar, decí: «Leé docs/sofia/handoff.md y seguimos con el CRM de WhatsApp».
 
+**25/11: apuntalamiento de medianeras (prompt `tomas-2026-11-25-apuntalamiento-medianeras`).** Un cliente mandó la foto de una viga de medianera a medianera («viga Acrow, ¿alquilan?») y Tomás no sabía que es un servicio nuestro. JS: es la viga o cercha de apuntalamiento de medianeras, típica en excavaciones de obra nueva. Ahora está en «Qué hace ABA» y tiene su bloque en «Cómo seguir según el pedido»: confirma que lo hacemos sin prometer montaje ni plazos, pide dirección, distancia entre medianeras, largo, profundidad de la excavación, tiempo, planos o cálculo, y va a pedir_tecnico. Sin imagen de referencia.
+
 **25/11: un presupuesto sin nombre ya no falla al aprobar.** Desde el 19/11 Tomás pregunta el nombre una vez y, si no lo dan, el presupuesto sale igual; pero Odoo no da de alta un cliente sin nombre y la aprobación fallaba después del OK («Falta a nombre de quién va el presupuesto»; un alquiler quedó cuatro días sin salir). Ahora `nombreDelCliente` (`nombre-cliente.ts`): el nombre, el contacto o el perfil; si no hay nada, «Cliente WhatsApp +<teléfono>» como provisorio, con el aviso en la orden. La tarjeta avisa en ámbar «El cliente no dio su nombre» antes de aprobar (bandeja y alquiler).
 
 **Lo último (24/11): revisión de las últimas 10 charlas** (prompt `tomas-2026-11-24-revision-de-charlas`). Lo que se vio y lo que se cambió:

@@ -25,11 +25,19 @@ export const AUDIOS_GRABADOS: Record<string, string> = {
 /** Hasta 5 minutos: lo mismo que corta la grabación en la pantalla, con un margen. */
 export const MAX_SEGUNDOS_AUDIO = 5 * 60;
 
-/** Los argumentos de ffmpeg: Opus mono a 32 kb/s, pensado para voz. */
+/**
+ * Los argumentos de ffmpeg: Opus mono a 16 kHz y 24 kb/s, como el saludo con voz (voz.ts), que
+ * Meta acepta. Con 48 kHz, la marca de tiempo del WebM de Chrome (empezaba en -0,0065 s) y el
+ * «language=eng» de la grabación, Meta aceptaba el envío y después lo rechazaba con 131053, por
+ * link y también subido (JS 26/11, dos audios). Por eso: la cuenta de tiempo desde 0 (asetpts),
+ * sin metadatos y sólo la primera pista de audio.
+ */
 export function argumentosNotaDeVoz(entrada: string, salida: string): string[] {
   return [
-    "-loglevel", "error", "-y", "-i", entrada, "-vn", "-t", String(MAX_SEGUNDOS_AUDIO + 15),
-    "-ac", "1", "-ar", "48000", "-c:a", "libopus", "-b:a", "32k", "-application", "voip", salida,
+    "-loglevel", "error", "-y", "-i", entrada, "-vn", "-map", "0:a:0", "-t", String(MAX_SEGUNDOS_AUDIO + 15),
+    "-map_metadata", "-1", "-map_metadata:s:a", "-1",
+    "-af", "asetpts=N/SR/TB,aresample=16000",
+    "-ac", "1", "-ar", "16000", "-c:a", "libopus", "-b:a", "24k", "-application", "voip", salida,
   ];
 }
 

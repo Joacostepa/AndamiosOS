@@ -66,7 +66,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       const subido = await db.storage.from("comercial").upload(destino, ogg, { contentType: "audio/ogg", upsert: true });
       if (subido.error) throw new Error(`No se pudo guardar el audio: ${subido.error.message}`);
       if (destino !== archivo.path) await db.storage.from("comercial").remove([archivo.path]);
-      enviado = await mandarAudio(db, id, charla.telefono, { path: destino, nombre: "audio.ogg" }, autor);
+      enviado = await mandarAudio(db, id, charla.telefono, { path: destino, nombre: "audio.ogg", datos: ogg }, autor);
       if (texto?.trim()) enviado = await mandarTexto(db, id, charla.telefono, texto, autor);
     } else {
       enviado = archivo

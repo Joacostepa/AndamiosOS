@@ -9,7 +9,7 @@
 
 import { sinApertura } from "./sin-apertura";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { ErrorWhatsapp, enviarAudio, enviarDocumento, enviarImagen, enviarTexto, numeroClientes } from "@/lib/whatsapp/api";
+import { ErrorWhatsapp, enviarAudio, enviarDocumento, enviarImagen, enviarTexto, numeroClientes, subirMedio } from "@/lib/whatsapp/api";
 import { MAX_TEXTO } from "@/lib/whatsapp/formato";
 import { explicarError } from "./estados";
 import { avisarPush } from "./push";
@@ -17,6 +17,8 @@ import { avisarPush } from "./push";
 const BUCKET = "comercial";
 /** Lo que WhatsApp muestra como foto; lo demás sale como documento. */
 const IMAGENES = new Set(["image/jpeg", "image/png"]);
+/** Lo único Ogg que WhatsApp acepta como audio. */
+const OGG_OPUS = "audio/ogg; codecs=opus";
 
 /** persona: alguien del equipo · sistema: un texto fijo del servidor · ia: lo que escribió Sofía. */
 export type Autor = { autor: "persona"; autorId: string; autorNombre: string } | { autor: "sistema" } | { autor: "ia" };
@@ -113,18 +115,18 @@ export async function mandarArchivo(
   );
 }
 
-/** Un audio que grabó alguien del equipo, ya en Ogg con Opus y en Storage: sale como nota de voz. */
-export async function mandarAudio(db: SupabaseClient, conversacionId: string, telefono: string, archivo: { path: string; nombre: string }, autor: Autor) {
+/** Un audio que grabó alguien del equipo, ya en Ogg con Opus (y guardado en Storage, para verlo
+ *  en la charla): se sube a WhatsApp y sale como nota de voz. Por link no: Storage lo sirve como
+ *  «audio/ogg» a secas y Meta lo rechaza (131053, JS 26/11). */
+export async function mandarAudio(db: SupabaseClient, conversacionId: string, telefono: string, archivo: { path: string; nombre: string; datos: Buffer }, autor: Autor) {
   const desde = numero();
-  const { data, error } = await db.storage.from(BUCKET).createSignedUrl(archivo.path, 3600);
-  if (error || !data?.signedUrl) throw new Error(`No se pudo preparar el audio: ${error?.message ?? "sin URL"}`);
   return salir(
     db,
     conversacionId,
     autor,
     { tipo: "audio", texto: null, adjunto: { path: archivo.path, mime: "audio/ogg", nombre: archivo.nombre } },
     "Audio",
-    () => enviarAudio(telefono, data.signedUrl, true, desde),
+    async () => enviarAudio(telefono, { id: await subirMedio(archivo.datos, OGG_OPUS, archivo.nombre, desde) }, true, desde),
   );
 }
 

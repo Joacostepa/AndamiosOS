@@ -125,13 +125,39 @@ export async function enviarDocumento(para: string, url: string, nombre: string,
 
 /** Un audio por link. Con `nota`, sale como nota de voz (la onda y el micrófono): tiene que ser
  *  Ogg con Opus; con otro formato WhatsApp ignora la marca y lo manda como audio común. */
-export async function enviarAudio(para: string, url: string, nota = true, numero?: string | null): Promise<string> {
+/** Un audio por link, o por el id de lo que se subió con subirMedio. */
+export async function enviarAudio(para: string, audio: string | { id: string }, nota = true, numero?: string | null): Promise<string> {
   return mensajes({
     recipient_type: "individual",
     to: para,
     type: "audio",
-    audio: { link: url, ...(nota ? { voice: true } : {}) },
+    audio: { ...(typeof audio === "string" ? { link: audio } : { id: audio.id }), ...(nota ? { voice: true } : {}) },
   }, numero);
+}
+
+/**
+ * Sube un archivo a WhatsApp y devuelve su id (sirve 30 días). Para los audios: por link, Meta
+ * mira el Content-Type que manda Storage («audio/ogg» a secas) y lo rechaza con 131053; acá el
+ * tipo lo decimos nosotros («audio/ogg; codecs=opus», JS 26/11).
+ */
+export async function subirMedio(datos: Buffer, mime: string, nombre: string, numero?: string | null): Promise<string> {
+  const desde = numero || process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const form = new FormData();
+  form.append("messaging_product", "whatsapp");
+  form.append("type", mime);
+  form.append("file", new Blob([new Uint8Array(datos)], { type: mime }), nombre);
+  const res = await fetch(`${GRAPH}/${version()}/${desde}/media`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` },
+    body: form,
+    signal: AbortSignal.timeout(30_000),
+  });
+  const j = (await res.json().catch(() => null)) as { id?: string; error?: { message?: string; code?: number } } | null;
+  if (!res.ok || !j?.id) {
+    const codigo = typeof j?.error?.code === "number" ? j.error.code : null;
+    throw new ErrorWhatsapp(`WhatsApp no aceptó el archivo (${res.status}${codigo ? ` · ${codigo}` : ""}): ${j?.error?.message ?? "sin detalle"}`, codigo, res.status);
+  }
+  return j.id;
 }
 
 /** Una foto por link (JPG o PNG; WhatsApp no acepta otras como imagen). */

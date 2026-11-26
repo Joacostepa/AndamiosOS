@@ -6,7 +6,12 @@
 
 Para retomar, decí: «Leé docs/sofia/handoff.md y seguimos con el CRM de WhatsApp».
 
-**Para seguir (25/11, al cierre):**
+**Para seguir (26/11):**
+- Que JS confirme que el audio grabado desde la bandeja llega (arreglo `399bee8`, ver abajo). Si falla de nuevo, probar variantes por la API con la ventana abierta en el número de JS, nunca en la charla de un cliente.
+- Ver en charlas nuevas que Tomás ya no diga «no puedo ver el video» ni «no puedo abrir el link» (prompt `tomas-2026-11-26-nunca-no-puedo-ver`).
+- Para más adelante: abrir del lado del servidor los links de Google Maps (la dirección) y de YouTube (el título).
+
+**De antes (25/11, al cierre):**
 - El alquiler #1045 sigue en error («Falta a nombre de quién va el presupuesto»): falta que alguien toque «Reintentar» en la tarjeta. Con el arreglo de hoy tiene que salir (la ficha ya tiene el nombre).
 - Proponerle a JS mover las funciones de Vercel a Oregón (`pdx1`, con `regions` en vercel.json): hoy corren en iad1 (Washington) y Supabase está en us-west-2, así que cada consulta cruza Estados Unidos. Es un cambio de toda la app: revisar antes dónde está Odoo y los crons.
 - Preguntarle a JS si el «¡» de apertura («¡Buen día!») también se saca: por ahora sólo se sacó el «¿».

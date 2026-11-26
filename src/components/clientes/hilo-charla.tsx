@@ -119,7 +119,7 @@ function Burbuja({ item, nombreCliente }: { item: ItemHilo; nombreCliente: strin
             {sale && <Tildes estado={item.estado} />}
           </span>
         </div>
-        {item.adjunto && <Adjunto a={item.adjunto} tipo={item.tipo} nombreCliente={nombreCliente} />}
+        {item.adjunto && <Adjunto a={item.adjunto} tipo={item.tipo} nombreCliente={item.direccion === "entrante" ? nombreCliente : (item.autorNombre ?? "ABA")} />}
         {item.texto && !textoEsAdjunto && <p className="break-words whitespace-pre-wrap">{item.texto}</p>}
         {item.tipo === "audio" && item.transcripcion && (
           <p className="border-l-2 border-border pl-2 text-[13.5px] text-muted-foreground">

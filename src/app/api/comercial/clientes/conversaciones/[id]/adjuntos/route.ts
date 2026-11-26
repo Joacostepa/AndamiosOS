@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { leerCharla } from "@/lib/clientes/bandeja";
+import { AUDIOS_GRABADOS } from "@/lib/clientes/audio-saliente";
 import { errorResponse, exigirModulo, invalido } from "../../../../_comun";
 
-// POST /api/comercial/clientes/conversaciones/:id/adjuntos — URL firmada para subir una foto
-// o un documento que se le va a mandar al cliente. El archivo NO pasa por acá (el proxy corta
+// POST /api/comercial/clientes/conversaciones/:id/adjuntos — URL firmada para subir una foto,
+// un documento o un audio grabado que se le va a mandar al cliente. El archivo NO pasa por acá (el proxy corta
 // cuerpos de más de 10 MB y Vercel de más de 4,5 MB): va directo a Storage, y después
 // /responder lo manda por WhatsApp con un link firmado.
 
@@ -21,6 +22,8 @@ const EXT: Record<string, string> = {
   "application/vnd.ms-excel": "xls",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
   "text/plain": "txt",
+  // Un audio grabado en la bandeja: /responder lo pasa a nota de voz (audio-saliente.ts).
+  ...AUDIOS_GRABADOS,
 };
 
 const schema = z.object({ tipo: z.string().max(120) });
@@ -31,7 +34,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const parsed = schema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return invalido(parsed.error);
   const ext = EXT[parsed.data.tipo.split(";")[0].trim()];
-  if (!ext) return invalido("Por WhatsApp se pueden mandar fotos (JPG o PNG), PDF, Word, Excel o texto.");
+  if (!ext) return invalido("Por WhatsApp se pueden mandar fotos (JPG o PNG), PDF, Word, Excel, texto o audios.");
   const quien = await exigirModulo("clientes-whatsapp", "editar");
   if (quien instanceof NextResponse) return quien;
   try {

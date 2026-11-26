@@ -2,14 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { cambiarEstado, leerCharla, nombresDe } from "@/lib/clientes/bandeja";
-import { SinNumeroClientes, mandarArchivo, mandarTexto, type Autor } from "@/lib/clientes/envio";
+import { SinNumeroClientes, mandarArchivo, mandarAudio, mandarTexto, type Autor } from "@/lib/clientes/envio";
+import { AUDIOS_GRABADOS, aNotaDeVoz } from "@/lib/clientes/audio-saliente";
 import { motivoVentanaCerrada } from "@/lib/clientes/ventana";
 import { MAX_TEXTO } from "@/lib/whatsapp/formato";
 import { errorResponse, exigirModulo, invalido } from "../../../../_comun";
 
 // POST /api/comercial/clientes/conversaciones/:id/responder — contestarle al cliente desde la
 // app, por el número de clientes: { texto } o { archivo: { path, mime, nombre }, texto? }
-// (el archivo ya subido con /adjuntos; el texto va como epígrafe).
+// (el archivo ya subido con /adjuntos; el texto va como epígrafe). Un audio grabado en la
+// bandeja (JS, 26/11) se pasa a Ogg con Opus y sale como nota de voz; si vino con texto, el
+// texto sale después, aparte (un audio no lleva epígrafe).
 //
 // - Sólo dentro de la ventana de 24 h (ventana.ts). Afuera, WhatsApp sólo deja plantillas,
 //   que todavía no están: se rechaza y se dice por qué.
@@ -53,9 +56,23 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     }
 
     const autor: Autor = { autor: "persona", autorId: yo.id, autorNombre: yo.nombre };
-    const enviado = archivo
-      ? await mandarArchivo(db, id, charla.telefono, archivo, texto ?? null, autor)
-      : await mandarTexto(db, id, charla.telefono, texto!, autor);
+    const mimeBase = archivo?.mime.split(";")[0].trim() ?? "";
+    let enviado: { id: string };
+    if (archivo && AUDIOS_GRABADOS[mimeBase]) {
+      const { data, error } = await db.storage.from("comercial").download(archivo.path);
+      if (error || !data) throw new Error(`No se pudo leer el audio: ${error?.message ?? "vacío"}`);
+      const ogg = await aNotaDeVoz(Buffer.from(await data.arrayBuffer()), AUDIOS_GRABADOS[mimeBase]);
+      const destino = archivo.path.replace(/\.[a-z0-9]+$/i, "") + ".ogg";
+      const subido = await db.storage.from("comercial").upload(destino, ogg, { contentType: "audio/ogg", upsert: true });
+      if (subido.error) throw new Error(`No se pudo guardar el audio: ${subido.error.message}`);
+      if (destino !== archivo.path) await db.storage.from("comercial").remove([archivo.path]);
+      enviado = await mandarAudio(db, id, charla.telefono, { path: destino, nombre: "audio.ogg" }, autor);
+      if (texto?.trim()) enviado = await mandarTexto(db, id, charla.telefono, texto, autor);
+    } else {
+      enviado = archivo
+        ? await mandarArchivo(db, id, charla.telefono, archivo, texto ?? null, autor)
+        : await mandarTexto(db, id, charla.telefono, texto!, autor);
+    }
     await db.from("cli_conversaciones").update({ sin_leer: 0 }).eq("id", id);
     return NextResponse.json({ ok: true, id: enviado.id });
   } catch (e) {

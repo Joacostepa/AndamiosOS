@@ -113,6 +113,21 @@ export async function mandarArchivo(
   );
 }
 
+/** Un audio que grabó alguien del equipo, ya en Ogg con Opus y en Storage: sale como nota de voz. */
+export async function mandarAudio(db: SupabaseClient, conversacionId: string, telefono: string, archivo: { path: string; nombre: string }, autor: Autor) {
+  const desde = numero();
+  const { data, error } = await db.storage.from(BUCKET).createSignedUrl(archivo.path, 3600);
+  if (error || !data?.signedUrl) throw new Error(`No se pudo preparar el audio: ${error?.message ?? "sin URL"}`);
+  return salir(
+    db,
+    conversacionId,
+    autor,
+    { tipo: "audio", texto: null, adjunto: { path: archivo.path, mime: "audio/ogg", nombre: archivo.nombre } },
+    "Audio",
+    () => enviarAudio(telefono, data.signedUrl, true, desde),
+  );
+}
+
 /** El saludo con voz (voz.ts): ya está en Storage, firmado. En la charla se ve el audio y, abajo,
  *  lo que dice. */
 export async function mandarNotaDeVoz(

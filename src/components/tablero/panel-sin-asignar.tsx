@@ -16,6 +16,7 @@ import {
   Search,
   Inbox,
   Loader2,
+  Lock,
   MapPin,
   MessageSquare,
   Siren,
@@ -36,6 +37,7 @@ import {
 import {
   colorTipo,
   semaforo,
+  CANDADO,
   CORAL,
   ACENTO_BG,
   ALERTA,
@@ -314,6 +316,7 @@ function TarjetaOt({
   obra,
   hoy,
   comentarios,
+  candado = false,
   queEjecutar,
   onDetalle,
   onDuracion,
@@ -340,6 +343,11 @@ function TarjetaOt({
   onComodin?: (ot: OtTablero, marcar: boolean) => void;
   /** Resumen del hilo de la obra. null = nadie comentó nada todavía. */
   comentarios: ResumenEnTarjeta | null;
+  /**
+   * El cliente pidió no armar sin el permiso emitido: el mismo candado de la grilla (ver
+   * tarjeta-asignacion). Avisa; no impide arrastrar.
+   */
+  candado?: boolean;
   /**
    * Mostrar QUÉ HAY QUE EJECUTAR en lugar del cliente. La dirección no se toca: es lo que
    * identifica la obra. Ver ContenidoTarjeta.
@@ -444,6 +452,18 @@ function TarjetaOt({
       <div className="flex items-start gap-1.5">
         <IconoTipo className="mt-0.5 h-3.5 w-3.5 shrink-0" style={{ color: tipo.text }} aria-hidden />
         <p className="min-w-0 flex-1 text-sm font-medium leading-snug text-foreground">{direccion}</p>
+        {/* Después de la dirección, como en la grilla. El motivo en el `title` del span, que
+            es como se consulta: con el mouse encima. */}
+        {candado && (
+          <span
+            className="mt-1 flex shrink-0"
+            title="El cliente pidió esperar el permiso emitido"
+            role="img"
+            aria-label="El cliente pidió esperar el permiso emitido"
+          >
+            <Lock className="h-3 w-3" style={{ color: CANDADO }} />
+          </span>
+        )}
         {/* Lleva técnico de SyH nuestro: el mismo casco de la grilla y de la ficha. En la
             bandeja es donde más sirve, antes de elegir el día. */}
         {ot.syh && (
@@ -727,6 +747,7 @@ export function PanelSinAsignar({
   fueraDeRango,
   onIrAObra,
   comentarios,
+  candados,
   hoy,
   colapsado,
   flotante,
@@ -758,6 +779,8 @@ export function PanelSinAsignar({
   onIrAObra: (otId: number) => Promise<void>;
   /** Resumen del hilo de cada OT, resuelto de una sola consulta en el board. */
   comentarios?: Map<number, ResumenEnTarjeta>;
+  /** Las OTs con candado (el cliente espera el permiso emitido), de la misma consulta que la grilla. */
+  candados?: Set<number>;
   /** Hoy en yyyy-MM-dd: define qué compromiso está vencido. */
   hoy: string;
   colapsado: boolean;
@@ -1114,7 +1137,7 @@ export function PanelSinAsignar({
             onToggle={() => {}}
           >
             {urgentes.map((obra) => (
-              <TarjetaOt key={obra.ot.id} obra={obra} hoy={hoy} comentarios={comentarios?.get(obra.ot.id) ?? null} queEjecutar={queEjecutar} onDetalle={onDetalle} onDuracion={onDuracion} comodin={comodinDe.get(obra.ot.id)?.comodin ?? null} marcadoPor={comodinDe.get(obra.ot.id)?.marcadoPor ?? null} onMeterUrgente={onMeterUrgente} onComodin={onComodin} />
+              <TarjetaOt key={obra.ot.id} obra={obra} hoy={hoy} comentarios={comentarios?.get(obra.ot.id) ?? null} candado={candados?.has(obra.ot.id) ?? false} queEjecutar={queEjecutar} onDetalle={onDetalle} onDuracion={onDuracion} comodin={comodinDe.get(obra.ot.id)?.comodin ?? null} marcadoPor={comodinDe.get(obra.ot.id)?.marcadoPor ?? null} onMeterUrgente={onMeterUrgente} onComodin={onComodin} />
             ))}
           </Grupo>
 
@@ -1124,7 +1147,7 @@ export function PanelSinAsignar({
             tarjeta={(item) => {
               const obra = obraDe.get(item.ot.id);
               return obra ? (
-                <TarjetaOt obra={obra} hoy={hoy} comentarios={comentarios?.get(obra.ot.id) ?? null} queEjecutar={queEjecutar} onDetalle={onDetalle} onDuracion={onDuracion} comodin={item.comodin} marcadoPor={item.marcadoPor} onMeterUrgente={onMeterUrgente} onComodin={onComodin} />
+                <TarjetaOt obra={obra} hoy={hoy} comentarios={comentarios?.get(obra.ot.id) ?? null} candado={candados?.has(obra.ot.id) ?? false} queEjecutar={queEjecutar} onDetalle={onDetalle} onDuracion={onDuracion} comodin={item.comodin} marcadoPor={item.marcadoPor} onMeterUrgente={onMeterUrgente} onComodin={onComodin} />
               ) : null;
             }}
           />
@@ -1150,7 +1173,7 @@ export function PanelSinAsignar({
             onToggle={() => {}}
           >
             {listas.map((obra) => (
-              <TarjetaOt key={obra.ot.id} obra={obra} hoy={hoy} comentarios={comentarios?.get(obra.ot.id) ?? null} queEjecutar={queEjecutar} onDetalle={onDetalle} onDuracion={onDuracion} onMeterUrgente={onMeterUrgente} onComodin={onComodin} />
+              <TarjetaOt key={obra.ot.id} obra={obra} hoy={hoy} comentarios={comentarios?.get(obra.ot.id) ?? null} candado={candados?.has(obra.ot.id) ?? false} queEjecutar={queEjecutar} onDetalle={onDetalle} onDuracion={onDuracion} onMeterUrgente={onMeterUrgente} onComodin={onComodin} />
             ))}
           </Grupo>
 
@@ -1163,7 +1186,7 @@ export function PanelSinAsignar({
             onToggle={() => setPendientesAbierto((v) => !v)}
           >
             {pendientesHab.map((obra) => (
-              <TarjetaOt key={obra.ot.id} obra={obra} hoy={hoy} comentarios={comentarios?.get(obra.ot.id) ?? null} queEjecutar={queEjecutar} onDetalle={onDetalle} onDuracion={onDuracion} onMeterUrgente={onMeterUrgente} onComodin={onComodin} />
+              <TarjetaOt key={obra.ot.id} obra={obra} hoy={hoy} comentarios={comentarios?.get(obra.ot.id) ?? null} candado={candados?.has(obra.ot.id) ?? false} queEjecutar={queEjecutar} onDetalle={onDetalle} onDuracion={onDuracion} onMeterUrgente={onMeterUrgente} onComodin={onComodin} />
             ))}
           </Grupo>
 

@@ -1,4 +1,4 @@
-# Handoff — Tablero de planificación (actualizado 2026-11-19)
+# Handoff — Tablero de planificación (actualizado 2026-11-26)
 
 Para retomar en una sesión nueva: "Leé docs/tablero-planificacion/handoff.md y seguimos con las
 mejoras del tablero". Acá van el estado, lo pendiente y las mejoras pedidas, la más nueva arriba.
@@ -36,9 +36,34 @@ cosas, así que ante la duda manda el código y los comentarios largos que tiene
 
 6. **El PM de cada obra (19/11):** probarlo con Augusto o Juan Ignacio en el celular: que
    abra en modo PM, que tome una obra y que Operaciones la vea. Ver la entrada del 19/11.
+7. **El candado en la bandeja (26/11):** mirarlo en producción en una obra de la bandeja con
+   «esperar permiso». Ver la entrada del 26/11.
 
 **Cerrado el 17/10 (JS lo dio por terminado):** la ficha nueva de la OT y la bandeja nueva
 (09/10), la tarjeta y el encabezado nuevos de la grilla (09/10) y el casco de SyH (13–14/10).
+
+---
+
+## 26/11 — el candado del permiso, también en la bandeja
+
+**Qué pidió JS:** que el candadito de las obras que el cliente quiere armar con el permiso
+emitido aparezca también en las tarjetas de la bandeja, no sólo en la grilla. Es en la bandeja
+donde se elige el día, y enterarse al soltarla en la grilla es tarde.
+
+**Cómo quedó:**
+- `useCandado` (en `tablero-board.tsx`) ahora pide las OTs de la grilla **más** las pendientes y
+  en proceso de `data.ots` (las mismas que arma `sinAsignar`), en **una sola consulta** a Odoo
+  (`/api/habilitaciones/candado`). Como la lista es la unión, pasar una obra de la bandeja a la
+  grilla no cambia la clave ni vuelve a consultar.
+- El mismo `otsBloqueadas` (fricción tipo `bloqueo`) baja a `PanelSinAsignar` como `candados`, y
+  `TarjetaOt` dibuja el `Lock` en color `CANDADO` a la derecha de la dirección, como en la grilla,
+  con el motivo en el `title` («El cliente pidió esperar el permiso emitido»). Sale en los cuatro
+  grupos: urgentes, comodines, listas y habilitación pendiente.
+- Es **aviso, no impedimento**: la tarjeta se arrastra igual; la fricción al confirmar sigue
+  siendo la del diálogo del candado.
+- No se probó en local (el `node_modules` de la máquina de JS tiene un symlink roto y le faltan
+  paquetes); lint limpio. **Falta mirarlo en producción** con una obra en la bandeja que tenga
+  «esperar permiso».
 
 ---
 
@@ -351,8 +376,8 @@ flecha y el color alcanzan) y **sin el botón "i"** (un clic en la tarjeta abre 
   que en la ficha). Corregido en `bcd5eb5`.
 
 **Quedó de la auditoría de la bandeja, sin hacer:** bandeja superpuesta también en tablet
-(768–1024px); el candado de permiso visible en la bandeja (`useCandado` sólo mira obras con
-asignaciones); el fantasma del arrastre muestra el título crudo y no la tarjeta; traer el
+(768–1024px); ~~el candado de permiso visible en la bandeja~~ (hecho el 26/11, ver esa
+entrada); el fantasma del arrastre muestra el título crudo y no la tarjeta; traer el
 cliente de `sale.order` a `OtTablero` para que la búsqueda por cliente funcione siempre;
 avisar "el armado no tiene fecha" en un desarme cuyo armado también está en la bandeja (a
 validar con Operaciones).

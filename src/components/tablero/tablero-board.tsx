@@ -808,7 +808,23 @@ export function TableroBoard() {
     () => [...new Set((data?.asignaciones ?? []).map((a) => a.otId))],
     [data],
   );
-  const { data: candados, isError: errorCandado, refetch: refetchCandado } = useCandado(otIdsEnTablero);
+  // TAMBIÉN LAS DE LA BANDEJA, para el candado de su tarjeta: es ahí donde se elige el día,
+  // y enterarse de que el cliente espera el permiso recién al soltarla en la grilla es tarde.
+  // Son las mismas que arma `sinAsignar` (pendientes y en proceso) y se piden en la misma
+  // consulta, así que pasar una obra de la bandeja a la grilla no cambia la clave ni vuelve a
+  // preguntarle a Odoo.
+  const otIdsCandado = useMemo(
+    () => [
+      ...new Set([
+        ...otIdsEnTablero,
+        ...(data?.ots ?? [])
+          .filter((o) => ["pendiente", "en_proceso"].includes(o.estado))
+          .map((o) => o.id),
+      ]),
+    ],
+    [data, otIdsEnTablero],
+  );
+  const { data: candados, isError: errorCandado, refetch: refetchCandado } = useCandado(otIdsCandado);
   const [pedidoCandado, setPedidoCandado] = useState<PedidoConfirmacion | null>(null);
   const [pedidoFijar, setPedidoFijar] = useState<PedidoFijar | null>(null);
   const [corrimientoAbierto, setCorrimientoAbierto] = useState(false);
@@ -3552,6 +3568,7 @@ export function TableroBoard() {
             fueraDeRango={fueraDeRango}
             onIrAObra={irAObra}
             comentarios={comentarios}
+            candados={otsBloqueadas}
             hoy={hoyISO}
             // En celular la bandeja no es una columna: flota encima de la grilla, arranca
             // cerrada y no se recuerda. Ver `bandejaMovilAbierta`.

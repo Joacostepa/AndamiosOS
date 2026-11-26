@@ -156,7 +156,7 @@ test("las frases fijas nuevas del prompt pasan el filtro de salida", () => {
 });
 
 test("el bloque del alquiler simple: §3, §6 y §7, sin montos ni porcentajes, adentro del bloque fijo", () => {
-  assert.equal(VERSION_PROMPT, "tomas-2026-11-25-no-vendemos");
+  assert.equal(VERSION_PROMPT, "tomas-2026-11-26-nunca-no-puedo-ver");
   assert.ok(INSTRUCCIONES.includes(ALQUILER_SIMPLE), "va en el bloque con caché, igual para todas las charlas");
   for (const regla of [
     /Qué trabajo van a hacer y hasta qué altura/,
@@ -292,4 +292,11 @@ test("lo que no vendemos: se dice en una línea y no va al equipo (JS, 25/11)", 
   assert.match(INSTRUCCIONES, /Lo único que vendemos es andamio multidireccional nuevo/);
   assert.match(INSTRUCCIONES, /Escaleras no vendemos: lo nuestro es el alquiler de andamios\./);
   assert.match(INSTRUCCIONES, /no le hagas el resumen ni uses pedir_tecnico/);
+});
+
+test("nunca dice que no puede ver un video o abrir un link (JS, 26/11, un link de YouTube)", () => {
+  assert.match(INSTRUCCIONES, /Nunca digas que no podés ver, abrir o escuchar algo/);
+  assert.match(INSTRUCCIONES, /links a videos o redes \(YouTube, Instagram, TikTok, Facebook, Drive\) los mira el equipo/);
+  assert.match(INSTRUCCIONES, /pedí el dato en el chat como un pedido normal, sin decir que no lo pudiste abrir/);
+  assert.doesNotMatch(INSTRUCCIONES, /Los videos no los ves/);
 });

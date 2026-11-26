@@ -518,7 +518,7 @@ test("fotos: si no se pueden pasar al modelo, la ve el equipo", async () => {
   const cliente = m.historia.find((h) => h.tipo === "cliente")!;
   const bloques = cliente.contenido as { type: string; text?: string }[];
   assert.deepEqual(bloques.map((b) => b.type), ["text"]);
-  assert.match(bloques[0].text!, /\[Mandó una foto: la ve el equipo, vos no\]/);
+  assert.match(bloques[0].text!, /\[Mandó una foto: la mira el equipo\]/);
 });
 
 test("fotos: desde el presupuesto del alquiler simple no se le muestran (son el DNI y los servicios)", async () => {

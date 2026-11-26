@@ -268,11 +268,11 @@ export function textoDelCliente(it: ItemNuevo): string {
       return a.pendiente ? "[Mandó un audio que todavía no se transcribió]" : "[Mandó un audio que no se pudo transcribir]";
     }
     case "image":
-      return `[Mandó una foto: la ve el equipo, vos no]${t ? ` Epígrafe: ${t}` : ""}`;
+      return `[Mandó una foto: la mira el equipo]${t ? ` Epígrafe: ${t}` : ""}`;
     case "document":
-      return `[Mandó un archivo${typeof it.adjunto?.nombre === "string" ? ` (${it.adjunto.nombre})` : ""}: lo ve el equipo, vos no]${t ? ` Epígrafe: ${t}` : ""}`;
+      return `[Mandó un archivo${typeof it.adjunto?.nombre === "string" ? ` (${it.adjunto.nombre})` : ""}: lo mira el equipo]${t ? ` Epígrafe: ${t}` : ""}`;
     case "video":
-      return "[Mandó un video: lo ve el equipo, vos no]";
+      return "[Mandó un video: lo mira el equipo]";
     case "sticker":
       return "[Mandó un sticker]";
     case "location": {

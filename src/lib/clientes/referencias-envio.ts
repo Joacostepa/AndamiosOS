@@ -8,38 +8,63 @@ import { promisify } from "node:util";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import ffmpeg from "ffmpeg-static";
 import { mandarArchivo } from "./envio";
-import { elegirRender, epigrafeReferencia, REFERENCIAS, type FilaRender, type ResultadoReferencia, type TipoReferencia } from "./referencias";
+import { elegirRender, epigrafeReferencia, FILTRO_COPIA, REFERENCIAS, type FilaRender, type ResultadoReferencia, type TipoReferencia } from "./referencias";
 
 const correr = promisify(execFile);
 const BUCKET = "comercial";
 const CARPETA = "referencias";
 
-/** La copia en JPG del render: la guardada, o una nueva. Devuelve la ruta en Storage. */
-async function copiaJpg(db: SupabaseClient, render: FilaRender): Promise<string> {
-  const destino = `${CARPETA}/${path.basename(render.path).replace(/\.[a-z0-9]+$/i, "")}.jpg`;
-  const guardada = await db.storage.from(BUCKET).createSignedUrl(destino, 60);
-  if (guardada.data?.signedUrl) return destino;
+/** Ruta de la copia en JPG de un render en Storage. */
+export function rutaCopiaJpg(renderPath: string): string {
+  return `${CARPETA}/${path.basename(renderPath).replace(/\.[a-z0-9]+$/i, "")}.jpg`;
+}
 
-  const { data, error } = await db.storage.from(BUCKET).download(render.path);
-  if (error || !data) throw new Error(`No se pudo bajar el render: ${error?.message ?? "vacío"}`);
+
+/** La copia en JPG del render: la guardada, o una nueva. Devuelve la ruta en Storage. */
+async function copiaJpg(db: SupabaseClient, render: FilaRender, original: Buffer): Promise<string> {
   if (!ffmpeg) throw new Error("No está ffmpeg (ffmpeg-static).");
+  const destino = rutaCopiaJpg(render.path);
   const dir = await mkdtemp(path.join(tmpdir(), "referencia-"));
   try {
     const entrada = path.join(dir, `render${path.extname(render.path) || ".png"}`);
     const salida = path.join(dir, "referencia.jpg");
-    await writeFile(entrada, Buffer.from(await data.arrayBuffer()));
-    // Un PNG transparente saldría con fondo negro: se aplana sobre blanco (como en el PDF).
-    await correr(ffmpeg, [
-      "-loglevel", "error", "-y", "-f", "lavfi", "-i", "color=white", "-i", entrada,
-      "-filter_complex", "[1:v]scale='min(1600,iw)':-2[r];[0:v][r]scale2ref[f][r2];[f][r2]overlay=shortest=1,format=yuvj420p",
-      "-frames:v", "1", "-q:v", "4", salida,
+    await writeFile(entrada, original);
+    const { stderr } = await correr(ffmpeg, [
+      "-loglevel", "warning", "-y", "-i", entrada, "-filter_complex", FILTRO_COPIA,
+      "-frames:v", "1", "-update", "1", "-q:v", "4", salida,
     ], { timeout: 30_000 });
-    const jpg = await readFile(salida);
+    const jpg = await readFile(salida).catch(() => null);
+    if (!jpg?.length) throw new Error(`ffmpeg no armó la copia: ${stderr.trim().slice(0, 300) || "sin detalle"}`);
     const { error: e } = await db.storage.from(BUCKET).upload(destino, jpg, { contentType: "image/jpeg", upsert: true });
     if (e) throw new Error(`No se pudo guardar la imagen de referencia: ${e.message}`);
     return destino;
   } finally {
     await rm(dir, { recursive: true, force: true });
+  }
+}
+
+/** WhatsApp acepta fotos de hasta 5 MB. */
+const MAX_FOTO = 5 * 1024 * 1024;
+
+/**
+ * La copia en JPG (la guardada o una nueva). Si no se puede armar, el render original, si es
+ * PNG o JPG y entra en WhatsApp: la imagen sale igual (pesa más, nada más).
+ */
+async function imagenParaMandar(db: SupabaseClient, render: FilaRender): Promise<{ path: string; mime: string }> {
+  const destino = rutaCopiaJpg(render.path);
+  const guardada = await db.storage.from(BUCKET).createSignedUrl(destino, 60);
+  if (guardada.data?.signedUrl) return { path: destino, mime: "image/jpeg" };
+
+  const { data, error } = await db.storage.from(BUCKET).download(render.path);
+  if (error || !data) throw new Error(`No se pudo bajar el render: ${error?.message ?? "vacío"}`);
+  const original = Buffer.from(await data.arrayBuffer());
+  try {
+    return { path: await copiaJpg(db, render, original), mime: "image/jpeg" };
+  } catch (e) {
+    const mime = /\.png$/i.test(render.path) ? "image/png" : /\.jpe?g$/i.test(render.path) ? "image/jpeg" : null;
+    if (!mime || original.length > MAX_FOTO) throw e;
+    console.error("[sofia] copia de la imagen de referencia; sale el original", render.path, e);
+    return { path: render.path, mime };
   }
 }
 
@@ -70,7 +95,7 @@ export async function mandarReferencia(
   const render = elegirRender((filas ?? []) as FilaRender[]);
   if (!render) return "sin_imagen";
 
-  const jpg = await copiaJpg(db, render);
-  await mandarArchivo(db, charla.id, charla.telefono, { path: jpg, mime: "image/jpeg", nombre: ref.nombre }, epigrafeReferencia(tipo, trato), { autor: "ia" });
+  const archivo = await imagenParaMandar(db, render);
+  await mandarArchivo(db, charla.id, charla.telefono, { ...archivo, nombre: ref.nombre }, epigrafeReferencia(tipo, trato), { autor: "ia" });
   return "enviada";
 }

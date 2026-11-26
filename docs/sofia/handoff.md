@@ -1,6 +1,6 @@
 # Handoff: CRM con Tomás (antes Sofía), el agente de WhatsApp para clientes
 
-**Actualizado el 25/11/2026.** **Desde el 17/10 el agente se llama Tomás** (JS eligió una voz de hombre para el saludo con audio). La carpeta, los nombres internos del código (`atenderConSofia`, `FichaSofia`…) y la historia de abajo siguen diciendo Sofía.
+**Actualizado el 26/11/2026.** **Desde el 17/10 el agente se llama Tomás** (JS eligió una voz de hombre para el saludo con audio). La carpeta, los nombres internos del código (`atenderConSofia`, `FichaSofia`…) y la historia de abajo siguen diciendo Sofía.
 
  El estado de abajo es el vigente. La historia del 12/10 está más abajo, en «Historia: la charla del 12/10».
 
@@ -12,6 +12,8 @@ Para retomar, decí: «Leé docs/sofia/handoff.md y seguimos con el CRM de Whats
 - Preguntarle a JS si el «¡» de apertura («¡Buen día!») también se saca: por ahora sólo se sacó el «¿».
 - El modo «en espera» del 24/11 todavía no se vio con charlas reales.
 - La asignación #1060 (escalera para comprar, Córdoba) quedó esperando el OK: hay que contestarle al cliente que no vendemos escaleras y descartarla. Preguntarle a JS si alquilamos escaleras; si no, sumarlas a «lo único que no alquilamos».
+
+**26/11: la imagen de referencia de la bandeja no salía nunca.** Tomás la pedía bien (`mostrar_referencia` con bandeja, 4 veces desde el 19/11), pero volvía `no_se_pudo` y él seguía sin mencionarla. En los logs de Vercel: `ENOENT … referencia.jpg`. La copia en JPG se armaba con ffmpeg con el fondo blanco como segunda entrada infinita (`lavfi color`) y, al azar, ffmpeg terminaba bien sin escribir el archivo. Fachada salió a la primera y quedó guardada (por eso andaba siempre); torre, a la tercera; bandeja, nunca. Arreglo: filtro de una sola entrada (`FILTRO_COPIA` en `referencias.ts`, con test que convierte 5 veces un PNG transparente), se verifica que la copia exista y, si no se puede armar, sale el render original (PNG de hasta 5 MB). Además se subió a mano la copia de la bandeja (`comercial/referencias/1790449014914-6b9229e5.jpg`), así que sale desde el 26/11 sin esperar el deploy. Ojo: torre no tiene render «por defecto» y se usa el más nuevo, un PNG de 110 KB (la copia pesa 20 KB): si JS prefiere otro, se marca en Parámetros → Renders.
 
 **25/11: lo que no vendemos (prompt `tomas-2026-11-25-no-vendemos`; `58a60e1`, en producción).** Andrés pidió precio de una escalera de 12 m para comprar (poda de palmeras, en Córdoba) y Tomás le pidió dirección, piso, cuántas y a nombre de quién, y lo pasó al equipo «para que lo evalúe» (#1060). JS: escaleras no vendemos, nos dedicamos al alquiler. Ahora: lo único que se vende es andamio multidireccional nuevo; si quiere comprar otra cosa, Tomás lo dice en una línea («Escaleras no vendemos: lo nuestro es el alquiler de andamios.»), sin datos, resumen ni pedir_tecnico; ofrece el alquiler sólo si el trabajo se hace con un andamio y es en CABA o GBA. Si pide escaleras sin decir comprar o alquilar, aclara que no las vendemos y pregunta para qué trabajo. Excepción explícita a «nunca digas que no lo hacemos». Abierto: si alquilamos escaleras (JS sólo dijo que no las vendemos).
 

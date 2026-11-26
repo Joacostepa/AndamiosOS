@@ -32,3 +32,11 @@ export function elegirRender(filas: readonly FilaRender[]): FilaRender | null {
   const conImagen = filas.filter((f) => f.path);
   return conImagen.find((f) => f.por_defecto) ?? [...conImagen].sort((a, b) => b.created_at.localeCompare(a.created_at))[0] ?? null;
 }
+
+/**
+ * El filtro de la copia: achica a 1600 px como mucho y aplana sobre blanco (un PNG transparente
+ * saldría con fondo negro, como en el PDF). Una sola entrada: hasta el 26/11 el fondo blanco
+ * era una segunda entrada infinita (lavfi color) y, según cómo se cruzaban los cuadros, ffmpeg
+ * terminaba bien pero sin escribir nada; la bandeja no salió nunca (ENOENT en referencia.jpg).
+ */
+export const FILTRO_COPIA = "[0:v]scale='min(1600,iw)':-2,format=rgba,split[a][b];[a]drawbox=c=white@1:t=fill[f];[f][b]overlay=format=auto,format=yuvj420p";
